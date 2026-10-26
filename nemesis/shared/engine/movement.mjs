@@ -1,6 +1,6 @@
 // movement.mjs — Move / Careful Move, exploration, noise rolls and encounters.
 
-import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
+import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
     NOISE_DIE, roll, fmtRoll, needDice, fx, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
     clearNoiseAround, HEAVY_NAMES } from './core.mjs';
 import { ROOM_TILES } from '../ship.mjs';
@@ -30,6 +30,7 @@ OPS['move.start'] = (state, step) => {
 OPS['move.chosen'] = (state, step) => {
     const p = player(state, step.player);
     const dest = step.answer;
+    if (step.pay) { payCost(state, p, step.pay, { ...step, pay: 0, answer: dest }, step.careful ? 'Осторожное перемещение: оплата' : 'Перемещение: оплата'); return; }
     const attackers = step.noAttacks ? [] : intrudersIn(state, p.room).map(i => i.uid);
     if (step.preventOne && attackers.length) attackers.shift();
     const go = { ...step, op: 'move.go', dest, answer: undefined };

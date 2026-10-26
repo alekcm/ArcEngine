@@ -203,7 +203,8 @@ OPS['turn.do'] = (state, step) => {
         }
         case 'move': case 'careful':
             spend();
-            payCost(state, p, act.cost, { op: 'move.start', player: p.id, careful: a.action === 'careful' }, a.action === 'careful' ? 'Осторожное перемещение: оплата' : 'Перемещение: оплата');
+            // destination first, payment second (the noise roll comes after both)
+            next(state, { op: 'move.start', player: p.id, careful: a.action === 'careful', pay: act.cost });
             return;
         case 'shoot':
             spend();

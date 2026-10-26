@@ -16,7 +16,8 @@ const SCALE = 0.1;                 // board units -> world units
 const ROOM_R = 7.0;                // hex platform radius
 const WALL_R = 6.3;                // wall ring radius
 const WALL_H = 1.35;
-const FLIP_S = 0.9, POP_S = 0.55;  // room token flip / props pop-up durations (s)
+const FLIP_S = 0.9, POP_S = 0.55;
+const LIFT_H = 1.1;   // how high a grabbed figure is lifted above the floor  // room token flip / props pop-up durations (s)
 const ZONE_C = { x: 2.1, z: -2.1 }; // standing zone centre (toward the camera)
 const ZONE_R = 2.5;
 const PROP_SPREAD = 1.55;          // props were authored for a ~4-unit room
@@ -301,9 +302,9 @@ export class Scene3D {
         for (let k = 0; k < 3; k++) {
             const a = k / 3 * Math.PI * 2 + 0.5;
             if (blocked(a)) continue;
-            const e = B().MeshBuilder.CreateBox('em', { width: 0.3, height: 0.2, depth: 0.2 }, S);
+            const e = B().MeshBuilder.CreateBox('em', { width: 0.42, height: 0.26, depth: 0.26 }, S);
             e.position.set(Math.sin(a) * (WALL_R - 0.3), WALL_H + 0.25, Math.cos(a) * (WALL_R - 0.3)); e.rotation.y = a; e.parent = root; e.isPickable = false;
-            e.material = this.M('#ff2a2a', 1); e.setEnabled(false); emergency.push(e);
+            e.material = this.M('#ff3a3a', 1.6); e.setEnabled(false); emergency.push(e);
         }
         this.mergeStatic(statics, root);
         const stripMesh = this.mergeStatic(stripMeshes, root)[0];
@@ -998,13 +999,13 @@ export class Scene3D {
             if (n.malfunction && n.shell) {
                 // main lights dead, red emergency lamps flicker
                 const f = Math.max(0, Math.sin(t * 6 + n.flicker)) * (Math.sin(t * 23 + n.flicker * 3) > -0.6 ? 1 : 0.2);
-                n.shell.strips.diffuseColor.set(0.12, 0.02, 0.02); n.shell.strips.emissiveColor.set(0.6 * f + 0.05, 0.02, 0.02);
-                for (const e of n.shell.emergency) e.scaling.setAll(0.8 + 0.4 * f);
+                n.shell.strips.diffuseColor.set(0.2, 0.03, 0.03); n.shell.strips.emissiveColor.set(0.95 * f + 0.12, 0.03, 0.03);
+                for (const e of n.shell.emergency) e.scaling.setAll(0.9 + 0.6 * f);
             }
         }
         const lerp = Math.min(1, this.engine.getDeltaTime() / 400);
         const dt = this.engine.getDeltaTime() / 1000;
-        for (const n of Object.values(this.chars)) {
+        for (const [pidKey, n] of Object.entries(this.chars)) {
             if (!n.target || !n.ch.root.isEnabled()) continue;
             const pos = n.ch.root.position, d = n.target.subtract(pos); d.y = 0;
             const dist = d.length(), stepLen = RUN_SPEED * dt;
@@ -1016,6 +1017,12 @@ export class Scene3D {
                 n.ch.root.rotation.y = Math.atan2(d.x, d.z);          // face the running direction
             } else if (n.faceY != null) n.ch.root.rotation.y += (n.faceY - n.ch.root.rotation.y) * Math.min(1, dt * 6);
             if (n.ch.animate) n.ch.animate(t, moving);
+            // picked-up figure floats above the table while dragged, then settles back down
+            const lifting = !!this.drag && this.drag.pid === Number(pidKey);
+            n.lift = (n.lift || 0) + ((lifting ? LIFT_H : 0) - (n.lift || 0)) * Math.min(1, dt * 9);
+            if (n.lift > 0.005) { pos.y += n.lift; n.ch.root.rotation.x = -0.12 * n.lift / LIFT_H; }   // slight forward tilt as if held
+            else n.ch.root.rotation.x = 0;
+            if (lifting && moving) { pos.x = n.target.x; pos.z = n.target.z; }   // follows the hand directly, no run cycle
         }
         // name labels grow as the camera zooms out, so figures are easy to find on the whole ship
         // name labels grow quickly with distance so a figure can be found on the whole-ship view
