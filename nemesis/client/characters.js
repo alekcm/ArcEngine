@@ -5,6 +5,7 @@
 // Every part is bound to a paint zone (CHARACTERS[*].zones) so the player can recolour it.
 
 import { buildStyledCharacter, STYLED_CHARACTERS } from './characters_styles.js';
+import { buildStyledIntruder } from './intruder_styles.js';
 
 const B = () => window.BABYLON;
 
@@ -384,7 +385,8 @@ export function buildCharacter(scene, charId, colors = {}, style = 'lowpoly') {
 }
 
 /** Low-poly intruder. type: larva | adult | drone | queen */
-export function buildIntruder(scene, type) {
+export function buildIntruder(scene, type, style = 'lowpoly') {
+    if (type === 'adult' && style && style !== 'lowpoly') return buildStyledIntruder(scene, style);
     const S = scene;
     const root = new (B().TransformNode)('intr_' + type, S);
     const dark = flatMat(S, '#14181d', { spec: 0.6 }), mid = flatMat(S, '#262f36', { spec: 0.6 }), chitin = flatMat(S, '#323c3a', { spec: 0.7 });
@@ -462,5 +464,5 @@ export function buildIntruder(scene, type) {
         else sp(0.1, 4, torso, 0, 0.05, 0.25).material = glow;                                         // chest glow
     }
     for (const m of root.getChildMeshes()) m.isPickable = false;
-    return root;
+    return { root, animate: () => {} };
 }

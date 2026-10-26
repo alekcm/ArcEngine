@@ -90,6 +90,12 @@ function renderLobby() {
             '<div class="style-card ' + (id === app.style ? 'sel' : '') + '" data-style="' + id + '" title="' + esc(s.desc) + '"><b>' + esc(s.name) + '</b><small>' + esc(s.desc) + '</small></div>').join('');
         for (const el of $('styleList').querySelectorAll('.style-card')) el.onclick = () => net.send({ t: 'lobby', style: el.dataset.style });
     }
+    // intruder model style (host-only setting; shared by all players) + preview toggle
+    $('intrStyleList').innerHTML = Object.entries(MODEL_STYLES).map(([id, s]) =>
+        '<div class="style-card ' + (id === (L.settings.intruderStyle || 'lowpoly') ? 'sel' : '') + (app.host ? '' : ' disabled') + '" data-istyle="' + id + '" title="' + esc(s.desc) + '"><b>' + esc(s.name) + '</b></div>').join('');
+    for (const el of $('intrStyleList').querySelectorAll('.style-card')) el.onclick = () => { if (!app.host) return; net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value, intruderStyle: el.dataset.istyle } }); };
+    $('intrHint').textContent = app.host ? 'Как выглядит взрослый чужой в игре; кнопка под превью покажет его.' : 'Выбирает ведущий.';
+    $('previewToggle').textContent = app.previewIntruder ? 'Показать персонажа' : 'Показать чужого';
     // paint zones
     const ch = L.characters[app.charId];
     if (ch) {
@@ -103,7 +109,8 @@ function renderLobby() {
         for (const el of $('paintZones').querySelectorAll('.swatch[data-color]')) el.onclick = () => sendColor(el.dataset.zone, el.dataset.color);
         for (const el of $('paintZones').querySelectorAll('input[type=color]')) el.oninput = () => sendColor(el.dataset.zone, el.value);
         if (!preview) preview = new Preview3D($('previewCanvas'));
-        preview.show(app.charId, Object.assign({}, def, app.colors), styled ? app.style : 'lowpoly');
+        if (app.previewIntruder) preview.showIntruder(L.settings.intruderStyle || 'lowpoly');
+        else preview.show(app.charId, Object.assign({}, def, app.colors), styled ? app.style : 'lowpoly');
     }
     // seats
     $('seatList').innerHTML = L.seats.map(s => {
@@ -126,9 +133,11 @@ function sendColor(zone, color) { app.colors = Object.assign({}, app.colors, { [
 
 $('nameInput').onchange = () => { localStorage.setItem('nemesis.name', $('nameInput').value); net.send({ t: 'lobby', name: $('nameInput').value }); };
 $('readyBtn').onclick = () => net.send({ t: 'lobby', ready: !app.ready });
+$('previewToggle').onclick = () => { app.previewIntruder = !app.previewIntruder; renderLobby(); };
 $('startBtn').onclick = () => net.send({ t: 'start' });
-$('modeSelect').onchange = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value } });
-$('seedInput').onchange = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value } });
+const sendSettings = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value, intruderStyle: (app.lobby && app.lobby.settings.intruderStyle) || 'lowpoly' } });
+$('modeSelect').onchange = sendSettings;
+$('seedInput').onchange = sendSettings;
 $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else $('endOverlay').classList.add('hidden'); };
 
 // ---------------------------------------------------------------------------------------------

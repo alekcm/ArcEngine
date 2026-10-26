@@ -714,7 +714,7 @@ export class Scene3D {
         for (const it of Object.values(view.intruders)) {
             seen.add(it.uid);
             let n = this.intr[it.uid];
-            if (!n) { n = { root: buildIntruder(S, it.type), label: null }; n.label = this.makeLabel('il', '', '', n.root, 0, 3.0, 0, 2.6); this.intr[it.uid] = n; for (const m of n.root.getChildMeshes()) this.shadows.addShadowCaster(m); }
+            if (!n) { const built = buildIntruder(S, it.type, view.intruderStyle); n = { root: built.root, animate: built.animate, label: null }; n.label = this.makeLabel('il', '', '', n.root, 0, 3.0, 0, 2.6); this.intr[it.uid] = n; for (const m of n.root.getChildMeshes()) this.shadows.addShadowCaster(m); }
             const k = perRoom[it.room] = (perRoom[it.room] || 0) + 1;
             const roomPos = this.roomNodes[it.room].root.position;
             n.target = this.slotPos(roomPos, k - 1, 'intr');
@@ -770,7 +770,7 @@ export class Scene3D {
         }
         const lerp = Math.min(1, this.engine.getDeltaTime() / 400);
         for (const n of Object.values(this.chars)) if (n.target && n.ch.root.isEnabled()) { B().Vector3.LerpToRef(n.ch.root.position, n.target, lerp, n.ch.root.position); if (n.ch.animate) n.ch.animate(t); }
-        for (const n of Object.values(this.intr)) if (n.target) { B().Vector3.LerpToRef(n.root.position, n.target, lerp, n.root.position); n.root.position.y = Math.abs(Math.sin(t * 3 + n.root.position.x)) * 0.05; }
+        for (const n of Object.values(this.intr)) if (n.target) { B().Vector3.LerpToRef(n.root.position, n.target, lerp, n.root.position); n.root.position.y = Math.abs(Math.sin(t * 3 + n.root.position.x)) * 0.05; if (n.animate) n.animate(t); }
         const ls = this.camera.radius > 60 ? this.camera.radius / 60 : 1;
         for (const n of Object.values(this.roomNodes)) n.label.scaling.setAll(ls);
     }
@@ -818,6 +818,16 @@ export class Preview3D {
         this.scene.environmentTexture = makeEnv(this.scene);
         this.engine.runRenderLoop(() => { this.t += this.engine.getDeltaTime() / 1000; if (this.char && this.char.animate) this.char.animate(this.t); this.scene.render(); });
         new ResizeObserver(() => this.engine.resize()).observe(canvas);
+    }
+    /** Debug/visual check: show the adult intruder instead of a character. */
+    showIntruder(style = 'lowpoly') {
+        const key = '@intruder|' + style;
+        if (this.charId === key) return;
+        if (this.char) this.char.root.dispose();
+        const built = buildIntruder(this.scene, 'adult', style);
+        built.root.scaling.setAll(0.75);
+        this.char = { root: built.root, animate: built.animate, setColors: () => {} };
+        this.charId = key; this.disc.setEnabled(style !== 'mini');
     }
     show(charId, colors, style = 'lowpoly') {
         const key = charId + '|' + style;

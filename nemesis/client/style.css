@@ -162,3 +162,6 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 .style-card.sel { border-color: #ffb347; background: #1c2430; }
 .style-card b { display: block; font-size: 13px; }
 .style-card small { display: block; color: #8a9bb0; font-size: 11px; line-height: 1.2; }
+.style-card.disabled { cursor: default; opacity: 0.7; }
+.char-preview { position: relative; }
+.preview-toggle { position: absolute; right: 8px; bottom: 8px; }

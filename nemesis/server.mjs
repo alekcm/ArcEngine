@@ -112,7 +112,7 @@ function upgrade(req, sock) {
 const game = {
     phase: 'lobby',                   // 'lobby' | 'playing'
     seats: [],                        // [{token, name, charId, colors, ready, socket|null}]
-    settings: { mode: 'original', seed: '' },
+    settings: { mode: 'original', seed: '', intruderStyle: 'lowpoly' },
     state: null,
     undo: [],                         // [{json, label}]
     history: [],                      // labels of accepted actions (for the undo list)
@@ -178,7 +178,7 @@ function onMessage(socket, m) {
             if (m.colors && typeof m.colors === 'object') seat.colors = sanitizeColors(seat.charId, m.colors);
             if (typeof m.style === 'string' && ['lowpoly', 'rounded', 'pbr', 'mini', 'real'].includes(m.style)) seat.style = m.style;
             if (typeof m.ready === 'boolean') seat.ready = m.ready;
-            if (m.settings && isHost(socket)) { if (m.settings.mode === 'random' || m.settings.mode === 'original') game.settings.mode = m.settings.mode; if (typeof m.settings.seed === 'string') game.settings.seed = m.settings.seed.slice(0, 32); }
+            if (m.settings && isHost(socket)) { if (m.settings.mode === 'random' || m.settings.mode === 'original') game.settings.mode = m.settings.mode; if (typeof m.settings.seed === 'string') game.settings.seed = m.settings.seed.slice(0, 32); if (['lowpoly', 'rounded', 'pbr', 'mini', 'real'].includes(m.settings.intruderStyle)) game.settings.intruderStyle = m.settings.intruderStyle; }
             if (m.kick !== undefined && isHost(socket)) { const k = game.seats[m.kick]; if (k && k !== seat) { if (k.socket) k.socket.close(); game.seats.splice(m.kick, 1); } }
             broadcastLobby();
             break;
@@ -188,7 +188,7 @@ function onMessage(socket, m) {
             const seats = game.seats.filter(s => s.socket);
             if (seats.length < 1) return;
             game.seats = seats;
-            game.state = createGame({ seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors, style: s.style || 'lowpoly' })) });
+            game.state = createGame({ seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, intruderStyle: game.settings.intruderStyle, players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors, style: s.style || 'lowpoly' })) });
             game.phase = 'playing'; game.undo = []; game.history = [];
             for (const c of clients) c.logSeen = 0;
             broadcastLobby(); broadcastState(true);

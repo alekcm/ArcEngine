@@ -21,6 +21,7 @@ export function createGame(config) {
         version: 1,
         seedStr, rng: seedFromString(seedStr),
         mode: config.mode === 'random' ? 'random' : 'original',
+        intruderStyle: config.intruderStyle || 'lowpoly',
         round: 0, phase: 'setup',
         players: [], firstPlayer: 0, current: 0,
         queue: [], prompt: null, resume: null, promptSeq: 0,

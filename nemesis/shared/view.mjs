@@ -4,7 +4,7 @@
 import { buildMenu } from './engine/turn.mjs';
 import { CHARACTERS, FIELD_DATA } from './data/cards.mjs';
 
-const PUBLIC_KEYS = ['version', 'seedStr', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'ship', 'roomState',
+const PUBLIC_KEYS = ['intruderStyle', 'version', 'seedStr', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'ship', 'roomState',
     'intruders', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods',
     'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'result', 'lastEvent'];
 
