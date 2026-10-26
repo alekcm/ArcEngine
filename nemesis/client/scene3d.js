@@ -56,7 +56,7 @@ export class Scene3D {
         this.scene = new (B().Scene)(this.engine);
         this.scene.clearColor = new (B().Color4)(0.025, 0.035, 0.055, 1);
         this.scene.fogMode = B().Scene.FOGMODE_EXP2; this.scene.fogDensity = 0.0028; this.scene.fogColor = new (B().Color3)(0.03, 0.04, 0.07);
-        this.scene.ambientColor = new (B().Color3)(0.25, 0.28, 0.33);
+        this.scene.ambientColor = new (B().Color3)(0.1, 0.11, 0.14);
         const cam = new (B().ArcRotateCamera)('cam', -Math.PI / 4, 0.95, 110, new (B().Vector3)(0, 0, 0), this.scene);
         cam.lowerBetaLimit = 0.4; cam.upperBetaLimit = 1.3; cam.lowerRadiusLimit = 14; cam.upperRadiusLimit = 220;
         cam.panningSensibility = 30; cam.wheelPrecision = 4; cam.angularSensibilityX = 1500; cam.angularSensibilityY = 1500;
@@ -65,9 +65,9 @@ export class Scene3D {
         cam.inputs.attached.pointers.buttons = [0, 1, 2];
         this.camera = cam;
         const hemi = new (B().HemisphericLight)('h', new (B().Vector3)(0.2, 1, 0.1), this.scene);
-        hemi.intensity = 0.6; hemi.groundColor = new (B().Color3)(0.15, 0.13, 0.2);
+        hemi.intensity = 0.28; hemi.groundColor = new (B().Color3)(0.15, 0.13, 0.2);
         const sun = new (B().DirectionalLight)('sun', new (B().Vector3)(-0.6, -1, 0.4), this.scene);
-        sun.intensity = 0.9; sun.position = new (B().Vector3)(60, 120, -40);
+        sun.intensity = 0.42; sun.position = new (B().Vector3)(60, 120, -40);
         this.shadows = new (B().ShadowGenerator)(2048, sun);
         this.shadows.usePercentageCloserFiltering = true; this.shadows.darkness = 0.45;
         this.roomNodes = {}; this.corridorNodes = {}; this.dynamic = []; this.chars = {}; this.intr = {}; this.hull = [];
@@ -220,8 +220,10 @@ export class Scene3D {
         mk(2.4, 1.7, 0.3, 0, 0.85, 1.5, steel);                       // back wall of the stub
         for (const s of [-1, 1]) mk(0.3, 1.7, 2.4, s * 1.2, 0.85, 0.4, steel);  // side walls
         mk(2.4, 0.25, 2.4, 0, 1.75, 0.4, trim);                       // roof
-        mk(1.6, 0.06, 2.0, 0, 1.9, 0.3, this.M('#2f6fa8', 0.5));      // blue runner on the roof
-        for (const s of [-1, 1]) mk(0.08, 0.08, 2.0, s * 0.9, 1.92, 0.3, this.M('#3fa9ff', 0.8));   // blue edge lights along the roof
+        // roof: two thin blue light rails (same muted blue as the floor runner) and steel conduit pipes with cross-bars
+        for (const s of [-1, 1]) mk(0.08, 0.06, 2.0, s * 0.95, 1.9, 0.3, this.M('#2f6fa8', 0.6));
+        for (const ox of [-0.55, 0, 0.55]) { const pipe = B().MeshBuilder.CreateCylinder('tp', { diameter: 0.16, height: 2.0, tessellation: 6 }, S); pipe.position.set(px + Math.cos(a) * ox - Math.sin(a) * 0.3, 1.96, pz - Math.sin(a) * ox - Math.cos(a) * 0.3); pipe.rotation.set(Math.PI / 2, a, 0); pipe.material = this.M('#55636f'); statics.push(pipe); }
+        for (let i = 0; i < 3; i++) mk(2.3, 0.1, 0.12, 0, 1.94, -0.4 + i * 0.7, this.M('#3a4652'));
         mk(1.6, 1.3, 0.2, 0, 0.75, 1.3, dark);                        // dark opening
         mk(1.5, 0.06, 2.0, 0, 0.09, 0.3, this.M('#2f6fa8', 0.5));      // blue floor runner
         for (let i = 0; i < 3; i++) mk(0.1, 0.05, 1.6, -0.6 + i * 0.6, 0.22, 0.5, this.M('#2a3038'));  // grating
@@ -649,6 +651,8 @@ export class Scene3D {
         for (const s of [-1, 1]) { const post = B().MeshBuilder.CreateBox('post', { width: 0.8, height: 1.95, depth: 0.32 }, S); post.parent = door; post.position.set(s * 1.3, 0.97, 0); post.material = M('#8c96a0'); post.isPickable = false; }
         const lintel = B().MeshBuilder.CreateBox('lintel', { width: 3.4, height: 0.4, depth: 0.32 }, S); lintel.parent = door; lintel.position.y = 1.75; lintel.material = M('#8c96a0'); lintel.isPickable = false;
         const sill = B().MeshBuilder.CreateBox('sill', { width: 1.8, height: 0.06, depth: 0.36 }, S); sill.parent = door; sill.position.y = 0.0; sill.material = M('#5a6673'); sill.isPickable = false;
+        // light trim around the door opening (shares the arch-band material: dim steel, orange on noise)
+        for (const f of [-1, 1]) { for (const s of [-1, 1]) { const t = B().MeshBuilder.CreateBox('dt', { width: 0.1, height: 1.6, depth: 0.04 }, S); t.parent = door; t.position.set(s * 0.95, 0.8, f * 0.18); t.material = matA; t.isPickable = false; } const t = B().MeshBuilder.CreateBox('dt', { width: 2.0, height: 0.1, depth: 0.04 }, S); t.parent = door; t.position.set(0, 1.6, f * 0.18); t.material = matA; t.isPickable = false; }
         const panels = [];
         for (const s of [-1, 1]) {
             const p = B().MeshBuilder.CreateBox('panel', { width: 0.9, height: 1.55, depth: 0.14 }, S);
@@ -667,7 +671,7 @@ export class Scene3D {
             db.parent = door; db.position.set((Math.random() - 0.5) * 1.6, 0.08, (Math.random() - 0.5) * 1.4); db.rotation.set(0, Math.random() * 3, (Math.random() - 0.5) * 0.4); db.material = M('#6b7a88'); db.isPickable = false; db.setEnabled(false);
             debris.push(db);
         }
-        this.corridorNodes[c.id] = { root, panels, noise, noiseLabel, debris, ribsA: mA, ribsB: mB, matA, matB, a: c.a, b: c.b, state: null };
+        this.corridorNodes[c.id] = { root, panels, noise, noiseLabel, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB, a: c.a, b: c.b, state: null };
     }
 
     makeLabel(name, big, small, parent, x, y, z, width) {
@@ -738,18 +742,34 @@ export class Scene3D {
         if (node.shellKey !== sk) {
             if (node.shell) node.shell.root.dispose();
             node.shell = tile ? this.buildShell(node, tile) : null;
-            node.shellKey = sk;
+            node.shellKey = sk; node.lightsOn = undefined;
         }
         node.malfunction = !!rs.malfunction;
         if (node.shell) {
             const st = node.shell.strips; const style = WALL_STYLES[TILE_STYLE[tile] || 'steel'];
             if (!node.malfunction) { st.diffuseColor = B().Color3.FromHexString(style[3]); st.emissiveColor = B().Color3.FromHexString(style[3]).scale(0.9); }
             for (const e of node.shell.emergency) e.setEnabled(node.malfunction);
+            this.setRoomLights(node, !node.malfunction);
         }
         if (rs.fire) this.addFire(node.root);
         let k = 0;
         for (const o of rs.objects) this.addObject(o.type, node.root, k++);
         if (tile === 'nest' && rs.explored) for (let i = 0; i < view.nestEggs; i++) this.addObject('egg', node.root, 10 + i);
+    }
+
+    /** Main lighting of a room: every glowing material inside the shell is swapped for a dead (non-emissive) copy on malfunction. */
+    setRoomLights(node, on) {
+        if (node.lightsOn === on) return; node.lightsOn = on;
+        this.deadMats = this.deadMats || new Map();
+        for (const m of node.shell.root.getChildMeshes()) {
+            if (node.shell.emergency.includes(m) || m === node.shell.stripMesh) continue;
+            if (!on) {
+                const mat = m.material; if (!mat || !mat.emissiveColor || Math.max(mat.emissiveColor.r, mat.emissiveColor.g, mat.emissiveColor.b) < 0.05) continue;
+                let dead = this.deadMats.get(mat);
+                if (!dead) { dead = mat.clone(mat.name + '_dead'); dead.unfreeze(); dead.emissiveColor = mat.emissiveColor.scale(0.04); dead.diffuseColor = mat.diffuseColor.scale(0.35); dead.freeze(); this.deadMats.set(mat, dead); }
+                m._litMat = mat; m.material = dead;
+            } else if (m._litMat) { m.material = m._litMat; m._litMat = null; }
+        }
     }
 
     addFire(parent) {
@@ -998,9 +1018,10 @@ export class Scene3D {
             if (n.ch.animate) n.ch.animate(t, moving);
         }
         // name labels grow as the camera zooms out, so figures are easy to find on the whole ship
-        const lk = Math.min(3.2, Math.max(1, this.camera.radius / 55));
-        for (const n of Object.values(this.chars)) { n.label.scaling.setAll(lk); n.label.position.y = 3.6 + (lk - 1) * 0.9; }
-        for (const n of Object.values(this.intr)) if (n.label) { n.label.scaling.setAll(lk); n.label.position.y = 3.0 + (lk - 1) * 0.9; }
+        // name labels grow quickly with distance so a figure can be found on the whole-ship view
+        const lk = Math.min(8, Math.max(1, this.camera.radius / 26));
+        for (const n of Object.values(this.chars)) { n.label.scaling.setAll(lk); n.label.position.y = 3.6 + (lk - 1) * 1.0; }
+        for (const n of Object.values(this.intr)) if (n.label) { n.label.scaling.setAll(lk); n.label.position.y = 3.0 + (lk - 1) * 1.0; }
         for (const c of Object.values(this.cursors)) {
             B().Vector3.LerpToRef(c.root.position, c.target, Math.min(1, dt * 12), c.root.position);
             c.root.position.y = 0.25 + Math.sin(t * 3) * 0.05;
