@@ -144,15 +144,18 @@ function renderGame() {
         });
     }
     scene.setMe(app.me);
+    if (!dice) { dice = new DiceUI($('dice'), () => act('roll')); dice.afterHide = () => { if (app.view) dice.update(app.view, app.me, playerName); }; dice.onLanded = () => { app.rollHold = false; if (app.view) renderGame(); }; }
+    // a fresh roll result: show the die first, everything else (movement, noise, spawns) waits until it lands
+    if (v.lastRoll && dice.lastSeen !== null && v.lastRoll.n !== dice.lastSeen && !app.rollHold) { app.rollHold = true; dice.update(v, app.me, playerName); setTimeout(() => { if (app.rollHold) { app.rollHold = false; if (app.view) renderGame(); } }, 4500); return; }
+    if (app.rollHold) return;
     const pr = v.prompt;
     const selectable = pr && pr.kind === 'room' && !pr.waiting ? pr.rooms : [];
     scene.update(v, ROOM_TILES, INTRUDER_NAMES, selectable);
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
-    if (!dice) { dice = new DiceUI($('dice'), () => act('roll')); dice.afterHide = () => { if (app.view) dice.update(app.view, app.me, playerName); }; }
     dice.update(v, app.me, playerName);
     if (!tableFx) { tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES); tableFx.onShake = k => scene && scene.shake(k); }
     tableFx.update(v, app.me);
-    renderPilePopups(v);
+    renderPilePopups(v); syncPanes();
     if (v.result) renderEnd();
 }
 
@@ -385,6 +388,17 @@ $('menuToggle').onclick = () => {
     renderPrompt(); renderHand();
 };
 $('undoBtn').onclick = () => { if (confirm('Откатить последнее действие? Все игроки получат уведомление.')) net.send({ t: 'undo', steps: 1 }); };
+// collapsible panels (players/objectives → left, log → right, decks → down); state is remembered
+const PANES = { pl: ['playersToggle', '◀', '▶'], rt: ['rightToggle', '▶', '◀'], tb: ['tableToggle', '▼', '▲'] };
+function syncPanes() {
+    for (const [k, [id, open, closed]] of Object.entries(PANES)) { const c = document.body.classList.contains(k + '-collapsed'); $(id).textContent = c ? closed : open; }
+    const tb = $('table'); $('tableToggle').style.bottom = document.body.classList.contains('tb-collapsed') ? '4px' : (14 + tb.offsetHeight) + 'px';
+}
+for (const [k, [id]] of Object.entries(PANES)) {
+    if (localStorage.getItem('nemesis.pane.' + k) === '1') document.body.classList.add(k + '-collapsed');
+    $(id).onclick = () => { const c = document.body.classList.toggle(k + '-collapsed'); localStorage.setItem('nemesis.pane.' + k, c ? '1' : '0'); syncPanes(); Snd.play('click'); };
+}
+syncPanes();
 const muteBtn = $('muteBtn');
 function syncMute() { muteBtn.textContent = Snd.isMuted() ? '🔇' : '🔊'; muteBtn.classList.toggle('off', Snd.isMuted()); }
 syncMute();

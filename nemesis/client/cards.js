@@ -32,7 +32,7 @@ export function cardHtml(cardId, info, selected) {
     if (art) cls.push('with-art');
     return '<div class="' + cls.join(' ') + '" data-card="' + esc(cardId) + '" title="' + esc(d.text) + '">' +
         (art ? '<div class="cart" style="background-image:url(' + art + ')"></div>' : '') +
-        (d.cost ? '<div class="ccost">' + d.cost + '</div>' : '') +
+        (d.cost > 1 ? '<div class="ccost" title="Сбросьте ещё ' + (d.cost - 1) + '">' + d.cost + '</div>' : '') +
         '<div class="cname">' + icon + ' ' + esc(d.name) + '</div>' +
         '<div class="ctext">' + esc(d.text) + '</div>' +
         (info && !info.enabled && info.reason ? '<div class="cwhy">' + esc(info.reason) + '</div>' : '') +

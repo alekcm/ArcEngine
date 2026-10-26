@@ -645,10 +645,10 @@ export class Scene3D {
         // door frame + sliding panels in the middle segment
         const d = doorPlaced; const dz = d.z;
         const door = new (B().TransformNode)('door', S); door.parent = d.seg; door.position.set(0, 0, dz);
-        const frame = B().MeshBuilder.CreateBox('frame', { width: 2.7, height: 1.95, depth: 0.32 }, S);
-        frame.parent = door; frame.position.y = 0.97; frame.material = M('#8c96a0'); frame.isPickable = false;
-        const hole = B().MeshBuilder.CreateBox('hole', { width: 1.8, height: 1.55, depth: 0.38 }, S);
-        hole.parent = door; hole.position.y = 0.77; hole.material = M('#0b1016'); hole.isPickable = false;
+        // a real open frame (two posts + lintel + sill) so you can see through an open door
+        for (const s of [-1, 1]) { const post = B().MeshBuilder.CreateBox('post', { width: 0.8, height: 1.95, depth: 0.32 }, S); post.parent = door; post.position.set(s * 1.3, 0.97, 0); post.material = M('#8c96a0'); post.isPickable = false; }
+        const lintel = B().MeshBuilder.CreateBox('lintel', { width: 3.4, height: 0.4, depth: 0.32 }, S); lintel.parent = door; lintel.position.y = 1.75; lintel.material = M('#8c96a0'); lintel.isPickable = false;
+        const sill = B().MeshBuilder.CreateBox('sill', { width: 1.8, height: 0.06, depth: 0.36 }, S); sill.parent = door; sill.position.y = 0.0; sill.material = M('#5a6673'); sill.isPickable = false;
         const panels = [];
         for (const s of [-1, 1]) {
             const p = B().MeshBuilder.CreateBox('panel', { width: 0.9, height: 1.55, depth: 0.14 }, S);
@@ -786,13 +786,14 @@ export class Scene3D {
         if (n.state === key) return;
         n.state = key;
         const closed = c.door === 'closed', destroyed = c.door === 'destroyed';
-        n.panels[0].position.x = closed ? -0.45 : -1.2; n.panels[1].position.x = closed ? 0.45 : 1.2;
+        n.panels[0].position.x = closed ? -0.45 : -1.3; n.panels[1].position.x = closed ? 0.45 : 1.3;
         n.panels[0].setEnabled(!destroyed); n.panels[1].setEnabled(!destroyed);
         for (const d of n.debris) d.setEnabled(destroyed);
         n.noiseLabel.setEnabled(!!c.noise);
         for (const m of n.ribsA) m.setEnabled(exA); for (const m of n.ribsB) m.setEnabled(exB);
-        const col = c.noise ? '#ffd23b' : '#3fd0ff';
-        for (const mat of [n.matA, n.matB]) { mat.diffuseColor = B().Color3.FromHexString(col); mat.emissiveColor = B().Color3.FromHexString(col); }
+        // arch bands: unlit steel normally, orange glow only while a noise marker sits in the corridor
+        const col = c.noise ? '#ffb347' : '#4a5563';
+        for (const mat of [n.matA, n.matB]) { mat.diffuseColor = B().Color3.FromHexString(col); mat.emissiveColor = B().Color3.FromHexString(col).scale(c.noise ? 1 : 0.08); }
     }
 
     /** Slot position plus the player's own offset (figure dragged inside the room), clamped to the platform. */
@@ -1078,6 +1079,7 @@ export class Preview3D {
         this.scene.clearColor = new (B().Color4)(0, 0, 0, 0);
         const cam = new (B().ArcRotateCamera)('pc', -Math.PI / 2 + 0.4, 1.25, 4.4, new (B().Vector3)(0, 0.95, 0), this.scene);
         cam.attachControl(canvas, true); cam.lowerRadiusLimit = 2.5; cam.upperRadiusLimit = 7; cam.wheelPrecision = 50;
+        canvas.addEventListener('wheel', e => e.preventDefault(), { passive: false });   // zooming the figure must not scroll the lobby
         const h = new (B().HemisphericLight)('h', new (B().Vector3)(0.3, 1, 0.2), this.scene); h.intensity = 0.8;
         const d = new (B().DirectionalLight)('d', new (B().Vector3)(-0.5, -1, 0.6), this.scene); d.intensity = 0.7;
         const disc = B().MeshBuilder.CreateCylinder('disc', { diameter: 1.6, height: 0.1, tessellation: 8 }, this.scene);
