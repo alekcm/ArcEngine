@@ -1,7 +1,7 @@
 // movement.mjs — Move / Careful Move, exploration, noise rolls and encounters.
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
-    NOISE_DIE, roll, fmtRoll, needDice, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
+    NOISE_DIE, roll, fmtRoll, needDice, fx, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
     clearNoiseAround, HEAVY_NAMES } from './core.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
@@ -64,6 +64,7 @@ OPS['explore'] = (state, step) => {
     if (rs.explored) return;
     rs.explored = true;
     rs.tile = state.secret.tiles[step.room];
+    fx(state, { type: 'explore', room: step.room, tile: rs.tile });
     const token = state.secret.tokens[step.room];
     rs.token = token;
     const p = step.player !== undefined ? player(state, step.player) : null;

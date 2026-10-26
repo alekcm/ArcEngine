@@ -150,6 +150,7 @@ export function startSelfDestruct(state) {
     if (state.selfDestruct > 0) return;
     if (state.players.some(p => p.status === 'hibernating')) { log(state, 'Самоуничтожение невозможно: есть персонажи в гибернации.', 'minor'); return; }
     state.selfDestruct = 1;
+    fx(state, { type: 'siren' });
     log(state, '☢ ЗАПУЩЕНО САМОУНИЧТОЖЕНИЕ! Отсчёт: ' + state.selfDestruct + '/' + SELF_DESTRUCT_LENGTH + '.', 'death');
 }
 export function stopSelfDestruct(state) {

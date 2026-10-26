@@ -2,7 +2,7 @@
 
 import { OPS, ask, next, log, player, pname, removeCardFromGame, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
     discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards,
-    HEAVY_NAMES, itemDef, healthState, activePlayers } from './core.mjs';
+    HEAVY_NAMES, itemDef, healthState, activePlayers, fx } from './core.mjs';
 import { ITEMS, CHARACTERS, OBJECTIVES, WOUNDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { roomActionAvailable, roomActionCost } from './rooms.mjs';
@@ -16,6 +16,7 @@ OPS['phase.player'] = (state) => {
 };
 
 OPS['turn.start'] = (state) => {
+    if (state.selfDestruct > 0) fx(state, { type: 'sdBeep', count: state.selfDestruct });
     const order = turnOrder(state);
     let found = null;
     for (let k = 1; k <= order.length; k++) {

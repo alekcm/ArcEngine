@@ -47,16 +47,14 @@
 <!-- HUD -->
 <div id="hud" class="hidden">
     <div id="topbar">
-        <div class="tb-item"><span class="lbl">Раунд</span><b id="tbRound">1</b></div>
-        <div class="tb-item"><span class="lbl">Фаза</span><b id="tbPhase">—</b></div>
-        <div class="tb-item"><span class="lbl">Время</span><b id="tbTime">15</b></div>
-        <div class="tb-item" id="tbSelfDestruct" style="display:none"><span class="lbl">Самоуничтожение</span><b id="tbSD">—</b></div>
+        <div id="track" title="Трек времени и самоуничтожения"></div>
         <div class="tb-item"><span class="lbl">Пункт</span><b id="tbDest">B</b></div>
         <div class="tb-item"><span class="lbl">Мешок</span><b id="tbBag">—</b></div>
         <div class="tb-item"><span class="lbl">Огонь/поломки</span><b id="tbMarkers">8/8</b></div>
         <div class="tb-item"><span class="lbl">Компьютер</span><b id="tbComputer">—</b></div>
         <div class="tb-spacer"></div>
         <button id="undoBtn" class="btn small" title="Откатить последнее действие (только ведущий)">⟲ Откатить ход</button>
+        <button id="muteBtn" class="btn small" title="Звук вкл/выкл">🔊</button>
         <button id="helpBtn" class="btn small">?</button>
     </div>
 

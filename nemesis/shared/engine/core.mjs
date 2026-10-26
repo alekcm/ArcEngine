@@ -247,6 +247,7 @@ export function loseHealth(state, p, n, reason) {
             p.armor = null;
         }
     }
+    if (n > 0) fx(state, { type: 'damage', player: p.id, n });
     log(state, pname(p) + ' теряет ' + n + ' здоровья' + (reason ? ' (' + reason + ')' : '') + ' — ' + HEALTH_STATE_NAMES[healthState(p)] + ', ' + Math.max(0, p.health) + ' HP.', 'bad');
     if (p.health < 0) killPlayer(state, p, reason || 'ранения');
 }
@@ -421,6 +422,7 @@ export function spawnIntruder(state, type, roomId) {
     if (type === 'queen' && state.queenDead) return null;
     const uid = 'i' + (++state.intruderSeq);
     state.intruders[uid] = { uid, type, room: roomId, hits: 0 };
+    fx(state, { type: 'spawn', intruder: type, room: roomId });
     log(state, '👾 ' + INTRUDER_NAMES[type] + ' появляется: ' + roomName(state, roomId) + '.', 'event');
     return state.intruders[uid];
 }
@@ -466,7 +468,9 @@ export function fmtRoll(v) { return v === 'crit' ? 'КРИТ' : v === 'silence' 
 export function drawBagToken(state) {
     if (!state.bag.length) return null;
     const i = randInt(state, state.bag.length);
-    return state.bag.splice(i, 1)[0];
+    const tok = state.bag.splice(i, 1)[0];
+    fx(state, { type: 'bag', token: tok, left: state.bag.length });
+    return tok;
 }
 export function returnToken(state, token, toBag) {
     if (token === 'blank' || toBag) state.bag.push(token);

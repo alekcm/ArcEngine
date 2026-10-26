@@ -1,4 +1,5 @@
 // dice.js — the big die in the middle of the screen.
+import * as Snd from './sound.js';
 //
 // Two situations show it:
 //   * the engine asks the acting player to roll (prompt.kind === 'dice'): everyone sees the die,
@@ -64,7 +65,7 @@ export class DiceUI {
     }
 
     startSpin() {
-        this.rolling = true; this.clearHide();
+        this.rolling = true; this.clearHide(); Snd.play('dice');
         this.el.classList.remove('landed'); this.el.classList.add('spinning');
         this.show();
         this.hint.textContent = 'Бросок…';

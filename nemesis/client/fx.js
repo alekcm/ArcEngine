@@ -10,9 +10,12 @@
 //   event / attack / queen — a card is drawn from the shared deck, flips face up in the centre
 //                            and slides to its discard
 import { esc, describeCard } from './cards.js';
+import * as Snd from './sound.js';
 
 const DECK_LABELS = { green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая', support: 'Поддержка', event: 'События', attack: 'Атаки', queen: 'Королева' };
 const DECK_COLORS = { green: '#2f9e55', red: '#b63a3a', yellow: '#c9a227', support: '#6b7fa3', event: '#8a5a2b', attack: '#7a2d5a', queen: '#5b2a86', own: '#2c5a7a', contam: '#5a7a2a' };
+
+const TOKEN_ICON = { blank: '○', larva: '🐛', adult: '👾', drone: '🦂', queen: '👑' };
 
 export class TableFX {
     constructor(tableEl, layerEl, getPlayerEl, intruderNames) {
@@ -78,6 +81,7 @@ export class TableFX {
         const pname = f.player != null && v.players[f.player] ? v.players[f.player].name : '';
         switch (f.type) {
             case 'draw': {
+                Snd.play('card'); if (f.n > 1) Snd.play('card', 110);
                 const from = isMe ? this.pileRect('own') : this.playerRect(f.player);
                 const to = isMe ? this.handRect() : this.playerRect(f.player);
                 const n = Math.min(f.n, 5);
@@ -96,6 +100,7 @@ export class TableFX {
                 const el = this.makeCard(d.contam ? DECK_COLORS.contam : DECK_COLORS.own, face);
                 el.classList.add('flipped');
                 const burn = f.type === 'remove';
+                Snd.play(burn ? 'burn' : 'card');
                 this.fly(el, from, burn ? this.centerRect(100, 140) : (to || from), burn ? 500 : 520, { rotB: burn ? 0 : 25, arc: 60, scaleB: burn ? 1.1 : 0.55, fadeOut: !isMe && !burn }, () => {
                     if (burn) { el.classList.add('burn'); setTimeout(() => { el.remove(); done(); }, 700); }
                     else { el.remove(); done(); }
@@ -103,6 +108,7 @@ export class TableFX {
                 break;
             }
             case 'contam': {
+                Snd.play('contam'); if (isMe) this.vignette('green');
                 const to = isMe ? this.pileRect('owndisc') : this.playerRect(f.player);
                 const n = Math.min(f.n, 3);
                 for (let i = 0; i < n; i++) {
@@ -114,6 +120,7 @@ export class TableFX {
                 break;
             }
             case 'item': {
+                Snd.play('card');
                 const from = this.pileRect(f.deck);
                 const to = isMe ? this.handRect() : this.centerRect(100, 140);
                 const el = this.makeCard(DECK_COLORS[f.deck], null);
@@ -127,14 +134,49 @@ export class TableFX {
                 const title = k === 'event' ? 'Событие' : k === 'attack' ? 'Атака' + (f.intruder ? ' · ' + (this.intruderNames[f.intruder] || f.intruder) : '') : 'Королева';
                 const face = '<small>' + esc(title) + '</small><b>' + esc(f.name || '') + '</b>' + (f.text ? '<p>' + esc(f.text) + '</p>' : '') + (pname && k === 'attack' ? '<em>→ ' + esc(pname) + '</em>' : '');
                 const el = this.makeCard(DECK_COLORS[k], face, 170, 236);
+                Snd.play('card');
                 this.fly(el, from || mid, mid, 550, { rotA: -10, rotB: 0, scaleA: 0.5, scaleB: 1, arc: 30 }, async () => {
-                    await this.flip(el);
+                    Snd.play('flip'); await this.flip(el);
                     await new Promise(r => setTimeout(r, k === 'attack' ? 1400 : 2200));
                     this.fly(el, mid, from || mid, 450, { rotB: 20, scaleB: 0.4, fadeOut: true }, () => { el.remove(); done(); });
                 });
                 break;
             }
+            case 'bag': {
+                // the intruder bag: a pouch slides in, a token is pulled out and flipped
+                Snd.play('bag');
+                const name = this.intruderNames[f.token] || f.token;
+                const el = document.createElement('div');
+                el.className = 'bagfx';
+                el.innerHTML = '<div class="bag-pouch">🎒<small>мешок · ' + (f.left ?? '') + '</small></div><div class="bag-token tok-' + esc(f.token) + '"><div class="bt-inner"><div class="bt-back">?</div><div class="bt-front"><b>' + esc(TOKEN_ICON[f.token] || '?') + '</b><span>' + esc(name) + '</span></div></div></div>';
+                this.layer.appendChild(el);
+                setTimeout(() => { el.classList.add('pulled'); }, 450);
+                setTimeout(() => { el.classList.add('shown'); Snd.play('flip'); if (f.token !== 'blank') Snd.play('roar', 150); }, 1000);
+                setTimeout(() => { el.classList.add('gone'); setTimeout(() => { el.remove(); done(); }, 350); }, 2500);
+                break;
+            }
+            case 'spawn': { if (!this.lastRoar || Date.now() - this.lastRoar > 1500) { Snd.play('roar'); this.lastRoar = Date.now(); } done(); break; }
+            case 'damage': {
+                Snd.play('hurt');
+                if (isMe) { this.vignette('red'); if (this.onShake) this.onShake(Math.min(1, 0.4 + f.n * 0.2)); }
+                else { const el = this.getPlayerEl(f.player); if (el) { el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit'); } }
+                done(); break;
+            }
+            case 'siren': { Snd.play('siren'); this.banner('⚠ САМОУНИЧТОЖЕНИЕ ЗАПУЩЕНО', 'red', 2600); setTimeout(done, 600); break; }
+            case 'sdBeep': { Snd.play('beep'); this.banner('⏱ Самоуничтожение: ' + f.count + '/6', f.count >= 4 ? 'red' : 'blue', 1500); done(); break; }
+            case 'explore': { Snd.play('tile'); done(); break; }
             default: done();
         }
+    }
+
+    /** Full-screen coloured vignette flash (damage = red, contamination = green). */
+    vignette(color) {
+        const el = document.createElement('div'); el.className = 'vignette ' + color; this.layer.appendChild(el);
+        setTimeout(() => el.remove(), 900);
+    }
+    /** Short centred banner text. */
+    banner(text, color, ms) {
+        const el = document.createElement('div'); el.className = 'fxbanner ' + color; el.textContent = text; this.layer.appendChild(el);
+        setTimeout(() => { el.classList.add('gone'); setTimeout(() => el.remove(), 400); }, ms);
     }
 }

@@ -5,6 +5,7 @@ import { Scene3D, Preview3D } from './scene3d.js';
 import { DEFAULTS } from './characters.js';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
+import * as Snd from './sound.js';
 import { cardHtml, describeCard, esc, itemLabel, itemTitle, woundName } from './cards.js';
 import { ROOM_TILES } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS } from '/shared/data/cards.mjs';
@@ -58,7 +59,7 @@ function onMessage(m) {
         case 'chat': addChat(m); break;
         case 'cursor': if (scene && app.view && m.pid !== app.me) { const p = app.view.players[m.pid]; if (p) scene.setCursor(m.pid, m.x, m.z, CHARACTERS[p.charId].color, p.name, m.off); } break;
         case 'pose': if (scene && m.pid !== app.me) scene.setPose(m.pid, m.pose, false); break;
-        case 'ping': if (scene && app.view) { const p = app.view.players[m.pid]; if (p) { scene.ping(m.x, m.z, CHARACTERS[p.charId].color); if (m.pid !== app.me) notice('📍 ' + p.name + (m.room ? ' указывает на ' + roomLabel(m.room) : ' указывает на стол'), 'ping'); } } break;
+        case 'ping': if (scene && app.view) { const p = app.view.players[m.pid]; if (p) { scene.ping(m.x, m.z, CHARACTERS[p.charId].color); Snd.play('ping'); if (m.pid !== app.me) notice('📍 ' + p.name + (m.room ? ' указывает на ' + roomLabel(m.room) : ' указывает на стол'), 'ping'); } } break;
     }
 }
 
@@ -149,19 +150,15 @@ function renderGame() {
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
     if (!dice) { dice = new DiceUI($('dice'), () => act('roll')); dice.afterHide = () => { if (app.view) dice.update(app.view, app.me, playerName); }; }
     dice.update(v, app.me, playerName);
-    if (!tableFx) tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES);
+    if (!tableFx) { tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES); tableFx.onShake = k => scene && scene.shake(k); }
     tableFx.update(v, app.me);
+    renderPilePopups(v);
     if (v.result) renderEnd();
 }
 
 function renderTopbar() {
     const v = app.view;
-    $('tbRound').textContent = v.round;
-    $('tbPhase').textContent = PHASES[v.phase] || v.phase;
-    $('tbTime').textContent = v.time; $('tbTime').classList.toggle('blue', v.time <= 8);
-    $('tbSelfDestruct').style.display = v.selfDestruct > 0 ? '' : 'none';
-    $('tbSD').textContent = v.selfDestruct > 0 ? (v.selfDestruct <= 3 ? 'синий ' : 'ЖЁЛТЫЙ ') + v.selfDestruct + '/6' : '';
-    $('tbSD').classList.toggle('red', v.selfDestruct >= 4);
+    renderTrack(v);
     $('tbDest').textContent = v.destination;
     const bk = v.bagKnown; $('tbBag').textContent = v.bagCount + ' (' + ['blank', 'larva', 'adult', 'drone', 'queen'].filter(k => bk[k]).map(k => INTRUDER_NAMES[k][0] + bk[k]).join(' ') + ')';
     $('tbMarkers').textContent = (8 - v.fireLeft) + '/8 · ' + (8 - v.malfLeft) + '/8';
@@ -281,6 +278,32 @@ function renderPrompt() {
 function playerName(id) { const v = app.view; return v && v.players[id] ? v.players[id].name : ''; }
 function act(answer) { const pr = app.view && app.view.prompt; if (!pr) return; net.send({ t: 'act', promptId: pr.id, answer }); }
 
+/** Hover popups on the deck piles: my discard pile lists its cards, my deck shows the count. */
+function renderPilePopups(v) {
+    const me = v.players.find(p => p.id === app.me); if (!me) return;
+    const disc = document.querySelector('.pile[data-pile="owndisc"]');
+    if (disc && me.discard) {
+        const pop = document.createElement('div'); pop.className = 'ppop';
+        pop.innerHTML = '<h5>Мой сброс · ' + me.discard.length + '</h5>' + (me.discard.length ? me.discard.map(c => { const d = describeCard(c); return '<div class="' + (d.contam ? 'contam' : '') + '">' + esc(d.name) + '</div>'; }).join('') : '<div>пусто</div>');
+        disc.appendChild(pop);
+    }
+    const own = document.querySelector('.pile[data-pile="own"]');
+    if (own) { const pop = document.createElement('div'); pop.className = 'ppop'; pop.innerHTML = '<h5>Моя колода</h5><div>Карт: ' + me.deckCount + '</div><div>В руке: ' + (me.hand ? me.hand.length : '?') + '</div>'; own.appendChild(pop); }
+}
+
+/** Top-bar track: round/phase text, 15 time cells (blue from 8 down) and the 6-cell self-destruct track. */
+function renderTrack(v) {
+    let h = '<div class="tphase">Раунд ' + v.round + '<b>' + esc(PHASES[v.phase] || v.phase) + '</b></div><div class="trk time">';
+    for (let i = 15; i >= 1; i--) h += '<div class="cell' + (i <= 8 ? ' blue' : '') + (i > v.time ? ' done' : '') + (i === v.time ? ' cur' : '') + '" title="Время: ' + i + '">' + i + '</div>';
+    h += '</div>';
+    if (v.selfDestruct > 0) {
+        h += '<div class="trk sd" title="Самоуничтожение: ' + v.selfDestruct + '/6">';
+        for (let i = 1; i <= 6; i++) h += '<div class="cell' + (i >= 4 ? ' y' : '') + (i < v.selfDestruct ? ' done' : '') + (i === v.selfDestruct ? ' cur' : '') + '">' + (i >= 4 ? '!' : i) + '</div>';
+        h += '</div>';
+    }
+    $('track').innerHTML = h;
+}
+
 function renderHand() {
     const v = app.view; const me = v.players.find(p => p.id === app.me);
     const el = $('hand');
@@ -289,6 +312,8 @@ function renderHand() {
     const menu = mine && pr.kind === 'turn' ? Object.fromEntries(pr.cards.map(c => [c.id, c])) : null;
     const picking = mine && pr.kind === 'cards' ? new Set(pr.cards) : null;
     el.innerHTML = me.hand.map(c => cardHtml(c, menu ? menu[c] : picking ? { enabled: picking.has(c), reason: picking.has(c) ? '' : 'Нельзя выбрать' } : null, app.selectedCards.has(c))).join('');
+    const cards = [...el.querySelectorAll('.card')], mid = (cards.length - 1) / 2;
+    cards.forEach((cel, i) => { const k = i - mid; cel.style.setProperty('--fan', (k * 4) + 'deg'); cel.style.setProperty('--lift', (Math.abs(k) * 6) + 'px'); });
     for (const cel of el.querySelectorAll('.card')) cel.onclick = () => {
         const id = cel.dataset.card;
         if (menu && menu[id] && menu[id].enabled) act({ action: 'card', cardId: id });
@@ -360,6 +385,11 @@ $('menuToggle').onclick = () => {
     renderPrompt(); renderHand();
 };
 $('undoBtn').onclick = () => { if (confirm('Откатить последнее действие? Все игроки получат уведомление.')) net.send({ t: 'undo', steps: 1 }); };
+const muteBtn = $('muteBtn');
+function syncMute() { muteBtn.textContent = Snd.isMuted() ? '🔇' : '🔊'; muteBtn.classList.toggle('off', Snd.isMuted()); }
+syncMute();
+muteBtn.onclick = () => { Snd.setMuted(!Snd.isMuted()); syncMute(); if (!Snd.isMuted()) Snd.play('click'); };
+for (const ev of ['pointerdown', 'keydown']) document.addEventListener(ev, () => Snd.unlock(), { capture: true });
 $('helpBtn').onclick = () => { $('helpBody').innerHTML = HELP; $('helpOverlay').classList.remove('hidden'); };
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { $('helpOverlay').classList.add('hidden'); }

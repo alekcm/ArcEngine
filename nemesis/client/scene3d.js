@@ -9,12 +9,14 @@
 // only the half next to an explored room is shown, LEDs turn yellow when the corridor has noise.
 
 import { buildCharacter, buildIntruder, flatMat } from './characters.js';
+import * as Snd from './sound.js';
 
 const B = () => window.BABYLON;
 const SCALE = 0.1;                 // board units -> world units
 const ROOM_R = 7.0;                // hex platform radius
 const WALL_R = 6.3;                // wall ring radius
 const WALL_H = 1.35;
+const FLIP_S = 0.9, POP_S = 0.55;  // room token flip / props pop-up durations (s)
 const ZONE_C = { x: 2.1, z: -2.1 }; // standing zone centre (toward the camera)
 const ZONE_R = 2.5;
 const PROP_SPREAD = 1.55;          // props were authored for a ~4-unit room
@@ -199,7 +201,11 @@ export class Scene3D {
             techLeds = this.buildTechStub(root, techAngle);
         }
         const label = this.makeLabel('lbl_' + r.id, r.id, '', root, 0, 3.2, 0, 3.0);
-        this.roomNodes[r.id] = { root, plat, sel, label, data: r, exitAngles, techAngle, techLeds, shell: null, shellKey: null, strips: null, emergency: [], malfunction: false, flicker: Math.random() * 10 };
+        // face-down room token: a big "?" printed on the unexplored floor
+        const qm = this.makeLabel('qm_' + r.id, '?', '', root, 0, 0.13, 0, 7.5);
+        qm.rotation.set(Math.PI / 2, 0, 0); qm.billboardMode = 0; qm.isPickable = false;
+        { const ctx = qm.metadata.dt.getContext(); ctx.clearRect(0, 0, 512, 160); ctx.font = 'bold 150px Segoe UI, Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#56687c'; ctx.fillText('?', 256, 138); qm.metadata.dt.update(); qm.metadata.text = 'qm'; }
+        this.roomNodes[r.id] = { root, plat, sel, label, qm, data: r, exitAngles, techAngle, techLeds, shell: null, shellKey: null, strips: null, emergency: [], malfunction: false, flicker: Math.random() * 10, flip: null, pop: null };
     }
 
     /** Technical-corridor entrance: a short tunnel through the wall line, ringed with blue LEDs. */
@@ -701,6 +707,10 @@ export class Scene3D {
         for (const d of this.dynamic) d.dispose();
         this.dynamic = [];
         this.selectable = new Set(selectableRooms || []);
+        // room-token flip: triggered by fresh 'explore' fx entries (not on reconnect)
+        const fx = view.fx || [];
+        if (this.fxSeen == null) this.fxSeen = fx.length ? fx[fx.length - 1].n : 0;
+        else for (const f of fx) if (f.n > this.fxSeen) { this.fxSeen = f.n; if (f.type === 'explore' && this.roomNodes[f.room] && !this.roomNodes[f.room].shell) this.roomNodes[f.room].flip = { phase: 1, t0: this.t }; }
         for (const r of Object.values(view.ship.rooms)) this.updateRoom(view, r);
         for (const c of Object.values(view.ship.corridors)) this.updateCorridor(view, c);
         const techMat = this.M(view.ship.techNoise ? '#f1c40f' : '#3fa9ff', 1);
@@ -721,6 +731,8 @@ export class Scene3D {
         const name = def ? def.name + (r.kind === 'engine' ? ' №' + r.engineNo : '') : (r.kind === 'slot1' ? 'Комната «1»' : 'Комната «2»');
         this.setLabel(node.label, def ? r.id : '? ' + r.id, name, def ? '#ffffff' : '#8a99ab');
         node.sel.setEnabled(this.selectable.has(r.id));
+        if (node.flip && node.flip.phase === 1) return;   // first half of the token flip: keep showing the face-down side
+        node.qm.setEnabled(!tile);
         // shell appears once the tile is known
         const sk = tile || '';
         if (node.shellKey !== sk) {
@@ -842,6 +854,17 @@ export class Scene3D {
         }
         c.target.set(x, 0, z); c.last = this.t;
     }
+    /** Camera shake (damage); k = strength 0..1. */
+    shake(k) { this.shakeT = { t0: this.t, k }; }
+    applyShake() {
+        if (!this.shakeT) return;
+        const age = this.t - this.shakeT.t0, dur = 0.5;
+        if (!this.shakeBase) this.shakeBase = this.camera.target.clone();
+        if (age > dur) { this.camera.target.copyFrom(this.shakeBase); this.shakeBase = null; this.shakeT = null; return; }
+        const a = (1 - age / dur) * this.shakeT.k * 1.2;
+        this.camera.target.set(this.shakeBase.x + (Math.random() - 0.5) * a, this.shakeBase.y + (Math.random() - 0.5) * a * 0.6, this.shakeBase.z + (Math.random() - 0.5) * a);
+    }
+
     /** Expanding ring pulse at a table point (Tab ping). */
     ping(x, z, color) {
         const S = this.scene;
@@ -921,17 +944,35 @@ export class Scene3D {
         else if (view.lastShot && view.lastShot.n !== this.lastShotSeen) {
             this.lastShotSeen = view.lastShot.n;
             const n = this.chars[view.lastShot.player];
-            if (n && n.ch.shoot && n.placed) { const it = this.intr[view.lastShot.target]; if (it) { const d = it.root.position.subtract(n.ch.root.position); n.faceY = Math.atan2(d.x, d.z); n.ch.root.rotation.y = n.faceY; } n.ch.shoot(); }
+            if (n && n.ch.shoot && n.placed) { const it = this.intr[view.lastShot.target]; if (it) { const d = it.root.position.subtract(n.ch.root.position); n.faceY = Math.atan2(d.x, d.z); n.ch.root.rotation.y = n.faceY; } n.ch.shoot(); Snd.play('shot'); }
         }
     }
 
     animate() {
         const t = this.t;
+        this.applyShake();
         for (const d of this.dynamic) {
             if (!d.metadata) continue;
             if (d.metadata.flame) { const s = 0.85 + 0.25 * Math.sin(t * 9 + d.metadata.phase); d.scaling.set(s, 1.3 - s * 0.3, s); d.rotation.y += 0.05; }
         }
         for (const n of Object.values(this.roomNodes)) {
+            if (n.flip) {
+                // the whole tile lifts and turns over; content swaps at the vertical edge (classic card flip)
+                const p = Math.min(1, (t - n.flip.t0) / FLIP_S), ang = p * Math.PI;
+                n.root.position.y = Math.sin(p * Math.PI) * 2.2;
+                if (ang < Math.PI / 2) n.root.rotation.z = ang;
+                else {
+                    if (n.flip.phase === 1) { n.flip.phase = 2; if (this.view) this.updateRoom(this.view, n.data); if (n.shell) { n.shell.root.scaling.y = 0.02; n.pop = { t0: t + (1 - p) * FLIP_S }; } }
+                    n.root.rotation.z = ang - Math.PI;
+                }
+                if (p >= 1) { n.root.rotation.z = 0; n.root.position.y = 0; n.flip = null; }
+            }
+            if (n.pop && n.shell) {
+                // walls and props spring up out of the freshly revealed floor
+                const q = Math.min(1, Math.max(0, (t - n.pop.t0) / POP_S)), c1 = 1.5, s = 1 + (c1 + 1) * Math.pow(q - 1, 3) + c1 * Math.pow(q - 1, 2);
+                n.shell.root.scaling.y = Math.max(0.02, s);
+                if (q >= 1) { n.shell.root.scaling.y = 1; n.pop = null; }
+            }
             if (n.sel.isEnabled()) n.sel.scaling.setAll(1 + 0.04 * Math.sin(t * 5));
             if (n.malfunction && n.shell) {
                 // main lights dead, red emergency lamps flicker
@@ -948,6 +989,7 @@ export class Scene3D {
             const dist = d.length(), stepLen = RUN_SPEED * dt;
             const moving = dist > 0.05;
             if (moving) {
+                Snd.footstep(performance.now());
                 if (dist <= stepLen) { pos.x = n.target.x; pos.z = n.target.z; }
                 else { pos.x += d.x / dist * stepLen; pos.z += d.z / dist * stepLen; }
                 n.ch.root.rotation.y = Math.atan2(d.x, d.z);          // face the running direction
