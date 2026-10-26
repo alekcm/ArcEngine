@@ -85,8 +85,8 @@ const HEROES_ARENA_ROWS = 8;            // tactical combat grid rows
 const HEROES_ARENA_CELL = 86;           // tactical combat tile size (world px)
 const HEROES_COMBAT_SPEED = 1;          // tactical combat animation speed multiplier
 const HEROES_CAM_ADV_ZOOM = 0.74;       // panoramic isometric zoom on the adventure map
-const HEROES_CAM_COMBAT_ZOOM = 0.88;    // camera zoom in tactical combat
-const HEROES_CAM_COMBAT_PITCH = 43;     // camera pitch (deg) in tactical combat
+const HEROES_CAM_COMBAT_ZOOM = 0.72;    // camera zoom in tactical combat
+const HEROES_CAM_COMBAT_PITCH = 46;     // camera pitch (deg) in tactical combat
 
 // --- CAMERA (CameraControl.js): telephoto 3D isometric angle (-54° azimuth, 42° pitch, narrow FOV) ---
 const CAMERA_FOV_DEG = 34;              // narrow vertical FOV for authentic 3D low-poly isometric look
@@ -94,16 +94,16 @@ const CAMERA_AZIMUTH_DEG = -54;         // diagonal isometric heading across the
 const CAMERA_PITCH_DEG = 42;            // isometric tilt toward the ground
 const CAMERA_ZOOM = 1;                  // base camera zoom (1 px/px reference)
 const CAMERA_ZOOM_MOBILE = 0.55;        // starting zoom: phones (longer screen side < 1024)
-const CAMERA_ZOOM_MIN = 0.45;           // wheel and pinch won't zoom out further
+const CAMERA_ZOOM_MIN = 0.42;           // wheel and pinch won't zoom out further
 const CAMERA_ZOOM_MAX = 2.4;            // won't zoom in closer
 const CAMERA_ZOOM_WHEEL_STEP = 0.12;    // fraction of zoom per one wheel notch
 const CAMERA_ZOOM_LERP = 0.18;          // zoom smoothing: fraction of the remainder per frame
 const CAMERA_FOLLOW_LERP = 0.08;        // following an object (follow): fraction of the remainder per frame
-const CAMERA_FLY_SPEED = 900;           // pan/flight on WASD, arrows and Q/E: screen px/s
+const CAMERA_FLY_SPEED = 780;           // pan/flight on WASD, arrows and Q/E: screen px/s
 const CAMERA_LIMITS = 1;                // keep game camera bounded inside the Valley of Ashan
 const CAMERA_LIFT_MAX = 600;            // px, with limits: how high above the ground flight lifts the look-at point
 const CAMERA_ORBIT = 1;                 // RMB rotates the 3D isometric camera just like HoMM5
-const CAMERA_ORBIT_DEG_PER_PX = 0.3;    // degrees of rotation per screen px of drag
+const CAMERA_ORBIT_DEG_PER_PX = 0.26;   // degrees of rotation per screen px of drag
 const CAMERA_ORBIT_PITCH_MIN_DEG = 32;  // with limits: won't go lower toward the ground
 const CAMERA_ORBIT_PITCH_MAX_DEG = 78;  // with limits: higher — almost straight from above
 

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadScripts } from './browser-scripts.mjs';
+import { loadScripts, stub } from './browser-scripts.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -159,3 +159,103 @@ test('HeroesCombat: шкала ATB, полёт грифонов через пр�
     imp.col = 1; imp.row = 4;
     assert.equal(HeroesCombat.canShoot(stacks, archer), false, 'враг вплотную блокирует выстрел арбалетчика');
 });
+
+test('Instances3D.prepare отделяет геометрию (makeGeometryUnique) и не раздувает общие glTF-буферы в 100×', () => {
+    const instPage = loadScripts(['js/Instances3D.js'], { BABYLON: stub() });
+    const Instances3D = instPage.get('Instances3D');
+
+    // Shared glTF container geometry buffer (1.98 m tall rock_spire).
+    let sharedBuf = [1.98];
+    const makeCloneFromContainer = () => {
+        let myBuf = sharedBuf;
+        const part = {
+            scale: 100,
+            parent: null,
+            getTotalVertices: () => 24,
+            computeWorldMatrix: () => ({ isIdentity: () => false }),
+            makeGeometryUnique() { myBuf = myBuf.slice(); },
+            setParent() {},
+            setEnabled() {},
+            bakeCurrentTransformIntoVertices() { myBuf[0] *= this.scale; },
+            getBakedHeight: () => myBuf[0],
+        };
+        return part;
+    };
+
+    const firstPart = makeCloneFromContainer();
+    const root = {
+        position: { setAll() {} }, rotation: { setAll() {} }, scaling: { setAll() {} },
+        rotationQuaternion: null,
+        setEnabled() {},
+        computeWorldMatrix() {},
+        getTotalVertices: () => 0,
+        getChildMeshes: () => [firstPart],
+    };
+    Instances3D.prepare(root);
+    assert.ok(Math.abs(firstPart.getBakedHeight() - 198) < 1e-6, 'тонкий инстанс запечён до 198 px');
+    assert.ok(Math.abs(sharedBuf[0] - 1.98) < 1e-6, 'общая glTF-геометрия контейнера осталась 1.98 м (без 100× мутации!)');
+
+    // Subsequent combat obstacle build (scaling 0.28 * 100 = 28x, NOT 2800x!).
+    const arenaRockHeight = sharedBuf[0] * 100 * 0.28;
+    assert.ok(arenaRockHeight < 60, `препятствие арены компактное (${arenaRockHeight.toFixed(1)} px < 60 px)`);
+});
+
+test('стратегическая камера Героев V: горизонтальный WASD, орбита ПКМ и Q/E, LMB pan и границы арены', () => {
+    const camPage = loadScripts(['js/Constants.js', 'js/CameraControl.js'], { BABYLON: stub(), performance });
+    const CameraController = camPage.get('CameraController');
+    const view = {
+        camera: { fov: 0, position: { set() {} }, setTarget() {} },
+        world: { canvas: { clientWidth: 1600, clientHeight: 900 } },
+        engine: { getAspectRatio: () => 16 / 9 },
+        fitShadowFrustum() {},
+        refreshMatrices() {},
+        pointerToGround: (px, py, h) => ({ x: 1000 + px, y: 1000 + py, h: h || 0 }),
+    };
+    const terrain = { heightAt: () => 12, outerRing: 4608, hMin: 0 };
+    const cam = new CameraController(view, { terrain, bounds: { w: 3072, h: 3072 } });
+    cam.c.limits = 1;
+    cam.setStrategyMode(true);
+    cam.lookAt(1536, 1536);
+
+    // 1. W / S pan horizontally along terrain without diving or lifting off the ground.
+    const y0 = cam.target.y;
+    cam._onKey({ code: 'KeyW', target: null, preventDefault() {} }, true);
+    cam.update(0.1);
+    cam._onKey({ code: 'KeyW', target: null, preventDefault() {} }, false);
+    assert.equal(cam.lift, 0, 'WASD не меняет высоту lift');
+    assert.equal(cam.target.h, 12, 'цель камеры остаётся строго на рельефе');
+    assert.notEqual(cam.target.y, y0, 'камера сместилась горизонтально по карте');
+
+    // 2. Q / E smoothly rotate azimuth around the current target.
+    const az0 = cam.azimuth, tx0 = cam.target.x, ty0 = cam.target.y;
+    cam._onKey({ code: 'KeyE', target: null, preventDefault() {} }, true);
+    cam.update(0.1);
+    cam._onKey({ code: 'KeyE', target: null, preventDefault() {} }, false);
+    assert.ok(cam.azimuth > az0, 'клавиша E поворачивает изометрическую камеру');
+    assert.equal(cam.target.x, tx0, 'точка обзора не улетает при вращении Q/E');
+    assert.equal(cam.target.y, ty0);
+
+    // 3. RMB drag orbits around target instead of first-person look swinging target away.
+    cam._canvas = { getBoundingClientRect: () => ({ left: 0, top: 0 }), setPointerCapture() {} };
+    cam._onDown({ pointerId: 1, button: 2, pointerType: 'mouse', clientX: 400, clientY: 300, preventDefault() {} });
+    cam._onMove({ pointerId: 1, clientX: 480, clientY: 320 });
+    cam._onUp({ pointerId: 1 });
+    assert.equal(cam.target.x, tx0, 'ПКМ вращает камеру вокруг точки на карте, не сбивая прицел');
+    assert.equal(cam.target.y, ty0);
+
+    // 4. Short LMB click (<= 6 px) is NOT a drag; LMB drag (> 6 px) pans the map.
+    cam._onDown({ pointerId: 2, button: 0, pointerType: 'mouse', clientX: 500, clientY: 500, preventDefault() {} });
+    cam._onMove({ pointerId: 2, clientX: 503, clientY: 502 });
+    assert.equal(cam.isDragging(), false, 'короткий клик ЛКМ не перехватывается как перетаскивание');
+    cam._onMove({ pointerId: 2, clientX: 540, clientY: 530 });
+    assert.equal(cam.isDragging(), true, 'протяжка ЛКМ > 6 px включает перетаскивание карты');
+    cam._onUp({ pointerId: 2 });
+
+    // 5. Custom combat arena bounds + fixedPlaneH lock camera to the raised battle dais.
+    cam.setCustomBounds({ minX: 1300, maxX: 1770, minY: 1350, maxY: 1720 }, 48);
+    cam.lookAt(5000, 5000);
+    assert.equal(cam.target.x, 1770, 'камера удерживается в границах тактической арены');
+    assert.equal(cam.target.y, 1720);
+    assert.equal(cam.target.h, 48, 'высота цели привязана к плоскости каменного помоста арены');
+});
+

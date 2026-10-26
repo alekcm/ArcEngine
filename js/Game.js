@@ -81,6 +81,8 @@ class Game {
 
         // Frame Lord Godric and Haven Castle in panoramic isometric view on start.
         this.cam.c.limits = 1;
+        this.cam.setStrategyMode(true);
+        this.cam.onHome = () => this._focusHeroOrArena();
         this._restoreAdventureCamera();
         const heroWorld = this.map.cellToWorld(this.state.hero.gx, this.state.hero.gy);
         this.cam.lookAt(heroWorld.x + 60, heroWorld.y - 60);
@@ -282,7 +284,14 @@ class Game {
             ? (typeof CAMERA_ZOOM_MOBILE !== 'undefined' ? CAMERA_ZOOM_MOBILE : 0.55)
             : advZoom;
         const defPitch = (typeof CAMERA_PITCH_DEG !== 'undefined' ? CAMERA_PITCH_DEG : 42) * Math.PI / 180;
-        const defAz = (typeof CAMERA_AZIMUTH_DEG !== 'undefined' ? CAMERA_AZIMUTH_DEG : -45) * Math.PI / 180;
+        const defAz = (typeof CAMERA_AZIMUTH_DEG !== 'undefined' ? CAMERA_AZIMUTH_DEG : -54) * Math.PI / 180;
+        this.cam.zoomToCenter = false;
+        this.cam.setCustomBounds({
+            minX: 140,
+            maxX: this.loc.width - 140,
+            minY: 140,
+            maxY: this.loc.height - 140,
+        }, null);
         this.cam.azimuth = defAz;
         this.cam.pitch = defPitch;
         this.cam.zoomTarget = defZoom;
@@ -293,10 +302,20 @@ class Game {
 
     _focusHeroOrArena() {
         if (this.mode === 'adventure') {
+            const advZoom = typeof HEROES_CAM_ADV_ZOOM !== 'undefined' ? HEROES_CAM_ADV_ZOOM : 0.74;
+            this.cam.pitch = (typeof CAMERA_PITCH_DEG !== 'undefined' ? CAMERA_PITCH_DEG : 42) * Math.PI / 180;
+            this.cam.zoomTarget = IS_MOBILE
+                ? (typeof CAMERA_ZOOM_MOBILE !== 'undefined' ? CAMERA_ZOOM_MOBILE : 0.55)
+                : advZoom;
             const hw = this.map.cellToWorld(this.state.hero.gx, this.state.hero.gy);
             this.cam.lookAt(hw.x, hw.y);
         } else if (this.combat) {
-            this.cam.lookAt(this.combat.centerX, this.combat.centerY + 24);
+            const cZoom = typeof HEROES_CAM_COMBAT_ZOOM !== 'undefined' ? HEROES_CAM_COMBAT_ZOOM : 0.72;
+            const cPitch = (typeof HEROES_CAM_COMBAT_PITCH !== 'undefined' ? HEROES_CAM_COMBAT_PITCH : 46) * Math.PI / 180;
+            this.cam.azimuth = -Math.PI * 0.5;
+            this.cam.pitch = cPitch;
+            this.cam.zoomTarget = cZoom;
+            this.cam.lookAt(this.combat.centerX, this.combat.centerY + 12);
         }
     }
 
@@ -391,16 +410,16 @@ class Game {
             'Соберите непобедимую армию Ордена Порядка, овладейте шахтами и святилищами\n' +
             'Долины Асхана, сокрушите Лорда Аграила и возьмите штурмом Цитадель Инферно\n' +
             '«Ургаш-Твердыню» на северо-востоке карты!\n\n' +
-            'УПРАВЛЕНИЕ НА ГЛОБАЛЬНОЙ КАРТЕ:\n' +
-            '• ЛКМ по клетке / шахте / врагу — проложить путь и направить Лорда Годрика\n' +
-            '• Зажатая ПКМ — свободное вращение 3D изометрической камеры (как в Героях V)\n' +
-            '• Колесо мыши — приближение и отдаление · WASD / Стрелки — обзор долины\n' +
-            '• [T] — экран Замка «Когорта Света» (стройка зданий и найм войск)\n' +
-            '• [C] — Книга заклинаний · [Space] — завершить день · [F] — камера на героя\n\n' +
+            'УПРАВЛЕНИЕ НА ГЛОБАЛЬНОЙ КАРТЕ И В БОЮ:\n' +
+            '• Клик ЛКМ — проложить путь герою или отдать приказ отряду на арене\n' +
+            '• Зажатая ЛКМ / СКМ — плавное перетаскивание карты · Колесо — зум\n' +
+            '• Зажатая ПКМ или клавиши [Q] / [E] — вращение изометрической 3D-камеры вокруг цели\n' +
+            '• WASD / Стрелки — горизонтальный обзор долины · [R] — вернуть камеру на Героя / Арену\n' +
+            '• [T] — Замок «Когорта Света» · [C] — Книга заклинаний · [Пробел] — конец дня\n\n' +
             'ТАКТИЧЕСКИЙ БОЙ (ШКАЛА ATB):\n' +
             '• Изумрудные клетки — ход отряда · Алые — удар или выстрел арбалетчиков\n' +
             '• В ход своего отряда Герой может сотворить заклинание [C] или нанести прямой удар!\n' +
-            '• Кнопки «Ждать» (0.5 шкалы ATB), «Защита» (+30% к Защите) и «Автобой»'
+            '• «Ждать» [Z] (0.5 шкалы ATB), «Защита» [X] (+30% к Защите) и «Автобой»'
         );
     }
 
@@ -449,7 +468,7 @@ class Game {
         });
 
         canvas.addEventListener('pointermove', (e) => {
-            if (this.modal) return;
+            if (this.modal || this.cam.isDragging()) return;
             const rect = canvas.getBoundingClientRect();
             const px = e.clientX - rect.left;
             const py = e.clientY - rect.top;
@@ -903,7 +922,10 @@ class Game {
     // --- Haven Town Management ---
 
     openTownModal() {
-        if (this.mode !== 'adventure') return;
+        if (this.mode !== 'adventure') {
+            this.toast('Замок недоступен во время тактического боя!');
+            return;
+        }
         this.closeModals();
         this.modal = 'town';
         this.sound.play('assets/sounds/click.wav', { volume: 0.45 });
@@ -1246,13 +1268,14 @@ class Game {
         this._syncMapObjectsFromState();
         if (this.decor) this.decor.setVisible(false);
 
-        const cZoom = typeof HEROES_CAM_COMBAT_ZOOM !== 'undefined' ? HEROES_CAM_COMBAT_ZOOM : 0.86;
-        const cPitch = (typeof HEROES_CAM_COMBAT_PITCH !== 'undefined' ? HEROES_CAM_COMBAT_PITCH : 43) * Math.PI / 180;
+        const cZoom = typeof HEROES_CAM_COMBAT_ZOOM !== 'undefined' ? HEROES_CAM_COMBAT_ZOOM : 0.72;
+        const cPitch = (typeof HEROES_CAM_COMBAT_PITCH !== 'undefined' ? HEROES_CAM_COMBAT_PITCH : 46) * Math.PI / 180;
+        this.cam.zoomToCenter = true;
         this.cam.pitch = cPitch;
         this.cam.azimuth = -Math.PI * 0.5;
         this.cam.zoomTarget = cZoom;
         this.cam.zoom = cZoom;
-        this.cam.lookAt(this.loc.width * 0.5, this.loc.height * 0.5 + 24);
+        this.cam.lookAt(this.loc.width * 0.5, this.loc.height * 0.5 + 12);
 
         this.syncHUD();
         this.toast(`⚔ Бой начался: ${cfg.title}!`);
@@ -1270,6 +1293,15 @@ class Game {
             onToast: (msg) => this.toast(msg),
             onFinish: (result) => this._endCombat(result, cfg),
         });
+        if (this.combat && this.mode === 'combat') {
+            this.cam.setCustomBounds({
+                minX: this.combat.centerX - 240,
+                maxX: this.combat.centerX + 240,
+                minY: this.combat.centerY - 180,
+                maxY: this.combat.centerY + 180,
+            }, this.combat.arenaY);
+            this.cam.lookAt(this.combat.centerX, this.combat.centerY + 12);
+        }
         this.syncHUD();
     }
 
@@ -1361,7 +1393,8 @@ class Game {
 
         const inAdv = this.mode === 'adventure';
         ui.get('advBar').show(inAdv);
-        ui.get('btnTown').show(inAdv);
+        ui.get('btnTown').setText(inAdv ? 'Замок [T]' : 'Замок —');
+        ui.get('btnCenter').setText(inAdv ? 'Герой [R]' : 'Арена [R]');
         ui.get('atbPanel').show(!inAdv);
         ui.get('combatLogBox').show(!inAdv);
         ui.get('combatBar').show(!inAdv);

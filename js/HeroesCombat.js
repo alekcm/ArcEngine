@@ -382,7 +382,7 @@ const HeroesCombat = {
             const p = cellToWorld(ob.col, ob.row);
             const rMesh = Model3D.build(rockModel, scene, { name: 'arena_ob_' + i });
             rMesh.position.set(p.x, arenaY, p.y);
-            rMesh.scaling.setAll(0.36);
+            rMesh.scaling.setAll(0.28);
             rMesh.rotation.y = i * 1.9;
             World3D.addObject(view, rMesh, 'prop');
             builtModels.push(rMesh);

@@ -70,6 +70,7 @@ class Instances3D {
         for (const part of parts) {
             if (part === source) continue;
             if (part.computeWorldMatrix(true).isIdentity()) continue;
+            if (part.makeGeometryUnique) part.makeGeometryUnique();
             part.setParent(null);
             part.bakeCurrentTransformIntoVertices();
             part.parent = source;

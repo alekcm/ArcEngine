@@ -36,6 +36,14 @@ class CameraController {
         this.terrain = o.terrain || null;
         this.bounds = o.bounds || null;
         this.free = !!o.free;
+        this.strategy = !!o.strategy;
+        /** @type {{ minX: number, maxX: number, minY: number, maxY: number } | null} */
+        this.customBounds = null;
+        /** @type {number | null} */
+        this.fixedPlaneH = null;
+        this.zoomToCenter = false;
+        /** @type {(() => void) | null} */
+        this.onHome = null;
         this.target = { x: 0, y: 0, h: 0 };
         this.lift = 0;                 // px: target height above the ground (flight: W/S along the view, Q/E)
         this.azimuth = 0;
@@ -115,10 +123,33 @@ class CameraController {
         this.target.y = y;
         this.lift = 0;
         this._clampTarget();
-        this.target.h = this._groundH(this.target.x, this.target.y);
+        this.target.h = this._targetH(this.target.x, this.target.y);
     }
 
     follow(obj) { this.followObj = obj || null; }
+
+    /**
+     * Enable/disable strategy-game isometric controls (LMB drag pan, RMB turntable orbit,
+     * horizontal WASD/Arrow ground pan, Q/E camera rotation).
+     * @param {boolean} on
+     */
+    setStrategyMode(on) {
+        this.strategy = !!on;
+        this._pointers.clear();
+        this._keys.clear();
+    }
+
+    /**
+     * Restrict target to a custom world box and optional fixed elevation plane (e.g. battle arena).
+     * @param {{ minX: number, maxX: number, minY: number, maxY: number } | null} box
+     * @param {number | null} [fixedPlaneH]
+     */
+    setCustomBounds(box, fixedPlaneH) {
+        this.customBounds = box || null;
+        this.fixedPlaneH = (typeof fixedPlaneH === 'number' && Number.isFinite(fixedPlaneH)) ? fixedPlaneH : null;
+        this._clampTarget();
+        this.target.h = this._targetH(this.target.x, this.target.y);
+    }
 
     setFree(on) {
         this.free = !!on;
@@ -134,7 +165,7 @@ class CameraController {
         this.terrain = terrain || null;
         if (bounds) this.bounds = bounds;
         this._clampTarget();
-        this.target.h = this._groundH(this.target.x, this.target.y) + this.lift;
+        this.target.h = this._targetH(this.target.x, this.target.y);
     }
 
     // Ground point at the frame center: { x, y, h, k }. The target lifted off the ground
@@ -198,9 +229,33 @@ class CameraController {
     }
 
     _clampTarget() {
+        if (!this.free && this.customBounds) {
+            const b = this.customBounds;
+            this.target.x = Math.max(b.minX, Math.min(b.maxX, this.target.x));
+            this.target.y = Math.max(b.minY, Math.min(b.maxY, this.target.y));
+            return;
+        }
         if (!this._limited() || !this.bounds) return;
         this.target.x = Math.max(0, Math.min(this.bounds.w, this.target.x));
         this.target.y = Math.max(0, Math.min(this.bounds.h, this.target.y));
+    }
+
+    _targetH(x, y) {
+        return this.fixedPlaneH !== null ? this.fixedPlaneH : this._groundH(x, y) + this.lift;
+    }
+
+    // Horizontal ground pan for strategy mode: W/S/Up/Down move forward/back along horizontal
+    // camera heading, A/D/Left/Right strafe horizontally without changing lift/elevation.
+    _panGround(fwd, right, step) {
+        const n = Math.hypot(fwd, right) || 1;
+        fwd /= n; right /= n;
+        const ca = Math.cos(this.azimuth), sa = Math.sin(this.azimuth);
+        this.followObj = null;
+        this._zoomAnchor = null;
+        this.target.x += (ca * fwd - sa * right) * step;
+        this.target.y += (sa * fwd + ca * right) * step;
+        this._clampTarget();
+        this.target.h = this._targetH(this.target.x, this.target.y);
     }
 
     // With limits: flight no higher than CAMERA_LIFT_MAX (above it the ground edge gets into
@@ -359,7 +414,12 @@ class CameraController {
         this._keys.clear();
     }
 
-    isDragging() { return this._pointers.size > 0; }
+    isDragging() {
+        for (const r of this._pointers.values()) {
+            if (r.mode !== 'lmbPending') return true;
+        }
+        return false;
+    }
 
     _local(e) {
         const r = this._canvas.getBoundingClientRect();
@@ -370,6 +430,10 @@ class CameraController {
     _pick(px, py) {
         this._syncCamera();
         this.view.refreshMatrices();
+        if (this.fixedPlaneH !== null) {
+            const hit = this.view.pointerToGround(px, py, this.fixedPlaneH, null);
+            return hit ? { x: hit.x, y: hit.y, h: this.fixedPlaneH } : null;
+        }
         const hit = this.view.pointerToGround(px, py, this.target.h, this.terrain);
         return hit ? { x: hit.x, y: hit.y, h: this._groundH(hit.x, hit.y) } : null;
     }
@@ -387,7 +451,7 @@ class CameraController {
             this.target.x += anchor.x - hit.x;
             this.target.y += anchor.y - hit.y;
             this._clampTarget();
-            this.target.h = this._groundH(this.target.x, this.target.y) + this.lift;
+            this.target.h = this._targetH(this.target.x, this.target.y);
         }
     }
 
@@ -396,19 +460,24 @@ class CameraController {
         let mode = null;
         if (e.pointerType === 'touch') mode = 'touch';
         else if (e.button === 1 || (e.button === 0 && this.free && e.shiftKey)) mode = 'pan';
-        else if (e.button === 2 && (this.free || this.c.orbit > 0)) mode = this.followObj ? 'orbit' : 'look';
+        else if (e.button === 2 && (this.free || this.c.orbit > 0)) {
+            mode = (this.strategy && !this.free) || this.followObj ? 'orbit' : 'look';
+        }
         else if (e.button === 0 && this.free) mode = 'orbit';
+        else if (e.button === 0 && this.strategy && !this.free) mode = 'lmbPending';
         if (!mode) return;
-        e.preventDefault();
-        try { this._canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic event */ }
         const p = this._local(e);
-        const rec = { x: p.x, y: p.y, mode: mode, anchor: null };
+        if (mode !== 'lmbPending') {
+            e.preventDefault();
+            try { this._canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic event */ }
+        }
+        const rec = { x: p.x, y: p.y, startX: p.x, startY: p.y, mode: mode, anchor: null };
         if (mode === 'pan' || mode === 'touch') {
             rec.anchor = this._pick(p.x, p.y);
             this.followObj = null;
         }
         this._pointers.set(e.pointerId, rec);
-        this._zoomAnchor = null;
+        if (mode !== 'lmbPending') this._zoomAnchor = null;
         if (mode === 'touch' && this._touches().length === 2) this._startPinch();
     }
 
@@ -416,6 +485,14 @@ class CameraController {
         const rec = this._pointers.get(e.pointerId);
         if (!rec) return;
         const p = this._local(e);
+        if (rec.mode === 'lmbPending') {
+            if (Math.hypot(p.x - rec.startX, p.y - rec.startY) <= 6) return;
+            rec.mode = 'pan';
+            rec.anchor = this._pick(rec.startX, rec.startY);
+            this.followObj = null;
+            this._zoomAnchor = null;
+            try { this._canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic event */ }
+        }
         const k = this.c.orbitDegPerPx * Math.PI / 180;
         if (rec.mode === 'look') {
             this._look((p.x - rec.x) * k, (p.y - rec.y) * k);
@@ -475,7 +552,7 @@ class CameraController {
         if (!e.deltaY) return;
         const notches = Math.max(-1, Math.min(1, e.deltaY / 100));   // mouse ~100 per notch, touchpad — small steps
         this.zoomTarget = this._clampZoom(this.zoomTarget * Math.pow(1 + this.c.wheelStep, -notches));
-        if (this.followObj) { this._zoomAnchor = null; return; }
+        if (this.followObj || this.zoomToCenter) { this._zoomAnchor = null; return; }
         const p = this._local(e);
         const hit = this._pick(p.x, p.y);
         this._zoomAnchor = hit ? { px: p.x, py: p.y, x: hit.x, y: hit.y, h: hit.h } : null;
@@ -490,7 +567,10 @@ class CameraController {
             e.preventDefault();
             return;
         }
-        if (down && e.code === 'KeyR' && !e.repeat) this.home();
+        if (down && e.code === 'KeyR' && !e.repeat) {
+            if (this.onHome) this.onHome();
+            else this.home();
+        }
     }
 
     // --- Frame ----------------------------------------------------------------------
@@ -503,8 +583,13 @@ class CameraController {
             const K = CameraController.FLY_KEYS;
             let fwd = 0, right = 0, up = 0;
             for (const code of this._keys) { fwd += K[code][0]; right += K[code][1]; up += K[code][2]; }
-            // Speed is set in screen px: farther from the target (zoomed out) — faster over the world.
-            if (fwd || right || up) this._fly(fwd, right, up, c.flySpeed * this.worldPerScreenPx() * dt);
+            if (this.strategy && !this.free) {
+                if (fwd || right) this._panGround(fwd, right, c.flySpeed * this.worldPerScreenPx() * dt);
+                if (up) this.azimuth += up * 1.9 * dt;
+            } else {
+                // Speed is set in screen px: farther from the target (zoomed out) — faster over the world.
+                if (fwd || right || up) this._fly(fwd, right, up, c.flySpeed * this.worldPerScreenPx() * dt);
+            }
         }
 
         if (Math.abs(this.zoom - this.zoomTarget) > 1e-4) {
@@ -521,7 +606,7 @@ class CameraController {
             this.lift -= this.lift * k;
             this._clampTarget();
         }
-        this.target.h = this._groundH(this.target.x, this.target.y) + this.lift;
+        this.target.h = this._targetH(this.target.x, this.target.y);
         this.pitch = this._clampPitch(this.pitch);   // zoom changes the frame's reach — and the pitch limit
 
         const a = this._zoomAnchor;
