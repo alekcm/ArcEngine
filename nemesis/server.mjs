@@ -40,7 +40,8 @@ const MIME = {
 // ---------------------------------------------------------------------------------------------
 function serveStatic(req, res) {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    if (p === '/') p = '/client/index.html';
+    if (p === '/' || p === '/index.html') { res.writeHead(302, { Location: '/client/' }); res.end(); return; }
+    if (p === '/client' || p === '/client/') p = '/client/index.html';
     let file;
     if (p.startsWith('/libs/')) file = path.join(REPO, p);
     else if (p.startsWith('/Nemesis/')) file = path.join(REPO, p);
