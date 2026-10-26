@@ -12,6 +12,7 @@ import './events.mjs';
 import './rooms.mjs';
 import './items.mjs';
 import './actions.mjs';
+import './actions2.mjs';
 import './endgame.mjs';
 
 export function createGame(config) {
@@ -93,7 +94,8 @@ export function createGame(config) {
         shuffle(state, p.deck);
         for (const s of ch.startItems) {
             const def = ITEMS[s.item];
-            p.items.push({ uid: 'it' + (++state.itemSeq), item: s.item, ammo: def.weapon ? (s.ammo ?? def.weapon.max) : undefined, broken: false });
+            p.items.push({ uid: 'it' + (++state.itemSeq), item: s.item, ammo: def.weapon ? (s.ammo ?? def.weapon.max) : undefined, broken: false, charge: def.markers });
+            if (s.item === 'laika') p.laika = 'board';
         }
         let corp = corporate.pop();
         if (corp === 'cRival' && n < 2) corp = corporate.pop() || 'cMars';

@@ -20,6 +20,12 @@ OPS['phase.intruder'] = (state) => {
         }
         if (tileOf(state, id) === 'nest' && state.nestEggs > 0) { state.nestEggs--; log(state, 'Огонь в Гнезде уничтожает яйцо (осталось ' + state.nestEggs + ').', 'event'); checkNest(state); }
     }
+    // 1b. Laika: an adult in the dog's room takes 1 hit and the dog returns to the hunter
+    for (const p of state.players) {
+        if (!p.laika || p.laika === 'board' || p.status !== 'active') continue;
+        const a = intrudersIn(state, p.laika).find(i => i.type === 'adult');
+        if (a) { a.hits++; log(state, '🐕 Лайка кусает взрослого в ' + roomName(state, p.laika) + ' (' + a.hits + ').', 'combat'); p.laika = 'board'; }
+    }
     // 2. Attacks, rooms in id order, bigger intruders first
     const steps = [];
     for (const id of Object.keys(state.ship.rooms).sort()) {

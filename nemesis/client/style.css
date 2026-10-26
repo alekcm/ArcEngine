@@ -27,8 +27,8 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 .lobby-cols { display: grid; grid-template-columns: 1.2fr 1fr; gap: 28px; }
 .row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .row label { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
-.char-list { display: flex; gap: 8px; flex-wrap: wrap; }
-.char-card { border: 2px solid var(--line); border-radius: 8px; padding: 8px 12px; cursor: pointer; min-width: 120px; background: #121a26; }
+.char-list { display: flex; gap: 8px; flex-wrap: wrap; max-height: 300px; overflow-y: auto; }
+.char-card { border: 2px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; min-width: 150px; max-width: 200px; font-size: 13px; background: #121a26; }
 .char-card.sel { border-color: var(--acc); background: #1c2434; }
 .char-card.taken { opacity: 0.4; cursor: not-allowed; }
 .char-card b { display: block; }

@@ -343,7 +343,7 @@ OPS['computer.start'] = (state, step) => {
     const done = { op: 'computer.done', player: p.id, card, then: back };
     switch (card) {
         case 'lockdown':
-            placeMalfunction(state, p.room, 'блокировка');
+            if (state.noLockdownMalf) state.noLockdownMalf--; else placeMalfunction(state, p.room, 'блокировка');
             state.computerDeck.push(...state.computerDiscard.splice(0), card); shuffle(state, state.computerDeck); state.computerCard = null;
             revealComputerCard(state);
             log(state, 'Колода компьютера перемешана. Новая карта: «' + COMPUTER_CARDS[state.computerCard].name + '».', 'info');

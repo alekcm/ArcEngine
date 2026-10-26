@@ -40,15 +40,15 @@ export function eclosionProcedure(state, p) {
 // ---------------------------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------------------------
-function choice(state, p, title, options, op, extra) {
+export function choice(state, p, title, options, op, extra) {
     if (!options.length) { log(state, 'Нет подходящей цели — карта потрачена впустую.', 'minor'); next(state, (extra && extra.then) || BACK); return; }
     ask(state, { kind: 'choice', player: p.id, title, options }, { op, player: p.id, then: BACK, ...extra });
 }
-function doorOptions(state, onlyAround) {
+export function doorOptions(state, onlyAround) {
     const cors = onlyAround ? corridorsOf(state, onlyAround).filter(c => c.id !== 'tech').map(c => state.ship.corridors[c.id]) : Object.values(state.ship.corridors);
     return cors.filter(c => c.door !== 'destroyed').map(c => ({ id: 'door:' + c.id, label: 'Дверь ' + c.id + ' (' + (c.door === 'closed' ? 'закрыта → открыть' : 'открыта → закрыть') + ')' }));
 }
-function repairOptions(state, p, withEngine) {
+export function repairOptions(state, p, withEngine) {
     const opts = [];
     if (room(state, p.room).malfunction) opts.push({ id: 'malf', label: 'Убрать поломку в комнате' });
     opts.push(...doorOptions(state, p.room));

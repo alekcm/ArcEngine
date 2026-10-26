@@ -33,6 +33,7 @@ export function itemLabel(inst) {
     const d = ITEMS[inst.item];
     let s = d.name;
     if (d.weapon) s += ' [' + inst.ammo + '/' + d.weapon.max + ']';
+    if (d.markers !== undefined) s += ' [' + (inst.charge ?? d.markers) + ' ⬢]';
     if (inst.broken) s += ' (сломано)';
     return s;
 }

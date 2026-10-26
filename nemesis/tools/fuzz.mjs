@@ -1,4 +1,5 @@
 // Fuzz the rules engine: play random valid answers until the game ends.
+import { CHARACTERS } from '../shared/data/cards.mjs';
 import { createGame } from '../shared/engine/setup.mjs';
 import { answer } from '../shared/engine/core.mjs';
 
@@ -27,7 +28,9 @@ let fails = 0;
 for (let s = 0; s < seeds; s++) {
     const seed = 'fuzz' + s;
     const mode = s % 2 ? 'random' : 'original';
-    const chars = ['soldier', 'scout', 'mechanic'].slice(0, 2 + (s % 2));
+    const ALL = Object.keys(CHARACTERS);
+    const n = 2 + (s % 3);
+    const chars = Array.from({ length: n }, (_, i) => ALL[(s * 5 + i * 7) % ALL.length]);
     let state;
     try {
         state = createGame({ seed, mode, players: chars.map((c, i) => ({ name: 'P' + i, charId: c })) });

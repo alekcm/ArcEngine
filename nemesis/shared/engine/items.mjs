@@ -207,6 +207,7 @@ OPS['item.use'] = (state, step) => {
             next(state, { op: 'move.start', player: p.id, noNoise: true, then: { op: 'move.start', player: p.id, then: back } });
             return;
     }
+    if (OPS['item2.use']) { OPS['item2.use'](state, { ...step, then: back }); return; }
     log(state, 'Эффект предмета не реализован.', 'bad');
     next(state, back);
 };

@@ -40,7 +40,7 @@ function playerView(state, p, mine) {
         id: p.id, name: p.name, charId: p.charId, charName: CHARACTERS[p.charId].name, colors: p.colors,
         room: p.room, status: p.status, health: p.health, maxHealth: CHARACTERS[p.charId].health, wounds: p.wounds, armor: p.armor,
         items: p.items, heavy: p.heavy, knowledge: p.knowledge, knowledgeActive: p.knowledgeActive, signal: p.signal,
-        passed: p.passed, pod: p.pod, larva: p.larva,
+        passed: p.passed, pod: p.pod, larva: p.larva, laika: p.laika || null,
         handCount: p.hand.length, deckCount: p.deck.length, discardCount: p.discard.length,
         contamInDiscard: p.discard.filter(c => c.startsWith('contam#')).length,
     };

@@ -1,6 +1,6 @@
 // turn.mjs — Player Phase: turns, the main action prompt and dispatch to the action procedures.
 
-import { OPS, ask, next, log, player, pname, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
+import { OPS, ask, next, log, player, pname, removeCardFromGame, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
     discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards,
     HEAVY_NAMES, itemDef, healthState, activePlayers } from './core.mjs';
 import { ITEMS, CHARACTERS, OBJECTIVES, WOUNDS } from '../data/cards.mjs';
@@ -89,7 +89,7 @@ export function buildMenu(state, p) {
 }
 
 function extraCost(d) {
-    return ({ coveringFire: 1, forcingFire: 1, scavenging: 1, techCorridors: 1, duckAndCover: 1 })[d.effect] || 0;
+    return ({ coveringFire: 1, forcingFire: 1, scavenging: 1, techCorridors: 1, duckAndCover: 1, neurotoxicGas: 1, feelOfDark: 1, facilityTour: 1 })[d.effect] || 0;
 }
 
 function cardRequirement(state, p, d) {
@@ -109,6 +109,24 @@ function cardRequirement(state, p, d) {
         case 'fdTrap': return inCombat(state, p) ? '' : 'Нет чужих';
         case 'fdAim': return inCombat(state, p) && p.items.some(i => ITEMS[i.item].weapon && i.ammo > 0 && !i.broken) ? '' : 'Нужно оружие и чужой';
         case 'ingenuity': return '';
+        case 'recharge': return p.items.some(i => i.item === 'smartGun') ? '' : 'Нет умного пистолета';
+        case 'reload': return p.items.some(i => i.item === 'sixShooter') ? '' : 'Нет шестизарядника';
+        case 'fanning': return p.items.some(i => i.item === 'sixShooter' && i.ammo > 0 && !i.broken) ? (inCombat(state, p) ? '' : 'Нет чужих') : 'Шестизарядник пуст';
+        case 'bash': case 'roboticPunch': return inCombat(state, p) ? '' : 'Нет чужих';
+        case 'shriek': return intrudersIn(state, p.room).some(i => i.type === 'adult') ? '' : 'Нет взрослого чужого';
+        case 'neurotoxicGas': return p.items.some(i => ITEMS[i.item].deck === 'green') ? '' : 'Нужен зелёный предмет';
+        case 'catchThis': return p.items.some(i => ITEMS[i.item].kind === 'heavy' && !ITEMS[i.item].quest) ? '' : 'Нет тяжёлого предмета';
+        case 'tacticalMove': return p.items.some(i => ITEMS[i.item].weapon && i.ammo > 0 && !i.broken) ? '' : 'Нужен патрон';
+        case 'intimidate': return state.players.some(o => o.id !== p.id && o.status === 'active' && o.room === p.room && !o.pod) ? '' : 'Нет других персонажей';
+        case 'determination': return rs.malfunction || rs.fire ? 'Поломка или огонь в комнате' : '';
+        case 'intranet': case 'riskAssessment': return tile && ROOM_TILES[tile].computer && !rs.malfunction ? '' : 'Нужен компьютер без поломки';
+        case 'neuralink': return state.computerCard ? '' : 'Нет карты компьютера';
+        case 'cleanUp': return rs.malfunction || rs.fire ? '' : 'Нет поломки или огня';
+        case 'synthesizedDrugs': return tile && ROOM_TILES[tile].items.includes('green') && !rs.malfunction && !rs.fire ? '' : 'Нужна зелёная комната без поломки и огня';
+        case 'fieldSurgery': return state.players.some(o => o.status === 'active' && o.room === p.room && o.wounds.length) ? '' : 'Нет тяжёлых травм';
+        case 'weirdMetabolism': return p.hand.some(isContam) || rs.objects.length ? '' : 'Нет заражения и объектов';
+        case 'protocolOverride': { const u = p.items.find(i => i.item === 'ups'); return u && (u.charge ?? 0) > 0 ? '' : 'Нет жетонов ИБП'; }
+        case 'emotionScanner': case 'lendAHand': case 'command': case 'wouldYouKindly': return '';
         default: return '';
     }
 }
@@ -129,7 +147,9 @@ function itemRequirement(state, p, it) {
         case 'repelAdult': case 'reagent': return '';
         case 'taser': return '';
         case 'medkit': case 'woundOrHeal2': return '';
-        case 'removeContam1': return p.hand.some(isContam) ? '' : 'Нет заражений в руке';
+        case 'removeContam1': case 'sampleJar': return p.hand.some(isContam) ? '' : 'Нет заражений в руке';
+        case 'wrench': return rs.malfunction || rs.fire ? '' : 'Нет поломки или огня';
+        case 'pipeMelee': return inCombat(state, p) ? '' : 'Нет чужих';
         default: return '';
     }
 }
@@ -145,7 +165,7 @@ OPS['turn.do'] = (state, step) => {
         const c = menu.cards.find(x => x.id === a.cardId);
         if (!c || !c.enabled) { next(state, back); return; }
         const d = cardDef(state, a.cardId);
-        discardCard(state, p, a.cardId);
+        if (d.removeAfter) removeCardFromGame(state, p, a.cardId); else discardCard(state, p, a.cardId);
         log(state, pname(p) + ' играет карту «' + d.name + '».', 'action');
         spend();
         payCost(state, p, (d.cost || 1) - 1 + extraCost(d), { op: 'card.effect', player: p.id, effect: d.effect, cardId: a.cardId }, 'Доплата за карту «' + d.name + '»');

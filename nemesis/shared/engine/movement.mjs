@@ -55,7 +55,7 @@ OPS['move.go'] = (state, step) => {
         if (c && c.status === 'active' && c.room === from) { c.room = step.dest; log(state, pname(c) + ' идёт вместе.', 'action'); }
     }
     const after = { op: 'move.afterExplore', player: p.id, from, careful: step.careful, noNoise: step.noNoise, then: step.then, enteredVia: from };
-    if (!room(state, step.dest).explored) next(state, { op: 'explore', player: p.id, room: step.dest, from }, after);
+    if (!room(state, step.dest).explored) next(state, { op: 'explore', player: p.id, room: step.dest, from, ignoreToken: step.ignoreToken }, after);
     else next(state, after);
 };
 
@@ -72,7 +72,8 @@ OPS['explore'] = (state, step) => {
         state.nestDiscovered = true;
         if (p) { log(state, pname(p) + ' первым находит Гнездо: +1 знание.', 'good'); gainKnowledge(state, p, 1); }
     }
-    switch (token) {
+    if (step.ignoreToken && token) log(state, 'Жетон исследования проигнорирован (обход объекта).', 'minor');
+    switch (step.ignoreToken ? null : token) {
         case 'malfunction': placeMalfunction(state, step.room, 'жетон разведки'); break;
         case 'fire': placeFire(state, step.room, 'жетон разведки'); break;
         case 'corpse': rs.objects.push({ type: 'corpse' }); log(state, 'В комнате найден человеческий труп.', 'event'); break;
