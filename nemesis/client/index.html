@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Nemesis — настольная игра онлайн</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="style.css">
+    <script src="/libs/babylon.js"></script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<!-- Lobby -->
+<div id="lobby" class="overlay">
+    <div class="lobby-box">
+        <h1>NEMESIS <span>Redux</span></h1>
+        <div class="lobby-cols">
+            <div class="lobby-left">
+                <div class="row"><label>Ваше имя</label><input id="nameInput" maxlength="20" placeholder="Имя"></div>
+                <div class="row"><label>Персонаж</label><div id="charList" class="char-list"></div></div>
+                <div class="row"><label>Раскраска</label><div id="paintZones" class="paint-zones"></div></div>
+                <div id="charPreview" class="char-preview"><canvas id="previewCanvas"></canvas></div>
+            </div>
+            <div class="lobby-right">
+                <h3>Игроки</h3>
+                <div id="seatList" class="seat-list"></div>
+                <h3>Настройки партии</h3>
+                <div id="hostSettings">
+                    <div class="row"><label>Карта</label>
+                        <select id="modeSelect">
+                            <option value="original">Оригинальный корабль</option>
+                            <option value="random">Случайный корабль</option>
+                        </select></div>
+                    <div class="row"><label>Зерно (необязательно)</label><input id="seedInput" maxlength="32" placeholder="любая строка"></div>
+                </div>
+                <div class="row"><label>Адрес для друзей</label><div id="lanAddr" class="lan-addr">—</div></div>
+                <div class="lobby-buttons">
+                    <button id="readyBtn" class="btn">Готов</button>
+                    <button id="startBtn" class="btn primary" disabled>Начать игру</button>
+                </div>
+                <p class="hint">Ведущий — первый подключившийся игрок. Он выбирает карту и может откатывать ходы.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+    <div id="topbar">
+        <div class="tb-item"><span class="lbl">Раунд</span><b id="tbRound">1</b></div>
+        <div class="tb-item"><span class="lbl">Фаза</span><b id="tbPhase">—</b></div>
+        <div class="tb-item"><span class="lbl">Время</span><b id="tbTime">15</b></div>
+        <div class="tb-item" id="tbSelfDestruct" style="display:none"><span class="lbl">Самоуничтожение</span><b id="tbSD">—</b></div>
+        <div class="tb-item"><span class="lbl">Пункт</span><b id="tbDest">B</b></div>
+        <div class="tb-item"><span class="lbl">Мешок</span><b id="tbBag">—</b></div>
+        <div class="tb-item"><span class="lbl">Огонь/поломки</span><b id="tbMarkers">8/8</b></div>
+        <div class="tb-item"><span class="lbl">Компьютер</span><b id="tbComputer">—</b></div>
+        <div class="tb-spacer"></div>
+        <button id="undoBtn" class="btn small" title="Откатить последнее действие (только ведущий)">⟲ Откатить ход</button>
+        <button id="helpBtn" class="btn small">?</button>
+    </div>
+
+    <div id="players"></div>
+
+    <div id="rightPane">
+        <div class="pane-tabs"><button class="tab active" data-tab="log">Журнал</button><button class="tab" data-tab="chat">Чат</button><button class="tab" data-tab="history">История</button></div>
+        <div id="log" class="pane-body"></div>
+        <div id="chat" class="pane-body hidden"><div id="chatLines"></div><input id="chatInput" placeholder="Сообщение… (Enter)"></div>
+        <div id="history" class="pane-body hidden"></div>
+    </div>
+
+    <div id="prompt" class="hidden"></div>
+    <div id="hand"></div>
+    <div id="roomInfo" class="hidden"></div>
+    <div id="notices"></div>
+</div>
+
+<div id="helpOverlay" class="overlay hidden">
+    <div class="help-box">
+        <h2>Как играть</h2>
+        <div id="helpBody"></div>
+        <button class="btn" onclick="document.getElementById('helpOverlay').classList.add('hidden')">Закрыть</button>
+    </div>
+</div>
+
+<div id="endOverlay" class="overlay hidden"><div class="help-box"><h2>Конец игры</h2><div id="endBody"></div><button id="restartBtn" class="btn primary">В лобби</button></div></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
