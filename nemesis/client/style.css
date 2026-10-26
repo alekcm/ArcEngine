@@ -73,7 +73,9 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 .pcard .hp i { width: 14px; height: 10px; border-radius: 2px; background: #2b3a4d; }
 .pcard .hp i.on { background: var(--green); }
 .pcard .hp i.heavy.on { background: var(--red); }
-.pcard .hp i.mid.on { background: var(--yellow); }
+.pcard .hp i.mid.on { background: #f39c12; }
+.pcard .hp i.last.on { background: #ff4d4d; box-shadow: 0 0 6px #ff4d4d; }
+.pcard .hp i { width: 12px; }
 .pcard .tags { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; }
 .tag { background: #22304a; border-radius: 4px; padding: 1px 6px; color: #cfd8e3; }
 .tag.red { background: #5a2323; } .tag.green { background: #1f4a2f; } .tag.yellow { background: #5b4a12; } .tag.purple { background: #45245a; } .tag.blue { background: #1f3b5a; }

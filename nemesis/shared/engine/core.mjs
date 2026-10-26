@@ -145,14 +145,12 @@ export function orderIndex(state, p) { return (p.id - state.firstPlayer + state.
 // ---------------------------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------------------------
-export function healthSections(p) {
-    const max = CHARACTERS[p.charId].health;
-    return max === 6 ? [[6, 5], [4, 3], [2, 1]] : [[5, 4], [3, 2], [1]];
-}
+// Health track: 10 cells — 3 green (10-8), 3 orange (7-5), 3 red (4-2) and 1 near-death (1).
+// Health 0 means "all cells lost but still alive"; the next point of damage kills.
+export function healthSections() { return [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]]; }
 export function healthState(p) {
-    const s = healthSections(p);
-    if (s[0].includes(p.health)) return 'healthy';
-    if (s[1].includes(p.health)) return 'injured';
+    if (p.health >= 8) return 'healthy';
+    if (p.health >= 5) return 'injured';
     return 'heavy';
 }
 export const HEALTH_STATE_NAMES = { healthy: 'здоров', injured: 'ранен', heavy: 'тяжело ранен' };
@@ -160,7 +158,7 @@ export const HEALTH_STATE_NAMES = { healthy: 'здоров', injured: 'ране�
 export function maxAllowedHealth(p) {
     const s = healthSections(p);
     const covered = Math.min(p.wounds.length, 3);
-    for (let i = covered; i < 3; i++) return s[i][0];
+    for (let i = covered; i < 4; i++) return s[i][0];
     return 0;
 }
 export function handLimit(p) { return p.wounds.includes('arm') ? 1 : 2; }
@@ -230,7 +228,7 @@ export function loseHealth(state, p, n, reason) {
     if (p.armor && ITEMS[p.armor.item].heavyArmor && n > 0) n = Math.max(0, n - 1);
     for (let i = 0; i < n; i++) {
         p.health--;
-        if (p.health <= 0) break;
+        if (p.health < 0) break;
         // armor sits in the heavily injured section: entering it discards the armor
         if (p.armor && healthState(p) === 'heavy') {
             log(state, pname(p) + ': броня «' + ITEMS[p.armor.item].name + '» разрушена.', 'bad');
@@ -238,7 +236,7 @@ export function loseHealth(state, p, n, reason) {
         }
     }
     log(state, pname(p) + ' теряет ' + n + ' здоровья' + (reason ? ' (' + reason + ')' : '') + ' — ' + HEALTH_STATE_NAMES[healthState(p)] + ', ' + Math.max(0, p.health) + ' HP.', 'bad');
-    if (p.health <= 0) killPlayer(state, p, reason || 'ранения');
+    if (p.health < 0) killPlayer(state, p, reason || 'ранения');
 }
 export function restoreHealth(state, p, n) {
     const cap = maxAllowedHealth(p);

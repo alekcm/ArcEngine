@@ -248,38 +248,79 @@ export function buildCharacter(scene, charId, colors = {}) {
 export function buildIntruder(scene, type) {
     const S = scene;
     const root = new (B().TransformNode)('intr_' + type, S);
-    const dark = flatMat(S, '#1b1f24', { spec: 0.5 }), mid = flatMat(S, '#2f3a40', { spec: 0.5 }), glow = flatMat(S, '#9cff3b', { emissive: 0.9 });
-    const tooth = flatMat(S, '#d9d4c4');
+    const dark = flatMat(S, '#14181d', { spec: 0.6 }), mid = flatMat(S, '#262f36', { spec: 0.6 }), chitin = flatMat(S, '#323c3a', { spec: 0.7 });
+    const glow = flatMat(S, '#9cff3b', { emissive: 0.9 }), tooth = flatMat(S, '#e3dccb'), slime = flatMat(S, '#5a7a2a', { emissive: 0.3 });
     const bx = (...a) => box(S, ...a), cy = (...a) => cyl(S, ...a), sp = (...a) => sphere(S, ...a);
     if (type === 'larva') {
-        sp(0.45, 6, root, 0, 0.22, 0, [1, 0.6, 1.4]).material = mid;
-        sp(0.3, 6, root, 0, 0.18, -0.4, [0.6, 0.5, 1.2]).material = dark;
-        for (let i = 0; i < 4; i++) bx(0.05, 0.05, 0.3, root, (i % 2 ? 0.25 : -0.25), 0.1, 0.1 - Math.floor(i / 2) * 0.2).material = dark;
-        sp(0.08, 4, root, 0, 0.3, 0.3).material = glow;
+        // segmented grub with hooked legs, mandibles and a glowing core
+        const body = new (B().TransformNode)('lb', S); body.parent = root; body.rotation.y = 0.4;
+        for (let i = 0; i < 5; i++) { const d = 0.42 - i * 0.05; sp(d, 6, body, 0, 0.2 - i * 0.02, -0.05 - i * 0.26, [1, 0.75, 1.15]).material = i % 2 ? mid : chitin; }
+        sp(0.4, 6, body, 0, 0.24, 0.2, [1, 0.8, 0.9]).material = dark;                       // head
+        for (const sd of [-1, 1]) { bx(0.05, 0.05, 0.28, body, sd * 0.12, 0.2, 0.42, [-0.4, sd * 0.5, 0]).material = tooth; bx(0.04, 0.04, 0.16, body, sd * 0.06, 0.16, 0.5, [0, sd * 0.3, 0]).material = tooth; }
+        for (let i = 0; i < 6; i++) { const sd = i % 2 ? 1 : -1; const z = 0.1 - Math.floor(i / 2) * 0.3; bx(0.3, 0.05, 0.06, body, sd * 0.22, 0.12, z, [0, 0, sd * 0.6]).material = dark; bx(0.05, 0.14, 0.05, body, sd * 0.36, 0.05, z, [0, 0, sd * 0.3]).material = tooth; }
+        for (let i = 0; i < 4; i++) bx(0.04, 0.12, 0.05, body, 0, 0.42 - i * 0.03, -0.05 - i * 0.26, [0.5, 0, 0]).material = tooth;  // dorsal spikes
+        sp(0.12, 5, body, 0, 0.26, -0.3).material = glow;
+        sp(0.1, 4, body, 0, 0.3, 0.3).material = glow;
     } else {
-        const s = type === 'queen' ? 1.9 : type === 'drone' ? 1.0 : 1.25;
+        const s = type === 'queen' ? 1.75 : type === 'drone' ? 1.0 : 1.2;
         root.scaling.set(s, s, s);
-        bx(0.5, 0.7, 0.45, root, 0, 1.0, 0, [0.4, 0, 0]).material = mid;
-        bx(0.42, 0.4, 0.6, root, 0, 0.8, -0.4, [-0.3, 0, 0]).material = dark;
-        // ribbed chest
-        for (let i = 0; i < 3; i++) bx(0.46, 0.06, 0.1, root, 0, 0.85 + i * 0.15, 0.22 + i * 0.03).material = dark;
-        bx(0.3, 0.26, 0.9, root, 0, 1.45, 0.1, [-0.15, 0, 0]).material = dark;  // elongated head
-        bx(0.22, 0.1, 0.3, root, 0, 1.3, 0.45).material = mid;                  // jaw
-        for (let i = 0; i < 4; i++) bx(0.04, 0.08, 0.04, root, -0.08 + i * 0.053, 1.36, 0.58).material = tooth;
+        // hunched torso (tilted forward), thin waist, armoured shoulders
+        const torso = new (B().TransformNode)('t', S); torso.parent = root; torso.position.set(0, 1.05, 0); torso.rotation.x = 0.5;
+        bx(0.56, 0.75, 0.45, torso, 0, 0.1, 0).material = chitin;
+        bx(0.3, 0.45, 0.3, torso, 0, -0.45, -0.05).material = dark;                                  // waist
+        for (let i = 0; i < 5; i++) { bx(0.6 + (i % 2) * 0.04, 0.05, 0.14, torso, 0, -0.2 + i * 0.13, 0.2 + i * 0.02).material = dark; }   // ribs
+        bx(0.62, 0.1, 0.5, torso, 0, 0.5, -0.05).material = dark;                                     // collar plate
+        for (const sd of [-1, 1]) bx(0.3, 0.14, 0.4, torso, sd * 0.42, 0.42, -0.05, [0, 0, -sd * 0.5]).material = chitin;   // shoulder pads
+        // dorsal tubes (four, curving back)
+        for (let i = 0; i < 4; i++) { const sd = i % 2 ? 1 : -1; const k = Math.floor(i / 2); cy(0.08, 0.12, 0.7, 6, torso, sd * (0.14 + k * 0.14), 0.45 + k * 0.1, -0.45 - k * 0.1, [-0.6 - k * 0.3, 0, sd * 0.25]).material = mid; cy(0.1, 0.08, 0.06, 6, torso, sd * (0.14 + k * 0.14), 0.75 + k * 0.1, -0.7 - k * 0.2, [-0.6 - k * 0.3, 0, sd * 0.25]).material = dark; }
+        // spine ridge
+        for (let i = 0; i < 6; i++) bx(0.06, 0.14 + (i % 2) * 0.06, 0.08, torso, 0, 0.35 - i * 0.16, -0.26 - (i > 3 ? 0.05 : 0), [-0.6, 0, 0]).material = tooth;
+        // neck + elongated ridged head, no eyes, inner jaw
+        const neck = new (B().TransformNode)('n', S); neck.parent = torso; neck.position.set(0, 0.55, 0.15); neck.rotation.x = -0.9;
+        cy(0.16, 0.2, 0.4, 6, neck, 0, 0.15, 0).material = dark;
+        const head = new (B().TransformNode)('h', S); head.parent = neck; head.position.set(0, 0.35, 0); head.rotation.x = 0.6;
+        bx(0.26, 0.26, 1.05, head, 0, 0.1, -0.25).material = chitin;                                 // crest
+        bx(0.3, 0.2, 0.5, head, 0, -0.04, 0.2).material = mid;                                        // skull front
+        for (let i = 0; i < 6; i++) bx(0.28, 0.03, 0.05, head, 0, 0.24, -0.05 - i * 0.12).material = dark;   // crest ridges
+        bx(0.26, 0.1, 0.42, head, 0, -0.2, 0.22, [0.3, 0, 0]).material = dark;                       // jaw
+        for (let i = 0; i < 5; i++) { bx(0.03, 0.09, 0.03, head, -0.1 + i * 0.05, -0.11, 0.42).material = tooth; bx(0.03, 0.07, 0.03, head, -0.1 + i * 0.05, -0.21, 0.4).material = tooth; }
+        bx(0.08, 0.08, 0.3, head, 0, -0.14, 0.5).material = slime;                                   // inner jaw
+        bx(0.06, 0.04, 0.06, head, 0, -0.14, 0.66).material = tooth;
+        // arms: upper, forearm, three long claws each
         for (const sd of [-1, 1]) {
-            bx(0.12, 0.5, 0.12, root, sd * 0.35, 0.95, 0.15, [-0.9, 0, sd * 0.3]).material = dark;
-            bx(0.1, 0.5, 0.1, root, sd * 0.45, 0.6, 0.45, [0.4, 0, 0]).material = mid;
-            bx(0.14, 0.06, 0.22, root, sd * 0.45, 0.37, 0.62).material = tooth;
-            bx(0.14, 0.55, 0.16, root, sd * 0.25, 0.55, -0.1, [0.7, 0, 0]).material = mid;
-            bx(0.1, 0.55, 0.12, root, sd * 0.28, 0.28, 0.12, [-0.9, 0, 0]).material = dark;
-            bx(0.14, 0.06, 0.3, root, sd * 0.28, 0.03, 0.2).material = dark;
+            const sh = new (B().TransformNode)('sh', S); sh.parent = torso; sh.position.set(sd * 0.45, 0.3, 0.05); sh.rotation.set(-0.9, 0, sd * 0.35);
+            bx(0.14, 0.6, 0.16, sh, 0, -0.3, 0).material = mid;
+            bx(0.18, 0.08, 0.2, sh, 0, -0.6, 0).material = dark;                                     // elbow spike base
+            bx(0.05, 0.18, 0.05, sh, 0, -0.62, -0.15, [0.6, 0, 0]).material = tooth;
+            const fa = new (B().TransformNode)('fa', S); fa.parent = sh; fa.position.set(0, -0.6, 0); fa.rotation.x = -1.2;
+            bx(0.12, 0.6, 0.13, fa, 0, -0.3, 0).material = chitin;
+            for (let k = 0; k < 3; k++) bx(0.035, 0.32, 0.035, fa, (k - 1) * 0.05, -0.74, 0.02 - Math.abs(k - 1) * 0.02, [0.25, 0, (k - 1) * 0.3]).material = tooth;
         }
-        bx(0.14, 0.14, 0.7, root, 0, 0.75, -0.95, [0.2, 0, 0]).material = mid;
-        bx(0.09, 0.09, 0.7, root, 0, 0.95, -1.5, [-0.5, 0, 0]).material = dark;
-        bx(0.06, 0.2, 0.3, root, 0, 1.3, -1.85).material = tooth;
-        for (let i = 0; i < (type === 'queen' ? 5 : 3); i++) bx(0.06, 0.2 + i * 0.05, 0.06, root, 0, 1.4 - i * 0.12, -0.1 - i * 0.18).material = tooth;
-        if (type === 'queen') { bx(0.8, 0.1, 0.5, root, 0, 1.7, -0.2).material = dark; bx(0.2, 0.06, 0.2, root, 0, 1.62, 0.2).material = glow; }
-        if (type === 'drone') for (const sd of [-1, 1]) bx(0.04, 0.5, 0.9, root, sd * 0.3, 1.3, -0.4, [0, 0, sd * 0.5]).material = flatMat(S, '#5a6a70', { alpha: 0.7 });
+        // digitigrade legs
+        for (const sd of [-1, 1]) {
+            const hip = new (B().TransformNode)('hip', S); hip.parent = root; hip.position.set(sd * 0.2, 0.75, -0.1); hip.rotation.x = 0.9;
+            bx(0.16, 0.55, 0.2, hip, 0, -0.27, 0).material = chitin;
+            bx(0.06, 0.16, 0.06, hip, sd * 0.1, -0.25, -0.12, [-0.5, 0, 0]).material = tooth;
+            const sn = new (B().TransformNode)('sn', S); sn.parent = hip; sn.position.set(0, -0.55, 0); sn.rotation.x = -1.7;
+            bx(0.12, 0.5, 0.14, sn, 0, -0.25, 0).material = dark;
+            const ft = new (B().TransformNode)('ft', S); ft.parent = sn; ft.position.set(0, -0.5, 0); ft.rotation.x = 0.9;
+            bx(0.1, 0.32, 0.12, ft, 0, -0.16, 0).material = mid;
+            for (let k = 0; k < 3; k++) bx(0.04, 0.05, 0.24, ft, (k - 1) * 0.06, -0.32, 0.14, [0, (k - 1) * 0.25, 0]).material = tooth;
+        }
+        // long segmented tail with a blade
+        let tp = new (B().TransformNode)('tail', S); tp.parent = root; tp.position.set(0, 0.7, -0.3); tp.rotation.x = -1.1;
+        for (let i = 0; i < 6; i++) { const seg = new (B().TransformNode)('ts', S); seg.parent = tp; seg.position.set(0, 0.32, 0); seg.rotation.x = 0.36 - i * 0.02; bx(0.13 - i * 0.015, 0.36, 0.13 - i * 0.015, seg, 0, 0.16, 0).material = i % 2 ? dark : mid; bx(0.04, 0.1, 0.05, seg, 0, 0.16, -0.08, [-0.5, 0, 0]).material = tooth; tp = seg; }
+        bx(0.06, 0.45, 0.14, tp, 0, 0.5, 0).material = tooth;
+        bx(0.03, 0.2, 0.08, tp, 0, 0.78, 0.02).material = tooth;
+        if (type === 'queen') {
+            bx(1.1, 0.08, 0.55, head, 0, 0.3, -0.35).material = dark;                                   // wide crown crest
+            for (const sd of [-1, 1]) bx(0.08, 0.3, 0.3, head, sd * 0.55, 0.4, -0.4, [0, 0, -sd * 0.6]).material = chitin;
+            sp(0.9, 6, root, 0, 0.55, -0.9, [1, 0.8, 1.3]).material = mid;                              // egg sac
+            for (let i = 0; i < 5; i++) sp(0.18, 4, root, Math.sin(i * 1.3) * 0.35, 0.55 + Math.cos(i * 1.3) * 0.25, -0.9 - Math.cos(i) * 0.4).material = glow;
+            for (const sd of [-1, 1]) { const a2 = new (B().TransformNode)('a2', S); a2.parent = torso; a2.position.set(sd * 0.3, 0.0, 0.18); a2.rotation.set(-1.4, 0, sd * 0.5); bx(0.08, 0.45, 0.08, a2, 0, -0.22, 0).material = mid; bx(0.03, 0.2, 0.03, a2, 0, -0.5, 0).material = tooth; }
+        }
+        if (type === 'drone') { for (const sd of [-1, 1]) { bx(0.04, 0.6, 0.9, torso, sd * 0.25, 0.1, -0.5, [0.4, 0, sd * 0.8]).material = flatMat(S, '#5a6a70', { alpha: 0.7 }); bx(0.04, 0.4, 0.6, torso, sd * 0.2, -0.1, -0.5, [0.9, 0, sd * 0.9]).material = flatMat(S, '#5a6a70', { alpha: 0.7 }); } }
+        else sp(0.1, 4, torso, 0, 0.05, 0.25).material = glow;                                         // chest glow
     }
     for (const m of root.getChildMeshes()) m.isPickable = false;
     return root;

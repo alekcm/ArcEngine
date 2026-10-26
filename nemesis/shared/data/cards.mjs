@@ -195,7 +195,7 @@ const COMMON_CARDS = {
 
 export const CHARACTERS = {
     soldier: {
-        name: 'Солдат', color: '#c0392b', health: 6, zones: [
+        name: 'Солдат', color: '#c0392b', health: 10, zones: [
             { id: 'skin',   label: 'Кожа',          presets: SKIN },
             { id: 'hair',   label: 'Волосы',        presets: HAIR },
             { id: 'armor',  label: 'Броня',         presets: ['#5a6b5c', '#3a3f44', '#6b4f3a', '#2c3e50', '#7a1f1f', '#8c8c8c'] },
@@ -215,7 +215,7 @@ export const CHARACTERS = {
         },
     },
     scout: {
-        name: 'Разведчица', color: '#8e44ad', health: 5, zones: [
+        name: 'Разведчица', color: '#8e44ad', health: 10, zones: [
             { id: 'skin',   label: 'Кожа',          presets: SKIN },
             { id: 'hair',   label: 'Волосы',        presets: ['#8a1f3a', '#2a1b12', '#5a3a22', '#d9b36c', '#3b2f6a', '#e8e2d0'] },
             { id: 'suit',   label: 'Комбинезон',    presets: ['#3b2f4a', '#1f2a44', '#2d3436', '#4a1f2f', '#3a4a3a'] },
@@ -236,7 +236,7 @@ export const CHARACTERS = {
         },
     },
     mechanic: {
-        name: 'Механик', color: '#d68910', health: 6, zones: [
+        name: 'Механик', color: '#d68910', health: 10, zones: [
             { id: 'skin',    label: 'Кожа',          presets: SKIN },
             { id: 'hair',    label: 'Волосы',        presets: HAIR },
             { id: 'overall', label: 'Комбинезон',    presets: ['#d68910', '#6b4f3a', '#3a3f44', '#1e5a3a', '#7a1f1f'] },

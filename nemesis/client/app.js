@@ -31,7 +31,7 @@ const net = {
 const app = {
     me: null, host: false, spectator: false,
     lobby: null, view: null, logEntries: [], selectedCards: new Set(), hoverRoom: null,
-    charId: null, colors: {}, name: '', ready: false,
+    charId: null, colors: {}, name: '', ready: false, menuCollapsed: true,
 };
 let scene = null, preview = null;
 
@@ -154,11 +154,10 @@ function renderTopbar() {
 }
 
 function hpBar(p) {
-    const max = p.maxHealth;
-    const sections = max === 6 ? [[6, 5], [4, 3], [2, 1]] : [[5, 4], [3, 2], [1]];
+    const sections = [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]];
     let s = '';
-    sections.forEach((sec, si) => { for (const n of sec) s += '<i class="' + (si === 1 ? 'mid' : si === 2 ? 'heavy' : '') + (p.health >= n ? ' on' : '') + '" title="' + n + '"></i>'; if (si < 2) s += '<i style="width:4px;background:none"></i>'; });
-    return '<div class="hp">' + s + '</div>';
+    sections.forEach((sec, si) => { for (const n of sec) s += '<i class="' + (si === 1 ? 'mid' : si === 2 ? 'heavy' : si === 3 ? 'last' : '') + (p.health >= n ? ' on' : '') + '" title="' + n + '"></i>'; if (si < 3) s += '<i style="width:3px;background:none"></i>'; });
+    return '<div class="hp" title="Здоровье: ' + p.health + ' / 10' + (p.health === 0 ? ' — при смерти' : '') + '">' + s + '</div>';
 }
 function statusName(p) { return ({ active: '', dead: 'ПОГИБ', escaped: 'УЛЕТЕЛ', hibernating: 'ГИБЕРНАЦИЯ' })[p.status] || p.status; }
 
@@ -214,7 +213,7 @@ function renderPrompt() {
     if (!pr) { el.classList.add('hidden'); tg.classList.add('hidden'); return; }
     const who = pr.player === 'host' ? 'Ведущий' : v.players[pr.player].name;
     // Collapsing: the turn menu remembers the player's choice; other prompts re-open when a new one arrives.
-    if (pr.id !== app.lastPromptId) { app.lastPromptId = pr.id; if (pr.kind !== 'turn') app.promptCollapsed = false; else app.promptCollapsed = app.menuCollapsed; }
+    if (pr.id !== app.lastPromptId) { app.lastPromptId = pr.id; if (pr.kind !== 'turn') app.promptCollapsed = false; else app.promptCollapsed = true; }  // the action list never pops up by itself
     const mine = !pr.waiting;
     tg.classList.toggle('hidden', !mine && !pr.waiting);
     tg.textContent = app.promptCollapsed ? '☰ ' + (pr.kind === 'turn' ? 'Действия' : 'Открыть окно') : '✕ Свернуть';

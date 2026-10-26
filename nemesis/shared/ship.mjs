@@ -100,28 +100,37 @@ const ORIGINAL_ROOMS = [
 ];
 const ORIGINAL_EDGES = [
     ['001', '002'], ['001', '003'], ['001', '004'],
-    ['002', '003'], ['002', '005'], ['002', '006'],
-    ['003', '004'], ['003', '007'],
-    ['004', '008'], ['004', '009'],
+    ['002', '006'],
+    ['003', '007'],
+    ['004', '008'],
     ['005', '006'], ['005', '010'],
     ['006', '007'], ['006', '011'],
     ['007', '008'],
-    ['008', '011'], ['008', '012'],
+    ['008', '009'], ['008', '011'], ['008', '012'],
     ['009', '012'],
-    ['010', '013'], ['010', '014'],
+    ['010', '013'],
     ['011', '014'], ['011', '015'],
-    ['012', '015'], ['012', '016'],
-    ['013', '017'], ['013', '019'],
+    ['012', '016'],
+    ['013', '014'], ['013', '019'],
     ['014', '017'],
-    ['015', '018'],
-    ['016', '018'], ['016', '021'],
+    ['015', '016'], ['015', '018'],
+    ['016', '021'],
     ['017', '019'], ['017', '020'],
     ['018', '020'], ['018', '021'],
 ];
+// Intermediate waypoints (board units) for corridors that bend on the original board.
+const ORIGINAL_PATHS = {
+    '001-002': [[150, 330]], '001-004': [[150, 600]],
+    '002-006': [[430, 230], [520, 300]], '004-008': [[470, 735]],
+    '006-011': [[690, 330]], '008-011': [[690, 610]],
+    '011-014': [[850, 380]], '011-015': [[850, 560]],
+    '012-016': [[900, 800]], '013-014': [[1010, 270]],
+    '003-007': [[380, 520]],
+};
 const ORIGINAL_TECH = ['002', '004', '007', '011', '013', '016', '020'];
 const ORIGINAL_ENGINE_NUMBERS = { '021': 1, '020': 2, '019': 3 };
 
-function buildShip(roomsSpec, edges, techRooms, engineNumbers, mode) {
+function buildShip(roomsSpec, edges, techRooms, engineNumbers, mode, paths = {}) {
     const rooms = {};
     for (const [id, kind, x, y] of roomsSpec) {
         rooms[id] = { id, kind, x, y, tech: techRooms.includes(id), exits: [] };
@@ -130,7 +139,7 @@ function buildShip(roomsSpec, edges, techRooms, engineNumbers, mode) {
     const corridors = {};
     for (const [a, b] of edges) {
         const id = a < b ? a + '-' + b : b + '-' + a;
-        corridors[id] = { id, a, b, door: 'open', noise: false };
+        corridors[id] = { id, a, b, door: 'open', noise: false, path: paths[id] || [] };
         rooms[a].exits.push({ to: b, corridor: id, num: 0 });
         rooms[b].exits.push({ to: a, corridor: id, num: 0 });
     }
@@ -160,7 +169,7 @@ function computeBounds(ship) {
 }
 
 export function originalShip() {
-    return buildShip(ORIGINAL_ROOMS, ORIGINAL_EDGES, ORIGINAL_TECH, ORIGINAL_ENGINE_NUMBERS, 'original');
+    return buildShip(ORIGINAL_ROOMS, ORIGINAL_EDGES, ORIGINAL_TECH, ORIGINAL_ENGINE_NUMBERS, 'original', ORIGINAL_PATHS);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -274,7 +283,18 @@ function tryRandomShip(holder) {
 
     const roomsSpec = list.map(c => [c.id, kinds.get(c), c.x, c.y]);
     const edgeSpec = edges.map(([a, b]) => [a.id, b.id]);
-    return buildShip(roomsSpec, edgeSpec, tech, engineNumbers, 'random');
+    // Some corridors bend (L or S shapes) like on the printed board.
+    const paths = {};
+    for (const [a, b] of edges) {
+        const roll = rand(holder);
+        if (roll > 0.45) continue;
+        const id = a.id < b.id ? a.id + '-' + b.id : b.id + '-' + a.id;
+        const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+        const nx = -dy / len, ny = dx / len, off = (rand(holder) < 0.5 ? -1 : 1) * (28 + rand(holder) * 22);
+        if (roll < 0.25) paths[id] = [[a.x + dx * 0.5 + nx * off, a.y + dy * 0.5 + ny * off]];
+        else paths[id] = [[a.x + dx * 0.33 + nx * off, a.y + dy * 0.33 + ny * off], [a.x + dx * 0.67 - nx * off, a.y + dy * 0.67 - ny * off]];
+    }
+    return buildShip(roomsSpec, edgeSpec, tech, engineNumbers, 'random', paths);
 }
 
 // ---------------------------------------------------------------------------------------------
