@@ -36,7 +36,9 @@ const MODELS_DIR = path.join(ROOT, 'assets', 'models');
 const EDITOR_URL_PATH = '/_utils/editor/';
 
 const argPort = process.argv.find(a => /^--port=\d+$/.test(a));
+const argHost = process.argv.find(a => /^--host=\S+$/.test(a));
 const PORT_BASE = argPort ? Number(argPort.split('=')[1]) : 8090;
+const HOST = argHost ? argHost.split('=')[1] : (process.env.HOST || '127.0.0.1');
 const NO_OPEN = process.argv.includes('--no-open');
 
 const MIME = {
@@ -281,7 +283,7 @@ function listen(port, attempt = 0) {
     console.error(`${C.red}Could not start the server: ${err.message}${C.r}`);
     process.exit(1);
   });
-  server.listen(port, '127.0.0.1', () => {
+  server.listen(port, HOST, () => {
     const addr = `http://localhost:${port}${EDITOR_URL_PATH}`;
     console.log(`\n${C.cyn}${C.b}  ArcEngine${C.r} ${C.dim}— editor: location, camera, render${C.r}`);
     console.log(`${C.dim}  ${'-'.repeat(46)}${C.r}`);

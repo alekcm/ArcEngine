@@ -20,8 +20,10 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // Port: --port=N > the PORT environment variable (set by the Claude Code browser
 // pane with autoPort) > 8080. A busy port is changed to +1 by the server itself.
 const argPort = process.argv.find(a => /^--port=\d+$/.test(a));
+const argHost = process.argv.find(a => /^--host=\S+$/.test(a));
 const envPort = /^\d+$/.test(process.env.PORT || '') ? Number(process.env.PORT) : null;
 const PORT_BASE = argPort ? Number(argPort.split('=')[1]) : (envPort ?? 8080);
+const HOST = argHost ? argHost.split('=')[1] : (process.env.HOST || '127.0.0.1');
 const NO_OPEN = process.argv.includes('--no-open');
 
 const MIME = {
@@ -146,7 +148,7 @@ function listen(port, attempt = 0) {
     console.error(`${C.red}Не удалось поднять сервер: ${err.message}${C.r}`);
     process.exit(1);
   });
-  server.listen(port, '127.0.0.1', async () => {
+  server.listen(port, HOST, async () => {
     const addr = `http://localhost:${port}/`;
     console.log(`\n${C.cyn}${C.b}  ArcEngine${C.r} ${C.dim}— dev server${C.r}`);
     console.log(`${C.dim}  ${'-'.repeat(46)}${C.r}`);
