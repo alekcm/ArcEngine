@@ -5,7 +5,7 @@
 const SAVE_KEY = 'heroes5.save.v1';
 
 class Game {
-    /** @param {{ location: Location3D, camera: CameraController, game: Game | null }} app */
+    /** @param {{ location: Location3D, camera: CameraController, game: Game | Warcraft3RTS | null }} app */
     constructor(app) {
         this.app = app;
         this.loc = app.location;
