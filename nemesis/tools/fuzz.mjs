@@ -10,6 +10,7 @@ function pickAnswer(p) {
         case 'room': return p.rooms[rnd(p.rooms.length)];
         case 'cards': { const n = p.min + rnd(p.max - p.min + 1); const c = [...p.cards].sort(() => Math.random() - 0.5); return c.slice(0, n); }
         case 'info': return 'ok';
+        case 'dice': return 'roll';
         case 'turn': {
             const all = [];
             for (const a of p.actions || []) if (a.enabled) all.push({ action: a.id });

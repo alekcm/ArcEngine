@@ -156,12 +156,34 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 #menuToggle.attention { animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 #ffb34766; } 50% { box-shadow: 0 0 0 10px #ffb34700; } }
 
-.style-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.style-card { flex: 1 1 120px; max-width: 170px; padding: 6px 8px; border: 1px solid #2c3a4c; border-radius: 6px; background: #121a24; cursor: pointer; }
-.style-card:hover { border-color: #4a6a8a; }
-.style-card.sel { border-color: #ffb347; background: #1c2430; }
-.style-card b { display: block; font-size: 13px; }
-.style-card small { display: block; color: #8a9bb0; font-size: 11px; line-height: 1.2; }
-.style-card.disabled { cursor: default; opacity: 0.7; }
-.char-preview { position: relative; }
-.preview-toggle { position: absolute; right: 8px; bottom: 8px; }
+/* ---- dice overlay ---- */
+#dice { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 30; text-align: center; pointer-events: none; }
+#dice .dice-title { color: var(--acc); font-size: 15px; font-weight: 600; margin-bottom: 14px; text-shadow: 0 2px 8px #000; }
+#dice .dice-hint { color: #dfe7f0; font-size: 13px; margin-top: 18px; text-shadow: 0 2px 8px #000; }
+#dice.mine .dice-hint { color: var(--acc); }
+#dice .dice-stage { perspective: 600px; width: 120px; height: 120px; margin: 0 auto; }
+#dice .cube { position: relative; width: 120px; height: 120px; transform-style: preserve-3d; transform: rotateX(-18deg) rotateY(24deg); transition: transform 0.35s ease-out; }
+#dice.mine .cube { pointer-events: auto; cursor: pointer; }
+#dice.mine .cube:hover { transform: rotateX(-18deg) rotateY(24deg) scale(1.07); }
+#dice .face { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 46px; border-radius: 14px; border: 2px solid #ffffff22; box-shadow: inset 0 0 18px #0008; color: #f4f6f8; user-select: none; }
+#dice .face.long { font-size: 17px; letter-spacing: 0.5px; }
+#dice.noise .face { background: linear-gradient(145deg, #2a3a4c, #141c26); }
+#dice.combat .face { background: linear-gradient(145deg, #8a2424, #3a0e0e); }
+#dice .face.f { transform: translateZ(60px); }
+#dice .face.b { transform: rotateY(180deg) translateZ(60px); }
+#dice .face.r { transform: rotateY(90deg) translateZ(60px); }
+#dice .face.l { transform: rotateY(-90deg) translateZ(60px); }
+#dice .face.t { transform: rotateX(90deg) translateZ(60px); }
+#dice .face.d { transform: rotateX(-90deg) translateZ(60px); }
+#dice.spinning .cube { animation: dice-tumble 1.1s cubic-bezier(.2,.7,.3,1) forwards; }
+@keyframes dice-tumble { 0% { transform: rotateX(-18deg) rotateY(24deg) translateY(0); } 25% { transform: rotateX(200deg) rotateY(160deg) translateY(-70px); } 60% { transform: rotateX(520deg) rotateY(390deg) translateY(10px); } 85% { transform: rotateX(700deg) rotateY(700deg) translateY(-12px); } 100% { transform: rotateX(702deg) rotateY(744deg) translateY(0); } }
+#dice.landed .cube { transform: rotateX(-10deg) rotateY(12deg) scale(1.15); }
+#dice.landed .face.f { box-shadow: inset 0 0 18px #0008, 0 0 34px #ffb34788; border-color: var(--acc); }
+#dice.mine:not(.spinning):not(.landed) .cube { animation: dice-pulse 1.4s ease-in-out infinite; }
+@keyframes dice-pulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
+
+/* ---- card illustrations ---- */
+.card.with-art { padding-top: 0; overflow: hidden; height: 196px; }
+.card .cart { height: 58px; margin: 0 -8px 6px; background-size: cover; background-position: center; border-bottom: 1px solid #3a4f6b; box-shadow: inset 0 -18px 18px -14px #0f1620; flex: none; }
+.card.with-art .ccost { top: 4px; }
+.card.with-art .ctext { font-size: 10px; line-height: 1.2; overflow: hidden; }

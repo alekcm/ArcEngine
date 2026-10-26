@@ -1,7 +1,7 @@
 // combat.mjs — intruder attacks, shooting, melee, hits and the Queen's health deck.
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, healthState, loseHealth, gainWound,
-    gainContamination, killPlayer, discardCard, COMBAT_DIE, roll, fmtRoll, removeIntruder, intruderLabel, INTRUDER_RANK,
+    gainContamination, killPlayer, discardCard, COMBAT_DIE, roll, fmtRoll, needDice, removeIntruder, intruderLabel, INTRUDER_RANK,
     drawCards, placeFire, cardDef, orderIndex } from './core.mjs';
 import { ATTACK_CARDS, ITEMS, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
@@ -146,6 +146,9 @@ OPS['shoot.fire'] = (state, step) => {
     const it = state.intruders[step.target];
     const then = step.then || { op: 'turn.choose' };
     if (!w || !it || w.ammo <= 0) { next(state, then); return; }
+    if (it.type !== 'larva' && needDice(state, step, 'combat', p.id, 'Бросок боя — выстрел')) return;
+    state.shotSeq = (state.shotSeq || 0) + 1;
+    state.lastShot = { n: state.shotSeq, player: p.id, target: it.uid, room: p.room };
     const def = ITEMS[w.item], wd = def.weapon;
     w.ammo--;
     let hits = 1 + (step.bonusHits || 0) + (wd.bonusHit || 0);
@@ -237,6 +240,7 @@ OPS['melee.hit'] = (state, step) => {
     const it = state.intruders[step.target];
     const then = step.then || { op: 'turn.choose' };
     if (!it) { next(state, then); return; }
+    if (it.type !== 'larva' && needDice(state, step, 'combat', p.id, 'Бросок боя — ближний бой')) return;
     if (!step.noContam) gainContamination(state, p, 1);
     log(state, '🗡 ' + pname(p) + ' атакует ' + intruderLabel(state, it) + ' в ближнем бою.', 'combat');
     const survived = !dealHits(state, p, it, 1 + (step.bonusHits || 0), 0, { retaliate: false });

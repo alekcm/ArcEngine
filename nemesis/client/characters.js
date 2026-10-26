@@ -4,9 +4,6 @@
 // the back; Mechanic — welding mask with a square window, hoses, orange/white plating, tools.
 // Every part is bound to a paint zone (CHARACTERS[*].zones) so the player can recolour it.
 
-import { buildStyledCharacter, STYLED_CHARACTERS } from './characters_styles.js';
-import { buildStyledIntruder } from './intruder_styles.js';
-
 const B = () => window.BABYLON;
 
 const MAT_CACHE = new WeakMap();   // scene -> Map(key -> material)
@@ -89,8 +86,7 @@ const FIXED = { gun: '#23282e', gunLight: '#4a525c', steel: '#8c96a0', darkSteel
 /**
  * Build a character. Returns { root, zones: {zoneId: [meshes]}, setColors(colors) }. Height ≈ 2.1.
  */
-export function buildCharacter(scene, charId, colors = {}, style = 'lowpoly') {
-    if (style && style !== 'lowpoly' && STYLED_CHARACTERS.includes(charId)) return buildStyledCharacter(scene, charId, colors, style);
+export function buildCharacter(scene, charId, colors = {}) {
     const S = scene;
     const root = new (B().TransformNode)('char_' + charId, S);
     const zones = {};
@@ -379,14 +375,57 @@ export function buildCharacter(scene, charId, colors = {}, style = 'lowpoly') {
     }
     setColors(colors);
     for (const m of root.getChildMeshes()) m.isPickable = false;
+    const anim = autoRig(S, root);
     // scale to ~1.8 units tall (built at ~2.8)
     root.scaling.setAll(0.66);
-    return { root, zones, setColors, animate: () => {} };
+    return { root, zones, setColors, animate: anim.animate, shoot: anim.shoot };
+}
+
+/**
+ * Auto-rig: every builder parents its meshes straight to the root, so limbs are found by position
+ * (legs below the hips, arms outside the torso) and re-parented to pivot nodes. Returns
+ * animate(t, moving) — run cycle / idle — and shoot() — recoil + muzzle flash.
+ */
+function autoRig(S, root) {
+    const HIP = 1.3, SHOULDER = 2.05;
+    const mk = (name, y) => { const n = new (B().TransformNode)(name, S); n.parent = root; n.position.set(0, y, 0); return n; };
+    const legs = { '-1': mk('legL', HIP), '1': mk('legR', HIP) }, arms = { '-1': mk('armL', SHOULDER), '1': mk('armR', SHOULDER) };
+    const guns = [];
+    for (const c of root.getChildren()) {
+        if (c === legs['-1'] || c === legs['1'] || c === arms['-1'] || c === arms['1']) continue;
+        const p = c.position; const s = p.x < 0 ? '-1' : '1';
+        if (c.name === 'gun') guns.push(c);
+        if (c.getClassName && c.getClassName() !== 'Mesh') {   // props: a pistol in a hand follows the arm
+            if (c.name === 'gun' && Math.abs(p.x) > 0.3) { p.y -= SHOULDER; c.parent = arms[s]; }
+            continue;
+        }
+        if (Math.abs(p.x) >= 0.3 && p.y > 0.7 && p.y < 2.25) { p.y -= SHOULDER; c.parent = arms[s]; }          // arms, hands and hand-held tools
+        else if (p.y < 1.25 && Math.abs(p.x) > 0.08 && Math.abs(p.x) < 0.3) { p.y -= HIP; c.parent = legs[s]; }
+    }
+    // muzzle flash: a bright blob in front of the character, hidden until a shot
+    const flash = B().MeshBuilder.CreateSphere('flash', { diameter: 0.5, segments: 4 }, S);
+    flash.parent = root; flash.position.set(0.25, 1.4, 1.0); flash.material = flatMat(S, '#fff2a0', { emissive: 1.0 }); flash.isPickable = false; flash.setEnabled(false);
+    let phase = 0, swing = 0, shotAt = -10, now = 0;
+    const animate = (t, moving) => {
+        const dt = Math.max(0, Math.min(0.1, t - now)); now = t;
+        swing += ((moving ? 1 : 0) - swing) * Math.min(1, dt * 8);
+        if (moving) phase += dt * 11;
+        const a = Math.sin(phase) * 0.75 * swing;
+        legs['-1'].rotation.x = a; legs['1'].rotation.x = -a;
+        arms['-1'].rotation.x = -a * 0.6; arms['1'].rotation.x = a * 0.6;
+        root.position.y = Math.abs(Math.sin(phase)) * 0.08 * swing;
+        // recoil: guns jump back and the torso leans for ~250 ms after a shot
+        const k = Math.max(0, 1 - (t - shotAt) / 0.25);
+        for (const g of guns) g.position.z = (g._z0 == null ? (g._z0 = g.position.z) : g._z0) - 0.18 * k;
+        flash.setEnabled(t - shotAt < 0.09);
+        if (k > 0) flash.scaling.setAll(0.6 + Math.random() * 0.8);
+    };
+    const shoot = () => { shotAt = now; };
+    return { animate, shoot };
 }
 
 /** Low-poly intruder. type: larva | adult | drone | queen */
-export function buildIntruder(scene, type, style = 'lowpoly') {
-    if (type === 'adult' && style && style !== 'lowpoly') return buildStyledIntruder(scene, style);
+export function buildIntruder(scene, type) {
     const S = scene;
     const root = new (B().TransformNode)('intr_' + type, S);
     const dark = flatMat(S, '#14181d', { spec: 0.6 }), mid = flatMat(S, '#262f36', { spec: 0.6 }), chitin = flatMat(S, '#323c3a', { spec: 0.7 });
@@ -464,5 +503,5 @@ export function buildIntruder(scene, type, style = 'lowpoly') {
         else sp(0.1, 4, torso, 0, 0.05, 0.25).material = glow;                                         // chest glow
     }
     for (const m of root.getChildMeshes()) m.isPickable = false;
-    return { root, animate: () => {} };
+    return root;
 }

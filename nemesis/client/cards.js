@@ -14,6 +14,13 @@ export function describeCard(cardId) {
 export function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
 
 /** Hand card element. info = {enabled, reason} from the turn menu (optional). */
+/** Characters whose action decks have illustrations in client/art/<charId>/<cardKey>.jpg. */
+const ART_DECKS = { android: ['alwaysPrepared', 'computerSkills', 'deactivation', 'demolition', 'fastRepairs', 'interruption', 'powerUp', 'protocolOverride', 'search', 'selfRepair'] };
+function cardArt(cardId) {
+    const [owner, key] = cardId.split('#')[0].split('.');
+    return ART_DECKS[owner] && ART_DECKS[owner].includes(key) ? 'art/' + owner + '/' + key + '.jpg' : null;
+}
+
 export function cardHtml(cardId, info, selected) {
     const d = describeCard(cardId);
     const cls = ['card'];
@@ -21,7 +28,10 @@ export function cardHtml(cardId, info, selected) {
     if (info && info.enabled) cls.push('playable'); else if (info) cls.push('disabled');
     if (selected) cls.push('selected');
     const icon = d.contam ? '☣' : d.reaction ? '⚡' : d.field ? '📡' : '';
+    const art = cardArt(cardId);
+    if (art) cls.push('with-art');
     return '<div class="' + cls.join(' ') + '" data-card="' + esc(cardId) + '" title="' + esc(d.text) + '">' +
+        (art ? '<div class="cart" style="background-image:url(' + art + ')"></div>' : '') +
         (d.cost ? '<div class="ccost">' + d.cost + '</div>' : '') +
         '<div class="cname">' + icon + ' ' + esc(d.name) + '</div>' +
         '<div class="ctext">' + esc(d.text) + '</div>' +

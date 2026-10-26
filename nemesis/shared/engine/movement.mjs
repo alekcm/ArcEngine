@@ -1,7 +1,7 @@
 // movement.mjs — Move / Careful Move, exploration, noise rolls and encounters.
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
-    NOISE_DIE, roll, fmtRoll, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
+    NOISE_DIE, roll, fmtRoll, needDice, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
     clearNoiseAround, HEAVY_NAMES } from './core.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
@@ -117,6 +117,7 @@ OPS['noise.place'] = (state, step) => {
 OPS['noise.roll'] = (state, step) => {
     const p = player(state, step.player);
     const roomId = step.room || p.room;
+    if (needDice(state, step, 'noise', p.id, 'Бросок шума — ' + roomName(state, roomId))) return;
     const r = roll(state, NOISE_DIE);
     log(state, '🎲 Шум (' + pname(p) + ', ' + roomName(state, roomId) + '): ' + fmtRoll(r) + '.', 'noise');
     if (r === 'silence') return;

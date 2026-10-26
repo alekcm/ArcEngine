@@ -18,6 +18,7 @@ export function run(state) {
         const h = OPS[step.op];
         if (!h) throw new Error('unknown op ' + step.op);
         h(state, step);
+        if (step.op !== 'dice.rolled') { state.pendingRoll = null; state.pendingRollPlayer = null; }
         if (++guard > 20000) throw new Error('runaway queue at ' + step.op);
         // Safety net: a chain can be cut short (e.g. the acting character died mid-action).
         // Fall back to the natural continuation of the current phase.
@@ -69,6 +70,7 @@ function validateAnswer(state, p, choice) {
             return choice.every(c => p.cards.includes(c));
         }
         case 'info': return true;
+        case 'dice': return true;
         case 'turn': return choice && typeof choice === 'object' && typeof choice.action === 'string';
         default: return true;
     }
@@ -423,7 +425,33 @@ export function intruderLabel(state, it) {
 }
 export const INTRUDER_RANK = { queen: 0, drone: 1, adult: 2, larva: 3 };
 
-export function roll(state, die) { return die[randInt(state, die.length)]; }
+/** Roll `die`. If the acting player already rolled interactively (state.pendingRoll from the
+ *  'dice' prompt) that value is consumed instead. Every roll is recorded in state.lastRoll so
+ *  all clients can animate it. */
+export function roll(state, die) {
+    const id = die === NOISE_DIE ? 'noise' : 'combat';
+    let v;
+    if (state.pendingRoll && state.pendingRoll.die === id) { v = state.pendingRoll.value; state.pendingRoll = null; }
+    else v = die[randInt(state, die.length)];
+    state.rollSeq = (state.rollSeq || 0) + 1;
+    state.lastRoll = { n: state.rollSeq, die: id, value: v, player: state.pendingRollPlayer == null ? null : state.pendingRollPlayer };
+    return v;
+}
+/** Insert an interactive dice prompt before `step` (which is re-queued afterwards).
+ *  Returns true when the caller must return and wait; false when the roll is already pending. */
+export function needDice(state, step, die, playerId, title) {
+    if (state.pendingRoll && state.pendingRoll.die === die) return false;
+    const p = state.players[playerId];
+    if (!p || p.status !== 'active') return false;
+    ask(state, { kind: 'dice', player: playerId, die, title }, { op: 'dice.rolled', die, player: playerId, then: step });
+    return true;
+}
+OPS['dice.rolled'] = (state, step) => {
+    const die = step.die === 'noise' ? NOISE_DIE : COMBAT_DIE;
+    state.pendingRoll = { die: step.die, value: die[randInt(state, die.length)] };
+    state.pendingRollPlayer = step.player;
+    next(state, step.then);
+};
 export function fmtRoll(v) { return v === 'crit' ? 'КРИТ' : v === 'silence' ? 'Тишина' : v === 'danger' ? 'Опасность' : v === 'encounter' ? 'Встреча' : String(v); }
 export function drawBagToken(state) {
     if (!state.bag.length) return null;

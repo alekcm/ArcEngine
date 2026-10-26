@@ -21,7 +21,6 @@ export function createGame(config) {
         version: 1,
         seedStr, rng: seedFromString(seedStr),
         mode: config.mode === 'random' ? 'random' : 'original',
-        intruderStyle: config.intruderStyle || 'lowpoly',
         round: 0, phase: 'setup',
         players: [], firstPlayer: 0, current: 0,
         queue: [], prompt: null, resume: null, promptSeq: 0,
@@ -84,7 +83,7 @@ export function createGame(config) {
     config.players.forEach((pc, i) => {
         const ch = CHARACTERS[pc.charId];
         const p = {
-            id: i, name: pc.name, charId: pc.charId, colors: pc.colors || {}, style: pc.style || 'lowpoly',
+            id: i, name: pc.name, charId: pc.charId, colors: pc.colors || {},
             room: hiber, health: ch.health, hand: [], deck: [], discard: [], wounds: [], larva: false,
             items: [], heavy: [], armor: null, knowledge: 1, knowledgeActive: false, signal: false, supportUsed: false,
             objectives: [], objective: null, status: 'active', passed: false, pod: null,

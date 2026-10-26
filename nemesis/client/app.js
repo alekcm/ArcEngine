@@ -3,7 +3,7 @@
 
 import { Scene3D, Preview3D } from './scene3d.js';
 import { DEFAULTS } from './characters.js';
-import { MODEL_STYLES, STYLED_CHARACTERS } from './characters_styles.js';
+import { DiceUI } from './dice.js';
 import { cardHtml, describeCard, esc, itemLabel, itemTitle, woundName } from './cards.js';
 import { ROOM_TILES } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS } from '/shared/data/cards.mjs';
@@ -34,7 +34,7 @@ const app = {
     lobby: null, view: null, logEntries: [], selectedCards: new Set(), hoverRoom: null,
     charId: null, colors: {}, name: '', ready: false, menuCollapsed: true,
 };
-let scene = null, preview = null;
+let scene = null, preview = null, dice = null;
 
 function onMessage(m) {
     switch (m.t) {
@@ -73,7 +73,7 @@ function renderLobby() {
     const mySeat = L.seats.find(s => s.id === app.me);
     if (mySeat) {
         if (document.activeElement !== $('nameInput')) $('nameInput').value = mySeat.name;
-        app.charId = mySeat.charId; app.colors = mySeat.colors || {}; app.ready = mySeat.ready; app.style = mySeat.style || 'lowpoly';
+        app.charId = mySeat.charId; app.colors = mySeat.colors || {}; app.ready = mySeat.ready;
         app.host = mySeat.host;
     }
     // characters
@@ -82,20 +82,6 @@ function renderLobby() {
         return '<div class="char-card ' + (id === app.charId ? 'sel' : '') + (taken ? ' taken' : '') + '" data-char="' + id + '" style="border-left:5px solid ' + c.color + '"><b>' + esc(c.name) + '</b><small>' + esc((CHARACTERS[id] ? CHARACTERS[id].startItems : []).map(si => ITEMS[si.item].name).join(', ')) + '</small></div>';
     }).join('');
     for (const el of $('charList').querySelectorAll('.char-card')) el.onclick = () => { if (el.classList.contains('taken')) return; net.send({ t: 'lobby', charId: el.dataset.char, colors: {} }); };
-    // model style (only for characters that have alternative builds)
-    const styled = STYLED_CHARACTERS.includes(app.charId);
-    $('styleRow').classList.toggle('hidden', !styled);
-    if (styled) {
-        $('styleList').innerHTML = Object.entries(MODEL_STYLES).map(([id, s]) =>
-            '<div class="style-card ' + (id === app.style ? 'sel' : '') + '" data-style="' + id + '" title="' + esc(s.desc) + '"><b>' + esc(s.name) + '</b><small>' + esc(s.desc) + '</small></div>').join('');
-        for (const el of $('styleList').querySelectorAll('.style-card')) el.onclick = () => net.send({ t: 'lobby', style: el.dataset.style });
-    }
-    // intruder model style (host-only setting; shared by all players) + preview toggle
-    $('intrStyleList').innerHTML = Object.entries(MODEL_STYLES).map(([id, s]) =>
-        '<div class="style-card ' + (id === (L.settings.intruderStyle || 'lowpoly') ? 'sel' : '') + (app.host ? '' : ' disabled') + '" data-istyle="' + id + '" title="' + esc(s.desc) + '"><b>' + esc(s.name) + '</b></div>').join('');
-    for (const el of $('intrStyleList').querySelectorAll('.style-card')) el.onclick = () => { if (!app.host) return; net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value, intruderStyle: el.dataset.istyle } }); };
-    $('intrHint').textContent = app.host ? 'Как выглядит взрослый чужой в игре; кнопка под превью покажет его.' : 'Выбирает ведущий.';
-    $('previewToggle').textContent = app.previewIntruder ? 'Показать персонажа' : 'Показать чужого';
     // paint zones
     const ch = L.characters[app.charId];
     if (ch) {
@@ -109,8 +95,7 @@ function renderLobby() {
         for (const el of $('paintZones').querySelectorAll('.swatch[data-color]')) el.onclick = () => sendColor(el.dataset.zone, el.dataset.color);
         for (const el of $('paintZones').querySelectorAll('input[type=color]')) el.oninput = () => sendColor(el.dataset.zone, el.value);
         if (!preview) preview = new Preview3D($('previewCanvas'));
-        if (app.previewIntruder) preview.showIntruder(L.settings.intruderStyle || 'lowpoly');
-        else preview.show(app.charId, Object.assign({}, def, app.colors), styled ? app.style : 'lowpoly');
+        preview.show(app.charId, Object.assign({}, def, app.colors));
     }
     // seats
     $('seatList').innerHTML = L.seats.map(s => {
@@ -133,11 +118,9 @@ function sendColor(zone, color) { app.colors = Object.assign({}, app.colors, { [
 
 $('nameInput').onchange = () => { localStorage.setItem('nemesis.name', $('nameInput').value); net.send({ t: 'lobby', name: $('nameInput').value }); };
 $('readyBtn').onclick = () => net.send({ t: 'lobby', ready: !app.ready });
-$('previewToggle').onclick = () => { app.previewIntruder = !app.previewIntruder; renderLobby(); };
 $('startBtn').onclick = () => net.send({ t: 'start' });
-const sendSettings = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value, intruderStyle: (app.lobby && app.lobby.settings.intruderStyle) || 'lowpoly' } });
-$('modeSelect').onchange = sendSettings;
-$('seedInput').onchange = sendSettings;
+$('modeSelect').onchange = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value } });
+$('seedInput').onchange = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value } });
 $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else $('endOverlay').classList.add('hidden'); };
 
 // ---------------------------------------------------------------------------------------------
@@ -151,6 +134,8 @@ function renderGame() {
     const selectable = pr && pr.kind === 'room' && !pr.waiting ? pr.rooms : [];
     scene.update(v, ROOM_TILES, INTRUDER_NAMES, selectable);
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
+    if (!dice) { dice = new DiceUI($('dice'), () => act('roll')); dice.afterHide = () => { if (app.view) dice.update(app.view, app.me, playerName); }; }
+    dice.update(v, app.me, playerName);
     if (v.result) renderEnd();
 }
 
@@ -229,7 +214,7 @@ function renderHistory() { $('history').innerHTML = (app.history || []).map(h =>
 function renderPrompt() {
     const v = app.view; const pr = v.prompt; const el = $('prompt'); const tg = $('menuToggle');
     app.selectedCards.clear();
-    if (!pr) { el.classList.add('hidden'); tg.classList.add('hidden'); return; }
+    if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); return; }   // dice prompts are shown by DiceUI
     const who = pr.player === 'host' ? 'Ведущий' : v.players[pr.player].name;
     // Collapsing: the turn menu remembers the player's choice; other prompts re-open when a new one arrives.
     if (pr.id !== app.lastPromptId) { app.lastPromptId = pr.id; if (pr.kind !== 'turn') app.promptCollapsed = false; else app.promptCollapsed = true; }  // the action list never pops up by itself
@@ -278,6 +263,7 @@ function renderPrompt() {
     for (const b of el.querySelectorAll('[data-room]')) b.onclick = () => act(b.dataset.room);
     const ok = $('cardsOk'); if (ok) ok.onclick = () => act([...app.selectedCards]);
 }
+function playerName(id) { const v = app.view; return v && v.players[id] ? v.players[id].name : ''; }
 function act(answer) { const pr = app.view && app.view.prompt; if (!pr) return; net.send({ t: 'act', promptId: pr.id, answer }); }
 
 function renderHand() {

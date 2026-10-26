@@ -45,27 +45,7 @@ const TILE_STYLE = {
     contaminated: 'toxic', containment: 'cold', hibernatorium: 'cold',
 };
 
-/** Tiny procedural environment (dark hangar: cool sky, warm floor) so PBR materials have reflections. */
-function makeEnv(scene) {
-    try {
-        const size = 16;
-        const faces = [];
-        for (let f = 0; f < 6; f++) {
-            const data = new Uint8Array(size * size * 4);
-            for (let i = 0; i < size * size; i++) {
-                const y = Math.floor(i / size) / size;
-                let r = 20, g = 26, b = 36;
-                if (f === 2) { r = 60; g = 70; b = 90; }            // +Y: ceiling lights
-                else if (f === 3) { r = 30; g = 24; b = 18; }       // -Y: warm floor
-                else { const k = 1 - y; r = 14 + 40 * k; g = 18 + 46 * k; b = 26 + 60 * k; }
-                data[i * 4] = r; data[i * 4 + 1] = g; data[i * 4 + 2] = b; data[i * 4 + 3] = 255;
-            }
-            faces.push(data);
-        }
-        const tex = new (B().RawCubeTexture)(scene, faces, size, B().Engine.TEXTUREFORMAT_RGBA, B().Engine.TEXTURETYPE_UNSIGNED_INT, false, false, B().Texture.TRILINEAR_SAMPLINGMODE);
-        return tex;
-    } catch (e) { return null; }
-}
+const RUN_SPEED = 9;   // world units per second for character runs between rooms
 
 export class Scene3D {
     constructor(canvas, callbacks) {
@@ -90,8 +70,7 @@ export class Scene3D {
         this.shadows.usePercentageCloserFiltering = true; this.shadows.darkness = 0.45;
         this.roomNodes = {}; this.corridorNodes = {}; this.dynamic = []; this.chars = {}; this.intr = {}; this.hull = [];
         this.glow = new (B().GlowLayer)('glow', this.scene, { blurKernelSize: 48 }); this.glow.intensity = 0.5;
-        this.shipKey = null; this.selectable = new Set(); this.hover = null; this.t = 0;
-        this.scene.environmentTexture = makeEnv(this.scene);
+        this.shipKey = null; this.selectable = new Set(); this.hover = null; this.t = 0; this.lastShotSeen = null;
         this.stars();
         this.scene.onPointerObservable.add(pi => this.onPointer(pi));
         this.engine.runRenderLoop(() => { this.t += this.engine.getDeltaTime() / 1000; this.animate(); this.scene.render(); });
@@ -714,7 +693,7 @@ export class Scene3D {
         for (const it of Object.values(view.intruders)) {
             seen.add(it.uid);
             let n = this.intr[it.uid];
-            if (!n) { const built = buildIntruder(S, it.type, view.intruderStyle); n = { root: built.root, animate: built.animate, label: null }; n.label = this.makeLabel('il', '', '', n.root, 0, 3.0, 0, 2.6); this.intr[it.uid] = n; for (const m of n.root.getChildMeshes()) this.shadows.addShadowCaster(m); }
+            if (!n) { n = { root: buildIntruder(S, it.type), label: null }; n.label = this.makeLabel('il', '', '', n.root, 0, 3.0, 0, 2.6); this.intr[it.uid] = n; for (const m of n.root.getChildMeshes()) this.shadows.addShadowCaster(m); }
             const k = perRoom[it.room] = (perRoom[it.room] || 0) + 1;
             const roomPos = this.roomNodes[it.room].root.position;
             n.target = this.slotPos(roomPos, k - 1, 'intr');
@@ -731,7 +710,7 @@ export class Scene3D {
         for (const p of view.players) {
             let n = this.chars[p.id];
             if (!n) {
-                const ch = buildCharacter(S, p.charId, p.colors, p.style);
+                const ch = buildCharacter(S, p.charId, p.colors);
                 n = { ch, label: this.makeLabel('cl', p.name, '', ch.root, 0, 3.6, 0, 3.8), placed: false, colorsKey: null };
                 this.chars[p.id] = n;
                 for (const m of ch.root.getChildMeshes()) this.shadows.addShadowCaster(m);
@@ -744,12 +723,21 @@ export class Scene3D {
             const k = perRoom[p.room] = (perRoom[p.room] || 0) + 1;
             const roomPos = this.roomNodes[p.room].root.position;
             n.target = this.slotPos(roomPos, k - 1, 'char');
+            const firstPlace = !n.placed;
             if (!n.placed) { n.ch.root.position.copyFrom(n.target); n.placed = true; }
             const hasIntr = Object.values(view.intruders).some(i => i.room === p.room);
-            n.ch.root.rotation.y = hasIntr ? Math.PI * 0.75 : -Math.PI / 4 + Math.PI;   // face intruders, else the camera
+            n.faceY = hasIntr ? Math.PI * 0.75 : -Math.PI / 4 + Math.PI;   // face intruders, else the camera (applied once the run ends)
+            if (firstPlace) n.ch.root.rotation.y = n.faceY;
             const current = view.current === p.id && view.phase === 'player';
             this.setLabel(n.label, p.name + (p.passed ? ' (пас)' : ''), p.charName, current ? '#ffb347' : '#ffffff');
             n.ch.root.scaling.setAll(p.status === 'hibernating' ? 0.001 : 0.66);
+        }
+        // shot animation (everyone sees it): triggered once per new lastShot
+        if (this.lastShotSeen === null) this.lastShotSeen = view.lastShot ? view.lastShot.n : 0;   // ignore shots already in the state on (re)connect
+        else if (view.lastShot && view.lastShot.n !== this.lastShotSeen) {
+            this.lastShotSeen = view.lastShot.n;
+            const n = this.chars[view.lastShot.player];
+            if (n && n.ch.shoot && n.placed) { const it = this.intr[view.lastShot.target]; if (it) { const d = it.root.position.subtract(n.ch.root.position); n.faceY = Math.atan2(d.x, d.z); n.ch.root.rotation.y = n.faceY; } n.ch.shoot(); }
         }
     }
 
@@ -769,8 +757,20 @@ export class Scene3D {
             }
         }
         const lerp = Math.min(1, this.engine.getDeltaTime() / 400);
-        for (const n of Object.values(this.chars)) if (n.target && n.ch.root.isEnabled()) { B().Vector3.LerpToRef(n.ch.root.position, n.target, lerp, n.ch.root.position); if (n.ch.animate) n.ch.animate(t); }
-        for (const n of Object.values(this.intr)) if (n.target) { B().Vector3.LerpToRef(n.root.position, n.target, lerp, n.root.position); n.root.position.y = Math.abs(Math.sin(t * 3 + n.root.position.x)) * 0.05; if (n.animate) n.animate(t); }
+        const dt = this.engine.getDeltaTime() / 1000;
+        for (const n of Object.values(this.chars)) {
+            if (!n.target || !n.ch.root.isEnabled()) continue;
+            const pos = n.ch.root.position, d = n.target.subtract(pos); d.y = 0;
+            const dist = d.length(), stepLen = RUN_SPEED * dt;
+            const moving = dist > 0.05;
+            if (moving) {
+                if (dist <= stepLen) { pos.x = n.target.x; pos.z = n.target.z; }
+                else { pos.x += d.x / dist * stepLen; pos.z += d.z / dist * stepLen; }
+                n.ch.root.rotation.y = Math.atan2(d.x, d.z);          // face the running direction
+            } else if (n.faceY != null) n.ch.root.rotation.y += (n.faceY - n.ch.root.rotation.y) * Math.min(1, dt * 6);
+            if (n.ch.animate) n.ch.animate(t, moving);
+        }
+        for (const n of Object.values(this.intr)) if (n.target) { B().Vector3.LerpToRef(n.root.position, n.target, lerp, n.root.position); n.root.position.y = Math.abs(Math.sin(t * 3 + n.root.position.x)) * 0.05; }
         const ls = this.camera.radius > 60 ? this.camera.radius / 60 : 1;
         for (const n of Object.values(this.roomNodes)) n.label.scaling.setAll(ls);
     }
@@ -812,26 +812,13 @@ export class Preview3D {
         const h = new (B().HemisphericLight)('h', new (B().Vector3)(0.3, 1, 0.2), this.scene); h.intensity = 0.8;
         const d = new (B().DirectionalLight)('d', new (B().Vector3)(-0.5, -1, 0.6), this.scene); d.intensity = 0.7;
         const disc = B().MeshBuilder.CreateCylinder('disc', { diameter: 1.6, height: 0.1, tessellation: 8 }, this.scene);
-        disc.position.y = -0.05; disc.material = flatMat(this.scene, '#243040'); this.disc = disc;
-        this.char = null; this.charId = null; this.t = 0;
-        // PBR styles need an environment for reflections
-        this.scene.environmentTexture = makeEnv(this.scene);
-        this.engine.runRenderLoop(() => { this.t += this.engine.getDeltaTime() / 1000; if (this.char && this.char.animate) this.char.animate(this.t); this.scene.render(); });
+        disc.position.y = -0.05; disc.material = flatMat(this.scene, '#243040');
+        this.char = null; this.charId = null;
+        this.engine.runRenderLoop(() => this.scene.render());
         new ResizeObserver(() => this.engine.resize()).observe(canvas);
     }
-    /** Debug/visual check: show the adult intruder instead of a character. */
-    showIntruder(style = 'lowpoly') {
-        const key = '@intruder|' + style;
-        if (this.charId === key) return;
-        if (this.char) this.char.root.dispose();
-        const built = buildIntruder(this.scene, 'adult', style);
-        built.root.scaling.setAll(0.75);
-        this.char = { root: built.root, animate: built.animate, setColors: () => {} };
-        this.charId = key; this.disc.setEnabled(style !== 'mini');
-    }
-    show(charId, colors, style = 'lowpoly') {
-        const key = charId + '|' + style;
-        if (this.charId !== key) { if (this.char) this.char.root.dispose(); this.char = buildCharacter(this.scene, charId, colors, style); this.charId = key; this.disc.setEnabled(style !== 'mini'); }
+    show(charId, colors) {
+        if (this.charId !== charId) { if (this.char) this.char.root.dispose(); this.char = buildCharacter(this.scene, charId, colors); this.charId = charId; }
         else this.char.setColors(colors);
     }
 }
