@@ -209,11 +209,17 @@ function renderHistory() { $('history').innerHTML = (app.history || []).map(h =>
 // Prompt
 // ---------------------------------------------------------------------------------------------
 function renderPrompt() {
-    const v = app.view; const pr = v.prompt; const el = $('prompt');
+    const v = app.view; const pr = v.prompt; const el = $('prompt'); const tg = $('menuToggle');
     app.selectedCards.clear();
-    if (!pr) { el.classList.add('hidden'); return; }
-    el.classList.remove('hidden');
+    if (!pr) { el.classList.add('hidden'); tg.classList.add('hidden'); return; }
     const who = pr.player === 'host' ? 'Ведущий' : v.players[pr.player].name;
+    // Collapsing: the turn menu remembers the player's choice; other prompts re-open when a new one arrives.
+    if (pr.id !== app.lastPromptId) { app.lastPromptId = pr.id; if (pr.kind !== 'turn') app.promptCollapsed = false; else app.promptCollapsed = app.menuCollapsed; }
+    const mine = !pr.waiting;
+    tg.classList.toggle('hidden', !mine && !pr.waiting);
+    tg.textContent = app.promptCollapsed ? '☰ ' + (pr.kind === 'turn' ? 'Действия' : 'Открыть окно') : '✕ Свернуть';
+    tg.classList.toggle('attention', mine && app.promptCollapsed);
+    el.classList.toggle('hidden', app.promptCollapsed);
     if (pr.waiting) {
         el.classList.add('waiting');
         el.innerHTML = '<h4>' + esc(who) + ' <span class="waiting-dots">думает</span></h4><div class="ptext">' + esc(pr.title || '') + '</div>';
@@ -328,6 +334,12 @@ for (const t of document.querySelectorAll('.pane-tabs .tab')) t.onclick = () => 
 };
 $('chatInput').onkeydown = e => { if (e.key === 'Enter' && $('chatInput').value.trim()) { net.send({ t: 'chat', text: $('chatInput').value.trim() }); $('chatInput').value = ''; } };
 function addChat(m) { const d = document.createElement('div'); d.innerHTML = '<b>' + esc(m.from) + ':</b> ' + esc(m.text); $('chatLines').appendChild(d); $('chatLines').scrollTop = $('chatLines').scrollHeight; if ($('chat').classList.contains('hidden')) notice('💬 ' + m.from + ': ' + m.text); }
+$('menuToggle').onclick = () => {
+    app.promptCollapsed = !app.promptCollapsed;
+    const pr = app.view && app.view.prompt;
+    if (pr && pr.kind === 'turn') app.menuCollapsed = app.promptCollapsed;
+    renderPrompt(); renderHand();
+};
 $('undoBtn').onclick = () => { if (confirm('Откатить последнее действие? Все игроки получат уведомление.')) net.send({ t: 'undo', steps: 1 }); };
 $('helpBtn').onclick = () => { $('helpBody').innerHTML = HELP; $('helpOverlay').classList.remove('hidden'); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('helpOverlay').classList.add('hidden'); } });

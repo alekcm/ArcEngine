@@ -148,3 +148,8 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 .end-row .res.win { color: var(--green); } .end-row .res.lose { color: var(--red); }
 #helpBody { font-size: 13px; line-height: 1.45; max-height: 60vh; overflow: auto; }
 #helpBody h4 { color: var(--acc); margin: 12px 0 4px; }
+
+#menuToggle { position: fixed; left: 50%; bottom: 200px; transform: translateX(-50%); z-index: 13; background: #1d2a3bee; border-color: var(--acc); padding: 8px 18px; font-weight: 600; }
+#prompt:not(.hidden) ~ #menuToggle { bottom: auto; top: 54px; left: auto; right: 340px; transform: none; padding: 5px 12px; font-size: 12px; }
+#menuToggle.attention { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 #ffb34766; } 50% { box-shadow: 0 0 0 10px #ffb34700; } }
