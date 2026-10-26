@@ -187,3 +187,28 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 .card .cart { height: 58px; margin: 0 -8px 6px; background-size: cover; background-position: center; border-bottom: 1px solid #3a4f6b; box-shadow: inset 0 -18px 18px -14px #0f1620; flex: none; }
 .card.with-art .ccost { top: 4px; }
 .card.with-art .ctext { font-size: 10px; line-height: 1.2; overflow: hidden; }
+
+/* ---- table piles & flying cards ---- */
+#table { position: fixed; right: 10px; bottom: 10px; width: 262px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 4px; z-index: 9; padding: 8px 10px; background: #0b111899; border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(4px); }
+#table .pile { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 46px; }
+#table .pile.empty { opacity: 0.4; }
+#table .pback { width: 38px; height: 52px; border-radius: 5px; background: linear-gradient(150deg, var(--pc), #0c1118 140%); border: 1px solid #ffffff33; box-shadow: 2px 2px 0 #0008, 4px 4px 0 #0005; position: relative; display: flex; align-items: flex-end; justify-content: flex-end; }
+#table .pback::before { content: ''; position: absolute; inset: 5px; border: 1px solid #ffffff2a; border-radius: 3px; }
+#table .pcount { font-size: 11px; font-weight: 800; color: #fff; background: #000a; border-radius: 4px; padding: 0 3px; margin: 2px; }
+#table .pdisc { position: absolute; left: 4px; top: 2px; font-size: 12px; color: #fff9; }
+#table .plabel { font-size: 9px; color: #93a2b5; text-align: center; line-height: 1; white-space: nowrap; }
+#fxLayer { position: fixed; inset: 0; pointer-events: none; z-index: 40; overflow: hidden; }
+.flycard { position: absolute; left: 0; top: 0; perspective: 800px; will-change: transform; }
+.flycard .fc-inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform 0.35s ease-in-out; }
+.flycard.flipped .fc-inner { transform: rotateY(180deg); }
+.flycard .fc-back, .flycard .fc-front { position: absolute; inset: 0; border-radius: 8px; backface-visibility: hidden; border: 1px solid #ffffff44; box-shadow: 0 10px 30px #000b; }
+.flycard .fc-back { background: linear-gradient(150deg, var(--pc), #0c1118 140%); }
+.flycard .fc-back::before { content: ''; position: absolute; inset: 7px; border: 1px solid #ffffff2a; border-radius: 5px; }
+.flycard .fc-front { transform: rotateY(180deg); background: linear-gradient(#1b2635, #0f1620); border-color: var(--pc); padding: 10px; display: flex; flex-direction: column; gap: 6px; color: #e8eef5; font-size: 12px; overflow: hidden; }
+.flycard .fc-front small { color: var(--pc); filter: brightness(1.6); font-weight: 700; font-size: 11px; letter-spacing: .5px; text-transform: uppercase; }
+.flycard .fc-front b { font-size: 14px; }
+.flycard .fc-front p { margin: 0; color: #c7d0da; font-size: 11px; line-height: 1.3; }
+.flycard .fc-front em { margin-top: auto; color: var(--acc); font-style: normal; font-size: 11px; }
+.flycard.burn .fc-inner { animation: card-burn 0.7s ease-in forwards; }
+@keyframes card-burn { 0% { filter: brightness(1); opacity: 1; } 40% { filter: brightness(2) sepia(1) hue-rotate(-30deg); } 100% { filter: brightness(0.2); opacity: 0; transform: rotateY(180deg) scale(0.6) translateY(-30px); } }
+.notice.ping { border-color: #5ad1ff; }

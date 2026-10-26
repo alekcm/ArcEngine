@@ -1,7 +1,7 @@
 // combat.mjs — intruder attacks, shooting, melee, hits and the Queen's health deck.
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, healthState, loseHealth, gainWound,
-    gainContamination, killPlayer, discardCard, COMBAT_DIE, roll, fmtRoll, needDice, removeIntruder, intruderLabel, INTRUDER_RANK,
+    gainContamination, killPlayer, discardCard, COMBAT_DIE, roll, fmtRoll, needDice, fx, removeIntruder, intruderLabel, INTRUDER_RANK,
     drawCards, placeFire, cardDef, orderIndex } from './core.mjs';
 import { ATTACK_CARDS, ITEMS, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
@@ -54,6 +54,7 @@ function resolveAttack(state, step, it, p) {
     const cardId = state.attackDeck.shift();
     state.attackDiscard.push(cardId);
     const card = ATTACK_BY_ID[cardId];
+    fx(state, { type: 'attack', card: cardId, name: card.name, intruder: it.type, player: p.id });
     let effects = card[it.type];
     if (typeof effects === 'string') effects = card[effects];
     log(state, '⚔ ' + intruderLabel(state, it) + ' атакует ' + pname(p) + ': «' + card.name + '».', 'combat');
@@ -204,6 +205,7 @@ OPS['queen.card'] = (state, step) => {
     if (!state.queenDeck.length) return;
     const idx = state.queenDeck.shift();
     const card = QUEEN_CARDS[idx];
+    fx(state, { type: 'queen', name: card.name, text: card.text });
     log(state, '👑 Карта здоровья Королевы: «' + card.name + '» — ' + card.text, 'combat');
     if (card.extra) state.queenDeck.splice(0, card.extra);
     state.queenHits = 0;

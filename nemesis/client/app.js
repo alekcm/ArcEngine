@@ -4,6 +4,7 @@
 import { Scene3D, Preview3D } from './scene3d.js';
 import { DEFAULTS } from './characters.js';
 import { DiceUI } from './dice.js';
+import { TableFX } from './fx.js';
 import { cardHtml, describeCard, esc, itemLabel, itemTitle, woundName } from './cards.js';
 import { ROOM_TILES } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS } from '/shared/data/cards.mjs';
@@ -34,7 +35,8 @@ const app = {
     lobby: null, view: null, logEntries: [], selectedCards: new Set(), hoverRoom: null,
     charId: null, colors: {}, name: '', ready: false, menuCollapsed: true,
 };
-let scene = null, preview = null, dice = null;
+let scene = null, preview = null, dice = null, tableFx = null;
+let cursorSent = 0, lastFloor = null;
 
 function onMessage(m) {
     switch (m.t) {
@@ -50,9 +52,13 @@ function onMessage(m) {
             app.logEntries.push(...m.view.log);
             app.view = m.view; app.undoDepth = m.undoDepth; app.history = m.history;
             renderGame();
+            if (m.poses && scene) for (const [pid, pose] of Object.entries(m.poses)) scene.setPose(Number(pid), pose, true);
             break;
         case 'notice': notice(m.text, m.kind); break;
         case 'chat': addChat(m); break;
+        case 'cursor': if (scene && app.view && m.pid !== app.me) { const p = app.view.players[m.pid]; if (p) scene.setCursor(m.pid, m.x, m.z, CHARACTERS[p.charId].color, p.name, m.off); } break;
+        case 'pose': if (scene && m.pid !== app.me) scene.setPose(m.pid, m.pose, false); break;
+        case 'ping': if (scene && app.view) { const p = app.view.players[m.pid]; if (p) { scene.ping(m.x, m.z, CHARACTERS[p.charId].color); if (m.pid !== app.me) notice('📍 ' + p.name + (m.room ? ' указывает на ' + roomLabel(m.room) : ' указывает на стол'), 'ping'); } } break;
     }
 }
 
@@ -129,13 +135,22 @@ $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else
 function renderGame() {
     const v = app.view;
     $('lobby').classList.add('hidden'); $('hud').classList.remove('hidden');
-    if (!scene) scene = new Scene3D($('scene'), { onHover: onRoomHover, onClick: onRoomClick });
+    if (!scene) {
+        scene = new Scene3D($('scene'), {
+            onHover: onRoomHover, onClick: onRoomClick,
+            onCursor: (x, z, room) => { lastFloor = { x, z, room }; const now = performance.now(); if (now - cursorSent > 50) { cursorSent = now; net.send({ t: 'cursor', x, z }); } },
+            onPose: pose => net.send({ t: 'pose', dx: pose.dx, dz: pose.dz, rot: pose.rot }),
+        });
+    }
+    scene.setMe(app.me);
     const pr = v.prompt;
     const selectable = pr && pr.kind === 'room' && !pr.waiting ? pr.rooms : [];
     scene.update(v, ROOM_TILES, INTRUDER_NAMES, selectable);
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
     if (!dice) { dice = new DiceUI($('dice'), () => act('roll')); dice.afterHide = () => { if (app.view) dice.update(app.view, app.me, playerName); }; }
     dice.update(v, app.me, playerName);
+    if (!tableFx) tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES);
+    tableFx.update(v, app.me);
     if (v.result) renderEnd();
 }
 
@@ -187,7 +202,7 @@ function renderPlayers() {
             const ke = Object.entries(p.knownEngines || {}); if (ke.length) known += '<div class="items">⚙ ' + ke.map(([n, w]) => '№' + n + ': ' + (w ? 'исправен' : 'повреждён')).join(', ') + '</div>';
             if (p.knownCoords) known += '<div class="items">🧭 координаты известны (см. Рубку)</div>';
         }
-        return '<div class="pcard ' + (v.current === p.id && v.phase === 'player' ? 'current' : '') + (me ? ' me' : '') + (p.status === 'dead' ? ' dead' : '') + '" style="border-left-color:' + CHARACTERS[p.charId].color + '">' +
+        return '<div class="pcard ' + (v.current === p.id && v.phase === 'player' ? 'current' : '') + (me ? ' me' : '') + (p.status === 'dead' ? ' dead' : '') + '" data-pid="' + p.id + '" style="border-left-color:' + CHARACTERS[p.charId].color + '">' +
             '<div class="pname"><span>' + esc(p.name) + (me ? ' (вы)' : '') + '</span><small>' + esc(p.charName) + ' ' + statusName(p) + '</small></div>' +
             hpBar(p) + '<div class="tags">' + tags.join('') + '</div><div class="items">' + items + '</div>' + obj + known +
             '<div class="items dim">📍 ' + esc(roomLabel(p.room)) + '</div></div>';
@@ -346,7 +361,15 @@ $('menuToggle').onclick = () => {
 };
 $('undoBtn').onclick = () => { if (confirm('Откатить последнее действие? Все игроки получат уведомление.')) net.send({ t: 'undo', steps: 1 }); };
 $('helpBtn').onclick = () => { $('helpBody').innerHTML = HELP; $('helpOverlay').classList.remove('hidden'); };
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('helpOverlay').classList.add('hidden'); } });
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { $('helpOverlay').classList.add('hidden'); }
+    const typing = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
+    if (typing || !scene || !app.view) return;
+    if (e.key === 'Tab') { e.preventDefault(); if (lastFloor && !e.repeat) net.send({ t: 'ping', x: lastFloor.x, z: lastFloor.z, room: lastFloor.room }); }
+    else if (e.key === 'q' || e.key === 'Q' || e.key === 'й' || e.key === 'Й') scene.rotateMe(-Math.PI / 12);
+    else if (e.key === 'e' || e.key === 'E' || e.key === 'у' || e.key === 'У') scene.rotateMe(Math.PI / 12);
+});
+window.addEventListener('blur', () => { if (app.view) net.send({ t: 'cursor', off: true }); });
 
 const HELP = `
 <h4>Цель</h4><p>Выживите и выполните одну из двух своих целей (личную или корпоративную). Выбор цели — бесплатным действием в свой ход; до первой встречи с чужим можно не спешить.</p>

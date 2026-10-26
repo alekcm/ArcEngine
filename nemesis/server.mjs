@@ -112,7 +112,7 @@ function upgrade(req, sock) {
 const game = {
     phase: 'lobby',                   // 'lobby' | 'playing'
     seats: [],                        // [{token, name, charId, colors, ready, socket|null}]
-    settings: { mode: 'original', seed: '' },
+    settings: { mode: 'original', seed: '' }, poses: {},
     state: null,
     undo: [],                         // [{json, label}]
     history: [],                      // labels of accepted actions (for the undo list)
@@ -120,6 +120,8 @@ const game = {
 };
 const clients = new Set();            // sockets (spectators included)
 
+function num(v) { v = Number(v); return Number.isFinite(v) ? Math.round(v * 100) / 100 : 0; }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function seatOf(socket) { return game.seats.find(s => s.socket === socket); }
 function hostSeat() { return game.seats.find(s => s.socket) || game.seats[0]; }
 function isHost(socket) { const s = seatOf(socket); return s && s === hostSeat(); }
@@ -139,7 +141,7 @@ function sendState(socket, full) {
     const from = full ? 0 : (socket.logSeen || 0);
     const view = viewFor(game.state, pid, from);
     socket.logSeen = game.state.logSeq;
-    socket.send({ t: 'state', you: pid, host: isHost(socket), view, full: !!full, undoDepth: game.undo.length, history: game.history.slice(-12) });
+    socket.send({ t: 'state', you: pid, host: isHost(socket), view, full: !!full, undoDepth: game.undo.length, history: game.history.slice(-12), poses: full ? game.poses : undefined });
 }
 function broadcastState(full) { for (const c of clients) sendState(c, full); }
 function broadcastNotice(text, kind = 'notice') { for (const c of clients) c.send({ t: 'notice', text, kind }); }
@@ -188,7 +190,7 @@ function onMessage(socket, m) {
             if (seats.length < 1) return;
             game.seats = seats;
             game.state = createGame({ seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors })) });
-            game.phase = 'playing'; game.undo = []; game.history = [];
+            game.phase = 'playing'; game.undo = []; game.history = []; game.poses = {};
             for (const c of clients) c.logSeen = 0;
             broadcastLobby(); broadcastState(true);
             console.log('Game started:', seats.map(s => s.name + '/' + s.charId).join(', '), 'mode=' + game.settings.mode);
@@ -227,6 +229,31 @@ function onMessage(socket, m) {
             game.state = JSON.parse(entry.json);
             broadcastNotice('⟲ Ведущий откатил ' + (n === 1 ? 'действие' : n + ' действия') + ': «' + entry.label + '».', 'undo');
             broadcastState(true);
+            break;
+        }
+        // --- table presence (not part of the game state): cursors, pings, figure poses ---
+        case 'cursor': {
+            const seat = seatOf(socket); if (!seat) return;
+            const pid = game.seats.indexOf(seat);
+            const msg = { t: 'cursor', pid, x: num(m.x), z: num(m.z), off: !!m.off };
+            for (const c of clients) if (c !== socket) c.send(msg);
+            break;
+        }
+        case 'ping': {
+            const seat = seatOf(socket); if (!seat) return;
+            const pid = game.seats.indexOf(seat);
+            const now = Date.now(); if (socket.lastPing && now - socket.lastPing < 150) return; socket.lastPing = now;
+            const msg = { t: 'ping', pid, x: num(m.x), z: num(m.z), room: typeof m.room === 'string' ? m.room.slice(0, 8) : null };
+            for (const c of clients) c.send(msg);
+            break;
+        }
+        case 'pose': {
+            const seat = seatOf(socket); if (!seat) return;
+            const pid = game.seats.indexOf(seat);
+            const pose = { dx: clamp(num(m.dx), -6, 6), dz: clamp(num(m.dz), -6, 6), rot: num(m.rot) };
+            game.poses[pid] = pose;
+            const msg = { t: 'pose', pid, pose };
+            for (const c of clients) if (c !== socket) c.send(msg);
             break;
         }
         case 'chat': {

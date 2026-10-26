@@ -3,7 +3,7 @@
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, secretTile, inCombat,
     gainKnowledge, restoreHealth, removeWound, removeFire, removeMalfunction, placeMalfunction, loseHealth, discardCard,
     removeCardFromGame, isContam, drawCards, spawnIntruder, HIBERNATION_TIME, handLimit, heavyCount, findRoomsByTile,
-    clearNoiseAround, removeIntruder, corridorsOf, gainContamination } from './core.mjs';
+    clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx } from './core.mjs';
 import { ROOM_TILES, engineRooms } from '../ship.mjs';
 import { ITEMS, WOUNDS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, INTRUDER_NAMES } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
@@ -410,7 +410,9 @@ OPS['computer.tracker'] = (state, step) => { clearNoiseAround(state, step.answer
 export function drawItem(state, deck) {
     const d = state.itemDecks[deck];
     if (!d.length) { const disc = state.itemDiscard[deck]; if (disc && disc.length) { d.push(...shuffle(state, disc.splice(0))); } }
-    return d.shift() || null;
+    const c = d.shift() || null;
+    if (c) fx(state, { type: 'item', deck });
+    return c;
 }
 export function giveItem(state, p, itemKey, ammo) {
     const def = ITEMS[itemKey];

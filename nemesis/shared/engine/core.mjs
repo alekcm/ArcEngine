@@ -172,6 +172,12 @@ export function drawLimit(p) { return p.wounds.includes('body') ? 4 : 5; }
 // ---------------------------------------------------------------------------------------------
 // Cards
 // ---------------------------------------------------------------------------------------------
+/** Visual effects feed for the clients (card moves etc.). Only the last few are kept. */
+export function fx(state, obj) {
+    state.fxSeq = (state.fxSeq || 0) + 1;
+    (state.fx = state.fx || []).push(Object.assign({ n: state.fxSeq }, obj));
+    if (state.fx.length > 24) state.fx.splice(0, state.fx.length - 24);
+}
 export function drawCards(state, p, n, silent) {
     let drawn = 0;
     for (let i = 0; i < n; i++) {
@@ -183,6 +189,7 @@ export function drawCards(state, p, n, silent) {
         p.hand.push(p.deck.shift());
         drawn++;
     }
+    if (drawn) fx(state, { type: 'draw', player: p.id, n: drawn });
     if (!silent && drawn) log(state, pname(p) + ' берёт ' + drawn + ' карт.', 'minor');
     return drawn;
 }
@@ -190,12 +197,14 @@ export function discardCard(state, p, cardId) {
     const i = p.hand.indexOf(cardId);
     if (i >= 0) p.hand.splice(i, 1);
     p.discard.push(cardId);
+    fx(state, { type: 'discard', player: p.id, card: cardId, fromHand: i >= 0 });
 }
 export function removeCardFromGame(state, p, cardId) {
     const i = p.hand.indexOf(cardId);
     if (i >= 0) p.hand.splice(i, 1);
     const j = p.discard.indexOf(cardId); if (j >= 0) p.discard.splice(j, 1);
     const k = p.deck.indexOf(cardId); if (k >= 0) p.deck.splice(k, 1);
+    fx(state, { type: 'remove', player: p.id, card: cardId, fromHand: i >= 0 });
 }
 export function payableCards(p) { return p.hand.filter(c => !isContam(c)); }
 export function gainContamination(state, p, n = 1) {
@@ -204,6 +213,7 @@ export function gainContamination(state, p, n = 1) {
         state.secret.contamInfected[id] = rand(state) < 0.3;
         p.discard.push(id);
     }
+    fx(state, { type: 'contam', player: p.id, n });
     log(state, pname(p) + ' получает ' + (n === 1 ? 'карту заражения.' : n + ' карты заражения.'), 'bad');
 }
 

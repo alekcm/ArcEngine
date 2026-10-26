@@ -3,7 +3,7 @@
 
 import { OPS, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeFire, placeMalfunction,
     placeNoise, corridorsOf, spawnIntruder, removeIntruder, turnOrder, drawCards, drawLimit, gainContamination, inCombat,
-    findRoomsByTile, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, discardCard } from './core.mjs';
+    findRoomsByTile, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, discardCard, fx } from './core.mjs';
 import { shuffle } from '../rng.mjs';
 import { EVENT_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
 import { ROOM_TILES, roomOfKind } from '../ship.mjs';
@@ -20,6 +20,7 @@ OPS['phase.event'] = (state) => {
     const id = state.eventDeck.shift();
     const ev = EVENT_BY_ID[id];
     state.lastEvent = id;
+    fx(state, { type: 'event', card: id, name: ev.name, text: ev.text });
     log(state, '📜 Событие: «' + ev.name + '». ' + ev.text, 'event');
     // 1. movement
     if (ev.move.type === 'corridor') moveIntrudersByCorridor(state, ev.move.num);

@@ -71,6 +71,7 @@ export class Scene3D {
         this.roomNodes = {}; this.corridorNodes = {}; this.dynamic = []; this.chars = {}; this.intr = {}; this.hull = [];
         this.glow = new (B().GlowLayer)('glow', this.scene, { blurKernelSize: 48 }); this.glow.intensity = 0.5;
         this.shipKey = null; this.selectable = new Set(); this.hover = null; this.t = 0; this.lastShotSeen = null;
+        this.me = null; this.poses = {}; this.drag = null; this.cursors = {}; this.pings = []; this.canvas = canvas;
         this.stars();
         this.scene.onPointerObservable.add(pi => this.onPointer(pi));
         this.engine.runRenderLoop(() => { this.t += this.engine.getDeltaTime() / 1000; this.animate(); this.scene.render(); });
@@ -678,6 +679,79 @@ export class Scene3D {
         for (const mat of [n.matA, n.matB]) { mat.diffuseColor = B().Color3.FromHexString(col); mat.emissiveColor = B().Color3.FromHexString(col); }
     }
 
+    /** Slot position plus the player's own offset (figure dragged inside the room), clamped to the platform. */
+    posed(n, pid) {
+        const pose = this.poses[pid];
+        if (!pose) return n.slot.clone();
+        const roomPos = this.roomNodes[n.room].root.position;
+        const p = n.slot.add(new (B().Vector3)(pose.dx, 0, pose.dz));
+        const d = p.subtract(roomPos); d.y = 0;
+        const lim = ROOM_R - 1.2;
+        if (d.length() > lim) { d.scaleInPlace(lim / d.length()); p.copyFrom(roomPos.add(d)); }
+        return p;
+    }
+    setMe(pid) { this.me = pid; }
+    /** Apply a (remote or local) figure pose; `instant` snaps instead of running. */
+    setPose(pid, pose, instant) {
+        this.poses[pid] = pose || null;
+        const n = this.chars[pid]; if (!n || !n.slot) return;
+        n.target = this.posed(n, pid);
+        n.faceY = (n.baseFace || 0) + ((pose && pose.rot) || 0);
+        if (instant) { n.ch.root.position.x = n.target.x; n.ch.root.position.z = n.target.z; n.ch.root.rotation.y = n.faceY; }
+    }
+    /** Rotate own figure by `da` radians (Q/E). */
+    rotateMe(da) {
+        if (this.me == null || !this.chars[this.me]) return;
+        const pose = Object.assign({ dx: 0, dz: 0, rot: 0 }, this.poses[this.me]); pose.rot += da;
+        this.setPose(this.me, pose, true);
+        if (this.cb.onPose) this.cb.onPose(pose);
+    }
+    /** World point on the floor plane under screen coords (null when pointing at the sky). */
+    floorPoint(sx, sy) {
+        const ray = this.scene.createPickingRay(sx, sy, B().Matrix.Identity(), this.camera);
+        const d = ray.intersectsPlane(new (B().Plane)(0, 1, 0, 0));
+        if (d == null || d < 0) return null;
+        return ray.origin.add(ray.direction.scale(d));
+    }
+    /** Room whose platform contains the floor point (or null). */
+    roomAt(pt) {
+        if (!pt) return null;
+        let best = null, bd = ROOM_R * ROOM_R;
+        for (const [id, n] of Object.entries(this.roomNodes)) { const dx = n.root.position.x - pt.x, dz = n.root.position.z - pt.z; const q = dx * dx + dz * dz; if (q < bd) { bd = q; best = id; } }
+        return best;
+    }
+    /** Remote cursor: a small coloured arrow hovering above the table. */
+    setCursor(pid, x, z, color, name, off) {
+        let c = this.cursors[pid];
+        if (off) { if (c) { c.root.dispose(); delete this.cursors[pid]; } return; }
+        if (!c) {
+            const S = this.scene;
+            const root = new (B().TransformNode)('cur' + pid, S);
+            const arrow = B().MeshBuilder.CreateCylinder('cura', { diameterTop: 0, diameterBottom: 0.7, height: 1.1, tessellation: 3 }, S);
+            arrow.parent = root; arrow.rotation.z = Math.PI; arrow.rotation.y = Math.PI / 6; arrow.position.y = 0.55; arrow.scaling.z = 0.35; arrow.isPickable = false;
+            arrow.material = flatMat(S, color, { emissive: 0.55 });
+            const ring = B().MeshBuilder.CreateTorus('curr', { diameter: 0.9, thickness: 0.06, tessellation: 16 }, S);
+            ring.parent = root; ring.position.y = 0.04; ring.isPickable = false; ring.material = flatMat(S, color, { emissive: 0.8 });
+            const label = this.makeLabel('curl', name, '', root, 0, 1.5, 0, 2.6);
+            c = this.cursors[pid] = { root, target: new (B().Vector3)(x, 0, z), label, last: this.t };
+            root.position.set(x, 0, z);
+        }
+        c.target.set(x, 0, z); c.last = this.t;
+    }
+    /** Expanding ring pulse at a table point (Tab ping). */
+    ping(x, z, color) {
+        const S = this.scene;
+        const root = new (B().TransformNode)('ping', S); root.position.set(x, 0.1, z);
+        const rings = [];
+        for (let i = 0; i < 3; i++) {
+            const r = B().MeshBuilder.CreateTorus('pr', { diameter: 1, thickness: 0.12, tessellation: 24 }, S);
+            r.parent = root; r.isPickable = false; r.material = flatMat(S, color, { emissive: 1.0 }); rings.push(r);
+        }
+        const pin = B().MeshBuilder.CreateCylinder('pp', { diameterTop: 0.5, diameterBottom: 0, height: 1.6, tessellation: 6 }, S);
+        pin.parent = root; pin.position.y = 1.4; pin.isPickable = false; pin.material = flatMat(S, color, { emissive: 0.9 });
+        this.pings.push({ root, rings, pin, t0: this.t });
+    }
+
     /** Slot positions inside the standing zone: characters on the near half, intruders on the far half. */
     slotPos(roomPos, index, who) {
         const base = who === 'char' ? -Math.PI / 4 : Math.PI * 0.75;      // toward / away from the camera
@@ -712,6 +786,10 @@ export class Scene3D {
             if (!n) {
                 const ch = buildCharacter(S, p.charId, p.colors);
                 n = { ch, label: this.makeLabel('cl', p.name, '', ch.root, 0, 3.6, 0, 3.8), placed: false, colorsKey: null };
+                // invisible grab handle so the owner can drag the figure around the room
+                const grab = B().MeshBuilder.CreateCylinder('grab', { diameter: 1.4, height: 2.9 }, S);
+                grab.parent = ch.root; grab.position.y = 1.45; grab.visibility = 0; grab.isPickable = true; grab.metadata = { grab: p.id };
+                n.grab = grab;
                 this.chars[p.id] = n;
                 for (const m of ch.root.getChildMeshes()) this.shadows.addShadowCaster(m);
             }
@@ -722,11 +800,13 @@ export class Scene3D {
             if (!visible) continue;
             const k = perRoom[p.room] = (perRoom[p.room] || 0) + 1;
             const roomPos = this.roomNodes[p.room].root.position;
-            n.target = this.slotPos(roomPos, k - 1, 'char');
+            n.slot = this.slotPos(roomPos, k - 1, 'char'); n.room = p.room;
+            n.target = this.posed(n, p.id);
             const firstPlace = !n.placed;
             if (!n.placed) { n.ch.root.position.copyFrom(n.target); n.placed = true; }
             const hasIntr = Object.values(view.intruders).some(i => i.room === p.room);
-            n.faceY = hasIntr ? Math.PI * 0.75 : -Math.PI / 4 + Math.PI;   // face intruders, else the camera (applied once the run ends)
+            n.baseFace = hasIntr ? Math.PI * 0.75 : -Math.PI / 4 + Math.PI;   // face intruders, else the camera (applied once the run ends)
+            n.faceY = n.baseFace + ((this.poses[p.id] || {}).rot || 0);
             if (firstPlace) n.ch.root.rotation.y = n.faceY;
             const current = view.current === p.id && view.phase === 'player';
             this.setLabel(n.label, p.name + (p.passed ? ' (пас)' : ''), p.charName, current ? '#ffb347' : '#ffffff');
@@ -770,6 +850,17 @@ export class Scene3D {
             } else if (n.faceY != null) n.ch.root.rotation.y += (n.faceY - n.ch.root.rotation.y) * Math.min(1, dt * 6);
             if (n.ch.animate) n.ch.animate(t, moving);
         }
+        for (const c of Object.values(this.cursors)) {
+            B().Vector3.LerpToRef(c.root.position, c.target, Math.min(1, dt * 12), c.root.position);
+            c.root.position.y = 0.25 + Math.sin(t * 3) * 0.05;
+        }
+        for (let i = this.pings.length - 1; i >= 0; i--) {
+            const p = this.pings[i], age = t - p.t0;
+            if (age > 2.2) { p.root.dispose(); this.pings.splice(i, 1); continue; }
+            p.rings.forEach((r, k) => { const a = Math.max(0, (age - k * 0.3) % 1.1); r.scaling.setAll(0.4 + a * 5); r.visibility = Math.max(0, 1 - a); });
+            p.pin.position.y = 1.4 + Math.abs(Math.sin(age * 6)) * 0.5;
+            p.root.rotation.y = age * 2;
+        }
         for (const n of Object.values(this.intr)) if (n.target) { B().Vector3.LerpToRef(n.root.position, n.target, lerp, n.root.position); n.root.position.y = Math.abs(Math.sin(t * 3 + n.root.position.x)) * 0.05; }
         const ls = this.camera.radius > 60 ? this.camera.radius / 60 : 1;
         for (const n of Object.values(this.roomNodes)) n.label.scaling.setAll(ls);
@@ -778,13 +869,41 @@ export class Scene3D {
     onPointer(pi) {
         const T = B().PointerEventTypes;
         if (pi.type === T.POINTERMOVE) {
+            const fp = this.floorPoint(this.scene.pointerX, this.scene.pointerY);
+            if (this.drag) {   // own figure follows the pointer on the floor
+                if (fp) {
+                    const n = this.chars[this.drag.pid];
+                    const pose = { dx: fp.x - this.drag.off.x - n.slot.x, dz: fp.z - this.drag.off.z - n.slot.z, rot: (this.poses[this.drag.pid] || {}).rot || 0 };
+                    this.setPose(this.drag.pid, pose, true);
+                    const now = performance.now();
+                    if (this.cb.onPose && now - (this.drag.sent || 0) > 60) { this.drag.sent = now; this.cb.onPose(pose); }
+                }
+                return;
+            }
+            if (this.cb.onCursor && fp) this.cb.onCursor(fp.x, fp.z, this.roomAt(fp));
+            if (this.me != null) { const g = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && m.metadata.grab === this.me); this.canvas.style.cursor = g && g.hit ? 'grab' : ''; }
             const pick = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && m.metadata.roomId);
             const id = pick && pick.hit ? pick.pickedMesh.metadata.roomId : null;
             if (id !== this.hover) { this.hover = id; }
             if (this.cb.onHover) this.cb.onHover(id, this.scene.pointerX, this.scene.pointerY);
         } else if (pi.type === T.POINTERDOWN) {
             this.downX = this.scene.pointerX; this.downY = this.scene.pointerY;
+            if (this.me != null && pi.event && pi.event.button === 0) {
+                const g = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && m.metadata.grab === this.me);
+                const fp = this.floorPoint(this.scene.pointerX, this.scene.pointerY);
+                if (g && g.hit && fp) {
+                    const n = this.chars[this.me];
+                    this.drag = { pid: this.me, off: new (B().Vector3)(fp.x - n.ch.root.position.x, 0, fp.z - n.ch.root.position.z) };
+                    this.camera.detachControl(); this.canvas.style.cursor = 'grabbing';
+                }
+            }
         } else if (pi.type === T.POINTERUP) {
+            if (this.drag) {
+                const pose = this.poses[this.drag.pid];
+                if (this.cb.onPose && pose) this.cb.onPose(pose);
+                this.drag = null; this.camera.attachControl(this.canvas, true); this.canvas.style.cursor = '';
+                return;
+            }
             if (Math.abs(this.scene.pointerX - this.downX) > 4 || Math.abs(this.scene.pointerY - this.downY) > 4) return;
             const pick = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && m.metadata.roomId);
             if (pick && pick.hit && this.cb.onClick) this.cb.onClick(pick.pickedMesh.metadata.roomId);
