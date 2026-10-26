@@ -145,10 +145,21 @@ function renderGame() {
     }
     scene.setMe(app.me);
     if (!dice) { dice = new DiceUI($('dice'), () => act('roll')); dice.afterHide = () => { if (app.view) dice.update(app.view, app.me, playerName); }; dice.onLanded = () => { app.rollHold = false; if (app.view) renderGame(); }; }
-    // a fresh roll result: show the die first, everything else (movement, noise, spawns) waits until it lands
-    if (v.lastRoll && dice.lastSeen !== null && v.lastRoll.n !== dice.lastSeen && !app.rollHold) { app.rollHold = true; dice.update(v, app.me, playerName); setTimeout(() => { if (app.rollHold) { app.rollHold = false; if (app.view) renderGame(); } }, 4500); return; }
-    if (app.rollHold) return;
+    // Dice gate. The engine moves the figure and reveals the room BEFORE asking for the noise roll, so the 3D
+    // scene (and the card/bag fx) freeze from the moment a dice prompt appears until the rolled die has landed:
+    // the player sees the result first, only then the figure runs and the room token flips.
     const pr = v.prompt;
+    const dicePrompt = pr && pr.kind === 'dice';
+    const freshRoll = v.lastRoll && dice.lastSeen !== null && v.lastRoll.n !== dice.lastSeen;
+    if (dicePrompt || freshRoll) {
+        app.rollHold = true;
+        dice.update(v, app.me, playerName);
+        renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
+        if (freshRoll) setTimeout(() => { if (app.rollHold && !(app.view.prompt && app.view.prompt.kind === 'dice')) { app.rollHold = false; renderGame(); } }, 5000);   // safety net
+        return;
+    }
+    if (app.rollHold && dice.rolling) return;   // die still tumbling: keep the frozen scene until it lands
+    app.rollHold = false;
     const selectable = pr && pr.kind === 'room' && !pr.waiting ? pr.rooms : [];
     scene.update(v, ROOM_TILES, INTRUDER_NAMES, selectable);
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
