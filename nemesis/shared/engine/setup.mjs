@@ -83,7 +83,7 @@ export function createGame(config) {
     config.players.forEach((pc, i) => {
         const ch = CHARACTERS[pc.charId];
         const p = {
-            id: i, name: pc.name, charId: pc.charId, colors: pc.colors || {},
+            id: i, name: pc.name, charId: pc.charId, colors: pc.colors || {}, style: pc.style || 'lowpoly',
             room: hiber, health: ch.health, hand: [], deck: [], discard: [], wounds: [], larva: false,
             items: [], heavy: [], armor: null, knowledge: 1, knowledgeActive: false, signal: false, supportUsed: false,
             objectives: [], objective: null, status: 'active', passed: false, pod: null,

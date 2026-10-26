@@ -45,6 +45,28 @@ const TILE_STYLE = {
     contaminated: 'toxic', containment: 'cold', hibernatorium: 'cold',
 };
 
+/** Tiny procedural environment (dark hangar: cool sky, warm floor) so PBR materials have reflections. */
+function makeEnv(scene) {
+    try {
+        const size = 16;
+        const faces = [];
+        for (let f = 0; f < 6; f++) {
+            const data = new Uint8Array(size * size * 4);
+            for (let i = 0; i < size * size; i++) {
+                const y = Math.floor(i / size) / size;
+                let r = 20, g = 26, b = 36;
+                if (f === 2) { r = 60; g = 70; b = 90; }            // +Y: ceiling lights
+                else if (f === 3) { r = 30; g = 24; b = 18; }       // -Y: warm floor
+                else { const k = 1 - y; r = 14 + 40 * k; g = 18 + 46 * k; b = 26 + 60 * k; }
+                data[i * 4] = r; data[i * 4 + 1] = g; data[i * 4 + 2] = b; data[i * 4 + 3] = 255;
+            }
+            faces.push(data);
+        }
+        const tex = new (B().RawCubeTexture)(scene, faces, size, B().Engine.TEXTUREFORMAT_RGBA, B().Engine.TEXTURETYPE_UNSIGNED_INT, false, false, B().Texture.TRILINEAR_SAMPLINGMODE);
+        return tex;
+    } catch (e) { return null; }
+}
+
 export class Scene3D {
     constructor(canvas, callbacks) {
         this.canvas = canvas; this.cb = callbacks || {};
@@ -69,6 +91,7 @@ export class Scene3D {
         this.roomNodes = {}; this.corridorNodes = {}; this.dynamic = []; this.chars = {}; this.intr = {}; this.hull = [];
         this.glow = new (B().GlowLayer)('glow', this.scene, { blurKernelSize: 48 }); this.glow.intensity = 0.5;
         this.shipKey = null; this.selectable = new Set(); this.hover = null; this.t = 0;
+        this.scene.environmentTexture = makeEnv(this.scene);
         this.stars();
         this.scene.onPointerObservable.add(pi => this.onPointer(pi));
         this.engine.runRenderLoop(() => { this.t += this.engine.getDeltaTime() / 1000; this.animate(); this.scene.render(); });
@@ -708,7 +731,7 @@ export class Scene3D {
         for (const p of view.players) {
             let n = this.chars[p.id];
             if (!n) {
-                const ch = buildCharacter(S, p.charId, p.colors);
+                const ch = buildCharacter(S, p.charId, p.colors, p.style);
                 n = { ch, label: this.makeLabel('cl', p.name, '', ch.root, 0, 3.6, 0, 3.8), placed: false, colorsKey: null };
                 this.chars[p.id] = n;
                 for (const m of ch.root.getChildMeshes()) this.shadows.addShadowCaster(m);
@@ -746,7 +769,7 @@ export class Scene3D {
             }
         }
         const lerp = Math.min(1, this.engine.getDeltaTime() / 400);
-        for (const n of Object.values(this.chars)) if (n.target && n.ch.root.isEnabled()) B().Vector3.LerpToRef(n.ch.root.position, n.target, lerp, n.ch.root.position);
+        for (const n of Object.values(this.chars)) if (n.target && n.ch.root.isEnabled()) { B().Vector3.LerpToRef(n.ch.root.position, n.target, lerp, n.ch.root.position); if (n.ch.animate) n.ch.animate(t); }
         for (const n of Object.values(this.intr)) if (n.target) { B().Vector3.LerpToRef(n.root.position, n.target, lerp, n.root.position); n.root.position.y = Math.abs(Math.sin(t * 3 + n.root.position.x)) * 0.05; }
         const ls = this.camera.radius > 60 ? this.camera.radius / 60 : 1;
         for (const n of Object.values(this.roomNodes)) n.label.scaling.setAll(ls);
@@ -789,13 +812,16 @@ export class Preview3D {
         const h = new (B().HemisphericLight)('h', new (B().Vector3)(0.3, 1, 0.2), this.scene); h.intensity = 0.8;
         const d = new (B().DirectionalLight)('d', new (B().Vector3)(-0.5, -1, 0.6), this.scene); d.intensity = 0.7;
         const disc = B().MeshBuilder.CreateCylinder('disc', { diameter: 1.6, height: 0.1, tessellation: 8 }, this.scene);
-        disc.position.y = -0.05; disc.material = flatMat(this.scene, '#243040');
-        this.char = null; this.charId = null;
-        this.engine.runRenderLoop(() => this.scene.render());
+        disc.position.y = -0.05; disc.material = flatMat(this.scene, '#243040'); this.disc = disc;
+        this.char = null; this.charId = null; this.t = 0;
+        // PBR styles need an environment for reflections
+        this.scene.environmentTexture = makeEnv(this.scene);
+        this.engine.runRenderLoop(() => { this.t += this.engine.getDeltaTime() / 1000; if (this.char && this.char.animate) this.char.animate(this.t); this.scene.render(); });
         new ResizeObserver(() => this.engine.resize()).observe(canvas);
     }
-    show(charId, colors) {
-        if (this.charId !== charId) { if (this.char) this.char.root.dispose(); this.char = buildCharacter(this.scene, charId, colors); this.charId = charId; }
+    show(charId, colors, style = 'lowpoly') {
+        const key = charId + '|' + style;
+        if (this.charId !== key) { if (this.char) this.char.root.dispose(); this.char = buildCharacter(this.scene, charId, colors, style); this.charId = key; this.disc.setEnabled(style !== 'mini'); }
         else this.char.setColors(colors);
     }
 }

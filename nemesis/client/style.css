@@ -155,3 +155,10 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 #prompt:not(.hidden) ~ #menuToggle { bottom: auto; top: 54px; left: auto; right: 340px; transform: none; padding: 5px 12px; font-size: 12px; }
 #menuToggle.attention { animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 #ffb34766; } 50% { box-shadow: 0 0 0 10px #ffb34700; } }
+
+.style-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.style-card { flex: 1 1 120px; max-width: 170px; padding: 6px 8px; border: 1px solid #2c3a4c; border-radius: 6px; background: #121a24; cursor: pointer; }
+.style-card:hover { border-color: #4a6a8a; }
+.style-card.sel { border-color: #ffb347; background: #1c2430; }
+.style-card b { display: block; font-size: 13px; }
+.style-card small { display: block; color: #8a9bb0; font-size: 11px; line-height: 1.2; }

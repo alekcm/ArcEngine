@@ -3,6 +3,7 @@
 
 import { Scene3D, Preview3D } from './scene3d.js';
 import { DEFAULTS } from './characters.js';
+import { MODEL_STYLES, STYLED_CHARACTERS } from './characters_styles.js';
 import { cardHtml, describeCard, esc, itemLabel, itemTitle, woundName } from './cards.js';
 import { ROOM_TILES } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS } from '/shared/data/cards.mjs';
@@ -72,7 +73,7 @@ function renderLobby() {
     const mySeat = L.seats.find(s => s.id === app.me);
     if (mySeat) {
         if (document.activeElement !== $('nameInput')) $('nameInput').value = mySeat.name;
-        app.charId = mySeat.charId; app.colors = mySeat.colors || {}; app.ready = mySeat.ready;
+        app.charId = mySeat.charId; app.colors = mySeat.colors || {}; app.ready = mySeat.ready; app.style = mySeat.style || 'lowpoly';
         app.host = mySeat.host;
     }
     // characters
@@ -81,6 +82,14 @@ function renderLobby() {
         return '<div class="char-card ' + (id === app.charId ? 'sel' : '') + (taken ? ' taken' : '') + '" data-char="' + id + '" style="border-left:5px solid ' + c.color + '"><b>' + esc(c.name) + '</b><small>' + esc((CHARACTERS[id] ? CHARACTERS[id].startItems : []).map(si => ITEMS[si.item].name).join(', ')) + '</small></div>';
     }).join('');
     for (const el of $('charList').querySelectorAll('.char-card')) el.onclick = () => { if (el.classList.contains('taken')) return; net.send({ t: 'lobby', charId: el.dataset.char, colors: {} }); };
+    // model style (only for characters that have alternative builds)
+    const styled = STYLED_CHARACTERS.includes(app.charId);
+    $('styleRow').classList.toggle('hidden', !styled);
+    if (styled) {
+        $('styleList').innerHTML = Object.entries(MODEL_STYLES).map(([id, s]) =>
+            '<div class="style-card ' + (id === app.style ? 'sel' : '') + '" data-style="' + id + '" title="' + esc(s.desc) + '"><b>' + esc(s.name) + '</b><small>' + esc(s.desc) + '</small></div>').join('');
+        for (const el of $('styleList').querySelectorAll('.style-card')) el.onclick = () => net.send({ t: 'lobby', style: el.dataset.style });
+    }
     // paint zones
     const ch = L.characters[app.charId];
     if (ch) {
@@ -94,7 +103,7 @@ function renderLobby() {
         for (const el of $('paintZones').querySelectorAll('.swatch[data-color]')) el.onclick = () => sendColor(el.dataset.zone, el.dataset.color);
         for (const el of $('paintZones').querySelectorAll('input[type=color]')) el.oninput = () => sendColor(el.dataset.zone, el.value);
         if (!preview) preview = new Preview3D($('previewCanvas'));
-        preview.show(app.charId, Object.assign({}, def, app.colors));
+        preview.show(app.charId, Object.assign({}, def, app.colors), styled ? app.style : 'lowpoly');
     }
     // seats
     $('seatList').innerHTML = L.seats.map(s => {

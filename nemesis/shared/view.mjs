@@ -37,7 +37,7 @@ function countTokens(bag) {
 
 function playerView(state, p, mine) {
     const pub = {
-        id: p.id, name: p.name, charId: p.charId, charName: CHARACTERS[p.charId].name, colors: p.colors,
+        id: p.id, name: p.name, charId: p.charId, charName: CHARACTERS[p.charId].name, colors: p.colors, style: p.style || 'lowpoly',
         room: p.room, status: p.status, health: p.health, maxHealth: CHARACTERS[p.charId].health, wounds: p.wounds, armor: p.armor,
         items: p.items, heavy: p.heavy, knowledge: p.knowledge, knowledgeActive: p.knowledgeActive, signal: p.signal,
         passed: p.passed, pod: p.pod, larva: p.larva, laika: p.laika || null,

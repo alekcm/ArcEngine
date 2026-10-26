@@ -4,6 +4,8 @@
 // the back; Mechanic — welding mask with a square window, hoses, orange/white plating, tools.
 // Every part is bound to a paint zone (CHARACTERS[*].zones) so the player can recolour it.
 
+import { buildStyledCharacter, STYLED_CHARACTERS } from './characters_styles.js';
+
 const B = () => window.BABYLON;
 
 const MAT_CACHE = new WeakMap();   // scene -> Map(key -> material)
@@ -86,7 +88,8 @@ const FIXED = { gun: '#23282e', gunLight: '#4a525c', steel: '#8c96a0', darkSteel
 /**
  * Build a character. Returns { root, zones: {zoneId: [meshes]}, setColors(colors) }. Height ≈ 2.1.
  */
-export function buildCharacter(scene, charId, colors = {}) {
+export function buildCharacter(scene, charId, colors = {}, style = 'lowpoly') {
+    if (style && style !== 'lowpoly' && STYLED_CHARACTERS.includes(charId)) return buildStyledCharacter(scene, charId, colors, style);
     const S = scene;
     const root = new (B().TransformNode)('char_' + charId, S);
     const zones = {};
@@ -377,7 +380,7 @@ export function buildCharacter(scene, charId, colors = {}) {
     for (const m of root.getChildMeshes()) m.isPickable = false;
     // scale to ~1.8 units tall (built at ~2.8)
     root.scaling.setAll(0.66);
-    return { root, zones, setColors };
+    return { root, zones, setColors, animate: () => {} };
 }
 
 /** Low-poly intruder. type: larva | adult | drone | queen */
