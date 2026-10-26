@@ -74,7 +74,7 @@ const SPECS = {
     ceo:       { legs: 'shirt', boots: 'coat', torso: 'shirt', coat: 'coat', arms: 'coat', hands: 'skin', hair: 'shortSwept', hairZone: 'hair', tie: 'coat', pistolR: true, robot: true, build: 'slim' },
     labrat:    { legs: 'pants', boots: 'skin', torso: 'gown', arms: 'gown', hands: 'skin', hair: 'longLoose', hairZone: 'hair', blindfold: 'bandage', implants: 'lights', barefoot: true, build: 'slim' },
     sentry:    { legs: 'pants', boots: 'armor', torso: 'armor', arms: 'armor', hands: 'armor', helmet: 'helmet', nightVision: 'visor', pads: 'accent', harness: 'accent', shotgun: true, lights: 'visor', build: 'bulky' },
-    android:   { legs: 'pants', boots: 'pants', torso: 'shirt', vest: 'vest', arms: 'shirt', hands: 'skin', hair: 'ponytail', hairZone: 'hair', implants: 'lights', pistolR: true, build: 'slim' },
+    android:   { legs: 'pants', boots: 'pants', torso: 'shirt', vest: 'vest', arms: 'shirt', hands: 'skin', hair: 'bun', hairZone: 'hair', implants: 'lights', eyes: '#f4f8ff', female: true, pistolR: true, build: 'slim' },
     convict:   { legs: 'pants', boots: 'pants', torso: 'skin', arms: 'skin', hands: 'skin', bald: true, mask: 'mask', tattoos: 'tattoo', chains: 'chains', pipe: true, build: 'bulky', eyeLight: 'lights' },
     psych:     { legs: 'shirt', boots: 'shirt', torso: 'shirt', coat: 'coat', arms: 'coat', hands: 'skin', hair: 'bobBangs', hairZone: 'hair', glasses: true, drone: 'drone', headsetTech: 'drone', build: 'slim' },
     bounty:    { legs: 'shirt', boots: 'armor', torso: 'shirt', arms: 'shirt', hands: 'armor', hair: 'shortBeard', hairZone: 'hair', pads: 'armor', harness: 'armor', chestPlate: 'armor', rifleHands: true, dog: 'dog', build: 'bulky' },
@@ -103,7 +103,7 @@ export function buildCharacter(scene, charId, colors = {}) {
     // ---------------------------------------------------------------------------------------
     function buildHumanoid(sp) {
         const R = root; const LZ = sp.lights || 'lights';
-        const W = sp.build === 'bulky' ? 1.18 : sp.build === 'stocky' ? 1.1 : sp.build === 'athletic' ? 1.05 : 1.0;   // width factor
+        const W = (sp.build === 'bulky' ? 1.18 : sp.build === 'stocky' ? 1.1 : sp.build === 'athletic' ? 1.05 : 1.0) * (sp.female ? 0.9 : 1);   // width factor
         // legs & boots
         for (const s of [-1, 1]) {
             if (!sp.barefoot) { Z(sp.boots, bx(0.22 * W, 0.14, 0.36, R, s * 0.15 * W, 0.07, 0.04)); Z(sp.boots, bx(0.22 * W, 0.3, 0.24, R, s * 0.15 * W, 0.28, 0)); }
@@ -116,6 +116,7 @@ export function buildCharacter(scene, charId, colors = {}) {
         F(FIXED.steel, bx(0.1, 0.08, 0.04, R, 0, 1.5, 0.17));
         // torso
         Z(sp.torso, bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
+        if (sp.female) { Z(sp.torso, bx(0.44 * W, 0.2, 0.14, R, 0, 1.98, 0.2)); Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0)); }   // chest and hips
         if (sp.vest) { Z(sp.vest, bx(0.5 * W, 0.5, 0.1, R, 0, 1.84, 0.18)); Z(sp.vest, bx(0.5 * W, 0.5, 0.08, R, 0, 1.84, -0.18)); }
         if (sp.coat) {   // long open coat: back panel + two front flaps + tails
             Z(sp.coat, bx(0.58 * W, 0.7, 0.1, R, 0, 1.82, -0.2));
@@ -150,6 +151,7 @@ export function buildCharacter(scene, charId, colors = {}) {
             case 'shortSwept': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.3, 0.08, 0.12, R, 0, 2.67, 0.12)); Z(H, bx(0.32, 0.14, 0.1, R, 0, 2.52, -0.14)); break;
             case 'shortSpiky': Z(H, bx(0.32, 0.08, 0.32, R, 0, 2.63, 0.0)); for (let i = 0; i < 4; i++) Z(H, bx(0.06, 0.12, 0.06, R, -0.1 + i * 0.07, 2.72, -0.02 + (i % 2) * 0.06)); break;
             case 'longLoose': Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.5, 0.1, R, 0, 2.32, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.08, 0.44, 0.24, R, s * 0.19, 2.34, 0.0)); break;
+            case 'bun': Z(H, bx(0.33, 0.1, 0.33, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.08, 0.1, R, 0, 2.6, 0.14)); Z(H, bx(0.3, 0.3, 0.08, R, 0, 2.46, -0.16)); Z(H, bx(0.16, 0.16, 0.16, R, 0, 2.68, -0.14)); for (const s of [-1, 1]) Z(H, bx(0.05, 0.26, 0.2, R, s * 0.17, 2.46, -0.02)); break;
             case 'ponytail': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.1, 0.1, 0.1, R, 0, 2.6, -0.2)); Z(H, bx(0.08, 0.4, 0.08, R, 0, 2.38, -0.22)); break;
             case 'bobBangs': Z(H, bx(0.34, 0.12, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.1, 0.08, R, 0, 2.56, 0.16)); Z(H, bx(0.34, 0.3, 0.1, R, 0, 2.42, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.06, 0.3, 0.3, R, s * 0.18, 2.42, 0.0)); break;
             case 'shortBeard': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.28, 0.12, 0.08, R, 0, 2.3, 0.14)); break;
@@ -172,6 +174,7 @@ export function buildCharacter(scene, charId, colors = {}) {
         if (sp.eyeLight) Z(sp.eyeLight, bx(0.05, 0.03, 0.02, R, 0.08, 2.48, 0.18));
         if (sp.bald) Z('skin', bx(0.3, 0.06, 0.3, R, 0, 2.62, 0.02));
         if (sp.implants) { Z(sp.implants, bx(0.04, 0.04, 0.02, R, 0, 2.54, 0.18)); Z(sp.implants, bx(0.03, 0.1, 0.03, R, 0.16, 2.44, 0.0)); F(FIXED.steel, bx(0.06, 0.12, 0.04, R, -0.17, 2.44, 0.0)); }
+        if (sp.eyes) { for (const s of [-1, 1]) F(sp.eyes, bx(0.06, 0.035, 0.02, R, s * 0.07, 2.47, 0.175), { emissive: 1.0 }); F(FIXED.rubber, bx(0.2, 0.012, 0.015, R, 0, 2.5, 0.178)); }   // two glowing eyes under a thin brow line
         // hand-held props
         if (sp.pistolR || sp.revolver) {
             const g = new (B().TransformNode)('gun', S); g.parent = R; g.position.set(0.39 * W, 1.2, 0.14);

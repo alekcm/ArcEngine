@@ -135,8 +135,10 @@ export class Scene3D {
         for (let i = 0; i < 90; i++) {
             const pw = 6 + rnd() * 22, ph = 6 + rnd() * 22;
             const m = B().MeshBuilder.CreateBox('hp', { width: pw, height: 0.12, depth: ph }, S);
-            m.position.set((rnd() - 0.5) * w, -0.62, (rnd() - 0.5) * h); m.material = this.M(cols[i % 4]); statics.push(m);
-            if (i % 3 === 0) { const g = B().MeshBuilder.CreateBox('hg', { width: pw * 0.9, height: 0.05, depth: 0.25 }, S); g.position.set(m.position.x, -0.52, m.position.z + (rnd() - 0.5) * ph * 0.6); g.material = this.M('#1a2430'); statics.push(g); }
+            // each plate sits a hair higher than the previous one, so overlaps never z-fight
+            const y = -0.78 + i * 0.0025;
+            m.position.set((rnd() - 0.5) * w, y, (rnd() - 0.5) * h); m.material = this.M(cols[i % 4]); statics.push(m);
+            if (i % 3 === 0) { const g = B().MeshBuilder.CreateBox('hg', { width: pw * 0.9, height: 0.05, depth: 0.25 }, S); g.position.set(m.position.x, y + 0.08, m.position.z + (rnd() - 0.5) * ph * 0.6); g.material = this.M('#1a2430'); statics.push(g); }
         }
         // structural spines under the corridors
         for (const c of Object.values(ship.corridors)) {
@@ -144,11 +146,11 @@ export class Scene3D {
             for (let i = 0; i < pts.length - 1; i++) {
                 const a = pts[i], d = pts[i + 1]; const dir = d.subtract(a); const len = dir.length(); const mid = a.add(d).scale(0.5);
                 const m = B().MeshBuilder.CreateBox('sp', { width: 5.5, height: 0.1, depth: len + 4 }, S);
-                m.position.set(mid.x, -0.58, mid.z); m.rotation.y = Math.atan2(dir.x, dir.z); m.material = this.M('#111920'); statics.push(m);
+                m.position.set(mid.x, -0.49 + (i % 3) * 0.004, mid.z); m.rotation.y = Math.atan2(dir.x, dir.z); m.material = this.M('#111920'); statics.push(m);
             }
         }
         // ring rims under rooms
-        for (const r of Object.values(ship.rooms)) { const p = this.pos(r); const m = B().MeshBuilder.CreateCylinder('rr', { diameter: ROOM_R * 2 + 5, height: 0.1, tessellation: 6 }, S); m.position.set(p.x, -0.6, p.z); m.material = this.M('#121b24'); statics.push(m); }
+        for (const r of Object.values(ship.rooms)) { const p = this.pos(r); const m = B().MeshBuilder.CreateCylinder('rr', { diameter: ROOM_R * 2 + 5, height: 0.1, tessellation: 6 }, S); m.position.set(p.x, -0.47, p.z); m.material = this.M('#121b24'); statics.push(m); }
         this.hull = this.mergeStatic(statics, null);
         for (const m of this.hull) m.receiveShadows = true;
     }
@@ -178,11 +180,7 @@ export class Scene3D {
             const t = B().MeshBuilder.CreateBox('ft', { width: T - 0.08, height: 0.06, depth: T - 0.08 }, S);
             t.position.set(x, 0.07, z); t.material = (gx + gz) % 2 ? tileA : tileB; statics.push(t);
         }
-        // standing zone: lighter deck circle with an accent ring
-        const zone = B().MeshBuilder.CreateCylinder('zone', { diameter: ZONE_R * 2, height: 0.1, tessellation: 24 }, S);
-        zone.position.set(ZONE_C.x, 0.08, ZONE_C.z); zone.material = this.M('#45525f'); statics.push(zone);
-        const zring = B().MeshBuilder.CreateTorus('zr', { diameter: ZONE_R * 2 - 0.1, thickness: 0.1, tessellation: 24 }, S);
-        zring.position.set(ZONE_C.x, 0.14, ZONE_C.z); zring.material = this.M('#8fa3b8'); statics.push(zring);
+        // (the standing zone is not drawn: figures are placed there by code but the floor stays uniform)
         this.mergeStatic(statics, root);
 
         // exit angles (world) — used by walls, tech stub and props
@@ -216,6 +214,8 @@ export class Scene3D {
         mk(2.4, 1.7, 0.3, 0, 0.85, 1.5, steel);                       // back wall of the stub
         for (const s of [-1, 1]) mk(0.3, 1.7, 2.4, s * 1.2, 0.85, 0.4, steel);  // side walls
         mk(2.4, 0.25, 2.4, 0, 1.75, 0.4, trim);                       // roof
+        mk(1.6, 0.06, 2.0, 0, 1.9, 0.3, this.M('#2f6fa8', 0.5));      // blue runner on the roof
+        for (const s of [-1, 1]) mk(0.08, 0.08, 2.0, s * 0.9, 1.92, 0.3, this.M('#3fa9ff', 0.8));   // blue edge lights along the roof
         mk(1.6, 1.3, 0.2, 0, 0.75, 1.3, dark);                        // dark opening
         mk(1.5, 0.06, 2.0, 0, 0.09, 0.3, this.M('#2f6fa8', 0.5));      // blue floor runner
         for (let i = 0; i < 3; i++) mk(0.1, 0.05, 1.6, -0.6 + i * 0.6, 0.22, 0.5, this.M('#2a3038'));  // grating
@@ -300,9 +300,109 @@ export class Scene3D {
         this.mergeStatic(statics, root);
         const stripMesh = this.mergeStatic(stripMeshes, root)[0];
         if (stripMesh) stripMesh.material = strips;
-        // props
+        // floor finish + props
+        this.buildFloor(tile, root);
         this.buildProps(tile, root, node);
         return { root, strips, emergency, stripMesh };
+    }
+
+    /**
+     * Floor finish per tile family, laid over the neutral deck plates once the room is explored:
+     * medical — pale large tiles; military — olive diamond plate; tech — steel grating (storage: concrete
+     * with yellow zone lines); engine — grating + hazard ring; nest — organic resin and slime; bridge —
+     * dark glossy panels with light seams; toxic — stained deck with puddles; cold — frosted hex plates.
+     */
+    buildFloor(tile, root) {
+        const S = this.scene; const fam = TILE_STYLE[tile] || 'steel';
+        const statics = [];
+        const R = WALL_R - 0.35, Y = 0.115;
+        const inR = (x, z, m = 0) => Math.hypot(x, z) < R - m;
+        const box = (w, h, d, x, y, z, mat, ry = 0) => { const m = B().MeshBuilder.CreateBox('fl', { width: w, height: h, depth: d }, S); m.position.set(x, y, z); m.rotation.y = ry; m.material = mat; statics.push(m); return m; };
+        const disc = (dia, h, x, y, z, mat, tess = 24) => { const m = B().MeshBuilder.CreateCylinder('fd', { diameter: dia, height: h, tessellation: tess }, S); m.position.set(x, y, z); m.material = mat; statics.push(m); return m; };
+        const base = (hex) => disc(R * 2, 0.04, 0, Y, 0, this.M(hex), 32);
+        let seed = tile.length * 31; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+        switch (tile === 'storage' ? 'storage' : fam) {
+            case 'medical': {
+                base('#8f9ba3');
+                const a = this.M('#c3ccd3'), b = this.M('#b2bcc4');
+                for (let gx = -4; gx <= 4; gx++) for (let gz = -4; gz <= 4; gz++) { const x = gx * 1.45, z = gz * 1.45; if (!inR(x, z, 0.7)) continue; box(1.32, 0.04, 1.32, x, Y + 0.03, z, (gx + gz) % 2 ? a : b); }
+                box(1.2, 0.02, 0.3, 0, Y + 0.06, 0, this.M('#c0392b')); box(0.3, 0.02, 1.2, 0, Y + 0.06, 0, this.M('#c0392b'));
+                break;
+            }
+            case 'military': {
+                base('#3b4136');
+                const stud = this.M('#4d5547');
+                for (let gx = -9; gx <= 9; gx++) for (let gz = -9; gz <= 9; gz++) { const x = gx * 0.62 + (gz % 2) * 0.31, z = gz * 0.62; if (!inR(x, z, 0.5)) continue; box(0.22, 0.03, 0.1, x, Y + 0.03, z, stud, Math.PI / 4); }
+                for (const s of [-1, 1]) box(0.25, 0.02, R * 1.2, s * 2.6, Y + 0.035, 0, this.M('#9c8a2a'));
+                break;
+            }
+            case 'storage': {
+                base('#4a4f55');
+                const yel = this.M('#d4b02a', 0.15);
+                for (const [x, z, w, d] of [[-3.2, 2.4, 2.6, 2.2], [0.4, 3.0, 2.8, 1.8], [3.4, 0.6, 2.0, 2.6], [-3.6, -1.6, 2.2, 2.0], [-0.8, -3.6, 2.4, 1.6]]) {
+                    box(w, 0.02, 0.12, x, Y + 0.035, z - d / 2, yel); box(w, 0.02, 0.12, x, Y + 0.035, z + d / 2, yel);
+                    box(0.12, 0.02, d, x - w / 2, Y + 0.035, z, yel); box(0.12, 0.02, d, x + w / 2, Y + 0.035, z, yel);
+                }
+                for (let i = 0; i < 14; i++) box(0.5, 0.02, 0.12, -3.5 + i * 0.55, Y + 0.035, 0.1, yel, Math.PI / 4);   // hatched walkway edge
+                break;
+            }
+            case 'tech': {
+                base('#242b33');
+                const bar = this.M('#39434e');
+                for (let i = -8; i <= 8; i++) { const x = i * 0.7; const len = Math.sqrt(Math.max(0, R * R - x * x)) * 2 - 0.6; if (len > 0.4) box(0.12, 0.03, len, x, Y + 0.03, 0, bar); }
+                for (let i = -3; i <= 3; i++) box(R * 2 - 1.2, 0.03, 0.16, 0, Y + 0.032, i * 1.7, this.M('#4a5663'));
+                break;
+            }
+            case 'engine': {
+                base('#1f252b');
+                const bar = this.M('#343d47');
+                for (let i = -8; i <= 8; i++) { const x = i * 0.7; const len = Math.sqrt(Math.max(0, R * R - x * x)) * 2 - 0.6; if (len > 0.4) box(0.1, 0.03, len, x, Y + 0.03, 0, bar); }
+                const hz = this.M('#e0a020', 0.1), hzD = this.M('#1a1a1a');
+                for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2; box(0.6, 0.03, 0.35, Math.cos(a) * 3.6, Y + 0.035, Math.sin(a) * 3.6, i % 2 ? hz : hzD, -a); }
+                disc(1.6, 0.05, 0, Y + 0.03, 0, this.M('#2b333c'), 12);
+                break;
+            }
+            case 'nest': {
+                base('#2a1d28');
+                const resin = this.M('#4a2f48'), slime = this.M('#6fa02a', 0.5), dark = this.M('#1a1016');
+                for (let i = 0; i < 26; i++) { const a = rnd() * Math.PI * 2, d = rnd() * (R - 1); const x = Math.cos(a) * d, z = Math.sin(a) * d; const m = disc(0.6 + rnd() * 1.6, 0.05 + rnd() * 0.08, x, Y + 0.03, z, i % 4 ? resin : dark, 7); m.scaling.z = 0.6 + rnd() * 0.6; m.rotation.y = rnd() * 3; }
+                for (let i = 0; i < 8; i++) { const a = rnd() * Math.PI * 2, d = rnd() * (R - 1.2); disc(0.4 + rnd() * 0.8, 0.03, Math.cos(a) * d, Y + 0.09, Math.sin(a) * d, slime, 8); }
+                for (let i = 0; i < 10; i++) { const a = rnd() * Math.PI * 2; box(0.14, 0.03, 1.2 + rnd() * 2, Math.cos(a) * (R - 1.4), Y + 0.1, Math.sin(a) * (R - 1.4), resin, -a + Math.PI / 2); }   // tendrils creeping in from the walls
+                break;
+            }
+            case 'bridge': {
+                base('#1c2736');
+                const seam = this.M('#4aa3df', 0.45), panel = this.M('#223044');
+                for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; box(0.08, 0.02, R - 0.8, Math.cos(a) * (R / 2 + 0.2), Y + 0.04, Math.sin(a) * (R / 2 + 0.2), seam, -a + Math.PI / 2); }
+                for (let i = 0; i < 16; i++) { const a = (i + 0.5) / 16 * Math.PI * 2; box(1.4, 0.03, 1.6, Math.cos(a) * 3.9, Y + 0.03, Math.sin(a) * 3.9, panel, -a + Math.PI / 2); }
+                for (const d of [2.2, 4.4]) { const ring = B().MeshBuilder.CreateTorus('fr', { diameter: d * 2, thickness: 0.08, tessellation: 32 }, S); ring.position.y = Y + 0.04; ring.scaling.y = 0.3; ring.material = seam; statics.push(ring); }
+                disc(1.6, 0.05, 0, Y + 0.03, 0, this.M('#2a3b55'), 16);
+                break;
+            }
+            case 'toxic': {
+                base('#2d3a2a');
+                const pud = this.M('#8fd13a', 0.35), stain = this.M('#3f4a2a');
+                for (let i = 0; i < 9; i++) { const a = rnd() * Math.PI * 2, d = rnd() * (R - 1.2); const m = disc(0.8 + rnd() * 1.8, 0.03, Math.cos(a) * d, Y + 0.03, Math.sin(a) * d, i % 3 ? stain : pud, 9); m.scaling.z = 0.5 + rnd() * 0.7; }
+                for (let gx = -5; gx <= 5; gx++) for (let gz = -5; gz <= 5; gz++) { const x = gx * 1.1, z = gz * 1.1; if (!inR(x, z, 0.6) || (gx + gz) % 2) continue; box(1.0, 0.02, 1.0, x, Y + 0.025, z, this.M('#34422f')); }
+                break;
+            }
+            case 'cold': {
+                base('#566b7c');
+                const hexA = this.M('#6d8699'), hexB = this.M('#7f98ab'), frost = this.M('#cfe6f5', 0.2);
+                let k = 0;
+                for (let gx = -5; gx <= 5; gx++) for (let gz = -6; gz <= 6; gz++) { const x = gx * 1.5 + (gz % 2) * 0.75, z = gz * 0.87; if (!inR(x, z, 0.8)) continue; const m = disc(1.4, 0.03, x, Y + 0.03, z, (k++) % 3 ? hexA : hexB, 6); m.rotation.y = Math.PI / 6; }
+                const ring = B().MeshBuilder.CreateTorus('fr', { diameter: 7.2, thickness: 0.18, tessellation: 32 }, S); ring.position.y = Y + 0.04; ring.scaling.y = 0.3; ring.material = frost; statics.push(ring);
+                break;
+            }
+            default: {
+                // steel: slightly darker plates with riveted seams
+                base('#333d48');
+                const seam = this.M('#1c232b');
+                for (let i = -3; i <= 3; i++) { box(0.08, 0.03, R * 2 - 1, i * 1.8, Y + 0.03, 0, seam); box(R * 2 - 1, 0.03, 0.08, 0, Y + 0.03, i * 1.8, seam); }
+            }
+        }
+        for (const m of statics) m.receiveShadows = true;
+        this.mergeStatic(statics, root);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -514,7 +614,11 @@ export class Scene3D {
                 for (const s of [-1, 1]) { mk(0.24, 1.6, 0.32, s * 1.2, 0.8, z, M('#59697b'), list); mk(0.1, 0.5, 0.12, s * 1.05, 0.65, z, M('#3e4b59'), list); }
                 mk(2.6, 0.24, 0.32, 0, 1.7, z, M('#59697b'), list);
                 mk(0.9, 0.06, 0.12, 0, 1.56, z, M('#dff5ff', 1), list);
-                for (const s of [-1, 1]) mk(0.1, 0.1, 0.1, s * 1.2, 1.3, z + 0.2, null, leds);
+                // glowing band wrapping the whole arch (both faces): side posts + lintel
+                for (const f of [-1, 1]) {
+                    for (const s of [-1, 1]) mk(0.16, 1.5, 0.04, s * 1.2, 0.78, z + f * 0.18, null, leds);
+                    mk(2.56, 0.14, 0.04, 0, 1.7, z + f * 0.18, null, leds);
+                }
                 const pipe = B().MeshBuilder.CreateCylinder('pp', { diameter: 0.12, height: 2.5, tessellation: 6 }, S);
                 pipe.position.set(0, 1.42, z + 0.12); pipe.rotation.z = Math.PI / 2; pipe.material = M('#8c96a0'); pipe.parent = seg; list.push(pipe);
             }
@@ -548,7 +652,7 @@ export class Scene3D {
             panels.push(p);
         }
         const noise = B().MeshBuilder.CreateCylinder('noise', { diameter: 1.4, height: 0.12, tessellation: 12 }, S);
-        noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M('#f1c40f', 0.9); noise.isPickable = false; noise.setEnabled(false);
+        noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M('#f1c40f', 0.9); noise.isPickable = false; noise.setEnabled(false); noise.visibility = 0;   // kept for layout; the arch bands show noise
         const noiseLabel = this.makeLabel('nl_' + c.id, '🔊', '', door, 0, 1.4, -2.2, 1.4);
         noiseLabel.setEnabled(false);
         const debris = [];
@@ -673,7 +777,7 @@ export class Scene3D {
         n.panels[0].position.x = closed ? -0.45 : -1.2; n.panels[1].position.x = closed ? 0.45 : 1.2;
         n.panels[0].setEnabled(!destroyed); n.panels[1].setEnabled(!destroyed);
         for (const d of n.debris) d.setEnabled(destroyed);
-        n.noise.setEnabled(!!c.noise); n.noiseLabel.setEnabled(!!c.noise);
+        n.noiseLabel.setEnabled(!!c.noise);
         for (const m of n.ribsA) m.setEnabled(exA); for (const m of n.ribsB) m.setEnabled(exB);
         const col = c.noise ? '#ffd23b' : '#3fd0ff';
         for (const mat of [n.matA, n.matB]) { mat.diffuseColor = B().Color3.FromHexString(col); mat.emissiveColor = B().Color3.FromHexString(col); }
@@ -850,6 +954,10 @@ export class Scene3D {
             } else if (n.faceY != null) n.ch.root.rotation.y += (n.faceY - n.ch.root.rotation.y) * Math.min(1, dt * 6);
             if (n.ch.animate) n.ch.animate(t, moving);
         }
+        // name labels grow as the camera zooms out, so figures are easy to find on the whole ship
+        const lk = Math.min(3.2, Math.max(1, this.camera.radius / 55));
+        for (const n of Object.values(this.chars)) { n.label.scaling.setAll(lk); n.label.position.y = 3.6 + (lk - 1) * 0.9; }
+        for (const n of Object.values(this.intr)) if (n.label) { n.label.scaling.setAll(lk); n.label.position.y = 3.0 + (lk - 1) * 0.9; }
         for (const c of Object.values(this.cursors)) {
             B().Vector3.LerpToRef(c.root.position, c.target, Math.min(1, dt * 12), c.root.position);
             c.root.position.y = 0.25 + Math.sin(t * 3) * 0.05;
