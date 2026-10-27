@@ -194,14 +194,14 @@ test('CARD-01 / My Little Friend: the burst actually reaches a shooting roll', (
 });
 for (const [char, card, at, targetAfterPayment] of [
     ['mechanic', 'duckAndCover', '011', 'room'],
-    ['mechanic', 'technicalCorridors', '002', 'room'],
+    ['mechanic', 'technicalCorridors', '005', 'room'],
     ['labrat', 'feelOfDark', '011', 'room'],
     ['sentry', 'facilityTour', '011', 'room'],
     ['scout', 'scavenging', '006', 'choice'],
 ]) {
     test('COST-01 / ' + char + '.' + card + ': printed extra discard is charged once, not twice', () => {
         const s = fresh([char, 'soldier']), p = s.players[0];
-        reveal(s, '006', 'comms'); p.room = at;
+        reveal(s, '006', 'comms'); reveal(s, at, 'comms'); p.room = at;
         const id = char + '.' + card + '#0';
         assert.ok(CHARACTERS[char].cards[card], 'Use a real character card id');
         p.hand = [id, char + '.search#10', char + '.demolition#10'];
@@ -412,7 +412,7 @@ test('START-05 / CEO Robot: the starting Body wound exists', () => {
     assert.ok(s.players[0].wounds.includes('body'));
 });
 test('QUEST-01 / Tools: quest activation is an available option', () => {
-    const s = fresh(['soldier', 'scout']), p = s.players[0]; p.items.push(inst(s, 'tools'), inst(s, 'heavyArmor'));
+    const s = fresh(['soldier', 'scout']), p = s.players[0]; p.items.push(inst(s, 'tools'));
     const tool = p.items.find(i => i.item === 'tools');
     execute(s, { op: 'item.use', player: 0, uid: tool.uid, then: { op: 'turn.choose' } });
     assert.ok(s.prompt.options?.some(o => /[Кк]вест|[Аа]ктив/.test(o.label)));
@@ -592,4 +592,57 @@ test('MAP-03 / Coordinates sheet: all eight printed destination permutations are
         { A: 'venus', B: 'space', C: 'mars', D: 'earth' },
     ];
     assert.deepEqual(COORDINATE_CARDS.map(signature).sort(), expected.map(signature).sort());
+});
+
+// --- CEO reactions added with the printed 12-card deck ------------------------------------------
+test('CEO-01 / Just One More Thing: after Pass draw 1 and take an extra Turn, then pass', () => {
+    const s = fresh(['ceo', 'soldier']), p = s.players[0];
+    const card = 'ceo.justOneMoreThing#0';
+    p.hand = [card, 'ceo.search#10'];
+    execute(s, { op: 'turn.do', player: 0, answer: { action: 'pass' } });
+    if (s.prompt.kind === 'cards') choose(s, []);   // the ordinary "discard on Pass" window comes first
+    assert.equal(s.prompt.kind, 'choice');
+    assert.match(s.prompt.title, /Ещё одну вещь/);
+    choose(s, 'yes');
+    assert.equal(p.hand.length, 2, 'The Pass discarded nothing and the reaction drew 1 card');
+    assert.equal(p.hand.includes(card), false, 'The card leaves the game');
+    assert.equal(s.prompt.kind, 'turn');
+    assert.equal(s.prompt.player, p.id, 'The same character takes the additional Turn');
+});
+test('CEO-02 / Stop It!: after the Attack card is revealed the reaction cancels the attack', () => {
+    const s = fresh(['ceo', 'soldier']), p = s.players[0], it = intruder(s);
+    const card = 'ceo.stopIt#0';
+    p.hand = [card]; p.health = 10;
+    s.attackDeck = ['bite']; s.attackDiscard = [];
+    execute(s, { op: 'attack', player: 0, intruder: it.uid, context: 'phase' });
+    assert.ok(s.prompt.options.some(o => o.id === 'stopit'));
+    choose(s, 'stopit');
+    assert.equal(p.status, 'active');
+    assert.equal(p.hand.includes(card), false, 'The card is removed from the game');
+});
+
+// --- Support deck edge cases fixed after the print audit ----------------------------------------
+test('ITEM-12 / Sonic Gun: a special result places a malfunction in your Room, not Noise', () => {
+    const s = fresh(), p = s.players[0], it = intruder(s);
+    p.items = [inst(s, 'sonicGun')];
+    s.pendingRoll = { die: 'combat', value: 2 };
+    execute(s, { op: 'shoot.fire', player: 0, weapon: p.items[0].uid, target: it.uid, then: { op: 'turn.choose' } });
+    assert.equal(s.roomState[p.room].malfunction, true);
+});
+test('ITEM-13 / Tactical Hatchet: 2 Hits without a combat roll, then an orange malfunction', () => {
+    const s = fresh(), p = s.players[0], it = intruder(s);
+    p.items = [inst(s, 'tacticalHatchet')];
+    execute(s, { op: 'melee.hit', player: 0, target: it.uid, then: { op: 'turn.choose' } });
+    assert.equal(it.hits, 2, 'the printed effect is exactly 2 Hits, not a rolled result');
+    assert.equal(p.items[0].charge, 1, 'an orange malfunction marker is placed on the weapon');
+});
+test('START-06 / Smart Gun: the reroll is the player\'s decision and the second result is final', () => {
+    const s = fresh(['hacker', 'soldier']), p = s.players[0], it = intruder(s);
+    p.items = [inst(s, 'smartGun')];
+    s.pendingRoll = { die: 'combat', value: 3 };
+    execute(s, { op: 'shoot.fire', player: 0, weapon: p.items[0].uid, target: it.uid, then: { op: 'turn.choose' } });
+    assert.equal(s.prompt.kind, 'choice', 'the player chooses whether to reroll');
+    assert.match(s.prompt.title, /Перебросить/);
+    choose(s, 'keep');
+    assert.equal(it.hits, 1, 'keeping the first roll resolves the shot with it');
 });

@@ -14,7 +14,7 @@ import { resolveAirlocks } from './core.mjs';
 
 OPS['phase.player'] = (state) => {
     state.phase = 'player';
-    for (const p of state.players) { p.passed = p.status !== 'active'; p.movedThisRound = false; p.firstShotUsed = false; p.rifleDrawUsed = false; p.adrenalineTurn = false; p.noAttacks = false; p.camouflage = false; }
+    for (const p of state.players) { p.passed = p.status !== 'active'; p.movedThisRound = false; p.firstShotUsed = false; p.rifleDrawUsed = false; p.adrenalineTurn = false; p.noAttacks = false; p.camouflage = false; p.mustPass = false; }
     state.turnCursor = -1;
     log(state, '— Раунд ' + state.round + ': фаза игроков —', 'phase');
     survivorUpgrade(state);
@@ -47,6 +47,7 @@ OPS['turn.choose'] = (state) => {
     if (p.status !== 'active' || p.passed) { next(state, { op: 'turn.end' }); return; }
     if (state.actionsLeft <= 0 && !p.adrenalineTurn) { next(state, { op: 'turn.end' }); return; }
     const menu = buildMenu(state, p);
+    if (p.mustPass) { menu.actions = menu.actions.filter(a => a.id === 'pass'); menu.cards = []; menu.items = []; }
     ask(state, { kind: 'turn', player: p.id, title: 'Ваш ход — действий осталось: ' + (p.adrenalineTurn ? '∞' : state.actionsLeft), ...menu },
         { op: 'turn.do', player: p.id });
 };
@@ -188,7 +189,7 @@ OPS['turn.do'] = (state, step) => {
     if (!act || !act.enabled) { next(state, back); return; }
     switch (a.action) {
         case 'pass':
-            p.passed = true;
+            p.passed = true; p.mustPass = false;
             log(state, pname(p) + ' пасует.', 'action');
             next(state, { op: 'pass.discard', player: p.id });
             return;
@@ -327,7 +328,26 @@ OPS['pass.discard.done'] = (state, step) => {
     const p = player(state, step.player);
     for (const c of step.answer) discardCard(state, p, c);
     if (step.answer.length) log(state, pname(p) + ' сбрасывает ' + step.answer.length + ' карт при пасе.', 'minor');
+    const more = p.status === 'active' ? p.hand.find(c => (cardDef(state, c) || {}).effect === 'justOneMoreThing') : null;
+    if (more) {
+        ask(state, { kind: 'choice', player: p.id, title: 'Сыграть «Ещё одну вещь»: взять 1 карту и получить дополнительный ход (затем обязательный пас)?',
+            options: [{ id: 'yes', label: 'Да, «Ещё одну вещь»' }, { id: 'no', label: 'Нет' }] },
+            { op: 'ceo.justOneMore', player: p.id, card: more });
+        return;
+    }
     next(state, { op: 'turn.end' });
+};
+OPS['ceo.justOneMore'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer !== 'yes' || !p.hand.includes(step.card) || p.status !== 'active') { next(state, { op: 'turn.end' }); return; }
+    removeCardFromGame(state, p, step.card);
+    drawCards(state, p, 1);
+    log(state, pname(p) + ' играет «Ещё одну вещь»: дополнительный ход.', 'good');
+    p.passed = false; p.mustPass = true;
+    const order = turnOrder(state);
+    state.turnCursor = (order.indexOf(p) - 1 + order.length) % order.length;
+    state.current = p.id;
+    next(state, { op: 'turn.start' });
 };
 
 OPS['turn.end'] = (state) => {

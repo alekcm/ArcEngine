@@ -198,7 +198,7 @@ export const ITEMS = {
     tacticalArmor:  { deck: 'support', count: 1, name: 'Тактическая броня', kind: 'armor', heavyArmor: true, use: null,
                       text: 'Броня. Каждая атака чужого наносит на 1 ранение меньше.' },
     tacticalHatchet:{ deck: 'support', count: 1, name: 'Тактический топорик', kind: 'heavy', melee: true, hatchet: true, crit: true, use: null,
-                      text: 'Оружие ближнего боя. Атака в ближнем бою: КРИТ вместо броска кубика; затем положите оранжевый жетон поломки на топорик.' },
+                      text: 'Оружие ближнего боя. Атака в ближнем бою: нанесите 2 ранения вместо броска кубика боя, затем положите оранжевый жетон поломки на топорик.' },
     utilityVest:    { deck: 'support', count: 1, name: 'Разгрузочный жилет', kind: 'armor', vest: true, use: null,
                       text: 'Броня. При обыске можно оставить 2 предмета вместо 1. Действие «предмет» позволяет использовать 2 предмета.' },
     // --- starting weapons ---
@@ -319,7 +319,7 @@ export const CHARACTERS = {
             { id: 'pants',  label: 'Штаны',         presets: ['#2d3436', '#4b3d2a', '#1e3d2b', '#3b2f4a', '#555'] },
             { id: 'visor',  label: 'Свечение визора', presets: ['#ff3b3b', '#3bff7a', '#3bb8ff', '#ffd23b', '#ff3bd1'] },
         ],
-        startItems: [{ item: 'soldierGun', ammo: 6 }, { item: 'handgun', ammo: 3 }],
+        startItems: [{ item: 'soldierGun', ammo: 6 }, { item: 'handgun', ammo: 3 }, { item: 'heavyArmor' }],
         cards: {
             coveringFire: { name: 'Прикрывающий огонь', cost: 1, effect: 'coveringFire', text: 'Сбросьте ещё 1 карту и 2 патрона из дальнобойного оружия: переместитесь (можно с согласным персонажем), атаки чужих при этом не происходят.' },
             demolition: COMMON_CARDS.demolition,

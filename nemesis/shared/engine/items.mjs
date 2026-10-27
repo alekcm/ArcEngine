@@ -214,7 +214,7 @@ OPS['item.use'] = (state, step) => {
             if (room(state, p.room).malfunction) opts.push({ id: 'malf', label: 'Устранить поломку в комнате' });
             if (state.ship.rooms[p.room].kind === 'engine') opts.push({ id: 'engine', label: 'Починить/сломать двигатель' });
             if (def.use === 'tools') {
-                for (const quest of p.items.filter(i => ITEMS[i.item].quest && !i.active && QUEST_ACTIVATIONS[i.item]))
+                for (const quest of [...p.items, ...(p.armor ? [p.armor] : [])].filter(i => ITEMS[i.item].quest && !i.active && QUEST_ACTIVATIONS[i.item]))
                     opts.push({ id: 'quest:' + quest.uid, label: 'Активировать квестовый предмет «' + ITEMS[quest.item].name + '», игнорируя требования' });
             }
             if (!opts.length) { log(state, 'Нечего чинить здесь.', 'minor'); next(state, back); return; }
@@ -390,9 +390,11 @@ OPS['item.cables'] = (state, step) => {
     if (w) { w.ammo = ITEMS[w.item].weapon.max; log(state, '«' + ITEMS[w.item].name + '» полностью заряжено.', 'good'); }
     next(state, step.then);
 };
+/** Every Quest Item the character owns — carried items and worn armor alike. */
+const questItems = p => [...p.items, ...(p.armor ? [p.armor] : [])].filter(i => ITEMS[i.item].quest && QUEST_ACTIVATIONS[i.item] && !i.active);
 OPS['quest.pick'] = (state, step) => {
     const p = player(state, step.player);
-    const opts = p.items.filter(i => ITEMS[i.item].quest && QUEST_ACTIVATIONS[i.item] && !i.active)
+    const opts = questItems(p)
         .map(i => ({ id: i.uid, label: ITEMS[i.item].name, desc: ITEMS[i.item].text }));
     if (!opts.length) { next(state, step.then); return; }
     ask(state, { kind: 'choice', player: p.id, title: 'Какой квестовый предмет активировать?', options: opts }, { op: 'quest.activate', player: p.id, then: step.then });
@@ -419,7 +421,7 @@ export function questRequirement(state, p, inst) {
 }
 OPS['quest.activate'] = (state, step) => {
     const p = player(state, step.player);
-    const inst = p.items.find(i => i.uid === step.answer);
+    const inst = p.items.find(i => i.uid === step.answer) || (p.armor && p.armor.uid === step.answer ? p.armor : null);
     if (!inst) { next(state, step.then); return; }
     if (!step.ignoreReq) {
         const why = questRequirement(state, p, inst);
@@ -433,7 +435,7 @@ OPS['quest.activate'] = (state, step) => {
 };
 OPS['quest.activate.side'] = (state, step) => {
     const p = player(state, step.player);
-    const inst = p.items.find(i => i.uid === step.uid);
+    const inst = p.items.find(i => i.uid === step.uid) || (p.armor && p.armor.uid === step.uid ? p.armor : null);
     if (!inst) { next(state, step.then); return; }
     inst.active = true;
     const effect = ITEMS[inst.item].activate;
@@ -484,7 +486,7 @@ OPS['item.toolsPick'] = (state, step) => {
     const p = player(state, step.player);
     if (String(step.answer).startsWith('quest:')) {
         const uid = step.answer.slice(6);
-        const inst = p.items.find(i => i.uid === uid);
+        const inst = p.items.find(i => i.uid === uid) || (p.armor && p.armor.uid === uid ? p.armor : null);
         if (!inst) { next(state, step.then); return; }
         next(state, { op: 'quest.activate.side', player: p.id, uid, then: step.then, ignoreReq: true });
         return;
