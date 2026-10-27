@@ -23,6 +23,7 @@ const ART_DECKS = {
     pilot: ['computerSkills', 'demolition', 'determination', 'interruption', 'knowledgeOfShip', 'piloting', 'repairs', 'rest', 'search', 'weakSpot'],
     hacker: ['computerSkills', 'demolition', 'interruption', 'masterPlan', 'neuralink', 'override', 'recharge', 'repairs', 'rest', 'search'],
     scientist: ['computerSkills', 'connection', 'demolition', 'duckAndCover', 'interruption', 'intranet', 'repairs', 'rest', 'riskAssessment', 'search'],
+    medic: ['computerSkills', 'demolition', 'fieldSurgery', 'firstAid', 'interruption', 'neurotoxicGas', 'repairs', 'rest', 'search', 'synthesizedDrugs'],
 };
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
