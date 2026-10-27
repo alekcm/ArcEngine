@@ -44,7 +44,7 @@ const dropItem = (state, p, uid) => {
     return true;
 };
 const spendTissue = (state, p) => { p.tissue = Math.max(0, (p.tissue || 0) - 1); log(state, pname(p) + ' тратит образец ткани (осталось ' + p.tissue + ').', 'action'); };
-const probeArm = p => p.items.find(i => i.item === 'probeArm');
+const probeArm = p => (p.armor && p.armor.item === 'probeArm') ? p.armor : null;
 const probeUsed = p => { const a = probeArm(p); return a ? ITEMS.probeArm.markers - (a.charge ?? ITEMS.probeArm.markers) : 0; };
 const freeProbeMarker = (state, p) => { const a = probeArm(p); if (!a) return; a.charge = Math.min(ITEMS.probeArm.markers, (a.charge ?? ITEMS.probeArm.markers) + 1); log(state, pname(p) + ' снимает жетон с Манипулятора-зонда (свободно ' + a.charge + ').', 'action'); };
 

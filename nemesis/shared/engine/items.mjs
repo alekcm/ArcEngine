@@ -62,7 +62,7 @@ export function searchRoom(state, p, then) {
 // ---------------------------------------------------------------------------------------------
 OPS['item.use'] = (state, step) => {
     const p = player(state, step.player);
-    const inst = p.items.find(i => i.uid === step.uid);
+    const inst = p.items.find(i => i.uid === step.uid) || (p.armor && p.armor.uid === step.uid ? p.armor : null);
     const back = step.then || { op: 'turn.choose' };
     if (!inst) { next(state, back); return; }
     const def = ITEMS[inst.item];

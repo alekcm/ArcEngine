@@ -81,7 +81,7 @@ export function buildMenu(state, p) {
         if (req) return { id: c, enabled: false, reason: req };
         return { id: c, enabled: payable >= (d.cost || 1) + extraCost(d), reason: '' };
     });
-    const items = p.items.filter(i => ITEMS[i.item].use).map(i => {
+    const items = [...p.items, ...(p.armor ? [p.armor] : [])].filter(i => ITEMS[i.item].use).map(i => {
         const d = ITEMS[i.item];
         const cost = (d.free ? 0 : 1) + (p.wounds.includes('hand') && !d.free ? 1 : 0);
         if (i.broken) return { uid: i.uid, enabled: false, reason: 'Поломка', cost };
@@ -178,7 +178,7 @@ OPS['turn.do'] = (state, step) => {
     if (a.action === 'item') {
         const it = menu.items.find(x => x.uid === a.itemId);
         if (!it || !it.enabled) { next(state, back); return; }
-        const inst = p.items.find(x => x.uid === a.itemId);
+        const inst = p.items.find(x => x.uid === a.itemId) || p.armor;
         const d = ITEMS[inst.item];
         log(state, pname(p) + ' использует предмет «' + d.name + '».', 'action');
         if (!d.free) spend();

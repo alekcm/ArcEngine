@@ -700,7 +700,7 @@ OPS['card.tacticalMove.go'] = (state, step) => {
 // Starting item uses
 // ---------------------------------------------------------------------------------------------
 OPS['item2.use'] = (state, step) => {
-    const p = player(state, step.player); const inst = p.items.find(i => i.uid === step.uid); const back = step.then || BACK;
+    const p = player(state, step.player); const inst = p.items.find(i => i.uid === step.uid) || (p.armor && p.armor.uid === step.uid ? p.armor : null); const back = step.then || BACK;
     if (!inst) { next(state, back); return; }
     switch (ITEMS[inst.item].use) {
         case 'pipeMelee': next(state, { op: 'melee.start', player: p.id, noContam: true, then: back }); return;

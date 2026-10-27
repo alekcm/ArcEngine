@@ -95,7 +95,8 @@ export function createGame(config) {
         shuffle(state, p.deck);
         for (const s of ch.startItems) {
             const def = ITEMS[s.item];
-            p.items.push({ uid: 'it' + (++state.itemSeq), item: s.item, ammo: def.weapon ? (s.ammo ?? def.weapon.max) : undefined, broken: false, charge: def.markers });
+            const inst = { uid: 'it' + (++state.itemSeq), item: s.item, ammo: def.weapon ? (s.ammo ?? def.weapon.max) : undefined, broken: false, charge: def.markers };
+            if (def.kind === 'armor') p.armor = inst; else p.items.push(inst);
             if (s.item === 'laika') p.laika = 'board';
         }
         let corp = corporate.pop();

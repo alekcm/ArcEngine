@@ -199,7 +199,7 @@ function renderPlayers() {
         if (p.passed && v.phase === 'player') tags.push('<span class="tag">пас</span>');
         for (const w of p.wounds) tags.push('<span class="tag red" title="' + esc(woundName(w)) + '">травма: ' + esc(woundName(w)) + '</span>');
         if (p.larva) tags.push('<span class="tag purple">личинка</span>');
-        if (p.armor) tags.push('<span class="tag">броня</span>');
+        if (p.armor) tags.push('<span class="tag" title="' + esc(itemTitle(p.armor)) + '">🛡 ' + esc(itemLabel(p.armor)) + (p.armor.item === 'probeArm' ? ' · жетонов свободно ' + (p.armor.charge ?? ITEMS.probeArm.markers) : '') + '</span>');
         if (p.tissue) tags.push('<span class="tag yellow">🧫 ткань ×' + p.tissue + '</span>');
         if (p.laika) tags.push('<span class="tag yellow">🐕 Лайка: ' + (p.laika === 'board' ? 'рядом' : 'в ' + esc(roomLabel(p.laika))) + '</span>');
         if (p.signal) tags.push('<span class="tag green">сигнал</span>');
@@ -269,7 +269,7 @@ function renderPrompt() {
             html += '<div class="menu-cols"><div><h5>Действия</h5><div class="opts">' + pr.actions.map(a =>
                 '<button class="opt" data-act="' + a.id + '" ' + (a.enabled ? '' : 'disabled') + '><span>' + esc(a.label) + (a.cost ? ' <small>(' + a.cost + ' 🂠)</small>' : '') + '</span>' + (a.reason ? '<span class="why">' + esc(a.reason) + '</span>' : '') + '</button>').join('') + '</div></div>';
             html += '<div><h5>Предметы</h5><div class="opts">' + (pr.items.length ? pr.items.map(i => {
-                const inst = v.players[pr.player].items.find(x => x.uid === i.uid);
+                const pp = v.players[pr.player]; const inst = pp.items.find(x => x.uid === i.uid) || (pp.armor && pp.armor.uid === i.uid ? pp.armor : null);
                 return '<button class="opt" data-item="' + i.uid + '" ' + (i.enabled ? '' : 'disabled') + ' title="' + esc(inst ? itemTitle(inst) : '') + '"><span>' + esc(inst ? itemLabel(inst) : i.uid) + (i.cost ? ' <small>(' + i.cost + ' 🂠)</small>' : ' <small>(бесплатно)</small>') + '</span>' + (i.reason ? '<span class="why">' + esc(i.reason) + '</span>' : '') + '</button>';
             }).join('') : '<div class="hint">Нет используемых предметов</div>') + '<div class="hint" style="margin-top:6px">Карты действий — внизу: нажмите на карту, чтобы разыграть.</div></div></div></div>';
             break;
