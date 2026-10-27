@@ -35,6 +35,8 @@ const ART_DECKS = {
     survivor: ['alwaysPrepared', 'demolition', 'desperateAttack', 'distraction', 'interruption', 'obstinate', 'repairs', 'rest', 'search', 'vents'],
     xeno: ['demolition', 'fieldExperience', 'interruption', 'overmind', 'pheromones', 'repairs', 'rest', 'search', 'vivisection', 'workspacePlan'],
 };
+/** Field Data cards (hand id 'field.<key>') with illustrations in client/art/field/<key>.jpg. */
+const ART_FIELD = ['fdAim', 'fdSprint', 'fdPatch', 'fdScan', 'fdHush', 'fdTrap'];
 /** Items with illustrations in client/art/items/<itemKey>.jpg. */
 const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', 'antiseptic', 'stapler', 'adrenaline', 'supportCrate', 'selfDestructKey',
     'armor', 'grenade', 'flashbang', 'energyCharge', 'evacKey', 'taser', 'logCodes', 'detonator', 'cables', 'ductTape',
@@ -54,12 +56,13 @@ const ART_EVENTS = ['breakingIn', 'bulkheadsOpen', 'damage', 'damagingFire', 'eg
     'leavingShell', 'lifeSupport', 'lurking', 'malfunction', 'onTheHunt', 'protectAndServe', 'scentOfPrey', 'shortCircuit', 'systemFailure', 'queenAwakens'];
 export function eventArt(id) { return ART_EVENTS.includes(id) ? 'art/events/' + id + '.jpg' : null; }
 /** Attack cards share one illustration per name: claws1..3 -> claws, fury1/2 -> fury, scratch1..4 -> scratch, tail1/2 -> tail. */
-const ART_ATTACK = ['bite', 'bloodSense', 'claws', 'fury'];
+const ART_ATTACK = ['bite', 'bloodSense', 'claws', 'fury', 'infecting', 'miss', 'scratch', 'tail'];
 export function attackArt(id) { const k = String(id).replace(/\d+$/, ''); return ART_ATTACK.includes(k) ? 'art/attack/' + k + '.jpg' : null; }
 const ART_QUEEN = [];
 export function queenArt(id) { return ART_QUEEN.includes(id) ? 'art/queen/' + id + '.jpg' : null; }
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
+    if (owner === 'field') return ART_FIELD.includes(key) ? 'art/field/' + key + '.jpg' : null;
     return ART_DECKS[owner] && ART_DECKS[owner].includes(key) ? 'art/' + owner + '/' + key + '.jpg' : null;
 }
 
