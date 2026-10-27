@@ -42,7 +42,7 @@ const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', '
     'armor', 'grenade', 'flashbang', 'energyCharge', 'evacKey', 'taser', 'logCodes', 'detonator', 'cables', 'ductTape',
     'engineKey', 'extinguisher', 'glowstick', 'nemesisPlans', 'reagent', 'techPlan', 'tools', 'plasmaGun', 'flamethrower', 'hardenedArmor',
     'riotgun', 'assaultRifle', 'assaultShotgun', 'autoloaderBelt', 'automaticShotgun', 'bayonet', 'bfGun', 'biohazardArmor', 'drumMagRifle',
-    'engineeringEquipment', 'gatlingGun', 'grenadeLauncher', 'handCannon', 'perimeterDevice', 'securityControl', 'smartRifle', 'sniperRifle', 'sonicGun', 'smg', 'soldierGun', 'handgun', 'scoutRifle', 'sawedOff', 'smartGun', 'riotShotgun', 'energyPistol', 'bountyRifle',
+    'engineeringEquipment', 'gatlingGun', 'grenadeLauncher', 'handCannon', 'perimeterDevice', 'securityControl', 'smartRifle', 'sniperRifle', 'sonicGun', 'smg', 'tacticalArmor', 'tacticalHatchet', 'utilityVest', 'soldierGun', 'handgun', 'scoutRifle', 'sawedOff', 'smartGun', 'riotShotgun', 'energyPistol', 'bountyRifle',
     'sixShooter', 'probeArm', 'xenoGun', 'survivorFavorite', 'pipe', 'cuffs', 'robot', 'ups', 'laika', 'wrench',
     'fieldKit', 'oculobe', 'sampleJar', 'navTablet', 'mechTools'];
 export function itemArt(key) { return ART_ITEMS.includes(key) ? 'art/items/' + key + '.jpg' : null; }
