@@ -513,22 +513,25 @@ export class Scene3D {
                 break;
             case 'archives': {
                 // Two rows of four wall cabinets (left and right), books left half pulled out of the shelves.
+                // An open cabinet: back panel, sides, top and plinth only, so the shelves and books
+                // are visible from the room (a solid block would hide everything inside it).
                 const shelf = (a) => {
                     const p = wallSpot(a), fr = frameOf(p), ry = p.ry;
-                    bx(2.0, 2.4, 0.8, p.x, 1.26, p.z, panel, ry);                       // carcass
-                    bx(2.1, 0.1, 0.86, p.x, 2.5, p.z, metal, ry);                       // top
-                    bx(1.9, 0.22, 0.84, p.x, 0.13, p.z, dark, ry);                      // plinth
-                    for (const sd of [-1, 1]) bx(0.08, 2.4, 0.8, fr.at(sd * 0.98, 0)[0], 1.26, fr.at(sd * 0.98, 0)[1], metal, ry);
+                    bx(2.0, 2.4, 0.12, fr.at(0, -0.34)[0], 1.26, fr.at(0, -0.34)[1], panel, ry);   // back panel
+                    for (const sd of [-1, 1]) bx(0.09, 2.4, 0.8, fr.at(sd * 0.955, 0)[0], 1.26, fr.at(sd * 0.955, 0)[1], metal, ry);
+                    bx(2.0, 0.12, 0.8, p.x, 2.44, p.z, metal, ry);                       // top
+                    bx(1.9, 0.24, 0.8, p.x, 0.13, p.z, dark, ry);                        // plinth
                     for (let k = 0; k < 5; k++) {
                         const y = 0.42 + k * 0.46;
-                        bx(1.9, 0.05, 0.76, p.x, y, p.z, metal, ry);                    // shelf board
+                        bx(1.83, 0.05, 0.68, fr.at(0, -0.06)[0], y, fr.at(0, -0.06)[1], metal, ry);   // shelf board
                         for (let b = 0; b < 5; b++) {
-                            const u = -0.74 + b * 0.37, v = 0.1 + ((b + k) % 3) * 0.07;  // pulled towards the room
+                            // books sit on the board and poke out past its front edge — half pulled out
+                            const u = -0.7 + b * 0.35, v = 0.16 + ((b + k) % 3) * 0.06;
                             const x = fr.at(u, v)[0], z = fr.at(u, v)[1];
-                            bx(0.26, 0.32, 0.14, x, y + 0.19, z, b % 3 ? (k % 2 ? accent : screen) : M('#7d8b9c'), ry + (b % 2 ? 0.09 : -0.07), 0);
+                            bx(0.24, 0.3, 0.16, x, y + 0.19, z, b % 3 ? (k % 2 ? accent : screen) : M('#7d8b9c'), ry + (b % 2 ? 0.09 : -0.07), 0);
                         }
                     }
-                    bx(0.55, 0.07, 0.03, fr.at(0.4, 0.42)[0], 1.86, fr.at(0.4, 0.42)[1], M('#ffd27f', 0.8), ry);   // shelf label
+                    bx(0.55, 0.07, 0.03, fr.at(0.4, 0.3)[0], 1.86, fr.at(0.4, 0.3)[1], M('#ffd27f', 0.8), ry);   // shelf label
                 };
                 // explicit arcs, so the two rows never drift into each other even when a door eats a spot
                 const row = (list) => { let n = 0; for (const a of list) { if (n >= 4) break; if (nearExit(a, 0.5) || !zoneSafe(a)) continue; fix(() => shelf(a)); n++; } };
@@ -641,12 +644,17 @@ export class Scene3D {
                         bx(0.16, 0.1, 0.3, x + 0.25, 0.98, z + 0.1, M('#4fcf7a', 0.4), ry);   // swabs / bottle
                         cy(0.1, 0.1, 0.2, x - 0.32, 1.05, z - 0.12, M('#7fc7ff', 0.5, { alpha: 0.8 }), 8);
                     }
-                    // supply cabinet with glass doors and boxes
+                    // supply cabinet: open shell with glass doors, the boxes stand on its own shelves
                     const p = wallSpot(freeAngle(-2.2, 0.7)), fr = frameOf(p);
-                    bx(1.6, 1.9, 0.55, p.x, 0.98, p.z, white, p.ry);
-                    bx(1.44, 1.6, 0.04, fr.at(0, 0.3)[0], 1.02, fr.at(0, 0.3)[1], M('#7fc7ff', 0.25, { alpha: 0.45 }), p.ry);
-                    for (let k = 0; k < 4; k++) bx(0.3, 0.22, 0.22, fr.at(-0.55 + k * 0.35, 0.28)[0], 0.5 + (k % 2) * 0.5, fr.at(-0.55 + k * 0.35, 0.28)[1], k % 2 ? M('#4fcf7a', 0.3) : M('#c0392b', 0.3), p.ry);
-                    bx(0.1, 1.5, 0.06, fr.at(0, 0.33)[0], 1.0, fr.at(0, 0.33)[1], metal, p.ry);
+                    bx(1.6, 1.9, 0.1, fr.at(0, -0.22)[0], 0.98, fr.at(0, -0.22)[1], white, p.ry);      // back
+                    for (const sd of [-1, 1]) bx(0.08, 1.9, 0.55, fr.at(sd * 0.76, 0)[0], 0.98, fr.at(sd * 0.76, 0)[1], white, p.ry);
+                    bx(1.6, 0.08, 0.55, p.x, 1.93, p.z, white, p.ry);                                // top
+                    bx(1.6, 0.08, 0.55, p.x, 0.06, p.z, white, p.ry);                                // bottom
+                    bx(1.34, 0.05, 0.5, fr.at(0, 0)[0], 0.76, fr.at(0, 0)[1], metal, p.ry);          // middle shelf
+                    bx(1.44, 1.7, 0.03, fr.at(0, 0.25)[0], 1.0, fr.at(0, 0.25)[1], M('#7fc7ff', 0.25, { alpha: 0.4 }), p.ry);
+                    bx(0.04, 1.7, 0.04, p.x, 1.0, fr.at(0, 0.27)[1], metal, p.ry);                   // doors' gap
+                    for (const sd of [-1, 1]) bx(0.06, 0.3, 0.03, fr.at(sd * 0.16, 0.28)[0], 1.0, fr.at(sd * 0.16, 0.28)[1], metal, p.ry);
+                    for (let k = 0; k < 4; k++) bx(0.3, 0.22, 0.22, fr.at(-0.5 + k * 0.34, 0.02)[0], 0.46 + (k % 2) * 0.5, fr.at(-0.5 + k * 0.34, 0.02)[1], k % 2 ? M('#4fcf7a', 0.3) : M('#c0392b', 0.3), p.ry);
                     // medical boxes stacked at the head of the table
                     for (const [x, z, ry] of [[-3.7, -1.0, 0.2], [-3.2, -1.6, -0.3]]) {
                         bx(0.52, 0.36, 0.42, x, 0.18, z, white, ry);
@@ -729,11 +737,12 @@ export class Scene3D {
                 const p = wallSpot(freeAngle(-1.6, 0.7)), fr = frameOf(p);
                 fix(() => {
                     bx(1.1, 1.9, 0.62, p.x, 0.95, p.z, M('#b93a2e'), p.ry);
-                    bx(0.92, 1.24, 0.04, fr.at(0, 0.33)[0], 1.16, fr.at(0, 0.33)[1], M('#141a20'), p.ry);   // glass window
+                    bx(0.94, 1.3, 0.03, fr.at(0, 0.315)[0], 1.14, fr.at(0, 0.315)[1], M('#141a20'), p.ry);   // dark window
                     for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++)
-                        bx(0.17, 0.16, 0.03, fr.at(-0.28 + c * 0.28, 0.24)[0], 0.7 + r * 0.28, fr.at(-0.28 + c * 0.28, 0.24)[1], [M('#f1c40f', 0.35), M('#4fcf7a', 0.35), M('#e05252', 0.35)][(r + c) % 3], p.ry);
+                        bx(0.17, 0.16, 0.07, fr.at(-0.28 + c * 0.28, 0.36)[0], 0.7 + r * 0.28, fr.at(-0.28 + c * 0.28, 0.36)[1], [M('#f1c40f', 0.35), M('#4fcf7a', 0.35), M('#e05252', 0.35)][(r + c) % 3], p.ry);
+                    bx(0.95, 1.32, 0.015, fr.at(0, 0.4)[0], 1.14, fr.at(0, 0.4)[1], M('#9fd7ff', 0.12, { alpha: 0.2 }), p.ry);   // glass over the shelves
                     bx(0.24, 0.5, 0.08, fr.at(0.34, 0.33)[0], 0.42, fr.at(0.34, 0.33)[1], dark, p.ry);     // dispenser slot
-                    bx(0.92, 0.07, 0.1, fr.at(0, 0.37)[0], 1.8, fr.at(0, 0.37)[1], M('#ffd27f', 0.9), p.ry);  // lit sign
+                    bx(0.92, 0.07, 0.08, fr.at(0, 0.34)[0], 1.79, fr.at(0, 0.34)[1], M('#ffd27f', 0.9), p.ry);  // lit sign
                     // drinking fountain on the same wall
                     bx(0.52, 0.86, 0.42, fr.at(1.05, -0.02)[0], 0.43, fr.at(1.05, -0.02)[1], metal, p.ry);
                     bx(0.44, 0.18, 0.34, fr.at(1.05, 0.05)[0], 0.9, fr.at(1.05, 0.05)[1], M('#c9d3da'), p.ry);   // basin
