@@ -2,14 +2,41 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeFire, removeMalfunction, placeFire, placeMalfunction, drawCards, discardCard, isContam, gainContamination,
-    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice } from './core.mjs';
-import { ITEMS, WOUNDS, DECK_NAMES } from '../data/cards.mjs';
+    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice,
+    HIBERNATION_TIME, payableCards, payCost, gainKnowledge, inCombat } from './core.mjs';
+import { ITEMS, WOUNDS, DECK_NAMES, QUEST_ACTIVATIONS, ADAPTATIONS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { shuffle } from '../rng.mjs';
 import { repelIntruder, checkNest } from './intruders.mjs';
 import { startSelfDestruct, stopSelfDestruct } from './events.mjs';
 import { drawItem, giveItem, healChoice, removeOneContam } from './rooms.mjs';
 import { dealHits } from './combat.mjs';
+
+export function itemRequirement(state, p, it) {
+    const d = ITEMS[it.item], rs = room(state, p.room), tile = tileOf(state, p.room);
+    const comp = tile && ROOM_TILES[tile].computer;
+    switch (d.use) {
+        case 'selfDestructKey': case 'logCodes': case 'engineKey':
+            if (d.use === 'engineKey') return '';
+            return comp && !rs.malfunction ? '' : 'Только у компьютера без поломки';
+        case 'evacKey': return tile === 'evacA' || tile === 'evacB' ? '' : 'Только в эвакуационном отсеке';
+        case 'techPlan': return state.ship.rooms[p.room].tech ? '' : 'Нужен вход в тех. коридоры';
+        case 'probeArm': return !intrudersIn(state, p.room).length ? 'В комнате нет чужих' : (it.charge ?? ITEMS.probeArm.markers) <= 0 ? 'Все жетоны на предмете' : '';
+        case 'grenade': {
+            const ok = [p.room, ...state.ship.rooms[p.room].exits.map(e => e.to)].some(r => intrudersIn(state, r).length || room(state, r).objects.some(o => o.type === 'egg') || (tileOf(state, r) === 'nest' && state.nestEggs > 0));
+            if (p.items.some(i => ITEMS[i.item].weapon && ITEMS[i.item].weapon.grenadeOnly && i.ammo < ITEMS[i.item].weapon.max)) return '';
+            return ok ? '' : 'Нет цели рядом';
+        }
+        case 'secControl': return Object.keys(state.ship.rooms).some(r => intrudersIn(state, r).length && (room(state, r).fire || room(state, r).malfunction)) ? '' : 'Нет комнаты с пожаром/поломкой и чужими';
+        case 'repelAdult': case 'reagent': return '';
+        case 'taser': return '';
+        case 'medkit': case 'woundOrHeal2': return '';
+        case 'removeContam1': case 'sampleJar': return p.hand.some(isContam) ? '' : 'Нет заражений в руке';
+        case 'wrench': return rs.malfunction || rs.fire ? '' : 'Нет поломки или огня';
+        case 'pipeMelee': return inCombat(state, p) ? '' : 'Нет чужих';
+        default: return '';
+    }
+}
 
 export function drawSupport(state, n) {
     const out = [];
@@ -118,7 +145,7 @@ OPS['item.use'] = (state, step) => {
             if (p.larva) { p.larva = false; log(state, 'Личинка удалена.', 'good'); }
             log(state, pname(p) + ': автодок удалил все заражения.', 'good');
             p.passed = true; next(state, { op: 'turn.end' }); return;
-        case 'medkit': consume(); healChoice(state, p, 3, back); return;
+        case 'medkit': consume(); healChoice(state, p, 3, back, { woundThenHeal: true }); return;
         case 'woundOrHeal2': consume(); healChoice(state, p, 2, back); return;
         case 'removeContam1': consume(); removeOneContam(state, p); next(state, back); return;
         case 'adrenaline': consume(); drawCards(state, p, 2); p.adrenalineTurn = true; log(state, pname(p) + ': любое число действий в этом ходу!', 'good'); next(state, back); return;
@@ -167,8 +194,8 @@ OPS['item.use'] = (state, step) => {
         }
         case 'detonator': {
             consume();
-            const rooms = Object.keys(state.ship.rooms).filter(r => { const t = tileOf(state, r); return t && ROOM_TILES[t].items.filter(x => x === 'red').length >= 2; });
-            if (!rooms.length) { log(state, 'Нет комнаты с достаточным числом красных значков.', 'minor'); next(state, back); return; }
+            const rooms = Object.keys(state.ship.rooms).filter(r => { const t = tileOf(state, r); return t && ROOM_TILES[t].items.includes('red'); });
+            if (!rooms.length) { log(state, 'Нет комнаты с красным значком предмета.', 'minor'); next(state, back); return; }
             ask(state, { kind: 'room', player: p.id, title: 'Детонатор: какую комнату взорвать?', rooms }, { op: 'item.detonate', player: p.id, then: back });
             return;
         }
@@ -186,8 +213,13 @@ OPS['item.use'] = (state, step) => {
             const opts = [];
             if (room(state, p.room).malfunction) opts.push({ id: 'malf', label: 'Устранить поломку в комнате' });
             if (state.ship.rooms[p.room].kind === 'engine') opts.push({ id: 'engine', label: 'Починить/сломать двигатель' });
+            if (def.use === 'tools') {
+                for (const quest of p.items.filter(i => ITEMS[i.item].quest && !i.active && QUEST_ACTIVATIONS[i.item]))
+                    opts.push({ id: 'quest:' + quest.uid, label: 'Активировать квестовый предмет «' + ITEMS[quest.item].name + '», игнорируя требования' });
+            }
             if (!opts.length) { log(state, 'Нечего чинить здесь.', 'minor'); next(state, back); return; }
-            choose(def.name, opts, 'item.repair');
+            if (def.use === 'tools') choose(def.name, opts, 'item.toolsPick');
+            else choose(def.name, opts, 'item.repair');
             return;
         }
         case 'engineKey': {
@@ -357,6 +389,107 @@ OPS['item.cables'] = (state, step) => {
     const w = p.items.find(i => i.uid === step.answer.slice(2));
     if (w) { w.ammo = ITEMS[w.item].weapon.max; log(state, '«' + ITEMS[w.item].name + '» полностью заряжено.', 'good'); }
     next(state, step.then);
+};
+OPS['quest.pick'] = (state, step) => {
+    const p = player(state, step.player);
+    const opts = p.items.filter(i => ITEMS[i.item].quest && QUEST_ACTIVATIONS[i.item] && !i.active)
+        .map(i => ({ id: i.uid, label: ITEMS[i.item].name, desc: ITEMS[i.item].text }));
+    if (!opts.length) { next(state, step.then); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Какой квестовый предмет активировать?', options: opts }, { op: 'quest.activate', player: p.id, then: step.then });
+};
+/** Printed activation condition of a Quest Item: '' when it may be activated now. */
+export function questRequirement(state, p, inst) {
+    const a = QUEST_ACTIVATIONS[inst.item];
+    if (!a) return 'У предмета нет активированной стороны';
+    const tile = tileOf(state, p.room);
+    switch (a.req) {
+        case 'any': return '';
+        case 'generator': return tile === 'generator' && !intrudersIn(state, p.room).length ? '' : 'Нужен Генератор без чужих';
+        case 'engine': return state.ship.rooms[p.room].kind === 'engine' ? '' : 'Нужна комната двигателя';
+        case 'surgery': return tile === 'surgery' ? '' : 'Нужна Операционная';
+        case 'green': return tile && ROOM_TILES[tile].items.includes('green') ? '' : 'Нужен зелёный значок предмета';
+        case 'nest': return tile === 'nest' ? '' : 'Нужно Гнездо';
+        case 'emergency': return tile === 'emergency' ? '' : 'Нужен Медпункт';
+        case 'cockpit': return tile === 'cockpit' ? '' : 'Нужна Рубка';
+        case 'computer': return tile && ROOM_TILES[tile].computer && !room(state, p.room).malfunction ? '' : 'Нужен компьютер без поломки';
+        case 'repository': return tile === 'repository' ? '' : 'Нужно Хранилище снаряжения';
+        case 'blue': return state.time <= HIBERNATION_TIME ? '' : 'Нужна синяя зона трека времени';
+    }
+    return '';
+}
+OPS['quest.activate'] = (state, step) => {
+    const p = player(state, step.player);
+    const inst = p.items.find(i => i.uid === step.answer);
+    if (!inst) { next(state, step.then); return; }
+    if (!step.ignoreReq) {
+        const why = questRequirement(state, p, inst);
+        if (why) { log(state, '«' + ITEMS[inst.item].name + '»: ' + why + ' — активация невозможна.', 'minor'); next(state, step.then); return; }
+        // Both the Action and the additional Action-card discard are paid through the turn cost.
+        if (payableCards(p).length < 1) { log(state, 'Нечем оплатить дополнительный сброс.', 'minor'); next(state, step.then); return; }
+        payCost(state, p, 1, { op: 'quest.activate.side', player: p.id, uid: inst.uid, then: step.then }, 'Активация квеста: сбросьте карту');
+        return;
+    }
+    next(state, { op: 'quest.activate.side', player: p.id, uid: inst.uid, then: step.then });
+};
+OPS['quest.activate.side'] = (state, step) => {
+    const p = player(state, step.player);
+    const inst = p.items.find(i => i.uid === step.uid);
+    if (!inst) { next(state, step.then); return; }
+    inst.active = true;
+    const effect = ITEMS[inst.item].activate;
+    log(state, pname(p) + ' активирует «' + ITEMS[inst.item].name + '».', 'good');
+    const back = step.then;
+    switch (effect) {
+        case 'ups': inst.charge = Math.min(5, (inst.charge ?? ITEMS.ups.markers) + 2); log(state, 'ИБП: жетонов ' + inst.charge + '.', 'good'); next(state, back); return;
+        case 'cuffs': inst.charge = 0; log(state, 'Наручники сняты.', 'good'); next(state, back); return;
+        case 'robot': inst.charge = ITEMS.robot.markers; next(state, back); return;
+        case 'torch': {
+            const cors = corridorsOf(state, p.room).filter(c => c.id !== 'tech' && state.ship.corridors[c.id].door !== 'destroyed');
+            if (!cors.length) { next(state, back); return; }
+            ask(state, { kind: 'choice', player: p.id, title: 'Плазменный резак: какую дверь уничтожить?', options: cors.map(c => ({ id: c.id, label: 'Дверь ' + c.id })) }, { op: 'quest.door', player: p.id, then: back });
+            return;
+        }
+        case 'karcher': removeFire(state, p.room); removeMalfunction(state, p.room); next(state, back); return;
+        case 'surgeryKit': healChoice(state, p, 0, back); return;
+        case 'camouflage': p.camouflage = true; log(state, pname(p) + ': кровавая маскировка до конца раунда.', 'good'); next(state, back); return;
+        case 'evacQuest': {
+            const sec = tileOf(state, p.room) === 'evacA' ? 'A' : 'B';
+            const pod = state.pods.find(x => x.section === sec && !x.launched && !x.removed);
+            if (pod) { pod.locked = !pod.locked; log(state, 'Капсула №' + pod.num + ' переключена.', 'good'); }
+            next(state, back); return;
+        }
+        case 'research': {
+            gainKnowledge(state, p, 2);
+            if (state.adaptations.length) {
+                ask(state, { kind: 'choice', player: p.id, title: 'Исследовательское оборудование: какую адаптацию удалить?', options: state.adaptations.map(k => ({ id: k, label: ADAPTATIONS[k].name })) }, { op: 'adaptation.remove', player: p.id, then: back });
+                return;
+            }
+            next(state, back); return;
+        }
+        case 'heavyArmor': { p.armor = p.armor || inst; next(state, back); return; }
+        case 'favorite': {
+            inst.quest = false; inst.active = true; inst.ammo = ITEMS.survivorFavorite.weapon.max; inst.broken = false;
+            log(state, 'Любимица выжившей готова к бою.', 'good');
+            next(state, back); return;
+        }
+    }
+    next(state, back);
+};
+OPS['quest.door'] = (state, step) => {
+    const c = state.ship.corridors[step.answer];
+    if (c) { c.door = 'destroyed'; log(state, 'Дверь ' + c.id + ' уничтожена плазменным резаком.', 'event'); }
+    next(state, step.then);
+};
+OPS['item.toolsPick'] = (state, step) => {
+    const p = player(state, step.player);
+    if (String(step.answer).startsWith('quest:')) {
+        const uid = step.answer.slice(6);
+        const inst = p.items.find(i => i.uid === uid);
+        if (!inst) { next(state, step.then); return; }
+        next(state, { op: 'quest.activate.side', player: p.id, uid, then: step.then, ignoreReq: true });
+        return;
+    }
+    next(state, { ...step, op: 'item.repair' });
 };
 OPS['item.repair'] = (state, step) => {
     const p = player(state, step.player);

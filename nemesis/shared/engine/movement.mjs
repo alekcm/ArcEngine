@@ -55,6 +55,12 @@ OPS['move.go'] = (state, step) => {
     p.room = step.dest;
     p.movedThisRound = true;
     log(state, pname(p) + ' переходит: ' + roomName(state, from) + ' → ' + roomName(state, step.dest) + '.', 'action');
+    for (const f of (state.followers || []).filter(f => f.player === p.id && state.intruders[f.uid])) {
+        const it = state.intruders[f.uid];
+        it.room = p.room;
+        log(state, INTRUDER_NAMES[it.type] + ' следует за ' + pname(p) + ' в ' + roomName(state, p.room) + '.', 'combat');
+    }
+    state.followers = [];
     if (step.companion !== undefined) {
         const c = player(state, step.companion);
         if (c && c.status === 'active' && c.room === from) { c.room = step.dest; log(state, pname(c) + ' идёт вместе.', 'action'); }
@@ -139,10 +145,11 @@ OPS['noise.roll'] = (state, step) => {
                 { op: 'predict.danger', player: holder.id, card, incoming, then: { ...step, noPredict: true, answer: undefined } });
             return;
         }
-        let moved = 0;
+        let moved = 0, eligible = 0;
         for (const e of state.ship.rooms[roomId].exits) {
             for (const it of intrudersIn(state, e.to)) {
                 if (playersInRoom(state, e.to).length) continue;
+                eligible++;
                 const c = state.ship.corridors[e.corridor];
                 if (c.door === 'closed') { c.door = 'destroyed'; log(state, 'Чужой выламывает дверь ' + c.id + '.', 'event'); continue; }
                 it.room = roomId; moved++;
@@ -150,7 +157,7 @@ OPS['noise.roll'] = (state, step) => {
                 const h = hyperAttackStep(state, it); if (h) next(state, h);
             }
         }
-        if (!moved) {
+        if (!moved && !eligible) {
             for (const c of corridorsOf(state, roomId)) placeNoise(state, c.id);
             log(state, 'Опасность: шум во всех коридорах вокруг.', 'noise');
         }

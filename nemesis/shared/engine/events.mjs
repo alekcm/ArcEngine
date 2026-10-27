@@ -3,9 +3,9 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeFire, placeMalfunction,
     placeNoise, corridorsOf, spawnIntruder, removeIntruder, turnOrder, drawCards, drawLimit, gainContamination, inCombat,
-    findRoomsByTile, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, discardCard, fx, cardDef } from './core.mjs';
+    findRoomsByTile, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, discardCard, fx, cardDef, isContam, payCost } from './core.mjs';
 import { shuffle } from '../rng.mjs';
-import { EVENT_CARDS, INTRUDER_NAMES, ITEMS } from '../data/cards.mjs';
+import { EVENT_CARDS, INTRUDER_NAMES, ITEMS, INTRUDER_TOKENS } from '../data/cards.mjs';
 import { ROOM_TILES, roomOfKind } from '../ship.mjs';
 import { moveIntrudersByCorridor, moveIntrudersToClosest, bagDevelopment, checkNest } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
@@ -36,10 +36,13 @@ OPS['event.effect'] = (state, step) => {
     const roomsWithIcons = (color, n) => allRooms.filter(r => { const t = tileOf(state, r); return t && ROOM_TILES[t].items.filter(x => x === color).length >= n; });
     const neighborsNoDoor = (r) => state.ship.rooms[r].exits.filter(e => state.ship.corridors[e.corridor].door !== 'closed').map(e => e.to);
     switch (id) {
-        case 'breakingIn':
-            placeNoise(state, 'tech');
+        case 'breakingIn': {
+            // "Place Noise in the Technical Corridors (if there is none)." Only when Tech already
+            // has Noise do the corridor placements happen as the alternative.
+            if (placeNoise(state, 'tech')) break;
             for (const p of state.players) if (p.status === 'active' && !p.pod && state.ship.rooms[p.room].tech) for (const c of corridorsOf(state, p.room)) if (c.id !== 'tech') placeNoise(state, c.id);
             break;
+        }
         case 'bulkheadsOpen':
             for (const c of Object.values(state.ship.corridors)) if (c.door === 'closed') c.door = 'open';
             log(state, 'Все двери открыты.', 'event');
@@ -57,7 +60,8 @@ OPS['event.effect'] = (state, step) => {
             const nest = findRoomsByTile(state, 'nest')[0];
             const steps = [];
             if (nest) { const d = spawnIntruder(state, 'drone', nest); if (d && playersInRoom(state, nest).length) steps.push({ op: 'attack', intruder: d.uid }); }
-            for (const p of state.players) if (p.status === 'active' && p.heavy.some(h => h.type === 'egg') && p.room !== nest) { const d = spawnIntruder(state, 'drone', p.room); if (d) steps.push({ op: 'attack', intruder: d.uid, player: p.id }); }
+            const eggRooms = new Set(state.players.filter(p => p.status === 'active' && p.heavy.some(h => h.type === 'egg') && p.room !== nest).map(p => p.room));
+            for (const r of eggRooms) { const d = spawnIntruder(state, 'drone', r); if (d) steps.push({ op: 'attack', intruder: d.uid, room: r }); }
             next(state, ...steps);
             break;
         }
@@ -68,7 +72,7 @@ OPS['event.effect'] = (state, step) => {
             break;
         }
         case 'fireWave': {
-            const burning = allRooms.filter(r => room(state, r).fire);
+            const burning = allRooms.filter(r => room(state, r).fire).sort();
             if (burning.length) for (const n of neighborsNoDoor(burning[0])) placeFire(state, n, 'волна огня');
             break;
         }
@@ -90,7 +94,7 @@ OPS['event.effect'] = (state, step) => {
             let infected = false;
             if (nest) {
                 const near = [nest, ...state.ship.rooms[nest].exits.map(e => e.to)];
-                for (const p of state.players) if (p.status === 'active' && near.includes(p.room) && !p.hand.length && !p.larva) { p.larva = true; infected = true; log(state, pname(p) + ' заражён личинкой!', 'bad'); }
+                for (const p of state.players) if (p.status === 'active' && near.includes(p.room) && !p.hand.filter(c => !isContam(c)).length && !p.larva && p.charId !== 'android') { p.larva = true; infected = true; log(state, pname(p) + ' заражён личинкой!', 'bad'); }
             }
             if (!infected && countAvailable(state, 'larva') > 0) { state.bag.push('larva'); log(state, 'Жетон личинки добавлен в мешок.', 'event'); }
             break;
@@ -105,7 +109,7 @@ OPS['event.effect'] = (state, step) => {
             next(state, ...steps);
             break;
         }
-        case 'lifeSupport': for (const r of roomsWithIcons('green', 2)) placeMalfunction(state, r, 'событие'); break;
+        case 'lifeSupport': for (const r of roomsWithIcons('green', 3)) placeMalfunction(state, r, 'событие'); break;
         case 'lurking':
             for (const it of Object.values(state.intruders)) if (!playersInRoom(state, it.room).length) { log(state, INTRUDER_NAMES[it.type] + ' прячется (в мешок).', 'event'); removeIntruder(state, it.uid, false); state.bag.push(it.type); }
             break;
@@ -120,11 +124,14 @@ OPS['event.effect'] = (state, step) => {
         case 'scentOfPrey':
             for (const p of state.players) if (p.status === 'active' && !p.pod && p.wounds.length) for (const c of corridorsOf(state, p.room)) placeNoise(state, c.id);
             break;
-        case 'shortCircuit': for (const r of roomsWithIcons('yellow', 2)) placeMalfunction(state, r, 'событие'); break;
-        case 'systemFailure': for (const r of roomsWithIcons('red', 2)) placeMalfunction(state, r, 'событие'); break;
+        case 'shortCircuit': for (const r of roomsWithIcons('yellow', 3)) placeMalfunction(state, r, 'событие'); break;
+        case 'systemFailure': for (const r of roomsWithIcons('red', 3)) placeMalfunction(state, r, 'событие'); break;
         case 'queenAwakens': {
             let k = 0;
-            if (!state.queenDead) { for (let i = 0; i < 3; i++) { state.bag.push('queen'); k++; } log(state, 'В мешок добавлено жетонов Королевы: ' + k + '.', 'event'); }
+            if (!state.queenDead) {
+                for (let i = 0; i < 3; i++) if (state.bag.filter(t => t === 'queen').length + i < INTRUDER_TOKENS.queen) { state.bag.push('queen'); k++; }
+                log(state, 'В мешок добавлено жетонов Королевы: ' + k + '.', 'event');
+            }
             else { for (let i = 0; i < 2; i++) if (countAvailable(state, 'drone') > 0) { state.bag.push('drone'); k++; } log(state, 'В мешок добавлено дронов: ' + k + '.', 'event'); }
             break;
         }
@@ -170,13 +177,19 @@ OPS['event.noise'] = (state, step) => {
         const crowded = ev.noise === 'all' && playersInRoom(state, p.room).length >= 3;   // 7.8 overcrowding
         if (inCombat(state, p) && !crowded) continue;
         let yes = false;
+        const actionCards = p.hand.filter(c => !isContam(c)).length;
         if (ev.noise === 'all') yes = true;
-        else if (ev.noise === 'noCards') yes = p.hand.length === 0;
+        else if (ev.noise === 'noCards') yes = actionCards === 0;
         else if (ev.noise === 'fireMalf') { const rs = room(state, p.room); yes = rs.fire || rs.malfunction; }
         if (!yes) continue;
-        const dev = p.items.find(i => ITEMS[i.item].perimeter && i.ammo > 0 && !i.broken);
-        // Reactions that skip the roll: Risk Prevention (Field Data), Inconspicuous (Lab Rat), Perimeter device
-        let chain = { op: 'noise.roll', player: p.id, room: p.room };
+        const dev = p.items.find(i => ITEMS[i.item].perimeter && !i.broken) && actionCards > 0 ? p.items.find(i => ITEMS[i.item].perimeter && !i.broken) : null;
+        // Reactions that skip the roll: Risk Prevention (Field Data), Inconspicuous (Lab Rat), Perimeter device.
+        // Printed "no Action cards" events call for an ENCOUNTER, not a Noise roll.
+        const guarded = ev.noise === 'noCards' || ev.noise === 'fireMalf';
+        let chain = ev.noise === 'noCards'
+            ? { op: 'encounter', room: p.room, player: p.id }
+            : { op: 'noise.roll', player: p.id, room: p.room };
+        if (ev.noise === 'fireMalf' && (room(state, p.room).fire || room(state, p.room).malfunction)) chain = { op: 'encounter', room: p.room, player: p.id };
         if (dev) chain = { op: 'perimeter.ask', player: p.id, uid: dev.uid, then: chain };
         for (const c of p.hand.filter(c => ['fdRisk', 'inconspicuous'].includes((cardDef(state, c) || {}).effect))) chain = { op: 'risk.ask', player: p.id, card: c, then: chain };
         steps.push(chain);
@@ -206,11 +219,16 @@ OPS['risk.ask'] = (state, step) => {
 OPS['perimeter.ask'] = (state, step) => {
     const p = player(state, step.player);
     const dev = p.items.find(i => i.uid === step.uid);
-    if (step.answer === 'yes' && dev && dev.ammo > 0) { dev.ammo--; log(state, pname(p) + ': охранный периметр — броска шума нет (зарядов ' + dev.ammo + ').', 'good'); return; }
-    if (step.answer) { next(state, step.then); return; }
-    if (!dev || dev.ammo <= 0) { next(state, step.then); return; }
-    ask(state, { kind: 'choice', player: p.id, title: 'Охранный периметр: потратить заряд, чтобы не бросать шум?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, step);
+    const payable = p.hand.filter(c => !isContam(c));
+    if (step.answer === 'yes' && dev && payable.length) {
+        payCost(state, p, 1, { op: 'noop', then: step.then }, 'Охранный периметр: сбросьте карту действия');
+        log(state, pname(p) + ': охранный периметр — броска шума и встречи нет.', 'good');
+        return;
+    }
+    if (step.answer || !dev || !payable.length) { next(state, step.then); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Охранный периметр: сбросить 1 карту действий, чтобы не бросать шум и не разыгрывать встречу?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, step);
 };
+export function perimeterAvailable(state, p) { return p.items.some(i => ITEMS[i.item].perimeter && !i.broken) && p.hand.some(c => !isContam(c)); }
 OPS['event.finish'] = (state, step) => {
     const ev = EVENT_BY_ID[step.id];
     if (ev.reshuffle) { state.eventDeck.push(...state.eventDiscard.splice(0), step.id); shuffle(state, state.eventDeck); log(state, 'Колода событий перемешана.', 'minor'); }

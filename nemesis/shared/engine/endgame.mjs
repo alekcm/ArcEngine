@@ -1,6 +1,7 @@
 // endgame.mjs — final checks: engines, destination, infection, objectives.
 
-import { OPS, ask, next, log, pname, isContam, isInfected } from './core.mjs';
+import { OPS, ask, next, log, pname, isContam, isInfected, drawCards, discardCard, gainContamination } from './core.mjs';
+import { shuffle } from '../rng.mjs';
 import { OBJECTIVES, COORDINATE_CARDS, DESTINATION_NAMES, ITEMS, FEATS, objectiveTextOf } from '../data/cards.mjs';
 
 function objectiveOf(p) { return p.objective || p.objectives[0]; }
@@ -35,18 +36,32 @@ OPS['game.end'] = (state) => {
             log(state, 'Пункт назначения ' + state.destination + ' — ' + DESTINATION_NAMES[destination] + '.', 'event');
             // 23.2: hibernating characters die unless the ship reaches Earth (or their Objective makes an exception)
             for (const p of state.players.filter(onBoard)) {
-                const safe = defOf(p).hiberSafe === destination;
+                const def = defOf(p);
+                // BFF: shares a hibernating friend's printed destination exception.
+                const friendSafe = def.check === 'bff' && state.players.some(o => o !== p && o.status === 'hibernating' &&
+                    (OBJECTIVES[objectiveOf(o).kind][objectiveOf(o).id].hiberSafe === destination));
+                const safe = def.hiberSafe === destination || friendSafe;
                 if (destination !== 'earth' && !safe) fail(p, 'гибернация: корабль прибыл не на Землю (' + DESTINATION_NAMES[destination] + ')');
             }
         }
     }
-    // 3. Infection — everyone who is still alive (on board or in a pod)
+    // 3. Final Infection procedure — everyone still alive (on board or in a pod):
+    //    add 1 Contamination, shuffle the whole Action deck, then resolve Eclosion (draw 4).
+    state.ending = true;
     for (const p of state.players.filter(p => p.status !== 'dead')) {
-        const all = [...p.hand, ...p.deck, ...p.discard].filter(isContam);
-        const infected = p.larva || all.some(c => isInfected(state, c));
-        log(state, pname(p) + ': проверка заражения — карт ' + all.length + (p.larva ? ', личинка' : '') + ' → ' + (infected ? 'ЗАРАЖЁН' : 'чист') + '.', infected ? 'bad' : 'good');
-        if (infected) fail(p, 'заражение обнаружено при карантине');
+        if (p.status === 'dead') continue;
+        gainContamination(state, p, 1);
+        const all = [...p.hand, ...p.deck, ...p.discard];
+        p.hand = []; p.discard = [];
+        p.deck = shuffle(state, all);
+        log(state, pname(p) + ': финальная проверка заражения — колода перемешана, вылупление', 'bad');
+        drawCards(state, p, 4, true);
+        const bad = p.hand.filter(isContam).length;
+        if (bad) { log(state, '🐛 Вылупление: в руке ' + pname(p) + ' карт заражения — ' + bad + '.', 'death'); fail(p, 'вылупление при финальной проверке'); p.larva = false; }
+        else log(state, pname(p) + ': заражений не выпало — персонаж выжил.', 'good');
+        for (const c of [...p.hand]) discardCard(state, p, c);
     }
+    state.ending = false;
     // 4. Objectives
     const results = state.players.map(p => {
         const alive = p.status !== 'dead';
@@ -101,7 +116,7 @@ export function checkObjective(state, p, def, destination) {
         case 'bff': return (escaped && othersOnBoardAlive.length >= 1) || (hibernating && othersAlive.some(o => o.status === 'hibernating'));
         case 'disclosure': return p.knowledgeActive && hasHeavy('carcass');
         case 'disposing': return signal && state.shipDestroyed;
-        case 'postMortem': return p.knowledgeActive && p.analyzed.corpse;
+        case 'postMortem': return p.knowledgeActive && (state.analyzed.corpse || p.analyzed.corpse);
         case 'heroicEscape': return (finishedLast && othersAlive.length >= 1) || (escaped && othersOnBoardAlive.length >= 1);
         case 'highestBidder': return arrived === 'venus' || (escaped && p.items.some(i => ITEMS[i.item].deck === 'support'));
         case 'hoarder': {
@@ -112,11 +127,11 @@ export function checkObjective(state, p, def, destination) {
         case 'insuranceFraud': return (escaped && arrived === 'space') || (signal && state.shipDestroyed);
         case 'oldestFriend': return (signal && arrived === 'earth') || onlySurvivor;
         case 'pristine': return arrived === 'earth' && (fires <= 1 || engines === 3);
-        case 'pursuit': return p.knowledgeActive && others.every(o => o.knowledge <= p.knowledge);
+        case 'pursuit': return p.knowledgeActive && p.knowledge >= 8;
         case 'quarantine': return arrived === 'mars' || (arrived === 'earth' && nestDestroyed);
         case 'trophyHunter': return !!state.queenDead || hasHeavy('charCorpse');
         case 'veniVidiVici': return signal && nestDestroyed;
-        case 'abOvo': return !!p.analyzed.egg;
+        case 'abOvo': return !!(state.analyzed.egg || p.analyzed.egg);
         case 'alienCoverUp': return signal && !othersAlive.some(o => o.knowledge >= 7);
         case 'bugHunt': return (state.carcassCount || 0) >= 4;
         case 'seat': {
@@ -126,7 +141,7 @@ export function checkObjective(state, p, def, destination) {
         }
         case 'extremeBiology': return (state.adaptationsRemoved || 0) >= 2;
         case 'fortune': return arrived === 'venus' || (signal && state.shipDestroyed);
-        case 'necroscopy': return signal && p.analyzed.carcass;
+        case 'necroscopy': return signal && (state.analyzed.carcass || p.analyzed.carcass);
         case 'priceless': return p.knowledgeActive && !state.shipDestroyed;
         case 'priorityOne': return (arrived === 'earth' && !state.queenDead && !nestDestroyed) || onlySurvivor;
         case 'perfectSpecimen': return hasHeavy('egg') && (escaped || p.knowledgeActive);

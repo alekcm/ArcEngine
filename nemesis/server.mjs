@@ -189,7 +189,7 @@ function onMessage(socket, m) {
             const seats = game.seats.filter(s => s.socket);
             if (seats.length < 1) return;
             game.seats = seats;
-            game.state = createGame({ seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, draft: game.settings.draft, players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors })) });
+            game.state = createGame({ secretSeed: crypto.randomBytes(32).toString('hex'), seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, draft: game.settings.draft, players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors })) });
             game.phase = 'playing'; game.undo = []; game.history = []; game.poses = {};
             for (const c of clients) c.logSeen = 0;
             broadcastLobby(); broadcastState(true);

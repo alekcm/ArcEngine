@@ -3,7 +3,7 @@
 import { seedFromString, shuffle, randInt, pick } from '../rng.mjs';
 import { originalShip, randomShip, BASIC_TILES, ADDITIONAL_TILES, ADDITIONAL_IN_PLAY, EXPLORATION_TOKENS, roomOfKind } from '../ship.mjs';
 import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS, ADAPTATIONS, COMMON_CARDS } from '../data/cards.mjs';
-import { OPS, ask, log, next, run, pname } from './core.mjs';
+import { OPS, ask, log, next, run, pname, drawCards, maxAllowedHealth, placeMalfunction } from './core.mjs';
 import './turn.mjs';
 import './movement.mjs';
 import './combat.mjs';
@@ -46,6 +46,9 @@ export function createGame(config) {
 
     state.ship = state.mode === 'random' ? randomShip(state) : originalShip();
 
+    // Server supplies private entropy; deterministic callers can supply a secretSeed for replays.
+    state.rng = seedFromString(config.secretSeed ?? seedStr);
+
     // Room tiles
     const basic = shuffle(state, [...BASIC_TILES]);
     const additional = shuffle(state, [...ADDITIONAL_TILES]).slice(0, ADDITIONAL_IN_PLAY);
@@ -76,7 +79,7 @@ export function createGame(config) {
     shuffle(state, state.fieldDataDeck);
     state.computerDeck = shuffle(state, Object.keys(COMPUTER_CARDS));
     revealComputerCard(state, true);
-    state.queenDeck = shuffle(state, QUEEN_CARDS.map((c, i) => i));
+    state.queenDeck = shuffle(state, QUEEN_CARDS.flatMap((c, i) => Array(c.count || 1).fill(i)));
     state.feats = shuffle(state, Object.keys(FEATS)).slice(0, 6);
     state.adaptations = shuffle(state, Object.keys(ADAPTATIONS)).slice(0, 3);
 
@@ -156,6 +159,7 @@ function assignCharacter(state, p, charId) {
         if (def.kind === 'armor') p.armor = inst; else p.items.push(inst);
         if (s.item === 'laika') p.laika = 'board';
     }
+    if (charId === 'ceo') { p.wounds.push('body'); const i = state.woundDeck.indexOf('body'); if (i >= 0) state.woundDeck.splice(i, 1); p.health = maxAllowedHealth(p); }
 }
 OPS['setup.finish'] = (state) => {
     const n = state.players.length;
@@ -165,7 +169,7 @@ OPS['setup.finish'] = (state) => {
     for (const p of state.players) {
         p.objectives = [{ id: personal.pop(), kind: 'personal' }, { id: corporate.pop(), kind: 'corporate' }];
         p.deck = shuffle(state, p.deck);
-        for (let i = 0; i < 5; i++) p.hand.push(p.deck.shift());
+        drawCards(state, p, 5, true);
     }
     delete state.draft; delete state.setupPlayers;
     state.round = 1;
@@ -176,13 +180,18 @@ OPS['setup.finish'] = (state) => {
     next(state, { op: 'phase.player' });
 };
 
-export function revealComputerCard(state, setup) {
+export function revealComputerCard(state, setup, opts = {}) {
     if (state.computerCard) state.computerDiscard.push(state.computerCard);
     if (!state.computerDeck.length) { state.computerDeck = shuffle(state, state.computerDiscard.splice(0)); }
     let card = state.computerDeck.shift();
-    if (card === 'lockdown' && (setup || state.computerDeck.length === 0)) {
-        state.computerDeck.push(card);
+    if (card === 'lockdown' && (setup || state.computerDeck.length === 0 || opts.afterAction)) {
+        if (opts.afterAction && !state.noLockdownMalf) placeMalfunction(state, state.players[opts.player].room, 'блокировка');
+        else if (opts.afterAction) state.noLockdownMalf--;
+        // 16.2: Lock-down revealed after an Action is resolved at once, then the deck reshuffles.
+        state.computerDeck.push(card, ...state.computerDiscard.splice(0));
+        shuffle(state, state.computerDeck);
         card = state.computerDeck.shift();
+        log(state, '⚠ «Блокировка» раскрыта сразу: поломка, колода перемешана.', 'bad');
     }
     state.computerCard = card || null;
 }

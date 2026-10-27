@@ -22,7 +22,8 @@ OPS['phase.intruder'] = (state) => {
     }
     // 2. Attacks, rooms in id order, bigger intruders first
     const steps = [];
-    for (const id of Object.keys(state.ship.rooms).sort()) {
+    const topDown = Object.values(state.ship.rooms).sort((a, b) => a.y - b.y || a.x - b.x).map(r => r.id);
+    for (const id of topDown) {
         if (!playersInRoom(state, id).length) continue;
         const list = intrudersIn(state, id).sort((a, b) => INTRUDER_RANK[a.type] - INTRUDER_RANK[b.type]);
         for (const it of list) steps.push({ op: 'attack', intruder: it.uid, context: 'phase' });
@@ -79,7 +80,9 @@ export function moveOneToward(state, it, targets) {
     for (const p of targets) {
         const d = dist[p.room];
         if (d === undefined) continue;
-        if (!best || d < best.d || (d === best.d && (p.hand.length < best.p.hand.length || (p.hand.length === best.p.hand.length && orderIndex(state, p) < orderIndex(state, best.p))))) best = { p, d };
+        const n = p.hand.filter(c => !c.startsWith('contam#')).length;
+        const bn = best ? best.p.hand.filter(c => !c.startsWith('contam#')).length : 0;
+        if (!best || d < best.d || (d === best.d && (n < bn || (n === bn && orderIndex(state, p) < orderIndex(state, best.p))))) best = { p, d };
     }
     if (!best || best.d === 0) return;
     const fromTarget = distances(state.ship, best.p.room);

@@ -73,8 +73,10 @@ OPS['feat.breach.next'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'stop' || step.left <= 0 || p.status !== 'active') {
         state.noLockdownMalf = Math.max(0, (state.noLockdownMalf || 0) - step.left);
+        state.breachFree = 0;
         next(state, step.then); return;
     }
+    state.breachFree = step.left;
     if (step.answer === 'go') {
         next(state, { op: 'computer.start', player: p.id, then: { ...step, left: step.left - 1, answer: undefined } });
         return;
@@ -93,7 +95,15 @@ OPS['feat.conviction'] = (state, step) => {
 };
 OPS['feat.conviction.kill'] = (state, step) => {
     const it = state.intruders[step.answer];
-    if (it) { log(state, intruderLabel(state, it) + ' убит.', 'good'); removeIntruder(state, step.answer, true); }
+    if (!it) { next(state, step.then); return; }
+    if (it.type === 'queen') {
+        // Against the Queen a Critical result runs the Queen Health procedure, not silent removal.
+        log(state, 'Решимость: КРИТ по Королеве — карта здоровья.', 'combat');
+        next(state, { op: 'queen.card', player: step.player, conviction: true }, step.then);
+        return;
+    }
+    log(state, intruderLabel(state, it) + ' убит.', 'good');
+    removeIntruder(state, step.answer, true);
     next(state, step.then);
 };
 
@@ -166,7 +176,7 @@ OPS['feat.overpower'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer !== undefined && step.uid) {
         const it = state.intruders[step.uid];
-        if (it) repelIntruder(state, it, step.answer);
+        if (it) repelIntruder(state, it, step.answer, true);
     }
     const it = intrudersIn(state, p.room).find(i => !(step.done || []).includes(i.uid));
     if (!it) { next(state, step.then); return; }

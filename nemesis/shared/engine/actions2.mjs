@@ -2,7 +2,7 @@
 // Janitor, CEO, Lab Rat, Sentry, Android, Convict, Psychologist, Bounty Hunter, Captain) and the
 // uses of their starting items. Shares helpers with actions.mjs.
 
-import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire,
+import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire, needDice,
     removeMalfunction, placeMalfunction, drawCards, discardCard, isContam, payCost, placeNoise, corridorsOf, secretTile,
     payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES } from './core.mjs';
 import { ITEMS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, WOUNDS, EVENT_CARDS } from '../data/cards.mjs';
@@ -450,22 +450,41 @@ OPS['card.defensePlan.pick'] = (state, step) => {
 OPS['card.defensePlan.door'] = (state, step) => { if (step.answer !== 'none') { state.ship.corridors[step.answer].door = 'closed'; log(state, 'Дверь ' + step.answer + ' закрыта.', 'event'); } next(state, BACK); };
 OPS['card.facilityTour'] = (state, step) => {
     const p = player(state, step.player);
+    // Printed additional discard is paid once, before the destination is chosen.
+    payCost(state, p, 1, { op: 'card.facilityTour.choose', player: p.id, then: BACK }, 'Обход объекта: доплата');
+};
+OPS['card.facilityTour.choose'] = (state, step) => {
+    const p = player(state, step.player);
     const opts = [{ id: String(p.id), label: 'Вы сами' }, ...others(state, p, p.room).map(o => ({ id: String(o.id), label: pname(o) }))];
-    choice(state, p, 'Обход объекта: кто перемещается?', opts, 'card.facilityTour.pick');
+    choice(state, p, 'Обход объекта: кто перемещается?', opts, 'card.facilityTour.pick', { then: step.then });
 };
 OPS['card.facilityTour.pick'] = (state, step) => {
-    const p = player(state, step.player);
-    payCost(state, p, 1, { op: 'move.start', player: Number(step.answer), noAttacks: true, ignoreToken: true, then: BACK }, 'Обход объекта: оплата');
+    next(state, { op: 'move.start', player: Number(step.answer), noAttacks: true, ignoreToken: true, then: BACK });
 };
 OPS['card.securityControl'] = (state, step) => {
     const p = player(state, step.player);
     const opts = [];
-    if (compHere(state, p) && noMalf(state, p)) for (const i of Object.values(state.intruders)) opts.push({ id: 'hit:' + i.uid, label: '2 ранения: ' + intruderLabel(state, i) + ' в ' + roomName(state, i.room) });
+    // Printed: any room with a red Item icon holding an Intruder — then a normal shooting roll.
+    for (const i of Object.values(state.intruders)) {
+        const t = tileOf(state, i.room);
+        if (t && ROOM_TILES[t].items.includes('red')) opts.push({ id: 'hit:' + i.uid, label: 'Выстрел по ' + intruderLabel(state, i) + ' в ' + roomName(state, i.room) });
+    }
     opts.push(...doorOptions(state, null));
     choice(state, p, 'Пульт охраны', opts, 'card.securityControl.pick');
 };
 OPS['card.securityControl.pick'] = (state, step) => {
     const p = player(state, step.player);
+    if (String(step.answer).startsWith('hit:')) {
+        const dev = p.items.find(i => i.item === 'securityControl');
+        const it = state.intruders[step.answer.slice(4)];
+        if (!it) { next(state, BACK); return; }
+        if (needDice(state, step, 'combat', p.id, 'Пульт охраны: бросок боя')) return;
+        const natural = state.lastRoll ? state.lastRoll.value : null;
+        dealHits(state, p, it, 1, 0, { weapon: null });
+        if (natural === 2 || natural === 3) { if (dev) dev.broken = true; log(state, 'Символ поломки: пульт охраны ломается.', 'bad'); }
+        next(state, BACK);
+        return;
+    }
     if (step.answer.startsWith('hit:')) { const it = state.intruders[step.answer.slice(4)]; if (it) dealHits(state, p, it, 2, 0, { noRetaliation: true }); next(state, BACK); return; }
     OPS['card.repairPick'](state, step);
 };

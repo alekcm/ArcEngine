@@ -11,14 +11,27 @@ import { ROOM_TILES } from '../ship.mjs';
 /** @type {Record<string, (state: any, step: any) => void>} */
 export const OPS = {};
 
+// Execution-local frames preserve call order; all suspended work is serialized in queue.
+const scheduling = new WeakMap();
+
 export function run(state) {
     let guard = 0;
     while (!state.prompt && state.queue.length && !state.result) {
         const step = state.queue.shift();
         const h = OPS[step.op];
         if (!h) throw new Error('unknown op ' + step.op);
-        h(state, step);
+        const scheduled = [];
+        scheduling.set(state, scheduled);
+        try { h(state, step); }
+        finally { scheduling.delete(state); }
+        state.queue.unshift(...scheduled);
         checkLaika(state);
+        // End immediately, not after another Intruder/Event/Cleanup phase.
+        if (!state.ending && !state.result && !['setup', 'draft'].includes(state.phase) &&
+            (state.shipDestroyed || !activePlayers(state).length)) {
+            state.queue = [{ op: 'game.end' }];
+            state.prompt = null; state.resume = null;
+        }
         if (step.op !== 'dice.rolled') { state.pendingRoll = null; state.pendingRollPlayer = null; }
         if (++guard > 20000) throw new Error('runaway queue at ' + step.op);
         // Safety net: a chain can be cut short (e.g. the acting character died mid-action).
@@ -39,15 +52,23 @@ export function checkLaika(state) {
     }
 }
 /** Do these steps next (before anything already queued). */
-export function next(state, ...steps) { state.queue.unshift(...steps.filter(Boolean)); }
+export function next(state, ...steps) {
+    const frame = scheduling.get(state);
+    if (frame) frame.push(...steps.filter(Boolean));
+    else state.queue.unshift(...steps.filter(Boolean));
+}
 /** Do these steps after everything already queued. */
 export function later(state, ...steps) { state.queue.push(...steps.filter(Boolean)); }
 
 export function ask(state, prompt, resume) {
+    const frame = scheduling.get(state);
+    if (frame && frame.length) { frame.push({ op: 'core.ask', prompt, resume }); return; }
     state.promptSeq = (state.promptSeq || 0) + 1;
     state.prompt = Object.assign({ id: state.promptSeq }, prompt);
     state.resume = resume || null;
 }
+
+OPS['core.ask'] = (state, step) => ask(state, step.prompt, step.resume);
 
 /** Called by the server with the player's choice. Returns false if the answer is not valid. */
 export function answer(state, playerId, promptId, choice) {
@@ -88,9 +109,9 @@ function validateAnswer(state, p, choice) {
 // ---------------------------------------------------------------------------------------------
 // Logging
 // ---------------------------------------------------------------------------------------------
-export function log(state, text, kind = 'info') {
+export function log(state, text, kind = 'info', visibility = {}) {
     state.logSeq = (state.logSeq || 0) + 1;
-    state.log.push({ n: state.logSeq, text, kind, round: state.round });
+    state.log.push({ n: state.logSeq, text, kind, round: state.round, ...visibility });
     if (state.log.length > 400) state.log.splice(0, state.log.length - 400);
 }
 
@@ -159,7 +180,7 @@ export function orderIndex(state, p) { return turnOrder(state).indexOf(p); }
 // Health
 // ---------------------------------------------------------------------------------------------
 // Health track: 10 cells — 3 green (10-8), 3 orange (7-5), 3 red (4-2) and 1 near-death (1).
-// Health 0 means "all cells lost but still alive"; the next point of damage kills.
+// Health 0 is the skull: the character is dead.
 export function healthSections() { return [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]]; }
 export function healthState(p) {
     if (p.health >= 8) return 'healthy';
@@ -186,7 +207,20 @@ export function heavyCount(p) {
     }
     return n;
 }
-export function drawLimit(p) { return p.wounds.includes('body') ? 4 : 5; }
+export function robotCharged(p) { return p.items.some(i => i.item === 'robot' && i.charge > 0 && !i.broken); }
+export function drawLimit(p) { return p.wounds.includes('body') && !robotCharged(p) ? 4 : 5; }
+export function spendUPS(state, p, n = 1) {
+    const ups = p.items.find(i => i.item === 'ups');
+    if (!ups || (ups.charge || 0) < n) { killPlayer(state, p, 'разряжен ИБП'); return false; }
+    ups.charge -= n;
+    log(state, pname(p) + ': ИБП — осталось жетонов ' + ups.charge + '.', 'minor');
+    return true;
+}
+export function reshuffleActions(state, p, cards) {
+    if (p.charId === 'android' && !spendUPS(state, p)) return false;
+    p.deck = shuffle(state, cards);
+    return true;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Cards
@@ -199,13 +233,20 @@ export function fx(state, obj) {
 }
 export function drawCards(state, p, n, silent) {
     let drawn = 0;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n && p.status !== 'dead'; i++) {
         if (!p.deck.length) {
             if (!p.discard.length) break;
-            p.deck = shuffle(state, p.discard.splice(0));
+            if (!reshuffleActions(state, p, p.discard.splice(0))) break;
             log(state, pname(p) + ': колода перемешана заново.', 'minor');
         }
-        p.hand.push(p.deck.shift());
+        const c = p.deck.shift();
+        if (p.charId === 'android' && isContam(c)) {
+            log(state, pname(p) + ': Синтетик — заражение проверено и удалено.', 'minor');
+            if (isInfected(state, c)) loseHealth(state, p, 1, 'Синтетик: заражение');
+            i--; // Replace the removed contamination; it does not count towards the draw.
+            continue;
+        }
+        p.hand.push(c);
         drawn++;
     }
     if (drawn) fx(state, { type: 'draw', player: p.id, n: drawn });
@@ -260,11 +301,11 @@ OPS['pay.done'] = (state, step) => {
 // Damage, wounds, contamination, death
 // ---------------------------------------------------------------------------------------------
 export function loseHealth(state, p, n, reason) {
-    if (p.status !== 'active') return;
+    if (p.status !== 'active' && !(state.ending && p.status !== 'dead')) return;
     if (p.armor && ITEMS[p.armor.item].heavyArmor && n > 0 && reason === 'атака') n = Math.max(0, n - 1);
     for (let i = 0; i < n; i++) {
         p.health--;
-        if (p.health < 0) break;
+        if (p.health <= 0) break;
         // armor sits in the heavily injured section: entering it discards the armor
         if (p.armor && healthState(p) === 'heavy') {
             log(state, pname(p) + ': броня «' + ITEMS[p.armor.item].name + '» разрушена.', 'bad');
@@ -273,39 +314,47 @@ export function loseHealth(state, p, n, reason) {
     }
     if (n > 0) fx(state, { type: 'damage', player: p.id, n });
     log(state, pname(p) + ' теряет ' + n + ' здоровья' + (reason ? ' (' + reason + ')' : '') + ' — ' + HEALTH_STATE_NAMES[healthState(p)] + ', ' + Math.max(0, p.health) + ' HP.', 'bad');
-    if (p.health < 0) killPlayer(state, p, reason || 'ранения');
+    if (p.health <= 0) killPlayer(state, p, reason || 'ранения');
 }
-export function restoreHealth(state, p, n) {
+export function restoreHealth(state, p, n, opts = {}) {
+    if (p.status === 'dead' || (p.charId === 'android' && !opts.syntheticException)) return;
     const cap = maxAllowedHealth(p);
     const before = p.health;
     p.health = Math.min(cap, p.health + n);
     log(state, pname(p) + ' восстанавливает ' + (p.health - before) + ' здоровья (' + p.health + ' HP).', 'good');
 }
 export function gainWound(state, p, n = 1) {
-    for (let i = 0; i < n; i++) {
-        if (p.status !== 'active') return;
-        if (p.armor && ITEMS[p.armor.item].woundToHp && p.health > ITEMS[p.armor.item].woundToHp) {
-            log(state, pname(p) + ': усиленная броня — вместо травмы теряет ' + ITEMS[p.armor.item].woundToHp + ' здоровья.', 'minor');
-            loseHealth(state, p, ITEMS[p.armor.item].woundToHp, 'усиленная броня');
-            continue;
-        }
-        if (p.wounds.length >= 3) { killPlayer(state, p, 'четвёртая тяжёлая травма'); return; }
-        if (!state.woundDeck.length) state.woundDeck = shuffle(state, state.woundDiscard.splice(0));
-        const w = state.woundDeck.shift();
-        const dup = p.wounds.includes(w);   // 13.2: identical effects do not stack, but the card still covers a section
-        p.wounds.push(w);
-        log(state, pname(p) + ' получает тяжёлую травму: ' + WOUNDS[w].name + (dup ? ' (повторно — эффект не суммируется)' : '') + '.', 'bad');
-        if (w === 'arm') next(state, { op: 'wound.armCheck', player: p.id });
-        const cap = maxAllowedHealth(p);
-        if (p.health > cap) {
-            p.health = cap;
-            log(state, pname(p) + ': маркер здоровья сдвинут на ' + p.health + ' HP.', 'bad');
-            if (p.armor && healthState(p) === 'heavy') { log(state, pname(p) + ': броня разрушена.', 'bad'); p.armor = null; }
-        }
-        if (p.health <= 0) { killPlayer(state, p, 'травмы'); return; }
-    }
+    next(state, ...Array.from({ length: n }, () => ({ op: 'wound.gain', player: p.id })));
 }
-export function removeWound(state, p, w) {
+OPS['wound.gain'] = (state, step) => {
+    const p = player(state, step.player);
+    if (p.status !== 'active') return;
+    if (!step.acceptWound && p.armor && ITEMS[p.armor.item].woundToHp) {
+        const hp = ITEMS[p.armor.item].woundToHp;
+        ask(state, { kind: 'choice', player: p.id, title: 'Усиленная броня: заменить тяжёлую травму потерей ' + hp + ' здоровья?',
+            options: [{ id: 'hp', label: 'Потерять ' + hp + ' здоровья' }, { id: 'wound', label: 'Получить травму' }] },
+            { op: 'wound.armor', player: p.id, hp });
+        return;
+    }
+    if (p.wounds.length >= 3) { killPlayer(state, p, 'четвёртая тяжёлая травма'); return; }
+    if (!state.woundDeck.length) state.woundDeck = shuffle(state, state.woundDiscard.splice(0));
+    const w = state.woundDeck.shift();
+    if (!w) return;
+    const dup = p.wounds.includes(w);
+    p.wounds.push(w);
+    log(state, pname(p) + ' получает тяжёлую травму: ' + WOUNDS[w].name + (dup ? ' (эффект не суммируется)' : '') + '.', 'bad');
+    if (w === 'arm') next(state, { op: 'wound.armCheck', player: p.id });
+    p.health = Math.min(p.health, maxAllowedHealth(p));
+    if (p.armor && healthState(p) === 'heavy') { log(state, pname(p) + ': броня разрушена.', 'bad'); p.armor = null; }
+    if (p.health <= 0) killPlayer(state, p, 'травмы');
+};
+OPS['wound.armor'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'hp') loseHealth(state, p, step.hp, 'усиленная броня');
+    else next(state, { op: 'wound.gain', player: p.id, acceptWound: true });
+};
+export function removeWound(state, p, w, opts = {}) {
+    if (p.charId === 'android' && !opts.syntheticException) return;
     const i = p.wounds.indexOf(w);
     if (i >= 0) { p.wounds.splice(i, 1); state.woundDiscard.push(w); log(state, pname(p) + ': травма «' + WOUNDS[w].name + '» вылечена.', 'good'); }
 }
@@ -316,7 +365,7 @@ OPS['wound.armCheck'] = (state, step) => {
     ask(state, { kind: 'choice', player: p.id, title: 'Травма руки: только 1 слот. Что выбросить?', options: opts }, { op: 'drop.heavy', player: p.id });
 };
 export function heavyOptions(p) {
-    const opts = p.items.filter(i => ITEMS[i.item].kind === 'heavy').map(i => ({ id: 'item:' + i.uid, label: ITEMS[i.item].name }));
+    const opts = p.items.filter(i => ITEMS[i.item].kind === 'heavy' && !ITEMS[i.item].cannotDiscard).map(i => ({ id: 'item:' + i.uid, label: ITEMS[i.item].name }));
     p.heavy.forEach((h, idx) => opts.push({ id: 'heavy:' + idx, label: HEAVY_NAMES[h.type] }));
     return opts;
 }
@@ -331,7 +380,7 @@ export function dropHeavy(state, p, id) {
     if (id.startsWith('item:')) {
         const uid = id.slice(5);
         const i = p.items.findIndex(x => x.uid === uid);
-        if (i >= 0) { const it = p.items.splice(i, 1)[0]; log(state, pname(p) + ' выбрасывает ' + ITEMS[it.item].name + '.', 'minor'); state.itemDiscard[ITEMS[it.item].deck] = state.itemDiscard[ITEMS[it.item].deck] || []; state.itemDiscard[ITEMS[it.item].deck].push(it.item); }
+        if (i >= 0 && !ITEMS[p.items[i].item].cannotDiscard) { const it = p.items.splice(i, 1)[0]; log(state, pname(p) + ' выбрасывает ' + ITEMS[it.item].name + '.', 'minor'); state.itemDiscard[ITEMS[it.item].deck] = state.itemDiscard[ITEMS[it.item].deck] || []; state.itemDiscard[ITEMS[it.item].deck].push(it.item); }
     } else {
         const idx = Number(id.slice(6));
         const h = p.heavy.splice(idx, 1)[0];
@@ -361,7 +410,7 @@ export function gainKnowledge(state, p, n) {
     const before = p.knowledge;
     p.knowledge = Math.min(8, p.knowledge + n);
     log(state, pname(p) + ': знания ' + before + ' → ' + p.knowledge + '.', 'good');
-    for (const t of [3, 5, 8]) if (before < t && p.knowledge >= t) next(state, { op: 'knowledge.threshold', player: p.id, t });
+    next(state, ...[3, 5, 8].filter(t => before < t && p.knowledge >= t).map(t => ({ op: 'knowledge.threshold', player: p.id, t })));
 }
 OPS['knowledge.threshold'] = (state, step) => {
     const p = player(state, step.player);
@@ -431,9 +480,19 @@ export function clearNoiseAround(state, roomId) {
         if (c.id === 'tech') state.ship.techNoise = false; else state.ship.corridors[c.id].noise = false;
     }
 }
+export function resolveAirlocks(state) {
+    for (const r of state.airlockPending || []) {
+        for (const it of Object.values(state.intruders).filter(i => i.room === r)) { if (it.type === 'queen') { state.queenDead = true; log(state, 'Королева выброшена в космос!', 'good'); } removeIntruder(state, it.uid, false); }
+        for (const o of playersInRoom(state, r)) loseHealth(state, o, 99, 'разгерметизация');
+        removeFire(state, r);
+        log(state, '🌀 Комната ' + roomName(state, r) + ' продута в космос.', 'event');
+    }
+    state.airlockPending = [];
+}
 export function destroyShip(state, why) {
     if (state.shipDestroyed) return;
-    state.shipDestroyed = true;
+    state.shipDestroyed = true; state.nestDestroyed = true; state.nestEggs = 0;
+    const frame = scheduling.get(state); if (frame) frame.length = 0;
     log(state, '💥 КОРАБЛЬ УНИЧТОЖЕН: ' + why + '.', 'death');
     for (const p of state.players) if (p.status === 'active' || p.status === 'hibernating') { p.status = 'dead'; p.health = 0; }
     state.intruders = {};
@@ -478,6 +537,7 @@ export function roll(state, die) {
     else v = die[randInt(state, die.length)];
     state.rollSeq = (state.rollSeq || 0) + 1;
     state.lastRoll = { n: state.rollSeq, die: id, value: v, player: state.pendingRollPlayer == null ? null : state.pendingRollPlayer };
+    if (id === 'combat') state.lastNatural = v;
     return v;
 }
 /** Insert an interactive dice prompt before `step` (which is re-queued afterwards).

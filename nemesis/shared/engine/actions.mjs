@@ -9,6 +9,7 @@ import { repelIntruder } from './intruders.mjs';
 import { dealHits } from './combat.mjs';
 import { search, drawSupport, keepOneOf } from './items.mjs';
 import { countAvailable } from './movement.mjs';
+import { roomActionAvailable } from './rooms.mjs';
 
 const BACK = { op: 'turn.choose' };
 
@@ -70,6 +71,10 @@ export function repairOptions(state, p, withEngine) {
 OPS['card.repairPick'] = (state, step) => {
     const p = player(state, step.player);
     const a = step.answer;
+    if (a === 'malf' && step.malfPay && !step.malfPaid) {
+        payCost(state, p, step.malfPay, { ...step, op: 'card.repairPick', malfPaid: true, answer: a }, 'Ремонт поломки: доплата');
+        return;
+    }
     if (a === 'malf') removeMalfunction(state, p.room);
     else if (a.startsWith('door:')) { const c = state.ship.corridors[a.slice(5)]; c.door = c.door === 'closed' ? 'open' : 'closed'; log(state, 'Дверь ' + c.id + ' теперь ' + (c.door === 'closed' ? 'закрыта' : 'открыта') + '.', 'event'); }
     else if (a === 'engine') {
@@ -99,7 +104,8 @@ OPS['card.interruption'] = (state, step) => { log(state, 'Реакция сыг�
 OPS['card.preventAttack'] = OPS['card.interruption'];
 OPS['card.repairs'] = (state, step) => {
     const p = player(state, step.player);
-    choice(state, p, 'Ремонт', repairOptions(state, p, true), 'card.repairPick', { enginePay: 1 });
+    // Printed: discard 1 card to remove a Malfunction; Doors do not carry that extra cost.
+    choice(state, p, 'Ремонт', repairOptions(state, p, true), 'card.repairPick', { enginePay: 1, malfPay: 1 });
 };
 OPS['card.rest'] = (state, step) => { infectionProcedure(state, player(state, step.player), true); next(state, BACK); };
 OPS['card.search'] = (state, step) => { search(state, player(state, step.player), BACK); };
@@ -162,7 +168,7 @@ OPS['card.myLittleFriend.pick'] = (state, step) => {
     const p = player(state, step.player);
     const gun = p.items.find(i => i.uid === step.uid);
     if (step.answer === 'load') { gun.ammo++; log(state, 'Винтовка заряжена: ' + gun.ammo + '.', 'good'); next(state, BACK); return; }
-    next(state, { op: 'shoot.weaponChosen', player: p.id, uid: gun.uid, repeat: true, then: BACK });
+    next(state, { op: 'shoot.start', player: p.id, onlyItem: 'soldierGun', repeat: true, then: BACK });
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -225,12 +231,13 @@ OPS['card.computerSkills'] = (state, step) => {
     const p = player(state, step.player);
     const tile = tileOf(state, p.room);
     const opts = [];
-    if (tile && ROOM_TILES[tile].computer && !room(state, p.room).malfunction) opts.push({ id: 'comp', label: 'Использовать компьютер' });
+    // Printed: use the Computer ROOM, not the face-up Computer Action card.
+    if (tile && ROOM_TILES[tile].computer && !room(state, p.room).malfunction && roomActionAvailable(state, p).ok) opts.push({ id: 'comp', label: 'Использовать комнату' });
     opts.push(...doorOptions(state, null));
     choice(state, p, 'Компьютерные навыки', opts, 'card.computerSkills.pick');
 };
 OPS['card.computerSkills.pick'] = (state, step) => {
-    if (step.answer === 'comp') { next(state, { op: 'computer.start', player: step.player, then: BACK }); return; }
+    if (step.answer === 'comp') { next(state, { op: 'room.action', player: step.player, then: BACK }); return; }
     OPS['card.repairPick'](state, step);
 };
 OPS['card.duckAndCover'] = (state, step) => {

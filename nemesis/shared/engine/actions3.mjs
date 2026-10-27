@@ -2,35 +2,36 @@
 // actions.mjs / actions2.mjs. The Xenobiologist keeps Tissue samples as `player.tissue`.
 
 import { OPS, ask, next, log, player, pname, intrudersIn, room, roomName, tileOf, drawCards, payCost, removeWound,
-    gainKnowledge, intruderLabel, secretTile } from './core.mjs';
+    gainKnowledge, intruderLabel, secretTile, needDice } from './core.mjs';
 import { ITEMS, WOUNDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
-import { applyHitsNoRoll, phantomAttack } from './combat.mjs';
+import { applyHitsNoRoll, phantomAttack, dealHits } from './combat.mjs';
 import { choice } from './actions.mjs';
 
-/** Probe Arm (Xenobiologist): in a room with an intruder, spend one of 3 markers to deal 1 hit and gain 1 Tissue. */
+/** Probe Arm (Xenobiologist): Orange Malfunction on the Armor -> 1 Hit + 1 Tissue sample. */
 OPS['item3.probeArm'] = (state, step) => {
     const p = player(state, step.player); const a = probeArm(p); const back = step.then || BACK;
     const targets = intrudersIn(state, p.room);
     if (!a || !targets.length) { log(state, 'Манипулятор-зонд: в комнате нет чужих.', 'minor'); next(state, back); return; }
-    if ((a.charge ?? ITEMS.probeArm.markers) <= 0) { log(state, 'Манипулятор-зонд: все жетоны уже на предмете.', 'minor'); next(state, back); return; }
-    a.charge = (a.charge ?? ITEMS.probeArm.markers) - 1;
-    p.tissue = (p.tissue || 0) + 1; log(state, pname(p) + ' берёт образец зондом (ткань ' + p.tissue + ', жетонов свободно ' + a.charge + ').', 'good');
-    if (targets.length === 1) { applyHitsNoRoll(state, targets[0], 1); next(state, back); return; }
-    ask(state, { kind: 'choice', player: p.id, title: 'Манипулятор-зонд: цель', options: targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })) }, { op: 'card.hitOne', player: p.id, then: back });
+    if (a.broken) { log(state, 'Манипулятор-зонд уже сломан — сначала почините его.', 'minor'); next(state, back); return; }
+    a.broken = true;
+    log(state, 'Манипулятор-зонд: оранжевая поломка на броне.', 'minor');
+    p.tissue = (p.tissue || 0) + 1; log(state, pname(p) + ' берёт образец зондом (ткань ' + p.tissue + ').', 'good');
+    if (targets.length === 1) { next(state, { op: 'probe.hit', player: p.id, target: targets[0].uid, then: back }); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Манипулятор-зонд: цель', options: targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })) }, { op: 'probe.hit', player: p.id, then: back });
+};
+OPS['probe.hit'] = (state, step) => {
+    const p = player(state, step.player), it = state.intruders[step.answer || step.target];
+    if (!it) { next(state, step.then || BACK); return; }
+    if (it.type !== 'larva' && needDice(state, step, 'combat', p.id, 'Манипулятор-зонд: бросок боя')) return;
+    dealHits(state, p, it, 1, 0, {});
+    next(state, step.then || BACK);
 };
 
 /** Survivor: from round 8 the Handgun becomes the Survivor's Favorite. */
-export function survivorUpgrade(state) {
-    if (state.round < 8) return;
-    for (const p of state.players) {
-        if (p.charId !== 'survivor' || p.status !== 'active') continue;
-        const g = p.items.find(i => i.item === 'handgun');
-        if (!g) continue;
-        g.item = 'survivorFavorite'; g.ammo = ITEMS.survivorFavorite.weapon.max; g.broken = false;
-        log(state, pname(p) + ': Пистолет становится «Любимицей выжившей» (5 патронов, −1 к стрельбе).', 'good');
-    }
-}
+// Quest Items are activated by their own Action while the printed condition holds
+// (see QUEST_ACTIVATIONS in items.mjs); there is no automatic upgrade at a fixed round.
+export function survivorUpgrade() {}
 
 const BACK = { op: 'turn.choose' };
 const HAND_CAP = 7;
@@ -45,8 +46,8 @@ const dropItem = (state, p, uid) => {
 };
 const spendTissue = (state, p) => { p.tissue = Math.max(0, (p.tissue || 0) - 1); log(state, pname(p) + ' тратит образец ткани (осталось ' + p.tissue + ').', 'action'); };
 const probeArm = p => (p.armor && p.armor.item === 'probeArm') ? p.armor : null;
-const probeUsed = p => { const a = probeArm(p); return a ? ITEMS.probeArm.markers - (a.charge ?? ITEMS.probeArm.markers) : 0; };
-const freeProbeMarker = (state, p) => { const a = probeArm(p); if (!a) return; a.charge = Math.min(ITEMS.probeArm.markers, (a.charge ?? ITEMS.probeArm.markers) + 1); log(state, pname(p) + ' снимает жетон с Манипулятора-зонда (свободно ' + a.charge + ').', 'action'); };
+const probeUsed = p => { const a = probeArm(p); return a && a.broken ? 1 : 0; };
+const freeProbeMarker = (state, p) => { const a = probeArm(p); if (!a) return; a.broken = false; log(state, pname(p) + ' чинит Манипулятор-зонд (снят оранжевый жетон).', 'action'); };
 
 // ---------------------------------------------------------------------------------------------
 // Survivor
@@ -119,8 +120,24 @@ OPS['card.fieldExperience'] = (state, step) => {
     p.tissue = (p.tissue || 0) + 1; log(state, pname(p) + ' берёт образец ткани (всего ' + p.tissue + ').', 'good');
     const targets = intrudersIn(state, p.room);
     if (!targets.length) { next(state, BACK); return; }
-    if (targets.length === 1) { applyHitsNoRoll(state, targets[0], 1); next(state, BACK); return; }
+    if (targets.length === 1) { next(state, { op: 'card.fieldExp.hit', player: p.id, target: targets[0].uid, then: BACK }); return; }
     choice(state, p, 'Полевой опыт: кто получает ранение?', targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })), 'card.hitOne');
+};
+OPS['card.fieldExp.hit'] = (state, step) => {
+    const p = player(state, step.player);
+    const it = state.intruders[step.target];
+    if (!it) { next(state, step.then || BACK); return; }
+    if (it.type !== 'larva' && needDice(state, step, 'combat', p.id, 'Полевой опыт: бросок боя')) return;
+    if (!it.hits) it.hits = 0;
+    dealHits(state, p, it, 1, 0, {});
+    next(state, step.then || BACK);
+};
+OPS['vivisection.hit'] = (state, step) => {
+    const p = player(state, step.player), it = state.intruders[step.answer || step.target];
+    if (!it) { next(state, step.then || BACK); return; }
+    if (it.type !== 'larva' && needDice(state, step, 'combat', p.id, 'Вивисекция: бросок боя')) return;
+    dealHits(state, p, it, step.n || 1, 0, {});
+    next(state, step.then || BACK);
 };
 OPS['card.hitOne'] = (state, step) => { const it = state.intruders[step.answer]; if (it) applyHitsNoRoll(state, it, step.n || 1); next(state, step.then || BACK); };
 
@@ -176,8 +193,8 @@ OPS['card.vivisection.pay'] = (state, step) => {
     const n = Math.max(1, p.tissue || 0);
     spendTissue(state, p);
     const targets = intrudersIn(state, p.room);
-    if (targets.length === 1) { applyHitsNoRoll(state, targets[0], n); next(state, BACK); return; }
-    choice(state, p, 'Вивисекция: цель', targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })), 'card.hitOne', { n });
+    if (targets.length === 1) { next(state, { op: 'vivisection.hit', player: p.id, target: targets[0].uid, n, then: BACK }); return; }
+    choice(state, p, 'Вивисекция: цель', targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })), 'vivisection.hit', { n });
 };
 
 OPS['card.workspacePlan'] = (state, step) => {

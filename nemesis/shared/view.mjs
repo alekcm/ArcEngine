@@ -2,9 +2,9 @@
 // The server sends only views to clients; the full state never leaves the host process.
 
 import { buildMenu } from './engine/turn.mjs';
-import { CHARACTERS, FIELD_DATA } from './data/cards.mjs';
+import { CHARACTERS, FIELD_DATA, ITEMS } from './data/cards.mjs';
 
-const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'fx', 'version', 'seedStr', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'ship', 'roomState',
+const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'version', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'ship', 'roomState',
     'intruders', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods',
     'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'adaptations', 'adaptationsRemoved', 'seating', 'feats', 'result', 'lastEvent'];
 
@@ -24,7 +24,11 @@ export function viewFor(state, viewer, logFrom = 0) {
         queen: state.queenDeck.length,
     };
     v.players = state.players.map(p => playerView(state, p, viewer === p.id));
-    v.log = state.log.filter(l => l.n > logFrom);
+    v.log = state.log.filter(l => l.n > logFrom).map(l => {
+        if (l.privateTo === undefined || l.privateTo === viewer) return { ...l, privateTo: undefined, publicText: undefined };
+        return l.publicText ? { n: l.n, round: l.round, kind: l.kind, text: l.publicText } : null;
+    }).filter(Boolean);
+    v.fx = (state.fx || []).filter(f => f.privateTo === undefined || f.privateTo === viewer).map(f => ({ ...f, privateTo: undefined }));
     v.prompt = promptView(state, viewer);
     return v;
 }
@@ -39,7 +43,8 @@ function playerView(state, p, mine) {
     const pub = {
         id: p.id, number: p.number, name: p.name, charId: p.charId, charName: p.charId ? CHARACTERS[p.charId].name : '—', colors: p.colors,
         room: p.room, status: p.status, health: p.health, maxHealth: p.charId ? CHARACTERS[p.charId].health : 0, wounds: p.wounds, armor: p.armor,
-        items: p.items, heavy: p.heavy, knowledge: p.knowledge, knowledgeActive: p.knowledgeActive, signal: p.signal,
+        items: mine ? p.items : p.items.filter(i => i.start || ITEMS[i.item].quest || ITEMS[i.item].kind === 'heavy'),
+        lightItemCount: p.items.filter(i => !i.start && !ITEMS[i.item].quest && ITEMS[i.item].kind === 'light').length, heavy: p.heavy, knowledge: p.knowledge, knowledgeActive: p.knowledgeActive, signal: p.signal,
         passed: p.passed, pod: p.pod, larva: p.larva, laika: p.laika || null,
         handCount: p.hand.length, deckCount: p.deck.length, discardCount: p.discard.length,
         contamInDiscard: p.discard.filter(c => c.startsWith('contam#')).length,
@@ -58,10 +63,10 @@ function promptView(state, viewer) {
     if (!pr) return null;
     const mine = pr.player === viewer || (pr.player === 'host' && viewer === 0);
     if (mine) return pr;
-    // Other players see who is thinking and about what, but not secret option lists.
-    const out = { id: pr.id, kind: pr.kind, player: pr.player, title: pr.title, waiting: true, die: pr.die };
-    if (!pr.secret && pr.kind !== 'info' && pr.kind !== 'cards') { out.options = pr.options; out.rooms = pr.rooms; }
-    return out;
+    // Deny by default: titles, option labels and text can themselves contain secrets.
+    return { id: pr.id, kind: pr.kind, player: pr.player, waiting: true,
+        title: pr.publicTitle || 'Игрок принимает решение', die: pr.kind === 'dice' ? pr.die : undefined };
+
 }
 
 /** Human-readable card description for hand cards (used by the client, but kept here so bots/tests can share it). */

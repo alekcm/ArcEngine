@@ -9,10 +9,12 @@ import { ROOM_TILES } from '../ship.mjs';
 import { survivorUpgrade } from './actions3.mjs';
 import { canFire } from './combat.mjs';
 import { roomActionAvailable, roomActionCost } from './rooms.mjs';
+import { itemRequirement } from './items.mjs';
+import { resolveAirlocks } from './core.mjs';
 
 OPS['phase.player'] = (state) => {
     state.phase = 'player';
-    for (const p of state.players) { p.passed = p.status !== 'active'; p.movedThisRound = false; p.firstShotUsed = false; p.rifleDrawUsed = false; p.adrenalineTurn = false; p.noAttacks = false; }
+    for (const p of state.players) { p.passed = p.status !== 'active'; p.movedThisRound = false; p.firstShotUsed = false; p.rifleDrawUsed = false; p.adrenalineTurn = false; p.noAttacks = false; p.camouflage = false; }
     state.turnCursor = -1;
     log(state, '— Раунд ' + state.round + ': фаза игроков —', 'phase');
     survivorUpgrade(state);
@@ -28,7 +30,7 @@ OPS['turn.start'] = (state) => {
         const p = order[idx];
         if (p.status === 'active' && !p.passed) { found = idx; break; }
     }
-    if (found === null) { next(state, { op: 'phase.intruder' }); return; }
+    if (found === null) { resolveAirlocks(state); next(state, { op: 'phase.intruder' }); return; }
     state.turnCursor = found;
     const p = order[found];
     state.current = p.id;
@@ -65,19 +67,23 @@ export function buildMenu(state, p) {
     const carefulDest = state.ship.rooms[p.room].exits.some(e => state.ship.corridors[e.corridor].door !== 'closed' && corridorsOf(state, e.to).some(c => !(c.id === 'tech' ? state.ship.techNoise : state.ship.corridors[c.id].noise)));
     add('careful', 'Осторожное перемещение', moveCost + 1, noCombatOk && carefulDest, !noCombatOk ? 'Нельзя в бою' : 'Вокруг всех соседних комнат уже шум');
     const weapons = p.items.filter(i => canFire(p, i));
-    add('shoot', 'Стрелять', 1, combat && weapons.length > 0, combat ? 'Нет заряженного оружия' : 'Нет чужих в комнате');
+    const sniperTarget = weapons.some(i => ITEMS[i.item].weapon.sniper) && state.ship.rooms[p.room].exits.some(e => state.ship.corridors[e.corridor].door !== 'closed' && intrudersIn(state, e.to).length);
+    add('shoot', 'Стрелять', 1, (combat || sniperTarget) && weapons.length > 0, combat || sniperTarget ? 'Нет заряженного оружия' : 'Нет чужих в комнате или рядом (снайперская винтовка)');
     add('melee', 'Ближний бой', 1, combat, 'Нет чужих в комнате');
     const objs = rs.objects.length > 0;
-    add('pickup', 'Поднять тяжёлый объект', 1, objs && heavyCount(p) < handLimit(p), !objs ? 'В комнате нет объектов' : 'Руки заняты');
+    add('pickup', 'Поднять тяжёлый объект', 1, objs && noCombatOk && heavyCount(p) < handLimit(p), !noCombatOk ? 'Нельзя в бою' : !objs ? 'В комнате нет объектов' : 'Руки заняты');
     const others = state.players.filter(o => o.id !== p.id && o.status === 'active' && o.room === p.room && !o.pod);
     add('trade', 'Передать предмет', 1, others.length > 0 && noCombatOk && (p.items.length + p.heavy.length) > 0, !noCombatOk ? 'Нельзя в бою' : others.length ? 'Нечего передать' : 'Нет других персонажей');
     const comp = tile && ROOM_TILES[tile].computer;
-    add('computer', 'Компьютер' + (state.computerCard ? '' : ''), 1, !!comp && !rs.malfunction && !!state.computerCard, !comp ? 'Нет компьютера' : rs.malfunction ? 'Поломка' : 'Нет карты');
+    add('computer', 'Компьютер', 1, !!comp && noCombatOk && !rs.malfunction && !!state.computerCard, !noCombatOk ? 'Нельзя в бою' : !comp ? 'Нет компьютера' : rs.malfunction ? 'Поломка' : 'Нет карты');
     const ra = roomActionAvailable(state, p);
     add('room', 'Действие комнаты' + (tile ? ': ' + ROOM_TILES[tile].name : ''), roomActionCost(state, p), ra.ok, ra.reason);
     add('pass', 'Спасовать', 0, true);
     if (p.objectives.length === 2) actions.push({ id: 'objective', label: 'Выбрать цель (бесплатно)', cost: 0, enabled: true, reason: '' });
     if (p.items.length + p.heavy.length) actions.push({ id: 'drop', label: 'Выбросить предмет (бесплатно)', cost: 0, enabled: true, reason: '' });
+    // Every Quest Item has an Action side: 1 Action + discard 1 Action card to activate it.
+    const quests = p.items.filter(i => ITEMS[i.item].quest && ITEMS[i.item].activate && !i.active);
+    if (quests.length) actions.push({ id: 'quest', label: 'Активировать квестовый предмет (2 карты)', cost: 2, enabled: payable >= 2, reason: payable >= 2 ? '' : 'Не хватает карт' });
 
     const cards = p.hand.map(c => {
         const d = cardDef(state, c);
@@ -99,7 +105,7 @@ export function buildMenu(state, p) {
 }
 
 function extraCost(d) {
-    return ({ coveringFire: 1, forcingFire: 1, scavenging: 1, techCorridors: 1, duckAndCover: 1, neurotoxicGas: 1, feelOfDark: 1, facilityTour: 1, fdEvasive: 1, fdHunker: 1, fdQuickHands: 1, fdReposition: 1 })[d.effect] || 0;
+    return ({ coveringFire: 1, forcingFire: 1, neurotoxicGas: 1, fdEvasive: 1, fdHunker: 1, fdQuickHands: 1, fdReposition: 1 })[d.effect] || 0;
 }
 
 function cardRequirement(state, p, d) {
@@ -113,7 +119,7 @@ function cardRequirement(state, p, d) {
         case 'scoutAdrenaline': return inCombat(state, p) ? '' : 'Только в комнате с чужим';
         case 'coveringFire': return p.items.some(i => ITEMS[i.item].weapon && i.ammo >= 2 && !i.broken) ? '' : 'Нужно 2 патрона';
         case 'forcingFire': return p.items.some(i => ITEMS[i.item].weapon && i.ammo >= 1 && !i.broken) ? (intrudersIn(state, p.room).some(i => i.type === 'adult') ? '' : 'Нет взрослого чужого') : 'Нужен патрон';
-        case 'myLittleFriend': return p.items.some(i => i.item === 'soldierGun' && !i.broken) ? '' : 'Нет винтовки солдата';
+        case 'myLittleFriend': return p.items.some(i => i.item === 'soldierGun' && !i.broken && canFire(p, i)) ? '' : 'Нужна заряженная винтовка солдата';
         case 'distraction': return p.items.length ? '' : 'Нет предмета для сброса';
         case 'techCorridors': return state.ship.rooms[p.room].tech ? '' : 'Нет входа в тех. коридоры';
         case 'fdPrecision': return inCombat(state, p) && p.items.some(i => canFire(p, i)) ? '' : 'Нужно оружие и чужой';
@@ -146,31 +152,6 @@ function cardRequirement(state, p, d) {
     }
 }
 
-export function itemRequirement(state, p, it) {
-    const d = ITEMS[it.item], rs = room(state, p.room), tile = tileOf(state, p.room);
-    const comp = tile && ROOM_TILES[tile].computer;
-    switch (d.use) {
-        case 'selfDestructKey': case 'logCodes': case 'engineKey':
-            if (d.use === 'engineKey') return '';
-            return comp && !rs.malfunction ? '' : 'Только у компьютера без поломки';
-        case 'evacKey': return tile === 'evacA' || tile === 'evacB' ? '' : 'Только в эвакуационном отсеке';
-        case 'techPlan': return state.ship.rooms[p.room].tech ? '' : 'Нужен вход в тех. коридоры';
-        case 'probeArm': return !intrudersIn(state, p.room).length ? 'В комнате нет чужих' : (it.charge ?? ITEMS.probeArm.markers) <= 0 ? 'Все жетоны на предмете' : '';
-        case 'grenade': {
-            const ok = [p.room, ...state.ship.rooms[p.room].exits.map(e => e.to)].some(r => intrudersIn(state, r).length || room(state, r).objects.some(o => o.type === 'egg') || (tileOf(state, r) === 'nest' && state.nestEggs > 0));
-            if (p.items.some(i => ITEMS[i.item].weapon && ITEMS[i.item].weapon.grenadeOnly && i.ammo < ITEMS[i.item].weapon.max)) return '';
-            return ok ? '' : 'Нет цели рядом';
-        }
-        case 'secControl': return Object.keys(state.ship.rooms).some(r => intrudersIn(state, r).length && (room(state, r).fire || room(state, r).malfunction)) ? '' : 'Нет комнаты с пожаром/поломкой и чужими';
-        case 'repelAdult': case 'reagent': return '';
-        case 'taser': return '';
-        case 'medkit': case 'woundOrHeal2': return '';
-        case 'removeContam1': case 'sampleJar': return p.hand.some(isContam) ? '' : 'Нет заражений в руке';
-        case 'wrench': return rs.malfunction || rs.fire ? '' : 'Нет поломки или огня';
-        case 'pipeMelee': return inCombat(state, p) ? '' : 'Нет чужих';
-        default: return '';
-    }
-}
 
 OPS['turn.do'] = (state, step) => {
     const p = player(state, step.player);
@@ -217,7 +198,7 @@ OPS['turn.do'] = (state, step) => {
                 { op: 'objective.pick', player: p.id });
             return;
         case 'drop': {
-            const opts = p.items.map(i => ({ id: 'item:' + i.uid, label: ITEMS[i.item].name }));
+            const opts = p.items.filter(i => !ITEMS[i.item].cannotDiscard).map(i => ({ id: 'item:' + i.uid, label: ITEMS[i.item].name }));
             p.heavy.forEach((h, idx) => opts.push({ id: 'heavy:' + idx, label: HEAVY_NAMES[h.type] }));
             ask(state, { kind: 'choice', player: p.id, title: 'Что выбросить?', options: opts, cancel: true }, { op: 'drop.choice', player: p.id });
             return;
@@ -249,6 +230,11 @@ OPS['turn.do'] = (state, step) => {
             spend();
             payCost(state, p, 1, interruptible(state, p, { op: 'computer.start', player: p.id }, 'использует компьютер'), 'Компьютер: оплата');
             return;
+        case 'quest': {
+            spend();
+            payCost(state, p, 1, { op: 'quest.pick', player: p.id, then: back }, 'Активация квеста: оплата действия');
+            return;
+        }
         case 'room':
             spend();
             payCost(state, p, act.cost, interruptible(state, p, { op: 'room.action', player: p.id }, 'использует действие комнаты'), 'Действие комнаты: оплата');
