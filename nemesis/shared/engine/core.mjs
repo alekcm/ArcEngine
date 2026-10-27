@@ -393,8 +393,8 @@ export function placeNoise(state, corridorId) {
 }
 export function corridorsOf(state, roomId) {
     const r = state.ship.rooms[roomId];
-    const list = r.exits.map(e => ({ id: e.corridor, num: e.num, to: e.to }));
-    if (r.tech) list.push({ id: 'tech', num: 0, to: null });
+    const list = r.exits.map(e => ({ id: e.corridor, num: e.num, nums: e.nums || [e.num], to: e.to }));
+    if (r.tech) list.push({ id: 'tech', num: 0, nums: r.techNums || [], to: null });
     return list;
 }
 export function clearNoiseAround(state, roomId) {

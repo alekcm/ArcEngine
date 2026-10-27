@@ -362,7 +362,7 @@ function onRoomHover(id, x, y) {
     const ppl = v.players.filter(p => p.room === id && (p.status === 'active' || p.status === 'hibernating') && !p.pod).map(p => p.name);
     if (ppl.length) flags.push('🧑 ' + ppl.join(', '));
     if (flags.length) html += '<div>' + flags.join(' · ') + '</div>';
-    html += '<div class="dim">Выходы: ' + r.exits.map(e => e.num + '→' + e.to + (v.ship.corridors[e.corridor].door === 'closed' ? ' 🚪' : v.ship.corridors[e.corridor].door === 'destroyed' ? ' 💥' : '') + (v.ship.corridors[e.corridor].noise ? ' 🔊' : '')).join(', ') + '</div>';
+    html += '<div class="dim">Выходы: ' + r.exits.map(e => (e.nums || [e.num]).join('/') + '→' + e.to + (v.ship.corridors[e.corridor].door === 'closed' ? ' 🚪' : v.ship.corridors[e.corridor].door === 'destroyed' ? ' 💥' : '') + (v.ship.corridors[e.corridor].noise ? ' 🔊' : '')).join(', ') + '</div>';
     el.innerHTML = html; el.classList.remove('hidden');
     el.style.left = Math.min(window.innerWidth - 300, x + 16) + 'px'; el.style.top = Math.min(window.innerHeight - 160, y + 16) + 'px';
 }

@@ -1026,7 +1026,7 @@ export class Scene3D {
         }
         // name labels grow as the camera zooms out, so figures are easy to find on the whole ship
         // name labels grow quickly with distance so a figure can be found on the whole-ship view
-        const lk = Math.min(8, Math.max(1, this.camera.radius / 26));
+        const lk = Math.min(10, Math.max(1, this.camera.radius / 21));
         for (const n of Object.values(this.chars)) { n.label.scaling.setAll(lk); n.label.position.y = 3.6 + (lk - 1) * 1.0; }
         for (const n of Object.values(this.intr)) if (n.label) { n.label.scaling.setAll(lk); n.label.position.y = 3.0 + (lk - 1) * 1.0; }
         for (const c of Object.values(this.cursors)) {

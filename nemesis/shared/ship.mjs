@@ -149,11 +149,39 @@ function buildShip(roomsSpec, edges, techRooms, engineNumbers, mode, paths = {})
     return ship;
 }
 
-/** Exits get numbers 1..n clockwise starting from "up" (screen -Y). */
+/**
+ * Noise-die numbers 1..4 for every room. As on the printed board, the four numbers go clockwise from
+ * "up" and are all used: a room with fewer than four corridors has corridors that carry two numbers
+ * (printed "1 2", "3 4" on the board). Each number goes to the corridor closest to its ideal direction
+ * (1 = up, 2 = right, 3 = down, 4 = left). In a room with a technical-corridor hatch the hatch takes
+ * the direction farthest from all real corridors (`room.techNums`).
+ */
 function numberExits(rooms) {
     for (const r of Object.values(rooms)) {
         r.exits.sort((e1, e2) => angleOf(r, rooms[e1.to]) - angleOf(r, rooms[e2.to]));
-        r.exits.forEach((e, i) => { e.num = i + 1; });
+        const slots = r.exits.map(e => ({ e, a: angleOf(r, rooms[e.to]), nums: [] }));
+        const dist = (a, b) => { const d = Math.abs(a - b) % (Math.PI * 2); return Math.min(d, Math.PI * 2 - d); };
+        let tech = null;
+        if (r.tech && slots.length < 4) {
+            let best = -1, ba = 0;
+            for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; const d = Math.min(...slots.map(s => dist(s.a, a)), 9); if (d > best) { best = d; ba = a; } }
+            tech = { e: null, a: ba, nums: [] }; slots.push(tech);
+        }
+        // clockwise from the slot nearest to "up"; the four numbers are dealt out consecutively, slots that
+        // span the widest angular gap take two numbers (so pairs read "1 2" / "3 4" like the printed board)
+        slots.sort((x, y) => x.a - y.a);
+        if (slots.length) {
+            let startIdx = 0, bd = 1e9; slots.forEach((sl, i) => { const d = dist(sl.a, 0); if (d < bd) { bd = d; startIdx = i; } });
+            const ordered = slots.slice(startIdx).concat(slots.slice(0, startIdx));
+            const n = ordered.length, counts = ordered.map(() => (n >= 4 ? 1 : Math.floor(4 / n)));
+            let extra = n >= 4 ? 0 : 4 - counts.reduce((x, y) => x + y, 0);
+            const span = ordered.map((sl, i) => { const nx = ordered[(i + 1) % n]; let g = nx.a - sl.a; if (g <= 0) g += Math.PI * 2; const pv = ordered[(i + n - 1) % n]; let gp = sl.a - pv.a; if (gp <= 0) gp += Math.PI * 2; return g + gp; });
+            while (extra-- > 0) { let bi = 0; for (let i = 1; i < n; i++) if (span[i] > span[bi]) bi = i; counts[bi]++; span[bi] = -1; }
+            let num = 1;
+            ordered.forEach((sl, i) => { for (let k = 0; k < counts[i]; k++) sl.nums.push(num <= 4 ? num : 4), num++; });
+        }
+        for (const s of slots) if (s.e) { s.e.nums = s.nums; s.e.num = s.nums[0]; }
+        r.techNums = tech ? tech.nums : [];
     }
 }
 function angleOf(from, to) {

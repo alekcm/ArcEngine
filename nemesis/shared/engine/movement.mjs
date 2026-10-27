@@ -103,7 +103,7 @@ OPS['move.afterExplore'] = (state, step) => {
         const cors = corridorsOf(state, p.room).filter(c => !(c.id === 'tech' ? state.ship.techNoise : state.ship.corridors[c.id].noise));
         if (!cors.length) { log(state, 'Все коридоры уже с шумом — обычный бросок шума.', 'minor'); next(state, { op: 'noise.roll', player: p.id, room: p.room }, then); return; }
         ask(state, { kind: 'choice', player: p.id, title: 'Осторожное перемещение: куда положить жетон шума?',
-            options: cors.map(c => ({ id: c.id, label: c.id === 'tech' ? 'Тех. коридоры' : 'Коридор ' + c.num + ' → ' + roomName(state, c.to) })) },
+            options: cors.map(c => ({ id: c.id, label: c.id === 'tech' ? 'Тех. коридоры' : 'Коридор ' + c.nums.join('/') + ' → ' + roomName(state, c.to) })) },
             { op: 'noise.place', player: p.id, then });
         return;
     }
@@ -142,12 +142,13 @@ OPS['noise.roll'] = (state, step) => {
         return;
     }
     const exits = corridorsOf(state, roomId);
-    const target = exits.find(c => c.num === r);
+    const target = exits.find(c => c.nums.includes(r));
     if (!target) { log(state, 'Коридора ' + r + ' нет — тишина.', 'minor'); return; }
+    const label = target.id === 'tech' ? 'технических коридорах' : 'коридоре ' + target.nums.join('/') + ' (→ ' + roomName(state, target.to) + ')';
     if (!placeNoise(state, target.id)) {
-        log(state, 'В коридоре ' + target.num + ' уже был шум — ВСТРЕЧА!', 'combat');
+        log(state, 'В ' + label + ' уже был шум — ВСТРЕЧА!', 'combat');
         next(state, { op: 'encounter', room: roomId, player: p.id });
-    } else log(state, 'Шум в коридоре ' + target.num + ' (→ ' + roomName(state, target.to) + ').', 'noise');
+    } else log(state, 'Шум в ' + label + '.', 'noise');
 };
 
 /** encounter { room, player, noSurprise } */

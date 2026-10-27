@@ -49,9 +49,9 @@ export function moveIntrudersByCorridor(state, num) {
     for (const it of Object.values(state.intruders)) {
         if (playersInRoom(state, it.room).length) continue;
         const r = state.ship.rooms[it.room];
-        const exit = r.exits.find(e => e.num === num);
+        const exit = r.exits.find(e => (e.nums || [e.num]).includes(num));
         if (!exit) {
-            if (r.tech && num > r.exits.length) {   // route into technical corridors: leaves the board
+            if (r.tech && (r.techNums || []).includes(num)) {   // route into technical corridors: leaves the board
                 log(state, INTRUDER_NAMES[it.type] + ' уходит в тех. коридоры из ' + roomName(state, it.room) + '.', 'event');
                 removeIntruder(state, it.uid, false);
                 state.bag.push(it.type);
