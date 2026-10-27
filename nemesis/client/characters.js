@@ -138,9 +138,9 @@ export function buildCharacter(scene, charId, colors = {}) {
             Z(sp.robe, bx(0.6 * W, 0.72, 0.1, R, 0, 1.84, -0.2)); Z(sp.robe, bx(0.6 * W, 0.7, 0.08, R, 0, 1.84, 0.18));
             for (const s of [-1, 1]) { Z(sp.robe, bx(0.1, 0.72, 0.34, R, s * 0.3 * W, 1.84, 0)); Z(sp.robe, bx(0.3 * W, 0.9, 0.3, R, s * 0.15 * W, 1.02, -0.06)); }   // sides + skirts to the shins
             Z(sp.robe, bx(0.62 * W, 0.08, 0.38, R, 0, 2.2, -0.02));
-            Z(sp.robe, bx(0.5 * W, 0.4, 0.08, R, 0, 2.36, -0.2));                                     // stand-up collar back
-            for (const s of [-1, 1]) { Z(sp.robe, bx(0.08, 0.44, 0.3, R, s * 0.23 * W, 2.38, -0.04, [0, 0, s * 0.08])); Z(sp.robe, bx(0.2, 0.36, 0.06, R, s * 0.16 * W, 2.3, 0.14, [0, s * 0.35, s * 0.18])); }   // tall lapels wrapping the neck
-            for (const s of [-1, 1]) F('#c9c3a6', bx(0.03, 0.34, 0.03, R, s * 0.1 * W, 2.28, 0.19, [0, 0, s * 0.3]));   // light trim edge
+            Z(sp.robe, bx(0.5 * W, 0.2, 0.08, R, 0, 2.26, -0.2));                                     // stand-up collar back (half height, below the chin)
+            for (const s of [-1, 1]) { Z(sp.robe, bx(0.08, 0.22, 0.3, R, s * 0.23 * W, 2.27, -0.04, [0, 0, s * 0.08])); Z(sp.robe, bx(0.2, 0.18, 0.06, R, s * 0.16 * W, 2.23, 0.14, [0, s * 0.35, s * 0.18])); }   // lapels wrapping the neck
+            for (const s of [-1, 1]) F('#c9c3a6', bx(0.03, 0.17, 0.03, R, s * 0.1 * W, 2.22, 0.19, [0, 0, s * 0.3]));   // light trim edge
         }
         if (sp.heavyVest) {   // massive plated vest with built-up shoulder blocks
             Z(sp.heavyVest, bx(0.6 * W, 0.6, 0.2, R, 0, 1.86, 0.2)); Z(sp.heavyVest, bx(0.6 * W, 0.6, 0.14, R, 0, 1.86, -0.2));
@@ -207,7 +207,7 @@ export function buildCharacter(scene, charId, colors = {}) {
         switch (sp.hair) {
             case 'shortSwept': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.3, 0.08, 0.12, R, 0, 2.67, 0.12)); Z(H, bx(0.32, 0.14, 0.1, R, 0, 2.52, -0.14)); break;
             case 'shortSpiky': Z(H, bx(0.32, 0.08, 0.32, R, 0, 2.63, 0.0)); for (let i = 0; i < 4; i++) Z(H, bx(0.06, 0.12, 0.06, R, -0.1 + i * 0.07, 2.72, -0.02 + (i % 2) * 0.06)); break;
-            case 'longLoose': Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.5, 0.1, R, 0, 2.32, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.08, 0.44, 0.24, R, s * 0.19, 2.34, 0.0)); break;
+            case 'longLoose': Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.56, 0.1, R, 0, 2.36, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.08, 0.5, 0.3, R, s * 0.19, 2.38, -0.03)); break;   // back slab and side locks reach up into the cap, no bare strip
             case 'bun': Z(H, bx(0.33, 0.1, 0.33, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.08, 0.1, R, 0, 2.6, 0.14)); Z(H, bx(0.3, 0.3, 0.08, R, 0, 2.46, -0.16)); Z(H, bx(0.16, 0.16, 0.16, R, 0, 2.68, -0.14)); for (const s of [-1, 1]) Z(H, bx(0.05, 0.26, 0.2, R, s * 0.17, 2.46, -0.02)); break;
             case 'ponytail': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.1, 0.1, 0.1, R, 0, 2.6, -0.2)); Z(H, bx(0.08, 0.4, 0.08, R, 0, 2.38, -0.22)); break;
             case 'bobBangs': Z(H, bx(0.34, 0.12, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.1, 0.08, R, 0, 2.56, 0.16)); Z(H, bx(0.34, 0.3, 0.1, R, 0, 2.42, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.06, 0.3, 0.3, R, s * 0.18, 2.42, 0.0)); break;
@@ -543,7 +543,8 @@ export function buildCharacter(scene, charId, colors = {}) {
         // long hair: cap, long back, two side locks
         Z('hair', bx(0.34, 0.12, 0.34, R, 0, 2.64, 0));
         Z('hair', bx(0.34, 0.6, 0.12, R, 0, 2.36, -0.18));
-        Z('hair', bx(0.08, 0.5, 0.14, R, -0.19, 2.34, 0.02));                   // heavy lock on the left
+        Z('hair', bx(0.08, 0.52, 0.3, R, -0.19, 2.38, -0.06));                  // heavy lock on the left, runs back to join the back slab
+        Z('hair', bx(0.08, 0.4, 0.2, R, 0.19, 2.44, -0.1));                     // thin lock on the right closing the gap to the back slab
         Z('hair', bx(0.36, 0.12, 0.16, R, -0.02, 2.6, 0.1, [0, 0, 0.22]));        // fringe: one slab sweeping down to the left, joined to the cap and the left lock
         Z('hair', bx(0.14, 0.2, 0.14, R, -0.15, 2.5, 0.11));
         // scar across the right eye (the side the fringe leaves open)
