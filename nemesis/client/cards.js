@@ -40,8 +40,8 @@ const ART_FIELD = ['fdAim', 'fdSprint', 'fdPatch', 'fdScan', 'fdHush', 'fdTrap']
 /** Items with illustrations in client/art/items/<itemKey>.jpg. */
 const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', 'antiseptic', 'stapler', 'adrenaline', 'supportCrate', 'selfDestructKey',
     'armor', 'grenade', 'flashbang', 'energyCharge', 'evacKey', 'taser', 'logCodes', 'detonator', 'cables', 'ductTape',
-    'engineKey', 'extinguisher', 'glowstick', 'nemesisPlans', 'reagent', 'techPlan', 'tools', 'plasmaRifle', 'flamethrower', 'heavyArmor',
-    'shotgun', 'exoLegs', 'soldierGun', 'handgun', 'scoutRifle', 'sawedOff', 'smartGun', 'riotShotgun', 'energyPistol', 'bountyRifle',
+    'engineKey', 'extinguisher', 'glowstick', 'nemesisPlans', 'reagent', 'techPlan', 'tools', 'plasmaGun', 'flamethrower', 'hardenedArmor',
+    'riotgun', 'soldierGun', 'handgun', 'scoutRifle', 'sawedOff', 'smartGun', 'riotShotgun', 'energyPistol', 'bountyRifle',
     'sixShooter', 'probeArm', 'xenoGun', 'survivorFavorite', 'pipe', 'cuffs', 'robot', 'ups', 'laika', 'wrench',
     'fieldKit', 'oculobe', 'sampleJar', 'navTablet', 'mechTools'];
 export function itemArt(key) { return ART_ITEMS.includes(key) ? 'art/items/' + key + '.jpg' : null; }

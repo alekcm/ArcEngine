@@ -2,7 +2,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeFire, removeMalfunction, placeFire, placeMalfunction, drawCards, discardCard, isContam, gainContamination,
-    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf } from './core.mjs';
+    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice } from './core.mjs';
 import { ITEMS, WOUNDS, DECK_NAMES } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { shuffle } from '../rng.mjs';
@@ -18,17 +18,26 @@ export function drawSupport(state, n) {
 }
 
 /** Offer `cards` (item keys); the chosen one is gained, the rest go to the bottom of their decks. */
-export function keepOneOf(state, p, cards, label, then) {
+export function keepOneOf(state, p, cards, label, then, keep = 1) {
     if (!cards.length) { log(state, 'Колода пуста — ничего не найдено.', 'minor'); next(state, then); return; }
-    ask(state, { kind: 'choice', player: p.id, title: 'Выберите 1 предмет (остальные — под низ колод)', secret: true,
+    ask(state, { kind: 'choice', player: p.id, title: keep > 1 ? 'Выберите предмет (можно оставить ещё ' + keep + ')' : 'Выберите 1 предмет (остальные — под низ колод)', secret: true,
         options: cards.map((c, i) => ({ id: String(i), label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] })) },
-        { op: 'item.keepOne', player: p.id, cards, then });
+        { op: 'item.keepOne', player: p.id, cards, then, keep });
 }
 OPS['item.keepOne'] = (state, step) => {
     const p = player(state, step.player);
     const idx = Number(step.answer);
-    step.cards.forEach((c, i) => { if (i !== idx) state.itemDecks[ITEMS[c].deck].push(c); });
     const key = step.cards[idx];
+    const rest = step.cards.filter((c, i) => i !== idx);
+    const keep = (step.keep || 1) - 1;
+    if (keep > 0 && rest.length) {
+        giveItem(state, p, key);
+        ask(state, { kind: 'choice', player: p.id, title: 'Разгрузочный жилет: оставить ещё один предмет?', secret: true,
+            options: [{ id: 'none', label: 'Нет — остальные под низ колод' }, ...rest.map((c, i) => ({ id: String(i), label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] }))] },
+            { op: 'item.keepMore', player: p.id, cards: rest, then: step.then });
+        return;
+    }
+    rest.forEach(c => state.itemDecks[ITEMS[c].deck].push(c));
     giveItem(state, p, key);
     const then = step.then;
     if (ITEMS[key].free) {
@@ -37,6 +46,23 @@ OPS['item.keepOne'] = (state, step) => {
         return;
     }
     if (then && then.thenAfter) next(state, { ...then, thenAfter: undefined }, then.thenAfter); else next(state, then);
+};
+OPS['item.keepMore'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer !== 'none') { const key = step.cards.splice(Number(step.answer), 1)[0]; giveItem(state, p, key); }
+    step.cards.forEach(c => state.itemDecks[ITEMS[c].deck].push(c));
+    next(state, step.then);
+};
+/** Utility Vest: the 'item' action may use a second item for free. */
+OPS['vest.second'] = (state, step) => {
+    const p = player(state, step.player);
+    const back = { op: 'turn.choose' };
+    if (step.answer === 'none') { next(state, back); return; }
+    if (step.answer) { next(state, { op: 'item.use', player: p.id, uid: step.answer, then: back }); return; }
+    if (p.status !== 'active') { next(state, back); return; }
+    const opts = p.items.filter(i => ITEMS[i.item].use && !i.broken && i.uid !== step.used).map(i => ({ id: i.uid, label: ITEMS[i.item].name, desc: ITEMS[i.item].text }));
+    if (!opts.length) { next(state, back); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Разгрузочный жилет: использовать второй предмет бесплатно?', options: [{ id: 'none', label: 'Нет' }, ...opts] }, step);
 };
 OPS['item.freeUse'] = (state, step) => {
     const p = player(state, step.player);
@@ -54,7 +80,7 @@ export function searchRoom(state, p, then) {
     const drawn = [];
     for (const color of icons) { const c = drawItem(state, color); if (c) drawn.push(c); }
     log(state, pname(p) + ' обыскивает комнату (' + icons.length + ' предм.).', 'action');
-    keepOneOf(state, p, drawn, 'items', then);
+    keepOneOf(state, p, drawn, 'items', then, p.armor && ITEMS[p.armor.item].vest ? 2 : 1);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -97,6 +123,11 @@ OPS['item.use'] = (state, step) => {
         case 'supportCrate': consume(); keepOneOf(state, p, drawSupport(state, 3), 'support', back); return;
         case 'toggleSelfDestruct': consume(); if (state.selfDestruct > 0) stopSelfDestruct(state); else startSelfDestruct(state); next(state, back); return;
         case 'grenade': {
+            const launcher = p.items.find(i => ITEMS[i.item].weapon && ITEMS[i.item].weapon.grenadeOnly && i.ammo < ITEMS[i.item].weapon.max);
+            if (launcher && !step.thrown) {
+                choose('Граната', [{ id: 'throw', label: 'Бросить' }, { id: 'load', label: 'Зарядить гранатомёт' }], 'item.grenadeLoad', { launcher: launcher.uid });
+                return;
+            }
             const rooms = [p.room, ...state.ship.rooms[p.room].exits.map(e => e.to)].filter(r => intrudersIn(state, r).length || room(state, r).objects.some(o => o.type === 'egg') || (tileOf(state, r) === 'nest' && state.nestEggs > 0));
             consume();
             ask(state, { kind: 'room', player: p.id, title: 'Граната: куда бросить?', rooms }, { op: 'item.grenade', player: p.id, then: back });
@@ -106,7 +137,8 @@ OPS['item.use'] = (state, step) => {
         case 'energyCharge': {
             consume();
             const opts = [{ id: 'door', label: 'Открыть/закрыть дверь' }];
-            for (const w of p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max)) opts.push({ id: 'w:' + w.uid, label: 'Зарядить (+3): ' + ITEMS[w.item].name });
+            for (const w of p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && !ITEMS[i.item].weapon.grenadeOnly)) opts.push({ id: 'w:' + w.uid, label: 'Зарядить (+3): ' + ITEMS[w.item].name });
+            for (const w of [...p.items, p.armor].filter(i => i && ITEMS[i.item].ammoMax && i.ammo < ITEMS[i.item].ammoMax)) opts.push({ id: 'w:' + w.uid, label: 'Зарядить (+3): ' + ITEMS[w.item].name });
             choose('Энергозаряд', opts, 'item.energy');
             return;
         }
@@ -203,19 +235,66 @@ OPS['item.use'] = (state, step) => {
             ask(state, { kind: 'room', player: p.id, title: 'План тех. коридоров: куда?', rooms }, { op: 'item.techMove', player: p.id, then: back });
             return;
         }
-        case 'exoMove':
-            next(state, { op: 'move.start', player: p.id, noNoise: true, then: { op: 'move.start', player: p.id, then: back } });
+        case 'engEquip': {
+            const rs = room(state, p.room);
+            const opts = [];
+            if (rs.malfunction) opts.push({ id: 'malf', label: 'Убрать поломку в комнате' });
+            if (rs.fire) opts.push({ id: 'fire', label: 'Потушить пожар в комнате' });
+            opts.push({ id: 'door', label: 'Открыть/закрыть дверь' });
+            choose('Инженерный набор', opts, 'item.engEquip');
             return;
+        }
+        case 'secControl': {
+            const rooms = Object.keys(state.ship.rooms).filter(r => intrudersIn(state, r).length);
+            if (!rooms.length) { log(state, 'Чужих на корабле нет.', 'minor'); next(state, back); return; }
+            ask(state, { kind: 'room', player: p.id, title: 'Пульт охраны: в какой комнате стрелять?', rooms }, { op: 'item.secRoom', player: p.id, uid: inst.uid, then: back });
+            return;
+        }
     }
     if (OPS['item2.use']) { OPS['item2.use'](state, { ...step, then: back }); return; }
     log(state, 'Эффект предмета не реализован.', 'bad');
     next(state, back);
 };
 
+OPS['item.engEquip'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'malf') { removeMalfunction(state, p.room); next(state, step.then); return; }
+    if (step.answer === 'fire') { removeFire(state, p.room); next(state, step.then); return; }
+    const cors = Object.values(state.ship.corridors).filter(c => c.door !== 'destroyed');
+    ask(state, { kind: 'choice', player: p.id, title: 'Какую дверь переключить?', options: cors.map(c => ({ id: c.id, label: c.id + ' (' + (c.door === 'closed' ? 'закрыта' : 'открыта') + ')' })) }, { op: 'item.toggleDoor', player: p.id, then: step.then });
+};
+OPS['item.secRoom'] = (state, step) => {
+    const p = player(state, step.player);
+    const its = intrudersIn(state, step.answer);
+    if (!its.length) { next(state, step.then); return; }
+    if (its.length === 1) { next(state, { op: 'item.secFire', player: p.id, uid: step.uid, target: its[0].uid, then: step.then }); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Пульт охраны: в кого стрелять?', options: its.map(t => ({ id: t.uid, label: intruderLabel(state, t) })) }, { op: 'item.secTarget', player: p.id, uid: step.uid, then: step.then });
+};
+OPS['item.secTarget'] = (state, step) => next(state, { op: 'item.secFire', player: step.player, uid: step.uid, target: step.answer, then: step.then });
+OPS['item.secFire'] = (state, step) => {
+    const p = player(state, step.player);
+    const it = state.intruders[step.target];
+    const inst = p.items.find(i => i.uid === step.uid);
+    if (!it || !inst) { next(state, step.then); return; }
+    if (it.type !== 'larva' && needDice(state, step, 'combat', p.id, 'Бросок боя — пульт охраны')) return;
+    log(state, '🔫 Пульт охраны: турель стреляет в ' + intruderLabel(state, it) + ' (' + roomName(state, it.room) + ').', 'combat');
+    dealHits(state, p, it, 1, 0, {});
+    if (state.lastRoll && state.lastRoll.die === 'combat' && state.lastRoll.value === 6) { inst.broken = true; log(state, 'На пульт охраны положен жетон — он выходит из строя.', 'bad'); }
+    next(state, step.then);
+};
 OPS['item.simpleChoice'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'draw') drawCards(state, p, 2); else restoreHealth(state, p, 2);
     next(state, step.then);
+};
+OPS['item.grenadeLoad'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'load') {
+        const l = p.items.find(i => i.uid === step.launcher), g = p.items.find(i => i.uid === step.uid);
+        if (l && g) { l.ammo = ITEMS[l.item].weapon.max; p.items = p.items.filter(i => i !== g); (state.itemDiscard.red = state.itemDiscard.red || []).push(g.item); log(state, 'Гранатомёт заряжен.', 'good'); }
+        next(state, step.then); return;
+    }
+    next(state, { op: 'item.use', player: p.id, uid: step.uid, thrown: true, then: step.then });
 };
 OPS['item.grenade'] = (state, step) => {
     const p = player(state, step.player);
@@ -237,8 +316,8 @@ OPS['item.energy'] = (state, step) => {
         ask(state, { kind: 'choice', player: p.id, title: 'Какую дверь переключить?', options: cors.map(c => ({ id: c.id, label: c.id + ' (' + (c.door === 'closed' ? 'закрыта' : 'открыта') + ')' })) }, { op: 'item.toggleDoor', player: p.id, then: step.then });
         return;
     }
-    const w = p.items.find(i => i.uid === step.answer.slice(2));
-    if (w) { const before = w.ammo; w.ammo = Math.min(ITEMS[w.item].weapon.max, w.ammo + 3); log(state, '«' + ITEMS[w.item].name + '»: патроны ' + before + ' → ' + w.ammo + '.', 'good'); }
+    const w = [...p.items, p.armor].find(i => i && i.uid === step.answer.slice(2));
+    if (w) { const before = w.ammo; w.ammo = Math.min(ITEMS[w.item].weapon ? ITEMS[w.item].weapon.max : ITEMS[w.item].ammoMax, w.ammo + 3); log(state, '«' + ITEMS[w.item].name + '»: патроны ' + before + ' → ' + w.ammo + '.', 'good'); }
     next(state, step.then);
 };
 OPS['item.toggleDoor'] = (state, step) => { const c = state.ship.corridors[step.answer]; c.door = c.door === 'closed' ? 'open' : 'closed'; log(state, 'Дверь ' + c.id + ': ' + (c.door === 'closed' ? 'закрыта' : 'открыта') + '.', 'event'); next(state, step.then); };

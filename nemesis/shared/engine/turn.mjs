@@ -6,6 +6,7 @@ import { OPS, ask, next, log, player, pname, removeCardFromGame, intrudersIn, in
 import { ITEMS, CHARACTERS, OBJECTIVES, WOUNDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { survivorUpgrade } from './actions3.mjs';
+import { canFire } from './combat.mjs';
 import { roomActionAvailable, roomActionCost } from './rooms.mjs';
 
 OPS['phase.player'] = (state) => {
@@ -57,7 +58,7 @@ export function buildMenu(state, p) {
 
     add('move', 'Перемещение', moveCost, true);
     add('careful', 'Осторожное перемещение', moveCost + 1, !combat, 'Нельзя в бою');
-    const weapons = p.items.filter(i => ITEMS[i.item].weapon && i.ammo > 0 && !i.broken);
+    const weapons = p.items.filter(i => canFire(p, i));
     add('shoot', 'Стрелять', 1, combat && weapons.length > 0, combat ? 'Нет заряженного оружия' : 'Нет чужих в комнате');
     add('melee', 'Ближний бой', 1, combat, 'Нет чужих в комнате');
     const objs = rs.objects.length > 0;
@@ -146,8 +147,10 @@ function itemRequirement(state, p, it) {
         case 'probeArm': return !intrudersIn(state, p.room).length ? 'В комнате нет чужих' : (it.charge ?? ITEMS.probeArm.markers) <= 0 ? 'Все жетоны на предмете' : '';
         case 'grenade': {
             const ok = [p.room, ...state.ship.rooms[p.room].exits.map(e => e.to)].some(r => intrudersIn(state, r).length || room(state, r).objects.some(o => o.type === 'egg') || (tileOf(state, r) === 'nest' && state.nestEggs > 0));
+            if (p.items.some(i => ITEMS[i.item].weapon && ITEMS[i.item].weapon.grenadeOnly && i.ammo < ITEMS[i.item].weapon.max)) return '';
             return ok ? '' : 'Нет цели рядом';
         }
+        case 'secControl': return Object.keys(state.intruders).length ? '' : 'Чужих на корабле нет';
         case 'repelAdult': case 'reagent': return '';
         case 'taser': return '';
         case 'medkit': case 'woundOrHeal2': return '';
@@ -184,7 +187,8 @@ OPS['turn.do'] = (state, step) => {
         log(state, pname(p) + ' использует предмет «' + d.name + '».', 'action');
         fx(state, { type: 'useItem', player: p.id, item: inst.item });
         if (!d.free) spend();
-        payCost(state, p, it.cost, { op: 'item.use', player: p.id, uid: a.itemId }, 'Оплата использования «' + d.name + '»');
+        const vest = p.armor && ITEMS[p.armor.item].vest && !d.free;
+        payCost(state, p, it.cost, { op: 'item.use', player: p.id, uid: a.itemId, then: vest ? { op: 'vest.second', player: p.id, used: a.itemId } : undefined }, 'Оплата использования «' + d.name + '»');
         return;
     }
     const act = menu.actions.find(x => x.id === a.action);

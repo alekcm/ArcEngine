@@ -1,11 +1,11 @@
 // events.mjs — Event Phase (event card, intruder movement, effects, noise rolls, bag development)
 // and Cleanup Phase (first player, draw up, time, self-destruct, end checks).
 
-import { OPS, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeFire, placeMalfunction,
+import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeFire, placeMalfunction,
     placeNoise, corridorsOf, spawnIntruder, removeIntruder, turnOrder, drawCards, drawLimit, gainContamination, inCombat,
     findRoomsByTile, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, discardCard, fx } from './core.mjs';
 import { shuffle } from '../rng.mjs';
-import { EVENT_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
+import { EVENT_CARDS, INTRUDER_NAMES, ITEMS } from '../data/cards.mjs';
 import { ROOM_TILES, roomOfKind } from '../ship.mjs';
 import { moveIntrudersByCorridor, moveIntrudersToClosest, bagDevelopment, checkNest } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
@@ -172,9 +172,20 @@ OPS['event.noise'] = (state, step) => {
         if (ev.noise === 'all') yes = true;
         else if (ev.noise === 'noCards') yes = p.hand.length === 0;
         else if (ev.noise === 'fireMalf') { const rs = room(state, p.room); yes = rs.fire || rs.malfunction; }
-        if (yes) steps.push({ op: 'noise.roll', player: p.id, room: p.room });
+        if (!yes) continue;
+        const dev = p.items.find(i => ITEMS[i.item].perimeter && i.ammo > 0 && !i.broken);
+        if (dev) steps.push({ op: 'perimeter.ask', player: p.id, uid: dev.uid, then: { op: 'noise.roll', player: p.id, room: p.room } });
+        else steps.push({ op: 'noise.roll', player: p.id, room: p.room });
     }
     if (steps.length) { log(state, 'Броски шума по событию.', 'noise'); next(state, ...steps); }
+};
+OPS['perimeter.ask'] = (state, step) => {
+    const p = player(state, step.player);
+    const dev = p.items.find(i => i.uid === step.uid);
+    if (step.answer === 'yes' && dev && dev.ammo > 0) { dev.ammo--; log(state, pname(p) + ': охранный периметр — броска шума нет (зарядов ' + dev.ammo + ').', 'good'); return; }
+    if (step.answer) { next(state, step.then); return; }
+    if (!dev || dev.ammo <= 0) { next(state, step.then); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Охранный периметр: потратить заряд, чтобы не бросать шум?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, step);
 };
 OPS['event.finish'] = (state, step) => {
     const ev = EVENT_BY_ID[step.id];

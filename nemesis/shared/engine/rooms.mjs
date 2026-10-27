@@ -416,7 +416,7 @@ export function drawItem(state, deck) {
 }
 export function giveItem(state, p, itemKey, ammo) {
     const def = ITEMS[itemKey];
-    const inst = { uid: 'it' + (++state.itemSeq), item: itemKey, ammo: def.weapon ? (ammo ?? (def.deck === 'support' ? def.weapon.max : 1)) : undefined, broken: false };
+    const inst = { uid: 'it' + (++state.itemSeq), item: itemKey, ammo: def.weapon ? (ammo ?? (def.deck === 'support' ? def.weapon.max : 1)) : def.ammoMax !== undefined ? (ammo ?? def.ammoMax) : undefined, broken: false };
     if (def.kind === 'armor') {
         if (p.armor) { (state.itemDiscard[ITEMS[p.armor.item].deck] = state.itemDiscard[ITEMS[p.armor.item].deck] || []).push(p.armor.item); }
         p.armor = inst;

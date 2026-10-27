@@ -165,7 +165,15 @@ export function maxAllowedHealth(p) {
 }
 export function handLimit(p) { return p.wounds.includes('arm') ? 1 : 2; }
 export function heavyCount(p) {
-    return p.items.filter(i => ITEMS[i.item].kind === 'heavy').length + p.heavy.length;
+    let n = p.heavy.length;
+    const hasRanged = p.items.some(i => ITEMS[i.item].weapon);
+    for (const i of p.items) {
+        const d = ITEMS[i.item];
+        if (d.kind !== 'heavy') continue;
+        if (d.bayonet && hasRanged) continue;        // Bayonet shares the slot of a ranged weapon
+        n += d.twoSlots ? 2 : 1;                      // Gatling Gun blocks the other hand slot
+    }
+    return n;
 }
 export function drawLimit(p) { return p.wounds.includes('body') ? 4 : 5; }
 
@@ -208,6 +216,11 @@ export function removeCardFromGame(state, p, cardId) {
 }
 export function payableCards(p) { return p.hand.filter(c => !isContam(c)); }
 export function gainContamination(state, p, n = 1) {
+    if (p.armor && ITEMS[p.armor.item].contamToHp) {
+        log(state, pname(p) + ': биозащитная броня — вместо заражения теряет здоровье.', 'minor');
+        loseHealth(state, p, n, 'биозащита');
+        return;
+    }
     for (let i = 0; i < n; i++) {
         const id = 'contam#' + (++state.contamSeq);
         state.secret.contamInfected[id] = rand(state) < 0.3;
@@ -237,7 +250,7 @@ OPS['pay.done'] = (state, step) => {
 // ---------------------------------------------------------------------------------------------
 export function loseHealth(state, p, n, reason) {
     if (p.status !== 'active') return;
-    if (p.armor && ITEMS[p.armor.item].heavyArmor && n > 0) n = Math.max(0, n - 1);
+    if (p.armor && ITEMS[p.armor.item].heavyArmor && n > 0 && reason === 'атака') n = Math.max(0, n - 1);
     for (let i = 0; i < n; i++) {
         p.health--;
         if (p.health < 0) break;
@@ -260,6 +273,11 @@ export function restoreHealth(state, p, n) {
 export function gainWound(state, p, n = 1) {
     for (let i = 0; i < n; i++) {
         if (p.status !== 'active') return;
+        if (p.armor && ITEMS[p.armor.item].woundToHp && p.health > ITEMS[p.armor.item].woundToHp) {
+            log(state, pname(p) + ': усиленная броня — вместо травмы теряет ' + ITEMS[p.armor.item].woundToHp + ' здоровья.', 'minor');
+            loseHealth(state, p, ITEMS[p.armor.item].woundToHp, 'усиленная броня');
+            continue;
+        }
         if (p.wounds.length >= 3) { killPlayer(state, p, 'четвёртая тяжёлая травма'); return; }
         if (!state.woundDeck.length) state.woundDeck = shuffle(state, state.woundDiscard.splice(0));
         const w = state.woundDeck.shift();
