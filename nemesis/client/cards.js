@@ -15,7 +15,10 @@ export function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c 
 
 /** Hand card element. info = {enabled, reason} from the turn menu (optional). */
 /** Characters whose action decks have illustrations in client/art/<charId>/<cardKey>.jpg. */
-const ART_DECKS = { android: ['alwaysPrepared', 'computerSkills', 'deactivation', 'demolition', 'fastRepairs', 'interruption', 'powerUp', 'protocolOverride', 'search', 'selfRepair'] };
+const ART_DECKS = {
+    android: ['alwaysPrepared', 'computerSkills', 'deactivation', 'demolition', 'fastRepairs', 'interruption', 'powerUp', 'protocolOverride', 'search', 'selfRepair'],
+    soldier: ['coveringFire', 'demolition', 'forcingFire', 'interruption', 'myLittleFriend', 'nervesOfSteel', 'repairs', 'rest', 'search', 'weakSpot'],
+};
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
     return ART_DECKS[owner] && ART_DECKS[owner].includes(key) ? 'art/' + owner + '/' + key + '.jpg' : null;
