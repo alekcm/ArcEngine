@@ -3,7 +3,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeFire, placeMalfunction,
     placeNoise, corridorsOf, spawnIntruder, removeIntruder, turnOrder, drawCards, drawLimit, gainContamination, inCombat,
-    findRoomsByTile, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, discardCard, fx } from './core.mjs';
+    findRoomsByTile, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, discardCard, fx, cardDef } from './core.mjs';
 import { shuffle } from '../rng.mjs';
 import { EVENT_CARDS, INTRUDER_NAMES, ITEMS } from '../data/cards.mjs';
 import { ROOM_TILES, roomOfKind } from '../ship.mjs';
@@ -174,10 +174,19 @@ OPS['event.noise'] = (state, step) => {
         else if (ev.noise === 'fireMalf') { const rs = room(state, p.room); yes = rs.fire || rs.malfunction; }
         if (!yes) continue;
         const dev = p.items.find(i => ITEMS[i.item].perimeter && i.ammo > 0 && !i.broken);
-        if (dev) steps.push({ op: 'perimeter.ask', player: p.id, uid: dev.uid, then: { op: 'noise.roll', player: p.id, room: p.room } });
+        const risk = p.hand.find(c => (cardDef(state, c) || {}).effect === 'fdRisk');
+        if (risk) steps.push({ op: 'risk.ask', player: p.id, card: risk, then: dev ? { op: 'perimeter.ask', player: p.id, uid: dev.uid, then: { op: 'noise.roll', player: p.id, room: p.room } } : { op: 'noise.roll', player: p.id, room: p.room } });
+        else if (dev) steps.push({ op: 'perimeter.ask', player: p.id, uid: dev.uid, then: { op: 'noise.roll', player: p.id, room: p.room } });
         else steps.push({ op: 'noise.roll', player: p.id, room: p.room });
     }
     if (steps.length) { log(state, 'Броски шума по событию.', 'noise'); next(state, ...steps); }
+};
+OPS['risk.ask'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'yes' && p.hand.includes(step.card)) { discardCard(state, p, step.card); log(state, pname(p) + ' играет «Предотвращение риска»: броска шума нет.', 'good'); return; }
+    if (step.answer) { next(state, step.then); return; }
+    if (!p.hand.includes(step.card)) { next(state, step.then); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Сыграть «Предотвращение риска», чтобы не бросать шум?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, step);
 };
 OPS['perimeter.ask'] = (state, step) => {
     const p = player(state, step.player);

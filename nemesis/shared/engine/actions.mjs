@@ -270,28 +270,3 @@ OPS['card.techCorridors.dest'] = (state, step) => {
     next(state, { op: 'move.direct', player: p.id, dest: step.answer, then: { op: 'turn.end' } });
 };
 
-// ---------------------------------------------------------------------------------------------
-// Field data
-// ---------------------------------------------------------------------------------------------
-OPS['card.fdAim'] = (state, step) => { next(state, { op: 'shoot.start', player: step.player, rollBonus: 2, then: BACK }); };
-OPS['card.fdSprint'] = (state, step) => { next(state, { op: 'move.start', player: step.player, noNoise: true, then: BACK }); };
-OPS['card.fdPatch'] = (state, step) => { restoreHealth(state, player(state, step.player), 2); next(state, BACK); };
-OPS['card.fdScan'] = (state, step) => {
-    const p = player(state, step.player);
-    const cards = p.hand.filter(isContam);
-    let bad = 0;
-    for (const c of cards) { if (isInfected(state, c)) { bad++; discardCard(state, p, c); } else removeCardFromGame(state, p, c); }
-    log(state, pname(p) + ' сканирует: заражённых карт — ' + bad + ' (сброшены), чистых — ' + (cards.length - bad) + ' (убраны из игры).', 'good');
-    next(state, BACK);
-};
-OPS['card.fdHush'] = (state, step) => { clearNoiseAround(state, player(state, step.player).room); next(state, BACK); };
-OPS['card.fdTrap'] = (state, step) => {
-    const p = player(state, step.player);
-    choice(state, p, 'Слабые места: цель', intrudersIn(state, p.room).map(i => ({ id: i.uid, label: intruderLabel(state, i) })), 'card.fdTrap.pick');
-};
-OPS['card.fdTrap.pick'] = (state, step) => {
-    const p = player(state, step.player);
-    const it = state.intruders[step.answer];
-    if (it) dealHits(state, p, it, 1, 0, { noRetaliation: true });
-    next(state, BACK);
-};

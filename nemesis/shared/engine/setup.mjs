@@ -15,6 +15,7 @@ import './actions.mjs';
 import './actions2.mjs';
 import './actions3.mjs';
 import './feats.mjs';
+import './fielddata.mjs';
 import './endgame.mjs';
 
 export function createGame(config) {
@@ -71,7 +72,7 @@ export function createGame(config) {
         for (let i = 0; i < it.count; i++) state.itemDecks[it.deck].push(key);
     }
     for (const d of Object.values(state.itemDecks)) shuffle(state, d);
-    for (const k of Object.keys(FIELD_DATA)) for (let i = 0; i < 2; i++) state.fieldDataDeck.push('field.' + k + '#' + i);
+    for (const k of Object.keys(FIELD_DATA)) state.fieldDataDeck.push('field.' + k + '#0');
     shuffle(state, state.fieldDataDeck);
     state.computerDeck = shuffle(state, Object.keys(COMPUTER_CARDS));
     revealComputerCard(state, true);

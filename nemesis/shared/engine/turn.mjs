@@ -2,7 +2,8 @@
 
 import { OPS, ask, next, log, player, pname, removeCardFromGame, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
     discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards,
-    HEAVY_NAMES, itemDef, healthState, activePlayers, fx } from './core.mjs';
+    HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom } from './core.mjs';
+import { repairOptions } from './actions.mjs';
 import { ITEMS, CHARACTERS, OBJECTIVES, WOUNDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { survivorUpgrade } from './actions3.mjs';
@@ -93,7 +94,7 @@ export function buildMenu(state, p) {
 }
 
 function extraCost(d) {
-    return ({ coveringFire: 1, forcingFire: 1, scavenging: 1, techCorridors: 1, duckAndCover: 1, neurotoxicGas: 1, feelOfDark: 1, facilityTour: 1 })[d.effect] || 0;
+    return ({ coveringFire: 1, forcingFire: 1, scavenging: 1, techCorridors: 1, duckAndCover: 1, neurotoxicGas: 1, feelOfDark: 1, facilityTour: 1, fdEvasive: 1, fdHunker: 1, fdQuickHands: 1, fdReposition: 1 })[d.effect] || 0;
 }
 
 function cardRequirement(state, p, d) {
@@ -110,8 +111,13 @@ function cardRequirement(state, p, d) {
         case 'myLittleFriend': return p.items.some(i => i.item === 'soldierGun' && !i.broken) ? '' : 'Нет винтовки солдата';
         case 'distraction': return p.items.length ? '' : 'Нет предмета для сброса';
         case 'techCorridors': return state.ship.rooms[p.room].tech ? '' : 'Нет входа в тех. коридоры';
-        case 'fdTrap': return inCombat(state, p) ? '' : 'Нет чужих';
-        case 'fdAim': return inCombat(state, p) && p.items.some(i => ITEMS[i.item].weapon && i.ammo > 0 && !i.broken) ? '' : 'Нужно оружие и чужой';
+        case 'fdPrecision': return inCombat(state, p) && p.items.some(i => canFire(p, i)) ? '' : 'Нужно оружие и чужой';
+        case 'fdAsymptomatic': return p.hand.some(isContam) ? '' : 'Нет заражений в руке';
+        case 'fdInsight': return intrudersIn(state, p.room).some(i => i.type === 'adult') || tileOf(state, p.room) === 'nest' ? '' : 'Нет взрослого и это не Гнездо';
+        case 'fdQuickHands': return tile && ROOM_TILES[tile].items.length ? '' : 'В комнате нет предметов';
+        case 'fdReposition': return state.ship.rooms[p.room].exits.some(e => state.ship.corridors[e.corridor].door !== 'closed' && intrudersIn(state, e.to).length) ? '' : 'Нет чужого в соседней комнате';
+        case 'fdSafety': return playersInRoom(state, p.room).length > 1 ? '' : 'Нет другого персонажа в комнате';
+        case 'fdDamage': return repairOptions(state, p, true).length ? '' : 'Нечего чинить';
         case 'ingenuity': return '';
         case 'recharge': return p.items.some(i => i.item === 'smartGun') ? '' : 'Нет умного пистолета';
         case 'reload': return p.items.some(i => i.item === 'sixShooter') ? '' : 'Нет шестизарядника';
@@ -135,7 +141,7 @@ function cardRequirement(state, p, d) {
     }
 }
 
-function itemRequirement(state, p, it) {
+export function itemRequirement(state, p, it) {
     const d = ITEMS[it.item], rs = room(state, p.room), tile = tileOf(state, p.room);
     const comp = tile && ROOM_TILES[tile].computer;
     switch (d.use) {

@@ -2,7 +2,8 @@
 
 import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
     NOISE_DIE, roll, fmtRoll, needDice, fx, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
-    clearNoiseAround, HEAVY_NAMES } from './core.mjs';
+    clearNoiseAround, HEAVY_NAMES, cardDef, discardCard } from './core.mjs';
+import { applyHitsNoRoll } from './combat.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
 
@@ -125,6 +126,15 @@ OPS['noise.roll'] = (state, step) => {
     if (r === 'silence') return;
     if (r === 'encounter') { next(state, { op: 'encounter', room: roomId, player: p.id }); return; }
     if (r === 'danger') {
+        const holder = playersInRoom(state, roomId).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
+        const incoming = [];
+        for (const e of state.ship.rooms[roomId].exits) if (!playersInRoom(state, e.to).length && state.ship.corridors[e.corridor].door !== 'closed') incoming.push(...intrudersIn(state, e.to).map(i => i.uid));
+        if (holder && incoming.length && !step.noPredict) {
+            const card = holder.hand.find(c => (cardDef(state, c) || {}).effect === 'fdPredictable');
+            ask(state, { kind: 'choice', player: holder.id, title: 'Опасность: чужие врываются. Сыграть «Предсказуемые движения» (не входят, каждый получает 1 ранение)?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
+                { op: 'predict.danger', player: holder.id, card, incoming, then: { ...step, noPredict: true, answer: undefined } });
+            return;
+        }
         let moved = 0;
         for (const e of state.ship.rooms[roomId].exits) {
             for (const it of intrudersIn(state, e.to)) {
@@ -152,6 +162,17 @@ OPS['noise.roll'] = (state, step) => {
 };
 
 /** encounter { room, player, noSurprise } */
+OPS['predict.danger'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'yes' && p.hand.includes(step.card)) {
+        discardCard(state, p, step.card);
+        for (const uid of step.incoming) { const it = state.intruders[uid]; if (it) applyHitsNoRoll(state, it, 1); }
+        log(state, pname(p) + ' играет «Предсказуемые движения»: чужие не входят.', 'good');
+        return;
+    }
+    state.pendingRoll = { die: 'noise', value: 'danger' };
+    next(state, step.then);
+};
 OPS['encounter'] = (state, step) => {
     const roomId = step.room;
     clearNoiseAround(state, roomId);
@@ -169,6 +190,25 @@ OPS['encounter'] = (state, step) => {
     const it = spawnIntruder(state, token, roomId);
     if (!it) { afterNoIntruder(state, roomId); return; }
     if (token === 'queen' && !state.queenOnBoardOnce) state.queenOnBoardOnce = true;
+    const p = step.player !== undefined ? player(state, step.player) : null;
+    // Reaction: Predictable Movements — the placed intruder takes 1 hit
+    const holder = playersInRoom(state, roomId).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
+    if (holder && !step.noPredict) {
+        const card = holder.hand.find(c => (cardDef(state, c) || {}).effect === 'fdPredictable');
+        ask(state, { kind: 'choice', player: holder.id, title: 'Сыграть «Предсказуемые движения»: ' + INTRUDER_NAMES[token] + ' получает 1 ранение?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
+            { op: 'predict.spawn', player: holder.id, card, intruder: it.uid, then: { ...step, op: 'encounter.surprise', intruder: it.uid, token } });
+        return;
+    }
+    next(state, { ...step, op: 'encounter.surprise', intruder: it.uid, token });
+};
+OPS['predict.spawn'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'yes' && p.hand.includes(step.card)) { discardCard(state, p, step.card); const it = state.intruders[step.intruder]; if (it) applyHitsNoRoll(state, it, 1); }
+    next(state, step.then);
+};
+OPS['encounter.surprise'] = (state, step) => {
+    const roomId = step.room, token = step.token, it = state.intruders[step.intruder];
+    if (!it) return;
     const p = step.player !== undefined ? player(state, step.player) : null;
     if (p && p.status === 'active' && p.room === roomId && !step.noSurprise) {
         const threshold = { larva: 1, adult: 3, drone: 4, queen: 5 }[token];

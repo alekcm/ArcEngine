@@ -99,7 +99,7 @@ OPS['room.action'] = (state, step) => {
         case 'nest':
             ask(state, { kind: 'choice', player: p.id, title: 'Гнездо (яиц: ' + state.nestEggs + ')', options: [
                 { id: 'take', label: 'Взять яйцо', disabled: heavyCount(p) >= handLimit(p) }, { id: 'destroy', label: 'Уничтожить яйцо' }] },
-                { op: 'room.nest', player: p.id, then: back });
+                { op: 'room.nest', player: p.id, then: back, noNoise: step.noNoise });
             return;
         case 'surgery':
             for (const c of [...p.hand]) discardCard(state, p, c);
@@ -234,7 +234,7 @@ OPS['room.nest'] = (state, step) => {
     if (step.answer === 'take') { state.nestEggs--; p.heavy.push({ type: 'egg' }); log(state, pname(p) + ' берёт яйцо из Гнезда (осталось ' + state.nestEggs + ').', 'action'); }
     else { state.nestEggs--; log(state, pname(p) + ' уничтожает яйцо (осталось ' + state.nestEggs + ').', 'action'); }
     checkNest(state);
-    next(state, { op: 'noise.roll', player: p.id, room: p.room }, step.then);
+    if (step.noNoise) next(state, step.then); else next(state, { op: 'noise.roll', player: p.id, room: p.room }, step.then);
 };
 OPS['room.airlock'] = (state, step) => {
     const r = step.answer;
