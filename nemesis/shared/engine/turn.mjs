@@ -150,7 +150,7 @@ function itemRequirement(state, p, it) {
             if (p.items.some(i => ITEMS[i.item].weapon && ITEMS[i.item].weapon.grenadeOnly && i.ammo < ITEMS[i.item].weapon.max)) return '';
             return ok ? '' : 'Нет цели рядом';
         }
-        case 'secControl': return Object.keys(state.intruders).length ? '' : 'Чужих на корабле нет';
+        case 'secControl': return Object.keys(state.ship.rooms).some(r => intrudersIn(state, r).length && (room(state, r).fire || room(state, r).malfunction)) ? '' : 'Нет комнаты с пожаром/поломкой и чужими';
         case 'repelAdult': case 'reagent': return '';
         case 'taser': return '';
         case 'medkit': case 'woundOrHeal2': return '';

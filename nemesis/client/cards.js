@@ -41,7 +41,8 @@ const ART_FIELD = ['fdAim', 'fdSprint', 'fdPatch', 'fdScan', 'fdHush', 'fdTrap']
 const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', 'antiseptic', 'stapler', 'adrenaline', 'supportCrate', 'selfDestructKey',
     'armor', 'grenade', 'flashbang', 'energyCharge', 'evacKey', 'taser', 'logCodes', 'detonator', 'cables', 'ductTape',
     'engineKey', 'extinguisher', 'glowstick', 'nemesisPlans', 'reagent', 'techPlan', 'tools', 'plasmaGun', 'flamethrower', 'hardenedArmor',
-    'riotgun', 'assaultRifle', 'assaultShotgun', 'autoloaderBelt', 'automaticShotgun', 'bayonet', 'bfGun', 'biohazardArmor', 'drumMagRifle', 'soldierGun', 'handgun', 'scoutRifle', 'sawedOff', 'smartGun', 'riotShotgun', 'energyPistol', 'bountyRifle',
+    'riotgun', 'assaultRifle', 'assaultShotgun', 'autoloaderBelt', 'automaticShotgun', 'bayonet', 'bfGun', 'biohazardArmor', 'drumMagRifle',
+    'engineeringEquipment', 'gatlingGun', 'grenadeLauncher', 'handCannon', 'perimeterDevice', 'securityControl', 'smartRifle', 'sniperRifle', 'sonicGun', 'smg', 'soldierGun', 'handgun', 'scoutRifle', 'sawedOff', 'smartGun', 'riotShotgun', 'energyPistol', 'bountyRifle',
     'sixShooter', 'probeArm', 'xenoGun', 'survivorFavorite', 'pipe', 'cuffs', 'robot', 'ups', 'laika', 'wrench',
     'fieldKit', 'oculobe', 'sampleJar', 'navTablet', 'mechTools'];
 export function itemArt(key) { return ART_ITEMS.includes(key) ? 'art/items/' + key + '.jpg' : null; }

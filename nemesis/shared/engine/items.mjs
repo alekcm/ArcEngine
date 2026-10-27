@@ -245,8 +245,8 @@ OPS['item.use'] = (state, step) => {
             return;
         }
         case 'secControl': {
-            const rooms = Object.keys(state.ship.rooms).filter(r => intrudersIn(state, r).length);
-            if (!rooms.length) { log(state, 'Чужих на корабле нет.', 'minor'); next(state, back); return; }
+            const rooms = Object.keys(state.ship.rooms).filter(r => intrudersIn(state, r).length && (room(state, r).fire || room(state, r).malfunction));
+            if (!rooms.length) { log(state, 'Нет комнат с пожаром/поломкой и чужими.', 'minor'); next(state, back); return; }
             ask(state, { kind: 'room', player: p.id, title: 'Пульт охраны: в какой комнате стрелять?', rooms }, { op: 'item.secRoom', player: p.id, uid: inst.uid, then: back });
             return;
         }
