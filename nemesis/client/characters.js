@@ -108,7 +108,7 @@ export function buildCharacter(scene, charId, colors = {}) {
         // legs & boots
         for (const s of [-1, 1]) {
             if (!sp.barefoot) { Z(sp.boots, bx(0.22 * W, 0.14, 0.36, R, s * 0.15 * W, 0.07, 0.04)); Z(sp.boots, bx(0.22 * W, 0.3, 0.24, R, s * 0.15 * W, 0.28, 0)); }
-            else { Z('skin', bx(0.18, 0.1, 0.32, R, s * 0.14, 0.05, 0.04)); }
+            else { Z('skin', bx(0.18, 0.1, 0.32, R, s * 0.14, 0.05, 0.04)); Z('skin', bx(0.18, 0.34, 0.2, R, s * 0.15 * W, 0.26, 0)); }   // bare feet + shins
             Z(sp.legs, bx(0.21 * W, 0.5, 0.22, R, s * 0.15 * W, 0.68, 0));
             Z(sp.legs, bx(0.23 * W, 0.46, 0.24, R, s * 0.15 * W, 1.14, 0));
         }
@@ -117,7 +117,7 @@ export function buildCharacter(scene, charId, colors = {}) {
         F(FIXED.steel, bx(0.1, 0.08, 0.04, R, 0, 1.5, 0.17));
         // torso
         Z(sp.torso, bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
-        if (sp.female) { const bf = sp.bust || 1; Z(sp.torso, bx(0.46 * W, 0.22 * bf, 0.14 * bf, R, 0, 1.98, 0.17 + 0.05 * bf)); Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0)); }   // chest and hips
+        if (sp.female) { const bf = sp.bust || 1; Z(sp.torso, bx(0.46 * W, 0.24 * bf, 0.16 * bf, R, 0, 1.98, 0.14 + 0.08 * bf)); Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0)); }   // chest and hips
         if (sp.vest) { Z(sp.vest, bx(0.5 * W, 0.5, 0.1, R, 0, 1.84, 0.18)); Z(sp.vest, bx(0.5 * W, 0.5, 0.08, R, 0, 1.84, -0.18)); }
         if (sp.coat) {   // long open coat: back panel + two front flaps + tails
             Z(sp.coat, bx(0.58 * W, 0.7, 0.1, R, 0, 1.82, -0.2));
@@ -177,8 +177,8 @@ export function buildCharacter(scene, charId, colors = {}) {
             Z(LZ, bx(0.2, 0.02, 0.02, R, 0, 2.5, 0.215)); for (const s of [-1, 1]) Z(LZ, bx(0.02, 0.1, 0.02, R, s * 0.09, 2.36, 0.215)); F(FIXED.steel, cy(0.08, 0.08, 0.04, 6, R, 0.1, 2.3, 0.24, [Math.PI / 2, 0, 0]));
         }
         if (sp.respirator) {   // half-mask covering nose and mouth, two filter cans, strap around the head
-            F(FIXED.darkSteel, bx(0.28, 0.2, 0.12, R, 0, 2.38, 0.16)); F(FIXED.rubber, bx(0.2, 0.08, 0.06, R, 0, 2.46, 0.21));
-            for (const s of [-1, 1]) { F(FIXED.steel, cy(0.11, 0.11, 0.07, 6, R, s * 0.12, 2.34, 0.23, [Math.PI / 2, 0, 0])); F(FIXED.rubber, cy(0.08, 0.08, 0.02, 6, R, s * 0.12, 2.34, 0.27, [Math.PI / 2, 0, 0])); }
+            F(FIXED.darkSteel, bx(0.3, 0.24, 0.14, R, 0, 2.31, 0.15)); F(FIXED.rubber, bx(0.18, 0.08, 0.06, R, 0, 2.42, 0.2));
+            for (const s of [-1, 1]) { F(FIXED.steel, cy(0.12, 0.12, 0.08, 6, R, s * 0.13, 2.27, 0.22, [Math.PI / 2, 0, 0])); F(FIXED.rubber, cy(0.09, 0.09, 0.02, 6, R, s * 0.13, 2.27, 0.27, [Math.PI / 2, 0, 0])); }
             F(FIXED.rubber, bx(0.34, 0.04, 0.34, R, 0, 2.42, 0.0));
         }
         if (sp.helmet) { Z(sp.helmet, bx(0.38, 0.3, 0.38, R, 0, 2.58, 0.0)); Z(sp.helmet, bx(0.38, 0.14, 0.1, R, 0, 2.42, -0.18)); }
@@ -269,8 +269,8 @@ export function buildCharacter(scene, charId, colors = {}) {
         F(steel, bx(0.5, 0.04, 0.2, R, 0, seatY - 0.62, 0.6));                           // footrest
         for (const s of [-1, 1]) { F(trim, bx(0.04, 0.04, 0.5, R, s * 0.34, seatY + 0.1, 0.06)); F(steel, bx(0.06, 0.2, 0.06, R, s * 0.34, seatY - 0.02, -0.16)); }   // armrests
         for (const s of [-1, 1]) {
-            const w = cy(0.72, 0.72, 0.08, 12, R, s * 0.4, 0.36, -0.1, [0, 0, Math.PI / 2]); w.name = 'wheel'; F(FIXED.rubber, w);
-            F(trim, cy(0.5, 0.5, 0.1, 12, R, s * 0.42, 0.36, -0.1, [0, 0, Math.PI / 2])); Z(sp.lights || 'lights', cy(0.14, 0.14, 0.12, 8, R, s * 0.44, 0.36, -0.1, [0, 0, Math.PI / 2]));   // rim + hub light
+            const w = cy(0.6, 0.6, 0.08, 12, R, s * 0.37, 0.3, -0.12, [0, 0, Math.PI / 2]); w.name = 'wheel'; F(FIXED.rubber, w);
+            F(trim, cy(0.42, 0.42, 0.1, 12, R, s * 0.38, 0.3, -0.12, [0, 0, Math.PI / 2])); Z(sp.lights || 'lights', cy(0.08, 0.08, 0.12, 8, R, s * 0.4, 0.3, -0.12, [0, 0, Math.PI / 2]));   // rim + hub light
             const c = cy(0.26, 0.26, 0.08, 8, R, s * 0.3, 0.13, 0.48, [0, 0, Math.PI / 2]); c.name = 'wheel'; F(FIXED.rubber, c);   // front casters
         }
         F(trim, bx(0.14, 0.04, 0.14, R, 0.36, seatY + 0.14, 0.22)); Z(sp.lights || 'lights', bx(0.03, 0.1, 0.03, R, 0.36, seatY + 0.2, 0.22));   // joystick
