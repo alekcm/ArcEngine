@@ -111,7 +111,7 @@ export const ITEMS = {
     caffeine:    { deck: 'green', count: 3, name: 'Кофеиновые таблетки', oneUse: true, use: 'draw3', text: 'Возьмите 3 карты.' },
     autodoc:     { deck: 'green', count: 3, name: 'Автодок', oneUse: true, kind: 'heavy', use: 'autodoc',
                    text: 'Сбросьте руку и колоду, уберите все заражения из сброса без проверки. Уберите личинку. Затем спасуйте.' },
-    medkit:      { deck: 'green', count: 5, name: 'Аптечка', oneUse: true, kind: 'heavy', use: 'medkit', text: 'Сбросьте 1 тяжёлую травму и/или восстановите 3 здоровья.' },
+    medkit:      { deck: 'green', count: 5, name: 'Аптечка', oneUse: true, kind: 'heavy', use: 'medkit', text: 'Сбросьте 1 тяжёлую травму И/ИЛИ восстановите 3 здоровья.' },
     antiseptic:  { deck: 'green', count: 3, name: 'Антисептик', oneUse: true, use: 'removeContam1', text: 'Уберите 1 заражение из руки без проверки.' },
     stapler:     { deck: 'green', count: 7, name: 'Медицинский степлер', oneUse: true, use: 'woundOrHeal2', text: 'Сбросьте 1 тяжёлую травму ИЛИ восстановите 2 здоровья.' },
     adrenaline:  { deck: 'green', count: 3, name: 'Адреналин', oneUse: true, use: 'adrenaline',
@@ -177,8 +177,8 @@ export const ITEMS = {
                       text: 'Дальнобойное оружие, 1 патрон. Вместо обычного выстрела: выберите свою или соседнюю комнату (не через закрытую дверь) — двери уничтожены, все чужие получают 1 ранение, все персонажи — 1 тяжёлую травму. Заряжается только «Гранатой».' },
     handCannon:     { deck: 'support', count: 1, name: 'Ручная пушка', kind: 'heavy', weapon: { max: 3, minusOne: true }, use: null,
                       text: 'Дальнобойное оружие, 3 патрона. Выстрел: −1 к результату броска.' },
-    hardenedArmor:  { deck: 'support', count: 1, name: 'Усиленная броня', kind: 'armor', woundToHp: 2, use: null,
-                      text: 'Броня. Вместо тяжёлой травмы вы теряете 2 здоровья (если здоровья хватает).' },
+    hardenedArmor:  { deck: 'support', count: 1, name: 'Усиленная броня', kind: 'armor', woundToHp: 2, woundToHpOptional: true, use: null,
+                      text: 'Броня. Вместо тяжёлой травмы можете потерять 2 здоровья (если здоровья хватает).' },
     perimeterDevice:{ deck: 'support', count: 1, name: 'Охранный периметр', kind: 'heavy', ammoMax: 2, perimeter: true, use: null,
                       text: 'Тяжёлый предмет, 2 заряда. Пассивно: когда в фазе событий вам нужно бросать шум, сбросьте 1 заряд — броска нет.' },
     plasmaGun:      { deck: 'support', count: 1, name: 'Плазменная пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true, plasma: true }, use: null,
@@ -191,8 +191,8 @@ export const ITEMS = {
                       text: 'Дальнобойное оружие, 4 патрона. Выстрел: неудачный бросок перебрасывается один раз, второй результат окончателен.' },
     sniperRifle:    { deck: 'support', count: 1, name: 'Снайперская винтовка', kind: 'heavy', weapon: { max: 4, sniper: true }, use: null,
                       text: 'Дальнобойное оружие, 4 патрона. Можно стрелять в соседнюю комнату (не через закрытую дверь) — тогда +1 ранение.' },
-    sonicGun:       { deck: 'support', count: 1, name: 'Звуковая пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true, plusOne: true, noiseOn: [2, 6] }, use: null,
-                      text: 'Дальнобойное оружие, патроны не нужны. +1 к результату броска. При «2» или «6» положите шум у вашей комнаты.' },
+    sonicGun:       { deck: 'support', count: 1, name: 'Звуковая пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true, plusOne: true, malfOn: [2, 6] }, use: null,
+                      text: 'Дальнобойное оружие, патроны не нужны. +1 к результату броска. При «2» или «6» положите поломку в вашей комнате.' },
     smg:            { deck: 'support', count: 1, name: 'Пистолет-пулемёт', kind: 'heavy', weapon: { max: 5, boost: { ammo: 1, hits: 1 } }, use: null,
                       text: 'Дальнобойное оружие, 5 патронов. Выстрел: можете потратить 1 доп. патрон — +1 ранение.' },
     tacticalArmor:  { deck: 'support', count: 1, name: 'Тактическая броня', kind: 'armor', heavyArmor: true, use: null,
@@ -212,12 +212,12 @@ export const ITEMS = {
                    text: 'Дальнобойное оружие, 2 патрона. Первый выстрел в ходу наносит 1 дополнительное ранение.' },
     mechTools:   { deck: 'start', count: 0, name: 'Набор механика', quest: true, use: 'mechTools',
                    text: 'Квестовый предмет. Почините/сломайте двигатель в его комнате ИЛИ уберите поломку в вашей комнате.' },
-    smartGun:    { deck: 'start', count: 0, name: 'Умный пистолет', kind: 'heavy', weapon: { max: 4, plusOne: true }, use: null,
-                   text: 'Дальнобойное оружие, 4 заряда. +1 к результату стрельбы. Заряжается картой «Подзарядка».' },
+    smartGun:    { deck: 'start', count: 0, name: 'Умный пистолет', kind: 'heavy', weapon: { max: 4, reroll: true }, use: null,
+                   text: 'Дальнобойное оружие, 4 заряда. Неудачный бросок перебрасывается один раз. Заряжается картой «Подзарядка».' },
     riotShotgun: { deck: 'start', count: 0, name: 'Штурмовой дробовик', kind: 'heavy', weapon: { max: 3, spread: true }, use: null,
                    text: 'Дальнобойное оружие, 3 патрона. После выстрела все остальные чужие в комнате получают по 1 ранению.' },
-    energyPistol:{ deck: 'start', count: 0, name: 'Энергопистолет', kind: 'heavy', weapon: { max: 3, plusOne: true }, use: null,
-                   text: 'Дальнобойное оружие, 3 заряда. +1 к результату стрельбы.' },
+    energyPistol:{ deck: 'start', count: 0, name: 'Энергопистолет', kind: 'heavy', weapon: { max: 0, noAmmo: true }, use: null,
+                   text: 'Дальнобойное оружие, патроны не нужны. Особых правил нет.' },
     bountyRifle: { deck: 'start', count: 0, name: 'Карабин охотника', kind: 'heavy', weapon: { max: 5, plusOne: true }, use: null,
                    text: 'Дальнобойное оружие, 5 патронов. +1 к результату стрельбы.' },
     sixShooter:  { deck: 'start', count: 0, name: 'Старый шестизарядник', kind: 'heavy', weapon: { max: 6, firstShotBonus: true }, use: null,
@@ -230,12 +230,12 @@ export const ITEMS = {
                    text: 'Дальнобойное оружие, 5 патронов. −1 к результату стрельбы.' },
     pipe:        { deck: 'start', count: 0, name: 'Труба', kind: 'heavy', quest: true, use: 'pipeMelee',
                    text: 'Оружие ближнего боя. Используйте: ближний бой без получения заражения.' },
-    cuffs:       { deck: 'start', count: 0, name: 'Наручники', quest: true, use: null, markers: 3,
-                   text: 'На наручниках 3 жетона. Карты заключённого сбрасывают их; когда жетонов нет, наручники сняты и карты усиливаются.' },
-    robot:       { deck: 'start', count: 0, name: 'Робот-телохранитель', quest: true, use: null, markers: 3,
-                   text: 'На роботе 3 жетона энергии. «Удар робота» тратит их на дополнительные ранения, «Запасная батарея» восстанавливает.' },
-    ups:         { deck: 'start', count: 0, name: 'ИБП андроида', quest: true, use: null, markers: 2,
-                   text: 'Источник питания с жетонами. «Подзарядка» добавляет жетоны, «Обход протокола» тратит их.' },
+    cuffs:       { deck: 'start', count: 0, name: 'Наручники', quest: true, use: null, markers: 6,
+                   text: 'На наручниках 6 жетонов. Карты заключённого сбрасывают их; когда жетонов нет, наручники сняты и карты усиливаются.' },
+    robot:       { deck: 'start', count: 0, name: 'Робот-телохранитель', quest: true, use: null, markers: 5,
+                   text: 'На роботе 5 жетонов энергии. «Удар робота» тратит их на дополнительные ранения, «Запасная батарея» восстанавливает.' },
+    ups:         { deck: 'start', count: 0, name: 'ИБП андроида', quest: true, use: null, markers: 3,
+                   text: 'Источник питания с 3 жетонами. «Подзарядка» добавляет жетоны, «Обход протокола» тратит их.' },
     laika:       { deck: 'start', count: 0, name: 'Лайка', quest: true, use: null,
                    text: 'Нельзя передать или сбросить. Пассивно: перед первым действием в каждой фазе игроков можете переместить Лайку в соседнюю комнату или отозвать её (на свой планшет с любого расстояния). Если Лайка оказалась в одной комнате с охотником или с чужим — она автоматически возвращается. На поле она делает броски шума как персонаж (в фазе событий — как игрок слева от охотника). Персонаж, входящий в комнату Лайки, не бросает шум. Лайка игнорирует огонь, чужие её не атакуют.' },
     wrench:      { deck: 'start', count: 0, name: 'Разводной ключ', quest: true, use: 'wrench',
@@ -449,15 +449,17 @@ export const CHARACTERS = {
         startItems: [{ item: 'handgun', ammo: 3 }, { item: 'robot' }],
         cards: {
             backupBattery: { name: 'Запасная батарея', cost: 1, removeAfter: true, effect: 'backupBattery', text: 'Уберите карту из игры: восстановите все жетоны энергии робота.' },
-            command: { name: 'Приказ', cost: 1, effect: 'command', text: 'Выберите другого персонажа в вашей или соседней комнате: он берёт 1 карту и перемещается (вы выбираете куда) или стреляет. Нельзя заставить уйти из комнаты с чужим.' },
+            command: { name: 'Приказ', cost: 1, effect: 'command', text: 'Выберите другого персонажа в вашей или соседней комнате: он перемещается или стреляет (выбираете вы), затем он берёт 1 карту. Нельзя заставить уйти из комнаты с чужим. Нельзя прервать «Вмешательством».' },
             computerSkills: { name: 'Компьютерные навыки', cost: 1, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition,
             fastRepairs: { name: 'Быстрый ремонт', cost: 1, noCombat: true, effect: 'fastRepairs', text: 'Уберите поломку ИЛИ откройте/закройте дверь ИЛИ почините/сломайте двигатель в его комнате.' },
             interruption: COMMON_CARDS.interruption,
+            justOneMoreThing: { name: 'Ещё одну вещь', cost: 0, reaction: true, removeAfter: true, effect: 'justOneMoreThing', text: 'Реакция (после вашего паса): возьмите 1 карту. Выполните дополнительный ход; после него вы обязаны спасовать.' },
             protect: { name: 'Защита', cost: 1, removeAfter: true, effect: 'protect', text: 'Уберите карту из игры: переместитесь, атаки чужих при этом не происходят.' },
             rest: COMMON_CARDS.rest,
             roboticPunch: { name: 'Удар робота', cost: 1, effect: 'roboticPunch', text: 'Нанесите 1 ранение выбранному чужому. За каждый сброшенный жетон энергии робота — ещё 1 ранение.' },
             search: COMMON_CARDS.search,
+            stopIt: { name: 'Stop It!', cost: 0, reaction: true, removeAfter: true, effect: 'stopIt', text: 'Реакция (после вскрытия карты атаки): уберите карту из игры, чтобы проигнорировать эффекты атаки.' },
         },
     },
     labrat: {
@@ -490,7 +492,7 @@ export const CHARACTERS = {
             { id: 'helmet', label: 'Шлем',          presets: ['#2d3436', '#5a6b5c', '#8c96a0', '#7a1f1f'] },
             { id: 'visor',  label: 'Ночные линзы',  presets: ['#3bff7a', '#3bb8ff', '#ff3b3b', '#ffd23b'] },
         ],
-        startItems: [{ item: 'riotShotgun', ammo: 3 }],
+        startItems: [{ item: 'smg', ammo: 5 }],
         cards: {
             defensePlan: { name: 'План обороны', cost: 1, effect: 'defensePlan', text: 'Уберите жетон шума из коридора у вашей комнаты; можно закрыть 1 дверь у вашей комнаты. ИЛИ посмотрите тайл любой неразведанной комнаты.' },
             demolition: COMMON_CARDS.demolition,
@@ -539,7 +541,7 @@ export const CHARACTERS = {
             bash: { name: 'Удар!', cost: 1, effect: 'bash', text: 'Ближний бой с +1 ранением. Если наручники надеты — сбросьте с них 1 жетон; если сняты — ещё +1 ранение.' },
             catchThis: { name: 'Лови!', cost: 1, effect: 'catchThis', text: 'Сбросьте 1 тяжёлый предмет: переместитесь без атак чужих. Если наручники сняты — без броска шума.' },
             demolition: COMMON_CARDS.demolition,
-            duckAndCover: { name: 'Пригнуться', cost: 1, effect: 'duckAndCover', text: 'Сбросьте ещё 1 карту: переместитесь, предотвратив 1 атаку чужого.' },
+            duckAndCover: { name: 'Пригнуться', cost: 1, effect: 'duckAndCover', reactionToo: 'duckReaction', text: 'Сбросьте ещё 1 карту: переместитесь, предотвратив 1 атаку чужого. ИЛИ Реакция: когда вас атакует чужой в комнате с другим персонажем — чужой атакует его вместо вас.' },
             interruption: COMMON_CARDS.interruption,
             intimidate: { name: 'Запугивание', cost: 1, effect: 'intimidate', text: 'Выберите другого персонажа в комнате: он снимает 1 жетон с ваших наручников, теряет 2 здоровья или сбрасывает 2 карты.' },
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search,
@@ -783,28 +785,38 @@ export function objectiveTextOf(def, players) {
 }
 
 
+// Eight printed Destination permutations (Coordinates sheet, 4 × 2 faces).
 export const COORDINATE_CARDS = [
     { id: 'coordA', A: 'earth', B: 'mars', C: 'venus', D: 'space' },
-    { id: 'coordB', A: 'mars', B: 'earth', C: 'space', D: 'venus' },
-    { id: 'coordC', A: 'venus', B: 'space', C: 'earth', D: 'mars' },
-    { id: 'coordD', A: 'space', B: 'venus', C: 'mars', D: 'earth' },
+    { id: 'coordB', A: 'earth', B: 'space', C: 'mars', D: 'venus' },
+    { id: 'coordC', A: 'space', B: 'earth', C: 'venus', D: 'mars' },
+    { id: 'coordD', A: 'venus', B: 'earth', C: 'space', D: 'mars' },
+    { id: 'coordE', A: 'mars', B: 'venus', C: 'earth', D: 'space' },
+    { id: 'coordF', A: 'space', B: 'mars', C: 'earth', D: 'venus' },
+    { id: 'coordG', A: 'mars', B: 'venus', C: 'space', D: 'earth' },
+    { id: 'coordH', A: 'venus', B: 'space', C: 'mars', D: 'earth' },
 ];
 export const DESTINATION_NAMES = { earth: 'Земля', mars: 'Марс', venus: 'Венера', space: 'Открытый космос' };
 
 // Queen health deck (12)
 // Queen Health deck — exactly as printed (QueenDeck.png): "Discard N additional cards" + effect.
 // `byChar` effects apply only when the card was drawn by a character's attack.
-export const QUEEN_CARDS = [
+// Printed multiplicities (Атака.txt): both "discard 2 additional cards" cards ×3, the "discard 1
+// additional cards / Repel the Queen" card ×2, every other card ×1 → 14 cards in the deck.
+const QUEEN_FACES = [
     { id: 'q0pool', extra: 0, byChar: true, text: 'Если карту вытянул персонаж: Королева возвращается в запас.', effect: 'pool' },
     { id: 'q0draw', extra: 0, byChar: true, text: 'Если карту вытянул персонаж: каждый персонаж в комнате с Королевой берёт 2 карты действий.', effect: 'draw2' },
     { id: 'q0repel', extra: 0, byChar: true, text: 'Если карту вытянул персонаж: отгоните Королеву.', effect: 'repel' },
-    { id: 'q1repel', extra: 1, byChar: true, text: 'Если карту вытянул персонаж: отгоните Королеву.', effect: 'repel' },
+    { id: 'q1repel', extra: 1, byChar: true, text: 'Если карту вытянул персонаж: отгоните Королеву.', effect: 'repel', copies: 2 },
     { id: 'q1noise', extra: 1, byChar: true, text: 'Если карту вытянул персонаж: каждый персонаж в комнате с Королевой делает бросок шума.', effect: 'noise' },
-    { id: 'q2malf', extra: 2, byChar: true, text: 'Если карту вытянул персонаж: положите жетон неисправности в комнату Королевы.', effect: 'malf' },
-    { id: 'q2act', extra: 2, byChar: false, text: 'Активируйте Королеву. Если она уже в комнате с персонажем — она атакует (в первую очередь того, кто её активировал).', effect: 'activate' },
+    { id: 'q2malf', extra: 2, byChar: true, text: 'Если карту вытянул персонаж: положите жетон неисправности в комнату Королевы.', effect: 'malf', copies: 3 },
+    { id: 'q2act', extra: 2, byChar: false, text: 'Активируйте Королеву. Если она уже в комнате с персонажем — она атакует (в первую очередь того, кто её активировал).', effect: 'activate', copies: 3 },
     { id: 'q3bag', extra: 3, byChar: true, text: 'Если карту вытянул персонаж: добавьте в мешок до 3 жетонов Королевы.', effect: 'bag' },
     { id: 'q3act', extra: 3, byChar: false, text: 'Активируйте Королеву. Если она уже в комнате с персонажем — она атакует (в первую очередь того, кто её активировал).', effect: 'activate' },
-].map(c => ({ ...c, name: 'Сбросьте ещё ' + c.extra + (c.extra === 1 ? ' карту' : ' карт(ы)') }));
+];
+export const QUEEN_CARDS = QUEEN_FACES.flatMap(c => Array.from({ length: c.copies || 1 }, () => ({
+    ...c, name: 'Сбросьте ещё ' + c.extra + (c.extra === 1 ? ' карту' : ' карт(ы)'),
+})));
 
 
 export const INTRUDER_NAMES = { larva: 'Личинка', adult: 'Взрослый', drone: 'Дрон', queen: 'Королева', blank: 'Пусто' };

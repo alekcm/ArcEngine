@@ -3,7 +3,7 @@
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, secretTile, inCombat,
     gainKnowledge, restoreHealth, removeWound, removeFire, removeMalfunction, placeMalfunction, loseHealth, discardCard,
     removeCardFromGame, isContam, drawCards, spawnIntruder, HIBERNATION_TIME, handLimit, heavyCount, findRoomsByTile,
-    clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx, intruderLabel, healthState } from './core.mjs';
+    clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx, intruderLabel, healthState, payableCards } from './core.mjs';
 import { dealHits } from './combat.mjs';
 import { ROOM_TILES, engineRooms } from '../ship.mjs';
 import { ITEMS, WOUNDS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, INTRUDER_NAMES, ADAPTATIONS, EVENT_CARDS } from '../data/cards.mjs';
@@ -13,14 +13,14 @@ import { repelIntruder, checkNest } from './intruders.mjs';
 import { revealComputerCard } from './setup.mjs';
 import { drawSupport, keepOneOf } from './items.mjs';
 
-export function roomActionCost() { return 1; }
+export function roomActionCost() { return 2; }   // Dashboard: a normal Room Action costs two cards
 
 export function roomActionAvailable(state, p, opts = {}) {
     const roomId = opts.room || p.room;
     const tile = tileOf(state, roomId), rs = room(state, roomId);
     if (!tile) return { ok: false, reason: 'Комната не разведана' };
     if (inCombat(state, p)) return { ok: false, reason: 'Нельзя в бою' };
-    if (rs.malfunction && tile !== 'engine') return { ok: false, reason: 'Поломка в комнате' };
+    if (rs.malfunction && tile !== 'engine' && !opts.allowMalfunction) return { ok: false, reason: 'Поломка в комнате' };
     switch (tile) {
         case 'archives': return p.knowledgeActive ? { ok: false, reason: 'Жетон знаний уже активирован' } : { ok: true };
         case 'comms': return p.signal ? { ok: false, reason: 'Сигнал уже отправлен' } : { ok: true };
@@ -33,15 +33,17 @@ export function roomActionAvailable(state, p, opts = {}) {
         case 'fireControl': return { ok: true };
         case 'generator': return state.selfDestruct > 0 && state.selfDestruct >= 4 ? { ok: false, reason: 'Отсчёт уже не остановить' } : { ok: true };
         case 'laboratory': {
-            const objs = [...p.heavy, ...rs.objects].filter(o => o.type !== 'charCorpse');
+            // 18.3: any Heavy Object may be analyzed — including a character's corpse.
+            const objs = [...p.heavy, ...rs.objects];
             return objs.length ? { ok: true } : { ok: false, reason: 'Нет объекта для анализа' };
         }
         case 'nest': return state.nestEggs > 0 ? { ok: true } : { ok: false, reason: 'Яиц не осталось' };
         case 'surgery': return { ok: true };
         case 'repository': return p.supportUsed ? { ok: false, reason: 'Уже использовано' } : { ok: true };
         case 'airlock': {
-            const ok = Object.keys(state.ship.rooms).some(r => state.ship.rooms[r].tech && intrudersIn(state, r).length && r !== p.room);
-            return ok ? { ok: true } : { ok: false, reason: 'Нет комнаты с тех. входом и чужим' };
+            const ok = Object.keys(state.ship.rooms).some(r => state.ship.rooms[r].tech && intrudersIn(state, r).length
+                && state.ship.rooms[r].exits.every(e => state.ship.corridors[e.corridor].door !== 'destroyed'));
+            return ok ? { ok: true } : { ok: false, reason: 'Нет комнаты с тех. входом, чужим и целыми дверями' };
         }
         case 'armory': return p.items.some(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max) ? { ok: true } : { ok: false, reason: 'Нечего заряжать' };
         case 'cafeteria': return { ok: true };
@@ -91,8 +93,8 @@ OPS['room.action'] = (state, step) => {
             return;
         case 'laboratory': {
             const opts = [];
-            p.heavy.forEach((h, i) => { if (h.type !== 'charCorpse') opts.push({ id: 'mine:' + i, label: 'В руках: ' + objName(h) }); });
-            rs.objects.forEach((h, i) => { if (h.type !== 'charCorpse') opts.push({ id: 'room:' + i, label: 'В комнате: ' + objName(h) }); });
+            p.heavy.forEach((h, i) => opts.push({ id: 'mine:' + i, label: 'В руках: ' + objName(h) }));
+            rs.objects.forEach((h, i) => opts.push({ id: 'room:' + i, label: 'В комнате: ' + objName(h) }));
             if (!opts.length) { log(state, 'Нечего анализировать.', 'minor'); next(state, back); return; }
             ask(state, { kind: 'choice', player: p.id, title: 'Лаборатория: что анализировать?', options: opts }, { op: 'room.lab', player: p.id, room: roomId, then: back });
             return;
@@ -103,9 +105,11 @@ OPS['room.action'] = (state, step) => {
                 { op: 'room.nest', player: p.id, then: back, noNoise: step.noNoise });
             return;
         case 'surgery':
+            // Printed: discard ALL Action cards from your deck and hand, THEN remove every
+            // Contamination card from your discard (without scanning), remove a Larva, lose 1 HP, Pass.
             for (const c of [...p.hand]) discardCard(state, p, c);
+            for (const c of [...p.deck]) { p.deck.splice(p.deck.indexOf(c), 1); p.discard.push(c); }
             p.discard = p.discard.filter(c => !isContam(c));
-            p.deck = p.deck.filter(c => !isContam(c));
             if (p.larva) { p.larva = false; log(state, 'Личинка удалена.', 'good'); }
             log(state, pname(p) + ': все заражения удалены из колоды.', 'good');
             loseHealth(state, p, 1, 'операция');
@@ -116,7 +120,8 @@ OPS['room.action'] = (state, step) => {
             keepOneOf(state, p, drawSupport(state, 3), 'support', back, 1, true);
             return;
         case 'airlock': {
-            const rooms = Object.keys(state.ship.rooms).filter(r => state.ship.rooms[r].tech && intrudersIn(state, r).length && r !== p.room);
+            const rooms = Object.keys(state.ship.rooms).filter(r => state.ship.rooms[r].tech && intrudersIn(state, r).length
+                && state.ship.rooms[r].exits.every(e => state.ship.corridors[e.corridor].door !== 'destroyed'));
             ask(state, { kind: 'room', player: p.id, title: 'Шлюзование: какую комнату продуть? (всё в ней погибнет)', rooms }, { op: 'room.airlock', player: p.id, then: back });
             return;
         }
@@ -192,7 +197,7 @@ OPS['noop'] = (state, step) => { if (step.then) next(state, step.then); };
 
 function objName(h) { return ({ corpse: 'человеческий труп', charCorpse: 'труп персонажа', carcass: 'туша чужого', egg: 'яйцо' })[h.type]; }
 
-export function healChoice(state, p, hp, back) {
+export function healChoice(state, p, hp, back, maxEffects = 1) {
     // 14.8: healing items may also target another consenting character in the room
     const targets = [p, ...playersInRoom(state, p.room).filter(o => o.id !== p.id && o.status === 'active')];
     const opts = [];
@@ -201,7 +206,7 @@ export function healChoice(state, p, hp, back) {
         opts.push({ id: 'heal:' + t.id, label: 'Восстановить ' + hp + ' здоровья' + who });
         for (const w of new Set(t.wounds)) opts.push({ id: 'w:' + t.id + ':' + w, label: 'Вылечить травму: ' + WOUNDS[w].name + who });
     }
-    ask(state, { kind: 'choice', player: p.id, title: 'Лечение', options: opts }, { op: 'heal.choice', player: p.id, hp, then: back });
+    ask(state, { kind: 'choice', player: p.id, title: 'Лечение', options: opts }, { op: 'heal.choice', player: p.id, hp, then: back, maxEffects });
 }
 OPS['heal.choice'] = (state, step) => {
     const p = player(state, step.player);
@@ -212,9 +217,28 @@ OPS['heal.choice'] = (state, step) => {
             options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, { op: 'heal.consent', player: p.id, hp: step.hp, choice: step.answer, then: step.then });
         return;
     }
-    if (parts[0] === 'heal') restoreHealth(state, t, step.hp);
+    const healed = parts[0] === 'heal', wounded = !healed;
+    if (healed) restoreHealth(state, t, step.hp);
     else removeWound(state, t, parts[2]);
+    // "…and/or…" cards (Medkit) may apply a second, different effect in the same use.
+    const used = step.used || {};
+    used[healed ? 'heal' : 'wound'] = true;
+    const left = (step.maxEffects || 1) - (used.heal ? 1 : 0) - (used.wound ? 1 : 0);
+    if (left > 0 && !(used.heal && used.wound) && t.status === 'active') {
+        const opts = [];
+        if (!used.heal) opts.push({ id: 'heal:' + t.id, label: 'Восстановить ' + step.hp + ' здоровья' + (t === p ? '' : ' — ' + pname(t)) });
+        if (!used.wound) for (const w of new Set(t.wounds)) opts.push({ id: 'w:' + t.id + ':' + w, label: 'Вылечить травму: ' + WOUNDS[w].name });
+        if (opts.length) {
+            ask(state, { kind: 'choice', player: p.id, title: 'Лечение: ещё один эффект?', options: [...opts, { id: 'stop', label: 'Достаточно' }], cancel: true },
+                { op: 'heal.choice2', player: p.id, hp: step.hp, then: step.then, maxEffects: step.maxEffects, used, consent: true });
+            return;
+        }
+    }
     next(state, step.then);
+};
+OPS['heal.choice2'] = (state, step) => {
+    if (step.answer === 'stop' || step.answer === 'cancel') { next(state, step.then); return; }
+    next(state, { op: 'heal.choice', player: step.player, hp: step.hp, answer: step.answer, consent: true, then: step.then, maxEffects: step.maxEffects, used: step.used });
 };
 OPS['heal.consent'] = (state, step) => {
     const p = player(state, step.player);
@@ -274,16 +298,29 @@ OPS['room.nest'] = (state, step) => {
 };
 OPS['room.airlock'] = (state, step) => {
     const r = step.answer;
+    // Printed: close all nearby Doors and place the Airlock Procedure token; characters there are
+    // Unpassed. The room is vented at the END of the Player Phase, not immediately.
     for (const c of corridorsOf(state, r)) if (c.id !== 'tech' && state.ship.corridors[c.id].door === 'open') state.ship.corridors[c.id].door = 'closed';
-    for (const it of intrudersIn(state, r)) { if (it.type === 'queen') { state.queenDead = true; log(state, 'Королева выброшена в космос!', 'good'); } removeIntruder(state, it.uid, false); }
-    for (const o of playersInRoom(state, r)) loseHealth(state, o, 99, 'разгерметизация');
-    removeFire(state, r);
-    log(state, '🌀 Комната ' + roomName(state, r) + ' продута в космос.', 'event');
+    state.roomState[r].airlock = true;
+    for (const o of playersInRoom(state, r)) { o.passed = true; log(state, pname(o) + ' в шлюзуемой комнате — считается пасующим.', 'bad'); }
+    log(state, '🌀 Жетон шлюзования: ' + roomName(state, r) + '. Комната будет продута в конце фазы игроков.', 'event');
     next(state, step.then);
 };
+/** Resolve every Airlock Procedure token (end of the Player Phase). */
+export function resolveAirlocks(state) {
+    for (const [r, rs] of Object.entries(state.roomState)) {
+        if (!rs.airlock) continue;
+        rs.airlock = false;
+        for (const it of intrudersIn(state, r)) { if (it.type === 'queen') { state.queenDead = true; log(state, 'Королева выброшена в космос!', 'good'); } removeIntruder(state, it.uid, false); }
+        for (const o of playersInRoom(state, r)) loseHealth(state, o, 99, 'разгерметизация');
+        removeFire(state, r);
+        log(state, '🌀 Комната ' + roomName(state, r) + ' продута в космос.', 'event');
+    }
+}
 OPS['room.reload'] = (state, step) => {
     const p = player(state, step.player);
     const w = p.items.find(i => i.uid === step.answer);
+    if (w && ITEMS[w.item].weapon.grenadeOnly) { log(state, '«' + ITEMS[w.item].name + '» заряжается только «Гранадой».', 'minor'); next(state, step.then); return; }
     if (w) { const max = ITEMS[w.item].weapon.max; const before = w.ammo; w.ammo = Math.min(max, w.ammo + step.n); log(state, '«' + ITEMS[w.item].name + '» заряжено: ' + before + ' → ' + w.ammo + '.', 'good'); }
     next(state, step.then);
 };
@@ -313,7 +350,7 @@ OPS['room.hatch'] = (state, step) => {
 };
 OPS['room.server'] = (state, step) => {
     const p = player(state, step.player);
-    const av = roomActionAvailable(state, p, { room: step.answer });
+    const av = roomActionAvailable(state, p, { room: step.answer, allowMalfunction: true });
     if (!av.ok) { log(state, 'Действие комнаты недоступно: ' + av.reason + '.', 'minor'); next(state, { op: 'computer.afterServer', then: step.then }); return; }
     next(state, { op: 'room.action', player: p.id, tile: tileOf(state, step.answer), room: step.answer, then: { op: 'computer.afterServer', then: step.then } });
 };
@@ -339,6 +376,8 @@ OPS['room.hibernate'] = (state, step) => {
     if (intrudersIn(state, p.room).length) { log(state, pname(p) + ': гибернация не удалась — в комнате чужой.', 'bad'); next(state, step.then); return; }
     p.status = 'hibernating'; state.finishOrder.push(p.id);
     log(state, '❄ ' + pname(p) + ' уходит в гибернацию.', 'event');
+    // 22.1: with no awake characters left the game ends AT ONCE — no Intruder/Event/Cleanup phase.
+    if (!state.players.some(o => o.status === 'active')) { next(state, { op: 'game.end' }); return; }
     next(state, { op: 'turn.end' });
 };
 OPS['pod.enter'] = (state, step) => {
@@ -404,14 +443,14 @@ function computerOptionBlocked(state, p, id) {
         case 'draw': return state.players.some(o => o.status === 'active' && o.deck.length + o.discard.length > 0) ? '' : 'Некому брать карты';
         case 'scan': return Object.keys(state.ship.rooms).some(r => !room(state, r).explored) ? '' : 'Все комнаты разведаны';
         case 'noise': return Object.keys(state.ship.rooms).some(r => !playersInRoom(state, r).length) ? '' : 'Нет комнаты без персонажей';
-        case 'know': return p.hand.length ? '' : 'Нет карт в руке';
+        case 'know': return payableCards(p).length ? '' : 'Нет карт действий в руке';
         case 'heal': return '';
         case 'fixComp': return computerRooms(state).some(r => room(state, r).malfunction) ? '' : 'Нет поломки в комнате с компьютером';
         case 'purge': return '';
         case 'ammo': return p.items.some(i => ITEMS[i.item].weapon && !ITEMS[i.item].weapon.noAmmo && !i.broken && i.ammo < ITEMS[i.item].weapon.max) ? '' : 'Нет оружия, которое можно зарядить';
         case 'door': return Object.values(state.ship.corridors).some(c => c.door !== 'destroyed') ? '' : 'Нет дверей';
         case 'hit2': return Object.keys(state.intruders).length ? '' : 'На корабле нет чужих';
-        case 'item': return p.hand.length ? '' : 'Нет карт в руке';
+        case 'item': return payableCards(p).length ? '' : 'Нет карт действий в руке';
         case 'quiet': return noisyFarCorridors(state, p).length ? '' : 'Нет шума в дальних коридорах';
         case 'malf': return computerRooms(state).some(r => !room(state, r).malfunction) ? '' : 'Во всех комнатах с компьютером уже поломка';
         case 'event': return state.eventDeck.length ? '' : 'Колода событий пуста';
@@ -438,7 +477,12 @@ OPS['computer.option'] = (state, step) => {
             return;
         }
         case 'know':
-            ask(state, { kind: 'cards', player: p.id, title: 'Сбросьте 1 карту — получите 1 знание', cards: [...p.hand], min: 1, max: 1 }, { op: 'computer.know', player: p.id, then: done });
+            if (state.noComputerCost > 0) {   // Feat Breach: ignore additional Action card costs
+                state.noComputerCost--;
+                gainKnowledge(state, p, 1);
+                next(state, done); return;
+            }
+            ask(state, { kind: 'cards', player: p.id, title: 'Сбросьте 1 карту действия — получите 1 знание', cards: payableCards(p), min: 1, max: 1 }, { op: 'computer.know', player: p.id, then: done });
             return;
         case 'heal': restoreHealth(state, p, 1); next(state, done); return;
         case 'fixComp': {
@@ -463,7 +507,13 @@ OPS['computer.option'] = (state, step) => {
             sel('Какому чужому нанести 2 ранения?', Object.values(state.intruders).map(it => ({ id: it.uid, label: intruderLabel(state, it) + ' — ' + roomName(state, it.room) })), 'computer.hit2');
             return;
         case 'item':
-            ask(state, { kind: 'cards', player: p.id, title: 'Сбросьте 1 карту — возьмите предмет', cards: [...p.hand], min: 1, max: 1 }, { op: 'computer.itemPay', player: p.id, then: done });
+            if (state.noComputerCost > 0) {
+                state.noComputerCost--;
+                ask(state, { kind: 'choice', player: p.id, title: 'Из какой колоды взять предмет?', options: ['green', 'red', 'yellow'].map(d => ({ id: d, label: ({ green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая' })[d] + ' (' + state.itemDecks[d].length + ')', disabled: !state.itemDecks[d].length && !(state.itemDiscard[d] || []).length })) },
+                    { op: 'computer.itemDeck', player: p.id, then: done });
+                return;
+            }
+            ask(state, { kind: 'cards', player: p.id, title: 'Сбросьте 1 карту действия — возьмите предмет', cards: payableCards(p), min: 1, max: 1 }, { op: 'computer.itemPay', player: p.id, then: done });
             return;
         case 'quiet':
             sel('Из какого коридора убрать шум?', noisyFarCorridors(state, p).map(c => ({ id: c, label: c === 'tech' ? 'Тех. коридоры' : 'Коридор ' + c })), 'computer.quiet');
@@ -520,6 +570,16 @@ OPS['computer.done'] = (state, step) => {
     gainKnowledge(state, p, 1);
     revealComputerCard(state);
     log(state, 'Новая карта компьютера: «' + COMPUTER_CARDS[state.computerCard].name + '».', 'info');
+    // 16.2: a Lockdown revealed AFTER a Computer Action is resolved right away: a malfunction in
+    // the acting room, the Computer deck is shuffled and a new card is revealed.
+    if (state.computerCard === 'lockdown') {
+        if (state.noLockdownMalf) state.noLockdownMalf--; else placeMalfunction(state, p.room, 'блокировка');
+        state.computerDeck.push(...state.computerDiscard.splice(0), state.computerCard);
+        state.computerCard = null;
+        shuffle(state, state.computerDeck);
+        revealComputerCard(state, true);
+        log(state, 'Блокировка разыграна сразу: поломка в комнате, колода компьютера перемешана. Новая карта: «' + COMPUTER_CARDS[state.computerCard].name + '».', 'bad');
+    }
     next(state, step.then);
 };
 OPS['computer.engine'] = (state, step) => {

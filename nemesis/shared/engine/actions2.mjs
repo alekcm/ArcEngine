@@ -388,7 +388,7 @@ OPS['card.reload.add'] = (state, step) => { const p = player(state, step.player)
 // ---------------------------------------------------------------------------------------------
 // Lab Rat
 // ---------------------------------------------------------------------------------------------
-OPS['card.feelOfDark'] = (state, step) => { payCost(state, player(state, step.player), 1, { op: 'move.start', player: step.player, preventOne: true, noNoise: true, then: BACK }, 'Чувство темноты: оплата'); };
+OPS['card.feelOfDark'] = (state, step) => { next(state, { op: 'move.start', player: step.player, preventOne: true, noNoise: true, then: BACK }); };   // extra discard is charged centrally
 OPS['card.sensitiveHearing'] = (state, step) => {
     const p = player(state, step.player);
     const opts = [];
@@ -454,8 +454,8 @@ OPS['card.facilityTour'] = (state, step) => {
     choice(state, p, 'Обход объекта: кто перемещается?', opts, 'card.facilityTour.pick');
 };
 OPS['card.facilityTour.pick'] = (state, step) => {
-    const p = player(state, step.player);
-    payCost(state, p, 1, { op: 'move.start', player: Number(step.answer), noAttacks: true, ignoreToken: true, then: BACK }, 'Обход объекта: оплата');
+    // extra discard is charged centrally
+    next(state, { op: 'move.start', player: Number(step.answer), noAttacks: true, ignoreToken: true, then: BACK });
 };
 OPS['card.securityControl'] = (state, step) => {
     const p = player(state, step.player);

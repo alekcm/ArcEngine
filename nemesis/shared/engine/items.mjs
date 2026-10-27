@@ -90,6 +90,7 @@ export function searchRoom(state, p, then) {
 // ---------------------------------------------------------------------------------------------
 OPS['item.use'] = (state, step) => {
     const p = player(state, step.player);
+    // `ignoreRequirement` marks an activation forced by Tools.
     const inst = p.items.find(i => i.uid === step.uid) || (p.armor && p.armor.uid === step.uid ? p.armor : null);
     const back = step.then || { op: 'turn.choose' };
     if (!inst) { next(state, back); return; }
@@ -118,7 +119,7 @@ OPS['item.use'] = (state, step) => {
             if (p.larva) { p.larva = false; log(state, 'Личинка удалена.', 'good'); }
             log(state, pname(p) + ': автодок удалил все заражения.', 'good');
             p.passed = true; next(state, { op: 'turn.end' }); return;
-        case 'medkit': consume(); healChoice(state, p, 3, back); return;
+        case 'medkit': consume(); healChoice(state, p, 3, back, 2); return;   // Serious Wound and/or 3 Health
         case 'woundOrHeal2': consume(); healChoice(state, p, 2, back); return;
         case 'removeContam1': consume(); removeOneContam(state, p); next(state, back); return;
         case 'adrenaline': consume(); drawCards(state, p, 2); p.adrenalineTurn = true; log(state, pname(p) + ': любое число действий в этом ходу!', 'good'); next(state, back); return;
@@ -186,6 +187,12 @@ OPS['item.use'] = (state, step) => {
             const opts = [];
             if (room(state, p.room).malfunction) opts.push({ id: 'malf', label: 'Устранить поломку в комнате' });
             if (state.ship.rooms[p.room].kind === 'engine') opts.push({ id: 'engine', label: 'Починить/сломать двигатель' });
+            // Tools: "you may activate your Quest Item ignoring its requirement".
+            if (def.use === 'tools') {
+                // Printed on Tools: activate your Quest Item, ignoring its activation requirement.
+                const quest = [...p.items, ...(p.armor ? [p.armor] : [])].find(i => i.uid !== inst.uid && ITEMS[i.item].quest);
+                opts.push({ id: 'quest', label: 'Активировать квестовый предмет' + (quest ? ': «' + ITEMS[quest.item].name + '»' : '') + ' (игнорируя требование)' });
+            }
             if (!opts.length) { log(state, 'Нечего чинить здесь.', 'minor'); next(state, back); return; }
             choose(def.name, opts, 'item.repair');
             return;
@@ -284,6 +291,13 @@ OPS['item.secFire'] = (state, step) => {
     if (state.lastRoll && state.lastRoll.die === 'combat' && state.lastRoll.value === 6) { inst.broken = true; log(state, 'На пульт охраны положен жетон — он выходит из строя.', 'bad'); }
     next(state, step.then);
 };
+OPS['perimeter.pay'] = (state, step) => {
+    const p = player(state, step.player);
+    const dev = p.items.find(i => i.uid === step.uid);
+    if (step.answer !== 'yes' || !dev) { next(state, step.then); return; }
+    // Printed: discard 1 Action card to skip the Noise roll / Encounter in the Event Phase.
+    payCost(state, p, 1, step.then, 'Охранный периметр: сбросьте 1 карту действия');
+};
 OPS['item.simpleChoice'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'draw') drawCards(state, p, 2); else restoreHealth(state, p, 2);
@@ -361,6 +375,12 @@ OPS['item.cables'] = (state, step) => {
 OPS['item.repair'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'malf') { removeMalfunction(state, p.room); next(state, step.then); return; }
+    if (step.answer === 'quest') {
+        const quest = [...p.items, ...(p.armor ? [p.armor] : [])].find(i => ITEMS[i.item].quest && ITEMS[i.item].use);
+        if (quest) { next(state, { op: 'item.use', player: p.id, uid: quest.uid, ignoreRequirement: true, then: step.then }); return; }
+        log(state, 'Нет квестового предмета, который можно активировать.', 'minor');
+        next(state, step.then); return;
+    }
     next(state, { op: 'engine.toggle', player: p.id, then: step.then });
 };
 /** engine.toggle — the player secretly sets the engine in their room to working or damaged. */

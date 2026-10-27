@@ -1,6 +1,6 @@
 // turn.mjs — Player Phase: turns, the main action prompt and dispatch to the action procedures.
 
-import { OPS, ask, next, log, player, pname, removeCardFromGame, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
+import { OPS, ask, next, later, log, player, pname, removeCardFromGame, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
     discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards,
     HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom, corridorsOf } from './core.mjs';
 import { repairOptions } from './actions.mjs';
@@ -41,6 +41,14 @@ OPS['turn.start'] = (state) => {
 };
 
 OPS['turn.choose'] = (state) => {
+    // p. 1: an action is fully resolved before the next action may be chosen. Handlers that
+    // return to the menu while mandatory procedures are still queued (a Knowledge threshold,
+    // a Queen Health card, a hand-capacity check) must not overtake them. Defer the menu to the
+    // end of the queue instead of prompting early.
+    if (state.queue.some(step => step.op !== 'turn.choose')) {
+        later(state, { op: 'turn.choose' });
+        return;
+    }
     const p = player(state, state.current);
     if (p.status !== 'active' || p.passed) { next(state, { op: 'turn.end' }); return; }
     if (state.actionsLeft <= 0 && !p.adrenalineTurn) { next(state, { op: 'turn.end' }); return; }
@@ -65,14 +73,16 @@ export function buildMenu(state, p) {
     const carefulDest = state.ship.rooms[p.room].exits.some(e => state.ship.corridors[e.corridor].door !== 'closed' && corridorsOf(state, e.to).some(c => !(c.id === 'tech' ? state.ship.techNoise : state.ship.corridors[c.id].noise)));
     add('careful', 'Осторожное перемещение', moveCost + 1, noCombatOk && carefulDest, !noCombatOk ? 'Нельзя в бою' : 'Вокруг всех соседних комнат уже шум');
     const weapons = p.items.filter(i => canFire(p, i));
-    add('shoot', 'Стрелять', 1, combat && weapons.length > 0, combat ? 'Нет заряженного оружия' : 'Нет чужих в комнате');
+    const sniperHere = weapons.some(i => ITEMS[i.item].weapon.sniper);
+    const nearbyTarget = sniperHere && state.ship.rooms[p.room].exits.some(e => state.ship.corridors[e.corridor].door !== 'closed' && intrudersIn(state, e.to).length);
+    add('shoot', 'Стрелять', 1, (combat || nearbyTarget) && weapons.length > 0, !weapons.length ? 'Нет заряженного оружия' : 'Нет чужих в комнате');
     add('melee', 'Ближний бой', 1, combat, 'Нет чужих в комнате');
     const objs = rs.objects.length > 0;
-    add('pickup', 'Поднять тяжёлый объект', 1, objs && heavyCount(p) < handLimit(p), !objs ? 'В комнате нет объектов' : 'Руки заняты');
+    add('pickup', 'Поднять тяжёлый объект', 1, objs && heavyCount(p) < handLimit(p) && noCombatOk, !objs ? 'В комнате нет объектов' : heavyCount(p) >= handLimit(p) ? 'Руки заняты' : 'Нельзя в бою');
     const others = state.players.filter(o => o.id !== p.id && o.status === 'active' && o.room === p.room && !o.pod);
     add('trade', 'Передать предмет', 1, others.length > 0 && noCombatOk && (p.items.length + p.heavy.length) > 0, !noCombatOk ? 'Нельзя в бою' : others.length ? 'Нечего передать' : 'Нет других персонажей');
     const comp = tile && ROOM_TILES[tile].computer;
-    add('computer', 'Компьютер' + (state.computerCard ? '' : ''), 1, !!comp && !rs.malfunction && !!state.computerCard, !comp ? 'Нет компьютера' : rs.malfunction ? 'Поломка' : 'Нет карты');
+    add('computer', 'Компьютер', 1, !!comp && !rs.malfunction && !!state.computerCard && noCombatOk, !comp ? 'Нет компьютера' : rs.malfunction ? 'Поломка' : !state.computerCard ? 'Нет карты' : 'Нельзя в бою');
     const ra = roomActionAvailable(state, p);
     add('room', 'Действие комнаты' + (tile ? ': ' + ROOM_TILES[tile].name : ''), roomActionCost(state, p), ra.ok, ra.reason);
     add('pass', 'Спасовать', 0, true);
@@ -212,12 +222,13 @@ OPS['turn.do'] = (state, step) => {
             next(state, { op: 'pass.discard', player: p.id });
             return;
         case 'objective':
-            ask(state, { kind: 'choice', player: p.id, title: 'Выберите цель, которую оставите (вторая уходит из игры)',
+            ask(state, { kind: 'choice', player: p.id, secret: true, title: 'Выберите цель, которую оставите (вторая уходит из игры)',
                 options: p.objectives.map(o => ({ id: o.id, label: OBJECTIVES[o.kind][o.id].name, desc: objectiveText(state, o) })) },
                 { op: 'objective.pick', player: p.id });
             return;
         case 'drop': {
-            const opts = p.items.map(i => ({ id: 'item:' + i.uid, label: ITEMS[i.item].name }));
+            // Laika cannot be discarded (printed on her card).
+            const opts = p.items.filter(i => i.item !== 'laika').map(i => ({ id: 'item:' + i.uid, label: ITEMS[i.item].name }));
             p.heavy.forEach((h, idx) => opts.push({ id: 'heavy:' + idx, label: HEAVY_NAMES[h.type] }));
             ask(state, { kind: 'choice', player: p.id, title: 'Что выбросить?', options: opts, cancel: true }, { op: 'drop.choice', player: p.id });
             return;
@@ -341,11 +352,31 @@ OPS['pass.discard.done'] = (state, step) => {
     const p = player(state, step.player);
     for (const c of step.answer) discardCard(state, p, c);
     if (step.answer.length) log(state, pname(p) + ' сбрасывает ' + step.answer.length + ' карт при пасе.', 'minor');
+    // CEO "Just One More Thing": after you have Passed, draw 1 and take an extra Turn,
+    // after which you must Pass.
+    const card = p.justOneMoreUsed ? null : p.hand.find(c => (cardDef(state, c) || {}).effect === 'justOneMoreThing');
+    if (card) {
+        ask(state, { kind: 'choice', player: p.id, title: '«Ещё одну вещь»: возьмите 1 карту и выполните дополнительный ход? После него вы обязаны спасовать.',
+            options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, { op: 'card.justOneMore', player: p.id, card });
+        return;
+    }
     next(state, { op: 'turn.end' });
+};
+OPS['card.justOneMore'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer !== 'yes' || !p.hand.includes(step.card)) { next(state, { op: 'turn.end' }); return; }
+    removeCardFromGame(state, p, step.card);
+    p.justOneMoreUsed = true; p.justOneMore = true; p.passed = false;
+    drawCards(state, p, 1);
+    const order = turnOrder(state);
+    state.turnCursor = (order.indexOf(p) - 1 + order.length) % order.length;
+    log(state, pname(p) + ' играет «Ещё одну вещь»: дополнительный ход, после него — обязательный пас.', 'good');
+    next(state, { op: 'turn.start' });
 };
 
 OPS['turn.end'] = (state) => {
     const p = player(state, state.current);
+    if (p.justOneMore) { p.justOneMore = false; p.passed = true; log(state, pname(p) + ' обязан(а) спасовать после дополнительного хода.', 'action'); }
     if (p.status === 'active' && !p.pod && room(state, p.room).fire && !p.firePaidThisTurn) {
         loseHealth(state, p, 1, 'пожар в комнате');
     }

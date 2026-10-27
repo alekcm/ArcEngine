@@ -2,9 +2,9 @@
 // The server sends only views to clients; the full state never leaves the host process.
 
 import { buildMenu } from './engine/turn.mjs';
-import { CHARACTERS, FIELD_DATA } from './data/cards.mjs';
+import { CHARACTERS, FIELD_DATA, ITEMS } from './data/cards.mjs';
 
-const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'fx', 'version', 'seedStr', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'ship', 'roomState',
+const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'fx', 'version', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'ship', 'roomState',
     'intruders', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods',
     'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'adaptations', 'adaptationsRemoved', 'seating', 'feats', 'result', 'lastEvent'];
 
@@ -36,10 +36,13 @@ function countTokens(bag) {
 }
 
 function playerView(state, p, mine) {
+    // p. 14: light items in another character's possession are secret. Only the number of cards
+    // and their decks are public; armor and heavy objects stay visible on the table.
+    const visibleItems = mine ? p.items : p.items.filter(i => ITEMS[i.item].kind === 'heavy' || ITEMS[i.item].kind === 'armor');
     const pub = {
         id: p.id, number: p.number, name: p.name, charId: p.charId, charName: p.charId ? CHARACTERS[p.charId].name : '—', colors: p.colors,
         room: p.room, status: p.status, health: p.health, maxHealth: p.charId ? CHARACTERS[p.charId].health : 0, wounds: p.wounds, armor: p.armor,
-        items: p.items, heavy: p.heavy, knowledge: p.knowledge, knowledgeActive: p.knowledgeActive, signal: p.signal,
+        items: visibleItems, itemCount: p.items.length, heavy: p.heavy, knowledge: p.knowledge, knowledgeActive: p.knowledgeActive, signal: p.signal,
         passed: p.passed, pod: p.pod, larva: p.larva, laika: p.laika || null,
         handCount: p.hand.length, deckCount: p.deck.length, discardCount: p.discard.length,
         contamInDiscard: p.discard.filter(c => c.startsWith('contam#')).length,
@@ -58,8 +61,10 @@ function promptView(state, viewer) {
     if (!pr) return null;
     const mine = pr.player === viewer || (pr.player === 'host' && viewer === 0);
     if (mine) return pr;
-    // Other players see who is thinking and about what, but not secret option lists.
-    const out = { id: pr.id, kind: pr.kind, player: pr.player, title: pr.title, waiting: true, die: pr.die };
+    // Other players see who is thinking and about what, but not secret options, private texts
+    // (engine/coordinates/objectives) or payment card lists.
+    const out = { id: pr.id, kind: pr.kind, player: pr.player, waiting: true, die: pr.die,
+        title: (pr.kind === 'info' || pr.secret) ? 'Персонаж изучает скрытую информацию' : pr.title };
     if (!pr.secret && pr.kind !== 'info' && pr.kind !== 'cards') { out.options = pr.options; out.rooms = pr.rooms; }
     return out;
 }

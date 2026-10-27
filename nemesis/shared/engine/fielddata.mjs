@@ -188,11 +188,14 @@ OPS['card.fdRapid'] = (state, step) => {
     if (intrudersIn(state, p.room).length) { if (p.items.some(i => canFire(p, i))) opts.push({ id: 'shoot', label: 'Стрелять' }); opts.push({ id: 'melee', label: 'Ближний бой' }); }
     if (room(state, p.room).objects.length) opts.push({ id: 'pickup', label: 'Поднять тяжёлый объект' });
     if (playersInRoom(state, p.room).length > 1 && (p.items.length || p.heavy.length)) opts.push({ id: 'trade', label: 'Передать предмет' });
+    // "Computer" is a basic Action costing one card as well (Dashboard).
+    const tile = tileOf(state, p.room);
+    if (tile && ROOM_TILES[tile].computer && !room(state, p.room).malfunction && state.computerCard) opts.push({ id: 'computer', label: 'Компьютер' });
     choose(state, p, 'Быстрый ответ: базовое действие', opts, 'card.fdRapid.pick');
 };
 OPS['card.fdRapid.pick'] = (state, step) => {
     const p = player(state, step.player);
-    const op = { move: 'move.start', shoot: 'shoot.start', melee: 'melee.start', pickup: 'pickup.start', trade: 'trade.start' }[step.answer];
+    const op = { move: 'move.start', shoot: 'shoot.start', melee: 'melee.start', pickup: 'pickup.start', trade: 'trade.start', computer: 'computer.start' }[step.answer];
     next(state, { op, player: p.id, then: { op: 'card.fdRapid.draw', player: p.id } });
 };
 OPS['card.fdRapid.draw'] = (state, step) => { const p = player(state, step.player); if (p.status === 'active') drawCards(state, p, 1); next(state, BACK); };

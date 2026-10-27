@@ -4,7 +4,7 @@ import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom
     NOISE_DIE, roll, fmtRoll, needDice, fx, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
     clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt } from './core.mjs';
 import { hyperAttackStep } from './intruders.mjs';
-import { applyHitsNoRoll } from './combat.mjs';
+import { applyHitsNoRoll, resolveFollows } from './combat.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { INTRUDER_NAMES, INTRUDER_TOKENS } from '../data/cards.mjs';
 
@@ -55,6 +55,7 @@ OPS['move.go'] = (state, step) => {
     p.room = step.dest;
     p.movedThisRound = true;
     log(state, pname(p) + ' переходит: ' + roomName(state, from) + ' → ' + roomName(state, step.dest) + '.', 'action');
+    resolveFollows(state);   // "Blood Sense": the intruder follows the character to the destination
     if (step.companion !== undefined) {
         const c = player(state, step.companion);
         if (c && c.status === 'active' && c.room === from) { c.room = step.dest; log(state, pname(c) + ' идёт вместе.', 'action'); }
@@ -144,7 +145,7 @@ OPS['noise.roll'] = (state, step) => {
             for (const it of intrudersIn(state, e.to)) {
                 if (playersInRoom(state, e.to).length) continue;
                 const c = state.ship.corridors[e.corridor];
-                if (c.door === 'closed') { c.door = 'destroyed'; log(state, 'Чужой выламывает дверь ' + c.id + '.', 'event'); continue; }
+                if (c.door === 'closed') { c.door = 'destroyed'; moved++; log(state, 'Чужой выламывает дверь ' + c.id + '.', 'event'); continue; }
                 it.room = roomId; moved++;
                 log(state, INTRUDER_NAMES[it.type] + ' врывается из ' + roomName(state, e.to) + '!', 'combat');
                 const h = hyperAttackStep(state, it); if (h) next(state, h);
@@ -265,6 +266,7 @@ OPS['move.direct'] = (state, step) => {
     const from = p.room;
     p.room = step.dest; p.movedThisRound = true;
     log(state, pname(p) + ' перемещается: ' + roomName(state, from) + ' → ' + roomName(state, step.dest) + '.', 'action');
+    resolveFollows(state);
     const after = { op: 'move.afterExplore', player: p.id, from, noNoise: step.noNoise, then: step.then };
     if (!room(state, step.dest).explored) next(state, { op: 'explore', player: p.id, room: step.dest, from: null }, after);
     else next(state, after);

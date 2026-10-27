@@ -1,6 +1,8 @@
 // endgame.mjs — final checks: engines, destination, infection, objectives.
 
-import { OPS, ask, next, log, pname, isContam, isInfected } from './core.mjs';
+import { OPS, ask, next, log, pname, isContam, isInfected, gainContamination } from './core.mjs';
+import { eclosionProcedure } from './actions.mjs';
+import { shuffle } from '../rng.mjs';
 import { OBJECTIVES, COORDINATE_CARDS, DESTINATION_NAMES, ITEMS, FEATS, objectiveTextOf } from '../data/cards.mjs';
 
 function objectiveOf(p) { return p.objective || p.objectives[0]; }
@@ -35,17 +37,34 @@ OPS['game.end'] = (state) => {
             log(state, 'Пункт назначения ' + state.destination + ' — ' + DESTINATION_NAMES[destination] + '.', 'event');
             // 23.2: hibernating characters die unless the ship reaches Earth (or their Objective makes an exception)
             for (const p of state.players.filter(onBoard)) {
-                const safe = defOf(p).hiberSafe === destination;
+                const d = defOf(p);
+                // "Best Friends Forever" also inherits the printed hibernation exception of the
+                // hibernating friend it coexists with.
+                const friendSafe = d.check === 'bff' && state.players.some(o => o.id !== p.id && o.status === 'hibernating'
+                    && (o.objective || o.objectives[0]) && (OBJECTIVES[(o.objective || o.objectives[0]).kind][(o.objective || o.objectives[0]).id].hiberSafe === destination));
+                const safe = d.hiberSafe === destination || friendSafe;
                 if (destination !== 'earth' && !safe) fail(p, 'гибернация: корабль прибыл не на Землю (' + DESTINATION_NAMES[destination] + ')');
             }
         }
     }
-    // 3. Infection — everyone who is still alive (on board or in a pod)
+    // 3. Infection → Contamination → shuffle → Eclosion (23.3). A Larva is NOT an automatic death:
+    // the character adds one Contamination, merges and shuffles the deck, then resolves Eclosion
+    // (draw 4); only a Contamination among those four cards kills.
     for (const p of state.players.filter(p => p.status !== 'dead')) {
         const all = [...p.hand, ...p.deck, ...p.discard].filter(isContam);
         const infected = p.larva || all.some(c => isInfected(state, c));
         log(state, pname(p) + ': проверка заражения — карт ' + all.length + (p.larva ? ', личинка' : '') + ' → ' + (infected ? 'ЗАРАЖЁН' : 'чист') + '.', infected ? 'bad' : 'good');
-        if (infected) fail(p, 'заражение обнаружено при карантине');
+        if (!infected) continue;
+        gainContamination(state, p, 1);
+        p.deck = shuffle(state, [...p.deck, ...p.discard.splice(0)]);
+        const before = p.status;
+        eclosionProcedure(state, p);
+        if (p.status === 'dead') {
+            if (reasons[p.id] === undefined) reasons[p.id] = 'вылупление личинки при финальной проверке';
+            log(state, '☠ ' + pname(p) + ': финальная процедура вылупления — заражение в четырёх картах.', 'death');
+        } else if (before !== 'dead') {
+            log(state, pname(p) + ': финальная процедура вылупления пройдена — заражения среди четырёх карт нет.', 'good');
+        }
     }
     // 4. Objectives
     const results = state.players.map(p => {
@@ -112,11 +131,11 @@ export function checkObjective(state, p, def, destination) {
         case 'insuranceFraud': return (escaped && arrived === 'space') || (signal && state.shipDestroyed);
         case 'oldestFriend': return (signal && arrived === 'earth') || onlySurvivor;
         case 'pristine': return arrived === 'earth' && (fires <= 1 || engines === 3);
-        case 'pursuit': return p.knowledgeActive && others.every(o => o.knowledge <= p.knowledge);
+        case 'pursuit': return p.knowledgeActive && p.knowledge >= 8;   // "have the maximum Knowledge" = 8
         case 'quarantine': return arrived === 'mars' || (arrived === 'earth' && nestDestroyed);
         case 'trophyHunter': return !!state.queenDead || hasHeavy('charCorpse');
         case 'veniVidiVici': return signal && nestDestroyed;
-        case 'abOvo': return !!p.analyzed.egg;
+        case 'abOvo': return !!(state.analyzed && state.analyzed.egg) || !!p.analyzed.egg;
         case 'alienCoverUp': return signal && !othersAlive.some(o => o.knowledge >= 7);
         case 'bugHunt': return (state.carcassCount || 0) >= 4;
         case 'seat': {

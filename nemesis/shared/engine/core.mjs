@@ -159,7 +159,8 @@ export function orderIndex(state, p) { return turnOrder(state).indexOf(p); }
 // Health
 // ---------------------------------------------------------------------------------------------
 // Health track: 10 cells — 3 green (10-8), 3 orange (7-5), 3 red (4-2) and 1 near-death (1).
-// Health 0 means "all cells lost but still alive"; the next point of damage kills.
+// The skull follows the last cell: reaching 0 health means the marker is on the skull and the
+// character dies immediately (13.1, Dashboard).
 export function healthSections() { return [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]]; }
 export function healthState(p) {
     if (p.health >= 8) return 'healthy';
@@ -198,14 +199,35 @@ export function fx(state, obj) {
     if (state.fx.length > 24) state.fx.splice(0, state.fx.length - 24);
 }
 export function drawCards(state, p, n, silent) {
-    let drawn = 0;
-    for (let i = 0; i < n; i++) {
+    let drawn = 0, guard = 0;
+    while (drawn < n && guard++ < n * 4 + 8) {
         if (!p.deck.length) {
             if (!p.discard.length) break;
+            // Android UPS: every reshuffle spends one marker; with no markers left the Android dies.
+            const ups = p.charId === 'android' ? p.items.find(x => x.item === 'ups') : null;
+            if (ups) {
+                const left = (ups.charge ?? ITEMS.ups.markers) - 1;
+                ups.charge = Math.max(0, left);
+                if (left < 0) { killPlayer(state, p, 'ИБП разряжен при перемешивании колоды'); break; }
+                log(state, pname(p) + ': ИБП расходует жетон при перемешивании (осталось ' + ups.charge + ').', 'minor');
+            }
             p.deck = shuffle(state, p.discard.splice(0));
             log(state, pname(p) + ': колода перемешана заново.', 'minor');
         }
-        p.hand.push(p.deck.shift());
+        const card = p.deck.shift();
+        if (card === undefined) break;
+        // Synthetic (Android): Contamination is scanned as it is drawn, never kept in hand.
+        // An infected card leaves the game, costs 1 HP and the Android draws a replacement.
+        if (p.charId === 'android' && isContam(card)) {
+            const inf = isInfected(state, card);
+            removeCardFromGame(state, p, card);
+            log(state, pname(p) + ': «Синтетик» сканирует заражение при доборе — ' + (inf ? 'заражено, −1 здоровье' : 'чистое, убрано из игры') + '.', inf ? 'bad' : 'minor');
+            if (inf) loseHealth(state, p, 1, 'заражение (Синтетик)');
+            if (p.status !== 'active') break;
+            n++;
+            continue;
+        }
+        p.hand.push(card);
         drawn++;
     }
     if (drawn) fx(state, { type: 'draw', player: p.id, n: drawn });
@@ -226,6 +248,17 @@ export function removeCardFromGame(state, p, cardId) {
     fx(state, { type: 'remove', player: p.id, card: cardId, fromHand: i >= 0 });
 }
 export function payableCards(p) { return p.hand.filter(c => !isContam(c)); }
+/** Give a Larva to a character. The Android is Synthetic and cannot host one. */
+export function infectLarva(state, p, quiet) {
+    if (p.charId === 'android') {
+        if (!quiet) log(state, pname(p) + ': «Синтетик» — личинка не может заразить Андроида.', 'minor');
+        return false;
+    }
+    if (p.larva) { if (!quiet) log(state, pname(p) + ' уже носит личинку — вторая не добавляется.', 'minor'); return false; }
+    p.larva = true;
+    log(state, pname(p) + ' заражён личинкой!', 'bad');
+    return true;
+}
 export function gainContamination(state, p, n = 1) {
     if (p.armor && ITEMS[p.armor.item].contamToHp) {
         log(state, pname(p) + ': биозащитная броня — вместо заражения теряет здоровье.', 'minor');
@@ -273,7 +306,7 @@ export function loseHealth(state, p, n, reason) {
     }
     if (n > 0) fx(state, { type: 'damage', player: p.id, n });
     log(state, pname(p) + ' теряет ' + n + ' здоровья' + (reason ? ' (' + reason + ')' : '') + ' — ' + HEALTH_STATE_NAMES[healthState(p)] + ', ' + Math.max(0, p.health) + ' HP.', 'bad');
-    if (p.health < 0) killPlayer(state, p, reason || 'ранения');
+    if (p.health <= 0) killPlayer(state, p, reason || 'ранения');
 }
 export function restoreHealth(state, p, n) {
     const cap = maxAllowedHealth(p);
@@ -284,7 +317,7 @@ export function restoreHealth(state, p, n) {
 export function gainWound(state, p, n = 1) {
     for (let i = 0; i < n; i++) {
         if (p.status !== 'active') return;
-        if (p.armor && ITEMS[p.armor.item].woundToHp && p.health > ITEMS[p.armor.item].woundToHp) {
+        if (p.armor && ITEMS[p.armor.item].woundToHp && !ITEMS[p.armor.item].woundToHpOptional && p.health > ITEMS[p.armor.item].woundToHp) {
             log(state, pname(p) + ': усиленная броня — вместо травмы теряет ' + ITEMS[p.armor.item].woundToHp + ' здоровья.', 'minor');
             loseHealth(state, p, ITEMS[p.armor.item].woundToHp, 'усиленная броня');
             continue;
@@ -361,7 +394,8 @@ export function gainKnowledge(state, p, n) {
     const before = p.knowledge;
     p.knowledge = Math.min(8, p.knowledge + n);
     log(state, pname(p) + ': знания ' + before + ' → ' + p.knowledge + '.', 'good');
-    for (const t of [3, 5, 8]) if (before < t && p.knowledge >= t) next(state, { op: 'knowledge.threshold', player: p.id, t });
+    // Resolve the thresholds in ascending order: next() unshifts, so queue the later ones first.
+    for (const t of [8, 5, 3]) if (before < t && p.knowledge >= t) next(state, { op: 'knowledge.threshold', player: p.id, t });
 }
 OPS['knowledge.threshold'] = (state, step) => {
     const p = player(state, step.player);
@@ -434,6 +468,8 @@ export function clearNoiseAround(state, roomId) {
 export function destroyShip(state, why) {
     if (state.shipDestroyed) return;
     state.shipDestroyed = true;
+    // 22.2: destroying the ship also destroys the Nest for every Objective check.
+    state.nestDestroyed = true;
     log(state, '💥 КОРАБЛЬ УНИЧТОЖЕН: ' + why + '.', 'death');
     for (const p of state.players) if (p.status === 'active' || p.status === 'hibernating') { p.status = 'dead'; p.health = 0; }
     state.intruders = {};

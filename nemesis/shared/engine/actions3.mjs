@@ -2,10 +2,10 @@
 // actions.mjs / actions2.mjs. The Xenobiologist keeps Tissue samples as `player.tissue`.
 
 import { OPS, ask, next, log, player, pname, intrudersIn, room, roomName, tileOf, drawCards, payCost, removeWound,
-    gainKnowledge, intruderLabel, secretTile } from './core.mjs';
+    gainKnowledge, intruderLabel, secretTile , needDice } from './core.mjs';
 import { ITEMS, WOUNDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
-import { applyHitsNoRoll, phantomAttack } from './combat.mjs';
+import { applyHitsNoRoll, phantomAttack, dealHits } from './combat.mjs';
 import { choice } from './actions.mjs';
 
 /** Probe Arm (Xenobiologist): in a room with an intruder, spend one of 3 markers to deal 1 hit and gain 1 Tissue. */
@@ -119,10 +119,20 @@ OPS['card.fieldExperience'] = (state, step) => {
     p.tissue = (p.tissue || 0) + 1; log(state, pname(p) + ' берёт образец ткани (всего ' + p.tissue + ').', 'good');
     const targets = intrudersIn(state, p.room);
     if (!targets.length) { next(state, BACK); return; }
-    if (targets.length === 1) { applyHitsNoRoll(state, targets[0], 1); next(state, BACK); return; }
-    choice(state, p, 'Полевой опыт: кто получает ранение?', targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })), 'card.hitOne');
+    // Printed: deal 1 Hit — this is damage, so the normal combat kill-check follows.
+    // Printed: deal 1 Hit — normal damage, so the usual combat kill-check is rolled.
+    if (targets.length === 1) { next(state, { op: 'card.fieldExpHit', player: p.id, target: targets[0].uid, then: BACK }); return; }
+    choice(state, p, 'Полевой опыт: кто получает ранение?', targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })), 'card.fieldExpHit');
 };
-OPS['card.hitOne'] = (state, step) => { const it = state.intruders[step.answer]; if (it) applyHitsNoRoll(state, it, step.n || 1); next(state, step.then || BACK); };
+OPS['card.fieldExpHit'] = (state, step) => {
+    const p = player(state, step.player);
+    const it = state.intruders[step.answer !== undefined ? step.answer : step.target];
+    if (!it) { next(state, step.then || BACK); return; }
+    if (it.type !== 'larva' && needDice(state, step, 'combat', p.id, 'Бросок боя — полевой опыт')) return;
+    dealHits(state, p, it, 1, 0, {});
+    next(state, step.then || BACK);
+};
+OPS['card.hitOne'] = (state, step) => next(state, { op: 'card.fieldExpHit', player: step.player, target: step.answer, answer: step.answer, then: step.then || BACK });
 
 OPS['card.overmind'] = (state, step) => {
     const p = player(state, step.player);

@@ -8,50 +8,50 @@ import { shuffle, randInt, rand, pick } from './rng.mjs';
 // `items` — item icons for the Search action, `computer` — has a Computer.
 // ---------------------------------------------------------------------------------------------
 export const ROOM_TILES = {
-    archives:     { name: 'Архив',                     slot: '1', items: ['yellow'],         computer: true,
-                    action: 'Только при неактивном жетоне знаний: получите 2 знания и активируйте жетон.' },
-    comms:        { name: 'Пункт связи',               slot: '1', items: ['yellow'],         computer: true,
+    archives:     { name: 'Архив',                     slot: '1', items: ['red', 'red', 'red'],         computer: true,
+                    action: 'Только при неактивном жетоне знаний: получите 2 знания и переверните жетон знаний на активную сторону.' },
+    comms:        { name: 'Пункт связи',               slot: '1', items: ['red', 'yellow'],         computer: true,
                     action: 'Отправить сигнал — отметьте «Сигнал» на планшете персонажа.' },
     emergency:    { name: 'Медпункт',                  slot: '1', items: ['green', 'green'], computer: false,
                     action: 'Сбросьте 1 тяжёлую травму ИЛИ восстановите 3 здоровья.' },
-    evacA:        { name: 'Эвакуационный отсек A',     slot: '1', items: ['red'],            computer: false,
+    evacA:        { name: 'Эвакуационный отсек A',     slot: '1', items: ['green', 'red'],            computer: false,
                     action: 'Если есть разблокированная капсула секции A со свободным местом: бросок шума, затем войти в капсулу.' },
-    evacB:        { name: 'Эвакуационный отсек B',     slot: '1', items: ['red'],            computer: false,
+    evacB:        { name: 'Эвакуационный отсек B',     slot: '1', items: ['green', 'yellow'],            computer: false,
                     action: 'Если есть разблокированная капсула секции B со свободным местом: бросок шума, затем войти в капсулу.' },
-    fireControl:  { name: 'Пожарный пост',             slot: '1', items: ['yellow'],         computer: true,
+    fireControl:  { name: 'Пожарный пост',             slot: '1', items: ['yellow', 'yellow', 'yellow'],         computer: true,
                     action: 'Выберите комнату: уберите оттуда огонь; все чужие в ней уходят в соседние комнаты.' },
-    generator:    { name: 'Генератор',                 slot: '1', items: ['yellow', 'red'],  computer: true,
+    generator:    { name: 'Генератор',                 slot: '1', items: ['yellow', 'yellow', 'yellow'],  computer: true,
                     action: 'Запустить самоуничтожение (жетон на 3 деления впереди времени) ИЛИ остановить жёлтый отсчёт.' },
-    laboratory:   { name: 'Лаборатория',               slot: '1', items: ['green', 'green'], computer: true,
-                    action: 'Проанализировать тяжёлый объект (труп, тушу или яйцо): +2 знания; снять 1 адаптацию, если этот тип объекта ещё не использовался.' },
+    laboratory:   { name: 'Лаборатория',               slot: '1', items: ['green', 'green', 'green'], computer: true,
+                    action: 'Проанализируйте тяжёлый объект в комнате или у себя: +2 знания. Если тип объекта ещё не анализировали — положите его над выбранной адаптацией и сбросьте её, иначе сбросьте объект.' },
     nest:         { name: 'Гнездо',                    slot: '1', items: [],                 computer: false,
                     action: 'Взять или уничтожить 1 яйцо, затем бросок шума. Первооткрыватель получает +1 знание.' },
-    surgery:      { name: 'Операционная',              slot: '1', items: ['green', 'green'], computer: true,
-                    action: 'Сбросьте колоду и руку, уберите все заражения из сброса без проверки, уберите личинку. Потеряйте 1 здоровье и спасуйте.' },
-    repository:   { name: 'Хранилище снаряжения',      slot: '1', items: ['red'],            computer: false,
+    surgery:      { name: 'Операционная',              slot: '1', items: ['green', 'green', 'green'], computer: false,
+                    action: 'Сбросьте все карты действий из колоды и руки. Уберите все заражения из сброса без проверки. Уберите личинку. Потеряйте 1 здоровье и спасуйте.' },
+    repository:   { name: 'Хранилище снаряжения',      slot: '1', items: ['red', 'red', 'red'],            computer: false,
                     action: 'Раз за игру: возьмите 3 карты из колоды поддержки, оставьте 1.' },
 
-    airlock:      { name: 'Шлюзовой контроль',         slot: '2', items: ['red'],            computer: true,
-                    action: 'Выберите комнату с входом в тех. коридоры и чужим: закрыть все двери и начать процедуру шлюзования (в этой версии — упрощено: сразу всё в комнате гибнет).' },
-    armory:       { name: 'Оружейная',                 slot: '2', items: ['red', 'red'],     computer: false,
-                    action: 'Зарядите до 2 патронов в одно дальнобойное оружие.' },
-    cafeteria:    { name: 'Столовая',                  slot: '2', items: ['green', 'green'], computer: false,
-                    action: 'Восстановите 2 здоровья и/или уберите 1 заражение из руки без проверки. Пассивно: +1 карта при доборе.' },
-    commandCenter:{ name: 'Командный центр',           slot: '2', items: ['yellow', 'red'],  computer: true,
-                    action: 'Выберите комнату: откройте и/или закройте любые двери в её коридорах.' },
-    containment:  { name: 'Изолятор',                  slot: '2', items: ['yellow', 'green'],computer: false,
-                    action: 'Поместите взрослого чужого в комнату с входом в тех. коридоры без чужих. Затем поломка в Изоляторе.' },
-    contaminated: { name: 'Заражённая комната',        slot: '2', items: ['yellow', 'green'],computer: false,
+    airlock:      { name: 'Шлюзовой контроль',         slot: '2', items: ['green', 'red'],            computer: false,
+                    action: 'Выберите комнату с входом в тех. коридоры, чужим и без уничтоженных дверей рядом: закройте все соседние двери и начните процедуру шлюзования. Персонажи там считаются пасующими до конца хода.' },
+    armory:       { name: 'Оружейная',                 slot: '2', items: ['red', 'red', 'red'],     computer: false,
+                    action: 'Зарядите до 2 патронов в одно дальнобойное оружие, которое несёте.' },
+    cafeteria:    { name: 'Столовая',                  slot: '2', items: ['green', 'green', 'green'], computer: false,
+                    action: 'Восстановите 2 здоровья и/или уберите 1 заражение из руки без проверки. Пассивно: в начале раунда берите 1 дополнительную карту.' },
+    commandCenter:{ name: 'Командный центр',           slot: '2', items: ['red', 'yellow'],  computer: true,
+                    action: 'Выберите комнату: откройте и/или закройте любые двери в коридорах, соединённых с ней.' },
+    containment:  { name: 'Изолятор',                  slot: '2', items: ['green', 'yellow'],computer: true,
+                    action: 'Поместите взрослого чужого в любую комнату с входом в тех. коридоры и без чужого. Затем положите поломку в Изоляторе.' },
+    contaminated: { name: 'Заражённая комната',        slot: '2', items: ['green', 'red', 'yellow'],computer: false,
                     action: 'Нет действия. Пассивно: получив предмет здесь, получаете заражение.' },
-    decon:        { name: 'Дезинфекция',               slot: '2', items: ['green', 'yellow'],computer: false,
+    decon:        { name: 'Дезинфекция',               slot: '2', items: ['green', 'green', 'green'],computer: false,
                     action: 'Уберите все заражения из руки без проверки. Уберите личинку.' },
-    engineRoom:   { name: 'Машинное отделение',        slot: '2', items: ['yellow', 'yellow'],computer: true,
+    engineRoom:   { name: 'Машинное отделение',        slot: '2', items: ['yellow', 'yellow', 'yellow'],computer: true,
                     action: 'Тайно посмотрите верхний жетон каждого двигателя.' },
-    hatchControl: { name: 'Контроль шлюзов капсул',    slot: '2', items: ['red', 'yellow'],  computer: true,
-                    action: 'Переверните 1 жетон спасательной капсулы (заблокировать/разблокировать).' },
-    server:       { name: 'Серверная',                 slot: '2', items: ['yellow'],         computer: true,
-                    action: 'Используйте действие любой другой разведанной комнаты с компьютером.' },
-    storage:      { name: 'Склад',                     slot: '2', items: ['yellow', 'yellow'],computer: false,
+    hatchControl: { name: 'Контроль шлюзов капсул',    slot: '2', items: ['green', 'red', 'yellow'],  computer: false,
+                    action: 'Переверните 1 жетон спасательной капсулы на сторону «заблокирована» или «разблокирована».' },
+    server:       { name: 'Серверная',                 slot: '2', items: ['yellow', 'yellow', 'yellow'],         computer: true,
+                    action: 'Используйте действие комнаты любой 1 другой разведанной комнаты с компьютером (даже с поломкой). Откройте новую карту компьютера; «Блокировку» разыграйте в этой комнате.' },
+    storage:      { name: 'Склад',                     slot: '2', items: ['red', 'red', 'red'],computer: false,
                     action: 'Возьмите по 1 предмету каждого цвета, оставьте 1. Затем бросок шума.' },
 
     cockpit:      { name: 'Рубка',                     slot: 'special', items: [], computer: true,
@@ -127,7 +127,7 @@ const ORIGINAL_PATHS = {
     '012-016': [[900, 800]], '013-014': [[1010, 270]],
     '003-007': [[380, 520]],
 };
-const ORIGINAL_TECH = ['002', '004', '007', '011', '013', '016', '020'];
+const ORIGINAL_TECH = ['002', '004', '005', '009', '014', '015', '019', '021'];
 const ORIGINAL_ENGINE_NUMBERS = { '021': 1, '020': 2, '019': 3 };
 
 function buildShip(roomsSpec, edges, techRooms, engineNumbers, mode, paths = {}) {
@@ -197,7 +197,11 @@ function computeBounds(ship) {
 }
 
 export function originalShip() {
-    return buildShip(ORIGINAL_ROOMS, ORIGINAL_EDGES, ORIGINAL_TECH, ORIGINAL_ENGINE_NUMBERS, 'original', ORIGINAL_PATHS);
+    const ship = buildShip(ORIGINAL_ROOMS, ORIGINAL_EDGES, ORIGINAL_TECH, ORIGINAL_ENGINE_NUMBERS, 'original', ORIGINAL_PATHS);
+    // Printed board: the Cockpit → 001 corridor is Corridor 3 (auto-numbering cannot derive it).
+    const cockpitExit = ship.rooms['001'].exits.find(e => e.to === '002');
+    if (cockpitExit) { cockpitExit.nums = [3]; cockpitExit.num = 3; }
+    return ship;
 }
 
 // ---------------------------------------------------------------------------------------------

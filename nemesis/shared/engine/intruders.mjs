@@ -20,9 +20,10 @@ OPS['phase.intruder'] = (state) => {
         }
         if (tileOf(state, id) === 'nest' && state.nestEggs > 0) { state.nestEggs--; log(state, 'Огонь в Гнезде уничтожает яйцо (осталось ' + state.nestEggs + ').', 'event'); checkNest(state); }
     }
-    // 2. Attacks, rooms in id order, bigger intruders first
+    // 2. Attacks: rooms top-to-bottom as printed on the board; bigger intruders first.
     const steps = [];
-    for (const id of Object.keys(state.ship.rooms).sort()) {
+    const byPosition = (a, b) => (state.ship.rooms[a].y - state.ship.rooms[b].y) || (state.ship.rooms[a].x - state.ship.rooms[b].x) || a.localeCompare(b);
+    for (const id of Object.keys(state.ship.rooms).sort(byPosition)) {
         if (!playersInRoom(state, id).length) continue;
         const list = intrudersIn(state, id).sort((a, b) => INTRUDER_RANK[a.type] - INTRUDER_RANK[b.type]);
         for (const it of list) steps.push({ op: 'attack', intruder: it.uid, context: 'phase' });
@@ -79,7 +80,10 @@ export function moveOneToward(state, it, targets) {
     for (const p of targets) {
         const d = dist[p.room];
         if (d === undefined) continue;
-        if (!best || d < best.d || (d === best.d && (p.hand.length < best.p.hand.length || (p.hand.length === best.p.hand.length && orderIndex(state, p) < orderIndex(state, best.p))))) best = { p, d };
+        // Printed tie-break: lowest number of ACTION cards in hand, then turn order.
+        // Contamination is a card in hand, but it is not an Action card.
+        const act = q => q.hand.filter(c => !String(c).startsWith('contam#')).length;
+        if (!best || d < best.d || (d === best.d && (act(p) < act(best.p) || (act(p) === act(best.p) && orderIndex(state, p) < orderIndex(state, best.p))))) best = { p, d };
     }
     if (!best || best.d === 0) return;
     const fromTarget = distances(state.ship, best.p.room);

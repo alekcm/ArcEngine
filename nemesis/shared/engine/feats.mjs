@@ -5,6 +5,7 @@ import { OPS, ask, next, log, player, pname, intrudersIn, room, roomName, drawCa
 import { repelIntruder } from './intruders.mjs';
 import { drawItem, giveItem } from './rooms.mjs';
 import { drawSupport, keepOneOf } from './items.mjs';
+import { dealHits } from './combat.mjs';
 import { FEATS, ITEMS, WOUNDS, DECK_NAMES } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
 
@@ -66,6 +67,8 @@ OPS['feat.appropriation.keep'] = (state, step) => {
 // --- Breach: up to 3 computer actions anywhere, lockdown places no malfunction --------------
 OPS['feat.breach'] = (state, step) => {
     const p = player(state, step.player);
+    // "Ignore additional Action card costs" while resolving these Computer Actions.
+    state.noComputerCost = (state.noComputerCost || 0) + BREACH_ACTIONS;
     state.noLockdownMalf = (state.noLockdownMalf || 0) + BREACH_ACTIONS;
     next(state, { op: 'feat.breach.next', player: p.id, left: BREACH_ACTIONS, then: step.then });
 };
@@ -93,7 +96,16 @@ OPS['feat.conviction'] = (state, step) => {
 };
 OPS['feat.conviction.kill'] = (state, step) => {
     const it = state.intruders[step.answer];
-    if (it) { log(state, intruderLabel(state, it) + ' убит.', 'good'); removeIntruder(state, step.answer, true); }
+    const p = player(state, step.player);
+    if (it) {
+        if (it.type === 'queen') {
+            log(state, 'Решимость: критический результат по Королеве — карта здоровья.', 'combat');
+            next(state, { op: 'queen.card', player: p.id }, step.then);
+            return;
+        }
+        log(state, 'Решимость: ' + intruderLabel(state, it) + ' получает 3 ранения.', 'combat');
+        dealHits(state, p, it, 3, 0, {});
+    }
     next(state, step.then);
 };
 
@@ -166,7 +178,7 @@ OPS['feat.overpower'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer !== undefined && step.uid) {
         const it = state.intruders[step.uid];
-        if (it) repelIntruder(state, it, step.answer);
+        if (it) repelIntruder(state, it, step.answer, true);   // "Ignores any Repel prevention effect"
     }
     const it = intrudersIn(state, p.room).find(i => !(step.done || []).includes(i.uid));
     if (!it) { next(state, step.then); return; }

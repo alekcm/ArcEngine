@@ -148,6 +148,7 @@ function assignCharacter(state, p, charId) {
     const ch = CHARACTERS[charId];
     const sp = state.setupPlayers[p.id];
     p.charId = charId; p.health = ch.health; p.tissue = charId === 'xeno' ? 1 : 0;
+    if (charId === 'ceo') { p.wounds.push('body'); p.health = Math.min(p.health, 7); }   // the Robot starts with a Body Wound
     p.colors = sp && sp.charId === charId ? sp.colors : {};
     for (const key of Object.keys(ch.cards)) p.deck.push(charId + '.' + key + '#0');
     for (const s of ch.startItems) {

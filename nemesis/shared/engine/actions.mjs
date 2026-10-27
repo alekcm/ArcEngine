@@ -2,7 +2,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire, placeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, removeCardFromGame, isContam, isInfected, payCost,
-    clearNoiseAround, killPlayer, spawnIntruder, intruderLabel, corridorsOf, secretTile, payableCards } from './core.mjs';
+    clearNoiseAround, killPlayer, spawnIntruder, intruderLabel, corridorsOf, secretTile, payableCards, infectLarva } from './core.mjs';
 import { ITEMS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
@@ -28,8 +28,7 @@ export function infectionProcedure(state, p, removeClean) {
         if (!inf && removeClean) removeCardFromGame(state, p, c); else discardCard(state, p, c);
     }
     log(state, pname(p) + ' проверяет заражения: ' + cards.length + ' карт, заражено — ' + bad + '.', bad ? 'bad' : 'good');
-    if (bad && !p.larva) { p.larva = true; log(state, pname(p) + ' заражён личинкой!', 'bad'); }
-    else if (bad) log(state, pname(p) + ' уже носит личинку — вторая не добавляется.', 'minor');
+    if (bad) infectLarva(state, p);
 }
 /** 20.3 Eclosion Procedure: draw 4 cards; any Contamination card in hand kills the character, otherwise discard the hand. */
 export function eclosionProcedure(state, p) {
@@ -70,7 +69,10 @@ export function repairOptions(state, p, withEngine) {
 OPS['card.repairPick'] = (state, step) => {
     const p = player(state, step.player);
     const a = step.answer;
-    if (a === 'malf') removeMalfunction(state, p.room);
+    if (a === 'malf') {
+        if (step.malfPay) { payCost(state, p, step.malfPay, { op: 'repair.malf', player: p.id, then: step.then }, 'Ремонт поломки: доплата'); return; }
+        removeMalfunction(state, p.room);
+    }
     else if (a.startsWith('door:')) { const c = state.ship.corridors[a.slice(5)]; c.door = c.door === 'closed' ? 'open' : 'closed'; log(state, 'Дверь ' + c.id + ' теперь ' + (c.door === 'closed' ? 'закрыта' : 'открыта') + '.', 'event'); }
     else if (a === 'engine') {
         if (step.enginePay) { payCost(state, p, step.enginePay, { op: 'engine.toggle', player: p.id, then: step.then }, 'Ремонт двигателя: доплата'); return; }
@@ -99,7 +101,9 @@ OPS['card.interruption'] = (state, step) => { log(state, 'Реакция сыг�
 OPS['card.preventAttack'] = OPS['card.interruption'];
 OPS['card.repairs'] = (state, step) => {
     const p = player(state, step.player);
-    choice(state, p, 'Ремонт', repairOptions(state, p, true), 'card.repairPick', { enginePay: 1 });
+    // Printed: "Discard 1 Action card. Discard a malfunction OR Open/Close 1 Door OR Discard 1 more
+    // Action card: Repair/Break the Engine in the Engine Room you are in."
+    choice(state, p, 'Ремонт', repairOptions(state, p, true), 'card.repairPick', { enginePay: 1, malfPay: 1 });
 };
 OPS['card.rest'] = (state, step) => { infectionProcedure(state, player(state, step.player), true); next(state, BACK); };
 OPS['card.search'] = (state, step) => { search(state, player(state, step.player), BACK); };
@@ -162,7 +166,7 @@ OPS['card.myLittleFriend.pick'] = (state, step) => {
     const p = player(state, step.player);
     const gun = p.items.find(i => i.uid === step.uid);
     if (step.answer === 'load') { gun.ammo++; log(state, 'Винтовка заряжена: ' + gun.ammo + '.', 'good'); next(state, BACK); return; }
-    next(state, { op: 'shoot.weaponChosen', player: p.id, uid: gun.uid, repeat: true, then: BACK });
+    next(state, { op: 'shoot.start', player: p.id, onlyItem: 'soldierGun', repeat: true, then: BACK });
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -215,7 +219,8 @@ OPS['card.reconnaissance.go'] = (state, step) => {
 OPS['card.scavenging'] = (state, step) => {
     const p = player(state, step.player);
     if (room(state, p.room).malfunction) { log(state, 'В комнате поломка — мародёрство невозможно.', 'minor'); next(state, BACK); return; }
-    payCost(state, p, 1, { op: 'card.search', player: p.id }, 'Мародёрство: оплата');
+    // The printed additional discard is already charged centrally by extraCost().
+    next(state, { op: 'card.search', player: p.id });
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -225,16 +230,18 @@ OPS['card.computerSkills'] = (state, step) => {
     const p = player(state, step.player);
     const tile = tileOf(state, p.room);
     const opts = [];
-    if (tile && ROOM_TILES[tile].computer && !room(state, p.room).malfunction) opts.push({ id: 'comp', label: 'Использовать компьютер' });
+    // Printed: "If you are in a Computer Room (without a malfunction), use the Room."
+    if (tile && ROOM_TILES[tile].computer && !room(state, p.room).malfunction) opts.push({ id: 'comp', label: 'Использовать комнату' });
     opts.push(...doorOptions(state, null));
     choice(state, p, 'Компьютерные навыки', opts, 'card.computerSkills.pick');
 };
 OPS['card.computerSkills.pick'] = (state, step) => {
-    if (step.answer === 'comp') { next(state, { op: 'computer.start', player: step.player, then: BACK }); return; }
+    if (step.answer === 'comp') { next(state, { op: 'room.action', player: step.player, then: BACK }); return; }
     OPS['card.repairPick'](state, step);
 };
 OPS['card.duckAndCover'] = (state, step) => {
-    payCost(state, player(state, step.player), 1, { op: 'move.start', player: step.player, preventOne: true, then: BACK }, 'Пригнуться: оплата');
+    // The printed additional discard is already charged centrally by extraCost().
+    next(state, { op: 'move.start', player: step.player, preventOne: true, then: BACK });
 };
 OPS['card.fastRepairs'] = (state, step) => { const p = player(state, step.player); choice(state, p, 'Быстрый ремонт', repairOptions(state, p, true), 'card.repairPick'); };
 OPS['card.fightFire'] = (state, step) => {
@@ -268,8 +275,10 @@ OPS['card.ingenuity.support'] = (state, step) => { const p = player(state, step.
 OPS['card.techCorridors'] = (state, step) => {
     const p = player(state, step.player);
     if (!state.ship.rooms[p.room].tech) { log(state, 'Здесь нет входа в технические коридоры.', 'minor'); next(state, BACK); return; }
-    payCost(state, p, 1, { op: 'card.techCorridors.go', player: p.id }, 'Технические коридоры: оплата');
+    // The printed additional discard is already charged centrally by extraCost().
+    next(state, { op: 'card.techCorridors.go', player: p.id });
 };
+OPS['repair.malf'] = (state, step) => { const p = player(state, step.player); removeMalfunction(state, p.room); next(state, step.then); };
 OPS['card.techCorridors.go'] = (state, step) => {
     const p = player(state, step.player);
     const rooms = Object.keys(state.ship.rooms).filter(r => state.ship.rooms[r].tech && r !== p.room);
