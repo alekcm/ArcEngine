@@ -28,7 +28,7 @@ const ART_DECKS = {
     ceo: ['backupBattery', 'command', 'computerSkills', 'demolition', 'fastRepairs', 'interruption', 'protect', 'rest', 'roboticPunch', 'search'],
     labrat: ['demolition', 'feelOfDark', 'inconspicuous', 'interruption', 'repairs', 'rest', 'search', 'sensitiveHearing', 'shriek', 'weirdMetabolism'],
     sentry: ['defensePlan', 'demolition', 'facilityTour', 'interruption', 'repairs', 'rest', 'search', 'securityControl', 'stun', 'weakSpot'],
-    convict: ['catchThis', 'demolition', 'duckAndCover', 'interruption', 'intimidate', 'repairs', 'rest', 'search', 'shortTemper'],
+    convict: ['bash', 'catchThis', 'demolition', 'duckAndCover', 'interruption', 'intimidate', 'repairs', 'rest', 'search', 'shortTemper'],
 };
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
