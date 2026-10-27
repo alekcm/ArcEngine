@@ -20,6 +20,7 @@ const ART_DECKS = {
     soldier: ['coveringFire', 'demolition', 'forcingFire', 'interruption', 'myLittleFriend', 'nervesOfSteel', 'repairs', 'rest', 'search', 'weakSpot'],
     scout: ['adrenaline', 'demolition', 'distraction', 'interruption', 'reconnaissance', 'repairs', 'rest', 'scavenging', 'search', 'weakSpot'],
     mechanic: ['computerSkills', 'demolition', 'duckAndCover', 'fastRepairs', 'fightFire', 'ingenuity', 'interruption', 'rest', 'search', 'technicalCorridors'],
+    pilot: ['computerSkills', 'demolition', 'determination', 'interruption', 'knowledgeOfShip', 'piloting', 'repairs', 'rest', 'search', 'weakSpot'],
 };
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
