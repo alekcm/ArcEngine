@@ -267,7 +267,21 @@ function renderGame() {
         });
     }
     scene.setMe(app.me);
-    if (!dice) { dice = new DiceUI($('dice'), () => act('roll')); dice.afterHide = () => { if (app.view) dice.update(app.view, app.me, playerName); }; dice.onLanded = () => { app.rollHold = false; if (app.view) renderGame(); }; }
+    if (!dice) {
+        dice = new DiceUI($('dice'), () => act('roll'));
+        dice.afterHide = () => { if (app.view) dice.update(app.view, app.me, playerName); };
+        dice.onLanded = () => {
+            app.rollHold = false; if (!app.view) return;
+            const pr = app.view.prompt;
+            // The noise die said "something is there": read the result first, then one soft yellow glow
+            // around the screen, and only after that the token window — centred where the die was.
+            if (pr && pr.kind === 'bag' && pr.player === app.me) {
+                flashEdges();
+                dice.clearHide(); dice.hide();
+                setTimeout(() => { if (app.view) renderGame(); }, 560);
+            } else renderGame();
+        };
+    }
     // Dice gate. The engine moves the figure and reveals the room BEFORE asking for the noise roll, so the 3D
     // scene (and the card/bag fx) freeze from the moment a dice prompt appears until the rolled die has landed:
     // the player sees the result first, only then the figure runs and the room token flips.
@@ -277,19 +291,26 @@ function renderGame() {
     if (dicePrompt || freshRoll) {
         app.rollHold = true;
         dice.update(v, app.me, playerName);
-        renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand(); renderBagStrip(); renderHint(); refreshOverlays();
-        if (freshRoll) setTimeout(() => { if (app.rollHold && !(app.view.prompt && app.view.prompt.kind === 'dice')) { app.rollHold = false; renderGame(); } }, 5000);   // safety net
+        renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderHand(); renderHint(); refreshOverlays();
+        // Nothing that spoils the die result: while the die is on the table the follow-up question
+        // (pull an intruder token) stays hidden. It appears once the die has landed — see dice.onLanded.
+        $('prompt').classList.add('hidden'); $('menuToggle').classList.add('hidden');
+        $('bagStrip').classList.add('hidden');
+        // Watchdog: a hold must never outlive the die (a lost result, a reconnect in the middle of a roll).
+        setTimeout(() => {
+            if (!app.rollHold) return;
+            const p = app.view && app.view.prompt;
+            if (p && p.kind === 'dice') return;
+            app.rollHold = false; renderGame();
+        }, 6000);
         return;
     }
-    if (app.rollHold && dice.rolling) return;   // die still tumbling: keep the frozen scene until it lands
+    if (app.rollHold) return;   // die tumbling or just landed: keep the frozen scene until it is read
     app.rollHold = false;
-    // Rooms the player may click: the engine is asking "where to?", or it is my turn and these
-    // are the neighbouring rooms I can walk into.
-    const meNow = v.players.find(x => x.id === app.me);
-    const selectable = pr && pr.kind === 'room' && !pr.waiting
-        ? pr.rooms
-        : (pr && pr.kind === 'turn' && pr.player === app.me && meNow && meNow.status === 'active'
-            ? (v.ship.rooms[meNow.room].exits || []).map(e => e.to) : []);
+    // Rooms the engine is explicitly asking about light up with the orange ring. Neighbouring rooms
+    // used to pulse on every turn as a "you can walk there" hint — that blinked non-stop, so it is gone;
+    // clicking a neighbouring room still offers to go there.
+    const selectable = pr && pr.kind === 'room' && !pr.waiting ? pr.rooms : [];
     scene.update(v, ROOM_TILES, INTRUDER_NAMES, selectable);
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
     renderBagStrip(); renderHint(); refreshOverlays();
@@ -402,15 +423,17 @@ function renderHistory() { $('history').innerHTML = (app.history || []).map(h =>
 function renderPrompt() {
     const v = app.view; const pr = v.prompt; const el = $('prompt'); const tg = $('menuToggle');
     app.selectedCards.clear();
-    if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); closeItemPicker(); return; }   // dice prompts are shown by DiceUI
+    if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); el.classList.remove('bagmode', 'eventmode'); closeItemPicker(); return; }   // dice prompts are shown by DiceUI
     const who = pr.kind === 'ack' ? 'Вся команда' : pr.player === 'host' ? 'Ведущий' : (v.players[pr.player] || {}).name || '';
-    // Collapsing: the turn menu remembers the player's choice; other prompts re-open when a new one arrives.
-    // Collapsing: the action list opens by itself at the start of the player's turn and then keeps whatever the
-    // player chose until the turn ends; other prompts always open when a new one arrives.
+    // The action list opens only when the player asks for it: every turn starts folded, then keeps the
+    // player's choice until the turn ends. Other prompts open by themselves when a new one arrives.
+    if (pr.kind === 'turn') {
+        const tk = v.round + ':' + pr.player;
+        if (tk !== app.turnKey) { app.turnKey = tk; app.menuCollapsed = true; }
+        app.promptCollapsed = app.menuCollapsed;
+    } else if (pr.id !== app.lastPromptId) app.promptCollapsed = false;
     if (pr.id !== app.lastPromptId) {
         app.lastPromptId = pr.id;
-        if (pr.kind !== 'turn') app.promptCollapsed = false;
-        else { const tk = v.round + ':' + pr.player; if (tk !== app.turnKey) { app.turnKey = tk; app.menuCollapsed = false; } app.promptCollapsed = app.menuCollapsed; }
         // QoL: a cue when the table needs ME (my turn, my die, my token, my Ready).
         const forMe = pr.player === app.me || (pr.kind === 'ack' && pr.mine);
         if (forMe && !pr.waiting) {
@@ -420,10 +443,16 @@ function renderPrompt() {
     }
     const isAck = pr.kind === 'ack';
     const mine = !pr.waiting;
-    tg.classList.toggle('hidden', !mine && !pr.waiting);
+    // The event card and the token request are windows of the table centre — they appear where the
+    // card/die landed, not in the bottom-left corner, and they never start folded.
+    const eventMode = isAck && !!pr.event;
+    const bagMode = pr.kind === 'bag' && !pr.waiting;   // only the puller's own window moves to the centre
+    el.classList.toggle('bagmode', bagMode);
+    el.classList.toggle('eventmode', eventMode);
+    tg.classList.toggle('hidden', bagMode || eventMode || (!mine && !pr.waiting));
     tg.textContent = app.promptCollapsed ? '☰ ' + (pr.kind === 'turn' ? 'Действия' : 'Открыть окно') : '✕ Свернуть';
     tg.classList.toggle('attention', mine && app.promptCollapsed);
-    el.classList.toggle('hidden', app.promptCollapsed);
+    el.classList.toggle('hidden', app.promptCollapsed && !bagMode && !eventMode);
     if (pr.waiting && !isAck) {
         el.classList.add('waiting');
         el.innerHTML = '<h4>' + esc(who) + ' <span class="waiting-dots">думает</span></h4><div class="ptext">' + esc(pr.title || '') + '</div>';
@@ -502,7 +531,7 @@ function renderPrompt() {
             }
             html += '<div class="bag-box"><div class="bag-icon">🎒</div><div>' +
                 '<div class="bag-count">Жетонов в мешке: ' + (pr.count ?? v.bagCount) + '</div>' +
-                '<div class="bag-reason">Зачем: ' + esc(pr.text || '') + '</div></div></div>' +
+                '<div class="bag-reason">' + esc(pr.text || '') + '</div></div></div>' +
                 '<div class="prompt-buttons"><button class="btn primary big" data-opt="draw">Вытянуть жетон</button></div>' +
                 '<div class="ptext dim" style="font-size:11px">Можно нажать и на мешок в панели колод внизу справа.</div>';
             break;
@@ -519,7 +548,17 @@ function renderPrompt() {
     const ok = $('cardsOk'); if (ok) ok.onclick = () => act([...app.selectedCards]);
 }
 
-/** The last bag token: what was pulled, why it was pulled and what it means. */
+/** A single soft yellow glow around the screen edges — the "the die said something happened" beat
+ *  between the die landing and the token request. Fires once, then removes itself. */
+function flashEdges() {
+    const layer = $('fxLayer') || document.body;
+    const el = document.createElement('div');
+    el.className = 'edgeflash';
+    layer.appendChild(el);
+    setTimeout(() => el.remove(), 900);
+}
+
+/** The last bag token: the result, the reason and what it means. */
 function renderBagStrip() {
     const el = $('bagStrip'); const v = app.view; const b = v && v.bagLast;
     if (!b) { el.classList.add('hidden'); return; }
@@ -528,8 +567,8 @@ function renderBagStrip() {
     const who = b.by != null && v.players[b.by] ? v.players[b.by].name : '';
     el.innerHTML = '<span class="bt-ico">' + (TOKEN_ICON[b.token] || '🎒') + '</span>' +
         '<div><div class="bt-name">' + esc(INTRUDER_NAMES[b.token] || b.token) + (who ? ' · ' + esc(who) : '') + '</div>' +
-        '<div class="bt-why">Зачем: ' + esc(b.reason || '—') + '</div>' +
-        '<div class="bt-effect">' + esc(b.meaning || '') + (b.effect ? ' <b>Итог:</b> ' + esc(b.effect) : '') + '</div></div>' +
+        '<div class="bt-why">' + esc(b.reason || '—') + '</div>' +
+        '<div class="bt-effect">' + esc(b.effect || b.meaning || '') + '</div></div>' +
         '<button class="bt-close" title="Скрыть">✕</button>';
     el.classList.remove('hidden');
     el.querySelector('.bt-close').onclick = () => el.classList.add('hidden');
@@ -543,7 +582,7 @@ function renderHint() {
     const pr = v.prompt; const hints = [];
     if (pr && !pr.waiting && pr.kind !== 'dice' && pr.kind !== 'ack') hints.push('<b>1–9</b> выбор');
     if (app.canUndo) hints.push('<b>Esc</b> шаг назад');
-    hints.push('<b>ЛКМ</b> по комнате — идти, по чужому — атака', '<b>Alt</b> коридоры и поиск', '<b>C</b> персонаж', '<b>F</b> к себе', '<b>Q/E</b> поворот', '<b>WASD</b> камера');
+    hints.push('<b>ЛКМ</b> по комнате — идти, по чужому — атака', '<b>Alt</b> названия комнат, номера коридоров и поиск', '<b>C</b> персонаж', '<b>F</b> к себе', '<b>Q/E</b> поворот', '<b>WASD</b> камера');
     $('hintBar').innerHTML = hints.map(h => '<span>' + h + '</span>').join('<span>·</span>');
 }
 function playerName(id) { const v = app.view; return v && v.players[id] ? v.players[id].name : ''; }

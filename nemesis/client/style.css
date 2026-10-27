@@ -242,6 +242,13 @@ body.pl-collapsed #prompt:not(.hidden) ~ #menuToggle { left: 34px; }
 .vignette { position: fixed; inset: 0; pointer-events: none; z-index: 50; animation: vig .9s ease-out forwards; }
 .vignette.red { box-shadow: inset 0 0 160px 60px #c0202088; background: radial-gradient(ellipse at center, transparent 55%, #ff202040 100%); }
 .vignette.green { box-shadow: inset 0 0 160px 60px #30c05088; background: radial-gradient(ellipse at center, transparent 55%, #40ff6040 100%); }
+/* one-off "something happened" beat between the noise die and the token pull */
+.edgeflash { position: fixed; inset: 0; pointer-events: none; z-index: 51; animation: edgeflash 1s ease-out forwards; }
+@keyframes edgeflash {
+    0% { box-shadow: inset 0 0 0 0 #ffd27f00; }
+    30% { box-shadow: inset 0 0 200px 70px #ffd27faa; }
+    100% { box-shadow: inset 0 0 200px 90px #ffd27f00; }
+}
 @keyframes vig { 0% { opacity: 0; } 15% { opacity: 1; } 100% { opacity: 0; } }
 .pcard.hit { animation: pc-hit .6s ease-out; }
 @keyframes pc-hit { 0% { box-shadow: 0 0 0 2px var(--red); transform: translateX(0); } 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-2px); } 100% { box-shadow: none; transform: none; } }
@@ -328,6 +335,23 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #prompt .bag-box .bag-count { font-size: 12px; color: var(--dim); }
 #prompt .bag-box .bag-reason { font-size: 12px; color: #ffd27f; }
 #prompt .btn.big { width: 100%; font-size: 15px; padding: 12px; }
+/* The event card and the token request are windows of the middle of the table: they open where the
+   card/die landed instead of in the bottom-left corner. */
+#prompt.bagmode, #prompt.eventmode {
+    left: 50%; top: 50%; bottom: auto; transform: translate(-50%, -50%); width: 440px; max-height: 76vh;
+    z-index: 24; background: var(--panel2); border-color: var(--acc); box-shadow: 0 18px 60px #000c, 0 0 0 1px #ffb34733;
+}
+#prompt.bagmode { animation: prompt-in .24s ease-out; text-align: center; }
+#prompt.bagmode .bag-box { justify-content: center; }
+#prompt.bagmode .btn.big { max-width: 320px; margin: 0 auto; }
+#prompt.eventmode { animation: prompt-card .42s cubic-bezier(.2, .9, .25, 1.15); border-color: #c9a227; }
+#prompt.eventmode h4 { color: #ffd27f; font-size: 16px; }
+#prompt.eventmode .ack-card .aart { width: 150px; min-width: 150px; height: 212px; }
+#prompt.eventmode .ack-card .atext { font-size: 13px; }
+#prompt.eventmode .ack-ready { justify-content: center; }
+#prompt.eventmode .prompt-buttons .btn { width: 100%; font-size: 15px; padding: 10px; }
+@keyframes prompt-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.88); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes prompt-card { from { opacity: 0; transform: translate(-50%, -50%) scale(.4) rotate(-10deg); } to { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); } }
 
 #bagStrip { position: fixed; left: 50%; bottom: 214px; transform: translateX(-50%); z-index: 14; max-width: min(720px, 92vw); background: #0d141df2; border: 1px solid #5a4a22; border-radius: 10px; padding: 8px 14px; display: flex; gap: 12px; align-items: center; box-shadow: 0 10px 30px #000b; animation: bag-in .25s ease-out; }
 @keyframes bag-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
