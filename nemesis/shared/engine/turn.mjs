@@ -169,6 +169,7 @@ OPS['turn.do'] = (state, step) => {
         const c = menu.cards.find(x => x.id === a.cardId);
         if (!c || !c.enabled) { next(state, back); return; }
         const d = cardDef(state, a.cardId);
+        fx(state, { type: 'play', player: p.id, card: a.cardId });
         if (d.removeAfter) removeCardFromGame(state, p, a.cardId); else discardCard(state, p, a.cardId);
         log(state, pname(p) + ' играет карту «' + d.name + '».', 'action');
         spend();
@@ -181,6 +182,7 @@ OPS['turn.do'] = (state, step) => {
         const inst = p.items.find(x => x.uid === a.itemId) || p.armor;
         const d = ITEMS[inst.item];
         log(state, pname(p) + ' использует предмет «' + d.name + '».', 'action');
+        fx(state, { type: 'useItem', player: p.id, item: inst.item });
         if (!d.free) spend();
         payCost(state, p, it.cost, { op: 'item.use', player: p.id, uid: a.itemId }, 'Оплата использования «' + d.name + '»');
         return;

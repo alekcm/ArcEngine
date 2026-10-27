@@ -62,7 +62,7 @@ export function attackArt(id) { const k = String(id).replace(/\d+$/, ''); return
 export function queenArt() { return 'art/misc/queen.jpg'; }
 export function computerArt(id) { return id === 'lockdown' ? 'art/misc/lockdown.jpg' : 'art/misc/computer.jpg'; }
 export function objectiveArt(kind) { return kind === 'corporate' ? 'art/misc/objectiveCorporate.jpg' : 'art/misc/objectivePersonal.jpg'; }
-function cardArt(cardId) {
+export function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
     if (owner === 'field') return ART_FIELD.includes(key) ? 'art/field/' + key + '.jpg' : null;
     return ART_DECKS[owner] && ART_DECKS[owner].includes(key) ? 'art/' + owner + '/' + key + '.jpg' : null;

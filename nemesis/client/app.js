@@ -338,7 +338,7 @@ function renderHand() {
     cards.forEach((cel, i) => { const k = i - mid; cel.style.setProperty('--fan', (k * 4) + 'deg'); cel.style.setProperty('--lift', (Math.abs(k) * 6) + 'px'); });
     for (const cel of el.querySelectorAll('.card')) cel.onclick = () => {
         const id = cel.dataset.card;
-        if (menu && menu[id] && menu[id].enabled) act({ action: 'card', cardId: id });
+        if (menu && menu[id] && menu[id].enabled) { if (tableFx) tableFx.cardOrigin = { id, rect: cel.getBoundingClientRect() }; act({ action: 'card', cardId: id }); }
         else if (picking && picking.has(id)) {
             if (app.selectedCards.has(id)) app.selectedCards.delete(id); else if (app.selectedCards.size < pr.max) app.selectedCards.add(id);
             for (const c2 of el.querySelectorAll('.card')) c2.classList.toggle('selected', app.selectedCards.has(c2.dataset.card));

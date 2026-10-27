@@ -9,7 +9,8 @@
 //   item    — a card is pulled from the coloured item deck (green/red/yellow/support)
 //   event / attack / queen — a card is drawn from the shared deck, flips face up in the centre
 //                            and slides to its discard
-import { esc, describeCard, eventArt, attackArt, queenArt } from './cards.js';
+import { esc, describeCard, eventArt, attackArt, queenArt, cardArt, itemArt } from './cards.js';
+import { ITEMS } from '/shared/data/cards.mjs';
 import * as Snd from './sound.js';
 
 const DECK_LABELS = { green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая', support: 'Поддержка', event: 'События', attack: 'Атаки', queen: 'Королева' };
@@ -92,7 +93,33 @@ export class TableFX {
                 if (!n) done();
                 break;
             }
+            case 'play': case 'useItem': {
+                // a played action card (or used item) flies from the hand to the centre of the table, shows its art for a moment, then goes to the discard pile
+                const isItem = f.type === 'useItem';
+                const d = isItem ? ITEMS[f.item] : describeCard(f.card);
+                const art = isItem ? itemArt(f.item) : cardArt(f.card);
+                const face = (art ? '<div class="fc-art" style="background-image:url(' + art + ')"></div>' : '') + '<small>' + (isItem ? 'Предмет' : 'Карта') + (pname ? ' · ' + esc(pname) : '') + '</small><b>' + esc(d.name) + '</b>' + (d.text ? '<p>' + esc(d.text) + '</p>' : '');
+                const origin = this.cardOrigin && this.cardOrigin.id === f.card ? this.cardOrigin.rect : null; this.cardOrigin = null;
+                const from = origin || (isMe ? this.handRect() : this.playerRect(f.player));
+                const mid = this.centerRect(art ? 220 : 170, art ? 330 : 236);
+                const el = this.makeCard(DECK_COLORS.own, face, art ? 220 : 170, art ? 330 : 236);
+                el.classList.add('flipped');
+                Snd.play('card');
+                this.fly(el, from, mid, 420, { rotA: -6, rotB: 0, scaleA: 0.6, scaleB: 1, arc: 30 }, async () => {
+                    await new Promise(r => setTimeout(r, isItem ? 1300 : 1100));
+                    const to = isMe && !isItem ? this.pileRect('owndisc') : this.playerRect(f.player);
+                    if (!isItem) this.skipNext = f.card;   // the engine's following discard/remove fx for this card is folded into this flight
+                    this.fly(el, mid, to || mid, 420, { rotB: 20, scaleB: 0.45, fadeOut: isItem || !isMe }, () => { el.remove(); done(); });
+                });
+                break;
+            }
             case 'discard': case 'remove': {
+                if (this.skipNext === f.card) {
+                    this.skipNext = null;
+                    if (f.type === 'remove') { const el = this.makeCard(DECK_COLORS.own, '<b>' + esc(describeCard(f.card).name) + '</b>', 100, 140); el.classList.add('flipped'); this.fly(el, this.centerRect(100, 140), this.centerRect(100, 140), 10, {}, () => { el.classList.add('burn'); Snd.play('burn'); setTimeout(() => { el.remove(); done(); }, 700); }); }
+                    else done();
+                    break;
+                }
                 const d = describeCard(f.card);
                 const face = '<b>' + esc(d.name) + '</b>';
                 const from = isMe ? this.handRect() : this.playerRect(f.player);

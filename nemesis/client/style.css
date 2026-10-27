@@ -299,3 +299,7 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .obj b, .obj span { position: relative; display: block; } .obj b { color: #ffd27f; } .obj span { color: #d8dee6; }
 .obj.corporate { border-color: #7a6a2a; } .obj.personal { border-color: #6a3a3a; }
 #tbComputer.itag { position: relative; cursor: help; } #tbComputer .ipop { top: calc(100% + 6px); bottom: auto; left: 0; }
+/* playable hand cards breathe softly; a click presses the card before it flies off */
+@keyframes card-glow { 0%, 100% { box-shadow: 0 0 0 0 #ffd27f00, 0 8px 20px #0009; } 50% { box-shadow: 0 0 14px 2px #ffd27f55, 0 8px 20px #0009; } }
+#hand .card.playable { animation: card-glow 2.4s ease-in-out infinite; }
+#hand .card.playable:active { transform: rotate(0deg) translateY(-18px) scale(0.98); transition: transform 0.08s; }
