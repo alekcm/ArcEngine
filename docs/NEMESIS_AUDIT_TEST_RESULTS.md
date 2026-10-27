@@ -8,7 +8,7 @@
 
 | Проверка | Команда | Результат |
 |---|---|---|
-| Отдельный Nemesis rule-conformance suite | `node --test --test-reporter=tap nemesis/tools/audit.test.mjs` | **94 tests: 94 PASS, 0 FAIL**, exit **0**; около 0,2 секунды |
+| Отдельный Nemesis rule-conformance suite | `node --test --test-reporter=tap nemesis/tools/audit.test.mjs` | **95 tests: 95 PASS, 0 FAIL**, exit **0**; около 0,2 секунды |
 | Поднабор положительных контролей | Фильтр `OK-*`, `ITEM-09`, `FD-01`, `CEO-0` — команда в §3 | **16/16 PASS**, exit **0** |
 | Существующий check ArcEngine | `node tools/check.mjs` | **Успешно**, exit **0**; типы игры, типы редактора, **89/89** прежних тестов |
 | Nemesis smoke/fuzz | `node nemesis/tools/fuzz.mjs 300` | **300 партий, 0 сбоев**, exit **0** |
@@ -17,17 +17,17 @@
 | Действия кликом: комната, чужой, объект, выбор предмета | `node --test nemesis/tools/quick-actions.test.mjs` | **15 tests: 15 PASS, 0 FAIL**, exit **0** |
 | WebSocket/undo E2E (реальный сервер, два клиента) | `node nemesis/tools/smoke.mjs` | **11 проверок, все PASS**, exit **0**; в браузере (WebGL) — **U** |
 
-**Два набора по 89 и 94 теста — не один и тот же набор.** Обычный check проекта проверяет типы и инфраструктуру ArcEngine, но не соответствие Nemesis настольным правилам. Conformance suite расположен отдельно от `tests/*.test.mjs` и вызывается явно.
+**Два набора по 89 и 95 тестов — не один и тот же набор.** Обычный check проекта проверяет типы и инфраструктуру ArcEngine, но не соответствие Nemesis настольным правилам. Conformance suite расположен отдельно от `tests/*.test.mjs` и вызывается явно.
 
 Дополнительно к правилам проверен «софт вокруг стола» — то, что физическая игра делает руками, а приложение должно объяснять: закрытая комната до вскрытия называется `???`, жетон из мешка тянет сам игрок (и видит, зачем тянул и что вытянул), карта события не исчезает, пока все не нажмут «Готово», а Esc возвращает собственный шаг. Эти 12 сценариев лежат отдельно (`tools/table-flow.test.mjs`), потому что проверяют не печатные правила, а поведение интерфейса; их ожидания тоже записаны по правилам (стр. 9 «Bag Development», стр. 8 «Event») и по постановке задачи.
 
-Историческая точка отсчёта: исходный набор из **89** сценариев на неизменённой базе давал **14 PASS / 75 FAIL** (exit 1, все падения — `AssertionError`). Пять сценариев (`CEO-01`, `CEO-02`, `ITEM-12`, `ITEM-13`, `START-06`) добавлены позже вместе с исправлениями, поэтому текущий набор — 94 теста. Ожидания в тестах **не ослаблялись**: ни один тест не был удалён, переписан в «как сейчас работает» или помечен `skip`. Все 94 сценария теперь проходят потому, что исправлен gameplay-код.
+Историческая точка отсчёта: исходный набор из **89** сценариев на неизменённой базе давал **14 PASS / 75 FAIL** (exit 1, все падения — `AssertionError`). Шесть сценариев (`CEO-01`, `CEO-02`, `ITEM-12`, `ITEM-13`, `START-06`, `SETUP-07`) добавлены позже вместе с исправлениями, поэтому текущий набор — 95 тестов. Ожидания в тестах **не ослаблялись**: ни один тест не был удалён, переписан в «как сейчас работает» или помечен `skip`. Все 95 сценариев теперь проходят потому, что исправлен gameplay-код.
 
 ## 2. Что именно проверяет suite
 
 Ожидания записаны по правилам и картам: постранично по 25 страницам, по `Nemesis/Колоды/Атака.txt` для тиражей, по лицевым сторонам и оборотам карт, по 21 оригинальному PNG комнат и по полю. Покрыты: очередь обязательных эффектов, конец игры и финальная Eclosion, секретность view, шкала здоровья, стоимость действий, колоды (Queen, CEO, координаты), комнаты и иконки, компьютеры и Lockdown, предметы Support/Green, стартовые наборы, Android/Synthetic/UPS, Events, Feats, цели, поле и координаты.
 
-Тесты детерминированы: фиксированные seeds, явно заданные карты и результаты бросков, без сети, таймеров и `Math.random`. Fixtures нормализуют комнату, руку, колоду, очередь и фазу для конкретного случая; это **не 94 записи полных законно разыгранных партий**. При падении тест останавливается на первом неудачном assertion, поэтому зелёный прогон подтверждает именно сформулированные утверждения, а не всю подсистему целиком.
+Тесты детерминированы: фиксированные seeds, явно заданные карты и результаты бросков, без сети, таймеров и `Math.random`. Fixtures нормализуют комнату, руку, колоду, очередь и фазу для конкретного случая; это **не 95 записей полных законно разыгранных партий**. При падении тест останавливается на первом неудачном assertion, поэтому зелёный прогон подтверждает именно сформулированные утверждения, а не всю подсистему целиком.
 
 Спорный `EVENT-06` следует напечатанному значку Action card на самой карте события; противоречие общему тексту раздела 8 описано в основном отчёте как конфликт источников (**C**), а не как скрытый баг.
 
@@ -54,96 +54,97 @@ node nemesis/tools/fuzz.mjs 300
 | 2 | [OK-02](../nemesis/tools/audit.test.mjs#L75) | **PASS** | Green/Red: по 30, точные тиражи из Атака.txt | Все заданные тиражи совпали. |
 | 3 | [OK-03](../nemesis/tools/audit.test.mjs#L86) | **PASS** | 8 Serious Wounds, каждый ×3 | 24 карты, правильные копии. |
 | 4 | [OK-04](../nemesis/tools/audit.test.mjs#L91) | **PASS** | Стартовый мешок/16 exploration tokens/6 Feats/3 Adaptations | Проверенные количества совпали, включая 1–5 игроков. |
-| 5 | [OK-05](../nemesis/tools/audit.test.mjs#L104) | **PASS** | Contamination не оплачивает базовое действие | Move с единственной Contamination недоступен. |
-| 6 | [OK-06](../nemesis/tools/audit.test.mjs#L109) | **PASS** | Обычная Infection: Scan, discard, не более одной Larva | Рука сброшена, Larva размещена, результат совпал. |
-| 7 | [OK-07](../nemesis/tools/audit.test.mjs#L116) | **PASS** | Обычная Eclosion убивает по любой Contamination | Даже clean Contamination в draw вызывает смерть. |
-| 8 | [OK-08](../nemesis/tools/audit.test.mjs#L123) | **PASS** | У Tail 1/2 разные, правильные Adult-эффекты | Tail 1: −1 HP + Contamination; Tail 2: Contamination. |
-| 9 | [OK-09](../nemesis/tools/audit.test.mjs#L127) | **PASS** | Queen: числовой результат ≤ Hits запускает Queen Health | Поставлен шаг queen.card. |
-| 10 | [DECK-01](../nemesis/tools/audit.test.mjs#L134) | **PASS** | Queen Health: 14 физических карт с правильными копиями | 14 физических карт: q1repel ×2, q2malf ×3, q2act ×3, остальные ×1. |
-| 11 | [ACT-01](../nemesis/tools/audit.test.mjs#L141) | **PASS** | Room Action стоит 2 Action cards по Dashboard | roomActionCost() возвращает 2. |
-| 12 | [ACT-02](../nemesis/tools/audit.test.mjs#L145) | **PASS** | Computer и Pick Up недоступны в Combat | Оба действия выключены при чужом в комнате (snapshot двух flags). |
-| 13 | [HP-01](../nemesis/tools/audit.test.mjs#L153) | **PASS** | 10 потерь HP из первой клетки достигают черепа | 10 потерь из 10 HP доводят маркер до черепа: персонаж dead. |
-| 14 | [QUEUE-01](../nemesis/tools/audit.test.mjs#L157) | **PASS** | Archives: Knowledge reward разрешается раньше следующего действия | Сначала разрешается порог знаний, prompt — выбор Field Data. |
-| 15 | [QUEUE-02](../nemesis/tools/audit.test.mjs#L163) | **PASS** | Queen Health после Crit до следующего действия | Карта здоровья Королевы вытянута до появления меню хода. |
-| 16 | [QUEUE-03](../nemesis/tools/audit.test.mjs#L170) | **PASS** | Третий Heavy Item немедленно вызывает освобождение руки | Меню не появляется, пока не разрешена вместимость рук. |
-| 17 | [COMBAT-01](../nemesis/tools/audit.test.mjs#L175) | **PASS** | Larva Attack допускает Nerves of Steel | Сначала окно реакции, личинка применяется после отказа. |
-| 18 | [COMBAT-02](../nemesis/tools/audit.test.mjs#L182) | **PASS** | Blood Sense: Drone следует за выходящим Character | Drone перемещается в комнату назначения вместе с персонажем. |
-| 19 | [CARD-01](../nemesis/tools/audit.test.mjs#L190) | **PASS** | My Little Friend: burst доходит до Shoot | После burst выставляется dice prompt обычного выстрела. |
-| 20 | [COST-01 · mechanic.duckAndCover](../nemesis/tools/audit.test.mjs#L202) | **PASS** | Напечатанная дополнительная карта платится ровно один раз | Доплата взимается один раз, затем идёт эффект карты. |
-| 21 | [COST-01 · mechanic.technicalCorridors](../nemesis/tools/audit.test.mjs#L202) | **PASS** | Напечатанная дополнительная карта платится ровно один раз | Доплата взимается один раз, затем идёт эффект карты. |
-| 22 | [COST-01 · labrat.feelOfDark](../nemesis/tools/audit.test.mjs#L202) | **PASS** | Напечатанная дополнительная карта платится ровно один раз | Доплата взимается один раз, затем идёт эффект карты. |
-| 23 | [COST-01 · sentry.facilityTour](../nemesis/tools/audit.test.mjs#L202) | **PASS** | Напечатанная дополнительная карта платится ровно один раз | Доплата взимается один раз, затем идёт эффект карты. |
-| 24 | [COST-01 · scout.scavenging](../nemesis/tools/audit.test.mjs#L202) | **PASS** | Напечатанная дополнительная карта платится ровно один раз | Доплата взимается один раз, затем идёт эффект карты. |
-| 25 | [COST-02](../nemesis/tools/audit.test.mjs#L214) | **PASS** | Repairs: убрать Malfunction требует дополнительный discard | Repairs требует дополнительную карту за Malfunction. |
-| 26 | [CARD-02](../nemesis/tools/audit.test.mjs#L221) | **PASS** | Computer Skills исполняет Room Action | Computer Skills выполняет Room Action: Signal отправлен. |
-| 27 | [CARD-03](../nemesis/tools/audit.test.mjs#L226) | **PASS** | У CEO 12 исходных Action cards | У CEO 12 карт, включая Just One More Thing и Stop It!. |
-| 28 | [CARD-04](../nemesis/tools/audit.test.mjs#L229) | **PASS** | Convict Duck and Cover имеет redirect-реакцию | Convict получает окно redirect-реакции duck. |
-| 29 | [CARD-05](../nemesis/tools/audit.test.mjs#L235) | **PASS** | Deactivation решается после раскрытия Attack card | Attack card вскрыта до решения о Deactivation. |
-| 30 | [ROOM-01](../nemesis/tools/audit.test.mjs#L241) | **PASS** | Surgery сбрасывает также clean Action deck | Колода действий полностью уходит в сброс. |
-| 31 | [ROOM-02](../nemesis/tools/audit.test.mjs#L248) | **PASS** | Laboratory принимает Character Corpse как Human Corpse | Character Corpse доступен как анализируемый объект. |
-| 32 | [ROOM-03](../nemesis/tools/audit.test.mjs#L253) | **PASS** | Airlock убивает только в конце Player Phase | Обитатели живы до конца Player Phase, шлюз отмечен. |
-| 33 | [ROOM-04](../nemesis/tools/audit.test.mjs#L259) | **PASS** | Server допускает Room Action удалённой комнаты с Malfunction | Server выполняет действие комнаты с поломкой. |
-| 34 | [ROOM-05](../nemesis/tools/audit.test.mjs#L265) | **PASS** | На Laboratory 3 Green icons | ROOM_TILES.laboratory.items — три green. |
-| 35 | [ROOM-06](../nemesis/tools/audit.test.mjs#L268) | **PASS** | На Archives 3 Red icons | ROOM_TILES.archives.items — три red. |
-| 36 | [COMPUTER-01](../nemesis/tools/audit.test.mjs#L271) | **PASS** | Lock-down срабатывает немедленно при раскрытии после Computer Action | Lockdown разыгрывается сразу: поломка, новая карта. |
-| 37 | [COMPUTER-02](../nemesis/tools/audit.test.mjs#L278) | **PASS** | Доплату Computer B можно оплатить лишь Action card | Contamination отсутствует в списке оплаты Computer B. |
-| 38 | [ITEM-01](../nemesis/tools/audit.test.mjs#L283) | **PASS** | Medkit может одновременно убрать Wound и дать 3 HP | Травма снята и 3 HP восстановлены за одно использование. |
-| 39 | [ITEM-02](../nemesis/tools/audit.test.mjs#L291) | **PASS** | Grenade Launcher заменяет normal Shoot специальным эффектом | У гранатомёта единственный режим — гранатный. |
-| 40 | [ITEM-03](../nemesis/tools/audit.test.mjs#L296) | **PASS** | Armory не может заряжать Grenade Launcher без Grenade | Оружейная не заряжает гранатомёт без гранаты. |
-| 41 | [ITEM-04](../nemesis/tools/audit.test.mjs#L301) | **PASS** | Sniper Rifle позволяет basic Shoot при цели только nearby | Shoot доступен, когда цель только в соседней комнате. |
-| 42 | [ITEM-05](../nemesis/tools/audit.test.mjs#L306) | **PASS** | Assault Rifle: natural 2 остаётся Crit после Agile | Natural 2 даёт Crit до применения Agile. |
-| 43 | [ITEM-06](../nemesis/tools/audit.test.mjs#L312) | **PASS** | Assault Rifle: natural 2 работает против Queen | Против Королевы natural 2 также даёт Crit-процедуру. |
-| 44 | [ITEM-07](../nemesis/tools/audit.test.mjs#L318) | **PASS** | Xeno Field Experience: normal Hit требует Combat kill-check | Урон Field Experience проходит обычный бросок боя. |
-| 45 | [ITEM-08](../nemesis/tools/audit.test.mjs#L323) | **PASS** | Hardened Armor: замена Wound на −2 HP добровольна | Усиленная броня спрашивает игрока, а не заменяет травму молча. |
-| 46 | [ITEM-09](../nemesis/tools/audit.test.mjs#L328) | **PASS** | Heavily Injured Character не может получить Armor | giveItem не надевает запрещённую Armor. |
-| 47 | [FEAT-01](../nemesis/tools/audit.test.mjs#L333) | **PASS** | Overpower игнорирует Fearless | Overpower игнорирует Бесстрашие: чужой отогнан. |
-| 48 | [FEAT-02](../nemesis/tools/audit.test.mjs#L339) | **PASS** | Breach игнорирует дополнительный Action-card cost | Breach не требует дополнительной карты Computer B. |
-| 49 | [EVENT-01](../nemesis/tools/audit.test.mjs#L345) | **PASS** | The Queen Awakens не превышает доступный Queen token pool | Жетоны Королевы ограничены доступным пулом (3). |
-| 50 | [INV-01](../nemesis/tools/audit.test.mjs#L350) | **PASS** | Чужие обычные Light Items не раскрываются в view | Чужие light items не попадают в публичный view. |
-| 51 | [INV-02](../nemesis/tools/audit.test.mjs#L355) | **PASS** | Два выбираемых Objectives не раскрываются другому игроку | Другой игрок не видит варианты целей. |
-| 52 | [INV-03](../nemesis/tools/audit.test.mjs#L361) | **PASS** | Secret Engine Status отсутствует в чужом prompt title | Заголовок скрытого prompt не содержит состояния двигателя. |
-| 53 | [INV-04](../nemesis/tools/audit.test.mjs#L366) | **PASS** | Получатель Heavy Object соблюдает Hand limit | Получатель не может держать три слота без окна вместимости. |
-| 54 | [INV-05](../nemesis/tools/audit.test.mjs#L372) | **PASS** | Cannot be discarded защищает Laika от Drop | Laika отсутствует в списке Drop. |
-| 55 | [ANDROID-01](../nemesis/tools/audit.test.mjs#L377) | **PASS** | Synthetic: Scan, infected −1 HP, убрать Contamination и Draw replacement | Заражённая Contamination сканируется, −1 HP, добор замены. |
-| 56 | [ANDROID-02](../nemesis/tools/audit.test.mjs#L383) | **PASS** | Synthetic: Android не заражается Larva | Личинка не заражает Андроида. |
-| 57 | [ANDROID-03](../nemesis/tools/audit.test.mjs#L388) | **PASS** | UPS: попытка reshuffle при 0 markers смертельна | Перемешивание без жетонов ИБП убивает Андроида. |
-| 58 | [START-01](../nemesis/tools/audit.test.mjs#L393) | **PASS** | Начальные markers Cuffs/Robot/UPS: 6/5/3 | 6/5/3 жетона у Cuffs, Robot, UPS. |
-| 59 | [START-02](../nemesis/tools/audit.test.mjs#L397) | **PASS** | Android Gun requires no ammo | energyPistol.noAmmo = true. |
-| 60 | [START-03](../nemesis/tools/audit.test.mjs#L400) | **PASS** | Smart Gun — reroll, не постоянный +1 | Smart Gun: reroll, без постоянного +1. |
-| 61 | [START-04](../nemesis/tools/audit.test.mjs#L404) | **PASS** | Sentry начинает со своего SMG: max5, optional +ammo → Hit | Sentry начинает с SMG: 5 патронов, +1 патрон → +1 ранение. |
-| 62 | [START-05](../nemesis/tools/audit.test.mjs#L410) | **PASS** | Robot даёт CEO стартовый Body Wound | CEO начинает с Body Wound. |
-| 63 | [QUEST-01](../nemesis/tools/audit.test.mjs#L414) | **PASS** | Tools предлагает активацию исходного Quest Item | Tools предлагает активацию квестового предмета. |
-| 64 | [END-01](../nemesis/tools/audit.test.mjs#L420) | **PASS** | Последний Hibernation немедленно завершает игру | После последнего hibernation игра заканчивается сразу. |
-| 65 | [END-02](../nemesis/tools/audit.test.mjs#L426) | **PASS** | Ship destruction помечает Nest destroyed для Objectives | Совпало. |
-| 66 | [END-03](../nemesis/tools/audit.test.mjs#L430) | **PASS** | Финальная Larva разрешается через нормальную Eclosion | Личинка проходит финальную Eclosion, персонаж остаётся в игре. |
-| 67 | [OBJ-01](../nemesis/tools/audit.test.mjs#L443) | **PASS** | Pursuit of Science требует max Knowledge 8 | Pursuit требует 8 знаний, а не лидерства. |
-| 68 | [OBJ-02](../nemesis/tools/audit.test.mjs#L447) | **PASS** | Ab Ovo: достаточно глобально проанализированного Egg | Ab Ovo учитывает яйцо, проанализированное другим персонажем. |
-| 69 | [OBJ-03](../nemesis/tools/audit.test.mjs#L451) | **PASS** | BFF наследует явно напечатанную non-Earth safety друга | BFF наследует исключение безопасности друга при Венере. |
-| 70 | [MAP-01](../nemesis/tools/audit.test.mjs#L461) | **PASS** | Original board содержит 8 напечатанных Tech Entrances | Тех. входы: 002, 004, 005, 009, 014, 015, 019, 021. |
-| 71 | [MAP-02](../nemesis/tools/audit.test.mjs#L466) | **PASS** | Original corridor Cockpit 001 →002 имеет номер 3 | Коридор Рубка → 002 напечатан как 3. |
-| 72 | [PHASE-01](../nemesis/tools/audit.test.mjs#L469) | **PASS** | Intruder Attacks идут сверху вниз по полю | Атаки идут сверху вниз по полю, а не по ID комнаты. |
-| 73 | [EVENT-02](../nemesis/tools/audit.test.mjs#L475) | **PASS** | Breaking In сначала ставит только свежий Tech Noise | Свежий тех. шум не добавляет шум в соседние коридоры. |
-| 74 | [EVENT-03](../nemesis/tools/audit.test.mjs#L482) | **PASS** | Bulkheads Open без Action cards вызывает Encounter | Нет карт действий → Encounter, не Noise roll. |
-| 75 | [EVENT-04](../nemesis/tools/audit.test.mjs#L487) | **PASS** | Только Contamination означает отсутствие Action cards | Рука из одних Contamination = нет карт действий. |
-| 76 | [EVENT-05](../nemesis/tools/audit.test.mjs#L492) | **PASS** | Egg Protection: Drone один на комнату с Eggs | Один Drone на комнату с яйцом. |
-| 77 | [EVENT-06](../nemesis/tools/audit.test.mjs#L498) | **PASS** | Конкретный Event tie-break считает только Action cards | Tie-break считает карты действий, а не Contamination. |
-| 78 | [FEAT-03](../nemesis/tools/audit.test.mjs#L507) | **PASS** | Conviction: Queen Crit разрешает Queen Health | Conviction применяет критический результат к Королеве. |
-| 79 | [ITEM-10](../nemesis/tools/audit.test.mjs#L512) | **PASS** | Grenade Launcher наносит Crit каждому Intruder | Граната/гранатомёт уничтожает всех чужих в комнате. |
-| 80 | [ITEM-11](../nemesis/tools/audit.test.mjs#L517) | **PASS** | Perimeter prevention стоит 1 Action card | Периметр стоит 1 карту действия, заряды не расходуются. |
-| 81 | [INV-06](../nemesis/tools/audit.test.mjs#L523) | **PASS** | Передача требует согласия получателя | Передача требует согласия получателя. |
-| 82 | [OK-10](../nemesis/tools/audit.test.mjs#L528) | **PASS** | Energy Charge заряжает именно 3 ammo | Пустое оружие получает 3, как на оригинале. |
-| 83 | [INV-07](../nemesis/tools/audit.test.mjs#L534) | **PASS** | Публичные setup-параметры не должны раскрывать secret | Совпало. |
-| 84 | [OK-11](../nemesis/tools/audit.test.mjs#L543) | **PASS** | Careful Move исключает полностью Noisy destination | При Noise во всех Corridors/Tech room prompt выбора назначения не предлагается. |
-| 85 | [NOISE-01](../nemesis/tools/audit.test.mjs#L549) | **PASS** | Danger: eligible Intruder ломает Door без лишнего Noise | Сломанная дверь считается входом; лишний шум не кладётся. |
-| 86 | [OK-12](../nemesis/tools/audit.test.mjs#L558) | **PASS** | Четыре Field Data уже имеют централизованную доплату | У Evasive/Hunker/Quick Hands/Reposition первоначальный cards prompt имеет min=max=1. |
-| 87 | [FD-01](../nemesis/tools/audit.test.mjs#L568) | **PASS** | Safety in Numbers требует другого Character, а не нехватки оплаты | С четырьмя оплачиваемыми картами запрещено одному и разрешено вдвоём в комнате. |
-| 88 | [FD-02](../nemesis/tools/audit.test.mjs#L575) | **PASS** | Rapid Response включает Computer как basic one-card Action | Computer доступен как базовое действие в Rapid Response. |
-| 89 | [MAP-03](../nemesis/tools/audit.test.mjs#L582) | **PASS** | Coordinates: все 8 печатных схем назначения | Восемь напечатанных схем координат присутствуют. |
-| 90 | [CEO-01](../nemesis/tools/audit.test.mjs#L598) | **PASS** | «Ещё одну вещь»: после паса — добор 1 карты и дополнительный ход | Карта уходит из игры, добор 1, ход переходит тому же персонажу. |
-| 91 | [CEO-02](../nemesis/tools/audit.test.mjs#L612) | **PASS** | «Stop It!»: реакция после вскрытия карты атаки | Атака отменена, карта убрана из игры. |
-| 92 | [ITEM-12](../nemesis/tools/audit.test.mjs#L625) | **PASS** | Звуковая пушка: спецрезультат кладёт поломку в вашей комнате | На «2»/«6» — поломка в вашей комнате, шум не кладётся. |
-| 93 | [ITEM-13](../nemesis/tools/audit.test.mjs#L632) | **PASS** | Тактический топорик: 2 ранения без броска и оранжевая поломка | Кубик боя не бросается, ровно 2 ранения, жетон на оружии. |
-| 94 | [START-06](../nemesis/tools/audit.test.mjs#L639) | **PASS** | Smart Gun: переброс — решение игрока, второй результат окончателен | Появляется выбор «Перебросить/Оставить», при «Оставить» используется первый бросок. |
+| 5 | [SETUP-07](../nemesis/tools/audit.test.mjs#L104) | **PASS** | Капсулы: число по игрокам и чередование A/B (стр. 2, шаг 7) | 1–2 игрока — 2 капсулы, 3–4 — 3, 5 — 4; №1 в A, №2 в B и далее по кругу, все заперты до первой смерти; состав `pods` открыт во view. |
+| 6 | [OK-05](../nemesis/tools/audit.test.mjs#L125) | **PASS** | Contamination не оплачивает базовое действие | Move с единственной Contamination недоступен. |
+| 7 | [OK-06](../nemesis/tools/audit.test.mjs#L130) | **PASS** | Обычная Infection: Scan, discard, не более одной Larva | Рука сброшена, Larva размещена, результат совпал. |
+| 8 | [OK-07](../nemesis/tools/audit.test.mjs#L137) | **PASS** | Обычная Eclosion убивает по любой Contamination | Даже clean Contamination в draw вызывает смерть. |
+| 9 | [OK-08](../nemesis/tools/audit.test.mjs#L144) | **PASS** | У Tail 1/2 разные, правильные Adult-эффекты | Tail 1: −1 HP + Contamination; Tail 2: Contamination. |
+| 10 | [OK-09](../nemesis/tools/audit.test.mjs#L148) | **PASS** | Queen: числовой результат ≤ Hits запускает Queen Health | Поставлен шаг queen.card. |
+| 11 | [DECK-01](../nemesis/tools/audit.test.mjs#L155) | **PASS** | Queen Health: 14 физических карт с правильными копиями | 14 физических карт: q1repel ×2, q2malf ×3, q2act ×3, остальные ×1. |
+| 12 | [ACT-01](../nemesis/tools/audit.test.mjs#L162) | **PASS** | Room Action стоит 2 Action cards по Dashboard | roomActionCost() возвращает 2. |
+| 13 | [ACT-02](../nemesis/tools/audit.test.mjs#L166) | **PASS** | Computer и Pick Up недоступны в Combat | Оба действия выключены при чужом в комнате (snapshot двух flags). |
+| 14 | [HP-01](../nemesis/tools/audit.test.mjs#L174) | **PASS** | 10 потерь HP из первой клетки достигают черепа | 10 потерь из 10 HP доводят маркер до черепа: персонаж dead. |
+| 15 | [QUEUE-01](../nemesis/tools/audit.test.mjs#L178) | **PASS** | Archives: Knowledge reward разрешается раньше следующего действия | Сначала разрешается порог знаний, prompt — выбор Field Data. |
+| 16 | [QUEUE-02](../nemesis/tools/audit.test.mjs#L184) | **PASS** | Queen Health после Crit до следующего действия | Карта здоровья Королевы вытянута до появления меню хода. |
+| 17 | [QUEUE-03](../nemesis/tools/audit.test.mjs#L191) | **PASS** | Третий Heavy Item немедленно вызывает освобождение руки | Меню не появляется, пока не разрешена вместимость рук. |
+| 18 | [COMBAT-01](../nemesis/tools/audit.test.mjs#L196) | **PASS** | Larva Attack допускает Nerves of Steel | Сначала окно реакции, личинка применяется после отказа. |
+| 19 | [COMBAT-02](../nemesis/tools/audit.test.mjs#L203) | **PASS** | Blood Sense: Drone следует за выходящим Character | Drone перемещается в комнату назначения вместе с персонажем. |
+| 20 | [CARD-01](../nemesis/tools/audit.test.mjs#L211) | **PASS** | My Little Friend: burst доходит до Shoot | После burst выставляется dice prompt обычного выстрела. |
+| 21 | [COST-01 · mechanic.duckAndCover](../nemesis/tools/audit.test.mjs#L202) | **PASS** | Напечатанная дополнительная карта платится ровно один раз | Доплата взимается один раз, затем идёт эффект карты. |
+| 22 | [COST-01 · mechanic.technicalCorridors](../nemesis/tools/audit.test.mjs#L202) | **PASS** | Напечатанная дополнительная карта платится ровно один раз | Доплата взимается один раз, затем идёт эффект карты. |
+| 23 | [COST-01 · labrat.feelOfDark](../nemesis/tools/audit.test.mjs#L202) | **PASS** | Напечатанная дополнительная карта платится ровно один раз | Доплата взимается один раз, затем идёт эффект карты. |
+| 24 | [COST-01 · sentry.facilityTour](../nemesis/tools/audit.test.mjs#L202) | **PASS** | Напечатанная дополнительная карта платится ровно один раз | Доплата взимается один раз, затем идёт эффект карты. |
+| 25 | [COST-01 · scout.scavenging](../nemesis/tools/audit.test.mjs#L202) | **PASS** | Напечатанная дополнительная карта платится ровно один раз | Доплата взимается один раз, затем идёт эффект карты. |
+| 26 | [COST-02](../nemesis/tools/audit.test.mjs#L235) | **PASS** | Repairs: убрать Malfunction требует дополнительный discard | Repairs требует дополнительную карту за Malfunction. |
+| 27 | [CARD-02](../nemesis/tools/audit.test.mjs#L242) | **PASS** | Computer Skills исполняет Room Action | Computer Skills выполняет Room Action: Signal отправлен. |
+| 28 | [CARD-03](../nemesis/tools/audit.test.mjs#L247) | **PASS** | У CEO 12 исходных Action cards | У CEO 12 карт, включая Just One More Thing и Stop It!. |
+| 29 | [CARD-04](../nemesis/tools/audit.test.mjs#L250) | **PASS** | Convict Duck and Cover имеет redirect-реакцию | Convict получает окно redirect-реакции duck. |
+| 30 | [CARD-05](../nemesis/tools/audit.test.mjs#L256) | **PASS** | Deactivation решается после раскрытия Attack card | Attack card вскрыта до решения о Deactivation. |
+| 31 | [ROOM-01](../nemesis/tools/audit.test.mjs#L262) | **PASS** | Surgery сбрасывает также clean Action deck | Колода действий полностью уходит в сброс. |
+| 32 | [ROOM-02](../nemesis/tools/audit.test.mjs#L269) | **PASS** | Laboratory принимает Character Corpse как Human Corpse | Character Corpse доступен как анализируемый объект. |
+| 33 | [ROOM-03](../nemesis/tools/audit.test.mjs#L274) | **PASS** | Airlock убивает только в конце Player Phase | Обитатели живы до конца Player Phase, шлюз отмечен. |
+| 34 | [ROOM-04](../nemesis/tools/audit.test.mjs#L280) | **PASS** | Server допускает Room Action удалённой комнаты с Malfunction | Server выполняет действие комнаты с поломкой. |
+| 35 | [ROOM-05](../nemesis/tools/audit.test.mjs#L286) | **PASS** | На Laboratory 3 Green icons | ROOM_TILES.laboratory.items — три green. |
+| 36 | [ROOM-06](../nemesis/tools/audit.test.mjs#L289) | **PASS** | На Archives 3 Red icons | ROOM_TILES.archives.items — три red. |
+| 37 | [COMPUTER-01](../nemesis/tools/audit.test.mjs#L292) | **PASS** | Lock-down срабатывает немедленно при раскрытии после Computer Action | Lockdown разыгрывается сразу: поломка, новая карта. |
+| 38 | [COMPUTER-02](../nemesis/tools/audit.test.mjs#L299) | **PASS** | Доплату Computer B можно оплатить лишь Action card | Contamination отсутствует в списке оплаты Computer B. |
+| 39 | [ITEM-01](../nemesis/tools/audit.test.mjs#L304) | **PASS** | Medkit может одновременно убрать Wound и дать 3 HP | Травма снята и 3 HP восстановлены за одно использование. |
+| 40 | [ITEM-02](../nemesis/tools/audit.test.mjs#L312) | **PASS** | Grenade Launcher заменяет normal Shoot специальным эффектом | У гранатомёта единственный режим — гранатный. |
+| 41 | [ITEM-03](../nemesis/tools/audit.test.mjs#L317) | **PASS** | Armory не может заряжать Grenade Launcher без Grenade | Оружейная не заряжает гранатомёт без гранаты. |
+| 42 | [ITEM-04](../nemesis/tools/audit.test.mjs#L322) | **PASS** | Sniper Rifle позволяет basic Shoot при цели только nearby | Shoot доступен, когда цель только в соседней комнате. |
+| 43 | [ITEM-05](../nemesis/tools/audit.test.mjs#L327) | **PASS** | Assault Rifle: natural 2 остаётся Crit после Agile | Natural 2 даёт Crit до применения Agile. |
+| 44 | [ITEM-06](../nemesis/tools/audit.test.mjs#L333) | **PASS** | Assault Rifle: natural 2 работает против Queen | Против Королевы natural 2 также даёт Crit-процедуру. |
+| 45 | [ITEM-07](../nemesis/tools/audit.test.mjs#L339) | **PASS** | Xeno Field Experience: normal Hit требует Combat kill-check | Урон Field Experience проходит обычный бросок боя. |
+| 46 | [ITEM-08](../nemesis/tools/audit.test.mjs#L344) | **PASS** | Hardened Armor: замена Wound на −2 HP добровольна | Усиленная броня спрашивает игрока, а не заменяет травму молча. |
+| 47 | [ITEM-09](../nemesis/tools/audit.test.mjs#L349) | **PASS** | Heavily Injured Character не может получить Armor | giveItem не надевает запрещённую Armor. |
+| 48 | [FEAT-01](../nemesis/tools/audit.test.mjs#L354) | **PASS** | Overpower игнорирует Fearless | Overpower игнорирует Бесстрашие: чужой отогнан. |
+| 49 | [FEAT-02](../nemesis/tools/audit.test.mjs#L360) | **PASS** | Breach игнорирует дополнительный Action-card cost | Breach не требует дополнительной карты Computer B. |
+| 50 | [EVENT-01](../nemesis/tools/audit.test.mjs#L366) | **PASS** | The Queen Awakens не превышает доступный Queen token pool | Жетоны Королевы ограничены доступным пулом (3). |
+| 51 | [INV-01](../nemesis/tools/audit.test.mjs#L371) | **PASS** | Чужие обычные Light Items не раскрываются в view | Чужие light items не попадают в публичный view. |
+| 52 | [INV-02](../nemesis/tools/audit.test.mjs#L376) | **PASS** | Два выбираемых Objectives не раскрываются другому игроку | Другой игрок не видит варианты целей. |
+| 53 | [INV-03](../nemesis/tools/audit.test.mjs#L382) | **PASS** | Secret Engine Status отсутствует в чужом prompt title | Заголовок скрытого prompt не содержит состояния двигателя. |
+| 54 | [INV-04](../nemesis/tools/audit.test.mjs#L387) | **PASS** | Получатель Heavy Object соблюдает Hand limit | Получатель не может держать три слота без окна вместимости. |
+| 55 | [INV-05](../nemesis/tools/audit.test.mjs#L393) | **PASS** | Cannot be discarded защищает Laika от Drop | Laika отсутствует в списке Drop. |
+| 56 | [ANDROID-01](../nemesis/tools/audit.test.mjs#L398) | **PASS** | Synthetic: Scan, infected −1 HP, убрать Contamination и Draw replacement | Заражённая Contamination сканируется, −1 HP, добор замены. |
+| 57 | [ANDROID-02](../nemesis/tools/audit.test.mjs#L404) | **PASS** | Synthetic: Android не заражается Larva | Личинка не заражает Андроида. |
+| 58 | [ANDROID-03](../nemesis/tools/audit.test.mjs#L409) | **PASS** | UPS: попытка reshuffle при 0 markers смертельна | Перемешивание без жетонов ИБП убивает Андроида. |
+| 59 | [START-01](../nemesis/tools/audit.test.mjs#L414) | **PASS** | Начальные markers Cuffs/Robot/UPS: 6/5/3 | 6/5/3 жетона у Cuffs, Robot, UPS. |
+| 60 | [START-02](../nemesis/tools/audit.test.mjs#L418) | **PASS** | Android Gun requires no ammo | energyPistol.noAmmo = true. |
+| 61 | [START-03](../nemesis/tools/audit.test.mjs#L421) | **PASS** | Smart Gun — reroll, не постоянный +1 | Smart Gun: reroll, без постоянного +1. |
+| 62 | [START-04](../nemesis/tools/audit.test.mjs#L425) | **PASS** | Sentry начинает со своего SMG: max5, optional +ammo → Hit | Sentry начинает с SMG: 5 патронов, +1 патрон → +1 ранение. |
+| 63 | [START-05](../nemesis/tools/audit.test.mjs#L431) | **PASS** | Robot даёт CEO стартовый Body Wound | CEO начинает с Body Wound. |
+| 64 | [QUEST-01](../nemesis/tools/audit.test.mjs#L435) | **PASS** | Tools предлагает активацию исходного Quest Item | Tools предлагает активацию квестового предмета. |
+| 65 | [END-01](../nemesis/tools/audit.test.mjs#L441) | **PASS** | Последний Hibernation немедленно завершает игру | После последнего hibernation игра заканчивается сразу. |
+| 66 | [END-02](../nemesis/tools/audit.test.mjs#L447) | **PASS** | Ship destruction помечает Nest destroyed для Objectives | Совпало. |
+| 67 | [END-03](../nemesis/tools/audit.test.mjs#L451) | **PASS** | Финальная Larva разрешается через нормальную Eclosion | Личинка проходит финальную Eclosion, персонаж остаётся в игре. |
+| 68 | [OBJ-01](../nemesis/tools/audit.test.mjs#L464) | **PASS** | Pursuit of Science требует max Knowledge 8 | Pursuit требует 8 знаний, а не лидерства. |
+| 69 | [OBJ-02](../nemesis/tools/audit.test.mjs#L468) | **PASS** | Ab Ovo: достаточно глобально проанализированного Egg | Ab Ovo учитывает яйцо, проанализированное другим персонажем. |
+| 70 | [OBJ-03](../nemesis/tools/audit.test.mjs#L472) | **PASS** | BFF наследует явно напечатанную non-Earth safety друга | BFF наследует исключение безопасности друга при Венере. |
+| 71 | [MAP-01](../nemesis/tools/audit.test.mjs#L482) | **PASS** | Original board содержит 8 напечатанных Tech Entrances | Тех. входы: 002, 004, 005, 009, 014, 015, 019, 021. |
+| 72 | [MAP-02](../nemesis/tools/audit.test.mjs#L487) | **PASS** | Original corridor Cockpit 001 →002 имеет номер 3 | Коридор Рубка → 002 напечатан как 3. |
+| 73 | [PHASE-01](../nemesis/tools/audit.test.mjs#L490) | **PASS** | Intruder Attacks идут сверху вниз по полю | Атаки идут сверху вниз по полю, а не по ID комнаты. |
+| 74 | [EVENT-02](../nemesis/tools/audit.test.mjs#L496) | **PASS** | Breaking In сначала ставит только свежий Tech Noise | Свежий тех. шум не добавляет шум в соседние коридоры. |
+| 75 | [EVENT-03](../nemesis/tools/audit.test.mjs#L503) | **PASS** | Bulkheads Open без Action cards вызывает Encounter | Нет карт действий → Encounter, не Noise roll. |
+| 76 | [EVENT-04](../nemesis/tools/audit.test.mjs#L508) | **PASS** | Только Contamination означает отсутствие Action cards | Рука из одних Contamination = нет карт действий. |
+| 77 | [EVENT-05](../nemesis/tools/audit.test.mjs#L513) | **PASS** | Egg Protection: Drone один на комнату с Eggs | Один Drone на комнату с яйцом. |
+| 78 | [EVENT-06](../nemesis/tools/audit.test.mjs#L519) | **PASS** | Конкретный Event tie-break считает только Action cards | Tie-break считает карты действий, а не Contamination. |
+| 79 | [FEAT-03](../nemesis/tools/audit.test.mjs#L528) | **PASS** | Conviction: Queen Crit разрешает Queen Health | Conviction применяет критический результат к Королеве. |
+| 80 | [ITEM-10](../nemesis/tools/audit.test.mjs#L533) | **PASS** | Grenade Launcher наносит Crit каждому Intruder | Граната/гранатомёт уничтожает всех чужих в комнате. |
+| 81 | [ITEM-11](../nemesis/tools/audit.test.mjs#L538) | **PASS** | Perimeter prevention стоит 1 Action card | Периметр стоит 1 карту действия, заряды не расходуются. |
+| 82 | [INV-06](../nemesis/tools/audit.test.mjs#L544) | **PASS** | Передача требует согласия получателя | Передача требует согласия получателя. |
+| 83 | [OK-10](../nemesis/tools/audit.test.mjs#L549) | **PASS** | Energy Charge заряжает именно 3 ammo | Пустое оружие получает 3, как на оригинале. |
+| 84 | [INV-07](../nemesis/tools/audit.test.mjs#L555) | **PASS** | Публичные setup-параметры не должны раскрывать secret | Совпало. |
+| 85 | [OK-11](../nemesis/tools/audit.test.mjs#L564) | **PASS** | Careful Move исключает полностью Noisy destination | При Noise во всех Corridors/Tech room prompt выбора назначения не предлагается. |
+| 86 | [NOISE-01](../nemesis/tools/audit.test.mjs#L570) | **PASS** | Danger: eligible Intruder ломает Door без лишнего Noise | Сломанная дверь считается входом; лишний шум не кладётся. |
+| 87 | [OK-12](../nemesis/tools/audit.test.mjs#L579) | **PASS** | Четыре Field Data уже имеют централизованную доплату | У Evasive/Hunker/Quick Hands/Reposition первоначальный cards prompt имеет min=max=1. |
+| 88 | [FD-01](../nemesis/tools/audit.test.mjs#L589) | **PASS** | Safety in Numbers требует другого Character, а не нехватки оплаты | С четырьмя оплачиваемыми картами запрещено одному и разрешено вдвоём в комнате. |
+| 89 | [FD-02](../nemesis/tools/audit.test.mjs#L596) | **PASS** | Rapid Response включает Computer как basic one-card Action | Computer доступен как базовое действие в Rapid Response. |
+| 90 | [MAP-03](../nemesis/tools/audit.test.mjs#L603) | **PASS** | Coordinates: все 8 печатных схем назначения | Восемь напечатанных схем координат присутствуют. |
+| 91 | [CEO-01](../nemesis/tools/audit.test.mjs#L619) | **PASS** | «Ещё одну вещь»: после паса — добор 1 карты и дополнительный ход | Карта уходит из игры, добор 1, ход переходит тому же персонажу. |
+| 92 | [CEO-02](../nemesis/tools/audit.test.mjs#L633) | **PASS** | «Stop It!»: реакция после вскрытия карты атаки | Атака отменена, карта убрана из игры. |
+| 93 | [ITEM-12](../nemesis/tools/audit.test.mjs#L646) | **PASS** | Звуковая пушка: спецрезультат кладёт поломку в вашей комнате | На «2»/«6» — поломка в вашей комнате, шум не кладётся. |
+| 94 | [ITEM-13](../nemesis/tools/audit.test.mjs#L653) | **PASS** | Тактический топорик: 2 ранения без броска и оранжевая поломка | Кубик боя не бросается, ровно 2 ранения, жетон на оружии. |
+| 95 | [START-06](../nemesis/tools/audit.test.mjs#L660) | **PASS** | Smart Gun: переброс — решение игрока, второй результат окончателен | Появляется выбор «Перебросить/Оставить», при «Оставить» используется первый бросок. |
 
 ## 4a. Действия кликом по столу (15 сценариев)
 
@@ -171,7 +172,7 @@ node nemesis/tools/fuzz.mjs 300
 
 - **E2E — только транспорт, не картинка.** `tools/smoke.mjs` поднимает настоящий `server.mjs`, подключает два WebSocket-клиента и проходит лобби → старт → меню хода → выбор комнаты → Esc (откат своего шага) → передача хода; он же проверяет, что чужой prompt не принимается, а в view нет `secret`/`seedStr`. Отрисовка Babylon/WebGL, вёрстка панелей и звук в браузере по-прежнему **U**: автотестами не покрыты.
 - **Клиентская логика проверена в DOM-песочнице, но это не часть набора.** Панель персонажа, просмотр колод, подсказки, Alt-слой, prompt мешка/события и Esc прогонялись через jsdom с заглушками `scene3d`/`dice` (внешний пакет, в репозиторий не добавлялся — инвариант «ноль зависимостей»). Результат — «зелёные» проверки DOM, а не подтверждение внешнего вида; файл в набор не входит.
-- **Fixtures частично синтетические.** Они задают руки, колоды и комнаты напрямую, чтобы изолировать утверждение; 94 сценария не заменяют исчерпывающий перебор комбинаций.
+- **Fixtures частично синтетические.** Они задают руки, колоды и комнаты напрямую, чтобы изолировать утверждение; 95 сценариев не заменяют исчерпывающий перебор комбинаций.
 - **Непроверенные ветки.** Полная матрица всех комбинаций восьми Adaptation, все взаимодействия квестовых предметов после активации, физический подсчёт четырёх туш для `Bug Hunt`, а также все тайминги реакций вне протестированных окон остаются **U** (не проверено) — это не PASS.
 - **Противоречия источников** (порядок Bulkheads, заголовок Additional Room Sheet, Computer/Knowledge, «onboard» у BFF, третья клетка шкалы травм) не «исправлялись» произвольно: выбранный вариант зафиксирован в основном отчёте с пометкой **C**.
 - **Клиент менялся в этой ветке** (QoL-слой: `nemesis/client/app.js`, `style.css`, `index.html`, `scene3d.js`, `fx.js`, `sound.js`, `dice.js`) — синтаксис проверен `node --check`, поведение — jsdom-песочницей, но глазами в браузере не смотрели.
@@ -197,4 +198,5 @@ node nemesis/tools/fuzz.mjs 300
 | `nemesis/client/*` | QoL: подсказки клавиш, Alt-слой (номера коридоров и цвета поиска), панель персонажа, просмотр колод, полоса вытянутого жетона, «Готово» у события, Esc-откат, спокойный звук кубика. |
 | `nemesis/shared/engine/core.mjs`, `movement.mjs`, `combat.mjs`, `turn.mjs` | Ввод действия кликом: `handSlots()` (что лежит в каждой руке), `dropHeavy()`; `turn.do` передаёт выбранную комнату, оружие, цель, объект и освобождаемый слот; `move.start` пропускает вопрос «куда?» при известном пункте; `shoot.start`/`shoot.target`/`melee.start` берут кликнутое оружие и цель; `pickup` разбит на `pickup.start → object → hand → take` с вопросом о слоте; «Взять предмет» больше не блокируется полными руками (освобождение слота бесплатно). |
 | `nemesis/shared/engine/*` (13 сайтов выбора) + `view.mjs` | В `options[]` всех списков выбора предмета добавлен ключ `item` — клиент рисует иконку; `handSlots` передаётся только владельцу (чужие лёгкие предметы по-прежнему скрыты). |
+| `nemesis/client/scene3d.js`, `app.js` | Спасательные капсулы в отсеках A/B: отдельная модель на каждую капсулу из `view.pods` (белый корпус, иллюминатор, люк, полосы, номер, лампа «заперта/открыта/занята», пустая док-рама после старта); декоративные красные конусы заменены на док-рамы; подсказка комнаты перечисляет капсулы отсека. |
 | `nemesis/client/app.js`, `scene3d.js`, `characters.js`, `style.css`, `index.html` | Клик по комнате/чужому/объекту открывает окно над целью (идти/красться, оружие + ближний бой, слот руки), отменяется кликом мимо, Esc, колесом и WASD-панорамой камеры; индикатор «Сейчас ход» в углу; списки выбора предмета — центральное окно с картинками, сворачивается и открывается снова; выбор предмета прямо из планшета персонажа (подсвеченные предметы и слоты рук отвечают на prompt, кнопка «Персонаж» мигает); модель личинки переделана в «обнимателя лица». |

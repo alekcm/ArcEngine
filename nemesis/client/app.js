@@ -198,6 +198,19 @@ function renderTopbar() {
     const ccText = cc ? (cc.options ? Object.values(cc.options).map(t => '• ' + t).join('\n') : cc.text) : '';
     $('tbComputer').innerHTML = cc ? esc(cc.name) + '<span class="ipop"><span class="ipart" style="background-image:url(' + computerArt(v.computerCard) + ')"></span><b>' + esc(cc.name) + '</b><span class="pre">' + esc(ccText) + '</span></span>' : '—';
     $('tbComputer').classList.toggle('itag', !!cc);
+    // Escape pods are pieces on the table: their number, section and state are public, only the
+    // location of the evacuation sections is secret (the tiles are face down until explored).
+    const pods = v.pods || [];
+    $('tbPods').innerHTML = pods.length
+        ? pods.map(p => '<span class="podchip ' + (p.launched || p.removed ? 'gone' : p.occupants.length ? 'busy' : p.locked ? 'locked' : 'open') + '">' +
+            '№' + p.num + '<i>' + p.section + '</i>' + (p.launched ? '🚀' : p.removed ? '✕' : p.locked ? '🔒' : '🔓') +
+            (p.occupants.length ? '<em>' + p.occupants.length + '/2</em>' : '') + '</span>').join('')
+        : '—';
+    $('tbPods').classList.toggle('itag', pods.length > 0);
+    $('tbPods').title = pods.length
+        ? 'Спасательные капсулы (стр. 2, шаг 7): номер · секция A/B · 🔒 заперта / 🔓 открыта / 🚀 улетела. ' +
+          'Сколько их — зависит от числа игроков; открываются после первой смерти или на жёлтой зоне самоуничтожения.'
+        : '';
     const ad = v.adaptations || [];
     $('tbAdapt').innerHTML = ad.length ? ad.map(k => '<span class="itag adapt">' + esc(ADAPTATIONS[k].name) + '<span class="ipop"><b>🧬 ' + esc(ADAPTATIONS[k].name) + '</b><span>' + esc(ADAPTATIONS[k].text) + '</span></span></span>').join('<span class="sep"> · </span>') : 'нет' + (v.adaptationsRemoved ? ' (удалено ' + v.adaptationsRemoved + ')' : '');
     const cur = v.players[v.current];
@@ -491,6 +504,13 @@ function onRoomHover(id, x, y) {
     if (tile === 'nest') flags.push('🥚 яиц: ' + v.nestEggs);
     const ppl = v.players.filter(p => p.room === id && (p.status === 'active' || p.status === 'hibernating') && !p.pod).map(p => p.name);
     if (ppl.length) flags.push('🧑 ' + ppl.join(', '));
+    // Escape pods of this section: how many there are, whether they are open and who sits inside.
+    if (tile === 'evacA' || tile === 'evacB') {
+        const sec = tile === 'evacA' ? 'A' : 'B';
+        const pods = (v.pods || []).filter(p => p.section === sec);
+        if (pods.length) html += '<div>🚀 ' + pods.map(p => '№' + p.num + ' — ' + (p.launched ? 'уже улетела' : p.removed ? 'разрушена'
+            : (p.locked ? 'заперта' : 'открыта') + (p.occupants.length ? ', занято ' + p.occupants.length + '/2' : ''))).join(' · ') + '</div>';
+    }
     if (flags.length) html += '<div>' + flags.join(' · ') + '</div>';
     html += '<div class="dim">Выходы: ' + r.exits.map(e => (e.nums || [e.num]).join('/') + '→' + e.to + (v.ship.corridors[e.corridor].door === 'closed' ? ' 🚪' : v.ship.corridors[e.corridor].door === 'destroyed' ? ' 💥' : '') + (v.ship.corridors[e.corridor].noise ? ' 🔊' : '')).join(', ') + '</div>';
     el.innerHTML = html; el.classList.remove('hidden');
@@ -959,6 +979,7 @@ const HELP = `
 <b>Завершение:</b> первый игрок меняется, добор до 5 карт, время −1.</p>
 <h4>Шум</h4><p>После перемещения в пустую комнату — бросок шума: жетон кладётся в коридор с выпавшим номером (если он уже там — <b>Встреча</b>: из мешка появляется чужой). «Опасность» — жетоны во все коридоры вокруг. Осторожное перемещение (2 карты) позволяет выбрать коридор без шума.</p>
 <h4>Бой</h4><p>Стрельба/ближний бой: бросок D10. Крит убивает всегда; иначе чужой гибнет, если результат ≤ числа его ранений. Ближний бой даёт заражение и ответную атаку. Убегая из комнаты с чужими, вы получаете атаки.</p>
+<h4>Спасательные капсулы</h4><p>Их количество зависит от числа игроков: 1–2 игрока — 2 капсулы, 3–4 — 3, 5 — 4; они раскладываются по секциям A и B по кругу (№1 в A, №2 в B и так далее) и до поры заперты. Состояние капсул всегда видно в верхней строке (№ · секция · 🔒/🔓/🚀 · занято n/2), а сами капсулы стоят в эвакуационных отсеках, как только отсек разведан. Отпираются они после первой гибели персонажа или когда самоуничтожение доходит до жёлтой зоны; ключ эвакуации и контроль шлюзов могут переключать замок. В отсеке: бросок шума, затем посадка (до 2 человек), старт — и вы вне корабля.</p>
 <h4>Конец игры</h4><p>Когда время дойдёт до 0 (или сработает самоуничтожение/капсулы): проверяются двигатели (нужно ≥2 исправных), пункт назначения (A–D по тайной карте координат), заражение всех карт выживших и цели.</p>
 <h4>Управление</h4><p>ЛКМ по комнате — идти (спросит «идти или красться»), по чужому — атака своим оружием или ближний бой, по тяжёлому объекту — в какую руку взять. Нажатие мимо окна, <b>Esc</b> или <b>WASD</b> отменяют вопрос. WASD — панорама, ПКМ/СКМ — поворот камеры, колесо — масштаб. Наведите на комнату — подсказка.</p>
 <h4>Горячие клавиши</h4><p><b>Esc</b> — закрыть окно или вернуть свой последний шаг (пока вы выбираете действие). <b>Alt</b> (удерживать) — номера коридоров и цвета поиска над комнатами. <b>C</b> — планшет персонажа, <b>F</b> — к своей комнате, <b>Tab</b> — пинг на карте, <b>Q</b>/<b>E</b> — повернуть камеру, <b>Enter</b> — подтвердить выбранные карты, <b>1…9</b> — нажать кнопку в окне выбора.</p>

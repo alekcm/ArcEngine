@@ -101,6 +101,27 @@ test('OK-04 / pp. 2, 25: starting bag, exploration supply, feats and adaptations
     const s = createGame({ seed: 'adapt-control', players: [{ name: 'A', charId: 'soldier' }] });
     assert.equal(s.adaptations.length, 3);
 });
+test('SETUP-07 / p. 2 step 7: escape pods are chosen by the player count and alternate A/B', () => {
+    const expected = { 1: 2, 2: 2, 3: 3, 4: 3, 5: 4 };
+    const chars = ['soldier', 'scout', 'mechanic', 'pilot', 'hacker'];
+    for (const n of [1, 2, 3, 4, 5]) {
+        const s = fresh(chars.slice(0, n));
+        assert.equal(s.pods.length, expected[n], n + ' players');
+        assert.deepEqual(s.pods.map(p => p.num), Array.from({ length: expected[n] }, (_, i) => i + 1), 'pods are numbered in order');
+        assert.deepEqual(s.pods.map(p => p.section), s.pods.map((_, i) => (i % 2 === 0 ? 'A' : 'B')), 'the lowest number goes to A, then B, alternating');
+        assert.ok(s.pods.every(p => p.locked && !p.launched && !p.removed && p.occupants.length === 0), 'pods start locked, empty and unlaunched');
+        assert.ok(!s.podsUnlocked, 'nothing is unlocked before the first death');
+        // both evacuation tiles exist on the board and every section has at least one pod
+        const sections = new Set(s.pods.map(p => p.section));
+        assert.equal(sections.size, 2, n + ' players: pods are split between sections');
+    }
+    // pods are public information
+    const s = fresh(chars.slice(0, 5));
+    const v = viewFor(s, 0);
+    assert.equal(v.pods.length, 4);
+    assert.deepEqual(Object.keys(v.pods[0]).sort(), ['launched', 'locked', 'num', 'occupants', 'removed', 'section']);
+});
+
 test('OK-05 / p. 5: contamination cannot pay a basic action cost', () => {
     const s = fresh(), p = s.players[0];
     p.hand = ['contam#test'];

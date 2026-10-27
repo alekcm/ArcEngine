@@ -209,7 +209,7 @@ export class Scene3D {
         const qm = this.makeLabel('qm_' + r.id, '?', '', root, 0, 0.13, 0, 7.5);
         qm.rotation.set(Math.PI / 2, 0, 0); qm.billboardMode = 0; qm.isPickable = false;
         { const ctx = qm.metadata.dt.getContext(); ctx.clearRect(0, 0, 512, 160); ctx.font = 'bold 150px Segoe UI, Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#56687c'; ctx.fillText('?', 256, 138); qm.metadata.dt.update(); qm.metadata.text = 'qm'; }
-        this.roomNodes[r.id] = { root, plat, sel, label, qm, data: r, exitAngles, techAngle, techLeds, shell: null, shellKey: null, strips: null, emergency: [], malfunction: false, flicker: Math.random() * 10, flip: null, pop: null };
+        this.roomNodes[r.id] = { root, plat, sel, label, qm, data: r, exitAngles, techAngle, techLeds, shell: null, shellKey: null, strips: null, emergency: [], malfunction: false, flicker: Math.random() * 10, flip: null, pop: null, podsRoot: null, podKey: null };
     }
 
     /** Technical-corridor entrance: a short tunnel through the wall line, ringed with blue LEDs. */
@@ -471,8 +471,20 @@ export class Scene3D {
                 bx(0.8, 0.9, 0.5, 2.6, 0.45, -1.4, white); bx(0.7, 0.04, 0.4, 2.6, 0.92, -1.4, M('#e05252')); locker(0.4, -2.6, Math.PI); cy(0.1, 0.1, 1.6, 0.2, 0.8, 0.8, metal, 6); bx(0.3, 0.4, 0.1, 0.2, 1.5, 0.8, M('#7fc7ff', 0.5, { alpha: 0.7 }));
                 break;
             case 'evacA': case 'evacB':
-                for (const s of [-1, 1]) { cy(1.5, 1.9, 2.2, s * 1.9, 1.1, -1.0, metal, 8); cy(0.6, 1.5, 0.9, s * 1.9, 2.65, -1.0, accent, 8); bx(0.6, 0.8, 0.1, s * 1.9, 1.0, -0.05, M('#7fc7ff', 0.5)); for (let i = 0; i < 4; i++) bx(0.08, 1.0, 0.08, s * 1.9 + Math.cos(i * 1.57) * 0.95, 0.5, -1.0 + Math.sin(i * 1.57) * 0.95, dark); }
-                bx(2.6, 0.08, 1.0, 0, 0.1, 1.9, M('#e05252', 0.5)); for (let i = 0; i < 5; i++) bx(0.3, 0.09, 1.0, -1.1 + i * 0.55, 0.11, 1.9, M('#f1c40f', 0.6)); console_(0, -2.6, Math.PI); floorZone(0, -1.0, 6.0, 3.0, 0, hazard);
+                // Two docking cradles per section room. The pods themselves are state-dependent and
+                // are drawn by syncPods() — the number of pods depends on the player count.
+                for (const s of [-1, 1]) {
+                    const px = s * 2.5, pz = 1.05;
+                    bx(2.7, 0.16, 3.1, px, 0.1, pz, metal);                                  // cradle plate
+                    bx(2.5, 0.1, 0.26, px, 0.19, pz - 1.32, hazard); bx(2.5, 0.1, 0.26, px, 0.19, pz + 1.32, hazard);
+                    for (const d of [-1, 1]) { bx(0.22, 0.6, 0.34, px + d * 1.14, 0.42, pz - 0.85, dark); bx(0.22, 0.6, 0.34, px + d * 1.14, 0.42, pz + 1.15, dark); }
+                    bx(2.0, 0.04, 0.16, px, 0.2, pz, M('#c0392b', 0.35));                    // guide line
+                    for (let i = 0; i < 4; i++) bx(0.18, 0.05, 0.5, px - 0.8 + i * 0.53, 0.19, pz + 1.62, M('#e6c13a', 0.3));
+                    // umbilical arm folded to the cradle side
+                    cy(0.18, 0.18, 0.5, px + 1.32, 0.3, pz - 1.25, dark, 6, Math.PI / 2);
+                }
+                bx(2.6, 0.08, 1.0, 0, 0.1, -1.6, M('#e05252', 0.5)); for (let i = 0; i < 5; i++) bx(0.3, 0.09, 1.0, -1.1 + i * 0.55, 0.11, -1.6, M('#f1c40f', 0.6));
+                console_(0, -2.8, Math.PI); floorZone(0, 1.15, 6.2, 3.4, 0, hazard);
                 break;
             case 'fireControl':
                 for (let i = 0; i < 3; i++) { cy(0.5, 0.5, 1.2, -1.6 + i * 1.0, 0.6, 1.4, M('#e05252'), 8); cy(0.2, 0.2, 0.3, -1.6 + i * 1.0, 1.35, 1.4, metal, 6); }
@@ -767,6 +779,149 @@ export class Scene3D {
         let k = 0;
         for (const o of rs.objects) this.addObject(o.type, node.root, k++, r.id, k - 1);
         if (tile === 'nest' && rs.explored) for (let i = 0; i < view.nestEggs; i++) this.addObject('egg', node.root, 10 + i);
+        // Escape pods in their section (rules p. 2 step 7: 2 pods for 1-2 players, 3 for 3-4, 4 for 5,
+        // alternating A/B). The tiles are hidden until explored, so the pods appear with the room.
+        this.syncPods(node, view, tile === 'evacA' ? 'A' : tile === 'evacB' ? 'B' : null);
+    }
+
+    /** Escape pods of one section, rebuilt only when their state (lock/occupants/launch) changes. */
+    syncPods(node, view, section) {
+        const pods = section ? (view.pods || []).filter(p => p.section === section).sort((a, b) => a.num - b.num) : [];
+        const key = section ? pods.map(p => [p.num, p.locked ? 'L' : 'o', (p.occupants || []).length, p.launched ? 'up' : p.removed ? 'rm' : ''].join('')).join('|') : '';
+        if (node.podsRoot && node.podKey === key) return;
+        if (node.podsRoot) {
+            node.podsRoot.dispose();                       // meshes only: the cached materials are shared
+            for (const m of node.podMats || []) m.dispose(true, true);   // materials owned by the pods
+            node.podsRoot = null;
+        }
+        node.podMats = [];
+        node.podKey = key;
+        if (!pods.length) return;
+        const root = new (B().TransformNode)('pods_' + node.data.id, this.scene);
+        root.parent = node.root;
+        pods.forEach((p, i) => {
+            const x = (i === 0 ? -1 : 1) * 2.5, z = 1.05;
+            const pose = new (B().TransformNode)('podpose_' + p.num, this.scene);
+            pose.parent = root; pose.position.set(x, 0, z); pose.scaling.setAll(0.62);   // about a character tall
+            pose.rotation.y = Math.atan2(-x, -z);   // the hatch faces the middle of the room
+            if (p.launched || p.removed) this.buildEmptyCradle(pose, p, node.podMats);
+            else this.buildPodModel(pose, p, node.podMats);
+        });
+        node.podsRoot = root;
+    }
+
+    /** Escape pod: a squat white capsule on a cradle, with a hatched porthole, hazard stripes,
+     *  the pod number on the nose and a lamp that shows Locked (red) / Open (green) / Occupied (amber). */
+    buildPodModel(parent, st, owned) {
+        const S = this.scene;
+        const shell = this.M('#d5dbe2'), shellDark = this.M('#a9b3bf'), seam = this.M('#69737e');
+        const red = this.M('#b93a2e', 0.12), yellow = this.M('#e3bd3a', 0.18), dark = this.M('#1e262e');
+        const glassM = new (B().StandardMaterial)('podGlass_' + st.num, S);
+        glassM.diffuseColor = B().Color3.FromHexString('#17324b');
+        glassM.emissiveColor = B().Color3.FromHexString('#2b6797').scale(0.6);
+        glassM.specularColor = B().Color3.FromHexString('#bfe4ff');
+        glassM.alpha = 0.9;
+        owned.push(glassM);
+        const add = m => { m.parent = parent; m.isPickable = false; m.convertToFlatShadedMesh && m.convertToFlatShadedMesh(); return m; };
+        const cyl = (dt, db, h, y, mat, tess = 14) => { const m = B().MeshBuilder.CreateCylinder('podc', { diameterTop: dt, diameterBottom: db, height: h, tessellation: tess }, S); m.position.y = y; m.material = mat; return add(m); };
+        const box = (w, h, d, x, y, z, mat, rx = 0) => { const m = B().MeshBuilder.CreateBox('podb', { width: w, height: h, depth: d }, S); m.position.set(x, y, z); m.rotation.x = rx; m.material = mat; return add(m); };
+        // hull: skirt, faceted body, shoulder, nose cone, red tip
+        cyl(1.66, 1.9, 0.28, 0.3, shellDark);
+        cyl(1.58, 1.7, 1.45, 1.15, shell, 10);
+        cyl(1.16, 1.58, 0.32, 2.02, shellDark, 10);
+        cyl(0.52, 1.16, 0.4, 2.38, shell, 10);
+        cyl(0.22, 0.54, 0.24, 2.7, red, 5);
+        // four landing legs tucked under the skirt
+        for (let i = 0; i < 4; i++) {
+            const a = Math.PI / 4 + i * Math.PI / 2;
+            const leg = B().MeshBuilder.CreateBox('podleg', { width: 0.18, height: 0.62, depth: 0.18 }, S);
+            leg.parent = parent; leg.position.set(Math.sin(a) * 0.82, 0.42, Math.cos(a) * 0.82);
+            leg.rotation.z = -Math.sin(a) * 0.32; leg.rotation.x = Math.cos(a) * 0.32; leg.material = shellDark; leg.isPickable = false;
+            const foot = B().MeshBuilder.CreateCylinder('podfoot', { diameter: 0.34, height: 0.12, tessellation: 8 }, S);
+            foot.parent = parent; foot.position.set(Math.sin(a) * 0.98, 0.2, Math.cos(a) * 0.98); foot.material = dark; foot.isPickable = false;
+        }
+        // yellow chevrons on the nose (the pod reads as "this way out" from above)
+        for (const sgn of [-1, 1]) {
+            const ch = B().MeshBuilder.CreateBox('podchev', { width: 0.1, height: 0.34, depth: 0.34 }, S);
+            ch.parent = parent; ch.position.set(sgn * 0.3, 2.28, 0.3); ch.rotation.z = sgn * 0.6; ch.rotation.x = -0.5; ch.material = yellow; ch.isPickable = false;
+        }
+        // seams and the red identification band
+        cyl(1.68, 1.7, 0.05, 0.6, seam, 16);
+        cyl(1.5, 1.56, 0.05, 1.78, seam, 16);
+        cyl(1.72, 1.76, 0.16, 1.52, red, 16);
+        // yellow/black hazard strip around the skirt
+        for (let i = 0; i < 10; i++) {
+            const a = i / 10 * Math.PI * 2;
+            const m = B().MeshBuilder.CreateBox('podh', { width: 0.34, height: 0.14, depth: 0.08 }, S);
+            m.position.set(Math.sin(a) * 0.92, 0.62, Math.cos(a) * 0.92); m.rotation.y = a; m.material = i % 2 ? yellow : dark; add(m);
+        }
+        // hatch: raised door with a porthole and a handle
+        box(1.06, 1.24, 0.16, 0, 1.04, 0.86, shellDark);
+        box(0.86, 1.04, 0.07, 0, 1.04, 0.95, shell);
+        { const m = B().MeshBuilder.CreateCylinder('podwin', { diameter: 0.46, height: 0.09, tessellation: 16 }, S); m.position.set(0, 1.26, 1.0); m.rotation.x = Math.PI / 2; m.material = glassM; add(m); }
+        { const m = B().MeshBuilder.CreateTorus('podrim', { diameter: 0.55, thickness: 0.08, tessellation: 18 }, S); m.position.set(0, 1.26, 1.0); m.rotation.x = Math.PI / 2; m.material = seam; add(m); }
+        box(0.11, 0.36, 0.11, 0.42, 0.86, 1.0, dark);
+        if (st.locked) {   // a red locking bar: the pod cannot be entered yet
+            box(1.34, 0.18, 0.18, 0, 1.04, 1.0, red);
+            box(0.18, 0.66, 0.18, 0, 1.04, 1.02, red);
+        }
+        // yellow grab rails
+        for (const s of [-1, 1]) { box(0.1, 0.62, 0.1, s * 0.72, 1.2, 0.66, yellow); box(0.1, 0.1, 0.34, s * 0.72, 0.9, 0.8, yellow); box(0.1, 0.1, 0.34, s * 0.72, 1.5, 0.8, yellow); }
+        // number plate on the shoulder + status lamp
+        const dt = new (B().DynamicTexture)('podnum_' + st.num, { width: 256, height: 256 }, S, true);
+        dt.hasAlpha = true;
+        const ctx = dt.getContext();
+        ctx.clearRect(0, 0, 256, 256);
+        ctx.fillStyle = '#2a323b'; ctx.beginPath(); ctx.arc(128, 128, 112, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#8e9aa6'; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(128, 128, 108, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#eef4f8'; ctx.font = 'bold 150px Segoe UI, Arial'; ctx.textAlign = 'center'; ctx.fillText(String(st.num), 128, 176);
+        dt.update();
+        const plateMat = new (B().StandardMaterial)('podplate_' + st.num, S);
+        plateMat.diffuseTexture = dt; plateMat.emissiveColor = new (B().Color3)(1, 1, 1); plateMat.disableLighting = true;
+        plateMat.useAlphaFromDiffuseTexture = true; plateMat.backFaceCulling = false;
+        owned.push(plateMat);
+        const plate = B().MeshBuilder.CreatePlane('podplate', { width: 0.34, height: 0.34 }, S);
+        plate.parent = parent; plate.position.set(0, 0.78, 1.02); plate.material = plateMat; plate.isPickable = false;
+        const lampHex = st.occupants && st.occupants.length ? '#ffb347' : st.locked ? '#e05252' : '#4fcf7a';
+        // beacon on the nose (the board is seen from above) and a status ring on the cradle floor
+        const lamp = B().MeshBuilder.CreateSphere('podlamp', { diameter: 0.28, segments: 8 }, S);
+        lamp.parent = parent; lamp.position.set(0, 2.9, 0); lamp.material = this.M(lampHex, 1.7); lamp.isPickable = false;
+        const halo = B().MeshBuilder.CreateTorus('podhalo', { diameter: 0.5, thickness: 0.05, tessellation: 16 }, S);
+        halo.parent = parent; halo.position.set(0, 2.9, 0); halo.rotation.x = Math.PI / 2; halo.material = this.M(lampHex, 1); halo.isPickable = false;
+        const ring = B().MeshBuilder.CreateTorus('podring', { diameter: 2.2, thickness: 0.09, tessellation: 26 }, S);
+        ring.parent = parent; ring.position.set(0, 0.22, 0); ring.scaling.y = 0.6; ring.material = this.M(lampHex, 1.1); ring.isPickable = false;
+        // section letter + pod number on the floor plate, readable from above
+        const dtS = new (B().DynamicTexture)('podsec_' + st.num, { width: 256, height: 256 }, S, true);
+        dtS.hasAlpha = true;
+        const cs = dtS.getContext();
+        cs.clearRect(0, 0, 256, 256);
+        cs.fillStyle = st.locked ? '#d05a5a' : '#7fe0a0'; cs.font = 'bold 190px Segoe UI, Arial'; cs.textAlign = 'center';
+        cs.fillText((st.section || 'A') + String(st.num), 128, 196);
+        dtS.update();
+        const secMat = new (B().StandardMaterial)('podsecm_' + st.num, S);
+        secMat.diffuseTexture = dtS; secMat.emissiveColor = new (B().Color3)(1, 1, 1); secMat.disableLighting = true;
+        secMat.useAlphaFromDiffuseTexture = true; secMat.backFaceCulling = false; secMat.alpha = 0.85;
+        owned.push(secMat);
+        const sec = B().MeshBuilder.CreatePlane('podsec', { width: 1.5, height: 1.5 }, S);
+        sec.parent = parent; sec.position.set(0, 0.235, 0); sec.rotation.x = Math.PI / 2; sec.material = secMat; sec.isPickable = false;
+        // umbilical cable to the cradle
+        { const m = B().MeshBuilder.CreateCylinder('podcable', { diameterTop: 0.08, diameterBottom: 0.08, height: 0.9, tessellation: 6 }, S); m.parent = parent; m.position.set(1.02, 0.55, -0.2); m.rotation.z = 0.9; m.material = dark; m.isPickable = false; }
+    }
+
+    /** An empty cradle with a scorch mark: the pod was launched (or blown away) already. */
+    buildEmptyCradle(parent, st, owned) {
+        const S = this.scene;
+        const plate = B().MeshBuilder.CreateCylinder('cradle', { diameter: 1.7, height: 0.1, tessellation: 18 }, S);
+        plate.parent = parent; plate.position.y = 0.2; plate.material = this.M('#2a3239'); plate.isPickable = false; plate.convertToFlatShadedMesh();
+        const scorch = B().MeshBuilder.CreateCylinder('scorch', { diameter: 1.5, height: 0.02, tessellation: 14 }, S);
+        scorch.parent = parent; scorch.position.y = 0.26; scorch.material = this.M('#120f10'); scorch.isPickable = false;
+        for (let i = 0; i < 5; i++) {
+            const m = B().MeshBuilder.CreateBox('deb', { width: 0.3, height: 0.06, depth: 0.12 }, S);
+            const a = i * 1.3; m.position.set(Math.cos(a) * 1.05, 0.24, Math.sin(a) * 1.05); m.rotation.y = a; m.material = this.M('#3a4148'); m.parent = parent; m.isPickable = false;
+        }
+        const tag = this.makeLabel('pode_' + st.num, '№' + st.num + ' ✕', '', parent, 0, 1.1, 0, 1.6);
+        tag.parent = parent;
+        owned.push(tag.material);
     }
 
     /** Main lighting of a room: every glowing material inside the shell is swapped for a dead (non-emissive) copy on malfunction. */
