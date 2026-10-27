@@ -72,7 +72,7 @@ const SPECS = {
     hacker:    { legs: 'jacket', boots: 'pants', torso: 'jacket', arms: 'jacket', hands: 'pants', hood: 'hood', cowl: true, faceMask: true, cyberArms: 'pants', chestArmor: 'pants', cables: 'gear', smartGun: true, lights: 'lights', female: true, bust: 0, build: 'slim' },
     scientist: { legs: 'pants', boots: 'pants', torso: 'shirt', coat: 'coat', arms: 'coat', hands: 'skin', hair: 'shortSwept', hairZone: 'hair', goggles: 'lights', glasses: true, harness: 'shirt', tablet: true, scanner: true, beard: 'hair', wheelchair: true, build: 'slim' },
     medic:     { legs: 'pants', boots: 'pants', torso: '#5f6873', underV: true, coat: 'coat', openCoat: true, arms: 'coat', hands: 'skin', hair: 'longLoose', hairZone: 'hair', cap: 'cap', gasMask: true, syringeGun: true, redCross: 'lights', female: true, bust: 1.3, build: 'slim' },
-    janitor:   { legs: 'overall', boots: 'gloves', torso: 'overall', arms: 'overall', hands: 'gloves', hair: 'beardOnly', hairZone: 'hair', mustache: 'hair', cap: 'cap', toolBelt: true, wrench: true, patch: 'lights', build: 'stocky' },
+    janitor:   { legs: 'overall', boots: 'gloves', torso: 'overall', arms: 'overall', hands: 'gloves', hair: 'beardOnly', hairZone: 'hair', mustache: 'hair', cap: 'cap', toolBelt: true, vacuum: true, cigarette: true, patch: 'lights' },   // lean grey-bearded old man, backpack vacuum, cigarette
     ceo:       { legs: 'shirt', boots: 'coat', torso: 'shirt', robe: 'coat', arms: 'coat', hands: 'skin', hair: 'shortSwept', hairZone: 'hair', tie: 'coat', pistolR: true, robot: true, build: 'slim' },
     labrat:    { legs: 'pants', boots: 'skin', torso: 'gown', arms: 'skin', hands: 'skin', hair: 'longLoose', hairZone: 'hair', blindfold: 'bandage', implants: 'lights', gown: 'gown', qrPatch: true, barefoot: true, female: true, bust: 0, build: 'slim' },
     sentry:    { custom: 'sentry' },
@@ -268,6 +268,19 @@ export function buildCharacter(scene, charId, colors = {}) {
             else { F(FIXED.gun, cy(0.05, 0.05, 0.5, 6, g, 0.6, 0.02, 0, [0, 0, Math.PI / 2])); F(FIXED.darkSteel, bx(0.3, 0.08, 0.06, g, 0.05, 0.14, 0)); Z(LZ, bx(0.06, 0.04, 0.04, g, 0.2, 0.15, 0)); }
         }
         if (sp.pipe) { F(FIXED.steel, cy(0.05, 0.05, 1.0, 6, R, 0.42 * W, 1.5, 0.1, [0, 0, 0.15])); F(FIXED.darkSteel, bx(0.1, 0.1, 0.1, R, 0.42 * W, 1.98, 0.08)); }
+        if (sp.vacuum) {   // backpack vacuum cleaner: canister on the back, straps, hose running to a wand in the left hand
+            F(FIXED.darkSteel, cy(0.2, 0.2, 0.62, 8, R, 0, 1.78, -0.34)); F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 2.1, -0.34)); F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 1.46, -0.34));
+            F(FIXED.steel, bx(0.1, 0.12, 0.1, R, 0.1, 2.2, -0.34)); Z(LZ, bx(0.04, 0.04, 0.02, R, 0.1, 2.2, -0.28));   // motor cap + status light
+            for (const s of [-1, 1]) F(FIXED.strap, bx(0.06, 0.5, 0.04, R, s * 0.18 * W, 1.86, 0.17, [0.0, 0, 0]));       // shoulder straps
+            for (const [a, b] of [[[-0.12, 2.1, -0.42], [-0.42 * W, 1.9, -0.3]], [[-0.42 * W, 1.9, -0.3], [-0.46 * W, 1.4, 0.0]], [[-0.46 * W, 1.4, 0.0], [-0.4 * W, 1.16, 0.16]]]) {
+                const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.hypot(dx, dy, dz);
+                const m = cy(0.05, 0.05, len, 6, R, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+                m.rotationQuaternion = B().Quaternion.FromUnitVectorsToRef(new (B().Vector3)(0, 1, 0), new (B().Vector3)(dx / len, dy / len, dz / len), new (B().Quaternion)());
+                F(FIXED.rubber, m);
+            }
+            F(FIXED.steel, cy(0.04, 0.04, 0.8, 6, R, -0.4 * W, 0.78, 0.26, [0.25, 0, 0]));                                     // wand
+            F(FIXED.darkSteel, bx(0.3, 0.06, 0.12, R, -0.4 * W, 0.4, 0.36));                                                  // floor nozzle
+        }
         if (sp.wrench) { F(FIXED.steel, bx(0.06, 0.5, 0.04, R, -0.4 * W, 1.0, 0.1)); F(FIXED.steel, bx(0.18, 0.08, 0.05, R, -0.4 * W, 0.74, 0.1)); for (const s of [-1, 1]) F(FIXED.steel, bx(0.05, 0.1, 0.05, R, -0.4 * W + s * 0.065, 0.66, 0.1)); F(FIXED.darkSteel, bx(0.08, 0.14, 0.06, R, -0.4 * W, 1.18, 0.1)); }   // handle, head with open jaws
         if (sp.scanner) { F(FIXED.darkSteel, bx(0.1, 0.1, 0.26, R, 0.39 * W, 1.22, 0.18)); Z(LZ, cy(0.06, 0.06, 0.02, 6, R, 0.39 * W, 1.24, 0.32, [Math.PI / 2, 0, 0])); }   // hand scanner (right hand)
         if (sp.fullBeard) { Z(sp.fullBeard, bx(0.3, 0.18, 0.1, R, 0, 2.26, 0.14)); Z(sp.fullBeard, bx(0.06, 0.26, 0.26, R, 0.15, 2.36, 0.04)); Z(sp.fullBeard, bx(0.06, 0.26, 0.26, R, -0.15, 2.36, 0.04)); }
