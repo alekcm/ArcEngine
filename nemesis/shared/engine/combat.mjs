@@ -211,7 +211,7 @@ OPS['queen.card'] = (state, step) => {
     if (!state.queenDeck.length) return;
     const idx = state.queenDeck.shift();
     const card = QUEEN_CARDS[idx];
-    fx(state, { type: 'queen', name: card.name, text: card.text });
+    fx(state, { type: 'queen', card: card.id, name: card.name, text: card.text });
     log(state, '👑 Карта здоровья Королевы: «' + card.name + '» — ' + card.text, 'combat');
     if (card.extra) state.queenDeck.splice(0, card.extra);
     state.queenHits = 0;

@@ -291,12 +291,4 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .ipop > span:last-child { display: block; padding: 0 8px; color: #cfd8e3; }
 .itag:hover > .ipop, .opt:hover > .ipop { display: block; }
 
-/* revealed card overlay (events, later attack / computer cards) */
-#reveal { position: fixed; left: 50%; top: 14%; transform: translate(-50%, -20px) scale(0.96); z-index: 70; opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s; }
-#reveal.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0) scale(1); cursor: pointer; }
-.rcard { width: 340px; background: #101925; border: 1px solid #3a4f6b; border-radius: 12px; overflow: hidden; box-shadow: 0 16px 48px #000c; color: var(--txt); }
-.rcard.event { border-color: #2d7f8f; }
-.rcard .rart { height: 170px; background-size: cover; background-position: center; border-bottom: 1px solid #3a4f6b; }
-.rcard .rkind { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); padding: 8px 12px 0; }
-.rcard .rname { font-size: 16px; font-weight: 700; padding: 2px 12px 4px; }
-.rcard .rtext { font-size: 12px; line-height: 1.3; padding: 0 12px 12px; color: #cfd8e3; white-space: pre-line; }
+.flycard .fc-art { height: 110px; margin: -10px -10px 2px; background-size: cover; background-position: center; border-bottom: 1px solid #ffffff22; flex: none; }

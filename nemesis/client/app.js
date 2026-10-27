@@ -6,9 +6,9 @@ import { DEFAULTS } from './characters.js';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
-import { cardHtml, describeCard, esc, eventArt, itemArtHtml, itemLabel, itemTitle, woundName } from './cards.js';
+import { cardHtml, describeCard, esc, itemArtHtml, itemLabel, itemTitle, woundName } from './cards.js';
 import { ROOM_TILES } from '/shared/ship.mjs';
-import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, EVENT_CARDS } from '/shared/data/cards.mjs';
+import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS } from '/shared/data/cards.mjs';
 
 const $ = id => document.getElementById(id);
 const PHASES = { setup: 'Подготовка', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
@@ -163,7 +163,6 @@ function renderGame() {
     const selectable = pr && pr.kind === 'room' && !pr.waiting ? pr.rooms : [];
     scene.update(v, ROOM_TILES, INTRUDER_NAMES, selectable);
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
-    revealEvent(v);
     dice.update(v, app.me, playerName);
     if (!tableFx) { tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES); tableFx.onShake = k => scene && scene.shake(k); }
     tableFx.update(v, app.me);
@@ -233,25 +232,6 @@ function renderLog() {
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
     el.innerHTML = app.logEntries.slice(-400).map(l => '<div class="l ' + l.kind + '">' + esc(l.text) + '</div>').join('');
     if (atBottom) el.scrollTop = el.scrollHeight;
-}
-/** Big illustrated card shown in the middle of the screen when a new Event card is revealed. Click or wait to dismiss. */
-const REVEAL_MS = 7000;
-function revealEvent(v) {
-    const key = v.lastEvent ? v.round + ':' + v.lastEvent : null;
-    if (!key || app.revealSeen === key) return;
-    const first = app.revealSeen === undefined;
-    app.revealSeen = key;
-    if (first) return;   // joining mid-game: do not replay the last event
-    const ev = EVENT_CARDS.find(e => e.id === v.lastEvent); if (!ev) return;
-    const art = eventArt(ev.id);
-    showReveal('<div class="rcard event">' + (art ? '<div class="rart" style="background-image:url(' + art + ')"></div>' : '') +
-        '<div class="rkind">Событие</div><div class="rname">' + esc(ev.name) + '</div><div class="rtext">' + esc(ev.text || '') + '</div></div>');
-}
-function showReveal(html) {
-    let el = document.getElementById('reveal');
-    if (!el) { el = document.createElement('div'); el.id = 'reveal'; document.body.appendChild(el); el.onclick = () => el.classList.remove('show'); }
-    el.innerHTML = html; el.classList.add('show');
-    clearTimeout(app.revealTimer); app.revealTimer = setTimeout(() => el.classList.remove('show'), REVEAL_MS);
 }
 function renderHistory() { $('history').innerHTML = (app.history || []).map(h => '<div>' + esc(h) + '</div>').join('') || '<div class="hint">Пока нет действий</div>'; }
 

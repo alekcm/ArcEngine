@@ -51,8 +51,13 @@ export function itemArtHtml(inst) {
 }
 /** Event cards with illustrations in client/art/events/<eventId>.jpg. */
 const ART_EVENTS = ['breakingIn', 'bulkheadsOpen', 'damage', 'damagingFire', 'eggProtection', 'podEjection', 'fireWave', 'flammable', 'generatorOverheats', 'hatching',
-    'leavingShell', 'lifeSupport', 'lurking', 'malfunction'];
+    'leavingShell', 'lifeSupport', 'lurking', 'malfunction', 'onTheHunt', 'protectAndServe', 'scentOfPrey', 'shortCircuit', 'systemFailure', 'queenAwakens'];
 export function eventArt(id) { return ART_EVENTS.includes(id) ? 'art/events/' + id + '.jpg' : null; }
+/** Attack cards share one illustration per name: claws1..3 -> claws, fury1/2 -> fury, scratch1..4 -> scratch, tail1/2 -> tail. */
+const ART_ATTACK = ['bite', 'bloodSense', 'claws', 'fury'];
+export function attackArt(id) { const k = String(id).replace(/\d+$/, ''); return ART_ATTACK.includes(k) ? 'art/attack/' + k + '.jpg' : null; }
+const ART_QUEEN = [];
+export function queenArt(id) { return ART_QUEEN.includes(id) ? 'art/queen/' + id + '.jpg' : null; }
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
     return ART_DECKS[owner] && ART_DECKS[owner].includes(key) ? 'art/' + owner + '/' + key + '.jpg' : null;

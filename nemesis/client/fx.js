@@ -9,7 +9,7 @@
 //   item    — a card is pulled from the coloured item deck (green/red/yellow/support)
 //   event / attack / queen — a card is drawn from the shared deck, flips face up in the centre
 //                            and slides to its discard
-import { esc, describeCard } from './cards.js';
+import { esc, describeCard, eventArt, attackArt, queenArt } from './cards.js';
 import * as Snd from './sound.js';
 
 const DECK_LABELS = { green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая', support: 'Поддержка', event: 'События', attack: 'Атаки', queen: 'Королева' };
@@ -132,12 +132,13 @@ export class TableFX {
                 const from = this.pileRect(k);
                 const mid = this.centerRect();
                 const title = k === 'event' ? 'Событие' : k === 'attack' ? 'Атака' + (f.intruder ? ' · ' + (this.intruderNames[f.intruder] || f.intruder) : '') : 'Королева';
-                const face = '<small>' + esc(title) + '</small><b>' + esc(f.name || '') + '</b>' + (f.text ? '<p>' + esc(f.text) + '</p>' : '') + (pname && k === 'attack' ? '<em>→ ' + esc(pname) + '</em>' : '');
-                const el = this.makeCard(DECK_COLORS[k], face, 170, 236);
+                const art = k === 'event' ? eventArt(f.card) : k === 'attack' ? attackArt(f.card) : queenArt(f.card);
+                const face = (art ? '<div class="fc-art" style="background-image:url(' + art + ')"></div>' : '') + '<small>' + esc(title) + '</small><b>' + esc(f.name || '') + '</b>' + (f.text ? '<p>' + esc(f.text) + '</p>' : '') + (pname && k === 'attack' ? '<em>→ ' + esc(pname) + '</em>' : '');
+                const el = this.makeCard(DECK_COLORS[k], face, art ? 220 : 170, art ? 330 : 236);
                 Snd.play('card');
                 this.fly(el, from || mid, mid, 550, { rotA: -10, rotB: 0, scaleA: 0.5, scaleB: 1, arc: 30 }, async () => {
                     Snd.play('flip'); await this.flip(el);
-                    await new Promise(r => setTimeout(r, k === 'attack' ? 1400 : 2200));
+                    await new Promise(r => setTimeout(r, k === 'attack' ? 1800 : 3200));
                     this.fly(el, mid, from || mid, 450, { rotB: 20, scaleB: 0.4, fadeOut: true }, () => { el.remove(); done(); });
                 });
                 break;
