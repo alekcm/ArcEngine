@@ -292,3 +292,10 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .itag:hover > .ipop, .opt:hover > .ipop { display: block; }
 
 .flycard .fc-art { height: 110px; margin: -10px -10px 2px; background-size: cover; background-position: center; border-bottom: 1px solid #ffffff22; flex: none; }
+/* secret objectives: small illustrated cards (personal = planet rim, corporate = gold hull) */
+.objs { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.obj { position: relative; border-radius: 6px; padding: 6px 8px; background-size: cover; background-position: center; border: 1px solid #5a4a22; overflow: hidden; font-size: 11px; line-height: 1.25; }
+.obj::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, #0b1018e6 55%, #0b101899); }
+.obj b, .obj span { position: relative; display: block; } .obj b { color: #ffd27f; } .obj span { color: #d8dee6; }
+.obj.corporate { border-color: #7a6a2a; } .obj.personal { border-color: #6a3a3a; }
+#tbComputer.itag { position: relative; cursor: help; } #tbComputer .ipop { top: calc(100% + 6px); bottom: auto; left: 0; }

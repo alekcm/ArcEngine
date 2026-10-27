@@ -58,8 +58,10 @@ export function eventArt(id) { return ART_EVENTS.includes(id) ? 'art/events/' + 
 /** Attack cards share one illustration per name: claws1..3 -> claws, fury1/2 -> fury, scratch1..4 -> scratch, tail1/2 -> tail. */
 const ART_ATTACK = ['bite', 'bloodSense', 'claws', 'fury', 'infecting', 'miss', 'scratch', 'tail'];
 export function attackArt(id) { const k = String(id).replace(/\d+$/, ''); return ART_ATTACK.includes(k) ? 'art/attack/' + k + '.jpg' : null; }
-const ART_QUEEN = [];
-export function queenArt(id) { return ART_QUEEN.includes(id) ? 'art/queen/' + id + '.jpg' : null; }
+/** Shared illustrations: every Queen card uses one art, Computer cards one (Lock-down its red variant), objectives one per kind. */
+export function queenArt() { return 'art/misc/queen.jpg'; }
+export function computerArt(id) { return id === 'lockdown' ? 'art/misc/lockdown.jpg' : 'art/misc/computer.jpg'; }
+export function objectiveArt(kind) { return kind === 'corporate' ? 'art/misc/objectiveCorporate.jpg' : 'art/misc/objectivePersonal.jpg'; }
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
     if (owner === 'field') return ART_FIELD.includes(key) ? 'art/field/' + key + '.jpg' : null;
