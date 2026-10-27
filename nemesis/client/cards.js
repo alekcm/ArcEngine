@@ -40,7 +40,8 @@ const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', '
     'armor', 'grenade', 'flashbang', 'energyCharge', 'evacKey', 'taser', 'logCodes', 'detonator', 'cables', 'ductTape',
     'engineKey', 'extinguisher', 'glowstick', 'nemesisPlans', 'reagent', 'techPlan', 'tools', 'plasmaRifle', 'flamethrower', 'heavyArmor',
     'shotgun', 'exoLegs', 'soldierGun', 'handgun', 'scoutRifle', 'sawedOff', 'smartGun', 'riotShotgun', 'energyPistol', 'bountyRifle',
-    'sixShooter', 'probeArm', 'xenoGun', 'survivorFavorite', 'pipe', 'cuffs', 'robot', 'ups', 'laika', 'wrench'];
+    'sixShooter', 'probeArm', 'xenoGun', 'survivorFavorite', 'pipe', 'cuffs', 'robot', 'ups', 'laika', 'wrench',
+    'fieldKit', 'oculobe', 'sampleJar', 'navTablet', 'mechTools'];
 export function itemArt(key) { return ART_ITEMS.includes(key) ? 'art/items/' + key + '.jpg' : null; }
 /** Thumbnail + hover preview (art, name, rules text) for an item instance; empty string when the item has no art. */
 export function itemArtHtml(inst) {
@@ -48,6 +49,9 @@ export function itemArtHtml(inst) {
     const d = ITEMS[inst.item];
     return '<i class="ithumb" style="background-image:url(' + art + ')"></i><span class="ipop"><span class="ipart" style="background-image:url(' + art + ')"></span><b>' + esc(d.name) + '</b><span>' + esc(d.text || '') + '</span></span>';
 }
+/** Event cards with illustrations in client/art/events/<eventId>.jpg. */
+const ART_EVENTS = ['bulkheadsOpen', 'damage', 'damagingFire', 'eggProtection'];
+export function eventArt(id) { return ART_EVENTS.includes(id) ? 'art/events/' + id + '.jpg' : null; }
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
     return ART_DECKS[owner] && ART_DECKS[owner].includes(key) ? 'art/' + owner + '/' + key + '.jpg' : null;
