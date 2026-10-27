@@ -39,10 +39,25 @@
                     <button id="readyBtn" class="btn">Готов</button>
                     <button id="startBtn" class="btn primary" disabled>Начать игру</button>
                 </div>
+                <div class="lobby-buttons">
+                    <button id="galleryBtn" class="btn" title="Все комнаты игры на одном корабле, уже открытые">🔍 Тестовый корабль: все комнаты</button>
+                </div>
+                <p class="hint" id="galleryHint">Тестовый корабль — отдельный режим для осмотра моделей: все 25 комнат игры, уже открытые, с капсулами в отсеках A и B. На партию он не влияет.</p>
                 <p class="hint">Ведущий — первый подключившийся игрок. Он выбирает карту и может откатывать ходы.</p>
             </div>
         </div>
     </div>
+</div>
+
+<!-- Room gallery: a test ship with every room tile, opened from the lobby -->
+<div id="gallery" class="hidden">
+    <canvas id="galleryCanvas"></canvas>
+    <div class="gal-bar">
+        <div class="gal-title"><b>ТЕСТОВЫЙ КОРАБЛЬ</b><span>все 25 комнат открыты — для осмотра моделей</span></div>
+        <div class="gal-keys">ЛКМ — вращать · колесо — масштаб · ПКМ — сдвиг · WASD — панорама · Q/E — поворот · клик по комнате — подлететь</div>
+        <button id="galleryClose" class="btn">← Назад в лобби</button>
+    </div>
+    <div id="galleryList" class="gal-list"></div>
 </div>
 
 <!-- HUD -->

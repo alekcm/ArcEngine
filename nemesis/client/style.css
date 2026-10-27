@@ -447,3 +447,21 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .podchip.open { border-color: #3f7a4f; color: #b6f0c6; }
 .podchip.busy { border-color: #7a6a2a; color: #ffd27f; }
 .podchip.gone { opacity: .45; text-decoration: line-through; }
+
+/* ---- room gallery: the test ship with every room tile (opened from the lobby) ---- */
+#gallery { position: fixed; inset: 0; z-index: 60; background: #05080d; }
+#galleryCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+.gal-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; gap: 18px; padding: 12px 16px; background: linear-gradient(#05080df2, #05080d00); pointer-events: none; }
+.gal-bar > * { pointer-events: auto; }
+.gal-title b { display: block; letter-spacing: 4px; font-size: 15px; color: #fff; }
+.gal-title span { font-size: 12px; color: var(--dim); }
+.gal-keys { flex: 1; font-size: 12px; color: var(--dim); text-align: right; padding-top: 4px; margin: 0 10px; }
+.gal-list { position: absolute; top: 66px; right: 12px; bottom: 12px; width: 248px; display: flex; flex-direction: column; overflow-y: auto; background: #0a1119ee; border: 1px solid var(--line); border-radius: 10px; padding: 8px; box-shadow: 0 12px 40px #000a; }
+.gal-list h4 { margin: 10px 0 5px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--acc); font-weight: 600; }
+.gal-list .gal-all { width: 100%; }
+.gal-room { display: block; width: 100%; text-align: left; background: #121a26; color: var(--txt); border: 1px solid #24344a; border-radius: 6px; padding: 4px 8px; margin-bottom: 3px; font-size: 12px; cursor: pointer; }
+.gal-room:hover { background: #1b2838; }
+.gal-room.sel { border-color: var(--acc); background: #1d2534; box-shadow: inset 0 0 0 1px #ffb34755; }
+.gal-room b { color: var(--acc); font-weight: 700; margin-right: 7px; font-variant-numeric: tabular-nums; }
+.gal-note { margin: 12px 2px 4px; font-size: 11px; line-height: 1.45; color: var(--dim); }
+@media (max-width: 760px) { .gal-keys { display: none; } .gal-list { width: 190px; } }

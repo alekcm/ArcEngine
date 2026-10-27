@@ -330,6 +330,41 @@ function tryRandomShip(holder) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Test ship for the room gallery. A normal game lays out only 11 basic + 5 additional tiles, so
+// many rooms never appear on the table. This board holds *every* tile of the game at once — a 5x5
+// grid (specials first, then basic, then additional) with straight corridors between neighbours.
+// The rules never build it: the client opens it from the lobby to inspect every room model.
+// ---------------------------------------------------------------------------------------------
+const SPECIAL_TILES = ['cockpit', 'hibernatorium', 'engine'];
+const GALLERY_ALL = [...SPECIAL_TILES, ...BASIC_TILES, ...ADDITIONAL_TILES];
+export const GALLERY_TILES = GALLERY_ALL.slice();
+const GALLERY_COLS = 5;
+const GALLERY_GAP_X = 230, GALLERY_GAP_Y = 210;
+
+export function galleryShip() {
+    const roomsSpec = [], tiles = {}, tech = [], engineNumbers = {}, at = {};
+    GALLERY_ALL.forEach((tile, i) => {
+        const ry = Math.floor(i / GALLERY_COLS), rx = i % GALLERY_COLS;
+        const id = String(i + 1).padStart(3, '0');
+        const kind = SPECIAL_TILES.includes(tile) ? tile : BASIC_TILES.includes(tile) ? 'slot1' : 'slot2';
+        roomsSpec.push([id, kind, rx * GALLERY_GAP_X, ry * GALLERY_GAP_Y]);
+        tiles[id] = tile;
+        at[ry + ',' + rx] = id;
+        if (kind === 'engine') engineNumbers[id] = 1;
+        else if (i % 3 === 2) tech.push(id);           // a few technical-corridor hatches to look at
+    });
+    const edges = [];
+    for (const [key, id] of Object.entries(at)) {
+        const [ry, rx] = key.split(',').map(Number);
+        if (at[ry + ',' + (rx + 1)]) edges.push([id, at[ry + ',' + (rx + 1)]]);   // left → right
+        if (at[(ry + 1) + ',' + rx]) edges.push([id, at[(ry + 1) + ',' + rx]]);   // top → bottom
+    }
+    const ship = buildShip(roomsSpec, edges, tech, engineNumbers, 'gallery');
+    ship.galleryTiles = tiles;                        // room id → tile key (the ids are layout order)
+    return ship;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Graph helpers (used by the rules engine and the client)
 // ---------------------------------------------------------------------------------------------
 export function neighbors(ship, roomId) {

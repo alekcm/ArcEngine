@@ -7,7 +7,7 @@ import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
 import { cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, eventArt, attackArt, queenArt, itemArt } from './cards.js';
-import { ROOM_TILES } from '/shared/ship.mjs';
+import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, objectiveTextOf,
     EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
 
@@ -37,12 +37,13 @@ const app = {
     lobby: null, view: null, logEntries: [], selectedCards: new Set(), hoverRoom: null,
     charId: null, colors: {}, name: '', ready: false, menuCollapsed: true,
     canUndo: false, bagShown: null, bagTimer: null, deckKind: 'event', altHeld: false,
-    wp: null, itemPick: null, itemPickMin: false,
+    wp: null, itemPick: null, itemPickMin: false, gallery: false,
 };
 const EVENT_BY_ID = Object.fromEntries(EVENT_CARDS.map(e => [e.id, e]));
 const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(e => [e.id, e]));
 const TOKEN_ICON = { blank: '○', larva: '🐛', adult: '👾', drone: '🦂', queen: '👑' };
 let scene = null, preview = null, dice = null, tableFx = null;
+let galleryScene = null;   // lobby room gallery: its own small 3D scene, built on first open
 let cursorSent = 0, lastFloor = null;
 
 function onMessage(m) {
@@ -58,6 +59,7 @@ function onMessage(m) {
             if (m.full) app.logEntries = [];
             app.logEntries.push(...m.view.log);
             app.view = m.view; app.undoDepth = m.undoDepth; app.history = m.history; app.canUndo = !!m.canUndo;
+            if (app.gallery) closeGallery();       // the table started while the gallery was open
             if (app.wp && (!app.view.prompt || app.view.prompt.id !== app.wp.prId)) closeWorldPop();
             renderGame();
             if (m.poses && scene) for (const [pid, pose] of Object.entries(m.poses)) scene.setPose(Number(pid), pose, true);
@@ -82,7 +84,7 @@ function notice(text, kind) {
 function renderLobby() {
     const L = app.lobby; if (!L) return;
     const inGame = L.phase === 'playing' && app.view;
-    $('lobby').classList.toggle('hidden', !!inGame);
+    $('lobby').classList.toggle('hidden', !!inGame || app.gallery);
     if (inGame) return;
     const mySeat = L.seats.find(s => s.id === app.me);
     if (mySeat) {
@@ -130,8 +132,120 @@ function renderLobby() {
 }
 function sendColor(zone, color) { app.colors = Object.assign({}, app.colors, { [zone]: color }); net.send({ t: 'lobby', colors: app.colors }); }
 
+// ---------------------------------------------------------------------------------------------
+// Room gallery (test ship). A normal game shuffles only 11 basic + 5 additional tiles onto the
+// board, so most rooms never show up. This button on the character-selection screen opens a
+// separate scene with *every* room tile of the game (25), already revealed, for looking at the
+// models. It is client-side only: nothing is sent to the server and no game state is touched.
+// ---------------------------------------------------------------------------------------------
+const GALLERY_GROUPS = [
+    ['Особые комнаты', ['cockpit', 'hibernatorium', 'engine']],
+    ['Базовые тайлы · слот 1', BASIC_TILES],
+    ['Дополнительные тайлы · слот 2', ADDITIONAL_TILES],
+];
+
+/** Demo pods for the two evacuation rooms: open / locked / occupied, as they look in a game. */
+function galleryPods() {
+    return [
+        { num: 1, section: 'A', locked: false, occupants: [], launched: false, removed: false },
+        { num: 2, section: 'A', locked: true, occupants: [], launched: false, removed: false },
+        { num: 3, section: 'B', locked: false, occupants: [1], launched: false, removed: false },
+        { num: 4, section: 'B', locked: false, occupants: [], launched: false, removed: false },
+    ];
+}
+
+/** A view-shaped object for Scene3D: all rooms known and explored, no players or intruders. */
+function galleryView(ship) {
+    const roomState = {};
+    for (const r of Object.values(ship.rooms)) {
+        roomState[r.id] = { tile: ship.galleryTiles[r.id], explored: true, fire: false, malfunction: false, objects: [], token: null };
+    }
+    return {
+        ship, roomState, players: [], intruders: {}, fx: [], pods: galleryPods(), podsUnlocked: true,
+        nestEggs: 5, time: 15, selfDestruct: 0, destination: 'B', current: null, phase: 'gallery', lastShot: null,
+    };
+}
+
+function gallerySize() {
+    const b = galleryScene.view.ship.bounds;
+    return { w: (b.maxX - b.minX) * 0.1, h: (b.maxY - b.minY) * 0.1 };
+}
+
+function resetGalleryCam() {
+    if (!galleryScene) return;
+    const { w, h } = gallerySize();
+    galleryScene.markRoom(null);
+    galleryScene.flyTo(new (window.BABYLON.Vector3)(0, 0, 0), Math.max(110, Math.max(w, h) * 1.3));
+    for (const el of $('galleryList').querySelectorAll('.gal-room')) el.classList.remove('sel');
+}
+
+function focusGalleryRoom(id) {
+    if (!galleryScene) return;
+    if (!id) { resetGalleryCam(); return; }
+    galleryScene.markRoom(id);
+    galleryScene.focusRoom(id, 30);
+    for (const el of $('galleryList').querySelectorAll('.gal-room')) el.classList.toggle('sel', el.dataset.room === id);
+}
+
+function renderGalleryList() {
+    const ship = galleryScene && galleryScene.view && galleryScene.view.ship; if (!ship) return;
+    const byTile = {};
+    for (const [id, tile] of Object.entries(ship.galleryTiles)) byTile[tile] = id;
+    $('galleryList').innerHTML = '<button class="btn small gal-all" id="galAll">⤢ Весь корабль</button>' +
+        GALLERY_GROUPS.map(([title, tiles]) => '<h4>' + esc(title) + '</h4>' + tiles.map(t => {
+            const id = byTile[t];
+            return '<button class="gal-room" data-room="' + id + '"><b>' + id + '</b>' + esc(ROOM_TILES[t].name) + '</button>';
+        }).join('')).join('') +
+        '<p class="gal-note">В отсеках A и B стоят все четыре капсулы: A1 открыта, A2 заперта, B1 занята, B2 открыта.</p>';
+    for (const el of $('galleryList').querySelectorAll('.gal-room')) el.onclick = () => { closeWorldPop(); focusGalleryRoom(el.dataset.room); Snd.play('click'); };
+    $('galAll').onclick = () => { resetGalleryCam(); Snd.play('click'); };
+}
+
+function galleryHint(text, bad) {
+    const el = $('galleryHint'); if (!el) return;
+    el.textContent = text;
+    el.style.color = bad ? '#f0b3b3' : '';
+}
+
+function openGallery() {
+    if (!app.lobby) return;
+    if (!galleryScene && !window.BABYLON) { galleryHint('Не удалось открыть тестовый корабль: браузер не загрузил 3D-движок (WebGL).', true); return; }
+    $('lobby').classList.add('hidden');
+    $('gallery').classList.remove('hidden');
+    app.gallery = true;
+    try {
+        if (!galleryScene) galleryScene = new Scene3D($('galleryCanvas'), {
+            onHover: id => { $('galleryCanvas').style.cursor = id ? 'pointer' : ''; },
+            onClick: id => focusGalleryRoom(id),
+        });
+        galleryScene.gallery = true;
+        galleryScene.setActive(true);
+        galleryScene.update(galleryView(galleryShip()), ROOM_TILES, INTRUDER_NAMES, []);
+        galleryScene.camera.alpha = -Math.PI / 2;
+        galleryScene.camera.beta = 0.85;
+        resetGalleryCam();
+        renderGalleryList();
+        Snd.play('click');
+    } catch (err) {
+        console.error(err);
+        closeGallery();
+        galleryHint('Не удалось построить тестовый корабль: ' + ((err && err.message) || err), true);
+    }
+}
+
+function closeGallery() {
+    if (!app.gallery) return;
+    app.gallery = false;
+    if (galleryScene) galleryScene.setActive(false);
+    $('gallery').classList.add('hidden');
+    if (app.lobby) renderLobby(); else $('lobby').classList.remove('hidden');
+    Snd.play('click');
+}
+
 $('nameInput').onchange = () => { localStorage.setItem('nemesis.name', $('nameInput').value); net.send({ t: 'lobby', name: $('nameInput').value }); };
 $('readyBtn').onclick = () => net.send({ t: 'lobby', ready: !app.ready });
+$('galleryBtn').onclick = () => openGallery();
+$('galleryClose').onclick = () => closeGallery();
 $('startBtn').onclick = () => net.send({ t: 'start' });
 const sendSettings = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value, draft: $('draftSelect').value === '1' } });
 $('modeSelect').onchange = sendSettings;
@@ -718,12 +832,21 @@ function closeOverlay() {
 document.addEventListener('keydown', e => {
     const typing = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
     if (e.key === 'Escape') {
+        if (app.gallery) { closeGallery(); return; }
         if (closeWorldPop()) return;
         if (closeOverlay()) return;
         if (typing) { e.target.blur(); return; }
         // Esc = take back my own last step (the server allows it only inside my own turn).
         if (app.view && app.view.prompt && app.canUndo) { net.send({ t: 'undo', steps: 1, self: true }); Snd.play('click'); }
         else if (app.view) notice('Шаг назад недоступен: откатить можно только свой последний выбор в свой ход.', 'error');
+        return;
+    }
+    // In the room gallery the same keys fly the camera around the test ship.
+    if (app.gallery) {
+        const g = { w: [0, 1], s: [0, -1], a: [-1, 0], d: [1, 0], ц: [0, 1], ы: [0, -1], ф: [-1, 0], в: [1, 0] }[e.key.toLowerCase()];
+        if (g && galleryScene) { e.preventDefault(); galleryScene.panCam(g[0], g[1]); }
+        else if (galleryScene && 'qQйЙ'.includes(e.key)) galleryScene.rotateCam(-Math.PI / 12);
+        else if (galleryScene && 'eEуУ'.includes(e.key)) galleryScene.rotateCam(Math.PI / 12);
         return;
     }
     if (typing || !app.view) return;

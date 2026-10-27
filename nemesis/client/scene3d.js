@@ -77,12 +77,23 @@ export class Scene3D {
         this.glow = new (B().GlowLayer)('glow', this.scene, { blurKernelSize: 48 }); this.glow.intensity = 0.5;
         this.shipKey = null; this.selectable = new Set(); this.hover = null; this.t = 0; this.lastShotSeen = null;
         this.alt = false;
+        this.gallery = false;   // room-gallery mode: labels show the room name instead of its id
         this.me = null; this.poses = {}; this.drag = null; this.cursors = {}; this.pings = []; this.canvas = canvas;
         this.stars();
         this.scene.onPointerObservable.add(pi => this.onPointer(pi));
-        this.engine.runRenderLoop(() => { this.t += this.engine.getDeltaTime() / 1000; this.animate(); this.scene.render(); });
-        window.addEventListener('resize', () => this.engine.resize());
+        this.paused = false;
+        this.loop = () => { if (this.paused) return; this.t += this.engine.getDeltaTime() / 1000; this.animate(); this.scene.render(); };
+        this.engine.runRenderLoop(this.loop);
+        this.onResize = () => this.engine.resize();
+        window.addEventListener('resize', this.onResize);
     }
+
+    /** Stop/start rendering (the lobby gallery keeps its scene alive but frozen while it is closed). */
+    setActive(on) {
+        this.paused = !on;
+        if (on) this.engine.resize();
+    }
+
 
     stars() {
         const pts = [];
@@ -715,9 +726,14 @@ export class Scene3D {
         plane.metadata.text = key;
         const dt = plane.metadata.dt; const ctx = dt.getContext();
         ctx.clearRect(0, 0, 512, 160);
-        ctx.font = 'bold 64px Segoe UI, Arial'; ctx.textAlign = 'center'; ctx.fillStyle = color;
-        ctx.shadowColor = '#000'; ctx.shadowBlur = 8;
-        ctx.fillText(big, 256, small ? 70 : 100);
+        ctx.textAlign = 'center'; ctx.shadowColor = '#000'; ctx.shadowBlur = 8;
+        // long room names (the gallery prints them in full) shrink to fit instead of being clipped
+        let size = 64;
+        const font = px => 'bold ' + px + 'px Segoe UI, Arial';
+        ctx.font = font(size);
+        while (size > 26 && ctx.measureText(big).width > 496) { size -= 4; ctx.font = font(size); }
+        ctx.fillStyle = color;
+        ctx.fillText(big, 256, small ? 70 + (64 - size) * 0.25 : 100);
         if (small) { ctx.font = '600 42px Segoe UI, Arial'; ctx.fillStyle = '#dfe6ee'; ctx.fillText(small, 256, 130); }
         dt.update();
     }
@@ -756,7 +772,13 @@ export class Scene3D {
         const def = tile ? this.roomTiles[tile] : null;
         // An unexplored slot has no name yet: nobody at the table knows which tile it is.
         const name = def ? def.name + (r.kind === 'engine' ? ' №' + r.engineNo : '') : '???';
-        this.setLabel(node.label, def ? r.id : '? ' + r.id, name, def ? '#ffffff' : '#8a99ab');
+        // The gallery is for looking at models, so the room name goes big and the number small;
+        // in a game the big line is the room number, which is what players say out loud.
+        const slot = def && def.slot === '1' ? 'базовый' : def && def.slot === '2' ? 'дополнительный' : 'особый';
+        this.setLabel(node.label,
+            def ? (this.gallery ? name : r.id) : (this.gallery ? '?' : '? ' + r.id),
+            def ? (this.gallery ? '№' + r.id + ' · ' + slot : name) : name,
+            def ? '#ffffff' : '#8a99ab');
         node.sel.setEnabled(this.selectable.has(r.id));
         this.syncItemDots(node, tile);
         if (node.flip && node.flip.phase === 1) return;   // first half of the token flip: keep showing the face-down side
@@ -1011,6 +1033,9 @@ export class Scene3D {
         if (!(p.z > 0 && p.z < 1)) return null;
         return { x: p.x, y: p.y };
     }
+
+    /** Q/E in the gallery: turn the camera around the board. */
+    rotateCam(da) { this.camera.alpha += da; }
 
     /** WASD panning of the board: move the camera target over the floor. */
     panCam(dx, dz) {
@@ -1331,13 +1356,31 @@ export class Scene3D {
         }
     }
 
-    focusRoom(roomId) {
+    focusRoom(roomId, radius) {
         const n = this.roomNodes[roomId]; if (!n) return;
-        const from = this.camera.target.clone(), to = n.root.position.clone();
+        this.flyTo(n.root.position, radius);
+    }
+
+    /** Fly the camera to a point on the board, optionally changing the distance (the gallery uses it). */
+    flyTo(target, radius) {
+        const ease = new (B().CubicEase)(); ease.setEasingMode(B().EasingFunction.EASINGMODE_EASEINOUT);
         const anim = new (B().Animation)('focus', 'target', 60, B().Animation.ANIMATIONTYPE_VECTOR3, B().Animation.ANIMATIONLOOPMODE_CONSTANT);
-        anim.setKeys([{ frame: 0, value: from }, { frame: 30, value: to }]);
-        const ease = new (B().CubicEase)(); ease.setEasingMode(B().EasingFunction.EASINGMODE_EASEINOUT); anim.setEasingFunction(ease);
-        this.camera.animations = [anim]; this.scene.beginAnimation(this.camera, 0, 30, false);
+        anim.setKeys([{ frame: 0, value: this.camera.target.clone() }, { frame: 30, value: target.clone() }]);
+        anim.setEasingFunction(ease);
+        this.camera.animations = [anim];
+        if (radius) {
+            const ra = new (B().Animation)('focusR', 'radius', 60, B().Animation.ANIMATIONTYPE_FLOAT, B().Animation.ANIMATIONLOOPMODE_CONSTANT);
+            ra.setKeys([{ frame: 0, value: this.camera.radius }, { frame: 30, value: radius }]);
+            ra.setEasingFunction(ease);
+            this.camera.animations.push(ra);
+        }
+        this.scene.beginAnimation(this.camera, 0, 30, false);
+    }
+
+    /** Highlight one room with the orange selection ring (null clears it). */
+    markRoom(roomId) {
+        this.selectable = new Set(roomId ? [roomId] : []);
+        for (const [id, n] of Object.entries(this.roomNodes)) n.sel.setEnabled(this.selectable.has(id));
     }
 }
 
