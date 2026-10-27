@@ -6,7 +6,7 @@ import { DEFAULTS } from './characters.js';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
-import { cardHtml, describeCard, esc, itemLabel, itemTitle, woundName } from './cards.js';
+import { cardHtml, describeCard, esc, itemArtHtml, itemLabel, itemTitle, woundName } from './cards.js';
 import { ROOM_TILES } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS } from '/shared/data/cards.mjs';
 
@@ -199,13 +199,13 @@ function renderPlayers() {
         if (p.passed && v.phase === 'player') tags.push('<span class="tag">пас</span>');
         for (const w of p.wounds) tags.push('<span class="tag red" title="' + esc(woundName(w)) + '">травма: ' + esc(woundName(w)) + '</span>');
         if (p.larva) tags.push('<span class="tag purple">личинка</span>');
-        if (p.armor) tags.push('<span class="tag" title="' + esc(itemTitle(p.armor)) + '">🛡 ' + esc(itemLabel(p.armor)) + (p.armor.item === 'probeArm' ? ' · жетонов свободно ' + (p.armor.charge ?? ITEMS.probeArm.markers) : '') + '</span>');
+        if (p.armor) tags.push('<span class="tag itag" title="' + esc(itemTitle(p.armor)) + '">' + itemArtHtml(p.armor) + '🛡 ' + esc(itemLabel(p.armor)) + (p.armor.item === 'probeArm' ? ' · жетонов свободно ' + (p.armor.charge ?? ITEMS.probeArm.markers) : '') + '</span>');
         if (p.tissue) tags.push('<span class="tag yellow">🧫 ткань ×' + p.tissue + '</span>');
         if (p.laika) tags.push('<span class="tag yellow">🐕 Лайка: ' + (p.laika === 'board' ? 'рядом' : 'в ' + esc(roomLabel(p.laika))) + '</span>');
         if (p.signal) tags.push('<span class="tag green">сигнал</span>');
         tags.push('<span class="tag yellow">знания ' + p.knowledge + (p.knowledgeActive ? ' ✓' : '') + '</span>');
         tags.push('<span class="tag" title="Карт в руке / колоде / сбросе (заражений в сбросе)">🂠 ' + p.handCount + ' / ' + p.deckCount + ' / ' + p.discardCount + (p.contamInDiscard ? ' ☣' + p.contamInDiscard : '') + '</span>');
-        const items = p.items.map(i => '<span title="' + esc(itemTitle(i)) + '">' + (ITEMS[i.item].weapon ? '🔫' : ITEMS[i.item].kind === 'heavy' ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>').join('')
+        const items = p.items.map(i => '<span class="itag" title="' + esc(itemTitle(i)) + '">' + itemArtHtml(i) + (ITEMS[i.item].weapon ? '🔫' : ITEMS[i.item].kind === 'heavy' ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>').join('')
             + p.heavy.map(h => '<span>🧳 ' + ({ corpse: 'труп', charCorpse: 'труп персонажа', carcass: 'туша', egg: 'яйцо' })[h.type] + '</span>').join('');
         let obj = '';
         if (me && p.objectives) obj = '<div class="items" style="color:#ffd27f">' + p.objectives.map(o => '🎯 ' + esc(OBJECTIVES[o.kind][o.id].name) + ': ' + esc(OBJECTIVES[o.kind][o.id].text.replace('{target}', o.target !== undefined ? v.players[o.target].name : ''))).join('<br>') + '</div>';
@@ -270,7 +270,7 @@ function renderPrompt() {
                 '<button class="opt" data-act="' + a.id + '" ' + (a.enabled ? '' : 'disabled') + '><span>' + esc(a.label) + (a.cost ? ' <small>(' + a.cost + ' 🂠)</small>' : '') + '</span>' + (a.reason ? '<span class="why">' + esc(a.reason) + '</span>' : '') + '</button>').join('') + '</div></div>';
             html += '<div><h5>Предметы</h5><div class="opts">' + (pr.items.length ? pr.items.map(i => {
                 const pp = v.players[pr.player]; const inst = pp.items.find(x => x.uid === i.uid) || (pp.armor && pp.armor.uid === i.uid ? pp.armor : null);
-                return '<button class="opt" data-item="' + i.uid + '" ' + (i.enabled ? '' : 'disabled') + ' title="' + esc(inst ? itemTitle(inst) : '') + '"><span>' + esc(inst ? itemLabel(inst) : i.uid) + (i.cost ? ' <small>(' + i.cost + ' 🂠)</small>' : ' <small>(бесплатно)</small>') + '</span>' + (i.reason ? '<span class="why">' + esc(i.reason) + '</span>' : '') + '</button>';
+                return '<button class="opt" data-item="' + i.uid + '" ' + (i.enabled ? '' : 'disabled') + ' title="' + esc(inst ? itemTitle(inst) : '') + '">' + (inst ? itemArtHtml(inst) : '') + '<span>' + esc(inst ? itemLabel(inst) : i.uid) + (i.cost ? ' <small>(' + i.cost + ' 🂠)</small>' : ' <small>(бесплатно)</small>') + '</span>' + (i.reason ? '<span class="why">' + esc(i.reason) + '</span>' : '') + '</button>';
             }).join('') : '<div class="hint">Нет используемых предметов</div>') + '<div class="hint" style="margin-top:6px">Карты действий — внизу: нажмите на карту, чтобы разыграть.</div></div></div></div>';
             break;
         }

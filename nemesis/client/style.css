@@ -279,3 +279,14 @@ body.rt-collapsed #rightToggle { right: 4px; }
 body.tb-collapsed #table { transform: translateY(calc(100% + 12px)); }
 body.tb-collapsed #tableToggle { bottom: 4px; }
 #hand { max-width: calc(100vw - 820px); }
+
+/* item art: small thumbnail inline, large preview card on hover */
+.itag { position: relative; }
+.ithumb { display: inline-block; width: 26px; height: 15px; margin-right: 4px; vertical-align: -3px; border-radius: 3px; background-size: cover; background-position: center; border: 1px solid #3a4f6b; }
+.opt .ithumb { width: 44px; height: 24px; margin-right: 6px; vertical-align: middle; float: left; }
+.opt { position: relative; }
+.ipop { display: none; position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 60; width: 220px; padding: 0 0 8px; background: #141d2a; border: 1px solid #3a4f6b; border-radius: 8px; box-shadow: 0 8px 24px #000a; color: var(--txt); font-size: 11px; line-height: 1.25; pointer-events: none; text-align: left; flex-direction: column; gap: 4px; }
+.ipop .ipart { display: block; width: 100%; height: 110px; background-size: cover; background-position: center; border-radius: 8px 8px 0 0; }
+.ipop b { display: block; padding: 6px 8px 0; font-size: 12px; }
+.ipop > span:last-child { display: block; padding: 0 8px; color: #cfd8e3; }
+.itag:hover > .ipop, .opt:hover > .ipop { display: block; }

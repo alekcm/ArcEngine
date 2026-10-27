@@ -35,6 +35,15 @@ const ART_DECKS = {
     survivor: ['alwaysPrepared', 'demolition', 'desperateAttack', 'distraction', 'interruption', 'obstinate', 'repairs', 'rest', 'search', 'vents'],
     xeno: ['demolition', 'fieldExperience', 'interruption', 'overmind', 'pheromones', 'repairs', 'rest', 'search', 'vivisection', 'workspacePlan'],
 };
+/** Items with illustrations in client/art/items/<itemKey>.jpg. */
+const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', 'antiseptic', 'stapler', 'adrenaline', 'supportCrate', 'selfDestructKey'];
+export function itemArt(key) { return ART_ITEMS.includes(key) ? 'art/items/' + key + '.jpg' : null; }
+/** Thumbnail + hover preview (art, name, rules text) for an item instance; empty string when the item has no art. */
+export function itemArtHtml(inst) {
+    const art = itemArt(inst.item); if (!art) return '';
+    const d = ITEMS[inst.item];
+    return '<i class="ithumb" style="background-image:url(' + art + ')"></i><span class="ipop"><span class="ipart" style="background-image:url(' + art + ')"></span><b>' + esc(d.name) + '</b><span>' + esc(d.text || '') + '</span></span>';
+}
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
     return ART_DECKS[owner] && ART_DECKS[owner].includes(key) ? 'art/' + owner + '/' + key + '.jpg' : null;
