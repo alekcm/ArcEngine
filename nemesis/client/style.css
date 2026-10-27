@@ -303,3 +303,7 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 @keyframes card-glow { 0%, 100% { box-shadow: 0 0 0 0 #ffd27f00, 0 8px 20px #0009; } 50% { box-shadow: 0 0 14px 2px #ffd27f55, 0 8px 20px #0009; } }
 #hand .card.playable { animation: card-glow 2.4s ease-in-out infinite; }
 #hand .card.playable:active { transform: rotate(0deg) translateY(-18px) scale(0.98); transition: transform 0.08s; }
+
+/* options that carry card art (feats): image strip on top of the button */
+.opt-art { padding-top: 0; overflow: hidden; }
+.opt-art .oart { display: block; width: calc(100% + 20px); margin: 0 -10px 6px; height: 96px; background-size: cover; background-position: center; border-bottom: 1px solid #34465d; }

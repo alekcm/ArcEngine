@@ -250,7 +250,7 @@ OPS['objective.pick'] = (state, step) => {
     const keep = p.objectives.find(o => o.id === step.answer);
     p.objective = keep; p.objectives = [keep];
     log(state, pname(p) + ' выбирает цель.', 'action');
-    next(state, { op: 'turn.choose' });
+    next(state, { op: 'feat.offer', player: p.id, then: { op: 'turn.choose' } });
 };
 OPS['drop.choice'] = (state, step) => {
     const p = player(state, step.player);

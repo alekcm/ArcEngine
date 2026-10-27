@@ -2,7 +2,7 @@
 
 import { seedFromString, shuffle, randInt, pick } from '../rng.mjs';
 import { originalShip, randomShip, BASIC_TILES, ADDITIONAL_TILES, ADDITIONAL_IN_PLAY, EXPLORATION_TOKENS, roomOfKind } from '../ship.mjs';
-import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS } from '../data/cards.mjs';
+import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS } from '../data/cards.mjs';
 import { log, next, run, pname } from './core.mjs';
 import './turn.mjs';
 import './movement.mjs';
@@ -14,6 +14,7 @@ import './items.mjs';
 import './actions.mjs';
 import './actions2.mjs';
 import './actions3.mjs';
+import './feats.mjs';
 import './endgame.mjs';
 
 export function createGame(config) {
@@ -75,6 +76,7 @@ export function createGame(config) {
     state.computerDeck = shuffle(state, Object.keys(COMPUTER_CARDS));
     revealComputerCard(state, true);
     state.queenDeck = shuffle(state, QUEEN_CARDS.map((c, i) => i));
+    state.feats = Object.keys(FEATS);
 
     // Players
     const n = config.players.length;

@@ -276,7 +276,7 @@ function renderPrompt() {
             break;
         }
         case 'choice':
-            html += '<div class="opts">' + pr.options.map(o => '<button class="opt" data-opt="' + esc(o.id) + '" ' + (o.disabled ? 'disabled' : '') + '><span>' + esc(o.label) + (o.tag ? ' <small>· ' + esc(o.tag) + '</small>' : '') + '</span>' + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') + '</button>').join('') + '</div>';
+            html += '<div class="opts">' + pr.options.map(o => '<button class="opt' + (o.art ? ' opt-art' : '') + '" data-opt="' + esc(o.id) + '" ' + (o.disabled ? 'disabled' : '') + '>' + (o.art ? '<i class="oart" style="background-image:url(art/' + esc(o.art) + '.jpg)"></i>' : '') + '<span>' + esc(o.label) + (o.tag ? ' <small>· ' + esc(o.tag) + '</small>' : '') + '</span>' + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') + '</button>').join('') + '</div>';
             if (pr.cancel) html += '<div class="prompt-buttons"><button class="btn" data-opt="cancel">Отмена</button></div>';
             break;
         case 'room':
