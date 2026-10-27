@@ -36,7 +36,8 @@ const ART_DECKS = {
     xeno: ['demolition', 'fieldExperience', 'interruption', 'overmind', 'pheromones', 'repairs', 'rest', 'search', 'vivisection', 'workspacePlan'],
 };
 /** Items with illustrations in client/art/items/<itemKey>.jpg. */
-const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', 'antiseptic', 'stapler', 'adrenaline', 'supportCrate', 'selfDestructKey'];
+const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', 'antiseptic', 'stapler', 'adrenaline', 'supportCrate', 'selfDestructKey',
+    'armor', 'grenade', 'flashbang', 'energyCharge', 'evacKey', 'taser', 'logCodes', 'detonator', 'cables', 'ductTape'];
 export function itemArt(key) { return ART_ITEMS.includes(key) ? 'art/items/' + key + '.jpg' : null; }
 /** Thumbnail + hover preview (art, name, rules text) for an item instance; empty string when the item has no art. */
 export function itemArtHtml(inst) {
