@@ -8,7 +8,7 @@ import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
 import { cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, eventArt, attackArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip } from '/shared/ship.mjs';
-import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, objectiveTextOf,
+import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, FEATS, objectiveTextOf,
     EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
 
 const $ = id => document.getElementById(id);
@@ -1090,7 +1090,7 @@ function refreshOverlays() {
 // ---------------------------------------------------------------------------------------------
 const DECK_TITLES = { event: 'События · сброс', attack: 'Атаки чужих · сброс', queen: 'Здоровье Королевы · открытые', wound: 'Тяжёлые травмы · сброс',
     green: 'Зелёные предметы · сброс', red: 'Красные предметы · сброс', yellow: 'Жёлтые предметы · сброс', support: 'Поддержка · сброс',
-    computer: 'Компьютер · сброс', own: 'Моя колода', owndisc: 'Мой сброс карт действий' };
+    computer: 'Компьютер · сброс', feats: 'Подвиги · запас', own: 'Моя колода', owndisc: 'Мой сброс карт действий' };
 function deckList(kind, v, me) {
     const piles = v.piles || {};
     const list = [];
@@ -1108,24 +1108,38 @@ function deckList(kind, v, me) {
     if (kind === 'wound') for (const w of (piles.wound || [])) list.push({ name: WOUNDS[w] ? WOUNDS[w].name : w, text: WOUNDS[w] ? WOUNDS[w].text : '', tag: 'травма' });
     if (kind === 'computer') for (const id of (piles.computer || [])) { const c = COMPUTER_CARDS[id]; if (c) list.push({ name: c.name, text: c.text || Object.values(c.options || {}).join(' / '), tag: 'компьютер' }); }
     if (['green', 'red', 'yellow', 'support'].includes(kind)) for (const key of ((piles.items || {})[kind] || [])) { const it = ITEMS[key]; if (it) list.push({ name: it.name, text: it.text, tag: DECK_NAMES[kind] }); }
+    if (kind === 'feats') {
+        // The shared Feat pool: after keeping an Objective a player takes one Feat, resolves it and the
+        // card leaves the game. Both parts are public, so the viewer shows the pool and what is gone.
+        const pool = v.feats || [], used = v.featsUsed || [];
+        for (const k of pool) if (FEATS[k]) list.push({ name: FEATS[k].name, text: FEATS[k].text, tag: 'в запасе', art: 'art/feat/' + k + '.jpg' });
+        for (const k of used) if (FEATS[k] && !pool.includes(k)) list.push({ name: FEATS[k].name, text: FEATS[k].text, tag: 'выбыл из игры', art: 'art/feat/' + k + '.jpg', gone: true });
+        return {
+            note: 'Подвиги — общий запас команды на всю партию: после выбора цели вы берёте из него один подвиг, сразу разыгрываете его (или убираете без розыгрыша) — и карта уходит из игры. В запасе: ' + pool.length + ' из ' + (pool.length + used.length) + '.',
+            cards: list,
+        };
+    }
     return { note: '', cards: list };
 }
 function openDeck(kind, quiet) {
     const v = app.view; if (!v) return;
     app.deckKind = kind || 'event';
     const me = v.players.find(p => p.id === app.me);
-    const tabs = ['event', 'attack', 'queen', 'wound', 'green', 'red', 'yellow', 'support', 'computer', 'own', 'owndisc'];
+    const tabs = ['event', 'attack', 'queen', 'wound', 'green', 'red', 'yellow', 'support', 'computer', 'feats', 'own', 'owndisc'];
     const counts = { event: (v.piles && v.piles.event || []).length, attack: (v.piles && v.piles.attack || []).length, queen: (v.piles && v.piles.queen || []).length,
         wound: (v.piles && v.piles.wound || []).length, computer: (v.piles && v.piles.computer || []).length,
         green: ((v.piles && v.piles.items && v.piles.items.green) || []).length, red: ((v.piles && v.piles.items && v.piles.items.red) || []).length,
         yellow: ((v.piles && v.piles.items && v.piles.items.yellow) || []).length, support: ((v.piles && v.piles.items && v.piles.items.support) || []).length,
+        feats: (v.feats || []).length,
         own: me ? me.deckCount : 0, owndisc: me ? me.discardCount : 0 };
     const { note, cards } = deckList(app.deckKind, v, me);
     const box = $('deckOverlay').querySelector('.help-box'); const keep = quiet && box ? box.scrollTop : 0;
     $('deckTitle').textContent = DECK_TITLES[app.deckKind] || 'Колоды';
     $('deckBody').innerHTML = '<div class="deck-tabs">' + tabs.map(k => '<button class="btn small' + (k === app.deckKind ? ' active' : '') + '" data-deck="' + k + '">' + esc(DECK_TITLES[k].split(' · ')[0]) + ' (' + (counts[k] || 0) + ')</button>').join('') + '</div>' +
         (note ? '<div class="hint" style="margin-bottom:8px">' + esc(note) + '</div>' : '') +
-        (cards.length ? '<div class="deck-grid">' + cards.map(c => '<div class="deck-card">' + (c.tag ? '<span class="tag">' + esc(c.tag) + '</span>' : '') + '<b>' + esc(c.name) + '</b><small>' + esc(c.text || '') + '</small></div>').join('') + '</div>'
+        (cards.length ? '<div class="deck-grid">' + cards.map(c => '<div class="deck-card' + (c.art ? ' has-art' : '') + (c.gone ? ' gone' : '') + '">' +
+            (c.art ? '<i class="dart" style="background-image:url(' + esc(c.art) + ')"></i>' : '') +
+            (c.tag ? '<span class="tag">' + esc(c.tag) + '</span>' : '') + '<b>' + esc(c.name) + '</b><small>' + esc(c.text || '') + '</small></div>').join('') + '</div>'
             : '<div class="deck-empty">Здесь пусто.</div>');
     for (const b of $('deckBody').querySelectorAll('[data-deck]')) b.onclick = () => openDeck(b.dataset.deck);
     $('deckOverlay').classList.remove('hidden');
@@ -1147,7 +1161,7 @@ const HELP = `
 <h4>Горячие клавиши</h4><p><b>Esc</b> — закрыть окно или вернуть свой последний шаг (пока вы выбираете действие). <b>Alt</b> (удерживать) — номера коридоров и цвета поиска над комнатами. <b>C</b> — планшет персонажа, <b>F</b> — к своей комнате, <b>Tab</b> — пинг на карте, <b>Q</b>/<b>E</b> — повернуть камеру, <b>Enter</b> — подтвердить выбранные карты, <b>1…9</b> — нажать кнопку в окне выбора.</p>
 <h4>Выбор предмета</h4><p>Когда движок просит выбрать предмет (что сбросить, каким оружием стрелять, что передать, в какую руку взять объект), ответить можно тремя способами: кнопкой в списке, в центральном окне с картинками — или <b>прямо в планшете персонажа</b> (клавиша C): нужные предметы и слоты рук подсвечиваются и нажимаются, кнопка «🧍 Персонаж» в это время мигает. Удобно, когда предметов много и по картинке понятнее, чем по названию.</p>
 <h4>Мешок и события</h4><p>Жетон из мешка тянет сам игрок — нажмите на мешок или на большую кнопку; внизу появится, <i>зачем</i> тянули и что вытянули. Карта события остаётся на столе, пока каждый не нажмёт «Готово».</p>
-<h4>Колоды и сбросы</h4><p>Любая стопка внизу справа (и кнопка «🃏 Колоды») открывает просмотр: события, атаки чужих, карты здоровья Королевы, тяжёлые травмы, сбросы предметов, компьютер и ваш собственный сброс.</p>
+<h4>Колоды и сбросы</h4><p>Любая стопка внизу справа (и кнопка «🃏 Колоды») открывает просмотр: события, атаки чужих, карты здоровья Королевы, тяжёлые травмы, сбросы предметов, компьютер и ваш собственный сброс. Вкладка <b>«Подвиги»</b> показывает общий запас одноразовых карт, которые вы получите за выбор цели: что ещё в запасе и что уже выбыло из игры.</p>
 <h4>Откат</h4><p>Ведущий (👑) может откатить любое количество действий кнопкой «⟲ Откатить ход» — все получают уведомление.</p>`;
 
 net.connect();

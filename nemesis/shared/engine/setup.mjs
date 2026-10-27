@@ -82,6 +82,7 @@ export function createGame(config) {
     revealComputerCard(state, true);
     state.queenDeck = shuffle(state, QUEEN_CARDS.map((c, i) => i));
     state.feats = shuffle(state, Object.keys(FEATS)).slice(0, 6);
+    state.featsUsed = [];   // taken from the pool (played or discarded) — shown in the deck viewer
     state.adaptations = shuffle(state, Object.keys(ADAPTATIONS)).slice(0, 3);
 
     // Players: ids follow the lobby seats; player NUMBERS (Help cards 1..n) are random and define

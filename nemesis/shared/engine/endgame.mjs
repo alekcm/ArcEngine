@@ -94,7 +94,9 @@ OPS['game.endPick'] = (state, step) => {
     next(state, { op: 'game.end' });
 };
 OPS['game.endFeat'] = (state, step) => {
+    const wasInPool = state.feats.includes(step.answer);
     state.feats = state.feats.filter(k => k !== step.answer);
+    if (wasInPool) (state.featsUsed || (state.featsUsed = [])).push(step.answer);
     log(state, 'Подвиг «' + FEATS[step.answer].name + '» убран из игры.', 'minor');
     next(state, { op: 'game.end' });
 };

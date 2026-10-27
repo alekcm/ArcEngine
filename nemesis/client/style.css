@@ -402,6 +402,10 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .deck-card b { display: block; color: #e6edf5; font-size: 12.5px; }
 .deck-card small { color: #a9b7c6; font-size: 11px; line-height: 1.25; display: block; }
 .deck-card .tag { margin-bottom: 4px; }
+.deck-card.has-art { padding-top: 0; overflow: hidden; }
+.deck-card .dart { display: block; width: calc(100% + 18px); margin: 0 -9px 6px; height: 88px; background-size: cover; background-position: center; border-bottom: 1px solid #34465d; }
+.deck-card.gone { opacity: .5; }               /* a Feat that already left the game */
+.deck-card.gone b { text-decoration: line-through; }
 .deck-empty { color: var(--dim); font-size: 12px; }
 .deck-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .deck-tabs .btn.active { background: #27384f; border-color: var(--acc); }

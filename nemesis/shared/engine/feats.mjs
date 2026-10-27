@@ -32,6 +32,7 @@ OPS['feat.pick'] = (state, step) => {
     const k = step.answer;
     if (!state.feats.includes(k)) { next(state, step.then); return; }
     state.feats.splice(state.feats.indexOf(k), 1);
+    (state.featsUsed || (state.featsUsed = [])).push(k);
     ask(state, { kind: 'choice', player: p.id, title: 'Подвиг «' + FEATS[k].name + '»: разыграть эффект?', options: [{ id: 'yes', label: 'Разыграть' }, { id: 'no', label: 'Убрать без розыгрыша' }] },
         { op: 'feat.resolve', player: p.id, feat: k, then: step.then });
 };
