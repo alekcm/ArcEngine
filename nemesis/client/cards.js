@@ -50,7 +50,8 @@ export function itemArtHtml(inst) {
     return '<i class="ithumb" style="background-image:url(' + art + ')"></i><span class="ipop"><span class="ipart" style="background-image:url(' + art + ')"></span><b>' + esc(d.name) + '</b><span>' + esc(d.text || '') + '</span></span>';
 }
 /** Event cards with illustrations in client/art/events/<eventId>.jpg. */
-const ART_EVENTS = ['bulkheadsOpen', 'damage', 'damagingFire', 'eggProtection'];
+const ART_EVENTS = ['breakingIn', 'bulkheadsOpen', 'damage', 'damagingFire', 'eggProtection', 'podEjection', 'fireWave', 'flammable', 'generatorOverheats', 'hatching',
+    'leavingShell', 'lifeSupport', 'lurking', 'malfunction'];
 export function eventArt(id) { return ART_EVENTS.includes(id) ? 'art/events/' + id + '.jpg' : null; }
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
