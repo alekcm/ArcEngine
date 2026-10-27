@@ -3,9 +3,10 @@
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, secretTile, inCombat,
     gainKnowledge, restoreHealth, removeWound, removeFire, removeMalfunction, placeMalfunction, loseHealth, discardCard,
     removeCardFromGame, isContam, drawCards, spawnIntruder, HIBERNATION_TIME, handLimit, heavyCount, findRoomsByTile,
-    clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx } from './core.mjs';
+    clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx, intruderLabel } from './core.mjs';
+import { dealHits } from './combat.mjs';
 import { ROOM_TILES, engineRooms } from '../ship.mjs';
-import { ITEMS, WOUNDS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, INTRUDER_NAMES } from '../data/cards.mjs';
+import { ITEMS, WOUNDS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, INTRUDER_NAMES, ADAPTATIONS, EVENT_CARDS } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
 import { startSelfDestruct, stopSelfDestruct } from './events.mjs';
 import { repelIntruder, checkNest } from './intruders.mjs';
@@ -222,11 +223,22 @@ OPS['room.lab'] = (state, step) => {
     const h = list.splice(Number(idx), 1)[0];
     gainKnowledge(state, p, 2);
     if (h.type === 'egg') p.analyzedEgg = true;
+    p.analyzed = p.analyzed || {}; p.analyzed[h.type] = true;
     log(state, pname(p) + ' анализирует объект «' + objName(h) + '».', 'good');
-    if (!state.analyzed[h.type]) {
-        state.analyzed[h.type] = true;
-        log(state, 'Тип объекта использован впервые: адаптация чужих ослаблена (адаптации в этой версии не моделируются).', 'minor');
-    }
+    analyzeAdaptation(state, p, h.type, step.then);
+};
+/** Lab rule: the first analyzed object of each type removes one active intruder Adaptation. */
+export function analyzeAdaptation(state, p, type, then) {
+    if (state.analyzed[type] || !state.adaptations.length) { if (state.analyzed[type]) log(state, 'Объект этого типа уже использовался против адаптаций.', 'minor'); next(state, then); return; }
+    state.analyzed[type] = true;
+    ask(state, { kind: 'choice', player: p.id, title: 'Анализ «' + objName({ type }) + '»: какую адаптацию чужих удалить?',
+        options: state.adaptations.map(k => ({ id: k, label: ADAPTATIONS[k].name, desc: ADAPTATIONS[k].text })) }, { op: 'adaptation.remove', player: p.id, then });
+}
+OPS['adaptation.remove'] = (state, step) => {
+    const k = step.answer;
+    state.adaptations = state.adaptations.filter(x => x !== k);
+    state.adaptationsRemoved = (state.adaptationsRemoved || 0) + 1;
+    log(state, '🧬 Адаптация чужих «' + ADAPTATIONS[k].name + '» удалена! Осталось: ' + (state.adaptations.length ? state.adaptations.map(x => ADAPTATIONS[x].name).join(', ') : 'нет') + '.', 'good');
     next(state, step.then);
 };
 OPS['room.nest'] = (state, step) => {
@@ -301,7 +313,7 @@ OPS['room.hibernate'] = (state, step) => {
     const p = player(state, step.player);
     if (p.status !== 'active') return;
     if (intrudersIn(state, p.room).length) { log(state, pname(p) + ': гибернация не удалась — в комнате чужой.', 'bad'); next(state, step.then); return; }
-    p.status = 'hibernating';
+    p.status = 'hibernating'; state.finishOrder.push(p.id);
     log(state, '❄ ' + pname(p) + ' уходит в гибернацию.', 'event');
     next(state, { op: 'turn.end' });
 };
@@ -325,7 +337,7 @@ OPS['pod.sitDecide'] = (state, step) => {
     const p = player(state, step.player);
     const pod = state.pods.find(x => x.num === p.pod);
     if (step.answer === 'launch') {
-        for (const pid of pod.occupants) { const o = state.players[pid]; o.status = 'escaped'; o.pod = null; log(state, '🚀 ' + pname(o) + ' покидает корабль в капсуле №' + pod.num + '.', 'event'); }
+        for (const pid of pod.occupants) { const o = state.players[pid]; o.status = 'escaped'; o.pod = null; state.finishOrder.push(o.id); log(state, '🚀 ' + pname(o) + ' покидает корабль в капсуле №' + pod.num + '.', 'event'); }
         pod.launched = true; pod.occupants = [];
         next(state, { op: 'turn.end' });
     } else { p.passed = true; next(state, { op: 'turn.end' }); }
@@ -340,48 +352,145 @@ OPS['computer.start'] = (state, step) => {
     const back = step.then || { op: 'turn.choose' };
     if (!card) { next(state, back); return; }
     log(state, pname(p) + ' использует компьютер: «' + COMPUTER_CARDS[card].name + '».', 'action');
+    if (card === 'lockdown') {
+        if (state.noLockdownMalf) state.noLockdownMalf--; else placeMalfunction(state, p.room, 'блокировка');
+        state.computerDeck.push(...state.computerDiscard.splice(0), card); shuffle(state, state.computerDeck); state.computerCard = null;
+        revealComputerCard(state);
+        log(state, 'Колода компьютера перемешана. Новая карта: «' + COMPUTER_CARDS[state.computerCard].name + '».', 'info');
+        next(state, back); return;
+    }
     const done = { op: 'computer.done', player: p.id, card, then: back };
-    switch (card) {
-        case 'lockdown':
-            if (state.noLockdownMalf) state.noLockdownMalf--; else placeMalfunction(state, p.room, 'блокировка');
-            state.computerDeck.push(...state.computerDiscard.splice(0), card); shuffle(state, state.computerDeck); state.computerCard = null;
-            revealComputerCard(state);
-            log(state, 'Колода компьютера перемешана. Новая карта: «' + COMPUTER_CARDS[state.computerCard].name + '».', 'info');
-            next(state, back); return;
-        case 'openDoors':
-            for (const c of Object.values(state.ship.corridors)) if (c.door === 'closed') c.door = 'open';
-            log(state, 'Все двери открыты.', 'event'); next(state, done); return;
-        case 'closeDoor': {
-            const cors = Object.values(state.ship.corridors).filter(c => c.door === 'open');
-            ask(state, { kind: 'choice', player: p.id, title: 'Какую дверь закрыть?', options: cors.map(c => ({ id: c.id, label: 'Коридор ' + c.id })) }, { op: 'computer.closeDoor', player: p.id, then: done });
+    const opts = Object.entries(COMPUTER_CARDS[card].options).map(([id, text]) => {
+        const why = computerOptionBlocked(state, p, id);
+        return { id, label: text, disabled: !!why, desc: why || '' };
+    });
+    if (opts.every(o => o.disabled)) { log(state, 'Ни один вариант карты компьютера сейчас невозможен.', 'minor'); next(state, done); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Компьютер — «' + COMPUTER_CARDS[card].name + '»: выберите вариант', options: opts }, { op: 'computer.option', player: p.id, card, then: done });
+};
+const computerRooms = (state) => Object.keys(state.ship.rooms).filter(r => { const t = tileOf(state, r); return t && ROOM_TILES[t].computer && room(state, r).explored; });
+const noisyFarCorridors = (state, p) => {
+    const near = new Set(corridorsOf(state, p.room).map(c => c.id));
+    const list = Object.values(state.ship.corridors).filter(c => c.noise && !near.has(c.id)).map(c => c.id);
+    if (state.ship.techNoise && !near.has('tech')) list.push('tech');
+    return list;
+};
+/** Returns a reason string if the option cannot be used right now, else ''. */
+function computerOptionBlocked(state, p, id) {
+    switch (id) {
+        case 'draw': return state.players.some(o => o.status === 'active' && o.deck.length + o.discard.length > 0) ? '' : 'Некому брать карты';
+        case 'scan': return Object.keys(state.ship.rooms).some(r => !room(state, r).explored) ? '' : 'Все комнаты разведаны';
+        case 'noise': return Object.keys(state.ship.rooms).some(r => !playersInRoom(state, r).length) ? '' : 'Нет комнаты без персонажей';
+        case 'know': return p.hand.length ? '' : 'Нет карт в руке';
+        case 'heal': return '';
+        case 'fixComp': return computerRooms(state).some(r => room(state, r).malfunction) ? '' : 'Нет поломки в комнате с компьютером';
+        case 'purge': return '';
+        case 'ammo': return p.items.some(i => ITEMS[i.item].weapon && !ITEMS[i.item].weapon.noAmmo && !i.broken && i.ammo < ITEMS[i.item].weapon.max) ? '' : 'Нет оружия, которое можно зарядить';
+        case 'door': return Object.values(state.ship.corridors).some(c => c.door !== 'destroyed') ? '' : 'Нет дверей';
+        case 'hit2': return Object.keys(state.intruders).length ? '' : 'На корабле нет чужих';
+        case 'item': return p.hand.length ? '' : 'Нет карт в руке';
+        case 'quiet': return noisyFarCorridors(state, p).length ? '' : 'Нет шума в дальних коридорах';
+        case 'malf': return computerRooms(state).some(r => !room(state, r).malfunction) ? '' : 'Во всех комнатах с компьютером уже поломка';
+        case 'event': return state.eventDeck.length ? '' : 'Колода событий пуста';
+    }
+    return '';
+}
+OPS['computer.option'] = (state, step) => {
+    const p = player(state, step.player);
+    const id = step.answer, done = step.then;
+    const sel = (title, options, op, extra) => ask(state, { kind: 'choice', player: p.id, title, options }, { op, player: p.id, then: done, ...extra });
+    log(state, 'Вариант: ' + COMPUTER_CARDS[step.card].options[id], 'minor');
+    switch (id) {
+        case 'draw':
+            sel('Кто берёт 1 карту?', state.players.filter(o => o.status === 'active').map(o => ({ id: String(o.id), label: pname(o) })), 'computer.draw');
             return;
-        }
-        case 'engineDiag':
-            ask(state, { kind: 'choice', player: p.id, title: 'Какой двигатель проверить?', options: [1, 2, 3].map(n => ({ id: String(n), label: 'Двигатель №' + n })) }, { op: 'computer.engine', player: p.id, then: done });
-            return;
-        case 'coordinates': {
-            p.knownCoords = state.secret.coordinates;
-            const c = COORDINATE_CARDS.find(x => x.id === state.secret.coordinates);
-            ask(state, { kind: 'info', player: p.id, title: 'Координаты (только вы это видите)', text: ['A', 'B', 'C', 'D'].map(k => k + ': ' + DESTINATION_NAMES[c[k]]).join('\n') + '\nПункт назначения: ' + state.destination }, { op: 'noop', then: done });
-            return;
-        }
-        case 'scanner': {
+        case 'scan': {
             const rooms = Object.keys(state.ship.rooms).filter(r => !room(state, r).explored);
-            if (!rooms.length) { next(state, done); return; }
-            ask(state, { kind: 'room', player: p.id, title: 'Сканер: какую комнату посмотреть?', rooms }, { op: 'computer.scan', player: p.id, then: done });
+            ask(state, { kind: 'room', player: p.id, title: 'Какую неразведанную комнату посмотреть?', rooms }, { op: 'computer.scan', player: p.id, then: done });
             return;
         }
-        case 'cargo': {
-            const it = drawItem(state, 'yellow');
-            if (it) giveItem(state, p, it);
-            next(state, done); return;
-        }
-        case 'motionTracker':
-            ask(state, { kind: 'room', player: p.id, title: 'Датчик движения: вокруг какой комнаты убрать шум?', rooms: Object.keys(state.ship.rooms) }, { op: 'computer.tracker', player: p.id, then: done });
+        case 'noise': {
+            const rooms = Object.keys(state.ship.rooms).filter(r => !playersInRoom(state, r).length);
+            ask(state, { kind: 'room', player: p.id, title: 'В какой комнате сделать бросок шума?', rooms }, { op: 'computer.noise', player: p.id, then: done });
             return;
+        }
+        case 'know':
+            ask(state, { kind: 'cards', player: p.id, title: 'Сбросьте 1 карту — получите 1 знание', cards: [...p.hand], min: 1, max: 1 }, { op: 'computer.know', player: p.id, then: done });
+            return;
+        case 'heal': restoreHealth(state, p, 1); next(state, done); return;
+        case 'fixComp': {
+            const rooms = computerRooms(state).filter(r => room(state, r).malfunction);
+            if (rooms.length === 1) { removeMalfunction(state, rooms[0]); next(state, done); return; }
+            ask(state, { kind: 'room', player: p.id, title: 'В какой комнате с компьютером убрать поломку?', rooms }, { op: 'computer.fixComp', player: p.id, then: done });
+            return;
+        }
+        case 'purge':
+            ask(state, { kind: 'room', player: p.id, title: 'Какую комнату очистить (огонь + отогнать чужих)?', rooms: Object.keys(state.ship.rooms) }, { op: 'computer.purge', player: p.id, then: done });
+            return;
+        case 'ammo': {
+            const ws = p.items.filter(i => ITEMS[i.item].weapon && !ITEMS[i.item].weapon.noAmmo && !i.broken && i.ammo < ITEMS[i.item].weapon.max);
+            if (ws.length === 1) { ws[0].ammo++; log(state, '«' + ITEMS[ws[0].item].name + '»: +1 патрон (' + ws[0].ammo + ').', 'good'); next(state, done); return; }
+            sel('Какое оружие зарядить?', ws.map(w => ({ id: w.uid, label: ITEMS[w.item].name + ' (' + w.ammo + '/' + ITEMS[w.item].weapon.max + ')' })), 'computer.ammo');
+            return;
+        }
+        case 'door':
+            sel('Какую дверь переключить?', Object.values(state.ship.corridors).filter(c => c.door !== 'destroyed').map(c => ({ id: c.id, label: 'Коридор ' + c.id + ' — ' + (c.door === 'closed' ? 'открыть' : 'закрыть') })), 'computer.door');
+            return;
+        case 'hit2':
+            sel('Какому чужому нанести 2 ранения?', Object.values(state.intruders).map(it => ({ id: it.uid, label: intruderLabel(state, it) + ' — ' + roomName(state, it.room) })), 'computer.hit2');
+            return;
+        case 'item':
+            ask(state, { kind: 'cards', player: p.id, title: 'Сбросьте 1 карту — возьмите предмет', cards: [...p.hand], min: 1, max: 1 }, { op: 'computer.itemPay', player: p.id, then: done });
+            return;
+        case 'quiet':
+            sel('Из какого коридора убрать шум?', noisyFarCorridors(state, p).map(c => ({ id: c, label: c === 'tech' ? 'Тех. коридоры' : 'Коридор ' + c })), 'computer.quiet');
+            return;
+        case 'malf': {
+            const rooms = computerRooms(state).filter(r => !room(state, r).malfunction);
+            ask(state, { kind: 'room', player: p.id, title: 'В какую комнату с компьютером положить поломку?', rooms }, { op: 'computer.malf', player: p.id, then: done });
+            return;
+        }
+        case 'event': {
+            const ev = EVENT_CARDS.find(e => e.id === state.eventDeck[0]);
+            ask(state, { kind: 'choice', player: p.id, title: 'Верхняя карта событий (только вы это видите): «' + ev.name + '» — ' + ev.text,
+                options: [{ id: 'top', label: 'Оставить сверху' }, { id: 'bottom', label: 'Положить под низ' }] }, { op: 'computer.event', player: p.id, then: done });
+            return;
+        }
     }
     next(state, done);
 };
+OPS['computer.draw'] = (state, step) => { const o = player(state, Number(step.answer)); drawCards(state, o, 1); next(state, step.then); };
+OPS['computer.noise'] = (state, step) => { next(state, { op: 'noise.roll', player: step.player, room: step.answer }, step.then); };
+OPS['computer.know'] = (state, step) => { const p = player(state, step.player); for (const c of step.answer) discardCard(state, p, c); gainKnowledge(state, p, 1); next(state, step.then); };
+OPS['computer.fixComp'] = (state, step) => { removeMalfunction(state, step.answer); next(state, step.then); };
+OPS['computer.purge'] = (state, step) => {
+    const r = step.answer;
+    if (room(state, r).fire) removeFire(state, r);
+    for (const it of intrudersIn(state, r)) repelIntruder(state, it);
+    next(state, step.then);
+};
+OPS['computer.ammo'] = (state, step) => { const p = player(state, step.player); const w = p.items.find(i => i.uid === step.answer); if (w) { w.ammo++; log(state, '«' + ITEMS[w.item].name + '»: +1 патрон (' + w.ammo + ').', 'good'); } next(state, step.then); };
+OPS['computer.door'] = (state, step) => { const c = state.ship.corridors[step.answer]; c.door = c.door === 'closed' ? 'open' : 'closed'; log(state, 'Дверь ' + c.id + ' теперь ' + (c.door === 'closed' ? 'закрыта' : 'открыта') + '.', 'event'); next(state, step.then); };
+OPS['computer.hit2'] = (state, step) => { const p = player(state, step.player); const it = state.intruders[step.answer]; if (it) { log(state, 'Компьютер: 2 ранения ' + intruderLabel(state, it) + '.', 'combat'); dealHits(state, p, it, 2, 0, {}); } next(state, step.then); };
+OPS['computer.itemPay'] = (state, step) => {
+    const p = player(state, step.player);
+    for (const c of step.answer) discardCard(state, p, c);
+    ask(state, { kind: 'choice', player: p.id, title: 'Из какой колоды взять предмет?', options: ['green', 'red', 'yellow'].map(d => ({ id: d, label: ({ green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая' })[d] + ' (' + state.itemDecks[d].length + ')', disabled: !state.itemDecks[d].length && !(state.itemDiscard[d] || []).length })) },
+        { op: 'computer.itemDeck', player: p.id, then: step.then });
+};
+OPS['computer.itemDeck'] = (state, step) => {
+    const p = player(state, step.player);
+    const it = drawItem(state, step.answer);
+    if (!it) { next(state, step.then); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Предмет: «' + ITEMS[it].name + '» — ' + ITEMS[it].text, options: [{ id: 'keep', label: 'Оставить' }, { id: 'discard', label: 'Сбросить' }] }, { op: 'computer.itemKeep', player: p.id, item: it, deck: step.answer, then: step.then });
+};
+OPS['computer.itemKeep'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'keep') giveItem(state, p, step.item); else { (state.itemDiscard[step.deck] = state.itemDiscard[step.deck] || []).push(step.item); log(state, '«' + ITEMS[step.item].name + '» сброшен.', 'minor'); }
+    next(state, step.then);
+};
+OPS['computer.quiet'] = (state, step) => { if (step.answer === 'tech') state.ship.techNoise = false; else state.ship.corridors[step.answer].noise = false; log(state, 'Шум убран: ' + (step.answer === 'tech' ? 'тех. коридоры' : 'коридор ' + step.answer) + '.', 'good'); next(state, step.then); };
+OPS['computer.malf'] = (state, step) => { placeMalfunction(state, step.answer, 'компьютер'); next(state, step.then); };
+OPS['computer.event'] = (state, step) => { if (step.answer === 'bottom') { state.eventDeck.push(state.eventDeck.shift()); log(state, 'Карта событий положена под низ колоды.', 'minor'); } else log(state, 'Карта событий оставлена сверху.', 'minor'); next(state, step.then); };
 OPS['computer.done'] = (state, step) => {
     const p = player(state, step.player);
     gainKnowledge(state, p, 1);
@@ -389,7 +498,6 @@ OPS['computer.done'] = (state, step) => {
     log(state, 'Новая карта компьютера: «' + COMPUTER_CARDS[state.computerCard].name + '».', 'info');
     next(state, step.then);
 };
-OPS['computer.closeDoor'] = (state, step) => { state.ship.corridors[step.answer].door = 'closed'; log(state, 'Дверь ' + step.answer + ' закрыта.', 'event'); next(state, step.then); };
 OPS['computer.engine'] = (state, step) => {
     const p = player(state, step.player);
     const e = state.secret.engines.find(x => x.no === Number(step.answer));
@@ -400,9 +508,10 @@ OPS['computer.scan'] = (state, step) => {
     const p = player(state, step.player);
     p.knownTiles = p.knownTiles || {};
     p.knownTiles[step.answer] = secretTile(state, step.answer);
-    ask(state, { kind: 'info', player: p.id, title: 'Сканер (только вы это видите)', text: 'Комната ' + step.answer + ': ' + ROOM_TILES[secretTile(state, step.answer)].name }, { op: 'noop', then: step.then });
+    const tok = state.secret.tokens[step.answer];
+    const TOK = { malfunction: 'поломка', fire: 'огонь', corpse: 'труп', door: 'закрытая дверь' };
+    ask(state, { kind: 'info', player: p.id, title: 'Сканер (только вы это видите)', text: 'Комната ' + step.answer + ': ' + ROOM_TILES[secretTile(state, step.answer)].name + '\nЖетон исследования: ' + (TOK[tok] || 'нет') }, { op: 'noop', then: step.then });
 };
-OPS['computer.tracker'] = (state, step) => { clearNoiseAround(state, step.answer); log(state, 'Шум вокруг ' + roomName(state, step.answer) + ' убран.', 'good'); next(state, step.then); };
 
 // ---------------------------------------------------------------------------------------------
 // Item deck helpers

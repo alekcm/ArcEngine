@@ -6,7 +6,7 @@ import { CHARACTERS, FIELD_DATA } from './data/cards.mjs';
 
 const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'fx', 'version', 'seedStr', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'ship', 'roomState',
     'intruders', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods',
-    'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'result', 'lastEvent'];
+    'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'adaptations', 'adaptationsRemoved', 'result', 'lastEvent'];
 
 /**
  * @param {object} state full game state
@@ -48,7 +48,7 @@ function playerView(state, p, mine) {
         pub.hand = p.hand; pub.discard = p.discard;
         pub.objectives = p.objectives; pub.objective = p.objective;
         pub.knownTiles = p.knownTiles || {}; pub.knownEngines = p.knownEngines || {}; pub.knownCoords = p.knownCoords || null;
-        pub.analyzedEgg = p.analyzedEgg;
+        pub.analyzedEgg = p.analyzedEgg; pub.analyzed = p.analyzed;
     }
     return pub;
 }

@@ -23,10 +23,11 @@ OPS['phase.event'] = (state) => {
     fx(state, { type: 'event', card: id, name: ev.name, text: ev.text });
     log(state, '📜 Событие: «' + ev.name + '». ' + ev.text, 'event');
     // 1. movement
-    if (ev.move.type === 'corridor') moveIntrudersByCorridor(state, ev.move.num);
-    else if (ev.move.type === 'closest') { moveIntrudersToClosest(state); if (id === 'onTheHunt') moveIntrudersToClosest(state); }
+    let attacks = [];
+    if (ev.move.type === 'corridor') attacks = moveIntrudersByCorridor(state, ev.move.num);
+    else if (ev.move.type === 'closest') { attacks = moveIntrudersToClosest(state); if (id === 'onTheHunt') attacks = attacks.concat(moveIntrudersToClosest(state)); }
     // 2. effects
-    next(state, { op: 'event.effect', id }, { op: 'event.noise', id }, { op: 'event.finish', id }, { op: 'phase.cleanup' });
+    next(state, ...attacks, { op: 'event.effect', id }, { op: 'event.noise', id }, { op: 'event.finish', id }, { op: 'phase.cleanup' });
 };
 
 OPS['event.effect'] = (state, step) => {
@@ -174,19 +175,33 @@ OPS['event.noise'] = (state, step) => {
         else if (ev.noise === 'fireMalf') { const rs = room(state, p.room); yes = rs.fire || rs.malfunction; }
         if (!yes) continue;
         const dev = p.items.find(i => ITEMS[i.item].perimeter && i.ammo > 0 && !i.broken);
-        const risk = p.hand.find(c => (cardDef(state, c) || {}).effect === 'fdRisk');
-        if (risk) steps.push({ op: 'risk.ask', player: p.id, card: risk, then: dev ? { op: 'perimeter.ask', player: p.id, uid: dev.uid, then: { op: 'noise.roll', player: p.id, room: p.room } } : { op: 'noise.roll', player: p.id, room: p.room } });
-        else if (dev) steps.push({ op: 'perimeter.ask', player: p.id, uid: dev.uid, then: { op: 'noise.roll', player: p.id, room: p.room } });
-        else steps.push({ op: 'noise.roll', player: p.id, room: p.room });
+        // Reactions that skip the roll: Risk Prevention (Field Data), Inconspicuous (Lab Rat), Perimeter device
+        let chain = { op: 'noise.roll', player: p.id, room: p.room };
+        if (dev) chain = { op: 'perimeter.ask', player: p.id, uid: dev.uid, then: chain };
+        for (const c of p.hand.filter(c => ['fdRisk', 'inconspicuous'].includes((cardDef(state, c) || {}).effect))) chain = { op: 'risk.ask', player: p.id, card: c, then: chain };
+        steps.push(chain);
+    }
+    // Laika on the main board rolls like a character; she counts as the player to the left of the Bounty Hunter
+    for (const h of state.players) {
+        if (!h.laika || h.laika === 'board' || h.status !== 'active') continue;
+        const order = turnOrder(state);
+        const left = order[(order.indexOf(h) + 1) % order.length] || h;
+        if (intrudersIn(state, h.laika).length || playersInRoom(state, h.laika).length) continue;
+        let yes = false;
+        if (ev.noise === 'all') yes = true;
+        else if (ev.noise === 'noCards') yes = left.hand.length === 0;
+        else if (ev.noise === 'fireMalf') { const rs = room(state, h.laika); yes = rs.fire || rs.malfunction; }
+        if (yes) steps.push({ op: 'noise.roll', player: left.status === 'active' ? left.id : h.id, room: h.laika, laika: true });
     }
     if (steps.length) { log(state, 'Броски шума по событию.', 'noise'); next(state, ...steps); }
 };
 OPS['risk.ask'] = (state, step) => {
     const p = player(state, step.player);
-    if (step.answer === 'yes' && p.hand.includes(step.card)) { discardCard(state, p, step.card); log(state, pname(p) + ' играет «Предотвращение риска»: броска шума нет.', 'good'); return; }
+    const name = (cardDef(state, step.card) || {}).name || 'реакцию';
+    if (step.answer === 'yes' && p.hand.includes(step.card)) { discardCard(state, p, step.card); log(state, pname(p) + ' играет «' + name + '»: броска шума нет.', 'good'); return; }
     if (step.answer) { next(state, step.then); return; }
     if (!p.hand.includes(step.card)) { next(state, step.then); return; }
-    ask(state, { kind: 'choice', player: p.id, title: 'Сыграть «Предотвращение риска», чтобы не бросать шум?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, step);
+    ask(state, { kind: 'choice', player: p.id, title: 'Сыграть «' + name + '», чтобы не бросать шум?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, step);
 };
 OPS['perimeter.ask'] = (state, step) => {
     const p = player(state, step.player);
@@ -200,7 +215,7 @@ OPS['event.finish'] = (state, step) => {
     const ev = EVENT_BY_ID[step.id];
     if (ev.reshuffle) { state.eventDeck.push(...state.eventDiscard.splice(0), step.id); shuffle(state, state.eventDeck); log(state, 'Колода событий перемешана.', 'minor'); }
     else state.eventDiscard.push(step.id);
-    bagDevelopment(state);
+    next(state, { op: 'bag.develop' });
 };
 
 // ---------------------------------------------------------------------------------------------

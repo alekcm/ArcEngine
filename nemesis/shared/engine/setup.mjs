@@ -2,7 +2,7 @@
 
 import { seedFromString, shuffle, randInt, pick } from '../rng.mjs';
 import { originalShip, randomShip, BASIC_TILES, ADDITIONAL_TILES, ADDITIONAL_IN_PLAY, EXPLORATION_TOKENS, roomOfKind } from '../ship.mjs';
-import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS } from '../data/cards.mjs';
+import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS, ADAPTATIONS } from '../data/cards.mjs';
 import { log, next, run, pname } from './core.mjs';
 import './turn.mjs';
 import './movement.mjs';
@@ -40,6 +40,7 @@ export function createGame(config) {
         queenDeck: [], queenHits: 0, queenDead: false,
         nestEggs: 5, nestDestroyed: false, nestDiscovered: false,
         analyzed: { corpse: false, carcass: false, egg: false },
+        adaptations: [], adaptationsRemoved: 0, finishOrder: [], carcassCount: 0,
         result: null,
     };
 
@@ -78,11 +79,13 @@ export function createGame(config) {
     revealComputerCard(state, true);
     state.queenDeck = shuffle(state, QUEEN_CARDS.map((c, i) => i));
     state.feats = Object.keys(FEATS);
+    state.adaptations = shuffle(state, Object.keys(ADAPTATIONS)).slice(0, 3);
 
     // Players
     const n = config.players.length;
-    const personal = shuffle(state, Object.keys(OBJECTIVES.personal));
-    const corporate = shuffle(state, Object.keys(OBJECTIVES.corporate));
+    const fits = kind => Object.keys(OBJECTIVES[kind]).filter(k => (OBJECTIVES[kind][k].minPlayers || 1) <= n);
+    const personal = shuffle(state, fits('personal'));
+    const corporate = shuffle(state, fits('corporate'));
     const hiber = roomOfKind(state.ship, 'hibernatorium').id;
     config.players.forEach((pc, i) => {
         const ch = CHARACTERS[pc.charId];
@@ -91,24 +94,18 @@ export function createGame(config) {
             room: hiber, health: ch.health, hand: [], deck: [], discard: [], wounds: [], larva: false,
             items: [], heavy: [], armor: null, knowledge: 1, knowledgeActive: false, signal: false, supportUsed: false,
             objectives: [], objective: null, status: 'active', passed: false, pod: null,
-            knownEngines: {}, knownCoords: null, analyzedEgg: false, movedThisRound: false,
+            knownEngines: {}, knownCoords: null, analyzedEgg: false, analyzed: { corpse: false, carcass: false, egg: false }, movedThisRound: false,
             firstShotUsed: false, rifleDrawUsed: false, adrenalineTurn: false, tissue: pc.charId === 'xeno' ? 1 : 0,
         };
         for (const key of Object.keys(ch.cards)) p.deck.push(pc.charId + '.' + key + '#0');
         shuffle(state, p.deck);
         for (const s of ch.startItems) {
             const def = ITEMS[s.item];
-            const inst = { uid: 'it' + (++state.itemSeq), item: s.item, ammo: def.weapon ? (s.ammo ?? def.weapon.max) : undefined, broken: false, charge: def.markers };
+            const inst = { uid: 'it' + (++state.itemSeq), item: s.item, ammo: def.weapon ? (s.ammo ?? def.weapon.max) : undefined, broken: false, charge: def.markers, start: true };
             if (def.kind === 'armor') p.armor = inst; else p.items.push(inst);
             if (s.item === 'laika') p.laika = 'board';
         }
-        let corp = corporate.pop();
-        if (corp === 'cRival' && n < 2) corp = corporate.pop() || 'cMars';
-        p.objectives = [{ id: personal.pop(), kind: 'personal' }, { id: corp, kind: 'corporate' }];
-        if (corp === 'cRival') {
-            const others = config.players.map((_, j) => j).filter(j => j !== i);
-            p.objectives[1].target = others[randInt(state, others.length)];
-        }
+        p.objectives = [{ id: personal.pop(), kind: 'personal' }, { id: corporate.pop(), kind: 'corporate' }];
         state.players.push(p);
     });
     for (const p of state.players) { p.deck = shuffle(state, p.deck); for (let i = 0; i < 5; i++) p.hand.push(p.deck.shift()); }
@@ -123,6 +120,7 @@ export function createGame(config) {
     state.round = 1;
     log(state, 'Игра началась. Корабль: ' + (state.mode === 'random' ? 'случайная компоновка' : 'оригинальный «Немезида»') + '. Первый игрок — ' + pname(state.players[state.firstPlayer]) + '.', 'event');
     log(state, 'Все персонажи просыпаются в Гибернатории.', 'info');
+    log(state, 'Активные адаптации чужих: ' + state.adaptations.map(k => '«' + ADAPTATIONS[k].name + '»').join(', ') + '.', 'event');
     next(state, { op: 'phase.player' });
     run(state);
     return state;

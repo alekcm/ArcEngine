@@ -2,7 +2,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, healthState, loseHealth, gainWound,
     gainContamination, killPlayer, discardCard, COMBAT_DIE, roll, fmtRoll, needDice, fx, removeIntruder, intruderLabel, INTRUDER_RANK,
-    drawCards, placeFire, placeNoise, cardDef, orderIndex } from './core.mjs';
+    drawCards, placeFire, placeNoise, cardDef, orderIndex, hasAdapt } from './core.mjs';
 import { repelIntruder } from './intruders.mjs';
 import { ATTACK_CARDS, ITEMS, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
@@ -23,6 +23,7 @@ OPS['attack'] = (state, step) => {
     if (!it) return;
     let p = step.player !== undefined ? player(state, step.player) : pickTarget(state, it.room);
     if (!p || p.status !== 'active') return;
+    if (p.noAttacks) { log(state, pname(p) + ' деактивирован(а) до конца раунда — атака не происходит.', 'minor'); return; }
     if (it.type === 'larva') {
         log(state, 'Личинка атакует ' + pname(p) + '.', 'combat');
         gainContamination(state, p, 1);
@@ -30,12 +31,31 @@ OPS['attack'] = (state, step) => {
         removeIntruder(state, it.uid, false);
         return;
     }
-    // Reactions that prevent the attack: Nerves of Steel, Assault Shotgun (all ammo), Bayonet (marker)
-    const nerves = p.hand.find(c => (cardDef(state, c) || {}).effect === 'preventAttack');
+    // "Don't Panic" held by ANOTHER character in the room: that player decides first.
+    if (!step.noReaction) {
+        const asked = step.askedPanic || [];
+        const holder = playersInRoom(state, it.room).find(o => o.id !== p.id && o.status === 'active' && !asked.includes(o.id) && o.hand.some(c => (cardDef(state, c) || {}).effect === 'dontPanic'));
+        if (holder) {
+            const card = holder.hand.find(c => (cardDef(state, c) || {}).effect === 'dontPanic');
+            ask(state, { kind: 'choice', player: holder.id, title: intruderLabel(state, it) + ' атакует ' + pname(p) + '. Сыграть «Без паники», чтобы предотвратить атаку?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
+                { ...step, op: 'attack.panic', holder: holder.id, card, target: p.id, askedPanic: [...asked, holder.id] });
+            return;
+        }
+    }
+    // Reactions of the target that prevent or redirect the attack
+    const find = eff => p.hand.find(c => (cardDef(state, c) || {}).effect === eff);
+    const findR = eff => p.hand.find(c => (cardDef(state, c) || {}).reactionToo === eff);
+    const nerves = find('preventAttack'), strafe = find('fdCircleStrafe'), panic = find('dontPanic'), deact = find('deactivation'), sentinel = find('sentinel');
+    const pher = findR('pheromonesReaction'), duck = findR('duckReaction');
     const opts = [];
     if (nerves) opts.push({ id: 'card', label: 'Сыграть «Стальные нервы»' });
-    const strafe = p.hand.find(c => (cardDef(state, c) || {}).effect === 'fdCircleStrafe');
     if (strafe) opts.push({ id: 'strafe', label: 'Сыграть «Стрейф по кругу» (предотвратить и выстрелить)' });
+    if (panic) opts.push({ id: 'panic', label: 'Сыграть «Без паники» (предотвратить атаку)' });
+    if (deact) opts.push({ id: 'deact', label: 'Сыграть «Деактивация» (проигнорировать атаку' + (state.phase === 'player' ? ', можно спасовать' : '') + ')' });
+    if (sentinel && step.context === 'surprise' && p.laika === 'board') opts.push({ id: 'sentinel', label: 'Сыграть «Страж»: Лайка предотвращает внезапную атаку' });
+    if (pher && step.context === 'surprise' && p.tissue > 0) opts.push({ id: 'pher', label: 'Сыграть «Феромоны»: сбросить 1 образец ткани — предотвратить атаку' });
+    const othersHere = playersInRoom(state, it.room).filter(o => o.id !== p.id && o.status === 'active');
+    if (duck && othersHere.length && !step.redirected) opts.push({ id: 'duck', label: 'Сыграть «Пригнуться»: чужой атакует другого персонажа' });
     for (const i of p.items) {
         const d = ITEMS[i.item];
         if (d.preventAttack === 'allAmmo' && i.ammo > 0 && !i.broken) opts.push({ id: 'item:' + i.uid, label: '«' + d.name + '»: сбросить все патроны (' + i.ammo + ') — 1 ранение чужому' });
@@ -44,21 +64,42 @@ OPS['attack'] = (state, step) => {
     if (opts.length && !step.noReaction) {
         opts.push({ id: 'no', label: 'Принять атаку' });
         ask(state, { kind: 'choice', player: p.id, title: intruderLabel(state, it) + ' атакует вас. Предотвратить?', options: opts },
-            { ...step, op: 'attack.reaction', player: p.id, card: nerves, strafe });
+            { ...step, op: 'attack.reaction', player: p.id, card: nerves, strafe, panic, deact, sentinel, pher, duck });
         return;
     }
     resolveAttack(state, step, it, p);
 };
+OPS['attack.panic'] = (state, step) => {
+    const h = player(state, step.holder);
+    if (step.answer === 'yes' && h.hand.includes(step.card)) {
+        discardCard(state, h, step.card);
+        log(state, pname(h) + ' играет «Без паники»: атака на ' + pname(player(state, step.target)) + ' предотвращена.', 'good');
+        return;
+    }
+    next(state, { ...step, op: 'attack', answer: undefined, holder: undefined, card: undefined });
+};
 OPS['attack.reaction'] = (state, step) => {
     const p = player(state, step.player);
-    if (step.answer === 'card' && step.card) {
-        discardCard(state, p, step.card);
-        log(state, pname(p) + ' играет «Стальные нервы»: атака предотвращена.', 'good');
+    const it = state.intruders[step.intruder];
+    const play = (c, msg) => { discardCard(state, p, c); log(state, pname(p) + ' играет ' + msg, 'good'); };
+    if (step.answer === 'card' && step.card) { play(step.card, '«Стальные нервы»: атака предотвращена.'); return; }
+    if (step.answer === 'panic' && step.panic) { play(step.panic, '«Без паники»: атака предотвращена.'); return; }
+    if (step.answer === 'sentinel' && step.sentinel) { play(step.sentinel, '«Страж»: Лайка предотвращает внезапную атаку.'); return; }
+    if (step.answer === 'pher' && step.pher) { p.tissue--; play(step.pher, '«Феромоны» (−1 образец ткани): внезапная атака предотвращена.'); return; }
+    if (step.answer === 'deact' && step.deact) {
+        play(step.deact, '«Деактивация»: атака проигнорирована.');
+        if (state.phase === 'player') ask(state, { kind: 'choice', player: p.id, title: 'Деактивация: спасовать? (до конца раунда вас больше не атакуют)', options: [{ id: 'yes', label: 'Да, спасовать' }, { id: 'no', label: 'Нет' }] }, { op: 'attack.deactPass', player: p.id });
+        return;
+    }
+    if (step.answer === 'duck' && step.duck) {
+        play(step.duck, '«Пригнуться»: чужой атакует другого персонажа.');
+        const others = playersInRoom(state, it ? it.room : p.room).filter(o => o.id !== p.id && o.status === 'active');
+        if (others.length === 1) { next(state, { ...step, op: 'attack', player: others[0].id, redirected: true, answer: undefined }); return; }
+        ask(state, { kind: 'choice', player: p.id, title: 'Кого атакует чужой вместо вас?', options: others.map(o => ({ id: String(o.id), label: pname(o) })) }, { ...step, op: 'attack.duckPick' });
         return;
     }
     if (step.answer === 'strafe' && step.strafe) {
-        discardCard(state, p, step.strafe);
-        log(state, pname(p) + ' играет «Стрейф по кругу»: атака предотвращена.', 'good');
+        play(step.strafe, '«Стрейф по кругу»: атака предотвращена.');
         if (state.intruders[step.intruder] && p.items.some(i => canFire(p, i))) {
             ask(state, { kind: 'choice', player: p.id, title: 'Стрейф по кругу: выстрелить в атакующего?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
                 { op: 'attack.strafeShoot', player: p.id, intruder: step.intruder });
@@ -67,13 +108,17 @@ OPS['attack.reaction'] = (state, step) => {
     }
     if (String(step.answer).startsWith('item:')) {
         const i = p.items.find(x => x.uid === step.answer.slice(5));
-        const it = state.intruders[step.intruder];
         if (i && ITEMS[i.item].preventAttack === 'allAmmo') { i.ammo = 0; if (it) applyHitsNoRoll(state, it, 1); }
         else if (i) i.charge = 1;
         log(state, pname(p) + ': «' + ITEMS[i.item].name + '» — атака предотвращена.', 'good');
         return;
     }
     next(state, { ...step, op: 'attack', noReaction: true, answer: undefined });
+};
+OPS['attack.duckPick'] = (state, step) => next(state, { ...step, op: 'attack', player: Number(step.answer), redirected: true, answer: undefined });
+OPS['attack.deactPass'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'yes') { p.passed = true; p.noAttacks = true; log(state, pname(p) + ' пасует: до конца раунда атак не получает.', 'good'); }
 };
 
 OPS['attack.strafeShoot'] = (state, step) => {
@@ -91,7 +136,7 @@ function resolveAttack(state, step, it, p) {
     if (it.type === 'adult' && p.armor && ITEMS[p.armor.item].deck !== 'support' && !effects.some(e => e.op === 'miss')) {
         ask(state, { kind: 'choice', player: p.id, title: 'Атака взрослого: «' + card.name + '». Сбросить броню и проигнорировать атаку?',
             options: [{ id: 'yes', label: 'Да, сбросить броню' }, { id: 'no', label: 'Нет, принять атаку' }] },
-            { op: 'attack.armor', player: p.id, intruder: it.uid, phantom: it.uid === '_phantom' ? it : undefined, cardId, moving: step.moving, dest: step.dest });
+            { op: 'attack.armor', player: p.id, intruder: it.uid, phantom: it.uid === '_phantom' ? it : undefined, cardId, moving: step.moving, dest: step.dest, context: step.context, ravenous: step.ravenous });
         return;
     }
     applyAttackEffects(state, effects, it, p, step);
@@ -104,12 +149,37 @@ OPS['attack.armor'] = (state, step) => {
     applyAttackEffects(state, effects, it, p, step);
 };
 
-function applyAttackEffects(state, effects, it, p, step) {
+/** Would this attack card kill `p` outright? Used for the Sentinel "Laika dies instead" reaction. */
+function lethalEffect(state, effects, p) {
+    const hs = healthState(p);
+    let hp = p.health;
+    for (const e of effects) {
+        switch (e.op) {
+            case 'dmg': hp -= e.n + (hasAdapt(state, 'razorAppendages') ? 1 : 0); if (hp < 0) return true; break;
+            case 'dieIf': if (e.state === 'heavy' ? hs === 'heavy' : (hs === 'injured' || hs === 'heavy')) return true; break;
+            case 'if': if (lethalEffect(state, (e.state === 'injured' ? hs === 'injured' : hs === e.state) ? e.then : e.else, p)) return true; break;
+            case 'furyRoom': if (hs === 'heavy') return true; break;
+            case 'wound': if (p.wounds.length + e.n > 3) return true; break;
+        }
+    }
+    return false;
+}
+function applyAttackEffects(state, effects, it, p, step, nested) {
+    if (!nested) {
+        // Sentinel (Bounty Hunter): when the revealed attack card would kill you, Laika dies instead.
+        const sentinel = p.hand.find(c => (cardDef(state, c) || {}).effect === 'sentinel');
+        if (sentinel && p.laika && !step.noSentinel && lethalEffect(state, effects, p)) {
+            ask(state, { kind: 'choice', player: p.id, title: 'Эта атака убьёт вас. Сыграть «Страж» — пожертвовать Лайкой, чтобы проигнорировать атаку?', options: [{ id: 'yes', label: 'Да, Лайка спасает меня' }, { id: 'no', label: 'Нет' }] },
+                { op: 'attack.sentinelLethal', player: p.id, card: sentinel, intruder: it.uid, phantom: it.uid === '_phantom' ? it : undefined, effects, moving: step.moving, dest: step.dest, context: step.context });
+            return;
+        }
+        step._hp = p.health; step._w = p.wounds.length; step._contam = state.contamSeq;
+    }
     for (const e of effects) {
         if (p.status !== 'active') return;
         const hs = healthState(p);
         switch (e.op) {
-            case 'dmg': loseHealth(state, p, e.n, 'атака'); break;
+            case 'dmg': loseHealth(state, p, e.n + (hasAdapt(state, 'razorAppendages') ? 1 : 0), 'атака'); break;
             case 'wound': gainWound(state, p, e.n); break;
             case 'contam': gainContamination(state, p, 1); break;
             case 'dieIf': {
@@ -119,7 +189,7 @@ function applyAttackEffects(state, effects, it, p, step) {
             }
             case 'if': {
                 const cond = e.state === 'injured' ? hs === 'injured' : hs === e.state;
-                applyAttackEffects(state, cond ? e.then : e.else, it, p, step);
+                applyAttackEffects(state, cond ? e.then : e.else, it, p, step, true);
                 break;
             }
             case 'followIfMoving':
@@ -142,7 +212,31 @@ function applyAttackEffects(state, effects, it, p, step) {
                 break;
         }
     }
+    if (nested) return;
+    const miss = effects.some(e => e.op === 'miss');
+    // Venomous: every non-miss attack contaminates if it did not already
+    if (!miss && hasAdapt(state, 'venomous') && p.status === 'active' && state.contamSeq === step._contam) {
+        log(state, '🧬 Ядовитость: атака даёт заражение.', 'bad');
+        gainContamination(state, p, 1);
+    }
+    // Ravenous: in the Intruder-phase attack step an adult/drone that drew blood attacks again
+    if (hasAdapt(state, 'ravenous') && step.context === 'phase' && !step.ravenous && (it.type === 'adult' || it.type === 'drone') && p.status === 'active'
+        && (p.health < step._hp || p.wounds.length > step._w) && state.intruders[it.uid]) {
+        log(state, '🧬 Ненасытность: ' + INTRUDER_NAMES[it.type] + ' атакует ещё раз!', 'combat');
+        next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'phase', ravenous: true });
+    }
 }
+OPS['attack.sentinelLethal'] = (state, step) => {
+    const p = player(state, step.player), it = step.phantom || state.intruders[step.intruder];
+    if (step.answer === 'yes' && p.hand.includes(step.card)) {
+        discardCard(state, p, step.card);
+        p.items = p.items.filter(i => i.item !== 'laika'); p.laika = null;
+        log(state, '🐕 ' + pname(p) + ' играет «Страж»: Лайка погибает, спасая хозяина — атака проигнорирована.', 'good');
+        return;
+    }
+    if (!it) return;
+    applyAttackEffects(state, step.effects, it, p, { ...step, noSentinel: true });
+};
 /** Attack from an intruder that is not on the board (Survivor's Vents): draws and applies an attack card of the given type. */
 export function phantomAttack(state, p, type) {
     resolveAttack(state, { noReaction: true }, { uid: '_phantom', type, room: p.room, hits: 0 }, p);
@@ -263,6 +357,12 @@ OPS['shoot.fire'] = (state, step) => {
     next(state, then);
 };
 
+/** Intruder Adaptations that alter the natural combat roll: Agile (2 / icon → 6), Hardened Carapace (2–6 → +1). */
+function adaptRoll(state, r) {
+    if (hasAdapt(state, 'agile') && (r === 'crit' || r === 2)) { log(state, '🧬 Проворство: результат «' + fmtRoll(r) + '» считается «6».', 'combat'); r = 6; }
+    if (hasAdapt(state, 'hardenedCarapace') && typeof r === 'number') { log(state, '🧬 Прочный панцирь: ' + r + ' → ' + (r + 1) + '.', 'combat'); r = r + 1; }
+    return r;
+}
 /** Deal `hits` to an intruder, then the kill-check roll. */
 export function dealHits(state, p, it, hits, mod, opts = {}) {
     if (it.type === 'larva') { log(state, 'Личинка погибает.', 'good'); removeIntruder(state, it.uid, false); return true; }
@@ -276,12 +376,13 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
         log(state, '🎲 Точный выстрел: два броска — ' + fmtRoll(r) + ' и ' + fmtRoll(r2) + '.', 'combat');
         if (score(r2) < score(r)) r = r2;
     }
+    r = adaptRoll(state, r);
     if (wd.critOn2 && r === 2) { r = 'crit'; log(state, 'Штурмовая винтовка: «2» считается КРИТОМ.', 'combat'); }
     if (wd.plusOn5 && r === 5) { it.hits++; log(state, 'BF-пушка: «5» — дополнительное ранение.', 'combat'); }
     let val = r === 'crit' ? 'crit' : r + mod;
     log(state, '🎲 Бой: ' + fmtRoll(r) + (mod ? ' +' + mod + ' = ' + val : '') + ' против ранений ' + it.hits + '.', 'combat');
     if (wd.reroll && val !== 'crit' && val > it.hits) {
-        r = roll(state, COMBAT_DIE); val = r === 'crit' ? 'crit' : r + mod;
+        r = adaptRoll(state, roll(state, COMBAT_DIE)); val = r === 'crit' ? 'crit' : r + mod;
         log(state, '🎲 Умная винтовка — переброс: ' + fmtRoll(r) + (mod ? ' +' + mod + ' = ' + val : '') + '.', 'combat');
     }
     if (val === 'crit' || val <= it.hits) {
@@ -306,7 +407,7 @@ function onKill(state, p, opts) {
 
 function queenHits(state, p, it, hits, mod) {
     state.queenHits += hits;
-    const r = roll(state, COMBAT_DIE);
+    const r = adaptRoll(state, roll(state, COMBAT_DIE));
     const val = r === 'crit' ? 'crit' : r + mod;
     log(state, '🎲 Бой с Королевой: ' + fmtRoll(r) + (mod ? ' +' + mod : '') + ', ранений на треке ' + state.queenHits + '.', 'combat');
     if (val === 'crit' || val <= state.queenHits || state.queenHits >= 6) next(state, { op: 'queen.card', player: p.id });

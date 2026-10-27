@@ -18,6 +18,7 @@ export function run(state) {
         const h = OPS[step.op];
         if (!h) throw new Error('unknown op ' + step.op);
         h(state, step);
+        checkLaika(state);
         if (step.op !== 'dice.rolled') { state.pendingRoll = null; state.pendingRollPlayer = null; }
         if (++guard > 20000) throw new Error('runaway queue at ' + step.op);
         // Safety net: a chain can be cut short (e.g. the acting character died mid-action).
@@ -29,6 +30,14 @@ export function run(state) {
     }
 }
 
+/** Laika is automatically called back when she shares a room with the Bounty Hunter or with an intruder. */
+export function checkLaika(state) {
+    for (const p of state.players) {
+        if (!p.laika || p.laika === 'board') continue;
+        if (p.status !== 'active') { p.laika = 'board'; continue; }
+        if (p.laika === p.room || intrudersIn(state, p.laika).length) { p.laika = 'board'; log(state, '🐕 Лайка автоматически возвращается к охотнику.', 'minor'); }
+    }
+}
 /** Do these steps next (before anything already queued). */
 export function next(state, ...steps) { state.queue.unshift(...steps.filter(Boolean)); }
 /** Do these steps after everything already queued. */
@@ -447,13 +456,15 @@ export function spawnIntruder(state, type, roomId) {
 export function removeIntruder(state, uid, leaveCarcass) {
     const it = state.intruders[uid];
     if (!it) return;
-    if (leaveCarcass && (it.type === 'adult' || it.type === 'drone')) room(state, it.room).objects.push({ type: 'carcass' });
+    if (leaveCarcass && (it.type === 'adult' || it.type === 'drone')) { room(state, it.room).objects.push({ type: 'carcass' }); state.carcassCount = (state.carcassCount || 0) + 1; }
     delete state.intruders[uid];
 }
 export function intruderLabel(state, it) {
     return INTRUDER_NAMES[it.type] + (it.type === 'queen' ? ' (ранений ' + state.queenHits + ')' : it.hits ? ' (ранений ' + it.hits + ')' : '');
 }
 export const INTRUDER_RANK = { queen: 0, drone: 1, adult: 2, larva: 3 };
+/** Is the given intruder Adaptation currently active? */
+export function hasAdapt(state, key) { return !!(state.adaptations && state.adaptations.includes(key)); }
 
 /** Roll `die`. If the acting player already rolled interactively (state.pendingRoll from the
  *  'dice' prompt) that value is consumed instead. Every roll is recorded in state.lastRoll so

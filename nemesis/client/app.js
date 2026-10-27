@@ -8,7 +8,7 @@ import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
 import { cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName } from './cards.js';
 import { ROOM_TILES } from '/shared/ship.mjs';
-import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS } from '/shared/data/cards.mjs';
+import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, objectiveTextOf } from '/shared/data/cards.mjs';
 
 const $ = id => document.getElementById(id);
 const PHASES = { setup: 'Подготовка', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
@@ -177,8 +177,11 @@ function renderTopbar() {
     const bk = v.bagKnown; $('tbBag').textContent = v.bagCount + ' (' + ['blank', 'larva', 'adult', 'drone', 'queen'].filter(k => bk[k]).map(k => INTRUDER_NAMES[k][0] + bk[k]).join(' ') + ')';
     $('tbMarkers').textContent = (8 - v.fireLeft) + '/8 · ' + (8 - v.malfLeft) + '/8';
     const cc = v.computerCard ? COMPUTER_CARDS[v.computerCard] : null;
-    $('tbComputer').innerHTML = cc ? esc(cc.name) + '<span class="ipop"><span class="ipart" style="background-image:url(' + computerArt(v.computerCard) + ')"></span><b>' + esc(cc.name) + '</b><span>' + esc(cc.text) + '</span></span>' : '—';
+    const ccText = cc ? (cc.options ? Object.values(cc.options).map(t => '• ' + t).join('\n') : cc.text) : '';
+    $('tbComputer').innerHTML = cc ? esc(cc.name) + '<span class="ipop"><span class="ipart" style="background-image:url(' + computerArt(v.computerCard) + ')"></span><b>' + esc(cc.name) + '</b><span class="pre">' + esc(ccText) + '</span></span>' : '—';
     $('tbComputer').classList.toggle('itag', !!cc);
+    const ad = v.adaptations || [];
+    $('tbAdapt').innerHTML = ad.length ? ad.map(k => '<span class="itag adapt">' + esc(ADAPTATIONS[k].name) + '<span class="ipop"><b>🧬 ' + esc(ADAPTATIONS[k].name) + '</b><span>' + esc(ADAPTATIONS[k].text) + '</span></span></span>').join('<span class="sep"> · </span>') : 'нет' + (v.adaptationsRemoved ? ' (удалено ' + v.adaptationsRemoved + ')' : '');
     $('undoBtn').disabled = !app.host || !app.undoDepth;
     $('undoBtn').title = app.host ? 'Откатить последнее действие (' + (app.undoDepth || 0) + ' в стеке)' : 'Откатывать может только ведущий';
 }
@@ -209,7 +212,7 @@ function renderPlayers() {
         const items = p.items.map(i => '<span class="itag" title="' + esc(itemTitle(i)) + '">' + itemArtHtml(i) + (ITEMS[i.item].weapon ? '🔫' : ITEMS[i.item].kind === 'heavy' ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>').join('')
             + p.heavy.map(h => '<span>🧳 ' + ({ corpse: 'труп', charCorpse: 'труп персонажа', carcass: 'туша', egg: 'яйцо' })[h.type] + '</span>').join('');
         let obj = '';
-        if (me && p.objectives) obj = '<div class="objs">' + p.objectives.map(o => '<div class="obj ' + o.kind + '" style="background-image:url(' + objectiveArt(o.kind) + ')"><b>🎯 ' + esc(OBJECTIVES[o.kind][o.id].name) + '</b><span>' + esc(OBJECTIVES[o.kind][o.id].text.replace('{target}', o.target !== undefined ? v.players[o.target].name : '')) + '</span></div>').join('') + '</div>';
+        if (me && p.objectives) obj = '<div class="objs">' + p.objectives.map(o => '<div class="obj ' + o.kind + '" style="background-image:url(' + objectiveArt(o.kind) + ')"><b>🎯 ' + esc(OBJECTIVES[o.kind][o.id].name) + '</b><span>' + esc(objectiveTextOf(OBJECTIVES[o.kind][o.id], v.players)) + '</span></div>').join('') + '</div>';
         let known = '';
         if (me) {
             const ke = Object.entries(p.knownEngines || {}); if (ke.length) known += '<div class="items">⚙ ' + ke.map(([n, w]) => '№' + n + ': ' + (w ? 'исправен' : 'повреждён')).join(', ') + '</div>';

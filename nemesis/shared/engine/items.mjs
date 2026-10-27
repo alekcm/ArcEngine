@@ -336,10 +336,10 @@ OPS['item.logCodes'] = (state, step) => {
 OPS['item.logCodes.show'] = (state, step) => {
     const p = player(state, step.player);
     const o = player(state, step.target);
-    const txt = o.objectives.map(ob => OBJ(ob.kind, ob.id).name + ': ' + OBJ(ob.kind, ob.id).text.replace('{target}', ob.target !== undefined ? pname(state.players[ob.target]) : '')).join('\n');
+    const txt = o.objectives.map(ob => OBJ(ob.kind, ob.id).name + ': ' + objectiveTextOf(OBJ(ob.kind, ob.id), state.players)).join('\n');
     ask(state, { kind: 'info', player: p.id, title: 'Цели ' + pname(o) + ' (только вы это видите)', text: txt }, { op: 'noop', then: step.then });
 };
-import { OBJECTIVES } from '../data/cards.mjs';
+import { OBJECTIVES, objectiveTextOf } from '../data/cards.mjs';
 function OBJ(kind, id) { return OBJECTIVES[kind][id]; }
 OPS['item.detonate'] = (state, step) => {
     const p = player(state, step.player);

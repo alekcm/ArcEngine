@@ -2,7 +2,8 @@
 
 import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
     NOISE_DIE, roll, fmtRoll, needDice, fx, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
-    clearNoiseAround, HEAVY_NAMES, cardDef, discardCard } from './core.mjs';
+    clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt } from './core.mjs';
+import { hyperAttackStep } from './intruders.mjs';
 import { applyHitsNoRoll } from './combat.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
@@ -31,7 +32,7 @@ OPS['move.start'] = (state, step) => {
 OPS['move.chosen'] = (state, step) => {
     const p = player(state, step.player);
     const dest = step.answer;
-    if (step.pay) { payCost(state, p, step.pay, { ...step, pay: 0, answer: dest }, step.careful ? 'Осторожное перемещение: оплата' : 'Перемещение: оплата'); return; }
+    if (step.pay) { payCost(state, p, step.pay, { op: 'react.interrupt', player: p.id, label: step.careful ? 'осторожно перемещается' : 'перемещается', then: { ...step, pay: 0, answer: dest } }, step.careful ? 'Осторожное перемещение: оплата' : 'Перемещение: оплата'); return; }
     const attackers = step.noAttacks ? [] : intrudersIn(state, p.room).map(i => i.uid);
     if (step.preventOne && attackers.length) attackers.shift();
     const go = { ...step, op: 'move.go', dest, answer: undefined };
@@ -100,6 +101,7 @@ OPS['move.afterExplore'] = (state, step) => {
         next(state, then);
         return;
     }
+    if (state.players.some(o => o.laika === p.room)) { log(state, '🐕 В комнате Лайка — бросок шума не делается.', 'minor'); next(state, then); return; }
     if (step.careful) {
         const cors = corridorsOf(state, p.room).filter(c => !(c.id === 'tech' ? state.ship.techNoise : state.ship.corridors[c.id].noise));
         if (!cors.length) { log(state, 'Все коридоры уже с шумом — обычный бросок шума.', 'minor'); next(state, { op: 'noise.roll', player: p.id, room: p.room }, then); return; }
@@ -120,9 +122,9 @@ OPS['noise.place'] = (state, step) => {
 OPS['noise.roll'] = (state, step) => {
     const p = player(state, step.player);
     const roomId = step.room || p.room;
-    if (needDice(state, step, 'noise', p.id, 'Бросок шума — ' + roomName(state, roomId))) return;
+    if (needDice(state, step, 'noise', p.id, 'Бросок шума — ' + (step.laika ? 'Лайка, ' : '') + roomName(state, roomId))) return;
     const r = roll(state, NOISE_DIE);
-    log(state, '🎲 Шум (' + pname(p) + ', ' + roomName(state, roomId) + '): ' + fmtRoll(r) + '.', 'noise');
+    log(state, '🎲 Шум (' + (step.laika ? '🐕 Лайка' : pname(p)) + ', ' + roomName(state, roomId) + '): ' + fmtRoll(r) + '.', 'noise');
     if (r === 'silence') return;
     if (r === 'encounter') { next(state, { op: 'encounter', room: roomId, player: p.id }); return; }
     if (r === 'danger') {
@@ -143,6 +145,7 @@ OPS['noise.roll'] = (state, step) => {
                 if (c.door === 'closed') { c.door = 'destroyed'; log(state, 'Чужой выламывает дверь ' + c.id + '.', 'event'); continue; }
                 it.room = roomId; moved++;
                 log(state, INTRUDER_NAMES[it.type] + ' врывается из ' + roomName(state, e.to) + '!', 'combat');
+                const h = hyperAttackStep(state, it); if (h) next(state, h);
             }
         }
         if (!moved) {
@@ -176,9 +179,11 @@ OPS['predict.danger'] = (state, step) => {
 OPS['encounter'] = (state, step) => {
     const roomId = step.room;
     clearNoiseAround(state, roomId);
-    const token = drawBagToken(state);
+    const token = step.token || drawBagToken(state);
     if (!token) { log(state, 'Мешок пуст — встречи нет.', 'minor'); return; }
-    log(state, '👁 Встреча: из мешка — ' + INTRUDER_NAMES[token] + '.', 'combat');
+    if (!step.token) log(state, '👁 Встреча: из мешка — ' + INTRUDER_NAMES[token] + '.', 'combat');
+    // Reaction: Field Experience (Xenobiologist) — return the token to the bag and draw another
+    if (!step.noFE && fieldExpAsk(state, token, { ...step, op: 'encounter' })) return;
     if (token === 'blank') {
         state.bag.push('blank');
         let added = 0;
@@ -211,13 +216,34 @@ OPS['encounter.surprise'] = (state, step) => {
     if (!it) return;
     const p = step.player !== undefined ? player(state, step.player) : null;
     if (p && p.status === 'active' && p.room === roomId && !step.noSurprise) {
-        const threshold = { larva: 1, adult: 3, drone: 4, queen: 5 }[token];
+        const threshold = { larva: 1, adult: 3, drone: 4, queen: 5 }[token] + (hasAdapt(state, 'swiftStrikes') && token !== 'larva' ? 1 : 0);
         const cards = p.hand.length;
         if (cards < threshold) {
             log(state, 'Внезапная атака! (карт в руке ' + cards + ' < ' + threshold + ')', 'combat');
             next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'surprise' });
         } else log(state, 'Внезапной атаки нет (карт в руке ' + cards + ' ≥ ' + threshold + ').', 'minor');
     }
+};
+/** If the Xenobiologist holds "Field Experience" and has a Tissue sample, offer to redraw the token. `resume` is re-run with token/noFE. */
+export function fieldExpAsk(state, token, resume) {
+    const x = state.players.find(o => o.status === 'active' && o.tissue > 0 && o.hand.some(c => (cardDef(state, c) || {}).reactionToo === 'fieldExpReaction'));
+    if (!x) return false;
+    const card = x.hand.find(c => (cardDef(state, c) || {}).reactionToo === 'fieldExpReaction');
+    ask(state, { kind: 'choice', player: x.id, title: 'Из мешка вытянут жетон «' + INTRUDER_NAMES[token] + '». Сыграть «Полевой опыт» (−1 образец ткани): вернуть жетон и вытянуть другой?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
+        { op: 'fieldExp.answer', player: x.id, card, token, resume });
+    return true;
+}
+OPS['fieldExp.answer'] = (state, step) => {
+    const x = player(state, step.player);
+    if (step.answer === 'yes' && x.hand.includes(step.card) && x.tissue > 0) {
+        discardCard(state, x, step.card); x.tissue--;
+        state.bag.push(step.token);
+        const t = drawBagToken(state);
+        log(state, '🧪 ' + pname(x) + ' играет «Полевой опыт»: жетон «' + INTRUDER_NAMES[step.token] + '» возвращён в мешок, новый жетон — ' + (t ? INTRUDER_NAMES[t] : 'нет') + '.', 'good');
+        next(state, { ...step.resume, token: t, noFE: false, answer: undefined });
+        return;
+    }
+    next(state, { ...step.resume, token: step.token, noFE: true, answer: undefined });
 };
 function afterNoIntruder(state, roomId) {
     for (const c of corridorsOf(state, roomId)) placeNoise(state, c.id);

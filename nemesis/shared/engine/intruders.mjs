@@ -1,10 +1,10 @@
 // intruders.mjs — Intruder Phase (burning, attacks), intruder movement rules, bag development.
 
 import { OPS, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, removeIntruder, spawnIntruder,
-    INTRUDER_RANK, intruderLabel, orderIndex, drawBagToken } from './core.mjs';
+    INTRUDER_RANK, intruderLabel, orderIndex, drawBagToken, hasAdapt } from './core.mjs';
 import { distances, roomOfKind } from '../ship.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
-import { countAvailable } from './movement.mjs';
+import { countAvailable, fieldExpAsk } from './movement.mjs';
 
 OPS['phase.intruder'] = (state) => {
     state.phase = 'intruder';
@@ -19,12 +19,6 @@ OPS['phase.intruder'] = (state) => {
             log(state, INTRUDER_NAMES[it.type] + ' в ' + roomName(state, id) + ' получает ранение от огня (' + it.hits + ').', 'combat');
         }
         if (tileOf(state, id) === 'nest' && state.nestEggs > 0) { state.nestEggs--; log(state, 'Огонь в Гнезде уничтожает яйцо (осталось ' + state.nestEggs + ').', 'event'); checkNest(state); }
-    }
-    // 1b. Laika: an adult in the dog's room takes 1 hit and the dog returns to the hunter
-    for (const p of state.players) {
-        if (!p.laika || p.laika === 'board' || p.status !== 'active') continue;
-        const a = intrudersIn(state, p.laika).find(i => i.type === 'adult');
-        if (a) { a.hits++; log(state, '🐕 Лайка кусает взрослого в ' + roomName(state, p.laika) + ' (' + a.hits + ').', 'combat'); p.laika = 'board'; }
     }
     // 2. Attacks, rooms in id order, bigger intruders first
     const steps = [];
@@ -46,6 +40,7 @@ export function checkNest(state) {
 // ---------------------------------------------------------------------------------------------
 /** Move every intruder not in combat through the corridor with the given number. */
 export function moveIntrudersByCorridor(state, num) {
+    const attacks = [];
     for (const it of Object.values(state.intruders)) {
         if (playersInRoom(state, it.room).length) continue;
         const r = state.ship.rooms[it.room];
@@ -62,17 +57,21 @@ export function moveIntrudersByCorridor(state, num) {
         if (c.door === 'closed') { c.door = 'destroyed'; log(state, INTRUDER_NAMES[it.type] + ' ломает дверь ' + c.id + '.', 'event'); continue; }
         it.room = exit.to;
         log(state, INTRUDER_NAMES[it.type] + ' переходит по коридору ' + num + ' в ' + roomName(state, exit.to) + '.', 'event');
+        const h = hyperAttackStep(state, it); if (h) attacks.push(h);
     }
+    return attacks;
 }
 
 /** Move every intruder not in combat one room toward the closest character. */
 export function moveIntrudersToClosest(state) {
     const targets = state.players.filter(p => p.status === 'active' && !p.pod);
-    if (!targets.length) return;
+    const attacks = [];
+    if (!targets.length) return attacks;
     for (const it of Object.values(state.intruders)) {
         if (playersInRoom(state, it.room).length) continue;
-        moveOneToward(state, it, targets);
+        if (moveOneToward(state, it, targets)) { const h = hyperAttackStep(state, it); if (h) attacks.push(h); }
     }
+    return attacks;
 }
 export function moveOneToward(state, it, targets) {
     const dist = distances(state.ship, it.room);
@@ -91,10 +90,12 @@ export function moveOneToward(state, it, targets) {
     if (c.door === 'closed') { c.door = 'destroyed'; log(state, INTRUDER_NAMES[it.type] + ' ломает дверь ' + c.id + '.', 'event'); return; }
     it.room = e.to;
     log(state, INTRUDER_NAMES[it.type] + ' движется к ' + pname(best.p) + ': ' + roomName(state, e.to) + '.', 'event');
+    return true;
 }
 
 /** Repel: move an intruder to a neighbouring room (chooser picks if several). */
-export function repelIntruder(state, it, toRoom) {
+export function repelIntruder(state, it, toRoom, force) {
+    if (hasAdapt(state, 'fearless') && !force) { log(state, '🧬 Бесстрашие: ' + INTRUDER_NAMES[it.type] + ' нельзя отогнать.', 'bad'); return false; }
     const exits = state.ship.rooms[it.room].exits;
     const e = toRoom ? exits.find(x => x.to === toRoom) : exits[0];
     if (!e) return false;
@@ -102,16 +103,28 @@ export function repelIntruder(state, it, toRoom) {
     if (c.door === 'closed') { c.door = 'destroyed'; log(state, 'Дверь ' + c.id + ' уничтожена при отступлении чужого.', 'event'); return false; }
     it.room = e.to;
     log(state, INTRUDER_NAMES[it.type] + ' отогнан в ' + roomName(state, e.to) + '.', 'good');
+    const h = hyperAttackStep(state, it); if (h) next(state, h);
     return true;
+}
+/** Hyper Aggression adaptation: an intruder entering a room with characters attacks at once. Returns the attack step or null. */
+export function hyperAttackStep(state, it) {
+    if (!hasAdapt(state, 'hyperAggression') || !state.intruders[it.uid] || it.type === 'larva') return null;
+    if (!playersInRoom(state, it.room).length) return null;
+    log(state, '🧬 Гиперагрессия: ' + INTRUDER_NAMES[it.type] + ' немедленно атакует в ' + roomName(state, it.room) + '!', 'combat');
+    return { op: 'attack', intruder: it.uid, context: 'hyper' };
 }
 
 // ---------------------------------------------------------------------------------------------
 // Bag development
 // ---------------------------------------------------------------------------------------------
-export function bagDevelopment(state) {
-    const token = drawBagToken(state);
+OPS['bag.develop'] = (state, step) => {
+    const token = step.token || drawBagToken(state);
     if (!token) { log(state, 'Развитие мешка: мешок пуст.', 'minor'); return; }
-    log(state, '🎒 Развитие мешка: ' + INTRUDER_NAMES[token] + '.', 'event');
+    if (!step.token) log(state, '🎒 Развитие мешка: ' + INTRUDER_NAMES[token] + '.', 'event');
+    if (!step.noFE && fieldExpAsk(state, token, { op: 'bag.develop' })) return;
+    bagDevelopment(state, token);
+};
+export function bagDevelopment(state, token) {
     const add = (type, n = 1) => { let k = 0; for (let i = 0; i < n; i++) if (countAvailable(state, type) > 0) { state.bag.push(type); k++; } if (k) log(state, 'В мешок добавлено: ' + INTRUDER_NAMES[type] + ' ×' + k + '.', 'event'); };
     if (!state.queenDead) {
         switch (token) {
@@ -120,7 +133,7 @@ export function bagDevelopment(state) {
                 if (q) {
                     const ps = playersInRoom(state, q.room);
                     if (ps.length) next(state, { op: 'attack', intruder: q.uid, context: 'queen' });
-                    else moveOneToward(state, q, state.players.filter(p => p.status === 'active' && !p.pod));
+                    else if (moveOneToward(state, q, state.players.filter(p => p.status === 'active' && !p.pod))) { const h = hyperAttackStep(state, q); if (h) next(state, h); }
                 } else {
                     add('larva');
                     const hiber = roomOfKind(state.ship, 'hibernatorium').id;

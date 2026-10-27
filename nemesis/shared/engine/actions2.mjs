@@ -2,7 +2,7 @@
 // Janitor, CEO, Lab Rat, Sentry, Android, Convict, Psychologist, Bounty Hunter, Captain) and the
 // uses of their starting items. Shares helpers with actions.mjs.
 
-import { OPS, ask, next, log, player, pname, intrudersIn, room, roomName, tileOf, restoreHealth, removeFire,
+import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, isContam, payCost, placeNoise, corridorsOf, secretTile,
     payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES } from './core.mjs';
 import { ITEMS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, WOUNDS, EVENT_CARDS } from '../data/cards.mjs';
@@ -665,19 +665,46 @@ OPS['card.lendAHand.discard'] = (state, step) => {
 // ---------------------------------------------------------------------------------------------
 // Bounty Hunter (Laika)
 // ---------------------------------------------------------------------------------------------
+/** Laika's movement options: to a nearby explored room (from her current position) or back to the hunter. */
+export function laikaOptions(state, p) {
+    const opts = [];
+    if (p.laika && p.laika !== 'board') opts.push({ id: 'back', label: 'Отозвать Лайку (на свой планшет)' });
+    const from = p.laika && p.laika !== 'board' ? p.laika : p.room;
+    for (const e of state.ship.rooms[from].exits) {
+        const c = state.ship.corridors[e.corridor];
+        if (c.door === 'closed') continue;
+        if (!room(state, e.to).explored) continue;
+        opts.push({ id: 'go:' + e.to, label: 'Отправить в ' + roomName(state, e.to) + (intrudersIn(state, e.to).length ? ' (там чужой — сразу вернётся)' : '') });
+    }
+    return opts;
+}
+/** laika.pick { player, then, answer } — apply a Laika move; she noise-rolls like a character when entering an empty room. */
+OPS['laika.pick'] = (state, step) => {
+    const p = player(state, step.player);
+    const then = step.then || BACK;
+    if (step.answer === 'stay') { next(state, then); return; }
+    if (step.answer === 'back') { p.laika = 'board'; log(state, '🐕 Лайка возвращается к охотнику.', 'good'); next(state, then); return; }
+    const r = step.answer.slice(3);
+    p.laika = r; log(state, '🐕 Лайка бежит в ' + roomName(state, r) + '.', 'action');
+    if (p.room === r || intrudersIn(state, r).length) { p.laika = 'board'; log(state, '🐕 Лайка тут же возвращается к охотнику.', 'minor'); next(state, then); return; }
+    if (playersInRoom(state, r).length) { log(state, 'В комнате есть персонаж — Лайка не бросает шум.', 'minor'); next(state, then); return; }
+    next(state, { op: 'noise.roll', player: p.id, room: r, laika: true }, then);
+};
 OPS['card.goGirl'] = (state, step) => {
     const p = player(state, step.player);
-    const opts = [];
-    if (p.laika && p.laika !== 'board') opts.push({ id: 'back', label: 'Вернуть Лайку к себе' });
-    const from = p.laika && p.laika !== 'board' ? p.laika : p.room;
-    for (const r of neighbours(state, from)) opts.push({ id: 'go:' + r, label: 'Отправить в ' + roomName(state, r) });
-    choice(state, p, 'Вперёд, девочка!', opts, 'card.goGirl.pick');
+    const opts = laikaOptions(state, p);
+    if (!opts.length) { log(state, 'Лайке некуда идти.', 'minor'); next(state, BACK); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Вперёд, девочка!', options: opts }, { op: 'laika.pick', player: p.id, then: BACK });
 };
-OPS['card.goGirl.pick'] = (state, step) => {
+/** Passive: before the first action of each Player Phase the hunter may move Laika or call her back. */
+OPS['laika.offer'] = (state, step) => {
     const p = player(state, step.player);
-    if (step.answer === 'back') { p.laika = 'board'; log(state, '🐕 Лайка возвращается к охотнику.', 'good'); next(state, BACK); return; }
-    const r = step.answer.slice(3); p.laika = r; log(state, '🐕 Лайка бежит в ' + roomName(state, r) + '.', 'action');
-    next(state, BACK);
+    if (!p.laika || p.status !== 'active' || p.laikaRound === state.round) { next(state, step.then); return; }
+    p.laikaRound = state.round;
+    const opts = laikaOptions(state, p);
+    if (!opts.length) { next(state, step.then); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Лайка (' + (p.laika === 'board' ? 'рядом с вами' : 'в ' + roomName(state, p.laika)) + '): переместить её перед первым действием?',
+        options: [{ id: 'stay', label: 'Оставить как есть' }, ...opts] }, { op: 'laika.pick', player: p.id, then: step.then });
 };
 OPS['card.tacticalMove'] = (state, step) => {
     const p = player(state, step.player);
