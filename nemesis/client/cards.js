@@ -18,6 +18,7 @@ export function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c 
 const ART_DECKS = {
     android: ['alwaysPrepared', 'computerSkills', 'deactivation', 'demolition', 'fastRepairs', 'interruption', 'powerUp', 'protocolOverride', 'search', 'selfRepair'],
     soldier: ['coveringFire', 'demolition', 'forcingFire', 'interruption', 'myLittleFriend', 'nervesOfSteel', 'repairs', 'rest', 'search', 'weakSpot'],
+    scout: ['adrenaline', 'demolition', 'distraction', 'interruption', 'reconnaissance', 'repairs', 'rest', 'scavenging', 'search', 'weakSpot'],
 };
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
