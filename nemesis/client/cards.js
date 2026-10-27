@@ -31,6 +31,7 @@ const ART_DECKS = {
     convict: ['bash', 'catchThis', 'demolition', 'duckAndCover', 'interruption', 'intimidate', 'repairs', 'rest', 'search', 'shortTemper'],
     psych: ['computerSkills', 'demolition', 'dontPanic', 'emotionScanner', 'interruption', 'lendAHand', 'repairs', 'rest', 'search', 'wouldYouKindly'],
     bounty: ['demolition', 'determination', 'goGirl', 'interruption', 'repairs', 'rest', 'search', 'sentinel', 'tacticalMove', 'weakSpot'],
+    captain: ['authority', 'coveringFire', 'demolition', 'fanning', 'interruption', 'motivation', 'reload', 'repairs', 'rest', 'search'],
 };
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
