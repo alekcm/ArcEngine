@@ -179,6 +179,8 @@ function renderGame() {
     scene.update(v, ROOM_TILES, INTRUDER_NAMES, selectable);
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
     renderBagStrip(); renderHint(); refreshOverlays();
+    const meNow2 = v.players.find(x => x.id === app.me);
+    $('sheetBtn').classList.toggle('attention', !!(meNow2 && itemPickMap(v.prompt, meNow2).size));
     dice.update(v, app.me, playerName);
     if (!tableFx) { tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES); tableFx.onShake = k => scene && scene.shake(k); }
     tableFx.update(v, app.me);
@@ -331,6 +333,11 @@ function renderPrompt() {
                     (art ? '<i class="oart" style="background-image:url(' + esc(art) + ')"></i>' : '') +
                     '<span>' + esc(o.label) + (o.tag ? ' <small>· ' + esc(o.tag) + '</small>' : '') + '</span>' + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') + '</button>';
             }).join('') + '</div>';
+            {
+                // The same choice can be made on the cards of my own backpack (C opens the sheet).
+                const picks = itemPickMap(pr, myChar());
+                if (picks.size) html += '<div class="prompt-buttons"><button class="btn primary" id="pickInv" title="Открыть планшет персонажа: подсвеченные предметы и слоты рук нажимаются">🎒 Выбрать из инвентаря · C</button></div>';
+            }
             if (pr.cancel) html += '<div class="prompt-buttons"><button class="btn" data-opt="cancel">Отмена</button></div>';
             break;
         case 'room':
@@ -380,6 +387,7 @@ function renderPrompt() {
     for (const b of el.querySelectorAll('[data-act]')) b.onclick = () => act({ action: b.dataset.act });
     for (const b of el.querySelectorAll('[data-item]')) b.onclick = () => act({ action: 'item', itemId: b.dataset.item });
     for (const b of el.querySelectorAll('[data-opt]')) b.onclick = () => act(b.dataset.opt);
+    if ($('pickInv')) $('pickInv').onclick = () => openSheet();
     for (const b of el.querySelectorAll('[data-room]')) b.onclick = () => act(b.dataset.room);
     const ok = $('cardsOk'); if (ok) ok.onclick = () => act([...app.selectedCards]);
 }
@@ -603,6 +611,15 @@ function openItemPicker(pr, options) {
     app.itemPickMin = false;
     app.itemPick = { pr: pr.id, count: options.filter(o => o.item).length };
     $('ipTitle').textContent = pr.title || 'Выбор предмета';
+    // When the choice is about things I already carry, the backpack is a valid (and prettier) way in.
+    const inBag = itemPickMap(pr, myChar()).size;
+    $('ipMin').textContent = '✕ Свернуть';
+    let invBtn = $('ipInv');
+    if (inBag) {
+        if (!invBtn) { invBtn = document.createElement('button'); invBtn.id = 'ipInv'; invBtn.className = 'btn small'; $('ipMin').before(invBtn); }
+        invBtn.textContent = '🎒 Из инвентаря';
+        invBtn.onclick = () => openSheet();
+    } else if (invBtn) invBtn.remove();
     $('ipBody').innerHTML = options.map(o => {
         const art = o.item ? itemArt(o.item) : null;
         return '<button class="ip-card' + (o.item ? '' : ' plain') + '" data-opt="' + esc(o.id) + '">' +
@@ -755,7 +772,49 @@ function healthCells(p) {
     });
     return '<div class="sheet-hp">' + out + '</div>';
 }
-function sheetItemHtml(inst) {
+// ---------------------------------------------------------------------------------------------
+// Answering an item prompt straight from the inventory
+// The engine offers prompt options by reference ("item:<uid>", "heavy:<idx>", "slot:<k>", or a bare
+// uid for a weapon/item choice). Those references are matched against what lies in my backpack, so
+// a click on the card in the character sheet is the same answer as a click on the option button.
+// ---------------------------------------------------------------------------------------------
+function itemPickMap(pr, me) {
+    if (!pr || pr.kind !== 'choice' || pr.player !== app.me || pr.waiting || !Array.isArray(pr.options)) return new Map();
+    const found = new Map();
+    const set = (key, id) => { if (!key) return; if (!found.has(key)) found.set(key, new Set()); found.get(key).add(id); };
+    const uids = new Set((me.items || []).map(i => i.uid));
+    for (const o of pr.options) {
+        if (o.disabled) continue;
+        const id = String(o.id);
+        const mItem = /(?:^|:)item:([^:]+)$/.exec(id);
+        if (mItem) { set('item:' + mItem[1], id); continue; }                  // "item:<uid>" and "<target>:item:<uid>"
+        const mHeavy = /^heavy:(\d+)$/.exec(id);
+        if (mHeavy) { set('heavy:' + mHeavy[1], id); continue; }
+        if (/^slot:\d+$/.test(id)) { set(id, id); continue; }                  // "which hand?"
+        if (uids.has(id)) set('item:' + id, id);                               // a bare weapon/item uid
+    }
+    // A reference that answers several different options (e.g. "give it to A or to B") cannot be
+    // clicked unambiguously: leave those to the ordinary option list.
+    const map = new Map();
+    for (const [key, ids] of found) if (ids.size === 1) map.set(key, [...ids][0]);
+    return map;
+}
+/** Which hand holds what right now — the client-side mirror of the engine's handSlots(). */
+function myHandSlots(me) {
+    if (me.handSlots) return me.handSlots;
+    const slots = [];
+    for (const i of me.items || []) {
+        const d = ITEMS[i.item]; if (!d || d.kind !== 'heavy') continue;
+        if (d.bayonet && (me.items || []).some(o => ITEMS[o.item] && ITEMS[o.item].weapon)) continue;
+        slots.push({ ref: 'item:' + i.uid, name: d.name, kind: 'item' });
+        if (d.twoSlots) slots.push({ ref: null, name: d.name, kind: 'filler' });
+    }
+    for (const [idx, h] of (me.heavy || []).entries()) slots.push({ ref: 'heavy:' + idx, name: ({ corpse: 'Человеческий труп', charCorpse: 'Труп персонажа', carcass: 'Туша чужого', egg: 'Яйцо чужого' })[h.type] || h.type, kind: 'object' });
+    const limit = (me.wounds || []).includes('arm') ? 1 : 2;
+    while (slots.length < limit) slots.push({ ref: null, name: '', kind: 'empty' });
+    return slots.slice(0, limit);
+}
+function sheetItemHtml(inst, picks) {
     const d = ITEMS[inst.item]; if (!d) return '';
     const art = itemArt(inst.item);
     const meta = [];
@@ -764,10 +823,13 @@ function sheetItemHtml(inst) {
     if (d.markers !== undefined) meta.push('жетоны ' + (inst.charge ?? d.markers) + '/' + d.markers);
     if (inst.broken) meta.push('сломано');
     if (d.oneUse) meta.push('одноразовый');
-    return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + '">' +
+    const opt = picks ? picks.get('item:' + inst.uid) : null;
+    return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + (opt ? ' pickable' : '') + '"' +
+        (opt ? ' data-pick="' + esc(opt) + '" title="Нажмите, чтобы выбрать этот предмет"' : '') + '>' +
         (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
         '<div><b>' + esc(d.name) + (d.quest ? ' · квестовый' : '') + '</b><small>' + esc(d.text || '') + '</small>' +
-        '<small style="color:#8394a8">' + esc(meta.join(' · ')) + '</small></div></div>';
+        '<small style="color:#8394a8">' + esc(meta.join(' · ')) + '</small></div>' +
+        (opt ? '<span class="si-pick">Выбрать</span>' : '') + '</div>';
 }
 function openSheet(quiet) {
     const v = app.view; if (!v) return;
@@ -775,6 +837,8 @@ function openSheet(quiet) {
     if (!me) { notice('Вы наблюдатель — своего персонажа нет.', 'error'); return; }
     const ch = CHARACTERS[me.charId] || {};
     const items = me.items || [];
+    const pr = v.prompt;
+    const picks = itemPickMap(pr, me);
     const quests = items.filter(i => ITEMS[i.item] && ITEMS[i.item].quest);
     const armor = me.armor ? sheetItemHtml(me.armor) : '';
     const weapons = items.filter(i => ITEMS[i.item] && ITEMS[i.item].weapon);
@@ -792,7 +856,22 @@ function openSheet(quiet) {
     chips.push('<span class="tag">карт в сбросе: ' + me.discardCount + '</span>');
     if (me.contamInDiscard) chips.push('<span class="tag red">☣ заражений в сбросе: ' + me.contamInDiscard + '</span>');
     if (me.handCount != null) chips.push('<span class="tag">карт в руке: ' + me.handCount + '</span>');
-    const heavy = (me.heavy || []).map(h => '<div class="sheet-item"><div><b>' + ({ corpse: 'Человеческий труп', charCorpse: 'Труп персонажа', carcass: 'Туша чужого', egg: 'Яйцо чужого' })[h.type] + '</b><small>Тяжёлый объект · занимает слот рук</small></div></div>').join('');
+    const heavy = (me.heavy || []).map((h, idx) => {
+        const opt = picks.get('heavy:' + idx);
+        return '<div class="sheet-item' + (opt ? ' pickable' : '') + '"' + (opt ? ' data-pick="' + esc(opt) + '" title="Нажмите, чтобы выбрать этот объект"' : '') + '><div><b>' +
+            ({ corpse: 'Человеческий труп', charCorpse: 'Труп персонажа', carcass: 'Туша чужого', egg: 'Яйцо чужого' })[h.type] +
+            '</b><small>Тяжёлый объект · занимает слот рук</small></div>' + (opt ? '<span class="si-pick">Выбрать</span>' : '') + '</div>';
+    }).join('');
+    // Hands: what is in each slot right now (a slot prompt can be answered by clicking the row).
+    const slotRows = myHandSlots(me);
+    const hands = slotRows.length ? '<div class="sheet-slot-row">' + slotRows.map((sl, k) => {
+        const opt = picks.get('slot:' + k);
+        const nm = sl.kind === 'empty' ? 'пусто' : sl.name;
+        const fill = sl.kind === 'filler' ? ' (вторая рука)' : '';
+        return '<div class="sheet-slot ' + sl.kind + (opt ? ' pickable' : '') + '"' + (opt ? ' data-pick="' + esc(opt) + '" title="Нажмите, чтобы положить объект в этот слот"' : '') + '>' +
+            '<i>Слот ' + (k + 1) + '</i><b>' + esc(nm) + fill + '</b>' + (opt ? '<span class="si-pick">Выбрать</span>' : '') + '</div>';
+    }).join('') + '</div>' : '';
+    const pickHint = picks.size ? '<div class="sheet-pick-hint">🖱 Сейчас движок ждёт выбора: нажмите на подсвеченный предмет или слот руки — это и будет ответом. Остальные предметы можно рассмотреть спокойно.</div>' : '';
     $('sheetBody').innerHTML =
         '<div class="sheet-head"><div><h2>' + esc(me.name) + '</h2><div class="sub">' + esc(me.charName) +
         (me.number ? ' · игрок №' + me.number : '') + ' · ' + esc(statusName(me) || 'на борту') + ' · 📍 ' + esc(roomLabel(me.room)) + '</div></div>' +
@@ -800,16 +879,19 @@ function openSheet(quiet) {
         '<div class="sheet-decks"><button class="btn small" data-sheet-deck="own" title="Колода закрыта: видно только количество">🂠 Колода действий · ' + me.deckCount + '</button>' +
         '<button class="btn small" data-sheet-deck="owndisc" title="Открыть мой сброс">⤵ Сброс · ' + me.discardCount + '</button>' +
         (me.contamInDiscard ? '<button class="btn small danger" data-sheet-deck="owndisc">☣ заражений в сбросе: ' + me.contamInDiscard + '</button>' : '') + '</div>' +
+        pickHint +
         '<div class="sheet-cols">' +
+        (hands ? '<div class="sheet-sec"><h4>🖐 Руки</h4>' + hands + '</div>' : '') +
         '<div class="sheet-sec"><h4>🎯 Цели · что даёт выполнение</h4>' + (objs || '<div class="empty">Цель ещё не выбрана — выберите бесплатным действием.</div>') + '</div>' +
-        '<div class="sheet-sec"><h4>🏆 Квестовый предмет</h4><div class="sheet-items">' + (quests.map(sheetItemHtml).join('') || '<div class="empty">Нет квестового предмета.</div>') + '</div>' +
+        '<div class="sheet-sec"><h4>🏆 Квестовый предмет</h4><div class="sheet-items">' + (quests.map(i => sheetItemHtml(i, picks)).join('') || '<div class="empty">Нет квестового предмета.</div>') + '</div>' +
         (quests.length ? '<div class="empty" style="margin-top:6px">Награда за выполнение — свойство этого предмета; оплата и условия показаны в меню действий.</div>' : '') + '</div>' +
-        '<div class="sheet-sec"><h4>🎒 Рюкзак · оружие</h4><div class="sheet-items">' + (weapons.map(sheetItemHtml).join('') || '<div class="empty">Оружия нет.</div>') + '</div></div>' +
-        '<div class="sheet-sec"><h4>📦 Предметы и костюм</h4><div class="sheet-items">' + (armor + gear.map(sheetItemHtml).join('') + heavy || '<div class="empty">Пусто.</div>') + '</div></div>' +
+        '<div class="sheet-sec"><h4>🎒 Рюкзак · оружие</h4><div class="sheet-items">' + (weapons.map(i => sheetItemHtml(i, picks)).join('') || '<div class="empty">Оружия нет.</div>') + '</div></div>' +
+        '<div class="sheet-sec"><h4>📦 Предметы и костюм</h4><div class="sheet-items">' + (armor + gear.map(i => sheetItemHtml(i, picks)).join('') + heavy || '<div class="empty">Пусто.</div>') + '</div></div>' +
         '<div class="sheet-sec"><h4>🩸 Травмы</h4>' + (wounds || '<div class="empty">Травм нет.</div>') + '</div>' +
         '<div class="sheet-sec" style="grid-column:1/-1"><h4>🂠 Карты в руке · ' + (me.hand || []).length + '</h4><div class="sheet-hand">' + hand + '</div></div>' +
         '</div>';
     for (const b of $('sheetBody').querySelectorAll('[data-sheet-deck]')) b.onclick = () => openDeck(b.dataset.sheetDeck);
+    for (const b of $('sheetBody').querySelectorAll('[data-pick]')) b.onclick = () => { const id = b.dataset.pick; $('sheetOverlay').classList.add('hidden'); act(id); };
     $('sheetOverlay').classList.remove('hidden');
     if (!quiet) Snd.play('click');
 }
@@ -878,8 +960,9 @@ const HELP = `
 <h4>Шум</h4><p>После перемещения в пустую комнату — бросок шума: жетон кладётся в коридор с выпавшим номером (если он уже там — <b>Встреча</b>: из мешка появляется чужой). «Опасность» — жетоны во все коридоры вокруг. Осторожное перемещение (2 карты) позволяет выбрать коридор без шума.</p>
 <h4>Бой</h4><p>Стрельба/ближний бой: бросок D10. Крит убивает всегда; иначе чужой гибнет, если результат ≤ числа его ранений. Ближний бой даёт заражение и ответную атаку. Убегая из комнаты с чужими, вы получаете атаки.</p>
 <h4>Конец игры</h4><p>Когда время дойдёт до 0 (или сработает самоуничтожение/капсулы): проверяются двигатели (нужно ≥2 исправных), пункт назначения (A–D по тайной карте координат), заражение всех карт выживших и цели.</p>
-<h4>Управление</h4><p>ЛКМ — выбор комнаты / поворот камеры, ПКМ/СКМ — панорама, колесо — масштаб. Наведите на комнату — подсказка.</p>
+<h4>Управление</h4><p>ЛКМ по комнате — идти (спросит «идти или красться»), по чужому — атака своим оружием или ближний бой, по тяжёлому объекту — в какую руку взять. Нажатие мимо окна, <b>Esc</b> или <b>WASD</b> отменяют вопрос. WASD — панорама, ПКМ/СКМ — поворот камеры, колесо — масштаб. Наведите на комнату — подсказка.</p>
 <h4>Горячие клавиши</h4><p><b>Esc</b> — закрыть окно или вернуть свой последний шаг (пока вы выбираете действие). <b>Alt</b> (удерживать) — номера коридоров и цвета поиска над комнатами. <b>C</b> — планшет персонажа, <b>F</b> — к своей комнате, <b>Tab</b> — пинг на карте, <b>Q</b>/<b>E</b> — повернуть камеру, <b>Enter</b> — подтвердить выбранные карты, <b>1…9</b> — нажать кнопку в окне выбора.</p>
+<h4>Выбор предмета</h4><p>Когда движок просит выбрать предмет (что сбросить, каким оружием стрелять, что передать, в какую руку взять объект), ответить можно тремя способами: кнопкой в списке, в центральном окне с картинками — или <b>прямо в планшете персонажа</b> (клавиша C): нужные предметы и слоты рук подсвечиваются и нажимаются, кнопка «🧍 Персонаж» в это время мигает. Удобно, когда предметов много и по картинке понятнее, чем по названию.</p>
 <h4>Мешок и события</h4><p>Жетон из мешка тянет сам игрок — нажмите на мешок или на большую кнопку; внизу появится, <i>зачем</i> тянули и что вытянули. Карта события остаётся на столе, пока каждый не нажмёт «Готово».</p>
 <h4>Колоды и сбросы</h4><p>Любая стопка внизу справа (и кнопка «🃏 Колоды») открывает просмотр: события, атаки чужих, карты здоровья Королевы, тяжёлые травмы, сбросы предметов, компьютер и ваш собственный сброс.</p>
 <h4>Откат</h4><p>Ведущий (👑) может откатить любое количество действий кнопкой «⟲ Откатить ход» — все получают уведомление.</p>`;

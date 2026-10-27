@@ -409,8 +409,8 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #itemPick { position: fixed; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 #itemPick .ip-box { pointer-events: auto; width: min(1100px, 94vw); max-height: 86vh; overflow: auto; background: #0c131cf5; border: 1px solid var(--acc); border-radius: 14px; padding: 14px 16px 18px; box-shadow: 0 24px 70px #000d; animation: wp-in .16s ease-out; }
 #itemPick .ip-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-#itemPick .ip-head b { font-size: 15px; color: var(--acc); }
-#itemPick .ip-head button { margin-left: auto; }
+#itemPick .ip-head b { font-size: 15px; color: var(--acc); margin-right: auto; }
+#itemPick .ip-head button { margin-left: 0; }
 #itemPick .ip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
 #itemPick .ip-card { display: flex; flex-direction: column; gap: 6px; align-items: stretch; text-align: left; background: #111a26; border: 1px solid #34465d; border-radius: 10px; padding: 8px; cursor: pointer; color: var(--txt); font: inherit; }
 #itemPick .ip-card:hover { border-color: var(--acc); background: #172436; transform: translateY(-2px); transition: transform .1s; }
@@ -421,3 +421,19 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #itemPick .ip-card .tag { align-self: flex-start; }
 #itemPick .ip-card.plain { grid-column: 1 / -1; flex-direction: row; align-items: center; }
 #itemRestore, #ipRestore { position: fixed; left: 50%; bottom: 208px; transform: translateX(-50%); z-index: 25; box-shadow: 0 8px 24px #000a; }
+
+/* ---- answering an item prompt from the inventory (character sheet) ---- */
+.sheet-item.pickable { cursor: pointer; border-color: var(--acc); box-shadow: 0 0 0 1px #4f9bff55 inset; position: relative; }
+.sheet-item.pickable:hover { background: #16283c; border-color: #86c0ff; transform: translateY(-1px); }
+.si-pick { margin-left: auto; align-self: center; flex: none; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #0b1118; background: var(--acc); border-radius: 5px; padding: 3px 7px; }
+.sheet-slot-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.sheet-slot { display: flex; flex-direction: column; gap: 2px; background: #0d141d; border: 1px dashed #2b3a4d; border-radius: 8px; padding: 8px 10px; }
+.sheet-slot i { font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); }
+.sheet-slot b { font-size: 12.5px; }
+.sheet-slot.empty b { color: #5d6d80; font-weight: 400; }
+.sheet-slot.filler { opacity: .7; }
+.sheet-slot.pickable { cursor: pointer; border-style: solid; border-color: var(--acc); background: #12202f; flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sheet-slot.pickable:hover { background: #16283c; }
+.sheet-slot.pickable b { flex: 1; }
+.sheet-pick-hint { margin: 0 0 12px; font-size: 12px; color: #cfe3ff; background: #142334; border: 1px solid #2f5a7a; border-radius: 8px; padding: 7px 10px; }
+#sheetBtn.attention { animation: pulse 1.4s ease-in-out infinite; border-color: var(--acc); }

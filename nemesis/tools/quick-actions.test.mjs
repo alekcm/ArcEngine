@@ -174,6 +174,7 @@ test('QA-11 the action-list "pick up" still works and asks for the hand', () => 
     assert.match(s.prompt.title, /Куда положить/);
     assert.equal(s.prompt.options.length, 2, 'both hands are offered');
     assert.ok(s.prompt.options.every(o => /Слот/.test(o.label)));
+    assert.ok(s.prompt.options.every(o => /^slot:\d+$/.test(o.id)), 'a hand is answered by its slot id');
     const occupied = s.prompt.options.find(o => /Труп|труп/.test(o.label));
     assert.ok(occupied, 'the occupied hand shows what is already there');
     choose(s, occupied.id);
@@ -195,6 +196,23 @@ test('QA-14 the second slot of a two-handed weapon frees the weapon itself', () 
     auto(s);
     assert.ok(!p.items.some(i => i.uid === gatling.uid), 'the two-handed weapon was dropped');
     assert.ok(p.heavy.some(h => h.type === 'corpse'), 'the object took the place');
+});
+
+test('QA-15 the drop prompt names my things by the references the view exposes', () => {
+    const s = fresh(), p = s.players[0];
+    const gun = inst(s, 'handgun');
+    p.items = [gun]; p.heavy = [{ type: 'corpse' }];
+    openMenu(s);
+    choose(s, { action: 'drop' });
+    assert.equal(s.prompt.kind, 'choice');
+    const ids = s.prompt.options.map(o => o.id);
+    assert.ok(ids.includes('item:' + gun.uid), JSON.stringify(ids));
+    assert.ok(ids.includes('heavy:0'), JSON.stringify(ids));
+    assert.ok(s.prompt.options.some(o => o.item === 'handgun'), 'the item key is present for the icon');
+    // The inventory the client shows uses exactly the same references.
+    const view = viewFor(s, 0).players[0];
+    assert.ok(view.items.some(i => i.uid === gun.uid));
+    assert.equal(view.heavy.length, 1);
 });
 
 test('QA-12 the pickup action is offered even with full hands (a slot can be freed)', () => {
