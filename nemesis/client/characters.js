@@ -78,7 +78,7 @@ const SPECS = {
     sentry:    { custom: 'sentry' },
     android:   { legs: 'pants', boots: 'pants', torso: 'shirt', vest: 'vest', bustZone: 'vest', arms: 'shirt', hands: 'skin', hair: 'bun', hairZone: 'hair', implants: 'lights', eyes: '#f4f8ff', female: true, pistolR: true, build: 'slim' },
     convict:   { legs: 'pants', boots: 'pants', torso: 'skin', arms: 'skin', hands: 'skin', bald: true, muzzle: 'mask', tattoos: 'tattoo', plates: 'mask', chains: 'chains', build: 'bulky', eyeLight: 'lights' },
-    psych:     { legs: 'shirt', boots: 'shirt', torso: 'shirt', vest: 'coat', arms: 'shirt', hands: 'skin', hair: 'bobBangs', hairZone: 'hair', glasses: true, scanArm: 'drone', drone: 'drone', headsetTech: 'drone', female: true, build: 'slim' },
+    psych:     { legs: 'shirt', boots: 'shirt', torso: 'shirt', vest: 'coat', arms: 'shirt', hands: 'skin', hair: 'bobBangs', hairZone: 'hair', glasses: true, drone: 'drone', headsetTech: 'drone', female: true, build: 'slim' },   // two hovering sensor drones, no shoulder arm
     bounty:    { legs: 'shirt', boots: 'armor', torso: 'shirt', arms: 'shirt', hands: 'armor', hair: 'shortBeard', hairZone: 'hair', fullBeard: 'hair', pads: 'armor', harness: 'armor', chestPlate: 'armor', rifleHands: true, husky: 'dog', build: 'bulky' },
     captain:   { legs: 'shirt', boots: 'gloves', torso: 'shirt', arms: 'shirt', hands: 'gloves', hair: 'shortBeard', hairZone: 'hair', heavyVest: 'armor', cigarette: true, revolver: true, shoulderLamp: 'lights', build: 'athletic' },
     survivor:  { legs: 'pants', boots: 'armor', torso: 'shirt', arms: 'shirt', forearms: 'skin', hands: 'armor', hair: 'shaggyBob', hairZone: 'hair', bandana: true, chestPlate: 'armor', harness: 'armor', pistolR: true, slingL: true, radioPack: 'armor', female: true, bust: 0, build: 'athletic' },   // sleeves rolled up, right glove, left arm bandaged in a neck sling, radio backpack
@@ -345,7 +345,13 @@ export function buildCharacter(scene, charId, colors = {}) {
                 F(FIXED.steel, bx(0.1, 0.1, 0.02, R, 0, 1.84, 0.27)); for (const s of [-1, 1]) F(FIXED.strap, bx(0.08, 0.5, 0.03, R, s * 0.18 * W, 1.74, -0.19));   // buckle, back straps down to the belt
             }
         }
-        if (sp.drone) { const d = new (B().TransformNode)('drone', S); d.parent = R; d.position.set(-0.6, 2.7, 0.1); Z(sp.drone, sp_(0.28, 6, d, 0, 0, 0)); Z(LZ, cy(0.1, 0.1, 0.04, 8, d, 0, 0, 0.14, [Math.PI / 2, 0, 0])); for (const s of [-1, 1]) Z(sp.drone, bx(0.3, 0.03, 0.1, d, s * 0.22, 0.08, 0)); }
+        if (sp.drone) {   // two hovering sensor drones, one at each side of the head, lens facing forward, little side fins
+            for (const [x, y, z] of [[-0.6, 2.7, 0.1], [0.58, 2.56, 0.0]]) {
+                const d = new (B().TransformNode)('drone', S); d.parent = R; d.position.set(x, y, z);
+                Z(sp.drone, sp_(0.28, 6, d, 0, 0, 0)); Z(LZ, cy(0.1, 0.1, 0.04, 8, d, 0, 0, 0.14, [Math.PI / 2, 0, 0]));
+                for (const s of [-1, 1]) Z(sp.drone, bx(0.3, 0.03, 0.1, d, s * 0.22, 0.08, 0));
+            }
+        }
         if (sp.husky) {   // Laika-type working dog: upright ears, thick chest, curled tail, harness vest
             const d = new (B().TransformNode)('dog', S); d.parent = R; d.position.set(0.78 * W, 0, 0.2); d.rotation.y = -0.2;
             Z(sp.husky, bx(0.34, 0.36, 0.8, d, 0, 0.58, 0)); Z(sp.husky, bx(0.38, 0.3, 0.36, d, 0, 0.66, 0.3));               // body, deep chest
