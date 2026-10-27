@@ -243,7 +243,13 @@ function renderPrompt() {
     if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); return; }   // dice prompts are shown by DiceUI
     const who = pr.player === 'host' ? 'Ведущий' : v.players[pr.player].name;
     // Collapsing: the turn menu remembers the player's choice; other prompts re-open when a new one arrives.
-    if (pr.id !== app.lastPromptId) { app.lastPromptId = pr.id; if (pr.kind !== 'turn') app.promptCollapsed = false; else app.promptCollapsed = true; }  // the action list never pops up by itself
+    // Collapsing: the action list opens by itself at the start of the player's turn and then keeps whatever the
+    // player chose until the turn ends; other prompts always open when a new one arrives.
+    if (pr.id !== app.lastPromptId) {
+        app.lastPromptId = pr.id;
+        if (pr.kind !== 'turn') app.promptCollapsed = false;
+        else { const tk = v.round + ':' + pr.player; if (tk !== app.turnKey) { app.turnKey = tk; app.menuCollapsed = false; } app.promptCollapsed = app.menuCollapsed; }
+    }
     const mine = !pr.waiting;
     tg.classList.toggle('hidden', !mine && !pr.waiting);
     tg.textContent = app.promptCollapsed ? '☰ ' + (pr.kind === 'turn' ? 'Действия' : 'Открыть окно') : '✕ Свернуть';
