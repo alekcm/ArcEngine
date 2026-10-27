@@ -122,26 +122,34 @@ export function hyperAttackStep(state, it) {
 // Bag development
 // ---------------------------------------------------------------------------------------------
 OPS['bag.develop'] = (state, step) => {
-    const token = step.token || drawBagToken(state);
+    // The first player pulls the token out of the bag themselves (table flow, state.ui.bagClick).
+    if (step.token === undefined) {
+        const reason = step.reason || 'Развитие мешка — конец фазы событий';
+        next(state, { op: 'bag.ask', player: state.firstPlayer, reason, then: { op: 'bag.develop', reason } });
+        return;
+    }
+    const token = step.token;
     if (!token) { log(state, 'Развитие мешка: мешок пуст.', 'minor'); return; }
-    if (!step.token) log(state, '🎒 Развитие мешка: ' + INTRUDER_NAMES[token] + '.', 'event');
+    log(state, '🎒 Развитие мешка: ' + INTRUDER_NAMES[token] + '.', 'event');
     if (!step.noFE && fieldExpAsk(state, token, { op: 'bag.develop' })) return;
     bagDevelopment(state, token);
 };
 export function bagDevelopment(state, token) {
-    const add = (type, n = 1) => { let k = 0; for (let i = 0; i < n; i++) if (countAvailable(state, type) > 0) { state.bag.push(type); k++; } if (k) log(state, 'В мешок добавлено: ' + INTRUDER_NAMES[type] + ' ×' + k + '.', 'event'); };
+    const added = [], notes = [];
+    const add = (type, n = 1) => { let k = 0; for (let i = 0; i < n; i++) if (countAvailable(state, type) > 0) { state.bag.push(type); k++; } if (k) { added.push(INTRUDER_NAMES[type] + ' ×' + k); log(state, 'В мешок добавлено: ' + INTRUDER_NAMES[type] + ' ×' + k + '.', 'event'); } };
     if (!state.queenDead) {
         switch (token) {
             case 'queen': {
                 const q = Object.values(state.intruders).find(i => i.type === 'queen');
                 if (q) {
                     const ps = playersInRoom(state, q.room);
-                    if (ps.length) next(state, { op: 'attack', intruder: q.uid, context: 'queen' });
-                    else if (moveOneToward(state, q, state.players.filter(p => p.status === 'active' && !p.pod))) { const h = hyperAttackStep(state, q); if (h) next(state, h); }
+                    if (ps.length) { next(state, { op: 'attack', intruder: q.uid, context: 'queen' }); notes.push('Королева атакует в ' + roomName(state, q.room) + '.'); }
+                    else if (moveOneToward(state, q, state.players.filter(p => p.status === 'active' && !p.pod))) { notes.push('Королева идёт к ближайшему персонажу.'); const h = hyperAttackStep(state, q); if (h) next(state, h); }
                 } else {
                     add('larva');
                     const hiber = roomOfKind(state.ship, 'hibernatorium').id;
                     spawnIntruder(state, 'queen', hiber);
+                    notes.push('Королева выставлена в Гибернатории.');
                 }
                 break;
             }
@@ -151,11 +159,18 @@ export function bagDevelopment(state, token) {
         }
     } else {
         switch (token) {
-            case 'queen': add('drone'); break;   // queen token leaves the game
+            case 'queen': add('drone'); notes.push('Королева мертва — жетон уходит из игры.'); break;
             case 'adult': case 'drone': add('larva'); break;
             case 'larva': add('drone'); break;
             case 'blank': add('adult', 2); state.bag.push('blank'); break;
         }
+        if (token === 'queen') { /* nothing else */ }
     }
     // Drawn tokens (other than the Blank) go back to their pools, not into the bag.
+    if (state.bagLast) {
+        const parts = [];
+        if (added.length) parts.push('в мешок: ' + added.join(', '));
+        if (notes.length) parts.push(notes.join(' '));
+        state.bagLast.effect = parts.length ? parts.join('; ') + '.' : 'Эффекта нет.';
+    }
 }

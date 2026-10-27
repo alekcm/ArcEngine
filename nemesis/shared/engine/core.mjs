@@ -49,15 +49,49 @@ export function ask(state, prompt, resume) {
     state.resume = resume || null;
 }
 
+/** Every player still on board (dead and escaped seats cannot press "Ready"). */
+export function ackPlayers(state) { return state.players.filter(p => p.status === 'active' || p.status === 'hibernating').map(p => p.id); }
+
+/** Table-wide prompt: shown to every listed player until each of them answers `ok`.
+ *  Used for the Event card: it stays on the table until the whole crew has read it. */
+export function askAck(state, prompt, resume) {
+    const players = prompt.players && prompt.players.length ? prompt.players.slice() : ackPlayers(state);
+    if (!players.length) { next(state, resume); return false; }
+    state.promptSeq = (state.promptSeq || 0) + 1;
+    state.prompt = Object.assign({ id: state.promptSeq, kind: 'ack', player: 'all', acked: [] }, prompt, { players });
+    state.resume = resume || null;
+    return true;
+}
+
 /** Called by the server with the player's choice. Returns false if the answer is not valid. */
 export function answer(state, playerId, promptId, choice) {
     const p = state.prompt;
     if (!p || p.id !== promptId) return false;
-    if (p.player !== playerId && p.player !== 'host') return false;
+    // A table-wide confirmation ("everyone press Ready") is answered by each player in turn,
+    // not by the owner of a normal prompt.
+    if (p.kind === 'ack') return answerAck(state, p, playerId, choice);
+    // "host" is the table host stepping in for an away player: allowed for the bag pull only
+    // (a bag prompt has no answer of its own, the token is drawn by whoever clicked).
+    const hostHelpsBag = playerId === 'host' && p.kind === 'bag';
+    if (p.player !== playerId && p.player !== 'host' && !hostHelpsBag) return false;
     if (!validateAnswer(state, p, choice)) return false;
     const resume = state.resume;
     state.prompt = null; state.resume = null;
     if (resume) { resume.answer = choice; next(state, resume); }
+    run(state);
+    return true;
+}
+
+/** Collect one "Ready" from a player; the resume step runs when everybody has pressed it.
+ *  The host may answer `all` once for the whole table (someone is away from the keyboard). */
+function answerAck(state, p, playerId, choice) {
+    if (choice === 'all' && playerId === 'host') p.acked = p.players.slice();
+    else if (choice === 'ok' && p.players.includes(playerId) && !p.acked.includes(playerId)) p.acked.push(playerId);
+    else return false;
+    if (!p.players.every(id => p.acked.includes(id))) return true;
+    const resume = state.resume;
+    state.prompt = null; state.resume = null;
+    if (resume) next(state, resume);
     run(state);
     return true;
 }
@@ -80,6 +114,8 @@ function validateAnswer(state, p, choice) {
         }
         case 'info': return true;
         case 'dice': return true;
+        case 'bag': return choice === 'draw';
+        case 'ack': return choice === 'ok' || choice === 'all';
         case 'turn': return choice && typeof choice === 'object' && typeof choice.action === 'string';
         default: return true;
     }
@@ -116,7 +152,8 @@ export function secretTile(state, roomId) { return tileOf(state, roomId) || stat
 export function roomName(state, roomId) {
     const t = tileOf(state, roomId);
     const r = state.ship.rooms[roomId];
-    let name = t ? ROOM_TILES[t].name : 'Неразведанная комната';
+    if (!t) return '??? [' + roomId + ']';           // an unexplored slot: nobody at the table knows the tile yet
+    let name = ROOM_TILES[t].name;
     if (r.kind === 'engine') name += ' №' + r.engineNo;
     return name + ' [' + roomId + ']';
 }
@@ -532,13 +569,56 @@ OPS['dice.rolled'] = (state, step) => {
     next(state, step.then);
 };
 export function fmtRoll(v) { return v === 'crit' ? 'КРИТ' : v === 'silence' ? 'Тишина' : v === 'danger' ? 'Опасность' : v === 'encounter' ? 'Встреча' : String(v); }
-export function drawBagToken(state) {
+
+/** Printed meaning of a bag token (p. 9). The Queen token changes once the Queen is dead. */
+export const BAG_TOKEN_MEANING = {
+    blank: 'Пустой жетон: добавить в мешок 2 взрослых из запаса и вернуть пустой жетон в мешок.',
+    larva: 'Личинка: добавить в мешок 1 жетон дрона; жетон личинки вернуть в запас.',
+    adult: 'Взрослый: добавить в мешок 1 жетон Королевы; жетон взрослого вернуть в запас.',
+    drone: 'Дрон: добавить в мешок 1 жетон Королевы; жетон дрона вернуть в запас.',
+    queen: 'Королева: если она на поле — активируется (в её комнате персонажи — атака, иначе шаг к ближайшему). Если Королевы нет — добавить 1 жетон личинки и выставить её в Гибернатории (это не Встреча). Жетон вернуть в запас.',
+};
+export const BAG_TOKEN_MEANING_DEAD_QUEEN = {
+    blank: 'Пустой жетон: добавить в мешок 2 взрослых из запаса и вернуть пустой жетон в мешок.',
+    larva: 'Личинка: добавить в мешок 1 жетон дрона; жетон личинки вернуть в запас.',
+    adult: 'Взрослый (Королева мертва): добавить в мешок 1 жетон личинки; жетон взрослого вернуть в запас.',
+    drone: 'Дрон (Королева мертва): добавить в мешок 1 жетон личинки; жетон дрона вернуть в запас.',
+    queen: 'Королева мертва: добавить в мешок 1 жетон дрона и убрать жетон Королевы из игры.',
+};
+export function bagTokenMeaning(state, token) {
+    const table = state.queenDead ? BAG_TOKEN_MEANING_DEAD_QUEEN : BAG_TOKEN_MEANING;
+    return table[token] || '';
+}
+
+/** Draw one token. `meta` ({ by, reason }) is kept in state.bagLast so every client can show
+ *  what was pulled, why it was pulled and what it means. */
+export function drawBagToken(state, meta) {
     if (!state.bag.length) return null;
     const i = randInt(state, state.bag.length);
     const tok = state.bag.splice(i, 1)[0];
-    fx(state, { type: 'bag', token: tok, left: state.bag.length });
+    state.bagSeq = (state.bagSeq || 0) + 1;
+    state.bagLast = {
+        n: state.bagSeq, token: tok, left: state.bag.length,
+        by: meta && meta.by != null ? meta.by : null, reason: (meta && meta.reason) || '',
+        meaning: bagTokenMeaning(state, tok), effect: '',
+    };
+    fx(state, { type: 'bag', token: tok, left: state.bag.length, reason: state.bagLast.reason });
     return tok;
 }
+/** bag.ask { player, reason, then } — let the player pull the token out of the bag themselves.
+ *  `then` is re-queued with `token` (null when the bag is empty). */
+OPS['bag.ask'] = (state, step) => {
+    const p = step.player != null ? state.players[step.player] : null;
+    const reason = step.reason || '';
+    const interactive = state.ui && state.ui.bagClick && p && p.status === 'active' && state.bag.length > 0;
+    if (!interactive) { next(state, Object.assign({}, step.then, { token: drawBagToken(state, { by: p ? p.id : null, reason }) })); return; }
+    ask(state, { kind: 'bag', player: p.id, title: 'Вытяните жетон из мешка', text: reason, count: state.bag.length },
+        { op: 'bag.drawn', player: p.id, reason, then: step.then });
+};
+OPS['bag.drawn'] = (state, step) => {
+    const token = drawBagToken(state, { by: step.player, reason: step.reason });
+    next(state, Object.assign({}, step.then, { token }));
+};
 export function returnToken(state, token, toBag) {
     if (token === 'blank' || toBag) state.bag.push(token);
 }

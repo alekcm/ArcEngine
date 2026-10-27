@@ -129,7 +129,7 @@ OPS['noise.roll'] = (state, step) => {
     const r = roll(state, NOISE_DIE);
     log(state, '🎲 Шум (' + (step.laika ? '🐕 Лайка' : pname(p)) + ', ' + roomName(state, roomId) + '): ' + fmtRoll(r) + '.', 'noise');
     if (r === 'silence') return;
-    if (r === 'encounter') { next(state, { op: 'encounter', room: roomId, player: p.id }); return; }
+    if (r === 'encounter') { next(state, { op: 'encounter', room: roomId, player: p.id, reason: 'Встреча: жетон шума выпал в коридор, где уже был шум' }); return; }
     if (r === 'danger') {
         const holder = playersInRoom(state, roomId).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
         const incoming = [];
@@ -163,7 +163,7 @@ OPS['noise.roll'] = (state, step) => {
     const label = target.id === 'tech' ? 'технических коридорах' : 'коридоре ' + target.nums.join('/') + ' (→ ' + roomName(state, target.to) + ')';
     if (!placeNoise(state, target.id)) {
         log(state, 'В ' + label + ' уже был шум — ВСТРЕЧА!', 'combat');
-        next(state, { op: 'encounter', room: roomId, player: p.id });
+        next(state, { op: 'encounter', room: roomId, player: p.id, reason: 'Встреча: шум в коридоре, где уже был жетон шума' });
     } else log(state, 'Шум в ' + label + '.', 'noise');
 };
 
@@ -182,9 +182,18 @@ OPS['predict.danger'] = (state, step) => {
 OPS['encounter'] = (state, step) => {
     const roomId = step.room;
     clearNoiseAround(state, roomId);
-    const token = step.token || drawBagToken(state);
+    // The token is pulled out of the bag by the player themselves (table flow, state.ui.bagClick).
+    if (step.token === undefined) {
+        // The reason is printed under the bag: it tells the player why the token is being drawn.
+        const reason = step.reason || ('Встреча в комнате ' + roomName(state, roomId) + ': проверяем, кто пришёл');
+        next(state, { op: 'bag.ask', player: step.player, reason,
+            then: { op: 'encounter', room: roomId, player: step.player, reason, noSurprise: step.noSurprise } });
+        return;
+    }
+    const token = step.token;
     if (!token) { log(state, 'Мешок пуст — встречи нет.', 'minor'); return; }
-    if (!step.token) log(state, '👁 Встреча: из мешка — ' + INTRUDER_NAMES[token] + '.', 'combat');
+    if (state.bagLast) state.bagLast.effect = token === 'blank' ? 'Пустой жетон — чужой не появляется.' : 'Появляется «' + INTRUDER_NAMES[token] + '».';
+    log(state, '👁 Встреча: из мешка — ' + INTRUDER_NAMES[token] + '.', 'combat');
     // Reaction: Field Experience (Xenobiologist) — return the token to the bag and draw another
     if (!step.noFE && fieldExpAsk(state, token, { ...step, op: 'encounter' })) return;
     if (token === 'blank') {

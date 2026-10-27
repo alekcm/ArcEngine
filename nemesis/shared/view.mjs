@@ -23,6 +23,18 @@ export function viewFor(state, viewer, logFrom = 0) {
         green: state.itemDecks.green.length, red: state.itemDecks.red.length, yellow: state.itemDecks.yellow.length, support: state.itemDecks.support.length,
         queen: state.queenDeck.length,
     };
+    // Face-up piles on the table (discard piles are open information in the physical game).
+    v.piles = {
+        event: (state.eventDiscard || []).slice(),
+        attack: (state.attackDiscard || []).slice(),
+        queen: (state.queenPlayed || []).slice(),
+        wound: (state.woundDiscard || []).slice(),
+        computer: (state.computerDiscard || []).slice(),
+        items: Object.fromEntries(Object.keys(state.itemDecks).map(k => [k, (state.itemDiscard[k] || []).slice()])),
+    };
+    v.bagLast = state.bagLast || null;
+    v.ui = { bagClick: !!(state.ui && state.ui.bagClick), eventAck: !!(state.ui && state.ui.eventAck) };
+    v.lastEventN = state.lastEventN || 0;
     v.players = state.players.map(p => playerView(state, p, viewer === p.id));
     v.log = state.log.filter(l => l.n > logFrom);
     v.prompt = promptView(state, viewer);
@@ -59,8 +71,15 @@ function playerView(state, p, mine) {
 function promptView(state, viewer) {
     const pr = state.prompt;
     if (!pr) return null;
+    // Table-wide "Ready" prompt: each player answers for themselves; everyone sees who is ready.
+    if (pr.kind === 'ack') {
+        const inList = (pr.players || []).includes(viewer);
+        const acked = pr.acked || [];
+        return Object.assign({}, pr, { mine: inList && !acked.includes(viewer), waiting: inList && acked.includes(viewer) });
+    }
     const mine = pr.player === viewer || (pr.player === 'host' && viewer === 0);
     if (mine) return pr;
+    if (pr.kind === 'bag') return { id: pr.id, kind: pr.kind, player: pr.player, waiting: true, title: 'тянет жетон из мешка' };
     // Other players see who is thinking and about what, but not secret options, private texts
     // (engine/coordinates/objectives) or payment card lists.
     const out = { id: pr.id, kind: pr.kind, player: pr.player, waiting: true, die: pr.die,

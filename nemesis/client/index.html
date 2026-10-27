@@ -56,6 +56,9 @@
         <div class="tb-item"><span class="lbl">Адаптации чужих</span><b id="tbAdapt">—</b></div>
         <div class="tb-spacer"></div>
         <button id="undoBtn" class="btn small" title="Откатить последнее действие (только ведущий)">⟲ Откатить ход</button>
+        <button id="sheetBtn" class="btn small" title="Мой персонаж: рюкзак, травмы, костюм, цель (C)">🧍 Персонаж</button>
+        <button id="decksBtn" class="btn small" title="Просмотр колод и сбросов (нажмите на любую колоду внизу справа)">🃏 Колоды</button>
+        <button id="focusBtn" class="btn small" title="Показать мою комнату (F)">🎯 Я</button>
         <button id="muteBtn" class="btn small" title="Звук вкл/выкл">🔊</button>
         <button id="helpBtn" class="btn small">?</button>
     </div>
@@ -80,6 +83,8 @@
     <div id="fxLayer"></div>
     <div id="roomInfo" class="hidden"></div>
     <div id="notices"></div>
+    <div id="bagStrip" class="hidden"></div>
+    <div id="hintBar"></div>
 </div>
 
 <div id="helpOverlay" class="overlay hidden">
@@ -87,6 +92,21 @@
         <h2>Как играть</h2>
         <div id="helpBody"></div>
         <button class="btn" onclick="document.getElementById('helpOverlay').classList.add('hidden')">Закрыть</button>
+    </div>
+</div>
+
+<div id="sheetOverlay" class="overlay hidden">
+    <div class="help-box sheet-box">
+        <div id="sheetBody"></div>
+        <div class="prompt-buttons"><button class="btn" id="sheetClose">Закрыть (Esc)</button></div>
+    </div>
+</div>
+
+<div id="deckOverlay" class="overlay hidden">
+    <div class="help-box">
+        <h2 id="deckTitle">Колоды</h2>
+        <div id="deckBody" class="deck-grid"></div>
+        <div class="prompt-buttons"><button class="btn" id="deckClose">Закрыть (Esc)</button></div>
     </div>
 </div>
 

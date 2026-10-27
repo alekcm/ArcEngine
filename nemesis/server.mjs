@@ -141,16 +141,34 @@ function sendState(socket, full) {
     const from = full ? 0 : (socket.logSeen || 0);
     const view = viewFor(game.state, pid, from);
     socket.logSeen = game.state.logSeq;
-    socket.send({ t: 'state', you: pid, host: isHost(socket), view, full: !!full, undoDepth: game.undo.length, history: game.history.slice(-12), poses: full ? game.poses : undefined });
+    socket.send({ t: 'state', you: pid, host: isHost(socket), view, full: !!full, undoDepth: game.undo.length,
+        canUndo: pid != null && canSelfUndo(pid), history: game.history.slice(-12), poses: full ? game.poses : undefined });
+}
+
+/** May this player take back their own last answer with Esc? The snapshot must be theirs, must not
+ *  hide a rolled die or a peeked secret, and it must be their turn again (the same prompt owner). */
+function canSelfUndo(pid) {
+    const st = game.state; if (!st || !st.prompt) return false;
+    const last = game.undo[game.undo.length - 1];
+    if (!last || last.noSelf || last.pid !== pid) return false;
+    return st.prompt.player === pid;
+}
+/** Answers that must never be taken back by the player: a rolled die, a peeked hidden card,
+ *  a drawn bag token or a table-wide Ready. */
+function noSelfUndo(pr) {
+    return pr.kind === 'dice' || pr.kind === 'info' || pr.kind === 'bag' || pr.kind === 'ack' || !!pr.secret;
 }
 function broadcastState(full) { for (const c of clients) sendState(c, full); }
 function broadcastNotice(text, kind = 'notice') { for (const c of clients) c.send({ t: 'notice', text, kind }); }
 
-function label(state, choice) {
+function label(state, choice, pid) {
     const pr = state.prompt; if (!pr) return '?';
-    const who = pr.player === 'host' ? 'Ведущий' : state.players[pr.player].name;
+    const who = pr.kind === 'ack' ? (pid != null && state.players[pid] ? state.players[pid].name : 'Игрок')
+        : pr.player === 'host' ? 'Ведущий' : state.players[pr.player].name;
     let what = '';
-    if (pr.kind === 'turn') what = choice.action === 'card' ? 'карта' : choice.action === 'item' ? 'предмет' : (pr.actions.find(a => a.id === choice.action) || {}).label || choice.action;
+    if (pr.kind === 'ack') what = choice === 'all' ? 'готово за всех' : 'готово';
+    else if (pr.kind === 'bag') what = 'вытягивает жетон из мешка';
+    else if (pr.kind === 'turn') what = choice.action === 'card' ? 'карта' : choice.action === 'item' ? 'предмет' : (pr.actions.find(a => a.id === choice.action) || {}).label || choice.action;
     else if (pr.kind === 'choice') what = pr.title + ' → ' + ((pr.options.find(o => o.id === choice) || {}).label || choice);
     else if (pr.kind === 'room') what = pr.title + ' → ' + choice;
     else if (pr.kind === 'cards') what = pr.title;
@@ -189,7 +207,9 @@ function onMessage(socket, m) {
             const seats = game.seats.filter(s => s.socket);
             if (seats.length < 1) return;
             game.seats = seats;
-            game.state = createGame({ seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, draft: game.settings.draft, players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors })) });
+            game.state = createGame({ seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, draft: game.settings.draft,
+                players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors })),
+                ui: { bagClick: true, eventAck: true } });
             game.phase = 'playing'; game.undo = []; game.history = []; game.poses = {};
             for (const c of clients) c.logSeen = 0;
             broadcastLobby(); broadcastState(true);
@@ -201,11 +221,24 @@ function onMessage(socket, m) {
             const seat = seatOf(socket); if (!seat) return;
             const pid = game.seats.indexOf(seat);
             const pr = st.prompt;
-            if (pr.player !== pid && !(pr.player === 'host' && isHost(socket))) return;
+            // A table-wide Ready prompt is answered by every player; anything else by its owner
+            // (the host may answer for a prompt addressed to the host seat).
+            const mayAnswer = pr.kind === 'ack'
+                ? ((pr.players || []).includes(pid) || isHost(socket))
+                : pr.kind === 'bag' ? (pr.player === pid || isHost(socket))
+                : (pr.player === pid || (pr.player === 'host' && isHost(socket)));
+            if (!mayAnswer) return;
             const snap = JSON.stringify(st);
-            const lbl = label(st, m.answer);
+            const lbl = label(st, m.answer, pid);
+            const noSelf = noSelfUndo(pr);
+            // Who is answering: the owner, the host seat, or the host stepping in for an away player.
+            // A table-wide Ready is answered per player; "all" is a host-only shortcut.
+            let who = pid;
+            if (pr.kind === 'ack') who = (m.answer === 'all' && isHost(socket)) ? 'host' : pid;
+            else if (pr.player === 'host') who = 'host';
+            else if (isHost(socket) && pr.player !== pid) who = 'host';
             let ok = false;
-            try { ok = answer(st, pr.player === 'host' ? 'host' : pid, m.promptId, m.answer); }
+            try { ok = answer(st, who, m.promptId, m.answer); }
             catch (e) {
                 console.error('Engine error:', e);
                 game.state = JSON.parse(snap);
@@ -214,14 +247,26 @@ function onMessage(socket, m) {
                 return;
             }
             if (!ok) { socket.send({ t: 'notice', text: 'Недопустимый ответ.', kind: 'error' }); sendState(socket, true); return; }
-            game.undo.push({ json: snap, label: lbl });
+            game.undo.push({ json: snap, label: lbl, pid, noSelf });
             if (game.undo.length > UNDO_LIMIT) game.undo.shift();
             game.history.push(lbl);
             broadcastState(false);
             break;
         }
         case 'undo': {
-            if (!isHost(socket) || !game.state) return;
+            if (!game.state) return;
+            const seat = seatOf(socket); if (!seat) return;
+            const pid = game.seats.indexOf(seat);
+            // Esc: the player takes back their own last answer (one step at a time).
+            if (m.self) {
+                if (!canSelfUndo(pid)) { sendState(socket, true); return; }
+                const entry = game.undo.pop(); game.history.pop();
+                game.state = JSON.parse(entry.json);
+                broadcastNotice('⟲ ' + seat.name + ' вернул(а) шаг назад: «' + entry.label + '».', 'undo');
+                broadcastState(true);
+                return;
+            }
+            if (!isHost(socket)) return;
             const n = Math.max(1, Math.min(Number(m.steps) || 1, game.undo.length));
             if (!n) return;
             let entry = null;

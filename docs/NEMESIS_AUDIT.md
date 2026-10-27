@@ -40,7 +40,7 @@
 | **6. Objectives & Movement** | Свободный выбор цели, Feat, перемещение/исследование, escape attacks | **OK/T:** выбор цели, Feat после него, движение после escape attacks; выбор цели скрыт от других (`INV-02`); Blood Sense преследует персонажа (`COMBAT-02`). |
 | **7. Noise & Encounters** | D12, Danger, Encounter, Surprise, Blank, crowded rooms | **OK/T:** 12 граней, Surprise учитывает карты действий, Blank добавляет двух Adult, crowded exception; Danger со сломанной дверью не добавляет лишний шум (`NOISE-01`). |
 | **8. Intruders / Movement** | Adult/Drone kill-check, пулы, маршруты, техкоридоры, repel | **OK/T:** Drone без отдельной «брони», закрытая дверь ломается, кратчайшие пути и tie-break по картам действий, Overpower игнорирует Бесстрашие (`FEAT-01`). **C:** общий tie раздела 8 против значка Action card на Event (`EVENT-06`). |
-| **9. Bag Development** | Пять типов жетонов при живой/мёртвой Королеве | **OK/T:** Queen ставится в Hibernatorium, Adult/Drone → Queen при живой Королеве, количество жетонов ограничено пулом (`EVENT-01`). |
+| **9. Bag Development** | Пять типов жетонов при живой/мёртвой Королеве | **OK/T:** Queen ставится в Hibernatorium (не Встреча), Adult/Drone → Queen при живой Королеве, Larva → Drone, Blank добавляет 2 Adult и возвращается в мешок, при мёртвой Королеве жетон Queen уходит из игры, Adult/Drone → Larva; пул жетонов ограничен (`EVENT-01`). Тексты, которые интерфейс показывает игроку после вытягивания, переписаны дословно по печатной странице (`core.mjs`, `BAG_TOKEN_MEANING`), включая «вернуть жетон в запас». |
 | **10. Combat** | Hit до kill-check, Crit, melee и ответная атака | **OK/T:** попадание до проверки, 1 Hit убивает Larva; урон Field Experience и Conviction проходит бросок боя (`ITEM-07`, `FEAT-03`); natural 2 винтовки остаётся Crit до Agile и работает по Королеве (`ITEM-05/06`). |
 | **11. Queen Combat** | Queen Hits, крит и числовое попадание, карты здоровья | **OK/T:** 14 карт с напечатанными тиражами (`DECK-01`), числовой результат ≤ Hits остаётся критическим (контроль `OK-09`), карта разрешается до следующего действия (`QUEUE-02`). |
 | **12. Intruder Attacks** | Выбор цели, тип чужого, профилактика и порядок | **OK/T:** Attack card вскрывается до реакций — Nerves of Steel, Deactivation, duck-redirect, Stop It! (`COMBAT-01`, `CARD-04/05`), личинка применяется после окна реакции. |
@@ -130,6 +130,8 @@ Synthetic сканирует Contamination при доборе (infected → −
 
 ```sh
 node --test --test-reporter=tap nemesis/tools/audit.test.mjs   # 94 tests: 94 pass, 0 fail, exit 0
+node --test nemesis/tools/table-flow.test.mjs                 # 12 tests: 12 pass, «софт вокруг стола»
+node nemesis/tools/smoke.mjs                                  # реальный сервер + 2 WS-клиента, 11 проверок
 node tools/check.mjs                                          # типы + 89/89 тестов ArcEngine
 node nemesis/tools/fuzz.mjs 300                               # 300 партий, 0 сбоев
 node --check <каждый .mjs в nemesis/>                         # синтаксис без ошибок
@@ -139,7 +141,7 @@ node --check <каждый .mjs в nemesis/>                         # синт�
 
 ### Границы
 
-- Браузерный клиент, WebSocket-синхронизация и undo **не проходили E2E**; проверялся JSON-view, а не вёрстка.
+- Браузерный клиент и вёрстка **не проходили E2E**: `tools/smoke.mjs` проверяет транспорт, лобби, prompts, откат своего шага и передачу хода на настоящем сервере, но Babylon/WebGL и внешний вид панелей — **U** (jsdom-песочница вне набора подтверждает только DOM-логику).
 - Fixtures частично синтетические: 94 сценария не заменяют исчерпывающий перебор комбинаций.
 - `node:test` останавливается на первом падении assertion, поэтому зелёный прогон подтверждает сформулированные утверждения, а не всю подсистему.
 - Fuzz проверяет достижимость завершения и сериализацию, а не правильность правил.

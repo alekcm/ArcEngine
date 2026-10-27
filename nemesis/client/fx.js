@@ -13,8 +13,8 @@ import { esc, describeCard, eventArt, attackArt, queenArt, cardArt, itemArt } fr
 import { ITEMS } from '/shared/data/cards.mjs';
 import * as Snd from './sound.js';
 
-const DECK_LABELS = { green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая', support: 'Поддержка', event: 'События', attack: 'Атаки', queen: 'Королева' };
-const DECK_COLORS = { green: '#2f9e55', red: '#b63a3a', yellow: '#c9a227', support: '#6b7fa3', event: '#8a5a2b', attack: '#7a2d5a', queen: '#5b2a86', own: '#2c5a7a', contam: '#5a7a2a' };
+const DECK_LABELS = { green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая', support: 'Поддержка', event: 'События', attack: 'Атаки', queen: 'Королева', bag: 'Мешок' };
+const DECK_COLORS = { green: '#2f9e55', red: '#b63a3a', yellow: '#c9a227', support: '#6b7fa3', event: '#8a5a2b', attack: '#7a2d5a', queen: '#5b2a86', own: '#2c5a7a', contam: '#5a7a2a', bag: '#6b4f2a' };
 
 const TOKEN_ICON = { blank: '○', larva: '🐛', adult: '👾', drone: '🦂', queen: '👑' };
 
@@ -29,11 +29,11 @@ export class TableFX {
         const mine = view.players.find(p => p.id === me);
         const piles = [];
         if (mine) { piles.push(['own', 'Моя колода', mine.deckCount]); piles.push(['owndisc', 'Мой сброс', mine.discardCount]); }
-        for (const k of ['event', 'attack', 'queen']) piles.push([k, DECK_LABELS[k], view.decks[k]]);
+        for (const k of ['event', 'attack', 'queen', 'bag']) piles.push([k, DECK_LABELS[k], k === 'bag' ? view.bagCount : view.decks[k]]);
         for (const k of ['green', 'red', 'yellow', 'support']) piles.push([k, DECK_LABELS[k], view.decks[k]]);
         this.table.innerHTML = piles.map(([k, label, n]) =>
-            '<div class="pile' + (n === 0 ? ' empty' : '') + '" data-pile="' + k + '" title="' + esc(label) + ': ' + n + '"><div class="pback" style="--pc:' + (DECK_COLORS[k === 'owndisc' ? 'own' : k] || '#345') + '">' +
-            (k === 'owndisc' ? '<span class="pdisc">⤵</span>' : '') + '<span class="pcount">' + n + '</span></div><div class="plabel">' + esc(label) + '</div></div>').join('');
+            '<div class="pile' + (n === 0 ? ' empty' : '') + '" data-pile="' + k + '" title="' + esc(label) + ': ' + n + ' — нажмите, чтобы посмотреть"><div class="pback" style="--pc:' + (DECK_COLORS[k === 'owndisc' ? 'own' : k] || '#345') + '">' +
+            (k === 'owndisc' ? '<span class="pdisc">⤵</span>' : k === 'bag' ? '<span class="pdisc">🎒</span>' : '') + '<span class="pcount">' + n + '</span></div><div class="plabel">' + esc(label) + '</div></div>').join('');
         const fx = view.fx || [];
         if (this.lastSeen === null) { this.lastSeen = fx.length ? fx[fx.length - 1].n : 0; return; }   // nothing to replay on (re)connect
         for (const f of fx) if (f.n > this.lastSeen) { this.lastSeen = f.n; this.queue.push(Object.assign({ me, view }, f)); }

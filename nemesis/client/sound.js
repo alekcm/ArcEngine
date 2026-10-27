@@ -48,8 +48,10 @@ const FX = {
     card(t) { noise(t, 0.06, { freq: 1800, q: 1.5, gain: 0.3, sweepTo: 600 }); noise(t + 0.04, 0.05, { type: 'lowpass', freq: 500, gain: 0.25 }); },
     /** a card is flipped face up */
     flip(t) { noise(t, 0.12, { freq: 900, q: 1, gain: 0.22, sweepTo: 3000 }); },
-    /** dice tumbling on the table then settling */
-    dice(t) { for (let i = 0; i < 7; i++) { const dt = i * i * 0.028 + i * 0.05; tone(t + dt, 0.05, { type: 'square', freq: 1200 - i * 90, to: 500, gain: 0.08 }); noise(t + dt, 0.04, { freq: 3000, q: 3, gain: 0.3 - i * 0.03 }); } },
+    /** dice: one soft knock when it leaves the hand (the tumbling itself is silent) */
+    dice(t) { noise(t, 0.07, { type: 'lowpass', freq: 1100, gain: 0.18, sweepTo: 420 }); tone(t, 0.06, { freq: 190, to: 105, gain: 0.05 }); },
+    /** dice: a single dull thud when it settles on the table */
+    diceLand(t) { noise(t, 0.1, { type: 'lowpass', freq: 520, gain: 0.24 }); tone(t + 0.01, 0.16, { type: 'sine', freq: 150, to: 70, gain: 0.1 }); },
     /** a footstep (called repeatedly while a figure runs) */
     step(t) { noise(t, 0.07, { type: 'lowpass', freq: 320, gain: 0.5 }); tone(t, 0.06, { freq: 110, to: 60, gain: 0.15 }); },
     /** gunshot */

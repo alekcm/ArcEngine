@@ -6,9 +6,10 @@ import { DEFAULTS } from './characters.js';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
-import { cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName } from './cards.js';
+import { cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, eventArt, attackArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES } from '/shared/ship.mjs';
-import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, objectiveTextOf } from '/shared/data/cards.mjs';
+import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, objectiveTextOf,
+    EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
 
 const $ = id => document.getElementById(id);
 const PHASES = { setup: 'Подготовка', draft: 'Выбор персонажей', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
@@ -35,7 +36,11 @@ const app = {
     me: null, host: false, spectator: false,
     lobby: null, view: null, logEntries: [], selectedCards: new Set(), hoverRoom: null,
     charId: null, colors: {}, name: '', ready: false, menuCollapsed: true,
+    canUndo: false, bagShown: null, bagTimer: null, deckKind: 'event', altHeld: false,
 };
+const EVENT_BY_ID = Object.fromEntries(EVENT_CARDS.map(e => [e.id, e]));
+const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(e => [e.id, e]));
+const TOKEN_ICON = { blank: '○', larva: '🐛', adult: '👾', drone: '🦂', queen: '👑' };
 let scene = null, preview = null, dice = null, tableFx = null;
 let cursorSent = 0, lastFloor = null;
 
@@ -51,7 +56,7 @@ function onMessage(m) {
             app.me = m.you; app.host = m.host;
             if (m.full) app.logEntries = [];
             app.logEntries.push(...m.view.log);
-            app.view = m.view; app.undoDepth = m.undoDepth; app.history = m.history;
+            app.view = m.view; app.undoDepth = m.undoDepth; app.history = m.history; app.canUndo = !!m.canUndo;
             renderGame();
             if (m.poses && scene) for (const [pid, pose] of Object.entries(m.poses)) scene.setPose(Number(pid), pose, true);
             break;
@@ -156,7 +161,7 @@ function renderGame() {
     if (dicePrompt || freshRoll) {
         app.rollHold = true;
         dice.update(v, app.me, playerName);
-        renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
+        renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand(); renderBagStrip(); renderHint(); refreshOverlays();
         if (freshRoll) setTimeout(() => { if (app.rollHold && !(app.view.prompt && app.view.prompt.kind === 'dice')) { app.rollHold = false; renderGame(); } }, 5000);   // safety net
         return;
     }
@@ -165,6 +170,7 @@ function renderGame() {
     const selectable = pr && pr.kind === 'room' && !pr.waiting ? pr.rooms : [];
     scene.update(v, ROOM_TILES, INTRUDER_NAMES, selectable);
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
+    renderBagStrip(); renderHint(); refreshOverlays();
     dice.update(v, app.me, playerName);
     if (!tableFx) { tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES); tableFx.onShake = k => scene && scene.shake(k); }
     tableFx.update(v, app.me);
@@ -222,7 +228,7 @@ function renderPlayers() {
             const ke = Object.entries(p.knownEngines || {}); if (ke.length) known += '<div class="items">⚙ ' + ke.map(([n, w]) => '№' + n + ': ' + (w ? 'исправен' : 'повреждён')).join(', ') + '</div>';
             if (p.knownCoords) known += '<div class="items">🧭 координаты известны (см. Рубку)</div>';
         }
-        return '<div class="pcard ' + (v.current === p.id && v.phase === 'player' ? 'current' : '') + (me ? ' me' : '') + (p.status === 'dead' ? ' dead' : '') + '" data-pid="' + p.id + '" style="border-left-color:' + (CHARACTERS[p.charId] ? CHARACTERS[p.charId].color : '#888') + '">' +
+        return '<div class="pcard ' + (v.current === p.id && v.phase === 'player' ? 'current' : '') + (me ? ' me' : '') + (p.status === 'dead' ? ' dead' : '') + '" data-pid="' + p.id + '"' + (me ? ' title="Нажмите, чтобы открыть планшет персонажа (C)"' : '') + ' style="border-left-color:' + (CHARACTERS[p.charId] ? CHARACTERS[p.charId].color : '#888') + '">' +
             '<div class="pname"><span>' + (p.number ? '<i class="pnum">' + p.number + '</i> ' : '') + esc(p.name) + (me ? ' (вы)' : '') + '</span><small>' + esc(p.charName) + ' ' + statusName(p) + '</small></div>' +
             hpBar(p) + '<div class="tags">' + tags.join('') + '</div><div class="items">' + items + '</div>' + obj + known +
             '<div class="items dim">📍 ' + esc(roomLabel(p.room)) + '</div></div>';
@@ -232,7 +238,8 @@ function renderPlayers() {
 function roomLabel(id) {
     const v = app.view; const r = v.ship.rooms[id]; const rs = v.roomState[id];
     const tile = rs.tile || (r.kind === 'cockpit' ? 'cockpit' : r.kind === 'hibernatorium' ? 'hibernatorium' : r.kind === 'engine' ? 'engine' : null);
-    return (tile ? ROOM_TILES[tile].name + (r.kind === 'engine' ? ' №' + r.engineNo : '') : (r.kind === 'slot1' ? 'Комната «1»' : 'Комната «2»')) + ' [' + id + ']';
+    // An unexplored slot room is "???" for everyone until somebody flips its tile.
+    return (tile ? ROOM_TILES[tile].name + (r.kind === 'engine' ? ' №' + r.engineNo : '') : '???') + ' [' + id + ']';
 }
 
 function renderLog() {
@@ -250,7 +257,7 @@ function renderPrompt() {
     const v = app.view; const pr = v.prompt; const el = $('prompt'); const tg = $('menuToggle');
     app.selectedCards.clear();
     if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); return; }   // dice prompts are shown by DiceUI
-    const who = pr.player === 'host' ? 'Ведущий' : v.players[pr.player].name;
+    const who = pr.kind === 'ack' ? 'Вся команда' : pr.player === 'host' ? 'Ведущий' : (v.players[pr.player] || {}).name || '';
     // Collapsing: the turn menu remembers the player's choice; other prompts re-open when a new one arrives.
     // Collapsing: the action list opens by itself at the start of the player's turn and then keeps whatever the
     // player chose until the turn ends; other prompts always open when a new one arrives.
@@ -258,13 +265,20 @@ function renderPrompt() {
         app.lastPromptId = pr.id;
         if (pr.kind !== 'turn') app.promptCollapsed = false;
         else { const tk = v.round + ':' + pr.player; if (tk !== app.turnKey) { app.turnKey = tk; app.menuCollapsed = false; } app.promptCollapsed = app.menuCollapsed; }
+        // QoL: a cue when the table needs ME (my turn, my die, my token, my Ready).
+        const forMe = pr.player === app.me || (pr.kind === 'ack' && pr.mine);
+        if (forMe && !pr.waiting) {
+            if (pr.kind === 'turn') { notice('Ваш ход.', 'turn'); Snd.play('ping'); }
+            else if (pr.kind === 'dice' || pr.kind === 'bag') Snd.play('click');
+        }
     }
+    const isAck = pr.kind === 'ack';
     const mine = !pr.waiting;
     tg.classList.toggle('hidden', !mine && !pr.waiting);
     tg.textContent = app.promptCollapsed ? '☰ ' + (pr.kind === 'turn' ? 'Действия' : 'Открыть окно') : '✕ Свернуть';
     tg.classList.toggle('attention', mine && app.promptCollapsed);
     el.classList.toggle('hidden', app.promptCollapsed);
-    if (pr.waiting) {
+    if (pr.waiting && !isAck) {
         el.classList.add('waiting');
         el.innerHTML = '<h4>' + esc(who) + ' <span class="waiting-dots">думает</span></h4><div class="ptext">' + esc(pr.title || '') + '</div>';
         return;
@@ -296,13 +310,73 @@ function renderPrompt() {
         case 'info':
             html += '<div class="prompt-buttons"><button class="btn primary" data-opt="ok">Понятно</button></div>';
             break;
+        case 'ack': {
+            // Event card: stays face up until every player has pressed Ready.
+            const ev = pr.event ? EVENT_BY_ID[pr.event] : null;
+            const art = ev ? eventArt(ev.id) : null;
+            if (ev) html = '<h4>📜 ' + esc(ev.name) + '</h4>' +
+                '<div class="ack-card">' + (art ? '<div class="aart" style="background-image:url(' + art + ')"></div>' : '') +
+                '<div class="atext">' + esc(pr.text || ev.text) + '</div></div>';
+            html += '<div class="ack-ready">' + (pr.players || []).map(id => {
+                const p = v.players[id] || {}; const done = (pr.acked || []).includes(id);
+                return '<span class="rd' + (done ? ' on' : '') + '">' + (done ? '✔ ' : '… ') + esc(p.name || ('#' + id)) + '</span>';
+            }).join('') + '</div>';
+            if (pr.mine) html += '<div class="prompt-buttons"><button class="btn primary" data-opt="ok">Готово</button></div>';
+            else if (pr.waiting) html += '<div class="ptext dim">Вы готовы — ждём остальных…</div>';
+            else if (!(pr.players || []).includes(app.me)) html += '<div class="ptext dim">Игроки читают карту события…</div>';
+            if (app.host) html += '<div class="prompt-buttons"><button class="btn small" data-opt="all" title="Если кто-то отошёл">Готово за всех</button></div>';
+            break;
+        }
+        case 'bag':
+            if (pr.waiting) {   // someone else is pulling the token — the host can help out
+                html += '<div class="ptext dim">' + esc(who) + ' тянет жетон из мешка…</div>';
+                if (app.host) html += '<div class="prompt-buttons"><button class="btn small" data-opt="draw">Вытянуть за игрока</button></div>';
+                break;
+            }
+            html += '<div class="bag-box"><div class="bag-icon">🎒</div><div>' +
+                '<div class="bag-count">Жетонов в мешке: ' + (pr.count ?? v.bagCount) + '</div>' +
+                '<div class="bag-reason">Зачем: ' + esc(pr.text || '') + '</div></div></div>' +
+                '<div class="prompt-buttons"><button class="btn primary big" data-opt="draw">Вытянуть жетон</button></div>' +
+                '<div class="ptext dim" style="font-size:11px">Можно нажать и на мешок в панели колод внизу справа.</div>';
+            break;
     }
     el.innerHTML = html;
+    // Number keys 1..9 press the visible prompt buttons in order.
+    let idx = 0;
+    for (const b of el.querySelectorAll('[data-act],[data-item],[data-opt],[data-room],#cardsOk')) if (!b.disabled) b.dataset.idx = String(++idx);
     for (const b of el.querySelectorAll('[data-act]')) b.onclick = () => act({ action: b.dataset.act });
     for (const b of el.querySelectorAll('[data-item]')) b.onclick = () => act({ action: 'item', itemId: b.dataset.item });
     for (const b of el.querySelectorAll('[data-opt]')) b.onclick = () => act(b.dataset.opt);
     for (const b of el.querySelectorAll('[data-room]')) b.onclick = () => act(b.dataset.room);
     const ok = $('cardsOk'); if (ok) ok.onclick = () => act([...app.selectedCards]);
+}
+
+/** The last bag token: what was pulled, why it was pulled and what it means. */
+function renderBagStrip() {
+    const el = $('bagStrip'); const v = app.view; const b = v && v.bagLast;
+    if (!b) { el.classList.add('hidden'); return; }
+    if (app.bagShown === b.n) return;
+    app.bagShown = b.n;
+    const who = b.by != null && v.players[b.by] ? v.players[b.by].name : '';
+    el.innerHTML = '<span class="bt-ico">' + (TOKEN_ICON[b.token] || '🎒') + '</span>' +
+        '<div><div class="bt-name">' + esc(INTRUDER_NAMES[b.token] || b.token) + (who ? ' · ' + esc(who) : '') + '</div>' +
+        '<div class="bt-why">Зачем: ' + esc(b.reason || '—') + '</div>' +
+        '<div class="bt-effect">' + esc(b.meaning || '') + (b.effect ? ' <b>Итог:</b> ' + esc(b.effect) : '') + '</div></div>' +
+        '<button class="bt-close" title="Скрыть">✕</button>';
+    el.classList.remove('hidden');
+    el.querySelector('.bt-close').onclick = () => el.classList.add('hidden');
+    clearTimeout(app.bagTimer);
+    app.bagTimer = setTimeout(() => el.classList.add('hidden'), 18000);
+}
+
+/** Contextual key hints at the bottom of the screen. */
+function renderHint() {
+    const v = app.view; if (!v) return;
+    const pr = v.prompt; const hints = [];
+    if (pr && !pr.waiting && pr.kind !== 'dice' && pr.kind !== 'ack') hints.push('<b>1–9</b> выбор');
+    if (app.canUndo) hints.push('<b>Esc</b> шаг назад');
+    hints.push('<b>Alt</b> коридоры и поиск', '<b>C</b> персонаж', '<b>F</b> к себе', '<b>Tab</b> пинг', '<b>Q/E</b> поворот');
+    $('hintBar').innerHTML = hints.map(h => '<span>' + h + '</span>').join('<span>·</span>');
 }
 function playerName(id) { const v = app.view; return v && v.players[id] ? v.players[id].name : ''; }
 function act(answer) { const pr = app.view && app.view.prompt; if (!pr) return; net.send({ t: 'act', promptId: pr.id, answer }); }
@@ -366,7 +440,7 @@ function onRoomHover(id, x, y) {
     let html = '<b>' + esc(roomLabel(id)) + '</b>';
     if (tile) html += '<div>' + esc(ROOM_TILES[tile].action) + '</div><div class="dim">Предметы: ' + (ROOM_TILES[tile].items.map(c => ({ green: '🟢', red: '🔴', yellow: '🟡' })[c]).join('') || '—') + (ROOM_TILES[tile].computer ? ' · 💻 компьютер' : '') + '</div>';
     else if (me && me.knownTiles && me.knownTiles[id]) html += '<div class="dim">Вам известно: ' + esc(ROOM_TILES[me.knownTiles[id]].name) + '</div>';
-    else html += '<div class="dim">Не разведана</div>';
+    else html += '<div class="dim">??? — не разведана</div>';
     const flags = [];
     if (rs.fire) flags.push('🔥 огонь'); if (rs.malfunction) flags.push('⚠ поломка'); if (r.tech) flags.push('🕳 тех. вход');
     const intr = Object.values(v.intruders).filter(i => i.room === id);
@@ -431,15 +505,190 @@ syncMute();
 muteBtn.onclick = () => { Snd.setMuted(!Snd.isMuted()); syncMute(); if (!Snd.isMuted()) Snd.play('click'); };
 for (const ev of ['pointerdown', 'keydown']) document.addEventListener(ev, () => Snd.unlock(), { capture: true });
 $('helpBtn').onclick = () => { $('helpBody').innerHTML = HELP; $('helpOverlay').classList.remove('hidden'); };
+/** Close the topmost modal overlay; returns true when something was closed. */
+function closeOverlay() {
+    for (const id of ['sheetOverlay', 'deckOverlay', 'helpOverlay']) {
+        const el = $(id); if (el && !el.classList.contains('hidden')) { el.classList.add('hidden'); return true; }
+    }
+    return false;
+}
+
 document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { $('helpOverlay').classList.add('hidden'); }
     const typing = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
-    if (typing || !scene || !app.view) return;
-    if (e.key === 'Tab') { e.preventDefault(); if (lastFloor && !e.repeat) net.send({ t: 'ping', x: lastFloor.x, z: lastFloor.z, room: lastFloor.room }); }
-    else if (e.key === 'q' || e.key === 'Q' || e.key === 'й' || e.key === 'Й') scene.rotateMe(-Math.PI / 12);
-    else if (e.key === 'e' || e.key === 'E' || e.key === 'у' || e.key === 'У') scene.rotateMe(Math.PI / 12);
+    if (e.key === 'Escape') {
+        if (closeOverlay()) return;
+        if (typing) { e.target.blur(); return; }
+        // Esc = take back my own last step (the server allows it only inside my own turn).
+        if (app.view && app.view.prompt && app.canUndo) { net.send({ t: 'undo', steps: 1, self: true }); Snd.play('click'); }
+        else if (app.view) notice('Шаг назад недоступен: откатить можно только свой последний выбор в свой ход.', 'error');
+        return;
+    }
+    if (typing || !app.view) return;
+    // Hold Alt: corridor numbers and the Search item colours over the rooms.
+    if (e.key === 'Alt' && !app.altHeld) { e.preventDefault(); app.altHeld = true; if (scene) scene.setAlt(true); }
+    if (e.key === 'Tab') { e.preventDefault(); if (lastFloor && !e.repeat && scene) net.send({ t: 'ping', x: lastFloor.x, z: lastFloor.z, room: lastFloor.room }); }
+    else if (e.key === 'q' || e.key === 'Q' || e.key === 'й' || e.key === 'Й') { if (scene) scene.rotateMe(-Math.PI / 12); }
+    else if (e.key === 'e' || e.key === 'E' || e.key === 'у' || e.key === 'У') { if (scene) scene.rotateMe(Math.PI / 12); }
+    else if (e.key === 'c' || e.key === 'C' || e.key === 'с' || e.key === 'С') openSheet();
+    else if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') focusMe();
+    else if (e.key === 'Enter') { const ok = $('cardsOk'); if (ok && !ok.disabled) { e.preventDefault(); ok.click(); } }
+    else if (/^[1-9]$/.test(e.key)) { const b = document.querySelector('#prompt [data-idx="' + e.key + '"]'); if (b && !b.disabled) { e.preventDefault(); b.click(); } }
 });
-window.addEventListener('blur', () => { if (app.view) net.send({ t: 'cursor', off: true }); });
+document.addEventListener('keyup', e => {
+    if (e.key === 'Alt') { app.altHeld = false; if (scene) scene.setAlt(false); }
+});
+window.addEventListener('blur', () => {
+    app.altHeld = false; if (scene) scene.setAlt(false);
+    if (app.view) net.send({ t: 'cursor', off: true });
+});
+
+function focusMe() {
+    const v = app.view; if (!v || !scene) return;
+    const me = v.players.find(p => p.id === app.me);
+    if (me) scene.focusRoom(me.room);
+}
+$('players').addEventListener('click', e => { if (e.target.closest('.pcard.me')) openSheet(); });
+$('sheetBtn').onclick = () => openSheet();
+$('decksBtn').onclick = () => openDeck(app.deckKind || 'event');
+$('focusBtn').onclick = () => focusMe();
+$('sheetClose').onclick = () => $('sheetOverlay').classList.add('hidden');
+$('deckClose').onclick = () => $('deckOverlay').classList.add('hidden');
+$('sheetOverlay').onclick = e => { if (e.target === $('sheetOverlay')) $('sheetOverlay').classList.add('hidden'); };
+$('deckOverlay').onclick = e => { if (e.target === $('deckOverlay')) $('deckOverlay').classList.add('hidden'); };
+
+// A click on any pile at the bottom right opens its viewer (the bag pile draws a token when asked).
+$('table').addEventListener('click', e => {
+    const pile = e.target.closest('.pile'); if (!pile) return;
+    const kind = pile.dataset.pile;
+    const pr = app.view && app.view.prompt;
+    if (kind === 'bag' && pr && pr.kind === 'bag' && !pr.waiting) { act('draw'); return; }
+    openDeck(kind);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Character sheet (my backpack, weapons, quest item, wounds, suit, objectives, cards)
+// ---------------------------------------------------------------------------------------------
+function healthCells(p) {
+    const sections = [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]];
+    let out = '';
+    sections.forEach((sec, si) => {
+        for (const n of sec) out += '<i class="' + (si === 1 ? 'mid' : si === 2 ? 'heavy' : si === 3 ? 'last' : '') + (p.health >= n ? ' on' : '') + '" title="' + n + '"></i>';
+    });
+    return '<div class="sheet-hp">' + out + '</div>';
+}
+function sheetItemHtml(inst) {
+    const d = ITEMS[inst.item]; if (!d) return '';
+    const art = itemArt(inst.item);
+    const meta = [];
+    meta.push(d.kind === 'heavy' ? 'тяжёлый предмет' : d.kind === 'armor' ? 'броня (костюм)' : 'лёгкий предмет');
+    if (d.weapon) meta.push('патроны ' + (inst.ammo ?? 0) + '/' + d.weapon.max);
+    if (d.markers !== undefined) meta.push('жетоны ' + (inst.charge ?? d.markers) + '/' + d.markers);
+    if (inst.broken) meta.push('сломано');
+    if (d.oneUse) meta.push('одноразовый');
+    return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + '">' +
+        (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
+        '<div><b>' + esc(d.name) + (d.quest ? ' · квестовый' : '') + '</b><small>' + esc(d.text || '') + '</small>' +
+        '<small style="color:#8394a8">' + esc(meta.join(' · ')) + '</small></div></div>';
+}
+function openSheet(quiet) {
+    const v = app.view; if (!v) return;
+    const me = v.players.find(p => p.id === app.me);
+    if (!me) { notice('Вы наблюдатель — своего персонажа нет.', 'error'); return; }
+    const ch = CHARACTERS[me.charId] || {};
+    const items = me.items || [];
+    const quests = items.filter(i => ITEMS[i.item] && ITEMS[i.item].quest);
+    const armor = me.armor ? sheetItemHtml(me.armor) : '';
+    const weapons = items.filter(i => ITEMS[i.item] && ITEMS[i.item].weapon);
+    const gear = items.filter(i => !(ITEMS[i.item] && (ITEMS[i.item].quest || ITEMS[i.item].weapon)));
+    const wounds = (me.wounds || []).map(w => '<div class="sheet-wound"><b>' + esc(WOUNDS[w] ? WOUNDS[w].name : w) + '</b><small>' + esc(WOUNDS[w] ? WOUNDS[w].text : '') + '</small></div>').join('');
+    const objs = (me.objectives || []).map(o => '<div class="sheet-goal" style="background-image:url(' + objectiveArt(o.kind) + ')"><b>🎯 ' + esc(OBJECTIVES[o.kind][o.id].name) + ' · ' + (o.kind === 'corporate' ? 'корпоративная' : 'личная') + '</b><span>' + esc(objectiveTextOf(OBJECTIVES[o.kind][o.id], v.players)) + '</span></div>').join('');
+    const hand = (me.hand || []).map(c => cardHtml(c, null, false)).join('') || '<div class="deck-empty">Пусто</div>';
+    const chips = [];
+    chips.push('<span class="tag yellow">знания ' + me.knowledge + (me.knowledgeActive ? ' ✓' : '') + ' / 8</span>');
+    if (me.signal) chips.push('<span class="tag green">сигнал отправлен</span>');
+    if (me.larva) chips.push('<span class="tag purple">личинка</span>');
+    if (me.laika) chips.push('<span class="tag yellow">🐕 Лайка: ' + (me.laika === 'board' ? 'рядом' : esc(roomLabel(me.laika))) + '</span>');
+    if (me.canFire === false) chips.push('<span class="tag red">нельзя стрелять</span>');
+    chips.push('<span class="tag">карт в колоде: ' + me.deckCount + '</span>');
+    chips.push('<span class="tag">карт в сбросе: ' + me.discardCount + '</span>');
+    if (me.contamInDiscard) chips.push('<span class="tag red">☣ заражений в сбросе: ' + me.contamInDiscard + '</span>');
+    if (me.handCount != null) chips.push('<span class="tag">карт в руке: ' + me.handCount + '</span>');
+    const heavy = (me.heavy || []).map(h => '<div class="sheet-item"><div><b>' + ({ corpse: 'Человеческий труп', charCorpse: 'Труп персонажа', carcass: 'Туша чужого', egg: 'Яйцо чужого' })[h.type] + '</b><small>Тяжёлый объект · занимает слот рук</small></div></div>').join('');
+    $('sheetBody').innerHTML =
+        '<div class="sheet-head"><div><h2>' + esc(me.name) + '</h2><div class="sub">' + esc(me.charName) +
+        (me.number ? ' · игрок №' + me.number : '') + ' · ' + esc(statusName(me) || 'на борту') + ' · 📍 ' + esc(roomLabel(me.room)) + '</div></div>' +
+        healthCells(me) + '<div class="sheet-chips">' + chips.join('') + '</div></div>' +
+        '<div class="sheet-decks"><button class="btn small" data-sheet-deck="own" title="Колода закрыта: видно только количество">🂠 Колода действий · ' + me.deckCount + '</button>' +
+        '<button class="btn small" data-sheet-deck="owndisc" title="Открыть мой сброс">⤵ Сброс · ' + me.discardCount + '</button>' +
+        (me.contamInDiscard ? '<button class="btn small danger" data-sheet-deck="owndisc">☣ заражений в сбросе: ' + me.contamInDiscard + '</button>' : '') + '</div>' +
+        '<div class="sheet-cols">' +
+        '<div class="sheet-sec"><h4>🎯 Цели · что даёт выполнение</h4>' + (objs || '<div class="empty">Цель ещё не выбрана — выберите бесплатным действием.</div>') + '</div>' +
+        '<div class="sheet-sec"><h4>🏆 Квестовый предмет</h4><div class="sheet-items">' + (quests.map(sheetItemHtml).join('') || '<div class="empty">Нет квестового предмета.</div>') + '</div>' +
+        (quests.length ? '<div class="empty" style="margin-top:6px">Награда за выполнение — свойство этого предмета; оплата и условия показаны в меню действий.</div>' : '') + '</div>' +
+        '<div class="sheet-sec"><h4>🎒 Рюкзак · оружие</h4><div class="sheet-items">' + (weapons.map(sheetItemHtml).join('') || '<div class="empty">Оружия нет.</div>') + '</div></div>' +
+        '<div class="sheet-sec"><h4>📦 Предметы и костюм</h4><div class="sheet-items">' + (armor + gear.map(sheetItemHtml).join('') + heavy || '<div class="empty">Пусто.</div>') + '</div></div>' +
+        '<div class="sheet-sec"><h4>🩸 Травмы</h4>' + (wounds || '<div class="empty">Травм нет.</div>') + '</div>' +
+        '<div class="sheet-sec" style="grid-column:1/-1"><h4>🂠 Карты в руке · ' + (me.hand || []).length + '</h4><div class="sheet-hand">' + hand + '</div></div>' +
+        '</div>';
+    for (const b of $('sheetBody').querySelectorAll('[data-sheet-deck]')) b.onclick = () => openDeck(b.dataset.sheetDeck);
+    $('sheetOverlay').classList.remove('hidden');
+    if (!quiet) Snd.play('click');
+}
+
+/** Keep an open panel in sync with a new state: it is a live view, not a snapshot. */
+function refreshOverlays() {
+    if (!app.view) return;
+    if (!$('sheetOverlay').classList.contains('hidden')) openSheet(true);
+    if (!$('deckOverlay').classList.contains('hidden')) openDeck(app.deckKind, true);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Deck viewer: every face-up pile on the table plus my own discard
+// ---------------------------------------------------------------------------------------------
+const DECK_TITLES = { event: 'События · сброс', attack: 'Атаки чужих · сброс', queen: 'Здоровье Королевы · открытые', wound: 'Тяжёлые травмы · сброс',
+    green: 'Зелёные предметы · сброс', red: 'Красные предметы · сброс', yellow: 'Жёлтые предметы · сброс', support: 'Поддержка · сброс',
+    computer: 'Компьютер · сброс', own: 'Моя колода', owndisc: 'Мой сброс карт действий' };
+function deckList(kind, v, me) {
+    const piles = v.piles || {};
+    const list = [];
+    if (kind === 'own') {
+        return { note: 'Колода закрыта: видно только количество карт (' + (me ? me.deckCount : 0) + '). Порядок карт не раскрывается.', cards: [] };
+    }
+    if (kind === 'owndisc') {
+        if (!me) return { note: 'Вы наблюдатель.', cards: [] };
+        for (const c of (me.discard || [])) { const d = describeCard(c); list.push({ name: d.name, text: d.text, tag: d.contam ? 'заражение' : '' }); }
+        return { note: 'Карты в вашем сбросе (' + list.length + ').', cards: list };
+    }
+    if (kind === 'event') for (const id of (piles.event || [])) { const e = EVENT_BY_ID[id]; if (e) list.push({ name: e.name, text: e.text, tag: 'событие' }); }
+    if (kind === 'attack') for (const id of (piles.attack || [])) { const a = ATTACK_BY_ID[id]; if (a) list.push({ name: a.name, text: a.text, tag: 'атака' }); }
+    if (kind === 'queen') for (const idx of (piles.queen || [])) { const q = QUEEN_CARDS[idx]; if (q) list.push({ name: 'Карта здоровья', text: q.text + ' (сбросить ещё: ' + q.extra + ')', tag: 'королева' }); }
+    if (kind === 'wound') for (const w of (piles.wound || [])) list.push({ name: WOUNDS[w] ? WOUNDS[w].name : w, text: WOUNDS[w] ? WOUNDS[w].text : '', tag: 'травма' });
+    if (kind === 'computer') for (const id of (piles.computer || [])) { const c = COMPUTER_CARDS[id]; if (c) list.push({ name: c.name, text: c.text || Object.values(c.options || {}).join(' / '), tag: 'компьютер' }); }
+    if (['green', 'red', 'yellow', 'support'].includes(kind)) for (const key of ((piles.items || {})[kind] || [])) { const it = ITEMS[key]; if (it) list.push({ name: it.name, text: it.text, tag: DECK_NAMES[kind] }); }
+    return { note: '', cards: list };
+}
+function openDeck(kind, quiet) {
+    const v = app.view; if (!v) return;
+    app.deckKind = kind || 'event';
+    const me = v.players.find(p => p.id === app.me);
+    const tabs = ['event', 'attack', 'queen', 'wound', 'green', 'red', 'yellow', 'support', 'computer', 'own', 'owndisc'];
+    const counts = { event: (v.piles && v.piles.event || []).length, attack: (v.piles && v.piles.attack || []).length, queen: (v.piles && v.piles.queen || []).length,
+        wound: (v.piles && v.piles.wound || []).length, computer: (v.piles && v.piles.computer || []).length,
+        green: ((v.piles && v.piles.items && v.piles.items.green) || []).length, red: ((v.piles && v.piles.items && v.piles.items.red) || []).length,
+        yellow: ((v.piles && v.piles.items && v.piles.items.yellow) || []).length, support: ((v.piles && v.piles.items && v.piles.items.support) || []).length,
+        own: me ? me.deckCount : 0, owndisc: me ? me.discardCount : 0 };
+    const { note, cards } = deckList(app.deckKind, v, me);
+    const box = $('deckOverlay').querySelector('.help-box'); const keep = quiet && box ? box.scrollTop : 0;
+    $('deckTitle').textContent = DECK_TITLES[app.deckKind] || 'Колоды';
+    $('deckBody').innerHTML = '<div class="deck-tabs">' + tabs.map(k => '<button class="btn small' + (k === app.deckKind ? ' active' : '') + '" data-deck="' + k + '">' + esc(DECK_TITLES[k].split(' · ')[0]) + ' (' + (counts[k] || 0) + ')</button>').join('') + '</div>' +
+        (note ? '<div class="hint" style="margin-bottom:8px">' + esc(note) + '</div>' : '') +
+        (cards.length ? '<div class="deck-grid">' + cards.map(c => '<div class="deck-card">' + (c.tag ? '<span class="tag">' + esc(c.tag) + '</span>' : '') + '<b>' + esc(c.name) + '</b><small>' + esc(c.text || '') + '</small></div>').join('') + '</div>'
+            : '<div class="deck-empty">Здесь пусто.</div>');
+    for (const b of $('deckBody').querySelectorAll('[data-deck]')) b.onclick = () => openDeck(b.dataset.deck);
+    $('deckOverlay').classList.remove('hidden');
+    if (keep && box) box.scrollTop = keep;
+    if (!quiet) Snd.play('click');
+}
 
 const HELP = `
 <h4>Цель</h4><p>Выживите и выполните одну из двух своих целей (личную или корпоративную). Выбор цели — бесплатным действием в свой ход; до первой встречи с чужим можно не спешить.</p>
@@ -451,6 +700,9 @@ const HELP = `
 <h4>Бой</h4><p>Стрельба/ближний бой: бросок D10. Крит убивает всегда; иначе чужой гибнет, если результат ≤ числа его ранений. Ближний бой даёт заражение и ответную атаку. Убегая из комнаты с чужими, вы получаете атаки.</p>
 <h4>Конец игры</h4><p>Когда время дойдёт до 0 (или сработает самоуничтожение/капсулы): проверяются двигатели (нужно ≥2 исправных), пункт назначения (A–D по тайной карте координат), заражение всех карт выживших и цели.</p>
 <h4>Управление</h4><p>ЛКМ — выбор комнаты / поворот камеры, ПКМ/СКМ — панорама, колесо — масштаб. Наведите на комнату — подсказка.</p>
+<h4>Горячие клавиши</h4><p><b>Esc</b> — закрыть окно или вернуть свой последний шаг (пока вы выбираете действие). <b>Alt</b> (удерживать) — номера коридоров и цвета поиска над комнатами. <b>C</b> — планшет персонажа, <b>F</b> — к своей комнате, <b>Tab</b> — пинг на карте, <b>Q</b>/<b>E</b> — повернуть камеру, <b>Enter</b> — подтвердить выбранные карты, <b>1…9</b> — нажать кнопку в окне выбора.</p>
+<h4>Мешок и события</h4><p>Жетон из мешка тянет сам игрок — нажмите на мешок или на большую кнопку; внизу появится, <i>зачем</i> тянули и что вытянули. Карта события остаётся на столе, пока каждый не нажмёт «Готово».</p>
+<h4>Колоды и сбросы</h4><p>Любая стопка внизу справа (и кнопка «🃏 Колоды») открывает просмотр: события, атаки чужих, карты здоровья Королевы, тяжёлые травмы, сбросы предметов, компьютер и ваш собственный сброс.</p>
 <h4>Откат</h4><p>Ведущий (👑) может откатить любое количество действий кнопкой «⟲ Откатить ход» — все получают уведомление.</p>`;
 
 net.connect();

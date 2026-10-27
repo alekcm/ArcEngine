@@ -37,10 +37,14 @@ export function createGame(config) {
         woundDeck: [], woundDiscard: [],
         itemDecks: { green: [], red: [], yellow: [], support: [] }, itemDiscard: {},
         fieldDataDeck: [], computerDeck: [], computerCard: null, computerDiscard: [],
-        queenDeck: [], queenHits: 0, queenDead: false,
+        queenDeck: [], queenPlayed: [], queenHits: 0, queenDead: false,
         nestEggs: 5, nestDestroyed: false, nestDiscovered: false,
         analyzed: { corpse: false, carcass: false, egg: false },
         adaptations: [], adaptationsRemoved: 0, finishOrder: [], carcassCount: 0,
+        // Table flow (the server turns it on): players pull Intruder Bag tokens themselves and the
+        // Event card waits for everybody's "Ready". Tests and bots keep the engine-only defaults.
+        ui: { bagClick: !!(config.ui && config.ui.bagClick), eventAck: !!(config.ui && config.ui.eventAck) },
+        bagSeq: 0, bagLast: null, lastEvent: null, lastEventN: 0,
         result: null,
     };
 

@@ -483,6 +483,8 @@ function queenHits(state, p, it, hits, mod, opts = {}) {
 OPS['queen.card'] = (state, step) => {
     if (!state.queenDeck.length) return;
     const idx = state.queenDeck.shift();
+    state.queenPlayed = state.queenPlayed || [];
+    state.queenPlayed.push(idx);          // drawn cards stay face up next to the board
     const card = QUEEN_CARDS[idx];
     const byChar = step.player != null;
     fx(state, { type: 'queen', card: card.id, name: card.name, text: card.text });

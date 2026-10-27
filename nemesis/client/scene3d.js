@@ -49,6 +49,8 @@ const TILE_STYLE = {
 };
 
 const RUN_SPEED = 9;   // world units per second for character runs between rooms
+// Item colours printed on the room tiles (Search icons) — shown above a room while Alt is held.
+const ITEM_COLORS = { green: '#4fcf7a', red: '#e05252', yellow: '#f1c40f' };
 
 export class Scene3D {
     constructor(canvas, callbacks) {
@@ -74,6 +76,7 @@ export class Scene3D {
         this.roomNodes = {}; this.corridorNodes = {}; this.dynamic = []; this.chars = {}; this.intr = {}; this.hull = [];
         this.glow = new (B().GlowLayer)('glow', this.scene, { blurKernelSize: 48 }); this.glow.intensity = 0.5;
         this.shipKey = null; this.selectable = new Set(); this.hover = null; this.t = 0; this.lastShotSeen = null;
+        this.alt = false;
         this.me = null; this.poses = {}; this.drag = null; this.cursors = {}; this.pings = []; this.canvas = canvas;
         this.stars();
         this.scene.onPointerObservable.add(pi => this.onPointer(pi));
@@ -666,13 +669,18 @@ export class Scene3D {
         noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M('#f1c40f', 0.9); noise.isPickable = false; noise.setEnabled(false); noise.visibility = 0;   // kept for layout; the arch bands show noise
         const noiseLabel = this.makeLabel('nl_' + c.id, '🔊', '', door, 0, 1.4, -2.2, 1.4);
         noiseLabel.setEnabled(false);
+        // Corridor number(s): shown only while Alt is held (see setAlt).
+        const exitA = ship.rooms[c.a].exits.find(e => e.corridor === c.id) || {};
+        const nums = (exitA.nums && exitA.nums.length ? exitA.nums : [exitA.num]).filter(n => n);
+        const numLabel = nums.length ? this.makeLabel('cn_' + c.id, nums.join(' / '), '', door, 0, 2.75, -2.2, 2.0) : null;
+        if (numLabel) numLabel.setEnabled(false);
         const debris = [];
         for (let i = 0; i < 5; i++) {
             const db = B().MeshBuilder.CreateBox('debris', { width: 0.4, height: 0.12, depth: 0.5 }, S);
             db.parent = door; db.position.set((Math.random() - 0.5) * 1.6, 0.08, (Math.random() - 0.5) * 1.4); db.rotation.set(0, Math.random() * 3, (Math.random() - 0.5) * 0.4); db.material = M('#6b7a88'); db.isPickable = false; db.setEnabled(false);
             debris.push(db);
         }
-        this.corridorNodes[c.id] = { root, panels, noise, noiseLabel, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB, a: c.a, b: c.b, state: null };
+        this.corridorNodes[c.id] = { root, panels, noise, noiseLabel, numLabel, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB, a: c.a, b: c.b, state: null };
     }
 
     makeLabel(name, big, small, parent, x, y, z, width) {
@@ -722,6 +730,7 @@ export class Scene3D {
         for (const n of Object.values(this.roomNodes)) for (const l of n.techLeds) l.material = techMat;
         this.updateIntruders(view, intruderNames);
         this.updateCharacters(view);
+        if (this.alt) this.setAlt(true);
     }
 
     tileFor(view, r) {
@@ -733,9 +742,11 @@ export class Scene3D {
         const node = this.roomNodes[r.id]; const rs = view.roomState[r.id];
         const tile = this.tileFor(view, r);
         const def = tile ? this.roomTiles[tile] : null;
-        const name = def ? def.name + (r.kind === 'engine' ? ' №' + r.engineNo : '') : (r.kind === 'slot1' ? 'Комната «1»' : 'Комната «2»');
+        // An unexplored slot has no name yet: nobody at the table knows which tile it is.
+        const name = def ? def.name + (r.kind === 'engine' ? ' №' + r.engineNo : '') : '???';
         this.setLabel(node.label, def ? r.id : '? ' + r.id, name, def ? '#ffffff' : '#8a99ab');
         node.sel.setEnabled(this.selectable.has(r.id));
+        this.syncItemDots(node, tile);
         if (node.flip && node.flip.phase === 1) return;   // first half of the token flip: keep showing the face-down side
         node.qm.setEnabled(!tile);
         // shell appears once the tile is known
@@ -771,6 +782,37 @@ export class Scene3D {
                 m._litMat = mat; m.material = dead;
             } else if (m._litMat) { m.material = m._litMat; m._litMat = null; }
         }
+    }
+
+    /** Search item colours of a known room, floating above it while Alt is held. */
+    syncItemDots(node, tile) {
+        const key = tile || '';
+        if (node.dotKey === key) { if (node.itemDots) node.itemDots.root.setEnabled(!!this.alt); return; }
+        node.dotKey = key;
+        if (node.itemDots) { node.itemDots.root.dispose(); node.itemDots = null; }
+        const def = tile ? this.roomTiles[tile] : null;
+        const items = (def && def.items) || [];
+        if (!items.length) return;
+        const root = new (B().TransformNode)('dots_' + (node.data ? node.data.id : 'r'), this.scene);
+        root.parent = node.root; root.position.y = 2.35;
+        items.forEach((c, i) => {
+            const x = (i - (items.length - 1) / 2) * 1.15;
+            const disc = B().MeshBuilder.CreateCylinder('dot', { diameter: 0.86, height: 0.12, tessellation: 18 }, this.scene);
+            disc.position.x = x; disc.parent = root; disc.isPickable = false;
+            disc.material = this.M(ITEM_COLORS[c] || '#9aa7b5', 1);
+            const ring = B().MeshBuilder.CreateTorus('ring', { diameter: 0.96, thickness: 0.08, tessellation: 18 }, this.scene);
+            ring.position.x = x; ring.parent = root; ring.isPickable = false;
+            ring.material = this.M('#0b1016');
+        });
+        root.setEnabled(!!this.alt);
+        node.itemDots = { root, count: items.length };
+    }
+
+    /** Alt overlay: corridor numbers and the Search colours above the rooms. */
+    setAlt(on) {
+        this.alt = !!on;
+        for (const n of Object.values(this.roomNodes)) if (n.itemDots) n.itemDots.root.setEnabled(this.alt);
+        for (const n of Object.values(this.corridorNodes)) if (n.numLabel) n.numLabel.setEnabled(this.alt);
     }
 
     addFire(parent) {

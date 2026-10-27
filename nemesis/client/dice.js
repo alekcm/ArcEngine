@@ -219,6 +219,7 @@ export class DiceUI {
         this.anim = null; this.idle = false;
         this.title.textContent = dieTitle(roll.die) + (who ? ' — ' + who : '');
         this.hint.textContent = 'Результат: ' + faceText(roll.value);
+        Snd.play('diceLand');
         this.el.classList.add('landed');
         this.clearHide();
         this.hideTimer = setTimeout(() => { this.hideTimer = null; this.hide(); if (this.afterHide) this.afterHide(); }, SHOW_MS);

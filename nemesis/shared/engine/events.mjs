@@ -1,7 +1,7 @@
 // events.mjs — Event Phase (event card, intruder movement, effects, noise rolls, bag development)
 // and Cleanup Phase (first player, draw up, time, self-destruct, end checks).
 
-import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeFire, placeMalfunction,
+import { OPS, ask, askAck, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeFire, placeMalfunction,
     placeNoise, corridorsOf, spawnIntruder, removeIntruder, turnOrder, drawCards, drawLimit, gainContamination, inCombat,
     findRoomsByTile, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, discardCard, fx, cardDef, payCost, payableCards, infectLarva } from './core.mjs';
 import { shuffle } from '../rng.mjs';
@@ -18,15 +18,31 @@ OPS['phase.event'] = (state) => {
     log(state, '— Фаза событий —', 'phase');
     if (!state.eventDeck.length) { state.eventDeck = shuffle(state, state.eventDiscard.splice(0)); }
     const id = state.eventDeck.shift();
-    const ev = EVENT_BY_ID[id];
+    next(state, { op: 'event.reveal', id });
+};
+
+/** Reveal the card and let the whole table read it. In table mode (state.ui.eventAck) the card
+ *  stays face up until every player on board has pressed "Готово"; only then do its effects run. */
+OPS['event.reveal'] = (state, step) => {
+    const id = step.id, ev = EVENT_BY_ID[id];
     state.lastEvent = id;
+    state.lastEventN = (state.lastEventN || 0) + 1;
     fx(state, { type: 'event', card: id, name: ev.name, text: ev.text });
     log(state, '📜 Событие: «' + ev.name + '». ' + ev.text, 'event');
-    // 1. movement
+    if (state.ui && state.ui.eventAck) {
+        const waiting = state.players.filter(p => p.status === 'active' || p.status === 'hibernating').map(p => p.id);
+        if (askAck(state, { title: 'Событие: «' + ev.name + '»', text: ev.text, event: id, players: waiting },
+            { op: 'event.movement', id })) return;
+    }
+    next(state, { op: 'event.movement', id });
+};
+
+/** 1. Intruder movement printed on the card. */
+OPS['event.movement'] = (state, step) => {
+    const id = step.id, ev = EVENT_BY_ID[id];
     let attacks = [];
     if (ev.move.type === 'corridor') attacks = moveIntrudersByCorridor(state, ev.move.num);
     else if (ev.move.type === 'closest') { attacks = moveIntrudersToClosest(state); if (id === 'onTheHunt') attacks = attacks.concat(moveIntrudersToClosest(state)); }
-    // 2. effects
     next(state, ...attacks, { op: 'event.effect', id }, { op: 'event.noise', id }, { op: 'event.finish', id }, { op: 'phase.cleanup' });
 };
 
@@ -183,7 +199,7 @@ OPS['event.noise'] = (state, step) => {
         for (const p of turnOrder(state)) {
             if (p.status !== 'active' || p.pod || inCombat(state, p)) continue;
             if (p.hand.some(c => !String(c).startsWith('contam#'))) continue;
-            encounters.push({ op: 'encounter', room: p.room, player: p.id });
+            encounters.push({ op: 'encounter', room: p.room, player: p.id, reason: 'Событие «Открыты переборки»: в руке нет карт действий' });
         }
         if (encounters.length) { log(state, 'Нет карт действий — встреча.', 'noise'); next(state, ...encounters); }
         return;
@@ -244,8 +260,8 @@ OPS['perimeter.ask'] = (state, step) => {
 };
 OPS['event.finish'] = (state, step) => {
     const ev = EVENT_BY_ID[step.id];
-    if (ev.reshuffle) { state.eventDeck.push(...state.eventDiscard.splice(0), step.id); shuffle(state, state.eventDeck); log(state, 'Колода событий перемешана.', 'minor'); }
-    else state.eventDiscard.push(step.id);
+    if (ev && ev.reshuffle) { state.eventDeck.push(...state.eventDiscard.splice(0), step.id); shuffle(state, state.eventDeck); log(state, 'Колода событий перемешана.', 'minor'); }
+    else if (step.id) state.eventDiscard.push(step.id);
     next(state, { op: 'bag.develop' });
 };
 
