@@ -38,7 +38,8 @@ const ART_DECKS = {
 /** Items with illustrations in client/art/items/<itemKey>.jpg. */
 const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', 'antiseptic', 'stapler', 'adrenaline', 'supportCrate', 'selfDestructKey',
     'armor', 'grenade', 'flashbang', 'energyCharge', 'evacKey', 'taser', 'logCodes', 'detonator', 'cables', 'ductTape',
-    'engineKey', 'extinguisher', 'glowstick', 'nemesisPlans', 'reagent', 'techPlan', 'tools', 'plasmaRifle', 'flamethrower', 'heavyArmor'];
+    'engineKey', 'extinguisher', 'glowstick', 'nemesisPlans', 'reagent', 'techPlan', 'tools', 'plasmaRifle', 'flamethrower', 'heavyArmor',
+    'shotgun', 'exoLegs', 'soldierGun', 'handgun', 'scoutRifle', 'sawedOff', 'smartGun', 'riotShotgun', 'energyPistol', 'bountyRifle'];
 export function itemArt(key) { return ART_ITEMS.includes(key) ? 'art/items/' + key + '.jpg' : null; }
 /** Thumbnail + hover preview (art, name, rules text) for an item instance; empty string when the item has no art. */
 export function itemArtHtml(inst) {
