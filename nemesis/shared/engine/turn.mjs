@@ -5,6 +5,7 @@ import { OPS, ask, next, log, player, pname, removeCardFromGame, intrudersIn, in
     HEAVY_NAMES, itemDef, healthState, activePlayers, fx } from './core.mjs';
 import { ITEMS, CHARACTERS, OBJECTIVES, WOUNDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
+import { survivorUpgrade } from './actions3.mjs';
 import { roomActionAvailable, roomActionCost } from './rooms.mjs';
 
 OPS['phase.player'] = (state) => {
@@ -12,6 +13,7 @@ OPS['phase.player'] = (state) => {
     for (const p of state.players) { p.passed = p.status !== 'active'; p.movedThisRound = false; p.firstShotUsed = false; p.rifleDrawUsed = false; p.adrenalineTurn = false; }
     state.turnCursor = -1;
     log(state, '— Раунд ' + state.round + ': фаза игроков —', 'phase');
+    survivorUpgrade(state);
     next(state, { op: 'turn.start' });
 };
 
@@ -141,6 +143,7 @@ function itemRequirement(state, p, it) {
             return comp && !rs.malfunction ? '' : 'Только у компьютера без поломки';
         case 'evacKey': return tile === 'evacA' || tile === 'evacB' ? '' : 'Только в эвакуационном отсеке';
         case 'techPlan': return state.ship.rooms[p.room].tech ? '' : 'Нужен вход в тех. коридоры';
+        case 'probeArm': return !intrudersIn(state, p.room).length ? 'В комнате нет чужих' : (it.charge ?? ITEMS.probeArm.markers) <= 0 ? 'Все жетоны на предмете' : '';
         case 'grenade': {
             const ok = [p.room, ...state.ship.rooms[p.room].exits.map(e => e.to)].some(r => intrudersIn(state, r).length || room(state, r).objects.some(o => o.type === 'egg') || (tileOf(state, r) === 'nest' && state.nestEggs > 0));
             return ok ? '' : 'Нет цели рядом';

@@ -704,6 +704,7 @@ OPS['item2.use'] = (state, step) => {
     if (!inst) { next(state, back); return; }
     switch (ITEMS[inst.item].use) {
         case 'pipeMelee': next(state, { op: 'melee.start', player: p.id, noContam: true, then: back }); return;
+        case 'probeArm': OPS['item3.probeArm'](state, { ...step, then: back }); return;
         case 'wrench': {
             const rs = room(state, p.room); const opts = [];
             if (rs.malfunction) opts.push({ id: 'malf', label: 'Убрать поломку' });

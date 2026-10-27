@@ -347,18 +347,37 @@ export function buildCharacter(scene, charId, colors = {}) {
             Z(sp.legs, bx(0.2, 0.44, 0.2, R, s * 0.15, seatY - 0.3, 0.5));            // shins down
             Z(sp.boots, bx(0.22, 0.12, 0.34, R, s * 0.15, seatY - 0.56, 0.58));        // boots on the footrest
         }
-        const steel = FIXED.darkSteel, trim = FIXED.steel;
-        F(FIXED.strap, bx(0.6, 0.1, 0.56, R, 0, seatY - 0.06, 0.05));                    // cushion
-        F(FIXED.strap, bx(0.6, 0.5, 0.1, R, 0, seatY + 0.2, -0.26));                     // backrest
-        F(steel, bx(0.64, 0.14, 0.6, R, 0, seatY - 0.18, 0.05));                         // frame / battery box
-        F(steel, bx(0.5, 0.04, 0.2, R, 0, seatY - 0.62, 0.6));                           // footrest
-        for (const s of [-1, 1]) { F(trim, bx(0.04, 0.04, 0.5, R, s * 0.34, seatY + 0.1, 0.06)); F(steel, bx(0.06, 0.2, 0.06, R, s * 0.34, seatY - 0.02, -0.16)); }   // armrests
+        const steel = FIXED.darkSteel, trim = FIXED.steel, hull = '#2a3550', pad = '#e6e9ec', orange = '#d9772a';
+        // padded seat: white cushion, tall backrest with headrest and orange trim
+        F(pad, bx(0.6, 0.12, 0.56, R, 0, seatY - 0.06, 0.05));
+        F(pad, bx(0.62, 0.62, 0.14, R, 0, seatY + 0.26, -0.3)); F(pad, bx(0.36, 0.22, 0.12, R, 0, seatY + 0.7, -0.3));   // backrest + headrest
+        F(orange, bx(0.64, 0.05, 0.16, R, 0, seatY + 0.58, -0.3)); F(orange, bx(0.1, 0.5, 0.15, R, 0.26, seatY + 0.26, -0.3));
+        // armoured chassis: thick hull around the seat, side panels with vents, rear battery block, status lights
+        F(hull, bx(0.8, 0.3, 0.8, R, 0, seatY - 0.3, 0.02));                             // hull body
+        F(hull, bx(0.84, 0.16, 0.5, R, 0, seatY - 0.12, -0.1));                          // upper hull around the cushion
+        F(hull, bx(0.7, 0.46, 0.16, R, 0, seatY + 0.1, -0.46));                          // rear equipment block
+        F(steel, bx(0.3, 0.3, 0.1, R, 0, seatY + 0.06, -0.56)); Z(sp.lights || 'lights', bx(0.04, 0.2, 0.02, R, 0.1, seatY + 0.06, -0.62));   // rear panel + light strip
         for (const s of [-1, 1]) {
-            const w = cy(0.6, 0.6, 0.08, 12, R, s * 0.37, 0.3, -0.12, [0, 0, Math.PI / 2]); w.name = 'wheel'; F(FIXED.rubber, w);
-            F(trim, cy(0.42, 0.42, 0.1, 12, R, s * 0.38, 0.3, -0.12, [0, 0, Math.PI / 2])); Z(sp.lights || 'lights', cy(0.08, 0.08, 0.12, 8, R, s * 0.4, 0.3, -0.12, [0, 0, Math.PI / 2]));   // rim + hub light
-            const c = cy(0.26, 0.26, 0.08, 8, R, s * 0.3, 0.13, 0.48, [0, 0, Math.PI / 2]); c.name = 'wheel'; F(FIXED.rubber, c);   // front casters
+            F(steel, bx(0.06, 0.22, 0.5, R, s * 0.43, seatY - 0.3, 0.02));                       // side skirt
+            for (let k = 0; k < 3; k++) F(FIXED.rubber, bx(0.02, 0.12, 0.05, R, s * 0.47, seatY - 0.3, -0.1 + k * 0.12));   // vents
+            Z(sp.lights || 'lights', bx(0.02, 0.04, 0.16, R, s * 0.47, seatY - 0.2, 0.22));      // side indicator
+            F(hull, bx(0.1, 0.1, 0.5, R, s * 0.4, seatY + 0.1, 0.0)); F(trim, bx(0.12, 0.03, 0.52, R, s * 0.4, seatY + 0.16, 0.0));   // armrests
+            F(steel, bx(0.08, 0.24, 0.08, R, s * 0.4, seatY - 0.02, -0.2));
         }
-        F(trim, bx(0.14, 0.04, 0.14, R, 0.36, seatY + 0.14, 0.22)); Z(sp.lights || 'lights', bx(0.03, 0.1, 0.03, R, 0.36, seatY + 0.2, 0.22));   // joystick
+        F(steel, bx(0.5, 0.04, 0.22, R, 0, seatY - 0.62, 0.6)); F(steel, bx(0.08, 0.3, 0.08, R, 0, seatY - 0.48, 0.5));   // footrest on a strut
+        // big wide drive wheels with glowing rims, small front casters
+        for (const s of [-1, 1]) {
+            const w = cy(0.5, 0.5, 0.24, 14, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]); w.name = 'wheel'; F(FIXED.rubber, w);   // wide tyre
+            F(hull, cy(0.36, 0.36, 0.26, 14, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]));
+            Z(sp.lights || 'lights', cy(0.24, 0.24, 0.28, 14, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]));   // glowing rim
+            F(steel, cy(0.1, 0.1, 0.32, 8, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]));                     // hub
+            F(steel, bx(0.3, 0.1, 0.5, R, s * 0.47, 1.02, -0.14)); F(steel, bx(0.3, 0.06, 0.14, R, s * 0.47, 0.98, 0.16, [0.6, 0, 0]));   // mudguard
+            const c = cy(0.2, 0.2, 0.1, 8, R, s * 0.3, 0.12, 0.5, [0, 0, Math.PI / 2]); c.name = 'wheel'; F(FIXED.rubber, c);   // front casters
+            F(steel, bx(0.06, 0.2, 0.06, R, s * 0.3, 0.3, 0.5));
+        }
+        // controls: joystick on the right armrest (opposite the tablet), holo-projector on the left
+        F(trim, bx(0.14, 0.06, 0.18, R, 0.4, seatY + 0.2, 0.2)); F(FIXED.rubber, cy(0.02, 0.02, 0.14, 6, R, 0.4, seatY + 0.3, 0.2)); Z(sp.lights || 'lights', sp_(0.04, 6, R, 0.4, seatY + 0.38, 0.2));
+        F(trim, cy(0.06, 0.08, 0.04, 8, R, -0.4, seatY + 0.2, 0.22)); Z(sp.lights || 'lights', sp_(0.1, 8, R, -0.4, seatY + 0.36, 0.22));   // holographic globe
     }
 
     // ---------------------------------------------------------------------------------------

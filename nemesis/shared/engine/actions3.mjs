@@ -8,6 +8,30 @@ import { ROOM_TILES } from '../ship.mjs';
 import { applyHitsNoRoll, phantomAttack } from './combat.mjs';
 import { choice } from './actions.mjs';
 
+/** Probe Arm (Xenobiologist): in a room with an intruder, spend one of 3 markers to deal 1 hit and gain 1 Tissue. */
+OPS['item3.probeArm'] = (state, step) => {
+    const p = player(state, step.player); const a = probeArm(p); const back = step.then || BACK;
+    const targets = intrudersIn(state, p.room);
+    if (!a || !targets.length) { log(state, 'Манипулятор-зонд: в комнате нет чужих.', 'minor'); next(state, back); return; }
+    if ((a.charge ?? ITEMS.probeArm.markers) <= 0) { log(state, 'Манипулятор-зонд: все жетоны уже на предмете.', 'minor'); next(state, back); return; }
+    a.charge = (a.charge ?? ITEMS.probeArm.markers) - 1;
+    p.tissue = (p.tissue || 0) + 1; log(state, pname(p) + ' берёт образец зондом (ткань ' + p.tissue + ', жетонов свободно ' + a.charge + ').', 'good');
+    if (targets.length === 1) { applyHitsNoRoll(state, targets[0], 1); next(state, back); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Манипулятор-зонд: цель', options: targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })) }, { op: 'card.hitOne', player: p.id, then: back });
+};
+
+/** Survivor: from round 8 the Handgun becomes the Survivor's Favorite. */
+export function survivorUpgrade(state) {
+    if (state.round < 8) return;
+    for (const p of state.players) {
+        if (p.charId !== 'survivor' || p.status !== 'active') continue;
+        const g = p.items.find(i => i.item === 'handgun');
+        if (!g) continue;
+        g.item = 'survivorFavorite'; g.ammo = ITEMS.survivorFavorite.weapon.max; g.broken = false;
+        log(state, pname(p) + ': Пистолет становится «Любимицей выжившей» (5 патронов, −1 к стрельбе).', 'good');
+    }
+}
+
 const BACK = { op: 'turn.choose' };
 const HAND_CAP = 7;
 const droppable = p => p.items.filter(i => !ITEMS[i.item].quest);
@@ -20,7 +44,9 @@ const dropItem = (state, p, uid) => {
     return true;
 };
 const spendTissue = (state, p) => { p.tissue = Math.max(0, (p.tissue || 0) - 1); log(state, pname(p) + ' тратит образец ткани (осталось ' + p.tissue + ').', 'action'); };
-const spendKnowledge = (state, p) => { p.knowledge = Math.max(0, p.knowledge - 1); log(state, pname(p) + ' тратит 1 знание из манипулятора (осталось ' + p.knowledge + ').', 'action'); };
+const probeArm = p => p.items.find(i => i.item === 'probeArm');
+const probeUsed = p => { const a = probeArm(p); return a ? ITEMS.probeArm.markers - (a.charge ?? ITEMS.probeArm.markers) : 0; };
+const freeProbeMarker = (state, p) => { const a = probeArm(p); if (!a) return; a.charge = Math.min(ITEMS.probeArm.markers, (a.charge ?? ITEMS.probeArm.markers) + 1); log(state, pname(p) + ' снимает жетон с Манипулятора-зонда (свободно ' + a.charge + ').', 'action'); };
 
 // ---------------------------------------------------------------------------------------------
 // Survivor
@@ -96,7 +122,7 @@ OPS['card.fieldExperience'] = (state, step) => {
     if (targets.length === 1) { applyHitsNoRoll(state, targets[0], 1); next(state, BACK); return; }
     choice(state, p, 'Полевой опыт: кто получает ранение?', targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })), 'card.hitOne');
 };
-OPS['card.hitOne'] = (state, step) => { const it = state.intruders[step.answer]; if (it) applyHitsNoRoll(state, it, step.n || 1); next(state, BACK); };
+OPS['card.hitOne'] = (state, step) => { const it = state.intruders[step.answer]; if (it) applyHitsNoRoll(state, it, step.n || 1); next(state, step.then || BACK); };
 
 OPS['card.overmind'] = (state, step) => {
     const p = player(state, step.player);
@@ -104,12 +130,12 @@ OPS['card.overmind'] = (state, step) => {
     if (!all.length) { log(state, 'На корабле нет чужих — карта потрачена впустую.', 'minor'); next(state, BACK); return; }
     const opts = [];
     if (p.tissue > 0 && p.hand.length) opts.push({ id: 'tissue', label: 'Сбросить 1 карту и 1 образец ткани' });
-    if (p.knowledge > 0) opts.push({ id: 'knowledge', label: 'Потратить 1 знание из манипулятора' });
-    choice(state, p, 'Сверхразум: чем платить?', opts, 'card.overmind.pay');
+    if (probeUsed(p) > 0) opts.push({ id: 'marker', label: 'Снять 1 жетон с Манипулятора-зонда (без перемещения чужого)' });
+    choice(state, p, 'Сверхразум', opts, 'card.overmind.pay');
 };
 OPS['card.overmind.pay'] = (state, step) => {
     const p = player(state, step.player);
-    if (step.answer === 'knowledge') { spendKnowledge(state, p); next(state, { op: 'card.overmind.who', player: p.id }); return; }
+    if (step.answer === 'marker') { freeProbeMarker(state, p); next(state, BACK); return; }
     spendTissue(state, p);
     payCost(state, p, 1, { op: 'card.overmind.who', player: p.id }, 'Сверхразум: оплата');
 };
@@ -139,16 +165,16 @@ OPS['card.pheromones'] = (state, step) => {
 OPS['card.vivisection'] = (state, step) => {
     const p = player(state, step.player);
     const targets = intrudersIn(state, p.room);
-    if (!targets.length) { log(state, 'В комнате нет чужих — карта потрачена впустую.', 'minor'); next(state, BACK); return; }
     const opts = [];
-    if (p.tissue > 0) opts.push({ id: 'tissue', label: 'Нанести ' + p.tissue + ' ран., сбросить 1 образец ткани' });
-    if (p.knowledge > 0) opts.push({ id: 'knowledge', label: 'Потратить 1 знание: нанести ' + Math.max(1, p.tissue || 0) + ' ран.' });
-    choice(state, p, 'Вивисекция: чем платить?', opts, 'card.vivisection.pay');
+    if (targets.length && p.tissue > 0) opts.push({ id: 'tissue', label: 'Нанести ' + p.tissue + ' ран., сбросить 1 образец ткани' });
+    if (probeUsed(p) > 0) opts.push({ id: 'marker', label: 'Снять 1 жетон с Манипулятора-зонда' });
+    choice(state, p, 'Вивисекция', opts, 'card.vivisection.pay');
 };
 OPS['card.vivisection.pay'] = (state, step) => {
     const p = player(state, step.player);
+    if (step.answer === 'marker') { freeProbeMarker(state, p); next(state, BACK); return; }
     const n = Math.max(1, p.tissue || 0);
-    if (step.answer === 'knowledge') spendKnowledge(state, p); else spendTissue(state, p);
+    spendTissue(state, p);
     const targets = intrudersIn(state, p.room);
     if (targets.length === 1) { applyHitsNoRoll(state, targets[0], n); next(state, BACK); return; }
     choice(state, p, 'Вивисекция: цель', targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })), 'card.hitOne', { n });
