@@ -440,6 +440,18 @@ test('END-03 / p. 23: a larva is checked by final Eclosion, not an automatic dea
     execute(s, { op: 'game.end' });
     assert.equal(p.status, 'escaped');
 });
+test('END-04 / p. 23: game end waits for the Objective choice instead of looping', () => {
+    const s = fresh();
+    s.queue = []; s.prompt = null; s.resume = null; s.phase = 'player';
+    s.players[0].status = 'escaped';
+    s.players[0].objectives = [{ kind: 'personal', id: 'oldestFriend' }, { kind: 'corporate', id: 'priorityOne' }];
+    s.players[0].objective = null;
+    s.players[1].status = 'dead';
+    execute(s, { op: 'turn.end' });
+    assert.equal(s.prompt.kind, 'choice', 'the pending Objective choice must survive the automatic end');
+    assert.equal(s.result, null);
+});
+
 test('OBJ-01 / Pursuit of Science: max Knowledge means eight, not most among players', () => {
     const s = fresh(), p = s.players[0]; p.knowledgeActive = true; p.knowledge = 7; s.players[1].knowledge = 6;
     assert.equal(checkObjective(s, p, OBJECTIVES.personal.pursuit, 'earth'), false);

@@ -26,11 +26,12 @@ export function run(state) {
         finally { scheduling.delete(state); }
         state.queue.unshift(...scheduled);
         checkLaika(state);
-        // End immediately, not after another Intruder/Event/Cleanup phase.
-        if (!state.ending && !state.result && !['setup', 'draft'].includes(state.phase) &&
+        // End immediately, not after another Intruder/Event/Cleanup phase. A pending prompt owns
+        // the flow (game.end may itself be waiting for an Objective choice), so never cut it.
+        if (!state.ending && !state.result && !state.prompt && !step.op.startsWith('game.') &&
+            !['setup', 'draft'].includes(state.phase) &&
             (state.shipDestroyed || !activePlayers(state).length)) {
             state.queue = [{ op: 'game.end' }];
-            state.prompt = null; state.resume = null;
         }
         if (step.op !== 'dice.rolled') { state.pendingRoll = null; state.pendingRollPlayer = null; }
         if (++guard > 20000) throw new Error('runaway queue at ' + step.op);
