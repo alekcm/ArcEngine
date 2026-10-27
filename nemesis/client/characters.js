@@ -234,10 +234,11 @@ export function buildCharacter(scene, charId, colors = {}) {
             case 'bun': Z(H, bx(0.33, 0.1, 0.33, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.08, 0.1, R, 0, 2.6, 0.14)); Z(H, bx(0.3, 0.3, 0.08, R, 0, 2.46, -0.16)); Z(H, bx(0.16, 0.16, 0.16, R, 0, 2.68, -0.14)); for (const s of [-1, 1]) Z(H, bx(0.05, 0.26, 0.2, R, s * 0.17, 2.46, -0.02)); break;
             case 'ponytail': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.1, 0.1, 0.1, R, 0, 2.6, -0.2)); Z(H, bx(0.08, 0.4, 0.08, R, 0, 2.38, -0.22)); break;
             case 'bobBangs': Z(H, bx(0.34, 0.12, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.1, 0.08, R, 0, 2.56, 0.16)); Z(H, bx(0.34, 0.3, 0.1, R, 0, 2.42, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.06, 0.3, 0.3, R, s * 0.18, 2.42, 0.0)); break;
-            case 'shaggyBob': Z(H, bx(0.36, 0.12, 0.36, R, 0, 2.64, 0.0)); Z(H, bx(0.36, 0.38, 0.12, R, 0, 2.44, -0.17)); for (const s of [-1, 1]) Z(H, bx(0.08, 0.38, 0.32, R, s * 0.19, 2.44, -0.03)); Z(H, bx(0.3, 0.1, 0.08, R, 0.02, 2.58, 0.16, [0, 0, 0.15]));
-                for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2; Z(H, bx(0.08, 0.1 + (i % 2) * 0.06, 0.08, R, Math.sin(a) * 0.2, 2.66 + (i % 3) * 0.03, Math.cos(a) * 0.2 - 0.02, [(i % 2) * 0.4, 0, (i % 3 - 1) * 0.4])); } break;   // messy jaw-length bob: tousled tufts sticking out
+            case 'shaggyBob': Z(H, bx(0.36, 0.12, 0.36, R, 0, 2.64, 0.0)); Z(H, bx(0.36, 0.38, 0.1, R, 0, 2.44, -0.2, [-0.22, 0, 0]));
+                for (const s of [-1, 1]) { Z(H, bx(0.08, 0.38, 0.3, R, s * 0.21, 2.44, -0.03, [0, 0, -s * 0.22])); Z(H, bx(0.08, 0.3, 0.14, R, s * 0.2, 2.46, 0.12, [0.15, 0, -s * 0.3])); }
+                Z(H, bx(0.3, 0.1, 0.08, R, 0.02, 2.58, 0.16, [0, 0, 0.15])); break;   // messy jaw-length bob: slabs flare outwards instead of hanging straight down
             case 'afroPony': Z(H, bx(0.36, 0.14, 0.36, R, 0, 2.66, 0.0)); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.16, 2.64 + (i % 2) * 0.08, Math.cos(a) * 0.14 - 0.02)); }
-                for (let i = 0; i < 6; i++) Z(H, bx(0.16 - (i % 2) * 0.03, 0.14, 0.16 - (i % 2) * 0.03, R, (i % 2) * 0.04 - 0.02, 2.5 - i * 0.1, -0.26 - (i > 2 ? 0.04 : 0)));   // curls gathered into a thick puffy ponytail hanging down the back
+                for (let i = 0; i < 3; i++) Z(H, bx(0.16 - (i % 2) * 0.03, 0.14, 0.16 - (i % 2) * 0.03, R, (i % 2) * 0.04 - 0.02, 2.5 - i * 0.1, -0.26));   // curls gathered into a short puffy ponytail at the nape
                 F(FIXED.strap, bx(0.14, 0.05, 0.14, R, 0, 2.56, -0.22)); break;
             case 'shortBeard': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.28, 0.12, 0.08, R, 0, 2.3, 0.14)); break;
             case 'curly': Z(H, bx(0.38, 0.16, 0.38, R, 0, 2.66, 0.0)); for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.17, 2.6 + (i % 2) * 0.1, Math.cos(a) * 0.17 - 0.02)); } break;
