@@ -22,16 +22,21 @@ OPS['feat.offer'] = (state, step) => {
     const pool = state.feats || [];
     if (!pool.length) { next(state, step.then); return; }
     const opts = pool.map(k => ({ id: k, label: FEATS[k].name, desc: FEATS[k].text, art: 'feat/' + k }));
-    opts.push({ id: 'skip', label: 'Без подвига', desc: 'Не брать карту подвига.' });
-    ask(state, { kind: 'choice', player: p.id, title: 'Выберите подвиг (разыгрывается сразу и уходит из игры)', options: opts, wide: true },
+    ask(state, { kind: 'choice', player: p.id, title: 'Выберите подвиг (он уходит из игры; разыграть его можно сразу или убрать без розыгрыша)', options: opts, wide: true },
         { op: 'feat.pick', player: p.id, then: step.then });
 };
 
 OPS['feat.pick'] = (state, step) => {
     const p = player(state, step.player);
     const k = step.answer;
-    if (k === 'skip' || !state.feats.includes(k)) { next(state, step.then); return; }
+    if (!state.feats.includes(k)) { next(state, step.then); return; }
     state.feats.splice(state.feats.indexOf(k), 1);
+    ask(state, { kind: 'choice', player: p.id, title: 'Подвиг «' + FEATS[k].name + '»: разыграть эффект?', options: [{ id: 'yes', label: 'Разыграть' }, { id: 'no', label: 'Убрать без розыгрыша' }] },
+        { op: 'feat.resolve', player: p.id, feat: k, then: step.then });
+};
+OPS['feat.resolve'] = (state, step) => {
+    const p = player(state, step.player), k = step.feat;
+    if (step.answer !== 'yes') { log(state, pname(p) + ' убирает подвиг «' + FEATS[k].name + '» без розыгрыша.', 'minor'); next(state, step.then); return; }
     log(state, pname(p) + ' совершает подвиг: «' + FEATS[k].name + '».', 'action');
     next(state, { op: 'feat.' + k, player: p.id, then: step.then });
 };

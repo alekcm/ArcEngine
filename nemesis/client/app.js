@@ -11,7 +11,7 @@ import { ROOM_TILES } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, objectiveTextOf } from '/shared/data/cards.mjs';
 
 const $ = id => document.getElementById(id);
-const PHASES = { setup: 'Подготовка', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
+const PHASES = { setup: 'Подготовка', draft: 'Выбор персонажей', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
 
 // ---------------------------------------------------------------------------------------------
 // Network
@@ -57,9 +57,9 @@ function onMessage(m) {
             break;
         case 'notice': notice(m.text, m.kind); break;
         case 'chat': addChat(m); break;
-        case 'cursor': if (scene && app.view && m.pid !== app.me) { const p = app.view.players[m.pid]; if (p) scene.setCursor(m.pid, m.x, m.z, CHARACTERS[p.charId].color, p.name, m.off); } break;
+        case 'cursor': if (scene && app.view && m.pid !== app.me) { const p = app.view.players[m.pid]; if (p && CHARACTERS[p.charId]) scene.setCursor(m.pid, m.x, m.z, CHARACTERS[p.charId].color, p.name, m.off); } break;
         case 'pose': if (scene && m.pid !== app.me) scene.setPose(m.pid, m.pose, false); break;
-        case 'ping': if (scene && app.view) { const p = app.view.players[m.pid]; if (p) { scene.ping(m.x, m.z, CHARACTERS[p.charId].color); Snd.play('ping'); if (m.pid !== app.me) notice('📍 ' + p.name + (m.room ? ' указывает на ' + roomLabel(m.room) : ' указывает на стол'), 'ping'); } } break;
+        case 'ping': if (scene && app.view) { const p = app.view.players[m.pid]; if (p && CHARACTERS[p.charId]) { scene.ping(m.x, m.z, CHARACTERS[p.charId].color); Snd.play('ping'); if (m.pid !== app.me) notice('📍 ' + p.name + (m.room ? ' указывает на ' + roomLabel(m.room) : ' указывает на стол'), 'ping'); } } break;
     }
 }
 
@@ -112,7 +112,7 @@ function renderLobby() {
     }).join('') || '<div class="hint">Пока никого…</div>';
     for (const el of $('seatList').querySelectorAll('[data-kick]')) el.onclick = () => net.send({ t: 'lobby', kick: Number(el.dataset.kick) });
     // settings
-    $('modeSelect').value = L.settings.mode; if (document.activeElement !== $('seedInput')) $('seedInput').value = L.settings.seed || '';
+    $('modeSelect').value = L.settings.mode; $('draftSelect').value = L.settings.draft === false ? '0' : '1'; if (document.activeElement !== $('seedInput')) $('seedInput').value = L.settings.seed || '';
     $('modeSelect').disabled = !app.host; $('seedInput').disabled = !app.host;
     $('lanAddr').textContent = L.addresses.length ? L.addresses.map(a => 'http://' + a + ':' + L.port).join('   ') : location.origin;
     $('readyBtn').textContent = app.ready ? 'Не готов' : 'Готов';
@@ -126,8 +126,10 @@ function sendColor(zone, color) { app.colors = Object.assign({}, app.colors, { [
 $('nameInput').onchange = () => { localStorage.setItem('nemesis.name', $('nameInput').value); net.send({ t: 'lobby', name: $('nameInput').value }); };
 $('readyBtn').onclick = () => net.send({ t: 'lobby', ready: !app.ready });
 $('startBtn').onclick = () => net.send({ t: 'start' });
-$('modeSelect').onchange = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value } });
-$('seedInput').onchange = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value } });
+const sendSettings = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value, draft: $('draftSelect').value === '1' } });
+$('modeSelect').onchange = sendSettings;
+$('seedInput').onchange = sendSettings;
+$('draftSelect').onchange = sendSettings;
 $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else $('endOverlay').classList.add('hidden'); };
 
 // ---------------------------------------------------------------------------------------------
@@ -218,8 +220,8 @@ function renderPlayers() {
             const ke = Object.entries(p.knownEngines || {}); if (ke.length) known += '<div class="items">⚙ ' + ke.map(([n, w]) => '№' + n + ': ' + (w ? 'исправен' : 'повреждён')).join(', ') + '</div>';
             if (p.knownCoords) known += '<div class="items">🧭 координаты известны (см. Рубку)</div>';
         }
-        return '<div class="pcard ' + (v.current === p.id && v.phase === 'player' ? 'current' : '') + (me ? ' me' : '') + (p.status === 'dead' ? ' dead' : '') + '" data-pid="' + p.id + '" style="border-left-color:' + CHARACTERS[p.charId].color + '">' +
-            '<div class="pname"><span>' + esc(p.name) + (me ? ' (вы)' : '') + '</span><small>' + esc(p.charName) + ' ' + statusName(p) + '</small></div>' +
+        return '<div class="pcard ' + (v.current === p.id && v.phase === 'player' ? 'current' : '') + (me ? ' me' : '') + (p.status === 'dead' ? ' dead' : '') + '" data-pid="' + p.id + '" style="border-left-color:' + (CHARACTERS[p.charId] ? CHARACTERS[p.charId].color : '#888') + '">' +
+            '<div class="pname"><span>' + (p.number ? '<i class="pnum">' + p.number + '</i> ' : '') + esc(p.name) + (me ? ' (вы)' : '') + '</span><small>' + esc(p.charName) + ' ' + statusName(p) + '</small></div>' +
             hpBar(p) + '<div class="tags">' + tags.join('') + '</div><div class="items">' + items + '</div>' + obj + known +
             '<div class="items dim">📍 ' + esc(roomLabel(p.room)) + '</div></div>';
     }).join('');

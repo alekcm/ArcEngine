@@ -309,3 +309,5 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 /* options that carry card art (feats): image strip on top of the button */
 .opt-art { padding-top: 0; overflow: hidden; }
 .opt-art .oart { display: block; width: calc(100% + 20px); margin: 0 -10px 6px; height: 96px; background-size: cover; background-position: center; border-bottom: 1px solid #34465d; }
+
+.pnum { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: #2a3b52; color: #cfe3ff; font-style: normal; font-size: 11px; text-align: center; }

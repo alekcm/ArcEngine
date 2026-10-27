@@ -1,7 +1,7 @@
 // endgame.mjs — final checks: engines, destination, infection, objectives.
 
 import { OPS, ask, next, log, pname, isContam, isInfected } from './core.mjs';
-import { OBJECTIVES, COORDINATE_CARDS, DESTINATION_NAMES, ITEMS, objectiveTextOf } from '../data/cards.mjs';
+import { OBJECTIVES, COORDINATE_CARDS, DESTINATION_NAMES, ITEMS, FEATS, objectiveTextOf } from '../data/cards.mjs';
 
 function objectiveOf(p) { return p.objective || p.objectives[0]; }
 function defOf(p) { const ob = objectiveOf(p); return OBJECTIVES[ob.kind][ob.id]; }
@@ -67,6 +67,16 @@ OPS['game.endPick'] = (state, step) => {
     const keep = p.objectives.find(o => o.id === step.answer);
     p.objective = keep; p.objectives = [keep];
     log(state, pname(p) + ' выбирает цель перед финальной проверкой.', 'action');
+    // 5.3: ...and removes 1 available Feat without resolving it
+    if (state.feats && state.feats.length) {
+        ask(state, { kind: 'choice', player: p.id, title: 'Уберите 1 доступный подвиг из игры (без розыгрыша)', options: state.feats.map(k => ({ id: k, label: FEATS[k].name, desc: FEATS[k].text })) }, { op: 'game.endFeat', player: p.id });
+        return;
+    }
+    next(state, { op: 'game.end' });
+};
+OPS['game.endFeat'] = (state, step) => {
+    state.feats = state.feats.filter(k => k !== step.answer);
+    log(state, 'Подвиг «' + FEATS[step.answer].name + '» убран из игры.', 'minor');
     next(state, { op: 'game.end' });
 };
 
@@ -110,7 +120,7 @@ export function checkObjective(state, p, def, destination) {
         case 'alienCoverUp': return signal && !othersAlive.some(o => o.knowledge >= 7);
         case 'bugHunt': return (state.carcassCount || 0) >= 4;
         case 'seat': {
-            const t = state.players[def.seat - 1];
+            const t = state.players.find(o => o.number === def.seat) || state.players[def.seat - 1];
             if (!t || t.id === p.id) return onlySurvivor;
             return !alive(t) || onlySurvivor;
         }

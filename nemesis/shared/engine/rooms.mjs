@@ -3,7 +3,7 @@
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, secretTile, inCombat,
     gainKnowledge, restoreHealth, removeWound, removeFire, removeMalfunction, placeMalfunction, loseHealth, discardCard,
     removeCardFromGame, isContam, drawCards, spawnIntruder, HIBERNATION_TIME, handLimit, heavyCount, findRoomsByTile,
-    clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx, intruderLabel } from './core.mjs';
+    clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx, intruderLabel, healthState } from './core.mjs';
 import { dealHits } from './combat.mjs';
 import { ROOM_TILES, engineRooms } from '../ship.mjs';
 import { ITEMS, WOUNDS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, INTRUDER_NAMES, ADAPTATIONS, EVENT_CARDS } from '../data/cards.mjs';
@@ -113,7 +113,7 @@ OPS['room.action'] = (state, step) => {
             return;
         case 'repository':
             p.supportUsed = true;
-            keepOneOf(state, p, drawSupport(state, 3), 'support', back);
+            keepOneOf(state, p, drawSupport(state, 3), 'support', back, 1, true);
             return;
         case 'airlock': {
             const rooms = Object.keys(state.ship.rooms).filter(r => state.ship.rooms[r].tech && intrudersIn(state, r).length && r !== p.room);
@@ -193,16 +193,39 @@ OPS['noop'] = (state, step) => { if (step.then) next(state, step.then); };
 function objName(h) { return ({ corpse: 'человеческий труп', charCorpse: 'труп персонажа', carcass: 'туша чужого', egg: 'яйцо' })[h.type]; }
 
 export function healChoice(state, p, hp, back) {
-    const opts = [{ id: 'heal', label: 'Восстановить ' + hp + ' здоровья' }];
-    for (const w of p.wounds) opts.push({ id: 'w:' + w, label: 'Вылечить травму: ' + WOUNDS[w].name });
+    // 14.8: healing items may also target another consenting character in the room
+    const targets = [p, ...playersInRoom(state, p.room).filter(o => o.id !== p.id && o.status === 'active')];
+    const opts = [];
+    for (const t of targets) {
+        const who = t === p ? '' : ' — ' + pname(t);
+        opts.push({ id: 'heal:' + t.id, label: 'Восстановить ' + hp + ' здоровья' + who });
+        for (const w of new Set(t.wounds)) opts.push({ id: 'w:' + t.id + ':' + w, label: 'Вылечить травму: ' + WOUNDS[w].name + who });
+    }
     ask(state, { kind: 'choice', player: p.id, title: 'Лечение', options: opts }, { op: 'heal.choice', player: p.id, hp, then: back });
 }
 OPS['heal.choice'] = (state, step) => {
     const p = player(state, step.player);
-    if (step.answer === 'heal') restoreHealth(state, p, step.hp);
-    else removeWound(state, p, step.answer.slice(2));
+    const parts = step.answer.split(':');
+    const t = player(state, parts[1]);
+    if (t.id !== p.id && !step.consent) {
+        ask(state, { kind: 'choice', player: t.id, title: pname(p) + ' хочет вылечить вас (' + (parts[0] === 'heal' ? step.hp + ' здоровья' : WOUNDS[parts[2]].name) + '). Согласны?',
+            options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, { op: 'heal.consent', player: p.id, hp: step.hp, choice: step.answer, then: step.then });
+        return;
+    }
+    if (parts[0] === 'heal') restoreHealth(state, t, step.hp);
+    else removeWound(state, t, parts[2]);
     next(state, step.then);
 };
+OPS['heal.consent'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer !== 'yes') { log(state, 'Персонаж отказался от лечения — ' + pname(p) + ' лечит себя.', 'minor'); healChoiceSelf(state, p, step.hp, step.then); return; }
+    next(state, { op: 'heal.choice', player: p.id, hp: step.hp, answer: step.choice, consent: true, then: step.then });
+};
+function healChoiceSelf(state, p, hp, back) {
+    const opts = [{ id: 'heal:' + p.id, label: 'Восстановить ' + hp + ' здоровья' }];
+    for (const w of new Set(p.wounds)) opts.push({ id: 'w:' + p.id + ':' + w, label: 'Вылечить травму: ' + WOUNDS[w].name });
+    ask(state, { kind: 'choice', player: p.id, title: 'Лечение', options: opts }, { op: 'heal.choice', player: p.id, hp, then: back });
+}
 export function removeOneContam(state, p) {
     const i = p.hand.findIndex(isContam);
     if (i >= 0) { p.hand.splice(i, 1); log(state, pname(p) + ': 1 заражение удалено из руки.', 'good'); return true; }
@@ -229,6 +252,7 @@ OPS['room.lab'] = (state, step) => {
 };
 /** Lab rule: the first analyzed object of each type removes one active intruder Adaptation. */
 export function analyzeAdaptation(state, p, type, then) {
+    if (type === 'charCorpse') type = 'corpse';   // a character's corpse is a Human Corpse (18.3: one object type)
     if (state.analyzed[type] || !state.adaptations.length) { if (state.analyzed[type]) log(state, 'Объект этого типа уже использовался против адаптаций.', 'minor'); next(state, then); return; }
     state.analyzed[type] = true;
     ask(state, { kind: 'choice', player: p.id, title: 'Анализ «' + objName({ type }) + '»: какую адаптацию чужих удалить?',
@@ -355,7 +379,7 @@ OPS['computer.start'] = (state, step) => {
     if (card === 'lockdown') {
         if (state.noLockdownMalf) state.noLockdownMalf--; else placeMalfunction(state, p.room, 'блокировка');
         state.computerDeck.push(...state.computerDiscard.splice(0), card); shuffle(state, state.computerDeck); state.computerCard = null;
-        revealComputerCard(state);
+        revealComputerCard(state, true);   // 16.2: Lockdown revealed right after reshuffling goes to the bottom
         log(state, 'Колода компьютера перемешана. Новая карта: «' + COMPUTER_CARDS[state.computerCard].name + '».', 'info');
         next(state, back); return;
     }
@@ -523,11 +547,30 @@ export function drawItem(state, deck) {
     if (c) fx(state, { type: 'item', deck });
     return c;
 }
+OPS['armor.swapAsk'] = (state, step) => {
+    const p = player(state, step.player), def = ITEMS[step.inst.item];
+    if (!p.armor) { p.armor = step.inst; log(state, pname(p) + ' надевает броню «' + def.name + '».', 'good'); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Новая броня «' + def.name + '». Сменить текущую «' + ITEMS[p.armor.item].name + '»?',
+        options: [{ id: 'yes', label: 'Надеть новую', desc: def.text }, { id: 'no', label: 'Оставить текущую', desc: ITEMS[p.armor.item].text }] },
+        { op: 'armor.swap', player: p.id, inst: step.inst });
+};
+OPS['armor.swap'] = (state, step) => {
+    const p = player(state, step.player);
+    const old = step.answer === 'yes' ? p.armor : step.inst;
+    (state.itemDiscard[ITEMS[old.item].deck] = state.itemDiscard[ITEMS[old.item].deck] || []).push(old.item);
+    if (step.answer === 'yes') { p.armor = step.inst; log(state, pname(p) + ' надевает броню «' + ITEMS[step.inst.item].name + '», старая сброшена.', 'good'); }
+    else log(state, pname(p) + ' оставляет текущую броню; «' + ITEMS[step.inst.item].name + '» сброшена.', 'minor');
+};
 export function giveItem(state, p, itemKey, ammo) {
     const def = ITEMS[itemKey];
     const inst = { uid: 'it' + (++state.itemSeq), item: itemKey, ammo: def.weapon ? (ammo ?? (def.deck === 'support' ? def.weapon.max : 1)) : def.ammoMax !== undefined ? (ammo ?? def.ammoMax) : undefined, broken: false };
     if (def.kind === 'armor') {
-        if (p.armor) { (state.itemDiscard[ITEMS[p.armor.item].deck] = state.itemDiscard[ITEMS[p.armor.item].deck] || []).push(p.armor.item); }
+        if (healthState(p) === 'heavy') {   // 13.4: cannot gain Armor while Heavily Injured
+            (state.itemDiscard[def.deck] = state.itemDiscard[def.deck] || []).push(itemKey);
+            log(state, pname(p) + ' тяжело ранен(а) и не может надеть броню «' + def.name + '» — карта сброшена.', 'bad');
+            return inst;
+        }
+        if (p.armor) { next(state, { op: 'armor.swapAsk', player: p.id, inst }); return inst; }   // 13.4: you MAY swap
         p.armor = inst;
         log(state, pname(p) + ' надевает броню «' + def.name + '».', 'good');
     } else {

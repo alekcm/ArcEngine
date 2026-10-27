@@ -1,6 +1,6 @@
 // actions.mjs — effects of action cards (character decks + field data), the infection procedure.
 
-import { OPS, ask, next, log, player, pname, intrudersIn, room, roomName, tileOf, restoreHealth, removeFire, placeFire,
+import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire, placeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, removeCardFromGame, isContam, isInfected, payCost,
     clearNoiseAround, killPlayer, spawnIntruder, intruderLabel, corridorsOf, secretTile, payableCards } from './core.mjs';
 import { ITEMS } from '../data/cards.mjs';
@@ -16,25 +16,36 @@ const BACK = { op: 'turn.choose' };
 // Infection / eclosion
 // ---------------------------------------------------------------------------------------------
 /** Scan every contamination card in hand: clean ones leave the game, infected ones hatch a larva. */
-export function infectionProcedure(state, p) {
+export function infectionProcedure(state, p, removeClean) {
     const cards = p.hand.filter(isContam);
     if (!cards.length) { log(state, pname(p) + ': заражений в руке нет.', 'minor'); return; }
     let bad = 0;
     for (const c of cards) {
-        removeCardFromGame(state, p, c);
-        if (isInfected(state, c)) { bad++; if (p.larva) { eclosionProcedure(state, p); return; } p.larva = true; }
+        const inf = isInfected(state, c);
+        if (inf) bad++;
+        // 20.2: contamination cards from the hand go on top of the discard pile
+        // (the Rest card additionally removes the non-infected ones from the game).
+        if (!inf && removeClean) removeCardFromGame(state, p, c); else discardCard(state, p, c);
     }
     log(state, pname(p) + ' проверяет заражения: ' + cards.length + ' карт, заражено — ' + bad + '.', bad ? 'bad' : 'good');
-    if (bad) log(state, pname(p) + ' заражён личинкой!', 'bad');
+    if (bad && !p.larva) { p.larva = true; log(state, pname(p) + ' заражён личинкой!', 'bad'); }
+    else if (bad) log(state, pname(p) + ' уже носит личинку — вторая не добавляется.', 'minor');
 }
-/** A larva inside a character hatches: the character dies and an adult appears. */
+/** 20.3 Eclosion Procedure: draw 4 cards; any Contamination card in hand kills the character, otherwise discard the hand. */
 export function eclosionProcedure(state, p) {
-    if (!p.larva) return;
-    p.larva = false;
+    drawCards(state, p, 4, true);
+    const bad = p.hand.filter(isContam).length;
+    if (!bad) {
+        log(state, pname(p) + ': процедура вылупления — заражений в руке нет, персонаж выживает; рука сбрасывается.', 'good');
+        for (const c of [...p.hand]) discardCard(state, p, c);
+        return;
+    }
     const r = p.room;
-    log(state, '🐛 Из тела ' + pname(p) + ' вырывается чужой!', 'death');
-    killPlayer(state, p, 'выход личинки');
-    if (countAvailable(state, 'adult') > 0) spawnIntruder(state, 'adult', r);
+    log(state, '🐛 Процедура вылупления: в руке ' + pname(p) + ' ' + bad + ' заражений — из тела вырывается чужой!', 'death');
+    p.larva = false;
+    killPlayer(state, p, 'вылупление личинки');
+    const it = spawnIntruder(state, 'adult', r);
+    if (it && playersInRoom(state, r).length) next(state, { op: 'attack', intruder: it.uid, context: 'eclosion' });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -90,7 +101,7 @@ OPS['card.repairs'] = (state, step) => {
     const p = player(state, step.player);
     choice(state, p, 'Ремонт', repairOptions(state, p, true), 'card.repairPick', { enginePay: 1 });
 };
-OPS['card.rest'] = (state, step) => { infectionProcedure(state, player(state, step.player)); next(state, BACK); };
+OPS['card.rest'] = (state, step) => { infectionProcedure(state, player(state, step.player), true); next(state, BACK); };
 OPS['card.search'] = (state, step) => { search(state, player(state, step.player), BACK); };
 OPS['card.weakSpot'] = (state, step) => {
     const p = player(state, step.player);

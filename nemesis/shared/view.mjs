@@ -6,7 +6,7 @@ import { CHARACTERS, FIELD_DATA } from './data/cards.mjs';
 
 const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'fx', 'version', 'seedStr', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'ship', 'roomState',
     'intruders', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods',
-    'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'adaptations', 'adaptationsRemoved', 'result', 'lastEvent'];
+    'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'adaptations', 'adaptationsRemoved', 'seating', 'feats', 'result', 'lastEvent'];
 
 /**
  * @param {object} state full game state
@@ -37,8 +37,8 @@ function countTokens(bag) {
 
 function playerView(state, p, mine) {
     const pub = {
-        id: p.id, name: p.name, charId: p.charId, charName: CHARACTERS[p.charId].name, colors: p.colors,
-        room: p.room, status: p.status, health: p.health, maxHealth: CHARACTERS[p.charId].health, wounds: p.wounds, armor: p.armor,
+        id: p.id, number: p.number, name: p.name, charId: p.charId, charName: p.charId ? CHARACTERS[p.charId].name : '—', colors: p.colors,
+        room: p.room, status: p.status, health: p.health, maxHealth: p.charId ? CHARACTERS[p.charId].health : 0, wounds: p.wounds, armor: p.armor,
         items: p.items, heavy: p.heavy, knowledge: p.knowledge, knowledgeActive: p.knowledgeActive, signal: p.signal,
         passed: p.passed, pod: p.pod, larva: p.larva, laika: p.laika || null,
         handCount: p.hand.length, deckCount: p.deck.length, discardCount: p.discard.length,

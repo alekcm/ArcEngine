@@ -2,8 +2,8 @@
 
 import { seedFromString, shuffle, randInt, pick } from '../rng.mjs';
 import { originalShip, randomShip, BASIC_TILES, ADDITIONAL_TILES, ADDITIONAL_IN_PLAY, EXPLORATION_TOKENS, roomOfKind } from '../ship.mjs';
-import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS, ADAPTATIONS } from '../data/cards.mjs';
-import { log, next, run, pname } from './core.mjs';
+import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS, ADAPTATIONS, COMMON_CARDS } from '../data/cards.mjs';
+import { OPS, ask, log, next, run, pname } from './core.mjs';
 import './turn.mjs';
 import './movement.mjs';
 import './combat.mjs';
@@ -59,7 +59,6 @@ export function createGame(config) {
     }
     // Engines: each has a working/damaged token on top (random)
     state.secret.engines = [1, 2, 3].map(n => ({ no: n, working: randInt(state, 2) === 0 }));
-    if (!state.secret.engines.some(e => e.working)) state.secret.engines[randInt(state, 3)].working = true;
     state.secret.coordinates = pick(state, COORDINATE_CARDS).id;
 
     // Decks
@@ -78,37 +77,27 @@ export function createGame(config) {
     state.computerDeck = shuffle(state, Object.keys(COMPUTER_CARDS));
     revealComputerCard(state, true);
     state.queenDeck = shuffle(state, QUEEN_CARDS.map((c, i) => i));
-    state.feats = Object.keys(FEATS);
+    state.feats = shuffle(state, Object.keys(FEATS)).slice(0, 6);
     state.adaptations = shuffle(state, Object.keys(ADAPTATIONS)).slice(0, 3);
 
-    // Players
+    // Players: ids follow the lobby seats; player NUMBERS (Help cards 1..n) are random and define
+    // clockwise order, the first player and the "Player N" objectives.
     const n = config.players.length;
-    const fits = kind => Object.keys(OBJECTIVES[kind]).filter(k => (OBJECTIVES[kind][k].minPlayers || 1) <= n);
-    const personal = shuffle(state, fits('personal'));
-    const corporate = shuffle(state, fits('corporate'));
+    const numbers = shuffle(state, config.players.map((_, i) => i + 1));
     const hiber = roomOfKind(state.ship, 'hibernatorium').id;
     config.players.forEach((pc, i) => {
-        const ch = CHARACTERS[pc.charId];
-        const p = {
-            id: i, name: pc.name, charId: pc.charId, colors: pc.colors || {},
-            room: hiber, health: ch.health, hand: [], deck: [], discard: [], wounds: [], larva: false,
+        state.players.push({
+            id: i, number: numbers[i], name: pc.name, charId: null, colors: pc.colors || {},
+            room: hiber, health: 0, hand: [], deck: [], discard: [], wounds: [], larva: false,
             items: [], heavy: [], armor: null, knowledge: 1, knowledgeActive: false, signal: false, supportUsed: false,
             objectives: [], objective: null, status: 'active', passed: false, pod: null,
             knownEngines: {}, knownCoords: null, analyzedEgg: false, analyzed: { corpse: false, carcass: false, egg: false }, movedThisRound: false,
-            firstShotUsed: false, rifleDrawUsed: false, adrenalineTurn: false, tissue: pc.charId === 'xeno' ? 1 : 0,
-        };
-        for (const key of Object.keys(ch.cards)) p.deck.push(pc.charId + '.' + key + '#0');
-        shuffle(state, p.deck);
-        for (const s of ch.startItems) {
-            const def = ITEMS[s.item];
-            const inst = { uid: 'it' + (++state.itemSeq), item: s.item, ammo: def.weapon ? (s.ammo ?? def.weapon.max) : undefined, broken: false, charge: def.markers, start: true };
-            if (def.kind === 'armor') p.armor = inst; else p.items.push(inst);
-            if (s.item === 'laika') p.laika = 'board';
-        }
-        p.objectives = [{ id: personal.pop(), kind: 'personal' }, { id: corporate.pop(), kind: 'corporate' }];
-        state.players.push(p);
+            firstShotUsed: false, rifleDrawUsed: false, adrenalineTurn: false, tissue: 0,
+        });
     });
-    for (const p of state.players) { p.deck = shuffle(state, p.deck); for (let i = 0; i < 5; i++) p.hand.push(p.deck.shift()); }
+    state.seating = [...state.players].sort((a, b) => a.number - b.number).map(p => p.id);
+    state.firstPlayer = state.seating[0];
+    state.setupPlayers = config.players.map(pc => ({ charId: pc.charId, colors: pc.colors || {} }));
 
     // Bag & pods
     state.bag = ['blank', 'larva', 'larva', 'larva', 'larva'];
@@ -116,15 +105,76 @@ export function createGame(config) {
     const podCount = n <= 2 ? 2 : n <= 4 ? 3 : 4;
     for (let i = 0; i < podCount; i++) state.pods.push({ num: i + 1, section: i % 2 === 0 ? 'A' : 'B', locked: true, occupants: [], launched: false, removed: false });
 
-    state.firstPlayer = randInt(state, n);
-    state.round = 1;
-    log(state, 'Игра началась. Корабль: ' + (state.mode === 'random' ? 'случайная компоновка' : 'оригинальный «Немезида»') + '. Первый игрок — ' + pname(state.players[state.firstPlayer]) + '.', 'event');
-    log(state, 'Все персонажи просыпаются в Гибернатории.', 'info');
-    log(state, 'Активные адаптации чужих: ' + state.adaptations.map(k => '«' + ADAPTATIONS[k].name + '»').join(', ') + '.', 'event');
-    next(state, { op: 'phase.player' });
+    log(state, 'Номера игроков: ' + state.seating.map(id => state.players[id].number + ' — ' + state.players[id].name).join(', ') + '.', 'info');
+    if (config.draft) {
+        // 2.4 Character draft: in player-number order each player draws 3 Character cards and keeps 1.
+        state.phase = 'draft';
+        state.draft = { pool: shuffle(state, Object.keys(CHARACTERS)), idx: 0 };
+        log(state, 'Драфт персонажей: каждый игрок по очереди получает 3 карты персонажей и выбирает 1.', 'event');
+        next(state, { op: 'draft.next' });
+    } else {
+        state.players.forEach((p, i) => assignCharacter(state, p, config.players[i].charId));
+        next(state, { op: 'setup.finish' });
+    }
     run(state);
     return state;
 }
+
+/** Short character summary for the draft prompt: starting gear + unique action cards. */
+function draftDesc(c) {
+    const ch = CHARACTERS[c];
+    const gear = (ch.startItems || []).map(s => ITEMS[s.item] ? ITEMS[s.item].name : s.item).join(', ');
+    const own = Object.values(ch.cards || {}).filter(d => !Object.values(COMMON_CARDS).includes(d)).map(d => d.name);
+    return (gear ? 'Снаряжение: ' + gear + '. ' : '') + (own.length ? 'Карты: ' + own.join(', ') + '.' : '');
+}
+OPS['draft.next'] = (state) => {
+    const d = state.draft;
+    if (d.idx >= state.seating.length) { next(state, { op: 'setup.finish' }); return; }
+    const p = state.players[state.seating[d.idx]];
+    const hand = d.pool.splice(0, 3);
+    ask(state, { kind: 'choice', player: p.id, title: 'Драфт персонажей (Игрок ' + p.number + '): выберите 1 из 3', options: hand.map(c => ({ id: c, label: CHARACTERS[c].name, desc: draftDesc(c) })) },
+        { op: 'draft.pick', player: p.id, hand });
+};
+OPS['draft.pick'] = (state, step) => {
+    const p = state.players[step.player];
+    assignCharacter(state, p, step.answer);
+    // the other 2 cards are shuffled back into the draft deck
+    state.draft.pool = shuffle(state, [...state.draft.pool, ...step.hand.filter(c => c !== step.answer)]);
+    log(state, 'Игрок ' + p.number + ' (' + p.name + ') выбирает персонажа: ' + CHARACTERS[p.charId].name + '.', 'event');
+    state.draft.idx++;
+    next(state, { op: 'draft.next' });
+};
+function assignCharacter(state, p, charId) {
+    const ch = CHARACTERS[charId];
+    const sp = state.setupPlayers[p.id];
+    p.charId = charId; p.health = ch.health; p.tissue = charId === 'xeno' ? 1 : 0;
+    p.colors = sp && sp.charId === charId ? sp.colors : {};
+    for (const key of Object.keys(ch.cards)) p.deck.push(charId + '.' + key + '#0');
+    for (const s of ch.startItems) {
+        const def = ITEMS[s.item];
+        const inst = { uid: 'it' + (++state.itemSeq), item: s.item, ammo: def.weapon ? (s.ammo ?? def.weapon.max) : undefined, broken: false, charge: def.markers, start: true };
+        if (def.kind === 'armor') p.armor = inst; else p.items.push(inst);
+        if (s.item === 'laika') p.laika = 'board';
+    }
+}
+OPS['setup.finish'] = (state) => {
+    const n = state.players.length;
+    const fits = kind => Object.keys(OBJECTIVES[kind]).filter(k => (OBJECTIVES[kind][k].minPlayers || 1) <= n);
+    const personal = shuffle(state, fits('personal'));
+    const corporate = shuffle(state, fits('corporate'));
+    for (const p of state.players) {
+        p.objectives = [{ id: personal.pop(), kind: 'personal' }, { id: corporate.pop(), kind: 'corporate' }];
+        p.deck = shuffle(state, p.deck);
+        for (let i = 0; i < 5; i++) p.hand.push(p.deck.shift());
+    }
+    delete state.draft; delete state.setupPlayers;
+    state.round = 1;
+    log(state, 'Игра началась. Корабль: ' + (state.mode === 'random' ? 'случайная компоновка' : 'оригинальный «Немезида»') + '. Первый игрок — ' + pname(state.players[state.firstPlayer]) + ' (Игрок 1).', 'event');
+    log(state, 'Все персонажи просыпаются в Гибернатории.', 'info');
+    log(state, 'Активные адаптации чужих: ' + state.adaptations.map(k => '«' + ADAPTATIONS[k].name + '»').join(', ') + '.', 'event');
+    log(state, 'Доступные подвиги: ' + state.feats.map(k => '«' + FEATS[k].name + '»').join(', ') + '.', 'info');
+    next(state, { op: 'phase.player' });
+};
 
 export function revealComputerCard(state, setup) {
     if (state.computerCard) state.computerDiscard.push(state.computerCard);

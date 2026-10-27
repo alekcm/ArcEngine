@@ -6,7 +6,7 @@ import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom
 import { hyperAttackStep } from './intruders.mjs';
 import { applyHitsNoRoll } from './combat.mjs';
 import { ROOM_TILES } from '../ship.mjs';
-import { INTRUDER_NAMES } from '../data/cards.mjs';
+import { INTRUDER_NAMES, INTRUDER_TOKENS } from '../data/cards.mjs';
 
 /**
  * move.start — options: careful, noAttacks (prevent all escape attacks), preventOne, noNoise,
@@ -22,6 +22,8 @@ OPS['move.start'] = (state, step) => {
         const explored = room(state, e.to).explored;
         if (step.filter === 'explored' && !explored) continue;
         if (step.filter === 'unexplored' && explored) continue;
+        // Careful Movement is impossible if every corridor of the destination already has Noise
+        if (step.careful && !corridorsOf(state, e.to).some(c => !(c.id === 'tech' ? state.ship.techNoise : state.ship.corridors[c.id].noise))) continue;
         dests.push(e.to);
     }
     if (!dests.length) { log(state, pname(p) + ': некуда идти.', 'bad'); next(state, step.then || { op: 'turn.choose' }); return; }
@@ -250,10 +252,11 @@ function afterNoIntruder(state, roomId) {
     log(state, 'Чужой не появился — шум во всех коридорах вокруг.', 'noise');
 }
 export function countAvailable(state, type) {
-    const supply = { larva: 8, adult: 12, drone: 12, queen: 1 }[type];
+    // Token pools (8.2) are separate from the miniature limits (8.3): a drawn token returns to its
+    // pool even while its miniature stays on the board, so only tokens in the bag count here.
+    const supply = INTRUDER_TOKENS[type];
     const inBag = state.bag.filter(t => t === type).length;
-    const onBoard = Object.values(state.intruders).filter(i => i.type === type).length;
-    return Math.max(0, supply - inBag - onBoard);
+    return Math.max(0, supply - inBag);
 }
 
 /** move.direct { player, dest, noNoise, then } — teleport-like moves (tech corridors, items). */

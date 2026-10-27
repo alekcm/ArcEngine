@@ -259,7 +259,7 @@ export const DECK_NAMES = { green: 'Зелёные (медицина)', red: 'К
 const SKIN = ['#e8b89a', '#d29b7c', '#b5805f', '#8d5a3c', '#5e3b26', '#f2d2bd'];
 const HAIR = ['#2a1b12', '#5a3a22', '#a56b3c', '#d9b36c', '#c4c4c4', '#8a1f1f', '#1c1c1c', '#e8e2d0'];
 
-const COMMON_CARDS = {
+export const COMMON_CARDS = {
     demolition:  { name: 'Подрыв', cost: 1, effect: 'demolition', text: 'Поставьте поломку ИЛИ уничтожьте 1 закрытую дверь.' },
     interruption:{ name: 'Вмешательство', cost: 1, reaction: true, effect: 'interruption',
                    text: 'Реакция (пока не автоматизирована — можно сбросить как оплату). Когда персонаж в вашей комнате играет карту: отмените её эффект.' },
@@ -777,7 +777,9 @@ export const OBJECTIVES = {
 };
 /** Objective text with the seat placeholder filled in ({seat} → the name of that player). */
 export function objectiveTextOf(def, players) {
-    return def.seat ? def.text.replace('{seat}', players[def.seat - 1] ? players[def.seat - 1].name : '—') : def.text;
+    if (!def.seat) return def.text;
+    const t = players.find(p => p.number === def.seat) || players[def.seat - 1];
+    return def.text.replace('{seat}', t ? t.name : '—');
 }
 
 
@@ -790,12 +792,22 @@ export const COORDINATE_CARDS = [
 export const DESTINATION_NAMES = { earth: 'Земля', mars: 'Марс', venus: 'Венера', space: 'Открытый космос' };
 
 // Queen health deck (12)
+// Queen Health deck — exactly as printed (QueenDeck.png): "Discard N additional cards" + effect.
+// `byChar` effects apply only when the card was drawn by a character's attack.
 export const QUEEN_CARDS = [
-    ...Array(3).fill({ id: 'qDiscard2', name: 'Глубокая рана', text: 'Сбросьте ещё 2 карты здоровья Королевы.', extra: 2 }),
-    ...Array(2).fill({ id: 'qDiscard1', name: 'Рана', text: 'Сбросьте ещё 1 карту здоровья Королевы.', extra: 1 }),
-    ...Array(2).fill({ id: 'qRepel', name: 'Отступление', text: 'Королева отгоняется в соседнюю комнату.', repel: true }),
-    ...Array(5).fill({ id: 'qRage', name: 'Ярость Королевы', text: 'Королева немедленно атакует персонажа в её комнате.', rage: true }),
-];
+    { id: 'q0pool', extra: 0, byChar: true, text: 'Если карту вытянул персонаж: Королева возвращается в запас.', effect: 'pool' },
+    { id: 'q0draw', extra: 0, byChar: true, text: 'Если карту вытянул персонаж: каждый персонаж в комнате с Королевой берёт 2 карты действий.', effect: 'draw2' },
+    { id: 'q0repel', extra: 0, byChar: true, text: 'Если карту вытянул персонаж: отгоните Королеву.', effect: 'repel' },
+    { id: 'q1repel', extra: 1, byChar: true, text: 'Если карту вытянул персонаж: отгоните Королеву.', effect: 'repel' },
+    { id: 'q1noise', extra: 1, byChar: true, text: 'Если карту вытянул персонаж: каждый персонаж в комнате с Королевой делает бросок шума.', effect: 'noise' },
+    { id: 'q2malf', extra: 2, byChar: true, text: 'Если карту вытянул персонаж: положите жетон неисправности в комнату Королевы.', effect: 'malf' },
+    { id: 'q2act', extra: 2, byChar: false, text: 'Активируйте Королеву. Если она уже в комнате с персонажем — она атакует (в первую очередь того, кто её активировал).', effect: 'activate' },
+    { id: 'q3bag', extra: 3, byChar: true, text: 'Если карту вытянул персонаж: добавьте в мешок до 3 жетонов Королевы.', effect: 'bag' },
+    { id: 'q3act', extra: 3, byChar: false, text: 'Активируйте Королеву. Если она уже в комнате с персонажем — она атакует (в первую очередь того, кто её активировал).', effect: 'activate' },
+].map(c => ({ ...c, name: 'Сбросьте ещё ' + c.extra + (c.extra === 1 ? ' карту' : ' карт(ы)') }));
+
 
 export const INTRUDER_NAMES = { larva: 'Личинка', adult: 'Взрослый', drone: 'Дрон', queen: 'Королева', blank: 'Пусто' };
 export const INTRUDER_SUPPLY = { larva: 8, adult: 12, drone: 12, queen: 1 };
+/** Intruder token pools (Queen Health card «add up to 3 Queen tokens» implies 3 Queen tokens). */
+export const INTRUDER_TOKENS = { blank: 1, larva: 8, adult: 12, drone: 12, queen: 3 };

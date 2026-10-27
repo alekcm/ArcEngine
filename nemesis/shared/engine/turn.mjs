@@ -2,7 +2,7 @@
 
 import { OPS, ask, next, log, player, pname, removeCardFromGame, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
     discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards,
-    HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom } from './core.mjs';
+    HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom, corridorsOf } from './core.mjs';
 import { repairOptions } from './actions.mjs';
 import { ITEMS, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
@@ -62,7 +62,8 @@ export function buildMenu(state, p) {
     const noCombatOk = !combat || !!containment;
 
     add('move', 'Перемещение', moveCost, true);
-    add('careful', 'Осторожное перемещение', moveCost + 1, noCombatOk, 'Нельзя в бою');
+    const carefulDest = state.ship.rooms[p.room].exits.some(e => state.ship.corridors[e.corridor].door !== 'closed' && corridorsOf(state, e.to).some(c => !(c.id === 'tech' ? state.ship.techNoise : state.ship.corridors[c.id].noise)));
+    add('careful', 'Осторожное перемещение', moveCost + 1, noCombatOk && carefulDest, !noCombatOk ? 'Нельзя в бою' : 'Вокруг всех соседних комнат уже шум');
     const weapons = p.items.filter(i => canFire(p, i));
     add('shoot', 'Стрелять', 1, combat && weapons.length > 0, combat ? 'Нет заряженного оружия' : 'Нет чужих в комнате');
     add('melee', 'Ближний бой', 1, combat, 'Нет чужих в комнате');

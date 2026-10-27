@@ -673,8 +673,7 @@ export function laikaOptions(state, p) {
     for (const e of state.ship.rooms[from].exits) {
         const c = state.ship.corridors[e.corridor];
         if (c.door === 'closed') continue;
-        if (!room(state, e.to).explored) continue;
-        opts.push({ id: 'go:' + e.to, label: 'Отправить в ' + roomName(state, e.to) + (intrudersIn(state, e.to).length ? ' (там чужой — сразу вернётся)' : '') });
+        opts.push({ id: 'go:' + e.to, label: 'Отправить в ' + roomName(state, e.to) + (!room(state, e.to).explored ? ' (неразведана)' : intrudersIn(state, e.to).length ? ' (там чужой — сразу вернётся)' : '') });
     }
     return opts;
 }
@@ -685,7 +684,16 @@ OPS['laika.pick'] = (state, step) => {
     if (step.answer === 'stay') { next(state, then); return; }
     if (step.answer === 'back') { p.laika = 'board'; log(state, '🐕 Лайка возвращается к охотнику.', 'good'); next(state, then); return; }
     const r = step.answer.slice(3);
+    const from = p.laika && p.laika !== 'board' ? p.laika : p.room;
     p.laika = r; log(state, '🐕 Лайка бежит в ' + roomName(state, r) + '.', 'action');
+    // Like a character, Laika explores an unexplored room (tile + exploration token), then resolves noise.
+    if (!room(state, r).explored) { next(state, { op: 'explore', player: p.id, room: r, from }, { op: 'laika.arrived', player: p.id, room: r, then }); return; }
+    next(state, { op: 'laika.arrived', player: p.id, room: r, then });
+};
+OPS['laika.arrived'] = (state, step) => {
+    const p = player(state, step.player);
+    const r = step.room, then = step.then;
+    if (p.laika !== r) { next(state, then); return; }
     if (p.room === r || intrudersIn(state, r).length) { p.laika = 'board'; log(state, '🐕 Лайка тут же возвращается к охотнику.', 'minor'); next(state, then); return; }
     if (playersInRoom(state, r).length) { log(state, 'В комнате есть персонаж — Лайка не бросает шум.', 'minor'); next(state, then); return; }
     next(state, { op: 'noise.roll', player: p.id, room: r, laika: true }, then);

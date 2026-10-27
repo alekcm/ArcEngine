@@ -931,10 +931,12 @@ export class Scene3D {
         const S = this.scene;
         const perRoom = {};
         for (const p of view.players) {
+            if (!p.charId) continue;   // character draft still in progress
             let n = this.chars[p.id];
+            if (n && n.charId !== p.charId) { n.ch.root.dispose(); delete this.chars[p.id]; n = null; }
             if (!n) {
                 const ch = buildCharacter(S, p.charId, p.colors);
-                n = { ch, label: this.makeLabel('cl', p.name, '', ch.root, 0, 3.6, 0, 3.8), placed: false, colorsKey: null };
+                n = { ch, charId: p.charId, label: this.makeLabel('cl', p.name, '', ch.root, 0, 3.6, 0, 3.8), placed: false, colorsKey: null };
                 // invisible grab handle so the owner can drag the figure around the room
                 const grab = B().MeshBuilder.CreateCylinder('grab', { diameter: 1.4, height: 2.9 }, S);
                 grab.parent = ch.root; grab.position.y = 1.45; grab.visibility = 0; grab.isPickable = true; grab.metadata = { grab: p.id };

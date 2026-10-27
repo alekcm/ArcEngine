@@ -103,7 +103,7 @@ export const HIBERNATION_TIME = 8;
 export const SELF_DESTRUCT_LENGTH = 6;  // 1-3 stoppable, 4-5 yellow (pods unlock), 6 red = boom
 
 export function player(state, id) { return state.players[id]; }
-export function pname(p) { return p.name + ' (' + CHARACTERS[p.charId].name + ')'; }
+export function pname(p) { return p.name + (p.charId ? ' (' + CHARACTERS[p.charId].name + ')' : ''); }
 export function room(state, id) { return state.roomState[id]; }
 export function tileOf(state, roomId) {
     const r = state.ship.rooms[roomId];
@@ -146,12 +146,14 @@ export function playersInRoom(state, roomId) { return state.players.filter(p => 
 export function intrudersIn(state, roomId) { return Object.values(state.intruders).filter(i => i.room === roomId); }
 export function inCombat(state, p) { return intrudersIn(state, p.room).length > 0; }
 /** Players in turn order starting from the first player. */
+/** Clockwise order (by player number) starting from the First Player. */
 export function turnOrder(state) {
-    const n = state.players.length, out = [];
-    for (let i = 0; i < n; i++) out.push(state.players[(state.firstPlayer + i) % n]);
+    const seat = state.seating || state.players.map(p => p.id);
+    const n = seat.length, start = Math.max(0, seat.indexOf(state.firstPlayer)), out = [];
+    for (let i = 0; i < n; i++) out.push(state.players[seat[(start + i) % n]]);
     return out;
 }
-export function orderIndex(state, p) { return (p.id - state.firstPlayer + state.players.length) % state.players.length; }
+export function orderIndex(state, p) { return turnOrder(state).indexOf(p); }
 
 // ---------------------------------------------------------------------------------------------
 // Health
@@ -290,9 +292,9 @@ export function gainWound(state, p, n = 1) {
         if (p.wounds.length >= 3) { killPlayer(state, p, 'четвёртая тяжёлая травма'); return; }
         if (!state.woundDeck.length) state.woundDeck = shuffle(state, state.woundDiscard.splice(0));
         const w = state.woundDeck.shift();
-        if (p.wounds.includes(w)) { state.woundDiscard.push(w); i--; if (state.woundDeck.length + state.woundDiscard.length === 0) return; continue; }
+        const dup = p.wounds.includes(w);   // 13.2: identical effects do not stack, but the card still covers a section
         p.wounds.push(w);
-        log(state, pname(p) + ' получает тяжёлую травму: ' + WOUNDS[w].name + '.', 'bad');
+        log(state, pname(p) + ' получает тяжёлую травму: ' + WOUNDS[w].name + (dup ? ' (повторно — эффект не суммируется)' : '') + '.', 'bad');
         if (w === 'arm') next(state, { op: 'wound.armCheck', player: p.id });
         const cap = maxAllowedHealth(p);
         if (p.health > cap) {

@@ -167,7 +167,7 @@ OPS['event.noise'] = (state, step) => {
     const steps = [];
     for (const p of turnOrder(state)) {
         if (p.status !== 'active' || p.pod) continue;
-        const crowded = playersInRoom(state, p.room).length >= 3;
+        const crowded = ev.noise === 'all' && playersInRoom(state, p.room).length >= 3;   // 7.8 overcrowding
         if (inCombat(state, p) && !crowded) continue;
         let yes = false;
         if (ev.noise === 'all') yes = true;
@@ -225,7 +225,7 @@ OPS['phase.cleanup'] = (state) => {
     state.phase = 'cleanup';
     log(state, '— Фаза уборки —', 'phase');
     const n = state.players.length;
-    for (let k = 1; k <= n; k++) { const i = (state.firstPlayer + k) % n; if (state.players[i].status === 'active') { state.firstPlayer = i; break; } }
+    { const order = turnOrder(state); for (let k = 1; k <= n; k++) { const q = order[k % n]; if (q.status === 'active') { state.firstPlayer = q.id; break; } } }
     log(state, 'Жетон первого игрока → ' + pname(state.players[state.firstPlayer]) + '.', 'info');
     for (const p of state.players) {
         if (p.status !== 'active') continue;

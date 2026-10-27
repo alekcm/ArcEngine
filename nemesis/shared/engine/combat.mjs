@@ -2,8 +2,9 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, healthState, loseHealth, gainWound,
     gainContamination, killPlayer, discardCard, COMBAT_DIE, roll, fmtRoll, needDice, fx, removeIntruder, intruderLabel, INTRUDER_RANK,
-    drawCards, placeFire, placeNoise, cardDef, orderIndex, hasAdapt } from './core.mjs';
-import { repelIntruder } from './intruders.mjs';
+    drawCards, placeFire, placeNoise, cardDef, orderIndex, hasAdapt, placeMalfunction } from './core.mjs';
+import { repelIntruder, moveOneToward, hyperAttackStep } from './intruders.mjs';
+import { countAvailable } from './movement.mjs';
 import { ATTACK_CARDS, ITEMS, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
 
@@ -418,23 +419,32 @@ OPS['queen.card'] = (state, step) => {
     if (!state.queenDeck.length) return;
     const idx = state.queenDeck.shift();
     const card = QUEEN_CARDS[idx];
+    const byChar = step.player != null;
     fx(state, { type: 'queen', card: card.id, name: card.name, text: card.text });
     log(state, '👑 Карта здоровья Королевы: «' + card.name + '» — ' + card.text, 'combat');
     if (card.extra) state.queenDeck.splice(0, card.extra);
     state.queenHits = 0;
     const q = Object.values(state.intruders).find(i => i.type === 'queen');
-    if (!state.queenDeck.length) {
-        state.queenDead = true;
-        if (q) removeIntruder(state, q.uid, true);
-        log(state, '👑 КОРОЛЕВА МЕРТВА!', 'good');
-        return;
+    const dead = !state.queenDeck.length;
+    if (dead) { state.queenDead = true; log(state, '👑 КОРОЛЕВА МЕРТВА!', 'good'); }
+    else log(state, 'Карт здоровья Королевы осталось: ' + state.queenDeck.length + '.', 'combat');
+    // 11.3: the card's effect is resolved even if discarding the extra cards kills the Queen.
+    if (q && (byChar || !card.byChar)) {
+        const ps = playersInRoom(state, q.room);
+        switch (card.effect) {
+            case 'pool': removeIntruder(state, q.uid, false); log(state, 'Королева возвращается в запас.', 'good'); break;
+            case 'draw2': for (const x of ps) drawCards(state, x, 2); break;
+            case 'repel': repelIntruder(state, q, null, true); break;
+            case 'noise': next(state, ...ps.map(x => ({ op: 'noise.roll', player: x.id, room: x.room }))); break;
+            case 'malf': placeMalfunction(state, q.room, 'Королева'); break;
+            case 'bag': { let k = 0; for (let i = 0; i < 3; i++) if (countAvailable(state, 'queen') > 0) { state.bag.push('queen'); k++; } log(state, 'В мешок добавлено жетонов Королевы: ' + k + '.', 'event'); break; }
+            case 'activate':
+                if (ps.length) next(state, { op: 'attack', intruder: q.uid, player: byChar && ps.some(x => x.id === step.player) ? step.player : undefined, context: 'queen' });
+                else if (moveOneToward(state, q, state.players.filter(x => x.status === 'active' && !x.pod))) { const h = hyperAttackStep(state, q); if (h) next(state, h); }
+                break;
+        }
     }
-    log(state, 'Карт здоровья Королевы осталось: ' + state.queenDeck.length + '.', 'combat');
-    if (q && card.repel) {
-        const exits = state.ship.rooms[q.room].exits;
-        if (exits.length) { const e = exits[0]; q.room = e.to; log(state, 'Королева отступает в ' + roomName(state, e.to) + '.', 'combat'); }
-    }
-    if (q && card.rage) next(state, { op: 'attack', intruder: q.uid });
+    if (dead && state.intruders[q && q.uid]) removeIntruder(state, q.uid, true);
 };
 
 // Retaliation for the Queen when the player only "skipped" — handled through the generic attack op.
@@ -462,10 +472,10 @@ OPS['melee.hit'] = (state, step) => {
     if (hatchet) { hatchet.charge = 1; log(state, 'Тактический топорик: 2 ранения, жетон положен на оружие.', 'combat'); }
     const survived = !dealHits(state, p, it, (hatchet ? 2 : 1) + (step.bonusHits || 0), 0, { retaliate: false });
     if (survived && state.intruders[it.uid] && !step.noRetaliation && !hatchet) {
-        const weapons = p.items.filter(i => ITEMS[i.item].weapon && !i.broken);
+        const weapons = p.items.filter(i => ITEMS[i.item].weapon);
         if (weapons.length) {
-            ask(state, { kind: 'choice', player: p.id, title: 'Чужой выжил и отвечает атакой. Подставить оружие (оранжевая поломка), чтобы избежать атаки?',
-                options: [{ id: 'none', label: 'Принять атаку' }, ...weapons.map(w => ({ id: w.uid, label: 'Сломать «' + ITEMS[w.item].name + '»' }))] },
+            ask(state, { kind: 'choice', player: p.id, title: 'Чужой выжил и отвечает атакой. Подставить оружие (оранжевая поломка; уже сломанное — сбрасывается), чтобы избежать атаки?',
+                options: [{ id: 'none', label: 'Принять атаку' }, ...weapons.map(w => ({ id: w.uid, label: (w.broken ? 'Сбросить «' : 'Сломать «') + ITEMS[w.item].name + '»' }))] },
                 { op: 'melee.block', player: p.id, target: it.uid, then });
             return;
         }

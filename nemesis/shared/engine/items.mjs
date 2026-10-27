@@ -18,14 +18,16 @@ export function drawSupport(state, n) {
 }
 
 /** Offer `cards` (item keys); the chosen one is gained, the rest go to the bottom of their decks. */
-export function keepOneOf(state, p, cards, label, then, keep = 1) {
+export function keepOneOf(state, p, cards, label, then, keep = 1, optional = false) {
     if (!cards.length) { log(state, 'Колода пуста — ничего не найдено.', 'minor'); next(state, then); return; }
-    ask(state, { kind: 'choice', player: p.id, title: keep > 1 ? 'Выберите предмет (можно оставить ещё ' + keep + ')' : 'Выберите 1 предмет (остальные — под низ колод)', secret: true,
-        options: cards.map((c, i) => ({ id: String(i), label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] })) },
+    const options = cards.map((c, i) => ({ id: String(i), label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] }));
+    if (optional) options.push({ id: 'none', label: 'Ничего не брать', desc: 'Все карты — под низ колоды.' });
+    ask(state, { kind: 'choice', player: p.id, title: keep > 1 ? 'Выберите предмет (можно оставить ещё ' + keep + ')' : 'Выберите 1 предмет (остальные — под низ колод)', secret: true, options },
         { op: 'item.keepOne', player: p.id, cards, then, keep });
 }
 OPS['item.keepOne'] = (state, step) => {
     const p = player(state, step.player);
+    if (step.answer === 'none') { step.cards.forEach(c => state.itemDecks[ITEMS[c].deck].push(c)); log(state, pname(p) + ' ничего не берёт.', 'minor'); next(state, step.then); return; }
     const idx = Number(step.answer);
     const key = step.cards[idx];
     const rest = step.cards.filter((c, i) => i !== idx);
