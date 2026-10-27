@@ -277,8 +277,8 @@ function renderGame() {
             // around the screen, and only after that the token window — centred where the die was.
             if (pr && pr.kind === 'bag' && pr.player === app.me) {
                 flashEdges();
-                dice.clearHide(); dice.hide();
-                setTimeout(() => { if (app.view) renderGame(); }, 560);
+                // the die has been read: clear the middle of the table for the token window
+                setTimeout(() => { dice.clearHide(); dice.hide(); if (app.view) renderGame(); }, 560);
             } else renderGame();
         };
     }
