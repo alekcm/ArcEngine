@@ -33,6 +33,7 @@ const ART_DECKS = {
     bounty: ['demolition', 'determination', 'goGirl', 'interruption', 'repairs', 'rest', 'search', 'sentinel', 'tacticalMove', 'weakSpot'],
     captain: ['authority', 'coveringFire', 'demolition', 'fanning', 'interruption', 'motivation', 'reload', 'repairs', 'rest', 'search'],
     survivor: ['alwaysPrepared', 'demolition', 'desperateAttack', 'distraction', 'interruption', 'obstinate', 'repairs', 'rest', 'search', 'vents'],
+    xeno: ['demolition', 'fieldExperience', 'interruption', 'overmind', 'pheromones', 'repairs', 'rest', 'search', 'vivisection', 'workspacePlan'],
 };
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
