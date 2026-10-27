@@ -25,7 +25,7 @@ const ART_DECKS = {
     scientist: ['computerSkills', 'connection', 'demolition', 'duckAndCover', 'interruption', 'intranet', 'repairs', 'rest', 'riskAssessment', 'search'],
     medic: ['computerSkills', 'demolition', 'fieldSurgery', 'firstAid', 'interruption', 'neurotoxicGas', 'repairs', 'rest', 'search', 'synthesizedDrugs'],
     janitor: ['cleanUp', 'demolition', 'duckAndCover', 'emergencyKey', 'interruption', 'itShouldWork', 'maintenancePlan', 'repairs', 'rest', 'search'],
-    ceo: ['backupBattery', 'command', 'computerSkills', 'demolition', 'fastRepairs', 'interruption', 'protect', 'rest', 'search'],
+    ceo: ['backupBattery', 'command', 'computerSkills', 'demolition', 'fastRepairs', 'interruption', 'protect', 'rest', 'roboticPunch', 'search'],
 };
 function cardArt(cardId) {
     const [owner, key] = cardId.split('#')[0].split('.');
