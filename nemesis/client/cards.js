@@ -36,7 +36,8 @@ const ART_DECKS = {
     xeno: ['demolition', 'fieldExperience', 'interruption', 'overmind', 'pheromones', 'repairs', 'rest', 'search', 'vivisection', 'workspacePlan'],
 };
 /** Field Data cards (hand id 'field.<key>') with illustrations in client/art/field/<key>.jpg. */
-const ART_FIELD = ['precisionShot', 'evasiveManeuvering', 'restoration', 'criticalAnalysis', 'riskPrevention', 'damageExpertise', 'advanceTactics', 'asymptomatic', 'behavioralInsight', 'circleStrafe'];
+const ART_FIELD = ['precisionShot', 'evasiveManeuvering', 'restoration', 'criticalAnalysis', 'riskPrevention', 'damageExpertise', 'advanceTactics', 'asymptomatic', 'behavioralInsight', 'circleStrafe',
+    'containment', 'hunkerDown', 'predictableMovements', 'quickHands', 'rapidResponse', 'reposition', 'resourceful', 'safetyInNumbers'];
 /** Items with illustrations in client/art/items/<itemKey>.jpg. */
 const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', 'antiseptic', 'stapler', 'adrenaline', 'supportCrate', 'selfDestructKey',
     'armor', 'grenade', 'flashbang', 'energyCharge', 'evacKey', 'taser', 'logCodes', 'detonator', 'cables', 'ductTape',
