@@ -386,7 +386,7 @@ OPS['wound.armCheck'] = (state, step) => {
     ask(state, { kind: 'choice', player: p.id, title: 'Травма руки: только 1 слот. Что выбросить?', options: opts }, { op: 'drop.heavy', player: p.id });
 };
 export function heavyOptions(p) {
-    const opts = p.items.filter(i => ITEMS[i.item].kind === 'heavy').map(i => ({ id: 'item:' + i.uid, label: ITEMS[i.item].name }));
+    const opts = p.items.filter(i => ITEMS[i.item].kind === 'heavy').map(i => ({ id: 'item:' + i.uid, item: i.item, label: ITEMS[i.item].name }));
     p.heavy.forEach((h, idx) => opts.push({ id: 'heavy:' + idx, label: HEAVY_NAMES[h.type] }));
     return opts;
 }
@@ -396,6 +396,29 @@ OPS['drop.heavy'] = (state, step) => {
     dropHeavy(state, p, step.answer);
     if (heavyCount(p) > handLimit(p)) next(state, { op: 'wound.armCheck', player: p.id });
 };
+/** The two hands of a character: what occupies each slot right now.
+ *  Heavy objects (corpse, egg…) hold one slot; a two-handed item holds both.
+ *  Used by the pickup prompt, the character sheet and the "hands" popup on the board. */
+export function handSlots(state, p) {
+    const slots = [];
+    const put = (ref, name, kind, two) => {
+        slots.push({ ref, name, kind, two: !!two });
+        if (two) slots.push({ ref: null, name, kind: 'filler', two: true });
+        return slots.length;
+    };
+    for (const i of p.items) {
+        const d = ITEMS[i.item];
+        if (d.kind !== 'heavy') continue;
+        if (d.bayonet && p.items.some(o => ITEMS[o.item].weapon)) continue;   // shares the ranged weapon slot
+        put('item:' + i.uid, d.name, 'item', d.twoSlots);
+    }
+    p.heavy.forEach((h, idx) => put('heavy:' + idx, HEAVY_NAMES[h.type] || h.type, 'object', false));
+    const limit = handLimit(p);
+    const out = [];
+    for (let k = 0; k < limit; k++) out.push(slots[k] || { ref: null, name: '', kind: 'empty' });
+    return out;
+}
+
 export function dropHeavy(state, p, id) {
     const rs = room(state, p.room);
     if (id.startsWith('item:')) {

@@ -209,7 +209,7 @@ OPS['card.keepOrDrop'] = (state, step) => {
 };
 OPS['card.neurotoxicGas'] = (state, step) => {
     const p = player(state, step.player);
-    choice(state, p, 'Нейротоксин: какой зелёный предмет сбросить?', p.items.filter(i => ITEMS[i.item].deck === 'green').map(i => ({ id: i.uid, label: ITEMS[i.item].name })), 'card.neurotoxicGas.pick');
+    choice(state, p, 'Нейротоксин: какой зелёный предмет сбросить?', p.items.filter(i => ITEMS[i.item].deck === 'green').map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name })), 'card.neurotoxicGas.pick');
 };
 OPS['card.neurotoxicGas.pick'] = (state, step) => {
     const p = player(state, step.player);
@@ -585,7 +585,7 @@ OPS['card.bash'] = (state, step) => {
 };
 OPS['card.catchThis'] = (state, step) => {
     const p = player(state, step.player);
-    choice(state, p, 'Лови! Какой тяжёлый предмет бросить?', p.items.filter(i => ITEMS[i.item].kind === 'heavy' && !ITEMS[i.item].quest).map(i => ({ id: i.uid, label: ITEMS[i.item].name })), 'card.catchThis.pick');
+    choice(state, p, 'Лови! Какой тяжёлый предмет бросить?', p.items.filter(i => ITEMS[i.item].kind === 'heavy' && !ITEMS[i.item].quest).map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name })), 'card.catchThis.pick');
 };
 OPS['card.catchThis.pick'] = (state, step) => {
     const p = player(state, step.player);

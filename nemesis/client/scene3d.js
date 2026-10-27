@@ -765,7 +765,7 @@ export class Scene3D {
         }
         if (rs.fire) this.addFire(node.root);
         let k = 0;
-        for (const o of rs.objects) this.addObject(o.type, node.root, k++);
+        for (const o of rs.objects) this.addObject(o.type, node.root, k++, r.id, k - 1);
         if (tile === 'nest' && rs.explored) for (let i = 0; i < view.nestEggs; i++) this.addObject('egg', node.root, 10 + i);
     }
 
@@ -828,7 +828,7 @@ export class Scene3D {
         glow.diffuse = new (B().Color3)(1, 0.5, 0.15); glow.intensity = 0.9; glow.range = 16;
         this.dynamic.push(glow);
     }
-    addObject(type, parent, k) {
+    addObject(type, parent, k, roomId, objIndex) {
         const S = this.scene;
         // objects lie inside the standing zone's outer rim so they are visible next to the figures
         const a = 2.4 + k * 0.7, rad = ZONE_R - 0.4;
@@ -837,8 +837,33 @@ export class Scene3D {
         if (type === 'egg') { m = B().MeshBuilder.CreateSphere('egg', { diameter: 0.7, segments: 5 }, S); m.scaling.y = 1.3; m.position.set(x, 0.45, z); m.material = this.M('#b8a8c8'); }
         else if (type === 'carcass') { m = B().MeshBuilder.CreateBox('carc', { width: 1.6, height: 0.4, depth: 0.8 }, S); m.position.set(x, 0.3, z); m.rotation.y = a; m.material = this.M('#263036'); }
         else { m = B().MeshBuilder.CreateBox('corpse', { width: 1.5, height: 0.35, depth: 0.6 }, S); m.position.set(x, 0.28, z); m.rotation.y = a; m.material = this.M(type === 'charCorpse' ? '#8a6b5a' : '#4a7ab8'); }
-        m.parent = parent; m.isPickable = false; m.convertToFlatShadedMesh();
+        m.parent = parent; m.convertToFlatShadedMesh();
+        // Room objects can be clicked to pick them up (nest eggs at k >= 10 are decoration only).
+        m.isPickable = objIndex !== undefined;
+        m.metadata = { roomId: roomId || (parent && parent.metadata && parent.metadata.room) || null, objectIndex: objIndex };
         this.dynamic.push(m);
+    }
+
+    /** Where a room / an intruder sits on screen, for popups anchored above it. */
+    screenOf(kind, id) {
+        const Bx = B();
+        let pos = null;
+        if (kind === 'room' && this.roomNodes[id]) pos = this.roomNodes[id].root.position.clone().add(new (Bx.Vector3)(0, 3.6, 0));
+        else if (kind === 'intr' && this.intr[id]) pos = this.intr[id].root.position.clone().add(new (Bx.Vector3)(0, 2.3, 0));
+        if (!pos) return null;
+        const w = this.engine.getRenderWidth(), h = this.engine.getRenderHeight();
+        const p = Bx.Vector3.Project(pos, Bx.Matrix.Identity(), this.scene.getTransformMatrix(), this.camera.viewport.toGlobal(w, h));
+        if (!(p.z > 0 && p.z < 1)) return null;
+        return { x: p.x, y: p.y };
+    }
+
+    /** WASD panning of the board: move the camera target over the floor. */
+    panCam(dx, dz) {
+        const Bx = B(), cam = this.camera;
+        const right = cam.getDirection(new (Bx.Vector3)(1, 0, 0)); right.y = 0; right.normalize();
+        const fwd = cam.getDirection(new (Bx.Vector3)(0, 0, 1)); fwd.y = 0; fwd.normalize();
+        const speed = Math.max(2.5, cam.radius * 0.055);
+        cam.target.addInPlace(right.scale(dx * speed)).addInPlace(fwd.scale(dz * speed));
     }
 
     updateCorridor(view, c) {
@@ -958,7 +983,16 @@ export class Scene3D {
         for (const it of Object.values(view.intruders)) {
             seen.add(it.uid);
             let n = this.intr[it.uid];
-            if (!n) { n = { root: buildIntruder(S, it.type), label: null }; n.label = this.makeLabel('il', '', '', n.root, 0, 3.0, 0, 2.6); this.intr[it.uid] = n; for (const m of n.root.getChildMeshes()) this.shadows.addShadowCaster(m); }
+            if (!n) {
+                n = { root: buildIntruder(S, it.type), label: null, uid: it.uid };
+                n.label = this.makeLabel('il', '', '', n.root, 0, 3.0, 0, 2.6);
+                this.intr[it.uid] = n;
+                for (const m of n.root.getChildMeshes()) {
+                    this.shadows.addShadowCaster(m);
+                    m.isPickable = true; m.metadata = Object.assign({}, m.metadata, { intruder: it.uid, roomId: it.room });
+                }
+            }
+            for (const m of n.root.getChildMeshes()) if (m.metadata) m.metadata.roomId = it.room;
             const k = perRoom[it.room] = (perRoom[it.room] || 0) + 1;
             const roomPos = this.roomNodes[it.room].root.position;
             n.target = this.slotPos(roomPos, k - 1, 'intr');
@@ -1104,7 +1138,11 @@ export class Scene3D {
                 return;
             }
             if (this.cb.onCursor && fp) this.cb.onCursor(fp.x, fp.z, this.roomAt(fp));
-            if (this.me != null) { const g = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && m.metadata.grab === this.me); this.canvas.style.cursor = g && g.hit ? 'grab' : ''; }
+            if (this.me != null) {
+                const g = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && m.metadata.grab === this.me);
+                const c = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && (m.metadata.intruder || m.metadata.objectIndex !== undefined || (m.metadata.roomId && this.selectable.has(m.metadata.roomId))));
+                this.canvas.style.cursor = g && g.hit ? 'grab' : c && c.hit ? 'pointer' : '';
+            }
             const pick = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && m.metadata.roomId);
             const id = pick && pick.hit ? pick.pickedMesh.metadata.roomId : null;
             if (id !== this.hover) { this.hover = id; }
@@ -1128,8 +1166,13 @@ export class Scene3D {
                 return;
             }
             if (Math.abs(this.scene.pointerX - this.downX) > 4 || Math.abs(this.scene.pointerY - this.downY) > 4) return;
-            const pick = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && m.metadata.roomId);
-            if (pick && pick.hit && this.cb.onClick) this.cb.onClick(pick.pickedMesh.metadata.roomId);
+            const px = this.scene.pointerX, py = this.scene.pointerY;
+            const pick = this.scene.pick(px, py, m => m.metadata && (m.metadata.intruder || m.metadata.objectIndex !== undefined || m.metadata.roomId));
+            if (!pick || !pick.hit) return;
+            const md = pick.pickedMesh.metadata;
+            if (md.intruder && this.cb.onIntruder) this.cb.onIntruder(md.intruder, md.roomId, px, py);
+            else if (md.objectIndex !== undefined && md.objectIndex !== null && this.cb.onObject) this.cb.onObject(md.roomId, md.objectIndex, px, py);
+            else if (md.roomId && this.cb.onClick) this.cb.onClick(md.roomId);
         }
     }
 

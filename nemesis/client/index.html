@@ -49,6 +49,7 @@
 <div id="hud" class="hidden">
     <div id="topbar">
         <div id="track" title="Трек времени и самоуничтожения"></div>
+        <div class="tb-item tb-turn" id="turnBadge"><span class="lbl">Сейчас ход</span><b id="tbTurn">—</b></div>
         <div class="tb-item"><span class="lbl">Пункт</span><b id="tbDest">B</b></div>
         <div class="tb-item"><span class="lbl">Мешок</span><b id="tbBag">—</b></div>
         <div class="tb-item"><span class="lbl">Огонь/поломки</span><b id="tbMarkers">8/8</b></div>
@@ -84,6 +85,7 @@
     <div id="roomInfo" class="hidden"></div>
     <div id="notices"></div>
     <div id="bagStrip" class="hidden"></div>
+    <div id="worldPop" class="hidden"></div>
     <div id="hintBar"></div>
 </div>
 
@@ -94,6 +96,15 @@
         <button class="btn" onclick="document.getElementById('helpOverlay').classList.add('hidden')">Закрыть</button>
     </div>
 </div>
+
+<!-- Item choice: a big centred window with pictures; it can be minimised and restored -->
+<div id="itemPick" class="hidden">
+    <div class="ip-box">
+        <div class="ip-head"><b id="ipTitle">Выбор предмета</b><button class="btn small" id="ipMin">✕ Свернуть</button></div>
+        <div id="ipBody" class="ip-grid"></div>
+    </div>
+</div>
+<button id="ipRestore" class="btn hidden">🃏 Выбор предмета</button>
 
 <div id="sheetOverlay" class="overlay hidden">
     <div class="help-box sheet-box">

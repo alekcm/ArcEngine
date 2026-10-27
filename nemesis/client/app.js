@@ -37,6 +37,7 @@ const app = {
     lobby: null, view: null, logEntries: [], selectedCards: new Set(), hoverRoom: null,
     charId: null, colors: {}, name: '', ready: false, menuCollapsed: true,
     canUndo: false, bagShown: null, bagTimer: null, deckKind: 'event', altHeld: false,
+    wp: null, itemPick: null, itemPickMin: false,
 };
 const EVENT_BY_ID = Object.fromEntries(EVENT_CARDS.map(e => [e.id, e]));
 const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(e => [e.id, e]));
@@ -57,6 +58,7 @@ function onMessage(m) {
             if (m.full) app.logEntries = [];
             app.logEntries.push(...m.view.log);
             app.view = m.view; app.undoDepth = m.undoDepth; app.history = m.history; app.canUndo = !!m.canUndo;
+            if (app.wp && (!app.view.prompt || app.view.prompt.id !== app.wp.prId)) closeWorldPop();
             renderGame();
             if (m.poses && scene) for (const [pid, pose] of Object.entries(m.poses)) scene.setPose(Number(pid), pose, true);
             break;
@@ -145,7 +147,7 @@ function renderGame() {
     $('lobby').classList.add('hidden'); $('hud').classList.remove('hidden');
     if (!scene) {
         scene = new Scene3D($('scene'), {
-            onHover: onRoomHover, onClick: onRoomClick,
+            onHover: onRoomHover, onClick: onRoomClick, onIntruder: onIntruderClick, onObject: onObjectClick,
             onCursor: (x, z, room) => { lastFloor = { x, z, room }; const now = performance.now(); if (now - cursorSent > 50) { cursorSent = now; net.send({ t: 'cursor', x, z }); } },
             onPose: pose => net.send({ t: 'pose', dx: pose.dx, dz: pose.dz, rot: pose.rot }),
         });
@@ -167,7 +169,13 @@ function renderGame() {
     }
     if (app.rollHold && dice.rolling) return;   // die still tumbling: keep the frozen scene until it lands
     app.rollHold = false;
-    const selectable = pr && pr.kind === 'room' && !pr.waiting ? pr.rooms : [];
+    // Rooms the player may click: the engine is asking "where to?", or it is my turn and these
+    // are the neighbouring rooms I can walk into.
+    const meNow = v.players.find(x => x.id === app.me);
+    const selectable = pr && pr.kind === 'room' && !pr.waiting
+        ? pr.rooms
+        : (pr && pr.kind === 'turn' && pr.player === app.me && meNow && meNow.status === 'active'
+            ? (v.ship.rooms[meNow.room].exits || []).map(e => e.to) : []);
     scene.update(v, ROOM_TILES, INTRUDER_NAMES, selectable);
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
     renderBagStrip(); renderHint(); refreshOverlays();
@@ -190,6 +198,15 @@ function renderTopbar() {
     $('tbComputer').classList.toggle('itag', !!cc);
     const ad = v.adaptations || [];
     $('tbAdapt').innerHTML = ad.length ? ad.map(k => '<span class="itag adapt">' + esc(ADAPTATIONS[k].name) + '<span class="ipop"><b>🧬 ' + esc(ADAPTATIONS[k].name) + '</b><span>' + esc(ADAPTATIONS[k].text) + '</span></span></span>').join('<span class="sep"> · </span>') : 'нет' + (v.adaptationsRemoved ? ' (удалено ' + v.adaptationsRemoved + ')' : '');
+    const cur = v.players[v.current];
+    const mineTurn = v.phase === 'player' && v.current === app.me;
+    $('tbTurn').textContent = v.phase === 'player' && cur ? (mineTurn ? 'Ваш ход' : cur.name) : (PHASES[v.phase] || '—');
+    const badge = $('turnBadge');
+    badge.classList.toggle('me', mineTurn);
+    if (v.phase === 'player' && v.current !== app.lastBadgeTurn) {
+        app.lastBadgeTurn = v.current;
+        if (mineTurn) { badge.classList.remove('flash'); void badge.offsetWidth; badge.classList.add('flash'); setTimeout(() => badge.classList.remove('flash'), 1700); }
+    }
     $('undoBtn').disabled = !app.host || !app.undoDepth;
     $('undoBtn').title = app.host ? 'Откатить последнее действие (' + (app.undoDepth || 0) + ' в стеке)' : 'Откатывать может только ведущий';
 }
@@ -256,7 +273,7 @@ function renderHistory() { $('history').innerHTML = (app.history || []).map(h =>
 function renderPrompt() {
     const v = app.view; const pr = v.prompt; const el = $('prompt'); const tg = $('menuToggle');
     app.selectedCards.clear();
-    if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); return; }   // dice prompts are shown by DiceUI
+    if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); closeItemPicker(); return; }   // dice prompts are shown by DiceUI
     const who = pr.kind === 'ack' ? 'Вся команда' : pr.player === 'host' ? 'Ведущий' : (v.players[pr.player] || {}).name || '';
     // Collapsing: the turn menu remembers the player's choice; other prompts re-open when a new one arrives.
     // Collapsing: the action list opens by itself at the start of the player's turn and then keeps whatever the
@@ -284,6 +301,17 @@ function renderPrompt() {
         return;
     }
     el.classList.remove('waiting');
+    // Choosing an item (search, support crate, a reward…): show it as a big centred window with
+    // pictures. It can be minimised and opened again from the floating button.
+    if (pr.kind === 'choice' && !pr.waiting && pr.player === app.me && Array.isArray(pr.options)) {
+        const itemOpts = pr.options.filter(o => o.item);
+        if (itemOpts.length >= 2 && itemOpts.length >= pr.options.length - 1) {
+            if (!app.itemPick || app.itemPick.pr !== pr.id) openItemPicker(pr, pr.options);
+            el.classList.add('hidden'); tg.classList.add('hidden');
+            return;
+        }
+    }
+    if (app.itemPick) closeItemPicker();
     let html = '<h4>' + esc(pr.title) + '</h4>';
     if (pr.text) html += '<div class="ptext">' + esc(pr.text) + '</div>';
     switch (pr.kind) {
@@ -297,7 +325,12 @@ function renderPrompt() {
             break;
         }
         case 'choice':
-            html += '<div class="opts">' + pr.options.map(o => '<button class="opt' + (o.art ? ' opt-art' : '') + '" data-opt="' + esc(o.id) + '" ' + (o.disabled ? 'disabled' : '') + '>' + (o.art ? '<i class="oart" style="background-image:url(art/' + esc(o.art) + '.jpg)"></i>' : '') + '<span>' + esc(o.label) + (o.tag ? ' <small>· ' + esc(o.tag) + '</small>' : '') + '</span>' + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') + '</button>').join('') + '</div>';
+            html += '<div class="opts">' + pr.options.map(o => {
+                const art = o.item ? itemArt(o.item) : (o.art ? 'art/' + o.art + '.jpg' : null);
+                return '<button class="opt' + (art ? ' opt-art' : '') + '" data-opt="' + esc(o.id) + '" ' + (o.disabled ? 'disabled' : '') + '>' +
+                    (art ? '<i class="oart" style="background-image:url(' + esc(art) + ')"></i>' : '') +
+                    '<span>' + esc(o.label) + (o.tag ? ' <small>· ' + esc(o.tag) + '</small>' : '') + '</span>' + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') + '</button>';
+            }).join('') + '</div>';
             if (pr.cancel) html += '<div class="prompt-buttons"><button class="btn" data-opt="cancel">Отмена</button></div>';
             break;
         case 'room':
@@ -375,7 +408,7 @@ function renderHint() {
     const pr = v.prompt; const hints = [];
     if (pr && !pr.waiting && pr.kind !== 'dice' && pr.kind !== 'ack') hints.push('<b>1–9</b> выбор');
     if (app.canUndo) hints.push('<b>Esc</b> шаг назад');
-    hints.push('<b>Alt</b> коридоры и поиск', '<b>C</b> персонаж', '<b>F</b> к себе', '<b>Tab</b> пинг', '<b>Q/E</b> поворот');
+    hints.push('<b>ЛКМ</b> по комнате — идти, по чужому — атака', '<b>Alt</b> коридоры и поиск', '<b>C</b> персонаж', '<b>F</b> к себе', '<b>Q/E</b> поворот', '<b>WASD</b> камера');
     $('hintBar').innerHTML = hints.map(h => '<span>' + h + '</span>').join('<span>·</span>');
 }
 function playerName(id) { const v = app.view; return v && v.players[id] ? v.players[id].name : ''; }
@@ -455,10 +488,142 @@ function onRoomHover(id, x, y) {
     el.innerHTML = html; el.classList.remove('hidden');
     el.style.left = Math.min(window.innerWidth - 300, x + 16) + 'px'; el.style.top = Math.min(window.innerHeight - 160, y + 16) + 'px';
 }
-function onRoomClick(id) {
+// ---------------------------------------------------------------------------------------------
+// Click-to-act on the board: a room asks "walk or sneak?", an intruder asks "with what?", a heavy
+// object asks "which hand?". The questions are plain client-side popups anchored above the mesh,
+// so clicking anywhere else (or moving the camera) cancels them before anything is sent.
+// ---------------------------------------------------------------------------------------------
+function turnMenuPrompt() {
     const pr = app.view && app.view.prompt;
-    if (pr && pr.kind === 'room' && !pr.waiting && pr.player === app.me && pr.rooms.includes(id)) act(id);
-    else scene.focusRoom(id);
+    return pr && pr.kind === 'turn' && pr.player === app.me && !pr.waiting ? pr : null;
+}
+function menuActionOf(pr, id) { return ((pr && pr.actions) || []).find(a => a.id === id) || null; }
+function myChar() { const v = app.view; return v ? v.players.find(p => p.id === app.me) : null; }
+function myFirable() {
+    const me = myChar(); if (!me) return [];
+    const belt = me.armor && ITEMS[me.armor.item] && ITEMS[me.armor.item].ammoMax ? (me.armor.ammo || 0) : 0;
+    return (me.items || []).filter(i => { const d = ITEMS[i.item]; return d && d.weapon && !i.broken && (d.weapon.noAmmo || i.ammo > 0 || belt > 0); });
+}
+const HEAVY_NAMES_UI = { corpse: 'Человеческий труп', charCorpse: 'Труп персонажа', carcass: 'Туша чужого', egg: 'Яйцо чужого' };
+
+function openWorldPop(title, sub, buttons, anchor) {
+    const el = $('worldPop');
+    const pr = app.view && app.view.prompt;
+    app.wp = { prId: pr ? pr.id : null };
+    el.innerHTML = '<button class="wp-close" title="Отмена (Esc)">✕</button><h5>' + esc(title) + '</h5>' +
+        (sub ? '<div class="wp-sub">' + esc(sub) + '</div>' : '') +
+        '<div class="wp-btns">' + buttons.map((b, i) => '<button class="wp-btn" data-wp="' + i + '"' + (b.disabled ? ' disabled' : '') + '>' +
+            (b.art ? '<span class="art" style="background-image:url(' + b.art + ')"></span>' : '') +
+            '<span>' + esc(b.label) + (b.sub ? '<small>' + esc(b.sub) + '</small>' : '') + (b.disabled && b.reason ? '<small style="color:#e0917a">' + esc(b.reason) + '</small>' : '') + '</span></button>').join('') + '</div>';
+    el.classList.remove('down', 'hidden');
+    const w = el.offsetWidth, h = el.offsetHeight;
+    let x = anchor ? anchor.x - w / 2 : window.innerWidth / 2;
+    let y = anchor ? anchor.y - h - 18 : 90;
+    if (y < 54) { y = anchor ? anchor.y + 18 : 54; el.classList.add('down'); }
+    x = Math.max(8, Math.min(window.innerWidth - w - 8, x));
+    y = Math.max(54, Math.min(window.innerHeight - h - 8, y));
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    for (const btn of el.querySelectorAll('.wp-btn')) btn.onclick = () => { const b = buttons[Number(btn.dataset.wp)]; closeWorldPop(); if (b && !b.disabled && b.do) b.do(); };
+    el.querySelector('.wp-close').onclick = () => closeWorldPop();
+    Snd.play('click');
+}
+function closeWorldPop() {
+    const el = $('worldPop');
+    if (!el || el.classList.contains('hidden')) { app.wp = null; return false; }
+    el.classList.add('hidden');
+    app.wp = null;
+    return true;
+}
+
+function onRoomClick(id) {
+    const v = app.view; if (!v) return;
+    const pr = v.prompt;
+    // The engine itself is asking "where to?" — answer it.
+    if (pr && pr.kind === 'room' && !pr.waiting && pr.player === app.me && (pr.rooms || []).includes(id)) { act(id); return; }
+    const me = myChar();
+    const menu = turnMenuPrompt();
+    if (!menu || !me || id === me.room) { scene.focusRoom(id); return; }
+    const exit = (v.ship.rooms[me.room].exits || []).find(e => e.to === id && v.ship.corridors[e.corridor].door !== 'closed');
+    if (!exit) { scene.focusRoom(id); return; }   // not a neighbour: just look at it
+    const mv = menuActionOf(menu, 'move'), cw = menuActionOf(menu, 'careful');
+    openWorldPop('Идём в ' + roomLabel(id), 'Выберите, как идти', [
+        { label: 'Идти', sub: mv ? (mv.cost ? mv.cost + ' карт(ы) · шум по броску' : '') : '', disabled: !mv || !mv.enabled, reason: mv && mv.reason, do: () => act({ action: 'move', dest: id }) },
+        { label: 'Красться (осторожно)', sub: cw ? (cw.cost ? cw.cost + ' карт(ы) · выбрать коридор без шума' : '') : '', disabled: !cw || !cw.enabled, reason: cw && cw.reason, do: () => act({ action: 'careful', dest: id }) },
+    ], scene.screenOf('room', id));
+}
+
+function onIntruderClick(uid, roomId, x, y) {
+    const v = app.view; if (!v) return;
+    const it = v.intruders[uid];
+    const menu = turnMenuPrompt();
+    const me = myChar();
+    if (!it) return;
+    if (!menu || !me) { scene.focusRoom(it.room || roomId); return; }
+    const inRoom = it.room === me.room;
+    const adjacent = (v.ship.rooms[me.room].exits || []).some(e => e.to === it.room);
+    const shoot = menuActionOf(menu, 'shoot'), melee = menuActionOf(menu, 'melee');
+    const weapons = myFirable().filter(w => inRoom || (adjacent && ITEMS[w.item].weapon.sniper));
+    const buttons = [];
+    for (const w of weapons) {
+        const d = ITEMS[w.item];
+        buttons.push({ label: d.name, sub: 'выстрел · ' + (d.weapon.noAmmo ? 'без патронов' : 'патронов ' + w.ammo) + (d.weapon.sniper && !inRoom ? ' · снайперский' : ''),
+            art: itemArt(w.item), disabled: !shoot || !shoot.enabled, reason: shoot && shoot.reason,
+            do: () => act({ action: 'shoot', weapon: w.uid, target: uid }) });
+    }
+    if (inRoom) buttons.push({ label: 'Ближний бой', sub: '1 карта · заражение и ответная атака', disabled: !melee || !melee.enabled, reason: melee && melee.reason, do: () => act({ action: 'melee', target: uid }) });
+    if (!buttons.length) buttons.push({ label: 'Отсюда не достать', sub: 'Нужно быть в комнате с чужим (или иметь снайперскую винтовку)', disabled: true });
+    openWorldPop(INTRUDER_NAMES[it.type] + (it.hits ? ' ✚' + it.hits : ''), 'Комната: ' + roomLabel(it.room) + (inRoom ? '' : ' — не ваша комната'), buttons, scene.screenOf('intr', uid) || { x: x, y: y });
+}
+
+function onObjectClick(roomId, index, x, y) {
+    const v = app.view; if (!v) return;
+    const me = myChar(); const menu = turnMenuPrompt();
+    const rs = v.roomState[roomId]; if (!rs) return;
+    const o = (rs.objects || [])[index]; if (!o) return;
+    if (!menu || !me || me.room !== roomId) { scene.focusRoom(roomId); return; }
+    const pickup = menuActionOf(menu, 'pickup');
+    const slots = (me.handSlots && me.handSlots.length ? me.handSlots : [{ kind: 'empty' }, { kind: 'empty' }]);
+    const buttons = slots.map((s, k) => {
+        const name = slots.length > 1 ? 'Слот ' + (k + 1) : 'Рука';
+        // The second slot of a two-handed weapon has no reference of its own: dropping the weapon
+        // itself is what frees the place for the object.
+        const real = s.kind === 'filler' ? (slots.find(x => x.kind === 'item' && x.two) || {}).ref || null : s.ref;
+        if (s.kind === 'empty') return { label: name + ': пусто', sub: 'Положить «' + (HEAVY_NAMES_UI[o.type] || 'объект') + '»', disabled: !pickup || !pickup.enabled, reason: pickup && pickup.reason, do: () => act({ action: 'pickup', object: index, free: null }) };
+        return { label: name + ': ' + s.name, sub: 'Выбросить «' + s.name + '» и взять объект',
+            art: real ? itemArt(String(real).slice(5)) : null,
+            disabled: !pickup || !pickup.enabled, reason: pickup && pickup.reason, do: () => act({ action: 'pickup', object: index, free: real }) };
+    });
+    openWorldPop('Взять: ' + (HEAVY_NAMES_UI[o.type] || 'объект'), 'Куда положить? Выброс из слота бесплатный.', buttons, scene.screenOf('room', roomId) || { x: x, y: y });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Centred item chooser
+// ---------------------------------------------------------------------------------------------
+function openItemPicker(pr, options) {
+    app.itemPickMin = false;
+    app.itemPick = { pr: pr.id, count: options.filter(o => o.item).length };
+    $('ipTitle').textContent = pr.title || 'Выбор предмета';
+    $('ipBody').innerHTML = options.map(o => {
+        const art = o.item ? itemArt(o.item) : null;
+        return '<button class="ip-card' + (o.item ? '' : ' plain') + '" data-opt="' + esc(o.id) + '">' +
+            (o.item ? (art ? '<div class="ip-art" style="background-image:url(' + art + ')"></div>' : '<div class="ip-noart">📦</div>') : '') +
+            '<b>' + esc(o.label) + '</b>' + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') +
+            (o.tag ? '<span class="tag">' + esc(o.tag) + '</span>' : '') + '</button>';
+    }).join('');
+    for (const b of $('ipBody').querySelectorAll('[data-opt]')) b.onclick = () => { const ans = b.dataset.opt; closeItemPicker(); act(ans); };
+    if (!app.itemPickMin) { $('itemPick').classList.remove('hidden'); $('ipRestore').classList.add('hidden'); }
+}
+function closeItemPicker() {
+    $('itemPick').classList.add('hidden');
+    $('ipRestore').classList.add('hidden');
+    app.itemPick = null; app.itemPickMin = false;
+}
+function minimizeItemPicker() {
+    if (!app.itemPick) return;
+    app.itemPickMin = true;
+    $('itemPick').classList.add('hidden');
+    $('ipRestore').textContent = '🃏 Выбор предмета (' + app.itemPick.count + ')';
+    $('ipRestore').classList.remove('hidden');
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -516,6 +681,7 @@ function closeOverlay() {
 document.addEventListener('keydown', e => {
     const typing = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
     if (e.key === 'Escape') {
+        if (closeWorldPop()) return;
         if (closeOverlay()) return;
         if (typing) { e.target.blur(); return; }
         // Esc = take back my own last step (the server allows it only inside my own turn).
@@ -526,9 +692,12 @@ document.addEventListener('keydown', e => {
     if (typing || !app.view) return;
     // Hold Alt: corridor numbers and the Search item colours over the rooms.
     if (e.key === 'Alt' && !app.altHeld) { e.preventDefault(); app.altHeld = true; if (scene) scene.setAlt(true); }
+    // WASD pans the board; any camera move cancels a pending board question (like Esc).
+    const wasd = { w: [0, 1], s: [0, -1], a: [-1, 0], d: [1, 0], ц: [0, 1], ы: [0, -1], ф: [-1, 0], в: [1, 0] }[e.key.toLowerCase()];
+    if (wasd && scene) { closeWorldPop(); e.preventDefault(); scene.panCam(wasd[0], wasd[1]); }
     if (e.key === 'Tab') { e.preventDefault(); if (lastFloor && !e.repeat && scene) net.send({ t: 'ping', x: lastFloor.x, z: lastFloor.z, room: lastFloor.room }); }
-    else if (e.key === 'q' || e.key === 'Q' || e.key === 'й' || e.key === 'Й') { if (scene) scene.rotateMe(-Math.PI / 12); }
-    else if (e.key === 'e' || e.key === 'E' || e.key === 'у' || e.key === 'У') { if (scene) scene.rotateMe(Math.PI / 12); }
+    else if (e.key === 'q' || e.key === 'Q' || e.key === 'й' || e.key === 'Й') { closeWorldPop(); if (scene) scene.rotateMe(-Math.PI / 12); }
+    else if (e.key === 'e' || e.key === 'E' || e.key === 'у' || e.key === 'У') { closeWorldPop(); if (scene) scene.rotateMe(Math.PI / 12); }
     else if (e.key === 'c' || e.key === 'C' || e.key === 'с' || e.key === 'С') openSheet();
     else if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') focusMe();
     else if (e.key === 'Enter') { const ok = $('cardsOk'); if (ok && !ok.disabled) { e.preventDefault(); ok.click(); } }
@@ -554,6 +723,16 @@ $('focusBtn').onclick = () => focusMe();
 $('sheetClose').onclick = () => $('sheetOverlay').classList.add('hidden');
 $('deckClose').onclick = () => $('deckOverlay').classList.add('hidden');
 $('sheetOverlay').onclick = e => { if (e.target === $('sheetOverlay')) $('sheetOverlay').classList.add('hidden'); };
+$('ipMin').onclick = () => minimizeItemPicker();
+$('ipRestore').onclick = () => { if (!app.itemPick) return; app.itemPickMin = false; $('ipRestore').classList.add('hidden'); $('itemPick').classList.remove('hidden'); };
+// A click anywhere outside the question (or a wheel on the board) cancels it before anything is
+// sent to the engine — the same feel as Esc and as moving the camera.
+document.addEventListener('pointerdown', e => {
+    if (!app.wp || !e.target || !e.target.closest) return;
+    if (e.target.closest('#worldPop')) return;
+    closeWorldPop();
+}, true);
+$('scene').addEventListener('wheel', () => closeWorldPop(), { passive: true });
 $('deckOverlay').onclick = e => { if (e.target === $('deckOverlay')) $('deckOverlay').classList.add('hidden'); };
 
 // A click on any pile at the bottom right opens its viewer (the bag pile draws a token when asked).

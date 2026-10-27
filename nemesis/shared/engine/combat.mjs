@@ -2,13 +2,16 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, healthState, loseHealth, gainWound,
     gainContamination, killPlayer, discardCard, COMBAT_DIE, roll, fmtRoll, needDice, fx, removeIntruder, intruderLabel, INTRUDER_RANK,
-    drawCards, placeFire, placeNoise, cardDef, orderIndex, hasAdapt, placeMalfunction, removeCardFromGame, infectLarva, heavyCount, handLimit } from './core.mjs';
+    drawCards, placeFire, placeNoise, cardDef, orderIndex, hasAdapt, placeMalfunction, removeCardFromGame, infectLarva, heavyCount, handLimit,
+    handSlots, dropHeavy } from './core.mjs';
 import { repelIntruder, moveOneToward, hyperAttackStep } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
 import { ATTACK_CARDS, ITEMS, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
 
 const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(c => [c.id, c]));
+const OBJECT_NAMES = { corpse: 'Человеческий труп', charCorpse: 'Труп персонажа', carcass: 'Туша чужого', egg: 'Яйцо чужого' };
+export function objectName(o) { return OBJECT_NAMES[o && o.type] || 'объект'; }
 
 /** Target choice: fewest cards in hand, ties by turn order. */
 export function pickTarget(state, roomId) {
@@ -288,8 +291,11 @@ OPS['shoot.start'] = (state, step) => {
     const p = player(state, step.player);
     const weapons = p.items.filter(i => canFire(p, i) && (!step.onlyItem || i.item === step.onlyItem));
     if (!weapons.length) { log(state, 'Нет заряженного оружия.', 'bad'); next(state, step.then || { op: 'turn.choose' }); return; }
+    // The weapon may already be picked (a click on the intruder asks "with what?" on the board).
+    const picked = step.weapon ? weapons.find(w => w.uid === step.weapon) : null;
+    if (picked) { next(state, { ...step, op: 'shoot.mode', weapon: picked.uid }); return; }
     if (weapons.length === 1) { next(state, { ...step, op: 'shoot.mode', weapon: weapons[0].uid }); return; }
-    ask(state, { kind: 'choice', player: p.id, title: 'Каким оружием стрелять?', options: weapons.map(w => ({ id: w.uid, label: ITEMS[w.item].name + (ITEMS[w.item].weapon.noAmmo ? '' : ' (патронов ' + w.ammo + ')') })) },
+    ask(state, { kind: 'choice', player: p.id, title: 'Каким оружием стрелять?', options: weapons.map(w => ({ id: w.uid, item: w.item, label: ITEMS[w.item].name + (ITEMS[w.item].weapon.noAmmo ? '' : ' (патронов ' + w.ammo + ')') })) },
         { ...step, op: 'shoot.weaponChosen' });
 };
 OPS['shoot.weaponChosen'] = (state, step) => next(state, { ...step, op: 'shoot.mode', weapon: step.answer, answer: undefined });
@@ -367,6 +373,8 @@ OPS['shoot.target'] = (state, step) => {
     let targets = intrudersIn(state, p.room);
     if (sniper) for (const e of state.ship.rooms[p.room].exits) if (state.ship.corridors[e.corridor].door !== 'closed') targets = targets.concat(intrudersIn(state, e.to));
     if (step.forcedTarget) targets = targets.filter(t => t.uid === step.forcedTarget);
+    // The player already pointed at a specific intruder on the board.
+    if (step.target && targets.some(t => t.uid === step.target)) { next(state, { ...step, op: 'shoot.fire', target: step.target }); return; }
     if (!targets.length) { log(state, 'Чужих в комнате нет.', 'bad'); next(state, step.then || { op: 'turn.choose' }); return; }
     if (targets.length === 1) { next(state, { ...step, op: 'shoot.fire', target: targets[0].uid }); return; }
     ask(state, { kind: 'choice', player: p.id, title: 'В кого стрелять?', options: targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) + (t.room !== p.room ? ' (' + roomName(state, t.room) + ', +1 ранение)' : '') })) },
@@ -522,6 +530,7 @@ OPS['melee.start'] = (state, step) => {
     const p = player(state, step.player);
     const targets = intrudersIn(state, p.room);
     if (!targets.length) { next(state, step.then || { op: 'turn.choose' }); return; }
+    if (step.target && targets.some(t => t.uid === step.target)) { next(state, { ...step, op: 'melee.hit', target: step.target }); return; }
     if (targets.length === 1) { next(state, { ...step, op: 'melee.hit', target: targets[0].uid }); return; }
     ask(state, { kind: 'choice', player: p.id, title: 'Кого атаковать в ближнем бою?', options: targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })) },
         { ...step, op: 'melee.targetChosen' });
@@ -572,15 +581,49 @@ OPS['melee.block'] = (state, step) => {
 OPS['pickup.start'] = (state, step) => {
     const p = player(state, step.player);
     const rs = room(state, p.room);
-    const opts = rs.objects.map((o, i) => ({ id: String(i), label: ({ corpse: 'Человеческий труп', charCorpse: 'Труп персонажа', carcass: 'Туша чужого', egg: 'Яйцо чужого' })[o.type] }));
-    if (!opts.length) { next(state, { op: 'turn.choose' }); return; }
-    ask(state, { kind: 'choice', player: p.id, title: 'Что поднять?', options: opts }, { op: 'pickup.done', player: p.id });
+    if (!rs.objects.length) { next(state, { op: 'turn.choose' }); return; }
+    // `object` comes from a click on the object itself; `free` is the slot the player picked there.
+    if (step.object != null && rs.objects[Number(step.object)]) { next(state, { op: 'pickup.hand', player: p.id, object: Number(step.object), free: step.free }); return; }
+    if (rs.objects.length === 1) { next(state, { op: 'pickup.hand', player: p.id, object: 0 }); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Что поднять?', options: rs.objects.map((o, i) => ({ id: String(i), label: objectName(o) })) },
+        { op: 'pickup.object', player: p.id });
 };
-OPS['pickup.done'] = (state, step) => {
+OPS['pickup.object'] = (state, step) => next(state, { op: 'pickup.hand', player: step.player, object: Number(step.answer) });
+/** Ask which hand the object goes to and what already lies there (dropping it is free). */
+OPS['pickup.hand'] = (state, step) => {
     const p = player(state, step.player);
     const rs = room(state, p.room);
-    const o = rs.objects.splice(Number(step.answer), 1)[0];
-    if (o) { p.heavy.push(o); log(state, pname(p) + ' поднимает объект.', 'action'); }
+    const o = rs.objects[step.object];
+    if (!o) { next(state, { op: 'turn.choose' }); return; }
+    if (step.free !== undefined) { next(state, { op: 'pickup.take', player: p.id, object: step.object, free: step.free }); return; }
+    const slots = handSlots(state, p);
+    const options = slots.map((s, k) => {
+        const n = slots.length > 1 ? 'Слот ' + (k + 1) : 'Рука';
+        if (s.kind === 'empty') return { id: 'slot:' + k, label: n + ': пусто', desc: 'Положить «' + objectName(o) + '»' };
+        if (s.kind === 'filler') return { id: 'slot:' + k, label: n + ': ' + s.name + ' (двуручное)', desc: 'Выбросить «' + s.name + '» и взять объект' };
+        return { id: 'slot:' + k, label: n + ': ' + s.name, desc: 'Выбросить «' + s.name + '» и взять объект (выброс бесплатный)',
+            item: s.kind === 'item' ? s.ref.slice(5) : undefined };
+    });
+    ask(state, { kind: 'choice', player: p.id, title: 'Куда положить «' + objectName(o) + '»?', options }, { op: 'pickup.take', player: p.id, object: step.object });
+};
+OPS['pickup.take'] = (state, step) => {
+    const p = player(state, step.player);
+    const rs = room(state, p.room);
+    const o = rs.objects[step.object];
+    if (!o) { next(state, { op: 'turn.choose' }); return; }
+    let free = step.free;
+    if (free === undefined) {
+        const slots = handSlots(state, p);
+        const k = Number(String(step.answer || '').split(':')[1]);
+        const slot = slots[k] || null;
+        if (!slot || slot.kind === 'empty') free = null;
+        else if (slot.kind === 'filler') { const real = slots.find(s => s.kind === 'item' && s.two); free = real ? real.ref : null; }
+        else free = slot.ref;
+    }
+    if (free) dropHeavy(state, p, free);
+    rs.objects.splice(step.object, 1);
+    p.heavy.push(o);
+    log(state, pname(p) + ' поднимает: ' + objectName(o) + '.', 'action');
     next(state, { op: 'turn.choose' });
 };
 
@@ -592,7 +635,7 @@ OPS['trade.start'] = (state, step) => {
     const others = playersInRoom(state, p.room).filter(o => o.id !== p.id);
     const opts = [];
     for (const o of others) {
-        for (const i of p.items) if (!ITEMS[i.item].quest) opts.push({ id: o.id + ':item:' + i.uid, label: ITEMS[i.item].name + ' → ' + pname(o) });
+        for (const i of p.items) if (!ITEMS[i.item].quest) opts.push({ id: o.id + ':item:' + i.uid, item: i.item, label: ITEMS[i.item].name + ' → ' + pname(o) });
         p.heavy.forEach((h, idx) => opts.push({ id: o.id + ':heavy:' + idx, label: ({ corpse: 'Труп', charCorpse: 'Труп персонажа', carcass: 'Туша', egg: 'Яйцо' })[h.type] + ' → ' + pname(o) }));
     }
     if (!opts.length) { next(state, { op: 'turn.choose' }); return; }

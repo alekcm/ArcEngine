@@ -741,15 +741,47 @@ export function buildIntruder(scene, type) {
     const glow = flatMat(S, '#9cff3b', { emissive: 0.9 }), tooth = flatMat(S, '#e3dccb'), slime = flatMat(S, '#5a7a2a', { emissive: 0.3 });
     const bx = (...a) => box(S, ...a), cy = (...a) => cyl(S, ...a), sp = (...a) => sphere(S, ...a);
     if (type === 'larva') {
-        // segmented grub with hooked legs, mandibles and a glowing core
-        const body = new (B().TransformNode)('lb', S); body.parent = root; body.rotation.y = 0.4;
-        for (let i = 0; i < 5; i++) { const d = 0.42 - i * 0.05; sp(d, 6, body, 0, 0.2 - i * 0.02, -0.05 - i * 0.26, [1, 0.75, 1.15]).material = i % 2 ? mid : chitin; }
-        sp(0.4, 6, body, 0, 0.24, 0.2, [1, 0.8, 0.9]).material = dark;                       // head
-        for (const sd of [-1, 1]) { bx(0.05, 0.05, 0.28, body, sd * 0.12, 0.2, 0.42, [-0.4, sd * 0.5, 0]).material = tooth; bx(0.04, 0.04, 0.16, body, sd * 0.06, 0.16, 0.5, [0, sd * 0.3, 0]).material = tooth; }
-        for (let i = 0; i < 6; i++) { const sd = i % 2 ? 1 : -1; const z = 0.1 - Math.floor(i / 2) * 0.3; bx(0.3, 0.05, 0.06, body, sd * 0.22, 0.12, z, [0, 0, sd * 0.6]).material = dark; bx(0.05, 0.14, 0.05, body, sd * 0.36, 0.05, z, [0, 0, sd * 0.3]).material = tooth; }
-        for (let i = 0; i < 4; i++) bx(0.04, 0.12, 0.05, body, 0, 0.42 - i * 0.03, -0.05 - i * 0.26, [0.5, 0, 0]).material = tooth;  // dorsal spikes
-        sp(0.12, 5, body, 0, 0.26, -0.3).material = glow;
-        sp(0.1, 4, body, 0, 0.3, 0.3).material = glow;
+        // Facehugger: a flat crab-like body on eight long splayed fingers, a curled segmented tail
+        // and a pale egg-sac under the belly. Low-slung, wider than it is long.
+        const skin = flatMat(S, '#c9b391', { spec: 0.25 }), skinDark = flatMat(S, '#9a8465', { spec: 0.3 });
+        const claw = flatMat(S, '#efe6d2'), sac = flatMat(S, '#b9a6d8', { emissive: 0.45 });
+        const g2 = flatMat(S, '#d6f7a0', { emissive: 0.7 });
+        const body = new (B().TransformNode)('lf', S); body.parent = root; body.rotation.y = 0.25;
+        // carapace: wide flat dome + two side lobes (the "palm")
+        sp(1.0, 7, body, 0, 0.30, 0, [1.5, 0.52, 1.05]).material = skin;
+        for (const sd of [-1, 1]) sp(0.52, 6, body, sd * 0.46, 0.26, 0.06, [1.15, 0.5, 0.95]).material = skin;
+        // dorsal ridge plates
+        for (let i = 0; i < 5; i++) bx(0.16, 0.06, 0.2 - i * 0.015, body, 0, 0.5 - i * 0.012, 0.3 - i * 0.16, [0.15, 0, 0]).material = skinDark;
+        // belly sac (the thing that plants the embryo) and the glowing maw
+        sp(0.5, 6, body, 0, 0.12, -0.05, [1.1, 0.55, 1.1]).material = sac;
+        sp(0.2, 5, body, 0, 0.14, 0.28).material = g2;
+        bx(0.26, 0.05, 0.2, body, 0, 0.10, 0.34, [0.3, 0, 0]).material = dark;
+        // eight long fingers splayed around the shell: two segments each, clawed tips
+        for (let i = 0; i < 8; i++) {
+            const sd = i < 4 ? -1 : 1, k = i % 4;
+            const spread = 0.75 + k * 0.34;                       // fan out backwards
+            const a = sd * (0.5 + k * 0.42);
+            const len = 0.62 + (k % 2) * 0.14;
+            const hip = new (B().TransformNode)('lh', S); hip.parent = body;
+            hip.position.set(sd * 0.5, 0.26, -0.1 + k * 0.18);
+            hip.rotation.set(0.2, a, -sd * (0.35 + k * 0.1));
+            cyl(0.1, 0.16, len, 4, hip, 0, -len / 2, 0).material = skin;
+            const knuckle = new (B().TransformNode)('lk', S); knuckle.parent = hip; knuckle.position.set(0, -len, 0);
+            knuckle.rotation.set(spread, 0, sd * 0.2);
+            cyl(0.05, 0.1, len * 1.15, 4, knuckle, 0, -len * 0.55, 0).material = skinDark;
+            bx(0.05, 0.22, 0.05, knuckle, 0, -len * 1.15, 0, [0.35, 0, 0]).material = claw;
+        }
+        // long segmented tail curled up behind, ending in a stinger
+        let tp = new (B().TransformNode)('lt', S); tp.parent = body; tp.position.set(0, 0.34, -0.45); tp.rotation.x = -0.9;
+        for (let i = 0; i < 6; i++) {
+            const seg = new (B().TransformNode)('ls', S); seg.parent = tp; seg.position.set(0, 0.24, 0); seg.rotation.x = 0.34 + i * 0.08;
+            const d = 0.22 - i * 0.028;
+            cyl(d * 0.85, d, 0.3, 5, seg, 0, 0.13, 0).material = i % 2 ? skin : skinDark;
+            if (i % 2 === 0) bx(0.05, 0.06, 0.05, seg, 0, 0.13, -d * 0.5, [-0.4, 0, 0]).material = claw;
+            tp = seg;
+        }
+        bx(0.05, 0.3, 0.05, tp, 0, 0.32, 0, [0.4, 0, 0]).material = claw;
+        sp(0.1, 4, tp, 0, 0.46, 0.04).material = g2;
     } else {
         const s = type === 'queen' ? 1.75 : type === 'drone' ? 1.0 : 1.2;
         root.scaling.set(s, s, s);

@@ -78,7 +78,8 @@ export function buildMenu(state, p) {
     add('shoot', 'Стрелять', 1, (combat || nearbyTarget) && weapons.length > 0, !weapons.length ? 'Нет заряженного оружия' : 'Нет чужих в комнате');
     add('melee', 'Ближний бой', 1, combat, 'Нет чужих в комнате');
     const objs = rs.objects.length > 0;
-    add('pickup', 'Поднять тяжёлый объект', 1, objs && heavyCount(p) < handLimit(p) && noCombatOk, !objs ? 'В комнате нет объектов' : heavyCount(p) >= handLimit(p) ? 'Руки заняты' : 'Нельзя в бою');
+    // Hands full is no longer a hard "no": the pickup prompt offers to free a slot (dropping is free).
+    add('pickup', 'Поднять тяжёлый объект', 1, objs && noCombatOk, !objs ? 'В комнате нет объектов' : 'Нельзя в бою');
     const others = state.players.filter(o => o.id !== p.id && o.status === 'active' && o.room === p.room && !o.pod);
     add('trade', 'Передать предмет', 1, others.length > 0 && noCombatOk && (p.items.length + p.heavy.length) > 0, !noCombatOk ? 'Нельзя в бою' : others.length ? 'Нечего передать' : 'Нет других персонажей');
     const comp = tile && ROOM_TILES[tile].computer;
@@ -228,7 +229,7 @@ OPS['turn.do'] = (state, step) => {
             return;
         case 'drop': {
             // Laika cannot be discarded (printed on her card).
-            const opts = p.items.filter(i => i.item !== 'laika').map(i => ({ id: 'item:' + i.uid, label: ITEMS[i.item].name }));
+            const opts = p.items.filter(i => i.item !== 'laika').map(i => ({ id: 'item:' + i.uid, item: i.item, label: ITEMS[i.item].name }));
             p.heavy.forEach((h, idx) => opts.push({ id: 'heavy:' + idx, label: HEAVY_NAMES[h.type] }));
             ask(state, { kind: 'choice', player: p.id, title: 'Что выбросить?', options: opts, cancel: true }, { op: 'drop.choice', player: p.id });
             return;
@@ -236,20 +237,27 @@ OPS['turn.do'] = (state, step) => {
         case 'move': case 'careful':
             if (a.action === 'careful' && inCombat(state, p)) useContainment(state, p);
             spend();
-            // destination first, payment second (the noise roll comes after both)
-            next(state, { op: 'move.start', player: p.id, careful: a.action === 'careful', pay: act.cost });
+            // Destination first, payment second (the noise roll comes after both). A click on a room on
+            // the board already knows the destination — pass it on so the room prompt is skipped.
+            next(state, { op: 'move.start', player: p.id, careful: a.action === 'careful', pay: act.cost,
+                dest: typeof a.dest === 'string' ? a.dest : undefined });
             return;
         case 'shoot':
             spend();
-            payCost(state, p, 1, interruptible(state, p, { op: 'shoot.start', player: p.id }, 'стреляет'), 'Стрельба: оплата');
+            payCost(state, p, 1, interruptible(state, p, { op: 'shoot.start', player: p.id,
+                weapon: typeof a.weapon === 'string' ? a.weapon : undefined,
+                target: typeof a.target === 'string' ? a.target : undefined }, 'стреляет'), 'Стрельба: оплата');
             return;
         case 'melee':
             spend();
-            payCost(state, p, 1, interruptible(state, p, { op: 'melee.start', player: p.id }, 'бьёт в ближнем бою'), 'Ближний бой: оплата');
+            payCost(state, p, 1, interruptible(state, p, { op: 'melee.start', player: p.id,
+                target: typeof a.target === 'string' ? a.target : undefined }, 'бьёт в ближнем бою'), 'Ближний бой: оплата');
             return;
         case 'pickup':
             spend();
-            payCost(state, p, 1, interruptible(state, p, { op: 'pickup.start', player: p.id }, 'поднимает объект'), 'Поднять объект: оплата');
+            payCost(state, p, 1, interruptible(state, p, { op: 'pickup.start', player: p.id,
+                object: a.object != null ? Number(a.object) : undefined,
+                free: a.free === undefined ? undefined : (a.free || null) }, 'поднимает объект'), 'Поднять объект: оплата');
             return;
         case 'trade':
             if (inCombat(state, p)) useContainment(state, p);

@@ -60,7 +60,7 @@ OPS['feat.appropriation.keep'] = (state, step) => {
         next(state, step.then); return;
     }
     ask(state, { kind: 'choice', player: p.id, title: 'Реквизиция: оставить предмет (' + step.left + ')', secret: true,
-        options: step.cards.map((c, i) => ({ id: String(i), label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] })) },
+        options: step.cards.map((c, i) => ({ id: String(i), item: c, label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] })) },
         { ...step, answer: undefined });
 };
 

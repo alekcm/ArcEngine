@@ -127,7 +127,7 @@ OPS['room.action'] = (state, step) => {
         }
         case 'armory': {
             const w = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max);
-            ask(state, { kind: 'choice', player: p.id, title: 'Оружейная: что зарядить (+2)?', options: w.map(i => ({ id: i.uid, label: ITEMS[i.item].name + ' (' + i.ammo + '/' + ITEMS[i.item].weapon.max + ')' })) },
+            ask(state, { kind: 'choice', player: p.id, title: 'Оружейная: что зарядить (+2)?', options: w.map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name + ' (' + i.ammo + '/' + ITEMS[i.item].weapon.max + ')' })) },
                 { op: 'room.reload', player: p.id, n: 2, then: back });
             return;
         }
@@ -497,7 +497,7 @@ OPS['computer.option'] = (state, step) => {
         case 'ammo': {
             const ws = p.items.filter(i => ITEMS[i.item].weapon && !ITEMS[i.item].weapon.noAmmo && !i.broken && i.ammo < ITEMS[i.item].weapon.max);
             if (ws.length === 1) { ws[0].ammo++; log(state, '«' + ITEMS[ws[0].item].name + '»: +1 патрон (' + ws[0].ammo + ').', 'good'); next(state, done); return; }
-            sel('Какое оружие зарядить?', ws.map(w => ({ id: w.uid, label: ITEMS[w.item].name + ' (' + w.ammo + '/' + ITEMS[w.item].weapon.max + ')' })), 'computer.ammo');
+            sel('Какое оружие зарядить?', ws.map(w => ({ id: w.uid, item: w.item, label: ITEMS[w.item].name + ' (' + w.ammo + '/' + ITEMS[w.item].weapon.max + ')' })), 'computer.ammo');
             return;
         }
         case 'door':

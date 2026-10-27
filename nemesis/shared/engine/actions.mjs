@@ -125,7 +125,7 @@ OPS['card.weakSpot.pick'] = (state, step) => {
 function rangedWithAmmo(p, n) { return p.items.filter(i => ITEMS[i.item].weapon && i.ammo >= n); }
 OPS['card.coveringFire'] = (state, step) => {
     const p = player(state, step.player);
-    choice(state, p, 'Прикрывающий огонь: из какого оружия потратить 2 патрона?', rangedWithAmmo(p, 2).map(w => ({ id: w.uid, label: ITEMS[w.item].name + ' (' + w.ammo + ')' })), 'card.coveringFire.pick');
+    choice(state, p, 'Прикрывающий огонь: из какого оружия потратить 2 патрона?', rangedWithAmmo(p, 2).map(w => ({ id: w.uid, item: w.item, label: ITEMS[w.item].name + ' (' + w.ammo + ')' })), 'card.coveringFire.pick');
 };
 OPS['card.coveringFire.pick'] = (state, step) => {
     const p = player(state, step.player);
@@ -143,7 +143,7 @@ OPS['card.forcingFire'] = (state, step) => {
     const p = player(state, step.player);
     const adults = intrudersIn(state, p.room).filter(i => i.type === 'adult');
     if (!adults.length) { log(state, 'Взрослых чужих нет.', 'minor'); next(state, BACK); return; }
-    choice(state, p, 'Подавляющий огонь: из какого оружия потратить 1 патрон?', rangedWithAmmo(p, 1).map(w => ({ id: w.uid, label: ITEMS[w.item].name + ' (' + w.ammo + ')' })), 'card.forcingFire.pick');
+    choice(state, p, 'Подавляющий огонь: из какого оружия потратить 1 патрон?', rangedWithAmmo(p, 1).map(w => ({ id: w.uid, item: w.item, label: ITEMS[w.item].name + ' (' + w.ammo + ')' })), 'card.forcingFire.pick');
 };
 OPS['card.forcingFire.pick'] = (state, step) => {
     const p = player(state, step.player);
@@ -184,7 +184,7 @@ OPS['card.discardPicked'] = (state, step) => {
 };
 OPS['card.distraction'] = (state, step) => {
     const p = player(state, step.player);
-    choice(state, p, 'Отвлечение: какой предмет сбросить?', p.items.filter(i => !ITEMS[i.item].quest).map(i => ({ id: i.uid, label: ITEMS[i.item].name })), 'card.distraction.pick');
+    choice(state, p, 'Отвлечение: какой предмет сбросить?', p.items.filter(i => !ITEMS[i.item].quest).map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name })), 'card.distraction.pick');
 };
 OPS['card.distraction.pick'] = (state, step) => {
     const p = player(state, step.player);

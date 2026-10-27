@@ -20,7 +20,7 @@ export function drawSupport(state, n) {
 /** Offer `cards` (item keys); the chosen one is gained, the rest go to the bottom of their decks. */
 export function keepOneOf(state, p, cards, label, then, keep = 1, optional = false) {
     if (!cards.length) { log(state, 'Колода пуста — ничего не найдено.', 'minor'); next(state, then); return; }
-    const options = cards.map((c, i) => ({ id: String(i), label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] }));
+    const options = cards.map((c, i) => ({ id: String(i), item: c, label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] }));
     if (optional) options.push({ id: 'none', label: 'Ничего не брать', desc: 'Все карты — под низ колоды.' });
     ask(state, { kind: 'choice', player: p.id, title: keep > 1 ? 'Выберите предмет (можно оставить ещё ' + keep + ')' : 'Выберите 1 предмет (остальные — под низ колод)', secret: true, options },
         { op: 'item.keepOne', player: p.id, cards, then, keep });
@@ -35,7 +35,7 @@ OPS['item.keepOne'] = (state, step) => {
     if (keep > 0 && rest.length) {
         giveItem(state, p, key);
         ask(state, { kind: 'choice', player: p.id, title: 'Разгрузочный жилет: оставить ещё один предмет?', secret: true,
-            options: [{ id: 'none', label: 'Нет — остальные под низ колод' }, ...rest.map((c, i) => ({ id: String(i), label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] }))] },
+            options: [{ id: 'none', label: 'Нет — остальные под низ колод' }, ...rest.map((c, i) => ({ id: String(i), item: c, label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] }))] },
             { op: 'item.keepMore', player: p.id, cards: rest, then: step.then });
         return;
     }
@@ -62,7 +62,7 @@ OPS['vest.second'] = (state, step) => {
     if (step.answer === 'none') { next(state, back); return; }
     if (step.answer) { next(state, { op: 'item.use', player: p.id, uid: step.answer, then: back }); return; }
     if (p.status !== 'active') { next(state, back); return; }
-    const opts = p.items.filter(i => ITEMS[i.item].use && !i.broken && i.uid !== step.used).map(i => ({ id: i.uid, label: ITEMS[i.item].name, desc: ITEMS[i.item].text }));
+    const opts = p.items.filter(i => ITEMS[i.item].use && !i.broken && i.uid !== step.used).map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name, desc: ITEMS[i.item].text }));
     if (!opts.length) { next(state, back); return; }
     ask(state, { kind: 'choice', player: p.id, title: 'Разгрузочный жилет: использовать второй предмет бесплатно?', options: [{ id: 'none', label: 'Нет' }, ...opts] }, step);
 };

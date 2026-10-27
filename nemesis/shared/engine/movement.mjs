@@ -27,6 +27,8 @@ OPS['move.start'] = (state, step) => {
         dests.push(e.to);
     }
     if (!dests.length) { log(state, pname(p) + ': некуда идти.', 'bad'); next(state, step.then || { op: 'turn.choose' }); return; }
+    // A click on the board already names the destination: skip the question and pay.
+    if (step.dest && dests.includes(step.dest)) { next(state, { ...step, op: 'move.chosen', answer: step.dest }); return; }
     ask(state, { kind: 'room', player: p.id, title: step.careful ? 'Осторожное перемещение: куда?' : 'Перемещение: куда?', rooms: dests },
         { ...step, op: 'move.chosen' });
 };
