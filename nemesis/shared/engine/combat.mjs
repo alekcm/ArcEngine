@@ -256,7 +256,7 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
     const wd = opts.weapon ? ITEMS[opts.weapon.item].weapon : {};
     let r = roll(state, COMBAT_DIE);
     if (wd.critOn2 && r === 2) { r = 'crit'; log(state, 'Штурмовая винтовка: «2» считается КРИТОМ.', 'combat'); }
-    if (wd.critPlus && r === 'crit') it.hits++;
+    if (wd.plusOn5 && r === 5) { it.hits++; log(state, 'BF-пушка: «5» — дополнительное ранение.', 'combat'); }
     let val = r === 'crit' ? 'crit' : r + mod;
     log(state, '🎲 Бой: ' + fmtRoll(r) + (mod ? ' +' + mod + ' = ' + val : '') + ' против ранений ' + it.hits + '.', 'combat');
     if (wd.reroll && val !== 'crit' && val > it.hits) {
