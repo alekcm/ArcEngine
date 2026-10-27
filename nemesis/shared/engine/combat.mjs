@@ -61,13 +61,13 @@ function resolveAttack(state, step, it, p) {
     if (it.type === 'adult' && p.armor && !ITEMS[p.armor.item].heavyArmor && !effects.some(e => e.op === 'miss')) {
         ask(state, { kind: 'choice', player: p.id, title: 'Атака взрослого: «' + card.name + '». Сбросить броню и проигнорировать атаку?',
             options: [{ id: 'yes', label: 'Да, сбросить броню' }, { id: 'no', label: 'Нет, принять атаку' }] },
-            { op: 'attack.armor', player: p.id, intruder: it.uid, cardId, moving: step.moving, dest: step.dest });
+            { op: 'attack.armor', player: p.id, intruder: it.uid, phantom: it.uid === '_phantom' ? it : undefined, cardId, moving: step.moving, dest: step.dest });
         return;
     }
     applyAttackEffects(state, effects, it, p, step);
 }
 OPS['attack.armor'] = (state, step) => {
-    const p = player(state, step.player), it = state.intruders[step.intruder];
+    const p = player(state, step.player), it = step.phantom || state.intruders[step.intruder];
     if (step.answer === 'yes') { p.armor = null; log(state, pname(p) + ' сбрасывает броню: атака проигнорирована.', 'good'); return; }
     const card = ATTACK_BY_ID[step.cardId];
     let effects = card[it.type]; if (typeof effects === 'string') effects = card[effects];
@@ -112,6 +112,10 @@ function applyAttackEffects(state, effects, it, p, step) {
                 break;
         }
     }
+}
+/** Attack from an intruder that is not on the board (Survivor's Vents): draws and applies an attack card of the given type. */
+export function phantomAttack(state, p, type) {
+    resolveAttack(state, { noReaction: true }, { uid: '_phantom', type, room: p.room, hits: 0 }, p);
 }
 OPS['attack.follow'] = (state, step) => {
     const it = state.intruders[step.intruder], p = player(state, step.player);
@@ -182,7 +186,7 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
     if (opts.retaliate) next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'retaliation' });
     return false;
 }
-function applyHitsNoRoll(state, it, n) {
+export function applyHitsNoRoll(state, it, n) {
     if (it.type === 'larva') { removeIntruder(state, it.uid, false); log(state, 'Личинка погибает.', 'good'); return; }
     if (it.type === 'queen') { state.queenHits += n; log(state, 'Королева получает ' + n + ' ранений (всего ' + state.queenHits + ').', 'combat'); if (state.queenHits >= 6) next(state, { op: 'queen.card', player: null }); return; }
     it.hits += n;

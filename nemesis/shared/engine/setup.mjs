@@ -13,6 +13,7 @@ import './rooms.mjs';
 import './items.mjs';
 import './actions.mjs';
 import './actions2.mjs';
+import './actions3.mjs';
 import './endgame.mjs';
 
 export function createGame(config) {
@@ -88,7 +89,7 @@ export function createGame(config) {
             items: [], heavy: [], armor: null, knowledge: 1, knowledgeActive: false, signal: false, supportUsed: false,
             objectives: [], objective: null, status: 'active', passed: false, pod: null,
             knownEngines: {}, knownCoords: null, analyzedEgg: false, movedThisRound: false,
-            firstShotUsed: false, rifleDrawUsed: false, adrenalineTurn: false,
+            firstShotUsed: false, rifleDrawUsed: false, adrenalineTurn: false, tissue: pc.charId === 'xeno' ? 1 : 0,
         };
         for (const key of Object.keys(ch.cards)) p.deck.push(pc.charId + '.' + key + '#0');
         shuffle(state, p.deck);

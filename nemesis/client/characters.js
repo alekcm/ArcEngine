@@ -68,17 +68,17 @@ export const DEFAULTS = {
 // Parametric humanoids for the expansion crew. Each spec names the paint zone used by a body part and
 // lists the accessories that make the character recognisable (see CHARACTERS[*].zones in cards.mjs).
 const SPECS = {
-    pilot:     { legs: 'suit', boots: 'gloves', torso: 'suit', arms: 'suit', hands: 'gloves', hair: 'shortSwept', hairZone: 'hair', pads: 'armor', harness: 'gloves', furCoat: 'suit', vneck: true, monocle: 'visor', headset: 'armor', pistolR: true, rifleBack: true, lights: 'visor', female: true, bust: 1.1, build: 'athletic' },
-    hacker:    { legs: 'jacket', boots: 'pants', torso: 'jacket', arms: 'jacket', hands: 'jacket', hood: 'hood', faceMask: true, suitLines: 'lights', cables: 'gear', smartGun: true, lights: 'lights', female: true, build: 'slim' },
+    pilot:     { legs: 'suit', boots: 'gloves', torso: 'suit', arms: 'suit', hands: 'gloves', hair: 'shortSwept', hairZone: 'hair', pads: 'armor', harness: 'gloves', furCoat: 'suit', fur: '#d9cdb0', vneck: true, monocle: 'visor', headset: 'armor', pistolR: true, rifleBack: true, lights: 'visor', female: true, bust: 1.1, build: 'athletic' },
+    hacker:    { legs: 'jacket', boots: 'pants', torso: 'jacket', arms: 'jacket', hands: 'pants', hood: 'hood', cowl: true, faceMask: true, cyberArms: 'pants', chestArmor: 'pants', cables: 'gear', smartGun: true, lights: 'lights', female: true, bust: 0, build: 'slim' },
     scientist: { legs: 'pants', boots: 'pants', torso: 'shirt', coat: 'coat', arms: 'coat', hands: 'skin', hair: 'shortSwept', hairZone: 'hair', goggles: 'lights', glasses: true, harness: 'shirt', tablet: true, scanner: true, beard: 'hair', wheelchair: true, build: 'slim' },
-    medic:     { legs: 'pants', boots: 'pants', torso: '#5f6873', underV: true, coat: 'coat', arms: 'coat', hands: 'skin', hair: 'longLoose', hairZone: 'hair', cap: 'cap', gasMask: true, syringeGun: true, redCross: 'lights', female: true, bust: 1.3, build: 'slim' },
+    medic:     { legs: 'pants', boots: 'pants', torso: '#5f6873', underV: true, coat: 'coat', openCoat: true, arms: 'coat', hands: 'skin', hair: 'longLoose', hairZone: 'hair', cap: 'cap', gasMask: true, syringeGun: true, redCross: 'lights', female: true, bust: 1.3, build: 'slim' },
     janitor:   { legs: 'overall', boots: 'gloves', torso: 'overall', arms: 'overall', hands: 'gloves', hair: 'beardOnly', hairZone: 'hair', mustache: 'hair', cap: 'cap', toolBelt: true, wrench: true, patch: 'lights', build: 'stocky' },
     ceo:       { legs: 'shirt', boots: 'coat', torso: 'shirt', robe: 'coat', arms: 'coat', hands: 'skin', hair: 'shortSwept', hairZone: 'hair', tie: 'coat', pistolR: true, robot: true, build: 'slim' },
     labrat:    { legs: 'pants', boots: 'skin', torso: 'gown', arms: 'skin', hands: 'skin', hair: 'longLoose', hairZone: 'hair', blindfold: 'bandage', implants: 'lights', gown: 'gown', qrPatch: true, barefoot: true, female: true, bust: 0, build: 'slim' },
     sentry:    { custom: 'sentry' },
-    android:   { legs: 'pants', boots: 'pants', torso: 'shirt', vest: 'vest', arms: 'shirt', hands: 'skin', hair: 'bun', hairZone: 'hair', implants: 'lights', eyes: '#f4f8ff', female: true, pistolR: true, build: 'slim' },
+    android:   { legs: 'pants', boots: 'pants', torso: 'shirt', vest: 'vest', bustZone: 'vest', arms: 'shirt', hands: 'skin', hair: 'bun', hairZone: 'hair', implants: 'lights', eyes: '#f4f8ff', female: true, pistolR: true, build: 'slim' },
     convict:   { legs: 'pants', boots: 'pants', torso: 'skin', arms: 'skin', hands: 'skin', bald: true, muzzle: 'mask', tattoos: 'tattoo', plates: 'mask', chains: 'chains', build: 'bulky', eyeLight: 'lights' },
-    psych:     { legs: 'shirt', boots: 'shirt', torso: 'shirt', vest: 'coat', arms: 'shirt', hands: 'skin', hair: 'bobBangs', hairZone: 'hair', glasses: true, scanArm: 'drone', headsetTech: 'drone', female: true, build: 'slim' },
+    psych:     { legs: 'shirt', boots: 'shirt', torso: 'shirt', vest: 'coat', arms: 'shirt', hands: 'skin', hair: 'bobBangs', hairZone: 'hair', glasses: true, scanArm: 'drone', drone: 'drone', headsetTech: 'drone', female: true, build: 'slim' },
     bounty:    { legs: 'shirt', boots: 'armor', torso: 'shirt', arms: 'shirt', hands: 'armor', hair: 'shortBeard', hairZone: 'hair', fullBeard: 'hair', pads: 'armor', harness: 'armor', chestPlate: 'armor', rifleHands: true, husky: 'dog', build: 'bulky' },
     captain:   { legs: 'shirt', boots: 'gloves', torso: 'shirt', arms: 'shirt', hands: 'gloves', hair: 'shortBeard', hairZone: 'hair', heavyVest: 'armor', cigarette: true, revolver: true, shoulderLamp: 'lights', build: 'athletic' },
     survivor:  { legs: 'pants', boots: 'armor', torso: 'shirt', arms: 'shirt', hands: 'armor', hair: 'longLoose', hairZone: 'hair', bandana: true, chestPlate: 'armor', harness: 'armor', pistolR: true, pistolL: true, female: true, build: 'athletic' },
@@ -122,19 +122,25 @@ export function buildCharacter(scene, charId, colors = {}) {
         // torso
         const T = (m) => sp.torso[0] === '#' ? F(sp.torso, m) : Z(sp.torso, m);   // torso zone, or a fixed colour
         T(bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
-        if (sp.female) { const bf = sp.bust == null ? 1 : sp.bust; if (bf > 0) T(bx(0.46 * W, 0.24 * bf, 0.16 * bf, R, 0, 1.98, 0.14 + 0.08 * bf)); Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0)); }   // chest and hips
+        if (sp.female) { const bf = sp.bust == null ? 1 : sp.bust; if (bf > 0) { const m = bx(0.46 * W, 0.24 * bf, 0.16 * bf, R, 0, 1.98, 0.14 + 0.08 * bf); if (sp.bustZone) Z(sp.bustZone, m); else T(m); } Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0)); }   // chest and hips
         if (sp.underV || sp.vneck) { Z('skin', bx(0.16 * W, 0.16, 0.04, R, 0, 2.1, 0.16)); Z('skin', bx(0.08 * W, 0.1, 0.04, R, 0, 2.0, 0.17)); }   // open neckline
-        if (sp.furCoat) {   // thick fur: ragged collar, cuffs and hem
-            for (let i = 0; i < 9; i++) { const a = -1.2 + i * 0.3; Z(sp.furCoat, bx(0.1, 0.16 + (i % 2) * 0.06, 0.1, R, Math.sin(a) * 0.3 * W, 2.18 + (i % 2) * 0.03, Math.cos(a) * 0.2 - 0.02, [0, 0, (i % 2 ? 0.3 : -0.3)])); }
-            for (let i = 0; i < 6; i++) Z(sp.furCoat, bx(0.1, 0.14 + (i % 2) * 0.06, 0.1, R, -0.25 * W + i * 0.1 * W, 1.5, 0.17 + (i % 2) * 0.02));
-            for (const s of [-1, 1]) for (let i = 0; i < 3; i++) Z(sp.furCoat, bx(0.08, 0.1, 0.08, R, s * (0.34 + i * 0.03) * W, 1.3 + (i % 2) * 0.04, 0.1 - i * 0.07));
-            for (const s of [-1, 1]) Z(sp.furCoat, bx(0.2 * W, 0.4, 0.14, R, s * 0.2 * W, 1.3, -0.14));   // coat skirt at the back
+        if (sp.furCoat) {   // thick fur coat: one solid collar ring, solid cuffs and a fur hem, coat body over the torso
+            const FUR = sp.fur || '#d9cdb0';
+            Z(sp.furCoat, bx(0.62 * W, 0.66, 0.4, R, 0, 1.82, -0.02));                    // coat body (slightly bulkier than the torso)
+            for (const s of [-1, 1]) Z(sp.furCoat, bx(0.24 * W, 0.5, 0.36, R, s * 0.19 * W, 1.26, -0.04));   // coat skirt
+            F(FUR, bx(0.7 * W, 0.16, 0.5, R, 0, 2.18, -0.04));                             // fur collar ring
+            F(FUR, bx(0.26 * W, 0.2, 0.52, R, 0, 2.3, -0.1));                              // raised fur at the nape
+            for (const s of [-1, 1]) F(FUR, bx(0.16 * W, 0.4, 0.08, R, s * 0.12 * W, 1.96, 0.21, [0, 0, -s * 0.12]));   // fur lapels
+            for (const s of [-1, 1]) F(FUR, bx(0.22 * W, 0.14, 0.24, R, s * 0.39 * W, 1.28, 0.02));   // fur cuffs
+            F(FUR, bx(0.64 * W, 0.1, 0.42, R, 0, 1.0, -0.04));                             // fur hem
         }
         if (sp.robe) {   // long closed mantle with a high pointed collar
             Z(sp.robe, bx(0.6 * W, 0.72, 0.1, R, 0, 1.84, -0.2)); Z(sp.robe, bx(0.6 * W, 0.7, 0.08, R, 0, 1.84, 0.18));
             for (const s of [-1, 1]) { Z(sp.robe, bx(0.1, 0.72, 0.34, R, s * 0.3 * W, 1.84, 0)); Z(sp.robe, bx(0.3 * W, 0.9, 0.3, R, s * 0.15 * W, 1.02, -0.06)); }   // sides + skirts to the shins
             Z(sp.robe, bx(0.62 * W, 0.08, 0.38, R, 0, 2.2, -0.02));
-            for (const s of [-1, 1]) Z(sp.robe, bx(0.22, 0.42, 0.06, R, s * 0.2, 2.42, -0.18, [0.2, s * 0.5, s * 0.25]));   // tall sharp collar wings
+            Z(sp.robe, bx(0.5 * W, 0.4, 0.08, R, 0, 2.36, -0.2));                                     // stand-up collar back
+            for (const s of [-1, 1]) { Z(sp.robe, bx(0.08, 0.44, 0.3, R, s * 0.23 * W, 2.38, -0.04, [0, 0, s * 0.08])); Z(sp.robe, bx(0.2, 0.36, 0.06, R, s * 0.16 * W, 2.3, 0.14, [0, s * 0.35, s * 0.18])); }   // tall lapels wrapping the neck
+            for (const s of [-1, 1]) F('#c9c3a6', bx(0.03, 0.34, 0.03, R, s * 0.1 * W, 2.28, 0.19, [0, 0, s * 0.3]));   // light trim edge
         }
         if (sp.heavyVest) {   // massive plated vest with built-up shoulder blocks
             Z(sp.heavyVest, bx(0.6 * W, 0.6, 0.2, R, 0, 1.86, 0.2)); Z(sp.heavyVest, bx(0.6 * W, 0.6, 0.14, R, 0, 1.86, -0.2));
@@ -143,23 +149,25 @@ export function buildCharacter(scene, charId, colors = {}) {
             for (let i = 0; i < 3; i++) F(FIXED.darkSteel, bx(0.1, 0.12, 0.06, R, -0.16 * W + i * 0.16 * W, 1.56, 0.26));
         }
         if (sp.piping) { for (const s of [-1, 1]) Z(sp.piping, bx(0.03, 0.66, 0.02, R, s * 0.1 * W, 1.84, 0.245)); Z(sp.piping, bx(0.5 * W, 0.03, 0.02, R, 0, 1.52, 0.245)); for (const s of [-1, 1]) Z(sp.piping, bx(0.03, 0.4, 0.02, R, s * 0.39 * W, 1.84, 0.1)); }   // light seams on a dark coat
-        if (sp.vest) { Z(sp.vest, bx(0.5 * W, 0.5, 0.1, R, 0, 1.84, 0.18)); Z(sp.vest, bx(0.5 * W, 0.5, 0.08, R, 0, 1.84, -0.18)); }
+        if (sp.vest) { Z(sp.vest, bx(0.5 * W, 0.5, 0.1, R, 0, 1.84, 0.18)); Z(sp.vest, bx(0.5 * W, 0.5, 0.08, R, 0, 1.84, -0.18)); for (const s of [-1, 1]) Z(sp.vest, bx(0.08, 0.5, 0.36, R, s * 0.25 * W, 1.84, 0)); }
         if (sp.coat) {   // long open coat: back panel + two front flaps + tails
             Z(sp.coat, bx(0.58 * W, 0.7, 0.1, R, 0, 1.82, -0.2));
             for (const s of [-1, 1]) Z(sp.coat, bx(0.16 * W, 0.68, 0.1, R, s * 0.21 * W, 1.84, 0.19));
             for (const s of [-1, 1]) Z(sp.coat, bx(0.2 * W, 0.6, 0.08, R, s * 0.2 * W, 1.22, -0.17));
-            Z(sp.coat, bx(0.6 * W, 0.08, 0.36, R, 0, 2.2, -0.02));             // collar
+            for (const s of [-1, 1]) Z(sp.coat, bx(0.1, 0.68, 0.34, R, s * 0.27 * W, 1.84, 0));   // side panels (no gaps)
+            if (sp.openCoat) { for (const s of [-1, 1]) Z(sp.coat, bx(0.1, 0.22, 0.1, R, s * 0.2 * W, 2.2, 0.1, [0, s * 0.5, 0])); }   // open lapels, neck free
+            else Z(sp.coat, bx(0.6 * W, 0.08, 0.36, R, 0, 2.2, -0.02));             // collar
         }
         if (sp.chestPlate) { Z(sp.chestPlate, bx(0.42 * W, 0.3, 0.12, R, 0, 1.96, 0.2)); Z(sp.chestPlate, bx(0.36 * W, 0.18, 0.1, R, 0, 1.7, 0.2)); }
         if (sp.harness) { for (const s of [-1, 1]) Z(sp.harness, bx(0.08, 0.6, 0.04, R, s * 0.14 * W, 1.86, 0.18)); Z(sp.harness, bx(0.5 * W, 0.06, 0.04, R, 0, 1.64, 0.18)); for (let i = 0; i < 3; i++) F(FIXED.darkSteel, bx(0.08, 0.1, 0.06, R, -0.2 * W + i * 0.2 * W, 1.6, 0.2)); }
         if (sp.tie) { Z('shirt', bx(0.14, 0.3, 0.03, R, 0, 1.98, sp.robe ? 0.23 : 0.18)); F('#7a1f1f', bx(0.06, 0.28, 0.02, R, 0, 1.9, sp.robe ? 0.25 : 0.2)); }
         if (sp.redCross) { Z(sp.redCross, bx(0.12, 0.04, 0.02, R, 0.16 * W, 2.0, 0.2)); Z(sp.redCross, bx(0.04, 0.12, 0.02, R, 0.16 * W, 2.0, 0.2)); }
         if (sp.patch) { Z(sp.patch, cy(0.16, 0.16, 0.02, 8, R, 0.16 * W, 1.95, 0.17, [Math.PI / 2, 0, 0])); }
-        if (sp.tattoos) { for (let i = 0; i < 4; i++) Z(sp.tattoos, bx(0.14, 0.03, 0.02, R, -0.12 * W + (i % 2) * 0.24 * W, 1.7 + i * 0.1, 0.17)); Z(sp.tattoos, bx(0.03, 0.3, 0.02, R, 0.42 * W, 1.84, 0.1)); }
+        if (sp.tattoos) { for (let i = 0; i < 4; i++) Z(sp.tattoos, bx(0.14, 0.03, 0.02, R, -0.12 * W + (i % 2) * 0.24 * W, 1.7 + i * 0.1, 0.17)); for (const s of [-1, 1]) Z(sp.tattoos, bx(0.03, 0.3, 0.02, R, s * 0.42 * W, 1.84, 0.1)); }
         if (sp.gown) { Z(sp.gown, bx(0.58 * W, 0.5, 0.36, R, 0, 1.3, 0)); for (const s of [-1, 1]) Z(sp.gown, bx(0.2 * W, 0.26, 0.26, R, s * 0.36 * W, 2.04, 0)); F(FIXED.strap, bx(0.5 * W, 0.04, 0.02, R, 0, 1.62, 0.18)); }   // patient gown: skirt to mid-thigh, short sleeves, waist tie
-        if (sp.qrPatch) { F('#f4f6f8', bx(0.18, 0.18, 0.02, R, -0.1, 1.9, 0.17)); for (let i = 0; i < 9; i++) if (i % 4 !== 1) F('#1a1d21', bx(0.04, 0.04, 0.01, R, -0.15 + (i % 3) * 0.05, 1.95 - Math.floor(i / 3) * 0.05, 0.18)); }   // QR tag printed on the chest
+        if (sp.qrPatch) { F('#f4f6f8', bx(0.18, 0.18, 0.02, R, 0.1, 1.9, 0.17)); for (let i = 0; i < 9; i++) if (i % 4 !== 1) F('#1a1d21', bx(0.04, 0.04, 0.01, R, 0.05 + (i % 3) * 0.05, 1.95 - Math.floor(i / 3) * 0.05, 0.18)); }   // QR tag printed on the chest
         if (sp.plates) {   // riveted square plates bolted onto the skin
-            const P = [[0.3, 2.14, 0.0, 0.22, 0.1, 0.3], [-0.3, 2.14, 0.0, 0.22, 0.1, 0.3], [0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [-0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [0, 1.74, 0.18, 0.2, 0.14, 0.04], [0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [-0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [-0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [0, 2.22, -0.1, 0.24, 0.1, 0.14], [0.2, 1.86, -0.17, 0.18, 0.2, 0.04], [-0.2, 1.86, -0.17, 0.18, 0.2, 0.04]];
+            const P = [[0.3, 2.14, 0.0, 0.22, 0.1, 0.3], [-0.3, 2.14, 0.0, 0.22, 0.1, 0.3], [0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [-0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [0, 1.74, 0.18, 0.2, 0.14, 0.04], [0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [-0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [-0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [0, 2.22, -0.1, 0.24, 0.1, 0.14], [0.2, 1.86, -0.17, 0.18, 0.2, 0.04], [-0.2, 1.86, -0.17, 0.18, 0.2, 0.04], [-0.3, 1.7, 0.17, 0.14, 0.12, 0.04], [0.3, 1.7, 0.17, 0.14, 0.12, 0.04]];
             for (const [x, y, z, w, h, d] of P) { Z(sp.plates, bx(w * W, h, d, R, x * W, y, z)); F(FIXED.steel, bx(0.03, 0.03, 0.03, R, x * W + (w > 0.1 ? 0.04 : 0), y + (h > 0.12 ? 0.05 : 0), z + d / 2 * (z >= 0 ? 1 : -1))); }
         }
         if (sp.shaggy) {   // ragged fur mantle over the shoulders and hood rim
@@ -175,6 +183,18 @@ export function buildCharacter(scene, charId, colors = {}) {
             Z(sp.arms, bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0));
             Z(sp.arms, bx(0.15 * W, 0.4, 0.17, R, s * 0.39 * W, 1.44, 0.02));
             Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03));
+        }
+        if (sp.cyberArms) {   // cybernetic implant arms: segmented metal forearms, elbow joints, glowing seams
+            for (const s of [-1, 1]) {
+                Z(sp.cyberArms, bx(0.18 * W, 0.42, 0.2, R, s * 0.39 * W, 1.44, 0.02)); F(FIXED.steel, bx(0.2 * W, 0.06, 0.22, R, s * 0.39 * W, 1.56, 0.02)); F(FIXED.steel, bx(0.2 * W, 0.06, 0.22, R, s * 0.39 * W, 1.3, 0.02));
+                F(FIXED.darkSteel, cy(0.1, 0.1, 0.2, 6, R, s * 0.39 * W, 1.66, 0.02, [0, 0, Math.PI / 2]));   // elbow joint
+                Z(LZ, bx(0.02, 0.26, 0.02, R, s * 0.39 * W, 1.44, 0.125)); F(FIXED.steel, bx(0.16, 0.1, 0.16, R, s * 0.39 * W, 1.2, 0.03));
+                F(FIXED.steel, bx(0.06, 0.24, 0.06, R, s * 0.47 * W, 1.84, 0.0)); Z(LZ, bx(0.02, 0.1, 0.02, R, s * 0.48 * W, 1.84, 0.0));   // upper-arm implant rail
+            }
+        }
+        if (sp.chestArmor) {   // sternum armour plate sewn into the bodysuit
+            Z(sp.chestArmor, bx(0.36 * W, 0.34, 0.08, R, 0, 1.96, 0.18)); F(FIXED.darkSteel, bx(0.3 * W, 0.08, 0.04, R, 0, 2.06, 0.23)); F(FIXED.darkSteel, bx(0.3 * W, 0.08, 0.04, R, 0, 1.86, 0.23));
+            Z(LZ, bx(0.1, 0.03, 0.02, R, 0, 1.96, 0.235)); for (const s of [-1, 1]) Z(sp.chestArmor, bx(0.1, 0.26, 0.06, R, s * 0.24 * W, 2.04, 0.17));
         }
         if (sp.cables) { for (let i = 0; i < 3; i++) F(FIXED.rubber, cy(0.03, 0.03, 0.5, 5, R, -0.3 * W + i * 0.05, 1.98, -0.3 - i * 0.04, [0.4, 0, 0.3])); Z(sp.cables, bx(0.12, 0.08, 0.06, R, -0.2 * W, 2.18, -0.3)); }
         if (sp.toolBelt) { for (let i = 0; i < 3; i++) F(FIXED.steel, bx(0.06, 0.14, 0.06, R, -0.22 * W + i * 0.1, 1.42, 0.17)); F(FIXED.strap, bx(0.14, 0.16, 0.1, R, 0.26 * W, 1.4, 0.12)); }
@@ -199,7 +219,12 @@ export function buildCharacter(scene, charId, colors = {}) {
         if (sp.mustache) { Z(sp.mustache, bx(0.22, 0.05, 0.05, R, 0, 2.38, 0.18)); for (const s of [-1, 1]) Z(sp.mustache, bx(0.05, 0.24, 0.14, R, s * 0.16, 2.4, 0.04)); }   // moustache + sideburns
         // head gear
         if (sp.cap) { Z(sp.cap, bx(0.34, 0.1, 0.34, R, 0, 2.66, 0.0)); Z(sp.cap, bx(0.3, 0.03, 0.16, R, 0, 2.62, 0.24)); }
-        if (sp.hood) { Z(sp.hood, bx(0.4, 0.42, 0.4, R, 0, 2.5, -0.04)); Z(sp.hood, bx(0.46, 0.1, 0.46, R, 0, 2.28, -0.02)); Z(sp.hood, bx(0.44, 0.08, 0.2, R, 0, 2.7, 0.14)); if (!sp.faceMask) { F(FIXED.rubber, bx(0.3, 0.26, 0.04, R, 0, 2.46, 0.17)); Z('skin', bx(0.26, 0.2, 0.05, R, 0, 2.4, 0.19)); for (const s of [-1, 1]) Z(LZ, bx(0.04, 0.03, 0.02, R, s * 0.07, 2.46, 0.22)); } }
+        if (sp.hood && sp.cowl) {   // soft hood: rounded top, draped sides widening down to the shoulders, merging into the suit
+            Z(sp.hood, bx(0.36, 0.14, 0.36, R, 0, 2.66, -0.06)); Z(sp.hood, bx(0.4, 0.3, 0.1, R, 0, 2.46, -0.2));
+            for (const s of [-1, 1]) { Z(sp.hood, bx(0.06, 0.34, 0.34, R, s * 0.19, 2.46, -0.04)); Z(sp.hood, bx(0.1, 0.22, 0.34, R, s * 0.24, 2.22, -0.08, [0, 0, s * 0.35])); }
+            Z(sp.hood, bx(0.54, 0.14, 0.4, R, 0, 2.2, -0.1)); Z(sp.hood, bx(0.3, 0.16, 0.08, R, 0, 2.16, 0.15, [0.5, 0, 0]));   // cowl draped onto the chest and back
+            Z(sp.hood, bx(0.4, 0.06, 0.14, R, 0, 2.7, 0.14, [-0.4, 0, 0]));                                                 // soft brim
+        } else if (sp.hood) { Z(sp.hood, bx(0.4, 0.42, 0.4, R, 0, 2.5, -0.04)); Z(sp.hood, bx(0.46, 0.1, 0.46, R, 0, 2.28, -0.02)); Z(sp.hood, bx(0.44, 0.08, 0.2, R, 0, 2.7, 0.14)); if (!sp.faceMask) { F(FIXED.rubber, bx(0.3, 0.26, 0.04, R, 0, 2.46, 0.17)); Z('skin', bx(0.26, 0.2, 0.05, R, 0, 2.4, 0.19)); for (const s of [-1, 1]) Z(LZ, bx(0.04, 0.03, 0.02, R, s * 0.07, 2.46, 0.22)); } }
         if (sp.faceMask) {   // full dark face plate with glowing seams (no skin visible)
             // contoured mask: brow plate, narrower cheek plates, pointed chin — follows the face rather than a flat visor
             F(FIXED.rubber, bx(0.28, 0.12, 0.06, R, 0, 2.53, 0.17)); F(FIXED.rubber, bx(0.22, 0.14, 0.07, R, 0, 2.4, 0.18)); F(FIXED.rubber, bx(0.14, 0.1, 0.06, R, 0, 2.29, 0.17));
@@ -243,7 +268,7 @@ export function buildCharacter(scene, charId, colors = {}) {
             else { F(FIXED.gun, cy(0.05, 0.05, 0.5, 6, g, 0.6, 0.02, 0, [0, 0, Math.PI / 2])); F(FIXED.darkSteel, bx(0.3, 0.08, 0.06, g, 0.05, 0.14, 0)); Z(LZ, bx(0.06, 0.04, 0.04, g, 0.2, 0.15, 0)); }
         }
         if (sp.pipe) { F(FIXED.steel, cy(0.05, 0.05, 1.0, 6, R, 0.42 * W, 1.5, 0.1, [0, 0, 0.15])); F(FIXED.darkSteel, bx(0.1, 0.1, 0.1, R, 0.42 * W, 1.98, 0.08)); }
-        if (sp.wrench) { F(FIXED.steel, bx(0.05, 0.5, 0.05, R, -0.4 * W, 1.0, 0.06, [0.3, 0, 0])); F(FIXED.steel, bx(0.14, 0.12, 0.05, R, -0.4 * W, 0.76, 0.14)); }
+        if (sp.wrench) { F(FIXED.steel, bx(0.06, 0.5, 0.04, R, -0.4 * W, 1.0, 0.1)); F(FIXED.steel, bx(0.18, 0.08, 0.05, R, -0.4 * W, 0.74, 0.1)); for (const s of [-1, 1]) F(FIXED.steel, bx(0.05, 0.1, 0.05, R, -0.4 * W + s * 0.065, 0.66, 0.1)); F(FIXED.darkSteel, bx(0.08, 0.14, 0.06, R, -0.4 * W, 1.18, 0.1)); }   // handle, head with open jaws
         if (sp.scanner) { F(FIXED.darkSteel, bx(0.1, 0.1, 0.26, R, 0.39 * W, 1.22, 0.18)); Z(LZ, cy(0.06, 0.06, 0.02, 6, R, 0.39 * W, 1.24, 0.32, [Math.PI / 2, 0, 0])); }   // hand scanner (right hand)
         if (sp.fullBeard) { Z(sp.fullBeard, bx(0.3, 0.18, 0.1, R, 0, 2.26, 0.14)); Z(sp.fullBeard, bx(0.06, 0.26, 0.26, R, 0.15, 2.36, 0.04)); Z(sp.fullBeard, bx(0.06, 0.26, 0.26, R, -0.15, 2.36, 0.04)); }
         if (sp.tablet) { F(FIXED.darkSteel, bx(0.3, 0.03, 0.22, R, -0.38 * W, 1.26, 0.18, [0.5, 0, 0])); Z(LZ, bx(0.24, 0.012, 0.16, R, -0.38 * W, 1.28, 0.18, [0.5, 0, 0])); }   // tablet held tilted in the left hand
@@ -423,8 +448,8 @@ export function buildCharacter(scene, charId, colors = {}) {
         }
         // long concealing cloak: hangs from the shoulders down the back and sides to the shins, hood-like collar
         const cloak = '#2b3038';
-        F(cloak, bx(0.86, 1.9, 0.12, R, 0, 1.34, -0.6)); for (const s of [-1, 1]) F(cloak, bx(0.14, 1.7, 0.7, R, s * 0.44, 1.2, -0.3));
-        F(cloak, bx(0.9, 0.14, 0.9, R, 0, 2.3, -0.24)); for (const s of [-1, 1]) F(cloak, bx(0.26, 0.5, 0.1, R, s * 0.3, 2.02, 0.32, [0, 0, s * 0.15]));   // mantle + front lapels
+        F(cloak, bx(0.8, 1.3, 0.1, R, 0, 0.95, -0.3)); for (const s of [-1, 1]) F(cloak, bx(0.12, 1.5, 0.6, R, s * 0.42, 1.1, -0.1));   // back panel below the pack + side panels
+        F(cloak, bx(0.84, 0.08, 0.5, R, 0, 2.3, 0.0)); for (const s of [-1, 1]) F(cloak, bx(0.22, 0.56, 0.08, R, s * 0.3, 2.0, 0.34, [0, 0, s * 0.12]));   // thin shoulder mantle + front lapels
         // sealed helmet with a built-in gas mask: snout, two cheek filters, hose into the back pack
         Z('helmet', cy(0.46, 0.52, 0.14, 8, R, 0, 2.24, 0));
         Z('helmet', bx(0.42, 0.48, 0.44, R, 0, 2.54, 0.0)); Z('helmet', bx(0.46, 0.14, 0.46, R, 0, 2.78, -0.02));
@@ -487,8 +512,8 @@ export function buildCharacter(scene, charId, colors = {}) {
         Z('hair', bx(0.34, 0.12, 0.34, R, 0, 2.64, 0));
         Z('hair', bx(0.34, 0.6, 0.12, R, 0, 2.36, -0.18));
         Z('hair', bx(0.08, 0.5, 0.14, R, -0.19, 2.34, 0.02));                   // heavy lock on the left
-        Z('hair', bx(0.2, 0.08, 0.12, R, -0.08, 2.56, 0.14, [0, 0, 0.35]));       // fringe swept to the left side
-        Z('hair', bx(0.1, 0.16, 0.06, R, -0.15, 2.48, 0.17));
+        Z('hair', bx(0.36, 0.12, 0.16, R, -0.02, 2.6, 0.1, [0, 0, 0.22]));        // fringe: one slab sweeping down to the left, joined to the cap and the left lock
+        Z('hair', bx(0.14, 0.2, 0.14, R, -0.15, 2.5, 0.11));
         // scar across the right eye (the side the fringe leaves open)
         F('#9a5a4a', bx(0.02, 0.16, 0.02, R, 0.08, 2.46, 0.175, [0, 0, 0.2]));
         F(FIXED.steel, bx(0.04, 0.08, 0.06, R, 0.17, 2.44, 0.04));
@@ -520,8 +545,8 @@ export function buildCharacter(scene, charId, colors = {}) {
         // orange work shirt, sleeves rolled up to the shoulders -> bare arms
         Z('overall', bx(0.6, 0.62, 0.34, R, 0, 1.84, 0));
         for (const s of [-1, 1]) {
-            Z('overall', bx(0.3, 0.16, 0.32, R, s * 0.38, 2.14, 0));           // rolled sleeve bulge
-            Z('skin', bx(0.18, 0.4, 0.2, R, s * 0.4, 1.84, 0));
+            Z('overall', bx(0.3, 0.2, 0.32, R, s * 0.38, 2.06, 0));            // rolled sleeve bulge (overlaps the shoulder)
+            Z('skin', bx(0.18, 0.44, 0.2, R, s * 0.4, 1.76, 0));
             Z('skin', bx(0.16, 0.26, 0.18, R, s * 0.41, 1.52, 0.02));
             Z('helmet', bx(0.22, 0.2, 0.24, R, s * 0.41, 1.34, 0.03));         // armoured wrist guard
             Z('lights', bx(0.05, 0.05, 0.03, R, s * 0.41, 1.36, 0.16));

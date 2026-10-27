@@ -200,6 +200,7 @@ function renderPlayers() {
         for (const w of p.wounds) tags.push('<span class="tag red" title="' + esc(woundName(w)) + '">травма: ' + esc(woundName(w)) + '</span>');
         if (p.larva) tags.push('<span class="tag purple">личинка</span>');
         if (p.armor) tags.push('<span class="tag">броня</span>');
+        if (p.tissue) tags.push('<span class="tag yellow">🧫 ткань ×' + p.tissue + '</span>');
         if (p.laika) tags.push('<span class="tag yellow">🐕 Лайка: ' + (p.laika === 'board' ? 'рядом' : 'в ' + esc(roomLabel(p.laika))) + '</span>');
         if (p.signal) tags.push('<span class="tag green">сигнал</span>');
         tags.push('<span class="tag yellow">знания ' + p.knowledge + (p.knowledgeActive ? ' ✓' : '') + '</span>');
