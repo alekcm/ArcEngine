@@ -126,6 +126,17 @@ function seatOf(socket) { return game.seats.find(s => s.socket === socket); }
 function hostSeat() { return game.seats.find(s => s.socket) || game.seats[0]; }
 function isHost(socket) { const s = seatOf(socket); return s && s === hostSeat(); }
 
+/** A card one player shows to the whole table (Tab over a card): text only, art from our own folders. */
+function shownCard(card) {
+    if (!card || typeof card !== 'object') return null;
+    const text = (v, n) => typeof v === 'string' ? v.slice(0, n) : '';
+    const name = text(card.name, 80).trim();
+    if (!name) return null;
+    const art = text(card.art, 120);
+    return { name, text: text(card.text, 400), tag: text(card.tag, 24),
+        art: /^art\/[A-Za-z0-9_]+\/[A-Za-z0-9_]+\.jpg$/.test(art) ? art : '' };
+}
+
 function lobbyMsg() {
     return { t: 'lobby', phase: game.phase, settings: game.settings,
         seats: game.seats.map((s, i) => ({ id: i, name: s.name, charId: s.charId, colors: s.colors, ready: s.ready, online: !!s.socket, host: s === hostSeat() })),
@@ -299,6 +310,15 @@ function onMessage(socket, m) {
             game.poses[pid] = pose;
             const msg = { t: 'pose', pid, pose };
             for (const c of clients) if (c !== socket) c.send(msg);
+            break;
+        }
+        case 'show': {
+            const seat = seatOf(socket); if (!seat) return;
+            const pid = game.seats.indexOf(seat);
+            const now = Date.now(); if (socket.lastShow && now - socket.lastShow < 350) return; socket.lastShow = now;
+            const card = shownCard(m.card); if (!card) return;
+            const msg = { t: 'show', pid, from: seat.name, cid: String(m.cid || '').slice(0, 32), card };
+            for (const c of clients) c.send(msg);
             break;
         }
         case 'chat': {

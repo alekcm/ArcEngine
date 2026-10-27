@@ -156,14 +156,14 @@ export class TableFX {
             }
             case 'event': case 'attack': case 'queen': {
                 const k = f.type;
+                // The Event card is drawn by the table-wide event window itself (centred, closed by
+                // «Готово»), so a second flying copy would sit on top of it.
+                if (k === 'event' && f.view && f.view.prompt && f.view.prompt.kind === 'ack' && f.view.prompt.event === f.card) { Snd.play('card'); done(); break; }
                 const from = this.pileRect(k);
                 const mid = this.centerRect();
                 const title = k === 'event' ? 'Событие' : k === 'attack' ? 'Атака' + (f.intruder ? ' · ' + (this.intruderNames[f.intruder] || f.intruder) : '') : 'Королева';
                 const art = k === 'event' ? eventArt(f.card) : k === 'attack' ? attackArt(f.card) : queenArt(f.card);
                 const face = (art ? '<div class="fc-art" style="background-image:url(' + art + ')"></div>' : '') + '<small>' + esc(title) + '</small><b>' + esc(f.name || '') + '</b>' + (f.text ? '<p>' + esc(f.text) + '</p>' : '') + (pname && k === 'attack' ? '<em>→ ' + esc(pname) + '</em>' : '');
-                // The Event card is drawn by the table-wide event window itself (centred, closed by
-                // «Готово»), so a second flying copy would sit on top of it.
-                if (k === 'event' && f.view && f.view.prompt && f.view.prompt.kind === 'ack' && f.view.prompt.event === f.card) { Snd.play('card'); done(); break; }
                 const el = this.makeCard(DECK_COLORS[k], face, art ? 220 : 170, art ? 330 : 236);
                 Snd.play('card');
                 this.fly(el, from || mid, mid, 550, { rotA: -10, rotB: 0, scaleA: 0.5, scaleB: 1, arc: 30 }, async () => {

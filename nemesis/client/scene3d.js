@@ -1849,18 +1849,22 @@ export class Scene3D {
     /** Remote cursor: a small coloured arrow hovering above the table. */
     setCursor(pid, x, z, color, name, off) {
         let c = this.cursors[pid];
-        if (off) { if (c) { c.root.dispose(); delete this.cursors[pid]; } return; }
+        if (off) { if (c) { c.root.dispose(); if (c.shadow) c.shadow.dispose(); delete this.cursors[pid]; } return; }
         if (!c) {
             const S = this.scene;
             const root = new (B().TransformNode)('cur' + pid, S);
+            // A soft shadow marks the exact point on the floor: the arrow itself floats a bit higher.
+            const shadow = B().MeshBuilder.CreateDisc('curs' + pid, { radius: 0.55, tessellation: 20 }, S);
+            shadow.rotation.x = Math.PI / 2; shadow.position.set(x, 0.115, z); shadow.isPickable = false;
+            shadow.material = flatMat(S, '#000000', { alpha: 0.3, spec: 0 });
             const arrow = B().MeshBuilder.CreateCylinder('cura', { diameterTop: 0, diameterBottom: 0.7, height: 1.1, tessellation: 3 }, S);
             arrow.parent = root; arrow.rotation.z = Math.PI; arrow.rotation.y = Math.PI / 6; arrow.position.y = 0.55; arrow.scaling.z = 0.35; arrow.isPickable = false;
             arrow.material = flatMat(S, color, { emissive: 0.55 });
             const ring = B().MeshBuilder.CreateTorus('curr', { diameter: 0.9, thickness: 0.06, tessellation: 16 }, S);
             ring.parent = root; ring.position.y = 0.04; ring.isPickable = false; ring.material = flatMat(S, color, { emissive: 0.8 });
             const label = this.makeLabel('curl', name, '', root, 0, 1.5, 0, 2.6);
-            c = this.cursors[pid] = { root, target: new (B().Vector3)(x, 0, z), label, last: this.t };
-            root.position.set(x, 0, z);
+            c = this.cursors[pid] = { root, shadow, target: new (B().Vector3)(x, 0, z), label, last: this.t };
+            root.position.set(x, 0.32, z);
         }
         c.target.set(x, 0, z); c.last = this.t;
     }
@@ -2030,7 +2034,8 @@ export class Scene3D {
         for (const n of Object.values(this.intr)) if (n.label) { n.label.scaling.setAll(lk); n.label.position.y = 3.0 + (lk - 1) * 1.0; }
         for (const c of Object.values(this.cursors)) {
             B().Vector3.LerpToRef(c.root.position, c.target, Math.min(1, dt * 12), c.root.position);
-            c.root.position.y = 0.25 + Math.sin(t * 3) * 0.05;
+            c.root.position.y = 0.32 + Math.sin(t * 3) * 0.05;      // floats a little above the floor
+            if (c.shadow) { c.shadow.position.x = c.root.position.x; c.shadow.position.z = c.root.position.z; }
         }
         for (let i = this.pings.length - 1; i >= 0; i--) {
             const p = this.pings[i], age = t - p.t0;

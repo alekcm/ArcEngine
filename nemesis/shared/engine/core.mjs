@@ -463,7 +463,9 @@ OPS['knowledge.threshold'] = (state, step) => {
     if (!state.fieldDataDeck.length) return;
     const three = state.fieldDataDeck.splice(0, 3);
     ask(state, { kind: 'choice', player: p.id, title: 'Порог знаний ' + step.t + ': выберите карту полевых данных (ляжет на верх колоды)',
-        options: three.map(c => ({ id: c, label: FIELD_DATA[c.split('#')[0].split('.')[1]].name, desc: FIELD_DATA[c.split('#')[0].split('.')[1]].text })) },
+        wide: true,
+        options: three.map(c => ({ id: c, label: FIELD_DATA[c.split('#')[0].split('.')[1]].name, desc: FIELD_DATA[c.split('#')[0].split('.')[1]].text,
+            art: 'field/' + c.split('#')[0].split('.')[1] })) },
         { op: 'knowledge.pick', player: p.id, three });
 };
 OPS['knowledge.pick'] = (state, step) => {

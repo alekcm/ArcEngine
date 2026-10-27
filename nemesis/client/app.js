@@ -6,7 +6,7 @@ import { DEFAULTS } from './characters.js';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
-import { cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, eventArt, attackArt, queenArt, itemArt } from './cards.js';
+import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, eventArt, attackArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, FEATS, objectiveTextOf,
     EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
@@ -38,6 +38,10 @@ const app = {
     charId: null, colors: {}, name: '', ready: false, menuCollapsed: true,
     canUndo: false, bagShown: null, bagTimer: null, deckKind: 'event', altHeld: false,
     wp: null, itemPick: null, itemPickMin: false, gallery: false,
+    hoverCard: null,    // card under the pointer: { kind: 'card', id } | { kind: 'item', uid }
+    showing: null,      // the card currently shown to the table: { card, from, cid }
+    showCid: '',        // id of my own show, so the server echo does not draw it twice
+    showTimer: null,
 };
 const EVENT_BY_ID = Object.fromEntries(EVENT_CARDS.map(e => [e.id, e]));
 const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(e => [e.id, e]));
@@ -66,11 +70,82 @@ function onMessage(m) {
             break;
         case 'notice': notice(m.text, m.kind); break;
         case 'chat': addChat(m); break;
+        case 'show': {
+            // A card somebody shows to the table. My own show is already on screen (sent locally),
+            // so the echo only confirms it reached the others.
+            if (m.pid === app.me && m.cid && m.cid === app.showCid) break;
+            presentCard(m.card, m.from || 'Игрок');
+            break;
+        }
         case 'cursor': if (scene && app.view && m.pid !== app.me) { const p = app.view.players[m.pid]; if (p && CHARACTERS[p.charId]) scene.setCursor(m.pid, m.x, m.z, CHARACTERS[p.charId].color, p.name, m.off); } break;
         case 'pose': if (scene && m.pid !== app.me) scene.setPose(m.pid, m.pose, false); break;
         case 'ping': if (scene && app.view) { const p = app.view.players[m.pid]; if (p && CHARACTERS[p.charId]) { scene.ping(m.x, m.z, CHARACTERS[p.charId].color); Snd.play('ping'); if (m.pid !== app.me) notice('📍 ' + p.name + (m.room ? ' указывает на ' + roomLabel(m.room) : ' указывает на стол'), 'ping'); } } break;
     }
 }
+
+/** Big card at the right edge of the screen, then the same card as a chat entry. */
+const CARD_SHOW_MS = 5000;
+function cardBlock(card, cls) {
+    const art = card.art ? '<div class="cb-art" style="background-image:url(' + esc(card.art) + ')"></div>'
+        : '<div class="cb-art plain"><span>🂠</span></div>';
+    return '<div class="' + cls + '">' + art + (card.tag ? '<span class="tag">' + esc(card.tag) + '</span>' : '') +
+        '<b>' + esc(card.name) + '</b><small>' + esc(card.text || '') + '</small></div>';
+}
+function presentCard(card, from) {
+    if (!card || !card.name) return;
+    const box = $('cardShow');
+    clearTimeout(app.showTimer);
+    // A card still on screen goes straight to the chat: nobody should lose a shown card.
+    if (app.showing) addChatCard(app.showing.from, app.showing.card);
+    app.showing = { card, from };
+    box.innerHTML = '<div class="cs-from">' + esc(from || 'Игрок') + ' показывает</div>' + cardBlock(card, 'cs-card');
+    box.classList.remove('hidden');
+    requestAnimationFrame(() => box.classList.add('on'));
+    app.showTimer = setTimeout(() => {
+        box.classList.remove('on');
+        setTimeout(() => { if (!box.classList.contains('on')) box.classList.add('hidden'); }, 260);
+        addChatCard(from, card);
+        if (app.showing && app.showing.card === card) app.showing = null;
+    }, CARD_SHOW_MS);
+}
+function addChatCard(from, card) {
+    const d = document.createElement('div');
+    d.className = 'chat-line';
+    d.innerHTML = '<b>' + esc(from || 'Игрок') + ':</b> <span class="chat-show">показывает карту</span>' + cardBlock(card, 'chat-card');
+    $('chatLines').appendChild(d);
+    $('chatLines').scrollTop = $('chatLines').scrollHeight;
+}
+/** Card under the pointer, ready to be shown: a hand/action card or an item from the sheet. */
+function hoveredCardDesc() {
+    const h = app.hoverCard; if (!h || !app.view) return null;
+    if (h.kind === 'card') {
+        const d = describeCard(h.id);
+        return { name: d.name, text: d.text || '', art: cardArt(h.id) || '',
+            tag: d.contam ? 'заражение' : d.field ? 'полевые данные' : 'карта действия' };
+    }
+    const me = app.view.players.find(p => p.id === app.me); if (!me) return null;
+    const inst = (me.items || []).find(i => i.uid === h.uid) || (me.armor && me.armor.uid === h.uid ? me.armor : null);
+    const d = inst && ITEMS[inst.item]; if (!d) return null;
+    return { name: d.name, text: d.text || '', art: itemArt(inst.item) || '', tag: 'предмет' };
+}
+function showCardToTable(card) {
+    const me = app.view && app.view.players.find(p => p.id === app.me);
+    const from = me ? me.name : 'Вы';
+    const cid = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    app.showCid = cid;
+    net.send({ t: 'show', cid, card });
+    presentCard(card, from);
+    Snd.play('click');
+}
+// Remember what the pointer is over: a hand/action card or an item anywhere in the UI.
+document.addEventListener('pointerover', e => {
+    const el = e.target && e.target.closest ? e.target : null;
+    if (!el) { app.hoverCard = null; return; }
+    const cardEl = el.closest('[data-card]');
+    if (cardEl) { app.hoverCard = { kind: 'card', id: cardEl.dataset.card }; return; }
+    const itemEl = el.closest('[data-item]');
+    app.hoverCard = itemEl ? { kind: 'item', uid: itemEl.dataset.item } : null;
+});
 
 function notice(text, kind) {
     const el = document.createElement('div'); el.className = 'notice ' + (kind || ''); el.textContent = text;
@@ -265,6 +340,8 @@ function renderGame() {
             onCursor: (x, z, room) => { lastFloor = { x, z, room }; const now = performance.now(); if (now - cursorSent > 50) { cursorSent = now; net.send({ t: 'cursor', x, z }); } },
             onPose: pose => net.send({ t: 'pose', dx: pose.dx, dz: pose.dz, rot: pose.rot }),
         });
+        // The pointer left the board (onto the HUD): my table cursor must not stay frozen on the map.
+        $('scene').addEventListener('pointerleave', () => { if (app.view) net.send({ t: 'cursor', off: true }); });
     }
     scene.setMe(app.me);
     if (!dice) {
@@ -894,7 +971,14 @@ document.addEventListener('keydown', e => {
     // WASD pans the board; any camera move cancels a pending board question (like Esc).
     const wasd = { w: [0, 1], s: [0, -1], a: [-1, 0], d: [1, 0], ц: [0, 1], ы: [0, -1], ф: [-1, 0], в: [1, 0] }[e.key.toLowerCase()];
     if (wasd && scene) { closeWorldPop(); e.preventDefault(); scene.panCam(wasd[0], wasd[1]); }
-    if (e.key === 'Tab') { e.preventDefault(); if (lastFloor && !e.repeat && scene) net.send({ t: 'ping', x: lastFloor.x, z: lastFloor.z, room: lastFloor.room }); }
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        if (!e.repeat) {
+            const card = hoveredCardDesc();          // Tab over a card shows it to the whole table
+            if (card) showCardToTable(card);
+            else if (lastFloor && scene) net.send({ t: 'ping', x: lastFloor.x, z: lastFloor.z, room: lastFloor.room });
+        }
+    }
     else if (e.key === 'q' || e.key === 'Q' || e.key === 'й' || e.key === 'Й') { closeWorldPop(); if (scene) scene.rotateMe(-Math.PI / 12); }
     else if (e.key === 'e' || e.key === 'E' || e.key === 'у' || e.key === 'У') { closeWorldPop(); if (scene) scene.rotateMe(Math.PI / 12); }
     else if (e.key === 'c' || e.key === 'C' || e.key === 'с' || e.key === 'С') openSheet();
@@ -1006,7 +1090,7 @@ function sheetItemHtml(inst, picks) {
     if (inst.broken) meta.push('сломано');
     if (d.oneUse) meta.push('одноразовый');
     const opt = picks ? picks.get('item:' + inst.uid) : null;
-    return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + (opt ? ' pickable' : '') + '"' +
+    return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + (opt ? ' pickable' : '') + '" data-item="' + esc(inst.uid) + '"' +
         (opt ? ' data-pick="' + esc(opt) + '" title="Нажмите, чтобы выбрать этот предмет"' : '') + '>' +
         (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
         '<div><b>' + esc(d.name) + (d.quest ? ' · квестовый' : '') + '</b><small>' + esc(d.text || '') + '</small>' +
@@ -1158,7 +1242,7 @@ const HELP = `
 <h4>Спасательные капсулы</h4><p>Их количество зависит от числа игроков: 1–2 игрока — 2 капсулы, 3–4 — 3, 5 — 4; они раскладываются по секциям A и B по кругу (№1 в A, №2 в B и так далее) и до поры заперты. Состояние капсул всегда видно в верхней строке (№ · секция · 🔒/🔓/🚀 · занято n/2), а сами капсулы стоят в эвакуационных отсеках, как только отсек разведан. Отпираются они после первой гибели персонажа или когда самоуничтожение доходит до жёлтой зоны; ключ эвакуации и контроль шлюзов могут переключать замок. В отсеке: бросок шума, затем посадка (до 2 человек), старт — и вы вне корабля.</p>
 <h4>Конец игры</h4><p>Когда время дойдёт до 0 (или сработает самоуничтожение/капсулы): проверяются двигатели (нужно ≥2 исправных), пункт назначения (A–D по тайной карте координат), заражение всех карт выживших и цели.</p>
 <h4>Управление</h4><p>ЛКМ по комнате — идти (спросит «идти или красться»), по чужому — атака своим оружием или ближний бой, по тяжёлому объекту — в какую руку взять. Нажатие мимо окна, <b>Esc</b> или <b>WASD</b> отменяют вопрос. WASD — панорама, ПКМ/СКМ — поворот камеры, колесо — масштаб. Наведите на комнату — подсказка.</p>
-<h4>Горячие клавиши</h4><p><b>Esc</b> — закрыть окно или вернуть свой последний шаг (пока вы выбираете действие). <b>Alt</b> (удерживать) — номера коридоров и цвета поиска над комнатами. <b>C</b> — планшет персонажа, <b>F</b> — к своей комнате, <b>Tab</b> — пинг на карте, <b>Q</b>/<b>E</b> — повернуть камеру, <b>Enter</b> — подтвердить выбранные карты, <b>1…9</b> — нажать кнопку в окне выбора.</p>
+<h4>Горячие клавиши</h4><p><b>Esc</b> — закрыть окно или вернуть свой последний шаг (пока вы выбираете действие). <b>Alt</b> (удерживать) — номера коридоров и цвета поиска над комнатами. <b>C</b> — планшет персонажа, <b>F</b> — к своей комнате, <b>Tab</b> — пинг по столу (а если курсор над картой в руке или предметом — показать эту карту всем на 5 секунд, потом она останется в чате), <b>Q</b>/<b>E</b> — повернуть камеру, <b>Enter</b> — подтвердить выбранные карты, <b>1…9</b> — нажать кнопку в окне выбора.</p>
 <h4>Выбор предмета</h4><p>Когда движок просит выбрать предмет (что сбросить, каким оружием стрелять, что передать, в какую руку взять объект), ответить можно тремя способами: кнопкой в списке, в центральном окне с картинками — или <b>прямо в планшете персонажа</b> (клавиша C): нужные предметы и слоты рук подсвечиваются и нажимаются, кнопка «🧍 Персонаж» в это время мигает. Удобно, когда предметов много и по картинке понятнее, чем по названию.</p>
 <h4>Мешок и события</h4><p>Жетон из мешка тянет сам игрок — нажмите на мешок или на большую кнопку; внизу появится, <i>зачем</i> тянули и что вытянули. Карта события остаётся на столе, пока каждый не нажмёт «Готово».</p>
 <h4>Колоды и сбросы</h4><p>Любая стопка внизу справа (и кнопка «🃏 Колоды») открывает просмотр: события, атаки чужих, карты здоровья Королевы, тяжёлые травмы, сбросы предметов, компьютер и ваш собственный сброс. Вкладка <b>«Подвиги»</b> показывает общий запас одноразовых карт, которые вы получите за выбор цели: что ещё в запасе и что уже выбыло из игры.</p>
