@@ -333,14 +333,20 @@ export function buildCharacter(scene, charId, colors = {}) {
         if (sp.syringe) { F(FIXED.glass, cy(0.03, 0.03, 0.26, 6, R, -0.39 * W, 1.24, 0.14, [0.9, 0, 0]), { alpha: 0.7 }); F(FIXED.steel, cy(0.01, 0.01, 0.16, 4, R, -0.39 * W, 1.15, 0.32, [0.9, 0, 0])); }
         if (sp.chains) { for (let i = 0; i < 5; i++) Z(sp.chains, bx(0.06, 0.04, 0.03, R, -0.2 + i * 0.1, 1.08 - Math.abs(i - 2) * 0.03, 0.06)); for (const s of [-1, 1]) Z(sp.chains, bx(0.18, 0.08, 0.18, R, s * 0.39 * W, 1.12, 0.03)); }
         // companions
-        if (sp.scanArm) {   // articulated sensor arm rising from a back unit and reaching over the right shoulder with a camera head
-            Z(sp.scanArm, bx(0.3 * W, 0.4, 0.16, R, 0.05, 1.8, -0.26));
-            Z(sp.scanArm, bx(0.08, 0.6, 0.08, R, 0.2 * W, 2.2, -0.3, [0.25, 0, -0.2])); F(FIXED.darkSteel, sp_(0.12, 6, R, 0.27 * W, 2.5, -0.22));
-            Z(sp.scanArm, bx(0.08, 0.08, 0.6, R, 0.28 * W, 2.56, 0.06, [-0.2, 0, 0])); F(FIXED.darkSteel, sp_(0.12, 6, R, 0.28 * W, 2.6, 0.34));
-            Z(sp.scanArm, bx(0.14, 0.12, 0.18, R, 0.28 * W, 2.58, 0.46)); Z(LZ, cy(0.08, 0.08, 0.03, 8, R, 0.28 * W, 2.58, 0.56, [Math.PI / 2, 0, 0]));
-            // second branch: a gripper claw on a short jointed arm beside the lamp head
-            F(FIXED.darkSteel, sp_(0.1, 6, R, 0.28 * W, 2.5, 0.2)); Z(sp.scanArm, bx(0.07, 0.07, 0.34, R, 0.4 * W, 2.46, 0.34, [0, 0.35, 0]));
-            F(FIXED.darkSteel, bx(0.1, 0.1, 0.08, R, 0.46 * W, 2.46, 0.5)); for (const s of [-1, 1]) F(FIXED.steel, bx(0.03, 0.1, 0.12, R, 0.46 * W + s * 0.05, 2.46, 0.6, [0, 0, 0])); for (const s of [-1, 1]) F(FIXED.steel, bx(0.03, 0.06, 0.06, R, 0.46 * W + s * 0.03, 2.46, 0.68, [0, s * 0.5, 0]));   // two pincer jaws
+        if (sp.scanArm) {   // single industrial probe arm as on the original art: backpack unit, two long jointed segments rising behind the right shoulder and arching high over the head, boxy scanner head with a red laser
+            const seg = (a, b, r) => {   // cylinder segment between two points
+                const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.hypot(dx, dy, dz);
+                const m = cy(r, r, len, 6, R, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+                m.rotationQuaternion = B().Quaternion.FromUnitVectorsToRef(new (B().Vector3)(0, 1, 0), new (B().Vector3)(dx / len, dy / len, dz / len), new (B().Quaternion)());
+                return m;
+            };
+            const P0 = [0.18 * W, 2.12, -0.3], P1 = [0.24 * W, 2.98, -0.36], P2 = [0.2 * W, 3.34, 0.12], P3 = [0.16 * W, 3.16, 0.4];
+            Z(sp.scanArm, bx(0.34 * W, 0.44, 0.16, R, 0, 1.8, -0.26)); F(FIXED.darkSteel, bx(0.12, 0.12, 0.1, R, 0.18 * W, 2.04, -0.3));   // backpack unit + mount
+            F(FIXED.darkSteel, sp_(0.11, 6, R, ...P0)); Z(sp.scanArm, seg(P0, P1, 0.05)); F(FIXED.steel, seg([P0[0] + 0.07, P0[1] + 0.1, P0[2] - 0.06], [P1[0] + 0.07, P1[1] - 0.1, P1[2] - 0.06], 0.02));   // lower segment + hydraulic rod
+            F(FIXED.darkSteel, sp_(0.11, 6, R, ...P1)); Z(sp.scanArm, seg(P1, P2, 0.05)); F(FIXED.darkSteel, sp_(0.09, 6, R, ...P2)); Z(sp.scanArm, seg(P2, P3, 0.04));   // elbow, upper segment arching forward, wrist
+            const h = new (B().TransformNode)('scanHead', S); h.parent = R; h.position.set(P3[0], P3[1], P3[2]); h.rotation.x = 0.9;   // scanner head tilted down toward what she looks at
+            Z(sp.scanArm, bx(0.16, 0.14, 0.24, h, 0, 0, 0.06)); F(FIXED.darkSteel, bx(0.1, 0.08, 0.08, h, 0, -0.1, 0.1)); F(FIXED.steel, bx(0.03, 0.08, 0.1, h, 0.1, 0, 0.14));   // body, under-lamp, side antenna
+            Z(LZ, cy(0.05, 0.05, 0.02, 8, h, 0, 0, 0.19, [Math.PI / 2, 0, 0])); F('#ff3030', cy(0.02, 0.02, 0.02, 6, h, 0, -0.1, 0.15, [Math.PI / 2, 0, 0]), { emissive: 1.0 });   // lens + red laser emitter
             if (sp.armHarness) {   // crossed chest straps tie the back unit down to the belt
                 for (const s of [-1, 1]) F(FIXED.strap, bx(0.07, 0.76, 0.03, R, s * 0.08 * W, 1.84, 0.255, [0, 0, s * 0.3]));
                 F(FIXED.steel, bx(0.1, 0.1, 0.02, R, 0, 1.84, 0.27)); for (const s of [-1, 1]) F(FIXED.strap, bx(0.08, 0.5, 0.03, R, s * 0.18 * W, 1.74, -0.19));   // buckle, back straps down to the belt
