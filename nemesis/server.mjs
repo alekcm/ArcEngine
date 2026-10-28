@@ -278,8 +278,9 @@ function onMessage(socket, m) {
                 return;
             }
             if (!isHost(socket)) return;
+            // Nothing to take back: answer with the current state instead of popping an empty stack.
+            if (!game.undo.length) { sendState(socket, true); return; }
             const n = Math.max(1, Math.min(Number(m.steps) || 1, game.undo.length));
-            if (!n) return;
             let entry = null;
             for (let i = 0; i < n; i++) { entry = game.undo.pop(); game.history.pop(); }
             game.state = JSON.parse(entry.json);

@@ -414,7 +414,7 @@ OPS['pod.decide'] = (state, step) => {
     const p = player(state, step.player);
     const pod = state.pods.find(x => x.num === p.pod);
     if (step.answer === 'launch') {
-        for (const pid of pod.occupants) { const o = state.players[pid]; o.status = 'escaped'; o.pod = null; log(state, '🚀 ' + pname(o) + ' покидает корабль в капсуле №' + pod.num + '.', 'event'); }
+        for (const pid of pod.occupants) { const o = state.players[pid]; o.status = 'escaped'; o.pod = null; state.finishOrder.push(o.id); log(state, '🚀 ' + pname(o) + ' покидает корабль в капсуле №' + pod.num + '.', 'event'); }
         pod.launched = true; pod.occupants = [];
         next(state, { op: 'turn.end' });
     } else if (step.answer === 'wait') {

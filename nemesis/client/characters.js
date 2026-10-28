@@ -765,10 +765,10 @@ export function buildIntruder(scene, type) {
             const hip = new (B().TransformNode)('lh', S); hip.parent = body;
             hip.position.set(sd * 0.5, 0.26, -0.1 + k * 0.18);
             hip.rotation.set(0.2, a, -sd * (0.35 + k * 0.1));
-            cyl(0.1, 0.16, len, 4, hip, 0, -len / 2, 0).material = skin;
+            cy(0.1, 0.16, len, 4, hip, 0, -len / 2, 0).material = skin;
             const knuckle = new (B().TransformNode)('lk', S); knuckle.parent = hip; knuckle.position.set(0, -len, 0);
             knuckle.rotation.set(spread, 0, sd * 0.2);
-            cyl(0.05, 0.1, len * 1.15, 4, knuckle, 0, -len * 0.55, 0).material = skinDark;
+            cy(0.05, 0.1, len * 1.15, 4, knuckle, 0, -len * 0.55, 0).material = skinDark;
             bx(0.05, 0.22, 0.05, knuckle, 0, -len * 1.15, 0, [0.35, 0, 0]).material = claw;
         }
         // long segmented tail curled up behind, ending in a stinger
@@ -776,7 +776,7 @@ export function buildIntruder(scene, type) {
         for (let i = 0; i < 6; i++) {
             const seg = new (B().TransformNode)('ls', S); seg.parent = tp; seg.position.set(0, 0.24, 0); seg.rotation.x = 0.34 + i * 0.08;
             const d = 0.22 - i * 0.028;
-            cyl(d * 0.85, d, 0.3, 5, seg, 0, 0.13, 0).material = i % 2 ? skin : skinDark;
+            cy(d * 0.85, d, 0.3, 5, seg, 0, 0.13, 0).material = i % 2 ? skin : skinDark;
             if (i % 2 === 0) bx(0.05, 0.06, 0.05, seg, 0, 0.13, -d * 0.5, [-0.4, 0, 0]).material = claw;
             tp = seg;
         }
