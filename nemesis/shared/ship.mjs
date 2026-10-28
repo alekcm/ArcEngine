@@ -130,7 +130,7 @@ const ORIGINAL_PATHS = {
 const ORIGINAL_TECH = ['002', '004', '005', '009', '014', '015', '019', '021'];
 const ORIGINAL_ENGINE_NUMBERS = { '021': 1, '020': 2, '019': 3 };
 
-function buildShip(roomsSpec, edges, techRooms, engineNumbers, mode, paths = {}) {
+function buildShip(roomsSpec, edges, techRooms, engineNumbers, mode, paths = {}, pinned = {}) {
     const rooms = {};
     for (const [id, kind, x, y] of roomsSpec) {
         rooms[id] = { id, kind, x, y, tech: techRooms.includes(id), exits: [] };
@@ -144,6 +144,11 @@ function buildShip(roomsSpec, edges, techRooms, engineNumbers, mode, paths = {})
         rooms[b].exits.push({ to: a, corridor: id, num: 0 });
     }
     numberExits(rooms);
+    // Printed door numbers, where they are known, then one agreed set per corridor for every other
+    // door (see agreeNumbers): the same digits on both sides of a passage.
+    for (const r of Object.values(rooms)) for (const e of r.exits) { const p = pinned[e.corridor]; if (p) { e.nums = p.slice(); e.num = p[0]; } }
+    for (const r of Object.values(rooms)) { const p = pinned['t:' + r.id]; if (p) r.techNums = p.slice(); }
+    agreeNumbers(rooms, pinned);
     const ship = { mode, rooms, corridors, techNoise: false };
     computeBounds(ship);
     return ship;
@@ -184,6 +189,91 @@ function numberExits(rooms) {
         r.techNums = tech ? tech.nums : [];
     }
 }
+/**
+ * One set of numbers per corridor. Noise is rolled in a room and the corridor it points to is the one
+ * printed with that number; on the board the same passage carries the same digits on both of its ends.
+ * The two ends used to be numbered independently, so a corridor could read "1 2" from one room and
+ * "4" from the other — a roll of 4 in the second room then lit a different corridor, and the board
+ * disagreed with itself. Here the doors are agreed globally: every room still deals out 1..4 exactly
+ * once, but each corridor carries a single set, the same set for both rooms it joins.
+ * `pinned` fixes the corridors whose printed numbers are known (see ORIGINAL_DOOR_NUMBERS).
+ */
+function agreeNumbers(rooms, pinned = {}) {
+    const roomList = Object.values(rooms);
+    const doorKeys = new Set();
+    for (const r of roomList) { for (const e of r.exits) doorKeys.add(e.corridor); if (r.tech) doorKeys.add('t:' + r.id); }
+    const before = new Map();
+    for (const r of roomList) {
+        for (const e of r.exits) { if (!before.has(e.corridor)) before.set(e.corridor, []); before.get(e.corridor).push((e.nums || [e.num]).slice()); }
+        if (r.tech) before.set('t:' + r.id, [r.techNums.slice()]);
+    }
+    const sets = [[1], [2], [3], [4], [1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4]];
+    const wide = sets.concat([[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4], [1, 2, 3, 4]]);
+    const cost = (k, v) => {
+        const o = before.get(k) || [];
+        let best = 9;
+        for (const c of o) best = Math.min(best, c.length + v.length - 2 * c.filter(n => v.includes(n)).length);
+        return best;
+    };
+    const doors = roomList.map(r => ({ id: r.id, list: r.exits.map(e => e.corridor).concat(r.tech ? ['t:' + r.id] : []) }));
+    const solve = (domain, allowEmpty) => {
+        const dom = new Map([...doorKeys].map(k => {
+            const pin = pinned[k];
+            if (pin) return [k, [pin]];
+            const base = domain.slice().sort((x, y) => cost(k, x) - cost(k, y));
+            return [k, allowEmpty ? [[]].concat(base) : base];
+        }));
+        const assign = new Map();
+        let nodes = 0;
+        const combos = (rd, un) => {
+            const used = new Set();
+            for (const k of rd.list) if (assign.has(k)) for (const n of assign.get(k)) used.add(n);
+            const rest = [1, 2, 3, 4].filter(n => !used.has(n));
+            const out = [];
+            const walk = (i, left, cur) => {
+                if (i === un.length) { if (!left.length) out.push([...cur.entries()]); return; }
+                const k = un[i];
+                for (const v of dom.get(k)) if (v.every(n => left.includes(n))) { cur.set(k, v); walk(i + 1, left.filter(n => !v.includes(n)), cur); cur.delete(k); }
+            };
+            walk(0, rest, new Map());
+            return out;
+        };
+        const go = () => {
+            if (++nodes > 200000) return false;
+            for (const rd of doors) {
+                const seen = new Set();
+                for (const k of rd.list) if (assign.has(k)) for (const n of assign.get(k)) { if (seen.has(n)) return false; seen.add(n); }
+            }
+            let pick = null, opts = null;
+            for (const rd of doors) {
+                const un = rd.list.filter(k => !assign.has(k));
+                if (!un.length) { if (new Set(rd.list.flatMap(k => assign.get(k))).size !== 4) return false; continue; }
+                const c = combos(rd, un);
+                if (!c.length) return false;
+                if (!opts || c.length < opts.length) { pick = rd; opts = c; }
+            }
+            if (!pick) return true;
+            for (const opt of opts) {
+                for (const [k, v] of opt) assign.set(k, v);
+                if (go()) return true;
+                for (const [k] of opt) assign.delete(k);
+            }
+            return false;
+        };
+        return go() ? assign : null;
+    };
+    const done = solve(sets, false) || solve(wide, false) || solve(wide, true);
+    if (!done) return;
+    for (const r of roomList) {
+        for (const e of r.exits) {
+            const v = done.get(e.corridor);
+            if (v === undefined) continue;
+            e.nums = v.slice(); e.num = v[0];
+        }
+        if (r.tech) { const v = done.get('t:' + r.id); if (v !== undefined) r.techNums = v.slice(); }
+    }
+}
+
 function angleOf(from, to) {
     // clockwise angle from "up"; screen Y grows downward
     let a = Math.atan2(to.x - from.x, -(to.y - from.y));
@@ -196,18 +286,20 @@ function computeBounds(ship) {
     ship.bounds = { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
 }
 
+/**
+ * Numbers printed on the board for doors that were read off the scan (the rest are derived). Keyed by
+ * corridor id, plus `t:<room>` for a technical-corridor hatch. Both rooms of a corridor share the set.
+ */
+const ORIGINAL_DOOR_NUMBERS = {
+    '001-002': [3], '001-003': [1, 2], '001-004': [4],   // cockpit: 3 / "1 2" / 4
+    '002-006': [4], 't:002': [1, 2],                      // 002: hatch "1 2", 001 "3", 006 "4"
+    '003-007': [3, 4],                                    // 003: 001 "1 2", 007 "3 4"
+    '005-010': [1, 2],                                    // 005: door to 010 carries "1 2"
+    '012-016': [3, 4],                                    // 012 and 016 both read "3 4" on the door
+};
+
 export function originalShip() {
-    const ship = buildShip(ORIGINAL_ROOMS, ORIGINAL_EDGES, ORIGINAL_TECH, ORIGINAL_ENGINE_NUMBERS, 'original', ORIGINAL_PATHS);
-    // Printed board, cockpit (001): the door to 002 is number 3, the door to 003 carries the pair
-    // "1 2" (the room has three corridors, so one of them takes two numbers) and the door to 004 is 4.
-    // The auto-numbering can derive most rooms but not this one; it used to leave a second "3" here,
-    // so the cockpit read "2 3 3 4" on the board.
-    const cockpitNums = { '002': [3], '003': [1, 2], '004': [4] };
-    for (const e of ship.rooms['001'].exits) {
-        const nums = cockpitNums[e.to];
-        if (nums) { e.nums = nums.slice(); e.num = nums[0]; }
-    }
-    return ship;
+    return buildShip(ORIGINAL_ROOMS, ORIGINAL_EDGES, ORIGINAL_TECH, ORIGINAL_ENGINE_NUMBERS, 'original', ORIGINAL_PATHS, ORIGINAL_DOOR_NUMBERS);
 }
 
 // ---------------------------------------------------------------------------------------------
