@@ -225,7 +225,7 @@ export class Scene3D {
         const qm = this.makeLabel('qm_' + r.id, '?', '', root, 0, 0.13, 0, 7.5);
         qm.rotation.set(Math.PI / 2, 0, 0); qm.billboardMode = 0; qm.isPickable = false;
         { const ctx = qm.metadata.dt.getContext(); ctx.clearRect(0, 0, 512, 160); ctx.font = 'bold 150px Segoe UI, Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#56687c'; ctx.fillText('?', 256, 138); qm.metadata.dt.update(); qm.metadata.text = 'qm'; }
-        this.roomNodes[r.id] = { root, plat, sel, label, altLabel, qm, data: r, exitAngles, techAngle, techLeds, shell: null, shellKey: null, strips: null, emergency: [], malfunction: false, flicker: Math.random() * 10, flip: null, pop: null, podsRoot: null, podKey: null };
+        this.roomNodes[r.id] = { root, plat, sel, label, altLabel, qm, data: r, exitAngles, techAngle, techLeds, shell: null, shellKey: null, strips: null, emergency: [], malfunction: false, flicker: Math.random() * 10, flip: null, pop: null, podsRoot: null, podKey: null, fireRoot: null, fireOn: null, fireParts: [] };
     }
 
     /** Technical-corridor entrance: a short tunnel through the wall line, ringed with blue LEDs. */
@@ -1479,6 +1479,7 @@ export class Scene3D {
         this.roomTiles = roomTiles;
         for (const d of this.dynamic) d.dispose();
         this.dynamic = [];
+        this.guardLights();
         this.selectable = new Set(selectableRooms || []);
         // room-token flip: triggered by fresh 'explore' fx entries (not on reconnect)
         const fx = view.fx || [];
@@ -1534,7 +1535,7 @@ export class Scene3D {
             for (const e of node.shell.emergency) e.setEnabled(node.malfunction);
             this.setRoomLights(node, !node.malfunction);
         }
-        if (rs.fire) this.addFire(node.root);
+        this.syncFire(node, !!rs.fire);
         let k = 0;
         for (const o of rs.objects) this.addObject(o.type, node.root, k++, r.id, k - 1);
         if (tile === 'nest' && rs.explored) for (let i = 0; i < view.nestEggs; i++) this.addObject('egg', node.root, 10 + i);
@@ -1684,6 +1685,24 @@ export class Scene3D {
     }
 
     /** Main lighting of a room: every glowing material inside the shell is swapped for a dead (non-emissive) copy on malfunction. */
+    /** Safety net for the shared materials.
+     *
+     *  Every material here is cached and frozen (flatMat). Freezing also switches off the readiness
+     *  check, so a material keeps drawing with the shader it was compiled with. Babylon rebuilds all
+     *  shaders when the number of lights in the scene changes: a frozen material then draws with a
+     *  light list it was never compiled for and the board washes out white. Nothing in the game adds
+     *  or removes lights any more, but if anything ever does, unfreeze the materials once so they are
+     *  rebuilt instead of drawn wrong. */
+    guardLights() {
+        const n = this.scene.lights ? this.scene.lights.length : 0;
+        if (this.lightCount === undefined) { this.lightCount = n; return; }
+        if (this.lightCount === n) return;
+        this.lightCount = n;
+        const mats = (this.scene.materials || []).filter(m => m && m.unfreeze && m.freeze);
+        for (const m of mats) m.unfreeze();
+        setTimeout(() => { for (const m of mats) m.freeze(); }, 300);
+    }
+
     setRoomLights(node, on) {
         if (node.lightsOn === on) return; node.lightsOn = on;
         this.deadMats = this.deadMats || new Map();
@@ -1733,18 +1752,56 @@ export class Scene3D {
         for (const n of Object.values(this.corridorNodes)) if (n.numLabel) n.numLabel.setEnabled(this.alt);
     }
 
-    addFire(parent) {
+    /** Fire in a room: rebuilt only when the room catches fire or the fire goes out.
+     *
+     *  Deliberately no lights here. Every material in the scene is shared and frozen (see flatMat),
+     *  and adding or disposing a light invalidates all of them at once: Babylon then redraws the
+     *  frozen shaders with a light list they were never compiled for, and the whole board washed out
+     *  white the moment a fire appeared or was put out (the fire post put it out and everything
+     *  around vanished). The glow layer plus emissive flames give the same warm light and keep the
+     *  light count constant at two for the whole game. */
+    syncFire(node, on) {
+        if (node.fireOn === on) return;
+        node.fireOn = on;
+        if (node.fireRoot) { node.fireRoot.dispose(); node.fireRoot = null; }
+        node.fireParts = [];
+        if (!on) return;
         const S = this.scene;
-        for (let i = 0; i < 7; i++) {
-            const c = B().MeshBuilder.CreateCylinder('fire', { diameterTop: 0, diameterBottom: 0.9 + Math.random() * 0.6, height: 1.6 + Math.random() * 1.2, tessellation: 5 }, S);
-            c.parent = parent; c.position.set(-3.2 + Math.random() * 2.2, 0.8, 2.4 + Math.random() * 2.2);
-            c.material = this.M(i % 2 ? '#ff7a1a' : '#ffc23b', 1, { alpha: 0.85 }); c.isPickable = false;
-            c.metadata = { flame: true, phase: Math.random() * 6 };
-            this.dynamic.push(c);
+        const root = new (B().TransformNode)('fire_' + (node.data ? node.data.id : 'x'), S);
+        root.parent = node.root;
+        const parts = [];
+        const add = (m, mat) => { m.parent = root; m.material = mat; m.isPickable = false; m.convertToFlatShadedMesh && m.convertToFlatShadedMesh(); parts.push(m); return m; };
+        const cyl = (dt, db, h, tess, mat) => add(B().MeshBuilder.CreateCylinder('fire', { diameterTop: dt, diameterBottom: db, height: h, tessellation: tess }, S), mat);
+        // The fire sits away from the standing zone (figures) but well inside the walls.
+        const FX = -2.3, FZ = 2.0;
+        const burn = cyl(4.6, 4.6, 0.02, 16, this.M('#171210')); burn.position.set(FX, 0.19, FZ);           // scorched deck
+        const pool = cyl(4.0, 4.0, 0.02, 16, this.M('#ff7a1a', 0.75, { alpha: 0.3 })); pool.position.set(FX, 0.215, FZ);   // light pool
+        // flames: a tall cluster around the fire with a hotter core, each on its own flicker phase
+        for (let i = 0; i < 13; i++) {
+            const a = (i / 13) * Math.PI * 2 + Math.random() * 0.4, rad = 0.25 + Math.random() * 1.45;
+            const h = 1.5 + Math.random() * 1.5;
+            const f = cyl(0, 0.55 + Math.random() * 0.55, h, 6, this.M(i % 3 === 2 ? '#ffc23b' : '#ff7a1a', 1, { alpha: 0.9 }));
+            f.position.set(FX + Math.cos(a) * rad, h * 0.42, FZ + Math.sin(a) * rad);
+            f.metadata = { fire: 'flame', phase: Math.random() * 6.28 };
         }
-        const glow = new (B().PointLight)('fl', parent.position.add(new (B().Vector3)(-2.2, 1.8, 3.4)), S);
-        glow.diffuse = new (B().Color3)(1, 0.5, 0.15); glow.intensity = 0.9; glow.range = 16;
-        this.dynamic.push(glow);
+        for (let i = 0; i < 5; i++) {
+            const h = 1.1 + Math.random() * 0.9;
+            const c = cyl(0, 0.4 + Math.random() * 0.3, h, 6, this.M('#fff1b8', 1, { alpha: 0.95 }));
+            c.position.set(FX + (Math.random() - 0.5) * 1.0, h * 0.5, FZ + (Math.random() - 0.5) * 1.0);
+            c.metadata = { fire: 'flame', phase: Math.random() * 6.28 };
+        }
+        // embers rising out of the fire, and the smoke that hangs above it
+        for (let i = 0; i < 6; i++) {
+            const e = add(B().MeshBuilder.CreateSphere('ember', { diameter: 0.12, segments: 3 }, S), this.M('#ffd27a', 1));
+            e.position.set(FX + (Math.random() - 0.5) * 2.2, 0.6, FZ + (Math.random() - 0.5) * 2.2);
+            e.metadata = { fire: 'ember', phase: Math.random(), y0: 0.6 };
+        }
+        for (let i = 0; i < 4; i++) {
+            const sm = cyl(2.2, 1.0, 1.6, 7, this.M('#2b2320', 0.06, { alpha: 0.22 }));
+            sm.position.set(FX + (Math.random() - 0.5) * 1.6, 2.2, FZ + (Math.random() - 0.5) * 1.6);
+            sm.metadata = { fire: 'smoke', phase: Math.random(), y0: 2.2 };
+        }
+        node.fireRoot = root; node.fireParts = parts;
     }
     addObject(type, parent, k, roomId, objIndex) {
         const S = this.scene;
@@ -1976,9 +2033,23 @@ export class Scene3D {
     animate() {
         const t = this.t;
         this.applyShake();
-        for (const d of this.dynamic) {
-            if (!d.metadata) continue;
-            if (d.metadata.flame) { const s = 0.85 + 0.25 * Math.sin(t * 9 + d.metadata.phase); d.scaling.set(s, 1.3 - s * 0.3, s); d.rotation.y += 0.05; }
+        // Fire: flames flicker in place, embers climb out of them and the smoke drifts up and spreads.
+        for (const n of Object.values(this.roomNodes)) {
+            if (!n.fireParts || !n.fireParts.length) continue;
+            for (const p of n.fireParts) {
+                const md = p.metadata; if (!md) continue;
+                if (md.fire === 'flame') {
+                    const s = 0.88 + 0.22 * Math.sin(t * 9 + md.phase);
+                    p.scaling.set(s, 1.18 - 0.22 * Math.sin(t * 6.5 + md.phase * 1.7), s);
+                    p.rotation.y += 0.05;
+                } else if (md.fire === 'ember') {
+                    const q = (t * 0.42 + md.phase) % 1;
+                    p.position.y = md.y0 + q * 2.8; p.visibility = Math.max(0, 1 - q * 1.15);
+                } else if (md.fire === 'smoke') {
+                    const q = (t * 0.2 + md.phase) % 1, s = 0.7 + q * 1.4;
+                    p.position.y = md.y0 + q * 3.0; p.scaling.set(s, 1, s); p.visibility = 0.32 * (1 - q);
+                }
+            }
         }
         for (const n of Object.values(this.roomNodes)) {
             if (n.flip) {
