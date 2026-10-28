@@ -1538,15 +1538,41 @@ export class Scene3D {
             }
             case 'evacA': case 'evacB': {
                 // Two docking cradles per section room: a plate with rails, clamps and stops that the
-                // pods (drawn by syncPods at the same ±2.5 / 1.05 spots) actually stand on.
+                // pods (drawn by syncPods at the same ±2.5 / 1.05 spots) actually stand on. The section
+                // owns the accent and the deck letter, and a cradle that carries no pod of its section is
+                // dressed as a vacant slot — a covered plate with tie-downs and a chain — instead of
+                // staying a black rectangle in the middle of the bay.
+                const secB = tile === 'evacB';
+                const secHex = secB ? '#3f7fb8' : '#b5372c';
+                const secMark = M(secHex, 0.35), secPaint = M(secB ? '#33587c' : '#6e3a34', 0.2);
+                const slots = node.podSlots || [];
+                // Section letter stencilled on the deck: bars laid flat, no texture.
+                const deckLetter = (x, z, ch) => {
+                    // blocky stencil built from flat bars: 0.6 m tall, readable from the top view
+                    const y = 0.145, t = 0.02, H = 0.52, W = 0.42, bar = 0.09;
+                    if (ch === 'A') {
+                        bx(bar, t, H, x - W / 2 + bar / 2, y, z, secPaint);
+                        bx(bar, t, H, x + W / 2 - bar / 2, y, z, secPaint);
+                        bx(W * 0.62, t, bar, x, y, z - H / 2 + bar / 2, secPaint);
+                        bx(W * 0.86, t, bar, x, y, z - 0.04, secPaint);
+                    } else {
+                        bx(bar, t, H, x - W / 2 + bar / 2, y, z, secPaint);
+                        for (const dz of [-H / 2 + bar / 2, 0, H / 2 - bar / 2]) bx(W * 0.72, t, bar, x + W * 0.09, y, z + dz, secPaint);
+                        bx(bar, t, H / 2 - bar * 1.2, x + W / 2 - bar / 2, y, z - H / 4, secPaint);
+                        bx(bar, t, H / 2 - bar * 1.2, x + W / 2 - bar / 2, y, z + H / 4, secPaint);
+                    }
+                };
                 fix(() => {
-                    for (const sd of [-1, 1]) {
+                    for (let ci = 0; ci < 2; ci++) {
+                        const sd = ci === 0 ? -1 : 1;
                         const px = sd * 2.5, pz = 1.05;
+                        const slot = slots[ci];
                         floorZone(px, pz, 3.1, 3.4, 0, hazard);
                         bx(2.6, 0.14, 3.0, px, 0.09, pz, metal);                                  // cradle plate
-                        bx(2.4, 0.05, 2.8, px, 0.17, pz, dark);                                   // grip deck under the pod
+                        bx(2.4, 0.05, 2.8, px, 0.17, pz, M('#333c46'));                            // grip deck under the pod
                         for (const r of [-1, 1]) {                                                // side rails + clamps
                             bx(0.13, 0.2, 2.86, px + r * 1.21, 0.26, pz, hazard);
+                            bx(0.07, 0.06, 2.86, px + r * 1.21, 0.37, pz, secMark);                // section stripe along the rail
                             for (const fz of [-1.28, 0, 1.28]) bx(0.24, 0.3, 0.24, px + r * 1.21, 0.24, pz + fz, dark);
                         }
                         bx(2.5, 0.1, 0.24, px, 0.23, pz - 1.4, hazard);                            // launch stops
@@ -1555,26 +1581,59 @@ export class Scene3D {
                         cy(0.13, 0.13, 0.62, px + 1.21, 0.55, pz - 1.1, dark, 6);                  // umbilical mast on the rail
                         bx(0.3, 0.12, 0.18, px + 1.21, 0.9, pz - 1.1, metal, 0, 0.3);
                         cy(0.11, 0.11, 0.4, px + 1.21, 0.78, pz - 0.78, M('#4aa3df', 0.6), 6, Math.PI / 3);
-                        // stowed lashings and a clip-on placard: a cradle with no pod still reads as a
-                        // docking slot, not as a painted rectangle on the deck
-                        bx(0.34, 0.05, 0.2, px + 0.92, 0.22, pz + 1.16, M('#1e252c'), 0.25);
-                        bx(0.26, 0.05, 0.16, px + 0.92, 0.28, pz + 1.16, M('#39424e'), 0.25);
-                        bx(0.22, 0.04, 0.14, px - 0.95, 0.22, pz - 1.15, M('#1e252c'), -0.3);
-                        bx(0.03, 0.24, 0.3, px + 1.27, 0.48, pz + 0.62, M('#e8eef4', 0.45));
-                        bx(0.035, 0.06, 0.26, px + 1.275, 0.57, pz + 0.62, M('#b5372c', 0.5));
+                        bx(0.03, 0.24, 0.3, px + 1.27, 0.48, pz + 0.62, M('#e8eef4', 0.45));       // clip-on placard
+                        bx(0.035, 0.06, 0.26, px + 1.275, 0.57, pz + 0.62, M(secHex, 0.5));
                         bx(0.05, 0.1, 0.05, px + 1.24, 0.33, pz + 0.62, metal);
+                        // boarding step at the mouth of the cradle
+                        bx(1.0, 0.12, 0.44, px, 0.06, pz + 1.8, metal);
+                        bx(1.0, 0.03, 0.1, px, 0.13, pz + 1.99, hazard);
+                        if (!slot) {
+                            // vacant slot: cover plate, tie-downs, a lashing, a painted cross and a chain
+                            bx(2.3, 0.05, 2.66, px, 0.2, pz, M('#3d4753'));
+                            for (const [ox, oz] of [[-0.9, -1.02], [0.9, -1.02], [-0.9, 1.02], [0.9, 1.02]])
+                                cy(0.17, 0.17, 0.06, px + ox, 0.235, pz + oz, metal, 8);
+                            for (const sd2 of [-1, 1]) bx(2.12, 0.05, 0.1, px, 0.235, pz + sd2 * 0.5, M('#20262c'), sd2 * 0.06);
+                            bx(0.06, 0.03, 1.4, px - 0.55, 0.235, pz, M('#20262c'), 0.5);
+                            bx(0.34, 0.05, 0.22, px + 0.86, 0.24, pz + 1.12, M('#1e252c'), 0.25);
+                            bx(0.9, 0.02, 0.12, px, 0.228, pz, secPaint, Math.PI / 4);
+                            bx(0.9, 0.02, 0.12, px, 0.228, pz, secPaint, -Math.PI / 4);
+                            for (const sd2 of [-1, 1]) {
+                                cy(0.1, 0.1, 0.72, px + sd2 * 1.05, 0.36, pz + 1.62, M('#d4b02a', 0.2), 6);
+                                cy(0.22, 0.22, 0.05, px + sd2 * 1.05, 0.03, pz + 1.62, dark, 8);
+                            }
+                            cy(0.05, 0.05, 0.56, px - 0.5, 0.66, pz + 1.62, M('#b9c2cc', 0.15), 6, Math.PI / 2 + 0.22);
+                            cy(0.05, 0.05, 0.56, px + 0.5, 0.66, pz + 1.62, M('#b9c2cc', 0.15), 6, Math.PI / 2 - 0.22);
+                            cy(0.05, 0.05, 0.5, px, 0.58, pz + 1.62, M('#b9c2cc', 0.15), 6, Math.PI / 2);
+                        } else if (!slot.vacant) {
+                            // the pod stands here: four clamp shoes grip its skirt, a hose runs to it
+                            for (let k = 0; k < 4; k++) {
+                                const a = Math.PI / 4 + k * Math.PI / 2;
+                                const cx = px + Math.sin(a) * 0.8, cz = pz + Math.cos(a) * 0.8;
+                                bx(0.3, 0.16, 0.22, cx, 0.27, cz, M('#39424e'), a);
+                                bx(0.2, 0.08, 0.14, cx, 0.36, cz, metal, a);
+                            }
+                            cy(0.09, 0.09, 0.7, px + 1.0, 0.62, pz - 0.12, M('#20262c'), 6, Math.PI / 2);
+                        }
                     }
                     // painted chevrons and a walk lane — matte paint like the rest of the deck, no glow
-                    for (let i = 0; i < 5; i++) bx(0.52, 0.02, 0.2, -1.2 + i * 0.6, 0.177, -2.5, hazard);
+                    for (let i = 0; i < 5; i++) bx(0.52, 0.01, 0.2, -1.2 + i * 0.6, 0.03, -2.5, hazard);
                     floorZone(0, -1.05, 4.6, 1.1, 0, M('#8a7a44'));
-                    console_(0, -3.15, Math.PI);
+                    deckLetter(0, 1.05, secB ? 'B' : 'A');
+                    // the launch console faces the bay: screen away from the wall, keyboard toward the room
+                    console_(0, -3.0, 0);
                     // --- the launch deck around the cradles: what a real evacuation bay carries --------
-                    // a boarding gantry between the two cradles, its rails and its little stair
-                    bx(1.5, 0.1, 0.8, 0, 0.11, 1.05, metal);
-                    for (const sd of [-1, 1]) bx(1.5, 0.08, 0.08, 0, 0.62, 1.05 + sd * 0.36, hazard);
-                    for (let k = 0; k < 4; k++) bx(1.4, 0.06, 0.1, 0, 0.2 + k * 0.14, 1.05 - 0.5 + k * 0.14, metal);   // steps
-                    for (const sd of [-1, 1]) for (let k = 0; k < 3; k++)
-                        bx(0.06, 0.5, 0.06, sd * 0.72, 0.36, 0.7 + k * 0.34, metal);
+                    // boarding bridge: it spans the gap between the two cradle mouths (the cradle plates
+                    // reach ±1.2), so the walkway leads from one pod to the other instead of floating
+                    // between them.
+                    bx(2.5, 0.08, 0.94, 0, 0.065, 1.05, metal);
+                    for (let k = 0; k < 9; k++) bx(0.06, 0.03, 0.88, -1.08 + k * 0.27, 0.115, 1.05, M('#39424e'));   // grating
+                    for (const sd of [-1, 1]) {
+                        bx(2.5, 0.05, 0.08, 0, 0.121, 1.05 + sd * 0.43, hazard);                 // kerb
+                        bx(2.5, 0.05, 0.05, 0, 0.62, 1.05 + sd * 0.43, metal);                    // handrail
+                        for (let k = -1; k <= 1; k++) bx(0.05, 0.5, 0.05, k * 1.05, 0.36, 1.05 + sd * 0.43, metal);
+                        bx(2.5, 0.04, 0.04, 0, 0.4, 1.05 + sd * 0.43, secMark);                   // section rail paint
+                        bx(0.42, 0.16, 0.5, sd * 1.04, 0.065, 1.05, metal);                        // ramp foot on the plate
+                    }
                     // fuel and coolant carts parked behind the cradles, hoses running to them
                     for (const [x, z, hex] of [[-3.5, -1.4, '#b5372c'], [-3.5, 0.4, '#4aa3df']]) {
                         bx(1.1, 0.1, 0.9, x, 0.22, z, dark);                              // cart deck
@@ -1591,26 +1650,89 @@ export class Scene3D {
                         cy(0.34, 0.34, 0.1, x - 0.52, 0.86, z + 0.24, M('#20262c'), 10, Math.PI / 2);         // hose reel
                         bx(0.1, 0.1, 0.9, x + 0.45, 0.2, z + 0.9, M('#20262c'), 0.5);        // hose to the cradle
                     }
-                    // the crew lockers against the free stretch, each with its own door handle
-                    for (const [x, z, ry] of [[3.3, -1.9, -0.5], [3.5, -0.9, -0.5]]) {
-                        bx(0.7, 1.6, 0.5, x, 0.8, z, M('#4a5a6e'), ry);
-                        bx(0.62, 1.4, 0.04, LX(x, z, ry, 0, 0.26), 0.85, LZ(x, z, ry, 0, 0.26), M('#39424e'), ry);
-                        bx(0.08, 0.2, 0.04, LX(x, z, ry, 0.22, 0.29), 0.9, LZ(x, z, ry, 0.22, 0.29), metal, ry);
-                        bx(0.3, 0.1, 0.03, LX(x, z, ry, -0.1, 0.29), 1.42, LZ(x, z, ry, -0.1, 0.29), M('#ffd27f', 0.5), ry);
+                    // Crew lockers: hung on the wall ring, so the middle of the bay stays a working deck.
+                    const crewLocker = (p, fr) => {
+                        bx(0.8, 1.6, 0.5, p.x, 0.8, p.z, M('#4a5a6e'), p.ry);
+                        bx(0.72, 0.07, 0.54, p.x, 1.63, p.z, metal, p.ry);
+                        bx(0.72, 1.4, 0.04, fr.at(0, 0.26)[0], 0.85, fr.at(0, 0.26)[1], M('#39424e'), p.ry);
+                        bx(0.08, 0.2, 0.04, fr.at(0.22, 0.29)[0], 0.9, fr.at(0.22, 0.29)[1], metal, p.ry);
+                        bx(0.3, 0.1, 0.03, fr.at(-0.1, 0.29)[0], 1.42, fr.at(-0.1, 0.29)[1], M('#ffd27f', 0.5), p.ry);
                         for (let k = 0; k < 3; k++)                                          // vent louvres
-                            bx(0.36, 0.05, 0.03, LX(x, z, ry, 0, 0.29), 0.42 + k * 0.1, LZ(x, z, ry, 0, 0.29), M('#20262c'), ry);
-                        bx(0.62, 0.1, 0.05, LX(x, z, ry, 0, 0.3), 0.14, LZ(x, z, ry, 0, 0.3), metal, ry);   // kick plate
+                            bx(0.36, 0.05, 0.03, fr.at(0, 0.29)[0], 0.42 + k * 0.1, fr.at(0, 0.29)[1], M('#20262c'), p.ry);
+                        bx(0.72, 0.1, 0.05, fr.at(0, 0.3)[0], 0.14, fr.at(0, 0.3)[1], metal, p.ry);   // kick plate
+                        bx(0.16, 0.1, 0.03, fr.at(0.2, 0.29)[0], 1.62, fr.at(0.2, 0.29)[1], M(secHex, 0.4), p.ry); // section tag
+                    };
+                    wall([1.05, 1.45, 0.65, 2.6], 1.0, crewLocker, 5.9);
+                    wall([1.75, 2.15, 1.35, 2.95], 1.0, crewLocker, 5.9);
+                    // Launch status board on the wall opposite the door: the section letter, a row of
+                    // readiness lamps and the pod numbers of this section.
+                    {
+                        const doorA = (node.exitAngles && node.exitAngles[0]) || 0;
+                        wall([doorA + Math.PI, doorA + Math.PI + 0.5, doorA + Math.PI - 0.5, 1.3, 4.4], 1.6, (sp, fr2) => {
+                            // the wall band is 1.35 m tall: the board hangs inside it, never above it
+                            bx(1.5, 0.86, 0.16, sp.x, 0.92, sp.z, M('#2b333d'), sp.ry);
+                            bx(1.54, 0.07, 0.2, sp.x, 1.32, sp.z, metal, sp.ry);
+                            bx(1.36, 0.72, 0.04, fr2.at(0, 0.1)[0], 0.92, fr2.at(0, 0.1)[1], M('#0f1720'), sp.ry);
+                            const mid = (u) => [fr2.at(u, 0.13)[0], fr2.at(u, 0.13)[1]];
+                            const bar = (w, h, u, y, mat) => bx(w, h, 0.03, mid(u)[0], y, mid(u)[1], mat, sp.ry);
+                            const lit = M(secHex, 1.1), dim = M('#39424e');
+                            if (!secB) {
+                                bar(0.05, 0.44, -0.56, 0.96, lit); bar(0.05, 0.44, -0.36, 0.96, lit);
+                                bar(0.27, 0.05, -0.46, 1.14, lit); bar(0.22, 0.05, -0.46, 0.94, lit);
+                            } else {
+                                bar(0.05, 0.44, -0.56, 0.96, lit);
+                                for (const y of [1.14, 0.96, 0.78]) bar(0.2, 0.05, -0.43, y, lit);
+                                bar(0.05, 0.2, -0.34, 1.05, lit); bar(0.05, 0.2, -0.34, 0.87, lit);
+                            }
+                            for (let k = 0; k < 3; k++) {
+                                const c = ['#4fcf7a', '#ffb347', '#e05252'][k];
+                                discZ(0.16, 0.05, mid(0.16 + k * 0.24)[0], 1.04, mid(0.16 + k * 0.24)[1], M(c, k === 0 ? 1 : 0.25), sp.ry, 10);
+                                bar(0.18, 0.03, 0.16 + k * 0.24, 0.82, dim);
+                            }
+                            // one plate per cradle: lit when the pod of this section is in it
+                            for (let k = 0; k < 2; k++) {
+                                const sl = slots[k];
+                                bar(0.15, 0.15, 0.62 + k * 0.18, 0.82, sl && !sl.vacant ? M(secHex, 0.8) : dim);
+                            }
+                        }, 6.06);
                     }
-                    // launch-status pylons flanking the walk lane, and the count strip painted on the deck
+                    // oxygen rack: three bottles in a frame by the port wall, manifold on top
+                    {
+                        const x = -4.35, z = -2.15, ry = 0.35;
+                        bx(1.05, 0.1, 0.5, x, 0.1, z, dark, ry);
+                        for (const [ox, col] of [[-0.32, '#4aa3df'], [0, '#5aa564'], [0.32, '#d5dbe2']]) {
+                            cy(0.26, 0.26, 1.05, LX(x, z, ry, ox, 0), 0.55, LZ(x, z, ry, ox, 0), M(col, 0.18), 10);
+                            cy(0.28, 0.28, 0.05, LX(x, z, ry, ox, 0), 0.92, LZ(x, z, ry, ox, 0), M('#20262c'), 10);
+                            cy(0.1, 0.1, 0.16, LX(x, z, ry, ox, 0), 1.14, LZ(x, z, ry, ox, 0), metal, 8);
+                            bx(0.2, 0.06, 0.06, LX(x, z, ry, ox, 0), 1.24, LZ(x, z, ry, ox, 0), M('#c9a227', 0.3), ry);
+                        }
+                        bx(0.9, 0.06, 0.08, x, 1.24, z, metal, ry);                            // manifold
+                        bx(0.06, 0.72, 0.06, LX(x, z, ry, 0.45, 0.16), 0.4, LZ(x, z, ry, 0.45, 0.16), metal, ry);
+                        bx(0.06, 0.72, 0.06, LX(x, z, ry, -0.45, 0.16), 0.4, LZ(x, z, ry, -0.45, 0.16), metal, ry);
+                        bx(0.96, 0.05, 0.06, LX(x, z, ry, 0, 0.16), 0.78, LZ(x, z, ry, 0, 0.16), M('#39424e'), ry);
+                    }
+                    // a folded stretcher hung on the wall brackets, and a survival crate on the deck
+                    wall([3.4, 3.0, 3.8], 1.1, (p, fr) => {
+                        bx(0.92, 1.24, 0.1, p.x, 0.86, p.z, M('#6b7a3c'), p.ry);
+                        for (const u of [-0.42, 0.42]) bx(0.07, 1.3, 0.07, fr.at(u, 0.07)[0], 0.86, fr.at(u, 0.07)[1], metal, p.ry);
+                        for (const dv of [-0.2, 0.18]) bx(0.9, 0.05, 0.03, fr.at(0, 0.1)[0], 0.86 + dv, fr.at(0, 0.1)[1], M('#20262c'), p.ry);
+                        for (const u of [-0.4, 0.4]) bx(0.1, 0.1, 0.12, fr.at(u, 0.06)[0], 1.44, fr.at(u, 0.06)[1], metal, p.ry);
+                        bx(0.32, 0.08, 0.03, fr.at(0, 0.11)[0], 1.36, fr.at(0, 0.11)[1], M(secHex, 0.4), p.ry);
+                    }, 6.09);
+                    crateLid(3.0, -2.75, 0.62, -0.4, crateMat2, false);
+                    bx(0.38, 0.05, 0.24, 3.0, 0.66, -2.75, M(secHex, 0.25), -0.4);
+                    crateLid(3.75, -2.35, 0.5, 0.5, olive, true);
+                    // launch-status pylons flanking the walk lane, the count strip and the section band
                     for (const [x, z] of [[-2.3, -2.2], [2.3, -2.2]]) {
                         cy(0.5, 0.56, 0.14, x, 0.07, z, dark, 10);
                         cy(0.18, 0.2, 1.3, x, 0.72, z, metal, 8);
                         bx(0.42, 0.5, 0.2, x, 1.5, z, M('#2b333d'));
+                        bx(0.44, 0.08, 0.22, x, 1.22, z, secMark);                            // section band
                         for (let k = 0; k < 3; k++) bx(0.3, 0.1, 0.03, x, 1.62 - k * 0.14, z + 0.11, k === 0 ? M('#4fcf7a', 0.85) : k === 1 ? M('#ffb347', 0.7) : M('#e05252', 0.6));
                         cy(0.16, 0.16, 0.1, x, 1.82, z, M('#e05252', 0.7), 8);
                     }
-                    for (let k = 0; k < 8; k++) bx(0.16, 0.02, 0.5, -0.7 + k * 0.2, 0.177, -1.6, k % 2 ? M('#d4b02a', 0.3) : M('#1a1a1a'));
-                    bx(4.6, 0.02, 0.12, 0, 0.177, -1.95, M('#8a7a44'));
+                    for (let k = 0; k < 8; k++) bx(0.16, 0.01, 0.5, -0.7 + k * 0.2, 0.03, -1.6, k % 2 ? M('#d4b02a', 0.3) : M('#1a1a1a'));
+                    bx(4.6, 0.01, 0.12, 0, 0.03, -1.95, M('#8a7a44'));
                 });
                 break;
             }
@@ -4113,6 +4235,11 @@ export class Scene3D {
     updateRoom(view, r) {
         const node = this.roomNodes[r.id]; const rs = view.roomState[r.id];
         const tile = this.tileFor(view, r);
+        // Evacuation bays build their cradles from the pod rota of their own section: a cradle with no
+        // pod is a vacant slot, not a hole in the deck.
+        const podSec = tile === 'evacA' ? 'A' : tile === 'evacB' ? 'B' : null;
+        node.podSlots = podSec ? (view.pods || []).filter(p => p.section === podSec)
+            .sort((a, b) => a.num - b.num).map(p => ({ num: p.num, vacant: !!(p.launched || p.removed) })) : null;
         const def = tile ? this.roomTiles[tile] : null;
         // An unexplored slot has no name yet: nobody at the table knows which tile it is.
         const name = def ? def.name + (r.kind === 'engine' ? ' №' + r.engineNo : '') : '???';

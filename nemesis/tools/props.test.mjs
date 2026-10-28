@@ -92,6 +92,27 @@ test('PR-03 escape-pod cradles stand where syncPods draws the pods', () => {
     }
 });
 
+test('PR-12 a cradle without a pod is a closed slot, a docked pod is clamped', () => {
+    const slotsFor = (...slots) => {
+        meshes.length = 0;
+        lastNode = { exitAngles: [0.6, 2.5], techAngle: 3.6, podSlots: slots };
+        Scene3D.prototype.buildProps.call(host, 'evacA', null, lastNode);
+        return meshes.slice();
+    };
+    const cover = m => m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 2.3) < 0.001 && Math.abs(x.opts.depth - 2.66) < 0.001);
+    const shoe = m => m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 0.3) < 0.001 && Math.abs(x.opts.depth - 0.22) < 0.001);
+    const one = slotsFor({ num: 1, vacant: false });
+    const two = slotsFor({ num: 1, vacant: false }, { num: 3, vacant: false });
+    const none = slotsFor();
+    assert.equal(cover(one).length, 1, 'the empty cradle of a one-pod section is covered');
+    assert.ok(cover(one)[0].position.x > 2, 'the spare cradle is the right-hand one (pods fill left first)');
+    assert.equal(cover(two).length, 0, 'a section with two pods has no vacant slot');
+    assert.equal(cover(none).length, 2, 'a section with no pods at all keeps both cradles closed');
+    assert.equal(shoe(one).length, 4, 'one docked pod → four clamp shoes');
+    assert.equal(shoe(two).length, 8, 'two docked pods → eight clamp shoes');
+    assert.equal(shoe(none).length, 0, 'nothing is clamped in an empty bay');
+});
+
 test('PR-04 containment rig is centred on the floor ring with mirrored posts', () => {
     const m = build('containment');
     const plates = m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 2.5) < 0.001 && Math.abs(x.opts.depth - 2.5) < 0.001);
