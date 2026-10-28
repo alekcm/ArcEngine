@@ -9,6 +9,8 @@
 //  Objects.js is written WHOLE from a validated list (the backup goes there too).
 //  nemesis/client/tuning.json — the board numbers of the Nemesis tab: every key goes through
 //  the tuning schema (nemesis/client/tuning.js), so a junk request cannot reach the file.
+//  nemesis/client/board-edits.json — the parts a designer moved, turned, recoloured, hid or
+//  deleted on the board; the game applies them while building (see scene3d.js).
 // ============================================================================
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -34,6 +36,7 @@ export const ERRORS = {
   not_glb: 'not a binary glTF — export .glb',
   bad_ui: 'the UI layout is not an array',
   bad_tuning: 'the tuning values are not an object',
+  bad_board: 'the board edits are not an object',
   bad_element: 'invalid UI element',
   too_large: 'the file is too large',
   dialog_failed: 'the file dialog failed to open',
@@ -359,5 +362,57 @@ export async function saveTuning(root, values) {
   const text = JSON.stringify({ values: sorted }, null, 2) + '\n';
   await fsp.mkdir(path.dirname(file), { recursive: true });
   await fsp.writeFile(file, text, 'utf8');
+  return { ok: true, saved: Object.keys(sorted).length, backup };
+}
+
+// --- nemesis/client/board-edits.json ---------------------------------------------
+
+/** The parts of the board a designer changed, keyed by their stable editor id. */
+export const BOARD_REL = 'nemesis/client/board-edits.json';
+const EDIT_ID = /^[A-Za-z0-9_:.#-]{1,80}$/;
+const COLOR = /^#[0-9a-f]{6}$/i;
+
+const vec3 = (v) => (Array.isArray(v) && v.length === 3 && v.every(n => Number.isFinite(n) && Math.abs(n) <= 1000)
+  ? v.map(n => Math.round(n * 1000) / 1000) : undefined);
+
+/**
+ * A per-part edit, filtered: only the known fields survive, numbers are finite and sane, a colour
+ * is a hex. An edit that ends up empty is dropped — the part is simply as the code builds it.
+ */
+export function sanitizeEdit(src) {
+  if (!src || typeof src !== 'object' || Array.isArray(src)) return undefined;
+  const out = {};
+  const pos = vec3(src.pos); if (pos) out.pos = pos;
+  const rot = vec3(src.rot); if (rot) out.rot = rot;
+  const scale = vec3(src.scale); if (scale) out.scale = scale;
+  if (typeof src.color === 'string' && COLOR.test(src.color.trim())) out.color = src.color.trim().toLowerCase();
+  if (Number.isFinite(src.glow) && src.glow > 0) out.glow = Math.min(3, src.glow);
+  if (src.hidden === true) out.hidden = true;
+  if (src.deleted === true) out.deleted = true;
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** The whole edit map: ids outside the shape and empty edits are dropped. */
+export function sanitizeEdits(src) {
+  const out = {};
+  if (!src || typeof src !== 'object' || Array.isArray(src)) return out;
+  for (const [id, value] of Object.entries(src)) {
+    if (!EDIT_ID.test(id)) continue;
+    const e = sanitizeEdit(value);
+    if (e) out[id] = e;
+  }
+  return out;
+}
+
+/** Write the board edits; the previous file goes to _utils/.backups/board-*.json. */
+export async function saveBoard(root, edits) {
+  if (!edits || typeof edits !== 'object' || Array.isArray(edits)) return failure('bad_board');
+  const clean = sanitizeEdits(edits);
+  const file = path.join(root, BOARD_REL);
+  const backup = fs.existsSync(file) ? await backupFile(root, file, 'board', '.json').catch(() => null) : null;
+  const sorted = {};
+  for (const id of Object.keys(clean).sort()) sorted[id] = clean[id];
+  await fsp.mkdir(path.dirname(file), { recursive: true });
+  await fsp.writeFile(file, JSON.stringify({ edits: sorted }, null, 2) + '\n', 'utf8');
   return { ok: true, saved: Object.keys(sorted).length, backup };
 }

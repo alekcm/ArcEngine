@@ -5,7 +5,9 @@
 //   1. the editor needs POST /api/save-constants — a pinpoint patch of numbers in
 //      Constants.js (otherwise "Save" has nowhere to go);
 //   2. its own port (8090+), to live next to the game on 8080.
-//   3. POST /api/save-tuning — the Nemesis tab's board numbers (nemesis/client/tuning.json).
+//   3. POST /api/save-tuning / POST /api/save-board — the Nemesis tab: the door numbers
+//      (nemesis/client/tuning.json) and the parts a designer edited
+//      (nemesis/client/board-edits.json).
 //  Static files are served from the PROJECT ROOT (the editor loads the game's
 //  /js/Constants.js, /js/World3D.js, /assets/* directly), with no-store — as in dev-server.
 //
@@ -26,12 +28,12 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import url from 'node:url';
 import { execFile } from 'node:child_process';
-import { failure, isModelPath, isSoundPath, saveConstants, saveObjects, saveTuning, saveUI, TUNING_REL } from './save.mjs';
+import { BOARD_REL, failure, isModelPath, isSoundPath, sanitizeEdits, saveBoard, saveConstants, saveObjects, saveTuning, saveUI, TUNING_REL } from './save.mjs';
 import { sanitizeAll } from '../../nemesis/client/tuning.js';
 
 // Server contract version. Bump on EVERY change of the endpoints or the
 // response format — the client checks it against EDITOR_API_VERSION in schema.js.
-const EDITOR_API_VERSION = 21;
+const EDITOR_API_VERSION = 22;
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
 const MODELS_DIR = path.join(ROOT, 'assets', 'models');
@@ -230,6 +232,29 @@ const server = http.createServer(async (req, res) => {
         const result = await saveTuning(ROOT, body.values || {});
         if (result.ok) console.log(`  ${C.grn}save${C.r} ${result.saved} board value(s) -> ${TUNING_REL} ${C.dim}(backup: ${result.backup})${C.r}`);
         else console.log(`  ${C.ylw}skip${C.r} ${TUNING_REL}: ${result.error}`);
+        return sendJson(res, 200, result);
+      } catch (e) {
+        console.log(`  ${C.red}save FAILED${C.r} ${e.message}`);
+        return sendJson(res, 500, { ok: false, error: e.message });
+      }
+    }
+    return send(res, 405, { 'Content-Type': 'text/plain' }, 'Method Not Allowed');
+  }
+  // The parts a designer edited on the board (move / rotate / scale / colour / hide / delete).
+  // The game reads the same file and applies the edits while it builds the board.
+  if (pathname === '/api/board' || pathname === '/api/save-board') {
+    if (req.method === 'GET' && pathname === '/api/board') {
+      const text = await fsp.readFile(path.join(ROOT, BOARD_REL), 'utf8').catch(() => '');
+      let edits = {};
+      try { edits = sanitizeEdits(JSON.parse(text || '{}').edits || {}); } catch { edits = {}; }
+      return sendJson(res, 200, { ok: true, api: EDITOR_API_VERSION, edits });
+    }
+    if (req.method === 'POST') {
+      try {
+        const body = JSON.parse(await readBody(req) || '{}');
+        const result = await saveBoard(ROOT, body.edits || {});
+        if (result.ok) console.log(`  ${C.grn}save${C.r} ${result.saved} edited part(s) -> ${BOARD_REL} ${C.dim}(backup: ${result.backup})${C.r}`);
+        else console.log(`  ${C.ylw}skip${C.r} ${BOARD_REL}: ${result.error}`);
         return sendJson(res, 200, result);
       } catch (e) {
         console.log(`  ${C.red}save FAILED${C.r} ${e.message}`);

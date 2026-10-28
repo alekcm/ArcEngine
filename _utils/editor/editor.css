@@ -109,7 +109,26 @@ body.nemesis-tab #view-speed, body.nemesis-tab #lint-panel { display: none; }
 #nemesis-header { display: flex; flex-wrap: wrap; gap: 6px; justify-content: space-between; padding: 10px 12px 6px; border-bottom: 1px solid var(--line); }
 #nemesis-tools, #nemesis-actions { display: flex; gap: 6px; }
 .nem-note { margin: 8px 12px 4px; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
-#nemesis-groups { flex: 1 1 auto; overflow: auto; padding: 4px 12px 10px; }
+#nemesis-modes { margin: 6px 12px 0; }
+#nemesis-scroll { flex: 1 1 auto; overflow: auto; padding: 4px 12px 10px; }
+#nemesis-groups { padding: 4px 0 0; }
+#nemesis-part, #nemesis-edits { margin-bottom: 10px; }
+.nem-empty { font-size: 11.5px; color: var(--muted); line-height: 1.45; padding: 2px 0 6px; }
+.nem-partinfo { display: flex; gap: 8px; align-items: baseline; margin-bottom: 6px; }
+.nem-partinfo code { font-size: 11px; color: var(--accent); }
+.nem-partname { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nem-vec { display: grid; grid-template-columns: 22px repeat(3, 1fr); gap: 4px; align-items: center; margin-bottom: 5px; }
+.nem-vec .nem-name { font-size: 11.5px; color: var(--muted); }
+.nem-vec input { width: 100%; min-width: 0; background: #0f141a; color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 3px 4px; font-size: 11.5px; }
+.nem-color { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.nem-color input[type="color"] { width: 44px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: none; cursor: pointer; }
+.nem-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.nem-tools button { font-size: 11.5px; padding: 4px 8px; }
+.nem-editrow { display: flex; gap: 6px; align-items: center; margin-bottom: 3px; }
+.nem-editname { flex: 1 1 auto; text-align: left; font-size: 11px; padding: 3px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nem-editrevert { font-size: 11px; padding: 3px 7px; }
+#nemesis-tuning { border-top: 1px solid var(--line); padding-top: 6px; }
+#nemesis-tuning summary { cursor: pointer; font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
 .nem-fields { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
 .nem-field { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; }
 .nem-field .nem-name { font-size: 11.5px; color: var(--text); }

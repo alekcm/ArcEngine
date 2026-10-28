@@ -17,7 +17,7 @@ game: it does not go into the build (`BUILD_EXCLUDE`), and the game knows nothin
 
 | File | What |
 |---|---|
-| `server.mjs` | static files from the project ROOT (no-store) + `GET /api/status`, `POST /api/save-constants`, `/api/save-objects`, `/api/save-ui`, `GET /api/tuning` + `POST /api/save-tuning` (the Nemesis tab), `/api/pick-model`, `/api/import-model`. `EDITOR_API_VERSION` |
+| `server.mjs` | static files from the project ROOT (no-store) + `GET /api/status`, `POST /api/save-constants`, `/api/save-objects`, `/api/save-ui`, `GET /api/tuning` + `POST /api/save-tuning` (door sizes) and `GET /api/board` + `POST /api/save-board` (board parts) for the Nemesis tab, `/api/pick-model`, `/api/import-model`. `EDITOR_API_VERSION` |
 | `save.mjs` | writing without HTTP: `patchScalar`, `saveConstants(root, changes)`, `formatObjects`, `saveObjects(root, objects)`, `formatUI`, `saveUI(root, elements)` (skill `ui`), backups, `ERRORS`/`failure`, `isModelPath`; covered by `tests/editor-save.test.mjs` and `tests/ui.test.mjs` |
 | `index.html` | header with the language switch `#lang-switch`, view toolbar, canvas `#view-canvas` with the floating chips over it (`#view-info`, `#view-hints`, `#view-speed` — the camera speed slider, bottom right), right pane with tabs `#pane-tabs` (`.pane-panel[data-tab]`: settings, objects, ui); script order: `i18n.js`, `schema.js`, `loader.js`, kit modules (`/libs/babylonjs.loaders.min.js`, `/js/Objects.js`, `/js/UILayout.js`, `/js/World3D.js` … `/js/Model3D.js`, `/js/Gltf3D.js`, `/js/Location3D.js`, `/js/UI.js`; no `Game.js` — the editor does not run the game), `inspector.js`, `objects-panel.js`, `sound-panel.js`, `ui-panel.js`, `lab.js`, `debug-tools.js`, `onboarding.js`, `main.js`. At the end of the body — the tour card `#onboarding` |
 | `i18n.js` | `I18N`: language (EN by default, choice in `localStorage` `arcengine.editor.lang`), dictionaries `STRINGS.en/ru`, `t(key, params)`, `pick({ en, ru })`, markup via `data-i18n*`, `lang-changed` event |
@@ -31,7 +31,7 @@ game: it does not go into the build (`BUILD_EXCLUDE`), and the game knows nothin
 | `lab.js` | location view: `Location3D` (objects — a copy of `LOCATION_OBJECTS`) + the game's `CameraController`, camera modes, toon toggle, the camera speed slider over the view, reaction to edits; frame `tick`: `location.update(dt)` -> `camera.update(dt)` -> `renderFrame()` |
 | `debug-tools.js` | `DebugTools` — the view toolbar's debug corner: the "view:" select (`Debug3D.setMode`: back faces in red, normals, wireframe) and "Lint scene" (`Debug3D.lint`) with a results panel `#lint-panel` over the view. Binds itself on `DOMContentLoaded` — `lab.js` and `main.js` do not know about it; finding texts come from `Debug3D` and stay English |
 | `onboarding.js` | `Onboarding` — the welcome tour over the editor: six slides (`SLIDES`), text in `i18n.js` under `onb.<id>.*` (`title` and `p1…pN` — one key per paragraph; plain prose, no bullet lists). A slide points at the real editor: `target` is a selector, `#onb-spot` frames that element and its 9999px `box-shadow` dims everything else, and `place()` flies the card into the widest free strip beside it (the inspector is on the right — the card steps to its left; the target fills the window — the card sits in its middle). A `tab` field also calls `PaneTabs.show`, and the tab that was open comes back on close. Its own EN/RU switch (`#onb-lang` — the top bar one is dimmed at that moment) and a "don't show again" box: opening sets the `localStorage` flag `arcengine.editor.onboarded`, unticking clears it, so a first run greets and the `#btn-help` "?" button reopens. Keys (captured, so the camera and the panels do not see them): ← → Space Enter, Esc |
-| `nemesis/client/editor-panel.js` | `NemesisPanel` — the Nemesis tab, an ES MODULE (`<script type="module">`, the board renderer is a module): its own `Scene3D` over `#nemesis-canvas` (the whole test ship from `nemesis/shared/ship.mjs`), sliders built from the schema in `nemesis/client/tuning.js` (labels `{ en, ru }` via `I18N.pick`), live rebuild through `Scene3D.rebuild`, Alt — the neon numbers, F — the whole ship, D — a door. Save/revert go to `nemesis/client/tuning.json`; the game and the lobby gallery read it at boot (`app.js`, one fetch). Sizes derived from the table — `doorSpec()` in `tuning.js` |
+| `nemesis/client/editor-panel.js` | `NemesisPanel` — the Nemesis tab, an ES MODULE (`<script type="module">`, the board renderer is a module): its own `Scene3D` over `#nemesis-canvas` (the whole test ship from `nemesis/shared/ship.mjs`), click-to-select + move/rotate/scale gizmo + colour/hide/delete/reset per part, the list of edited parts, Save/revert of `nemesis/client/board-edits.json`; the door-size sliders (schema in `nemesis/client/tuning.js`, labels `{ en, ru }`, `doorSpec()`) live in a collapsed block below. Alt — the neon numbers, F — the whole ship, D — a door |
 | `main.js` | `I18N.init()` -> `EditorLoader.load()` -> `EditHistory.init()` -> `PaneTabs.init()` -> `Inspector.init()` -> wrapper around `Inspector.apply` (`constants-changed` event + history entry; `revertAll` — as one step) -> `Lab.init()` (inside — `ObjectsPanel.init(lab)`, `UIPanel.init(canvas)`, `SoundPanel.init()`) -> `Onboarding.init()` (last: the tour greets a first run, and only over an editor that booted) |
 
 Editing a field: `Inspector.apply` writes `window[NAME]` -> `constants-changed` event ->
@@ -54,15 +54,37 @@ Editing a field: `Inspector.apply` writes `window[NAME]` -> `constants-changed` 
 
 The board of the Nemesis game (a separate game in `nemesis/`, its own server) is edited here, in
 the same window: the tab swaps the location view for `#nemesis-canvas` (`body.nemesis-tab` hides the
-location toolbar and chips) and shows the schema's sliders in the right pane.
+location toolbar and chips). No separate page, no extra .bat.
 
-- The numbers live in `nemesis/client/tuning.js` — `SCHEMA` (groups, labels EN/RU, ranges) and
-  `doorSpec()`, which derives the actual door from them. The renderer only reads `doorSpec()`, so a
-  slider cannot produce an impossible door (the invariants are tested: `nemesis/tools/tuning.test.mjs`).
-- "Save" writes ONLY what differs from the table (`TUNE.diff()`) with `POST /api/save-tuning`
-  (`saveTuning` in `save.mjs`): every key is filtered by the same schema server-side (`sanitizeAll`),
-  the previous file goes to `_utils/.backups/tuning-*.json`. "Defaults" saves an empty diff — the
-  game falls back to the table in `tuning.js`.
+**Parts.** `Scene3D` keeps a registry of every mesh it builds: the id is `"<owner>#<n>"`, the owner
+is `room:<id>` (floor and walls), `room:<id>:shell`, `room:<id>:obj`, `room:<id>:dyn`, `cor:<id>`
+or `hull`, and `n` restarts in every `owner()` step — so an id means the same part on every build.
+The id is given in `registerMesh`, called from a wrapper around `scene.addMesh`, NOT from
+`onNewMeshAddedObservable`: Babylon 9 fires that one from a `SetImmediate`, i.e. after the build,
+when the owner scope is gone (BD-10 in `nemesis/tools/board.test.mjs` guards this).
+
+- Edit mode (`scene.setEditMode(true)`) turns merging off — every wire and bolt stays a separate,
+  pickable mesh — and `scene.pickMesh(x, y)` returns the part under the cursor.
+- `scene.setEdit(id, { pos, rot, scale, color, glow, hidden, deleted })` records an edit;
+  `scene.setEdits(map)` loads a whole set. `mergeStatic()` applies edits BEFORE merging, drops the
+  deleted ones (they are switched off, so they vanish from the board but Reset can bring them back).
+- "Save" writes `nemesis/client/board-edits.json` (`POST /api/save-board`, `saveBoard` in
+  `save.mjs`, backup `_utils/.backups/board-*.json`); `sanitizeEdit()` keeps only known fields,
+  rounds coordinates to 0.001 and clamps them to ±1000, accepts `#rrggbb` and ids of
+  `[A-Za-z0-9_:.#-]{1,80}`. The game reads the file at boot (`app.js` → `scene.setEdits()` before the
+  first `update()`), both in the lobby gallery and in a real session.
+- Keys: click — select, `1/2/3` — move/rotate/scale gizmo, `Del` — delete/restore the selected part,
+  `Esc` — deselect, `F` — whole ship, `D` — a door, `Alt` — neon numbers.
+
+**Door sizes.** The numbers live in `nemesis/client/tuning.js` — `SCHEMA` (groups, labels EN/RU,
+ranges) and `doorSpec()`, which derives the actual door from them. Those sliders are in the
+"Door sizes" block of the same tab. The renderer only reads `doorSpec()`, so a slider cannot
+produce an impossible door (tested: `nemesis/tools/tuning.test.mjs`).
+
+- "Save" (door block) writes ONLY what differs from the table (`TUNE.diff()`) with
+  `POST /api/save-tuning` (`saveTuning` in `save.mjs`): every key is filtered by the same schema
+  server-side (`sanitizeAll`), the previous file goes to `_utils/.backups/tuning-*.json`.
+  "Defaults" saves an empty diff — the game falls back to the table in `tuning.js`.
 - `nemesis/client/tuning.json` is local and git-ignored; the game reads it with one `fetch` before
   the scene is built, so saved values apply to a real session.
 - A new slider = an item in `tuning.js` `SCHEMA` (with `label: { en, ru }`), a field used by

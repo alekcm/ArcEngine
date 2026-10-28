@@ -112,7 +112,7 @@ const I18N_JS = fs.readFileSync(path.join(ROOT, '_utils/editor/i18n.js'), 'utf8'
 test('вкладка Nemesis: панель, канвас и кнопки, на которые опирается модуль, есть в index.html', () => {
     const ids = new Set([...EDITOR_HTML.matchAll(/id="([^"]+)"/g)].map(m => m[1]));
     for (const id of ['nemesis-canvas', 'nemesis-groups', 'nemesis-note', 'nemesis-status',
-        'btn-nemesis-save', 'btn-nemesis-reset', 'btn-nemesis-fit', 'btn-nemesis-door']) {
+        'nemesis-part', 'nemesis-edits', 'btn-nemesis-save', 'btn-nemesis-revert', 'btn-nemesis-fit', 'btn-nemesis-door']) {
         assert.ok(ids.has(id), 'index.html: #' + id);
     }
     // the module and the page agree on every element it reaches for

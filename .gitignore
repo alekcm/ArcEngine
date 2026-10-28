@@ -5,4 +5,5 @@
 /_utils/.backups/
 /build/
 /dist/
-/nemesis/client/tuning.json   # board numbers saved by the editor's Nemesis tab (editor.bat)
+/nemesis/client/tuning.json        # board numbers saved by the editor's Nemesis tab (editor.bat)
+/nemesis/client/board-edits.json   # the parts edited on that tab: moved, turned, recoloured, deleted

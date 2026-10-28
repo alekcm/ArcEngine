@@ -15,12 +15,17 @@ import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, C
 const $ = id => document.getElementById(id);
 const PHASES = { setup: 'Подготовка', draft: 'Выбор персонажей', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
 
-// Board tuning: the numbers a designer moved in the editor's Nemesis tab (editor.bat). The file is
-// optional and local — without it the table in tuning.js is used, exactly as designed.
+// What a designer changed in the editor's Nemesis tab (editor.bat): the door numbers and the parts
+// of the board (moved, turned, recoloured, hidden, deleted). Both files are optional and local.
+let BOARD_EDITS = {};
 try {
     const r = await fetch('/client/tuning.json', { cache: 'no-store' });
     if (r.ok) TUNE.load((await r.json()).values || {});
 } catch { /* no saved tuning next to the client: run on the defaults */ }
+try {
+    const r = await fetch('/client/board-edits.json', { cache: 'no-store' });
+    if (r.ok) BOARD_EDITS = (await r.json()).edits || {};
+} catch { /* no edits: the board is built exactly as the code builds it */ }
 
 // ---------------------------------------------------------------------------------------------
 // Network
@@ -302,6 +307,7 @@ function openGallery() {
             onClick: id => focusGalleryRoom(id),
         });
         galleryScene.gallery = true;
+        galleryScene.setEdits(BOARD_EDITS);
         galleryScene.setActive(true);
         galleryScene.update(galleryView(galleryShip()), ROOM_TILES, INTRUDER_NAMES, []);
         galleryScene.camera.alpha = -Math.PI / 2;
@@ -351,6 +357,7 @@ function renderGame() {
         // The pointer left the board (onto the HUD): my table cursor must not stay frozen on the map.
         $('scene').addEventListener('pointerleave', () => { if (app.view) net.send({ t: 'cursor', off: true }); });
     }
+    if (!scene.editMode && !scene.boardEditsApplied) { scene.setEdits(BOARD_EDITS); scene.boardEditsApplied = true; }
     scene.setMe(app.me);
     if (!dice) {
         dice = new DiceUI($('dice'), () => act('roll'));

@@ -82,6 +82,24 @@ export class Scene3D {
         this.alt = false;
         this.gallery = false;   // room-gallery mode: labels show the room name instead of its id
         this.me = null; this.poses = {}; this.drag = null; this.cursors = {}; this.pings = []; this.canvas = canvas;
+        // --- the board editor (nemesis/client/editor-panel.js) -------------------------------
+        // Every mesh gets a stable id: "<owner>#<n>", numbered in creation order inside the build
+        // step that made it. The board is procedural, so the order is the identity: the same id comes
+        // back on the next build, which is what lets an edit (move, rotate, colour, delete) be saved
+        // and applied inside the real game. Edit mode turns merging off so every part stays a part.
+        this.edits = {};             // id -> { pos, rot, scale, color, hidden, deleted }
+        this.editMode = false;
+        this.editOwner = 'scene';
+        this.editCount = 0;
+        this.editMeshes = {};        // id -> mesh of the current build
+        this.editPick = null;        // (sx, sy) -> mesh | null, set by the editor panel
+        this.merging = false;        // MergeMeshes creates meshes: they must not take ids
+        // Babylon 9 fires onNewMeshAddedObservable from a SetImmediate — i.e. after the whole build,
+        // when the owner scope is already closed and every part would end up under the outer owner.
+        // Editing needs the id at creation time, so the scene's own addMesh is wrapped instead: the
+        // merge path is still skipped because MergeMeshes runs with `merging` set.
+        const addMesh = this.scene.addMesh.bind(this.scene);
+        this.scene.addMesh = (mesh, ...rest) => { const out = addMesh(mesh, ...rest); if (!this.merging) this.registerMesh(mesh); return out; };
         this.stars();
         this.scene.onPointerObservable.add(pi => this.onPointer(pi));
         this.paused = false;
@@ -111,15 +129,110 @@ export class Scene3D {
     M(hex, e, extra) { return flatMat(this.scene, hex, Object.assign(e ? { emissive: e } : {}, extra || {})); }
 
     /** Merge a list of static meshes (grouped by material) into few draw calls. */
+    /** Give a mesh its stable editor id. Called for every mesh the scene creates. */
+    registerMesh(mesh) {
+        if (this.merging || !mesh) return mesh;
+        if (mesh.metadata && mesh.metadata.editId) return mesh;
+        const id = this.editOwner + '#' + (this.editCount++);
+        mesh.metadata = Object.assign({}, mesh.metadata, { editId: id });
+        this.editMeshes[id] = mesh;
+        return mesh;
+    }
+
+    /** Forget the parts that a rebuild or a merge has already disposed: the registry lists live meshes only. */
+    pruneEditMeshes() {
+        for (const [id, m] of Object.entries(this.editMeshes)) if (!m || (m.isDisposed && m.isDisposed())) delete this.editMeshes[id];
+        return this;
+    }
+
+    /** Run a build step with its own id space: ids it creates are stable from build to build. */
+    owner(name, fn) {
+        const prev = this.editOwner, count = this.editCount;
+        this.editOwner = name; this.editCount = 0;
+        try { return fn(); } finally { this.editOwner = prev; this.editCount = count; }
+    }
+
+    /** What the editor knows about a mesh id: its name, its owner and the edit on it. */
+    editInfo(id) {
+        const mesh = this.editMeshes[id];
+        return {
+            id, name: mesh ? mesh.name : '', owner: String(id).split('#')[0],
+            hasEdit: !!this.edits[id], edit: this.edits[id] ? Object.assign({}, this.edits[id]) : null,
+        };
+    }
+
+    /** Editing on/off: no merging, everything pickable, the game's own pointer logic paused. */
+    setEditMode(on) {
+        this.editMode = !!on;
+        for (const m of Object.values(this.editMeshes)) if (m && m.setEnabled && !m.isDisposed()) m.isPickable = this.editMode;
+        return this;
+    }
+
+    /** The mesh under a screen point while editing (null on empty space). */
+    pickMesh(sx, sy) {
+        if (!this.scene.pick) return null;
+        const r = this.scene.pick(sx, sy, m => !!(m.metadata && m.metadata.editId));
+        return r && r.hit ? r.pickedMesh : null;
+    }
+
+    /** Take the saved edits (nemesis/client/board-edits.json) and apply them to the next build. */
+    setEdits(edits) { this.edits = Object.assign({}, edits || {}); return this; }
+
+    /** Record one edit. `patch` fields win; a null removes the field; an empty patch drops the entry. */
+    setEdit(id, patch) {
+        const e = Object.assign({}, this.edits[id] || {}, patch || {});
+        for (const k of Object.keys(e)) if (e[k] === null || e[k] === undefined) delete e[k];
+        if (Object.keys(e).length) this.edits[id] = e; else delete this.edits[id];
+        this.editMeshes[id] && this.applyEdit(this.editMeshes[id]);
+        return this.edits[id] || null;
+    }
+
+    /** Apply a saved edit to one freshly built mesh (before it is merged, so it bakes in). */
+    applyEdit(mesh) {
+        const id = mesh && mesh.metadata && mesh.metadata.editId;
+        if (!id) return mesh;
+        const e = this.edits[id];
+        if (!e) return mesh;
+        if (e.pos) mesh.position.set(e.pos[0], e.pos[1], e.pos[2]);
+        if (e.rot) mesh.rotation.set(e.rot[0], e.rot[1], e.rot[2]);
+        if (e.scale) mesh.scaling.set(e.scale[0], e.scale[1], e.scale[2]);
+        if (e.color) mesh.material = this.M(String(e.color), e.glow ? 1 : 0);
+        if (e.hidden) mesh.setEnabled(false);
+        if (e.deleted) mesh.metadata = Object.assign({}, mesh.metadata, { deleted: true });
+        return mesh;
+    }
+
     mergeStatic(meshes, parent) {
-        const groups = new Map();
-        for (const m of meshes) { const k = m.material ? m.material.uniqueId : 0; (groups.get(k) || groups.set(k, []).get(k)).push(m); }
-        const out = [];
-        for (const arr of groups.values()) {
-            let mesh = arr[0];
-            if (arr.length > 1) { const mat = arr[0].material; mesh = B().Mesh.MergeMeshes(arr, true, true, undefined, false, false); if (!mesh) continue; mesh.material = mat; }
-            mesh.parent = parent; mesh.isPickable = false; mesh.receiveShadows = true; this.shadows.addShadowCaster(mesh); out.push(mesh);
+        // The editor first: saved edits are applied to the parts, then deleted ones are dropped, and
+        // while editing nothing is merged — every wire and bolt has to stay clickable.
+        const live = [];
+        for (const m of meshes) {
+            this.applyEdit(m);
+            // A deleted part is not dropped silently: it is switched off here, so it disappears from the
+            // board in the game and in the editor alike, and only Reset (drop the edit) brings it back.
+            if (m.metadata && m.metadata.deleted) { if (m.setEnabled && m.isEnabled()) m.setEnabled(false); continue; }
+            live.push(m);
         }
+        if (this.editMode) {
+            for (const m of live) { m.parent = parent; m.isPickable = true; m.receiveShadows = true; }
+            return live;
+        }
+        const groups = new Map();
+        for (const m of live) { const k = m.material ? m.material.uniqueId : 0; (groups.get(k) || groups.set(k, []).get(k)).push(m); }
+        const out = [];
+        this.merging = true;
+        try {
+            for (const arr of groups.values()) {
+                let mesh = arr[0];
+                if (arr.length > 1) {
+                    const mat = arr[0].material; mesh = B().Mesh.MergeMeshes(arr, true, true, undefined, false, false);
+                    if (!mesh) continue;
+                    mesh.material = mat;
+                    for (const src of arr) { const id = src.metadata && src.metadata.editId; if (id) delete this.editMeshes[id]; }
+                }
+                mesh.parent = parent; mesh.isPickable = false; mesh.receiveShadows = true; this.shadows.addShadowCaster(mesh); out.push(mesh);
+            }
+        } finally { this.merging = false; }
         return out;
     }
 
@@ -139,9 +252,16 @@ export class Scene3D {
         // Size the camera once: a rebuild (the tuning editor moves a slider) must not yank the view.
         if (!this.camSized) { this.camera.radius = Math.max(70, (b.maxX - b.minX) * SCALE * 0.9); this.camSized = true; }
         this.shipRooms = ship.rooms;
-        for (const r of Object.values(ship.rooms)) this.buildRoomBase(r);
-        for (const c of Object.values(ship.corridors)) this.buildCorridor(ship, c);
-        this.buildHull(ship);
+        // Keep the ids of the meshes that survive this build (the deck, the stars — they are made once,
+        // in the constructor) and drop the ones the disposal just above killed.
+        this.pruneEditMeshes();
+        for (const r of Object.values(ship.rooms)) this.owner('room:' + r.id, () => this.buildRoomBase(r));
+        for (const c of Object.values(ship.corridors)) this.owner('cor:' + c.id, () => this.buildCorridor(ship, c));
+        this.owner('hull', () => this.buildHull(ship));
+        // a part that is not merged (a label, a plat) still gets its edit right here
+        for (const m of Object.values(this.editMeshes)) if (m && !m.isDisposed() && !(m.metadata && m.metadata.deleted)) this.applyEdit(m);
+        // while editing, everything the player could point at must be clickable for the designer
+        if (this.editMode) for (const m of Object.values(this.editMeshes)) if (m && m.setEnabled && m.isEnabled()) m.isPickable = true;
     }
     pos(r) { return new (B().Vector3)((r.x - this.cx) * SCALE, 0, -(r.y - this.cy) * SCALE); }
     posXY(x, y) { return new (B().Vector3)((x - this.cx) * SCALE, 0, -(y - this.cy) * SCALE); }
@@ -1556,18 +1676,25 @@ export class Scene3D {
         this.roomTiles = roomTiles;
         for (const d of this.dynamic) d.dispose();
         this.dynamic = [];
+        // the parts that came and went keep their ids: drop the dead ones so the registry does not grow
+        this.pruneEditMeshes();
         this.guardLights();
         this.selectable = new Set(selectableRooms || []);
         // room-token flip: triggered by fresh 'explore' fx entries (not on reconnect)
         const fx = view.fx || [];
         if (this.fxSeen == null) this.fxSeen = fx.length ? fx[fx.length - 1].n : 0;
         else for (const f of fx) if (f.n > this.fxSeen) { this.fxSeen = f.n; if (f.type === 'explore' && this.roomNodes[f.room] && !this.roomNodes[f.room].shell) this.roomNodes[f.room].flip = { phase: 1, t0: this.t }; }
-        for (const r of Object.values(view.ship.rooms)) this.updateRoom(view, r);
-        for (const c of Object.values(view.ship.corridors)) this.updateCorridor(view, c);
+        // every room builds in its own id space: floors and walls under 'room:<id>', the shell and
+        // the things that come and go (pods, objects) under their own names, so an edit cannot slip
+        // from a floor tile onto a pod that happens to have the same number
+        for (const r of Object.values(view.ship.rooms)) this.owner('room:' + r.id + ':dyn', () => this.updateRoom(view, r));
+        for (const c of Object.values(view.ship.corridors)) this.owner('cor:' + c.id + ':dyn', () => this.updateCorridor(view, c));
         const techMat = this.M(view.ship.techNoise ? '#f1c40f' : '#3fa9ff', 1);
         for (const n of Object.values(this.roomNodes)) for (const l of n.techLeds) l.material = techMat;
-        this.updateIntruders(view, intruderNames);
-        this.updateCharacters(view);
+        this.owner('intruders', () => this.updateIntruders(view, intruderNames));
+        this.owner('chars', () => this.updateCharacters(view));
+        // a build in the game merges its parts away; the editor keeps them all, so this is a no-op there
+        this.pruneEditMeshes();
         if (this.alt) this.setAlt(true);
     }
 
@@ -1611,7 +1738,7 @@ export class Scene3D {
         const sk = tile || '';
         if (node.shellKey !== sk) {
             if (node.shell) node.shell.root.dispose();
-            node.shell = tile ? this.buildShell(node, tile) : null;
+            node.shell = tile ? this.owner('room:' + r.id + ':shell', () => this.buildShell(node, tile)) : null;
             node.shellKey = sk; node.lightsOn = undefined;
         }
         node.malfunction = !!rs.malfunction;
@@ -1623,7 +1750,7 @@ export class Scene3D {
         }
         this.syncFire(node, !!rs.fire);
         let k = 0;
-        for (const o of rs.objects) this.addObject(o.type, node.root, k++, r.id, k - 1);
+        this.owner('room:' + r.id + ':obj', () => { for (const o of rs.objects) this.addObject(o.type, node.root, k++, r.id, k - 1); });
         if (tile === 'nest' && rs.explored) for (let i = 0; i < view.nestEggs; i++) this.addObject('egg', node.root, 10 + i);
         // Escape pods in their section (rules p. 2 step 7: 2 pods for 1-2 players, 3 for 3-4, 4 for 5,
         // alternating A/B). The tiles are hidden until explored, so the pods appear with the room.
@@ -2217,6 +2344,7 @@ export class Scene3D {
     }
 
     onPointer(pi) {
+        if (this.editMode) return;      // the editor picks, drags and turns meshes itself
         const T = B().PointerEventTypes;
         if (pi.type === T.POINTERMOVE) {
             const fp = this.floorPoint(this.scene.pointerX, this.scene.pointerY);
