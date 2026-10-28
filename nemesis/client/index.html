@@ -83,8 +83,11 @@
     <!-- Popups of the top bar (Computer, Adaptations) are drawn in this layer: the bar scrolls, and a
          scrolling box clips anything that sticks out of it. -->
     <div id="tbPop" class="hidden"></div>
-    <!-- My health and injuries, always in the lower-right corner: no need to open the sheet. -->
+    <!-- My health and injuries, always in the lower-LEFT corner: no need to open the sheet.
+         Under each level of the bar sits the name of the wound that blocks it (and the suit under the
+         last square); the description and the art come as a card on hover. -->
     <div id="selfHud" class="hidden"></div>
+    <div id="hudPop" class="hidden"></div>
 
     <div id="players"></div>
     <button id="playersToggle" class="pane-handle" title="Скрыть/показать персонажей и цели">◀</button>

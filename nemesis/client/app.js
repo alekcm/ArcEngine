@@ -461,20 +461,60 @@ function hpBar(p) {
     return '<div class="hp" title="Здоровье: ' + p.health + ' / 10' + (p.health === 0 ? ' — при смерти' : '') + '">' + s + '</div>';
 }
 
-/** My own health and injuries, always in the lower-right corner — no need to open the sheet to see
- *  whether the next wound is the last one. Click it to open the full sheet. */
+/** My own health, always in the lower-LEFT corner. The bar keeps the four printed levels apart so a
+ *  name fits under each of them: the first wound sits under the green three squares, the second under
+ *  the orange ones, the third under the red ones, and the suit under the last square. Only names live
+ *  here — the rules text and the art are a card that appears on hover, like any other card in the
+ *  game. An empty level keeps a grey placeholder, so the row reads "nothing here yet" without words. */
 function renderSelfHud() {
     const v = app.view, el = $('selfHud');
     const me = v && v.players.find(p => p.id === app.me);
-    if (!me || !me.charId || me.status === 'dead' || me.status === 'escaped') { el.classList.add('hidden'); return; }
+    if (!me || !me.charId || me.status === 'dead' || me.status === 'escaped') { el.classList.add('hidden'); hideHudPop(); return; }
     el.classList.remove('hidden');
     const st = me.health >= 8 ? 'здоров' : me.health >= 5 ? 'ранен' : 'тяжело ранен';
-    const wounds = (me.wounds || []).map(w => '<span class="tag red" title="' + esc(WOUNDS[w] ? WOUNDS[w].text : '') + '">' + esc(woundName(w)) + '</span>').join('');
+    const levels = [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]];
+    const wounds = me.wounds || [];
+    const cells = (sec, i) => sec.map(n => '<i class="' + (i === 1 ? 'mid' : i === 2 ? 'heavy' : i === 3 ? 'last' : '') + (me.health >= n ? ' on' : '') + '"></i>').join('');
+    let bar = '';
+    levels.forEach((sec, i) => {
+        const w = i < 3 ? wounds[i] : null;
+        let slot;
+        if (w) slot = '<div class="sh-slot wound" data-wound="' + esc(w) + '">' + esc(woundName(w)) + '</div>';
+        else if (i === 3 && me.armor) slot = '<div class="sh-slot armor" data-armor="1">' + esc(itemLabel(me.armor)) + '</div>';
+        else slot = '<div class="sh-slot empty"></div>';
+        bar += '<div class="sh-lvl">' + '<div class="sh-cells">' + cells(sec, i) + '</div>' + slot + '</div>';
+    });
     el.classList.toggle('dead', me.health <= 1);
     el.innerHTML = '<div class="sh-head"><b>' + esc(me.charName || me.name) + '</b><small>' + esc(st) + ' · ' + me.health + ' / 10</small></div>' +
-        hpBar(me) + '<div class="sh-wounds">' + (wounds || '<span class="tag">травм нет</span>') + '</div>';
+        '<div class="sh-hp">' + bar + '</div>';
     el.title = 'Здоровье и травмы — нажмите, чтобы открыть планшет (C)';
 }
+
+/** The card behind a name in the health HUD: the wound's rules text, or the suit with its art. */
+const HUD_POP_PAD = 8;
+function hideHudPop() { const el = $('hudPop'); if (el) { el.classList.add('hidden'); el.classList.remove('show', 'armor'); } }
+function showHudPop(tag) {
+    const el = $('hudPop'); if (!el) return;
+    const v = app.view, me = v && v.players.find(p => p.id === app.me);
+    let html = '', armor = false;
+    const w = tag.dataset.wound;
+    if (w) {
+        html = '<b>🩸 ' + esc(WOUNDS[w] ? WOUNDS[w].name : w) + '</b><span>' + esc(WOUNDS[w] ? WOUNDS[w].text : '') + '</span>';
+    } else if (tag.dataset.armor && me && me.armor) {
+        const art = itemArt(me.armor.item);
+        armor = true;
+        html = (art ? '<span class="ipart" style="background-image:url(' + art + ')"></span>' : '') +
+            '<b>🛡 ' + esc(itemLabel(me.armor)) + '</b><span>' + esc(itemTitle(me.armor)) + '</span>';
+    } else return;
+    el.innerHTML = html;
+    el.classList.remove('hidden'); el.classList.toggle('armor', armor); el.classList.add('show');
+    const r = tag.getBoundingClientRect(), w2 = el.offsetWidth, h2 = el.offsetHeight;
+    const x = Math.min(window.innerWidth - w2 - HUD_POP_PAD, Math.max(HUD_POP_PAD, r.left));
+    let y = r.top - h2 - 6;                                        // the card sits above the name
+    if (y < HUD_POP_PAD) y = Math.min(window.innerHeight - h2 - HUD_POP_PAD, r.bottom + 6);
+    el.style.left = Math.round(x) + 'px'; el.style.top = Math.round(y) + 'px';
+}
+
 function statusName(p) { return ({ active: '', dead: 'ПОГИБ', escaped: 'УЛЕТЕЛ', hibernating: 'ГИБЕРНАЦИЯ' })[p.status] || p.status; }
 
 function renderPlayers() {
@@ -1069,6 +1109,12 @@ $('table').addEventListener('click', e => {
     openDeck(kind);
 });
 $('selfHud').onclick = () => openSheet();
+// Hovering a name in the health HUD opens its card (wound text / suit art); leaving the HUD drops it.
+$('selfHud').addEventListener('pointerover', e => {
+    const slot = e.target && e.target.closest ? e.target.closest('.sh-slot') : null;
+    if (slot && !slot.classList.contains('empty')) showHudPop(slot); else hideHudPop();
+});
+$('selfHud').addEventListener('pointerleave', hideHudPop);
 
 // ---------------------------------------------------------------------------------------------
 // Top-bar popups (Computer, Adaptations)
