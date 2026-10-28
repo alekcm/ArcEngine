@@ -168,7 +168,7 @@ test('SCN-10: a corridor never doubles back — no fold, no elbow, no torn tube'
     }
 });
 
-test('SCN-11: the tech entrance carries its noise numbers on the roof, face up and clear of the pipes', () => {
+test('SCN-11: the tech entrance is two corridor arches with the number on the plate between them', () => {
     // ru: цифры тех. коридора — на крыше люка, а не только на самой балке коридора. Плоскость
     // односторонняя: её надо положить лицом вверх (rotation.x = -pi/2), иначе с высоты читается
     // зеркальный/перевёрнутый глиф. Трубы и перекладины сдвинуты к краям, чтобы центр был свободен.
@@ -187,18 +187,30 @@ test('SCN-11: the tech entrance carries its noise numbers on the roof, face up a
         const rz = { x: face.x * cz - face.y * sz, y: face.x * sz + face.y * cz, z: face.z };
         const n = { x: rz.x, y: rz.y * cx - rz.z * sx, z: rz.y * sx + rz.z * cx };
         assert.ok(n.y > 0.999, r.id + ': лицевая сторона смотрит вверх (n.y = ' + n.y.toFixed(2) + ')');
-        assert.ok(plane.position.y > 1.875, r.id + ': трафарет выше крыши (y = ' + plane.position.y + ')');
-        // The number belongs to the hatch, not to the room floor: it sits on the stub's own roof.
-        // The hatch straddles the wall ring, so its roof (a 2.4 x 2.4 plate) is centred on WALL_R.
+        // The number lies on the plate between the two arches: the plate's top face is at 1.87
+        // (local), the stencil a hair above it, and the plate itself sits between the lintels.
+        assert.ok(plane.position.y > 1.93 && plane.position.y < 1.97,
+            r.id + ': трафарет лежит на плите между арками (y = ' + plane.position.y.toFixed(3) + ')');
+        // The entrance straddles the wall ring: the plate is the stub's own top, just inside the wall.
         const out = Math.hypot(plane.position.x, plane.position.z);
-        assert.ok(Math.abs(out - WALL_R) < 0.05, r.id + ': трафарет на крыше техкоридора (r = ' + out.toFixed(2) + ')');
+        assert.ok(out > WALL_R - 0.3 && out < WALL_R + 0.45, r.id + ': плита на самом входе (r = ' + out.toFixed(2) + ')');
         assert.ok(Math.abs(plane.rotation.y - node.techAngle) < 1e-6, r.id + ': трафарет повёрнут вместе с коридором');
         assert.ok(Math.abs(plane.rotation.z) < 1e-6, r.id + ': цифры стоят верхом наружу — читаются из комнаты');
+        // Two arches, each with a glowing band on both faces, plus the floor runner: one material list.
+        assert.equal(node.techLeds.length, 11, r.id + ': две арки по пять полос и пол-раннер (' + node.techLeds.length + ')');
+        const low = node.techLeds.map(l => l.getAbsolutePosition().y).sort((x, y) => x - y)[0];
+        assert.ok(Math.abs(low - FLOOR_Y) < 0.01, r.id + ': самая низкая полоса — раннер на полу (y = ' + low.toFixed(3) + ')');
         const nums = (r.techNums && r.techNums.length) ? r.techNums : [4];
         assert.equal(String(plane.metadata.decal).split('|')[0], nums.join(' / '), r.id + ': на крыше напечатаны номера этого входа');
         checked++;
     }
     assert.ok(checked >= 5, 'у техкоридоров есть входы (' + checked + ')');
+    // Nothing may hang over the sides: the plate, the lintels and the posts are one width (2.6), so
+    // the merged frame never grows wider than the arches it belongs to.
+    const frameMesh = Object.values(ship.rooms).filter(r => r.tech).map(r => scene.roomNodes[r.id].root)
+        .flatMap(root => root.getChildMeshes())
+        .filter(m => m.material && m.material.diffuseColor && m.material.diffuseColor.toHexString().toLowerCase() === '#59697b');
+    assert.ok(frameMesh.length >= 4, 'стеклянная сталь арок и плиты собрана в общий меш (' + frameMesh.length + ')');
     // Alt repaints the very same stencil neon, exactly like the numbers on the corridor beams.
     const first = Object.values(ship.rooms).find(r => r.tech);
     scene.setAlt(true);
@@ -247,7 +259,7 @@ test('SCN-12: the floor finish is what everything stands on — the shell, the f
     assert.ok(techNode.techLeds.length >= 10, 'hatch: light rails, floor runner and the LED ring (' + techNode.techLeds.length + ')');
     const ys = techNode.techLeds.map(l => l.getAbsolutePosition().y).sort((a, b) => a - b);
     assert.ok(ys[0] > FLOOR_Y - 0.06, 'no part of the hatch stays under the floor (lowest y = ' + ys[0].toFixed(3) + ')');
-    assert.ok(Math.abs(ys[0] - (FLOOR_Y - 0.03)) < 0.02, 'the floor runner lies on the floor (y = ' + ys[0].toFixed(3) + ')');
+    assert.ok(Math.abs(ys[0] - FLOOR_Y) < 0.02, 'the floor runner lies on the floor (y = ' + ys[0].toFixed(3) + ')');
 });
 
 test('SCN-13: every blue part of the tech hatch turns yellow with a noise token', () => {
