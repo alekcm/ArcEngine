@@ -1468,7 +1468,7 @@ export class Scene3D {
             debris.push(db);
         }
         this.corridorNodes[c.id] = { root, panels, noise, noiseLabel, decal, nums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
-            panelClosed: PANEL_CLOSED, panelOpen: PANEL_OPEN, a: c.a, b: c.b, state: null };
+            panelClosed: PANEL_CLOSED, panelOpen: PANEL_OPEN, ry: d.ry, a: c.a, b: c.b, state: null };
     }
 
     /** A flat stencil decal: same paint as `makeLabel`, but it stays where it is painted instead of

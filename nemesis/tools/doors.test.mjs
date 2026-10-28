@@ -164,6 +164,13 @@ test('DR-02 the number is a flat stencil on the beam, not a board hanging in the
         assert.equal(decal.rotation.x, Math.PI / 2, c.id + ': the stencil lies flat');
         assert.ok(decal.rotation.z === 0 || Math.abs(decal.rotation.z) === Math.PI, c.id + ': it only spins in its own plane');
         assert.equal(decal.position.x, 0, c.id + ': centred across the beam');
+        // The stencil is fixed, but which way round it is painted is picked once: the top of the
+        // numbers has to point away from the table's default camera, or every other door would read
+        // upside down (the "?" on a room floor is printed the same way round).
+        const up = { x: -Math.SQRT1_2, z: Math.SQRT1_2 };
+        const flip = Math.abs(decal.rotation.z) === Math.PI ? -1 : 1;
+        const facing = (Math.sin(n.ry) * up.x + Math.cos(n.ry) * up.z) * flip;
+        assert.ok(facing > -1e-9, c.id + ': the number is painted the right way up (' + facing.toFixed(2) + ')');
         assert.equal(decal.position.z, 0, c.id + ': centred along the beam');
         // it sits on the beam's sign plate, not above it
         const plate = meshes.find(m => m.name === 'dplate');
