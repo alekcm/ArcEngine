@@ -404,11 +404,33 @@ export function sanitizeEdits(src) {
   return out;
 }
 
-/** Write the board edits; the previous file goes to _utils/.backups/board-*.json. */
-export async function saveBoard(root, edits) {
+/** How many edits a file on disk holds (0 when it is missing or unreadable). */
+export function boardCount(file) {
+  try {
+    const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return Object.keys((json && json.edits) || {}).length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Write the board edits; the previous file goes to _utils/.backups/board-*.json.
+ *
+ * An empty set is a legitimate thing to save ("the board is as the code builds it"), but it is also
+ * what a panel writes when it never managed to load the file — and that silently threw away a
+ * session's work once. So an empty set over a non-empty file is refused unless the caller says it
+ * means it (`force`, which the UI only sends after an explicit confirmation).
+ */
+export async function saveBoard(root, edits, opts) {
   if (!edits || typeof edits !== 'object' || Array.isArray(edits)) return failure('bad_board');
+  const force = !!(opts && opts.force);
   const clean = sanitizeEdits(edits);
   const file = path.join(root, BOARD_REL);
+  const onDisk = boardCount(file);
+  if (!force && !Object.keys(clean).length && onDisk > 0) {
+    return { ok: false, code: 'would_wipe', onDisk, error: 'refusing to replace ' + onDisk + ' saved edit(s) with an empty set (force to mean it)' };
+  }
   const backup = fs.existsSync(file) ? await backupFile(root, file, 'board', '.json').catch(() => null) : null;
   const sorted = {};
   for (const id of Object.keys(clean).sort()) sorted[id] = clean[id];
