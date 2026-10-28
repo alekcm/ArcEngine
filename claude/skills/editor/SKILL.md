@@ -83,6 +83,10 @@ when the owner scope is gone (BD-10 in `nemesis/tools/board.test.mjs` guards thi
   `ensureScene` used to dispose the whole board). `setupGizmo()` runs in its own try/catch — a broken
   gizmo leaves the board and the numeric fields working. Do not set
   `updateGizmoRotationToMatchAttachedMesh` on the scaling gizmo: Babylon logs that it is unsupported.
+- Selection is the whole gesture, not the press: LMB turns the camera, so a part is picked on
+  `pointerup` only when the pointer travelled less than `CLICK_SLOP` (6 px) since `pointerdown`;
+  a drag (even one that returns to the start point) is a camera turn. `pointermove`/`pointerup` are
+  window listeners, and a press that starts on a gizmo handle never becomes a click.
 - Keys: click — select, `1/2/3` — move/rotate/scale gizmo, `Del` — delete/restore the selected part,
   `Esc` — deselect, `F` — whole ship, `D` — a door, `Alt` — neon numbers.
 

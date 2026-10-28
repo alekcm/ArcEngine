@@ -175,6 +175,53 @@ test('PA-06: список «Найти деталь» даёт любую дет
     assert.deepEqual(picked, ['room:101#0', 'room:101#1', 'room:101#0'], 'перебор по кругу');
 });
 
+test('PA-07: выбор — это клик, а не зажатая ЛКМ: камера вращается той же кнопкой', () => {
+    const panel = globalThis.NemesisPanel;
+    const picked = [];
+    const missed = [];
+    panel.scene = { pickMesh: (x, y) => ({ name: 'fl', metadata: { editId: 'room:101#5' }, at: [x, y] }) };
+    panel.canvas = { getBoundingClientRect: () => ({ left: 10, top: 20 }) };
+    panel.gizmo = null;
+    const backupSelect = panel.select, backupSay = panel.say;
+    panel.select = (m) => picked.push(m && m.metadata ? { id: m.metadata.editId, at: m.at } : null);
+    panel.say = (t) => missed.push(t);
+    const down = (x, y) => panel.onPointerDown({ button: 0, clientX: x, clientY: y, pointerId: 1 });
+    const move = (x, y) => panel.onPointerMove({ clientX: x, clientY: y, pointerId: 1 });
+    const up = (x, y, button = 0) => panel.onPointerUp({ button, clientX: x, clientY: y, pointerId: 1 });
+    try {
+        // клик: нажал и отпустил почти в той же точке — деталь выбрана, координаты — от рамки холста
+        down(110, 120); up(111, 121);
+        assert.deepEqual(picked, [{ id: 'room:101#5', at: [101, 101] }],
+            'клик выбирает деталь; точка — отпускание минус рамка холста');
+
+        // поворот камеры: нажал, протащил, отпустил — не выбирается ничего
+        down(110, 120); move(160, 120); up(160, 120);
+        assert.equal(picked.length, 1, 'протаскивание камерой ничего не выбирает');
+
+        // вернулся в ту же точку — это всё ещё поворот, а не клик
+        down(110, 120); move(400, 300); up(110, 120);
+        assert.equal(picked.length, 1, 'точка возврата не делает из поворота клик');
+
+        // отпускание не левой кнопкой — не выбор
+        down(110, 120); up(110, 120, 2);
+        assert.equal(picked.length, 1, 'правая кнопка не выбирает');
+
+        // нажатие на ручку гизмо — это перетаскивание детали, а не новый выбор
+        withGizmo(() => {
+            panel.scene = { scene: {} };
+            panel.setupGizmo();
+        });
+        panel.scene = { pickMesh: () => ({ name: 'fl', metadata: { editId: 'room:101#5' } }) };
+        GizmoManager.last.gizmos.positionGizmo.xGizmo.isHovered = true;
+        down(110, 120); move(200, 130); up(200, 130);
+        assert.equal(picked.length, 1, 'за ручку гизмо деталь не перевыбирается');
+    } finally {
+        panel.select = backupSelect;
+        panel.say = backupSay;
+        panel.gizmo = null;
+    }
+});
+
 test('PA-05: сломанное гизмо не уносит с собой доску', () => {
     // ensureScene() строит доску, и только потом поднимает гизмо — в собственном try/catch
     const at = SRC.indexOf('this.setupGizmo();');

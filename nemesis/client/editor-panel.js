@@ -34,6 +34,9 @@ function keyed(obj) {
     return JSON.stringify(Object.keys(obj || {}).sort().map(k => [k, obj[k]]));
 }
 
+/** How far the pointer may travel and still count as a click: the camera turns with the same button. */
+const CLICK_SLOP = 6;
+
 const fmt = (v) => (typeof v === 'number' ? (Math.abs(v) >= 10 ? String(Math.round(v)) : v.toFixed(2)) : String(v));
 const round = (v) => Math.round(v * 1000) / 1000;
 
@@ -43,6 +46,7 @@ const NemesisPanel = {
     view: null,
     active: false,
     gizmo: null,
+    press: null,            // where the LMB went down: a click is a press that does not travel
     sel: null,              // the selected mesh
     selId: null,
     mode: 'move',
@@ -69,7 +73,13 @@ const NemesisPanel = {
         for (const btn of document.querySelectorAll('#nemesis-modes [data-nes-mode]')) {
             btn.addEventListener('click', () => this.setMode(/** @type {HTMLElement} */ (btn).dataset.nesMode));
         }
+        // The same button that selects a part also turns the camera, so a selection is the whole
+        // gesture: down, no drag, up. Move/up sit on the window — a turn that ends outside the canvas
+        // still has to be recognised as a turn, not as a click on whatever is under the cursor.
         this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+        window.addEventListener('pointermove', (e) => this.onPointerMove(e));
+        window.addEventListener('pointerup', (e) => this.onPointerUp(e));
+        this.canvas.addEventListener('pointercancel', () => { this.press = null; });
         window.addEventListener('pane-tab', (e) => this.onTab(/** @type {CustomEvent} */ (e).detail));
         window.addEventListener('lang-changed', () => { this.renderNote(); this.buildControls(); this.renderPart(); this.renderFind(); this.renderEdits(); this.renderDirty(); });
         window.addEventListener('resize', () => this.resize());
@@ -210,10 +220,31 @@ const NemesisPanel = {
 
     // --- selection ----------------------------------------------------------------------------
 
+    /** Where the press started and how far the button travelled: a turn of the camera is a drag. */
     onPointerDown(e) {
+        this.press = null;
         if (!this.scene || e.button !== 0) return;
         // a press on a gizmo handle is a drag, not a selection
         if (this.hoveringGizmo()) return;
+        this.press = { x: e.clientX, y: e.clientY, moved: 0, id: e.pointerId };
+    },
+
+    onPointerMove(e) {
+        const p = this.press;
+        if (!p || !this.scene) return;
+        if (e.pointerId !== undefined && p.id !== undefined && e.pointerId !== p.id) return;
+        p.moved = Math.max(p.moved, Math.hypot(e.clientX - p.x, e.clientY - p.y));
+    },
+
+    /** A click selects; turning the camera with the same button does not. */
+    onPointerUp(e) {
+        const p = this.press;
+        this.press = null;
+        if (!p || !this.scene) return;
+        if (e.button !== undefined && e.button !== 0) return;
+        const moved = Math.max(p.moved, Math.hypot(e.clientX - p.x, e.clientY - p.y));
+        // the camera turns at the slightest move, so the slop is generous — but it is still a slop
+        if (moved > CLICK_SLOP) return;
         const r = this.canvas.getBoundingClientRect();
         const mesh = this.scene.pickMesh(e.clientX - r.left, e.clientY - r.top);
         // nothing under the cursor: say so, otherwise the tab looks broken
