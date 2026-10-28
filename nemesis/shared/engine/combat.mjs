@@ -3,7 +3,7 @@
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, healthState, loseHealth, gainWound,
     gainContamination, killPlayer, discardCard, COMBAT_DIE, roll, fmtRoll, needDice, fx, removeIntruder, intruderLabel, INTRUDER_RANK,
     drawCards, placeFire, placeNoise, cardDef, orderIndex, hasAdapt, placeMalfunction, removeCardFromGame, infectLarva, heavyCount, handLimit,
-    handSlots, dropHeavy } from './core.mjs';
+    handSlots, dropHeavy, BLUE_DIE, dieId } from './core.mjs';
 import { repelIntruder, moveOneToward, hyperAttackStep } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
 import { ATTACK_CARDS, ITEMS, dropLocked, hasOpenQuest, connectedTo, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
@@ -486,7 +486,9 @@ OPS['shoot.fire'] = (state, step) => {
     const it = state.intruders[step.target];
     const then = step.then || { op: 'turn.choose' };
     if (!w || !it || !canFire(p, w)) { next(state, then); return; }
-    if (it.type !== 'larva' && !step.rerollResolved && needDice(state, step, 'combat', p.id, 'Бросок боя — выстрел')) return;
+    const sdie = shootDie(p), sdieId = dieId(sdie);
+    if (sdieId === 'blue') step.blue = true;
+    if (it.type !== 'larva' && !step.rerollResolved && needDice(state, step, sdieId, p.id, sdieId === 'blue' ? 'Бросок боя — выстрел (синий кубик)' : 'Бросок боя — выстрел')) return;
     const def = ITEMS[w.item], wd = def.weapon;
     // Weapons that allow a reroll ("may reroll the first roll, accept the second result") turn it
     // into the player's decision. The first die is rolled here, before ammo is spent.
@@ -494,7 +496,7 @@ OPS['shoot.fire'] = (state, step) => {
         const first = forcedRollOnce(state, step);
         ask(state, { kind: 'choice', player: p.id, title: '«' + def.name + '»: выпало ' + fmtRoll(first) + '. Перебросить кубик боя? Второй результат окончателен.',
             options: [{ id: 'reroll', label: 'Перебросить' }, { id: 'keep', label: 'Оставить' }] },
-            { op: 'shoot.rerollAns', player: p.id, first, step: { ...step, answer: undefined } });
+            { op: 'shoot.rerollAns', player: p.id, first, blue: step.blue, step: { ...step, answer: undefined } });
         return;
     }
     state.shotSeq = (state.shotSeq || 0) + 1;
@@ -504,8 +506,8 @@ OPS['shoot.fire'] = (state, step) => {
     if (wd.firstShotBonus && !p.firstShotUsed) { hits++; p.firstShotUsed = true; }
     let mod = (wd.plusOne ? 1 : 0) - (wd.minusOne ? 1 : 0) + (p.wounds.includes('eyes') ? 1 : 0) + (step.rollBonus || 0);
     log(state, '🔫 ' + pname(p) + ' стреляет из «' + def.name + '» в ' + intruderLabel(state, it) + ' (патронов осталось ' + w.ammo + ').', 'combat');
-    dealHits(state, p, it, hits, mod, { weapon: w, retaliate: false, bestOfTwo: step.bestOfTwo, forcedRoll: step.forcedRoll });
-    const rolled = state.lastRoll && state.lastRoll.die === 'combat' ? state.lastRoll.value : null;
+    dealHits(state, p, it, hits, mod, { weapon: w, retaliate: false, bestOfTwo: step.bestOfTwo, forcedRoll: step.forcedRoll, die: sdie });
+    const rolled = state.lastRoll && (state.lastRoll.die === 'combat' || state.lastRoll.die === 'blue') ? state.lastRoll.value : null;
     if (wd.fire) placeFire(state, p.room, 'огнемёт');
     if (wd.fireOn && wd.fireOn.includes(rolled)) placeFire(state, p.room, 'огнемёт');
     if (wd.malfOn && wd.malfOn.includes(rolled)) { placeMalfunction(state, p.room, 'звуковая пушка'); log(state, 'Звуковая пушка: поломка в вашей комнате.', 'bad'); }
@@ -525,9 +527,14 @@ OPS['shoot.fire'] = (state, step) => {
 };
 
 /** Intruder Adaptations that alter the natural combat roll: Agile (2 / icon → 6), Hardened Carapace (2–6 → +1). */
+/**
+ * The Battle Suit (printed): "Use the special Blue Combat die when Shooting." The die is the
+ * shooter's, so a wearer replaces the red die for every Shot they make, including rerolls.
+ */
+function shootDie(p) { return p.armor && p.armor.item === 'battleSuit' ? BLUE_DIE : COMBAT_DIE; }
 /** The first combat die of a shot: interactive when the player already rolled, else a normal roll. */
 function forcedRollOnce(state, step) {
-    return roll(state, COMBAT_DIE);
+    return roll(state, step.blue ? BLUE_DIE : COMBAT_DIE);
 }
 function adaptRoll(state, r) {
     if (hasAdapt(state, 'agile') && (r === 'crit' || r === 2)) { log(state, '🧬 Проворство: результат «' + fmtRoll(r) + '» считается «6».', 'combat'); r = 6; }
@@ -557,9 +564,10 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
     if (it.type === 'queen') return queenHits(state, p, it, hits, mod, opts);
     it.hits += hits;
     const wd = opts.weapon ? ITEMS[opts.weapon.item].weapon : {};
-    let r = opts.forcedRoll !== undefined ? opts.forcedRoll : roll(state, COMBAT_DIE);
+    const die = opts.die || COMBAT_DIE;
+    let r = opts.forcedRoll !== undefined ? opts.forcedRoll : roll(state, die);
     if (opts.bestOfTwo) {
-        const r2 = roll(state, COMBAT_DIE);
+        const r2 = roll(state, die);
         const score = v => v === 'crit' ? -100 : v;
         log(state, '🎲 Точный выстрел: два броска — ' + fmtRoll(r) + ' и ' + fmtRoll(r2) + '.', 'combat');
         if (score(r2) < score(r)) r = r2;
@@ -587,7 +595,7 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
 }
 OPS['shoot.rerollAns'] = (state, step) => {
     // "You may reroll the first roll, accept the second": the second value is final.
-    const second = step.answer === 'reroll' ? roll(state, COMBAT_DIE) : step.first;
+    const second = step.answer === 'reroll' ? roll(state, step.blue ? BLUE_DIE : COMBAT_DIE) : step.first;
     if (step.answer === 'reroll') log(state, pname(player(state, step.player)) + ' перебрасывает кубик боя.', 'combat');
     next(state, { ...step.step, rerollResolved: true, forcedRoll: second });
 };
@@ -604,7 +612,7 @@ function onKill(state, p, opts) {
 function queenHits(state, p, it, hits, mod, opts = {}) {
     state.queenHits += hits;
     const wd = opts.weapon ? ITEMS[opts.weapon.item].weapon : {};
-    const natural = roll(state, COMBAT_DIE);
+    const natural = roll(state, opts.die || COMBAT_DIE);
     const face = faceEffect(state, wd, natural, opts.weapon ? ITEMS[opts.weapon.item].name : '');
     let r = natural;
     if (wd.critOn2 && natural === 2) { r = 'crit'; log(state, 'Штурмовая винтовка: «2» — КРИТ по Королеве.', 'combat'); }

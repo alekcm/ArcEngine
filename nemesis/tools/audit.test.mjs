@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { createGame } from '../shared/engine/setup.mjs';
 import {
     OPS, answer, next, run, loseHealth, gainContamination, drawCards,
-    heavyCount, handLimit, drawLimit, destroyShip,
+    heavyCount, handLimit, drawLimit, destroyShip, BLUE_DIE, computerHere,
 } from '../shared/engine/core.mjs';
 import { buildMenu } from '../shared/engine/turn.mjs';
 import { roomActionCost, roomActionAvailable, giveItem } from '../shared/engine/rooms.mjs';
@@ -979,4 +979,93 @@ test('CARD-10 / Research Equipment analyzes a Heavy Object for 2 Knowledge', () 
     if (s.prompt && s.prompt.kind === 'choice') choose(s, s.prompt.options[0].id);
     assert.equal(p.knowledge, before + 2);
     assert.equal(p.analyzed.carcass, true);
+});
+
+// ---------------------------------------------------------------------------------------------
+// §48: the printed effects that were still missing (blue die, Portable Device, Karcher, Pipe).
+// ---------------------------------------------------------------------------------------------
+test('CARD-11 / Battle Suit: the wearer Shoots with the Blue Combat die, everyone else with the red one', () => {
+    const s = fresh(['sentry', 'soldier']), p = s.players[0], it = intruder(s);
+    p.items = [inst(s, 'sentrySmg')];
+    p.armor = inst(s, 'battleSuit');
+    s.pendingRoll = { die: 'blue', value: 2 };
+    execute(s, { op: 'shoot.fire', player: 0, weapon: p.items[0].uid, target: it.uid, then: { op: 'noop' } });
+    assert.equal(s.lastRoll.die, 'blue', 'the printed special die is used');
+    assert.deepEqual([...BLUE_DIE].sort(), [2, 2, 3, 3, 3, 4, 4, 5, 6, 'crit'].sort(), 'faces as on the die sheet');
+    // Without the suit the same shot rolls the normal red die.
+    const s2 = fresh(['sentry', 'soldier']), p2 = s2.players[0], it2 = intruder(s2);
+    p2.items = [inst(s2, 'sentrySmg')]; p2.armor = null;
+    s2.pendingRoll = { die: 'combat', value: 2 };
+    execute(s2, { op: 'shoot.fire', player: 0, weapon: p2.items[0].uid, target: it2.uid, then: { op: 'noop' } });
+    assert.equal(s2.lastRoll.die, 'combat');
+});
+test('CARD-12 / Battle Suit: a Fire in the Room does not cost Health at the end of the turn', () => {
+    const s = fresh(['sentry', 'soldier']), p = s.players[0];
+    p.armor = inst(s, 'battleSuit'); p.health = 6;
+    s.roomState[p.room].fire = true; p.firePaidThisTurn = false;
+    execute(s, { op: 'turn.end' });
+    assert.equal(p.health, 6, 'the suit ignores the Fire');
+    const s2 = fresh(['sentry', 'soldier']), q = s2.players[0];
+    q.armor = null; q.health = 6;
+    s2.roomState[q.room].fire = true; q.firePaidThisTurn = false;
+    execute(s2, { op: 'turn.end' });
+    assert.equal(q.health, 5, 'without the suit the Fire costs 1 Health');
+});
+test('CARD-13 / Portable Device: the Room counts as a Computer Room', () => {
+    const s = fresh(['scientist', 'soldier']), p = s.players[0];
+    reveal(s, p.room, 'storage');
+    assert.equal(ROOM_TILES.storage.computer, false, 'the fixture Room really has no Computer');
+    assert.equal(computerHere(s, p), false);
+    p.items = [inst(s, 'portableDevice')];
+    assert.equal(computerHere(s, p), true, 'the printed passive makes it a Computer Room');
+});
+test('CARD-14 / Karcher: a Fire token moves from the Room onto the item', () => {
+    const s = fresh(['janitor', 'soldier']), p = s.players[0];
+    const k = inst(s, 'karcher'); p.items = [k];
+    s.roomState[p.room].fire = true;
+    execute(s, { op: 'item2.use', player: 0, uid: k.uid, then: { op: 'noop' } });
+    choose(s, 'fire');
+    assert.equal(s.roomState[p.room].fire, false, 'the Fire left the Room');
+    assert.equal(k.fireTokens, 1, 'the token sits on the item');
+    // Nothing to place when the Room is not on fire.
+    const s2 = fresh(['janitor', 'soldier']), p2 = s2.players[0];
+    const k2 = inst(s2, 'karcher'); p2.items = [k2];
+    const it2 = intruder(s2);
+    s2.roomState[p2.room].fire = false;
+    execute(s2, { op: 'item2.use', player: 0, uid: k2.uid, then: { op: 'noop' } });
+    assert.ok(!(s2.prompt && (s2.prompt.options || []).some(o => o.id === 'fire')), 'no choice: there is no Fire token to place');
+    assert.equal(it2.room, p2.room, 'the intruder stays');
+});
+test('CARD-15 / Pipe: Melee contamination only on the printed 5 and 6', () => {
+    const s = fresh(['convict', 'soldier']), p = s.players[0], it = intruder(s);
+    p.items = [inst(s, 'pipe')]; p.hand = []; p.deck = []; p.discard = [];
+    s.pendingRoll = { die: 'combat', value: 4 };
+    execute(s, { op: 'melee.hit', player: 0, target: it.uid, contamFaces: [5, 6], then: { op: 'noop' } });
+    const after4 = p.hand.length + p.deck.length + p.discard.length;
+    const s2 = fresh(['convict', 'soldier']), q = s2.players[0], it2 = intruder(s2);
+    q.items = [inst(s2, 'pipe')]; q.hand = []; q.deck = []; q.discard = [];
+    s2.pendingRoll = { die: 'combat', value: 5 };
+    execute(s2, { op: 'melee.hit', player: 0, target: it2.uid, contamFaces: [5, 6], then: { op: 'noop' } });
+    const after5 = q.hand.length + q.deck.length + q.discard.length;
+    assert.equal(after4, 0, 'a 4 contaminates nobody');
+    assert.ok(after5 > after4, 'a 5 does contaminate');
+});
+test('CARD-16 / Pipe: with the Cuffs removed it may be burned for +1 Hit and flips instead of being discarded', () => {
+    const s = fresh(['convict', 'soldier']), p = s.players[0], it = intruder(s);
+    const pipe = inst(s, 'pipe');
+    const cuffs = p.items.find(i => i.item === 'cuffs');
+    assert.ok(cuffs, 'the Convict starts with the Cuffs');
+    cuffs.charge = 0;
+    p.items.push(pipe);
+    execute(s, { op: 'item2.use', player: 0, uid: pipe.uid, then: { op: 'noop' } });
+    choose(s, 'burn');
+    assert.equal(pipe.flipped, true, 'a discard flips the item over instead');
+    assert.ok(p.items.includes(pipe), 'the item is still in hand');
+    assert.equal(s.prompt && s.prompt.kind, 'dice', 'the Melee Attack still asks for its combat roll');
+    // +1 Hit: the burned pipe deals the extra Hit before the roll.
+    const s2 = fresh(['convict', 'soldier']), q = s2.players[0], it2 = intruder(s2);
+    q.items = [inst(s2, 'pipe')];
+    s2.pendingRoll = { die: 'combat', value: 6 };
+    execute(s2, { op: 'melee.hit', player: 0, target: it2.uid, contamFaces: [5, 6], bonusHits: 1, then: { op: 'noop' } });
+    assert.ok(s2.intruders[it2.uid] === undefined || s2.intruders[it2.uid].hits >= 2, '1 Hit + 1 more');
 });

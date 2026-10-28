@@ -2,7 +2,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeFire, removeMalfunction, placeFire, placeMalfunction, drawCards, discardCard, isContam, gainContamination,
-    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice } from './core.mjs';
+    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice , computerHere } from './core.mjs';
 import { ITEMS, WOUNDS, DECK_NAMES, canLoadWith } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { shuffle } from '../rng.mjs';
@@ -194,7 +194,7 @@ OPS['item.use'] = (state, step) => {
             consume();
             const opts = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'cables')).map(w => ({ id: 'w:' + w.uid, label: 'Полностью зарядить: ' + ITEMS[w.item].name }));
             const tile = tileOf(state, p.room);
-            if (tile && ROOM_TILES[tile].computer && room(state, p.room).malfunction) opts.push({ id: 'fix', label: 'Устранить поломку и использовать компьютер' });
+            if (computerHere(state, p) && room(state, p.room).malfunction) opts.push({ id: 'fix', label: 'Устранить поломку и использовать компьютер' });
             if (!opts.length) { next(state, back); return; }
             choose('Кабели', opts, 'item.cables');
             return;
@@ -217,7 +217,7 @@ OPS['item.use'] = (state, step) => {
             consume();
             const tile = tileOf(state, p.room);
             const opts = [];
-            if (tile && ROOM_TILES[tile].computer && !room(state, p.room).malfunction) [1, 2, 3].forEach(n => opts.push({ id: 'chk:' + n, label: 'Проверить двигатель №' + n }));
+            if (computerHere(state, p) && !room(state, p.room).malfunction) [1, 2, 3].forEach(n => opts.push({ id: 'chk:' + n, label: 'Проверить двигатель №' + n }));
             for (const r of Object.values(state.ship.rooms).filter(r => r.kind === 'engine')) opts.push({ id: 'go:' + r.id, label: 'Переместиться к двигателю №' + r.engineNo + ' и спасовать' });
             choose('Ключ двигателя', opts, 'item.engineKey');
             return;

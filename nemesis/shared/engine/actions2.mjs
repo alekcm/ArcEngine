@@ -4,7 +4,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, isContam, payCost, placeNoise, corridorsOf, secretTile,
-    payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES } from './core.mjs';
+    payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES, computerHere } from './core.mjs';
 import { ITEMS, dropLocked, canLoadWith, hasOpenQuest, connectedTo, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, WOUNDS, EVENT_CARDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
@@ -15,7 +15,7 @@ import { startSelfDestruct, stopSelfDestruct } from './events.mjs';
 import { shuffle } from '../rng.mjs';
 
 const BACK = { op: 'turn.choose' };
-const compHere = (state, p) => { const t = tileOf(state, p.room); return !!(t && ROOM_TILES[t].computer); };
+const compHere = (state, p) => computerHere(state, p);
 const noMalf = (state, p) => !room(state, p.room).malfunction;
 const others = (state, p, roomId) => state.players.filter(o => o.id !== p.id && o.status === 'active' && o.room === roomId && !o.pod);
 const neighbours = (state, roomId) => state.ship.rooms[roomId].exits.map(e => e.to);
@@ -781,7 +781,32 @@ OPS['item2.use'] = (state, step) => {
     const p = player(state, step.player); const inst = p.items.find(i => i.uid === step.uid) || (p.armor && p.armor.uid === step.uid ? p.armor : null); const back = step.then || BACK;
     if (!inst) { next(state, back); return; }
     switch (ITEMS[inst.item].use) {
-        case 'pipeMelee': next(state, { op: 'melee.start', player: p.id, contamFaces: [2, 'crit'], then: back }); return;
+        case 'pipeMelee': {
+            // Printed: contamination only on the "5" and "6" faces; once the Cuffs are removed the
+            // item may be discarded for +1 Hit, and a discard flips it over instead.
+            const faces = [5, 6];
+            if (cuffsOn(p)) { next(state, { op: 'melee.start', player: p.id, contamFaces: faces, then: back }); return; }
+            ask(state, { kind: 'choice', player: p.id, title: 'Труба: сбросить предмет ради +1 ранения?', options: [
+                { id: 'keep', label: 'Оставить трубу' },
+                { id: 'burn', label: 'Сбросить (+1 ранение, вместо сброса — переворот)' },
+            ] }, { op: 'item2.pipeBurn', player: p.id, uid: inst.uid, then: back });
+            return;
+        }
+        case 'karcher': {
+            const rs = room(state, p.room), opts = [];
+            for (const i of intrudersIn(state, p.room)) opts.push({ id: 'i:' + i.uid, label: 'Отогнать: ' + intruderLabel(state, i) });
+            if (!rs.fire) {
+                log(state, 'Карчер: в комнате нет огня — жетон огня некуда положить на предмет.', 'minor');
+                next(state, back); return;
+            }
+            if (opts.length) ask(state, { kind: 'choice', player: p.id, title: 'Карчер: положить жетон огня — что сделать?', options: [
+                { id: 'fire', label: 'Убрать огонь из комнаты' }, ...opts,
+            ] }, { op: 'item.karcher', player: p.id, uid: inst.uid, then: back });
+            else ask(state, { kind: 'choice', player: p.id, title: 'Карчер: положить жетон огня на предмет и убрать огонь из комнаты?', options: [
+                { id: 'fire', label: 'Убрать огонь' }, { id: 'no', label: 'Отмена' },
+            ] }, { op: 'item.karcher', player: p.id, uid: inst.uid, then: back });
+            return;
+        }
         case 'probeArm': OPS['item3.probeArm'](state, { ...step, then: back }); return;
         case 'wrench': {
             const rs = room(state, p.room); const opts = [];
@@ -827,7 +852,7 @@ OPS['item2.use'] = (state, step) => {
         case 'cheatCodes': {
             const tile = tileOf(state, p.room);
             const rs = room(state, p.room);
-            if (!tile || !ROOM_TILES[tile].computer || rs.malfunction) {
+            if (!computerHere(state, p) || rs.malfunction) {
                 log(state, '«' + ITEMS[inst.item].name + '»: нужна комната с компьютером без поломки.', 'minor');
                 next(state, back); return;
             }
@@ -954,5 +979,28 @@ OPS['item.research'] = (state, step) => {
     // Same analysis as the Laboratory action: 2 Knowledge, and the first object of a type removes an
     // active Adaptation.
     OPS['room.lab'](state, { player: step.player, answer: step.answer, then: step.then });
+};
+OPS['item2.pipeBurn'] = (state, step) => {
+    const p = player(state, step.player);
+    const inst = p.items.find(i => i.uid === step.uid);
+    const extra = step.answer === 'burn' ? 1 : 0;
+    // Printed: "If you are to discard this Item, flip it over instead." — the card stays, face down.
+    if (extra && inst) { inst.flipped = true; log(state, 'Труба перевёрнута вместо сброса.', 'minor'); }
+    next(state, { op: 'melee.start', player: p.id, contamFaces: [5, 6], bonusHits: extra, then: step.then });
+};
+OPS['item.karcher'] = (state, step) => {
+    const p = player(state, step.player);
+    const inst = p.items.find(i => i.uid === step.uid);
+    const rs = room(state, p.room);
+    if (step.answer === 'no') { next(state, step.then); return; }
+    // Printed: place a Fire token on the item (it moves off the Room), then remove that Fire or
+    // repel 1 Intruder.
+    if (rs.fire) {
+        rs.fire = false;
+        if (inst) inst.fireTokens = (inst.fireTokens || 0) + 1;
+        log(state, 'Карчер: жетон огня перенесён с комнаты на предмет.', 'minor');
+    }
+    if (step.answer !== 'fire') { const it = state.intruders[step.answer.slice(2)]; if (it) repelIntruder(state, it); }
+    next(state, step.then);
 };
 OPS['item2.heal1'] = (state, step) => { restoreHealth(state, player(state, Number(step.answer)), 1); next(state, step.then); };

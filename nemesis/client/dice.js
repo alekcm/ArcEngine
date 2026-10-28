@@ -13,6 +13,8 @@ const B = () => window.BABYLON;
 // Face sets in the order they are printed on the dice (Nemesis Redux values).
 const NOISE_FACES = ['1', '1', '2', '2', '3', '3', '4', '4', 'silence', 'danger', 'encounter', 'encounter'];
 const COMBAT_FACES = ['crit', '2', '3', '3', '4', '4', '5', '5', '5', '6'];
+// The Battle Suit's printed Blue Combat die: two 2s, three 3s, two 4s, one 5, one 6 and a Critical.
+const BLUE_FACES = ['crit', '2', '2', '3', '3', '3', '4', '4', '5', '6'];
 const ROLL_MS = 1400, SHOW_MS = 2000;
 const CANVAS = 240;
 
@@ -31,7 +33,7 @@ function faceGlyph(v) {
     if (v === 'encounter') return '☠';
     return String(v);
 }
-function dieTitle(die) { return die === 'noise' ? 'Кубик шума' : 'Боевой кубик'; }
+function dieTitle(die) { return die === 'noise' ? 'Кубик шума' : die === 'blue' ? 'Синий боевой кубик' : 'Боевой кубик'; }
 
 /** Vertex data of a pentagonal trapezohedron (D10). Flat shaded, each kite is 4 own vertices. */
 export function d10VertexData() {
@@ -110,8 +112,8 @@ export class DiceUI {
         const h = new (B().HemisphericLight)('dh', new (B().Vector3)(0.3, 1, -0.6), scene); h.intensity = 0.8; h.groundColor = new (B().Color3)(0.25, 0.2, 0.2);
         const d = new (B().DirectionalLight)('dd', new (B().Vector3)(-0.5, -1, 0.7), scene); d.intensity = 0.8;
         this.engine = engine; this.scene = scene;
-        this.dice = { noise: this.makeDie(scene, 'noise'), combat: this.makeDie(scene, 'combat') };
-        this.dice.combat.root.setEnabled(false);
+        this.dice = { noise: this.makeDie(scene, 'noise'), combat: this.makeDie(scene, 'combat'), blue: this.makeDie(scene, 'blue') };
+        this.dice.combat.root.setEnabled(false); this.dice.blue.root.setEnabled(false);
         this.t = 0;
         engine.runRenderLoop(() => { if (this.el.classList.contains('hidden')) return; this.t += engine.getDeltaTime() / 1000; this.tick(); scene.render(); });
     }
@@ -124,10 +126,10 @@ export class DiceUI {
         else { body = new (B().Mesh)('d10', scene); d10VertexData().applyToMesh(body); body.scaling.setAll(0.95); }
         body.convertToFlatShadedMesh(); body.parent = root;
         const mat = new (B().StandardMaterial)('dm_' + kind, scene);
-        mat.diffuseColor = B().Color3.FromHexString(kind === 'noise' ? '#e6b422' : '#b8262c'); mat.specularColor = new (B().Color3)(0.5, 0.5, 0.5); mat.specularPower = 32;
+        mat.diffuseColor = B().Color3.FromHexString(kind === 'noise' ? '#e6b422' : kind === 'blue' ? '#1d6fb8' : '#b8262c'); mat.specularColor = new (B().Color3)(0.5, 0.5, 0.5); mat.specularPower = 32;
         body.material = mat;
         const faces = extractFaces(body);
-        const values = kind === 'noise' ? NOISE_FACES : COMBAT_FACES;
+        const values = kind === 'noise' ? NOISE_FACES : kind === 'blue' ? BLUE_FACES : COMBAT_FACES;
         const scl = body.scaling.x;
         faces.forEach((f, i) => {
             f.value = values[i % values.length];
@@ -179,7 +181,8 @@ export class DiceUI {
 
     setDie(die) {
         this.die = die; this.el.classList.toggle('combat', die === 'combat'); this.el.classList.toggle('noise', die === 'noise');
-        if (this.dice) { this.dice.noise.root.setEnabled(die === 'noise'); this.dice.combat.root.setEnabled(die === 'combat'); }
+        this.el.classList.toggle('blue', die === 'blue');
+        if (this.dice) for (const k of ['noise', 'combat', 'blue']) this.dice[k].root.setEnabled(die === k);
     }
     cur() { return this.dice ? this.dice[this.die] : null; }
     show() { this.el.classList.remove('hidden'); if (this.engine) this.engine.resize(); }

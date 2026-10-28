@@ -2,7 +2,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire, placeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, removeCardFromGame, isContam, isInfected, payCost,
-    clearNoiseAround, killPlayer, spawnIntruder, intruderLabel, corridorsOf, secretTile, payableCards, infectLarva } from './core.mjs';
+    clearNoiseAround, killPlayer, spawnIntruder, intruderLabel, corridorsOf, secretTile, payableCards, infectLarva , computerHere } from './core.mjs';
 import { ITEMS, dropLocked } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
@@ -231,7 +231,7 @@ OPS['card.computerSkills'] = (state, step) => {
     const tile = tileOf(state, p.room);
     const opts = [];
     // Printed: "If you are in a Computer Room (without a malfunction), use the Room."
-    if (tile && ROOM_TILES[tile].computer && !room(state, p.room).malfunction) opts.push({ id: 'comp', label: 'Использовать комнату' });
+    if (computerHere(state, p) && !room(state, p.room).malfunction) opts.push({ id: 'comp', label: 'Использовать комнату' });
     opts.push(...doorOptions(state, null));
     choice(state, p, 'Компьютерные навыки', opts, 'card.computerSkills.pick');
 };

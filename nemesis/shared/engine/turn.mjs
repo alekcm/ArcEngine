@@ -2,7 +2,7 @@
 
 import { OPS, ask, next, later, log, player, pname, removeCardFromGame, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
     discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards,
-    HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom, corridorsOf } from './core.mjs';
+    HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom, corridorsOf, computerHere } from './core.mjs';
 import { repairOptions } from './actions.mjs';
 import { ITEMS, dropLocked, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
@@ -83,7 +83,7 @@ export function buildMenu(state, p) {
     add('pickup', 'Поднять тяжёлый объект', 1, objs && noCombatOk, !objs ? 'В комнате нет объектов' : 'Нельзя в бою');
     const others = state.players.filter(o => o.id !== p.id && o.status === 'active' && o.room === p.room && !o.pod);
     add('trade', 'Передать предмет', 1, others.length > 0 && noCombatOk && (p.items.length + p.heavy.length) > 0, !noCombatOk ? 'Нельзя в бою' : others.length ? 'Нечего передать' : 'Нет других персонажей');
-    const comp = tile && ROOM_TILES[tile].computer;
+    const comp = computerHere(state, p);
     add('computer', 'Компьютер', 1, !!comp && !rs.malfunction && !!state.computerCard && noCombatOk, !comp ? 'Нет компьютера' : rs.malfunction ? 'Поломка' : !state.computerCard ? 'Нет карты' : 'Нельзя в бою');
     const ra = roomActionAvailable(state, p);
     add('room', 'Действие комнаты' + (tile ? ': ' + ROOM_TILES[tile].name : ''), roomActionCost(state, p), ra.ok, ra.reason);
@@ -155,7 +155,7 @@ function cardRequirement(state, p, d) {
         case 'tacticalMove': return p.items.some(i => ITEMS[i.item].weapon && i.ammo > 0 && !i.broken) ? '' : 'Нужен патрон';
         case 'intimidate': return state.players.some(o => o.id !== p.id && o.status === 'active' && o.room === p.room && !o.pod) ? '' : 'Нет других персонажей';
         case 'determination': return rs.malfunction || rs.fire ? 'Поломка или огонь в комнате' : '';
-        case 'intranet': case 'riskAssessment': return tile && ROOM_TILES[tile].computer && !rs.malfunction ? '' : 'Нужен компьютер без поломки';
+        case 'intranet': case 'riskAssessment': return computerHere(state, p) && !rs.malfunction ? '' : 'Нужен компьютер без поломки';
         case 'neuralink': return state.computerCard ? '' : 'Нет карты компьютера';
         case 'cleanUp': return rs.malfunction || rs.fire ? '' : 'Нет поломки или огня';
         case 'synthesizedDrugs': return tile && ROOM_TILES[tile].items.includes('green') && !rs.malfunction && !rs.fire ? '' : 'Нужна зелёная комната без поломки и огня';
@@ -404,8 +404,12 @@ OPS['card.justOneMore'] = (state, step) => {
 OPS['turn.end'] = (state) => {
     const p = player(state, state.current);
     if (p.justOneMore) { p.justOneMore = false; p.passed = true; log(state, pname(p) + ' обязан(а) спасовать после дополнительного хода.', 'action'); }
-    if (p.status === 'active' && !p.pod && room(state, p.room).fire && !p.firePaidThisTurn) {
+    // Battle Suit (printed): "You never lose health as a result of a Fire at the End of your Turn."
+    const fireProof = !!(p.armor && p.armor.item === 'battleSuit');
+    if (p.status === 'active' && !p.pod && room(state, p.room).fire && !p.firePaidThisTurn && !fireProof) {
         loseHealth(state, p, 1, 'пожар в комнате');
+    } else if (fireProof && p.status === 'active' && !p.pod && room(state, p.room).fire) {
+        log(state, pname(p) + ': боевой костюм не даёт пожару навредить.', 'minor');
     }
     p.firePaidThisTurn = false;
     next(state, { op: 'turn.start' });
