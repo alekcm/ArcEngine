@@ -87,8 +87,12 @@ export class TableFX {
                 const to = isMe ? this.handRect() : this.playerRect(f.player);
                 const n = Math.min(f.n, 5);
                 for (let i = 0; i < n; i++) {
-                    const el = this.makeCard(DECK_COLORS.own, null);
-                    setTimeout(() => this.fly(el, from || to, isMe ? { left: to.left + i * 40, top: to.top, width: 128, height: 176 } : to, 450, { rotA: -12, rotB: 0, arc: 40, scaleA: 0.6, scaleB: isMe ? 1 : 0.4, fadeOut: !isMe }, () => { el.remove(); if (i === n - 1) done(); }), i * 110);
+                    // The card comes out WHOLE: a hand-sized card body with its back design, sliding
+                    // out from under the deck pile in the bottom-right corner and into the fan. The
+                    // old version shrank to a grey rectangle on the way and looked like a placeholder.
+                    const el = this.makeCard(DECK_COLORS.own, null, 128, 176);
+                    const start = from ? { left: from.left + 6, top: from.top + 6, width: from.width, height: from.height } : to;
+                    setTimeout(() => this.fly(el, start, isMe ? { left: to.left + i * 40, top: to.top, width: 128, height: 176 } : to, 470, { rotA: -14, rotB: 0, arc: 30, scaleA: 1, scaleB: isMe ? 1 : 0.45, fadeOut: !isMe }, () => { el.remove(); if (i === n - 1) done(); }), i * 110);
                 }
                 if (!n) done();
                 break;
@@ -101,6 +105,18 @@ export class TableFX {
                 const face = (art ? '<div class="fc-art" style="background-image:url(' + art + ')"></div>' : '') + '<small>' + (isItem ? 'Предмет' : 'Карта') + (pname ? ' · ' + esc(pname) : '') + '</small><b>' + esc(d.name) + '</b>' + (d.text ? '<p>' + esc(d.text) + '</p>' : '');
                 const origin = this.cardOrigin && this.cardOrigin.id === f.card ? this.cardOrigin.rect : null; this.cardOrigin = null;
                 const from = origin || (isMe ? this.handRect() : this.playerRect(f.player));
+                // «Поиск» opens its item picker the instant it is played. Parking the card in the
+                // middle of the table for a second covered the very list the player had to choose
+                // from, so the card goes straight from the hand to its discard pile.
+                if (!isItem && d.effect === 'search') {
+                    this.skipNext = f.card;
+                    const to = isMe ? this.pileRect('owndisc') : this.playerRect(f.player);
+                    const el = this.makeCard(DECK_COLORS.own, '<b>' + esc(d.name) + '</b>', 128, 176);
+                    el.classList.add('flipped');
+                    Snd.play('card');
+                    this.fly(el, from, to || from, 380, { rotA: -8, rotB: 22, scaleB: 0.55, fadeOut: !isMe }, () => { el.remove(); done(); });
+                    break;
+                }
                 const mid = this.centerRect(art ? 220 : 170, art ? 330 : 236);
                 const el = this.makeCard(DECK_COLORS.own, face, art ? 220 : 170, art ? 330 : 236);
                 el.classList.add('flipped');
@@ -147,6 +163,9 @@ export class TableFX {
                 break;
             }
             case 'item': {
+                // A Search draws several items at once behind a picker: no card has to fly out of the
+                // deck for each of them, it only covered the choice.
+                if (f.quiet) { done(); break; }
                 Snd.play('card');
                 const from = this.pileRect(f.deck);
                 const to = isMe ? this.handRect() : this.centerRect(100, 140);

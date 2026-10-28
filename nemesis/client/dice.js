@@ -154,8 +154,9 @@ export class DiceUI {
         return { root, body, faces };
     }
 
-    /** Called on every state update. */
-    update(view, me, playerName) {
+    /** Called on every state update. `opts.title` lets the client rename the die (an unexplored room
+     *  must stay "???" until its tile has been turned over). */
+    update(view, me, playerName, opts) {
         const pr = view.prompt;
         const roll = view.lastRoll;
         if (this.lastSeen === null) this.lastSeen = roll ? roll.n : 0;   // nothing to replay on (re)connect
@@ -168,7 +169,7 @@ export class DiceUI {
             this.clearHide();
             const mine = !pr.waiting && pr.player === me;
             this.setDie(pr.die);
-            this.title.textContent = pr.title || dieTitle(pr.die);
+            this.title.textContent = (opts && opts.title) || pr.title || dieTitle(pr.die);
             this.hint.textContent = mine ? 'Нажмите на кубик, чтобы бросить' : playerName(pr.player) + ' бросает ' + dieTitle(pr.die).toLowerCase() + '…';
             this.el.classList.toggle('mine', mine); this.clickable = mine;
             this.idle = true; this.anim = null;

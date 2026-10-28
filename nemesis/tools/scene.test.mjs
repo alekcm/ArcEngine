@@ -142,6 +142,71 @@ test('SCN-02: a figure moves along the corridor, not through the hull', () => {
     assert.equal(scene.routeTo('011', '011'), null);
 });
 
+test('SCN-10: a corridor never doubles back — no fold, no elbow, no torn tube', () => {
+    // 013-014 used to be a 10-unit zigzag between two 6.3-unit wall rings: the hand-placed bend
+    // point sat far off the axis of a very short passage and the tube folded back on itself, so the
+    // corridor read as three loose pieces and the door frame straddled a kink. Every step of a
+    // corridor must move towards the room at its far end, and no turn may be sharper than 35
+    // degrees, or the box sections leave a wedge in the deck.
+    for (const c of Object.values(ship.corridors)) {
+        const pts = scene.corridorPoints(ship, c);
+        assert.ok(pts.length >= 2, c.id + ': two ends');
+        const A = scene.pos(ship.rooms[c.a]), Bp = scene.pos(ship.rooms[c.b]);
+        const dir = Bp.subtract(A).normalize();
+        let len = 0;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const step = pts[i + 1].subtract(pts[i]);
+            len += step.length();
+            assert.ok(step.dot(dir) > -1e-6, c.id + ': step ' + i + ' runs back towards ' + c.a);
+        }
+        for (let i = 1; i < pts.length - 1; i++) {
+            const u = pts[i].subtract(pts[i - 1]).normalize(), v = pts[i + 1].subtract(pts[i]).normalize();
+            const turn = Math.acos(Math.min(1, Math.max(-1, u.dot(v)))) * 180 / Math.PI;
+            assert.ok(turn <= 35, c.id + ': a ' + turn.toFixed(0) + '-degree elbow at point ' + i);
+        }
+        assert.ok(len <= A.subtract(Bp).length() + 6, c.id + ': the tube takes a detour of ' + (len - A.subtract(Bp).length()).toFixed(1));
+    }
+});
+
+test('SCN-11: the tech entrance carries its noise numbers on the roof, face up and clear of the pipes', () => {
+    // ru: цифры тех. коридора — на крыше люка, а не только на самой балке коридора. Плоскость
+    // односторонняя: её надо положить лицом вверх (rotation.x = -pi/2), иначе с высоты читается
+    // зеркальный/перевёрнутый глиф. Трубы и перекладины сдвинуты к краям, чтобы центр был свободен.
+    let checked = 0;
+    for (const r of Object.values(ship.rooms)) {
+        if (!r.tech) continue;
+        const node = scene.roomNodes[r.id];
+        assert.ok(node && node.techDecal, r.id + ': на крыше техкоридора есть трафарет');
+        const plane = node.techDecal;
+        // A Babylon plane is painted on its -Z face; +pi/2 turns that face up (the pose the corridor
+        // numbers use). The old flat pose used -pi/2 and showed the digits through the back, mirrored.
+        assert.ok(Math.abs(plane.rotation.x - Math.PI / 2) < 1e-6, r.id + ': трафарет лежит лицом вверх');
+        const face = { x: 0, y: 0, z: -1 };
+        const cx = Math.cos(plane.rotation.x), sx = Math.sin(plane.rotation.x);
+        const cz = Math.cos(plane.rotation.z), sz = Math.sin(plane.rotation.z);
+        const rz = { x: face.x * cz - face.y * sz, y: face.x * sz + face.y * cz, z: face.z };
+        const n = { x: rz.x, y: rz.y * cx - rz.z * sx, z: rz.y * sx + rz.z * cx };
+        assert.ok(n.y > 0.999, r.id + ': лицевая сторона смотрит вверх (n.y = ' + n.y.toFixed(2) + ')');
+        assert.ok(plane.position.y > 1.875, r.id + ': трафарет выше крыши (y = ' + plane.position.y + ')');
+        // The number belongs to the hatch, not to the room floor: it sits on the stub's own roof.
+        // The hatch straddles the wall ring, so its roof (a 2.4 x 2.4 plate) is centred on WALL_R.
+        const out = Math.hypot(plane.position.x, plane.position.z);
+        assert.ok(Math.abs(out - WALL_R) < 0.05, r.id + ': трафарет на крыше техкоридора (r = ' + out.toFixed(2) + ')');
+        assert.ok(Math.abs(plane.rotation.y - node.techAngle) < 1e-6, r.id + ': трафарет повёрнут вместе с коридором');
+        assert.ok(Math.abs(plane.rotation.z) < 1e-6, r.id + ': цифры стоят верхом наружу — читаются из комнаты');
+        const nums = (r.techNums && r.techNums.length) ? r.techNums : [4];
+        assert.equal(String(plane.metadata.decal).split('|')[0], nums.join(' / '), r.id + ': на крыше напечатаны номера этого входа');
+        checked++;
+    }
+    assert.ok(checked >= 5, 'у техкоридоров есть входы (' + checked + ')');
+    // Alt repaints the very same stencil neon, exactly like the numbers on the corridor beams.
+    const first = Object.values(ship.rooms).find(r => r.tech);
+    scene.setAlt(true);
+    assert.match(String(scene.roomNodes[first.id].techDecal.metadata.decal), /\|n$/, 'Alt: неон');
+    scene.setAlt(false);
+    assert.match(String(scene.roomNodes[first.id].techDecal.metadata.decal), /\|p$/, 'обычная краска');
+});
+
 test('SCN-03: every corridor in a game ship is reachable from both of its rooms', () => {
     let checked = 0;
     for (const c of Object.values(ship.corridors)) {

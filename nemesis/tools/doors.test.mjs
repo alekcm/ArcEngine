@@ -25,6 +25,7 @@ class V3 {
     normalize() { const l = this.length() || 1; return new V3(this.x / l, this.y / l, this.z / l); }
     dot(o) { return this.x * o.x + this.y * o.y + this.z * o.z; }
     static Dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+    static Lerp(a, b, t) { return new V3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); }
     static Cross(a, b) { return new V3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
     static Zero() { return new V3(); }
     static Up() { return new V3(0, 1, 0); }
@@ -114,6 +115,7 @@ const host = {
     makeDecal(...args) { return Scene3D.prototype.makeDecal.apply(host, args); },
     setDecal(...args) { return Scene3D.prototype.setDecal.apply(host, args); },
     corridorPoints(...args) { return Scene3D.prototype.corridorPoints.apply(host, args); },
+    roundPath(...args) { return Scene3D.prototype.roundPath.apply(host, args); },
     pos(...args) { return Scene3D.prototype.pos.apply(host, args); },
     posXY(...args) { return Scene3D.prototype.posXY.apply(host, args); },
     setLabel(...args) { return Scene3D.prototype.setLabel.apply(host, args); },
@@ -167,23 +169,27 @@ test('DR-02 the number is a flat stencil on the beam, not a board hanging in the
         build(c);
         const n = host.corridorNodes[c.id];
         assert.ok(n.decal, c.id + ': the corridor has a number stencil');
-        assert.equal(n.decals.length, 2, c.id + ': a door is read from both ends — two stencils, one per side');
+        assert.equal(n.decals, undefined, c.id + ': one number, one stencil — not a copy on each half of the beam');
         const decal = n.decal;
         // flat on the beam, facing up — the very same orientation as the "?" on a room's floor
         assert.equal(decal.billboardMode, 0, c.id + ': the stencil never turns to the camera');
         assert.equal(decal.rotation.x, Math.PI / 2, c.id + ': the stencil lies flat');
+        assert.ok(decal.rotation.y === 0, c.id + ': it only spins in its own plane');
         assert.ok(decal.rotation.z === 0 || Math.abs(decal.rotation.z) === Math.PI, c.id + ': it only spins in its own plane');
         assert.equal(decal.position.x, 0, c.id + ': centred across the beam');
-        // The stencil is fixed, but which way round it is painted is picked once: the top of the
-        // numbers has to point away from the table's default camera, or every other door would read
-        // upside down (the "?" on a room floor is printed the same way round).
-        // Each half of the beam has its own way up: the `a` half reads from room a, the `b` half
-        // from room b, so neither end reads the other room's digits upside down or by name.
-        const a = n.decals.find(d => d.side === 'a'), b = n.decals.find(d => d.side === 'b');
-        assert.equal(a.plane.rotation.z, 0, c.id + ': the a half is painted for room a');
-        assert.equal(Math.abs(b.plane.rotation.z), Math.PI, c.id + ': the b half is turned round for room b');
-        assert.ok(a.plane.position.z < 0 && b.plane.position.z > 0, c.id + ': each stencil sits on its own half');
-        assert.ok(Math.abs(a.plane.position.z) === Math.abs(b.plane.position.z), c.id + ': the two halves are symmetric');
+        assert.equal(decal.position.z, 0, c.id + ': centred along the beam');
+        // The face of a Babylon plane points along its local -Z. A rotation.x of +PI/2 turns that
+        // normal straight up, so the paint is read from above and never through the back of the
+        // plane (a back face is drawn mirrored; that is what made the digits unreadable). The
+        // in-plane spin only decides which way the digits stand, never whether they are mirrored.
+        const spin = (rx, rz, v) => {
+            const cz = Math.cos(rz), sz = Math.sin(rz);
+            const x = v.x * cz - v.y * sz, y = v.x * sz + v.y * cz;
+            const cx = Math.cos(rx), sx = Math.sin(rx);
+            return { x, y: y * cx - v.z * sx, z: y * sx + v.z * cx };
+        };
+        const normal = spin(decal.rotation.x, decal.rotation.z, { x: 0, y: 0, z: -1 });
+        assert.ok(normal.y > 0.999, c.id + ': the painted face looks up, so it is never seen mirrored (n.y=' + normal.y.toFixed(2) + ')');
         // it lies on the beam's own top face: no dark plate, no screen on the roof, the beam keeps
         // the frame's steel colour and only gets wider
         assert.equal(meshes.filter(m => m.name === 'dplate').length, 0, c.id + ': no plate/screen on the beam');
@@ -193,12 +199,10 @@ test('DR-02 the number is a flat stencil on the beam, not a board hanging in the
             c.id + ': the stencil lies on the beam (' + decal.position.y.toFixed(3) + ' vs ' + beamTop.toFixed(3) + ')');
         assert.equal(lintel.material.hex, meshes.find(m => m.name === 'post').material.hex,
             c.id + ': the beam is the same steel as the frame');
-        // and it fits: neither stencil can overhang the beam it is painted on, nor run into its twin
-        for (const side of n.decals) {
-            const w = side.plane.opts.width, h = side.plane.opts.height;
-            assert.ok(w <= lintel.opts.width - 0.39 && h <= lintel.opts.depth / 2 + 1e-9,
-                c.id + ': the stencil fits on the beam (' + w + '×' + h + ' on ' + lintel.opts.width + '×' + lintel.opts.depth + ')');
-        }
+        // and it fits: the number cannot overhang the beam it is painted on
+        const w = decal.opts.width, h = decal.opts.height;
+        assert.ok(w <= lintel.opts.width - 0.39 && h <= lintel.opts.depth - 0.2,
+            c.id + ': the stencil fits on the beam (' + w + '×' + h + ' on ' + lintel.opts.width + '×' + lintel.opts.depth + ')');
         // nothing hangs in the air above the doorway any more: no old board and its four bars
         assert.equal(allNodes.filter(a => /^sign_/.test(a.name)).length, 0, c.id + ': no separate board node');
         assert.equal(meshes.filter(m => m.name === 'se').length, 0, c.id + ': no floating frame around it');
@@ -304,11 +308,11 @@ test('DR-07 each room reads its OWN numbers on the doors: no foreign digits, no 
         for (const e of room.exits) {
             const n = host.corridorNodes[e.corridor];
             assert.ok(n, room.id + ': corridor ' + e.corridor + ' is built');
-            const side = n.decals.find(d => d.side === (e.corridor.startsWith(room.id + '-') ? 'a' : 'b'));
-            assert.ok(side, room.id + ': corridor ' + e.corridor + ' has a stencil on its side');
             const exit = room.exits.find(x => x.corridor === e.corridor);
             const want = (exit.nums && exit.nums.length ? exit.nums : [exit.num]).filter(x => x);
-            assert.deepEqual(side.nums, want, room.id + ': the stencil by ' + e.corridor + ' shows this room\'s numbers');
+            // one stencil, so both ends of a passage must agree: a room reads its own digits and
+            // the room across the door reads the very same ones (agreeNumbers guarantees it).
+            assert.deepEqual(n.nums, want, room.id + ': the stencil by ' + e.corridor + ' shows this room\'s numbers');
             read.push(want.join('+'));
         }
         // Every number 1..4 appears exactly once for this room, like on the board: across the

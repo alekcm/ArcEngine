@@ -90,7 +90,7 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 .pane-tabs .tab { flex: 1; background: none; border: none; color: var(--dim); padding: 7px; cursor: pointer; }
 .pane-tabs .tab.active { color: var(--acc); border-bottom: 2px solid var(--acc); }
 .pane-body { flex: 1; overflow: auto; padding: 8px 10px; font-size: 12.5px; }
-#log .l { padding: 2px 0; border-bottom: 1px dashed #1c2735; }
+#log .l { padding: 2px 0; border-bottom: 1px dashed #1c2735; white-space: pre-line; }
 #log .l.phase { color: var(--acc); font-weight: 600; margin-top: 6px; }
 #log .l.turn { color: #fff; font-weight: 600; }
 #log .l.bad, #log .l.death { color: #ff8a8a; }
@@ -327,6 +327,17 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
          background: #141d2a; border: 1px solid #3a4f6b; border-radius: 8px; box-shadow: 0 12px 30px #000c;
          color: var(--txt); font-size: 11px; line-height: 1.3; text-align: left; }
 #tbPop.show { display: block; }
+
+/* The card behind a name in the health HUD (a wound's rules text, or the suit with its art). */
+#hudPop { position: fixed; z-index: 36; width: 232px; padding: 9px 11px; border-radius: 9px;
+          background: #0d141cf2; border: 1px solid var(--line); border-left: 4px solid var(--red);
+          box-shadow: 0 10px 26px #000b; font-size: 11.5px; line-height: 1.35; color: #cfd8e3;
+          pointer-events: none; }
+#hudPop.armor { border-left-color: var(--acc); }
+#hudPop b { display: block; color: #ffb9b9; font-size: 12.5px; margin-bottom: 4px; }
+#hudPop.armor b { color: var(--acc); }
+#hudPop .ipart { display: block; height: 104px; border-radius: 6px; background: center/cover no-repeat;
+                 margin-bottom: 7px; border: 1px solid #ffffff22; }
 #tbPop .ipart { display: block; width: 100%; height: 120px; background-size: cover; background-position: center; border-radius: 8px 8px 0 0; border-bottom: 1px solid #ffffff22; }
 #tbPop b { display: block; padding: 7px 9px 2px; font-size: 12.5px; color: var(--acc); }
 #tbPop > span:last-child { display: block; padding: 0 9px; color: #cfd8e3; }
@@ -359,6 +370,13 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #prompt .ack-card { display: flex; gap: 10px; align-items: stretch; margin-bottom: 8px; }
 #prompt .ack-card .aart { width: 96px; min-width: 96px; height: 132px; border-radius: 8px; background-size: cover; background-position: center; border: 1px solid #5a4a22; box-shadow: 0 6px 18px #000a; }
 #prompt .ack-card .atext { flex: 1; font-size: 12px; color: #cfd8e3; line-height: 1.3; }
+/* The event card is dealt face down: a card back anyone can click to turn it over for the table. */
+#prompt .ack-card.facedown { cursor: pointer; }
+#prompt .ack-card.facedown:hover .aback { transform: translateY(-3px); box-shadow: 0 10px 22px #000c, 0 0 0 1px #ffd27f80; }
+#prompt .ack-card .aback { width: 96px; min-width: 96px; height: 132px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 40px; color: #9ccbff; background: repeating-linear-gradient(45deg, #1a2740 0 6px, #22304a 6px 12px); border: 1px solid #5a4a22;
+    box-shadow: 0 6px 18px #000a; transition: transform .12s, box-shadow .12s; }
+#prompt.eventmode .ack-card .aback { width: 150px; min-width: 150px; height: 212px; font-size: 62px; }
 #prompt .ack-ready { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; font-size: 11px; }
 #prompt .ack-ready .rd { padding: 1px 6px; border-radius: 4px; background: #22304a; color: #93a2b5; }
 #prompt .ack-ready .rd.on { background: #1f4a2f; color: #b6f0c6; }
@@ -528,7 +546,10 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 @media (max-width: 760px) { .gal-keys { display: none; } .gal-list { width: 190px; } }
 
 /* ---- my health, always in the lower-right corner (to the left of the deck piles) ---- */
-#selfHud { position: fixed; right: 282px; bottom: 10px; z-index: 9; width: 232px;
+/* My health, lower-LEFT corner. The four printed levels are held apart so that a name fits under
+   each of them without running into its neighbour: the first wound under the green three squares,
+   the second under the orange ones, the third under the red ones, the suit under the last square. */
+#selfHud { position: fixed; left: 10px; bottom: 10px; z-index: 9; width: 312px;
            background: #0b1118dd; border: 1px solid var(--line); border-left: 4px solid var(--green);
            border-radius: 10px; padding: 7px 10px 8px; backdrop-filter: blur(4px); font-size: 12px;
            cursor: pointer; transition: border-color .2s; }
@@ -537,11 +558,19 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #selfHud .sh-head { display: flex; align-items: baseline; gap: 6px; }
 #selfHud .sh-head b { color: var(--acc); font-size: 12.5px; }
 #selfHud .sh-head small { color: var(--dim); margin-left: auto; font-size: 11px; }
-#selfHud .hp { display: flex; gap: 3px; margin: 6px 0 5px; }
-#selfHud .hp i { width: 14px; height: 11px; border-radius: 2px; background: #2b3a4d; }
-#selfHud .hp i.on { background: var(--green); }
-#selfHud .hp i.mid.on { background: #f39c12; }
-#selfHud .hp i.heavy.on { background: var(--red); }
-#selfHud .hp i.last.on { background: #ff4d4d; box-shadow: 0 0 6px #ff4d4d; }
-#selfHud .sh-wounds { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; line-height: 1.3; }
-@media (max-width: 900px) { #selfHud { right: 10px; bottom: 196px; width: 200px; } }
+#selfHud .sh-hp { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 7px; }
+#selfHud .sh-lvl { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#selfHud .sh-cells { display: flex; gap: 3px; }
+#selfHud .sh-cells i { width: 13px; height: 11px; border-radius: 2px; background: #2b3a4d; }
+#selfHud .sh-cells i.on { background: var(--green); }
+#selfHud .sh-cells i.mid.on { background: #f39c12; }
+#selfHud .sh-cells i.heavy.on { background: var(--red); }
+#selfHud .sh-cells i.last.on { background: #ff4d4d; box-shadow: 0 0 6px #ff4d4d; }
+/* the name of what blocks this level — a wound or the suit; a plain grey block when there is none */
+#selfHud .sh-slot { min-height: 28px; border-radius: 4px; font-size: 10px; line-height: 1.15;
+                    padding: 3px 4px; color: #dbe3ec; word-break: break-word; hyphens: auto;
+                    display: flex; align-items: center; justify-content: center; text-align: center; }
+#selfHud .sh-slot.wound { background: #3a1418cc; border: 1px solid #a33; color: #ffb9b9; }
+#selfHud .sh-slot.armor { background: #12283acc; border: 1px solid #2f6fa8; color: #b9dcff; }
+#selfHud .sh-slot.empty { background: #1a232e; border: 1px solid #212c38; }
+@media (max-width: 900px) { #selfHud { left: 6px; bottom: 6px; width: 276px; } }

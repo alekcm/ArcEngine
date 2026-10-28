@@ -264,6 +264,19 @@ function onMessage(socket, m) {
             broadcastState(false);
             break;
         }
+        // The face-down event card: any player may turn it over for the whole table. It is not an
+        // answer, so it does not touch the undo stack — it only flips the card everyone is reading.
+        case 'flip': {
+            const st = game.state; if (!st || !st.prompt) return;
+            const seat = seatOf(socket); if (!seat) return;
+            const pr = st.prompt;
+            if (pr.kind !== 'ack' || !pr.event) { sendState(socket, true); return; }
+            if (pr.flipped) { sendState(socket, true); return; }
+            pr.flipped = true;
+            broadcastNotice(seat.name + ' переворачивает карту события.', 'event');
+            broadcastState(false);
+            break;
+        }
         case 'undo': {
             if (!game.state) return;
             const seat = seatOf(socket); if (!seat) return;

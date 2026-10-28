@@ -382,7 +382,9 @@ function renderGame() {
     const freshRoll = v.lastRoll && dice.lastSeen !== null && v.lastRoll.n !== dice.lastSeen;
     if (dicePrompt || freshRoll) {
         app.rollHold = true;
-        dice.update(v, app.me, playerName);
+        // While the die is being asked for, the scene is frozen: a room revealed by this very move is
+        // still lying face down. The die must not name it before the tile has been turned over.
+        dice.update(v, app.me, playerName, diceTitleMask(pr));
         renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderHand(); renderHint(); refreshOverlays();
         // Nothing that spoils the die result: while the die is on the table the follow-up question
         // (pull an intruder token) stays hidden. It appears once the die has landed — see dice.onLanded.
@@ -408,7 +410,7 @@ function renderGame() {
     renderBagStrip(); renderHint(); refreshOverlays();
     const meNow2 = v.players.find(x => x.id === app.me);
     $('sheetBtn').classList.toggle('attention', !!(meNow2 && itemPickMap(v.prompt, meNow2).size));
-    dice.update(v, app.me, playerName);
+    dice.update(v, app.me, playerName, diceTitleMask(pr));
     if (!tableFx) { tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES); tableFx.onShake = k => scene && scene.shake(k); }
     tableFx.update(v, app.me);
     renderPilePopups(v); syncPanes();
@@ -461,20 +463,60 @@ function hpBar(p) {
     return '<div class="hp" title="Здоровье: ' + p.health + ' / 10' + (p.health === 0 ? ' — при смерти' : '') + '">' + s + '</div>';
 }
 
-/** My own health and injuries, always in the lower-right corner — no need to open the sheet to see
- *  whether the next wound is the last one. Click it to open the full sheet. */
+/** My own health, always in the lower-LEFT corner. The bar keeps the four printed levels apart so a
+ *  name fits under each of them: the first wound sits under the green three squares, the second under
+ *  the orange ones, the third under the red ones, and the suit under the last square. Only names live
+ *  here — the rules text and the art are a card that appears on hover, like any other card in the
+ *  game. An empty level keeps a grey placeholder, so the row reads "nothing here yet" without words. */
 function renderSelfHud() {
     const v = app.view, el = $('selfHud');
     const me = v && v.players.find(p => p.id === app.me);
-    if (!me || !me.charId || me.status === 'dead' || me.status === 'escaped') { el.classList.add('hidden'); return; }
+    if (!me || !me.charId || me.status === 'dead' || me.status === 'escaped') { el.classList.add('hidden'); hideHudPop(); return; }
     el.classList.remove('hidden');
     const st = me.health >= 8 ? 'здоров' : me.health >= 5 ? 'ранен' : 'тяжело ранен';
-    const wounds = (me.wounds || []).map(w => '<span class="tag red" title="' + esc(WOUNDS[w] ? WOUNDS[w].text : '') + '">' + esc(woundName(w)) + '</span>').join('');
+    const levels = [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]];
+    const wounds = me.wounds || [];
+    const cells = (sec, i) => sec.map(n => '<i class="' + (i === 1 ? 'mid' : i === 2 ? 'heavy' : i === 3 ? 'last' : '') + (me.health >= n ? ' on' : '') + '"></i>').join('');
+    let bar = '';
+    levels.forEach((sec, i) => {
+        const w = i < 3 ? wounds[i] : null;
+        let slot;
+        if (w) slot = '<div class="sh-slot wound" data-wound="' + esc(w) + '">' + esc(woundName(w)) + '</div>';
+        else if (i === 3 && me.armor) slot = '<div class="sh-slot armor" data-armor="1">' + esc(itemLabel(me.armor)) + '</div>';
+        else slot = '<div class="sh-slot empty"></div>';
+        bar += '<div class="sh-lvl">' + '<div class="sh-cells">' + cells(sec, i) + '</div>' + slot + '</div>';
+    });
     el.classList.toggle('dead', me.health <= 1);
     el.innerHTML = '<div class="sh-head"><b>' + esc(me.charName || me.name) + '</b><small>' + esc(st) + ' · ' + me.health + ' / 10</small></div>' +
-        hpBar(me) + '<div class="sh-wounds">' + (wounds || '<span class="tag">травм нет</span>') + '</div>';
+        '<div class="sh-hp">' + bar + '</div>';
     el.title = 'Здоровье и травмы — нажмите, чтобы открыть планшет (C)';
 }
+
+/** The card behind a name in the health HUD: the wound's rules text, or the suit with its art. */
+const HUD_POP_PAD = 8;
+function hideHudPop() { const el = $('hudPop'); if (el) { el.classList.add('hidden'); el.classList.remove('show', 'armor'); } }
+function showHudPop(tag) {
+    const el = $('hudPop'); if (!el) return;
+    const v = app.view, me = v && v.players.find(p => p.id === app.me);
+    let html = '', armor = false;
+    const w = tag.dataset.wound;
+    if (w) {
+        html = '<b>🩸 ' + esc(WOUNDS[w] ? WOUNDS[w].name : w) + '</b><span>' + esc(WOUNDS[w] ? WOUNDS[w].text : '') + '</span>';
+    } else if (tag.dataset.armor && me && me.armor) {
+        const art = itemArt(me.armor.item);
+        armor = true;
+        html = (art ? '<span class="ipart" style="background-image:url(' + art + ')"></span>' : '') +
+            '<b>🛡 ' + esc(itemLabel(me.armor)) + '</b><span>' + esc(itemTitle(me.armor)) + '</span>';
+    } else return;
+    el.innerHTML = html;
+    el.classList.remove('hidden'); el.classList.toggle('armor', armor); el.classList.add('show');
+    const r = tag.getBoundingClientRect(), w2 = el.offsetWidth, h2 = el.offsetHeight;
+    const x = Math.min(window.innerWidth - w2 - HUD_POP_PAD, Math.max(HUD_POP_PAD, r.left));
+    let y = r.top - h2 - 6;                                        // the card sits above the name
+    if (y < HUD_POP_PAD) y = Math.min(window.innerHeight - h2 - HUD_POP_PAD, r.bottom + 6);
+    el.style.left = Math.round(x) + 'px'; el.style.top = Math.round(y) + 'px';
+}
+
 function statusName(p) { return ({ active: '', dead: 'ПОГИБ', escaped: 'УЛЕТЕЛ', hibernating: 'ГИБЕРНАЦИЯ' })[p.status] || p.status; }
 
 function renderPlayers() {
@@ -528,6 +570,15 @@ function renderHistory() { $('history').innerHTML = (app.history || []).map(h =>
 // ---------------------------------------------------------------------------------------------
 // Prompt
 // ---------------------------------------------------------------------------------------------
+/** Title override for the die: keeps an unexplored room hidden until its tile is face up. */
+function diceTitleMask(pr) {
+    if (!pr || pr.kind !== 'dice' || !pr.room || !pr.title) return null;
+    const node = scene && scene.roomNodes ? scene.roomNodes[pr.room] : null;
+    if (node && node.shell) return null;                 // the room is already open on the table
+    const masked = pr.title.replace(/[^—–]*\[[^\]]*\]\s*$/, '??? [' + pr.room + ']');
+    return masked === pr.title ? null : { title: masked };
+}
+
 function renderPrompt() {
     const v = app.view; const pr = v.prompt; const el = $('prompt'); const tg = $('menuToggle');
     app.selectedCards.clear();
@@ -609,26 +660,44 @@ function renderPrompt() {
             if (pr.cancel) html += '<div class="prompt-buttons"><button class="btn" data-opt="cancel">Отмена</button></div>';
             break;
         case 'cards':
-            html += '<div class="ptext">Выберите карт: ' + (pr.min === pr.max ? pr.min : pr.min + '–' + pr.max) + ' (нажимайте на карты в руке внизу)</div><div class="prompt-buttons">' + (pr.cancel ? '<button class="btn" data-opt="cancel">Отмена</button>' : '') + '<button class="btn primary" id="cardsOk" disabled>Подтвердить</button></div>';
+            // A pass ("discard any number of cards") starts with nothing selected: the button must be
+            // pressable right away instead of waiting for a card to be ticked and unticked again.
+            const needPick = (pr.min || 0) > 0;
+            html += '<div class="ptext">' + (needPick ? 'Выберите карт: ' + (pr.min === pr.max ? pr.min : pr.min + '–' + pr.max) : 'Можно сбросить любые карты — или ни одной') + ' (нажимайте на карты в руке внизу)</div>' +
+                '<div class="prompt-buttons">' + (pr.cancel ? '<button class="btn" data-opt="cancel">Отмена</button>' : '') +
+                '<button class="btn primary" id="cardsOk"' + (needPick ? ' disabled' : '') + '>Подтвердить</button></div>';
             break;
         case 'info':
             html += '<div class="prompt-buttons"><button class="btn primary" data-opt="ok">Понятно</button></div>';
             break;
         case 'ack': {
-            // Event card: stays face up until every player has pressed Ready.
+            // The event card is dealt face down. Any player at the table may turn it over — the flip
+            // is a table state (prompt.flipped), so everyone sees the same card at the same time, and
+            // only after that does "Готово" open: nobody confirms a card they have not read.
             const ev = pr.event ? EVENT_BY_ID[pr.event] : null;
             const art = ev ? eventArt(ev.id) : null;
-            if (ev) html = '<h4>📜 ' + esc(ev.name) + '</h4>' +
-                '<div class="ack-card">' + (art ? '<div class="aart" style="background-image:url(' + art + ')"></div>' : '') +
-                '<div class="atext">' + esc(pr.text || ev.text) + '</div></div>';
+            const flipped = !ev || !!pr.flipped;
+            if (ev && !flipped) {
+                html = '<h4>📜 Карта события</h4>' +
+                    '<div class="ack-card facedown" id="ackFlip" title="Перевернуть карту события">' +
+                    '<div class="aback">?</div>' +
+                    '<div class="atext dim">Карта лежит лицом вниз. Нажмите на неё, чтобы перевернуть — её увидят все игроки.</div></div>';
+            } else if (ev) {
+                html = '<h4>📜 ' + esc(ev.name) + '</h4>' +
+                    '<div class="ack-card">' + (art ? '<div class="aart" style="background-image:url(' + art + ')"></div>' : '') +
+                    '<div class="atext">' + esc(pr.text || ev.text) + '</div></div>';
+            }
             html += '<div class="ack-ready">' + (pr.players || []).map(id => {
                 const p = v.players[id] || {}; const done = (pr.acked || []).includes(id);
                 return '<span class="rd' + (done ? ' on' : '') + '">' + (done ? '✔ ' : '… ') + esc(p.name || ('#' + id)) + '</span>';
             }).join('') + '</div>';
-            if (pr.mine) html += '<div class="prompt-buttons"><button class="btn primary" data-opt="ok">Готово</button></div>';
+            if (!flipped) {
+                if (pr.mine) html += '<div class="prompt-buttons"><button class="btn primary" data-opt="ok" disabled>Готово</button></div>';
+                html += '<div class="ptext dim">Сначала переверните карту события.</div>';
+            } else if (pr.mine) html += '<div class="prompt-buttons"><button class="btn primary" data-opt="ok">Готово</button></div>';
             else if (pr.waiting) html += '<div class="ptext dim">Вы готовы — ждём остальных…</div>';
             else if (!(pr.players || []).includes(app.me)) html += '<div class="ptext dim">Игроки читают карту события…</div>';
-            if (app.host) html += '<div class="prompt-buttons"><button class="btn small" data-opt="all" title="Если кто-то отошёл">Готово за всех</button></div>';
+            if (app.host && flipped) html += '<div class="prompt-buttons"><button class="btn small" data-opt="all" title="Если кто-то отошёл">Готово за всех</button></div>';
             break;
         }
         case 'bag':
@@ -653,6 +722,8 @@ function renderPrompt() {
     for (const b of el.querySelectorAll('[data-opt]')) b.onclick = () => act(b.dataset.opt);
     if ($('pickInv')) $('pickInv').onclick = () => openSheet();
     for (const b of el.querySelectorAll('[data-room]')) b.onclick = () => act(b.dataset.room);
+    // The face-down event card: any seat can turn it over for the whole table.
+    if ($('ackFlip')) $('ackFlip').onclick = () => net.send({ t: 'flip' });
     const ok = $('cardsOk'); if (ok) ok.onclick = () => act([...app.selectedCards]);
 }
 
@@ -942,7 +1013,13 @@ function renderEnd() {
     const r = app.view.result;
     $('endBody').innerHTML = '<p>' + (r.shipDestroyed ? 'Корабль уничтожен.' : 'Корабль прибыл: ' + esc(DESTINATION_NAMES[r.destination] || r.destination) + '.') + '</p>' +
         r.results.map(x => '<div class="end-row"><span class="res ' + (x.win ? 'win' : 'lose') + '">' + (x.win ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ') + '</span><span><b>' + esc(app.view.players[x.player].name) + '</b> — ' + esc(x.objective) + '<br><small>' + esc(x.objectiveText) + ' · ' + esc(x.why) + '</small></span></div>').join('');
-    $('restartBtn').textContent = app.host ? 'Вернуться в лобби' : 'Закрыть';
+    // The game is over: the host starts a new one. It goes back to the lobby, where the map, the seed
+    // and the draft can be changed — nothing is locked in after a finished game.
+    $('restartBtn').textContent = app.host ? '🔄 Новая игра' : 'Закрыть';
+    $('restartBtn').disabled = false;
+    $('restartHint').textContent = app.host
+        ? 'Вернёт всех в лобби — там можно сменить карту, зерно и драфт персонажей.'
+        : 'Новую игру начнёт ведущий.';
     $('endOverlay').classList.remove('hidden');
 }
 
@@ -1069,6 +1146,12 @@ $('table').addEventListener('click', e => {
     openDeck(kind);
 });
 $('selfHud').onclick = () => openSheet();
+// Hovering a name in the health HUD opens its card (wound text / suit art); leaving the HUD drops it.
+$('selfHud').addEventListener('pointerover', e => {
+    const slot = e.target && e.target.closest ? e.target.closest('.sh-slot') : null;
+    if (slot && !slot.classList.contains('empty')) showHudPop(slot); else hideHudPop();
+});
+$('selfHud').addEventListener('pointerleave', hideHudPop);
 
 // ---------------------------------------------------------------------------------------------
 // Top-bar popups (Computer, Adaptations)
