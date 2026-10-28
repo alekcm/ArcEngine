@@ -71,6 +71,14 @@ function onMessage(m) {
             break;
         case 'lobby': app.lobby = m; renderLobby(); break;
         case 'state':
+            // The server stamps every state with the build it is serving. A tab that outlived a
+            // restart (the socket reconnects on its own) would otherwise keep running the old scene
+            // for ever — it would draw a door that no longer exists in the code. Reload instead.
+            if (m.build && window.__BUILD && m.build !== window.__BUILD && !app.reloaded) {
+                app.reloaded = true;
+                location.reload();
+                return;
+            }
             if (!m.view) { app.view = null; $('hud').classList.add('hidden'); $('lobby').classList.remove('hidden'); $('endOverlay').classList.add('hidden'); return; }
             app.me = m.you; app.host = m.host;
             if (m.full) app.logEntries = [];
@@ -858,7 +866,10 @@ function renderHint() {
     if (pr && !pr.waiting && pr.kind !== 'dice' && pr.kind !== 'ack') hints.push('<b>1–9</b> выбор');
     if (app.canUndo) hints.push('<b>Esc</b> шаг назад');
     hints.push('<b>ЛКМ</b> по комнате — идти, по чужому — атака', '<b>Alt</b> названия комнат, неоновые номера на дверях и поиск', '<b>C</b> персонаж', '<b>F</b> к себе', '<b>Q/E</b> поворот', '<b>WASD</b> камера');
-    $('hintBar').innerHTML = hints.map(h => '<span>' + h + '</span>').join('<span>·</span>');
+    // The build stamp sits at the end of the hint bar: one glance settles "are you looking at the
+    // scene I just changed?" without opening the console.
+    const stamp = window.__BUILD ? '<span class="buildtag" title="Версия сборки">сб. ' + window.__BUILD.slice(0, 6) + '</span>' : '';
+    $('hintBar').innerHTML = hints.map(h => '<span>' + h + '</span>').join('<span>·</span>') + stamp;
 }
 function playerName(id) { const v = app.view; return v && v.players[id] ? v.players[id].name : ''; }
 function act(answer) { const pr = app.view && app.view.prompt; if (!pr) return; net.send({ t: 'act', promptId: pr.id, answer }); }

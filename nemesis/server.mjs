@@ -36,6 +36,35 @@ const MIME = {
 };
 
 // ---------------------------------------------------------------------------------------------
+// Build stamp
+// ---------------------------------------------------------------------------------------------
+/** A stamp of the client's own source (client/ and shared/). It is injected into index.html and
+ *  sent with every state: a tab that survived a server restart compares the two and reloads itself,
+ *  so nobody ever plays on yesterday's scene while the server serves a new one. */
+function buildStamp() {
+    const files = [];
+    const walk = (dir) => {
+        let list = [];
+        try { list = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of list) {
+            const p = path.join(dir, e.name);
+            if (e.isDirectory()) walk(p);
+            else if (/\.(js|mjs|css|html)$/.test(e.name)) files.push(p);
+        }
+    };
+    walk(path.join(HERE, 'client'));
+    walk(path.join(HERE, 'shared'));
+    files.sort();
+    const h = crypto.createHash('sha1');
+    for (const f of files) {
+        const st = fs.statSync(f);
+        h.update(path.relative(HERE, f)); h.update(String(Math.round(st.mtimeMs))); h.update(String(st.size));
+    }
+    return h.digest('hex').slice(0, 12);
+}
+const BUILD = buildStamp();
+
+// ---------------------------------------------------------------------------------------------
 // Static files
 // ---------------------------------------------------------------------------------------------
 function serveStatic(req, res) {
@@ -50,7 +79,20 @@ function serveStatic(req, res) {
     if (rel.startsWith('..')) { res.writeHead(403); res.end(); return; }
     fs.stat(file, (err, st) => {
         if (err || !st.isFile()) { if (p === '/favicon.ico') { res.writeHead(204); res.end(); return; } res.writeHead(404); res.end('404 ' + p); return; }
-        res.writeHead(200, { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Content-Length': st.size, 'Cache-Control': 'no-store' });
+        const head = { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Content-Length': st.size, 'Cache-Control': 'no-store' };
+        // The page carries the build stamp, and the entry module is requested under it: a reload after
+        // a restart fetches the new scene instead of a cached one.
+        if (/index\.html$/.test(p)) {
+            fs.readFile(file, 'utf8', (e2, html) => {
+                if (e2) { res.writeHead(500); res.end('500'); return; }
+                const out = html.replace('<script type="module" src="app.js"></script>',
+                    '<script>window.__BUILD = \'' + BUILD + '\';</script>\n<script type="module" src="app.js?v=' + BUILD + '"></script>');
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(out), 'Cache-Control': 'no-store' });
+                res.end(out);
+            });
+            return;
+        }
+        res.writeHead(200, head);
         fs.createReadStream(file).pipe(res);
     });
 }
@@ -152,7 +194,7 @@ function sendState(socket, full) {
     const from = full ? 0 : (socket.logSeen || 0);
     const view = viewFor(game.state, pid, from);
     socket.logSeen = game.state.logSeq;
-    socket.send({ t: 'state', you: pid, host: isHost(socket), view, full: !!full, undoDepth: game.undo.length,
+    socket.send({ t: 'state', you: pid, host: isHost(socket), view, full: !!full, build: BUILD, undoDepth: game.undo.length,
         canUndo: pid != null && canSelfUndo(pid), history: game.history.slice(-12), poses: full ? game.poses : undefined });
 }
 
