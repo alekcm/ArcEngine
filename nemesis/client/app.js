@@ -22,10 +22,15 @@ try {
     const r = await fetch('/client/tuning.json', { cache: 'no-store' });
     if (r.ok) TUNE.load((await r.json()).values || {});
 } catch { /* no saved tuning next to the client: run on the defaults */ }
-try {
-    const r = await fetch('/client/board-edits.json', { cache: 'no-store' });
-    if (r.ok) BOARD_EDITS = (await r.json()).edits || {};
-} catch { /* no edits: the board is built exactly as the code builds it */ }
+// The file is written by the editor next to the client, and a Windows checkout keeps the client in
+// "Nemesis/" while a Linux one uses "nemesis/" — the same folder on one machine, two paths in git.
+// Either place is tried, so the saved edits load on both.
+for (const url of ['/client/board-edits.json', '/Nemesis/client/board-edits.json']) {
+    try {
+        const r = await fetch(url, { cache: 'no-store' });
+        if (r.ok) { BOARD_EDITS = (await r.json()).edits || {}; break; }
+    } catch { /* try the other case */ }
+}
 
 // ---------------------------------------------------------------------------------------------
 // Network

@@ -223,20 +223,13 @@ export class Scene3D {
         return this.edits[id] || null;
     }
 
-    /** Saved edits belong to the board they were made on — the editor's gallery. A game board puts
-     *  other tiles into the same room numbers, and a part id is its build order inside that room, so
-     *  an edit key would move or delete an unrelated part: "room:019:shell#382" was a shelf on the
-     *  gallery and a pipe in the hibernatorium of a real session. Editing happens only on the
-     *  gallery (editor.bat and the in-game room gallery), so the game board is built untouched. */
-    editsAllowed() {
-        return !this.ship || this.ship.mode === 'gallery';
-    }
-
-    /** Apply a saved edit to one freshly built mesh (before it is merged, so it bakes in). */
+    /** Apply a saved edit to one freshly built mesh (before it is merged, so it bakes in).
+     *  Note that a part id is "<room>#<build order>": the same key names a different part on a board
+     *  whose room holds another tile, so an edit made on the gallery board is exact there and only
+     *  approximate on a game board (measured: 19 of 151 keys find any part in a session). */
     applyEdit(mesh) {
         const id = mesh && mesh.metadata && mesh.metadata.editId;
         if (!id) return mesh;
-        if (!this.editsAllowed()) return mesh;
         const e = this.edits[id];
         if (!e) return mesh;
         if (e.pos) mesh.position.set(e.pos[0], e.pos[1], e.pos[2]);
