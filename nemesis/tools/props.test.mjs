@@ -195,7 +195,9 @@ test('PR-09 airlock control has a pressure door with a wheel lock and a chevron 
     assert.ok(m.some(x => x.kind === 'box' && Math.abs(x.opts.width - 3.5) < 1e-9 && Math.abs(x.opts.height - 2.8) < 1e-9), 'плита проёма');
     assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.62) < 1e-9 && Math.abs(x.opts.height - 2.6) < 1e-9).length, 2, 'две створки');
     assert.ok(m.some(x => x.kind === 'cyl' && Math.abs(x.opts.diameter - 0.9) < 1e-9), 'колесо-замок');
-    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.height - 0.1) < 1e-9 && Math.abs(x.opts.depth - 0.1) < 1e-9 && Math.abs(x.opts.width - 0.66) < 1e-9).length, 4, 'четыре спицы колеса');
+    // four spokes as a cross in the plane of the door: one bar along the leaf, one up it
+    assert.ok(m.some(x => x.kind === 'box' && Math.abs(x.opts.width - 1.24) < 1e-9 && Math.abs(x.opts.height - 0.1) < 1e-9 && Math.abs(x.opts.depth - 0.1) < 1e-9), 'спица поперёк створки');
+    assert.ok(m.some(x => x.kind === 'box' && Math.abs(x.opts.height - 1.24) < 1e-9 && Math.abs(x.opts.width - 0.1) < 1e-9 && Math.abs(x.opts.depth - 0.1) < 1e-9), 'спица вдоль створки');
     // the bay: yellow-and-black painted bars on the deck, and the vent grille under the door
     const paint = m.filter(x => x.kind === 'box' && Math.abs(x.opts.height - 0.02) < 1e-9);
     assert.ok(paint.length >= 20, `разметка на полу: ${paint.length} полос`);
