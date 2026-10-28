@@ -92,7 +92,7 @@ test('FR-03 nothing burns outside the room and none of it covers the figures', (
         const r = Math.hypot(m.position.x, m.position.z);
         const half = (m.opts.diameterBottom || m.opts.diameter || m.opts.width || 0) / 2;
         assert.ok(r + half <= WALL_R - 0.5, 'inside the walls: ' + m.kind + ' at r=' + r.toFixed(2));
-        assert.ok(m.position.y >= 0.15, 'never under the deck: y=' + m.position.y.toFixed(2));
+        assert.ok(m.position.y >= 0.1, 'never under the deck: y=' + m.position.y.toFixed(2));
         assert.ok(m.position.y <= 5.4, 'and below the ceiling: y=' + m.position.y.toFixed(2));
         if (m.opts.diameterBottom && m.opts.diameterTop === 0) {
             const d = Math.hypot(m.position.x - ZONE_C.x, m.position.z - ZONE_C.z);

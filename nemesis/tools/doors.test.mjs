@@ -23,6 +23,11 @@ class V3 {
     scale(k) { return new V3(this.x * k, this.y * k, this.z * k); }
     length() { return Math.hypot(this.x, this.y, this.z); }
     normalize() { const l = this.length() || 1; return new V3(this.x / l, this.y / l, this.z / l); }
+    dot(o) { return this.x * o.x + this.y * o.y + this.z * o.z; }
+    static Dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+    static Cross(a, b) { return new V3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+    static Zero() { return new V3(); }
+    static Up() { return new V3(0, 1, 0); }
 }
 const mat = (hex, emissive) => ({ hex, emissive, uniqueId: ++uid, alpha: 1, scale: null, dispose() {}, freeze() {}, unfreeze() {} });
 const allNodes = [];

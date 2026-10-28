@@ -80,6 +80,12 @@
         <button id="helpBtn" class="btn small">?</button>
     </div>
 
+    <!-- Popups of the top bar (Computer, Adaptations) are drawn in this layer: the bar scrolls, and a
+         scrolling box clips anything that sticks out of it. -->
+    <div id="tbPop" class="hidden"></div>
+    <!-- My health and injuries, always in the lower-right corner: no need to open the sheet. -->
+    <div id="selfHud" class="hidden"></div>
+
     <div id="players"></div>
     <button id="playersToggle" class="pane-handle" title="Скрыть/показать персонажей и цели">◀</button>
     <button id="rightToggle" class="pane-handle" title="Скрыть/показать журнал">▶</button>

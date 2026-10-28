@@ -163,7 +163,12 @@ export class TableFX {
                 const mid = this.centerRect();
                 const title = k === 'event' ? 'Событие' : k === 'attack' ? 'Атака' + (f.intruder ? ' · ' + (this.intruderNames[f.intruder] || f.intruder) : '') : 'Королева';
                 const art = k === 'event' ? eventArt(f.card) : k === 'attack' ? attackArt(f.card) : queenArt(f.card);
-                const face = (art ? '<div class="fc-art" style="background-image:url(' + art + ')"></div>' : '') + '<small>' + esc(title) + '</small><b>' + esc(f.name || '') + '</b>' + (f.text ? '<p>' + esc(f.text) + '</p>' : '') + (pname && k === 'attack' ? '<em>→ ' + esc(pname) + '</em>' : '');
+                // Attack cards carry the effect of the rank that is attacking (`effect`) and the whole
+                // printed text (`text`): the card must explain itself on the table, not only in the chat.
+                const face = (art ? '<div class="fc-art" style="background-image:url(' + art + ')"></div>' : '') + '<small>' + esc(title) + '</small><b>' + esc(f.name || '') + '</b>' +
+                    (f.effect ? '<p class="fc-eff">' + esc(f.effect) + '</p>' : '') +
+                    (f.text && f.text !== f.effect ? '<p>' + esc(f.text) + '</p>' : '') +
+                    (pname && k === 'attack' ? '<em>→ ' + esc(pname) + '</em>' : '');
                 const el = this.makeCard(DECK_COLORS[k], face, art ? 220 : 170, art ? 330 : 236);
                 Snd.play('card');
                 this.fly(el, from || mid, mid, 550, { rotA: -10, rotB: 0, scaleA: 0.5, scaleB: 1, arc: 30 }, async () => {

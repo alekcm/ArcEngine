@@ -34,7 +34,7 @@ function faceGlyph(v) {
 function dieTitle(die) { return die === 'noise' ? 'Кубик шума' : 'Боевой кубик'; }
 
 /** Vertex data of a pentagonal trapezohedron (D10). Flat shaded, each kite is 4 own vertices. */
-function d10VertexData() {
+export function d10VertexData() {
     const R = 1, y0 = 0.105, H = y0 * (Math.cos(Math.PI / 5) + 1) / (1 - Math.cos(Math.PI / 5));
     const up = [], lo = [];
     for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2, b = a + Math.PI / 5; up.push([R * Math.cos(a), y0, R * Math.sin(a)]); lo.push([R * Math.cos(b), -y0, R * Math.sin(b)]); }
@@ -58,7 +58,7 @@ function d10VertexData() {
 }
 
 /** Group a flat-shaded mesh's triangles into planar faces: [{center, normal, right, inradius}]. */
-function extractFaces(mesh) {
+export function extractFaces(mesh) {
     const P = mesh.getVerticesData(B().VertexBuffer.PositionKind), I = mesh.getIndices();
     const V = i => new (B().Vector3)(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]);
     const faces = [];
@@ -78,8 +78,15 @@ function extractFaces(mesh) {
         let inr = 1e9;
         for (let i = 0; i < f.verts.length; i++) { const m = f.verts[i].add(f.verts[(i + 1) % f.verts.length]).scale(0.5); inr = Math.min(inr, m.subtract(f.center).length()); }
         f.inradius = inr;
-        f.right = f.verts[0].subtract(f.center).normalize();
-        f.up = B().Vector3.Cross(f.normal.scale(-1), f.right).normalize();   // basis right/up/(-normal) is right-handed in Babylon's left-handed space
+        // Label axes of the face. "Up" of the printed number is the world up projected onto the face
+        // (the ship's forward axis on the top/bottom faces, where the world up lies in the face);
+        // "right" follows from it. The old code took "right" from an arbitrary vertex, which tilted
+        // the numbers, and crossed it with the normal in the other order — every face printed upside
+        // down, which is what the mirrored-looking dice on the table were. The axis triple
+        // (right, up, -normal) must stay a rotation: a mirrored basis would flip the glyphs.
+        const upHint = Math.abs(f.normal.y) > 0.92 ? new (B().Vector3)(0, 0, 1) : new (B().Vector3)(0, 1, 0);
+        f.right = B().Vector3.Cross(f.normal, upHint).normalize();
+        f.up = B().Vector3.Cross(f.right, f.normal).normalize();
     }
     return faces;
 }

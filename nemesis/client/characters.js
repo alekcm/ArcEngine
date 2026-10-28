@@ -738,7 +738,7 @@ export function buildIntruder(scene, type) {
     const S = scene;
     const root = new (B().TransformNode)('intr_' + type, S);
     const dark = flatMat(S, '#14181d', { spec: 0.6 }), mid = flatMat(S, '#262f36', { spec: 0.6 }), chitin = flatMat(S, '#323c3a', { spec: 0.7 });
-    const glow = flatMat(S, '#9cff3b', { emissive: 0.9 }), tooth = flatMat(S, '#e3dccb'), slime = flatMat(S, '#5a7a2a', { emissive: 0.3 });
+    const glow = flatMat(S, '#9cff3b', { emissive: 0.9 }), tooth = flatMat(S, '#e3dccb');
     const bx = (...a) => box(S, ...a), cy = (...a) => cyl(S, ...a), sp = (...a) => sphere(S, ...a);
     if (type === 'larva') {
         // Facehugger: a flat crab-like body on eight long splayed fingers, a curled segmented tail
@@ -805,7 +805,8 @@ export function buildIntruder(scene, type) {
         for (let i = 0; i < 6; i++) bx(0.28, 0.03, 0.05, head, 0, 0.24, -0.05 - i * 0.12).material = dark;   // crest ridges
         bx(0.26, 0.1, 0.42, head, 0, -0.2, 0.22, [0.3, 0, 0]).material = dark;                       // jaw
         for (let i = 0; i < 5; i++) { bx(0.03, 0.09, 0.03, head, -0.1 + i * 0.05, -0.11, 0.42).material = tooth; bx(0.03, 0.07, 0.03, head, -0.1 + i * 0.05, -0.21, 0.4).material = tooth; }
-        bx(0.08, 0.08, 0.3, head, 0, -0.14, 0.5).material = slime;                                   // inner jaw
+        // (no inner jaw: the old pale-green tongue hanging out of the mouth read as a coloured
+        //  stick pasted on every intruder's face — the teeth and the dark maw say enough)
         bx(0.06, 0.04, 0.06, head, 0, -0.14, 0.66).material = tooth;
         // arms: upper, forearm, three long claws each
         for (const sd of [-1, 1]) {
@@ -845,4 +846,66 @@ export function buildIntruder(scene, type) {
     }
     for (const m of root.getChildMeshes()) m.isPickable = false;
     return root;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Bodies left on the deck: a dead human ("corpse"), a dead character ("charCorpse") and the
+// carcass of an adult/drone intruder ("carcass"). These are room objects the table can pick up as
+// heavy items, so they used to be a single flat box each — a blue slab for a human and a dark slab
+// for a carcass. A body has to read as a body from the board camera: everything is built lying
+// along +Z on the deck, low (under 0.5 units) so it never hides the figures behind it.
+// ---------------------------------------------------------------------------------------------
+export function buildBody(scene, kind, parent) {
+    const S = scene;
+    const bx = (...a) => box(S, ...a), cy = (...a) => cyl(S, ...a), sp = (...a) => sphere(S, ...a);
+    const R = new (B().TransformNode)('body_' + kind, S); R.parent = parent || null;
+    const xeno = kind === 'carcass';
+    if (xeno) {
+        const hide = flatMat(S, '#232a2f', { spec: 0.25 }), shell = flatMat(S, '#2f3a3d', { spec: 0.4 });
+        const rib = flatMat(S, '#c9c1ad'), maw = flatMat(S, '#141a1e'), acid = flatMat(S, '#8fae4a', { emissive: 0.25 });
+        // torso on its side, plating on top, ribs arching over it
+        bx(0.52, 0.34, 1.15, R, 0, 0.17, -0.02).material = hide;
+        bx(0.46, 0.1, 0.95, R, 0, 0.35, -0.02).material = shell;
+        for (let i = 0; i < 5; i++) bx(0.58, 0.09, 0.09, R, 0, 0.36 - i * 0.005, 0.34 - i * 0.17, [0.1, 0, 0]).material = rib;
+        // head on the deck, jaw open toward the front
+        const head = new (B().TransformNode)('bcHead', S); head.parent = R; head.position.set(0.02, 0.16, 0.72); head.rotation.set(0.25, 0.18, 0);
+        cy(0.2, 0.3, 0.52, 6, head, 0, 0.05, 0.14, [Math.PI / 2, 0, 0]).material = shell;
+        bx(0.26, 0.09, 0.3, head, 0, -0.05, 0.3, [0.15, 0, 0.08]).material = maw;          // lower jaw
+        for (const s of [-1, 1]) bx(0.03, 0.06, 0.22, head, s * 0.11, -0.02, 0.33, [0.1, 0, 0]).material = rib;   // teeth
+        sp(0.09, 4, head, 0.04, 0.02, 0.26).material = acid;
+        // limbs and the curled tail
+        for (const s of [-1, 1]) {
+            cy(0.09, 0.12, 0.62, 5, R, s * 0.26, 0.1, 0.5, [Math.PI / 2, s * 0.3, 0]).material = hide;
+            cy(0.07, 0.1, 0.54, 5, R, s * 0.28, 0.09, -0.6, [Math.PI / 2, -s * 0.2, 0]).material = hide;
+        }
+        let tp = new (B().TransformNode)('bcTail', S); tp.parent = R; tp.position.set(0, 0.14, -0.62); tp.rotation.set(0.1, 0, 0);
+        for (let i = 0; i < 5; i++) {
+            const seg = new (B().TransformNode)('bcSeg', S); seg.parent = tp; seg.position.set(0, 0, -0.24); seg.rotation.set(0, 0.2 + i * 0.03, 0.12);
+            cy(0.13 - i * 0.02, 0.16 - i * 0.02, 0.28, 5, seg, 0, 0, -0.1, [Math.PI / 2, 0, 0]).material = i % 2 ? hide : shell;
+            tp = seg;
+        }
+        // acid that leaked out — two dull, angular splashes, not a bright disc
+        for (const [dx, dz, d] of [[0.36, 0.34, 0.5], [-0.3, -0.2, 0.34]]) {
+            const p = cy(d, d, 0.02, 7, R, dx, 0.01, dz); p.material = flatMat(S, '#5f7a33', { emissive: 0.12, alpha: 0.55 });
+        }
+    } else {
+        const suit = flatMat(S, kind === 'charCorpse' ? '#5c2b2b' : '#49586b', { spec: 0.3 });
+        const plate = flatMat(S, kind === 'charCorpse' ? '#39201f' : '#333f4e', { spec: 0.35 });
+        const skin = flatMat(S, '#b99a80'), boot = flatMat(S, '#1c2025'), blood = flatMat(S, '#3d1114', { alpha: 0.75 });
+        for (const s of [-1, 1]) {
+            bx(0.18, 0.18, 0.8, R, s * 0.12, 0.1, -0.6).material = suit;                  // legs
+            bx(0.19, 0.14, 0.24, R, s * 0.12, 0.09, -1.02).material = boot;                // boots
+            bx(0.16, 0.15, 0.5, R, s * 0.3, 0.11, 0.14, [0, s * 0.5, 0]).material = suit;  // arms thrown out
+            bx(0.11, 0.11, 0.18, R, s * 0.44, 0.09, 0.4).material = skin;                   // hands
+        }
+        bx(0.46, 0.28, 0.74, R, 0, 0.16, 0.04).material = suit;                            // torso
+        bx(0.38, 0.06, 0.5, R, 0, 0.31, 0.04).material = plate;                            // chest rig
+        sp(0.3, 6, R, 0.06, 0.16, 0.55, [1, 0.9, 1.05]).material = skin;                   // head, tipped aside
+        sp(0.29, 5, R, 0.06, 0.22, 0.56, [1, 0.65, 1]).material = flatMat(S, '#2a1b12');   // hair
+        for (const [dx, dz, d] of [[0.05, 0.05, 0.62], [-0.3, 0.4, 0.3]]) {
+            const p = cy(d, d, 0.015, 7, R, dx, 0.012, dz); p.material = blood;            // blood under the body
+        }
+    }
+    for (const m of R.getChildMeshes()) m.isPickable = false;
+    return R;
 }

@@ -451,6 +451,7 @@ function renderTopbar() {
     }
     $('undoBtn').disabled = !app.host || !app.undoDepth;
     $('undoBtn').title = app.host ? 'Откатить последнее действие (' + (app.undoDepth || 0) + ' в стеке)' : 'Откатывать может только ведущий';
+    renderSelfHud();
 }
 
 function hpBar(p) {
@@ -458,6 +459,21 @@ function hpBar(p) {
     let s = '';
     sections.forEach((sec, si) => { for (const n of sec) s += '<i class="' + (si === 1 ? 'mid' : si === 2 ? 'heavy' : si === 3 ? 'last' : '') + (p.health >= n ? ' on' : '') + '" title="' + n + '"></i>'; if (si < 3) s += '<i style="width:3px;background:none"></i>'; });
     return '<div class="hp" title="Здоровье: ' + p.health + ' / 10' + (p.health === 0 ? ' — при смерти' : '') + '">' + s + '</div>';
+}
+
+/** My own health and injuries, always in the lower-right corner — no need to open the sheet to see
+ *  whether the next wound is the last one. Click it to open the full sheet. */
+function renderSelfHud() {
+    const v = app.view, el = $('selfHud');
+    const me = v && v.players.find(p => p.id === app.me);
+    if (!me || !me.charId || me.status === 'dead' || me.status === 'escaped') { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    const st = me.health >= 8 ? 'здоров' : me.health >= 5 ? 'ранен' : 'тяжело ранен';
+    const wounds = (me.wounds || []).map(w => '<span class="tag red" title="' + esc(WOUNDS[w] ? WOUNDS[w].text : '') + '">' + esc(woundName(w)) + '</span>').join('');
+    el.classList.toggle('dead', me.health <= 1);
+    el.innerHTML = '<div class="sh-head"><b>' + esc(me.charName || me.name) + '</b><small>' + esc(st) + ' · ' + me.health + ' / 10</small></div>' +
+        hpBar(me) + '<div class="sh-wounds">' + (wounds || '<span class="tag">травм нет</span>') + '</div>';
+    el.title = 'Здоровье и травмы — нажмите, чтобы открыть планшет (C)';
 }
 function statusName(p) { return ({ active: '', dead: 'ПОГИБ', escaped: 'УЛЕТЕЛ', hibernating: 'ГИБЕРНАЦИЯ' })[p.status] || p.status; }
 
@@ -825,6 +841,12 @@ function onRoomClick(id) {
     ], scene.screenOf('room', id));
 }
 
+/** The rules text of a weapon without «Дальнобойное оружие, N патронов.» — that part is already
+ *  in the button line (name, ammo), and the rest is exactly "what the weapon does". */
+function weaponEffect(d) {
+    return String((d && d.text) || '').replace(/^Дальнобойное оружие[^.]*\.\s*/, '').trim();
+}
+
 function onIntruderClick(uid, roomId, x, y) {
     const v = app.view; if (!v) return;
     const it = v.intruders[uid];
@@ -839,7 +861,12 @@ function onIntruderClick(uid, roomId, x, y) {
     const buttons = [];
     for (const w of weapons) {
         const d = ITEMS[w.item];
-        buttons.push({ label: d.name, sub: 'выстрел · ' + (d.weapon.noAmmo ? 'без патронов' : 'патронов ' + w.ammo) + (d.weapon.sniper && !inRoom ? ' · снайперский' : ''),
+        const bits = ['выстрел', d.weapon.noAmmo ? 'без патронов' : 'патронов ' + w.ammo];
+        if (d.weapon.sniper && !inRoom) bits.push('снайперский');
+        // What the weapon actually does, not just its name and ammo: the printed rules text minus
+        // the «Дальнобойное оружие, N патронов.» preamble that repeats the ammo we already show.
+        const eff = weaponEffect(d);
+        buttons.push({ label: d.name, sub: bits.join(' · ') + (eff ? ' · ' + eff : ''),
             art: itemArt(w.item), disabled: !shoot || !shoot.enabled, reason: shoot && shoot.reason,
             do: () => act({ action: 'shoot', weapon: w.uid, target: uid }) });
     }
@@ -1041,6 +1068,34 @@ $('table').addEventListener('click', e => {
     if (kind === 'bag' && pr && pr.kind === 'bag' && !pr.waiting) { act('draw'); return; }
     openDeck(kind);
 });
+$('selfHud').onclick = () => openSheet();
+
+// ---------------------------------------------------------------------------------------------
+// Top-bar popups (Computer, Adaptations)
+// The bar itself scrolls sideways, and `overflow` clips every child that sticks out of it — the
+// popups under "Компьютер" and "Адаптации чужих" were cut off by the bar's lower edge. The markup
+// stays where it is (the bar is redrawn on every update), but the content is shown in #tbPop, a
+// fixed layer under the element, so nothing can clip it.
+// ---------------------------------------------------------------------------------------------
+const TB_POP_PAD = 8;
+function hideTbPop() { const el = $('tbPop'); el.classList.remove('show'); el.classList.add('hidden'); }
+function showTbPop(tag) {
+    const src = tag.querySelector('.ipop'); if (!src) return hideTbPop();
+    const el = $('tbPop');
+    el.innerHTML = src.innerHTML;
+    el.classList.remove('hidden'); el.classList.add('show');
+    const r = tag.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+    const x = Math.max(TB_POP_PAD, Math.min(window.innerWidth - w - TB_POP_PAD, r.left));
+    let y = r.bottom + 6;
+    if (y + h > window.innerHeight - TB_POP_PAD) y = Math.max(TB_POP_PAD, r.top - h - 6);   // flip above
+    el.style.left = Math.round(x) + 'px'; el.style.top = Math.round(y) + 'px';
+}
+$('topbar').addEventListener('pointerover', e => {
+    const tag = e.target && e.target.closest ? e.target.closest('.itag') : null;
+    if (tag && $('topbar').contains(tag)) showTbPop(tag); else hideTbPop();
+});
+$('topbar').addEventListener('pointerleave', hideTbPop);
+$('topbar').addEventListener('scroll', hideTbPop, { passive: true });
 
 // ---------------------------------------------------------------------------------------------
 // Character sheet (my backpack, weapons, quest item, wounds, suit, objectives, cards)
