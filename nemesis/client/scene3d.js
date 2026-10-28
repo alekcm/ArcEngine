@@ -1260,7 +1260,9 @@ export class Scene3D {
                     bx(0.3, 0.08, 0.04, -2.35, 0.55, 1.43, M('#b5372c'));
                     bx(0.08, 0.3, 0.04, -2.35, 0.55, 1.43, M('#b5372c'));
                     // --- the wall: fire panel, blankets, hose reel, alarm, sand, riser ---
-                    const pp = wallSpot(pickAngle([0, 0.45, -0.45, 0.9, -0.9], 0.55)), pf = frameOf(pp);
+                    const pp = wallSpot(pickAngle([0, 0.45, -0.45, 0.9, -0.9], 0.55, 1.8), 5.75, 1.8);
+                    if (!pp) return;                                   // no wall left for the fire panel
+                    const pf = frameOf(pp);
                     cabinet(pp, 1.6, 1.5, 0.45, panel, M('#3a4149'), null);
                     bx(1.24, 0.62, 0.03, pf.at(0, 0.26)[0], 0.92, pf.at(0, 0.26)[1], M('#e05252', 0.5), pp.ry);   // red display, on the doors
                     bx(1.1, 0.07, 0.03, pf.at(0, 0.29)[0], 1.03, pf.at(0, 0.29)[1], M('#ffd0d0', 0.6), pp.ry);
@@ -1268,7 +1270,7 @@ export class Scene3D {
                     cpu_(pp.x, pp.z, pp.ry);   // the fire panel is this room's Computer
                     // two blanket cabinets on the wall, doors facing the room, white cross on each door
                     for (const side of [-1, 1]) {
-                        const bp = wallSpot(pickAngle([pp.a + side * 0.62, pp.a + side * 0.9, pp.a + side * 0.34], 0.42), 5.82);
+                        const bp = wallSpot(pickAngle([pp.a + side * 0.62, pp.a + side * 0.9, pp.a + side * 0.34], 0.42, 1.1), 5.82, 1.1);
                         if (!bp || bp === pp) continue;
                         const bf = frameOf(bp);
                         bx(0.92, 1.1, 0.34, bp.x, 0.66, bp.z, M('#b5372c'), bp.ry);
@@ -1279,18 +1281,28 @@ export class Scene3D {
                         for (const sd of [-1, 1]) bx(0.04, 0.14, 0.03, bf.at(sd * 0.09, 0.19)[0], 0.5, bf.at(sd * 0.09, 0.19)[1], metal, bp.ry);
                     }
                     // hose reel on a wall bracket, its drum facing the room
-                    const hp = wallSpot(pickAngle([pp.a - 1.25, pp.a + 1.25, pp.a - 1.5, pp.a + 1.5], 0.5), 5.85), hf = frameOf(hp);
-                    bx(0.5, 0.7, 0.16, hp.x, 0.85, hp.z, M('#2b333d'), hp.ry);                                  // bracket plate
-                    discZ(0.92, 0.24, hf.at(0, 0.2)[0], 1.02, hf.at(0, 0.2)[1], M('#b5372c'), hp.ry, 12);       // drum
-                    discZ(0.56, 0.26, hf.at(0, 0.26)[0], 1.02, hf.at(0, 0.26)[1], metal, hp.ry, 10);            // hub
-                    bx(0.5, 0.06, 0.09, hf.at(0.24, 0.34)[0], 0.72, hf.at(0.24, 0.34)[1], M('#20262c'), hp.ry);  // trailing hose
+                    const hp = wallSpot(pickAngle([pp.a - 1.25, pp.a + 1.25, pp.a - 1.5, pp.a + 1.5], 0.5, 1.1), 5.85, 1.1);
+                    if (hp) {
+                        const hf = frameOf(hp);
+                        bx(0.5, 0.7, 0.16, hp.x, 0.85, hp.z, M('#2b333d'), hp.ry);                              // bracket plate
+                        discZ(0.92, 0.24, hf.at(0, 0.2)[0], 1.02, hf.at(0, 0.2)[1], M('#b5372c'), hp.ry, 12);   // drum
+                        discZ(0.56, 0.26, hf.at(0, 0.26)[0], 1.02, hf.at(0, 0.26)[1], metal, hp.ry, 10);        // hub
+                        bx(0.5, 0.06, 0.09, hf.at(0.24, 0.34)[0], 0.72, hf.at(0.24, 0.34)[1], M('#20262c'), hp.ry);   // trailing hose
+                    }
                     // alarm box with its red lamp, on the same wall
-                    const ap = wallSpot(pickAngle([pp.a + 2.0, pp.a - 2.0, pp.a + 2.4], 0.45), 5.85), af = frameOf(ap);
-                    bx(0.44, 0.54, 0.24, ap.x, 1.2, ap.z, M('#8a929c'), ap.ry);
-                    bx(0.18, 0.18, 0.06, af.at(0, 0.14)[0], 1.31, af.at(0, 0.14)[1], M('#e05252', 0.9), ap.ry);
-                    bx(0.4, 0.08, 0.06, af.at(0, 0.14)[0], 1.05, af.at(0, 0.14)[1], M('#2b333d'), ap.ry);
+                    const ap = wallSpot(pickAngle([pp.a + 2.0, pp.a - 2.0, pp.a + 2.4], 0.45, 0.8), 5.85, 0.8);
+                    if (ap) {
+                        const af = frameOf(ap);
+                        bx(0.44, 0.54, 0.24, ap.x, 1.2, ap.z, M('#8a929c'), ap.ry);
+                        bx(0.18, 0.18, 0.06, af.at(0, 0.14)[0], 1.31, af.at(0, 0.14)[1], M('#e05252', 0.9), ap.ry);
+                        bx(0.4, 0.08, 0.06, af.at(0, 0.14)[0], 1.05, af.at(0, 0.14)[1], M('#2b333d'), ap.ry);
+                    }
                     // wall rack of spare bottles and a foam tank, next to the panel
-                    const sp = wallSpot(pickAngle([pp.a + 1.62, pp.a - 1.62, pp.a + 1.9], 0.42), 5.86), sf = frameOf(sp);
+                    // the spare-bottle rack reserves its whole 1.8, and stays out of the room entirely
+                    // when the ring has no stretch that wide left
+                    const sp = wallSpot(pickAngle([pp.a + 1.62, pp.a - 1.62, pp.a + 1.9], 0.42, 1.8), 5.86, 1.8);
+                    if (sp) {
+                    const sf = frameOf(sp);
                     bx(1.7, 1.9, 0.12, sp.x, 0.98, sp.z, M('#2b333d'), sp.ry);                                 // backboard
                     for (const y of [0.24, 1.02]) {
                         bx(1.76, 0.09, 0.34, sp.x, y, sp.z, metal, sp.ry);                                     // shelf
@@ -1298,6 +1310,7 @@ export class Scene3D {
                         for (const u of [-0.5, 0, 0.5]) bottle(sf.at(u, -0.02)[0], sf.at(u, -0.02)[1], sp.ry, y + 0.05, 0.72);
                     }
                     bx(1.7, 0.1, 0.3, sp.x, 2.04, sp.z, metal, sp.ry);                                         // top cap
+                    }
                     cy(0.9, 0.9, 0.72, 2.95, 0.36, 2.2, M('#b5372c'), 10);                                     // foam tank on the deck
                     cy(0.24, 0.24, 0.12, 2.95, 0.78, 2.2, metal, 8);
                     cy(0.06, 0.06, 0.5, 3.3, 0.6, 2.2, dark, 6, 0.6);                                          // its hose
@@ -1311,13 +1324,15 @@ export class Scene3D {
                     bx(0.34, 0.2, 0.05, 2.55, 1.92, 1.68, M('#aab6c2'));                      // head
                     bx(0.12, 0.3, 0.05, 2.68, 1.92, 1.68, M('#aab6c2'));                      // its blade
                     // sprinkler riser: a floor-to-rail pipe with a hand wheel and a branch along the wall
-                    const rp = wallSpot(pickAngle([pp.a + 0.95, pp.a - 0.95], 0.4), 5.9);
-                    cy(0.18, 0.18, 2.6, rp.x, 1.3, rp.z, metal, 8);
-                    cy(0.3, 0.3, 0.06, rp.x, 1.7, rp.z, M('#c9a227'), 10);
-                    cy(0.38, 0.38, 0.05, rp.x, 2.05, rp.z, M('#b5372c'), 10);
-                    cy(0.1, 0.1, 0.3, rp.x, 2.5, rp.z, metal, 6);                                              // riser up to the ceiling
-                    cy(0.24, 0.16, 0.1, rp.x, 2.66, rp.z, M('#aab6c2'), 6);                                   // sprinkler head
-                    bx(0.1, 0.1, 0.1, rp.x, 2.72, rp.z, M('#e05252', 0.8));                                   // its red bulb
+                    const rp = wallSpot(pickAngle([pp.a + 0.95, pp.a - 0.95], 0.4, 0.7), 5.9, 0.7);
+                    if (rp) {
+                        cy(0.18, 0.18, 2.6, rp.x, 1.3, rp.z, metal, 8);
+                        cy(0.3, 0.3, 0.06, rp.x, 1.7, rp.z, M('#c9a227'), 10);
+                        cy(0.38, 0.38, 0.05, rp.x, 2.05, rp.z, M('#b5372c'), 10);
+                        cy(0.1, 0.1, 0.3, rp.x, 2.5, rp.z, metal, 6);                                          // riser up to the ceiling
+                        cy(0.24, 0.16, 0.1, rp.x, 2.66, rp.z, M('#aab6c2'), 6);                               // sprinkler head
+                        bx(0.1, 0.1, 0.1, rp.x, 2.72, rp.z, M('#e05252', 0.8));                               // its red bulb
+                    }
                 });
                 // two drum feeders against a clear stretch of wall — placed by width, so the pair can
                 // never end up standing in a doorway
@@ -1552,7 +1567,16 @@ export class Scene3D {
                     bx(0.26, 0.34, 0.12, -0.55, 1.6, -0.45, M('#7fc7ff', 0.35, { alpha: 0.55 }));
                     cy(0.03, 0.03, 0.44, -0.74, 1.42, -0.45, M('#7fc7ff', 0.4, { alpha: 0.7 }), 6, Math.PI / 2);
                 });
-                console_(2.3, -1.6, -0.9); bx(0.8, 1.2, 0.5, 2.4, 0.6, 0.4, white); bx(0.6, 0.4, 0.06, 2.4, 1.0, 0.68, screen);
+                // the anaesthetic machine and its monitor: their own stretch of wall, never in a doorway
+                wall([2.3 * 1.0, 0.9, -2.3, Math.PI], 2.2, (p, fr) => fix(() => {
+                    bx(0.9, 0.95, 0.55, p.x, 0.48, p.z, white, p.ry);                        // anaesthetic machine
+                    bx(0.96, 0.07, 0.6, p.x, 0.99, p.z, metal, p.ry);
+                    for (let k = 0; k < 3; k++) cy(0.16, 0.16, 0.3, fr.at(-0.3 + k * 0.3, 0.02)[0], 1.16, fr.at(-0.3 + k * 0.3, 0.02)[1], [M('#4aa3df', 0.5), M('#4fcf7a', 0.5), M('#e05252', 0.5)][k], 8);
+                    bx(0.7, 0.55, 0.06, fr.at(0.72, 0.02)[0], 1.5, fr.at(0.72, 0.02)[1], M('#1e252c'), p.ry, -0.2);   // monitor
+                    bx(0.6, 0.45, 0.03, fr.at(0.72, 0.05)[0], 1.5, fr.at(0.72, 0.05)[1], M('#4fcf7a', 0.7), p.ry, -0.2);
+                    for (let k = 0; k < 3; k++) bx(0.44, 0.03, 0.02, fr.at(0.72, 0.08)[0], 1.6 - k * 0.1, fr.at(0.72, 0.08)[1], M('#dff0ff', 0.7), p.ry, -0.2);
+                    cy(0.06, 0.06, 1.2, fr.at(0.72, 0.02)[0], 0.6, fr.at(0.72, 0.02)[1], metal, 6);   // stand
+                }));
                 break;
             }
             case 'repository': {
@@ -1873,9 +1897,100 @@ export class Scene3D {
                 plant(2.8, -2.6);
                 break;
             }
-            case 'commandCenter':
-                bx(2.8, 0.9, 1.4, 0, 0.45, 0, panel); bx(2.4, 0.4, 1.0, 0, 1.0, 0, M('#4aa3df', 0.6, { alpha: 0.6 })); for (let i = 0; i < 3; i++) bx(1.1, 1.4, 0.1, -1.3 + i * 1.3, 1.3, -2.7, screen, (1 - i) * 0.4); console_(-2.6, 1.0, 1.4); console_(2.6, 1.0, -1.4); bench(0, 2.4, 0);
+            case 'commandCenter': {
+                // The operations room: a situation table in the middle with the fleet on it, three
+                // operator stations round it, the commander's post on one clear stretch of wall (dais,
+                // rail, chair and the wall of status displays above it), the sector plot on another and
+                // the console bank on a third. The post picks its stretch by width, so a doorway takes
+                // the post to the next free piece of wall instead of putting the dais in the passage.
+                const postP = wallSpot(pickAngle([Math.PI, -2.4, 2.4, 0.6, -0.6], 0.7, 4.0), 5.6, 4.0);
+                fix(() => {
+                    // --- the situation table: plinth, lit top and a floating plot of the sector --------
+                    cy(2.3, 2.5, 0.16, 0, 0.08, 0.2, dark, 12);                            // base ring
+                    cy(2.05, 2.2, 0.8, 0, 0.5, 0.2, M('#2b333d'), 12);                     // pedestal
+                    cy(2.4, 2.4, 0.1, 0, 0.95, 0.2, metal, 12);                            // table top
+                    cy(2.26, 2.26, 0.04, 0, 1.01, 0.2, M('#2f7ad6', 0.6), 12);             // lit inlay
+                    for (let k = 0; k < 4; k++) cy(2.0 - k * 0.5, 2.0 - k * 0.5, 0.02, 0, 1.05, 0.2, M('#9fe4ff', 0.5 - k * 0.08), 12);
+                    cy(1.4, 1.4, 0.03, 0.25, 1.16, -0.15, M('#7fc7ff', 0.3, { alpha: 0.4 }), 14);   // floating dome
+                    for (let k = 0; k < 6; k++) {                                          // ship markers
+                        const a = k / 6 * Math.PI * 2 + 0.4, r2 = 0.7 + (k % 3) * 0.35;
+                        bx(0.16, 0.06, 0.1, Math.cos(a) * r2, 1.12, 0.2 + Math.sin(a) * r2, k === 2 ? M('#e05252', 0.9) : M('#4fcf7a', 0.85), -a);
+                    }
+                    // --- three operator stations round the table, each with a chair and a slate ---------
+                    for (const a of [Math.PI * 0.15, Math.PI * 0.85, -Math.PI / 2]) {
+                        const r2 = 2.55, x = Math.sin(a) * r2, z = Math.cos(a) * r2 + 0.2, ry = a + Math.PI;
+                        bx(1.5, 0.86, 0.6, x, 0.43, z, panel, ry);                          // desk
+                        bx(1.56, 0.06, 0.66, x, 0.89, z, metal, ry);
+                        bx(0.9, 0.05, 0.34, LX(x, z, ry, 0, 0.14), 0.93, LZ(x, z, ry, 0, 0.14), dark, ry);   // keyboard slate
+                        for (let k = 0; k < 3; k++) bx(0.2, 0.03, 0.12, LX(x, z, ry, -0.28 + k * 0.28, 0.16), 0.96, LZ(x, z, ry, -0.28 + k * 0.28, 0.16), [M('#4fcf7a', 0.7), M('#4aa3df', 0.8), M('#ffb347', 0.7)][k], ry);
+                        bx(0.5, 0.36, 0.05, LX(x, z, ry, 0, -0.16), 1.24, LZ(x, z, ry, 0, -0.16), M('#1e252c'), ry, -0.28);
+                        bx(0.42, 0.28, 0.03, LX(x, z, ry, 0, -0.13), 1.24, LZ(x, z, ry, 0, -0.13), screen, ry, -0.28);
+                        chair(LX(x, z, ry, 0, 0.78), LZ(x, z, ry, 0, 0.78), ry, M('#39424e'));
+                    }
+                });
+                // --- the commander's post: dais, rail, chair and the status wall above it --------------
+                if (postP) {
+                    const pa = postP.a, pf = frameOf(postP);
+                    const cx = Math.sin(pa), cz = Math.cos(pa);                  // outward from the middle
+                    const at = (d) => [cx * (5.6 - d), cz * (5.6 - d)];          // d metres off the wall, inward
+                    fix(() => {
+                        const [s1x, s1z] = at(1.5), [s2x, s2z] = at(1.05);
+                        bx(3.4, 0.18, 1.5, s1x, 0.09, s1z, metal, pa);                    // lower step
+                        bx(2.6, 0.18, 1.05, s2x, 0.27, s2z, metal, pa);                   // upper step
+                        floorZone(s1x, s1z, 3.4, 1.5, pa, M('#4aa3df', 0.2));
+                        for (const sd of [-1, 1]) bx(0.1, 0.62, 1.0, pf.at(sd * 1.35, 0.95)[0], 0.48, pf.at(sd * 1.35, 0.95)[1], metal, pa);
+                        const [rx, rz] = at(1.6);
+                        bx(2.8, 0.08, 0.1, rx, 0.78, rz, metal, pa);                       // front rail
+                        for (const sd of [-1, 1]) bx(0.1, 0.7, 0.1, pf.at(sd * 1.4, 1.6)[0], 0.5, pf.at(sd * 1.4, 1.6)[1], metal, pa);
+                        const [chx, chz] = at(0.85);
+                        chair(chx, chz, pa + Math.PI, M('#4a3b2c'));                       // the commander's seat
+                        bx(0.6, 0.1, 0.34, pf.at(0, 1.5)[0], 0.42, pf.at(0, 1.5)[1], dark, pa);   // footrest
+                        for (const sd of [-1, 0, 1]) bx(0.26, 0.16, 0.22, pf.at(sd * 0.9, 0.75)[0], 0.38, pf.at(sd * 0.9, 0.75)[1], M('#2b333d'), pa);
+                        // the wall of status displays above the dais
+                        bx(3.8, 1.5, 0.14, pf.at(0, 0.05)[0], 2.15, pf.at(0, 0.05)[1], M('#232b33'), pa);
+                        bx(3.9, 0.1, 0.2, pf.at(0, 0.05)[0], 2.94, pf.at(0, 0.05)[1], metal, pa);
+                        for (let r2 = 0; r2 < 2; r2++) for (let c = 0; c < 4; c++)
+                            bx(0.82, 0.6, 0.03, pf.at(-1.35 + c * 0.9, 0.14)[0], 2.5 - r2 * 0.68, pf.at(-1.35 + c * 0.9, 0.14)[1], [screen, M('#4fcf7a', 0.6), M('#ffb347', 0.55), M('#e05252', 0.5)][(r2 * 4 + c) % 4], pa);
+                        for (const sd of [-1, 1]) bx(0.24, 0.7, 0.24, pf.at(sd * 1.85, 0.16)[0], 1.75, pf.at(sd * 1.85, 0.16)[1], M('#39424e'), pa);
+                        bx(1.6, 0.06, 0.1, pf.at(0, 0.7)[0], 3.02, pf.at(0, 0.7)[1], M('#9fe4ff', 0.7), pa);   // chain-of-command lamp
+                    });
+                }
+                // the plot board on a free wall: the sector chart, with pins and a heading strip
+                wall([Math.PI, Math.PI - 0.5, Math.PI + 0.5, 0, -1.4, 1.4], 3.2, (p, fr) => fix(() => {
+                    bx(2.9, 1.6, 0.12, p.x, 2.0, p.z, M('#1e252c'), p.ry);           // clear of head height
+                    const yy = (y) => 0.5 + y;                                        // the chart rides 0.5 up
+                    bx(2.7, 1.4, 0.03, fr.at(0, 0.08)[0], yy(1.5), fr.at(0, 0.08)[1], M('#2a3b55'), p.ry);       // chart
+                    for (let k = 0; k < 6; k++) bx(0.5, 0.02, 0.02, fr.at(-0.9 + k * 0.36, 0.1)[0], yy(1.1 + k * 0.14), fr.at(-0.9 + k * 0.36, 0.1)[1], M('#4aa3df', 0.4), p.ry);
+                    for (let k = 0; k < 4; k++) bx(0.02, 0.02, 0.7, fr.at(-0.7 + k * 0.5, 0.1)[0], yy(1.5), fr.at(-0.7 + k * 0.5, 0.1)[1], M('#4aa3df', 0.3), p.ry);
+                    for (const [u, y, m] of [[-0.6, 1.72, M('#e05252', 0.8)], [0.3, 1.3, M('#4fcf7a', 0.8)], [0.8, 1.9, M('#ffb347', 0.8)]])
+                        cy(0.12, 0.12, 0.05, fr.at(u, 0.12)[0], yy(y), fr.at(u, 0.12)[1], m, 8);
+                    bx(2.9, 0.12, 0.2, p.x, 2.86, p.z, metal, p.ry);
+                    bx(1.4, 0.18, 0.04, fr.at(0, 0.12)[0], 3.02, fr.at(0, 0.12)[1], M('#ffd27f', 0.6), p.ry);   // heading strip
+                }));
+                // a bank of four consoles on another wall: the room's Computer lives here
+                wall([-2.6, -3.0, 2.6, 3.0, 0.8], 3.6, (p, fr) => fix(() => {
+                    screenBank(fr.at(0, 0)[0], fr.at(0, 0)[1], p.ry, 4, 3.2, 1.35);
+                    bx(3.3, 0.9, 0.66, fr.at(0, 0.52)[0], 0.45, fr.at(0, 0.52)[1], panel, p.ry);   // operator desk
+                    bx(3.36, 0.06, 0.72, fr.at(0, 0.52)[0], 0.93, fr.at(0, 0.52)[1], metal, p.ry);
+                    for (let k = 0; k < 4; k++) {
+                        bx(0.62, 0.04, 0.3, fr.at(-1.1 + k * 0.73, 0.6)[0], 0.97, fr.at(-1.1 + k * 0.73, 0.6)[1], dark, p.ry);
+                        for (let j = 0; j < 3; j++) cy(0.1, 0.1, 0.04, fr.at(-1.22 + k * 0.73, 0.68)[0], 0.98, fr.at(-1.22 + k * 0.73, 0.68)[1], [M('#4fcf7a', 0.7), M('#4aa3df', 0.8), M('#e05252', 0.7)][j], 8);
+                    }
+                    cpu_(fr.at(0, 0.9)[0], fr.at(0, 0.9)[1], p.ry);
+                }));
+                // cable trunk across the deck and a supply cabinet, kept out of the walking lanes
+                fix(() => {
+                    for (let k = 0; k < 6; k++) bx(0.5, 0.08, 0.24, -0.4 + k * 0.45, 0.2, 2.35 - k * 0.05, k % 2 ? M('#20262c') : dark, 0.12);
+                    const cp = wallSpot(pickAngle([-3.0, 3.0, -2.2, 2.2], 0.5, 1.3), 5.72, 1.3);
+                    if (cp) {
+                        const cf = frameOf(cp);
+                        bx(0.9, 1.5, 0.5, cp.x, 0.75, cp.z, panel, cp.ry);                    // supply cabinet
+                        bx(0.86, 0.9, 0.03, cf.at(0, 0.26)[0], 0.8, cf.at(0, 0.26)[1], M('#39424e'), cp.ry);
+                        for (let k = 0; k < 3; k++) bx(0.7, 0.05, 0.02, cf.at(0, 0.28)[0], 1.05 - k * 0.2, cf.at(0, 0.28)[1], k % 2 ? M('#4fcf7a', 0.6) : M('#4aa3df', 0.6), cp.ry);
+                    }
+                });
                 break;
+            }
             case 'containment': {
                 // The rig is centred on the room's floor ring: base plate, four posts flush with it and
                 // the glass cell between them, with the intruder asleep on the pad inside.
@@ -2398,8 +2513,12 @@ export class Scene3D {
             // wall is swung onto the nearest clear stretch, so a drum never blocks a corridor mouth.
             const r2 = Math.hypot(m.position.x, m.position.z);
             if (r2 > 4.4 && !wallClear(Math.atan2(m.position.x, m.position.z), 0.38)) {
-                const na = fitAngle(Math.atan2(m.position.x, m.position.z), 0.8);
+                const a0 = Math.atan2(m.position.x, m.position.z);
+                const na = fitAngle(a0, 0.8);
+                // No free stretch of ring at all (a pierced ring): keep the angle and pull the piece in
+                // off the wall instead of leaving it standing in a corridor mouth.
                 if (na != null) { m.position.x = Math.sin(na) * r2; m.position.z = Math.cos(na) * r2; }
+                else { const k = 4.2 / r2; m.position.x *= k; m.position.z *= k; }
             }
         }
         statics.push(...fixed, ...dressing);
