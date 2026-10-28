@@ -142,6 +142,32 @@ test('SCN-02: a figure moves along the corridor, not through the hull', () => {
     assert.equal(scene.routeTo('011', '011'), null);
 });
 
+test('SCN-10: a corridor never doubles back — no fold, no elbow, no torn tube', () => {
+    // 013-014 used to be a 10-unit zigzag between two 6.3-unit wall rings: the hand-placed bend
+    // point sat far off the axis of a very short passage and the tube folded back on itself, so the
+    // corridor read as three loose pieces and the door frame straddled a kink. Every step of a
+    // corridor must move towards the room at its far end, and no turn may be sharper than 35
+    // degrees, or the box sections leave a wedge in the deck.
+    for (const c of Object.values(ship.corridors)) {
+        const pts = scene.corridorPoints(ship, c);
+        assert.ok(pts.length >= 2, c.id + ': two ends');
+        const A = scene.pos(ship.rooms[c.a]), Bp = scene.pos(ship.rooms[c.b]);
+        const dir = Bp.subtract(A).normalize();
+        let len = 0;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const step = pts[i + 1].subtract(pts[i]);
+            len += step.length();
+            assert.ok(step.dot(dir) > -1e-6, c.id + ': step ' + i + ' runs back towards ' + c.a);
+        }
+        for (let i = 1; i < pts.length - 1; i++) {
+            const u = pts[i].subtract(pts[i - 1]).normalize(), v = pts[i + 1].subtract(pts[i]).normalize();
+            const turn = Math.acos(Math.min(1, Math.max(-1, u.dot(v)))) * 180 / Math.PI;
+            assert.ok(turn <= 35, c.id + ': a ' + turn.toFixed(0) + '-degree elbow at point ' + i);
+        }
+        assert.ok(len <= A.subtract(Bp).length() + 6, c.id + ': the tube takes a detour of ' + (len - A.subtract(Bp).length()).toFixed(1));
+    }
+});
+
 test('SCN-03: every corridor in a game ship is reachable from both of its rooms', () => {
     let checked = 0;
     for (const c of Object.values(ship.corridors)) {

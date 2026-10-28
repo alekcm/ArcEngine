@@ -600,11 +600,13 @@ OPS['computer.scan'] = (state, step) => {
 // ---------------------------------------------------------------------------------------------
 // Item deck helpers
 // ---------------------------------------------------------------------------------------------
-export function drawItem(state, deck) {
+export function drawItem(state, deck, quiet) {
     const d = state.itemDecks[deck];
     if (!d.length) { const disc = state.itemDiscard[deck]; if (disc && disc.length) { d.push(...shuffle(state, disc.splice(0))); } }
     const c = d.shift() || null;
-    if (c) fx(state, { type: 'item', deck });
+    // `quiet` is a bulk draw behind a picker (Search): a card flying out of the deck towards the
+    // hand would be pulled back and forth before the player has even chosen, and it covers the list.
+    if (c) fx(state, { type: 'item', deck, quiet: !!quiet });
     return c;
 }
 OPS['armor.swapAsk'] = (state, step) => {

@@ -80,7 +80,8 @@ export function searchRoom(state, p, then) {
     const tile = tileOf(state, p.room);
     const icons = tile ? ROOM_TILES[tile].items : [];
     const drawn = [];
-    for (const color of icons) { const c = drawItem(state, color); if (c) drawn.push(c); }
+    // Quiet: the drawn items are already on the table as a picker, no card has to fly anywhere.
+    for (const color of icons) { const c = drawItem(state, color, true); if (c) drawn.push(c); }
     log(state, pname(p) + ' обыскивает комнату (' + icons.length + ' предм.).', 'action');
     keepOneOf(state, p, drawn, 'items', then, p.armor && ITEMS[p.armor.item].vest ? 2 : 1);
 }

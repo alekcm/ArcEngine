@@ -1495,25 +1495,103 @@ export class Scene3D {
     // ---------------------------------------------------------------------------------------
     corridorPoints(ship, c) {
         const a = this.pos(ship.rooms[c.a]), b = this.pos(ship.rooms[c.b]);
-        const mids = (c.path || []).map(([x, y]) => this.posXY(x, y));
+        const span = b.subtract(a); const dist = span.length();
+        const dir = span.scale(1 / Math.max(1e-6, dist));
         // A doorway faces the neighbouring room (the wall opening and the door portal are built on
-        // that axis), so both ends of the tube are pulled onto it. Before, an end kept whatever
-        // direction the first bend gave and the corridor arrived beside the doorway — the room
-        // showed a black gap next to a tube that stopped at the wall.
-        const dA = b.subtract(a).normalize(), dB = a.subtract(b).normalize();
-        const through = WALL_R - 0.18;      // the tube reaches a little inside the wall ring
-        const apron = WALL_R + 1.15;        // straight run in front of the door
-        const pts = [a.add(dA.scale(through)), a.add(dA.scale(apron)), ...mids, b.add(dB.scale(apron)), b.add(dB.scale(through))];
-        // drop points that sit on a straight line: a straight corridor needs no extra seams
-        const out = [];
-        for (let i = 0; i < pts.length; i++) {
-            if (i > 0 && i < pts.length - 1) {
-                const u = pts[i].subtract(pts[i - 1]).normalize(), v = pts[i + 1].subtract(pts[i]).normalize();
-                if (B().Vector3.Dot(u, v) > 0.9995) continue;
+        // that axis), so the tube leaves and enters along it. The board's bend points are kept but
+        // clamped to the free span between the two walls and to a sane sideways offset: a hand-placed
+        // point may sit behind a wall or far to the side of a short passage, and a polyline that
+        // doubles back folds the tube into a knot — that is what tore 013-014 and the 011 corridors
+        // apart (a 10-unit path between two 6.3-unit wall rings came out as a zigzag).
+        // The tube runs THROUGH the wall ring and a little into the room: the wall is cut open for
+        // the doorway (3.0 wide, the tube is 2.4), so ending it outside the wall left a notch of
+        // hull between the corridor and the room — the "entrance does not join the corridor".
+        const through = WALL_R - 0.25;
+        const gap = Math.max(0.6, dist - 2 * WALL_R);   // the free span between the wall faces
+        const stub = Math.min(0.9, gap * 0.25);         // straight run right in front of the door
+        const lat = new (B().Vector3)(-dir.z, 0, dir.x);
+        let maxLat = Math.max(0.25, gap * 0.34);        // how far the tube may bulge to the side
+        // Bend points are kept clear of the door stubs: a point clamped right onto a stub folds the
+        // line back on itself. When the two wall rings leave no room for a bend at all (the
+        // 013-014 passage is 5.4 units long), the corridor is simply straight.
+        const margin = Math.max(0.5, gap * 0.2);
+        const lo = through + stub + margin, hi = dist - through - stub - margin;
+        const windowLen = hi - lo;
+        // A sideways offset has to be spread over the run that is left between the doors: pushed into
+        // a 1.8-unit slot it would still read as an elbow, so the bulge is scaled to the room there is.
+        maxLat = Math.min(maxLat, Math.max(0, windowLen) * 0.45);
+        const ctrl = [a.add(dir.scale(through)), a.add(dir.scale(through + stub))];
+        const push = (p) => { if (p.subtract(ctrl[ctrl.length - 1]).length() > 0.4) ctrl.push(p); };
+        if (windowLen > 1.2 && maxLat > 0.3) {
+            for (const [x, y] of (c.path || [])) {
+                const m = this.posXY(x, y).subtract(a);
+                const along = Math.min(hi, Math.max(lo, B().Vector3.Dot(m, dir)));
+                const side = Math.min(maxLat, Math.max(-maxLat, B().Vector3.Dot(m, lat)));
+                push(a.add(dir.scale(along)).add(lat.scale(side)));
             }
-            out.push(pts[i]);
         }
-        return out;
+        ctrl.push(b.subtract(dir.scale(through + stub)), b.subtract(dir.scale(through)));
+        // drop points that sit on a straight line: a straight corridor needs no extra seams
+        const keep = [];
+        for (let i = 0; i < ctrl.length; i++) {
+            if (i > 0 && i < ctrl.length - 1) {
+                const u = ctrl[i].subtract(ctrl[i - 1]), v = ctrl[i + 1].subtract(ctrl[i]);
+                if (u.length() < 1e-4 || v.length() < 1e-4) continue;
+                if (B().Vector3.Dot(u.normalize(), v.normalize()) > 0.9995) continue;
+            }
+            keep.push(ctrl[i]);
+        }
+        return this.roundPath(keep, Math.max(0.45, Math.min(0.85, dist / 16)));
+    }
+
+    /** Round the corners of a corridor polyline and resample it at a fixed step.
+     *
+     *  The tube is built from straight box sections, so a 70-degree elbow in the control points left
+     *  the corridor looking torn: floor slabs crossed each other, a rib arch stood at an odd angle and
+     *  the door frame straddled the kink instead of standing on the passage. Chaikin corner cutting
+     *  keeps the line inside the control polygon — a rounded bend can never push the tube through a
+     *  room wall — and the resample keeps every section short enough for the bend to read as a curve
+     *  (plating, ribs and joint pads are spaced along the whole path, not per section). */
+    roundPath(ctrl, step) {
+        const V3 = B().Vector3;
+        if (ctrl.length < 3) return ctrl.map(p => p.clone());
+        let line = ctrl.map(p => p.clone());
+        for (let pass = 0; pass < 2; pass++) {
+            const next = [line[0].clone()];
+            for (let i = 0; i < line.length - 1; i++) {
+                next.push(V3.Lerp(line[i], line[i + 1], 0.25), V3.Lerp(line[i], line[i + 1], 0.75));
+            }
+            next.push(line[line.length - 1].clone());
+            line = next;
+        }
+        const out = [line[0].clone()];
+        let acc = 0;
+        for (let i = 0; i < line.length - 1; i++) {
+            const p = line[i], q = line[i + 1];
+            const l = q.subtract(p).length();
+            if (l < 1e-5) continue;
+            let t = 0;
+            while (acc + (l - t) >= step) {
+                t += step - acc;
+                out.push(V3.Lerp(p, q, t / l));
+                acc = 0;
+            }
+            acc += l - t;
+        }
+        const end = line[line.length - 1];
+        const tail = end.subtract(out[out.length - 1]).length();
+        if (tail > 1e-4) { if (tail < step * 0.5 && out.length > 1) out[out.length - 1] = end.clone(); else out.push(end.clone()); }
+        // a straight run does not need a seam every 60 cm
+        const flat = [];
+        for (let i = 0; i < out.length; i++) {
+            if (i > 0 && i < out.length - 1) {
+                const u = out[i].subtract(out[i - 1]), v = out[i + 1].subtract(out[i]);
+                if (u.length() < 1e-4 || v.length() < 1e-4) continue;
+                if (V3.Dot(u.normalize(), v.normalize()) > 0.99985) continue;
+            }
+            flat.push(out[i]);
+        }
+        return flat;
     }
 
     /** The polyline a figure walks when it moves from one room to the next: exactly the corridor
@@ -1537,25 +1615,35 @@ export class Scene3D {
         const S = this.scene;
         const pts = this.corridorPoints(ship, c);
         const root = new (B().TransformNode)('cor_' + c.id, S);
+        // The floor plates of a room are FLOOR_Y thick: the corridor deck has to sit on the same
+        // level, or the doorway shows a step and walking figures float over the tube.
+        root.position.y = FLOOR_Y;
         const M = (hex, e, extra) => this.M(hex, e, extra);
         const statics = [], ribsA = [], ribsB = [], ledA = [], ledB = [];
         const total = pts.reduce((s, p, i) => i ? s + p.subtract(pts[i - 1]).length() : 0, 0);
-        let acc = 0, doorPlaced = null;
+        const stations = (step, phase) => { const out = []; for (let v = phase; v < total; v += step) out.push(v); return out; };
+        const plateAt = stations(1.1, 0.55), ribAt = stations(2.2, 1.1);
+        let acc = 0, doorPlaced = null, lastPad = -99;
         for (let i = 0; i < pts.length - 1; i++) {
             const s0 = pts[i], s1 = pts[i + 1]; const dir = s1.subtract(s0); const l = dir.length(); const n = dir.normalize();
             const mid = s0.add(s1).scale(0.5); const ry = Math.atan2(n.x, n.z);
             const seg = new (B().TransformNode)('seg', S); seg.position = mid; seg.rotation.y = ry; seg.parent = root;
             const mk = (w, h, d, x, y, z, mat, list = statics) => { const m = B().MeshBuilder.CreateBox('c', { width: w, height: h, depth: d }, S); m.position.set(x, y, z); m.material = mat; m.parent = seg; list.push(m); return m; };
-            mk(2.4, 0.3, l + 0.6, 0, -0.2, 0, M('#1f2a36'));
-            const plates = Math.max(1, Math.round(l / 1.1));
-            for (let k = 0; k < plates; k++) { const z = -l / 2 + (k + 0.5) * (l / plates); mk(2.0, 0.06, l / plates - 0.08, 0, -0.03, z, M(k % 2 ? '#3a4552' : '#404c5a')); }
-            mk(0.5, 0.07, l, 0, 0.0, 0, M('#5a4a2a'));
-            for (const s of [-1, 1]) { mk(0.2, 0.3, l, s * 1.05, 0.1, 0, M('#3c4c60')); mk(0.08, 0.08, l, s * 1.05, 0.6, 0, M('#aab6c2')); }
-            // ribs
-            const ribs = Math.max(1, Math.floor(l / 2.2));
-            for (let k = 0; k < ribs; k++) {
-                const z = -l / 2 + (k + 0.5) * (l / ribs);
-                const along = acc + (z + l / 2);
+            mk(2.4, 0.3, l + 0.8, 0, -0.2, 0, M('#1f2a36'));
+            // Deck plating, ribs and joint pads are spaced along the WHOLE path: the tube is made of
+            // short sections so a bend reads as a curve, and a per-section count would give every
+            // 40-cm piece its own arch and a plate seam every hand's width.
+            for (const st of plateAt) {
+                if (st < acc + 0.02 || st > acc + l - 0.02) continue;
+                mk(2.0, 0.06, 0.98, 0, -0.03, st - acc - l / 2, M(plateAt.indexOf(st) % 2 ? '#3a4552' : '#404c5a'));
+            }
+            mk(0.5, 0.07, l + 0.5, 0, 0.0, 0, M('#5a4a2a'));
+            for (const s of [-1, 1]) { mk(0.2, 0.3, l + 0.5, s * 1.05, 0.1, 0, M('#3c4c60')); mk(0.08, 0.08, l + 0.5, s * 1.05, 0.6, 0, M('#aab6c2')); }
+            // ribs: one arch every 2.2 units of the path
+            for (const st of ribAt) {
+                if (st < acc || st > acc + l) continue;
+                const z = st - acc - l / 2;
+                const along = st;
                 const half = along < total / 2 ? 'A' : 'B';
                 if (Math.abs(along - total / 2) < 1.4) continue;   // leave the door area clear
                 const list = half === 'A' ? ribsA : ribsB, leds = half === 'A' ? ledA : ledB;
@@ -1570,8 +1658,15 @@ export class Scene3D {
                 const pipe = B().MeshBuilder.CreateCylinder('pp', { diameter: 0.12, height: 2.5, tessellation: 6 }, S);
                 pipe.position.set(0, 1.42, z + 0.12); pipe.rotation.z = Math.PI / 2; pipe.material = M('#8c96a0'); pipe.parent = seg; list.push(pipe);
             }
-            // joint pad at the far end of every inner segment
-            if (i < pts.length - 2) { const pad = B().MeshBuilder.CreateCylinder('pad', { diameter: 3.2, height: 0.32, tessellation: 8 }, S); pad.position = s1.clone(); pad.position.y = -0.19; pad.material = M('#243040'); pad.parent = root; statics.push(pad); const post = B().MeshBuilder.CreateBox('jp', { width: 0.4, height: 1.9, depth: 0.4 }, S); post.position = s1.clone(); post.position.y = 0.95; post.position.addInPlace(new (B().Vector3)(Math.cos(ry) * 1.4, 0, -Math.sin(ry) * 1.4)); post.material = M('#59697b'); post.parent = root; statics.push(post); }
+            // joint pad where the path really turns (a smooth bend needs no collar at every sample)
+            if (i < pts.length - 2) {
+                const turn = Math.acos(Math.max(-1, Math.min(1, B().Vector3.Dot(n, pts[i + 2].subtract(s1).normalize()))));
+                if (turn > 0.25 && acc + l - lastPad > 1.2 && Math.abs(acc + l - total / 2) > 1.6) {
+                    lastPad = acc + l;
+                    const pad = B().MeshBuilder.CreateCylinder('pad', { diameter: 3.2, height: 0.32, tessellation: 8 }, S); pad.position = s1.clone(); pad.position.y = -0.19; pad.material = M('#243040'); pad.parent = root; statics.push(pad);
+                    const post = B().MeshBuilder.CreateBox('jp', { width: 0.4, height: 1.9, depth: 0.4 }, S); post.position = s1.clone(); post.position.y = 0.95; post.position.addInPlace(new (B().Vector3)(Math.cos(ry) * 1.4, 0, -Math.sin(ry) * 1.4)); post.material = M('#59697b'); post.parent = root; statics.push(post);
+                }
+            }
             // door at the middle of the whole path
             if (!doorPlaced && acc + l >= total / 2) { doorPlaced = { seg, z: total / 2 - acc - l / 2, l, ry }; }
             acc += l;
@@ -1630,20 +1725,16 @@ export class Scene3D {
             return (exit.nums && exit.nums.length ? exit.nums : [exit.num]).filter(n => n);
         };
         const sideNums = { a: numsOfRoom(c.a), b: numsOfRoom(c.b) };
-        // Each stencil takes half of the beam's depth, and its own way up: the paint on the `a` half
-        // reads for a player standing in room a, the `b` half for a player in room b.
-        const sideW = Math.min(D.decalW, Math.max(0.9, (D.beamD / 2 - 0.1) * 2));
-        const decals = [];
-        for (const [side, sign] of [['a', -1], ['b', 1]]) {
-            const nums = sideNums[side];
-            if (!nums.length) continue;
-            const plane = this.makeDecal('cn_' + c.id + '_' + side, door, 0, D.decalY, sign * D.beamD / 4, sideW, sideW / 2);
-            plane.rotation.set(Math.PI / 2, 0, sign < 0 ? 0 : Math.PI);
-            this.setDecal(plane, nums.join(' / '), false);
-            decals.push({ plane, side, nums });
+        const nums = sideNums.a.length ? sideNums.a : sideNums.b;
+        // ONE stencil, centred on the beam, painted the way the "?" lies on a room floor: the same
+        // paint, the same way up, no glow. A second copy on the far half only repeated the digits
+        // turned round — they were literally upside down from above and read as mirrored — while
+        // agreeNumbers already makes both ends of a passage carry the same number.
+        const decal = nums.length ? this.makeDecal('cn_' + c.id, door, 0, D.decalY, 0, D.decalW, D.decalH) : null;
+        if (decal) {
+            decal.rotation.set(Math.PI / 2, 0, (Math.cos(d.ry) - Math.sin(d.ry) < 0) ? Math.PI : 0);
+            this.setDecal(decal, nums.join(' / '), false);
         }
-        const decal = decals.length ? decals[0].plane : null;
-        const nums = decals.length ? decals[0].nums : [];
         // Emergency lamps in the doorway: dark fixtures that are dead until the bulkhead seals. The
         // lenses are switched off, not merely dimmed, so an open door shows no red at all; once it
         // closes the opening is lit like a room on malfunction (updateCorridor).
@@ -1661,7 +1752,7 @@ export class Scene3D {
             db.parent = door; db.position.set((Math.random() - 0.5) * 1.6, 0.08, (Math.random() - 0.5) * 1.4); db.rotation.set(0, Math.random() * 3, (Math.random() - 0.5) * 0.4); db.material = M('#6b7a88'); db.isPickable = false; db.setEnabled(false);
             debris.push(db);
         }
-        this.corridorNodes[c.id] = { root, door, panels, noise, noiseLabel, decal, decals, nums, sideNums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
+        this.corridorNodes[c.id] = { root, door, panels, noise, noiseLabel, decal, nums, sideNums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
             panelClosed: D.panelClosed, panelOpen: D.panelOpen, ry: d.ry, a: c.a, b: c.b, state: null };
     }
 
@@ -2036,7 +2127,7 @@ export class Scene3D {
         }
         // Corridor numbers: plain paint stenciled on the beam by default, neon while Alt is held.
         for (const n of Object.values(this.corridorNodes)) {
-            for (const side of (n.decals || [])) this.setDecal(side.plane, side.nums.join(' / '), this.alt);
+            if (n.decal) this.setDecal(n.decal, n.nums.join(' / '), this.alt);
         }
     }
 
