@@ -1403,39 +1403,55 @@ export class Scene3D {
         const matA = ledMat(ledA), matB = ledMat(ledB);
         const lA = this.mergeStatic(bake(ledA), root), lB = this.mergeStatic(bake(ledB), root);
         for (const m of lA) m.material = matA; for (const m of lB) m.material = matB;
-        // door frame + sliding panels in the middle segment
+        // --- the door: a wide bulkhead portal standing on its own slab, with a number board ---
         const d = doorPlaced; const dz = d.z;
         const door = new (B().TransformNode)('door', S); door.parent = d.seg; door.position.set(0, 0, dz);
+        // The frame is wider than the corridor, so it stands on a bulkhead slab instead of hanging in
+        // the air: the stepped deck under it reads as a reinforced section of the corridor at the door.
+        const slab = B().MeshBuilder.CreateBox('dslab', { width: 4.3, height: 0.36, depth: 2.0 }, S);
+        slab.parent = door; slab.position.y = -0.15; slab.material = M('#26313d'); slab.isPickable = false;
+        const step = B().MeshBuilder.CreateBox('dstep', { width: 4.7, height: 0.14, depth: 2.5 }, S);
+        step.parent = door; step.position.y = -0.36; step.material = M('#1b242e'); step.isPickable = false;
         // a real open frame (two posts + lintel + sill) so you can see through an open door
-        for (const s of [-1, 1]) { const post = B().MeshBuilder.CreateBox('post', { width: 0.8, height: 1.95, depth: 0.32 }, S); post.parent = door; post.position.set(s * 1.3, 0.97, 0); post.material = M('#8c96a0'); post.isPickable = false; }
-        const lintel = B().MeshBuilder.CreateBox('lintel', { width: 3.4, height: 0.4, depth: 0.32 }, S); lintel.parent = door; lintel.position.y = 1.75; lintel.material = M('#8c96a0'); lintel.isPickable = false;
-        const sill = B().MeshBuilder.CreateBox('sill', { width: 1.8, height: 0.06, depth: 0.36 }, S); sill.parent = door; sill.position.y = 0.0; sill.material = M('#5a6673'); sill.isPickable = false;
+        for (const s of [-1, 1]) { const post = B().MeshBuilder.CreateBox('post', { width: 0.9, height: 2.2, depth: 0.46 }, S); post.parent = door; post.position.set(s * 1.55, 1.1, 0); post.material = M('#8c96a0'); post.isPickable = false; }
+        const lintel = B().MeshBuilder.CreateBox('lintel', { width: 4.1, height: 0.44, depth: 0.46 }, S); lintel.parent = door; lintel.position.y = 2.1; lintel.material = M('#8c96a0'); lintel.isPickable = false;
+        const sill = B().MeshBuilder.CreateBox('sill', { width: 2.24, height: 0.07, depth: 0.5 }, S); sill.parent = door; sill.position.y = 0.02; sill.material = M('#5a6673'); sill.isPickable = false;
         // light trim around the door opening (shares the arch-band material: dim steel, orange on noise)
-        for (const f of [-1, 1]) { for (const s of [-1, 1]) { const t = B().MeshBuilder.CreateBox('dt', { width: 0.1, height: 1.6, depth: 0.04 }, S); t.parent = door; t.position.set(s * 0.95, 0.8, f * 0.18); t.material = matA; t.isPickable = false; } const t = B().MeshBuilder.CreateBox('dt', { width: 2.0, height: 0.1, depth: 0.04 }, S); t.parent = door; t.position.set(0, 1.6, f * 0.18); t.material = matA; t.isPickable = false; }
+        for (const f of [-1, 1]) { for (const s of [-1, 1]) { const t = B().MeshBuilder.CreateBox('dt', { width: 0.1, height: 1.72, depth: 0.04 }, S); t.parent = door; t.position.set(s * 1.1, 0.86, f * 0.24); t.material = matA; t.isPickable = false; } const t = B().MeshBuilder.CreateBox('dt', { width: 2.3, height: 0.1, depth: 0.04 }, S); t.parent = door; t.position.set(0, 1.72, f * 0.24); t.material = matA; t.isPickable = false; }
         const panels = [];
+        const PANEL_CLOSED = 0.55, PANEL_OPEN = 1.5;
         for (const s of [-1, 1]) {
-            const p = B().MeshBuilder.CreateBox('panel', { width: 0.9, height: 1.55, depth: 0.14 }, S);
-            p.parent = door; p.position.set(s * 0.45, 0.77, 0); p.material = M('#b8c4d0'); p.isPickable = false;
-            const stripe = B().MeshBuilder.CreateBox('ps', { width: 0.1, height: 1.3, depth: 0.02 }, S);
-            stripe.parent = p; stripe.position.set(-s * 0.3, 0, 0.08); stripe.material = M('#e05252', 0.6); stripe.isPickable = false;
+            const p = B().MeshBuilder.CreateBox('panel', { width: 1.1, height: 1.72, depth: 0.16 }, S);
+            p.parent = door; p.position.set(s * PANEL_CLOSED, 0.86, 0); p.material = M('#b8c4d0'); p.isPickable = false;
+            const stripe = B().MeshBuilder.CreateBox('ps', { width: 0.1, height: 1.4, depth: 0.02 }, S);
+            stripe.parent = p; stripe.position.set(-s * 0.3, 0, 0.09); stripe.material = M('#e05252', 0.6); stripe.isPickable = false;
             panels.push(p);
         }
         const noise = B().MeshBuilder.CreateCylinder('noise', { diameter: 1.4, height: 0.12, tessellation: 12 }, S);
         noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M('#f1c40f', 0.9); noise.isPickable = false; noise.setEnabled(false); noise.visibility = 0;   // kept for layout; the arch bands show noise
         const noiseLabel = this.makeLabel('nl_' + c.id, '🔊', '', door, 0, 1.4, -2.2, 1.4);
         noiseLabel.setEnabled(false);
-        // Corridor number(s): shown only while Alt is held (see setAlt).
+        // --- the corridor number board on the beam -------------------------------------------------
+        // The numbers are printed on the board for the whole game (the physical board prints them too);
+        // holding Alt turns it into neon signage, which is when players actually look them up (setAlt).
         const exitA = ship.rooms[c.a].exits.find(e => e.corridor === c.id) || {};
         const nums = (exitA.nums && exitA.nums.length ? exitA.nums : [exitA.num]).filter(n => n);
-        const numLabel = nums.length ? this.makeLabel('cn_' + c.id, nums.join(' / '), '', door, 0, 2.75, -2.2, 2.0) : null;
-        if (numLabel) numLabel.setEnabled(false);
+        const sign = new (B().TransformNode)('sign_' + c.id, S); sign.parent = door; sign.position.set(0, 2.85, 0);
+        // steel frame around the panel: it is the physical board, the number floats on it as a label
+        const signMat = new (B().StandardMaterial)('signm_' + c.id, S);
+        signMat.diffuseColor = B().Color3.FromHexString('#3a4654'); signMat.emissiveColor = B().Color3.FromHexString('#3a4654').scale(0.08); signMat.specularColor = B().Color3.Black();
+        for (const y of [-0.53, 0.53]) { const e = B().MeshBuilder.CreateBox('se', { width: 3.06, height: 0.06, depth: 0.34 }, S); e.parent = sign; e.position.y = y; e.material = signMat; e.isPickable = false; }
+        for (const x of [-1.52, 1.52]) { const e = B().MeshBuilder.CreateBox('se', { width: 0.06, height: 1.12, depth: 0.34 }, S); e.parent = sign; e.position.x = x; e.material = signMat; e.isPickable = false; }
+        const numLabel = nums.length ? this.makeLabel('cn_' + c.id, '', '', sign, 0, 0, 0, 2.8) : null;
+        if (numLabel) this.setPlate(numLabel, nums.join(' / '), false);
         const debris = [];
         for (let i = 0; i < 5; i++) {
             const db = B().MeshBuilder.CreateBox('debris', { width: 0.4, height: 0.12, depth: 0.5 }, S);
             db.parent = door; db.position.set((Math.random() - 0.5) * 1.6, 0.08, (Math.random() - 0.5) * 1.4); db.rotation.set(0, Math.random() * 3, (Math.random() - 0.5) * 0.4); db.material = M('#6b7a88'); db.isPickable = false; db.setEnabled(false);
             debris.push(db);
         }
-        this.corridorNodes[c.id] = { root, panels, noise, noiseLabel, numLabel, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB, a: c.a, b: c.b, state: null };
+        this.corridorNodes[c.id] = { root, panels, noise, noiseLabel, numLabel, nums, signMat, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
+            panelClosed: PANEL_CLOSED, panelOpen: PANEL_OPEN, a: c.a, b: c.b, state: null };
     }
 
     makeLabel(name, big, small, parent, x, y, z, width) {
@@ -1467,6 +1483,43 @@ export class Scene3D {
         ctx.fillStyle = color;
         ctx.fillText(big, 256, small ? 70 + (64 - size) * 0.25 : 100);
         if (small) { ctx.font = '600 42px Segoe UI, Arial'; ctx.fillStyle = '#dfe6ee'; ctx.fillText(small, 256, 130); }
+        dt.update();
+    }
+
+    /** The corridor number board: a dark panel with the number(s) printed on it. `neon` is the Alt
+     *  state — the digits and the border switch to a bright cyan glow, so the number can be read
+     *  from the far end of the board instead of only when the camera is right on top of the door. */
+    setPlate(plane, text, neon) {
+        const key = text + '|' + (neon ? 'n' : 'p');
+        if (plane.metadata.plate === key) return;
+        plane.metadata.plate = key;
+        const dt = plane.metadata.dt, ctx = dt.getContext();
+        const W = 512, H = 160, R = 18;
+        ctx.clearRect(0, 0, W, H);
+        // the panel itself: rounded, opaque, with a thin border that is the "tube" when lit
+        ctx.beginPath();
+        ctx.moveTo(R, 4); ctx.lineTo(W - R, 4); ctx.quadraticCurveTo(W - 4, 4, W - 4, R);
+        ctx.lineTo(W - 4, H - 4 - R); ctx.quadraticCurveTo(W - 4, H - 4, W - R, H - 4);
+        ctx.lineTo(R, H - 4); ctx.quadraticCurveTo(4, H - 4, 4, H - 4 - R);
+        ctx.lineTo(4, R); ctx.quadraticCurveTo(4, 4, R, 4);
+        ctx.closePath();
+        ctx.fillStyle = neon ? 'rgba(9, 28, 38, 0.97)' : 'rgba(9, 15, 21, 0.95)';
+        ctx.fill();
+        ctx.lineWidth = neon ? 8 : 5;
+        ctx.strokeStyle = neon ? '#5fe6ff' : '#2e3d4b';
+        if (neon) { ctx.shadowColor = '#3fd0ff'; ctx.shadowBlur = 24; }
+        ctx.stroke();
+        // digits as large as the panel allows
+        let size = 134;
+        const font = px => 'bold ' + px + 'px Segoe UI, Arial';
+        ctx.font = font(size);
+        while (size > 40 && ctx.measureText(text).width > W - 80) { size -= 6; ctx.font = font(size); }
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = neon ? '#ddfbff' : '#a8bccd';
+        ctx.shadowColor = neon ? '#3fd0ff' : '#000000';
+        ctx.shadowBlur = neon ? 36 : 7;
+        ctx.fillText(text, W / 2, H / 2 + 3);
+        if (neon) { ctx.shadowBlur = 12; ctx.fillStyle = '#ffffff'; ctx.fillText(text, W / 2, H / 2 + 3); }
         dt.update();
     }
 
@@ -1749,7 +1802,15 @@ export class Scene3D {
             if (n.altLabel) n.altLabel.setEnabled(this.alt);
             n.label.setEnabled(!this.alt);
         }
-        for (const n of Object.values(this.corridorNodes)) if (n.numLabel) n.numLabel.setEnabled(this.alt);
+        // Corridor number boards: printed panels by default, neon signage while Alt is held.
+        for (const n of Object.values(this.corridorNodes)) {
+            if (n.numLabel && n.nums) this.setPlate(n.numLabel, n.nums.join(' / '), this.alt);
+            if (n.signMat) {
+                const col = B().Color3.FromHexString(this.alt ? '#5fe6ff' : '#3a4654');
+                n.signMat.diffuseColor = col;
+                n.signMat.emissiveColor = col.scale(this.alt ? 1 : 0.08);
+            }
+        }
     }
 
     /** Fire in a room: rebuilt only when the room catches fire or the fire goes out.
@@ -1852,7 +1913,8 @@ export class Scene3D {
         if (n.state === key) return;
         n.state = key;
         const closed = c.door === 'closed', destroyed = c.door === 'destroyed';
-        n.panels[0].position.x = closed ? -0.45 : -1.3; n.panels[1].position.x = closed ? 0.45 : 1.3;
+        n.panels[0].position.x = closed ? -n.panelClosed : -n.panelOpen;
+        n.panels[1].position.x = closed ? n.panelClosed : n.panelOpen;
         n.panels[0].setEnabled(!destroyed); n.panels[1].setEnabled(!destroyed);
         for (const d of n.debris) d.setEnabled(destroyed);
         n.noiseLabel.setEnabled(!!c.noise);
