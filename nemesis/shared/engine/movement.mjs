@@ -23,7 +23,9 @@ OPS['move.start'] = (state, step) => {
         const explored = room(state, e.to).explored;
         if (step.filter === 'explored' && !explored) continue;
         if (step.filter === 'unexplored' && explored) continue;
-        // Careful Movement is impossible if every corridor of the destination already has Noise
+        // Careful Movement is impossible if every corridor of the destination already has Noise:
+        // there would be nowhere to put the token (rulebook p. 5). A single free corridor is enough —
+        // and the crew may still pick a corridor that already carries a token (see noise.place).
         if (step.careful && !corridorsOf(state, e.to).some(c => !(c.id === 'tech' ? state.ship.techNoise : state.ship.corridors[c.id].noise))) continue;
         dests.push(e.to);
     }
@@ -112,18 +114,34 @@ OPS['move.afterExplore'] = (state, step) => {
     }
     if (state.players.some(o => o.laika === p.room)) { log(state, '🐕 В комнате Лайка — бросок шума не делается.', 'minor'); next(state, then); return; }
     if (step.careful) {
-        const cors = corridorsOf(state, p.room).filter(c => !(c.id === 'tech' ? state.ship.techNoise : state.ship.corridors[c.id].noise));
-        if (!cors.length) { log(state, 'Все коридоры уже с шумом — обычный бросок шума.', 'minor'); next(state, { op: 'noise.roll', player: p.id, room: p.room }, then); return; }
+        // Every corridor of this room is a legal choice — including the ones that already carry a
+        // noise token. Walking into a token is exactly how a careful move into a noisy part of the
+        // ship finds its encounter, so it must not be hidden from the list.
+        const cors = corridorsOf(state, p.room);
+        const noisy = c => !!(c.id === 'tech' ? state.ship.techNoise : state.ship.corridors[c.id].noise);
+        if (!cors.length) { log(state, 'Из комнаты нет коридоров — шум класть некуда.', 'minor'); next(state, then); return; }
         ask(state, { kind: 'choice', player: p.id, title: 'Осторожное перемещение: куда положить жетон шума?',
-            options: cors.map(c => ({ id: c.id, label: c.id === 'tech' ? 'Тех. коридоры' : 'Коридор ' + c.nums.join('/') + ' → ' + roomName(state, c.to) })) },
-            { op: 'noise.place', player: p.id, then });
+            options: cors.map(c => ({ id: c.id, label: (c.id === 'tech' ? 'Тех. коридоры' : 'Коридор ' + c.nums.join('/') + ' → ' + roomName(state, c.to)) + (noisy(c) ? ' · уже с шумом — встреча' : '') })) },
+            { op: 'noise.place', player: p.id, room: p.room, then });
         return;
     }
     next(state, { op: 'noise.roll', player: p.id, room: p.room }, then);
 };
 OPS['noise.place'] = (state, step) => {
-    placeNoise(state, step.answer);
-    log(state, 'Жетон шума положен: ' + (step.answer === 'tech' ? 'тех. коридоры' : step.answer) + '.', 'noise');
+    const p = player(state, step.player);
+    const roomId = step.room || p.room;
+    const card = corridorsOf(state, roomId).find(c => c.id === step.answer);
+    const label = step.answer === 'tech' ? 'тех. коридоры'
+        : card ? 'коридор ' + card.nums.join('/') + ' (→ ' + roomName(state, card.to) + ')'
+            : step.answer;
+    // A corridor holds one token. Choosing the one that already has a token is not an error: the
+    // crew walks into the encounter that token promised, exactly as a die roll on it would.
+    if (!placeNoise(state, step.answer)) {
+        log(state, 'В ' + label + ' уже был шум — ВСТРЕЧА!', 'combat');
+        next(state, { op: 'encounter', room: roomId, player: p.id, reason: 'Встреча: шум в коридоре, где уже был жетон шума' }, step.then);
+        return;
+    }
+    log(state, 'Жетон шума положен: ' + label + '.', 'noise');
     next(state, step.then);
 };
 

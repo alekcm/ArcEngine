@@ -367,7 +367,10 @@ function renderGame() {
             const pr = app.view.prompt;
             // The noise die said "something is there": read the result first, then one soft yellow glow
             // around the screen, and only after that the token window — centred where the die was.
-            if (pr && pr.kind === 'bag' && pr.player === app.me) {
+            // The prompt must be a bag this very roll opened: a bag left over from an earlier action
+            // (or a stale view) used to light the screen up after a roll that found nothing.
+            const fromThisRoll = pr && pr.kind === 'bag' && (pr.id || 0) > (app.diceId || 0);
+            if (fromThisRoll && pr.player === app.me) {
                 flashEdges();
                 // the die has been read: clear the middle of the table for the token window
                 setTimeout(() => { dice.clearHide(); dice.hide(); if (app.view) renderGame(); }, 560);
@@ -379,6 +382,9 @@ function renderGame() {
     // the player sees the result first, only then the figure runs and the room token flips.
     const pr = v.prompt;
     const dicePrompt = pr && pr.kind === 'dice';
+    // Remember which prompt the die belongs to: a bag prompt with a higher id can only have been
+    // opened by this roll (ids grow with every question the engine asks).
+    if (dicePrompt) app.diceId = pr.id || 0;
     const freshRoll = v.lastRoll && dice.lastSeen !== null && v.lastRoll.n !== dice.lastSeen;
     if (dicePrompt || freshRoll) {
         app.rollHold = true;
@@ -411,7 +417,13 @@ function renderGame() {
     const meNow2 = v.players.find(x => x.id === app.me);
     $('sheetBtn').classList.toggle('attention', !!(meNow2 && itemPickMap(v.prompt, meNow2).size));
     dice.update(v, app.me, playerName, diceTitleMask(pr));
-    if (!tableFx) { tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES); tableFx.onShake = k => scene && scene.shake(k); }
+    if (!tableFx) {
+        tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES);
+        tableFx.onShake = k => scene && scene.shake(k);
+        // a question that was held back while a token/attack card played is asked as soon as the
+        // table is quiet again
+        tableFx.onIdle = () => { if (app.promptDeferred) { app.promptDeferred = false; renderPrompt(); } };
+    }
     tableFx.update(v, app.me);
     renderPilePopups(v); syncPanes();
     if (v.result) renderEnd();
@@ -593,6 +605,12 @@ function diceTitleMask(pr) {
 function renderPrompt() {
     const v = app.view; const pr = v.prompt; const el = $('prompt'); const tg = $('menuToggle');
     app.selectedCards.clear();
+    // The token pull and the attack card own the middle of the table while they play: a question that
+    // arrives during them (the attack window, the next choice) waits, otherwise it covered the token
+    // and the table never saw who came out of the bag.
+    if (pr && pr.kind !== 'dice' && tableFx && tableFx.holding) {
+        el.classList.add('hidden'); tg.classList.add('hidden'); app.promptDeferred = true; return;
+    }
     if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); el.classList.remove('bagmode', 'eventmode'); closeItemPicker(); return; }   // dice prompts are shown by DiceUI
     const who = pr.kind === 'ack' ? 'Вся команда' : pr.player === 'host' ? 'Ведущий' : (v.players[pr.player] || {}).name || '';
     // The action list opens only when the player asks for it: every turn starts folded, then keeps the
@@ -688,15 +706,23 @@ function renderPrompt() {
             const ev = pr.event ? EVENT_BY_ID[pr.event] : null;
             const art = ev ? eventArt(ev.id) : null;
             const flipped = !ev || !!pr.flipped;
-            if (ev && !flipped) {
-                html = '<h4>📜 Карта события</h4>' +
-                    '<div class="ack-card facedown" id="ackFlip" title="Перевернуть карту события">' +
-                    '<div class="aback">?</div>' +
-                    '<div class="atext dim">Карта лежит лицом вниз. Нажмите на неё, чтобы перевернуть — её увидят все игроки.</div></div>';
-            } else if (ev) {
-                html = '<h4>📜 ' + esc(ev.name) + '</h4>' +
-                    '<div class="ack-card">' + (art ? '<div class="aart" style="background-image:url(' + art + ')"></div>' : '') +
-                    '<div class="atext">' + esc(pr.text || ev.text) + '</div></div>';
+            if (ev) {
+                // The card is a card: both faces sit in the markup and the wrapper is turned over in
+                // 3D. The published table flip (prompt.flipped) plays the turn once; any later render
+                // — a seat changing, the ready list filling up — shows it already face up.
+                if (app.ackId !== pr.id) { app.ackId = pr.id; app.ackTurned = false; }
+                const turn = flipped && !app.ackTurned;
+                if (flipped) app.ackTurned = true;
+                html = '<h4>' + (flipped ? '📜 ' + esc(ev.name) : '📜 Карта события') + '</h4>' +
+                    '<div class="ack-card ' + (flipped ? 'up' : 'down') + '" id="ackFlip"' +
+                    (flipped ? '' : ' title="Перевернуть карту события"') + '>' +
+                    '<div class="ack3d' + (flipped && !turn ? ' flipped' : '') + '" id="ack3d">' +
+                    '<div class="ack-face aback">?</div>' +
+                    '<div class="ack-face afront"' + (art ? ' style="background-image:url(' + art + ')"' : '') + '></div>' +
+                    '</div>' +
+                    '<div class="atext' + (flipped ? '' : ' dim') + '">' + (flipped ? esc(pr.text || ev.text)
+                        : 'Карта лежит лицом вниз. Нажмите на неё, чтобы перевернуть — её увидят все игроки.') + '</div></div>';
+                if (turn) setTimeout(() => { const el = $('ack3d'); if (el) el.classList.add('flipped'); }, 40);
             }
             html += '<div class="ack-ready">' + (pr.players || []).map(id => {
                 const p = v.players[id] || {}; const done = (pr.acked || []).includes(id);
@@ -733,8 +759,17 @@ function renderPrompt() {
     for (const b of el.querySelectorAll('[data-opt]')) b.onclick = () => act(b.dataset.opt);
     if ($('pickInv')) $('pickInv').onclick = () => openSheet();
     for (const b of el.querySelectorAll('[data-room]')) b.onclick = () => act(b.dataset.room);
-    // The face-down event card: any seat can turn it over for the whole table.
-    if ($('ackFlip')) $('ackFlip').onclick = () => net.send({ t: 'flip' });
+    // The face-down event card: any seat can turn it over for the whole table. The turn is played
+    // here at once, so the click answers under the finger; the server keeps the table in sync.
+    if ($('ackFlip')) $('ackFlip').onclick = () => {
+        const c = $('ackFlip');
+        if (c && c.classList.contains('down')) {
+            c.classList.remove('down'); c.classList.add('up');
+            app.ackTurned = true;                       // the state that follows shows the card already turned
+            const el = $('ack3d'); if (el) el.classList.add('flipped');
+        }
+        net.send({ t: 'flip' });
+    };
     const ok = $('cardsOk'); if (ok) ok.onclick = () => act([...app.selectedCards]);
 }
 
@@ -914,12 +949,14 @@ function onRoomClick(id) {
     const me = myChar();
     const menu = turnMenuPrompt();
     if (!menu || !me || id === me.room) { scene.focusRoom(id); return; }
-    const exit = (v.ship.rooms[me.room].exits || []).find(e => e.to === id && v.ship.corridors[e.corridor].door !== 'closed');
+    // A closed door does not make a neighbour unreachable: it opens on the way through (the same
+    // rule the action list follows), so the click must offer the move exactly like the list does.
+    const exit = (v.ship.rooms[me.room].exits || []).find(e => e.to === id);
     if (!exit) { scene.focusRoom(id); return; }   // not a neighbour: just look at it
     const mv = menuActionOf(menu, 'move'), cw = menuActionOf(menu, 'careful');
     openWorldPop('Идём в ' + roomLabel(id), 'Выберите, как идти', [
         { label: 'Идти', sub: mv ? (mv.cost ? mv.cost + ' карт(ы) · шум по броску' : '') : '', disabled: !mv || !mv.enabled, reason: mv && mv.reason, do: () => act({ action: 'move', dest: id }) },
-        { label: 'Красться (осторожно)', sub: cw ? (cw.cost ? cw.cost + ' карт(ы) · выбрать коридор без шума' : '') : '', disabled: !cw || !cw.enabled, reason: cw && cw.reason, do: () => act({ action: 'careful', dest: id }) },
+        { label: 'Красться (осторожно)', sub: cw ? (cw.cost ? cw.cost + ' карт(ы) · выбрать коридор' : '') : '', disabled: !cw || !cw.enabled, reason: cw && cw.reason, do: () => act({ action: 'careful', dest: id }) },
     ], scene.screenOf('room', id));
 }
 

@@ -21,7 +21,7 @@ const TOKEN_ICON = { blank: '○', larva: '🐛', adult: '👾', drone: '🦂', 
 export class TableFX {
     constructor(tableEl, layerEl, getPlayerEl, intruderNames) {
         this.table = tableEl; this.layer = layerEl; this.getPlayerEl = getPlayerEl; this.intruderNames = intruderNames || {};
-        this.lastSeen = null; this.queue = []; this.busy = false;
+        this.lastSeen = null; this.queue = []; this.busy = false; this.playing = null;
     }
 
     /** Redraw the deck piles (counts) and replay new fx entries. */
@@ -40,10 +40,17 @@ export class TableFX {
         this.pump();
     }
 
+    /** True while the table is showing a token pull or an attack card: the next question waits. */
+    get holding() { return this.busy && (this.playing === 'bag' || this.playing === 'attack'); }
+
     pump() {
         if (this.busy || !this.queue.length) return;
-        const f = this.queue.shift(); this.busy = true;
-        const done = () => { this.busy = false; this.pump(); };
+        const f = this.queue.shift(); this.busy = true; this.playing = f.type;
+        const done = () => {
+            this.busy = false; this.playing = null; this.pump();
+            // the table has finished its beat: a question held back by `holding` may appear now
+            if (!this.busy && !this.queue.length && this.onIdle) this.onIdle();
+        };
         try { this.play(f, done); } catch (e) { console.warn('fx', e); done(); }
     }
 
@@ -192,7 +199,9 @@ export class TableFX {
                 Snd.play('card');
                 this.fly(el, from || mid, mid, 550, { rotA: -10, rotB: 0, scaleA: 0.5, scaleB: 1, arc: 30 }, async () => {
                     Snd.play('flip'); await this.flip(el);
-                    await new Promise(r => setTimeout(r, k === 'attack' ? 1800 : 3200));
+                    // The attack card is the one thing on the table that explains the hit: it stays
+                    // four seconds. An event card stays longer, a queen card longer still.
+                    await new Promise(r => setTimeout(r, k === 'attack' ? 4000 : 3200));
                     this.fly(el, mid, from || mid, 450, { rotB: 20, scaleB: 0.4, fadeOut: true }, () => { el.remove(); done(); });
                 });
                 break;

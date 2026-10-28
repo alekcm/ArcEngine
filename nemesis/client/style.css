@@ -370,16 +370,23 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .pnum { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: #2a3b52; color: #cfe3ff; font-style: normal; font-size: 11px; text-align: center; }
 
 /* ---- QoL: event card "Готово", bag strip, hint bar, character sheet, deck viewer ---- */
-#prompt .ack-card { display: flex; gap: 10px; align-items: stretch; margin-bottom: 8px; }
-#prompt .ack-card .aart { width: 96px; min-width: 96px; height: 132px; border-radius: 8px; background-size: cover; background-position: center; border: 1px solid #5a4a22; box-shadow: 0 6px 18px #000a; }
+#prompt .ack-card { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 8px; perspective: 900px; }
 #prompt .ack-card .atext { flex: 1; font-size: 12px; color: #cfd8e3; line-height: 1.3; }
-/* The event card is dealt face down: a card back anyone can click to turn it over for the table. */
-#prompt .ack-card.facedown { cursor: pointer; }
-#prompt .ack-card.facedown:hover .aback { transform: translateY(-3px); box-shadow: 0 10px 22px #000c, 0 0 0 1px #ffd27f80; }
-#prompt .ack-card .aback { width: 96px; min-width: 96px; height: 132px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
-    font-size: 40px; color: #9ccbff; background: repeating-linear-gradient(45deg, #1a2740 0 6px, #22304a 6px 12px); border: 1px solid #5a4a22;
-    box-shadow: 0 6px 18px #000a; transition: transform .12s, box-shadow .12s; }
-#prompt.eventmode .ack-card .aback { width: 150px; min-width: 150px; height: 212px; font-size: 62px; }
+/* The event card is a card, not a swapped picture: both faces sit in the markup and the wrapper turns
+   over in 3D, so the printed back visibly becomes the printed front. */
+#prompt .ack-card .ack3d { position: relative; width: 96px; min-width: 96px; height: 132px;
+    transform-style: preserve-3d; transition: transform .68s cubic-bezier(.32,.9,.36,1); }
+#prompt.eventmode .ack-card .ack3d { width: 150px; min-width: 150px; height: 212px; }
+#prompt .ack-card .ack3d.flipped { transform: rotateY(180deg); }
+#prompt .ack-card .ack-face { position: absolute; inset: 0; border-radius: 8px; border: 1px solid #5a4a22;
+    box-shadow: 0 6px 18px #000a; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+#prompt .ack-card .ack-face.aback { display: flex; align-items: center; justify-content: center; font-size: 40px;
+    color: #9ccbff; background: repeating-linear-gradient(45deg, #1a2740 0 6px, #22304a 6px 12px);
+    transition: box-shadow .12s; }
+#prompt.eventmode .ack-card .ack-face.aback { font-size: 62px; }
+#prompt .ack-card .ack-face.afront { transform: rotateY(180deg); background-size: cover; background-position: center; }
+#prompt .ack-card.down { cursor: pointer; }
+#prompt .ack-card.down:hover .ack-face.aback { box-shadow: 0 10px 22px #000c, 0 0 0 1px #ffd27f80; }
 #prompt .ack-ready { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; font-size: 11px; }
 #prompt .ack-ready .rd { padding: 1px 6px; border-radius: 4px; background: #22304a; color: #93a2b5; }
 #prompt .ack-ready .rd.on { background: #1f4a2f; color: #b6f0c6; }
@@ -400,7 +407,6 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #prompt.bagmode .btn.big { max-width: 320px; margin: 0 auto; }
 #prompt.eventmode { animation: prompt-card .42s cubic-bezier(.2, .9, .25, 1.15); border-color: #c9a227; }
 #prompt.eventmode h4 { color: #ffd27f; font-size: 16px; }
-#prompt.eventmode .ack-card .aart { width: 150px; min-width: 150px; height: 212px; }
 #prompt.eventmode .ack-card .atext { font-size: 13px; }
 #prompt.eventmode .ack-ready { justify-content: center; }
 #prompt.eventmode .prompt-buttons .btn { width: 100%; font-size: 15px; padding: 10px; }
