@@ -37,19 +37,56 @@ test('HUD-03: my health and injuries sit in the lower-LEFT corner, a name under 
     assert.match(html, /<div id="hudPop"/, 'and a layer for the hover card');
     assert.match(css, /#selfHud\s*\{[^}]*position:\s*fixed[^}]*left:[^}]*bottom:/, 'fixed in the left corner');
     assert.doesNotMatch(css, /#selfHud\s*\{[^}]*right:/, 'not pinned to the right any more');
-    assert.match(css, /#selfHud \.sh-hp\s*\{[^}]*grid-template-columns:\s*repeat\(4/, 'the four levels are held apart');
+    assert.match(css, /#selfHud \.sh-hp\s*\{[^}]*display:\s*flex/, 'the sections are held apart by a plain gap');
     assert.match(css, /#selfHud \.sh-slot\.empty\s*\{[^}]*background/, 'an unused level keeps a grey placeholder');
     assert.match(css, /#hudPop\s*\{/, 'the hover card has its own layer');
     assert.match(app, /function renderSelfHud\(\)/, 'it is rendered from the view');
     assert.match(app, /\n\s+renderSelfHud\(\);/, 'on every top-bar update');
     assert.match(app, /class="sh-slot wound" data-wound=/, 'the wound name sits under its level');
-    assert.match(app, /class="sh-slot armor" data-armor=/, 'the suit sits under the last square');
+    assert.match(app, /class="sh-armor" data-armor=/, 'the suit has its own line, not a fourth slot');
     assert.match(app, /class="sh-slot empty"/, 'nothing blocking a level leaves a placeholder');
     assert.doesNotMatch(app, /травм нет/, 'no words in the empty placeholder');
     assert.match(app, /function showHudPop\(/, 'the card appears on hover');
     assert.match(app, /\$\('selfHud'\)\.addEventListener\('pointerover'/, 'names are hovered, not printed');
     assert.match(app, /\$\('selfHud'\)\.onclick/, 'clicking it opens the sheet');
 });
+
+test('HUD-06: the corner card is the printed track — three sections, three wound slots, equal gaps', async () => {
+    const { WOUNDS } = await import('../shared/data/cards.mjs');
+    const { healthSections } = await import('../shared/engine/core.mjs');
+    // one row of ten cells, split into the three sections a Heavy Wound can cover
+    const lit = app.match(/const HP_SECTIONS = (\[\[[^\]]+\](?:, \[[^\]]+\])*\]);/);
+    assert.ok(lit, 'the sections live in one place');
+    const sections = JSON.parse(lit[1]);
+    assert.equal(sections.length, 3, 'three sections — a fourth wound kills, so there is no fourth section');
+    assert.deepEqual(sections.flat(), [10, 9, 8, 7, 6, 5, 4, 3, 2, 1], 'left to right: 10 down to 1, the skull last');
+    const printed = healthSections();
+    assert.deepEqual(sections[0], printed[0], 'green 10-8');
+    assert.deepEqual(sections[1], printed[1], 'orange 7-5');
+    assert.deepEqual(sections[2], printed[2].concat(printed[3]), 'the near-death cell closes the red section');
+    assert.doesNotMatch(app, /\[4, 3, 2\], \[1\]/, 'the old fourth section is gone from the HUD');
+    // equal gaps: the same value between cells and between sections, no fake 3px divider cell
+    const hpGap = css.match(/#selfHud \.sh-cells\s*\{[^}]*gap:\s*(\d+)px/);
+    const secGap = css.match(/#selfHud \.sh-hp\s*\{[^}]*gap:\s*(\d+)px/);
+    assert.ok(hpGap && secGap, 'both rows state their gap');
+    assert.equal(hpGap[1], secGap[1], 'the gap between cells equals the gap between sections');
+    assert.doesNotMatch(app, /width:3px;background:none/, 'no invisible divider cell stretches the row');
+    // the marker stands on my current health, the skull closes the row
+    assert.match(app, /p\.health === n \? 'here'/, 'the cell under the marker is marked');
+    assert.match(css, /#selfHud \.sh-cells i\.here\s*\{/, 'and the marker is drawn');
+    assert.match(app, /hpSkull\(me\)/, 'the skull is the last thing on the track');
+    // narrow slot: a short label for every printed wound, the four the board prints in full stay whole
+    const shorts = app + fs.readFileSync(new URL('../client/cards.js', import.meta.url), 'utf8');
+    for (const key of Object.keys(WOUNDS)) assert.match(shorts, new RegExp('\\b' + key + ':\\s*\''), key + ' has a short label');
+    const map = JSON.parse(fs.readFileSync(new URL('../client/cards.js', import.meta.url), 'utf8')
+        .match(/const WOUND_SHORT = (\{[^}]*\});/)[1]
+        .replace(/(\w+):/g, '"$1":').replace(/'/g, '"').replace(/,\s*\}$/, '}'));
+    assert.equal(map.arm, 'Рука'); assert.equal(map.leg, 'Нога');
+    assert.equal(map.hand, 'Кисть'); assert.equal(map.eyes, 'Глаз');
+    for (const [k, v] of Object.entries(map)) assert.ok(v.length <= 7, k + ' fits the narrow slot: ' + v);
+    assert.match(app, /esc\(woundShort\(w\)\)/, 'the slot prints the short name, the hover card the full one');
+});
+
 
 test('HUD-04: a weapon button in the intruder card says what the weapon does', async () => {
     const { ITEMS } = await import('../shared/data/cards.mjs');

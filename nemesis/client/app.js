@@ -7,7 +7,7 @@ import { DEFAULTS } from './characters.js';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
-import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, eventArt, attackArt, queenArt, itemArt } from './cards.js';
+import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, FEATS, objectiveTextOf,
     EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
@@ -456,39 +456,50 @@ function renderTopbar() {
     renderSelfHud();
 }
 
+// The printed Dashboard: 10 cells in three sections — green 10-8, orange 7-5, red 4-1 — and the skull
+// right after the last one. A Heavy Wound covers a whole section, so there are only three of them:
+// three sections, three wound slots, and no fourth box in the corner card.
+const HP_SECTIONS = [[10, 9, 8], [7, 6, 5], [4, 3, 2, 1]];
+/** One cell of the track: `on` = that much health is still mine, `here` = the marker stands on it. */
+function hpCell(p, si, n) {
+    return '<i class="' + (si === 1 ? 'mid ' : si === 2 ? 'heavy ' : '') + (n === 1 ? 'last ' : '') +
+        (p.health >= n ? 'on ' : '') + (p.health === n ? 'here' : '') + '" title="' + n + '"></i>';
+}
+/** The skull closes the track at the right, exactly as on the board: 10 on the left, death on the right. */
+function hpSkull(p) { return '<span class="hp-skull' + (p.health <= 1 ? ' near' : '') + '">☠</span>'; }
 function hpBar(p) {
-    const sections = [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]];
-    let s = '';
-    sections.forEach((sec, si) => { for (const n of sec) s += '<i class="' + (si === 1 ? 'mid' : si === 2 ? 'heavy' : si === 3 ? 'last' : '') + (p.health >= n ? ' on' : '') + '" title="' + n + '"></i>'; if (si < 3) s += '<i style="width:3px;background:none"></i>'; });
-    return '<div class="hp" title="Здоровье: ' + p.health + ' / 10' + (p.health === 0 ? ' — при смерти' : '') + '">' + s + '</div>';
+    const groups = HP_SECTIONS.map((sec, si) => '<span class="hp-sec">' + sec.map(n => hpCell(p, si, n)).join('') + '</span>').join('');
+    return '<div class="hp" title="Здоровье: ' + p.health + ' / 10' + (p.health === 0 ? ' — при смерти' : '') + '">' +
+        groups + hpSkull(p) + '</div>';
 }
 
-/** My own health, always in the lower-LEFT corner. The bar keeps the four printed levels apart so a
- *  name fits under each of them: the first wound sits under the green three squares, the second under
- *  the orange ones, the third under the red ones, and the suit under the last square. Only names live
- *  here — the rules text and the art are a card that appears on hover, like any other card in the
- *  game. An empty level keeps a grey placeholder, so the row reads "nothing here yet" without words. */
+/** My own health, always in the lower-LEFT corner, drawn like the printed Dashboard: three sections
+ *  left to right (10 down to 1), the skull after the last cell, and one narrow slot under each section
+ *  for its Heavy Wound. A wound caps Health at 7 / 4 / 1, so the first slot sits under the green
+ *  section, the second under the orange one and the third under the red one — three slots, because a
+ *  fourth wound kills. The suit is not a wound, so it takes its own line instead of a fourth box.
+ *  Only names live here — the rules text and the art are a card that appears on hover. An empty slot
+ *  keeps a grey placeholder, so the row reads "nothing here yet" without words. */
 function renderSelfHud() {
     const v = app.view, el = $('selfHud');
     const me = v && v.players.find(p => p.id === app.me);
     if (!me || !me.charId || me.status === 'dead' || me.status === 'escaped') { el.classList.add('hidden'); hideHudPop(); return; }
     el.classList.remove('hidden');
     const st = me.health >= 8 ? 'здоров' : me.health >= 5 ? 'ранен' : 'тяжело ранен';
-    const levels = [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]];
     const wounds = me.wounds || [];
-    const cells = (sec, i) => sec.map(n => '<i class="' + (i === 1 ? 'mid' : i === 2 ? 'heavy' : i === 3 ? 'last' : '') + (me.health >= n ? ' on' : '') + '"></i>').join('');
-    let bar = '';
-    levels.forEach((sec, i) => {
-        const w = i < 3 ? wounds[i] : null;
-        let slot;
-        if (w) slot = '<div class="sh-slot wound" data-wound="' + esc(w) + '">' + esc(woundName(w)) + '</div>';
-        else if (i === 3 && me.armor) slot = '<div class="sh-slot armor" data-armor="1">' + esc(itemLabel(me.armor)) + '</div>';
-        else slot = '<div class="sh-slot empty"></div>';
-        bar += '<div class="sh-lvl">' + '<div class="sh-cells">' + cells(sec, i) + '</div>' + slot + '</div>';
-    });
+    const bar = HP_SECTIONS.map((sec, i) => {
+        const w = wounds[i];
+        const slot = w
+            ? '<div class="sh-slot wound" data-wound="' + esc(w) + '">' + esc(woundShort(w)) + '</div>'
+            : '<div class="sh-slot empty"></div>';
+        return '<div class="sh-lvl"><div class="sh-cells">' + sec.map(n => hpCell(me, i, n)).join('') + '</div>' + slot + '</div>';
+    }).join('');
+    const armor = me.armor
+        ? '<div class="sh-armor" data-armor="1">🛡 ' + esc(itemLabel(me.armor)) + '</div>'
+        : '';
     el.classList.toggle('dead', me.health <= 1);
     el.innerHTML = '<div class="sh-head"><b>' + esc(me.charName || me.name) + '</b><small>' + esc(st) + ' · ' + me.health + ' / 10</small></div>' +
-        '<div class="sh-hp">' + bar + '</div>';
+        '<div class="sh-hp">' + bar + hpSkull(me) + '</div>' + armor;
     el.title = 'Здоровье и травмы — нажмите, чтобы открыть планшет (C)';
 }
 
@@ -1148,7 +1159,7 @@ $('table').addEventListener('click', e => {
 $('selfHud').onclick = () => openSheet();
 // Hovering a name in the health HUD opens its card (wound text / suit art); leaving the HUD drops it.
 $('selfHud').addEventListener('pointerover', e => {
-    const slot = e.target && e.target.closest ? e.target.closest('.sh-slot') : null;
+    const slot = e.target && e.target.closest ? e.target.closest('.sh-slot, .sh-armor') : null;
     if (slot && !slot.classList.contains('empty')) showHudPop(slot); else hideHudPop();
 });
 $('selfHud').addEventListener('pointerleave', hideHudPop);
@@ -1184,12 +1195,8 @@ $('topbar').addEventListener('scroll', hideTbPop, { passive: true });
 // Character sheet (my backpack, weapons, quest item, wounds, suit, objectives, cards)
 // ---------------------------------------------------------------------------------------------
 function healthCells(p) {
-    const sections = [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]];
-    let out = '';
-    sections.forEach((sec, si) => {
-        for (const n of sec) out += '<i class="' + (si === 1 ? 'mid' : si === 2 ? 'heavy' : si === 3 ? 'last' : '') + (p.health >= n ? ' on' : '') + '" title="' + n + '"></i>';
-    });
-    return '<div class="sheet-hp">' + out + '</div>';
+    const groups = HP_SECTIONS.map((sec, si) => '<span class="hp-sec">' + sec.map(n => hpCell(p, si, n)).join('') + '</span>').join('');
+    return '<div class="sheet-hp">' + groups + hpSkull(p) + '</div>';
 }
 // ---------------------------------------------------------------------------------------------
 // Answering an item prompt straight from the inventory

@@ -72,13 +72,16 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 .pcard.dead { opacity: 0.55; filter: grayscale(0.8); }
 .pcard .pname { display: flex; justify-content: space-between; font-weight: 600; }
 .pcard .pname small { color: var(--dim); font-weight: 400; }
-.pcard .hp { display: flex; gap: 3px; margin: 5px 0; }
-.pcard .hp i { width: 14px; height: 10px; border-radius: 2px; background: #2b3a4d; }
+.pcard .hp { display: flex; align-items: center; gap: 4px; margin: 5px 0; }
+.pcard .hp-sec { display: flex; gap: 4px; }
+.pcard .hp i { width: 12px; height: 10px; border-radius: 2px; background: #2b3a4d; }
 .pcard .hp i.on { background: var(--green); }
 .pcard .hp i.heavy.on { background: var(--red); }
 .pcard .hp i.mid.on { background: #f39c12; }
 .pcard .hp i.last.on { background: #ff4d4d; box-shadow: 0 0 6px #ff4d4d; }
-.pcard .hp i { width: 12px; }
+.pcard .hp i.here { box-shadow: 0 0 0 2px #eaf3ff; }
+.pcard .hp .hp-skull { color: #8fa0b3; font-size: 11px; line-height: 1; }
+.pcard .hp .hp-skull.near { color: #ff6b6b; }
 .pcard .tags { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; }
 .tag { background: #22304a; border-radius: 4px; padding: 1px 6px; color: #cfd8e3; }
 .tag.red { background: #5a2323; } .tag.green { background: #1f4a2f; } .tag.yellow { background: #5b4a12; } .tag.purple { background: #45245a; } .tag.blue { background: #1f3b5a; }
@@ -436,9 +439,13 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .sheet-wound { background: #241014; border: 1px solid #5a2323; border-radius: 6px; padding: 5px 8px; margin-bottom: 5px; font-size: 12px; }
 .sheet-wound b { color: #ff9c9c; }
 .sheet-wound small { display: block; color: #d8b4b4; font-size: 11px; line-height: 1.25; }
-.sheet-hp { display: flex; gap: 2px; }
+.sheet-hp { display: flex; align-items: center; gap: 5px; }
+.sheet-hp .hp-sec { display: flex; gap: 5px; }
 .sheet-hp i { width: 20px; height: 14px; border-radius: 3px; background: #2b3a4d; }
 .sheet-hp i.on { background: #4fcf7a; } .sheet-hp i.mid.on { background: #f39c12; } .sheet-hp i.heavy.on { background: #e05252; } .sheet-hp i.last.on { background: #ff4d4d; }
+.sheet-hp i.here { box-shadow: 0 0 0 2px #eaf3ff; }
+.sheet-hp .hp-skull { color: #8fa0b3; font-size: 15px; line-height: 1; }
+.sheet-hp .hp-skull.near { color: #ff6b6b; }
 .sheet-chips { display: flex; flex-wrap: wrap; gap: 5px; font-size: 11px; }
 .sheet-goal { border-radius: 8px; padding: 8px 10px; background-size: cover; background-position: center; border: 1px solid #5a4a22; margin-bottom: 8px; position: relative; }
 .sheet-goal::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, #0b1018e8 50%, #0b101899); border-radius: 8px; }
@@ -545,32 +552,40 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .gal-note { margin: 12px 2px 4px; font-size: 11px; line-height: 1.45; color: var(--dim); }
 @media (max-width: 760px) { .gal-keys { display: none; } .gal-list { width: 190px; } }
 
-/* ---- my health, always in the lower-right corner (to the left of the deck piles) ---- */
-/* My health, lower-LEFT corner. The four printed levels are held apart so that a name fits under
-   each of them without running into its neighbour: the first wound under the green three squares,
-   the second under the orange ones, the third under the red ones, the suit under the last square. */
-#selfHud { position: fixed; left: 10px; bottom: 10px; z-index: 9; width: 312px;
+/* ---- my health, lower-left corner, above the "Действия" button ---- */
+/* My health, drawn like the printed Dashboard: three sections left to right (10 down to 1), the skull
+   right after the last cell, and one narrow slot under each section for its Heavy Wound. The same gap
+   separates every cell and every section, so the ten squares read as one row instead of "green packed
+   together, then a hole". The suit is not a wound: it lives on its own line, never as a fourth slot. */
+#selfHud { position: fixed; left: 10px; bottom: 58px; z-index: 9; width: 272px;
            background: #0b1118dd; border: 1px solid var(--line); border-left: 4px solid var(--green);
            border-radius: 10px; padding: 7px 10px 8px; backdrop-filter: blur(4px); font-size: 12px;
            cursor: pointer; transition: border-color .2s; }
 #selfHud:hover { border-color: var(--acc); }
 #selfHud.dead { border-left-color: var(--red); }
 #selfHud .sh-head { display: flex; align-items: baseline; gap: 6px; }
-#selfHud .sh-head b { color: var(--acc); font-size: 12.5px; }
-#selfHud .sh-head small { color: var(--dim); margin-left: auto; font-size: 11px; }
-#selfHud .sh-hp { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 7px; }
+#selfHud .sh-head b { color: var(--acc); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#selfHud .sh-head small { color: var(--dim); margin-left: auto; font-size: 11px; white-space: nowrap; }
+#selfHud .sh-hp { display: flex; align-items: flex-start; gap: 6px; margin-top: 7px; }
 #selfHud .sh-lvl { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-#selfHud .sh-cells { display: flex; gap: 3px; }
-#selfHud .sh-cells i { width: 13px; height: 11px; border-radius: 2px; background: #2b3a4d; }
+#selfHud .sh-cells { display: flex; gap: 6px; }
+#selfHud .sh-cells i { width: 17px; height: 13px; border-radius: 3px; background: #2b3a4d; }
 #selfHud .sh-cells i.on { background: var(--green); }
 #selfHud .sh-cells i.mid.on { background: #f39c12; }
 #selfHud .sh-cells i.heavy.on { background: var(--red); }
 #selfHud .sh-cells i.last.on { background: #ff4d4d; box-shadow: 0 0 6px #ff4d4d; }
-/* the name of what blocks this level — a wound or the suit; a plain grey block when there is none */
-#selfHud .sh-slot { min-height: 28px; border-radius: 4px; font-size: 10px; line-height: 1.15;
-                    padding: 3px 4px; color: #dbe3ec; word-break: break-word; hyphens: auto;
+/* the marker: the cell the printed marker would stand on for my current Health */
+#selfHud .sh-cells i.here { box-shadow: 0 0 0 2px #eaf3ff, 0 0 9px #9fd3ffcc; }
+#selfHud .sh-cells i.last.here { box-shadow: 0 0 0 2px #ffe3e3, 0 0 10px #ff4d4d; }
+#selfHud .hp-skull { color: #7d8b9c; font-size: 13px; line-height: 13px; }
+#selfHud .hp-skull.near { color: #ff6b6b; }
+/* the name of what blocks this section — a wound; a plain grey block when there is none */
+#selfHud .sh-slot { min-width: 0; border-radius: 4px; font-size: 9.5px; line-height: 1.1; padding: 2px 3px;
+                    color: #dbe3ec; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
                     display: flex; align-items: center; justify-content: center; text-align: center; }
-#selfHud .sh-slot.wound { background: #3a1418cc; border: 1px solid #a33; color: #ffb9b9; }
-#selfHud .sh-slot.armor { background: #12283acc; border: 1px solid #2f6fa8; color: #b9dcff; }
-#selfHud .sh-slot.empty { background: #1a232e; border: 1px solid #212c38; }
-@media (max-width: 900px) { #selfHud { left: 6px; bottom: 6px; width: 276px; } }
+#selfHud .sh-slot.wound { background: #3a1418cc; border: 1px solid #a33; color: #ffb9b9; min-height: 17px; }
+#selfHud .sh-slot.empty { background: #1a232e; border: 1px solid #212c38; min-height: 17px; }
+#selfHud .sh-armor { margin-top: 6px; border-radius: 4px; background: #12283acc; border: 1px solid #2f6fa8;
+                     color: #b9dcff; font-size: 10px; padding: 2px 5px; white-space: nowrap;
+                     overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 900px) { #selfHud { left: 6px; bottom: 52px; width: 252px; } }
