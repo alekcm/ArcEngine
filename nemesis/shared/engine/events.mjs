@@ -13,6 +13,38 @@ import { infectionProcedure, eclosionProcedure } from './actions.mjs';
 
 const EVENT_BY_ID = Object.fromEntries(EVENT_CARDS.map(e => [e.id, e]));
 
+const cap = (t) => t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+/** What the intruders do on this card, in one line. */
+function moveLine(ev) {
+    const m = ev.move || {};
+    if (m.type === 'corridor') return 'Все чужие движутся по коридору ' + m.num + '.';
+    if (m.type === 'closest') return 'Все чужие движутся к ближайшему персонажу.';
+    return 'Чужие не движутся.';
+}
+/** Which dice the card asks for, in one line. Derived from the card's own noise field, so a card
+ *  that rolls for every character says so even when the printed text only implies it. */
+function rollLine(ev) {
+    return cap({
+        all: 'каждый персонаж делает бросок шума.',
+        noCards: 'персонажи без карт в руке делают бросок шума.',
+        fireMalf: 'персонажи в комнате с поломкой или огнём делают бросок шума.',
+    }[ev.noise] || 'броска кубика нет.');
+}
+/** The journal entry for an event: three separate lines inside one card — the intruders' movement,
+ *  the effect of the card and the dice it demands. The table reads them one at a time instead of
+ *  picking the requirement out of a single wall of printed text. */
+export function eventLogLines(ev) {
+    const sentences = String(ev.text || '').split(/(?<=\.)\s+/).map(x => x.trim()).filter(Boolean);
+    const move = sentences.filter(x => /движ/i.test(x));
+    const roll = sentences.filter(x => !/движ/i.test(x) && /бросок/i.test(x));
+    const effect = sentences.filter(x => !/движ/i.test(x) && !/бросок/i.test(x));
+    const lines = ['📜 Событие: «' + ev.name + '».'];
+    lines.push('Движение чужих: ' + (move.length ? move.join(' ') : moveLine(ev)));
+    if (effect.length) lines.push('Эффект: ' + effect.join(' '));
+    lines.push('Бросок кубика: ' + (roll.length ? roll.join(' ') : rollLine(ev)));
+    return lines;
+}
+
 OPS['phase.event'] = (state) => {
     state.phase = 'event';
     log(state, '— Фаза событий —', 'phase');
@@ -28,7 +60,7 @@ OPS['event.reveal'] = (state, step) => {
     state.lastEvent = id;
     state.lastEventN = (state.lastEventN || 0) + 1;
     fx(state, { type: 'event', card: id, name: ev.name, text: ev.text });
-    log(state, '📜 Событие: «' + ev.name + '». ' + ev.text, 'event');
+    log(state, eventLogLines(ev).join('\n'), 'event');
     if (state.ui && state.ui.eventAck) {
         const waiting = state.players.filter(p => p.status === 'active' || p.status === 'hibernating').map(p => p.id);
         if (askAck(state, { title: 'Событие: «' + ev.name + '»', text: ev.text, event: id, players: waiting },

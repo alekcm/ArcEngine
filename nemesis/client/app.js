@@ -382,7 +382,9 @@ function renderGame() {
     const freshRoll = v.lastRoll && dice.lastSeen !== null && v.lastRoll.n !== dice.lastSeen;
     if (dicePrompt || freshRoll) {
         app.rollHold = true;
-        dice.update(v, app.me, playerName);
+        // While the die is being asked for, the scene is frozen: a room revealed by this very move is
+        // still lying face down. The die must not name it before the tile has been turned over.
+        dice.update(v, app.me, playerName, diceTitleMask(pr));
         renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderHand(); renderHint(); refreshOverlays();
         // Nothing that spoils the die result: while the die is on the table the follow-up question
         // (pull an intruder token) stays hidden. It appears once the die has landed — see dice.onLanded.
@@ -408,7 +410,7 @@ function renderGame() {
     renderBagStrip(); renderHint(); refreshOverlays();
     const meNow2 = v.players.find(x => x.id === app.me);
     $('sheetBtn').classList.toggle('attention', !!(meNow2 && itemPickMap(v.prompt, meNow2).size));
-    dice.update(v, app.me, playerName);
+    dice.update(v, app.me, playerName, diceTitleMask(pr));
     if (!tableFx) { tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES); tableFx.onShake = k => scene && scene.shake(k); }
     tableFx.update(v, app.me);
     renderPilePopups(v); syncPanes();
@@ -568,6 +570,15 @@ function renderHistory() { $('history').innerHTML = (app.history || []).map(h =>
 // ---------------------------------------------------------------------------------------------
 // Prompt
 // ---------------------------------------------------------------------------------------------
+/** Title override for the die: keeps an unexplored room hidden until its tile is face up. */
+function diceTitleMask(pr) {
+    if (!pr || pr.kind !== 'dice' || !pr.room || !pr.title) return null;
+    const node = scene && scene.roomNodes ? scene.roomNodes[pr.room] : null;
+    if (node && node.shell) return null;                 // the room is already open on the table
+    const masked = pr.title.replace(/[^—–]*\[[^\]]*\]\s*$/, '??? [' + pr.room + ']');
+    return masked === pr.title ? null : { title: masked };
+}
+
 function renderPrompt() {
     const v = app.view; const pr = v.prompt; const el = $('prompt'); const tg = $('menuToggle');
     app.selectedCards.clear();
@@ -649,26 +660,44 @@ function renderPrompt() {
             if (pr.cancel) html += '<div class="prompt-buttons"><button class="btn" data-opt="cancel">Отмена</button></div>';
             break;
         case 'cards':
-            html += '<div class="ptext">Выберите карт: ' + (pr.min === pr.max ? pr.min : pr.min + '–' + pr.max) + ' (нажимайте на карты в руке внизу)</div><div class="prompt-buttons">' + (pr.cancel ? '<button class="btn" data-opt="cancel">Отмена</button>' : '') + '<button class="btn primary" id="cardsOk" disabled>Подтвердить</button></div>';
+            // A pass ("discard any number of cards") starts with nothing selected: the button must be
+            // pressable right away instead of waiting for a card to be ticked and unticked again.
+            const needPick = (pr.min || 0) > 0;
+            html += '<div class="ptext">' + (needPick ? 'Выберите карт: ' + (pr.min === pr.max ? pr.min : pr.min + '–' + pr.max) : 'Можно сбросить любые карты — или ни одной') + ' (нажимайте на карты в руке внизу)</div>' +
+                '<div class="prompt-buttons">' + (pr.cancel ? '<button class="btn" data-opt="cancel">Отмена</button>' : '') +
+                '<button class="btn primary" id="cardsOk"' + (needPick ? ' disabled' : '') + '>Подтвердить</button></div>';
             break;
         case 'info':
             html += '<div class="prompt-buttons"><button class="btn primary" data-opt="ok">Понятно</button></div>';
             break;
         case 'ack': {
-            // Event card: stays face up until every player has pressed Ready.
+            // The event card is dealt face down. Any player at the table may turn it over — the flip
+            // is a table state (prompt.flipped), so everyone sees the same card at the same time, and
+            // only after that does "Готово" open: nobody confirms a card they have not read.
             const ev = pr.event ? EVENT_BY_ID[pr.event] : null;
             const art = ev ? eventArt(ev.id) : null;
-            if (ev) html = '<h4>📜 ' + esc(ev.name) + '</h4>' +
-                '<div class="ack-card">' + (art ? '<div class="aart" style="background-image:url(' + art + ')"></div>' : '') +
-                '<div class="atext">' + esc(pr.text || ev.text) + '</div></div>';
+            const flipped = !ev || !!pr.flipped;
+            if (ev && !flipped) {
+                html = '<h4>📜 Карта события</h4>' +
+                    '<div class="ack-card facedown" id="ackFlip" title="Перевернуть карту события">' +
+                    '<div class="aback">?</div>' +
+                    '<div class="atext dim">Карта лежит лицом вниз. Нажмите на неё, чтобы перевернуть — её увидят все игроки.</div></div>';
+            } else if (ev) {
+                html = '<h4>📜 ' + esc(ev.name) + '</h4>' +
+                    '<div class="ack-card">' + (art ? '<div class="aart" style="background-image:url(' + art + ')"></div>' : '') +
+                    '<div class="atext">' + esc(pr.text || ev.text) + '</div></div>';
+            }
             html += '<div class="ack-ready">' + (pr.players || []).map(id => {
                 const p = v.players[id] || {}; const done = (pr.acked || []).includes(id);
                 return '<span class="rd' + (done ? ' on' : '') + '">' + (done ? '✔ ' : '… ') + esc(p.name || ('#' + id)) + '</span>';
             }).join('') + '</div>';
-            if (pr.mine) html += '<div class="prompt-buttons"><button class="btn primary" data-opt="ok">Готово</button></div>';
+            if (!flipped) {
+                if (pr.mine) html += '<div class="prompt-buttons"><button class="btn primary" data-opt="ok" disabled>Готово</button></div>';
+                html += '<div class="ptext dim">Сначала переверните карту события.</div>';
+            } else if (pr.mine) html += '<div class="prompt-buttons"><button class="btn primary" data-opt="ok">Готово</button></div>';
             else if (pr.waiting) html += '<div class="ptext dim">Вы готовы — ждём остальных…</div>';
             else if (!(pr.players || []).includes(app.me)) html += '<div class="ptext dim">Игроки читают карту события…</div>';
-            if (app.host) html += '<div class="prompt-buttons"><button class="btn small" data-opt="all" title="Если кто-то отошёл">Готово за всех</button></div>';
+            if (app.host && flipped) html += '<div class="prompt-buttons"><button class="btn small" data-opt="all" title="Если кто-то отошёл">Готово за всех</button></div>';
             break;
         }
         case 'bag':
@@ -693,6 +722,8 @@ function renderPrompt() {
     for (const b of el.querySelectorAll('[data-opt]')) b.onclick = () => act(b.dataset.opt);
     if ($('pickInv')) $('pickInv').onclick = () => openSheet();
     for (const b of el.querySelectorAll('[data-room]')) b.onclick = () => act(b.dataset.room);
+    // The face-down event card: any seat can turn it over for the whole table.
+    if ($('ackFlip')) $('ackFlip').onclick = () => net.send({ t: 'flip' });
     const ok = $('cardsOk'); if (ok) ok.onclick = () => act([...app.selectedCards]);
 }
 

@@ -86,7 +86,8 @@ function promptView(state, viewer) {
     if (pr.kind === 'bag') return { id: pr.id, kind: pr.kind, player: pr.player, waiting: true, title: 'тянет жетон из мешка' };
     // Other players see who is thinking and about what, but not secret options, private texts
     // (engine/coordinates/objectives) or payment card lists.
-    const out = { id: pr.id, kind: pr.kind, player: pr.player, waiting: true, die: pr.die,
+    // `room` rides along so every screen can keep an unexplored room as "???" in the die title.
+    const out = { id: pr.id, kind: pr.kind, player: pr.player, waiting: true, die: pr.die, room: pr.room,
         title: (pr.kind === 'info' || pr.secret) ? 'Персонаж изучает скрытую информацию' : pr.title };
     if (!pr.secret && pr.kind !== 'info' && pr.kind !== 'cards') { out.options = pr.options; out.rooms = pr.rooms; }
     return out;

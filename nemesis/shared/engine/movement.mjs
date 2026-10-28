@@ -17,8 +17,9 @@ OPS['move.start'] = (state, step) => {
     const p = player(state, step.player);
     const dests = [];
     for (const e of state.ship.rooms[p.room].exits) {
-        const c = state.ship.corridors[e.corridor];
-        if (c.door === 'closed') continue;
+        // A closed door does not lock a character in: they open it on the way through (move.go).
+        // Doors exist to stop intruders — a crew member walking back into the room they just left
+        // must not be told there is nowhere to go.
         const explored = room(state, e.to).explored;
         if (step.filter === 'explored' && !explored) continue;
         if (step.filter === 'unexplored' && explored) continue;
@@ -54,9 +55,12 @@ OPS['move.ifAlive'] = (state, step) => {
 OPS['move.go'] = (state, step) => {
     const p = player(state, step.player);
     const from = p.room;
+    const exit = state.ship.rooms[from].exits.find(e => e.to === step.dest);
+    const door = exit ? state.ship.corridors[exit.corridor] : null;
     p.room = step.dest;
     p.movedThisRound = true;
     log(state, pname(p) + ' переходит: ' + roomName(state, from) + ' → ' + roomName(state, step.dest) + '.', 'action');
+    if (door && door.door === 'closed') { door.door = 'open'; log(state, pname(p) + ' открывает дверь ' + door.id + '.', 'action'); }
     resolveFollows(state);   // "Blood Sense": the intruder follows the character to the destination
     if (step.companion !== undefined) {
         const c = player(state, step.companion);
@@ -127,7 +131,7 @@ OPS['noise.place'] = (state, step) => {
 OPS['noise.roll'] = (state, step) => {
     const p = player(state, step.player);
     const roomId = step.room || p.room;
-    if (needDice(state, step, 'noise', p.id, 'Бросок шума — ' + (step.laika ? 'Лайка, ' : '') + roomName(state, roomId))) return;
+    if (needDice(state, step, 'noise', p.id, 'Бросок шума — ' + (step.laika ? 'Лайка, ' : '') + roomName(state, roomId), { room: roomId })) return;
     const r = roll(state, NOISE_DIE);
     log(state, '🎲 Шум (' + (step.laika ? '🐕 Лайка' : pname(p)) + ', ' + roomName(state, roomId) + '): ' + fmtRoll(r) + '.', 'noise');
     if (r === 'silence') return;

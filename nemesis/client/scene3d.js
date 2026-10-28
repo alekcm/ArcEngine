@@ -352,7 +352,7 @@ export class Scene3D {
 
         // exit angles (world) — used by walls, tech stub and props
         const exitAngles = r.exits.map(e => { const o = this.pos(this.shipRooms[e.to]).subtract(root.position); return Math.atan2(o.x, o.z); });
-        let techAngle = null, techLeds = [];
+        let techAngle = null, techLeds = [], techDecal = null;
         if (r.tech) {
             // pick the direction farthest from every exit (and away from the standing zone)
             let best = -1;
@@ -363,7 +363,8 @@ export class Scene3D {
                 d = Math.min(d, zd * 0.8);
                 if (d > best) { best = d; techAngle = a; }
             }
-            techLeds = this.buildTechStub(root, techAngle);
+            const stub = this.buildTechStub(root, techAngle, (r.techNums && r.techNums.length) ? r.techNums : [4]);
+            techLeds = stub.leds; techDecal = stub.decal;
         }
         const label = this.makeLabel('lbl_' + r.id, r.id, '', root, 0, 3.2, 0, 3.0);
         // Alt overlay: the room name alone (no number), bigger, so the board reads by names while Alt is held
@@ -373,11 +374,13 @@ export class Scene3D {
         const qm = this.makeLabel('qm_' + r.id, '?', '', root, 0, 0.13, 0, 7.5);
         qm.rotation.set(Math.PI / 2, 0, 0); qm.billboardMode = 0; qm.isPickable = false;
         { const ctx = qm.metadata.dt.getContext(); ctx.clearRect(0, 0, 512, 160); ctx.font = 'bold 150px Segoe UI, Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#56687c'; ctx.fillText('?', 256, 138); qm.metadata.dt.update(); qm.metadata.text = 'qm'; }
-        this.roomNodes[r.id] = { root, plat, sel, label, altLabel, qm, data: r, exitAngles, techAngle, techLeds, shell: null, shellKey: null, strips: null, emergency: [], malfunction: false, flicker: Math.random() * 10, flip: null, pop: null, podsRoot: null, podKey: null, fireRoot: null, fireOn: null, fireParts: [] };
+        this.roomNodes[r.id] = { root, plat, sel, label, altLabel, qm, data: r, exitAngles, techAngle, techLeds, techDecal, shell: null, shellKey: null, strips: null, emergency: [], malfunction: false, flicker: Math.random() * 10, flip: null, pop: null, podsRoot: null, podKey: null, fireRoot: null, fireOn: null, fireParts: [] };
     }
 
-    /** Technical-corridor entrance: a short tunnel through the wall line, ringed with blue LEDs. */
-    buildTechStub(root, a) {
+    /** Technical-corridor entrance: a short tunnel through the wall line, ringed with blue LEDs.
+     *  Its roof carries the noise numbers of this entrance, stenciled flat like the "?" on a room
+     *  floor (Alt paints the same stencil neon), so the number the die needs is read on the hatch. */
+    buildTechStub(root, a, nums = []) {
         const S = this.scene;
         const statics = [];
         const sx = Math.sin(a), cz = Math.cos(a);
@@ -388,20 +391,38 @@ export class Scene3D {
         mk(2.4, 1.7, 0.3, 0, 0.85, 1.5, steel);                       // back wall of the stub
         for (const s of [-1, 1]) mk(0.3, 1.7, 2.4, s * 1.2, 0.85, 0.4, steel);  // side walls
         mk(2.4, 0.25, 2.4, 0, 1.75, 0.4, trim);                       // roof
-        // roof: two thin blue light rails (same muted blue as the floor runner) and steel conduit pipes with cross-bars
+        // Roof: the centre stays clear for the stenciled number — the conduits moved to the two
+        // edges and the cross-bars to the ends, where they frame the digits instead of running over
+        // them. Two thin blue light rails still mark the sides.
         for (const s of [-1, 1]) mk(0.08, 0.06, 2.0, s * 0.95, 1.9, 0.3, this.M('#2f6fa8', 0.6));
-        for (const ox of [-0.55, 0, 0.55]) { const pipe = B().MeshBuilder.CreateCylinder('tp', { diameter: 0.16, height: 2.0, tessellation: 6 }, S); pipe.position.set(px + Math.cos(a) * ox - Math.sin(a) * 0.3, 1.96, pz - Math.sin(a) * ox - Math.cos(a) * 0.3); pipe.rotation.set(Math.PI / 2, a, 0); pipe.material = this.M('#55636f'); statics.push(pipe); }
-        for (let i = 0; i < 3; i++) mk(2.3, 0.1, 0.12, 0, 1.94, -0.4 + i * 0.7, this.M('#3a4652'));
+        for (const ox of [-1.06, 1.06]) { const pipe = B().MeshBuilder.CreateCylinder('tp', { diameter: 0.16, height: 2.0, tessellation: 6 }, S); pipe.position.set(px + Math.cos(a) * ox - Math.sin(a) * 0.3, 1.94, pz - Math.sin(a) * ox - Math.cos(a) * 0.3); pipe.rotation.set(Math.PI / 2, a, 0); pipe.material = this.M('#55636f'); statics.push(pipe); }
+        for (const oz of [-0.62, 1.42]) mk(2.3, 0.1, 0.12, 0, 1.94, oz, this.M('#3a4652'));
         mk(1.6, 1.3, 0.2, 0, 0.75, 1.3, dark);                        // dark opening
         mk(1.5, 0.06, 2.0, 0, 0.09, 0.3, this.M('#2f6fa8', 0.5));      // blue floor runner
         for (let i = 0; i < 3; i++) mk(0.1, 0.05, 1.6, -0.6 + i * 0.6, 0.22, 0.5, this.M('#2a3038'));  // grating
         this.mergeStatic(statics, root);
+        // The entrance number, painted flat on the roof: plane faces are single-sided, so it has to
+        // be turned face up and its text laid toward the room (rotation.z = PI) or it reads mirrored.
+        // Positioned on the hatch's own roof (the stub sits WALL_R + 0.4 out from the room centre),
+        // turned with the stub (rotation.y = a) and laid face up with the digits' tops pointing out
+        // of the ship, so a player reading it from inside the room sees a normal number.
+        const decal = nums.length
+            ? this.makeDecal('tn_' + root.name, root, px - Math.sin(a) * 0.4, 1.89, pz - Math.cos(a) * 0.4, 1.55, 0.78)
+            : null;
+        if (decal) {
+            // A Babylon plane's painted face points along its local -Z: rotation.x = +pi/2 turns that
+            // face up (the same pose as the corridor numbers), so the digits are never seen through
+            // the back of the plane. rotation.z = 0 stands the digits' tops outwards, which reads
+            // correctly from inside the room.
+            decal.rotation.set(Math.PI / 2, a, 0);
+            this.setDecal(decal, nums.join(' / '), false);
+        }
         // LED ring around the opening (separate meshes: colour changes with tech noise)
         const leds = [];
         const ledMat = this.M('#3fa9ff', 1);
         const ring = [[-1.0, 0.3], [-1.0, 0.9], [-1.0, 1.5], [-0.5, 1.9], [0.5, 1.9], [1.0, 1.5], [1.0, 0.9], [1.0, 0.3]];
         for (const [ox, y] of ring) { const m = B().MeshBuilder.CreateBox('led', { width: 0.14, height: 0.14, depth: 0.08 }, S); m.position.set(px + Math.cos(a) * ox + Math.sin(a) * 0.95, y, pz - Math.sin(a) * ox + Math.cos(a) * 0.95); m.rotation.y = a; m.material = ledMat; m.parent = root; m.isPickable = false; leds.push(m); }
-        return leds;
+        return { leds, decal };
     }
 
     // ---------------------------------------------------------------------------------------
@@ -2125,9 +2146,12 @@ export class Scene3D {
             if (n.altLabel) n.altLabel.setEnabled(this.alt);
             n.label.setEnabled(!this.alt);
         }
-        // Corridor numbers: plain paint stenciled on the beam by default, neon while Alt is held.
+        // Corridor numbers and the tech-entrance numbers: plain paint by default, neon while Alt is held.
         for (const n of Object.values(this.corridorNodes)) {
             if (n.decal) this.setDecal(n.decal, n.nums.join(' / '), this.alt);
+        }
+        for (const n of Object.values(this.roomNodes)) {
+            if (n.techDecal) this.setDecal(n.techDecal, ((n.data.techNums && n.data.techNums.length) ? n.data.techNums : [4]).join(' / '), this.alt);
         }
     }
 

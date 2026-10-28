@@ -85,6 +85,10 @@ export function answer(state, playerId, promptId, choice) {
 /** Collect one "Ready" from a player; the resume step runs when everybody has pressed it.
  *  The host may answer `all` once for the whole table (someone is away from the keyboard). */
 function answerAck(state, p, playerId, choice) {
+    // The event card is dealt face down: nobody confirms a card that has not been turned over yet.
+    // The table flips it with the 'flip' message, which sets prompt.flipped for every screen.
+    const faceDown = !!p.event && !p.flipped;
+    if (faceDown) return false;
     if (choice === 'all' && playerId === 'host') p.acked = p.players.slice();
     else if (choice === 'ok' && p.players.includes(playerId) && !p.acked.includes(playerId)) p.acked.push(playerId);
     else return false;
@@ -152,7 +156,10 @@ export function secretTile(state, roomId) { return tileOf(state, roomId) || stat
 export function roomName(state, roomId) {
     const t = tileOf(state, roomId);
     const r = state.ship.rooms[roomId];
-    if (!t) return '??? [' + roomId + ']';           // an unexplored slot: nobody at the table knows the tile yet
+    // The name is only spoken once the tile lies face up on the table. A room that has just been
+    // flipped stays "???" here as well: the log and the die prompt must never name a room before
+    // the players have seen it (the engine-room trio is face up from setup, so it is explored).
+    if (!t || !state.roomState[roomId].explored) return '??? [' + roomId + ']';
     let name = ROOM_TILES[t].name;
     if (r.kind === 'engine') name += ' №' + r.engineNo;
     return name + ' [' + roomId + ']';
@@ -580,11 +587,13 @@ export function roll(state, die) {
 }
 /** Insert an interactive dice prompt before `step` (which is re-queued afterwards).
  *  Returns true when the caller must return and wait; false when the roll is already pending. */
-export function needDice(state, step, die, playerId, title) {
+export function needDice(state, step, die, playerId, title, extra) {
     if (state.pendingRoll && state.pendingRoll.die === die) return false;
     const p = state.players[playerId];
     if (!p || p.status !== 'active') return false;
-    ask(state, { kind: 'dice', player: playerId, die, title }, { op: 'dice.rolled', die, player: playerId, then: step });
+    // `extra` lets a roll carry the room it happens in: the client keeps the name hidden until the
+    // tile has actually been turned over on the table (see the dice gate in the client).
+    ask(state, Object.assign({ kind: 'dice', player: playerId, die, title }, extra || {}), { op: 'dice.rolled', die, player: playerId, then: step });
     return true;
 }
 OPS['dice.rolled'] = (state, step) => {
