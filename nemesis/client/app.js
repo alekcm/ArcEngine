@@ -584,6 +584,8 @@ function renderPlayers() {
         if (p.tissue) tags.push('<span class="tag yellow">🧫 ткань ×' + p.tissue + '</span>');
         if (p.laika) tags.push('<span class="tag yellow">🐕 Лайка: ' + (p.laika === 'board' ? 'рядом' : 'в ' + esc(roomLabel(p.laika))) + '</span>');
         if (p.signal) tags.push('<span class="tag green">сигнал</span>');
+        // A closed quest card lies face down on the sheet: its name is public, its reward is not.
+        for (const q of (p.quests || [])) if (!q.open && ITEMS[q.item]) tags.push('<span class="tag yellow" title="Квестовый предмет закрыт — откроется действием в комнате, напечатанной на карте">🔒 ' + esc(ITEMS[q.item].name) + '</span>');
         tags.push('<span class="tag yellow">знания ' + p.knowledge + (p.knowledgeActive ? ' ✓' : '') + '</span>');
         tags.push('<span class="tag" title="Карт в руке / колоде / сбросе (заражений в сбросе)">🂠 ' + p.handCount + ' / ' + p.deckCount + ' / ' + p.discardCount + (p.contamInDiscard ? ' ☣' + p.contamInDiscard : '') + '</span>');
         const items = p.items.map(i => '<span class="itag" title="' + esc(itemTitle(i)) + '">' + itemArtHtml(i) + (ITEMS[i.item].weapon ? '🔫' : ITEMS[i.item].kind === 'heavy' ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>').join('')
@@ -1443,7 +1445,27 @@ function openSheet(quiet) {
     const items = me.items || [];
     const pr = v.prompt;
     const picks = itemPickMap(pr, me);
-    const quests = items.filter(i => ITEMS[i.item] && ITEMS[i.item].quest);
+    // Quest items are not starting gear: the sheet shows the card closed, with the room printed on
+    // it, and opening costs the Action the menu offers. Only the android's UPS begins open.
+    const quests = items.filter(i => ITEMS[i.item] && ITEMS[i.item].quest && !ITEMS[i.item].weapon);
+    const closedQuests = (me.quests || []).filter(q => !q.open);
+    const questMenu = pr && pr.player === me.id ? (pr.actions || []).find(a => a.id === 'quest') : null;
+    const closedQuestHtml = closedQuests.map(q => {
+        const d = ITEMS[q.item] || {};
+        const where = !d.questRoom || d.questRoom === 'any' ? 'любая комната'
+            : (ROOM_TILES[d.questRoom] ? ROOM_TILES[d.questRoom].name : d.questRoom);
+        const pay = d.questBlue ? 'бесплатно (синяя комната)' : 'сбросьте 1 жетон';
+        const art = itemArt(q.item);
+        const open = !!(questMenu && questMenu.enabled);
+        return '<div class="sheet-item quest closed' + (open ? ' pickable' : '') + '"' + (open ? ' data-pick="quest"' : '') +
+            ' title="' + esc(open ? 'Нажмите, чтобы открыть: это стоит 1 действие' : (questMenu && questMenu.reason) || 'Закрыт: откроется по правилам карты') + '">' +
+            (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
+            '<div><b>' + esc(d.name || q.item) + ' · закрыт 🔒</b>' +
+            '<small>' + esc(d.text || '') + '</small>' +
+            '<small style="color:#8394a8">Активация: ' + esc(where) + ' · ' + esc(pay) + ' · 1 действие</small>' +
+            ((questMenu && !questMenu.enabled && questMenu.reason) ? '<small style="color:#e2a33f">' + esc(questMenu.reason) + '</small>' : '') +
+            '</div>' + (open ? '<span class="si-pick">Открыть</span>' : '') + '</div>';
+    }).join('');
     const armor = me.armor ? sheetItemHtml(me.armor) : '';
     const weapons = items.filter(i => ITEMS[i.item] && ITEMS[i.item].weapon);
     const gear = items.filter(i => !(ITEMS[i.item] && (ITEMS[i.item].quest || ITEMS[i.item].weapon)));
@@ -1487,8 +1509,8 @@ function openSheet(quiet) {
         '<div class="sheet-cols">' +
         (hands ? '<div class="sheet-sec"><h4>🖐 Руки</h4>' + hands + '</div>' : '') +
         '<div class="sheet-sec"><h4>🎯 Цели · что даёт выполнение</h4>' + (objs || '<div class="empty">Цель ещё не выбрана — выберите бесплатным действием.</div>') + '</div>' +
-        '<div class="sheet-sec"><h4>🏆 Квестовый предмет</h4><div class="sheet-items">' + (quests.map(i => sheetItemHtml(i, picks)).join('') || '<div class="empty">Нет квестового предмета.</div>') + '</div>' +
-        (quests.length ? '<div class="empty" style="margin-top:6px">Награда за выполнение — свойство этого предмета; оплата и условия показаны в меню действий.</div>' : '') + '</div>' +
+        '<div class="sheet-sec"><h4>🏆 Квестовые предметы</h4><div class="sheet-items">' + (closedQuestHtml + quests.map(i => sheetItemHtml(i, picks)).join('') || '<div class="empty">Нет квестовых предметов.</div>') + '</div>' +
+        (closedQuests.length ? '<div class="empty" style="margin-top:6px">Закрытая карта ждёт действия «Открыть квестовый предмет» в комнате, напечатанной на ней. Карта «Инструменты» открывает её где угодно.</div>' : '') + '</div>' +
         '<div class="sheet-sec"><h4>🎒 Рюкзак · оружие</h4><div class="sheet-items">' + (weapons.map(i => sheetItemHtml(i, picks)).join('') || '<div class="empty">Оружия нет.</div>') + '</div></div>' +
         '<div class="sheet-sec"><h4>📦 Предметы и костюм</h4><div class="sheet-items">' + (armor + gear.map(i => sheetItemHtml(i, picks)).join('') + heavy || '<div class="empty">Пусто.</div>') + '</div></div>' +
         '<div class="sheet-sec"><h4>🩸 Травмы</h4>' + (wounds || '<div class="empty">Травм нет.</div>') + '</div>' +

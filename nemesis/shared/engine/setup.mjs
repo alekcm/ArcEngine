@@ -94,7 +94,7 @@ export function createGame(config) {
         state.players.push({
             id: i, number: numbers[i], name: pc.name, charId: null, colors: pc.colors || {},
             room: hiber, health: 0, hand: [], deck: [], discard: [], wounds: [], larva: false,
-            items: [], heavy: [], armor: null, knowledge: 1, knowledgeActive: false, signal: false, supportUsed: false,
+            items: [], heavy: [], armor: null, quests: [], knowledge: 1, knowledgeActive: false, signal: false, supportUsed: false,
             objectives: [], objective: null, status: 'active', passed: false, pod: null,
             knownEngines: {}, knownCoords: null, analyzedEgg: false, analyzed: { corpse: false, carcass: false, egg: false }, movedThisRound: false,
             firstShotUsed: false, rifleDrawUsed: false, adrenalineTurn: false, tissue: 0,
@@ -161,6 +161,16 @@ function assignCharacter(state, p, charId) {
         const inst = { uid: 'it' + (++state.itemSeq), item: s.item, ammo: def.weapon ? (s.ammo ?? def.weapon.max) : undefined, broken: false, charge: def.markers, start: true };
         if (def.kind === 'armor') p.armor = inst; else p.items.push(inst);
         if (s.item === 'laika') p.laika = 'board';
+    }
+    // Quest items are not starting gear: the card lies closed on the character's sheet and is
+    // flipped open by an Action (stand in the room printed on it and discard 1 marker, or let the
+    // Tools card do it anywhere). The android's UPS is the one card that is already open.
+    for (const key of ch.questItems || []) {
+        const def = ITEMS[key];
+        const inst = { uid: 'it' + (++state.itemSeq), item: key, ammo: def.weapon ? def.weapon.max : undefined,
+            broken: false, charge: def.markers, start: true, quest: true };
+        if (def.questOpen) { if (def.kind === 'armor') p.armor = inst; else p.items.push(inst); }
+        else p.quests.push({ uid: inst.uid, item: key, open: false });
     }
 }
 OPS['setup.finish'] = (state) => {

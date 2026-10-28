@@ -188,11 +188,9 @@ OPS['item.use'] = (state, step) => {
             const opts = [];
             if (room(state, p.room).malfunction) opts.push({ id: 'malf', label: 'Устранить поломку в комнате' });
             if (state.ship.rooms[p.room].kind === 'engine') opts.push({ id: 'engine', label: 'Починить/сломать двигатель' });
-            // Tools: "you may activate your Quest Item ignoring its requirement".
+            // Printed on Tools: "you may activate your Quest Item ignoring its activation requirement".
             if (def.use === 'tools') {
-                // Printed on Tools: activate your Quest Item, ignoring its activation requirement.
-                const quests = [...p.items, ...(p.armor ? [p.armor] : [])].filter(i => i.uid !== inst.uid && ITEMS[i.item].quest);
-                const quest = quests.find(i => ITEMS[i.item].use) || quests[0];
+                const quest = (p.quests || []).find(q => !q.open);
                 opts.push({ id: 'quest', label: 'Активировать квестовый предмет' + (quest ? ': «' + ITEMS[quest.item].name + '»' : '') + ' (игнорируя требование)' });
             }
             if (!opts.length) { log(state, 'Нечего чинить здесь.', 'minor'); next(state, back); return; }
@@ -385,12 +383,48 @@ OPS['item.repair'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'malf') { removeMalfunction(state, p.room); next(state, step.then); return; }
     if (step.answer === 'quest') {
-        const quest = [...p.items, ...(p.armor ? [p.armor] : [])].find(i => ITEMS[i.item].quest && ITEMS[i.item].use);
-        if (quest) { next(state, { op: 'item.use', player: p.id, uid: quest.uid, ignoreRequirement: true, then: step.then }); return; }
-        log(state, 'Нет квестового предмета, который можно активировать.', 'minor');
+        const quest = (p.quests || []).find(q => !q.open);
+        if (quest) { next(state, { op: 'quest.open', player: p.id, uid: quest.uid, ignore: true, then: step.then }); return; }
+        log(state, 'Нет закрытого квестового предмета, который можно открыть.', 'minor');
         next(state, step.then); return;
     }
     next(state, { op: 'engine.toggle', player: p.id, then: step.then });
+};
+/**
+ * quest.open — flip a closed quest item open. It costs one Action, and the card printed on the item
+ * says where and what to pay: an "any room" card is free of the room requirement, the others must be
+ * activated standing in the named room, and every card but the Survivor's costs 1 marker (discarded
+ * from an item that carries markers). Tools does the same thing anywhere, ignoring the requirement.
+ */
+OPS['quest.open'] = (state, step) => {
+    const p = player(state, step.player);
+    const back = step.then || { op: 'turn.choose' };
+    const q = (p.quests || []).find(x => x.uid === step.uid && !x.open) || (p.quests || []).find(x => !x.open);
+    if (!q) { log(state, 'Закрытых квестовых предметов нет.', 'minor'); next(state, back); return; }
+    const def = ITEMS[q.item];
+    if (!step.ignore) {
+        const tile = tileOf(state, p.room);
+        if (def.questRoom && def.questRoom !== 'any' && tile !== def.questRoom) {
+            log(state, '«' + def.name + '» открывается только в комнате «' + ((ROOM_TILES[def.questRoom] || {}).name || def.questRoom) + '».', 'minor');
+            next(state, back); return;
+        }
+        if (def.questNoIntruder && intrudersIn(state, p.room).length) {
+            log(state, '«' + def.name + '» открывается только в комнате без чужих.', 'minor');
+            next(state, back); return;
+        }
+        if (!def.questBlue) {
+            const src = p.items.find(i => (i.charge || 0) > 0) || (p.armor && (p.armor.charge || 0) > 0 ? p.armor : null);
+            if (!src) { log(state, 'Чтобы открыть «' + def.name + '», надо сбросить 1 жетон, а жетонов нет.', 'minor'); next(state, back); return; }
+            src.charge -= 1;
+            log(state, pname(p) + ' сбрасывает 1 жетон с «' + ITEMS[src.item].name + '».', 'minor');
+        }
+    }
+    q.open = true;
+    const inst = { uid: q.uid, item: q.item, ammo: def.weapon ? def.weapon.max : undefined, broken: false, charge: def.markers, start: true, quest: true };
+    if (def.kind === 'armor' && !p.armor) p.armor = inst;
+    else p.items.push(inst);        // a second armor-slot card is carried in the pack until the slot frees up
+    log(state, pname(p) + ' открывает квестовый предмет «' + def.name + '».', 'good');
+    next(state, back);
 };
 /** engine.toggle — the player secretly sets the engine in their room to working or damaged. */
 OPS['engine.toggle'] = (state, step) => {

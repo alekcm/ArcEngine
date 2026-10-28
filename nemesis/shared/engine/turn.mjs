@@ -4,9 +4,8 @@ import { OPS, ask, next, later, log, player, pname, removeCardFromGame, intruder
     discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards,
     HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom, corridorsOf } from './core.mjs';
 import { repairOptions } from './actions.mjs';
-import { ITEMS, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf } from '../data/cards.mjs';
+import { ITEMS, dropLocked, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
-import { survivorUpgrade } from './actions3.mjs';
 import { canFire } from './combat.mjs';
 import { roomActionAvailable, roomActionCost } from './rooms.mjs';
 
@@ -15,7 +14,6 @@ OPS['phase.player'] = (state) => {
     for (const p of state.players) { p.passed = p.status !== 'active'; p.movedThisRound = false; p.firstShotUsed = false; p.rifleDrawUsed = false; p.adrenalineTurn = false; p.noAttacks = false; }
     state.turnCursor = -1;
     log(state, '— Раунд ' + state.round + ': фаза игроков —', 'phase');
-    survivorUpgrade(state);
     next(state, { op: 'turn.start' });
 };
 
@@ -89,6 +87,15 @@ export function buildMenu(state, p) {
     add('computer', 'Компьютер', 1, !!comp && !rs.malfunction && !!state.computerCard && noCombatOk, !comp ? 'Нет компьютера' : rs.malfunction ? 'Поломка' : !state.computerCard ? 'Нет карты' : 'Нельзя в бою');
     const ra = roomActionAvailable(state, p);
     add('room', 'Действие комнаты' + (tile ? ': ' + ROOM_TILES[tile].name : ''), roomActionCost(state, p), ra.ok, ra.reason);
+    const closedQuest = (p.quests || []).find(q => !q.open);
+    if (closedQuest) {
+        const qd = ITEMS[closedQuest.item];
+        const where = !qd.questRoom || qd.questRoom === 'any' ? null : qd.questRoom;
+        const here = !where || where === tile;
+        const marker = [...p.items, ...(p.armor ? [p.armor] : [])].some(i => (i.charge || 0) > 0);
+        add('quest', 'Открыть квестовый предмет: «' + qd.name + '»', 1, here && (marker || qd.questBlue),
+            !here ? 'Нужна комната «' + ((ROOM_TILES[where] || {}).name || where) + '»' : 'Нет жетона, чтобы заплатить');
+    }
     add('pass', 'Спасовать', 0, true);
     if (p.objectives.length === 2) actions.push({ id: 'objective', label: 'Выбрать цель (бесплатно)', cost: 0, enabled: true, reason: '' });
     if (p.items.length + p.heavy.length) actions.push({ id: 'drop', label: 'Выбросить предмет (бесплатно)', cost: 0, enabled: true, reason: '' });
@@ -144,7 +151,7 @@ function cardRequirement(state, p, d) {
         case 'bash': case 'roboticPunch': return inCombat(state, p) ? '' : 'Нет чужих';
         case 'shriek': return intrudersIn(state, p.room).some(i => i.type === 'adult') ? '' : 'Нет взрослого чужого';
         case 'neurotoxicGas': return p.items.some(i => ITEMS[i.item].deck === 'green') ? '' : 'Нужен зелёный предмет';
-        case 'catchThis': return p.items.some(i => ITEMS[i.item].kind === 'heavy' && !ITEMS[i.item].quest) ? '' : 'Нет тяжёлого предмета';
+        case 'catchThis': return p.items.some(i => ITEMS[i.item].kind === 'heavy' && !dropLocked(i.item)) ? '' : 'Нет тяжёлого предмета';
         case 'tacticalMove': return p.items.some(i => ITEMS[i.item].weapon && i.ammo > 0 && !i.broken) ? '' : 'Нужен патрон';
         case 'intimidate': return state.players.some(o => o.id !== p.id && o.status === 'active' && o.room === p.room && !o.pod) ? '' : 'Нет других персонажей';
         case 'determination': return rs.malfunction || rs.fire ? 'Поломка или огонь в комнате' : '';
@@ -203,6 +210,13 @@ OPS['turn.do'] = (state, step) => {
         log(state, pname(p) + ' играет карту «' + d.name + '».', 'action');
         spend();
         payCost(state, p, (d.cost || 1) - 1 + extraCost(d), interruptible(state, p, { op: 'card.effect', player: p.id, effect: d.effect, cardId: a.cardId }, 'играет карту «' + d.name + '»'), 'Доплата за карту «' + d.name + '»');
+        return;
+    }
+    if (a.action === 'quest') {
+        const q = (p.quests || []).find(x => !x.open);
+        if (!q) { next(state, back); return; }
+        spend();
+        next(state, { op: 'quest.open', player: p.id, uid: q.uid });
         return;
     }
     if (a.action === 'item') {

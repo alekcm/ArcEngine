@@ -3,7 +3,7 @@
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire, placeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, removeCardFromGame, isContam, isInfected, payCost,
     clearNoiseAround, killPlayer, spawnIntruder, intruderLabel, corridorsOf, secretTile, payableCards, infectLarva } from './core.mjs';
-import { ITEMS } from '../data/cards.mjs';
+import { ITEMS, dropLocked } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
 import { dealHits } from './combat.mjs';
@@ -184,7 +184,7 @@ OPS['card.discardPicked'] = (state, step) => {
 };
 OPS['card.distraction'] = (state, step) => {
     const p = player(state, step.player);
-    choice(state, p, 'Отвлечение: какой предмет сбросить?', p.items.filter(i => !ITEMS[i.item].quest).map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name })), 'card.distraction.pick');
+    choice(state, p, 'Отвлечение: какой предмет сбросить?', p.items.filter(i => !dropLocked(i.item)).map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name })), 'card.distraction.pick');
 };
 OPS['card.distraction.pick'] = (state, step) => {
     const p = player(state, step.player);
@@ -248,7 +248,7 @@ OPS['card.fightFire'] = (state, step) => {
     const p = player(state, step.player);
     const opts = [];
     if (room(state, p.room).fire) opts.push({ id: 'out', label: 'Потушить огонь в комнате' });
-    for (const i of p.items.filter(i => !ITEMS[i.item].quest)) opts.push({ id: 'burn:' + i.uid, label: 'Сбросить «' + ITEMS[i.item].name + '» и поставить огонь' });
+    for (const i of p.items.filter(i => !dropLocked(i.item))) opts.push({ id: 'burn:' + i.uid, label: 'Сбросить «' + ITEMS[i.item].name + '» и поставить огонь' });
     choice(state, p, 'Клин клином', opts, 'card.fightFire.pick');
 };
 OPS['card.fightFire.pick'] = (state, step) => {

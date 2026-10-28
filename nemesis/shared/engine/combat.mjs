@@ -6,7 +6,7 @@ import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, r
     handSlots, dropHeavy } from './core.mjs';
 import { repelIntruder, moveOneToward, hyperAttackStep } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
-import { ATTACK_CARDS, ITEMS, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
+import { ATTACK_CARDS, ITEMS, dropLocked, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
 
 const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(c => [c.id, c]));
@@ -687,7 +687,7 @@ OPS['trade.start'] = (state, step) => {
     const others = playersInRoom(state, p.room).filter(o => o.id !== p.id);
     const opts = [];
     for (const o of others) {
-        for (const i of p.items) if (!ITEMS[i.item].quest) opts.push({ id: o.id + ':item:' + i.uid, item: i.item, label: ITEMS[i.item].name + ' → ' + pname(o) });
+        for (const i of p.items) if (!dropLocked(i.item)) opts.push({ id: o.id + ':item:' + i.uid, item: i.item, label: ITEMS[i.item].name + ' → ' + pname(o) });
         p.heavy.forEach((h, idx) => opts.push({ id: o.id + ':heavy:' + idx, label: ({ corpse: 'Труп', charCorpse: 'Труп персонажа', carcass: 'Туша', egg: 'Яйцо' })[h.type] + ' → ' + pname(o) }));
     }
     if (!opts.length) { next(state, { op: 'turn.choose' }); return; }

@@ -418,38 +418,79 @@ test('START-01 / original starters: Cuffs 6, Robot 5, UPS 3 markers', () => {
 test('START-02 / Android gun: requires no ammo, not three charges with +1 shooting', () => {
     assert.equal(ITEMS.armGun.weapon.noAmmo, true);
 });
-test('START-07 / every character starts with their own weapon and quest item', () => {
+test('START-07 / one weapon each (the CEO none), the rest of the kit in item slots', () => {
     const want = {
-        soldier: ['soldierGun', 'heavyArmor'], scout: ['scoutRifle', 'motionScanner'],
-        mechanic: ['sawedOff', 'plasmaTorch'], pilot: ['pilotShotgun', 'pilotEvacKey'],
-        hacker: ['smartGun', 'cheatCodes'],
-        scientist: ['scientistPistol', 'wheelchair', 'portableDevice'],
-        medic: ['needleGun', 'surgeryKit'], janitor: ['nailGun', 'karcher'],
-        ceo: ['handgun', 'shipCodes'], labrat: ['labRatGun', 'bloodyCamouflage'],
-        sentry: ['sentrySmg', 'battleSuit'], android: ['armGun', 'ups'],
-        convict: ['pipe', 'cuffs'], psych: ['handgun', 'oculobe'],
-        bounty: ['bountyRifle', 'laika'],
-        captain: ['sixShooter', 'sixShooterCartridge', 'intercom'],
-        survivor: ['handgun', 'survivorFavorite'],
-        xeno: ['xenoGun', 'probeArm', 'researchEquipment'],
+        soldier: { start: ['soldierGun'], quest: ['heavyArmor'] },
+        scout: { start: ['scoutRifle'], quest: ['motionScanner'] },
+        mechanic: { start: ['sawedOff'], quest: ['plasmaTorch'] },
+        pilot: { start: ['pilotShotgun'], quest: ['pilotEvacKey'] },
+        hacker: { start: ['smartGun'], quest: ['cheatCodes'] },
+        scientist: { start: ['scientistPistol', 'wheelchair'], quest: ['portableDevice'] },
+        medic: { start: ['needleGun'], quest: ['surgeryKit'] },
+        janitor: { start: ['nailGun'], quest: ['karcher'] },
+        ceo: { start: ['robot'], quest: ['shipCodes'] },
+        labrat: { start: ['labRatGun'], quest: ['bloodyCamouflage'] },
+        sentry: { start: ['sentrySmg'], quest: ['battleSuit'] },
+        android: { start: ['armGun'], quest: ['ups'] },
+        convict: { start: ['cuffs'], quest: ['pipe'] },
+        psych: { start: ['handgun'], quest: ['oculobe'] },
+        bounty: { start: ['bountyRifle', 'laika'], quest: ['canineUpgrades'] },
+        captain: { start: ['sixShooter', 'sixShooterCartridge'], quest: ['intercom'] },
+        survivor: { start: ['handgun'], quest: ['survivorFavorite'] },
+        xeno: { start: ['xenoGun', 'probeArm'], quest: ['researchEquipment'] },
     };
     assert.deepEqual(Object.keys(CHARACTERS).sort(), Object.keys(want).sort());
-    for (const [id, items] of Object.entries(want)) {
-        assert.deepEqual(CHARACTERS[id].startItems.map(si => si.item), items, id);
-        for (const si of CHARACTERS[id].startItems) assert.ok(ITEMS[si.item], id + ' -> ' + si.item);
-        const quest = CHARACTERS[id].startItems.filter(si => ITEMS[si.item].quest);
-        assert.equal(quest.length >= 1, true, id + ' has a quest item');
+    for (const [id, w] of Object.entries(want)) {
+        assert.deepEqual(CHARACTERS[id].startItems.map(si => si.item), w.start, id + ' starting kit');
+        assert.deepEqual(CHARACTERS[id].questItems, w.quest, id + ' quest card');
+        // a quest card is never starting gear
+        for (const si of CHARACTERS[id].startItems) assert.ok(!ITEMS[si.item].quest, id + ' starts with the quest card ' + si.item);
+        for (const k of CHARACTERS[id].questItems) assert.ok(ITEMS[k].quest, id + ' -> ' + k + ' is a quest card');
+        // at most one weapon a hand, and only the CEO goes without
+        const guns = CHARACTERS[id].startItems.filter(si => ITEMS[si.item].weapon);
+        // The CEO has the bodyguard robot instead of a gun; the Convict's pipe is his quest card, so
+        // it is still closed on the first turn. Everybody else holds exactly one weapon.
+        const bare = id === 'ceo' || id === 'convict';
+        assert.equal(guns.length, bare ? 0 : 1, id + ' carries ' + guns.length + ' starting weapons');
     }
+    // the wheelchair and the xenobiologist's manipulator take the armor slot, not a hand
+    assert.equal(ITEMS.wheelchair.kind, 'armor');
+    assert.equal(ITEMS.probeArm.kind, 'armor');
+    // the CEO's bodyguard robot is an ordinary item, not a quest card
+    assert.equal(ITEMS.robot.quest, undefined);
 });
-test('START-08 / the starting set actually lands on the board', () => {
+
+test('START-08 / quest cards sit closed on the sheet; only the Android UPS is open', () => {
     for (const id of Object.keys(CHARACTERS)) {
         const s = createGame({ seed: 'start-' + id, players: [{ name: id, charId: id }, { name: 'S', charId: id === 'soldier' ? 'scout' : 'soldier' }] });
         const p = s.players[0];
+        const open = CHARACTERS[id].questItems.filter(k => ITEMS[k].questOpen);
+        const closed = CHARACTERS[id].questItems.filter(k => !ITEMS[k].questOpen);
         const held = [...p.items, ...(p.armor ? [p.armor] : [])].filter(i => i.start).map(i => i.item).sort();
-        const want = [...new Set(CHARACTERS[id].startItems.map(si => si.item))].sort();
-        assert.deepEqual(held, want, id);
+        assert.deepEqual(held, [...CHARACTERS[id].startItems.map(si => si.item), ...open].sort(), id + ': what the character holds');
+        assert.deepEqual(p.quests.map(q => q.item).sort(), [...closed].sort(), id + ': closed quest cards');
+        assert.ok(p.quests.every(q => q.open === false), id + ': they start closed');
+        // the android is the one exception printed on the card
+        if (id === 'android') {
+            assert.deepEqual(p.quests, [], 'the UPS is already open');
+            assert.ok(p.items.some(i => i.item === 'ups' && i.charge === 3), 'the UPS is in hand with 3 markers');
+        }
+        // nothing closed may be used, dropped or worn
+        for (const q of p.quests) {
+            assert.equal(p.items.some(i => i.uid === q.uid), false, id + ': a closed card is not in the pack');
+            assert.equal(!!(p.armor && p.armor.uid === q.uid), false, id + ': a closed card is not worn');
+        }
     }
 });
+
+test('START-09 / the 18 quest cards of the deck are exactly one per character', () => {
+    const quest = Object.keys(ITEMS).filter(k => ITEMS[k].quest).sort();
+    const owned = Object.values(CHARACTERS).flatMap(c => c.questItems).sort();
+    assert.deepEqual(owned, quest, 'every quest card belongs to one character');
+    assert.equal(quest.length, 18);
+    for (const k of quest) assert.ok(ITEMS[k].questRoom, k + ': the card says where it is activated');
+});
+
 test('START-03 / Hacker Smart Gun: reroll, not a permanent +1 modifier', () => {
     assert.deepEqual({ reroll: !!ITEMS.smartGun.weapon.reroll, plusOne: !!ITEMS.smartGun.weapon.plusOne },
         { reroll: true, plusOne: false });
@@ -470,6 +511,53 @@ test('QUEST-01 / Tools: quest activation is an available option', () => {
     execute(s, { op: 'item.use', player: 0, uid: tool.uid, then: { op: 'turn.choose' } });
     assert.ok(s.prompt.options?.some(o => /[Кк]вест|[Аа]ктив/.test(o.label)));
 });
+test('QUEST-02 / a closed quest card opens by an Action and lands in its slot', () => {
+    const s = fresh(['soldier', 'scout']), p = s.players[0];
+    const q = p.quests[0];
+    // no marker and the wrong room: the card stays closed
+    execute(s, { op: 'quest.open', player: 0, uid: q.uid, then: { op: 'turn.choose' } });
+    assert.equal(p.quests[0].open, false, 'still closed in the wrong room without a marker');
+    // the Tools card opens it anywhere, ignoring the requirement, and it becomes worn armor
+    s.queue = []; s.prompt = null; s.resume = null;
+    p.items.push({ uid: 'mk1', item: 'robot', charge: 5, start: false });
+    execute(s, { op: 'quest.open', player: 0, uid: q.uid, ignore: true, then: { op: 'turn.choose' } });
+    assert.equal(p.quests[0].open, true, 'opened');
+    assert.equal(p.armor && p.armor.item, 'heavyArmor', 'armor-slot quest cards land in the armor slot');
+    assert.equal(p.items.find(i => i.uid === 'mk1').charge, 5, 'ignoring the requirement skips the marker too');
+});
+
+test('QUEST-03 / the printed requirement is a room and 1 marker', () => {
+    const s = fresh(['soldier', 'scout']), p = s.players[0];
+    const q = p.quests[0];                                   // Heavy Armor: the Repository Room
+    p.items.push({ uid: 'mk2', item: 'robot', charge: 5, start: false });
+    const repo = Object.keys(s.ship.rooms).find(id => !['cockpit', 'hibernatorium', 'engine'].includes(s.ship.rooms[id].kind));
+    s.roomState[repo].tile = 'repository'; s.roomState[repo].explored = true; p.room = repo;
+    execute(s, { op: 'quest.open', player: 0, uid: q.uid, then: { op: 'turn.choose' } });
+    assert.equal(p.quests[0].open, true, 'opened where the card says');
+    assert.equal(p.items.find(i => i.uid === 'mk2').charge, 4, 'the marker is discarded');
+    // an "any room" card needs no particular room, but still costs a marker: the Convict pays one
+    // of the six on his handcuffs, and the pipe becomes a weapon in his pack
+    const s2 = fresh(['convict', 'scout']), c = s2.players[0];
+    execute(s2, { op: 'quest.open', player: 0, uid: c.quests[0].uid, then: { op: 'turn.choose' } });
+    assert.equal(c.quests[0].open, true, 'the pipe opens anywhere');
+    assert.equal(c.items.find(i => i.item === 'cuffs').charge, 5, 'paid with a cuff marker');
+    assert.ok(c.items.some(i => i.item === 'pipe'), 'the pipe is now in the pack');
+});
+
+test('QUEST-04 / the action menu opens the closed card and spends the Action', () => {
+    const s = fresh(['soldier', 'scout']), p = s.players[0];
+    p.items.push({ uid: 'mk3', item: 'robot', charge: 5, start: false });
+    p.room = Object.keys(s.ship.rooms).find(id => !['cockpit', 'hibernatorium', 'engine'].includes(s.ship.rooms[id].kind));
+    s.roomState[p.room].tile = 'repository';
+    s.roomState[p.room].explored = true;
+    const entry = buildMenu(s, p).actions.find(a => a.id === 'quest');
+    assert.ok(entry && entry.enabled, 'the menu offers it where the card says');
+    const before = s.actionsLeft;
+    execute(s, { op: 'turn.do', player: 0, answer: { action: 'quest' } });
+    assert.equal(p.quests[0].open, true, 'the card is open');
+    assert.equal(s.actionsLeft, before - 1, 'it cost exactly one Action');
+});
+
 test('END-01 / p. 22: no Event Phase occurs after the last active character hibernates', () => {
     const s = fresh(); s.players[1].status = 'dead'; s.time = 8;
     s.eventDeck = ['queenAwakens']; const start = s.logSeq;

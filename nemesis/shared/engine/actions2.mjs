@@ -5,7 +5,7 @@
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, isContam, payCost, placeNoise, corridorsOf, secretTile,
     payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES } from './core.mjs';
-import { ITEMS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, WOUNDS, EVENT_CARDS } from '../data/cards.mjs';
+import { ITEMS, dropLocked, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, WOUNDS, EVENT_CARDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
 import { dealHits } from './combat.mjs';
@@ -585,7 +585,7 @@ OPS['card.bash'] = (state, step) => {
 };
 OPS['card.catchThis'] = (state, step) => {
     const p = player(state, step.player);
-    choice(state, p, 'Лови! Какой тяжёлый предмет бросить?', p.items.filter(i => ITEMS[i.item].kind === 'heavy' && !ITEMS[i.item].quest).map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name })), 'card.catchThis.pick');
+    choice(state, p, 'Лови! Какой тяжёлый предмет бросить?', p.items.filter(i => ITEMS[i.item].kind === 'heavy' && !dropLocked(i.item)).map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name })), 'card.catchThis.pick');
 };
 OPS['card.catchThis.pick'] = (state, step) => {
     const p = player(state, step.player);
