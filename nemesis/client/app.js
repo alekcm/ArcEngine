@@ -982,7 +982,13 @@ function renderEnd() {
     const r = app.view.result;
     $('endBody').innerHTML = '<p>' + (r.shipDestroyed ? 'Корабль уничтожен.' : 'Корабль прибыл: ' + esc(DESTINATION_NAMES[r.destination] || r.destination) + '.') + '</p>' +
         r.results.map(x => '<div class="end-row"><span class="res ' + (x.win ? 'win' : 'lose') + '">' + (x.win ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ') + '</span><span><b>' + esc(app.view.players[x.player].name) + '</b> — ' + esc(x.objective) + '<br><small>' + esc(x.objectiveText) + ' · ' + esc(x.why) + '</small></span></div>').join('');
-    $('restartBtn').textContent = app.host ? 'Вернуться в лобби' : 'Закрыть';
+    // The game is over: the host starts a new one. It goes back to the lobby, where the map, the seed
+    // and the draft can be changed — nothing is locked in after a finished game.
+    $('restartBtn').textContent = app.host ? '🔄 Новая игра' : 'Закрыть';
+    $('restartBtn').disabled = false;
+    $('restartHint').textContent = app.host
+        ? 'Вернёт всех в лобби — там можно сменить карту, зерно и драфт персонажей.'
+        : 'Новую игру начнёт ведущий.';
     $('endOverlay').classList.remove('hidden');
 }
 

@@ -63,3 +63,20 @@ test('HUD-04: a weapon button in the intruder card says what the weapon does', a
     const eff = String(ITEMS.soldierGun.text).replace(/^Дальнобойное оружие[^.]*\.\s*/, '').trim();
     assert.equal(eff, 'Первый выстрел в ходу наносит 1 дополнительное ранение.');
 });
+
+test('HUD-05: the end-of-game button starts a new game and lets the host change the settings', async () => {
+    const fs = await import('node:fs');
+    const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8');
+    assert.match(html, /id="restartBtn"[^>]*>🔄 Новая игра</, 'the button is called "new game"');
+    assert.match(html, /id="restartHint"/, 'and explains where it goes');
+    assert.match(app, /'🔄 Новая игра'/, 're-rendered with the same label');
+    assert.match(app, /Вернёт всех в лобби — там можно сменить карту, зерно и драфт/, 'the hint mentions the settings');
+    // the host asks the server; the server drops the finished game and returns everybody to the lobby
+    assert.match(app, /\$\('restartBtn'\)\.onclick = \(\) => \{ if \(app\.host\) net\.send\(\{ t: 'restart' \}\)/, 'host sends restart');
+    assert.match(server, /case 'restart':[\s\S]{0,240}game\.phase = 'lobby'/, 'the server returns to the lobby');
+    assert.match(server, /case 'restart':[\s\S]{0,240}game\.state = null/, 'the finished game is dropped');
+    // the lobby keeps the map/seed/draft controls in the host's hands
+    assert.match(app, /\$\('modeSelect'\)\.disabled = !app\.host/, 'the host picks the map');
+    assert.match(app, /\$\('seedInput'\)\.disabled = !app\.host/, 'and the seed');
+    assert.match(app, /const sendSettings = \(\) => net\.send\(\{ t: 'lobby', settings:/, 'settings are sent to the server');
+});
