@@ -362,6 +362,20 @@ function lanAddresses() {
 let PORT = PORT_BASE;
 const server = http.createServer(serveStatic);
 
+// The game itself: every client talks over one WebSocket at /ws. Nothing else upgrades, so a stray
+// request is dropped here and not left hanging.
+server.on('upgrade', (req, sock) => {
+    const ws = upgrade(req, sock);
+    if (!ws) return;
+    clients.add(ws);
+    ws.onmessage = m => onMessage(ws, m);
+    ws.onclose = () => {
+        clients.delete(ws);
+        const seat = seatOf(ws);
+        if (seat) { seat.socket = null; broadcastNotice(seat.name + ' отключился.', 'leave'); if (game.phase === 'lobby') { /* keep seat for reconnect */ } broadcastLobby(); }
+    };
+});
+
 function listen(port, tries) {
     server.once('error', e => { if (e.code === 'EADDRINUSE' && tries > 0) listen(port + 1, tries - 1); else { console.error(e.message); process.exit(1); } });
     server.listen(port, '0.0.0.0', () => {
