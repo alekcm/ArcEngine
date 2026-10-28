@@ -3,110 +3,1002 @@
     "room:002:shell#326": {
       "hidden": true
     },
-    "room:002:shell#358": {
-      "pos": [
-        1.75,
-        1.05,
-        -2.463
-      ],
-      "rot": [
-        0,
-        3.142,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "room:002:shell#465": {
-      "pos": [
-        3.876,
-        0.55,
-        -2.15
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "room:002:shell#466": {
-      "pos": [
-        4.095,
-        0.55,
-        -1.6
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "room:002:shell#468": {
-      "pos": [
-        3.753,
-        1.184,
-        -2.09
-      ],
-      "rot": [
-        0,
-        0.443,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        0.776
-      ]
-    },
-    "room:002:shell#481": {
-      "pos": [
-        3.4,
-        0.2,
-        3.425
-      ],
-      "rot": [
-        0,
-        0.3,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "room:002:shell#482": {
-      "pos": [
-        3.4,
-        0.42,
-        3.416
-      ],
-      "rot": [
-        0,
-        0.3,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
     "room:003:shell#440": {
-      "hidden": true
+      "hidden": true,
+      "deleted": true
+    },
+    "room:003:shell#441": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#308": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#309": {
+      "pos": [
+        -3.219,
+        2.344,
+        -4.551
+      ],
+      "rot": [
+        0,
+        0.672,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "deleted": true
+    },
+    "room:004:shell#310": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#311": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#312": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#313": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#344": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#345": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#346": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#347": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#348": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#349": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#380": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#381": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#382": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#383": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#384": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#385": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#416": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#417": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#418": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#419": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#420": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#421": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:004:shell#607": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:005:shell#402": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:005:shell#403": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:005:shell#405": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:005:shell#406": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:005:shell#407": {
+      "pos": [
+        -2.592,
+        1.959,
+        -3.124
+      ],
+      "rot": [
+        -0.439,
+        1.819,
+        -0.576
+      ],
+      "scale": [
+        0.547,
+        1,
+        1
+      ]
+    },
+    "room:005:shell#408": {
+      "pos": [
+        -2.573,
+        1.529,
+        -3.445
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:005:shell#409": {
+      "pos": [
+        -2.573,
+        3.156,
+        -3.445
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "hidden": true,
+      "deleted": true
+    },
+    "room:005:shell#521": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:005:shell#522": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:005:shell#621": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:005:shell#622": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:005:shell#626": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:007:shell#476": {
+      "pos": [
+        -2.6,
+        0.166,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:007:shell#477": {
+      "pos": [
+        2.6,
+        0.168,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:007:shell#630": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:007:shell#631": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:008:shell#476": {
+      "pos": [
+        -2.6,
+        0.166,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:008:shell#477": {
+      "pos": [
+        2.6,
+        0.164,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:008:shell#630": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:008:shell#631": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:010:shell#543": {
+      "pos": [
+        -2.989,
+        0.4,
+        4.778
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:010:shell#544": {
+      "pos": [
+        -2.984,
+        0.25,
+        4.77
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:010:shell#545": {
+      "pos": [
+        -2.992,
+        0.6,
+        4.78
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:011:shell#275": {
+      "pos": [
+        0,
+        0.45,
+        1.45
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.995,
+        1,
+        0.99
+      ]
+    },
+    "room:011:shell#276": {
+      "pos": [
+        0,
+        0.93,
+        1.45
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:011:shell#284": {
+      "pos": [
+        -1.95,
+        1.228,
+        1.15
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:011:shell#286": {
+      "pos": [
+        -1.6,
+        1.156,
+        1.6
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:011:shell#288": {
+      "pos": [
+        0.5,
+        1.268,
+        1.2
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:011:shell#320": {
+      "pos": [
+        0.5,
+        0.088,
+        -4
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:011:shell#371": {
+      "pos": [
+        -2.55,
+        0.45,
+        0.3
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.998,
+        1,
+        0.995
+      ]
+    },
+    "room:012:shell#381": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:012:shell#382": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:012:shell#383": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:012:shell#412": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:012:shell#413": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:013:shell#284": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:013:shell#285": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:013:shell#375": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:013:shell#380": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:013:shell#381": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:013:shell#382": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:013:shell#383": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:013:shell#396": {
+      "pos": [
+        -1.5,
+        0.005,
+        0.5
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#397": {
+      "pos": [
+        -2.7,
+        0.023,
+        -1.25
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#398": {
+      "pos": [
+        -3.2,
+        0.035,
+        -0.9
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#399": {
+      "pos": [
+        -2.7,
+        0.023,
+        2.25
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#400": {
+      "pos": [
+        0.2,
+        0.018,
+        -0.9
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#401": {
+      "pos": [
+        -1.9,
+        0.013,
+        -1.25
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#402": {
+      "pos": [
+        -3.2,
+        0.039,
+        -0.1
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#403": {
+      "pos": [
+        -1.9,
+        0.021,
+        2.25
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#404": {
+      "pos": [
+        0.2,
+        0.01,
+        -0.1
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#405": {
+      "pos": [
+        -1.1,
+        0.019,
+        -1.25
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#406": {
+      "pos": [
+        -3.2,
+        0.068,
+        0.7
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#407": {
+      "pos": [
+        -1.1,
+        0.01,
+        2.25
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#408": {
+      "pos": [
+        0.2,
+        0.019,
+        0.7
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#409": {
+      "pos": [
+        -0.3,
+        0.016,
+        -1.25
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#410": {
+      "pos": [
+        -3.2,
+        0.076,
+        1.5
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#411": {
+      "pos": [
+        -0.3,
+        0.008,
+        2.25
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#412": {
+      "pos": [
+        0.2,
+        0.023,
+        1.5
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#413": {
+      "pos": [
+        2.2,
+        0.85,
+        0.894
+      ],
+      "rot": [
+        0,
+        -0.4,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:013:shell#422": {
+      "pos": [
+        2.6,
+        0.85,
+        -0.908
+      ],
+      "rot": [
+        0,
+        0.2,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:014:shell#231": {
+      "pos": [
+        -5.8,
+        0.009,
+        0
+      ],
+      "rot": [
+        0,
+        -1.571,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:014:shell#477": {
+      "pos": [
+        2.6,
+        0.168,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:015:shell#471": {
+      "pos": [
+        -0.46,
+        0.15,
+        -0.14
+      ],
+      "rot": [
+        0,
+        -0.785,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:015:shell#474": {
+      "pos": [
+        0.46,
+        0.163,
+        -0.14
+      ],
+      "rot": [
+        0,
+        0.785,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:015:shell#478": {
+      "pos": [
+        -0.46,
+        0.151,
+        1.21
+      ],
+      "rot": [
+        0,
+        -0.785,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:015:shell#481": {
+      "pos": [
+        0.46,
+        0.138,
+        1.21
+      ],
+      "rot": [
+        0,
+        0.785,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:015:shell#482": {
+      "pos": [
+        0.297,
+        0.182,
+        1.047
+      ],
+      "rot": [
+        0,
+        0.785,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:020:shell#255": {
+      "pos": [
+        2.215,
+        0.129,
+        -0.118
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        0.764
+      ]
+    },
+    "room:020:shell#373": {
+      "pos": [
+        2.2,
+        0.085,
+        3.2
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "room:021:shell#498": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:021:shell#499": {
+      "hidden": true,
+      "deleted": true
     }
   }
 }
