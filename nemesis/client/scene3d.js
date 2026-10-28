@@ -932,13 +932,13 @@ export class Scene3D {
                     // The desk is authored facing the pilot: keyboards and the status row sit on the near
                     // edge, the gear shelf on the far one. Turned the other way the console reads as a slab
                     // with its back to the seat.
-                    for (const [cx, cz, ry] of [[-2.0, 2.62, 0.22], [0, 2.72, 0], [2.0, 2.62, -0.22]]) {
+                    for (const [cx, cz, ry] of [[-2.0, 2.6, -0.2], [0, 2.74, 0], [2.0, 2.6, 0.2]]) {
                         bx(2.0, 0.88, 0.72, cx, 0.44, cz, panel, ry);                              // desk body
                         bx(2.06, 0.07, 0.78, cx, 0.91, cz, metal, ry);                             // desk top
                         for (let k = 0; k < 3; k++) bx(0.5, 0.04, 0.34, LX(cx, cz, ry, -0.6 + k * 0.6, -0.12), 0.95, LZ(cx, cz, ry, -0.6 + k * 0.6, -0.12), dark, ry);   // keyboards
                         for (let k = 0; k < 4; k++) cy(0.1, 0.1, 0.05, LX(cx, cz, ry, -0.72 + k * 0.48, -0.3), 0.96, LZ(cx, cz, ry, -0.72 + k * 0.48, -0.3), [M('#4fcf7a', 0.8), M('#4aa3df', 0.85), M('#ffb347', 0.75), M('#e05252', 0.7)][k], 8);
-                        bx(0.16, 0.5, 0.16, LX(cx, cz, ry, -0.86, 0.16), 1.16, LZ(cx, cz, ry, -0.86, 0.16), metal, ry);   // shelf post
-                        bx(1.9, 0.08, 0.5, LX(cx, cz, ry, 0, 0.2), 1.44, LZ(cx, cz, ry, 0, 0.2), metal, ry);              // screen shelf
+                        bx(0.16, 0.3, 0.16, LX(cx, cz, ry, -0.86, 0.16), 1.06, LZ(cx, cz, ry, -0.86, 0.16), metal, ry);   // shelf post
+                        bx(1.9, 0.08, 0.5, LX(cx, cz, ry, 0, 0.2), 1.22, LZ(cx, cz, ry, 0, 0.2), metal, ry);              // shelf over the far edge
                         for (const sd of [-1, 1]) bx(0.3, 0.06, 0.06, LX(cx, cz, ry, sd * 0.92, -0.3), 0.94, LZ(cx, cz, ry, sd * 0.92, -0.3), metal, ry);
                         bx(1.5, 0.04, 0.3, LX(cx, cz, ry, 0, -0.31), 0.94, LZ(cx, cz, ry, 0, -0.31), M('#2b333d'), ry);   // wrist pad
                     }
