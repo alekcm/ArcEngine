@@ -90,9 +90,10 @@ test('R23-03: the event card turns over in 3D instead of swapping a picture', ()
     // The turn plays once per card, not on every re-render of the table: the render that first sees
     // prompt.flipped builds the card face down again and adds the class a moment later (a card that
     // was simply re-rendered face up looked like an instant swap).
-    assert.match(app, /const turning = flipped && !!app\.ackDown && !app\.ackHold/, 'the turn is played once');
+    assert.match(app, /const turning = flipped && !!app\.ackDown && !ackHeld\(pr\)/, 'the turn is played once');
     assert.match(app, /app\.ackHold = \{ id: pr\.id, until: Date\.now\(\) \+ 700 \}/, 'and held while it plays');
-    assert.match(app, /app\.ackHold\.until > Date\.now\(\)[\s\S]{0,160}return;/, 'later renders leave the card alone');
+    assert.match(app, /function ackHeld\(pr\)[\s\S]{0,180}app\.ackHold\.until > Date\.now\(\)/, 'the hold belongs to its card');
+    assert.match(app, /if \(ackHeld\(pr\) && \$\('ack3d'\)\) return;/, 'later renders leave the card alone');
     // The click asks the server for the table turn instead of swapping the picture itself.
     assert.match(app, /app\.ackFlipSent = true;\s*\n\s*net\.send\(\{ t: 'flip' \}\)/, 'the click turns it for the whole table');
 });

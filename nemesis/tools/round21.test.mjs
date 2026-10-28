@@ -55,7 +55,7 @@ test('R21-02: the event is logged as movement / effect / dice inside one card', 
     assert.equal(lines[0], '📜 Событие: «Переборки открыты».');
     assert.equal(lines[1], 'Движение чужих: Все чужие движутся к ближайшему персонажу.');
     assert.equal(lines[2], 'Эффект: Откройте все двери (кроме уничтоженных).');
-    assert.equal(lines[3], 'Бросок кубика: Персонажи без карт в руке делают бросок шума.');
+    assert.equal(lines[3], 'Встреча: Каждый персонаж без карт действий в руке разрешает встречу по порядку хода.');
 
     // A card that spawns an intruder says so in its effect line, not in a separate card.
     const eggs = eventLogLines(EVENT_CARDS.find(e => e.id === 'eggProtection'));
@@ -66,7 +66,10 @@ test('R21-02: the event is logged as movement / effect / dice inside one card', 
     for (const e of EVENT_CARDS) {
         const L = eventLogLines(e);
         assert.ok(L.some(x => x.startsWith('Движение чужих: ')), e.id + ': строка движения');
-        assert.ok(L.some(x => x.startsWith('Бросок кубика: ')), e.id + ': строка броска');
+        // The last line is whatever the card really asks for: a Noise die, an Encounter, or nothing.
+        // A card whose only other sentence is the movement (On the Hunt) has no separate effect line.
+        assert.ok(L.length === 3 || L.length === 4, e.id + ': заголовок и две-три строки');
+        assert.match(L[L.length - 1], /^(Бросок кубика: |Встреча: |Броска кубика нет\.$)/, e.id + ': строка требования');
         assert.ok(L.every(x => !x.includes('\n')), e.id + ': строки разделены переводом строки, а не внутри строки');
     }
 
@@ -78,7 +81,7 @@ test('R21-02: the event is logged as movement / effect / dice inside one card', 
     assert.ok(entry, 'событие попало в журнал');
     const parts = entry.text.split('\n');
     assert.equal(parts.length, 4, 'заголовок + три строки');
-    assert.ok(parts[1].startsWith('Движение чужих: ') && parts[2].startsWith('Эффект: ') && parts[3].startsWith('Бросок кубика: '));
+    assert.ok(parts[1].startsWith('Движение чужих: ') && parts[2].startsWith('Эффект: ') && parts[3].startsWith('Встреча: '));
     // The log panel keeps the line breaks instead of flattening them into one paragraph.
     assert.match(clientFile('style.css'), /#log \.l \{[^}]*white-space: pre-line/);
 });

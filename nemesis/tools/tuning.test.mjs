@@ -1,10 +1,11 @@
 // tuning.test.mjs — the board tuning table and the door geometry derived from it.
 //   node --test nemesis/tools/tuning.test.mjs
 // The door was rebuilt three times in a row because its numbers lived in the renderer: every "make
-// the beam wider" was a code change. They live in client/tuning.js now, the editor writes them and
+// the frame wider" was a code change. They live in client/tuning.js now, the editor writes them and
 // the game reads them — so the important thing to keep is that NO slider position can produce an
-// impossible door: leaves that do not meet, a doorway blocked by an open leaf, or a stencil wider
-// than the beam it is painted on.
+// impossible door: leaves that do not meet or do not clear the doorway, a lintel that does not span
+// its posts, a plate thinner than the gap it bridges, or a stencil wider than the plate it is
+// painted on. The door itself is two ordinary corridor arches with the plate between them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TUNE, SCHEMA, DEFAULTS, sanitize, sanitizeAll, doorSpec } from '../client/tuning.js';
@@ -18,21 +19,26 @@ function numbers() {
 
 /** The invariants the renderer relies on. */
 function checkDoor(D, label) {
+    // the doorway: two leaves, each reaching from its post to the middle
     assert.ok(D.openW > 0.5, label + ': a doorway you can walk through (' + D.openW.toFixed(2) + ')');
-    assert.ok(Math.abs(D.panelClosed - D.panelW / 2) < 1e-9, label + ': the closed leaves meet in the middle');
-    assert.ok(Math.abs(D.panelClosed + D.panelW / 2 - D.openW / 2) < 1e-9, label + ': the closed leaves reach the posts');
-    // an open leaf never blocks the doorway (it may poke out of a narrow post, but not into the opening)
-    assert.ok(D.panelOpen - D.panelW / 2 >= D.openW / 2 - 1e-9, label + ': an open leaf clears the doorway');
-    assert.ok(D.panelH > 0.5 && D.panelH <= D.postH - 0.3, label + ': the leaves fit under the beam');
-    // the stencil fits on the beam it is painted on
-    assert.ok(D.decalW > 0.5, label + ': a stencil big enough to read (' + D.decalW.toFixed(2) + ')');
-    assert.ok(D.decalW <= D.beamW - 0.39, label + ': the stencil is narrower than the beam');
-    assert.ok(D.decalH <= D.beamD - 0.2, label + ': the stencil is not deeper than the beam');
+    assert.ok(Math.abs(D.panelW - D.pivotX) < 1e-9, label + ': a leaf reaches from its pivot to the middle');
+    assert.ok(D.pivotX >= D.postX + D.postW / 2, label + ': the pivot sits outside the post, so an open leaf hugs it');
+    assert.ok(D.panelW * 2 >= D.openW - 1e-9, label + ': two leaves cover the whole opening');
+    assert.ok(D.panelH >= 0.6 && D.panelH <= D.beamY - D.beamH / 2 - 0.05 + 1e-9, label + ': the leaves fit under the lintel');
+    assert.ok(D.panelSwing > 1.2 && D.panelSwing <= Math.PI / 2, label + ': one quarter turn opens the bulkhead');
+    // the arches and the plate between them
+    assert.ok(D.archGap > D.postD, label + ': the arches stand apart');
+    assert.ok(D.plateD >= 0.2, label + ': there is a plate between them (' + D.plateD.toFixed(2) + ')');
+    assert.ok(D.plateD <= D.archGap - D.postD + 1e-9, label + ': the plate never grows past the arches');
+    assert.ok(D.beamW >= D.postX * 2 + D.postW - 1e-9, label + ': the lintel spans both posts');
+    assert.ok(D.beamY + D.beamH / 2 >= D.postH - 1e-9, label + ': the lintel caps the posts');
+    // the stencil fits on the plate it is painted on
+    assert.ok(D.decalW > 0.3, label + ': a stencil big enough to read (' + D.decalW.toFixed(2) + ')');
+    assert.ok(D.decalW <= D.beamW - 0.4 + 1e-9, label + ': the stencil is narrower than the plate');
+    assert.ok(D.decalH <= D.plateD - 0.2 + 1e-9, label + ': the stencil is not deeper than the plate');
     assert.ok(Math.abs(D.decalW / D.decalH - 2) < 1e-9, label + ': the stencil keeps its 2:1 canvas');
-    assert.ok(D.decalY > D.beamTop, label + ': the stencil lies on top of the beam, never inside it');
-    assert.ok(D.slabW >= D.beamW, label + ': the slab is at least as wide as the beam');
-    assert.ok(D.beamY - D.beamH / 2 >= D.postH - 1e-9, label + ': the beam caps the posts');
-    assert.ok(D.lampY < D.postH && D.lampY > D.panelH, label + ': the emergency lamps sit above the leaves');
+    assert.ok(D.decalY > D.beamTop, label + ': the stencil lies on top of the plate, never inside it');
+    assert.ok(D.lampY > 0.6 && D.lampY < D.postH - 0.05, label + ': the emergency lamps hang on the posts');
 }
 
 test('TU-01 the schema is complete and its defaults are inside their own ranges', () => {
@@ -55,8 +61,8 @@ test('TU-01 the schema is complete and its defaults are inside their own ranges'
 });
 
 test('TU-02 sanitize clamps numbers and throws away junk', () => {
-    assert.equal(sanitize('door.postH', 999), 3.4, 'above the range: clamped');
-    assert.equal(sanitize('door.postH', -5), 1.6, 'below the range: clamped');
+    assert.equal(sanitize('door.postH', 999), 2.6, 'above the range: clamped');
+    assert.equal(sanitize('door.postH', -5), 1.2, 'below the range: clamped');
     assert.equal(sanitize('door.postH', '2.2'), 2.2, 'numeric strings are accepted');
     assert.equal(sanitize('door.postH', 'толще'), undefined, 'words are not numbers');
     assert.equal(sanitize('door.postH', NaN), undefined, 'NaN is not a number');
@@ -77,26 +83,25 @@ test('TU-04 the default door is buildable, and TUNE.diff tracks changes', () => 
     TUNE.reset();
     checkDoor(doorSpec(), 'defaults');
     assert.deepEqual(TUNE.diff(), {}, 'nothing differs until something is changed');
-    TUNE.set('door.beamW', 6.0);
+    TUNE.set('door.beamW', 3.2);
     assert.deepEqual(Object.keys(TUNE.diff()), ['door.beamW'], 'only the changed value is saved');
     TUNE.reset();
 });
 
-test('TU-05 the stencil follows the beam', () => {
+test('TU-05 the stencil follows the plate it is painted on', () => {
     TUNE.reset();
     const base = doorSpec();
-    TUNE.set('door.beamD', 3.0);           // a deeper beam frees the stencil from the depth cap
+    TUNE.set('door.archGap', 3.6);            // the arches move apart: a deeper plate under the digits
+    TUNE.set('door.beamW', 4.0);              // ... and a wider plate to paint across
+    TUNE.set('door.numShare', 1.0);
     const deep = doorSpec();
-    assert.ok(deep.decalW > base.decalW, 'a deeper beam carries a wider stencil');
-    checkDoor(deep, 'deep beam');
-    TUNE.set('door.beamW', base.beamW + 1.0);
-    const bigger = doorSpec();
-    assert.ok(bigger.decalW > deep.decalW, 'and a longer beam carries a longer one');
-    checkDoor(bigger, 'deep and wide beam');
-    TUNE.set('door.beamD', 0.6);   // now the depth is the limit
-    const shallow = doorSpec();
-    assert.ok(shallow.decalH <= shallow.beamD - 0.2, 'a shallow beam caps the stencil');
-    checkDoor(shallow, 'shallow beam');
+    assert.ok(deep.plateD > base.plateD, 'a wider gap makes a deeper plate (' + deep.plateD.toFixed(2) + ')');
+    assert.ok(deep.decalW > base.decalW, 'and the stencil may grow with it');
+    checkDoor(deep, 'deep plate');
+    TUNE.set('door.archGap', 1.4);            // now the plate is the limit, not the plate's width
+    const narrow = doorSpec();
+    assert.ok(narrow.decalH <= narrow.plateD - 0.2 + 1e-9, 'a narrow plate caps the stencil (' + narrow.decalH.toFixed(2) + ')');
+    checkDoor(narrow, 'narrow plate');
     TUNE.reset();
 });
 

@@ -32,23 +32,23 @@ const backups = (root, prefix) => {
 
 test('saveTuning: пишет только известные ключи и только отличия от кода', async () => {
   const root = tempRoot();
-  const r = await saveTuning(root, { 'door.beamW': 5.8, 'evil.key': 1, 'door.postH': 'мусор', 'door.paint': '#AABBCC' });
+  const r = await saveTuning(root, { 'door.beamW': 3.2, 'evil.key': 1, 'door.postH': 'мусор', 'door.paint': '#AABBCC' });
   assert.equal(r.ok, true);
   assert.equal(r.saved, 2);
-  assert.deepEqual(read(root), { values: { 'door.beamW': 5.8, 'door.paint': '#aabbcc' } });
+  assert.deepEqual(read(root), { values: { 'door.beamW': 3.2, 'door.paint': '#aabbcc' } });
 });
 
 test('saveTuning: диапазон зажимается, мусор не проходит', async () => {
   const root = tempRoot();
   await saveTuning(root, { 'door.postH': 999, 'door.beamW': -5 });
   const v = read(root).values;
-  assert.equal(v['door.postH'], 3.4, 'выше диапазона — по верхней границе');
-  assert.equal(v['door.beamW'], 2.6, 'ниже диапазона — по нижней границе');
+  assert.equal(v['door.postH'], 2.6, 'выше диапазона — по верхней границе');
+  assert.equal(v['door.beamW'], 2.4, 'ниже диапазона — по нижней границе');
 });
 
 test('saveTuning: пустой список — пустой файл (сброс к значениям из кода)', async () => {
   const root = tempRoot();
-  await saveTuning(root, { 'door.beamW': 6 });
+  await saveTuning(root, { 'door.beamW': 3 });
   const r = await saveTuning(root, {});
   assert.equal(r.ok, true);
   assert.equal(r.saved, 0);
@@ -57,12 +57,12 @@ test('saveTuning: пустой список — пустой файл (сбро�
 
 test('saveTuning: прежний файл уходит в бэкап, со своим расширением', async () => {
   const root = tempRoot();
-  await saveTuning(root, { 'door.beamW': 6 });
-  await saveTuning(root, { 'door.beamW': 6.4 });
+  await saveTuning(root, { 'door.beamW': 3 });
+  await saveTuning(root, { 'door.beamW': 3.6 });
   const files = backups(root, 'tuning');
   assert.equal(files.length, 1, 'одна копия на одно перезаписанное состояние');
   assert.match(files[0], /\.json$/, 'бэкап — json, а не .js');
-  assert.equal(read(root).values['door.beamW'], 6.4);
+  assert.equal(read(root).values['door.beamW'], 3.6);
 });
 
 test('saveTuning: не объект — отказ, файл не появляется', async () => {
@@ -77,11 +77,11 @@ test('saveTuning: не объект — отказ, файл не появляе
 
 test('сохранённое читается обратно и даёт ту же дверь', async () => {
   const root = tempRoot();
-  await saveTuning(root, { 'door.beamW': 6.2, 'door.postH': 2.6, 'door.steel': '#9aa4ae' });
+  await saveTuning(root, { 'door.beamW': 3.8, 'door.postH': 2.6, 'door.steel': '#9aa4ae' });
   TUNE.reset();
   TUNE.load(sanitizeAll(read(root).values));
   const D = doorSpec();
-  assert.equal(D.beamW, 6.2);
+  assert.equal(D.beamW, 3.8);
   assert.equal(D.postH, 2.6);
   assert.equal(D.steel, '#9aa4ae');
   assert.ok(D.beamW > D.openW, 'балка шире проёма');
