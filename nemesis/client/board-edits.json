@@ -400,6 +400,14 @@
         1
       ]
     },
+    "room:007:shell#630": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:007:shell#631": {
+      "hidden": true,
+      "deleted": true
+    },
     "room:008:shell#476": {
       "pos": [
         -2.6,
@@ -433,6 +441,14 @@
         1,
         1
       ]
+    },
+    "room:008:shell#630": {
+      "hidden": true,
+      "deleted": true
+    },
+    "room:008:shell#631": {
+      "hidden": true,
+      "deleted": true
     },
     "room:010:shell#453": {
       "hidden": true,
