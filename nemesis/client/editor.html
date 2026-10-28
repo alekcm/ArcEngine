@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Nemesis — редактор доски</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="editor.css">
+    <script src="/libs/babylon.js"></script>
+</head>
+<body>
+    <canvas id="scene"></canvas>
+
+    <aside id="panel">
+        <header>
+            <h1>Редактор доски</h1>
+            <p class="hint">Корабль целиком: все комнаты и все двери. Крути ползунки — доска перестраивается
+                на глазах. «Сохранить» пишет <code>nemesis/client/tuning.json</code>, и игра берёт эти числа
+                при следующем запуске. Пока держишь <b>Alt</b> — видно неоновые номера.</p>
+        </header>
+
+        <div class="tools">
+            <button id="fit">⤢ Весь корабль</button>
+            <button id="door">🚪 К двери</button>
+        </div>
+
+        <div id="groups"></div>
+
+        <div class="tools sticky">
+            <button id="save" class="primary">💾 Сохранить</button>
+            <button id="reset">↺ Как в коде</button>
+        </div>
+        <p id="status" class="status"></p>
+        <p class="foot">Файл правок локальный и в git не едет. «Как в коде» возвращает значения из
+            <code>tuning.js</code> (и на диске — после «Сохранить»).</p>
+    </aside>
+
+    <script type="module" src="editor.js"></script>
+</body>
+</html>

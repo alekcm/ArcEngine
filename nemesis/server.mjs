@@ -20,8 +20,10 @@ import { createGame } from './shared/engine/setup.mjs';
 import { answer } from './shared/engine/core.mjs';
 import { viewFor } from './shared/view.mjs';
 import { CHARACTERS } from './shared/data/cards.mjs';
+import { sanitizeAll } from './client/tuning.js';
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
+const TUNING_FILE = path.join(HERE, 'client', 'tuning.json');   // written by client/editor.html
 const REPO = path.resolve(HERE, '..');
 const argPort = process.argv.find(a => /^--port=\d+$/.test(a));
 const PORT_BASE = argPort ? Number(argPort.split('=')[1]) : 8090;
@@ -360,7 +362,57 @@ function lanAddresses() {
 // Start
 // ---------------------------------------------------------------------------------------------
 let PORT = PORT_BASE;
-const server = http.createServer(serveStatic);
+const server = http.createServer((req, res) => { if (!tuningApi(req, res)) serveStatic(req, res); });
+
+// ---------------------------------------------------------------------------------------------
+// Board tuning API (client/editor.html -> client/tuning.json). The editor is the only writer and
+// the file only holds the values that differ from client/tuning.js, so this endpoint is small:
+//   GET  /api/tuning  -> { values: {...} }        ({} when nothing was saved yet)
+//   POST /api/tuning  -> { ok, saved }            body: { values: { 'door.beamW': 5.6, ... } }
+// Everything is filtered through the tuning schema: unknown keys and out-of-range numbers are
+// dropped, so a hand-edited file or a stray request cannot break the board.
+// ---------------------------------------------------------------------------------------------
+function tuningApi(req, res) {
+    let p;
+    try { p = new URL(req.url, 'http://x').pathname; } catch { return false; }
+    if (p !== '/api/tuning') return false;
+    const json = (code, body) => {
+        const text = JSON.stringify(body);
+        res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(text), 'Cache-Control': 'no-store' });
+        res.end(text);
+    };
+    if (req.method === 'GET') {
+        fs.readFile(TUNING_FILE, 'utf8', (err, text) => {
+            if (err) return json(200, { values: {} });
+            let values = {};
+            try { values = sanitizeAll((JSON.parse(text) || {}).values || {}); } catch { values = {}; }
+            json(200, { values });
+        });
+        return true;
+    }
+    if (req.method === 'POST') {
+        let body = '';
+        req.on('data', (c) => {
+            body += c;
+            if (body.length > 64 * 1024) { json(413, { ok: false, error: 'слишком большой запрос' }); req.destroy(); }
+        });
+        req.on('end', () => {
+            if (res.writableEnded) return;
+            let values = {};
+            try { values = sanitizeAll((JSON.parse(body) || {}).values || {}); } catch { return json(400, { ok: false, error: 'не разобрал JSON' }); }
+            const text = JSON.stringify({ values }, null, 2) + '\n';
+            fs.mkdir(path.dirname(TUNING_FILE), { recursive: true }, () => {
+                fs.writeFile(TUNING_FILE, text, 'utf8', (err) => {
+                    if (err) return json(500, { ok: false, error: err.message });
+                    json(200, { ok: true, saved: Object.keys(values).length });
+                });
+            });
+        });
+        return true;
+    }
+    json(405, { ok: false, error: 'только GET и POST' });
+    return true;
+}
 server.on('upgrade', (req, sock) => {
     const ws = upgrade(req, sock);
     if (!ws) return;
@@ -377,6 +429,7 @@ function listen(port, tries) {
     server.listen(port, '0.0.0.0', () => {
         PORT = port;
         console.log('\n  Nemesis server: http://localhost:' + port);
+        console.log('  Board editor:   http://localhost:' + port + '/client/editor.html');
         for (const a of lanAddresses()) console.log('  LAN:            http://' + a + ':' + port);
         console.log('');
     });

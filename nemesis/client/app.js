@@ -2,6 +2,7 @@
 // WebSocket and renders the 3D board through scene3d.js.
 
 import { Scene3D, Preview3D } from './scene3d.js';
+import { TUNE } from './tuning.js';
 import { DEFAULTS } from './characters.js';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
@@ -13,6 +14,13 @@ import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, C
 
 const $ = id => document.getElementById(id);
 const PHASES = { setup: 'Подготовка', draft: 'Выбор персонажей', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
+
+// Board tuning: the numbers a designer moved in client/editor.html (editor.bat nemesis). The file
+// is optional and local — without it the table in tuning.js is used, exactly as designed.
+try {
+    const r = await fetch('/api/tuning', { cache: 'no-store' });
+    if (r.ok) TUNE.load((await r.json()).values || {});
+} catch { /* no editor server next to this page: run on the defaults */ }
 
 // ---------------------------------------------------------------------------------------------
 // Network

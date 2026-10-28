@@ -9,6 +9,7 @@
 // only the half next to an explored room is shown, LEDs turn yellow when the corridor has noise.
 
 import { buildCharacter, buildIntruder, flatMat } from './characters.js';
+import { TUNE, doorSpec } from './tuning.js';
 import * as Snd from './sound.js';
 
 const B = () => window.BABYLON;
@@ -135,7 +136,8 @@ export class Scene3D {
         this.roomNodes = {}; this.corridorNodes = {}; this.hull = [];
         const b = ship.bounds; this.cx = (b.minX + b.maxX) / 2; this.cy = (b.minY + b.maxY) / 2;
         this.camera.target.set(0, 0, 0);
-        this.camera.radius = Math.max(70, (b.maxX - b.minX) * SCALE * 0.9);
+        // Size the camera once: a rebuild (the tuning editor moves a slider) must not yank the view.
+        if (!this.camSized) { this.camera.radius = Math.max(70, (b.maxX - b.minX) * SCALE * 0.9); this.camSized = true; }
         this.shipRooms = ship.rooms;
         for (const r of Object.values(ship.rooms)) this.buildRoomBase(r);
         for (const c of Object.values(ship.corridors)) this.buildCorridor(ship, c);
@@ -1404,28 +1406,30 @@ export class Scene3D {
         const lA = this.mergeStatic(bake(ledA), root), lB = this.mergeStatic(bake(ledB), root);
         for (const m of lA) m.material = matA; for (const m of lB) m.material = matB;
         // --- the door: a wide bulkhead portal standing on its own slab, with the number on the beam ---
+        // Every size below comes from client/tuning.js: the door is the one piece of the board the
+        // designer keeps adjusting, and it is now adjustable without touching this file.
+        const D = doorSpec();
         const d = doorPlaced; const dz = d.z;
         const door = new (B().TransformNode)('door', S); door.parent = d.seg; door.position.set(0, 0, dz);
         // The frame is wider than the corridor, so it stands on a bulkhead slab instead of hanging in
         // the air: the stepped deck under it reads as a reinforced section of the corridor at the door.
-        const slab = B().MeshBuilder.CreateBox('dslab', { width: 5.4, height: 0.36, depth: 2.2 }, S);
+        const slab = B().MeshBuilder.CreateBox('dslab', { width: D.slabW, height: 0.36, depth: D.slabD }, S);
         slab.parent = door; slab.position.y = -0.15; slab.material = M('#26313d'); slab.isPickable = false;
-        const step = B().MeshBuilder.CreateBox('dstep', { width: 5.8, height: 0.14, depth: 2.6 }, S);
+        const step = B().MeshBuilder.CreateBox('dstep', { width: D.stepW, height: 0.14, depth: D.stepD }, S);
         step.parent = door; step.position.y = -0.36; step.material = M('#1b242e'); step.isPickable = false;
-        // a real open frame (two posts + a wide header + sill) so you can see through an open door
-        for (const s of [-1, 1]) { const post = B().MeshBuilder.CreateBox('post', { width: 1.2, height: 2.35, depth: 1.0 }, S); post.parent = door; post.position.set(s * 1.7, 1.175, 0); post.material = M('#8c96a0'); post.isPickable = false; }
-        // The header is the sign: it is wide enough to hold the number and deep enough to read it from
-        // the table's camera without zooming onto the door.
-        const lintel = B().MeshBuilder.CreateBox('lintel', { width: 5.2, height: 0.5, depth: 2.1 }, S); lintel.parent = door; lintel.position.y = 2.6; lintel.material = M('#8c96a0'); lintel.isPickable = false;
-        const sill = B().MeshBuilder.CreateBox('sill', { width: 2.24, height: 0.07, depth: 0.5 }, S); sill.parent = door; sill.position.y = 0.02; sill.material = M('#5a6673'); sill.isPickable = false;
+        // a real open frame (two posts + a wide beam + sill) so you can see through an open door
+        for (const s of [-1, 1]) { const post = B().MeshBuilder.CreateBox('post', { width: D.postW, height: D.postH, depth: D.postD }, S); post.parent = door; post.position.set(s * D.postX, D.postH / 2, 0); post.material = M(D.steel); post.isPickable = false; }
+        // The beam is the sign: it is the frame's own steel, just wide — the corridor number is
+        // stenciled flat on its top face, exactly the way the "?" is printed on an unexplored floor.
+        const lintel = B().MeshBuilder.CreateBox('lintel', { width: D.beamW, height: D.beamH, depth: D.beamD }, S); lintel.parent = door; lintel.position.y = D.beamY; lintel.material = M(D.steel); lintel.isPickable = false;
+        const sill = B().MeshBuilder.CreateBox('sill', { width: D.openW + 0.04, height: 0.07, depth: 0.5 }, S); sill.parent = door; sill.position.y = 0.02; sill.material = M('#5a6673'); sill.isPickable = false;
         // light trim around the door opening (shares the arch-band material: dim steel, orange on noise)
-        for (const f of [-1, 1]) { for (const s of [-1, 1]) { const t = B().MeshBuilder.CreateBox('dt', { width: 0.1, height: 1.72, depth: 0.04 }, S); t.parent = door; t.position.set(s * 1.1, 0.86, f * 0.5); t.material = matA; t.isPickable = false; } const t = B().MeshBuilder.CreateBox('dt', { width: 2.3, height: 0.1, depth: 0.04 }, S); t.parent = door; t.position.set(0, 1.72, f * 0.5); t.material = matA; t.isPickable = false; }
+        for (const f of [-1, 1]) { for (const s of [-1, 1]) { const t = B().MeshBuilder.CreateBox('dt', { width: 0.1, height: D.panelH, depth: 0.04 }, S); t.parent = door; t.position.set(s * D.openW / 2, D.panelH / 2, f * D.postD / 2); t.material = matA; t.isPickable = false; } const t = B().MeshBuilder.CreateBox('dt', { width: D.openW + 0.1, height: 0.1, depth: 0.04 }, S); t.parent = door; t.position.set(0, D.panelH, f * D.postD / 2); t.material = matA; t.isPickable = false; }
         const panels = [];
-        const PANEL_CLOSED = 0.55, PANEL_OPEN = 1.7;
         for (const s of [-1, 1]) {
-            const p = B().MeshBuilder.CreateBox('panel', { width: 1.1, height: 1.72, depth: 0.16 }, S);
-            p.parent = door; p.position.set(s * PANEL_CLOSED, 0.86, 0); p.material = M('#b8c4d0'); p.isPickable = false;
-            const stripe = B().MeshBuilder.CreateBox('ps', { width: 0.1, height: 1.4, depth: 0.02 }, S);
+            const p = B().MeshBuilder.CreateBox('panel', { width: D.panelW, height: D.panelH, depth: 0.16 }, S);
+            p.parent = door; p.position.set(s * D.panelClosed, D.panelH / 2, 0); p.material = M('#b8c4d0'); p.isPickable = false;
+            const stripe = B().MeshBuilder.CreateBox('ps', { width: 0.1, height: D.panelH - 0.32, depth: 0.02 }, S);
             stripe.parent = p; stripe.position.set(-s * 0.3, 0, 0.09); stripe.material = M('#e05252', 0.6); stripe.isPickable = false;
             panels.push(p);
         }
@@ -1434,16 +1438,14 @@ export class Scene3D {
         const noiseLabel = this.makeLabel('nl_' + c.id, '🔊', '', door, 0, 1.4, -2.2, 1.4);
         noiseLabel.setEnabled(false);
         // --- the corridor number, stenciled flat on the beam -------------------------------------
-        // Not a board and not a billboard: the number is painted on the top face of the header the way
-        // the "?" is printed on the floor of an unexplored room — plain paint, no glow, always in the
-        // same place. Alt repaints the same stencil as neon (setAlt -> setDecal).
+        // Not a board and not a billboard: paint on the beam's own steel, the way the "?" is printed
+        // on the floor of an unexplored room — no glow, always in the same place, no screen on top.
+        // Alt repaints the same stencil as neon (setAlt -> setDecal).
         const exitA = ship.rooms[c.a].exits.find(e => e.corridor === c.id) || {};
         const nums = (exitA.nums && exitA.nums.length ? exitA.nums : [exitA.num]).filter(n => n);
-        const plate = B().MeshBuilder.CreateBox('dplate', { width: 4.9, height: 0.06, depth: 1.9 }, S);
-        plate.parent = door; plate.position.y = 2.88; plate.material = M('#33404e'); plate.isPickable = false;
         let decal = null;
         if (nums.length) {
-            decal = this.makeDecal('cn_' + c.id, door, 0, 2.93, 0, 3.7, 1.85);
+            decal = this.makeDecal('cn_' + c.id, door, 0, D.decalY, 0, D.decalW, D.decalH);
             // Lying flat, the stencil reads along the corridor. Both ways round are equally true, so
             // take the one that points up-screen for the table's default camera; the paint itself is
             // fixed on the beam (the "?" tokens behave the same way).
@@ -1456,9 +1458,9 @@ export class Scene3D {
         const lamps = [];
         for (const s of [-1, 1]) {
             const body = B().MeshBuilder.CreateBox('lem', { width: 0.22, height: 0.3, depth: 0.34 }, S);
-            body.parent = door; body.position.set(s * 1.12, 2.08, 0); body.material = M('#2a3038'); body.isPickable = false;
+            body.parent = door; body.position.set(s * (D.openW / 2 + 0.02), D.lampY, 0); body.material = M('#2a3038'); body.isPickable = false;
             const lens = B().MeshBuilder.CreateBox('lel', { width: 0.1, height: 0.2, depth: 0.24 }, S);
-            lens.parent = door; lens.position.set(s * 0.98, 2.08, 0); lens.material = M('#ff3a3a', 1.6); lens.isPickable = false; lens.setEnabled(false);
+            lens.parent = door; lens.position.set(s * (D.openW / 2 - 0.12), D.lampY, 0); lens.material = M(D.lamp, 1.6); lens.isPickable = false; lens.setEnabled(false);
             lamps.push(lens);
         }
         const debris = [];
@@ -1467,8 +1469,8 @@ export class Scene3D {
             db.parent = door; db.position.set((Math.random() - 0.5) * 1.6, 0.08, (Math.random() - 0.5) * 1.4); db.rotation.set(0, Math.random() * 3, (Math.random() - 0.5) * 0.4); db.material = M('#6b7a88'); db.isPickable = false; db.setEnabled(false);
             debris.push(db);
         }
-        this.corridorNodes[c.id] = { root, panels, noise, noiseLabel, decal, nums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
-            panelClosed: PANEL_CLOSED, panelOpen: PANEL_OPEN, ry: d.ry, a: c.a, b: c.b, state: null };
+        this.corridorNodes[c.id] = { root, door, panels, noise, noiseLabel, decal, nums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
+            panelClosed: D.panelClosed, panelOpen: D.panelOpen, ry: d.ry, a: c.a, b: c.b, state: null };
     }
 
     /** A flat stencil decal: same paint as `makeLabel`, but it stays where it is painted instead of
@@ -1498,11 +1500,16 @@ export class Scene3D {
         ctx.clearRect(0, 0, W, H);
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const font = px => 'bold ' + px + 'px Segoe UI, Arial';
-        let size = 248;
+        let size = TUNE.get('door.numFont');
         ctx.font = font(size);
         while (size > 60 && ctx.measureText(text).width > W - 24) { size -= 6; ctx.font = font(size); }
-        ctx.fillStyle = neon ? '#ddfbff' : '#56687c';
-        if (neon) { ctx.shadowColor = '#3fd0ff'; ctx.shadowBlur = 30; }
+        // A dark edge first: the paint sits on the beam's own light steel, not on a dark panel.
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(3, size * 0.07);
+        ctx.strokeStyle = TUNE.color(neon ? 'door.neonGlow' : 'door.outline');
+        if (neon) { ctx.shadowColor = TUNE.color('door.neonGlow'); ctx.shadowBlur = 30; }
+        ctx.strokeText(text, W / 2, H / 2 + 6);
+        ctx.fillStyle = TUNE.color(neon ? 'door.neon' : 'door.paint');
         ctx.fillText(text, W / 2, H / 2 + 6);
         if (neon) { ctx.shadowBlur = 8; ctx.fillStyle = '#ffffff'; ctx.fillText(text, W / 2, H / 2 + 6); }
         dt.update();
@@ -1562,6 +1569,14 @@ export class Scene3D {
         this.updateIntruders(view, intruderNames);
         this.updateCharacters(view);
         if (this.alt) this.setAlt(true);
+    }
+
+    /** Rebuild the whole board in place — the tuning editor (client/editor.html) moves sizes live. */
+    rebuild(view, roomTiles, intruderNames, selectableRooms) {
+        this.shipKey = null;
+        this.camSized = true;
+        this.update(view || this.view, roomTiles || this.roomTiles, intruderNames || [], selectableRooms || []);
+        return this;
     }
 
     tileFor(view, r) {

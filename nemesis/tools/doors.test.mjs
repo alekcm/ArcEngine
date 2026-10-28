@@ -36,7 +36,7 @@ const mesh = (name, opts) => {
 };
 /** A 2D context stub that records what the stencil actually paints. */
 function makeCtx(rec) {
-    const state = { fillStyle: '#000', strokeStyle: '#000', shadowBlur: 0, font: '', textAlign: '', textBaseline: '', lineWidth: 1 };
+    const state = { fillStyle: '#000', strokeStyle: '#000', shadowBlur: 0, font: '', textAlign: '', textBaseline: '', lineWidth: 1, lineJoin: 'miter' };
     const ctx = {
         clearRect() { rec.length = 0; },
         beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, quadraticCurveTo() {},
@@ -44,7 +44,11 @@ function makeCtx(rec) {
         measureText(t) { return { width: String(t).length * 34 }; },
         fillText(t, x, y) {
             const px = /(\d+)px/.exec(state.font);
-            rec.push({ text: String(t), fill: state.fillStyle, blur: state.shadowBlur, size: px ? Number(px[1]) : 0, x, y });
+            rec.push({ kind: 'fill', text: String(t), fill: state.fillStyle, stroke: null, blur: state.shadowBlur, size: px ? Number(px[1]) : 0, x, y });
+        },
+        strokeText(t, x, y) {
+            const px = /(\d+)px/.exec(state.font);
+            rec.push({ kind: 'stroke', text: String(t), fill: null, stroke: state.strokeStyle, width: state.lineWidth, blur: state.shadowBlur, size: px ? Number(px[1]) : 0, x, y });
         },
     };
     for (const k of Object.keys(state)) {
@@ -172,22 +176,24 @@ test('DR-02 the number is a flat stencil on the beam, not a board hanging in the
         const facing = (Math.sin(n.ry) * up.x + Math.cos(n.ry) * up.z) * flip;
         assert.ok(facing > -1e-9, c.id + ': the number is painted the right way up (' + facing.toFixed(2) + ')');
         assert.equal(decal.position.z, 0, c.id + ': centred along the beam');
-        // it sits on the beam's sign plate, not above it
-        const plate = meshes.find(m => m.name === 'dplate');
+        // it lies on the beam's own top face: no dark plate, no screen on the roof, the beam keeps
+        // the frame's steel colour and only gets wider
+        assert.equal(meshes.filter(m => m.name === 'dplate').length, 0, c.id + ': no plate/screen on the beam');
         const lintel = meshes.find(m => m.name === 'lintel');
-        const plateTop = plate.position.y + plate.opts.height / 2;
-        assert.ok(decal.position.y >= plateTop && decal.position.y <= plateTop + 0.03,
-            c.id + ': the stencil lies on the plate (' + decal.position.y.toFixed(3) + ' vs ' + plateTop.toFixed(3) + ')');
-        assert.ok(plateTop >= lintel.position.y + lintel.opts.height / 2 - 0.01, c.id + ': the plate caps the beam');
-        // and it fits: the number cannot overhang the plate it is painted on
+        const beamTop = lintel.position.y + lintel.opts.height / 2;
+        assert.ok(decal.position.y >= beamTop && decal.position.y <= beamTop + 0.03,
+            c.id + ': the stencil lies on the beam (' + decal.position.y.toFixed(3) + ' vs ' + beamTop.toFixed(3) + ')');
+        assert.equal(lintel.material.hex, meshes.find(m => m.name === 'post').material.hex,
+            c.id + ': the beam is the same steel as the frame');
+        // and it fits: the number cannot overhang the beam it is painted on
         const w = decal.opts.width, h = decal.opts.height;
-        assert.ok(w <= plate.opts.width && h <= plate.opts.depth,
-            c.id + ': the stencil fits on the plate (' + w + '×' + h + ' on ' + plate.opts.width + '×' + plate.opts.depth + ')');
+        assert.ok(w <= lintel.opts.width - 0.39 && h <= lintel.opts.depth - 0.2,
+            c.id + ': the stencil fits on the beam (' + w + '×' + h + ' on ' + lintel.opts.width + '×' + lintel.opts.depth + ')');
         // nothing hangs in the air above the doorway any more: no old board and its four bars
         assert.equal(allNodes.filter(a => /^sign_/.test(a.name)).length, 0, c.id + ': no separate board node');
         assert.equal(meshes.filter(m => m.name === 'se').length, 0, c.id + ': no floating frame around it');
-        // the plate is well above the opening, so the number never blocks the walkway
-        assert.ok(plate.position.y - plate.opts.height / 2 > 2.35, c.id + ': the beam stays above the doorway');
+        // and the beam is well above the opening, so the number never blocks the walkway
+        assert.ok(lintel.position.y - lintel.opts.height / 2 >= 2.3, c.id + ': the beam stays above the doorway');
     }
 });
 
@@ -197,23 +203,27 @@ test('DR-03 the number is printed in the same paint as the "?", and Alt turns it
     const exitA = ship.rooms[c.a].exits.find(e => e.corridor === c.id);
     const nums = (exitA.nums && exitA.nums.length ? exitA.nums : [exitA.num]).filter(x => x);
     const want = nums.join(' / ');
-    const printed = n.decal.metadata.dt.rec.filter(r => r.text === want);
+    const painted = n.decal.metadata.dt.rec.filter(r => r.text === want);
+    const printed = painted.filter(r => r.kind === 'fill');
     assert.equal(printed.length, 1, 'the number is painted on the beam: "' + want + '"');
     assert.ok(printed[0].size >= 150, 'the digits fill the beam (' + printed[0].size + 'px)');
     assert.equal(printed[0].blur, 0, 'the printed number does not glow');
     assert.equal(printed[0].fill, '#56687c', 'it is the same slate paint as the "?" on a room floor');
     assert.equal(n.decal.isEnabled(), true, 'the number is on the door without Alt');
-    // the beam is a physical sign, so the plate is dark and the stencil is the only thing on it
-    assert.equal(meshes.find(m => m.name === 'dplate').material.hex, '#33404e', 'a dark plate under the paint');
+    // on the beam's own light steel the paint needs an edge, or it disappears in the lighting
+    const edge = painted.filter(r => r.kind === 'stroke');
+    assert.equal(edge.length, 1, 'the paint is outlined');
+    assert.equal(edge[0].stroke, '#1b2632', 'a dark edge under the paint');
+    assert.ok(edge[0].width >= 3, 'the edge is thick enough to read (' + edge[0].width.toFixed(1) + ')');
 
     Scene3D.prototype.setAlt.call(host, true);
-    const neon = n.decal.metadata.dt.rec.filter(r => r.text === want);
+    const neon = n.decal.metadata.dt.rec.filter(r => r.text === want && r.kind === 'fill');
     assert.ok(neon.length >= 1, 'the number is repainted for Alt');
     assert.ok(neon.some(r => r.blur >= 20), 'the Alt number glows');
     assert.ok(neon.some(r => /^#/.test(r.fill) && r.fill !== printed[0].fill), 'the Alt number changes colour');
 
     Scene3D.prototype.setAlt.call(host, false);
-    const back = n.decal.metadata.dt.rec.filter(r => r.text === want);
+    const back = n.decal.metadata.dt.rec.filter(r => r.text === want && r.kind === 'fill');
     assert.ok(back.length >= 1 && back.every(r => r.blur < 20), 'releasing Alt returns the printed look');
     assert.equal(back[0].fill, '#56687c', 'and the same paint');
 });

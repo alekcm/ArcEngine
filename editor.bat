@@ -7,9 +7,17 @@ rem
 rem    editor.bat              -> port 8090 (or the next free one), opens browser
 rem    editor.bat 9100         -> custom port
 rem    editor.bat 9100 --no-open  -> do not open a browser
+rem    editor.bat nemesis      -> the Nemesis board editor (doors, beam, numbers,
+rem                               colours, lamps): nemesis\nemesis-editor.bat
+rem    editor.bat nemesis 9100 -> the same on a custom port
 rem ==========================================================================
 setlocal
 cd /d "%~dp0"
+
+if /i "%~1"=="nemesis" (
+    call "%~dp0nemesis\nemesis-editor.bat" %2
+    exit /b %ERRORLEVEL%
+)
 
 where node >nul 2>nul
 if errorlevel 1 (
