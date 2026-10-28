@@ -102,6 +102,12 @@ OPS['attack'] = (state, step) => {
         if (d.preventAttack === 'allAmmo' && i.ammo > 0 && !i.broken) opts.push({ id: 'item:' + i.uid, label: '«' + d.name + '»: сбросить все патроны (' + i.ammo + ') — 1 ранение чужому' });
         if (d.preventAttack === 'marker' && !i.charge && !i.broken) opts.push({ id: 'item:' + i.uid, label: '«' + d.name + '»: положить жетон' });
     }
+    // Heavy Armor (printed): an Adult Intruder's attack can be prevented for 1 Health.
+    if (p.armor && ITEMS[p.armor.item].adultGuard && it.type === 'adult')
+        opts.push({ id: 'armorGuard', label: '«' + ITEMS[p.armor.item].name + '»: предотвратить атаку и потерять 1 здоровье' });
+    // Bloody Camouflage (printed): the attack hits another Character in the Room instead.
+    if (p.armor && ITEMS[p.armor.item].redirectAttack && othersHere.length && !step.redirected)
+        opts.push({ id: 'armorRedirect', label: '«' + ITEMS[p.armor.item].name + '»: атака переходит на другого персонажа' });
     if (opts.length && !step.noReaction) {
         opts.push({ id: 'no', label: 'Принять атаку' });
         ask(state, { kind: 'choice', player: p.id, title: intruderLabel(state, it) + ' атакует вас. Предотвратить?', options: opts },
@@ -157,6 +163,18 @@ OPS['attack.reaction'] = (state, step) => {
             ask(state, { kind: 'choice', player: p.id, title: 'Стрейф по кругу: выстрелить в атакующего?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
                 { op: 'attack.strafeShoot', player: p.id, intruder: step.intruder });
         }
+        return;
+    }
+    if (step.answer === 'armorGuard') {
+        loseHealth(state, p, 1, 'тяжёлая броня');
+        log(state, pname(p) + ': тяжёлая броня предотвратила атаку.', 'good');
+        return;
+    }
+    if (step.answer === 'armorRedirect') {
+        const others = playersInRoom(state, it ? it.room : p.room).filter(o => o.id !== p.id && o.status === 'active');
+        log(state, pname(p) + ': кровавый камуфляж — чужой атакует другого персонажа.', 'minor');
+        if (others.length === 1) { next(state, { ...step, op: 'attack', player: others[0].id, redirected: true, answer: undefined }); return; }
+        ask(state, { kind: 'choice', player: p.id, title: 'Кого атакует чужой вместо вас?', options: others.map(o => ({ id: String(o.id), label: pname(o) })) }, { ...step, op: 'attack.duckPick' });
         return;
     }
     if (String(step.answer).startsWith('item:')) {
@@ -464,6 +482,13 @@ OPS['shoot.fire'] = (state, step) => {
     if (wd.malfOn && wd.malfOn.includes(rolled)) { placeMalfunction(state, p.room, 'звуковая пушка'); log(state, 'Звуковая пушка: поломка в вашей комнате.', 'bad'); }
     if (wd.plasma && [2, 6].includes(rolled)) { const m = w.charge || 0; if (m) loseHealth(state, p, 2 * m, 'перегрев плазмы'); w.charge = m + 1; log(state, 'Плазменная пушка перегревается: жетонов ' + w.charge + '.', 'bad'); }
     if (wd.spread) for (const o of intrudersIn(state, p.room)) if (o.uid !== it.uid && state.intruders[o.uid]) applyHitsNoRoll(state, o, 1);
+    // Pilot's Shotgun (printed): "every other Character in the Room suffers 1 Hit" — Characters, not Intruders.
+    if (wd.spreadChars) for (const o of playersInRoom(state, p.room)) if (o.id !== p.id && o.status === 'active') gainWound(state, o, 1);
+    // Android Arm Gun (printed): on a 2 or a Critical, discard 1 marker from your UPS.
+    if (wd.upsOn && wd.upsOn.includes(rolled)) {
+        const ups = p.items.find(i => i.item === 'ups');
+        if (ups) { ups.charge = Math.max(0, (ups.charge ?? ITEMS.ups.markers) - 1); log(state, 'Ручная пушка: с ИБП сброшен 1 жетон (осталось ' + ups.charge + ').', 'minor'); }
+    }
     if (step.repeat && state.intruders[it.uid] === undefined && w.ammo > 0 && intrudersIn(state, p.room).length) { next(state, { ...step, op: 'shoot.target', answer: undefined }); return; }
     if (step.repeat && state.intruders[it.uid] !== undefined && w.ammo > 0) { next(state, { ...step, op: 'shoot.fire' }); return; }
     if (wd.critDiscard && state.lastRoll && state.lastRoll.value === 'crit' && p.hand.length) { next(state, { op: 'shoot.critDiscard', player: p.id, then }); return; }

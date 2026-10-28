@@ -751,11 +751,50 @@ OPS['item2.use'] = (state, step) => {
             ask(state, { kind: 'choice', player: p.id, title: ITEMS[inst.item].name + ': кого лечить (+1)?', options: opts }, { op: 'item2.heal1', player: p.id, then: back }); return;
         }
         case 'sampleJar': { const c = p.hand.find(isContam); if (c) { p.hand = p.hand.filter(x => x !== c); log(state, pname(p) + ' убирает заражение в контейнер.', 'good'); } next(state, back); return; }
+        case 'torchDoor': {
+            // Printed: open or close 1 Door; a destroyed Door can be closed this way.
+            const cs = corridorsOf(state, p.room);
+            if (!cs.length) { log(state, 'В комнате нет дверей.', 'minor'); next(state, back); return; }
+            ask(state, { kind: 'choice', player: p.id, title: ITEMS[inst.item].name + ': какую дверь переключить?',
+                options: cs.map(cid => ({ id: cid, label: 'Дверь ' + cid + ' — ' + (state.ship.corridors[cid].door === 'closed' ? 'закрыта' : state.ship.corridors[cid].door === 'destroyed' ? 'разрушена' : 'открыта') })) },
+                { op: 'item.torchDoor', player: p.id, then: back });
+            return;
+        }
+        case 'surgeryKit': {
+            // Printed: a Character in your Room discards all Contamination from hand and deck, clears the
+            // discard pile of Contamination without Scanning, loses a Larva and must Pass.
+            const opts = [p, ...others(state, p, p.room)].map(o => ({ id: String(o.id), label: pname(o) + ' (' + o.health + ' HP)' }));
+            ask(state, { kind: 'choice', player: p.id, title: ITEMS[inst.item].name + ': кого оперировать?', options: opts },
+                { op: 'item.surgeryKit', player: p.id, uid: inst.uid, then: back });
+            return;
+        }
         case 'navTablet': {
             p.items = p.items.filter(i => i !== inst);
             ask(state, { kind: 'choice', player: p.id, title: 'Какой двигатель проверить?', options: [1, 2, 3].map(n => ({ id: String(n), label: 'Двигатель №' + n })) }, { op: 'computer.engine', player: p.id, then: back }); return;
         }
     }
     next(state, back);
+};
+OPS['item.torchDoor'] = (state, step) => {
+    const c = state.ship.corridors[step.answer];
+    if (c) {
+        c.door = c.door === 'closed' || c.door === 'destroyed' ? 'open' : 'closed';
+        log(state, 'Плазменный резак: дверь ' + c.id + ' ' + (c.door === 'closed' ? 'закрыта' : 'открыта') + '.', 'good');
+    }
+    next(state, step.then);
+};
+OPS['item.surgeryKit'] = (state, step) => {
+    const p = player(state, step.player);
+    const inst = p.items.find(i => i.uid === step.uid);
+    const o = player(state, Number(step.answer)) || p;
+    let n = 0;
+    for (const c of [...o.hand]) if (isContam(c)) { discardCard(state, o, c); n++; }
+    o.deck = o.deck.filter(c => !isContam(c));
+    o.discard = o.discard.filter(c => !isContam(c));
+    if (o.larva) { o.larva = false; log(state, pname(o) + ': личинка удалена.', 'good'); }
+    if (inst) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard[ITEMS[inst.item].deck] = state.itemDiscard[ITEMS[inst.item].deck] || []).push(inst.item); }
+    o.passed = true;
+    log(state, pname(o) + ': операция — рука и колода очищены от заражения (' + n + ' карт), обязательный пас.', 'good');
+    next(state, step.then);
 };
 OPS['item2.heal1'] = (state, step) => { restoreHealth(state, player(state, Number(step.answer)), 1); next(state, step.then); };

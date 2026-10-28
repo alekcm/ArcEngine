@@ -369,6 +369,14 @@ export function gainWound(state, p, n = 1) {
         if (p.wounds.length >= 3) { killPlayer(state, p, 'четвёртая тяжёлая травма'); return; }
         if (!state.woundDeck.length) state.woundDeck = shuffle(state, state.woundDiscard.splice(0));
         const w = state.woundDeck.shift();
+        // The Wheelchair (printed): a Leg or Knee Serious Wound is discarded, but its Health cost stays.
+        if (p.armor && ITEMS[p.armor.item].legWoundFree && (w === 'leg' || w === 'knee')) {
+            state.woundDiscard.push(w);
+            log(state, pname(p) + ': инвалидное кресло — травма «' + WOUNDS[w].name + '» сброшена, но здоровье за неё теряется.', 'minor');
+            loseHealth(state, p, 1, 'травма (сброшена креслом)');
+            if (p.status !== 'active') return;
+            continue;
+        }
         const dup = p.wounds.includes(w);   // 13.2: identical effects do not stack, but the card still covers a section
         p.wounds.push(w);
         log(state, pname(p) + ' получает тяжёлую травму: ' + WOUNDS[w].name + (dup ? ' (повторно — эффект не суммируется)' : '') + '.', 'bad');

@@ -431,7 +431,7 @@ test('START-07 / one weapon each (the CEO none), the rest of the kit in item slo
         ceo: { start: ['robot'], quest: ['shipCodes'] },
         labrat: { start: ['labRatGun'], quest: ['bloodyCamouflage'] },
         sentry: { start: ['sentrySmg'], quest: ['battleSuit'] },
-        android: { start: ['armGun'], quest: ['ups'] },
+        android: { start: ['armGun', 'synthetic'], quest: ['ups'] },
         convict: { start: ['cuffs'], quest: ['pipe'] },
         psych: { start: ['handgun'], quest: ['oculobe'] },
         bounty: { start: ['bountyRifle', 'laika'], quest: ['canineUpgrades'] },
@@ -786,4 +786,103 @@ test('START-06 / Smart Gun: the reroll is the player\'s decision and the second 
     assert.match(s.prompt.title, /Перебросить/);
     choose(s, 'keep');
     assert.equal(it.hits, 1, 'keeping the first roll resolves the shot with it');
+});
+
+// ---------------------------------------------------------------------------------------------
+// The Starter Item Deck / Quest Item Deck transcriptions. Every number below was read off the
+// card face (Nemesis/Колоды/*_StarterItemDeck_Front_*, *_QuestItemDeck_Front_*), so a mismatch
+// here means the game contradicts the printed card.
+// ---------------------------------------------------------------------------------------------
+test('START-08 / every starting weapon carries the printed MAX AMMO', () => {
+    const printed = {
+        soldierGun: 6, handgun: 3, scoutRifle: 4, sawedOff: 2, pilotShotgun: 2, smartGun: 3,
+        scientistPistol: 3, needleGun: 2, nailGun: 5, labRatGun: 3, sentrySmg: 5, armGun: 0,
+        bountyRifle: 5, sixShooter: 6, xenoGun: 3, survivorFavorite: 5,
+    };
+    for (const [key, max] of Object.entries(printed)) {
+        assert.equal(ITEMS[key].weapon.max, max, key + ' MAX AMMO');
+        assert.equal(ITEMS[key].kind, 'heavy', key + ' is a Heavy weapon');
+    }
+    // Arm Gun prints no ammo at all; it fires for free.
+    assert.equal(ITEMS.armGun.weapon.noAmmo, true);
+    assert.equal(ITEMS.armGun.noDrop, true, 'the Arm Gun cannot be traded or discarded');
+});
+test('START-09 / the printed Shoot effects that the engine models', () => {
+    assert.equal(ITEMS.soldierGun.weapon.firstShotBonus, true);
+    assert.equal(ITEMS.sawedOff.weapon.firstShotBonus, true);
+    assert.equal(ITEMS.soldierGun.weapon.max, ITEMS.sawedOff.weapon.max + 4, 'they share the effect, not the ammo');
+    assert.equal(ITEMS.smartGun.weapon.reroll, true, 'Smart Gun lets you reroll the first shot');
+    assert.equal(ITEMS.bountyRifle.weapon.plusOne, undefined, 'the Carbine prints no effect at all');
+    assert.equal(ITEMS.handgun.weapon.plusOne, true, 'Handgun: +1 to the Shoot result');
+    assert.equal(ITEMS.scoutRifle.weapon.drawOnKill, true);
+    assert.deepEqual(ITEMS.sentrySmg.weapon.boost, { ammo: 1, hits: 1 });
+    assert.equal(ITEMS.pilotShotgun.weapon.spreadChars, true, 'the Pilot’s Shotgun hits Characters, not Intruders');
+    assert.deepEqual(ITEMS.armGun.weapon.upsOn, [2, 'crit'], 'Arm Gun: discard 1 UPS marker on 2 or Critical');
+    assert.equal(ITEMS.sixShooter.weapon.firstShotBonus, undefined, 'the Old Six Shooter prints no first-shot bonus');
+});
+test('START-10 / the personal gear that has no printed card still sits in the right slot', () => {
+    assert.equal(ITEMS.wheelchair.kind, 'armor', 'the wheelchair takes the Armor slot');
+    assert.equal(ITEMS.wheelchair.legWoundFree, true);
+    assert.equal(ITEMS.probeArm.kind, 'armor', 'the Probe Arm takes the Armor slot');
+    assert.equal(ITEMS.probeArm.markers, 3);
+    for (const k of ['cuffs', 'robot', 'laika', 'probeArm', 'synthetic']) assert.equal(ITEMS[k].noDrop, true, k + ' cannot be dropped');
+    assert.equal(ITEMS.cuffs.markers, 6); assert.equal(ITEMS.robot.markers, 5);
+    assert.equal(ITEMS.synthetic.name, 'Синтетик');
+    assert.equal(CHARACTERS.android.startItems.some(si => si.item === 'synthetic'), true,
+        'the Android starts with the Synthetic passive');
+});
+test('START-11 / the Android’s UPS is the one quest card that starts open', () => {
+    const s = fresh(['android', 'soldier']);
+    const a = s.players[0];
+    assert.equal(ITEMS.ups.questOpen, true);
+    const ups = a.items.find(i => i.item === 'ups');
+    assert.ok(ups, 'the UPS is on the table from the first turn');
+    assert.equal(ups.charge, 3, 'with 3 markers');
+    assert.equal(ITEMS.ups.markersMax, 5, 'flipping it raises the cap to 5');
+    assert.equal(a.quests.filter(q => !q.open).length, 0, 'the Android has no closed quest cards');
+    assert.equal(a.items.some(i => i.item === 'synthetic'), true);
+});
+test('QUEST-05 / every Quest Item Deck card names its slot and its activation room', () => {
+    const deck = Object.keys(ITEMS).filter(k => ITEMS[k].quest);
+    assert.equal(deck.length, 18, 'the Quest Item Deck holds 18 cards');
+    for (const k of deck) {
+        const d = ITEMS[k];
+        assert.ok(d.questRoom, k + ' names the room it is opened in');
+        assert.ok(['weapon', 'armor', 'item', 'passive'].includes(d.slot), k + ' slot is ' + d.slot);
+        // the card is gear of that slot once it is open
+        if (d.slot === 'armor') assert.equal(d.kind, 'armor', k + ' is Armor');
+        if (d.slot === 'weapon') assert.ok(d.weapon || d.use === 'pipeMelee', k + ' is a weapon');
+    }
+    // and the room names match the printed ones
+    assert.equal(ITEMS.ups.questRoom, 'any');
+    assert.equal(ITEMS.plasmaTorch.questRoom, 'engine');
+    assert.equal(ITEMS.karcher.questRoom, 'fireControl');
+    assert.equal(ITEMS.pilotEvacKey.questRoom, 'cockpit');
+    assert.equal(ITEMS.oculobe.questRoom, 'emergency');
+    assert.equal(ITEMS.heavyArmor.questRoom, 'repository');
+    assert.equal(ITEMS.battleSuit.questRoom, 'evacB');
+    assert.equal(ITEMS.cheatCodes.questRoom, 'evacA');
+    assert.equal(ITEMS.shipCodes.questRoom, 'archives');
+    assert.equal(ITEMS.intercom.questRoom, 'comms');
+    assert.equal(ITEMS.canineUpgrades.questRoom, 'surgery');
+    assert.equal(ITEMS.portableDevice.questRoom, 'laboratory');
+    for (const k of ['surgeryKit', 'researchEquipment', 'bloodyCamouflage', 'motionScanner', 'survivorFavorite', 'pipe']) {
+        assert.equal(ITEMS[k].questRoom, 'any', k + ' opens in any room');
+    }
+});
+test('QUEST-06 / opening a card puts it in the slot it prints', () => {
+    const s = fresh(['soldier', 'scientist']);
+    const p = s.players[0];
+    p.quests = [{ uid: 'q1', item: 'heavyArmor', open: false }];
+    p.armor = null;
+    execute(s, { op: 'quest.open', player: p.id, uid: 'q1', ignore: true });
+    assert.equal(p.armor && p.armor.item, 'heavyArmor', 'Heavy Armor becomes the worn Armor');
+    // the second armor-slot card waits in the pack instead of replacing what is worn
+    const s2 = fresh(['soldier', 'scientist']);
+    const b = s2.players[1];
+    assert.equal(b.armor && b.armor.item, 'wheelchair', 'the Scientist already wears the chair');
+    b.quests = [{ uid: 'q2', item: 'battleSuit', open: false }];
+    execute(s2, { op: 'quest.open', player: b.id, uid: 'q2', ignore: true });
+    assert.equal(b.items.some(i => i.item === 'battleSuit'), true);
+    assert.equal(b.armor && b.armor.item, 'wheelchair', 'the worn Armor is not replaced');
 });

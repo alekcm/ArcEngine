@@ -49,7 +49,7 @@ const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', '
 /** Starting items without their own illustration borrow the art of the card they replace. */
 const ART_ITEM_ALIAS = {
     plasmaTorch: 'mechTools', karcher: 'wrench', surgeryKit: 'fieldKit', pilotEvacKey: 'evacKey',
-    portableDevice: 'navTablet', researchEquipment: 'sampleJar', armGun: 'energyPistol',
+    portableDevice: 'navTablet', researchEquipment: 'sampleJar', armGun: 'energyPistol', synthetic: 'synthetic',
     sentrySmg: 'smg', heavyArmor: 'armor', battleSuit: 'tacticalArmor', sixShooterCartridge: 'energyCharge',
 };
 export function itemArt(key) {
