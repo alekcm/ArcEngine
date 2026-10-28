@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { createGame } from '../shared/engine/setup.mjs';
 import {
     OPS, answer, next, run, loseHealth, gainContamination, drawCards,
-    heavyCount, handLimit, destroyShip,
+    heavyCount, handLimit, drawLimit, destroyShip,
 } from '../shared/engine/core.mjs';
 import { buildMenu } from '../shared/engine/turn.mjs';
 import { roomActionCost, roomActionAvailable, giveItem } from '../shared/engine/rooms.mjs';
@@ -17,7 +17,7 @@ import { checkObjective } from '../shared/engine/endgame.mjs';
 import { viewFor } from '../shared/view.mjs';
 import { seedFromString, shuffle } from '../shared/rng.mjs';
 import {
-    CHARACTERS, ITEMS, ATTACK_CARDS, OBJECTIVES, QUEEN_CARDS, INTRUDER_TOKENS, COORDINATE_CARDS,
+    CHARACTERS, ITEMS, ATTACK_CARDS, OBJECTIVES, QUEEN_CARDS, INTRUDER_TOKENS, COORDINATE_CARDS, canLoadWith,
 } from '../shared/data/cards.mjs';
 import { ROOM_TILES, EXPLORATION_TOKENS } from '../shared/ship.mjs';
 
@@ -56,6 +56,7 @@ function intruder(state, type = 'adult', at = state.players[0].room, hits = 0) {
     state.intruders[it.uid] = it;
     return it;
 }
+const neighboursOf = (state, roomId) => state.ship.rooms[roomId].exits.map(e => e.to);
 function inst(state, item, extras = {}) {
     const d = ITEMS[item];
     return { uid: 'audit-item-' + (++state.itemSeq), item, broken: false,
@@ -885,4 +886,97 @@ test('QUEST-06 / opening a card puts it in the slot it prints', () => {
     execute(s2, { op: 'quest.open', player: b.id, uid: 'q2', ignore: true });
     assert.equal(b.items.some(i => i.item === 'battleSuit'), true);
     assert.equal(b.armor && b.armor.item, 'wheelchair', 'the worn Armor is not replaced');
+});
+
+// ---------------------------------------------------------------------------------------------
+// The card effects that the first pass left as text only.
+// ---------------------------------------------------------------------------------------------
+test('CARD-01 / Scientist’s Pistol: a natural 2 counts as 6, so the shot is worse', () => {
+    const s = fresh(['scientist', 'soldier']), p = s.players[0], it = intruder(s);
+    p.items = [inst(s, 'scientistPistol')]; it.hits = 4;
+    s.pendingRoll = { die: 'combat', value: 2 };
+    execute(s, { op: 'shoot.fire', player: 0, weapon: p.items[0].uid, target: it.uid, then: { op: 'noop' } });
+    assert.ok(s.intruders[it.uid], 'the printed rule turns the 2 into a 6');
+});
+test('CARD-02 / Lab Rat’s Gun: a natural 3 becomes a 4', () => {
+    const s = fresh(['labrat', 'soldier']), p = s.players[0], it = intruder(s);
+    p.items = [inst(s, 'labRatGun')]; it.hits = 2;
+    s.pendingRoll = { die: 'combat', value: 3 };
+    execute(s, { op: 'shoot.fire', player: 0, weapon: p.items[0].uid, target: it.uid, then: { op: 'noop' } });
+    assert.ok(s.intruders[it.uid], '3 + 1 = 4 against 3 Hits: it lives');
+});
+test('CARD-03 / Needle Gun: Repel instead of a normal Shot, for 1 ammo', () => {
+    const s = fresh(['medic', 'soldier']), p = s.players[0];
+    p.items = [inst(s, 'needleGun')];
+    const it = intruder(s, 'larva');
+    execute(s, { op: 'shoot.start', player: 0, weapon: p.items[0].uid });
+    const opt = (s.prompt.options || []).find(o => o.id === 'repelShot');
+    assert.ok(opt, 'the mode is offered');
+    choose(s, 'repelShot');
+    assert.equal(p.items[0].ammo, 1, 'one round is spent');
+    assert.notEqual(it.room, p.room, 'the repelled intruder leaves the Room');
+});
+test('CARD-04 / weapons that print "can only be loaded by …" refuse everything else', () => {
+    assert.equal(canLoadWith('nailGun', 'energyCharge'), false);
+    assert.equal(canLoadWith('nailGun', 'tools'), true);
+    assert.equal(canLoadWith('nailGun', 'itShouldWork'), true);
+    assert.equal(canLoadWith('sixShooter', 'cables'), false);
+    assert.equal(canLoadWith('sixShooter', 'cartridge'), true);
+    assert.equal(canLoadWith('needleGun', 'armory'), false);
+    assert.equal(canLoadWith('soldierGun', 'energyCharge'), true, 'an unrestricted weapon still loads anywhere');
+});
+test('CARD-05 / Motion Scanner: a Noise roll can be rerolled for 1 card', () => {
+    const s = fresh(['scout', 'soldier']), p = s.players[0];
+    p.items = [inst(s, 'motionScanner')];
+    s.pendingRoll = { die: 'noise', value: 'danger' };
+    execute(s, { op: 'noise.roll', player: 0, room: p.room, then: { op: 'noop' } });
+    assert.equal(s.prompt.kind, 'choice');
+    assert.match(s.prompt.title, /Сканер движения/);
+});
+test('CARD-06 / Synthetic: the Android cannot heal with 🩹 items', () => {
+    const s = fresh(['android', 'soldier']), p = s.players[0];
+    p.health = 5; p.items = [inst(s, 'medkit')];
+    execute(s, { op: 'item.use', player: 0, uid: p.items[0].uid, then: { op: 'noop' } });
+    assert.equal(p.health, 5, 'no healing');
+    assert.ok(s.log.some(l => /Синтетик/.test(l.text)), 'and the log says why');
+});
+test('CARD-07 / Robot: while it holds markers the Body Wound does not cut the draw', () => {
+    const s = fresh(['ceo', 'soldier']), p = s.players[0];
+    p.wounds = ['body'];
+    const robot = p.items.find(i => i.item === 'robot');
+    assert.ok(robot && robot.charge > 0);
+    assert.equal(drawLimit(p), 5);
+    robot.charge = 0;
+    assert.equal(drawLimit(p), 4);
+});
+test('CARD-08 / Intercom lets Authority reach any Room', () => {
+    const reach = withCard => {
+        const s = fresh(['captain', 'soldier']), p = s.players[0], other = s.players[1];
+        other.room = Object.keys(s.ship.rooms).find(r => r !== p.room && !neighboursOf(s, p.room).includes(r));
+        if (withCard) p.items.push(inst(s, 'intercom', { quest: true }));
+        execute(s, { op: 'card.command', player: 0, effect: 'command' });
+        return (s.prompt.options || []).some(o => o.id === String(other.id));
+    };
+    assert.equal(reach(false), false, 'not without the card');
+    assert.equal(reach(true), true, 'the Intercom reaches them');
+});
+test('CARD-09 / Ship Codes can remove an Escape Pod from the game', () => {
+    const s = fresh(['ceo', 'soldier']), p = s.players[0];
+    const card = inst(s, 'shipCodes', { quest: true }); p.items.push(card);
+    const pod = s.pods.find(x => !x.removed && !x.launched);
+    execute(s, { op: 'item.use', player: 0, uid: card.uid, then: { op: 'noop' } });
+    choose(s, 'pod');
+    if (s.prompt && s.prompt.kind === 'choice') choose(s, String(pod.num));
+    assert.equal(pod.removed, true);
+    assert.equal(p.items.some(i => i.uid === card.uid), false, 'the card is one use only');
+});
+test('CARD-10 / Research Equipment analyzes a Heavy Object for 2 Knowledge', () => {
+    const s = fresh(['xeno', 'soldier']), p = s.players[0];
+    const card = inst(s, 'researchEquipment', { quest: true }); p.items.push(card);
+    s.roomState[p.room].tile = 'laboratory'; s.roomState[p.room].explored = true; s.roomState[p.room].objects = [{ type: 'carcass' }];
+    const before = p.knowledge;
+    execute(s, { op: 'item.use', player: 0, uid: card.uid, then: { op: 'noop' } });
+    if (s.prompt && s.prompt.kind === 'choice') choose(s, s.prompt.options[0].id);
+    assert.equal(p.knowledge, before + 2);
+    assert.equal(p.analyzed.carcass, true);
 });

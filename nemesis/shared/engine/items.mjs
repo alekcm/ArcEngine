@@ -3,7 +3,7 @@
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeFire, removeMalfunction, placeFire, placeMalfunction, drawCards, discardCard, isContam, gainContamination,
     loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice } from './core.mjs';
-import { ITEMS, WOUNDS, DECK_NAMES } from '../data/cards.mjs';
+import { ITEMS, WOUNDS, DECK_NAMES, canLoadWith } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { shuffle } from '../rng.mjs';
 import { repelIntruder, checkNest } from './intruders.mjs';
@@ -98,6 +98,17 @@ OPS['item.use'] = (state, step) => {
     const def = ITEMS[inst.item];
     const consume = () => { if (def.oneUse) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard[def.deck] = state.itemDiscard[def.deck] || []).push(inst.item); } };
     const choose = (title, options, op, extra) => ask(state, { kind: 'choice', player: p.id, title, options, cancel: false }, { op, player: p.id, uid: inst.uid, then: back, ...extra });
+    // Synthetic (printed): "You can only restore or discard Serious Wounds using your Self-Repair
+    // card. You cannot use 🩹 Items on yourself." — a healing card does nothing for the Android.
+    if (p.charId === 'android' && ['medkit', 'woundOrHeal2', 'autodoc'].includes(def.use)) {
+        log(state, pname(p) + ': «Синтетик» — карты лечения на себе не работают, нужна «Самопочинка».', 'minor');
+        next(state, back); return;
+    }
+    if (p.charId === 'android' && def.use === 'draw2orHeal2') {
+        consume(); drawCards(state, p, 2);
+        log(state, pname(p) + ': «Синтетик» — вместо лечения берёт 2 карты.', 'minor');
+        next(state, back); return;
+    }
     switch (def.use) {
         case 'repelAdult': {
             const adults = intrudersIn(state, p.room).filter(i => i.type === 'adult');
@@ -141,12 +152,17 @@ OPS['item.use'] = (state, step) => {
         case 'energyCharge': {
             consume();
             const opts = [{ id: 'door', label: 'Открыть/закрыть дверь' }];
-            for (const w of p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && !ITEMS[i.item].weapon.grenadeOnly)) opts.push({ id: 'w:' + w.uid, label: 'Зарядить (+3): ' + ITEMS[w.item].name });
+            for (const w of p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && !ITEMS[i.item].weapon.grenadeOnly && canLoadWith(i.item, 'energyCharge'))) opts.push({ id: 'w:' + w.uid, label: 'Зарядить (+3): ' + ITEMS[w.item].name });
             for (const w of [...p.items, p.armor].filter(i => i && ITEMS[i.item].ammoMax && i.ammo < ITEMS[i.item].ammoMax)) opts.push({ id: 'w:' + w.uid, label: 'Зарядить (+3): ' + ITEMS[w.item].name });
             choose('Энергозаряд', opts, 'item.energy');
             return;
         }
         case 'evacKey': {
+            // Printed: "If you are in an Evacuation Section Room …" — anywhere else the card does nothing.
+            if (!['evacA', 'evacB'].includes(tileOf(state, p.room))) {
+                log(state, '«' + def.name + '»: нужно быть в комнате эвакуационной секции.', 'minor');
+                next(state, back); return;
+            }
             consume();
             const sec = tileOf(state, p.room) === 'evacA' ? 'A' : 'B';
             const pods = state.pods.filter(x => x.section === sec && !x.launched && !x.removed);
@@ -176,7 +192,7 @@ OPS['item.use'] = (state, step) => {
         }
         case 'cables': {
             consume();
-            const opts = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max).map(w => ({ id: 'w:' + w.uid, label: 'Полностью зарядить: ' + ITEMS[w.item].name }));
+            const opts = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'cables')).map(w => ({ id: 'w:' + w.uid, label: 'Полностью зарядить: ' + ITEMS[w.item].name }));
             const tile = tileOf(state, p.room);
             if (tile && ROOM_TILES[tile].computer && room(state, p.room).malfunction) opts.push({ id: 'fix', label: 'Устранить поломку и использовать компьютер' });
             if (!opts.length) { next(state, back); return; }

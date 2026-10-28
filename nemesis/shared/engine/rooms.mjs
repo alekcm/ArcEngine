@@ -6,7 +6,7 @@ import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, r
     clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx, intruderLabel, healthState, payableCards } from './core.mjs';
 import { dealHits } from './combat.mjs';
 import { ROOM_TILES, engineRooms } from '../ship.mjs';
-import { ITEMS, WOUNDS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, INTRUDER_NAMES, ADAPTATIONS, EVENT_CARDS } from '../data/cards.mjs';
+import { ITEMS, WOUNDS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, INTRUDER_NAMES, ADAPTATIONS, EVENT_CARDS, canLoadWith } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
 import { startSelfDestruct, stopSelfDestruct } from './events.mjs';
 import { repelIntruder, checkNest } from './intruders.mjs';
@@ -45,7 +45,7 @@ export function roomActionAvailable(state, p, opts = {}) {
                 && state.ship.rooms[r].exits.every(e => state.ship.corridors[e.corridor].door !== 'destroyed'));
             return ok ? { ok: true } : { ok: false, reason: 'Нет комнаты с тех. входом, чужим и целыми дверями' };
         }
-        case 'armory': return p.items.some(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max) ? { ok: true } : { ok: false, reason: 'Нечего заряжать' };
+        case 'armory': return p.items.some(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'armory')) ? { ok: true } : { ok: false, reason: 'Нечего заряжать' };
         case 'cafeteria': return { ok: true };
         case 'commandCenter': return { ok: true };
         case 'containment': return Object.keys(state.ship.rooms).some(r => state.ship.rooms[r].tech && !intrudersIn(state, r).length) ? { ok: true } : { ok: false, reason: 'Нет подходящей комнаты' };
@@ -126,7 +126,7 @@ OPS['room.action'] = (state, step) => {
             return;
         }
         case 'armory': {
-            const w = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max);
+            const w = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'armory'));
             ask(state, { kind: 'choice', player: p.id, title: 'Оружейная: что зарядить (+2)?', options: w.map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name + ' (' + i.ammo + '/' + ITEMS[i.item].weapon.max + ')' })) },
                 { op: 'room.reload', player: p.id, n: 2, then: back });
             return;
@@ -195,7 +195,7 @@ OPS['room.action'] = (state, step) => {
 };
 OPS['noop'] = (state, step) => { if (step.then) next(state, step.then); };
 
-function objName(h) { return ({ corpse: 'человеческий труп', charCorpse: 'труп персонажа', carcass: 'туша чужого', egg: 'яйцо' })[h.type]; }
+export function objName(h) { return ({ corpse: 'человеческий труп', charCorpse: 'труп персонажа', carcass: 'туша чужого', egg: 'яйцо' })[h.type] || 'объект'; }
 
 export function healChoice(state, p, hp, back, maxEffects = 1) {
     // 14.8: healing items may also target another consenting character in the room
@@ -458,7 +458,7 @@ function computerOptionBlocked(state, p, id) {
         case 'heal': return '';
         case 'fixComp': return computerRooms(state).some(r => room(state, r).malfunction) ? '' : 'Нет поломки в комнате с компьютером';
         case 'purge': return '';
-        case 'ammo': return p.items.some(i => ITEMS[i.item].weapon && !ITEMS[i.item].weapon.noAmmo && !i.broken && i.ammo < ITEMS[i.item].weapon.max) ? '' : 'Нет оружия, которое можно зарядить';
+        case 'ammo': return p.items.some(i => ITEMS[i.item].weapon && !ITEMS[i.item].weapon.noAmmo && !i.broken && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'computer')) ? '' : 'Нет оружия, которое можно зарядить';
         case 'door': return Object.values(state.ship.corridors).some(c => c.door !== 'destroyed') ? '' : 'Нет дверей';
         case 'hit2': return Object.keys(state.intruders).length ? '' : 'На корабле нет чужих';
         case 'item': return payableCards(p).length ? '' : 'Нет карт действий в руке';
@@ -506,7 +506,7 @@ OPS['computer.option'] = (state, step) => {
             ask(state, { kind: 'room', player: p.id, title: 'Какую комнату очистить (огонь + отогнать чужих)?', rooms: Object.keys(state.ship.rooms) }, { op: 'computer.purge', player: p.id, then: done });
             return;
         case 'ammo': {
-            const ws = p.items.filter(i => ITEMS[i.item].weapon && !ITEMS[i.item].weapon.noAmmo && !i.broken && i.ammo < ITEMS[i.item].weapon.max);
+            const ws = p.items.filter(i => ITEMS[i.item].weapon && !ITEMS[i.item].weapon.noAmmo && !i.broken && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'computer'));
             if (ws.length === 1) { ws[0].ammo++; log(state, '«' + ITEMS[ws[0].item].name + '»: +1 патрон (' + ws[0].ammo + ').', 'good'); next(state, done); return; }
             sel('Какое оружие зарядить?', ws.map(w => ({ id: w.uid, item: w.item, label: ITEMS[w.item].name + ' (' + w.ammo + '/' + ITEMS[w.item].weapon.max + ')' })), 'computer.ammo');
             return;

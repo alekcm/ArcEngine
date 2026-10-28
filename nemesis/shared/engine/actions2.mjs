@@ -5,12 +5,13 @@
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, isContam, payCost, placeNoise, corridorsOf, secretTile,
     payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES } from './core.mjs';
-import { ITEMS, dropLocked, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, WOUNDS, EVENT_CARDS } from '../data/cards.mjs';
+import { ITEMS, dropLocked, canLoadWith, hasOpenQuest, connectedTo, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, WOUNDS, EVENT_CARDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
-import { dealHits } from './combat.mjs';
-import { drawItem, giveItem, roomActionAvailable } from './rooms.mjs';
+import { dealHits, applyHitsNoRoll } from './combat.mjs';
+import { drawItem, giveItem, roomActionAvailable, objName } from './rooms.mjs';
 import { choice, doorOptions, repairOptions } from './actions.mjs';
+import { startSelfDestruct, stopSelfDestruct } from './events.mjs';
 import { shuffle } from '../rng.mjs';
 
 const BACK = { op: 'turn.choose' };
@@ -271,7 +272,7 @@ OPS['card.techDest'] = (state, step) => { next(state, { op: 'move.direct', playe
 OPS['card.itShouldWork'] = (state, step) => {
     const p = player(state, step.player);
     const opts = [];
-    for (const w of p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max)) opts.push({ id: 'load:' + w.uid, label: 'Зарядить: ' + ITEMS[w.item].name + ' (' + w.ammo + '/' + ITEMS[w.item].weapon.max + ')' });
+    for (const w of p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'itShouldWork'))) opts.push({ id: 'load:' + w.uid, label: 'Зарядить: ' + ITEMS[w.item].name + ' (' + w.ammo + '/' + ITEMS[w.item].weapon.max + ')' });
     for (const w of p.items.filter(i => i.broken)) opts.push({ id: 'fix:' + w.uid, label: 'Починить: ' + ITEMS[w.item].name });
     if (tileOf(state, p.room) && payableCards(p).length) opts.push({ id: 'room', label: 'Сбросить 1 карту: использовать комнату (даже с поломкой)' });
     choice(state, p, 'Должно работать', opts, 'card.itShouldWork.pick');
@@ -326,9 +327,19 @@ OPS['card.roboticPunch.hit'] = (state, step) => {
 };
 OPS['card.command'] = (state, step) => {
     const p = player(state, step.player);
-    const near = step.effectOnlyRoom ? [p.room] : [p.room, ...neighbours(state, p.room)];
+    // Intercom (printed): Authority may be used on a Character in any Room of the Nemesis.
+    // Oculobe Drone (printed): a Character with a Connection token may be reached anywhere too.
+    const everywhere = hasOpenQuest(p, 'intercom');
+    const near = step.effectOnlyRoom && !everywhere ? [p.room] : everywhere ? Object.keys(state.ship.rooms) : [p.room, ...neighbours(state, p.room)];
     const opts = [];
-    for (const r of near) for (const o of others(state, p, r)) opts.push({ id: String(o.id), label: pname(o) + ' — ' + roomName(state, r) });
+    for (const r of near) for (const o of others(state, p, r)) {
+        opts.push({ id: String(o.id), label: pname(o) + ' — ' + roomName(state, r) });
+    }
+    if (hasOpenQuest(p, 'oculobe')) for (const o of state.players) {
+        if (o.id === p.id || o.status !== 'active' || !connectedTo(p, o)) continue;
+        if (opts.some(x => x.id === String(o.id))) continue;
+        opts.push({ id: String(o.id), label: pname(o) + ' — ' + roomName(state, o.room) + ' (жетон связи)' });
+    }
     choice(state, p, 'Приказ: кому?', opts, 'card.command.who', { draw: step.effect !== 'wouldYouKindly' });
 };
 OPS['card.command.who'] = (state, step) => {
@@ -366,7 +377,9 @@ OPS['card.fanning.hit'] = (state, step) => {
 };
 OPS['card.motivation'] = (state, step) => {
     const p = player(state, step.player);
-    const rooms = new Set([p.room, ...neighbours(state, p.room)]);
+    // Intercom (printed): Motivation may be used on a Character in any Room of the Nemesis.
+    const everywhere = hasOpenQuest(p, 'intercom');
+    const rooms = new Set(everywhere ? Object.keys(state.ship.rooms) : [p.room, ...neighbours(state, p.room)]);
     for (const o of state.players) if (o.status === 'active' && rooms.has(o.room) && o.hand.length < 7) drawCards(state, o, 1);
     next(state, BACK);
 };
@@ -630,8 +643,12 @@ OPS['card.shortTemper.noise'] = (state, step) => { const p = player(state, step.
 // ---------------------------------------------------------------------------------------------
 OPS['card.emotionScanner'] = (state, step) => {
     const p = player(state, step.player);
-    const rooms = p.items.some(i => i.item === 'oculobe') ? [p.room, ...neighbours(state, p.room)] : [p.room];
-    const opts = []; for (const r of rooms) for (const o of others(state, p, r)) if (o.deck.length) opts.push({ id: String(o.id), label: pname(o) });
+    const rooms = hasOpenQuest(p, 'oculobe') ? Object.keys(state.ship.rooms) : [p.room];
+    const opts = [];
+    for (const r of rooms) for (const o of others(state, p, r)) {
+        if (r !== p.room && !connectedTo(p, o)) continue;
+        if (o.deck.length) opts.push({ id: String(o.id), label: pname(o) + (r === p.room ? '' : ' — ' + roomName(state, r) + ' (жетон связи)') });
+    }
     choice(state, p, 'Сканер эмоций: чью колоду посмотреть?', opts, 'card.emotionScanner.pick');
 };
 OPS['card.emotionScanner.pick'] = (state, step) => {
@@ -651,6 +668,12 @@ OPS['card.lendAHand'] = (state, step) => {
 };
 OPS['card.lendAHand.pick'] = (state, step) => {
     const p = player(state, step.player); const chosen = Number(step.answer);
+    // Oculobe Drone (printed): a Character who accepts your Lend a Hand gets a Connection token.
+    if (chosen !== p.id && hasOpenQuest(p, 'oculobe')) {
+        const t = player(state, chosen);
+        t.connections = t.connections || [];
+        if (!t.connections.includes(p.id)) { t.connections.push(p.id); log(state, pname(t) + ' получает жетон связи от дрона «Окулоб».', 'minor'); }
+    }
     const all = [p, ...others(state, p, p.room)];
     for (const o of all) drawCards(state, o, o.id === chosen ? 2 : 1);
     const steps = all.filter(o => o.hand.length).map(o => ({ op: 'card.lendAHand.discard', player: o.id }));
@@ -668,6 +691,11 @@ OPS['card.lendAHand.discard'] = (state, step) => {
 /** Laika's movement options: to a nearby explored room (from her current position) or back to the hunter. */
 export function laikaOptions(state, p) {
     const opts = [];
+    // Canine Upgrades (printed): when Laika should move, deal 1 Hit to an Intruder in the Hunter's
+    // Room instead of moving her.
+    if (hasOpenQuest(p, 'canineUpgrades') && intrudersIn(state, p.room).length) {
+        opts.push({ id: 'upgrade', label: 'Апгрейды Лайки: 1 ранение чужому вместо перемещения' });
+    }
     if (p.laika && p.laika !== 'board') opts.push({ id: 'back', label: 'Отозвать Лайку (на свой планшет)' });
     const from = p.laika && p.laika !== 'board' ? p.laika : p.room;
     for (const e of state.ship.rooms[from].exits) {
@@ -683,12 +711,27 @@ OPS['laika.pick'] = (state, step) => {
     const then = step.then || BACK;
     if (step.answer === 'stay') { next(state, then); return; }
     if (step.answer === 'back') { p.laika = 'board'; log(state, '🐕 Лайка возвращается к охотнику.', 'good'); next(state, then); return; }
+    if (step.answer === 'upgrade') {
+        const targets = intrudersIn(state, p.room);
+        if (!targets.length) { next(state, then); return; }
+        if (targets.length === 1) { next(state, { op: 'laika.upgrade', player: p.id, target: targets[0].uid, then }); return; }
+        ask(state, { kind: 'choice', player: p.id, title: 'Апгрейды Лайки: кому 1 ранение?', options: targets.map(i => ({ id: i.uid, label: intruderLabel(state, i) })) },
+            { op: 'laika.upgrade', player: p.id, then });
+        return;
+    }
     const r = step.answer.slice(3);
     const from = p.laika && p.laika !== 'board' ? p.laika : p.room;
     p.laika = r; log(state, '🐕 Лайка бежит в ' + roomName(state, r) + '.', 'action');
     // Like a character, Laika explores an unexplored room (tile + exploration token), then resolves noise.
     if (!room(state, r).explored) { next(state, { op: 'explore', player: p.id, room: r, from }, { op: 'laika.arrived', player: p.id, room: r, then }); return; }
     next(state, { op: 'laika.arrived', player: p.id, room: r, then });
+};
+OPS['laika.upgrade'] = (state, step) => {
+    const p = player(state, step.player);
+    const it = state.intruders[step.answer || step.target];
+    const then = step.then || BACK;
+    if (it) { log(state, '🐕 Апгрейды Лайки: 1 ранение ' + intruderLabel(state, it) + ' вместо перемещения.', 'combat'); applyHitsNoRoll(state, it, 1); }
+    next(state, then);
 };
 OPS['laika.arrived'] = (state, step) => {
     const p = player(state, step.player);
@@ -738,7 +781,7 @@ OPS['item2.use'] = (state, step) => {
     const p = player(state, step.player); const inst = p.items.find(i => i.uid === step.uid) || (p.armor && p.armor.uid === step.uid ? p.armor : null); const back = step.then || BACK;
     if (!inst) { next(state, back); return; }
     switch (ITEMS[inst.item].use) {
-        case 'pipeMelee': next(state, { op: 'melee.start', player: p.id, noContam: true, then: back }); return;
+        case 'pipeMelee': next(state, { op: 'melee.start', player: p.id, contamFaces: [2, 'crit'], then: back }); return;
         case 'probeArm': OPS['item3.probeArm'](state, { ...step, then: back }); return;
         case 'wrench': {
             const rs = room(state, p.room); const opts = [];
@@ -768,6 +811,43 @@ OPS['item2.use'] = (state, step) => {
                 { op: 'item.surgeryKit', player: p.id, uid: inst.uid, then: back });
             return;
         }
+        case 'shipCodes': {
+            // Printed: discard the Coordinates card and choose a new one (not after the Time marker
+            // reached a blue space); OR remove any 1 Escape Pod from the game; OR repair/break
+            // (remotely) 1 Engine of your choice.
+            const opts = [];
+            if (state.time > 8) opts.push({ id: 'coords', label: 'Сменить карту координат' });
+            const pods = (state.pods || []).filter(x => !x.removed && !x.launched);
+            if (pods.length) opts.push({ id: 'pod', label: 'Убрать из игры 1 спасательную капсулу' });
+            opts.push({ id: 'engine', label: 'Починить/сломать (удалённо) 1 двигатель' });
+            ask(state, { kind: 'choice', player: p.id, title: ITEMS[inst.item].name + ': что сделать?', options: opts },
+                { op: 'item.shipCodes', player: p.id, uid: inst.uid, then: back });
+            return;
+        }
+        case 'cheatCodes': {
+            const tile = tileOf(state, p.room);
+            const rs = room(state, p.room);
+            if (!tile || !ROOM_TILES[tile].computer || rs.malfunction) {
+                log(state, '«' + ITEMS[inst.item].name + '»: нужна комната с компьютером без поломки.', 'minor');
+                next(state, back); return;
+            }
+            ask(state, { kind: 'choice', player: p.id, title: ITEMS[inst.item].name + ': что сделать?', options: [
+                { id: 'selfdestruct', label: state.selfDestruct > 0 ? 'Остановить самоликвидацию' : 'Запустить самоликвидацию' },
+                { id: 'computer', label: 'Выполнить 3 действия компьютера' },
+                { id: 'doors', label: 'Открыть/закрыть до 5 дверей в разных коридорах' },
+            ] }, { op: 'item.cheatCodes', player: p.id, uid: inst.uid, then: back });
+            return;
+        }
+        case 'research': {
+            // Printed: analyze 1 Heavy Object in your Room (not carried by a Character) for 2 Knowledge.
+            const rs = room(state, p.room);
+            if (intrudersIn(state, p.room).length) { log(state, '«' + ITEMS[inst.item].name + '»: в комнате есть чужие.', 'minor'); next(state, back); return; }
+            const objs = (rs.objects || []).map((h, i) => ({ id: 'room:' + i, label: objName(h) }));
+            if (!objs.length) { log(state, '«' + ITEMS[inst.item].name + '»: в комнате нет тяжёлого объекта.', 'minor'); next(state, back); return; }
+            ask(state, { kind: 'choice', player: p.id, title: ITEMS[inst.item].name + ': какой объект проанализировать?', options: objs },
+                { op: 'item.research', player: p.id, uid: inst.uid, then: back });
+            return;
+        }
         case 'navTablet': {
             p.items = p.items.filter(i => i !== inst);
             ask(state, { kind: 'choice', player: p.id, title: 'Какой двигатель проверить?', options: [1, 2, 3].map(n => ({ id: String(n), label: 'Двигатель №' + n })) }, { op: 'computer.engine', player: p.id, then: back }); return;
@@ -778,7 +858,7 @@ OPS['item2.use'] = (state, step) => {
 OPS['item.torchDoor'] = (state, step) => {
     const c = state.ship.corridors[step.answer];
     if (c) {
-        c.door = c.door === 'closed' || c.door === 'destroyed' ? 'open' : 'closed';
+        c.door = c.door === 'closed' ? 'open' : 'closed';   // a destroyed Door can be Closed too
         log(state, 'Плазменный резак: дверь ' + c.id + ' ' + (c.door === 'closed' ? 'закрыта' : 'открыта') + '.', 'good');
     }
     next(state, step.then);
@@ -796,5 +876,83 @@ OPS['item.surgeryKit'] = (state, step) => {
     o.passed = true;
     log(state, pname(o) + ': операция — рука и колода очищены от заражения (' + n + ' карт), обязательный пас.', 'good');
     next(state, step.then);
+};
+OPS['item.shipCodes'] = (state, step) => {
+    const p = player(state, step.player);
+    const inst = p.items.find(i => i.uid === step.uid);
+    const back = step.then || BACK;
+    const spend = () => { if (inst) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard.start = state.itemDiscard.start || []).push(inst.item); } };
+    if (step.answer === 'coords') {
+        spend();
+        const other = COORDINATE_CARDS.filter(c => c.id !== state.secret.coordinates);
+        state.secret.coordinates = other[Math.floor(state.time) % other.length].id;
+        for (const o of state.players) o.knownCoords = null;
+        log(state, 'Коды корабля: карта координат заменена.', 'event');
+    } else if (step.answer === 'pod') {
+        const pods = (state.pods || []).filter(x => !x.removed && !x.launched);
+        if (pods.length === 1) next(state, { op: 'item.shipCodes.pod', player: p.id, uid: step.uid, answer: String(pods[0].num), then: back });
+        else ask(state, { kind: 'choice', player: p.id, title: 'Коды корабля: какую капсулу убрать из игры?', options: pods.map(x => ({ id: String(x.num), label: 'Капсула №' + x.num + ' (' + x.section + ')' })) },
+            { op: 'item.shipCodes.pod', player: p.id, uid: step.uid, then: back });
+        return;
+    } else {
+        spend();
+        ask(state, { kind: 'choice', player: p.id, title: 'Коды корабля: какой двигатель?', options: state.secret.engines.map(e => ({ id: String(e.no), label: 'Двигатель №' + e.no })) },
+            { op: 'item.shipCodes.engine', player: p.id, then: back });
+        return;
+    }
+    next(state, back);
+};
+OPS['item.shipCodes.pod'] = (state, step) => {
+    const p = player(state, step.player);
+    const inst = p.items.find(i => i.uid === step.uid);
+    if (inst) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard.start = state.itemDiscard.start || []).push(inst.item); }
+    const pod = state.pods.find(x => x.num === Number(step.answer));
+    if (pod) { pod.removed = true; log(state, 'Коды корабля: капсула №' + pod.num + ' убрана из игры.', 'event'); }
+    next(state, step.then);
+};
+OPS['item.shipCodes.engine'] = (state, step) => {
+    const e = state.secret.engines.find(x => x.no === Number(step.answer));
+    if (e) { e.working = !e.working; log(state, 'Коды корабля: двигатель №' + e.no + ' — ' + (e.working ? 'исправен' : 'повреждён') + ' (остальные не видят).', 'event'); }
+    next(state, step.then);
+};
+OPS['item.cheatCodes'] = (state, step) => {
+    const p = player(state, step.player);
+    const inst = p.items.find(i => i.uid === step.uid);
+    const back = step.then || BACK;
+    const spend = () => { if (inst) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard.start = state.itemDiscard.start || []).push(inst.item); } };
+    if (step.answer === 'selfdestruct') {
+        spend();
+        if (state.selfDestruct > 0) stopSelfDestruct(state); else startSelfDestruct(state);
+        next(state, back); return;
+    }
+    if (step.answer === 'computer') {
+        spend();
+        // Three free Computer Actions: the console menu simply opens three times.
+        next(state, { op: 'computer.start', player: p.id, then:
+            { op: 'computer.start', player: p.id, then:
+                { op: 'computer.start', player: p.id, then: back } } });
+        return;
+    }
+    spend();
+    const doors = Object.values(state.ship.corridors).filter(c => c.door !== 'destroyed');
+    if (!doors.length) { next(state, back); return; }
+    ask(state, { kind: 'choice', player: p.id, title: 'Читерские коды: какие двери переключить (до 5)?', multi: 5,
+        options: doors.map(c => ({ id: c.id, label: 'Коридор ' + c.id + ' — ' + (c.door === 'closed' ? 'открыть' : 'закрыть') })) },
+        { op: 'item.cheatCodes.doors', player: p.id, then: back });
+};
+OPS['item.cheatCodes.doors'] = (state, step) => {
+    const ids = Array.isArray(step.answer) ? step.answer : [step.answer];
+    for (const id of ids.slice(0, 5)) {
+        const c = state.ship.corridors[id];
+        if (!c) continue;
+        c.door = c.door === 'closed' ? 'open' : 'closed';
+        log(state, 'Читерские коды: дверь ' + c.id + ' ' + (c.door === 'closed' ? 'закрыта' : 'открыта') + '.', 'good');
+    }
+    next(state, step.then);
+};
+OPS['item.research'] = (state, step) => {
+    // Same analysis as the Laboratory action: 2 Knowledge, and the first object of a type removes an
+    // active Adaptation.
+    OPS['room.lab'](state, { player: step.player, answer: step.answer, then: step.then });
 };
 OPS['item2.heal1'] = (state, step) => { restoreHealth(state, player(state, Number(step.answer)), 1); next(state, step.then); };

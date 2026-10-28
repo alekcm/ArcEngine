@@ -231,7 +231,12 @@ export function heavyCount(p) {
     }
     return n;
 }
-export function drawLimit(p) { return p.wounds.includes('body') ? 4 : 5; }
+export function drawLimit(p) {
+    // Robot bodyguard (printed): while it still holds markers, the effects of your Body Wounds are ignored.
+    const robot = (p.items || []).find(i => i.item === 'robot');
+    if (robot && (robot.charge ?? 0) > 0) return 5;
+    return p.wounds.includes('body') ? 4 : 5;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Cards

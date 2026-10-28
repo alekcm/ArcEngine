@@ -6,7 +6,7 @@ import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, r
     handSlots, dropHeavy } from './core.mjs';
 import { repelIntruder, moveOneToward, hyperAttackStep } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
-import { ATTACK_CARDS, ITEMS, dropLocked, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
+import { ATTACK_CARDS, ITEMS, dropLocked, hasOpenQuest, connectedTo, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
 
 const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(c => [c.id, c]));
@@ -73,7 +73,12 @@ OPS['attack'] = (state, step) => {
     // "Don't Panic" held by ANOTHER character in the room: that player decides first.
     if (!step.noReaction) {
         const asked = step.askedPanic || [];
-        const holder = playersInRoom(state, it.room).find(o => o.id !== p.id && o.status === 'active' && !asked.includes(o.id) && o.hand.some(c => (cardDef(state, c) || {}).effect === 'dontPanic'));
+        const holds = o => !asked.includes(o.id) && o.hand.some(c => (cardDef(state, c) || {}).effect === 'dontPanic');
+        // Oculobe Drone (printed): Don't Panic may be played on a Character anywhere on the ship if
+        // they carry a Connection token from the Psychologist.
+        const remote = state.players.find(o => o.id !== p.id && o.status === 'active' && holds(o)
+            && hasOpenQuest(o, 'oculobe') && connectedTo(o, p));
+        const holder = playersInRoom(state, it.room).find(o => o.id !== p.id && o.status === 'active' && holds(o)) || remote;
         if (holder) {
             const card = holder.hand.find(c => (cardDef(state, c) || {}).effect === 'dontPanic');
             ask(state, { kind: 'choice', player: holder.id, title: intruderLabel(state, it) + ' атакует ' + pname(p) + '. Сыграть «Без паники», чтобы предотвратить атаку?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
@@ -127,7 +132,12 @@ OPS['attack.panic'] = (state, step) => {
     const h = player(state, step.holder);
     if (step.answer === 'yes' && h.hand.includes(step.card)) {
         discardCard(state, h, step.card);
-        log(state, pname(h) + ' играет «Без паники»: атака на ' + pname(player(state, step.target)) + ' предотвращена.', 'good');
+        const t = player(state, step.target);
+        if (h.id !== t.id && hasOpenQuest(h, 'oculobe')) {
+            t.connections = t.connections || [];
+            if (!t.connections.includes(h.id)) { t.connections.push(h.id); log(state, pname(t) + ' получает жетон связи от дрона «Окулоб».', 'minor'); }
+        }
+        log(state, pname(h) + ' играет «Без паники»: атака на ' + pname(t) + ' предотвращена.', 'good');
         return;
     }
     next(state, { ...step, op: 'attack', answer: undefined, holder: undefined, card: undefined });
@@ -394,6 +404,8 @@ OPS['shoot.mode'] = (state, step) => {
     const opts = [{ id: 'normal', label: 'Обычный выстрел' }];
     if (wd.boost && ammo >= 1 + wd.boost.ammo) opts.push({ id: 'boost', label: 'Усиленный: +' + wd.boost.hits + ' ранения (ещё ' + wd.boost.ammo + ' патр.)' });
     if (wd.repelMode && ammo >= 2 && intrudersIn(state, p.room).some(i => i.type === 'adult')) opts.push({ id: 'repel', label: 'Отогнать взрослого (2 патрона)' });
+    // Needle Gun (printed): "Instead of a normal Shot, Repel 1 Larva or Adult from the Room."
+    if (wd.repelShot && ammo >= 1 && intrudersIn(state, p.room).some(i => i.type === 'adult' || i.type === 'larva')) opts.push({ id: 'repelShot', label: 'Отогнать личинку или взрослого (1 патрон)' });
     if (wd.grenadeMode) opts.push({ id: 'grenade', label: 'Гранатный выстрел по комнате' });
     if (opts.length === 1) { next(state, { ...step, op: 'shoot.target', mode: 'normal' }); return; }
     ask(state, { kind: 'choice', player: p.id, title: '«' + ITEMS[w.item].name + '»: режим стрельбы', options: opts }, { ...step, op: 'shoot.modeChosen' });
@@ -410,6 +422,15 @@ OPS['shoot.modeChosen'] = (state, step) => {
         if (it && repelIntruder(state, it)) next(state, { op: 'noise.roll', player: p.id, room: it.room }, then); else next(state, then);
         return;
     }
+    if (mode === 'repelShot') {
+        const targets = intrudersIn(state, p.room).filter(i => i.type === 'adult' || i.type === 'larva');
+        spendAmmo(p, w, 1);
+        if (!targets.length) { next(state, then); return; }
+        if (targets.length === 1) { next(state, { op: 'shoot.repelShot', player: p.id, target: targets[0].uid, then }); return; }
+        ask(state, { kind: 'choice', player: p.id, title: 'Игольник: кого отогнать?', options: targets.map(i => ({ id: i.uid, label: intruderLabel(state, i) })) },
+            { op: 'shoot.repelShot', player: p.id, then });
+        return;
+    }
     if (mode === 'grenade') {
         const rooms = [p.room, ...state.ship.rooms[p.room].exits.filter(e => state.ship.corridors[e.corridor].door !== 'closed').map(e => e.to)];
         ask(state, { kind: 'room', player: p.id, title: 'Гранатомёт: по какой комнате?', rooms }, { op: 'shoot.grenade', player: p.id, weapon: w.uid, then });
@@ -418,6 +439,14 @@ OPS['shoot.modeChosen'] = (state, step) => {
     const extra = mode === 'boost' ? ITEMS[w.item].weapon.boost : null;
     if (extra) spendAmmo(p, w, extra.ammo);
     next(state, { ...step, op: 'shoot.target', mode, bonusHits: (step.bonusHits || 0) + (extra ? extra.hits : 0), answer: undefined });
+};
+OPS['shoot.repelShot'] = (state, step) => {
+    const p = player(state, step.player);
+    const it = state.intruders[step.answer || step.target];
+    const then = step.then || { op: 'turn.choose' };
+    if (!it) { next(state, then); return; }
+    log(state, pname(p) + ': игольник отгоняет ' + intruderLabel(state, it) + '.', 'combat');
+    if (repelIntruder(state, it)) next(state, { op: 'noise.roll', player: p.id, room: it.room }, then); else next(state, then);
 };
 OPS['shoot.grenade'] = (state, step) => {
     const p = player(state, step.player);
@@ -505,6 +534,23 @@ function adaptRoll(state, r) {
     if (hasAdapt(state, 'hardenedCarapace') && typeof r === 'number') { log(state, '🧬 Прочный панцирь: ' + r + ' → ' + (r + 1) + '.', 'combat'); r = r + 1; }
     return r;
 }
+/**
+ * Printed die-face rewrites: "2 and Critical : treat these results as 6" (Scientist's Pistol) and
+ * "2 and 3 : +1 to these results" (Lab Rat's Gun). Both act on the natural face of the Combat die,
+ * before any Adaptation changes it.
+ */
+function faceEffect(state, wd, natural, name) {
+    if (!wd || natural === undefined) return natural;
+    if (wd.facesTo && wd.facesTo[natural] !== undefined) {
+        log(state, name + ': результат «' + fmtRoll(natural) + '» считается «' + wd.facesTo[natural] + '».', 'combat');
+        return wd.facesTo[natural];
+    }
+    if (wd.facesPlus && wd.facesPlus.includes(natural)) {
+        log(state, name + ': результат «' + fmtRoll(natural) + '» получает +1.', 'combat');
+        return natural + 1;
+    }
+    return natural;
+}
 /** Deal `hits` to an intruder, then the kill-check roll. */
 export function dealHits(state, p, it, hits, mod, opts = {}) {
     if (it.type === 'larva') { log(state, 'Личинка погибает.', 'good'); removeIntruder(state, it.uid, false); return true; }
@@ -521,8 +567,11 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
     // "even if an effect changes the result": the weapon's natural-2 Critical is checked on the
     // natural die, before any Adaptation changes it.
     const natural = r;
+    const face = faceEffect(state, wd, natural, opts.weapon ? ITEMS[opts.weapon.item].name : '');
     if (wd.critOn2 && natural === 2) { r = 'crit'; log(state, 'Штурмовая винтовка: «2» считается КРИТОМ.', 'combat'); }
-    else r = adaptRoll(state, r);
+    else r = adaptRoll(state, face);
+    // The Convict's Pipe: a Melee Attack contaminates only on the faces the card names.
+    if (opts.contamFaces && opts.contamFaces.includes(natural)) gainContamination(state, p, 1);
     if (wd.plusOn5 && r === 5) { it.hits++; log(state, 'BF-пушка: «5» — дополнительное ранение.', 'combat'); }
     let val = r === 'crit' ? 'crit' : r + mod;
     log(state, '🎲 Бой: ' + fmtRoll(r) + (mod ? ' +' + mod + ' = ' + val : '') + ' против ранений ' + it.hits + '.', 'combat');
@@ -556,9 +605,10 @@ function queenHits(state, p, it, hits, mod, opts = {}) {
     state.queenHits += hits;
     const wd = opts.weapon ? ITEMS[opts.weapon.item].weapon : {};
     const natural = roll(state, COMBAT_DIE);
+    const face = faceEffect(state, wd, natural, opts.weapon ? ITEMS[opts.weapon.item].name : '');
     let r = natural;
     if (wd.critOn2 && natural === 2) { r = 'crit'; log(state, 'Штурмовая винтовка: «2» — КРИТ по Королеве.', 'combat'); }
-    else r = adaptRoll(state, r);
+    else r = adaptRoll(state, face);
     const val = r === 'crit' ? 'crit' : r + mod;
     log(state, '🎲 Бой с Королевой: ' + fmtRoll(r) + (mod ? ' +' + mod : '') + ', ранений на треке ' + state.queenHits + '.', 'combat');
     if (val === 'crit' || val <= state.queenHits || state.queenHits >= 6) next(state, { op: 'queen.card', player: p.id });
@@ -622,14 +672,17 @@ OPS['melee.hit'] = (state, step) => {
     // even requested when it is used.
     const hatchet = p.items.find(i => ITEMS[i.item].hatchet && !i.charge && !i.broken);
     if (!hatchet && it.type !== 'larva' && needDice(state, step, 'combat', p.id, 'Бросок боя — ближний бой')) return;
-    if (!step.noContam) gainContamination(state, p, 1);
+    if (!step.noContam && !step.contamFaces) gainContamination(state, p, 1);
     log(state, '🗡 ' + pname(p) + ' атакует ' + intruderLabel(state, it) + ' в ближнем бою.', 'combat');
     if (hatchet) hatchet.charge = 1;
     // Printed: "Deal 2 Hits instead of rolling the Combat die, and place an Orange Malfunction
     // on this Weapon." — no die is rolled at all.
     const hits = (hatchet ? 2 : 1) + (step.bonusHits || 0);
     if (hatchet) log(state, 'Тактический топорик: 2 ранения без броска, оранжевая поломка на оружии.', 'combat');
-    const survived = !applyHitsNoRoll(state, it, hits);
+    // 10.3: a Melee Attack deals 1 Hit and then makes a Combat roll, exactly like a shot — the
+    // intruder dies on the same check. Only the Hatchet replaces the roll.
+    const survived = hatchet ? !applyHitsNoRoll(state, it, hits)
+        : !dealHits(state, p, it, hits, 0, { retaliate: false, contamFaces: step.contamFaces });
     if (survived && state.intruders[it.uid] && !step.noRetaliation) {
         const weapons = p.items.filter(i => ITEMS[i.item].weapon);
         if (weapons.length) {

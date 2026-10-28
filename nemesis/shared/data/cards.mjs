@@ -218,21 +218,21 @@ export const ITEMS = {
                    text: 'Дальнобойное оружие, 2 патрона. Выстрел: после него каждый другой персонаж в комнате получает 1 ранение (повторно кубик не бросается).' },
     smartGun:    { deck: 'start', count: 0, name: 'Умный пистолет', kind: 'heavy', weapon: { max: 3, reroll: true }, use: null,
                    text: 'Дальнобойное оружие, 3 заряда. Выстрел: можете перебросить первый бросок; второй результат обязателен.' },
-    scientistPistol:{ deck: 'start', count: 0, name: 'Пистолет учёного', kind: 'heavy', weapon: { max: 3 }, use: null,
-                   text: 'Дальнобойное оружие, 3 патрона. Выстрел: результаты «2» и «✖» считаются КРИТом.' },
-    needleGun:   { deck: 'start', count: 0, name: 'Игольник', kind: 'heavy', weapon: { max: 2 }, use: null,
+    scientistPistol:{ deck: 'start', count: 0, name: 'Пистолет учёного', kind: 'heavy', weapon: { max: 3, facesTo: { 2: 6, crit: 6 } }, use: null,
+                   text: 'Дальнобойное оружие, 3 патрона. Выстрел: результаты «2» и «✖» считаются «6».' },
+    needleGun:   { deck: 'start', count: 0, name: 'Игольник', kind: 'heavy', weapon: { max: 2, repelShot: true }, loadOnly: 'reagent', use: null,
                    text: 'Дальнобойное оружие, 2 патрона. Заряжается только «Регентом» или Значимыми предметами. Выстрел: вместо обычного выстрела отгоните 1 личинку или взрослого из комнаты.' },
-    nailGun:     { deck: 'start', count: 0, name: 'Гвоздомёт', kind: 'heavy', weapon: { max: 5 }, use: null,
+    nailGun:     { deck: 'start', count: 0, name: 'Гвоздомёт', kind: 'heavy', weapon: { max: 5 }, loadOnly: 'tools', use: null,
                    text: 'Дальнобойное оружие, 5 патронов. Заряжается только картой уборщика «Должно сработать» или предметом «Инструменты».' },
-    labRatGun:   { deck: 'start', count: 0, name: 'Пистолет подопытной', kind: 'heavy', weapon: { max: 3 }, use: null,
-                   text: 'Дальнобойное оружие, 3 патрона. Выстрел: результаты «3» и «✖» получают +1.' },
+    labRatGun:   { deck: 'start', count: 0, name: 'Пистолет подопытной', kind: 'heavy', weapon: { max: 3, facesPlus: [2, 3] }, use: null,
+                   text: 'Дальнобойное оружие, 3 патрона. Выстрел: результаты «2» и «3» получают +1.' },
     sentrySmg:   { deck: 'start', count: 0, name: 'Пистолет-пулемёт охранника', kind: 'heavy', weapon: { max: 5, boost: { ammo: 1, hits: 1 } }, use: null,
                    text: 'Дальнобойное оружие, 5 патронов. Выстрел: можете потратить 1 доп. патрон, чтобы нанести 1 доп. ранение.' },
     armGun:      { deck: 'start', count: 0, name: 'Ручная пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true, upsOn: [2, 'crit'] }, noDrop: true, use: null,
                    text: 'Дальнобойное оружие, патроны не нужны. Нельзя передать или сбросить. Выстрел: при результате «2» или «✖» сбросьте 1 жетон с ИБП.' },
     bountyRifle: { deck: 'start', count: 0, name: 'Карабин охотника', kind: 'heavy', weapon: { max: 5 }, use: null,
                    text: 'Дальнобойное оружие, 5 патронов. Особых правил нет.' },
-    sixShooter:  { deck: 'start', count: 0, name: 'Старый шестизарядник', kind: 'heavy', weapon: { max: 6 }, use: null,
+    sixShooter:  { deck: 'start', count: 0, name: 'Старый шестизарядник', kind: 'heavy', weapon: { max: 6 }, loadOnly: 'cartridge', use: null,
                    text: 'Дальнобойное оружие, 6 патронов. Заряжается только Обоймой шестизарядника.' },
     sixShooterCartridge: { deck: 'start', count: 0, name: 'Обойма шестизарядника', use: 'cartridge', oneUse: true,
                    text: 'Одноразовый. Используйте: зарядите Старый шестизарядник до 6 патронов.' },
@@ -266,10 +266,10 @@ export const ITEMS = {
                    text: 'Квестовый предмет охотницы. Нельзя передать или сбросить. Пассивно: когда Лайка должна уйти из комнаты с охотницей, вместо этого нанесите 1 ранение любому чужому в этой комнате; «Поиск» можно разыграть в комнате Лайки.' },
     intercom:    { deck: 'start', count: 0, name: 'Интерком', quest: true, slot: 'passive', questRoom: 'comms', use: null,
                    text: 'Квестовый предмет капитана. Пассивно: играя «Приказ» или «Мотивацию», можете применить её к персонажу в любой комнате «Немезиды».' },
-    shipCodes:   { deck: 'start', count: 0, name: 'Коды корабля', quest: true, slot: 'item', questRoom: 'archives', use: null, oneUse: true,
-                   text: 'Квестовый предмет директора, одноразовый. Сбросьте карту координат и возьмите новую ИЛИ уберите из игры 1 спасательную капсулу ИЛИ отремонтируйте/сломайте 1 двигатель. Нельзя после выхода маркера времени на синюю клетку.' },
-    cheatCodes:  { deck: 'start', count: 0, name: 'Читерские коды', quest: true, slot: 'item', questRoom: 'evacA', use: null, oneUse: true,
-                   text: 'Квестовый предмет хакера, одноразовый, только в комнате с компьютером без поломки. Запустите/остановите самоликвидацию ИЛИ выполните 3 действия компьютера ИЛИ откройте/закройте до 5 дверей в разных коридорах.' },
+    shipCodes:   { deck: 'start', count: 0, name: 'Коды корабля', quest: true, slot: 'item', questRoom: 'archives', use: 'shipCodes', oneUse: true,
+                   text: 'Квестовый предмет директора, одноразовый. Сбросьте карту координат и возьмите новую (нельзя после выхода маркера времени на синюю клетку) ИЛИ уберите из игры 1 спасательную капсулу ИЛИ почините/сломайте (удалённо) 1 двигатель по выбору.' },
+    cheatCodes:  { deck: 'start', count: 0, name: 'Читерские коды', quest: true, slot: 'item', questRoom: 'evacA', use: 'cheatCodes', oneUse: true,
+                   text: 'Квестовый предмет хакера, одноразовый, только в комнате с компьютером без поломки. Запустите/остановите самоликвидацию ИЛИ выполните 3 действия компьютера (не помещая поломки от «Блокировки») ИЛИ откройте/закройте до 5 дверей в разных коридорах в любом месте корабля.' },
     plasmaTorch: { deck: 'start', count: 0, name: 'Плазменный резак', kind: 'heavy', quest: true, slot: 'item', questRoom: 'engine', use: 'torchDoor',
                    text: 'Квестовый предмет механика, тяжёлый. Откройте или закройте 1 дверь; разрушенную дверь тоже можно закрыть.' },
     karcher:     { deck: 'start', count: 0, name: 'Карчер', kind: 'heavy', quest: true, slot: 'item', questRoom: 'fireControl', use: 'extinguisher',
@@ -288,7 +288,7 @@ export const ITEMS = {
                    text: 'Квестовый предмет солдата, броня. Когда взрослый чужой атакует вас, можете предотвратить атаку и потерять 1 здоровье вместо неё.' },
     bloodyCamouflage: { deck: 'start', count: 0, name: 'Кровавый камуфляж', kind: 'armor', quest: true, slot: 'armor', questRoom: 'any', redirectAttack: true, use: null,
                    text: 'Квестовый предмет подопытной, броня. Когда чужой атакует вас, выберите другого персонажа в этой комнате — чужой атакует его.' },
-    researchEquipment:{ deck: 'start', count: 0, name: 'Исследовательское оборудование', quest: true, slot: 'item', questRoom: 'any', questNoIntruder: true, use: null, oneUse: true,
+    researchEquipment:{ deck: 'start', count: 0, name: 'Исследовательское оборудование', quest: true, slot: 'item', questRoom: 'any', questNoIntruder: true, use: 'research', oneUse: true,
                    text: 'Квестовый предмет ксенобиолога, одноразовый, только в комнате без чужих. Проанализируйте 1 тяжёлый объект в комнате (не несомый персонажем) и получите 2 знания; если такой тип ещё не изучен, положите объект над активной адаптацией и сбросьте её.' },
     oculobe:     { deck: 'start', count: 0, name: 'Дрон «Окулоб»', quest: true, slot: 'passive', questRoom: 'emergency', use: null,
                    text: 'Квестовый предмет психолога. Пассивно: когда другой персонаж принимает эффект ваших «Не паникуй» или «Помоги», положите ему жетон связи. «Не паникуй», «Сканер эмоций», «Помоги» и «Будь так добр» можно играть на персонажа в любой комнате, если у него есть жетон связи.' },
@@ -297,6 +297,30 @@ export const ITEMS = {
 /** An item card that must stay with its owner: Quest Item Deck cards (printed "do not discard")
  *  and the personal gear that has no printed card at all (handcuffs, the robot, Laika, the chair). */
 export const dropLocked = (key) => !!(ITEMS[key] && (ITEMS[key].quest || ITEMS[key].noDrop));
+
+/** `loadOnly` names the single source a weapon accepts ammo from, exactly as the card prints it. */
+export const LOAD_SOURCE_NAMES = {
+    cartridge: 'Обойма шестизарядника',
+    tools: 'Инструменты или «Должно работать»',
+    reagent: 'Реагент (или Значимый предмет)',
+};
+export function canLoadWith(key, source) {
+    const d = ITEMS[key];
+    if (!d || !d.loadOnly) return true;
+    if (d.loadOnly === 'tools') return source === 'tools' || source === 'itShouldWork';
+    return d.loadOnly === source;
+}
+
+/** True when the player has the named quest card open (it then sits in the pack or in the Armor slot). */
+export function hasOpenQuest(p, key) {
+    if (!p) return false;
+    if ((p.items || []).some(i => i.item === key)) return true;
+    return !!(p.armor && p.armor.item === key);
+}
+/** The Oculobe Drone's Connection token: `holder` put one on `target` by helping them. */
+export function connectedTo(holder, target) {
+    return !!(holder && target && Array.isArray(target.connections) && target.connections.includes(holder.id));
+}
 
 export const DECK_ORDER = ['green', 'red', 'yellow'];
 export const DECK_NAMES = { green: 'Зелёные (медицина)', red: 'Красные (военные)', yellow: 'Жёлтые (техника)', support: 'Поддержка' };

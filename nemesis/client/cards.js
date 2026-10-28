@@ -45,12 +45,15 @@ const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', '
     'riotgun', 'assaultRifle', 'assaultShotgun', 'autoloaderBelt', 'automaticShotgun', 'bayonet', 'bfGun', 'biohazardArmor', 'drumMagRifle',
     'engineeringEquipment', 'gatlingGun', 'grenadeLauncher', 'handCannon', 'perimeterDevice', 'securityControl', 'smartRifle', 'sniperRifle', 'sonicGun', 'smg', 'tacticalArmor', 'tacticalHatchet', 'utilityVest', 'soldierGun', 'handgun', 'scoutRifle', 'sawedOff', 'smartGun', 'riotShotgun', 'energyPistol', 'bountyRifle',
     'sixShooter', 'probeArm', 'xenoGun', 'survivorFavorite', 'pipe', 'cuffs', 'robot', 'ups', 'laika',
-    'oculobe'];
+    'oculobe',
+    // starting weapons and quest cards drawn for the item sheet (§47)
+    'nailGun', 'labRatGun', 'needleGun', 'pilotShotgun', 'scientistPistol', 'wheelchair', 'battleSuit',
+    'bloodyCamouflage', 'canineUpgrades', 'intercom', 'shipCodes', 'cheatCodes', 'motionScanner', 'synthetic'];
 /** Starting items without their own illustration borrow the art of the card they replace. */
 const ART_ITEM_ALIAS = {
     plasmaTorch: 'mechTools', karcher: 'wrench', surgeryKit: 'fieldKit', pilotEvacKey: 'evacKey',
     portableDevice: 'navTablet', researchEquipment: 'sampleJar', armGun: 'energyPistol', synthetic: 'synthetic',
-    sentrySmg: 'smg', heavyArmor: 'armor', battleSuit: 'tacticalArmor', sixShooterCartridge: 'energyCharge',
+    sentrySmg: 'smg', heavyArmor: 'armor', sixShooterCartridge: 'energyCharge',
 };
 export function itemArt(key) {
     const k = ART_ITEM_ALIAS[key] || key;
