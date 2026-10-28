@@ -94,9 +94,13 @@ const NemesisPanel = {
     // --- data ---------------------------------------------------------------------------------
 
     async load() {
+        // Until the file on disk is in hand, Save stays shut: a panel that never loaded it would
+        // otherwise write an empty set over somebody's work.
+        this.loaded = false;
         try {
             const j = await (await fetch('/api/board', { cache: 'no-store' })).json();
             this.saved = (j && j.edits) || {};
+            this.loaded = true;
         } catch { this.saved = {}; }
         this.edits = JSON.parse(JSON.stringify(this.saved));
         try {
@@ -472,19 +476,19 @@ const NemesisPanel = {
     renderDirty() {
         const dirty = keyed(this.edits) !== keyed(this.saved);
         if (this.saveBtn) {
-            this.saveBtn.disabled = !dirty;
+            this.saveBtn.disabled = !dirty || !this.loaded;
             this.saveBtn.textContent = dirty ? I18N.t('nem.saveDirty') : I18N.t('nem.save');
         }
         if (this.revertBtn) this.revertBtn.disabled = !Object.keys(this.saved).length;
     },
 
-    async save() {
+    async save(force) {
         if (this.saveBtn) this.saveBtn.disabled = true;
         try {
             const r = await fetch('/api/save-board', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ edits: this.edits }),
+                body: JSON.stringify({ edits: this.edits, force: force === true }),
             });
             const j = await r.json().catch(() => ({}));
             if (!r.ok || j.ok === false) { this.say(I18N.t('nem.saveError', { msg: j.error || ('HTTP ' + r.status) }), true); return; }
@@ -498,11 +502,14 @@ const NemesisPanel = {
         }
     },
 
+    /** Throw every edit away — the one action that empties the file, so it asks first. */
     async revertAll() {
+        const n = Object.keys(this.edits).length;
+        if (n && !confirm(I18N.t('nem.confirmRevertAll', { n }))) return;
         this.edits = {};
         this.saved = {};
         this.rebuild();
-        await this.save();
+        await this.save(true);                 // the empty set is deliberate here, hence force
         this.say(I18N.t('nem.revertedAll'));
     },
 

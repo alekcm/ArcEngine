@@ -216,6 +216,8 @@ body.pl-collapsed #prompt:not(.hidden) ~ #menuToggle { left: 34px; }
 .flycard .fc-front small { color: var(--pc); filter: brightness(1.6); font-weight: 700; font-size: 11px; letter-spacing: .5px; text-transform: uppercase; }
 .flycard .fc-front b { font-size: 14px; }
 .flycard .fc-front p { margin: 0; color: #c7d0da; font-size: 11px; line-height: 1.3; }
+/* the effect the attacking intruder actually deals, pulled out of the card text */
+.flycard .fc-front p.fc-eff { color: #ffd27f; font-weight: 600; font-size: 12px; }
 .flycard .fc-front em { margin-top: auto; color: var(--acc); font-style: normal; font-size: 11px; }
 .flycard.burn .fc-inner { animation: card-burn 0.7s ease-in forwards; }
 @keyframes card-burn { 0% { filter: brightness(1); opacity: 1; } 40% { filter: brightness(2) sepia(1) hue-rotate(-30deg); } 100% { filter: brightness(0.2); opacity: 0; transform: rotateY(180deg) scale(0.6) translateY(-30px); } }
@@ -317,6 +319,20 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .ipop b { display: block; padding: 6px 8px 0; font-size: 12px; }
 .ipop > span:last-child { display: block; padding: 0 8px; color: #cfd8e3; }
 .itag:hover > .ipop, .opt:hover > .ipop { display: block; }
+
+/* The top bar scrolls horizontally, and a scrolling box clips its children — the Computer and the
+   Adaptation popups used to be cut off at the bar's lower edge. They are now lifted into #tbPop, a
+   fixed layer above everything, positioned by app.js next to the element being hovered. */
+#tbPop { position: fixed; display: none; z-index: 34; width: 250px; max-height: 60vh; overflow: auto; padding: 0 0 8px;
+         background: #141d2a; border: 1px solid #3a4f6b; border-radius: 8px; box-shadow: 0 12px 30px #000c;
+         color: var(--txt); font-size: 11px; line-height: 1.3; text-align: left; }
+#tbPop.show { display: block; }
+#tbPop .ipart { display: block; width: 100%; height: 120px; background-size: cover; background-position: center; border-radius: 8px 8px 0 0; border-bottom: 1px solid #ffffff22; }
+#tbPop b { display: block; padding: 7px 9px 2px; font-size: 12.5px; color: var(--acc); }
+#tbPop > span:last-child { display: block; padding: 0 9px; color: #cfd8e3; }
+#tbPop .pre { white-space: pre-line; }
+/* the copy inside the bar must never open on its own: it would be clipped by the bar */
+#topbar .ipop { display: none !important; }
 
 .flycard .fc-art { height: 110px; margin: -10px -10px 2px; background-size: cover; background-position: center; border-bottom: 1px solid #ffffff22; flex: none; }
 /* secret objectives: small illustrated cards (personal = planet rim, corporate = gold hull) */
@@ -510,3 +526,22 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .gal-room b { color: var(--acc); font-weight: 700; margin-right: 7px; font-variant-numeric: tabular-nums; }
 .gal-note { margin: 12px 2px 4px; font-size: 11px; line-height: 1.45; color: var(--dim); }
 @media (max-width: 760px) { .gal-keys { display: none; } .gal-list { width: 190px; } }
+
+/* ---- my health, always in the lower-right corner (to the left of the deck piles) ---- */
+#selfHud { position: fixed; right: 282px; bottom: 10px; z-index: 9; width: 232px;
+           background: #0b1118dd; border: 1px solid var(--line); border-left: 4px solid var(--green);
+           border-radius: 10px; padding: 7px 10px 8px; backdrop-filter: blur(4px); font-size: 12px;
+           cursor: pointer; transition: border-color .2s; }
+#selfHud:hover { border-color: var(--acc); }
+#selfHud.dead { border-left-color: var(--red); }
+#selfHud .sh-head { display: flex; align-items: baseline; gap: 6px; }
+#selfHud .sh-head b { color: var(--acc); font-size: 12.5px; }
+#selfHud .sh-head small { color: var(--dim); margin-left: auto; font-size: 11px; }
+#selfHud .hp { display: flex; gap: 3px; margin: 6px 0 5px; }
+#selfHud .hp i { width: 14px; height: 11px; border-radius: 2px; background: #2b3a4d; }
+#selfHud .hp i.on { background: var(--green); }
+#selfHud .hp i.mid.on { background: #f39c12; }
+#selfHud .hp i.heavy.on { background: var(--red); }
+#selfHud .hp i.last.on { background: #ff4d4d; box-shadow: 0 0 6px #ff4d4d; }
+#selfHud .sh-wounds { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; line-height: 1.3; }
+@media (max-width: 900px) { #selfHud { right: 10px; bottom: 196px; width: 200px; } }

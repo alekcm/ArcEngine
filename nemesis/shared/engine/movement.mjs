@@ -131,7 +131,14 @@ OPS['noise.roll'] = (state, step) => {
     const r = roll(state, NOISE_DIE);
     log(state, '🎲 Шум (' + (step.laika ? '🐕 Лайка' : pname(p)) + ', ' + roomName(state, roomId) + '): ' + fmtRoll(r) + '.', 'noise');
     if (r === 'silence') return;
-    if (r === 'encounter') { next(state, { op: 'encounter', room: roomId, player: p.id, reason: 'Встреча: жетон шума выпал в коридор, где уже был шум' }); return; }
+    // «Встреча» here is the face of the noise die, not a noise token that landed on an occupied
+    // corridor. Saying otherwise sent the table looking for a corridor with a token that never
+    // existed — the reason printed under the bag must name the real cause.
+    if (r === 'encounter') {
+        next(state, { op: 'encounter', room: roomId, player: p.id, source: 'die',
+            reason: 'Встреча: на кубе шума выпала грань «Встреча» — тянем жетон из мешка' });
+        return;
+    }
     if (r === 'danger') {
         const holder = playersInRoom(state, roomId).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
         const incoming = [];

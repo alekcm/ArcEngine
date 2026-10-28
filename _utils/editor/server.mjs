@@ -252,7 +252,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST') {
       try {
         const body = JSON.parse(await readBody(req) || '{}');
-        const result = await saveBoard(ROOT, body.edits || {});
+        const result = await saveBoard(ROOT, body.edits || {}, { force: body.force === true });
         if (result.ok) console.log(`  ${C.grn}save${C.r} ${result.saved} edited part(s) -> ${BOARD_REL} ${C.dim}(backup: ${result.backup})${C.r}`);
         else console.log(`  ${C.ylw}skip${C.r} ${BOARD_REL}: ${result.error}`);
         return sendJson(res, 200, result);

@@ -52,10 +52,11 @@ test('sanitizeEdit: мусор в числах и цвете отбрасыва�
     assert.deepEqual(sanitizeEdit([]), undefined);
 });
 
-test('saveBoard: пустой набор — пустой файл, то есть доска как в коде', async () => {
+test('saveBoard: осознанный пустой набор — пустой файл, то есть доска как в коде', async () => {
     const root = tempRoot();
     await saveBoard(root, { 'room:1#0': { deleted: true } });
-    const r = await saveBoard(root, {});
+    // без force это отказ (см. тест про затирание); очистка — только явная
+    const r = await saveBoard(root, {}, { force: true });
     assert.equal(r.ok, true);
     assert.deepEqual(read(root), { edits: {} });
 });
@@ -119,4 +120,38 @@ test('вкладка Nemesis: каждая строка интерфейса е�
         assert.ok(en.includes("'" + k + "':"), k + ' — EN');
         assert.ok(ru.includes("'" + k + "':"), k + ' — RU');
     }
+});
+
+test('saveBoard: пустой набор НЕ затирает непустой файл без force', async () => {
+    const root = tempRoot();
+    await saveBoard(root, { 'room:1#0': { pos: [1, 0, 0] }, 'room:1#1': { color: '#112233' } });
+    const refused = await saveBoard(root, {});
+    assert.equal(refused.ok, false);
+    assert.equal(refused.code, 'would_wipe');
+    assert.equal(refused.onDisk, 2, 'в отказе сказано, сколько правок спасено');
+    assert.equal(Object.keys(read(root).edits).length, 2, 'файл на диске не тронут');
+    // панель, которая так и не загрузилась, шлёт мусор — это тоже пустой набор
+    const junk = await saveBoard(root, { 'bad id': { pos: [1, 2, 3] } });
+    assert.equal(junk.ok, false, 'отброшенный мусор — тоже пустой набор');
+    assert.equal(Object.keys(read(root).edits).length, 2);
+    // а осознанное «Отменить всё» всё-таки пишет пустой файл
+    const forced = await saveBoard(root, {}, { force: true });
+    assert.equal(forced.ok, true);
+    assert.deepEqual(read(root), { edits: {} });
+    assert.equal(backups(root, 'board').length, 1, 'правки, которые спаслись от затирания, лежат в бэкапе');
+});
+
+test('saveBoard: пустой набор в пустой файл — можно и без force', async () => {
+    const root = tempRoot();
+    const r = await saveBoard(root, {});
+    assert.equal(r.ok, true, 'первый запуск: стирать нечего');
+    assert.deepEqual(read(root), { edits: {} });
+});
+
+test('вкладка: «Отменить всё» спрашивает, а Save ждёт загрузки файла', () => {
+    assert.match(PANEL_JS, /confirm\(I18N\.t\('nem\.confirmRevertAll'/, 'пустой файл пишется только после подтверждения');
+    assert.match(PANEL_JS, /this\.save\(true\)/, 'осознанная очистка идёт с force');
+    assert.match(PANEL_JS, /force: force === true/, 'и доезжает до сервера');
+    assert.match(PANEL_JS, /this\.loaded = false/, 'до загрузки файла панель помнит, что не загрузилась');
+    assert.match(PANEL_JS, /disabled = !dirty \|\| !this\.loaded/, 'Save закрыт, пока файл не прочитан');
 });

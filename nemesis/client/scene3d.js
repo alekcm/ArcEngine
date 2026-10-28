@@ -8,7 +8,7 @@
 // Corridors are polylines (bends like on the printed board); ribs/LEDs are split into two halves so
 // only the half next to an explored room is shown, LEDs turn yellow when the corridor has noise.
 
-import { buildCharacter, buildIntruder, flatMat } from './characters.js';
+import { buildCharacter, buildIntruder, buildBody, flatMat } from './characters.js';
 import { TUNE, doorSpec } from './tuning.js';
 import * as Snd from './sound.js';
 
@@ -22,6 +22,7 @@ const LIFT_H = 1.1;   // how high a grabbed figure is lifted above the floor  //
 const ZONE_C = { x: 2.1, z: -2.1 }; // standing zone centre (toward the camera)
 const ZONE_R = 2.5;
 const PROP_SPREAD = 1.55;          // props were authored for a ~4-unit room
+const FLOOR_Y = 0.10;              // top of the floor plates: figures and objects stand on it, not on y=0
 const KIND_COLORS = { slot1: '#28343f', slot2: '#2c3b36', cockpit: '#2a3a52', hibernatorium: '#3a2f4e', engine: '#4a3222' };
 const TILE_ACCENT = {
     archives: '#4aa3df', comms: '#4aa3df', emergency: '#4fcf7a', evacA: '#e05252', evacB: '#e05252', fireControl: '#f1c40f', generator: '#f1c40f',
@@ -276,7 +277,7 @@ export class Scene3D {
         this.camera.target.set(0, 0, 0);
         // Size the camera once: a rebuild (the tuning editor moves a slider) must not yank the view.
         if (!this.camSized) { this.camera.radius = Math.max(70, (b.maxX - b.minX) * SCALE * 0.9); this.camSized = true; }
-        this.shipRooms = ship.rooms;
+        this.shipRooms = ship.rooms; this.ship = ship;
         // Keep the ids of the meshes that survive this build (the deck, the stars — they are made once,
         // in the constructor) and drop the ones the disposal just above killed.
         this.pruneEditMeshes();
@@ -408,6 +409,9 @@ export class Scene3D {
     // ---------------------------------------------------------------------------------------
     buildShell(node, tile) {
         const S = this.scene; const root = new (B().TransformNode)('shell', S); root.parent = node.root;
+        // The floor plates are 0.10 thick, so the walls, portals and furniture stand on their top face
+        // instead of being sunk into them.
+        root.position.y = FLOOR_Y;
         const style = WALL_STYLES[TILE_STYLE[tile] || 'steel'];
         const wallMat = this.M(style[0]), wallDark = this.M(style[1]), trimMat = this.M(style[2]);
         const accentHex = TILE_ACCENT[tile] || '#8a99ab';
@@ -1492,10 +1496,40 @@ export class Scene3D {
     corridorPoints(ship, c) {
         const a = this.pos(ship.rooms[c.a]), b = this.pos(ship.rooms[c.b]);
         const mids = (c.path || []).map(([x, y]) => this.posXY(x, y));
-        const pts = [a, ...mids, b];
-        // trim the ends to the wall rings
-        const d0 = pts[1].subtract(pts[0]).normalize(); pts[0] = pts[0].add(d0.scale(WALL_R + 0.45));
-        const dn = pts[pts.length - 2].subtract(pts[pts.length - 1]).normalize(); pts[pts.length - 1] = pts[pts.length - 1].add(dn.scale(WALL_R + 0.45));
+        // A doorway faces the neighbouring room (the wall opening and the door portal are built on
+        // that axis), so both ends of the tube are pulled onto it. Before, an end kept whatever
+        // direction the first bend gave and the corridor arrived beside the doorway — the room
+        // showed a black gap next to a tube that stopped at the wall.
+        const dA = b.subtract(a).normalize(), dB = a.subtract(b).normalize();
+        const through = WALL_R - 0.18;      // the tube reaches a little inside the wall ring
+        const apron = WALL_R + 1.15;        // straight run in front of the door
+        const pts = [a.add(dA.scale(through)), a.add(dA.scale(apron)), ...mids, b.add(dB.scale(apron)), b.add(dB.scale(through))];
+        // drop points that sit on a straight line: a straight corridor needs no extra seams
+        const out = [];
+        for (let i = 0; i < pts.length; i++) {
+            if (i > 0 && i < pts.length - 1) {
+                const u = pts[i].subtract(pts[i - 1]).normalize(), v = pts[i + 1].subtract(pts[i]).normalize();
+                if (B().Vector3.Dot(u, v) > 0.9995) continue;
+            }
+            out.push(pts[i]);
+        }
+        return out;
+    }
+
+    /** The polyline a figure walks when it moves from one room to the next: exactly the corridor
+     *  tube it disappears into, so nobody crosses the hull walls. One move is one corridor, so a
+     *  route exists only between neighbours; pod launches and hibernation return null and the
+     *  figure is simply placed. */
+    routeTo(fromId, toId) {
+        const ship = this.ship;
+        if (!ship || fromId === toId) return null;
+        const from = ship.rooms[fromId];
+        if (!from) return null;
+        const exit = (from.exits || []).find(e => e.to === toId);
+        const c = exit && ship.corridors[exit.corridor];
+        if (!c) return null;
+        const pts = this.corridorPoints(ship, c);
+        if (c.a !== fromId) pts.reverse();
         return pts;
     }
 
@@ -1586,17 +1620,30 @@ export class Scene3D {
         // Not a board and not a billboard: paint on the beam's own steel, the way the "?" is printed
         // on the floor of an unexplored room — no glow, always in the same place, no screen on top.
         // Alt repaints the same stencil as neon (setAlt -> setDecal).
-        const exitA = ship.rooms[c.a].exits.find(e => e.corridor === c.id) || {};
-        const nums = (exitA.nums && exitA.nums.length ? exitA.nums : [exitA.num]).filter(n => n);
-        let decal = null;
-        if (nums.length) {
-            decal = this.makeDecal('cn_' + c.id, door, 0, D.decalY, 0, D.decalW, D.decalH);
-            // Lying flat, the stencil reads along the corridor. Both ways round are equally true, so
-            // take the one that points up-screen for the table's default camera; the paint itself is
-            // fixed on the beam (the "?" tokens behave the same way).
-            decal.rotation.set(Math.PI / 2, 0, Math.cos(d.ry) - Math.sin(d.ry) < 0 ? Math.PI : 0);
-            this.setDecal(decal, nums.join(' / '), false);
+        // Numbers belong to the ROOM, not to the corridor: on the printed board every room numbers
+        // its own exits 1..4 (a room with fewer than four corridors gives one corridor two digits,
+        // printed "3 4"). A door is seen from both ends, so it carries two stencils — one on each
+        // half of the beam, painted with the number of the room on that side. One shared stencil
+        // showed room `a`'s numbers to room `b` as well, and a room ended up with several "2"s.
+        const numsOfRoom = (roomId) => {
+            const exit = ship.rooms[roomId].exits.find(e => e.corridor === c.id) || {};
+            return (exit.nums && exit.nums.length ? exit.nums : [exit.num]).filter(n => n);
+        };
+        const sideNums = { a: numsOfRoom(c.a), b: numsOfRoom(c.b) };
+        // Each stencil takes half of the beam's depth, and its own way up: the paint on the `a` half
+        // reads for a player standing in room a, the `b` half for a player in room b.
+        const sideW = Math.min(D.decalW, Math.max(0.9, (D.beamD / 2 - 0.1) * 2));
+        const decals = [];
+        for (const [side, sign] of [['a', -1], ['b', 1]]) {
+            const nums = sideNums[side];
+            if (!nums.length) continue;
+            const plane = this.makeDecal('cn_' + c.id + '_' + side, door, 0, D.decalY, sign * D.beamD / 4, sideW, sideW / 2);
+            plane.rotation.set(Math.PI / 2, 0, sign < 0 ? 0 : Math.PI);
+            this.setDecal(plane, nums.join(' / '), false);
+            decals.push({ plane, side, nums });
         }
+        const decal = decals.length ? decals[0].plane : null;
+        const nums = decals.length ? decals[0].nums : [];
         // Emergency lamps in the doorway: dark fixtures that are dead until the bulkhead seals. The
         // lenses are switched off, not merely dimmed, so an open door shows no red at all; once it
         // closes the opening is lit like a room on malfunction (updateCorridor).
@@ -1614,7 +1661,7 @@ export class Scene3D {
             db.parent = door; db.position.set((Math.random() - 0.5) * 1.6, 0.08, (Math.random() - 0.5) * 1.4); db.rotation.set(0, Math.random() * 3, (Math.random() - 0.5) * 0.4); db.material = M('#6b7a88'); db.isPickable = false; db.setEnabled(false);
             debris.push(db);
         }
-        this.corridorNodes[c.id] = { root, door, panels, noise, noiseLabel, decal, nums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
+        this.corridorNodes[c.id] = { root, door, panels, noise, noiseLabel, decal, decals, nums, sideNums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
             panelClosed: D.panelClosed, panelOpen: D.panelOpen, ry: d.ry, a: c.a, b: c.b, state: null };
     }
 
@@ -1796,7 +1843,7 @@ export class Scene3D {
         node.podKey = key;
         if (!pods.length) return;
         const root = new (B().TransformNode)('pods_' + node.data.id, this.scene);
-        root.parent = node.root;
+        root.parent = node.root; root.position.y = FLOOR_Y;   // the cradle stands on the floor plates
         pods.forEach((p, i) => {
             const x = (i === 0 ? -1 : 1) * 2.5, z = 1.05;
             const pose = new (B().TransformNode)('podpose_' + p.num, this.scene);
@@ -1989,7 +2036,7 @@ export class Scene3D {
         }
         // Corridor numbers: plain paint stenciled on the beam by default, neon while Alt is held.
         for (const n of Object.values(this.corridorNodes)) {
-            if (n.decal && n.nums && n.nums.length) this.setDecal(n.decal, n.nums.join(' / '), this.alt);
+            for (const side of (n.decals || [])) this.setDecal(side.plane, side.nums.join(' / '), this.alt);
         }
     }
 
@@ -2015,32 +2062,37 @@ export class Scene3D {
         const cyl = (dt, db, h, tess, mat) => add(B().MeshBuilder.CreateCylinder('fire', { diameterTop: dt, diameterBottom: db, height: h, tessellation: tess }, S), mat);
         // The fire sits away from the standing zone (figures) but well inside the walls.
         const FX = -2.3, FZ = 2.0;
-        const burn = cyl(4.6, 4.6, 0.02, 16, this.M('#171210')); burn.position.set(FX, 0.19, FZ);           // scorched deck
-        const pool = cyl(4.0, 4.0, 0.02, 16, this.M('#ff7a1a', 0.75, { alpha: 0.3 })); pool.position.set(FX, 0.215, FZ);   // light pool
+        // Scorching: a few overlapping angular patches instead of one perfect disc. The old bright
+        // orange "light pool" was a flat glowing circle under the flames — from the board camera it
+        // read as a painted ring lying on the deck, and it was the ugliest thing in a burning room.
+        for (const [dx, dz, d, tess, rot] of [[0, 0, 3.4, 7, 0.2], [0.95, -0.55, 2.1, 6, 1.1], [-1.05, 0.8, 1.7, 6, 2.3]]) {
+            const b = cyl(d, d, 0.02, tess, this.M('#171210'));
+            b.position.set(FX + dx, FLOOR_Y + 0.005, FZ + dz); b.rotation.y = rot;
+        }
         // flames: a tall cluster around the fire with a hotter core, each on its own flicker phase
         for (let i = 0; i < 13; i++) {
             const a = (i / 13) * Math.PI * 2 + Math.random() * 0.4, rad = 0.25 + Math.random() * 1.45;
             const h = 1.5 + Math.random() * 1.5;
             const f = cyl(0, 0.55 + Math.random() * 0.55, h, 6, this.M(i % 3 === 2 ? '#ffc23b' : '#ff7a1a', 1, { alpha: 0.9 }));
-            f.position.set(FX + Math.cos(a) * rad, h * 0.42, FZ + Math.sin(a) * rad);
+            f.position.set(FX + Math.cos(a) * rad, FLOOR_Y + h * 0.42, FZ + Math.sin(a) * rad);
             f.metadata = { fire: 'flame', phase: Math.random() * 6.28 };
         }
         for (let i = 0; i < 5; i++) {
             const h = 1.1 + Math.random() * 0.9;
             const c = cyl(0, 0.4 + Math.random() * 0.3, h, 6, this.M('#fff1b8', 1, { alpha: 0.95 }));
-            c.position.set(FX + (Math.random() - 0.5) * 1.0, h * 0.5, FZ + (Math.random() - 0.5) * 1.0);
+            c.position.set(FX + (Math.random() - 0.5) * 1.0, FLOOR_Y + h * 0.5, FZ + (Math.random() - 0.5) * 1.0);
             c.metadata = { fire: 'flame', phase: Math.random() * 6.28 };
         }
         // embers rising out of the fire, and the smoke that hangs above it
         for (let i = 0; i < 6; i++) {
             const e = add(B().MeshBuilder.CreateSphere('ember', { diameter: 0.12, segments: 3 }, S), this.M('#ffd27a', 1));
-            e.position.set(FX + (Math.random() - 0.5) * 2.2, 0.6, FZ + (Math.random() - 0.5) * 2.2);
-            e.metadata = { fire: 'ember', phase: Math.random(), y0: 0.6 };
+            e.position.set(FX + (Math.random() - 0.5) * 2.2, FLOOR_Y + 0.6, FZ + (Math.random() - 0.5) * 2.2);
+            e.metadata = { fire: 'ember', phase: Math.random(), y0: FLOOR_Y + 0.6 };
         }
         for (let i = 0; i < 4; i++) {
             const sm = cyl(2.2, 1.0, 1.6, 7, this.M('#2b2320', 0.06, { alpha: 0.22 }));
-            sm.position.set(FX + (Math.random() - 0.5) * 1.6, 2.2, FZ + (Math.random() - 0.5) * 1.6);
-            sm.metadata = { fire: 'smoke', phase: Math.random(), y0: 2.2 };
+            sm.position.set(FX + (Math.random() - 0.5) * 1.6, FLOOR_Y + 2.2, FZ + (Math.random() - 0.5) * 1.6);
+            sm.metadata = { fire: 'smoke', phase: Math.random(), y0: FLOOR_Y + 2.2 };
         }
         node.fireRoot = root; node.fireParts = parts;
     }
@@ -2049,15 +2101,25 @@ export class Scene3D {
         // objects lie inside the standing zone's outer rim so they are visible next to the figures
         const a = 2.4 + k * 0.7, rad = ZONE_R - 0.4;
         const x = ZONE_C.x + Math.cos(a) * rad, z = ZONE_C.z + Math.sin(a) * rad;
-        let m;
-        if (type === 'egg') { m = B().MeshBuilder.CreateSphere('egg', { diameter: 0.7, segments: 5 }, S); m.scaling.y = 1.3; m.position.set(x, 0.45, z); m.material = this.M('#b8a8c8'); }
-        else if (type === 'carcass') { m = B().MeshBuilder.CreateBox('carc', { width: 1.6, height: 0.4, depth: 0.8 }, S); m.position.set(x, 0.3, z); m.rotation.y = a; m.material = this.M('#263036'); }
-        else { m = B().MeshBuilder.CreateBox('corpse', { width: 1.5, height: 0.35, depth: 0.6 }, S); m.position.set(x, 0.28, z); m.rotation.y = a; m.material = this.M(type === 'charCorpse' ? '#8a6b5a' : '#4a7ab8'); }
-        m.parent = parent; m.convertToFlatShadedMesh();
+        // The whole object lives in one node standing on the floor plates (FLOOR_Y), so a body lies on
+        // the deck instead of sinking half a plate into it.
+        const node = new (B().TransformNode)('obj_' + type, S);
+        node.parent = parent; node.position.set(x, FLOOR_Y, z); node.rotation.y = a;
+        if (type === 'egg') {
+            const m = B().MeshBuilder.CreateSphere('egg', { diameter: 0.7, segments: 5 }, S);
+            m.parent = node; m.scaling.y = 1.3; m.position.set(0, 0.45, 0); m.material = this.M('#b8a8c8'); m.convertToFlatShadedMesh();
+        } else {
+            // A real body instead of the coloured slab it used to be: the human corpse, the character's
+            // corpse and the intruder carcass have their own lying models (client/characters.js).
+            buildBody(S, type === 'carcass' ? 'carcass' : type === 'charCorpse' ? 'charCorpse' : 'corpse', node);
+        }
         // Room objects can be clicked to pick them up (nest eggs at k >= 10 are decoration only).
-        m.isPickable = objIndex !== undefined;
-        m.metadata = { roomId: roomId || (parent && parent.metadata && parent.metadata.room) || null, objectIndex: objIndex };
-        this.dynamic.push(m);
+        // The click hits a mesh, not the empty parent, so every part carries the object's metadata.
+        const meta = { roomId: roomId || (parent && parent.metadata && parent.metadata.room) || null, objectIndex: objIndex };
+        for (const m of node.getChildMeshes()) { m.isPickable = objIndex !== undefined; m.metadata = Object.assign({}, meta); this.dynamic.push(m); }
+        node.metadata = Object.assign({}, meta);
+        node.isPickable = false;
+        this.dynamic.push(node);
     }
 
     /** Where a room / an intruder sits on screen, for popups anchored above it. */
@@ -2220,8 +2282,10 @@ export class Scene3D {
             for (const m of n.root.getChildMeshes()) if (m.metadata) m.metadata.roomId = it.room;
             const k = perRoom[it.room] = (perRoom[it.room] || 0) + 1;
             const roomPos = this.roomNodes[it.room].root.position;
-            n.target = this.slotPos(roomPos, k - 1, 'intr');
+            const wasRoom = n.room;
+            n.target = this.slotPos(roomPos, k - 1, 'intr'); n.target.y = FLOOR_Y; n.room = it.room;
             if (!n.placed) { n.root.position.copyFrom(n.target); n.placed = true; }
+            else if (wasRoom && wasRoom !== it.room) n.route = this.routeTo(wasRoom, it.room);   // crawl the corridor
             n.root.rotation.y = Math.PI * 0.75 + Math.PI;  // face the characters
             this.setLabel(n.label, names[it.type] + (it.hits ? ' ✚' + it.hits : ''), '', '#9cff3b');
         }
@@ -2252,10 +2316,15 @@ export class Scene3D {
             if (!visible) continue;
             const k = perRoom[p.room] = (perRoom[p.room] || 0) + 1;
             const roomPos = this.roomNodes[p.room].root.position;
+            const wasRoom = n.room;
             n.slot = this.slotPos(roomPos, k - 1, 'char'); n.room = p.room;
             n.target = this.posed(n, p.id);
+            if (n.target) n.target.y = FLOOR_Y;                 // stand on the floor plates, not inside them
             const firstPlace = !n.placed;
             if (!n.placed) { n.ch.root.position.copyFrom(n.target); n.placed = true; }
+            // A move to another room goes through the corridor, not through the hull: the route is the
+            // very polyline the tube is built from, from doorway to doorway.
+            if (!firstPlace && wasRoom && wasRoom !== p.room) n.route = this.routeTo(wasRoom, p.room);
             const hasIntr = Object.values(view.intruders).some(i => i.room === p.room);
             n.baseFace = hasIntr ? Math.PI * 0.75 : -Math.PI / 4 + Math.PI;   // face intruders, else the camera (applied once the run ends)
             n.faceY = n.baseFace + ((this.poses[p.id] || {}).rot || 0);
@@ -2324,20 +2393,30 @@ export class Scene3D {
         const dt = this.engine.getDeltaTime() / 1000;
         for (const [pidKey, n] of Object.entries(this.chars)) {
             if (!n.target || !n.ch.root.isEnabled()) continue;
-            const pos = n.ch.root.position, d = n.target.subtract(pos); d.y = 0;
-            const dist = d.length(), stepLen = RUN_SPEED * dt;
+            const pos = n.ch.root.position, stepLen = RUN_SPEED * dt;
+            // The route through the corridors first (doorway, bends, doorway), the room slot last.
+            let goal = n.target;
+            while (n.route && n.route.length) {
+                const wp = n.route[0];
+                if (Math.hypot(wp.x - pos.x, wp.z - pos.z) <= Math.max(0.25, stepLen)) { n.route.shift(); continue; }
+                goal = wp; break;
+            }
+            const d = goal.subtract(pos); d.y = 0;
+            const dist = d.length();
             const moving = dist > 0.05;
             if (moving) {
                 Snd.footstep(performance.now());
-                if (dist <= stepLen) { pos.x = n.target.x; pos.z = n.target.z; }
+                if (dist <= stepLen) { pos.x = goal.x; pos.z = goal.z; }
                 else { pos.x += d.x / dist * stepLen; pos.z += d.z / dist * stepLen; }
                 n.ch.root.rotation.y = Math.atan2(d.x, d.z);          // face the running direction
             } else if (n.faceY != null) n.ch.root.rotation.y += (n.faceY - n.ch.root.rotation.y) * Math.min(1, dt * 6);
             if (n.ch.animate) n.ch.animate(t, moving);
             // picked-up figure floats above the table while dragged, then settles back down
             const lifting = !!this.drag && this.drag.pid === Number(pidKey);
+            if (lifting) n.route = null;                                  // the hand carries it straight
             n.lift = (n.lift || 0) + ((lifting ? LIFT_H : 0) - (n.lift || 0)) * Math.min(1, dt * 9);
-            if (n.lift > 0.005) { pos.y += n.lift; n.ch.root.rotation.x = -0.12 * n.lift / LIFT_H; }   // slight forward tilt as if held
+            pos.y = FLOOR_Y + n.lift;                                      // feet on the floor plates
+            if (n.lift > 0.005) n.ch.root.rotation.x = -0.12 * n.lift / LIFT_H;   // slight forward tilt as if held
             else n.ch.root.rotation.x = 0;
             if (lifting && moving) { pos.x = n.target.x; pos.z = n.target.z; }   // follows the hand directly, no run cycle
         }
@@ -2358,7 +2437,17 @@ export class Scene3D {
             p.pin.position.y = 1.4 + Math.abs(Math.sin(age * 6)) * 0.5;
             p.root.rotation.y = age * 2;
         }
-        for (const n of Object.values(this.intr)) if (n.target) { B().Vector3.LerpToRef(n.root.position, n.target, lerp, n.root.position); n.root.position.y = Math.abs(Math.sin(t * 3 + n.root.position.x)) * 0.05; }
+        for (const n of Object.values(this.intr)) if (n.target) {
+            let goal = n.target;
+            const ip = n.root.position;
+            while (n.route && n.route.length) {
+                const wp = n.route[0];
+                if (Math.hypot(wp.x - ip.x, wp.z - ip.z) <= 0.35) { n.route.shift(); continue; }
+                goal = wp; break;
+            }
+            B().Vector3.LerpToRef(ip, goal, lerp, ip);
+            ip.y = FLOOR_Y + Math.abs(Math.sin(t * 3 + ip.x)) * 0.05;   // on the floor, a slight crawl bob
+        }
         // Floating labels grow with distance so the board stays readable when zoomed out: room numbers
         // and the Alt overlay names. The corridor numbers are painted on the beams, so they stay put.
         const ls = this.camera.radius > 60 ? this.camera.radius / 60 : 1;

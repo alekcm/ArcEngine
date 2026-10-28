@@ -10,6 +10,19 @@ import { ATTACK_CARDS, ITEMS, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.
 import { shuffle } from '../rng.mjs';
 
 const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(c => [c.id, c]));
+/** Printed rank names used inside the attack card texts. */
+const ATTACK_RANK = { adult: 'Взрослый', drone: 'Дрон', queen: 'Королева' };
+/** The part of an attack card that applies to this intruder: «Взрослый: −1 здоровье.» out of a card
+ *  that lists all three ranks. The flying card on the table must say what it does — the chat alone
+ *  is not enough. Cards printed without a rank split are returned whole. */
+export function attackEffectText(card, type) {
+    const text = String((card && card.text) || '');
+    const word = ATTACK_RANK[type];
+    if (!word || !text) return text;
+    const parts = text.split(/(?=(?:Взрослый|Дрон|Королева)(?:\/(?:Взрослый|Дрон|Королева))?:)/);
+    const hit = parts.find(s => s.slice(0, s.indexOf(':')).split('/').map(w => w.trim()).includes(word));
+    return hit ? hit.trim() : text;
+}
 const OBJECT_NAMES = { corpse: 'Человеческий труп', charCorpse: 'Труп персонажа', carcass: 'Туша чужого', egg: 'Яйцо чужого' };
 export function objectName(o) { return OBJECT_NAMES[o && o.type] || 'объект'; }
 
@@ -36,7 +49,10 @@ OPS['attack'] = (state, step) => {
         cardId = state.attackDeck.shift();
         state.attackDiscard.push(cardId);
         const card = ATTACK_BY_ID[cardId];
-        fx(state, { type: 'attack', card: cardId, name: card.name, intruder: it.type, player: p.id });
+        // `effect` is what this rank suffers, `text` is the whole printed card — the card face on the
+        // table shows both, so the effect is readable without digging through the chat log.
+        fx(state, { type: 'attack', card: cardId, name: card.name, intruder: it.type, player: p.id,
+            effect: attackEffectText(card, it.type), text: card.text });
         log(state, '⚔ ' + intruderLabel(state, it) + ' атакует ' + pname(p) + ': «' + card.name + '».', 'combat');
         next(state, { ...step, cardId });
         return;
