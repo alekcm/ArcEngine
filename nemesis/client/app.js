@@ -659,7 +659,7 @@ function renderHint() {
     const pr = v.prompt; const hints = [];
     if (pr && !pr.waiting && pr.kind !== 'dice' && pr.kind !== 'ack') hints.push('<b>1–9</b> выбор');
     if (app.canUndo) hints.push('<b>Esc</b> шаг назад');
-    hints.push('<b>ЛКМ</b> по комнате — идти, по чужому — атака', '<b>Alt</b> названия комнат, подсветка номеров коридоров и поиск', '<b>C</b> персонаж', '<b>F</b> к себе', '<b>Q/E</b> поворот', '<b>WASD</b> камера');
+    hints.push('<b>ЛКМ</b> по комнате — идти, по чужому — атака', '<b>Alt</b> названия комнат, неоновые номера на дверях и поиск', '<b>C</b> персонаж', '<b>F</b> к себе', '<b>Q/E</b> поворот', '<b>WASD</b> камера');
     $('hintBar').innerHTML = hints.map(h => '<span>' + h + '</span>').join('<span>·</span>');
 }
 function playerName(id) { const v = app.view; return v && v.players[id] ? v.players[id].name : ''; }

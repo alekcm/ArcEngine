@@ -1,10 +1,12 @@
 // doors.test.mjs — the corridor doors, built headlessly against a stub BABYLON.
 //   node --test nemesis/tools/doors.test.mjs
-// The corridor number used to live on a billboard floating 2.2 units off to the side, 2.75 units up,
-// in a small font — in play nobody could read it without zooming onto the door. The door is now a
-// wide bulkhead portal standing on its own slab, with a number board on the beam: the numbers are
-// printed on it all the time and holding Alt turns it into neon signage. These checks keep the
-// numbers on the frame, keep the board out of the walkway and keep the panel clear of the posts.
+// The corridor number went through two bad versions: first a small label floating 2.2 units off to
+// the side of the door, then a steel board above the beam whose number was a billboard — it always
+// turned to face the camera and it glowed even without Alt. What it has to be is what the players
+// actually read on the physical board: a flat stencil painted on the door frame itself, the same
+// pale slate paint as the "?" printed on an unexplored room's floor, dead flat until Alt is held.
+// The frame is wide and deep enough to carry that number, and the doorway has dark emergency lamps
+// that only light up once the bulkhead seals.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -25,13 +27,14 @@ class V3 {
 const mat = (hex, emissive) => ({ hex, emissive, uniqueId: ++uid, alpha: 1, scale: null, dispose() {}, freeze() {}, unfreeze() {} });
 const allNodes = [];
 const node = (name) => ({ name, position: new V3(), rotation: new V3(), scaling: new V3(1, 1, 1), parent: null,
-    dispose() {}, setEnabled() {}, isEnabled() { return true; }, computeWorldMatrix() {}, bakeCurrentTransformIntoVertices() {} });
+    enabled: true, dispose() {}, setEnabled(v) { this.enabled = v !== false; }, isEnabled() { return this.enabled; },
+    computeWorldMatrix() {}, bakeCurrentTransformIntoVertices() {} });
 const mesh = (name, opts) => {
     const m = Object.assign(node(name), { opts: opts || {}, material: null, isPickable: true,
         convertToFlatShadedMesh() { return this; } });
     meshes.push(m); return m;
 };
-/** A 2D context stub that records what the number board actually paints. */
+/** A 2D context stub that records what the stencil actually paints. */
 function makeCtx(rec) {
     const state = { fillStyle: '#000', strokeStyle: '#000', shadowBlur: 0, font: '', textAlign: '', textBaseline: '', lineWidth: 1 };
     const ctx = {
@@ -72,8 +75,18 @@ globalThis.window = {
         Vector3: V3,
         Mesh: { MergeMeshes: (arr) => arr[0], BILLBOARDMODE_ALL: 7 },
         DynamicTexture,
-        StandardMaterial: class { constructor(name) { this.name = name; this.uniqueId = ++uid; this.emissiveColor = { scale: () => ({}) }; this.diffuseColor = null; this.specularColor = { scale: () => ({}) }; } dispose() {} freeze() {} },
-        Color3: Object.assign(class { constructor(r, g, b) { this.r = r; this.g = g; this.b = b; } }, {
+        StandardMaterial: class {
+            constructor(name) {
+                this.name = name; this.uniqueId = ++uid; this.diffuseTexture = null; this.disableLighting = false;
+                this.emissiveColor = { r: 0, g: 0, b: 0, scale: () => ({}) };
+                this.diffuseColor = null; this.specularColor = { scale: () => ({}) };
+            }
+            dispose() {} freeze() {}
+        },
+        Color3: Object.assign(class {
+            constructor(r, g, b) { this.r = r; this.g = g; this.b = b; }
+            scale(k) { return { r: this.r * k, g: this.g * k, b: this.b * k }; }
+        }, {
             FromHexString: () => ({ scale: () => ({}) }), Black: () => ({ scale: () => ({}) }),
         }),
         Color4: class {},
@@ -89,7 +102,8 @@ const host = {
     M: (hex, e, extra) => mat(hex, e),
     mergeStatic: (list) => list,
     makeLabel(...args) { return Scene3D.prototype.makeLabel.apply(host, args); },
-    setPlate(...args) { return Scene3D.prototype.setPlate.apply(host, args); },
+    makeDecal(...args) { return Scene3D.prototype.makeDecal.apply(host, args); },
+    setDecal(...args) { return Scene3D.prototype.setDecal.apply(host, args); },
     corridorPoints(...args) { return Scene3D.prototype.corridorPoints.apply(host, args); },
     pos(...args) { return Scene3D.prototype.pos.apply(host, args); },
     posXY(...args) { return Scene3D.prototype.posXY.apply(host, args); },
@@ -102,6 +116,9 @@ const state = createGame({
 const ship = state.ship;
 host.cx = (ship.bounds.minX + ship.bounds.maxX) / 2;
 host.cy = (ship.bounds.minY + ship.bounds.maxY) / 2;
+host.shipRooms = ship.rooms;
+const view = { roomState: {} };
+for (const r of Object.values(ship.rooms)) view.roomState[r.id] = { explored: true, objects: [], tile: null };
 const build = (c) => {
     meshes.length = 0; allNodes.length = 0;
     Scene3D.prototype.buildCorridor.call(host, ship, c);
@@ -112,75 +129,86 @@ const nodes = {};
 for (const c of corridors) nodes[c.id] = build(c);
 
 test('DR-01 the frame is wider than the corridor and stands on its own slab', () => {
-    const posts = meshes.filter(m => m.name === 'post' && m.parent && m.parent.name === 'door');
-    const slabs = meshes.filter(m => m.name === 'dslab');
     for (const c of corridors) {
         build(c);
-        const p = meshes.filter(m => m.name === 'post');
-        assert.equal(p.length, 2, c.id + ': two posts');
-        for (const post of p) assert.ok(Math.abs(post.position.x) === 1.55, c.id + ': posts stand at ±1.55');
-        assert.equal(p[0].opts.width, 0.9, c.id + ': a chunky post');
-        assert.equal(p[0].opts.height, 2.2, c.id + ': a taller portal');
+        const posts = meshes.filter(m => m.name === 'post');
+        assert.equal(posts.length, 2, c.id + ': two posts');
+        for (const post of posts) assert.equal(Math.abs(post.position.x), 1.7, c.id + ': posts stand at ±1.7');
+        assert.equal(posts[0].opts.width, 1.2, c.id + ': a chunky post');
+        assert.equal(posts[0].opts.height, 2.35, c.id + ': a taller portal');
         const lintel = meshes.find(m => m.name === 'lintel');
-        assert.equal(lintel.opts.width, 4.1, c.id + ': the beam spans the whole frame');
+        assert.equal(lintel.opts.width, 5.2, c.id + ': the beam spans the whole frame');
+        assert.ok(lintel.opts.depth >= 2.0, c.id + ': the beam is deep enough to carry the number');
+        assert.ok(lintel.position.x === 0 && lintel.position.z === 0, c.id + ': the beam is centred on the door');
         const slab = meshes.find(m => m.name === 'dslab');
         assert.ok(slab, c.id + ': the frame stands on a bulkhead slab');
-        assert.equal(slab.opts.width, 4.3, c.id + ': the slab is wider than the frame');
+        assert.ok(slab.opts.width > lintel.opts.width, c.id + ': the slab is wider than the frame');
         // the posts must actually stand on the slab, not float above it or sink into it
         const slabTop = slab.position.y + slab.opts.height / 2;
-        // feet may sink a couple of centimetres into the slab; what must never happen is a gap
-        for (const post of p) {
+        for (const post of posts) {
             const foot = post.position.y - post.opts.height / 2;
             assert.ok(foot <= slabTop + 0.005 && foot >= slabTop - 0.08,
                 c.id + ': post feet rest on the slab (foot ' + foot.toFixed(3) + ', slab top ' + slabTop.toFixed(3) + ')');
         }
     }
-    assert.ok(posts.length > 0, 'posts exist');
-    assert.ok(slabs.length > 0, 'slabs exist');
 });
 
-test('DR-02 the number board hangs on the beam, above the walkway', () => {
+test('DR-02 the number is a flat stencil on the beam, not a board hanging in the air', () => {
     for (const c of corridors) {
         build(c);
-        const sign = allNodes.find(m => m.name === 'sign_' + c.id);
-        assert.ok(sign, c.id + ': the sign node exists');
         const n = host.corridorNodes[c.id];
-        assert.ok(n.numLabel, c.id + ': the corridor has a number label');
-        // the frame is a physical border, so the label is the only thing in the middle of the board
-        const bars = meshes.filter(m => m.name === 'se');
-        assert.equal(bars.length, 4, c.id + ': a four-sided frame around the panel');
-        // the board sits on the beam: its frame bottom meets the lintel top (2.32)
-        const bottom = sign.position.y - 0.53 - 0.03;
-        assert.ok(bottom <= 2.34 && bottom >= 2.26, c.id + ': the board rests on the beam (bottom ' + bottom.toFixed(2) + ')');
-        // nothing hangs into the doorway: the opening is 2.2 tall
-        for (const b of bars) assert.ok(sign.position.y + b.position.y - b.opts.height / 2 > 2.25, c.id + ': the board stays above the doorway');
+        assert.ok(n.decal, c.id + ': the corridor has a number stencil');
+        const decal = n.decal;
+        // flat on the beam, facing up — the very same orientation as the "?" on a room's floor
+        assert.equal(decal.billboardMode, 0, c.id + ': the stencil never turns to the camera');
+        assert.equal(decal.rotation.x, Math.PI / 2, c.id + ': the stencil lies flat');
+        assert.ok(decal.rotation.z === 0 || Math.abs(decal.rotation.z) === Math.PI, c.id + ': it only spins in its own plane');
+        assert.equal(decal.position.x, 0, c.id + ': centred across the beam');
+        assert.equal(decal.position.z, 0, c.id + ': centred along the beam');
+        // it sits on the beam's sign plate, not above it
+        const plate = meshes.find(m => m.name === 'dplate');
+        const lintel = meshes.find(m => m.name === 'lintel');
+        const plateTop = plate.position.y + plate.opts.height / 2;
+        assert.ok(decal.position.y >= plateTop && decal.position.y <= plateTop + 0.03,
+            c.id + ': the stencil lies on the plate (' + decal.position.y.toFixed(3) + ' vs ' + plateTop.toFixed(3) + ')');
+        assert.ok(plateTop >= lintel.position.y + lintel.opts.height / 2 - 0.01, c.id + ': the plate caps the beam');
+        // and it fits: the number cannot overhang the plate it is painted on
+        const w = decal.opts.width, h = decal.opts.height;
+        assert.ok(w <= plate.opts.width && h <= plate.opts.depth,
+            c.id + ': the stencil fits on the plate (' + w + '×' + h + ' on ' + plate.opts.width + '×' + plate.opts.depth + ')');
+        // nothing hangs in the air above the doorway any more: no old board and its four bars
+        assert.equal(allNodes.filter(a => /^sign_/.test(a.name)).length, 0, c.id + ': no separate board node');
+        assert.equal(meshes.filter(m => m.name === 'se').length, 0, c.id + ': no floating frame around it');
+        // the plate is well above the opening, so the number never blocks the walkway
+        assert.ok(plate.position.y - plate.opts.height / 2 > 2.35, c.id + ': the beam stays above the doorway');
     }
 });
 
-test('DR-03 the number is printed on the board, and Alt turns it into neon', () => {
+test('DR-03 the number is printed in the same paint as the "?", and Alt turns it neon', () => {
     const c = corridors[0];
     const n = build(c);
     const exitA = ship.rooms[c.a].exits.find(e => e.corridor === c.id);
     const nums = (exitA.nums && exitA.nums.length ? exitA.nums : [exitA.num]).filter(x => x);
     const want = nums.join(' / ');
-    const printed = n.numLabel.metadata.dt.rec.filter(r => r.text === want);
-    assert.equal(printed.length, 1, 'the number is painted on the board: "' + want + '"');
-    assert.ok(printed[0].size >= 100, 'the digits fill the board (' + printed[0].size + 'px)');
-    assert.ok(printed[0].blur < 12, 'the printed number is not glowing yet');
+    const printed = n.decal.metadata.dt.rec.filter(r => r.text === want);
+    assert.equal(printed.length, 1, 'the number is painted on the beam: "' + want + '"');
+    assert.ok(printed[0].size >= 150, 'the digits fill the beam (' + printed[0].size + 'px)');
+    assert.equal(printed[0].blur, 0, 'the printed number does not glow');
+    assert.equal(printed[0].fill, '#56687c', 'it is the same slate paint as the "?" on a room floor');
+    assert.equal(n.decal.isEnabled(), true, 'the number is on the door without Alt');
+    // the beam is a physical sign, so the plate is dark and the stencil is the only thing on it
+    assert.equal(meshes.find(m => m.name === 'dplate').material.hex, '#33404e', 'a dark plate under the paint');
 
-    // The board is a printed sign from the start, not an Alt-only overlay: the number was painted
-    // during build, and Alt only repaints it brighter.
-    assert.ok(n.numLabel.isEnabled(), 'the board is visible without Alt');
     Scene3D.prototype.setAlt.call(host, true);
-    const neon = n.numLabel.metadata.dt.rec.filter(r => r.text === want);
+    const neon = n.decal.metadata.dt.rec.filter(r => r.text === want);
     assert.ok(neon.length >= 1, 'the number is repainted for Alt');
     assert.ok(neon.some(r => r.blur >= 20), 'the Alt number glows');
     assert.ok(neon.some(r => /^#/.test(r.fill) && r.fill !== printed[0].fill), 'the Alt number changes colour');
-    assert.ok(n.signMat, 'the board has its own material so the frame can light up');
 
     Scene3D.prototype.setAlt.call(host, false);
-    const back = n.numLabel.metadata.dt.rec.filter(r => r.text === want);
-    assert.ok(back.every(r => r.blur < 20), 'releasing Alt returns the printed look');
+    const back = n.decal.metadata.dt.rec.filter(r => r.text === want);
+    assert.ok(back.length >= 1 && back.every(r => r.blur < 20), 'releasing Alt returns the printed look');
+    assert.equal(back[0].fill, '#56687c', 'and the same paint');
 });
 
 test('DR-04 the sliding panels close the opening and hide inside the posts', () => {
@@ -194,11 +222,42 @@ test('DR-04 the sliding panels close the opening and hide inside the posts', () 
         assert.ok(Math.abs(n.panelClosed - half) < 0.01, c.id + ': the closed panels meet at the centre');
         assert.ok(n.panelClosed + half >= 1.1 - 0.01, c.id + ': the closed panels reach the posts');
         // open: the panel slides behind the post instead of sticking out into the corridor
-        assert.ok(n.panelOpen - half >= 0.9 && n.panelOpen + half <= 2.1, c.id + ': the open panel fits inside the post');
+        const post = meshes.find(m => m.name === 'post');
+        const inner = Math.abs(post.position.x) - post.opts.width / 2;
+        assert.ok(n.panelOpen - half >= inner - 0.06, c.id + ': the open panel is inside the post');
+        assert.ok(n.panelOpen + half <= Math.abs(post.position.x) + post.opts.width / 2, c.id + ': and does not stick out of it');
     }
 });
 
-test('DR-05 no new pickable meshes: the board and its numbers are decoration', () => {
+test('DR-05 the doorway emergency lamps are dead until the door closes', () => {
+    for (const c of corridors) {
+        const n = build(c);
+        const lenses = n.lamps;
+        assert.equal(lenses.length, 2, c.id + ': a lamp on each side of the doorway');
+        for (const l of lenses) assert.ok(!l.isEnabled(), c.id + ': the emergency light is off while the door stands open');
+        for (const l of lenses) assert.equal(l.material.emissive, 1.6, c.id + ': a lit lens would be a bright red');
+        // the fixture itself is always there: a dark housing, not a glowing lamp
+        const bodies = meshes.filter(m => m.name === 'lem');
+        assert.equal(bodies.length, 2, c.id + ': two lamp housings');
+        for (const b of bodies) assert.equal(b.material.hex, '#2a3038', c.id + ': dark steel housing');
+        // the lamps hang in the top corners of the opening, above the sliding panels and the trim
+        for (const l of lenses) {
+            assert.ok(Math.abs(l.position.x) > 0.9 && Math.abs(l.position.x) < 1.1, c.id + ': the lens looks into the doorway');
+            assert.ok(l.position.y > 1.9 && l.position.y < 2.35, c.id + ': it hangs under the beam');
+        }
+
+        // sealed: the emergency light comes on, like a room on malfunction
+        n.state = null;
+        Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'closed' }));
+        assert.ok(lenses.every(l => l.isEnabled()), c.id + ': closing the door lights the doorway');
+        // and it goes dark again as soon as the bulkhead opens
+        n.state = null;
+        Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'open' }));
+        assert.ok(lenses.every(l => !l.isEnabled()), c.id + ': an open door shows no red at all');
+    }
+});
+
+test('DR-06 no new pickable meshes: the stencil, the beam and the lamps are decoration', () => {
     for (const c of corridors) {
         build(c);
         for (const m of meshes) {
