@@ -14,6 +14,7 @@
 // the editor's own server, and the game applies the same file when it builds the board.
 import { Scene3D } from './scene3d.js';
 import { TUNE, SCHEMA } from './tuning.js';
+import { galleryPods } from './gallery.js';
 import { ROOM_TILES, galleryShip } from '../shared/ship.mjs';
 import { INTRUDER_NAMES } from '../shared/data/cards.mjs';
 
@@ -24,7 +25,9 @@ function galleryView(ship) {
         roomState[r.id] = { tile: ship.galleryTiles[r.id], explored: true, fire: false, malfunction: false, objects: [], token: null };
     }
     return {
-        ship, roomState, players: [], intruders: {}, fx: [], pods: [], podsUnlocked: true,
+        // The pods come from the view, not from the room: without them the launch bays show bare
+        // cradles in the editor while a game shows a pod on each. Same demo set as app.js.
+        ship, roomState, players: [], intruders: {}, fx: [], pods: galleryPods(), podsUnlocked: true,
         nestEggs: 5, time: 15, selfDestruct: 0, destination: 'B', current: null, phase: 'gallery', lastShot: null,
     };
 }

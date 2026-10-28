@@ -3,6 +3,7 @@
 
 import { Scene3D, Preview3D } from './scene3d.js';
 import { TUNE } from './tuning.js';
+import { galleryPods } from './gallery.js';
 import { DEFAULTS } from './characters.js';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
@@ -244,16 +245,6 @@ const GALLERY_GROUPS = [
     ['Базовые тайлы · слот 1', BASIC_TILES],
     ['Дополнительные тайлы · слот 2', ADDITIONAL_TILES],
 ];
-
-/** Demo pods for the two evacuation rooms: open / locked / occupied, as they look in a game. */
-function galleryPods() {
-    return [
-        { num: 1, section: 'A', locked: false, occupants: [], launched: false, removed: false },
-        { num: 2, section: 'A', locked: true, occupants: [], launched: false, removed: false },
-        { num: 3, section: 'B', locked: false, occupants: [1], launched: false, removed: false },
-        { num: 4, section: 'B', locked: false, occupants: [], launched: false, removed: false },
-    ];
-}
 
 /** A view-shaped object for Scene3D: all rooms known and explored, no players or intruders. */
 function galleryView(ship) {
