@@ -392,71 +392,58 @@ export class Scene3D {
         this.roomNodes[r.id] = { root, plat, sel, label, altLabel, qm, data: r, exitAngles, techAngle, techLeds, techDecal, shell: null, shellKey: null, strips: null, emergency: [], malfunction: false, flicker: Math.random() * 10, flip: null, pop: null, podsRoot: null, podKey: null, fireRoot: null, fireOn: null, fireParts: [], cpu: null, cpuBoxes: [], cpuKey: null, cpuSpots: null };
     }
 
-    /** Technical-corridor entrance: two ordinary corridor arches standing on a short deck, with a
-     *  flat plate of the same steel spanning between them, and the noise numbers of this entrance
-     *  stenciled on that plate the way a corridor beam carries its number (Alt repaints it neon).
-     *  The plate is part of the frame, not a roof lying on top of it: it has the lintels' width, sits
-     *  at their height and fills the gap between them, so nothing sticks out over the arches. */
+    /** Technical-corridor entrance: a short tunnel through the wall line, ringed with blue LEDs.
+     *  Its roof carries the noise numbers of this entrance, stenciled flat like the "?" on a room
+     *  floor (Alt paints the same stencil neon), so the number the die needs is read on the hatch. */
     buildTechStub(root, a, nums = []) {
         const S = this.scene;
         const statics = [];
         const sx = Math.sin(a), cz = Math.cos(a);
         const px = sx * (WALL_R + 0.4), pz = cz * (WALL_R + 0.4);
-        const place = (ox, oz) => [px + Math.cos(a) * ox - Math.sin(a) * oz, pz - Math.sin(a) * ox - Math.cos(a) * oz];
-        const mk = (w, h, d, ox, y, oz, mat) => {
-            const m = B().MeshBuilder.CreateBox('ts', { width: w, height: h, depth: d }, S);
-            const [x, z] = place(ox, oz); m.position.set(x, y, z); m.rotation.y = a; m.material = mat; statics.push(m); return m;
-        };
-        const steel = this.M('#6d7f8f'), dark = this.M('#0b1016');
-        // the colours of an ordinary corridor arch: same steel, same brackets, same conduit
-        const frame = this.M('#59697b'), bracket = this.M('#3e4b59'), pipeMat = this.M('#8c96a0');
-        // Everything that glows blue on the entrance shares one material: with a noise token in the
-        // tech corridor the whole hatch turns yellow, not just a part of it.
+        const mk = (w, h, d, ox, y, oz, mat) => { const m = B().MeshBuilder.CreateBox('ts', { width: w, height: h, depth: d }, S); m.position.set(px + Math.cos(a) * ox - Math.sin(a) * oz, y, pz - Math.sin(a) * ox - Math.cos(a) * oz); m.rotation.y = a; m.material = mat; statics.push(m); return m; };
+        const steel = this.M('#6d7f8f'), dark = this.M('#0b1016'), trim = this.M('#aab6c2');
+        // Everything that glows blue on the hatch is its own mesh and shares the LED material: with a
+        // noise token in the tech corridor the whole entrance turns yellow, not just the ring of lamps.
         const leds = [];
         const mkLed = (w, h, d, ox, y, oz) => {
             const m = B().MeshBuilder.CreateBox('ts', { width: w, height: h, depth: d }, S);
-            const [x, z] = place(ox, oz); m.position.set(x, y, z); m.rotation.y = a;
-            m.parent = root; m.isPickable = false; leds.push(m); return m;
+            m.position.set(px + Math.cos(a) * ox - Math.sin(a) * oz, y, pz - Math.sin(a) * ox - Math.cos(a) * oz);
+            m.rotation.y = a; m.parent = root; m.isPickable = false; leds.push(m); return m;
         };
-        const deckY = TECH_STUB_DROP;                         // deck top: level with the room floor (local)
-        mk(2.7, 0.3, 2.2, 0, deckY - 0.15, 0.55, steel);      // deck the arches stand on (wider than they are)
-        mk(1.6, 1.3, 0.2, 0, deckY + 0.65, 1.55, dark);       // dark hatch behind the far arch
-        // Two arches, built exactly like the ribs of a corridor: posts, brackets, lintel, lamp and
-        // the conduit crossing them, with a glowing band on both faces (blue, yellow on noise).
-        const archZ = [-0.15, 1.25];
-        // The plate fills the gap between the two lintels, so the band on a lintel's inner face would
-        // be buried in it: each lintel glows on the face that looks away from the plate.
-        const plateZ = (archZ[0] + archZ[1]) / 2;
-        for (const az of archZ) {
-            for (const s of [-1, 1]) {
-                mk(0.24, 1.6, 0.32, s * 1.2, deckY + 0.8, az, frame);
-                mk(0.1, 0.5, 0.12, s * 1.05, deckY + 0.65, az, bracket);
-            }
-            mk(2.6, 0.24, 0.32, 0, deckY + 1.7, az, frame);
-            mk(0.9, 0.06, 0.12, 0, deckY + 1.56, az, this.M('#dff5ff', 1));
-            for (const f of [-1, 1]) for (const s of [-1, 1]) mkLed(0.16, 1.5, 0.04, s * 1.2, deckY + 0.78, az + f * 0.18);
-            mkLed(2.56, 0.14, 0.04, 0, deckY + 1.7, az + (az < plateZ ? -0.18 : 0.18));
-            const pipe = B().MeshBuilder.CreateCylinder('tp', { diameter: 0.12, height: 2.5, tessellation: 6 }, S);
-            const [cx, czp] = place(0, az); pipe.position.set(cx, deckY + 1.42, czp);
-            pipe.rotation.set(0, a, Math.PI / 2); pipe.material = pipeMat; statics.push(pipe);
-        }
-        // The plate between the arches: the same steel at the same height, its top face flush with
-        // the lintels' and its sides flush with theirs — it reads as one frame, not as a roof on legs.
-        const plateD = (archZ[1] - 0.16) - (archZ[0] + 0.16);
-        mk(2.6, 0.24, plateD, 0, deckY + 1.7, plateZ, frame);
-        // floor runner down the middle of the deck (the other blue part of the entrance)
-        mkLed(1.5, 0.06, 2.0, 0, deckY, 0.55);
+        mk(2.4, 0.3, 2.4, 0, -0.1, 0.4, steel);                       // tunnel floor
+        mk(2.4, 1.7, 0.3, 0, 0.85, 1.5, steel);                       // back wall of the stub
+        for (const s of [-1, 1]) mk(0.3, 1.7, 2.4, s * 1.2, 0.85, 0.4, steel);  // side walls
+        mk(2.4, 0.25, 2.4, 0, 1.75, 0.4, trim);                       // roof
+        // Roof: the centre stays clear for the stenciled number — the conduits moved to the two
+        // edges and the cross-bars to the ends, where they frame the digits instead of running over
+        // them. Two thin blue light rails still mark the sides.
+        for (const s of [-1, 1]) mkLed(0.08, 0.06, 2.0, s * 0.95, 1.9, 0.3);
+        for (const ox of [-1.06, 1.06]) { const pipe = B().MeshBuilder.CreateCylinder('tp', { diameter: 0.16, height: 2.0, tessellation: 6 }, S); pipe.position.set(px + Math.cos(a) * ox - Math.sin(a) * 0.3, 1.94, pz - Math.sin(a) * ox - Math.cos(a) * 0.3); pipe.rotation.set(Math.PI / 2, a, 0); pipe.material = this.M('#55636f'); statics.push(pipe); }
+        for (const oz of [-0.62, 1.42]) mk(2.3, 0.1, 0.12, 0, 1.94, oz, this.M('#3a4652'));
+        mk(1.6, 1.3, 0.2, 0, 0.75, 1.3, dark);                        // dark opening
+        mkLed(1.5, 0.06, 2.0, 0, 0.09, 0.3);                           // floor runner (blue, yellow on noise)
+        for (let i = 0; i < 3; i++) mk(0.1, 0.05, 1.6, -0.6 + i * 0.6, 0.22, 0.5, this.M('#2a3038'));  // grating
         this.mergeStatic(statics, root);
-        // The number, painted flat on the plate the way it is painted on a corridor beam: the plane
-        // has to be turned face up (rotation.x = +PI/2 does that for a Babylon plane, whose painted
-        // side is its -Z face), turned with the stub and standing on its digits' tops outward, so it
-        // reads correctly from inside the room.
-        const [dx, dz] = place(0, plateZ);
-        const decal = nums.length ? this.makeDecal('tn_' + root.name, root, dx, deckY + 1.83, dz, 1.9, 0.95) : null;
+        // The entrance number, painted flat on the roof: plane faces are single-sided, so it has to
+        // be turned face up and its text laid toward the room (rotation.z = PI) or it reads mirrored.
+        // Positioned on the hatch's own roof (the stub sits WALL_R + 0.4 out from the room centre),
+        // turned with the stub (rotation.y = a) and laid face up with the digits' tops pointing out
+        // of the ship, so a player reading it from inside the room sees a normal number.
+        const decal = nums.length
+            ? this.makeDecal('tn_' + root.name, root, px - Math.sin(a) * 0.4, 1.89, pz - Math.cos(a) * 0.4, 1.55, 0.78)
+            : null;
         if (decal) {
+            // A Babylon plane's painted face points along its local -Z: rotation.x = +pi/2 turns that
+            // face up (the same pose as the corridor numbers), so the digits are never seen through
+            // the back of the plane. rotation.z = 0 stands the digits' tops outwards, which reads
+            // correctly from inside the room.
             decal.rotation.set(Math.PI / 2, a, 0);
             this.setDecal(decal, nums.join(' / '), false);
         }
+        // LED ring around the opening (separate meshes: colour changes with tech noise)
+        const ledMat = this.M('#3fa9ff', 1);
+        const ring = [[-1.0, 0.3], [-1.0, 0.9], [-1.0, 1.5], [-0.5, 1.9], [0.5, 1.9], [1.0, 1.5], [1.0, 0.9], [1.0, 0.3]];
+        for (const [ox, y] of ring) { const m = B().MeshBuilder.CreateBox('led', { width: 0.14, height: 0.14, depth: 0.08 }, S); m.position.set(px + Math.cos(a) * ox + Math.sin(a) * 0.95, y, pz - Math.sin(a) * ox + Math.cos(a) * 0.95); m.rotation.y = a; m.material = ledMat; m.parent = root; m.isPickable = false; leds.push(m); }
         return { leds, decal };
     }
 
@@ -1759,40 +1746,66 @@ export class Scene3D {
         const matA = ledMat(ledA), matB = ledMat(ledB);
         const lA = this.mergeStatic(bake(ledA), root), lB = this.mergeStatic(bake(ledB), root);
         for (const m of lA) m.material = matA; for (const m of lB) m.material = matB;
-        // --- the door: a wide bulkhead portal standing on its own slab, with the number on the beam ---
-        // Every size below comes from client/tuning.js: the door is the one piece of the board the
-        // designer keeps adjusting, and it is now adjustable without touching this file.
+        // --- the door: two ordinary corridor arches with a plate between them -------------------
+        // The doorway is not a bulkhead of its own: it is built from the very same recipe as the ribs
+        // of the tube (posts, brackets, lintel, lamp, conduit, a glowing band), so walking up to it
+        // reads as the corridor narrowing into a door, not as a shed standing in the passage. Between
+        // the two arches a flat plate of the same steel bridges them: exactly the lintels' width and
+        // height, flush with their tops and sides, so nothing sticks out over the sides. The corridor
+        // number is stencilled on that plate.
+        // Every size comes from client/tuning.js (doorSpec).
         const D = doorSpec();
         const d = doorPlaced; const dz = d.z;
         const door = new (B().TransformNode)('door', S); door.parent = d.seg; door.position.set(0, 0, dz);
-        // The frame is wider than the corridor, so it stands on a bulkhead slab instead of hanging in
-        // the air: the stepped deck under it reads as a reinforced section of the corridor at the door.
-        const slab = B().MeshBuilder.CreateBox('dslab', { width: D.slabW, height: 0.36, depth: D.slabD }, S);
-        slab.parent = door; slab.position.y = -0.15; slab.material = M('#26313d'); slab.isPickable = false;
-        const step = B().MeshBuilder.CreateBox('dstep', { width: D.stepW, height: 0.14, depth: D.stepD }, S);
-        step.parent = door; step.position.y = -0.36; step.material = M('#1b242e'); step.isPickable = false;
-        // a real open frame (two posts + a wide beam + sill) so you can see through an open door
-        for (const s of [-1, 1]) { const post = B().MeshBuilder.CreateBox('post', { width: D.postW, height: D.postH, depth: D.postD }, S); post.parent = door; post.position.set(s * D.postX, D.postH / 2, 0); post.material = M(D.steel); post.isPickable = false; }
-        // The beam is the sign: it is the frame's own steel, just wide — the corridor number is
-        // stenciled flat on its top face, exactly the way the "?" is printed on an unexplored floor.
-        const lintel = B().MeshBuilder.CreateBox('lintel', { width: D.beamW, height: D.beamH, depth: D.beamD }, S); lintel.parent = door; lintel.position.y = D.beamY; lintel.material = M(D.steel); lintel.isPickable = false;
-        const sill = B().MeshBuilder.CreateBox('sill', { width: D.openW + 0.04, height: 0.07, depth: 0.5 }, S); sill.parent = door; sill.position.y = 0.02; sill.material = M('#5a6673'); sill.isPickable = false;
-        // light trim around the door opening (shares the arch-band material: dim steel, orange on noise)
-        for (const f of [-1, 1]) { for (const s of [-1, 1]) { const t = B().MeshBuilder.CreateBox('dt', { width: 0.1, height: D.panelH, depth: 0.04 }, S); t.parent = door; t.position.set(s * D.openW / 2, D.panelH / 2, f * D.postD / 2); t.material = matA; t.isPickable = false; } const t = B().MeshBuilder.CreateBox('dt', { width: D.openW + 0.1, height: 0.1, depth: 0.04 }, S); t.parent = door; t.position.set(0, D.panelH, f * D.postD / 2); t.material = matA; t.isPickable = false; }
-        const panels = [];
+        const steel = M(D.steel), bracketM = M('#3e4b59'), conduitM = M('#8c96a0');
+        const add = (name, w, h, dp, x, y, z, material) => {
+            const m = B().MeshBuilder.CreateBox(name, { width: w, height: h, depth: dp }, S);
+            m.parent = door; m.position.set(x, y, z); m.material = material; m.isPickable = false;
+            return m;
+        };
+        // the two arches, one on each side of the plate
+        const archZ = [-D.archGap / 2, D.archGap / 2];
+        const bands = [];
+        for (const az of archZ) {
+            for (const s of [-1, 1]) {
+                add('apost', D.postW, D.postH, D.postD, s * D.postX, D.postH / 2, az, steel);
+                add('abrk', 0.1, D.postH * 0.31, 0.12, s * (D.postX - D.postW / 2 - 0.02), D.postH * 0.4, az, bracketM);
+            }
+            add('alintel', D.beamW, D.beamH, D.postD, 0, D.beamY, az, steel);
+            add('alamp', D.beamW * 0.35, 0.06, 0.12, 0, D.beamY - D.beamH / 2 - 0.02, az, M('#dff5ff', 1));
+            // The glowing band wraps each arch on the face that looks away from the plate: the inner
+            // faces are buried in the plate, so a band there would never be seen.
+            const f = az < 0 ? -1 : 1, bz = az + f * (D.postD / 2 + 0.02);
+            for (const s of [-1, 1]) bands.push(add('aband', 0.16, Math.max(0.4, D.postH - 0.1), 0.04, s * D.postX, D.postH / 2 - 0.02, bz, null));
+            bands.push(add('aband', D.beamW - 0.04, 0.14, 0.04, 0, D.beamY, bz, null));
+            const pipe = B().MeshBuilder.CreateCylinder('apipe', { diameter: 0.12, height: D.beamW - 0.06, tessellation: 6 }, S);
+            pipe.parent = door; pipe.position.set(0, D.postH - 0.18, az); pipe.rotation.z = Math.PI / 2;
+            pipe.material = conduitM; pipe.isPickable = false;
+        }
+        // the plate between the arches: the lintels' own steel, flush with them on every side
+        add('aplate', D.beamW, D.beamH, D.plateD, 0, D.beamY, 0, steel);
+        // The bands are the same material as the ribs' bands: dead steel normally, orange while a
+        // noise marker sits in this corridor (updateCorridor).
+        for (const b of bands) b.material = matA;
+        // Two leaves, each hung on a pivot at its post: sealed they meet in the middle, open they
+        // swing flat against the passage. A sliding leaf has nowhere to go in a corridor without
+        // walls — it would either hang in the air beside the arch or cut through the walkway.
+        const panels = [], pivots = [];
         for (const s of [-1, 1]) {
-            const p = B().MeshBuilder.CreateBox('panel', { width: D.panelW, height: D.panelH, depth: 0.16 }, S);
-            p.parent = door; p.position.set(s * D.panelClosed, D.panelH / 2, 0); p.material = M('#b8c4d0'); p.isPickable = false;
-            const stripe = B().MeshBuilder.CreateBox('ps', { width: 0.1, height: D.panelH - 0.32, depth: 0.02 }, S);
-            stripe.parent = p; stripe.position.set(-s * 0.3, 0, 0.09); stripe.material = M('#e05252', 0.6); stripe.isPickable = false;
-            panels.push(p);
+            const pivot = new (B().TransformNode)('pivot', S);
+            pivot.parent = door; pivot.position.set(s * D.pivotX, 0, 0);
+            const p = B().MeshBuilder.CreateBox('panel', { width: D.panelW, height: D.panelH, depth: 0.14 }, S);
+            p.parent = pivot; p.position.set(-s * D.panelW / 2, D.panelH / 2, 0); p.material = M('#b8c4d0'); p.isPickable = false;
+            const stripe = B().MeshBuilder.CreateBox('ps', { width: 0.1, height: Math.max(0.2, D.panelH - 0.3), depth: 0.02 }, S);
+            stripe.parent = p; stripe.position.set(-s * (D.panelW / 2 - 0.16), 0, 0.08); stripe.material = M('#e05252', 0.6); stripe.isPickable = false;
+            panels.push(p); pivots.push(pivot);
         }
         const noise = B().MeshBuilder.CreateCylinder('noise', { diameter: 1.4, height: 0.12, tessellation: 12 }, S);
         noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M('#f1c40f', 0.9); noise.isPickable = false; noise.setEnabled(false); noise.visibility = 0;   // kept for layout; the arch bands show noise
         const noiseLabel = this.makeLabel('nl_' + c.id, '🔊', '', door, 0, 1.4, -2.2, 1.4);
         noiseLabel.setEnabled(false);
-        // --- the corridor number, stenciled flat on the beam -------------------------------------
-        // Not a board and not a billboard: paint on the beam's own steel, the way the "?" is printed
+        // --- the corridor number, stenciled flat on the plate -------------------------------------
+        // Not a board and not a billboard: paint on the plate's own steel, the way the "?" is printed
         // on the floor of an unexplored room — no glow, always in the same place, no screen on top.
         // Alt repaints the same stencil as neon (setAlt -> setDecal).
         // Numbers belong to the ROOM, not to the corridor: on the printed board every room numbers
@@ -1806,7 +1819,7 @@ export class Scene3D {
         };
         const sideNums = { a: numsOfRoom(c.a), b: numsOfRoom(c.b) };
         const nums = sideNums.a.length ? sideNums.a : sideNums.b;
-        // ONE stencil, centred on the beam, painted the way the "?" lies on a room floor: the same
+        // ONE stencil, centred on the plate, painted the way the "?" lies on a room floor: the same
         // paint, the same way up, no glow. A second copy on the far half only repeated the digits
         // turned round — they were literally upside down from above and read as mirrored — while
         // agreeNumbers already makes both ends of a passage carry the same number.
@@ -1815,16 +1828,19 @@ export class Scene3D {
             decal.rotation.set(Math.PI / 2, 0, (Math.cos(d.ry) - Math.sin(d.ry) < 0) ? Math.PI : 0);
             this.setDecal(decal, nums.join(' / '), false);
         }
-        // Emergency lamps in the doorway: dark fixtures that are dead until the bulkhead seals. The
-        // lenses are switched off, not merely dimmed, so an open door shows no red at all; once it
-        // closes the opening is lit like a room on malfunction (updateCorridor).
+        // Emergency lamps in the doorway: dark fixtures on the arch posts, dead until the bulkhead
+        // seals. The lenses are switched off, not merely dimmed, so an open door shows no red at all;
+        // once it closes the opening is lit like a room on malfunction (updateCorridor).
         const lamps = [];
-        for (const s of [-1, 1]) {
-            const body = B().MeshBuilder.CreateBox('lem', { width: 0.22, height: 0.3, depth: 0.34 }, S);
-            body.parent = door; body.position.set(s * (D.openW / 2 + 0.02), D.lampY, 0); body.material = M('#2a3038'); body.isPickable = false;
-            const lens = B().MeshBuilder.CreateBox('lel', { width: 0.1, height: 0.2, depth: 0.24 }, S);
-            lens.parent = door; lens.position.set(s * (D.openW / 2 - 0.12), D.lampY, 0); lens.material = M(D.lamp, 1.6); lens.isPickable = false; lens.setEnabled(false);
-            lamps.push(lens);
+        for (const az of archZ) {
+            const f = az < 0 ? -1 : 1, lz = az + f * (D.postD / 2 + 0.14);
+            for (const s of [-1, 1]) {
+                const body = B().MeshBuilder.CreateBox('lem', { width: 0.16, height: 0.26, depth: 0.24 }, S);
+                body.parent = door; body.position.set(s * (D.postX - D.postW / 2 - 0.06), D.lampY, lz); body.material = M('#2a3038'); body.isPickable = false;
+                const lens = B().MeshBuilder.CreateBox('lel', { width: 0.1, height: 0.16, depth: 0.16 }, S);
+                lens.parent = door; lens.position.set(s * (D.postX - D.postW / 2 - 0.06), D.lampY, lz + f * 0.13); lens.material = M(D.lamp, 1.6); lens.isPickable = false; lens.setEnabled(false);
+                lamps.push(lens);
+            }
         }
         const debris = [];
         for (let i = 0; i < 5; i++) {
@@ -1832,8 +1848,8 @@ export class Scene3D {
             db.parent = door; db.position.set((Math.random() - 0.5) * 1.6, 0.08, (Math.random() - 0.5) * 1.4); db.rotation.set(0, Math.random() * 3, (Math.random() - 0.5) * 0.4); db.material = M('#6b7a88'); db.isPickable = false; db.setEnabled(false);
             debris.push(db);
         }
-        this.corridorNodes[c.id] = { root, door, panels, noise, noiseLabel, decal, nums, sideNums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
-            panelClosed: D.panelClosed, panelOpen: D.panelOpen, ry: d.ry, a: c.a, b: c.b, state: null };
+        this.corridorNodes[c.id] = { root, door, panels, pivots, noise, noiseLabel, decal, nums, sideNums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
+            panelSwing: D.panelSwing, ry: d.ry, a: c.a, b: c.b, state: null };
     }
 
     /** A flat stencil decal: same paint as `makeLabel`, but it stays where it is painted instead of
@@ -2360,8 +2376,8 @@ export class Scene3D {
         if (n.state === key) return;
         n.state = key;
         const closed = c.door === 'closed', destroyed = c.door === 'destroyed';
-        n.panels[0].position.x = closed ? -n.panelClosed : -n.panelOpen;
-        n.panels[1].position.x = closed ? n.panelClosed : n.panelOpen;
+        // Sealed: both leaves meet in the middle. Open: each swings flat against the passage side.
+        for (const p of n.pivots) p.rotation.y = closed ? 0 : n.panelSwing;
         n.panels[0].setEnabled(!destroyed); n.panels[1].setEnabled(!destroyed);
         for (const d of n.debris) d.setEnabled(destroyed);
         n.noiseLabel.setEnabled(!!c.noise);
