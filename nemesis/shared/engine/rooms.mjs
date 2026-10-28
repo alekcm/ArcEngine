@@ -427,8 +427,19 @@ OPS['computer.start'] = (state, step) => {
         const why = computerOptionBlocked(state, p, id);
         return { id, label: text, disabled: !!why, desc: why || '' };
     });
+    const list = () => ask(state, { kind: 'choice', player: p.id, title: 'Выберите компьютерное действие:',
+        text: 'Компьютер — «' + COMPUTER_CARDS[card].name + '»', options: opts }, { op: 'computer.option', player: p.id, card, then: done });
     if (opts.every(o => o.disabled)) { log(state, 'Ни один вариант карты компьютера сейчас невозможен.', 'minor'); next(state, done); return; }
-    ask(state, { kind: 'choice', player: p.id, title: 'Компьютер — «' + COMPUTER_CARDS[card].name + '»: выберите вариант', options: opts }, { op: 'computer.option', player: p.id, card, then: done });
+    // A click on the console on the board names the action straight away (no list first). An option
+    // that is blocked right now is not silently dropped: the reason goes to the log and the list
+    // opens, so the player sees why and picks another one.
+    if (step.pick) {
+        const pick = opts.find(o => o.id === step.pick);
+        if (pick && !pick.disabled) { next(state, { op: 'computer.option', player: p.id, card, answer: pick.id, then: done }); return; }
+        if (pick) log(state, 'Компьютер: «' + pick.label + '» сейчас нельзя — ' + pick.desc + '.', 'minor');
+        list(); return;
+    }
+    list();
 };
 const computerRooms = (state) => Object.keys(state.ship.rooms).filter(r => { const t = tileOf(state, r); return t && ROOM_TILES[t].computer && room(state, r).explored; });
 const noisyFarCorridors = (state, p) => {

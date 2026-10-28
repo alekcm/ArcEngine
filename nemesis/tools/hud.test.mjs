@@ -43,7 +43,8 @@ test('HUD-03: my health and injuries sit in the lower-LEFT corner, a name under 
     assert.match(app, /function renderSelfHud\(\)/, 'it is rendered from the view');
     assert.match(app, /\n\s+renderSelfHud\(\);/, 'on every top-bar update');
     assert.match(app, /class="sh-slot wound" data-wound=/, 'the wound name sits under its level');
-    assert.match(app, /class="sh-armor" data-armor=/, 'the suit has its own line, not a fourth slot');
+    assert.match(app, /class="sh-slot armor" data-armor=/, 'the suit lies in the third Heavy Wound slot');
+    assert.doesNotMatch(app, /<div class="sh-armor"/, 'and has no line of its own under the track');
     assert.match(app, /class="sh-slot empty"/, 'nothing blocking a level leaves a placeholder');
     assert.doesNotMatch(app, /травм нет/, 'no words in the empty placeholder');
     assert.match(app, /function showHudPop\(/, 'the card appears on hover');
@@ -54,17 +55,32 @@ test('HUD-03: my health and injuries sit in the lower-LEFT corner, a name under 
 test('HUD-06: the corner card is the printed track — three sections, three wound slots, equal gaps', async () => {
     const { WOUNDS } = await import('../shared/data/cards.mjs');
     const { healthSections } = await import('../shared/engine/core.mjs');
-    // one row of ten cells, split into the three sections a Heavy Wound can cover
+    // one row of ten cells, split into the three sections a Heavy Wound can cover, plus the near-death
+    // cell that no wound touches
     const lit = app.match(/const HP_SECTIONS = (\[\[[^\]]+\](?:, \[[^\]]+\])*\]);/);
     assert.ok(lit, 'the sections live in one place');
     const sections = JSON.parse(lit[1]);
     assert.equal(sections.length, 3, 'three sections — a fourth wound kills, so there is no fourth section');
-    assert.deepEqual(sections.flat(), [10, 9, 8, 7, 6, 5, 4, 3, 2, 1], 'left to right: 10 down to 1, the skull last');
+    assert.deepEqual(sections.flat(), [10, 9, 8, 7, 6, 5, 4, 3, 2], 'left to right: 10 down to 2, the skull last');
+    const lastLit = app.match(/const HP_LAST = (\d+);/);
+    assert.ok(lastLit, 'the near-death cell has its own constant');
+    assert.equal(Number(lastLit[1]), 1);
+    assert.deepEqual(sections.flat().concat(Number(lastLit[1])), [10, 9, 8, 7, 6, 5, 4, 3, 2, 1], 'with the last cell the track is 10 down to 1');
     const printed = healthSections();
     assert.deepEqual(sections[0], printed[0], 'green 10-8');
     assert.deepEqual(sections[1], printed[1], 'orange 7-5');
-    assert.deepEqual(sections[2], printed[2].concat(printed[3]), 'the near-death cell closes the red section');
+    assert.deepEqual(sections[2], printed[2], 'the third wound covers 4-2 only, not the near-death cell');
+    assert.deepEqual([Number(lastLit[1])], printed[3], 'the near-death cell is the printed extra section');
     assert.doesNotMatch(app, /\[4, 3, 2\], \[1\]/, 'the old fourth section is gone from the HUD');
+    // the last cell is drawn on its own: three slots under the three sections, never a fourth box
+    assert.match(app, /const lastCell = '<div class="sh-cells sh-last">' \+ LAST_CELL\(me\)/, 'the last cell stands outside the slots');
+    assert.match(app, /'<div class="sh-hp">' \+ bar \+ lastCell \+ hpSkull\(me\)/, 'between the sections and the skull');
+    // three slot templates: a wound, its empty twin, and the suit that takes the third slot while it lasts
+    assert.equal((app.match(/<div class="sh-slot/g) || []).length, 3, 'a wound, its empty twin, and the suit slot');
+    assert.match(app, /const armorAt = me\.armor && wounds\.length < HP_SECTIONS\.length \? HP_SECTIONS\.length - 1 : -1;/,
+        'the suit is drawn in the slot of the third Heavy Wound, under the red part of the track');
+    assert.match(app, /else if \(i === armorAt\) slot = '<div class="sh-slot armor"/, 'and only while that slot is free');
+    assert.doesNotMatch(app, /sh-slot[^']*HP_LAST/, 'no slot is built for the near-death cell');
     // equal gaps: the same value between cells and between sections, no fake 3px divider cell
     const hpGap = css.match(/#selfHud \.sh-cells\s*\{[^}]*gap:\s*(\d+)px/);
     const secGap = css.match(/#selfHud \.sh-hp\s*\{[^}]*gap:\s*(\d+)px/);

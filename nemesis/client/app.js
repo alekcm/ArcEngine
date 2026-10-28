@@ -351,6 +351,7 @@ function renderGame() {
     if (!scene) {
         scene = new Scene3D($('scene'), {
             onHover: onRoomHover, onClick: onRoomClick, onIntruder: onIntruderClick, onObject: onObjectClick,
+            onComputer: onComputerClick, onPlayer: onPlayerClick,
             onCursor: (x, z, room) => { lastFloor = { x, z, room }; const now = performance.now(); if (now - cursorSent > 50) { cursorSent = now; net.send({ t: 'cursor', x, z }); } },
             onPose: pose => net.send({ t: 'pose', dx: pose.dx, dz: pose.dz, rot: pose.rot }),
         });
@@ -468,10 +469,14 @@ function renderTopbar() {
     renderSelfHud();
 }
 
-// The printed Dashboard: 10 cells in three sections — green 10-8, orange 7-5, red 4-1 — and the skull
-// right after the last one. A Heavy Wound covers a whole section, so there are only three of them:
-// three sections, three wound slots, and no fourth box in the corner card.
-const HP_SECTIONS = [[10, 9, 8], [7, 6, 5], [4, 3, 2, 1]];
+// The printed Dashboard: 10 cells in three sections a Heavy Wound can cover — green 10-8, orange 7-5,
+// red 4-2 — then the near-death cell (1) standing on its own, then the skull. The last cell is NOT part
+// of the third wound: a third Heavy Wound caps Health at 1, but it covers only 4-2, so the slot under
+// the red cells is exactly three cells wide and the cell 1 has no box under it.
+const HP_SECTIONS = [[10, 9, 8], [7, 6, 5], [4, 3, 2]];
+const HP_LAST = 1;
+/** The near-death cell: red like the section it closes, but outside every wound box. */
+const LAST_CELL = (p) => hpCell(p, 2, HP_LAST);
 /** One cell of the track: `on` = that much health is still mine, `here` = the marker stands on it. */
 function hpCell(p, si, n) {
     return '<i class="' + (si === 1 ? 'mid ' : si === 2 ? 'heavy ' : '') + (n === 1 ? 'last ' : '') +
@@ -482,16 +487,18 @@ function hpSkull(p) { return '<span class="hp-skull' + (p.health <= 1 ? ' near' 
 function hpBar(p) {
     const groups = HP_SECTIONS.map((sec, si) => '<span class="hp-sec">' + sec.map(n => hpCell(p, si, n)).join('') + '</span>').join('');
     return '<div class="hp" title="Здоровье: ' + p.health + ' / 10' + (p.health === 0 ? ' — при смерти' : '') + '">' +
-        groups + hpSkull(p) + '</div>';
+        groups + '<span class="hp-sec hp-last">' + LAST_CELL(p) + '</span>' + hpSkull(p) + '</div>';
 }
 
 /** My own health, always in the lower-LEFT corner, drawn like the printed Dashboard: three sections
- *  left to right (10 down to 1), the skull after the last cell, and one narrow slot under each section
- *  for its Heavy Wound. A wound caps Health at 7 / 4 / 1, so the first slot sits under the green
- *  section, the second under the orange one and the third under the red one — three slots, because a
- *  fourth wound kills. The suit is not a wound, so it takes its own line instead of a fourth box.
- *  Only names live here — the rules text and the art are a card that appears on hover. An empty slot
- *  keeps a grey placeholder, so the row reads "nothing here yet" without words. */
+ *  left to right (10 down to 2), the near-death cell on its own, the skull last, and one narrow slot
+ *  under each section for its Heavy Wound. A wound caps Health at 7 / 4 / 1, so the first slot sits
+ *  under the green section, the second under the orange one and the third under the red one — three
+ *  slots, because a fourth wound kills. The third slot covers 4-2 only: the last cell belongs to no
+ *  wound, so it stands beside the slots instead of under the third one. The suit is not a wound, so it
+ *  takes its own line instead of a fourth box. Only names live here — the rules text and the art are a
+ *  card that appears on hover. An empty slot keeps a grey placeholder, so the row reads "nothing here
+ *  yet" without words. */
 function renderSelfHud() {
     const v = app.view, el = $('selfHud');
     const me = v && v.players.find(p => p.id === app.me);
@@ -499,19 +506,26 @@ function renderSelfHud() {
     el.classList.remove('hidden');
     const st = me.health >= 8 ? 'здоров' : me.health >= 5 ? 'ранен' : 'тяжело ранен';
     const wounds = me.wounds || [];
+    // The suit is a heavy object, not a fourth wound: it lies in the third Heavy Wound slot, under the
+    // red part of the track (4-2), exactly where the printed Dashboard keeps it. Wounds fill their
+    // slots from the left, so the third slot is free until the third wound — and a third wound is the
+    // one that brings the character to the last cell, when the suit is long gone.
+    const armorAt = me.armor && wounds.length < HP_SECTIONS.length ? HP_SECTIONS.length - 1 : -1;
     const bar = HP_SECTIONS.map((sec, i) => {
         const w = wounds[i];
-        const slot = w
-            ? '<div class="sh-slot wound" data-wound="' + esc(w) + '">' + esc(woundShort(w)) + '</div>'
-            : '<div class="sh-slot empty"></div>';
+        let slot;
+        if (w) slot = '<div class="sh-slot wound" data-wound="' + esc(w) + '">' + esc(woundShort(w)) + '</div>';
+        else if (i === armorAt) slot = '<div class="sh-slot armor" data-armor="1">🛡 ' + esc(itemLabel(me.armor)) + '</div>';
+        else slot = '<div class="sh-slot empty"></div>';
         return '<div class="sh-lvl"><div class="sh-cells">' + sec.map(n => hpCell(me, i, n)).join('') + '</div>' + slot + '</div>';
     }).join('');
-    const armor = me.armor
-        ? '<div class="sh-armor" data-armor="1">🛡 ' + esc(itemLabel(me.armor)) + '</div>'
-        : '';
+    // the near-death cell: no slot under it, it is not part of any wound
+    const lastCell = '<div class="sh-cells sh-last">' + LAST_CELL(me) + '</div>';
+    // no free slot (three wounds): the suit rides along in the header instead of a line of its own
+    const armorBadge = me.armor && armorAt < 0 ? ' · 🛡 ' + esc(itemLabel(me.armor)) : '';
     el.classList.toggle('dead', me.health <= 1);
-    el.innerHTML = '<div class="sh-head"><b>' + esc(me.charName || me.name) + '</b><small>' + esc(st) + ' · ' + me.health + ' / 10</small></div>' +
-        '<div class="sh-hp">' + bar + hpSkull(me) + '</div>' + armor;
+    el.innerHTML = '<div class="sh-head"><b>' + esc(me.charName || me.name) + '</b><small>' + esc(st) + ' · ' + me.health + ' / 10' + armorBadge + '</small></div>' +
+        '<div class="sh-hp">' + bar + lastCell + hpSkull(me) + '</div>';
     el.title = 'Здоровье и травмы — нажмите, чтобы открыть планшет (C)';
 }
 
@@ -612,6 +626,11 @@ function renderPrompt() {
         el.classList.add('hidden'); tg.classList.add('hidden'); app.promptDeferred = true; return;
     }
     if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); el.classList.remove('bagmode', 'eventmode'); closeItemPicker(); return; }   // dice prompts are shown by DiceUI
+    // A state update can land in the middle of the half-second the card takes to turn. Rewriting
+    // #prompt then rebuilt the card — the turn restarted, or finished in a flash. The card is left
+    // alone (with the ready ticks it carries) until the turn is over.
+    if (app.ackHold && app.ackHold.until > Date.now() && pr.kind === 'ack' &&
+        pr.id === app.ackHold.id && pr.flipped && $('ack3d')) return;
     const who = pr.kind === 'ack' ? 'Вся команда' : pr.player === 'host' ? 'Ведущий' : (v.players[pr.player] || {}).name || '';
     // The action list opens only when the player asks for it: every turn starts folded, then keeps the
     // player's choice until the turn ends. Other prompts open by themselves when a new one arrives.
@@ -707,22 +726,35 @@ function renderPrompt() {
             const art = ev ? eventArt(ev.id) : null;
             const flipped = !ev || !!pr.flipped;
             if (ev) {
-                // The card is a card: both faces sit in the markup and the wrapper is turned over in
-                // 3D. The published table flip (prompt.flipped) plays the turn once; any later render
-                // — a seat changing, the ready list filling up — shows it already face up.
-                if (app.ackId !== pr.id) { app.ackId = pr.id; app.ackTurned = false; }
-                const turn = flipped && !app.ackTurned;
-                if (flipped) app.ackTurned = true;
-                html = '<h4>' + (flipped ? '📜 ' + esc(ev.name) : '📜 Карта события') + '</h4>' +
+                // The card is a card: both faces sit in the markup and the wrapper turns over in 3D.
+                // The render that first sees prompt.flipped builds the card face DOWN again and adds
+                // the class a moment later, so the browser really plays the turn — a card that was
+                // simply re-rendered face up looked like an instant swap. Any later render (a seat
+                // changing, the ready list filling up) shows it already turned.
+                if (app.ackId !== pr.id) { app.ackId = pr.id; app.ackDown = false; app.ackFlipSent = false; }
+                const turning = flipped && !!app.ackDown && !app.ackHold;
+                if (turning) app.ackDown = false; else if (!flipped) app.ackDown = true;
+                const faceDown = !flipped || turning;
+                html = '<h4 id="ackTitle">' + (faceDown ? '📜 Карта события' : '📜 ' + esc(ev.name)) + '</h4>' +
                     '<div class="ack-card ' + (flipped ? 'up' : 'down') + '" id="ackFlip"' +
                     (flipped ? '' : ' title="Перевернуть карту события"') + '>' +
-                    '<div class="ack3d' + (flipped && !turn ? ' flipped' : '') + '" id="ack3d">' +
+                    '<div class="ack3d' + (flipped && !turning ? ' flipped' : '') + '" id="ack3d">' +
                     '<div class="ack-face aback">?</div>' +
                     '<div class="ack-face afront"' + (art ? ' style="background-image:url(' + art + ')"' : '') + '></div>' +
                     '</div>' +
-                    '<div class="atext' + (flipped ? '' : ' dim') + '">' + (flipped ? esc(pr.text || ev.text)
-                        : 'Карта лежит лицом вниз. Нажмите на неё, чтобы перевернуть — её увидят все игроки.') + '</div></div>';
-                if (turn) setTimeout(() => { const el = $('ack3d'); if (el) el.classList.add('flipped'); }, 40);
+                    '<div class="atext' + (faceDown ? ' dim' : '') + '" id="ackText">' + (faceDown
+                        ? 'Карта лежит лицом вниз. Нажмите на неё, чтобы перевернуть — её увидят все игроки.'
+                        : esc(pr.text || ev.text)) + '</div></div>';
+                if (turning) {
+                    app.ackHold = { id: pr.id, until: Date.now() + 700 };
+                    setTimeout(() => { const el = $('ack3d'); if (el) el.classList.add('flipped'); }, 60);
+                    // the printed text comes with the printed face, not before it
+                    setTimeout(() => {
+                        const t = $('ackText'), h = $('ackTitle');
+                        if (t) { t.classList.remove('dim'); t.textContent = pr.text || ev.text; }
+                        if (h) h.textContent = '📜 ' + ev.name;
+                    }, 520);
+                }
             }
             html += '<div class="ack-ready">' + (pr.players || []).map(id => {
                 const p = v.players[id] || {}; const done = (pr.acked || []).includes(id);
@@ -759,15 +791,14 @@ function renderPrompt() {
     for (const b of el.querySelectorAll('[data-opt]')) b.onclick = () => act(b.dataset.opt);
     if ($('pickInv')) $('pickInv').onclick = () => openSheet();
     for (const b of el.querySelectorAll('[data-room]')) b.onclick = () => act(b.dataset.room);
-    // The face-down event card: any seat can turn it over for the whole table. The turn is played
-    // here at once, so the click answers under the finger; the server keeps the table in sync.
+    // The face-down event card: any seat can turn it over for the whole table. The turn itself is
+    // played by the render that comes back with prompt.flipped — flipping it here as well made the
+    // card snap back to its back for a frame before the server state replaced it.
     if ($('ackFlip')) $('ackFlip').onclick = () => {
         const c = $('ackFlip');
-        if (c && c.classList.contains('down')) {
-            c.classList.remove('down'); c.classList.add('up');
-            app.ackTurned = true;                       // the state that follows shows the card already turned
-            const el = $('ack3d'); if (el) el.classList.add('flipped');
-        }
+        if (!c || !c.classList.contains('down')) return;   // already turned / being turned
+        c.classList.remove('down'); c.style.cursor = 'progress';
+        app.ackFlipSent = true;
         net.send({ t: 'flip' });
     };
     const ok = $('cardsOk'); if (ok) ok.onclick = () => act([...app.selectedCards]);
@@ -863,6 +894,12 @@ function renderHand() {
 // ---------------------------------------------------------------------------------------------
 // Room hover / click
 // ---------------------------------------------------------------------------------------------
+/** The tile a room turned out to be, or a fixed one for the rooms whose kind is printed on the slot. */
+function roomTileOf(v, id) {
+    const rs = v.roomState[id], r = v.ship.rooms[id];
+    if (!rs || !r) return null;
+    return rs.tile || (r.kind === 'cockpit' ? 'cockpit' : r.kind === 'hibernatorium' ? 'hibernatorium' : r.kind === 'engine' ? 'engine' : null);
+}
 function onRoomHover(id, x, y) {
     const el = $('roomInfo');
     if (!id || !app.view) { el.classList.add('hidden'); return; }
@@ -948,7 +985,21 @@ function onRoomClick(id) {
     if (pr && pr.kind === 'room' && !pr.waiting && pr.player === app.me && (pr.rooms || []).includes(id)) { act(id); return; }
     const me = myChar();
     const menu = turnMenuPrompt();
-    if (!menu || !me || id === me.room) { scene.focusRoom(id); return; }
+    if (!me) { scene.focusRoom(id); return; }
+    // My own room: the one action that belongs to it, with what it does — a list, so a stray click
+    // on the floor is confirmed by a second, deliberate press. The list opens even out of turn: the
+    // single button then explains why it cannot be pressed, which is less puzzling than nothing.
+    if (id === me.room) {
+        const tile = roomTileOf(v, id), def = tile ? ROOM_TILES[tile] : null;
+        const a = menuActionOf(menu, 'room');
+        openWorldPop(roomLabel(id), def ? def.name : 'Комната ещё не исследована', [{
+            label: 'Действие комнаты:', sub: def ? def.action : 'Сначала разведайте комнату',
+            disabled: !a || !a.enabled, reason: a ? a.reason : 'Не ваш ход',
+            do: () => act({ action: 'room' }),
+        }], scene.screenOf('room', id));
+        return;
+    }
+    if (!menu) { scene.focusRoom(id); return; }
     // A closed door does not make a neighbour unreachable: it opens on the way through (the same
     // rule the action list follows), so the click must offer the move exactly like the list does.
     const exit = (v.ship.rooms[me.room].exits || []).find(e => e.to === id);
@@ -958,6 +1009,70 @@ function onRoomClick(id) {
         { label: 'Идти', sub: mv ? (mv.cost ? mv.cost + ' карт(ы) · шум по броску' : '') : '', disabled: !mv || !mv.enabled, reason: mv && mv.reason, do: () => act({ action: 'move', dest: id }) },
         { label: 'Красться (осторожно)', sub: cw ? (cw.cost ? cw.cost + ' карт(ы) · выбрать коридор' : '') : '', disabled: !cw || !cw.enabled, reason: cw && cw.reason, do: () => act({ action: 'careful', dest: id }) },
     ], scene.screenOf('room', id));
+}
+
+/**
+ * A click on a figure on the board. Someone else: the one action that touches another character.
+ * Myself: passing and every item I carry, so a mis-click on my own figure costs nothing and the
+ * press that follows is the confirmation of what I meant to do.
+ */
+function onPlayerClick(pid, px, py) {
+    const v = app.view; if (!v) return;
+    const me = myChar(), menu = turnMenuPrompt();
+    const other = v.players.find(p => p.id === pid);
+    if (!other) return;
+    const anchor = scene.screenOf('char', pid) || (px ? { x: px, y: py } : null);
+    if (pid === app.me && me) {
+        const buttons = [];
+        const pass = menuActionOf(menu, 'pass');
+        buttons.push({ label: 'Спасовать', sub: 'закончить ход', disabled: !pass || !pass.enabled,
+            reason: pass ? pass.reason : 'Не ваш ход', do: () => act({ action: 'pass' }) });
+        const offered = new Map(((menu && menu.items) || []).map(i => [i.uid, i]));
+        for (const inst of (me.items || [])) {
+            const m = offered.get(inst.uid);
+            buttons.push({
+                label: itemLabel(inst) + (m && m.cost ? ' · ' + m.cost + ' 🂠' : ''),
+                art: itemArt(inst.item),
+                sub: m && m.cost ? 'применить (' + m.cost + ' карт)' : 'в инвентаре',
+                disabled: !m || !m.enabled,
+                reason: m ? m.reason : 'Не ваш ход',
+                do: () => act({ action: 'item', itemId: inst.uid }),
+            });
+        }
+        openWorldPop(me.name + (me.charName ? ' — ' + me.charName : ''), 'Выберите действие', buttons, anchor);
+        return;
+    }
+    if (!me) { scene.focusRoom(other.room); return; }
+    const a = menuActionOf(menu, 'trade');
+    openWorldPop(other.name + (other.charName ? ' — ' + other.charName : ''), 'Передать предмет', [{
+        label: 'Передать предмет', sub: a && a.cost ? a.cost + ' карт(ы)' : 'другому персонажу в комнате',
+        disabled: !a || !a.enabled, reason: a ? a.reason : 'Не ваш ход', do: () => act({ action: 'trade' }),
+    }], anchor);
+}
+
+/**
+ * A click on the console of a room with a Computer: the three actions of the face-up Computer card,
+ * offered where the player pointed, exactly like a click on a neighbouring room offers the ways to
+ * walk there. The engine still has the last word — a blocked action is refused with its reason and
+ * the usual list opens, and every option that costs a card asks for that card next.
+ */
+function onComputerClick(roomId, px, py) {
+    const v = app.view; if (!v) return;
+    const pr = v.prompt;
+    // The engine is asking "where to?" — the console is inside that room, so answer it.
+    if (pr && pr.kind === 'room' && !pr.waiting && pr.player === app.me && (pr.rooms || []).includes(roomId)) { act(roomId); return; }
+    const me = myChar(), menu = turnMenuPrompt();
+    if (!menu || !me || me.room !== roomId) { scene.focusRoom(roomId); return; }
+    const a = menuActionOf(menu, 'computer');
+    if (!a) { notice('В этой комнате нет компьютера.', 'info'); return; }
+    if (!a.enabled) { notice(a.reason || 'Компьютер сейчас недоступен.', 'info'); return; }
+    const card = v.computerCard, def = card ? COMPUTER_CARDS[card] : null;
+    const opts = def && def.options ? Object.entries(def.options) : [];
+    if (!opts.length) { act({ action: 'computer' }); return; }   // Lockdown: it resolves at once
+    openWorldPop('Выберите компьютерное действие:', 'Компьютер — «' + def.name + '»', opts.map(([id, text]) => ({
+        label: text,
+        do: () => act({ action: 'computer', pick: id }),
+    })), scene.screenOf('cpu', roomId) || { x: px, y: py });
 }
 
 /** The rules text of a weapon without «Дальнобойное оружие, N патронов.» — that part is already
@@ -1233,7 +1348,7 @@ $('topbar').addEventListener('scroll', hideTbPop, { passive: true });
 // ---------------------------------------------------------------------------------------------
 function healthCells(p) {
     const groups = HP_SECTIONS.map((sec, si) => '<span class="hp-sec">' + sec.map(n => hpCell(p, si, n)).join('') + '</span>').join('');
-    return '<div class="sheet-hp">' + groups + hpSkull(p) + '</div>';
+    return '<div class="sheet-hp">' + groups + '<span class="hp-sec hp-last">' + LAST_CELL(p) + '</span>' + hpSkull(p) + '</div>';
 }
 // ---------------------------------------------------------------------------------------------
 // Answering an item prompt straight from the inventory

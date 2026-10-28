@@ -562,7 +562,8 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 /* My health, drawn like the printed Dashboard: three sections left to right (10 down to 1), the skull
    right after the last cell, and one narrow slot under each section for its Heavy Wound. The same gap
    separates every cell and every section, so the ten squares read as one row instead of "green packed
-   together, then a hole". The suit is not a wound: it lives on its own line, never as a fourth slot. */
+   together, then a hole". The suit is not a wound and not a fourth slot either: it lies in the slot of
+   the third Heavy Wound (under 4-2), which is free until the third wound — and old by then. */
 #selfHud { position: fixed; left: 10px; bottom: 58px; z-index: 9; width: 272px;
            background: #0b1118dd; border: 1px solid var(--line); border-left: 4px solid var(--green);
            border-radius: 10px; padding: 7px 10px 8px; backdrop-filter: blur(4px); font-size: 12px;
@@ -586,12 +587,13 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #selfHud .hp-skull { color: #7d8b9c; font-size: 13px; line-height: 13px; }
 #selfHud .hp-skull.near { color: #ff6b6b; }
 /* the name of what blocks this section — a wound; a plain grey block when there is none */
+/* The near-death cell (1) is no wound's business: it stands beside the slots, not under one. */
+#selfHud .sh-last { align-self: flex-start; }
 #selfHud .sh-slot { min-width: 0; border-radius: 4px; font-size: 9.5px; line-height: 1.1; padding: 2px 3px;
                     color: #dbe3ec; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
                     display: flex; align-items: center; justify-content: center; text-align: center; }
 #selfHud .sh-slot.wound { background: #3a1418cc; border: 1px solid #a33; color: #ffb9b9; min-height: 17px; }
 #selfHud .sh-slot.empty { background: #1a232e; border: 1px solid #212c38; min-height: 17px; }
-#selfHud .sh-armor { margin-top: 6px; border-radius: 4px; background: #12283acc; border: 1px solid #2f6fa8;
-                     color: #b9dcff; font-size: 10px; padding: 2px 5px; white-space: nowrap;
-                     overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 900px) { #selfHud { left: 6px; bottom: 52px; width: 252px; } }
+/* The suit lies in the third Heavy Wound slot (under 4-2), not on a line of its own below the track. */
+#selfHud .sh-slot.armor { background: #12283acc; border: 1px solid #2f6fa8; color: #b9dcff; min-height: 17px; }
+@media (max-width: 900px) { #selfHud { left: 6px; bottom: 52px; width: 264px; } #selfHud .sh-cells i { width: 16px; } }

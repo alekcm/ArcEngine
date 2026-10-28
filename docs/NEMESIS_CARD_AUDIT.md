@@ -338,6 +338,17 @@ Remote Detonator имеет напечатанный значок **Not in Comba
 
 `EVENT-06` изолирует общее движение к ближайшему Character при tie: значок Action card на этих Events не включает Contamination. Это не отдельный тест каждой карты с таким движением.
 
+**Сверка строки шума (Р.26, по сканам всех 20 карт).** Колонка шума в `EVENT_CARDS` совпадает с печатью
+у всех 20 карт: «Each Character makes a Noise roll in turn order.» — 12 карт с `noise:'all'`
+(`breakingIn`, `eggProtection`, `podEjection`, `fireWave`, `flammable`, `hatching`, `lifeSupport`,
+`lurking`, `malfunction`, `protectAndServe`, `scentOfPrey`, `queenAwakens`); «без Action cards в руке →
+Encounter» — 4 карты с `noise:'noCards'` (`bulkheadsOpen`, `damagingFire`, `onTheHunt`,
+`systemFailure`); бросок только в комнате с Malfunction/Fire — `damage`, `shortCircuit` (`fireMalf`);
+у `generatorOverheats` и `leavingShell` шума нет, только перетасовка колоды (`none` + `reshuffle`).
+Правила в коде менять не пришлось — был неверен только показываемый текст: в 12 картах с `all` строка
+броска отсутствовала (в том числе в «Пробуждении Королевы», на что и указал стол). Строка дописана
+дословно по печати; `noise`, `move` и `reshuffle` не тронуты.
+
 ## 15. Computer cards — все 6 вариантов
 
 Источник: `ComputerDeck.png`, раздел 16. Данные: `cards.mjs:681–701`; код: `rooms.mjs:367–517`.
