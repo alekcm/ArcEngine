@@ -586,6 +586,8 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #selfHud .hp-skull { color: #7d8b9c; font-size: 13px; line-height: 13px; }
 #selfHud .hp-skull.near { color: #ff6b6b; }
 /* the name of what blocks this section — a wound; a plain grey block when there is none */
+/* The near-death cell (1) is no wound's business: it stands beside the slots, not under one. */
+#selfHud .sh-last { align-self: flex-start; }
 #selfHud .sh-slot { min-width: 0; border-radius: 4px; font-size: 9.5px; line-height: 1.1; padding: 2px 3px;
                     color: #dbe3ec; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
                     display: flex; align-items: center; justify-content: center; text-align: center; }
@@ -594,4 +596,4 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #selfHud .sh-armor { margin-top: 6px; border-radius: 4px; background: #12283acc; border: 1px solid #2f6fa8;
                      color: #b9dcff; font-size: 10px; padding: 2px 5px; white-space: nowrap;
                      overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 900px) { #selfHud { left: 6px; bottom: 52px; width: 252px; } }
+@media (max-width: 900px) { #selfHud { left: 6px; bottom: 52px; width: 264px; } #selfHud .sh-cells i { width: 16px; } }

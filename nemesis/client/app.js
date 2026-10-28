@@ -468,10 +468,14 @@ function renderTopbar() {
     renderSelfHud();
 }
 
-// The printed Dashboard: 10 cells in three sections — green 10-8, orange 7-5, red 4-1 — and the skull
-// right after the last one. A Heavy Wound covers a whole section, so there are only three of them:
-// three sections, three wound slots, and no fourth box in the corner card.
-const HP_SECTIONS = [[10, 9, 8], [7, 6, 5], [4, 3, 2, 1]];
+// The printed Dashboard: 10 cells in three sections a Heavy Wound can cover — green 10-8, orange 7-5,
+// red 4-2 — then the near-death cell (1) standing on its own, then the skull. The last cell is NOT part
+// of the third wound: a third Heavy Wound caps Health at 1, but it covers only 4-2, so the slot under
+// the red cells is exactly three cells wide and the cell 1 has no box under it.
+const HP_SECTIONS = [[10, 9, 8], [7, 6, 5], [4, 3, 2]];
+const HP_LAST = 1;
+/** The near-death cell: red like the section it closes, but outside every wound box. */
+const LAST_CELL = (p) => hpCell(p, 2, HP_LAST);
 /** One cell of the track: `on` = that much health is still mine, `here` = the marker stands on it. */
 function hpCell(p, si, n) {
     return '<i class="' + (si === 1 ? 'mid ' : si === 2 ? 'heavy ' : '') + (n === 1 ? 'last ' : '') +
@@ -482,16 +486,18 @@ function hpSkull(p) { return '<span class="hp-skull' + (p.health <= 1 ? ' near' 
 function hpBar(p) {
     const groups = HP_SECTIONS.map((sec, si) => '<span class="hp-sec">' + sec.map(n => hpCell(p, si, n)).join('') + '</span>').join('');
     return '<div class="hp" title="Здоровье: ' + p.health + ' / 10' + (p.health === 0 ? ' — при смерти' : '') + '">' +
-        groups + hpSkull(p) + '</div>';
+        groups + '<span class="hp-sec hp-last">' + LAST_CELL(p) + '</span>' + hpSkull(p) + '</div>';
 }
 
 /** My own health, always in the lower-LEFT corner, drawn like the printed Dashboard: three sections
- *  left to right (10 down to 1), the skull after the last cell, and one narrow slot under each section
- *  for its Heavy Wound. A wound caps Health at 7 / 4 / 1, so the first slot sits under the green
- *  section, the second under the orange one and the third under the red one — three slots, because a
- *  fourth wound kills. The suit is not a wound, so it takes its own line instead of a fourth box.
- *  Only names live here — the rules text and the art are a card that appears on hover. An empty slot
- *  keeps a grey placeholder, so the row reads "nothing here yet" without words. */
+ *  left to right (10 down to 2), the near-death cell on its own, the skull last, and one narrow slot
+ *  under each section for its Heavy Wound. A wound caps Health at 7 / 4 / 1, so the first slot sits
+ *  under the green section, the second under the orange one and the third under the red one — three
+ *  slots, because a fourth wound kills. The third slot covers 4-2 only: the last cell belongs to no
+ *  wound, so it stands beside the slots instead of under the third one. The suit is not a wound, so it
+ *  takes its own line instead of a fourth box. Only names live here — the rules text and the art are a
+ *  card that appears on hover. An empty slot keeps a grey placeholder, so the row reads "nothing here
+ *  yet" without words. */
 function renderSelfHud() {
     const v = app.view, el = $('selfHud');
     const me = v && v.players.find(p => p.id === app.me);
@@ -506,12 +512,14 @@ function renderSelfHud() {
             : '<div class="sh-slot empty"></div>';
         return '<div class="sh-lvl"><div class="sh-cells">' + sec.map(n => hpCell(me, i, n)).join('') + '</div>' + slot + '</div>';
     }).join('');
+    // the near-death cell: no slot under it, it is not part of any wound
+    const lastCell = '<div class="sh-cells sh-last">' + LAST_CELL(me) + '</div>';
     const armor = me.armor
         ? '<div class="sh-armor" data-armor="1">🛡 ' + esc(itemLabel(me.armor)) + '</div>'
         : '';
     el.classList.toggle('dead', me.health <= 1);
     el.innerHTML = '<div class="sh-head"><b>' + esc(me.charName || me.name) + '</b><small>' + esc(st) + ' · ' + me.health + ' / 10</small></div>' +
-        '<div class="sh-hp">' + bar + hpSkull(me) + '</div>' + armor;
+        '<div class="sh-hp">' + bar + lastCell + hpSkull(me) + '</div>' + armor;
     el.title = 'Здоровье и травмы — нажмите, чтобы открыть планшет (C)';
 }
 
@@ -1233,7 +1241,7 @@ $('topbar').addEventListener('scroll', hideTbPop, { passive: true });
 // ---------------------------------------------------------------------------------------------
 function healthCells(p) {
     const groups = HP_SECTIONS.map((sec, si) => '<span class="hp-sec">' + sec.map(n => hpCell(p, si, n)).join('') + '</span>').join('');
-    return '<div class="sheet-hp">' + groups + hpSkull(p) + '</div>';
+    return '<div class="sheet-hp">' + groups + '<span class="hp-sec hp-last">' + LAST_CELL(p) + '</span>' + hpSkull(p) + '</div>';
 }
 // ---------------------------------------------------------------------------------------------
 // Answering an item prompt straight from the inventory
