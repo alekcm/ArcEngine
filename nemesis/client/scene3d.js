@@ -751,23 +751,25 @@ export class Scene3D {
         const DOOR_HALF = 1.62;    // half of the 3.0-wide doorway, plus the portal posts
         const HATCH_HALF = 1.42;   // half of the technical-corridor hatch
         /** Is a stretch of wall `half` metres each side of `a` free of every passage? */
-        const wallClear = (a, half = 0.6, gap = 0.14) => {
+        const wallClear = (a, half = 0.6, gap = 0.14, r = WALL_R) => {
+            // `r` is the radius the piece stands at, not always the wall ring: the same angle is a
+            // shorter arc nearer the middle, so a drum at 5.55 needs more clearance than a shelf at 5.78.
             for (const ea of (node.exitAngles || [])) {
-                if (Math.abs(wrap(a - ea)) * WALL_R < DOOR_HALF + half + gap) return false;
+                if (Math.abs(wrap(a - ea)) * r < DOOR_HALF + half + gap) return false;
             }
-            if (node.techAngle != null && Math.abs(wrap(a - node.techAngle)) * WALL_R < HATCH_HALF + half + gap) return false;
+            if (node.techAngle != null && Math.abs(wrap(a - node.techAngle)) * r < HATCH_HALF + half + gap) return false;
             return true;
         };
         const nearExit = (a, g = 0.5) => !wallClear(a, Math.max(0, g * WALL_R - DOOR_HALF - 0.14));
         // Wall furniture must also stay clear of the standing zone (figures stand front-right).
         const zoneSafe = (a) => Math.hypot(Math.sin(a) * 5.1 - ZONE_C.x, Math.cos(a) * 5.1 - ZONE_C.z) > 4.0;
         /** The nearest angle to `pref` where a piece `width` wide fits, ignoring the figures' zone. */
-        const fitAngle = (pref, width = 1.2, gap = 0.14) => {
+        const fitAngle = (pref, width = 1.2, gap = 0.14, r = WALL_R) => {
             const half = width / 2;
-            if (wallClear(pref, half, gap)) return pref;
+            if (wallClear(pref, half, gap, r)) return pref;
             for (let i = 1; i <= 64; i++) for (const sgn of [1, -1]) {
                 const a = pref + sgn * i * 0.05;
-                if (wallClear(a, half, gap)) return a;
+                if (wallClear(a, half, gap, r)) return a;
             }
             return null;
         };
@@ -785,7 +787,7 @@ export class Scene3D {
          *  `width` is the piece's own width: the spot is snapped out of a doorway, and when the whole
          *  ring is taken by passages the spot is `null` — nothing is built there. */
         const wallSpot = (a, r = 5.75, width = 1.2) => {
-            const aa = a == null ? null : fitAngle(a, width);
+            const aa = a == null ? null : fitAngle(a, width, 0.14, r);
             if (aa == null) { node.wallSkips = (node.wallSkips || 0) + 1; return null; }
             usedAngles.push(aa);
             (node.wallSpots || (node.wallSpots = [])).push({ a: aa, width, r });
@@ -895,17 +897,17 @@ export class Scene3D {
         };
         /** First candidate wall angle where a piece `width` wide fits and keeps clear of the standing
          *  zone; then any free angle; then the nearest free angle to the candidates. Never a doorway. */
-        const pickAngle = (cands, gap = 0.5, width = 1.2) => {
+        const pickAngle = (cands, gap = 0.5, width = 1.2, r = 5.78) => {
             const half = width / 2;
-            return cands.find(a => wallClear(a, half, gap) && zoneSafe(a))
-                ?? cands.find(a => wallClear(a, half, gap))
-                ?? fitAngle(cands[0], width);
+            return cands.find(a => wallClear(a, half, gap, r) && zoneSafe(a))
+                ?? cands.find(a => wallClear(a, half, gap, r))
+                ?? fitAngle(cands[0], width, 0.14, r);
         };
         /** Build a piece of wall furniture, or nothing at all when the wall has no room for it.
          *  `cands` is one angle or a list of preferred ones; `width` is the piece's own width. */
         const wall = (cands, width, draw, r = 5.78) => {
             const list = Array.isArray(cands) ? cands : [cands];
-            const spot = wallSpot(pickAngle(list, 0.2, width), r, width);
+            const spot = wallSpot(pickAngle(list, 0.24, width, r), r, width);
             if (!spot) return false;
             draw(spot, frameOf(spot));
             return true;
@@ -1641,12 +1643,96 @@ export class Scene3D {
                 }));
                 break;
             }
-            case 'nest':
-                cy(3.2, 3.9, 0.3, 0, 0.15, 0, M('#4a2c4a'), 9);
-                for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2; cy(0.1, 0.9, 1.4 + (i % 3) * 0.5, Math.cos(a) * 3.1, 0.7, Math.sin(a) * 3.1, M('#3a2a3a'), 5); cy(0.05, 0.4, 1.2, Math.cos(a) * 2.2, 0.6, Math.sin(a) * 2.2, M('#5a3a5a'), 4); }
-                for (let i = 0; i < 5; i++) bx(0.6, 0.1, 1.6, Math.cos(i * 1.3) * 1.5, 0.33, Math.sin(i * 1.3) * 1.5, M('#5a3a5a'), i * 1.3);
-                for (let i = 0; i < 6; i++) { const m = B().MeshBuilder.CreatePolyhedron('cr', { type: 1, size: 0.2 }, S); m.position.set(Math.cos(i * 1.1) * 2.6, 0.5, Math.sin(i * 1.1) * 2.6); m.material = M('#c86bff', 0.6); m.convertToFlatShadedMesh(); statics.push(m); }
+            case 'nest': {
+                // The hive: a resin mound in the middle with the brood sacs on top, egg clusters laid round
+                // it, victims webbed to the walls, resin webbing strung across the room and brood tendrils
+                // creeping out of every seam. Grown, not built — so no right angles and no clean lines.
+                const resin = M('#4a2c4a'), resinD = M('#33203a'), resinL = M('#6a3f68');
+                const sacMat = M('#c86bff', 0.55), spore = M('#ff5ad6', 0.7), web = M('#8a6a8a', 0.25);
+                fix(() => {
+                    // --- the deck: resin spread, biomass pools and the tunnels it ate into the plates ---
+                    for (const [x, z, w, d, a] of [[0, 0, 5.6, 4.6, 0.2], [-2.4, 1.6, 2.6, 2.0, -0.5], [2.6, -1.4, 2.4, 1.8, 0.8]]) {
+                        const m = B().MeshBuilder.CreateCylinder('rs', { diameter: 1, height: 0.04, tessellation: 12 }, S);
+                        m.position.set(x, 0.176, z); m.scaling.set(w, 1, d); m.rotation.y = a; m.material = resin; statics.push(m);
+                    }
+                    for (const [x, z, d] of [[1.9, 2.3, 1.4], [-2.9, -1.9, 1.1], [0.4, -2.8, 0.9]]) {
+                        const m = B().MeshBuilder.CreateCylinder('bm', { diameter: d, height: 0.03, tessellation: 9 }, S);
+                        m.position.set(x, 0.19, z); m.material = M('#5a2a5a', 0.3); statics.push(m);
+                    }
+                    // --- the mound: rings of resin rising to the brood chamber ----------------------
+                    cy(3.6, 4.6, 0.24, 0, 0.12, 0, resinD, 9);
+                    cy(3.0, 3.6, 0.4, 0, 0.4, 0, resin, 9);
+                    cy(2.4, 3.0, 0.4, 0, 0.76, 0, resinD, 9);
+                    cy(1.7, 2.4, 0.36, 0, 1.12, 0, resin, 9);
+                    cy(1.0, 1.7, 0.3, 0, 1.44, 0, resinL, 9);                                // crown
+                    for (let k = 0; k < 11; k++) {                                           // resin veins down the mound
+                        const a = k / 11 * Math.PI * 2 + 0.2, rr = 1.2 + (k % 3) * 0.34;
+                        bx(0.12, 0.7 + (k % 3) * 0.3, 0.5, Math.sin(a) * rr, 0.45 + (k % 3) * 0.16, Math.cos(a) * rr, resinL, a, 0.3);
+                    }
+                    for (let k = 0; k < 5; k++) {                                            // brood sacs on the crown
+                        const a = k / 5 * Math.PI * 2;
+                        ball(0.62, Math.sin(a) * 0.5, 1.62, Math.cos(a) * 0.5, sacMat, 1, 0.8, 1);
+                    }
+                    ball(0.5, 0, 1.86, 0, spore, 1, 0.9, 1);                                 // the sac everything waits on
+                    cy(0.34, 0.3, 0.3, 0, 1.7, 0, M('#8a4a8a'), 7);                          // mouth of the brood tunnel
+                    for (let k = 0; k < 6; k++) {                                            // teeth round the mouth
+                        const a = k / 6 * Math.PI * 2;
+                        ball(0.14, Math.sin(a) * 0.22, 1.76, Math.cos(a) * 0.22, M('#e3dccb', 0.5), 1, 1.4, 1);
+                    }
+                    // --- egg clusters: pods on the deck, each on its own resin base ------------------
+                    for (const [x, z, n] of [[-2.3, 0.1, 4], [2.2, 1.0, 3], [1.3, -2.4, 4], [-1.1, 2.5, 3], [-3.0, 2.4, 2]]) {
+                        cy(1.3, 1.5, 0.12, x, 0.06, z, resinD, 8);
+                        for (let k = 0; k < n; k++) {
+                            const a = k / n * Math.PI * 2, rr = 0.3 + (k % 2) * 0.12;
+                            ball(0.42, x + Math.cos(a) * rr, 0.3, z + Math.sin(a) * rr, k % 2 ? sacMat : M('#a05ad0', 0.5), 1, 1.3, 1);
+                        }
+                        ball(0.3, x, 0.5, z, spore, 1, 1.1, 1);
+                    }
+                    // --- the walls: resin webbing, cocooned crew and tendrils running up the ring -----
+                    for (let k = 0; k < 14; k++) {
+                        const a = k / 14 * Math.PI * 2;
+                        bx(0.1, 0.9 + (k % 4) * 0.3, 0.14, Math.sin(a) * 5.45, 0.5 + (k % 3) * 0.25, Math.cos(a) * 5.45, k % 2 ? resinD : resin, a, 0.15 * (k % 3 - 1));
+                    }
+                    for (const [a, y] of [[2.2, 1.15], [-1.1, 1.0], [0.35, 1.3]]) {
+                        const x = Math.sin(a) * 5.15, z = Math.cos(a) * 5.15, ry = a + Math.PI;
+                        const wrap = M('#8a7c86'), wrapD = M('#6a5c68');
+                        for (let k = 0; k < 4; k++)                                            // a body wound up in resin, hanging
+                            ball(0.62 - k * 0.06, LX(x, z, ry, 0, 0.18 + k * 0.02), y - 0.7 + k * 0.5, LZ(x, z, ry, 0, 0.18 + k * 0.02), k % 2 ? wrap : wrapD, 1, 0.9, 0.9);
+                        ball(0.44, LX(x, z, ry, 0.06, 0.3), y + 0.72, LZ(x, z, ry, 0.06, 0.3), M('#9b8d97'), 1, 1.15, 1);   // the wrapped head
+                        for (let k = 0; k < 5; k++) bx(0.66, 0.05, 0.06, LX(x, z, ry, 0, 0.26), y - 0.95 + k * 0.42, LZ(x, z, ry, 0, 0.26), web, ry);   // webbing straps
+                        for (const sd of [-1, 1]) bx(0.05, 0.5, 0.05, LX(x, z, ry, sd * 0.3, 0.1), y + 1.15, LZ(x, z, ry, sd * 0.3, 0.1), web, ry);   // cords to the ring
+                        bx(0.26, 1.5, 0.1, x, y + 0.1, z, resin, ry);                        // resin running down behind it
+                    }
+                    // web strands across the room, anchored on the ring
+                    for (const [a1, a2, y1, y2] of [[0.5, 2.6, 1.9, 2.1], [1.4, 3.9, 2.2, 1.8], [2.9, 5.1, 1.7, 2.0]]) {
+                        const x1 = Math.sin(a1) * 5.3, z1 = Math.cos(a1) * 5.3, x2 = Math.sin(a2) * 5.3, z2 = Math.cos(a2) * 5.3;
+                        const len = Math.hypot(x2 - x1, z2 - z1);
+                        bx(0.05, 0.05, len, (x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2, web, Math.atan2(x2 - x1, z2 - z1), Math.atan2(y2 - y1, len));
+                    }
+                    // a tunnel mouth eaten into the deck plate, resin-lipped
+                    cy(1.8, 2.0, 0.16, -3.4, 0.1, -2.6, resinD, 8);
+                    cy(1.2, 1.4, 0.1, -3.4, 0.14, -2.6, M('#160c1a'), 8);
+                    for (let k = 0; k < 7; k++) {
+                        const a = k / 7 * Math.PI * 2;
+                        ball(0.26, -3.4 + Math.sin(a) * 0.66, 0.16, -2.6 + Math.cos(a) * 0.66, resinL, 1, 0.5, 1.4);
+                    }
+                    // bones of what it has already eaten, half-sunk in the resin
+                    const bone = M('#cfc5b4', 0.22);
+                    for (let k = 0; k < 5; k++) bx(0.07, 0.05, 0.34, 2.6 + (k % 3) * 0.18, 0.19, -1.4 + k * 0.26, bone, k * 0.7, 0.1);
+                    ball(0.26, 2.9, 0.22, -0.4, bone, 1.2, 0.6, 1);
+                });
+                // the room's Computer: a resin-sealed console the swarm answers from, on its own wall
+                wall([Math.PI, 0, -2.4, 2.4, 1.2], 2.6, (p, fr) => fix(() => {
+                    bx(1.5, 0.95, 0.6, fr.at(0, 0.3)[0], 0.48, fr.at(0, 0.3)[1], resinD, p.ry);   // the console it grew over
+                    bx(1.56, 0.06, 0.66, fr.at(0, 0.3)[0], 0.97, fr.at(0, 0.3)[1], resinL, p.ry);
+                    bx(0.9, 0.6, 0.05, fr.at(0, 0.16)[0], 1.3, fr.at(0, 0.16)[1], resin, p.ry, -0.25);   // dead screen, webbed
+                    bx(0.5, 0.3, 0.03, fr.at(-0.1, 0.14)[0], 1.3, fr.at(-0.1, 0.14)[1], M('#ff5ad6', 0.45), p.ry, -0.25);
+                    for (let k = 0; k < 4; k++) bx(0.9, 0.05, 0.05, fr.at(0, 0.2)[0], 1.0 + k * 0.2, fr.at(0, 0.2)[1], web, p.ry, 0.2);
+                    for (let k = 0; k < 3; k++) ball(0.24, fr.at(-0.7 + k * 0.7, 0.36)[0], 0.3, fr.at(-0.7 + k * 0.7, 0.36)[1], sacMat, 1, 1.2, 1);
+                    cpu_(fr.at(0, 0.55)[0], fr.at(0, 0.55)[1], p.ry);                            // this is the nest's Computer
+                }));
                 break;
+            }
             case 'surgery': {
                 // Operating table with its lamp on a separate floor stand (nothing pierces the mattress),
                 // two instrument trolleys beside it and a supply cabinet on the wall.
@@ -2211,9 +2297,14 @@ export class Scene3D {
                     }
                     for (const sz of [-1, 1]) bx(2.4, 0.12, 0.16, 0, 2.55, sz * 1.15, metal);   // top rails
                     for (const sx of [-1, 1]) bx(0.16, 0.12, 2.4, sx * 1.15, 2.55, 0, metal);
-                    bx(2.5, 0.16, 2.5, 0, 2.68, 0, panel);                             // lid frame
-                    bx(2.28, 1.86, 2.28, 0, 1.2, 0, M('#7fc7ff', 0.15, { alpha: 0.26 }));   // glass walls
-                    bx(2.3, 0.03, 2.3, 0, 2.145, 0, M('#7fc7ff', 0.2, { alpha: 0.32 }));    // glass roof on the walls
+                    for (const sz of [-1, 1]) bx(2.5, 0.16, 0.2, 0, 2.68, sz * 1.15, panel);   // lid frame, sides only
+                    for (const sx of [-1, 1]) bx(0.2, 0.16, 2.5, sx * 1.15, 2.68, 0, panel);
+                    // four panes, not one block: the cell has to read as empty from above
+                    for (const sz of [-1, 1]) bx(2.28, 1.86, 0.05, 0, 1.2, sz * 1.14, M('#7fc7ff', 0.15, { alpha: 0.26 }));
+                    for (const sx of [-1, 1]) bx(0.05, 1.86, 2.28, sx * 1.14, 1.2, 0, M('#7fc7ff', 0.15, { alpha: 0.26 }));
+                    for (const sz of [-1, 1]) bx(2.3, 0.1, 0.12, 0, 2.16, sz * 1.15, metal);   // top glazing bars, cell open above
+                    for (const sx of [-1, 1]) bx(0.12, 0.1, 2.3, sx * 1.15, 2.16, 0, metal);
+                    bx(2.3, 0.1, 0.1, 0, 2.16, 0, metal);
                     cy(0.32, 0.32, 0.12, 0, 2.82, 0, dark, 8);                          // beacon socket
                     cy(0.22, 0.22, 0.2, 0, 2.94, 0, M('#e05252', 1), 8);                // red status lamp
                     bx(0.08, 0.56, 0.44, 1.26, 1.5, 1.05, panel);                       // readout bolted to the front post
@@ -2248,6 +2339,97 @@ export class Scene3D {
                     bx(1.1, 0.66, 0.07, fr.at(0, 0.14)[0], 1.36, fr.at(0, 0.14)[1], metal, p.ry, -0.3);
                     bx(1.0, 0.56, 0.03, fr.at(0, 0.18)[0], 1.36, fr.at(0, 0.18)[1], screen, p.ry, -0.3);
                     pipes(fr.at(1.15, 0.26)[0], fr.at(1.15, 0.26)[1], p.ry, 2, 1.2);                    // short pipe run, inside the reservation
+                }));
+                fix(() => {
+                    const cellM = M('#3d4a52'), glow = M('#9cff3b', 0.55), warn = M('#d4b02a', 0.25);
+                    // --- the ring of hazard paint the cell stands in, and its drain ---------------
+                    for (let k = 0; k < 16; k++) {
+                        const a = k / 16 * Math.PI * 2;
+                        if (!wallClear(a, 0.3)) continue;
+                        bx(0.62, 0.02, 0.24, Math.sin(a) * 3.1, 0.178, Math.cos(a) * 3.1, k % 2 ? warn : M('#1a1a1a'), a);
+                    }
+                    discZ(0.9, 0.04, 0, 0.175, -2.6, M('#3f454c'), 0, 10);
+                    // --- extraction hood over the cell, its duct and the coolant lines -----------
+                    // the extraction hood is a rim and a duct, not a lid: the cell stays open to the room
+                    for (const sz of [-1, 1]) bx(2.9, 0.14, 0.18, 0, 2.86, sz * 1.35, cellM);
+                    for (const sx of [-1, 1]) bx(0.18, 0.14, 2.9, sx * 1.35, 2.86, 0, cellM);
+                    for (let k = 0; k < 4; k++) {                                            // louvred intake over the cell
+                        const a = k / 4 * Math.PI * 2;
+                        bx(1.1, 0.06, 0.14, Math.sin(a) * 0.45, 2.92 + k * 0.02, Math.cos(a) * 0.45, M('#4a5a6e'), a);
+                    }
+                    cy(0.5, 0.5, 1.0, 0.9, 3.6, 0.9, M('#4a5a6e'), 8);                       // duct riser
+                    for (let k = 0; k < 4; k++) cy(0.5 - k * 0.06, 0.5 - k * 0.06, 0.12, 0.9, 3.4 + k * 0.28, 0.9, metal, 8);
+                    for (const sd of [-1, 1]) {                                              // coolant loops over the lid
+                        bx(0.12, 0.12, 2.9, sd * 1.32, 2.86, 0, M('#4aa3df', 0.35));
+                        cy(0.24, 0.24, 0.3, sd * 1.32, 2.86, 1.4, metal, 8);
+                        cy(0.24, 0.24, 0.3, sd * 1.32, 2.86, -1.4, metal, 8);
+                        bx(0.12, 0.9, 0.12, sd * 1.32, 2.4, 1.45, M('#4aa3df', 0.35));
+                    }
+                    cy(0.6, 0.6, 0.12, 0, 2.78, 1.35, M('#8c96a0'), 10);                     // valve wheel at the front
+                    cy(0.16, 0.16, 0.1, 0, 2.78, 1.4, M('#c0392b'), 8);
+                    // --- the sample probe: an arm on a rail, reaching the cell door --------------
+                    bx(0.12, 0.1, 4.2, 1.9, 2.6, 0.4, metal);                                 // rail
+                    bx(0.34, 0.32, 0.34, 1.9, 2.6, 1.1, panel);                               // carriage
+                    bx(0.16, 0.16, 1.5, 1.9, 2.55, 1.9, metal);                               // arm out over the cell
+                    cy(0.12, 0.12, 0.4, 1.9, 2.35, 2.5, metal, 6);                            // probe head
+                    cy(0.2, 0.16, 0.14, 1.9, 2.15, 2.5, glow, 8);
+                    for (let k = 0; k < 3; k++) bx(0.08, 0.08, 0.08, 1.9, 2.62, 0.2 + k * 0.3, k % 2 ? M('#4fcf7a', 0.7) : M('#e05252', 0.7));
+                    cy(0.1, 0.1, 2.6, 1.9, 1.3, -1.6, metal, 6);                              // its mast
+                    cy(0.5, 0.6, 0.1, 1.9, 0.06, -1.6, dark, 10);
+                    // --- what the crew left outside the glass ------------------------------------
+                    bx(0.9, 0.06, 0.6, -1.9, 0.9, 1.9, M('#c9d3da'), 0.3);                   // sample trolley
+                    for (const sx of [-0.34, 0.34]) for (const sz of [-0.22, 0.22]) bx(0.06, 0.88, 0.06, LX(-1.9, 1.9, 0.3, sx, sz), 0.44, LZ(-1.9, 1.9, 0.3, sx, sz), metal);
+                    bx(0.86, 0.05, 0.56, -1.9, 0.7, 1.9, metal, 0.3);
+                    for (let k = 0; k < 4; k++) cy(0.2, 0.18, 0.24, LX(-1.9, 1.9, 0.3, -0.3 + k * 0.2, 0), 1.04, LZ(-1.9, 1.9, 0.3, -0.3 + k * 0.2, 0), k % 2 ? M('#9cff3b', 0.35) : M('#8fb4c4', 0.45), 7);   // sample jars
+                    bx(0.3, 0.2, 0.03, LX(-1.9, 1.9, 0.3, 0.28, 0.22), 1.0, LZ(-1.9, 1.9, 0.3, 0.28, 0.22), M('#dfe6ee'), 0.3);   // clipboard
+                    // spare glass and a replacement door leaning against the wall
+                    for (const [x, z, ry] of [[-3.5, -0.6, 1.1], [-3.4, 0.4, 1.2]]) {
+                        bx(1.5, 1.7, 0.06, x, 0.9, z, M('#7fc7ff', 0.18, { alpha: 0.3 }), ry, 0.14);
+                        bx(1.6, 0.08, 0.1, x, 0.14, z, metal, ry);
+                    }
+                    bx(1.1, 1.9, 0.14, -3.3, 1.0, -1.8, cellM, 1.0, 0.1);                    // a door off its frame
+                    bx(0.9, 1.2, 0.04, LX(-3.3, -1.8, 1.0, 0, 0.1), 1.05, LZ(-3.3, -1.8, 1.0, 0, 0.1), M('#7fc7ff', 0.15, { alpha: 0.35 }), 1.0, 0.1);
+                    // biohazard drums, all banded and sealed
+                    for (const [x, z, hex] of [[3.1, -2.5, '#4fcf7a'], [3.4, -1.7, '#9cff3b'], [2.7, -2.9, '#4fcf7a']]) {
+                        barrel(x, z, M(hex, 0.3));
+                        cy(0.58, 0.58, 0.05, x, 0.45, z, M('#1a1a1a'), 10);
+                        bx(0.2, 0.14, 0.03, x, 0.45, z + 0.3, M('#e05252', 0.5));
+                    }
+                    // --- the floodlight on its tripod, standing clear of the cell --------------
+
+                    cy(0.36, 0.3, 0.06, 2.2, 0.03, 2.4, metal, 10);                          // floodlight stand
+                    cy(0.08, 0.08, 1.5, 2.2, 0.78, 2.4, metal, 6);
+                    bx(0.5, 0.4, 0.2, 2.2, 1.62, 2.4, M('#2b333d'), 0.4);
+                    bx(0.42, 0.32, 0.04, 2.2, 1.62, 2.52, M('#fff6dd', 1.2), 0.4);
+                    bx(0.5, 0.06, 0.06, 2.2, 1.86, 2.4, metal, 0.4);
+                });
+                // PPE locker wall: two hazard suits hanging on a rail, with a boot tray under them
+                wall([-3.1, 3.1, 1.6, -1.6], 2.4, (p, fr) => fix(() => {
+                    for (const sd of [-1, 1]) bx(0.06, 0.06, 0.9, fr.at(sd * 0.6, 0.16)[0], 1.86, fr.at(sd * 0.6, 0.16)[1], metal, p.ry);   // hooks rail
+                    for (const u of [-0.6, 0.6]) {
+                        bx(0.34, 0.5, 0.3, fr.at(u, 0.18)[0], 1.62, fr.at(u, 0.18)[1], M('#dfe6ee', 0.4), p.ry);       // hood
+                        bx(0.62, 0.72, 0.34, fr.at(u, 0.2)[0], 1.0, fr.at(u, 0.2)[1], M('#c9d3da', 0.45), p.ry);         // suit body
+                        for (const sd of [-1, 1]) bx(0.2, 0.5, 0.2, fr.at(u + sd * 0.36, 0.2)[0], 1.1, fr.at(u + sd * 0.36, 0.2)[1], M('#c9d3da', 0.45), p.ry);   // arms
+                        bx(0.24, 0.22, 0.3, fr.at(u, 0.2)[0], 0.55, fr.at(u, 0.2)[1], M('#c9d3da', 0.45), p.ry);          // legs
+                        bx(0.05, 0.14, 0.05, fr.at(u, 0.16)[0], 1.82, fr.at(u, 0.16)[1], metal, p.ry);                      // hanger
+                    }
+                    bx(2.0, 0.1, 0.55, p.x, 0.1, p.z, M('#4a5a6e'), p.ry);                                              // boot tray
+                    for (const u of [-0.62, 0.62]) { bx(0.22, 0.26, 0.5, fr.at(u, 0.2)[0], 0.26, fr.at(u, 0.2)[1], M('#c9a227', 0.2), p.ry); bx(0.22, 0.26, 0.5, fr.at(u + 0.3, 0.2)[0], 0.26, fr.at(u + 0.3, 0.2)[1], M('#c9a227', 0.2), p.ry); }
+                    bx(0.7, 0.5, 0.05, fr.at(0, 0.12)[0], 2.1, fr.at(0, 0.12)[1], M('#c9a227', 0.35), p.ry);              // biohazard plate
+                }));
+                // the monitoring wall: the big board, the alarm beacon and the cell's keypad
+                wall([2.3, -2.3, 0.9, -0.9, Math.PI], 3.2, (p, fr) => fix(() => {
+                    bx(2.6, 1.5, 0.14, p.x, 1.9, p.z, M('#232b33'), p.ry);                        // board
+                    for (let r2 = 0; r2 < 2; r2++) for (let c = 0; c < 4; c++)
+                        bx(0.56, 0.46, 0.03, fr.at(-0.9 + c * 0.6, 0.1)[0], 2.18 - r2 * 0.54, fr.at(-0.9 + c * 0.6, 0.1)[1], [screen, M('#4fcf7a', 0.6), M('#ffb347', 0.55), M('#e05252', 0.5)][(r2 * 4 + c) % 4], p.ry);
+                    bx(2.4, 0.08, 0.2, p.x, 2.72, p.z, metal, p.ry);
+                    bx(3.0, 0.9, 0.6, fr.at(0, 0.45)[0], 0.45, fr.at(0, 0.45)[1], panel, p.ry);     // watch desk
+                    bx(3.06, 0.06, 0.66, fr.at(0, 0.45)[0], 0.93, fr.at(0, 0.45)[1], metal, p.ry);
+                    for (let k = 0; k < 4; k++) bx(0.2, 0.05, 0.16, fr.at(-0.9 + k * 0.6, 0.5)[0], 0.97, fr.at(-0.9 + k * 0.6, 0.5)[1], [M('#4fcf7a', 0.7), M('#e05252', 0.7), M('#4aa3df', 0.7), M('#ffb347', 0.7)][k], p.ry);
+                    chair(fr.at(0.9, 1.3)[0], fr.at(0.9, 1.3)[1], p.ry + Math.PI, M('#39424e'));
+                    cy(0.28, 0.24, 0.16, fr.at(-1.35, 0.1)[0], 2.52, fr.at(-1.35, 0.1)[1], M('#e05252', 0.9), 8);   // alarm beacon
+                    bx(0.5, 0.62, 0.14, fr.at(1.35, 0.1)[0], 1.5, fr.at(1.35, 0.1)[1], M('#2b333d'), p.ry);          // cell keypad
+                    for (let k = 0; k < 6; k++) cy(0.08, 0.08, 0.03, fr.at(1.35 + (k % 3 - 1) * 0.1, 0.16)[0], 1.66 - Math.floor(k / 3) * 0.14, fr.at(1.35 + (k % 3 - 1) * 0.1, 0.16)[1], k === 4 ? M('#4fcf7a', 0.8) : M('#8c96a0'), 6, Math.PI / 2);
                 }));
                 barrel(3.0, 2.6, M('#4fcf7a'));
                 break;
@@ -2781,7 +2963,7 @@ export class Scene3D {
             const dz = Math.hypot(Math.sin(a) * (WALL_R - 0.9) - ZONE_C.x, Math.cos(a) * (WALL_R - 0.9) - ZONE_C.z);
             // The automatic dressing keeps to the same rule as the hand-placed wall furniture: a
             // stretch of ring wide enough for the piece, clear of every doorway and of the hatch.
-            if (!wallClear(a, 0.55) || dz < ZONE_R + 1.2 || nearUsed(a)) continue;
+            if (!wallClear(a, 0.64, 0.14, WALL_R - 0.75) || dz < ZONE_R + 1.2 || nearUsed(a)) continue;
             dressAngles.push(a);
             usedAngles.push(a);
         }
@@ -2809,7 +2991,7 @@ export class Scene3D {
             // about the ring, not about the openings cut into it. Anything standing this close to the
             // wall is swung onto the nearest clear stretch, so a drum never blocks a corridor mouth.
             const r2 = Math.hypot(m.position.x, m.position.z);
-            if (r2 > 4.4 && !wallClear(Math.atan2(m.position.x, m.position.z), 0.38)) {
+            if (r2 > 4.4 && !wallClear(Math.atan2(m.position.x, m.position.z), 0.62, 0.14, r2)) {
                 const a0 = Math.atan2(m.position.x, m.position.z);
                 const na = fitAngle(a0, 0.8);
                 // No free stretch of ring at all (a pierced ring): keep the angle and pull the piece in
