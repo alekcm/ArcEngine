@@ -7,3 +7,6 @@
 /dist/
 /nemesis/client/tuning.json        # board numbers saved by the editor's Nemesis tab (editor.bat)
 /nemesis/client/board-edits.json   # the parts edited on that tab: moved, turned, recoloured, deleted
+# Windows keeps the game in "Nemesis/" (git stores whatever case the commit was made with): same files
+/[Nn]emesis/client/tuning.json
+/[Nn]emesis/client/board-edits.json
