@@ -413,3 +413,25 @@ test('SCN-16: a room with a Computer has a clickable console', () => {
     scene.updateRoom(v, v.ship.rooms[plain]);
     assert.ok(!scene.roomNodes[plain].cpu, plain + ': без компьютера зоны клика нет');
 });
+
+test('SCN-17: a corridor shows only the half next to an explored room', () => {
+    // ru: пока комната не разведана, её половина коридора (арки, стойка поворота, лоток) скрыта; с
+    // разведанной — показана. Сама «одиночная балка» без арки — предмет теста DR-07 в doors.test.mjs:
+    // стойка поворота лежит в списке своей половины, а не в общей статике коридора.
+    const on = (m) => { let c = m; while (c) { if (c.isEnabled && !c.isEnabled()) return false; c = c.parent; } return true; };
+    const v = JSON.parse(JSON.stringify(view));
+    for (const id of Object.keys(v.roomState)) v.roomState[id].explored = false;
+    const isSlot = (id) => ['slot1', 'slot2'].includes(v.ship.rooms[id].kind);
+    const c = Object.values(v.ship.corridors).find(c2 => isSlot(c2.a) && isSlot(c2.b));
+    assert.ok(c, 'на доске есть коридор между двумя слотами');
+    const node = scene.corridorNodes[c.id];
+    scene.updateCorridor(v, c);
+    assert.ok(node.ribsA.length > 0 && node.ribsB.length > 0, c.id + ': у коридора две половины арок');
+    assert.equal(node.ribsA.filter(on).length, 0, c.id + ': половина неразведанной комнаты скрыта');
+    assert.equal(node.ribsB.filter(on).length, 0, c.id + ': вторая половина тоже');
+    v.roomState[c.a].explored = true;
+    scene.updateCorridor(v, c);
+    assert.equal(node.ribsA.filter(on).length, node.ribsA.length, c.id + ': половина разведанной комнаты видна вся');
+    assert.equal(node.ribsB.filter(on).length, 0, c.id + ': вторая половина остаётся скрытой');
+    scene.update(view, ROOM_TILES, INTRUDER_NAMES, []);   // leave the shared scene as the other tests expect it
+});

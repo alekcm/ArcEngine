@@ -290,3 +290,22 @@ test('DR-08 on the printed board every room deals its four noise numbers out onc
     const cockpit = Object.fromEntries(ship.rooms['001'].exits.map(e => [e.to, e.nums]));
     assert.deepEqual(cockpit, { '002': [3], '003': [1, 2], '004': [4] });
 });
+
+test('DR-07 the post at a bend belongs to the half of that bend, never to the always-visible shell', () => {
+    // ru: стойка поворота (`jp`) раньше ложилась в общий список статики коридора, а он виден всегда.
+    // Пока комната на том конце лежала лицом вниз, её арки были скрыты — и на доске оставалась одна
+    // тёмная балка 0.4 x 1.9 посреди пустого коридора («какие-то одиночные балки»). Теперь стойка
+    // строится в список той половины, к повороту которой она относится.
+    let posts = 0;
+    for (const c of corridors) {
+        const n = build(c);
+        const built = meshes.filter(m => m.name === 'jp');
+        posts += built.length;
+        const inHalves = n.ribsA.concat(n.ribsB).filter(m => m.name === 'jp').length;
+        assert.equal(inHalves, built.length, c.id + ': все стойки поворота лежат в половинах арок');
+        // and nothing that tall is left among the parts that are always on
+        assert.equal(meshes.filter(m => m.name === 'jp' && !n.ribsA.includes(m) && !n.ribsB.includes(m)).length, 0,
+            c.id + ': ни одна стойка не осталась в общей статике');
+    }
+    assert.ok(posts > 0, 'на доске есть коридоры с поворотами');
+});
