@@ -9,8 +9,17 @@ import fs from 'node:fs';
 
 // scene3d.js (imported by the panel) wants the browser globals at load time
 globalThis.localStorage = { getItem: () => null, setItem: () => {} };
+/** A DOM node as far as the pane builders use one: children, class, text, handlers. */
+const node = (tag = 'div') => ({
+    tag, className: '', textContent: '', title: '', value: '', selected: false, disabled: false,
+    hidden: false, innerHTML: '', style: {}, children: [], handlers: {},
+    appendChild(c) { this.children.push(c); return c; },
+    addEventListener(name, fn) { (this.handlers[name] = this.handlers[name] || []).push(fn); },
+    fire(name) { for (const fn of this.handlers[name] || []) fn(); },
+    set innerHTMLValue(v) { this.innerHTMLValue = v; },
+});
 globalThis.document = {
-    getElementById: () => null, createElement: () => ({ style: {}, addEventListener() {}, appendChild() {} }),
+    getElementById: () => null, createElement: (tag) => node(tag),
     querySelectorAll: () => [], body: { classList: { toggle() {} } },
 };
 try { Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'node' }, configurable: true }); } catch { /* defined */ }
@@ -135,6 +144,35 @@ test('PA-04: гизмо под курсором — это перетаскив�
     pg.yGizmo.isHovered = true;
     assert.equal(panel.hoveringGizmo(), true);
     pg.yGizmo.isHovered = false;
+});
+
+test('PA-06: список «Найти деталь» даёт любую деталь без прицеливания', () => {
+    const panel = globalThis.NemesisPanel;
+    const ids = { 'room:101#0': { name: 'ft' }, 'room:101#1': { name: 'ft' }, 'room:101#2': { name: 'w' }, 'hull#0': { name: 'hp' } };
+    panel.scene = { editMeshes: ids, setEdit() {}, rebuild() {} };
+    panel.findHost = node('div');
+    panel.findOwner = 'room:101';
+    panel.edits = {}; panel.saved = {};
+    panel.renderFind();
+    const [title, hint, select, list] = panel.findHost.children;
+    assert.equal(title.textContent, 'nem.find');
+    assert.equal(hint.classList || hint.className, 'nem-hint');
+    assert.equal(select.children.length, 2, 'владельцы: room:101 и hull');
+    assert.deepEqual(select.children.map(o => o.value), ['hull', 'room:101']);
+    assert.equal(select.children[1].selected, true, 'текущий владелец выбран');
+    const rows = list.children;
+    assert.deepEqual(rows.map(r => r.textContent), ['ft ×2', 'w ×1'], 'детали по именам с количеством');
+    // одно нажатие — первая ft, второе нажатие по тому же имени — следующая
+    const picked = [];
+    const backupSelect = panel.select;
+    panel.select = (m) => picked.push(m && m.metadata ? m.metadata.editId : null);
+    try {
+        for (const m of Object.entries(ids)) m[1].metadata = { editId: m[0] };
+        rows[0].fire('click');
+        rows[0].fire('click');
+        rows[0].fire('click');
+    } finally { panel.select = backupSelect; }
+    assert.deepEqual(picked, ['room:101#0', 'room:101#1', 'room:101#0'], 'перебор по кругу');
 });
 
 test('PA-05: сломанное гизмо не уносит с собой доску', () => {
