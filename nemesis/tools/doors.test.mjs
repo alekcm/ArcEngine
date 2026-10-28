@@ -162,6 +162,7 @@ test('DR-02 the number is a flat stencil on the beam, not a board hanging in the
         build(c);
         const n = host.corridorNodes[c.id];
         assert.ok(n.decal, c.id + ': the corridor has a number stencil');
+        assert.equal(n.decals.length, 2, c.id + ': a door is read from both ends — two stencils, one per side');
         const decal = n.decal;
         // flat on the beam, facing up — the very same orientation as the "?" on a room's floor
         assert.equal(decal.billboardMode, 0, c.id + ': the stencil never turns to the camera');
@@ -171,11 +172,13 @@ test('DR-02 the number is a flat stencil on the beam, not a board hanging in the
         // The stencil is fixed, but which way round it is painted is picked once: the top of the
         // numbers has to point away from the table's default camera, or every other door would read
         // upside down (the "?" on a room floor is printed the same way round).
-        const up = { x: -Math.SQRT1_2, z: Math.SQRT1_2 };
-        const flip = Math.abs(decal.rotation.z) === Math.PI ? -1 : 1;
-        const facing = (Math.sin(n.ry) * up.x + Math.cos(n.ry) * up.z) * flip;
-        assert.ok(facing > -1e-9, c.id + ': the number is painted the right way up (' + facing.toFixed(2) + ')');
-        assert.equal(decal.position.z, 0, c.id + ': centred along the beam');
+        // Each half of the beam has its own way up: the `a` half reads from room a, the `b` half
+        // from room b, so neither end reads the other room's digits upside down or by name.
+        const a = n.decals.find(d => d.side === 'a'), b = n.decals.find(d => d.side === 'b');
+        assert.equal(a.plane.rotation.z, 0, c.id + ': the a half is painted for room a');
+        assert.equal(Math.abs(b.plane.rotation.z), Math.PI, c.id + ': the b half is turned round for room b');
+        assert.ok(a.plane.position.z < 0 && b.plane.position.z > 0, c.id + ': each stencil sits on its own half');
+        assert.ok(Math.abs(a.plane.position.z) === Math.abs(b.plane.position.z), c.id + ': the two halves are symmetric');
         // it lies on the beam's own top face: no dark plate, no screen on the roof, the beam keeps
         // the frame's steel colour and only gets wider
         assert.equal(meshes.filter(m => m.name === 'dplate').length, 0, c.id + ': no plate/screen on the beam');
@@ -185,10 +188,12 @@ test('DR-02 the number is a flat stencil on the beam, not a board hanging in the
             c.id + ': the stencil lies on the beam (' + decal.position.y.toFixed(3) + ' vs ' + beamTop.toFixed(3) + ')');
         assert.equal(lintel.material.hex, meshes.find(m => m.name === 'post').material.hex,
             c.id + ': the beam is the same steel as the frame');
-        // and it fits: the number cannot overhang the beam it is painted on
-        const w = decal.opts.width, h = decal.opts.height;
-        assert.ok(w <= lintel.opts.width - 0.39 && h <= lintel.opts.depth - 0.2,
-            c.id + ': the stencil fits on the beam (' + w + '×' + h + ' on ' + lintel.opts.width + '×' + lintel.opts.depth + ')');
+        // and it fits: neither stencil can overhang the beam it is painted on, nor run into its twin
+        for (const side of n.decals) {
+            const w = side.plane.opts.width, h = side.plane.opts.height;
+            assert.ok(w <= lintel.opts.width - 0.39 && h <= lintel.opts.depth / 2 + 1e-9,
+                c.id + ': the stencil fits on the beam (' + w + '×' + h + ' on ' + lintel.opts.width + '×' + lintel.opts.depth + ')');
+        }
         // nothing hangs in the air above the doorway any more: no old board and its four bars
         assert.equal(allNodes.filter(a => /^sign_/.test(a.name)).length, 0, c.id + ': no separate board node');
         assert.equal(meshes.filter(m => m.name === 'se').length, 0, c.id + ': no floating frame around it');
@@ -200,9 +205,8 @@ test('DR-02 the number is a flat stencil on the beam, not a board hanging in the
 test('DR-03 the number is printed in the same paint as the "?", and Alt turns it neon', () => {
     const c = corridors[0];
     const n = build(c);
-    const exitA = ship.rooms[c.a].exits.find(e => e.corridor === c.id);
-    const nums = (exitA.nums && exitA.nums.length ? exitA.nums : [exitA.num]).filter(x => x);
-    const want = nums.join(' / ');
+    const numsOf = (roomId) => { const e = ship.rooms[roomId].exits.find(x => x.corridor === c.id); return (e.nums && e.nums.length ? e.nums : [e.num]).filter(x => x); };
+    const want = numsOf(c.a).join(' / ');
     const painted = n.decal.metadata.dt.rec.filter(r => r.text === want);
     const printed = painted.filter(r => r.kind === 'fill');
     assert.equal(printed.length, 1, 'the number is painted on the beam: "' + want + '"');
@@ -282,4 +286,54 @@ test('DR-06 no new pickable meshes: the stencil, the beam and the lamps are deco
             assert.equal(m.isPickable, false, c.id + ': ' + m.name + ' must not steal a click from the board');
         }
     }
+});
+
+test('DR-07 each room reads its OWN numbers on the doors: no foreign digits, no repeats', () => {
+    // The complaint that started this: standing in one room, several corridors were marked "2" and
+    // several "3". One stencil carried room `a`'s numbers to both ends, so room `b` read digits that
+    // belong to somebody else. A printed room numbers its own exits 1..4 — with a repeat only where
+    // the board itself prints two digits on one doorway ("3 4").
+    for (const c of corridors) build(c);
+    for (const room of Object.values(ship.rooms)) {
+        const read = [];          // what a player in this room sees over their doorways
+        for (const e of room.exits) {
+            const n = host.corridorNodes[e.corridor];
+            assert.ok(n, room.id + ': corridor ' + e.corridor + ' is built');
+            const side = n.decals.find(d => d.side === (e.corridor.startsWith(room.id + '-') ? 'a' : 'b'));
+            assert.ok(side, room.id + ': corridor ' + e.corridor + ' has a stencil on its side');
+            const exit = room.exits.find(x => x.corridor === e.corridor);
+            const want = (exit.nums && exit.nums.length ? exit.nums : [exit.num]).filter(x => x);
+            assert.deepEqual(side.nums, want, room.id + ': the stencil by ' + e.corridor + ' shows this room\'s numbers');
+            read.push(want.join('+'));
+        }
+        // Every number 1..4 appears exactly once for this room, like on the board: across the
+        // doorways, plus the hatch when the room has a technical corridor.
+        const all = [...read.join('+').split('+'), ...(room.techNums || [])].filter(Boolean).map(Number).sort();
+        assert.deepEqual(all, [1, 2, 3, 4], room.id + ': the four noise numbers are dealt out once (' + all.join(',') + ')');
+    }
+});
+
+test('DR-08 on the printed board every room deals its four noise numbers out once', async () => {
+    // A room numbers its own exits 1..4 clockwise; a room with fewer corridors gives one doorway two
+    // digits ("3 4") and a room with a technical hatch puts the missing number on the hatch. So the
+    // four numbers add up exactly once per room — the invariant that kills "several 2s and several
+    // 3s" at the source. The cockpit used to read "2 3 3 4": the hand-written "002 is 3" left the
+    // auto-numbered 3 on the doorway to 004 as well.
+    const { originalShip } = await import('../shared/ship.mjs');
+    const ship = originalShip();
+    assert.equal(Object.keys(ship.rooms).length, 21, 'the printed board has 21 rooms');
+    for (const r of Object.values(ship.rooms)) {
+        const nums = [...r.exits.flatMap(e => (e.nums && e.nums.length ? e.nums : [e.num])), ...(r.techNums || [])]
+            .filter(Boolean).sort();
+        assert.deepEqual(nums, [1, 2, 3, 4],
+            'комната ' + r.id + ' должна раздавать номера 1..4 ровно по разу, а раздаёт ' + nums.join(','));
+        for (const e of r.exits) {
+            const list = e.nums && e.nums.length ? e.nums : [e.num];
+            assert.ok(list.every(n => n >= 1 && n <= 4), 'комната ' + r.id + ': номер в диапазоне 1..4');
+            assert.equal(e.num, list[0], 'комната ' + r.id + ': основной номер — первый из пары');
+        }
+    }
+    // the cockpit, checked against the printed board: 002 is 3, 003 is the pair "1 2", 004 is 4
+    const cockpit = Object.fromEntries(ship.rooms['001'].exits.map(e => [e.to, e.nums]));
+    assert.deepEqual(cockpit, { '002': [3], '003': [1, 2], '004': [4] });
 });

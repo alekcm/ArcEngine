@@ -198,9 +198,15 @@ function computeBounds(ship) {
 
 export function originalShip() {
     const ship = buildShip(ORIGINAL_ROOMS, ORIGINAL_EDGES, ORIGINAL_TECH, ORIGINAL_ENGINE_NUMBERS, 'original', ORIGINAL_PATHS);
-    // Printed board: the Cockpit → 001 corridor is Corridor 3 (auto-numbering cannot derive it).
-    const cockpitExit = ship.rooms['001'].exits.find(e => e.to === '002');
-    if (cockpitExit) { cockpitExit.nums = [3]; cockpitExit.num = 3; }
+    // Printed board, cockpit (001): the door to 002 is number 3, the door to 003 carries the pair
+    // "1 2" (the room has three corridors, so one of them takes two numbers) and the door to 004 is 4.
+    // The auto-numbering can derive most rooms but not this one; it used to leave a second "3" here,
+    // so the cockpit read "2 3 3 4" on the board.
+    const cockpitNums = { '002': [3], '003': [1, 2], '004': [4] };
+    for (const e of ship.rooms['001'].exits) {
+        const nums = cockpitNums[e.to];
+        if (nums) { e.nums = nums.slice(); e.num = nums[0]; }
+    }
     return ship;
 }
 

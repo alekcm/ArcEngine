@@ -1586,17 +1586,30 @@ export class Scene3D {
         // Not a board and not a billboard: paint on the beam's own steel, the way the "?" is printed
         // on the floor of an unexplored room — no glow, always in the same place, no screen on top.
         // Alt repaints the same stencil as neon (setAlt -> setDecal).
-        const exitA = ship.rooms[c.a].exits.find(e => e.corridor === c.id) || {};
-        const nums = (exitA.nums && exitA.nums.length ? exitA.nums : [exitA.num]).filter(n => n);
-        let decal = null;
-        if (nums.length) {
-            decal = this.makeDecal('cn_' + c.id, door, 0, D.decalY, 0, D.decalW, D.decalH);
-            // Lying flat, the stencil reads along the corridor. Both ways round are equally true, so
-            // take the one that points up-screen for the table's default camera; the paint itself is
-            // fixed on the beam (the "?" tokens behave the same way).
-            decal.rotation.set(Math.PI / 2, 0, Math.cos(d.ry) - Math.sin(d.ry) < 0 ? Math.PI : 0);
-            this.setDecal(decal, nums.join(' / '), false);
+        // Numbers belong to the ROOM, not to the corridor: on the printed board every room numbers
+        // its own exits 1..4 (a room with fewer than four corridors gives one corridor two digits,
+        // printed "3 4"). A door is seen from both ends, so it carries two stencils — one on each
+        // half of the beam, painted with the number of the room on that side. One shared stencil
+        // showed room `a`'s numbers to room `b` as well, and a room ended up with several "2"s.
+        const numsOfRoom = (roomId) => {
+            const exit = ship.rooms[roomId].exits.find(e => e.corridor === c.id) || {};
+            return (exit.nums && exit.nums.length ? exit.nums : [exit.num]).filter(n => n);
+        };
+        const sideNums = { a: numsOfRoom(c.a), b: numsOfRoom(c.b) };
+        // Each stencil takes half of the beam's depth, and its own way up: the paint on the `a` half
+        // reads for a player standing in room a, the `b` half for a player in room b.
+        const sideW = Math.min(D.decalW, Math.max(0.9, (D.beamD / 2 - 0.1) * 2));
+        const decals = [];
+        for (const [side, sign] of [['a', -1], ['b', 1]]) {
+            const nums = sideNums[side];
+            if (!nums.length) continue;
+            const plane = this.makeDecal('cn_' + c.id + '_' + side, door, 0, D.decalY, sign * D.beamD / 4, sideW, sideW / 2);
+            plane.rotation.set(Math.PI / 2, 0, sign < 0 ? 0 : Math.PI);
+            this.setDecal(plane, nums.join(' / '), false);
+            decals.push({ plane, side, nums });
         }
+        const decal = decals.length ? decals[0].plane : null;
+        const nums = decals.length ? decals[0].nums : [];
         // Emergency lamps in the doorway: dark fixtures that are dead until the bulkhead seals. The
         // lenses are switched off, not merely dimmed, so an open door shows no red at all; once it
         // closes the opening is lit like a room on malfunction (updateCorridor).
@@ -1614,7 +1627,7 @@ export class Scene3D {
             db.parent = door; db.position.set((Math.random() - 0.5) * 1.6, 0.08, (Math.random() - 0.5) * 1.4); db.rotation.set(0, Math.random() * 3, (Math.random() - 0.5) * 0.4); db.material = M('#6b7a88'); db.isPickable = false; db.setEnabled(false);
             debris.push(db);
         }
-        this.corridorNodes[c.id] = { root, door, panels, noise, noiseLabel, decal, nums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
+        this.corridorNodes[c.id] = { root, door, panels, noise, noiseLabel, decal, decals, nums, sideNums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
             panelClosed: D.panelClosed, panelOpen: D.panelOpen, ry: d.ry, a: c.a, b: c.b, state: null };
     }
 
@@ -1989,7 +2002,7 @@ export class Scene3D {
         }
         // Corridor numbers: plain paint stenciled on the beam by default, neon while Alt is held.
         for (const n of Object.values(this.corridorNodes)) {
-            if (n.decal && n.nums && n.nums.length) this.setDecal(n.decal, n.nums.join(' / '), this.alt);
+            for (const side of (n.decals || [])) this.setDecal(side.plane, side.nums.join(' / '), this.alt);
         }
     }
 
