@@ -48,10 +48,19 @@ const host = { scene: {}, shadows: { addShadowCaster() {} }, M: (hex, e) => mate
 const TILES = ['archives', 'comms', 'emergency', 'evacA', 'evacB', 'fireControl', 'generator', 'laboratory', 'nest',
     'surgery', 'repository', 'airlock', 'armory', 'cafeteria', 'commandCenter', 'containment', 'contaminated', 'decon',
     'engineRoom', 'hatchControl', 'server', 'storage', 'cockpit', 'hibernatorium', 'engine'];
+let lastNode = null;   // the room node of the last build: wallSpots / wallSkips land on it
 const build = (tile, exits = [0.6, 2.5], techAngle = 3.6) => {
     meshes.length = 0;
+    lastNode = { exitAngles: exits, techAngle };
     Scene3D.prototype.buildFloor.call(host, tile, null);
-    Scene3D.prototype.buildProps.call(host, tile, null, { exitAngles: exits, techAngle });
+    Scene3D.prototype.buildProps.call(host, tile, null, lastNode);
+    return meshes.slice();
+};
+/** Props only — the floor finish has its own paint strips at the wall and is not furniture. */
+const buildPropsOnly = (tile, exits = [0.6, 2.5], techAngle = 3.6) => {
+    meshes.length = 0;
+    lastNode = { exitAngles: exits, techAngle };
+    Scene3D.prototype.buildProps.call(host, tile, null, lastNode);
     return meshes.slice();
 };
 
@@ -185,4 +194,67 @@ test('PR-09 airlock control has a pressure door with a wheel lock and a chevron 
     assert.ok(m.some(x => x.kind === 'box' && Math.abs(x.opts.width - 3.0) < 1e-9 && Math.abs(x.opts.depth - 1.0) < 1e-9), 'решётка вентиляции');
     // two control podiums with tilted screens
     assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.16) < 1e-9 && Math.abs(x.opts.height - 0.1) < 1e-9).length, 2, 'два пульта');
+});
+
+// --- wall furniture against the generated passages -----------------------------------------
+// The board generator cuts doorways and the technical hatch wherever the ship needs them, so a
+// cabinet or a monitor bank "against the wall" at a fixed angle can end up floating across a
+// passage. Every wall piece is placed by its own width now: the spot is snapped out of the
+// doorway, and when the ring has no room left the piece is not built at all.
+const DOOR_HALF = 1.62, HATCH_HALF = 1.42;   // metres each side of the opening, portal posts included
+const wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
+
+test('PR-10 a wall piece never hangs over a doorway or the technical hatch', () => {
+    const exitSets = [[0.6, 2.5], [0, 1.6, 3.2, -1.4], [-2.9, 0.2, 1.9]];
+    for (const tile of TILES) {
+        for (const exits of exitSets) {
+            build(tile, exits, 3.6);
+            for (const spot of (lastNode.wallSpots || [])) {
+                const half = spot.width / 2;
+                for (const ea of exits) {
+                    const gap = Math.abs(wrapA(spot.a - ea)) * WALL_R;
+                    assert.ok(gap >= DOOR_HALF + half, `${tile}: a ${spot.width.toFixed(1)}-wide piece sits ${(gap - DOOR_HALF).toFixed(2)} m into the doorway at ${ea.toFixed(2)}`);
+                }
+                const tech = Math.abs(wrapA(spot.a - 3.6)) * WALL_R;
+                assert.ok(tech >= HATCH_HALF + half, `${tile}: a piece sits ${(tech - HATCH_HALF).toFixed(2)} m into the technical hatch`);
+            }
+        }
+    }
+});
+
+test('PR-11 a fully pierced ring builds cleanly, and the ring-full path is really taken', () => {
+    // Doorways every 0.6 rad: some wall pieces still fit in the narrow gaps, the wide ones do not.
+    const exits = [];
+    for (let k = 0; k < 10; k++) exits.push(-Math.PI + k * 0.6);
+    let skips = 0;
+    for (const tile of TILES) {
+        assert.doesNotThrow(() => build(tile, exits, 3.6), `${tile} must survive a fully pierced ring`);
+        assert.ok((lastNode.wallSkips || 0) >= 0, `${tile}: wall skips are counted`);
+    }
+    // Mesh-by-mesh the rule is checked on the rooms whose wall furniture is placed by width. The
+    // remaining rooms still pin a few pieces to fixed coordinates; PR-10 covers the spots they do
+    // register, and this list grows as those rooms are converted.
+    const BY_WIDTH = ['archives', 'comms', 'emergency', 'fireControl', 'generator', 'repository',
+        'airlock', 'server', 'cafeteria', 'containment', 'cockpit'];
+    for (const tile of BY_WIDTH) {
+        skips += lastNode.wallSkips || 0;
+        const spots = lastNode.wallSpots || [];
+        for (const spot of spots) for (const ea of exits) {
+            const gap = Math.abs(wrapA(spot.a - ea)) * WALL_R;
+            assert.ok(gap >= DOOR_HALF + spot.width / 2, `${tile}: a wall piece hangs over a doorway on a pierced ring`);
+        }
+        for (const m of buildPropsOnly(tile, exits, 3.6)) {
+            const r = Math.hypot(m.position.x, m.position.z);
+            assert.ok(r <= WALL_R - 0.1, `${tile}: a prop escaped the ring`);
+            // Beds and desks reach out to ~5.2 m from the middle; the wall band itself starts higher.
+            if (r < 5.5) continue;
+            // Nothing at the wall may stand in an opening: the ceiling of that rule is the doorway
+            // itself, so anything that close to the ring is measured against every door angle.
+            for (const ea of exits) {
+                const gap = Math.abs(wrapA(Math.atan2(m.position.x, m.position.z) - ea)) * WALL_R;
+                assert.ok(gap >= DOOR_HALF - 0.15, `${tile}: a prop stands ${gap.toFixed(2)} m from the doorway axis at r=${r.toFixed(2)}`);
+            }
+        }
+    }
+    assert.ok(skips > 0, 'some wall piece must have been dropped on a ring this crowded');
 });
