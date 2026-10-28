@@ -85,6 +85,10 @@ export class Scene3D {
         this.shadows.usePercentageCloserFiltering = true; this.shadows.darkness = 0.45;
         this.roomNodes = {}; this.corridorNodes = {}; this.dynamic = []; this.chars = {}; this.intr = {}; this.hull = [];
         this.glow = new (B().GlowLayer)('glow', this.scene, { blurKernelSize: 48 }); this.glow.intensity = 0.5;
+        // Rendering group 1 is the Alt overlay (the Search colours of a room). Its depth buffer is
+        // cleared before it draws, so a colour chip is never hidden behind a prop, a wall or a
+        // figure: the chip belongs to the room, not to whatever happens to stand in it.
+        this.scene.setRenderingAutoClearDepthStencil(1, true);
         this.shipKey = null; this.selectable = new Set(); this.hover = null; this.t = 0; this.lastShotSeen = null;
         this.alt = false;
         this.gallery = false;   // room-gallery mode: labels show the room name instead of its id
@@ -377,13 +381,15 @@ export class Scene3D {
         }
         const label = this.makeLabel('lbl_' + r.id, r.id, '', root, 0, 3.2, 0, 3.0);
         // Alt overlay: the room name alone (no number), bigger, so the board reads by names while Alt is held
-        const altLabel = this.makeLabel('altlbl_' + r.id, '', '', root, 0, 3.5, 0, 4.0);
+        // Alt names a room in words instead of its number: half again the size of the id plate
+        // (3.0) so the board reads by names from the far zoom level.
+        const altLabel = this.makeLabel('altlbl_' + r.id, '', '', root, 0, 3.5, 0, 6.0);
         altLabel.setEnabled(false);
         // face-down room token: a big "?" printed on the unexplored floor
         const qm = this.makeLabel('qm_' + r.id, '?', '', root, 0, 0.13, 0, 7.5);
         qm.rotation.set(Math.PI / 2, 0, 0); qm.billboardMode = 0; qm.isPickable = false;
         { const ctx = qm.metadata.dt.getContext(); ctx.clearRect(0, 0, 512, 160); ctx.font = 'bold 150px Segoe UI, Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#56687c'; ctx.fillText('?', 256, 138); qm.metadata.dt.update(); qm.metadata.text = 'qm'; }
-        this.roomNodes[r.id] = { root, plat, sel, label, altLabel, qm, data: r, exitAngles, techAngle, techLeds, techDecal, shell: null, shellKey: null, strips: null, emergency: [], malfunction: false, flicker: Math.random() * 10, flip: null, pop: null, podsRoot: null, podKey: null, fireRoot: null, fireOn: null, fireParts: [] };
+        this.roomNodes[r.id] = { root, plat, sel, label, altLabel, qm, data: r, exitAngles, techAngle, techLeds, techDecal, shell: null, shellKey: null, strips: null, emergency: [], malfunction: false, flicker: Math.random() * 10, flip: null, pop: null, podsRoot: null, podKey: null, fireRoot: null, fireOn: null, fireParts: [], cpu: null, cpuBoxes: [], cpuKey: null, cpuSpots: null };
     }
 
     /** Technical-corridor entrance: two ordinary corridor arches standing on a short deck, with a
@@ -677,14 +683,21 @@ export class Scene3D {
         const accent = M(accentHex, 0.6), metal = M('#8c96a0'), dark = M('#2b333d'), panel = M('#4a5a6e'), white = M('#dfe6ee');
         const screen = M('#4aa3df', 0.9), crateMat = M('#6b5a3c'), crateMat2 = M('#52607a'), hazard = M('#c9a227'), olive = M('#5a6a3a');
         // Console desk: the screen stands on a foot bolted to the desktop, so no slab hovers over the desk.
+        // Consoles are collected so that a room with a Computer can hand them a pick box afterwards:
+        // the furniture itself is merged into the room's static mesh and loses its identity there.
+        const consoles = [];
+        // Rooms whose Computer is not a desk console (a wall panel, a control station) name their own spot.
+        const cpuSpots = [];
+        const cpu_ = (x, z, ry) => cpuSpots.push({ x, z, ry });
         const console_ = (x, z, ry) => {
-            bx(1.4, 0.9, 0.6, x, 0.45, z, panel, ry);
+            const desk = bx(1.4, 0.9, 0.6, x, 0.45, z, panel, ry);
             bx(1.5, 0.06, 0.7, x, 0.93, z, metal, ry);                                                   // desktop
             bx(0.24, 0.12, 0.16, LX(x, z, ry, 0, -0.14), 1.02, LZ(x, z, ry, 0, -0.14), dark, ry);        // screen foot
             bx(1.26, 0.78, 0.07, LX(x, z, ry, 0, -0.1), 1.4, LZ(x, z, ry, 0, -0.1), metal, ry, -0.3);    // bezel
             bx(1.12, 0.64, 0.03, LX(x, z, ry, 0, -0.06), 1.4, LZ(x, z, ry, 0, -0.06), screen, ry, -0.3); // display
             bx(1.06, 0.05, 0.38, LX(x, z, ry, 0, 0.12), 0.98, LZ(x, z, ry, 0, 0.12), dark, ry);          // keyboard
             bx(0.3, 0.04, 0.2, LX(x, z, ry, 0.42, 0.12), 0.99, LZ(x, z, ry, 0.42, 0.12), accent, ry);    // control pad
+            consoles.push({ desk, ry });
         };
         const crate = (x, z, s = 1, ry = 0, mat = crateMat) => { bx(s, s, s, x, s / 2, z, mat, ry); bx(s * 1.02, 0.08, 0.12, x, s * 0.5, z, dark, ry); bx(0.12, 0.08, s * 1.02, x, s * 0.5, z, dark, ry); };
         // Ammo crate: the lid is hinged to the back rim (open: standing on the hinge, closed: on top).
@@ -980,6 +993,7 @@ export class Scene3D {
                     discZ(0.5, 0.22, fr.at(-1.2, -0.05)[0], 0.75, fr.at(-1.2, -0.05)[1], metal, p.ry, 10);
                     bx(0.4, 0.5, 0.24, fr.at(1.2, -0.04)[0], 0.9, fr.at(1.2, -0.04)[1], M('#8a929c'), p.ry);         // alarm box
                     bx(0.16, 0.16, 0.06, fr.at(1.2, 0.1)[0], 1.0, fr.at(1.2, 0.1)[1], M('#e05252', 0.8), p.ry);
+                    cpu_(p.x, p.z, p.ry);   // the fire panel is this room's Computer
                 });
                 barrel(-2.8, 2.3, M('#e05252')); barrel(-2.2, 3.0, M('#e05252'));
                 break;
@@ -1539,6 +1553,19 @@ export class Scene3D {
             if (rr > WALL_R - 0.7) { const k = (WALL_R - 0.7) / rr; m.position.x *= k; m.position.z *= k; }
         }
         statics.push(...fixed, ...dressing);
+        // Where the Computer of this room is, in the room's own coordinates. The desks are merged into
+        // the static shell and lose their identity there; a room with a Computer turns these spots
+        // into click boxes (syncComputer) on the room base, which survives a shell rebuild.
+        if (node) {
+            const roomId = node.data ? node.data.id : null;
+            const isComputer = roomId && this.roomTiles && this.roomTiles[tile] && this.roomTiles[tile].computer;
+            // the desks are read after the spread, so the box lands exactly on the console the merge keeps
+            const spots = cpuSpots.concat(consoles.map(c => ({ x: c.desk.position.x, z: c.desk.position.z, ry: c.ry })));
+            // A room whose model has no desk console still has its Computer: use the free wall station,
+            // which is where those rooms put their control panel.
+            if (isComputer && !spots.length) { const p = wallSpot(freeAngle(1.05, 0.7)); spots.push({ x: p.x, z: p.z, ry: p.ry }); }
+            node.cpuSpots = isComputer ? spots : null;
+        }
         this.mergeStatic(statics, root);
         return root;
     }
@@ -1820,6 +1847,10 @@ export class Scene3D {
         const mat = new (B().StandardMaterial)(name + '_m', S);
         mat.diffuseTexture = dt; mat.emissiveColor = new (B().Color3)(1, 1, 1); mat.disableLighting = true; mat.backFaceCulling = false; mat.useAlphaFromDiffuseTexture = true;
         plane.material = mat; plane.isPickable = false;
+        // A stencil is printed paint, not a lamp. The glow layer blurs in screen space, so at the
+        // far zoom level a small number bloomed into an unreadable smear; the neon look is painted
+        // into the texture by setDecal and survives on its own, at any distance.
+        if (this.glow) this.glow.addExcludedMesh(plane);
         plane.metadata = { dt, decal: null };
         return plane;
     }
@@ -1888,8 +1919,10 @@ export class Scene3D {
     // ---------------------------------------------------------------------------------------
     update(view, roomTiles, intruderNames, selectableRooms) {
         this.view = view;
+        // The tile map goes first: the props of an explored room are built during buildShip, and a
+        // room with a Computer has to know it while its furniture is made.
+        this.roomTiles = roomTiles || this.roomTiles;
         this.buildShip(view.ship);
-        this.roomTiles = roomTiles;
         for (const d of this.dynamic) d.dispose();
         this.dynamic = [];
         // the parts that came and went keep their ids: drop the dead ones so the registry does not grow
@@ -1956,6 +1989,7 @@ export class Scene3D {
             if (node.shell) node.shell.root.dispose();
             node.shell = tile ? this.owner('room:' + r.id + ':shell', () => this.buildShell(node, tile)) : null;
             node.shellKey = sk; node.lightsOn = undefined;
+            this.syncComputer(node, tile);
         }
         node.malfunction = !!rs.malfunction;
         if (node.shell) {
@@ -2146,6 +2180,28 @@ export class Scene3D {
         }
     }
 
+    /** The Computer of a room is used by clicking its console on the board. The pick box is invisible
+     *  (the scene's picks always pass a predicate, and a predicate pick ignores isVisible) and lives
+     *  on the room base: a shell is rebuilt whenever its tile changes and would take it along. */
+    syncComputer(node, tile) {
+        const spots = node.cpuSpots && this.roomTiles && this.roomTiles[tile] && this.roomTiles[tile].computer ? node.cpuSpots : null;
+        const key = spots ? spots.map(s => s.x.toFixed(2) + '/' + s.z.toFixed(2) + '/' + s.ry.toFixed(2)).join(',') : '';
+        if (node.cpuKey === key) return;
+        node.cpuKey = key;
+        for (const b of node.cpuBoxes || []) b.dispose();
+        node.cpuBoxes = []; node.cpu = null;
+        if (!spots) return;
+        for (const s of spots) {
+            const hit = B().MeshBuilder.CreateBox('cpu', { width: 1.7, height: 2.2, depth: 1.0 }, this.scene);
+            hit.parent = node.root; hit.position.set(s.x, 1.12, s.z); hit.rotation.y = s.ry;
+            hit.material = this.M('#0b1016', 0, { alpha: 0 });
+            hit.isVisible = false; hit.isPickable = true;
+            hit.metadata = { roomId: node.data.id, computer: true };
+            node.cpuBoxes.push(hit);
+            if (!node.cpu) node.cpu = hit;
+        }
+    }
+
     /** Search item colours of a known room, floating above it while Alt is held. */
     syncItemDots(node, tile) {
         const key = tile || '';
@@ -2160,10 +2216,10 @@ export class Scene3D {
         items.forEach((c, i) => {
             const x = (i - (items.length - 1) / 2) * 1.15;
             const disc = B().MeshBuilder.CreateCylinder('dot', { diameter: 0.86, height: 0.12, tessellation: 18 }, this.scene);
-            disc.position.x = x; disc.parent = root; disc.isPickable = false;
+            disc.position.x = x; disc.parent = root; disc.isPickable = false; disc.renderingGroupId = 1;
             disc.material = this.M(ITEM_COLORS[c] || '#9aa7b5', 1);
             const ring = B().MeshBuilder.CreateTorus('ring', { diameter: 0.96, thickness: 0.08, tessellation: 18 }, this.scene);
-            ring.position.x = x; ring.parent = root; ring.isPickable = false;
+            ring.position.x = x; ring.parent = root; ring.isPickable = false; ring.renderingGroupId = 1;
             ring.material = this.M('#0b1016');
         });
         root.setEnabled(!!this.alt);
@@ -2275,6 +2331,7 @@ export class Scene3D {
         let pos = null;
         if (kind === 'room' && this.roomNodes[id]) pos = this.roomNodes[id].root.position.clone().add(new (Bx.Vector3)(0, 3.6, 0));
         else if (kind === 'intr' && this.intr[id]) pos = this.intr[id].root.position.clone().add(new (Bx.Vector3)(0, 2.3, 0));
+        else if (kind === 'cpu' && this.roomNodes[id] && this.roomNodes[id].cpu) pos = this.roomNodes[id].cpu.getAbsolutePosition().clone().add(new (Bx.Vector3)(0, 1.3, 0));
         if (!pos) return null;
         const w = this.engine.getRenderWidth(), h = this.engine.getRenderHeight();
         const p = Bx.Vector3.Project(pos, Bx.Matrix.Identity(), this.scene.getTransformMatrix(), this.camera.viewport.toGlobal(w, h));
@@ -2652,7 +2709,8 @@ export class Scene3D {
             const pick = this.scene.pick(px, py, m => m.metadata && (m.metadata.intruder || m.metadata.objectIndex !== undefined || m.metadata.roomId));
             if (!pick || !pick.hit) return;
             const md = pick.pickedMesh.metadata;
-            if (md.intruder && this.cb.onIntruder) this.cb.onIntruder(md.intruder, md.roomId, px, py);
+            if (md.computer && this.cb.onComputer) this.cb.onComputer(md.roomId, px, py);
+            else if (md.intruder && this.cb.onIntruder) this.cb.onIntruder(md.intruder, md.roomId, px, py);
             else if (md.objectIndex !== undefined && md.objectIndex !== null && this.cb.onObject) this.cb.onObject(md.roomId, md.objectIndex, px, py);
             else if (md.roomId && this.cb.onClick) this.cb.onClick(md.roomId);
         }

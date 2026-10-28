@@ -351,6 +351,7 @@ function renderGame() {
     if (!scene) {
         scene = new Scene3D($('scene'), {
             onHover: onRoomHover, onClick: onRoomClick, onIntruder: onIntruderClick, onObject: onObjectClick,
+            onComputer: onComputerClick,
             onCursor: (x, z, room) => { lastFloor = { x, z, room }; const now = performance.now(); if (now - cursorSent > 50) { cursorSent = now; net.send({ t: 'cursor', x, z }); } },
             onPose: pose => net.send({ t: 'pose', dx: pose.dx, dz: pose.dz, rot: pose.rot }),
         });
@@ -966,6 +967,31 @@ function onRoomClick(id) {
         { label: 'Идти', sub: mv ? (mv.cost ? mv.cost + ' карт(ы) · шум по броску' : '') : '', disabled: !mv || !mv.enabled, reason: mv && mv.reason, do: () => act({ action: 'move', dest: id }) },
         { label: 'Красться (осторожно)', sub: cw ? (cw.cost ? cw.cost + ' карт(ы) · выбрать коридор' : '') : '', disabled: !cw || !cw.enabled, reason: cw && cw.reason, do: () => act({ action: 'careful', dest: id }) },
     ], scene.screenOf('room', id));
+}
+
+/**
+ * A click on the console of a room with a Computer: the three actions of the face-up Computer card,
+ * offered where the player pointed, exactly like a click on a neighbouring room offers the ways to
+ * walk there. The engine still has the last word — a blocked action is refused with its reason and
+ * the usual list opens, and every option that costs a card asks for that card next.
+ */
+function onComputerClick(roomId, px, py) {
+    const v = app.view; if (!v) return;
+    const pr = v.prompt;
+    // The engine is asking "where to?" — the console is inside that room, so answer it.
+    if (pr && pr.kind === 'room' && !pr.waiting && pr.player === app.me && (pr.rooms || []).includes(roomId)) { act(roomId); return; }
+    const me = myChar(), menu = turnMenuPrompt();
+    if (!menu || !me || me.room !== roomId) { scene.focusRoom(roomId); return; }
+    const a = menuActionOf(menu, 'computer');
+    if (!a) { notice('В этой комнате нет компьютера.', 'info'); return; }
+    if (!a.enabled) { notice(a.reason || 'Компьютер сейчас недоступен.', 'info'); return; }
+    const card = v.computerCard, def = card ? COMPUTER_CARDS[card] : null;
+    const opts = def && def.options ? Object.entries(def.options) : [];
+    if (!opts.length) { act({ action: 'computer' }); return; }   // Lockdown: it resolves at once
+    openWorldPop('Выберите компьютерное действие:', 'Компьютер — «' + def.name + '»', opts.map(([id, text]) => ({
+        label: text,
+        do: () => act({ action: 'computer', pick: id }),
+    })), scene.screenOf('cpu', roomId) || { x: px, y: py });
 }
 
 /** The rules text of a weapon without «Дальнобойное оружие, N патронов.» — that part is already

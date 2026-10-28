@@ -346,3 +346,78 @@ test('SCN-09: no green tongue hangs out of an intruder mouth', async () => {
         assert.ok(root.getChildMeshes().length > 10, type + ': the intruder is still built');
     }
 });
+
+test('SCN-13: the number stencils are kept out of the bloom pass', () => {
+    // ru: при зажатом Alt цифры на проходах смазывались блумом. GlowLayer размывает в экранных
+    // координатах, поэтому на дальнем плане мелкий трафарет расплывался в пятно. Трафарет — краска,
+    // а не лампа: он рисует свой неон сам (setDecal) и в пост-процесс не попадает.
+    let decals = 0, tech = 0;
+    for (const n of Object.values(scene.corridorNodes)) {
+        if (!n.decal) continue;
+        assert.equal(scene.glow.hasMesh(n.decal), false, 'коридор ' + n.decal.name + ': номер не должен блумить');
+        decals++;
+    }
+    for (const n of Object.values(scene.roomNodes)) {
+        if (!n.techDecal) continue;
+        assert.equal(scene.glow.hasMesh(n.techDecal), false, n.data.id + ': номер на крыше техкоридора не блумит');
+        tech++;
+    }
+    assert.ok(decals >= 5, 'номера коридоров существуют (' + decals + ')');
+    assert.ok(tech >= 5, 'номера техкоридоров существуют (' + tech + ')');
+    // control: an ordinary part of the board is still rendered through the glow layer
+    assert.equal(scene.glow.hasMesh(scene.roomNodes['011'].sel), true, 'остальное свечение Alt осталось');
+});
+
+test('SCN-14: the Alt name of a room is half again as big as before', () => {
+    const node = scene.roomNodes['011'];
+    const width = m => m.getBoundingInfo().boundingBox.extendSize.x * 2;
+    const alt = width(node.altLabel), id = width(node.label);
+    assert.ok(Math.abs(alt - 6.0) < 0.01, 'имя комнаты в Alt: ' + alt.toFixed(2) + ' (было 4.0)');
+    assert.ok(Math.abs(alt - id * 2) < 0.01, 'имя вдвое шире таблички с номером (' + id.toFixed(2) + ')');
+    // the live distance scaling multiplies both, so the name keeps its size relative to the board
+    scene.animate();
+    assert.equal(node.altLabel.scaling.x, node.label.scaling.x, 'обе подписи масштабируются одинаково');
+});
+
+test('SCN-15: the Search colours of a room are drawn over everything', () => {
+    // ru: цвета, присутствующие в комнате, рисовать поверх всех объектов. Своя группа рендера с
+    // очищенным буфером глубины: ни стена, ни мебель, ни фигура не могут закрыть цвет комнаты.
+    const setup = scene.scene.getAutoClearDepthStencilSetup(1);
+    assert.equal(setup.autoClear, true, 'глубина группы 1 очищается перед отрисовкой');
+    assert.equal(setup.depth, true, 'именно глубина');
+    const node = scene.roomNodes['011'];
+    node.dotKey = null;
+    scene.syncItemDots(node, 'laboratory');           // three green icons
+    const dots = node.itemDots.root.getChildMeshes();
+    assert.ok(dots.length >= 6, 'три диска и три кольца (' + dots.length + ')');
+    for (const m of dots) assert.equal(m.renderingGroupId, 1, m.name + ' рисуется поверх мира');
+    // the world itself stays in group 0, so the overlay really is on top of it
+    assert.equal(node.sel.renderingGroupId, 0, 'мир остаётся в нулевой группе');
+    scene.syncItemDots(node, null);
+});
+
+test('SCN-16: a room with a Computer has a clickable console', () => {
+    const v = JSON.parse(JSON.stringify(view));
+    const roomId = Object.keys(v.ship.rooms).find(id => id !== '011');
+    assert.ok(roomId, 'на корабле есть вторая комната');
+    v.roomState[roomId].explored = true;
+    v.roomState[roomId].tile = 'comms';              // a room with a Computer
+    v.roomState[roomId].objects = [];
+    v.roomState[roomId].fire = false; v.roomState[roomId].malfunction = false;
+    scene.updateRoom(v, v.ship.rooms[roomId]);
+    const node = scene.roomNodes[roomId];
+    assert.ok(node.cpu, roomId + ': у компьютера есть зона клика');
+    assert.equal(node.cpu.isPickable, true, 'зона клика ловит мышь');
+    assert.equal(node.cpu.isVisible, false, 'зона клика не рисуется');
+    assert.equal(node.cpu.metadata.computer, true, 'метка компьютерного действия');
+    assert.equal(node.cpu.metadata.roomId, roomId, 'метка комнаты');
+    const p = node.cpu.position;
+    assert.ok(Math.hypot(p.x, p.z) < WALL_R, 'зона клика внутри комнаты (r = ' + Math.hypot(p.x, p.z).toFixed(2) + ')');
+    assert.ok(p.y > 0.3 && p.y < 2.0, 'зона клика на высоте консоли (y = ' + p.y.toFixed(2) + ')');
+    // a room without a Computer gets no such box
+    const plain = Object.keys(v.ship.rooms).find(id => id !== '011' && id !== roomId);
+    v.roomState[plain].explored = true; v.roomState[plain].tile = 'cafeteria';
+    v.roomState[plain].objects = []; v.roomState[plain].fire = false; v.roomState[plain].malfunction = false;
+    scene.updateRoom(v, v.ship.rooms[plain]);
+    assert.ok(!scene.roomNodes[plain].cpu, plain + ': без компьютера зоны клика нет');
+});

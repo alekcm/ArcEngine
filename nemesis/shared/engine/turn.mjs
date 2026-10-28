@@ -269,7 +269,9 @@ OPS['turn.do'] = (state, step) => {
             return;
         case 'computer':
             spend();
-            payCost(state, p, 1, interruptible(state, p, { op: 'computer.start', player: p.id }, 'использует компьютер'), 'Компьютер: оплата');
+            // `pick` comes from a click on the console: the action is already named, no list is asked.
+            payCost(state, p, 1, interruptible(state, p, { op: 'computer.start', player: p.id,
+                pick: a.pick ? String(a.pick) : undefined }, 'использует компьютер'), 'Компьютер: оплата');
             return;
         case 'room':
             spend();
