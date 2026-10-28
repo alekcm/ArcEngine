@@ -95,8 +95,16 @@ test('PR-03 escape-pod cradles stand where syncPods draws the pods', () => {
 test('PR-04 containment rig is centred on the floor ring with mirrored posts', () => {
     const m = build('containment');
     const plates = m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 2.5) < 0.001 && Math.abs(x.opts.depth - 2.5) < 0.001);
-    assert.ok(plates.length >= 2, 'base plate and lid frame');
+    assert.ok(plates.length >= 1, 'base plate');
     for (const p of plates) assert.ok(Math.abs(p.position.x) < 0.01 && Math.abs(p.position.z) < 0.01, 'plate must sit on the centre');
+    // the lid is a frame of four bars, not a slab: the cell has to read as open from above, so the rig
+    // closes with two bars across and two along, each pair mirrored about the centre
+    const lidX = m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 2.5) < 0.001 && Math.abs(x.opts.depth - 0.2) < 0.001);
+    const lidZ = m.filter(x => x.kind === 'box' && Math.abs(x.opts.depth - 2.5) < 0.001 && Math.abs(x.opts.width - 0.2) < 0.001);
+    assert.equal(lidX.length, 2, 'two lid bars across');
+    assert.equal(lidZ.length, 2, 'two lid bars along');
+    assert.deepEqual(lidX.map(p => Math.round(p.position.z * 100) / 100).sort(), [-1.15, 1.15], 'lid bars mirrored along z');
+    assert.deepEqual(lidZ.map(p => Math.round(p.position.x * 100) / 100).sort(), [-1.15, 1.15], 'lid bars mirrored along x');
     const posts = m.filter(x => x.kind === 'box' && Math.abs(x.opts.height - 2.5) < 0.001 && Math.abs(x.opts.width - 0.18) < 0.001);
     assert.equal(posts.length, 4, 'four corner posts');
     const xs = posts.map(p => Math.round(p.position.x * 100) / 100).sort();
@@ -234,9 +242,7 @@ test('PR-11 a fully pierced ring builds cleanly, and the ring-full path is reall
     // Mesh-by-mesh the rule is checked on the rooms whose wall furniture is placed by width. The
     // remaining rooms still pin a few pieces to fixed coordinates; PR-10 covers the spots they do
     // register, and this list grows as those rooms are converted.
-    const BY_WIDTH = ['archives', 'comms', 'emergency', 'fireControl', 'generator', 'repository',
-        'airlock', 'server', 'cafeteria', 'containment', 'cockpit'];
-    for (const tile of BY_WIDTH) {
+    for (const tile of TILES) {
         skips += lastNode.wallSkips || 0;
         const spots = lastNode.wallSpots || [];
         for (const spot of spots) for (const ea of exits) {
