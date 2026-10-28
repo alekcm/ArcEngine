@@ -87,10 +87,14 @@ test('R23-03: the event card turns over in 3D instead of swapping a picture', ()
     assert.match(css, /\.ack3d\.flipped\s*\{\s*transform:\s*rotateY\(180deg\)/, 'one half-turn');
     assert.match(css, /\.ack-face\s*\{[^}]*backface-visibility:\s*hidden/, 'only one face is seen');
     assert.match(css, /\.ack-face\.afront\s*\{\s*transform:\s*rotateY\(180deg\)/, 'the front starts face down');
-    // The turn plays once per card, not on every re-render of the table.
-    assert.match(app, /app\.ackTurned/, 'the turn is remembered');
-    // The click answers at once under the finger and the server repeats it for the rest.
-    assert.match(app, /c\.classList\.remove\('down'\); c\.classList\.add\('up'\)/);
+    // The turn plays once per card, not on every re-render of the table: the render that first sees
+    // prompt.flipped builds the card face down again and adds the class a moment later (a card that
+    // was simply re-rendered face up looked like an instant swap).
+    assert.match(app, /const turning = flipped && !!app\.ackDown && !app\.ackHold/, 'the turn is played once');
+    assert.match(app, /app\.ackHold = \{ id: pr\.id, until: Date\.now\(\) \+ 700 \}/, 'and held while it plays');
+    assert.match(app, /app\.ackHold\.until > Date\.now\(\)[\s\S]{0,160}return;/, 'later renders leave the card alone');
+    // The click asks the server for the table turn instead of swapping the picture itself.
+    assert.match(app, /app\.ackFlipSent = true;\s*\n\s*net\.send\(\{ t: 'flip' \}\)/, 'the click turns it for the whole table');
 });
 
 test('R23-04: only a bag this very roll opened may flash the screen', () => {

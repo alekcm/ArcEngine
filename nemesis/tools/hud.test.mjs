@@ -43,7 +43,8 @@ test('HUD-03: my health and injuries sit in the lower-LEFT corner, a name under 
     assert.match(app, /function renderSelfHud\(\)/, 'it is rendered from the view');
     assert.match(app, /\n\s+renderSelfHud\(\);/, 'on every top-bar update');
     assert.match(app, /class="sh-slot wound" data-wound=/, 'the wound name sits under its level');
-    assert.match(app, /class="sh-armor" data-armor=/, 'the suit has its own line, not a fourth slot');
+    assert.match(app, /class="sh-slot armor" data-armor=/, 'the suit lies in the third Heavy Wound slot');
+    assert.doesNotMatch(app, /<div class="sh-armor"/, 'and has no line of its own under the track');
     assert.match(app, /class="sh-slot empty"/, 'nothing blocking a level leaves a placeholder');
     assert.doesNotMatch(app, /травм нет/, 'no words in the empty placeholder');
     assert.match(app, /function showHudPop\(/, 'the card appears on hover');
@@ -74,7 +75,11 @@ test('HUD-06: the corner card is the printed track — three sections, three wou
     // the last cell is drawn on its own: three slots under the three sections, never a fourth box
     assert.match(app, /const lastCell = '<div class="sh-cells sh-last">' \+ LAST_CELL\(me\)/, 'the last cell stands outside the slots');
     assert.match(app, /'<div class="sh-hp">' \+ bar \+ lastCell \+ hpSkull\(me\)/, 'between the sections and the skull');
-    assert.equal((app.match(/<div class="sh-slot/g) || []).length, 2, 'only the wound slot and its empty twin are built');
+    // three slot templates: a wound, its empty twin, and the suit that takes the third slot while it lasts
+    assert.equal((app.match(/<div class="sh-slot/g) || []).length, 3, 'a wound, its empty twin, and the suit slot');
+    assert.match(app, /const armorAt = me\.armor && wounds\.length < HP_SECTIONS\.length \? HP_SECTIONS\.length - 1 : -1;/,
+        'the suit is drawn in the slot of the third Heavy Wound, under the red part of the track');
+    assert.match(app, /else if \(i === armorAt\) slot = '<div class="sh-slot armor"/, 'and only while that slot is free');
     assert.doesNotMatch(app, /sh-slot[^']*HP_LAST/, 'no slot is built for the near-death cell');
     // equal gaps: the same value between cells and between sections, no fake 3px divider cell
     const hpGap = css.match(/#selfHud \.sh-cells\s*\{[^}]*gap:\s*(\d+)px/);

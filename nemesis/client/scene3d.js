@@ -2332,6 +2332,7 @@ export class Scene3D {
         if (kind === 'room' && this.roomNodes[id]) pos = this.roomNodes[id].root.position.clone().add(new (Bx.Vector3)(0, 3.6, 0));
         else if (kind === 'intr' && this.intr[id]) pos = this.intr[id].root.position.clone().add(new (Bx.Vector3)(0, 2.3, 0));
         else if (kind === 'cpu' && this.roomNodes[id] && this.roomNodes[id].cpu) pos = this.roomNodes[id].cpu.getAbsolutePosition().clone().add(new (Bx.Vector3)(0, 1.3, 0));
+        else if (kind === 'char' && this.chars[id]) pos = this.chars[id].ch.root.getAbsolutePosition().clone().add(new (Bx.Vector3)(0, 2.3, 0));
         if (!pos) return null;
         const w = this.engine.getRenderWidth(), h = this.engine.getRenderHeight();
         const p = Bx.Vector3.Project(pos, Bx.Matrix.Identity(), this.scene.getTransformMatrix(), this.camera.viewport.toGlobal(w, h));
@@ -2508,7 +2509,10 @@ export class Scene3D {
                 n = { ch, charId: p.charId, label: this.makeLabel('cl', p.name, '', ch.root, 0, 3.6, 0, 3.8), placed: false, colorsKey: null };
                 // invisible grab handle so the owner can drag the figure around the room
                 const grab = B().MeshBuilder.CreateCylinder('grab', { diameter: 1.4, height: 2.9 }, S);
-                grab.parent = ch.root; grab.position.y = 1.45; grab.visibility = 0; grab.isPickable = true; grab.metadata = { grab: p.id };
+                grab.parent = ch.root; grab.position.y = 1.45; grab.visibility = 0; grab.isPickable = true;
+                // the same cylinder is the figure's click target: `grab` only matches my own seat (dragging),
+                // `player` matches any seat, so a click on someone else can open his action list.
+                grab.metadata = { grab: p.id, player: p.id };
                 n.grab = grab;
                 this.chars[p.id] = n;
                 for (const m of ch.root.getChildMeshes()) this.shadows.addShadowCaster(m);
@@ -2679,7 +2683,7 @@ export class Scene3D {
             if (this.cb.onCursor && fp) this.cb.onCursor(fp.x, fp.z, this.roomAt(fp));
             if (this.me != null) {
                 const g = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && m.metadata.grab === this.me);
-                const c = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && (m.metadata.intruder || m.metadata.objectIndex !== undefined || m.metadata.roomId));
+                const c = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && (m.metadata.intruder || m.metadata.player !== undefined || m.metadata.objectIndex !== undefined || m.metadata.roomId));
                 this.canvas.style.cursor = g && g.hit ? 'grab' : c && c.hit ? 'pointer' : '';
             }
             const pick = this.scene.pick(this.scene.pointerX, this.scene.pointerY, m => m.metadata && m.metadata.roomId);
@@ -2699,17 +2703,22 @@ export class Scene3D {
             }
         } else if (pi.type === T.POINTERUP) {
             if (this.drag) {
-                const pose = this.poses[this.drag.pid];
-                if (this.cb.onPose && pose) this.cb.onPose(pose);
+                // A press on my own figure that never moved is not a drag: it is a click on me, and the
+                // list behind it is the confirmation that the figure was picked on purpose.
+                const moved = Math.abs(this.scene.pointerX - this.downX) > 4 || Math.abs(this.scene.pointerY - this.downY) > 4;
+                const pid = this.drag.pid, pose = this.poses[pid];
+                if (moved && this.cb.onPose && pose) this.cb.onPose(pose);
+                if (!moved && this.cb.onPlayer) this.cb.onPlayer(pid);
                 this.drag = null; this.camera.attachControl(this.canvas, true); this.canvas.style.cursor = '';
                 return;
             }
             if (Math.abs(this.scene.pointerX - this.downX) > 4 || Math.abs(this.scene.pointerY - this.downY) > 4) return;
             const px = this.scene.pointerX, py = this.scene.pointerY;
-            const pick = this.scene.pick(px, py, m => m.metadata && (m.metadata.intruder || m.metadata.objectIndex !== undefined || m.metadata.roomId));
+            const pick = this.scene.pick(px, py, m => m.metadata && (m.metadata.intruder || m.metadata.player !== undefined || m.metadata.objectIndex !== undefined || m.metadata.roomId));
             if (!pick || !pick.hit) return;
             const md = pick.pickedMesh.metadata;
-            if (md.computer && this.cb.onComputer) this.cb.onComputer(md.roomId, px, py);
+            if (md.player !== undefined && this.cb.onPlayer) this.cb.onPlayer(md.player, px, py);
+            else if (md.computer && this.cb.onComputer) this.cb.onComputer(md.roomId, px, py);
             else if (md.intruder && this.cb.onIntruder) this.cb.onIntruder(md.intruder, md.roomId, px, py);
             else if (md.objectIndex !== undefined && md.objectIndex !== null && this.cb.onObject) this.cb.onObject(md.roomId, md.objectIndex, px, py);
             else if (md.roomId && this.cb.onClick) this.cb.onClick(md.roomId);
