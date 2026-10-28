@@ -744,11 +744,11 @@ OPS['item2.use'] = (state, step) => {
             const rs = room(state, p.room); const opts = [];
             if (rs.malfunction) opts.push({ id: 'malf', label: 'Убрать поломку' });
             if (rs.fire) opts.push({ id: 'fire', label: 'Убрать огонь' });
-            choice(state, p, 'Разводной ключ', opts, 'card.cleanUp.pick'); return;
+            choice(state, p, ITEMS[inst.item].name, opts, 'card.cleanUp.pick'); return;
         }
         case 'fieldKit': {
             const opts = [p, ...others(state, p, p.room)].map(o => ({ id: String(o.id), label: pname(o) + ' (' + o.health + ')' }));
-            ask(state, { kind: 'choice', player: p.id, title: 'Аптечка: кого лечить (+1)?', options: opts }, { op: 'item2.heal1', player: p.id, then: back }); return;
+            ask(state, { kind: 'choice', player: p.id, title: ITEMS[inst.item].name + ': кого лечить (+1)?', options: opts }, { op: 'item2.heal1', player: p.id, then: back }); return;
         }
         case 'sampleJar': { const c = p.hand.find(isContam); if (c) { p.hand = p.hand.filter(x => x !== c); log(state, pname(p) + ' убирает заражение в контейнер.', 'good'); } next(state, back); return; }
         case 'navTablet': {
