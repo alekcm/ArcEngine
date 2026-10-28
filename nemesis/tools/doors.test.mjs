@@ -156,10 +156,14 @@ test('DR-01 the doorway is two ordinary corridor arches, not a bulkhead frame', 
         for (const gone of ['post', 'lintel', 'dslab', 'dstep', 'sill', 'dt']) {
             assert.equal(meshes.filter(m => m.name === gone).length, 0, c.id + ': no «' + gone + '» any more');
         }
-        // the arches stand symmetric about the middle of the door, far enough apart for the plate
+        // The arches stand symmetric about the middle of the door, close enough together that the
+        // whole thing is a gateway and not a long table: arch, plate and arch together are 1.31 along
+        // the passage — exactly half of the 2.62 it used to be.
         const zs = lintels.map(m => m.position.z).sort((a, b) => a - b);
         assert.ok(Math.abs(zs[0] + zs[1]) < 1e-9, c.id + ': the two arches are symmetric about the door');
-        assert.ok(zs[1] - zs[0] >= 1.8, c.id + ': there is room between them for the plate');
+        const postD = posts[0].opts.depth;
+        const doorLen = zs[1] - zs[0] + postD;
+        assert.ok(Math.abs(doorLen - 1.31) < 1e-6, c.id + ': the door is half its old length (' + doorLen.toFixed(2) + ' м)');
         // the plate: exactly the lintels' width, height and level — one frame, not a roof on legs
         const plate = meshes.find(m => m.name === 'aplate');
         assert.ok(plate, c.id + ': a plate bridges the arches');
@@ -168,11 +172,17 @@ test('DR-01 the doorway is two ordinary corridor arches, not a bulkhead frame', 
         assert.equal(plate.position.y, lintels[0].position.y, c.id + ': flush with them');
         assert.equal(plate.position.x, 0, c.id + ': centred');
         assert.ok(plate.opts.depth > 0.4 && plate.opts.depth <= zs[1] - zs[0] - 0.3, c.id + ': it spans the gap and no more');
-        // nothing sticks out over the sides: every part of the frame stays within the arch span
+        // Nothing sticks out over the sides: every part of the frame stays within the arch span.
         const span = lintels[0].opts.width / 2;
         for (const m of meshes) {
-            if (!/^(apost|alintel|aplate|aband|alamp)/.test(m.name)) continue;
+            if (!/^(apost|alintel|aplate|alamp)/.test(m.name)) continue;
             assert.ok(Math.abs(m.position.x) + m.opts.width / 2 <= span + 1e-9, c.id + ': ' + m.name + ' never grows past the arch');
+        }
+        // And nothing is bolted to the sides of the door at all: the two arches and the plate are the
+        // whole doorway. (The glowing side strips that used to hang on the posts are gone.)
+        assert.equal(meshes.filter(m => m.name === 'aband').length, 0, c.id + ': no side strips on the door');
+        for (const m of meshes) {
+            assert.ok(!/^(aband|bplate|side|strip|wing|flap)$/.test(m.name), c.id + ': no plate bolted to the door');
         }
         // a head clears the lintel: the arches are not squat
         assert.ok(lintels[0].position.y - lintels[0].opts.height / 2 >= 1.5, c.id + ': the doorway is walkable');
@@ -293,7 +303,8 @@ test('DR-05 the doorway emergency lamps are dead until the door closes', () => {
         for (const l of lenses) {
             assert.ok(Math.abs(l.position.x) > 0.8 && Math.abs(l.position.x) < 1.05, c.id + ': the lens sits on the post');
             assert.ok(l.position.y > 1.2 && l.position.y < 1.6, c.id + ': it hangs under the lintel, over the leaves');
-            assert.ok(Math.abs(l.position.z) > 1.2, c.id + ': on the outer face of an arch, never inside a closed leaf');
+            const archZ = Math.abs(meshes.find(m => m.name === 'alintel').position.z);
+            assert.ok(Math.abs(l.position.z) > archZ + 0.32 / 2, c.id + ': on the outer face of an arch, never inside a closed leaf');
         }
 
         // sealed: the emergency light comes on, like a room on malfunction

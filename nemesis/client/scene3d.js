@@ -1763,9 +1763,9 @@ export class Scene3D {
             m.parent = door; m.position.set(x, y, z); m.material = material; m.isPickable = false;
             return m;
         };
-        // the two arches, one on each side of the plate
+        // The two arches, one on each side of the plate. Nothing is bolted to their sides: the door
+        // is exactly the two arches and the plate between them (no side strips, no side plates).
         const archZ = [-D.archGap / 2, D.archGap / 2];
-        const bands = [];
         for (const az of archZ) {
             for (const s of [-1, 1]) {
                 add('apost', D.postW, D.postH, D.postD, s * D.postX, D.postH / 2, az, steel);
@@ -1773,20 +1773,12 @@ export class Scene3D {
             }
             add('alintel', D.beamW, D.beamH, D.postD, 0, D.beamY, az, steel);
             add('alamp', D.beamW * 0.35, 0.06, 0.12, 0, D.beamY - D.beamH / 2 - 0.02, az, M('#dff5ff', 1));
-            // The glowing band wraps each arch on the face that looks away from the plate: the inner
-            // faces are buried in the plate, so a band there would never be seen.
-            const f = az < 0 ? -1 : 1, bz = az + f * (D.postD / 2 + 0.02);
-            for (const s of [-1, 1]) bands.push(add('aband', 0.16, Math.max(0.4, D.postH - 0.1), 0.04, s * D.postX, D.postH / 2 - 0.02, bz, null));
-            bands.push(add('aband', D.beamW - 0.04, 0.14, 0.04, 0, D.beamY, bz, null));
             const pipe = B().MeshBuilder.CreateCylinder('apipe', { diameter: 0.12, height: D.beamW - 0.06, tessellation: 6 }, S);
             pipe.parent = door; pipe.position.set(0, D.postH - 0.18, az); pipe.rotation.z = Math.PI / 2;
             pipe.material = conduitM; pipe.isPickable = false;
         }
         // the plate between the arches: the lintels' own steel, flush with them on every side
         add('aplate', D.beamW, D.beamH, D.plateD, 0, D.beamY, 0, steel);
-        // The bands are the same material as the ribs' bands: dead steel normally, orange while a
-        // noise marker sits in this corridor (updateCorridor).
-        for (const b of bands) b.material = matA;
         // Two leaves, each hung on a pivot at its post: sealed they meet in the middle, open they
         // swing flat against the passage. A sliding leaf has nowhere to go in a corridor without
         // walls — it would either hang in the air beside the arch or cut through the walkway.
@@ -1801,7 +1793,7 @@ export class Scene3D {
             panels.push(p); pivots.push(pivot);
         }
         const noise = B().MeshBuilder.CreateCylinder('noise', { diameter: 1.4, height: 0.12, tessellation: 12 }, S);
-        noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M('#f1c40f', 0.9); noise.isPickable = false; noise.setEnabled(false); noise.visibility = 0;   // kept for layout; the arch bands show noise
+        noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M('#f1c40f', 0.9); noise.isPickable = false; noise.setEnabled(false); noise.visibility = 0;   // kept for layout; the ribs of the corridor show noise
         const noiseLabel = this.makeLabel('nl_' + c.id, '🔊', '', door, 0, 1.4, -2.2, 1.4);
         noiseLabel.setEnabled(false);
         // --- the corridor number, stenciled flat on the plate -------------------------------------

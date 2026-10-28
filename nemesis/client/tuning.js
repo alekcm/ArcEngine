@@ -25,7 +25,7 @@ export const SCHEMA = [
             { key: 'postW', v: 0.24, min: 0.12, max: 0.6, step: 0.02, label: { en: 'Arch: post thickness', ru: 'Арка: толщина стойки' } },
             { key: 'postH', v: 1.6, min: 1.2, max: 2.6, step: 0.05, label: { en: 'Arch: post height', ru: 'Арка: высота стойки' } },
             { key: 'postD', v: 0.32, min: 0.16, max: 0.8, step: 0.02, label: { en: 'Arch: post depth', ru: 'Арка: глубина стойки' } },
-            { key: 'archGap', v: 2.3, min: 1.4, max: 3.6, step: 0.1, label: { en: 'Distance between the two arches', ru: 'Расстояние между арками' } },
+            { key: 'archGap', v: 0.99, min: 0.6, max: 3.6, step: 0.05, label: { en: 'Distance between the two arches', ru: 'Расстояние между арками' } },
             { key: 'beamW', v: 2.6, min: 2.4, max: 4.0, step: 0.05, label: { en: 'Lintel and plate width', ru: 'Ширина перекладин и плиты' } },
             { key: 'beamH', v: 0.24, min: 0.12, max: 0.5, step: 0.02, label: { en: 'Lintel and plate height', ru: 'Высота перекладин и плиты' } },
             { key: 'numShare', v: 0.72, min: 0.3, max: 1.0, step: 0.01, label: { en: 'Number: share of the plate width', ru: 'Номер: доля ширины плиты' } },
@@ -105,8 +105,10 @@ export function doorSpec() {
     const n = (k) => TUNE.get('door.' + k);
     // One arch, built exactly like a rib of the corridor.
     const postX = n('postX'), postW = n('postW'), postH = n('postH'), postD = n('postD');
-    // ... two of them, `archGap` apart, bridged by a plate of the lintels' own steel.
-    const archGap = Math.max(n('archGap'), postD + 0.4);
+    // ... two of them, `archGap` apart, bridged by a plate of the lintels' own steel. The doorway is
+    // deliberately short: the whole object (arch, plate, arch) is one and a third metres deep along
+    // the passage, half of the long table it used to be, so it reads as a gateway and not as a bridge.
+    const archGap = Math.max(n('archGap'), postD + 0.6);
     const beamW = Math.max(n('beamW'), postX * 2 + postW), beamH = n('beamH');
     // A rib of the corridor puts its lintel 0.10 above the post top (the recipe overlaps the two by
     // 0.02): the door's arches use the very same height, so a doorway is not a different arch.
@@ -122,10 +124,11 @@ export function doorSpec() {
     const panelH = Math.min(1.75, Math.max(0.6, beamY - beamH / 2 - 0.1));
     const panelSwing = Math.PI / 2 * 0.94;
     // The stencil lies flat on the plate: as wide as the plate allows, and never wider than the
-    // gap it is painted across (the plate's depth at the 2:1 canvas aspect).
+    // gap it is painted across (the plate's depth at the 2:1 canvas aspect). A short door gets a
+    // narrower stencil, but it stays on the plate with a margin on every side.
     const plateD = Math.max(0.2, archGap - postD);
     const numW = Math.min(beamW * n('numShare'), beamW - 0.4);
-    const decalW = Math.max(0.4, Math.min(numW, (plateD - 0.2) * 2));
+    const decalW = Math.max(0.4, Math.min(numW, (plateD - 0.24) * 2));
     const decalH = decalW / 2;
     return {
         postX, postW, postH, postD, archGap, beamW, beamH,
