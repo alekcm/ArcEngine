@@ -193,3 +193,39 @@ test('BD-10 a part gets its id when it is created, not on the next tick', async 
     const wrap = src.slice(src.indexOf('this.scene.addMesh ='));
     assert.ok(/this\.merging/.test(wrap.slice(0, 400)), 'the wrapper keeps MergeMeshes from taking ids');
 });
+
+test('BD-11 a click is measured in CSS pixels of the canvas, not in render pixels', () => {
+    // A canvas drawn at more than its box size (devicePixelRatio, a zoomed layout) renames every
+    // point: the pointer event is in CSS pixels, scene.pick wants render pixels. Without the ratio
+    // a click on the middle of the canvas picks a completely different part — or nothing.
+    const calls = [];
+    const h = {
+        engine: { getRenderWidth: () => 800, getRenderHeight: () => 600,
+            getRenderingCanvas: () => ({ getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 300 }) }) },
+        camera: { name: 'cam' },
+        scene: { pick: (x, y, pred, fast, cam) => { calls.push([x, y, typeof pred, fast, cam && cam.name]); return { hit: true, pickedMesh: { name: 'fl', metadata: { editId: 'room:101#0' } } }; } },
+    };
+    const m = Scene3D.prototype.pickMesh.call(h, 100, 50);
+    assert.equal(m.metadata.editId, 'room:101#0');
+    assert.deepEqual(calls[0], [200, 100, 'function', false, 'cam'], 'the point is scaled and the scene camera is named');
+});
+
+test('BD-12 a thin part just off the cursor is still picked', () => {
+    const make = (reach) => {
+        let calls = 0;
+        const h = {
+            engine: { getRenderWidth: () => 800, getRenderHeight: () => 600,
+                getRenderingCanvas: () => ({ getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }) }) },
+            camera: null,
+            scene: { pick: (x, y) => { calls++; const hit = Math.hypot(x - 400, y - 300) <= reach; return { hit, pickedMesh: { name: 'post', metadata: { editId: 'cor:001-002#43' } } }; } },
+        };
+        return { h, calls: () => calls };
+    };
+    const near = make(1.2);                     // the cable is a pixel or two wide at this distance
+    assert.equal(Scene3D.prototype.pickMesh.call(near.h, 405, 300).metadata.editId, 'cor:001-002#43',
+        'a 5 px miss still lands on the cable');
+    assert.ok(near.calls() > 1, 'the exact point goes first, the ring around it second');
+    const far = make(-1);                       // nothing anywhere near
+    assert.equal(Scene3D.prototype.pickMesh.call(far.h, 405, 300), null);
+    assert.equal(far.calls(), 25, 'one exact try and three rings of eight, then give up');
+});

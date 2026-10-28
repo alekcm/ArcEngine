@@ -55,6 +55,7 @@ const NemesisPanel = {
         this.groups = document.getElementById('nemesis-groups');
         this.part = document.getElementById('nemesis-part');
         this.editsHost = document.getElementById('nemesis-edits');
+        this.findHost = document.getElementById('nemesis-find');
         this.status = document.getElementById('nemesis-status');
         this.canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('nemesis-canvas'));
         this.saveBtn = /** @type {HTMLButtonElement} */ (document.getElementById('btn-nemesis-save'));
@@ -70,7 +71,7 @@ const NemesisPanel = {
         }
         this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
         window.addEventListener('pane-tab', (e) => this.onTab(/** @type {CustomEvent} */ (e).detail));
-        window.addEventListener('lang-changed', () => { this.renderNote(); this.buildControls(); this.renderPart(); this.renderEdits(); this.renderDirty(); });
+        window.addEventListener('lang-changed', () => { this.renderNote(); this.buildControls(); this.renderPart(); this.renderFind(); this.renderEdits(); this.renderDirty(); });
         window.addEventListener('resize', () => this.resize());
         addEventListener('keydown', (e) => this.onKey(e, true));
         addEventListener('keyup', (e) => this.onKey(e, false));
@@ -132,7 +133,10 @@ const NemesisPanel = {
         gm.positionGizmoEnabled = true; gm.rotationGizmoEnabled = true; gm.scaleGizmoEnabled = true;
         this.gizmo = gm;
         for (const g of [gm.gizmos.positionGizmo, gm.gizmos.rotationGizmo, gm.gizmos.scaleGizmo]) {
-            if (g) g.updateGizmoRotationToMatchAttachedMesh = false;
+            if (!g) continue;
+            g.updateGizmoRotationToMatchAttachedMesh = false;
+            // the ship is ~100 units across: at that distance a default gizmo is a speck
+            g.scaleRatio = 2.5;
         }
         gm.positionGizmo.planarGizmoEnabled = false;
         gm.onAttachedToMeshObservable.add(() => { });
@@ -160,6 +164,7 @@ const NemesisPanel = {
             this.renderNote();
             this.buildControls();
             this.renderPart();
+            this.renderFind();
             this.renderEdits();
             this.renderDirty();
         } else if (this.scene) {
@@ -181,6 +186,7 @@ const NemesisPanel = {
         this.sel = null; this.selId = null;
         if (this.gizmo) this.gizmo.attachToMesh(null);
         if (keep) this.select(this.scene.editMeshes[keep] || null);
+        this.renderFind();
         this.renderEdits();
         this.renderDirty();
     },
@@ -195,17 +201,40 @@ const NemesisPanel = {
     onPointerDown(e) {
         if (!this.scene || e.button !== 0) return;
         // a press on a gizmo handle is a drag, not a selection
-        if (this.gizmo && this.gizmo.isHovered) return;
+        if (this.hoveringGizmo()) return;
         const r = this.canvas.getBoundingClientRect();
         const mesh = this.scene.pickMesh(e.clientX - r.left, e.clientY - r.top);
+        // nothing under the cursor: say so, otherwise the tab looks broken
+        if (!mesh) { this.say(I18N.t('nem.nothingThere')); return; }
         this.select(mesh);
     },
 
     select(mesh) {
+        const B = window.BABYLON;
+        // The outline answers "did the click do anything?": the part lights up in the view at once,
+        // and the pane says what it is. At the board's scale a cable is thinner than a pixel, and
+        // silence after a click reads as a dead editor.
+        if (this.outline && this.outline !== mesh) { try { this.outline.renderOutline = false; } catch { /* disposed */ } }
+        this.outline = null;
         this.sel = mesh || null;
         this.selId = mesh && mesh.metadata ? mesh.metadata.editId : null;
+        if (mesh && B) {
+            try {
+                mesh.renderOutline = true;
+                mesh.outlineColor = new B.Color3(0.25, 0.85, 1);
+                mesh.outlineWidth = 0.08;
+                this.outline = mesh;
+            } catch { /* an odd mesh: the pane still shows it */ }
+        }
         if (this.gizmo) this.gizmo.attachToMesh(this.sel);
+        if (mesh) this.say(I18N.t('nem.picked', { name: mesh.name || '—', id: this.selId || '' }));
         this.renderPart();
+    },
+
+    /** The pointer is over a gizmo handle: that press is a drag, not a selection. */
+    hoveringGizmo() {
+        const g = this.gizmo && this.gizmo.gizmos;
+        return !!(g && [g.positionGizmo, g.rotationGizmo, g.scaleGizmo].some(x => x && x.isHovered));
     },
 
     setMode(mode, quiet) {
@@ -343,6 +372,56 @@ const NemesisPanel = {
             rowEl.appendChild(undo);
             host.appendChild(rowEl);
         }
+    },
+
+    // --- find a part without pixel-hunting -----------------------------------------------------
+    // Clicking a cable that is thinner than a pixel is a lottery, so the same parts are reachable
+    // from a list: pick a room (or a corridor, or the hull), then the name of the part; the same
+    // row again takes the next part of that name.
+    renderFind() {
+        const host = this.findHost;
+        if (!host) return;
+        host.innerHTML = '';
+        if (!this.scene) return;
+        const ids = Object.keys(this.scene.editMeshes);
+        if (!ids.length) return;
+        host.appendChild(el('div', 'props-section', I18N.t('nem.find')));
+        host.appendChild(el('div', 'nem-hint', I18N.t('nem.findHint')));
+        const owners = [...new Set(ids.map(id => id.split('#')[0]))].sort();
+        const owner = owners.includes(this.findOwner) ? this.findOwner : owners[0];
+        this.findOwner = owner;
+        const sel = document.createElement('select');
+        sel.className = 'nem-select';
+        for (const o of owners) {
+            const opt = document.createElement('option');
+            opt.value = o;
+            opt.textContent = o + ' · ' + ids.filter(id => id.startsWith(o + '#')).length;
+            if (o === owner) opt.selected = true;
+            sel.appendChild(opt);
+        }
+        sel.addEventListener('change', () => { this.findOwner = sel.value; this.findName = null; this.findAt = 0; this.renderFind(); });
+        host.appendChild(sel);
+        const mine = ids.filter(id => id.startsWith(owner + '#'));
+        const byName = new Map();
+        for (const id of mine) {
+            const nm = this.scene.editMeshes[id].name || '—';
+            if (!byName.has(nm)) byName.set(nm, []);
+            byName.get(nm).push(id);
+        }
+        const list = el('div', 'nem-findlist');
+        for (const [nm, group] of [...byName.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))) {
+            const b = /** @type {HTMLElement} */ (document.createElement('button'));
+            b.className = 'nem-findrow';
+            b.textContent = nm + ' ×' + group.length;
+            b.title = group[0];
+            b.addEventListener('click', () => {
+                this.findAt = nm === this.findName ? (this.findAt + 1) % group.length : 0;
+                this.findName = nm;
+                this.select(this.scene.editMeshes[group[this.findAt]] || null);
+            });
+            list.appendChild(b);
+        }
+        host.appendChild(list);
     },
 
     // --- saving -------------------------------------------------------------------------------

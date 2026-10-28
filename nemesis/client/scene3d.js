@@ -168,11 +168,36 @@ export class Scene3D {
         return this;
     }
 
-    /** The mesh under a screen point while editing (null on empty space). */
+    /** The mesh under a screen point while editing (null on empty space).
+     *  `sx, sy` are CSS pixels inside the canvas — the point a pointer event gives — and a thin wire
+     *  is given a second chance in a ring around the click: at the board's scale a cable is well
+     *  under a pixel wide, and asking the user to hit it exactly is not editing. */
     pickMesh(sx, sy) {
-        if (!this.scene.pick) return null;
-        const r = this.scene.pick(sx, sy, m => !!(m.metadata && m.metadata.editId));
-        return r && r.hit ? r.pickedMesh : null;
+        if (!this.scene || !this.scene.pick) return null;
+        const eng = this.engine;
+        const canvas = eng && eng.getRenderingCanvas ? eng.getRenderingCanvas() : null;
+        const rect = canvas && canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
+        // CSS pixels -> render pixels: a canvas scaled by the layout (or by devicePixelRatio) is
+        // bigger than the box the pointer is measured in, and an unscaled pick misses everything.
+        const cw = rect && rect.width > 0 ? rect.width : eng.getRenderWidth();
+        const ch = rect && rect.height > 0 ? rect.height : eng.getRenderHeight();
+        const kx = eng.getRenderWidth() / (cw || 1), ky = eng.getRenderHeight() / (ch || 1);
+        const pred = m => !!(m.metadata && m.metadata.editId);
+        const tryAt = (x, y) => {
+            const r = this.scene.pick(x, y, pred, false, this.camera);
+            return r && r.hit ? r.pickedMesh : null;
+        };
+        const x = sx * kx, y = sy * ky;
+        const exact = tryAt(x, y);
+        if (exact) return exact;
+        for (const rad of [4, 10, 18]) {
+            for (let i = 0; i < 8; i++) {
+                const a = (i / 8) * Math.PI * 2;
+                const hit = tryAt(x + Math.cos(a) * rad * kx, y + Math.sin(a) * rad * ky);
+                if (hit) return hit;
+            }
+        }
+        return null;
     }
 
     /** Take the saved edits (nemesis/client/board-edits.json) and apply them to the next build. */

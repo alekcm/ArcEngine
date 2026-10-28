@@ -73,6 +73,11 @@ when the owner scope is gone (BD-10 in `nemesis/tools/board.test.mjs` guards thi
   rounds coordinates to 0.001 and clamps them to ±1000, accepts `#rrggbb` and ids of
   `[A-Za-z0-9_:.#-]{1,80}`. The game reads the file at boot (`app.js` → `scene.setEdits()` before the
   first `update()`), both in the lobby gallery and in a real session.
+- Clicking must be visible and forgiving: `pickMesh` converts CSS pixels to the canvas buffer
+  (`HiDPI`), tries the exact ray and then three rings of 8 rays (4/10/18 px) because a cable is
+  thinner than a pixel, the selected part gets `renderOutline`, and the status line always says what
+  happened. "Find a part" lists every part by owner (`room:013`, `cor:001-002`, `hull`) and name, so
+  anything is reachable without aiming.
 - Keys: click — select, `1/2/3` — move/rotate/scale gizmo, `Del` — delete/restore the selected part,
   `Esc` — deselect, `F` — whole ship, `D` — a door, `Alt` — neon numbers.
 
