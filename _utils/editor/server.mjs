@@ -5,6 +5,7 @@
 //   1. the editor needs POST /api/save-constants — a pinpoint patch of numbers in
 //      Constants.js (otherwise "Save" has nowhere to go);
 //   2. its own port (8090+), to live next to the game on 8080.
+//   3. POST /api/save-tuning — the Nemesis tab's board numbers (nemesis/client/tuning.json).
 //  Static files are served from the PROJECT ROOT (the editor loads the game's
 //  /js/Constants.js, /js/World3D.js, /assets/* directly), with no-store — as in dev-server.
 //
@@ -25,11 +26,12 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import url from 'node:url';
 import { execFile } from 'node:child_process';
-import { failure, isModelPath, isSoundPath, saveConstants, saveObjects, saveUI } from './save.mjs';
+import { failure, isModelPath, isSoundPath, saveConstants, saveObjects, saveTuning, saveUI, TUNING_REL } from './save.mjs';
+import { sanitizeAll } from '../../nemesis/client/tuning.js';
 
 // Server contract version. Bump on EVERY change of the endpoints or the
 // response format — the client checks it against EDITOR_API_VERSION in schema.js.
-const EDITOR_API_VERSION = 20;
+const EDITOR_API_VERSION = 21;
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
 const MODELS_DIR = path.join(ROOT, 'assets', 'models');
@@ -211,6 +213,30 @@ const server = http.createServer(async (req, res) => {
       console.log(`  ${C.red}save FAILED${C.r} ${e.message}`);
       return sendJson(res, 500, { ok: false, error: e.message });
     }
+  }
+  // The Nemesis tab's board numbers: the file the game reads at boot (nemesis/client/tuning.json).
+  // Values go through the schema shared with the client — unknown keys and out-of-range numbers
+  // are dropped, so neither a hand-edited file nor a stray request can break the board.
+  if (pathname === '/api/tuning' || pathname === '/api/save-tuning') {
+    if (req.method === 'GET' && pathname === '/api/tuning') {
+      const text = await fsp.readFile(path.join(ROOT, TUNING_REL), 'utf8').catch(() => '');
+      let values = {};
+      try { values = sanitizeAll(JSON.parse(text || '{}').values || {}); } catch { values = {}; }
+      return sendJson(res, 200, { ok: true, api: EDITOR_API_VERSION, values });
+    }
+    if (req.method === 'POST') {
+      try {
+        const body = JSON.parse(await readBody(req) || '{}');
+        const result = await saveTuning(ROOT, body.values || {});
+        if (result.ok) console.log(`  ${C.grn}save${C.r} ${result.saved} board value(s) -> ${TUNING_REL} ${C.dim}(backup: ${result.backup})${C.r}`);
+        else console.log(`  ${C.ylw}skip${C.r} ${TUNING_REL}: ${result.error}`);
+        return sendJson(res, 200, result);
+      } catch (e) {
+        console.log(`  ${C.red}save FAILED${C.r} ${e.message}`);
+        return sendJson(res, 500, { ok: false, error: e.message });
+      }
+    }
+    return send(res, 405, { 'Content-Type': 'text/plain' }, 'Method Not Allowed');
   }
   // The sound files an object can play: assets/sounds/*.wav|mp3|ogg (the folder may be absent).
   if (pathname === '/api/sounds') {

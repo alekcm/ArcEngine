@@ -56,6 +56,8 @@
             </div>
             <div id="view-wrap">
                 <canvas id="view-canvas"></canvas>
+                <!-- Nemesis tab: its own scene over the location view (nemesis-panel module) -->
+                <canvas id="nemesis-canvas" hidden></canvas>
                 <div id="view-info" class="float-chip"></div>
                 <div id="view-hints" class="float-chip"></div>
                 <!-- Flight speed right where it is felt: the same CAMERA_FLY_SPEED constant as
@@ -76,6 +78,7 @@
                 <button data-tab="objects" data-i18n="tab.objects">Objects</button>
                 <button data-tab="ui" data-i18n="tab.ui">UI</button>
                 <button data-tab="sound" data-i18n="tab.sound">Sound</button>
+                <button data-tab="nemesis" data-i18n="tab.nemesis" data-i18n-title="tab.nemesisTitle">Nemesis</button>
             </div>
 
             <section class="pane-panel" data-tab="settings">
@@ -129,6 +132,24 @@
                 <div id="sound-groups"></div>
                 <div id="sound-files"></div>
                 <div id="sound-footer" data-i18n="snd.footer">A sound of an object is set in the Objects tab; game code plays effects with Sound3D.play. Click a file to hear it.</div>
+            </section>
+
+            <!-- Nemesis board: the ship in 3D + the numbers of the corridor door (nemesis-panel.js) -->
+            <section class="pane-panel" data-tab="nemesis" hidden>
+                <div id="nemesis-header">
+                    <div id="nemesis-tools">
+                        <button id="btn-nemesis-fit" data-i18n="nem.fit" data-i18n-title="nem.fitTitle">⤢ Whole ship</button>
+                        <button id="btn-nemesis-door" data-i18n="nem.door" data-i18n-title="nem.doorTitle">🚪 A door</button>
+                    </div>
+                    <div id="nemesis-actions">
+                        <button id="btn-nemesis-save" disabled data-i18n="nem.save">Save to tuning.json</button>
+                        <button id="btn-nemesis-reset" disabled data-i18n="nem.revert" data-i18n-title="nem.revertTitle">↺ Defaults</button>
+                    </div>
+                </div>
+                <p id="nemesis-note" class="nem-note"></p>
+                <div id="nemesis-groups"></div>
+                <p id="nemesis-status" class="nem-status"></p>
+                <div id="nemesis-footer" data-i18n="nem.footer">Values apply to the board right away. Save writes nemesis/client/tuning.json — the game and the lobby gallery read it at boot.</div>
             </section>
         </aside>
     </main>
@@ -190,5 +211,7 @@
     <script src="./debug-tools.js"></script>
     <script src="./onboarding.js"></script>
     <script src="./main.js"></script>
+    <!-- The Nemesis tab: an ES module (the board renderer lives in nemesis/client) -->
+    <script type="module" src="/nemesis/client/editor-panel.js"></script>
 </body>
 </html>

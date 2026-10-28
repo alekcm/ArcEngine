@@ -38,10 +38,10 @@ function checkDoor(D, label) {
 test('TU-01 the schema is complete and its defaults are inside their own ranges', () => {
     assert.ok(SCHEMA.length >= 1, 'at least one group');
     for (const g of SCHEMA) {
-        assert.ok(g.id && g.title, 'a group needs an id and a title');
+        assert.ok(g.id && g.title && g.title.en && g.title.ru, 'a group needs an id and a title in both languages');
         for (const it of g.items) {
             const key = g.id + '.' + it.key;
-            assert.ok(it.label, key + ': a human label for the editor');
+            assert.ok(it.label && it.label.en && it.label.ru, key + ': a label in both languages (the editor is EN/RU)');
             if (typeof it.v === 'string') {
                 assert.match(it.v, /^#[0-9a-f]{6}$/, key + ': a colour default');
             } else {

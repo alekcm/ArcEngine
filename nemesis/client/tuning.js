@@ -1,7 +1,7 @@
 // tuning.js — the numbers and colours of the board a designer may nudge without touching the
-// renderer. Everything here has a default, a range and a human label; the editor page
-// (client/editor.html, launched by "editor.bat nemesis") shows them as sliders and writes the
-// result to client/tuning.json, which the game and the gallery load at boot.
+// renderer. Everything here has a default, a range and a label in both languages; the kit's editor
+// (editor.bat -> the Nemesis tab) shows them as sliders and writes the result to
+// client/tuning.json, which the game and the gallery load at boot.
 //
 // Why a separate layer: the geometry of the corridor door was fought over for three rounds, and
 // every round needed a code change to move a number by ten centimetres — or by a hundred pixels of
@@ -13,23 +13,23 @@ const HEX = /^#[0-9a-f]{6}$/i;
 /** The schema: groups -> items. `key` is the short name inside the group. */
 export const SCHEMA = [
     {
-        id: 'door', title: 'Дверь коридора',
+        id: 'door', title: { en: 'Corridor door', ru: 'Дверь коридора' },
         items: [
-            { key: 'postX', v: 1.7, min: 1.2, max: 3.0, step: 0.05, label: 'Разнос стоек (полпроёма + стойка)' },
-            { key: 'postW', v: 1.2, min: 0.4, max: 2.0, step: 0.05, label: 'Ширина стойки' },
-            { key: 'postH', v: 2.35, min: 1.6, max: 3.4, step: 0.05, label: 'Высота проёма' },
-            { key: 'postD', v: 1.0, min: 0.3, max: 2.2, step: 0.05, label: 'Глубина стойки' },
-            { key: 'beamW', v: 5.2, min: 2.6, max: 8.0, step: 0.1, label: 'Длина балки' },
-            { key: 'beamH', v: 0.5, min: 0.2, max: 1.6, step: 0.05, label: 'Высота балки' },
-            { key: 'beamD', v: 2.1, min: 0.9, max: 3.4, step: 0.05, label: 'Глубина балки (сюда ложится номер)' },
-            { key: 'numShare', v: 0.72, min: 0.3, max: 1.0, step: 0.01, label: 'Номер: доля длины балки' },
-            { key: 'numFont', v: 248, min: 80, max: 250, step: 2, label: 'Номер: кегль, px (канва 512×256)' },
-            { key: 'steel', v: '#8c96a0', label: 'Цвет рамы и балки' },
-            { key: 'paint', v: '#56687c', label: 'Краска номера (как «?» на полу)' },
-            { key: 'outline', v: '#1b2632', label: 'Обводка номера' },
-            { key: 'neon', v: '#ddfbff', label: 'Неон по Alt: цифры' },
-            { key: 'neonGlow', v: '#3fd0ff', label: 'Неон по Alt: свечение' },
-            { key: 'lamp', v: '#ff3a3a', label: 'Аварийные лампы проёма' },
+            { key: 'postX', v: 1.7, min: 1.2, max: 3.0, step: 0.05, label: { en: 'Post spacing (half opening + post)', ru: 'Разнос стоек (полпроёма + стойка)' } },
+            { key: 'postW', v: 1.2, min: 0.4, max: 2.0, step: 0.05, label: { en: 'Post width', ru: 'Ширина стойки' } },
+            { key: 'postH', v: 2.35, min: 1.6, max: 3.4, step: 0.05, label: { en: 'Opening height', ru: 'Высота проёма' } },
+            { key: 'postD', v: 1.0, min: 0.3, max: 2.2, step: 0.05, label: { en: 'Post depth', ru: 'Глубина стойки' } },
+            { key: 'beamW', v: 5.2, min: 2.6, max: 8.0, step: 0.1, label: { en: 'Beam length', ru: 'Длина балки' } },
+            { key: 'beamH', v: 0.5, min: 0.2, max: 1.6, step: 0.05, label: { en: 'Beam height', ru: 'Высота балки' } },
+            { key: 'beamD', v: 2.1, min: 0.9, max: 3.4, step: 0.05, label: { en: 'Beam depth (the number is painted here)', ru: 'Глубина балки (сюда ложится номер)' } },
+            { key: 'numShare', v: 0.72, min: 0.3, max: 1.0, step: 0.01, label: { en: 'Number: share of the beam length', ru: 'Номер: доля длины балки' } },
+            { key: 'numFont', v: 248, min: 80, max: 250, step: 2, label: { en: 'Number: font size, px (512×256 canvas)', ru: 'Номер: кегль, px (канва 512×256)' } },
+            { key: 'steel', v: '#8c96a0', label: { en: 'Frame and beam colour', ru: 'Цвет рамы и балки' } },
+            { key: 'paint', v: '#56687c', label: { en: 'Number paint (the "?" on the floor)', ru: 'Краска номера (как «?» на полу)' } },
+            { key: 'outline', v: '#1b2632', label: { en: 'Number outline', ru: 'Обводка номера' } },
+            { key: 'neon', v: '#ddfbff', label: { en: 'Alt neon: digits', ru: 'Неон по Alt: цифры' } },
+            { key: 'neonGlow', v: '#3fd0ff', label: { en: 'Alt neon: glow', ru: 'Неон по Alt: свечение' } },
+            { key: 'lamp', v: '#ff3a3a', label: { en: 'Doorway emergency lamps', ru: 'Аварийные лампы проёма' } },
         ],
     },
 ];

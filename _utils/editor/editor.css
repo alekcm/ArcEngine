@@ -99,6 +99,26 @@ main { flex: 1 1 auto; display: flex; min-height: 0; }
 
 #view-wrap { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; background: #171b21; }
 #view-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+/* Nemesis tab: its own scene lies over the location view and takes the whole frame while open */
+#nemesis-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; z-index: 3; background: #070b11; }
+#nemesis-canvas[hidden] { display: none; }
+body.nemesis-tab #view-toolbar, body.nemesis-tab #view-info, body.nemesis-tab #view-hints,
+body.nemesis-tab #view-speed, body.nemesis-tab #lint-panel { display: none; }
+
+/* The Nemesis pane: sliders on a labelled grid, like the Objects tab's properties */
+#nemesis-header { display: flex; flex-wrap: wrap; gap: 6px; justify-content: space-between; padding: 10px 12px 6px; border-bottom: 1px solid var(--line); }
+#nemesis-tools, #nemesis-actions { display: flex; gap: 6px; }
+.nem-note { margin: 8px 12px 4px; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+#nemesis-groups { flex: 1 1 auto; overflow: auto; padding: 4px 12px 10px; }
+.nem-fields { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.nem-field { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; }
+.nem-field .nem-name { font-size: 11.5px; color: var(--text); }
+.nem-field output { font-size: 11.5px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.nem-field input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); height: 16px; }
+.nem-field input[type="color"] { width: 44px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: none; cursor: pointer; }
+.nem-status { margin: 0 12px; min-height: 16px; font-size: 11.5px; color: var(--accent); }
+.nem-status.bad { color: #f0b3b3; }
+#nemesis-footer { padding: 6px 12px 10px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); }
 
 .float-chip {
     position: absolute;

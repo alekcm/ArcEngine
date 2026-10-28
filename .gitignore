@@ -5,4 +5,4 @@
 /_utils/.backups/
 /build/
 /dist/
-/nemesis/client/tuning.json   # board editor: the designer's local tweaks (edited in editor.bat nemesis)
+/nemesis/client/tuning.json   # board numbers saved by the editor's Nemesis tab (editor.bat)

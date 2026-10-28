@@ -15,12 +15,12 @@ import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, C
 const $ = id => document.getElementById(id);
 const PHASES = { setup: 'Подготовка', draft: 'Выбор персонажей', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
 
-// Board tuning: the numbers a designer moved in client/editor.html (editor.bat nemesis). The file
-// is optional and local — without it the table in tuning.js is used, exactly as designed.
+// Board tuning: the numbers a designer moved in the editor's Nemesis tab (editor.bat). The file is
+// optional and local — without it the table in tuning.js is used, exactly as designed.
 try {
-    const r = await fetch('/api/tuning', { cache: 'no-store' });
+    const r = await fetch('/client/tuning.json', { cache: 'no-store' });
     if (r.ok) TUNE.load((await r.json()).values || {});
-} catch { /* no editor server next to this page: run on the defaults */ }
+} catch { /* no saved tuning next to the client: run on the defaults */ }
 
 // ---------------------------------------------------------------------------------------------
 // Network

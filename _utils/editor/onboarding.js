@@ -24,6 +24,7 @@ const Onboarding = {
         { id: 'settings', paras: 2, target: '#inspector-pane', tab: 'settings' },
         { id: 'objects', paras: 2, target: '#inspector-pane', tab: 'objects' },
         { id: 'ui', paras: 2, target: '#inspector-pane', tab: 'ui' },
+        { id: 'nemesis', paras: 2, target: '#inspector-pane', tab: 'nemesis' },
         { id: 'next', paras: 3, target: '#inspector-pane', tab: 'sound' },
     ],
 

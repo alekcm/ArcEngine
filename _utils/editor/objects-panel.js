@@ -853,7 +853,7 @@ const ObjectsPanel = {
 /** @satisfies {Record<string, any>} */
 const PaneTabs = {
     KEY: 'arcengine.editor.tab',
-    TABS: ['settings', 'objects', 'ui', 'sound'],
+    TABS: ['settings', 'objects', 'ui', 'sound', 'nemesis'],
     current: 'settings',
 
     init() {

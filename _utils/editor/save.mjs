@@ -7,10 +7,13 @@
 //     alone — rejection); a 0xRRGGBB color stays a hex literal;
 //   - before every write — a backup in _utils/.backups/ (the last 20 are kept).
 //  Objects.js is written WHOLE from a validated list (the backup goes there too).
+//  nemesis/client/tuning.json — the board numbers of the Nemesis tab: every key goes through
+//  the tuning schema (nemesis/client/tuning.js), so a junk request cannot reach the file.
 // ============================================================================
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { sanitizeAll } from '../../nemesis/client/tuning.js';
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const NUMBER = /^-?\d+(?:\.\d+)?$/;
@@ -30,6 +33,7 @@ export const ERRORS = {
   not_binary: 'ASCII FBX is not supported — export a binary FBX',
   not_glb: 'not a binary glTF — export .glb',
   bad_ui: 'the UI layout is not an array',
+  bad_tuning: 'the tuning values are not an object',
   bad_element: 'invalid UI element',
   too_large: 'the file is too large',
   dialog_failed: 'the file dialog failed to open',
@@ -48,11 +52,13 @@ export const isSoundPath = p => SOUND_PATH.test(p) && !p.split('/').some(s => s 
 // --- Backups -----------------------------------------------------------------
 
 // A copy of the file in <root>/_utils/.backups/<prefix>-<time>.js; the last 20 per prefix are kept.
-async function backupFile(root, file, prefix) {
+async function backupFile(root, file, prefix, ext = '.js') {
   const dir = path.join(root, '_utils', '.backups');
   await fsp.mkdir(dir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
-  const dest = path.join(dir, prefix + '-' + stamp + '.js');
+  let dest = path.join(dir, prefix + '-' + stamp + ext);
+  // Two saves within the same second (the Nemesis tab counts milliseconds) must not eat each other.
+  for (let n = 2; fs.existsSync(dest); n++) dest = path.join(dir, prefix + '-' + stamp + '-' + n + ext);
   await fsp.copyFile(file, dest);
   const files = (await fsp.readdir(dir)).filter(f => f.startsWith(prefix + '-')).sort();
   for (const f of files.slice(0, Math.max(0, files.length - BACKUP_KEEP))) {
@@ -331,4 +337,27 @@ export async function saveUI(root, elements) {
   const backup = fs.existsSync(file) ? await backupFile(root, file, 'UILayout') : null;
   await fsp.writeFile(file, r.src, 'utf8');
   return { ok: true, count: r.count, backup };
+}
+
+// --- nemesis/client/tuning.json --------------------------------------------------
+
+/** The file the editor's Nemesis tab writes and the game reads at boot. */
+export const TUNING_REL = 'nemesis/client/tuning.json';
+
+/**
+ * Write the board tuning: `{ 'door.beamW': 5.8, ... }`. Values are filtered by the schema shared
+ * with the client (unknown keys dropped, numbers clamped, colours normalised), only what differs
+ * from the table in tuning.js is kept, and the previous file is backed up next to Objects/Constants.
+ */
+export async function saveTuning(root, values) {
+  if (!values || typeof values !== 'object' || Array.isArray(values)) return failure('bad_tuning');
+  const clean = sanitizeAll(values);
+  const file = path.join(root, TUNING_REL);
+  const backup = fs.existsSync(file) ? await backupFile(root, file, 'tuning', '.json').catch(() => null) : null;
+  const sorted = {};
+  for (const k of Object.keys(clean).sort()) sorted[k] = clean[k];
+  const text = JSON.stringify({ values: sorted }, null, 2) + '\n';
+  await fsp.mkdir(path.dirname(file), { recursive: true });
+  await fsp.writeFile(file, text, 'utf8');
+  return { ok: true, saved: Object.keys(sorted).length, backup };
 }

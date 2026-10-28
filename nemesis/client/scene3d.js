@@ -1571,7 +1571,8 @@ export class Scene3D {
         if (this.alt) this.setAlt(true);
     }
 
-    /** Rebuild the whole board in place — the tuning editor (client/editor.html) moves sizes live. */
+    /** Rebuild the whole board in place — the editor's Nemesis tab (nemesis/client/editor-panel.js)
+     *  moves the sizes live. */
     rebuild(view, roomTiles, intruderNames, selectableRooms) {
         this.shipKey = null;
         this.camSized = true;
