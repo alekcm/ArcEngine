@@ -43,7 +43,6 @@ function host() {
         registerMesh(...a) { return Scene3D.prototype.registerMesh.apply(h, a); },
         owner(...a) { return Scene3D.prototype.owner.apply(h, a); },
         applyEdit(...a) { return Scene3D.prototype.applyEdit.apply(h, a); },
-        editsAllowed(...a) { return Scene3D.prototype.editsAllowed.apply(h, a); },
         setEdit(...a) { return Scene3D.prototype.setEdit.apply(h, a); },
         editInfo(...a) { return Scene3D.prototype.editInfo.apply(h, a); },
         setEdits(...a) { return Scene3D.prototype.setEdits.apply(h, a); },

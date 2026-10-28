@@ -96,9 +96,13 @@ const { Scene3D } = await import('../client/scene3d.js');
 const { galleryShip, ROOM_TILES } = await import('../shared/ship.mjs');
 const { INTRUDER_NAMES } = await import('../shared/data/cards.mjs');
 
-const FILE = new URL('../client/board-edits.json', import.meta.url);
-const saved = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE, 'utf8')).edits || {} : {};
-const skip = fs.existsSync(FILE) ? false : 'no nemesis/client/board-edits.json in this checkout';
+// A Windows checkout keeps the client in "Nemesis/", a Linux one in "nemesis/": the same folder on
+// the machine that made the edits, two paths in git. app.js tries both, and so does this test.
+const FILES = ['../client/board-edits.json', '../../Nemesis/client/board-edits.json']
+    .map(p => new URL(p, import.meta.url)).filter(f => fs.existsSync(f));
+const FILE = FILES[0];
+const saved = FILE ? JSON.parse(fs.readFileSync(FILE, 'utf8')).edits || {} : {};
+const skip = FILE ? false : 'no board-edits.json in this checkout';
 
 // Ids that name a part no longer built by any version we have: the designer's file was saved before
 // these props were rebuilt, and the numbers landed past the end of their room. They cost nothing —
@@ -162,15 +166,20 @@ test('BE-03 an edit is applied to the part it names', { skip }, () => {
     }
 });
 
-test('BE-04 a game board ignores the gallery edits', { skip }, () => {
-    const proto = Scene3D.prototype;
-    assert.equal(proto.editsAllowed.call({ ship: { mode: 'gallery' } }), true, 'the gallery gets the edits');
-    assert.equal(proto.editsAllowed.call({ ship: { mode: 'original' } }), false, 'a game board does not');
-    assert.equal(proto.editsAllowed.call({}), true, 'no ship yet: the editor builds before it knows');
-    // and a mesh on a non-gallery board is handed back untouched
-    const mesh = { position: { set() { throw new Error('moved'); } }, metadata: { editId: 'room:001#0' }, setEnabled() { throw new Error('hidden'); } };
-    const host = { ship: { mode: 'original' }, edits: { 'room:001#0': { pos: [1, 1, 1], hidden: true } }, editsAllowed: proto.editsAllowed };
-    assert.equal(proto.applyEdit.call(host, mesh), mesh, 'the part comes back as built');
+test('BE-04 the file is what the game reads: known fields, finite numbers, hex colours', { skip }, () => {
+    const raw = fs.readFileSync(FILE, 'utf8');
+    const obj = JSON.parse(raw);                       // a merge that left conflict markers fails here
+    assert.deepEqual(Object.keys(obj), ['edits'], 'the file is one "edits" map');
+    assert.ok(raw.endsWith('\n'), 'the editor writes a trailing newline');
+    for (const [k, e] of Object.entries(obj.edits)) {
+        for (const f of Object.keys(e)) assert.ok(['pos', 'rot', 'scale', 'color', 'glow', 'hidden', 'deleted'].includes(f), k + ': unknown field ' + f);
+        for (const f of ['pos', 'rot', 'scale']) {
+            if (!e[f]) continue;
+            assert.equal(e[f].length, 3, k + ': ' + f + ' is a vector');
+            for (const n of e[f]) assert.ok(Number.isFinite(n) && Math.abs(n) <= 1000, k + ': ' + f + ' holds a sane number');
+        }
+        if (e.color) assert.match(e.color, /^#[0-9a-f]{6}$/i, k + ': colour is a hex');
+    }
 });
 
 test('BE-05 the evac edits leave the maintenance carts alone', { skip }, () => {
