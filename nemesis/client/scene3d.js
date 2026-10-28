@@ -929,25 +929,34 @@ export class Scene3D {
                     for (const mx of [-2.17, -0.72, 0.72, 2.17]) bx(1.34, 2.04, 0.05, mx, 1.26, fz + 0.02, glass);
                     for (let k = 0; k < 8; k++) bx(0.9, 0.04, 0.03, -2.45 + k * 0.7, 2.14, fz - 0.17, M('#9fe4ff', 0.5));
                     // --- one helm desk in three blocks, the display shelf running over all of them ----
-                    for (const [cx, cz, ry] of [[-2.0, 2.9, 0.22], [0, 3.15, 0], [2.0, 2.9, -0.22]]) {
+                    // The desk is authored facing the pilot: keyboards and the status row sit on the near
+                    // edge, the gear shelf on the far one. Turned the other way the console reads as a slab
+                    // with its back to the seat.
+                    for (const [cx, cz, ry] of [[-2.0, 2.62, 0.22], [0, 2.72, 0], [2.0, 2.62, -0.22]]) {
                         bx(2.0, 0.88, 0.72, cx, 0.44, cz, panel, ry);                              // desk body
                         bx(2.06, 0.07, 0.78, cx, 0.91, cz, metal, ry);                             // desk top
-                        for (let k = 0; k < 3; k++) bx(0.5, 0.04, 0.34, LX(cx, cz, ry, -0.6 + k * 0.6, 0.12), 0.95, LZ(cx, cz, ry, -0.6 + k * 0.6, 0.12), dark, ry);   // keyboards
-                        for (let k = 0; k < 4; k++) cy(0.1, 0.1, 0.05, LX(cx, cz, ry, -0.72 + k * 0.48, 0.3), 0.96, LZ(cx, cz, ry, -0.72 + k * 0.48, 0.3), [M('#4fcf7a', 0.8), M('#4aa3df', 0.85), M('#ffb347', 0.75), M('#e05252', 0.7)][k], 8);
-                        bx(0.16, 0.5, 0.16, LX(cx, cz, ry, -0.86, -0.16), 1.16, LZ(cx, cz, ry, -0.86, -0.16), metal, ry);   // shelf post
-                        bx(1.9, 0.08, 0.5, LX(cx, cz, ry, 0, -0.2), 1.44, LZ(cx, cz, ry, 0, -0.2), metal, ry);              // screen shelf
+                        for (let k = 0; k < 3; k++) bx(0.5, 0.04, 0.34, LX(cx, cz, ry, -0.6 + k * 0.6, -0.12), 0.95, LZ(cx, cz, ry, -0.6 + k * 0.6, -0.12), dark, ry);   // keyboards
+                        for (let k = 0; k < 4; k++) cy(0.1, 0.1, 0.05, LX(cx, cz, ry, -0.72 + k * 0.48, -0.3), 0.96, LZ(cx, cz, ry, -0.72 + k * 0.48, -0.3), [M('#4fcf7a', 0.8), M('#4aa3df', 0.85), M('#ffb347', 0.75), M('#e05252', 0.7)][k], 8);
+                        bx(0.16, 0.5, 0.16, LX(cx, cz, ry, -0.86, 0.16), 1.16, LZ(cx, cz, ry, -0.86, 0.16), metal, ry);   // shelf post
+                        bx(1.9, 0.08, 0.5, LX(cx, cz, ry, 0, 0.2), 1.44, LZ(cx, cz, ry, 0, 0.2), metal, ry);              // screen shelf
+                        for (const sd of [-1, 1]) bx(0.3, 0.06, 0.06, LX(cx, cz, ry, sd * 0.92, -0.3), 0.94, LZ(cx, cz, ry, sd * 0.92, -0.3), metal, ry);
+                        bx(1.5, 0.04, 0.3, LX(cx, cz, ry, 0, -0.31), 0.94, LZ(cx, cz, ry, 0, -0.31), M('#2b333d'), ry);   // wrist pad
                     }
-                    bx(5.4, 0.6, 0.06, 0, 1.44, 2.78, M('#1e252c'), 0, -0.22);                     // display wall
-                    for (let k = 0; k < 5; k++) bx(0.96, 0.44, 0.03, -2.2 + k * 1.1, 1.46, 2.74, k === 3 ? M('#e05252', 0.6) : screen, 0, -0.22);
-                    for (let k = 0; k < 6; k++) bx(4.9, 0.03, 0.02, 0, 1.66 - k * 0.09, 2.7, M('#dff0ff', 0.6), 0, -0.22);
+                    // the screen band stands BEHIND the desk as the pilot looks at it: seat, keys, screens,
+                    // windshield — in that order. With the band in front of the console the desk reads as
+                    // turned away from the chair.
+                    bx(5.4, 0.66, 0.06, 0, 1.46, 3.16, M('#1e252c'), 0, -0.22);                  // display wall
+                    for (let k = 0; k < 5; k++) bx(0.96, 0.46, 0.03, -2.2 + k * 1.1, 1.48, 3.12, k === 3 ? M('#e05252', 0.6) : screen, 0, -0.22);
+                    for (let k = 0; k < 6; k++) bx(4.9, 0.03, 0.02, 0, 1.7 - k * 0.1, 3.08, M('#dff0ff', 0.6), 0, -0.22);
+                    for (const sd of [-1, 1]) bx(0.14, 1.5, 0.14, sd * 2.6, 0.75, 3.16, metal);   // band posts
                     // --- two pilot seats facing the windshield --------------------------------------
                     for (const sx of [-1.05, 1.05]) {
-                        cy(0.9, 0.98, 0.16, sx, 0.08, 1.5, dark, 10);                              // pedestal foot
-                        cy(0.32, 0.34, 0.34, sx, 0.33, 1.5, metal, 8);                             // column
-                        chair(sx, 1.5, 0, M('#3a4450'));
-                        for (const sd of [-1, 1]) bx(0.1, 0.7, 0.1, sx + sd * 0.34, 1.06, 1.3, M('#c9a227'), 0);   // harness rails
-                        bx(0.66, 0.09, 0.12, sx, 1.36, 1.24, M('#c9a227'), 0);                     // shoulder strap
-                        bx(0.34, 0.12, 0.24, sx, 0.82, 1.74, M('#2b333d'), 0);                     // knee pad
+                        cy(0.9, 0.98, 0.16, sx, 0.08, 1.86, dark, 10);                             // pedestal foot
+                        cy(0.32, 0.34, 0.34, sx, 0.33, 1.86, metal, 8);                            // column
+                        chair(sx, 1.86, 0, M('#3a4450'));
+                        for (const sd of [-1, 1]) bx(0.1, 0.7, 0.1, sx + sd * 0.34, 1.06, 1.66, M('#c9a227'), 0);   // harness rails
+                        bx(0.66, 0.09, 0.12, sx, 1.36, 1.6, M('#c9a227'), 0);                     // shoulder strap
+                        bx(0.34, 0.12, 0.24, sx, 0.82, 2.04, M('#2b333d'), 0);                     // knee pad
                     }
                     // --- navigation plinth between the seats and the door ---------------------------
                     holoTable(0, -1.3, 1.7, 0.95, '#7fb8ff');
