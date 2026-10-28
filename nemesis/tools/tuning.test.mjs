@@ -19,24 +19,24 @@ function numbers() {
 
 /** The invariants the renderer relies on. */
 function checkDoor(D, label) {
-    // the doorway: two leaves, each reaching from its post to the middle
+    // the doorway: no leaves, no side plates — two arches and the plate between them
     assert.ok(D.openW > 0.5, label + ': a doorway you can walk through (' + D.openW.toFixed(2) + ')');
-    assert.ok(Math.abs(D.panelW - D.pivotX) < 1e-9, label + ': a leaf reaches from its pivot to the middle');
-    assert.ok(D.pivotX >= D.postX + D.postW / 2, label + ': the pivot sits outside the post, so an open leaf hugs it');
-    assert.ok(D.panelW * 2 >= D.openW - 1e-9, label + ': two leaves cover the whole opening');
-    assert.ok(D.panelH >= 0.6 && D.panelH <= D.beamY - D.beamH / 2 - 0.05 + 1e-9, label + ': the leaves fit under the lintel');
-    assert.ok(D.panelSwing > 1.2 && D.panelSwing <= Math.PI / 2, label + ': one quarter turn opens the bulkhead');
+    for (const gone of ['pivotX', 'panelW', 'panelH', 'panelSwing']) {
+        assert.equal(D[gone], undefined, label + ': the door has no leaves (' + gone + ')');
+    }
     // the arches and the plate between them
     assert.ok(D.archGap > D.postD, label + ': the arches stand apart');
     assert.ok(D.plateD >= 0.2, label + ': there is a plate between them (' + D.plateD.toFixed(2) + ')');
     assert.ok(D.plateD <= D.archGap - D.postD + 1e-9, label + ': the plate never grows past the arches');
     assert.ok(D.beamW >= D.postX * 2 + D.postW - 1e-9, label + ': the lintel spans both posts');
     assert.ok(D.beamY + D.beamH / 2 >= D.postH - 1e-9, label + ': the lintel caps the posts');
-    // the stencil fits on the plate it is painted on
+    // The stencil: sized from the plate's WIDTH only. A short doorway must not shrink the digits —
+    // that is the whole point of printing them across the plate rather than inside it.
     assert.ok(D.decalW > 0.3, label + ': a stencil big enough to read (' + D.decalW.toFixed(2) + ')');
     assert.ok(D.decalW <= D.beamW - 0.4 + 1e-9, label + ': the stencil is narrower than the plate');
-    assert.ok(D.decalH <= D.plateD - 0.2 + 1e-9, label + ': the stencil is not deeper than the plate');
     assert.ok(Math.abs(D.decalW / D.decalH - 2) < 1e-9, label + ': the stencil keeps its 2:1 canvas');
+    assert.ok(Math.abs(D.decalW - Math.max(0.4, Math.min(D.beamW * TUNE.get('door.numShare'), D.beamW - 0.4))) < 1e-9,
+        label + ': the digits do not depend on the depth of the plate');
     assert.ok(D.decalY > D.beamTop, label + ': the stencil lies on top of the plate, never inside it');
     assert.ok(D.lampY > 0.6 && D.lampY < D.postH - 0.05, label + ': the emergency lamps hang on the posts');
 }
@@ -88,20 +88,25 @@ test('TU-04 the default door is buildable, and TUNE.diff tracks changes', () => 
     TUNE.reset();
 });
 
-test('TU-05 the stencil follows the plate it is painted on', () => {
+test('TU-05 shortening the doorway never shrinks the number', () => {
     TUNE.reset();
     const base = doorSpec();
     TUNE.set('door.archGap', 3.6);            // the arches move apart: a deeper plate under the digits
-    TUNE.set('door.beamW', 4.0);              // ... and a wider plate to paint across
-    TUNE.set('door.numShare', 1.0);
     const deep = doorSpec();
     assert.ok(deep.plateD > base.plateD, 'a wider gap makes a deeper plate (' + deep.plateD.toFixed(2) + ')');
-    assert.ok(deep.decalW > base.decalW, 'and the stencil may grow with it');
+    assert.equal(deep.decalW, base.decalW, 'the digits keep their printed width');
+    assert.equal(deep.decalH, base.decalH, 'and their printed height');
     checkDoor(deep, 'deep plate');
-    TUNE.set('door.archGap', 1.4);            // now the plate is the limit, not the plate's width
-    const narrow = doorSpec();
-    assert.ok(narrow.decalH <= narrow.plateD - 0.2 + 1e-9, 'a narrow plate caps the stencil (' + narrow.decalH.toFixed(2) + ')');
-    checkDoor(narrow, 'narrow plate');
+    TUNE.set('door.archGap', 0.6);            // the shortest the slider allows
+    const short = doorSpec();
+    assert.ok(short.plateD < base.plateD, 'a shorter doorway makes a shallower plate (' + short.plateD.toFixed(2) + ')');
+    assert.equal(short.decalW, base.decalW, 'the number is exactly as wide as on the long door');
+    assert.equal(short.decalH, base.decalH, 'and exactly as deep — it is not scaled down');
+    checkDoor(short, 'short plate');
+    // the width is what the number follows: a wider plate may carry a wider stencil
+    TUNE.reset();
+    TUNE.set('door.beamW', 4.0); TUNE.set('door.numShare', 1.0);
+    assert.ok(doorSpec().decalW > base.decalW, 'a wider plate lets the number grow');
     TUNE.reset();
 });
 

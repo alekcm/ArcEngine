@@ -221,9 +221,12 @@ test('DR-02 the number is a flat stencil on the plate between the arches', () =>
             c.id + ': the stencil lies on the plate (' + decal.position.y.toFixed(3) + ' vs ' + plateTop.toFixed(3) + ')');
         assert.equal(plate.material.hex, meshes.find(m => m.name === 'apost').material.hex,
             c.id + ': the plate is the same steel as the arches');
-        // and it fits: the number cannot overhang the plate it is painted on
-        assert.ok(decal.opts.width <= plate.opts.width - 0.4 && decal.opts.height <= plate.opts.depth - 0.2,
-            c.id + ': the stencil fits on the plate (' + decal.opts.width + '×' + decal.opts.height + ' on ' + plate.opts.width + '×' + plate.opts.depth + ')');
+        // The number keeps its printed size: the plate's depth is not what sizes the digits (the
+        // door was shortened, the digits were not). It is only ever as wide as the plate allows.
+        assert.ok(decal.opts.width <= plate.opts.width - 0.4,
+            c.id + ': the stencil is narrower than the plate (' + decal.opts.width.toFixed(2) + ' on ' + plate.opts.width + ')');
+        assert.ok(Math.abs(decal.opts.width / decal.opts.height - 2) < 1e-9, c.id + ': the stencil keeps its 2:1 canvas');
+        assert.ok(Math.abs(decal.opts.width - 1.9008) < 1e-3, c.id + ': digits at their printed size, 1.9 wide (' + decal.opts.width.toFixed(4) + ')');
         // nothing is bolted on top of the frame: no old board, no sign, no floating screen
         assert.equal(meshes.filter(m => m.name === 'dplate').length, 0, c.id + ': no plate/screen on the frame');
         assert.equal(allNodes.filter(a => /^sign_/.test(a.name)).length, 0, c.id + ': no separate board node');
@@ -261,30 +264,32 @@ test('DR-03 the number is printed in the same paint as the "?", and Alt turns it
     assert.equal(back[0].fill, '#56687c', 'and the same paint');
 });
 
-test('DR-04 the two leaves meet in the middle and swing flat out of the walkway', () => {
+test('DR-04 the doorway has no leaves and no side plates at all', () => {
     for (const c of corridors) {
         const n = build(c);
-        const panels = meshes.filter(m => m.name === 'panel');
-        assert.equal(panels.length, 2, c.id + ': two leaves');
-        for (const p of panels) {
-            assert.ok(p.parent && p.parent.name === 'pivot', c.id + ': each leaf hangs on a pivot at its post');
-            assert.ok(Math.abs(p.parent.position.x) >= 1.2 + 0.24 / 2, c.id + ': the pivot stands just outside the post');
-            assert.ok(Math.abs(p.opts.width - Math.abs(p.parent.position.x)) < 1e-9, c.id + ': a leaf reaches from its pivot to the middle');
-            assert.ok(p.position.x * p.parent.position.x < 0, c.id + ': the leaf hangs inwards, into the doorway');
-            assert.ok(p.opts.height <= 1.75, c.id + ': the leaf stays under the lintel');
+        // The grey plates that used to hang on pivots outside the posts read as two extra plates
+        // bolted to the sides of the door. They are gone — not swung open, not hidden: not built.
+        for (const gone of ['panel', 'ps', 'aband', 'pivot']) {
+            assert.equal(meshes.filter(m => m.name === gone).length, 0, c.id + ': no «' + gone + '» on the door');
+            assert.equal(allNodes.filter(a => a.name === gone).length, 0, c.id + ': no «' + gone + '» node either');
         }
-        // sealed: both pivots at rest, so the two leaves meet in the centre of the doorway
+        assert.equal(n.panels, undefined, c.id + ': the corridor node keeps no leaves');
+        assert.equal(n.pivots, undefined, c.id + ': and no pivots');
+        assert.equal(n.panelSwing, undefined, c.id + ': and no swing angle');
+        // What is left on the door: two arches, the plate and the four emergency lamps — nothing else.
+        const allowed = /^(apost|abrk|alintel|aplate|alamp|apipe|lem|lel|debris|noise|cn_|nl_)/;
+        for (const m of meshes) {
+            const onDoor = m.parent && (m.parent.name === 'door' || (m.parent.parent && m.parent.parent.name === 'door'));
+            assert.ok(!onDoor || allowed.test(m.name), c.id + ': «' + m.name + '» не место на двери');
+        }
+        // and the door still reacts to its state: the emergency lamps light when it seals, debris
+        // appears when it is wrecked — with no leaf to move anywhere
         n.state = null;
         Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'closed' }));
-        assert.deepEqual(n.pivots.map(p => p.rotation.y), [0, 0], c.id + ': the closed leaves meet in the middle');
-        // open: a quarter turn puts each leaf flat along the passage, clear of the opening
-        assert.ok(n.panelSwing > 1.2 && n.panelSwing <= Math.PI / 2, c.id + ': one quarter turn opens the bulkhead');
+        assert.ok(n.lamps.every(l => l.isEnabled()), c.id + ': a sealed doorway is lit');
         n.state = null;
-        Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'open' }));
-        for (const p of n.pivots) {
-            assert.ok(Math.abs(p.rotation.y - n.panelSwing) < 1e-9, c.id + ': an open leaf swings out of the walkway');
-        }
-        assert.ok(Math.sin(n.panelSwing) > 0.99, c.id + ': and ends up almost flat against the passage side');
+        Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'destroyed' }));
+        assert.ok(n.debris.every(d => d.isEnabled()), c.id + ': a wrecked doorway is strewn with debris');
     }
 });
 
