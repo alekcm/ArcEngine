@@ -338,16 +338,24 @@ Remote Detonator имеет напечатанный значок **Not in Comba
 
 `EVENT-06` изолирует общее движение к ближайшему Character при tie: значок Action card на этих Events не включает Contamination. Это не отдельный тест каждой карты с таким движением.
 
-**Сверка строки шума (Р.26, по сканам всех 20 карт).** Колонка шума в `EVENT_CARDS` совпадает с печатью
-у всех 20 карт: «Each Character makes a Noise roll in turn order.» — 12 карт с `noise:'all'`
-(`breakingIn`, `eggProtection`, `podEjection`, `fireWave`, `flammable`, `hatching`, `lifeSupport`,
-`lurking`, `malfunction`, `protectAndServe`, `scentOfPrey`, `queenAwakens`); «без Action cards в руке →
-Encounter» — 4 карты с `noise:'noCards'` (`bulkheadsOpen`, `damagingFire`, `onTheHunt`,
-`systemFailure`); бросок только в комнате с Malfunction/Fire — `damage`, `shortCircuit` (`fireMalf`);
-у `generatorOverheats` и `leavingShell` шума нет, только перетасовка колоды (`none` + `reshuffle`).
-Правила в коде менять не пришлось — был неверен только показываемый текст: в 12 картах с `all` строка
-броска отсутствовала (в том числе в «Пробуждении Королевы», на что и указал стол). Строка дописана
-дословно по печати; `noise`, `move` и `reshuffle` не тронуты.
+**Сверка строки шума (Р.26 и уточнение Р.28, по сканам всех 20 карт).** Последняя полоса карты несёт
+один из трёх значков, и путать их нельзя:
+* «Each Character makes a **Noise roll** in turn order» — 12 карт с `noise:'all'` (`breakingIn`,
+  `eggProtection`, `podEjection`, `fireWave`, `flammable`, `hatching`, `lifeSupport`, `lurking`,
+  `malfunction`, `protectAndServe`, `scentOfPrey`, `queenAwakens`);
+* «Each Character with no **A** in hand resolves **[Encounter]** in turn order» — 4 карты с
+  `noise:'noCards'` (`bulkheadsOpen`, `damagingFire`, `onTheHunt`, `systemFailure`). Жёлтая голова
+  чужого — это грань «Encounter» кубика шума, а не бросок: встреча тянется из мешка;
+* «Each Character in a Room with **[Malfunction]** or **[Fire]** resolves **[Encounter]**» —
+  `damage`, `shortCircuit` (`noise:'fireMalf'`). Здесь тоже встреча, а не бросок;
+* у `generatorOverheats` и `leavingShell` ни броска, ни встречи — только перетасовка (`none` +
+  `reshuffle`).
+
+**Р.26** дописал отсутствующую строку броска в 12 картах `all` (в том числе в «Пробуждении Королевы»).
+**Р.28** исправил ошибку чтения значка: в четырёх картах `noCards` и двух `fireMalf` текст говорил
+«бросок шума», хотя напечатана встреча. Колонка `noise` при этом верна во всех 20 картах, но
+`engine/events.mjs` для `fireMalf` действительно бросал кубик вместо встречи — это исправлено
+(`OPS['event.noise']` теперь разрешает встречу для обеих групп). `move` и `reshuffle` не тронуты.
 
 ## 15. Computer cards — все 6 вариантов
 

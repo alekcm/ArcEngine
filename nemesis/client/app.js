@@ -360,6 +360,13 @@ function renderGame() {
     }
     if (!scene.editMode && !scene.boardEditsApplied) { scene.setEdits(BOARD_EDITS); scene.boardEditsApplied = true; }
     scene.setMe(app.me);
+    if (!tableFx) {
+        tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES);
+        tableFx.onShake = k => scene && scene.shake(k);
+        // a question that was held back while a token/attack card played is asked as soon as the
+        // table is quiet again
+        tableFx.onIdle = () => { if (app.promptDeferred) { app.promptDeferred = false; renderPrompt(); } };
+    }
     if (!dice) {
         dice = new DiceUI($('dice'), () => act('roll'));
         dice.afterHide = () => { if (app.view) dice.update(app.view, app.me, playerName); };
@@ -378,6 +385,16 @@ function renderGame() {
             } else renderGame();
         };
     }
+    // Effects are fed from EVERY state, including the one that freezes the scene for a die. When a
+    // character runs from an intruder, the escape attack card and the noise die of the destination
+    // room arrive in the same state; the gate below used to return before the fx queue was even
+    // touched, so the card that hit the runner was never shown. Feeding the queue is harmless —
+    // while the die is on the table the queue is paused, and it plays the moment the die is read.
+    const prPre = v.prompt, dicePre = prPre && prPre.kind === 'dice';
+    const freshPre = v.lastRoll && dice.lastSeen !== null && v.lastRoll.n !== dice.lastSeen;
+    tableFx.pause();
+    tableFx.update(v, app.me);
+    if (!dicePre && !freshPre && !app.rollHold) tableFx.resume();   // a die still on the table holds it
     // Dice gate. The engine moves the figure and reveals the room BEFORE asking for the noise roll, so the 3D
     // scene (and the card/bag fx) freeze from the moment a dice prompt appears until the rolled die has landed:
     // the player sees the result first, only then the figure runs and the room token flips.
@@ -389,6 +406,7 @@ function renderGame() {
     const freshRoll = v.lastRoll && dice.lastSeen !== null && v.lastRoll.n !== dice.lastSeen;
     if (dicePrompt || freshRoll) {
         app.rollHold = true;
+        tableFx.pause();
         // While the die is being asked for, the scene is frozen: a room revealed by this very move is
         // still lying face down. The die must not name it before the tile has been turned over.
         dice.update(v, app.me, playerName, diceTitleMask(pr));
@@ -418,14 +436,7 @@ function renderGame() {
     const meNow2 = v.players.find(x => x.id === app.me);
     $('sheetBtn').classList.toggle('attention', !!(meNow2 && itemPickMap(v.prompt, meNow2).size));
     dice.update(v, app.me, playerName, diceTitleMask(pr));
-    if (!tableFx) {
-        tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES);
-        tableFx.onShake = k => scene && scene.shake(k);
-        // a question that was held back while a token/attack card played is asked as soon as the
-        // table is quiet again
-        tableFx.onIdle = () => { if (app.promptDeferred) { app.promptDeferred = false; renderPrompt(); } };
-    }
-    tableFx.update(v, app.me);
+    tableFx.resume();          // the die is not on the table: whatever the queue holds may play
     renderPilePopups(v); syncPanes();
     if (v.result) renderEnd();
 }
@@ -616,6 +627,12 @@ function diceTitleMask(pr) {
     return masked === pr.title ? null : { title: masked };
 }
 
+/** Is this card in the middle of its half-turn right now? (its hold is short and belongs to it) */
+function ackHeld(pr) {
+    return !!(app.ackHold && pr && pr.kind === 'ack' && pr.id === app.ackHold.id &&
+        pr.flipped && app.ackHold.until > Date.now());
+}
+
 function renderPrompt() {
     const v = app.view; const pr = v.prompt; const el = $('prompt'); const tg = $('menuToggle');
     app.selectedCards.clear();
@@ -629,8 +646,7 @@ function renderPrompt() {
     // A state update can land in the middle of the half-second the card takes to turn. Rewriting
     // #prompt then rebuilt the card — the turn restarted, or finished in a flash. The card is left
     // alone (with the ready ticks it carries) until the turn is over.
-    if (app.ackHold && app.ackHold.until > Date.now() && pr.kind === 'ack' &&
-        pr.id === app.ackHold.id && pr.flipped && $('ack3d')) return;
+    if (ackHeld(pr) && $('ack3d')) return;   // a card in the middle of its half-turn is left alone
     const who = pr.kind === 'ack' ? 'Вся команда' : pr.player === 'host' ? 'Ведущий' : (v.players[pr.player] || {}).name || '';
     // The action list opens only when the player asks for it: every turn starts folded, then keeps the
     // player's choice until the turn ends. Other prompts open by themselves when a new one arrives.
@@ -731,8 +747,11 @@ function renderPrompt() {
                 // the class a moment later, so the browser really plays the turn — a card that was
                 // simply re-rendered face up looked like an instant swap. Any later render (a seat
                 // changing, the ready list filling up) shows it already turned.
-                if (app.ackId !== pr.id) { app.ackId = pr.id; app.ackDown = false; app.ackFlipSent = false; }
-                const turning = flipped && !!app.ackDown && !app.ackHold;
+                // A new card: forget the previous one entirely. The hold of the last turn used to
+                // outlive its card, so every card after the first one was drawn already face up and
+                // simply appeared — the turn only ever played once per session.
+                if (app.ackId !== pr.id) { app.ackId = pr.id; app.ackDown = false; app.ackFlipSent = false; app.ackHold = null; }
+                const turning = flipped && !!app.ackDown && !ackHeld(pr);
                 if (turning) app.ackDown = false; else if (!flipped) app.ackDown = true;
                 const faceDown = !flipped || turning;
                 html = '<h4 id="ackTitle">' + (faceDown ? '📜 Карта события' : '📜 ' + esc(ev.name)) + '</h4>' +

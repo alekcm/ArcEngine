@@ -22,6 +22,9 @@ export class TableFX {
     constructor(tableEl, layerEl, getPlayerEl, intruderNames) {
         this.table = tableEl; this.layer = layerEl; this.getPlayerEl = getPlayerEl; this.intruderNames = intruderNames || {};
         this.lastSeen = null; this.queue = []; this.busy = false; this.playing = null;
+        // `paused` lets the table hold a card that arrived together with a die roll: the queue is
+        // fed from every state, but nothing starts playing until the die has been read.
+        this.paused = false;
     }
 
     /** Redraw the deck piles (counts) and replay new fx entries. */
@@ -43,8 +46,13 @@ export class TableFX {
     /** True while the table is showing a token pull or an attack card: the next question waits. */
     get holding() { return this.busy && (this.playing === 'bag' || this.playing === 'attack'); }
 
+    /** Stop starting new effects (the current one, if any, finishes on its own). */
+    pause() { this.paused = true; }
+    /** Let the queue play again — the die has been read. */
+    resume() { if (!this.paused) return; this.paused = false; this.pump(); }
+
     pump() {
-        if (this.busy || !this.queue.length) return;
+        if (this.busy || this.paused || !this.queue.length) return;
         const f = this.queue.shift(); this.busy = true; this.playing = f.type;
         const done = () => {
             this.busy = false; this.playing = null; this.pump();
@@ -189,11 +197,14 @@ export class TableFX {
                 const mid = this.centerRect();
                 const title = k === 'event' ? 'Событие' : k === 'attack' ? 'Атака' + (f.intruder ? ' · ' + (this.intruderNames[f.intruder] || f.intruder) : '') : 'Королева';
                 const art = k === 'event' ? eventArt(f.card) : k === 'attack' ? attackArt(f.card) : queenArt(f.card);
-                // Attack cards carry the effect of the rank that is attacking (`effect`) and the whole
-                // printed text (`text`): the card must explain itself on the table, not only in the chat.
+                // An attack card printed for all three ranks lists all three ("Взрослый: … Дрон: …
+                // Королева: …"). Only the line of the intruder that is actually attacking belongs on
+                // the table: the effect the runner really suffers (`effect`). The rest of the card is
+                // somebody else's business and only makes the hit harder to read.
+                const only = k === 'attack' && f.effect && f.text && f.effect !== f.text;
                 const face = (art ? '<div class="fc-art" style="background-image:url(' + art + ')"></div>' : '') + '<small>' + esc(title) + '</small><b>' + esc(f.name || '') + '</b>' +
                     (f.effect ? '<p class="fc-eff">' + esc(f.effect) + '</p>' : '') +
-                    (f.text && f.text !== f.effect ? '<p>' + esc(f.text) + '</p>' : '') +
+                    (f.text && f.text !== f.effect && !only ? '<p>' + esc(f.text) + '</p>' : '') +
                     (pname && k === 'attack' ? '<em>→ ' + esc(pname) + '</em>' : '');
                 const el = this.makeCard(DECK_COLORS[k], face, art ? 220 : 170, art ? 330 : 236);
                 Snd.play('card');

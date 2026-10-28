@@ -29,9 +29,20 @@ function fresh(ui = {}) {
 
 test('CLR-01: an attack card says what it does to the intruder that is attacking', () => {
     const claws = ATTACK_CARDS.find(c => c.id === 'claws1');
-    assert.equal(attackEffectText(claws, 'adult'), 'Взрослый: −1 здоровье.');
-    assert.match(attackEffectText(claws, 'drone'), /^Дрон: тяжело ранен/);
-    assert.equal(attackEffectText(claws, 'queen'), 'Королева: −2 здоровья.');
+    // Only the line of the rank that is attacking: the card on the table names the intruder in its
+    // header, so the text does not repeat it and never lists the other two.
+    assert.equal(attackEffectText(claws, 'adult'), '−1 здоровье.');
+    assert.match(attackEffectText(claws, 'drone'), /^тяжело ранен/);
+    assert.equal(attackEffectText(claws, 'queen'), '−2 здоровья.');
+    for (const who of ['adult', 'drone', 'queen']) {
+        const t = attackEffectText(claws, who);
+        for (const other of ['Взрослый', 'Дрон', 'Королева']) assert.ok(!t.includes(other + ':'), who + ' не читает чужую строку');
+    }
+    // A shared label («Дрон/Королева:») is one segment, not two halves of one.
+    const blood = ATTACK_CARDS.find(c => c.id === 'bloodSense');
+    assert.equal(attackEffectText(blood, 'drone'), 'потеряйте 2 здоровья; если вы перемещались, чужой следует за вами.');
+    assert.equal(attackEffectText(blood, 'queen'), attackEffectText(blood, 'drone'));
+    assert.equal(attackEffectText(blood, 'adult'), 'потеряйте 2 здоровья.');
     // cards printed without a rank split come back whole
     const scratch = ATTACK_CARDS.find(c => c.id === 'scratch1');
     assert.equal(attackEffectText(scratch, 'adult'), '−1 здоровье.');

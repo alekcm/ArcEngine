@@ -21,28 +21,38 @@ function moveLine(ev) {
     if (m.type === 'closest') return 'Все чужие движутся к ближайшему персонажу.';
     return 'Чужие не движутся.';
 }
-/** Which dice the card asks for, in one line. Derived from the card's own noise field, so a card
- *  that rolls for every character says so even when the printed text only implies it. */
+/** What the card asks the characters to do, in one line: a Noise roll, an Encounter, or nothing.
+ *  Derived from the card's own noise field, so a card that rolls for every character says so even
+ *  when the printed text only implies it.
+ *  Printed icon on the last band of a card is one of two things: "makes a Noise roll in turn order"
+ *  (the twelve cards that say so) or "resolves an Encounter in turn order" — the yellow alien head.
+ *  Damaging Fire says «Each Character with no A in hand resolves [Encounter] in turn order», and so
+ *  do the other three cards of that kind: an empty hand is an Encounter from the bag, not a die. */
 function rollLine(ev) {
     return cap({
         all: 'каждый персонаж делает бросок шума.',
-        noCards: 'персонажи без карт в руке делают бросок шума.',
-        fireMalf: 'персонажи в комнате с поломкой или огнём делают бросок шума.',
+        noCards: 'персонажи без карт действий в руке разрешают встречу.',
+        fireMalf: 'персонажи в комнате с поломкой или огнём разрешают встречу.',
     }[ev.noise] || 'броска кубика нет.');
+}
+/** The label of the card's third line: not every event asks for a die. */
+function rollLabel(ev) {
+    return ev.noise === 'all' ? 'Бросок кубика: ' : ev.noise === 'none' ? '' : 'Встреча: ';
 }
 /** The journal entry for an event: three separate lines inside one card — the intruders' movement,
  *  the effect of the card and the dice it demands. The table reads them one at a time instead of
  *  picking the requirement out of a single wall of printed text. */
 export function eventLogLines(ev) {
     const sentences = String(ev.text || '').split(/(?<=\.)\s+/).map(x => x.trim()).filter(Boolean);
+    const isRoll = x => /бросок|встреч/i.test(x);
     const move = sentences.filter(x => /движ/i.test(x));
-    const roll = sentences.filter(x => !/движ/i.test(x) && /бросок/i.test(x));
-    const effect = sentences.filter(x => !/движ/i.test(x) && !/бросок/i.test(x));
+    const roll = sentences.filter(x => !/движ/i.test(x) && isRoll(x));
+    const effect = sentences.filter(x => !/движ/i.test(x) && !isRoll(x));
     const lines = ['📜 Событие: «' + ev.name + '».'];
     lines.push('Движение чужих: ' + (move.length ? move.join(' ') : moveLine(ev)));
     if (effect.length) lines.push('Эффект: ' + effect.join(' '));
-    lines.push('Бросок кубика: ' + (roll.length ? roll.join(' ') : rollLine(ev)));
-    return lines;
+    lines.push(rollLabel(ev) + (roll.length ? roll.join(' ') : rollLine(ev)));
+    return lines.filter(Boolean);
 }
 
 OPS['phase.event'] = (state) => {
@@ -225,27 +235,34 @@ export function stopSelfDestruct(state) {
 
 OPS['event.noise'] = (state, step) => {
     const ev = EVENT_BY_ID[step.id];
-    // Bulkheads Open: a character with no Action cards in hand plays an Encounter, not a Noise roll.
+    // Two kinds of event end in an Encounter instead of a die — the printed card says «resolves
+    // [Encounter] in turn order», not «makes a Noise roll»:
+    //  * no Action cards in hand (Bulkheads Open, Damaging Fire, On the Hunt, System Failure);
+    //  * a Room with Malfunction or Fire (Damage, Short Circuit).
+    // The card prints no exception for Characters already in Combat, so there is none here either.
+    const encounters = [];
     if (ev.noise === 'noCards') {
-        const encounters = [];
         for (const p of turnOrder(state)) {
-            if (p.status !== 'active' || p.pod || inCombat(state, p)) continue;
-            if (p.hand.some(c => !String(c).startsWith('contam#'))) continue;
-            encounters.push({ op: 'encounter', room: p.room, player: p.id, reason: 'Событие «Открыты переборки»: в руке нет карт действий' });
+            if (p.status !== 'active' || p.pod) continue;
+            if (p.hand.some(c => !String(c).startsWith('contam#'))) continue;   // Contamination is not an Action card
+            encounters.push({ op: 'encounter', room: p.room, player: p.id, reason: 'Событие «' + ev.name + '»: в руке нет карт действий' });
         }
-        if (encounters.length) { log(state, 'Нет карт действий — встреча.', 'noise'); next(state, ...encounters); }
-        return;
+    } else if (ev.noise === 'fireMalf') {
+        for (const p of turnOrder(state)) {
+            if (p.status !== 'active' || p.pod) continue;
+            const rs = room(state, p.room);
+            if (!rs.fire && !rs.malfunction) continue;
+            encounters.push({ op: 'encounter', room: p.room, player: p.id, noSurprise: false,
+                reason: 'Событие «' + ev.name + '»: комната с поломкой или огнём' });
+        }
     }
+    if (encounters.length) { log(state, 'Броска нет — встреча.', 'noise'); next(state, ...encounters); return; }
     const steps = [];
     for (const p of turnOrder(state)) {
         if (p.status !== 'active' || p.pod) continue;
         const crowded = ev.noise === 'all' && playersInRoom(state, p.room).length >= 3;   // 7.8 overcrowding
         if (inCombat(state, p) && !crowded) continue;
-        let yes = false;
-        if (ev.noise === 'all') yes = true;
-        else if (ev.noise === 'noCards') yes = p.hand.length === 0;
-        else if (ev.noise === 'fireMalf') { const rs = room(state, p.room); yes = rs.fire || rs.malfunction; }
-        if (!yes) continue;
+        if (ev.noise !== 'all') continue;   // everything else has been answered above, as Encounters
         const dev = p.items.find(i => ITEMS[i.item].perimeter && i.ammo > 0 && !i.broken);
         // Reactions that skip the roll: Risk Prevention (Field Data), Inconspicuous (Lab Rat), Perimeter device
         let chain = { op: 'noise.roll', player: p.id, room: p.room };
@@ -259,11 +276,7 @@ OPS['event.noise'] = (state, step) => {
         const order = turnOrder(state);
         const left = order[(order.indexOf(h) + 1) % order.length] || h;
         if (intrudersIn(state, h.laika).length || playersInRoom(state, h.laika).length) continue;
-        let yes = false;
-        if (ev.noise === 'all') yes = true;
-        else if (ev.noise === 'noCards') yes = left.hand.length === 0;
-        else if (ev.noise === 'fireMalf') { const rs = room(state, h.laika); yes = rs.fire || rs.malfunction; }
-        if (yes) steps.push({ op: 'noise.roll', player: left.status === 'active' ? left.id : h.id, room: h.laika, laika: true });
+        if (ev.noise === 'all') steps.push({ op: 'noise.roll', player: left.status === 'active' ? left.id : h.id, room: h.laika, laika: true });
     }
     if (steps.length) { log(state, 'Броски шума по событию.', 'noise'); next(state, ...steps); }
 };

@@ -12,16 +12,29 @@ import { shuffle } from '../rng.mjs';
 const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(c => [c.id, c]));
 /** Printed rank names used inside the attack card texts. */
 const ATTACK_RANK = { adult: 'Взрослый', drone: 'Дрон', queen: 'Королева' };
-/** The part of an attack card that applies to this intruder: «Взрослый: −1 здоровье.» out of a card
- *  that lists all three ranks. The flying card on the table must say what it does — the chat alone
- *  is not enough. Cards printed without a rank split are returned whole. */
+/** The part of an attack card that applies to this intruder: «−1 здоровье.» out of a card that
+ *  lists all three ranks ("Взрослый: … Дрон/Королева: …"). Only the line that is being resolved now
+ *  belongs on the table — the card that hits you must not read like a table of contents for the
+ *  other two monsters. Cards printed without a rank split are returned whole, since every rank
+ *  suffers the same thing. */
 export function attackEffectText(card, type) {
     const text = String((card && card.text) || '');
     const word = ATTACK_RANK[type];
     if (!word || !text) return text;
-    const parts = text.split(/(?=(?:Взрослый|Дрон|Королева)(?:\/(?:Взрослый|Дрон|Королева))?:)/);
-    const hit = parts.find(s => s.slice(0, s.indexOf(':')).split('/').map(w => w.trim()).includes(word));
-    return hit ? hit.trim() : text;
+    // Each "rank:" or "rank/rank:" label opens a segment that runs up to the next label: splitting
+    // on the labels themselves (not with a lookahead) is what makes «Дрон/Королева:» one segment
+    // instead of two halves of one.
+    const label = /(Взрослый|Дрон|Королева)(?:\s*\/\s*(Взрослый|Дрон|Королева))?\s*:/g;
+    const segs = [];
+    let m, open = null;
+    while ((m = label.exec(text))) {
+        if (open) segs.push({ labels: open.labels, start: open.end, end: m.index });
+        open = { labels: [m[1], m[2]].filter(Boolean), end: label.lastIndex };
+    }
+    if (!open) return text;                      // no rank split printed: one effect for everybody
+    segs.push({ labels: open.labels, start: open.end, end: text.length });
+    const hit = segs.find(s => s.labels.includes(word));
+    return hit ? text.slice(hit.start, hit.end).trim() : text;
 }
 const OBJECT_NAMES = { corpse: 'Человеческий труп', charCorpse: 'Труп персонажа', carcass: 'Туша чужого', egg: 'Яйцо чужого' };
 export function objectName(o) { return OBJECT_NAMES[o && o.type] || 'объект'; }
