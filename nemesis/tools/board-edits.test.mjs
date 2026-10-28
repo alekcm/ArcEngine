@@ -4,12 +4,14 @@
 // That file is written by the Nemesis tab of editor.bat: the parts a designer moved, turned,
 // recoloured, hid or deleted. It is local (it sits in .gitignore) and optional — the tests skip when
 // it is not there. What they pin down:
-//   * a key is "<owner>#<build index>" and every owner is a room of the gallery board;
+//   * a key is "<owner>#<mesh name>~<ordinal of that name>", and a room shell is owned by its *tile*
+//     ("tile:evacA:shell#cradle~1") so the same edit finds its part in a session, where those tiles
+//     lie in other rooms; build order alone was not stable, because the number of wall segments,
+//     door frames and wall props depends on which doors the room has;
+//   * a file written before that change ("room:013:shell#7") is converted on load — the loader and
+//     this test share tileKeyedEdits(), so a conversion regression fails here;
 //   * every key still finds its part, except a short list of ids that no longer exist anywhere;
-//   * the game board ignores these edits: its room numbers hold other tiles, so an edit would move
-//     or delete an unrelated part (see editsAllowed() in scene3d.js);
-//   * the evacA/evacB edits no longer reach the maintenance carts, which round 41 moved onto the
-//     ids these two saved "delete" keys used to point at.
+//   * on a real game board the edits apply to the rooms that hold their tile, and nowhere else.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -93,7 +95,9 @@ class HeadlessTexture {
 Object.defineProperty(B, 'DynamicTexture', { value: HeadlessTexture, configurable: true, writable: true });
 
 const { Scene3D } = await import('../client/scene3d.js');
-const { galleryShip, ROOM_TILES } = await import('../shared/ship.mjs');
+const { galleryShip, ROOM_TILES, tileKeyedEdits } = await import('../shared/ship.mjs');
+const { createGame } = await import('../shared/engine/setup.mjs');
+const { viewFor } = await import('../shared/view.mjs');
 const { INTRUDER_NAMES } = await import('../shared/data/cards.mjs');
 
 // A Windows checkout keeps the client in "Nemesis/", a Linux one in "nemesis/": the same folder on
@@ -101,18 +105,16 @@ const { INTRUDER_NAMES } = await import('../shared/data/cards.mjs');
 const FILES = ['../client/board-edits.json', '../../Nemesis/client/board-edits.json']
     .map(p => new URL(p, import.meta.url)).filter(f => fs.existsSync(f));
 const FILE = FILES[0];
-const saved = FILE ? JSON.parse(fs.readFileSync(FILE, 'utf8')).edits || {} : {};
+const raw = FILE ? JSON.parse(fs.readFileSync(FILE, 'utf8')).edits || {} : {};
+const saved = tileKeyedEdits(raw);
 const skip = FILE ? false : 'no board-edits.json in this checkout';
 
 // Ids that name a part no longer built by any version we have: the designer's file was saved before
 // these props were rebuilt, and the numbers landed past the end of their room. They cost nothing —
 // an edit with no part is skipped — but they are listed here so a new orphan fails the suite.
-const STALE = new Set([
-    'room:005:shell#626',   // comms: a prop deleted by hand from an older build
-    'room:010:shell#543',   // generator: three ids from before the core was rebuilt
-    'room:010:shell#544',
-    'room:010:shell#545',
-]);
+// Nothing is stale in the file today: the four ids that named no part were dropped when the file was
+// converted to the new keys. A new orphan still fails BE-02, so this set is expected to stay empty.
+const STALE = new Set();
 
 const ship = galleryShip();
 const roomState = {};
@@ -132,14 +134,27 @@ scene.update(view, ROOM_TILES, INTRUDER_NAMES, []);
 const parts = scene.editMeshes;
 const keys = Object.keys(saved);
 
-test('BE-01 every key is "<owner>#<n>" and its owner is a gallery room', { skip }, () => {
+test('BE-01 every key names a part the build makes, and its owner is a tile of the board', { skip }, () => {
     assert.ok(keys.length > 0, 'the saved file has edits');
-    const rooms = new Set(Object.keys(ship.rooms));
+    const tiles = new Set(Object.values(ship.galleryTiles));
     for (const k of keys) {
-        const m = /^room:(\d+):shell#(\d+)$/.exec(k);
-        assert.ok(m, k + ': the key names a room shell and a build index');
-        assert.ok(rooms.has(m[1]), k + ': room ' + m[1] + ' is not a room of the gallery board');
+        const m = /^tile:([a-zA-Z0-9_]+):shell#[A-Za-z0-9_]+~\d+$/.exec(k);
+        assert.ok(m, k + ': the key names a tile shell, a part name and its ordinal');
+        assert.ok(tiles.has(m[1]), k + ': ' + m[1] + ' is not a tile of the board');
     }
+});
+
+test('BE-01b an older file, keyed by gallery room number, is converted to the tile it holds', () => {
+    const converted = tileKeyedEdits({ 'room:002:shell#7': { hidden: true }, 'room:013:shell#9': { deleted: true } });
+    assert.deepEqual(converted, {
+        ['tile:' + ship.galleryTiles['002'] + ':shell#7']: { hidden: true },
+        ['tile:' + ship.galleryTiles['013'] + ':shell#9']: { deleted: true },
+    });
+    // Anything that is not a room shell is left exactly as it is (doors, lights, corridors, hull).
+    const other = { 'cor:003-004#5': { pos: [1, 0, 0] }, 'room:005:obj#2': { hidden: true }, 'hull#1': { hidden: true } };
+    assert.deepEqual(tileKeyedEdits(other), other);
+    // A room number the gallery does not have must not invent a tile.
+    assert.deepEqual(tileKeyedEdits({ 'room:999:shell#1': { hidden: true } }), { 'room:999:shell#1': { hidden: true } });
 });
 
 test('BE-02 every key still finds its part (bar the documented stale ids)', { skip }, () => {
@@ -187,7 +202,7 @@ test('BE-05 the evac edits leave the maintenance carts alone', { skip }, () => {
     // carts at x = -3.5. Those four keys are gone from the file; this keeps them out.
     const carts = [[-3.5, -1.4], [-3.5, 0.4]];
     for (const k of keys) {
-        if (!/^room:00[78]:shell#/.test(k)) continue;
+        if (!/^tile:evac[AB]:shell#/.test(k)) continue;
         const m = parts[k];
         if (!m) continue;
         for (const [x, z] of carts) {
@@ -195,4 +210,46 @@ test('BE-05 the evac edits leave the maintenance carts alone', { skip }, () => {
             assert.ok(d > 0.6, k + ': this edit reaches a cart of a launch bay (' + d.toFixed(2) + ' m away)');
         }
     }
+});
+
+test('BE-06 a saved edit reaches the room in a real session, whatever its number', { skip }, () => {
+    // The bug this pins: a key was exact only on the gallery, because a session deals the tiles into
+    // other room numbers. Build a game board with every room explored and count what lands.
+    const state = createGame({
+        seed: 'board-edits-audit', mode: 'original', draft: false,
+        players: [{ name: 'A', charId: 'soldier' }, { name: 'B', charId: 'scout' }],
+    });
+    const gview = viewFor(state, state.players[0].id);
+    // A played-out board: every room explored, carrying the tile the deal gave it (the special rooms
+    // are their own tile). This is what the scene builds in a session.
+    for (const id of Object.keys(gview.roomState)) {
+        const kind = state.ship.rooms[id].kind;
+        const special = ['cockpit', 'hibernatorium', 'engine'].includes(kind);
+        gview.roomState[id].explored = true;
+        gview.roomState[id].tile = special ? kind : (state.secret.tiles[id] || null);
+    }
+    const inPlay = new Set(Object.values(gview.roomState).map(r => r.tile).filter(Boolean));
+    const game = new Scene3D(el(), {});
+    game.paused = true;
+    game.setEdits(saved);
+    const applied = new Set();
+    const apply = game.applyEdit.bind(game);
+    game.applyEdit = m => {
+        const id = m && m.metadata && m.metadata.editId;
+        if (id && saved[id]) applied.add(id);
+        return apply(m);
+    };
+    game.update(gview, ROOM_TILES, INTRUDER_NAMES, []);
+    // Three of these parts exist only in some sessions: their id carries the ordinal of a name that
+    // repeats once per door (a threshold) or once per wall prop, and a room with another set of doors
+    // builds a different number of them. In the gallery they are there (BE-02); here they may not be.
+    const SESSION_DEPENDENT = new Set([
+        'tile:decon:shell#p~204', 'tile:decon:shell#p~205',   // two props removed in decon
+        'tile:repository:shell#th~3',                          // a threshold dragged in the repository
+    ]);
+    const expected = keys.filter(k => inPlay.has(/^tile:([a-zA-Z0-9_]+):shell#/.exec(k)[1])
+        && !STALE.has(k) && !SESSION_DEPENDENT.has(k));
+    assert.ok(expected.length > 0, 'this board holds at least one tile the designer edited');
+    assert.deepEqual([...applied].sort(), expected.sort(),
+        'every edit whose tile is in play applies, and no edit of an absent tile does');
 });

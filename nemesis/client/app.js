@@ -9,7 +9,7 @@ import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
 import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, queenArt, itemArt } from './cards.js';
-import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip } from '/shared/ship.mjs';
+import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip, tileKeyedEdits } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, FEATS, objectiveTextOf,
     EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
 
@@ -29,7 +29,7 @@ try {
 for (const url of ['/client/board-edits.json', '/Nemesis/client/board-edits.json']) {
     try {
         const r = await fetch(url, { cache: 'no-store' });
-        if (r.ok) { BOARD_EDITS = (await r.json()).edits || {}; break; }
+        if (r.ok) { BOARD_EDITS = tileKeyedEdits((await r.json()).edits || {}); break; }
     } catch { /* try the other case */ }
 }
 

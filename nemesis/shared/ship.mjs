@@ -478,6 +478,27 @@ export function galleryShip() {
     return ship;
 }
 
+/**
+ * Bring a saved board-edits file up to the current part ids.
+ *
+ * A part's editor id is "<owner>#<build order>" and the shell of a room is built from the room's
+ * tile, so shells are owned as "tile:<tile>:shell". Files written before that change key a shell by
+ * the number of the room on the *gallery* board ("room:013:shell#7"). Such a key is exact only on
+ * that gallery: a session puts other tiles into those room numbers, so the same key used to move or
+ * hide an unrelated part (or nothing at all). Converting the key to its tile is what lets a saved
+ * edit reach the room in a real game.
+ */
+export function tileKeyedEdits(edits) {
+    const map = galleryShip().galleryTiles;
+    const out = {};
+    for (const [id, e] of Object.entries(edits || {})) {
+        const m = /^room:(\d{3}):shell#(\d+)$/.exec(id);
+        const tile = m && map[m[1]];
+        out[tile ? 'tile:' + tile + ':shell#' + m[2] : id] = e;
+    }
+    return out;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Graph helpers (used by the rules engine and the client)
 // ---------------------------------------------------------------------------------------------

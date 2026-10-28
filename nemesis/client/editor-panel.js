@@ -15,7 +15,7 @@
 import { Scene3D } from './scene3d.js';
 import { TUNE, SCHEMA } from './tuning.js';
 import { galleryPods } from './gallery.js';
-import { ROOM_TILES, galleryShip } from '../shared/ship.mjs';
+import { ROOM_TILES, galleryShip, tileKeyedEdits } from '../shared/ship.mjs';
 import { INTRUDER_NAMES } from '../shared/data/cards.mjs';
 
 /** The gallery view: every room known and explored, no players, no intruders. */
@@ -102,7 +102,7 @@ const NemesisPanel = {
         this.loaded = false;
         try {
             const j = await (await fetch('/api/board', { cache: 'no-store' })).json();
-            this.saved = (j && j.edits) || {};
+            this.saved = tileKeyedEdits((j && j.edits) || {});   // older files key shells by room number
             this.loaded = true;
         } catch { this.saved = {}; }
         this.edits = JSON.parse(JSON.stringify(this.saved));
