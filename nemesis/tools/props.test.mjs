@@ -94,12 +94,95 @@ test('PR-04 containment rig is centred on the floor ring with mirrored posts', (
     assert.deepEqual(xs, [-1.15, -1.15, 1.15, 1.15], 'posts must be mirrored about the centre');
 });
 
-test('PR-05 storage crates stand inside the painted squares and outside them', () => {
-    // the same rectangles buildFloor paints (x, z, w, d)
+test('PR-05 storage cargo stands inside the painted squares and outside them', () => {
+    // The same rectangles buildFloor paints (x, z, w, d).
     const ZONES = [[-3.2, 2.4, 2.6, 2.2], [0.4, 3.0, 2.8, 1.8], [3.4, 0.6, 2.0, 2.6], [-3.6, -1.6, 2.2, 2.0], [-0.8, -3.6, 2.4, 1.6]];
-    const crates = build('storage').filter(m => m.kind === 'box' && m.opts.width === m.opts.depth && m.opts.width >= 0.7 && m.opts.width <= 1.1);
-    const inside = crates.filter(c => ZONES.some(([zx, zz, zw, zd]) =>
-        Math.abs(c.position.x - zx) + c.opts.width / 2 <= zw / 2 + 0.001 && Math.abs(c.position.z - zz) + c.opts.width / 2 <= zd / 2 + 0.001));
-    assert.ok(inside.length >= 6, `crates in the marked squares: ${inside.length}`);
-    assert.ok(crates.length - inside.length >= 2, `crates outside the squares: ${crates.length - inside.length}`);
+    // The hold is loaded with cargo MODULES (a 0.72-tall body with a 0.12 lid flange on top) and, between
+    // them, ordinary crates whose width, depth and height are all the same number. A folded vest on the
+    // deck is `width === depth` too, but it is a few centimetres thick, so height is no guess.
+    const parts = build('storage');
+    const bodies = parts.filter(m => m.kind === 'box' && Math.abs(m.opts.height - 0.72) < 1e-9);
+    const crates = parts.filter(m => m.kind === 'box' && m.opts.width === m.opts.depth
+        && m.opts.width === m.opts.height && m.opts.width >= 0.7 && m.opts.width <= 1.1);
+    const cargo = bodies.concat(crates);
+    const insideOf = (list) => list.filter(c => ZONES.some(([zx, zz, zw, zd]) =>
+        Math.abs(c.position.x - zx) + c.opts.width / 2 <= zw / 2 + 0.001 && Math.abs(c.position.z - zz) + c.opts.depth / 2 <= zd / 2 + 0.001));
+    // every painted rectangle is filled: five modules, one per square, and each of them fully inside
+    assert.equal(bodies.length, 5, `cargo modules: ${bodies.length}`);
+    assert.equal(insideOf(bodies).length, 5, 'every module lies inside its painted square');
+    // the squares themselves are the modules' berths: the loose crates stand in the aisles between them
+    assert.ok(crates.length - insideOf(crates).length >= 4, `crates outside the squares: ${crates.length - insideOf(crates).length}`);
+    assert.ok(cargo.length >= 10, `cargo in the hold: ${cargo.length}`);
+});
+
+test('PR-06 the fire post is a full fire station: bottles racked on the deck and on the wall', () => {
+    const m = build('fireControl');
+    // one extinguisher = a red bottle body (the wall rack carries a smaller copy, so the colour is what
+    // tells a bottle from every other cylinder in the room)
+    const bottles = m.filter(x => x.kind === 'cyl' && x.material && x.material.hex === '#b5372c');
+    assert.ok(bottles.length >= 14, `огнетушителей в пожарном посту: ${bottles.length}`);
+    // ten in the middle on the floor rack (two ranks of four plus the spare rank behind) ...
+    const onRack = bottles.filter(b => Math.hypot(b.position.x, b.position.z) < 3.4);
+    assert.ok(onRack.length >= 10, `на стеллаже в середине: ${onRack.length}`);
+    // ... and six on the two wall shelves, up against the room wall
+    const onWall = bottles.filter(b => Math.hypot(b.position.x, b.position.z) > 4.8);
+    assert.ok(onWall.length >= 6, `на настенных полках: ${onWall.length}`);
+    // a rack: the long plinth with its rail, and the lit strip under it
+    assert.ok(m.some(x => x.kind === 'box' && Math.abs(x.opts.width - 4.5) < 1e-9 && Math.abs(x.opts.depth - 1.5) < 1e-9), 'стеллаж-плинт в середине');
+    assert.ok(m.some(x => x.kind === 'box' && Math.abs(x.opts.width - 4.56) < 1e-9 && Math.abs(x.opts.height - 0.1) < 1e-9), 'верхняя перекладина стеллажа');
+    // fire blankets on the wall: two red cabinets with a white cross, plus the hose reel drum
+    assert.ok(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 0.92) < 1e-9 && Math.abs(x.opts.height - 1.1) < 1e-9).length >= 2, 'два шкафа с противопожарным одеялом');
+    assert.ok(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameter - 0.92) < 1e-9).length >= 1, 'пожарный рукав на барабане');
+    // a sprinkler riser with hand wheels stands in the room
+    assert.ok(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.height - 2.6) < 1e-9).length >= 1, 'стояк спринклера');
+});
+
+test('PR-07 the decontamination lane runs under arches with spray bars, and stays walkable', () => {
+    const m = build('decon');
+    // three arches: a 2.44-wide cross beam over the lane, a spray bar and their lit bands
+    const beams = m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 2.44) < 1e-9 && Math.abs(x.opts.height - 0.26) < 1e-9);
+    assert.equal(beams.length, 3, `арок над проходом: ${beams.length}`);
+    const zs = beams.map(b => Math.round(b.position.z * 100) / 100).sort((a, b) => a - b);
+    assert.deepEqual(zs, [-2.55, 0, 2.55], 'арки стоят вдоль центрального прохода');
+    for (const b of beams) assert.ok(Math.abs(b.position.x) < 1e-9, 'арка стоит по центру комнаты, поперёк прохода');
+    // spray bars and nozzles: five under every arch
+    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.9) < 1e-9 && Math.abs(x.opts.height - 0.12) < 1e-9).length, 3, 'три разбрызгивающие штанги');
+    const nozzles = m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.height - 0.14) < 1e-9 && Math.abs(x.opts.diameterTop - 0.1) < 1e-9);
+    assert.equal(nozzles.length, 15, `форсунок: ${nozzles.length} (по пять на арку)`);
+    // the walk under the arches is free: no prop stands in the lane between the deck and head height
+    for (const x of m) {
+        const inLane = Math.abs(x.position.x) < 0.75;
+        const bodyHeight = x.position.y > 0.3 && x.position.y < 1.6 && x.kind !== 'cyl';
+        if (inLane && bodyHeight) assert.fail(`${x.kind} ${x.opts.width}x${x.opts.height}x${x.opts.depth} стоит в проходе (y = ${x.position.y.toFixed(2)})`);
+    }
+});
+
+test('PR-08 the equipment store is a shelf island between two aisles', () => {
+    const m = build('repository');
+    // one island: a 5-unit-long plinth, a top cap, and four shelf levels
+    assert.ok(m.some(x => x.kind === 'box' && Math.abs(x.opts.depth - 5.0) < 1e-9), 'плинт острова');
+    const shelves = m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.58) < 1e-9 && Math.abs(x.opts.height - 0.07) < 1e-9);
+    assert.equal(shelves.length, 4, `уровней полок: ${shelves.length}`);
+    // cargo on every level, on both aisles: 4 levels x 4 bays x 2 sides = 32 places, at least a dozen filled
+    const cargo = m.filter(x => x.position.y > 0.4 && x.position.y < 2.3 && Math.abs(x.position.x + 0.4) < 0.9
+        && (x.kind === 'box' || x.kind === 'cyl'));
+    assert.ok(cargo.length >= 24, `груза на полках: ${cargo.length}`);
+    // no tall rack panels: it is open shelving, so the island has uprights, not walls
+    const panels = m.filter(x => x.kind === 'box' && Math.abs(x.opts.depth - 5.0) < 1e-9 && x.opts.height > 0.2);
+    assert.equal(panels.length, 0, 'остров — открытые полки: сплошной панели-стены нет');
+});
+
+test('PR-09 airlock control has a pressure door with a wheel lock and a chevron bay', () => {
+    const m = build('airlock');
+    // the door: a frame plate with two leaves and a hub in the middle
+    assert.ok(m.some(x => x.kind === 'box' && Math.abs(x.opts.width - 3.5) < 1e-9 && Math.abs(x.opts.height - 2.8) < 1e-9), 'плита проёма');
+    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.62) < 1e-9 && Math.abs(x.opts.height - 2.6) < 1e-9).length, 2, 'две створки');
+    assert.ok(m.some(x => x.kind === 'cyl' && Math.abs(x.opts.diameter - 0.9) < 1e-9), 'колесо-замок');
+    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.height - 0.1) < 1e-9 && Math.abs(x.opts.depth - 0.1) < 1e-9 && Math.abs(x.opts.width - 0.66) < 1e-9).length, 4, 'четыре спицы колеса');
+    // the bay: yellow-and-black painted bars on the deck, and the vent grille under the door
+    const paint = m.filter(x => x.kind === 'box' && Math.abs(x.opts.height - 0.02) < 1e-9);
+    assert.ok(paint.length >= 20, `разметка на полу: ${paint.length} полос`);
+    assert.ok(m.some(x => x.kind === 'box' && Math.abs(x.opts.width - 3.0) < 1e-9 && Math.abs(x.opts.depth - 1.0) < 1e-9), 'решётка вентиляции');
+    // two control podiums with tilted screens
+    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.16) < 1e-9 && Math.abs(x.opts.height - 0.1) < 1e-9).length, 2, 'два пульта');
 });

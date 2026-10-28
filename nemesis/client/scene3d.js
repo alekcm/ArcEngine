@@ -958,31 +958,108 @@ export class Scene3D {
                 break;
             }
             case 'fireControl': {
-                // Fire post: three single extinguishers standing in the middle of the room, each on its
-                // own stand, with the red-screen cabinet and the hose reel on the wall next to them.
+                // Fire post, rebuilt after the board art: a hazard pad in the middle of the room carries a
+                // double-sided rack of bottles, a second rank stands behind it, and the walls take the
+                // fire panel, the hose reel, two blanket cabinets, the sand bucket and the sprinkler
+                // riser. The ship's fire station has to read as one: bottles racked, clipped or boxed,
+                // one extinguisher per mount, nothing floating and nothing standing in the walking lane.
                 fix(() => {
-                    for (const x of [-1.7, 0, 1.7]) {
-                        const z = 0.9;
-                        bx(0.44, 0.06, 0.44, x, 0.19, z, dark);                     // stand plate
-                        cy(0.34, 0.36, 0.86, x, 0.64, z, M('#b5372c'), 10);         // bottle
-                        cy(0.4, 0.4, 0.06, x, 0.28, z, M('#8e2a22'), 10);           // foot ring
-                        cy(0.2, 0.24, 0.14, x, 1.14, z, metal, 8);                  // valve block
-                        bx(0.12, 0.05, 0.24, x, 1.2, z, dark);                      // lever
-                        cy(0.05, 0.05, 0.46, x + 0.24, 0.96, z, dark, 6, 0.5);      // hose clipped to the body
-                        bx(0.1, 0.16, 0.08, x - 0.14, 0.9, z + 0.16, M('#e8eef4')); // label plate
+                    /** One extinguisher: stand plate, bottle, foot ring, valve, lever, clipped hose and a
+                     *  label plate on the front. `y0` is the deck it stands on, `s` its scale. */
+                    const bottle = (x, z, ry = 0, y0 = 0, s = 1, hex = '#b5372c') => {
+                        bx(0.46 * s, 0.06 * s, 0.46 * s, x, y0 + 0.03 * s, z, dark, ry);                    // stand plate
+                        cy(0.36 * s, 0.34 * s, 0.82 * s, x, y0 + 0.47 * s, z, M(hex), 10);                 // bottle
+                        cy(0.42 * s, 0.42 * s, 0.06 * s, x, y0 + 0.09 * s, z, M('#8e2a22'), 10);           // foot ring
+                        cy(0.2 * s, 0.26 * s, 0.16 * s, x, y0 + 0.96 * s, z, metal, 8);                    // valve block
+                        bx(0.1 * s, 0.05 * s, 0.26 * s, LX(x, z, ry, 0, -0.03 * s), y0 + 1.07 * s, LZ(x, z, ry, 0, -0.03 * s), dark, ry);   // lever
+                        bx(0.09 * s, 0.24 * s, 0.09 * s, x, y0 + 1.16 * s, z, dark, ry);                   // carry handle
+                        bx(0.24 * s, 0.36 * s, 0.07 * s, LX(x, z, ry, 0.23 * s, 0.02 * s), y0 + 0.62 * s, LZ(x, z, ry, 0.23 * s, 0.02 * s), M('#20262c'), ry);   // hose on the side
+                        bx(0.12 * s, 0.2 * s, 0.03 * s, LX(x, z, ry, 0, 0.18 * s), y0 + 0.62 * s, LZ(x, z, ry, 0, 0.18 * s), M('#e8eef4'), ry);                  // label
+                        cy(0.1 * s, 0.1 * s, 0.05 * s, LX(x, z, ry, -0.16 * s, 0), y0 + 0.98 * s, LZ(x, z, ry, -0.16 * s, 0), M('#dfe6ee'), 8);                // gauge
+                    };
+                    // --- the rack in the middle: a long steel plinth, two ranks of bottles, rail above ---
+                    bx(4.5, 0.14, 1.5, 0, 0.07, 1.0, M('#2b333d'));
+                    bx(4.56, 0.05, 1.56, 0, 0.145, 1.0, M('#3a4552'));
+                    for (const s of [-1, 1]) {
+                        bx(0.1, 1.62, 0.1, s * 2.22, 0.81, 1.0, metal);                                     // end post
+                        bx(0.26, 0.06, 0.26, s * 2.22, 0.03, 1.0, dark);                                    // its foot
                     }
-                    const p = wallSpot(pickAngle([0, 0.45, -0.45, 0.9, -0.9], 0.55)), fr = frameOf(p);
-                    cabinet(p, 1.6, 1.5, 0.45, panel, M('#3a4149'), null);
-                    bx(1.24, 0.62, 0.03, fr.at(0, 0.26)[0], 0.92, fr.at(0, 0.26)[1], M('#e05252', 0.5), p.ry);   // red display, centred on the doors
-                    bx(1.1, 0.07, 0.03, fr.at(0, 0.29)[0], 1.03, fr.at(0, 0.29)[1], M('#ffd0d0', 0.6), p.ry);
-                    bx(1.1, 0.05, 0.03, fr.at(0, 0.29)[0], 0.83, fr.at(0, 0.29)[1], M('#ffd0d0', 0.6), p.ry);
-                    discZ(0.8, 0.2, fr.at(-1.2, -0.05)[0], 0.75, fr.at(-1.2, -0.05)[1], M('#b5372c'), p.ry, 12);   // hose reel, on the wall
-                    discZ(0.5, 0.22, fr.at(-1.2, -0.05)[0], 0.75, fr.at(-1.2, -0.05)[1], metal, p.ry, 10);
-                    bx(0.4, 0.5, 0.24, fr.at(1.2, -0.04)[0], 0.9, fr.at(1.2, -0.04)[1], M('#8a929c'), p.ry);         // alarm box
-                    bx(0.16, 0.16, 0.06, fr.at(1.2, 0.1)[0], 1.0, fr.at(1.2, 0.1)[1], M('#e05252', 0.8), p.ry);
-                    cpu_(p.x, p.z, p.ry);   // the fire panel is this room's Computer
+                    bx(4.56, 0.1, 0.14, 0, 1.66, 1.0, metal);                                               // top rail
+                    bx(4.2, 0.05, 0.05, 0, 1.58, 0.94, M('#ffd0d0', 0.7));                                  // lit strip under the rail
+                    for (const x of [-1.62, -0.54, 0.54, 1.62]) { bottle(x, 0.72, 0, 0.17); bottle(x, 1.3, 0, 0.17); }
+                    // a rank of spare bottles behind the rack, on a low rail
+                    for (const x of [-1.62, -0.54, 0.54, 1.62]) bottle(x, 2.42, 0, 0, 1.05);
+                    bx(4.1, 0.06, 0.08, 0, 0.52, 2.76, metal);                                              // rail that they lean on
+                    for (const s of [-1, 1]) bx(0.08, 0.52, 0.08, s * 2.05, 0.26, 2.76, metal);
+                    bx(3.6, 0.02, 0.3, 0, 0.012, 1.9, M('#c9a227'));                                         // painted hazard strip in front
+                    for (let k = 0; k < 8; k++) bx(0.2, 0.02, 0.3, -1.54 + k * 0.44, 0.016, 1.9, M('#1a1a1a'), Math.PI / 4);
+                    // fire-blanket box on a floor stand beside the rack, lid on top
+                    bx(0.5, 0.9, 0.42, -2.35, 0.45, 1.2, M('#b5372c'));
+                    bx(0.56, 0.08, 0.48, -2.35, 0.94, 1.2, M('#8e2a22'));
+                    bx(0.3, 0.3, 0.03, -2.35, 0.55, 1.42, M('#e8eef4'));                                      // white cross on the lid
+                    bx(0.3, 0.08, 0.04, -2.35, 0.55, 1.43, M('#b5372c'));
+                    bx(0.08, 0.3, 0.04, -2.35, 0.55, 1.43, M('#b5372c'));
+                    // --- the wall: fire panel, blankets, hose reel, alarm, sand, riser ---
+                    const pp = wallSpot(pickAngle([0, 0.45, -0.45, 0.9, -0.9], 0.55)), pf = frameOf(pp);
+                    cabinet(pp, 1.6, 1.5, 0.45, panel, M('#3a4149'), null);
+                    bx(1.24, 0.62, 0.03, pf.at(0, 0.26)[0], 0.92, pf.at(0, 0.26)[1], M('#e05252', 0.5), pp.ry);   // red display, on the doors
+                    bx(1.1, 0.07, 0.03, pf.at(0, 0.29)[0], 1.03, pf.at(0, 0.29)[1], M('#ffd0d0', 0.6), pp.ry);
+                    bx(1.1, 0.05, 0.03, pf.at(0, 0.29)[0], 0.83, pf.at(0, 0.29)[1], M('#ffd0d0', 0.6), pp.ry);
+                    cpu_(pp.x, pp.z, pp.ry);   // the fire panel is this room's Computer
+                    // two blanket cabinets on the wall, doors facing the room, white cross on each door
+                    for (const side of [-1, 1]) {
+                        const bp = wallSpot(pickAngle([pp.a + side * 0.62, pp.a + side * 0.9, pp.a + side * 0.34], 0.42), 5.82);
+                        if (!bp || bp === pp) continue;
+                        const bf = frameOf(bp);
+                        bx(0.92, 1.1, 0.34, bp.x, 0.66, bp.z, M('#b5372c'), bp.ry);
+                        bx(0.96, 0.07, 0.38, bp.x, 1.24, bp.z, M('#8e2a22'), bp.ry);
+                        bx(0.04, 0.9, 0.36, bf.at(0, 0)[0], 0.66, bf.at(0, 0)[1], M('#8e2a22'), bp.ry);        // door seam
+                        bx(0.22, 0.06, 0.03, bf.at(0, 0.19)[0], 0.72, bf.at(0, 0.19)[1], M('#e8eef4'), bp.ry);  // white cross
+                        bx(0.06, 0.22, 0.03, bf.at(0, 0.19)[0], 0.72, bf.at(0, 0.19)[1], M('#e8eef4'), bp.ry);
+                        for (const sd of [-1, 1]) bx(0.04, 0.14, 0.03, bf.at(sd * 0.09, 0.19)[0], 0.5, bf.at(sd * 0.09, 0.19)[1], metal, bp.ry);
+                    }
+                    // hose reel on a wall bracket, its drum facing the room
+                    const hp = wallSpot(pickAngle([pp.a - 1.25, pp.a + 1.25, pp.a - 1.5, pp.a + 1.5], 0.5), 5.85), hf = frameOf(hp);
+                    bx(0.5, 0.7, 0.16, hp.x, 0.85, hp.z, M('#2b333d'), hp.ry);                                  // bracket plate
+                    discZ(0.92, 0.24, hf.at(0, 0.2)[0], 1.02, hf.at(0, 0.2)[1], M('#b5372c'), hp.ry, 12);       // drum
+                    discZ(0.56, 0.26, hf.at(0, 0.26)[0], 1.02, hf.at(0, 0.26)[1], metal, hp.ry, 10);            // hub
+                    bx(0.5, 0.06, 0.09, hf.at(0.24, 0.34)[0], 0.72, hf.at(0.24, 0.34)[1], M('#20262c'), hp.ry);  // trailing hose
+                    // alarm box with its red lamp, on the same wall
+                    const ap = wallSpot(pickAngle([pp.a + 2.0, pp.a - 2.0, pp.a + 2.4], 0.45), 5.85), af = frameOf(ap);
+                    bx(0.44, 0.54, 0.24, ap.x, 1.2, ap.z, M('#8a929c'), ap.ry);
+                    bx(0.18, 0.18, 0.06, af.at(0, 0.14)[0], 1.31, af.at(0, 0.14)[1], M('#e05252', 0.9), ap.ry);
+                    bx(0.4, 0.08, 0.06, af.at(0, 0.14)[0], 1.05, af.at(0, 0.14)[1], M('#2b333d'), ap.ry);
+                    // wall rack of spare bottles and a foam tank, next to the panel
+                    const sp = wallSpot(pickAngle([pp.a + 1.62, pp.a - 1.62, pp.a + 1.9], 0.42), 5.86), sf = frameOf(sp);
+                    bx(1.7, 1.9, 0.12, sp.x, 0.98, sp.z, M('#2b333d'), sp.ry);                                 // backboard
+                    for (const y of [0.24, 1.02]) {
+                        bx(1.76, 0.09, 0.34, sp.x, y, sp.z, metal, sp.ry);                                     // shelf
+                        bx(1.7, 0.05, 0.06, sf.at(0, 0.14)[0], y + 0.07, sf.at(0, 0.14)[1], M('#ffd0d0', 0.55), sp.ry);   // its lit lip
+                        for (const u of [-0.5, 0, 0.5]) bottle(sf.at(u, -0.02)[0], sf.at(u, -0.02)[1], sp.ry, y + 0.05, 0.72);
+                    }
+                    bx(1.7, 0.1, 0.3, sp.x, 2.04, sp.z, metal, sp.ry);                                         // top cap
+                    cy(0.9, 0.9, 0.72, 2.95, 0.36, 2.2, M('#b5372c'), 10);                                     // foam tank on the deck
+                    cy(0.24, 0.24, 0.12, 2.95, 0.78, 2.2, metal, 8);
+                    cy(0.06, 0.06, 0.5, 3.3, 0.6, 2.2, dark, 6, 0.6);                                          // its hose
+                    // sand bucket, and the fire axe on its board hung over it
+                    cy(0.56, 0.44, 0.52, 2.55, 0.26, 1.35, M('#c9a227'), 10);
+                    cy(0.6, 0.6, 0.06, 2.55, 0.55, 1.35, M('#8e2a22'), 10);
+                    bx(0.3, 0.04, 0.3, 2.55, 0.58, 1.35, M('#2b333d'));
+                    cy(0.24, 0.24, 0.62, 1.95, 0.31, 3.55, M('#c9a227'), 10);                 // second bucket by the wall
+                    bx(0.9, 1.0, 0.1, 2.55, 1.62, 1.6, M('#39424e'));                         // axe board
+                    bx(0.07, 0.86, 0.07, 2.55, 1.6, 1.68, M('#8a5a2a'));                      // haft
+                    bx(0.34, 0.2, 0.05, 2.55, 1.92, 1.68, M('#aab6c2'));                      // head
+                    bx(0.12, 0.3, 0.05, 2.68, 1.92, 1.68, M('#aab6c2'));                      // its blade
+                    // sprinkler riser: a floor-to-rail pipe with a hand wheel and a branch along the wall
+                    const rp = wallSpot(pickAngle([pp.a + 0.95, pp.a - 0.95], 0.4), 5.9);
+                    cy(0.18, 0.18, 2.6, rp.x, 1.3, rp.z, metal, 8);
+                    cy(0.3, 0.3, 0.06, rp.x, 1.7, rp.z, M('#c9a227'), 10);
+                    cy(0.38, 0.38, 0.05, rp.x, 2.05, rp.z, M('#b5372c'), 10);
+                    cy(0.1, 0.1, 0.3, rp.x, 2.5, rp.z, metal, 6);                                              // riser up to the ceiling
+                    cy(0.24, 0.16, 0.1, rp.x, 2.66, rp.z, M('#aab6c2'), 6);                                   // sprinkler head
+                    bx(0.1, 0.1, 0.1, rp.x, 2.72, rp.z, M('#e05252', 0.8));                                   // its red bulb
                 });
-                barrel(-2.8, 2.3, M('#e05252')); barrel(-2.2, 3.0, M('#e05252'));
+                barrel(-4.3, 0.2, M('#e05252')); barrel(-3.9, -0.55, M('#e05252'));
                 break;
             }
             case 'generator': {
@@ -1125,47 +1202,213 @@ export class Scene3D {
                 break;
             }
             case 'repository': {
-                // Equipment store: wall racks packed with crates, floor stacks, barrels and loose gear.
-                const rack = (a) => {
-                    const p = wallSpot(a), fr = frameOf(p), ry = p.ry;
-                    bx(2.3, 0.1, 0.8, p.x, 0.05, p.z, dark, ry);
-                    for (const sd of [-1, 1]) bx(0.09, 2.35, 0.8, fr.at(sd * 1.1, 0)[0], 1.18, fr.at(sd * 1.1, 0)[1], metal, ry);
-                    bx(2.3, 0.1, 0.8, p.x, 2.36, p.z, metal, ry);
-                    for (let k = 0; k < 4; k++) {
-                        const y = 0.32 + k * 0.63;
-                        bx(2.14, 0.06, 0.76, p.x, y, p.z, metal, ry);
-                        for (let b = 0; b < 4; b++) {
-                            const u = -0.74 + b * 0.5, v = (b + k) % 2 ? 0.02 : -0.04;
-                            const w = 0.34 + ((b * 7 + k) % 3) * 0.05, h = 0.3 + ((b + k) % 2) * 0.16, d = 0.36 + ((b + 2 * k) % 3) * 0.05;
-                            const x = fr.at(u, v)[0], z = fr.at(u, v)[1];
-                            bx(w, h, d, x, y + h / 2 + 0.03, z, (b + k) % 3 ? crateMat : crateMat2, ry);
-                            if ((b + k) % 4 === 0) bx(w * 0.8, 0.05, 0.12, x, y + h + 0.06, z, M('#d4b02a', 0.2), ry);
+                // Equipment store after the board art: one long double-sided shelf island down the middle
+                // of the hall, packed with bin boxes, folded vests, ammo tins and tool boards on every
+                // level, its ends capped and lit red; two aisles with floor stacks, pallets and barrels;
+                // a wall anchor with gloves and harnesses. Nothing is spread by PROP_SPREAD — the island
+                // has to keep its shape — so the whole room is built inside fix().
+                const binMat = M('#52607a'), binMat2 = M('#6b7a3c'), tray = M('#4a525c'), redLit = M('#e05252', 0.55);
+                /** One bin box: body, lid, a strap across the lid, a stencil plate on the front. */
+                const bin = (x, z, w, h, d, ry, mat = crateMat) => {
+                    bx(w, h, d, x, h / 2 + 0.02, z, mat, ry);
+                    bx(w * 1.02, 0.05, d * 1.02, x, h + 0.04, z, dark, ry);
+                    bx(0.08, 0.06, d * 1.04, x, h + 0.07, z, metal, ry);
+                    bx(w * 0.34, h * 0.34, 0.03, LX(x, z, ry, 0, d / 2 + 0.01), h * 0.5, LZ(x, z, ry, 0, d / 2 + 0.01), M('#c9d3da'), ry);
+                };
+                fix(() => {
+                    // --- the island: frame, four shelf levels, cargo on every level --------------
+                    const IX = -0.4, IZ = 0.35, IW = 1.5, IL = 5.0;
+                    bx(IW, 0.12, IL, IX, 0.06, IZ, dark);                                         // plinth
+                    // open frame, not panels: four corner uprights and a slim one every shelf bay, so the
+                    // cargo on every level is seen from either aisle (the art shows open shelving)
+                    for (const sd of [-1, 1]) for (const ez of [-1, 1]) {
+                        const ez2 = ez * (IL / 2 - 0.06);
+                        bx(0.12, 2.32, 0.12, IX + sd * IW / 2, 1.16, IZ + ez2, metal);
+                        bx(0.42, 0.1, 0.42, IX + sd * IW / 2, 0.05, IZ + ez2, dark);
+                    }
+                    for (const sd of [-1, 1]) for (const bz of [-1.25, 0, 1.25]) {
+                        bx(0.09, 2.26, 0.09, IX + sd * IW / 2, 1.13, IZ + bz, metal);
+                    }
+                    bx(IW + 0.12, 0.12, IL + 0.1, IX, 2.36, IZ, metal);                           // top cap
+                    bx(IW + 0.2, 0.06, IL + 0.16, IX, 2.29, IZ, redLit);                          // red strip under the cap
+                    for (const y of [0.42, 1.02, 1.62, 2.18]) {
+                        bx(IW + 0.08, 0.07, IL + 0.06, IX, y, IZ, metal);                         // shelf
+                        bx(IW + 0.02, 0.05, IL + 0.02, IX, y + 0.06, IZ, M('#333d48'));           // its deck line
+                        // cargo on the shelf, loaded from both aisles: bins, vests, tins
+                        for (let k = 0; k < 4; k++) {
+                            const z = IZ - 2.05 + k * 1.32;
+                            for (const sd of [-1, 1]) {
+                                const x = IX + sd * 0.34;
+                                if ((k + (sd > 0 ? 1 : 0)) % 3 === 0) {
+                                    bx(0.52, 0.3, 0.66, x, y + 0.2, z, M('#6b7a3c'), Math.PI / 2);            // folded vest stack
+                                    bx(0.42, 0.05, 0.56, x, y + 0.37, z, dark, Math.PI / 2);
+                                } else if ((k + (sd > 0 ? 2 : 0)) % 3 === 1) {
+                                    bin(x, z, 0.56, 0.34, 0.62, Math.PI / 2, (k + sd) % 2 ? crateMat : crateMat2);
+                                } else {
+                                    bx(0.46, 0.22, 0.5, x, y + 0.15, z, tray, Math.PI / 2);                // ammo tin
+                                    bx(0.5, 0.04, 0.54, x, y + 0.28, z, metal, Math.PI / 2);
+                                    bx(0.2, 0.05, 0.1, x, y + 0.32, z, M('#c9a227'), Math.PI / 2);
+                                }
+                            }
                         }
                     }
-                    bx(0.42, 0.5, 0.07, fr.at(-0.55, 0.42)[0], 1.9, fr.at(-0.55, 0.42)[1], M('#6b7a3c'), ry);   // hanging vest
-                    bx(0.42, 0.5, 0.07, fr.at(0.55, 0.42)[0], 1.9, fr.at(0.55, 0.42)[1], M('#6b7a3c'), ry);
-                    bx(0.06, 0.5, 0.3, fr.at(0, 0.4)[0], 1.5, fr.at(0, 0.4)[1], metal, ry);                        // tool board
-                };
-                const row = (list) => { let n = 0; for (const a of list) { if (n >= 3) break; if (nearExit(a, 0.5) || !zoneSafe(a)) continue; fix(() => rack(a)); n++; } };
-                row([-2.35, -1.75, -1.15, -0.55]);   // left wall
-                row([2.35, 1.75, 1.15, 0.55]);       // right wall
-                // floor stacks and loose gear in the middle, clear of the standing spot and the racks
-                fix(() => {
-                    floorZone(-1.9, 1.5, 4.4, 3.6, 0, hazard);
-                    for (let i = 0; i < 6; i++) crate(-3.0 + (i % 3) * 1.2, 0.8 + Math.floor(i / 3) * 1.2, 0.8 + (i % 2) * 0.18, i * 0.25, i % 2 ? crateMat : crateMat2);
-                    bx(0.78, 0.78, 0.78, -3.0, 1.22, 0.8, crateMat2, 0.35);         // crate stacked on top
-                    bx(0.7, 0.05, 0.7, -3.0, 1.64, 0.8, dark, 0.35);                // its open lid
-                    crate(0.9, 2.6, 0.7, 0.5, crateMat2); crate(-1.6, 3.4, 0.75, 0.2);
-                    ammoBox(-0.2, 1.0, 0.4, true); ammoBox(0.6, 1.8, -0.3, false); ammoBox(-1.2, 2.7, 0.8, true);
-                    vest(-2.0, -0.7, 0.6); vest(-2.9, 2.4, -0.8);
-                    barrel(2.9, 1.9, hazard); barrel(3.3, 1.1, M('#52607a'));
+                    // end caps: a tool board on one end, a lit inventory panel on the other
+                    bx(1.3, 1.2, 0.08, IX, 1.5, IZ - IL / 2 - 0.06, M('#39424e'));
+                    for (let k = 0; k < 5; k++) bx(0.06, 0.42, 0.05, IX - 0.5 + k * 0.25, 1.62, IZ - IL / 2 - 0.12, metal);
+                    for (let k = 0; k < 3; k++) bx(0.16, 0.08, 0.05, IX - 0.5 + k * 0.5, 1.32, IZ - IL / 2 - 0.12, M('#b06a3c'));
+                    bx(1.1, 0.62, 0.06, IX, 1.45, IZ + IL / 2 + 0.05, dark);
+                    bx(0.98, 0.5, 0.03, IX, 1.45, IZ + IL / 2 + 0.09, redLit);
+                    for (let k = 0; k < 3; k++) bx(0.8, 0.04, 0.02, IX, 1.58 - k * 0.14, IZ + IL / 2 + 0.12, M('#ffd0d0', 0.6));
+                    // read light over each aisle, hung off the top cap
+                    for (const sd of [-1, 1]) {
+                        bx(0.1, 0.1, IL * 0.8, IX + sd * (IW / 2 + 0.36), 2.62, IZ, metal);
+                        for (let k = 0; k < 4; k++) bx(0.16, 0.05, 0.34, IX + sd * (IW / 2 + 0.36), 2.55, IZ - 1.6 + k * 1.06, M('#ffd7d2', 0.7));
+                        for (const ez of [-1, 1]) bx(0.08, 0.42, 0.08, IX + sd * (IW / 2 + 0.36), 2.44, IZ + ez * IL * 0.38, metal);
+                    }
+                    // --- the aisles: pallets, loose crates, barrels, a trolley -------------------
+                    const pallet = (x, z, ry) => {
+                        bx(1.1, 0.12, 0.9, x, 0.1, z, M('#8a703c'), ry);
+                        for (const sd of [-1, 1]) bx(1.14, 0.08, 0.12, x, 0.04, z + sd * 0.36, M('#6b5630'), ry);
+                        for (let k = 0; k < 3; k++) bx(0.12, 0.08, 0.9, LX(x, z, ry, -0.4 + k * 0.4, 0), 0.06, LZ(x, z, ry, -0.4 + k * 0.4, 0), M('#6b5630'), ry);
+                    };
+                    pallet(-3.35, 2.15, 0.15); crateLid(-3.35, 2.15, 0.9, 0.15, crateMat, false, 0.16);
+                    pallet(-3.3, 0.95, -0.1); bin(-3.3, 0.95, 0.82, 0.66, 0.72, -0.1, crateMat2);
+                    pallet(-2.9, -2.65, 0.3); crateLid(-2.9, -2.65, 0.85, 0.3, crateMat2, true, 0.16);
+                    crateLid(-2.9, -2.65, 0.6, 0.3, crateMat, false, 1.01);
+                    crateLid(1.9, 3.15, 0.8, 0.2, crateMat);
+                    crateLid(-2.3, -3.3, 0.75, 0.4, crateMat2, true);
+                    ammoBox(2.25, 2.3, 0.25, true); ammoBox(2.8, 1.85, -0.2, false);
+                    vest(-2.65, 1.55, 0.5); vest(0.65, -1.95, -0.4);
+                    barrel(3.4, 3.0, hazard); barrel(3.1, 3.5, M('#52607a'));
+                    // service trolley in the aisle, its shelf loaded with tins
+                    bx(0.8, 0.07, 0.5, -2.6, 0.72, -1.9, metal); bx(0.8, 0.07, 0.5, -2.6, 0.3, -1.9, metal);
+                    for (const [sx, sz] of [[-0.34, -0.2], [0.34, -0.2], [-0.34, 0.2], [0.34, 0.2]]) cy(0.1, 0.1, 0.3, -2.6 + sx, 0.15, -1.9 + sz, dark, 6, Math.PI / 2);
+                    for (let k = 0; k < 3; k++) bx(0.2, 0.16, 0.3, -2.78 + k * 0.22, 0.84, -1.9, k % 2 ? crateMat : olive);
+                    // --- the wall anchor: gloves, harnesses, a locker and a fire point -------------
+                    const p = wallSpot(pickAngle([2.9, -2.9, 2.5, -2.5], 0.6)), fr = frameOf(p);
+                    bx(1.9, 1.9, 0.14, p.x, 1.0, p.z, M('#2b333d'), p.ry);                                  // backboard
+                    for (const y of [0.55, 1.15, 1.72]) bx(1.96, 0.07, 0.4, p.x, y, p.z, metal, p.ry);      // shelves with pegs
+                    for (const y of [0.55, 1.15, 1.72]) for (let k = 0; k < 4; k++) {
+                        bx(0.14, 0.42, 0.06, fr.at(-0.72 + k * 0.48, 0.2)[0], y + 0.28, fr.at(-0.72 + k * 0.48, 0.2)[1], (k + y) % 2 ? M('#52607a') : M('#6b7a3c'), p.ry);   // hanging harness / glove
+                    }
+                    bx(1.96, 0.1, 0.44, p.x, 2.0, p.z, metal, p.ry);
+                    bx(1.2, 0.32, 0.03, fr.at(0, 0.24)[0], 2.16, fr.at(0, 0.24)[1], redLit, p.ry);             // EQUIPMENT sign, lit red
+                    locker(p.x - Math.cos(p.ry) * 1.55, p.z + Math.sin(p.ry) * 1.55, p.ry);
+                    // safety point by the aisle: extinguisher on a stand and a first-aid box
+                    for (const sd of [-1, 1]) bx(0.1, 1.9, 0.1, 1.55, 0.95, -3.55 + sd * 0.3, metal);
+                    cy(0.34, 0.34, 0.8, 1.55, 0.58, -3.55, M('#b5372c'), 10);
+                    cy(0.2, 0.24, 0.14, 1.55, 1.02, -3.55, metal, 8);
+                    bx(0.5, 0.4, 0.22, 2.25, 1.4, -3.6, M('#dfe6ee'));
+                    bx(0.2, 0.06, 0.03, 2.25, 1.42, -3.48, M('#c0392b'));
+                    bx(0.06, 0.2, 0.03, 2.25, 1.42, -3.48, M('#c0392b'));
                 });
                 break;
             }
-            case 'airlock':
-                cy(3.0, 3.0, 0.15, 0, 0.1, 0.4, M('#e05252', 0.4), 8); cy(2.4, 2.4, 0.16, 0, 0.11, 0.4, M('#aab6c2'), 8); for (let i = 0; i < 6; i++) bx(0.3, 0.6, 0.3, Math.cos(i * 1.05) * 1.5, 0.3, 0.4 + Math.sin(i * 1.05) * 1.5, M('#f1c40f', 0.4));
-                bx(2.0, 2.2, 0.3, 0, 1.1, -2.6, metal); bx(1.2, 0.3, 0.1, 0, 2.0, -2.43, M('#e05252', 1)); console_(2.6, -1.0, -1.3); cy(0.5, 0.5, 1.6, -2.6, 0.8, -1.0, metal, 8); cy(0.5, 0.5, 1.6, -2.6, 0.8, 0.0, metal, 8);
+            case 'airlock': {
+                // Airlock control, rebuilt after the board art: the pressure door wall with its wheel lock
+                // and "SAFETY FIRST" band, a chevron-painted hazard bay on the deck in front of it, two
+                // lit control podiums facing the door, a floor vent grille, grated gutters along the
+                // walls, pressure suits in the corner lockers and a pipe manifold with hand wheels.
+                const hzY = M('#c9a227'), hzB = M('#1a1a1a'), paint = 0.176;
+                fix(() => {
+                    // --- the hazard bay: two chevrons of striped arms on the deck, tips at the door --------
+                    // Each arm is a ladder of short bars laid ACROSS the arm, so the chevron reads as the
+                    // yellow-and-black V of the board art instead of a scatter of diamonds.
+                    for (const z0 of [-0.35, 0.75]) {
+                        for (const sd of [-1, 1]) {
+                            for (let k = 0; k < 4; k++) {
+                                const u = 0.16 + k * 0.42;
+                                bx(0.19, 0.02, 0.5, sd * u, paint, z0 + u, (k % 2) ? hzY : hzB, sd * Math.PI / 4);
+                            }
+                        }
+                        bx(0.6, 0.02, 0.22, 0, paint, z0 - 0.14, hzY);                                     // the tip plate of the V
+                        for (const sd of [-1, 1]) bx(0.3, 0.02, 0.22, sd * 0.34, paint, z0 + 0.16, hzB, sd * Math.PI / 4);
+                    }
+                    bx(5.4, 0.02, 0.14, 0, paint, 2.28, M('#8a7a44'));                                  // painted edge of the bay
+                    for (const sd of [-1, 1]) bx(0.14, 0.02, 2.9, sd * 2.72, paint, 0.75, M('#8a7a44'));
+                    // --- the floor vent grille, right under the door --------------------------------
+                    bx(3.0, 0.03, 1.0, 0, 0.172, -2.55, M('#2b333d'));
+                    for (let k = 0; k < 15; k++) bx(2.9, 0.03, 0.05, 0, 0.19, -2.99 + k * 0.063, M('#59697b'));
+                    bx(3.0, 0.03, 0.08, 0, 0.19, -3.05, metal); bx(3.0, 0.03, 0.08, 0, 0.19, -2.05, metal);
+                    // --- the pressure door on the free wall -----------------------------------------
+                    const da = pickAngle([Math.PI, Math.PI - 0.35, Math.PI + 0.35, 0, 0.35], 0.75);
+                    const dp = wallSpot(da, 5.72), df = frameOf(dp);
+                    bx(3.9, 3.1, 0.22, dp.x, 1.55, dp.z, M('#39424e'), dp.ry);                             // surround
+                    bx(3.5, 2.8, 0.16, df.at(0, 0.2)[0], 1.4, df.at(0, 0.2)[1], M('#59697b'), dp.ry);       // frame plate
+                    for (const sd of [-1, 1]) {
+                        bx(1.62, 2.6, 0.14, df.at(sd * 0.86, 0.3)[0], 1.3, df.at(sd * 0.86, 0.3)[1], M('#6d7b8c'), dp.ry);   // leaf
+                        bx(0.1, 2.5, 0.05, df.at(sd * 1.6, 0.38)[0], 1.3, df.at(sd * 1.6, 0.38)[1], M('#39424e'), dp.ry);
+                        for (let k = 0; k < 3; k++) bx(1.4, 0.07, 0.05, df.at(sd * 0.86, 0.38)[0], 0.55 + k * 0.95, df.at(sd * 0.86, 0.38)[1], M('#4a5563'), dp.ry);   // stiffeners
+                    }
+                    bx(0.1, 2.6, 0.08, df.at(0, 0.38)[0], 1.3, df.at(0, 0.38)[1], M('#2b333d'), dp.ry);      // centre seam
+                    // the wheel lock: hub, four spokes, rim
+                    discZ(0.9, 0.14, df.at(0, 0.46)[0], 1.42, df.at(0, 0.46)[1], M('#39424e'), dp.ry, 8);
+                    discZ(0.34, 0.2, df.at(0, 0.54)[0], 1.42, df.at(0, 0.54)[1], metal, dp.ry, 8);
+                    for (let k = 0; k < 4; k++) {
+                        const a = dp.ry + k * Math.PI / 2;
+                        bx(0.66, 0.1, 0.1, df.at(0, 0.52)[0] + Math.cos(a) * 0.3, 1.42 + Math.sin(a) * 0.3, df.at(0, 0.52)[1] - Math.sin(a) * 0.3, metal, dp.ry, a);
+                    }
+                    // the "SAFETY FIRST" band over the door, stencilled on the beam, and its red status lamp
+                    bx(2.6, 0.34, 0.06, df.at(0, 0.3)[0], 2.68, df.at(0, 0.3)[1], M('#1e252c'), dp.ry);
+                    bx(2.3, 0.16, 0.03, df.at(0, 0.34)[0], 2.68, df.at(0, 0.34)[1], M('#e05252', 0.45), dp.ry);
+                    for (const sd of [-1, 1]) bx(0.16, 0.16, 0.1, df.at(sd * 1.5, 0.34)[0], 2.68, df.at(sd * 1.5, 0.34)[1], M('#e05252', 0.9), dp.ry);
+                    for (let k = 0; k < 3; k++) bx(2.2, 0.05, 0.18, df.at(0, 0.44 + k * 0.18)[0], 0.19, df.at(0, 0.44 + k * 0.18)[1], metal, dp.ry);   // threshold ribs
+                    // hazard chevrons on the deck right in front of the door
+                    for (let k = 0; k < 8; k++) bx(0.28, 0.02, 0.7, df.at(-1.15 + k * 0.33, 0.62)[0], paint, df.at(-1.15 + k * 0.33, 0.62)[1], k % 2 ? hzY : hzB, dp.ry, Math.PI / 4);
+                    // --- the two control podiums at the far edge of the bay, screens facing the door ---
+                    // They stand clear of the standing zone (ZONE_C), where the figures of the room are
+                    // placed: a fixed prop is not pushed out of it the way the spread props are.
+                    for (const sd of [-1, 1]) {
+                        const px = sd * 1.95, pz = 2.05, ry2 = Math.PI - sd * 0.18;
+                        bx(1.1, 0.16, 0.8, px, 0.08, pz, dark, ry2);                                       // foot
+                        bx(0.9, 0.9, 0.6, px, 0.5, pz, M('#1e252c'), ry2);                                 // pedestal
+                        bx(1.16, 0.1, 0.86, px, 0.98, pz, M('#39424e'), ry2);                              // desk top
+                        bx(1.0, 0.05, 0.7, px, 1.03, pz, M('#4aa3df', 0.35), ry2);                         // lit inlay
+                        for (let k = 0; k < 4; k++) bx(0.14, 0.04, 0.12, LX(px, pz, ry2, -0.33 + k * 0.22, 0.2), 1.06, LZ(px, pz, ry2, -0.33 + k * 0.22, 0.2), k === 1 ? M('#ff6b6b', 0.8) : M('#9fe4ff', 0.7), ry2);   // buttons
+                        bx(0.86, 0.62, 0.06, LX(px, pz, ry2, 0, -0.16), 1.38, LZ(px, pz, ry2, 0, -0.16), M('#1e252c'), ry2, -0.32);        // screen bezel
+                        bx(0.76, 0.52, 0.03, LX(px, pz, ry2, 0, -0.13), 1.38, LZ(px, pz, ry2, 0, -0.13), M('#4aa3df', 0.75), ry2, -0.32);   // display
+                        for (let k = 0; k < 3; k++) bx(0.56, 0.04, 0.02, LX(px, pz, ry2, 0, -0.1), 1.52 - k * 0.12, LZ(px, pz, ry2, 0, -0.1), M('#dff0ff', 0.85), ry2, -0.32);   // readout lines
+                        bx(0.16, 0.4, 0.16, LX(px, pz, ry2, 0.36, -0.3), 1.7, LZ(px, pz, ry2, 0.36, -0.3), M('#e05252'), ry2);   // status beacon
+                    }
+                    // --- the walls: pressure suits, a pipe manifold, grated gutters ------------------
+                    const sp = wallSpot(pickAngle([dp.a + 1.15, dp.a - 1.15, dp.a + 1.5], 0.5), 5.85), sf = frameOf(sp);
+                    bx(2.0, 2.3, 0.16, sp.x, 1.15, sp.z, M('#232b33'), sp.ry);                                 // locker back
+                    for (const sd of [-1, 1]) {
+                        // a hanging pressure suit: shoulders, torso, helmet, boots
+                        bx(0.5, 0.72, 0.3, sf.at(sd * 0.5, 0.2)[0], 1.28, sf.at(sd * 0.5, 0.2)[1], M('#8a929c'), sp.ry);
+                        bx(0.62, 0.14, 0.32, sf.at(sd * 0.5, 0.2)[0], 1.68, sf.at(sd * 0.5, 0.2)[1], M('#a5adb6'), sp.ry);
+                        cy(0.4, 0.4, 0.36, sf.at(sd * 0.5, 0.2)[0], 1.9, sf.at(sd * 0.5, 0.2)[1], M('#9fd7ff', 0.25), 8);
+                        bx(0.24, 0.5, 0.24, sf.at(sd * 0.5, 0.2)[0], 0.62, sf.at(sd * 0.5, 0.2)[1], M('#59697b'), sp.ry);
+                        bx(0.3, 0.16, 0.3, sf.at(sd * 0.5, 0.24)[0], 0.3, sf.at(sd * 0.5, 0.24)[1], dark, sp.ry);
+                    }
+                    bx(2.0, 0.1, 0.24, sp.x, 2.36, sp.z, metal, sp.ry);
+                    bx(0.9, 0.05, 0.04, sf.at(0, 0.16)[0], 2.2, sf.at(0, 0.16)[1], M('#4fcf7a', 0.6), sp.ry);
+                    // pipe manifold on the wall opposite, with hand wheels
+                    const mp = wallSpot(pickAngle([sp.a + Math.PI, sp.a + Math.PI - 0.4], 0.4), 5.9), mf = frameOf(mp);
+                    for (const y of [0.75, 1.15]) bx(3.2, 0.2, 0.2, mp.x, y, mp.z, metal, mp.ry);
+                    for (let k = 0; k < 4; k++) {
+                        cy(0.5, 0.5, 0.07, mf.at(-1.1 + k * 0.72, 0.16)[0], 1.15, mf.at(-1.1 + k * 0.72, 0.16)[1], hazard, 10);
+                        cy(0.16, 0.16, 0.3, mf.at(-1.1 + k * 0.72, 0.16)[0], 0.98, mf.at(-1.1 + k * 0.72, 0.16)[1], dark, 6);
+                    }
+                    for (const sd of [-1, 1]) bx(0.24, 1.4, 0.24, mf.at(sd * 1.5, 0.06)[0], 0.7, mf.at(sd * 1.5, 0.06)[1], dark, mp.ry);
+                    // grated gutters along the two side walls, with their drain boxes
+                    for (const a of [dp.a + Math.PI / 2, dp.a - Math.PI / 2]) {
+                        const gp2 = wallSpot(a, 5.55), gf = frameOf(gp2);
+                        bx(1.0, 0.02, 3.0, gp2.x, 0.172, gp2.z, M('#2b333d'), gp2.ry);                        // channel
+                        for (let k = 0; k < 24; k++) {                                                         // cross bars of the grate
+                            bx(0.92, 0.02, 0.05, gf.at(-1.4 + k * 0.12, 0)[0], 0.186, gf.at(-1.4 + k * 0.12, 0)[1], M('#59697b'), gp2.ry);
+                        }
+                        bx(0.6, 0.02, 0.3, gf.at(0.95, 0.05)[0], 0.19, gf.at(0.95, 0.05)[1], M('#3a4048'), gp2.ry);   // drain box
+                    }
+                    // corner hazard posts and red warning lamps over the bay
+                    for (const sd of [-1, 1]) {
+                        cy(0.16, 0.16, 1.9, sd * 2.85, 0.95, 1.2, M('#39424e'), 8);
+                        for (let k = 0; k < 4; k++) cy(0.2, 0.2, 0.16, sd * 2.85, 0.4 + k * 0.4, 1.2, k % 2 ? hzY : hzB, 8);
+                        bx(0.26, 0.2, 0.26, sd * 2.85, 2.0, 1.2, M('#e05252', 0.9));
+                    }
+                });
                 break;
+            }
             case 'armory': {
                 // Weapon racks down to the backboard, an open crate with rounds inside, lockers and ammo
                 // boxes — every gun is clipped to its rail, every lid sits on its box.
@@ -1325,11 +1568,47 @@ export class Scene3D {
             }
             case 'decon': {
                 // Decontamination bay after the board art: two ranks of lit booths along the walls, a
-                // grilled walk lane down the middle with light strips, drains and a control post.
+                // grilled walk lane down the middle with a lit seam, drains under every booth — and, over
+                // that lane, three decontamination arches with spray heads, a ceiling duct feeding them
+                // and a puddle on the grating where each one washes the deck. The arches span the lane
+                // across the room, so a figure walking the bay passes under every one of them.
+                const chrome = M('#aab6c2'), pipeM = M('#8c96a0'), sprayM = M('#9fd7ff', 0.85), seamM = M('#dff0ff', 0.45);
                 fix(() => {
-                    bx(1.5, 0.03, 7.4, 0, 0.172, 0, M('#5a6068'));                       // central walk lane
-                    for (let i = -3; i <= 3; i++) bx(1.5, 0.02, 0.14, 0, 0.182, i * 1.05, M('#3f454c'));   // lane seams
-                    for (const sx of [-0.66, 0.66]) bx(0.14, 0.02, 7.0, sx, 0.178, 0, M('#dff0ff', 0.35));  // lit strips between the lanes
+                    bx(1.8, 0.03, 7.4, 0, 0.172, 0, M('#5a6068'));                                        // central walk lane
+                    for (let i = -3; i <= 3; i++) bx(1.8, 0.02, 0.14, 0, 0.182, i * 1.05, M('#3f454c'));   // lane seams
+                    for (const sx of [-0.86, 0.86]) bx(0.14, 0.02, 7.0, sx, 0.178, 0, seamM);             // lit strips at the lane edges
+                    for (let i = -3; i <= 3; i++) bx(1.6, 0.016, 0.08, 0, 0.19, i * 1.05, M('#4a525c'));   // grating slats
+                    // --- the three decontamination arches over the lane -----------------------------
+                    // A riser on each side of the lane, a cross beam over it at head height, a spray bar
+                    // slung under the beam with its nozzles, and a lit band that marks the wash zone.
+                    const ARCH = [-2.55, 0, 2.55];
+                    for (const z of ARCH) {
+                        for (const sd of [-1, 1]) {
+                            bx(0.2, 2.5, 0.2, sd * 1.02, 1.25, z, M('#464b52'));                          // riser
+                            bx(0.3, 0.08, 0.3, sd * 1.02, 0.04, z, dark);                                 // foot plate
+                            for (let k = 0; k < 5; k++) bx(0.24, 0.06, 0.24, sd * 1.02, 0.3 + k * 0.46, z, chrome);   // collar rings
+                            cy(0.3, 0.3, 0.1, sd * 1.02, 1.62, z, M('#b5372c'), 10);                      // red shut-off wheel
+                            bx(0.24, 0.16, 0.1, sd * 1.02, 1.95, z, M('#39424e'));                        // valve body
+                        }
+                        bx(2.44, 0.26, 0.2, 0, 2.5, z, M('#464b52'));                                      // cross beam
+                        bx(2.6, 0.08, 0.26, 0, 2.66, z, chrome);                                           // beam cap
+                        bx(1.9, 0.06, 0.06, 0, 2.36, z, sprayM);                                           // lit band under the beam
+                        bx(1.9, 0.12, 0.14, 0, 2.2, z, pipeM);                                             // spray bar
+                        for (let k = -2; k <= 2; k++) {
+                            cy(0.1, 0.16, 0.14, k * 0.44, 2.09, z, pipeM, 6);                               // nozzle body
+                            cy(0.16, 0.06, 0.06, k * 0.44, 2.0, z, sprayM, 6);                              // nozzle tip, lit
+                        }
+                        // mist: a flat, very transparent disc hanging under the bar and a puddle on the lane
+                        const mist = B().MeshBuilder.CreateCylinder('mist', { diameter: 2.0, height: 0.3, tessellation: 12 }, S);
+                        mist.position.set(0, 1.7, z); mist.material = M('#bfe6ff', 0.3, { alpha: 0.14 }); mist.isPickable = false; statics.push(mist);
+                        const pud = B().MeshBuilder.CreateCylinder('pud', { diameter: 2.1, height: 0.01, tessellation: 12 }, S);
+                        pud.position.set(0, 0.2, z - 0.55); pud.scaling.z = 0.55; pud.material = M('#9fd7ff', 0.25, { alpha: 0.5 }); statics.push(pud);
+                    }
+                    // ceiling duct down the lane, feeding every arch, hung on short brackets
+                    bx(0.34, 0.16, 6.4, 0, 2.9, 0, pipeM);
+                    for (const z of ARCH) bx(0.26, 0.34, 0.26, 0, 2.74, z, M('#39424e'));
+                    for (const z of [-3.1, -1.3, 1.3, 3.1]) bx(0.1, 0.5, 0.1, 0, 2.68, z, chrome);
+                    // --- the booths along both walls ------------------------------------------------
                     for (const side of [-1, 1]) {
                         const base = pickAngle([side * Math.PI / 2, side * (Math.PI / 2 - 0.45), side * (Math.PI / 2 + 0.45)], 0.45);
                         for (let k = 0; k < 4; k++) {
@@ -1338,12 +1617,14 @@ export class Scene3D {
                             booth(wallSpot(a, 5.78));
                         }
                     }
-                    // control post by the entrance lane, screen on the desk
-                    bx(1.2, 0.9, 0.5, 0, 0.45, -3.9, panel);
-                    bx(1.26, 0.06, 0.56, 0, 0.93, -3.9, metal);
-                    bx(0.26, 0.12, 0.16, 0, 1.02, -3.96, dark);
-                    bx(0.94, 0.58, 0.06, 0, 1.34, -3.94, metal, 0, -0.3);
-                    bx(0.84, 0.48, 0.03, 0, 1.34, -3.9, M('#4fcf7a', 0.55), 0, -0.3);
+                    // control post BESIDE the lane, not on it: the walk under the arches has to stay free
+                    const cp = -3.35, cz = -3.35, cr = Math.PI / 4;
+                    bx(1.2, 0.9, 0.5, cp, 0.45, cz, panel, cr);
+                    bx(1.26, 0.06, 0.56, cp, 0.93, cz, metal, cr);
+                    bx(0.26, 0.12, 0.16, LX(cp, cz, cr, 0, -0.12), 1.02, LZ(cp, cz, cr, 0, -0.12), dark, cr);
+                    bx(0.94, 0.58, 0.06, LX(cp, cz, cr, 0, -0.1), 1.34, LZ(cp, cz, cr, 0, -0.1), metal, cr, -0.3);
+                    bx(0.84, 0.48, 0.03, LX(cp, cz, cr, 0, -0.06), 1.34, LZ(cp, cz, cr, 0, -0.06), M('#4fcf7a', 0.55), cr, -0.3);
+                    bx(1.1, 0.05, 0.36, LX(cp, cz, cr, 0, 0.12), 0.98, LZ(cp, cz, cr, 0, 0.12), dark, cr);
                     // supply lockers in the corners
                     locker(-3.9, 3.1, 0.9); locker(3.9, 3.1, -0.9);
                     // floor drains under the booths
@@ -1482,33 +1763,67 @@ export class Scene3D {
                 break;
             }
             case 'storage': {
-                // Cargo stands on the painted deck squares: part of the crates sit exactly inside the
-                // marked zones (the same coordinates buildFloor paints), the rest are out in the open.
+                // Cargo hold after the board art: long cargo modules with strapped lids lying on the
+                // painted deck rectangles (the same coordinates buildFloor paints), green pallet boxes
+                // between them, a run of bulkhead teeth along one wall, a leaning grating panel, straps
+                // on the deck — plus shelving and a pallet jack against the free wall. The painted
+                // squares stay readable: every module sits INSIDE its rectangle, nothing straddles it.
+                const strap = M('#c9a227'), tooth = M('#4a5563'), green = M('#6b7a3c');
+                /** Cargo module: a long low container with a strapped lid, ribs and corner brackets. */
+                const module_ = (x, z, w, l, ry, mat = crateMat) => {
+                    bx(w, 0.72, l, x, 0.36, z, mat, ry);                                     // body
+                    bx(w * 1.06, 0.12, l * 1.06, x, 0.78, z, dark, ry);                       // lid flange
+                    bx(w * 0.92, 0.1, l * 0.94, x, 0.86, z, mat, ry);                         // lid
+                    for (let k = 0; k < 3; k++) bx(w * 1.02, 0.1, 0.1, x, 0.5, z, dark, ry); // (straps below, ribs here)
+                    for (const fz of [-0.34, 0.34]) bx(w * 1.1, 0.09, 0.1, LX(x, z, ry, 0, fz * l), 0.62, LZ(x, z, ry, 0, fz * l), strap, ry);   // strap over the lid
+                    for (const fz of [-0.42, 0.42]) for (const sx of [-1, 1]) bx(0.12, 0.5, 0.12, LX(x, z, ry, sx * w / 2, fz * l), 0.25, LZ(x, z, ry, sx * w / 2, fz * l), metal, ry);   // corner brackets
+                    bx(w * 0.3, 0.05, l * 0.2, LX(x, z, ry, 0, -0.28 * l), 0.92, LZ(x, z, ry, 0, -0.28 * l), M('#d4b02a', 0.2), ry);   // stencil on the lid
+                    for (const sx of [-1, 1]) bx(0.06, 0.24, l * 0.5, LX(x, z, ry, sx * w / 2, 0), 0.5, LZ(x, z, ry, sx * w / 2, 0), dark, ry);
+                };
                 fix(() => {
-                    crateLid(-3.7, 2.5, 0.95, 0.1, crateMat);                       // zone A
-                    crateLid(-2.62, 2.3, 0.88, 0.45, crateMat2, true);
-                    crateLid(0.15, 3.0, 1.05, 0.08, crateMat);                      // zone B — stacked
-                    crateLid(0.15, 3.0, 0.66, 0.42, crateMat2, false, 1.05);
-                    crateLid(3.35, 0.2, 1.0, 0.2, crateMat2, true);                 // zone C
-                    crateLid(4.0, 1.35, 0.75, -0.3, crateMat);
-                    crateLid(-1.25, -3.65, 0.85, 0.1, crateMat);                    // zone E
-                    crateLid(-0.4, -3.5, 0.8, -0.4, crateMat2);
-                    ammoBox(-3.7, -1.75, 0.4, true); ammoBox(-3.15, -1.15, -0.3, false);   // zone D — boxes and a vest
-                    vest(-2.05, -1.9, 0.5);
-                    crateLid(-1.9, 0.8, 0.85, 0.6, crateMat2);                      // outside the zones
-                    crateLid(2.5, 3.4, 0.8, -0.15, crateMat);
-                    crateLid(-0.9, -1.9, 0.7, 0.35, crateMat2, true);
-                    vest(1.4, 2.4, -0.5);
-                    barrel(3.0, -1.6, hazard); barrel(3.5, -2.1, M('#52607a')); barrel(-2.9, 0.4, M('#52607a'));
-                    // shelving against the wall, boxes seated on both shelves
+                    // --- the painted rectangles: one module or a stack inside each of them ---------
+                    module_(-3.2, 2.4, 1.5, 1.9, 0, crateMat);                       // zone A
+                    module_(0.4, 3.0, 1.9, 1.35, 0, crateMat2);                      // zone B
+                    module_(3.4, 0.6, 1.4, 2.2, Math.PI / 2, M('#5a6a3a'));          // zone C — long, along the wall
+                    module_(-3.6, -1.6, 1.6, 1.5, 0, crateMat2);                     // zone D, with tins stacked on top
+                    for (let k = 0; k < 3; k++) bx(0.26, 0.2, 0.34, -4.0 + k * 0.36, 1.01, -1.6, k % 2 ? olive : crateMat);
+                    module_(-0.8, -3.6, 1.8, 1.2, 0, crateMat);                      // zone E
+                    // --- between them: green pallet boxes, open crates, a leaning grating panel -----
+                    crateLid(-1.9, 2.3, 0.8, 0.3, green, false);
+                    crateLid(-1.9, 2.3, 0.55, 0.3, crateMat2, false, 0.82);
+                    crateLid(1.9, 2.35, 0.85, -0.2, crateMat, true);
+                    crateLid(2.35, 1.35, 0.7, 0.15, green, false);
+                    crateLid(-1.6, -2.55, 0.8, 0.45, crateMat2, true);
+                    crateLid(1.15, -3.2, 0.75, -0.35, green, false);
+                    ammoBox(-2.55, 0.55, 0.3, true); ammoBox(-1.95, 1.15, -0.25, false);
+                    vest(-2.9, 1.1, 0.5); vest(0.9, -2.5, -0.4);
+                    barrel(-2.75, -0.4, hazard); barrel(3.35, 2.6, M('#52607a'));
+                    // grating panel leaning on the wall: frame + bars, tilted back
+                    const gp = wallSpot(pickAngle([-1.55, -1.2], 0.55), 5.7), gf = frameOf(gp);
+                    bx(1.5, 0.08, 0.1, gp.x, 0.06, gp.z, metal, gp.ry);
+                    bx(1.5, 0.08, 0.1, gp.x, 1.5, gp.z, metal, gp.ry);
+                    for (const sd of [-1, 1]) bx(0.08, 1.5, 0.1, gf.at(sd * 0.71, 0)[0], 0.78, gf.at(sd * 0.71, 0)[1], metal, gp.ry);
+                    for (let k = 0; k < 9; k++) bx(0.06, 1.42, 0.06, gf.at(-0.63 + k * 0.157, 0)[0], 0.78, gf.at(-0.63 + k * 0.157, 0)[1], tooth, gp.ry);
+                    // --- the bulkhead teeth: a run of prongs along the free wall -------------------
+                    const tp = wallSpot(pickAngle([-0.95, 0.95, -0.6], 0.5), 5.95), tf = frameOf(tp);
+                    bx(3.0, 0.4, 0.24, tp.x, 1.5, tp.z, dark, tp.ry);
+                    for (let k = 0; k < 7; k++) {
+                        const u = -1.3 + k * 0.43;
+                        for (const sd of [-1, 1]) bx(0.3, 0.3, 0.22, tf.at(u, 0.02)[0], 1.5 + sd * 0.22, tf.at(u, 0.02)[1], tooth, tp.ry).rotation.z = Math.PI / 4 * sd;
+                    }
+                    // --- shelving and a pallet jack against the other wall (kept from the old hold) --
                     const p = wallSpot(pickAngle([2.9, -2.9, 2.5, -2.5], 0.6)), fr = frameOf(p);
                     for (const sx of [-1.25, 1.25]) bx(0.1, 1.5, 0.5, fr.at(sx, 0.08)[0], 0.75, fr.at(sx, 0.08)[1], metal, p.ry);
                     for (const y of [0.9, 1.35]) bx(2.6, 0.07, 0.55, fr.at(0, 0.08)[0], y, fr.at(0, 0.08)[1], metal, p.ry);
                     for (let k = 0; k < 4; k++) bx(0.45, 0.34, 0.4, fr.at(-0.95 + k * 0.62, 0.28)[0], 1.1, fr.at(-0.95 + k * 0.62, 0.28)[1], k % 2 ? crateMat : olive, p.ry);
                     for (let k = 0; k < 3; k++) bx(0.5, 0.3, 0.42, fr.at(-0.7 + k * 0.7, 0.28)[0], 1.54, fr.at(-0.7 + k * 0.7, 0.28)[1], crateMat2, p.ry);
-                    // pallet jack parked by the shelving
                     bx(0.7, 0.12, 0.3, fr.at(1.75, 0.5)[0], 0.12, fr.at(1.75, 0.5)[1], dark, p.ry);
                     bx(0.7, 0.1, 0.2, fr.at(1.75, 0.62)[0], 0.1, fr.at(1.75, 0.62)[1], metal, p.ry);
+                    // straps coiled on the deck near the modules
+                    for (const [x, z] of [[-2.3, 3.2], [1.4, 0.6], [-0.4, -2.6]]) {
+                        cy(0.5, 0.5, 0.06, x, 0.19, z, strap, 10);
+                        cy(0.34, 0.34, 0.07, x, 0.21, z, dark, 10);
+                    }
                 });
                 break;
             }
@@ -1725,13 +2040,19 @@ export class Scene3D {
                 const pipe = B().MeshBuilder.CreateCylinder('pp', { diameter: 0.12, height: 2.5, tessellation: 6 }, S);
                 pipe.position.set(0, 1.42, z + 0.12); pipe.rotation.z = Math.PI / 2; pipe.material = M('#8c96a0'); pipe.parent = seg; list.push(pipe);
             }
-            // joint pad where the path really turns (a smooth bend needs no collar at every sample)
+            // Joint pad where the path really turns (a smooth bend needs no collar at every sample).
+            // The collar and its post belong to the bend, and a bend belongs to one half of the tube —
+            // the same halves the ribs are split into. The post used to be pushed into the ALWAYS-VISIBLE
+            // statics, so a corridor whose room at that end was still face down showed a single 1.9-tall
+            // bar standing on the deck with no arch around it (the "lone beams" on the board). It goes
+            // into the half's own list, so it appears and disappears with the arch it belongs to.
             if (i < pts.length - 2) {
                 const turn = Math.acos(Math.max(-1, Math.min(1, B().Vector3.Dot(n, pts[i + 2].subtract(s1).normalize()))));
                 if (turn > 0.25 && acc + l - lastPad > 1.2 && Math.abs(acc + l - total / 2) > 1.6) {
                     lastPad = acc + l;
                     const pad = B().MeshBuilder.CreateCylinder('pad', { diameter: 3.2, height: 0.32, tessellation: 8 }, S); pad.position = s1.clone(); pad.position.y = -0.19; pad.material = M('#243040'); pad.parent = root; statics.push(pad);
-                    const post = B().MeshBuilder.CreateBox('jp', { width: 0.4, height: 1.9, depth: 0.4 }, S); post.position = s1.clone(); post.position.y = 0.95; post.position.addInPlace(new (B().Vector3)(Math.cos(ry) * 1.4, 0, -Math.sin(ry) * 1.4)); post.material = M('#59697b'); post.parent = root; statics.push(post);
+                    const postHalf = (acc + l) < total / 2 ? ribsA : ribsB;
+                    const post = B().MeshBuilder.CreateBox('jp', { width: 0.4, height: 1.9, depth: 0.4 }, S); post.position = s1.clone(); post.position.y = 0.95; post.position.addInPlace(new (B().Vector3)(Math.cos(ry) * 1.4, 0, -Math.sin(ry) * 1.4)); post.material = M('#59697b'); post.parent = root; postHalf.push(post);
                 }
             }
             // door at the middle of the whole path
