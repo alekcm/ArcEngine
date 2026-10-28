@@ -194,8 +194,31 @@ function resolveAttack(state, step, it, p) {
             { op: 'attack.armor', player: p.id, intruder: it.uid, phantom: it.uid === '_phantom' ? it : undefined, cardId, moving: step.moving, dest: step.dest, context: step.context, ravenous: step.ravenous });
         return;
     }
+    // Hardened Armor: replacing the wound with 2 health is the player's call, never automatic.
+    const hpPerWound = p.armor ? ITEMS[p.armor.item].woundToHp : 0;
+    if (!step.armorReplaced && hpPerWound && ITEMS[p.armor.item].woundToHpOptional &&
+        p.health > hpPerWound && effects.some(e => e.op === 'wound')) {
+        ask(state, { kind: 'choice', player: p.id, title: 'Усиленная броня: заменить тяжёлую травму на −' + hpPerWound + ' здоровья?',
+            options: [{ id: 'yes', label: 'Да, потерять ' + hpPerWound + ' здоровья' }, { id: 'no', label: 'Нет, получить травму' }] },
+            { op: 'attack.armorReplace', player: p.id, intruder: it.uid, phantom: it.uid === '_phantom' ? it : undefined, cardId, moving: step.moving, dest: step.dest, context: step.context, ravenous: step.ravenous });
+        return;
+    }
     applyAttackEffects(state, effects, it, p, step);
 }
+OPS['attack.armorReplace'] = (state, step) => {
+    const p = player(state, step.player), it = step.phantom || state.intruders[step.intruder];
+    const card = ATTACK_BY_ID[step.cardId];
+    let effects = card[it.type]; if (typeof effects === 'string') effects = card[effects];
+    if (step.answer === 'yes' && p.armor) {
+        const cost = ITEMS[p.armor.item].woundToHp;
+        const at = effects.findIndex(e => e.op === 'wound');
+        if (at >= 0) effects = effects.slice(0, at).concat(effects.slice(at + 1));
+        applyAttackEffects(state, effects, it, p, { ...step, armorReplaced: true });
+        if (p.status === 'active') loseHealth(state, p, cost, 'усиленная броня');
+        return;
+    }
+    applyAttackEffects(state, effects, it, p, { ...step, armorReplaced: true });
+};
 OPS['attack.armor'] = (state, step) => {
     const p = player(state, step.player), it = step.phantom || state.intruders[step.intruder];
     if (step.answer === 'yes') { p.armor = null; log(state, pname(p) + ' сбрасывает броню: атака проигнорирована.', 'good'); return; }

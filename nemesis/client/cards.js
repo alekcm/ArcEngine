@@ -44,9 +44,18 @@ const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', '
     'engineKey', 'extinguisher', 'glowstick', 'nemesisPlans', 'reagent', 'techPlan', 'tools', 'plasmaGun', 'flamethrower', 'hardenedArmor',
     'riotgun', 'assaultRifle', 'assaultShotgun', 'autoloaderBelt', 'automaticShotgun', 'bayonet', 'bfGun', 'biohazardArmor', 'drumMagRifle',
     'engineeringEquipment', 'gatlingGun', 'grenadeLauncher', 'handCannon', 'perimeterDevice', 'securityControl', 'smartRifle', 'sniperRifle', 'sonicGun', 'smg', 'tacticalArmor', 'tacticalHatchet', 'utilityVest', 'soldierGun', 'handgun', 'scoutRifle', 'sawedOff', 'smartGun', 'riotShotgun', 'energyPistol', 'bountyRifle',
-    'sixShooter', 'probeArm', 'xenoGun', 'survivorFavorite', 'pipe', 'cuffs', 'robot', 'ups', 'laika', 'wrench',
-    'fieldKit', 'oculobe', 'sampleJar', 'navTablet', 'mechTools'];
-export function itemArt(key) { return ART_ITEMS.includes(key) ? 'art/items/' + key + '.jpg' : null; }
+    'sixShooter', 'probeArm', 'xenoGun', 'survivorFavorite', 'pipe', 'cuffs', 'robot', 'ups', 'laika',
+    'oculobe'];
+/** Starting items without their own illustration borrow the art of the card they replace. */
+const ART_ITEM_ALIAS = {
+    plasmaTorch: 'mechTools', karcher: 'wrench', surgeryKit: 'fieldKit', pilotEvacKey: 'evacKey',
+    portableDevice: 'navTablet', researchEquipment: 'sampleJar', armGun: 'energyPistol',
+    sentrySmg: 'smg', heavyArmor: 'armor', battleSuit: 'tacticalArmor', sixShooterCartridge: 'energyCharge',
+};
+export function itemArt(key) {
+    const k = ART_ITEM_ALIAS[key] || key;
+    return ART_ITEMS.includes(k) ? 'art/items/' + k + '.jpg' : null;
+}
 /** Thumbnail + hover preview (art, name, rules text) for an item instance; empty string when the item has no art. */
 export function itemArtHtml(inst) {
     const art = itemArt(inst.item); if (!art) return '';

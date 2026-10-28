@@ -25,6 +25,8 @@ export function survivorUpgrade(state) {
     if (state.round < 8) return;
     for (const p of state.players) {
         if (p.charId !== 'survivor' || p.status !== 'active') continue;
+        // The survivour starts with her favourite already in hand.
+        if (p.items.some(i => i.item === 'survivorFavorite')) continue;
         const g = p.items.find(i => i.item === 'handgun');
         if (!g) continue;
         g.item = 'survivorFavorite'; g.ammo = ITEMS.survivorFavorite.weapon.max; g.broken = false;
