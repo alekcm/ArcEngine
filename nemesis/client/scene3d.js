@@ -1320,6 +1320,35 @@ export class Scene3D {
                     cy(0.5, 0.42, 0.8, 2.35, 0.4, -2.55, M('#39424e'), 8);                     // clinical waste bin
                     bx(0.7, 0.06, 0.5, 3.05, 0.7, 1.45, metal, 0.3);                            // linen trolley shelf
                     bx(0.66, 0.22, 0.46, 3.05, 0.84, 1.45, white, 0.3);
+                    for (const [ox2, oz2] of [[-0.32, -0.2], [0.32, -0.2], [-0.32, 0.2], [0.32, 0.2]])
+                        cy(0.07, 0.07, 0.7, LX(3.05, 1.45, 0.3, ox2, oz2), 0.36, LZ(3.05, 1.45, 0.3, ox2, oz2), metal, 6);
+                    // --- the middle of the bay: a resus trolley and the crash station -----------------
+                    bx(1.6, 0.1, 0.8, 0, 0.82, 0, metal, 0.25);                                 // resus trolley top
+                    for (let k = 0; k < 4; k++) bx(1.5, 0.06, 0.7, 0, 0.3 + k * 0.17, 0, k % 2 ? M('#4a5a6e') : M('#39424e'), 0.25);   // drawers
+                    for (let k = 0; k < 4; k++) bx(0.6, 0.04, 0.05, LX(0, 0, 0.25, 0, 0.36), 0.34 + k * 0.17, LZ(0, 0, 0.25, 0, 0.36), metal, 0.25);
+                    for (const [ox2, oz2] of [[-0.62, -0.3], [0.62, -0.3], [-0.62, 0.3], [0.62, 0.3]])
+                        cy(0.1, 0.1, 0.14, LX(0, 0, 0.25, ox2, oz2), 0.09, LZ(0, 0, 0.25, ox2, oz2), dark, 6);
+                    bx(0.44, 0.42, 0.06, LX(0, 0, 0.25, -0.4, 0), 1.12, LZ(0, 0, 0.25, -0.4, 0), M('#232b33'), 0.25, -0.2);   // defibrillator
+                    bx(0.36, 0.32, 0.03, LX(0, 0, 0.25, -0.4, -0.03), 1.12, LZ(0, 0, 0.25, -0.4, -0.03), M('#4fcf7a', 0.8), 0.25, -0.2);
+                    cy(0.2, 0.2, 0.1, LX(0, 0, 0.25, 0.36, 0), 0.92, LZ(0, 0, 0.25, 0.36, 0), M('#e05252', 0.6), 8);            // O2 cylinder on the shelf
+                    cy(0.12, 0.12, 0.12, LX(0, 0, 0.25, 0.36, 0), 1.03, LZ(0, 0, 0.25, 0.36, 0), metal, 6);
+                    for (let k = 0; k < 3; k++) cy(0.14, 0.14, 0.2, LX(0, 0, 0.25, 0.1 + k * 0.16, -0.24), 0.97, LZ(0, 0, 0.25, 0.1 + k * 0.16, -0.24), M('#dff0ff', 0.4, { alpha: 0.8 }), 6);   // ampoule tray
+                    // curtain rails between the beds, hung off the centre posts
+                    for (let i = 0; i < 4; i++) {
+                        const a = i / 4 * Math.PI * 2 + Math.PI / 4;
+                        cy(0.12, 0.14, 2.0, Math.sin(a) * 2.05, 1.0, Math.cos(a) * 2.05, metal, 10);
+                        cy(0.26, 0.26, 0.06, Math.sin(a) * 2.05, 0.06, Math.cos(a) * 2.05, dark, 10);
+                        // the track runs across the ray, the curtain hangs from it
+                        bx(1.9, 0.05, 0.06, Math.sin(a) * 2.6, 2.0, Math.cos(a) * 2.6, metal, a + Math.PI / 2);
+                        bx(1.7, 1.5, 0.03, Math.sin(a) * 2.75, 1.2, Math.cos(a) * 2.75, M('#8fb4c4', 0.25, { alpha: 0.4 }), a + Math.PI / 2);
+                        for (let k = 0; k < 5; k++) bx(0.06, 0.1, 0.06, Math.sin(a) * 2.6 + Math.cos(a + Math.PI / 2) * (-0.8 + k * 0.4), 1.96, Math.cos(a) * 2.6 - Math.sin(a + Math.PI / 2) * (-0.8 + k * 0.4), dark, a);
+                    }
+                    // wheeled chair, a walking frame and a cardiac board leaning on the wall
+                    chair(-2.6, 1.2, 2.4, M('#4a5a6e'));
+                    bx(0.5, 0.5, 0.4, 2.3, 0.5, 2.5, M('#8c96a0'), 0.8);
+                    for (const sd of [-1, 1]) bx(0.06, 0.5, 0.06, 2.3 + sd * 0.22, 0.25, 2.5 + sd * 0.18, metal, 0.8);
+                    bx(0.9, 0.06, 0.6, 3.3, 0.06, -1.9, M('#c0392b', 0.2), 1.1);
+                    bx(0.7, 0.5, 0.05, 3.5, 0.35, -2.05, M('#e05252', 0.25), 1.1);
                 });
                 break;
             }
@@ -1628,6 +1657,65 @@ export class Scene3D {
                         cy(0.08, 0.08, 0.68, LX(2.35, -1.5, 0.25, ox, oz), 0.38, LZ(2.35, -1.5, 0.25, ox, oz), dark, 6);
                     for (let k = 0; k < 3; k++) bx(0.24, 0.2, 0.3, LX(2.35, -1.5, 0.25, -0.3 + k * 0.3, 0), 0.86, LZ(2.35, -1.5, 0.25, -0.3 + k * 0.3, 0), M('#39424e'), 0.25);
                     for (let k = 0; k < 5; k++) cy(0.09, 0.09, 0.22, LX(2.35, -1.5, 0.25, -0.34 + k * 0.17, 0.02), 1.05, LZ(2.35, -1.5, 0.25, -0.34 + k * 0.17, 0.02), M('#dff0ff', 0.4, { alpha: 0.85 }), 6);
+                });
+                fix(() => {
+                    // --- the far bench: its own island, sink and rack under a lit canopy -------------
+                    bx(1.0, 0.9, 2.6, -2.55, 0.45, 0.3, white);
+                    bx(1.12, 0.07, 2.72, -2.55, 0.94, 0.3, M('#9fb4c8'));
+                    bx(1.0, 0.14, 2.6, -2.55, 0.21, 0.3, M('#7d8b99'));
+                    for (const dz of [-0.7, 0.2, 0.9]) bx(1.02, 0.05, 0.04, -2.55, 0.62, 0.3 + dz, M('#c8d3db'));
+                    bx(0.6, 0.16, 0.44, -2.55, 0.86, -0.55, M('#8c96a0'));                  // sink bowl
+                    cy(0.06, 0.06, 0.44, -2.72, 1.16, -0.55, metal, 6);                     // tap riser
+                    cy(0.05, 0.05, 0.2, -2.62, 1.36, -0.55, metal, 6, Math.PI / 2);
+                    for (let k = 0; k < 4; k++) cy(0.09, 0.09, 0.24, -2.55, 1.1, 0.75 + k * 0.14, [M('#4fcf7a', 0.5), M('#4aa3df', 0.5), M('#b26bd6', 0.5), M('#e05252', 0.45)][k], 6);   // flask row
+                    bx(0.4, 0.06, 0.3, -2.62, 0.98, 1.1, dark);
+                    bx(0.3, 0.3, 0.2, -2.62, 1.16, 1.1, metal);
+                    cy(0.14, 0.1, 0.2, -2.62, 1.4, 1.12, M('#dff0ff', 0.5, { alpha: 0.8 }), 6);   // burette over the stand
+                    // the canopy over the bench: two posts, a rail and a hood light
+                    for (const dz of [-1.0, 1.6]) cy(0.08, 0.08, 1.7, -3.0, 0.95, 0.3 + dz, metal, 6);
+                    bx(0.5, 0.08, 2.9, -3.0, 1.82, 0.3, M('#59697b'));
+                    bx(0.36, 0.05, 2.6, -3.0, 1.76, 0.3, M('#dff0ff', 0.6));
+                    // --- sample freezer against the open side, with the seal light on ------------------
+                    bx(1.2, 1.8, 0.8, 3.55, 0.9, 0.2, white, -0.35);
+                    bx(1.26, 0.1, 0.86, 3.55, 1.85, 0.2, metal, -0.35);                       // top cap
+                    bx(0.1, 0.6, 0.1, LX(3.55, 0.2, -0.35, -0.5, -0.2), 1.4, LZ(3.55, 0.2, -0.35, -0.5, -0.2), metal, -0.35);   // vent stack
+                    cy(0.24, 0.24, 0.12, LX(3.55, 0.2, -0.35, -0.5, -0.2), 1.72, LZ(3.55, 0.2, -0.35, -0.5, -0.2), dark, 8);
+                    bx(1.1, 0.06, 0.03, LX(3.55, 0.2, -0.35, 0, 0.44), 1.42, LZ(3.55, 0.2, -0.35, 0, 0.44), dark, -0.35);   // door seam
+                    bx(1.1, 0.9, 0.06, LX(3.55, 0.2, -0.35, 0, 0.44), 0.9, LZ(3.55, 0.2, -0.35, 0, 0.44), M('#c8d3db'), -0.35);   // upper door
+                    bx(1.1, 0.66, 0.06, LX(3.55, 0.2, -0.35, 0, 0.44), 0.34, LZ(3.55, 0.2, -0.35, 0, 0.44), M('#c8d3db'), -0.35);   // lower door
+                    bx(0.5, 0.5, 0.05, LX(3.55, 0.2, -0.35, 0, 0.48), 1.55, LZ(3.55, 0.2, -0.35, 0, 0.48), M('#7fc7ff', 0.3, { alpha: 0.45 }), -0.35);   // its lit window
+                    for (const sd of [-1, 1]) bx(0.55, 0.05, 0.05, LX(3.55, 0.2, -0.35, 0, 0.5), 0.82 + sd * 0.1, LZ(3.55, 0.2, -0.35, 0, 0.5), metal, -0.35);   // handles
+                    bx(0.16, 0.24, 0.12, LX(3.55, 0.2, -0.35, 0.78, 0.42), 1.1, LZ(3.55, 0.2, -0.35, 0.78, 0.42), dark, -0.35);   // hinge stack
+                    bx(0.26, 0.3, 0.04, LX(3.55, 0.2, -0.35, -0.34, 0.46), 1.62, LZ(3.55, 0.2, -0.35, -0.34, 0.46), screen, -0.35);   // temperature readout
+                    bx(0.12, 0.12, 0.03, LX(3.55, 0.2, -0.35, -0.34, 0.5), 1.62, LZ(3.55, 0.2, -0.35, -0.34, 0.5), M('#4fcf7a', 0.8), -0.35);
+                    bx(0.5, 0.16, 0.03, LX(3.55, 0.2, -0.35, 0.2, 0.48), 1.72, LZ(3.55, 0.2, -0.35, 0.2, 0.48), M('#c9a227', 0.3), -0.35);   // biohazard label
+                    // --- gas bottle rack, strapped, on the other side ------------------------------
+                    for (let k = 0; k < 3; k++) {
+                        const x = -3.8 + k * 0.34, z = -1.6;
+                        cy(0.32, 0.32, 1.5, x, 0.75, z, [M('#4fcf7a', 0.35), M('#8c96a0'), M('#4aa3df', 0.35)][k], 10);
+                        cy(0.2, 0.24, 0.14, x, 1.55, z, metal, 8);
+                        cy(0.26, 0.26, 0.06, x, 1.64, z, M('#39424e'), 8);
+                        bx(0.06, 0.1, 0.06, x, 1.72, z, metal, 8);
+                    }
+                    bx(0.14, 0.08, 1.2, -3.8, 1.05, -1.6, metal);                            // straps
+                    bx(0.14, 0.08, 1.2, -3.46, 1.05, -1.6, metal);
+                    bx(1.1, 0.1, 1.0, -3.63, 0.06, -1.6, dark);                              // rack foot
+                    // --- specimen tank: a lit column of green, on a plinth -------------------------
+                    cy(1.4, 1.5, 0.24, 1.5, 0.12, -3.0, dark, 12);
+                    cy(1.15, 1.15, 1.5, 1.5, 1.0, -3.0, M('#4fcf7a', 0.35, { alpha: 0.4 }), 12);
+                    cy(1.25, 1.25, 0.12, 1.5, 0.3, -3.0, metal, 12);
+                    cy(1.25, 1.25, 0.12, 1.5, 1.78, -3.0, metal, 12);
+                    cy(0.4, 0.4, 0.2, 1.5, 1.92, -3.0, M('#39424e'), 10);                    // cap
+                    for (let k = 0; k < 4; k++) { const a = k / 4 * Math.PI * 2; cy(0.1, 0.1, 1.6, 1.5 + Math.cos(a) * 0.58, 1.02, -3.0 + Math.sin(a) * 0.58, metal, 6); }   // cage bars
+                    bx(0.34, 0.3, 0.05, 1.5, 0.72, -2.36, M('#1e252c'), 0);                  // its readout
+                    bx(0.28, 0.22, 0.03, 1.5, 0.72, -2.33, M('#4fcf7a', 0.8), 0);
+                    for (let k = 0; k < 3; k++) cy(0.16, 0.16, 0.3, 2.15, 0.35 + k * 0.02, -2.55 + k * 0.3, M('#b26bd6', 0.5), 6);   // sample flasks at its foot
+                    // --- stools, a spill kit and cable trunking under the long bench ----------------
+                    for (const [x, z] of [[-0.9, 2.6], [1.4, 2.4]]) chair(x, z, Math.PI, M('#4a5a6e'));
+                    bx(0.6, 0.4, 0.44, 2.6, 0.2, 3.1, M('#d4b02a', 0.25), 0.3);              // spill kit
+                    bx(0.62, 0.05, 0.46, 2.6, 0.42, 3.1, M('#e05252', 0.4), 0.3);
+                    bx(4.6, 0.1, 0.14, 0, 0.21, 0.5, M('#2b333d'));                          // trunking under the bench
+                    for (let k = 0; k < 9; k++) bx(0.1, 0.04, 0.2, -2.0 + k * 0.5, 0.27, 0.5, k % 2 ? M('#4a525c') : dark);
                 });
                 // fume hood on a free wall: a cabinet with a glass sash, its light and the duct above it
                 wall([0.45, -0.45, 1.5, -1.5, Math.PI], 1.9, (p, fr) => fix(() => {
@@ -2709,6 +2797,73 @@ export class Scene3D {
                         cy(0.22, 0.22, 1.1, ex - Math.sin(elbow) * 0.55, 0.42, ez - Math.cos(elbow) * 0.55, metal, 8, Math.PI / 2);
                         cy(0.3, 0.3, 0.12, ex - Math.sin(elbow) * 1.05, 0.42, ez - Math.cos(elbow) * 1.05, dark, 8, Math.PI / 2);
                     }
+                    // --- the middle of the hall: the reduction gear that all the sets drive ---------
+                    bx(3.4, 0.1, 3.4, 0, 0.06, 0, M('#2f373f'));                        // bed plate
+                    // the bed is edged with hazard stripes, not painted solid: a yellow plate under the
+                    // gear reads as a hole in the deck
+                    for (const sd of [-1, 1]) {
+                        bx(3.5, 0.03, 0.2, 0, 0.12, sd * 1.65, hazard);
+                        bx(0.2, 0.03, 3.5, sd * 1.65, 0.12, 0, hazard);
+                    }
+                    for (let k = 0; k < 8; k++) bx(0.3, 0.02, 0.16, -1.35 + k * 0.38, 0.13, 1.65, k % 2 ? M('#1a1a1a') : hazard);
+                    for (let k = 0; k < 8; k++) bx(0.16, 0.02, 0.3, 1.65, 0.13, -1.35 + k * 0.38, k % 2 ? M('#1a1a1a') : hazard);
+                    bx(1.9, 1.0, 1.3, 0, 0.62, 0, M('#39424e'));                        // gear case
+                    bx(2.0, 0.1, 1.4, 0, 1.17, 0, metal);                               // its lid
+                    for (let k = 0; k < 5; k++) bx(0.1, 0.5, 1.32, -0.8 + k * 0.4, 0.62, 0, metal);   // ribbed sides
+                    cy(0.5, 0.5, 0.2, 0, 1.27, 0, metal, 10);                           // inspection cover
+                    for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; cy(0.07, 0.07, 0.08, Math.cos(a) * 0.2, 1.32, Math.sin(a) * 0.2, dark, 6); }
+                    // the shaft out to the sets, on two bearing pedestals with a flywheel between them
+                    cy(0.26, 0.26, 5.2, 0, 0.62, 0, metal, 8, Math.PI / 2);
+                    for (const sd of [-1, 1]) {
+                        bx(0.5, 0.42, 0.5, sd * 1.6, 0.33, 0, dark);                    // pedestal
+                        cy(0.44, 0.44, 0.24, sd * 1.6, 0.62, 0, M('#59697b'), 10, Math.PI / 2);   // bearing cap
+                        discZ(1.05, 0.16, sd * 2.35, 0.62, 0, metal, Math.PI / 2, 14);  // flywheel
+                        for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; bx(0.1, 0.14, 0.9, sd * 2.35, 0.62 + Math.sin(a) * 0.4, Math.cos(a) * 0.4, dark, sd * 0.2, a * 0.2); }
+                        cy(0.34, 0.34, 0.1, sd * 2.9, 0.62, 0, M('#8c96a0'), 8, Math.PI / 2);    // coupling to the set
+                    }
+                    // --- coolant manifold ring round the gear, hung off four posts ---------------
+                    const MR = 2.55;
+                    for (let k = 0; k < 12; k++) {
+                        const a = (k + 0.5) / 12 * Math.PI * 2, CH2 = 2 * MR * Math.sin(Math.PI / 12) + 0.04;
+                        bx(CH2, 0.16, 0.16, Math.sin(a) * MR, 0.46, Math.cos(a) * MR, M('#4aa3df', 0.35), a);
+                    }
+                    for (let k = 0; k < 4; k++) {
+                        const a = k / 4 * Math.PI * 2 + Math.PI / 4;
+                        cy(0.1, 0.1, 0.42, Math.sin(a) * MR, 0.25, Math.cos(a) * MR, metal, 6);
+                        cy(0.12, 0.12, 0.3, Math.sin(a) * MR, 0.6, Math.cos(a) * MR, dark, 6);
+                    }
+                    for (const a of [0.5, 2.6, 4.4]) {                                  // valve wheels on the ring
+                        cy(0.12, 0.12, 0.34, Math.sin(a) * MR, 0.68, Math.cos(a) * MR, metal, 6);
+                        cy(0.4, 0.4, 0.06, Math.sin(a) * MR, 0.88, Math.cos(a) * MR, hazard, 10);
+                    }
+                    // --- the gantry over the middle: two rails, a cross beam, a hoist on its chain --
+                    for (const sd of [-1, 1]) {
+                        bx(0.14, 0.14, 6.6, sd * 2.6, 3.3, 0, metal);
+                        cy(0.14, 0.14, 3.2, sd * 2.6, 1.75, 2.5, metal, 6);            // posts
+                        cy(0.14, 0.14, 3.2, sd * 2.6, 1.75, -2.5, metal, 6);
+                        cy(0.4, 0.4, 0.1, sd * 2.6, 0.2, 2.5, dark, 8);
+                        cy(0.4, 0.4, 0.1, sd * 2.6, 0.2, -2.5, dark, 8);
+                    }
+                    bx(5.3, 0.16, 0.2, 0, 3.24, 0.6, M('#59697b'));                    // cross beam
+                    bx(0.5, 0.3, 0.4, 0.6, 3.05, 0.6, dark);                           // hoist trolley
+                    cy(0.5, 0.5, 0.36, 0.6, 3.0, 0.6, M('#39424e'), 10);               // drum
+                    bx(0.05, 1.2, 0.05, 0.6, 2.3, 0.6, metal);                         // chain
+                    cy(0.26, 0.2, 0.3, 0.6, 1.62, 0.6, metal, 6);                      // hook block
+                    bx(0.14, 0.22, 0.05, 0.6, 1.42, 0.6, metal);
+                    for (let k = 0; k < 3; k++) bx(0.4, 0.05, 0.05, 0.6, 1.72 - k * 0.14, 0.6, k % 2 ? hazard : dark);
+                    // --- the working corner: parts bench, tool chest, a spare rotor on its stand ---
+                    bx(1.7, 0.1, 0.7, -3.1, 0.82, 1.0, metal, 0.9);
+                    bx(1.76, 0.06, 0.76, -3.1, 0.88, 1.0, M('#59697b'), 0.9);
+                    for (const u of [-0.7, 0.7]) for (const v of [-0.26, 0.26])
+                        bx(0.08, 0.8, 0.08, LX(-3.1, 1.0, 0.9, u, v), 0.4, LZ(-3.1, 1.0, 0.9, u, v), metal);
+                    for (let k = 0; k < 4; k++) bx(0.16, 0.1, 0.4, LX(-3.1, 1.0, 0.9, -0.5 + k * 0.34, 0), 0.92, LZ(-3.1, 1.0, 0.9, -0.5 + k * 0.34, 0), k % 2 ? metal : dark, 0.9);   // tools laid out
+                    bx(0.9, 0.62, 0.5, -2.6, 0.31, -1.9, M('#c0392b', 0.2), 0.6);      // tool chest
+                    for (let k = 0; k < 3; k++) bx(0.94, 0.05, 0.54, -2.6, 0.16 + k * 0.2, -1.9, metal, 0.6);
+                    bx(0.5, 0.06, 0.06, LX(-2.6, -1.9, 0.6, 0, 0.28), 0.42, LZ(-2.6, -1.9, 0.6, 0, 0.28), dark, 0.6);
+                    bx(0.9, 0.12, 0.9, 2.9, 0.06, 1.9, dark);                          // rotor stand
+                    for (const u of [-0.3, 0.3]) bx(0.1, 0.5, 0.1, 2.9 + u, 0.3, 1.9, metal);
+                    discZ(1.1, 0.5, 2.9, 0.72, 1.9, M('#59697b'), 0.4, 14);            // spare rotor
+                    cy(0.2, 0.2, 0.6, 2.9, 0.72, 1.9, metal, 8, Math.PI / 2);
                     // clutter: drums and a crate between the sets, left to the spread to keep clear
                     barrel(3.4, 2.6, hazard); crateLid(3.0, 3.3, 0.85, 0.25, crateMat2);
                 });
@@ -2851,6 +3006,38 @@ export class Scene3D {
                     bx(0.5, 0.34, 0.03, LX(1.9, -2.4, 0.2, 0, -0.06), 1.06, LZ(1.9, -2.4, 0.2, 0, -0.06), M('#4aa3df', 0.7), 0.2, -0.1);
                     coil(2.6, -1.6, 0.62, M('#20262c'));
                     bx(0.1, 0.1, 1.3, 1.6, 0.15, -1.35, M('#20262c'), 0.4);               // lead across the deck
+                    // --- the second row of short racks, facing the first across a service aisle ------
+                    for (let i = 0; i < 3; i++) {
+                        const x = -2.0 + i * 1.5, z = 2.55;
+                        bx(0.7, 1.7, 1.1, x, 0.91, z, dark);
+                        bx(0.74, 0.07, 1.14, x, 1.8, z, metal);
+                        bx(0.03, 1.45, 0.9, x - 0.36, 0.95, z, M('#333d48'));
+                        for (let k = 0; k < 5; k++) bx(0.05, 0.1, 0.8, x - 0.38, 0.5 + k * 0.28, z, k % 2 ? M('#4fcf7a', 0.8) : M('#4aa3df', 0.8));
+                        bx(0.4, 0.22, 0.03, x + 0.36, 1.6, z, M('#9fd7ff', 0.4));
+                        // the back of the rack, because the aisle is what you see from the door
+                        bx(0.6, 1.4, 0.03, x, 0.95, z + 0.57, M('#333d48'));
+                        for (let k = 0; k < 7; k++) bx(0.56, 0.05, 0.04, x, 0.45 + k * 0.17, z + 0.59, M('#20262c'));
+                        for (let k = 0; k < 3; k++) cy(0.1, 0.1, 0.24, x - 0.2 + k * 0.2, 1.55, z + 0.6, M('#20262c'), 6, Math.PI / 2);
+                        bx(0.1, 0.5, 0.08, x + 0.26, 0.4, z + 0.6, M('#20262c'));            // power lead to the deck
+                    }
+                    // --- the power wall: two UPS banks and a breaker panel on the floor -----------------
+                    for (const [x, z, ry] of [[2.9, 2.3, -0.5], [2.9, 1.3, -0.5]]) {
+                        bx(1.0, 1.5, 0.6, x, 0.8, z, M('#4a5a6e'), ry);
+                        bx(0.84, 0.6, 0.04, LX(x, z, ry, 0, 0.32), 1.0, LZ(x, z, ry, 0, 0.32), M('#1e252c'), ry);
+                        for (let k = 0; k < 4; k++) bx(0.12, 0.08, 0.03, LX(x, z, ry, -0.3 + k * 0.2, 0.34), 1.22, LZ(x, z, ry, -0.3 + k * 0.2, 0.34), k ? M('#4fcf7a', 0.8) : M('#e05252', 0.8), ry);
+                        bx(1.06, 0.08, 0.66, x, 1.56, z, metal, ry);
+                    }
+                    bx(0.7, 1.1, 0.24, -3.5, 0.66, 1.4, M('#39424e'), 0.9);                 // breaker panel
+                    for (let k = 0; k < 6; k++) bx(0.5, 0.08, 0.06, LX(-3.5, 1.4, 0.9, 0, 0.14), 1.05 - k * 0.14, LZ(-3.5, 1.4, 0.9, 0, 0.14), k === 2 ? M('#e05252', 0.7) : M('#8c96a0'), 0.9);
+                    // --- the aisle: a spool of patch cable, a drive caddy and a step ladder ------------
+                    cy(0.9, 0.9, 0.2, 0.9, 0.2, -1.2, M('#8c96a0'), 12);
+                    cy(0.5, 0.5, 0.28, 0.9, 0.24, -1.2, M('#20262c'), 10);
+                    for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; bx(0.06, 0.24, 0.5, 0.9 + Math.cos(a) * 0.42, 0.24, -1.2 + Math.sin(a) * 0.42, M('#20262c'), a); }
+                    bx(0.6, 0.5, 0.4, -1.5, 0.25, -1.4, M('#4a5a6e'), 0.3);                 // drive caddy
+                    for (let k = 0; k < 4; k++) bx(0.5, 0.06, 0.06, LX(-1.5, -1.4, 0.3, 0, 0.12), 0.4 - k * 0.08, LZ(-1.5, -1.4, 0.3, 0, 0.12), k % 2 ? M('#4fcf7a', 0.7) : M('#8c96a0'), 0.3);
+                    bx(0.1, 0.1, 0.1, -1.5, 0.55, -1.4, M('#c9a227', 0.5), 0.3);
+                    for (const sd of [-1, 1]) bx(0.05, 1.9, 0.05, 3.6, 0.95, -1.4 + sd * 0.2, M('#8c96a0'), 0.1);
+                    for (let k = 0; k < 5; k++) bx(0.06, 0.05, 0.44, 3.6, 0.3 + k * 0.38, -1.4, metal, 0.1);   // step ladder
                 });
                 // cooling unit on the clear wall, with its vents, coil and drip tray
                 wall([-1.0, -0.6, 3.1, 2.7, Math.PI], 2.0, (p, fr) => fix(() => {
