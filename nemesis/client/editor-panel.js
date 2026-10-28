@@ -113,7 +113,16 @@ const NemesisPanel = {
             this.scene.camera.alpha = -Math.PI / 2;
             this.scene.camera.beta = 0.85;
             this.scene.setActive(true);
-            this.setupGizmo();
+            // The board is the point; the gizmo is a convenience. If Babylon's gizmo API differs,
+            // the parts are still selected, painted, hidden and deleted from the pane, and the
+            // numbers move them — so a failure here must not dispose the scene.
+            try {
+                this.setupGizmo();
+            } catch (e) {
+                this.gizmo = null;
+                console.warn('Nemesis: the gizmo is not available, the pane still edits parts', e);
+                this.say(I18N.t('nem.noGizmo'), true);
+            }
             this.resize();
             this.fitAll();
             return true;
@@ -125,30 +134,33 @@ const NemesisPanel = {
         }
     },
 
-    /** The gizmo of the Objects tab, on the board's scene: drag to move / rotate / scale a part. */
+    /** The gizmo of the Objects tab, on the board's scene: drag to move / rotate / scale a part.
+     *  Everything here is looked up through `gm.gizmos`: Babylon 9's GizmoManager has no
+     *  `positionGizmo` of its own, and one wrong property used to take the whole board down with it
+     *  (the caller keeps the scene alive now, but the guards are still worth having). */
     setupGizmo() {
         const B = window.BABYLON;
-        const gm = new B.GizmoManager(this.scene.scene);
+        if (!B || !B.GizmoManager) { this.gizmo = null; return; }
+        // the second argument is the thickness: the ship is ~100 units across, a default gizmo is
+        // a hair at that distance (the gizmo keeps its own screen size, thickness is what helps)
+        const gm = new B.GizmoManager(this.scene.scene, 1.6);
         gm.usePointerToAttachGizmos = false;
         gm.positionGizmoEnabled = true; gm.rotationGizmoEnabled = true; gm.scaleGizmoEnabled = true;
-        this.gizmo = gm;
-        for (const g of [gm.gizmos.positionGizmo, gm.gizmos.rotationGizmo, gm.gizmos.scaleGizmo]) {
+        const gz = gm.gizmos || {};
+        for (const [name, g] of [['position', gz.positionGizmo], ['rotation', gz.rotationGizmo], ['scale', gz.scaleGizmo]]) {
             if (!g) continue;
-            g.updateGizmoRotationToMatchAttachedMesh = false;
-            // the ship is ~100 units across: at that distance a default gizmo is a speck
-            g.scaleRatio = 2.5;
+            // Babylon logs a warning of its own for the scaling gizmo: it does not support this flag
+            if (name !== 'scale') g.updateGizmoRotationToMatchAttachedMesh = false;
+            // the board is flat: no plane handles, they only steal clicks from the part itself
+            if (typeof g.planarGizmoEnabled === 'boolean') g.planarGizmoEnabled = false;
+            // After a drag the part's own numbers are the truth: write them into the edit right away.
+            for (const axis of [g.xGizmo, g.yGizmo, g.zGizmo, g.uniformScaleGizmo]) {
+                const ob = axis && axis.dragBehavior && axis.dragBehavior.onDragEndObservable;
+                if (ob && ob.add) ob.add(() => this.writeFromMesh());
+            }
         }
-        gm.positionGizmo.planarGizmoEnabled = false;
-        gm.onAttachedToMeshObservable.add(() => { });
-        // After a drag the part's own numbers are the truth: write them into the edit right away.
-        const track = (g) => {
-            if (!g || !g.dragBehavior) return;
-            g.dragBehavior.onDragEndObservable.add(() => this.writeFromMesh());
-        };
-        const pg = gm.gizmos.positionGizmo, rg = gm.gizmos.rotationGizmo, sg = gm.gizmos.scaleGizmo;
-        for (const g of [pg.xGizmo, pg.yGizmo, pg.zGizmo]) track(g);
-        for (const g of [rg.xGizmo, rg.yGizmo, rg.zGizmo]) track(g);
-        for (const g of [sg.xGizmo, sg.yGizmo, sg.zGizmo, sg.uniformScaleGizmo]) track(g);
+        if (gm.onAttachedToMeshObservable && gm.onAttachedToMeshObservable.add) gm.onAttachedToMeshObservable.add(() => { });
+        this.gizmo = gm;
         this.setMode(this.mode, true);
     },
 

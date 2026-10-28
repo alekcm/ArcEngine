@@ -78,6 +78,11 @@ when the owner scope is gone (BD-10 in `nemesis/tools/board.test.mjs` guards thi
   thinner than a pixel, the selected part gets `renderOutline`, and the status line always says what
   happened. "Find a part" lists every part by owner (`room:013`, `cor:001-002`, `hull`) and name, so
   anything is reachable without aiming.
+- The gizmo lives in `gm.gizmos.positionGizmo` / `.rotationGizmo` / `.scaleGizmo`: **`GizmoManager`
+  has no `positionGizmo` of its own in Babylon 9.26** (asking for it throws, and a throw inside
+  `ensureScene` used to dispose the whole board). `setupGizmo()` runs in its own try/catch — a broken
+  gizmo leaves the board and the numeric fields working. Do not set
+  `updateGizmoRotationToMatchAttachedMesh` on the scaling gizmo: Babylon logs that it is unsupported.
 - Keys: click — select, `1/2/3` — move/rotate/scale gizmo, `Del` — delete/restore the selected part,
   `Esc` — deselect, `F` — whole ship, `D` — a door, `Alt` — neon numbers.
 
