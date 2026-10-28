@@ -7,7 +7,7 @@ import { DEFAULTS } from './characters.js';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
-import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, eventArt, attackArt, queenArt, itemArt } from './cards.js';
+import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, FEATS, objectiveTextOf,
     EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
@@ -367,7 +367,10 @@ function renderGame() {
             const pr = app.view.prompt;
             // The noise die said "something is there": read the result first, then one soft yellow glow
             // around the screen, and only after that the token window — centred where the die was.
-            if (pr && pr.kind === 'bag' && pr.player === app.me) {
+            // The prompt must be a bag this very roll opened: a bag left over from an earlier action
+            // (or a stale view) used to light the screen up after a roll that found nothing.
+            const fromThisRoll = pr && pr.kind === 'bag' && (pr.id || 0) > (app.diceId || 0);
+            if (fromThisRoll && pr.player === app.me) {
                 flashEdges();
                 // the die has been read: clear the middle of the table for the token window
                 setTimeout(() => { dice.clearHide(); dice.hide(); if (app.view) renderGame(); }, 560);
@@ -379,6 +382,9 @@ function renderGame() {
     // the player sees the result first, only then the figure runs and the room token flips.
     const pr = v.prompt;
     const dicePrompt = pr && pr.kind === 'dice';
+    // Remember which prompt the die belongs to: a bag prompt with a higher id can only have been
+    // opened by this roll (ids grow with every question the engine asks).
+    if (dicePrompt) app.diceId = pr.id || 0;
     const freshRoll = v.lastRoll && dice.lastSeen !== null && v.lastRoll.n !== dice.lastSeen;
     if (dicePrompt || freshRoll) {
         app.rollHold = true;
@@ -411,7 +417,13 @@ function renderGame() {
     const meNow2 = v.players.find(x => x.id === app.me);
     $('sheetBtn').classList.toggle('attention', !!(meNow2 && itemPickMap(v.prompt, meNow2).size));
     dice.update(v, app.me, playerName, diceTitleMask(pr));
-    if (!tableFx) { tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES); tableFx.onShake = k => scene && scene.shake(k); }
+    if (!tableFx) {
+        tableFx = new TableFX($('table'), $('fxLayer'), pid => document.querySelector('.pcard[data-pid="' + pid + '"]'), INTRUDER_NAMES);
+        tableFx.onShake = k => scene && scene.shake(k);
+        // a question that was held back while a token/attack card played is asked as soon as the
+        // table is quiet again
+        tableFx.onIdle = () => { if (app.promptDeferred) { app.promptDeferred = false; renderPrompt(); } };
+    }
     tableFx.update(v, app.me);
     renderPilePopups(v); syncPanes();
     if (v.result) renderEnd();
@@ -456,39 +468,50 @@ function renderTopbar() {
     renderSelfHud();
 }
 
+// The printed Dashboard: 10 cells in three sections — green 10-8, orange 7-5, red 4-1 — and the skull
+// right after the last one. A Heavy Wound covers a whole section, so there are only three of them:
+// three sections, three wound slots, and no fourth box in the corner card.
+const HP_SECTIONS = [[10, 9, 8], [7, 6, 5], [4, 3, 2, 1]];
+/** One cell of the track: `on` = that much health is still mine, `here` = the marker stands on it. */
+function hpCell(p, si, n) {
+    return '<i class="' + (si === 1 ? 'mid ' : si === 2 ? 'heavy ' : '') + (n === 1 ? 'last ' : '') +
+        (p.health >= n ? 'on ' : '') + (p.health === n ? 'here' : '') + '" title="' + n + '"></i>';
+}
+/** The skull closes the track at the right, exactly as on the board: 10 on the left, death on the right. */
+function hpSkull(p) { return '<span class="hp-skull' + (p.health <= 1 ? ' near' : '') + '">☠</span>'; }
 function hpBar(p) {
-    const sections = [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]];
-    let s = '';
-    sections.forEach((sec, si) => { for (const n of sec) s += '<i class="' + (si === 1 ? 'mid' : si === 2 ? 'heavy' : si === 3 ? 'last' : '') + (p.health >= n ? ' on' : '') + '" title="' + n + '"></i>'; if (si < 3) s += '<i style="width:3px;background:none"></i>'; });
-    return '<div class="hp" title="Здоровье: ' + p.health + ' / 10' + (p.health === 0 ? ' — при смерти' : '') + '">' + s + '</div>';
+    const groups = HP_SECTIONS.map((sec, si) => '<span class="hp-sec">' + sec.map(n => hpCell(p, si, n)).join('') + '</span>').join('');
+    return '<div class="hp" title="Здоровье: ' + p.health + ' / 10' + (p.health === 0 ? ' — при смерти' : '') + '">' +
+        groups + hpSkull(p) + '</div>';
 }
 
-/** My own health, always in the lower-LEFT corner. The bar keeps the four printed levels apart so a
- *  name fits under each of them: the first wound sits under the green three squares, the second under
- *  the orange ones, the third under the red ones, and the suit under the last square. Only names live
- *  here — the rules text and the art are a card that appears on hover, like any other card in the
- *  game. An empty level keeps a grey placeholder, so the row reads "nothing here yet" without words. */
+/** My own health, always in the lower-LEFT corner, drawn like the printed Dashboard: three sections
+ *  left to right (10 down to 1), the skull after the last cell, and one narrow slot under each section
+ *  for its Heavy Wound. A wound caps Health at 7 / 4 / 1, so the first slot sits under the green
+ *  section, the second under the orange one and the third under the red one — three slots, because a
+ *  fourth wound kills. The suit is not a wound, so it takes its own line instead of a fourth box.
+ *  Only names live here — the rules text and the art are a card that appears on hover. An empty slot
+ *  keeps a grey placeholder, so the row reads "nothing here yet" without words. */
 function renderSelfHud() {
     const v = app.view, el = $('selfHud');
     const me = v && v.players.find(p => p.id === app.me);
     if (!me || !me.charId || me.status === 'dead' || me.status === 'escaped') { el.classList.add('hidden'); hideHudPop(); return; }
     el.classList.remove('hidden');
     const st = me.health >= 8 ? 'здоров' : me.health >= 5 ? 'ранен' : 'тяжело ранен';
-    const levels = [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]];
     const wounds = me.wounds || [];
-    const cells = (sec, i) => sec.map(n => '<i class="' + (i === 1 ? 'mid' : i === 2 ? 'heavy' : i === 3 ? 'last' : '') + (me.health >= n ? ' on' : '') + '"></i>').join('');
-    let bar = '';
-    levels.forEach((sec, i) => {
-        const w = i < 3 ? wounds[i] : null;
-        let slot;
-        if (w) slot = '<div class="sh-slot wound" data-wound="' + esc(w) + '">' + esc(woundName(w)) + '</div>';
-        else if (i === 3 && me.armor) slot = '<div class="sh-slot armor" data-armor="1">' + esc(itemLabel(me.armor)) + '</div>';
-        else slot = '<div class="sh-slot empty"></div>';
-        bar += '<div class="sh-lvl">' + '<div class="sh-cells">' + cells(sec, i) + '</div>' + slot + '</div>';
-    });
+    const bar = HP_SECTIONS.map((sec, i) => {
+        const w = wounds[i];
+        const slot = w
+            ? '<div class="sh-slot wound" data-wound="' + esc(w) + '">' + esc(woundShort(w)) + '</div>'
+            : '<div class="sh-slot empty"></div>';
+        return '<div class="sh-lvl"><div class="sh-cells">' + sec.map(n => hpCell(me, i, n)).join('') + '</div>' + slot + '</div>';
+    }).join('');
+    const armor = me.armor
+        ? '<div class="sh-armor" data-armor="1">🛡 ' + esc(itemLabel(me.armor)) + '</div>'
+        : '';
     el.classList.toggle('dead', me.health <= 1);
     el.innerHTML = '<div class="sh-head"><b>' + esc(me.charName || me.name) + '</b><small>' + esc(st) + ' · ' + me.health + ' / 10</small></div>' +
-        '<div class="sh-hp">' + bar + '</div>';
+        '<div class="sh-hp">' + bar + hpSkull(me) + '</div>' + armor;
     el.title = 'Здоровье и травмы — нажмите, чтобы открыть планшет (C)';
 }
 
@@ -582,6 +605,12 @@ function diceTitleMask(pr) {
 function renderPrompt() {
     const v = app.view; const pr = v.prompt; const el = $('prompt'); const tg = $('menuToggle');
     app.selectedCards.clear();
+    // The token pull and the attack card own the middle of the table while they play: a question that
+    // arrives during them (the attack window, the next choice) waits, otherwise it covered the token
+    // and the table never saw who came out of the bag.
+    if (pr && pr.kind !== 'dice' && tableFx && tableFx.holding) {
+        el.classList.add('hidden'); tg.classList.add('hidden'); app.promptDeferred = true; return;
+    }
     if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); el.classList.remove('bagmode', 'eventmode'); closeItemPicker(); return; }   // dice prompts are shown by DiceUI
     const who = pr.kind === 'ack' ? 'Вся команда' : pr.player === 'host' ? 'Ведущий' : (v.players[pr.player] || {}).name || '';
     // The action list opens only when the player asks for it: every turn starts folded, then keeps the
@@ -677,15 +706,23 @@ function renderPrompt() {
             const ev = pr.event ? EVENT_BY_ID[pr.event] : null;
             const art = ev ? eventArt(ev.id) : null;
             const flipped = !ev || !!pr.flipped;
-            if (ev && !flipped) {
-                html = '<h4>📜 Карта события</h4>' +
-                    '<div class="ack-card facedown" id="ackFlip" title="Перевернуть карту события">' +
-                    '<div class="aback">?</div>' +
-                    '<div class="atext dim">Карта лежит лицом вниз. Нажмите на неё, чтобы перевернуть — её увидят все игроки.</div></div>';
-            } else if (ev) {
-                html = '<h4>📜 ' + esc(ev.name) + '</h4>' +
-                    '<div class="ack-card">' + (art ? '<div class="aart" style="background-image:url(' + art + ')"></div>' : '') +
-                    '<div class="atext">' + esc(pr.text || ev.text) + '</div></div>';
+            if (ev) {
+                // The card is a card: both faces sit in the markup and the wrapper is turned over in
+                // 3D. The published table flip (prompt.flipped) plays the turn once; any later render
+                // — a seat changing, the ready list filling up — shows it already face up.
+                if (app.ackId !== pr.id) { app.ackId = pr.id; app.ackTurned = false; }
+                const turn = flipped && !app.ackTurned;
+                if (flipped) app.ackTurned = true;
+                html = '<h4>' + (flipped ? '📜 ' + esc(ev.name) : '📜 Карта события') + '</h4>' +
+                    '<div class="ack-card ' + (flipped ? 'up' : 'down') + '" id="ackFlip"' +
+                    (flipped ? '' : ' title="Перевернуть карту события"') + '>' +
+                    '<div class="ack3d' + (flipped && !turn ? ' flipped' : '') + '" id="ack3d">' +
+                    '<div class="ack-face aback">?</div>' +
+                    '<div class="ack-face afront"' + (art ? ' style="background-image:url(' + art + ')"' : '') + '></div>' +
+                    '</div>' +
+                    '<div class="atext' + (flipped ? '' : ' dim') + '">' + (flipped ? esc(pr.text || ev.text)
+                        : 'Карта лежит лицом вниз. Нажмите на неё, чтобы перевернуть — её увидят все игроки.') + '</div></div>';
+                if (turn) setTimeout(() => { const el = $('ack3d'); if (el) el.classList.add('flipped'); }, 40);
             }
             html += '<div class="ack-ready">' + (pr.players || []).map(id => {
                 const p = v.players[id] || {}; const done = (pr.acked || []).includes(id);
@@ -722,8 +759,17 @@ function renderPrompt() {
     for (const b of el.querySelectorAll('[data-opt]')) b.onclick = () => act(b.dataset.opt);
     if ($('pickInv')) $('pickInv').onclick = () => openSheet();
     for (const b of el.querySelectorAll('[data-room]')) b.onclick = () => act(b.dataset.room);
-    // The face-down event card: any seat can turn it over for the whole table.
-    if ($('ackFlip')) $('ackFlip').onclick = () => net.send({ t: 'flip' });
+    // The face-down event card: any seat can turn it over for the whole table. The turn is played
+    // here at once, so the click answers under the finger; the server keeps the table in sync.
+    if ($('ackFlip')) $('ackFlip').onclick = () => {
+        const c = $('ackFlip');
+        if (c && c.classList.contains('down')) {
+            c.classList.remove('down'); c.classList.add('up');
+            app.ackTurned = true;                       // the state that follows shows the card already turned
+            const el = $('ack3d'); if (el) el.classList.add('flipped');
+        }
+        net.send({ t: 'flip' });
+    };
     const ok = $('cardsOk'); if (ok) ok.onclick = () => act([...app.selectedCards]);
 }
 
@@ -903,12 +949,14 @@ function onRoomClick(id) {
     const me = myChar();
     const menu = turnMenuPrompt();
     if (!menu || !me || id === me.room) { scene.focusRoom(id); return; }
-    const exit = (v.ship.rooms[me.room].exits || []).find(e => e.to === id && v.ship.corridors[e.corridor].door !== 'closed');
+    // A closed door does not make a neighbour unreachable: it opens on the way through (the same
+    // rule the action list follows), so the click must offer the move exactly like the list does.
+    const exit = (v.ship.rooms[me.room].exits || []).find(e => e.to === id);
     if (!exit) { scene.focusRoom(id); return; }   // not a neighbour: just look at it
     const mv = menuActionOf(menu, 'move'), cw = menuActionOf(menu, 'careful');
     openWorldPop('Идём в ' + roomLabel(id), 'Выберите, как идти', [
         { label: 'Идти', sub: mv ? (mv.cost ? mv.cost + ' карт(ы) · шум по броску' : '') : '', disabled: !mv || !mv.enabled, reason: mv && mv.reason, do: () => act({ action: 'move', dest: id }) },
-        { label: 'Красться (осторожно)', sub: cw ? (cw.cost ? cw.cost + ' карт(ы) · выбрать коридор без шума' : '') : '', disabled: !cw || !cw.enabled, reason: cw && cw.reason, do: () => act({ action: 'careful', dest: id }) },
+        { label: 'Красться (осторожно)', sub: cw ? (cw.cost ? cw.cost + ' карт(ы) · выбрать коридор' : '') : '', disabled: !cw || !cw.enabled, reason: cw && cw.reason, do: () => act({ action: 'careful', dest: id }) },
     ], scene.screenOf('room', id));
 }
 
@@ -1148,7 +1196,7 @@ $('table').addEventListener('click', e => {
 $('selfHud').onclick = () => openSheet();
 // Hovering a name in the health HUD opens its card (wound text / suit art); leaving the HUD drops it.
 $('selfHud').addEventListener('pointerover', e => {
-    const slot = e.target && e.target.closest ? e.target.closest('.sh-slot') : null;
+    const slot = e.target && e.target.closest ? e.target.closest('.sh-slot, .sh-armor') : null;
     if (slot && !slot.classList.contains('empty')) showHudPop(slot); else hideHudPop();
 });
 $('selfHud').addEventListener('pointerleave', hideHudPop);
@@ -1184,12 +1232,8 @@ $('topbar').addEventListener('scroll', hideTbPop, { passive: true });
 // Character sheet (my backpack, weapons, quest item, wounds, suit, objectives, cards)
 // ---------------------------------------------------------------------------------------------
 function healthCells(p) {
-    const sections = [[10, 9, 8], [7, 6, 5], [4, 3, 2], [1]];
-    let out = '';
-    sections.forEach((sec, si) => {
-        for (const n of sec) out += '<i class="' + (si === 1 ? 'mid' : si === 2 ? 'heavy' : si === 3 ? 'last' : '') + (p.health >= n ? ' on' : '') + '" title="' + n + '"></i>';
-    });
-    return '<div class="sheet-hp">' + out + '</div>';
+    const groups = HP_SECTIONS.map((sec, si) => '<span class="hp-sec">' + sec.map(n => hpCell(p, si, n)).join('') + '</span>').join('');
+    return '<div class="sheet-hp">' + groups + hpSkull(p) + '</div>';
 }
 // ---------------------------------------------------------------------------------------------
 // Answering an item prompt straight from the inventory

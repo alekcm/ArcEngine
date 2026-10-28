@@ -96,7 +96,7 @@ class HeadlessTexture {
 }
 Object.defineProperty(B, 'DynamicTexture', { value: HeadlessTexture, configurable: true, writable: true });
 
-const { Scene3D } = await import('../client/scene3d.js');
+const { Scene3D, FLOOR_Y } = await import('../client/scene3d.js');
 const { createGame } = await import('../shared/engine/setup.mjs');
 const { viewFor } = await import('../shared/view.mjs');
 const { ROOM_TILES } = await import('../shared/ship.mjs');
@@ -223,10 +223,51 @@ test('SCN-04: figures and objects stand on the floor plates, not inside them', (
     const egg = scene.dynamic.find(m => m.name === 'obj_egg');
     assert.ok(egg, 'the object node is there');
     assert.equal(egg.parent, node.root, 'the object belongs to the room');
-    assert.ok(Math.abs(egg.position.y - 0.10) < 1e-6, 'the object stands on the plates (y = ' + egg.position.y + ')');
+    assert.ok(Math.abs(egg.position.y - FLOOR_Y) < 1e-6, 'the object stands on the floor finish (y = ' + egg.position.y + ')');
     // the egg itself sits on top of its own node
     const sphere = egg.getChildMeshes()[0];
     assert.ok(sphere.position.y > 0.3, 'the egg is above the deck inside the node');
+});
+
+test('SCN-12: the floor finish is what everything stands on — the shell, the furniture and the hatch', () => {
+    const node = scene.roomNodes['011'];
+    assert.ok(node.shell && node.shell.root, 'the room is explored and has a shell');
+    const shellY = node.shell.root.position.y;
+    assert.ok(Math.abs(shellY - FLOOR_Y) < 1e-6, 'the walls and furniture stand on the finish (y = ' + shellY + ')');
+    // the finish itself belongs to the room base and tops out at the walking surface; only the paint
+    // (the red cross, the hazard outlines) lies on top of it
+    const finish = node.root.getChildMeshes().filter(m => !m.parent || m.parent === node.root);
+    const tops = finish.map(m => m.getBoundingInfo().boundingBox.maximumWorld.y).filter(y => y > 0.05 && y < 0.35);
+    assert.ok(tops.length > 0, 'the finish is built into the room base');
+    assert.ok(Math.max(...tops) <= FLOOR_Y + 0.03, 'the finish tops out on the walking surface (' + Math.max(...tops).toFixed(3) + ')');
+    assert.ok(Math.max(...tops) >= FLOOR_Y - 0.01, 'and really reaches it (' + Math.max(...tops).toFixed(3) + ')');
+    // the tech hatch is lifted so its runner is level with the room floor
+    const techNode = Object.values(scene.roomNodes).find(n => n.techLeds.length);
+    assert.ok(techNode, 'the ship has a technical corridor entrance');
+    assert.ok(techNode.techLeds.length >= 10, 'hatch: light rails, floor runner and the LED ring (' + techNode.techLeds.length + ')');
+    const ys = techNode.techLeds.map(l => l.getAbsolutePosition().y).sort((a, b) => a - b);
+    assert.ok(ys[0] > FLOOR_Y - 0.06, 'no part of the hatch stays under the floor (lowest y = ' + ys[0].toFixed(3) + ')');
+    assert.ok(Math.abs(ys[0] - (FLOOR_Y - 0.03)) < 0.02, 'the floor runner lies on the floor (y = ' + ys[0].toFixed(3) + ')');
+});
+
+test('SCN-13: every blue part of the tech hatch turns yellow with a noise token', () => {
+    const tech = Object.keys(scene.roomNodes).find(id => scene.roomNodes[id].techLeds.length);
+    assert.ok(tech, 'a room with a technical corridor');
+    scene.update(view, ROOM_TILES, INTRUDER_NAMES, []);
+    const leds = scene.roomNodes[tech].techLeds;
+    assert.ok(leds.length >= 10, 'rails, runner and ring are all LEDs (' + leds.length + ')');
+    const blue = leds[0].material;
+    for (const l of leds) assert.equal(l.material, blue, 'every blue part shares one material');
+    assert.ok(/3fa9ff/i.test(blue.emissiveColor.toHexString()), 'blue without noise (' + blue.emissiveColor.toHexString() + ')');
+    // a noise token in the tech corridor: the same material turns every part yellow at once
+    state.ship.techNoise = true;
+    const v2 = viewFor(state, state.players[0].id);
+    scene.update(v2, ROOM_TILES, INTRUDER_NAMES, []);
+    const yellow = scene.roomNodes[tech].techLeds[0].material;
+    for (const l of scene.roomNodes[tech].techLeds) assert.equal(l.material, yellow, 'and they all turn together');
+    assert.ok(/f1c40f/i.test(yellow.emissiveColor.toHexString()), 'yellow with a noise token (' + yellow.emissiveColor.toHexString() + ')');
+    state.ship.techNoise = false;
+    scene.update(view, ROOM_TILES, INTRUDER_NAMES, []);
 });
 
 test('SCN-05: a human corpse and an intruder carcass are bodies, not slabs', () => {
@@ -249,9 +290,9 @@ test('SCN-06: the figures themselves stand on the plates', () => {
     assert.ok(me, 'a character is on the board');
     const n = scene.chars[me.id];
     assert.ok(n, 'the figure is built');
-    assert.ok(Math.abs(n.target.y - 0.10) < 1e-6, 'the walk target is on the floor (y = ' + n.target.y + ')');
+    assert.ok(Math.abs(n.target.y - FLOOR_Y) < 1e-6, 'the walk target is on the floor (y = ' + n.target.y + ')');
     scene.animate();
-    assert.ok(Math.abs(n.ch.root.position.y - 0.10) < 0.02, 'the figure stands on the floor (y = ' + n.ch.root.position.y.toFixed(3) + ')');
+    assert.ok(Math.abs(n.ch.root.position.y - FLOOR_Y) < 0.02, 'the figure stands on the floor (y = ' + n.ch.root.position.y.toFixed(3) + ')');
 });
 
 test('SCN-07: the fire has no flat glowing disc under it', () => {

@@ -70,7 +70,10 @@ export function buildMenu(state, p) {
     const noCombatOk = !combat || !!containment;
 
     add('move', 'Перемещение', moveCost, true);
-    const carefulDest = state.ship.rooms[p.room].exits.some(e => state.ship.corridors[e.corridor].door !== 'closed' && corridorsOf(state, e.to).some(c => !(c.id === 'tech' ? state.ship.techNoise : state.ship.corridors[c.id].noise)));
+    // The destination needs one corridor without a token — the token has to go somewhere. Which one
+    // of the corridors is picked swings open in noise.place, where a corridor that already carries a
+    // token is a legal choice and means an encounter.
+    const carefulDest = state.ship.rooms[p.room].exits.some(e => corridorsOf(state, e.to).some(c => !(c.id === 'tech' ? state.ship.techNoise : state.ship.corridors[c.id].noise)));
     add('careful', 'Осторожное перемещение', moveCost + 1, noCombatOk && carefulDest, !noCombatOk ? 'Нельзя в бою' : 'Вокруг всех соседних комнат уже шум');
     const weapons = p.items.filter(i => canFire(p, i));
     const sniperHere = weapons.some(i => ITEMS[i.item].weapon.sniper);

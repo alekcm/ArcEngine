@@ -98,3 +98,11 @@ export function itemLabel(inst) {
 }
 export function itemTitle(inst) { const d = ITEMS[inst.item]; return d.text || ''; }
 export function woundName(w) { return WOUNDS[w] ? WOUNDS[w].name : w; }
+// The health band in the corner gives a wound one narrow slot under its section — enough for a short
+// word, not for the printed name ("Кровотечение" would be clipped). The full name and the rules text
+// stay one hover away, and the character sheet still prints them in full.
+const WOUND_SHORT = {
+    arm: 'Рука', leg: 'Нога', hand: 'Кисть', eyes: 'Глаз',
+    knee: 'Колено', body: 'Тело', guts: 'Живот', bleeding: 'Кровь',
+};
+export function woundShort(w) { return WOUND_SHORT[w] || woundName(w); }

@@ -22,7 +22,10 @@ const LIFT_H = 1.1;   // how high a grabbed figure is lifted above the floor  //
 const ZONE_C = { x: 2.1, z: -2.1 }; // standing zone centre (toward the camera)
 const ZONE_R = 2.5;
 const PROP_SPREAD = 1.55;          // props were authored for a ~4-unit room
-const FLOOR_Y = 0.10;              // top of the floor plates: figures and objects stand on it, not on y=0
+// The floor of a room is two layers: the deck plates (top at 0.10) and the tile finish laid over
+// them, whose surface is 0.165. Figures, furniture and the corridor deck all stand on the finish —
+// the plates alone are 6.5 cm lower, which is why everything used to look sunk into the floor.
+export const FLOOR_Y = 0.165;      // the surface a figure stands on (top of the floor finish)
 const KIND_COLORS = { slot1: '#28343f', slot2: '#2c3b36', cockpit: '#2a3a52', hibernatorium: '#3a2f4e', engine: '#4a3222' };
 const TILE_ACCENT = {
     archives: '#4aa3df', comms: '#4aa3df', emergency: '#4fcf7a', evacA: '#e05252', evacB: '#e05252', fireControl: '#f1c40f', generator: '#f1c40f',
@@ -363,7 +366,10 @@ export class Scene3D {
                 d = Math.min(d, zd * 0.8);
                 if (d > best) { best = d; techAngle = a; }
             }
-            const stub = this.buildTechStub(root, techAngle, (r.techNums && r.techNums.length) ? r.techNums : [4]);
+            // The stub is authored for a 0.12 deck: lift it so its runner is level with the room floor.
+            const stubRoot = new (B().TransformNode)('stub_' + r.id, S);
+            stubRoot.parent = root; stubRoot.position.y = FLOOR_Y - 0.12;
+            const stub = this.buildTechStub(stubRoot, techAngle, (r.techNums && r.techNums.length) ? r.techNums : [4]);
             techLeds = stub.leds; techDecal = stub.decal;
         }
         const label = this.makeLabel('lbl_' + r.id, r.id, '', root, 0, 3.2, 0, 3.0);
@@ -387,6 +393,14 @@ export class Scene3D {
         const px = sx * (WALL_R + 0.4), pz = cz * (WALL_R + 0.4);
         const mk = (w, h, d, ox, y, oz, mat) => { const m = B().MeshBuilder.CreateBox('ts', { width: w, height: h, depth: d }, S); m.position.set(px + Math.cos(a) * ox - Math.sin(a) * oz, y, pz - Math.sin(a) * ox - Math.cos(a) * oz); m.rotation.y = a; m.material = mat; statics.push(m); return m; };
         const steel = this.M('#6d7f8f'), dark = this.M('#0b1016'), trim = this.M('#aab6c2');
+        // Everything that glows blue on the hatch is its own mesh and shares the LED material: with a
+        // noise token in the tech corridor the whole entrance turns yellow, not just the ring of lamps.
+        const leds = [];
+        const mkLed = (w, h, d, ox, y, oz) => {
+            const m = B().MeshBuilder.CreateBox('ts', { width: w, height: h, depth: d }, S);
+            m.position.set(px + Math.cos(a) * ox - Math.sin(a) * oz, y, pz - Math.sin(a) * ox - Math.cos(a) * oz);
+            m.rotation.y = a; m.parent = root; m.isPickable = false; leds.push(m); return m;
+        };
         mk(2.4, 0.3, 2.4, 0, -0.1, 0.4, steel);                       // tunnel floor
         mk(2.4, 1.7, 0.3, 0, 0.85, 1.5, steel);                       // back wall of the stub
         for (const s of [-1, 1]) mk(0.3, 1.7, 2.4, s * 1.2, 0.85, 0.4, steel);  // side walls
@@ -394,11 +408,11 @@ export class Scene3D {
         // Roof: the centre stays clear for the stenciled number — the conduits moved to the two
         // edges and the cross-bars to the ends, where they frame the digits instead of running over
         // them. Two thin blue light rails still mark the sides.
-        for (const s of [-1, 1]) mk(0.08, 0.06, 2.0, s * 0.95, 1.9, 0.3, this.M('#2f6fa8', 0.6));
+        for (const s of [-1, 1]) mkLed(0.08, 0.06, 2.0, s * 0.95, 1.9, 0.3);
         for (const ox of [-1.06, 1.06]) { const pipe = B().MeshBuilder.CreateCylinder('tp', { diameter: 0.16, height: 2.0, tessellation: 6 }, S); pipe.position.set(px + Math.cos(a) * ox - Math.sin(a) * 0.3, 1.94, pz - Math.sin(a) * ox - Math.cos(a) * 0.3); pipe.rotation.set(Math.PI / 2, a, 0); pipe.material = this.M('#55636f'); statics.push(pipe); }
         for (const oz of [-0.62, 1.42]) mk(2.3, 0.1, 0.12, 0, 1.94, oz, this.M('#3a4652'));
         mk(1.6, 1.3, 0.2, 0, 0.75, 1.3, dark);                        // dark opening
-        mk(1.5, 0.06, 2.0, 0, 0.09, 0.3, this.M('#2f6fa8', 0.5));      // blue floor runner
+        mkLed(1.5, 0.06, 2.0, 0, 0.09, 0.3);                           // floor runner (blue, yellow on noise)
         for (let i = 0; i < 3; i++) mk(0.1, 0.05, 1.6, -0.6 + i * 0.6, 0.22, 0.5, this.M('#2a3038'));  // grating
         this.mergeStatic(statics, root);
         // The entrance number, painted flat on the roof: plane faces are single-sided, so it has to
@@ -418,7 +432,6 @@ export class Scene3D {
             this.setDecal(decal, nums.join(' / '), false);
         }
         // LED ring around the opening (separate meshes: colour changes with tech noise)
-        const leds = [];
         const ledMat = this.M('#3fa9ff', 1);
         const ring = [[-1.0, 0.3], [-1.0, 0.9], [-1.0, 1.5], [-0.5, 1.9], [0.5, 1.9], [1.0, 1.5], [1.0, 0.9], [1.0, 0.3]];
         for (const [ox, y] of ring) { const m = B().MeshBuilder.CreateBox('led', { width: 0.14, height: 0.14, depth: 0.08 }, S); m.position.set(px + Math.cos(a) * ox + Math.sin(a) * 0.95, y, pz - Math.sin(a) * ox + Math.cos(a) * 0.95); m.rotation.y = a; m.material = ledMat; m.parent = root; m.isPickable = false; leds.push(m); }
@@ -485,8 +498,8 @@ export class Scene3D {
             const lamp = B().MeshBuilder.CreateBox('dlamp', { width: 1.3, height: 0.08, depth: 0.1 }, S);
             lamp.position.set(px - Math.sin(ea) * 0.3, WALL_H + 0.55, pz - Math.cos(ea) * 0.3); lamp.rotation.y = ea; stripMeshes.push(lamp);
             const th = B().MeshBuilder.CreateBox('th', { width: 2.3, height: 0.05, depth: 0.8 }, S);
-            th.position.set(px - Math.sin(ea) * 0.5, 0.11, pz - Math.cos(ea) * 0.5); th.rotation.y = ea; th.material = this.M('#c9a227'); statics.push(th);
-            for (let k = 0; k < 4; k++) { const hz = B().MeshBuilder.CreateBox('hz', { width: 0.25, height: 0.06, depth: 0.8 }, S); hz.position.set(px - Math.sin(ea) * 0.5 + Math.cos(ea) * (-0.9 + k * 0.6), 0.12, pz - Math.cos(ea) * 0.5 - Math.sin(ea) * (-0.9 + k * 0.6)); hz.rotation.y = ea; hz.material = this.M('#1a1a1a'); statics.push(hz); }
+            th.position.set(px - Math.sin(ea) * 0.5, 0.025, pz - Math.cos(ea) * 0.5); th.rotation.y = ea; th.material = this.M('#c9a227'); statics.push(th);
+            for (let k = 0; k < 4; k++) { const hz = B().MeshBuilder.CreateBox('hz', { width: 0.25, height: 0.06, depth: 0.8 }, S); hz.position.set(px - Math.sin(ea) * 0.5 + Math.cos(ea) * (-0.9 + k * 0.6), 0.038, pz - Math.cos(ea) * 0.5 - Math.sin(ea) * (-0.9 + k * 0.6)); hz.rotation.y = ea; hz.material = this.M('#1a1a1a'); statics.push(hz); }
         }
         // emergency lamps (red, only on malfunction)
         const emergency = [];
@@ -500,8 +513,9 @@ export class Scene3D {
         this.mergeStatic(statics, root);
         const stripMesh = this.mergeStatic(stripMeshes, root)[0];
         if (stripMesh) stripMesh.material = strips;
-        // floor finish + props
-        this.buildFloor(tile, root);
+        // The finish is a child of the room base (not of this shell): its surface is the floor the shell
+        // stands on, so walls, furniture and figures all share the same height instead of sinking into it.
+        this.buildFloor(tile, node.root);
         this.buildProps(tile, root, node);
         return { root, strips, emergency, stripMesh };
     }
@@ -515,11 +529,12 @@ export class Scene3D {
     buildFloor(tile, root) {
         const S = this.scene; const fam = TILE_STYLE[tile] || 'steel';
         const statics = [];
-        const R = WALL_R - 0.35, Y = 0.115;
+        const R = WALL_R - 0.35, Y = 0.115;   // local to the room base: the finish tops out at FLOOR_Y
         const inR = (x, z, m = 0) => Math.hypot(x, z) < R - m;
         const box = (w, h, d, x, y, z, mat, ry = 0) => { const m = B().MeshBuilder.CreateBox('fl', { width: w, height: h, depth: d }, S); m.position.set(x, y, z); m.rotation.y = ry; m.material = mat; statics.push(m); return m; };
         const disc = (dia, h, x, y, z, mat, tess = 24) => { const m = B().MeshBuilder.CreateCylinder('fd', { diameter: dia, height: h, tessellation: tess }, S); m.position.set(x, y, z); m.material = mat; statics.push(m); return m; };
-        const base = (hex) => disc(R * 2, 0.04, 0, Y, 0, this.M(hex), 32);
+        // the neutral disc runs under the wall ring too, so no groove shows between the finish and the walls
+        const base = (hex) => disc(WALL_R * 2 + 0.2, 0.04, 0, Y, 0, this.M(hex), 40);
         let seed = tile.length * 31; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
         switch (tile === 'storage' ? 'storage' : fam) {
             case 'medical': {
@@ -671,8 +686,9 @@ export class Scene3D {
         const bench = (x, z, ry) => { bx(1.3, 0.08, 0.4, x, 0.45, z, M('#b07a3c'), ry); for (const s of [-1, 1]) bx(0.08, 0.45, 0.4, x + Math.cos(ry) * s * 0.55, 0.22, z - Math.sin(ry) * s * 0.55, dark, ry); };
         const pipes = (x, z, ry, n = 3) => { for (let i = 0; i < n; i++) cy(0.14, 0.14, 2.6, x + Math.sin(ry + Math.PI / 2) * i * 0.2, 0.2 + i * 0.2, z + Math.cos(ry + Math.PI / 2) * i * 0.2, i % 2 ? metal : hazard, 6, Math.PI / 2); };
         const bed = (x, z, ry) => { bx(0.9, 0.3, 2.0, x, 0.3, z, metal, ry); bx(0.84, 0.12, 1.9, x, 0.5, z, white, ry); bx(0.6, 0.1, 0.4, LX(x, z, ry, 0, 0.7), 0.58, LZ(x, z, ry, 0, 0.7), M('#c0392b'), ry); };
-        // Painted floor outline: laid on top of the floor finish (which tops out at ~0.165), otherwise invisible.
-        const floorZone = (x, z, w, d, ry, mat) => { bx(w, 0.02, 0.1, x, 0.175, z - d / 2, mat, ry); bx(w, 0.02, 0.1, x, 0.175, z + d / 2, mat, ry); bx(0.1, 0.02, d, x - w / 2, 0.175, z, mat, ry); bx(0.1, 0.02, d, x + w / 2, 0.175, z, mat, ry); };
+        // Painted floor outline: laid on top of the floor finish — this root stands on the finish, so a
+        // strip a centimetre above y = 0 reads as paint on the deck.
+        const floorZone = (x, z, w, d, ry, mat) => { bx(w, 0.02, 0.1, x, 0.012, z - d / 2, mat, ry); bx(w, 0.02, 0.1, x, 0.012, z + d / 2, mat, ry); bx(0.1, 0.02, d, x - w / 2, 0.012, z, mat, ry); bx(0.1, 0.02, d, x + w / 2, 0.012, z, mat, ry); };
         const barrel = (x, z, mat) => { cy(0.55, 0.55, 0.8, x, 0.4, z, mat, 10); cy(0.57, 0.57, 0.06, x, 0.25, z, dark, 10); cy(0.57, 0.57, 0.06, x, 0.6, z, dark, 10); };
         // Local offsets inside a unit rotated by `ry`: let composite furniture be authored once and keep
         // every part (screen, lid, light, LED) attached to the body it belongs to.
