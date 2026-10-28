@@ -751,18 +751,18 @@ export class Scene3D {
         const DOOR_HALF = 1.62;    // half of the 3.0-wide doorway, plus the portal posts
         const HATCH_HALF = 1.42;   // half of the technical-corridor hatch
         /** Is a stretch of wall `half` metres each side of `a` free of every passage? */
-        const wallClear = (a, half = 0.6, gap = 0.06) => {
+        const wallClear = (a, half = 0.6, gap = 0.14) => {
             for (const ea of (node.exitAngles || [])) {
                 if (Math.abs(wrap(a - ea)) * WALL_R < DOOR_HALF + half + gap) return false;
             }
             if (node.techAngle != null && Math.abs(wrap(a - node.techAngle)) * WALL_R < HATCH_HALF + half + gap) return false;
             return true;
         };
-        const nearExit = (a, g = 0.5) => !wallClear(a, Math.max(0, g * WALL_R - DOOR_HALF - 0.06));
+        const nearExit = (a, g = 0.5) => !wallClear(a, Math.max(0, g * WALL_R - DOOR_HALF - 0.14));
         // Wall furniture must also stay clear of the standing zone (figures stand front-right).
         const zoneSafe = (a) => Math.hypot(Math.sin(a) * 5.1 - ZONE_C.x, Math.cos(a) * 5.1 - ZONE_C.z) > 4.0;
         /** The nearest angle to `pref` where a piece `width` wide fits, ignoring the figures' zone. */
-        const fitAngle = (pref, width = 1.2, gap = 0.06) => {
+        const fitAngle = (pref, width = 1.2, gap = 0.14) => {
             const half = width / 2;
             if (wallClear(pref, half, gap)) return pref;
             for (let i = 1; i <= 64; i++) for (const sgn of [1, -1]) {
@@ -1447,9 +1447,13 @@ export class Scene3D {
                     cy(0.24, 0.3, 0.16, 0.9, 1.03, 2.02, metal, 8);
                     cy(0.1, 0.16, 0.2, 0.9, 1.2, 2.02, M('#7fd8ff', 0.9), 6);
                     // wall shelf with jars, on the back wall
-                    const p = wallSpot(pickAngle([Math.PI, Math.PI - 0.5, Math.PI + 0.5], 0.6)), fr = frameOf(p);
-                    for (const y of [1.3, 1.9]) bx(2.4, 0.07, 0.34, p.x, y, p.z, M('#c8d3db'), p.ry);
-                    for (const y of [1.3, 1.9]) for (let k = 0; k < 5; k++) cy(0.18, 0.2, 0.26, fr.at(-0.9 + k * 0.45, 0.05)[0], y + 0.16, fr.at(-0.9 + k * 0.45, 0.05)[1], [M('#4fcf7a', 0.45, { alpha: 0.8 }), M('#e05252', 0.4, { alpha: 0.8 }), M('#4aa3df', 0.45, { alpha: 0.8 })][k % 3], p.ry);
+                    // two 2.4-wide shelves of jars: one reservation for the whole piece
+                    const p = wallSpot(pickAngle([Math.PI, Math.PI - 0.5, Math.PI + 0.5], 0.6, 2.6), 5.78, 2.6);
+                    if (p) {
+                        const fr = frameOf(p);
+                        for (const y of [1.3, 1.9]) bx(2.4, 0.07, 0.34, p.x, y, p.z, M('#c8d3db'), p.ry);
+                        for (const y of [1.3, 1.9]) for (let k = 0; k < 5; k++) cy(0.18, 0.2, 0.26, fr.at(-0.9 + k * 0.45, 0.05)[0], y + 0.16, fr.at(-0.9 + k * 0.45, 0.05)[1], [M('#4fcf7a', 0.45, { alpha: 0.8 }), M('#e05252', 0.4, { alpha: 0.8 }), M('#4aa3df', 0.45, { alpha: 0.8 })][k % 3], p.ry);
+                    }
                     // specimen cell at the back: glass box on a plinth, sample rack inside
                     bx(1.7, 0.2, 1.1, 0.5, 0.1, -4.0, metal);
                     bx(1.6, 1.9, 1.0, 0.5, 1.15, -4.0, M('#7fc7ff', 0.15, { alpha: 0.3 }));
@@ -1463,7 +1467,32 @@ export class Scene3D {
                     bx(0.6, 0.5, 0.05, -2.6, 1.04, -2.15, metal, 0, -0.22);       // monitor bolted to the cart
                     bx(0.52, 0.42, 0.06, -2.6, 1.04, -2.12, screen, 0, -0.22);
                     bx(0.22, 0.22, 0.22, -2.6, 0.9, -2.42, metal);
+                    // the working half of the bench: a stool, a sample tray and a bio-waste bin
+                    bx(0.66, 0.06, 0.44, -0.2, 1.0, 2.1, metal);                    // sample tray
+                    for (let k = 0; k < 4; k++) cy(0.1, 0.1, 0.16, -0.44 + k * 0.16, 1.1, 2.1, [M('#4fcf7a', 0.5), M('#b26bd6', 0.5), M('#4aa3df', 0.5), M('#e05252', 0.45)][k], 6);
+                    chair(-0.2, 2.85, Math.PI, M('#4a5a6e'));
+                    cy(0.52, 0.44, 0.7, 1.15, 0.35, 3.15, M('#c9d3da'), 8);        // bio-waste bin
+                    cy(0.58, 0.58, 0.06, 1.15, 0.72, 3.15, M('#e05252', 0.35), 8);
+                    bx(0.3, 0.16, 0.03, 1.15, 0.5, 3.4, M('#e05252', 0.6));
+                    // trolley of sample racks, standing free of the bench
+                    bx(1.0, 0.07, 0.6, 2.35, 0.72, -1.5, metal, 0.25);
+                    for (const [ox, oz] of [[-0.4, -0.24], [0.4, -0.24], [-0.4, 0.24], [0.4, 0.24]])
+                        cy(0.08, 0.08, 0.68, LX(2.35, -1.5, 0.25, ox, oz), 0.38, LZ(2.35, -1.5, 0.25, ox, oz), dark, 6);
+                    for (let k = 0; k < 3; k++) bx(0.24, 0.2, 0.3, LX(2.35, -1.5, 0.25, -0.3 + k * 0.3, 0), 0.86, LZ(2.35, -1.5, 0.25, -0.3 + k * 0.3, 0), M('#39424e'), 0.25);
+                    for (let k = 0; k < 5; k++) cy(0.09, 0.09, 0.22, LX(2.35, -1.5, 0.25, -0.34 + k * 0.17, 0.02), 1.05, LZ(2.35, -1.5, 0.25, -0.34 + k * 0.17, 0.02), M('#dff0ff', 0.4, { alpha: 0.85 }), 6);
                 });
+                // fume hood on a free wall: a cabinet with a glass sash, its light and the duct above it
+                wall([0.45, -0.45, 1.5, -1.5, Math.PI], 1.9, (p, fr) => fix(() => {
+                    bx(1.6, 1.5, 0.8, p.x, 0.75, p.z, M('#c8d3db'), p.ry);                       // hood body
+                    bx(1.66, 0.08, 0.86, p.x, 1.53, p.z, metal, p.ry);
+                    bx(1.4, 0.9, 0.04, fr.at(0, 0.4)[0], 0.95, fr.at(0, 0.4)[1], M('#7fc7ff', 0.12, { alpha: 0.28 }), p.ry);   // sash glass
+                    bx(1.5, 0.1, 0.06, fr.at(0, 0.42)[0], 1.46, fr.at(0, 0.42)[1], metal, p.ry);   // sash handle rail
+                    bx(1.3, 0.05, 0.04, fr.at(0, 0.42)[0], 1.36, fr.at(0, 0.42)[1], M('#9fe4ff', 0.6), p.ry);   // hood light
+                    bx(1.2, 0.06, 0.6, fr.at(0, 0.05)[0], 0.78, fr.at(0, 0.05)[1], dark, p.ry);    // working tray
+                    for (let k = 0; k < 3; k++) cy(0.16, 0.18, 0.2, fr.at(-0.4 + k * 0.4, 0.05)[0], 0.9, fr.at(-0.4 + k * 0.4, 0.05)[1], [M('#4fcf7a', 0.4, { alpha: 0.8 }), M('#b26bd6', 0.4, { alpha: 0.8 }), M('#4aa3df', 0.4, { alpha: 0.8 })][k], p.ry);
+                    cy(0.34, 0.34, 0.9, fr.at(0, -0.1)[0], 2.0, fr.at(0, -0.1)[1], metal, 8);     // exhaust duct
+                    bx(0.6, 0.3, 0.06, fr.at(-0.5, 0.44)[0], 1.2, fr.at(-0.5, 0.44)[1], M('#c9a227', 0.3), p.ry);   // caution label
+                }));
                 break;
             }
             case 'nest':
@@ -1998,45 +2027,104 @@ export class Scene3D {
                 break;
             }
             case 'engineRoom': {
-                // Machinery along the left wall with the gauge panels facing into the room; a manifold
-                // above it that each unit's stack plugs into, and a bracketed floor pipe run.
+                // The machinery hall: three generator sets standing on the rays that no corridor uses,
+                // each with its gauge panel facing the middle; a ring main of pipe above them that is
+                // cut wherever the wall is cut, a floor main on saddle feet, valve stations, and the
+                // control cabinet on a free stretch of wall. Nothing here is pinned to a fixed angle,
+                // so a hatch or a corridor mouth simply takes out the section that would cross it.
                 fix(() => {
-                    const unit = (x, z) => {
-                        cy(1.3, 1.4, 1.7, x, 0.87, z, metal, 8);                        // housing
-                        cy(1.46, 1.46, 0.14, x, 0.09, z, dark, 8);                      // base flange
-                        cy(1.36, 1.36, 0.12, x, 1.76, z, dark, 8);                      // top flange
-                        cy(0.4, 0.52, 0.5, x, 1.99, z, M('#4a5a6e'), 8);                // exhaust stack
-                        cy(0.72, 0.72, 0.06, x, 2.2, z, dark, 8);                       // collar under the manifold
-                        bx(0.2, 0.94, 0.88, x + 0.66, 0.98, z, dark);                   // mount block, half sunk in the housing
-                        bx(0.06, 0.9, 0.86, x + 0.79, 0.98, z, panel);                  // gauge panel on the mount
-                        bx(0.03, 0.8, 0.76, x + 0.82, 0.98, z, M('#39424e'));
-                        for (let k = 0; k < 3; k++) discZ(0.2, 0.05, x + 0.85, 1.2, z - 0.26 + k * 0.26, k === 1 ? M('#e05252', 0.9) : M('#4fcf7a', 0.9), Math.PI / 2, 8);
-                        discZ(0.24, 0.06, x + 0.85, 0.72, z, M('#c8d3db'), Math.PI / 2, 10);
-                        bx(0.14, 0.32, 0.5, x - 0.7, 0.9, z, dark);                     // junction box on the back
-                    };
-                    for (const z of [-2.5, 0, 2.5]) unit(-4.35, z);
-                    discZ(0.3, 7.6, -4.35, 2.34, 0, metal, 0, 8);                        // manifold main over the row
-                    discZ(0.44, 0.12, -4.35, 2.34, 0, dark, 0, 10);                      // centre coupling
-                    discZ(0.44, 0.1, -4.35, 2.62, 2.5, dark, 0, 10);                     // valve fittings
-                    discZ(0.44, 0.1, -4.35, 2.62, -2.5, dark, 0, 10);
-                    cy(0.2, 0.2, 0.5, -4.35, 2.68, 2.5, dark, 6);                        // valve stems on the fittings
-                    cy(0.2, 0.2, 0.5, -4.35, 2.68, -2.5, dark, 6);
-                    cy(0.5, 0.5, 0.06, -4.35, 2.95, 2.5, hazard, 10);                    // hand wheels
-                    cy(0.5, 0.5, 0.06, -4.35, 2.95, -2.5, hazard, 10);
-                    // floor-level pipe run on saddle brackets, feet on the deck
-                    discZ(0.26, 4.6, -5.35, 0.42, 0, metal, 0, 8);
-                    for (const z of [-1.9, -0.6, 0.7, 2.0]) {
-                        bx(0.42, 0.34, 0.16, -5.35, 0.21, z, dark);                      // saddle
-                        bx(0.56, 0.06, 0.28, -5.35, 0.06, z, metal);                     // foot plate
+                    /** Angles free enough for a whole set (1.5 wide, so 0.9 to each side). */
+                    const ray = (pref) => fitAngle(pref, 1.9);
+                    const units = [];
+                    for (const p of [-2.35, 0.35, 2.5, -0.95, 1.45]) {
+                        if (units.length >= 3) break;
+                        const a = ray(p);
+                        if (a == null || units.some(u => Math.abs(wrap(u - a)) < 1.0)) continue;
+                        units.push(a);
                     }
-                    discZ(0.26, 0.9, -4.9, 0.42, 0.4, metal, Math.PI / 2, 8);            // elbow into the room
-                    cy(0.34, 0.34, 0.1, -4.45, 0.42, 0.4, dark, 8, Math.PI / 2);
-                    // control cabinet and clutter on the right
-                    bx(1.0, 1.5, 0.6, 4.3, 0.75, -2.2, panel);
-                    bx(0.03, 0.56, 0.5, 3.78, 1.1, -2.2, screen);
-                    bx(1.06, 0.07, 0.66, 4.3, 1.53, -2.2, metal);
-                    barrel(4.0, 1.9, hazard); crateLid(3.5, 3.0, 0.85, 0.25, crateMat2);
+                    /** One generator set: housing, flanges, mount block with its gauge panel, stack. */
+                    const unit = (a) => {
+                        const r0 = 4.5, ry = a + Math.PI / 2;
+                        const at = (u, v) => [Math.sin(a) * (r0 - u) + Math.cos(a) * v, Math.cos(a) * (r0 - u) - Math.sin(a) * v];
+                        const [cx, cz] = at(0, 0);
+                        cy(1.3, 1.4, 1.7, cx, 0.87, cz, metal, 8);                        // housing
+                        cy(1.46, 1.46, 0.14, cx, 0.09, cz, dark, 8);                      // base flange
+                        cy(1.36, 1.36, 0.12, cx, 1.76, cz, dark, 8);                      // top flange
+                        for (let k = 0; k < 4; k++) {                                     // feet
+                            const [fx, fz] = at(0, -0.5 + k * 0.34);
+                            bx(0.16, 0.2, 0.3, fx, 0.1, fz, dark, ry);
+                        }
+                        cy(0.4, 0.52, 0.5, cx, 1.99, cz, M('#4a5a6e'), 8);                // exhaust stack
+                        cy(0.72, 0.72, 0.06, cx, 2.24, cz, dark, 8);                      // stack collar
+                        const [bx0, bz0] = at(0.66, 0);
+                        bx(0.2, 0.94, 0.88, bx0, 0.98, bz0, dark, ry);                    // mount block
+                        const [px, pz] = at(0.79, 0);
+                        bx(0.06, 0.9, 0.86, px, 0.98, pz, panel, ry);                     // gauge panel
+                        const [qx, qz] = at(0.82, 0);
+                        bx(0.03, 0.8, 0.76, qx, 0.98, qz, M('#39424e'), ry);
+                        for (let k = 0; k < 3; k++) {                                     // dials
+                            const [gx, gz] = at(0.85, -0.26 + k * 0.26);
+                            discZ(0.2, 0.05, gx, 1.2, gz, k === 1 ? M('#e05252', 0.9) : M('#4fcf7a', 0.9), a + Math.PI, 8);
+                        }
+                        const [mx, mz] = at(0.85, 0);
+                        discZ(0.24, 0.06, mx, 0.72, mz, M('#c8d3db'), a + Math.PI, 10);
+                        const [jx, jz] = at(-0.7, 0.62);
+                        bx(0.14, 0.32, 0.5, jx, 0.9, jz, dark, ry);                       // junction box
+                        // riser from the stack up into the ring main
+                        cy(0.2, 0.24, 0.72, cx, 2.62, cz, metal, 8);                        // riser to the main
+                        const [rx, rz] = at(-1.05, 0);
+                        bx(1.1, 0.2, 0.2, (cx + rx) / 2, 2.95, (cz + rz) / 2, metal, a);     // branch into it
+                    };
+                    units.forEach(unit);
+                    // --- ring main: a pipe round the room, in sections, cut at every passage ----------
+                    const RM = 5.55, NSEG = 24, CH = 2 * RM * Math.sin(Math.PI / NSEG) + 0.06;
+                    let lastSeg = null;
+                    for (let i = 0; i < NSEG; i++) {
+                        const a = (i + 0.5) / NSEG * Math.PI * 2, half = CH / 2;
+                        if (!wallClear(a, half)) continue;
+                        bx(CH, 0.17, 0.17, Math.sin(a) * RM, 2.95, Math.cos(a) * RM, metal, a);
+                        // a coupling collar now and then, not on every section: a band of blocks round
+                        // the room reads as a wall, not as a pipe
+                        if (i % 4 === 0) bx(0.2, 0.26, 0.26, Math.sin(a) * RM, 2.95, Math.cos(a) * RM, dark, a);
+                        // a hanger from the ring down to the wall band, every third section
+                        if (i % 3 === 0) bx(0.08, 0.08, 0.7, Math.sin(a) * (RM + 0.3), 2.95, Math.cos(a) * (RM + 0.3), metal, a);
+                        lastSeg = a;
+                    }
+                    // --- floor main on saddle feet, also cut at the passages --------------------------
+                    const FM = 5.95, FN = 24, FC = 2 * FM * Math.sin(Math.PI / FN) + 0.06;
+                    for (let i = 0; i < FN; i++) {
+                        const a = (i + 0.5) / FN * Math.PI * 2;
+                        if (!wallClear(a, FC / 2)) continue;
+                        bx(FC, 0.22, 0.22, Math.sin(a) * FM, 0.42, Math.cos(a) * FM, metal, a);
+                        if (i % 2) continue;                                                         // a saddle every other section
+                        bx(0.3, 0.28, 0.34, Math.sin(a) * (FM - 0.02), 0.2, Math.cos(a) * (FM - 0.02), dark, a);
+                        bx(0.44, 0.05, 0.44, Math.sin(a) * (FM - 0.02), 0.06, Math.cos(a) * (FM - 0.02), dark, a);
+                    }
+                    // valve station on the ring main: a stem and a hand wheel, on the clearest section
+                    if (lastSeg != null) for (const off of [-0.12, 0.16]) {
+                        const a = lastSeg + off;
+                        if (!wallClear(a, 0.5)) continue;
+                        cy(0.16, 0.16, 0.5, Math.sin(a) * RM, 3.2, Math.cos(a) * RM, dark, 6);
+                        cy(0.46, 0.46, 0.07, Math.sin(a) * RM, 3.46, Math.cos(a) * RM, hazard, 10);
+                        cy(0.12, 0.12, 0.12, Math.sin(a) * RM, 3.46, Math.cos(a) * RM, metal, 8);
+                    }
+                    // elbow down from the floor main into the room, where there is deck to walk on
+                    const elbow = fitAngle(-1.2, 1.0);
+                    if (elbow != null) {
+                        const ex = Math.sin(elbow) * FM, ez = Math.cos(elbow) * FM;
+                        cy(0.22, 0.22, 1.1, ex - Math.sin(elbow) * 0.55, 0.42, ez - Math.cos(elbow) * 0.55, metal, 8, Math.PI / 2);
+                        cy(0.3, 0.3, 0.12, ex - Math.sin(elbow) * 1.05, 0.42, ez - Math.cos(elbow) * 1.05, dark, 8, Math.PI / 2);
+                    }
+                    // clutter: drums and a crate between the sets, left to the spread to keep clear
+                    barrel(3.4, 2.6, hazard); crateLid(3.0, 3.3, 0.85, 0.25, crateMat2);
                 });
+                // control cabinet on a free stretch of wall, screen facing the room
+                wall([0.55, -0.55, 2.4, Math.PI], 1.2, (p, fr) => fix(() => {
+                    bx(1.0, 1.5, 0.6, p.x, 0.75, p.z, panel, p.ry);
+                    bx(0.03, 0.56, 0.5, fr.at(0, 0.31)[0], 1.1, fr.at(0, 0.31)[1], screen, p.ry);
+                    bx(1.06, 0.07, 0.66, p.x, 1.53, p.z, metal, p.ry);
+                    for (let k = 0; k < 3; k++) cy(0.1, 0.1, 0.05, fr.at(-0.3 + k * 0.3, 0.33)[0], 0.62, fr.at(-0.3 + k * 0.3, 0.33)[1], k === 1 ? M('#e05252', 0.8) : M('#4fcf7a', 0.8), 8);
+                }));
                 break;
             }
             case 'hatchControl': {
@@ -2044,8 +2132,13 @@ export class Scene3D {
                 // threshold, two tilted LOCKED consoles flanking it, pod banks on both side walls and
                 // the glowing control table standing in the middle of the room.
                 fix(() => {
-                    const ha = pickAngle([Math.PI, Math.PI - 0.4, Math.PI + 0.4, 0, 0.4], 0.75);
-                    const hp = wallSpot(ha, 5.78), hf = frameOf(hp);
+                    // The hatch frame is 3.1 wide, so it reserves 3.3 of wall; the two consoles and the
+                    // pod banks then take their own stretches beside it, and any piece that no longer
+                    // fits on the ring is simply not built.
+                    const ha = pickAngle([Math.PI, Math.PI - 0.4, Math.PI + 0.4, 0, 0.4], 0.75, 3.3);
+                    const hp = ha == null ? null : wallSpot(ha, 5.78, 3.3);
+                    if (!hp) return;
+                    const hf = frameOf(hp);
                     bx(3.1, 2.5, 0.34, hp.x, 1.25, hp.z, M('#2b333d'), hp.ry);                     // jamb on the wall
                     bx(2.7, 2.3, 0.1, hf.at(0, 0.2)[0], 1.15, hf.at(0, 0.2)[1], metal, hp.ry);     // frame plate
                     for (const sd of [-1, 1]) {
@@ -2058,9 +2151,15 @@ export class Scene3D {
                     bx(0.16, 0.1, 0.1, hf.at(0, 0.47)[0], 1.35, hf.at(0, 0.47)[1], M('#c9a227'), hp.ry);  // keyhole
                     for (let k = 0; k < 3; k++) bx(2.2, 0.06, 0.2, hf.at(0, 0.52 + k * 0.26)[0], 0.19, hf.at(0, 0.52 + k * 0.26)[1], metal, hp.ry);   // threshold ribs
                     bx(2.6, 0.02, 0.9, hf.at(0, 0.8)[0], 0.176, hf.at(0, 0.8)[1], hazard, hp.ry);   // painted approach
+                    // the pod-status board above the frame: six lamps, four green, two spent
+                    bx(1.5, 0.42, 0.08, hf.at(0, 0.36)[0], 2.72, hf.at(0, 0.36)[1], M('#1e252c'), hp.ry);
+                    for (let k = 0; k < 6; k++) bx(0.16, 0.16, 0.04, hf.at(-0.6 + k * 0.24, 0.4)[0], 2.72, hf.at(-0.6 + k * 0.24, 0.4)[1], k < 4 ? M('#4fcf7a', 0.85) : M('#e05252', 0.7), hp.ry);
+                    bx(1.2, 0.06, 0.03, hf.at(0, 0.42)[0], 2.96, hf.at(0, 0.42)[1], M('#ffd27f', 0.6), hp.ry);
                     for (const sd of [-1, 1]) {
                         // tilted LOCKED console on a wedge pedestal, screen bolted to its top
-                        const sa = ha + sd * 0.33, sp2 = wallSpot(sa, 5.7), sf = frameOf(sp2);
+                        const sp2 = wallSpot(fitAngle(ha + sd * 0.42, 1.2), 5.7, 1.2);
+                        if (!sp2) continue;
+                        const sf = frameOf(sp2);
                         bx(1.0, 1.15, 0.5, sp2.x, 0.58, sp2.z, M('#1e252c'), sp2.ry);
                         bx(1.06, 0.1, 0.56, sp2.x, 1.18, sp2.z, dark, sp2.ry);
                         bx(0.9, 0.62, 0.06, sf.at(0, 0.1)[0], 1.44, sf.at(0, 0.1)[1], M('#1e252c'), sp2.ry, -0.34);
@@ -2069,7 +2168,9 @@ export class Scene3D {
                     }
                     // pod banks against both side walls: racks of dark pods with red status windows
                     for (const sd of [-1, 1]) {
-                        const ba = pickAngle([ha + sd * 1.15, ha + sd * 1.45, ha + sd * 0.85], 0.5), bp = wallSpot(ba, 5.8), bf = frameOf(bp);
+                        const bp = wallSpot(pickAngle([ha + sd * 1.15, ha + sd * 1.45, ha + sd * 0.85], 0.5, 2.4), 5.8, 2.4);
+                        if (!bp) continue;
+                        const bf = frameOf(bp);
                         bx(2.2, 2.35, 0.28, bp.x, 1.2, bp.z, M('#232a31'), bp.ry);
                         bx(2.3, 0.12, 0.34, bp.x, 2.42, bp.z, metal, bp.ry);
                         bx(2.3, 0.12, 0.34, bp.x, 0.08, bp.z, dark, bp.ry);
@@ -2079,14 +2180,35 @@ export class Scene3D {
                             discZ(0.24, 0.12, bf.at(u, 0.66)[0], y, bf.at(u, 0.66)[1], M('#e05252', 0.9), bp.ry, 8);
                         }
                     }
-                    // holo control table in the middle of the room
+                    // holo control table in the middle of the room, with the operator's chair
                     cy(0.64, 0.92, 0.14, 0, 0.07, -0.4, dark, 8);
                     cy(0.44, 0.44, 0.78, 0, 0.5, -0.4, panel, 8);
                     bx(1.5, 0.1, 0.86, 0, 0.94, -0.4, M('#2a3b55'));
                     bx(1.36, 0.04, 0.72, 0, 1.0, -0.4, M('#4aa3df', 0.55));
                     for (let k = 0; k < 4; k++) bx(0.1, 0.02, 0.42, -0.5 + k * 0.33, 1.02, -0.4, M('#9fe4ff', 0.8));
-                    cy(0.5, 0.5, 0.06, 0, 0.06, 1.5, metal, 8);   // operator stool, on the deck
-                    cy(0.1, 0.1, 0.44, 0, 0.28, 1.5, metal, 6);
+                    chair(0, 0.65, Math.PI, M('#39424e'));
+                    // a floating launch plot over the table, and the countdown pips on the deck
+                    bx(1.0, 0.02, 0.05, 0, 1.32, -0.4, M('#9fe4ff', 0.55));
+                    bx(0.05, 0.02, 0.5, 0, 1.32, -0.4, M('#9fe4ff', 0.55));
+                    for (let k = 0; k < 6; k++) bx(0.2, 0.02, 0.1, -0.88 + (k % 3) * 0.28, 0.178, 1.3 + Math.floor(k / 3) * 0.2, k < 4 ? M('#4fcf7a', 0.35) : M('#e05252', 0.4));
+                    // waiting benches: three seats on a rail, on each side of the approach lane
+                    for (const [ba, br] of [[-1.05, 4.35], [1.15, 4.35]]) {
+                        const wx = Math.sin(ba) * br, wz = Math.cos(ba) * br, wa = ba + Math.PI / 2;
+                        bx(2.0, 0.08, 0.5, wx, 0.44, wz, M('#4a5a6e'), wa);                        // bench seat
+                        bx(2.0, 0.6, 0.08, LX(wx, wz, wa, 0, -0.24), 0.72, LZ(wx, wz, wa, 0, -0.24), M('#3d4a52'), wa);   // back rail
+                        for (const sd of [-0.8, 0, 0.8]) {                                        // legs and seat pads
+                            bx(0.08, 0.44, 0.44, LX(wx, wz, wa, sd, -0.02), 0.22, LZ(wx, wz, wa, sd, -0.02), dark, wa);
+                            bx(0.5, 0.06, 0.42, LX(wx, wz, wa, sd, 0.02), 0.5, LZ(wx, wz, wa, sd, 0.02), M('#3a4450'), wa);
+                        }
+                        bx(2.0, 0.05, 0.06, LX(wx, wz, wa, 0, -0.26), 1.02, LZ(wx, wz, wa, 0, -0.26), metal, wa);   // head rail
+                    }
+                    // escape supply: two stacked hard cases by the benches
+                    for (const [sx2, sz2, sa2] of [[-2.7, -2.1, 0.5], [2.9, -1.6, -0.7]]) {
+                        bx(1.0, 0.42, 0.62, sx2, 0.26, sz2, M('#6b7a3c'), sa2);
+                        bx(1.04, 0.08, 0.66, sx2, 0.5, sz2, dark, sa2);
+                        bx(0.5, 0.1, 0.06, LX(sx2, sz2, sa2, 0, 0.33), 0.42, LZ(sx2, sz2, sa2, 0, 0.33), M('#e8eef4', 0.4), sa2);
+                        bx(0.8, 0.34, 0.5, LX(sx2, sz2, sa2, 0.05, 0), 0.72, LZ(sx2, sz2, sa2, 0.05, 0), M('#52607a'), sa2 + 0.12);
+                    }
                 });
                 break;
             }
@@ -2192,26 +2314,43 @@ export class Scene3D {
                     vest(-2.9, 1.1, 0.5); vest(0.9, -2.5, -0.4);
                     barrel(-2.75, -0.4, hazard); barrel(3.35, 2.6, M('#52607a'));
                     // grating panel leaning on the wall: frame + bars, tilted back
-                    const gp = wallSpot(pickAngle([-1.55, -1.2], 0.55), 5.7), gf = frameOf(gp);
-                    bx(1.5, 0.08, 0.1, gp.x, 0.06, gp.z, metal, gp.ry);
-                    bx(1.5, 0.08, 0.1, gp.x, 1.5, gp.z, metal, gp.ry);
-                    for (const sd of [-1, 1]) bx(0.08, 1.5, 0.1, gf.at(sd * 0.71, 0)[0], 0.78, gf.at(sd * 0.71, 0)[1], metal, gp.ry);
-                    for (let k = 0; k < 9; k++) bx(0.06, 1.42, 0.06, gf.at(-0.63 + k * 0.157, 0)[0], 0.78, gf.at(-0.63 + k * 0.157, 0)[1], tooth, gp.ry);
+                    // 1.5 wide, so it reserves 1.7: a panel that does not fit is left leaning nowhere
+                    const gp = wallSpot(pickAngle([-1.55, -1.2], 0.55, 1.7), 5.7, 1.7);
+                    if (gp) {
+                        const gf = frameOf(gp);
+                        bx(1.5, 0.08, 0.1, gp.x, 0.06, gp.z, metal, gp.ry);
+                        bx(1.5, 0.08, 0.1, gp.x, 1.5, gp.z, metal, gp.ry);
+                        for (const sd of [-1, 1]) bx(0.08, 1.5, 0.1, gf.at(sd * 0.71, 0)[0], 0.78, gf.at(sd * 0.71, 0)[1], metal, gp.ry);
+                        for (let k = 0; k < 9; k++) bx(0.06, 1.42, 0.06, gf.at(-0.63 + k * 0.157, 0)[0], 0.78, gf.at(-0.63 + k * 0.157, 0)[1], tooth, gp.ry);
+                    }
                     // --- the bulkhead teeth: a run of prongs along the free wall -------------------
-                    const tp = wallSpot(pickAngle([-0.95, 0.95, -0.6], 0.5), 5.95), tf = frameOf(tp);
-                    bx(3.0, 0.4, 0.24, tp.x, 1.5, tp.z, dark, tp.ry);
-                    for (let k = 0; k < 7; k++) {
-                        const u = -1.3 + k * 0.43;
-                        for (const sd of [-1, 1]) bx(0.3, 0.3, 0.22, tf.at(u, 0.02)[0], 1.5 + sd * 0.22, tf.at(u, 0.02)[1], tooth, tp.ry).rotation.z = Math.PI / 4 * sd;
+                    const tp = wallSpot(pickAngle([-0.95, 0.95, -0.6], 0.5, 3.2), 5.95, 3.2);
+                    if (tp) {
+                        const tf = frameOf(tp);
+                        bx(3.0, 0.4, 0.24, tp.x, 1.5, tp.z, dark, tp.ry);
+                        for (let k = 0; k < 7; k++) {
+                            const u = -1.3 + k * 0.43;
+                            for (const sd of [-1, 1]) bx(0.3, 0.3, 0.22, tf.at(u, 0.02)[0], 1.5 + sd * 0.22, tf.at(u, 0.02)[1], tooth, tp.ry).rotation.z = Math.PI / 4 * sd;
+                        }
                     }
                     // --- shelving and a pallet jack against the other wall (kept from the old hold) --
-                    const p = wallSpot(pickAngle([2.9, -2.9, 2.5, -2.5], 0.6)), fr = frameOf(p);
-                    for (const sx of [-1.25, 1.25]) bx(0.1, 1.5, 0.5, fr.at(sx, 0.08)[0], 0.75, fr.at(sx, 0.08)[1], metal, p.ry);
-                    for (const y of [0.9, 1.35]) bx(2.6, 0.07, 0.55, fr.at(0, 0.08)[0], y, fr.at(0, 0.08)[1], metal, p.ry);
-                    for (let k = 0; k < 4; k++) bx(0.45, 0.34, 0.4, fr.at(-0.95 + k * 0.62, 0.28)[0], 1.1, fr.at(-0.95 + k * 0.62, 0.28)[1], k % 2 ? crateMat : olive, p.ry);
-                    for (let k = 0; k < 3; k++) bx(0.5, 0.3, 0.42, fr.at(-0.7 + k * 0.7, 0.28)[0], 1.54, fr.at(-0.7 + k * 0.7, 0.28)[1], crateMat2, p.ry);
-                    bx(0.7, 0.12, 0.3, fr.at(1.75, 0.5)[0], 0.12, fr.at(1.75, 0.5)[1], dark, p.ry);
-                    bx(0.7, 0.1, 0.2, fr.at(1.75, 0.62)[0], 0.1, fr.at(1.75, 0.62)[1], metal, p.ry);
+                    // The rack is 2.6 wide and the pallet jack another 0.8; each piece reserves only its
+                    // own stretch, so a doorway between them just leaves the pair further apart.
+                    const p = wallSpot(pickAngle([2.9, -2.9, 2.5, -2.5], 0.6, 2.8), 5.78, 2.8);
+                    if (p) {
+                        const fr = frameOf(p);
+                        for (const sx of [-1.25, 1.25]) bx(0.1, 1.5, 0.5, fr.at(sx, 0.08)[0], 0.75, fr.at(sx, 0.08)[1], metal, p.ry);
+                        for (const y of [0.9, 1.35]) bx(2.6, 0.07, 0.55, fr.at(0, 0.08)[0], y, fr.at(0, 0.08)[1], metal, p.ry);
+                        for (let k = 0; k < 4; k++) bx(0.45, 0.34, 0.4, fr.at(-0.95 + k * 0.62, 0.28)[0], 1.1, fr.at(-0.95 + k * 0.62, 0.28)[1], k % 2 ? crateMat : olive, p.ry);
+                        for (let k = 0; k < 3; k++) bx(0.5, 0.3, 0.42, fr.at(-0.7 + k * 0.7, 0.28)[0], 1.54, fr.at(-0.7 + k * 0.7, 0.28)[1], crateMat2, p.ry);
+                        const jp2 = wallSpot(fitAngle(p.a + 0.62, 1.1), 5.72, 1.1);
+                        const jf = jp2 ? frameOf(jp2) : null;
+                        if (jp2) {
+                            bx(0.7, 0.12, 0.3, jp2.x, 0.12, jp2.z, dark, jp2.ry);
+                            bx(0.7, 0.1, 0.2, jf.at(0, 0.12)[0], 0.1, jf.at(0, 0.12)[1], metal, jp2.ry);
+                            bx(0.12, 0.9, 0.12, jf.at(-0.3, 0.05)[0], 0.55, jf.at(-0.3, 0.05)[1], dark, jp2.ry);   // tiller
+                        }
+                    }
                     // straps coiled on the deck near the modules
                     for (const [x, z] of [[-2.3, 3.2], [1.4, 0.6], [-0.4, -2.6]]) {
                         cy(0.5, 0.5, 0.06, x, 0.19, z, strap, 10);
@@ -2225,7 +2364,15 @@ export class Scene3D {
         const famil = TILE_STYLE[tile] || 'steel';
         const dressAngles = [];
         const nearUsed = a => usedAngles.some(u => Math.abs(Math.atan2(Math.sin(a - u), Math.cos(a - u))) < 0.32);
-        for (let i = 0; i < 12; i++) { const a = (i + 0.5) / 12 * Math.PI * 2; const dz = Math.hypot(Math.sin(a) * (WALL_R - 0.9) - ZONE_C.x, Math.cos(a) * (WALL_R - 0.9) - ZONE_C.z); const nearExit = node.exitAngles.some(ea => Math.abs(Math.atan2(Math.sin(a - ea), Math.cos(a - ea))) < 0.5) || (node.techAngle !== null && Math.abs(Math.atan2(Math.sin(a - node.techAngle), Math.cos(a - node.techAngle))) < 0.5); if (!nearExit && dz > ZONE_R + 1.2 && !nearUsed(a)) dressAngles.push(a); }
+        for (let i = 0; i < 12; i++) {
+            const a = (i + 0.5) / 12 * Math.PI * 2;
+            const dz = Math.hypot(Math.sin(a) * (WALL_R - 0.9) - ZONE_C.x, Math.cos(a) * (WALL_R - 0.9) - ZONE_C.z);
+            // The automatic dressing keeps to the same rule as the hand-placed wall furniture: a
+            // stretch of ring wide enough for the piece, clear of every doorway and of the hatch.
+            if (!wallClear(a, 0.55) || dz < ZONE_R + 1.2 || nearUsed(a)) continue;
+            dressAngles.push(a);
+            usedAngles.push(a);
+        }
         const dressing = [];
         dressAngles.forEach((a, i) => {
             const rr = WALL_R - 0.75; const x = Math.sin(a) * rr, z = Math.cos(a) * rr; const ry = a;

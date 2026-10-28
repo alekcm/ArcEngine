@@ -234,9 +234,7 @@ test('PR-11 a fully pierced ring builds cleanly, and the ring-full path is reall
     // Mesh-by-mesh the rule is checked on the rooms whose wall furniture is placed by width. The
     // remaining rooms still pin a few pieces to fixed coordinates; PR-10 covers the spots they do
     // register, and this list grows as those rooms are converted.
-    const BY_WIDTH = ['archives', 'comms', 'emergency', 'fireControl', 'generator', 'repository',
-        'airlock', 'server', 'cafeteria', 'containment', 'cockpit'];
-    for (const tile of BY_WIDTH) {
+    for (const tile of TILES) {
         skips += lastNode.wallSkips || 0;
         const spots = lastNode.wallSpots || [];
         for (const spot of spots) for (const ea of exits) {
