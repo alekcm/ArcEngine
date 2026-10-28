@@ -416,7 +416,39 @@ test('START-01 / original starters: Cuffs 6, Robot 5, UPS 3 markers', () => {
         { cuffs: 6, robot: 5, ups: 3 });
 });
 test('START-02 / Android gun: requires no ammo, not three charges with +1 shooting', () => {
-    assert.equal(ITEMS.energyPistol.weapon.noAmmo, true);
+    assert.equal(ITEMS.armGun.weapon.noAmmo, true);
+});
+test('START-07 / every character starts with their own weapon and quest item', () => {
+    const want = {
+        soldier: ['soldierGun', 'heavyArmor'], scout: ['scoutRifle', 'motionScanner'],
+        mechanic: ['sawedOff', 'plasmaTorch'], pilot: ['pilotShotgun', 'pilotEvacKey'],
+        hacker: ['smartGun', 'cheatCodes'],
+        scientist: ['scientistPistol', 'wheelchair', 'portableDevice'],
+        medic: ['needleGun', 'surgeryKit'], janitor: ['nailGun', 'karcher'],
+        ceo: ['handgun', 'shipCodes'], labrat: ['labRatGun', 'bloodyCamouflage'],
+        sentry: ['sentrySmg', 'battleSuit'], android: ['armGun', 'ups'],
+        convict: ['pipe', 'cuffs'], psych: ['handgun', 'oculobe'],
+        bounty: ['bountyRifle', 'laika'],
+        captain: ['sixShooter', 'sixShooterCartridge', 'intercom'],
+        survivor: ['handgun', 'survivorFavorite'],
+        xeno: ['xenoGun', 'probeArm', 'researchEquipment'],
+    };
+    assert.deepEqual(Object.keys(CHARACTERS).sort(), Object.keys(want).sort());
+    for (const [id, items] of Object.entries(want)) {
+        assert.deepEqual(CHARACTERS[id].startItems.map(si => si.item), items, id);
+        for (const si of CHARACTERS[id].startItems) assert.ok(ITEMS[si.item], id + ' -> ' + si.item);
+        const quest = CHARACTERS[id].startItems.filter(si => ITEMS[si.item].quest);
+        assert.equal(quest.length >= 1, true, id + ' has a quest item');
+    }
+});
+test('START-08 / the starting set actually lands on the board', () => {
+    for (const id of Object.keys(CHARACTERS)) {
+        const s = createGame({ seed: 'start-' + id, players: [{ name: id, charId: id }, { name: 'S', charId: id === 'soldier' ? 'scout' : 'soldier' }] });
+        const p = s.players[0];
+        const held = [...p.items, ...(p.armor ? [p.armor] : [])].filter(i => i.start).map(i => i.item).sort();
+        const want = [...new Set(CHARACTERS[id].startItems.map(si => si.item))].sort();
+        assert.deepEqual(held, want, id);
+    }
 });
 test('START-03 / Hacker Smart Gun: reroll, not a permanent +1 modifier', () => {
     assert.deepEqual({ reroll: !!ITEMS.smartGun.weapon.reroll, plusOne: !!ITEMS.smartGun.weapon.plusOne },

@@ -12,7 +12,7 @@ import { ATTACK_CARDS, EVENT_CARDS } from '../shared/data/cards.mjs';
 import { eventLogLines } from '../shared/engine/events.mjs';
 import { attackEffectText } from '../shared/engine/combat.mjs';
 import { createGame } from '../shared/engine/setup.mjs';
-import { next, run } from '../shared/engine/core.mjs';
+import { next, run, answer } from '../shared/engine/core.mjs';
 
 const clientFile = name => fs.readFileSync(new URL('../client/' + name, import.meta.url), 'utf8');
 
@@ -131,6 +131,9 @@ test('R28-05: the attack card of an escape reaches the table', () => {
     const dest = s.ship.rooms['011'].exits[0].to;
     next(s, { op: 'move.chosen', player: 0, answer: dest, pay: 0 });
     run(s);
+    // The soldier wears the starting heavy armour, so the adult's attack first asks whether to
+    // discard it. Keep the armour and let the card resolve.
+    if (s.prompt && /Сбросить броню/.test(s.prompt.title || '')) { answer(s, 0, s.prompt.id, 'no'); run(s); }
     const f = (s.fx || []).find(x => x.type === 'attack');
     assert.ok(f, 'атака при бегстве раскрывает карту');
     assert.equal(f.player, 0);

@@ -191,7 +191,8 @@ OPS['item.use'] = (state, step) => {
             // Tools: "you may activate your Quest Item ignoring its requirement".
             if (def.use === 'tools') {
                 // Printed on Tools: activate your Quest Item, ignoring its activation requirement.
-                const quest = [...p.items, ...(p.armor ? [p.armor] : [])].find(i => i.uid !== inst.uid && ITEMS[i.item].quest);
+                const quests = [...p.items, ...(p.armor ? [p.armor] : [])].filter(i => i.uid !== inst.uid && ITEMS[i.item].quest);
+                const quest = quests.find(i => ITEMS[i.item].use) || quests[0];
                 opts.push({ id: 'quest', label: 'Активировать квестовый предмет' + (quest ? ': «' + ITEMS[quest.item].name + '»' : '') + ' (игнорируя требование)' });
             }
             if (!opts.length) { log(state, 'Нечего чинить здесь.', 'minor'); next(state, back); return; }
@@ -215,6 +216,13 @@ OPS['item.use'] = (state, step) => {
             if (!opts.length) { next(state, back); return; }
             choose('Огнетушитель', opts, 'item.extinguisher');
             return;
+        }
+        case 'cartridge': {
+            consume();
+            const gun = p.items.find(i => i.item === 'sixShooter');
+            if (gun) { gun.ammo = ITEMS.sixShooter.weapon.max; log(state, 'Шестизарядник перезаряжен полностью.', 'good'); }
+            else log(state, 'Нечего перезаряжать.', 'minor');
+            next(state, back); return;
         }
         case 'glowstick': {
             consume();

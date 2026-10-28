@@ -263,7 +263,7 @@ OPS['card.fightFire.place'] = (state, step) => { placeFire(state, step.answer, '
 OPS['card.ingenuity'] = (state, step) => {
     const p = player(state, step.player);
     const opts = repairOptions(state, p, true).filter(o => !o.id.startsWith('door:'));
-    if (p.items.some(i => i.item === 'mechTools') && payableCards(p).length >= 2) opts.push({ id: 'support', label: 'Сбросить 2 карты: взять 3 карты поддержки, оставить 1' });
+    if (p.items.some(i => i.item === 'plasmaTorch') && payableCards(p).length >= 2) opts.push({ id: 'support', label: 'Сбросить 2 карты: взять 3 карты поддержки, оставить 1' });
     choice(state, p, 'Смекалка', opts, 'card.ingenuity.pick');
 };
 OPS['card.ingenuity.pick'] = (state, step) => {
