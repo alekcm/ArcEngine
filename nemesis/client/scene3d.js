@@ -1779,19 +1779,10 @@ export class Scene3D {
         }
         // the plate between the arches: the lintels' own steel, flush with them on every side
         add('aplate', D.beamW, D.beamH, D.plateD, 0, D.beamY, 0, steel);
-        // Two leaves, each hung on a pivot at its post: sealed they meet in the middle, open they
-        // swing flat against the passage. A sliding leaf has nowhere to go in a corridor without
-        // walls — it would either hang in the air beside the arch or cut through the walkway.
-        const panels = [], pivots = [];
-        for (const s of [-1, 1]) {
-            const pivot = new (B().TransformNode)('pivot', S);
-            pivot.parent = door; pivot.position.set(s * D.pivotX, 0, 0);
-            const p = B().MeshBuilder.CreateBox('panel', { width: D.panelW, height: D.panelH, depth: 0.14 }, S);
-            p.parent = pivot; p.position.set(-s * D.panelW / 2, D.panelH / 2, 0); p.material = M('#b8c4d0'); p.isPickable = false;
-            const stripe = B().MeshBuilder.CreateBox('ps', { width: 0.1, height: Math.max(0.2, D.panelH - 0.3), depth: 0.02 }, S);
-            stripe.parent = p; stripe.position.set(-s * (D.panelW / 2 - 0.16), 0, 0.08); stripe.material = M('#e05252', 0.6); stripe.isPickable = false;
-            panels.push(p); pivots.push(pivot);
-        }
+        // No leaves and no side plates: the doorway is exactly the two arches and the plate between
+        // them. The grey leaves that used to hang on pivots outside the posts read as two extra
+        // plates bolted to the sides of the door — they are gone, not merely swung open. A sealed
+        // door is shown by its emergency lamps (updateCorridor), an open one by nothing at all.
         const noise = B().MeshBuilder.CreateCylinder('noise', { diameter: 1.4, height: 0.12, tessellation: 12 }, S);
         noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M('#f1c40f', 0.9); noise.isPickable = false; noise.setEnabled(false); noise.visibility = 0;   // kept for layout; the ribs of the corridor show noise
         const noiseLabel = this.makeLabel('nl_' + c.id, '🔊', '', door, 0, 1.4, -2.2, 1.4);
@@ -1840,8 +1831,8 @@ export class Scene3D {
             db.parent = door; db.position.set((Math.random() - 0.5) * 1.6, 0.08, (Math.random() - 0.5) * 1.4); db.rotation.set(0, Math.random() * 3, (Math.random() - 0.5) * 0.4); db.material = M('#6b7a88'); db.isPickable = false; db.setEnabled(false);
             debris.push(db);
         }
-        this.corridorNodes[c.id] = { root, door, panels, pivots, noise, noiseLabel, decal, nums, sideNums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
-            panelSwing: D.panelSwing, ry: d.ry, a: c.a, b: c.b, state: null };
+        this.corridorNodes[c.id] = { root, door, noise, noiseLabel, decal, nums, sideNums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
+            ry: d.ry, a: c.a, b: c.b, state: null };
     }
 
     /** A flat stencil decal: same paint as `makeLabel`, but it stays where it is painted instead of
@@ -2368,9 +2359,8 @@ export class Scene3D {
         if (n.state === key) return;
         n.state = key;
         const closed = c.door === 'closed', destroyed = c.door === 'destroyed';
-        // Sealed: both leaves meet in the middle. Open: each swings flat against the passage side.
-        for (const p of n.pivots) p.rotation.y = closed ? 0 : n.panelSwing;
-        n.panels[0].setEnabled(!destroyed); n.panels[1].setEnabled(!destroyed);
+        // The door has no leaves: a sealed doorway is lit by its emergency lamps, a wrecked one is
+        // strewn with debris, an open one is simply the arch.
         for (const d of n.debris) d.setEnabled(destroyed);
         n.noiseLabel.setEnabled(!!c.noise);
         for (const l of n.lamps) l.setEnabled(closed);          // emergency light only while sealed

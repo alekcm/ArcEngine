@@ -113,27 +113,20 @@ export function doorSpec() {
     // A rib of the corridor puts its lintel 0.10 above the post top (the recipe overlaps the two by
     // 0.02): the door's arches use the very same height, so a doorway is not a different arch.
     const beamY = postH + 0.1;
-    // Between the posts' inner faces: what the two leaves have to cover.
+    // The doorway has no leaves of its own: it is two arches and the plate between them. The
+    // opening is simply the span between the posts' inner faces.
     const openW = Math.max(0.8, 2 * (postX - postW / 2));
-    // A leaf hangs on a pivot just outside its post and reaches the middle of the doorway: two of
-    // them meet in the centre when the bulkhead is sealed, and swing flat along the passage when it
-    // opens. The pivot sits outside the post, so an open leaf hugs the post instead of cutting it.
-    const pivotX = postX + postW / 2 + 0.09;
-    // A leaf fills the opening: from the deck up to just under the lintel, with a hand's clearance.
-    const panelW = Math.max(0.6, pivotX);
-    const panelH = Math.min(1.75, Math.max(0.6, beamY - beamH / 2 - 0.1));
-    const panelSwing = Math.PI / 2 * 0.94;
-    // The stencil lies flat on the plate: as wide as the plate allows, and never wider than the
-    // gap it is painted across (the plate's depth at the 2:1 canvas aspect). A short door gets a
-    // narrower stencil, but it stays on the plate with a margin on every side.
+    // The stencil lies flat on the plate. Its size comes from the plate's WIDTH and from nothing
+    // else: shortening the doorway must not shrink the digits. They are painted across the plate,
+    // and the paint's own transparent margins may hang over its front and back edge — the glyphs
+    // themselves stay on the steel.
     const plateD = Math.max(0.2, archGap - postD);
-    const numW = Math.min(beamW * n('numShare'), beamW - 0.4);
-    const decalW = Math.max(0.4, Math.min(numW, (plateD - 0.24) * 2));
+    const decalW = Math.max(0.4, Math.min(beamW * n('numShare'), beamW - 0.4));
     const decalH = decalW / 2;
     return {
         postX, postW, postH, postD, archGap, beamW, beamH,
         beamY, beamTop: beamY + beamH / 2, plateD,
-        openW, pivotX, panelW, panelH, panelSwing,
+        openW,
         decalW, decalH, decalY: beamY + beamH / 2 + 0.02,
         numFont: Math.round(n('numFont')),
         // The lamps are fixed to the front of the arch posts, out of the plane the leaves swing in,
