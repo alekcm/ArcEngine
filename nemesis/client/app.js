@@ -1,7 +1,7 @@
 // app.js — Nemesis client: lobby, HUD, prompts, hand, log, chat, undo. Talks to server.mjs over
 // WebSocket and renders the 3D board through scene3d.js.
 
-import { Scene3D, Preview3D } from './scene3d.js';
+import { Scene3D, Preview3D, setPreviewCameraPose } from './scene3d.js';
 import { TUNE } from './tuning.js';
 import { galleryPods } from './gallery.js';
 import { DEFAULTS } from './characters.js';
@@ -17,6 +17,22 @@ import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, C
 const $ = id => document.getElementById(id);
 const PHASES = { setup: 'Подготовка', draft: 'Выбор персонажей', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
 const WORKSHOP_LABELS = {
+    soldier: { title: 'Солдат', button: 'Мастерская Солдата', hint: 'Шлем, броня и ранец', caption: 'Модель · силовая броня' },
+    scout: { title: 'Разведчица', button: 'Мастерская Разведчицы', hint: 'Причёска, наруч и жилет', caption: 'Модель · разведка' },
+    mechanic: { title: 'Механик', button: 'Мастерская Механика', hint: 'Маска, инструменты и ранец', caption: 'Модель · техническая служба' },
+    pilot: { title: 'Пилот', button: 'Мастерская Пилота', hint: 'Причёска, монокль и куртка', caption: 'Модель · пилотирование' },
+    hacker: { title: 'Хакер', button: 'Мастерская Хакера', hint: 'Капюшон, маска и киберруки', caption: 'Модель · цифровая разведка' },
+    scientist: { title: 'Учёный', button: 'Мастерская Учёного', hint: 'Очки, кресло и планшет', caption: 'Модель · исследования' },
+    medic: { title: 'Медик', button: 'Мастерская Медика', hint: 'Причёска, маска и аптечка', caption: 'Модель · медицина' },
+    janitor: { title: 'Уборщик', button: 'Мастерская Уборщика', hint: 'Борода, кепка и пылесос', caption: 'Модель · обслуживание' },
+    ceo: { title: 'Директор', button: 'Мастерская Директора', hint: 'Причёска, пальто и робот', caption: 'Модель · руководство' },
+    android: { title: 'Андроид', button: 'Мастерская Андроида', hint: 'Причёска, импланты и жилет', caption: 'Модель · синтетический экипаж' },
+    convict: { title: 'Заключённый', button: 'Мастерская Заключённого', hint: 'Намордник, пластины и оковы', caption: 'Модель · заключение' },
+    psych: { title: 'Психолог', button: 'Мастерская Психолога', hint: 'Причёска, гарнитура и дроны', caption: 'Модель · поддержка экипажа' },
+    bounty: { title: 'Охотник за головами', button: 'Мастерская Охотника', hint: 'Причёска, броня и снаряжение собаки', caption: 'Модель · охотник и спутник' },
+    captain: { title: 'Капитан', button: 'Мастерская Капитана', hint: 'Причёска и броня', caption: 'Модель · командование' },
+    survivor: { title: 'Выжившая', button: 'Мастерская Выжившей', hint: 'Причёска, бандана и рация', caption: 'Модель · выживание' },
+    xeno: { title: 'Ксенобиолог', button: 'Мастерская Ксенобиолога', hint: 'Причёска, сканер и куртка', caption: 'Модель · ксенобиология' },
     labrat: { title: 'Подопытная', button: 'Мастерская Подопытной', hint: 'Причёска, одежда и другие детали', caption: 'Модель · эксперимент' },
     sentry: { title: 'Охранник', button: 'Мастерская Охранника', hint: 'Оптика, броня и другие детали', caption: 'Модель · служба охраны' },
 };
@@ -226,6 +242,7 @@ function renderLobby() {
         $('labOpenTitle').textContent = workshop.button; $('labOpenHint').textContent = workshop.hint;
         $('labTitle').innerHTML = esc(workshop.title) + ' <span>· мастерская</span>';
         $('labStageName').textContent = workshop.title; $('labStageCaption').textContent = workshop.caption;
+        $('labSlotCount').textContent = '/ ' + String(characterPartSlots(app.charId).length).padStart(2, '0');
     }
     if (app.labWorkshop && (!labAvailable || app.charId !== previousCharId)) closeLabWorkshop(false);
     // characters
@@ -233,7 +250,7 @@ function renderLobby() {
         const taken = L.seats.some(s => s.charId === id && s.id !== app.me);
         return '<div class="char-card ' + (id === app.charId ? 'sel' : '') + (taken ? ' taken' : '') + '" data-char="' + id + '" style="border-left:5px solid ' + c.color + '"><b>' + esc(c.name) + '</b><small>' + esc((CHARACTERS[id] ? CHARACTERS[id].startItems : []).map(si => ITEMS[si.item].name).join(', ')) + '</small></div>';
     }).join('');
-    for (const el of $('charList').querySelectorAll('.char-card')) el.onclick = () => { if (el.classList.contains('taken')) return; net.send({ t: 'lobby', charId: el.dataset.char, colors: {} }); };
+    for (const el of $('charList').querySelectorAll('.char-card')) el.onclick = () => { if (el.classList.contains('taken')) return; net.send({ t: 'lobby', charId: el.dataset.char }); };
     // paint zones
     const ch = L.characters[app.charId];
     if (ch) {
@@ -309,9 +326,17 @@ function openLabWorkshop() {
     $('labCanvasHost').appendChild($('previewCanvas'));
     const cam = preview.camera;
     labCameraPose = { alpha: cam.alpha, beta: cam.beta, radius: cam.radius, target: cam.target.clone() };
-    cam.alpha = Math.PI / 2 - 0.28; cam.beta = 1.3; cam.radius = 3.3;
-    cam.inertialAlphaOffset = 0; cam.inertialBetaOffset = 0; cam.inertialRadiusOffset = 0;
-    cam.setTarget(new (window.BABYLON.Vector3)(0, 0.95, 0));
+    // Frame the seated scientist and the wider/taller companion models without cutting them off.
+    const framing = {
+        scientist: { x: 0, y: 0.7, radius: 2.9 },
+        ceo: { x: -0.2, y: 0.95, radius: 3.7 },
+        bounty: { x: 0.17, y: 0.95, radius: 3.7 },
+        xeno: { x: 0, y: 1.05, radius: 3.6 },
+    }[app.charId] || { x: 0, y: 0.95, radius: 3.3 };
+    setPreviewCameraPose(cam, {
+        target: new (window.BABYLON.Vector3)(framing.x, framing.y, 0),
+        alpha: Math.PI / 2 - 0.28, beta: 1.3, radius: framing.radius,
+    });
     preview.show(app.charId, Object.assign({}, DEFAULTS[app.charId], app.colors), app.parts);
     updateLabSelection();
     preview.engine.resize();
@@ -324,10 +349,8 @@ function closeLabWorkshop(restoreFocus = true) {
     $('charPreview').appendChild($('previewCanvas'));
     $('labWorkshop').classList.add('hidden');
     if (preview && labCameraPose) {
-        const cam = preview.camera;
-        cam.alpha = labCameraPose.alpha; cam.beta = labCameraPose.beta; cam.radius = labCameraPose.radius;
-        cam.inertialAlphaOffset = 0; cam.inertialBetaOffset = 0; cam.inertialRadiusOffset = 0;
-        cam.setTarget(labCameraPose.target); labCameraPose = null;
+        setPreviewCameraPose(preview.camera, labCameraPose);
+        labCameraPose = null;
         requestAnimationFrame(() => { if (preview) preview.engine.resize(); });
     }
     if (restoreFocus && !$('labOpen').classList.contains('hidden')) $('labOpen').focus({ preventScroll: true });

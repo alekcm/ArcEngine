@@ -2,7 +2,7 @@
 //   node --test nemesis/tools/appearance.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LABRAT_PARTS, SENTRY_PARTS, characterPartSlots, characterParts } from '../shared/appearance.mjs';
+import { LABRAT_PARTS, SENTRY_PARTS, CREW_PARTS, characterPartSlots, characterParts } from '../shared/appearance.mjs';
 import { createGame } from '../shared/engine/setup.mjs';
 import { OPS } from '../shared/engine/core.mjs';
 import { viewFor } from '../shared/view.mjs';
@@ -29,7 +29,7 @@ test('LAB-01: preset normalization accepts only the defined Lab Rat options', ()
     for (const [slot, removed] of Object.entries({ hair: ['bob', 'shaved'], eyes: ['visor', 'none'], outfit: ['coat', 'suit'], implants: ['crown', 'none'] })) {
         for (const old of removed) assert.deepEqual(characterParts('labrat', { ...custom, [slot]: old }), { ...custom, [slot]: original[slot] }, `${slot}/${old}`);
     }
-    assert.deepEqual(characterParts('pilot', custom), {}, 'no mesh customization leaks to other characters');
+    assert.deepEqual(characterParts('pilot', custom), characterParts('pilot'), 'Lab Rat choices do not leak to the pilot');
     assert.deepEqual(characterParts(null, custom), {});
     assert.deepEqual(Object.keys(characterParts('labrat', {})), LABRAT_PARTS.map(slot => slot.id));
     for (const slot of LABRAT_PARTS) for (const option of slot.options) {
@@ -40,7 +40,7 @@ test('LAB-01: preset normalization accepts only the defined Lab Rat options', ()
 test('LAB-02: the selected parts and colors appear in every player and spectator view', () => {
     const state = createGame({ seed: 'lab-rat', draft: false, players: [player('labrat'), player('pilot')] });
     assert.deepEqual(state.players[0].parts, custom);
-    assert.deepEqual(state.players[1].parts, {});
+    assert.deepEqual(state.players[1].parts, characterParts('pilot'));
     for (const viewer of [0, 1, null]) {
         const publicPlayer = viewFor(state, viewer).players[0];
         assert.deepEqual(publicPlayer.parts, custom);
@@ -56,7 +56,7 @@ test('LAB-03: a draft applies lobby parts only if the selected character matches
     }
     assert.deepEqual(pick('labrat', 'labrat').parts, custom, 'the player drafted the character they customized');
     const someoneElse = pick('labrat', 'pilot');
-    assert.deepEqual(someoneElse.parts, {}, 'a different character does not inherit the parts');
+    assert.deepEqual(someoneElse.parts, characterParts('pilot'), 'a different character does not inherit the parts');
     assert.deepEqual(someoneElse.colors, {}, 'the existing color draft behavior is preserved');
     assert.deepEqual(pick('pilot', 'labrat').parts, original, 'a newly drafted Lab Rat uses original parts');
 });
@@ -67,7 +67,7 @@ const sentryCustom = { optics: 'binocular', respirator: 'ribbed', shoulders: 'he
 test('SENTRY-01: presets are character-specific, canonical, and safely normalized', () => {
     assert.equal(characterPartSlots('sentry'), SENTRY_PARTS);
     assert.equal(characterPartSlots('labrat'), LABRAT_PARTS);
-    assert.deepEqual(characterPartSlots('pilot'), []);
+    assert.equal(characterPartSlots('pilot'), CREW_PARTS.pilot);
     assert.deepEqual(characterParts('sentry'), sentryOriginal);
     assert.deepEqual(characterParts('sentry', sentryCustom), sentryCustom);
     assert.deepEqual(characterParts('sentry', { optics: 'bad', respirator: ['ribbed'], shoulders: 'heavy', cloak: null, extra: 'bad' }),
@@ -106,4 +106,50 @@ test('SENTRY-02: selected parts reach every game view and follow the same draft 
     assert.deepEqual(pick(guard, 'sentry').parts, sentryCustom);
     assert.deepEqual(pick(guard, 'labrat').parts, original, 'drafting another character uses her defaults');
     assert.deepEqual(pick(player('labrat'), 'sentry').parts, sentryOriginal, 'drafted Sentry starts with his own defaults');
+});
+
+test('CREW-01: every crew member has independent, fully validated slots', async () => {
+    const { CHARACTERS } = await import('../shared/data/cards.mjs');
+    assert.deepEqual(new Set([...Object.keys(CREW_PARTS), 'labrat', 'sentry']), new Set(Object.keys(CHARACTERS)));
+    assert.equal(Object.keys(CREW_PARTS).length, 16);
+    for (const [id, slots] of Object.entries(CREW_PARTS)) {
+        assert.equal(characterPartSlots(id), slots);
+        assert.equal(slots.length, 3, id + ': three role-specific categories');
+        assert.equal(new Set(slots.map(s => s.id)).size, slots.length, id + ': unique slots');
+        const defaults = characterParts(id);
+        for (const slot of slots) {
+            assert.ok(slot.label && slot.hint && slot.options.every(o => o.label && o.detail));
+            assert.equal(slot.options.length, 3);
+            assert.equal(slot.options[0].id, 'classic');
+            assert.equal(new Set(slot.options.map(o => o.id)).size, slot.options.length);
+            assert.equal(defaults[slot.id], 'classic');
+            for (const option of slot.options) assert.equal(characterParts(id, { [slot.id]: option.id })[slot.id], option.id);
+            for (const bad of ['<script>', '__proto__', null, ['classic'], 2])
+                assert.equal(characterParts(id, { [slot.id]: bad })[slot.id], 'classic', `${id}/${slot.id}: invalid value`);
+        }
+        assert.deepEqual(characterParts(id, { ...defaults, injected: 'bad' }), defaults);
+        assert.deepEqual(characterParts(id, []), defaults);
+    }
+});
+
+test('CREW-02: every chosen appearance and color reaches public game views and obeys draft matching', () => {
+    for (const [id, slots] of Object.entries(CREW_PARTS)) {
+        const chosen = Object.fromEntries(slots.map(s => [s.id, s.options[1].id]));
+        const config = { name: id, charId: id, colors: { test: '#123456' }, parts: chosen };
+        const state = createGame({ seed: 'crew-' + id, draft: false, players: [config] });
+        for (const viewer of [0, null]) {
+            const p = viewFor(state, viewer).players[0];
+            assert.deepEqual(p.parts, chosen, id + ': public appearance');
+            assert.equal(p.colors.test, '#123456', id + ': color');
+        }
+        function draft(choice) {
+            const g = createGame({ seed: 'crew-draft-' + id, draft: true, players: [config] });
+            OPS['draft.pick'](g, { player: 0, answer: choice, hand: [id, 'labrat'] });
+            return g.players[0];
+        }
+        assert.deepEqual(draft(id).parts, chosen, id + ': same character');
+        const different = draft('labrat');
+        assert.deepEqual(different.parts, original, id + ': a different character receives her defaults');
+        assert.deepEqual(different.colors, {}, id + ': draft color rules stay intact');
+    }
 });

@@ -615,3 +615,152 @@ test('SENTRY-05: changing the Sentry appearance rebuilds the table figure withou
     assert.ok(rebuilt.ch.root.getChildMeshes().some(m => shadowList.includes(m)));
     scene.updateCharacters(view);
 });
+
+const CREW_ORIGINAL_HASHES = {
+    soldier: '6624ae8a142e282335ebfb4942f1fc3d99f197713baf48e0227c2597f425dec3',
+    scout: '25b50cb28ab4dc46e4c8251b462bf7db4e0eb2abc9eb28fc082bbfef724245eb',
+    mechanic: '1ba784e3e2504366a9777568e3b70b8feedab1def79c00847ec061a7f2c8fdb5',
+    pilot: 'e418f84fb3a63b8771474b98744d464fb8f0d2b2aae392a310861787eb46b989',
+    hacker: 'bf0e8e492b9a175443b8894ec6f506b9cb7980a78c5c9a0263cff99459578e27',
+    scientist: '023c0fca22b1209ebcb0fa5540f9fa33a4b39a67c181964315161b6eaa6d799b',
+    medic: 'fbd83941fbd5ff5283425ae1dc5bac635a8216861fa9e7af6b55515de7084fcb',
+    janitor: 'b540b75ee294fdab33f5533a4324176abf0684d9bc573e39fd5cbad7279080b8',
+    ceo: '5bd3411416453ae47d2da6754a3e49a67de2c984203f04e76cf3aafb5556266b',
+    android: '858591af7f58d0af20581cd1217b0bf77fbd9e85e24f6c48ab586397e6f8bc0f',
+    convict: '2d5477ab4e352d6bff66b48feb0491488d78d10754f181beca1fa6dac37d81b1',
+    psych: '58da8e33c1e390d69a8b4f2985f15dfa92a57924d5b0815e1f738657393cf5e1',
+    bounty: '04a7f6a04fcb012a6a98d701d37fb9916edc0943ad2905f66087acfcaffa1a79',
+    captain: '3d707abf4830a827ba018ea77444d5922e11ffbc740baeb4e7f6b2c043231c80',
+    survivor: '5ff5ab81068aed27b51da8ef22abca159ba0531292a14efc23f204667ea9ef0d',
+    xeno: '85d76328df00a5820a85f907986fa50e87e65499e9f922c4f87443cf95c84374',
+};
+
+test('CREW-03: all original miniatures are unchanged and every option changes real geometry', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const { CREW_PARTS, characterParts } = await import('../shared/appearance.mjs');
+    const signature = (id, parts) => {
+        const ch = buildCharacter(scene.scene, id, {}, parts), result = geometrySignature(ch);
+        ch.root.dispose(); return result;
+    };
+    for (const [id, slots] of Object.entries(CREW_PARTS)) {
+        const original = signature(id), defaults = characterParts(id);
+        assert.equal(createHash('sha256').update(JSON.stringify(original)).digest('hex'), CREW_ORIGINAL_HASHES[id], id + ': original geometry');
+        assert.deepEqual(signature(id, defaults), original, id + ': explicit defaults');
+        for (const slot of slots) {
+            const variants = slot.options.map(option => JSON.stringify(signature(id, { ...defaults, [slot.id]: option.id })));
+            assert.equal(new Set(variants).size, slot.options.length, `${id}/${slot.id}: each option has distinct vertices/transforms`);
+        }
+        assert.deepEqual(signature(id), original, id + ': no mutation of shared spec');
+    }
+});
+
+test('CREW-04: all 432 combinations retain their equipment, paintability and attached geometry', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const { CREW_PARTS } = await import('../shared/appearance.mjs');
+    const requiredNodes = { soldier: ['gun'], scout: ['gun'], mechanic: [], pilot: ['gun'], hacker: ['gun'],
+        scientist: ['wheel'], medic: ['gun'], janitor: [], ceo: ['robot', 'gun'], android: ['gun'], convict: [],
+        psych: ['drone'], bounty: ['dog', 'gun'], captain: ['gun'], survivor: ['gun'], xeno: ['scanHead'] };
+    const belongs = (node, root) => { for (let n = node; n; n = n.parent) if (n === root) return true; return false; };
+    let checked = 0;
+    for (const [id, slots] of Object.entries(CREW_PARTS)) {
+        const combos = slots.reduce((acc, slot) => acc.flatMap(old => slot.options.map(o => ({ ...old, [slot.id]: o.id }))), [{}]);
+        for (const parts of combos) {
+            const before = new Set(scene.scene.meshes);
+            const ch = buildCharacter(scene.scene, id, {}, parts), label = id + ' ' + JSON.stringify(parts);
+            const meshes = scene.scene.meshes.filter(m => !before.has(m));
+            assert.ok(meshes.length > 20, label + ': full miniature');
+            assert.ok(meshes.every(m => belongs(m, ch.root)), label + ': no detached accessories');
+            for (const nodeName of requiredNodes[id]) assert.ok(ch.root.getDescendants().some(n => n.name === nodeName), label + ': retains ' + nodeName);
+            if (id === 'psych') assert.equal(ch.root.getChildren().filter(n => n.name === 'drone').length, 2, label + ': two drones');
+            if (id === 'scientist') assert.equal(ch.root.getChildMeshes().filter(m => m.name === 'wheel').length, 4, label + ': powered wheelchair');
+            if (id === 'convict') assert.ok(ch.zones.skin?.length && ch.zones.mask?.length && ch.zones.chains?.length, label + ': skin, muzzle and chains');
+            if (id === 'survivor') assert.ok(ch.root.getChildMeshes().some(m => m.material.diffuseColor?.toHexString().toLowerCase() === '#2b2a28'), label + ': face remains covered');
+            const colors = Object.fromEntries(Object.keys(ch.zones).map((z, i) => [z, '#' + (0x123456 + i * 0x010101).toString(16).padStart(6, '0')]));
+            ch.setColors(colors);
+            for (const [zone, hex] of Object.entries(colors)) {
+                assert.ok(ch.zones[zone].every(m => m.material.diffuseColor.toHexString().toLowerCase() === hex), label + ': paint ' + zone);
+            }
+            ch.animate(0.1, true); ch.animate(0.2, true);
+            assert.ok(meshes.every(m => belongs(m, ch.root)), label + ': attachments remain after movement');
+            ch.root.dispose(); checked++;
+        }
+    }
+    assert.equal(checked, 432);
+});
+
+test('CREW-05: extra shoulders, bracers, wheels and companions move with their originals', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    for (const [id, parts, slot, ancestor] of [
+        ['soldier', { shoulders: 'extended' }, 'shoulders', 'armL'],
+        ['scout', { bracer: 'display' }, 'bracer', 'armL'],
+        ['hacker', { arms: 'terminal' }, 'arms', 'armL'],
+        ['bounty', { armor: 'heavy' }, 'armor', 'armL'],
+        ['captain', { shoulders: 'layered' }, 'shoulders', 'armL'],
+        ['scientist', { chair: 'spoked' }, 'chair', 'wheel'],
+        ['ceo', { robot: 'sensor' }, 'robot', 'robot'],
+        ['psych', { drones: 'rotors' }, 'drones', 'drone'],
+        ['bounty', { dog: 'packs' }, 'dog', 'dog'],
+        ['xeno', { probe: 'twin' }, 'probe', 'scanHead'],
+    ]) {
+        const ch = buildCharacter(scene.scene, id, {}, parts);
+        const extra = ch.root.getChildMeshes().filter(m => m.name === `crew_${id}_${slot}`);
+        const hasAncestor = m => { for (let p = m.parent; p; p = p.parent) if (p.name === ancestor) return true; return false; };
+        assert.ok(extra.some(hasAncestor), `${id}/${slot} follows ${ancestor}`);
+        ch.animate(0.1, true); ch.animate(0.2, true);
+        assert.ok(extra.some(hasAncestor), `${id}/${slot} stays attached while running`);
+        ch.root.dispose();
+    }
+});
+
+test('CREW-06: every customized crew figure is rebuilt on the table without stale shadows', async () => {
+    const { CREW_PARTS, characterParts } = await import('../shared/appearance.mjs');
+    const v = JSON.parse(JSON.stringify(view)), p = v.players[0];
+    for (const [id, slots] of Object.entries(CREW_PARTS)) {
+        p.charId = id; p.parts = characterParts(id);
+        scene.updateCharacters(v);
+        const first = scene.chars[p.id], old = first.ch.root, oldMeshes = old.getChildMeshes();
+        scene.updateCharacters(v);
+        assert.equal(scene.chars[p.id].ch.root, old, id + ': unchanged figure is reused');
+        p.parts = Object.fromEntries(slots.map(s => [s.id, s.options[2].id]));
+        scene.updateCharacters(v);
+        const changed = scene.chars[p.id];
+        assert.notEqual(changed.ch.root, old, id + ': new choices rebuild');
+        assert.equal(old.isDisposed(), true, id + ': old figure disposed');
+        assert.equal(changed.grab.metadata.player, p.id, id + ': hitbox still works');
+        const shadowList = scene.shadows.getShadowMap().renderList || [];
+        assert.ok(oldMeshes.every(m => !shadowList.includes(m)), id + ': old shadow casters removed');
+        assert.ok(changed.ch.root.getChildMeshes().some(m => shadowList.includes(m)), id + ': new shadow casters added');
+    }
+    scene.updateCharacters(view);
+});
+
+test('CREW-07: workshop framing sets its target before the orbit and restores the lobby camera', async () => {
+    const { setPreviewCameraPose } = await import('../client/scene3d.js');
+    const cam = new B.ArcRotateCamera('workshop-test', -1.17, 1.25, 4.4, new B.Vector3(0, 0.95, 0), scene.scene);
+    const original = { alpha: cam.alpha, beta: cam.beta, radius: cam.radius, target: cam.target.clone() };
+    cam.inertialAlphaOffset = 0.2; cam.inertialRadiusOffset = 0.3;
+    const workshop = { alpha: Math.PI / 2 - 0.28, beta: 1.3, radius: 3.7, target: new B.Vector3(-0.2, 0.95, 0) };
+    setPreviewCameraPose(cam, workshop);
+    assert.equal(cam.alpha, workshop.alpha); assert.equal(cam.beta, workshop.beta); assert.equal(cam.radius, workshop.radius);
+    assert.deepEqual(cam.target.asArray(), workshop.target.asArray());
+    assert.equal(cam.inertialAlphaOffset, 0); assert.equal(cam.inertialRadiusOffset, 0);
+    // Render once so the camera position catches up, then restore a different target and orbit.
+    cam.getViewMatrix(true);
+    setPreviewCameraPose(cam, original);
+    assert.equal(cam.alpha, original.alpha); assert.equal(cam.beta, original.beta); assert.equal(cam.radius, original.radius);
+    assert.deepEqual(cam.target.asArray(), original.target.asArray());
+    cam.dispose();
+});
+
+test('CREW-08: the Survivor’s bandana ties remain outside every radio pack and hair combination', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    for (const hair of ['classic', 'wavy', 'long']) for (const radio of ['classic', 'dual', 'caged']) {
+        const ch = buildCharacter(scene.scene, 'survivor', {}, { hair, radio, bandana: 'tails' });
+        const ties = ch.root.getChildMeshes().filter(m => m.name === 'crew_survivor_bandana' && m.position.z <= -0.49);
+        assert.equal(ties.length, 2, `${hair}/${radio}: both ties lie behind the backpack cage`);
+        assert.ok(ties.every(m => m.parent === ch.root), 'the ties remain attached to the head/body');
+        ch.animate(0.1, true); ch.animate(0.2, true);
+        assert.ok(ties.every(m => m.parent === ch.root), 'the ties do not attach to the running limbs');
+        ch.root.dispose();
+    }
+});

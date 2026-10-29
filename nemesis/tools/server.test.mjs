@@ -15,6 +15,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { characterParts, characterPartSlots, CREW_PARTS } from '../shared/appearance.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER = path.join(HERE, '..', 'server.mjs');
@@ -248,15 +249,17 @@ test('SRV-06: детали Подопытной проверяются, сохр
 
     const switched = await change({ t: 'lobby', charId: 'pilot', parts: { hair: 'shaved' } },
         m => m && m.t === 'lobby' && m.seats[0].charId === 'pilot', 'another character');
-    assert.deepEqual(switched.seats[0].parts, {}, 'other characters expose no Lab Rat parts');
+    assert.deepEqual(switched.seats[0].parts, characterParts('pilot'), 'the pilot receives their own defaults, not Lab Rat parts');
+    assert.deepEqual(switched.seats[0].colors, {}, 'the pilot does not inherit the Lab Rat palette');
     const returned = await change({ t: 'lobby', charId: 'labrat' },
         m => m && m.t === 'lobby' && m.seats[0].charId === 'labrat', 'Lab Rat again');
     assert.deepEqual(returned.seats[0].parts, custom, 'switching back restores the selected Lab Rat parts');
+    assert.equal(returned.seats[0].colors.gown, '#12abcd', 'switching back restores her colors too');
 
     const state = await change({ t: 'start' }, m => m && m.t === 'state' && m.view && m.view.players.length === 2, 'game state');
     assert.deepEqual(state.view.players[0].parts, custom, 'the public game view carries the selected parts');
     assert.equal(state.view.players[0].colors.gown, '#12abcd', 'custom colors still reach the game');
-    assert.deepEqual(state.view.players[1].parts, {}, 'the other character stays unchanged');
+    assert.deepEqual(state.view.players[1].parts, characterParts(state.view.players[1].charId), 'the other character keeps their own defaults');
 });
 
 test('SRV-07: Охранник и Подопытная сохраняют независимые варианты при смене персонажа', async (t) => {
@@ -287,10 +290,12 @@ test('SRV-07: Охранник и Подопытная сохраняют нез
 
     msg = await change({ t: 'lobby', charId: 'labrat' }, m => m?.t === 'lobby' && m.seats[0].charId === 'labrat', 'Lab Rat restored');
     assert.deepEqual(msg.seats[0].parts, lab);
+    assert.deepEqual(msg.seats[0].colors, {}, 'the Sentry palette does not leak');
     msg = await change({ t: 'lobby', charId: 'sentry' }, m => m?.t === 'lobby' && m.seats[0].charId === 'sentry', 'Sentry restored');
     assert.deepEqual(msg.seats[0].parts, guard);
-    msg = await change({ t: 'lobby', charId: 'pilot' }, m => m?.t === 'lobby' && m.seats[0].charId === 'pilot', 'non-custom character');
-    assert.deepEqual(msg.seats[0].parts, {});
+    assert.equal(msg.seats[0].colors.armor, '#12abcd', 'the Sentry palette is restored');
+    msg = await change({ t: 'lobby', charId: 'pilot' }, m => m?.t === 'lobby' && m.seats[0].charId === 'pilot', 'pilot');
+    assert.deepEqual(msg.seats[0].parts, characterParts('pilot'));
     msg = await change({ t: 'lobby', charId: 'sentry' }, m => m?.t === 'lobby' && m.seats[0].charId === 'sentry', 'Sentry after pilot');
     assert.deepEqual(msg.seats[0].parts, guard);
 
@@ -303,4 +308,75 @@ test('SRV-07: Охранник и Подопытная сохраняют нез
     const state = await change({ t: 'start' }, m => m?.t === 'state' && m.view?.players.length === 2, 'game state');
     assert.deepEqual(state.view.players[0].parts, guard, 'other players see the figure in game');
     assert.equal(state.view.players[0].colors.armor, '#12abcd');
+});
+
+test('SRV-08: все мастерские независимо сохраняются, проверяются и видны другому игроку', async (t) => {
+    const { child, port } = await startServer(pickPort());
+    t.after(() => { try { child.kill(); } catch { /* gone */ } });
+    const owner = await wsClient(port), other = await wsClient(port);
+    t.after(() => { owner.close(); other.close(); });
+    owner.send({ t: 'join', token: null, name: 'Автор' });
+    await waitFor(owner, m => m?.t === 'lobby' && m.seats.length === 1, 'first player');
+    other.send({ t: 'join', token: null, name: 'Друг' });
+    await waitFor(other, m => m?.t === 'lobby' && m.seats.length === 2, 'second player');
+    // Free every new crew character for the owner and keep the observer on a different workshop.
+    let from = other.messages.length;
+    let next = waitFor(other, m => other.messages.indexOf(m) >= from && m?.t === 'lobby' && m.seats[1].charId === 'labrat', 'observer character');
+    other.send({ t: 'lobby', charId: 'labrat' }); await next;
+    async function change(message, filter, what) {
+        const from = other.messages.length;
+        const result = waitFor(other, m => other.messages.indexOf(m) >= from && filter(m), what);
+        owner.send(message); return result;
+    }
+    const saved = {}, savedColors = {};
+    for (const [index, [id, slots]] of Object.entries(CREW_PARTS).entries()) {
+        // Entering an unseen character must not inherit the previous one's palette.
+        let msg = await change({ t: 'lobby', charId: id }, m => m?.t === 'lobby' && m.seats[0].charId === id, 'enter ' + id);
+        assert.deepEqual(msg.seats[0].colors, {}, id + ': no color leaks from the previous character');
+        const parts = Object.fromEntries(slots.map((slot, i) => [slot.id, slot.options[1 + i % 2].id]));
+        const colors = { skin: '#' + (0x112233 + index * 0x010101).toString(16).padStart(6, '0') };
+        saved[id] = parts; savedColors[id] = colors;
+        msg = await change({ t: 'lobby', parts: { ...parts, injected: 'not allowed' }, colors },
+            m => m?.t === 'lobby' && m.seats[0].parts?.[slots[0].id] === parts[slots[0].id], 'custom ' + id);
+        assert.deepEqual(msg.seats[0].parts, parts, id + ': observer gets validated choices');
+        assert.deepEqual(msg.seats[0].colors, colors, id + ': observer gets the palette');
+    }
+    for (const id of Object.keys(CREW_PARTS)) {
+        const msg = await change({ t: 'lobby', charId: id }, m => m?.t === 'lobby' && m.seats[0].charId === id, 'restore ' + id);
+        assert.deepEqual(msg.seats[0].parts, saved[id], id + ': selection survives switching between characters');
+        assert.deepEqual(msg.seats[0].colors, savedColors[id], id + ': palette is restored independently');
+    }
+    const slot = characterPartSlots('xeno')[0];
+    let msg = await change({ t: 'lobby', parts: { ...saved.xeno, [slot.id]: ['invalid'] }, colors: { coat: '#12abcd' } },
+        m => m?.t === 'lobby' && m.seats[0].parts[slot.id] === 'classic', 'invalid xeno part');
+    assert.deepEqual(msg.seats[0].parts, { ...saved.xeno, [slot.id]: 'classic' }, 'only the invalid slot is reset');
+    assert.equal(msg.seats[0].colors.coat, '#12abcd');
+    await change({ t: 'lobby', parts: saved.xeno }, m => m?.t === 'lobby' && m.seats[0].parts[slot.id] === saved.xeno[slot.id], 'restore xeno');
+    msg = await change({ t: 'start' }, m => m?.t === 'state' && m.view?.players.length === 2, 'public game');
+    assert.deepEqual(msg.view.players[0].parts, saved.xeno);
+    assert.equal(msg.view.players[0].colors.coat, '#12abcd');
+    assert.deepEqual(msg.view.players[1].parts, characterParts('labrat'));
+});
+
+test('SRV-09: драфт сохраняет выбранный образ только при совпадении персонажа', async (t) => {
+    const chosen = { hair: 'longtail', probe: 'twin', jacket: 'pockets' };
+    for (const sameCharacter of [true, false]) {
+        const { child, port } = await startServer(pickPort());
+        t.after(() => { try { child.kill(); } catch { /* gone */ } });
+        const client = await wsClient(port); t.after(() => client.close());
+        client.send({ t: 'join', token: null, name: 'Автор' });
+        await waitFor(client, m => m?.t === 'lobby' && m.seats.length === 1, 'joined');
+        client.send({ t: 'lobby', charId: 'xeno', parts: chosen, colors: { coat: '#12abcd' },
+            settings: { mode: 'original', seed: 'workshop-draft-7', draft: true } });
+        await waitFor(client, m => m?.t === 'lobby' && m.seats[0].charId === 'xeno' && m.settings.draft, 'draft settings');
+        client.send({ t: 'start' });
+        const draft = await waitFor(client, m => m?.t === 'state' && m.view?.phase === 'draft' && m.view.prompt?.options, 'draft prompt');
+        const options = draft.view.prompt.options.map(o => o.id);
+        assert.ok(options.includes('xeno'), 'the deterministic hand contains the customized character');
+        const pick = sameCharacter ? 'xeno' : options.find(id => id !== 'xeno');
+        client.send({ t: 'act', promptId: draft.view.prompt.id, answer: pick });
+        const state = await waitFor(client, m => m?.t === 'state' && m.view?.players[0].charId === pick, 'draft result');
+        assert.deepEqual(state.view.players[0].parts, sameCharacter ? chosen : characterParts(pick));
+        assert.deepEqual(state.view.players[0].colors, sameCharacter ? { coat: '#12abcd' } : {});
+    }
 });

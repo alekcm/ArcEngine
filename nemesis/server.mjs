@@ -237,7 +237,7 @@ function onMessage(socket, m) {
             let seat = m.token ? game.seats.find(s => s.token === m.token) : null;
             if (seat) { if (seat.socket && seat.socket !== socket) seat.socket.close(); seat.socket = socket; }
             else if (game.phase === 'lobby' && game.seats.length < MAX_PLAYERS) {
-                seat = { token: crypto.randomBytes(12).toString('hex'), name: cleanName(m.name) || 'Игрок ' + (game.seats.length + 1), charId: freeChar(), colors: {}, appearances: {}, ready: false, socket };
+                seat = { token: crypto.randomBytes(12).toString('hex'), name: cleanName(m.name) || 'Игрок ' + (game.seats.length + 1), charId: freeChar(), colors: {}, characterColors: {}, appearances: {}, ready: false, socket };
                 game.seats.push(seat);
             }
             socket.send({ t: 'welcome', token: seat ? seat.token : null, seat: seat ? game.seats.indexOf(seat) : null, spectator: !seat });
@@ -249,9 +249,18 @@ function onMessage(socket, m) {
         case 'lobby': {
             const seat = seatOf(socket); if (!seat || game.phase !== 'lobby') return;
             if (typeof m.name === 'string') seat.name = cleanName(m.name) || seat.name;
-            if (typeof m.charId === 'string' && Object.hasOwn(CHARACTERS, m.charId) && !game.seats.some(s => s !== seat && s.charId === m.charId)) seat.charId = m.charId;
-            if (m.colors && typeof m.colors === 'object') seat.colors = sanitizeColors(seat.charId, m.colors);
-            // Keep each character's selection independently when a player switches characters.
+            if (typeof m.charId === 'string' && Object.hasOwn(CHARACTERS, m.charId) && !game.seats.some(s => s !== seat && s.charId === m.charId) && m.charId !== seat.charId) {
+                // Switching models restores that model's palette instead of leaking or erasing
+                // another character's colors. Explicit colors in the same message still override it.
+                seat.characterColors[seat.charId] = seat.colors;
+                seat.charId = m.charId;
+                seat.colors = seat.characterColors[seat.charId] || {};
+            }
+            if (m.colors && typeof m.colors === 'object') {
+                seat.colors = sanitizeColors(seat.charId, m.colors);
+                seat.characterColors[seat.charId] = seat.colors;
+            }
+            // Keep each character's mesh selection independently when a player switches characters.
             if (characterPartSlots(seat.charId).length && m.parts && typeof m.parts === 'object') {
                 seat.appearances[seat.charId] = characterParts(seat.charId, m.parts);
             }

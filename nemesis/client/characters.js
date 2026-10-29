@@ -5,6 +5,7 @@
 // Every part is bound to a paint zone (CHARACTERS[*].zones) so the player can recolour it.
 
 import { characterParts } from '../shared/appearance.mjs';
+import { addCrewDetails } from './crew-variants.js';
 
 const B = () => window.BABYLON;
 
@@ -97,6 +98,23 @@ function labratSpec(parts) {
     };
 }
 
+// Hair changes only the requested character's copy; the canonical specs are never mutated.
+function crewSpec(charId, parts) {
+    const spec = SPECS[charId] || SPECS.pilot;
+    const hair = {
+        pilot: { spiky: 'shortSpiky', side: 'shortSide' },
+        medic: { tied: 'crewPony', wavy: 'labMessy' },
+        ceo: { spiky: 'shortSpiky', side: 'shortSide' },
+        android: { tied: 'crewPony', bob: 'bobBangs' },
+        psych: { layered: 'bobLayered', long: 'crewLongBangs' },
+        bounty: { swept: 'shortSwept', spiky: 'shortSpiky' },
+        captain: { swept: 'shortSwept', spiky: 'shortSpiky' },
+        survivor: { wavy: 'labMessy', long: 'longLoose' },
+        xeno: { loosecurl: 'curly', longtail: 'afroLongPony' },
+    }[charId]?.[parts.hair];
+    return hair ? { ...spec, hair, crewChin: charId === 'captain' } : spec;
+}
+
 /**
  * Build a character. Returns { root, zones: {zoneId: [meshes]}, setColors(colors) }. Height ≈ 2.1.
  * `parts` chooses independent mesh presets for characters with a workshop.
@@ -110,11 +128,15 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     const F = (hex, mesh, opts) => { fixed.push([mesh, hex, opts]); return mesh; };
     const bx = (...a) => box(S, ...a), cy = (...a) => cyl(S, ...a), sp = (...a) => sphere(S, ...a), sp_ = sp;
 
+    const selectedParts = characterParts(charId, parts);
     if (charId === 'soldier') buildSoldier();
-    else if (charId === 'scout') buildScout();
+    else if (charId === 'scout') buildScout(selectedParts);
     else if (charId === 'mechanic') buildMechanic();
-    else if (charId === 'sentry') buildSentry(characterParts(charId, parts));
-    else buildHumanoid(charId === 'labrat' ? labratSpec(characterParts(charId, parts)) : (SPECS[charId] || SPECS.pilot));
+    else if (charId === 'sentry') buildSentry(selectedParts);
+    else buildHumanoid(charId === 'labrat' ? labratSpec(selectedParts) : crewSpec(charId, selectedParts));
+    if (charId !== 'labrat' && charId !== 'sentry') {
+        addCrewDetails(charId, selectedParts, { scene: S, root, zones, Z, F, bx, cy, sp, fixed: FIXED });
+    }
 
     // ---------------------------------------------------------------------------------------
     function buildHumanoid(sp) {
@@ -256,6 +278,28 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         switch (sp.hair) {
             case 'shortSwept': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.3, 0.08, 0.12, R, 0, 2.67, 0.12)); Z(H, bx(0.32, 0.14, 0.1, R, 0, 2.52, -0.14)); break;
             case 'shortSpiky': Z(H, bx(0.32, 0.08, 0.32, R, 0, 2.63, 0.0)); for (let i = 0; i < 4; i++) Z(H, bx(0.06, 0.12, 0.06, R, -0.1 + i * 0.07, 2.72, -0.02 + (i % 2) * 0.06)); break;
+            case 'shortSide':
+                Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0)); Z(H, bx(0.32, 0.14, 0.1, R, 0, 2.52, -0.14));
+                Z(H, bx(0.28, 0.1, 0.11, R, -0.025, 2.66, 0.14, [0, 0, -0.16]));
+                Z(H, bx(0.08, 0.18, 0.12, R, -0.15, 2.56, 0.13, [0, 0, -0.16])); break;
+            case 'crewPony':
+                Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0)); Z(H, bx(0.32, 0.27, 0.08, R, 0, 2.49, -0.16));
+                Z(H, bx(0.16, 0.14, 0.14, R, 0, 2.51, -0.22)); Z(H, bx(0.14, 0.48, 0.14, R, 0.015, 2.23, -0.26, [0, 0, 0.07]));
+                for (const side of [-1, 1]) Z(H, bx(0.055, 0.3, 0.15, R, side * 0.17, 2.45, 0.06));
+                F(FIXED.strap, bx(0.16, 0.05, 0.15, R, 0, 2.46, -0.24)); break;
+            case 'bobLayered':
+                Z(H, bx(0.34, 0.12, 0.34, R, 0, 2.64, 0)); Z(H, bx(0.34, 0.1, 0.08, R, 0, 2.56, 0.16));
+                Z(H, bx(0.34, 0.4, 0.1, R, 0, 2.37, -0.16));
+                for (const side of [-1, 1]) { Z(H, bx(0.07, 0.38, 0.29, R, side * 0.19, 2.38, -0.01, [0, 0, side * 0.12])); Z(H, bx(0.045, 0.22, 0.07, R, side * 0.14, 2.48, 0.16, [0, 0, side * 0.15])); } break;
+            case 'crewLongBangs':
+                Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0)); Z(H, bx(0.34, 0.56, 0.1, R, 0, 2.36, -0.16));
+                Z(H, bx(0.32, 0.1, 0.08, R, 0, 2.56, 0.16));
+                for (const side of [-1, 1]) Z(H, bx(0.08, 0.5, 0.3, R, side * 0.19, 2.38, -0.03)); break;
+            case 'afroLongPony':
+                Z(H, bx(0.36, 0.14, 0.36, R, 0, 2.66, 0));
+                for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.16, 2.64 + (i % 2) * 0.08, Math.cos(a) * 0.14 - 0.02)); }
+                for (let i = 0; i < 5; i++) Z(H, bx(0.17 - (i % 2) * 0.03, 0.14, 0.17, R, (i % 2) * 0.04 - 0.02, 2.5 - i * 0.1, -0.27));
+                F(FIXED.strap, bx(0.14, 0.05, 0.14, R, 0, 2.56, -0.22)); break;
             case 'longLoose': Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.56, 0.1, R, 0, 2.36, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.08, 0.5, 0.3, R, s * 0.19, 2.38, -0.03)); break;   // back slab and side locks reach up into the cap, no bare strip
             case 'labMessy':   // long uneven locks, not a different haircut
                 Z(H, bx(0.35, 0.12, 0.34, R, 0, 2.65, 0.0));
@@ -288,6 +332,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             case 'curly': Z(H, bx(0.38, 0.16, 0.38, R, 0, 2.66, 0.0)); for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.17, 2.6 + (i % 2) * 0.1, Math.cos(a) * 0.17 - 0.02)); } break;
             case 'beardOnly': Z(H, bx(0.28, 0.16, 0.1, R, 0, 2.28, 0.14)); Z(H, bx(0.3, 0.06, 0.3, R, 0, 2.62, 0.0)); break;
         }
+        if (sp.crewChin) Z(H, bx(0.28, 0.12, 0.08, R, 0, 2.3, 0.14));   // the Captain keeps his beard with every haircut
         if (sp.beard) Z(sp.beard, bx(0.26, 0.08, 0.06, R, 0, 2.3, 0.16));
         if (sp.mustache) { Z(sp.mustache, bx(0.22, 0.05, 0.05, R, 0, 2.38, 0.18)); for (const s of [-1, 1]) Z(sp.mustache, bx(0.05, 0.24, 0.14, R, s * 0.16, 2.4, 0.04)); }   // moustache + sideburns
         // head gear
@@ -677,7 +722,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     }
 
     // ---------------------------------------------------------------------------------------
-    function buildScout() {
+    function buildScout(parts) {
         const R = root;
         for (const s of [-1, 1]) {
             Z('boots', bx(0.22, 0.14, 0.36, R, s * 0.14, 0.07, 0.04));
@@ -709,12 +754,23 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         Z('skin', bx(0.14, 0.1, 0.14, R, 0, 2.2, 0));
         Z('skin', bx(0.3, 0.34, 0.3, R, 0, 2.44, 0.02));
         Z('skin', bx(0.06, 0.06, 0.05, R, 0, 2.42, 0.18));
-        // long hair: cap, long back, two side locks
+        // Long hair and the asymmetrical fringe frame the scar in every variation.
         Z('hair', bx(0.34, 0.12, 0.34, R, 0, 2.64, 0));
-        Z('hair', bx(0.34, 0.6, 0.12, R, 0, 2.36, -0.18));
-        Z('hair', bx(0.08, 0.52, 0.3, R, -0.19, 2.38, -0.06));                  // heavy lock on the left, runs back to join the back slab
-        Z('hair', bx(0.08, 0.4, 0.2, R, 0.19, 2.44, -0.1));                     // thin lock on the right closing the gap to the back slab
-        Z('hair', bx(0.36, 0.12, 0.16, R, -0.02, 2.6, 0.1, [0, 0, 0.22]));        // fringe: one slab sweeping down to the left, joined to the cap and the left lock
+        if (parts.hair === 'classic') {
+            Z('hair', bx(0.34, 0.6, 0.12, R, 0, 2.36, -0.18));
+            Z('hair', bx(0.08, 0.52, 0.3, R, -0.19, 2.38, -0.06));
+            Z('hair', bx(0.08, 0.4, 0.2, R, 0.19, 2.44, -0.1));
+        } else {
+            Z('hair', bx(0.3, 0.28, 0.1, R, 0, 2.49, -0.16));
+            Z('hair', bx(0.08, 0.46, 0.24, R, -0.19, 2.4, -0.04));
+            Z('hair', bx(0.06, 0.3, 0.2, R, 0.18, 2.48, -0.05));
+            F(FIXED.strap, bx(0.15, 0.06, 0.14, R, 0, 2.48, -0.22));
+            // Lay the gathered hair over the slung rifle; otherwise its lower half disappears inside it.
+            if (parts.hair === 'braid') {
+                for (let i = 0; i < 5; i++) Z('hair', bx(0.13, 0.12, 0.14, R, -0.09 + (i % 2 ? 0.025 : -0.025), 2.4 - i * 0.11, -0.36, [0, 0, (i % 2 ? 0.25 : -0.25)]));
+            } else Z('hair', bx(0.17, 0.52, 0.16, R, -0.08, 2.21, -0.37, [0, 0, -0.1]));
+        }
+        Z('hair', bx(0.36, 0.12, 0.16, R, -0.02, 2.6, 0.1, [0, 0, 0.22]));
         Z('hair', bx(0.14, 0.2, 0.14, R, -0.15, 2.5, 0.11));
         // scar across the right eye (the side the fringe leaves open)
         F('#9a5a4a', bx(0.02, 0.16, 0.02, R, 0.08, 2.46, 0.175, [0, 0, 0.2]));

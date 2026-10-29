@@ -5072,6 +5072,14 @@ export class Scene3D {
     }
 }
 
+// ArcRotateCamera.setTarget recalculates the orbit, so apply the target before the saved angles.
+// The workshop uses this both when framing a miniature and when returning to the lobby.
+export function setPreviewCameraPose(camera, pose) {
+    camera.setTarget(pose.target);
+    camera.alpha = pose.alpha; camera.beta = pose.beta; camera.radius = pose.radius;
+    camera.inertialAlphaOffset = 0; camera.inertialBetaOffset = 0; camera.inertialRadiusOffset = 0;
+}
+
 /** Standalone character preview for the lobby (rotate with the mouse). */
 export class Preview3D {
     constructor(canvas) {
