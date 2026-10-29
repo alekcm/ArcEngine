@@ -189,17 +189,18 @@ export class DiceUI {
     hide() { this.el.classList.add('hidden'); this.el.classList.remove('mine', 'landed'); this.clickable = false; }
     clearHide() { if (this.hideTimer) { clearTimeout(this.hideTimer); this.hideTimer = null; } }
 
-    /** Land face f toward the camera, with the die's own +Y axis still pointing up on screen.
-     *  Build this from the body axis rather than the glyph basis so a label-orientation change can
-     *  never roll the whole D10 upside down. The face labels use the same projected axis in makeDie. */
+    /** Land the chosen D10 face toward the camera without leaning the body off its pole axis.
+     *  Only yaw the combat D10s: their +Y tip stays truly vertical while the selected face's
+     *  horizontal normal points toward the camera. The sloped face remains clearly visible and its
+     *  printed up axis stays upright. Keep the D12's existing face-on landing pose unchanged. */
     targetFor(f) {
-        const Bx = B(), bodyUp = new (Bx.Vector3)(0, 1, 0);
-        const projectedUp = bodyUp.subtract(f.normal.scale(Bx.Vector3.Dot(bodyUp, f.normal)));
-        // A face parallel to +Y has no projected body-up direction; use its authored face axis there.
-        const up = projectedUp.length() > 1e-6 ? projectedUp.normalize() : f.up.clone();
-        const right = Bx.Vector3.Cross(f.normal, up).normalize();
+        const Bx = B();
+        if (this.die !== 'noise') {
+            const yaw = Math.PI - Math.atan2(f.normal.x, f.normal.z);
+            return Bx.Quaternion.RotationYawPitchRoll(yaw, 0, 0);
+        }
         const m = Bx.Matrix.Identity();
-        Bx.Matrix.FromXYZAxesToRef(right, up, f.normal.scale(-1), m);
+        Bx.Matrix.FromXYZAxesToRef(f.right, f.up, f.normal.scale(-1), m);
         return Bx.Quaternion.FromRotationMatrix(m.transpose());
     }
 

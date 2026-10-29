@@ -96,15 +96,12 @@ test('DICE-03: the numbers stand upright on every side face', () => {
     }
 });
 
-function targetForFace(f) {
-    // Match DiceUI.targetFor(): the selected face faces the camera while the actual die +Y axis
-    // determines which direction is up. This must not depend on a label-only 180-degree roll.
-    const bodyUp = new B.Vector3(0, 1, 0);
-    const projectedUp = bodyUp.subtract(f.normal.scale(B.Vector3.Dot(bodyUp, f.normal)));
-    const up = projectedUp.length() > 1e-6 ? projectedUp.normalize() : f.up.clone();
-    const right = B.Vector3.Cross(f.normal, up).normalize();
+function targetForFace(f, kind = 'combat') {
+    // Match DiceUI.targetFor(): keep a combat D10's pole axis exactly vertical and bring the
+    // selected face's horizontal normal toward the camera. Noise retains its old face-on pose.
+    if (kind !== 'noise') return B.Quaternion.RotationYawPitchRoll(Math.PI - Math.atan2(f.normal.x, f.normal.z), 0, 0);
     const m = B.Matrix.Identity();
-    B.Matrix.FromXYZAxesToRef(right, up, f.normal.scale(-1), m);
+    B.Matrix.FromXYZAxesToRef(f.right, f.up, f.normal.scale(-1), m);
     return B.Quaternion.FromRotationMatrix(m.transpose());
 }
 function rotateVector(v, q) {
@@ -113,20 +110,19 @@ function rotateVector(v, q) {
     return v.add(uv.scale(2 * q.w)).add(uuv.scale(2));
 }
 
-test('DICE-04: the D10 landing pose faces the result forward and keeps its body axis upright', () => {
-    const forward = new B.Vector3(0, 0, -1), up = new B.Vector3(0, 1, 0), right = new B.Vector3(1, 0, 0);
+test('DICE-04: the D10 landing pose keeps its poles truly vertical and shows the result face', () => {
+    const forward = new B.Vector3(0, 0, -1), up = new B.Vector3(0, 1, 0);
     for (const kind of ['combat', 'blue']) {
         for (const [i, f] of faces(kind).entries()) {
-            const pose = targetForFace(f);
-            assert.ok(B.Vector3.Dot(rotateVector(f.normal, pose), forward) > 0.999,
-                kind + ' face ' + i + ': the selected result still faces the camera');
-            assert.ok(B.Vector3.Dot(rotateVector(f.up, pose), up) > 0.999,
-                kind + ' face ' + i + ': the glyph remains upright');
-            assert.ok(B.Vector3.Dot(rotateVector(f.right, pose), right) > 0.999,
-                kind + ' face ' + i + ': the glyph remains unmirrored');
+            const pose = targetForFace(f, kind);
+            const normal = rotateVector(f.normal, pose);
+            assert.ok(Math.abs(normal.x) < 1e-4 && normal.z < -0.7,
+                kind + ' face ' + i + ': the selected face points toward the camera');
+            assert.ok(B.Vector3.Dot(rotateVector(f.up, pose), up) > 0.5,
+                kind + ' face ' + i + ': the glyph remains upright and visible');
             const bodyUp = rotateVector(new B.Vector3(0, 1, 0), pose);
-            assert.ok(Math.abs(bodyUp.x) < 1e-4 && bodyUp.y > 0.7,
-                kind + ' face ' + i + ': the actual D10 pole axis stays vertical with its top pointing up');
+            assert.ok(Math.abs(bodyUp.x) < 1e-4 && Math.abs(bodyUp.y - 1) < 1e-4 && Math.abs(bodyUp.z) < 1e-4,
+                kind + ' face ' + i + ': the actual D10 pole axis stays aligned with world vertical');
         }
     }
 });
@@ -149,7 +145,7 @@ test('DICE-05: an idle combat D10 yaws without tipping its body axis', () => {
 test('DICE-06: polar D12 faces still get a finite camera-facing landing pose', () => {
     const forward = new B.Vector3(0, 0, -1);
     for (const [i, f] of faces('noise').entries()) {
-        const pose = targetForFace(f);
+        const pose = targetForFace(f, 'noise');
         const normal = rotateVector(f.normal, pose);
         assert.ok([pose.x, pose.y, pose.z, pose.w].every(Number.isFinite), 'D12 face ' + i + ': finite pose');
         assert.ok(B.Vector3.Dot(normal, forward) > 0.999, 'D12 face ' + i + ': result still points at the camera');
