@@ -18,7 +18,7 @@
             <div class="lobby-left">
                 <div class="row"><label>Ваше имя</label><input id="nameInput" maxlength="20" placeholder="Имя"></div>
                 <div class="row"><label>Персонаж</label><div id="charList" class="char-list"></div></div>
-                <div class="row"><label>Раскраска</label><div id="paintZones" class="paint-zones"></div></div>
+                <div id="paintLobbyHost" class="row"><label>Раскраска</label><div id="paintZones" class="paint-zones"></div></div>
                 <button id="labOpen" class="lab-open hidden" type="button"><span><b id="labOpenTitle">Мастерская Подопытной</b><small id="labOpenHint">Причёска, одежда и другие детали</small></span><span aria-hidden="true">↗</span></button>
                 <div id="charPreview" class="char-preview"><canvas id="previewCanvas"></canvas></div>
             </div>
@@ -68,10 +68,21 @@
                 <div class="lab-stage-help"><span>◉ &nbsp; Перетащите, чтобы повернуть</span><span>Колесо — масштаб</span></div>
             </section>
             <section class="lab-panel" aria-labelledby="labPartsTitle">
-                <div class="lab-panel-heading"><div><span class="lab-panel-kicker">КОНСТРУКТОР</span><h3 id="labPartsTitle">Детали образа</h3></div><span class="lab-live"><i></i> ЖИВОЙ ПРОСМОТР</span></div>
-                <p class="lab-panel-intro">Выберите вариант для каждой детали. Ваши цвета сохранятся.</p>
-                <div id="labOptions" class="lab-options"></div>
-                <div class="lab-actions"><button id="labReset" class="lab-reset" type="button">↺ &nbsp; Исходный образ</button><button id="labDone" class="lab-done" type="button">Готово <span aria-hidden="true">→</span></button></div>
+                <div class="lab-panel-heading"><div><span class="lab-panel-kicker">КОНСТРУКТОР</span><h3 id="labPartsTitle">Образ персонажа</h3></div><span class="lab-live"><i></i> ЖИВОЙ ПРОСМОТР</span></div>
+                <p class="lab-panel-intro">Выберите детали и настройте цвета — изменения видны сразу.</p>
+                <div class="lab-tabs" aria-label="Разделы мастерской">
+                    <button id="labPartsTab" type="button" aria-pressed="true" aria-controls="labOptions">Детали</button>
+                    <button id="labColorsTab" type="button" aria-pressed="false" aria-controls="labColorPanel">Цвета</button>
+                </div>
+                <div class="lab-options">
+                    <div id="labOptions"></div>
+                    <div id="labColorPanel" class="lab-color-panel hidden">
+                        <p>Выберите готовый оттенок или откройте свою палитру.</p>
+                        <div id="labColorHost"></div>
+                        <button id="labColorReset" class="lab-color-reset" type="button">↺ &nbsp; Сбросить цвета</button>
+                    </div>
+                </div>
+                <div class="lab-actions"><button id="labReset" class="lab-reset" type="button">↺ &nbsp; Исходные детали</button><button id="labDone" class="lab-done" type="button">Готово <span aria-hidden="true">→</span></button></div>
                 <p class="lab-save-note">Образ сохранится в лобби и будет виден другим игрокам в партии.</p>
             </section>
         </div>

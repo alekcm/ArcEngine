@@ -114,7 +114,7 @@ test('CREW-01: every crew member has independent, fully validated slots', async 
     assert.equal(Object.keys(CREW_PARTS).length, 16);
     for (const [id, slots] of Object.entries(CREW_PARTS)) {
         assert.equal(characterPartSlots(id), slots);
-        assert.equal(slots.length, ['soldier', 'mechanic'].includes(id) ? 5 : 3, id + ': role-specific categories');
+        assert.equal(slots.length, ['soldier', 'scout', 'mechanic', 'pilot'].includes(id) ? 5 : 3, id + ': role-specific categories');
         assert.equal(new Set(slots.map(s => s.id)).size, slots.length, id + ': unique slots');
         const defaults = characterParts(id);
         for (const slot of slots) {
@@ -154,7 +154,7 @@ test('CREW-02: every chosen appearance and color reaches public game views and o
     }
 });
 
-test('ROLE-04: existing Soldier and Mechanic choices survive the richer workshop schema', () => {
+test('ROLE-04: existing choices survive the richer workshop schemas', () => {
     assert.deepEqual(characterParts('soldier', { helmet: 'braced', shoulders: 'layered', pack: 'ribbed' }), {
         helmet: 'braced', suit: 'classic', shoulders: 'layered', pack: 'ribbed', rifle: 'classic',
     });
@@ -166,5 +166,17 @@ test('ROLE-04: existing Soldier and Mechanic choices survive the richer workshop
     });
     assert.deepEqual(characterParts('mechanic', { shield: 'twinlamp', belt: 'pouches', pack: 'ribbed' }), {
         shield: 'twinlamp', outfit: 'classic', belt: 'pouches', pack: 'ribbed', welder: 'classic',
+    });
+    assert.deepEqual(characterParts('scout', { hair: 'braid', bracer: 'display', vest: 'plated' }), {
+        hair: 'braid', bracer: 'display', vest: 'plated', shoulders: 'classic', rifle: 'classic',
+    });
+    assert.deepEqual(characterParts('scout', { hair: 'tied', bracer: 'cells', vest: 'pouches' }), {
+        hair: 'tied', bracer: 'cells', vest: 'pouches', shoulders: 'classic', rifle: 'classic',
+    });
+    assert.deepEqual(characterParts('pilot', { hair: 'spiky', optics: 'round', coat: 'lapels' }), {
+        hair: 'spiky', optics: 'round', coat: 'lapels', headset: 'classic', sidearm: 'classic',
+    });
+    assert.deepEqual(characterParts('pilot', { hair: 'side', optics: 'wide', coat: 'long' }), {
+        hair: 'side', optics: 'wide', coat: 'long', headset: 'classic', sidearm: 'classic',
     });
 });

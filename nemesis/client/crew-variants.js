@@ -12,44 +12,7 @@ export function addCrewDetails(charId, parts, { scene, root: R, zones, Z, F, bx,
     const at = (zone, x, y) => (zones[zone] || []).find(m => m.parent === R && Math.abs(m.position.x - x) < 0.015 && Math.abs(m.position.y - y) < 0.015);
     const front = [Math.PI / 2, 0, 0];
 
-    if (charId === 'scout') {
-        const brace = at('jacket', -0.37, 1.44);
-        if (parts.bracer === 'display') {
-            paint('bracer', 'jacket', bx(0.23, 0.26, 0.06, brace, 0, 0, 0.15));
-            paint('bracer', 'visor', bx(0.15, 0.16, 0.025, brace, 0, 0.025, 0.19));
-            for (const x of [-0.06, 0, 0.06]) fixed('bracer', C.darkSteel, bx(0.035, 0.035, 0.02, brace, x, -0.09, 0.19));
-        } else if (parts.bracer === 'cells') {
-            for (let i = 0; i < 3; i++) {
-                fixed('bracer', C.darkSteel, bx(0.19, 0.075, 0.09, brace, 0, -0.1 + i * 0.1, 0.16));
-                paint('bracer', 'visor', bx(0.12, 0.035, 0.025, brace, 0, -0.1 + i * 0.1, 0.22));
-            }
-        }
-        if (parts.vest === 'plated') for (const s of [-1, 1]) {
-            paint('vest', 'jacket', bx(0.19, 0.17, 0.06, R, s * 0.115, 1.99, 0.3));
-            fixed('vest', C.steel, bx(0.03, 0.03, 0.02, R, s * 0.16, 2.02, 0.34));
-        } else if (parts.vest === 'pouches') {
-            const g = group('vest');
-            for (const s of [-1, 1]) {
-                paint('vest', 'jacket', bx(0.16, 0.17, 0.11, g, s * 0.19, 1.54, 0.21));
-                fixed('vest', C.strap, bx(0.17, 0.045, 0.12, g, s * 0.19, 1.59, 0.22));
-            }
-        }
-    } else if (charId === 'pilot') {
-        if (parts.optics === 'round') {
-            fixed('optics', C.darkSteel, cy(0.17, 0.17, 0.06, 10, R, 0.1, 2.48, 0.22, front));
-            paint('optics', 'visor', cy(0.12, 0.12, 0.025, 10, R, 0.1, 2.48, 0.26, front));
-        } else if (parts.optics === 'wide') {
-            fixed('optics', C.darkSteel, bx(0.28, 0.11, 0.06, R, 0.025, 2.48, 0.22));
-            paint('optics', 'visor', bx(0.23, 0.065, 0.025, R, 0.025, 2.48, 0.26));
-        }
-        if (parts.coat === 'lapels') for (const s of [-1, 1]) {
-            fixed('coat', '#d9cdb0', bx(0.15, 0.35, 0.1, R, s * 0.19, 2.02, 0.25, [0, s * 0.15, -s * 0.25]));
-        } else if (parts.coat === 'long') {
-            const g = group('coat');
-            for (const s of [-1, 1]) paint('coat', 'suit', bx(0.25, 0.38, 0.37, g, s * 0.17, 0.82, -0.04));
-            fixed('coat', '#d9cdb0', bx(0.62, 0.1, 0.42, g, 0, 0.64, -0.04));
-        }
-    } else if (charId === 'hacker') {
+    if (charId === 'hacker') {
         if (parts.hood === 'rimmed') {
             paint('hood', 'hood', bx(0.44, 0.08, 0.12, R, 0, 2.72, 0.16));
             for (const s of [-1, 1]) paint('hood', 'hood', bx(0.07, 0.35, 0.11, R, s * 0.21, 2.52, 0.16, [0, 0, -s * 0.08]));

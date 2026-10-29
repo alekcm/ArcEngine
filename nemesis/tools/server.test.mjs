@@ -21,6 +21,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER = path.join(HERE, '..', 'server.mjs');
 const SRC = fs.readFileSync(SERVER, 'utf8');
 const CLIENT_SRC = fs.readFileSync(path.join(HERE, '..', 'client', 'app.js'), 'utf8');
+const CLIENT_HTML = fs.readFileSync(path.join(HERE, '..', 'client', 'index.html'), 'utf8');
 
 /** A port that is very likely free: the server itself walks up on EADDRINUSE anyway. */
 const pickPort = () => 8600 + Math.floor(Math.random() * 300);
@@ -175,6 +176,18 @@ test('LOBBY-01: выбор своего цвета отправляется то
         'чужое обновление лобби не удаляет открытый native picker');
     assert.match(CLIENT_SRC, /if \(!keepPicker\) \{\s*\$\('paintZones'\)\.innerHTML/s,
         'зоны цветов не перестраиваются, пока палитра открыта');
+});
+
+test('LOBBY-02: one paint control moves between the lobby and the workshop without duplicating state', () => {
+    assert.equal((CLIENT_HTML.match(/id="paintZones"/g) || []).length, 1, 'one shared palette');
+    for (const id of ['paintLobbyHost', 'labColorHost', 'labPartsTab', 'labColorsTab', 'labColorReset'])
+        assert.match(CLIENT_HTML, new RegExp(`id="${id}"`), id + ': accessible workshop control');
+    assert.match(CLIENT_SRC, /\$\('labColorHost'\)\.appendChild\(\$\('paintZones'\)\)/, 'opening moves existing controls');
+    assert.match(CLIENT_SRC, /\$\('paintLobbyHost'\)\.appendChild\(\$\('paintZones'\)\)/, 'closing restores the lobby controls');
+    assert.match(CLIENT_SRC, /\$\('labColorsTab'\)\.onclick = \(\) => setLabPage\('colors'\)/, 'color page is selectable');
+    assert.match(CLIENT_SRC, /\$\('labColorReset'\)\.onclick[\s\S]*?net\.send\(\{ t: 'lobby', colors: \{\} \}\)/, 'reset uses the existing network palette');
+    assert.match(CLIENT_SRC, /aria-label="Свой цвет:/, 'native color inputs are labelled');
+    assert.match(CLIENT_SRC, /aria-pressed=/, 'preset choices expose their selection');
 });
 
 test('SRV-03: без сокета клиенту нечего рисовать — проверяем, что стук в /ws не висит', async (t) => {

@@ -7,6 +7,7 @@
 import { characterParts } from '../shared/appearance.mjs';
 import { addCrewDetails } from './crew-variants.js';
 import { soldierVariant, mechanicVariant } from './role-variants.js';
+import { scoutVariant, pilotVariant } from './explorer-variants.js';
 
 const B = () => window.BABYLON;
 
@@ -102,8 +103,9 @@ function labratSpec(parts) {
 // Hair changes only the requested character's copy; the canonical specs are never mutated.
 function crewSpec(charId, parts) {
     const spec = SPECS[charId] || SPECS.pilot;
+    // Pilot presets replace whole pieces in the humanoid builder; keep the original spec intact.
+    if (charId === 'pilot') return { ...spec, pilotParts: parts };
     const hair = {
-        pilot: { spiky: 'shortSpiky', side: 'shortSide' },
         medic: { tied: 'crewPony', wavy: 'labMessy' },
         ceo: { spiky: 'shortSpiky', side: 'shortSide' },
         android: { tied: 'crewPony', bob: 'bobBangs' },
@@ -146,7 +148,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     else if (charId === 'mechanic') buildMechanic(selectedParts);
     else if (charId === 'sentry') buildSentry(selectedParts);
     else buildHumanoid(charId === 'labrat' ? labratSpec(selectedParts) : crewSpec(charId, selectedParts));
-    if (!['soldier', 'mechanic', 'labrat', 'sentry'].includes(charId)) {
+    if (!['soldier', 'scout', 'mechanic', 'pilot', 'labrat', 'sentry'].includes(charId)) {
         addCrewDetails(charId, selectedParts, roleContext);
     }
 
@@ -170,14 +172,21 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         if (sp.female) { const bf = sp.bust == null ? 1 : sp.bust; if (bf > 0) { const m = bx(0.46 * W, 0.24 * bf, 0.16 * bf, R, 0, 1.98, 0.14 + 0.08 * bf); if (sp.bustZone) Z(sp.bustZone, m); else T(m); } Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0)); }   // chest and hips
         if (sp.underV || sp.vneck) { Z('skin', bx(0.16 * W, 0.16, 0.04, R, 0, 2.1, 0.16)); Z('skin', bx(0.08 * W, 0.1, 0.04, R, 0, 2.0, 0.17)); }   // open neckline
         if (sp.furCoat) {   // thick fur coat: one solid collar ring, solid cuffs and a fur hem, coat body over the torso
-            const FUR = sp.fur || '#d9cdb0';
-            Z(sp.furCoat, bx(0.62 * W, 0.66, 0.4, R, 0, 1.82, -0.02));                    // coat body (slightly bulkier than the torso)
-            for (const s of [-1, 1]) Z(sp.furCoat, bx(0.24 * W, 0.5, 0.36, R, s * 0.19 * W, 1.26, -0.04));   // coat skirt
-            F(FUR, bx(0.7 * W, 0.16, 0.5, R, 0, 2.18, -0.04));                             // fur collar ring
-            F(FUR, bx(0.26 * W, 0.2, 0.52, R, 0, 2.3, -0.1));                              // raised fur at the nape
-            for (const s of [-1, 1]) F(FUR, bx(0.16 * W, 0.4, 0.08, R, s * 0.12 * W, 1.96, 0.21, [0, 0, -s * 0.12]));   // fur lapels
-            for (const s of [-1, 1]) F(FUR, bx(0.22 * W, 0.14, 0.24, R, s * 0.39 * W, 1.28, 0.02));   // fur cuffs
-            F(FUR, bx(0.64 * W, 0.1, 0.42, R, 0, 1.0, -0.04));                             // fur hem
+            const buildOriginalCoat = () => {
+                const FUR = sp.fur || '#d9cdb0';
+                Z(sp.furCoat, bx(0.62 * W, 0.66, 0.4, R, 0, 1.82, -0.02));                    // coat body (slightly bulkier than the torso)
+                for (const s of [-1, 1]) Z(sp.furCoat, bx(0.24 * W, 0.5, 0.36, R, s * 0.19 * W, 1.26, -0.04));   // coat skirt
+                F(FUR, bx(0.7 * W, 0.16, 0.5, R, 0, 2.18, -0.04));                             // fur collar ring
+                F(FUR, bx(0.26 * W, 0.2, 0.52, R, 0, 2.3, -0.1));                              // raised fur at the nape
+                for (const s of [-1, 1]) F(FUR, bx(0.16 * W, 0.4, 0.08, R, s * 0.12 * W, 1.96, 0.21, [0, 0, -s * 0.12]));   // fur lapels
+                for (const s of [-1, 1]) F(FUR, bx(0.22 * W, 0.14, 0.24, R, s * 0.39 * W, 1.28, 0.02));   // fur cuffs
+                F(FUR, bx(0.64 * W, 0.1, 0.42, R, 0, 1.0, -0.04));                             // fur hem
+            };
+            if (sp.pilotParts) part('coat', sp.pilotParts.coat, () => {
+                if (sp.pilotParts.coat === 'classic') buildOriginalCoat();
+                else pilotVariant('coat', sp.pilotParts.coat, roleContext, W);
+            });
+            else buildOriginalCoat();
         }
         if (sp.robe) {   // long closed mantle with a high pointed collar
             Z(sp.robe, bx(0.6 * W, 0.72, 0.1, R, 0, 1.84, -0.2)); Z(sp.robe, bx(0.6 * W, 0.7, 0.08, R, 0, 1.84, 0.18));
@@ -287,63 +296,70 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         Z('skin', bx(0.3, 0.34, 0.3, R, 0, 2.44, 0.02));
         if (!sp.respirator && !sp.faceMask && !sp.bandana) Z('skin', bx(0.06, 0.06, 0.05, R, 0, 2.42, 0.18));    // nose (hidden under masks)
         const H = sp.hairZone || 'hair';
-        switch (sp.hair) {
-            case 'shortSwept': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.3, 0.08, 0.12, R, 0, 2.67, 0.12)); Z(H, bx(0.32, 0.14, 0.1, R, 0, 2.52, -0.14)); break;
-            case 'shortSpiky': Z(H, bx(0.32, 0.08, 0.32, R, 0, 2.63, 0.0)); for (let i = 0; i < 4; i++) Z(H, bx(0.06, 0.12, 0.06, R, -0.1 + i * 0.07, 2.72, -0.02 + (i % 2) * 0.06)); break;
-            case 'shortSide':
-                Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0)); Z(H, bx(0.32, 0.14, 0.1, R, 0, 2.52, -0.14));
-                Z(H, bx(0.28, 0.1, 0.11, R, -0.025, 2.66, 0.14, [0, 0, -0.16]));
-                Z(H, bx(0.08, 0.18, 0.12, R, -0.15, 2.56, 0.13, [0, 0, -0.16])); break;
-            case 'crewPony':
-                Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0)); Z(H, bx(0.32, 0.27, 0.08, R, 0, 2.49, -0.16));
-                Z(H, bx(0.16, 0.14, 0.14, R, 0, 2.51, -0.22)); Z(H, bx(0.14, 0.48, 0.14, R, 0.015, 2.23, -0.26, [0, 0, 0.07]));
-                for (const side of [-1, 1]) Z(H, bx(0.055, 0.3, 0.15, R, side * 0.17, 2.45, 0.06));
-                F(FIXED.strap, bx(0.16, 0.05, 0.15, R, 0, 2.46, -0.24)); break;
-            case 'bobLayered':
-                Z(H, bx(0.34, 0.12, 0.34, R, 0, 2.64, 0)); Z(H, bx(0.34, 0.1, 0.08, R, 0, 2.56, 0.16));
-                Z(H, bx(0.34, 0.4, 0.1, R, 0, 2.37, -0.16));
-                for (const side of [-1, 1]) { Z(H, bx(0.07, 0.38, 0.29, R, side * 0.19, 2.38, -0.01, [0, 0, side * 0.12])); Z(H, bx(0.045, 0.22, 0.07, R, side * 0.14, 2.48, 0.16, [0, 0, side * 0.15])); } break;
-            case 'crewLongBangs':
-                Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0)); Z(H, bx(0.34, 0.56, 0.1, R, 0, 2.36, -0.16));
-                Z(H, bx(0.32, 0.1, 0.08, R, 0, 2.56, 0.16));
-                for (const side of [-1, 1]) Z(H, bx(0.08, 0.5, 0.3, R, side * 0.19, 2.38, -0.03)); break;
-            case 'afroLongPony':
-                Z(H, bx(0.36, 0.14, 0.36, R, 0, 2.66, 0));
-                for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.16, 2.64 + (i % 2) * 0.08, Math.cos(a) * 0.14 - 0.02)); }
-                for (let i = 0; i < 5; i++) Z(H, bx(0.17 - (i % 2) * 0.03, 0.14, 0.17, R, (i % 2) * 0.04 - 0.02, 2.5 - i * 0.1, -0.27));
-                F(FIXED.strap, bx(0.14, 0.05, 0.14, R, 0, 2.56, -0.22)); break;
-            case 'longLoose': Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.56, 0.1, R, 0, 2.36, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.08, 0.5, 0.3, R, s * 0.19, 2.38, -0.03)); break;   // back slab and side locks reach up into the cap, no bare strip
-            case 'labMessy':   // long uneven locks, not a different haircut
-                Z(H, bx(0.35, 0.12, 0.34, R, 0, 2.65, 0.0));
-                Z(H, bx(0.3, 0.56, 0.1, R, 0, 2.36, -0.16));
-                Z(H, bx(0.09, 0.52, 0.26, R, -0.2, 2.36, -0.03, [0, 0, -0.1]));
-                Z(H, bx(0.09, 0.62, 0.26, R, 0.2, 2.31, -0.03, [0, 0, 0.1]));
-                for (const [x, y, height, tilt] of [[-0.11, 2.33, 0.5, -0.09], [0, 2.29, 0.58, 0.04], [0.11, 2.34, 0.48, 0.1]])
-                    Z(H, bx(0.075, height, 0.045, R, x, y, -0.22, [0, 0, tilt]));
-                Z(H, bx(0.07, 0.17, 0.06, R, -0.1, 2.59, 0.16, [0, 0, -0.18]));
-                Z(H, bx(0.05, 0.13, 0.05, R, 0.08, 2.61, 0.16, [0, 0, 0.14])); break;
-            case 'labPonytail':   // loosely gathered at the nape, with strands escaping around the face
-                Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0));
-                Z(H, bx(0.32, 0.3, 0.09, R, 0, 2.49, -0.16));
-                Z(H, bx(0.14, 0.14, 0.13, R, 0, 2.52, -0.22));
-                Z('bandage', bx(0.15, 0.045, 0.14, R, 0, 2.48, -0.24));
-                Z(H, bx(0.14, 0.42, 0.13, R, 0.025, 2.25, -0.26, [0, 0, 0.12]));
-                Z(H, bx(0.065, 0.29, 0.1, R, -0.18, 2.45, 0.08, [0, 0, -0.08]));
-                Z(H, bx(0.055, 0.36, 0.1, R, 0.18, 2.42, 0.08, [0, 0, 0.08])); break;
-            case 'bun': Z(H, bx(0.33, 0.1, 0.33, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.08, 0.1, R, 0, 2.6, 0.14)); Z(H, bx(0.3, 0.3, 0.08, R, 0, 2.46, -0.16)); Z(H, bx(0.16, 0.16, 0.16, R, 0, 2.68, -0.14)); for (const s of [-1, 1]) Z(H, bx(0.05, 0.26, 0.2, R, s * 0.17, 2.46, -0.02)); break;
-            case 'ponytail': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.1, 0.1, 0.1, R, 0, 2.6, -0.2)); Z(H, bx(0.08, 0.4, 0.08, R, 0, 2.38, -0.22)); break;
-            case 'bobBangs': Z(H, bx(0.34, 0.12, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.1, 0.08, R, 0, 2.56, 0.16)); Z(H, bx(0.34, 0.3, 0.1, R, 0, 2.42, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.06, 0.3, 0.3, R, s * 0.18, 2.42, 0.0)); break;
-            case 'shaggyBob': Z(H, bx(0.44, 0.12, 0.44, R, 0, 2.64, -0.02));                                                           // wide cap the flared slabs hang from
-                Z(H, bx(0.44, 0.4, 0.1, R, 0, 2.46, -0.25, [-0.3, 0, 0]));                                                              // back slab, pivoting outwards from the cap
-                for (const s of [-1, 1]) { Z(H, bx(0.1, 0.4, 0.36, R, s * 0.26, 2.46, -0.04, [0, 0, -s * 0.3])); Z(H, bx(0.1, 0.3, 0.12, R, s * 0.24, 2.5, 0.14, [0.1, 0, -s * 0.35])); }   // side slabs flare out and down like a wedge
-                Z(H, bx(0.34, 0.1, 0.08, R, 0.02, 2.58, 0.17, [0, 0, 0.15])); break;   // fringe
-            case 'afroPony': Z(H, bx(0.36, 0.14, 0.36, R, 0, 2.66, 0.0)); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.16, 2.64 + (i % 2) * 0.08, Math.cos(a) * 0.14 - 0.02)); }
-                for (let i = 0; i < 3; i++) Z(H, bx(0.16 - (i % 2) * 0.03, 0.14, 0.16 - (i % 2) * 0.03, R, (i % 2) * 0.04 - 0.02, 2.5 - i * 0.1, -0.26));   // curls gathered into a short puffy ponytail at the nape
-                F(FIXED.strap, bx(0.14, 0.05, 0.14, R, 0, 2.56, -0.22)); break;
-            case 'shortBeard': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.28, 0.12, 0.08, R, 0, 2.3, 0.14)); break;
-            case 'curly': Z(H, bx(0.38, 0.16, 0.38, R, 0, 2.66, 0.0)); for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.17, 2.6 + (i % 2) * 0.1, Math.cos(a) * 0.17 - 0.02)); } break;
-            case 'beardOnly': Z(H, bx(0.28, 0.16, 0.1, R, 0, 2.28, 0.14)); Z(H, bx(0.3, 0.06, 0.3, R, 0, 2.62, 0.0)); break;
-        }
+        const buildOriginalHair = () => {
+            switch (sp.hair) {
+                case 'shortSwept': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.3, 0.08, 0.12, R, 0, 2.67, 0.12)); Z(H, bx(0.32, 0.14, 0.1, R, 0, 2.52, -0.14)); break;
+                case 'shortSpiky': Z(H, bx(0.32, 0.08, 0.32, R, 0, 2.63, 0.0)); for (let i = 0; i < 4; i++) Z(H, bx(0.06, 0.12, 0.06, R, -0.1 + i * 0.07, 2.72, -0.02 + (i % 2) * 0.06)); break;
+                case 'shortSide':
+                    Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0)); Z(H, bx(0.32, 0.14, 0.1, R, 0, 2.52, -0.14));
+                    Z(H, bx(0.28, 0.1, 0.11, R, -0.025, 2.66, 0.14, [0, 0, -0.16]));
+                    Z(H, bx(0.08, 0.18, 0.12, R, -0.15, 2.56, 0.13, [0, 0, -0.16])); break;
+                case 'crewPony':
+                    Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0)); Z(H, bx(0.32, 0.27, 0.08, R, 0, 2.49, -0.16));
+                    Z(H, bx(0.16, 0.14, 0.14, R, 0, 2.51, -0.22)); Z(H, bx(0.14, 0.48, 0.14, R, 0.015, 2.23, -0.26, [0, 0, 0.07]));
+                    for (const side of [-1, 1]) Z(H, bx(0.055, 0.3, 0.15, R, side * 0.17, 2.45, 0.06));
+                    F(FIXED.strap, bx(0.16, 0.05, 0.15, R, 0, 2.46, -0.24)); break;
+                case 'bobLayered':
+                    Z(H, bx(0.34, 0.12, 0.34, R, 0, 2.64, 0)); Z(H, bx(0.34, 0.1, 0.08, R, 0, 2.56, 0.16));
+                    Z(H, bx(0.34, 0.4, 0.1, R, 0, 2.37, -0.16));
+                    for (const side of [-1, 1]) { Z(H, bx(0.07, 0.38, 0.29, R, side * 0.19, 2.38, -0.01, [0, 0, side * 0.12])); Z(H, bx(0.045, 0.22, 0.07, R, side * 0.14, 2.48, 0.16, [0, 0, side * 0.15])); } break;
+                case 'crewLongBangs':
+                    Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0)); Z(H, bx(0.34, 0.56, 0.1, R, 0, 2.36, -0.16));
+                    Z(H, bx(0.32, 0.1, 0.08, R, 0, 2.56, 0.16));
+                    for (const side of [-1, 1]) Z(H, bx(0.08, 0.5, 0.3, R, side * 0.19, 2.38, -0.03)); break;
+                case 'afroLongPony':
+                    Z(H, bx(0.36, 0.14, 0.36, R, 0, 2.66, 0));
+                    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.16, 2.64 + (i % 2) * 0.08, Math.cos(a) * 0.14 - 0.02)); }
+                    for (let i = 0; i < 5; i++) Z(H, bx(0.17 - (i % 2) * 0.03, 0.14, 0.17, R, (i % 2) * 0.04 - 0.02, 2.5 - i * 0.1, -0.27));
+                    F(FIXED.strap, bx(0.14, 0.05, 0.14, R, 0, 2.56, -0.22)); break;
+                case 'longLoose': Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.56, 0.1, R, 0, 2.36, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.08, 0.5, 0.3, R, s * 0.19, 2.38, -0.03)); break;   // back slab and side locks reach up into the cap, no bare strip
+                case 'labMessy':   // long uneven locks, not a different haircut
+                    Z(H, bx(0.35, 0.12, 0.34, R, 0, 2.65, 0.0));
+                    Z(H, bx(0.3, 0.56, 0.1, R, 0, 2.36, -0.16));
+                    Z(H, bx(0.09, 0.52, 0.26, R, -0.2, 2.36, -0.03, [0, 0, -0.1]));
+                    Z(H, bx(0.09, 0.62, 0.26, R, 0.2, 2.31, -0.03, [0, 0, 0.1]));
+                    for (const [x, y, height, tilt] of [[-0.11, 2.33, 0.5, -0.09], [0, 2.29, 0.58, 0.04], [0.11, 2.34, 0.48, 0.1]])
+                        Z(H, bx(0.075, height, 0.045, R, x, y, -0.22, [0, 0, tilt]));
+                    Z(H, bx(0.07, 0.17, 0.06, R, -0.1, 2.59, 0.16, [0, 0, -0.18]));
+                    Z(H, bx(0.05, 0.13, 0.05, R, 0.08, 2.61, 0.16, [0, 0, 0.14])); break;
+                case 'labPonytail':   // loosely gathered at the nape, with strands escaping around the face
+                    Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0));
+                    Z(H, bx(0.32, 0.3, 0.09, R, 0, 2.49, -0.16));
+                    Z(H, bx(0.14, 0.14, 0.13, R, 0, 2.52, -0.22));
+                    Z('bandage', bx(0.15, 0.045, 0.14, R, 0, 2.48, -0.24));
+                    Z(H, bx(0.14, 0.42, 0.13, R, 0.025, 2.25, -0.26, [0, 0, 0.12]));
+                    Z(H, bx(0.065, 0.29, 0.1, R, -0.18, 2.45, 0.08, [0, 0, -0.08]));
+                    Z(H, bx(0.055, 0.36, 0.1, R, 0.18, 2.42, 0.08, [0, 0, 0.08])); break;
+                case 'bun': Z(H, bx(0.33, 0.1, 0.33, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.08, 0.1, R, 0, 2.6, 0.14)); Z(H, bx(0.3, 0.3, 0.08, R, 0, 2.46, -0.16)); Z(H, bx(0.16, 0.16, 0.16, R, 0, 2.68, -0.14)); for (const s of [-1, 1]) Z(H, bx(0.05, 0.26, 0.2, R, s * 0.17, 2.46, -0.02)); break;
+                case 'ponytail': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.1, 0.1, 0.1, R, 0, 2.6, -0.2)); Z(H, bx(0.08, 0.4, 0.08, R, 0, 2.38, -0.22)); break;
+                case 'bobBangs': Z(H, bx(0.34, 0.12, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.1, 0.08, R, 0, 2.56, 0.16)); Z(H, bx(0.34, 0.3, 0.1, R, 0, 2.42, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.06, 0.3, 0.3, R, s * 0.18, 2.42, 0.0)); break;
+                case 'shaggyBob': Z(H, bx(0.44, 0.12, 0.44, R, 0, 2.64, -0.02));                                                           // wide cap the flared slabs hang from
+                    Z(H, bx(0.44, 0.4, 0.1, R, 0, 2.46, -0.25, [-0.3, 0, 0]));                                                              // back slab, pivoting outwards from the cap
+                    for (const s of [-1, 1]) { Z(H, bx(0.1, 0.4, 0.36, R, s * 0.26, 2.46, -0.04, [0, 0, -s * 0.3])); Z(H, bx(0.1, 0.3, 0.12, R, s * 0.24, 2.5, 0.14, [0.1, 0, -s * 0.35])); }   // side slabs flare out and down like a wedge
+                    Z(H, bx(0.34, 0.1, 0.08, R, 0.02, 2.58, 0.17, [0, 0, 0.15])); break;   // fringe
+                case 'afroPony': Z(H, bx(0.36, 0.14, 0.36, R, 0, 2.66, 0.0)); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.16, 2.64 + (i % 2) * 0.08, Math.cos(a) * 0.14 - 0.02)); }
+                    for (let i = 0; i < 3; i++) Z(H, bx(0.16 - (i % 2) * 0.03, 0.14, 0.16 - (i % 2) * 0.03, R, (i % 2) * 0.04 - 0.02, 2.5 - i * 0.1, -0.26));   // curls gathered into a short puffy ponytail at the nape
+                    F(FIXED.strap, bx(0.14, 0.05, 0.14, R, 0, 2.56, -0.22)); break;
+                case 'shortBeard': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.28, 0.12, 0.08, R, 0, 2.3, 0.14)); break;
+                case 'curly': Z(H, bx(0.38, 0.16, 0.38, R, 0, 2.66, 0.0)); for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.17, 2.6 + (i % 2) * 0.1, Math.cos(a) * 0.17 - 0.02)); } break;
+                case 'beardOnly': Z(H, bx(0.28, 0.16, 0.1, R, 0, 2.28, 0.14)); Z(H, bx(0.3, 0.06, 0.3, R, 0, 2.62, 0.0)); break;
+            }
+        };
+        if (sp.pilotParts) part('hair', sp.pilotParts.hair, () => {
+            if (sp.pilotParts.hair === 'classic') buildOriginalHair();
+            else pilotVariant('hair', sp.pilotParts.hair, roleContext, W);
+        });
+        else buildOriginalHair();
         if (sp.crewChin) Z(H, bx(0.28, 0.12, 0.08, R, 0, 2.3, 0.14));   // the Captain keeps his beard with every haircut
         if (sp.beard) Z(sp.beard, bx(0.26, 0.08, 0.06, R, 0, 2.3, 0.16));
         if (sp.mustache) { Z(sp.mustache, bx(0.22, 0.05, 0.05, R, 0, 2.38, 0.18)); for (const s of [-1, 1]) Z(sp.mustache, bx(0.05, 0.24, 0.14, R, s * 0.16, 2.4, 0.04)); }   // moustache + sideburns
@@ -368,8 +384,22 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         }
         if (sp.helmet) { Z(sp.helmet, bx(0.38, 0.3, 0.38, R, 0, 2.58, 0.0)); Z(sp.helmet, bx(0.38, 0.14, 0.1, R, 0, 2.42, -0.18)); }
         if (sp.nightVision) { F(FIXED.darkSteel, bx(0.2, 0.1, 0.12, R, 0, 2.5, 0.22)); for (const x of [-0.08, 0, 0.08]) { F(FIXED.darkSteel, cy(0.07, 0.07, 0.12, 6, R, x, 2.48, 0.3, [Math.PI / 2, 0, 0])); Z(sp.nightVision, cy(0.05, 0.05, 0.02, 6, R, x, 2.48, 0.37, [Math.PI / 2, 0, 0])); } }
-        if (sp.monocle) { F(FIXED.darkSteel, bx(0.14, 0.1, 0.03, R, 0.1, 2.48, 0.18)); Z(sp.monocle, bx(0.1, 0.06, 0.02, R, 0.1, 2.48, 0.2)); F(FIXED.darkSteel, bx(0.04, 0.04, 0.2, R, 0.17, 2.5, 0.08)); }
-        if (sp.headset) { for (const s of [-1, 1]) Z(sp.headset, bx(0.06, 0.12, 0.1, R, s * 0.17, 2.44, 0.0)); Z(sp.headset, bx(0.36, 0.04, 0.06, R, 0, 2.66, -0.04)); }
+        if (sp.monocle) {
+            const original = () => { F(FIXED.darkSteel, bx(0.14, 0.1, 0.03, R, 0.1, 2.48, 0.18)); Z(sp.monocle, bx(0.1, 0.06, 0.02, R, 0.1, 2.48, 0.2)); F(FIXED.darkSteel, bx(0.04, 0.04, 0.2, R, 0.17, 2.5, 0.08)); };
+            if (sp.pilotParts) part('optics', sp.pilotParts.optics, () => {
+                if (sp.pilotParts.optics === 'classic') original();
+                else pilotVariant('optics', sp.pilotParts.optics, roleContext, W);
+            });
+            else original();
+        }
+        if (sp.headset) {
+            const original = () => { for (const s of [-1, 1]) Z(sp.headset, bx(0.06, 0.12, 0.1, R, s * 0.17, 2.44, 0.0)); Z(sp.headset, bx(0.36, 0.04, 0.06, R, 0, 2.66, -0.04)); };
+            if (sp.pilotParts) part('headset', sp.pilotParts.headset, () => {
+                if (sp.pilotParts.headset === 'classic') original();
+                else pilotVariant('headset', sp.pilotParts.headset, roleContext, W);
+            });
+            else original();
+        }
         if (sp.headsetTech) { Z(sp.headsetTech, bx(0.06, 0.16, 0.12, R, 0.18, 2.46, 0.0)); Z(LZ, bx(0.03, 0.04, 0.04, R, 0.22, 2.5, 0.04)); F(FIXED.steel, bx(0.03, 0.03, 0.2, R, 0.18, 2.54, 0.1)); }
         if (sp.goggles) { F(FIXED.darkSteel, bx(0.3, 0.08, 0.04, R, 0, 2.62, 0.16)); for (const s of [-1, 1]) Z(sp.goggles, cy(0.09, 0.09, 0.03, 8, R, s * 0.08, 2.62, 0.18, [Math.PI / 2, 0, 0])); }
         if (sp.glasses) { F(FIXED.rubber, bx(0.3, 0.02, 0.02, R, 0, 2.47, 0.17)); for (const s of [-1, 1]) F(FIXED.glass, bx(0.1, 0.08, 0.02, R, s * 0.08, 2.46, 0.18), { alpha: 0.6, spec: 0.8 }); }
@@ -420,9 +450,16 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             if (!side) continue;
             // held at the side: grip in the fist, barrel pointing down along the arm (slightly forward)
             const g = new (B().TransformNode)('gun', S); g.parent = R; g.position.set(side * 0.39 * W, 1.16, 0.1); g.rotation.x = 1.25;
-            F(FIXED.gun, bx(0.06, 0.1, 0.36, g, 0, 0.04, 0.16)); F(FIXED.gunLight, bx(0.08, 0.14, 0.12, g, 0, -0.02, 0));
-            if (sp.revolver && side === 1) { F(FIXED.steel, cy(0.1, 0.1, 0.08, 6, g, 0, 0.06, 0.1, [0, 0, Math.PI / 2])); F(FIXED.gun, cy(0.03, 0.03, 0.3, 6, g, 0, 0.06, 0.3, [Math.PI / 2, 0, 0])); }
-            Z(LZ, bx(0.03, 0.03, 0.03, g, 0, 0.1, 0.1));
+            const original = () => {
+                F(FIXED.gun, bx(0.06, 0.1, 0.36, g, 0, 0.04, 0.16)); F(FIXED.gunLight, bx(0.08, 0.14, 0.12, g, 0, -0.02, 0));
+                if (sp.revolver && side === 1) { F(FIXED.steel, cy(0.1, 0.1, 0.08, 6, g, 0, 0.06, 0.1, [0, 0, Math.PI / 2])); F(FIXED.gun, cy(0.03, 0.03, 0.3, 6, g, 0, 0.06, 0.3, [Math.PI / 2, 0, 0])); }
+                Z(LZ, bx(0.03, 0.03, 0.03, g, 0, 0.1, 0.1));
+            };
+            if (sp.pilotParts && side === 1) part('sidearm', sp.pilotParts.sidearm, () => {
+                if (sp.pilotParts.sidearm === 'classic') original();
+                else pilotVariant('sidearm', sp.pilotParts.sidearm, roleContext, W, g);
+            });
+            else original();
         }
         if (sp.smartGun) { const g = new (B().TransformNode)('gun', S); g.parent = R; g.position.set(0.39 * W, 1.16, 0.1); g.rotation.x = 1.25; Z(sp.cables || 'gear', bx(0.08, 0.12, 0.4, g, 0, 0.04, 0.18)); F(FIXED.darkSteel, bx(0.1, 0.06, 0.2, g, 0, 0.12, 0.3)); Z(LZ, bx(0.09, 0.03, 0.2, g, 0, 0.11, 0.2)); F(FIXED.gunLight, bx(0.08, 0.14, 0.12, g, 0, -0.02, 0)); F(FIXED.rubber, cy(0.02, 0.02, 0.5, 4, R, 0.3 * W, 1.5, -0.1, [0.6, 0, 0.4])); }
         if (sp.rifleBack) { F(FIXED.gun, bx(0.08, 1.1, 0.12, R, 0.2 * W, 1.9, -0.26, [0, 0, 0.3])); F(FIXED.gunLight, bx(0.1, 0.3, 0.14, R, 0.1 * W, 1.6, -0.26, [0, 0, 0.3])); }
@@ -771,52 +808,56 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         Z('boots', bx(0.54, 0.08, 0.3, R, 0, 1.5, 0));                          // belt
         F(FIXED.steel, bx(0.1, 0.1, 0.04, R, 0, 1.5, 0.16));                    // buckle
         // torso + plated vest
-        Z('suit', bx(0.5, 0.6, 0.3, R, 0, 1.85, 0));
-        Z('jacket', bx(0.44, 0.3, 0.14, R, 0, 1.98, 0.2));                      // chest plates
-        Z('jacket', bx(0.4, 0.2, 0.12, R, 0, 1.72, 0.2));
-        Z('jacket', bx(0.46, 0.5, 0.1, R, 0, 1.85, -0.18));                     // back plate
-        Z('visor', bx(0.06, 0.06, 0.03, R, 0.14, 2.05, 0.28));                 // vest indicator
+        Z('suit', bx(0.5, 0.6, 0.3, R, 0, 1.85, 0)).name = 'scout_torso';
+        part('vest', parts.vest, () => {
+            if (parts.vest !== 'classic') return scoutVariant('vest', parts.vest, roleContext);
+            Z('jacket', bx(0.44, 0.3, 0.14, R, 0, 1.98, 0.2));                  // chest plates
+            Z('jacket', bx(0.4, 0.2, 0.12, R, 0, 1.72, 0.2));
+            Z('jacket', bx(0.46, 0.5, 0.1, R, 0, 1.85, -0.18));                 // back plate
+            Z('visor', bx(0.06, 0.06, 0.03, R, 0.14, 2.05, 0.28));             // vest indicator
+        });
         // shoulders & arms (asymmetric: left arm with tech bracer)
         for (const s of [-1, 1]) {
-            Z('jacket', bx(0.24, 0.16, 0.28, R, s * 0.36, 2.1, 0));
+            part('shoulders', parts.shoulders, () => {
+                if (parts.shoulders === 'classic') Z('jacket', bx(0.24, 0.16, 0.28, R, s * 0.36, 2.1, 0));
+                else scoutVariant('shoulders', parts.shoulders, roleContext, s);
+            });
             Z('suit', bx(0.16, 0.42, 0.18, R, s * 0.36, 1.82, 0));
             Z('suit', bx(0.14, 0.4, 0.16, R, s * 0.37, 1.42, 0.02));
             Z('boots', bx(0.14, 0.14, 0.14, R, s * 0.37, 1.18, 0.02));          // gloves
         }
         // tech bracer on the left forearm with glowing cells
-        Z('jacket', bx(0.22, 0.3, 0.24, R, -0.37, 1.44, 0.02));
-        for (let i = 0; i < 3; i++) Z('visor', bx(0.05, 0.05, 0.03, R, -0.37, 1.34 + i * 0.09, 0.15));
-        // neck + head
-        Z('skin', bx(0.14, 0.1, 0.14, R, 0, 2.2, 0));
-        Z('skin', bx(0.3, 0.34, 0.3, R, 0, 2.44, 0.02));
+        part('bracer', parts.bracer, () => {
+            if (parts.bracer !== 'classic') return scoutVariant('bracer', parts.bracer, roleContext);
+            Z('jacket', bx(0.22, 0.3, 0.24, R, -0.37, 1.44, 0.02));
+            for (let i = 0; i < 3; i++) Z('visor', bx(0.05, 0.05, 0.03, R, -0.37, 1.34 + i * 0.09, 0.15));
+        });
+        // The neck overlaps both head and torso, including with the lighter independent vests.
+        Z('skin', bx(0.14, 0.16, 0.14, R, 0, 2.21, 0)).name = 'scout_neck_joint';
+        Z('skin', bx(0.3, 0.34, 0.3, R, 0, 2.44, 0.02)).name = 'scout_head';
         Z('skin', bx(0.06, 0.06, 0.05, R, 0, 2.42, 0.18));
         // Long hair and the asymmetrical fringe frame the scar in every variation.
-        Z('hair', bx(0.34, 0.12, 0.34, R, 0, 2.64, 0));
-        if (parts.hair === 'classic') {
+        part('hair', parts.hair, () => {
+            if (parts.hair !== 'classic') return scoutVariant('hair', parts.hair, roleContext);
+            Z('hair', bx(0.34, 0.12, 0.34, R, 0, 2.64, 0));
             Z('hair', bx(0.34, 0.6, 0.12, R, 0, 2.36, -0.18));
             Z('hair', bx(0.08, 0.52, 0.3, R, -0.19, 2.38, -0.06));
             Z('hair', bx(0.08, 0.4, 0.2, R, 0.19, 2.44, -0.1));
-        } else {
-            Z('hair', bx(0.3, 0.28, 0.1, R, 0, 2.49, -0.16));
-            Z('hair', bx(0.08, 0.46, 0.24, R, -0.19, 2.4, -0.04));
-            Z('hair', bx(0.06, 0.3, 0.2, R, 0.18, 2.48, -0.05));
-            F(FIXED.strap, bx(0.15, 0.06, 0.14, R, 0, 2.48, -0.22));
-            // Lay the gathered hair over the slung rifle; otherwise its lower half disappears inside it.
-            if (parts.hair === 'braid') {
-                for (let i = 0; i < 5; i++) Z('hair', bx(0.13, 0.12, 0.14, R, -0.09 + (i % 2 ? 0.025 : -0.025), 2.4 - i * 0.11, -0.36, [0, 0, (i % 2 ? 0.25 : -0.25)]));
-            } else Z('hair', bx(0.17, 0.52, 0.16, R, -0.08, 2.21, -0.37, [0, 0, -0.1]));
-        }
-        Z('hair', bx(0.36, 0.12, 0.16, R, -0.02, 2.6, 0.1, [0, 0, 0.22]));
-        Z('hair', bx(0.14, 0.2, 0.14, R, -0.15, 2.5, 0.11));
+            Z('hair', bx(0.36, 0.12, 0.16, R, -0.02, 2.6, 0.1, [0, 0, 0.22]));
+            Z('hair', bx(0.14, 0.2, 0.14, R, -0.15, 2.5, 0.11));
+        });
         // scar across the right eye (the side the fringe leaves open)
         F('#9a5a4a', bx(0.02, 0.16, 0.02, R, 0.08, 2.46, 0.175, [0, 0, 0.2]));
         F(FIXED.steel, bx(0.04, 0.08, 0.06, R, 0.17, 2.44, 0.04));
         // rifle slung diagonally on the back
         const gun = new (B().TransformNode)('gun', S); gun.parent = R; gun.position.set(0, 1.9, -0.3); gun.rotation.z = 0.9;
-        F(FIXED.gun, bx(1.4, 0.12, 0.1, gun, 0, 0, 0));
-        F(FIXED.gunLight, bx(0.36, 0.18, 0.12, gun, -0.1, 0.02, 0));
-        F(FIXED.gun, bx(0.2, 0.2, 0.08, gun, -0.5, -0.1, 0));
-        F(FIXED.gunLight, bx(0.3, 0.08, 0.08, gun, 0.2, 0.12, 0));
+        part('rifle', parts.rifle, () => {
+            if (parts.rifle !== 'classic') return scoutVariant('rifle', parts.rifle, roleContext, null, gun);
+            F(FIXED.gun, bx(1.4, 0.12, 0.1, gun, 0, 0, 0));
+            F(FIXED.gunLight, bx(0.36, 0.18, 0.12, gun, -0.1, 0.02, 0));
+            F(FIXED.gun, bx(0.2, 0.2, 0.08, gun, -0.5, -0.1, 0));
+            F(FIXED.gunLight, bx(0.3, 0.08, 0.08, gun, 0.2, 0.12, 0));
+        });
         F(FIXED.strap, bx(0.06, 0.7, 0.04, R, 0.1, 1.85, 0.17, [0, 0, 0.5]));  // strap across chest
         // hip flask (she is holding a bottle in the art)
         F(FIXED.glass, cy(0.08, 0.1, 0.22, 6, R, 0.3, 1.36, 0.12), { alpha: 0.6, spec: 0.8 });
@@ -837,7 +878,9 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 } else mechanicVariant('leg', parts.outfit, roleContext, s);
             });
         }
-        Z('overall', bx(0.7, 0.3, 0.42, R, 0, 1.28, 0));
+        Z('overall', bx(0.7, 0.3, 0.42, R, 0, 1.28, 0)).name = 'mechanic_pelvis';
+        // Bridge the pelvis and shirt behind every belt: otherwise a dark gap makes the torso float.
+        Z('overall', bx(0.48, 0.18, 0.34, R, 0, 1.5, 0)).name = 'mechanic_waist_joint';
         part('belt', parts.belt, () => {
             if (parts.belt === 'classic') {
                 F(FIXED.strap, bx(0.72, 0.1, 0.44, R, 0, 1.44, 0));
@@ -848,7 +891,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             } else mechanicVariant('belt', parts.belt, roleContext);
         });
         // Orange work shirt, rolled sleeves and the original torch-carrying pose.
-        Z('overall', bx(0.6, 0.62, 0.34, R, 0, 1.84, 0));
+        Z('overall', bx(0.6, 0.62, 0.34, R, 0, 1.84, 0)).name = 'mechanic_torso';
         for (const s of [-1, 1]) {
             Z('overall', bx(0.3, 0.2, 0.32, R, s * 0.38, 2.06, 0));
             Z('skin', bx(0.18, 0.44, 0.2, R, s * 0.4, 1.76, 0));
@@ -881,7 +924,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 F(FIXED.steel, cy(0.04, 0.04, 0.2, 6, R, 0.5, 1.2, 0.74, [Math.PI / 2, 0, 0])); Z('lights', cy(0.03, 0.06, 0.08, 6, R, 0.5, 1.2, 0.86, [Math.PI / 2, 0, 0]));
             } else mechanicVariant('welder', parts.welder, roleContext);
         });
-        Z('skin', bx(0.16, 0.1, 0.16, R, 0, 2.18, 0));
+        // The neck reaches both the shoulders and the head/helmet, including the bare-face goggles.
+        Z('skin', bx(0.16, 0.18, 0.16, R, 0, 2.2, 0)).name = 'mechanic_neck_joint';
         part('shield', parts.shield, () => {
             if (parts.shield === 'classic') {
                 Z('skin', bx(0.3, 0.34, 0.3, R, 0, 2.44, 0.02));

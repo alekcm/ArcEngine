@@ -52,7 +52,7 @@ export const SENTRY_PARTS = [
 
 // The remaining crew each have their own role-specific geometry. The first option is deliberately
 // the existing miniature, not a new interpretation. Colours are still controlled by paint zones.
-// Soldier/Mechanic retain their original option IDs so previously saved appearances still load;
+// Reworked characters retain their original option IDs so previously saved appearances still load;
 // their visible labels now describe complete replacements instead of small add-on details.
 const crewSlot = (id, label, hint, a, b) => ({ id, label, hint, options: [
     { id: 'classic', label: 'Оригинал', detail: 'Исходная модель' },
@@ -69,8 +69,10 @@ export const CREW_PARTS = {
     ],
     scout: [
         crewSlot('hair', 'Волосы', 'Длинные пряди', ['braid', 'Коса', 'Собрана сзади'], ['tied', 'Хвост', 'Длинный хвост']),
-        crewSlot('bracer', 'Наруч', 'Прибор на левой руке', ['display', 'С экраном', 'Пульт разведчицы'], ['cells', 'С ячейками', 'Три модуля']),
-        crewSlot('vest', 'Жилет', 'Лёгкая защита', ['plated', 'С пластинами', 'Раздельные щитки'], ['pouches', 'С подсумками', 'Полевое снаряжение']),
+        crewSlot('bracer', 'Наруч', 'Прибор на левой руке', ['display', 'Терминал', 'Широкий экран'], ['cells', 'Модульный', 'Сегменты и датчик']),
+        crewSlot('vest', 'Жилет', 'Лёгкая полевая защита', ['plated', 'Пластинчатый', 'Раздельная броня'], ['pouches', 'Разгрузка', 'Ремни и подсумки']),
+        crewSlot('shoulders', 'Наплечники', 'Защита разведчицы', ['compact', 'Обтекаемые', 'Лёгкие щитки'], ['segmented', 'Сегментные', 'Гибкая броня']),
+        crewSlot('rifle', 'Винтовка', 'На ремне за спиной', ['carbine', 'Карабин', 'Короткая винтовка'], ['long', 'Дальняя', 'Прицел и ствол']),
     ],
     mechanic: [
         crewSlot('shield', 'Защита лица', 'Для сварочных работ', ['framed', 'Цельный шлем', 'Закрывает всю голову'], ['twinlamp', 'Сварочные очки', 'Открытое лицо']),
@@ -81,8 +83,10 @@ export const CREW_PARTS = {
     ],
     pilot: [
         crewSlot('hair', 'Волосы', 'Короткая причёска', ['spiky', 'Небрежные', 'Короткие пряди'], ['side', 'С зачёсом', 'Боковая чёлка']),
-        crewSlot('optics', 'Монокль', 'Прибор над глазом', ['round', 'Круглый', 'Одна линза'], ['wide', 'Широкий', 'Панорамная линза']),
-        crewSlot('coat', 'Куртка', 'Меховая отделка', ['lapels', 'С лацканами', 'Объёмный воротник'], ['long', 'Удлинённая', 'Длинные полы']),
+        crewSlot('optics', 'Монокль', 'Прибор над глазом', ['round', 'Навигационный', 'Круглый окуляр'], ['wide', 'Проекционный', 'Широкий экран']),
+        crewSlot('coat', 'Куртка', 'Меховой воротник', ['lapels', 'Бомбер', 'Короткая куртка'], ['long', 'Удлинённая', 'Длинные полы']),
+        crewSlot('headset', 'Гарнитура', 'Лётные наушники', ['single', 'Одно ухо', 'Радио с микрофоном'], ['padded', 'Закрытая', 'Мягкие наушники']),
+        crewSlot('sidearm', 'Пистолет', 'Штатное оружие', ['compact', 'Компактный', 'Короткий корпус'], ['long', 'Сигнальный', 'Длинный ствол']),
     ],
     hacker: [
         crewSlot('hood', 'Капюшон', 'Мягкая форма', ['rimmed', 'С окантовкой', 'Выраженный край'], ['long', 'Удлинённый', 'Ткань на спине']),

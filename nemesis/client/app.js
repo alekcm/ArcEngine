@@ -18,9 +18,9 @@ const $ = id => document.getElementById(id);
 const PHASES = { setup: 'Подготовка', draft: 'Выбор персонажей', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
 const WORKSHOP_LABELS = {
     soldier: { title: 'Солдат', button: 'Мастерская Солдата', hint: 'Шлем, броня, оружие и ранец', caption: 'Модель · силовая броня' },
-    scout: { title: 'Разведчица', button: 'Мастерская Разведчицы', hint: 'Причёска, наруч и жилет', caption: 'Модель · разведка' },
+    scout: { title: 'Разведчица', button: 'Мастерская Разведчицы', hint: 'Волосы, броня, наруч и винтовка', caption: 'Модель · разведка' },
     mechanic: { title: 'Механик', button: 'Мастерская Механика', hint: 'Маска, инструменты и ранец', caption: 'Модель · техническая служба' },
-    pilot: { title: 'Пилот', button: 'Мастерская Пилота', hint: 'Причёска, монокль и куртка', caption: 'Модель · пилотирование' },
+    pilot: { title: 'Пилот', button: 'Мастерская Пилота', hint: 'Причёска, монокль, куртка и снаряжение', caption: 'Модель · пилотирование' },
     hacker: { title: 'Хакер', button: 'Мастерская Хакера', hint: 'Капюшон, маска и киберруки', caption: 'Модель · цифровая разведка' },
     scientist: { title: 'Учёный', button: 'Мастерская Учёного', hint: 'Очки, кресло и планшет', caption: 'Модель · исследования' },
     medic: { title: 'Медик', button: 'Мастерская Медика', hint: 'Причёска, маска и аптечка', caption: 'Модель · медицина' },
@@ -220,6 +220,9 @@ function renderLobby() {
         && document.activeElement.matches('#paintZones input[type="color"]') ? document.activeElement : null;
     const activePickerZone = activePicker && activePicker.dataset.zone;
     const activePickerColor = activePicker && activePicker.value;
+    const activeSwatch = document.activeElement && document.activeElement.matches
+        && document.activeElement.matches('#paintZones button[data-color]') ? document.activeElement : null;
+    const swatchFocus = activeSwatch && { zone: activeSwatch.dataset.zone, color: activeSwatch.dataset.color };
     const inGame = L.phase === 'playing' && app.view;
     $('lobby').classList.toggle('hidden', !!inGame || app.gallery);
     if (inGame) return;
@@ -259,9 +262,10 @@ function renderLobby() {
         if (!keepPicker) {
             $('paintZones').innerHTML = ch.zones.map(z => {
                 const cur = app.colors[z.id] || def[z.id] || z.presets[0];
+                const presetSelected = z.presets.some(p => p.toLowerCase() === cur.toLowerCase());
                 return '<div class="zone"><span class="zname">' + esc(z.label) + '</span>' +
-                    z.presets.map(p => '<span class="swatch ' + (p.toLowerCase() === cur.toLowerCase() ? 'sel' : '') + '" data-zone="' + z.id + '" data-color="' + p + '" style="background:' + p + '"></span>').join('') +
-                    '<span class="swatch custom" title="Своя палитра"><input type="color" data-zone="' + z.id + '" value="' + cur + '"></span></div>';
+                    z.presets.map(p => '<button type="button" class="swatch ' + (p.toLowerCase() === cur.toLowerCase() ? 'sel' : '') + '" data-zone="' + z.id + '" data-color="' + p + '" style="background:' + p + '" aria-label="' + esc(z.label) + ': ' + p + '" aria-pressed="' + (p.toLowerCase() === cur.toLowerCase()) + '"></button>').join('') +
+                    '<span class="swatch custom ' + (!presetSelected ? 'sel' : '') + '" title="Своя палитра"><input type="color" data-zone="' + z.id + '" value="' + cur + '" aria-label="Свой цвет: ' + esc(z.label) + '"></span></div>';
             }).join('');
             for (const el of $('paintZones').querySelectorAll('.swatch[data-color]')) el.onclick = () => sendColor(el.dataset.zone, el.dataset.color);
             for (const el of $('paintZones').querySelectorAll('input[type=color]')) {
@@ -271,9 +275,16 @@ function renderLobby() {
                 // those changes local for the live preview and send only the committed colour on `change`.
                 el.oninput = () => {
                     app.colors = Object.assign({}, app.colors, { [zone]: el.value });
+                    updateSwatches(zone, el.value);
                     if (preview) preview.show(app.charId, Object.assign({}, def, app.colors), app.parts);
                 };
                 el.onchange = () => sendColor(zone, el.value);
+            }
+            // Preset buttons are rebuilt on a lobby broadcast; retain keyboard position afterwards.
+            if (swatchFocus && app.charId === previousCharId) {
+                const replacement = [...$('paintZones').querySelectorAll('button[data-color]')]
+                    .find(el => el.dataset.zone === swatchFocus.zone && el.dataset.color === swatchFocus.color);
+                if (replacement) replacement.focus({ preventScroll: true });
             }
         }
         if (!preview) preview = new Preview3D($('previewCanvas'));
@@ -297,13 +308,52 @@ function renderLobby() {
     $('startBtn').disabled = !app.host || online.length < 1 || online.some(s => !s.ready);
     $('startBtn').title = app.host ? 'Все подключённые игроки должны нажать «Готов»' : 'Начать может только ведущий';
 }
-function sendColor(zone, color) { app.colors = Object.assign({}, app.colors, { [zone]: color }); net.send({ t: 'lobby', colors: app.colors }); }
+function updateSwatches(zone, color) {
+    let isPreset = false;
+    for (const el of $('paintZones').querySelectorAll('.swatch[data-color]')) if (el.dataset.zone === zone) {
+        const selected = el.dataset.color.toLowerCase() === color.toLowerCase();
+        isPreset ||= selected;
+        el.classList.toggle('sel', selected);
+        el.setAttribute('aria-pressed', String(selected));
+    }
+    for (const input of $('paintZones').querySelectorAll('input[type=color]')) if (input.dataset.zone === zone) {
+        if (input.value !== color) input.value = color;
+        input.parentElement.classList.toggle('sel', !isPreset);
+    }
+}
+function sendColor(zone, color) {
+    if (!ws || ws.readyState !== 1) {
+        // A picker may have changed the local preview, but it cannot be saved while offline.
+        const seat = app.lobby?.seats.find(s => s.id === app.me);
+        app.colors = Object.assign({}, seat?.colors);
+        const current = app.colors[zone] || DEFAULTS[app.charId]?.[zone]
+            || app.lobby?.characters?.[app.charId]?.zones?.find(z => z.id === zone)?.presets?.[0] || '#888888';
+        updateSwatches(zone, current);
+        if (preview) preview.show(app.charId, Object.assign({}, DEFAULTS[app.charId], app.colors), app.parts);
+        notice('Нет связи с сервером — изменения не сохранены.', 'error');
+        return;
+    }
+    app.colors = Object.assign({}, app.colors, { [zone]: color });
+    updateSwatches(zone, color);
+    if (preview) preview.show(app.charId, Object.assign({}, DEFAULTS[app.charId], app.colors), app.parts);
+    net.send({ t: 'lobby', colors: app.colors });
+}
 
 // ---------------------------------------------------------------------------------------------
 // Character workshop. It reuses the lobby's 3D canvas so switching screens does not
 // create another WebGL engine. The server validates the selected ids and shares them with the table.
 // ---------------------------------------------------------------------------------------------
 let labCameraPose = null;
+function setLabPage(page) {
+    const details = page !== 'colors';
+    $('labPartsTab').setAttribute('aria-pressed', String(details));
+    $('labColorsTab').setAttribute('aria-pressed', String(!details));
+    $('labOptions').classList.toggle('hidden', !details);
+    $('labColorPanel').classList.toggle('hidden', details);
+    $('labReset').classList.toggle('hidden', !details);
+    // A long list of parts may have been scrolled to its end before switching pages.
+    $('labOptions').parentElement.scrollTop = 0;
+}
 function updateLabSelection() {
     for (const button of $('labOptions').querySelectorAll('[data-part][data-value]')) {
         button.setAttribute('aria-pressed', String(app.parts[button.dataset.part] === button.dataset.value));
@@ -322,6 +372,8 @@ function openLabWorkshop() {
     if (!preview || !WORKSHOP_LABELS[app.charId] || !characterPartSlots(app.charId).length || app.spectator || !app.lobby || app.lobby.phase !== 'lobby') return;
     renderLabOptions(app.charId);
     app.labWorkshop = true;
+    $('labColorHost').appendChild($('paintZones'));
+    setLabPage('parts');
     $('labWorkshop').classList.remove('hidden');
     $('labCanvasHost').appendChild($('previewCanvas'));
     const cam = preview.camera;
@@ -347,6 +399,7 @@ function closeLabWorkshop(restoreFocus = true) {
     if (!app.labWorkshop) return;
     app.labWorkshop = false;
     $('charPreview').appendChild($('previewCanvas'));
+    $('paintLobbyHost').appendChild($('paintZones'));
     $('labWorkshop').classList.add('hidden');
     if (preview && labCameraPose) {
         setPreviewCameraPose(preview.camera, labCameraPose);
@@ -371,7 +424,15 @@ $('labOptions').onclick = e => {
 $('labOpen').onclick = openLabWorkshop;
 $('labClose').onclick = () => closeLabWorkshop();
 $('labDone').onclick = () => closeLabWorkshop();
+$('labPartsTab').onclick = () => setLabPage('parts');
+$('labColorsTab').onclick = () => setLabPage('colors');
 $('labReset').onclick = () => setLabParts({});
+$('labColorReset').onclick = () => {
+    if (!ws || ws.readyState !== 1) { notice('Нет связи с сервером — изменения не сохранены.', 'error'); return; }
+    app.colors = {};
+    if (preview) preview.show(app.charId, Object.assign({}, DEFAULTS[app.charId]), app.parts);
+    net.send({ t: 'lobby', colors: {} });
+};
 
 // ---------------------------------------------------------------------------------------------
 // Room gallery (test ship). A normal game shuffles only 11 basic + 5 additional tiles onto the
