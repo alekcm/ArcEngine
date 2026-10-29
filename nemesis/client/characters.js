@@ -60,7 +60,7 @@ export const DEFAULTS = {
     hacker: { skin: '#8d5a3c', hood: '#3f4a3e', jacket: '#2a3330', pants: '#1e2422', gear: '#c9b12a', lights: '#3bff7a' },
     scientist: { skin: '#e8b89a', hair: '#8a6a4a', coat: '#d7dde2', shirt: '#4a5560', pants: '#2d3436', lights: '#ff4a3b' },
     medic: { skin: '#f2d2bd', hair: '#d4683a', coat: '#e8edf2', cap: '#3a4046', pants: '#2d3436', lights: '#ff3b3b' },
-    janitor: { skin: '#d29b7c', hair: '#c4c4c4', overall: '#e67e22', cap: '#c0392b', gloves: '#f1c40f', lights: '#ffd23b' },
+    janitor: { skin: '#d29b7c', hair: '#c4c4c4', overall: '#e67e22', cap: '#c0392b', gloves: '#f1c40f', gear: '#3a424b', lights: '#ffd23b' },
     ceo: { skin: '#e8b89a', hair: '#e8e2d0', coat: '#3a3d44', shirt: '#dfe6ee', robot: '#232c3a', lights: '#bfe8ff' },
     labrat: { skin: '#d29b7c', hair: '#1c1c1c', gown: '#e3e7ea', pants: '#7f8c8d', bandage: '#dfe6ee', lights: '#ff3bd1' },
     sentry: { skin: '#b5805f', armor: '#2f3b48', accent: '#6b7a88', pants: '#23292f', helmet: '#262f3a', visor: '#bfe8ff' },
@@ -166,8 +166,15 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         const W = (sp.build === 'bulky' ? 1.18 : sp.build === 'stocky' ? 1.1 : sp.build === 'athletic' ? 1.05 : 1.0) * (sp.female ? 0.9 : 1);   // width factor
         // legs & boots
         for (const s of [-1, 1]) {
-            if (!sp.barefoot) { Z(sp.boots, bx(0.22 * W, 0.14, 0.36, R, s * 0.15 * W, 0.07, 0.04)); Z(sp.boots, bx(0.22 * W, 0.3, 0.24, R, s * 0.15 * W, 0.28, 0)); }
-            else { Z('skin', bx(0.18, 0.1, 0.32, R, s * 0.14, 0.05, 0.04)); Z('skin', bx(0.18, 0.34, 0.2, R, s * 0.15 * W, 0.26, 0)); }   // bare feet + shins
+            const boots = () => {
+                if (!sp.barefoot) { Z(sp.boots, bx(0.22 * W, 0.14, 0.36, R, s * 0.15 * W, 0.07, 0.04)); Z(sp.boots, bx(0.22 * W, 0.3, 0.24, R, s * 0.15 * W, 0.28, 0)); }
+                else { Z('skin', bx(0.18, 0.1, 0.32, R, s * 0.14, 0.05, 0.04)); Z('skin', bx(0.18, 0.34, 0.2, R, s * 0.15 * W, 0.26, 0)); }
+            };
+            if (sp.janitorParts) part('outfit', sp.janitorParts.outfit, () => {
+                if (sp.janitorParts.outfit === 'classic') boots();
+                else janitorVariant('boot', sp.janitorParts.outfit, roleContext, W, s);
+            });
+            else boots();
             const legs = () => {
                 Z(sp.legs, bx(0.21 * W, 0.5, 0.22, R, s * 0.15 * W, 0.68, 0));
                 Z(sp.legs, bx(0.23 * W, 0.46, 0.24, R, s * 0.15 * W, 1.14, 0));
@@ -426,7 +433,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             else original();
         }
         if (sp.cables) { for (let i = 0; i < 3; i++) F(FIXED.rubber, cy(0.03, 0.03, 0.5, 5, R, -0.3 * W + i * 0.05, 1.98, -0.3 - i * 0.04, [0.4, 0, 0.3])); Z(sp.cables, bx(0.12, 0.08, 0.06, R, -0.2 * W, 2.18, -0.3)); }
-        if (sp.toolBelt) { for (let i = 0; i < 3; i++) F(FIXED.steel, bx(0.06, 0.14, 0.06, R, -0.22 * W + i * 0.1, 1.42, 0.17)); F(FIXED.strap, bx(0.14, 0.16, 0.1, R, 0.26 * W, 1.4, 0.12)); }
+        if (sp.toolBelt && (!sp.janitorParts || sp.janitorParts.outfit === 'classic')) { for (let i = 0; i < 3; i++) F(FIXED.steel, bx(0.06, 0.14, 0.06, R, -0.22 * W + i * 0.1, 1.42, 0.17)); F(FIXED.strap, bx(0.14, 0.16, 0.1, R, 0.26 * W, 1.4, 0.12)); }
         if (sp.shoulderLamp) Z(sp.shoulderLamp, bx(0.08, 0.06, 0.06, R, -0.38 * W, 2.2, 0.12));
         // Bridge the head and shoulders on each reworked humanoid.
         const joinedNeck = sp.scientistParts || sp.medicParts || sp.janitorParts || sp.ceoParts || sp.androidParts;
@@ -469,7 +476,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                     for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.16, 2.64 + (i % 2) * 0.08, Math.cos(a) * 0.14 - 0.02)); }
                     for (let i = 0; i < 5; i++) Z(H, bx(0.17 - (i % 2) * 0.03, 0.14, 0.17, R, (i % 2) * 0.04 - 0.02, 2.5 - i * 0.1, -0.27));
                     F(FIXED.strap, bx(0.14, 0.05, 0.14, R, 0, 2.56, -0.22)); break;
-                case 'longLoose': Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.56, 0.1, R, 0, 2.36, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.08, 0.5, 0.3, R, s * 0.19, 2.38, -0.03)); break;   // back slab and side locks reach up into the cap, no bare strip
+                case 'longLoose': Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.56, 0.1, R, 0, 2.36, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.08, 0.5, 0.3, R, s * 0.19, sp.medicParts ? 2.36 : 2.38, -0.03)); break;   // side locks emerge below the Medic's cap edge
                 case 'labMessy':   // long uneven locks, not a different haircut
                     Z(H, bx(0.35, 0.12, 0.34, R, 0, 2.65, 0.0));
                     Z(H, bx(0.3, 0.56, 0.1, R, 0, 2.36, -0.16));
@@ -538,12 +545,13 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 if (sp.janitorParts.cap === 'classic') original();
                 else janitorVariant('cap', sp.janitorParts.cap, roleContext, W);
             });
-            else original();
-            // A visible medical insignia is retained for every combination, like the reference cap.
-            if (sp.medicParts) {
-                Z('lights', bx(0.1, 0.025, 0.02, R, 0, 2.67, 0.18)).metadata = { medicCapInsignia: true };
-                Z('lights', bx(0.025, 0.08, 0.02, R, 0, 2.67, 0.18)).metadata = { medicCapInsignia: true };
-            }
+            else if (sp.medicParts) {
+                // Slightly larger crown encloses the hair cap, with locks emerging below the edge.
+                Z(sp.cap, bx(0.4, 0.12, 0.42, R, 0, 2.67, -0.01)).metadata = { medicCapCrown: true };
+                Z(sp.cap, bx(0.36, 0.035, 0.18, R, 0, 2.62, 0.27));
+                Z('lights', bx(0.1, 0.025, 0.02, R, 0, 2.67, 0.21)).metadata = { medicCapInsignia: true };
+                Z('lights', bx(0.025, 0.08, 0.02, R, 0, 2.67, 0.21)).metadata = { medicCapInsignia: true };
+            } else original();
         }
         if (sp.hood && sp.cowl) {   // soft hood: rounded top, draped sides widening down to the shoulders, merging into the suit
             const original = () => {
@@ -700,7 +708,9 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         if (sp.pipe) { F(FIXED.steel, cy(0.05, 0.05, 1.0, 6, R, 0.42 * W, 1.5, 0.1, [0, 0, 0.15])); F(FIXED.darkSteel, bx(0.1, 0.1, 0.1, R, 0.42 * W, 1.98, 0.08)); }
         if (sp.vacuum) {   // backpack vacuum cleaner: canister on the back, straps, hose running to a wand in the left hand
             const originalPack = () => {
-                F(FIXED.darkSteel, cy(0.2, 0.2, 0.62, 8, R, 0, 1.78, -0.34)); F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 2.1, -0.34)); F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 1.46, -0.34));
+                const tank = cy(0.2, 0.2, 0.62, 8, R, 0, 1.78, -0.34);
+                if (sp.janitorParts) Z('gear', tank); else F(FIXED.darkSteel, tank);
+                F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 2.1, -0.34)); F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 1.46, -0.34));
                 F(FIXED.steel, bx(0.1, 0.12, 0.1, R, 0.1, 2.2, -0.34)); Z(LZ, bx(0.04, 0.04, 0.02, R, 0.1, 2.2, -0.28));   // motor cap + status light
                 for (const s of [-1, 1]) F(FIXED.strap, bx(0.06, 0.5, 0.04, R, s * 0.18 * W, 1.86, 0.17, [0.0, 0, 0]));       // shoulder straps
                 const points = [[-0.12, 2.1, -0.42], [-0.42 * W, 1.9, -0.3], [-0.46 * W, 1.4, 0], [-0.4 * W, 1.16, 0.16]];

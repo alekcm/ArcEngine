@@ -629,8 +629,8 @@ const CREW_ORIGINAL_HASHES = {
     hacker: 'bf0e8e492b9a175443b8894ec6f506b9cb7980a78c5c9a0263cff99459578e27',
     // The original Scientist keeps its pose and equipment; only the neck joint was lengthened.
     scientist: '776876a693bef7e043c3420d3c0b949ee4eb6f9a2157bb1e14be538df7d63682',
-    // Medic: joined neck, concealed nose under the respirator and a visible cap insignia.
-    medic: 'e27c669afdf72c3648a95fc1c59cbe34a3d83df73b9f5f52cf4fa243e627a49a',
+    // Medic: joined neck, concealed nose, and a cap enlarged to cover all hairstyles.
+    medic: '88a921309c55ee344371f5c2b6a86d9d1df4f2f690e7de53b3bdf05f7dd4ba41',
     // Janitor: joined neck and repaired original wand/nozzle attached to the moving hand.
     janitor: '9bd8d5deb1421f0ac686b8838f26812104059fef63b818c1b24555deeaa3082c',
     // Director: repaired neck; the original guard has joined joints, moving limbs and clears the sleeve.
@@ -1228,4 +1228,64 @@ test('ROLE-14: both Director and bodyguard stand fully on their preview plinth',
         Preview3D.prototype.show.call(preview, 'android');
         assert.equal(disc.position.x, 0); assert.equal(disc.scaling.x, 1); assert.equal(disc.scaling.z, 1);
     } finally { s.dispose(); engine.dispose(); }
+});
+
+test('ROLE-15: the Medic’s cap encloses the crown of every hairstyle', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    for (const hair of ['classic', 'tied', 'wavy']) {
+        const ch = buildCharacter(scene.scene, 'medic', {}, { hair });
+        ch.root.scaling.setAll(1);
+        const meshes = ch.root.getChildMeshes(), cap = meshes.find(m => m.metadata?.medicCapCrown);
+        const locks = meshes.filter(m => m.metadata?.appearancePart?.slot === 'hair');
+        assert.ok(cap && locks.length, `${hair}: cap and hairstyle exist`);
+        cap.isPickable = true; for (const m of locks) m.isPickable = true;
+        for (const t of [0, 0.1, 0.2, 0.3]) {
+            ch.animate(t, t > 0); for (const m of [cap, ...locks]) m.computeWorldMatrix(true);
+            const crown = cap.getBoundingInfo().boundingBox;
+            for (const lock of locks) {
+                const b = lock.getBoundingInfo().boundingBox;
+                if (b.maximumWorld.y > crown.minimumWorld.y + 0.002) {
+                    assert.ok(b.maximumWorld.y < crown.maximumWorld.y - 0.002 && b.minimumWorld.x >= crown.minimumWorld.x - 0.002 && b.maximumWorld.x <= crown.maximumWorld.x + 0.002 && b.minimumWorld.z >= crown.minimumWorld.z - 0.002 && b.maximumWorld.z <= crown.maximumWorld.z + 0.002, `${hair}: no upper hair protrudes through the cap`);
+                }
+            }
+            for (const x of [-0.15, 0, 0.15]) for (const z of [-0.14, 0, 0.14]) {
+                const hit = scene.scene.pickWithRay(new B.Ray(new B.Vector3(x, 3.2 + ch.root.position.y, z), new B.Vector3(0, -1, 0), 1), m => m === cap || locks.includes(m));
+                assert.equal(hit?.pickedMesh, cap, `${hair}: the cap, not hair, is visible from above`);
+            }
+        }
+        ch.root.dispose();
+    }
+});
+
+test('ROLE-16: the Janitor has distinct, connected workwear and independently paintable equipment', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    for (const outfit of ['utility', 'protective']) for (const vacuum of ['classic', 'ribbed', 'twin']) {
+        const ch = buildCharacter(scene.scene, 'janitor', {}, { outfit, vacuum });
+        ch.root.scaling.setAll(1);
+        const meshes = ch.root.getChildMeshes(), torso = meshes.find(m => m.metadata?.janitorTorso);
+        const gear = ch.zones.gear.filter(m => m.metadata?.appearancePart?.slot === 'vacuum');
+        assert.ok(torso && gear.length, `${outfit}/${vacuum}: replacement body and paintable vacuum`);
+        ch.setColors({ gear: '#1579a1', overall: '#b95a2b' });
+        assert.ok(gear.every(m => m.material.diffuseColor.toHexString().toLowerCase() === '#1579a1'));
+        assert.equal(torso.material.diffuseColor.toHexString().toLowerCase(), '#b95a2b');
+        for (const t of [0, 0.1, 0.2, 0.3, 0.4]) {
+            ch.animate(t, t > 0); for (const m of meshes) m.computeWorldMatrix(true);
+            if (outfit === 'utility') {
+                const bib = meshes.find(m => m.metadata?.janitorApron === 'bib'), skirt = meshes.find(m => m.metadata?.janitorApron === 'skirt');
+                assert.ok(bib && skirt && bib.parent === skirt.parent && bib.parent.parent === ch.root, 'the apron moves as a complete garment');
+                assert.ok(bib.intersectsMesh(torso, true) && bib.intersectsMesh(skirt, true), 'the apron is attached continuously to the body');
+            }
+            // A complete trouser and boot on each leg, joined even while walking.
+            const feet = [];
+            for (const side of ['L', 'R']) {
+                const leg = ch.root.getDescendants().find(n => n.name === 'leg' + side);
+                const pieces = leg.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === 'outfit');
+                const sole = pieces.find(m => m.metadata?.janitorBoot === 'sole'), shaft = pieces.find(m => m.metadata?.janitorBoot === 'shaft'), shin = pieces.find(m => m.metadata?.janitorShin);
+                assert.ok(sole && shaft && shin && sole.intersectsMesh(shaft, true) && shaft.intersectsMesh(shin, true), `${outfit}: ${side} boot joins the trouser`);
+                feet.push(sole);
+            }
+            if (t === 0) assert.ok(!feet[0].intersectsMesh(feet[1], true), `${outfit}: separate left and right feet`);
+        }
+        ch.root.dispose();
+    }
 });

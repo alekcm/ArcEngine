@@ -495,6 +495,7 @@ export const CHARACTERS = {
             { id: 'overall',label: 'Комбинезон',    presets: ['#e67e22', '#c0392b', '#6b7a3c', '#3a3f44', '#2c3e50'] },
             { id: 'cap',    label: 'Кепка',         presets: ['#c0392b', '#2d3436', '#f1c40f', '#2c3e50'] },
             { id: 'gloves', label: 'Перчатки',      presets: ['#f1c40f', '#2d3436', '#7f8c8d'] },
+            { id: 'gear',   label: 'Пылесос',       presets: ['#3a424b', '#7f8c8d', '#c0392b', '#2c3e50'] },
             { id: 'lights', label: 'Индикаторы',    presets: ['#ffd23b', '#3bff7a', '#3bb8ff', '#ff3b3b'] },
         ],
         startItems: [{ item: 'nailGun', ammo: 3 }], questItems: ['karcher'],
