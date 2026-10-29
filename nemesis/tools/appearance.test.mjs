@@ -8,16 +8,27 @@ import { OPS } from '../shared/engine/core.mjs';
 import { viewFor } from '../shared/view.mjs';
 
 const original = { hair: 'loose', eyes: 'bandage', outfit: 'gown', implants: 'classic' };
-const custom = { hair: 'ponytail', eyes: 'visor', outfit: 'coat', implants: 'crown' };
+const custom = { hair: 'ponytail', eyes: 'layered', outfit: 'torn', implants: 'wrapped' };
 const player = (charId, parts = custom) => ({ name: 'Алекс', charId, colors: { gown: '#12abcd' }, parts });
 
 test('LAB-01: preset normalization accepts only the defined Lab Rat options', () => {
     assert.deepEqual(characterParts('labrat'), original);
     assert.deepEqual(characterParts('labrat', custom), custom);
     assert.deepEqual(characterParts('labrat', {
-        hair: '<script>', eyes: ['visor'], outfit: 'suit', implants: null, extra: 'bad',
-    }), { ...original, outfit: 'suit' });
-    assert.deepEqual(characterParts('labrat', ['bob', 'visor']), original);
+        hair: '<script>', eyes: ['wide'], outfit: 'suit', implants: null, extra: 'bad',
+    }), original);
+    assert.deepEqual(characterParts('labrat', ['messy', 'wide']), original);
+    assert.deepEqual(Object.fromEntries(LABRAT_PARTS.map(slot => [slot.id, slot.options.map(option => option.id)])), {
+        hair: ['loose', 'messy', 'ponytail'],
+        eyes: ['bandage', 'wide', 'layered', 'tails'],
+        outfit: ['gown', 'torn', 'long'],
+        implants: ['classic', 'temples', 'neck', 'wrapped'],
+    });
+    // Lobby data saved before the redesign can still arrive. Disallowed choices safely revert
+    // independently; previously selected canonical choices (including ponytail) survive.
+    for (const [slot, removed] of Object.entries({ hair: ['bob', 'shaved'], eyes: ['visor', 'none'], outfit: ['coat', 'suit'], implants: ['crown', 'none'] })) {
+        for (const old of removed) assert.deepEqual(characterParts('labrat', { ...custom, [slot]: old }), { ...custom, [slot]: original[slot] }, `${slot}/${old}`);
+    }
     assert.deepEqual(characterParts('pilot', custom), {}, 'no mesh customization leaks to other characters');
     assert.deepEqual(characterParts(null, custom), {});
     assert.deepEqual(Object.keys(characterParts('labrat', {})), LABRAT_PARTS.map(slot => slot.id));

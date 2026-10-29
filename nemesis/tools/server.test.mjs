@@ -235,16 +235,16 @@ test('SRV-06: детали Подопытной проверяются, сохр
         owner.send(message);
         return result;
     }
-    const custom = { hair: 'bob', eyes: 'visor', outfit: 'suit', implants: 'crown' };
+    const custom = { hair: 'messy', eyes: 'tails', outfit: 'torn', implants: 'temples' };
     const updated = await change({ t: 'lobby', charId: 'labrat', colors: { gown: '#12abcd' }, parts: { ...custom, injected: 'bad' } },
-        m => m && m.t === 'lobby' && m.seats[0].parts?.hair === 'bob', 'custom parts');
+        m => m && m.t === 'lobby' && m.seats[0].parts?.hair === 'messy', 'custom parts');
     assert.deepEqual(updated.seats[0].parts, custom, 'other players receive the canonical preset');
     assert.equal(updated.seats[0].colors.gown, '#12abcd');
 
-    const invalid = await change({ t: 'lobby', parts: { hair: 'bad', eyes: ['visor'], outfit: 'coat', implants: null, injected: 'bad' } },
-        m => m && m.t === 'lobby' && m.seats[0].parts?.outfit === 'coat', 'sanitized parts');
-    assert.deepEqual(invalid.seats[0].parts, { hair: 'loose', eyes: 'bandage', outfit: 'coat', implants: 'classic' });
-    await change({ t: 'lobby', parts: custom }, m => m && m.t === 'lobby' && m.seats[0].parts?.outfit === 'suit', 'restored parts');
+    const invalid = await change({ t: 'lobby', parts: { hair: 'bob', eyes: 'visor', outfit: 'coat', implants: 'crown', injected: 'bad' } },
+        m => m && m.t === 'lobby' && m.seats[0].parts?.outfit === 'gown', 'removed parts fall back safely');
+    assert.deepEqual(invalid.seats[0].parts, { hair: 'loose', eyes: 'bandage', outfit: 'gown', implants: 'classic' });
+    await change({ t: 'lobby', parts: custom }, m => m && m.t === 'lobby' && m.seats[0].parts?.outfit === 'torn', 'restored parts');
 
     const switched = await change({ t: 'lobby', charId: 'pilot', parts: { hair: 'shaved' } },
         m => m && m.t === 'lobby' && m.seats[0].charId === 'pilot', 'another character');

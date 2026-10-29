@@ -1,31 +1,34 @@
-// appearance.mjs — the experimental, network-safe mesh presets for the Lab Rat.
-// The first option in each slot is the original model. The same definitions drive the editor,
-// server validation and the figure on the table; colours remain a separate customization.
+// appearance.mjs — the network-safe mesh presets for the Lab Rat.
+// Every option keeps her patient gown, blindfold, bare feet and lab implants. The first option in
+// each slot is the original model; colours remain a separate customization. These definitions are
+// shared by the workshop, server validation and the figure on the table.
 export const LABRAT_PARTS = [
-    { id: 'hair', label: 'Волосы', hint: 'Форма и длина', options: [
-        { id: 'loose', label: 'Длинные', detail: 'Оригинал' },
-        { id: 'bob', label: 'Каре', detail: 'С чёлкой' },
-        { id: 'ponytail', label: 'Хвост', detail: 'Собранные' },
-        { id: 'shaved', label: 'Без волос', detail: 'Открытая голова' },
+    { id: 'hair', label: 'Волосы', hint: 'Длинные пряди', options: [
+        { id: 'loose', label: 'Распущенные', detail: 'Оригинал' },
+        { id: 'messy', label: 'Спутанные', detail: 'Неровные пряди' },
+        { id: 'ponytail', label: 'Собранные', detail: 'Небрежный хвост' },
     ] },
-    { id: 'eyes', label: 'Глаза', hint: 'Повязка или визор', options: [
-        { id: 'bandage', label: 'Повязка', detail: 'Оригинал' },
-        { id: 'visor', label: 'Визор', detail: 'С подсветкой' },
-        { id: 'none', label: 'Открыты', detail: 'Без повязки' },
+    { id: 'eyes', label: 'Повязка', hint: 'Закрывает глаза', options: [
+        { id: 'bandage', label: 'Обычная', detail: 'Оригинал' },
+        { id: 'wide', label: 'Широкая', detail: 'Плотная ткань' },
+        { id: 'layered', label: 'Слоями', detail: 'Полосы бинта' },
+        { id: 'tails', label: 'С концами', detail: 'Длинные завязки' },
     ] },
-    { id: 'outfit', label: 'Одежда', hint: 'Силуэт и детали', options: [
-        { id: 'gown', label: 'Роба', detail: 'Оригинал' },
-        { id: 'coat', label: 'Халат', detail: 'Распахнутый' },
-        { id: 'suit', label: 'Костюм', detail: 'Ремни и ботинки' },
+    { id: 'outfit', label: 'Больничная роба', hint: 'Форма подола', options: [
+        { id: 'gown', label: 'Обычная', detail: 'Оригинал' },
+        { id: 'torn', label: 'Надорванная', detail: 'Неровный край' },
+        { id: 'long', label: 'Длинная', detail: 'Удлинённый подол' },
     ] },
-    { id: 'implants', label: 'Импланты', hint: 'Детали головы', options: [
+    { id: 'implants', label: 'Импланты', hint: 'Следы эксперимента', options: [
         { id: 'classic', label: 'Обычные', detail: 'Оригинал' },
-        { id: 'crown', label: 'Обруч', detail: 'С индикаторами' },
-        { id: 'none', label: 'Без них', detail: 'Чистый силуэт' },
+        { id: 'temples', label: 'Виски', detail: 'Небольшие гнёзда' },
+        { id: 'neck', label: 'На шее', detail: 'Соединения' },
+        { id: 'wrapped', label: 'Под бинтами', detail: 'Частично скрыты' },
     ] },
 ];
 
-/** Return a complete, canonical set of allowed ids. Unknown characters have no mesh presets. */
+/** Return a complete, canonical set of allowed ids. Unknown characters have no mesh presets.
+ * Removed experimental choices (e.g. coat, visor or crown) safely fall back to the original. */
 export function characterParts(charId, value) {
     if (charId !== 'labrat') return {};
     const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};

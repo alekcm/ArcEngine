@@ -11,6 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { createHash } from 'node:crypto';
 
 const noop = () => {};
 const el = () => ({
@@ -436,29 +437,81 @@ test('SCN-17: a corridor shows only the half next to an explored room', () => {
     scene.update(view, ROOM_TILES, INTRUDER_NAMES, []);   // leave the shared scene as the other tests expect it
 });
 
-test('LAB-04: every preset changes real geometry, while the original and other characters stay unchanged', async () => {
-    const { buildCharacter } = await import('../client/characters.js');
+// Geometry signatures use the actual vertices and world transforms, not names or mesh counts.
+const geometrySignature = ch => ch.root.getChildMeshes().filter(m => m.name !== 'flash').map(m => {
+    const round = n => Math.abs(n) < 0.000005 ? 0 : Number(n.toFixed(5));
+    m.computeWorldMatrix(true);
+    return JSON.stringify([(m.getVerticesData(B.VertexBuffer.PositionKind) || []).map(round), Array.from(m.getWorldMatrix().m, round)]);
+}).sort();
+
+test('LAB-04: every preset has distinct geometry, the original and other characters stay unchanged', async () => {
+    const { buildCharacter, DEFAULTS } = await import('../client/characters.js');
     const { LABRAT_PARTS, characterParts } = await import('../shared/appearance.mjs');
     const signature = (charId, parts) => {
-        const ch = buildCharacter(scene.scene, charId, {}, parts);
-        const result = ch.root.getChildMeshes().filter(m => m.name !== 'flash').map(m => {
-            const box = m.getBoundingInfo().boundingBox;
-            const v = x => [x.x, x.y, x.z].map(n => Number(n.toFixed(4)));
-            return JSON.stringify([m.name, m.parent?.name, v(m.position), v(m.rotation), v(box.minimum), v(box.maximum)]);
-        }).sort();
+        const ch = buildCharacter(scene.scene, charId, {}, parts), result = geometrySignature(ch);
         ch.root.dispose();
         return result;
     };
     const defaults = characterParts('labrat');
     const original = signature('labrat');
+    // Golden signature captured from the pre-redesign model, with mesh names deliberately excluded.
+    assert.equal(createHash('sha256').update(JSON.stringify(original)).digest('hex'),
+        'e395aff43224917bcaa7955ea9ea363a0b135ccb3bad8d91b3a531158efa18d0');
     assert.deepEqual(signature('labrat', defaults), original, 'omitting parts preserves the original model');
-    for (const slot of LABRAT_PARTS) for (const option of slot.options.slice(1)) {
-        assert.notDeepEqual(signature('labrat', { ...defaults, [slot.id]: option.id }), original,
-            `${slot.id}/${option.id} must change mesh geometry`);
+    for (const slot of LABRAT_PARTS) {
+        const variants = slot.options.map(option => JSON.stringify(signature('labrat', { ...defaults, [slot.id]: option.id })));
+        assert.equal(new Set(variants).size, variants.length, `every ${slot.id} choice needs distinct geometry`);
     }
     assert.deepEqual(signature('labrat'), original, 'building presets did not mutate the shared spec');
-    assert.deepEqual(signature('pilot', { hair: 'shaved', outfit: 'suit', eyes: 'visor', implants: 'crown' }), signature('pilot'),
-        'other characters ignore Lab Rat presets');
+    for (const charId of Object.keys(DEFAULTS).filter(id => id !== 'labrat')) {
+        assert.deepEqual(signature(charId, { hair: 'messy', outfit: 'torn', eyes: 'tails', implants: 'wrapped' }), signature(charId),
+            `${charId} ignores Lab Rat presets`);
+    }
+});
+
+test('LAB-06: all 144 combinations keep the patient features, paint zones and a stable torn hem', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const { LABRAT_PARTS } = await import('../shared/appearance.mjs');
+    const options = id => LABRAT_PARTS.find(slot => slot.id === id).options.map(option => option.id);
+    const colors = { skin: '#123456', hair: '#234567', gown: '#345678', pants: '#456789', bandage: '#56789a', lights: '#6789ab' };
+    let checked = 0;
+    for (const hair of options('hair')) for (const eyes of options('eyes'))
+        for (const outfit of options('outfit')) for (const implants of options('implants')) {
+            const parts = { hair, eyes, outfit, implants }, label = JSON.stringify(parts);
+            const ch = buildCharacter(scene.scene, 'labrat', {}, parts), meshes = ch.root.getChildMeshes();
+            const band = meshes.find(m => m.name === 'lab_blindfold');
+            assert.ok(band && ch.zones.bandage.includes(band), label + ': cloth over eyes');
+            const bbox = band.getBoundingInfo().boundingBox;
+            assert.ok(bbox.maximum.y - bbox.minimum.y >= 0.099, label + ': full-height blindfold');
+            assert.ok(ch.zones.gown.some(m => m.name === 'lab_gown'), label + ': patient gown');
+            assert.ok(ch.zones.lights?.length >= 2, label + ': implant connections');
+            if (eyes === 'tails') {
+                const tails = ch.zones.bandage.filter(m => m.name === 'lab_blindfold_tail');
+                assert.equal(tails.length, 2, label + ': two hanging ties');
+                if (hair === 'ponytail') {
+                    const hairBack = Math.min(...ch.zones.hair.map(m => m.position.z + m.getBoundingInfo().boundingBox.minimum.z));
+                    assert.ok(tails.every(m => m.position.z + m.getBoundingInfo().boundingBox.maximum.z < hairBack), label + ': ties remain visible over the ponytail');
+                }
+            }
+            for (const side of ['legL', 'legR']) {
+                assert.ok(ch.zones.skin.some(m => m.parent.name === side && m.position.y < -1.2), label + ': bare ' + side);
+            }
+            assert.ok(meshes.some(m => m.material?.diffuseColor.toHexString() === '#F4F6F8'
+                && Math.abs(m.position.x - 0.1) < 0.001 && Math.abs(m.position.y - 1.9) < 0.001), label + ': ID tag');
+            if (outfit === 'torn') {
+                const hem = meshes.filter(m => m.parent.name === 'lab_gown_hem');
+                assert.equal(hem.length, 4, label + ': separate irregular flaps');
+                ch.animate(0.1, true); ch.animate(0.2, true);
+                assert.ok(hem.every(m => m.parent.name === 'lab_gown_hem'), label + ': hem is not pulled onto a leg');
+            }
+            ch.setColors(colors);
+            for (const [zone, hex] of Object.entries(colors)) {
+                assert.ok(ch.zones[zone]?.length, label + ': ' + zone + ' is paintable');
+                assert.ok(ch.zones[zone].every(m => m.material.diffuseColor.toHexString().toLowerCase() === hex), label + ': ' + zone + ' color');
+            }
+            ch.root.dispose(); checked++;
+        }
+    assert.equal(checked, 144);
 });
 
 test('LAB-05: the table rebuilds a changed appearance and removes the old shadow casters', () => {
@@ -470,7 +523,7 @@ test('LAB-05: the table rebuilds a changed appearance and removes the old shadow
     assert.ok(first.grab && first.label, 'the table figure has its hitbox and label');
     scene.updateCharacters(v);
     assert.equal(scene.chars[p.id].ch.root, oldRoot, 'unchanged parts do not rebuild the figure');
-    p.parts = { ...p.parts, hair: 'bob', eyes: 'visor' };
+    p.parts = { ...p.parts, hair: 'messy', eyes: 'layered' };
     scene.updateCharacters(v);
     const rebuilt = scene.chars[p.id];
     assert.notEqual(rebuilt.ch.root, oldRoot, 'new preset builds a new figure');
