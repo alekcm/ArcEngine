@@ -396,19 +396,7 @@
         1
       ]
     },
-<<<<<<< HEAD
-    "room:007:shell#630": {
-      "hidden": true,
-      "deleted": true
-    },
-    "room:007:shell#631": {
-      "hidden": true,
-      "deleted": true
-    },
-    "room:008:shell#476": {
-=======
     "tile:evacB:shell#fl~237": {
->>>>>>> e4d7d511bf29278d442df3c56c212b056384a004
       "pos": [
         -2.6,
         0.166,
@@ -442,19 +430,7 @@
         1
       ]
     },
-<<<<<<< HEAD
-    "room:008:shell#630": {
-      "hidden": true,
-      "deleted": true
-    },
-    "room:008:shell#631": {
-      "hidden": true,
-      "deleted": true
-    },
-    "room:010:shell#453": {
-=======
     "tile:generator:shell#p~181": {
->>>>>>> e4d7d511bf29278d442df3c56c212b056384a004
       "hidden": true,
       "deleted": true
     },

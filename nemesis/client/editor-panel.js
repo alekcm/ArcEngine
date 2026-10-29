@@ -101,17 +101,25 @@ const NemesisPanel = {
         // otherwise write an empty set over somebody's work.
         this.loaded = false;
         try {
-            const j = await (await fetch('/api/board', { cache: 'no-store' })).json();
+            const r = await fetch('/api/board', { cache: 'no-store' });
+            const j = await r.json();
+            if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
             this.saved = tileKeyedEdits((j && j.edits) || {});   // older files key shells by room number
             this.loaded = true;
-        } catch { this.saved = {}; }
+        } catch (e) {
+            this.saved = {};
+            this.say(I18N.t('nem.loadBoardError', { msg: (e && e.message) || e }), true);
+        }
         this.edits = JSON.parse(JSON.stringify(this.saved));
         try {
             const t = await (await fetch('/api/tuning', { cache: 'no-store' })).json();
             TUNE.load((t && t.values) || {});
         } catch { /* defaults */ }
         this.buildControls();
-        this.renderDirty();
+        // If the user opened the Nemesis tab before the request completed, refresh the already-built
+        // scene; otherwise its first render would keep the empty, pre-load edit map for the whole visit.
+        if (this.loaded && this.scene) this.rebuild();
+        else this.renderDirty();
     },
 
     // --- the scene ----------------------------------------------------------------------------

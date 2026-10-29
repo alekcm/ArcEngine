@@ -28,12 +28,12 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import url from 'node:url';
 import { execFile } from 'node:child_process';
-import { BOARD_REL, failure, isModelPath, isSoundPath, sanitizeEdits, saveBoard, saveConstants, saveObjects, saveTuning, saveUI, TUNING_REL } from './save.mjs';
+import { BOARD_REL, failure, isModelPath, isSoundPath, loadBoard, saveBoard, saveConstants, saveObjects, saveTuning, saveUI, TUNING_REL } from './save.mjs';
 import { sanitizeAll } from '../../nemesis/client/tuning.js';
 
 // Server contract version. Bump on EVERY change of the endpoints or the
 // response format — the client checks it against EDITOR_API_VERSION in schema.js.
-const EDITOR_API_VERSION = 22;
+const EDITOR_API_VERSION = 23;
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
 const MODELS_DIR = path.join(ROOT, 'assets', 'models');
@@ -244,16 +244,17 @@ const server = http.createServer(async (req, res) => {
   // The game reads the same file and applies the edits while it builds the board.
   if (pathname === '/api/board' || pathname === '/api/save-board') {
     if (req.method === 'GET' && pathname === '/api/board') {
-      const text = await fsp.readFile(path.join(ROOT, BOARD_REL), 'utf8').catch(() => '');
-      let edits = {};
-      try { edits = sanitizeEdits(JSON.parse(text || '{}').edits || {}); } catch { edits = {}; }
-      return sendJson(res, 200, { ok: true, api: EDITOR_API_VERSION, edits });
+      try {
+        return sendJson(res, 200, { ok: true, api: EDITOR_API_VERSION, edits: loadBoard(ROOT) });
+      } catch (e) {
+        return sendJson(res, 500, { ok: false, api: EDITOR_API_VERSION, error: 'Could not read board-edits.json', detail: e.message });
+      }
     }
     if (req.method === 'POST') {
       try {
         const body = JSON.parse(await readBody(req) || '{}');
         const result = await saveBoard(ROOT, body.edits || {}, { force: body.force === true });
-        if (result.ok) console.log(`  ${C.grn}save${C.r} ${result.saved} edited part(s) -> ${BOARD_REL} ${C.dim}(backup: ${result.backup})${C.r}`);
+        if (result.ok) console.log(`  ${C.grn}save${C.r} ${result.saved} edited part(s) -> ${result.file || BOARD_REL} ${C.dim}(backup: ${result.backup})${C.r}`);
         else console.log(`  ${C.ylw}skip${C.r} ${BOARD_REL}: ${result.error}`);
         return sendJson(res, 200, result);
       } catch (e) {

@@ -26,12 +26,20 @@ try {
 // The file is written by the editor next to the client, and a Windows checkout keeps the client in
 // "Nemesis/" while a Linux one uses "nemesis/" — the same folder on one machine, two paths in git.
 // Either place is tried, so the saved edits load on both.
+let rawBoardEdits = {};
 for (const url of ['/client/board-edits.json', '/Nemesis/client/board-edits.json']) {
     try {
         const r = await fetch(url, { cache: 'no-store' });
-        if (r.ok) { BOARD_EDITS = tileKeyedEdits((await r.json()).edits || {}); break; }
+        if (!r.ok) continue;
+        const j = await r.json();
+        if (j && j.edits && typeof j.edits === 'object' && !Array.isArray(j.edits)) {
+            // On a case-sensitive checkout both paths can exist as separate files. Merge both, with
+            // the canonical lowercase path (fetched first) winning duplicate ids.
+            rawBoardEdits = Object.assign({}, j.edits, rawBoardEdits);
+        }
     } catch { /* try the other case */ }
 }
+BOARD_EDITS = tileKeyedEdits(rawBoardEdits);
 
 // ---------------------------------------------------------------------------------------------
 // Network
@@ -185,6 +193,11 @@ function notice(text, kind) {
 // ---------------------------------------------------------------------------------------------
 function renderLobby() {
     const L = app.lobby; if (!L) return;
+    const previousCharId = app.charId;
+    const activePicker = document.activeElement && document.activeElement.matches
+        && document.activeElement.matches('#paintZones input[type="color"]') ? document.activeElement : null;
+    const activePickerZone = activePicker && activePicker.dataset.zone;
+    const activePickerColor = activePicker && activePicker.value;
     const inGame = L.phase === 'playing' && app.view;
     $('lobby').classList.toggle('hidden', !!inGame || app.gallery);
     if (inGame) return;
@@ -192,6 +205,9 @@ function renderLobby() {
     if (mySeat) {
         if (document.activeElement !== $('nameInput')) $('nameInput').value = mySeat.name;
         app.charId = mySeat.charId; app.colors = mySeat.colors || {}; app.ready = mySeat.ready;
+        if (activePicker && activePickerZone && app.charId === previousCharId) {
+            app.colors = Object.assign({}, app.colors, { [activePickerZone]: activePickerColor });
+        }
         app.host = mySeat.host;
     }
     // characters
@@ -204,14 +220,27 @@ function renderLobby() {
     const ch = L.characters[app.charId];
     if (ch) {
         const def = DEFAULTS[app.charId] || {};
-        $('paintZones').innerHTML = ch.zones.map(z => {
-            const cur = app.colors[z.id] || def[z.id] || z.presets[0];
-            return '<div class="zone"><span class="zname">' + esc(z.label) + '</span>' +
-                z.presets.map(p => '<span class="swatch ' + (p.toLowerCase() === cur.toLowerCase() ? 'sel' : '') + '" data-zone="' + z.id + '" data-color="' + p + '" style="background:' + p + '"></span>').join('') +
-                '<span class="swatch custom" title="Своя палитра"><input type="color" data-zone="' + z.id + '" value="' + cur + '"></span></div>';
-        }).join('');
-        for (const el of $('paintZones').querySelectorAll('.swatch[data-color]')) el.onclick = () => sendColor(el.dataset.zone, el.dataset.color);
-        for (const el of $('paintZones').querySelectorAll('input[type=color]')) el.oninput = () => sendColor(el.dataset.zone, el.value);
+        const keepPicker = activePicker && app.charId === previousCharId;
+        if (!keepPicker) {
+            $('paintZones').innerHTML = ch.zones.map(z => {
+                const cur = app.colors[z.id] || def[z.id] || z.presets[0];
+                return '<div class="zone"><span class="zname">' + esc(z.label) + '</span>' +
+                    z.presets.map(p => '<span class="swatch ' + (p.toLowerCase() === cur.toLowerCase() ? 'sel' : '') + '" data-zone="' + z.id + '" data-color="' + p + '" style="background:' + p + '"></span>').join('') +
+                    '<span class="swatch custom" title="Своя палитра"><input type="color" data-zone="' + z.id + '" value="' + cur + '"></span></div>';
+            }).join('');
+            for (const el of $('paintZones').querySelectorAll('.swatch[data-color]')) el.onclick = () => sendColor(el.dataset.zone, el.dataset.color);
+            for (const el of $('paintZones').querySelectorAll('input[type=color]')) {
+                const zone = el.dataset.zone;
+                // A native colour picker emits many `input` events while the user is still choosing.
+                // Sending each one causes the lobby broadcast to replace this input mid-selection; keep
+                // those changes local for the live preview and send only the committed colour on `change`.
+                el.oninput = () => {
+                    app.colors = Object.assign({}, app.colors, { [zone]: el.value });
+                    if (preview) preview.show(app.charId, Object.assign({}, def, app.colors));
+                };
+                el.onchange = () => sendColor(zone, el.value);
+            }
+        }
         if (!preview) preview = new Preview3D($('previewCanvas'));
         preview.show(app.charId, Object.assign({}, def, app.colors));
     }

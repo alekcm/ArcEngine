@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER = path.join(HERE, '..', 'server.mjs');
 const SRC = fs.readFileSync(SERVER, 'utf8');
+const CLIENT_SRC = fs.readFileSync(path.join(HERE, '..', 'client', 'app.js'), 'utf8');
 
 /** A port that is very likely free: the server itself walks up on EADDRINUSE anyway. */
 const pickPort = () => 8600 + Math.floor(Math.random() * 300);
@@ -145,6 +146,7 @@ test('SRV-01: сервер поднимает сокет — /ws отвечае�
     assert.equal(lobby.seats[0].name, 'тест');
     assert.ok(lobby.seats[0].host, 'первый — ведущий');
     assert.ok(lobby.settings && lobby.settings.mode, 'настройки партии пришли');
+    assert.equal(lobby.settings.draft, false, 'новая партия по умолчанию без драфта');
     assert.ok(Array.isArray(lobby.addresses), 'адрес для друзей пришёл');
 });
 
@@ -155,6 +157,23 @@ test('SRV-02: подключение по сокету вообще зареги
     assert.match(SRC, /ws\.onmessage\s*=\s*m\s*=>\s*onMessage\(ws,\s*m\)/, 'сообщения уходят в onMessage');
     // and the page the browser gets is the game, not a static stub
     assert.match(SRC, /serveStatic/, 'статика раздаётся');
+});
+
+test('LOBBY-01: выбор своего цвета отправляется только после завершения палитры', () => {
+    const start = CLIENT_SRC.indexOf("for (const el of $('paintZones').querySelectorAll('input[type=color]')) {");
+    const end = CLIENT_SRC.indexOf('if (!preview)', start);
+    assert.ok(start >= 0 && end > start, 'обработчики произвольного цвета существуют');
+    const handlers = CLIENT_SRC.slice(start, end);
+    assert.match(handlers, /el\.oninput = \(\) => \{/,
+        'input обновляет локальный preview, не вызывает сетевую перерисовку');
+    assert.match(handlers, /el\.onchange = \(\) => sendColor\(zone, el\.value\)/,
+        'выбранный произвольный цвет отправляется после commit');
+    assert.doesNotMatch(handlers, /el\.oninput\s*=\s*\(\)\s*=>\s*sendColor/,
+        'не отправлять каждый промежуточный оттенок: серверный broadcast закрывал picker');
+    assert.match(CLIENT_SRC, /const keepPicker = activePicker && app\.charId === previousCharId;/,
+        'чужое обновление лобби не удаляет открытый native picker');
+    assert.match(CLIENT_SRC, /if \(!keepPicker\) \{\s*\$\('paintZones'\)\.innerHTML/s,
+        'зоны цветов не перестраиваются, пока палитра открыта');
 });
 
 test('SRV-03: без сокета клиенту нечего рисовать — проверяем, что стук в /ws не висит', async (t) => {
@@ -168,4 +187,33 @@ test('SRV-03: без сокета клиенту нечего рисовать �
         sock.on('error', reject);
     });
     assert.match(status, /^HTTP\/1\.1 \d{3}/, 'ответ есть: ' + status);
+});
+
+test('SRV-04: произвольный hex-цвет персонажа сохраняется в лобби', async (t) => {
+    const { child, port } = await startServer(pickPort());
+    t.after(() => { try { child.kill(); } catch { /* gone */ } });
+    const client = await wsClient(port);
+    t.after(() => client.close());
+
+    client.send({ t: 'join', token: null, name: 'цвет' });
+    const lobby = await waitFor(client, m => m && m.t === 'lobby' && m.seats && m.seats.length === 1, 'lobby');
+    const charId = lobby.seats[0].charId;
+    const zone = lobby.characters[charId].zones[0].id;
+    client.send({ t: 'lobby', colors: { [zone]: '#12AbCd' } });
+    const updated = await waitFor(client,
+        m => m && m.t === 'lobby' && m.seats && m.seats[0].colors && m.seats[0].colors[zone] === '#12abcd',
+        'custom character colour');
+    assert.equal(updated.seats[0].colors[zone], '#12abcd', 'любой корректный hex принимается, не только палитра');
+});
+
+test('SRV-05: игра отдаёт исправленный board-edits.json по Windows-пути с большой буквы', async (t) => {
+    const file = path.join(HERE, '..', '..', 'Nemesis', 'client', 'board-edits.json');
+    if (!fs.existsSync(file)) { t.skip('нет локального board-edits.json в этом checkout'); return; }
+    const { child, port } = await startServer(pickPort());
+    t.after(() => { try { child.kill(); } catch { /* gone */ } });
+
+    const response = await fetch('http://127.0.0.1:' + port + '/Nemesis/client/board-edits.json', { cache: 'no-store' });
+    assert.equal(response.status, 200, 'верхнерегистровый путь не должен теряться на Linux');
+    const json = await response.json();
+    assert.ok(Object.keys(json.edits || {}).length > 0, 'сервер отдаёт сохранённые записи, а не пустой fallback');
 });

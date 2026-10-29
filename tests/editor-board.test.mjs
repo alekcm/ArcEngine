@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
-import { BOARD_REL, sanitizeEdit, sanitizeEdits, saveBoard, saveTuning } from '../_utils/editor/save.mjs';
+import { BOARD_CASE_FALLBACK_REL, BOARD_REL, loadBoard, sanitizeEdit, sanitizeEdits, saveBoard, saveTuning } from '../_utils/editor/save.mjs';
 import { ROOT } from './browser-scripts.mjs';
 
 const temps = [];
@@ -37,6 +37,67 @@ test('saveBoard: пишет правки деталей и только изве
         'cor:5#2': { deleted: true },
         'room:101#4': { pos: [1, 2, 3], color: '#ffaa00', hidden: true },
     } });
+});
+
+test('loadBoard и saveBoard используют существующий файл в Nemesis/ на Linux', async () => {
+    const root = tempRoot();
+    const legacyFile = path.join(root, BOARD_CASE_FALLBACK_REL);
+    fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
+    fs.writeFileSync(legacyFile, JSON.stringify({ edits: { 'tile:evacA:shell#fl~237': { hidden: true } } }));
+
+    assert.deepEqual(loadBoard(root), { 'tile:evacA:shell#fl~237': { hidden: true } }, 'читается файл с другим регистром пути');
+    const saved = await saveBoard(root, { 'tile:evacA:shell#fl~237': { pos: [1, 2, 3] } });
+    assert.equal(saved.ok, true);
+    assert.deepEqual(JSON.parse(fs.readFileSync(legacyFile, 'utf8')), { edits: { 'tile:evacA:shell#fl~237': { pos: [1, 2, 3] } } });
+    const lowercaseFile = path.join(root, BOARD_REL);
+    if (fs.existsSync(lowercaseFile)) {
+        assert.equal(fs.realpathSync(lowercaseFile), fs.realpathSync(legacyFile), 'не создаётся отдельная копия в nemesis/');
+    }
+});
+
+test('loadBoard объединяет два независимых варианта регистра, Save синхронизирует оба', async (t) => {
+    const root = tempRoot();
+    const upperFile = path.join(root, BOARD_CASE_FALLBACK_REL);
+    const lowerFile = path.join(root, BOARD_REL);
+    fs.mkdirSync(path.dirname(upperFile), { recursive: true });
+    fs.writeFileSync(upperFile, JSON.stringify({ edits: {
+        'tile:upper:shell#part~0': { deleted: true },
+        'tile:shared:shell#part~0': { hidden: true },
+    } }));
+    if (fs.existsSync(lowerFile) && fs.realpathSync(lowerFile) === fs.realpathSync(upperFile)) {
+        t.skip('filesystem does not allow both case variants as separate files');
+        return;
+    }
+    fs.mkdirSync(path.dirname(lowerFile), { recursive: true });
+    fs.writeFileSync(lowerFile, JSON.stringify({ edits: {
+        'tile:lower:shell#part~0': { hidden: true },
+        'tile:shared:shell#part~0': { pos: [1, 2, 3] },
+    } }));
+
+    assert.deepEqual(loadBoard(root), {
+        'tile:upper:shell#part~0': { deleted: true },
+        'tile:lower:shell#part~0': { hidden: true },
+        'tile:shared:shell#part~0': { pos: [1, 2, 3] },
+    }, 'нижний путь выигрывает при одинаковом id');
+    const replacement = { 'tile:sync:shell#part~0': { color: '#abcdef' } };
+    const result = await saveBoard(root, replacement);
+    assert.equal(result.ok, true);
+    const expected = { edits: replacement };
+    assert.deepEqual(JSON.parse(fs.readFileSync(upperFile, 'utf8')), expected);
+    assert.deepEqual(JSON.parse(fs.readFileSync(lowerFile, 'utf8')), expected);
+});
+
+test('нечитаемый board-edits.json нельзя принять за пустой и затереть', async () => {
+    const root = tempRoot();
+    const file = path.join(root, BOARD_CASE_FALLBACK_REL);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '{broken json');
+
+    assert.throws(() => loadBoard(root), SyntaxError);
+    const result = await saveBoard(root, { 'tile:evacA:shell#fl~237': { deleted: true } });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'bad_board_file');
+    assert.equal(fs.readFileSync(file, 'utf8'), '{broken json', 'исходный файл сохранён');
 });
 
 test('sanitizeEdit: мусор в числах и цвете отбрасывается, а не ломает файл', () => {
@@ -146,6 +207,14 @@ test('saveBoard: пустой набор в пустой файл — можно
     const r = await saveBoard(root, {});
     assert.equal(r.ok, true, 'первый запуск: стирать нечего');
     assert.deepEqual(read(root), { edits: {} });
+});
+
+test('вкладка показывает ошибку чтения и обновляет уже построенную сцену после загрузки', () => {
+    assert.match(PANEL_JS, /if \(!r\.ok \|\| j\.ok === false\) throw new Error/,
+        'ошибка API не считается успешно загруженным пустым набором');
+    assert.match(PANEL_JS, /if \(this\.loaded && this\.scene\) this\.rebuild\(\)/,
+        'если вкладку открыли до ответа API, уже построенная доска обновляется');
+    assert.match(I18N_JS, /'nem\.loadBoardError':/);
 });
 
 test('вкладка: «Отменить всё» спрашивает, а Save ждёт загрузки файла', () => {

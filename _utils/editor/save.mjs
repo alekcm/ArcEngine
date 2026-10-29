@@ -37,6 +37,7 @@ export const ERRORS = {
   bad_ui: 'the UI layout is not an array',
   bad_tuning: 'the tuning values are not an object',
   bad_board: 'the board edits are not an object',
+  bad_board_file: 'the saved board edits could not be read safely',
   bad_element: 'invalid UI element',
   too_large: 'the file is too large',
   dialog_failed: 'the file dialog failed to open',
@@ -369,7 +370,12 @@ export async function saveTuning(root, values) {
 
 /** The parts of the board a designer changed, keyed by their stable editor id. */
 export const BOARD_REL = 'nemesis/client/board-edits.json';
-const EDIT_ID = /^[A-Za-z0-9_:.#-]{1,80}$/;
+// A Windows checkout may have checked the same client directory in as "Nemesis/". On Windows
+// both spellings address one file; on Linux they are distinct, so try both without creating a
+// second, empty copy that would hide the designer's existing edits.
+export const BOARD_CASE_FALLBACK_REL = 'Nemesis/client/board-edits.json';
+const BOARD_RELS = [BOARD_REL, BOARD_CASE_FALLBACK_REL];
+const EDIT_ID = /^[A-Za-z0-9_:.#~-]{1,80}$/;
 const COLOR = /^#[0-9a-f]{6}$/i;
 
 const vec3 = (v) => (Array.isArray(v) && v.length === 3 && v.every(n => Number.isFinite(n) && Math.abs(n) <= 1000)
@@ -404,6 +410,55 @@ export function sanitizeEdits(src) {
   return out;
 }
 
+/** Existing board-edits files in preferred-path order, deduplicated when the filesystem is case-insensitive. */
+function existingBoardFiles(root) {
+  const seen = new Set();
+  const files = [];
+  for (const rel of BOARD_RELS) {
+    const file = path.join(root, rel);
+    let st;
+    try { st = fs.statSync(file); } catch { continue; }
+    if (!st.isFile()) continue;
+    let key = file;
+    try { key = fs.realpathSync.native(file); } catch { /* keep the resolved spelling */ }
+    if (process.platform === 'win32') key = key.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    files.push(file);
+  }
+  return files;
+}
+
+function readBoardEntries(file) {
+  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
+      || !parsed.edits || typeof parsed.edits !== 'object' || Array.isArray(parsed.edits)) {
+    throw new Error(file + ' does not contain an edits object');
+  }
+  return parsed.edits;
+}
+
+/**
+ * Read edits from either spelling of the client's path. If both independent files exist, merge
+ * them; the lowercase project path wins for duplicate ids. A malformed existing file throws rather
+ * than looking like an empty board, so the editor cannot silently overwrite it.
+ */
+export function loadBoard(root) {
+  const out = {};
+  for (const file of existingBoardFiles(root).reverse()) {
+    Object.assign(out, sanitizeEdits(readBoardEntries(file)));
+  }
+  return out;
+}
+
+function savedBoardCount(root) {
+  const ids = new Set();
+  for (const file of existingBoardFiles(root)) {
+    for (const id of Object.keys(readBoardEntries(file))) ids.add(id);
+  }
+  return ids.size;
+}
+
 /** How many edits a file on disk holds (0 when it is missing or unreadable). */
 export function boardCount(file) {
   try {
@@ -426,15 +481,30 @@ export async function saveBoard(root, edits, opts) {
   if (!edits || typeof edits !== 'object' || Array.isArray(edits)) return failure('bad_board');
   const force = !!(opts && opts.force);
   const clean = sanitizeEdits(edits);
-  const file = path.join(root, BOARD_REL);
-  const onDisk = boardCount(file);
+  let onDisk;
+  try { onDisk = savedBoardCount(root); }
+  catch (e) { return failure('bad_board_file', { detail: e.message }); }
   if (!force && !Object.keys(clean).length && onDisk > 0) {
     return { ok: false, code: 'would_wipe', onDisk, error: 'refusing to replace ' + onDisk + ' saved edit(s) with an empty set (force to mean it)' };
   }
-  const backup = fs.existsSync(file) ? await backupFile(root, file, 'board', '.json').catch(() => null) : null;
+  const existing = existingBoardFiles(root);
+  // Keep using the existing case variant on a case-sensitive filesystem. If both independent copies
+  // exist, update both so the game's first successful URL cannot read stale edits.
+  const files = existing.length ? existing : [path.join(root, BOARD_REL)];
+  let backup = null;
+  for (const file of files) {
+    if (fs.existsSync(file)) {
+      const savedBackup = await backupFile(root, file, 'board', '.json').catch(() => null);
+      if (!backup) backup = savedBackup;
+    }
+  }
   const sorted = {};
   for (const id of Object.keys(clean).sort()) sorted[id] = clean[id];
-  await fsp.mkdir(path.dirname(file), { recursive: true });
-  await fsp.writeFile(file, JSON.stringify({ edits: sorted }, null, 2) + '\n', 'utf8');
-  return { ok: true, saved: Object.keys(sorted).length, backup };
+  const text = JSON.stringify({ edits: sorted }, null, 2) + '\n';
+  for (const file of files) {
+    await fsp.mkdir(path.dirname(file), { recursive: true });
+    await fsp.writeFile(file, text, 'utf8');
+  }
+  return { ok: true, saved: Object.keys(sorted).length, backup,
+    file: path.relative(root, files[0]).split(path.sep).join('/') };
 }
