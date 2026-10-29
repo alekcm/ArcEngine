@@ -92,7 +92,7 @@ export function d10FaceVertexData(face) {
         positions.push(vertex.x, vertex.y, vertex.z);
         normals.push(face.normal.x, face.normal.y, face.normal.z);
         const offset = vertex.subtract(face.center);
-        uvs.push(0.5 - Bx.Vector3.Dot(offset, face.right) / labelSize,
+        uvs.push(0.5 + Bx.Vector3.Dot(offset, face.right) / labelSize,
                  0.5 + Bx.Vector3.Dot(offset, face.up) / labelSize);
     }
     const winding = Bx.Vector3.Cross(face.vertices[1].subtract(face.vertices[0]), face.vertices[2].subtract(face.vertices[0]));
@@ -213,6 +213,11 @@ export class DiceUI {
         faces.forEach((face, i) => {
             const mesh = new (B().Mesh)('d10_face_' + i, scene);
             d10FaceVertexData(face).applyToMesh(mesh);
+            // These triangles wind outward, opposite to Babylon's built-in primitives. In the
+            // left-handed dice scene the default culling would hide the near faces and show the
+            // numbers on the inside of the far faces instead of the rolled result.
+            mesh.sideOrientation = scene.useRightHandedSystem
+                ? B().Material.CounterClockWiseSideOrientation : B().Material.ClockWiseSideOrientation;
             mesh.parent = body; mesh.isPickable = false;
 
             const texture = new (B().DynamicTexture)('d10_face_texture_' + i, { width: 128, height: 128 }, scene, true);

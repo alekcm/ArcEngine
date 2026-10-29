@@ -6,6 +6,8 @@
 // the Babylon that the repo ships and check the axes of every label plane:
 //   * the triple (right, up, -normal) is a rotation, not a mirror — a mirrored basis flips glyphs;
 //   * "up" of the text points up in the world on every face that is not the top/bottom one.
+// A later regression culled the front of the D10 and rendered the far-side label instead: a roll
+// of 4 visibly showed a 6. The landing tests below also trace through the real meshes and culling.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -50,6 +52,7 @@ assert.ok(B && B.MeshBuilder, 'Babylon loaded');
 globalThis.window = sandbox;
 globalThis.localStorage = sandbox.localStorage;
 const { d10Faces, d10FaceVertexData, extractFaces, DiceUI } = await import('../client/dice.js');
+const { NOISE_DIE, COMBAT_DIE, BLUE_DIE } = await import('../shared/engine/core.mjs');
 
 const engine = new B.NullEngine();
 const scene = new B.Scene(engine);
@@ -96,13 +99,6 @@ test('DICE-03: the numbers stand upright on every side face', () => {
     }
 });
 
-function targetForFace(f) {
-    // Match DiceUI.targetFor(): point the whole textured face straight at the camera and keep its
-    // glyph up axis vertical; the D10 pole axis is no longer constrained to stay world-vertical.
-    const m = B.Matrix.Identity();
-    B.Matrix.FromXYZAxesToRef(f.right, f.up, f.normal.scale(-1), m);
-    return B.Quaternion.FromRotationMatrix(m.transpose());
-}
 function rotateVector(v, q) {
     const u = new B.Vector3(q.x, q.y, q.z);
     const uv = B.Vector3.Cross(u, v), uuv = B.Vector3.Cross(u, uv);
@@ -113,7 +109,7 @@ test('DICE-04: the new D10 pose faces the result toward the camera with its glyp
     const up = new B.Vector3(0, 1, 0);
     for (const kind of ['combat', 'blue']) {
         for (const [i, f] of faces(kind).entries()) {
-            const pose = targetForFace(f);
+            const pose = DiceUI.prototype.targetFor(f);
             const normal = rotateVector(f.normal, pose);
             assert.ok(Math.abs(normal.x) < 1e-4 && Math.abs(normal.y) < 1e-4 && normal.z < -0.999,
                 kind + ' face ' + i + ': the complete printed face points toward the camera');
@@ -144,7 +140,7 @@ test('DICE-05: an idle combat D10 yaws without tipping its body axis', () => {
 test('DICE-06: polar D12 faces still get a finite camera-facing landing pose', () => {
     const forward = new B.Vector3(0, 0, -1);
     for (const [i, f] of faces('noise').entries()) {
-        const pose = targetForFace(f);
+        const pose = DiceUI.prototype.targetFor(f);
         const normal = rotateVector(f.normal, pose);
         assert.ok([pose.x, pose.y, pose.z, pose.w].every(Number.isFinite), 'D12 face ' + i + ': finite pose');
         assert.ok(B.Vector3.Dot(normal, forward) > 0.999, 'D12 face ' + i + ': result still points at the camera');
@@ -178,8 +174,8 @@ test('DICE-07: each new attack face is an outward kite with centered UVs and the
                 const up = B.Vector3.Dot(vertex.subtract(face.center), face.up);
                 return sum + up * (data.uvs[j * 2 + 1] - 0.5);
             }, 0);
-            assert.ok(horizontalUvCorrelation < 0 && verticalUvCorrelation > 0,
-                kind + ' face ' + i + ': mirror horizontally while retaining the original vertical UV direction');
+            assert.ok(horizontalUvCorrelation > 0 && verticalUvCorrelation > 0,
+                kind + ' face ' + i + ': the front-facing glyph must not be mirrored');
             for (let t = 0; t < data.indices.length; t += 3) {
                 const at = index => new B.Vector3(data.positions[index * 3], data.positions[index * 3 + 1], data.positions[index * 3 + 2]);
                 const a = at(data.indices[t]), b = at(data.indices[t + 1]), c = at(data.indices[t + 2]);
@@ -204,5 +200,150 @@ test('DICE-08: each attack label is baked into its own rigid face mesh', () => {
         assert.ok(face.mesh.material.diffuseTexture, 'face ' + i + ' carries its printed material');
         assert.equal(face.mesh.getTotalVertices(), 4, 'face ' + i + ' has no separate floating label plane');
         assert.equal(face.mesh.getIndices().length, 6, 'face ' + i + ' is one quad');
+    }
+});
+
+/** A known front-facing Babylon primitive defines the renderer's winding convention in this scene.
+ *  A triangle with the opposite sideOrientation must have the opposite winding to be visible. */
+function cameraCullReference(scene, camera) {
+    const plane = B.MeshBuilder.CreatePlane('cull_reference', { size: 1 }, scene);
+    const p = plane.getVerticesData(B.VertexBuffer.PositionKind), indices = plane.getIndices();
+    const vertex = i => new B.Vector3(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
+    const a = vertex(indices[0]), b = vertex(indices[1]), c = vertex(indices[2]);
+    const sign = Math.sign(B.Vector3.Dot(B.Vector3.Cross(b.subtract(a), c.subtract(a)), camera.subtract(a)));
+    const orientation = plane.sideOrientation;
+    plane.dispose();
+    assert.notEqual(sign, 0, 'the reference plane is facing the camera');
+    return { sign, orientation };
+}
+
+/** Trace the camera ray through the printed face, honoring each actual mesh's culling setting.
+ *  This catches the inside-out hull: without culling the front face the ray would always hit it,
+ *  even though WebGL instead displays an unrelated face from the far side of the die. */
+function visibleAttackFace(die, target, camera, reference) {
+    const targetMatrix = target.mesh.computeWorldMatrix(true);
+    // Stay just off the diagonal between the two triangles, but inside the printed glyph area.
+    const point = target.center.add(target.right.scale(target.inradius * 0.05));
+    const aimedAt = B.Vector3.TransformCoordinates(point, targetMatrix);
+    const ray = new B.Ray(camera, aimedAt.subtract(camera).normalize());
+    const hits = [];
+    for (const face of die.faces) {
+        const mesh = face.mesh, matrix = mesh.computeWorldMatrix(true);
+        const p = mesh.getVerticesData(B.VertexBuffer.PositionKind), indices = mesh.getIndices();
+        const vertex = i => B.Vector3.TransformCoordinates(new B.Vector3(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]), matrix);
+        const orientation = mesh.material.sideOrientation ?? mesh.sideOrientation;
+        const frontSign = orientation === reference.orientation ? reference.sign : -reference.sign;
+        for (let t = 0; t < indices.length; t += 3) {
+            const a = vertex(indices[t]), b = vertex(indices[t + 1]), c = vertex(indices[t + 2]);
+            const hit = ray.intersectsTriangle(a, b, c);
+            if (!hit || hit.distance < 0) continue;
+            const sign = Math.sign(B.Vector3.Dot(B.Vector3.Cross(b.subtract(a), c.subtract(a)), camera.subtract(a)));
+            if (!mesh.material.backFaceCulling || sign === frontSign) hits.push({ face, distance: hit.distance });
+        }
+    }
+    hits.sort((a, b) => a.distance - b.distance);
+    return hits[0] && hits[0].face;
+}
+
+function makeTestUI(scene) {
+    const ui = Object.assign(Object.create(DiceUI.prototype), {
+        el: el(), title: {}, hint: {}, hideTimer: null, anim: null, idle: false, t: 0, die: 'noise',
+    });
+    ui.dice = Object.fromEntries(['noise', 'combat', 'blue'].map(kind => [kind, ui.makeDie(scene, kind)]));
+    return ui;
+}
+
+test('DICE-09: every attack result shows the rolled face instead of a culled front and the far side', () => {
+    const audio = sandbox.AudioContext;
+    sandbox.AudioContext = undefined; // land() plays a sound; these tests only exercise the display.
+    try {
+        const ui = makeTestUI(scene);
+        const camera = new B.Vector3(0, 0, -4.6); // DiceUI.init3d() camera position
+        const reference = cameraCullReference(scene, camera);
+        for (const [kind, values] of Object.entries({ combat: COMBAT_DIE, blue: BLUE_DIE })) {
+            const die = ui.dice[kind];
+            assert.deepEqual(die.faces.map(f => f.value), values.map(String), kind + ': matches server faces');
+            // Begin with the screenshot's 4: the old mesh rendered its far-side 6 instead.
+            for (const value of [4, ...new Set(values.filter(v => v !== 4))]) {
+                ui.land({ die: kind, value }, 'Алекс');
+                ui.clearHide();
+                ui.tick();
+                const target = die.faces.find(f => f.value === String(value));
+                assert.ok(target, kind + ': server value has a printed face: ' + value);
+                const visible = visibleAttackFace(die, target, camera, reference);
+                assert.equal(visible && visible.value, String(value), kind + ': visible face for result ' + value);
+                assert.equal(ui.hint.textContent, 'Результат: ' + (value === 'crit' ? 'КРИТ' : value));
+            }
+            // Also cover duplicate faces, which land() does not currently select but are seen in a spin.
+            for (const face of die.faces) {
+                die.root.rotationQuaternion = ui.targetFor(face);
+                const visible = visibleAttackFace(die, face, camera, reference);
+                assert.equal(die.faces.indexOf(visible), die.faces.indexOf(face), kind + ': each printed face is visible from outside');
+            }
+        }
+    } finally {
+        sandbox.AudioContext = audio;
+    }
+});
+
+test('DICE-10: the noise die still lands on every server value and shows the matching result text', () => {
+    const audio = sandbox.AudioContext;
+    sandbox.AudioContext = undefined;
+    try {
+        const ui = makeTestUI(scene);
+        const die = ui.dice.noise;
+        assert.deepEqual(die.faces.map(f => f.value), NOISE_DIE.map(String), 'matches server faces');
+        const text = { silence: 'Тишина', danger: 'Опасность', encounter: 'Встреча' };
+        for (const value of new Set(NOISE_DIE)) {
+            ui.land({ die: 'noise', value }, 'Алекс');
+            ui.clearHide();
+            const face = die.faces.find(f => f.value === String(value));
+            assert.ok(face, 'server value has a printed face: ' + value);
+            const normal = rotateVector(face.normal, die.root.rotationQuaternion);
+            const up = rotateVector(face.up, die.root.rotationQuaternion);
+            assert.ok(B.Vector3.Dot(normal, new B.Vector3(0, 0, -1)) > 0.999, 'noise result faces the camera');
+            assert.ok(B.Vector3.Dot(up, new B.Vector3(0, 1, 0)) > 0.999, 'noise glyph is upright');
+            assert.equal(ui.hint.textContent, 'Результат: ' + (text[value] || value));
+        }
+    } finally {
+        sandbox.AudioContext = audio;
+    }
+});
+
+test('DICE-11: the textures print the glyph for each server die value', () => {
+    const drawText = canvasContext.fillText, drawRect = canvasContext.fillRect;
+    const drawn = []; let underlines = 0;
+    canvasContext.fillText = glyph => drawn.push(glyph);
+    canvasContext.fillRect = (x, y, w, h) => { if (x === 44 && y === 112 && w === 40 && h === 6) underlines++; };
+    try {
+        makeTestUI(scene);
+        const glyph = value => value === 'silence' ? '' : value === 'danger' ? '!' :
+            value === 'crit' || value === 'encounter' ? '☠' : String(value);
+        const expected = [NOISE_DIE, COMBAT_DIE, BLUE_DIE].flatMap(values => values.map(glyph).filter(Boolean));
+        assert.deepEqual(drawn, expected, 'every face prints its own value; silence is blank');
+        assert.equal(underlines, 2, 'the 6 is underlined on both combat dice');
+    } finally {
+        canvasContext.fillText = drawText;
+        canvasContext.fillRect = drawRect;
+    }
+});
+
+test('DICE-12: attack face culling follows Babylon when the scene uses right-handed coordinates', () => {
+    const rightScene = new B.Scene(engine);
+    rightScene.useRightHandedSystem = true;
+    try {
+        const ui = Object.create(DiceUI.prototype);
+        const camera = new B.Vector3(0, 0, -4.6);
+        const reference = cameraCullReference(rightScene, camera);
+        for (const kind of ['combat', 'blue']) {
+            const die = ui.makeDie(rightScene, kind);
+            for (const face of die.faces) {
+                die.root.rotationQuaternion = ui.targetFor(face);
+                const visible = visibleAttackFace(die, face, camera, reference);
+                assert.equal(die.faces.indexOf(visible), die.faces.indexOf(face), kind + ': the outside face is rendered');
+            }
+        }
+    } finally {
+        rightScene.dispose();
     }
 });
