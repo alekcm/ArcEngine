@@ -1,7 +1,7 @@
 // fielddata.mjs — the 18 Field Data cards (Nemesis Redux FieldDataDeck).
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeMalfunction, drawCards, discardCard, isContam, payCost, clearNoiseAround, intruderLabel, turnOrder, drawLimit,
-    COMBAT_DIE, roll, fmtRoll, needDice, corridorsOf } from './core.mjs';
+    COMBAT_DIE, roll, fmtRoll, needDice, corridorsOf , computerHere } from './core.mjs';
 import { ITEMS, WOUNDS, EVENT_CARDS, ATTACK_CARDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
@@ -190,7 +190,7 @@ OPS['card.fdRapid'] = (state, step) => {
     if (playersInRoom(state, p.room).length > 1 && (p.items.length || p.heavy.length)) opts.push({ id: 'trade', label: 'Передать предмет' });
     // "Computer" is a basic Action costing one card as well (Dashboard).
     const tile = tileOf(state, p.room);
-    if (tile && ROOM_TILES[tile].computer && !room(state, p.room).malfunction && state.computerCard) opts.push({ id: 'computer', label: 'Компьютер' });
+    if (computerHere(state, p) && !room(state, p.room).malfunction && state.computerCard) opts.push({ id: 'computer', label: 'Компьютер' });
     choose(state, p, 'Быстрый ответ: базовое действие', opts, 'card.fdRapid.pick');
 };
 OPS['card.fdRapid.pick'] = (state, step) => {

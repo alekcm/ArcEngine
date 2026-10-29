@@ -2,10 +2,13 @@
 // builds, so that "move this pipe, delete that wire, paint that wall" survives into a real session.
 //   node --test nemesis/tools/board.test.mjs
 //
-// The identity of a part is its build order: "<owner>#<n>", numbered inside the build step that
-// created it, reset for every room / corridor / shell. These checks keep that promise: ids repeat
-// from build to build, an edit reaches the part BEFORE it is merged, a deleted part never reaches
-// the merged board, and the editor's mode keeps every part separate and clickable.
+// The identity of a part is its owner, its mesh name and how many parts of that name came before it:
+// "<owner>#<name>~<n>", counted inside the build step that created it, reset for every room /
+// corridor / shell. Build order alone was not enough: the number of wall segments, door frames and
+// wall props depends on which doors a room has, so a session dealt that tile into another room and
+// every id after the first door moved. These checks keep the promise: ids repeat from build to build
+// and do not shift when an earlier part disappears, an edit reaches the part BEFORE it is merged, a
+// deleted part never reaches the merged board, and the editor keeps every part separate.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -79,27 +82,49 @@ test('BD-01 ids are stable: the same part gets the same id on every build', () =
     h.editMeshes = {};
     const second = buildParts(h).map(m => m.metadata.editId);
     assert.deepEqual(first, second, 'a rebuild gives the same ids');
-    assert.deepEqual(first, ['room:101#0', 'room:101#1', 'room:101#2'], 'ids are "owner#order"');
+    assert.deepEqual(first, ['room:101#wall~0', 'room:101#pipe~0', 'room:101#wire~0'],
+        'ids name the owner, the part name and the ordinal of that name');
 });
 
 test('BD-02 owners do not leak into each other', () => {
     const h = host();
     buildParts(h);
     const other = h.owner('room:202', () => { const m = mesh('wall'); h.registerMesh(m); return m; });
-    assert.equal(other.metadata.editId, 'room:202#0', 'a new owner counts from zero');
+    assert.equal(other.metadata.editId, 'room:202#wall~0', 'a new owner counts from zero');
     const again = h.owner('room:101', () => { const m = mesh('wall2'); h.registerMesh(m); return m; });
-    assert.equal(again.metadata.editId, 'room:101#0', 'and the previous owner is not disturbed by the other');
+    assert.equal(again.metadata.editId, 'room:101#wall2~0', 'and the previous owner is not disturbed by the other');
 });
 
-test('BD-03 a merge never takes an id: the numbered parts must not shift', () => {
+test('BD-03 a merge never takes an id: the parts must not shift', () => {
     const h = host();
     buildParts(h);
     const before = Object.keys(h.editMeshes).length;
     h.mergeStatic([mesh('x'), mesh('y')], null);          // MergeMeshes makes a new mesh in the real scene
     assert.equal(h.merging, false, 'the guard is released even on success');
     const another = h.owner('room:101', () => { const m = mesh('after'); h.registerMesh(m); return m; });
-    assert.equal(another.metadata.editId, 'room:101#' + 0, 'the counter is per owner and unaffected by a merge');
+    assert.equal(another.metadata.editId, 'room:101#after~0', 'the counter is per owner and unaffected by a merge');
     assert.ok(before >= 3);
+});
+
+test('BD-03b an id does not move when an earlier part disappears', () => {
+    // The bug a saved file kept hitting: the wall ring drops segments where the room has a door, so a
+    // room with one more door built two parts fewer, and every id after them named a neighbour. A part
+    // is named by its own name now, so the pipe keeps its id either way.
+    const h = host();
+    const wide = h.owner('room:101', () => {
+        const out = [];
+        for (const n of ['wall', 'wall', 'wall', 'pipe', 'wire']) { const m = mesh(n); h.registerMesh(m); out.push(m); }
+        return out;
+    });
+    h.editMeshes = {}; h.editSeq = {};
+    const narrow = h.owner('room:101', () => {
+        const out = [];
+        for (const n of ['wall', 'pipe', 'wire']) { const m = mesh(n); h.registerMesh(m); out.push(m); }
+        return out;
+    });
+    assert.equal(wide[3].metadata.editId, narrow[1].metadata.editId, 'the pipe is named the same');
+    assert.equal(narrow[1].metadata.editId, 'room:101#pipe~0');
+    assert.equal(narrow[2].metadata.editId, 'room:101#wire~0', 'and so is the wire behind it');
 });
 
 test('BD-04 an edit is applied to the part BEFORE it is merged (so it bakes into the board)', () => {
@@ -173,7 +198,7 @@ test('BD-09 the saved file shape is what the game reads', () => {
     const parts = buildParts(h);
     h.setEdits({ [parts[1].metadata.editId]: { pos: [1, 2, 3], color: '#abcdef' } });
     const json = JSON.parse(JSON.stringify({ edits: h.edits }));
-    assert.deepEqual(json, { edits: { 'room:101#1': { pos: [1, 2, 3], color: '#abcdef' } } });
+    assert.deepEqual(json, { edits: { 'room:101#pipe~0': { pos: [1, 2, 3], color: '#abcdef' } } });
     const fresh = host();
     fresh.setEdits(json.edits);
     fresh.editMeshes = {};

@@ -2,8 +2,8 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire, placeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, removeCardFromGame, isContam, isInfected, payCost,
-    clearNoiseAround, killPlayer, spawnIntruder, intruderLabel, corridorsOf, secretTile, payableCards, infectLarva } from './core.mjs';
-import { ITEMS } from '../data/cards.mjs';
+    clearNoiseAround, killPlayer, spawnIntruder, intruderLabel, corridorsOf, secretTile, payableCards, infectLarva , computerHere } from './core.mjs';
+import { ITEMS, dropLocked } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
 import { dealHits } from './combat.mjs';
@@ -184,7 +184,7 @@ OPS['card.discardPicked'] = (state, step) => {
 };
 OPS['card.distraction'] = (state, step) => {
     const p = player(state, step.player);
-    choice(state, p, 'Отвлечение: какой предмет сбросить?', p.items.filter(i => !ITEMS[i.item].quest).map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name })), 'card.distraction.pick');
+    choice(state, p, 'Отвлечение: какой предмет сбросить?', p.items.filter(i => !dropLocked(i.item)).map(i => ({ id: i.uid, item: i.item, label: ITEMS[i.item].name })), 'card.distraction.pick');
 };
 OPS['card.distraction.pick'] = (state, step) => {
     const p = player(state, step.player);
@@ -231,7 +231,7 @@ OPS['card.computerSkills'] = (state, step) => {
     const tile = tileOf(state, p.room);
     const opts = [];
     // Printed: "If you are in a Computer Room (without a malfunction), use the Room."
-    if (tile && ROOM_TILES[tile].computer && !room(state, p.room).malfunction) opts.push({ id: 'comp', label: 'Использовать комнату' });
+    if (computerHere(state, p) && !room(state, p.room).malfunction) opts.push({ id: 'comp', label: 'Использовать комнату' });
     opts.push(...doorOptions(state, null));
     choice(state, p, 'Компьютерные навыки', opts, 'card.computerSkills.pick');
 };
@@ -248,7 +248,7 @@ OPS['card.fightFire'] = (state, step) => {
     const p = player(state, step.player);
     const opts = [];
     if (room(state, p.room).fire) opts.push({ id: 'out', label: 'Потушить огонь в комнате' });
-    for (const i of p.items.filter(i => !ITEMS[i.item].quest)) opts.push({ id: 'burn:' + i.uid, label: 'Сбросить «' + ITEMS[i.item].name + '» и поставить огонь' });
+    for (const i of p.items.filter(i => !dropLocked(i.item))) opts.push({ id: 'burn:' + i.uid, label: 'Сбросить «' + ITEMS[i.item].name + '» и поставить огонь' });
     choice(state, p, 'Клин клином', opts, 'card.fightFire.pick');
 };
 OPS['card.fightFire.pick'] = (state, step) => {

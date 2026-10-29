@@ -114,7 +114,7 @@ test('HUD-04: a weapon button in the intruder card says what the weapon does', a
         assert.match(ITEMS[key].text, /^Дальнобойное оружие[^.]*\./, key + ' starts with the preamble');
     }
     const eff = String(ITEMS.soldierGun.text).replace(/^Дальнобойное оружие[^.]*\.\s*/, '').trim();
-    assert.equal(eff, 'Первый выстрел в ходу наносит 1 дополнительное ранение.');
+    assert.equal(eff, 'Выстрел: если это первый выстрел в ходу, нанесите 1 доп. ранение.');
 });
 
 test('HUD-05: the end-of-game button starts a new game and lets the host change the settings', async () => {

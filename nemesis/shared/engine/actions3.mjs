@@ -3,7 +3,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, room, roomName, tileOf, drawCards, payCost, removeWound,
     gainKnowledge, intruderLabel, secretTile , needDice } from './core.mjs';
-import { ITEMS, WOUNDS } from '../data/cards.mjs';
+import { ITEMS, WOUNDS, dropLocked } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { applyHitsNoRoll, phantomAttack, dealHits } from './combat.mjs';
 import { choice } from './actions.mjs';
@@ -20,23 +20,9 @@ OPS['item3.probeArm'] = (state, step) => {
     ask(state, { kind: 'choice', player: p.id, title: 'Манипулятор-зонд: цель', options: targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })) }, { op: 'card.hitOne', player: p.id, then: back });
 };
 
-/** Survivor: from round 8 the Handgun becomes the Survivor's Favorite. */
-export function survivorUpgrade(state) {
-    if (state.round < 8) return;
-    for (const p of state.players) {
-        if (p.charId !== 'survivor' || p.status !== 'active') continue;
-        // The survivour starts with her favourite already in hand.
-        if (p.items.some(i => i.item === 'survivorFavorite')) continue;
-        const g = p.items.find(i => i.item === 'handgun');
-        if (!g) continue;
-        g.item = 'survivorFavorite'; g.ammo = ITEMS.survivorFavorite.weapon.max; g.broken = false;
-        log(state, pname(p) + ': Пистолет становится «Любимицей выжившей» (5 патронов, −1 к стрельбе).', 'good');
-    }
-}
-
 const BACK = { op: 'turn.choose' };
 const HAND_CAP = 7;
-const droppable = p => p.items.filter(i => !ITEMS[i.item].quest);
+const droppable = p => p.items.filter(i => !dropLocked(i.item));
 const neighbours = (state, roomId) => state.ship.rooms[roomId].exits.map(e => e.to);
 const dropItem = (state, p, uid) => {
     const inst = p.items.find(i => i.uid === uid); if (!inst) return false;

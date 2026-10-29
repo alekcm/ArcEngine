@@ -139,6 +139,12 @@ export function log(state, text, kind = 'info') {
 // ---------------------------------------------------------------------------------------------
 export const NOISE_DIE = [1, 1, 2, 2, 3, 3, 4, 4, 'silence', 'danger', 'encounter', 'encounter'];
 export const COMBAT_DIE = ['crit', 2, 3, 3, 4, 4, 5, 5, 5, 6];
+/** The Battle Suit's "special Blue Combat die", as printed on its own face sheet: two 2s, three 3s,
+ *  two 4s, one 5, one 6 and one Critical. */
+export const BLUE_DIE = ['crit', 2, 2, 3, 3, 3, 4, 4, 5, 6];
+const DIE_BY_ID = { noise: NOISE_DIE, blue: BLUE_DIE, combat: COMBAT_DIE };
+/** Prompt/log id of a die: 'noise', 'blue' or 'combat'. */
+export function dieId(die) { return die === NOISE_DIE ? 'noise' : die === BLUE_DIE ? 'blue' : 'combat'; }
 export const HIBERNATION_TIME = 8;
 export const SELF_DESTRUCT_LENGTH = 6;  // 1-3 stoppable, 4-5 yellow (pods unlock), 6 red = boom
 
@@ -165,6 +171,15 @@ export function roomName(state, roomId) {
     return name + ' [' + roomId + ']';
 }
 export function roomHasTile(state, roomId, tile) { return tileOf(state, roomId) === tile; }
+/** Is there a Computer in the player's Room? The Scientist's Portable Device (printed passive) lets
+ *  its owner treat any Room as a Computer Room for Action cards and Computer Actions. The Room still
+ *  has to be free of a malfunction, exactly as a real Computer does. */
+export function computerHere(state, p) {
+    if (!p) return false;
+    const t = tileOf(state, p.room);
+    if (t && ROOM_TILES[t].computer) return true;
+    return (p.items || []).some(i => i.item === 'portableDevice');
+}
 export function findRoomsByTile(state, tile) {
     return Object.keys(state.ship.rooms).filter(id => tileOf(state, id) === tile);
 }
@@ -231,7 +246,12 @@ export function heavyCount(p) {
     }
     return n;
 }
-export function drawLimit(p) { return p.wounds.includes('body') ? 4 : 5; }
+export function drawLimit(p) {
+    // Robot bodyguard (printed): while it still holds markers, the effects of your Body Wounds are ignored.
+    const robot = (p.items || []).find(i => i.item === 'robot');
+    if (robot && (robot.charge ?? 0) > 0) return 5;
+    return p.wounds.includes('body') ? 4 : 5;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Cards
@@ -369,6 +389,14 @@ export function gainWound(state, p, n = 1) {
         if (p.wounds.length >= 3) { killPlayer(state, p, 'четвёртая тяжёлая травма'); return; }
         if (!state.woundDeck.length) state.woundDeck = shuffle(state, state.woundDiscard.splice(0));
         const w = state.woundDeck.shift();
+        // The Wheelchair (printed): a Leg or Knee Serious Wound is discarded, but its Health cost stays.
+        if (p.armor && ITEMS[p.armor.item].legWoundFree && (w === 'leg' || w === 'knee')) {
+            state.woundDiscard.push(w);
+            log(state, pname(p) + ': инвалидное кресло — травма «' + WOUNDS[w].name + '» сброшена, но здоровье за неё теряется.', 'minor');
+            loseHealth(state, p, 1, 'травма (сброшена креслом)');
+            if (p.status !== 'active') return;
+            continue;
+        }
         const dup = p.wounds.includes(w);   // 13.2: identical effects do not stack, but the card still covers a section
         p.wounds.push(w);
         log(state, pname(p) + ' получает тяжёлую травму: ' + WOUNDS[w].name + (dup ? ' (повторно — эффект не суммируется)' : '') + '.', 'bad');
@@ -577,7 +605,7 @@ export function hasAdapt(state, key) { return !!(state.adaptations && state.adap
  *  'dice' prompt) that value is consumed instead. Every roll is recorded in state.lastRoll so
  *  all clients can animate it. */
 export function roll(state, die) {
-    const id = die === NOISE_DIE ? 'noise' : 'combat';
+    const id = dieId(die);
     let v;
     if (state.pendingRoll && state.pendingRoll.die === id) { v = state.pendingRoll.value; state.pendingRoll = null; }
     else v = die[randInt(state, die.length)];
@@ -597,7 +625,7 @@ export function needDice(state, step, die, playerId, title, extra) {
     return true;
 }
 OPS['dice.rolled'] = (state, step) => {
-    const die = step.die === 'noise' ? NOISE_DIE : COMBAT_DIE;
+    const die = DIE_BY_ID[step.die] || COMBAT_DIE;
     state.pendingRoll = { die: step.die, value: die[randInt(state, die.length)] };
     state.pendingRollPlayer = step.player;
     next(state, step.then);

@@ -94,14 +94,17 @@ export class Scene3D {
         this.gallery = false;   // room-gallery mode: labels show the room name instead of its id
         this.me = null; this.poses = {}; this.drag = null; this.cursors = {}; this.pings = []; this.canvas = canvas;
         // --- the board editor (nemesis/client/editor-panel.js) -------------------------------
-        // Every mesh gets a stable id: "<owner>#<n>", numbered in creation order inside the build
-        // step that made it. The board is procedural, so the order is the identity: the same id comes
-        // back on the next build, which is what lets an edit (move, rotate, colour, delete) be saved
-        // and applied inside the real game. Edit mode turns merging off so every part stays a part.
+        // Every mesh gets a stable id: "<owner>#<mesh name>~<ordinal of that name in the owner>".
+        // The board is procedural, so a name plus how many same-named parts came before it is the
+        // identity, and it survives a room growing a door: build order alone did not, because the
+        // number of wall segments, door frames and wall props depends on which doors a room has, so
+        // a saved edit could land on a neighbour or nowhere at all. Edit mode turns merging off so
+        // every part stays a part.
         this.edits = {};             // id -> { pos, rot, scale, color, hidden, deleted }
         this.editMode = false;
         this.editOwner = 'scene';
-        this.editCount = 0;
+        this.editCount = 0;          // parts made in this owner, in build order
+        this.editSeq = {};           // "<owner>#<name>" -> how many of that name this build has made
         this.editMeshes = {};        // id -> mesh of the current build
         this.editPick = null;        // (sx, sy) -> mesh | null, set by the editor panel
         this.merging = false;        // MergeMeshes creates meshes: they must not take ids
@@ -144,8 +147,10 @@ export class Scene3D {
     registerMesh(mesh) {
         if (this.merging || !mesh) return mesh;
         if (mesh.metadata && mesh.metadata.editId) return mesh;
-        const id = this.editOwner + '#' + (this.editCount++);
-        mesh.metadata = Object.assign({}, mesh.metadata, { editId: id });
+        const key = this.editOwner + '#' + (mesh.name || 'part');
+        const n = this.editSeq[key] = (this.editSeq[key] || 0) + 1;
+        const id = key + '~' + (n - 1);
+        mesh.metadata = Object.assign({}, mesh.metadata, { editId: id, editOrd: this.editCount++ });
         this.editMeshes[id] = mesh;
         return mesh;
     }
@@ -158,9 +163,9 @@ export class Scene3D {
 
     /** Run a build step with its own id space: ids it creates are stable from build to build. */
     owner(name, fn) {
-        const prev = this.editOwner, count = this.editCount;
-        this.editOwner = name; this.editCount = 0;
-        try { return fn(); } finally { this.editOwner = prev; this.editCount = count; }
+        const prev = this.editOwner, count = this.editCount, seq = this.editSeq;
+        this.editOwner = name; this.editCount = 0; this.editSeq = {};
+        try { return fn(); } finally { this.editOwner = prev; this.editCount = count; this.editSeq = seq; }
     }
 
     /** What the editor knows about a mesh id: its name, its owner and the edit on it. */
@@ -224,13 +229,15 @@ export class Scene3D {
     }
 
     /** Apply a saved edit to one freshly built mesh (before it is merged, so it bakes in).
-     *  Note that a part id is "<room>#<build order>": the same key names a different part on a board
-     *  whose room holds another tile, so an edit made on the gallery board is exact there and only
-     *  approximate on a game board (measured: 19 of 151 keys find any part in a session). */
+     *  A shell is owned by its tile and its parts are named, so an edit made on the gallery board
+     *  finds the same part in a session, wherever that tile is dealt (measured: 105 of the 108 keys
+     *  whose tile is in play land on a part of the same name, none on a neighbour). */
     applyEdit(mesh) {
         const id = mesh && mesh.metadata && mesh.metadata.editId;
         if (!id) return mesh;
-        const e = this.edits[id];
+        // A file written before parts were named this way keys them "<owner>#<build order>". That
+        // number is still in the metadata, so such an edit keeps working until the file is migrated.
+        const e = this.edits[id] || this.edits[String(id).split('#')[0] + '#' + mesh.metadata.editOrd];
         if (!e) return mesh;
         if (e.pos) mesh.position.set(e.pos[0], e.pos[1], e.pos[2]);
         if (e.rot) mesh.rotation.set(e.rot[0], e.rot[1], e.rot[2]);
@@ -4266,7 +4273,9 @@ export class Scene3D {
         const sk = tile || '';
         if (node.shellKey !== sk) {
             if (node.shell) node.shell.root.dispose();
-            node.shell = tile ? this.owner('room:' + r.id + ':shell', () => this.buildShell(node, tile)) : null;
+            // Keyed by tile, not by room: a shell is built from the tile that lies in the room, and a
+            // session deals those tiles into other rooms — a saved edit has to follow its tile.
+            node.shell = tile ? this.owner('tile:' + tile + ':shell', () => this.buildShell(node, tile)) : null;
             node.shellKey = sk; node.lightsOn = undefined;
             this.syncComputer(node, tile);
         }

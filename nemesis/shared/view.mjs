@@ -56,6 +56,8 @@ function playerView(state, p, mine) {
         id: p.id, number: p.number, name: p.name, charId: p.charId, charName: p.charId ? CHARACTERS[p.charId].name : '—', colors: p.colors,
         room: p.room, status: p.status, health: p.health, maxHealth: p.charId ? CHARACTERS[p.charId].health : 0, wounds: p.wounds, armor: p.armor,
         items: visibleItems, itemCount: p.items.length, heavy: p.heavy,
+        // Quest items are public: a closed card lies next to its owner's sheet from the start.
+        quests: (p.quests || []).map(q => ({ uid: q.uid, item: q.item, open: !!q.open })),
         // Hand slots name what lies in each hand, so they are only sent to their owner (p. 14).
         handSlots: mine ? handSlots(state, p) : undefined,
         knowledge: p.knowledge, knowledgeActive: p.knowledgeActive, signal: p.signal,

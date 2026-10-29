@@ -442,6 +442,9 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .sheet-item small { color: #b9c7d8; font-size: 11px; line-height: 1.3; display: block; }
 .sheet-item.quest { border-color: #7a6a2a; background: #1a1710; }
 .sheet-item.quest b { color: #ffd27f; }
+/* closed quest card: dashed frame, its reward is still hidden */
+.sheet-item.quest.closed { border-style: dashed; border-color: #5a4c22; background: #12100a; }
+.sheet-item.quest.closed b { color: #c9b071; }
 .sheet-item.armor { border-color: #2f5a7a; }
 .sheet-wound { background: #241014; border: 1px solid #5a2323; border-radius: 6px; padding: 5px 8px; margin-bottom: 5px; font-size: 12px; }
 .sheet-wound b { color: #ff9c9c; }

@@ -202,85 +202,125 @@ export const ITEMS = {
     utilityVest:    { deck: 'support', count: 1, name: 'Разгрузочный жилет', kind: 'armor', vest: true, use: null,
                       text: 'Броня. При обыске можно оставить 2 предмета вместо 1. Действие «предмет» позволяет использовать 2 предмета.' },
     // --- starting weapons ---
+    // Every number here is what the Starter Item Deck prints (Nemesis/Колоды/*_StarterItemDeck_Front_*).
+    // The shot model is "hits + a modifier to the combat roll", so a card whose text only changes a
+    // die face ("2 counts as a Critical") keeps its printed text but needs no flag — those cards are
+    // listed as not automated in docs/NEMESIS_AUDIT_TEST_RESULTS.md.
     soldierGun:  { deck: 'start', count: 0, name: 'Винтовка солдата', kind: 'heavy', weapon: { max: 6, firstShotBonus: true }, use: null,
-                   text: 'Дальнобойное оружие, 6 патронов. Первый выстрел в ходу наносит 1 дополнительное ранение.' },
+                   text: 'Дальнобойное оружие, 6 патронов. Выстрел: если это первый выстрел в ходу, нанесите 1 доп. ранение.' },
     handgun:     { deck: 'start', count: 0, name: 'Пистолет', kind: 'heavy', weapon: { max: 3, plusOne: true }, use: null,
-                   text: 'Дальнобойное оружие, 3 патрона. +1 к результату стрельбы.' },
+                   text: 'Дальнобойное оружие, 3 патрона. Выстрел: +1 к результату.' },
     scoutRifle:  { deck: 'start', count: 0, name: 'Винтовка разведчика', kind: 'heavy', weapon: { max: 4, drawOnKill: true }, use: null,
-                   text: 'Дальнобойное оружие, 4 патрона. Убив чужого, возьмите 1 карту (раз в ход).' },
+                   text: 'Дальнобойное оружие, 4 патрона. Выстрел: если чужой убит, возьмите 1 карту (раз в ход).' },
     sawedOff:    { deck: 'start', count: 0, name: 'Обрез механика', kind: 'heavy', weapon: { max: 2, firstShotBonus: true }, use: null,
-                   text: 'Дальнобойное оружие, 2 патрона. Первый выстрел в ходу наносит 1 дополнительное ранение.' },
-    pilotShotgun:{ deck: 'start', count: 0, name: 'Дробовик пилота', kind: 'heavy', weapon: { max: 3, spread: true }, use: null,
-                   text: 'Дальнобойное оружие, 3 патрона. После выстрела все остальные чужие в комнате получают по 1 ранению.' },
-    smartGun:    { deck: 'start', count: 0, name: 'Умный пистолет', kind: 'heavy', weapon: { max: 4, reroll: true }, use: null,
-                   text: 'Дальнобойное оружие, 4 заряда. Неудачный бросок перебрасывается один раз. Заряжается картой «Подзарядка».' },
-    scientistPistol:{ deck: 'start', count: 0, name: 'Пистолет учёного', kind: 'heavy', weapon: { max: 3, plusOne: true }, use: null,
-                   text: 'Дальнобойное оружие, 3 патрона. +1 к результату стрельбы.' },
-    needleGun:   { deck: 'start', count: 0, name: 'Игольник', kind: 'heavy', weapon: { max: 3, plusOne: true }, use: null,
-                   text: 'Дальнобойное оружие, 3 патрона. +1 к результату стрельбы.' },
-    nailGun:     { deck: 'start', count: 0, name: 'Гвоздомёт', kind: 'heavy', weapon: { max: 3, plusOne: true }, use: null,
-                   text: 'Дальнобойное оружие, 3 патрона. +1 к результату стрельбы.' },
-    labRatGun:   { deck: 'start', count: 0, name: 'Пистолет подопытной', kind: 'heavy', weapon: { max: 4 }, use: null,
-                   text: 'Дальнобойное оружие, 4 патрона. Особых правил нет.' },
+                   text: 'Дальнобойное оружие, 2 патрона. Выстрел: если это первый выстрел в ходу, нанесите 1 доп. ранение.' },
+    pilotShotgun:{ deck: 'start', count: 0, name: 'Дробовик пилота', kind: 'heavy', weapon: { max: 2, spreadChars: true }, use: null,
+                   text: 'Дальнобойное оружие, 2 патрона. Выстрел: после него каждый другой персонаж в комнате получает 1 ранение (повторно кубик не бросается).' },
+    smartGun:    { deck: 'start', count: 0, name: 'Умный пистолет', kind: 'heavy', weapon: { max: 3, reroll: true }, use: null,
+                   text: 'Дальнобойное оружие, 3 заряда. Выстрел: можете перебросить первый бросок; второй результат обязателен.' },
+    scientistPistol:{ deck: 'start', count: 0, name: 'Пистолет учёного', kind: 'heavy', weapon: { max: 3, facesTo: { 2: 6, crit: 6 } }, use: null,
+                   text: 'Дальнобойное оружие, 3 патрона. Выстрел: результаты «2» и «✖» считаются «6».' },
+    needleGun:   { deck: 'start', count: 0, name: 'Игольник', kind: 'heavy', weapon: { max: 2, repelShot: true }, loadOnly: 'reagent', use: null,
+                   text: 'Дальнобойное оружие, 2 патрона. Заряжается только «Регентом» или Значимыми предметами. Выстрел: вместо обычного выстрела отгоните 1 личинку или взрослого из комнаты.' },
+    nailGun:     { deck: 'start', count: 0, name: 'Гвоздомёт', kind: 'heavy', weapon: { max: 5 }, loadOnly: 'tools', use: null,
+                   text: 'Дальнобойное оружие, 5 патронов. Заряжается только картой уборщика «Должно сработать» или предметом «Инструменты».' },
+    labRatGun:   { deck: 'start', count: 0, name: 'Пистолет подопытной', kind: 'heavy', weapon: { max: 3, facesPlus: [2, 3] }, use: null,
+                   text: 'Дальнобойное оружие, 3 патрона. Выстрел: результаты «2» и «3» получают +1.' },
     sentrySmg:   { deck: 'start', count: 0, name: 'Пистолет-пулемёт охранника', kind: 'heavy', weapon: { max: 5, boost: { ammo: 1, hits: 1 } }, use: null,
-                   text: 'Дальнобойное оружие, 5 патронов. Выстрел: можете потратить 1 доп. патрон — +1 ранение.' },
-    armGun:      { deck: 'start', count: 0, name: 'Ручная пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true }, use: null,
-                   text: 'Дальнобойное оружие, патроны не нужны. Особых правил нет.' },
-    bountyRifle: { deck: 'start', count: 0, name: 'Карабин охотника', kind: 'heavy', weapon: { max: 5, plusOne: true }, use: null,
-                   text: 'Дальнобойное оружие, 5 патронов. +1 к результату стрельбы.' },
-    sixShooter:  { deck: 'start', count: 0, name: 'Старый шестизарядник', kind: 'heavy', weapon: { max: 6, firstShotBonus: true }, use: null,
-                   text: 'Дальнобойное оружие, 6 патронов. Первый выстрел в ходу наносит 1 дополнительное ранение. Карты «Веер» и «Перезарядка» работают с ним.' },
+                   text: 'Дальнобойное оружие, 5 патронов. Выстрел: можете потратить 1 доп. патрон, чтобы нанести 1 доп. ранение.' },
+    armGun:      { deck: 'start', count: 0, name: 'Ручная пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true, upsOn: [2, 'crit'] }, noDrop: true, use: null,
+                   text: 'Дальнобойное оружие, патроны не нужны. Нельзя передать или сбросить. Выстрел: при результате «2» или «✖» сбросьте 1 жетон с ИБП.' },
+    bountyRifle: { deck: 'start', count: 0, name: 'Карабин охотника', kind: 'heavy', weapon: { max: 5 }, use: null,
+                   text: 'Дальнобойное оружие, 5 патронов. Особых правил нет.' },
+    sixShooter:  { deck: 'start', count: 0, name: 'Старый шестизарядник', kind: 'heavy', weapon: { max: 6 }, loadOnly: 'cartridge', use: null,
+                   text: 'Дальнобойное оружие, 6 патронов. Заряжается только Обоймой шестизарядника.' },
     sixShooterCartridge: { deck: 'start', count: 0, name: 'Обойма шестизарядника', use: 'cartridge', oneUse: true,
-                   text: 'Используйте: полностью зарядите шестизарядник (6 патронов).' },
-    pipe:        { deck: 'start', count: 0, name: 'Труба', kind: 'heavy', quest: true, use: 'pipeMelee',
-                   text: 'Квестовый предмет. Оружие ближнего боя. Используйте: ближний бой без получения заражения.' },
+                   text: 'Одноразовый. Используйте: зарядите Старый шестизарядник до 6 патронов.' },
+    pipe:        { deck: 'start', count: 0, name: 'Труба', kind: 'heavy', quest: true, slot: 'weapon', questRoom: 'any', use: 'pipeMelee',
+                   text: 'Квестовый предмет, оружие ближнего боя, тяжёлое. Нельзя передать или сбросить. Ближний бой: заражение только при результате «2» или «✖». Если наручники сняты, можете сбросить трубу, чтобы нанести 1 доп. ранение; если трубу должны сбросить — переверните её вместо этого.' },
     xenoGun:     { deck: 'start', count: 0, name: 'Пистолет ксенобиолога', kind: 'heavy', weapon: { max: 3, plusOne: true, critDiscard: true }, use: null,
-                   text: 'Дальнобойное оружие, 3 патрона. +1 к результату стрельбы. При КРИТе сбросьте 1 карту, если возможно.' },
-    survivorFavorite: { deck: 'start', count: 0, name: 'Любимица выжившей', kind: 'heavy', quest: true, weapon: { max: 5, minusOne: true }, use: null,
-                   text: 'Квестовый предмет. Дальнобойное оружие, 5 патронов. −1 к результату стрельбы.' },
+                   text: 'Дальнобойное оружие, 3 патрона. Выстрел: +1 к результату. При КРИТе сбросьте 1 карту, если возможно.' },
+    survivorFavorite: { deck: 'start', count: 0, name: 'Любимица выжившей', kind: 'heavy', quest: true, slot: 'weapon', questRoom: 'any', questBlue: true, weapon: { max: 5, minusOne: true }, use: null,
+                   text: 'Квестовый предмет, дальнобойное оружие, тяжёлое, 5 патронов. Выстрел: −1 к результату.' },
 
-    // --- starting quest items ---
-    intercom:    { deck: 'start', count: 0, name: 'Интерком', quest: true, use: null,
-                   text: 'Квестовый предмет капитана. Связь с любым отсеком корабля.' },
-    shipCodes:   { deck: 'start', count: 0, name: 'Коды корабля', quest: true, use: null,
-                   text: 'Квестовый предмет директора. Полные коды доступа к системам корабля.' },
-    cheatCodes:  { deck: 'start', count: 0, name: 'Читерские коды', quest: true, use: null,
-                   text: 'Квестовый предмет хакера. Взломанные коды служебных протоколов.' },
-    plasmaTorch: { deck: 'start', count: 0, name: 'Плазменный резак', quest: true, use: 'mechTools',
-                   text: 'Квестовый предмет. Почините/сломайте двигатель в его комнате ИЛИ уберите поломку в вашей комнате.' },
-    karcher:     { deck: 'start', count: 0, name: 'Карчер', quest: true, use: 'wrench',
-                   text: 'Квестовый предмет. Уберите поломку в вашей комнате ИЛИ уберите огонь в вашей комнате.' },
-    surgeryKit:  { deck: 'start', count: 0, name: 'Операционный набор', quest: true, use: 'fieldKit',
-                   text: 'Квестовый предмет. Восстановите 1 здоровье себе или персонажу в вашей комнате.' },
-    pilotEvacKey:{ deck: 'start', count: 0, name: 'Ключ эвакуации', quest: true, use: 'evacKey',
-                   text: 'Квестовый предмет. В эвакуационном отсеке: шаттл готов к запуску.' },
-    portableDevice:{ deck: 'start', count: 0, name: 'Портативное устройство', quest: true, use: 'navTablet', oneUse: true,
-                   text: 'Квестовый предмет. Тайно проверьте состояние одного двигателя (раз за игру).' },
-    motionScanner:{ deck: 'start', count: 0, name: 'Сканер движения', quest: true, use: null,
-                   text: 'Квестовый предмет разведчика. Отмечает движение в соседних отсеках.' },
-    battleSuit:  { deck: 'start', count: 0, name: 'Боевой костюм', kind: 'armor', quest: true, heavyArmor: true, use: null,
-                   text: 'Квестовый предмет. Броня. Каждая атака чужого наносит на 1 ранение меньше.' },
-    heavyArmor:  { deck: 'start', count: 0, name: 'Тяжёлая броня', kind: 'armor', quest: true, woundToHp: 2, use: null,
-                   text: 'Квестовый предмет. Броня. Вместо тяжёлой травмы можете потерять 2 здоровья (если здоровья хватает).' },
-    bloodyCamouflage: { deck: 'start', count: 0, name: 'Кровавый камуфляж', quest: true, use: null,
-                   text: 'Квестовый предмет подопытной. Маскировка под чужого.' },
-    probeArm:    { deck: 'start', count: 0, name: 'Манипулятор-зонд', kind: 'armor', quest: true, use: 'probeArm', free: true, markers: 3,
-                   text: 'Броня. В комнате с чужим: положите 1 жетон на предмет (всего 3), чтобы нанести чужому 1 ранение и получить 1 образец ткани. Жетоны снимаются картами «Сверхразум» и «Вивисекция».' },
-    researchEquipment:{ deck: 'start', count: 0, name: 'Исследовательское оборудование', quest: true, use: 'sampleJar',
-                   text: 'Квестовый предмет. Сбросьте 1 заражение из руки (без проверки).' },
-    wheelchair:  { deck: 'start', count: 0, name: 'Инвалидное кресло', kind: 'heavy', use: null,
-                   text: 'Тяжёлый предмет. Учёный передвигается в кресле.' },
-    cuffs:       { deck: 'start', count: 0, name: 'Наручники', quest: true, use: null, markers: 6,
-                   text: 'На наручниках 6 жетонов. Карты заключённого сбрасывают их; когда жетонов нет, наручники сняты и карты усиливаются.' },
-    robot:       { deck: 'start', count: 0, name: 'Робот-телохранитель', quest: true, use: null, markers: 5,
-                   text: 'На роботе 5 жетонов энергии. «Удар робота» тратит их на дополнительные ранения, «Запасная батарея» восстанавливает.' },
-    ups:         { deck: 'start', count: 0, name: 'ИБП андроида', quest: true, use: null, markers: 3,
-                   text: 'Квестовый предмет. Источник питания с 3 жетонами. «Подзарядка» добавляет жетоны, «Обход протокола» тратит их.' },
-    laika:       { deck: 'start', count: 0, name: 'Лайка', quest: true, use: null,
+    // --- personal gear: printed on the character boards, not in the Starter Item Deck ---
+    synthetic:   { deck: 'start', count: 0, name: 'Синтетик', use: null, noDrop: true,
+                   text: 'Нельзя передать или сбросить. Пассивно: серьёзные травмы можно восстанавливать или сбрасывать только картой «Самопочинка»; карты с медициной нельзя применять к себе; личинка вас не заражает; каждое заражение, добранное в руку, сразу сканируется — если заражено, потеряйте 1 здоровье, уберите карту и доберите 1.' },
+    wheelchair:  { deck: 'start', count: 0, name: 'Инвалидное кресло', kind: 'armor', noDrop: true, legWoundFree: true, use: null,
+                   text: 'Занимает слот брони (в руках его не носят). Полученную серьёзную травму ноги или колена сбросьте (здоровье за неё теряется как обычно).' },
+    cuffs:       { deck: 'start', count: 0, name: 'Наручники', kind: 'heavy', use: null, markers: 6, noDrop: true,
+                   text: 'Тяжёлые, нельзя передать или сбросить. На старте положите на наручники 6 жетонов; карты заключённого снимают их. Когда снят последний — переверните наручники и уберите в рюкзак.' },
+    robot:       { deck: 'start', count: 0, name: 'Робот-телохранитель', use: null, markers: 5, noDrop: true,
+                   text: 'Нельзя передать или сбросить. На старте положите 5 жетонов (больше 5 не бывает) и получите серьёзную травму тела. Пока на роботе есть жетоны, игнорируйте эффекты своих травм тела. Каждое действие робота сбрасывает 1 жетон; «Заряд энергии» или «Кабели» восстанавливают жетоны полностью.' },
+    laika:       { deck: 'start', count: 0, name: 'Лайка', use: null, noDrop: true,
                    text: 'Нельзя передать или сбросить. Пассивно: перед первым действием в каждой фазе игроков можете переместить Лайку в соседнюю комнату или отозвать её (на свой планшет с любого расстояния). Если Лайка оказалась в одной комнате с охотником или с чужим — она автоматически возвращается. На поле она делает броски шума как персонаж (в фазе событий — как игрок слева от охотника). Персонаж, входящий в комнату Лайки, не бросает шум. Лайка игнорирует огонь, чужие её не атакуют.' },
-    oculobe:     { deck: 'start', count: 0, name: 'Дрон «Окулоб»', quest: true, use: null,
-                   text: 'Летающий помощник. «Сканер эмоций» и «Помощь» можно применять к персонажам в соседних комнатах.' },
+    probeArm:    { deck: 'start', count: 0, name: 'Манипулятор-зонд', kind: 'armor', use: 'probeArm', free: true, markers: 3, noDrop: true,
+                   text: 'Занимает слот брони. В комнате с чужим: положите 1 жетон на предмет (всего 3), чтобы нанести чужому 1 ранение и получить 1 образец ткани. Жетоны снимаются картами «Сверхразум» и «Вивисекция».' },
+
+    // --- quest items (Quest Item Deck) ---
+    // `questRoom` is the activation room, `slot` is what the card becomes once it is open.
+    // The UPS is the one card that starts open.
+    ups:         { deck: 'start', count: 0, name: 'ИБП андроида', quest: true, slot: 'passive', questRoom: 'any', questOpen: true, use: null, markers: 3, markersMax: 5,
+                   text: 'Квестовый предмет андроида, открыт с начала игры: 3 жетона. После переворота добавьте 2 жетона, максимум ИБП становится 5. Пассивно: при каждом перемешивании своей колоды сбрасывайте 1 жетон; если сбрасывать нечего — андроид погибает.' },
+    canineUpgrades: { deck: 'start', count: 0, name: 'Апгрейды Лайки', quest: true, slot: 'passive', questRoom: 'surgery', use: null,
+                   text: 'Квестовый предмет охотницы. Нельзя передать или сбросить. Пассивно: когда Лайка должна уйти из комнаты с охотницей, вместо этого нанесите 1 ранение любому чужому в этой комнате; «Поиск» можно разыграть в комнате Лайки.' },
+    intercom:    { deck: 'start', count: 0, name: 'Интерком', quest: true, slot: 'passive', questRoom: 'comms', use: null,
+                   text: 'Квестовый предмет капитана. Пассивно: играя «Приказ» или «Мотивацию», можете применить её к персонажу в любой комнате «Немезиды».' },
+    shipCodes:   { deck: 'start', count: 0, name: 'Коды корабля', quest: true, slot: 'item', questRoom: 'archives', use: 'shipCodes', oneUse: true,
+                   text: 'Квестовый предмет директора, одноразовый. Сбросьте карту координат и возьмите новую (нельзя после выхода маркера времени на синюю клетку) ИЛИ уберите из игры 1 спасательную капсулу ИЛИ почините/сломайте (удалённо) 1 двигатель по выбору.' },
+    cheatCodes:  { deck: 'start', count: 0, name: 'Читерские коды', quest: true, slot: 'item', questRoom: 'evacA', use: 'cheatCodes', oneUse: true,
+                   text: 'Квестовый предмет хакера, одноразовый, только в комнате с компьютером без поломки. Запустите/остановите самоликвидацию ИЛИ выполните 3 действия компьютера (не помещая поломки от «Блокировки») ИЛИ откройте/закройте до 5 дверей в разных коридорах в любом месте корабля.' },
+    plasmaTorch: { deck: 'start', count: 0, name: 'Плазменный резак', kind: 'heavy', quest: true, slot: 'item', questRoom: 'engine', use: 'torchDoor',
+                   text: 'Квестовый предмет механика, тяжёлый. Откройте или закройте 1 дверь; разрушенную дверь тоже можно закрыть.' },
+    karcher:     { deck: 'start', count: 0, name: 'Карчер', kind: 'heavy', quest: true, slot: 'item', questRoom: 'fireControl', use: 'karcher',
+                   text: 'Квестовый предмет уборщика, тяжёлый. Положите жетон огня на этот предмет (огонь уходит из комнаты): уберите огонь ИЛИ отгоните 1 чужого из комнаты.' },
+    surgeryKit:  { deck: 'start', count: 0, name: 'Операционный набор', quest: true, slot: 'item', questRoom: 'any', use: 'surgeryKit', oneUse: true,
+                   text: 'Квестовый предмет медика, одноразовый, в любой комнате. Персонаж в вашей комнате сбрасывает всё заражение из руки и колоды, убирает все заражения из сброса без сканирования, теряет личинку и обязан спасовать.' },
+    pilotEvacKey:{ deck: 'start', count: 0, name: 'Ключ эвакуации', quest: true, slot: 'item', questRoom: 'cockpit', use: 'evacKey', oneUse: true,
+                   text: 'Квестовый предмет пилота, одноразовый. В комнате эвакуационной секции: заблокируйте или разблокируйте 1 спасательную капсулу.' },
+    portableDevice:{ deck: 'start', count: 0, name: 'Портативное устройство', kind: 'heavy', quest: true, slot: 'item', questRoom: 'laboratory', use: null,
+                   text: 'Квестовый предмет учёного, тяжёлый. Пассивно: свою комнату можно считать комнатой с компьютером при игре карт действий и при выполнении действия компьютера.' },
+    motionScanner:{ deck: 'start', count: 0, name: 'Сканер движения', kind: 'heavy', quest: true, slot: 'item', questRoom: 'any', use: null,
+                   text: 'Квестовый предмет разведчика, тяжёлый. Пассивно: при броске шума можете сбросить 1 карту, чтобы перебросить бросок; второй результат обязателен.' },
+    battleSuit:  { deck: 'start', count: 0, name: 'Боевой костюм', kind: 'armor', quest: true, slot: 'armor', questRoom: 'evacB', use: null,
+                   text: 'Квестовый предмет охранника, броня. В конце своего хода не теряете здоровье от пожара в комнате. Стреляя, используйте особый синий кубик боя (грани 2,2,3,3,3,4,4,5,6 и КРИТ).' },
+    heavyArmor:  { deck: 'start', count: 0, name: 'Тяжёлая броня', kind: 'armor', quest: true, slot: 'armor', questRoom: 'repository', adultGuard: true, use: null,
+                   text: 'Квестовый предмет солдата, броня. Когда взрослый чужой атакует вас, можете предотвратить атаку и потерять 1 здоровье вместо неё.' },
+    bloodyCamouflage: { deck: 'start', count: 0, name: 'Кровавый камуфляж', kind: 'armor', quest: true, slot: 'armor', questRoom: 'any', redirectAttack: true, use: null,
+                   text: 'Квестовый предмет подопытной, броня. Когда чужой атакует вас, выберите другого персонажа в этой комнате — чужой атакует его.' },
+    researchEquipment:{ deck: 'start', count: 0, name: 'Исследовательское оборудование', quest: true, slot: 'item', questRoom: 'any', questNoIntruder: true, use: 'research', oneUse: true,
+                   text: 'Квестовый предмет ксенобиолога, одноразовый, только в комнате без чужих. Проанализируйте 1 тяжёлый объект в комнате (не несомый персонажем) и получите 2 знания; если такой тип ещё не изучен, положите объект над активной адаптацией и сбросьте её.' },
+    oculobe:     { deck: 'start', count: 0, name: 'Дрон «Окулоб»', quest: true, slot: 'passive', questRoom: 'emergency', use: null,
+                   text: 'Квестовый предмет психолога. Пассивно: когда другой персонаж принимает эффект ваших «Не паникуй» или «Помоги», положите ему жетон связи. «Не паникуй», «Сканер эмоций», «Помоги» и «Будь так добр» можно играть на персонажа в любой комнате, если у него есть жетон связи.' },
 };
+
+/** An item card that must stay with its owner: Quest Item Deck cards (printed "do not discard")
+ *  and the personal gear that has no printed card at all (handcuffs, the robot, Laika, the chair). */
+export const dropLocked = (key) => !!(ITEMS[key] && (ITEMS[key].quest || ITEMS[key].noDrop));
+
+/** `loadOnly` names the single source a weapon accepts ammo from, exactly as the card prints it. */
+export const LOAD_SOURCE_NAMES = {
+    cartridge: 'Обойма шестизарядника',
+    tools: 'Инструменты или «Должно работать»',
+    reagent: 'Реагент (или Значимый предмет)',
+};
+export function canLoadWith(key, source) {
+    const d = ITEMS[key];
+    if (!d || !d.loadOnly) return true;
+    if (d.loadOnly === 'tools') return source === 'tools' || source === 'itShouldWork';
+    return d.loadOnly === source;
+}
+
+/** True when the player has the named quest card open (it then sits in the pack or in the Armor slot). */
+export function hasOpenQuest(p, key) {
+    if (!p) return false;
+    if ((p.items || []).some(i => i.item === key)) return true;
+    return !!(p.armor && p.armor.item === key);
+}
+/** The Oculobe Drone's Connection token: `holder` put one on `target` by helping them. */
+export function connectedTo(holder, target) {
+    return !!(holder && target && Array.isArray(target.connections) && target.connections.includes(holder.id));
+}
 
 export const DECK_ORDER = ['green', 'red', 'yellow'];
 export const DECK_NAMES = { green: 'Зелёные (медицина)', red: 'Красные (военные)', yellow: 'Жёлтые (техника)', support: 'Поддержка' };
@@ -311,7 +351,7 @@ export const CHARACTERS = {
             { id: 'pants',  label: 'Штаны',         presets: ['#2d3436', '#4b3d2a', '#1e3d2b', '#3b2f4a', '#555'] },
             { id: 'visor',  label: 'Свечение визора', presets: ['#ff3b3b', '#3bff7a', '#3bb8ff', '#ffd23b', '#ff3bd1'] },
         ],
-        startItems: [{ item: 'soldierGun', ammo: 6 }, { item: 'heavyArmor' }],
+        startItems: [{ item: 'soldierGun', ammo: 6 }], questItems: ['heavyArmor'],
         cards: {
             coveringFire: { name: 'Прикрывающий огонь', cost: 1, effect: 'coveringFire', text: 'Сбросьте ещё 1 карту и 2 патрона из дальнобойного оружия: переместитесь (можно с согласным персонажем), атаки чужих при этом не происходят.' },
             demolition: COMMON_CARDS.demolition,
@@ -331,7 +371,7 @@ export const CHARACTERS = {
             { id: 'boots',  label: 'Ботинки',       presets: ['#1c1c1c', '#4b3d2a', '#5c5c5c', '#2e1f14'] },
             { id: 'visor',  label: 'Свечение визора', presets: ['#d13bff', '#3bb8ff', '#3bff7a', '#ffd23b'] },
         ],
-        startItems: [{ item: 'scoutRifle', ammo: 4 }, { item: 'motionScanner' }],
+        startItems: [{ item: 'scoutRifle', ammo: 4 }], questItems: ['motionScanner'],
         cards: {
             adrenaline: { name: 'Адреналин', cost: 1, effect: 'scoutAdrenaline', text: 'Только в комнате с чужим: возьмите 2 карты, затем сбросьте 1 (можно заражение).' },
             demolition: COMMON_CARDS.demolition,
@@ -352,7 +392,7 @@ export const CHARACTERS = {
             { id: 'gloves',  label: 'Перчатки',      presets: ['#2d3436', '#f39c12', '#7f8c8d', '#8e44ad'] },
             { id: 'lights',  label: 'Подсветка',     presets: ['#ffd23b', '#3bb8ff', '#3bff7a', '#ff3b3b'] },
         ],
-        startItems: [{ item: 'sawedOff', ammo: 2 }, { item: 'plasmaTorch' }],
+        startItems: [{ item: 'sawedOff', ammo: 2 }], questItems: ['plasmaTorch'],
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition,
@@ -374,7 +414,7 @@ export const CHARACTERS = {
             { id: 'gloves', label: 'Перчатки',      presets: ['#2d3436', '#6b4f3a', '#7f8c8d', '#1c1c1c'] },
             { id: 'visor',  label: 'Монокль',       presets: ['#3bff7a', '#3bb8ff', '#ffd23b', '#ff3b3b'] },
         ],
-        startItems: [{ item: 'pilotShotgun', ammo: 3 }, { item: 'pilotEvacKey' }],
+        startItems: [{ item: 'pilotShotgun', ammo: 3 }], questItems: ['pilotEvacKey'],
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition,
@@ -394,7 +434,7 @@ export const CHARACTERS = {
             { id: 'gear',   label: 'Снаряжение',    presets: ['#8c96a0', '#c9a227', '#7f8c8d', '#2d3436'] },
             { id: 'lights', label: 'Подсветка',     presets: ['#3bff7a', '#3bb8ff', '#ffd23b', '#ff3bd1'] },
         ],
-        startItems: [{ item: 'smartGun', ammo: 2 }, { item: 'cheatCodes' }],
+        startItems: [{ item: 'smartGun', ammo: 2 }], questItems: ['cheatCodes'],
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition, interruption: COMMON_CARDS.interruption,
@@ -414,7 +454,7 @@ export const CHARACTERS = {
             { id: 'pants',  label: 'Брюки',         presets: ['#2d3436', '#4b3d2a', '#3b2f4a', '#555'] },
             { id: 'lights', label: 'Очки/приборы',  presets: ['#3bb8ff', '#ff3b3b', '#3bff7a', '#ffd23b'] },
         ],
-        startItems: [{ item: 'scientistPistol', ammo: 3 }, { item: 'wheelchair' }, { item: 'portableDevice' }],
+        startItems: [{ item: 'scientistPistol', ammo: 3 }, { item: 'wheelchair' }], questItems: ['portableDevice'],
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             connection: { name: 'Соединение', cost: 1, effect: 'connection', text: 'В комнате с компьютером: используйте комнату (даже с поломкой). ИЛИ в комнате с компьютером (без поломки): поставьте или уберите поломку в любой другой комнате с компьютером.' },
@@ -436,7 +476,7 @@ export const CHARACTERS = {
             { id: 'pants',  label: 'Брюки',         presets: ['#2d3436', '#4b3d2a', '#3b2f4a', '#555'] },
             { id: 'lights', label: 'Индикаторы',    presets: ['#ff3b3b', '#3bff7a', '#3bb8ff', '#ff3bd1'] },
         ],
-        startItems: [{ item: 'needleGun', ammo: 3 }, { item: 'surgeryKit' }],
+        startItems: [{ item: 'needleGun', ammo: 3 }], questItems: ['surgeryKit'],
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition,
@@ -457,7 +497,7 @@ export const CHARACTERS = {
             { id: 'gloves', label: 'Перчатки',      presets: ['#f1c40f', '#2d3436', '#7f8c8d'] },
             { id: 'lights', label: 'Индикаторы',    presets: ['#ffd23b', '#3bff7a', '#3bb8ff', '#ff3b3b'] },
         ],
-        startItems: [{ item: 'nailGun', ammo: 3 }, { item: 'karcher' }],
+        startItems: [{ item: 'nailGun', ammo: 3 }], questItems: ['karcher'],
         cards: {
             cleanUp: { name: 'Уборка', cost: 1, noCombat: true, effect: 'cleanUp', text: 'Уберите поломку в вашей комнате. ИЛИ уберите огонь в вашей комнате.' },
             demolition: COMMON_CARDS.demolition,
@@ -478,7 +518,7 @@ export const CHARACTERS = {
             { id: 'robot',  label: 'Робот',         presets: ['#2d3436', '#8c96a0', '#1abc9c', '#5a3a3a'] },
             { id: 'lights', label: 'Визор робота',  presets: ['#ff3b3b', '#3bb8ff', '#3bff7a', '#ffd23b'] },
         ],
-        startItems: [{ item: 'handgun', ammo: 3 }, { item: 'shipCodes' }],
+        startItems: [{ item: 'robot' }], questItems: ['shipCodes'],
         cards: {
             backupBattery: { name: 'Запасная батарея', cost: 1, removeAfter: true, effect: 'backupBattery', text: 'Уберите карту из игры: восстановите все жетоны энергии робота.' },
             command: { name: 'Приказ', cost: 1, effect: 'command', text: 'Выберите другого персонажа в вашей или соседней комнате: он перемещается или стреляет (выбираете вы), затем он берёт 1 карту. Нельзя заставить уйти из комнаты с чужим. Нельзя прервать «Вмешательством».' },
@@ -503,7 +543,7 @@ export const CHARACTERS = {
             { id: 'bandage',label: 'Повязка',       presets: ['#dfe6ee', '#c9a227', '#7f8c8d'] },
             { id: 'lights', label: 'Импланты',      presets: ['#ff3bd1', '#3bb8ff', '#3bff7a', '#ff3b3b'] },
         ],
-        startItems: [{ item: 'labRatGun', ammo: 4 }, { item: 'bloodyCamouflage' }],
+        startItems: [{ item: 'labRatGun', ammo: 4 }], questItems: ['bloodyCamouflage'],
         cards: {
             demolition: COMMON_CARDS.demolition,
             feelOfDark: { name: 'Чувство темноты', cost: 1, effect: 'feelOfDark', text: 'Сбросьте ещё 1 карту: переместитесь без броска шума, предотвратив 1 атаку чужого.' },
@@ -524,7 +564,7 @@ export const CHARACTERS = {
             { id: 'helmet', label: 'Шлем',          presets: ['#2d3436', '#5a6b5c', '#8c96a0', '#7a1f1f'] },
             { id: 'visor',  label: 'Ночные линзы',  presets: ['#3bff7a', '#3bb8ff', '#ff3b3b', '#ffd23b'] },
         ],
-        startItems: [{ item: 'sentrySmg', ammo: 5 }, { item: 'battleSuit' }],
+        startItems: [{ item: 'sentrySmg', ammo: 5 }], questItems: ['battleSuit'],
         cards: {
             defensePlan: { name: 'План обороны', cost: 1, effect: 'defensePlan', text: 'Уберите жетон шума из коридора у вашей комнаты; можно закрыть 1 дверь у вашей комнаты. ИЛИ посмотрите тайл любой неразведанной комнаты.' },
             demolition: COMMON_CARDS.demolition,
@@ -545,7 +585,7 @@ export const CHARACTERS = {
             { id: 'pants',  label: 'Брюки',         presets: ['#2d3436', '#4b3d2a', '#3b2f4a'] },
             { id: 'lights', label: 'Импланты',      presets: ['#ff3b3b', '#3bb8ff', '#3bff7a', '#ffd23b'] },
         ],
-        startItems: [{ item: 'armGun' }, { item: 'ups' }],
+        startItems: [{ item: 'armGun' }, { item: 'synthetic' }], questItems: ['ups'],
         cards: {
             alwaysPrepared: { name: 'Всегда готов', cost: 1, effect: 'alwaysPrepared', text: 'Используйте комнату, затем все чужие в комнате атакуют вас. ИЛИ в комнате без чужих, сбросьте ещё 1 карту: возьмите 1 предмет из любой колоды, можно оставить.' },
             computerSkills: { name: 'Компьютерные навыки', cost: 1, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
@@ -568,7 +608,7 @@ export const CHARACTERS = {
             { id: 'chains', label: 'Цепи',          presets: ['#8c96a0', '#c9a227', '#3a3f44'] },
             { id: 'lights', label: 'Индикаторы',    presets: ['#ff3b3b', '#3bb8ff', '#3bff7a'] },
         ],
-        startItems: [{ item: 'pipe' }, { item: 'cuffs' }],
+        startItems: [{ item: 'cuffs' }], questItems: ['pipe'],
         cards: {
             bash: { name: 'Удар!', cost: 1, effect: 'bash', text: 'Ближний бой с +1 ранением. Если наручники надеты — сбросьте с них 1 жетон; если сняты — ещё +1 ранение.' },
             catchThis: { name: 'Лови!', cost: 1, effect: 'catchThis', text: 'Сбросьте 1 тяжёлый предмет: переместитесь без атак чужих. Если наручники сняты — без броска шума.' },
@@ -589,7 +629,7 @@ export const CHARACTERS = {
             { id: 'drone',  label: 'Дрон',          presets: ['#3a3f44', '#8c96a0', '#d4ac0d', '#2c3e50'] },
             { id: 'lights', label: 'Подсветка',     presets: ['#3bb8ff', '#ffd23b', '#3bff7a', '#ff3bd1'] },
         ],
-        startItems: [{ item: 'handgun', ammo: 3 }, { item: 'oculobe' }],
+        startItems: [{ item: 'handgun', ammo: 3 }], questItems: ['oculobe'],
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition,
@@ -610,7 +650,7 @@ export const CHARACTERS = {
             { id: 'dog',    label: 'Лайка',         presets: ['#8a5a2a', '#5a3a22', '#c4a070', '#3a3f44'] },
             { id: 'lights', label: 'Прицел',        presets: ['#ff3b3b', '#3bb8ff', '#3bff7a', '#ffd23b'] },
         ],
-        startItems: [{ item: 'bountyRifle', ammo: 5 }, { item: 'laika' }],
+        startItems: [{ item: 'bountyRifle', ammo: 5 }, { item: 'laika' }], questItems: ['canineUpgrades'],
         cards: {
             demolition: COMMON_CARDS.demolition,
             determination: { name: 'Решимость', cost: 1, effect: 'determination', text: 'В комнате без поломки и огня: возьмите 2 карты, затем сбросьте 1 (можно заражение).' },
@@ -631,7 +671,7 @@ export const CHARACTERS = {
             { id: 'gloves', label: 'Перчатки',      presets: ['#2d3436', '#6b4f3a', '#7f8c8d'] },
             { id: 'lights', label: 'Подсветка',     presets: ['#3bb8ff', '#ff3b3b', '#3bff7a', '#ffd23b'] },
         ],
-        startItems: [{ item: 'sixShooter', ammo: 6 }, { item: 'sixShooterCartridge' }, { item: 'intercom' }],
+        startItems: [{ item: 'sixShooter', ammo: 6 }, { item: 'sixShooterCartridge' }], questItems: ['intercom'],
         cards: {
             authority: { name: 'Полномочия', cost: 1, effect: 'command', text: 'Выберите другого персонажа в вашей или соседней комнате: он берёт 1 карту и перемещается (вы выбираете куда) или стреляет. Нельзя заставить уйти из комнаты с чужим.' },
             coveringFire: { name: 'Прикрывающий огонь', cost: 1, effect: 'coveringFire', text: 'Сбросьте ещё 1 карту и 2 патрона из дальнобойного оружия: переместитесь (можно с согласным персонажем), атаки чужих при этом не происходят.' },
@@ -652,7 +692,7 @@ export const CHARACTERS = {
             { id: 'pants',  label: 'Штаны',         presets: ['#3a3530', '#2d3436', '#4b3d2a', '#1e3d2b'] },
             { id: 'lights', label: 'Подсветка',     presets: ['#ff8c3b', '#ff3b3b', '#3bb8ff', '#ffd23b'] },
         ],
-        startItems: [{ item: 'handgun', ammo: 3 }, { item: 'survivorFavorite', ammo: 5 }],
+        startItems: [{ item: 'handgun', ammo: 3 }], questItems: ['survivorFavorite'],
         cards: {
             alwaysPrepared: { name: 'Всегда готова', cost: 1, effect: 'alwaysPrepared', text: 'Используйте комнату, затем все чужие в комнате атакуют вас. ИЛИ в комнате без чужих: сбросьте 1 карту и возьмите 1 предмет из колоды на выбор (оставить или сбросить).' },
             demolition: COMMON_CARDS.demolition,
@@ -673,7 +713,7 @@ export const CHARACTERS = {
             { id: 'gear',   label: 'Манипулятор',   presets: ['#7a8694', '#8c96a0', '#c9a227', '#2d3436'] },
             { id: 'lights', label: 'Подсветка',     presets: ['#ffb347', '#3bff7a', '#3bb8ff', '#ff3bd1'] },
         ],
-        startItems: [{ item: 'xenoGun', ammo: 3 }, { item: 'probeArm' }, { item: 'researchEquipment' }],
+        startItems: [{ item: 'xenoGun', ammo: 3 }, { item: 'probeArm' }], questItems: ['researchEquipment'],
         cards: {
             demolition: COMMON_CARDS.demolition,
             fieldExperience: { name: 'Полевой опыт', cost: 1, effect: 'fieldExperience', reactionToo: 'fieldExpReaction', text: 'Положите 1 образец ткани на свой планшет. Если в комнате есть чужой, выбранный чужой получает 1 ранение. ИЛИ Реакция: после вытягивания жетона чужого из мешка сбросьте 1 образец ткани — верните жетон в мешок и вытяните другой.' },

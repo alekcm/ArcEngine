@@ -127,6 +127,11 @@ OPS['move.afterExplore'] = (state, step) => {
     }
     next(state, { op: 'noise.roll', player: p.id, room: p.room }, then);
 };
+OPS['noise.reroll'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer !== 'yes') { next(state, { op: 'noise.roll', player: p.id, room: step.room, rerolled: true, forced: step.first, then: step.then }); return; }
+    payCost(state, p, 1, { op: 'noise.roll', player: p.id, room: step.room, rerolled: true, then: step.then }, 'Сканер движения: сброс карты');
+};
 OPS['noise.place'] = (state, step) => {
     const p = player(state, step.player);
     const roomId = step.room || p.room;
@@ -150,8 +155,17 @@ OPS['noise.roll'] = (state, step) => {
     const p = player(state, step.player);
     const roomId = step.room || p.room;
     if (needDice(state, step, 'noise', p.id, 'Бросок шума — ' + (step.laika ? 'Лайка, ' : '') + roomName(state, roomId), { room: roomId })) return;
-    const r = roll(state, NOISE_DIE);
+    const r = step.forced !== undefined ? step.forced : roll(state, NOISE_DIE);
     log(state, '🎲 Шум (' + (step.laika ? '🐕 Лайка' : pname(p)) + ', ' + roomName(state, roomId) + '): ' + fmtRoll(r) + '.', 'noise');
+    // Motion Scanner (printed): "Whenever you make a Noise roll you may discard 1 card to reroll that
+    // roll. You must accept the second result."
+    const scanner = !step.laika && p.items.find(i => i.item === 'motionScanner');
+    if (scanner && !step.rerolled && p.hand.length && r !== 'silence') {
+        ask(state, { kind: 'choice', player: p.id, title: 'Сканер движения: сбросить 1 карту и перебросить бросок шума? (второй результат обязателен)',
+            options: [{ id: 'yes', label: 'Перебросить' }, { id: 'no', label: 'Оставить' }] },
+            { op: 'noise.reroll', player: p.id, room: roomId, first: r, then: step.then });
+        return;
+    }
     if (r === 'silence') return;
     // «Встреча» here is the face of the noise die, not a noise token that landed on an occupied
     // corridor. Saying otherwise sent the table looking for a corridor with a token that never

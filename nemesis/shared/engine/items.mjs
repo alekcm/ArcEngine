@@ -2,8 +2,8 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeFire, removeMalfunction, placeFire, placeMalfunction, drawCards, discardCard, isContam, gainContamination,
-    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice } from './core.mjs';
-import { ITEMS, WOUNDS, DECK_NAMES } from '../data/cards.mjs';
+    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice , computerHere } from './core.mjs';
+import { ITEMS, WOUNDS, DECK_NAMES, canLoadWith } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { shuffle } from '../rng.mjs';
 import { repelIntruder, checkNest } from './intruders.mjs';
@@ -98,6 +98,17 @@ OPS['item.use'] = (state, step) => {
     const def = ITEMS[inst.item];
     const consume = () => { if (def.oneUse) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard[def.deck] = state.itemDiscard[def.deck] || []).push(inst.item); } };
     const choose = (title, options, op, extra) => ask(state, { kind: 'choice', player: p.id, title, options, cancel: false }, { op, player: p.id, uid: inst.uid, then: back, ...extra });
+    // Synthetic (printed): "You can only restore or discard Serious Wounds using your Self-Repair
+    // card. You cannot use 🩹 Items on yourself." — a healing card does nothing for the Android.
+    if (p.charId === 'android' && ['medkit', 'woundOrHeal2', 'autodoc'].includes(def.use)) {
+        log(state, pname(p) + ': «Синтетик» — карты лечения на себе не работают, нужна «Самопочинка».', 'minor');
+        next(state, back); return;
+    }
+    if (p.charId === 'android' && def.use === 'draw2orHeal2') {
+        consume(); drawCards(state, p, 2);
+        log(state, pname(p) + ': «Синтетик» — вместо лечения берёт 2 карты.', 'minor');
+        next(state, back); return;
+    }
     switch (def.use) {
         case 'repelAdult': {
             const adults = intrudersIn(state, p.room).filter(i => i.type === 'adult');
@@ -141,12 +152,17 @@ OPS['item.use'] = (state, step) => {
         case 'energyCharge': {
             consume();
             const opts = [{ id: 'door', label: 'Открыть/закрыть дверь' }];
-            for (const w of p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && !ITEMS[i.item].weapon.grenadeOnly)) opts.push({ id: 'w:' + w.uid, label: 'Зарядить (+3): ' + ITEMS[w.item].name });
+            for (const w of p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && !ITEMS[i.item].weapon.grenadeOnly && canLoadWith(i.item, 'energyCharge'))) opts.push({ id: 'w:' + w.uid, label: 'Зарядить (+3): ' + ITEMS[w.item].name });
             for (const w of [...p.items, p.armor].filter(i => i && ITEMS[i.item].ammoMax && i.ammo < ITEMS[i.item].ammoMax)) opts.push({ id: 'w:' + w.uid, label: 'Зарядить (+3): ' + ITEMS[w.item].name });
             choose('Энергозаряд', opts, 'item.energy');
             return;
         }
         case 'evacKey': {
+            // Printed: "If you are in an Evacuation Section Room …" — anywhere else the card does nothing.
+            if (!['evacA', 'evacB'].includes(tileOf(state, p.room))) {
+                log(state, '«' + def.name + '»: нужно быть в комнате эвакуационной секции.', 'minor');
+                next(state, back); return;
+            }
             consume();
             const sec = tileOf(state, p.room) === 'evacA' ? 'A' : 'B';
             const pods = state.pods.filter(x => x.section === sec && !x.launched && !x.removed);
@@ -176,9 +192,9 @@ OPS['item.use'] = (state, step) => {
         }
         case 'cables': {
             consume();
-            const opts = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max).map(w => ({ id: 'w:' + w.uid, label: 'Полностью зарядить: ' + ITEMS[w.item].name }));
+            const opts = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'cables')).map(w => ({ id: 'w:' + w.uid, label: 'Полностью зарядить: ' + ITEMS[w.item].name }));
             const tile = tileOf(state, p.room);
-            if (tile && ROOM_TILES[tile].computer && room(state, p.room).malfunction) opts.push({ id: 'fix', label: 'Устранить поломку и использовать компьютер' });
+            if (computerHere(state, p) && room(state, p.room).malfunction) opts.push({ id: 'fix', label: 'Устранить поломку и использовать компьютер' });
             if (!opts.length) { next(state, back); return; }
             choose('Кабели', opts, 'item.cables');
             return;
@@ -188,11 +204,9 @@ OPS['item.use'] = (state, step) => {
             const opts = [];
             if (room(state, p.room).malfunction) opts.push({ id: 'malf', label: 'Устранить поломку в комнате' });
             if (state.ship.rooms[p.room].kind === 'engine') opts.push({ id: 'engine', label: 'Починить/сломать двигатель' });
-            // Tools: "you may activate your Quest Item ignoring its requirement".
+            // Printed on Tools: "you may activate your Quest Item ignoring its activation requirement".
             if (def.use === 'tools') {
-                // Printed on Tools: activate your Quest Item, ignoring its activation requirement.
-                const quests = [...p.items, ...(p.armor ? [p.armor] : [])].filter(i => i.uid !== inst.uid && ITEMS[i.item].quest);
-                const quest = quests.find(i => ITEMS[i.item].use) || quests[0];
+                const quest = (p.quests || []).find(q => !q.open);
                 opts.push({ id: 'quest', label: 'Активировать квестовый предмет' + (quest ? ': «' + ITEMS[quest.item].name + '»' : '') + ' (игнорируя требование)' });
             }
             if (!opts.length) { log(state, 'Нечего чинить здесь.', 'minor'); next(state, back); return; }
@@ -203,7 +217,7 @@ OPS['item.use'] = (state, step) => {
             consume();
             const tile = tileOf(state, p.room);
             const opts = [];
-            if (tile && ROOM_TILES[tile].computer && !room(state, p.room).malfunction) [1, 2, 3].forEach(n => opts.push({ id: 'chk:' + n, label: 'Проверить двигатель №' + n }));
+            if (computerHere(state, p) && !room(state, p.room).malfunction) [1, 2, 3].forEach(n => opts.push({ id: 'chk:' + n, label: 'Проверить двигатель №' + n }));
             for (const r of Object.values(state.ship.rooms).filter(r => r.kind === 'engine')) opts.push({ id: 'go:' + r.id, label: 'Переместиться к двигателю №' + r.engineNo + ' и спасовать' });
             choose('Ключ двигателя', opts, 'item.engineKey');
             return;
@@ -385,12 +399,48 @@ OPS['item.repair'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'malf') { removeMalfunction(state, p.room); next(state, step.then); return; }
     if (step.answer === 'quest') {
-        const quest = [...p.items, ...(p.armor ? [p.armor] : [])].find(i => ITEMS[i.item].quest && ITEMS[i.item].use);
-        if (quest) { next(state, { op: 'item.use', player: p.id, uid: quest.uid, ignoreRequirement: true, then: step.then }); return; }
-        log(state, 'Нет квестового предмета, который можно активировать.', 'minor');
+        const quest = (p.quests || []).find(q => !q.open);
+        if (quest) { next(state, { op: 'quest.open', player: p.id, uid: quest.uid, ignore: true, then: step.then }); return; }
+        log(state, 'Нет закрытого квестового предмета, который можно открыть.', 'minor');
         next(state, step.then); return;
     }
     next(state, { op: 'engine.toggle', player: p.id, then: step.then });
+};
+/**
+ * quest.open — flip a closed quest item open. It costs one Action, and the card printed on the item
+ * says where and what to pay: an "any room" card is free of the room requirement, the others must be
+ * activated standing in the named room, and every card but the Survivor's costs 1 marker (discarded
+ * from an item that carries markers). Tools does the same thing anywhere, ignoring the requirement.
+ */
+OPS['quest.open'] = (state, step) => {
+    const p = player(state, step.player);
+    const back = step.then || { op: 'turn.choose' };
+    const q = (p.quests || []).find(x => x.uid === step.uid && !x.open) || (p.quests || []).find(x => !x.open);
+    if (!q) { log(state, 'Закрытых квестовых предметов нет.', 'minor'); next(state, back); return; }
+    const def = ITEMS[q.item];
+    if (!step.ignore) {
+        const tile = tileOf(state, p.room);
+        if (def.questRoom && def.questRoom !== 'any' && tile !== def.questRoom) {
+            log(state, '«' + def.name + '» открывается только в комнате «' + ((ROOM_TILES[def.questRoom] || {}).name || def.questRoom) + '».', 'minor');
+            next(state, back); return;
+        }
+        if (def.questNoIntruder && intrudersIn(state, p.room).length) {
+            log(state, '«' + def.name + '» открывается только в комнате без чужих.', 'minor');
+            next(state, back); return;
+        }
+        if (!def.questBlue) {
+            const src = p.items.find(i => (i.charge || 0) > 0) || (p.armor && (p.armor.charge || 0) > 0 ? p.armor : null);
+            if (!src) { log(state, 'Чтобы открыть «' + def.name + '», надо сбросить 1 жетон, а жетонов нет.', 'minor'); next(state, back); return; }
+            src.charge -= 1;
+            log(state, pname(p) + ' сбрасывает 1 жетон с «' + ITEMS[src.item].name + '».', 'minor');
+        }
+    }
+    q.open = true;
+    const inst = { uid: q.uid, item: q.item, ammo: def.weapon ? def.weapon.max : undefined, broken: false, charge: def.markers, start: true, quest: true };
+    if (def.kind === 'armor' && !p.armor) p.armor = inst;
+    else p.items.push(inst);        // a second armor-slot card is carried in the pack until the slot frees up
+    log(state, pname(p) + ' открывает квестовый предмет «' + def.name + '».', 'good');
+    next(state, back);
 };
 /** engine.toggle — the player secretly sets the engine in their room to working or damaged. */
 OPS['engine.toggle'] = (state, step) => {
