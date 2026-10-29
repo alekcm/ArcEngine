@@ -92,7 +92,7 @@ export function d10FaceVertexData(face) {
         positions.push(vertex.x, vertex.y, vertex.z);
         normals.push(face.normal.x, face.normal.y, face.normal.z);
         const offset = vertex.subtract(face.center);
-        uvs.push(0.5 + Bx.Vector3.Dot(offset, face.right) / labelSize,
+        uvs.push(0.5 - Bx.Vector3.Dot(offset, face.right) / labelSize,
                  0.5 - Bx.Vector3.Dot(offset, face.up) / labelSize);
     }
     const winding = Bx.Vector3.Cross(face.vertices[1].subtract(face.vertices[0]), face.vertices[2].subtract(face.vertices[0]));

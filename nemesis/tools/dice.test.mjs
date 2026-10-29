@@ -170,12 +170,16 @@ test('DICE-07: each new attack face is an outward kite with centered UVs and the
             const avgV = data.uvs.filter((_, j) => j % 2 === 1).reduce((a, b) => a + b, 0) / 4;
             assert.ok(Math.abs(avgU - 0.5) < 1e-5 && Math.abs(avgV - 0.5) < 1e-5,
                 kind + ' face ' + i + ': glyph UV origin is the face center');
+            const horizontalUvCorrelation = face.vertices.reduce((sum, vertex, j) => {
+                const right = B.Vector3.Dot(vertex.subtract(face.center), face.right);
+                return sum + right * (data.uvs[j * 2] - 0.5);
+            }, 0);
             const verticalUvCorrelation = face.vertices.reduce((sum, vertex, j) => {
                 const up = B.Vector3.Dot(vertex.subtract(face.center), face.up);
                 return sum + up * (data.uvs[j * 2 + 1] - 0.5);
             }, 0);
-            assert.ok(verticalUvCorrelation < 0,
-                kind + ' face ' + i + ': compensate the canvas UV vertical axis so glyphs are not mirrored');
+            assert.ok(horizontalUvCorrelation < 0 && verticalUvCorrelation < 0,
+                kind + ' face ' + i + ': compensate both canvas UV axes so glyphs are not mirrored');
             for (let t = 0; t < data.indices.length; t += 3) {
                 const at = index => new B.Vector3(data.positions[index * 3], data.positions[index * 3 + 1], data.positions[index * 3 + 2]);
                 const a = at(data.indices[t]), b = at(data.indices[t + 1]), c = at(data.indices[t + 2]);
