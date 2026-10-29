@@ -48,7 +48,7 @@ assert.ok(B && B.MeshBuilder, 'Babylon loaded');
 // dice.js imports sound.js, which touches localStorage when it loads
 globalThis.window = sandbox;
 globalThis.localStorage = sandbox.localStorage;
-const { d10VertexData, extractFaces, DiceUI } = await import('../client/dice.js');
+const { d10VertexData, extractFaces, assignFaceValues, DiceUI } = await import('../client/dice.js');
 
 const engine = new B.NullEngine();
 const scene = new B.Scene(engine);
@@ -150,4 +150,31 @@ test('DICE-06: polar D12 faces still get a finite camera-facing landing pose', (
         assert.ok([pose.x, pose.y, pose.z, pose.w].every(Number.isFinite), 'D12 face ' + i + ': finite pose');
         assert.ok(B.Vector3.Dot(normal, forward) > 0.999, 'D12 face ' + i + ': result still points at the camera');
     }
+});
+
+test('DICE-07: D10 values follow the positive-yaw face order without changing the roll results', () => {
+    const expected = {
+        combat: ['crit', '2', '3', '3', '4', '4', '5', '5', '5', '6'],
+        blue: ['crit', '2', '2', '3', '3', '3', '4', '4', '5', '6'],
+    };
+    const turn = Math.PI * 2;
+    const yaw = f => ((Math.PI - Math.atan2(f.normal.x, f.normal.z)) % turn + turn) % turn;
+
+    for (const kind of ['combat', 'blue']) {
+        const raw = faces(kind);
+        const labeled = assignFaceValues(raw, kind);
+        assert.deepEqual(labeled.map(f => f.value), expected[kind], kind + ': keep the existing value set and probabilities');
+        assert.ok(B.Vector3.Dot(labeled[0].normal, raw[0].normal) > 0.999,
+            kind + ': keep the critical face on its established landing pose');
+        for (let i = 0; i < labeled.length; i++) {
+            const next = (i + 1) % labeled.length;
+            const gap = (yaw(labeled[next]) - yaw(labeled[i]) + turn) % turn;
+            assert.ok(gap > 0.1 && gap < 1.5, kind + ': face values should progress in positive yaw order');
+        }
+    }
+
+    const noise = faces('noise');
+    const noiseLabeled = assignFaceValues(noise, 'noise');
+    assert.ok(noiseLabeled.every((f, i) => B.Vector3.Dot(f.normal, noise[i].normal) > 0.999),
+        'the D12 face order stays untouched');
 });

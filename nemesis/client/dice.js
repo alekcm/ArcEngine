@@ -35,6 +35,28 @@ function faceGlyph(v) {
 }
 function dieTitle(die) { return die === 'noise' ? 'Кубик шума' : die === 'blue' ? 'Синий боевой кубик' : 'Боевой кубик'; }
 
+function yawToShowFace(normal) { return Math.PI - Math.atan2(normal.x, normal.z); }
+function positiveAngle(angle) { const turn = Math.PI * 2; return (angle % turn + turn) % turn; }
+
+/** The mesh emits upper/lower kites in construction order, not around its pole. Order D10 faces by
+ *  the yaw that brings each one to the camera, starting from the original first face. This keeps
+ *  the critical face's established pose while making the printed value sequence follow positive
+ *  yaw instead of appearing to run backwards as the die turns. */
+export function orderD10FacesForSpin(faces) {
+    if (faces.length < 2) return faces.slice();
+    const first = faces[0];
+    const sorted = faces.slice().sort((a, b) => positiveAngle(yawToShowFace(a.normal)) - positiveAngle(yawToShowFace(b.normal)));
+    const anchor = sorted.indexOf(first);
+    return anchor > 0 ? sorted.slice(anchor).concat(sorted.slice(0, anchor)) : sorted;
+}
+
+/** Pair visible face values with faces in their spin order. The D12 keeps its existing face order. */
+export function assignFaceValues(faces, kind) {
+    const values = kind === 'noise' ? NOISE_FACES : kind === 'blue' ? BLUE_FACES : COMBAT_FACES;
+    const ordered = kind === 'noise' ? faces : orderD10FacesForSpin(faces);
+    return ordered.map((face, i) => ({ ...face, value: values[i % values.length] }));
+}
+
 /** Vertex data of a pentagonal trapezohedron (D10). Flat shaded, each kite is 4 own vertices. */
 export function d10VertexData() {
     const R = 1, y0 = 0.105, H = y0 * (Math.cos(Math.PI / 5) + 1) / (1 - Math.cos(Math.PI / 5));
@@ -128,11 +150,9 @@ export class DiceUI {
         const mat = new (B().StandardMaterial)('dm_' + kind, scene);
         mat.diffuseColor = B().Color3.FromHexString(kind === 'noise' ? '#e6b422' : kind === 'blue' ? '#1d6fb8' : '#b8262c'); mat.specularColor = new (B().Color3)(0.5, 0.5, 0.5); mat.specularPower = 32;
         body.material = mat;
-        const faces = extractFaces(body);
-        const values = kind === 'noise' ? NOISE_FACES : kind === 'blue' ? BLUE_FACES : COMBAT_FACES;
+        const faces = assignFaceValues(extractFaces(body), kind);
         const scl = body.scaling.x;
-        faces.forEach((f, i) => {
-            f.value = values[i % values.length];
+        faces.forEach(f => {
             const size = f.inradius * scl * 1.7;
             const plane = B().MeshBuilder.CreatePlane('lbl', { width: size, height: size }, scene);
             const dt = new (B().DynamicTexture)('ldt', { width: 128, height: 128 }, scene, true); dt.hasAlpha = true;
@@ -196,8 +216,7 @@ export class DiceUI {
     targetFor(f) {
         const Bx = B();
         if (this.die !== 'noise') {
-            const yaw = Math.PI - Math.atan2(f.normal.x, f.normal.z);
-            return Bx.Quaternion.RotationYawPitchRoll(yaw, 0, 0);
+            return Bx.Quaternion.RotationYawPitchRoll(yawToShowFace(f.normal), 0, 0);
         }
         const m = Bx.Matrix.Identity();
         Bx.Matrix.FromXYZAxesToRef(f.right, f.up, f.normal.scale(-1), m);
