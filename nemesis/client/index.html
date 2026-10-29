@@ -19,7 +19,7 @@
                 <div class="row"><label>Ваше имя</label><input id="nameInput" maxlength="20" placeholder="Имя"></div>
                 <div class="row"><label>Персонаж</label><div id="charList" class="char-list"></div></div>
                 <div class="row"><label>Раскраска</label><div id="paintZones" class="paint-zones"></div></div>
-                <button id="labOpen" class="lab-open hidden" type="button"><span><b>Мастерская Подопытной</b><small>Причёска, одежда и другие детали</small></span><span aria-hidden="true">↗</span></button>
+                <button id="labOpen" class="lab-open hidden" type="button"><span><b id="labOpenTitle">Мастерская Подопытной</b><small id="labOpenHint">Причёска, одежда и другие детали</small></span><span aria-hidden="true">↗</span></button>
                 <div id="charPreview" class="char-preview"><canvas id="previewCanvas"></canvas></div>
             </div>
             <div class="lobby-right">
@@ -50,7 +50,7 @@
     </div>
 </div>
 
-<!-- Experimental mesh presets for the Lab Rat. The lobby preview canvas moves here while open. -->
+<!-- Character mesh presets. The lobby preview canvas moves here while open. -->
 <div id="labWorkshop" class="hidden" role="dialog" aria-modal="true" aria-labelledby="labTitle">
     <div class="lab-shell">
         <header class="lab-header">
@@ -62,7 +62,7 @@
                 <div class="lab-stage">
                     <div class="lab-stage-meta"><span>ОБРАЗЕЦ / 01</span><span><i></i> 3D-ПРОСМОТР</span></div>
                     <div id="labCanvasHost" class="lab-canvas-host"></div>
-                    <div class="lab-stage-label"><span>ПЕРСОНАЖ</span><strong>Подопытная</strong><small>Модель · эксперимент</small></div>
+                    <div class="lab-stage-label"><span>ПЕРСОНАЖ</span><strong id="labStageName">Подопытная</strong><small id="labStageCaption">Модель · эксперимент</small></div>
                     <div class="lab-stage-index" aria-hidden="true">01 <span>/ 04</span></div>
                 </div>
                 <div class="lab-stage-help"><span>◉ &nbsp; Перетащите, чтобы повернуть</span><span>Колесо — масштаб</span></div>

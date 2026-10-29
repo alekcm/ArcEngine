@@ -535,3 +535,83 @@ test('LAB-05: the table rebuilds a changed appearance and removes the old shadow
     assert.ok(rebuilt.ch.root.getChildMeshes().some(m => shadowList.includes(m)), 'the new figure casts shadows');
     scene.updateCharacters(view);
 });
+
+test('SENTRY-03: original geometry is preserved and each option changes real geometry', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const { SENTRY_PARTS, characterParts } = await import('../shared/appearance.mjs');
+    const signature = parts => {
+        const ch = buildCharacter(scene.scene, 'sentry', {}, parts), result = geometrySignature(ch);
+        ch.root.dispose();
+        return result;
+    };
+    const original = signature();
+    // Captured from the original Sentry before the workshop, excluding names and materials.
+    assert.equal(createHash('sha256').update(JSON.stringify(original)).digest('hex'),
+        'd18d5faf56cc3579416322e33583262a02b80bd4cfc4555bc69dccbb86baceab');
+    const defaults = characterParts('sentry');
+    assert.deepEqual(signature(defaults), original);
+    for (const slot of SENTRY_PARTS) {
+        const variants = slot.options.map(option => JSON.stringify(signature({ ...defaults, [slot.id]: option.id })));
+        assert.equal(new Set(variants).size, variants.length, `${slot.id}: each option changes geometry`);
+    }
+    assert.deepEqual(signature(), original, 'presets do not mutate the original spec');
+});
+
+test('SENTRY-04: every combination retains the recognisable gear, colors and animated attachments', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const { SENTRY_PARTS } = await import('../shared/appearance.mjs');
+    const options = id => SENTRY_PARTS.find(slot => slot.id === id).options.map(option => option.id);
+    const colors = { armor: '#123456', accent: '#234567', pants: '#345678', helmet: '#456789', visor: '#56789a' };
+    let checked = 0;
+    for (const optics of options('optics')) for (const respirator of options('respirator'))
+        for (const shoulders of options('shoulders')) for (const cloak of options('cloak')) {
+            const parts = { optics, respirator, shoulders, cloak }, label = JSON.stringify(parts);
+            const ch = buildCharacter(scene.scene, 'sentry', {}, parts), meshes = ch.root.getChildMeshes();
+            assert.ok(ch.zones.helmet.some(m => m.name === 'sentry_helmet'), label + ': sealed helmet');
+            assert.ok(ch.zones.visor.some(m => m.name === 'sentry_visor'), label + ': visor');
+            assert.ok(ch.zones.accent.some(m => m.name === 'sentry_mask'), label + ': respirator');
+            assert.equal(meshes.filter(m => m.name === 'sentry_filter').length, 2, label + ': filters');
+            assert.equal(ch.zones.visor.filter(m => m.name === 'sentry_lens').length, optics === 'cluster' ? 4 : 3, label + ': night optics');
+            assert.ok(meshes.some(m => m.name === 'sentry_cloak_back'), label + ': cape');
+            const gun = ch.root.getDescendants().find(n => n.name === 'gun');
+            assert.ok(gun && gun.getChildMeshes().length >= 6, label + ': weapon remains attached');
+            if (cloak !== 'classic') {
+                const drape = ch.root.getDescendants().find(n => n.name === 'sentry_cloak_drape');
+                assert.ok(drape && drape.parent === ch.root, label + ': cape stays on the torso');
+            }
+            if (shoulders !== 'classic') {
+                const extra = meshes.filter(m => m.name === 'sentry_shoulder_detail');
+                assert.equal(extra.length, 4, label + ': shoulder details');
+                assert.ok(extra.every(m => ['armL', 'armR'].includes(m.parent.parent?.name)), label + ': extra plates follow the arms');
+                ch.animate(0.1, true); ch.animate(0.2, true);
+                assert.ok(extra.every(m => ['armL', 'armR'].includes(m.parent.parent?.name)), label + ': plates remain attached in motion');
+            }
+            ch.setColors(colors);
+            for (const [zone, hex] of Object.entries(colors)) {
+                assert.ok(ch.zones[zone]?.length, label + ': ' + zone + ' is paintable');
+                assert.ok(ch.zones[zone].every(m => m.material.diffuseColor.toHexString().toLowerCase() === hex), label + ': ' + zone + ' color');
+            }
+            ch.root.dispose(); checked++;
+        }
+    assert.equal(checked, 81);
+});
+
+test('SENTRY-05: changing the Sentry appearance rebuilds the table figure without stale shadows', () => {
+    const v = JSON.parse(JSON.stringify(view));
+    const p = v.players[0]; p.charId = 'sentry';
+    p.parts = { optics: 'classic', respirator: 'classic', shoulders: 'classic', cloak: 'classic' };
+    scene.updateCharacters(v);
+    const first = scene.chars[p.id], oldRoot = first.ch.root, oldMeshes = oldRoot.getChildMeshes();
+    scene.updateCharacters(v);
+    assert.equal(scene.chars[p.id].ch.root, oldRoot, 'unchanged figure is reused');
+    p.parts = { optics: 'binocular', respirator: 'ribbed', shoulders: 'heavy', cloak: 'split' };
+    scene.updateCharacters(v);
+    const rebuilt = scene.chars[p.id];
+    assert.notEqual(rebuilt.ch.root, oldRoot);
+    assert.equal(oldRoot.isDisposed(), true);
+    assert.equal(rebuilt.grab.metadata.player, p.id);
+    const shadowList = scene.shadows.getShadowMap().renderList || [];
+    assert.ok(oldMeshes.every(m => !shadowList.includes(m)));
+    assert.ok(rebuilt.ch.root.getChildMeshes().some(m => shadowList.includes(m)));
+    scene.updateCharacters(view);
+});

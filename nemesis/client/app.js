@@ -5,7 +5,7 @@ import { Scene3D, Preview3D } from './scene3d.js';
 import { TUNE } from './tuning.js';
 import { galleryPods } from './gallery.js';
 import { DEFAULTS } from './characters.js';
-import { LABRAT_PARTS, characterParts } from '../shared/appearance.mjs';
+import { characterPartSlots, characterParts } from '../shared/appearance.mjs';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
@@ -16,6 +16,10 @@ import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, C
 
 const $ = id => document.getElementById(id);
 const PHASES = { setup: 'Подготовка', draft: 'Выбор персонажей', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
+const WORKSHOP_LABELS = {
+    labrat: { title: 'Подопытная', button: 'Мастерская Подопытной', hint: 'Причёска, одежда и другие детали', caption: 'Модель · эксперимент' },
+    sentry: { title: 'Охранник', button: 'Мастерская Охранника', hint: 'Оптика, броня и другие детали', caption: 'Модель · служба охраны' },
+};
 
 // What a designer changed in the editor's Nemesis tab (editor.bat): the door numbers and the parts
 // of the board (moved, turned, recoloured, hidden, deleted). Both files are optional and local.
@@ -215,9 +219,15 @@ function renderLobby() {
         }
         app.host = mySeat.host;
     }
-    const labAvailable = !!mySeat && app.charId === 'labrat' && L.phase === 'lobby';
+    const workshop = WORKSHOP_LABELS[app.charId];
+    const labAvailable = !!mySeat && !!workshop && characterPartSlots(app.charId).length > 0 && L.phase === 'lobby';
     $('labOpen').classList.toggle('hidden', !labAvailable);
-    if (!labAvailable && app.labWorkshop) closeLabWorkshop(false);
+    if (labAvailable) {
+        $('labOpenTitle').textContent = workshop.button; $('labOpenHint').textContent = workshop.hint;
+        $('labTitle').innerHTML = esc(workshop.title) + ' <span>· мастерская</span>';
+        $('labStageName').textContent = workshop.title; $('labStageCaption').textContent = workshop.caption;
+    }
+    if (app.labWorkshop && (!labAvailable || app.charId !== previousCharId)) closeLabWorkshop(false);
     // characters
     $('charList').innerHTML = Object.entries(L.characters).map(([id, c]) => {
         const taken = L.seats.some(s => s.charId === id && s.id !== app.me);
@@ -273,7 +283,7 @@ function renderLobby() {
 function sendColor(zone, color) { app.colors = Object.assign({}, app.colors, { [zone]: color }); net.send({ t: 'lobby', colors: app.colors }); }
 
 // ---------------------------------------------------------------------------------------------
-// Experimental Lab Rat workshop. It reuses the lobby's 3D canvas so switching screens does not
+// Character workshop. It reuses the lobby's 3D canvas so switching screens does not
 // create another WebGL engine. The server validates the selected ids and shares them with the table.
 // ---------------------------------------------------------------------------------------------
 let labCameraPose = null;
@@ -283,16 +293,17 @@ function updateLabSelection() {
     }
 }
 function setLabParts(parts) {
-    if (app.charId !== 'labrat' || !app.labWorkshop) return;
+    if (!characterPartSlots(app.charId).length || !app.labWorkshop) return;
     if (!ws || ws.readyState !== 1) { notice('Нет связи с сервером — изменения не сохранены.', 'error'); return; }
-    app.parts = characterParts('labrat', parts);
+    app.parts = characterParts(app.charId, parts);
     app.pendingParts = JSON.stringify(app.parts);
     updateLabSelection();
-    if (preview) preview.show('labrat', Object.assign({}, DEFAULTS.labrat, app.colors), app.parts);
+    if (preview) preview.show(app.charId, Object.assign({}, DEFAULTS[app.charId], app.colors), app.parts);
     net.send({ t: 'lobby', parts: app.parts });
 }
 function openLabWorkshop() {
-    if (!preview || app.charId !== 'labrat' || app.spectator || !app.lobby || app.lobby.phase !== 'lobby') return;
+    if (!preview || !WORKSHOP_LABELS[app.charId] || !characterPartSlots(app.charId).length || app.spectator || !app.lobby || app.lobby.phase !== 'lobby') return;
+    renderLabOptions(app.charId);
     app.labWorkshop = true;
     $('labWorkshop').classList.remove('hidden');
     $('labCanvasHost').appendChild($('previewCanvas'));
@@ -301,7 +312,7 @@ function openLabWorkshop() {
     cam.alpha = Math.PI / 2 - 0.28; cam.beta = 1.3; cam.radius = 3.3;
     cam.inertialAlphaOffset = 0; cam.inertialBetaOffset = 0; cam.inertialRadiusOffset = 0;
     cam.setTarget(new (window.BABYLON.Vector3)(0, 0.95, 0));
-    preview.show('labrat', Object.assign({}, DEFAULTS.labrat, app.colors), app.parts);
+    preview.show(app.charId, Object.assign({}, DEFAULTS[app.charId], app.colors), app.parts);
     updateLabSelection();
     preview.engine.resize();
     requestAnimationFrame(() => { if (app.labWorkshop && preview) preview.engine.resize(); });
@@ -321,13 +332,15 @@ function closeLabWorkshop(restoreFocus = true) {
     }
     if (restoreFocus && !$('labOpen').classList.contains('hidden')) $('labOpen').focus({ preventScroll: true });
 }
-$('labOptions').innerHTML = LABRAT_PARTS.map((slot, i) =>
-    '<section class="lab-slot" role="group" aria-labelledby="lab-slot-' + slot.id + '">' +
-    '<div class="lab-slot-heading"><h4 id="lab-slot-' + slot.id + '"><span>' + String(i + 1).padStart(2, '0') + '</span>' + esc(slot.label) + '</h4><small>' + esc(slot.hint) + '</small></div>' +
-    '<div class="lab-preset-grid">' + slot.options.map(option =>
-        '<button type="button" class="lab-preset" data-part="' + slot.id + '" data-value="' + option.id + '" aria-pressed="false"><b>' + esc(option.label) + '</b><small>' + esc(option.detail) + '</small></button>'
-    ).join('') + '</div></section>'
-).join('');
+function renderLabOptions(charId) {
+    $('labOptions').innerHTML = characterPartSlots(charId).map((slot, i) =>
+        '<section class="lab-slot" role="group" aria-labelledby="lab-slot-' + slot.id + '">' +
+        '<div class="lab-slot-heading"><h4 id="lab-slot-' + slot.id + '"><span>' + String(i + 1).padStart(2, '0') + '</span>' + esc(slot.label) + '</h4><small>' + esc(slot.hint) + '</small></div>' +
+        '<div class="lab-preset-grid">' + slot.options.map(option =>
+            '<button type="button" class="lab-preset" data-part="' + slot.id + '" data-value="' + option.id + '" aria-pressed="false"><b>' + esc(option.label) + '</b><small>' + esc(option.detail) + '</small></button>'
+        ).join('') + '</div></section>'
+    ).join('');
+}
 $('labOptions').onclick = e => {
     const button = e.target.closest('[data-part][data-value]');
     if (button) setLabParts(Object.assign({}, app.parts, { [button.dataset.part]: button.dataset.value }));

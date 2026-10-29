@@ -99,7 +99,7 @@ function labratSpec(parts) {
 
 /**
  * Build a character. Returns { root, zones: {zoneId: [meshes]}, setColors(colors) }. Height ≈ 2.1.
- * `parts` chooses independent mesh presets for the Lab Rat; other characters ignore it.
+ * `parts` chooses independent mesh presets for characters with a workshop.
  */
 export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     const S = scene;
@@ -113,7 +113,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     if (charId === 'soldier') buildSoldier();
     else if (charId === 'scout') buildScout();
     else if (charId === 'mechanic') buildMechanic();
-    else if (charId === 'sentry') buildSentry();
+    else if (charId === 'sentry') buildSentry(characterParts(charId, parts));
     else buildHumanoid(charId === 'labrat' ? labratSpec(characterParts(charId, parts)) : (SPECS[charId] || SPECS.pilot));
 
     // ---------------------------------------------------------------------------------------
@@ -580,7 +580,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
 
     // ---------------------------------------------------------------------------------------
     /** Sentry: hulking dark exo-armour, sealed helmet with a visor slit and a multi-lens lamp rig on top, hoses, pump shotgun. */
-    function buildSentry() {
+    function buildSentry(parts) {
         const R = root, K = 0.82;   // narrower than the first draft
         for (const s of [-1, 1]) {
             Z('pants', bx(0.32, 0.22, 0.46, R, s * 0.2, 0.11, 0.04));
@@ -598,8 +598,15 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         Z('armor', bx(0.5, 0.56, 0.3, R, 0, 1.9, -0.4));                        // power pack
         for (const s of [-1, 1]) F(FIXED.steel, cy(0.12, 0.12, 0.5, 8, R, s * 0.15, 1.95, -0.58));
         for (const s of [-1, 1]) {
-            Z('armor', bx(0.36, 0.3, 0.42, R, s * 0.5, 2.14, 0));
+            const shoulder = Z('armor', bx(0.36, 0.3, 0.42, R, s * 0.5, 2.14, 0));
             Z('accent', bx(0.38, 0.05, 0.44, R, s * 0.5, 2.3, 0));
+            // Extra armour is parented to the shoulder, so it follows the arm during movement.
+            if (parts.shoulders === 'segmented') {
+                for (const x of [-0.085, 0.085]) Z('armor', bx(0.15, 0.08, 0.4, shoulder, x, 0.225, 0)).name = 'sentry_shoulder_detail';
+            } else if (parts.shoulders === 'heavy') {
+                Z('armor', bx(0.43, 0.13, 0.47, shoulder, s * 0.025, 0.245, 0)).name = 'sentry_shoulder_detail';
+                Z('accent', bx(0.39, 0.035, 0.4, shoulder, s * 0.025, 0.325, 0)).name = 'sentry_shoulder_detail';
+            }
             Z('armor', bx(0.26, 0.42, 0.26, R, s * 0.52, 1.78, 0.05));
             Z('accent', bx(0.28, 0.08, 0.28, R, s * 0.52, 1.54, 0.05));
             Z('armor', bx(0.24, 0.34, 0.24, R, s * 0.5, 1.36, 0.3, [-0.9, 0, 0]));
@@ -607,19 +614,54 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         }
         // long concealing cloak: hangs from the shoulders down the back and sides to the shins, hood-like collar
         const cloak = '#2b3038';
-        F(cloak, bx(0.8, 1.3, 0.1, R, 0, 0.95, -0.3)); for (const s of [-1, 1]) F(cloak, bx(0.12, 1.5, 0.6, R, s * 0.42, 1.1, -0.1));   // back panel below the pack + side panels
+        if (parts.cloak === 'classic') {
+            F(cloak, bx(0.8, 1.3, 0.1, R, 0, 0.95, -0.3)).name = 'sentry_cloak_back';
+            for (const s of [-1, 1]) F(cloak, bx(0.12, 1.5, 0.6, R, s * 0.42, 1.1, -0.1));
+        } else {
+            // Keep these separate panels attached to the torso, not to the leg/arm auto-rig.
+            const drape = new (B().TransformNode)('sentry_cloak_drape', S); drape.parent = R;
+            if (parts.cloak === 'split') {
+                for (const s of [-1, 1]) F(cloak, bx(0.34, 1.3, 0.1, drape, s * 0.23, 0.95, -0.3)).name = 'sentry_cloak_back';
+                for (const s of [-1, 1]) F(cloak, bx(0.12, 1.5, 0.6, drape, s * 0.42, 1.1, -0.1));
+            } else {   // the full-length cape ends in uneven cloth strips
+                F(cloak, bx(0.8, 0.95, 0.1, drape, 0, 1.125, -0.3)).name = 'sentry_cloak_back';
+                for (const [x, height] of [[-0.3, 0.42], [-0.1, 0.2], [0.1, 0.5], [0.3, 0.27]])
+                    F(cloak, bx(0.2, height, 0.1, drape, x, 0.65 - height / 2, -0.3));
+                for (const s of [-1, 1]) F(cloak, bx(0.12, 1.5, 0.6, drape, s * 0.42, 1.1, -0.1));
+            }
+        }
         F(cloak, bx(0.84, 0.08, 0.5, R, 0, 2.3, 0.0)); for (const s of [-1, 1]) F(cloak, bx(0.22, 0.56, 0.08, R, s * 0.3, 2.0, 0.34, [0, 0, s * 0.12]));   // thin shoulder mantle + front lapels
         // sealed helmet with a built-in gas mask: snout, two cheek filters, hose into the back pack
         Z('helmet', cy(0.46, 0.52, 0.14, 8, R, 0, 2.24, 0));
-        Z('helmet', bx(0.42, 0.48, 0.44, R, 0, 2.54, 0.0)); Z('helmet', bx(0.46, 0.14, 0.46, R, 0, 2.78, -0.02));
+        Z('helmet', bx(0.42, 0.48, 0.44, R, 0, 2.54, 0.0)).name = 'sentry_helmet'; Z('helmet', bx(0.46, 0.14, 0.46, R, 0, 2.78, -0.02));
         for (const s of [-1, 1]) Z('accent', bx(0.06, 0.28, 0.34, R, s * 0.24, 2.54, -0.04));
-        Z('visor', bx(0.3, 0.06, 0.03, R, 0, 2.6, 0.23));                       // visor slit
-        Z('accent', bx(0.22, 0.18, 0.16, R, 0, 2.4, 0.26));                     // mask snout
-        for (const s of [-1, 1]) F(FIXED.darkSteel, cy(0.12, 0.12, 0.08, 6, R, s * 0.17, 2.4, 0.24, [0, 0, Math.PI / 2]));   // cheek filters
+        Z('visor', bx(0.3, 0.06, 0.03, R, 0, 2.6, 0.23)).name = 'sentry_visor'; // visor slit
+        Z('accent', bx(0.22, 0.18, 0.16, R, 0, 2.4, 0.26)).name = 'sentry_mask'; // mask snout
+        for (const s of [-1, 1]) {
+            if (parts.respirator === 'reinforced') {
+                F(FIXED.darkSteel, cy(0.17, 0.17, 0.12, 8, R, s * 0.22, 2.4, 0.24, [0, 0, Math.PI / 2])).name = 'sentry_filter';
+                Z('accent', cy(0.14, 0.14, 0.02, 8, R, s * 0.29, 2.4, 0.24, [0, 0, Math.PI / 2]));
+                F(FIXED.darkSteel, cy(0.09, 0.09, 0.025, 8, R, s * 0.305, 2.4, 0.24, [0, 0, Math.PI / 2]));
+            } else if (parts.respirator === 'ribbed') {
+                F(FIXED.darkSteel, bx(0.12, 0.18, 0.17, R, s * 0.22, 2.4, 0.24)).name = 'sentry_filter';
+                for (const y of [2.35, 2.4, 2.45]) Z('accent', bx(0.13, 0.018, 0.18, R, s * 0.23, y, 0.24));
+            } else F(FIXED.darkSteel, cy(0.12, 0.12, 0.08, 6, R, s * 0.17, 2.4, 0.24, [0, 0, Math.PI / 2])).name = 'sentry_filter';
+        }
         hose([0, 2.36, 0.34], [0.3, 2.1, 0.0], 0.06); hose([0.3, 2.1, 0.0], [0.2, 2.0, -0.42], 0.06);
-        // lamp rig
-        F(FIXED.darkSteel, bx(0.12, 0.1, 0.26, R, -0.16, 2.88, 0.08));
-        for (const [x, y] of [[-0.26, 2.88], [-0.15, 2.95], [-0.05, 2.86]]) { F(FIXED.darkSteel, cy(0.11, 0.11, 0.12, 6, R, x, y, 0.26, [Math.PI / 2, 0, 0])); Z('visor', cy(0.08, 0.08, 0.02, 6, R, x, y, 0.33, [Math.PI / 2, 0, 0])); }
+        // Every option retains a group of real lenses in addition to the sealed helmet's visor slit.
+        if (parts.optics === 'classic') {
+            F(FIXED.darkSteel, bx(0.12, 0.1, 0.26, R, -0.16, 2.88, 0.08));
+            for (const [x, y] of [[-0.26, 2.88], [-0.15, 2.95], [-0.05, 2.86]]) { F(FIXED.darkSteel, cy(0.11, 0.11, 0.12, 6, R, x, y, 0.26, [Math.PI / 2, 0, 0])); Z('visor', cy(0.08, 0.08, 0.02, 6, R, x, y, 0.33, [Math.PI / 2, 0, 0])).name = 'sentry_lens'; }
+        } else {
+            F(FIXED.darkSteel, bx(0.36, 0.11, 0.22, R, 0, 2.9, 0.07));
+            const lenses = parts.optics === 'binocular'
+                ? [[-0.11, 2.91, 0.15], [0.11, 2.91, 0.15], [0, 3.025, 0.07]]
+                : [[-0.14, 2.91, 0.09], [-0.045, 2.96, 0.09], [0.05, 2.96, 0.09], [0.145, 2.91, 0.09]];
+            for (const [x, y, diameter] of lenses) {
+                F(FIXED.darkSteel, cy(diameter + 0.035, diameter + 0.035, 0.14, 8, R, x, y, 0.25, [Math.PI / 2, 0, 0]));
+                Z('visor', cy(diameter, diameter, 0.025, 8, R, x, y, 0.33, [Math.PI / 2, 0, 0])).name = 'sentry_lens';
+            }
+        }
         // pump shotgun
         const gun = new (B().TransformNode)('gun', S); gun.parent = R; gun.position.set(0, 1.3, 0.62); gun.rotation.y = -0.2;
         F(FIXED.gun, bx(1.1, 0.14, 0.1, gun, 0, 0, 0)); F(FIXED.gunLight, bx(0.36, 0.2, 0.14, gun, -0.2, 0.0, 0));
