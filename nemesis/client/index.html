@@ -19,6 +19,7 @@
                 <div class="row"><label>Ваше имя</label><input id="nameInput" maxlength="20" placeholder="Имя"></div>
                 <div class="row"><label>Персонаж</label><div id="charList" class="char-list"></div></div>
                 <div class="row"><label>Раскраска</label><div id="paintZones" class="paint-zones"></div></div>
+                <button id="labOpen" class="lab-open hidden" type="button"><span><b>Мастерская Подопытной</b><small>Причёска, одежда и другие детали</small></span><span aria-hidden="true">↗</span></button>
                 <div id="charPreview" class="char-preview"><canvas id="previewCanvas"></canvas></div>
             </div>
             <div class="lobby-right">
@@ -45,6 +46,34 @@
                 <p class="hint" id="galleryHint">Тестовый корабль — отдельный режим для осмотра моделей: все 25 комнат игры, уже открытые, с капсулами в отсеках A и B. На партию он не влияет.</p>
                 <p class="hint">Ведущий — первый подключившийся игрок. Он выбирает карту и может откатывать ходы.</p>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Experimental mesh presets for the Lab Rat. The lobby preview canvas moves here while open. -->
+<div id="labWorkshop" class="hidden" role="dialog" aria-modal="true" aria-labelledby="labTitle">
+    <div class="lab-shell">
+        <header class="lab-header">
+            <div class="lab-heading"><span class="lab-kicker"><i></i> NEMESIS / ЛАБОРАТОРИЯ ОБРАЗОВ</span><h2 id="labTitle">Подопытная <span>· мастерская</span></h2><p>Соберите свой образ из отдельных деталей модели.</p></div>
+            <button id="labClose" class="lab-close" type="button" aria-label="Вернуться в лобби">✕</button>
+        </header>
+        <div class="lab-layout">
+            <section class="lab-stage-wrap" aria-label="Предпросмотр персонажа">
+                <div class="lab-stage">
+                    <div class="lab-stage-meta"><span>ОБРАЗЕЦ / 01</span><span><i></i> 3D-ПРОСМОТР</span></div>
+                    <div id="labCanvasHost" class="lab-canvas-host"></div>
+                    <div class="lab-stage-label"><span>ПЕРСОНАЖ</span><strong>Подопытная</strong><small>Модель · эксперимент</small></div>
+                    <div class="lab-stage-index" aria-hidden="true">01 <span>/ 04</span></div>
+                </div>
+                <div class="lab-stage-help"><span>◉ &nbsp; Перетащите, чтобы повернуть</span><span>Колесо — масштаб</span></div>
+            </section>
+            <section class="lab-panel" aria-labelledby="labPartsTitle">
+                <div class="lab-panel-heading"><div><span class="lab-panel-kicker">КОНСТРУКТОР</span><h3 id="labPartsTitle">Детали образа</h3></div><span class="lab-live"><i></i> ЖИВОЙ ПРОСМОТР</span></div>
+                <p class="lab-panel-intro">Выберите вариант для каждой детали. Ваши цвета сохранятся.</p>
+                <div id="labOptions" class="lab-options"></div>
+                <div class="lab-actions"><button id="labReset" class="lab-reset" type="button">↺ &nbsp; Исходный образ</button><button id="labDone" class="lab-done" type="button">Готово <span aria-hidden="true">→</span></button></div>
+                <p class="lab-save-note">Образ сохранится в лобби и будет виден другим игрокам в партии.</p>
+            </section>
         </div>
     </div>
 </div>

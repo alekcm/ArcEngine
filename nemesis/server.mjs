@@ -20,6 +20,7 @@ import { createGame } from './shared/engine/setup.mjs';
 import { answer } from './shared/engine/core.mjs';
 import { viewFor } from './shared/view.mjs';
 import { CHARACTERS } from './shared/data/cards.mjs';
+import { characterParts } from './shared/appearance.mjs';
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -153,7 +154,7 @@ function upgrade(req, sock) {
 // ---------------------------------------------------------------------------------------------
 const game = {
     phase: 'lobby',                   // 'lobby' | 'playing'
-    seats: [],                        // [{token, name, charId, colors, ready, socket|null}]
+    seats: [],                        // [{token, name, charId, colors, parts, ready, socket|null}]
     settings: { mode: 'original', seed: '', draft: false }, poses: {},
     state: null,
     undo: [],                         // [{json, label}]
@@ -181,7 +182,8 @@ function shownCard(card) {
 
 function lobbyMsg() {
     return { t: 'lobby', phase: game.phase, settings: game.settings,
-        seats: game.seats.map((s, i) => ({ id: i, name: s.name, charId: s.charId, colors: s.colors, ready: s.ready, online: !!s.socket, host: s === hostSeat() })),
+        seats: game.seats.map((s, i) => ({ id: i, name: s.name, charId: s.charId, colors: s.colors,
+            parts: characterParts(s.charId, s.parts), ready: s.ready, online: !!s.socket, host: s === hostSeat() })),
         characters: Object.fromEntries(Object.entries(CHARACTERS).map(([k, c]) => [k, { name: c.name, color: c.color, health: c.health, zones: c.zones }])),
         addresses: lanAddresses(), port: PORT };
 }
@@ -235,7 +237,7 @@ function onMessage(socket, m) {
             let seat = m.token ? game.seats.find(s => s.token === m.token) : null;
             if (seat) { if (seat.socket && seat.socket !== socket) seat.socket.close(); seat.socket = socket; }
             else if (game.phase === 'lobby' && game.seats.length < MAX_PLAYERS) {
-                seat = { token: crypto.randomBytes(12).toString('hex'), name: cleanName(m.name) || 'Игрок ' + (game.seats.length + 1), charId: freeChar(), colors: {}, ready: false, socket };
+                seat = { token: crypto.randomBytes(12).toString('hex'), name: cleanName(m.name) || 'Игрок ' + (game.seats.length + 1), charId: freeChar(), colors: {}, parts: {}, ready: false, socket };
                 game.seats.push(seat);
             }
             socket.send({ t: 'welcome', token: seat ? seat.token : null, seat: seat ? game.seats.indexOf(seat) : null, spectator: !seat });
@@ -249,6 +251,8 @@ function onMessage(socket, m) {
             if (typeof m.name === 'string') seat.name = cleanName(m.name) || seat.name;
             if (m.charId && CHARACTERS[m.charId] && !game.seats.some(s => s !== seat && s.charId === m.charId)) seat.charId = m.charId;
             if (m.colors && typeof m.colors === 'object') seat.colors = sanitizeColors(seat.charId, m.colors);
+            // Keep the Lab Rat's selection when switching characters, but never apply it to another figure.
+            if (seat.charId === 'labrat' && m.parts && typeof m.parts === 'object') seat.parts = characterParts('labrat', m.parts);
             if (typeof m.ready === 'boolean') seat.ready = m.ready;
             if (m.settings && isHost(socket)) { if (m.settings.mode === 'random' || m.settings.mode === 'original') game.settings.mode = m.settings.mode; if (typeof m.settings.seed === 'string') game.settings.seed = m.settings.seed.slice(0, 32); if (typeof m.settings.draft === 'boolean') game.settings.draft = m.settings.draft; }
             if (m.kick !== undefined && isHost(socket)) { const k = game.seats[m.kick]; if (k && k !== seat) { if (k.socket) k.socket.close(); game.seats.splice(m.kick, 1); } }
@@ -261,7 +265,7 @@ function onMessage(socket, m) {
             if (seats.length < 1) return;
             game.seats = seats;
             game.state = createGame({ seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, draft: game.settings.draft,
-                players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors })),
+                players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors, parts: characterParts(s.charId, s.parts) })),
                 ui: { bagClick: true, eventAck: true } });
             game.phase = 'playing'; game.undo = []; game.history = []; game.poses = {};
             for (const c of clients) c.logSeen = 0;

@@ -5,6 +5,7 @@ import { Scene3D, Preview3D } from './scene3d.js';
 import { TUNE } from './tuning.js';
 import { galleryPods } from './gallery.js';
 import { DEFAULTS } from './characters.js';
+import { LABRAT_PARTS, characterParts } from '../shared/appearance.mjs';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
@@ -52,7 +53,7 @@ const net = {
         ws = new WebSocket(proto + location.host + '/ws');
         ws.onopen = () => { net.send({ t: 'join', token: localStorage.getItem('nemesis.token'), name: localStorage.getItem('nemesis.name') || '' }); };
         ws.onmessage = e => onMessage(JSON.parse(e.data));
-        ws.onclose = () => { notice('Связь с сервером потеряна. Переподключение…', 'error'); clearTimeout(wsTimer); wsTimer = setTimeout(net.connect, 1500); };
+        ws.onclose = () => { app.pendingParts = null; notice('Связь с сервером потеряна. Переподключение…', 'error'); clearTimeout(wsTimer); wsTimer = setTimeout(net.connect, 1500); };
     },
 };
 
@@ -62,7 +63,7 @@ const net = {
 const app = {
     me: null, host: false, spectator: false,
     lobby: null, view: null, logEntries: [], selectedCards: new Set(), hoverRoom: null,
-    charId: null, colors: {}, name: '', ready: false, menuCollapsed: true,
+    charId: null, colors: {}, parts: {}, pendingParts: null, labWorkshop: false, name: '', ready: false, menuCollapsed: true,
     canUndo: false, bagShown: null, bagTimer: null, deckKind: 'event', altHeld: false,
     wp: null, itemPick: null, itemPickMin: false, gallery: false,
     hoverCard: null,    // card under the pointer: { kind: 'card', id } | { kind: 'item', uid }
@@ -94,6 +95,7 @@ function onMessage(m) {
                 return;
             }
             if (!m.view) { app.view = null; $('hud').classList.add('hidden'); $('lobby').classList.remove('hidden'); $('endOverlay').classList.add('hidden'); return; }
+            if (app.labWorkshop) closeLabWorkshop(false);
             app.me = m.you; app.host = m.host;
             if (m.full) app.logEntries = [];
             app.logEntries.push(...m.view.log);
@@ -205,11 +207,17 @@ function renderLobby() {
     if (mySeat) {
         if (document.activeElement !== $('nameInput')) $('nameInput').value = mySeat.name;
         app.charId = mySeat.charId; app.colors = mySeat.colors || {}; app.ready = mySeat.ready;
+        if (app.charId !== previousCharId) app.pendingParts = null;
+        const parts = characterParts(app.charId, mySeat.parts);
+        if (!app.pendingParts || JSON.stringify(parts) === app.pendingParts) { app.parts = parts; app.pendingParts = null; }
         if (activePicker && activePickerZone && app.charId === previousCharId) {
             app.colors = Object.assign({}, app.colors, { [activePickerZone]: activePickerColor });
         }
         app.host = mySeat.host;
     }
+    const labAvailable = !!mySeat && app.charId === 'labrat' && L.phase === 'lobby';
+    $('labOpen').classList.toggle('hidden', !labAvailable);
+    if (!labAvailable && app.labWorkshop) closeLabWorkshop(false);
     // characters
     $('charList').innerHTML = Object.entries(L.characters).map(([id, c]) => {
         const taken = L.seats.some(s => s.charId === id && s.id !== app.me);
@@ -236,13 +244,14 @@ function renderLobby() {
                 // those changes local for the live preview and send only the committed colour on `change`.
                 el.oninput = () => {
                     app.colors = Object.assign({}, app.colors, { [zone]: el.value });
-                    if (preview) preview.show(app.charId, Object.assign({}, def, app.colors));
+                    if (preview) preview.show(app.charId, Object.assign({}, def, app.colors), app.parts);
                 };
                 el.onchange = () => sendColor(zone, el.value);
             }
         }
         if (!preview) preview = new Preview3D($('previewCanvas'));
-        preview.show(app.charId, Object.assign({}, def, app.colors));
+        preview.show(app.charId, Object.assign({}, def, app.colors), app.parts);
+        if (app.labWorkshop) updateLabSelection();
     }
     // seats
     $('seatList').innerHTML = L.seats.map(s => {
@@ -262,6 +271,71 @@ function renderLobby() {
     $('startBtn').title = app.host ? 'Все подключённые игроки должны нажать «Готов»' : 'Начать может только ведущий';
 }
 function sendColor(zone, color) { app.colors = Object.assign({}, app.colors, { [zone]: color }); net.send({ t: 'lobby', colors: app.colors }); }
+
+// ---------------------------------------------------------------------------------------------
+// Experimental Lab Rat workshop. It reuses the lobby's 3D canvas so switching screens does not
+// create another WebGL engine. The server validates the selected ids and shares them with the table.
+// ---------------------------------------------------------------------------------------------
+let labCameraPose = null;
+function updateLabSelection() {
+    for (const button of $('labOptions').querySelectorAll('[data-part][data-value]')) {
+        button.setAttribute('aria-pressed', String(app.parts[button.dataset.part] === button.dataset.value));
+    }
+}
+function setLabParts(parts) {
+    if (app.charId !== 'labrat' || !app.labWorkshop) return;
+    if (!ws || ws.readyState !== 1) { notice('Нет связи с сервером — изменения не сохранены.', 'error'); return; }
+    app.parts = characterParts('labrat', parts);
+    app.pendingParts = JSON.stringify(app.parts);
+    updateLabSelection();
+    if (preview) preview.show('labrat', Object.assign({}, DEFAULTS.labrat, app.colors), app.parts);
+    net.send({ t: 'lobby', parts: app.parts });
+}
+function openLabWorkshop() {
+    if (!preview || app.charId !== 'labrat' || app.spectator || !app.lobby || app.lobby.phase !== 'lobby') return;
+    app.labWorkshop = true;
+    $('labWorkshop').classList.remove('hidden');
+    $('labCanvasHost').appendChild($('previewCanvas'));
+    const cam = preview.camera;
+    labCameraPose = { alpha: cam.alpha, beta: cam.beta, radius: cam.radius, target: cam.target.clone() };
+    cam.alpha = Math.PI / 2 - 0.28; cam.beta = 1.3; cam.radius = 3.3;
+    cam.inertialAlphaOffset = 0; cam.inertialBetaOffset = 0; cam.inertialRadiusOffset = 0;
+    cam.setTarget(new (window.BABYLON.Vector3)(0, 0.95, 0));
+    preview.show('labrat', Object.assign({}, DEFAULTS.labrat, app.colors), app.parts);
+    updateLabSelection();
+    preview.engine.resize();
+    requestAnimationFrame(() => { if (app.labWorkshop && preview) preview.engine.resize(); });
+    $('labClose').focus();
+}
+function closeLabWorkshop(restoreFocus = true) {
+    if (!app.labWorkshop) return;
+    app.labWorkshop = false;
+    $('charPreview').appendChild($('previewCanvas'));
+    $('labWorkshop').classList.add('hidden');
+    if (preview && labCameraPose) {
+        const cam = preview.camera;
+        cam.alpha = labCameraPose.alpha; cam.beta = labCameraPose.beta; cam.radius = labCameraPose.radius;
+        cam.inertialAlphaOffset = 0; cam.inertialBetaOffset = 0; cam.inertialRadiusOffset = 0;
+        cam.setTarget(labCameraPose.target); labCameraPose = null;
+        requestAnimationFrame(() => { if (preview) preview.engine.resize(); });
+    }
+    if (restoreFocus && !$('labOpen').classList.contains('hidden')) $('labOpen').focus({ preventScroll: true });
+}
+$('labOptions').innerHTML = LABRAT_PARTS.map((slot, i) =>
+    '<section class="lab-slot" role="group" aria-labelledby="lab-slot-' + slot.id + '">' +
+    '<div class="lab-slot-heading"><h4 id="lab-slot-' + slot.id + '"><span>' + String(i + 1).padStart(2, '0') + '</span>' + esc(slot.label) + '</h4><small>' + esc(slot.hint) + '</small></div>' +
+    '<div class="lab-preset-grid">' + slot.options.map(option =>
+        '<button type="button" class="lab-preset" data-part="' + slot.id + '" data-value="' + option.id + '" aria-pressed="false"><b>' + esc(option.label) + '</b><small>' + esc(option.detail) + '</small></button>'
+    ).join('') + '</div></section>'
+).join('');
+$('labOptions').onclick = e => {
+    const button = e.target.closest('[data-part][data-value]');
+    if (button) setLabParts(Object.assign({}, app.parts, { [button.dataset.part]: button.dataset.value }));
+};
+$('labOpen').onclick = openLabWorkshop;
+$('labClose').onclick = () => closeLabWorkshop();
+$('labDone').onclick = () => closeLabWorkshop();
+$('labReset').onclick = () => setLabParts({});
 
 // ---------------------------------------------------------------------------------------------
 // Room gallery (test ship). A normal game shuffles only 11 basic + 5 additional tiles onto the
@@ -1285,6 +1359,15 @@ function closeOverlay() {
 }
 
 document.addEventListener('keydown', e => {
+    if (app.labWorkshop) {
+        if (e.key === 'Escape') { e.preventDefault(); closeLabWorkshop(); }
+        else if (e.key === 'Tab') {
+            const buttons = [...$('labWorkshop').querySelectorAll('button:not(:disabled)')];
+            if (buttons.length && e.shiftKey && document.activeElement === buttons[0]) { e.preventDefault(); buttons[buttons.length - 1].focus(); }
+            else if (buttons.length && !e.shiftKey && document.activeElement === buttons[buttons.length - 1]) { e.preventDefault(); buttons[0].focus(); }
+        }
+        return;
+    }
     const typing = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
     if (e.key === 'Escape') {
         if (app.gallery) { closeGallery(); return; }

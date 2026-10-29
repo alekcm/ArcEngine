@@ -9,6 +9,7 @@
 // only the half next to an explored room is shown, LEDs turn yellow when the corridor has noise.
 
 import { buildCharacter, buildIntruder, buildBody, flatMat } from './characters.js';
+import { characterParts } from '../shared/appearance.mjs';
 import { TUNE, doorSpec } from './tuning.js';
 import * as Snd from './sound.js';
 
@@ -4802,11 +4803,16 @@ export class Scene3D {
         const perRoom = {};
         for (const p of view.players) {
             if (!p.charId) continue;   // character draft still in progress
+            const parts = characterParts(p.charId, p.parts), partsKey = JSON.stringify(parts);
             let n = this.chars[p.id];
-            if (n && n.charId !== p.charId) { n.ch.root.dispose(); delete this.chars[p.id]; n = null; }
+            if (n && (n.charId !== p.charId || n.partsKey !== partsKey)) {
+                for (const mesh of n.ch.root.getChildMeshes()) this.shadows.removeShadowCaster(mesh);
+                if (n.label && n.label.material) n.label.material.dispose(false, true); // its name texture is not shared
+                n.ch.root.dispose(); delete this.chars[p.id]; n = null;
+            }
             if (!n) {
-                const ch = buildCharacter(S, p.charId, p.colors);
-                n = { ch, charId: p.charId, label: this.makeLabel('cl', p.name, '', ch.root, 0, 3.6, 0, 3.8), placed: false, colorsKey: null };
+                const ch = buildCharacter(S, p.charId, p.colors || {}, parts);
+                n = { ch, charId: p.charId, partsKey, label: this.makeLabel('cl', p.name, '', ch.root, 0, 3.6, 0, 3.8), placed: false, colorsKey: null };
                 // invisible grab handle so the owner can drag the figure around the room
                 const grab = B().MeshBuilder.CreateCylinder('grab', { diameter: 1.4, height: 2.9 }, S);
                 grab.parent = ch.root; grab.position.y = 1.45; grab.visibility = 0; grab.isPickable = true;
@@ -4817,8 +4823,8 @@ export class Scene3D {
                 this.chars[p.id] = n;
                 for (const m of ch.root.getChildMeshes()) this.shadows.addShadowCaster(m);
             }
-            const ck = JSON.stringify(p.colors);
-            if (n.colorsKey !== ck) { n.ch.setColors(p.colors); n.colorsKey = ck; }
+            const ck = JSON.stringify(p.colors || {});
+            if (n.colorsKey !== ck) { n.ch.setColors(p.colors || {}); n.colorsKey = ck; }
             const visible = (p.status === 'active' || p.status === 'hibernating') && !p.pod;
             n.ch.root.setEnabled(visible);
             if (!visible) continue;
@@ -5073,18 +5079,23 @@ export class Preview3D {
         this.scene = new (B().Scene)(this.engine);
         this.scene.clearColor = new (B().Color4)(0, 0, 0, 0);
         const cam = new (B().ArcRotateCamera)('pc', -Math.PI / 2 + 0.4, 1.25, 4.4, new (B().Vector3)(0, 0.95, 0), this.scene);
+        this.camera = cam;
         cam.attachControl(canvas, true); cam.lowerRadiusLimit = 2.5; cam.upperRadiusLimit = 7; cam.wheelPrecision = 50;
         canvas.addEventListener('wheel', e => e.preventDefault(), { passive: false });   // zooming the figure must not scroll the lobby
         const h = new (B().HemisphericLight)('h', new (B().Vector3)(0.3, 1, 0.2), this.scene); h.intensity = 0.8;
         const d = new (B().DirectionalLight)('d', new (B().Vector3)(-0.5, -1, 0.6), this.scene); d.intensity = 0.7;
         const disc = B().MeshBuilder.CreateCylinder('disc', { diameter: 1.6, height: 0.1, tessellation: 8 }, this.scene);
         disc.position.y = -0.05; disc.material = flatMat(this.scene, '#243040');
-        this.char = null; this.charId = null;
+        this.char = null; this.charId = null; this.partsKey = null;
         this.engine.runRenderLoop(() => this.scene.render());
         new ResizeObserver(() => this.engine.resize()).observe(canvas);
     }
-    show(charId, colors) {
-        if (this.charId !== charId) { if (this.char) this.char.root.dispose(); this.char = buildCharacter(this.scene, charId, colors); this.charId = charId; }
-        else this.char.setColors(colors);
+    show(charId, colors = {}, selectedParts) {
+        const parts = characterParts(charId, selectedParts), key = JSON.stringify(parts);
+        if (this.charId !== charId || this.partsKey !== key) {
+            if (this.char) this.char.root.dispose();
+            this.char = buildCharacter(this.scene, charId, colors, parts);
+            this.charId = charId; this.partsKey = key;
+        } else this.char.setColors(colors);
     }
 }

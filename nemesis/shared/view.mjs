@@ -53,7 +53,7 @@ function playerView(state, p, mine) {
     // and their decks are public; armor and heavy objects stay visible on the table.
     const visibleItems = mine ? p.items : p.items.filter(i => ITEMS[i.item].kind === 'heavy' || ITEMS[i.item].kind === 'armor');
     const pub = {
-        id: p.id, number: p.number, name: p.name, charId: p.charId, charName: p.charId ? CHARACTERS[p.charId].name : '—', colors: p.colors,
+        id: p.id, number: p.number, name: p.name, charId: p.charId, charName: p.charId ? CHARACTERS[p.charId].name : '—', colors: p.colors, parts: p.parts || {},
         room: p.room, status: p.status, health: p.health, maxHealth: p.charId ? CHARACTERS[p.charId].health : 0, wounds: p.wounds, armor: p.armor,
         items: visibleItems, itemCount: p.items.length, heavy: p.heavy,
         // Quest items are public: a closed card lies next to its owner's sheet from the start.

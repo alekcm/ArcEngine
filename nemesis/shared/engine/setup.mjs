@@ -1,6 +1,7 @@
 // setup.mjs — createGame(): builds the initial state from the lobby configuration.
 
 import { seedFromString, shuffle, randInt, pick } from '../rng.mjs';
+import { characterParts } from '../appearance.mjs';
 import { originalShip, randomShip, BASIC_TILES, ADDITIONAL_TILES, ADDITIONAL_IN_PLAY, EXPLORATION_TOKENS, roomOfKind } from '../ship.mjs';
 import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS, ADAPTATIONS, COMMON_CARDS } from '../data/cards.mjs';
 import { OPS, ask, log, next, run, pname } from './core.mjs';
@@ -92,7 +93,7 @@ export function createGame(config) {
     const hiber = roomOfKind(state.ship, 'hibernatorium').id;
     config.players.forEach((pc, i) => {
         state.players.push({
-            id: i, number: numbers[i], name: pc.name, charId: null, colors: pc.colors || {},
+            id: i, number: numbers[i], name: pc.name, charId: null, colors: pc.colors || {}, parts: {},
             room: hiber, health: 0, hand: [], deck: [], discard: [], wounds: [], larva: false,
             items: [], heavy: [], armor: null, quests: [], knowledge: 1, knowledgeActive: false, signal: false, supportUsed: false,
             objectives: [], objective: null, status: 'active', passed: false, pod: null,
@@ -102,7 +103,7 @@ export function createGame(config) {
     });
     state.seating = [...state.players].sort((a, b) => a.number - b.number).map(p => p.id);
     state.firstPlayer = state.seating[0];
-    state.setupPlayers = config.players.map(pc => ({ charId: pc.charId, colors: pc.colors || {} }));
+    state.setupPlayers = config.players.map(pc => ({ charId: pc.charId, colors: pc.colors || {}, parts: characterParts(pc.charId, pc.parts) }));
 
     // Bag & pods
     state.bag = ['blank', 'larva', 'larva', 'larva', 'larva'];
@@ -155,6 +156,7 @@ function assignCharacter(state, p, charId) {
     p.charId = charId; p.health = ch.health; p.tissue = charId === 'xeno' ? 1 : 0;
     if (charId === 'ceo') { p.wounds.push('body'); p.health = Math.min(p.health, 7); }   // the Robot starts with a Body Wound
     p.colors = sp && sp.charId === charId ? sp.colors : {};
+    p.parts = characterParts(charId, sp && sp.charId === charId ? sp.parts : null);
     for (const key of Object.keys(ch.cards)) p.deck.push(charId + '.' + key + '#0');
     for (const s of ch.startItems) {
         const def = ITEMS[s.item];

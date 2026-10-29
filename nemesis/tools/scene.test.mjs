@@ -435,3 +435,50 @@ test('SCN-17: a corridor shows only the half next to an explored room', () => {
     assert.equal(node.ribsB.filter(on).length, 0, c.id + ': вторая половина остаётся скрытой');
     scene.update(view, ROOM_TILES, INTRUDER_NAMES, []);   // leave the shared scene as the other tests expect it
 });
+
+test('LAB-04: every preset changes real geometry, while the original and other characters stay unchanged', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const { LABRAT_PARTS, characterParts } = await import('../shared/appearance.mjs');
+    const signature = (charId, parts) => {
+        const ch = buildCharacter(scene.scene, charId, {}, parts);
+        const result = ch.root.getChildMeshes().filter(m => m.name !== 'flash').map(m => {
+            const box = m.getBoundingInfo().boundingBox;
+            const v = x => [x.x, x.y, x.z].map(n => Number(n.toFixed(4)));
+            return JSON.stringify([m.name, m.parent?.name, v(m.position), v(m.rotation), v(box.minimum), v(box.maximum)]);
+        }).sort();
+        ch.root.dispose();
+        return result;
+    };
+    const defaults = characterParts('labrat');
+    const original = signature('labrat');
+    assert.deepEqual(signature('labrat', defaults), original, 'omitting parts preserves the original model');
+    for (const slot of LABRAT_PARTS) for (const option of slot.options.slice(1)) {
+        assert.notDeepEqual(signature('labrat', { ...defaults, [slot.id]: option.id }), original,
+            `${slot.id}/${option.id} must change mesh geometry`);
+    }
+    assert.deepEqual(signature('labrat'), original, 'building presets did not mutate the shared spec');
+    assert.deepEqual(signature('pilot', { hair: 'shaved', outfit: 'suit', eyes: 'visor', implants: 'crown' }), signature('pilot'),
+        'other characters ignore Lab Rat presets');
+});
+
+test('LAB-05: the table rebuilds a changed appearance and removes the old shadow casters', () => {
+    const v = JSON.parse(JSON.stringify(view));
+    const p = v.players[0]; p.charId = 'labrat'; p.parts = { hair: 'loose', eyes: 'bandage', outfit: 'gown', implants: 'classic' };
+    scene.updateCharacters(v);
+    const first = scene.chars[p.id];
+    const oldRoot = first.ch.root, oldMeshes = oldRoot.getChildMeshes();
+    assert.ok(first.grab && first.label, 'the table figure has its hitbox and label');
+    scene.updateCharacters(v);
+    assert.equal(scene.chars[p.id].ch.root, oldRoot, 'unchanged parts do not rebuild the figure');
+    p.parts = { ...p.parts, hair: 'bob', eyes: 'visor' };
+    scene.updateCharacters(v);
+    const rebuilt = scene.chars[p.id];
+    assert.notEqual(rebuilt.ch.root, oldRoot, 'new preset builds a new figure');
+    assert.equal(oldRoot.isDisposed(), true, 'the old figure was disposed');
+    assert.ok(rebuilt.grab && rebuilt.label, 'hitbox and label were recreated');
+    assert.equal(rebuilt.grab.metadata.player, p.id, 'the hitbox still selects the right player');
+    const shadowList = scene.shadows.getShadowMap().renderList || [];
+    assert.ok(oldMeshes.every(m => !shadowList.includes(m)), 'old meshes no longer cast shadows');
+    assert.ok(rebuilt.ch.root.getChildMeshes().some(m => shadowList.includes(m)), 'the new figure casts shadows');
+    scene.updateCharacters(view);
+});

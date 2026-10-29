@@ -4,6 +4,8 @@
 // the back; Mechanic — welding mask with a square window, hoses, orange/white plating, tools.
 // Every part is bound to a paint zone (CHARACTERS[*].zones) so the player can recolour it.
 
+import { characterParts } from '../shared/appearance.mjs';
+
 const B = () => window.BABYLON;
 
 const MAT_CACHE = new WeakMap();   // scene -> Map(key -> material)
@@ -87,10 +89,31 @@ const SPECS = {
 // Fixed (non-paintable) materials
 const FIXED = { gun: '#23282e', gunLight: '#4a525c', steel: '#8c96a0', darkSteel: '#3a424b', rubber: '#1a1d21', glass: '#9fd8ff', strap: '#3b3127' };
 
+/** Apply only the Lab Rat's selected mesh presets without mutating the original character spec. */
+function labratSpec(parts) {
+    const sp = { ...SPECS.labrat };
+    sp.hair = { loose: 'longLoose', bob: 'bobBangs', ponytail: 'ponytail', shaved: null }[parts.hair];
+    if (parts.eyes !== 'bandage') {
+        sp.blindfold = null;
+        sp.labVisor = parts.eyes === 'visor';
+        sp.labEyes = parts.eyes === 'none';
+    }
+    if (parts.outfit === 'coat') {
+        Object.assign(sp, { gown: null, coat: 'gown', openCoat: true, torso: 'pants', arms: 'gown' });
+    } else if (parts.outfit === 'suit') {
+        Object.assign(sp, { gown: null, vest: 'gown', labSuit: true, torso: 'pants', arms: 'pants',
+            barefoot: false, boots: 'pants', qrPatch: false });
+    }
+    if (parts.implants === 'none') sp.implants = null;
+    if (parts.implants === 'crown') sp.labCrown = true;
+    return sp;
+}
+
 /**
  * Build a character. Returns { root, zones: {zoneId: [meshes]}, setColors(colors) }. Height ≈ 2.1.
+ * `parts` chooses independent mesh presets for the Lab Rat; other characters ignore it.
  */
-export function buildCharacter(scene, charId, colors = {}) {
+export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     const S = scene;
     const root = new (B().TransformNode)('char_' + charId, S);
     const zones = {};
@@ -103,7 +126,7 @@ export function buildCharacter(scene, charId, colors = {}) {
     else if (charId === 'scout') buildScout();
     else if (charId === 'mechanic') buildMechanic();
     else if (charId === 'sentry') buildSentry();
-    else buildHumanoid(SPECS[charId] || SPECS.pilot);
+    else buildHumanoid(charId === 'labrat' ? labratSpec(characterParts(charId, parts)) : (SPECS[charId] || SPECS.pilot));
 
     // ---------------------------------------------------------------------------------------
     function buildHumanoid(sp) {
@@ -167,6 +190,11 @@ export function buildCharacter(scene, charId, colors = {}) {
         }
         if (sp.chestPlate) { Z(sp.chestPlate, bx(0.42 * W, 0.3, 0.12, R, 0, 1.96, 0.2)); Z(sp.chestPlate, bx(0.36 * W, 0.18, 0.1, R, 0, 1.7, 0.2)); }
         if (sp.harness) { for (const s of [-1, 1]) Z(sp.harness, bx(0.08, 0.6, 0.04, R, s * 0.14 * W, 1.86, 0.18)); Z(sp.harness, bx(0.5 * W, 0.06, 0.04, R, 0, 1.64, 0.18)); for (let i = 0; i < 3; i++) F(FIXED.darkSteel, bx(0.08, 0.1, 0.06, R, -0.2 * W + i * 0.2 * W, 1.6, 0.2)); }
+        if (sp.labSuit) {   // straps sit in front of the vest, rather than being buried inside it
+            for (const s of [-1, 1]) Z('bandage', bx(0.07, 0.54, 0.04, R, s * 0.14 * W, 1.86, 0.25));
+            Z('bandage', bx(0.5 * W, 0.06, 0.04, R, 0, 1.65, 0.25));
+            F(FIXED.darkSteel, bx(0.11, 0.1, 0.04, R, 0, 1.65, 0.28));
+        }
         if (sp.tie) { Z('shirt', bx(0.14, 0.3, 0.03, R, 0, 1.98, sp.robe ? 0.23 : 0.18)); F('#7a1f1f', bx(0.06, 0.28, 0.02, R, 0, 1.9, sp.robe ? 0.25 : 0.2)); }
         if (sp.redCross) { Z(sp.redCross, bx(0.12, 0.04, 0.02, R, 0.16 * W, 2.0, 0.2)); Z(sp.redCross, bx(0.04, 0.12, 0.02, R, 0.16 * W, 2.0, 0.2)); }
         if (sp.patch) { Z(sp.patch, cy(0.16, 0.16, 0.02, 8, R, 0.16 * W, 1.95, 0.17, [Math.PI / 2, 0, 0])); }
@@ -275,10 +303,25 @@ export function buildCharacter(scene, charId, colors = {}) {
         if (sp.glasses) { F(FIXED.rubber, bx(0.3, 0.02, 0.02, R, 0, 2.47, 0.17)); for (const s of [-1, 1]) F(FIXED.glass, bx(0.1, 0.08, 0.02, R, s * 0.08, 2.46, 0.18), { alpha: 0.6, spec: 0.8 }); }
         if (sp.gasMask) { F(FIXED.darkSteel, bx(0.26, 0.16, 0.1, R, 0, 2.34, 0.16)); for (const s of [-1, 1]) F(FIXED.steel, cy(0.1, 0.1, 0.06, 6, R, s * 0.1, 2.32, 0.23, [Math.PI / 2, 0, 0])); }
         if (sp.blindfold) { Z(sp.blindfold, bx(0.33, 0.1, 0.33, R, 0, 2.48, 0.02)); Z(sp.blindfold, bx(0.08, 0.2, 0.03, R, -0.1, 2.28, -0.17)); }
+        if (sp.labVisor) {   // a solid frame and an illuminated lens, both independently paintable
+            Z('bandage', bx(0.37, 0.13, 0.12, R, 0, 2.48, 0.19));
+            Z('bandage', bx(0.36, 0.04, 0.3, R, 0, 2.49, 0.01));
+            Z(LZ, bx(0.3, 0.055, 0.02, R, 0, 2.49, 0.26));
+            for (const s of [-1, 1]) F(FIXED.darkSteel, bx(0.035, 0.08, 0.04, R, s * 0.17, 2.48, 0.25));
+        }
+        if (sp.labEyes) for (const s of [-1, 1]) F(FIXED.rubber, bx(0.045, 0.03, 0.02, R, s * 0.075, 2.47, 0.18));
         if (sp.mask) { Z(sp.mask, bx(0.3, 0.16, 0.08, R, 0, 2.36, 0.16)); for (let i = 0; i < 3; i++) F(FIXED.rubber, bx(0.03, 0.08, 0.02, R, -0.06 + i * 0.06, 2.34, 0.21)); Z(sp.mask, bx(0.34, 0.08, 0.1, R, 0, 2.46, 0.13)); }
         if (sp.eyeLight) Z(sp.eyeLight, bx(0.05, 0.03, 0.02, R, 0.08, 2.48, 0.18));
         if (sp.bald) Z('skin', bx(0.3, 0.06, 0.3, R, 0, 2.62, 0.02));
         if (sp.implants) { Z(sp.implants, bx(0.04, 0.04, 0.02, R, 0, 2.54, 0.18)); Z(sp.implants, bx(0.03, 0.1, 0.03, R, 0.16, 2.44, 0.0)); F(FIXED.steel, bx(0.06, 0.12, 0.04, R, -0.17, 2.44, 0.0)); }
+        if (sp.labCrown) {   // experimental head-mounted array, deliberately distinct in silhouette
+            F(FIXED.darkSteel, bx(0.4, 0.06, 0.38, R, 0, 2.72, 0.0));
+            for (const s of [-1, 1]) {
+                F(FIXED.darkSteel, bx(0.06, 0.23, 0.14, R, s * 0.2, 2.55, 0.04));
+                Z(LZ, bx(0.04, 0.1, 0.025, R, s * 0.2, 2.56, 0.12));
+            }
+            for (const x of [-0.12, 0, 0.12]) Z(LZ, bx(0.045, 0.05, 0.03, R, x, 2.73, 0.2));
+        }
         if (sp.eyes) { for (const s of [-1, 1]) F(sp.eyes, bx(0.06, 0.035, 0.02, R, s * 0.07, 2.47, 0.175), { emissive: 1.0 }); F(FIXED.rubber, bx(0.2, 0.012, 0.015, R, 0, 2.5, 0.178)); }   // two glowing eyes under a thin brow line
         // hand-held props
         for (const side of [sp.pistolR || sp.revolver ? 1 : 0, sp.pistolL ? -1 : 0]) {

@@ -217,3 +217,44 @@ test('SRV-05: игра отдаёт исправленный board-edits.json п
     const json = await response.json();
     assert.ok(Object.keys(json.edits || {}).length > 0, 'сервер отдаёт сохранённые записи, а не пустой fallback');
 });
+
+test('SRV-06: детали Подопытной проверяются, сохраняются и видны в партии другим игрокам', async (t) => {
+    const { child, port } = await startServer(pickPort());
+    t.after(() => { try { child.kill(); } catch { /* gone */ } });
+    const owner = await wsClient(port), other = await wsClient(port);
+    t.after(() => { owner.close(); other.close(); });
+    owner.send({ t: 'join', token: null, name: 'Автор' });
+    await waitFor(owner, m => m && m.t === 'lobby' && m.seats.length === 1, 'first player');
+    other.send({ t: 'join', token: null, name: 'Друг' });
+    await waitFor(other, m => m && m.t === 'lobby' && m.seats.length === 2, 'second player');
+
+    // Start looking after the current message to avoid matching an earlier lobby snapshot.
+    async function change(message, filter, what) {
+        const from = other.messages.length;
+        const result = waitFor(other, m => other.messages.indexOf(m) >= from && filter(m), what);
+        owner.send(message);
+        return result;
+    }
+    const custom = { hair: 'bob', eyes: 'visor', outfit: 'suit', implants: 'crown' };
+    const updated = await change({ t: 'lobby', charId: 'labrat', colors: { gown: '#12abcd' }, parts: { ...custom, injected: 'bad' } },
+        m => m && m.t === 'lobby' && m.seats[0].parts?.hair === 'bob', 'custom parts');
+    assert.deepEqual(updated.seats[0].parts, custom, 'other players receive the canonical preset');
+    assert.equal(updated.seats[0].colors.gown, '#12abcd');
+
+    const invalid = await change({ t: 'lobby', parts: { hair: 'bad', eyes: ['visor'], outfit: 'coat', implants: null, injected: 'bad' } },
+        m => m && m.t === 'lobby' && m.seats[0].parts?.outfit === 'coat', 'sanitized parts');
+    assert.deepEqual(invalid.seats[0].parts, { hair: 'loose', eyes: 'bandage', outfit: 'coat', implants: 'classic' });
+    await change({ t: 'lobby', parts: custom }, m => m && m.t === 'lobby' && m.seats[0].parts?.outfit === 'suit', 'restored parts');
+
+    const switched = await change({ t: 'lobby', charId: 'pilot', parts: { hair: 'shaved' } },
+        m => m && m.t === 'lobby' && m.seats[0].charId === 'pilot', 'another character');
+    assert.deepEqual(switched.seats[0].parts, {}, 'other characters expose no Lab Rat parts');
+    const returned = await change({ t: 'lobby', charId: 'labrat' },
+        m => m && m.t === 'lobby' && m.seats[0].charId === 'labrat', 'Lab Rat again');
+    assert.deepEqual(returned.seats[0].parts, custom, 'switching back restores the selected Lab Rat parts');
+
+    const state = await change({ t: 'start' }, m => m && m.t === 'state' && m.view && m.view.players.length === 2, 'game state');
+    assert.deepEqual(state.view.players[0].parts, custom, 'the public game view carries the selected parts');
+    assert.equal(state.view.players[0].colors.gown, '#12abcd', 'custom colors still reach the game');
+    assert.deepEqual(state.view.players[1].parts, {}, 'the other character stays unchanged');
+});
