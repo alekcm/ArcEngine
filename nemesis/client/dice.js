@@ -35,28 +35,73 @@ function faceGlyph(v) {
 }
 function dieTitle(die) { return die === 'noise' ? 'Кубик шума' : die === 'blue' ? 'Синий боевой кубик' : 'Боевой кубик'; }
 
-/** Vertex data of a pentagonal trapezohedron (D10). Flat shaded, each kite is 4 own vertices. */
-export function d10VertexData() {
-    const R = 1, y0 = 0.105, H = y0 * (Math.cos(Math.PI / 5) + 1) / (1 - Math.cos(Math.PI / 5));
-    const up = [], lo = [];
-    for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2, b = a + Math.PI / 5; up.push([R * Math.cos(a), y0, R * Math.sin(a)]); lo.push([R * Math.cos(b), -y0, R * Math.sin(b)]); }
-    const pos = [], idx = [];
-    const quad = (a, b, c, d) => {   // a..d counter-clockwise seen from outside; emit with outward normal
-        const base = pos.length / 3;
-        const v = [a, b, c, d]; const cx = (a[0] + b[0] + c[0] + d[0]) / 4, cy = (a[1] + b[1] + c[1] + d[1]) / 4, cz = (a[2] + b[2] + c[2] + d[2]) / 4;
-        const n = B().Vector3.Cross(new (B().Vector3)(b[0] - a[0], b[1] - a[1], b[2] - a[2]), new (B().Vector3)(c[0] - a[0], c[1] - a[1], c[2] - a[2]));
-        const flip = B().Vector3.Dot(n, new (B().Vector3)(cx, cy, cz)) < 0;
-        for (const p of v) pos.push(p[0], p[1], p[2]);
-        if (!flip) idx.push(base, base + 1, base + 2, base, base + 2, base + 3); else idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+/** The yaw (about the die's long axis) that points a face normal at the camera. */
+function yawToShowFace(normal) { return Math.PI - Math.atan2(normal.x, normal.z); }
+function positiveAngle(angle) { const turn = Math.PI * 2; return (angle % turn + turn) % turn; }
+
+/** Build the attack D10 as ten explicit kite faces. Each face carries its own geometry and texture,
+ *  rather than discovering planes from a combined mesh and floating a separate number over them. */
+export function d10Faces(kind = 'combat') {
+    const Bx = B(), R = 1, y0 = 0.105;
+    const H = y0 * (Math.cos(Math.PI / 5) + 1) / (1 - Math.cos(Math.PI / 5));
+    const upper = [], lower = [];
+    for (let k = 0; k < 5; k++) {
+        const a = k / 5 * Math.PI * 2, b = a + Math.PI / 5;
+        upper.push(new Bx.Vector3(R * Math.cos(a), y0, R * Math.sin(a)));
+        lower.push(new Bx.Vector3(R * Math.cos(b), -y0, R * Math.sin(b)));
+    }
+
+    const faces = [];
+    const addFace = vertices => {
+        const center = vertices.reduce((sum, v) => sum.add(v), Bx.Vector3.Zero()).scale(1 / vertices.length);
+        const normal = Bx.Vector3.Cross(vertices[1].subtract(vertices[0]), vertices[2].subtract(vertices[0])).normalize();
+        if (Bx.Vector3.Dot(normal, center) < 0) normal.scaleInPlace(-1);
+        const upHint = Math.abs(normal.y) > 0.92 ? new Bx.Vector3(0, 0, 1) : new Bx.Vector3(0, 1, 0);
+        const right = Bx.Vector3.Cross(normal, upHint).normalize();
+        const up = Bx.Vector3.Cross(right, normal).normalize();
+        let inradius = Infinity;
+        for (let i = 0; i < vertices.length; i++) {
+            const midpoint = vertices[i].add(vertices[(i + 1) % vertices.length]).scale(0.5);
+            inradius = Math.min(inradius, midpoint.subtract(center).length());
+        }
+        faces.push({ vertices, center, normal, right, up, inradius });
     };
+
     for (let k = 0; k < 5; k++) {
         const k1 = (k + 1) % 5, k4 = (k + 4) % 5;
-        quad([0, H, 0], up[k], lo[k], up[k1]);            // upper kites
-        quad([0, -H, 0], lo[k], up[k], lo[k4]);           // lower kites
+        addFace([new Bx.Vector3(0, H, 0), upper[k], lower[k], upper[k1]]);
+        addFace([new Bx.Vector3(0, -H, 0), lower[k], upper[k], lower[k4]]);
     }
-    const vd = new (B().VertexData)(); vd.positions = pos; vd.indices = idx;
-    const normals = []; B().VertexData.ComputeNormals(pos, idx, normals); vd.normals = normals;
-    return vd;
+
+    // Attach values around the long axis, not in triangle-emission order. Keep the first (critical)
+    // face as the anchor so its established result pose does not jump to another side of the die.
+    const first = faces[0];
+    faces.sort((a, b) => positiveAngle(yawToShowFace(a.normal)) - positiveAngle(yawToShowFace(b.normal)));
+    const anchor = faces.indexOf(first);
+    const ordered = anchor > 0 ? faces.slice(anchor).concat(faces.slice(0, anchor)) : faces;
+    const values = kind === 'blue' ? BLUE_FACES : COMBAT_FACES;
+    return ordered.map((face, i) => ({ ...face, value: values[i % values.length] }));
+}
+
+/** Geometry for one printed kite face. UVs use the same upright tangent frame as a flat label,
+ *  but the label is rasterized into the face material itself and cannot drift independently. */
+export function d10FaceVertexData(face) {
+    const Bx = B(), labelSize = face.inradius * 1.7;
+    const positions = [], normals = [], uvs = [];
+    for (const vertex of face.vertices) {
+        positions.push(vertex.x, vertex.y, vertex.z);
+        normals.push(face.normal.x, face.normal.y, face.normal.z);
+        const offset = vertex.subtract(face.center);
+        uvs.push(0.5 + Bx.Vector3.Dot(offset, face.right) / labelSize,
+                 0.5 + Bx.Vector3.Dot(offset, face.up) / labelSize);
+    }
+    const winding = Bx.Vector3.Cross(face.vertices[1].subtract(face.vertices[0]), face.vertices[2].subtract(face.vertices[0]));
+    const indices = Bx.Vector3.Dot(winding, face.normal) >= 0
+        ? [0, 1, 2, 0, 2, 3]
+        : [0, 2, 1, 0, 3, 2];
+    const data = new (Bx.VertexData)();
+    data.positions = positions; data.indices = indices; data.normals = normals; data.uvs = uvs;
+    return data;
 }
 
 /** Group a flat-shaded mesh's triangles into planar faces: [{center, normal, right, inradius}]. */
@@ -118,39 +163,76 @@ export class DiceUI {
         engine.runRenderLoop(() => { if (this.el.classList.contains('hidden')) return; this.t += engine.getDeltaTime() / 1000; this.tick(); scene.render(); });
     }
 
-    /** Build one die: body mesh + a label plane per face. */
+    /** Build the noise D12 with the existing face-overlay renderer; attack D10s are rebuilt as
+     *  ten textured face meshes so body and numerals are literally the same surfaces. */
     makeDie(scene, kind) {
         const root = new (B().TransformNode)('die_' + kind, scene);
-        let body;
-        if (kind === 'noise') { body = B().MeshBuilder.CreatePolyhedron('d12', { type: 2, size: 0.62 }, scene); }
-        else { body = new (B().Mesh)('d10', scene); d10VertexData().applyToMesh(body); body.scaling.setAll(0.95); }
+        if (kind !== 'noise') return this.makeAttackDie(scene, kind, root);
+
+        const body = B().MeshBuilder.CreatePolyhedron('d12', { type: 2, size: 0.62 }, scene);
         body.convertToFlatShadedMesh(); body.parent = root;
-        const mat = new (B().StandardMaterial)('dm_' + kind, scene);
-        mat.diffuseColor = B().Color3.FromHexString(kind === 'noise' ? '#e6b422' : kind === 'blue' ? '#1d6fb8' : '#b8262c'); mat.specularColor = new (B().Color3)(0.5, 0.5, 0.5); mat.specularPower = 32;
+        const mat = new (B().StandardMaterial)('dm_noise', scene);
+        mat.diffuseColor = B().Color3.FromHexString('#e6b422'); mat.specularColor = new (B().Color3)(0.5, 0.5, 0.5); mat.specularPower = 32;
         body.material = mat;
         const faces = extractFaces(body);
-        const values = kind === 'noise' ? NOISE_FACES : kind === 'blue' ? BLUE_FACES : COMBAT_FACES;
-        const scl = body.scaling.x;
         faces.forEach((f, i) => {
-            f.value = values[i % values.length];
-            const size = f.inradius * scl * 1.7;
-            const plane = B().MeshBuilder.CreatePlane('lbl', { width: size, height: size }, scene);
-            const dt = new (B().DynamicTexture)('ldt', { width: 128, height: 128 }, scene, true); dt.hasAlpha = true;
+            f.value = NOISE_FACES[i % NOISE_FACES.length];
+            const size = f.inradius * 1.7;
+            const plane = B().MeshBuilder.CreatePlane('noise_lbl', { width: size, height: size }, scene);
+            const dt = new (B().DynamicTexture)('noise_ldt', { width: 128, height: 128 }, scene, true); dt.hasAlpha = true;
             const ctx = dt.getContext(); ctx.clearRect(0, 0, 128, 128);
-            const g = faceGlyph(f.value);
-            ctx.fillStyle = kind === 'noise' ? '#1b1b1b' : '#f7f2ea'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            if (f.value === 'danger') { ctx.fillStyle = kind === 'noise' ? '#7a1010' : '#fff'; ctx.font = 'bold 96px Arial'; }
-            else if (f.value === 'crit' || f.value === 'encounter') ctx.font = 'bold 84px Arial';
+            const glyph = faceGlyph(f.value);
+            ctx.fillStyle = '#1b1b1b'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            if (f.value === 'danger') { ctx.fillStyle = '#7a1010'; ctx.font = 'bold 96px Arial'; }
+            else if (f.value === 'encounter') ctx.font = 'bold 84px Arial';
             else ctx.font = 'bold 86px Arial';
-            if (g) ctx.fillText(g, 64, 70);
-            if (/^[69]$/.test(g)) { ctx.fillRect(44, 112, 40, 6); }   // underline so 6 and 9 read correctly
+            if (glyph) ctx.fillText(glyph, 64, 70);
+            if (/^[69]$/.test(glyph)) ctx.fillRect(44, 112, 40, 6);
             dt.update();
-            const lm = new (B().StandardMaterial)('lm', scene); lm.diffuseTexture = dt; lm.opacityTexture = dt; lm.emissiveColor = new (B().Color3)(0.35, 0.35, 0.35); lm.specularColor = B().Color3.Black(); lm.backFaceCulling = true;
-            plane.material = lm; plane.parent = root; plane.isPickable = false;
-            plane.position = f.center.scale(scl).add(f.normal.scale(0.004));
+            const labelMaterial = new (B().StandardMaterial)('noise_lm', scene);
+            labelMaterial.diffuseTexture = dt; labelMaterial.opacityTexture = dt;
+            labelMaterial.emissiveColor = new (B().Color3)(0.35, 0.35, 0.35);
+            labelMaterial.specularColor = B().Color3.Black(); labelMaterial.backFaceCulling = true;
+            plane.material = labelMaterial; plane.parent = root; plane.isPickable = false;
+            plane.position = f.center.add(f.normal.scale(0.004));
             const m = B().Matrix.Identity();
             B().Matrix.FromXYZAxesToRef(f.right, f.up, f.normal.scale(-1), m);
             plane.rotationQuaternion = B().Quaternion.FromRotationMatrix(m);
+        });
+        root.rotationQuaternion = B().Quaternion.Identity();
+        return { root, body, faces };
+    }
+
+    /** The combat D10 is made from ten individually textured kite surfaces. There are no detached
+     *  glyph planes: every symbol is baked into the same face mesh that carries the red die body. */
+    makeAttackDie(scene, kind, root) {
+        const body = new (B().TransformNode)('d10_body_' + kind, scene);
+        body.parent = root; body.scaling.setAll(0.95);
+        const faces = d10Faces(kind);
+        const baseColor = kind === 'blue' ? '#1d6fb8' : '#b8262c';
+        faces.forEach((face, i) => {
+            const mesh = new (B().Mesh)('d10_face_' + i, scene);
+            d10FaceVertexData(face).applyToMesh(mesh);
+            mesh.parent = body; mesh.isPickable = false;
+
+            const texture = new (B().DynamicTexture)('d10_face_texture_' + i, { width: 128, height: 128 }, scene, true);
+            texture.wrapU = B().Texture.CLAMP_ADDRESSMODE; texture.wrapV = B().Texture.CLAMP_ADDRESSMODE;
+            const ctx = texture.getContext();
+            ctx.fillStyle = baseColor; ctx.fillRect(0, 0, 128, 128);
+            const glyph = faceGlyph(face.value);
+            ctx.fillStyle = '#f7f2ea'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            if (face.value === 'crit') ctx.font = 'bold 84px Arial';
+            else ctx.font = 'bold 86px Arial';
+            if (glyph) ctx.fillText(glyph, 64, 70);
+            if (/^[69]$/.test(glyph)) ctx.fillRect(44, 112, 40, 6);
+            texture.update();
+
+            const material = new (B().StandardMaterial)('d10_face_material_' + i, scene);
+            material.diffuseTexture = texture; material.diffuseColor = B().Color3.White();
+            material.specularColor = new (B().Color3)(0.5, 0.5, 0.5); material.specularPower = 32;
+            material.backFaceCulling = true;
+            mesh.material = material;
+            face.mesh = mesh;
         });
         root.rotationQuaternion = B().Quaternion.Identity();
         return { root, body, faces };
@@ -189,16 +271,11 @@ export class DiceUI {
     hide() { this.el.classList.add('hidden'); this.el.classList.remove('mine', 'landed'); this.clickable = false; }
     clearHide() { if (this.hideTimer) { clearTimeout(this.hideTimer); this.hideTimer = null; } }
 
-    /** Land the chosen D10 face toward the camera without leaning the body off its pole axis.
-     *  Only yaw the combat D10s: their +Y tip stays truly vertical while the selected face's
-     *  horizontal normal points toward the camera. The sloped face remains clearly visible and its
-     *  printed up axis stays upright. Keep the D12's existing face-on landing pose unchanged. */
+    /** Present the chosen face square-on to the camera, with its printed up axis vertical. The
+     *  D10's long body axis is allowed to lean naturally; forcing it upright was the pose that kept
+     *  producing the same narrow, top-heavy view. */
     targetFor(f) {
         const Bx = B();
-        if (this.die !== 'noise') {
-            const yaw = Math.PI - Math.atan2(f.normal.x, f.normal.z);
-            return Bx.Quaternion.RotationYawPitchRoll(yaw, 0, 0);
-        }
         const m = Bx.Matrix.Identity();
         Bx.Matrix.FromXYZAxesToRef(f.right, f.up, f.normal.scale(-1), m);
         return Bx.Quaternion.FromRotationMatrix(m.transpose());
