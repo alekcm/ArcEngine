@@ -178,8 +178,8 @@ test('DICE-07: each new attack face is an outward kite with centered UVs and the
                 const up = B.Vector3.Dot(vertex.subtract(face.center), face.up);
                 return sum + up * (data.uvs[j * 2 + 1] - 0.5);
             }, 0);
-            assert.ok(horizontalUvCorrelation < 0 && verticalUvCorrelation < 0,
-                kind + ' face ' + i + ': compensate both canvas UV axes so glyphs are not mirrored');
+            assert.ok(horizontalUvCorrelation < 0 && verticalUvCorrelation > 0,
+                kind + ' face ' + i + ': mirror horizontally while retaining the original vertical UV direction');
             for (let t = 0; t < data.indices.length; t += 3) {
                 const at = index => new B.Vector3(data.positions[index * 3], data.positions[index * 3 + 1], data.positions[index * 3 + 2]);
                 const a = at(data.indices[t]), b = at(data.indices[t + 1]), c = at(data.indices[t + 2]);
