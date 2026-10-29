@@ -626,7 +626,8 @@ const CREW_ORIGINAL_HASHES = {
     mechanic: 'a97e7e4e829cb149f9626da7623e6381934dd52237c297196f8a9809df2cb401',
     pilot: 'e418f84fb3a63b8771474b98744d464fb8f0d2b2aae392a310861787eb46b989',
     hacker: 'bf0e8e492b9a175443b8894ec6f506b9cb7980a78c5c9a0263cff99459578e27',
-    scientist: '023c0fca22b1209ebcb0fa5540f9fa33a4b39a67c181964315161b6eaa6d799b',
+    // The original Scientist keeps its pose and equipment; only the neck joint was lengthened.
+    scientist: '776876a693bef7e043c3420d3c0b949ee4eb6f9a2157bb1e14be538df7d63682',
     medic: 'fbd83941fbd5ff5283425ae1dc5bac635a8216861fa9e7af6b55515de7084fcb',
     janitor: 'b540b75ee294fdab33f5533a4324176abf0684d9bc573e39fd5cbad7279080b8',
     ceo: '5bd3411416453ae47d2da6754a3e49a67de2c984203f04e76cf3aafb5556266b',
@@ -673,7 +674,7 @@ test('CREW-04: all combinations retain their equipment, paintability and attache
         assert.equal(count, slots.reduce((n, s) => n * s.options.length, 1), id + ': every combination checked');
         checked += count;
     }
-    assert.equal(checked, 4 * 243 + 12 * 27);
+    assert.equal(checked, 6 * 243 + 10 * 27);
 });
 
 test('CREW-05: extra shoulders, bracers, wheels and companions move with their originals', async () => {
@@ -758,7 +759,7 @@ test('ROLE-01: reworked crew options replace the original meshes, rather than ov
     const { CREW_PARTS, characterParts } = await import('../shared/appearance.mjs');
     const partMeshes = (ch, slot) => ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
     const signature = meshes => geometrySignature({ root: { getChildMeshes: () => meshes } });
-    for (const id of ['soldier', 'scout', 'mechanic', 'pilot']) for (const slot of CREW_PARTS[id]) {
+    for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist']) for (const slot of CREW_PARTS[id]) {
         const original = buildCharacter(scene.scene, id, {}, characterParts(id));
         const base = partMeshes(original, slot.id);
         assert.ok(base.length >= 2, `${id}/${slot.id}: the original part is marked`);
@@ -889,4 +890,103 @@ test('ROLE-06: Scout and Pilot replacement equipment follows the correct animate
         assert.ok(gun.position.z < z, sidearm + ': recoil');
         ch.root.dispose();
     }
+});
+
+test('ROLE-07: Hacker masks seal the face and neck; cyber-arms and smartguns follow the rig', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const hasAncestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
+    for (const hood of ['classic', 'rimmed', 'long']) for (const mask of ['classic', 'seams', 'vented']) {
+        const ch = buildCharacter(scene.scene, 'hacker', {}, { hood, mask });
+        const meshes = ch.root.getChildMeshes(), skin = ch.zones.skin;
+        ch.setColors({ skin: '#ffbbaa', hood: '#637a51', lights: '#32ffee' });
+        assert.equal(meshes.find(m => m.name === 'hacker_face_underlay').material.diffuseColor.toHexString().toLowerCase(), '#1a1d21', 'the balaclava stays opaque when skin is repainted');
+        // Test in builder coordinates and temporarily enable picking for the miniature meshes.
+        ch.root.scaling.setAll(1); for (const m of meshes) m.isPickable = true;
+        const relevant = m => skin.includes(m) || m.name === 'hacker_face_underlay' || ['hood', 'mask'].includes(m.metadata?.appearancePart?.slot);
+        for (const t of [0, 0.1, 0.2, 0.3]) {
+            ch.animate(t, t > 0);
+            for (const m of meshes) m.computeWorldMatrix(true);
+            const y = ch.root.position.y;
+            // Cast through the entire face and neck, rather than checking only the lighted visor.
+            for (const [x, yy] of [-0.13, 0, 0.13].flatMap(x => [2.3, 2.4, 2.5, 2.58].map(yy => [x, yy])).concat([[-0.05, 2.18], [0, 2.22], [0.05, 2.18]])) {
+                const ray = new B.Ray(new B.Vector3(x, yy + y, 1), new B.Vector3(0, 0, -1), 2);
+                const hit = scene.scene.pickWithRay(ray, relevant);
+                assert.ok(hit?.hit && !skin.includes(hit.pickedMesh), `${hood}/${mask}: covered at ${x},${yy} while moving; hit=${hit?.hit} mesh=${hit?.pickedMesh?.name} part=${hit?.pickedMesh?.metadata?.appearancePart?.slot}`);
+            }
+            // The hood and gasket must also close the sides of the head and neck.
+            for (const sign of [-1, 1]) for (const [yy, z] of [[2.34, -0.08], [2.5, 0.05], [2.4, 0.15], [2.2, 0]]) {
+                const ray = new B.Ray(new B.Vector3(sign, yy + y, z), new B.Vector3(-sign, 0, 0), 2);
+                const hit = scene.scene.pickWithRay(ray, relevant);
+                assert.ok(hit?.hit && !skin.includes(hit.pickedMesh), `${hood}/${mask}: covered side ${sign},${yy},${z}`);
+            }
+        }
+        ch.root.dispose();
+    }
+    for (const arms of ['classic', 'ribbed', 'terminal']) for (const smartgun of ['compact', 'rail']) {
+        const ch = buildCharacter(scene.scene, 'hacker', {}, { arms, smartgun });
+        const part = slot => ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
+        const limbs = part('arms'), weapon = part('smartgun');
+        assert.ok(limbs.some(m => hasAncestor(m, 'armL')) && limbs.some(m => hasAncestor(m, 'armR')));
+        assert.ok(limbs.every(m => hasAncestor(m, 'armL') || hasAncestor(m, 'armR')), `${arms}: both arms follow their shoulders`);
+        assert.ok(weapon.every(m => hasAncestor(m, 'gun') && hasAncestor(m, 'armR')), `${smartgun}: complete weapon follows the hand`);
+        const gun = ch.root.getDescendants().find(n => n.name === 'gun'), z = gun.position.z;
+        ch.animate(0, true); ch.shoot(); ch.animate(0.05, true);
+        assert.ok(gun.position.z < z, `${smartgun}: recoil still works`);
+        ch.animate(0.2, true);
+        assert.ok(weapon.every(m => hasAncestor(m, 'gun') && hasAncestor(m, 'armR')));
+        ch.root.dispose();
+    }
+});
+
+test('ROLE-08: replacement wheelchairs support the seated Scientist and animate all four grounded wheels', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const original = buildCharacter(scene.scene, 'scientist');
+    const base = original.root.getChildMeshes(), named = n => base.find(m => m.name === n);
+    for (const m of base) m.computeWorldMatrix(true);
+    assert.ok(named('scientist_neck_joint').intersectsMesh(named('scientist_head'), false) && named('scientist_neck_joint').intersectsMesh(named('scientist_torso'), false), 'original Scientist has a connected neck');
+    original.root.dispose();
+    for (const chair of ['spoked', 'guards']) for (const tablet of ['classic', 'panel', 'scanner'])
+        for (const scanner of ['classic', 'probe', 'spectrometer']) for (const coat of ['classic', 'field', 'lab']) {
+            const ch = buildCharacter(scene.scene, 'scientist', {}, { chair, tablet, scanner, coat });
+            const meshes = ch.root.getChildMeshes(), byName = n => meshes.find(m => m.name === n);
+            ch.root.scaling.setAll(1); // distances and ground clearance use the builder's units
+            const component = n => meshes.find(m => m.metadata?.chairComponent === n);
+            const part = slot => meshes.filter(m => m.metadata?.appearancePart?.slot === slot);
+            const label = `${chair}/${tablet}/${scanner}/${coat}`;
+            for (const m of meshes) m.computeWorldMatrix(true);
+            const neck = byName('scientist_neck_joint'), head = byName('scientist_head'), torso = byName('scientist_torso');
+            assert.ok(neck.intersectsMesh(head, false) && neck.intersectsMesh(torso, false), label + ': neck joins head and torso');
+            assert.ok(component('seat') && component('backrest') && component('footrest') && component('joystick') && component('display'));
+            assert.ok(component('backrest').intersectsMesh(torso, false), label + ': torso is supported');
+            const thighs = ch.zones.pants.filter(m => Math.abs(m.position.y - 0.8) < 0.001 && Math.abs(m.position.z - 0.26) < 0.001);
+            const feet = ch.zones.pants.filter(m => Math.abs(m.position.y - 0.22) < 0.001 && Math.abs(m.position.z - 0.58) < 0.001);
+            assert.equal(thighs.length, 2); assert.equal(feet.length, 2);
+            assert.ok(thighs.every(m => component('seat').intersectsMesh(m, false)), label + ': seated on the cushion');
+            assert.ok(feet.every(m => component('footrest').intersectsMesh(m, false)), label + ': feet on the footrest');
+            for (const side of ['L', 'R']) {
+                const upper = byName('scientist_upper_' + side), forearm = byName('scientist_forearm_' + side), hand = byName('scientist_hand_' + side);
+                assert.ok(upper.intersectsMesh(forearm, false) && forearm.intersectsMesh(hand, false), label + ': connected ' + side + ' arm');
+                assert.ok(component('armrest' + side).intersectsMesh(forearm, false), label + ': supported ' + side + ' forearm');
+                const instrument = part(side === 'L' ? 'tablet' : 'scanner');
+                assert.ok(instrument.some(m => m.intersectsMesh(hand, false)), label + ': instrument meets ' + side + ' hand');
+                const control = component(side === 'L' ? 'joystick' : 'display');
+                assert.ok(B.Vector3.Distance(hand.getAbsolutePosition(), control.getAbsolutePosition()) < 0.26, label + ': control within reach of ' + side + ' hand');
+            }
+            const wheels = meshes.filter(m => m.name === 'wheel');
+            assert.equal(wheels.length, 4);
+            const initial = wheels.map(w => {
+                assert.ok(w.getChildMeshes().length >= 2, label + ': visible rim moves with wheel');
+                assert.ok(Math.abs(w.getBoundingInfo().boundingBox.minimumWorld.y) < 0.03, label + ': wheel touches the floor');
+                return B.Vector3.TransformNormal(new B.Vector3(0, 1, 0), w.getWorldMatrix()).normalize();
+            });
+            ch.animate(0, true); ch.animate(0.1, true); ch.animate(0.2, true);
+            for (const [i, w] of wheels.entries()) {
+                w.computeWorldMatrix(true);
+                assert.ok(Math.abs(w.rotation.x) > 0.1, label + ': all four wheels roll');
+                const axis = B.Vector3.TransformNormal(new B.Vector3(0, 1, 0), w.getWorldMatrix()).normalize();
+                assert.ok(B.Vector3.Dot(axis, initial[i]) > 0.999, label + ': wheel rolls around its axle, not sideways');
+                assert.ok(w.getChildMeshes().every(m => m.parent === w), label + ': rims stay on their wheel');
+            }
+            ch.root.dispose();
+        }
 });

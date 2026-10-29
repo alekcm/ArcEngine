@@ -8,6 +8,7 @@ import { characterParts } from '../shared/appearance.mjs';
 import { addCrewDetails } from './crew-variants.js';
 import { soldierVariant, mechanicVariant } from './role-variants.js';
 import { scoutVariant, pilotVariant } from './explorer-variants.js';
+import { hackerVariant, scientistVariant } from './research-variants.js';
 
 const B = () => window.BABYLON;
 
@@ -103,8 +104,10 @@ function labratSpec(parts) {
 // Hair changes only the requested character's copy; the canonical specs are never mutated.
 function crewSpec(charId, parts) {
     const spec = SPECS[charId] || SPECS.pilot;
-    // Pilot presets replace whole pieces in the humanoid builder; keep the original spec intact.
+    // These roles replace whole pieces in the humanoid builder; keep the original specs intact.
     if (charId === 'pilot') return { ...spec, pilotParts: parts };
+    if (charId === 'hacker') return { ...spec, hackerParts: parts };
+    if (charId === 'scientist') return { ...spec, scientistParts: parts };
     const hair = {
         medic: { tied: 'crewPony', wavy: 'labMessy' },
         ceo: { spiky: 'shortSpiky', side: 'shortSide' },
@@ -140,7 +143,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         build();
         for (const mesh of root.getChildMeshes()) if (!before.has(mesh)) {
             mesh.metadata = { ...mesh.metadata, appearancePart: { character: charId, slot, variant } };
-            if (variant !== 'classic') mesh.name = `crew_${charId}_${slot}`;
+            // Wheel anchors have a reserved name used by the seated animation rig.
+            if (variant !== 'classic' && mesh.name !== 'wheel') mesh.name = `crew_${charId}_${slot}`;
         }
     };
     if (charId === 'soldier') buildSoldier(selectedParts);
@@ -148,7 +152,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     else if (charId === 'mechanic') buildMechanic(selectedParts);
     else if (charId === 'sentry') buildSentry(selectedParts);
     else buildHumanoid(charId === 'labrat' ? labratSpec(selectedParts) : crewSpec(charId, selectedParts));
-    if (!['soldier', 'scout', 'mechanic', 'pilot', 'labrat', 'sentry'].includes(charId)) {
+    if (!['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'labrat', 'sentry'].includes(charId)) {
         addCrewDetails(charId, selectedParts, roleContext);
     }
 
@@ -168,7 +172,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         F(FIXED.steel, bx(0.1, 0.08, 0.04, R, 0, 1.5, 0.17));
         // torso
         const T = (m) => sp.torso[0] === '#' ? F(sp.torso, m) : Z(sp.torso, m);   // torso zone, or a fixed colour
-        T(bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
+        const torso = T(bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
+        if (sp.scientistParts) torso.name = 'scientist_torso';
         if (sp.female) { const bf = sp.bust == null ? 1 : sp.bust; if (bf > 0) { const m = bx(0.46 * W, 0.24 * bf, 0.16 * bf, R, 0, 1.98, 0.14 + 0.08 * bf); if (sp.bustZone) Z(sp.bustZone, m); else T(m); } Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0)); }   // chest and hips
         if (sp.underV || sp.vneck) { Z('skin', bx(0.16 * W, 0.16, 0.04, R, 0, 2.1, 0.16)); Z('skin', bx(0.08 * W, 0.1, 0.04, R, 0, 2.0, 0.17)); }   // open neckline
         if (sp.furCoat) {   // thick fur coat: one solid collar ring, solid cuffs and a fur hem, coat body over the torso
@@ -205,12 +210,19 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         if (sp.piping) { for (const s of [-1, 1]) Z(sp.piping, bx(0.03, 0.66, 0.02, R, s * 0.1 * W, 1.84, 0.245)); Z(sp.piping, bx(0.5 * W, 0.03, 0.02, R, 0, 1.52, 0.245)); for (const s of [-1, 1]) Z(sp.piping, bx(0.03, 0.4, 0.02, R, s * 0.39 * W, 1.84, 0.1)); }   // light seams on a dark coat
         if (sp.vest) { Z(sp.vest, bx(0.5 * W, 0.5, 0.1, R, 0, 1.84, 0.18)); Z(sp.vest, bx(0.5 * W, 0.5, 0.08, R, 0, 1.84, -0.18)); for (const s of [-1, 1]) Z(sp.vest, bx(0.08, 0.5, 0.36, R, s * 0.25 * W, 1.84, 0)); }
         if (sp.coat) {   // long open coat: back panel + two front flaps + tails
-            Z(sp.coat, bx(0.58 * W, 0.7, 0.1, R, 0, 1.82, -0.2));
-            for (const s of [-1, 1]) Z(sp.coat, bx(0.16 * W, 0.68, 0.1, R, s * 0.21 * W, 1.84, 0.19));
-            for (const s of [-1, 1]) Z(sp.coat, bx(0.2 * W, 0.6, 0.08, R, s * 0.2 * W, 1.22, -0.17));
-            for (const s of [-1, 1]) Z(sp.coat, bx(0.1, 0.68, 0.34, R, s * 0.27 * W, 1.84, 0));   // side panels (no gaps)
-            if (sp.openCoat) { for (const s of [-1, 1]) Z(sp.coat, bx(0.1, 0.22, 0.1, R, s * 0.2 * W, 2.2, 0.1, [0, s * 0.5, 0])); }   // open lapels, neck free
-            else Z(sp.coat, bx(0.6 * W, 0.08, 0.36, R, 0, 2.2, -0.02));             // collar
+            const original = () => {
+                Z(sp.coat, bx(0.58 * W, 0.7, 0.1, R, 0, 1.82, -0.2));
+                for (const s of [-1, 1]) Z(sp.coat, bx(0.16 * W, 0.68, 0.1, R, s * 0.21 * W, 1.84, 0.19));
+                for (const s of [-1, 1]) Z(sp.coat, bx(0.2 * W, 0.6, 0.08, R, s * 0.2 * W, 1.22, -0.17));
+                for (const s of [-1, 1]) Z(sp.coat, bx(0.1, 0.68, 0.34, R, s * 0.27 * W, 1.84, 0));   // side panels (no gaps)
+                if (sp.openCoat) { for (const s of [-1, 1]) Z(sp.coat, bx(0.1, 0.22, 0.1, R, s * 0.2 * W, 2.2, 0.1, [0, s * 0.5, 0])); }   // open lapels, neck free
+                else Z(sp.coat, bx(0.6 * W, 0.08, 0.36, R, 0, 2.2, -0.02));             // collar
+            };
+            if (sp.scientistParts) part('coat', sp.scientistParts.coat, () => {
+                if (sp.scientistParts.coat === 'classic') original();
+                else scientistVariant('coat', sp.scientistParts.coat, roleContext, W);
+            });
+            else original();
         }
         if (sp.denimVest) {   // short-sleeved denim jacket thrown over the shirt: back, two open front flaps, side panels, short sleeves, collar
             Z(sp.denimVest, bx(0.58 * W, 0.6, 0.1, R, 0, 1.86, -0.2));
@@ -256,10 +268,24 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         for (const s of [-1, 1]) {
             const pad = sp.pads;
             if (pad) Z(pad, bx(0.28 * W, 0.18, 0.3, R, s * 0.38 * W, 2.12, 0));
-            Z(sp.arms, bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0));
+            if (sp.hackerParts) {
+                part('arms', sp.hackerParts.arms, () => {
+                    if (sp.hackerParts.arms === 'classic') {
+                        Z(sp.arms, bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0));
+                        Z(sp.forearms || sp.arms, bx(0.15 * W, 0.4, 0.17, R, s * 0.39 * W, 1.44, 0.02));
+                        Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03));
+                    } else hackerVariant('arm', sp.hackerParts.arms, roleContext, W, s);
+                });
+                continue;
+            }
+            const upper = Z(sp.arms, bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0));
             if (sp.slingL && s === -1) continue;                                                   // left forearm is in the sling (drawn below)
-            Z(sp.forearms || sp.arms, bx(0.15 * W, 0.4, 0.17, R, s * 0.39 * W, 1.44, 0.02));       // rolled-up sleeves expose the forearm when `forearms` is set
-            Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03));
+            const forearm = Z(sp.forearms || sp.arms, bx(0.15 * W, 0.4, 0.17, R, s * 0.39 * W, 1.44, 0.02));
+            const hand = Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03));
+            if (sp.scientistParts) {
+                const side = s < 0 ? 'L' : 'R';
+                upper.name = 'scientist_upper_' + side; forearm.name = 'scientist_forearm_' + side; hand.name = 'scientist_hand_' + side;
+            }
         }
         if (sp.slingL) {   // bandaged left forearm bent across the chest, hung from a bandage looped around the neck
             const BND = '#d9d2c2';
@@ -276,24 +302,37 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             for (const s of [-1, 1]) F(FIXED.strap, bx(0.07, 0.6, 0.03, R, s * 0.16 * W, 1.86, 0.17));                                        // shoulder straps
             F(FIXED.darkSteel, bx(0.08, 0.14, 0.06, R, 0.22 * W, 2.06, 0.16)); for (let i = 0; i < 4; i++) F(FIXED.rubber, bx(0.03, 0.03, 0.03, R, 0.24 * W + (i % 2) * 0.03, 2.14 + i * 0.03, 0.1 - i * 0.05));   // handset + coiled cable
         }
-        if (sp.cyberArms) {   // cybernetic implant arms: segmented metal forearms, elbow joints, glowing seams
-            for (const s of [-1, 1]) {
+        if (sp.cyberArms && (!sp.hackerParts || sp.hackerParts.arms === 'classic')) {   // original cybernetic arms
+            const original = () => { for (const s of [-1, 1]) {
                 Z(sp.cyberArms, bx(0.18 * W, 0.42, 0.2, R, s * 0.39 * W, 1.44, 0.02)); F(FIXED.steel, bx(0.2 * W, 0.06, 0.22, R, s * 0.39 * W, 1.56, 0.02)); F(FIXED.steel, bx(0.2 * W, 0.06, 0.22, R, s * 0.39 * W, 1.3, 0.02));
                 F(FIXED.darkSteel, cy(0.1, 0.1, 0.2, 6, R, s * 0.39 * W, 1.66, 0.02, [0, 0, Math.PI / 2]));   // elbow joint
                 Z(LZ, bx(0.02, 0.26, 0.02, R, s * 0.39 * W, 1.44, 0.125)); F(FIXED.steel, bx(0.16, 0.1, 0.16, R, s * 0.39 * W, 1.2, 0.03));
                 F(FIXED.steel, bx(0.06, 0.24, 0.06, R, s * 0.47 * W, 1.84, 0.0)); Z(LZ, bx(0.02, 0.1, 0.02, R, s * 0.48 * W, 1.84, 0.0));   // upper-arm implant rail
-            }
+            } };
+            if (sp.hackerParts) part('arms', 'classic', original); else original();
         }
         if (sp.chestArmor) {   // sternum armour plate sewn into the bodysuit
-            Z(sp.chestArmor, bx(0.36 * W, 0.34, 0.08, R, 0, 1.96, 0.18)); F(FIXED.darkSteel, bx(0.3 * W, 0.08, 0.04, R, 0, 2.06, 0.23)); F(FIXED.darkSteel, bx(0.3 * W, 0.08, 0.04, R, 0, 1.86, 0.23));
-            Z(LZ, bx(0.1, 0.03, 0.02, R, 0, 1.96, 0.235)); for (const s of [-1, 1]) Z(sp.chestArmor, bx(0.1, 0.26, 0.06, R, s * 0.24 * W, 2.04, 0.17));
+            const original = () => {
+                Z(sp.chestArmor, bx(0.36 * W, 0.34, 0.08, R, 0, 1.96, 0.18)); F(FIXED.darkSteel, bx(0.3 * W, 0.08, 0.04, R, 0, 2.06, 0.23)); F(FIXED.darkSteel, bx(0.3 * W, 0.08, 0.04, R, 0, 1.86, 0.23));
+                Z(LZ, bx(0.1, 0.03, 0.02, R, 0, 1.96, 0.235)); for (const s of [-1, 1]) Z(sp.chestArmor, bx(0.1, 0.26, 0.06, R, s * 0.24 * W, 2.04, 0.17));
+            };
+            if (sp.hackerParts) part('vest', sp.hackerParts.vest, () => {
+                if (sp.hackerParts.vest === 'classic') original();
+                else hackerVariant('vest', sp.hackerParts.vest, roleContext, W);
+            });
+            else original();
         }
         if (sp.cables) { for (let i = 0; i < 3; i++) F(FIXED.rubber, cy(0.03, 0.03, 0.5, 5, R, -0.3 * W + i * 0.05, 1.98, -0.3 - i * 0.04, [0.4, 0, 0.3])); Z(sp.cables, bx(0.12, 0.08, 0.06, R, -0.2 * W, 2.18, -0.3)); }
         if (sp.toolBelt) { for (let i = 0; i < 3; i++) F(FIXED.steel, bx(0.06, 0.14, 0.06, R, -0.22 * W + i * 0.1, 1.42, 0.17)); F(FIXED.strap, bx(0.14, 0.16, 0.1, R, 0.26 * W, 1.4, 0.12)); }
         if (sp.shoulderLamp) Z(sp.shoulderLamp, bx(0.08, 0.06, 0.06, R, -0.38 * W, 2.2, 0.12));
-        // neck + head
-        Z('skin', bx(0.14, 0.1, 0.14, R, 0, 2.2, 0));
-        Z('skin', bx(0.3, 0.34, 0.3, R, 0, 2.44, 0.02));
+        // The seated Scientist's neck bridges the small gap between the original head and torso.
+        const neck = Z('skin', bx(0.14, sp.scientistParts ? 0.16 : 0.1, 0.14, R, 0, 2.2, 0));
+        // The Hacker's original mask had skin-coloured gaps at the temples and cheeks. Keep the
+        // original geometry but make the underlying balaclava opaque for every mask option.
+        const headMesh = bx(0.3, 0.34, 0.3, R, 0, 2.44, 0.02);
+        const head = sp.hackerParts ? F(FIXED.rubber, headMesh) : Z('skin', headMesh);
+        if (sp.hackerParts) head.name = 'hacker_face_underlay';
+        if (sp.scientistParts) { neck.name = 'scientist_neck_joint'; head.name = 'scientist_head'; }
         if (!sp.respirator && !sp.faceMask && !sp.bandana) Z('skin', bx(0.06, 0.06, 0.05, R, 0, 2.42, 0.18));    // nose (hidden under masks)
         const H = sp.hairZone || 'hair';
         const buildOriginalHair = () => {
@@ -366,16 +405,29 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         // head gear
         if (sp.cap) { Z(sp.cap, bx(0.34, 0.1, 0.34, R, 0, 2.66, 0.0)); Z(sp.cap, bx(0.3, 0.03, 0.16, R, 0, 2.62, 0.24)); }
         if (sp.hood && sp.cowl) {   // soft hood: rounded top, draped sides widening down to the shoulders, merging into the suit
-            Z(sp.hood, bx(0.36, 0.14, 0.36, R, 0, 2.66, -0.06)); Z(sp.hood, bx(0.4, 0.3, 0.1, R, 0, 2.46, -0.2));
-            for (const s of [-1, 1]) { Z(sp.hood, bx(0.06, 0.34, 0.34, R, s * 0.19, 2.46, -0.04)); Z(sp.hood, bx(0.1, 0.22, 0.34, R, s * 0.24, 2.22, -0.08, [0, 0, s * 0.35])); }
-            Z(sp.hood, bx(0.54, 0.14, 0.4, R, 0, 2.2, -0.1)); Z(sp.hood, bx(0.3, 0.16, 0.08, R, 0, 2.16, 0.15, [0.5, 0, 0]));   // cowl draped onto the chest and back
-            Z(sp.hood, bx(0.4, 0.06, 0.14, R, 0, 2.7, 0.14, [-0.4, 0, 0]));                                                 // soft brim
+            const original = () => {
+                Z(sp.hood, bx(0.36, 0.14, 0.36, R, 0, 2.66, -0.06)); Z(sp.hood, bx(0.4, 0.3, 0.1, R, 0, 2.46, -0.2));
+                for (const s of [-1, 1]) { Z(sp.hood, bx(0.06, 0.34, 0.34, R, s * 0.19, 2.46, -0.04)); Z(sp.hood, bx(0.1, 0.22, 0.34, R, s * 0.24, 2.22, -0.08, [0, 0, s * 0.35])); }
+                Z(sp.hood, bx(0.54, 0.14, 0.4, R, 0, 2.2, -0.1)); Z(sp.hood, bx(0.3, 0.16, 0.08, R, 0, 2.16, 0.15, [0.5, 0, 0]));
+                Z(sp.hood, bx(0.4, 0.06, 0.14, R, 0, 2.7, 0.14, [-0.4, 0, 0]));
+            };
+            if (sp.hackerParts) part('hood', sp.hackerParts.hood, () => {
+                if (sp.hackerParts.hood === 'classic') original();
+                else hackerVariant('hood', sp.hackerParts.hood, roleContext, W);
+            });
+            else original();
         } else if (sp.hood) { Z(sp.hood, bx(0.4, 0.42, 0.4, R, 0, 2.5, -0.04)); Z(sp.hood, bx(0.46, 0.1, 0.46, R, 0, 2.28, -0.02)); Z(sp.hood, bx(0.44, 0.08, 0.2, R, 0, 2.7, 0.14)); if (!sp.faceMask) { F(FIXED.rubber, bx(0.3, 0.26, 0.04, R, 0, 2.46, 0.17)); Z('skin', bx(0.26, 0.2, 0.05, R, 0, 2.4, 0.19)); for (const s of [-1, 1]) Z(LZ, bx(0.04, 0.03, 0.02, R, s * 0.07, 2.46, 0.22)); } }
         if (sp.faceMask) {   // full dark face plate with glowing seams (no skin visible)
-            // contoured mask: brow plate, narrower cheek plates, pointed chin — follows the face rather than a flat visor
-            F(FIXED.rubber, bx(0.28, 0.12, 0.06, R, 0, 2.53, 0.17)); F(FIXED.rubber, bx(0.22, 0.14, 0.07, R, 0, 2.4, 0.18)); F(FIXED.rubber, bx(0.14, 0.1, 0.06, R, 0, 2.29, 0.17));
-            for (const s of [-1, 1]) F(FIXED.rubber, bx(0.06, 0.2, 0.1, R, s * 0.13, 2.42, 0.12, [0, s * 0.4, 0]));
-            for (const s of [-1, 1]) Z(LZ, bx(0.07, 0.02, 0.02, R, s * 0.07, 2.49, 0.215)); Z(LZ, bx(0.02, 0.12, 0.02, R, 0, 2.38, 0.22));
+            const original = () => {
+                F(FIXED.rubber, bx(0.28, 0.12, 0.06, R, 0, 2.53, 0.17)); F(FIXED.rubber, bx(0.22, 0.14, 0.07, R, 0, 2.4, 0.18)); F(FIXED.rubber, bx(0.14, 0.1, 0.06, R, 0, 2.29, 0.17));
+                for (const s of [-1, 1]) F(FIXED.rubber, bx(0.06, 0.2, 0.1, R, s * 0.13, 2.42, 0.12, [0, s * 0.4, 0]));
+                for (const s of [-1, 1]) Z(LZ, bx(0.07, 0.02, 0.02, R, s * 0.07, 2.49, 0.215)); Z(LZ, bx(0.02, 0.12, 0.02, R, 0, 2.38, 0.22));
+            };
+            if (sp.hackerParts) part('mask', sp.hackerParts.mask, () => {
+                if (sp.hackerParts.mask === 'classic') original();
+                else hackerVariant('mask', sp.hackerParts.mask, roleContext, W);
+            });
+            else original();
         }
         if (sp.respirator) {   // half-mask covering nose and mouth, two filter cans, strap around the head
             F(FIXED.darkSteel, bx(0.3, 0.24, 0.14, R, 0, 2.31, 0.15)); F(FIXED.rubber, bx(0.18, 0.08, 0.06, R, 0, 2.42, 0.2));
@@ -401,7 +453,14 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             else original();
         }
         if (sp.headsetTech) { Z(sp.headsetTech, bx(0.06, 0.16, 0.12, R, 0.18, 2.46, 0.0)); Z(LZ, bx(0.03, 0.04, 0.04, R, 0.22, 2.5, 0.04)); F(FIXED.steel, bx(0.03, 0.03, 0.2, R, 0.18, 2.54, 0.1)); }
-        if (sp.goggles) { F(FIXED.darkSteel, bx(0.3, 0.08, 0.04, R, 0, 2.62, 0.16)); for (const s of [-1, 1]) Z(sp.goggles, cy(0.09, 0.09, 0.03, 8, R, s * 0.08, 2.62, 0.18, [Math.PI / 2, 0, 0])); }
+        if (sp.goggles) {
+            const original = () => { F(FIXED.darkSteel, bx(0.3, 0.08, 0.04, R, 0, 2.62, 0.16)); for (const s of [-1, 1]) Z(sp.goggles, cy(0.09, 0.09, 0.03, 8, R, s * 0.08, 2.62, 0.18, [Math.PI / 2, 0, 0])); };
+            if (sp.scientistParts) part('goggles', sp.scientistParts.goggles, () => {
+                if (sp.scientistParts.goggles === 'classic') original();
+                else scientistVariant('goggles', sp.scientistParts.goggles, roleContext, W);
+            });
+            else original();
+        }
         if (sp.glasses) { F(FIXED.rubber, bx(0.3, 0.02, 0.02, R, 0, 2.47, 0.17)); for (const s of [-1, 1]) F(FIXED.glass, bx(0.1, 0.08, 0.02, R, s * 0.08, 2.46, 0.18), { alpha: 0.6, spec: 0.8 }); }
         if (sp.gasMask) { F(FIXED.darkSteel, bx(0.26, 0.16, 0.1, R, 0, 2.34, 0.16)); for (const s of [-1, 1]) F(FIXED.steel, cy(0.1, 0.1, 0.06, 6, R, s * 0.1, 2.32, 0.23, [Math.PI / 2, 0, 0])); }
         if (sp.blindfold) {   // cloth, never a technological visor: the eyes stay covered in every variant
@@ -461,7 +520,15 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             });
             else original();
         }
-        if (sp.smartGun) { const g = new (B().TransformNode)('gun', S); g.parent = R; g.position.set(0.39 * W, 1.16, 0.1); g.rotation.x = 1.25; Z(sp.cables || 'gear', bx(0.08, 0.12, 0.4, g, 0, 0.04, 0.18)); F(FIXED.darkSteel, bx(0.1, 0.06, 0.2, g, 0, 0.12, 0.3)); Z(LZ, bx(0.09, 0.03, 0.2, g, 0, 0.11, 0.2)); F(FIXED.gunLight, bx(0.08, 0.14, 0.12, g, 0, -0.02, 0)); F(FIXED.rubber, cy(0.02, 0.02, 0.5, 4, R, 0.3 * W, 1.5, -0.1, [0.6, 0, 0.4])); }
+        if (sp.smartGun) {
+            const g = new (B().TransformNode)('gun', S); g.parent = R; g.position.set(0.39 * W, 1.16, 0.1); g.rotation.x = 1.25;
+            const original = () => { Z(sp.cables || 'gear', bx(0.08, 0.12, 0.4, g, 0, 0.04, 0.18)); F(FIXED.darkSteel, bx(0.1, 0.06, 0.2, g, 0, 0.12, 0.3)); Z(LZ, bx(0.09, 0.03, 0.2, g, 0, 0.11, 0.2)); F(FIXED.gunLight, bx(0.08, 0.14, 0.12, g, 0, -0.02, 0)); F(FIXED.rubber, cy(0.02, 0.02, 0.5, 4, R, 0.3 * W, 1.5, -0.1, [0.6, 0, 0.4])); };
+            if (sp.hackerParts) part('smartgun', sp.hackerParts.smartgun, () => {
+                if (sp.hackerParts.smartgun === 'classic') original();
+                else hackerVariant('smartgun', sp.hackerParts.smartgun, roleContext, W, null, g);
+            });
+            else original();
+        }
         if (sp.rifleBack) { F(FIXED.gun, bx(0.08, 1.1, 0.12, R, 0.2 * W, 1.9, -0.26, [0, 0, 0.3])); F(FIXED.gunLight, bx(0.1, 0.3, 0.14, R, 0.1 * W, 1.6, -0.26, [0, 0, 0.3])); }
         if (sp.rifleHands || sp.shotgun) {
             const g = new (B().TransformNode)('gun', S); g.parent = R; g.position.set(0, 1.3, 0.5); g.rotation.y = -0.25;
@@ -484,9 +551,23 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             F(FIXED.darkSteel, bx(0.3, 0.06, 0.12, R, -0.4 * W, 0.4, 0.36));                                                  // floor nozzle
         }
         if (sp.wrench) { F(FIXED.steel, bx(0.06, 0.5, 0.04, R, -0.4 * W, 1.0, 0.1)); F(FIXED.steel, bx(0.18, 0.08, 0.05, R, -0.4 * W, 0.74, 0.1)); for (const s of [-1, 1]) F(FIXED.steel, bx(0.05, 0.1, 0.05, R, -0.4 * W + s * 0.065, 0.66, 0.1)); F(FIXED.darkSteel, bx(0.08, 0.14, 0.06, R, -0.4 * W, 1.18, 0.1)); }   // handle, head with open jaws
-        if (sp.scanner) { F(FIXED.darkSteel, bx(0.1, 0.1, 0.26, R, 0.39 * W, 1.22, 0.18)); Z(LZ, cy(0.06, 0.06, 0.02, 6, R, 0.39 * W, 1.24, 0.32, [Math.PI / 2, 0, 0])); }   // hand scanner (right hand)
+        if (sp.scanner) {   // hand scanner (right hand)
+            const original = () => { F(FIXED.darkSteel, bx(0.1, 0.1, 0.26, R, 0.39 * W, 1.22, 0.18)); Z(LZ, cy(0.06, 0.06, 0.02, 6, R, 0.39 * W, 1.24, 0.32, [Math.PI / 2, 0, 0])); };
+            if (sp.scientistParts) part('scanner', sp.scientistParts.scanner, () => {
+                if (sp.scientistParts.scanner === 'classic') original();
+                else scientistVariant('scanner', sp.scientistParts.scanner, roleContext, W);
+            });
+            else original();
+        }
         if (sp.fullBeard) { Z(sp.fullBeard, bx(0.3, 0.18, 0.1, R, 0, 2.26, 0.14)); Z(sp.fullBeard, bx(0.06, 0.26, 0.26, R, 0.15, 2.36, 0.04)); Z(sp.fullBeard, bx(0.06, 0.26, 0.26, R, -0.15, 2.36, 0.04)); }
-        if (sp.tablet) { F(FIXED.darkSteel, bx(0.3, 0.03, 0.22, R, -0.38 * W, 1.26, 0.18, [0.5, 0, 0])); Z(LZ, bx(0.24, 0.012, 0.16, R, -0.38 * W, 1.28, 0.18, [0.5, 0, 0])); }   // tablet held tilted in the left hand
+        if (sp.tablet) {   // tablet held tilted in the left hand
+            const original = () => { F(FIXED.darkSteel, bx(0.3, 0.03, 0.22, R, -0.38 * W, 1.26, 0.18, [0.5, 0, 0])); Z(LZ, bx(0.24, 0.012, 0.16, R, -0.38 * W, 1.28, 0.18, [0.5, 0, 0])); };
+            if (sp.scientistParts) part('tablet', sp.scientistParts.tablet, () => {
+                if (sp.scientistParts.tablet === 'classic') original();
+                else scientistVariant('tablet', sp.scientistParts.tablet, roleContext, W);
+            });
+            else original();
+        }
         if (sp.syringeGun) {   // injector pistol in the left hand: grip, body, glass vial on top, needle
             const g = new (B().TransformNode)('gun', S); g.parent = R; g.position.set(-0.39 * W, 1.2, 0.14); g.rotation.x = 1.1;
             F(FIXED.gunLight, bx(0.08, 0.14, 0.12, g, 0, -0.02, 0)); F(FIXED.darkSteel, bx(0.08, 0.1, 0.32, g, 0, 0.05, 0.14));
@@ -581,37 +662,60 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             Z(sp.legs, bx(0.2, 0.44, 0.2, R, s * 0.15, seatY - 0.3, 0.5));            // shins down
             Z(sp.boots, bx(0.22, 0.12, 0.34, R, s * 0.15, seatY - 0.56, 0.58));        // boots on the footrest
         }
-        const steel = FIXED.darkSteel, trim = FIXED.steel, hull = '#2a3550', pad = '#e6e9ec', orange = '#d9772a';
-        // padded seat: white cushion, tall backrest with headrest and orange trim
-        F(pad, bx(0.6, 0.12, 0.56, R, 0, seatY - 0.06, 0.05));
-        F(pad, bx(0.62, 0.62, 0.14, R, 0, seatY + 0.26, -0.3)); F(pad, bx(0.36, 0.22, 0.12, R, 0, seatY + 0.7, -0.3));   // backrest + headrest
-        F(orange, bx(0.64, 0.05, 0.16, R, 0, seatY + 0.58, -0.3)); F(orange, bx(0.1, 0.5, 0.15, R, 0.26, seatY + 0.26, -0.3));
-        // armoured chassis: thick hull around the seat, side panels with vents, rear battery block, status lights
-        F(hull, bx(0.8, 0.3, 0.8, R, 0, seatY - 0.3, 0.02));                             // hull body
-        F(hull, bx(0.84, 0.16, 0.5, R, 0, seatY - 0.12, -0.1));                          // upper hull around the cushion
-        F(hull, bx(0.7, 0.46, 0.16, R, 0, seatY + 0.1, -0.46));                          // rear equipment block
-        F(steel, bx(0.3, 0.3, 0.1, R, 0, seatY + 0.06, -0.56)); Z(sp.lights || 'lights', bx(0.04, 0.2, 0.02, R, 0.1, seatY + 0.06, -0.62));   // rear panel + light strip
-        for (const s of [-1, 1]) {
-            F(steel, bx(0.06, 0.22, 0.5, R, s * 0.43, seatY - 0.3, 0.02));                       // side skirt
-            for (let k = 0; k < 3; k++) F(FIXED.rubber, bx(0.02, 0.12, 0.05, R, s * 0.47, seatY - 0.3, -0.1 + k * 0.12));   // vents
-            Z(sp.lights || 'lights', bx(0.02, 0.04, 0.16, R, s * 0.47, seatY - 0.2, 0.22));      // side indicator
-            F(hull, bx(0.1, 0.1, 0.5, R, s * 0.4, seatY + 0.1, 0.0)); F(trim, bx(0.12, 0.03, 0.52, R, s * 0.4, seatY + 0.16, 0.0));   // armrests
-            F(steel, bx(0.08, 0.24, 0.08, R, s * 0.4, seatY - 0.02, -0.2));
+        if (sp.scientistParts.chair !== 'classic') {
+            // On the new chairs the forearms rest on the armrests and the hands actually reach
+            // their instruments. Move complete instrument groups, not only their visible screens.
+            for (const side of ['L', 'R']) {
+                const forearm = R.getChildren().find(n => n.name === 'scientist_forearm_' + side);
+                const hand = R.getChildren().find(n => n.name === 'scientist_hand_' + side);
+                forearm.position.y = hand.position.y = 1.02;
+                forearm.position.z = 0.2; forearm.rotation.x = Math.PI / 2;
+                hand.position.z = 0.4;
+            }
+            for (const node of R.getChildren()) {
+                const slot = node.metadata?.appearancePart?.slot;
+                if (slot === 'scanner' || slot === 'tablet' || node.name === 'scientist_tablet') {
+                    node.position.y += 0.44; node.position.z += 0.35;
+                }
+            }
         }
-        F(steel, bx(0.5, 0.04, 0.22, R, 0, seatY - 0.62, 0.6)); F(steel, bx(0.08, 0.3, 0.08, R, 0, seatY - 0.48, 0.5));   // footrest on a strut
-        // big wide drive wheels with glowing rims, small front casters
-        for (const s of [-1, 1]) {
-            const w = cy(0.5, 0.5, 0.24, 14, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]); w.name = 'wheel'; F(FIXED.rubber, w);   // wide tyre
-            F(hull, cy(0.36, 0.36, 0.26, 14, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]));
-            Z(sp.lights || 'lights', cy(0.24, 0.24, 0.28, 14, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]));   // glowing rim
-            F(steel, cy(0.1, 0.1, 0.32, 8, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]));                     // hub
-            F(steel, bx(0.3, 0.1, 0.5, R, s * 0.47, 1.02, -0.14)); F(steel, bx(0.3, 0.06, 0.14, R, s * 0.47, 0.98, 0.16, [0.6, 0, 0]));   // mudguard
-            const c = cy(0.2, 0.2, 0.1, 8, R, s * 0.3, 0.12, 0.5, [0, 0, Math.PI / 2]); c.name = 'wheel'; F(FIXED.rubber, c);   // front casters
-            F(steel, bx(0.06, 0.2, 0.06, R, s * 0.3, 0.3, 0.5));
-        }
-        // controls: joystick on the right armrest (opposite the tablet), holo-projector on the left
-        F(trim, bx(0.14, 0.06, 0.18, R, 0.4, seatY + 0.2, 0.2)); F(FIXED.rubber, cy(0.02, 0.02, 0.14, 6, R, 0.4, seatY + 0.3, 0.2)); Z(sp.lights || 'lights', sp_(0.04, 6, R, 0.4, seatY + 0.38, 0.2));
-        F(trim, cy(0.06, 0.08, 0.04, 8, R, -0.4, seatY + 0.2, 0.22)); Z(sp.lights || 'lights', sp_(0.1, 8, R, -0.4, seatY + 0.36, 0.22));   // holographic globe
+        part('chair', sp.scientistParts.chair, () => {
+            if (sp.scientistParts.chair !== 'classic') {
+                scientistVariant('chair', sp.scientistParts.chair, roleContext, 1, seatY);
+                return;
+            }
+            const steel = FIXED.darkSteel, trim = FIXED.steel, hull = '#2a3550', pad = '#e6e9ec', orange = '#d9772a';
+            // padded seat: white cushion, tall backrest with headrest and orange trim
+            F(pad, bx(0.6, 0.12, 0.56, R, 0, seatY - 0.06, 0.05));
+            F(pad, bx(0.62, 0.62, 0.14, R, 0, seatY + 0.26, -0.3)); F(pad, bx(0.36, 0.22, 0.12, R, 0, seatY + 0.7, -0.3));   // backrest + headrest
+            F(orange, bx(0.64, 0.05, 0.16, R, 0, seatY + 0.58, -0.3)); F(orange, bx(0.1, 0.5, 0.15, R, 0.26, seatY + 0.26, -0.3));
+            // armoured chassis: thick hull around the seat, side panels with vents, rear battery block, status lights
+            F(hull, bx(0.8, 0.3, 0.8, R, 0, seatY - 0.3, 0.02));                             // hull body
+            F(hull, bx(0.84, 0.16, 0.5, R, 0, seatY - 0.12, -0.1));                          // upper hull around the cushion
+            F(hull, bx(0.7, 0.46, 0.16, R, 0, seatY + 0.1, -0.46));                          // rear equipment block
+            F(steel, bx(0.3, 0.3, 0.1, R, 0, seatY + 0.06, -0.56)); Z(sp.lights || 'lights', bx(0.04, 0.2, 0.02, R, 0.1, seatY + 0.06, -0.62));   // rear panel + light strip
+            for (const s of [-1, 1]) {
+                F(steel, bx(0.06, 0.22, 0.5, R, s * 0.43, seatY - 0.3, 0.02));                       // side skirt
+                for (let k = 0; k < 3; k++) F(FIXED.rubber, bx(0.02, 0.12, 0.05, R, s * 0.47, seatY - 0.3, -0.1 + k * 0.12));   // vents
+                Z(sp.lights || 'lights', bx(0.02, 0.04, 0.16, R, s * 0.47, seatY - 0.2, 0.22));      // side indicator
+                F(hull, bx(0.1, 0.1, 0.5, R, s * 0.4, seatY + 0.1, 0.0)); F(trim, bx(0.12, 0.03, 0.52, R, s * 0.4, seatY + 0.16, 0.0));   // armrests
+                F(steel, bx(0.08, 0.24, 0.08, R, s * 0.4, seatY - 0.02, -0.2));
+            }
+            F(steel, bx(0.5, 0.04, 0.22, R, 0, seatY - 0.62, 0.6)); F(steel, bx(0.08, 0.3, 0.08, R, 0, seatY - 0.48, 0.5));   // footrest on a strut
+            // big wide drive wheels with glowing rims, small front casters
+            for (const s of [-1, 1]) {
+                const w = cy(0.5, 0.5, 0.24, 14, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]); w.name = 'wheel'; F(FIXED.rubber, w);   // wide tyre
+                F(hull, cy(0.36, 0.36, 0.26, 14, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]));
+                Z(sp.lights || 'lights', cy(0.24, 0.24, 0.28, 14, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]));   // glowing rim
+                F(steel, cy(0.1, 0.1, 0.32, 8, R, s * 0.47, 0.5, -0.14, [0, 0, Math.PI / 2]));                     // hub
+                F(steel, bx(0.3, 0.1, 0.5, R, s * 0.47, 1.02, -0.14)); F(steel, bx(0.3, 0.06, 0.14, R, s * 0.47, 0.98, 0.16, [0.6, 0, 0]));   // mudguard
+                const c = cy(0.2, 0.2, 0.1, 8, R, s * 0.3, 0.12, 0.5, [0, 0, Math.PI / 2]); c.name = 'wheel'; F(FIXED.rubber, c);   // front casters
+                F(steel, bx(0.06, 0.2, 0.06, R, s * 0.3, 0.3, 0.5));
+            }
+            // controls: joystick on the right armrest (opposite the tablet), holo-projector on the left
+            F(trim, bx(0.14, 0.06, 0.18, R, 0.4, seatY + 0.2, 0.2)); F(FIXED.rubber, cy(0.02, 0.02, 0.14, 6, R, 0.4, seatY + 0.3, 0.2)); Z(sp.lights || 'lights', sp_(0.04, 6, R, 0.4, seatY + 0.38, 0.2));
+            F(trim, cy(0.06, 0.08, 0.04, 8, R, -0.4, seatY + 0.2, 0.22)); Z(sp.lights || 'lights', sp_(0.1, 8, R, -0.4, seatY + 0.36, 0.22));   // holographic globe
+        });
     }
 
     // ---------------------------------------------------------------------------------------

@@ -12,63 +12,7 @@ export function addCrewDetails(charId, parts, { scene, root: R, zones, Z, F, bx,
     const at = (zone, x, y) => (zones[zone] || []).find(m => m.parent === R && Math.abs(m.position.x - x) < 0.015 && Math.abs(m.position.y - y) < 0.015);
     const front = [Math.PI / 2, 0, 0];
 
-    if (charId === 'hacker') {
-        if (parts.hood === 'rimmed') {
-            paint('hood', 'hood', bx(0.44, 0.08, 0.12, R, 0, 2.72, 0.16));
-            for (const s of [-1, 1]) paint('hood', 'hood', bx(0.07, 0.35, 0.11, R, s * 0.21, 2.52, 0.16, [0, 0, -s * 0.08]));
-        } else if (parts.hood === 'long') {
-            const g = group('hood');
-            paint('hood', 'hood', bx(0.44, 0.55, 0.1, g, 0, 2.13, -0.27));
-            for (const s of [-1, 1]) paint('hood', 'hood', bx(0.1, 0.34, 0.12, g, s * 0.2, 1.94, -0.27, [0, 0, s * 0.12]));
-        }
-        if (parts.mask === 'seams') {
-            for (const s of [-1, 1]) paint('mask', 'lights', bx(0.025, 0.15, 0.025, R, s * 0.095, 2.38, 0.225, [0, 0, s * 0.22]));
-            paint('mask', 'lights', bx(0.16, 0.025, 0.025, R, 0, 2.31, 0.225));
-        } else if (parts.mask === 'vented') {
-            fixed('mask', C.darkSteel, bx(0.18, 0.11, 0.05, R, 0, 2.37, 0.235));
-            for (const x of [-0.06, 0, 0.06]) paint('mask', 'gear', bx(0.025, 0.09, 0.025, R, x, 2.37, 0.27));
-        }
-        if (parts.arms === 'ribbed') for (const s of [-1, 1]) {
-            const arm = at('pants', s * 0.351, 1.44);
-            for (const y of [-0.12, 0, 0.12]) fixed('arms', C.steel, bx(0.21, 0.05, 0.24, arm, 0, y, 0));
-        } else if (parts.arms === 'terminal') {
-            const arm = at('pants', -0.351, 1.44);
-            fixed('arms', C.darkSteel, bx(0.23, 0.26, 0.08, arm, 0, 0.02, 0.14));
-            paint('arms', 'lights', bx(0.16, 0.15, 0.02, arm, 0, 0.045, 0.19));
-            for (const x of [-0.06, 0, 0.06]) paint('arms', 'gear', bx(0.035, 0.035, 0.02, arm, x, -0.065, 0.19));
-        }
-    } else if (charId === 'scientist') {
-        // The original humanoid has already been lowered 0.62 into the powered wheelchair.
-        if (parts.goggles === 'round') for (const s of [-1, 1]) {
-            fixed('goggles', C.darkSteel, cy(0.14, 0.14, 0.05, 8, R, s * 0.08, 2.0, 0.2, front));
-            paint('goggles', 'lights', cy(0.095, 0.095, 0.02, 8, R, s * 0.08, 2.0, 0.235, front));
-        } else if (parts.goggles === 'visor') {
-            fixed('goggles', C.darkSteel, bx(0.34, 0.08, 0.06, R, 0, 2.02, 0.2));
-            fixed('goggles', C.glass, bx(0.29, 0.12, 0.025, R, 0, 1.96, 0.24), { alpha: 0.65, spec: 0.8 });
-        }
-        if (parts.chair === 'spoked') for (const s of [-1, 1]) {
-            const wheel = R.getChildren().find(m => m.name === 'wheel' && Math.abs(m.position.x - s * 0.47) < 0.01 && Math.abs(m.position.y - 0.5) < 0.01);
-            const y = -s * 0.17; // wheel's local Y axis is rotated outwards
-            fixed('chair', C.steel, bx(0.34, 0.035, 0.045, wheel, 0, y, 0));
-            fixed('chair', C.steel, bx(0.045, 0.035, 0.34, wheel, 0, y, 0));
-            paint('chair', 'lights', cy(0.09, 0.09, 0.04, 8, wheel, 0, y, 0));
-        } else if (parts.chair === 'guards') for (const s of [-1, 1]) {
-            const g = group('chair');
-            fixed('chair', C.darkSteel, bx(0.08, 0.5, 0.52, g, s * 0.62, 0.52, -0.14));
-            fixed('chair', C.steel, bx(0.12, 0.08, 0.6, g, s * 0.61, 0.8, -0.14));
-            paint('chair', 'lights', bx(0.025, 0.06, 0.24, g, s * 0.67, 0.65, 0.02));
-        }
-        if (parts.tablet === 'panel') {
-            const g = group('tablet');
-            fixed('tablet', C.darkSteel, bx(0.42, 0.045, 0.28, g, -0.38, 0.68, 0.18, [0.5, 0, 0]));
-            paint('tablet', 'lights', bx(0.32, 0.018, 0.2, g, -0.38, 0.71, 0.18, [0.5, 0, 0]));
-        } else if (parts.tablet === 'scanner') {
-            const g = group('tablet');
-            fixed('tablet', C.darkSteel, bx(0.12, 0.1, 0.18, g, -0.49, 0.7, 0.26));
-            paint('tablet', 'lights', cy(0.08, 0.08, 0.03, 8, g, -0.49, 0.72, 0.36, front));
-            fixed('tablet', C.steel, bx(0.24, 0.035, 0.04, g, -0.37, 0.72, 0.12));
-        }
-    } else if (charId === 'medic') {
+    if (charId === 'medic') {
         if (parts.mask === 'filters') for (const s of [-1, 1]) {
             fixed('mask', C.darkSteel, cy(0.17, 0.17, 0.09, 8, R, s * 0.14, 2.32, 0.25, front));
             fixed('mask', C.steel, cy(0.12, 0.12, 0.025, 8, R, s * 0.14, 2.32, 0.31, front));
