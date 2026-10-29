@@ -17,7 +17,7 @@ import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, C
 const $ = id => document.getElementById(id);
 const PHASES = { setup: 'Подготовка', draft: 'Выбор персонажей', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
 const WORKSHOP_LABELS = {
-    soldier: { title: 'Солдат', button: 'Мастерская Солдата', hint: 'Шлем, броня и ранец', caption: 'Модель · силовая броня' },
+    soldier: { title: 'Солдат', button: 'Мастерская Солдата', hint: 'Шлем, броня, оружие и ранец', caption: 'Модель · силовая броня' },
     scout: { title: 'Разведчица', button: 'Мастерская Разведчицы', hint: 'Причёска, наруч и жилет', caption: 'Модель · разведка' },
     mechanic: { title: 'Механик', button: 'Мастерская Механика', hint: 'Маска, инструменты и ранец', caption: 'Модель · техническая служба' },
     pilot: { title: 'Пилот', button: 'Мастерская Пилота', hint: 'Причёска, монокль и куртка', caption: 'Модель · пилотирование' },

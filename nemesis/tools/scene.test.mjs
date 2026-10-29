@@ -654,7 +654,7 @@ test('CREW-03: all original miniatures are unchanged and every option changes re
     }
 });
 
-test('CREW-04: all 432 combinations retain their equipment, paintability and attached geometry', async () => {
+test('CREW-04: all combinations retain their equipment, paintability and attached geometry', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     const { CREW_PARTS } = await import('../shared/appearance.mjs');
     const requiredNodes = { soldier: ['gun'], scout: ['gun'], mechanic: [], pilot: ['gun'], hacker: ['gun'],
@@ -685,7 +685,8 @@ test('CREW-04: all 432 combinations retain their equipment, paintability and att
             ch.root.dispose(); checked++;
         }
     }
-    assert.equal(checked, 432);
+    const expected = Object.values(CREW_PARTS).reduce((sum, slots) => sum + slots.reduce((n, s) => n * s.options.length, 1), 0);
+    assert.equal(checked, expected);
 });
 
 test('CREW-05: extra shoulders, bracers, wheels and companions move with their originals', async () => {
@@ -761,6 +762,66 @@ test('CREW-08: the Survivor’s bandana ties remain outside every radio pack and
         assert.ok(ties.every(m => m.parent === ch.root), 'the ties remain attached to the head/body');
         ch.animate(0.1, true); ch.animate(0.2, true);
         assert.ok(ties.every(m => m.parent === ch.root), 'the ties do not attach to the running limbs');
+        ch.root.dispose();
+    }
+});
+
+test('ROLE-01: Soldier and Mechanic options replace the original meshes, rather than overlaying them', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const { CREW_PARTS, characterParts } = await import('../shared/appearance.mjs');
+    const partMeshes = (ch, slot) => ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
+    const signature = meshes => geometrySignature({ root: { getChildMeshes: () => meshes } });
+    for (const id of ['soldier', 'mechanic']) for (const slot of CREW_PARTS[id]) {
+        const original = buildCharacter(scene.scene, id, {}, characterParts(id));
+        const base = partMeshes(original, slot.id);
+        assert.ok(base.length >= 2, `${id}/${slot.id}: the original part is marked`);
+        assert.ok(base.every(m => m.metadata.appearancePart.variant === 'classic'));
+        const old = signature(base);
+        for (const option of slot.options.slice(1)) {
+            const ch = buildCharacter(scene.scene, id, {}, { [slot.id]: option.id });
+            const selected = partMeshes(ch, slot.id);
+            assert.ok(selected.length >= 2, `${id}/${slot.id}/${option.id}: complete replacement`);
+            assert.ok(selected.every(m => m.metadata.appearancePart.variant === option.id), `${id}/${slot.id}: no original parts remain`);
+            const now = new Set(signature(selected));
+            assert.ok(old.filter(s => !now.has(s)).length >= 2, `${id}/${slot.id}/${option.id}: original geometry actually removed`);
+            ch.root.dispose();
+        }
+        original.root.dispose();
+    }
+});
+
+test('ROLE-02: sealed helmets cover the head, while panoramic glass and welding goggles expose a face', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    for (const [id, slot, choice, visibleFace] of [
+        ['soldier', 'helmet', 'braced', false], ['soldier', 'helmet', 'caged', true],
+        ['mechanic', 'shield', 'framed', false], ['mechanic', 'shield', 'twinlamp', true],
+    ]) {
+        const ch = buildCharacter(scene.scene, id, {}, { [slot]: choice });
+        const head = ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
+        assert.equal(head.some(m => (ch.zones.skin || []).includes(m)), visibleFace, `${id}/${choice}: face visibility`);
+        ch.root.dispose();
+    }
+});
+
+test('ROLE-03: replacement shoulder armour, rifles and welders stay on their animated supports', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const hasAncestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
+    for (const shoulders of ['layered', 'extended']) for (const rifle of ['classic', 'compact', 'modular']) {
+        const ch = buildCharacter(scene.scene, 'soldier', {}, { shoulders, rifle, suit: 'heavy' });
+        const plates = ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === 'shoulders');
+        assert.ok(plates.some(m => hasAncestor(m, 'armL')) && plates.some(m => hasAncestor(m, 'armR')));
+        assert.ok(plates.every(m => hasAncestor(m, 'armL') || hasAncestor(m, 'armR')));
+        const gun = ch.root.getDescendants().find(n => n.name === 'gun');
+        const initial = gun.position.z; ch.animate(0, true); ch.shoot(); ch.animate(0.05, true);
+        assert.ok(gun.position.z < initial, `${rifle}: recoil moves the replacement rifle`);
+        ch.root.dispose();
+    }
+    for (const welder of ['classic', 'torch', 'cutter']) {
+        const ch = buildCharacter(scene.scene, 'mechanic', {}, { welder });
+        const meshes = ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === 'welder');
+        assert.ok(meshes.length && meshes.every(m => hasAncestor(m, 'armR')), `${welder}: follows the right hand`);
+        ch.animate(0.1, true); ch.animate(0.2, true);
+        assert.ok(meshes.every(m => hasAncestor(m, 'armR')));
         ch.root.dispose();
     }
 });

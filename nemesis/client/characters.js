@@ -6,6 +6,7 @@
 
 import { characterParts } from '../shared/appearance.mjs';
 import { addCrewDetails } from './crew-variants.js';
+import { soldierVariant, mechanicVariant } from './role-variants.js';
 
 const B = () => window.BABYLON;
 
@@ -129,13 +130,24 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     const bx = (...a) => box(S, ...a), cy = (...a) => cyl(S, ...a), sp = (...a) => sphere(S, ...a), sp_ = sp;
 
     const selectedParts = characterParts(charId, parts);
-    if (charId === 'soldier') buildSoldier();
+    const roleContext = { scene: S, root, zones, Z, F, bx, cy, sp, fixed: FIXED };
+    // Mark meshes belonging to a replaceable part. This also makes it possible to verify that a
+    // non-original choice really replaces the original instead of merely covering or decorating it.
+    const part = (slot, variant, build) => {
+        const before = new Set(root.getChildMeshes());
+        build();
+        for (const mesh of root.getChildMeshes()) if (!before.has(mesh)) {
+            mesh.metadata = { ...mesh.metadata, appearancePart: { character: charId, slot, variant } };
+            if (variant !== 'classic') mesh.name = `crew_${charId}_${slot}`;
+        }
+    };
+    if (charId === 'soldier') buildSoldier(selectedParts);
     else if (charId === 'scout') buildScout(selectedParts);
-    else if (charId === 'mechanic') buildMechanic();
+    else if (charId === 'mechanic') buildMechanic(selectedParts);
     else if (charId === 'sentry') buildSentry(selectedParts);
     else buildHumanoid(charId === 'labrat' ? labratSpec(selectedParts) : crewSpec(charId, selectedParts));
-    if (charId !== 'labrat' && charId !== 'sentry') {
-        addCrewDetails(charId, selectedParts, { scene: S, root, zones, Z, F, bx, cy, sp, fixed: FIXED });
+    if (!['soldier', 'mechanic', 'labrat', 'sentry'].includes(charId)) {
+        addCrewDetails(charId, selectedParts, roleContext);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -566,61 +578,85 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     }
 
     // ---------------------------------------------------------------------------------------
-    function buildSoldier() {
+    function buildSoldier(parts) {
         const R = root;
-        // massive boots & greaves
+        // Massive boots and the selected leg armour; each alternative replaces the original plates.
         for (const s of [-1, 1]) {
             Z('pants', bx(0.34, 0.22, 0.46, R, s * 0.22, 0.11, 0.04));
             Z('pants', bx(0.3, 0.55, 0.32, R, s * 0.22, 0.48, 0));
-            Z('armor', bx(0.36, 0.42, 0.2, R, s * 0.22, 0.5, 0.16));          // shin plate
-            Z('armor', bx(0.34, 0.5, 0.36, R, s * 0.22, 0.98, 0));            // thigh armour
-            Z('accent', bx(0.38, 0.14, 0.4, R, s * 0.22, 0.74, 0));           // knee ring
+            part('suit', parts.suit, () => {
+                if (parts.suit === 'classic') {
+                    Z('armor', bx(0.36, 0.42, 0.2, R, s * 0.22, 0.5, 0.16));
+                    Z('armor', bx(0.34, 0.5, 0.36, R, s * 0.22, 0.98, 0));
+                    Z('accent', bx(0.38, 0.14, 0.4, R, s * 0.22, 0.74, 0));
+                } else soldierVariant('leg', parts.suit, roleContext, s);
+            });
         }
-        // pelvis / belt
         Z('pants', bx(0.7, 0.3, 0.46, R, 0, 1.28, 0));
         Z('armor', bx(0.78, 0.12, 0.52, R, 0, 1.4, 0));
-        // torso: layered chest armour
-        Z('armor', bx(0.84, 0.7, 0.56, R, 0, 1.8, 0));
-        Z('armor', bx(0.7, 0.3, 0.2, R, 0, 1.95, 0.34));                       // chest plate
-        Z('accent', bx(0.3, 0.1, 0.06, R, 0, 2.02, 0.45));                      // chest light bar
-        Z('visor', bx(0.14, 0.05, 0.03, R, 0, 2.02, 0.49));
-        Z('armor', bx(0.5, 0.24, 0.2, R, 0, 1.62, 0.3));                       // abdomen plate
-        F(FIXED.darkSteel, bx(0.4, 0.5, 0.1, R, 0, 1.75, -0.33));               // back plate
-        // backpack with tanks
-        Z('armor', bx(0.6, 0.6, 0.3, R, 0, 1.85, -0.5));
-        for (const s of [-1, 1]) F(FIXED.steel, cy(0.16, 0.16, 0.7, 8, R, s * 0.18, 1.95, -0.7));
-        for (const s of [-1, 1]) Z('accent', cy(0.17, 0.17, 0.08, 8, R, s * 0.18, 2.32, -0.7));
-        // huge pauldrons
+        part('suit', parts.suit, () => {
+            if (parts.suit === 'classic') {
+                Z('armor', bx(0.84, 0.7, 0.56, R, 0, 1.8, 0));
+                Z('armor', bx(0.7, 0.3, 0.2, R, 0, 1.95, 0.34));
+                Z('accent', bx(0.3, 0.1, 0.06, R, 0, 2.02, 0.45));
+                Z('visor', bx(0.14, 0.05, 0.03, R, 0, 2.02, 0.49));
+                Z('armor', bx(0.5, 0.24, 0.2, R, 0, 1.62, 0.3));
+                F(FIXED.darkSteel, bx(0.4, 0.5, 0.1, R, 0, 1.75, -0.33));
+            } else soldierVariant('torso', parts.suit, roleContext);
+        });
+        part('pack', parts.pack, () => {
+            if (parts.pack === 'classic') {
+                Z('armor', bx(0.6, 0.6, 0.3, R, 0, 1.85, -0.5));
+                for (const s of [-1, 1]) F(FIXED.steel, cy(0.16, 0.16, 0.7, 8, R, s * 0.18, 1.95, -0.7));
+                for (const s of [-1, 1]) Z('accent', cy(0.17, 0.17, 0.08, 8, R, s * 0.18, 2.32, -0.7));
+            } else soldierVariant('pack', parts.pack, roleContext);
+        });
         for (const s of [-1, 1]) {
-            Z('armor', bx(0.44, 0.34, 0.5, R, s * 0.6, 2.12, 0));
-            Z('accent', bx(0.46, 0.08, 0.52, R, s * 0.6, 2.3, 0));
-            Z('armor', bx(0.3, 0.42, 0.3, R, s * 0.62, 1.78, 0.05));          // upper arm
-            Z('accent', bx(0.32, 0.08, 0.32, R, s * 0.62, 1.56, 0.05));        // elbow ring
-            Z('armor', bx(0.28, 0.36, 0.3, R, s * 0.6, 1.36, 0.3, [-0.9, 0, 0])); // forearm toward rifle
-            Z('pants', bx(0.2, 0.18, 0.2, R, s * 0.58, 1.26, 0.56));          // gloves
+            part('shoulders', parts.shoulders, () => {
+                if (parts.shoulders === 'classic') {
+                    Z('armor', bx(0.44, 0.34, 0.5, R, s * 0.6, 2.12, 0));
+                    Z('accent', bx(0.46, 0.08, 0.52, R, s * 0.6, 2.3, 0));
+                } else soldierVariant('shoulders', parts.shoulders, roleContext, s);
+            });
+            part('suit', parts.suit, () => {
+                if (parts.suit === 'classic') {
+                    Z('armor', bx(0.3, 0.42, 0.3, R, s * 0.62, 1.78, 0.05));
+                    Z('accent', bx(0.32, 0.08, 0.32, R, s * 0.62, 1.56, 0.05));
+                    Z('armor', bx(0.28, 0.36, 0.3, R, s * 0.6, 1.36, 0.3, [-0.9, 0, 0]));
+                } else soldierVariant('arm', parts.suit, roleContext, s);
+            });
+            Z('pants', bx(0.2, 0.18, 0.2, R, s * 0.58, 1.26, 0.56));
         }
-        // neck ring + head inside glass dome
+        // The neck seal is common to all three spaceworthy helmets.
         Z('armor', cy(0.5, 0.56, 0.14, 8, R, 0, 2.22, 0));
-        Z('skin', bx(0.3, 0.34, 0.3, R, 0, 2.5, 0.02));
-        Z('hair', bx(0.32, 0.1, 0.32, R, 0, 2.7, 0.0));
-        Z('skin', bx(0.08, 0.06, 0.06, R, 0, 2.48, 0.18));                     // nose
-        F(FIXED.glass, sp(0.62, 8, R, 0, 2.52, 0.02, [1, 1.05, 1]), { alpha: 0.35, spec: 0.8 });
-        Z('visor', cy(0.6, 0.6, 0.06, 8, R, 0, 2.2, 0.02));                   // glowing helmet seal
-        Z('armor', bx(0.2, 0.16, 0.18, R, 0, 2.82, -0.1));                     // dome top hinge
-        for (const s of [-1, 1]) { Z('armor', bx(0.1, 0.34, 0.4, R, s * 0.32, 2.5, -0.04)); Z('accent', bx(0.06, 0.1, 0.16, R, s * 0.36, 2.52, 0.0)); }   // cheek/ear guard plates on the dome sides
-        Z('armor', bx(0.5, 0.36, 0.12, R, 0, 2.5, -0.26));                     // rear neck guard
-        for (const s of [-1, 1]) Z('visor', bx(0.06, 0.06, 0.06, R, s * 0.3, 2.6, 0.1));  // helmet lamps
-        // two-handed heavy rifle held across the waist
-        const gun = new (B().TransformNode)('gun', S); gun.parent = R; gun.position.set(0, 1.3, 0.62); gun.rotation.y = -0.2;
-        F(FIXED.gun, bx(1.5, 0.18, 0.14, gun, 0, 0, 0));
-        F(FIXED.gunLight, bx(0.6, 0.26, 0.2, gun, -0.1, 0.02, 0));
-        F(FIXED.gun, bx(0.5, 0.1, 0.1, gun, 0.9, 0.0, 0));                     // barrel
-        F(FIXED.gun, cy(0.08, 0.08, 0.6, 6, gun, 0.95, 0.05, 0, [0, 0, Math.PI / 2]));
-        F(FIXED.gun, bx(0.26, 0.32, 0.12, gun, -0.6, -0.16, 0));               // stock
-        F(FIXED.gun, bx(0.16, 0.26, 0.1, gun, 0.0, -0.2, 0));                  // grip
-        F(FIXED.gunLight, bx(0.3, 0.1, 0.12, gun, 0.2, 0.18, 0));              // top rail/scope
-        Z('visor', bx(0.12, 0.04, 0.04, gun, -0.2, 0.17, 0.08));               // ammo light
-        F(FIXED.gun, bx(0.3, 0.28, 0.1, gun, -0.1, -0.3, 0));                  // magazine
+        Z('visor', cy(0.6, 0.6, 0.06, 8, R, 0, 2.2, 0.02));
+        part('helmet', parts.helmet, () => {
+            if (parts.helmet === 'classic') {
+                Z('skin', bx(0.3, 0.34, 0.3, R, 0, 2.5, 0.02));
+                Z('hair', bx(0.32, 0.1, 0.32, R, 0, 2.7, 0.0));
+                Z('skin', bx(0.08, 0.06, 0.06, R, 0, 2.48, 0.18));
+                F(FIXED.glass, sp(0.62, 8, R, 0, 2.52, 0.02, [1, 1.05, 1]), { alpha: 0.35, spec: 0.8 });
+                Z('armor', bx(0.2, 0.16, 0.18, R, 0, 2.82, -0.1));
+                for (const s of [-1, 1]) { Z('armor', bx(0.1, 0.34, 0.4, R, s * 0.32, 2.5, -0.04)); Z('accent', bx(0.06, 0.1, 0.16, R, s * 0.36, 2.52, 0.0)); }
+                Z('armor', bx(0.5, 0.36, 0.12, R, 0, 2.5, -0.26));
+                for (const s of [-1, 1]) Z('visor', bx(0.06, 0.06, 0.06, R, s * 0.3, 2.6, 0.1));
+            } else soldierVariant('helmet', parts.helmet, roleContext);
+        });
+        part('rifle', parts.rifle, () => {
+            // Keeping the gun node preserves the existing recoil animation for every weapon.
+            const gun = new (B().TransformNode)('gun', S); gun.parent = R; gun.position.set(0, 1.3, 0.62); gun.rotation.y = -0.2;
+            if (parts.rifle === 'classic') {
+                F(FIXED.gun, bx(1.5, 0.18, 0.14, gun, 0, 0, 0));
+                F(FIXED.gunLight, bx(0.6, 0.26, 0.2, gun, -0.1, 0.02, 0));
+                F(FIXED.gun, bx(0.5, 0.1, 0.1, gun, 0.9, 0.0, 0));
+                F(FIXED.gun, cy(0.08, 0.08, 0.6, 6, gun, 0.95, 0.05, 0, [0, 0, Math.PI / 2]));
+                F(FIXED.gun, bx(0.26, 0.32, 0.12, gun, -0.6, -0.16, 0));
+                F(FIXED.gun, bx(0.16, 0.26, 0.1, gun, 0.0, -0.2, 0));
+                F(FIXED.gunLight, bx(0.3, 0.1, 0.12, gun, 0.2, 0.18, 0));
+                Z('visor', bx(0.12, 0.04, 0.04, gun, -0.2, 0.17, 0.08));
+                F(FIXED.gun, bx(0.3, 0.28, 0.1, gun, -0.1, -0.3, 0));
+            } else soldierVariant('rifle', parts.rifle, roleContext, null, gun);
+        });
     }
 
     // ---------------------------------------------------------------------------------------
@@ -787,59 +823,82 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     }
 
     // ---------------------------------------------------------------------------------------
-    function buildMechanic() {
+    function buildMechanic(parts) {
         const R = root;
-        // baggy work trousers, heavy boots with white shin plates
+        // Work trousers and footwear, with genuinely different protective legwear.
         for (const s of [-1, 1]) {
             Z('gloves', bx(0.3, 0.18, 0.42, R, s * 0.2, 0.09, 0.04));
-            Z('overall', bx(0.3, 0.46, 0.32, R, s * 0.2, 0.44, 0));
-            Z('helmet', bx(0.26, 0.26, 0.1, R, s * 0.2, 0.46, 0.18));           // shin plate
-            Z('overall', bx(0.36, 0.52, 0.38, R, s * 0.2, 0.96, 0));           // baggy thigh
-            Z('overall', bx(0.34, 0.12, 0.4, R, s * 0.2, 0.7, 0));             // bunched cuff
+            part('outfit', parts.outfit, () => {
+                if (parts.outfit === 'classic') {
+                    Z('overall', bx(0.3, 0.46, 0.32, R, s * 0.2, 0.44, 0));
+                    Z('helmet', bx(0.26, 0.26, 0.1, R, s * 0.2, 0.46, 0.18));
+                    Z('overall', bx(0.36, 0.52, 0.38, R, s * 0.2, 0.96, 0));
+                    Z('overall', bx(0.34, 0.12, 0.4, R, s * 0.2, 0.7, 0));
+                } else mechanicVariant('leg', parts.outfit, roleContext, s);
+            });
         }
         Z('overall', bx(0.7, 0.3, 0.42, R, 0, 1.28, 0));
-        F(FIXED.strap, bx(0.72, 0.1, 0.44, R, 0, 1.44, 0));                     // belt
-        F(FIXED.steel, bx(0.12, 0.2, 0.08, R, 0.3, 1.32, 0.22)); F(FIXED.steel, bx(0.08, 0.26, 0.08, R, -0.3, 1.3, 0.22));   // belt tools
-        // orange work shirt, sleeves rolled up to the shoulders -> bare arms
+        part('belt', parts.belt, () => {
+            if (parts.belt === 'classic') {
+                F(FIXED.strap, bx(0.72, 0.1, 0.44, R, 0, 1.44, 0));
+                // Keep the tools outside a long apron when that independent option is selected.
+                const z = parts.outfit === 'apron' ? 0.34 : 0.22;
+                F(FIXED.steel, bx(0.12, 0.2, 0.08, R, 0.3, 1.32, z));
+                F(FIXED.steel, bx(0.08, 0.26, 0.08, R, -0.3, 1.3, z));
+            } else mechanicVariant('belt', parts.belt, roleContext);
+        });
+        // Orange work shirt, rolled sleeves and the original torch-carrying pose.
         Z('overall', bx(0.6, 0.62, 0.34, R, 0, 1.84, 0));
         for (const s of [-1, 1]) {
-            Z('overall', bx(0.3, 0.2, 0.32, R, s * 0.38, 2.06, 0));            // rolled sleeve bulge (overlaps the shoulder)
+            Z('overall', bx(0.3, 0.2, 0.32, R, s * 0.38, 2.06, 0));
             Z('skin', bx(0.18, 0.44, 0.2, R, s * 0.4, 1.76, 0));
             Z('skin', bx(0.16, 0.26, 0.18, R, s * 0.41, 1.52, 0.02));
-            Z('helmet', bx(0.22, 0.2, 0.24, R, s * 0.41, 1.34, 0.03));         // armoured wrist guard
+            Z('helmet', bx(0.22, 0.2, 0.24, R, s * 0.41, 1.34, 0.03));
             Z('lights', bx(0.05, 0.05, 0.03, R, s * 0.41, 1.36, 0.16));
-            Z('gloves', bx(0.16, 0.14, 0.16, R, s * 0.41, 1.18, 0.04));        // glove
+            Z('gloves', bx(0.16, 0.14, 0.16, R, s * 0.41, 1.18, 0.04));
         }
-        // armoured vest over the shirt
-        Z('helmet', bx(0.54, 0.46, 0.14, R, 0, 1.9, 0.2)); Z('helmet', bx(0.54, 0.5, 0.1, R, 0, 1.88, -0.2));
-        Z('gloves', bx(0.46, 0.1, 0.16, R, 0, 1.62, 0.2));                      // vest bottom strap
-        Z('lights', bx(0.1, 0.1, 0.03, R, -0.16, 1.98, 0.28));                  // smiley badge
-        Z('overall', bx(0.2, 0.08, 0.03, R, 0.12, 1.98, 0.28));
-        for (const s of [-1, 1]) Z('gloves', bx(0.08, 0.5, 0.04, R, s * 0.2, 1.86, 0.28));   // vest straps
-        // backpack welding generator: box, two canisters, cable reel; hoses run pack -> hip -> welder in the right hand
-        Z('gloves', bx(0.5, 0.56, 0.26, R, 0, 1.84, -0.36));
-        Z('helmet', cy(0.16, 0.16, 0.42, 8, R, 0.14, 1.9, -0.52)); Z('overall', cy(0.16, 0.16, 0.42, 8, R, -0.14, 1.9, -0.52));
-        F(FIXED.steel, cy(0.22, 0.22, 0.1, 8, R, 0, 1.6, -0.5, [Math.PI / 2, 0, 0]));   // cable reel
+        part('outfit', parts.outfit, () => {
+            if (parts.outfit === 'classic') {
+                Z('helmet', bx(0.54, 0.46, 0.14, R, 0, 1.9, 0.2)); Z('helmet', bx(0.54, 0.5, 0.1, R, 0, 1.88, -0.2));
+                Z('gloves', bx(0.46, 0.1, 0.16, R, 0, 1.62, 0.2));
+                Z('lights', bx(0.1, 0.1, 0.03, R, -0.16, 1.98, 0.28));
+                Z('overall', bx(0.2, 0.08, 0.03, R, 0.12, 1.98, 0.28));
+                for (const s of [-1, 1]) Z('gloves', bx(0.08, 0.5, 0.04, R, s * 0.2, 1.86, 0.28));
+            } else mechanicVariant('outfit', parts.outfit, roleContext);
+        });
+        part('pack', parts.pack, () => {
+            if (parts.pack === 'classic') {
+                Z('gloves', bx(0.5, 0.56, 0.26, R, 0, 1.84, -0.36));
+                Z('helmet', cy(0.16, 0.16, 0.42, 8, R, 0.14, 1.9, -0.52)); Z('overall', cy(0.16, 0.16, 0.42, 8, R, -0.14, 1.9, -0.52));
+                F(FIXED.steel, cy(0.22, 0.22, 0.1, 8, R, 0, 1.6, -0.5, [Math.PI / 2, 0, 0]));
+            } else mechanicVariant('pack', parts.pack, roleContext);
+        });
+        // These hoses connect every generator to the hip and to the welder in the right hand.
         for (const [a, b] of [[[0.14, 1.66, -0.5], [0.36, 1.4, -0.2]], [[0.36, 1.4, -0.2], [0.5, 1.2, 0.2]], [[0.5, 1.2, 0.2], [0.5, 1.2, 0.46]], [[-0.14, 1.66, -0.5], [-0.3, 1.46, -0.26]], [[-0.3, 1.46, -0.26], [-0.41, 1.34, 0.0]]]) hose(a, b, 0.06);
-        // welder (plasma torch) in the right hand
-        F(FIXED.darkSteel, bx(0.12, 0.16, 0.36, R, 0.5, 1.2, 0.48)); Z('overall', bx(0.1, 0.08, 0.2, R, 0.5, 1.3, 0.5));
-        F(FIXED.steel, cy(0.04, 0.04, 0.2, 6, R, 0.5, 1.2, 0.74, [Math.PI / 2, 0, 0])); Z('lights', cy(0.03, 0.06, 0.08, 6, R, 0.5, 1.2, 0.86, [Math.PI / 2, 0, 0]));
-        // head: bare head with hair, welding face shield hinged on a headband (covers the front only)
+        part('welder', parts.welder, () => {
+            if (parts.welder === 'classic') {
+                F(FIXED.darkSteel, bx(0.12, 0.16, 0.36, R, 0.5, 1.2, 0.48)); Z('overall', bx(0.1, 0.08, 0.2, R, 0.5, 1.3, 0.5));
+                F(FIXED.steel, cy(0.04, 0.04, 0.2, 6, R, 0.5, 1.2, 0.74, [Math.PI / 2, 0, 0])); Z('lights', cy(0.03, 0.06, 0.08, 6, R, 0.5, 1.2, 0.86, [Math.PI / 2, 0, 0]));
+            } else mechanicVariant('welder', parts.welder, roleContext);
+        });
         Z('skin', bx(0.16, 0.1, 0.16, R, 0, 2.18, 0));
-        Z('skin', bx(0.3, 0.34, 0.3, R, 0, 2.44, 0.02));
-        Z('hair', bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z('hair', bx(0.32, 0.2, 0.08, R, 0, 2.5, -0.14));
-        F(FIXED.darkSteel, bx(0.36, 0.06, 0.36, R, 0, 2.6, 0.0));               // headband
-        Z('helmet', bx(0.38, 0.42, 0.08, R, 0, 2.44, 0.2));                     // face shield
-        Z('helmet', bx(0.4, 0.08, 0.16, R, 0, 2.66, 0.16));                     // shield top
-        for (const s of [-1, 1]) Z('helmet', bx(0.06, 0.3, 0.14, R, s * 0.19, 2.46, 0.14));   // shield sides
-        Z('gloves', bx(0.26, 0.14, 0.03, R, 0, 2.5, 0.245));                    // window frame
-        Z('lights', bx(0.2, 0.09, 0.02, R, 0, 2.5, 0.255));                     // glowing window
-        Z('lights', bx(0.07, 0.07, 0.05, R, -0.18, 2.68, 0.2));                 // head lamp
-        F(FIXED.steel, bx(0.1, 0.12, 0.1, R, 0.21, 2.5, 0.0));                  // hinge box
+        part('shield', parts.shield, () => {
+            if (parts.shield === 'classic') {
+                Z('skin', bx(0.3, 0.34, 0.3, R, 0, 2.44, 0.02));
+                Z('hair', bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z('hair', bx(0.32, 0.2, 0.08, R, 0, 2.5, -0.14));
+                F(FIXED.darkSteel, bx(0.36, 0.06, 0.36, R, 0, 2.6, 0.0));
+                Z('helmet', bx(0.38, 0.42, 0.08, R, 0, 2.44, 0.2));
+                Z('helmet', bx(0.4, 0.08, 0.16, R, 0, 2.66, 0.16));
+                for (const s of [-1, 1]) Z('helmet', bx(0.06, 0.3, 0.14, R, s * 0.19, 2.46, 0.14));
+                Z('gloves', bx(0.26, 0.14, 0.03, R, 0, 2.5, 0.245));
+                Z('lights', bx(0.2, 0.09, 0.02, R, 0, 2.5, 0.255));
+                Z('lights', bx(0.07, 0.07, 0.05, R, -0.18, 2.68, 0.2));
+                F(FIXED.steel, bx(0.1, 0.12, 0.1, R, 0.21, 2.5, 0.0));
+            } else mechanicVariant('shield', parts.shield, roleContext);
+        });
         function hose(a, b, d) {
             const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.hypot(dx, dy, dz);
             const m = cy(d, d, len, 6, R, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
-            // orient the cylinder's Y axis along a->b
             m.rotationQuaternion = B().Quaternion.FromUnitVectorsToRef(new (B().Vector3)(0, 1, 0), new (B().Vector3)(dx / len, dy / len, dz / len), new (B().Quaternion)());
             F(FIXED.rubber, m);
         }

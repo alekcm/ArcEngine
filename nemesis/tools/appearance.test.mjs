@@ -114,7 +114,7 @@ test('CREW-01: every crew member has independent, fully validated slots', async 
     assert.equal(Object.keys(CREW_PARTS).length, 16);
     for (const [id, slots] of Object.entries(CREW_PARTS)) {
         assert.equal(characterPartSlots(id), slots);
-        assert.equal(slots.length, 3, id + ': three role-specific categories');
+        assert.equal(slots.length, ['soldier', 'mechanic'].includes(id) ? 5 : 3, id + ': role-specific categories');
         assert.equal(new Set(slots.map(s => s.id)).size, slots.length, id + ': unique slots');
         const defaults = characterParts(id);
         for (const slot of slots) {
@@ -152,4 +152,19 @@ test('CREW-02: every chosen appearance and color reaches public game views and o
         assert.deepEqual(different.parts, original, id + ': a different character receives her defaults');
         assert.deepEqual(different.colors, {}, id + ': draft color rules stay intact');
     }
+});
+
+test('ROLE-04: existing Soldier and Mechanic choices survive the richer workshop schema', () => {
+    assert.deepEqual(characterParts('soldier', { helmet: 'braced', shoulders: 'layered', pack: 'ribbed' }), {
+        helmet: 'braced', suit: 'classic', shoulders: 'layered', pack: 'ribbed', rifle: 'classic',
+    });
+    assert.deepEqual(characterParts('soldier', { helmet: 'caged', shoulders: 'extended', pack: 'valves' }), {
+        helmet: 'caged', suit: 'classic', shoulders: 'extended', pack: 'valves', rifle: 'classic',
+    });
+    assert.deepEqual(characterParts('mechanic', { shield: 'framed', belt: 'tools', pack: 'gauges' }), {
+        shield: 'framed', outfit: 'classic', belt: 'tools', pack: 'gauges', welder: 'classic',
+    });
+    assert.deepEqual(characterParts('mechanic', { shield: 'twinlamp', belt: 'pouches', pack: 'ribbed' }), {
+        shield: 'twinlamp', outfit: 'classic', belt: 'pouches', pack: 'ribbed', welder: 'classic',
+    });
 });

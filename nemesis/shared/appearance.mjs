@@ -52,6 +52,8 @@ export const SENTRY_PARTS = [
 
 // The remaining crew each have their own role-specific geometry. The first option is deliberately
 // the existing miniature, not a new interpretation. Colours are still controlled by paint zones.
+// Soldier/Mechanic retain their original option IDs so previously saved appearances still load;
+// their visible labels now describe complete replacements instead of small add-on details.
 const crewSlot = (id, label, hint, a, b) => ({ id, label, hint, options: [
     { id: 'classic', label: 'Оригинал', detail: 'Исходная модель' },
     { id: a[0], label: a[1], detail: a[2] },
@@ -59,9 +61,11 @@ const crewSlot = (id, label, hint, a, b) => ({ id, label, hint, options: [
 ] });
 export const CREW_PARTS = {
     soldier: [
-        crewSlot('helmet', 'Купол шлема', 'Защита стеклянного купола', ['braced', 'С ободом', 'Дуга и крепления'], ['caged', 'Усиленный', 'Боковые стойки']),
-        crewSlot('shoulders', 'Наплечники', 'Плиты силовой брони', ['layered', 'Сегментные', 'Накладные пластины'], ['extended', 'Расширенные', 'Крупные щитки']),
-        crewSlot('pack', 'Ранец', 'Баллоны на спине', ['ribbed', 'С кольцами', 'Усиленные баллоны'], ['valves', 'С клапанами', 'Вентили и манометры']),
+        crewSlot('helmet', 'Шлем', 'Защита для выхода в космос', ['braced', 'Штурмовой', 'Закрытый, с визором'], ['caged', 'Панорамный', 'Лицо за стеклом']),
+        crewSlot('suit', 'Костюм', 'Корпус, руки и ноги', ['recon', 'Лёгкий', 'Гибкая броня'], ['heavy', 'Штурмовой', 'Тяжёлые секции']),
+        crewSlot('shoulders', 'Наплечники', 'Независимая защита', ['layered', 'Сегментные', 'Раздельные щитки'], ['extended', 'Обтекаемые', 'Округлый панцирь']),
+        crewSlot('pack', 'Ранец', 'Система жизнеобеспечения', ['ribbed', 'Реактор', 'Компактный блок'], ['valves', 'Баллон', 'Крупный резервуар']),
+        crewSlot('rifle', 'Винтовка', 'Штурмовое оружие', ['compact', 'Карабин', 'Компактная компоновка'], ['modular', 'Модульная', 'Дисковый магазин']),
     ],
     scout: [
         crewSlot('hair', 'Волосы', 'Длинные пряди', ['braid', 'Коса', 'Собрана сзади'], ['tied', 'Хвост', 'Длинный хвост']),
@@ -69,9 +73,11 @@ export const CREW_PARTS = {
         crewSlot('vest', 'Жилет', 'Лёгкая защита', ['plated', 'С пластинами', 'Раздельные щитки'], ['pouches', 'С подсумками', 'Полевое снаряжение']),
     ],
     mechanic: [
-        crewSlot('shield', 'Сварочная маска', 'Окно остаётся открытым', ['framed', 'В раме', 'Усиленный щиток'], ['twinlamp', 'С фонарями', 'Дополнительная оптика']),
-        crewSlot('belt', 'Инструменты', 'На рабочем поясе', ['tools', 'Набор ключей', 'Длинные инструменты'], ['pouches', 'Подсумки', 'Карманы для деталей']),
-        crewSlot('pack', 'Сварочный ранец', 'Баллоны на спине', ['ribbed', 'С кольцами', 'Крепления баллонов'], ['gauges', 'С приборами', 'Вентили и шкалы']),
+        crewSlot('shield', 'Защита лица', 'Для сварочных работ', ['framed', 'Цельный шлем', 'Закрывает всю голову'], ['twinlamp', 'Сварочные очки', 'Открытое лицо']),
+        crewSlot('outfit', 'Рабочий костюм', 'Жилет и защита ног', ['apron', 'Фартук', 'Сварочная защита'], ['armored', 'Бронежилет', 'Раздельные пластины']),
+        crewSlot('belt', 'Рабочий пояс', 'Инструменты и сумки', ['tools', 'С ключами', 'Ключи на поясе'], ['pouches', 'С подсумками', 'Крупные карманы']),
+        crewSlot('pack', 'Сварочный ранец', 'Питание горелки', ['ribbed', 'Газовый баллон', 'Один большой бак'], ['gauges', 'Генератор', 'Корпус и катушка']),
+        crewSlot('welder', 'Горелка', 'Инструмент в руке', ['torch', 'Компактная', 'Пистолетная форма'], ['cutter', 'Резак', 'Защитная рамка']),
     ],
     pilot: [
         crewSlot('hair', 'Волосы', 'Короткая причёска', ['spiky', 'Небрежные', 'Короткие пряди'], ['side', 'С зачёсом', 'Боковая чёлка']),
