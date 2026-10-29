@@ -63,6 +63,66 @@
 > и на 2A (там производства нет); `Grindis` — на 2B (нет) и 3B (M:2). Это разные миры с
 > одинаковым названием, значения у них свои.
 
+### Где можно ставить жетоны целей
+
+По правилам (setup, шаг 4c-iii; статьи *Objective Tokens*, *Winning and Losing the Game*):
+
+- жетоны целей ставятся **только на миры** — в пустотах их не бывает никогда;
+- на каждом тайле, который игрок выкладывает, он обязан положить по одному **чужому** жетону цели
+  в каждое место под жетон; на одном тайле не может быть двух жетонов одной фракции;
+- собранный жетон забирается в начале фазы обновления, если мир под ним **дружественный**;
+- победа: собрать столько своих жетонов, сколько игроков за столом (или больше всех к концу 8-го раунда).
+
+Практически это значит: **место под жетон цели — это мир, и только мир.** Ниже — все миры по
+тайлам (это и есть список планет, куда можно ставить жетоны). Пустоты каждого тайла перечислены
+в разделах ниже и в этот список не входят.
+
+| Тайл | Миров | Миры, куда можно ставить жетон цели |
+|---|---|---|
+| 1A | 2 | Hiveo, Smgrna |
+| 1B | 2 | Awoda, Et Glor-Bh |
+| 2A | 2 | Hiveo, Zandirea |
+| 2B | 2 | Ferricus, Grindis |
+| 3A | 2 | Darutha, Tyllerca |
+| 3B | 2 | Gorm, Grindis |
+| 4A | 2 | Oolith, Barracha |
+| 4B | 2 | Barracha, Gowarga |
+| 5A | 2 | Twyll, Ymnirn |
+| 5B | 2 | Brimth, Naraka |
+| 6A | 2 | Luddry, Golloch |
+| 6B | 2 | Es'myr, Awron |
+| 7A | 2 | Tiltora, Amun'keth |
+| 7B | 2 | Eisen, Dysunn |
+| 8A | 2 | Uzbull, Gelida |
+| 8B | 2 | Zaridge, The Vault of St. Antounus |
+| 9A | 2 | Emilien, Lycium |
+| 9B | 2 | Isgil, Sunken |
+| 10A | 3 | Carrion, Andelis, Aelonia |
+| 10B | 3 | Lemmos, Albrecht's Hold, Tarcerus |
+| 11A | 3 | An Torren Tooth, Umar, Goliath-ed-ia |
+| 11B | 3 | Echolysis, Tolgorin, Murdur |
+| 12A | 3 | Ayotun, Caerfridous, Quiris |
+| 12B | 3 | Gormine, Zul, Zathra |
+| 13A | 3 | Fendris, Isthar, Carnac |
+| 13B | 3 | Genesteal, Pyrrhia, Chrysten |
+| 14A | 3 | Sarder, Tilly IV, Aun Sol |
+| 14B | 3 | Haamu's Foor, Tanoco, Tanvonne |
+| 15A | 2 | Charus, Hive Fleet Leviathan |
+| 15B | 2 | Galedon, Hive Fleet Leviathan |
+| 16A | 3 | St Antoun's Dock, Delwidar, Salissa |
+| 16B | 3 | Talferin, Annilus, Xana II |
+| 17B | 2 | Candevir, Thar |
+| 17A | 2 | Salusa, Cultov Isibini |
+| 18B | 3 | Sulymaan, Sulus Omega, Runux 2 |
+| 18A | 3 | Machtraumung, Hammerhand Öpis, Sylvaris |
+| 19B | 2 | Fidis Alte, Poenitentiarium |
+| 19A | 2 | Antique Sanctuary, Seculus Arca |
+| 20B | 2 | Aterarium 10, Xantides |
+| 20A | 2 | Evarium, Indictum |
+
+> Итого **94 мира** на 40 тайлах. Для кода: у каждой области-мира флаг `objectiveSpace = true`,
+> у пустоты — `false`; число мест на тайле = число его миров.
+
 ---
 
 ## Базовые 16 тайлов (`Warhammer/Системы/`)
@@ -465,7 +525,7 @@
 |---|---|---|---|---|
 | `Lemmos` | ПЛ | 2 | 3 | — |
 | `Albrecht's Hold` | ПП | — | 4 | кузница ×2 |
-| `Tarcerus` | НП | 1 | 4 | — |
+| `Tarcerus` | НП | 1 | 3 | — |
 
 Пустота **The Teldair Frontier** (НЛ).
 
@@ -587,8 +647,10 @@
 
 Пустота **The Oculus Anomaly** (ПЛ).
 
-> По 16B: у `Talferin` на баннере шестерёнка 2 и два черепа, печатей нет; у `Xana II` — четыре
-> черепа и **две** печати кузницы, шестерёнки нет (производства нет).
+> По 16B: у `Talferin` на баннере шестерёнка 2 и три черепа (вместимость 3, уточнено владельцем),
+> печатей нет; у `Xana II` — четыре черепа и **две** печати кузницы, шестерёнки нет (производства нет).
+>
+> **Все числа на домашних тайлах 9A–16B сверены владельцем набора** — в таблицах выше они верны.
 
 ---
 
