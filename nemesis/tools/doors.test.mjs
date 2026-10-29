@@ -6,12 +6,12 @@
 // actually read on the physical board: a flat stencil painted on the door frame itself, the same
 // pale slate paint as the "?" printed on an unexplored room's floor, dead flat until Alt is held.
 // The frame is wide and deep enough to carry that number; one central panel appears only when the
-// bulkhead seals, and its red emergency lamps pulse gently until it opens again.
+// bulkhead seals, and its red emergency lamps flash like those in a malfunctioning room.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const { meshes, allNodes, mat } = await import('./_stub3d.mjs');
-const { Scene3D } = await import('../client/scene3d.js');
+const { Scene3D, emergencyFlickerLevel } = await import('../client/scene3d.js');
 const { doorSpec } = await import('../client/tuning.js');
 const { createGame } = await import('../shared/engine/setup.mjs');
 
@@ -218,15 +218,19 @@ test('DR-04 one central door panel appears only when closed; no side leaves are 
     }
 });
 
-test('DR-05 the red lenses give a modest periodic pulse only while the door is closed', () => {
-    const pulsePeriod = 2 * Math.PI / 2.4;
+test('DR-05 the closed door lamps flash off and on with the same waveform as malfunction rooms', () => {
+    const brightTime = Math.PI / 12;
+    const darkTime = Math.PI / 6;
+    assert.equal(emergencyFlickerLevel(0, 0), 0, 'the shared emergency waveform has a true dark phase');
+    assert.ok(Math.abs(emergencyFlickerLevel(brightTime, 0) - 1) < 1e-9,
+        'the shared emergency waveform has a clear bright phase');
     for (const c of corridors) {
         const n = build(c);
         const lenses = n.lamps;
         assert.equal(lenses.length, 4, c.id + ': a lamp on each post, on both faces of the doorway');
         for (const l of lenses) assert.ok(!l.isEnabled(), c.id + ': the red lens is off while the door stands open');
         assert.ok(n.lampMaterial, c.id + ': the lenses have a dynamic per-door material');
-        for (const l of lenses) assert.equal(l.material, n.lampMaterial, c.id + ': all four lenses share one pulse');
+        for (const l of lenses) assert.equal(l.material, n.lampMaterial, c.id + ': all four lenses share one flash');
         // the fixture itself is always there: a dark housing on the post, not a glowing lamp
         const bodies = meshes.filter(m => m.name === 'lem');
         assert.equal(bodies.length, 4, c.id + ': four lamp housings');
@@ -242,29 +246,35 @@ test('DR-05 the red lenses give a modest periodic pulse only while the door is c
         n.state = null;
         Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'closed' }));
         assert.ok(n.closedDoor.isEnabled(), c.id + ': closing the door shows its panel');
-        assert.ok(lenses.every(l => l.isEnabled()), c.id + ': closing the door lights its warning lenses');
+        assert.ok(lenses.every(l => l.isEnabled()), c.id + ': closing the door enables its warning lenses');
 
-        // The material remains clearly luminous at the old 1.6 peak, with only a small rise from 1.4.
         n.lampPhase = 0;
         const animateLamps = time => Scene3D.prototype.animateDoorLamps.call({ corridorNodes: { [c.id]: n } }, time);
         animateLamps(0);
-        const dim = n.lampMaterial.emissiveColor.r;
-        animateLamps(Math.PI / (2 * 2.4));
+        const dark = n.lampMaterial.emissiveColor.r;
+        const darkDiffuse = n.lampMaterial.diffuseColor.r;
+        const darkScale = lenses[0].scaling.x;
+        animateLamps(brightTime);
         const bright = n.lampMaterial.emissiveColor.r;
-        animateLamps(Math.PI / (2 * 2.4) + pulsePeriod);
-        const repeated = n.lampMaterial.emissiveColor.r;
-        assert.ok(dim >= 1.4 && bright <= 1.6, c.id + ': the lens stays bright red without excessive emission');
-        assert.ok(bright > dim, c.id + ': the closed-door light periodically gets brighter');
-        assert.ok(bright / dim < 1.16, c.id + ': the pulse is gentle, not a strong flash');
-        assert.ok(Math.abs(repeated - bright) < 1e-9, c.id + ': the brightness pulse repeats');
+        const brightDiffuse = n.lampMaterial.diffuseColor.r;
+        const brightScale = lenses[0].scaling.x;
+        assert.ok(dark < 1e-9 && darkDiffuse < 1e-9, c.id + ': the red light actually goes dark');
+        assert.ok(bright > 1.5 && brightDiffuse > 0.19, c.id + ': the closed-door warning lamps flare brightly');
+        assert.ok(brightScale > darkScale, c.id + ': the lens size pulses with the malfunction lamps');
+        animateLamps(darkTime);
+        assert.ok(n.lampMaterial.emissiveColor.r < 1e-9, c.id + ': the red lenses flash dark again');
 
         n.state = null;
         Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'open' }));
         assert.ok(!n.closedDoor.isEnabled(), c.id + ': no door panel remains when open');
         assert.ok(lenses.every(l => !l.isEnabled()), c.id + ': an open door shows no red at all');
-        const held = n.lampMaterial.emissiveColor.r;
-        animateLamps(Math.PI / (2 * 2.4));
-        assert.equal(n.lampMaterial.emissiveColor.r, held, c.id + ': the pulse freezes while the lenses are hidden');
+        const heldEmission = n.lampMaterial.emissiveColor.r;
+        const heldDiffuse = n.lampMaterial.diffuseColor.r;
+        const heldScale = lenses[0].scaling.x;
+        animateLamps(brightTime);
+        assert.equal(n.lampMaterial.emissiveColor.r, heldEmission, c.id + ': the flash freezes while the lenses are hidden');
+        assert.equal(n.lampMaterial.diffuseColor.r, heldDiffuse, c.id + ': the dark material stays frozen while open');
+        assert.equal(lenses[0].scaling.x, heldScale, c.id + ': the lens does not pulse while open');
     }
 });
 

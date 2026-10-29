@@ -59,12 +59,10 @@ const TILE_STYLE = {
 };
 
 const RUN_SPEED = 9;   // world units per second for character runs between rooms
-// A sealed corridor door idles red, then gives a small, smooth brightness pulse every few seconds.
-export function closedDoorLampLevel(time, phase = 0) {
-    const pulse = Math.max(0, Math.sin(time * 2.4 + phase));
-    // Keep the red lenses clearly luminous like the old 1.6-emissive material; the slow pulse is
-    // deliberately small (1.4 to 1.6), not an on/off flash.
-    return 1.4 + 0.2 * pulse ** 4;
+// One irregular emergency-light flicker, shared by malfunctioning rooms and sealed corridor doors.
+export function emergencyFlickerLevel(time, phase = 0) {
+    return Math.max(0, Math.sin(time * 6 + phase)) *
+        (Math.sin(time * 23 + phase * 3) > -0.6 ? 1 : 0.2);
 }
 // Item colours printed on the room tiles (Search icons) — shown above a room while Alt is held.
 const ITEM_COLORS = { green: '#4fcf7a', red: '#e05252', yellow: '#f1c40f' };
@@ -4097,13 +4095,14 @@ export class Scene3D {
             this.setDecal(decal, nums.join(' / '), false);
         }
         // Emergency lamps on the arch posts: dark housings remain in place; the red lenses are
-        // switched off whenever the door is open. A per-corridor material lets animate() give the
-        // closed door a gentle, smooth pulse without affecting any other red fixtures.
+        // switched off whenever the door is open. Their material follows the same irregular flash
+        // as a malfunctioning room, not a steady glow or a gentle pulse.
         const lampColor = B().Color3.FromHexString(D.lamp);
         const lampPhase = Math.random() * Math.PI * 2;
+        const lampFlash = emergencyFlickerLevel(this.t || 0, lampPhase);
         const lampMaterial = new (B().StandardMaterial)('door_lamps_' + c.id, S);
-        lampMaterial.diffuseColor = lampColor.scale(0.2);
-        lampMaterial.emissiveColor = lampColor.scale(closedDoorLampLevel(this.t || 0, lampPhase));
+        lampMaterial.diffuseColor = lampColor.scale(0.2 * lampFlash);
+        lampMaterial.emissiveColor = lampColor.scale(1.6 * lampFlash);
         lampMaterial.specularColor = B().Color3.Black();
         lampMaterial.disableLighting = true;
         const lamps = [];
@@ -4854,9 +4853,12 @@ export class Scene3D {
     animateDoorLamps(time = this.t) {
         for (const n of Object.values(this.corridorNodes)) {
             if (!n.lampActive || !n.lampMaterial || !n.lampColor) continue;
-            const level = closedDoorLampLevel(time, n.lampPhase);
-            const c = n.lampMaterial.emissiveColor, base = n.lampColor;
-            c.r = base.r * level; c.g = base.g * level; c.b = base.b * level;
+            const flash = emergencyFlickerLevel(time, n.lampPhase);
+            const mat = n.lampMaterial, base = n.lampColor;
+            const diffuse = mat.diffuseColor, emissive = mat.emissiveColor;
+            diffuse.r = base.r * 0.2 * flash; diffuse.g = base.g * 0.2 * flash; diffuse.b = base.b * 0.2 * flash;
+            emissive.r = base.r * 1.6 * flash; emissive.g = base.g * 1.6 * flash; emissive.b = base.b * 1.6 * flash;
+            for (const lamp of n.lamps) lamp.scaling.setAll(0.9 + 0.6 * flash);
         }
     }
 
@@ -4903,7 +4905,7 @@ export class Scene3D {
             if (n.sel.isEnabled()) n.sel.scaling.setAll(1 + 0.04 * Math.sin(t * 5));
             if (n.malfunction && n.shell) {
                 // main lights dead, red emergency lamps flicker
-                const f = Math.max(0, Math.sin(t * 6 + n.flicker)) * (Math.sin(t * 23 + n.flicker * 3) > -0.6 ? 1 : 0.2);
+                const f = emergencyFlickerLevel(t, n.flicker);
                 n.shell.strips.diffuseColor.set(0.2, 0.03, 0.03); n.shell.strips.emissiveColor.set(0.95 * f + 0.12, 0.03, 0.03);
                 for (const e of n.shell.emergency) e.scaling.setAll(0.9 + 0.6 * f);
             }
