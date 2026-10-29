@@ -1,7 +1,742 @@
 {
   "edits": {
+    "tile:airlock:shell#p~0": {
+      "pos": [
+        -0.46,
+        0.15,
+        -0.14
+      ],
+      "rot": [
+        0,
+        -0.785,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:airlock:shell#p~10": {
+      "pos": [
+        0.46,
+        0.138,
+        1.21
+      ],
+      "rot": [
+        0,
+        0.785,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:airlock:shell#p~11": {
+      "pos": [
+        0.297,
+        0.182,
+        1.047
+      ],
+      "rot": [
+        0,
+        0.785,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:airlock:shell#p~3": {
+      "pos": [
+        0.46,
+        0.163,
+        -0.14
+      ],
+      "rot": [
+        0,
+        0.785,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:airlock:shell#p~7": {
+      "pos": [
+        -0.46,
+        0.151,
+        1.21
+      ],
+      "rot": [
+        0,
+        -0.785,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:archives:shell#p~101": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~102": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~103": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~104": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~105": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~106": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~137": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~138": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~139": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~140": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~141": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~142": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~248": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~29": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~30": {
+      "pos": [
+        -3.219,
+        2.344,
+        -4.551
+      ],
+      "rot": [
+        0,
+        0.672,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "deleted": true
+    },
+    "tile:archives:shell#p~31": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~32": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~328": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~33": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~335": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~34": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~65": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~66": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~67": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~68": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~69": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:archives:shell#p~70": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~116": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~117": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~118": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~119": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~120": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~222": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~223": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~224": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~225": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~226": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~227": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~228": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~229": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~230": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~231": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~232": {
+      "pos": [
+        2.758,
+        0.86,
+        2.125
+      ],
+      "rot": [
+        0,
+        -0.3,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:cafeteria:shell#p~233": {
+      "pos": [
+        2.717,
+        0.9,
+        2.061
+      ],
+      "rot": [
+        0,
+        -0.3,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:cafeteria:shell#p~234": {
+      "pos": [
+        2.709,
+        0.95,
+        2.077
+      ],
+      "rot": [
+        0,
+        -0.3,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:cafeteria:shell#p~235": {
+      "pos": [
+        2.698,
+        1,
+        2.089
+      ],
+      "rot": [
+        0,
+        -0.3,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:cafeteria:shell#p~236": {
+      "pos": [
+        2.64,
+        1.05,
+        2.11
+      ],
+      "rot": [
+        0,
+        -0.3,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:cafeteria:shell#p~238": {
+      "pos": [
+        2.45,
+        0.42,
+        2.384
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:cafeteria:shell#p~261": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:cafeteria:shell#p~262": {
+      "pos": [
+        2.836,
+        0.18,
+        -0.996
+      ],
+      "rot": [
+        0,
+        0.1,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:cafeteria:shell#p~263": {
+      "pos": [
+        -0.856,
+        0.18,
+        1.235
+      ],
+      "rot": [
+        0,
+        -0.2,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:commandCenter:shell#p~8": {
+      "pos": [
+        0.25,
+        1.175,
+        -0.15
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:comms:shell#p~114": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:comms:shell#p~115": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:comms:shell#p~117": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:comms:shell#p~118": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:comms:shell#p~119": {
+      "pos": [
+        -2.592,
+        1.959,
+        -3.124
+      ],
+      "rot": [
+        -0.439,
+        1.819,
+        -0.576
+      ],
+      "scale": [
+        0.547,
+        1,
+        1
+      ]
+    },
+    "tile:comms:shell#p~120": {
+      "pos": [
+        -2.573,
+        1.529,
+        -3.445
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:comms:shell#p~121": {
+      "pos": [
+        -2.573,
+        3.156,
+        -3.445
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:comms:shell#p~233": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:comms:shell#p~234": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:comms:shell#p~310": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:comms:shell#p~311": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:containment:shell#p~57": {
+      "pos": [
+        -1.377,
+        2.86,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:containment:shell#p~58": {
+      "pos": [
+        1.362,
+        2.86,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:containment:shell#p~63": {
+      "pos": [
+        0.9,
+        3.6,
+        1.958
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:containment:shell#p~64": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:containment:shell#p~65": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:containment:shell#p~66": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:containment:shell#p~67": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:contaminated:shell#fd~8": {
+      "pos": [
+        2.215,
+        0.129,
+        -0.118
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        0.764
+      ]
+    },
+    "tile:contaminated:shell#p~41": {
+      "pos": [
+        2.956,
+        0.85,
+        -1.654
+      ],
+      "rot": [
+        0,
+        0.5,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:contaminated:shell#p~48": {
+      "pos": [
+        3.614,
+        0.85,
+        -2.031
+      ],
+      "rot": [
+        0,
+        0.5,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:contaminated:shell#p~66": {
+      "pos": [
+        2.2,
+        0.085,
+        3.2
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:decon:shell#p~204": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:decon:shell#p~205": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:engine:shell#p~144": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:engine:shell#p~145": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:evacA:shell#fl~237": {
+      "pos": [
+        -2.6,
+        0.166,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:evacA:shell#fl~238": {
+      "pos": [
+        2.6,
+        0.168,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:evacB:shell#fl~237": {
+      "pos": [
+        -2.6,
+        0.166,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:evacB:shell#fl~238": {
+      "pos": [
+        2.6,
+        0.164,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:generator:shell#p~181": {
+      "hidden": true,
+      "deleted": true
+    },
     "tile:hibernatorium:shell#dz~0": {
-      "hidden": true
+      "hidden": true,
+      "deleted": true
     },
     "tile:hibernatorium:shell#p~110": {
       "hidden": true,
@@ -147,293 +882,6 @@
         1
       ]
     },
-    "tile:engine:shell#p~144": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:engine:shell#p~145": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~29": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~30": {
-      "pos": [
-        -3.219,
-        2.344,
-        -4.551
-      ],
-      "rot": [
-        0,
-        0.672,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
-      "deleted": true
-    },
-    "tile:archives:shell#p~31": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~32": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~33": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~34": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~65": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~66": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~67": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~68": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~69": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~70": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~101": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~102": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~103": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~104": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~105": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~106": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~137": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~138": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~139": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~140": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~141": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~142": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~248": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~328": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:archives:shell#p~335": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:comms:shell#p~114": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:comms:shell#p~115": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:comms:shell#p~117": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:comms:shell#p~118": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:comms:shell#p~119": {
-      "pos": [
-        -2.592,
-        1.959,
-        -3.124
-      ],
-      "rot": [
-        -0.439,
-        1.819,
-        -0.576
-      ],
-      "scale": [
-        0.547,
-        1,
-        1
-      ]
-    },
-    "tile:comms:shell#p~120": {
-      "pos": [
-        -2.573,
-        1.529,
-        -3.445
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:comms:shell#p~121": {
-      "pos": [
-        -2.573,
-        3.156,
-        -3.445
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:comms:shell#p~233": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:comms:shell#p~234": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:comms:shell#p~310": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:comms:shell#p~311": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:evacA:shell#fl~237": {
-      "pos": [
-        -2.6,
-        0.166,
-        0
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:evacA:shell#fl~238": {
-      "pos": [
-        2.6,
-        0.168,
-        0
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:evacB:shell#fl~237": {
-      "pos": [
-        -2.6,
-        0.166,
-        0
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:evacB:shell#fl~238": {
-      "pos": [
-        2.6,
-        0.164,
-        0
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:generator:shell#p~181": {
-      "hidden": true,
-      "deleted": true
-    },
     "tile:laboratory:shell#p~0": {
       "pos": [
         0,
@@ -468,23 +916,6 @@
         1
       ]
     },
-    "tile:laboratory:shell#p~9": {
-      "pos": [
-        -1.95,
-        1.228,
-        1.15
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
     "tile:laboratory:shell#p~11": {
       "pos": [
         -1.6,
@@ -501,6 +932,25 @@
         1,
         1
       ]
+    },
+    "tile:laboratory:shell#p~123": {
+      "pos": [
+        3.385,
+        1.55,
+        0.673
+      ],
+      "rot": [
+        0,
+        -0.35,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "hidden": true,
+      "deleted": true
     },
     "tile:laboratory:shell#p~13": {
       "pos": [
@@ -536,6 +986,23 @@
         1
       ]
     },
+    "tile:laboratory:shell#p~9": {
+      "pos": [
+        -1.95,
+        1.228,
+        1.15
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
     "tile:laboratory:shell#p~96": {
       "pos": [
         -2.55,
@@ -552,25 +1019,6 @@
         1,
         0.995
       ]
-    },
-    "tile:laboratory:shell#p~123": {
-      "pos": [
-        3.385,
-        1.55,
-        0.673
-      ],
-      "rot": [
-        0,
-        -0.35,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
-      "hidden": true,
-      "deleted": true
     },
     "tile:nest:shell#p~60": {
       "hidden": true,
@@ -592,11 +1040,117 @@
       "hidden": true,
       "deleted": true
     },
-    "tile:surgery:shell#fl~45": {
+    "tile:repository:shell#fl~238": {
+      "pos": [
+        2.6,
+        0.168,
+        0
+      ],
+      "rot": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:repository:shell#th~3": {
+      "pos": [
+        -5.8,
+        0.009,
+        0
+      ],
+      "rot": [
+        0,
+        -1.571,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "tile:server:shell#p~156": {
       "hidden": true,
       "deleted": true
     },
-    "tile:surgery:shell#fl~46": {
+    "tile:server:shell#p~177": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~198": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~218": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~219": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~221": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~222": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~223": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~224": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~246": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~247": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~248": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~249": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~250": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~251": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~252": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~48": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~61": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~74": {
+      "hidden": true,
+      "deleted": true
+    },
+    "tile:server:shell#p~87": {
       "hidden": true,
       "deleted": true
     },
@@ -604,19 +1158,11 @@
       "hidden": true,
       "deleted": true
     },
-    "tile:surgery:shell#p~93": {
+    "tile:surgery:shell#fl~45": {
       "hidden": true,
       "deleted": true
     },
-    "tile:surgery:shell#p~94": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:surgery:shell#p~95": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:surgery:shell#p~96": {
+    "tile:surgery:shell#fl~46": {
       "hidden": true,
       "deleted": true
     },
@@ -943,512 +1489,19 @@
         1
       ]
     },
-    "tile:repository:shell#th~3": {
-      "pos": [
-        -5.8,
-        0.009,
-        0
-      ],
-      "rot": [
-        0,
-        -1.571,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:repository:shell#fl~238": {
-      "pos": [
-        2.6,
-        0.168,
-        0
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:airlock:shell#p~0": {
-      "pos": [
-        -0.46,
-        0.15,
-        -0.14
-      ],
-      "rot": [
-        0,
-        -0.785,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:airlock:shell#p~3": {
-      "pos": [
-        0.46,
-        0.163,
-        -0.14
-      ],
-      "rot": [
-        0,
-        0.785,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:airlock:shell#p~7": {
-      "pos": [
-        -0.46,
-        0.151,
-        1.21
-      ],
-      "rot": [
-        0,
-        -0.785,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:airlock:shell#p~10": {
-      "pos": [
-        0.46,
-        0.138,
-        1.21
-      ],
-      "rot": [
-        0,
-        0.785,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:airlock:shell#p~11": {
-      "pos": [
-        0.297,
-        0.182,
-        1.047
-      ],
-      "rot": [
-        0,
-        0.785,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:cafeteria:shell#p~116": {
+    "tile:surgery:shell#p~93": {
       "hidden": true,
       "deleted": true
     },
-    "tile:cafeteria:shell#p~117": {
+    "tile:surgery:shell#p~94": {
       "hidden": true,
       "deleted": true
     },
-    "tile:cafeteria:shell#p~118": {
+    "tile:surgery:shell#p~95": {
       "hidden": true,
       "deleted": true
     },
-    "tile:cafeteria:shell#p~119": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~120": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~222": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~223": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~224": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~225": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~226": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~227": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~228": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~229": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~230": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~231": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~232": {
-      "pos": [
-        2.758,
-        0.86,
-        2.125
-      ],
-      "rot": [
-        0,
-        -0.3,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:cafeteria:shell#p~233": {
-      "pos": [
-        2.717,
-        0.9,
-        2.061
-      ],
-      "rot": [
-        0,
-        -0.3,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:cafeteria:shell#p~234": {
-      "pos": [
-        2.709,
-        0.95,
-        2.077
-      ],
-      "rot": [
-        0,
-        -0.3,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:cafeteria:shell#p~235": {
-      "pos": [
-        2.698,
-        1,
-        2.089
-      ],
-      "rot": [
-        0,
-        -0.3,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:cafeteria:shell#p~236": {
-      "pos": [
-        2.64,
-        1.05,
-        2.11
-      ],
-      "rot": [
-        0,
-        -0.3,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:cafeteria:shell#p~238": {
-      "pos": [
-        2.45,
-        0.42,
-        2.384
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:cafeteria:shell#p~261": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:cafeteria:shell#p~262": {
-      "pos": [
-        2.836,
-        0.18,
-        -0.996
-      ],
-      "rot": [
-        0,
-        0.1,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:cafeteria:shell#p~263": {
-      "pos": [
-        -0.856,
-        0.18,
-        1.235
-      ],
-      "rot": [
-        0,
-        -0.2,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:commandCenter:shell#p~8": {
-      "pos": [
-        0.25,
-        1.175,
-        -0.15
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:containment:shell#p~57": {
-      "pos": [
-        -1.377,
-        2.86,
-        0
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:containment:shell#p~58": {
-      "pos": [
-        1.362,
-        2.86,
-        0
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:containment:shell#p~63": {
-      "pos": [
-        0.9,
-        3.6,
-        1.958
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:containment:shell#p~64": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:containment:shell#p~65": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:containment:shell#p~66": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:containment:shell#p~67": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:contaminated:shell#fd~8": {
-      "pos": [
-        2.215,
-        0.129,
-        -0.118
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        0.764
-      ]
-    },
-    "tile:contaminated:shell#p~41": {
-      "pos": [
-        2.956,
-        0.85,
-        -1.654
-      ],
-      "rot": [
-        0,
-        0.5,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:contaminated:shell#p~48": {
-      "pos": [
-        3.614,
-        0.85,
-        -2.031
-      ],
-      "rot": [
-        0,
-        0.5,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:contaminated:shell#p~66": {
-      "pos": [
-        2.2,
-        0.085,
-        3.2
-      ],
-      "rot": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ]
-    },
-    "tile:decon:shell#p~204": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:decon:shell#p~205": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:server:shell#p~48": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:server:shell#p~61": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:server:shell#p~74": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:server:shell#p~87": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:server:shell#p~156": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:server:shell#p~177": {
-      "hidden": true,
-      "deleted": true
-    },
-    "tile:server:shell#p~198": {
+    "tile:surgery:shell#p~96": {
       "hidden": true,
       "deleted": true
     }
