@@ -11,6 +11,7 @@ import { scoutVariant, pilotVariant } from './explorer-variants.js';
 import { hackerVariant, scientistVariant } from './research-variants.js';
 import { medicVariant, janitorVariant, connectClassicJanitorHose } from './service-variants.js';
 import { ceoVariant, androidVariant, rigBodyguard } from './corporate-variants.js';
+import { convictVariant, psychVariant, floatPsychDrones } from './crew-specialists.js';
 
 const B = () => window.BABYLON;
 
@@ -114,8 +115,9 @@ function crewSpec(charId, parts) {
     if (charId === 'janitor') return { ...spec, janitorParts: parts };
     if (charId === 'ceo') return { ...spec, ceoParts: parts };
     if (charId === 'android') return { ...spec, androidParts: parts };
+    if (charId === 'convict') return { ...spec, convictParts: parts };
+    if (charId === 'psych') return { ...spec, psychParts: parts };
     const hair = {
-        psych: { layered: 'bobLayered', long: 'crewLongBangs' },
         bounty: { swept: 'shortSwept', spiky: 'shortSpiky' },
         captain: { swept: 'shortSwept', spiky: 'shortSpiky' },
         survivor: { wavy: 'labMessy', long: 'longLoose' },
@@ -139,6 +141,14 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
 
     const selectedParts = characterParts(charId, parts);
     const updates = []; // optional flexible connections updated after the animation rig
+    if (charId === 'convict') {
+        // His wrists are restrained: a smaller arm swing keeps the chain in front of the legs.
+        let arms;
+        updates.push(() => {
+            arms ||= root.getChildren().filter(n => n.name === 'armL' || n.name === 'armR');
+            for (const arm of arms) arm.rotation.x *= 0.35;
+        });
+    }
     const roleContext = { scene: S, root, zones, Z, F, bx, cy, sp, fixed: FIXED, updates };
     // Mark meshes belonging to a replaceable part. This also makes it possible to verify that a
     // non-original choice really replaces the original instead of merely covering or decorating it.
@@ -156,7 +166,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     else if (charId === 'mechanic') buildMechanic(selectedParts);
     else if (charId === 'sentry') buildSentry(selectedParts);
     else buildHumanoid(charId === 'labrat' ? labratSpec(selectedParts) : crewSpec(charId, selectedParts));
-    if (!['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android', 'labrat', 'sentry'].includes(charId)) {
+    if (!['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android', 'convict', 'psych', 'labrat', 'sentry'].includes(charId)) {
         addCrewDetails(charId, selectedParts, roleContext);
     }
 
@@ -174,6 +184,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 if (sp.janitorParts.outfit === 'classic') boots();
                 else janitorVariant('boot', sp.janitorParts.outfit, roleContext, W, s);
             });
+            else if (sp.convictParts) part('trousers', sp.convictParts.trousers, () => {
+                if (sp.convictParts.trousers === 'classic') boots();
+                else convictVariant('boot', sp.convictParts.trousers, roleContext, W, s);
+            });
             else boots();
             const legs = () => {
                 Z(sp.legs, bx(0.21 * W, 0.5, 0.22, R, s * 0.15 * W, 0.68, 0));
@@ -183,12 +197,20 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 if (sp.janitorParts.outfit === 'classic') legs();
                 else janitorVariant('leg', sp.janitorParts.outfit, roleContext, W, s);
             });
+            else if (sp.convictParts) part('trousers', sp.convictParts.trousers, () => {
+                if (sp.convictParts.trousers === 'classic') legs();
+                else convictVariant('leg', sp.convictParts.trousers, roleContext, W, s);
+            });
             else legs();
         }
         const pelvis = () => Z(sp.legs, bx(0.52 * W, 0.2, 0.28, R, 0, 1.4, 0));
         if (sp.janitorParts) part('outfit', sp.janitorParts.outfit, () => {
             if (sp.janitorParts.outfit === 'classic') pelvis();
             else janitorVariant('pelvis', sp.janitorParts.outfit, roleContext, W);
+        });
+        else if (sp.convictParts) part('trousers', sp.convictParts.trousers, () => {
+            if (sp.convictParts.trousers === 'classic') pelvis();
+            else convictVariant('pelvis', sp.convictParts.trousers, roleContext, W);
         });
         else pelvis();
         F(FIXED.strap, bx(0.56 * W, 0.08, 0.32, R, 0, 1.5, 0));                 // belt
@@ -200,17 +222,19 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             if (sp.janitorParts.outfit === 'classic') torso = T(bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
             else janitorVariant('torso', sp.janitorParts.outfit, roleContext, W);
         });
-        else torso = T(bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
+        else torso = T(bx((sp.convictParts || sp.psychParts ? 0.6 : 0.54) * W, 0.64, 0.32, R, 0, 1.86, 0)); // bridge the shoulders to the arms
         if (sp.scientistParts) torso.name = 'scientist_torso';
         if (sp.medicParts) torso.name = 'medic_torso';
         if (sp.janitorParts && torso) torso.name = 'janitor_torso';
         if (sp.ceoParts) torso.name = 'ceo_torso';
         if (sp.androidParts) torso.name = 'android_torso';
+        if (sp.convictParts) torso.name = 'convict_torso';
+        if (sp.psychParts) torso.name = 'psych_torso';
         if (sp.female) {
             const bf = sp.bust == null ? 1 : sp.bust;
-            if (bf > 0 && (!sp.androidParts || sp.androidParts.vest === 'classic')) {
+            if (bf > 0 && (!sp.androidParts || sp.androidParts.vest === 'classic') && (!sp.psychParts || sp.psychParts.vest === 'classic')) {
                 const original = () => { const m = bx(0.46 * W, 0.24 * bf, 0.16 * bf, R, 0, 1.98, 0.14 + 0.08 * bf); if (sp.bustZone) Z(sp.bustZone, m); else T(m); };
-                if (sp.androidParts) part('vest', 'classic', original); else original();
+                if (sp.androidParts || sp.psychParts) part('vest', 'classic', original); else original();
             }
             Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0));
         }   // chest and hips
@@ -272,6 +296,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 if (sp.androidParts.vest === 'classic') original();
                 else androidVariant('vest', sp.androidParts.vest, roleContext, W);
             });
+            else if (sp.psychParts) part('vest', sp.psychParts.vest, () => {
+                if (sp.psychParts.vest === 'classic') original();
+                else psychVariant('vest', sp.psychParts.vest, roleContext, W);
+            });
             else original();
         }
         if (sp.coat) {   // long open coat: back panel + two front flaps + tails
@@ -330,9 +358,16 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             F(FIXED.strap, bx(0.5 * W, 0.04, 0.02, R, 0, 1.62, 0.18));
         }
         if (sp.qrPatch) { F('#f4f6f8', bx(0.18, 0.18, 0.02, R, 0.1, 1.9, 0.17)); for (let i = 0; i < 9; i++) if (i % 4 !== 1) F('#1a1d21', bx(0.04, 0.04, 0.01, R, 0.05 + (i % 3) * 0.05, 1.95 - Math.floor(i / 3) * 0.05, 0.18)); }   // QR tag printed on the chest
-        if (sp.plates) {   // riveted square plates bolted onto the skin
-            const P = [[0.3, 2.14, 0.0, 0.22, 0.1, 0.3], [-0.3, 2.14, 0.0, 0.22, 0.1, 0.3], [0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [-0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [0, 1.74, 0.18, 0.2, 0.14, 0.04], [0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [-0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [-0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [0, 2.22, -0.1, 0.24, 0.1, 0.14], [0.2, 1.86, -0.17, 0.18, 0.2, 0.04], [-0.2, 1.86, -0.17, 0.18, 0.2, 0.04], [-0.3, 1.7, 0.17, 0.14, 0.12, 0.04], [0.3, 1.7, 0.17, 0.14, 0.12, 0.04]];
-            for (const [x, y, z, w, h, d] of P) { Z(sp.plates, bx(w * W, h, d, R, x * W, y, z)); F(FIXED.steel, bx(0.03, 0.03, 0.03, R, x * W + (w > 0.1 ? 0.04 : 0), y + (h > 0.12 ? 0.05 : 0), z + d / 2 * (z >= 0 ? 1 : -1))); }
+        if (sp.plates) {   // riveted implants, independently replaced as one set
+            const original = () => {
+                const P = [[0.3, 2.14, 0.0, 0.22, 0.1, 0.3], [-0.3, 2.14, 0.0, 0.22, 0.1, 0.3], [0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [-0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [0, 1.74, 0.18, 0.2, 0.14, 0.04], [0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [-0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [-0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [0, 2.22, -0.1, 0.24, 0.1, 0.14], [0.2, 1.86, -0.17, 0.18, 0.2, 0.04], [-0.2, 1.86, -0.17, 0.18, 0.2, 0.04], [-0.3, 1.7, 0.17, 0.14, 0.12, 0.04], [0.3, 1.7, 0.17, 0.14, 0.12, 0.04]];
+                for (const [x, y, z, w, h, d] of P) { Z(sp.plates, bx(w * W, h, d, R, x * W, y, z)); F(FIXED.steel, bx(0.03, 0.03, 0.03, R, x * W + (w > 0.1 ? 0.04 : 0), y + (h > 0.12 ? 0.05 : 0), z + d / 2 * (z >= 0 ? 1 : -1))); }
+            };
+            if (sp.convictParts) part('plates', sp.convictParts.plates, () => {
+                if (sp.convictParts.plates === 'classic') original();
+                else convictVariant('plates', sp.convictParts.plates, roleContext, W);
+            });
+            else original();
         }
         if (sp.shaggy) {   // ragged fur mantle over the shoulders and hood rim
             for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2, rr = 0.36 * W; Z(sp.shaggy, bx(0.1, 0.22 + (i % 3) * 0.08, 0.1, R, Math.cos(a) * rr, 2.08 - (i % 2) * 0.06, Math.sin(a) * rr * 0.7, [0, -a, (i % 2 ? 0.3 : -0.2)])); }
@@ -372,6 +407,21 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                         Z(sp.arms, bx(0.15 * W, 0.4, 0.17, R, s * 0.39 * W, 1.44, 0.02)).metadata = { androidArmComponent: 'forearm' + side };
                         Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03)).metadata = { androidArmComponent: 'hand' + side };
                     } else androidVariant('arm', sp.androidParts.arms, roleContext, W, s);
+                });
+                continue;
+            }
+            if (sp.convictParts || sp.psychParts) {
+                const isConvict = !!sp.convictParts, slot = isConvict ? 'arms' : 'sleeves';
+                const variant = isConvict ? sp.convictParts.arms : sp.psychParts.sleeves;
+                const side = s < 0 ? 'L' : 'R';
+                part(slot, variant, () => {
+                    if (variant === 'classic') {
+                        const tag = isConvict ? 'convictArm' : 'psychArm';
+                        Z(sp.arms, bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0)).metadata = { [tag]: 'upper' + side };
+                        Z(sp.arms, bx(0.15 * W, 0.4, 0.17, R, s * 0.39 * W, 1.44, 0.02)).metadata = { [tag]: 'forearm' + side };
+                        Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03)).metadata = { [tag]: 'hand' + side };
+                    } else if (isConvict) convictVariant('arm', variant, roleContext, W, s);
+                    else psychVariant('sleeve', variant, roleContext, W, s);
                 });
                 continue;
             }
@@ -436,7 +486,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         if (sp.toolBelt && (!sp.janitorParts || sp.janitorParts.outfit === 'classic')) { for (let i = 0; i < 3; i++) F(FIXED.steel, bx(0.06, 0.14, 0.06, R, -0.22 * W + i * 0.1, 1.42, 0.17)); F(FIXED.strap, bx(0.14, 0.16, 0.1, R, 0.26 * W, 1.4, 0.12)); }
         if (sp.shoulderLamp) Z(sp.shoulderLamp, bx(0.08, 0.06, 0.06, R, -0.38 * W, 2.2, 0.12));
         // Bridge the head and shoulders on each reworked humanoid.
-        const joinedNeck = sp.scientistParts || sp.medicParts || sp.janitorParts || sp.ceoParts || sp.androidParts;
+        const joinedNeck = sp.scientistParts || sp.medicParts || sp.janitorParts || sp.ceoParts || sp.androidParts || sp.convictParts || sp.psychParts;
         const neck = Z('skin', bx(0.14, joinedNeck ? 0.16 : 0.1, 0.14, R, 0, 2.2, 0));
         // The Hacker's original mask had skin-coloured gaps at the temples and cheeks. Keep the
         // original geometry but make the underlying balaclava opaque for every mask option.
@@ -448,6 +498,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         if (sp.janitorParts) { neck.name = 'janitor_neck_joint'; head.name = 'janitor_head'; }
         if (sp.ceoParts) { neck.name = 'ceo_neck_joint'; head.name = 'ceo_head'; }
         if (sp.androidParts) { neck.name = 'android_neck_joint'; head.name = 'android_head'; }
+        if (sp.convictParts) { neck.name = 'convict_neck_joint'; head.name = 'convict_head'; }
+        if (sp.psychParts) { neck.name = 'psych_neck_joint'; head.name = 'psych_head'; }
         if (!sp.respirator && !sp.gasMask && !sp.faceMask && !sp.bandana) Z('skin', bx(0.06, 0.06, 0.05, R, 0, 2.42, 0.18));    // nose (hidden under masks)
         const H = sp.hairZone || 'hair';
         const buildOriginalHair = () => {
@@ -529,6 +581,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             if (sp.androidParts.hair === 'classic') buildOriginalHair();
             else androidVariant('hair', sp.androidParts.hair, roleContext, W);
         });
+        else if (sp.psychParts) part('hair', sp.psychParts.hair, () => {
+            if (sp.psychParts.hair === 'classic') buildOriginalHair();
+            else psychVariant('hair', sp.psychParts.hair, roleContext, W);
+        });
         else buildOriginalHair();
         if (sp.crewChin) Z(H, bx(0.28, 0.12, 0.08, R, 0, 2.3, 0.14));   // the Captain keeps his beard with every haircut
         if (sp.beard) Z(sp.beard, bx(0.26, 0.08, 0.06, R, 0, 2.3, 0.16));
@@ -601,7 +657,14 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             });
             else original();
         }
-        if (sp.headsetTech) { Z(sp.headsetTech, bx(0.06, 0.16, 0.12, R, 0.18, 2.46, 0.0)); Z(LZ, bx(0.03, 0.04, 0.04, R, 0.22, 2.5, 0.04)); F(FIXED.steel, bx(0.03, 0.03, 0.2, R, 0.18, 2.54, 0.1)); }
+        if (sp.headsetTech) {
+            const original = () => { Z(sp.headsetTech, bx(0.06, 0.16, 0.12, R, 0.18, 2.46, 0.0)); Z(LZ, bx(0.03, 0.04, 0.04, R, 0.22, 2.5, 0.04)); F(FIXED.steel, bx(0.03, 0.03, 0.2, R, 0.18, 2.54, 0.1)); };
+            if (sp.psychParts) part('headset', sp.psychParts.headset, () => {
+                if (sp.psychParts.headset === 'classic') original();
+                else psychVariant('headset', sp.psychParts.headset, roleContext, W);
+            });
+            else original();
+        }
         if (sp.goggles) {
             const original = () => { F(FIXED.darkSteel, bx(0.3, 0.08, 0.04, R, 0, 2.62, 0.16)); for (const s of [-1, 1]) Z(sp.goggles, cy(0.09, 0.09, 0.03, 8, R, s * 0.08, 2.62, 0.18, [Math.PI / 2, 0, 0])); };
             if (sp.scientistParts) part('goggles', sp.scientistParts.goggles, () => {
@@ -610,7 +673,13 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             });
             else original();
         }
-        if (sp.glasses) { F(FIXED.rubber, bx(0.3, 0.02, 0.02, R, 0, 2.47, 0.17)); for (const s of [-1, 1]) F(FIXED.glass, bx(0.1, 0.08, 0.02, R, s * 0.08, 2.46, 0.18), { alpha: 0.6, spec: 0.8 }); }
+        if (sp.glasses) {
+            F(FIXED.rubber, bx(0.3, 0.02, 0.02, R, 0, 2.47, 0.17));
+            for (const s of [-1, 1]) {
+                const lens = F(FIXED.glass, bx(0.1, 0.08, 0.02, R, s * 0.08, 2.46, 0.18), { alpha: 0.6, spec: 0.8 });
+                if (sp.psychParts) lens.metadata = { psychGlasses: true };
+            }
+        }
         if (sp.gasMask) {
             const original = () => { F(FIXED.darkSteel, bx(0.26, 0.16, 0.1, R, 0, 2.34, 0.16)); for (const s of [-1, 1]) F(FIXED.steel, cy(0.1, 0.1, 0.06, 6, R, s * 0.1, 2.32, 0.23, [Math.PI / 2, 0, 0])); };
             if (sp.medicParts) part('mask', sp.medicParts.mask, () => {
@@ -781,16 +850,26 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             else original();
         }
         if (sp.muzzle) {   // steel muzzle: mouth cage with vertical bars, cheek plates, head strap
-            Z(sp.muzzle, bx(0.26, 0.14, 0.06, R, 0, 2.33, 0.17)); Z(sp.muzzle, bx(0.14, 0.1, 0.08, R, 0, 2.3, 0.21));
-            for (let i = 0; i < 4; i++) F(FIXED.steel, bx(0.025, 0.16, 0.02, R, -0.09 + i * 0.06, 2.33, 0.25));
-            for (const s of [-1, 1]) { Z(sp.muzzle, bx(0.06, 0.16, 0.14, R, s * 0.16, 2.34, 0.1)); F(FIXED.steel, bx(0.04, 0.04, 0.04, R, s * 0.18, 2.36, 0.16)); }
-            F(FIXED.strap, bx(0.34, 0.04, 0.34, R, 0, 2.4, 0.0));
+            const original = () => {
+                Z(sp.muzzle, bx(0.26, 0.14, 0.06, R, 0, 2.33, 0.17)); Z(sp.muzzle, bx(0.14, 0.1, 0.08, R, 0, 2.3, 0.21));
+                for (let i = 0; i < 4; i++) F(FIXED.steel, bx(0.025, 0.16, 0.02, R, -0.09 + i * 0.06, 2.33, 0.25));
+                for (const s of [-1, 1]) { Z(sp.muzzle, bx(0.06, 0.16, 0.14, R, s * 0.16, 2.34, 0.1)); F(FIXED.steel, bx(0.04, 0.04, 0.04, R, s * 0.18, 2.36, 0.16)); }
+                F(FIXED.strap, bx(0.34, 0.04, 0.34, R, 0, 2.4, 0.0));
+            };
+            if (sp.convictParts) part('muzzle', sp.convictParts.muzzle, () => {
+                if (sp.convictParts.muzzle === 'classic') original();
+                else convictVariant('muzzle', sp.convictParts.muzzle, roleContext, W);
+            });
+            else original();
         }
         if (sp.cigarette) { F('#f4f1e6', bx(0.03, 0.03, 0.16, R, 0.06, 2.34, 0.24, [0, -0.3, 0])); Z(LZ, bx(0.03, 0.03, 0.02, R, 0.085, 2.34, 0.315)); }
         if (sp.bandana) { F('#2b2a28', bx(0.3, 0.22, 0.1, R, 0, 2.36, 0.15)); F('#2b2a28', bx(0.34, 0.1, 0.34, R, 0, 2.36, 0.0)); F('#2b2a28', bx(0.12, 0.2, 0.04, R, 0.05, 2.22, -0.17)); }   // cloth covers nose and mouth   // cloth over nose and mouth, knotted at the back
         if (sp.vial) { F(FIXED.glass, cy(0.05, 0.05, 0.18, 6, R, 0.39 * W, 1.3, 0.14), { alpha: 0.7, spec: 0.8 }); Z(LZ, cy(0.035, 0.035, 0.1, 6, R, 0.39 * W, 1.27, 0.14)); F(FIXED.darkSteel, cy(0.05, 0.05, 0.03, 6, R, 0.39 * W, 1.4, 0.14)); }
         if (sp.syringe) { F(FIXED.glass, cy(0.03, 0.03, 0.26, 6, R, -0.39 * W, 1.24, 0.14, [0.9, 0, 0]), { alpha: 0.7 }); F(FIXED.steel, cy(0.01, 0.01, 0.16, 4, R, -0.39 * W, 1.15, 0.32, [0.9, 0, 0])); }
-        if (sp.chains) { for (let i = 0; i < 5; i++) Z(sp.chains, bx(0.06, 0.04, 0.03, R, -0.2 + i * 0.1, 1.08 - Math.abs(i - 2) * 0.03, 0.06)); for (const s of [-1, 1]) Z(sp.chains, bx(0.18, 0.08, 0.18, R, s * 0.39 * W, 1.12, 0.03)); }
+        if (sp.chains) {
+            if (sp.convictParts) part('chains', sp.convictParts.chains, () => convictVariant('chains', sp.convictParts.chains, roleContext, W));
+            else { for (let i = 0; i < 5; i++) Z(sp.chains, bx(0.06, 0.04, 0.03, R, -0.2 + i * 0.1, 1.08 - Math.abs(i - 2) * 0.03, 0.06)); for (const s of [-1, 1]) Z(sp.chains, bx(0.18, 0.08, 0.18, R, s * 0.39 * W, 1.12, 0.03)); }
+        }
         // companions
         if (sp.scanArm) {   // single industrial probe arm as on the original art: backpack unit, two long jointed segments rising behind the right shoulder and arching high over the head, boxy scanner head with a red laser
             const seg = (a, b, r) => {   // cylinder segment between two points
@@ -811,12 +890,21 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 F(FIXED.steel, bx(0.1, 0.1, 0.02, R, 0, 1.84, 0.27)); for (const s of [-1, 1]) F(FIXED.strap, bx(0.08, 0.5, 0.03, R, s * 0.18 * W, 1.74, -0.19));   // buckle, back straps down to the belt
             }
         }
-        if (sp.drone) {   // two hovering sensor drones, one at each side of the head, lens facing forward, little side fins
-            for (const [x, y, z] of [[-0.6, 2.7, 0.1], [0.58, 2.56, 0.0]]) {
-                const d = new (B().TransformNode)('drone', S); d.parent = R; d.position.set(x, y, z);
-                Z(sp.drone, sp_(0.28, 6, d, 0, 0, 0)); Z(LZ, cy(0.1, 0.1, 0.04, 8, d, 0, 0, 0.14, [Math.PI / 2, 0, 0]));
-                for (const s of [-1, 1]) Z(sp.drone, bx(0.3, 0.03, 0.1, d, s * 0.22, 0.08, 0));
+        if (sp.drone) {   // two independent hovering sensor drones
+            const drones = [];
+            // Keep the drones outside every hairstyle and headset; the wide rotors need extra room.
+            const distance = sp.psychParts?.drones === 'rotors' ? 0.79 : sp.psychParts ? 0.74 : 0.6;
+            const positions = [[-distance, 2.7, 0.1], [sp.psychParts ? distance : 0.58, 2.56, 0.0]];
+            for (const [x, y, z] of positions) {
+                const d = new (B().TransformNode)('drone', S); d.parent = R; d.position.set(x, y, z); drones.push(d);
+                const original = () => { Z(sp.drone, sp_(0.28, 6, d, 0, 0, 0)); Z(LZ, cy(0.1, 0.1, 0.04, 8, d, 0, 0, 0.14, [Math.PI / 2, 0, 0])); for (const s of [-1, 1]) Z(sp.drone, bx(0.3, 0.03, 0.1, d, s * 0.22, 0.08, 0)); };
+                if (sp.psychParts) part('drones', sp.psychParts.drones, () => {
+                    if (sp.psychParts.drones === 'classic') original();
+                    else psychVariant('drone', sp.psychParts.drones, roleContext, W, undefined, d);
+                });
+                else original();
             }
+            if (sp.psychParts) floatPsychDrones(drones, updates);
         }
         if (sp.husky) {   // Laika-type working dog: upright ears, thick chest, curled tail, harness vest
             const d = new (B().TransformNode)('dog', S); d.parent = R; d.position.set(0.78 * W, 0, 0.2); d.rotation.y = -0.2;

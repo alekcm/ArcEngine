@@ -12,62 +12,7 @@ export function addCrewDetails(charId, parts, { scene, root: R, zones, Z, F, bx,
     const at = (zone, x, y) => (zones[zone] || []).find(m => m.parent === R && Math.abs(m.position.x - x) < 0.015 && Math.abs(m.position.y - y) < 0.015);
     const front = [Math.PI / 2, 0, 0];
 
-    if (charId === 'convict') {
-        if (parts.muzzle === 'vents') {
-            fixed('muzzle', C.darkSteel, cy(0.15, 0.15, 0.09, 8, R, 0, 2.32, 0.27, front));
-            paint('muzzle', 'mask', cy(0.1, 0.1, 0.025, 8, R, 0, 2.32, 0.33, front));
-            fixed('muzzle', C.steel, bx(0.08, 0.025, 0.02, R, 0, 2.32, 0.35));
-        } else if (parts.muzzle === 'guard') {
-            for (const s of [-1, 1]) {
-                paint('muzzle', 'mask', bx(0.06, 0.2, 0.1, R, s * 0.19, 2.34, 0.2));
-                fixed('muzzle', C.steel, bx(0.035, 0.15, 0.04, R, s * 0.16, 2.34, 0.27));
-            }
-            fixed('muzzle', C.steel, bx(0.32, 0.04, 0.04, R, 0, 2.25, 0.25));
-        }
-        if (parts.plates === 'shoulder') for (const s of [-1, 1]) {
-            const base = at('mask', s * 0.354, 2.14);
-            paint('plates', 'mask', bx(0.29, 0.12, 0.34, base, 0, 0.1, 0));
-            fixed('plates', C.steel, bx(0.05, 0.04, 0.05, base, s * 0.09, 0.17, 0.1));
-        } else if (parts.plates === 'asymmetric') {
-            paint('plates', 'mask', bx(0.18, 0.3, 0.06, R, 0.18, 1.83, 0.22, [0, 0, -0.22]));
-            for (const y of [1.74, 1.89]) fixed('plates', C.steel, cy(0.04, 0.04, 0.025, 6, R, 0.2, y, 0.26, front));
-            const base = at('mask', -0.354, 2.14);
-            paint('plates', 'mask', bx(0.27, 0.12, 0.34, base, -0.03, 0.1, 0));
-        }
-        if (parts.chains === 'heavy') for (const s of [-1, 1]) {
-            const cuff = at('chains', s * 0.46, 1.12);
-            paint('chains', 'chains', bx(0.24, 0.14, 0.23, cuff, 0, 0, 0));
-            fixed('chains', C.darkSteel, bx(0.1, 0.05, 0.025, cuff, 0, 0, 0.13));
-        } else if (parts.chains === 'links') {
-            const g = group('chains');
-            for (let i = 0; i < 5; i++) {
-                const x = (i - 2) * 0.1, y = 1.02 - (2 - Math.abs(i - 2)) * 0.035;
-                paint('chains', 'chains', bx(0.1, 0.07, 0.05, g, x, y, 0.12, [0, 0, (i % 2 ? 0.35 : -0.35)]));
-            }
-        }
-    } else if (charId === 'psych') {
-        if (parts.headset === 'dual') for (const s of [-1, 1]) {
-            paint('headset', 'drone', bx(0.09, 0.16, 0.16, R, s * 0.23, 2.47, 0.04));
-            paint('headset', 'lights', cy(0.06, 0.06, 0.025, 8, R, s * 0.23, 2.5, 0.14, front));
-        } else if (parts.headset === 'sensor') {
-            paint('headset', 'drone', bx(0.08, 0.2, 0.13, R, 0.23, 2.49, 0.02));
-            fixed('headset', C.steel, bx(0.035, 0.035, 0.25, R, 0.23, 2.56, 0.15));
-            paint('headset', 'lights', cy(0.09, 0.09, 0.04, 8, R, 0.23, 2.56, 0.29, front));
-        }
-        if (parts.drones !== 'classic') for (const d of R.getChildren().filter(n => n.name === 'drone')) {
-            if (parts.drones === 'rotors') for (const s of [-1, 1]) {
-                paint('drones', 'drone', cy(0.19, 0.19, 0.035, 8, d, s * 0.3, 0.12, 0));
-                fixed('drones', C.darkSteel, bx(0.15, 0.025, 0.035, d, s * 0.3, 0.15, 0));
-            } else {
-                for (const s of [-1, 1]) {
-                    fixed('drones', C.steel, bx(0.025, 0.22, 0.025, d, s * 0.15, 0.18, -0.03, [0, 0, -s * 0.2]));
-                    paint('drones', 'lights', sp(0.06, 6, d, s * 0.17, 0.3, -0.03));
-                }
-                paint('drones', 'drone', bx(0.2, 0.08, 0.12, d, 0, -0.08, 0.14));
-                paint('drones', 'lights', bx(0.1, 0.03, 0.025, d, 0, -0.08, 0.215));
-            }
-        }
-    } else if (charId === 'bounty') {
+    if (charId === 'bounty') {
         if (parts.armor !== 'classic') for (const s of [-1, 1]) {
             const base = at('armor', s * 0.4484, 2.12);
             if (parts.armor === 'layered') {

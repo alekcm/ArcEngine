@@ -637,8 +637,10 @@ const CREW_ORIGINAL_HASHES = {
     ceo: '2b2c18cf4d057f2eaf93bc20f9a7eabeb3a62e3762773b3d26768bd3301b5def',
     // The original Android only gains a connected neck.
     android: 'a877b7b9066f502aacb19e91aebe3978d773cb5acef01a1f9aae92bab7bc2f78',
-    convict: '2d5477ab4e352d6bff66b48feb0491488d78d10754f181beca1fa6dac37d81b1',
-    psych: '58da8e33c1e390d69a8b4f2985f15dfa92a57924d5b0815e1f738657393cf5e1',
+    // Convict: connected neck and shoulders; the original cuffs now have a moving chain.
+    convict: 'ba82cd12d70ada6a9f586ee884a220cfab97d128884d3967fcd58f4210bd01a6',
+    // Psychologist: connected neck and shoulders, drones moved clear of the headsets.
+    psych: '25d68589b6316181fd362110094614b1d5d14b408e943924f4ba455ad490f167',
     bounty: '04a7f6a04fcb012a6a98d701d37fb9916edc0943ad2905f66087acfcaffa1a79',
     captain: '3d707abf4830a827ba018ea77444d5922e11ffbc740baeb4e7f6b2c043231c80',
     survivor: '5ff5ab81068aed27b51da8ef22abca159ba0531292a14efc23f204667ea9ef0d',
@@ -679,7 +681,7 @@ test('CREW-04: all combinations retain their equipment, paintability and attache
         assert.equal(count, slots.reduce((n, s) => n * s.options.length, 1), id + ': every combination checked');
         checked += count;
     }
-    assert.equal(checked, 10 * 243 + 6 * 27);
+    assert.equal(checked, 12 * 243 + 4 * 27);
 });
 
 test('CREW-05: extra shoulders, bracers, wheels and companions move with their originals', async () => {
@@ -764,7 +766,7 @@ test('ROLE-01: reworked crew options replace the original meshes, rather than ov
     const { CREW_PARTS, characterParts } = await import('../shared/appearance.mjs');
     const partMeshes = (ch, slot) => ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
     const signature = meshes => geometrySignature({ root: { getChildMeshes: () => meshes } });
-    for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android']) for (const slot of CREW_PARTS[id]) {
+    for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android', 'convict', 'psych']) for (const slot of CREW_PARTS[id]) {
         const original = buildCharacter(scene.scene, id, {}, characterParts(id));
         const base = partMeshes(original, slot.id);
         assert.ok(base.length >= 2, `${id}/${slot.id}: the original part is marked`);
@@ -1285,6 +1287,113 @@ test('ROLE-16: the Janitor has distinct, connected workwear and independently pa
                 feet.push(sole);
             }
             if (t === 0) assert.ok(!feet[0].intersectsMesh(feet[1], true), `${outfit}: separate left and right feet`);
+        }
+        ch.root.dispose();
+    }
+});
+
+test('ROLE-17: the Convict retains connected implants, arms and a chain between moving cuffs', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
+    for (const muzzle of ['classic', 'vents', 'guard']) for (const plates of ['classic', 'shoulder', 'asymmetric'])
+        for (const chains of ['classic', 'heavy', 'links']) for (const arms of ['classic', 'prosthetic', 'cybernetic']) {
+            const ch = buildCharacter(scene.scene, 'convict', {}, { muzzle, plates, chains, arms });
+            ch.root.position.x = 1.3; ch.root.position.z = -0.8; ch.root.rotation.y = 0.7;
+            const meshes = ch.root.getChildMeshes(), name = n => meshes.find(m => m.name === n), component = n => meshes.find(m => m.metadata?.convictArm === n);
+            const cuffs = ['L', 'R'].map(side => meshes.find(m => m.metadata?.convictCuff === side));
+            const links = meshes.filter(m => Number.isInteger(m.metadata?.convictChainSegment)).sort((a, b) => a.metadata.convictChainSegment - b.metadata.convictChainSegment);
+            const width = chains === 'classic' ? 0.18 : chains === 'heavy' ? 0.25 : 0.22;
+            assert.ok(cuffs.every(Boolean) && links.length >= 7 && links.every(m => ancestor(m, 'convict_chain')), `${chains}: full chain`);
+            const endpoint = (m, positive) => B.Vector3.TransformCoordinates(new B.Vector3(0, positive ? 0.5 : -0.5, 0), m.getWorldMatrix());
+            for (const t of [0, 0.1, 0.2, 0.3, 0.4, 0.5]) {
+                ch.animate(t, t > 0); for (const m of meshes) m.computeWorldMatrix(true);
+                assert.ok(name('convict_neck_joint').intersectsMesh(name('convict_head'), true) && name('convict_neck_joint').intersectsMesh(name('convict_torso'), true), 'head and torso joined');
+                for (const [i, side] of ['L', 'R'].entries()) {
+                    const upper = component('upper' + side), forearm = component('forearm' + side), hand = component('hand' + side);
+                    assert.ok([upper, forearm, hand, cuffs[i]].every(m => m && ancestor(m, 'arm' + side)), `${arms}/${chains}: ${side} assembly follows arm`);
+                    assert.ok(upper.intersectsMesh(name('convict_torso'), true) && upper.intersectsMesh(forearm, true) && forearm.intersectsMesh(hand, true), `${arms}: joined ${side} arm`);
+                    assert.ok(cuffs[i].intersectsMesh(hand, true), `${chains}: ${side} cuff surrounds hand`);
+                }
+                const a = B.Vector3.TransformCoordinates(new B.Vector3(width * 0.45, 0, 0.1), cuffs[0].getWorldMatrix());
+                const b = B.Vector3.TransformCoordinates(new B.Vector3(-width * 0.45, 0, 0.1), cuffs[1].getWorldMatrix());
+                assert.ok(B.Vector3.Distance(endpoint(links[0], false), a) < 0.015 && B.Vector3.Distance(endpoint(links.at(-1), true), b) < 0.015, `${chains}: chain meets both cuffs`);
+                for (let i = 0; i < links.length - 1; i++) assert.ok(B.Vector3.Distance(endpoint(links[i], true), endpoint(links[i + 1], false)) < 0.015, `${chains}: chain stays linked`);
+            }
+            ch.setColors({ mask: '#624b70', chains: '#80a5ae', lights: '#38e9b1' });
+            assert.ok(ch.zones.chains.every(m => m.material.diffuseColor.toHexString().toLowerCase() === '#80a5ae'));
+            ch.root.dispose();
+        }
+});
+
+test('ROLE-18: the Psychologist’s clothing, arms and two complete drones stay independent', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
+    for (const vest of ['classic', 'clinical', 'harness']) for (const sleeves of ['classic', 'rolled', 'tech'])
+        for (const drones of ['classic', 'rotors', 'array']) for (const hair of ['classic', 'layered', 'long']) {
+            const ch = buildCharacter(scene.scene, 'psych', {}, { vest, sleeves, drones, hair });
+            ch.root.scaling.setAll(1);
+            const meshes = ch.root.getChildMeshes(), name = n => meshes.find(m => m.name === n), component = n => meshes.find(m => m.metadata?.psychArm === n);
+            const bots = ch.root.getChildren().filter(n => n.name === 'drone');
+            assert.equal(bots.length, 2, 'two drones remain distinct');
+            assert.ok(bots.every(n => n.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === 'drones').length >= 3));
+            const originalHeights = bots.map(n => n.position.y);
+            for (const t of [0, 0.1, 0.2, 0.3]) {
+                ch.animate(t, t > 0); for (const m of meshes) m.computeWorldMatrix(true);
+                assert.ok(name('psych_neck_joint').intersectsMesh(name('psych_head'), true) && name('psych_neck_joint').intersectsMesh(name('psych_torso'), true), 'joined neck');
+                for (const side of ['L', 'R']) {
+                    const upper = component('upper' + side), forearm = component('forearm' + side), hand = component('hand' + side);
+                    assert.ok([upper, forearm, hand].every(m => m && ancestor(m, 'arm' + side)), `${sleeves}: ${side} sleeve follows arm`);
+                    assert.ok(upper.intersectsMesh(name('psych_torso'), true) && upper.intersectsMesh(forearm, true) && forearm.intersectsMesh(hand, true), `${sleeves}: ${side} arm is connected`);
+                }
+                if (vest === 'clinical') {
+                    const tails = meshes.filter(m => m.parent?.name === 'psych_tunic_tails'), back = tails.find(m => m.position.x === 0);
+                    const upperBack = meshes.find(m => m.metadata?.appearancePart?.slot === 'vest' && m.parent === ch.root && m.position.z === -0.18 && m.position.y > 1.8);
+                    assert.ok(back && upperBack && back.intersectsMesh(upperBack, true) && tails.filter(m => m !== back).every(m => m.intersectsMesh(back, true)), 'tunic tails meet the back');
+                }
+            }
+            assert.ok(bots.every((d, i) => Math.abs(d.position.y - originalHeights[i]) > 0.01), `${drones}: both drones hover`);
+            ch.setColors({ coat: '#ecb6a0', drone: '#486070', lights: '#81fddb' });
+            assert.ok(ch.zones.drone.every(m => m.material.diffuseColor.toHexString().toLowerCase() === '#486070'));
+            ch.root.dispose();
+        }
+});
+
+test('ROLE-19: the Psychologist’s hovering drones do not intersect her head or headset', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    for (const hair of ['classic', 'layered', 'long']) for (const headset of ['classic', 'dual', 'sensor']) for (const drones of ['classic', 'rotors', 'array']) {
+        const ch = buildCharacter(scene.scene, 'psych', {}, { hair, headset, drones });
+        ch.root.scaling.setAll(1);
+        const meshes = ch.root.getChildMeshes(), heads = meshes.filter(m => m.name === 'psych_head' || ['hair', 'headset'].includes(m.metadata?.appearancePart?.slot));
+        const bots = ch.root.getChildren().filter(n => n.name === 'drone');
+        for (const t of [0, 0.2, 0.5, 0.8]) {
+            ch.animate(t, t > 0); for (const m of meshes) m.computeWorldMatrix(true);
+            for (const bot of bots) for (const part of bot.getChildMeshes()) for (const head of heads)
+                assert.ok(!part.intersectsMesh(head, true), `${hair}/${headset}/${drones}: drone intersects head at ${t}`);
+        }
+        ch.root.dispose();
+    }
+});
+
+test('ROLE-20: Convict masks cover the mouth and Psychologist glasses remain visible', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    for (const muzzle of ['classic', 'vents', 'guard']) {
+        const ch = buildCharacter(scene.scene, 'convict', {}, { muzzle }); ch.root.scaling.setAll(1);
+        const meshes = ch.root.getChildMeshes(), mask = meshes.filter(m => m.metadata?.appearancePart?.slot === 'muzzle'), head = meshes.find(m => m.name === 'convict_head');
+        for (const m of [head, ...mask]) { m.isPickable = true; m.computeWorldMatrix(true); }
+        for (const x of [-0.07, 0, 0.07]) for (const y of [2.3, 2.36]) {
+            const hit = scene.scene.pickWithRay(new B.Ray(new B.Vector3(x, y, 1), new B.Vector3(0, 0, -1), 2), m => m === head || mask.includes(m));
+            assert.ok(hit?.hit && mask.includes(hit.pickedMesh), `${muzzle}: mouth covered`);
+        }
+        ch.root.dispose();
+    }
+    for (const hair of ['classic', 'layered', 'long']) for (const headset of ['classic', 'dual', 'sensor']) {
+        const ch = buildCharacter(scene.scene, 'psych', {}, { hair, headset }); ch.root.scaling.setAll(1);
+        const meshes = ch.root.getChildMeshes(), glasses = meshes.filter(m => m.metadata?.psychGlasses), candidates = meshes.filter(m => m.name === 'psych_head' || m.metadata?.psychGlasses || ['hair', 'headset'].includes(m.metadata?.appearancePart?.slot));
+        assert.equal(glasses.length, 2);
+        for (const m of candidates) { m.isPickable = true; m.computeWorldMatrix(true); }
+        for (const x of [-0.08, 0.08]) {
+            const hit = scene.scene.pickWithRay(new B.Ray(new B.Vector3(x, 2.46, 1), new B.Vector3(0, 0, -1), 2), m => candidates.includes(m));
+            assert.ok(glasses.includes(hit?.pickedMesh), `${hair}/${headset}: glasses unobstructed`);
         }
         ch.root.dispose();
     }
