@@ -59,6 +59,11 @@ const TILE_STYLE = {
 };
 
 const RUN_SPEED = 9;   // world units per second for character runs between rooms
+// A sealed corridor door idles red, then gives a small, smooth brightness pulse every few seconds.
+export function closedDoorLampLevel(time, phase = 0) {
+    const pulse = Math.max(0, Math.sin(time * 2.4 + phase));
+    return 0.28 + 0.08 * pulse ** 4;
+}
 // Item colours printed on the room tiles (Search icons) — shown above a room while Alt is held.
 const ITEM_COLORS = { green: '#4fcf7a', red: '#e05252', yellow: '#f1c40f' };
 
@@ -4028,14 +4033,11 @@ export class Scene3D {
         const matA = ledMat(ledA), matB = ledMat(ledB);
         const lA = this.mergeStatic(bake(ledA), root), lB = this.mergeStatic(bake(ledB), root);
         for (const m of lA) m.material = matA; for (const m of lB) m.material = matB;
-        // --- the door: two ordinary corridor arches with a plate between them -------------------
-        // The doorway is not a bulkhead of its own: it is built from the very same recipe as the ribs
-        // of the tube (posts, brackets, lintel, lamp, conduit, a glowing band), so walking up to it
-        // reads as the corridor narrowing into a door, not as a shed standing in the passage. Between
-        // the two arches a flat plate of the same steel bridges them: exactly the lintels' width and
-        // height, flush with their tops and sides, so nothing sticks out over the sides. The corridor
-        // number is stencilled on that plate.
-        // Every size comes from client/tuning.js (doorSpec).
+        // --- the door: two ordinary corridor arches, a plate, and one central closed panel ----------
+        // The doorway frame is built from the same recipe as the tube ribs. Its two arches and the
+        // steel plate above them remain part of the corridor; a single solid panel fills the opening
+        // only while the bulkhead is closed. There are no hinged leaves or side panels. The corridor
+        // number is stencilled on the plate. Frame and panel dimensions come from doorSpec/opening.
         const D = doorSpec();
         const d = doorPlaced; const dz = d.z;
         const door = new (B().TransformNode)('door', S); door.parent = d.seg; door.position.set(0, 0, dz);
@@ -4045,8 +4047,7 @@ export class Scene3D {
             m.parent = door; m.position.set(x, y, z); m.material = material; m.isPickable = false;
             return m;
         };
-        // The two arches, one on each side of the plate. Nothing is bolted to their sides: the door
-        // is exactly the two arches and the plate between them (no side strips, no side plates).
+        // The two arches, one on each side of the plate. No side strips or side plates are attached.
         const archZ = [-D.archGap / 2, D.archGap / 2];
         for (const az of archZ) {
             for (const s of [-1, 1]) {
@@ -4061,10 +4062,10 @@ export class Scene3D {
         }
         // the plate between the arches: the lintels' own steel, flush with them on every side
         add('aplate', D.beamW, D.beamH, D.plateD, 0, D.beamY, 0, steel);
-        // No leaves and no side plates: the doorway is exactly the two arches and the plate between
-        // them. The grey leaves that used to hang on pivots outside the posts read as two extra
-        // plates bolted to the sides of the door — they are gone, not merely swung open. A sealed
-        // door is shown by its emergency lamps (updateCorridor), an open one by nothing at all.
+        // One solid bulkhead panel closes the opening. Its width and height exactly fit the space
+        // between the posts and under the lintel; it has no side-hinged wings and starts hidden.
+        const closedDoor = add('dclosed', D.openW, D.postH, 0.08, 0, D.postH / 2, 0, M('#3e4b59'));
+        closedDoor.setEnabled(false);
         const noise = B().MeshBuilder.CreateCylinder('noise', { diameter: 1.4, height: 0.12, tessellation: 12 }, S);
         noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M('#f1c40f', 0.9); noise.isPickable = false; noise.setEnabled(false); noise.visibility = 0;   // kept for layout; the ribs of the corridor show noise
         const noiseLabel = this.makeLabel('nl_' + c.id, '🔊', '', door, 0, 1.4, -2.2, 1.4);
@@ -4093,9 +4094,16 @@ export class Scene3D {
             decal.rotation.set(Math.PI / 2, 0, (Math.cos(d.ry) - Math.sin(d.ry) < 0) ? Math.PI : 0);
             this.setDecal(decal, nums.join(' / '), false);
         }
-        // Emergency lamps in the doorway: dark fixtures on the arch posts, dead until the bulkhead
-        // seals. The lenses are switched off, not merely dimmed, so an open door shows no red at all;
-        // once it closes the opening is lit like a room on malfunction (updateCorridor).
+        // Emergency lamps on the arch posts: dark housings remain in place; the red lenses are
+        // switched off whenever the door is open. A per-corridor material lets animate() give the
+        // closed door a gentle, smooth pulse without affecting any other red fixtures.
+        const lampColor = B().Color3.FromHexString(D.lamp);
+        const lampPhase = Math.random() * Math.PI * 2;
+        const lampMaterial = new (B().StandardMaterial)('door_lamps_' + c.id, S);
+        lampMaterial.diffuseColor = lampColor.scale(0.2);
+        lampMaterial.emissiveColor = lampColor.scale(closedDoorLampLevel(this.t || 0, lampPhase));
+        lampMaterial.specularColor = B().Color3.Black();
+        lampMaterial.disableLighting = true;
         const lamps = [];
         for (const az of archZ) {
             const f = az < 0 ? -1 : 1, lz = az + f * (D.postD / 2 + 0.14);
@@ -4103,7 +4111,7 @@ export class Scene3D {
                 const body = B().MeshBuilder.CreateBox('lem', { width: 0.16, height: 0.26, depth: 0.24 }, S);
                 body.parent = door; body.position.set(s * (D.postX - D.postW / 2 - 0.06), D.lampY, lz); body.material = M('#2a3038'); body.isPickable = false;
                 const lens = B().MeshBuilder.CreateBox('lel', { width: 0.1, height: 0.16, depth: 0.16 }, S);
-                lens.parent = door; lens.position.set(s * (D.postX - D.postW / 2 - 0.06), D.lampY, lz + f * 0.13); lens.material = M(D.lamp, 1.6); lens.isPickable = false; lens.setEnabled(false);
+                lens.parent = door; lens.position.set(s * (D.postX - D.postW / 2 - 0.06), D.lampY, lz + f * 0.13); lens.material = lampMaterial; lens.isPickable = false; lens.setEnabled(false);
                 lamps.push(lens);
             }
         }
@@ -4113,7 +4121,7 @@ export class Scene3D {
             db.parent = door; db.position.set((Math.random() - 0.5) * 1.6, 0.08, (Math.random() - 0.5) * 1.4); db.rotation.set(0, Math.random() * 3, (Math.random() - 0.5) * 0.4); db.material = M('#6b7a88'); db.isPickable = false; db.setEnabled(false);
             debris.push(db);
         }
-        this.corridorNodes[c.id] = { root, door, noise, noiseLabel, decal, nums, sideNums, lamps, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
+        this.corridorNodes[c.id] = { root, door, closedDoor, noise, noiseLabel, decal, nums, sideNums, lamps, lampMaterial, lampColor, lampPhase, lampActive: false, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
             ry: d.ry, a: c.a, b: c.b, state: null };
     }
 
@@ -4648,8 +4656,10 @@ export class Scene3D {
         if (n.state === key) return;
         n.state = key;
         const closed = c.door === 'closed', destroyed = c.door === 'destroyed';
-        // The door has no leaves: a sealed doorway is lit by its emergency lamps, a wrecked one is
-        // strewn with debris, an open one is simply the arch.
+        // One central panel and its red warning lenses appear only while sealed. Opening or wrecking
+        // the bulkhead hides that panel completely; there are no side-hinged leaves to remain visible.
+        n.closedDoor.setEnabled(closed);
+        n.lampActive = closed;
         for (const d of n.debris) d.setEnabled(destroyed);
         n.noiseLabel.setEnabled(!!c.noise);
         for (const l of n.lamps) l.setEnabled(closed);          // emergency light only while sealed
@@ -4837,9 +4847,19 @@ export class Scene3D {
         }
     }
 
+    animateDoorLamps(time = this.t) {
+        for (const n of Object.values(this.corridorNodes)) {
+            if (!n.lampActive || !n.lampMaterial || !n.lampColor) continue;
+            const level = closedDoorLampLevel(time, n.lampPhase);
+            const c = n.lampMaterial.emissiveColor, base = n.lampColor;
+            c.r = base.r * level; c.g = base.g * level; c.b = base.b * level;
+        }
+    }
+
     animate() {
         const t = this.t;
         this.applyShake();
+        this.animateDoorLamps(t);
         // Fire: flames flicker in place, embers climb out of them and the smoke drifts up and spreads.
         for (const n of Object.values(this.roomNodes)) {
             if (!n.fireParts || !n.fireParts.length) continue;

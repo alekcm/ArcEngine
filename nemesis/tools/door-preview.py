@@ -5,9 +5,9 @@
     python3 nemesis/tools/door-preview.py    # 2) writes /tmp/door_zbuf.png: that door, drawn
 
 This is not a Babylon render. It is a plain z-buffered, flat-shaded rasteriser of the same boxes,
-with the same perspective camera as the scene (Y up). No fog, no bloom, no lamplight — but every
-box that is on the door is in the picture, at its true size and place, and nothing else can appear
-in it. That is what makes it usable as proof that a part is really gone.
+with the same perspective camera as the scene (Y up). It omits fog and bloom, but includes only
+meshes enabled for the state selected by door-map.mjs (open by default, --closed for the panel and
+red lamps). This makes the preview useful for checking both the sealed and open door.
 """
 import json
 import math
@@ -17,7 +17,7 @@ import sys
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/door_zbuf.png'
 data = json.load(open('/tmp/door.json'))
 TEXT = data['text']
-meshes = [m for m in data['meshes'] if not m['name'].startswith('cn_')]
+meshes = [m for m in data['meshes'] if m.get('enabled', True) and not m['name'].startswith('cn_')]
 
 W, H = 880, 600
 C = (2.6, 3.15, 4.35)          # eye
@@ -117,8 +117,6 @@ for s in (-1, 1):
 
 for m in meshes:
     nm = m['name']
-    if nm == 'lel':
-        continue                                 # lenses are dark while the door stands open
     if nm == 'apipe':
         cy, cz, L, dia = m['y'], m['z'], 2.58, 0.12
         ring = [(cy + math.cos((i + 0.5) * math.pi / 3) * dia / 2,
@@ -128,7 +126,7 @@ for m in meshes:
             quad([(-L / 2, ring[i][0], ring[i][1]), (L / 2, ring[i][0], ring[i][1]),
                   (L / 2, ring[j][0], ring[j][1]), (-L / 2, ring[j][0], ring[j][1])], hex2rgb(m['hex'] or '#8c96a0'))
         continue
-    box(m['x'], m['y'], m['z'], m['w'], m['h'], m['d'], hex2rgb(m['hex']), nm == 'alamp')
+    box(m['x'], m['y'], m['z'], m['w'], m['h'], m['d'], hex2rgb(m['hex']), nm in ('alamp', 'lel'))
 
 hdr = f'P6\n{W} {H}\n255\n'.encode()
 body = bytearray()

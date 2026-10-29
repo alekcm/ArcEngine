@@ -62,6 +62,15 @@ class DynamicTexture {
     update() { this.updates++; }
     dispose() {}
 }
+class C3 {
+    constructor(r = 0, g = 0, b = 0) { this.r = r; this.g = g; this.b = b; }
+    scale(k) { return new C3(this.r * k, this.g * k, this.b * k); }
+}
+const fromHex = (hex) => {
+    const s = String(hex).replace(/^#/, '');
+    const n = Number.parseInt(s, 16);
+    return new C3(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+};
 globalThis.localStorage = { getItem: () => null, setItem: () => {} };
 globalThis.document = { createElement: () => ({ getContext: () => null }) };
 try { Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'node' }, configurable: true }); } catch { /* already defined */ }
@@ -84,11 +93,9 @@ globalThis.window = {
             }
             dispose() {} freeze() {}
         },
-        Color3: Object.assign(class {
-            constructor(r, g, b) { this.r = r; this.g = g; this.b = b; }
-            scale(k) { return { r: this.r * k, g: this.g * k, b: this.b * k }; }
-        }, {
-            FromHexString: () => ({ scale: () => ({}) }), Black: () => ({ scale: () => ({}) }),
+        Color3: Object.assign(C3, {
+            FromHexString: fromHex,
+            Black: () => new C3(0, 0, 0),
         }),
         Color4: class {},
     },

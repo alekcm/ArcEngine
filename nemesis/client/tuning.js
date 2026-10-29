@@ -8,11 +8,11 @@
 // stencil. Now those numbers live in one table, the editor writes them, and the renderer only reads
 // them (see doorSpec() — the derived sizes are computed once, in one place, and tested).
 //
-// The door itself is no longer a bulkhead frame with a roof-like beam: it is two ordinary corridor
-// arches (the very same posts, brackets, lintels and lamps as the ribs of the tube) with a flat
-// plate of the same steel bridging them, and the number stencilled on that plate. So the numbers in
-// this table describe an arch, not a frame: postX/postW/postH/postD are one arch, archGap is the
-// distance between the two, beamW/beamH is the lintel — and therefore also the plate.
+// The frame is two ordinary corridor arches (the same posts, brackets, lintels and lamps as the
+// tube ribs), with a flat plate bridging them and the number stencilled on it. One solid central
+// panel is derived from the clear opening and shown only while closed; there are no side-hinged
+// leaves. This table describes the frame and opening: postX/postW/postH/postD are one arch, archGap
+// is the distance between the two, and beamW/beamH is the lintel — and therefore also the plate.
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
@@ -98,8 +98,8 @@ export const TUNE = {
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 /**
- * The door, derived once from the tuning table. Everything the renderer needs, so a slider can
- * never produce panels that do not reach the posts or a stencil wider than the beam it sits on.
+ * The door frame and clear opening, derived once from the tuning table. The closed panel fits the
+ * opening from these values, while the stencil stays within the beam.
  */
 export function doorSpec() {
     const n = (k) => TUNE.get('door.' + k);
@@ -113,8 +113,8 @@ export function doorSpec() {
     // A rib of the corridor puts its lintel 0.10 above the post top (the recipe overlaps the two by
     // 0.02): the door's arches use the very same height, so a doorway is not a different arch.
     const beamY = postH + 0.1;
-    // The doorway has no leaves of its own: it is two arches and the plate between them. The
-    // opening is simply the span between the posts' inner faces.
+    // The opening is the span between the posts' inner faces; the one central panel uses this exact
+    // width and post height, and is hidden whenever the door is open or destroyed.
     const openW = Math.max(0.8, 2 * (postX - postW / 2));
     // The stencil lies flat on the plate. Its size comes from the plate's WIDTH and from nothing
     // else: shortening the doorway must not shrink the digits. They are painted across the plate,
@@ -129,8 +129,7 @@ export function doorSpec() {
         openW,
         decalW, decalH, decalY: beamY + beamH / 2 + 0.02,
         numFont: Math.round(n('numFont')),
-        // The lamps are fixed to the front of the arch posts, out of the plane the leaves swing in,
-        // so their height only has to stay under the post top — not above the leaf.
+        // The lamps are fixed to the front of the arch posts, outside the central panel's plane.
         lampY: Math.max(0.7, postH - 0.12),
         steel: TUNE.color('door.steel'), paint: TUNE.color('door.paint'), outline: TUNE.color('door.outline'),
         neon: TUNE.color('door.neon'), neonGlow: TUNE.color('door.neonGlow'), lamp: TUNE.color('door.lamp'),

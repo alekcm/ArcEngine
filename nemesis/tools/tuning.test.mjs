@@ -3,9 +3,9 @@
 // The door was rebuilt three times in a row because its numbers lived in the renderer: every "make
 // the frame wider" was a code change. They live in client/tuning.js now, the editor writes them and
 // the game reads them — so the important thing to keep is that NO slider position can produce an
-// impossible door: leaves that do not meet or do not clear the doorway, a lintel that does not span
-// its posts, a plate thinner than the gap it bridges, or a stencil wider than the plate it is
-// painted on. The door itself is two ordinary corridor arches with the plate between them.
+// impossible door: a central closed panel that cannot fill the clear opening, a lintel that does
+// not span its posts, a plate thinner than the gap it bridges, or a stencil wider than the plate it
+// is painted on. The frame is two ordinary corridor arches with the plate between them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TUNE, SCHEMA, DEFAULTS, sanitize, sanitizeAll, doorSpec } from '../client/tuning.js';
@@ -19,10 +19,12 @@ function numbers() {
 
 /** The invariants the renderer relies on. */
 function checkDoor(D, label) {
-    // the doorway: no leaves, no side plates — two arches and the plate between them
+    // one central closed panel derives from the exact clear opening; no hinged or side-leaf tuning
     assert.ok(D.openW > 0.5, label + ': a doorway you can walk through (' + D.openW.toFixed(2) + ')');
+    assert.ok(Math.abs(D.openW - 2 * (D.postX - D.postW / 2)) < 1e-9,
+        label + ': a closed panel spans exactly the space between the posts');
     for (const gone of ['pivotX', 'panelW', 'panelH', 'panelSwing']) {
-        assert.equal(D[gone], undefined, label + ': the door has no leaves (' + gone + ')');
+        assert.equal(D[gone], undefined, label + ': there is no side-leaf tuning (' + gone + ')');
     }
     // the arches and the plate between them
     assert.ok(D.archGap > D.postD, label + ': the arches stand apart');

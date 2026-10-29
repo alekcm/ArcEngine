@@ -5,13 +5,14 @@
 // turned to face the camera and it glowed even without Alt. What it has to be is what the players
 // actually read on the physical board: a flat stencil painted on the door frame itself, the same
 // pale slate paint as the "?" printed on an unexplored room's floor, dead flat until Alt is held.
-// The frame is wide and deep enough to carry that number, and the doorway has dark emergency lamps
-// that only light up once the bulkhead seals.
+// The frame is wide and deep enough to carry that number; one central panel appears only when the
+// bulkhead seals, and its red emergency lamps pulse gently until it opens again.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const { meshes, allNodes, mat } = await import('./_stub3d.mjs');
 const { Scene3D } = await import('../client/scene3d.js');
+const { doorSpec } = await import('../client/tuning.js');
 const { createGame } = await import('../shared/engine/setup.mjs');
 
 // Only what buildCorridor touches: the material cache, the label factory, the merger and the map.
@@ -47,7 +48,7 @@ const corridors = Object.values(ship.corridors);
 const nodes = {};
 for (const c of corridors) nodes[c.id] = build(c);
 
-test('DR-01 the doorway is two ordinary corridor arches, not a bulkhead frame', () => {
+test('DR-01 the doorway frame is two ordinary corridor arches, not a bulky bulkhead frame', () => {
     for (const c of corridors) {
         build(c);
         const posts = meshes.filter(m => m.name === 'apost');
@@ -80,6 +81,13 @@ test('DR-01 the doorway is two ordinary corridor arches, not a bulkhead frame', 
         assert.equal(plate.position.y, lintels[0].position.y, c.id + ': flush with them');
         assert.equal(plate.position.x, 0, c.id + ': centred');
         assert.ok(plate.opts.depth > 0.4 && plate.opts.depth <= zs[1] - zs[0] - 0.3, c.id + ': it spans the gap and no more');
+        const closedDoor = meshes.filter(m => m.name === 'dclosed');
+        assert.equal(closedDoor.length, 1, c.id + ': one solid panel, not a pair of swinging leaves');
+        assert.equal(closedDoor[0].opts.width, doorSpec().openW, c.id + ': the panel fits exactly between the posts');
+        assert.equal(closedDoor[0].opts.height, doorSpec().postH, c.id + ': the panel reaches from deck to lintel');
+        assert.equal(closedDoor[0].position.x, 0, c.id + ': the panel is centred in the opening');
+        assert.equal(closedDoor[0].position.z, 0, c.id + ': the panel closes across the middle of the doorway');
+        assert.equal(closedDoor[0].isEnabled(), false, c.id + ': the panel starts hidden until a closed state is applied');
         // Nothing sticks out over the sides: every part of the frame stays within the arch span.
         const span = lintels[0].opts.width / 2;
         for (const m of meshes) {
@@ -172,62 +180,89 @@ test('DR-03 the number is printed in the same paint as the "?", and Alt turns it
     assert.equal(back[0].fill, '#56687c', 'and the same paint');
 });
 
-test('DR-04 the doorway has no leaves and no side plates at all', () => {
+test('DR-04 one central door panel appears only when closed; no side leaves are built', () => {
     for (const c of corridors) {
         const n = build(c);
-        // The grey plates that used to hang on pivots outside the posts read as two extra plates
-        // bolted to the sides of the door. They are gone — not swung open, not hidden: not built.
-        for (const gone of ['panel', 'ps', 'aband', 'pivot']) {
-            assert.equal(meshes.filter(m => m.name === gone).length, 0, c.id + ': no «' + gone + '» on the door');
+        const panels = meshes.filter(m => /^(dclosed|dleft|dright|dside|panel|ps|pivot|wing|flap)$/.test(m.name));
+        assert.deepEqual(panels.map(m => m.name), ['dclosed'], c.id + ': the only door panel is the single central leaf');
+        assert.equal(n.closedDoor, panels[0], c.id + ': the corridor tracks that one closed panel');
+        assert.ok(!n.closedDoor.isEnabled(), c.id + ': the panel is absent while the door is open');
+        for (const gone of ['panels', 'pivots', 'panelSwing']) assert.equal(n[gone], undefined, c.id + ': no hinged side-leaf state (' + gone + ')');
+        for (const gone of ['panel', 'ps', 'pivot', 'dleft', 'dright', 'dside', 'wing', 'flap']) {
             assert.equal(allNodes.filter(a => a.name === gone).length, 0, c.id + ': no «' + gone + '» node either');
         }
-        assert.equal(n.panels, undefined, c.id + ': the corridor node keeps no leaves');
-        assert.equal(n.pivots, undefined, c.id + ': and no pivots');
-        assert.equal(n.panelSwing, undefined, c.id + ': and no swing angle');
-        // What is left on the door: two arches, the plate and the four emergency lamps — nothing else.
-        const allowed = /^(apost|abrk|alintel|aplate|alamp|apipe|lem|lel|debris|noise|cn_|nl_)/;
+        // The frame, the one central panel, the fixtures, and the number stencil are the only door parts.
+        const allowed = /^(apost|abrk|alintel|aplate|alamp|apipe|dclosed|lem|lel|debris|noise|cn_|nl_)/;
         for (const m of meshes) {
             const onDoor = m.parent && (m.parent.name === 'door' || (m.parent.parent && m.parent.parent.name === 'door'));
             assert.ok(!onDoor || allowed.test(m.name), c.id + ': «' + m.name + '» не место на двери');
         }
-        // and the door still reacts to its state: the emergency lamps light when it seals, debris
-        // appears when it is wrecked — with no leaf to move anywhere
+
         n.state = null;
         Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'closed' }));
-        assert.ok(n.lamps.every(l => l.isEnabled()), c.id + ': a sealed doorway is lit');
+        assert.ok(n.closedDoor.isEnabled(), c.id + ': the central panel fills the opening when sealed');
+        assert.ok(n.lamps.every(l => l.isEnabled()), c.id + ': a sealed doorway lights its red lenses');
+        assert.equal(n.lampActive, true, c.id + ': the closed-door pulse is active');
+
+        n.state = null;
+        Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'open' }));
+        assert.ok(!n.closedDoor.isEnabled(), c.id + ': opening the door removes the whole panel');
+        assert.ok(n.lamps.every(l => !l.isEnabled()), c.id + ': the open doorway has no glowing red lenses');
+        assert.equal(n.lampActive, false, c.id + ': the pulse stops while open');
+
         n.state = null;
         Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'destroyed' }));
+        assert.ok(!n.closedDoor.isEnabled(), c.id + ': a destroyed door has no intact panel');
         assert.ok(n.debris.every(d => d.isEnabled()), c.id + ': a wrecked doorway is strewn with debris');
     }
 });
 
-test('DR-05 the doorway emergency lamps are dead until the door closes', () => {
+test('DR-05 the red lenses give a modest periodic pulse only while the door is closed', () => {
+    const pulsePeriod = 2 * Math.PI / 2.4;
     for (const c of corridors) {
         const n = build(c);
         const lenses = n.lamps;
         assert.equal(lenses.length, 4, c.id + ': a lamp on each post, on both faces of the doorway');
-        for (const l of lenses) assert.ok(!l.isEnabled(), c.id + ': the emergency light is off while the door stands open');
-        for (const l of lenses) assert.equal(l.material.emissive, 1.6, c.id + ': a lit lens would be a bright red');
+        for (const l of lenses) assert.ok(!l.isEnabled(), c.id + ': the red lens is off while the door stands open');
+        assert.ok(n.lampMaterial, c.id + ': the lenses have a dynamic per-door material');
+        for (const l of lenses) assert.equal(l.material, n.lampMaterial, c.id + ': all four lenses share one pulse');
         // the fixture itself is always there: a dark housing on the post, not a glowing lamp
         const bodies = meshes.filter(m => m.name === 'lem');
         assert.equal(bodies.length, 4, c.id + ': four lamp housings');
         for (const b of bodies) assert.equal(b.material.hex, '#2a3038', c.id + ': dark steel housing');
-        // the lamps hang in the top corners of the opening, above the leaves
+        // the lamps hang in the top corners of the opening, above the central panel
         for (const l of lenses) {
             assert.ok(Math.abs(l.position.x) > 0.8 && Math.abs(l.position.x) < 1.05, c.id + ': the lens sits on the post');
-            assert.ok(l.position.y > 1.2 && l.position.y < 1.6, c.id + ': it hangs under the lintel, over the leaves');
+            assert.ok(l.position.y > 1.2 && l.position.y < 1.6, c.id + ': it hangs under the lintel');
             const archZ = Math.abs(meshes.find(m => m.name === 'alintel').position.z);
-            assert.ok(Math.abs(l.position.z) > archZ + 0.32 / 2, c.id + ': on the outer face of an arch, never inside a closed leaf');
+            assert.ok(Math.abs(l.position.z) > archZ + 0.32 / 2, c.id + ': on the outer face of an arch, clear of the panel');
         }
 
-        // sealed: the emergency light comes on, like a room on malfunction
         n.state = null;
         Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'closed' }));
-        assert.ok(lenses.every(l => l.isEnabled()), c.id + ': closing the door lights the doorway');
-        // and it goes dark again as soon as the bulkhead opens
+        assert.ok(n.closedDoor.isEnabled(), c.id + ': closing the door shows its panel');
+        assert.ok(lenses.every(l => l.isEnabled()), c.id + ': closing the door lights its warning lenses');
+
+        // The material idles at a dim red, then smoothly rises by less than a third before repeating.
+        n.lampPhase = 0;
+        const animateLamps = time => Scene3D.prototype.animateDoorLamps.call({ corridorNodes: { [c.id]: n } }, time);
+        animateLamps(0);
+        const dim = n.lampMaterial.emissiveColor.r;
+        animateLamps(Math.PI / (2 * 2.4));
+        const bright = n.lampMaterial.emissiveColor.r;
+        animateLamps(Math.PI / (2 * 2.4) + pulsePeriod);
+        const repeated = n.lampMaterial.emissiveColor.r;
+        assert.ok(bright > dim, c.id + ': the closed-door light periodically gets brighter');
+        assert.ok(bright / dim < 1.3, c.id + ': the pulse is gentle, not a strong flash');
+        assert.ok(Math.abs(repeated - bright) < 1e-9, c.id + ': the brightness pulse repeats');
+
         n.state = null;
         Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'open' }));
+        assert.ok(!n.closedDoor.isEnabled(), c.id + ': no door panel remains when open');
         assert.ok(lenses.every(l => !l.isEnabled()), c.id + ': an open door shows no red at all');
+        const held = n.lampMaterial.emissiveColor.r;
+        animateLamps(Math.PI / (2 * 2.4));
+        assert.equal(n.lampMaterial.emissiveColor.r, held, c.id + ': the pulse freezes while the lenses are hidden');
     }
 });
 

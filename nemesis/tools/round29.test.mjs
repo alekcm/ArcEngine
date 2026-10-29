@@ -10,27 +10,30 @@ import { spawn } from 'node:child_process';
 const repo = new URL('../', import.meta.url);
 const read = (p) => fs.readFileSync(new URL(p, repo), 'utf8');
 
-test('R29-01 the door is built without leaves and without side plates', () => {
+test('R29-01 only one central panel can close the door; there are no side leaves', () => {
     const src = read('client/scene3d.js');
-    // nothing in the corridor builder creates a leaf, its stripe or a pivot any more
-    for (const gone of ["'panel'", "'ps'", "'pivot'", 'panelSwing', 'pivotX', 'panelW', 'panelH']) {
-        assert.ok(!src.includes(gone), 'в сцене нет «' + gone + '»');
+    assert.match(src, /add\('dclosed', D\.openW, D\.postH/,
+        'сцена строит одну сплошную панель точно по ширине проёма');
+    assert.match(src, /closedDoor\.setEnabled\(closed\)/,
+        'панель показывается только при закрытой двери');
+    for (const gone of ["'ps'", "'pivot'", "'dleft'", "'dright'", "'dside'", 'panelSwing', 'pivotX', 'panelW', 'panelH']) {
+        assert.ok(!src.includes(gone), 'в сцене нет боковых створок или их механики «' + gone + '»');
     }
-    assert.ok(!src.includes('b8c4d0'), 'нет даже цвета серых створок');
-    // and the door node carries no leaf fields for some other code to animate
+    assert.ok(!src.includes('b8c4d0'), 'нет старого цвета серых боковых створок');
     const node = src.slice(src.indexOf('this.corridorNodes[c.id] = {'), src.indexOf('this.corridorNodes[c.id] = {') + 320);
-    for (const field of ['panels', 'pivots', 'panelSwing']) assert.ok(!node.includes(field), 'узел коридора без «' + field + '»');
+    assert.ok(node.includes('closedDoor'), 'узел коридора хранит центральную панель');
+    for (const field of ['panels', 'pivots', 'panelSwing']) assert.ok(!node.includes(field), 'узел без состояния боковых створок «' + field + '»');
 });
 
-test('R29-02 the tuning table has no leaf geometry left', () => {
+test('R29-02 the tuning table has no side-leaf geometry left', () => {
     const tune = read('client/tuning.js');
-    for (const gone of ['pivotX', 'panelW', 'panelH', 'panelSwing']) assert.ok(!tune.includes(gone), 'doorSpec без «' + gone + '»');
+    for (const gone of ['pivotX', 'panelW', 'panelH', 'panelSwing']) assert.ok(!tune.includes(gone), 'doorSpec без боковой механики «' + gone + '»');
     // the digits are sized from the plate's width only
     assert.match(tune, /const decalW = Math\.max\(0\.4, Math\.min\(beamW \* n\('numShare'\), beamW - 0\.4\)\);/,
         'ширина трафарета — только от ширины плиты');
 });
 
-test('R29-03 what the server sends has no leaves either, and the page carries a build stamp', async () => {
+test('R29-03 the server sends the closed-only panel, no side leaves, and a build stamp', async () => {
     const port = 8137;
     const srv = spawn(process.execPath, ['server.mjs', '--port=' + port], { cwd: new URL('.', repo).pathname, stdio: 'ignore' });
     try {
@@ -40,7 +43,11 @@ test('R29-03 what the server sends has no leaves either, and the page carries a 
         const stamp = /window\.__BUILD = '([a-f0-9]+)'/.exec(html);
         const url = /app\.js\?v=([a-f0-9]+)/.exec(html);
         assert.ok(stamp, 'страница несёт штамп сборки');
-        assert.equal(js.includes("'panel'") || js.includes('b8c4d0'), false, 'браузер получает сцену без створок');
+        assert.match(js, /add\('dclosed', D\.openW, D\.postH/, 'браузер получает одну панель, закрывающую проём');
+        assert.match(js, /closedDoor\.setEnabled\(closed\)/, 'браузер скрывает панель при открытой двери');
+        for (const gone of ["'ps'", "'pivot'", "'dleft'", "'dright'", "'dside'", 'panelSwing']) {
+            assert.ok(!js.includes(gone), 'браузер не получает боковые створки «' + gone + '»');
+        }
         assert.ok(url && url[1] === stamp[1], 'модуль запрашивается под штампом — кэш не отдаст старый файл');
     } finally { srv.kill(); }
 });
