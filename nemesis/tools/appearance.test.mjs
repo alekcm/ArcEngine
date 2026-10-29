@@ -114,7 +114,7 @@ test('CREW-01: every crew member has independent, fully validated slots', async 
     assert.equal(Object.keys(CREW_PARTS).length, 16);
     for (const [id, slots] of Object.entries(CREW_PARTS)) {
         assert.equal(characterPartSlots(id), slots);
-        assert.equal(slots.length, ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android', 'convict', 'psych'].includes(id) ? 5 : 3, id + ': role-specific categories');
+        assert.equal(slots.length, ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android', 'convict', 'psych', 'bounty', 'captain'].includes(id) ? 5 : 3, id + ': role-specific categories');
         assert.equal(new Set(slots.map(s => s.id)).size, slots.length, id + ': unique slots');
         const defaults = characterParts(id);
         for (const slot of slots) {
@@ -220,5 +220,11 @@ test('ROLE-04: existing choices survive the richer workshop schemas', () => {
     });
     assert.deepEqual(characterParts('psych', { hair: 'layered', headset: 'sensor', drones: 'rotors' }), {
         hair: 'layered', headset: 'sensor', drones: 'rotors', vest: 'classic', sleeves: 'classic',
+    });
+    assert.deepEqual(characterParts('bounty', { hair: 'spiky', armor: 'heavy', dog: 'packs' }), {
+        hair: 'spiky', armor: 'heavy', dog: 'packs', outfit: 'classic', rifle: 'classic',
+    });
+    assert.deepEqual(characterParts('captain', { hair: 'swept', shoulders: 'layered', vest: 'radio' }), {
+        hair: 'swept', shoulders: 'layered', vest: 'radio', uniform: 'classic', sidearm: 'classic',
     });
 });

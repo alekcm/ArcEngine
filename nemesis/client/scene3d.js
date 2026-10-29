@@ -5100,10 +5100,10 @@ export class Preview3D {
         new ResizeObserver(() => this.engine.resize()).observe(canvas);
     }
     show(charId, colors = {}, selectedParts) {
-        // The Director and his separate bodyguard share one preview stand. Widen and recenter it
-        // for the pair so neither robot foot overhangs; restore the ordinary stand for other roles.
-        const pair = charId === 'ceo';
-        this.disc.position.x = pair ? -0.28 : 0;
+        // Companion roles share the stand with a complete second figure. Recenter and widen it
+        // so the Director's bodyguard and the Hunter's Laika have room for all their feet.
+        const pair = charId === 'ceo' || charId === 'bounty';
+        this.disc.position.x = charId === 'ceo' ? -0.28 : charId === 'bounty' ? 0.24 : 0;
         this.disc.scaling.x = this.disc.scaling.z = pair ? 1.15 : 1;
         const parts = characterParts(charId, selectedParts), key = JSON.stringify(parts);
         if (this.charId !== charId || this.partsKey !== key) {

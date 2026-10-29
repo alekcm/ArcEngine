@@ -641,8 +641,10 @@ const CREW_ORIGINAL_HASHES = {
     convict: 'ba82cd12d70ada6a9f586ee884a220cfab97d128884d3967fcd58f4210bd01a6',
     // Psychologist: connected neck and shoulders, drones moved clear of the headsets.
     psych: '25d68589b6316181fd362110094614b1d5d14b408e943924f4ba455ad490f167',
-    bounty: '04a7f6a04fcb012a6a98d701d37fb9916edc0943ad2905f66087acfcaffa1a79',
-    captain: '3d707abf4830a827ba018ea77444d5922e11ffbc740baeb4e7f6b2c043231c80',
+    // Hunter: connected neck/waist, hands posed around the rifle, Laika rigged with a joined neck.
+    bounty: 'bc9c9ce274d40cdf9329a0cce7dfa5d667c50b146cba35650ef710cc695c621c',
+    // Captain: connected neck, waist and shoulders, with the original suit retained.
+    captain: '28e82c72331869319dc21daa40a51458603d9ea4e621d101dc571bb5f808811b',
     survivor: '5ff5ab81068aed27b51da8ef22abca159ba0531292a14efc23f204667ea9ef0d',
     xeno: '85d76328df00a5820a85f907986fa50e87e65499e9f922c4f87443cf95c84374',
 };
@@ -681,7 +683,7 @@ test('CREW-04: all combinations retain their equipment, paintability and attache
         assert.equal(count, slots.reduce((n, s) => n * s.options.length, 1), id + ': every combination checked');
         checked += count;
     }
-    assert.equal(checked, 12 * 243 + 4 * 27);
+    assert.equal(checked, 14 * 243 + 2 * 27);
 });
 
 test('CREW-05: extra shoulders, bracers, wheels and companions move with their originals', async () => {
@@ -766,7 +768,7 @@ test('ROLE-01: reworked crew options replace the original meshes, rather than ov
     const { CREW_PARTS, characterParts } = await import('../shared/appearance.mjs');
     const partMeshes = (ch, slot) => ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
     const signature = meshes => geometrySignature({ root: { getChildMeshes: () => meshes } });
-    for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android', 'convict', 'psych']) for (const slot of CREW_PARTS[id]) {
+    for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android', 'convict', 'psych', 'bounty', 'captain']) for (const slot of CREW_PARTS[id]) {
         const original = buildCharacter(scene.scene, id, {}, characterParts(id));
         const base = partMeshes(original, slot.id);
         assert.ok(base.length >= 2, `${id}/${slot.id}: the original part is marked`);
