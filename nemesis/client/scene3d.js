@@ -62,7 +62,9 @@ const RUN_SPEED = 9;   // world units per second for character runs between room
 // A sealed corridor door idles red, then gives a small, smooth brightness pulse every few seconds.
 export function closedDoorLampLevel(time, phase = 0) {
     const pulse = Math.max(0, Math.sin(time * 2.4 + phase));
-    return 0.28 + 0.08 * pulse ** 4;
+    // Keep the red lenses clearly luminous like the old 1.6-emissive material; the slow pulse is
+    // deliberately small (1.4 to 1.6), not an on/off flash.
+    return 1.4 + 0.2 * pulse ** 4;
 }
 // Item colours printed on the room tiles (Search icons) — shown above a room while Alt is held.
 const ITEM_COLORS = { green: '#4fcf7a', red: '#e05252', yellow: '#f1c40f' };
@@ -4661,7 +4663,9 @@ export class Scene3D {
         n.closedDoor.setEnabled(closed);
         n.lampActive = closed;
         for (const d of n.debris) d.setEnabled(destroyed);
-        n.noiseLabel.setEnabled(!!c.noise);
+        // The floating speaker glyph was distracting across the board; noise still affects corridor
+        // lighting/state, but no 3D sound icon is shown.
+        n.noiseLabel.setEnabled(false);
         for (const l of n.lamps) l.setEnabled(closed);          // emergency light only while sealed
         for (const m of n.ribsA) m.setEnabled(exA); for (const m of n.ribsB) m.setEnabled(exB);
         // arch bands: unlit steel normally, orange glow only while a noise marker sits in the corridor

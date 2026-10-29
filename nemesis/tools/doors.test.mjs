@@ -199,10 +199,11 @@ test('DR-04 one central door panel appears only when closed; no side leaves are 
         }
 
         n.state = null;
-        Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'closed' }));
+        Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'closed', noise: true }));
         assert.ok(n.closedDoor.isEnabled(), c.id + ': the central panel fills the opening when sealed');
         assert.ok(n.lamps.every(l => l.isEnabled()), c.id + ': a sealed doorway lights its red lenses');
         assert.equal(n.lampActive, true, c.id + ': the closed-door pulse is active');
+        assert.ok(!n.noiseLabel.isEnabled(), c.id + ': noise never adds a floating speaker icon');
 
         n.state = null;
         Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'open' }));
@@ -243,7 +244,7 @@ test('DR-05 the red lenses give a modest periodic pulse only while the door is c
         assert.ok(n.closedDoor.isEnabled(), c.id + ': closing the door shows its panel');
         assert.ok(lenses.every(l => l.isEnabled()), c.id + ': closing the door lights its warning lenses');
 
-        // The material idles at a dim red, then smoothly rises by less than a third before repeating.
+        // The material remains clearly luminous at the old 1.6 peak, with only a small rise from 1.4.
         n.lampPhase = 0;
         const animateLamps = time => Scene3D.prototype.animateDoorLamps.call({ corridorNodes: { [c.id]: n } }, time);
         animateLamps(0);
@@ -252,8 +253,9 @@ test('DR-05 the red lenses give a modest periodic pulse only while the door is c
         const bright = n.lampMaterial.emissiveColor.r;
         animateLamps(Math.PI / (2 * 2.4) + pulsePeriod);
         const repeated = n.lampMaterial.emissiveColor.r;
+        assert.ok(dim >= 1.4 && bright <= 1.6, c.id + ': the lens stays bright red without excessive emission');
         assert.ok(bright > dim, c.id + ': the closed-door light periodically gets brighter');
-        assert.ok(bright / dim < 1.3, c.id + ': the pulse is gentle, not a strong flash');
+        assert.ok(bright / dim < 1.16, c.id + ': the pulse is gentle, not a strong flash');
         assert.ok(Math.abs(repeated - bright) < 1e-9, c.id + ': the brightness pulse repeats');
 
         n.state = null;
