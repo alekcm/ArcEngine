@@ -189,11 +189,18 @@ export class DiceUI {
     hide() { this.el.classList.add('hidden'); this.el.classList.remove('mine', 'landed'); this.clickable = false; }
     clearHide() { if (this.hideTimer) { clearTimeout(this.hideTimer); this.hideTimer = null; } }
 
-    /** Quaternion that brings face f to look straight at the camera with its text upright. */
+    /** Land face f toward the camera, with the die's own +Y axis still pointing up on screen.
+     *  Build this from the body axis rather than the glyph basis so a label-orientation change can
+     *  never roll the whole D10 upside down. The face labels use the same projected axis in makeDie. */
     targetFor(f) {
-        const m = B().Matrix.Identity();
-        B().Matrix.FromXYZAxesToRef(f.right, f.up, f.normal.scale(-1), m);
-        return B().Quaternion.FromRotationMatrix(m.transpose());
+        const Bx = B(), bodyUp = new (Bx.Vector3)(0, 1, 0);
+        const projectedUp = bodyUp.subtract(f.normal.scale(Bx.Vector3.Dot(bodyUp, f.normal)));
+        // A face parallel to +Y has no projected body-up direction; use its authored face axis there.
+        const up = projectedUp.length() > 1e-6 ? projectedUp.normalize() : f.up.clone();
+        const right = Bx.Vector3.Cross(f.normal, up).normalize();
+        const m = Bx.Matrix.Identity();
+        Bx.Matrix.FromXYZAxesToRef(right, up, f.normal.scale(-1), m);
+        return Bx.Quaternion.FromRotationMatrix(m.transpose());
     }
 
     startSpin() {
@@ -253,7 +260,11 @@ export class DiceUI {
             d.root.scaling.setAll(1 + 0.25 * Math.sin(p * Math.PI));
             if (p >= 1 && !a.to) { a.from = d.root.rotationQuaternion.clone(); a.t0 = this.t; a.turns = 0.5; }   // waiting for the server: keep drifting slowly
         } else if (this.idle) {
-            d.root.rotationQuaternion = Q.RotationYawPitchRoll(this.t * 0.9, Math.sin(this.t * 0.7) * 0.5, 0.3);
+            // Keep both combat D10s standing on their long axis while they idle; the D12 may still
+            // wobble in pitch and roll. The actual roll animation above continues to tumble freely.
+            const pitch = this.die === 'noise' ? Math.sin(this.t * 0.7) * 0.5 : 0;
+            const roll = this.die === 'noise' ? 0.3 : 0;
+            d.root.rotationQuaternion = Q.RotationYawPitchRoll(this.t * 0.9, pitch, roll);
             d.root.position.y = Math.sin(this.t * 2) * 0.05; d.root.scaling.setAll(1);
         } else { d.root.position.y = 0; d.root.scaling.setAll(1.1); }
     }
