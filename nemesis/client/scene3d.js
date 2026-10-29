@@ -5094,11 +5094,17 @@ export class Preview3D {
         const d = new (B().DirectionalLight)('d', new (B().Vector3)(-0.5, -1, 0.6), this.scene); d.intensity = 0.7;
         const disc = B().MeshBuilder.CreateCylinder('disc', { diameter: 1.6, height: 0.1, tessellation: 8 }, this.scene);
         disc.position.y = -0.05; disc.material = flatMat(this.scene, '#243040');
+        this.disc = disc;
         this.char = null; this.charId = null; this.partsKey = null;
         this.engine.runRenderLoop(() => this.scene.render());
         new ResizeObserver(() => this.engine.resize()).observe(canvas);
     }
     show(charId, colors = {}, selectedParts) {
+        // The Director and his separate bodyguard share one preview stand. Widen and recenter it
+        // for the pair so neither robot foot overhangs; restore the ordinary stand for other roles.
+        const pair = charId === 'ceo';
+        this.disc.position.x = pair ? -0.28 : 0;
+        this.disc.scaling.x = this.disc.scaling.z = pair ? 1.15 : 1;
         const parts = characterParts(charId, selectedParts), key = JSON.stringify(parts);
         if (this.charId !== charId || this.partsKey !== key) {
             if (this.char) this.char.root.dispose();

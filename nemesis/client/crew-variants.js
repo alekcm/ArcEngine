@@ -12,44 +12,7 @@ export function addCrewDetails(charId, parts, { scene, root: R, zones, Z, F, bx,
     const at = (zone, x, y) => (zones[zone] || []).find(m => m.parent === R && Math.abs(m.position.x - x) < 0.015 && Math.abs(m.position.y - y) < 0.015);
     const front = [Math.PI / 2, 0, 0];
 
-    if (charId === 'ceo') {
-        if (parts.collar === 'trim') for (const s of [-1, 1]) {
-            fixed('collar', '#c9c3a6', bx(0.055, 0.28, 0.045, R, s * 0.2, 2.27, 0.18, [0, 0, s * 0.25]));
-            fixed('collar', '#c9c3a6', bx(0.05, 0.14, 0.26, R, s * 0.24, 2.36, -0.04));
-        } else if (parts.collar === 'high') for (const s of [-1, 1]) {
-            paint('collar', 'coat', bx(0.08, 0.32, 0.3, R, s * 0.25, 2.33, -0.05, [0, 0, s * 0.13]));
-            fixed('collar', '#c9c3a6', bx(0.09, 0.035, 0.3, R, s * 0.25, 2.49, -0.05));
-        }
-        const robot = child('robot');
-        if (parts.robot === 'sensor') {
-            paint('robot', 'robot', bx(0.34, 0.12, 0.1, robot, 0, 2.63, 0.2));
-            for (const s of [-1, 1]) {
-                fixed('robot', C.darkSteel, cy(0.1, 0.1, 0.06, 8, robot, s * 0.11, 2.63, 0.27, front));
-                paint('robot', 'lights', cy(0.07, 0.07, 0.02, 8, robot, s * 0.11, 2.63, 0.31, front));
-            }
-        } else if (parts.robot === 'armored') {
-            for (const s of [-1, 1]) {
-                paint('robot', 'robot', bx(0.34, 0.12, 0.38, robot, s * 0.43, 2.43, 0));
-                fixed('robot', C.steel, bx(0.08, 0.18, 0.32, robot, s * 0.6, 2.33, 0));
-            }
-            paint('robot', 'robot', bx(0.42, 0.19, 0.08, robot, 0, 2.0, 0.28));
-        }
-    } else if (charId === 'android') {
-        if (parts.implants === 'temples') for (const s of [-1, 1]) {
-            fixed('implants', C.steel, cy(0.12, 0.12, 0.07, 8, R, s * 0.22, 2.48, 0.06, [0, 0, Math.PI / 2]));
-            paint('implants', 'lights', cy(0.065, 0.065, 0.025, 8, R, s * 0.265, 2.48, 0.06, [0, 0, Math.PI / 2]));
-        } else if (parts.implants === 'jaw') for (const s of [-1, 1]) {
-            fixed('implants', C.steel, bx(0.055, 0.17, 0.16, R, s * 0.17, 2.33, 0.12, [0, s * 0.2, 0]));
-            paint('implants', 'lights', bx(0.025, 0.09, 0.025, R, s * 0.17, 2.34, 0.21));
-        }
-        if (parts.vest === 'lapels') for (const s of [-1, 1]) {
-            paint('vest', 'vest', bx(0.12, 0.36, 0.06, R, s * 0.16, 1.97, 0.25, [0, 0, s * 0.23]));
-            fixed('vest', C.steel, bx(0.035, 0.035, 0.025, R, s * 0.13, 1.85, 0.29));
-        } else if (parts.vest === 'pockets') for (const s of [-1, 1]) {
-            paint('vest', 'vest', bx(0.15, 0.15, 0.08, R, s * 0.14, 1.78, 0.25));
-            paint('vest', 'shirt', bx(0.12, 0.03, 0.025, R, s * 0.14, 1.82, 0.3));
-        }
-    } else if (charId === 'convict') {
+    if (charId === 'convict') {
         if (parts.muzzle === 'vents') {
             fixed('muzzle', C.darkSteel, cy(0.15, 0.15, 0.09, 8, R, 0, 2.32, 0.27, front));
             paint('muzzle', 'mask', cy(0.1, 0.1, 0.025, 8, R, 0, 2.32, 0.33, front));

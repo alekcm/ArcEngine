@@ -633,8 +633,10 @@ const CREW_ORIGINAL_HASHES = {
     medic: 'e27c669afdf72c3648a95fc1c59cbe34a3d83df73b9f5f52cf4fa243e627a49a',
     // Janitor: joined neck and repaired original wand/nozzle attached to the moving hand.
     janitor: '9bd8d5deb1421f0ac686b8838f26812104059fef63b818c1b24555deeaa3082c',
-    ceo: '5bd3411416453ae47d2da6754a3e49a67de2c984203f04e76cf3aafb5556266b',
-    android: '858591af7f58d0af20581cd1217b0bf77fbd9e85e24f6c48ab586397e6f8bc0f',
+    // Director: repaired neck; the original guard has joined joints, moving limbs and clears the sleeve.
+    ceo: '2b2c18cf4d057f2eaf93bc20f9a7eabeb3a62e3762773b3d26768bd3301b5def',
+    // The original Android only gains a connected neck.
+    android: 'a877b7b9066f502aacb19e91aebe3978d773cb5acef01a1f9aae92bab7bc2f78',
     convict: '2d5477ab4e352d6bff66b48feb0491488d78d10754f181beca1fa6dac37d81b1',
     psych: '58da8e33c1e390d69a8b4f2985f15dfa92a57924d5b0815e1f738657393cf5e1',
     bounty: '04a7f6a04fcb012a6a98d701d37fb9916edc0943ad2905f66087acfcaffa1a79',
@@ -677,7 +679,7 @@ test('CREW-04: all combinations retain their equipment, paintability and attache
         assert.equal(count, slots.reduce((n, s) => n * s.options.length, 1), id + ': every combination checked');
         checked += count;
     }
-    assert.equal(checked, 8 * 243 + 8 * 27);
+    assert.equal(checked, 10 * 243 + 6 * 27);
 });
 
 test('CREW-05: extra shoulders, bracers, wheels and companions move with their originals', async () => {
@@ -762,7 +764,7 @@ test('ROLE-01: reworked crew options replace the original meshes, rather than ov
     const { CREW_PARTS, characterParts } = await import('../shared/appearance.mjs');
     const partMeshes = (ch, slot) => ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
     const signature = meshes => geometrySignature({ root: { getChildMeshes: () => meshes } });
-    for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor']) for (const slot of CREW_PARTS[id]) {
+    for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android']) for (const slot of CREW_PARTS[id]) {
         const original = buildCharacter(scene.scene, id, {}, characterParts(id));
         const base = partMeshes(original, slot.id);
         assert.ok(base.length >= 2, `${id}/${slot.id}: the original part is marked`);
@@ -1111,4 +1113,119 @@ test('ROLE-11: every Janitor vacuum and wand stays connected to the moving hand'
         }
         ch.root.dispose();
     }
+});
+
+test('ROLE-12: the Director’s bodyguard is a complete supported robot with animated limbs', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
+    for (const robot of ['classic', 'sensor', 'armored']) for (const collar of ['classic', 'trim', 'high']) for (const coat of ['classic', 'tailcoat', 'double']) {
+        const ch = buildCharacter(scene.scene, 'ceo', {}, { robot, collar, coat });
+        ch.root.scaling.setAll(1);
+        const meshes = ch.root.getChildMeshes(), name = n => meshes.find(m => m.name === n);
+        const part = n => meshes.find(m => m.metadata?.bodyguardComponent === n);
+        const guard = ch.root.getDescendants().find(n => n.name === 'robot');
+        const legs = ['L', 'R'].map(side => guard.getDescendants().find(n => n.name === 'bodyguard_leg' + side));
+        const arms = ['L', 'R'].map(side => guard.getDescendants().find(n => n.name === 'bodyguard_arm' + side));
+        const required = ['head', 'neck', 'torso', 'spine', 'pelvis', ...['L', 'R'].flatMap(s => ['shoulder', 'upper', 'elbow', 'forearm', 'hand', 'hip', 'thigh', 'knee', 'shin', 'foot'].map(p => p + s))];
+        assert.ok(guard && legs.every(Boolean) && arms.every(Boolean) && required.every(n => part(n)), `${robot}: complete bodyguard`);
+        assert.ok(meshes.filter(m => m.metadata?.appearancePart?.slot === 'robot').every(m => ancestor(m, 'robot')));
+        ch.setColors({ robot: '#578ab2', lights: '#42ff93', coat: '#263b4a' });
+        assert.ok(ch.zones.robot.every(m => m.material.diffuseColor.toHexString().toLowerCase() === '#578ab2'));
+        let moved = false;
+        for (const t of [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]) {
+            ch.animate(t, t > 0); for (const m of meshes) m.computeWorldMatrix(true);
+            assert.ok(name('ceo_neck_joint').intersectsMesh(name('ceo_head'), false) && name('ceo_neck_joint').intersectsMesh(name('ceo_torso'), false), `${coat}/${collar}: Director's head is joined`);
+            const collars = meshes.filter(m => m.metadata?.appearancePart?.slot === 'collar');
+            const body = meshes.filter(m => m.metadata?.appearancePart?.slot === 'coat' && m.parent === ch.root);
+            assert.ok(collars.some(c => body.some(b => c.intersectsMesh(b, true))), `${coat}/${collar}: collar meets coat`);
+            if (coat !== 'classic') {
+                const tails = meshes.filter(m => m.parent?.name === 'ceo_coat_tails'), back = tails.find(m => m.position.x === 0);
+                assert.ok(back && body.some(m => m.position.z < -0.1 && back.intersectsMesh(m, true)), `${coat}: tails meet the back`);
+                assert.ok(tails.filter(m => m !== back).every(m => m.intersectsMesh(back, true)), `${coat}: side tails meet the back`);
+            }
+            const leftSleeve = meshes.filter(m => m.metadata?.appearancePart?.slot === 'coat' && ancestor(m, 'armL'));
+            const guardMeshes = meshes.filter(m => m.metadata?.appearancePart?.slot === 'robot');
+            assert.ok(leftSleeve.every(a => guardMeshes.every(b => !a.intersectsMesh(b, true))), `${robot}/${coat}: bodyguard does not intersect the Director's arm`);
+            const joined = (a, b) => assert.ok(part(a).intersectsMesh(part(b), true), `${robot}: ${a} joins ${b} at ${t}`);
+            joined('head', 'neck'); joined('neck', 'torso'); joined('torso', 'spine'); joined('spine', 'pelvis');
+            for (const side of ['L', 'R']) {
+                for (const [a, b] of [['pelvis', 'hip'], ['hip', 'thigh'], ['thigh', 'knee'], ['knee', 'shin'], ['shin', 'foot'], ['torso', 'shoulder'], ['shoulder', 'upper'], ['upper', 'elbow'], ['elbow', 'forearm'], ['forearm', 'hand']])
+                    joined(a === 'pelvis' || a === 'torso' ? a : a + side, b + side);
+                for (const p of ['hip', 'thigh', 'knee', 'shin', 'foot']) assert.ok(ancestor(part(p + side), 'bodyguard_leg' + side));
+                for (const p of ['shoulder', 'upper', 'elbow', 'forearm', 'hand']) assert.ok(ancestor(part(p + side), 'bodyguard_arm' + side));
+            }
+            moved ||= Math.abs(legs[0].rotation.x) > 0.1 && Math.abs(arms[0].rotation.x) > 0.05;
+        }
+        assert.ok(moved, `${robot}: its own arms and legs walk with the Director`);
+        assert.ok(legs[0].rotation.x * legs[1].rotation.x < 0 && arms[0].rotation.x * arms[1].rotation.x < 0, `${robot}: opposite limbs stride`);
+        ch.root.dispose();
+    }
+});
+
+test('ROLE-13: Android clothing, synthetic arms and both characters’ sidearms remain connected', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
+    for (const hair of ['classic', 'tied', 'bob']) for (const implants of ['classic', 'temples', 'jaw'])
+        for (const vest of ['classic', 'lapels', 'pockets']) for (const arms of ['classic', 'rolled', 'synthetic']) {
+            const ch = buildCharacter(scene.scene, 'android', {}, { hair, implants, vest, arms });
+            const meshes = ch.root.getChildMeshes(), byName = n => meshes.find(m => m.name === n);
+            const component = n => meshes.find(m => m.metadata?.androidArmComponent === n);
+            assert.ok(ch.zones.lights.some(m => m.metadata?.appearancePart?.slot === 'implants'), 'a visible implant is paintable');
+            for (const t of [0, 0.1, 0.2, 0.3]) {
+                ch.animate(t, t > 0); for (const m of meshes) m.computeWorldMatrix(true);
+                assert.ok(byName('android_neck_joint').intersectsMesh(byName('android_head'), false) && byName('android_neck_joint').intersectsMesh(byName('android_torso'), false), `${hair}/${implants}/${vest}: joined neck`);
+                for (const side of ['L', 'R']) {
+                    const upper = component('upper' + side), elbow = component('elbow' + side), forearm = component('forearm' + side), hand = component('hand' + side);
+                    assert.ok(upper && forearm && hand && [upper, forearm, hand].every(m => ancestor(m, 'arm' + side)), `${arms}: supported ${side} arm`);
+                    assert.ok(forearm.intersectsMesh(hand, false), `${arms}: ${side} hand attached`);
+                    if (elbow) assert.ok(upper.intersectsMesh(elbow, false) && elbow.intersectsMesh(forearm, false), `${arms}: ${side} elbow attached`);
+                    else assert.ok(upper.intersectsMesh(forearm, false), `${arms}: ${side} forearm attached`);
+                }
+            }
+            ch.root.dispose();
+        }
+    for (const [id, choices] of [['ceo', ['classic', 'compact', 'ceremonial']], ['android', ['classic', 'compact', 'pulse']]])
+        for (const sidearm of choices) for (const arms of id === 'android' ? ['classic', 'rolled', 'synthetic'] : ['classic']) {
+            const ch = buildCharacter(scene.scene, id, {}, { sidearm, arms });
+            const meshes = ch.root.getChildMeshes(), tool = meshes.filter(m => m.metadata?.appearancePart?.slot === 'sidearm');
+            const hand = id === 'ceo' ? meshes.find(m => m.name === 'ceo_hand_R') : meshes.find(m => m.metadata?.androidArmComponent === 'handR');
+            const gun = ch.root.getDescendants().find(n => n.name === 'gun');
+            assert.ok(tool.length >= 2 && tool.every(m => ancestor(m, 'gun') && ancestor(m, 'armR')), `${id}/${sidearm}: weapon follows the hand`);
+            for (const t of [0, 0.1, 0.2, 0.3]) {
+                ch.animate(t, t > 0); for (const m of [hand, ...tool]) m.computeWorldMatrix(true);
+                assert.ok(tool.some(m => m.intersectsMesh(hand, false)), `${id}/${sidearm}/${arms}: weapon is held`);
+            }
+            const before = gun.position.z; ch.shoot(); ch.animate(0.35, true);
+            assert.ok(gun.position.z < before, `${id}/${sidearm}: recoil`);
+            ch.root.dispose();
+        }
+});
+
+test('ROLE-14: both Director and bodyguard stand fully on their preview plinth', async () => {
+    const { Preview3D } = await import('../client/scene3d.js');
+    const engine = new B.NullEngine(), s = new B.Scene(engine);
+    const disc = B.MeshBuilder.CreateCylinder('disc', { diameter: 1.6, height: 0.1, tessellation: 8 }, s);
+    disc.position.y = -0.05;
+    // Exercise the actual preview's update without requiring a WebGL canvas.
+    const preview = { scene: s, disc, char: null, charId: null, partsKey: null };
+    try {
+        for (const robot of ['classic', 'sensor', 'armored']) {
+            Preview3D.prototype.show.call(preview, 'ceo', {}, { robot });
+            disc.computeWorldMatrix(true);
+            const meshes = preview.char.root.getChildMeshes();
+            for (const mesh of meshes) mesh.computeWorldMatrix(true);
+            const feet = meshes.filter(m => ['footL', 'footR'].includes(m.metadata?.bodyguardComponent)
+                || (['legL', 'legR'].includes(m.parent?.name) && Math.abs(m.getBoundingInfo().boundingBox.minimumWorld.y) < 1e-6));
+            assert.equal(feet.length, 4, `${robot}: Director's and guard's feet found`);
+            for (const foot of feet) {
+                const { minimumWorld: lo, maximumWorld: hi } = foot.getBoundingInfo().boundingBox;
+                for (const x of [lo.x + 0.002, hi.x - 0.002]) for (const z of [lo.z + 0.002, hi.z - 0.002]) {
+                    const ray = new B.Ray(new B.Vector3(x, 0.2, z), new B.Vector3(0, -1, 0), 0.5);
+                    assert.ok(s.pickWithRay(ray, m => m === disc).hit, `${robot}: ${foot.name} overhangs preview plinth`);
+                }
+            }
+        }
+        Preview3D.prototype.show.call(preview, 'android');
+        assert.equal(disc.position.x, 0); assert.equal(disc.scaling.x, 1); assert.equal(disc.scaling.z, 1);
+    } finally { s.dispose(); engine.dispose(); }
 });
