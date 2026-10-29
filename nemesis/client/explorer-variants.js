@@ -163,8 +163,10 @@ export function pilotVariant(slot, variant, { scene, root: R, Z, F, bx, cy, sp, 
             const tails = new (window.BABYLON.TransformNode)('pilot_coat_tails', scene); tails.parent = R;
             Z('suit', bx(0.62 * W, 0.72, 0.42, R, 0, 1.83, -0.02));
             Z('suit', bx(0.54 * W, 0.32, 0.16, R, 0, 1.98, 0.26));
+            // The front and back form one closed skirt, reaching both the body and the fur hem.
+            const skirt = Z('suit', bx(0.62 * W, 0.73, 0.36, tails, 0, 1.18, -0.04));
+            skirt.metadata = { pilotCoatComponent: 'skirt' };
             for (const s of [-1, 1]) {
-                Z('suit', bx(0.24 * W, 0.73, 0.32, tails, s * 0.2 * W, 1.18, -0.04, [0, 0, s * 0.06]));
                 Z('suit', bx(0.18 * W, 0.25, 0.08, R, s * 0.19 * W, 1.67, 0.25));
                 F(FUR, bx(0.14 * W, 0.42, 0.085, R, s * 0.14 * W, 1.99, 0.345, [0, 0, -s * 0.16]));
                 F(FUR, bx(0.14 * W, 0.13, 0.22, R, s * 0.14 * W, 2.13, 0.26));
@@ -172,7 +174,8 @@ export function pilotVariant(slot, variant, { scene, root: R, Z, F, bx, cy, sp, 
             }
             F(FUR, bx(0.72 * W, 0.2, 0.48, R, 0, 2.19, -0.05));
             F(FUR, bx(0.34 * W, 0.25, 0.19, R, 0, 2.31, -0.17));
-            F(FUR, bx(0.62 * W, 0.085, 0.34, tails, 0, 0.84, -0.05));
+            const hem = F(FUR, bx(0.66 * W, 0.095, 0.42, tails, 0, 0.84, -0.04));
+            hem.metadata = { pilotCoatComponent: 'hem' };
             F(C.strap, bx(0.62 * W, 0.075, 0.45, R, 0, 1.51, -0.01));
             F(C.steel, bx(0.1, 0.09, 0.035, R, 0, 1.51, 0.23));
         }

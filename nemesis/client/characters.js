@@ -9,6 +9,7 @@ import { addCrewDetails } from './crew-variants.js';
 import { soldierVariant, mechanicVariant } from './role-variants.js';
 import { scoutVariant, pilotVariant } from './explorer-variants.js';
 import { hackerVariant, scientistVariant } from './research-variants.js';
+import { medicVariant, janitorVariant, connectClassicJanitorHose } from './service-variants.js';
 
 const B = () => window.BABYLON;
 
@@ -108,8 +109,9 @@ function crewSpec(charId, parts) {
     if (charId === 'pilot') return { ...spec, pilotParts: parts };
     if (charId === 'hacker') return { ...spec, hackerParts: parts };
     if (charId === 'scientist') return { ...spec, scientistParts: parts };
+    if (charId === 'medic') return { ...spec, medicParts: parts };
+    if (charId === 'janitor') return { ...spec, janitorParts: parts };
     const hair = {
-        medic: { tied: 'crewPony', wavy: 'labMessy' },
         ceo: { spiky: 'shortSpiky', side: 'shortSide' },
         android: { tied: 'crewPony', bob: 'bobBangs' },
         psych: { layered: 'bobLayered', long: 'crewLongBangs' },
@@ -135,7 +137,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     const bx = (...a) => box(S, ...a), cy = (...a) => cyl(S, ...a), sp = (...a) => sphere(S, ...a), sp_ = sp;
 
     const selectedParts = characterParts(charId, parts);
-    const roleContext = { scene: S, root, zones, Z, F, bx, cy, sp, fixed: FIXED };
+    const updates = []; // optional flexible connections updated after the animation rig
+    const roleContext = { scene: S, root, zones, Z, F, bx, cy, sp, fixed: FIXED, updates };
     // Mark meshes belonging to a replaceable part. This also makes it possible to verify that a
     // non-original choice really replaces the original instead of merely covering or decorating it.
     const part = (slot, variant, build) => {
@@ -152,7 +155,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     else if (charId === 'mechanic') buildMechanic(selectedParts);
     else if (charId === 'sentry') buildSentry(selectedParts);
     else buildHumanoid(charId === 'labrat' ? labratSpec(selectedParts) : crewSpec(charId, selectedParts));
-    if (!['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'labrat', 'sentry'].includes(charId)) {
+    if (!['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'labrat', 'sentry'].includes(charId)) {
         addCrewDetails(charId, selectedParts, roleContext);
     }
 
@@ -164,28 +167,52 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         for (const s of [-1, 1]) {
             if (!sp.barefoot) { Z(sp.boots, bx(0.22 * W, 0.14, 0.36, R, s * 0.15 * W, 0.07, 0.04)); Z(sp.boots, bx(0.22 * W, 0.3, 0.24, R, s * 0.15 * W, 0.28, 0)); }
             else { Z('skin', bx(0.18, 0.1, 0.32, R, s * 0.14, 0.05, 0.04)); Z('skin', bx(0.18, 0.34, 0.2, R, s * 0.15 * W, 0.26, 0)); }   // bare feet + shins
-            Z(sp.legs, bx(0.21 * W, 0.5, 0.22, R, s * 0.15 * W, 0.68, 0));
-            Z(sp.legs, bx(0.23 * W, 0.46, 0.24, R, s * 0.15 * W, 1.14, 0));
+            const legs = () => {
+                Z(sp.legs, bx(0.21 * W, 0.5, 0.22, R, s * 0.15 * W, 0.68, 0));
+                Z(sp.legs, bx(0.23 * W, 0.46, 0.24, R, s * 0.15 * W, 1.14, 0));
+            };
+            if (sp.janitorParts) part('outfit', sp.janitorParts.outfit, () => {
+                if (sp.janitorParts.outfit === 'classic') legs();
+                else janitorVariant('leg', sp.janitorParts.outfit, roleContext, W, s);
+            });
+            else legs();
         }
-        Z(sp.legs, bx(0.52 * W, 0.2, 0.28, R, 0, 1.4, 0));
+        const pelvis = () => Z(sp.legs, bx(0.52 * W, 0.2, 0.28, R, 0, 1.4, 0));
+        if (sp.janitorParts) part('outfit', sp.janitorParts.outfit, () => {
+            if (sp.janitorParts.outfit === 'classic') pelvis();
+            else janitorVariant('pelvis', sp.janitorParts.outfit, roleContext, W);
+        });
+        else pelvis();
         F(FIXED.strap, bx(0.56 * W, 0.08, 0.32, R, 0, 1.5, 0));                 // belt
         F(FIXED.steel, bx(0.1, 0.08, 0.04, R, 0, 1.5, 0.17));
         // torso
         const T = (m) => sp.torso[0] === '#' ? F(sp.torso, m) : Z(sp.torso, m);   // torso zone, or a fixed colour
-        const torso = T(bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
+        let torso;
+        if (sp.janitorParts) part('outfit', sp.janitorParts.outfit, () => {
+            if (sp.janitorParts.outfit === 'classic') torso = T(bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
+            else janitorVariant('torso', sp.janitorParts.outfit, roleContext, W);
+        });
+        else torso = T(bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
         if (sp.scientistParts) torso.name = 'scientist_torso';
+        if (sp.medicParts) torso.name = 'medic_torso';
+        if (sp.janitorParts && torso) torso.name = 'janitor_torso';
         if (sp.female) { const bf = sp.bust == null ? 1 : sp.bust; if (bf > 0) { const m = bx(0.46 * W, 0.24 * bf, 0.16 * bf, R, 0, 1.98, 0.14 + 0.08 * bf); if (sp.bustZone) Z(sp.bustZone, m); else T(m); } Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0)); }   // chest and hips
         if (sp.underV || sp.vneck) { Z('skin', bx(0.16 * W, 0.16, 0.04, R, 0, 2.1, 0.16)); Z('skin', bx(0.08 * W, 0.1, 0.04, R, 0, 2.0, 0.17)); }   // open neckline
         if (sp.furCoat) {   // thick fur coat: one solid collar ring, solid cuffs and a fur hem, coat body over the torso
             const buildOriginalCoat = () => {
                 const FUR = sp.fur || '#d9cdb0';
                 Z(sp.furCoat, bx(0.62 * W, 0.66, 0.4, R, 0, 1.82, -0.02));                    // coat body (slightly bulkier than the torso)
-                for (const s of [-1, 1]) Z(sp.furCoat, bx(0.24 * W, 0.5, 0.36, R, s * 0.19 * W, 1.26, -0.04));   // coat skirt
+                // A closed, continuous lower coat: it overlaps both the body and its fur hem.
+                // Keep it on the torso rather than assigning either half to an animated leg.
+                const skirt = new (B().TransformNode)('pilot_coat_skirt', S); skirt.parent = R;
+                const panel = Z(sp.furCoat, bx(0.62 * W, 0.5, 0.36, skirt, 0, 1.26, -0.04));
+                panel.metadata = { pilotCoatComponent: 'skirt' };
                 F(FUR, bx(0.7 * W, 0.16, 0.5, R, 0, 2.18, -0.04));                             // fur collar ring
                 F(FUR, bx(0.26 * W, 0.2, 0.52, R, 0, 2.3, -0.1));                              // raised fur at the nape
                 for (const s of [-1, 1]) F(FUR, bx(0.16 * W, 0.4, 0.08, R, s * 0.12 * W, 1.96, 0.21, [0, 0, -s * 0.12]));   // fur lapels
                 for (const s of [-1, 1]) F(FUR, bx(0.22 * W, 0.14, 0.24, R, s * 0.39 * W, 1.28, 0.02));   // fur cuffs
-                F(FUR, bx(0.64 * W, 0.1, 0.42, R, 0, 1.0, -0.04));                             // fur hem
+                const hem = F(FUR, bx(0.64 * W, 0.1, 0.42, skirt, 0, 1.0, -0.04));             // fur hem
+                hem.metadata = { pilotCoatComponent: 'hem' };
             };
             if (sp.pilotParts) part('coat', sp.pilotParts.coat, () => {
                 if (sp.pilotParts.coat === 'classic') buildOriginalCoat();
@@ -222,6 +249,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 if (sp.scientistParts.coat === 'classic') original();
                 else scientistVariant('coat', sp.scientistParts.coat, roleContext, W);
             });
+            else if (sp.medicParts) part('coat', sp.medicParts.coat, () => {
+                if (sp.medicParts.coat === 'classic') original();
+                else medicVariant('coat', sp.medicParts.coat, roleContext, W);
+            });
             else original();
         }
         if (sp.denimVest) {   // short-sleeved denim jacket thrown over the shirt: back, two open front flaps, side panels, short sleeves, collar
@@ -234,7 +265,14 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         if (sp.chestPlate) { Z(sp.chestPlate, bx(0.42 * W, 0.3, 0.12, R, 0, 1.96, 0.2)); Z(sp.chestPlate, bx(0.36 * W, 0.18, 0.1, R, 0, 1.7, 0.2)); }
         if (sp.harness) { for (const s of [-1, 1]) Z(sp.harness, bx(0.08, 0.6, 0.04, R, s * 0.14 * W, 1.86, 0.18)); Z(sp.harness, bx(0.5 * W, 0.06, 0.04, R, 0, 1.64, 0.18)); for (let i = 0; i < 3; i++) F(FIXED.darkSteel, bx(0.08, 0.1, 0.06, R, -0.2 * W + i * 0.2 * W, 1.6, 0.2)); }
         if (sp.tie) { Z('shirt', bx(0.14, 0.3, 0.03, R, 0, 1.98, sp.robe ? 0.23 : 0.18)); F('#7a1f1f', bx(0.06, 0.28, 0.02, R, 0, 1.9, sp.robe ? 0.25 : 0.2)); }
-        if (sp.redCross) { Z(sp.redCross, bx(0.12, 0.04, 0.02, R, 0.16 * W, 2.0, 0.2)); Z(sp.redCross, bx(0.04, 0.12, 0.02, R, 0.16 * W, 2.0, 0.2)); }
+        if (sp.redCross) {
+            const original = () => { Z(sp.redCross, bx(0.12, 0.04, 0.02, R, 0.16 * W, 2.0, 0.2)); Z(sp.redCross, bx(0.04, 0.12, 0.02, R, 0.16 * W, 2.0, 0.2)); };
+            if (sp.medicParts) part('kit', sp.medicParts.kit, () => {
+                if (sp.medicParts.kit === 'classic') original();
+                else medicVariant('kit', sp.medicParts.kit, roleContext, W);
+            });
+            else original();
+        }
         if (sp.patch) { Z(sp.patch, cy(0.16, 0.16, 0.02, 8, R, 0.16 * W, 1.95, 0.17, [Math.PI / 2, 0, 0])); }
         if (sp.tattoos) { for (let i = 0; i < 4; i++) Z(sp.tattoos, bx(0.14, 0.03, 0.02, R, -0.12 * W + (i % 2) * 0.24 * W, 1.7 + i * 0.1, 0.17)); for (const s of [-1, 1]) Z(sp.tattoos, bx(0.03, 0.3, 0.02, R, s * 0.42 * W, 1.84, 0.1)); }
         if (sp.gown) {   // patient gown: the Lab Rat always keeps its short sleeves and ID tag
@@ -276,6 +314,19 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                         Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03));
                     } else hackerVariant('arm', sp.hackerParts.arms, roleContext, W, s);
                 });
+                continue;
+            }
+            if (sp.medicParts || sp.janitorParts) {
+                const isMedic = !!sp.medicParts, slot = isMedic ? 'coat' : 'outfit';
+                const variant = isMedic ? sp.medicParts.coat : sp.janitorParts.outfit;
+                part(slot, variant, () => {
+                    if (variant === 'classic') {
+                        Z(sp.arms, bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0));
+                        Z(sp.forearms || sp.arms, bx(0.15 * W, 0.4, 0.17, R, s * 0.39 * W, 1.44, 0.02));
+                    } else if (isMedic) medicVariant('sleeve', variant, roleContext, W, s);
+                    else janitorVariant('sleeve', variant, roleContext, W, s);
+                });
+                Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03)).name = (isMedic ? 'medic' : 'janitor') + '_hand_' + (s < 0 ? 'L' : 'R');
                 continue;
             }
             const upper = Z(sp.arms, bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0));
@@ -325,15 +376,18 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         if (sp.cables) { for (let i = 0; i < 3; i++) F(FIXED.rubber, cy(0.03, 0.03, 0.5, 5, R, -0.3 * W + i * 0.05, 1.98, -0.3 - i * 0.04, [0.4, 0, 0.3])); Z(sp.cables, bx(0.12, 0.08, 0.06, R, -0.2 * W, 2.18, -0.3)); }
         if (sp.toolBelt) { for (let i = 0; i < 3; i++) F(FIXED.steel, bx(0.06, 0.14, 0.06, R, -0.22 * W + i * 0.1, 1.42, 0.17)); F(FIXED.strap, bx(0.14, 0.16, 0.1, R, 0.26 * W, 1.4, 0.12)); }
         if (sp.shoulderLamp) Z(sp.shoulderLamp, bx(0.08, 0.06, 0.06, R, -0.38 * W, 2.2, 0.12));
-        // The seated Scientist's neck bridges the small gap between the original head and torso.
-        const neck = Z('skin', bx(0.14, sp.scientistParts ? 0.16 : 0.1, 0.14, R, 0, 2.2, 0));
+        // Bridge the head and shoulders on the reworked service crew as well as the Scientist.
+        const joinedNeck = sp.scientistParts || sp.medicParts || sp.janitorParts;
+        const neck = Z('skin', bx(0.14, joinedNeck ? 0.16 : 0.1, 0.14, R, 0, 2.2, 0));
         // The Hacker's original mask had skin-coloured gaps at the temples and cheeks. Keep the
         // original geometry but make the underlying balaclava opaque for every mask option.
         const headMesh = bx(0.3, 0.34, 0.3, R, 0, 2.44, 0.02);
         const head = sp.hackerParts ? F(FIXED.rubber, headMesh) : Z('skin', headMesh);
         if (sp.hackerParts) head.name = 'hacker_face_underlay';
         if (sp.scientistParts) { neck.name = 'scientist_neck_joint'; head.name = 'scientist_head'; }
-        if (!sp.respirator && !sp.faceMask && !sp.bandana) Z('skin', bx(0.06, 0.06, 0.05, R, 0, 2.42, 0.18));    // nose (hidden under masks)
+        if (sp.medicParts) { neck.name = 'medic_neck_joint'; head.name = 'medic_head'; }
+        if (sp.janitorParts) { neck.name = 'janitor_neck_joint'; head.name = 'janitor_head'; }
+        if (!sp.respirator && !sp.gasMask && !sp.faceMask && !sp.bandana) Z('skin', bx(0.06, 0.06, 0.05, R, 0, 2.42, 0.18));    // nose (hidden under masks)
         const H = sp.hairZone || 'hair';
         const buildOriginalHair = () => {
             switch (sp.hair) {
@@ -398,12 +452,37 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             if (sp.pilotParts.hair === 'classic') buildOriginalHair();
             else pilotVariant('hair', sp.pilotParts.hair, roleContext, W);
         });
+        else if (sp.medicParts) part('hair', sp.medicParts.hair, () => {
+            if (sp.medicParts.hair === 'classic') buildOriginalHair();
+            else medicVariant('hair', sp.medicParts.hair, roleContext, W);
+        });
+        else if (sp.janitorParts) part('beard', sp.janitorParts.beard, () => {
+            if (sp.janitorParts.beard === 'classic') buildOriginalHair();
+            else janitorVariant('beard', sp.janitorParts.beard, roleContext, W);
+        });
         else buildOriginalHair();
         if (sp.crewChin) Z(H, bx(0.28, 0.12, 0.08, R, 0, 2.3, 0.14));   // the Captain keeps his beard with every haircut
         if (sp.beard) Z(sp.beard, bx(0.26, 0.08, 0.06, R, 0, 2.3, 0.16));
-        if (sp.mustache) { Z(sp.mustache, bx(0.22, 0.05, 0.05, R, 0, 2.38, 0.18)); for (const s of [-1, 1]) Z(sp.mustache, bx(0.05, 0.24, 0.14, R, s * 0.16, 2.4, 0.04)); }   // moustache + sideburns
+        if (sp.mustache) {
+            const original = () => { Z(sp.mustache, bx(0.22, 0.05, 0.05, R, 0, 2.38, 0.18)); for (const s of [-1, 1]) Z(sp.mustache, bx(0.05, 0.24, 0.14, R, s * 0.16, 2.4, 0.04)); };
+            if (sp.janitorParts) {
+                if (sp.janitorParts.beard === 'classic') part('beard', 'classic', original);
+            } else original();
+        }
         // head gear
-        if (sp.cap) { Z(sp.cap, bx(0.34, 0.1, 0.34, R, 0, 2.66, 0.0)); Z(sp.cap, bx(0.3, 0.03, 0.16, R, 0, 2.62, 0.24)); }
+        if (sp.cap) {
+            const original = () => { Z(sp.cap, bx(0.34, 0.1, 0.34, R, 0, 2.66, 0.0)); Z(sp.cap, bx(0.3, 0.03, 0.16, R, 0, 2.62, 0.24)); };
+            if (sp.janitorParts) part('cap', sp.janitorParts.cap, () => {
+                if (sp.janitorParts.cap === 'classic') original();
+                else janitorVariant('cap', sp.janitorParts.cap, roleContext, W);
+            });
+            else original();
+            // A visible medical insignia is retained for every combination, like the reference cap.
+            if (sp.medicParts) {
+                Z('lights', bx(0.1, 0.025, 0.02, R, 0, 2.67, 0.18)).metadata = { medicCapInsignia: true };
+                Z('lights', bx(0.025, 0.08, 0.02, R, 0, 2.67, 0.18)).metadata = { medicCapInsignia: true };
+            }
+        }
         if (sp.hood && sp.cowl) {   // soft hood: rounded top, draped sides widening down to the shoulders, merging into the suit
             const original = () => {
                 Z(sp.hood, bx(0.36, 0.14, 0.36, R, 0, 2.66, -0.06)); Z(sp.hood, bx(0.4, 0.3, 0.1, R, 0, 2.46, -0.2));
@@ -462,7 +541,14 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             else original();
         }
         if (sp.glasses) { F(FIXED.rubber, bx(0.3, 0.02, 0.02, R, 0, 2.47, 0.17)); for (const s of [-1, 1]) F(FIXED.glass, bx(0.1, 0.08, 0.02, R, s * 0.08, 2.46, 0.18), { alpha: 0.6, spec: 0.8 }); }
-        if (sp.gasMask) { F(FIXED.darkSteel, bx(0.26, 0.16, 0.1, R, 0, 2.34, 0.16)); for (const s of [-1, 1]) F(FIXED.steel, cy(0.1, 0.1, 0.06, 6, R, s * 0.1, 2.32, 0.23, [Math.PI / 2, 0, 0])); }
+        if (sp.gasMask) {
+            const original = () => { F(FIXED.darkSteel, bx(0.26, 0.16, 0.1, R, 0, 2.34, 0.16)); for (const s of [-1, 1]) F(FIXED.steel, cy(0.1, 0.1, 0.06, 6, R, s * 0.1, 2.32, 0.23, [Math.PI / 2, 0, 0])); };
+            if (sp.medicParts) part('mask', sp.medicParts.mask, () => {
+                if (sp.medicParts.mask === 'classic') original();
+                else medicVariant('mask', sp.medicParts.mask, roleContext, W);
+            });
+            else original();
+        }
         if (sp.blindfold) {   // cloth, never a technological visor: the eyes stay covered in every variant
             const height = sp.labBlindfold === 'wide' ? 0.18 : 0.1;
             const band = Z(sp.blindfold, bx(0.33, height, 0.33, R, 0, 2.48, 0.02));
@@ -538,17 +624,45 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         }
         if (sp.pipe) { F(FIXED.steel, cy(0.05, 0.05, 1.0, 6, R, 0.42 * W, 1.5, 0.1, [0, 0, 0.15])); F(FIXED.darkSteel, bx(0.1, 0.1, 0.1, R, 0.42 * W, 1.98, 0.08)); }
         if (sp.vacuum) {   // backpack vacuum cleaner: canister on the back, straps, hose running to a wand in the left hand
-            F(FIXED.darkSteel, cy(0.2, 0.2, 0.62, 8, R, 0, 1.78, -0.34)); F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 2.1, -0.34)); F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 1.46, -0.34));
-            F(FIXED.steel, bx(0.1, 0.12, 0.1, R, 0.1, 2.2, -0.34)); Z(LZ, bx(0.04, 0.04, 0.02, R, 0.1, 2.2, -0.28));   // motor cap + status light
-            for (const s of [-1, 1]) F(FIXED.strap, bx(0.06, 0.5, 0.04, R, s * 0.18 * W, 1.86, 0.17, [0.0, 0, 0]));       // shoulder straps
-            for (const [a, b] of [[[-0.12, 2.1, -0.42], [-0.42 * W, 1.9, -0.3]], [[-0.42 * W, 1.9, -0.3], [-0.46 * W, 1.4, 0.0]], [[-0.46 * W, 1.4, 0.0], [-0.4 * W, 1.16, 0.16]]]) {
-                const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.hypot(dx, dy, dz);
-                const m = cy(0.05, 0.05, len, 6, R, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
-                m.rotationQuaternion = B().Quaternion.FromUnitVectorsToRef(new (B().Vector3)(0, 1, 0), new (B().Vector3)(dx / len, dy / len, dz / len), new (B().Quaternion)());
-                F(FIXED.rubber, m);
+            const originalPack = () => {
+                F(FIXED.darkSteel, cy(0.2, 0.2, 0.62, 8, R, 0, 1.78, -0.34)); F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 2.1, -0.34)); F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 1.46, -0.34));
+                F(FIXED.steel, bx(0.1, 0.12, 0.1, R, 0.1, 2.2, -0.34)); Z(LZ, bx(0.04, 0.04, 0.02, R, 0.1, 2.2, -0.28));   // motor cap + status light
+                for (const s of [-1, 1]) F(FIXED.strap, bx(0.06, 0.5, 0.04, R, s * 0.18 * W, 1.86, 0.17, [0.0, 0, 0]));       // shoulder straps
+                const points = [[-0.12, 2.1, -0.42], [-0.42 * W, 1.9, -0.3], [-0.46 * W, 1.4, 0], [-0.4 * W, 1.16, 0.16]];
+                const hose = sp.janitorParts ? new (B().TransformNode)('janitor_hose', S) : R;
+                if (sp.janitorParts) hose.parent = R;
+                const pieces = [];
+                for (let i = 0; i < points.length - 1; i++) {
+                    const [a, b] = [points[i], points[i + 1]];
+                    const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.hypot(dx, dy, dz);
+                    const m = cy(0.05, 0.05, len, 6, hose, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+                    m.rotationQuaternion = B().Quaternion.FromUnitVectorsToRef(new (B().Vector3)(0, 1, 0), new (B().Vector3)(dx / len, dy / len, dz / len), new (B().Quaternion)());
+                    if (sp.janitorParts) m.metadata = { janitorHoseSegment: i };
+                    pieces.push({ mesh: F(FIXED.rubber, m), length: len });
+                }
+                if (sp.janitorParts) connectClassicJanitorHose(R, pieces, points, updates);
+            };
+            if (sp.janitorParts) part('vacuum', sp.janitorParts.vacuum, () => {
+                if (sp.janitorParts.vacuum === 'classic') originalPack();
+                else janitorVariant('vacuum', sp.janitorParts.vacuum, roleContext, W);
+            });
+            else originalPack();
+            if (sp.janitorParts) {
+                // The original nozzle is also parented to the hand now, so the wand remains whole in motion.
+                const wand = new (B().TransformNode)('janitor_wand', S); wand.parent = R; wand.position.set(-0.4 * W, 1.2, 0.1);
+                part('wand', sp.janitorParts.wand, () => {
+                    if (sp.janitorParts.wand === 'classic') {
+                        // The old shaft leaned away from both the glove and the nozzle. Keep its
+                        // original silhouette, but bridge the hand and angle it into the head.
+                        F(FIXED.rubber, bx(0.1, 0.16, 0.16, wand, 0, -0.02, 0)).metadata = { janitorWandComponent: 'grip' };
+                        F(FIXED.steel, cy(0.04, 0.04, 0.8, 6, wand, 0, -0.42, 0.14, [-0.25, 0, 0])).metadata = { janitorWandComponent: 'shaft' };
+                        F(FIXED.darkSteel, bx(0.3, 0.06, 0.12, wand, 0, -0.8, 0.26)).metadata = { janitorWandComponent: 'head' };
+                    } else janitorVariant('wand', sp.janitorParts.wand, roleContext, W, undefined, wand);
+                });
+            } else {
+                F(FIXED.steel, cy(0.04, 0.04, 0.8, 6, R, -0.4 * W, 0.78, 0.26, [0.25, 0, 0]));
+                F(FIXED.darkSteel, bx(0.3, 0.06, 0.12, R, -0.4 * W, 0.4, 0.36));
             }
-            F(FIXED.steel, cy(0.04, 0.04, 0.8, 6, R, -0.4 * W, 0.78, 0.26, [0.25, 0, 0]));                                     // wand
-            F(FIXED.darkSteel, bx(0.3, 0.06, 0.12, R, -0.4 * W, 0.4, 0.36));                                                  // floor nozzle
         }
         if (sp.wrench) { F(FIXED.steel, bx(0.06, 0.5, 0.04, R, -0.4 * W, 1.0, 0.1)); F(FIXED.steel, bx(0.18, 0.08, 0.05, R, -0.4 * W, 0.74, 0.1)); for (const s of [-1, 1]) F(FIXED.steel, bx(0.05, 0.1, 0.05, R, -0.4 * W + s * 0.065, 0.66, 0.1)); F(FIXED.darkSteel, bx(0.08, 0.14, 0.06, R, -0.4 * W, 1.18, 0.1)); }   // handle, head with open jaws
         if (sp.scanner) {   // hand scanner (right hand)
@@ -570,9 +684,16 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         }
         if (sp.syringeGun) {   // injector pistol in the left hand: grip, body, glass vial on top, needle
             const g = new (B().TransformNode)('gun', S); g.parent = R; g.position.set(-0.39 * W, 1.2, 0.14); g.rotation.x = 1.1;
-            F(FIXED.gunLight, bx(0.08, 0.14, 0.12, g, 0, -0.02, 0)); F(FIXED.darkSteel, bx(0.08, 0.1, 0.32, g, 0, 0.05, 0.14));
-            F(FIXED.glass, cy(0.07, 0.07, 0.2, 6, g, 0, 0.13, 0.12, [Math.PI / 2, 0, 0]), { alpha: 0.7, spec: 0.8 }); Z(LZ, cy(0.05, 0.05, 0.12, 6, g, 0, 0.13, 0.12, [Math.PI / 2, 0, 0]));
-            F(FIXED.steel, cy(0.012, 0.012, 0.2, 4, g, 0, 0.05, 0.4, [Math.PI / 2, 0, 0]));
+            const original = () => {
+                F(FIXED.gunLight, bx(0.08, 0.14, 0.12, g, 0, -0.02, 0)); F(FIXED.darkSteel, bx(0.08, 0.1, 0.32, g, 0, 0.05, 0.14));
+                F(FIXED.glass, cy(0.07, 0.07, 0.2, 6, g, 0, 0.13, 0.12, [Math.PI / 2, 0, 0]), { alpha: 0.7, spec: 0.8 }); Z(LZ, cy(0.05, 0.05, 0.12, 6, g, 0, 0.13, 0.12, [Math.PI / 2, 0, 0]));
+                F(FIXED.steel, cy(0.012, 0.012, 0.2, 4, g, 0, 0.05, 0.4, [Math.PI / 2, 0, 0]));
+            };
+            if (sp.medicParts) part('injector', sp.medicParts.injector, () => {
+                if (sp.medicParts.injector === 'classic') original();
+                else medicVariant('injector', sp.medicParts.injector, roleContext, W, undefined, g);
+            });
+            else original();
         }
         if (sp.muzzle) {   // steel muzzle: mouth cage with vertical bars, cheek plates, head strap
             Z(sp.muzzle, bx(0.26, 0.14, 0.06, R, 0, 2.33, 0.17)); Z(sp.muzzle, bx(0.14, 0.1, 0.08, R, 0, 2.3, 0.21));
@@ -1067,7 +1188,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     const anim = autoRig(S, root, { seated: !!(SPECS[charId] && SPECS[charId].wheelchair) });
     // scale to ~1.8 units tall (built at ~2.8)
     root.scaling.setAll(0.66);
-    return { root, zones, setColors, animate: anim.animate, shoot: anim.shoot };
+    const updateConnections = () => { for (const update of updates) update(); };
+    updateConnections();
+    const animate = updates.length ? (t, moving) => { anim.animate(t, moving); updateConnections(); } : anim.animate;
+    return { root, zones, setColors, animate, shoot: anim.shoot };
 }
 
 /**
@@ -1084,8 +1208,8 @@ function autoRig(S, root, opts = {}) {
         if (c === legs['-1'] || c === legs['1'] || c === arms['-1'] || c === arms['1']) continue;
         const p = c.position; const s = p.x < 0 ? '-1' : '1';
         if (c.name === 'gun') guns.push(c);
-        if (c.getClassName && c.getClassName() !== 'Mesh') {   // props: a pistol in a hand follows the arm
-            if (c.name === 'gun' && Math.abs(p.x) > 0.3 && !opts.seated) { p.y -= SHOULDER; c.parent = arms[s]; }
+        if (c.getClassName && c.getClassName() !== 'Mesh') {   // hand-held props follow the arm
+            if ((c.name === 'gun' || c.name === 'janitor_wand') && Math.abs(p.x) > 0.3 && !opts.seated) { p.y -= SHOULDER; c.parent = arms[s]; }
             continue;
         }
         if (c.name === 'wheel') { wheels.push(c); continue; }

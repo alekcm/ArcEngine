@@ -624,12 +624,15 @@ const CREW_ORIGINAL_HASHES = {
     scout: 'df384fe680d4ebeba9fd313f63d01f52025246a31f100b52db4a029b55caa20e',
     // The original Mechanic is unchanged except for the repaired neck and waist joints.
     mechanic: 'a97e7e4e829cb149f9626da7623e6381934dd52237c297196f8a9809df2cb401',
-    pilot: 'e418f84fb3a63b8771474b98744d464fb8f0d2b2aae392a310861787eb46b989',
+    // The original Pilot keeps its shape except for the repaired closed coat and joined hem.
+    pilot: '0b317008a6d597f46cda0d8b6ce08fc48489a939abc0f7ed5ef1ae8e44ac9650',
     hacker: 'bf0e8e492b9a175443b8894ec6f506b9cb7980a78c5c9a0263cff99459578e27',
     // The original Scientist keeps its pose and equipment; only the neck joint was lengthened.
     scientist: '776876a693bef7e043c3420d3c0b949ee4eb6f9a2157bb1e14be538df7d63682',
-    medic: 'fbd83941fbd5ff5283425ae1dc5bac635a8216861fa9e7af6b55515de7084fcb',
-    janitor: 'b540b75ee294fdab33f5533a4324176abf0684d9bc573e39fd5cbad7279080b8',
+    // Medic: joined neck, concealed nose under the respirator and a visible cap insignia.
+    medic: 'e27c669afdf72c3648a95fc1c59cbe34a3d83df73b9f5f52cf4fa243e627a49a',
+    // Janitor: joined neck and repaired original wand/nozzle attached to the moving hand.
+    janitor: '9bd8d5deb1421f0ac686b8838f26812104059fef63b818c1b24555deeaa3082c',
     ceo: '5bd3411416453ae47d2da6754a3e49a67de2c984203f04e76cf3aafb5556266b',
     android: '858591af7f58d0af20581cd1217b0bf77fbd9e85e24f6c48ab586397e6f8bc0f',
     convict: '2d5477ab4e352d6bff66b48feb0491488d78d10754f181beca1fa6dac37d81b1',
@@ -674,7 +677,7 @@ test('CREW-04: all combinations retain their equipment, paintability and attache
         assert.equal(count, slots.reduce((n, s) => n * s.options.length, 1), id + ': every combination checked');
         checked += count;
     }
-    assert.equal(checked, 6 * 243 + 10 * 27);
+    assert.equal(checked, 8 * 243 + 8 * 27);
 });
 
 test('CREW-05: extra shoulders, bracers, wheels and companions move with their originals', async () => {
@@ -759,7 +762,7 @@ test('ROLE-01: reworked crew options replace the original meshes, rather than ov
     const { CREW_PARTS, characterParts } = await import('../shared/appearance.mjs');
     const partMeshes = (ch, slot) => ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
     const signature = meshes => geometrySignature({ root: { getChildMeshes: () => meshes } });
-    for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist']) for (const slot of CREW_PARTS[id]) {
+    for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor']) for (const slot of CREW_PARTS[id]) {
         const original = buildCharacter(scene.scene, id, {}, characterParts(id));
         const base = partMeshes(original, slot.id);
         assert.ok(base.length >= 2, `${id}/${slot.id}: the original part is marked`);
@@ -989,4 +992,123 @@ test('ROLE-08: replacement wheelchairs support the seated Scientist and animate 
             }
             ch.root.dispose();
         }
+});
+
+test('ROLE-09: the Pilot’s fur-trimmed coats stay closed and joined throughout a stride', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    for (const coat of ['classic', 'long']) for (const sidearm of ['classic', 'compact', 'long']) {
+        const ch = buildCharacter(scene.scene, 'pilot', {}, { coat, sidearm });
+        ch.root.scaling.setAll(1);
+        const meshes = ch.root.getChildMeshes();
+        const panel = meshes.find(m => m.metadata?.pilotCoatComponent === 'skirt');
+        const hem = meshes.find(m => m.metadata?.pilotCoatComponent === 'hem');
+        const body = meshes.find(m => m.metadata?.appearancePart?.slot === 'coat' && m.parent === ch.root && Math.abs(m.position.y - (coat === 'long' ? 1.83 : 1.82)) < 0.001);
+        assert.ok(panel && hem && body && panel.parent === hem.parent && panel.parent.parent === ch.root, `${coat}: skirt and hem follow the torso`);
+        assert.ok(ch.zones.suit.includes(panel), `${coat}: the entire lower coat accepts suit paint`);
+        ch.setColors({ suit: '#3a5635' });
+        assert.equal(panel.material.diffuseColor.toHexString().toLowerCase(), '#3a5635');
+        const legMeshes = ch.zones.suit.filter(m => { for (let n = m.parent; n; n = n.parent) if (n.name === 'legL' || n.name === 'legR') return true; return false; });
+        for (const m of [panel, ...legMeshes]) m.isPickable = true;
+        for (const t of [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]) {
+            ch.animate(t, t > 0); for (const m of [panel, hem, body]) m.computeWorldMatrix(true);
+            assert.ok(panel.intersectsMesh(body, false), `${coat}: skirt meets jacket at ${t}`);
+            assert.ok(panel.intersectsMesh(hem, false), `${coat}: fur hem remains attached at ${t}`);
+            const skirtBox = panel.getBoundingInfo().boundingBox, hemBox = hem.getBoundingInfo().boundingBox;
+            assert.ok(hemBox.minimumWorld.x <= skirtBox.minimumWorld.x && hemBox.maximumWorld.x >= skirtBox.maximumWorld.x && hemBox.maximumWorld.z > skirtBox.maximumWorld.z, `${coat}: visible fur wraps the closed coat`);
+            for (const x of [-0.1, 0, 0.1]) for (const y of coat === 'long' ? [0.93, 1.1, 1.25, 1.4] : [1.1, 1.25, 1.4]) {
+                for (const side of [-1, 1]) {
+                    const ray = new B.Ray(new B.Vector3(x, y + ch.root.position.y, side), new B.Vector3(0, 0, -side), 2);
+                    const hit = scene.scene.pickWithRay(ray, m => m === panel || legMeshes.includes(m));
+                    assert.ok(hit?.hit && hit.pickedMesh === panel, `${coat}: continuous ${side > 0 ? 'front' : 'back'} at ${x},${y} while moving`);
+                }
+            }
+        }
+        ch.root.dispose();
+    }
+});
+
+test('ROLE-10: the Medic keeps her respirator, connected coat and injector in every combination', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
+    for (const hair of ['classic', 'tied', 'wavy']) for (const mask of ['classic', 'filters', 'valve']) for (const coat of ['classic', 'field', 'surgical']) {
+        const ch = buildCharacter(scene.scene, 'medic', {}, { hair, mask, coat });
+        ch.root.scaling.setAll(1);
+        const meshes = ch.root.getChildMeshes(), name = n => meshes.find(m => m.name === n);
+        const maskMeshes = meshes.filter(m => m.metadata?.appearancePart?.slot === 'mask');
+        const insignia = meshes.filter(m => m.metadata?.medicCapInsignia);
+        assert.equal(insignia.length, 2, 'the medical cross remains on the cap');
+        assert.ok(insignia.every(m => ch.zones.lights.includes(m)), 'the insignia remains paintable');
+        for (const m of [name('medic_head'), ...maskMeshes]) m.isPickable = true;
+        for (const t of [0, 0.1, 0.2, 0.3]) {
+            ch.animate(t, t > 0); for (const m of meshes) m.computeWorldMatrix(true);
+            const neck = name('medic_neck_joint');
+            assert.ok(neck.intersectsMesh(name('medic_head'), false) && neck.intersectsMesh(name('medic_torso'), false), `${hair}/${mask}/${coat}: joined neck`);
+            for (const x of [-0.07, 0, 0.07]) for (const y of [2.29, 2.35, 2.39]) {
+                const ray = new B.Ray(new B.Vector3(x, y + ch.root.position.y, 1), new B.Vector3(0, 0, -1), 2);
+                const hit = scene.scene.pickWithRay(ray, m => m === name('medic_head') || maskMeshes.includes(m));
+                assert.ok(hit?.hit && maskMeshes.includes(hit.pickedMesh), `${hair}/${mask}: nose and mouth covered at ${x},${y}`);
+            }
+            for (const side of ['L', 'R']) {
+                const hand = name('medic_hand_' + side), sleeve = meshes.filter(m => m.metadata?.appearancePart?.slot === 'coat' && ancestor(m, 'arm' + side));
+                assert.ok(sleeve.some(m => m.intersectsMesh(hand, false)), `${coat}: ${side} sleeve meets the hand`);
+            }
+        }
+        if (coat === 'surgical') {
+            const tails = meshes.filter(m => m.parent?.name === 'medic_coat_tails');
+            const back = tails.find(m => m.position.x === 0);
+            const upperBack = meshes.find(m => m.metadata?.appearancePart?.slot === 'coat' && m.parent === ch.root && m.position.z === -0.18 && m.position.y > 1.8);
+            assert.ok(back && upperBack && back.intersectsMesh(upperBack, false), 'long coat tails join the back');
+            assert.ok(tails.filter(m => m !== back).every(m => m.intersectsMesh(back, false)), 'side tails join the continuous back');
+        }
+        ch.root.dispose();
+    }
+    for (const injector of ['classic', 'compact', 'infuser']) {
+        const ch = buildCharacter(scene.scene, 'medic', {}, { injector });
+        const meshes = ch.root.getChildMeshes(), hand = meshes.find(m => m.name === 'medic_hand_L');
+        const tool = meshes.filter(m => m.metadata?.appearancePart?.slot === 'injector');
+        assert.ok(tool.every(m => ancestor(m, 'gun') && ancestor(m, 'armL')), `${injector}: tool follows the left hand`);
+        for (const t of [0, 0.1, 0.2, 0.3]) {
+            ch.animate(t, t > 0); for (const m of [hand, ...tool]) m.computeWorldMatrix(true);
+            assert.ok(tool.some(m => m.intersectsMesh(hand, false)), `${injector}: tool is held in the hand`);
+        }
+        ch.root.dispose();
+    }
+});
+
+test('ROLE-11: every Janitor vacuum and wand stays connected to the moving hand', async () => {
+    const { buildCharacter } = await import('../client/characters.js');
+    const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
+    for (const vacuum of ['classic', 'ribbed', 'twin']) for (const wand of ['classic', 'brush', 'nozzle']) for (const outfit of ['classic', 'utility', 'protective']) {
+        const ch = buildCharacter(scene.scene, 'janitor', {}, { vacuum, wand, outfit });
+        // Exercise transforms used by figures on the board, not just the origin in the workshop.
+        ch.root.position.x = 1.3; ch.root.position.z = -0.8; ch.root.rotation.y = 0.7;
+        const meshes = ch.root.getChildMeshes(), name = n => meshes.find(m => m.name === n);
+        const component = n => meshes.find(m => m.metadata?.janitorWandComponent === n);
+        const hose = meshes.filter(m => Number.isInteger(m.metadata?.janitorHoseSegment)).sort((a, b) => a.metadata.janitorHoseSegment - b.metadata.janitorHoseSegment);
+        const hand = name('janitor_hand_L'), grip = component('grip'), shaft = component('shaft'), head = component('head');
+        const wandNode = ch.root.getDescendants().find(n => n.name === 'janitor_wand');
+        assert.equal(hose.length, vacuum === 'classic' ? 3 : 8, `${vacuum}: full hose`);
+        assert.ok(grip && shaft && head && wandNode && [grip, shaft, head].every(m => ancestor(m, 'armL')), `${wand}: one hand-held assembly`);
+        const endpoint = (m, positive) => {
+            m.computeWorldMatrix(true);
+            const box = m.getBoundingInfo().boundingBox;
+            return B.Vector3.TransformCoordinates(new B.Vector3(0, positive ? box.maximum.y : box.minimum.y, 0), m.getWorldMatrix());
+        };
+        for (const t of [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]) {
+            ch.animate(t, t > 0); for (const m of meshes) m.computeWorldMatrix(true);
+            const neck = name('janitor_neck_joint'), janitorHead = name('janitor_head'), janitorTorso = name('janitor_torso') || meshes.find(m => m.metadata?.janitorTorso);
+            assert.ok(neck && janitorHead && janitorTorso, `${outfit}: named head, neck and torso`);
+            assert.ok(neck.intersectsMesh(janitorHead, false) && neck.intersectsMesh(janitorTorso, false), `${outfit}: joined neck`);
+            const sleeves = meshes.filter(m => m.metadata?.appearancePart?.slot === 'outfit' && ancestor(m, 'armL'));
+            assert.ok(sleeves.some(m => m.intersectsMesh(hand, false)), `${outfit}: sleeve meets glove`);
+            assert.ok(grip.intersectsMesh(hand, true) && grip.intersectsMesh(shaft, true) && shaft.intersectsMesh(head, true), `${wand}: glove, grip, shaft and nozzle meet while moving`);
+            const rootMatrix = ch.root.computeWorldMatrix(true), wandMatrix = wandNode.computeWorldMatrix(true);
+            const start = B.Vector3.TransformCoordinates(new B.Vector3(...(vacuum === 'classic' ? [-0.12, 2.1, -0.42] : [-0.18, 2.08, -0.42])), rootMatrix);
+            const end = B.Vector3.TransformCoordinates(new B.Vector3(0, vacuum === 'classic' ? -0.04 : -0.02, 0.06), wandMatrix);
+            assert.ok(B.Vector3.Distance(endpoint(hose[0], false), start) < 0.015, `${vacuum}: hose meets the tank`);
+            for (let i = 0; i < hose.length - 1; i++) assert.ok(B.Vector3.Distance(endpoint(hose[i], true), endpoint(hose[i + 1], false)) < 0.015, `${vacuum}: hose joint ${i}`);
+            assert.ok(B.Vector3.Distance(endpoint(hose.at(-1), true), end) < 0.015, `${vacuum}/${wand}: hose meets the wand`);
+        }
+        ch.root.dispose();
+    }
 });

@@ -35,7 +35,7 @@ const { buildCharacter } = await import('../client/characters.js');
 const id = process.argv[2], slots = CREW_PARTS[id];
 assert.ok(slots, 'known crew role required');
 const requiredNodes = { soldier: ['gun'], scout: ['gun'], mechanic: [], pilot: ['gun'], hacker: ['gun'],
-    scientist: ['wheel'], medic: ['gun'], janitor: [], ceo: ['robot', 'gun'], android: ['gun'], convict: [],
+    scientist: ['wheel'], medic: ['gun'], janitor: ['janitor_wand'], ceo: ['robot', 'gun'], android: ['gun'], convict: [],
     psych: ['drone'], bounty: ['dog', 'gun'], captain: ['gun'], survivor: ['gun'], xeno: ['scanHead'] };
 const belongs = (node, root) => { for (let n = node; n; n = n.parent) if (n === root) return true; return false; };
 const engine = new B.NullEngine(), scene = new B.Scene(engine);

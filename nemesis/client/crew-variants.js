@@ -12,51 +12,7 @@ export function addCrewDetails(charId, parts, { scene, root: R, zones, Z, F, bx,
     const at = (zone, x, y) => (zones[zone] || []).find(m => m.parent === R && Math.abs(m.position.x - x) < 0.015 && Math.abs(m.position.y - y) < 0.015);
     const front = [Math.PI / 2, 0, 0];
 
-    if (charId === 'medic') {
-        if (parts.mask === 'filters') for (const s of [-1, 1]) {
-            fixed('mask', C.darkSteel, cy(0.17, 0.17, 0.09, 8, R, s * 0.14, 2.32, 0.25, front));
-            fixed('mask', C.steel, cy(0.12, 0.12, 0.025, 8, R, s * 0.14, 2.32, 0.31, front));
-        } else if (parts.mask === 'valve') {
-            fixed('mask', C.darkSteel, cy(0.16, 0.16, 0.09, 8, R, 0, 2.33, 0.25, front));
-            paint('mask', 'cap', cy(0.11, 0.11, 0.03, 8, R, 0, 2.33, 0.31, front));
-            for (const s of [-1, 1]) fixed('mask', C.steel, bx(0.08, 0.04, 0.03, R, s * 0.12, 2.36, 0.245));
-        }
-        if (parts.kit === 'pouch') {
-            const g = group('kit');
-            paint('kit', 'coat', bx(0.22, 0.2, 0.12, g, 0.17, 1.43, 0.24));
-            paint('kit', 'lights', bx(0.13, 0.035, 0.025, g, 0.17, 1.44, 0.315));
-            paint('kit', 'lights', bx(0.035, 0.13, 0.025, g, 0.17, 1.44, 0.315));
-        } else if (parts.kit === 'canisters') {
-            const g = group('kit');
-            for (const x of [-0.19, 0.19]) {
-                paint('kit', 'coat', cy(0.13, 0.13, 0.24, 8, g, x, 1.42, 0.24));
-                fixed('kit', C.steel, cy(0.14, 0.14, 0.04, 8, g, x, 1.55, 0.24));
-                paint('kit', 'lights', bx(0.035, 0.1, 0.025, g, x, 1.42, 0.32));
-            }
-        }
-    } else if (charId === 'janitor') {
-        if (parts.beard === 'long') {
-            paint('beard', 'hair', bx(0.27, 0.27, 0.1, R, 0, 2.09, 0.14));
-            for (const s of [-1, 1]) paint('beard', 'hair', bx(0.06, 0.18, 0.08, R, s * 0.1, 1.98, 0.14, [0, 0, s * 0.12]));
-        } else if (parts.beard === 'forked') for (const s of [-1, 1]) {
-            paint('beard', 'hair', bx(0.12, 0.28, 0.1, R, s * 0.07, 2.08, 0.14, [0, 0, s * 0.16]));
-            fixed('beard', C.strap, bx(0.13, 0.035, 0.11, R, s * 0.09, 1.97, 0.14));
-        }
-        if (parts.cap === 'banded') {
-            paint('cap', 'cap', bx(0.38, 0.06, 0.4, R, 0, 2.62, 0.0));
-            fixed('cap', C.darkSteel, bx(0.34, 0.025, 0.2, R, 0, 2.62, 0.25));
-        } else if (parts.cap === 'lamp') {
-            fixed('cap', C.darkSteel, bx(0.16, 0.1, 0.12, R, 0, 2.7, 0.16));
-            paint('cap', 'lights', cy(0.1, 0.1, 0.035, 8, R, 0, 2.7, 0.23, front));
-        }
-        if (parts.vacuum === 'ribbed') for (const y of [1.58, 1.8, 2.0]) {
-            fixed('vacuum', C.steel, cy(0.25, 0.25, 0.05, 8, R, 0, y, -0.34));
-        } else if (parts.vacuum === 'twin') {
-            fixed('vacuum', C.darkSteel, cy(0.17, 0.17, 0.48, 8, R, 0.17, 1.78, -0.37));
-            for (const y of [1.54, 2.02]) fixed('vacuum', C.steel, cy(0.19, 0.19, 0.05, 8, R, 0.17, y, -0.37));
-            paint('vacuum', 'lights', bx(0.05, 0.07, 0.025, R, 0.17, 1.88, -0.47));
-        }
-    } else if (charId === 'ceo') {
+    if (charId === 'ceo') {
         if (parts.collar === 'trim') for (const s of [-1, 1]) {
             fixed('collar', '#c9c3a6', bx(0.055, 0.28, 0.045, R, s * 0.2, 2.27, 0.18, [0, 0, s * 0.25]));
             fixed('collar', '#c9c3a6', bx(0.05, 0.14, 0.26, R, s * 0.24, 2.36, -0.04));
