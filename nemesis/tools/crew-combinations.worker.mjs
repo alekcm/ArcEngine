@@ -1,10 +1,10 @@
-// Isolated exhaustive geometry check, launched once per role by scene.test.mjs. Babylon's
-// NullEngine keeps substantial internal caches even after individual meshes are disposed; a fresh
-// process per role keeps all 3^5 combinations testable under Node's normal heap limit.
+// Isolated exhaustive geometry check, launched once per role by the scene and workshop tests.
+// Babylon's NullEngine keeps substantial internal caches even after individual meshes are disposed;
+// a fresh process per role keeps all combinations testable under Node's normal heap limit.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { CREW_PARTS } from '../shared/appearance.mjs';
+import { characterPartSlots } from '../shared/appearance.mjs';
 import { CHARACTERS } from '../shared/data/cards.mjs';
 
 const noop = () => {};
@@ -33,11 +33,12 @@ vm.runInContext(fs.readFileSync(new URL('../../libs/babylon.js', import.meta.url
 globalThis.window = sandbox;
 const B = sandbox.BABYLON;
 const { buildCharacter } = await import('../client/characters.js');
-const id = process.argv[2], slots = CREW_PARTS[id];
-assert.ok(slots, 'known crew role required');
+const id = process.argv[2], slots = characterPartSlots(id);
+assert.ok(slots.length, 'known crew role required');
 const requiredNodes = { soldier: ['gun'], scout: ['gun'], mechanic: [], pilot: ['gun'], hacker: ['gun'],
     scientist: ['wheel'], medic: ['gun'], janitor: ['janitor_wand'], ceo: ['robot', 'gun'], android: ['gun'], convict: [],
-    psych: ['drone'], bounty: ['dog', 'gun'], captain: ['gun'], survivor: ['gun'], xeno: ['scanHead'] };
+    psych: ['drone'], bounty: ['dog', 'gun'], captain: ['gun'], survivor: ['gun'], xeno: ['scanHead'],
+    labrat: [], sentry: ['gun', 'sentry_cloak_drape'] };
 const belongs = (node, root) => { for (let n = node; n; n = n.parent) if (n === root) return true; return false; };
 const engine = new B.NullEngine(), scene = new B.Scene(engine);
 const combos = slots.reduce((acc, slot) => acc.flatMap(old => slot.options.map(o => ({ ...old, [slot.id]: o.id }))), [{}]);

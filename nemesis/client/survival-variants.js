@@ -32,20 +32,20 @@ export function survivorVariant(slot, variant, C, P = C.root, side = 1) {
             Z('mask', bx(0.34, 0.2, 0.34, R, 0, 2.35, 0.02)).metadata = { survivorMask: true };
             Z('mask', bx(0.36, 0.09, 0.05, R, 0, 2.4, 0.2, [0, 0, -0.06]));
             Z('mask', bx(0.29, 0.1, 0.06, R, 0.015, 2.29, 0.2, [0, 0, 0.08]));
-            Z('mask', bx(0.11, 0.1, 0.08, R, 0, 2.35, -0.25));
+            Z('mask', bx(0.13, 0.07, 0.14, R, 0, 2.35, -0.2));
             const ties = new window.BABYLON.TransformNode('survivor_bandana_ties', C.scene); ties.parent = R;
             for (const k of [-1, 1]) {
-                Z('mask', bx(0.075, 0.18, 0.045, ties, k * 0.21, 2.31, -0.25, [0, 0, k * 0.14])).metadata = { survivorBandanaTie: true };
+                Z('mask', bx(0.04, 0.09, 0.04, ties, k * 0.07, 2.32, -0.25, [0, 0, k * 0.14])).metadata = { survivorBandanaTie: true };
             }
         } else { // wide kerchief tied to one side, with clearly visible loose cloth ends
             Z('mask', bx(0.35, 0.22, 0.34, R, 0, 2.35, 0.02)).metadata = { survivorMask: true };
             Z('mask', bx(0.37, 0.075, 0.07, R, 0, 2.41, 0.2, [0, 0, 0.1]));
             Z('mask', bx(0.18, 0.16, 0.07, R, 0.05, 2.28, 0.2, [0, 0, -0.14]));
-            Z('mask', bx(0.16, 0.1, 0.12, R, -0.29, 2.35, -0.21));
+            Z('mask', bx(0.18, 0.1, 0.12, R, -0.26, 2.35, -0.19));
             // Both hanging ends run beside the widest radio, not through its cage or the hair.
             const ties = new window.BABYLON.TransformNode('survivor_bandana_ties', C.scene); ties.parent = R;
-            Z('mask', bx(0.09, 0.4, 0.05, ties, -0.39, 2.17, -0.28, [0, 0, -0.08])).metadata = { survivorBandanaTie: true };
-            Z('mask', bx(0.08, 0.3, 0.05, ties, -0.48, 2.2, -0.27, [0, 0, -0.18])).metadata = { survivorBandanaTie: true };
+            Z('mask', bx(0.045, 0.2, 0.04, ties, -0.3, 2.26, -0.21, [0, 0, -0.08])).metadata = { survivorBandanaTie: true };
+            Z('mask', bx(0.04, 0.15, 0.04, ties, -0.33, 2.28, -0.21, [0, 0, -0.18])).metadata = { survivorBandanaTie: true };
         }
     } else if (slot === 'radio') {
         if (variant === 'dual') {
@@ -177,9 +177,9 @@ export function xenoVariant(slot, variant, C, P = C.root, side = 1) {
         F(FIXED.steel, bx(0.1, 0.07, 0.04, R, 0, 1.47, 0.19));
     } else if (slot === 'torso') {
         // The pale shirt is an actual central garment, not a stripe painted onto the jacket.
-        Z('shirt', bx(0.39, 0.8, 0.34, R, 0, 1.74, 0)).metadata = { xenoShirt: true };
+        Z('shirt', bx(0.39, 0.65, 0.30, R, 0, 1.855, 0)).metadata = { xenoShirt: true };
         // Leave a broad pale front visible between the lapels and under the harness.
-        Z('shirt', bx(0.25, 0.59, 0.06, R, 0, 1.79, 0.18));
+        Z('shirt', bx(0.25, 0.55, 0.06, R, 0, 1.815, 0.18));
         F(FIXED.strap, bx(0.04, 0.44, 0.035, R, 0, 1.82, 0.225));
         for (const k of [-1, 1]) {
             Z('coat', bx(variant === 'collar' ? 0.19 : 0.23, 0.8, 0.38, R, k * 0.2, 1.7, 0));
@@ -200,7 +200,8 @@ export function xenoVariant(slot, variant, C, P = C.root, side = 1) {
         }
     } else if (slot === 'sleeve') {
         Z('coat', bx(variant === 'collar' ? 0.23 : 0.26, 0.46, 0.29, R, s * 0.34, 1.85, 0)).metadata = { xenoUpper: s < 0 ? 'L' : 'R' };
-        Z('shirt', bx(0.23, 0.08, 0.3, R, s * 0.34, 1.65, 0));
+        Z('shirt', bx(variant === 'collar' ? 0.26 : 0.23, 0.08, variant === 'collar' ? 0.33 : 0.3, R, s * 0.34, 1.65, 0))
+            .metadata = { xenoSleeveCuff: s < 0 ? 'L' : 'R' };
         if (variant === 'pockets') Z('coat', bx(0.27, 0.16, 0.32, R, s * 0.34, 2.01, 0));
     } else if (slot === 'tool') {
         const grip = F(FIXED.darkSteel, bx(0.12, 0.17, 0.18, P, 0, 0, 0.025));

@@ -564,6 +564,7 @@ export const CHARACTERS = {
             { id: 'pants',  label: 'Штаны',         presets: ['#2d3436', '#1e3d2b', '#3b2f4a'] },
             { id: 'helmet', label: 'Шлем',          presets: ['#2d3436', '#5a6b5c', '#8c96a0', '#7a1f1f'] },
             { id: 'visor',  label: 'Ночные линзы',  presets: ['#3bff7a', '#3bb8ff', '#ff3b3b', '#ffd23b'] },
+            { id: 'cloak',  label: 'Плащ',          presets: ['#2b3038', '#3b3a36', '#37463e', '#4b3d2a', '#1c1c1c'] },
         ],
         startItems: [{ item: 'sentrySmg', ammo: 5 }], questItems: ['battleSuit'],
         cards: {

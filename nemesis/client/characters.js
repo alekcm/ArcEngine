@@ -13,6 +13,8 @@ import { ceoVariant, androidVariant, rigBodyguard } from './corporate-variants.j
 import { convictVariant, psychVariant, floatPsychDrones } from './crew-specialists.js';
 import { commandHair, commandOutfit, bountyArmor, captainArmor, commandGun, bountyDog } from './command-variants.js';
 import { survivorVariant, xenoVariant, xenoProbeVariant } from './survival-variants.js';
+import { patientVariant } from './patient-variants.js';
+import { sentryVariant } from './sentry-variants.js';
 
 const B = () => window.BABYLON;
 
@@ -65,7 +67,7 @@ export const DEFAULTS = {
     janitor: { skin: '#d29b7c', hair: '#c4c4c4', overall: '#e67e22', cap: '#c0392b', gloves: '#f1c40f', gear: '#3a424b', lights: '#ffd23b' },
     ceo: { skin: '#e8b89a', hair: '#e8e2d0', coat: '#3a3d44', shirt: '#dfe6ee', robot: '#232c3a', lights: '#bfe8ff' },
     labrat: { skin: '#d29b7c', hair: '#1c1c1c', gown: '#e3e7ea', pants: '#7f8c8d', bandage: '#dfe6ee', lights: '#ff3bd1' },
-    sentry: { skin: '#b5805f', armor: '#2f3b48', accent: '#6b7a88', pants: '#23292f', helmet: '#262f3a', visor: '#bfe8ff' },
+    sentry: { skin: '#b5805f', armor: '#2f3b48', accent: '#6b7a88', pants: '#23292f', helmet: '#262f3a', visor: '#bfe8ff', cloak: '#2b3038' },
     android: { skin: '#d29b7c', hair: '#2a1b12', vest: '#4a6b5c', shirt: '#dfe6ee', pants: '#2d3436', lights: '#ff3b3b' },
     convict: { skin: '#d29b7c', pants: '#5a5a5a', mask: '#2d3436', tattoo: '#3a4a5a', chains: '#8c96a0', lights: '#ff3b3b' },
     psych: { skin: '#f2d2bd', hair: '#1c1c1c', coat: '#dfe6ee', shirt: '#2c3e50', drone: '#6b7682', lights: '#3bb8ff' },
@@ -108,12 +110,7 @@ const SPECS = {
 const FIXED = { gun: '#23282e', gunLight: '#4a525c', steel: '#8c96a0', darkSteel: '#3a424b', rubber: '#1a1d21', glass: '#9fd8ff', strap: '#3b3127' };
 
 /** Apply the Lab Rat's presets without changing her patient silhouette or the shared spec. */
-function labratSpec(parts) {
-    return { ...SPECS.labrat,
-        hair: { loose: 'longLoose', messy: 'labMessy', ponytail: 'labPonytail' }[parts.hair],
-        labBlindfold: parts.eyes, labGown: parts.outfit, labImplants: parts.implants,
-    };
-}
+function labratSpec(parts) { return { ...SPECS.labrat, labParts: parts }; }
 
 // Hair changes only the requested character's copy; the canonical specs are never mutated.
 function crewSpec(charId, parts) {
@@ -158,8 +155,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             for (const arm of arms) arm.rotation.x *= 0.35;
         });
     }
-    if (charId === 'bounty') {
-        // A rifle carried in both hands should not swing through the wrists during a stride.
+    if (charId === 'bounty' || charId === 'sentry') {
+        // A rifle or shotgun carried in both hands should not swing through the wrists during a stride.
         let arms, rifle;
         updates.push(() => {
             arms ||= root.getChildren().filter(n => n.name === 'armL' || n.name === 'armR');
@@ -178,7 +175,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         for (const mesh of root.getChildMeshes()) if (!before.has(mesh)) {
             mesh.metadata = { ...mesh.metadata, appearancePart: { character: charId, slot, variant } };
             // Wheel anchors have a reserved name used by the seated animation rig.
-            if (variant !== 'classic' && mesh.name !== 'wheel') mesh.name = `crew_${charId}_${slot}`;
+            if (charId !== 'labrat' && variant !== 'classic' && mesh.name !== 'wheel') mesh.name = `crew_${charId}_${slot}`;
         }
     };
     if (charId === 'soldier') buildSoldier(selectedParts);
@@ -201,6 +198,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 if (sp.janitorParts.outfit === 'classic') boots();
                 else janitorVariant('boot', sp.janitorParts.outfit, roleContext, W, s);
             });
+            else if (sp.androidParts) part('trousers', sp.androidParts.trousers, () => {
+                if (sp.androidParts.trousers === 'classic') boots();
+                else androidVariant('boot', sp.androidParts.trousers, roleContext, W, s);
+            });
             else if (sp.convictParts) part('trousers', sp.convictParts.trousers, () => {
                 if (sp.convictParts.trousers === 'classic') boots();
                 else convictVariant('boot', sp.convictParts.trousers, roleContext, W, s);
@@ -222,6 +223,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 if (sp.janitorParts.outfit === 'classic') legs();
                 else janitorVariant('leg', sp.janitorParts.outfit, roleContext, W, s);
             });
+            else if (sp.androidParts) part('trousers', sp.androidParts.trousers, () => {
+                if (sp.androidParts.trousers === 'classic') legs();
+                else androidVariant('leg', sp.androidParts.trousers, roleContext, W, s);
+            });
             else if (sp.convictParts) part('trousers', sp.convictParts.trousers, () => {
                 if (sp.convictParts.trousers === 'classic') legs();
                 else convictVariant('leg', sp.convictParts.trousers, roleContext, W, s);
@@ -241,6 +246,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             if (sp.janitorParts.outfit === 'classic') pelvis();
             else janitorVariant('pelvis', sp.janitorParts.outfit, roleContext, W);
         });
+        else if (sp.androidParts) part('trousers', sp.androidParts.trousers, () => {
+            if (sp.androidParts.trousers === 'classic') pelvis();
+            else androidVariant('pelvis', sp.androidParts.trousers, roleContext, W);
+        });
         else if (sp.convictParts) part('trousers', sp.convictParts.trousers, () => {
             if (sp.convictParts.trousers === 'classic') pelvis();
             else convictVariant('pelvis', sp.convictParts.trousers, roleContext, W);
@@ -258,14 +267,21 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             F(FIXED.strap, bx(0.56 * W, 0.08, 0.32, R, 0, 1.5, 0));
             F(FIXED.steel, bx(0.1, 0.08, 0.04, R, 0, 1.5, 0.17));
         };
-        if (sp.survivorParts || sp.xenoParts) {
+        if (sp.androidParts) {
+            if (sp.androidParts.trousers === 'classic') part('trousers', 'classic', originalBelt);
+        } else if (sp.survivorParts || sp.xenoParts) {
             const slot = sp.survivorParts ? 'outfit' : 'trousers';
             if ((sp.survivorParts || sp.xenoParts)[slot] === 'classic') part(slot, 'classic', originalBelt);
         } else originalBelt();
         // torso
         const T = (m) => sp.torso[0] === '#' ? F(sp.torso, m) : Z(sp.torso, m);   // torso zone, or a fixed colour
         let torso;
-        if (sp.janitorParts) part('outfit', sp.janitorParts.outfit, () => {
+        if (sp.labParts) part('outfit', sp.labParts.outfit, () => {
+            if (sp.labParts.outfit === 'gown') {
+                torso = T(bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0)); torso.metadata = { labTorso: true };
+            } else patientVariant('torso', sp.labParts.outfit, roleContext, W);
+        });
+        else if (sp.janitorParts) part('outfit', sp.janitorParts.outfit, () => {
             if (sp.janitorParts.outfit === 'classic') torso = T(bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
             else janitorVariant('torso', sp.janitorParts.outfit, roleContext, W);
         });
@@ -309,7 +325,9 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 else original();
             }
             const hips = () => Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0));
-            if (sp.survivorParts || sp.xenoParts) {
+            if (sp.androidParts) {
+                if (sp.androidParts.trousers === 'classic') part('trousers', 'classic', hips);
+            } else if (sp.survivorParts || sp.xenoParts) {
                 const survivor = !!sp.survivorParts, slot = survivor ? 'outfit' : 'trousers';
                 if ((sp.survivorParts || sp.xenoParts)[slot] === 'classic') part(slot, 'classic', hips);
             } else hips();
@@ -443,27 +461,34 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             else original();
         }
         if (sp.patch) { Z(sp.patch, cy(0.16, 0.16, 0.02, 8, R, 0.16 * W, 1.95, 0.17, [Math.PI / 2, 0, 0])); }
-        if (sp.tattoos) { for (let i = 0; i < 4; i++) Z(sp.tattoos, bx(0.14, 0.03, 0.02, R, -0.12 * W + (i % 2) * 0.24 * W, 1.7 + i * 0.1, 0.17)); for (const s of [-1, 1]) Z(sp.tattoos, bx(0.03, 0.3, 0.02, R, s * 0.42 * W, 1.84, 0.1)); }
-        if (sp.gown) {   // patient gown: the Lab Rat always keeps its short sleeves and ID tag
-            let skirt;
-            if (sp.labGown === 'long') skirt = Z(sp.gown, bx(0.58 * W, 0.82, 0.36, R, 0, 1.14, 0));
-            else if (sp.labGown === 'torn') {
-                skirt = Z(sp.gown, bx(0.58 * W, 0.38, 0.36, R, 0, 1.36, 0));
-                // Four irregular cloth flaps really change the silhouette, rather than just painting damage.
-                // Keep them under a stationary hem node so the automatic leg rig cannot tear the gown apart.
-                const hem = new (B().TransformNode)('lab_gown_hem', S); hem.parent = R;
-                for (const [x, width, height] of [[-0.2175, 0.145, 0.25], [-0.0725, 0.145, 0.14], [0.0725, 0.145, 0.32], [0.2175, 0.145, 0.19]]) {
-                    Z(sp.gown, bx(width * W, height, 0.36, hem, x * W, 1.17 - height / 2, 0));
-                }
-            } else skirt = Z(sp.gown, bx(0.58 * W, 0.5, 0.36, R, 0, 1.3, 0));
-            if (sp.labGown) skirt.name = 'lab_gown';
-            for (const s of [-1, 1]) Z(sp.gown, bx(0.2 * W, 0.26, 0.26, R, s * 0.36 * W, 2.04, 0));
-            F(FIXED.strap, bx(0.5 * W, 0.04, 0.02, R, 0, 1.62, 0.18));
+        if (sp.tattoos) {
+            const original = () => {
+                for (let i = 0; i < 4; i++) Z(sp.tattoos, bx(0.14, 0.03, 0.02, R, -0.12 * W + (i % 2) * 0.24 * W, 1.7 + i * 0.1, 0.17));
+                for (const s of [-1, 1]) Z(sp.tattoos, bx(0.03, 0.3, 0.02, R, s * 0.42 * W, 1.84, 0.1));
+            };
+            if (sp.convictParts) part('tattoos', sp.convictParts.tattoos, () => {
+                if (sp.convictParts.tattoos === 'classic') original();
+                else convictVariant('tattoos', sp.convictParts.tattoos, roleContext, W);
+            });
+            else original();
+        }
+        if (sp.gown) {   // Always a closed patient gown with short sleeves and an ID tag.
+            const original = () => {
+                const skirt = Z(sp.gown, bx(0.58 * W, 0.5, 0.36, R, 0, 1.3, 0));
+                skirt.name = 'lab_gown'; skirt.metadata = { labGown: true };
+                for (const s of [-1, 1]) Z(sp.gown, bx(0.2 * W, 0.26, 0.26, R, s * 0.36 * W, 2.04, 0));
+                F(FIXED.strap, bx(0.5 * W, 0.04, 0.02, R, 0, 1.62, 0.18));
+            };
+            if (sp.labParts) part('outfit', sp.labParts.outfit, () => {
+                if (sp.labParts.outfit === 'gown') original();
+                else patientVariant('gown', sp.labParts.outfit, roleContext, W);
+            });
+            else original();
         }
         if (sp.qrPatch) { F('#f4f6f8', bx(0.18, 0.18, 0.02, R, 0.1, 1.9, 0.17)); for (let i = 0; i < 9; i++) if (i % 4 !== 1) F('#1a1d21', bx(0.04, 0.04, 0.01, R, 0.05 + (i % 3) * 0.05, 1.95 - Math.floor(i / 3) * 0.05, 0.18)); }   // QR tag printed on the chest
         if (sp.plates) {   // riveted implants, independently replaced as one set
             const original = () => {
-                const P = [[0.3, 2.14, 0.0, 0.22, 0.1, 0.3], [-0.3, 2.14, 0.0, 0.22, 0.1, 0.3], [0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [-0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [0, 1.74, 0.18, 0.2, 0.14, 0.04], [0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [-0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [-0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [0, 2.22, -0.1, 0.24, 0.1, 0.14], [0.2, 1.86, -0.17, 0.18, 0.2, 0.04], [-0.2, 1.86, -0.17, 0.18, 0.2, 0.04], [-0.3, 1.7, 0.17, 0.14, 0.12, 0.04], [0.3, 1.7, 0.17, 0.14, 0.12, 0.04]];
+                const P = [[0.33, 2.14, 0.0, 0.29, 0.12, 0.34], [-0.33, 2.14, 0.0, 0.29, 0.12, 0.34], [0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [-0.14, 1.96, 0.18, 0.16, 0.16, 0.04], [0, 1.74, 0.18, 0.2, 0.14, 0.04], [0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [-0.42, 1.86, 0.02, 0.06, 0.18, 0.18], [0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [-0.42, 1.48, 0.04, 0.06, 0.16, 0.16], [0, 2.22, -0.1, 0.24, 0.1, 0.14], [0.2, 1.86, -0.17, 0.18, 0.2, 0.04], [-0.2, 1.86, -0.17, 0.18, 0.2, 0.04], [-0.3, 1.7, 0.17, 0.14, 0.12, 0.04], [0.3, 1.7, 0.17, 0.14, 0.12, 0.04]];
                 for (const [x, y, z, w, h, d] of P) { Z(sp.plates, bx(w * W, h, d, R, x * W, y, z)); F(FIXED.steel, bx(0.03, 0.03, 0.03, R, x * W + (w > 0.1 ? 0.04 : 0), y + (h > 0.12 ? 0.05 : 0), z + d / 2 * (z >= 0 ? 1 : -1))); }
             };
             if (sp.convictParts) part('plates', sp.convictParts.plates, () => {
@@ -529,17 +554,18 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 continue;
             }
             if (sp.convictParts || sp.psychParts) {
-                const isConvict = !!sp.convictParts, slot = isConvict ? 'arms' : 'sleeves';
-                const variant = isConvict ? sp.convictParts.arms : sp.psychParts.sleeves;
-                const side = s < 0 ? 'L' : 'R';
-                part(slot, variant, () => {
-                    if (variant === 'classic') {
-                        const tag = isConvict ? 'convictArm' : 'psychArm';
-                        Z(sp.arms, bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0)).metadata = { [tag]: 'upper' + side };
-                        Z(sp.arms, bx(0.15 * W, 0.4, 0.17, R, s * 0.39 * W, 1.44, 0.02)).metadata = { [tag]: 'forearm' + side };
-                        Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03)).metadata = { [tag]: 'hand' + side };
-                    } else if (isConvict) convictVariant('arm', variant, roleContext, W, s);
-                    else psychVariant('sleeve', variant, roleContext, W, s);
+                const isConvict = !!sp.convictParts, side = s < 0 ? 'L' : 'R';
+                const original = () => {
+                    const tag = isConvict ? 'convictArm' : 'psychArm';
+                    Z(sp.arms, bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0)).metadata = { [tag]: 'upper' + side };
+                    Z(sp.arms, bx(0.15 * W, 0.4, 0.17, R, s * 0.39 * W, 1.44, 0.02)).metadata = { [tag]: 'forearm' + side };
+                    Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03)).metadata = { [tag]: 'hand' + side };
+                };
+                // Tattoo choices change markings, never replace the Convict's hands or skin.
+                if (isConvict) original();
+                else part('sleeves', sp.psychParts.sleeves, () => {
+                    if (sp.psychParts.sleeves === 'classic') original();
+                    else psychVariant('sleeve', sp.psychParts.sleeves, roleContext, W, s);
                 });
                 continue;
             }
@@ -580,6 +606,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 upper.name = 'scientist_upper_' + side; forearm.name = 'scientist_forearm_' + side; hand.name = 'scientist_hand_' + side;
             }
         }
+        if (sp.labParts && sp.labParts.wrists !== 'classic')
+            part('wrists', sp.labParts.wrists, () => patientVariant('wrists', sp.labParts.wrists, roleContext, W));
         if (sp.slingL) {   // a continuous injured arm and neck sling, kept still while walking
             const bandage = (mesh, component) => { mesh.metadata = { survivorBandage: component }; return mesh; };
             bandage(Z('bandage', bx(0.17 * W, 0.24, 0.19, R, -0.38 * W, 1.66, 0.02)), 'elbow');
@@ -633,9 +661,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         }
         if (sp.cables) { for (let i = 0; i < 3; i++) F(FIXED.rubber, cy(0.03, 0.03, 0.5, 5, R, -0.3 * W + i * 0.05, 1.98, -0.3 - i * 0.04, [0.4, 0, 0.3])); Z(sp.cables, bx(0.12, 0.08, 0.06, R, -0.2 * W, 2.18, -0.3)); }
         if (sp.toolBelt && (!sp.janitorParts || sp.janitorParts.outfit === 'classic')) { for (let i = 0; i < 3; i++) F(FIXED.steel, bx(0.06, 0.14, 0.06, R, -0.22 * W + i * 0.1, 1.42, 0.17)); F(FIXED.strap, bx(0.14, 0.16, 0.1, R, 0.26 * W, 1.4, 0.12)); }
-        if (sp.shoulderLamp) Z(sp.shoulderLamp, bx(0.08, 0.06, 0.06, R, -0.38 * W, 2.2, 0.12));
+        if (sp.shoulderLamp && (!sp.captainParts || sp.captainParts.shoulders === 'classic'))
+            Z(sp.shoulderLamp, bx(0.08, 0.06, 0.06, R, -0.38 * W, 2.2, 0.12));
         // Bridge the head and shoulders on each reworked humanoid.
-        const joinedNeck = sp.scientistParts || sp.medicParts || sp.janitorParts || sp.ceoParts || sp.androidParts || sp.convictParts || sp.psychParts || sp.bountyParts || sp.captainParts || sp.survivorParts || sp.xenoParts;
+        const joinedNeck = sp.labParts || sp.scientistParts || sp.medicParts || sp.janitorParts || sp.ceoParts || sp.androidParts || sp.convictParts || sp.psychParts || sp.bountyParts || sp.captainParts || sp.survivorParts || sp.xenoParts;
         const neck = Z('skin', bx(0.14, joinedNeck ? 0.16 : 0.1, 0.14, R, 0, 2.2, 0));
         // The Hacker's original mask had skin-coloured gaps at the temples and cheeks. Keep the
         // original geometry but make the underlying balaclava opaque for every mask option.
@@ -684,30 +713,19 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                     for (let i = 0; i < 5; i++) Z(H, bx(0.17 - (i % 2) * 0.03, 0.14, 0.17, R, (i % 2) * 0.04 - 0.02, 2.5 - i * 0.1, -0.27));
                     F(FIXED.strap, bx(0.14, 0.05, 0.14, R, 0, 2.56, -0.22)); break;
                 case 'longLoose': Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.56, 0.1, R, 0, 2.36, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.08, 0.5, 0.3, R, s * 0.19, sp.medicParts ? 2.36 : 2.38, -0.03)); break;   // side locks emerge below the Medic's cap edge
-                case 'labMessy':   // long uneven locks, not a different haircut
-                    Z(H, bx(0.35, 0.12, 0.34, R, 0, 2.65, 0.0));
-                    Z(H, bx(0.3, 0.56, 0.1, R, 0, 2.36, -0.16));
-                    Z(H, bx(0.09, 0.52, 0.26, R, -0.2, 2.36, -0.03, [0, 0, -0.1]));
-                    Z(H, bx(0.09, 0.62, 0.26, R, 0.2, 2.31, -0.03, [0, 0, 0.1]));
-                    for (const [x, y, height, tilt] of [[-0.11, 2.33, 0.5, -0.09], [0, 2.29, 0.58, 0.04], [0.11, 2.34, 0.48, 0.1]])
-                        Z(H, bx(0.075, height, 0.045, R, x, y, -0.22, [0, 0, tilt]));
-                    Z(H, bx(0.07, 0.17, 0.06, R, -0.1, 2.59, 0.16, [0, 0, -0.18]));
-                    Z(H, bx(0.05, 0.13, 0.05, R, 0.08, 2.61, 0.16, [0, 0, 0.14])); break;
-                case 'labPonytail':   // loosely gathered at the nape, with strands escaping around the face
-                    Z(H, bx(0.34, 0.1, 0.34, R, 0, 2.64, 0.0));
-                    Z(H, bx(0.32, 0.3, 0.09, R, 0, 2.49, -0.16));
-                    Z(H, bx(0.14, 0.14, 0.13, R, 0, 2.52, -0.22));
-                    Z('bandage', bx(0.15, 0.045, 0.14, R, 0, 2.48, -0.24));
-                    Z(H, bx(0.14, 0.42, 0.13, R, 0.025, 2.25, -0.26, [0, 0, 0.12]));
-                    Z(H, bx(0.065, 0.29, 0.1, R, -0.18, 2.45, 0.08, [0, 0, -0.08]));
-                    Z(H, bx(0.055, 0.36, 0.1, R, 0.18, 2.42, 0.08, [0, 0, 0.08])); break;
                 case 'bun': Z(H, bx(0.33, 0.1, 0.33, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.08, 0.1, R, 0, 2.6, 0.14)); Z(H, bx(0.3, 0.3, 0.08, R, 0, 2.46, -0.16)); Z(H, bx(0.16, 0.16, 0.16, R, 0, 2.68, -0.14)); for (const s of [-1, 1]) Z(H, bx(0.05, 0.26, 0.2, R, s * 0.17, 2.46, -0.02)); break;
                 case 'ponytail': Z(H, bx(0.32, 0.1, 0.32, R, 0, 2.64, 0.0)); Z(H, bx(0.1, 0.1, 0.1, R, 0, 2.6, -0.2)); Z(H, bx(0.08, 0.4, 0.08, R, 0, 2.38, -0.22)); break;
                 case 'bobBangs': Z(H, bx(0.34, 0.12, 0.34, R, 0, 2.64, 0.0)); Z(H, bx(0.34, 0.1, 0.08, R, 0, 2.56, 0.16)); Z(H, bx(0.34, 0.3, 0.1, R, 0, 2.42, -0.16)); for (const s of [-1, 1]) Z(H, bx(0.06, 0.3, 0.3, R, s * 0.18, 2.42, 0.0)); break;
-                case 'shaggyBob': Z(H, bx(0.44, 0.12, 0.44, R, 0, 2.64, -0.02));                                                           // wide cap the flared slabs hang from
-                    Z(H, bx(0.44, 0.4, 0.1, R, 0, 2.46, -0.25, [-0.3, 0, 0]));                                                              // back slab, pivoting outwards from the cap
-                    for (const s of [-1, 1]) { Z(H, bx(0.1, 0.4, 0.36, R, s * 0.26, 2.46, -0.04, [0, 0, -s * 0.3])); Z(H, bx(0.1, 0.3, 0.12, R, s * 0.24, 2.5, 0.14, [0.1, 0, -s * 0.35])); }   // side slabs flare out and down like a wedge
-                    Z(H, bx(0.34, 0.1, 0.08, R, 0.02, 2.58, 0.17, [0, 0, 0.15])); break;   // fringe
+                case 'shaggyBob': // Short, tousled original cut: an actual crown and separate locks.
+                    Z(H, bx(0.37, 0.13, 0.35, R, 0, 2.65, -0.01));
+                    Z(H, bx(0.33, 0.29, 0.09, R, 0, 2.49, -0.17));
+                    for (const side of [-1, 1]) {
+                        Z(H, bx(0.09, 0.31, 0.24, R, side * 0.185, 2.46, -0.02, [0, 0, -side * 0.1]));
+                        Z(H, bx(0.08, 0.19, 0.1, R, side * 0.19, 2.51, 0.12, [0, 0, side * 0.17]));
+                        Z(H, bx(0.09, 0.16, 0.11, R, side * 0.15, 2.35, -0.12, [0, 0, -side * 0.2]));
+                    }
+                    Z(H, bx(0.22, 0.085, 0.09, R, -0.055, 2.6, 0.16, [0, 0, 0.2]));
+                    Z(H, bx(0.11, 0.12, 0.09, R, 0.1, 2.59, 0.15, [0, 0, -0.18])); break;
                 case 'afroPony': Z(H, bx(0.36, 0.14, 0.36, R, 0, 2.66, 0.0)); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; Z(H, bx(0.12, 0.12, 0.12, R, Math.sin(a) * 0.16, 2.64 + (i % 2) * 0.08, Math.cos(a) * 0.14 - 0.02)); }
                     for (let i = 0; i < 3; i++) Z(H, bx(0.16 - (i % 2) * 0.03, 0.14, 0.16 - (i % 2) * 0.03, R, (i % 2) * 0.04 - 0.02, 2.5 - i * 0.1, -0.26));   // curls gathered into a short puffy ponytail at the nape
                     F(FIXED.strap, bx(0.14, 0.05, 0.14, R, 0, 2.56, -0.22)); break;
@@ -716,7 +734,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 case 'beardOnly': Z(H, bx(0.28, 0.16, 0.1, R, 0, 2.28, 0.14)); Z(H, bx(0.3, 0.06, 0.3, R, 0, 2.62, 0.0)); break;
             }
         };
-        if (sp.pilotParts) part('hair', sp.pilotParts.hair, () => {
+        if (sp.labParts) part('hair', sp.labParts.hair, () => patientVariant('hair', sp.labParts.hair, roleContext, W));
+        else if (sp.pilotParts) part('hair', sp.pilotParts.hair, () => {
             if (sp.pilotParts.hair === 'classic') buildOriginalHair();
             else pilotVariant('hair', sp.pilotParts.hair, roleContext, W);
         });
@@ -850,50 +869,25 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             });
             else original();
         }
-        if (sp.blindfold) {   // cloth, never a technological visor: the eyes stay covered in every variant
-            const height = sp.labBlindfold === 'wide' ? 0.18 : 0.1;
-            const band = Z(sp.blindfold, bx(0.33, height, 0.33, R, 0, 2.48, 0.02));
-            if (sp.labBlindfold) band.name = 'lab_blindfold';
-            Z(sp.blindfold, bx(0.08, 0.2, 0.03, R, -0.1, 2.28, -0.17));
-            if (sp.labBlindfold === 'layered') {
-                const upper = Z(sp.blindfold, bx(0.32, 0.055, 0.025, R, 0, 2.525, 0.195)); upper.rotation.z = -0.07;
-                const lower = Z(sp.blindfold, bx(0.32, 0.055, 0.03, R, 0, 2.445, 0.2)); lower.rotation.z = 0.06;
-            } else if (sp.labBlindfold === 'tails') {
-                // Lay the ties over the gathered ponytail instead of burying them inside it.
-                const back = sp.hair === 'labPonytail' ? -0.35 : -0.24;
-                Z(sp.blindfold, bx(0.1, 0.09, 0.06, R, 0, 2.48, back + 0.02));
-                const left = Z(sp.blindfold, bx(0.065, 0.5, 0.035, R, -0.075, 2.23, back)); left.name = 'lab_blindfold_tail'; left.rotation.z = -0.08;
-                const right = Z(sp.blindfold, bx(0.065, 0.38, 0.035, R, 0.075, 2.29, back)); right.name = 'lab_blindfold_tail'; right.rotation.z = 0.1;
-            }
+        if (sp.blindfold) { // Cloth, never a visor; every choice completely covers the eyes.
+            if (sp.labParts) part('eyes', sp.labParts.eyes, () => patientVariant('eyes', sp.labParts.eyes, roleContext, W, sp.labParts.hair));
+            else Z(sp.blindfold, bx(0.33, 0.1, 0.33, R, 0, 2.48, 0.02));
         }
         if (sp.mask) { Z(sp.mask, bx(0.3, 0.16, 0.08, R, 0, 2.36, 0.16)); for (let i = 0; i < 3; i++) F(FIXED.rubber, bx(0.03, 0.08, 0.02, R, -0.06 + i * 0.06, 2.34, 0.21)); Z(sp.mask, bx(0.34, 0.08, 0.1, R, 0, 2.46, 0.13)); }
         if (sp.eyeLight) Z(sp.eyeLight, bx(0.05, 0.03, 0.02, R, 0.08, 2.48, 0.18));
         if (sp.bald) Z('skin', bx(0.3, 0.06, 0.3, R, 0, 2.62, 0.02));
-        if (sp.implants && (!sp.labImplants || sp.labImplants === 'classic')) {
-            const original = () => { Z(sp.implants, bx(0.04, 0.04, 0.02, R, 0, 2.54, 0.18)); Z(sp.implants, bx(0.03, 0.1, 0.03, R, 0.16, 2.44, 0.0)); F(FIXED.steel, bx(0.06, 0.12, 0.04, R, -0.17, 2.44, 0.0)); };
-            if (sp.androidParts) part('implants', sp.androidParts.implants, () => {
-                if (sp.androidParts.implants === 'classic') original();
-                else androidVariant('implants', sp.androidParts.implants, roleContext, W);
+        if (sp.implants) {
+            const original = () => {
+                Z(sp.implants, bx(0.04, 0.04, 0.02, R, 0, 2.54, 0.18));
+                Z(sp.implants, bx(0.03, 0.1, 0.03, R, 0.16, 2.44, 0.0));
+                F(FIXED.steel, bx(0.06, 0.12, 0.04, R, -0.17, 2.44, 0.0));
+            };
+            // The Android keeps her original synthetic details, but they are no longer a slot.
+            if (sp.labParts) part('implants', sp.labParts.implants, () => {
+                if (sp.labParts.implants === 'classic') original();
+                else patientVariant('implants', sp.labParts.implants, roleContext, W);
             });
             else original();
-        }
-        if (sp.labImplants === 'temples') {   // small sockets protrude just beyond the hair at both temples
-            for (const s of [-1, 1]) {
-                F(FIXED.steel, cy(0.09, 0.09, 0.045, 8, R, s * 0.235, 2.5, 0.06, [0, 0, Math.PI / 2]));
-                Z(sp.implants, cy(0.045, 0.045, 0.01, 8, R, s * 0.26, 2.5, 0.06, [0, 0, Math.PI / 2]));
-            }
-        } else if (sp.labImplants === 'neck') {   // connectors at the neck, not armour or a collar
-            for (const s of [-1, 1]) {
-                F(FIXED.darkSteel, bx(0.07, 0.1, 0.06, R, s * 0.08, 2.21, 0.09));
-                Z(sp.implants, bx(0.035, 0.055, 0.02, R, s * 0.08, 2.22, 0.13));
-                F(FIXED.steel, bx(0.025, 0.13, 0.025, R, s * 0.08, 2.12, 0.16));
-            }
-        } else if (sp.labImplants === 'wrapped') {   // bandage strips partially cover the exposed connections
-            for (const s of [-1, 1]) {
-                F(FIXED.steel, bx(0.05, 0.12, 0.08, R, s * 0.23, 2.49, 0.06));
-                Z(sp.implants, bx(0.02, 0.07, 0.04, R, s * 0.26, 2.49, 0.06));
-                Z('bandage', bx(0.055, 0.035, 0.14, R, s * 0.26, 2.51, 0.06, [0, 0, s * 0.12]));
-            }
         }
         if (sp.eyes) { for (const s of [-1, 1]) F(sp.eyes, bx(0.06, 0.035, 0.02, R, s * 0.07, 2.47, 0.175), { emissive: 1.0 }); F(FIXED.rubber, bx(0.2, 0.012, 0.015, R, 0, 2.5, 0.178)); }   // two glowing eyes under a thin brow line
         // hand-held props
@@ -955,11 +949,24 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         if (sp.pipe) { F(FIXED.steel, cy(0.05, 0.05, 1.0, 6, R, 0.42 * W, 1.5, 0.1, [0, 0, 0.15])); F(FIXED.darkSteel, bx(0.1, 0.1, 0.1, R, 0.42 * W, 1.98, 0.08)); }
         if (sp.vacuum) {   // backpack vacuum cleaner: canister on the back, straps, hose running to a wand in the left hand
             const originalPack = () => {
-                const tank = cy(0.2, 0.2, 0.62, 8, R, 0, 1.78, -0.34);
+                // A proper single-canister backpack: distinct from the square turbine and
+                // twin-tank choices, with its own frame, motor, handle, gauge and hose socket.
+                const pack = new (B().TransformNode)('janitor_vacuum_pack', S); pack.parent = R;
+                F(FIXED.darkSteel, bx(0.42, 0.67, 0.12, pack, 0, 1.8, -0.25));
+                const tank = cy(0.34, 0.4, 0.64, 10, pack, 0, 1.8, -0.4);
                 if (sp.janitorParts) Z('gear', tank); else F(FIXED.darkSteel, tank);
-                F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 2.1, -0.34)); F(FIXED.steel, cy(0.22, 0.22, 0.06, 8, R, 0, 1.46, -0.34));
-                F(FIXED.steel, bx(0.1, 0.12, 0.1, R, 0.1, 2.2, -0.34)); Z(LZ, bx(0.04, 0.04, 0.02, R, 0.1, 2.2, -0.28));   // motor cap + status light
-                for (const s of [-1, 1]) F(FIXED.strap, bx(0.06, 0.5, 0.04, R, s * 0.18 * W, 1.86, 0.17, [0.0, 0, 0]));       // shoulder straps
+                tank.metadata = { janitorVacuumComponent: 'tank' };
+                F(FIXED.darkSteel, cy(0.41, 0.41, 0.08, 10, pack, 0, 1.46, -0.4));
+                Z('gear', cy(0.36, 0.4, 0.10, 10, pack, 0, 2.16, -0.4));
+                F(FIXED.darkSteel, cy(0.25, 0.3, 0.15, 10, pack, 0, 2.27, -0.4));
+                for (const x of [-0.1, 0, 0.1]) F(FIXED.steel, bx(0.035, 0.1, 0.03, pack, x, 2.27, -0.54));
+                F(FIXED.steel, bx(0.29, 0.045, 0.05, pack, 0, 2.4, -0.4));
+                for (const x of [-0.12, 0.12]) F(FIXED.steel, bx(0.04, 0.1, 0.05, pack, x, 2.36, -0.4));
+                F(FIXED.darkSteel, cy(0.15, 0.15, 0.05, 10, pack, 0, 1.83, -0.6, [Math.PI / 2, 0, 0]));
+                Z(LZ, cy(0.1, 0.1, 0.025, 10, pack, 0, 1.83, -0.635, [Math.PI / 2, 0, 0]));
+                F(FIXED.steel, bx(0.1, 0.025, 0.025, pack, 0, 1.83, -0.66));
+                F(FIXED.steel, cy(0.11, 0.11, 0.1, 8, pack, -0.12, 2.1, -0.42));
+                for (const s of [-1, 1]) F(FIXED.strap, bx(0.07, 0.55, 0.04, pack, s * 0.18 * W, 1.86, 0.19));
                 const points = [[-0.12, 2.1, -0.42], [-0.42 * W, 1.9, -0.3], [-0.46 * W, 1.4, 0], [-0.4 * W, 1.16, 0.16]];
                 const hose = sp.janitorParts ? new (B().TransformNode)('janitor_hose', S) : R;
                 if (sp.janitorParts) hose.parent = R;
@@ -1045,7 +1052,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             const original = () => {
                 Z('mask', bx(0.3, 0.22, 0.1, R, 0, 2.36, 0.15)).metadata = { survivorMask: true };
                 Z('mask', bx(0.34, 0.1, 0.34, R, 0, 2.36, 0));
-                Z('mask', bx(0.12, 0.2, 0.04, R, 0.05, 2.22, -0.17));
+                Z('mask', bx(0.06, 0.1, 0.04, R, 0.05, 2.27, -0.17)).metadata = { survivorBandanaTie: true };
             };
             if (sp.survivorParts) part('bandana', sp.survivorParts.bandana, () => sp.survivorParts.bandana === 'classic' ? original() : survivorVariant('bandana', sp.survivorParts.bandana, roleContext));
             else original();
@@ -1055,9 +1062,11 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             const tool = new (B().TransformNode)('xeno_tool', S); tool.parent = R; tool.position.set(0.39 * W, 1.2, 0.05);
             const original = () => {
                 F(FIXED.darkSteel, bx(0.1, 0.16, 0.13, tool, 0, 0, 0)).metadata = { xenoToolGrip: true };
-                F(FIXED.glass, cy(0.05, 0.05, 0.18, 6, tool, 0, 0.1, 0.04), { alpha: 0.7, spec: 0.8 });
-                Z(LZ, cy(0.035, 0.035, 0.1, 6, tool, 0, 0.07, 0.04)).metadata = { xenoSample: true };
-                F(FIXED.darkSteel, cy(0.05, 0.05, 0.03, 6, tool, 0, 0.2, 0.04));
+                // The vial is in front of the hand and forearm, not buried in their geometry.
+                F(FIXED.steel, bx(0.08, 0.09, 0.15, tool, 0, 0.06, 0.095));
+                F(FIXED.glass, cy(0.1, 0.1, 0.28, 8, tool, 0, 0.16, 0.17), { alpha: 0.7, spec: 0.8 });
+                Z(LZ, cy(0.075, 0.075, 0.19, 8, tool, 0, 0.15, 0.17)).metadata = { xenoSample: true };
+                F(FIXED.darkSteel, cy(0.11, 0.11, 0.04, 8, tool, 0, 0.31, 0.17));
             };
             if (sp.xenoParts) part('tool', sp.xenoParts.tool, () => sp.xenoParts.tool === 'classic' ? original() : xenoVariant('tool', sp.xenoParts.tool, roleContext, tool));
             else original();
@@ -1315,71 +1324,56 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     /** Sentry: hulking dark exo-armour, sealed helmet with a visor slit and a multi-lens lamp rig on top, hoses, pump shotgun. */
     function buildSentry(parts) {
         const R = root, K = 0.82;   // narrower than the first draft
-        for (const s of [-1, 1]) {
+        for (const s of [-1, 1]) part('suit', parts.suit, () => {
+            if (parts.suit !== 'classic') return sentryVariant('leg', parts.suit, roleContext, s);
             Z('pants', bx(0.32, 0.22, 0.46, R, s * 0.2, 0.11, 0.04));
             Z('armor', bx(0.28, 0.5, 0.3, R, s * 0.2, 0.5, 0));
             Z('accent', bx(0.3, 0.1, 0.32, R, s * 0.2, 0.78, 0));
-            Z('armor', bx(0.3, 0.5, 0.32, R, s * 0.2, 1.02, 0));
-            F(FIXED.darkSteel, bx(0.08, 0.36, 0.08, R, s * 0.34, 1.0, 0.1));
-        }
-        Z('pants', bx(0.62, 0.26, 0.4, R, 0, 1.3, 0));
-        Z('armor', bx(0.7, 0.12, 0.46, R, 0, 1.44, 0));
-        for (let i = 0; i < 3; i++) F(FIXED.darkSteel, bx(0.12, 0.16, 0.08, R, -0.22 + i * 0.22, 1.42, 0.24));
-        Z('armor', bx(0.74 * K, 0.7, 0.5 * K, R, 0, 1.84, 0));
-        Z('accent', bx(0.56, 0.3, 0.14, R, 0, 1.96, 0.28)); Z('armor', bx(0.44, 0.2, 0.14, R, 0, 1.62, 0.27));
-        for (const s of [-1, 1]) Z('visor', bx(0.06, 0.04, 0.03, R, s * 0.16, 2.06, 0.36));
-        Z('armor', bx(0.5, 0.56, 0.3, R, 0, 1.9, -0.4));                        // power pack
-        for (const s of [-1, 1]) F(FIXED.steel, cy(0.12, 0.12, 0.5, 8, R, s * 0.15, 1.95, -0.58));
+            const thigh = Z('armor', bx(0.3, 0.5, 0.32, R, s * 0.2, 1.02, 0));
+            F(FIXED.darkSteel, bx(0.08, 0.36, 0.08, thigh, s * 0.14, -0.02, 0.1));
+        });
+        part('suit', parts.suit, () => {
+            if (parts.suit !== 'classic') return sentryVariant('core', parts.suit, roleContext);
+            Z('pants', bx(0.62, 0.26, 0.4, R, 0, 1.3, 0));
+            Z('armor', bx(0.7, 0.12, 0.46, R, 0, 1.44, 0));
+            for (let i = 0; i < 3; i++) F(FIXED.darkSteel, bx(0.12, 0.16, 0.08, R, -0.22 + i * 0.22, 1.42, 0.24));
+            Z('armor', bx(0.74 * K, 0.7, 0.5 * K, R, 0, 1.84, 0)).metadata = { sentryTorso: true };
+            Z('accent', bx(0.56, 0.3, 0.14, R, 0, 1.96, 0.28)); Z('armor', bx(0.44, 0.2, 0.14, R, 0, 1.62, 0.27));
+            for (const s of [-1, 1]) Z('visor', bx(0.06, 0.04, 0.03, R, s * 0.16, 2.06, 0.36));
+            Z('armor', bx(0.5, 0.56, 0.3, R, 0, 1.9, -0.4));
+            for (const s of [-1, 1]) F(FIXED.steel, cy(0.12, 0.12, 0.5, 8, R, s * 0.15, 1.95, -0.58));
+        });
         for (const s of [-1, 1]) {
-            const shoulder = Z('armor', bx(0.36, 0.3, 0.42, R, s * 0.5, 2.14, 0));
-            Z('accent', bx(0.38, 0.05, 0.44, R, s * 0.5, 2.3, 0));
-            // Extra armour is parented to the shoulder, so it follows the arm during movement.
-            if (parts.shoulders === 'segmented') {
-                for (const x of [-0.085, 0.085]) Z('armor', bx(0.15, 0.08, 0.4, shoulder, x, 0.225, 0)).name = 'sentry_shoulder_detail';
-            } else if (parts.shoulders === 'heavy') {
-                Z('armor', bx(0.43, 0.13, 0.47, shoulder, s * 0.025, 0.245, 0)).name = 'sentry_shoulder_detail';
-                Z('accent', bx(0.39, 0.035, 0.4, shoulder, s * 0.025, 0.325, 0)).name = 'sentry_shoulder_detail';
-            }
-            Z('armor', bx(0.26, 0.42, 0.26, R, s * 0.52, 1.78, 0.05));
-            Z('accent', bx(0.28, 0.08, 0.28, R, s * 0.52, 1.54, 0.05));
-            Z('armor', bx(0.24, 0.34, 0.24, R, s * 0.5, 1.36, 0.3, [-0.9, 0, 0]));
-            Z('pants', bx(0.2, 0.16, 0.2, R, s * 0.48, 1.26, 0.56));
+            part('shoulders', parts.shoulders, () => {
+                if (parts.shoulders !== 'classic') return sentryVariant('shoulder', parts.shoulders, roleContext, s);
+                const shoulder = Z('armor', bx(0.36, 0.3, 0.42, R, s * 0.5, 2.14, 0));
+                shoulder.metadata = { sentryShoulder: s < 0 ? 'L' : 'R' };
+                Z('accent', bx(0.38, 0.05, 0.44, shoulder, 0, 0.16, 0));
+            });
+            part('suit', parts.suit, () => {
+                if (parts.suit !== 'classic') return sentryVariant('arm', parts.suit, roleContext, s);
+                Z('armor', bx(0.26, 0.42, 0.26, R, s * 0.52, 1.78, 0.05));
+                Z('accent', bx(0.28, 0.08, 0.28, R, s * 0.52, 1.54, 0.05));
+                Z('armor', bx(0.24, 0.34, 0.24, R, s * 0.5, 1.36, 0.3, [-0.9, 0, 0]));
+                Z('pants', bx(0.2, 0.16, 0.25, R, s * 0.48, 1.26, 0.58)).metadata = { sentryHand: s < 0 ? 'L' : 'R' };
+            });
         }
-        // long concealing cloak: hangs from the shoulders down the back and sides to the shins, hood-like collar
-        const cloak = '#2b3038';
-        if (parts.cloak === 'classic') {
-            F(cloak, bx(0.8, 1.3, 0.1, R, 0, 0.95, -0.3)).name = 'sentry_cloak_back';
-            for (const s of [-1, 1]) F(cloak, bx(0.12, 1.5, 0.6, R, s * 0.42, 1.1, -0.1));
-        } else {
-            // Keep these separate panels attached to the torso, not to the leg/arm auto-rig.
-            const drape = new (B().TransformNode)('sentry_cloak_drape', S); drape.parent = R;
-            if (parts.cloak === 'split') {
-                for (const s of [-1, 1]) F(cloak, bx(0.34, 1.3, 0.1, drape, s * 0.23, 0.95, -0.3)).name = 'sentry_cloak_back';
-                for (const s of [-1, 1]) F(cloak, bx(0.12, 1.5, 0.6, drape, s * 0.42, 1.1, -0.1));
-            } else {   // the full-length cape ends in uneven cloth strips
-                F(cloak, bx(0.8, 0.95, 0.1, drape, 0, 1.125, -0.3)).name = 'sentry_cloak_back';
-                for (const [x, height] of [[-0.3, 0.42], [-0.1, 0.2], [0.1, 0.5], [0.3, 0.27]])
-                    F(cloak, bx(0.2, height, 0.1, drape, x, 0.65 - height / 2, -0.3));
-                for (const s of [-1, 1]) F(cloak, bx(0.12, 1.5, 0.6, drape, s * 0.42, 1.1, -0.1));
-            }
-        }
-        F(cloak, bx(0.84, 0.08, 0.5, R, 0, 2.3, 0.0)); for (const s of [-1, 1]) F(cloak, bx(0.22, 0.56, 0.08, R, s * 0.3, 2.0, 0.34, [0, 0, s * 0.12]));   // thin shoulder mantle + front lapels
+        // The entire fabric silhouette is one torso-mounted, independently paintable part.
+        part('cloak', parts.cloak, () => sentryVariant('cloak', parts.cloak, roleContext));
         // sealed helmet with a built-in gas mask: snout, two cheek filters, hose into the back pack
         Z('helmet', cy(0.46, 0.52, 0.14, 8, R, 0, 2.24, 0));
         Z('helmet', bx(0.42, 0.48, 0.44, R, 0, 2.54, 0.0)).name = 'sentry_helmet'; Z('helmet', bx(0.46, 0.14, 0.46, R, 0, 2.78, -0.02));
         for (const s of [-1, 1]) Z('accent', bx(0.06, 0.28, 0.34, R, s * 0.24, 2.54, -0.04));
         Z('visor', bx(0.3, 0.06, 0.03, R, 0, 2.6, 0.23)).name = 'sentry_visor'; // visor slit
-        Z('accent', bx(0.22, 0.18, 0.16, R, 0, 2.4, 0.26)).name = 'sentry_mask'; // mask snout
-        for (const s of [-1, 1]) {
-            if (parts.respirator === 'reinforced') {
-                F(FIXED.darkSteel, cy(0.17, 0.17, 0.12, 8, R, s * 0.22, 2.4, 0.24, [0, 0, Math.PI / 2])).name = 'sentry_filter';
-                Z('accent', cy(0.14, 0.14, 0.02, 8, R, s * 0.29, 2.4, 0.24, [0, 0, Math.PI / 2]));
-                F(FIXED.darkSteel, cy(0.09, 0.09, 0.025, 8, R, s * 0.305, 2.4, 0.24, [0, 0, Math.PI / 2]));
-            } else if (parts.respirator === 'ribbed') {
-                F(FIXED.darkSteel, bx(0.12, 0.18, 0.17, R, s * 0.22, 2.4, 0.24)).name = 'sentry_filter';
-                for (const y of [2.35, 2.4, 2.45]) Z('accent', bx(0.13, 0.018, 0.18, R, s * 0.23, y, 0.24));
-            } else F(FIXED.darkSteel, cy(0.12, 0.12, 0.08, 6, R, s * 0.17, 2.4, 0.24, [0, 0, Math.PI / 2])).name = 'sentry_filter';
-        }
+        part('respirator', parts.respirator, () => {
+            if (parts.respirator !== 'classic') return sentryVariant('respirator', parts.respirator, roleContext);
+            const mask = Z('accent', bx(0.22, 0.18, 0.16, R, 0, 2.4, 0.26));
+            mask.name = 'sentry_mask'; mask.metadata = { sentryMask: true };
+            for (const s of [-1, 1]) {
+                const filter = F(FIXED.darkSteel, cy(0.12, 0.12, 0.08, 6, R, s * 0.17, 2.4, 0.24, [0, 0, Math.PI / 2]));
+                filter.name = 'sentry_filter'; filter.metadata = { sentryFilter: true };
+            }
+        });
         hose([0, 2.36, 0.34], [0.3, 2.1, 0.0], 0.06); hose([0.3, 2.1, 0.0], [0.2, 2.0, -0.42], 0.06);
         // Every option retains a group of real lenses in addition to the sealed helmet's visor slit.
         if (parts.optics === 'classic') {
@@ -1400,6 +1394,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         F(FIXED.gun, bx(1.1, 0.14, 0.1, gun, 0, 0, 0)); F(FIXED.gunLight, bx(0.36, 0.2, 0.14, gun, -0.2, 0.0, 0));
         F(FIXED.gun, cy(0.06, 0.06, 0.66, 6, gun, 0.55, 0.05, 0, [0, 0, Math.PI / 2])); F(FIXED.gun, cy(0.06, 0.06, 0.56, 6, gun, 0.5, -0.04, 0, [0, 0, Math.PI / 2]));
         F(FIXED.strap, bx(0.24, 0.1, 0.12, gun, 0.3, -0.03, 0)); F(FIXED.gun, bx(0.28, 0.28, 0.1, gun, -0.56, -0.12, 0));
+        for (const x of [-0.44, 0.42]) F(FIXED.gunLight, bx(0.16, 0.16, 0.2, gun, x, -0.03, 0));
         Z('visor', bx(0.08, 0.04, 0.04, gun, -0.1, 0.12, 0.08));
         function hose(a, b, d) {
             const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.hypot(dx, dy, dz);

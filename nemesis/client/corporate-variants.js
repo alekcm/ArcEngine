@@ -192,24 +192,42 @@ export function androidVariant(slot, variant, { scene, root: R, Z, F, bx, cy, sp
             for (const s of [-1, 1]) Z('hair', bx(0.07, s < 0 ? 0.35 : 0.43, 0.2, R, s * 0.18, 2.39, -0.04, [0, 0, s * 0.08]));
             Z('hair', bx(0.06, 0.21, 0.08, R, 0.15, 2.49, 0.12, [0, 0, 0.13]));
         }
-    } else if (slot === 'implants') {
-        if (variant === 'temples') {
-            Z('lights', bx(0.045, 0.045, 0.025, R, 0, 2.54, 0.18));
-            for (const s of [-1, 1]) {
-                F(C.darkSteel, bx(0.06, 0.18, 0.16, R, s * 0.17, 2.45, 0.02));
-                F(C.steel, cy(0.13, 0.13, 0.07, 8, R, s * 0.21, 2.48, 0.05, [0, 0, Math.PI / 2]));
-                Z('lights', cy(0.075, 0.075, 0.025, 8, R, s * 0.255, 2.48, 0.05, [0, 0, Math.PI / 2]));
-                F(C.steel, bx(0.035, 0.12, 0.025, R, s * 0.13, 2.4, 0.18, [0, 0, -s * 0.2]));
-            }
+    } else if (slot === 'boot') {
+        const s = target, utility = variant === 'utility';
+        // Each cut includes its own shoes, calves, thighs and waist, rather than overlays.
+        F(C.rubber, bx(utility ? 0.25 : 0.23, 0.07, utility ? 0.4 : 0.38, R, s * 0.15 * W, 0.035, 0.055))
+            .metadata = { androidTrouser: 'sole' };
+        Z('pants', bx(utility ? 0.24 : 0.22, 0.17, utility ? 0.37 : 0.35, R, s * 0.15 * W, 0.13, 0.05))
+            .metadata = { androidTrouser: 'shoe' };
+        Z('pants', bx(utility ? 0.24 : 0.22, 0.32, utility ? 0.27 : 0.25, R, s * 0.15 * W, 0.3, 0))
+            .metadata = { androidTrouser: 'boot' };
+        if (utility) F(C.darkSteel, bx(0.25, 0.08, 0.28, R, s * 0.15 * W, 0.39, 0));
+    } else if (slot === 'leg') {
+        const s = target, utility = variant === 'utility';
+        if (utility) {
+            Z('pants', bx(0.26 * W, 0.53, 0.28, R, s * 0.15 * W, 0.67, 0))
+                .metadata = { androidTrouser: 'shin' };
+            Z('pants', bx(0.27 * W, 0.49, 0.29, R, s * 0.15 * W, 1.12, 0))
+                .metadata = { androidTrouser: 'thigh' };
+            Z('pants', bx(0.14, 0.26, 0.19, R, s * 0.27 * W, 1.06, 0.04));
+            F(C.darkSteel, bx(0.15, 0.05, 0.2, R, s * 0.27 * W, 1.17, 0.04));
+            F(C.darkSteel, bx(0.21, 0.17, 0.05, R, s * 0.15 * W, 0.8, 0.15));
+            F(C.steel, bx(0.15, 0.025, 0.025, R, s * 0.15 * W, 0.8, 0.185));
         } else {
-            Z('lights', bx(0.045, 0.045, 0.025, R, 0, 2.54, 0.18));
-            for (const s of [-1, 1]) {
-                F(C.darkSteel, bx(0.065, 0.2, 0.14, R, s * 0.16, 2.34, 0.08));
-                F(C.steel, bx(0.075, 0.14, 0.06, R, s * 0.115, 2.34, 0.18, [0, 0, s * 0.2]));
-                Z('lights', bx(0.025, 0.09, 0.025, R, s * 0.115, 2.34, 0.22, [0, 0, s * 0.2]));
-                F(C.steel, bx(0.06, 0.13, 0.12, R, s * 0.18, 2.44, -0.02));
-            }
+            // Long, gently flared formal legs end over the shoes instead of at boot tops.
+            Z('pants', bx(0.27, 0.7, 0.29, R, s * 0.16, 0.56, 0, [0, 0, -s * 0.04]))
+                .metadata = { androidTrouser: 'shin' };
+            Z('pants', bx(0.25 * W, 0.49, 0.26, R, s * 0.15 * W, 1.12, 0))
+                .metadata = { androidTrouser: 'thigh' };
+            Z('pants', bx(0.29, 0.09, 0.3, R, s * 0.16, 0.25, 0));
+            F(C.darkSteel, bx(0.025, 0.75, 0.015, R, s * 0.15 * W, 0.96, 0.15));
         }
+    } else if (slot === 'pelvis') {
+        const utility = variant === 'utility';
+        Z('pants', bx((utility ? 0.6 : 0.58) * W, 0.27, utility ? 0.35 : 0.33, R, 0, 1.36, 0))
+            .metadata = { androidTrouser: 'waist' };
+        F(C.strap, bx(0.58 * W, 0.09, 0.36, R, 0, 1.5, 0));
+        F(C.steel, bx(utility ? 0.12 : 0.08, 0.07, 0.035, R, 0, 1.5, 0.2));
     } else if (slot === 'vest') {
         // The breast piece, back and side panels are all rebuilt; the shirt stays an independent zone.
         if (variant === 'lapels') {

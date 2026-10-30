@@ -456,9 +456,9 @@ test('LAB-04: every preset has distinct geometry, the original and other charact
     };
     const defaults = characterParts('labrat');
     const original = signature('labrat');
-    // Golden signature captured from the pre-redesign model, with mesh names deliberately excluded.
+    // Intentional patient redesign: longer connected neck and rebuilt loose hairstyle.
     assert.equal(createHash('sha256').update(JSON.stringify(original)).digest('hex'),
-        'e395aff43224917bcaa7955ea9ea363a0b135ccb3bad8d91b3a531158efa18d0');
+        '7f2ea3b12ae7b92d64e0aaa1faf5ced0d35a8b219c6b1272a58c76d574ff2bb2');
     assert.deepEqual(signature('labrat', defaults), original, 'omitting parts preserves the original model');
     for (const slot of LABRAT_PARTS) {
         const variants = slot.options.map(option => JSON.stringify(signature('labrat', { ...defaults, [slot.id]: option.id })));
@@ -471,7 +471,7 @@ test('LAB-04: every preset has distinct geometry, the original and other charact
     }
 });
 
-test('LAB-06: all 144 combinations keep the patient features, paint zones and a stable torn hem', async () => {
+test('LAB-06: 144 hair, blindfold, gown and implant combinations preserve the patient features', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     const { LABRAT_PARTS } = await import('../shared/appearance.mjs');
     const options = id => LABRAT_PARTS.find(slot => slot.id === id).options.map(option => option.id);
@@ -501,7 +501,7 @@ test('LAB-06: all 144 combinations keep the patient features, paint zones and a 
             assert.ok(meshes.some(m => m.material?.diffuseColor.toHexString() === '#F4F6F8'
                 && Math.abs(m.position.x - 0.1) < 0.001 && Math.abs(m.position.y - 1.9) < 0.001), label + ': ID tag');
             if (outfit === 'torn') {
-                const hem = meshes.filter(m => m.parent.name === 'lab_gown_hem');
+                const hem = meshes.filter(m => m.metadata?.labHemFlap);
                 assert.equal(hem.length, 4, label + ': separate irregular flaps');
                 ch.animate(0.1, true); ch.animate(0.2, true);
                 assert.ok(hem.every(m => m.parent.name === 'lab_gown_hem'), label + ': hem is not pulled onto a leg');
@@ -538,7 +538,7 @@ test('LAB-05: the table rebuilds a changed appearance and removes the old shadow
     scene.updateCharacters(view);
 });
 
-test('SENTRY-03: original geometry is preserved and each option changes real geometry', async () => {
+test('SENTRY-03: the repaired classic is stable and each option changes real geometry', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     const { SENTRY_PARTS, characterParts } = await import('../shared/appearance.mjs');
     const signature = parts => {
@@ -547,9 +547,9 @@ test('SENTRY-03: original geometry is preserved and each option changes real geo
         return result;
     };
     const original = signature();
-    // Captured from the original Sentry before the workshop, excluding names and materials.
+    // Classic retains the optics but repairs the cloak, two-handed grip and torso attachment.
     assert.equal(createHash('sha256').update(JSON.stringify(original)).digest('hex'),
-        'd18d5faf56cc3579416322e33583262a02b80bd4cfc4555bc69dccbb86baceab');
+        '196a759e02ca2e50eaef08f3ee8e58c343686e3f5cd72600209d21115adab861');
     const defaults = characterParts('sentry');
     assert.deepEqual(signature(defaults), original);
     for (const slot of SENTRY_PARTS) {
@@ -559,11 +559,11 @@ test('SENTRY-03: original geometry is preserved and each option changes real geo
     assert.deepEqual(signature(), original, 'presets do not mutate the original spec');
 });
 
-test('SENTRY-04: every combination retains the recognisable gear, colors and animated attachments', async () => {
+test('SENTRY-04: optics, respirator, shoulder and cloak combinations retain the gear and rig', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     const { SENTRY_PARTS } = await import('../shared/appearance.mjs');
     const options = id => SENTRY_PARTS.find(slot => slot.id === id).options.map(option => option.id);
-    const colors = { armor: '#123456', accent: '#234567', pants: '#345678', helmet: '#456789', visor: '#56789a' };
+    const colors = { armor: '#123456', accent: '#234567', pants: '#345678', helmet: '#456789', visor: '#56789a', cloak: '#6789ab' };
     let checked = 0;
     for (const optics of options('optics')) for (const respirator of options('respirator'))
         for (const shoulders of options('shoulders')) for (const cloak of options('cloak')) {
@@ -571,23 +571,21 @@ test('SENTRY-04: every combination retains the recognisable gear, colors and ani
             const ch = buildCharacter(scene.scene, 'sentry', {}, parts), meshes = ch.root.getChildMeshes();
             assert.ok(ch.zones.helmet.some(m => m.name === 'sentry_helmet'), label + ': sealed helmet');
             assert.ok(ch.zones.visor.some(m => m.name === 'sentry_visor'), label + ': visor');
-            assert.ok(ch.zones.accent.some(m => m.name === 'sentry_mask'), label + ': respirator');
-            assert.equal(meshes.filter(m => m.name === 'sentry_filter').length, 2, label + ': filters');
+            assert.ok(meshes.some(m => m.metadata?.sentryMask), label + ': respirator');
+            assert.equal(meshes.filter(m => m.metadata?.sentryFilter).length, 2, label + ': filters');
             assert.equal(ch.zones.visor.filter(m => m.name === 'sentry_lens').length, optics === 'cluster' ? 4 : 3, label + ': night optics');
-            assert.ok(meshes.some(m => m.name === 'sentry_cloak_back'), label + ': cape');
+            assert.ok(meshes.some(m => m.metadata?.sentryCloakBack), label + ': cape');
             const gun = ch.root.getDescendants().find(n => n.name === 'gun');
             assert.ok(gun && gun.getChildMeshes().length >= 6, label + ': weapon remains attached');
             if (cloak !== 'classic') {
                 const drape = ch.root.getDescendants().find(n => n.name === 'sentry_cloak_drape');
                 assert.ok(drape && drape.parent === ch.root, label + ': cape stays on the torso');
             }
-            if (shoulders !== 'classic') {
-                const extra = meshes.filter(m => m.name === 'sentry_shoulder_detail');
-                assert.equal(extra.length, 4, label + ': shoulder details');
-                assert.ok(extra.every(m => ['armL', 'armR'].includes(m.parent.parent?.name)), label + ': extra plates follow the arms');
-                ch.animate(0.1, true); ch.animate(0.2, true);
-                assert.ok(extra.every(m => ['armL', 'armR'].includes(m.parent.parent?.name)), label + ': plates remain attached in motion');
-            }
+            const pads = meshes.filter(m => m.metadata?.sentryShoulder);
+            assert.equal(pads.length, 2, label + ': independent shoulder supports');
+            assert.ok(pads.every(m => ['armL', 'armR'].includes(m.parent?.name)), label + ': shoulders follow the arms');
+            ch.animate(0.1, true); ch.animate(0.2, true);
+            assert.ok(pads.every(m => ['armL', 'armR'].includes(m.parent?.name)), label + ': shoulders remain attached in motion');
             ch.setColors(colors);
             for (const [zone, hex] of Object.entries(colors)) {
                 assert.ok(ch.zones[zone]?.length, label + ': ' + zone + ' is paintable');
@@ -631,24 +629,24 @@ const CREW_ORIGINAL_HASHES = {
     scientist: '776876a693bef7e043c3420d3c0b949ee4eb6f9a2157bb1e14be538df7d63682',
     // Medic: joined neck, concealed nose, and a cap enlarged to cover all hairstyles.
     medic: '88a921309c55ee344371f5c2b6a86d9d1df4f2f690e7de53b3bdf05f7dd4ba41',
-    // Janitor: joined neck and repaired original wand/nozzle attached to the moving hand.
-    janitor: '9bd8d5deb1421f0ac686b8838f26812104059fef63b818c1b24555deeaa3082c',
+    // Janitor: rebuilt single-canister vacuum and repaired moving wand/nozzle.
+    janitor: '0ab79fc75829bf654809c135da33e48e667275d1a5db8e30ae2958be13c1cb16',
     // Director: repaired neck; the original guard has joined joints, moving limbs and clears the sleeve.
     ceo: '2b2c18cf4d057f2eaf93bc20f9a7eabeb3a62e3762773b3d26768bd3301b5def',
     // The original Android only gains a connected neck.
     android: 'a877b7b9066f502aacb19e91aebe3978d773cb5acef01a1f9aae92bab7bc2f78',
-    // Convict: connected neck and shoulders; the original cuffs now have a moving chain.
-    convict: 'ba82cd12d70ada6a9f586ee884a220cfab97d128884d3967fcd58f4210bd01a6',
+    // Convict: connected neck, slightly enlarged shoulder implants and moving cuffs.
+    convict: 'e14fb488217366ae239989f65ba1e4b3adaccfca423c5bb33c55354a821618e9',
     // Psychologist: connected neck and shoulders, drones moved clear of the headsets.
     psych: '25d68589b6316181fd362110094614b1d5d14b408e943924f4ba455ad490f167',
     // Hunter: connected neck/waist, hands posed around the rifle, Laika rigged with a joined neck.
     bounty: 'bc9c9ce274d40cdf9329a0cce7dfa5d667c50b146cba35650ef710cc695c621c',
     // Captain: connected neck, waist and shoulders, with the original suit retained.
     captain: '28e82c72331869319dc21daa40a51458603d9ea4e621d101dc571bb5f808811b',
-    // Survivor: joined neck and sling, antenna moved clear of hair, pistol grip repaired.
-    survivor: '308c848db234a25d2dc594d5c6a2b40b929ada85f664d61c2e44f869e78e63d2',
-    // Xenobiologist: neck and shoulders joined, hand-held vial attached to the hand and probe kept whole.
-    xeno: '671c6aa27b616f949099415d43e727a695084f1793909be030180853238abd64',
+    // Survivor: rebuilt original short hair and smaller bandana tie; other hair is unchanged.
+    survivor: '2982790e25c0346601b5d059191fa8cd5451730dc07598dbd79699f4bdea73f8',
+    // Xenobiologist: original sample moved into view ahead of the hand.
+    xeno: 'f05cc6a9d3280e385e1240d2c348380478c6c9e8c833d70c22cea0c7398e993b',
 };
 
 test('CREW-03: original miniatures stay stable after joint repairs and every option changes real geometry', async () => {
@@ -769,19 +767,35 @@ test('CREW-08: the Survivor’s bandana ties remain outside every radio pack and
     }
 });
 
+// Role stress tests create thousands of meshes. Give each test its own headless scene so
+// Babylon's per-scene caches can be released between roles rather than accumulating in the
+// shared board scene until Node runs out of memory.
+const roleTestScene = { scene: null, engine: null };
+test.beforeEach(t => {
+    if (!t.name.startsWith('ROLE-')) return;
+    roleTestScene.engine = new B.NullEngine();
+    roleTestScene.scene = new B.Scene(roleTestScene.engine);
+});
+test.afterEach(t => {
+    if (!t.name.startsWith('ROLE-')) return;
+    roleTestScene.scene.dispose();
+    roleTestScene.engine.dispose();
+    roleTestScene.scene = roleTestScene.engine = null;
+});
+
 test('ROLE-01: reworked crew options replace the original meshes, rather than overlaying them', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     const { CREW_PARTS, characterParts } = await import('../shared/appearance.mjs');
     const partMeshes = (ch, slot) => ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
     const signature = meshes => geometrySignature({ root: { getChildMeshes: () => meshes } });
     for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android', 'convict', 'psych', 'bounty', 'captain', 'survivor', 'xeno']) for (const slot of CREW_PARTS[id]) {
-        const original = buildCharacter(scene.scene, id, {}, characterParts(id));
+        const original = buildCharacter(roleTestScene.scene, id, {}, characterParts(id));
         const base = partMeshes(original, slot.id);
         assert.ok(base.length >= 2, `${id}/${slot.id}: the original part is marked`);
         assert.ok(base.every(m => m.metadata.appearancePart.variant === 'classic'));
         const old = signature(base);
         for (const option of slot.options.slice(1)) {
-            const ch = buildCharacter(scene.scene, id, {}, { [slot.id]: option.id });
+            const ch = buildCharacter(roleTestScene.scene, id, {}, { [slot.id]: option.id });
             const selected = partMeshes(ch, slot.id);
             assert.ok(selected.length >= 2, `${id}/${slot.id}/${option.id}: complete replacement`);
             assert.ok(selected.every(m => m.metadata.appearancePart.variant === option.id), `${id}/${slot.id}: no original parts remain`);
@@ -799,7 +813,7 @@ test('ROLE-02: sealed helmets cover the head, while panoramic glass and welding 
         ['soldier', 'helmet', 'braced', false], ['soldier', 'helmet', 'caged', true],
         ['mechanic', 'shield', 'framed', false], ['mechanic', 'shield', 'twinlamp', true],
     ]) {
-        const ch = buildCharacter(scene.scene, id, {}, { [slot]: choice });
+        const ch = buildCharacter(roleTestScene.scene, id, {}, { [slot]: choice });
         const head = ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
         assert.equal(head.some(m => (ch.zones.skin || []).includes(m)), visibleFace, `${id}/${choice}: face visibility`);
         ch.root.dispose();
@@ -810,7 +824,7 @@ test('ROLE-03: replacement shoulder armour, rifles and welders stay on their ani
     const { buildCharacter } = await import('../client/characters.js');
     const hasAncestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
     for (const shoulders of ['layered', 'extended']) for (const rifle of ['classic', 'compact', 'modular']) {
-        const ch = buildCharacter(scene.scene, 'soldier', {}, { shoulders, rifle, suit: 'heavy' });
+        const ch = buildCharacter(roleTestScene.scene, 'soldier', {}, { shoulders, rifle, suit: 'heavy' });
         const plates = ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === 'shoulders');
         assert.ok(plates.some(m => hasAncestor(m, 'armL')) && plates.some(m => hasAncestor(m, 'armR')));
         assert.ok(plates.every(m => hasAncestor(m, 'armL') || hasAncestor(m, 'armR')));
@@ -820,7 +834,7 @@ test('ROLE-03: replacement shoulder armour, rifles and welders stay on their ani
         ch.root.dispose();
     }
     for (const welder of ['classic', 'torch', 'cutter']) {
-        const ch = buildCharacter(scene.scene, 'mechanic', {}, { welder });
+        const ch = buildCharacter(roleTestScene.scene, 'mechanic', {}, { welder });
         const meshes = ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === 'welder');
         assert.ok(meshes.length && meshes.every(m => hasAncestor(m, 'armR')), `${welder}: follows the right hand`);
         ch.animate(0.1, true); ch.animate(0.2, true);
@@ -862,7 +876,7 @@ test('ROLE-06: Scout and Pilot replacement equipment follows the correct animate
     const { buildCharacter } = await import('../client/characters.js');
     const hasAncestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
     for (const hair of ['classic', 'braid', 'tied']) for (const vest of ['classic', 'plated', 'pouches']) {
-        const ch = buildCharacter(scene.scene, 'scout', {}, { hair, vest });
+        const ch = buildCharacter(roleTestScene.scene, 'scout', {}, { hair, vest });
         const meshes = ch.root.getChildMeshes(), find = name => meshes.find(m => m.name === name);
         for (const t of [0, 0.1, 0.2, 0.3, 0.4]) {
             ch.animate(t, true); for (const m of meshes) m.computeWorldMatrix(true);
@@ -872,7 +886,7 @@ test('ROLE-06: Scout and Pilot replacement equipment follows the correct animate
         ch.root.dispose();
     }
     for (const shoulders of ['classic', 'compact', 'segmented']) for (const bracer of ['classic', 'display', 'cells']) for (const rifle of ['classic', 'carbine', 'long']) {
-        const ch = buildCharacter(scene.scene, 'scout', {}, { shoulders, bracer, rifle });
+        const ch = buildCharacter(roleTestScene.scene, 'scout', {}, { shoulders, bracer, rifle });
         const part = slot => ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
         assert.ok(part('shoulders').some(m => hasAncestor(m, 'armL')) && part('shoulders').some(m => hasAncestor(m, 'armR')));
         assert.ok(part('bracer').every(m => hasAncestor(m, 'armL')));
@@ -884,7 +898,7 @@ test('ROLE-06: Scout and Pilot replacement equipment follows the correct animate
         ch.root.dispose();
     }
     for (const sidearm of ['classic', 'compact', 'long']) for (const coat of ['classic', 'lapels', 'long']) {
-        const ch = buildCharacter(scene.scene, 'pilot', {}, { sidearm, coat });
+        const ch = buildCharacter(roleTestScene.scene, 'pilot', {}, { sidearm, coat });
         const weapons = ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === 'sidearm');
         const gun = ch.root.getDescendants().find(n => n.name === 'gun');
         assert.ok(weapons.length && weapons.every(m => hasAncestor(m, 'gun') && hasAncestor(m, 'armR')), sidearm + ': sidearm in the moving hand');
@@ -911,7 +925,7 @@ test('ROLE-07: Hacker masks seal the face and neck; cyber-arms and smartguns fol
     const { buildCharacter } = await import('../client/characters.js');
     const hasAncestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
     for (const hood of ['classic', 'rimmed', 'long']) for (const mask of ['classic', 'seams', 'vented']) {
-        const ch = buildCharacter(scene.scene, 'hacker', {}, { hood, mask });
+        const ch = buildCharacter(roleTestScene.scene, 'hacker', {}, { hood, mask });
         const meshes = ch.root.getChildMeshes(), skin = ch.zones.skin;
         ch.setColors({ skin: '#ffbbaa', hood: '#637a51', lights: '#32ffee' });
         assert.equal(meshes.find(m => m.name === 'hacker_face_underlay').material.diffuseColor.toHexString().toLowerCase(), '#1a1d21', 'the balaclava stays opaque when skin is repainted');
@@ -925,20 +939,20 @@ test('ROLE-07: Hacker masks seal the face and neck; cyber-arms and smartguns fol
             // Cast through the entire face and neck, rather than checking only the lighted visor.
             for (const [x, yy] of [-0.13, 0, 0.13].flatMap(x => [2.3, 2.4, 2.5, 2.58].map(yy => [x, yy])).concat([[-0.05, 2.18], [0, 2.22], [0.05, 2.18]])) {
                 const ray = new B.Ray(new B.Vector3(x, yy + y, 1), new B.Vector3(0, 0, -1), 2);
-                const hit = scene.scene.pickWithRay(ray, relevant);
+                const hit = roleTestScene.scene.pickWithRay(ray, relevant);
                 assert.ok(hit?.hit && !skin.includes(hit.pickedMesh), `${hood}/${mask}: covered at ${x},${yy} while moving; hit=${hit?.hit} mesh=${hit?.pickedMesh?.name} part=${hit?.pickedMesh?.metadata?.appearancePart?.slot}`);
             }
             // The hood and gasket must also close the sides of the head and neck.
             for (const sign of [-1, 1]) for (const [yy, z] of [[2.34, -0.08], [2.5, 0.05], [2.4, 0.15], [2.2, 0]]) {
                 const ray = new B.Ray(new B.Vector3(sign, yy + y, z), new B.Vector3(-sign, 0, 0), 2);
-                const hit = scene.scene.pickWithRay(ray, relevant);
+                const hit = roleTestScene.scene.pickWithRay(ray, relevant);
                 assert.ok(hit?.hit && !skin.includes(hit.pickedMesh), `${hood}/${mask}: covered side ${sign},${yy},${z}`);
             }
         }
         ch.root.dispose();
     }
     for (const arms of ['classic', 'ribbed', 'terminal']) for (const smartgun of ['compact', 'rail']) {
-        const ch = buildCharacter(scene.scene, 'hacker', {}, { arms, smartgun });
+        const ch = buildCharacter(roleTestScene.scene, 'hacker', {}, { arms, smartgun });
         const part = slot => ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
         const limbs = part('arms'), weapon = part('smartgun');
         assert.ok(limbs.some(m => hasAncestor(m, 'armL')) && limbs.some(m => hasAncestor(m, 'armR')));
@@ -955,14 +969,14 @@ test('ROLE-07: Hacker masks seal the face and neck; cyber-arms and smartguns fol
 
 test('ROLE-08: replacement wheelchairs support the seated Scientist and animate all four grounded wheels', async () => {
     const { buildCharacter } = await import('../client/characters.js');
-    const original = buildCharacter(scene.scene, 'scientist');
+    const original = buildCharacter(roleTestScene.scene, 'scientist');
     const base = original.root.getChildMeshes(), named = n => base.find(m => m.name === n);
     for (const m of base) m.computeWorldMatrix(true);
     assert.ok(named('scientist_neck_joint').intersectsMesh(named('scientist_head'), false) && named('scientist_neck_joint').intersectsMesh(named('scientist_torso'), false), 'original Scientist has a connected neck');
     original.root.dispose();
     for (const chair of ['spoked', 'guards']) for (const tablet of ['classic', 'panel', 'scanner'])
         for (const scanner of ['classic', 'probe', 'spectrometer']) for (const coat of ['classic', 'field', 'lab']) {
-            const ch = buildCharacter(scene.scene, 'scientist', {}, { chair, tablet, scanner, coat });
+            const ch = buildCharacter(roleTestScene.scene, 'scientist', {}, { chair, tablet, scanner, coat });
             const meshes = ch.root.getChildMeshes(), byName = n => meshes.find(m => m.name === n);
             ch.root.scaling.setAll(1); // distances and ground clearance use the builder's units
             const component = n => meshes.find(m => m.metadata?.chairComponent === n);
@@ -1009,7 +1023,7 @@ test('ROLE-08: replacement wheelchairs support the seated Scientist and animate 
 test('ROLE-09: the Pilot’s fur-trimmed coats stay closed and joined throughout a stride', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     for (const coat of ['classic', 'long']) for (const sidearm of ['classic', 'compact', 'long']) {
-        const ch = buildCharacter(scene.scene, 'pilot', {}, { coat, sidearm });
+        const ch = buildCharacter(roleTestScene.scene, 'pilot', {}, { coat, sidearm });
         ch.root.scaling.setAll(1);
         const meshes = ch.root.getChildMeshes();
         const panel = meshes.find(m => m.metadata?.pilotCoatComponent === 'skirt');
@@ -1030,7 +1044,7 @@ test('ROLE-09: the Pilot’s fur-trimmed coats stay closed and joined throughout
             for (const x of [-0.1, 0, 0.1]) for (const y of coat === 'long' ? [0.93, 1.1, 1.25, 1.4] : [1.1, 1.25, 1.4]) {
                 for (const side of [-1, 1]) {
                     const ray = new B.Ray(new B.Vector3(x, y + ch.root.position.y, side), new B.Vector3(0, 0, -side), 2);
-                    const hit = scene.scene.pickWithRay(ray, m => m === panel || legMeshes.includes(m));
+                    const hit = roleTestScene.scene.pickWithRay(ray, m => m === panel || legMeshes.includes(m));
                     assert.ok(hit?.hit && hit.pickedMesh === panel, `${coat}: continuous ${side > 0 ? 'front' : 'back'} at ${x},${y} while moving`);
                 }
             }
@@ -1043,7 +1057,7 @@ test('ROLE-10: the Medic keeps her respirator, connected coat and injector in ev
     const { buildCharacter } = await import('../client/characters.js');
     const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
     for (const hair of ['classic', 'tied', 'wavy']) for (const mask of ['classic', 'filters', 'valve']) for (const coat of ['classic', 'field', 'surgical']) {
-        const ch = buildCharacter(scene.scene, 'medic', {}, { hair, mask, coat });
+        const ch = buildCharacter(roleTestScene.scene, 'medic', {}, { hair, mask, coat });
         ch.root.scaling.setAll(1);
         const meshes = ch.root.getChildMeshes(), name = n => meshes.find(m => m.name === n);
         const maskMeshes = meshes.filter(m => m.metadata?.appearancePart?.slot === 'mask');
@@ -1057,7 +1071,7 @@ test('ROLE-10: the Medic keeps her respirator, connected coat and injector in ev
             assert.ok(neck.intersectsMesh(name('medic_head'), false) && neck.intersectsMesh(name('medic_torso'), false), `${hair}/${mask}/${coat}: joined neck`);
             for (const x of [-0.07, 0, 0.07]) for (const y of [2.29, 2.35, 2.39]) {
                 const ray = new B.Ray(new B.Vector3(x, y + ch.root.position.y, 1), new B.Vector3(0, 0, -1), 2);
-                const hit = scene.scene.pickWithRay(ray, m => m === name('medic_head') || maskMeshes.includes(m));
+                const hit = roleTestScene.scene.pickWithRay(ray, m => m === name('medic_head') || maskMeshes.includes(m));
                 assert.ok(hit?.hit && maskMeshes.includes(hit.pickedMesh), `${hair}/${mask}: nose and mouth covered at ${x},${y}`);
             }
             for (const side of ['L', 'R']) {
@@ -1075,7 +1089,7 @@ test('ROLE-10: the Medic keeps her respirator, connected coat and injector in ev
         ch.root.dispose();
     }
     for (const injector of ['classic', 'compact', 'infuser']) {
-        const ch = buildCharacter(scene.scene, 'medic', {}, { injector });
+        const ch = buildCharacter(roleTestScene.scene, 'medic', {}, { injector });
         const meshes = ch.root.getChildMeshes(), hand = meshes.find(m => m.name === 'medic_hand_L');
         const tool = meshes.filter(m => m.metadata?.appearancePart?.slot === 'injector');
         assert.ok(tool.every(m => ancestor(m, 'gun') && ancestor(m, 'armL')), `${injector}: tool follows the left hand`);
@@ -1091,7 +1105,7 @@ test('ROLE-11: every Janitor vacuum and wand stays connected to the moving hand'
     const { buildCharacter } = await import('../client/characters.js');
     const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
     for (const vacuum of ['classic', 'ribbed', 'twin']) for (const wand of ['classic', 'brush', 'nozzle']) for (const outfit of ['classic', 'utility', 'protective']) {
-        const ch = buildCharacter(scene.scene, 'janitor', {}, { vacuum, wand, outfit });
+        const ch = buildCharacter(roleTestScene.scene, 'janitor', {}, { vacuum, wand, outfit });
         // Exercise transforms used by figures on the board, not just the origin in the workshop.
         ch.root.position.x = 1.3; ch.root.position.z = -0.8; ch.root.rotation.y = 0.7;
         const meshes = ch.root.getChildMeshes(), name = n => meshes.find(m => m.name === n);
@@ -1129,7 +1143,7 @@ test('ROLE-12: the Director’s bodyguard is a complete supported robot with ani
     const { buildCharacter } = await import('../client/characters.js');
     const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
     for (const robot of ['classic', 'sensor', 'armored']) for (const collar of ['classic', 'trim', 'high']) for (const coat of ['classic', 'tailcoat', 'double']) {
-        const ch = buildCharacter(scene.scene, 'ceo', {}, { robot, collar, coat });
+        const ch = buildCharacter(roleTestScene.scene, 'ceo', {}, { robot, collar, coat });
         ch.root.scaling.setAll(1);
         const meshes = ch.root.getChildMeshes(), name = n => meshes.find(m => m.name === n);
         const part = n => meshes.find(m => m.metadata?.bodyguardComponent === n);
@@ -1175,15 +1189,15 @@ test('ROLE-12: the Director’s bodyguard is a complete supported robot with ani
 test('ROLE-13: Android clothing, synthetic arms and both characters’ sidearms remain connected', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
-    for (const hair of ['classic', 'tied', 'bob']) for (const implants of ['classic', 'temples', 'jaw'])
+    for (const hair of ['classic', 'tied', 'bob']) for (const trousers of ['classic', 'tailored', 'utility'])
         for (const vest of ['classic', 'lapels', 'pockets']) for (const arms of ['classic', 'rolled', 'synthetic']) {
-            const ch = buildCharacter(scene.scene, 'android', {}, { hair, implants, vest, arms });
+            const ch = buildCharacter(roleTestScene.scene, 'android', {}, { hair, trousers, vest, arms });
             const meshes = ch.root.getChildMeshes(), byName = n => meshes.find(m => m.name === n);
             const component = n => meshes.find(m => m.metadata?.androidArmComponent === n);
-            assert.ok(ch.zones.lights.some(m => m.metadata?.appearancePart?.slot === 'implants'), 'a visible implant is paintable');
+            assert.ok(ch.zones.lights.length >= 2, 'the original synthetic details stay paintable');
             for (const t of [0, 0.1, 0.2, 0.3]) {
                 ch.animate(t, t > 0); for (const m of meshes) m.computeWorldMatrix(true);
-                assert.ok(byName('android_neck_joint').intersectsMesh(byName('android_head'), false) && byName('android_neck_joint').intersectsMesh(byName('android_torso'), false), `${hair}/${implants}/${vest}: joined neck`);
+                assert.ok(byName('android_neck_joint').intersectsMesh(byName('android_head'), false) && byName('android_neck_joint').intersectsMesh(byName('android_torso'), false), `${hair}/${trousers}/${vest}: joined neck`);
                 for (const side of ['L', 'R']) {
                     const upper = component('upper' + side), elbow = component('elbow' + side), forearm = component('forearm' + side), hand = component('hand' + side);
                     assert.ok(upper && forearm && hand && [upper, forearm, hand].every(m => ancestor(m, 'arm' + side)), `${arms}: supported ${side} arm`);
@@ -1196,7 +1210,7 @@ test('ROLE-13: Android clothing, synthetic arms and both characters’ sidearms 
         }
     for (const [id, choices] of [['ceo', ['classic', 'compact', 'ceremonial']], ['android', ['classic', 'compact', 'pulse']]])
         for (const sidearm of choices) for (const arms of id === 'android' ? ['classic', 'rolled', 'synthetic'] : ['classic']) {
-            const ch = buildCharacter(scene.scene, id, {}, { sidearm, arms });
+            const ch = buildCharacter(roleTestScene.scene, id, {}, { sidearm, arms });
             const meshes = ch.root.getChildMeshes(), tool = meshes.filter(m => m.metadata?.appearancePart?.slot === 'sidearm');
             const hand = id === 'ceo' ? meshes.find(m => m.name === 'ceo_hand_R') : meshes.find(m => m.metadata?.androidArmComponent === 'handR');
             const gun = ch.root.getDescendants().find(n => n.name === 'gun');
@@ -1243,7 +1257,7 @@ test('ROLE-14: both Director and bodyguard stand fully on their preview plinth',
 test('ROLE-15: the Medic’s cap encloses the crown of every hairstyle', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     for (const hair of ['classic', 'tied', 'wavy']) {
-        const ch = buildCharacter(scene.scene, 'medic', {}, { hair });
+        const ch = buildCharacter(roleTestScene.scene, 'medic', {}, { hair });
         ch.root.scaling.setAll(1);
         const meshes = ch.root.getChildMeshes(), cap = meshes.find(m => m.metadata?.medicCapCrown);
         const locks = meshes.filter(m => m.metadata?.appearancePart?.slot === 'hair');
@@ -1259,7 +1273,7 @@ test('ROLE-15: the Medic’s cap encloses the crown of every hairstyle', async (
                 }
             }
             for (const x of [-0.15, 0, 0.15]) for (const z of [-0.14, 0, 0.14]) {
-                const hit = scene.scene.pickWithRay(new B.Ray(new B.Vector3(x, 3.2 + ch.root.position.y, z), new B.Vector3(0, -1, 0), 1), m => m === cap || locks.includes(m));
+                const hit = roleTestScene.scene.pickWithRay(new B.Ray(new B.Vector3(x, 3.2 + ch.root.position.y, z), new B.Vector3(0, -1, 0), 1), m => m === cap || locks.includes(m));
                 assert.equal(hit?.pickedMesh, cap, `${hair}: the cap, not hair, is visible from above`);
             }
         }
@@ -1270,7 +1284,7 @@ test('ROLE-15: the Medic’s cap encloses the crown of every hairstyle', async (
 test('ROLE-16: the Janitor has distinct, connected workwear and independently paintable equipment', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     for (const outfit of ['utility', 'protective']) for (const vacuum of ['classic', 'ribbed', 'twin']) {
-        const ch = buildCharacter(scene.scene, 'janitor', {}, { outfit, vacuum });
+        const ch = buildCharacter(roleTestScene.scene, 'janitor', {}, { outfit, vacuum });
         ch.root.scaling.setAll(1);
         const meshes = ch.root.getChildMeshes(), torso = meshes.find(m => m.metadata?.janitorTorso);
         const gear = ch.zones.gear.filter(m => m.metadata?.appearancePart?.slot === 'vacuum');
@@ -1304,8 +1318,8 @@ test('ROLE-17: the Convict retains connected implants, arms and a chain between 
     const { buildCharacter } = await import('../client/characters.js');
     const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
     for (const muzzle of ['classic', 'vents', 'guard']) for (const plates of ['classic', 'shoulder', 'asymmetric'])
-        for (const chains of ['classic', 'heavy', 'links']) for (const arms of ['classic', 'prosthetic', 'cybernetic']) {
-            const ch = buildCharacter(scene.scene, 'convict', {}, { muzzle, plates, chains, arms });
+        for (const chains of ['classic', 'heavy', 'links']) for (const tattoos of ['classic', 'tribal', 'prison']) {
+            const ch = buildCharacter(roleTestScene.scene, 'convict', {}, { muzzle, plates, chains, tattoos });
             ch.root.position.x = 1.3; ch.root.position.z = -0.8; ch.root.rotation.y = 0.7;
             const meshes = ch.root.getChildMeshes(), name = n => meshes.find(m => m.name === n), component = n => meshes.find(m => m.metadata?.convictArm === n);
             const cuffs = ['L', 'R'].map(side => meshes.find(m => m.metadata?.convictCuff === side));
@@ -1318,8 +1332,8 @@ test('ROLE-17: the Convict retains connected implants, arms and a chain between 
                 assert.ok(name('convict_neck_joint').intersectsMesh(name('convict_head'), true) && name('convict_neck_joint').intersectsMesh(name('convict_torso'), true), 'head and torso joined');
                 for (const [i, side] of ['L', 'R'].entries()) {
                     const upper = component('upper' + side), forearm = component('forearm' + side), hand = component('hand' + side);
-                    assert.ok([upper, forearm, hand, cuffs[i]].every(m => m && ancestor(m, 'arm' + side)), `${arms}/${chains}: ${side} assembly follows arm`);
-                    assert.ok(upper.intersectsMesh(name('convict_torso'), true) && upper.intersectsMesh(forearm, true) && forearm.intersectsMesh(hand, true), `${arms}: joined ${side} arm`);
+                    assert.ok([upper, forearm, hand, cuffs[i]].every(m => m && ancestor(m, 'arm' + side)), `${tattoos}/${chains}: ${side} assembly follows arm`);
+                    assert.ok(upper.intersectsMesh(name('convict_torso'), true) && upper.intersectsMesh(forearm, true) && forearm.intersectsMesh(hand, true), `${tattoos}: joined ${side} arm`);
                     assert.ok(cuffs[i].intersectsMesh(hand, true), `${chains}: ${side} cuff surrounds hand`);
                 }
                 const a = B.Vector3.TransformCoordinates(new B.Vector3(width * 0.45, 0, 0.1), cuffs[0].getWorldMatrix());
@@ -1338,7 +1352,7 @@ test('ROLE-18: the Psychologist’s clothing, arms and two complete drones stay 
     const ancestor = (m, name) => { for (let n = m.parent; n; n = n.parent) if (n.name === name) return true; return false; };
     for (const vest of ['classic', 'clinical', 'harness']) for (const sleeves of ['classic', 'rolled', 'tech'])
         for (const drones of ['classic', 'rotors', 'array']) for (const hair of ['classic', 'layered', 'long']) {
-            const ch = buildCharacter(scene.scene, 'psych', {}, { vest, sleeves, drones, hair });
+            const ch = buildCharacter(roleTestScene.scene, 'psych', {}, { vest, sleeves, drones, hair });
             ch.root.scaling.setAll(1);
             const meshes = ch.root.getChildMeshes(), name = n => meshes.find(m => m.name === n), component = n => meshes.find(m => m.metadata?.psychArm === n);
             const bots = ch.root.getChildren().filter(n => n.name === 'drone');
@@ -1369,7 +1383,7 @@ test('ROLE-18: the Psychologist’s clothing, arms and two complete drones stay 
 test('ROLE-19: the Psychologist’s hovering drones do not intersect her head or headset', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     for (const hair of ['classic', 'layered', 'long']) for (const headset of ['classic', 'dual', 'sensor']) for (const drones of ['classic', 'rotors', 'array']) {
-        const ch = buildCharacter(scene.scene, 'psych', {}, { hair, headset, drones });
+        const ch = buildCharacter(roleTestScene.scene, 'psych', {}, { hair, headset, drones });
         ch.root.scaling.setAll(1);
         const meshes = ch.root.getChildMeshes(), heads = meshes.filter(m => m.name === 'psych_head' || ['hair', 'headset'].includes(m.metadata?.appearancePart?.slot));
         const bots = ch.root.getChildren().filter(n => n.name === 'drone');
@@ -1385,22 +1399,22 @@ test('ROLE-19: the Psychologist’s hovering drones do not intersect her head or
 test('ROLE-20: Convict masks cover the mouth and Psychologist glasses remain visible', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     for (const muzzle of ['classic', 'vents', 'guard']) {
-        const ch = buildCharacter(scene.scene, 'convict', {}, { muzzle }); ch.root.scaling.setAll(1);
+        const ch = buildCharacter(roleTestScene.scene, 'convict', {}, { muzzle }); ch.root.scaling.setAll(1);
         const meshes = ch.root.getChildMeshes(), mask = meshes.filter(m => m.metadata?.appearancePart?.slot === 'muzzle'), head = meshes.find(m => m.name === 'convict_head');
         for (const m of [head, ...mask]) { m.isPickable = true; m.computeWorldMatrix(true); }
         for (const x of [-0.07, 0, 0.07]) for (const y of [2.3, 2.36]) {
-            const hit = scene.scene.pickWithRay(new B.Ray(new B.Vector3(x, y, 1), new B.Vector3(0, 0, -1), 2), m => m === head || mask.includes(m));
+            const hit = roleTestScene.scene.pickWithRay(new B.Ray(new B.Vector3(x, y, 1), new B.Vector3(0, 0, -1), 2), m => m === head || mask.includes(m));
             assert.ok(hit?.hit && mask.includes(hit.pickedMesh), `${muzzle}: mouth covered`);
         }
         ch.root.dispose();
     }
     for (const hair of ['classic', 'layered', 'long']) for (const headset of ['classic', 'dual', 'sensor']) {
-        const ch = buildCharacter(scene.scene, 'psych', {}, { hair, headset }); ch.root.scaling.setAll(1);
+        const ch = buildCharacter(roleTestScene.scene, 'psych', {}, { hair, headset }); ch.root.scaling.setAll(1);
         const meshes = ch.root.getChildMeshes(), glasses = meshes.filter(m => m.metadata?.psychGlasses), candidates = meshes.filter(m => m.name === 'psych_head' || m.metadata?.psychGlasses || ['hair', 'headset'].includes(m.metadata?.appearancePart?.slot));
         assert.equal(glasses.length, 2);
         for (const m of candidates) { m.isPickable = true; m.computeWorldMatrix(true); }
         for (const x of [-0.08, 0.08]) {
-            const hit = scene.scene.pickWithRay(new B.Ray(new B.Vector3(x, 2.46, 1), new B.Vector3(0, 0, -1), 2), m => candidates.includes(m));
+            const hit = roleTestScene.scene.pickWithRay(new B.Ray(new B.Vector3(x, 2.46, 1), new B.Vector3(0, 0, -1), 2), m => candidates.includes(m));
             assert.ok(glasses.includes(hit?.pickedMesh), `${hair}/${headset}: glasses unobstructed`);
         }
         ch.root.dispose();

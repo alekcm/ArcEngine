@@ -90,17 +90,34 @@ export function bountyArmor(slot, variant, { root: R, Z, F, bx, fixed: C }, W, s
     }
 }
 
-export function captainArmor(slot, variant, { root: R, Z, F, bx, fixed: C }, W, side) {
+export function captainArmor(slot, variant, { root: R, Z, F, bx, cy, fixed: C }, W, side) {
     if (slot === 'shoulder') {
         const s = side;
         if (variant === 'layered') {
-            Z('armor', bx(0.31 * W, 0.17, 0.38, R, s * 0.4 * W, 2.15, 0));
-            Z('armor', bx(0.33 * W, 0.08, 0.38, R, s * 0.42 * W, 2.25, 0));
-            F(C.darkSteel, bx(0.25 * W, 0.2, 0.28, R, s * 0.42 * W, 1.98, 0.02));
+            // An officer's epaulette is an entire flatter shoulder shape, with raised rank
+            // bars on its top and front. All pieces share the moving shoulder support.
+            const pad = Z('armor', bx(0.3 * W, 0.16, 0.36, R, s * 0.4 * W, 2.13, 0));
+            pad.metadata = { captainShoulder: s < 0 ? 'L' : 'R' };
+            F(C.darkSteel, bx(0.29 * W, 0.035, 0.37, pad, 0, 0.09, 0));
+            F('#c9a227', bx(0.27 * W, 0.025, 0.29, pad, 0, 0.115, 0));
+            for (const z of [-0.09, 0, 0.09]) F(C.darkSteel, bx(0.16 * W, 0.02, 0.035, pad, 0, 0.134, z));
+            F('#c9a227', bx(0.19 * W, 0.045, 0.025, pad, 0, 0.03, 0.19));
+            Z('armor', bx(0.22 * W, 0.24, 0.29, pad, s * 0.015, -0.19, 0.01));
         } else {
-            Z('armor', bx(0.4 * W, 0.24, 0.45, R, s * 0.42 * W, 2.16, 0));
-            Z('armor', bx(0.1, 0.29, 0.36, R, s * 0.59 * W, 2.04, 0));
-            F(C.darkSteel, bx(0.28 * W, 0.26, 0.32, R, s * 0.42 * W, 1.94, 0.02));
+            // Broad asymmetric search armour with a real forward-facing lamp on the left.
+            const pad = Z('armor', bx(0.4 * W, 0.22, 0.43, R, s * 0.42 * W, 2.13, 0));
+            pad.metadata = { captainShoulder: s < 0 ? 'L' : 'R' };
+            Z('armor', bx(0.1, 0.28, 0.37, pad, s * 0.18 * W, -0.12, 0));
+            F(C.darkSteel, bx(0.29 * W, 0.25, 0.3, pad, 0, -0.21, 0.02));
+            if (s < 0) {
+                F(C.darkSteel, bx(0.21, 0.14, 0.18, pad, 0, 0.06, 0.2));
+                F(C.steel, cy(0.17, 0.17, 0.13, 8, pad, 0, 0.06, 0.3, [Math.PI / 2, 0, 0]));
+                Z('lights', cy(0.125, 0.125, 0.025, 8, pad, 0, 0.06, 0.38, [Math.PI / 2, 0, 0]))
+                    .metadata = { captainLamp: true };
+            } else {
+                F(C.darkSteel, bx(0.23, 0.06, 0.3, pad, 0, 0.13, 0));
+                F(C.steel, bx(0.13, 0.035, 0.035, pad, 0, 0.03, 0.23));
+            }
         }
     } else if (variant === 'ribbed') {
         Z('armor', bx(0.56 * W, 0.55, 0.14, R, 0, 1.85, -0.2));

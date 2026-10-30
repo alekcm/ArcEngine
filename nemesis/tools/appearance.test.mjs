@@ -7,8 +7,8 @@ import { createGame } from '../shared/engine/setup.mjs';
 import { OPS } from '../shared/engine/core.mjs';
 import { viewFor } from '../shared/view.mjs';
 
-const original = { hair: 'loose', eyes: 'bandage', outfit: 'gown', implants: 'classic' };
-const custom = { hair: 'ponytail', eyes: 'layered', outfit: 'torn', implants: 'wrapped' };
+const original = { hair: 'loose', eyes: 'bandage', outfit: 'gown', implants: 'classic', wrists: 'classic' };
+const custom = { hair: 'ponytail', eyes: 'layered', outfit: 'torn', implants: 'wrapped', wrists: 'bandaged' };
 const player = (charId, parts = custom) => ({ name: 'Алекс', charId, colors: { gown: '#12abcd' }, parts });
 
 test('LAB-01: preset normalization accepts only the defined Lab Rat options', () => {
@@ -23,6 +23,7 @@ test('LAB-01: preset normalization accepts only the defined Lab Rat options', ()
         eyes: ['bandage', 'wide', 'layered', 'tails'],
         outfit: ['gown', 'torn', 'long'],
         implants: ['classic', 'temples', 'neck', 'wrapped'],
+        wrists: ['classic', 'bandaged', 'restraints'],
     });
     // Lobby data saved before the redesign can still arrive. Disallowed choices safely revert
     // independently; previously selected canonical choices (including ponytail) survive.
@@ -61,8 +62,8 @@ test('LAB-03: a draft applies lobby parts only if the selected character matches
     assert.deepEqual(pick('pilot', 'labrat').parts, original, 'a newly drafted Lab Rat uses original parts');
 });
 
-const sentryOriginal = { optics: 'classic', respirator: 'classic', shoulders: 'classic', cloak: 'classic' };
-const sentryCustom = { optics: 'binocular', respirator: 'ribbed', shoulders: 'heavy', cloak: 'torn' };
+const sentryOriginal = { suit: 'classic', optics: 'classic', respirator: 'classic', shoulders: 'classic', cloak: 'classic' };
+const sentryCustom = { suit: 'breacher', optics: 'binocular', respirator: 'ribbed', shoulders: 'heavy', cloak: 'torn' };
 
 test('SENTRY-01: presets are character-specific, canonical, and safely normalized', () => {
     assert.equal(characterPartSlots('sentry'), SENTRY_PARTS);
@@ -79,6 +80,7 @@ test('SENTRY-01: presets are character-specific, canonical, and safely normalize
         assert.deepEqual(characterParts(id, sentryCustom), {}, 'unknown character has no parts');
     }
     assert.deepEqual(Object.fromEntries(SENTRY_PARTS.map(slot => [slot.id, slot.options.map(option => option.id)])), {
+        suit: ['classic', 'patrol', 'breacher'],
         optics: ['classic', 'binocular', 'cluster'],
         respirator: ['classic', 'reinforced', 'ribbed'],
         shoulders: ['classic', 'segmented', 'heavy'],
@@ -210,13 +212,13 @@ test('ROLE-04: existing choices survive the richer workshop schemas', () => {
         hair: 'side', collar: 'high', robot: 'armored', coat: 'classic', sidearm: 'classic',
     });
     assert.deepEqual(characterParts('android', { hair: 'tied', implants: 'temples', vest: 'lapels' }), {
-        hair: 'tied', implants: 'temples', vest: 'lapels', arms: 'classic', sidearm: 'classic',
+        hair: 'tied', trousers: 'classic', vest: 'lapels', arms: 'classic', sidearm: 'classic',
     });
     assert.deepEqual(characterParts('android', { hair: 'bob', implants: 'jaw', vest: 'pockets' }), {
-        hair: 'bob', implants: 'jaw', vest: 'pockets', arms: 'classic', sidearm: 'classic',
+        hair: 'bob', trousers: 'classic', vest: 'pockets', arms: 'classic', sidearm: 'classic',
     });
     assert.deepEqual(characterParts('convict', { muzzle: 'vents', plates: 'asymmetric', chains: 'links' }), {
-        muzzle: 'vents', plates: 'asymmetric', chains: 'links', trousers: 'classic', arms: 'classic',
+        muzzle: 'vents', plates: 'asymmetric', chains: 'links', trousers: 'classic', tattoos: 'classic',
     });
     assert.deepEqual(characterParts('psych', { hair: 'layered', headset: 'sensor', drones: 'rotors' }), {
         hair: 'layered', headset: 'sensor', drones: 'rotors', vest: 'classic', sleeves: 'classic',
@@ -239,4 +241,27 @@ test('ROLE-04: existing choices survive the richer workshop schemas', () => {
     assert.deepEqual(characterParts('xeno', { hair: 'longtail', probe: 'shield', jacket: 'pockets' }), {
         hair: 'longtail', probe: 'shield', jacket: 'pockets', trousers: 'classic', tool: 'classic',
     });
+});
+
+test('REV-10: removed Android implants and Convict arms migrate without losing other choices', () => {
+    const oldAndroid = { hair: 'tied', implants: 'jaw', vest: 'pockets', arms: 'rolled', sidearm: 'pulse' };
+    const android = { hair: 'tied', trousers: 'classic', vest: 'pockets', arms: 'rolled', sidearm: 'pulse' };
+    const oldConvict = { muzzle: 'guard', plates: 'shoulder', chains: 'links', trousers: 'cargo', arms: 'cybernetic' };
+    const convict = { muzzle: 'guard', plates: 'shoulder', chains: 'links', trousers: 'cargo', tattoos: 'classic' };
+    assert.deepEqual(characterParts('android', oldAndroid), android);
+    assert.deepEqual(characterParts('convict', oldConvict), convict);
+    assert.deepEqual(characterParts('android', { ...oldAndroid, trousers: 'utility' }), { ...android, trousers: 'utility' });
+    assert.deepEqual(characterParts('convict', { ...oldConvict, tattoos: 'tribal' }), { ...convict, tattoos: 'tribal' });
+    assert.deepEqual(characterParts('labrat', { hair: 'ponytail', eyes: 'wide', outfit: 'long', implants: 'neck' }),
+        { hair: 'ponytail', eyes: 'wide', outfit: 'long', implants: 'neck', wrists: 'classic' }, 'old patient selections gain only a default');
+    assert.deepEqual(characterParts('sentry', { optics: 'cluster', respirator: 'ribbed', shoulders: 'heavy', cloak: 'split' }),
+        { suit: 'classic', optics: 'cluster', respirator: 'ribbed', shoulders: 'heavy', cloak: 'split' }, 'old Sentry selections gain only a default');
+    const state = createGame({ seed: 'legacy-outfits', draft: false, players: [player('android', oldAndroid), player('convict', oldConvict)] });
+    for (const viewer of [0, 1, null]) {
+        const players = viewFor(state, viewer).players;
+        assert.deepEqual(players[0].parts, android); assert.deepEqual(players[1].parts, convict);
+    }
+    const draft = createGame({ seed: 'legacy-draft', draft: true, players: [player('android', oldAndroid)] });
+    OPS['draft.pick'](draft, { player: 0, answer: 'android', hand: ['android', 'convict'] });
+    assert.deepEqual(draft.players[0].parts, android, 'draft preserves the normalized old selections');
 });

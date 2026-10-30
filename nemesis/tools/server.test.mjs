@@ -249,7 +249,7 @@ test('SRV-06: детали Подопытной проверяются, сохр
         owner.send(message);
         return result;
     }
-    const custom = { hair: 'messy', eyes: 'tails', outfit: 'torn', implants: 'temples' };
+    const custom = { hair: 'messy', eyes: 'tails', outfit: 'torn', implants: 'temples', wrists: 'bandaged' };
     const updated = await change({ t: 'lobby', charId: 'labrat', colors: { gown: '#12abcd' }, parts: { ...custom, injected: 'bad' } },
         m => m && m.t === 'lobby' && m.seats[0].parts?.hair === 'messy', 'custom parts');
     assert.deepEqual(updated.seats[0].parts, custom, 'other players receive the canonical preset');
@@ -257,7 +257,7 @@ test('SRV-06: детали Подопытной проверяются, сохр
 
     const invalid = await change({ t: 'lobby', parts: { hair: 'bob', eyes: 'visor', outfit: 'coat', implants: 'crown', injected: 'bad' } },
         m => m && m.t === 'lobby' && m.seats[0].parts?.outfit === 'gown', 'removed parts fall back safely');
-    assert.deepEqual(invalid.seats[0].parts, { hair: 'loose', eyes: 'bandage', outfit: 'gown', implants: 'classic' });
+    assert.deepEqual(invalid.seats[0].parts, { hair: 'loose', eyes: 'bandage', outfit: 'gown', implants: 'classic', wrists: 'classic' });
     await change({ t: 'lobby', parts: custom }, m => m && m.t === 'lobby' && m.seats[0].parts?.outfit === 'torn', 'restored parts');
 
     const switched = await change({ t: 'lobby', charId: 'pilot', parts: { hair: 'shaved' } },
@@ -291,11 +291,11 @@ test('SRV-07: Охранник и Подопытная сохраняют нез
         owner.send(message);
         return result;
     }
-    const lab = { hair: 'messy', eyes: 'wide', outfit: 'long', implants: 'neck' };
-    const guard = { optics: 'cluster', respirator: 'ribbed', shoulders: 'heavy', cloak: 'split' };
+    const lab = { hair: 'messy', eyes: 'wide', outfit: 'long', implants: 'neck', wrists: 'restraints' };
+    const guard = { suit: 'patrol', optics: 'cluster', respirator: 'ribbed', shoulders: 'heavy', cloak: 'split' };
     await change({ t: 'lobby', charId: 'labrat', parts: lab }, m => m?.t === 'lobby' && m.seats[0].parts?.hair === 'messy', 'Lab Rat choices');
     let msg = await change({ t: 'lobby', charId: 'sentry' }, m => m?.t === 'lobby' && m.seats[0].charId === 'sentry', 'new Sentry');
-    assert.deepEqual(msg.seats[0].parts, { optics: 'classic', respirator: 'classic', shoulders: 'classic', cloak: 'classic' });
+    assert.deepEqual(msg.seats[0].parts, { suit: 'classic', optics: 'classic', respirator: 'classic', shoulders: 'classic', cloak: 'classic' });
     msg = await change({ t: 'lobby', parts: { ...guard, injected: 'bad' }, colors: { armor: '#12abcd' } },
         m => m?.t === 'lobby' && m.seats[0].parts?.optics === 'cluster', 'custom Sentry');
     assert.deepEqual(msg.seats[0].parts, guard);
@@ -394,4 +394,41 @@ test('SRV-09: драфт сохраняет выбранный образ тол
         assert.deepEqual(state.view.players[0].parts, sameCharacter ? chosen : characterParts(pick));
         assert.deepEqual(state.view.players[0].colors, sameCharacter ? { coat: '#12abcd' } : {});
     }
+});
+
+test('SRV-10: старые импланты Андроида и руки Заключённого безопасно заменяются новыми категориями', async (t) => {
+    const { child, port } = await startServer(pickPort());
+    t.after(() => { try { child.kill(); } catch { /* gone */ } });
+    const owner = await wsClient(port), other = await wsClient(port);
+    t.after(() => { owner.close(); other.close(); });
+    owner.send({ t: 'join', token: null, name: 'Автор' });
+    await waitFor(owner, m => m?.t === 'lobby' && m.seats.length === 1, 'first player');
+    other.send({ t: 'join', token: null, name: 'Друг' });
+    await waitFor(other, m => m?.t === 'lobby' && m.seats.length === 2, 'second player');
+    async function change(message, filter, what) {
+        const from = other.messages.length;
+        const next = waitFor(other, m => other.messages.indexOf(m) >= from && filter(m), what);
+        owner.send(message); return next;
+    }
+    const oldAndroid = { hair: 'tied', implants: 'jaw', vest: 'pockets', arms: 'rolled', sidearm: 'pulse' };
+    let msg = await change({ t: 'lobby', charId: 'android', parts: oldAndroid, colors: { pants: '#123456' } },
+        m => m?.t === 'lobby' && m.seats[0].charId === 'android', 'legacy android');
+    const android = { hair: 'tied', trousers: 'classic', vest: 'pockets', arms: 'rolled', sidearm: 'pulse' };
+    assert.deepEqual(msg.seats[0].parts, android); assert.deepEqual(msg.seats[0].colors, { pants: '#123456' });
+    const selectedAndroid = { ...android, trousers: 'utility' };
+    msg = await change({ t: 'lobby', parts: selectedAndroid }, m => m?.t === 'lobby' && m.seats[0].parts?.trousers === 'utility', 'new android trousers');
+    assert.deepEqual(msg.seats[0].parts, selectedAndroid);
+    const oldConvict = { muzzle: 'guard', plates: 'shoulder', chains: 'links', trousers: 'cargo', arms: 'cybernetic' };
+    msg = await change({ t: 'lobby', charId: 'convict', parts: oldConvict, colors: { tattoo: '#345678' } },
+        m => m?.t === 'lobby' && m.seats[0].charId === 'convict', 'legacy convict');
+    const convict = { muzzle: 'guard', plates: 'shoulder', chains: 'links', trousers: 'cargo', tattoos: 'classic' };
+    assert.deepEqual(msg.seats[0].parts, convict); assert.deepEqual(msg.seats[0].colors, { tattoo: '#345678' });
+    const selectedConvict = { ...convict, tattoos: 'tribal' };
+    await change({ t: 'lobby', parts: selectedConvict }, m => m?.t === 'lobby' && m.seats[0].parts?.tattoos === 'tribal', 'new tattoos');
+    msg = await change({ t: 'lobby', charId: 'android' }, m => m?.t === 'lobby' && m.seats[0].charId === 'android', 'restore android');
+    assert.deepEqual(msg.seats[0].parts, selectedAndroid); assert.deepEqual(msg.seats[0].colors, { pants: '#123456' });
+    msg = await change({ t: 'lobby', charId: 'convict' }, m => m?.t === 'lobby' && m.seats[0].charId === 'convict', 'restore convict');
+    assert.deepEqual(msg.seats[0].parts, selectedConvict); assert.deepEqual(msg.seats[0].colors, { tattoo: '#345678' });
+    const state = await change({ t: 'start' }, m => m?.t === 'state' && m.view?.players.length === 2, 'game view');
+    assert.deepEqual(state.view.players[0].parts, selectedConvict); assert.deepEqual(state.view.players[0].colors, { tattoo: '#345678' });
 });

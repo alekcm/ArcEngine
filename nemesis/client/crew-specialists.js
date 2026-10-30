@@ -31,7 +31,7 @@ export function convictVariant(slot, variant, { scene, root: R, Z, F, bx, cy, sp
         if (variant === 'shoulder') {
             // Paired articulated shoulder implants and a small central chest mount leave skin bare.
             for (const s of [-1, 1]) {
-                Z('mask', bx(0.28 * W, 0.14, 0.32, R, s * 0.37 * W, 2.12, 0));
+                Z('mask', bx(0.31 * W, 0.18, 0.4, R, s * 0.37 * W, 2.14, 0));
                 Z('mask', bx(0.09, 0.25, 0.22, R, s * 0.46 * W, 1.96, 0.02));
                 F(C.steel, bx(0.06, 0.08, 0.04, R, s * 0.41 * W, 2.14, 0.18));
                 Z('mask', bx(0.2, 0.13, 0.07, R, s * 0.16 * W, 1.99, 0.18, [0, 0, -s * 0.2]));
@@ -40,7 +40,7 @@ export function convictVariant(slot, variant, { scene, root: R, Z, F, bx, cy, sp
             Z('mask', bx(0.21, 0.12, 0.08, R, 0, 1.76, 0.18));
         } else {
             // One prominent shoulder feeds a diagonal cybernetic chest harness; the other stays bare.
-            Z('mask', bx(0.34 * W, 0.16, 0.34, R, -0.37 * W, 2.12, 0));
+            Z('mask', bx(0.37 * W, 0.19, 0.4, R, -0.37 * W, 2.14, 0));
             Z('mask', bx(0.1, 0.3, 0.23, R, -0.46 * W, 1.96, 0.02));
             Z('mask', bx(0.15, 0.58, 0.09, R, -0.09 * W, 1.91, 0.19, [0, 0, -0.42]));
             Z('mask', bx(0.23, 0.17, 0.08, R, 0.1 * W, 1.72, 0.18));
@@ -75,20 +75,35 @@ export function convictVariant(slot, variant, { scene, root: R, Z, F, bx, cy, sp
     } else if (slot === 'pelvis') {
         Z('pants', bx((variant === 'cargo' ? 0.56 : 0.55) * W, 0.22, 0.31, R, 0, 1.4, 0));
         Z('chains', bx(0.5 * W, 0.07, 0.035, R, 0, 1.39, 0.175));
-    } else if (slot === 'arm') {
-        const s = side, label = s < 0 ? 'L' : 'R';
-        const mechanical = variant === 'cybernetic' || s < 0;
-        if (!mechanical) {
-            Z('skin', bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0)).metadata = { convictArm: 'upper' + label };
-            Z('skin', bx(0.15 * W, 0.4, 0.17, R, s * 0.39 * W, 1.44, 0.02)).metadata = { convictArm: 'forearm' + label };
-            Z('skin', bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03)).metadata = { convictArm: 'hand' + label };
+    } else if (slot === 'tattoos') {
+        // Thin ink strokes sit just beyond the skin surface, and follow the animated arm.
+        // The two complete designs replace the original stripes; they never add prostheses.
+        const ink = (w, h, x, y, z, tilt = 0) => {
+            const m = Z('tattoo', bx(w, h, 0.02, R, x, y, z, [0, 0, tilt]));
+            m.metadata = { convictInk: true }; return m;
+        };
+        if (variant === 'tribal') {
+            for (const s of [-1, 1]) {
+                for (let i = 0; i < 3; i++) {
+                    ink(0.15, 0.026, s * (0.12 + i * 0.035) * W, 2.03 - i * 0.08, 0.177, -s * 0.42);
+                    ink(0.12, 0.025, s * 0.38 * W, 1.94 - i * 0.10, 0.107, s * 0.38);
+                }
+                ink(0.035, 0.27, s * 0.39 * W, 1.44, 0.117, -s * 0.16);
+                ink(0.1, 0.025, s * 0.39 * W, 1.48, 0.117, s * 0.25);
+            }
+            ink(0.035, 0.25, 0, 1.86, 0.178);
+            ink(0.17, 0.025, 0, 1.75, 0.178);
         } else {
-            Z('mask', bx(0.22 * W, 0.41, 0.23, R, s * 0.38 * W, 1.84, 0)).metadata = { convictArm: 'upper' + label };
-            F(C.steel, cy(0.15, 0.15, 0.21, 8, R, s * 0.39 * W, 1.64, 0.02, [0, 0, Math.PI / 2]));
-            Z('mask', bx(0.2 * W, 0.4, 0.21, R, s * 0.39 * W, 1.44, 0.02)).metadata = { convictArm: 'forearm' + label };
-            Z('chains', bx(0.16, 0.15, 0.16, R, s * 0.39 * W, 1.2, 0.03)).metadata = { convictArm: 'hand' + label };
-            for (const y of [1.33, 1.54]) F(C.steel, bx(0.21 * W, 0.045, 0.22, R, s * 0.39 * W, y, 0.02));
-            Z('lights', bx(0.04, 0.18, 0.025, R, s * 0.39 * W, 1.44, 0.14));
+            // A large prisoner identification and tally marks, not the same diagonal motif.
+            ink(0.23, 0.024, -0.13 * W, 2.03, 0.178);
+            ink(0.23, 0.024, -0.13 * W, 1.84, 0.178);
+            for (const x of [-0.22, -0.18, -0.14, -0.1, -0.06]) ink(0.016, 0.13, x * W, 1.94, 0.179);
+            for (const s of [-1, 1]) {
+                for (let i = 0; i < 4; i++) ink(0.024, 0.13, s * (0.36 + i * 0.022) * W, 1.85, 0.107, 0.13);
+                ink(0.14, 0.026, s * 0.39 * W, 1.43, 0.117, s * 0.08);
+                ink(0.14, 0.026, s * 0.39 * W, 1.51, 0.117, -s * 0.08);
+            }
+            ink(0.09, 0.09, 0.16 * W, 1.9, 0.178, Math.PI / 4);
         }
     } else if (slot === 'chains') {
         // The links are refitted between the two moving cuffs, including when the board root turns.
