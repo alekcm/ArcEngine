@@ -120,6 +120,24 @@ test('Tau audit manifest covers all 27 prints, 14 names and 119 manually located
   assert.equal(greater.length, 2);
 });
 
+test('Tau order-upgrade manifest is separate from combat cards and covers three empty cubes', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'tau-orders.json'), 'utf8'));
+  assert.equal(manifest.faction, 'tau');
+  assert.equal(manifest.cards.length, 2);
+  const icons = manifest.cards.flatMap(c => c.icons);
+  assert.equal(icons.length, 3);
+  for (const icon of icons) {
+    assert.equal(icon.expected, 'any cube');
+    assert.equal(icon.location, 'text');
+    assert.ok(icon.box.every(Number.isInteger));
+  }
+  for (const card of manifest.cards) {
+    assert.equal(card.source, 'Warhammer/Тау/Карти наказів (3).jpg');
+    assert.ok(fs.existsSync(path.resolve(refDir, card.image)));
+  }
+  assert.ok(!references.some(r => r.faction === 'tau'));
+});
+
 test('Space Marine audit manifest covers 14 distinct cards on two sheets and 68 manually located symbols', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'space-marines.json'), 'utf8'));
   assert.equal(manifest.faction, 'space-marines');
