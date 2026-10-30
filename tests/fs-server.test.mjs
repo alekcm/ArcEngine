@@ -204,9 +204,45 @@ test('the server: a whole game over the socket', async t => {
         return lastState(client);
     };
 
+    // The question of an effect: the answer of the bot.
+    const answerEffect = async (client, st) => {
+        const pending = st.pending;
+        if (!pending) return st;
+        const q = pending.question || {};
+        const seat = pending.answerSeat === undefined ? pending.seat : pending.answerSeat;
+        let answer = null;
+        switch (q.kind) {
+            case 'yesno': answer = { dice: [] }; break;
+            case 'units': answer = { units: (q.options || []).slice(0, q.n || 1) }; break;
+            case 'dice': answer = { dice: (q.options || []).slice(0, 1) }; break;
+            case 'diceFace': answer = { dice: (q.options || []).slice(0, 1), face: 'att' }; break;
+            case 'cards': answer = { card: (q.options || [])[0] }; break;
+            case 'areas': answer = { area: (q.options || [])[0] }; break;
+            case 'systems': answer = { system: (q.options || [])[0] }; break;
+            case 'types': answer = { type: (q.options || [])[0] }; break;
+            case 'structures': answer = { structure: (q.options || [])[0] }; break;
+            case 'face': answer = { face: 'att' }; break;
+            case 'assetType': answer = { asset: (q.options || [])[0] }; break;
+            case 'assets': answer = { asset: (q.options || [])[0] }; break;
+            case 'choice': answer = { choice: 0 }; break;
+            case 'scheme': answer = { choice: 0 }; break;
+            default: answer = null;
+        }
+        if (!answer) return st;
+        client.send({ t: 'cmd', cmd: { type: 'effect', answer } });
+        const t0 = Date.now();
+        while (Date.now() - t0 < 3000) {
+            const now = lastState(client);
+            if (now && now.pending !== pending) return now;
+            await new Promise(r => setTimeout(r, 15));
+        }
+        return lastState(client);
+    };
+
     // The bot of the player: the commands of the rules engine.
     const bot = async (client, st) => {
         const seat = st.seat;
+        if (st.pending) return answerEffect(client, st);
         if (st.phase === 'planning') {
             for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
                 const legal = st.systems.filter(x => FS_RULES.canPlaceOrder(st, seat, x.id));
