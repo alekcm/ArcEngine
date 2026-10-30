@@ -7,7 +7,7 @@
     "eldar",
     "chaos"
   ],
-  "note": "Labels and crop boxes verified against the trusted transcription and enlarged source crops. No Ork samples are used as references.",
+  "note": "Labels and crop boxes verified against the trusted transcription and enlarged source crops. No target-faction samples (Orks, Tau, Space Marines, Mechanicus, Inquisition, Dark Eldar, Sisters of Battle) are used as references.",
   "references": [
     {
       "id": "ig-att-icon",

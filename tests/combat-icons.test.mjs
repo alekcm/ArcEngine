@@ -54,7 +54,9 @@ test('references come only from the five trusted factions and cover every label'
     assert.ok(ref.sourceSha256.match(/^[0-9a-f]{64}$/), ref.id);
   }
   for (const label of LABELS) assert.ok(references.some(r => r.label === label), label);
-  assert.ok(!references.some(r => r.faction === 'orks'));
+  for (const faction of ['orks', 'tau', 'space-marines', 'mechanicus', 'inquisition', 'dark-eldar', 'sisters-of-battle']) {
+    assert.ok(!references.some(r => r.faction === faction), faction);
+  }
 });
 
 test('carrier geometry distinguishes disk, square face and empty cube', () => {
@@ -139,6 +141,99 @@ test('Space Marine audit manifest covers 14 distinct cards on two sheets and 68 
   }
   // The two sheets complement each other; neither is a reference source.
   assert.ok(!references.some(r => r.faction === 'space-marines'));
+});
+
+test('Mechanicus audit manifest covers 28 prints on two sheets and 156 manually located symbols', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'mechanicus.json'), 'utf8'));
+  assert.equal(manifest.faction, 'mechanicus');
+  assert.equal(manifest.cards.length, 28);
+  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 2);
+  assert.equal(manifest.cards.filter(c => c.id.startsWith('ded-')).length, 14);
+  assert.equal(manifest.cards.filter(c => c.id.startsWith('alt-')).length, 14);
+  const icons = manifest.cards.flatMap(c => c.icons);
+  assert.equal(icons.length, 156);
+  for (const icon of icons) {
+    assert.ok(LABELS.includes(icon.expected));
+    assert.equal(icon.box.length, 4);
+    assert.ok(icon.box.every(Number.isInteger));
+  }
+  const ids = new Set();
+  for (const card of manifest.cards) {
+    assert.ok(!ids.has(card.id));
+    ids.add(card.id);
+    assert.ok(fs.existsSync(path.resolve(refDir, card.image)));
+  }
+  // Neither printed version is a reference source.
+  assert.ok(!references.some(r => r.faction === 'mechanicus'));
+});
+
+test('Inquisition audit manifest covers 14 cards on one composite sheet and 73 manually located symbols', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'inquisition.json'), 'utf8'));
+  assert.equal(manifest.faction, 'inquisition');
+  assert.equal(manifest.cards.length, 14);
+  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 1);
+  const icons = manifest.cards.flatMap(c => c.icons);
+  assert.equal(icons.length, 73);
+  assert.equal(icons.filter(i => i.location === 'column').length, 32);
+  assert.equal(icons.filter(i => i.location === 'text').length, 41);
+  for (const icon of icons) {
+    assert.ok(LABELS.includes(icon.expected));
+    assert.equal(icon.box.length, 4);
+    assert.ok(icon.box.every(Number.isInteger));
+  }
+  const ids = new Set();
+  for (const card of manifest.cards) {
+    assert.ok(!ids.has(card.id));
+    ids.add(card.id);
+    assert.ok(fs.existsSync(path.resolve(refDir, card.image)));
+  }
+  assert.ok(!references.some(r => r.faction === 'inquisition'));
+});
+
+test('Dark Eldar audit manifest covers 14 cards on one composite sheet and 76 manually located symbols', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'dark-eldar.json'), 'utf8'));
+  assert.equal(manifest.faction, 'dark-eldar');
+  assert.equal(manifest.cards.length, 14);
+  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 1);
+  const icons = manifest.cards.flatMap(c => c.icons);
+  assert.equal(icons.length, 76);
+  assert.equal(icons.filter(i => i.location === 'column').length, 29);
+  assert.equal(icons.filter(i => i.location === 'text').length, 47);
+  for (const icon of icons) {
+    assert.ok(LABELS.includes(icon.expected));
+    assert.equal(icon.box.length, 4);
+    assert.ok(icon.box.every(Number.isInteger));
+  }
+  const ids = new Set();
+  for (const card of manifest.cards) {
+    assert.ok(!ids.has(card.id));
+    ids.add(card.id);
+    assert.ok(fs.existsSync(path.resolve(refDir, card.image)));
+  }
+  assert.ok(!references.some(r => r.faction === 'dark-eldar'));
+});
+
+test('Sisters of Battle audit manifest covers 15 cards on two sheets and 73 manually located symbols', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'sisters-of-battle.json'), 'utf8'));
+  assert.equal(manifest.faction, 'sisters-of-battle');
+  assert.equal(manifest.cards.length, 15);
+  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 2);
+  const icons = manifest.cards.flatMap(c => c.icons);
+  assert.equal(icons.length, 73);
+  assert.equal(icons.filter(i => i.location === 'column').length, 27);
+  assert.equal(icons.filter(i => i.location === 'text').length, 46);
+  for (const icon of icons) {
+    assert.ok(LABELS.includes(icon.expected));
+    assert.equal(icon.box.length, 4);
+    assert.ok(icon.box.every(Number.isInteger));
+  }
+  const ids = new Set();
+  for (const card of manifest.cards) {
+    assert.ok(!ids.has(card.id));
+    ids.add(card.id);
+    assert.ok(fs.existsSync(path.resolve(refDir, card.image)));
+  }
+  assert.ok(!references.some(r => r.faction === 'sisters-of-battle'));
 });
 
 test('empty-cube carrier keeps enclosed faces distinct from a token glyph hole', () => {

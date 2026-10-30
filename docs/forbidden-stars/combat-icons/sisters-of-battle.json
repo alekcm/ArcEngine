@@ -1,0 +1,944 @@
+{
+  "faction": "sisters-of-battle",
+  "note": "All 15 Sisters of Battle combat cards: 14 on 5DD5794E..._1.png (rows 6-7) plus Лицеприятная кара on the orders sheet DDDD2EC8... (row 3, col 3). Boxes are original-sheet coordinates; expected labels are manual transcription and are never classifier input. No Sisters of Battle samples are used as references.",
+  "cards": [
+    {
+      "id": "r6-c5",
+      "card": "light-of-faith",
+      "name": "Светоч веры",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            3001,
+            5475,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-any-cube",
+          "box": [
+            3296,
+            6072,
+            41,
+            39
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            3600,
+            6151,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            3023,
+            6199,
+            36,
+            36
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "r6-c6",
+      "card": "advance-forward",
+      "name": "Продвижение вперёд",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            3740,
+            5475,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            3740,
+            5555,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            3923,
+            6110,
+            41,
+            41
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            4141,
+            6111,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        }
+      ]
+    },
+    {
+      "id": "r6-c7",
+      "card": "path-of-redemption",
+      "name": "Путь искупления",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "unit-att-token",
+          "box": [
+            4664,
+            6088,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            4801,
+            6088,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "r6-c8",
+      "card": "holy-trinity",
+      "name": "Святая троица",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "main-att-token",
+          "box": [
+            5409,
+            5877,
+            42,
+            40
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            5403,
+            5937,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            5810,
+            6029,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "r6-c9",
+      "card": "blessed-advance",
+      "name": "Благословленное наступление",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "main-any-cube",
+          "box": [
+            6142,
+            5918,
+            40,
+            38
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            5966,
+            6109,
+            41,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            6179,
+            6110,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            6255,
+            6109,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            6471,
+            6110,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-any-cube",
+          "box": [
+            6572,
+            6111,
+            40,
+            39
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            6118,
+            6150,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "r6-c10",
+      "card": "angel-descends",
+      "name": "Снисхождение ангела",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            6696,
+            5475,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            6696,
+            5555,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            6871,
+            5864,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            7243,
+            6191,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        }
+      ]
+    },
+    {
+      "id": "orders-r3-c3",
+      "card": "partial-punishment",
+      "name": "Лицеприятная кара",
+      "source": "Warhammer/Инквизиция/DDDD2EC8D625FD4172930C8BBECF3BEC3942802F_инки+сб-приказы-и-мелоч.jpg",
+      "image": "../../../Warhammer/Инквизиция/DDDD2EC8D625FD4172930C8BBECF3BEC3942802F_инки+сб-приказы-и-мелоч.jpg",
+      "icons": [
+        {
+          "id": "unit-att-token",
+          "box": [
+            1650,
+            2940,
+            37,
+            38
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            1754,
+            2940,
+            36,
+            38
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "r7-c1",
+      "card": "martyrdom",
+      "name": "Мученичество",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            45,
+            6521,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            45,
+            6601,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            438,
+            6942,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            529,
+            6942,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "r7-c2",
+      "card": "fortitude",
+      "name": "Стойкость духа",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            784,
+            6521,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            1295,
+            7003,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            796,
+            7104,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            930,
+            7104,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-any-cube",
+          "box": [
+            796,
+            7238,
+            41,
+            39
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "r7-c3",
+      "card": "fanatical-zeal",
+      "name": "Фанатичное рвение",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1523,
+            6521,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1523,
+            6601,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            1523,
+            6681,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            1536,
+            6871,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            1708,
+            6931,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "r7-c4",
+      "card": "faith-will-protect-us",
+      "name": "Вера защитит нас",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            2262,
+            6521,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            2262,
+            6601,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            2262,
+            6681,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            2447,
+            6862,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            2550,
+            6862,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            2365,
+            7157,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "r7-c5",
+      "card": "destructive-refrain",
+      "name": "Разрушительный рефрен",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            3001,
+            6521,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            3001,
+            6601,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            3001,
+            6681,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            3479,
+            7197,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            3617,
+            7197,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            3182,
+            7236,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            3625,
+            7237,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "r7-c6",
+      "card": "burning-the-martyr",
+      "name": "Сжигая мученика",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            3740,
+            6521,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            3740,
+            6601,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            3740,
+            6681,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            3933,
+            6799,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            3984,
+            6895,
+            32,
+            32
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            3959,
+            7020,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-att-token-1",
+          "box": [
+            4329,
+            7019,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-att-token-2",
+          "box": [
+            4352,
+            7086,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-att-token-3",
+          "box": [
+            4297,
+            7219,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "r7-c7",
+      "card": "divine-blessing",
+      "name": "Божественное благословение",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            4479,
+            6521,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            4479,
+            6601,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            4479,
+            6681,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            4479,
+            6761,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            4462,
+            7104,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            4534,
+            7104,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            4648,
+            7144,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-any-cube",
+          "box": [
+            5108,
+            7238,
+            39,
+            39
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "r7-c8",
+      "card": "divine-retribution",
+      "name": "Божественная кара",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            5218,
+            6521,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            5218,
+            6601,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            5218,
+            6681,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        }
+      ]
+    }
+  ]
+}
