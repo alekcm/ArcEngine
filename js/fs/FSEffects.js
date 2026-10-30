@@ -1057,7 +1057,7 @@ const RULES = [
     },
     // "your opponent loses 2 `att. token`" / "the opponent loses 1 `def. cube`"
     {
-        re: /(?:противник|вражеск[а-яёa-z]*|он)(?![а-яёa-z])[^.`]{0,40}?(?:теряет|потеряет|теряют)\s+([^;]{0,80})/i,
+        re: /(?:противник|вражеск[а-яёa-z]*|он)(?![а-яёa-z])[^.`]{0,40}?(?:теряет|терять|потеряет|потерять|теряют|потеряют)\s+([^;]{0,80})/i,
         build: m => {
             const icons = [...m[1].matchAll(/`([^`]+)`/g)].map(x => x[1]);
             if (!icons.length) return null;
@@ -1073,7 +1073,7 @@ const RULES = [
     },
     // "the opponent loses 1 die of their choice"
     {
-        re: /(?:противник|он)(?![а-яёa-z])[^.`]{0,40}?теря[а-яёa-z]*\s+(\d+)?\s*кубик/i,
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?теря[а-яёa-z]*\s+(\d+)?\s*кубик/i,
         build: m => ({ op: 'loseDie', n: num(m[1]), kind: 'any', pick: true }),
     },
     // "you must reroll 1 `any cube`" / "reroll all your `def. cube`"
@@ -1102,11 +1102,11 @@ const RULES = [
     },
     // "flip up to 2 of your `att. cube` to `def. cube`"
     {
-        re: /переверн[а-яёa-z]*\s+(?:до\s+)?(всех|(\d+))?\s*(?:ваш[а-яёa-z]*|из своих|своих|свои)?\s*(?:`([^`]+)`\s*)?(?:кубик[а-яёa-z]*\s*)?на\s*`([^`]+)`/i,
+        re: /переверн[а-яёa-z]*\s+(?:до\s+)?(всех|все|любые|(\d+))?\s*(?:ваш[а-яёa-z]*|из своих|своих|свои)?\s*(?:`([^`]+)`\s*)?(?:кубик[а-яёa-z]*\s*)?(?:на|в)\s*`([^`]+)`/i,
         build: m => ({
-            op: 'flipDie', n: /все/.test(m[1] || '') ? 99 : num(m[2]),
+            op: 'flipDie', n: /все|любые/.test(m[1] || '') ? 99 : num(m[2]),
             kind: m[3] ? FS_EFFECTS.icon(m[3]) : 'any', to: FS_EFFECTS.icon(m[4]),
-            all: /все/.test(m[1] || ''), pick: true,
+            all: /все|любые/.test(m[1] || ''), pick: true,
         }),
     },
     // "flip any number of `morale cube` to `att. cube`"
@@ -1130,7 +1130,7 @@ const RULES = [
     },
     // "the opponent must reroll 1 die of your choice"
     {
-        re: /(?:противник|он)(?![а-яёa-z])[^.`]{0,40}?переброс[а-яёa-z]*\s+(\d+)?\s*кубик/i,
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\s+(\d+)?\s*кубик/i,
         build: m => ({ op: 'rerollDie', n: num(m[1]), kind: 'any', who: 'foe', pick: true }),
     },
     // "get 1 `att. token` for every unrouted Guardsman or Cruiser, maximum 3"
@@ -1145,6 +1145,16 @@ const RULES = [
                 filter: unitFilter(m[3]), max: m[4] ? Number(m[4]) : null, text: m[0],
             };
         },
+    },
+    // "you get 2 att. token and 1 def. token" (the icons without the backticks)
+    {
+        re: /получ[а-яёa-z]*\s+(\d+)?\s*(att|def|morale)\.\s*token/i,
+        build: m => ({ op: 'gainToken', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]) }),
+    },
+    // "do not use its ability, but take its combat values"
+    {
+        re: /не применяйте[а-яёa-z]*\s+е[её]\s+способности[^.]*,\s*но получите[а-яёa-z]*\s+е[её]\s+боев/i,
+        build: () => ({ op: 'playCard', values: true, pick: true }),
     },
     // "get 1 `any cube`" / "get 2 `att. token`"
     {
@@ -1163,7 +1173,7 @@ const RULES = [
     },
     // "the opponent must choose and route 1 of his units"
     {
-        re: /(?:противник|он)(?![а-яёa-z])[^.`]{0,40}?(?<!не)деморализ[а-яёa-z]*\s+(?:и\s+)?(?:(\d+)\s*)?(?:свой|ваш|одного|одну|1)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)?/i,
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?<!не)деморализ[а-яёa-z]*\s+(?:и\s+)?(?:(\d+)\s*)?(?:свой|ваш|одного|одну|1)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)?/i,
         build: m => ({ op: 'route', n: num(m[1]), pick: true, who: 'foe' }),
     },
     // "you must route 1 of your units" / "demoralise 1 enemy unit"
@@ -1178,7 +1188,7 @@ const RULES = [
     },
     // "the opponent chooses and destroys 1 of his routed units"
     {
-        re: /(?:противник|он)(?![а-яёa-z])[^.`]{0,50}?уничтож[а-яёa-z]*\s+(?:(\d+)\s+)?(?:свой[а-яёa-z]*\s+)?(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)/i,
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,50}?уничтож[а-яёa-z]*\s+(?:(\d+)\s+)?(?:свой[а-яёa-z]*\s+)?(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)/i,
         build: m => ({ op: 'destroy', n: num(m[1]), pick: true, who: 'foe' }),
     },
     // "destroy 1 of your unrouted units"
@@ -1238,7 +1248,7 @@ const RULES = [
     },
     // "the opponent retreats with one of his units"
     {
-        re: /(?:противник|он)(?![а-яёa-z])[^.`]{0,40}?отступ[а-яёa-z]*\s+(?:одним из своих|одного|1)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)/i,
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?отступ[а-яёa-z]*\s+(?:одним из своих|одного|1)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)/i,
         build: () => ({ op: 'retreat', who: 'foe', pick: true }),
     },
     // "you may retreat with one of your units" / "retreat with one of your units"
@@ -1253,12 +1263,12 @@ const RULES = [
     },
     // "play 1 card from your hand" / "take the top card of your deck"
     {
-        re: /(?:разыгра[а-яёa-z]*|достаньте|возьм[а-яёa-z]*)\s+(?:1\s+)?(?:верхнюю\s+)?(?:боевую\s+)?карту[а-яёa-z]*/i,
+        re: /(?:разыгра[а-яёa-z]*|сыгра[а-яёa-z]*|достаньте|возьм[а-яёa-z]*)\s+(?:1\s+)?(?:верхнюю\s+)?(?:боевую\s+)?карту[а-яёa-z]*/i,
         build: m => ({ op: 'playCard', values: /верхнюю/.test(m[0]), pick: true }),
     },
     // "your opponent must discard 1 random combat card from their hand"
     {
-        re: /(?:противник|он)(?![а-яёa-z])[^.`]{0,50}?сброс[а-яёa-z]*\s+(?:с\s+руки\s+)?(?:1\s+)?(?:случайную\s+)?боевую карту/i,
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,50}?сброс[а-яёa-z]*\s+(?:с\s+руки\s+)?(?:1\s+)?(?:случайную\s+)?боевую карту/i,
         build: () => ({ op: 'discardCard', who: 'foe' }),
     },
     // "get 2 forge tokens"
@@ -1281,7 +1291,7 @@ const RULES = [
     },
     // "the opponent loses 1 asset token of their choice"
     {
-        re: /(?:противник|он)(?![а-яёa-z])[^.`]{0,40}?теря[а-яёa-z]*\s+(\d+)?\s*ценный ресурс/i,
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?теря[а-яёa-z]*\s+(\d+)?\s*ценный ресурс/i,
         build: m => ({ op: 'loseAsset', n: num(m[1]), who: 'foe', pick: true }),
     },
     // "get the assets and the materiel of the world"
