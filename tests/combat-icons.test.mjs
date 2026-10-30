@@ -78,12 +78,14 @@ test('held-out-faction validation has no wrong labels or abstentions on the refe
   }
 });
 
-test('Ork audit manifest covers 12 cards and 48 manually located symbols', () => {
+test('Ork audit manifest covers 14 cards and 58 manually located symbols', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'orks.json'), 'utf8'));
   assert.equal(manifest.faction, 'orks');
-  assert.equal(manifest.cards.length, 12);
+  assert.equal(manifest.cards.length, 14);
+  assert.equal(new Set(manifest.cards.map(c => c.card)).size, 14);
+  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 4);
   const icons = manifest.cards.flatMap(c => c.icons);
-  assert.equal(icons.length, 48);
+  assert.equal(icons.length, 58);
   for (const icon of icons) {
     assert.ok(LABELS.includes(icon.expected));
     assert.equal(icon.box.length, 4);

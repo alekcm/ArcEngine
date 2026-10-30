@@ -1,6 +1,6 @@
 {
   "faction": "orks",
-  "note": "Manual symbol locations and expected transcription from enlarged cards. Boxes are coordinates on the original source sheet. Expected labels are not used by the matcher.",
+  "note": "All 14 current Ork combat cards: 9 on CF720143..._3.jpg, 3 on 0001.png, plus two owner-supplied additions (Mega Nobz and Biker Nobz). Manual symbol locations and expected transcription from enlarged cards. Boxes are original-source coordinates; expected labels are never classifier input.",
   "cards": [
     {
       "id": "shuta",
@@ -51,7 +51,8 @@
           "expected": "def. cube"
         }
       ],
-      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "card": "shuta"
     },
     {
       "id": "arda",
@@ -102,7 +103,8 @@
           "expected": "att. cube"
         }
       ],
-      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "card": "arda"
     },
     {
       "id": "mek",
@@ -131,7 +133,8 @@
           "expected": "any cube"
         }
       ],
-      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "card": "mek"
     },
     {
       "id": "gretchin",
@@ -160,7 +163,8 @@
           "expected": "def. token"
         }
       ],
-      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "card": "gretchin"
     },
     {
       "id": "sauta",
@@ -200,7 +204,8 @@
           "expected": "morale cube"
         }
       ],
-      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "card": "sauta"
     },
     {
       "id": "gargant",
@@ -262,7 +267,8 @@
           "expected": "def. icon"
         }
       ],
-      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "card": "gargant"
     },
     {
       "id": "duff",
@@ -324,7 +330,8 @@
           "expected": "def. icon"
         }
       ],
-      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "card": "duff"
     },
     {
       "id": "rokoboyz",
@@ -408,7 +415,8 @@
           "expected": "def. token"
         }
       ],
-      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "card": "rokoboyz"
     },
     {
       "id": "green-tide",
@@ -448,7 +456,8 @@
           "expected": "morale cube"
         }
       ],
-      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "card": "green-tide"
     },
     {
       "id": "rokkit",
@@ -499,7 +508,8 @@
           "expected": "att. token"
         }
       ],
-      "source": "Warhammer/Боевые карты/0001.png"
+      "source": "Warhammer/Боевые карты/0001.png",
+      "card": "rokkit"
     },
     {
       "id": "party",
@@ -561,7 +571,8 @@
           "expected": "def. token"
         }
       ],
-      "source": "Warhammer/Боевые карты/0001.png"
+      "source": "Warhammer/Боевые карты/0001.png",
+      "card": "party"
     },
     {
       "id": "waaagh",
@@ -612,7 +623,136 @@
           "expected": "att. token"
         }
       ],
-      "source": "Warhammer/Боевые карты/0001.png"
+      "source": "Warhammer/Боевые карты/0001.png",
+      "card": "waaagh"
+    },
+    {
+      "id": "mega-nobz",
+      "card": "mega-nobz",
+      "name": "Мега нобз",
+      "source": "Warhammer/Орки/Мега нобз.png",
+      "image": "../../../Warhammer/Орки/Мега нобз.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            57,
+            220,
+            66,
+            66
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            58,
+            289,
+            66,
+            66
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            58,
+            358,
+            66,
+            66
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            168,
+            733,
+            40,
+            40
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            428,
+            816,
+            44,
+            44
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "biker-nobz",
+      "card": "biker-nobz",
+      "name": "Байкер нобзы",
+      "source": "Warhammer/Орки/Байкер нобзы.png",
+      "image": "../../../Warhammer/Орки/Байкер нобзы.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            59,
+            225,
+            66,
+            66
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            59,
+            294,
+            66,
+            66
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            59,
+            362,
+            66,
+            66
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            171,
+            735,
+            40,
+            40
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            431,
+            821,
+            44,
+            44
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
     }
   ]
 }
