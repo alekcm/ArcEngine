@@ -21,7 +21,7 @@ export function allTexts() {
         if (c.unit) out.push({ kind: 'combat-unit', faction: c.faction, name: c.name, text: c.unit });
     }
     for (const c of DATA.events) {
-        if (c.text) out.push({ kind: 'event', faction: '', name: c.name, text: c.text });
+        if (c.text) out.push({ kind: 'event', faction: c.faction, name: c.name, text: c.text });
     }
     for (const c of DATA.orders) {
         if (c.text) out.push({ kind: 'order', faction: c.faction, name: c.name, text: c.text });
