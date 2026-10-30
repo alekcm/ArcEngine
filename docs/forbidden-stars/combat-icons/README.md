@@ -8,7 +8,7 @@
 `references.json` и PNG-кропы рядом с ним — 36 эталонов только из пяти доверенных фракций:
 Имперская гвардия, Некроны, Тираниды, Эльдары, Космодесант Хаоса. Для каждого эталона указаны
 исходный лист, координаты кропа, SHA-256 листа, метка и место (`column` или `text`).
-Карты проверяемых фракций (Орки, Тау, Космодесант) в эталоны не входят.
+Карты проверяемых фракций (Орки, Тау, Космодесант, Адептус Механикус, Инквизиция, Тёмные эльдары, Сестры битвы) в эталоны не входят.
 
 Различаются девять записей: `att. icon`, `def. icon`, `morale icon`, `att. token`, `def. token`,
 `att. cube`, `def. cube`, `morale cube`, `any cube`. Жетонов морали в этой схеме нет.
@@ -26,6 +26,10 @@ node tools/combat-icons.mjs classify --image scan.png --box x,y,w,h --location t
 node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/orks.json --out build/combat-review/orks-audit
 node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/tau.json --out build/combat-review/tau-audit
 node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/space-marines.json --out build/combat-review/space-marines-audit
+node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/mechanicus.json --out build/combat-review/mechanicus-audit
+node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/inquisition.json --out build/combat-review/inquisition-audit
+node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/dark-eldar.json --out build/combat-review/dark-eldar-audit
+node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/sisters-of-battle.json --out build/combat-review/sisters-audit
 ```
 
 `audit` пишет `report.json` и кропы значков. Ожидаемая метка (`expected`) используется только для
@@ -43,6 +47,14 @@ node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/s
   Повторные копии проверены отдельно, чтобы не потерять текстовые редакции.
 - Космодесант: 14 карт (9 на отдельном листе + 5 на `0003.png`), 68 вручную размеченных значков;
   68/68 совпали. Листы не дублируют друг друга.
+- Адептус Механикус: 28 отпечатанных карт (14 на отдельном листе + 14 на сводном листе в другом
+  переводе), 156 вручную размеченных значков; 156/156 совпали. Версии сохранены раздельно.
+- Инквизиция: 14 карт на составном листе `E5DE7E8B…_2.png` (ряды 2–3), 73 вручную размеченных
+  значка; 73/73 совпали. Копия листа в папке Сестёр битвы не считается отдельным источником.
+- Тёмные эльдары: 14 карт на составном листе `5DD5794E…_1.png` (ряды 3–5), 76 вручную размеченных
+  значков; 76/76 совпали.
+- Сестры битвы: 15 карт (14 на составном листе `5DD5794E…_1.png`, ряды 6–7, и «Лицеприятная кара»
+  на листе приказов `DDDD2EC8…`), 73 вручную размеченных значка; 73/73 совпали.
 - Это проверка на данном наборе кропов, а не измеренная точность на произвольных сканах.
 
 Носитель различается не только заполненностью углов: у пустого кубика считаются замкнутые
