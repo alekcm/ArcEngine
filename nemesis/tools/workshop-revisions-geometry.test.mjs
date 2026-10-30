@@ -276,6 +276,7 @@ test('FIX-01: each patient sleeve covers the shoulder and both ankle options sta
             const armTop = upper.position.y + b.y;
             assert.ok(armTop > sleeve.position.y - a.y && armTop < sleeve.position.y + a.y, `${outfit}: sleeve covers the top of the arm`);
         }
+        let ankleSkin, ankleDetail;
         if (ankle === 'classic') assert.equal(pieces.length, 0, 'the original has no leg accessory');
         else {
             const side = ankle === 'tracker' ? 'L' : 'R';
@@ -283,6 +284,7 @@ test('FIX-01: each patient sleeve covers the shoulder and both ankle options sta
             const skin = ch.zones.skin.find(m => m.parent?.name === 'leg' + side && Math.abs(m.position.y + 1.04) < 0.001);
             const detail = pieces.find(m => ankle === 'tracker' ? m.metadata?.labTrackerDisplay : m.metadata?.labAnkleTag);
             assert.ok(band && skin && detail && pieces.length >= 4, `${ankle}: complete ankle accessory`);
+            ankleSkin = skin; ankleDetail = detail;
             assert.ok(pieces.every(m => ancestor(m, 'leg' + side)), `${ankle}: every piece follows the same leg`);
             refresh(ch);
             assert.ok(band.intersectsMesh(skin, true), `${ankle}: band wraps the ankle`);
@@ -294,14 +296,24 @@ test('FIX-01: each patient sleeve covers the shoulder and both ankle options sta
             }
             assert.equal(connected.size, pieces.length, `${ankle}: all pieces are connected`);
             for (const m of [skin, ...pieces]) m.isPickable = true;
-            const x = (ankle === 'tracker' ? -1 : 1) * 0.135, y = ankle === 'tracker' ? 0.315 : 0.19;
-            const hit = S.pickWithRay(new B.Ray(new B.Vector3(x, y, 1), new B.Vector3(0, 0, -1), 2), m => m === skin || pieces.includes(m));
-            assert.ok(pieces.includes(hit?.pickedMesh), `${ankle}: the accessory is visible in front of the leg`);
+            const outward = ankle === 'tracker' ? -1 : 1;
+            const skinBox = skin.getBoundingInfo().boundingBox, detailBox = detail.getBoundingInfo().boundingBox;
+            assert.ok(outward < 0 ? detailBox.maximumWorld.x < skinBox.minimumWorld.x : detailBox.minimumWorld.x > skinBox.maximumWorld.x,
+                `${ankle}: the display or tag sits on the outside of the leg`);
+            assert.ok(detailBox.extendSize.z > detailBox.extendSize.x * 2, `${ankle}: the broad face points sideways, not forward`);
+            const y = ankle === 'tracker' ? 0.315 : 0.19;
+            const hit = S.pickWithRay(new B.Ray(new B.Vector3(outward, y, 0), new B.Vector3(-outward, 0, 0), 2), m => m === skin || pieces.includes(m));
+            assert.equal(hit?.pickedMesh, detail, `${ankle}: the display or tag is visible from the outside`);
         }
         for (const t of [0, 0.1, 0.2, 0.3, 0.4]) {
             ch.animate(t, t > 0); refresh(ch);
             assert.ok(sleeves.every((s, i) => s.intersectsMesh(uppers[i], true)), `${outfit}: sleeves stay attached at ${t}`);
-            if (pieces.length) assert.ok(pieces.every(m => ancestor(m, ankle === 'tracker' ? 'legL' : 'legR')), `${ankle}: stays on the leg at ${t}`);
+            if (pieces.length) {
+                assert.ok(pieces.every(m => ancestor(m, ankle === 'tracker' ? 'legL' : 'legR')), `${ankle}: stays on the leg at ${t}`);
+                const outward = ankle === 'tracker' ? -1 : 1, p = ankleDetail.getAbsolutePosition();
+                const hit = S.pickWithRay(new B.Ray(new B.Vector3(outward, p.y, p.z), new B.Vector3(-outward, 0, 0), 2), m => m === ankleSkin || pieces.includes(m));
+                assert.equal(hit?.pickedMesh, ankleDetail, `${ankle}: its side remains visible at ${t}`);
+            }
         }
         if (ankle === 'tracker') {
             ch.setColors({ lights: '#32baf1' });

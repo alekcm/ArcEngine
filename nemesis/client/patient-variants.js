@@ -95,18 +95,21 @@ export function patientVariant(slot, variant, { scene, root: R, Z, F, bx, fixed:
         }
         Z('bandage', bx(0.5 * W, 0.055, 0.035, R, 0, 1.62, 0.19));
     } else if (slot === 'ankle') {
-        // Both options wrap the bare ankle, below even the long gown, and follow that leg.
+        // The bracelet and its details face outward. Parenting them to the band keeps
+        // even the outermost pieces attached to the correct leg throughout a stride.
         const x = (variant === 'tracker' ? -1 : 1) * 0.15 * W;
         if (variant === 'tracker') {
-            Z('bandage', bx(0.21, 0.13, 0.22, R, x, 0.3, 0)).metadata = { labAnkleBand: true };
-            F(C.darkSteel, bx(0.15, 0.12, 0.09, R, x, 0.3, 0.14));
-            Z('lights', bx(0.095, 0.045, 0.015, R, x, 0.315, 0.19)).metadata = { labTrackerDisplay: true };
-            F(C.steel, bx(0.09, 0.012, 0.02, R, x, 0.275, 0.192));
+            const band = Z('bandage', bx(0.21, 0.13, 0.22, R, x, 0.3, 0));
+            band.metadata = { labAnkleBand: true };
+            F(C.darkSteel, bx(0.09, 0.12, 0.15, band, -0.14, 0, 0));
+            Z('lights', bx(0.015, 0.045, 0.095, band, -0.19, 0.015, 0)).metadata = { labTrackerDisplay: true };
+            F(C.steel, bx(0.02, 0.012, 0.09, band, -0.192, -0.025, 0));
         } else {
-            Z('bandage', bx(0.21, 0.065, 0.22, R, x, 0.3, 0)).metadata = { labAnkleBand: true };
-            F(C.steel, bx(0.035, 0.11, 0.04, R, x, 0.265, 0.115));
-            Z('bandage', bx(0.14, 0.18, 0.03, R, x, 0.19, 0.14)).metadata = { labAnkleTag: true };
-            for (const y of [0.23, 0.2, 0.17]) F(C.darkSteel, bx(0.095, 0.012, 0.012, R, x, y, 0.16));
+            const band = Z('bandage', bx(0.21, 0.065, 0.22, R, x, 0.3, 0));
+            band.metadata = { labAnkleBand: true };
+            F(C.steel, bx(0.04, 0.11, 0.035, band, 0.115, -0.035, 0));
+            Z('bandage', bx(0.03, 0.18, 0.14, band, 0.14, -0.11, 0)).metadata = { labAnkleTag: true };
+            for (const y of [-0.07, -0.1, -0.13]) F(C.darkSteel, bx(0.012, 0.012, 0.095, band, 0.16, y, 0));
         }
     } else if (slot === 'wrists') {
         for (const s of [-1, 1]) {
