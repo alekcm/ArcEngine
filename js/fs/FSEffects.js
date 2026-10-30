@@ -72,6 +72,11 @@ const FS_EFFECTS = {
                 prev.avoid = avoid;
                 continue;
             }
+            if (avoid) {
+                // The payment stands alone: the engine shows it.
+                steps.push({ op: 'note', text: sentence, avoid });
+                continue;
+            }
             if (!parsed.length) continue;
             steps.push(...parsed);
             prev = parsed[parsed.length - 1];
@@ -81,7 +86,11 @@ const FS_EFFECTS = {
 
     // The sentence of the payment that avoids the effect.
     avoidOf(sentence) {
-        const m = /может избежать этого[^,]*,\s*если потрат[а-яёa-z]*\s+(?:(\d+)|любое количество)?\s*(?:`([^`]+)`|куб[а-яёa-z]*)/i.exec(sentence);
+        let m = /может избежать этого[^,]*,\s*если (?:потрат[а-яёa-z]*|потеря[а-яёa-z]*)\s+(?:(\d+)\s*)?(?:`([^`]+)`|куб[а-яёa-z]*|количество куб[а-яёa-z]*)/i.exec(sentence);
+        if (!m) {
+            // "Destroy it, unless the opponent spends a number of cubes."
+            m = /уничтожьте его, если противник не потрат[а-яёa-z]*\s+(?:(\d+)\s*)?(?:куб[а-яёa-z]*|количество куб[а-яёa-z]*)/i.exec(sentence);
+        }
         if (!m) return null;
         return { n: m[1] ? Number(m[1]) : 1, kind: m[2] ? this.icon(m[2]) : 'any' };
     },
@@ -110,6 +119,9 @@ const FS_EFFECTS = {
             const steps = Array.isArray(built) ? built : [built];
             return steps.map(x => this.withScope(x, scope));
         }
+        // The payment that avoids the effect stands alone.
+        const avoid = this.avoidOf(s);
+        if (avoid) return [{ op: 'note', text: s, avoid }];
         // Nothing matched: the icon phrases are taken as a simple effect.
         const fallback = this.fallback(s);
         return fallback ? [fallback] : [];
@@ -547,6 +559,27 @@ const FS_EFFECTS = {
             }
             case 'enemyHealth': {
                 if (combat) combat.enemyHealth = step.n || 3;
+                return null;
+            }
+            case 'rerollAll': {
+                if (!inCombat) return null;
+                // Both sides roll all the dice again.
+                for (const s2 of ['attacker', 'defender']) {
+                    combat.dice[s2] = R.rollDice(state, combat.dice[s2].length);
+                }
+                R.log(state, seat, 'Все кубики перебрасываются.');
+                return null;
+            }
+            case 'loseDieIfMore': {
+                if (!inCombat) return null;
+                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const mine = this.countCubes(R, state, seat, combat, 'morale');
+                const theirs = this.countCubes(R, state, this.seatOf(combat, s2), combat, 'morale');
+                if (theirs <= mine) return null;
+                const at = combat.dice[s2].indexOf(step.kind || 'morale');
+                if (at < 0) return null;
+                combat.dice[s2].splice(at, 1);
+                R.log(state, seat, 'Противник теряет кубик морали.');
                 return null;
             }
             case 'ignoreFoeAtt': {
@@ -1083,11 +1116,10 @@ const FS_EFFECTS = {
                 const area = answer.area;
                 if (!area) return null;
                 const stats = R.structureStats(step.kind);
-                if (!step.free) {
-                    if ((p.supply.structures[step.kind] || 0) <= 0) return null;
-                    p.supply.structures[step.kind]--;
-                    p.materiel -= stats.cost;
-                }
+                if ((p.supply.structures[step.kind] || 0) <= 0) return null;
+                p.supply.structures[step.kind]--;
+                // The structure may be free, but it always comes from the reserve.
+                if (!step.free) p.materiel -= stats.cost;
                 R.addStructure(state, seat, step.kind, area.system, area.pos);
                 R.log(state, seat, state.players[seat].name + ' строит: ' + R.structureName(step.kind) + '.');
                 return null;
@@ -1266,6 +1298,18 @@ const FS_EFFECTS = {
         };
     },
 
+    // The number of the cubes of a kind on the table of the player.
+    countCubes(R, state, seat, combat, kind) {
+        if (!combat) return 0;
+        const side = seat === combat.attacker ? 'attacker' : 'defender';
+        const dice = combat.dice[side] || [];
+        let n = dice.filter(d => d === kind).length;
+        const tokens = combat.tokens[side] || {};
+        if (kind === 'att') n += tokens.att || 0;
+        if (kind === 'def') n += tokens.def || 0;
+        return n;
+    },
+
     // The units of the area of the combat (or the whole board).
     unitsOf(R, state, seat, combat, step) {
         let units;
@@ -1385,7 +1429,7 @@ const FS_EFFECTS = {
     // The names of the units are written in different cases: "Гвардейца" and
     // "Гвардейцы" are the same unit.
     sameName(a, b) {
-        const clean = t => String(t || '').toLowerCase().replace(/[^а-яёa-z'\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        const clean = t => String(t || '').toLowerCase().replace(/['\u2019]/g, '').replace(/[^а-яёa-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
         const x = clean(a);
         const y = clean(b);
         if (!x || !y) return false;
@@ -1402,7 +1446,10 @@ const FS_EFFECTS = {
         const sx = x.replace(/\s+/g, '');
         const sy = y.replace(/\s+/g, '');
         const n = Math.min(4, sx.length, sy.length);
-        return sx.slice(0, n) === sy.slice(0, n);
+        if (sx.slice(0, n) === sy.slice(0, n)) return true;
+        // The short names: "Ктан" and "К'тана" are the same unit.
+        const n3 = Math.min(3, sx.length, sy.length);
+        return sx.slice(0, n3) === sy.slice(0, n3);
     },
 
     // The stem of the name: the first letters of the word. The endings of the
@@ -1524,7 +1571,7 @@ const RULES = [
     },
     // "the opponent must reroll 1 die of your choice"
     {
-        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))\s*[^.`]{0,40}?(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\s+(\d+)?\s*куб[а-яёa-z]*/i,
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))\s*[^.`]{0,40}?(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\s+(\d+)?\s*(?:своих\s+)?куб[а-яёa-z]*/i,
         build: m => ({ op: 'rerollDie', n: num(m[1]), kind: 'any', who: 'foe', pick: true }),
     },
     // "get 1 `att. token` for every unrouted Guardsman or Cruiser, maximum 3"
@@ -1613,6 +1660,15 @@ const RULES = [
             const faction = FS_EFFECTS.factionOf(ctx);
             const names = faction ? faction.units.map(u => u.name) : [];
             return { op: 'placeUnit', n: num(m[1]) || 1, what: names, pick: true, buy: true };
+        },
+    },
+    // "buy 1 unit and place it in the world with this factory"
+    {
+        re: /можете купить одного юнита и разместить его в мире с этой фабрикой/i,
+        build: (m, ctx) => {
+            const faction = FS_EFFECTS.factionOf(ctx);
+            const names = faction ? faction.units.map(u => u.name) : [];
+            return { op: 'placeUnit', n: 1, what: names, pick: true, buy: true };
         },
     },
     // "buy 1 structure and place it"
@@ -1729,6 +1785,11 @@ const RULES = [
         re: /добавьте\s+(\d+)\s+к\s+(?:общей сумме\s+)?урона/i,
         build: m => ({ op: 'extraDamage', n: Number(m[1]) }),
     },
+    // "the opponent has to distribute 3 more damage"
+    {
+        re: /если ваш противник будет распределять какой-либо урон, то он должен распределить дополнительно (\d+) урона/i,
+        build: m => ({ op: 'extraDamage', n: Number(m[1]), who: 'foe' }),
+    },
     // "you and your opponent take 3 more damage"
     {
         re: /вы и ваш противник получ[а-яёa-z]*\s+(\d+)\s+дополнительн[а-яёa-z]*\s+урона/i,
@@ -1748,6 +1809,11 @@ const RULES = [
     {
         re: /игнорируйте все вражеские `att\. cube`/i,
         build: () => ({ op: 'ignoreFoeAtt' }),
+    },
+    // "take 1 of your units from a friendly world with a structure and place it"
+    {
+        re: /взять из дружественного мира[^.]*?один ваш отряд[^.]*?и поместить его/i,
+        build: () => ({ op: 'moveUnit', n: 1, pick: true }),
     },
     // "take 1 stormtrooper from any world and place it in this world"
     {
@@ -1808,7 +1874,7 @@ const RULES = [
     },
     // "The capacity of the friendly worlds with a city grows by 2, up to 4."
     {
-        re: /вместимость\s+дружественных миров[^.]*увеличива[а-яёa-z]* на (\d+)(?:,\s*максимум до (\d+))?/i,
+        re: /вместимость\s+дружественных миров[^.]*увелич[а-яёa-z]* на (\d+)(?:,\s*максимум до (\d+))?/i,
         build: m => ({ op: 'capacityBonus', n: Number(m[1]), max: m[2] ? Number(m[2]) : 0 }),
     },
     // "you may treat all the bastions as factories"
@@ -1821,6 +1887,168 @@ const RULES = [
         re: /стоимость в материалах\s+(?:снижается|уменьшается) на (\d+)\s+за каждого культиста/i,
         build: m => ({ op: 'orderDiscount', n: Number(m[1]), per: 'cultist' }),
     },
+    // The sentences the engine already follows: the player is asked the
+    // question in the usual way.
+    {
+        re: /^(?:если вы атакуете,?\s+(?:то\s+)?)?(?:посмотрите выложенную лицом вниз|подсмотрите)\s+(?:в игровую зону )?боевую карту противника\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^(?:если вы — атакующий,?\s+)?подсмотрите карту оппонента\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^(?:выберите|выбери)\s+(?:1|один|один из)\s+(?:из\s+)?(?:отряд[а-яёa-z]*|бастион[а-яёa-z]*|отрядов или бастион[а-яёa-z]*)[^.]*противника[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^во время шага нанесения повреждений вы назначаете урон отрядам и бастионам противника\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^урон, превышающий значение здоровья выбранного отряда или бастиона, теряется\.?$/i,
+        build: () => ({ op: 'ignoreExcess' }),
+    },
+    {
+        re: /^командный уровень этого отряда не может превышать числа отрядов культистов[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^вы получаете боевые значки с этой карты[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^в конце этого раунда, если вы обороняетесь[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^получите количество `any cube`, равное значению боевой силы[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^если вы атакуете,? то ваш противник не может разыграть общие способности[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^в следующем раунде (?:боя|битвы) каждый раз, когда ваш противник должен выбрать боевую карту.*$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^повторите основную способность карты[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^если в этом раунде будет уничтожен ваш юнит.*$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^вы можете удалить 1 `morale cube`.*$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^перед тем как выполнить этот приказ[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^если у вас больше `morale cube`, чем у противника, то бесплатно замените[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^вы можете выбрать 1 отряд с командным уровнем 0 в этом мире\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^вы можете разместить их на дружественных и неконтролируемых пустотах[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^дополнительная вместимость распространяется только на [^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^затем разыграйте ограниченное развертывание[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^после вытягивания карт на этапе подготовки[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^этот отряд выставляется в дружественную область активной системы\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^этот отряд не может участвовать в основном приказе продвижения\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^вы можете выполнить этот приказ, даже если у вас нет отрядов в активной системе\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^при выполнении этого приказа, после того как закончится битва[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^вы можете выполнить этот приказ, как если бы он был любым другим[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^затем получите такой же жетон\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^за каждый потраченный вами `att\. cube`[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^после того, как вы выполните этот приказ, можете приобрести до 2 отрядов[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^выполните ограниченный приказ продвижение[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^если вы это сделаете, замените любое количество карт[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^используйте способность одной из них[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^затем переместите этот варп-шторм[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^затем положите его либо поверх стека, либо под него\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    {
+        re: /^таким образом можно опустить здоровье до 0[^.]*\.?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
+    },
+    // "you and your opponent must reroll all the dice"
+    {
+        re: /вы и ваш противник обязаны перебросить все кубики/i,
+        build: () => ({ op: 'rerollAll' }),
+    },
+    // "the opponent has more morale cubes, he loses 1"
+    {
+        re: /если у противника больше morale cube, то он теряет 1 morale cube/i,
+        build: () => ({ op: 'loseDieIfMore', n: 1, kind: 'morale', who: 'foe' }),
+    },
+    // "buy 1 order upgrade card, its cost is lowered"
+    {
+        re: /купите одну карту улучшения приказа, уменьшив её стоимость в материалах на (\d+) за каждый ([^.;]+)/i,
+        build: m => ({ op: 'buyUpgrade', kind: 'order', discount: Number(m[1]), per: countKind(m[2]) }),
+    },
+    // "pay 1 materiel to take 1 city from the reserve and place it for free"
+    {
+        re: /взять из резерва 1 город и бесплатно разместить его/i,
+        build: () => ({ op: 'placeStructure', kind: 'city', n: 1, free: true, pick: true }),
+    },
     // "you may spend 1 materiel to place 1 unit of command level 0"
     {
         re: /потратить (\d+) матери[а-яёa-z]*, чтобы разместить 1 отряд с командным уровнем 0/i,
@@ -1828,7 +2056,7 @@ const RULES = [
     },
     // "this unit or bastion takes the damage first" — the engine asks the order.
     {
-        re: /^этот отряд(?: или бастион)? (?:получит урон|получает повреждения|получает урон) первым/i,
+        re: /^этот отряд(?: или бастион)? (?:должен получить урон|получит урон|получает повреждения|получает урон) первым/i,
         build: (m, ctx, s) => ({ op: 'note', text: s }),
     },
     // "you may buy only 1 upgrade"
@@ -1838,7 +2066,7 @@ const RULES = [
     },
     // "Its cost in materiel is lowered by 1 for every <X>."
     {
-        re: /(?:стоимость в материалах\s+(?:уменьшается|снижается)|уменьшите\s+его\s+стоимость)\s+на\s+(\d+)\s+за\s+кажд[а-яёa-z]+\s+([^.;]+)/i,
+        re: /(?:стоимость в материалах\s+(?:уменьшается|снижается)|уменьши[а-яёa-z]*\s+его\s+стоимость)\s+на\s+(\d+)\s+за\s+кажд[а-яёa-z]+\s+([^.;]+)/i,
         build: (m, ctx, s) => {
             const limit = /не более чем на (\d+)/i.exec(s);
             return { op: 'costDiscount', n: Number(m[1]), per: countKind(m[2]), max: limit ? Number(limit[1]) : 0 };
@@ -1900,7 +2128,7 @@ const RULES = [
     },
     // "the opponent cannot place reinforcement tokens"
     {
-        re: /противник[а-яёa-z]* не может размещать жетоны подкрепления/i,
+        re: /противник[а-яёa-z]* не (?:может|сможет) (?:размещать|использовать|разыгрывать) жетоны подкрепления/i,
         build: () => ({ op: 'noReinforce' }),
     },
     // "make the opponent discard any die and take it for yourself"
@@ -1931,6 +2159,16 @@ const RULES = [
     {
         re: /вынудите вашего противника распределять урон своим войскам по 1 единице за раз/i,
         build: () => ({ op: 'damageOneByOne' }),
+    },
+    // "in this planning phase you will place 5 order tokens"
+    {
+        re: /в этой фазе планирования вы положите (\d+) жетонов приказов/i,
+        build: m => ({ op: 'extraOrderTokens', n: Math.max(0, Number(m[1]) - 4) }),
+    },
+    // "you may put 3 of your order tokens on top of your event deck"
+    {
+        re: /поместить (\d+) своих жетон[а-яёa-z]* приказ[а-яёa-z]*[^.]*колод[а-яёa-z]* событий/i,
+        build: m => ({ op: 'extraOrderTokens', n: Number(m[1]) }),
     },
     // "you may put 2 more order tokens on your event deck"
     {
@@ -2024,6 +2262,7 @@ function countKind(text) {
     if (/город/.test(s)) return 'yourCity';
     if (/культист/.test(s)) return 'cultist';
     if (/жетон/.test(s)) return 'reinforcement';
+    if (/фабрик/.test(s)) return 'yourFactory';
     if (/систем[а-яёa-z]*/.test(s) && /противник/.test(s)) return 'mixedSystem';
     if (/систем[а-яёa-z]*/.test(s) && /не содержит/.test(s)) return 'noFoeSystem';
     return null;

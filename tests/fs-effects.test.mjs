@@ -221,6 +221,60 @@ test('the ability of the faction: the units are moved by the engine', () => {
 
 // --- the coverage of the interpreter -------------------------------------------
 
+test('the text of the cards: the scheme waits for its moment', () => {
+    const steps = FS_EFFECTS.parse('В начале раунда боя вы можете сбросить эту карту, чтобы получить 1 `att. token`.');
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0].op, 'trigger');
+    assert.equal(steps[0].trigger, 'round');
+    assert.equal(steps[0].steps.length, 1);
+    assert.equal(steps[0].steps[0].op, 'gainToken');
+});
+
+test('the text of the cards: the order changes the rules of the game', () => {
+    const steps = FS_EFFECTS.parse('Вместимость дружественных миров, содержащих город, увеличена на 2, максимум до 4.');
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0].op, 'capacityBonus');
+    assert.equal(steps[0].n, 2);
+    assert.equal(steps[0].max, 4);
+
+    const fight = FS_EFFECTS.parse('Если происходит бой, разыграйте только ОДИН раунд, на этом бой заканчивается.');
+    assert.equal(fight.length, 1);
+    assert.equal(fight[0].op, 'combatLength');
+    assert.equal(fight[0].n, 1);
+
+    const cheap = FS_EFFECTS.parse('При выполнении этого приказа вы можете приобрести только 1 улучшение.');
+    assert.equal(cheap[0].op, 'upgradeLimit');
+    assert.equal(cheap[0].n, 1);
+});
+
+test('the text of the cards: the discount of the card is counted', () => {
+    const steps = FS_EFFECTS.parse('Его стоимость в материалах уменьшается на 1 за каждый дружественный мир, где есть бастион.');
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0].op, 'costDiscount');
+    assert.equal(steps[0].n, 1);
+    assert.equal(steps[0].per, 'friendlyBastion');
+});
+
+test('the text of the cards: the materiel is exchanged for the tokens', () => {
+    const steps = FS_EFFECTS.parse('Либо потратьте до 2 материалов, чтобы получить 1 ценный ресурс на ваш выбор за каждый потраченный материал, либо потратьте до 2 ценных ресурсов, чтобы получить по 2 материала за каждый потраченный ценный ресурс.');
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0].op, 'choice');
+    assert.equal(steps[0].options[0].op, 'exchangeMateriel');
+    assert.equal(steps[0].options[1].op, 'exchangeAsset');
+});
+
+test('the text of the cards: the abilities of the factions are read', () => {
+    const steps = FS_EFFECTS.parse('2 Гвардейца могут быть куплены за 1 жетон запасов.', { faction: 'тираниды' });
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0].op, 'supplyDeal');
+    assert.equal(steps[0].n, 2);
+
+    const cards = FS_EFFECTS.parse('При выполнении приказа доминирования в системе, где есть ваши юниты или постройки, вы можете вытянуть 4 карты событий и разыграть эффект одной из них.', { faction: 'тираниды' });
+    assert.equal(cards.length, 2);
+    assert.equal(cards[0].op, 'drawEvents');
+    assert.equal(cards[1].op, 'playEvent');
+});
+
 test('the interpreter: the texts of the cards are read', () => {
     let total = 0;
     let read = 0;
@@ -234,7 +288,7 @@ test('the interpreter: the texts of the cards are read', () => {
             }
         }
     }
-    assert.ok(read / total > 0.7, 'the combat cards are read: ' + Math.round(read / total * 100) + ' %');
+    assert.ok(read / total > 0.85, 'the combat cards are read: ' + Math.round(read / total * 100) + ' %');
 });
 
 test('the interpreter: the events and the orders are read', () => {
@@ -247,5 +301,5 @@ test('the interpreter: the events and the orders are read', () => {
             if (steps.length && steps[0].op !== 'icons') read++;
         }
     }
-    assert.ok(read / total > 0.5, 'the events are read: ' + Math.round(read / total * 100) + ' %');
+    assert.ok(read / total > 0.8, 'the events are read: ' + Math.round(read / total * 100) + ' %');
 });
