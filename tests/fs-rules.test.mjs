@@ -175,6 +175,64 @@ test('the deploy order: a unit is bought and stands on a world', () => {
     assert.equal(p.supply.units[def.id], (p.supply.units[def.id] || 0));
 });
 
+test('the order of the card: the capacity of the world with a city grows', () => {
+    const s = newGame(2);
+    const seat = 0;
+    const sys = s.systems.find(x => FS_RULES.hasUnitsOrStructures(s, seat, x.id));
+    const area = sys.areas.find(a => a.world);
+    // The player has a city in the world.
+    s.structures = s.structures.filter(st => !(st.seat === seat && st.system === sys.id && st.area === area.pos));
+    FS_RULES.addStructure(s, seat, 'city', sys.id, area.pos);
+    const before = FS_RULES.capacity(s, sys.id, area.pos);
+    s.order = { seat, order: 'deploy', system: sys.id, phase: 'deploy', capacityBonus: 2, capacityMax: 4 };
+    const after = FS_RULES.capacity(s, sys.id, area.pos);
+    assert.equal(after, Math.min(4, before + 2), 'the world holds more units');
+});
+
+test('the order of the card: the combat of one round ends at once', () => {
+    const s = newGame(2);
+    const sys = s.systems[0];
+    const area = sys.areas.find(a => a.world);
+    for (const u of s.units) { u.system = sys.id; u.area = area.pos; }
+    s.order = { seat: 0, order: 'advance', system: sys.id, phase: 'combat' };
+    FS_RULES.startCombat(s, 0, 1, sys.id, area.pos);
+    s.combat.maxRounds = 1;
+    FS_RULES.apply(s, 0, { type: 'combat', action: 'reinforce', count: 0 });
+    FS_RULES.apply(s, 1, { type: 'combat', action: 'reinforce', count: 0 });
+    FS_RULES.apply(s, 0, { type: 'combat', action: 'skipCard' });
+    FS_RULES.apply(s, 1, { type: 'combat', action: 'skipCard' });
+    FS_RULES.apply(s, 0, { type: 'combat', action: 'damage', targets: [] });
+    FS_RULES.apply(s, 1, { type: 'combat', action: 'damage', targets: [] });
+    assert.ok(s.combat.winner, 'the fight is over after one round');
+});
+
+test('the ability of the faction: two Guardsmen for one supply token', () => {
+    const s = FS_RULES.newGame({
+        seed: 3,
+        players: [{ name: 'A', faction: 'имперская-гвардия' }, { name: 'B', faction: 'некроны' }],
+    });
+    const seat = 0;
+    const p = s.players[seat];
+    const def = FS_DATA.factions.find(f => f.id === p.faction).units.find(u => /Гварде/.test(u.name));
+    assert.ok(def, 'the faction has Guardsmen');
+    const sys = s.systems.find(x => FS_RULES.hasFactory(s, seat, x.id))
+        || s.systems.find(x => FS_RULES.hasUnitsOrStructures(s, seat, x.id));
+    assert.ok(sys, 'the player has a factory on the board');
+    s.order = { seat, order: 'deploy', system: sys.id, phase: 'deploy', supplyDeal: { n: 2, unit: 'Гвардец' } };
+    p.supply.units[def.id] = 1;
+    p.materiel = 14;
+    // The world is empty: the new Guardsman has a place to stand.
+    const area = sys.areas.find(a => a.world);
+    s.units = s.units.filter(u => !(u.seat === seat && u.system === sys.id && u.area === area.pos));
+    // The first Guardsman takes the supply token, the second is free of it.
+    const res = FS_RULES.apply(s, seat, { type: 'buyUnit', unit: def.id, system: sys.id, pos: area.pos });
+    assert.equal(res.ok, true, res.error);
+    assert.equal(p.supply.units[def.id], 0, 'the supply token is spent');
+    const res2 = FS_RULES.apply(s, seat, { type: 'buyUnit', unit: def.id, system: sys.id, pos: area.pos });
+    assert.equal(res2.ok, true, res2.error);
+    assert.equal(p.supply.units[def.id], 0, 'the second Guardsman costs no supply token');
+});
+
 // --- the combat -------------------------------------------------------------
 
 test('the combat: the preparation, the three rounds and the result', () => {

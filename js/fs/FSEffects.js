@@ -749,7 +749,7 @@ const FS_EFFECTS = {
                 return { question: { kind: 'cards', who: seat, op: 'playEvent', options: hand.slice(), text: 'Какую карту события разыграть?' } };
             }
             case 'supplyDeal': {
-                if (state.order) state.order.supplyDeal = step.n || 2;
+                if (state.order) state.order.supplyDeal = { n: step.n || 2, unit: step.unit || '' };
                 return null;
             }
             case 'deployInFactoryWorld': {
@@ -2212,8 +2212,8 @@ const RULES = [
     },
     // "2 Guardsmen may be bought for 1 supply token."
     {
-        re: /(\d+)\s+Гвардейц[а-яёa-z]* могут быть куплены за 1 жетон/i,
-        build: m => ({ op: 'supplyDeal', n: Number(m[1]) }),
+        re: /(\d+)\s+([А-ЯЁ][а-яёa-z]+) могут быть куплены за 1 жетон/i,
+        build: m => ({ op: 'supplyDeal', n: Number(m[1]), unit: m[2] }),
     },
     // "They must be deployed in the world that produced them."
     {

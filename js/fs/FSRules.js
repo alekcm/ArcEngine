@@ -1114,8 +1114,10 @@ const FS_RULES = {
         if (!def) return { ok: false, error: 'Нет такого отряда.' };
         const p = state.players[seat];
         // The ability of the faction: "2 Guardsmen may be bought for 1 supply token."
-        const deal = !!(order.supplyDeal && /Гвардец/i.test(def.name));
+        const deal = !!(order.supplyDeal
+            && FS_EFFECTS.sameName(def.name, order.supplyDeal.unit || 'Гвардец'));
         const dealFree = deal && ((order.dealBought || 0) % 2 === 1);
+        void dealFree;
         if (!dealFree && (p.supply.units[def.id] || 0) <= 0) return { ok: false, error: 'Такого отряда больше нет в запасе.' };
         if (def.kl > this.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
         // The order may allow only one kind of unit.
