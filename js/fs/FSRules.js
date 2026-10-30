@@ -819,6 +819,12 @@ const FS_RULES = {
         const from = unit.system;
         const adjacent = from === order.system || this.neighbors(state, order.system).includes(from);
         if (!adjacent) return { ok: false, error: 'Отряд слишком далеко.' };
+        // A warp storm on the edge blocks the way — unless the order says that
+        // the ships may pass through the storms.
+        if (from !== target.system && this.stormOn(state, from, target.system)
+            && !(def.type === 'ship' && order.shipsThroughStorms)) {
+            return { ok: false, error: 'Варп-шторм преграждает путь.' };
+        }
         // Ground units need a legal path, ships do not.
         if (def.type === 'ground' && unit.system !== target.system) {
             if (!this.pathExists(state, seat, unit.system, unit.area, target.system, target.pos)) {
@@ -987,13 +993,21 @@ const FS_RULES = {
     // The deploy limit: the capacity of the friendly worlds with a factory.
     deployLimit(state, seat, systemId) {
         const sys = this.system(state, systemId);
+        const order = state.order;
+        // While the order runs, the cities may be treated as factories.
+        const asFactories = !!(order && order.seat === seat && order.citiesAsFactories);
         let limit = 0;
         for (const area of sys.areas) {
             if (this.control(state, seat, systemId, area.pos) !== 'friendly') continue;
-            if (!this.structuresAt(state, systemId, area.pos).some(s => s.seat === seat && s.type === 'factory')) continue;
+            const structures = this.structuresAt(state, systemId, area.pos).filter(s => s.seat === seat);
+            const factory = structures.some(s => s.type === 'factory');
+            const city = structures.some(s => s.type === 'city');
+            if (!factory && !(asFactories && city)) continue;
             limit += this.capacity(state, systemId, area.pos);
         }
-        return limit;
+        // The order may lower the limit.
+        if (order && order.seat === seat && order.deployLimitBonus) limit += order.deployLimitBonus;
+        return Math.max(0, limit);
     },
 
     hasFactory(state, seat, systemId) {

@@ -466,6 +466,11 @@ const FS_EFFECTS = {
                 if (!hand.length) return null;
                 return { question: { kind: 'cards', who: seat, op: 'playCard', options: hand.slice(), text: 'Какую карту разыграть?' } };
             }
+            case 'chooseFoe': {
+                const foes = state.players.filter(p => p.seat !== seat).map(p => p.seat);
+                if (!foes.length) return null;
+                return { question: { kind: 'foes', who: seat, op: 'chooseFoe', options: foes, text: 'Выберите противника.' } };
+            }
             case 'chooseWorld': {
                 const worlds = this.friendlyWorlds(R, state, seat);
                 if (!worlds.length) return null;
@@ -503,9 +508,33 @@ const FS_EFFECTS = {
                 combat.noRoute.push(step.who === 'foe' ? foe : seat);
                 return null;
             }
+            case 'citiesAsFactories': {
+                if (state.order) state.order.citiesAsFactories = true;
+                return null;
+            }
+            case 'shipsThroughStorms': {
+                if (state.order) state.order.shipsThroughStorms = true;
+                return null;
+            }
+            case 'deployLimit': {
+                if (state.order) state.order.deployLimitBonus = (state.order.deployLimitBonus || 0) + (step.n || 0);
+                return null;
+            }
             case 'orderKl': {
                 // The command level of the player is higher while the order runs.
                 if (state.order) state.order.klBonus = (state.order.klBonus || 0) + (step.n || 0);
+                return null;
+            }
+            case 'citiesAsFactories': {
+                if (state.order) state.order.citiesAsFactories = true;
+                return null;
+            }
+            case 'shipsThroughStorms': {
+                if (state.order) state.order.shipsThroughStorms = true;
+                return null;
+            }
+            case 'deployLimit': {
+                if (state.order) state.order.deployLimitBonus = (state.order.deployLimitBonus || 0) + (step.n || 0);
                 return null;
             }
             case 'orderKl': {
@@ -743,6 +772,11 @@ const FS_EFFECTS = {
                 combat.cards[side].played.push({ name, card, valuesOnly: true });
                 return null;
             }
+            case 'chooseFoe': {
+                const foes = state.players.filter(p => p.seat !== seat).map(p => p.seat);
+                if (!foes.length) return null;
+                return { question: { kind: 'foes', who: seat, op: 'chooseFoe', options: foes, text: 'Выберите противника.' } };
+            }
             case 'chooseWorld': {
                 const worlds = this.friendlyWorlds(R, state, seat);
                 if (!worlds.length) return null;
@@ -753,6 +787,16 @@ const FS_EFFECTS = {
                 const kinds = ['forge', 'cache', 'reinforcement'].filter(k => (p2.assets[k] || 0) > 0);
                 if (!kinds.length) return null;
                 return { question: { kind: 'assets', who: target, op: 'loseAsset', n: Math.min(step.n || 1, kinds.length), options: kinds, text: 'Какой жетон ресурса теряется?' } };
+            }
+            case 'chooseFoe': {
+                const foes = state.players.filter(p => p.seat !== seat).map(p => p.seat);
+                if (!foes.length) return null;
+                return { question: { kind: 'foes', who: seat, op: 'chooseFoe', options: foes, text: 'Выберите противника.' } };
+            }
+            case 'chooseFoe': {
+                // The opponent of the effect.
+                if (answer.foe !== undefined) ctx.foe = answer.foe;
+                return null;
             }
             case 'chooseWorld': {
                 // The world of the effect: the next steps work with it.
@@ -975,13 +1019,14 @@ const FS_EFFECTS = {
         // The whole name without the spaces: "Гвардейцы" and "Гвардеец".
         const sx = x.replace(/\s+/g, '');
         const sy = y.replace(/\s+/g, '');
-        const n = Math.min(6, sx.length, sy.length);
+        const n = Math.min(5, sx.length, sy.length);
         return sx.slice(0, n) === sy.slice(0, n);
     },
 
-    // The stem of the name: the first letters of the word.
+    // The stem of the name: the first letters of the word. The endings of the
+    // Russian plural differ: "скаутов" and "скауты" are the same unit.
     stem(word) {
-        return String(word || '').slice(0, 6);
+        return String(word || '').slice(0, 5);
     },
 };
 
@@ -1224,6 +1269,11 @@ const RULES = [
             kind: /кузниц/.test(m[2]) ? 'forge' : /тайник/.test(m[2]) ? 'cache' : /подкреплен/.test(m[2]) ? 'reinforcement' : 'any',
         }),
     },
+    // "then choose an opponent"
+    {
+        re: /выберите противника/i,
+        build: () => ({ op: 'chooseFoe', pick: true }),
+    },
     // "choose a friendly world"
     {
         re: /выберите дружественный мир/i,
@@ -1248,6 +1298,21 @@ const RULES = [
     {
         re: /добавьте\s+(\d+)\s+к\s+(?:общей сумме\s+)?урона/i,
         build: m => ({ op: 'extraDamage', n: Number(m[1]) }),
+    },
+    // "you may treat your cities as factories while this order is executed"
+    {
+        re: /рассматривать\s+все\s+ваши города[^.]*как фабрики/i,
+        build: () => ({ op: 'citiesAsFactories' }),
+    },
+    // "your ships may pass through the warp storms"
+    {
+        re: /корабли могут проходить через варп-штормы/i,
+        build: () => ({ op: 'shipsThroughStorms' }),
+    },
+    // "your deploy limit is lowered by 1 for every bastion"
+    {
+        re: /лимит развертывания[^.]*уменьшается на (\d+)/i,
+        build: m => ({ op: 'deployLimit', n: -Number(m[1]) }),
     },
     // "your command level increases by 1 while this order is executed"
     {

@@ -623,24 +623,9 @@ class FSGame {
                     onClick: () => this.net.cmd({ type: 'combat', action: 'skipCard' }),
                 });
                 if (this.lastCard) {
+                    // The text of the card: the engine has already applied it.
                     ctx.text += '\n\n«' + this.lastCard.name + '»: ' + (this.lastCard.general || '')
                         + (this.lastCard.unit ? ' ' + this.lastCard.unit : '');
-                    // The quick effects of the card: the tokens and the dice.
-                    const face = d => d === 'att' ? 'атака' : d === 'def' ? 'оборона' : d === 'morale' ? 'мораль' : 'пусто';
-                    ctx.actions.push({ label: 'Жетон атаки +1', onClick: () => this.net.cmd({ type: 'combat', action: 'token', tokenType: 'att', count: 1 }) });
-                    ctx.actions.push({ label: 'Жетон обороны +1', onClick: () => this.net.cmd({ type: 'combat', action: 'token', tokenType: 'def', count: 1 }) });
-                    ctx.actions.push({ label: 'Жетон атаки у противника -1', onClick: () => this.net.cmd({ type: 'combat', action: 'token', tokenType: 'att', target: 'foe', count: 1 }) });
-                    ctx.actions.push({ label: 'Жетон обороны у противника -1', onClick: () => this.net.cmd({ type: 'combat', action: 'token', tokenType: 'def', target: 'foe', count: 1 }) });
-                    ctx.actions.push({ label: 'Кубик атаки +1', onClick: () => this.net.cmd({ type: 'combat', action: 'die', face: 'att', count: 1 }) });
-                    ctx.actions.push({ label: 'Кубик обороны +1', onClick: () => this.net.cmd({ type: 'combat', action: 'die', face: 'def', count: 1 }) });
-                    ctx.actions.push({ label: 'Кубик морали +1', onClick: () => this.net.cmd({ type: 'combat', action: 'die', face: 'morale', count: 1 }) });
-                    ctx.actions.push({ label: 'Кубик противника -1', onClick: () => this.net.cmd({ type: 'combat', action: 'die', target: 'foe', count: 1 }) });
-                    (c.dice[side] || []).forEach((d, i) => {
-                        ctx.actions.push({
-                            label: 'Перебросить кубик ' + (i + 1) + ' (' + face(d) + ')',
-                            onClick: () => this.net.cmd({ type: 'combat', action: 'reroll', index: i }),
-                        });
-                    });
                 }
                 return;
             }
@@ -793,6 +778,16 @@ class FSGame {
                     ctx.actions.push({
                         label: (face === 'att' ? 'атака' : face === 'def' ? 'оборона' : face === 'morale' ? 'мораль' : 'пусто') + ' (' + count + ')',
                         onClick: () => send({ face }),
+                    });
+                }
+                return;
+            }
+            case 'foes': {
+                for (const seat of q.options) {
+                    const p = s.players.find(x => x.seat === seat);
+                    ctx.actions.push({
+                        label: p ? p.name : ('Игрок ' + (seat + 1)),
+                        onClick: () => send({ foe: seat }),
                     });
                 }
                 return;
