@@ -25,6 +25,7 @@ node tools/combat-icons.mjs classify --image scan.png --box x,y,w,h --location t
 # Сверка размеченной колоды с ожидаемой транскрипцией.
 node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/orks.json --out build/combat-review/orks-audit
 node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/tau.json --out build/combat-review/tau-audit
+node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/tau-orders.json --out build/combat-review/tau-orders-audit
 node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/space-marines.json --out build/combat-review/space-marines-audit
 node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/mechanicus.json --out build/combat-review/mechanicus-audit
 node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/inquisition.json --out build/combat-review/inquisition-audit
@@ -42,19 +43,24 @@ node tools/combat-icons.mjs audit --manifest docs/forbidden-stars/combat-icons/s
 ## Проверенный объём
 
 - Эталоны: 36/36 при исключении целой фракции.
-- Орки: 12 карт, 48 вручную размеченных значков; 48/48 совпали с ожидаемой транскрипцией.
+- Орки: 14 карт (12 на двух листах + 2 отдельных фото владельца), 58 вручную размеченных значков;
+  58/58 совпали с ожидаемой транскрипцией.
+- Тау, улучшения приказов: 5 карт, 3 значка на листе `Тау/Карти наказів (3).jpg`; 3/3 совпали.
+  Манифест `tau-orders.json` отделён от боевых карт.
 - Тау: 27 отпечатанных карт (14 разных названий), 119 вручную размеченных значков; 119/119 совпали.
   Повторные копии проверены отдельно, чтобы не потерять текстовые редакции.
 - Космодесант: 14 карт (9 на отдельном листе + 5 на `0003.png`), 68 вручную размеченных значков;
   68/68 совпали. Листы не дублируют друг друга.
 - Адептус Механикус: 28 отпечатанных карт (14 на отдельном листе + 14 на сводном листе в другом
   переводе), 156 вручную размеченных значков; 156/156 совпали. Версии сохранены раздельно.
-- Инквизиция: 14 карт на составном листе `E5DE7E8B…_2.png` (ряды 2–3), 73 вручную размеченных
-  значка; 73/73 совпали. Копия листа в папке Сестёр битвы не считается отдельным источником.
+- Инквизиция: 14 карт (5 актуальных улучшений на фото `Боевые карты/Сестры-Инквизиция-актуальные.png`
+  + 9 на составном листе `E5DE7E8B…_2.png`), 66 вручную размеченных значков; 66/66 совпали.
+  Копия составного листа в папке Сестёр битвы не считается отдельным источником.
 - Тёмные эльдары: 14 карт на составном листе `5DD5794E…_1.png` (ряды 3–5), 76 вручную размеченных
   значков; 76/76 совпали.
-- Сестры битвы: 15 карт (14 на составном листе `5DD5794E…_1.png`, ряды 6–7, и «Лицеприятная кара»
-  на листе приказов `DDDD2EC8…`), 73 вручную размеченных значка; 73/73 совпали.
+- Сестры битвы: 15 карт (4 актуальных улучшения на фото `Боевые карты/Сестры-Инквизиция-актуальные.png`,
+  10 на составном листе `5DD5794E…_1.png` и «Лицеприятная кара» на листе приказов `DDDD2EC8…`),
+  80 вручную размеченных значков; 80/80 совпали.
 - Это проверка на данном наборе кропов, а не измеренная точность на произвольных сканах.
 
 Носитель различается не только заполненностью углов: у пустого кубика считаются замкнутые

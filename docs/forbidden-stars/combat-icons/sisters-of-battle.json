@@ -1,6 +1,6 @@
 {
   "faction": "sisters-of-battle",
-  "note": "All 15 Sisters of Battle combat cards: 14 on 5DD5794E..._1.png (rows 6-7) plus Лицеприятная кара on the orders sheet DDDD2EC8... (row 3, col 3). Boxes are original-sheet coordinates; expected labels are manual transcription and are never classifier input. No Sisters of Battle samples are used as references.",
+  "note": "Current 15 Sisters of Battle combat cards. Four cards (Martyrdom, Divine Retribution, Destructive Refrain, Heroic Immolation) use the owner-supplied current sheet; the other 11 retain their earlier sources. Manual boxes are original-source coordinates; expected labels are never classifier input. No Sisters samples are references.",
   "cards": [
     {
       "id": "r6-c5",
@@ -352,19 +352,19 @@
       ]
     },
     {
-      "id": "r7-c1",
+      "id": "martyrdom",
       "card": "martyrdom",
       "name": "Мученичество",
-      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
-      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "source": "Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
+      "image": "../../../Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
       "icons": [
         {
           "id": "col-1",
           "box": [
-            45,
-            6521,
-            70,
-            65
+            31,
+            201,
+            64,
+            64
           ],
           "location": "column",
           "expected": "def. icon"
@@ -372,10 +372,10 @@
         {
           "id": "col-2",
           "box": [
-            45,
-            6601,
-            70,
-            65
+            29,
+            263,
+            64,
+            64
           ],
           "location": "column",
           "expected": "morale icon"
@@ -383,10 +383,10 @@
         {
           "id": "main-att-cube",
           "box": [
-            438,
-            6942,
-            43,
-            42
+            365,
+            540,
+            40,
+            40
           ],
           "location": "text",
           "expected": "att. cube"
@@ -394,13 +394,24 @@
         {
           "id": "main-morale-cube",
           "box": [
-            529,
-            6942,
-            42,
-            42
+            441,
+            544,
+            36,
+            36
           ],
           "location": "text",
           "expected": "morale cube"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            226,
+            678,
+            44,
+            44
+          ],
+          "location": "text",
+          "expected": "def. cube"
         }
       ]
     },
@@ -608,19 +619,19 @@
       ]
     },
     {
-      "id": "r7-c5",
+      "id": "destructive-refrain",
       "card": "destructive-refrain",
       "name": "Разрушительный рефрен",
-      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
-      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "source": "Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
+      "image": "../../../Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
       "icons": [
         {
           "id": "col-1",
           "box": [
-            3001,
-            6521,
-            70,
-            65
+            1266,
+            200,
+            64,
+            64
           ],
           "location": "column",
           "expected": "att. icon"
@@ -628,10 +639,10 @@
         {
           "id": "col-2",
           "box": [
-            3001,
-            6601,
-            70,
-            65
+            1264,
+            266,
+            64,
+            64
           ],
           "location": "column",
           "expected": "def. icon"
@@ -639,74 +650,75 @@
         {
           "id": "col-3",
           "box": [
-            3001,
-            6681,
-            70,
-            65
+            1268,
+            332,
+            60,
+            60
           ],
           "location": "column",
           "expected": "morale icon"
         },
         {
-          "id": "main-att-cube",
-          "box": [
-            3479,
-            7197,
-            43,
-            41
-          ],
-          "location": "text",
-          "expected": "att. cube"
-        },
-        {
-          "id": "main-def-cube",
-          "box": [
-            3617,
-            7197,
-            43,
-            41
-          ],
-          "location": "text",
-          "expected": "def. cube"
-        },
-        {
           "id": "main-att-token",
           "box": [
-            3182,
-            7236,
-            42,
-            41
+            1382,
+            550,
+            36,
+            36
           ],
           "location": "text",
           "expected": "att. token"
         },
         {
-          "id": "main-morale-cube",
+          "id": "unit-def-token",
           "box": [
-            3625,
-            7237,
-            43,
-            41
+            1483,
+            666,
+            36,
+            36
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            1677,
+            668,
+            36,
+            36
           ],
           "location": "text",
           "expected": "morale cube"
+        },
+        {
+          "id": "unit-any-cube",
+          "box": [
+            1380,
+            754,
+            40,
+            40
+          ],
+          "location": "text",
+          "expected": "any cube"
         }
       ]
     },
     {
-      "id": "r7-c6",
-      "card": "burning-the-martyr",
-      "name": "Сжигая мученика",
-      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
-      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "id": "heroic-immolation",
+      "card": "heroic-immolation",
+      "name": "Геройское самосожжение",
+      "previousName": "Сжигая мученика",
+      "source": "Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
+      "image": "../../../Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
       "icons": [
         {
           "id": "col-1",
           "box": [
-            3740,
-            6521,
-            70,
-            65
+            32,
+            1054,
+            64,
+            64
           ],
           "location": "column",
           "expected": "att. icon"
@@ -714,10 +726,10 @@
         {
           "id": "col-2",
           "box": [
-            3740,
-            6601,
-            70,
-            65
+            32,
+            1118,
+            64,
+            64
           ],
           "location": "column",
           "expected": "att. icon"
@@ -725,10 +737,10 @@
         {
           "id": "col-3",
           "box": [
-            3740,
-            6681,
-            70,
-            65
+            32,
+            1178,
+            68,
+            68
           ],
           "location": "column",
           "expected": "morale icon"
@@ -736,10 +748,10 @@
         {
           "id": "main-def-token",
           "box": [
-            3933,
-            6799,
-            42,
-            42
+            187,
+            1275,
+            44,
+            44
           ],
           "location": "text",
           "expected": "def. token"
@@ -747,10 +759,10 @@
         {
           "id": "main-morale-cube",
           "box": [
-            3984,
-            6895,
-            32,
-            32
+            227,
+            1349,
+            36,
+            36
           ],
           "location": "text",
           "expected": "morale cube"
@@ -758,10 +770,10 @@
         {
           "id": "unit-def-cube",
           "box": [
-            3959,
-            7020,
-            43,
-            41
+            481,
+            1456,
+            36,
+            36
           ],
           "location": "text",
           "expected": "def. cube"
@@ -769,10 +781,10 @@
         {
           "id": "unit-att-token-1",
           "box": [
-            4329,
-            7019,
-            42,
-            41
+            214,
+            1478,
+            40,
+            40
           ],
           "location": "text",
           "expected": "att. token"
@@ -780,10 +792,10 @@
         {
           "id": "unit-att-token-2",
           "box": [
-            4352,
-            7086,
-            42,
-            41
+            449,
+            1531,
+            40,
+            40
           ],
           "location": "text",
           "expected": "att. token"
@@ -791,10 +803,10 @@
         {
           "id": "unit-att-token-3",
           "box": [
-            4297,
-            7219,
-            42,
-            41
+            509,
+            1591,
+            36,
+            36
           ],
           "location": "text",
           "expected": "att. token"
@@ -899,19 +911,20 @@
       ]
     },
     {
-      "id": "r7-c8",
+      "id": "divine-retribution",
       "card": "divine-retribution",
-      "name": "Божественная кара",
-      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
-      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "name": "Кара Божья",
+      "previousName": "Божественная кара",
+      "source": "Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
+      "image": "../../../Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
       "icons": [
         {
           "id": "col-1",
           "box": [
-            5218,
-            6521,
-            70,
-            65
+            648,
+            201,
+            64,
+            64
           ],
           "location": "column",
           "expected": "def. icon"
@@ -919,24 +932,90 @@
         {
           "id": "col-2",
           "box": [
-            5218,
-            6601,
-            70,
-            65
+            648,
+            260,
+            64,
+            64
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            647,
+            318,
+            64,
+            64
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            647,
+            380,
+            64,
+            64
           ],
           "location": "column",
           "expected": "morale icon"
         },
         {
-          "id": "col-3",
+          "id": "main-morale-cube-1",
           "box": [
-            5218,
-            6681,
-            70,
-            65
+            767,
+            536,
+            36,
+            36
           ],
-          "location": "column",
-          "expected": "morale icon"
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "main-morale-cube-2",
+          "box": [
+            762,
+            566,
+            36,
+            36
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            1104,
+            693,
+            40,
+            40
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            775,
+            725,
+            40,
+            40
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            1094,
+            765,
+            44,
+            44
+          ],
+          "location": "text",
+          "expected": "att. cube"
         }
       ]
     }

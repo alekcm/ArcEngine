@@ -78,12 +78,14 @@ test('held-out-faction validation has no wrong labels or abstentions on the refe
   }
 });
 
-test('Ork audit manifest covers 12 cards and 48 manually located symbols', () => {
+test('Ork audit manifest covers 14 cards and 58 manually located symbols', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'orks.json'), 'utf8'));
   assert.equal(manifest.faction, 'orks');
-  assert.equal(manifest.cards.length, 12);
+  assert.equal(manifest.cards.length, 14);
+  assert.equal(new Set(manifest.cards.map(c => c.card)).size, 14);
+  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 4);
   const icons = manifest.cards.flatMap(c => c.icons);
-  assert.equal(icons.length, 48);
+  assert.equal(icons.length, 58);
   for (const icon of icons) {
     assert.ok(LABELS.includes(icon.expected));
     assert.equal(icon.box.length, 4);
@@ -118,6 +120,24 @@ test('Tau audit manifest covers all 27 prints, 14 names and 119 manually located
   // The two Greater Good prints must remain separate: their unit abilities differ in print.
   const greater = manifest.cards.filter(c => c.card === 'greater-good');
   assert.equal(greater.length, 2);
+});
+
+test('Tau order-upgrade manifest is separate from combat cards and covers three empty cubes', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'tau-orders.json'), 'utf8'));
+  assert.equal(manifest.faction, 'tau');
+  assert.equal(manifest.cards.length, 2);
+  const icons = manifest.cards.flatMap(c => c.icons);
+  assert.equal(icons.length, 3);
+  for (const icon of icons) {
+    assert.equal(icon.expected, 'any cube');
+    assert.equal(icon.location, 'text');
+    assert.ok(icon.box.every(Number.isInteger));
+  }
+  for (const card of manifest.cards) {
+    assert.equal(card.source, 'Warhammer/Тау/Карти наказів (3).jpg');
+    assert.ok(fs.existsSync(path.resolve(refDir, card.image)));
+  }
+  assert.ok(!references.some(r => r.faction === 'tau'));
 });
 
 test('Space Marine audit manifest covers 14 distinct cards on two sheets and 68 manually located symbols', () => {
@@ -167,15 +187,18 @@ test('Mechanicus audit manifest covers 28 prints on two sheets and 156 manually 
   assert.ok(!references.some(r => r.faction === 'mechanicus'));
 });
 
-test('Inquisition audit manifest covers 14 cards on one composite sheet and 73 manually located symbols', () => {
+test('Inquisition audit manifest covers 14 cards on two sources and 66 manually located symbols', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'inquisition.json'), 'utf8'));
   assert.equal(manifest.faction, 'inquisition');
   assert.equal(manifest.cards.length, 14);
-  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 1);
+  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 2);
+  assert.equal(manifest.cards.filter(c => c.source.includes('Сестры-Инквизиция-актуальные.png')).length, 5);
+  assert.ok(manifest.cards.some(c => c.name === 'Передовая высадка' && c.previousName === 'Удар телепортом'));
+  assert.ok(!manifest.cards.some(c => c.name === 'Удар телепортом'));
   const icons = manifest.cards.flatMap(c => c.icons);
-  assert.equal(icons.length, 73);
-  assert.equal(icons.filter(i => i.location === 'column').length, 32);
-  assert.equal(icons.filter(i => i.location === 'text').length, 41);
+  assert.equal(icons.length, 66);
+  assert.equal(icons.filter(i => i.location === 'column').length, 31);
+  assert.equal(icons.filter(i => i.location === 'text').length, 35);
   for (const icon of icons) {
     assert.ok(LABELS.includes(icon.expected));
     assert.equal(icon.box.length, 4);
@@ -213,15 +236,19 @@ test('Dark Eldar audit manifest covers 14 cards on one composite sheet and 76 ma
   assert.ok(!references.some(r => r.faction === 'dark-eldar'));
 });
 
-test('Sisters of Battle audit manifest covers 15 cards on two sheets and 73 manually located symbols', () => {
+test('Sisters of Battle audit manifest covers 15 cards on three sources and 80 manually located symbols', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'sisters-of-battle.json'), 'utf8'));
   assert.equal(manifest.faction, 'sisters-of-battle');
   assert.equal(manifest.cards.length, 15);
-  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 2);
+  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 3);
+  assert.equal(manifest.cards.filter(c => c.source.includes('Сестры-Инквизиция-актуальные.png')).length, 4);
+  assert.ok(manifest.cards.some(c => c.name === 'Кара Божья' && c.previousName === 'Божественная кара'));
+  assert.ok(manifest.cards.some(c => c.name === 'Геройское самосожжение' && c.previousName === 'Сжигая мученика'));
+  assert.ok(!manifest.cards.some(c => ['Божественная кара', 'Сжигая мученика'].includes(c.name)));
   const icons = manifest.cards.flatMap(c => c.icons);
-  assert.equal(icons.length, 73);
-  assert.equal(icons.filter(i => i.location === 'column').length, 27);
-  assert.equal(icons.filter(i => i.location === 'text').length, 46);
+  assert.equal(icons.length, 80);
+  assert.equal(icons.filter(i => i.location === 'column').length, 28);
+  assert.equal(icons.filter(i => i.location === 'text').length, 52);
   for (const icon of icons) {
     assert.ok(LABELS.includes(icon.expected));
     assert.equal(icon.box.length, 4);
