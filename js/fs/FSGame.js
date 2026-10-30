@@ -161,6 +161,12 @@ class FSGame {
             this.damageTargets = [];
             FSView.clearHighlights(this.view);
         }
+        // The question of the effect of a card: the player chooses.
+        if (s.pending) {
+            this.panelQuestion(s, ctx);
+            FSUI.update(s, ctx);
+            return;
+        }
         if (s.over) {
             ctx.title = 'Игра окончена';
             ctx.text = 'Побеждает: ' + (s.winner != null ? s.players[s.winner].name : '—');
@@ -692,6 +698,190 @@ class FSGame {
     retreatAreas(s, c) {
         const out = FS_RULES.areasAround(s, c.system, c.pos);
         return out.slice(0, 8);
+    }
+
+    // The question of the effect: the player chooses the units, the dice, the
+    // card or the place. Everything else the engine did itself.
+    panelQuestion(s, ctx) {
+        const pending = s.pending;
+        const q = pending.question || {};
+        const me = s.seat;
+        ctx.title = 'Эффект карты';
+        ctx.status = '';
+        const must = pending.answerSeat === undefined ? pending.seat : pending.answerSeat;
+        if (must !== me) {
+            const who = s.players[must] ? s.players[must].name : '—';
+            ctx.text = (q.text || 'Карта требует решения.') + '\nРешает: ' + who + '. Ждём.';
+            return;
+        }
+        ctx.text = (q.text || 'Выберите.');
+        const send = answer => {
+            this.net.cmd({ type: 'effect', answer });
+            this.effectPick = [];
+            this.effectDie = null;
+        };
+        switch (q.kind) {
+            case 'units': {
+                const units = q.options.map(id => s.units.find(u => u.id === id)).filter(Boolean);
+                this.effectPick = this.effectPick || [];
+                for (const u of units) {
+                    const def = FS_RULES.unitOf(s, u);
+                    ctx.actions.push({
+                        label: (def ? def.name : u.id) + (this.effectPick.indexOf(u.id) >= 0 ? ' ✓' : ''),
+                        onClick: () => {
+                            const i = this.effectPick.indexOf(u.id);
+                            if (i >= 0) this.effectPick.splice(i, 1); else this.effectPick.push(u.id);
+                            this.refresh();
+                        },
+                    });
+                }
+                ctx.actions.push({
+                    label: 'Применить (' + this.effectPick.length + '/' + q.n + ')',
+                    onClick: () => send({ units: this.effectPick.slice(0, q.n) }),
+                });
+                return;
+            }
+            case 'dice':
+            case 'diceFace': {
+                const combat = s.combat;
+                const side = pending.seat === (combat ? combat.attacker : -1) ? 'attacker' : 'defender';
+                const dice = combat ? (combat.dice[side] || []) : [];
+                // The die of a dieFace question: the face is the second choice.
+                const picked = q.kind === 'diceFace' ? this.effectDie : null;
+                if (picked !== null && picked !== undefined) {
+                    for (const face of ['att', 'def', 'morale']) {
+                        ctx.actions.push({
+                            label: 'Грань: ' + (face === 'att' ? 'атака' : face === 'def' ? 'оборона' : 'мораль'),
+                            onClick: () => send({ dice: [picked], face }),
+                        });
+                    }
+                    return;
+                }
+                for (const i of q.options) {
+                    const d = dice[i];
+                    ctx.actions.push({
+                        label: 'Кубик ' + (i + 1) + ': ' + (d === 'att' ? '⚔' : d === 'def' ? '🛡' : d === 'morale' ? '✦' : '·'),
+                        onClick: () => {
+                            if (q.kind === 'diceFace') {
+                                this.effectDie = i;
+                                this.refresh();
+                                return;
+                            }
+                            send({ dice: [i] });
+                        },
+                    });
+                }
+                return;
+            }
+            case 'scheme': {
+                for (const name of q.options) {
+                    ctx.actions.push({
+                        label: 'Сбросить: ' + name,
+                        onClick: () => send({ choice: q.options.indexOf(name) }),
+                    });
+                }
+                return;
+            }
+            case 'face': {
+                const combat = s.combat;
+                const side = pending.seat === (combat ? combat.attacker : -1) ? 'attacker' : 'defender';
+                const dice = combat ? (combat.dice[side] || []) : [];
+                const faces = ['att', 'def', 'morale', 'blank'];
+                for (const face of faces) {
+                    const count = dice.filter(d => d === face).length;
+                    if (!count) continue;
+                    ctx.actions.push({
+                        label: (face === 'att' ? 'атака' : face === 'def' ? 'оборона' : face === 'morale' ? 'мораль' : 'пусто') + ' (' + count + ')',
+                        onClick: () => send({ face }),
+                    });
+                }
+                return;
+            }
+            case 'assetType': {
+                const names = { forge: 'кузница', cache: 'тайник', reinforcement: 'подкрепление' };
+                for (const kind of q.options) {
+                    ctx.actions.push({
+                        label: 'Жетон: ' + (names[kind] || kind),
+                        onClick: () => send({ asset: kind }),
+                    });
+                }
+                return;
+            }
+            case 'structures': {
+                for (const id of q.options) {
+                    const st = s.structures.find(x => x.id === id);
+                    ctx.actions.push({
+                        label: st ? FS_RULES.structureName(st.type) : id,
+                        onClick: () => send({ structure: id }),
+                    });
+                }
+                return;
+            }
+            case 'cards': {
+                for (const name of q.options) {
+                    ctx.actions.push({
+                        label: name,
+                        onClick: () => send({ card: name }),
+                    });
+                }
+                return;
+            }
+            case 'areas': {
+                for (const area of q.options) {
+                    const sys = s.systems.find(x => x.id === area.system);
+                    const world = sys && sys.areas.find(a => a.pos === area.pos);
+                    ctx.actions.push({
+                        label: (sys ? sys.tile : area.system) + ' — ' + (world && world.world ? world.world.name : 'пустота'),
+                        onClick: () => send({ area }),
+                    });
+                }
+                return;
+            }
+            case 'systems': {
+                for (const id of q.options) {
+                    const sys = s.systems.find(x => x.id === id);
+                    ctx.actions.push({
+                        label: sys ? sys.tile : id,
+                        onClick: () => send({ system: id }),
+                    });
+                }
+                return;
+            }
+            case 'types': {
+                const faction = FS_DATA.factions.find(f => f.id === (s.players[me] ? s.players[me].faction : ''));
+                for (const id of q.options) {
+                    const def = faction ? faction.units.find(u => u.id === id) : null;
+                    ctx.actions.push({
+                        label: def ? def.name : id,
+                        onClick: () => send({ type: id }),
+                    });
+                }
+                return;
+            }
+            case 'yesno': {
+                ctx.actions.push({
+                    label: 'Да — потратить кубик',
+                    onClick: () => send({ dice: (q.options || []).slice(0, q.n || 1) }),
+                });
+                ctx.actions.push({
+                    label: 'Нет — принять эффект',
+                    onClick: () => send({ dice: [] }),
+                });
+                return;
+            }
+            case 'choice': {
+                for (let i = 0; i < q.options.length; i++) {
+                    const opt = q.options[i];
+                    ctx.actions.push({
+                        label: (opt && opt.text) ? opt.text.slice(0, 60) : ('Вариант ' + (i + 1)),
+                        onClick: () => send({ choice: i }),
+                    });
+                }
+                return;
+            }
+            default:
+                ctx.text = 'Эффект применён.';
+        }
     }
 
     // --- the pointer ----------------------------------------------------------

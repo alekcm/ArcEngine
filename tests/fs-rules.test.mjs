@@ -4,11 +4,41 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts } from './browser-scripts.mjs';
 
-const { get } = loadScripts(['js/fs/FSData.js', 'js/fs/FSRules.js']);
+const { get } = loadScripts(['js/fs/FSData.js', 'js/fs/FSEffects.js', 'js/fs/FSRules.js']);
 const FS_DATA = get('FS_DATA');
 const FS_RULES = get('FS_RULES');
 
 const FACTIONS = FS_DATA.factions.map(f => f.id);
+
+// The bot answers the questions of the effects: it takes the first option of
+// every question (the tests of the effects are in fs-effects.test.mjs).
+export function answerPending(s) {
+    let guard = 0;
+    while (s.pending && guard++ < 30) {
+        const q = s.pending.question || {};
+        const seat = s.pending.answerSeat === undefined ? s.pending.seat : s.pending.answerSeat;
+        let answer = null;
+        switch (q.kind) {
+            case 'yesno': answer = { dice: [] }; break;
+            case 'units': answer = { units: (q.options || []).slice(0, q.n || 1) }; break;
+            case 'dice': answer = { dice: (q.options || []).slice(0, 1) }; break;
+            case 'diceFace': answer = { dice: (q.options || []).slice(0, 1), face: 'att' }; break;
+            case 'cards': answer = { card: (q.options || [])[0] }; break;
+            case 'areas': answer = { area: (q.options || [])[0] }; break;
+            case 'systems': answer = { system: (q.options || [])[0] }; break;
+            case 'types': answer = { type: (q.options || [])[0] }; break;
+            case 'structures': answer = { structure: (q.options || [])[0] }; break;
+            case 'face': answer = { face: 'att' }; break;
+            case 'assetType': answer = { asset: (q.options || [])[0] }; break;
+            case 'choice': answer = { choice: 0 }; break;
+            case 'scheme': answer = { choice: 0 }; break;
+            default: answer = null;
+        }
+        if (!answer) break;
+        const res = FS_RULES.apply(s, seat, { type: 'effect', answer });
+        if (!res.ok) break;
+    }
+}
 
 // A game of two players with the first two factions.
 function newGame(count = 2, seed = 7) {
@@ -421,13 +451,14 @@ test('a whole game: the bot plays the rounds without a crash', () => {
     let rounds = 0;
     while (!s.over && rounds < 10) {
         rounds++;
-        for (const p of s.players) playRound(s, p.seat);
+        for (const p of s.players) { playRound(s, p.seat); answerPending(s); }
         assert.equal(s.phase, 'operations');
         // The operations: every order of every player.
         let guard = 0;
         while (s.phase === 'operations' && guard++ < 200) {
             const seat = s.turn;
             if (!playOrder(s, seat)) break;
+            answerPending(s);
         }
         // The refresh: the events of every player.
         guard = 0;
@@ -443,6 +474,7 @@ test('a whole game: the bot plays the rounds without a crash', () => {
                 if (FS_RULES.apply(s, seat, { type: 'moveStorm', storm: storm.id, dir }).ok) break;
             }
             FS_RULES.apply(s, seat, { type: 'resolveEvent' });
+            answerPending(s);
         }
     }
     assert.ok(rounds >= 1, 'the game went through at least one round');

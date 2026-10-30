@@ -26,7 +26,7 @@ const scene = {
 };
 
 const { get } = loadScripts(
-    ['js/Constants.js', 'js/UILayout.js', 'js/UI.js', 'js/fs/FSData.js', 'js/fs/FSRules.js',
+    ['js/Constants.js', 'js/UILayout.js', 'js/UI.js', 'js/fs/FSData.js', 'js/fs/FSEffects.js', 'js/fs/FSRules.js',
         'js/fs/FSNet.js', 'js/fs/FSView.js', 'js/fs/FSUI.js', 'js/fs/FSGame.js'],
     {
         document: { createElement: fakeElement, body: fakeElement('body'), querySelector: () => null },
@@ -154,7 +154,10 @@ function playWholeGame(count, seed) {
     while (!state.over && steps++ < 300) {
         // Who acts now.
         let seat = null;
-        if (state.phase === 'planning') {
+        if (state.pending) {
+            // The question of the effect of a card: the player answers it.
+            seat = state.pending.answerSeat === undefined ? state.pending.seat : state.pending.answerSeat;
+        } else if (state.phase === 'planning') {
             const p = state.players.find(x => (x.placedTokens || 0) < FS_RULES.ORDER_TOKENS);
             seat = p ? p.seat : null;
         } else if (state.phase === 'operations') {
@@ -199,7 +202,7 @@ function playWholeGame(count, seed) {
                 game.onClick();
             }
         }
-        if (sent.length === before) { console.log('DBG stop', state.phase, 'seat', seat, 'order', JSON.stringify(state.order), 'combat', state.combat ? state.combat.step : '-', 'buttons', buttons().length, 'mode', game.mode, 'steps', steps); break; }
+        if (sent.length === before) { break; }
         const cmd = sent[sent.length - 1];
         const res = FS_RULES.apply(state, seat, cmd);
         // The storm may not go everywhere — the board decides.

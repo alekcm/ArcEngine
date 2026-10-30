@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts } from './browser-scripts.mjs';
 
-const { get } = loadScripts(['js/fs/FSData.js', 'js/fs/FSRules.js']);
+const { get } = loadScripts(['js/fs/FSData.js', 'js/fs/FSEffects.js', 'js/fs/FSRules.js']);
 const FS_DATA = get('FS_DATA');
 const FS_RULES = get('FS_RULES');
 

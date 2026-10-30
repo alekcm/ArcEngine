@@ -593,6 +593,7 @@ const FS_RULES = {
             case 'nextPhase': return this.cmdNextPhase(state, seat, cmd);
             case 'rally': return this.cmdRally(state, seat, cmd);
             case 'takeProsperity': return this.cmdTakeProsperity(state, seat, cmd);
+            case 'effect': return this.cmdEffect(state, seat, cmd);
             default: return { ok: false, error: 'Неизвестная команда: ' + type };
         }
     },
@@ -931,6 +932,11 @@ const FS_RULES = {
     cmdOrbitalStrike(state, seat, cmd) {
         const order = state.order;
         if (!order || order.phase !== 'strike') return { ok: false, error: 'Сейчас нельзя наносить орбитальный удар.' };
+        // The schemes of the strike are used before the strike.
+        if (!order.strikeHook) {
+            order.strikeHook = true;
+            if (this.maybeScheme(state, seat, 'strike', { kind: 'order', ctx: null })) return { ok: true, pending: true };
+        }
         const target = { system: cmd.system, pos: cmd.pos };
         if (!this.orbitalStrikeTargets(state, seat).some(t => t.system === target.system && t.pos === target.pos)) {
             return { ok: false, error: 'По этому миру нельзя нанести удар.' };
@@ -1184,6 +1190,16 @@ const FS_RULES = {
     cmdFinishDominate(state, seat) {
         const order = state.order;
         if (!order || order.order !== 'dominate' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        // The ability of the faction: the text is the rule.
+        const faction = this.faction(state, seat);
+        const text = faction && faction.ability ? faction.ability.text : '';
+        const steps = FS_EFFECTS.parse(text || '', { kind: 'ability', faction: state.players[seat].faction });
+        if (steps.length) {
+            // The order is over when the effect of the ability is done.
+            order.finishAfterEffect = true;
+            this.runEffects(state, seat, steps, { kind: 'ability', ctx: null });
+            return { ok: true, pending: true };
+        }
         this.finishOrder(state, seat);
         return { ok: true };
     },
@@ -1198,6 +1214,10 @@ const FS_RULES = {
         }
         up.used = true;
         this.log(state, seat, p.name + ' применяет улучшение «' + up.name + '».');
+        // The text of the card is the rule: the engine performs it.
+        const card = FS_DATA.orders.find(c => c.faction === p.faction && c.name === up.name);
+        const steps = FS_EFFECTS.parse((card && card.text) || '', { kind: 'order' });
+        if (steps.length) this.runEffects(state, seat, steps, { kind: 'order', ctx: null });
         return { ok: true, text: up.text || '' };
     },
 
@@ -1283,8 +1303,19 @@ const FS_RULES = {
         // Without a card in the hand there is nothing to play: the player only
         // moves the storm and the refresh goes on.
         if (card && card.type === 'scheme') {
-            // A scheme card stays in play.
-            state.players[seat].schemes.push(card.name);
+            // A scheme card stays in play: the other schemes are discarded.
+            const p0 = state.players[seat];
+            p0.schemes = [];
+            const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p0.faction });
+            const trig = steps.find(s => s.op === 'trigger');
+            p0.schemes.push({
+                name: card.name,
+                text: card.text || '',
+                trigger: trig ? trig.trigger : null,
+                steps: trig ? trig.steps : [],
+                note: trig ? !!trig.note : true,
+            });
+            this.log(state, seat, p0.name + ' держит план «' + card.name + '».');
         }
         // The chosen card goes back into the deck.
         const p = state.players[seat];
@@ -1297,6 +1328,13 @@ const FS_RULES = {
         }
         state.event = null;
         state.eventsLeft--;
+        // The text of the card is the rule: the engine performs it.
+        if (card && card.type !== 'scheme') {
+            const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: state.players[seat].faction });
+            if (steps.length) {
+                this.runEffects(state, seat, steps, { kind: 'event', ctx: null });
+            }
+        }
         this.nextEventPlayer(state);
         return { ok: true };
     },
@@ -1425,6 +1463,62 @@ const FS_RULES = {
         if (!unit) return { ok: false, error: 'Нет такого отряда.' };
         unit.routed = false;
         return { ok: true };
+    },
+
+    // -----------------------------------------------------------------------
+    //  The effects of the cards
+    // -----------------------------------------------------------------------
+
+    // The steps of a card: the text of the card is the rule. The ability of
+    // the unit works only if the unit is in the combat.
+    cardSteps(state, seat, card) {
+        if (!card) return [];
+        const steps = FS_EFFECTS.parse(card.general || '', { kind: 'combat' });
+        if (card.unit) {
+            const combat = state.combat;
+            const reqs = card.reqs || [];
+            const there = combat && state.units.some(u => {
+                if (u.seat !== seat || u.system !== combat.system || u.area !== combat.pos) return false;
+                const def = this.unitOf(state, u);
+                return def && reqs.some(r => FS_EFFECTS.sameName(def.name, r));
+            });
+            if (there) steps.push(...FS_EFFECTS.parse(card.unit, { kind: 'combat' }));
+        }
+        return steps;
+    },
+
+    // The steps are performed by the effects engine. The player answers the
+    // questions of the text: the question waits in state.pending.
+    runEffects(state, seat, steps, ctx) {
+        if (!steps.length) return { ok: true, done: true };
+        return FS_EFFECTS.run(this, state, seat, steps, ctx || {});
+    },
+
+    // The answer of the player to the question of the effect.
+    cmdEffect(state, seat, cmd) {
+        return FS_EFFECTS.answer(this, state, seat, cmd);
+    },
+
+    // The schemes of the player: the cards that wait for their moment.
+    schemesOf(state, seat) {
+        const p = state.players[seat];
+        return (p.schemes || []).filter(s => s && s.trigger && s.steps && s.steps.length);
+    },
+
+    // The moment of a scheme has come: the player may discard the card.
+    maybeScheme(state, seat, trigger, ctx) {
+        const schemes = this.schemesOf(state, seat).filter(s => s.trigger === trigger);
+        if (!schemes.length) return false;
+        const c = ctx || {};
+        state.pending = {
+            seat, answerSeat: seat, kind: 'scheme', steps: [], index: 0,
+            question: {
+                kind: 'scheme', who: seat, options: schemes.map(s => s.name),
+                text: 'Сбросить карту: ' + schemes.map(s => '«' + s.name + '»').join(', ') + '?',
+            },
+            ctx: { kind: c.kind || 'event', ctx: c.ctx || null, schemes },
+        };
+        return true;
     },
 
     // -----------------------------------------------------------------------
@@ -1589,10 +1683,16 @@ const FS_RULES = {
         const card = FS_DATA.combat.find(x => x.faction === state.players[seat].faction && x.name === name);
         hand.played.push({ name, card });
         this.log(state, seat, state.players[seat].name + ' играет боевую карту «' + name + '».');
-        // The quick effects of the card are applied by the client one by one;
-        // the icons of the card count from now on.
+        // The icons of the card count from now on.
         if (side === 'attacker') c.step = 'choose-defender';
         else c.step = 'damage-attacker';
+        // The text of the card is the rule: the engine performs it.
+        const steps = this.cardSteps(state, seat, card);
+        if (steps.length) {
+            c.nextStep = c.step;
+            c.step = 'effect';
+            this.runEffects(state, seat, steps, { kind: 'combat', ctx: { side } });
+        }
         return { ok: true, card: card || null };
     },
 
@@ -1639,6 +1739,12 @@ const FS_RULES = {
     // The player assigns the damage to his own units and bastions.
     combatDamage(state, seat, side, cmd) {
         const c = state.combat;
+        // The schemes of the damage step are used before the damage.
+        c.damageHook = c.damageHook || {};
+        if (!c.damageHook[side]) {
+            c.damageHook[side] = true;
+            if (this.maybeScheme(state, seat, 'damage', { kind: 'combat', ctx: { side } })) return { ok: true, pending: true };
+        }
         const damage = this.combatDamageFor(state, side);
         c.damage[side] = damage;
         const targets = cmd.targets || [];
@@ -1698,6 +1804,8 @@ const FS_RULES = {
         }
         if (c.round > 3) { this.finishCombat(state); return; }
         c.step = 'choose-attacker';
+        // The schemes of the start of the round.
+        this.maybeScheme(state, c.attacker, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
         c.damage = { attacker: 0, defender: 0 };
     },
 
@@ -1793,6 +1901,12 @@ const FS_RULES = {
                 const combatSeat = copy.combat[side];
                 if (combatSeat !== seat) copy.combat.cards[side].hand = [];
             }
+        }
+        // The question of the effect: the cards of the hand of the opponent
+        // are not shown.
+        if (copy.pending && copy.pending.question && copy.pending.question.kind === 'cards') {
+            const owner = copy.pending.seat;
+            if (owner !== seat) copy.pending.question.options = [];
         }
         copy.seat = seat;
         return copy;

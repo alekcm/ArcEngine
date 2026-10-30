@@ -27,7 +27,7 @@ const canvas = Object.assign(fakeElement('canvas'), {
 });
 
 const { get } = loadScripts(
-    ['js/Constants.js', 'js/UILayout.js', 'js/UI.js', 'js/fs/FSData.js', 'js/fs/FSRules.js', 'js/fs/FSUI.js'],
+    ['js/Constants.js', 'js/UILayout.js', 'js/UI.js', 'js/fs/FSData.js', 'js/fs/FSEffects.js', 'js/fs/FSRules.js', 'js/fs/FSUI.js'],
     { document: { createElement: fakeElement, body: fakeElement('body'), querySelector: () => null } }
 );
 const UI = get('UI');
