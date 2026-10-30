@@ -518,7 +518,11 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'orderDiscount': {
-                if (state.order) state.order.discount = (state.order.discount || 0) + (step.n || 0);
+                if (state.order) {
+                    // The discount may be counted: "1 for every cultist".
+                    const count = step.per && R.countFor ? R.countFor(state, seat, step.per) : 1;
+                    state.order.discount = (state.order.discount || 0) + (step.n || 0) * count;
+                }
                 return null;
             }
             case 'assetLimit': {
@@ -540,6 +544,54 @@ const FS_EFFECTS = {
             case 'citiesAsFactories': {
                 if (state.order) state.order.citiesAsFactories = true;
                 return null;
+            }
+            case 'bastionsAsFactories': {
+                if (state.order) state.order.bastionsAsFactories = true;
+                return null;
+            }
+            case 'capacityBonus': {
+                if (state.order) {
+                    state.order.capacityBonus = (state.order.capacityBonus || 0) + (step.n || 0);
+                    if (step.max) state.order.capacityMax = step.max;
+                }
+                return null;
+            }
+            case 'upgradeLimit': {
+                if (state.order) state.order.upgradeLimit = step.n || 1;
+                return null;
+            }
+            case 'combatLength': {
+                if (combat) combat.maxRounds = step.n || 1;
+                return null;
+            }
+            case 'costDiscount': {
+                const kind = step.per;
+                const count = kind && R.countFor ? R.countFor(state, seat, kind) : 0;
+                p.cardDiscount = (p.cardDiscount || 0) + (step.n || 0) * count;
+                if (count) R.log(state, seat, state.players[seat].name + ': скидка ' + (step.n * count) + ' за счёт карты.');
+                return null;
+            }
+            case 'drawEvents': {
+                for (let i = 0; i < (step.n || 1); i++) {
+                    const name = R.drawEventCard(state, seat);
+                    p.eventHand = p.eventHand || [];
+                    p.eventHand.push(name);
+                }
+                R.log(state, seat, state.players[seat].name + ' берёт карты событий.');
+                return null;
+            }
+            case 'discardCard': {
+                return null;
+            }
+            case 'chooseSystem': {
+                const list = state.systems.map(sys => sys.id);
+                if (!list.length) return null;
+                return { question: { kind: 'systems', who: seat, op: 'chooseSystem', options: list, text: 'Выберите систему.' } };
+            }
+            case 'destroyUnit': {
+                const list = this.unitsOf(R, state, seat, combat, {});
+                if (!list.length) return null;
+                return { question: { kind: 'units', who: seat, op: 'destroyUnit', options: list.map(u => u.id), text: 'Какой отряд уничтожить?' } };
             }
             case 'shipsThroughStorms': {
                 if (state.order) state.order.shipsThroughStorms = true;
@@ -564,7 +616,11 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'orderDiscount': {
-                if (state.order) state.order.discount = (state.order.discount || 0) + (step.n || 0);
+                if (state.order) {
+                    // The discount may be counted: "1 for every cultist".
+                    const count = step.per && R.countFor ? R.countFor(state, seat, step.per) : 1;
+                    state.order.discount = (state.order.discount || 0) + (step.n || 0) * count;
+                }
                 return null;
             }
             case 'assetLimit': {
@@ -689,6 +745,17 @@ const FS_EFFECTS = {
                 const limit = p.faction === 'тираниды' && kind === 'reinforcement' ? 4 : 3;
                 p.assets[kind] = Math.min(limit, (p.assets[kind] || 0) + (step.n || 1));
                 R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + kind + '.');
+                return null;
+            }
+            case 'destroyUnit': {
+                const list = units(answer.units);
+                for (const u of list) {
+                    R.destroyUnit(state, u);
+                    R.log(state, seat, state.players[seat].name + ' уничтожает отряд.');
+                }
+                return null;
+            }
+            case 'chooseSystem': {
                 return null;
             }
             case 'replaceUnit': {
@@ -1487,12 +1554,78 @@ const RULES = [
         re: /^\s*один раз за раунд\s*\.?\s*$/i,
         build: () => ({ op: 'once' }),
     },
+    // "The battle lasts 1 round."
+    {
+        re: /(?:битва|бой)\s+длится\s+(\d+)\s+раунд/i,
+        build: m => ({ op: 'combatLength', n: Number(m[1]) }),
+    },
+    {
+        re: /разыграйте только\s+(?:ОДИН|один|1)\s+раунд/i,
+        build: () => ({ op: 'combatLength', n: 1 }),
+    },
+    // "The capacity of the friendly worlds with a city grows by 2, up to 4."
+    {
+        re: /вместимость\s+дружественных миров[^.]*увеличивается на (\d+)(?:,\s*максимум до (\d+))?/i,
+        build: m => ({ op: 'capacityBonus', n: Number(m[1]), max: m[2] ? Number(m[2]) : 0 }),
+    },
+    // "you may treat all the bastions as factories"
+    {
+        re: /считать все бастионы[^.]*фабриками/i,
+        build: () => ({ op: 'bastionsAsFactories' }),
+    },
+    // "The cost in materiel is lowered by 1 for every cultist in this system."
+    {
+        re: /стоимость в материалах\s+(?:снижается|уменьшается) на (\d+)\s+за каждого культиста/i,
+        build: m => ({ op: 'orderDiscount', n: Number(m[1]), per: 'cultist' }),
+    },
+    // "you may buy only 1 upgrade"
+    {
+        re: /можете приобрести только (\d+) улучшен/i,
+        build: m => ({ op: 'upgradeLimit', n: Number(m[1]) }),
+    },
+    // "Its cost in materiel is lowered by 1 for every <X>."
+    {
+        re: /стоимость в материалах уменьшается на (\d+) за каждый ([^.,;]+)/i,
+        build: m => ({ op: 'costDiscount', n: Number(m[1]), per: countKind(m[2]) }),
+    },
+    // "Take the top 3 cards of your event deck."
+    {
+        re: /возьмите (\d+) верхни[ех] карт[ы] вашей колоды событий/i,
+        build: m => ({ op: 'drawEvents', n: Number(m[1]) }),
+    },
+    // "Choose a system."
+    {
+        re: /^\s*выберите систему\s*\.?\s*$/i,
+        build: () => ({ op: 'chooseSystem' }),
+    },
+    // "Discard this card."
+    {
+        re: /^\s*сбросьте эту карту\s*\.?\s*$/i,
+        build: () => ({ op: 'discardCard' }),
+    },
+    // "Destroy this unit after the combat is resolved."
+    {
+        re: /уничтожьте этот отряд/i,
+        build: () => ({ op: 'destroyUnit' }),
+    },
     // The sentences that say no rule of their own: the engine keeps them.
     {
         re: /^(?:—\s*\([^)]*\)|если одинаково, выбираете вы\.?|это может привести к новому сражению[^.]*\.?|не нарушая базовых правил размещения\.?|неиспользованный остаток материалов пропадает\.?|нужно быть главным по машинам\.?|требуются\s*\.?|пассивно|используйте эти материалы только для покупки любого количества кораблей\.?|уничтоженный город засчитывается[^.]*\.?|командный уровень этой карты не может превышать[^.]*\.?|неиспользованный остаток[^.]*\.?)$/i,
         build: (m, ctx, s) => ({ op: 'note', text: s }),
     },
 ];
+
+// What is counted for the discount: "for every friendly world with a bastion".
+function countKind(text) {
+    const s = String(text || '').toLowerCase();
+    if (/бастион/.test(s)) return 'friendlyBastion';
+    if (/город/.test(s)) return 'yourCity';
+    if (/культист/.test(s)) return 'cultist';
+    if (/жетон/.test(s)) return 'reinforcement';
+    if (/система/.test(s) && /противник/.test(s)) return 'mixedSystem';
+    if (/система/.test(s) && /не содержит/.test(s)) return 'noFoeSystem';
+    return null;
+}
 
 // The number of the text: "2" or "up to 2" or "one".
 function num(text) {

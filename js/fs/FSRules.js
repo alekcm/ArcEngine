@@ -124,8 +124,50 @@ const FS_RULES = {
         const sys = this.system(state, systemId);
         const area = this.area(sys, pos);
         if (!area) return 0;
-        const cap = area.world ? (area.world.capacity || this.AREA_CAP) : this.AREA_CAP;
+        let cap = area.world ? (area.world.capacity || this.AREA_CAP) : this.AREA_CAP;
+        // The order may make the worlds with a city hold more units.
+        const order = state.order;
+        if (order && order.capacityBonus) {
+            const city = this.structuresAt(state, systemId, pos).some(s => s.type === 'city' && s.seat === order.seat);
+            if (city) {
+                cap += order.capacityBonus;
+                if (order.capacityMax) cap = Math.min(cap, order.capacityMax);
+            }
+        }
         return Math.min(cap, this.AREA_MAX_UNITS);
+    },
+
+    // How many things are counted for the discount of the card.
+    countFor(state, seat, kind) {
+        const p = state.players[seat];
+        if (!kind) return 0;
+        if (kind === 'friendlyBastion') {
+            return state.systems.reduce((sum, sys) => sum + sys.areas.filter(a => {
+                if (this.control(state, seat, sys.id, a.pos) !== 'friendly') return false;
+                return this.structuresAt(state, sys.id, a.pos).some(s => s.seat === seat && s.type === 'bastion');
+            }).length, 0);
+        }
+        if (kind === 'yourCity') {
+            return state.systems.reduce((sum, sys) => sum + sys.areas.filter(a =>
+                this.structuresAt(state, sys.id, a.pos).some(s => s.seat === seat && s.type === 'city')).length, 0);
+        }
+        if (kind === 'cultist') {
+            const sys = state.order ? state.order.system : null;
+            return state.units.filter(u => u.seat === seat && (!sys || u.system === sys)
+                && /культист/i.test((this.unitOf(state, u) || {}).name || '')).length;
+        }
+        if (kind === 'reinforcement') return p.assets.reinforcement || 0;
+        if (kind === 'mixedSystem') {
+            return state.systems.filter(sys => {
+                const mine = state.units.some(u => u.system === sys.id && u.seat === seat);
+                const theirs = state.units.some(u => u.system === sys.id && u.seat !== seat);
+                return mine && theirs;
+            }).length;
+        }
+        if (kind === 'noFoeSystem') {
+            return state.systems.filter(sys => !state.units.some(u => u.system === sys.id && u.seat !== seat)).length;
+        }
+        return 0;
     },
 
     // Friendly / enemy / uncontrolled / contested.
@@ -996,13 +1038,15 @@ const FS_RULES = {
         const order = state.order;
         // While the order runs, the cities may be treated as factories.
         const asFactories = !!(order && order.seat === seat && order.citiesAsFactories);
+        const bastions = !!(order && order.seat === seat && order.bastionsAsFactories);
         let limit = 0;
         for (const area of sys.areas) {
             if (this.control(state, seat, systemId, area.pos) !== 'friendly') continue;
             const structures = this.structuresAt(state, systemId, area.pos).filter(s => s.seat === seat);
             const factory = structures.some(s => s.type === 'factory');
             const city = structures.some(s => s.type === 'city');
-            if (!factory && !(asFactories && city)) continue;
+            const bastion = structures.some(s => s.type === 'bastion');
+            if (!factory && !(asFactories && city) && !(bastions && bastion)) continue;
             limit += this.capacity(state, systemId, area.pos);
         }
         // The order may lower the limit or give an extra factory.
@@ -1061,6 +1105,8 @@ const FS_RULES = {
         let cost = def.cost;
         // The order may make the units cheaper.
         if (order.discount) cost = Math.max(0, cost - order.discount);
+        // The card of the player may make the purchase cheaper.
+        if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
         if (def.forge) {
             if ((p.assets.forge || 0) < 1) return { ok: false, error: 'Нужен жетон кузницы.' };
             p.assets.forge--;
@@ -1143,14 +1189,20 @@ const FS_RULES = {
         if (!this.hasUnitsOrStructures(state, seat, order.system)) {
             return { ok: false, error: 'В активной системе нет ваших отрядов и построек.' };
         }
+        // The order may allow only one upgrade.
+        if (order.upgradeLimit && (order.upgradesBought || 0) >= order.upgradeLimit) {
+            return { ok: false, error: 'Можно купить только ' + order.upgradeLimit + ' улучшение(я).' };
+        }
         const kind = cmd.kind;       // 'combat' | 'order'
         if (kind === 'combat') {
             if (order.combatUpgrade) return { ok: false, error: 'Боевое улучшение уже куплено.' };
             const card = FS_DATA.combat.find(c => c.faction === p.faction && c.upgrade && c.name === cmd.card);
             if (!card) return { ok: false, error: 'Нет такой карты.' };
             if (card.kl > this.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
-            if (p.materiel < card.cost) return { ok: false, error: 'Не хватает материи.' };
-            p.materiel -= card.cost;
+            const cost = Math.max(0, card.cost - (p.cardDiscount || 0));
+            if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
+            p.materiel -= cost;
+            order.upgradesBought = (order.upgradesBought || 0) + 1;
             // The card replaces two copies of a card of the deck.
             const deck = p.decks.combat;
             const removed = deck.splice(0, 2);
@@ -1165,8 +1217,10 @@ const FS_RULES = {
             const card = FS_DATA.orders.find(c => c.faction === p.faction && c.name === cmd.card);
             if (!card) return { ok: false, error: 'Нет такой карты.' };
             if (card.kl > this.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
-            if (p.materiel < card.cost) return { ok: false, error: 'Не хватает материи.' };
-            p.materiel -= card.cost;
+            const cost = Math.max(0, card.cost - (p.cardDiscount || 0));
+            if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
+            p.materiel -= cost;
+            order.upgradesBought = (order.upgradesBought || 0) + 1;
             p.upgrades.push({ name: card.name, used: false, order: card.order });
             order.orderUpgrade = true;
             this.log(state, seat, p.name + ' купил улучшение приказа «' + card.name + '».');
@@ -1834,7 +1888,7 @@ const FS_RULES = {
             c.reinforceUsed[side] = 0;
             void tokens;
         }
-        if (c.round > 3) { this.finishCombat(state); return; }
+        if (c.round > (c.maxRounds || 3)) { this.finishCombat(state); return; }
         c.step = 'choose-attacker';
         // The schemes of the start of the round.
         this.maybeScheme(state, c.attacker, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
