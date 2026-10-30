@@ -1,0 +1,553 @@
+{
+  "version": 1,
+  "trustedFactions": [
+    "imperial-guard",
+    "necrons",
+    "tyranids",
+    "eldar",
+    "chaos"
+  ],
+  "note": "Labels and crop boxes verified against the trusted transcription and enlarged source crops. No Ork samples are used as references.",
+  "references": [
+    {
+      "id": "ig-att-icon",
+      "faction": "imperial-guard",
+      "label": "att. icon",
+      "location": "column",
+      "file": "ig-att-icon.png",
+      "source": "Warhammer/Имперская гвардия/БК1 (2).jpg",
+      "sourceBox": [
+        74,
+        285,
+        62,
+        66
+      ],
+      "sourceSha256": "3f19be29ba1299aad76c41dfdea79a1c03cf84d4d8fec2700183666fe0ad0b38"
+    },
+    {
+      "id": "ig-def-icon",
+      "faction": "imperial-guard",
+      "label": "def. icon",
+      "location": "column",
+      "file": "ig-def-icon.png",
+      "source": "Warhammer/Имперская гвардия/БК1 (2).jpg",
+      "sourceBox": [
+        77,
+        365,
+        56,
+        70
+      ],
+      "sourceSha256": "3f19be29ba1299aad76c41dfdea79a1c03cf84d4d8fec2700183666fe0ad0b38"
+    },
+    {
+      "id": "ig-morale-icon",
+      "faction": "imperial-guard",
+      "label": "morale icon",
+      "location": "column",
+      "file": "ig-morale-icon.png",
+      "source": "Warhammer/Имперская гвардия/БК1 (2).jpg",
+      "sourceBox": [
+        1675,
+        530,
+        65,
+        42
+      ],
+      "sourceSha256": "3f19be29ba1299aad76c41dfdea79a1c03cf84d4d8fec2700183666fe0ad0b38"
+    },
+    {
+      "id": "nec-att-icon",
+      "faction": "necrons",
+      "label": "att. icon",
+      "location": "column",
+      "file": "nec-att-icon.png",
+      "source": "Warhammer/Боевые карты/БК3.jpg",
+      "sourceBox": [
+        877,
+        2500,
+        66,
+        70
+      ],
+      "sourceSha256": "bc81c30473f37f550ddca088909805610b8fa1fe45d726631a95784b2542535f"
+    },
+    {
+      "id": "nec-morale-icon",
+      "faction": "necrons",
+      "label": "morale icon",
+      "location": "column",
+      "file": "nec-morale-icon.png",
+      "source": "Warhammer/Боевые карты/БК3.jpg",
+      "sourceBox": [
+        875,
+        2676,
+        70,
+        40
+      ],
+      "sourceSha256": "bc81c30473f37f550ddca088909805610b8fa1fe45d726631a95784b2542535f"
+    },
+    {
+      "id": "nec-def-cube",
+      "faction": "necrons",
+      "label": "def. cube",
+      "location": "text",
+      "file": "nec-def-cube.png",
+      "source": "Warhammer/Боевые карты/БК3.jpg",
+      "sourceBox": [
+        1040,
+        3038,
+        40,
+        42
+      ],
+      "sourceSha256": "bc81c30473f37f550ddca088909805610b8fa1fe45d726631a95784b2542535f"
+    },
+    {
+      "id": "nec-morale-cube",
+      "faction": "necrons",
+      "label": "morale cube",
+      "location": "text",
+      "file": "nec-morale-cube.png",
+      "source": "Warhammer/Боевые карты/БК3.jpg",
+      "sourceBox": [
+        1147,
+        3038,
+        40,
+        42
+      ],
+      "sourceSha256": "bc81c30473f37f550ddca088909805610b8fa1fe45d726631a95784b2542535f"
+    },
+    {
+      "id": "nec-att-token",
+      "faction": "necrons",
+      "label": "att. token",
+      "location": "text",
+      "file": "nec-att-token.png",
+      "source": "Warhammer/Боевые карты/БК3.jpg",
+      "sourceBox": [
+        1449,
+        3035,
+        40,
+        42
+      ],
+      "sourceSha256": "bc81c30473f37f550ddca088909805610b8fa1fe45d726631a95784b2542535f"
+    },
+    {
+      "id": "nec-att-token-2",
+      "faction": "necrons",
+      "label": "att. token",
+      "location": "text",
+      "file": "nec-att-token-2.png",
+      "source": "Warhammer/Боевые карты/БК3.jpg",
+      "sourceBox": [
+        1120,
+        3216,
+        44,
+        46
+      ],
+      "sourceSha256": "bc81c30473f37f550ddca088909805610b8fa1fe45d726631a95784b2542535f"
+    },
+    {
+      "id": "tyr-att-icon",
+      "faction": "tyranids",
+      "label": "att. icon",
+      "location": "column",
+      "file": "tyr-att-icon.png",
+      "source": "Warhammer/Боевые карты/БК2.jpg",
+      "sourceBox": [
+        883,
+        293,
+        65,
+        65
+      ],
+      "sourceSha256": "26b869a46a1e220d74e8b0c432e8682d0ff8a01269acf772dfd42a20d1be54f2"
+    },
+    {
+      "id": "tyr-def-icon",
+      "faction": "tyranids",
+      "label": "def. icon",
+      "location": "column",
+      "file": "tyr-def-icon.png",
+      "source": "Warhammer/Боевые карты/БК2.jpg",
+      "sourceBox": [
+        884,
+        516,
+        55,
+        70
+      ],
+      "sourceSha256": "26b869a46a1e220d74e8b0c432e8682d0ff8a01269acf772dfd42a20d1be54f2"
+    },
+    {
+      "id": "tyr-morale-cube",
+      "faction": "tyranids",
+      "label": "morale cube",
+      "location": "text",
+      "file": "tyr-morale-cube.png",
+      "source": "Warhammer/Боевые карты/БК2.jpg",
+      "sourceBox": [
+        1276,
+        745,
+        38,
+        40
+      ],
+      "sourceSha256": "26b869a46a1e220d74e8b0c432e8682d0ff8a01269acf772dfd42a20d1be54f2"
+    },
+    {
+      "id": "tyr-att-cube",
+      "faction": "tyranids",
+      "label": "att. cube",
+      "location": "text",
+      "file": "tyr-att-cube.png",
+      "source": "Warhammer/Боевые карты/БК2.jpg",
+      "sourceBox": [
+        1373,
+        783,
+        38,
+        42
+      ],
+      "sourceSha256": "26b869a46a1e220d74e8b0c432e8682d0ff8a01269acf772dfd42a20d1be54f2"
+    },
+    {
+      "id": "tyr-def-cube",
+      "faction": "tyranids",
+      "label": "def. cube",
+      "location": "text",
+      "file": "tyr-def-cube.png",
+      "source": "Warhammer/Боевые карты/БК2.jpg",
+      "sourceBox": [
+        1510,
+        783,
+        40,
+        42
+      ],
+      "sourceSha256": "26b869a46a1e220d74e8b0c432e8682d0ff8a01269acf772dfd42a20d1be54f2"
+    },
+    {
+      "id": "eldar-def-icon",
+      "faction": "eldar",
+      "label": "def. icon",
+      "location": "column",
+      "file": "eldar-def-icon.png",
+      "source": "Warhammer/Боевые карты/0001.png",
+      "sourceBox": [
+        1561,
+        249,
+        58,
+        70
+      ],
+      "sourceSha256": "c4208b2e93b62a2dc0511c4aa0fff3e72692c10474e87824d172d8a94411b900"
+    },
+    {
+      "id": "eldar-morale-icon",
+      "faction": "eldar",
+      "label": "morale icon",
+      "location": "column",
+      "file": "eldar-morale-icon.png",
+      "source": "Warhammer/Боевые карты/0001.png",
+      "sourceBox": [
+        1560,
+        337,
+        65,
+        38
+      ],
+      "sourceSha256": "c4208b2e93b62a2dc0511c4aa0fff3e72692c10474e87824d172d8a94411b900"
+    },
+    {
+      "id": "eldar-any-cube",
+      "faction": "eldar",
+      "label": "any cube",
+      "location": "text",
+      "file": "eldar-any-cube.png",
+      "source": "Warhammer/Боевые карты/0001.png",
+      "sourceBox": [
+        1817,
+        749,
+        38,
+        42
+      ],
+      "sourceSha256": "c4208b2e93b62a2dc0511c4aa0fff3e72692c10474e87824d172d8a94411b900"
+    },
+    {
+      "id": "eldar-morale-cube",
+      "faction": "eldar",
+      "label": "morale cube",
+      "location": "text",
+      "file": "eldar-morale-cube.png",
+      "source": "Warhammer/Боевые карты/0001.png",
+      "sourceBox": [
+        1983,
+        746,
+        40,
+        44
+      ],
+      "sourceSha256": "c4208b2e93b62a2dc0511c4aa0fff3e72692c10474e87824d172d8a94411b900"
+    },
+    {
+      "id": "eldar-att-cube",
+      "faction": "eldar",
+      "label": "att. cube",
+      "location": "text",
+      "file": "eldar-att-cube.png",
+      "source": "Warhammer/Боевые карты/0001.png",
+      "sourceBox": [
+        1940,
+        787,
+        42,
+        44
+      ],
+      "sourceSha256": "c4208b2e93b62a2dc0511c4aa0fff3e72692c10474e87824d172d8a94411b900"
+    },
+    {
+      "id": "eldar-def-cube",
+      "faction": "eldar",
+      "label": "def. cube",
+      "location": "text",
+      "file": "eldar-def-cube.png",
+      "source": "Warhammer/Боевые карты/0001.png",
+      "sourceBox": [
+        2028,
+        787,
+        42,
+        44
+      ],
+      "sourceSha256": "c4208b2e93b62a2dc0511c4aa0fff3e72692c10474e87824d172d8a94411b900"
+    },
+    {
+      "id": "chaos-att-icon",
+      "faction": "chaos",
+      "label": "att. icon",
+      "location": "column",
+      "file": "chaos-att-icon.png",
+      "source": "Warhammer/Боевые карты/0004.png",
+      "sourceBox": [
+        806,
+        1310,
+        64,
+        66
+      ],
+      "sourceSha256": "c09fbd1cf5f38029c7193f96af7e8566a059f108d6451c74b1033232e8527a6f"
+    },
+    {
+      "id": "chaos-def-icon",
+      "faction": "chaos",
+      "label": "def. icon",
+      "location": "column",
+      "file": "chaos-def-icon.png",
+      "source": "Warhammer/Боевые карты/0004.png",
+      "sourceBox": [
+        813,
+        2372,
+        58,
+        72
+      ],
+      "sourceSha256": "c09fbd1cf5f38029c7193f96af7e8566a059f108d6451c74b1033232e8527a6f"
+    },
+    {
+      "id": "chaos-att-cube",
+      "faction": "chaos",
+      "label": "att. cube",
+      "location": "text",
+      "file": "chaos-att-cube.png",
+      "source": "Warhammer/Боевые карты/0004.png",
+      "sourceBox": [
+        1062,
+        1709,
+        43,
+        44
+      ],
+      "sourceSha256": "c09fbd1cf5f38029c7193f96af7e8566a059f108d6451c74b1033232e8527a6f"
+    },
+    {
+      "id": "chaos-morale-cube",
+      "faction": "chaos",
+      "label": "morale cube",
+      "location": "text",
+      "file": "chaos-morale-cube.png",
+      "source": "Warhammer/Боевые карты/0004.png",
+      "sourceBox": [
+        1223,
+        1707,
+        44,
+        45
+      ],
+      "sourceSha256": "c09fbd1cf5f38029c7193f96af7e8566a059f108d6451c74b1033232e8527a6f"
+    },
+    {
+      "id": "chaos-def-token",
+      "faction": "chaos",
+      "label": "def. token",
+      "location": "text",
+      "file": "chaos-def-token.png",
+      "source": "Warhammer/Боевые карты/0004.png",
+      "sourceBox": [
+        969,
+        3011,
+        40,
+        45
+      ],
+      "sourceSha256": "c09fbd1cf5f38029c7193f96af7e8566a059f108d6451c74b1033232e8527a6f"
+    },
+    {
+      "id": "ig-att-token",
+      "faction": "imperial-guard",
+      "label": "att. token",
+      "location": "text",
+      "file": "ig-att-token.png",
+      "source": "Warhammer/Имперская гвардия/БК1 (2).jpg",
+      "sourceBox": [
+        336,
+        3042,
+        42,
+        44
+      ],
+      "sourceSha256": "3f19be29ba1299aad76c41dfdea79a1c03cf84d4d8fec2700183666fe0ad0b38"
+    },
+    {
+      "id": "ig-any-cube",
+      "faction": "imperial-guard",
+      "label": "any cube",
+      "location": "text",
+      "file": "ig-any-cube.png",
+      "source": "Warhammer/Имперская гвардия/БК1 (2).jpg",
+      "sourceBox": [
+        645,
+        3222,
+        42,
+        45
+      ],
+      "sourceSha256": "3f19be29ba1299aad76c41dfdea79a1c03cf84d4d8fec2700183666fe0ad0b38"
+    },
+    {
+      "id": "eldar-any-cube-2",
+      "faction": "eldar",
+      "label": "any cube",
+      "location": "text",
+      "file": "eldar-any-cube-2.png",
+      "source": "Warhammer/Боевые карты/0001.png",
+      "sourceBox": [
+        223,
+        756,
+        42,
+        45
+      ],
+      "sourceSha256": "c4208b2e93b62a2dc0511c4aa0fff3e72692c10474e87824d172d8a94411b900"
+    },
+    {
+      "id": "chaos-def-cube",
+      "faction": "chaos",
+      "label": "def. cube",
+      "location": "text",
+      "file": "chaos-def-cube.png",
+      "source": "Warhammer/Боевые карты/0004.png",
+      "sourceBox": [
+        985,
+        2855,
+        42,
+        45
+      ],
+      "sourceSha256": "c09fbd1cf5f38029c7193f96af7e8566a059f108d6451c74b1033232e8527a6f"
+    },
+    {
+      "id": "chaos-def-token-2",
+      "faction": "chaos",
+      "label": "def. token",
+      "location": "text",
+      "file": "chaos-def-token-2.png",
+      "source": "Warhammer/Боевые карты/0004.png",
+      "sourceBox": [
+        968,
+        2898,
+        40,
+        44
+      ],
+      "sourceSha256": "c09fbd1cf5f38029c7193f96af7e8566a059f108d6451c74b1033232e8527a6f"
+    },
+    {
+      "id": "tyr-att-token",
+      "faction": "tyranids",
+      "label": "att. token",
+      "location": "text",
+      "file": "tyr-att-token.png",
+      "source": "Warhammer/Боевые карты/БК2.jpg",
+      "sourceBox": [
+        441,
+        1958,
+        43,
+        45
+      ],
+      "sourceSha256": "26b869a46a1e220d74e8b0c432e8682d0ff8a01269acf772dfd42a20d1be54f2"
+    },
+    {
+      "id": "tyr-def-token",
+      "faction": "tyranids",
+      "label": "def. token",
+      "location": "text",
+      "file": "tyr-def-token.png",
+      "source": "Warhammer/Боевые карты/БК2.jpg",
+      "sourceBox": [
+        232,
+        3030,
+        43,
+        45
+      ],
+      "sourceSha256": "26b869a46a1e220d74e8b0c432e8682d0ff8a01269acf772dfd42a20d1be54f2"
+    },
+    {
+      "id": "eldar-def-token",
+      "faction": "eldar",
+      "label": "def. token",
+      "location": "text",
+      "file": "eldar-def-token.png",
+      "source": "Warhammer/Боевые карты/0001.png",
+      "sourceBox": [
+        2155,
+        2013,
+        43,
+        45
+      ],
+      "sourceSha256": "c4208b2e93b62a2dc0511c4aa0fff3e72692c10474e87824d172d8a94411b900"
+    },
+    {
+      "id": "chaos-att-token",
+      "faction": "chaos",
+      "label": "att. token",
+      "location": "text",
+      "file": "chaos-att-token.png",
+      "source": "Warhammer/Боевые карты/0004.png",
+      "sourceBox": [
+        216,
+        765,
+        43,
+        45
+      ],
+      "sourceSha256": "c09fbd1cf5f38029c7193f96af7e8566a059f108d6451c74b1033232e8527a6f"
+    },
+    {
+      "id": "tyr-any-cube",
+      "faction": "tyranids",
+      "label": "any cube",
+      "location": "text",
+      "file": "tyr-any-cube.png",
+      "source": "Warhammer/Боевые карты/БК2.jpg",
+      "sourceBox": [
+        1842,
+        2949,
+        42,
+        42
+      ],
+      "sourceSha256": "26b869a46a1e220d74e8b0c432e8682d0ff8a01269acf772dfd42a20d1be54f2"
+    },
+    {
+      "id": "chaos-any-cube",
+      "faction": "chaos",
+      "label": "any cube",
+      "location": "text",
+      "file": "chaos-any-cube.png",
+      "source": "Warhammer/Боевые карты/0004.png",
+      "sourceBox": [
+        222,
+        1714,
+        46,
+        46
+      ],
+      "sourceSha256": "c09fbd1cf5f38029c7193f96af7e8566a059f108d6451c74b1033232e8527a6f"
+    }
+  ]
+}

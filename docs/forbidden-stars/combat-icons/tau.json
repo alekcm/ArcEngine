@@ -1,0 +1,1529 @@
+{
+  "faction": "tau",
+  "note": "All 27 printed cards on the three Tau sheets. Boxes are original-sheet coordinates; expected labels are manual transcription and are never classifier input. Duplicate names are kept as separate prints so text/icon variants cannot be hidden.",
+  "cards": [
+    {
+      "id": "s1-r1-c1",
+      "card": "tactical-retreat",
+      "source": "Warhammer/Тау/БК1 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК1 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            68,
+            286,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-morale",
+          "box": [
+            531,
+            838,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "lower-def",
+          "box": [
+            533,
+            978,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "s1-r1-c2",
+      "card": "tactical-retreat",
+      "source": "Warhammer/Тау/БК1 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК1 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            871,
+            286,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-morale",
+          "box": [
+            1334,
+            838,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "lower-def",
+          "box": [
+            1336,
+            978,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "s1-r1-c3",
+      "card": "supremacy",
+      "source": "Warhammer/Тау/БК1 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК1 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1675,
+            286,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1675,
+            371,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            1675,
+            455,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            1675,
+            539,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-att-token",
+          "box": [
+            1847,
+            745,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "upper-morale-1",
+          "box": [
+            1885,
+            798,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "upper-morale-2",
+          "box": [
+            2268,
+            798,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "upper-att-cube",
+          "box": [
+            1962,
+            835,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "upper-def-cube",
+          "box": [
+            2108,
+            835,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r2-c1",
+      "card": "supremacy",
+      "source": "Warhammer/Тау/БК1 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК1 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            68,
+            1397,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            68,
+            1482,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            68,
+            1566,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            68,
+            1650,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-att-token",
+          "box": [
+            240,
+            1856,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "upper-morale-1",
+          "box": [
+            278,
+            1909,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "upper-morale-2",
+          "box": [
+            661,
+            1909,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "upper-att-cube",
+          "box": [
+            355,
+            1946,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "upper-def-cube",
+          "box": [
+            501,
+            1946,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r2-c2",
+      "card": "stealth",
+      "source": "Warhammer/Тау/БК1 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК1 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            871,
+            1397,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-def",
+          "box": [
+            1043,
+            1869,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "lower-any",
+          "box": [
+            1184,
+            2069,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r2-c3",
+      "card": "stealth",
+      "source": "Warhammer/Тау/БК1 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК1 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1675,
+            1397,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-def",
+          "box": [
+            1847,
+            1869,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "lower-any",
+          "box": [
+            1988,
+            2069,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r3-c1",
+      "card": "regroup",
+      "source": "Warhammer/Тау/БК1 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК1 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            68,
+            2507,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            68,
+            2592,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            68,
+            2676,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "lower-any",
+          "box": [
+            568,
+            3199,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r3-c2",
+      "card": "regroup",
+      "source": "Warhammer/Тау/БК1 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК1 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            871,
+            2507,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            871,
+            2592,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            871,
+            2676,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "lower-any",
+          "box": [
+            1371,
+            3199,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r3-c3",
+      "card": "pathfinders",
+      "source": "Warhammer/Тау/БК1 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК1 (3).jpg",
+      "icons": []
+    },
+    {
+      "id": "s2-r1-c1",
+      "card": "pathfinders",
+      "source": "Warhammer/Тау/БК2 (2).jpg",
+      "image": "../../../Warhammer/Тау/БК2 (2).jpg",
+      "icons": []
+    },
+    {
+      "id": "s2-r1-c2",
+      "card": "montka",
+      "source": "Warhammer/Тау/БК2 (2).jpg",
+      "image": "../../../Warhammer/Тау/БК2 (2).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            871,
+            286,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-att",
+          "box": [
+            1043,
+            705,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-att",
+          "box": [
+            1361,
+            985,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "s2-r1-c3",
+      "card": "montka",
+      "source": "Warhammer/Тау/БК2 (2).jpg",
+      "image": "../../../Warhammer/Тау/БК2 (2).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1675,
+            286,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-att",
+          "box": [
+            1847,
+            705,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-att",
+          "box": [
+            2165,
+            985,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "s2-r2-c1",
+      "card": "kroot",
+      "source": "Warhammer/Тау/БК2 (2).jpg",
+      "image": "../../../Warhammer/Тау/БК2 (2).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            68,
+            1397,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-def-token",
+          "box": [
+            233,
+            1929,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "upper-att-cube",
+          "box": [
+            633,
+            1929,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "upper-att-token",
+          "box": [
+            508,
+            1966,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-any",
+          "box": [
+            531,
+            2089,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "s2-r2-c2",
+      "card": "kroot",
+      "source": "Warhammer/Тау/БК2 (2).jpg",
+      "image": "../../../Warhammer/Тау/БК2 (2).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            871,
+            1397,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-def-token",
+          "box": [
+            1036,
+            1929,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "upper-att-cube",
+          "box": [
+            1436,
+            1929,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "upper-att-token",
+          "box": [
+            1311,
+            1966,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-any",
+          "box": [
+            1334,
+            2089,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "s2-r2-c3",
+      "card": "kauyon",
+      "source": "Warhammer/Тау/БК2 (2).jpg",
+      "image": "../../../Warhammer/Тау/БК2 (2).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1675,
+            1397,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1675,
+            1482,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-def",
+          "box": [
+            1840,
+            1936,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "upper-any",
+          "box": [
+            2308,
+            2066,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "s2-r3-c1",
+      "card": "kauyon",
+      "source": "Warhammer/Тау/БК2 (2).jpg",
+      "image": "../../../Warhammer/Тау/БК2 (2).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            68,
+            2507,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            68,
+            2592,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-def",
+          "box": [
+            233,
+            3046,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "upper-any",
+          "box": [
+            701,
+            3176,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "s2-r3-c2",
+      "card": "greater-good",
+      "source": "Warhammer/Тау/БК2 (2).jpg",
+      "image": "../../../Warhammer/Тау/БК2 (2).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            871,
+            2507,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            871,
+            2592,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            871,
+            2676,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            871,
+            2760,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "col-5",
+          "box": [
+            871,
+            2844,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "upper-att-cube",
+          "box": [
+            1426,
+            3043,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "lower-morale-1",
+          "box": [
+            1151,
+            3186,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "lower-morale-2",
+          "box": [
+            1364,
+            3184,
+            40,
+            38
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "lower-att-token",
+          "box": [
+            1364,
+            3223,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "s2-r3-c3",
+      "card": "greater-good",
+      "source": "Warhammer/Тау/БК2 (2).jpg",
+      "image": "../../../Warhammer/Тау/БК2 (2).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1675,
+            2507,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1675,
+            2592,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            1675,
+            2676,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            1675,
+            2760,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "col-5",
+          "box": [
+            1675,
+            2844,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "upper-att-cube",
+          "box": [
+            2230,
+            3043,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "lower-morale-1",
+          "box": [
+            1955,
+            3186,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "lower-morale-2",
+          "box": [
+            2128,
+            3184,
+            40,
+            38
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "lower-att-token",
+          "box": [
+            2138,
+            3221,
+            40,
+            38
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "s3-r1-c1",
+      "card": "firefight",
+      "source": "Warhammer/Тау/БК3 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК3 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            68,
+            286,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            68,
+            371,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            68,
+            455,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-att-token",
+          "box": [
+            606,
+            822,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-def-token",
+          "box": [
+            651,
+            935,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "lower-att-cube",
+          "box": [
+            345,
+            982,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "lower-morale-cube",
+          "box": [
+            483,
+            982,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "s3-r1-c2",
+      "card": "firefight",
+      "source": "Warhammer/Тау/БК3 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК3 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            871,
+            286,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            871,
+            371,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            871,
+            455,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-att-token",
+          "box": [
+            1409,
+            822,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-def-token",
+          "box": [
+            1454,
+            935,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "lower-att-cube",
+          "box": [
+            1148,
+            982,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "lower-morale-cube",
+          "box": [
+            1286,
+            982,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "s3-r1-c3",
+      "card": "fire-advance",
+      "source": "Warhammer/Тау/БК3 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК3 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1675,
+            286,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1675,
+            371,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            1675,
+            455,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        }
+      ]
+    },
+    {
+      "id": "s3-r2-c1",
+      "card": "fire-advance",
+      "source": "Warhammer/Тау/БК3 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК3 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            68,
+            1397,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            68,
+            1482,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            68,
+            1566,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        }
+      ]
+    },
+    {
+      "id": "s3-r2-c2",
+      "card": "feigned-retreat",
+      "source": "Warhammer/Тау/БК3 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК3 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            871,
+            1397,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            871,
+            1482,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-def-1",
+          "box": [
+            1424,
+            1853,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "upper-def-2",
+          "box": [
+            1324,
+            1906,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "lower-att-token",
+          "box": [
+            1141,
+            2106,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "s3-r2-c3",
+      "card": "feigned-retreat",
+      "source": "Warhammer/Тау/БК3 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК3 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1675,
+            1397,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1675,
+            1482,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-def-1",
+          "box": [
+            2228,
+            1853,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "upper-def-2",
+          "box": [
+            2128,
+            1906,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "lower-att-token",
+          "box": [
+            1945,
+            2106,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "s3-r3-c1",
+      "card": "evasion",
+      "source": "Warhammer/Тау/БК3 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК3 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            68,
+            2507,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            68,
+            2592,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "upper-any",
+          "box": [
+            236,
+            2946,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "s3-r3-c2",
+      "card": "evasion",
+      "source": "Warhammer/Тау/БК3 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК3 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            871,
+            2507,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            871,
+            2592,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "upper-any",
+          "box": [
+            1039,
+            2946,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "s3-r3-c3",
+      "card": "crossfire",
+      "source": "Warhammer/Тау/БК3 (3).jpg",
+      "image": "../../../Warhammer/Тау/БК3 (3).jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1675,
+            2507,
+            86,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-att-token",
+          "box": [
+            2213,
+            3076,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-att-token",
+          "box": [
+            2228,
+            3199,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    }
+  ]
+}

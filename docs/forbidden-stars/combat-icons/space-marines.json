@@ -1,0 +1,880 @@
+{
+  "faction": "space-marines",
+  "note": "All 14 distinct Space Marine cards: nine on the dedicated sheet and five on 0003.png. Boxes are original-sheet coordinates; expected labels are manual transcription and are never classifier input. No Space Marine samples are used as references.",
+  "cards": [
+    {
+      "id": "s1-r1-c1",
+      "card": "scouts",
+      "name": "Скауты ветераны",
+      "source": "Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "image": "../../../Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            43,
+            250,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            43,
+            330,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            43,
+            410,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "upper-morale",
+          "box": [
+            211,
+            789,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "upper-att-token",
+          "box": [
+            400,
+            790,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "upper-def-token",
+          "box": [
+            506,
+            790,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "lower-morale-1",
+          "box": [
+            216,
+            930,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "lower-morale-2",
+          "box": [
+            412,
+            966,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r1-c2",
+      "card": "glory",
+      "name": "Слава Императора",
+      "source": "Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "image": "../../../Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            800,
+            250,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            800,
+            330,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            800,
+            410,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            800,
+            490,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "upper-any",
+          "box": [
+            977,
+            789,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "lower-morale",
+          "box": [
+            1272,
+            968,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r1-c3",
+      "card": "faith",
+      "name": "Вера в Императора",
+      "source": "Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "image": "../../../Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1556,
+            250,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "upper-any",
+          "box": [
+            1728,
+            787,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "lower-morale",
+          "box": [
+            1694,
+            968,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r2-c1",
+      "card": "armor",
+      "name": "Благословленная броня",
+      "source": "Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "image": "../../../Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            43,
+            1313,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-def-token",
+          "box": [
+            216,
+            1859,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "lower-def-cube",
+          "box": [
+            590,
+            2017,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r2-c2",
+      "card": "might",
+      "name": "Мощь Императора",
+      "source": "Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "image": "../../../Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            800,
+            1313,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            800,
+            1393,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            800,
+            1473,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-any",
+          "box": [
+            977,
+            1857,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "lower-att-cube-1",
+          "box": [
+            975,
+            1997,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "lower-att-cube-2",
+          "box": [
+            1404,
+            1997,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "lower-att-token",
+          "box": [
+            967,
+            2037,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "s1-r2-c3",
+      "card": "hold",
+      "name": "Держать строй",
+      "source": "Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "image": "../../../Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1556,
+            1313,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1556,
+            1393,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "upper-def-token",
+          "box": [
+            1731,
+            1799,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "lower-def-cube",
+          "box": [
+            1809,
+            2017,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "lower-morale-cube",
+          "box": [
+            1975,
+            2017,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r3-c1",
+      "card": "glory-death",
+      "name": "Слава и смерть",
+      "source": "Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "image": "../../../Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            43,
+            2375,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            43,
+            2455,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "upper-att-token",
+          "box": [
+            220,
+            2859,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-def-cube",
+          "box": [
+            419,
+            3059,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "lower-morale-cube",
+          "box": [
+            582,
+            3059,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r3-c2",
+      "card": "fearless",
+      "name": "Не ведать страха",
+      "source": "Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "image": "../../../Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            800,
+            2375,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            800,
+            2455,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            800,
+            2535,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "lower-morale",
+          "box": [
+            977,
+            3053,
+            44,
+            44
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "s1-r3-c3",
+      "card": "fury",
+      "name": "Ярость Ультрамара",
+      "source": "Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "image": "../../../Warhammer/Боевые карты/B162883B12CB5AF88022091C58A1B6B763C9F07B_1.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1556,
+            2375,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-def-cube-1",
+          "box": [
+            2152,
+            2873,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "upper-def-cube-2",
+          "box": [
+            2058,
+            2913,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "lower-def-cube",
+          "box": [
+            1928,
+            3055,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "lower-def-token",
+          "box": [
+            2095,
+            3053,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "s2-r1-c1",
+      "card": "armored-fist",
+      "name": "Бронекулак",
+      "source": "Warhammer/Боевые карты/0003.png",
+      "image": "../../../Warhammer/Боевые карты/0003.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            43,
+            250,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            43,
+            330,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            43,
+            410,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-any",
+          "box": [
+            220,
+            758,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "s2-r1-c2",
+      "card": "ambush",
+      "name": "Засада",
+      "source": "Warhammer/Боевые карты/0003.png",
+      "image": "../../../Warhammer/Боевые карты/0003.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            800,
+            250,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-att-token",
+          "box": [
+            977,
+            756,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-morale",
+          "box": [
+            1155,
+            970,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "s2-r1-c3",
+      "card": "drop-pod",
+      "name": "Десантный модуль",
+      "source": "Warhammer/Боевые карты/0003.png",
+      "image": "../../../Warhammer/Боевые карты/0003.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1556,
+            250,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1556,
+            330,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-any",
+          "box": [
+            1733,
+            758,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "lower-morale",
+          "box": [
+            1967,
+            872,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "s2-r2-c1",
+      "card": "recon",
+      "name": "Разведка",
+      "source": "Warhammer/Боевые карты/0003.png",
+      "image": "../../../Warhammer/Боевые карты/0003.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            43,
+            1313,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-att-token",
+          "box": [
+            305,
+            1877,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "upper-def-token",
+          "box": [
+            473,
+            1877,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "lower-morale",
+          "box": [
+            62,
+            1997,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "s2-r2-c2",
+      "card": "break-front",
+      "name": "Прорвать фронт",
+      "source": "Warhammer/Боевые карты/0003.png",
+      "image": "../../../Warhammer/Боевые карты/0003.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            800,
+            1313,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            800,
+            1393,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            800,
+            1473,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-morale-1",
+          "box": [
+            1030,
+            1773,
+            44,
+            44
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "upper-morale-2",
+          "box": [
+            1250,
+            1775,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "upper-att-cube",
+          "box": [
+            1223,
+            1813,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "upper-def-cube",
+          "box": [
+            1381,
+            1813,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        }
+      ]
+    }
+  ]
+}
