@@ -1105,7 +1105,7 @@ const RULES = [
     },
     // "your opponent loses 2 `att. token`" / "the opponent loses 1 `def. cube`"
     {
-        re: /(?:противник|вражеск[а-яёa-z]*|он)(?![а-яёa-z])[^.`]{0,40}?(?:теряет|терять|потеряет|потерять|теряют|потеряют)\s+([^;]{0,80})/i,
+        re: /(?:противник[а-яёa-z]*|вражеск[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?:теряет|терять|потеряет|потерять|теряют|потеряют)\s+([^;]{0,80})/i,
         build: m => {
             const icons = [...m[1].matchAll(/`([^`]+)`/g)].map(x => x[1]);
             if (!icons.length) return null;
@@ -1133,14 +1133,14 @@ const RULES = [
             return { op: 'rerollDie', n: all ? 99 : num(m[2]), kind: FS_EFFECTS.icon(m[3]), all, pick: true };
         },
     },
-    // "reroll up to 2 of your dice"
+    // "reroll up to 2 of your dice" / "reroll 1 of your dice"
     {
-        re: /переброс[а-яёa-z]*\s+(?:до\s+)?(всех|(\d+))?\s*(?:ваш[а-яёa-z]*|свои|своих)\s+кубик/i,
+        re: /переброс[а-яёa-z]*\s+(?:до\s+)?(всех|все|(\d+))?\s*(?:ваш[а-яёa-z]*|свои|своих)\s+куб[а-яёa-z]*/i,
         build: m => ({ op: 'rerollDie', n: /все/.test(m[1] || '') ? 99 : num(m[2]), kind: 'any', all: /все/.test(m[1] || ''), pick: true }),
     },
     // "reroll all the dice of one value"
     {
-        re: /переброс[а-яёa-z]*\s+все[а-яёa-z]*\s+(?:ваш[а-яёa-z]*|свои)\s+кубик[а-яёa-z]*\s+одного\s+конкретного\s+значения/i,
+        re: /переброс[а-яёa-z]*\s+все[а-яёa-z]*\s+(?:ваш[а-яёa-z]*|свои)\s+кубик[а-яёa-z]*\s+одного(?:\s+конкретного)?\s+(?:значения|типа)/i,
         build: () => ({ op: 'rerollValue' }),
     },
     // "flip 1 of your dice to any side"
@@ -1150,7 +1150,7 @@ const RULES = [
     },
     // "flip up to 2 of your `att. cube` to `def. cube`"
     {
-        re: /переверн[а-яёa-z]*\s+(?:до\s+)?(всех|все|любые|(\d+))?\s*(?:ваш[а-яёa-z]*|из своих|своих|свои)?\s*(?:`([^`]+)`\s*)?(?:кубик[а-яёa-z]*\s*)?(?:на|в)\s*`([^`]+)`/i,
+        re: /(?:переверн[а-яёa-z]*|сконвертиру[а-яёa-z]*|конвертиру[а-яёa-z]*)\s+(?:до\s+)?(всех|все|любые|(\d+))?\s*(?:ваш[а-яёa-z]*|из ваших|из своих|своих|свои)?\s*(?:`([^`]+)`\s*)?(?:куб[а-яёa-z]*\s*)?(?:на|в)\s*`([^`]+)`/i,
         build: m => ({
             op: 'flipDie', n: /все|любые/.test(m[1] || '') ? 99 : num(m[2]),
             kind: m[3] ? FS_EFFECTS.icon(m[3]) : 'any', to: FS_EFFECTS.icon(m[4]),
@@ -1164,11 +1164,17 @@ const RULES = [
     },
     // "you must spend 1 `def. cube`" / "spend up to 3 `morale cube`"
     {
-        re: /потрат[а-яёa-z]*\s+(?:любое количество\s+)?(?:до\s+)?(всех|(\d+))?\s*`([^`]+)`/i,
+        re: /потрат[а-яёa-z]*\s+(?:любое количество\s+)?(?:до\s+)?(всех|(\d+))?\s*(?:ваш[а-яёa-z]*|своих|свои)?\s*`([^`]+)`([^;]{0,40})/i,
         build: m => {
-            if (FS_EFFECTS.iconKind(m[3]) !== 'cube') return null;
+            const icons = [m[3]].concat([...(m[4] || '').matchAll(/`([^`]+)`/g)].map(x => x[1]));
             const all = /все/.test(m[1] || '');
-            return { op: 'spendDie', n: all ? 99 : num(m[2]), kind: FS_EFFECTS.icon(m[3]), all, pick: true };
+            const n = all ? 99 : num(m[2]);
+            const steps = [];
+            for (const ic of icons) {
+                if (FS_EFFECTS.iconKind(ic) !== 'cube') continue;
+                steps.push({ op: 'spendDie', n, kind: FS_EFFECTS.icon(ic), all, pick: true });
+            }
+            return steps.length ? steps : null;
         },
     },
     // "spend any number of dice" / "spend up to 2 dice"
@@ -1178,7 +1184,7 @@ const RULES = [
     },
     // "the opponent must reroll 1 die of your choice"
     {
-        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\s+(\d+)?\s*кубик/i,
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\s+(\d+)?\s*куб[а-яёa-z]*/i,
         build: m => ({ op: 'rerollDie', n: num(m[1]), kind: 'any', who: 'foe', pick: true }),
     },
     // "get 1 `att. token` for every unrouted Guardsman or Cruiser, maximum 3"
@@ -1231,7 +1237,7 @@ const RULES = [
     },
     // "restore 1 of your routed units" / "restore all your units"
     {
-        re: /восстанов[а-яёa-z]*\s+(всех?\s*)?(?:(\d+)\s+)?(?:ваш[а-яёa-z]*|сво[еи][а-яёa-z]*)?\s*(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*|пехот[а-яёa-z]*)/i,
+        re: /восстанов[а-яёa-z]*\s+(всех?\s*)?(?:(\d+)\s+)?(?:ваш[а-яёa-z]*|сво[а-яёa-z]*)?\s*(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*|пехот[а-яёa-z]*)/i,
         build: m => ({ op: 'restore', n: m[2] ? num(m[2]) : 1, all: !!m[1], pick: true }),
     },
     // "the opponent chooses and destroys 1 of his routed units"
