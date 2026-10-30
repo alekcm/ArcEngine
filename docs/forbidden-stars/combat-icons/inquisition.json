@@ -1,6 +1,6 @@
 {
   "faction": "inquisition",
-  "note": "All 14 Inquisition combat cards on E5DE..._2.png (rows 2-3). Boxes are original-sheet coordinates; expected labels are manual transcription and are never classifier input. No Inquisition samples are used as references.",
+  "note": "Current 14 Inquisition combat cards. Five cards (Ruthless Attack, Eyeless Gaze, Approved Psyker, Vanguard Drop, Unyielding Crusaders) use the owner-supplied current sheet; the other 9 retain E5DE7E8B..._2.png. Manual boxes are original-source coordinates; expected labels are never classifier input. No Inquisition samples are references.",
   "cards": [
     {
       "id": "r2-c3",
@@ -224,19 +224,19 @@
       ]
     },
     {
-      "id": "r2-c8",
+      "id": "unyielding-crusaders",
       "card": "unyielding-crusaders",
       "name": "Непреклонные крестоносцы",
-      "source": "Warhammer/Инквизиция/E5DE7E8B9D43AB243BD38E75437EC2297B1371A0_2.png",
-      "image": "../../../Warhammer/Инквизиция/E5DE7E8B9D43AB243BD38E75437EC2297B1371A0_2.png",
+      "source": "Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
+      "image": "../../../Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
       "icons": [
         {
           "id": "col-1",
           "box": [
-            5218,
-            1291,
-            70,
-            65
+            1265,
+            1909,
+            64,
+            64
           ],
           "location": "column",
           "expected": "def. icon"
@@ -244,57 +244,46 @@
         {
           "id": "col-2",
           "box": [
-            5218,
-            1371,
-            70,
-            65
+            1264,
+            1973,
+            64,
+            64
           ],
           "location": "column",
           "expected": "def. icon"
         },
         {
-          "id": "main-morale-cube",
-          "box": [
-            5403,
-            1731,
-            43,
-            42
-          ],
-          "location": "text",
-          "expected": "morale cube"
-        },
-        {
           "id": "main-att-token",
           "box": [
-            5541,
-            1731,
-            42,
-            41
+            1428,
+            2264,
+            36,
+            36
           ],
           "location": "text",
           "expected": "att. token"
         },
         {
-          "id": "unit-def-token",
-          "box": [
-            5403,
-            1925,
-            42,
-            41
-          ],
-          "location": "text",
-          "expected": "def. token"
-        },
-        {
           "id": "unit-def-cube",
           "box": [
-            5420,
-            2005,
-            42,
-            42
+            1517,
+            2439,
+            44,
+            44
           ],
           "location": "text",
           "expected": "def. cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            1618,
+            2443,
+            36,
+            36
+          ],
+          "location": "text",
+          "expected": "att. token"
         }
       ]
     },
@@ -352,19 +341,19 @@
       ]
     },
     {
-      "id": "r2-c10",
+      "id": "ruthless-attack",
       "card": "ruthless-attack",
       "name": "Беспощадная атака",
-      "source": "Warhammer/Инквизиция/E5DE7E8B9D43AB243BD38E75437EC2297B1371A0_2.png",
-      "image": "../../../Warhammer/Инквизиция/E5DE7E8B9D43AB243BD38E75437EC2297B1371A0_2.png",
+      "source": "Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
+      "image": "../../../Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
       "icons": [
         {
           "id": "col-1",
           "box": [
-            6696,
-            1291,
-            70,
-            65
+            649,
+            1054,
+            64,
+            64
           ],
           "location": "column",
           "expected": "att. icon"
@@ -372,43 +361,32 @@
         {
           "id": "col-2",
           "box": [
-            6696,
-            1371,
-            70,
-            65
+            649,
+            1116,
+            64,
+            64
           ],
           "location": "column",
           "expected": "att. icon"
         },
         {
-          "id": "main-att-token",
+          "id": "main-def-token",
           "box": [
-            6881,
-            1772,
-            42,
-            41
+            768,
+            1443,
+            40,
+            40
           ],
           "location": "text",
-          "expected": "att. token"
-        },
-        {
-          "id": "main-morale-cube",
-          "box": [
-            7091,
-            1811,
-            45,
-            45
-          ],
-          "location": "text",
-          "expected": "morale cube"
+          "expected": "def. token"
         },
         {
           "id": "unit-def-cube",
           "box": [
-            6916,
-            2005,
-            42,
-            42
+            838,
+            1636,
+            36,
+            36
           ],
           "location": "text",
           "expected": "def. cube"
@@ -416,10 +394,10 @@
         {
           "id": "unit-att-token",
           "box": [
-            7285,
-            2007,
-            42,
-            40
+            1145,
+            1637,
+            36,
+            36
           ],
           "location": "text",
           "expected": "att. token"
@@ -427,19 +405,19 @@
       ]
     },
     {
-      "id": "r3-c1",
+      "id": "approved-psyker",
       "card": "approved-psyker",
       "name": "Одобренный псайкер",
-      "source": "Warhammer/Инквизиция/E5DE7E8B9D43AB243BD38E75437EC2297B1371A0_2.png",
-      "image": "../../../Warhammer/Инквизиция/E5DE7E8B9D43AB243BD38E75437EC2297B1371A0_2.png",
+      "source": "Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
+      "image": "../../../Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
       "icons": [
         {
           "id": "col-1",
           "box": [
-            45,
-            2337,
-            70,
-            65
+            32,
+            1907,
+            64,
+            64
           ],
           "location": "column",
           "expected": "att. icon"
@@ -447,10 +425,10 @@
         {
           "id": "col-2",
           "box": [
-            45,
-            2417,
-            70,
-            65
+            30,
+            1973,
+            64,
+            64
           ],
           "location": "column",
           "expected": "def. icon"
@@ -458,10 +436,10 @@
         {
           "id": "main-att-cube",
           "box": [
-            652,
-            2796,
-            44,
-            44
+            543,
+            2279,
+            40,
+            40
           ],
           "location": "text",
           "expected": "att. cube"
@@ -469,10 +447,10 @@
         {
           "id": "main-att-token",
           "box": [
-            344,
-            2837,
-            42,
-            41
+            286,
+            2314,
+            36,
+            36
           ],
           "location": "text",
           "expected": "att. token"
@@ -480,46 +458,68 @@
         {
           "id": "main-def-cube",
           "box": [
-            635,
-            2877,
-            45,
-            45
+            528,
+            2345,
+            40,
+            40
           ],
           "location": "text",
           "expected": "def. cube"
         },
         {
+          "id": "unit-att-cube",
+          "box": [
+            430,
+            2452,
+            32,
+            32
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
           "id": "unit-att-token",
           "box": [
-            377,
-            3012,
-            41,
-            41
+            36,
+            2473,
+            36,
+            36
           ],
           "location": "text",
           "expected": "att. token"
         },
         {
-          "id": "unit-def-token",
+          "id": "unit-def-token-1",
           "box": [
-            671,
-            3012,
-            41,
-            41
+            104,
+            2477,
+            32,
+            32
           ],
           "location": "text",
           "expected": "def. token"
         },
         {
-          "id": "unit-att-cube",
+          "id": "unit-def-cube",
           "box": [
-            562,
-            3052,
-            44,
-            44
+            383,
+            2474,
+            36,
+            36
           ],
           "location": "text",
-          "expected": "att. cube"
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-def-token-2",
+          "box": [
+            530,
+            2474,
+            40,
+            40
+          ],
+          "location": "text",
+          "expected": "def. token"
         }
       ]
     },
@@ -674,19 +674,19 @@
       ]
     },
     {
-      "id": "r3-c4",
+      "id": "eyeless-gaze",
       "card": "eyeless-gaze",
       "name": "Взгляд без глаз",
-      "source": "Warhammer/Инквизиция/E5DE7E8B9D43AB243BD38E75437EC2297B1371A0_2.png",
-      "image": "../../../Warhammer/Инквизиция/E5DE7E8B9D43AB243BD38E75437EC2297B1371A0_2.png",
+      "source": "Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
+      "image": "../../../Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
       "icons": [
         {
           "id": "col-1",
           "box": [
-            2262,
-            2337,
-            70,
-            65
+            1266,
+            1054,
+            64,
+            64
           ],
           "location": "column",
           "expected": "att. icon"
@@ -694,10 +694,10 @@
         {
           "id": "col-2",
           "box": [
-            2262,
-            2417,
-            70,
-            65
+            1266,
+            1118,
+            64,
+            64
           ],
           "location": "column",
           "expected": "att. icon"
@@ -705,107 +705,42 @@
         {
           "id": "col-3",
           "box": [
-            2262,
-            2497,
-            70,
-            65
+            1268,
+            1186,
+            60,
+            60
           ],
           "location": "column",
           "expected": "morale icon"
         },
         {
-          "id": "main-att-cube",
+          "id": "main-any-cube",
           "box": [
-            2446,
-            2797,
-            43,
-            41
-          ],
-          "location": "text",
-          "expected": "att. cube"
-        },
-        {
-          "id": "main-att-token",
-          "box": [
-            2697,
-            2797,
-            42,
+            1384,
+            1412,
+            40,
             40
           ],
           "location": "text",
-          "expected": "att. token"
-        },
-        {
-          "id": "main-def-token",
-          "box": [
-            2798,
-            2797,
-            43,
-            40
-          ],
-          "location": "text",
-          "expected": "def. token"
-        },
-        {
-          "id": "main-def-cube",
-          "box": [
-            2581,
-            2837,
-            43,
-            42
-          ],
-          "location": "text",
-          "expected": "def. cube"
-        },
-        {
-          "id": "main-att-token-2",
-          "box": [
-            2832,
-            2837,
-            42,
-            40
-          ],
-          "location": "text",
-          "expected": "att. token"
-        },
-        {
-          "id": "unit-att-cube",
-          "box": [
-            2753,
-            2972,
-            42,
-            41
-          ],
-          "location": "text",
-          "expected": "att. cube"
-        },
-        {
-          "id": "unit-def-cube",
-          "box": [
-            2883,
-            2972,
-            42,
-            41
-          ],
-          "location": "text",
-          "expected": "def. cube"
+          "expected": "any cube"
         }
       ]
     },
     {
-      "id": "r3-c5",
-      "card": "teleport-strike",
-      "name": "Удар телепортом",
-      "source": "Warhammer/Инквизиция/E5DE7E8B9D43AB243BD38E75437EC2297B1371A0_2.png",
-      "image": "../../../Warhammer/Инквизиция/E5DE7E8B9D43AB243BD38E75437EC2297B1371A0_2.png",
+      "id": "vanguard-drop",
+      "card": "vanguard-drop",
+      "name": "Передовая высадка",
+      "previousName": "Удар телепортом",
+      "source": "Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
+      "image": "../../../Warhammer/Боевые карты/Сестры-Инквизиция-актуальные.png",
       "icons": [
         {
           "id": "col-1",
           "box": [
-            3001,
-            2337,
-            70,
-            65
+            649,
+            1907,
+            64,
+            64
           ],
           "location": "column",
           "expected": "att. icon"
@@ -813,10 +748,10 @@
         {
           "id": "col-2",
           "box": [
-            3001,
-            2417,
-            70,
-            65
+            649,
+            1971,
+            64,
+            64
           ],
           "location": "column",
           "expected": "att. icon"
@@ -824,10 +759,10 @@
         {
           "id": "col-3",
           "box": [
-            3001,
-            2497,
-            70,
-            65
+            649,
+            2035,
+            64,
+            64
           ],
           "location": "column",
           "expected": "att. icon"
@@ -835,21 +770,10 @@
         {
           "id": "col-4",
           "box": [
-            3001,
-            2577,
-            70,
-            65
-          ],
-          "location": "column",
-          "expected": "att. icon"
-        },
-        {
-          "id": "col-5",
-          "box": [
-            3001,
-            2657,
-            70,
-            65
+            649,
+            2097,
+            68,
+            68
           ],
           "location": "column",
           "expected": "morale icon"

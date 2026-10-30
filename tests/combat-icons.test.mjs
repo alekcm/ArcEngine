@@ -187,15 +187,18 @@ test('Mechanicus audit manifest covers 28 prints on two sheets and 156 manually 
   assert.ok(!references.some(r => r.faction === 'mechanicus'));
 });
 
-test('Inquisition audit manifest covers 14 cards on one composite sheet and 73 manually located symbols', () => {
+test('Inquisition audit manifest covers 14 cards on two sources and 66 manually located symbols', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'inquisition.json'), 'utf8'));
   assert.equal(manifest.faction, 'inquisition');
   assert.equal(manifest.cards.length, 14);
-  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 1);
+  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 2);
+  assert.equal(manifest.cards.filter(c => c.source.includes('Сестры-Инквизиция-актуальные.png')).length, 5);
+  assert.ok(manifest.cards.some(c => c.name === 'Передовая высадка' && c.previousName === 'Удар телепортом'));
+  assert.ok(!manifest.cards.some(c => c.name === 'Удар телепортом'));
   const icons = manifest.cards.flatMap(c => c.icons);
-  assert.equal(icons.length, 73);
-  assert.equal(icons.filter(i => i.location === 'column').length, 32);
-  assert.equal(icons.filter(i => i.location === 'text').length, 41);
+  assert.equal(icons.length, 66);
+  assert.equal(icons.filter(i => i.location === 'column').length, 31);
+  assert.equal(icons.filter(i => i.location === 'text').length, 35);
   for (const icon of icons) {
     assert.ok(LABELS.includes(icon.expected));
     assert.equal(icon.box.length, 4);
