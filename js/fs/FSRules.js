@@ -592,6 +592,7 @@ const FS_RULES = {
             case 'moveStorm': return this.cmdMoveStorm(state, seat, cmd);
             case 'nextPhase': return this.cmdNextPhase(state, seat, cmd);
             case 'rally': return this.cmdRally(state, seat, cmd);
+            case 'takeProsperity': return this.cmdTakeProsperity(state, seat, cmd);
             default: return { ok: false, error: 'Неизвестная команда: ' + type };
         }
     },
@@ -704,8 +705,13 @@ const FS_RULES = {
             return { ok: true };
         }
         if (order === 'dominate') {
+            // The order stays open: the player takes the prosperity tokens and
+            // applies the ability of the faction.
             this.dominate(state, seat, systemId);
-            this.finishOrder(state, seat);
+            state.order.phase = 'dominate';
+            const faction = this.faction(state, seat);
+            state.order.ability = faction && faction.ability
+                ? faction.ability.name + ': ' + faction.ability.text : '';
             return { ok: true };
         }
         return { ok: false, error: 'Неизвестный приказ.' };
@@ -723,6 +729,7 @@ const FS_RULES = {
                 if (asset === 'prosperity') {
                     // The player chooses the token.
                     gained.push('prosperity');
+                    state.order.prosperity = (state.order.prosperity || 0) + 1;
                 } else {
                     const limit = p.faction === 'тираниды' && asset === 'reinforcement' ? 4 : 3;
                     if ((p.assets[asset] || 0) < limit) {
@@ -1151,6 +1158,28 @@ const FS_RULES = {
         return { ok: true };
     },
 
+    // The prosperity token: the player chooses the asset of his choice.
+    cmdTakeProsperity(state, seat, cmd) {
+        const order = state.order;
+        if (!order || order.order !== 'dominate' || order.seat !== seat) {
+            return { ok: false, error: 'Сейчас не приказ доминирования.' };
+        }
+        if (!order.prosperity) return { ok: false, error: 'Нет жетонов процветания.' };
+        const asset = cmd.asset;
+        if (!['forge', 'cache', 'reinforcement'].includes(asset)) return { ok: false, error: 'Неизвестный ресурс.' };
+        const p = state.players[seat];
+        const limit = p.faction === 'тираниды' && asset === 'reinforcement' ? 4 : 3;
+        if ((p.assets[asset] || 0) >= limit) return { ok: false, error: 'У вас уже три таких жетона.' };
+        p.assets[asset] = (p.assets[asset] || 0) + 1;
+        order.prosperity--;
+        this.log(state, seat, p.name + ' взял жетон процветания: ' + this.assetName(asset) + '.');
+        return { ok: true };
+    },
+
+    assetName(asset) {
+        return { forge: 'кузница', cache: 'тайник', reinforcement: 'подкрепление', prosperity: 'процветание' }[asset] || asset;
+    },
+
     // The end of the dominate order (after the faction ability).
     cmdFinishDominate(state, seat) {
         const order = state.order;
@@ -1162,9 +1191,11 @@ const FS_RULES = {
     // An order upgrade card is used once per round.
     cmdUseUpgrade(state, seat, cmd) {
         const p = state.players[seat];
-        const up = p.upgrades.find(u => u.name === cmd.card);
-        if (!up) return { ok: false, error: 'Нет такого улучшения.' };
-        if (up.used) return { ok: false, error: 'Это улучшение уже использовано в этом раунде.' };
+        const up = p.upgrades.find(u => u.name === cmd.card && !u.used);
+        if (!up) {
+            const known = p.upgrades.some(u => u.name === cmd.card);
+            return { ok: false, error: known ? 'Это улучшение уже использовано в этом раунде.' : 'Нет такого улучшения.' };
+        }
         up.used = true;
         this.log(state, seat, p.name + ' применяет улучшение «' + up.name + '».');
         return { ok: true, text: up.text || '' };

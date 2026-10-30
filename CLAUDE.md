@@ -139,7 +139,8 @@ tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs 
 docs/forbidden-stars/  транскрипция правил и карт Forbidden Stars — источник данных (не читать сканы)
 tsconfig.json     проверка типов игры; globals.d.ts — window.app, material.arcToon, записи объектов
 tests/            *.test.mjs (node --test): Store, heightAt, сканер ассетов, запись редактора, звук,
-                  экспорт в Unity, связка скиллов, игра Forbidden Stars (fs-rules, fs-client, fs-ui, fs-server);
+                  экспорт в Unity, связка скиллов, игра Forbidden Stars (fs-rules, fs-commands, fs-client,
+                  fs-ui, fs-app, fs-server);
                   browser-scripts.mjs — скрипты игры в node:vm + пустышка Babylon
 unity/            com.arcengine.runtime — пакет Unity (C#-двойник API набора и импорт сцены; в билд игры
                   не едет); export-unity.mjs копирует его в Unity-проект, скилл unity-port

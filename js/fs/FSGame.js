@@ -179,6 +179,15 @@ class FSGame {
             else if (s.order.order === 'strategize') this.panelStrategize(s, ctx);
             else if (s.order.order === 'dominate') this.panelDominate(s, ctx);
         }
+        // The upgrades of the player: once per round.
+        if (s.phase === 'operations' && s.players[me]) {
+            for (const u of (s.players[me].upgrades || []).filter(x => !x.used)) {
+                ctx.actions.push({
+                    label: 'Применить улучшение: ' + u.name,
+                    onClick: () => this.net.cmd({ type: 'useUpgrade', card: u.name }),
+                });
+            }
+        }
         // The combat.
         if (s.combat) this.panelCombat(s, ctx);
         FSUI.update(s, ctx);
@@ -338,7 +347,7 @@ class FSGame {
         for (const area of sys.areas) {
             const check = FS_RULES.canMove(s, me, unit, { system: sys.id, pos: area.pos });
             if (!check.ok) continue;
-            const p = FSView.areaPos(this.app, sys, area.pos);
+            const p = FSView.areaPos(this.app, sys, area.pos, this.view.metrics);
             const h = this.app.location.terrain.heightAt(p.x, p.y);
             list.push({ x: p.x, y: h + 14, z: p.y });
         }
@@ -439,7 +448,8 @@ class FSGame {
         const ccards = FS_DATA.combat.filter(c => c.faction === p.faction && c.upgrade);
         const mayBuy = c => c.kl <= level && c.cost <= p.materiel;
         ctx.text += '\n' + ccards.filter(mayBuy).map(c => c.name + ' (КЛ ' + c.kl + '): ' + (c.general || '') + ' ' + (c.unit || '')).join('\n');
-        for (const c of ccards.filter(mayBuy)) {
+        // One combat upgrade and one order upgrade per order.
+        for (const c of ccards.filter(mayBuy).filter(() => !s.order.combatUpgrade)) {
             ctx.actions.push({
                 label: 'Боевое: ' + c.name + ' (' + c.cost + ' материи)',
                 onClick: () => this.net.cmd({ type: 'buyUpgrade', kind: 'combat', card: c.name }),
@@ -447,7 +457,7 @@ class FSGame {
         }
         const ocards = FS_DATA.orders.filter(c => c.faction === p.faction);
         ctx.text += '\n' + ocards.filter(mayBuy).map(c => c.name + ' (КЛ ' + c.kl + '): ' + (c.text || '')).join('\n');
-        for (const c of ocards.filter(mayBuy)) {
+        for (const c of ocards.filter(mayBuy).filter(() => !s.order.orderUpgrade)) {
             ctx.actions.push({
                 label: 'Приказ: ' + c.name + ' (' + c.cost + ' материи)',
                 onClick: () => this.net.cmd({ type: 'buyUpgrade', kind: 'order', card: c.name }),
@@ -464,6 +474,15 @@ class FSGame {
         ctx.title = 'Доминирование';
         ctx.text = (s.order.ability || '') + '\nРесурсы получены. Можете применить способность фракции.';
         ctx.status = '';
+        // The prosperity: the player chooses the asset of his choice.
+        for (let i = 0; i < (s.order.prosperity || 0); i++) {
+            for (const asset of ['forge', 'cache', 'reinforcement']) {
+                ctx.actions.push({
+                    label: 'Процветание: ' + FS_RULES.assetName(asset),
+                    onClick: () => this.net.cmd({ type: 'takeProsperity', asset }),
+                });
+            }
+        }
         ctx.actions.push({
             label: 'Закончить приказ',
             onClick: () => this.net.cmd({ type: 'finishDominate' }),
