@@ -275,6 +275,17 @@ test('the text of the cards: the abilities of the factions are read', () => {
     assert.equal(cards[1].op, 'playEvent');
 });
 
+test('the text of the cards: the clarification of the rules is shown to the player', () => {
+    const s = game();
+    const steps = FS_EFFECTS.parse('Этот отряд или бастион получает урон первым.', { kind: 'combat-unit', faction: 'имперская-гвардия' });
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0].op, 'note');
+    // The card of the combat may be read when the fight is already over.
+    FS_RULES.runEffects(s, 0, steps, { kind: 'combat', ctx: null });
+    assert.ok(s.log.some(l => String(l.text).includes('Этот отряд или бастион получает урон первым')),
+        'the clarification is in the journal of the game');
+});
+
 test('the interpreter: the texts of the cards are read', () => {
     let total = 0;
     let read = 0;

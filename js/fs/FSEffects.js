@@ -297,7 +297,8 @@ const FS_EFFECTS = {
     // One step of the game.
     step(R, state, seat, step, ctx) {
         const combat = state.combat;
-        const inCombat = ctx && ctx.kind === 'combat';
+        // The card of the combat may be played when the fight is already over.
+        const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
         const side = inCombat ? (seat === combat.attacker ? 'attacker' : 'defender') : null;
         const foe = inCombat ? (seat === combat.attacker ? combat.defender : combat.attacker) : null;
         const p = state.players[seat];
@@ -834,7 +835,9 @@ const FS_EFFECTS = {
             }
             case 'once':
             case 'note': {
-                // The sentence says no rule of its own.
+                // The sentence says no rule of its own: the engine shows it to
+                // the player as a clarification of the rules.
+                if (step.text) R.log(state, seat, step.text);
                 return null;
             }
             case 'scheme': {
@@ -877,7 +880,7 @@ const FS_EFFECTS = {
     apply(R, state, seat, step, answer, ctx) {
         const p = state.players[seat];
         const combat = state.combat;
-        const inCombat = ctx && ctx.kind === 'combat';
+        const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
         const owner = ctx && ctx.owner !== undefined ? ctx.owner : seat;
         const side = inCombat ? (owner === combat.attacker ? 'attacker' : 'defender') : null;
         const target = step.who === 'foe' && inCombat ? (owner === combat.attacker ? combat.defender : combat.attacker) : owner;

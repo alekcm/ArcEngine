@@ -11,6 +11,7 @@
 //
 //   node tools/fs-coverage.mjs            — the report
 //   node tools/fs-coverage.mjs --all      — the sentences that are not read
+//   node tools/fs-coverage.mjs --notes    — the clarifications of the rules
 
 import { loadScripts } from '../tests/browser-scripts.mjs';
 
@@ -39,6 +40,7 @@ export function allTexts() {
 
 const groups = new Map();
 const misses = [];
+const notes = [];
 let total = 0;
 let applied = 0;
 let noted = 0;
@@ -53,6 +55,7 @@ for (const card of allTexts()) {
             if (ops[0] === 'note') {
                 noted++;
                 g.noted++;
+                notes.push({ kind: card.kind, name: card.name, sentence });
             } else {
                 applied++;
                 g.applied++;
@@ -79,7 +82,11 @@ console.log('  ВСЕГО         ' + String(applied).padStart(4) + ' / ' + Stri
 console.log('  С ПОЯСНЕНИЯМИ  ' + String(applied + noted).padStart(4) + ' / ' + String(total).padStart(4)
     + '  (' + String(pct(applied + noted, total)).padStart(3) + ' %)');
 
-if (process.argv.includes('--all')) {
+if (process.argv.includes('--notes')) {
+    console.log('');
+    console.log('Пояснения правил (движок показывает их игроку, поведение уже верное):');
+    for (const n of notes) console.log('  [' + n.kind + '] ' + n.name + ': ' + n.sentence);
+} else if (process.argv.includes('--all')) {
     console.log('');
     for (const m of misses) console.log('  [' + m.kind + '] ' + m.sentence);
 } else {
