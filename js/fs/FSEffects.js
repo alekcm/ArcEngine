@@ -240,6 +240,10 @@ const FS_EFFECTS = {
             return this.next(R, state, pending);
         }
         const res = this.apply(R, state, seat, step, answer, ctx);
+        if (res && res.replace) {
+            // The step has other steps of its own.
+            return this.next(R, state, pending, res.replace);
+        }
         if (res && res.question && this.emptyQuestion(res.question)) {
             // There is nothing to choose: the effect is skipped.
             return this.next(R, state, pending);
@@ -260,9 +264,9 @@ const FS_EFFECTS = {
     },
 
     // The chain goes on with the next step.
-    next(R, state, pending) {
-        const list = pending.steps;
-        const saved = { seat: pending.seat, kind: pending.kind, steps: list, index: pending.index + 1, ctx: pending.ctx };
+    next(R, state, pending, replace) {
+        const list = replace || pending.steps;
+        const saved = { seat: pending.seat, kind: pending.kind, steps: list, index: replace ? 0 : pending.index + 1, ctx: pending.ctx };
         state.pending = null;
         return this.run(R, state, saved.seat, list, saved.ctx, saved.index);
     },
@@ -577,7 +581,20 @@ const FS_EFFECTS = {
                     p.eventHand = p.eventHand || [];
                     p.eventHand.push(name);
                 }
-                R.log(state, seat, state.players[seat].name + ' берёт карты событий.');
+                R.log(state, seat, state.players[seat].name + ' берёт карты событий: ' + p.eventHand.join(', ') + '.');
+                return null;
+            }
+            case 'playEvent': {
+                const hand = p.eventHand || [];
+                if (!hand.length) return null;
+                return { question: { kind: 'cards', who: seat, op: 'playEvent', options: hand.slice(), text: 'Какую карту события разыграть?' } };
+            }
+            case 'supplyDeal': {
+                if (state.order) state.order.supplyDeal = step.n || 2;
+                return null;
+            }
+            case 'deployInFactoryWorld': {
+                if (state.order) state.order.deployInFactoryWorld = true;
                 return null;
             }
             case 'discardCard': {
@@ -757,6 +774,19 @@ const FS_EFFECTS = {
             }
             case 'chooseSystem': {
                 return null;
+            }
+            case 'playEvent': {
+                const name = answer.card;
+                const hand = p.eventHand || [];
+                if (!name || !hand.includes(name)) return null;
+                // The other cards go back to the deck.
+                for (const other of hand) if (other !== name) p.decks.event.push(other);
+                p.eventHand = [];
+                const card = FS_DATA.events.find(e => e.name === name);
+                if (!card) return null;
+                R.log(state, seat, state.players[seat].name + ' разыграл карту события «' + name + '».');
+                const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p.faction });
+                return { replace: steps };
             }
             case 'replaceUnit': {
                 const list = units(answer.units);
@@ -1592,6 +1622,29 @@ const RULES = [
     {
         re: /возьмите (\d+) верхни[ех] карт[ы] вашей колоды событий/i,
         build: m => ({ op: 'drawEvents', n: Number(m[1]) }),
+    },
+    // "2 Guardsmen may be bought for 1 supply token."
+    {
+        re: /(\d+)\s+Гвардейц[а-яёa-z]* могут быть куплены за 1 жетон/i,
+        build: m => ({ op: 'supplyDeal', n: Number(m[1]) }),
+    },
+    // "They must be deployed in the world that produced them."
+    {
+        re: /должны быть развернуты в мире, который их произв[её]л/i,
+        build: () => ({ op: 'deployInFactoryWorld' }),
+    },
+    // "Draw 4 event cards and play the effect of one of them."
+    {
+        re: /вытянуть (\d+) карты событий и разыграть эффект одной из них/i,
+        build: m => ([
+            { op: 'drawEvents', n: Number(m[1]) },
+            { op: 'playEvent' },
+        ]),
+    },
+    // "Take one of your ships from any void and place it in a friendly void."
+    {
+        re: /взять\s+(?:один|1|\d+)?\s*из ваших кораблей[^.]{0,80}?разместить/i,
+        build: () => ({ op: 'moveUnit', n: 1, pick: true }),
     },
     // "Choose a system."
     {

@@ -1098,10 +1098,18 @@ const FS_RULES = {
         const def = this.unitDef(state, seat, cmd.unit);
         if (!def) return { ok: false, error: 'Нет такого отряда.' };
         const p = state.players[seat];
-        if ((p.supply.units[def.id] || 0) <= 0) return { ok: false, error: 'Такого отряда больше нет в запасе.' };
+        // The ability of the faction: "2 Guardsmen may be bought for 1 supply token."
+        const deal = !!(order.supplyDeal && /Гвардец/i.test(def.name));
+        const dealFree = deal && ((order.dealBought || 0) % 2 === 1);
+        if (!dealFree && (p.supply.units[def.id] || 0) <= 0) return { ok: false, error: 'Такого отряда больше нет в запасе.' };
         if (def.kl > this.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
         const place = this.canPlaceUnit(state, seat, cmd.system, cmd.pos, def);
         if (!place.ok) return place;
+        // The units may have to stand in the world that produced them.
+        if (order.deployInFactoryWorld) {
+            const factory = this.structuresAt(state, cmd.system, cmd.pos).some(st => st.seat === seat && st.type === 'factory');
+            if (!factory) return { ok: false, error: 'Отряд ставится в мир с вашей фабрикой.' };
+        }
         let cost = def.cost;
         // The order may make the units cheaper.
         if (order.discount) cost = Math.max(0, cost - order.discount);
@@ -1113,7 +1121,8 @@ const FS_RULES = {
         }
         if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
         p.materiel -= cost;
-        p.supply.units[def.id]--;
+        if (!dealFree) p.supply.units[def.id]--;
+        if (deal) order.dealBought = (order.dealBought || 0) + 1;
         const unit = this.addUnit(state, seat, def.id, cmd.system, cmd.pos);
         this.log(state, seat, p.name + ' купил отряд «' + def.name + '».');
         order.bought = (order.bought || 0) + 1;
