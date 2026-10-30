@@ -1700,6 +1700,13 @@ const FS_RULES = {
     combatReinforce(state, seat, side, cmd) {
         const c = state.combat;
         const count = Math.max(0, Number(cmd.count) || 0);
+        // The card of the opponent may forbid the reinforcement.
+        const foe = side === 'attacker' ? 'defender' : 'attacker';
+        const other = this.combatValues(state, foe);
+        void other;
+        if (c.noReinforce && side === 'defender') {
+            return { ok: false, error: 'Противник не может размещать жетоны подкрепления.' };
+        }
         const max = this.maxReinforce(state, seat, side);
         if (count > max) return { ok: false, error: 'Не больше ' + max + ' жетонов подкрепления.' };
         c.reinforce[side] = count;
@@ -1825,7 +1832,14 @@ const FS_RULES = {
         const other = side === 'attacker' ? 'defender' : 'attacker';
         const me = this.combatValues(state, side);
         const them = this.combatValues(state, other);
-        return Math.max(0, them.att - me.def);
+        let damage = Math.max(0, them.att - me.def);
+        // The card may add the damage to one side or to both.
+        if (side === 'attacker') {
+            damage += (c.extraDamageFoe || 0) + (c.extraDamageBoth || 0);
+        } else {
+            damage += (c.extraDamage || 0) + (c.extraDamageBoth || 0);
+        }
+        return damage;
     },
 
     // The player assigns the damage to his own units and bastions.
@@ -1839,6 +1853,8 @@ const FS_RULES = {
         }
         const damage = this.combatDamageFor(state, side);
         c.damage[side] = damage;
+        // The card may make the damage go one point at a time.
+        const oneByOne = !!(c.damageOneByOne && side === 'defender');
         const targets = cmd.targets || [];
         // The damage is applied to the chosen units in order.
         let left = damage;
@@ -1852,12 +1868,23 @@ const FS_RULES = {
                 // The card may raise the health of the units or lower it.
                 if (c.healthBonus && unit.seat === seat) health += c.healthBonus;
                 if (c.enemyHealth && unit.seat !== seat) health = Math.min(health, c.enemyHealth);
-                if (left >= health) {
+                if (left >= health && !oneByOne) {
                     left -= health;
                     applied.push({ unit: unit.id, destroyed: true });
                     this.destroyUnit(state, unit);
+                } else if (oneByOne) {
+                    // The damage goes one point at a time.
+                    left -= 1;
+                    if (health <= 1) {
+                        applied.push({ unit: unit.id, destroyed: true });
+                        this.destroyUnit(state, unit);
+                    } else {
+                        applied.push({ unit: unit.id, destroyed: false });
+                    }
                 } else {
-                    unit.routed = true;
+                    // The card may keep the unit from being routed.
+                    const keep = (c.noRoute || []).some(x => x.seat === unit.seat && (!x.kl || (def && def.kl <= x.kl)));
+                    if (!keep) unit.routed = true;
                     left = 0;
                     applied.push({ unit: unit.id, destroyed: false });
                 }
@@ -1896,6 +1923,15 @@ const FS_RULES = {
             p.assets.reinforcement += c.reinforceUsed && c.reinforceUsed[side] ? c.reinforceUsed[side] : 0;
             c.reinforceUsed[side] = 0;
             void tokens;
+        }
+        // The card may destroy the units that became routed.
+        if (c.destroyRouted) {
+            for (const u of state.units.slice()) {
+                if (u.routed && u.system === c.system && u.area === c.pos) {
+                    this.log(state, c.attacker, 'Деморализованный отряд уничтожен.');
+                    this.destroyUnit(state, u);
+                }
+            }
         }
         if (c.round > (c.maxRounds || 3)) { this.finishCombat(state); return; }
         c.step = 'choose-attacker';

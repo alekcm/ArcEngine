@@ -49,8 +49,13 @@ const FS_EFFECTS = {
             icons.push(icon);
             return '\u0001' + (icons.length - 1) + '\u0001';
         });
-        const parts = whole.split(/(?<=[.;])\s+|\s*;\s*/).map(s => s.trim()).filter(Boolean);
-        return parts.map(part => part.replace(/\u0001(\d+)\u0001/g, (m, i) => '`' + icons[Number(i)] + '`'));
+        // The abbreviations do not end the sentence: "2 att. token".
+        const ABBR = /\b(att|def|any|morale|KL)\.\s/gi;
+        const marked = whole.replace(ABBR, (m, w) => w + '\u0002 ');
+        const parts = marked.split(/(?<=[.;])\s+|\s*;\s*/).map(s => s.trim()).filter(Boolean);
+        return parts.map(part => part
+            .replace(/\u0001(\d+)\u0001/g, (m, i) => '`' + icons[Number(i)] + '`')
+            .replace(/\u0002/g, '.'));
     },
 
     // The text of a card -> the steps of the game.
@@ -499,7 +504,10 @@ const FS_EFFECTS = {
             }
             case 'extraDamage': {
                 if (!inCombat) return null;
-                combat.extraDamage = (combat.extraDamage || 0) + (step.n || 0);
+                // The extra damage goes to one side or to both.
+                if (step.who === 'both') combat.extraDamageBoth = (combat.extraDamageBoth || 0) + (step.n || 0);
+                else if (step.who === 'foe') combat.extraDamageFoe = (combat.extraDamageFoe || 0) + (step.n || 0);
+                else combat.extraDamage = (combat.extraDamage || 0) + (step.n || 0);
                 return null;
             }
             case 'ignoreBastion': {
@@ -543,6 +551,68 @@ const FS_EFFECTS = {
             }
             case 'ignoreFoeAtt': {
                 if (combat) combat.ignoreFoeAtt = true;
+                return null;
+            }
+            case 'destroyRouted': {
+                if (combat) combat.destroyRouted = true;
+                return null;
+            }
+            case 'repeatDamage': {
+                if (combat) combat.repeatDamage = true;
+                return null;
+            }
+            case 'ignoreExcess': {
+                // The engine always applies the damage unit by unit.
+                return null;
+            }
+            case 'keepTokens': {
+                if (combat) combat.keepTokens = true;
+                return null;
+            }
+            case 'noReinforce': {
+                if (combat) combat.noReinforce = true;
+                return null;
+            }
+            case 'damageOneByOne': {
+                if (combat) combat.damageOneByOne = true;
+                return null;
+            }
+            case 'noRoute': {
+                if (!inCombat) return null;
+                combat.noRoute = combat.noRoute || [];
+                combat.noRoute.push({ seat: step.who === 'foe' ? foe : seat, kl: step.kl || 0 });
+                return null;
+            }
+            case 'stealDie': {
+                if (!inCombat) return null;
+                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const options = combat.dice[s2].map((d, i) => i);
+                if (!options.length) return null;
+                return { question: { kind: 'dice', who: this.seatOf(combat, s2), op: 'stealDie', options, text: 'Какой кубик сбросить?' } };
+            }
+            case 'convertFoeDice': {
+                if (!inCombat) return null;
+                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const faces = [...new Set(combat.dice[s2])];
+                if (!faces.length) return null;
+                return { question: { kind: 'face', who: this.seatOf(combat, s2), op: 'convertFoeDice', options: faces, n: step.n || 2, text: 'Какие кубики сконвертировать?' } };
+            }
+            case 'discardFoeCard': {
+                if (!inCombat) return null;
+                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const played = (combat.cards[s2] && combat.cards[s2].played) || [];
+                const options = played.map(c2 => c2.card && c2.card.name).filter(Boolean);
+                if (!options.length) return null;
+                return { question: { kind: 'cards', who: this.seatOf(combat, s2), op: 'discardFoeCard', options, text: 'Какую карту сбросить?' } };
+            }
+            case 'discardFoeTop': {
+                if (!inCombat) return null;
+                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const seat2 = this.seatOf(combat, s2);
+                const deck = state.players[seat2].decks.combat;
+                if (!deck.length) return null;
+                R.log(state, seat, state.players[seat].name + ': противник сбрасывает верхнюю карту боевой колоды.');
+                deck.shift();
                 return null;
             }
             case 'citiesAsFactories': {
@@ -773,6 +843,43 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'chooseSystem': {
+                return null;
+            }
+            case 'stealDie': {
+                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const dice = combat.dice[s2];
+                for (const i of (answer.dice || [])) {
+                    if (i >= 0 && i < dice.length) {
+                        const value = dice.splice(i, 1)[0];
+                        combat.dice[side].push(value);
+                    }
+                }
+                R.log(state, seat, state.players[seat].name + ' забирает кубик противника.');
+                return null;
+            }
+            case 'convertFoeDice': {
+                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const dice = combat.dice[s2];
+                const face = answer.face;
+                const n = Math.min(step.n || 2, dice.filter(d => d === face).length);
+                for (let i = 0; i < n; i++) {
+                    const at = dice.indexOf(face);
+                    if (at < 0) break;
+                    const value = R.rollDice(state, 1)[0];
+                    dice[at] = value === face ? (value === 'att' ? 'def' : 'att') : value;
+                }
+                R.log(state, seat, state.players[seat].name + ' конвертирует кубики противника.');
+                return null;
+            }
+            case 'discardFoeCard': {
+                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const played = combat.cards[s2].played;
+                const name = answer.card;
+                const at = played.findIndex(c2 => c2.card && c2.card.name === name);
+                if (at < 0) return null;
+                const card = played.splice(at, 1)[0];
+                state.players[this.seatOf(combat, s2)].decks.combat.push(card.card.name);
+                R.log(state, seat, state.players[seat].name + ': карта противника «' + name + '» сброшена.');
                 return null;
             }
             case 'playEvent': {
@@ -1316,7 +1423,7 @@ const RULES = [
     },
     // "the opponent must reroll 1 die of your choice"
     {
-        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\s+(\d+)?\s*куб[а-яёa-z]*/i,
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))\s*[^.`]{0,40}?(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\s+(\d+)?\s*куб[а-яёa-z]*/i,
         build: m => ({ op: 'rerollDie', n: num(m[1]), kind: 'any', who: 'foe', pick: true }),
     },
     // "get 1 `att. token` for every unrouted Guardsman or Cruiser, maximum 3"
@@ -1622,6 +1729,65 @@ const RULES = [
     {
         re: /возьмите (\d+) верхни[ех] карт[ы] вашей колоды событий/i,
         build: m => ({ op: 'drawEvents', n: Number(m[1]) }),
+    },
+    // "your units of command level 2 or less cannot be routed"
+    {
+        re: /ваши отряды с командным уровнем (\d+) или ниже не могут быть деморализован/i,
+        build: m => ({ op: 'noRoute', kl: Number(m[1]) }),
+    },
+    // "if a unit of the opponent becomes routed this round, it is destroyed"
+    {
+        re: /отряд противника становится деморализованным, он уничтожается/i,
+        build: () => ({ op: 'destroyRouted' }),
+    },
+    // "repeat the damage step of this combat round"
+    {
+        re: /повторите шаг нанесения (?:повреждений|урона)/i,
+        build: () => ({ op: 'repeatDamage' }),
+    },
+    // "ignore all the damage that exceeds the health of this unit"
+    {
+        re: /игнорируйте весь урон, который превышает здоровье/i,
+        build: () => ({ op: 'ignoreExcess' }),
+    },
+    // "do not discard your `def. token` at the end of this round"
+    {
+        re: /не сбрасывайте ваши `def\. token`/i,
+        build: () => ({ op: 'keepTokens' }),
+    },
+    // "the opponent cannot place reinforcement tokens"
+    {
+        re: /противник[а-яёa-z]* не может размещать жетоны подкрепления/i,
+        build: () => ({ op: 'noReinforce' }),
+    },
+    // "make the opponent discard any die and take it for yourself"
+    {
+        re: /заставьте оппонента сбросить один любой кубик/i,
+        build: () => ({ op: 'stealDie' }),
+    },
+    // "make the opponent convert up to 2 of his dice of a certain value"
+    {
+        re: /заставьте оппонента сконвертировать до (\d+) его куб/i,
+        build: m => ({ op: 'convertFoeDice', n: Number(m[1]) }),
+    },
+    // "discard one of the open combat cards of the opponent"
+    {
+        re: /сбросьте одну открытую боевую карту противника/i,
+        build: () => ({ op: 'discardFoeCard' }),
+    },
+    {
+        re: /ваш противник выбирает и сбрасывает 1 свою открытую боевую карту/i,
+        build: () => ({ op: 'discardFoeCard', who: 'foe' }),
+    },
+    // "the opponent discards the top card of his combat deck"
+    {
+        re: /противник[а-яёa-z]* сбрасывает верхнюю карту своей боевой колоды/i,
+        build: () => ({ op: 'discardFoeTop' }),
+    },
+    // "make the opponent distribute the damage 1 point at a time"
+    {
+        re: /вынудите вашего противника распределять урон своим войскам по 1 единице за раз/i,
+        build: () => ({ op: 'damageOneByOne' }),
     },
     // "2 Guardsmen may be bought for 1 supply token."
     {
