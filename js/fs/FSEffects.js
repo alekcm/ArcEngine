@@ -525,6 +525,18 @@ const FS_EFFECTS = {
                 p.assetLimit = Math.max(p.assetLimit || 3, step.n || 3);
                 return null;
             }
+            case 'healthBonus': {
+                if (combat) combat.healthBonus = (combat.healthBonus || 0) + (step.n || 0);
+                return null;
+            }
+            case 'enemyHealth': {
+                if (combat) combat.enemyHealth = step.n || 3;
+                return null;
+            }
+            case 'ignoreFoeAtt': {
+                if (combat) combat.ignoreFoeAtt = true;
+                return null;
+            }
             case 'citiesAsFactories': {
                 if (state.order) state.order.citiesAsFactories = true;
                 return null;
@@ -557,6 +569,18 @@ const FS_EFFECTS = {
             }
             case 'assetLimit': {
                 p.assetLimit = Math.max(p.assetLimit || 3, step.n || 3);
+                return null;
+            }
+            case 'healthBonus': {
+                if (combat) combat.healthBonus = (combat.healthBonus || 0) + (step.n || 0);
+                return null;
+            }
+            case 'enemyHealth': {
+                if (combat) combat.enemyHealth = step.n || 3;
+                return null;
+            }
+            case 'ignoreFoeAtt': {
+                if (combat) combat.ignoreFoeAtt = true;
                 return null;
             }
             case 'citiesAsFactories': {
@@ -1012,16 +1036,22 @@ const FS_EFFECTS = {
     // The moment of the scheme: when the card may be discarded.
     triggerOf(text) {
         const s = String(text || '').toLowerCase();
-        if (/начал[а-яёa-z]*\s+шага нанесения повреждений/.test(s)) return 'damage';
-        if (/начал[а-яёa-z]*\s+раунда боя/.test(s)) return 'round';
-        if (/начал[а-яёa-z]*\s+боя/.test(s)) return 'combat-start';
-        if (/конц[а-яёa-z]*\s+боя/.test(s)) return 'combat-end';
+        // The damage of the combat.
+        if (/шаг[а-яёa-z]*\s+нанесения (?:урон|поврежд)/.test(s)) return 'damage';
+        if (/получа[а-яёa-z]*\s+урон/.test(s)) return 'damage';
+        // The rounds and the combats.
+        if (/начал[а-яёa-z]*\s+раунда (?:боя|битвы)/.test(s)) return 'round';
+        if (/начал[а-яёa-z]*\s+(?:боя|битвы)/.test(s)) return 'combat-start';
+        if (/начн[а-яёa-z]*\s+(?:бо[йя]|битв)/.test(s)) return 'combat-start';
+        if (/конц[а-яёa-z]*\s+(?:боя|битвы)/.test(s)) return 'combat-end';
         if (/орбитальн[а-яёa-z]*\s+удар/.test(s)) return 'strike';
-        if (/начал[а-яёa-z]*\s+фазы планирования/.test(s)) return 'planning';
+        // The phases of the round.
         if (/конц[а-яёa-z]*\s+фазы планирования/.test(s)) return 'planning-end';
-        if (/начал[а-яёa-z]*\s+фазы действий/.test(s)) return 'operations';
+        if (/фаз[а-яёa-z]*\s+планирования/.test(s)) return 'planning';
+        if (/фаз[а-яёa-z]*\s+действи/.test(s)) return 'operations';
         if (/перемеща[а-яёa-z]*\s+варп-шторм/.test(s)) return 'storm';
         if (/покупк[а-яёa-z]*\s+отряда/.test(s)) return 'buy-unit';
+        if (/выполнени[а-яёa-z]*\s+(?:любого\s+)?приказа/.test(s)) return 'order';
         if (/активаци[а-яёa-z]*\s+(?:любого\s+)?вашего приказа/.test(s)) return 'order';
         if (/вынужден[а-яёa-z]*\s+пропустить ход/.test(s)) return 'skip';
         return null;
@@ -1095,11 +1125,16 @@ const RULES = [
     // "You may discard this card <when>, to <the effect>." — the scheme waits
     // for its moment.
     {
-        re: /сбросить эту карту\s*(.*?)(?:,\s*(?:для того,)?\s*чтобы\s+(.*))?$/i,
+        re: /сбросить эту карту[\s\S]*$/i,
         build: (m, ctx, s) => {
             const trigger = FS_EFFECTS.triggerOf(s);
             if (!trigger) return null;
-            const steps = m[2] ? FS_EFFECTS.parse(m[2], ctx || {}) : [];
+            // The effect of the card: the part after "to".
+            const at = s.search(/сбросить эту карту/i);
+            let tail = s.slice(at + 'сбросить эту карту'.length);
+            const by = tail.search(/чтобы\s+/i);
+            tail = by >= 0 ? tail.slice(by + 'чтобы'.length) : '';
+            const steps = tail ? FS_EFFECTS.parse(tail, ctx || {}) : [];
             return { op: 'trigger', trigger, steps, text: s, note: !steps.length };
         },
     },
@@ -1388,6 +1423,29 @@ const RULES = [
     {
         re: /добавьте\s+(\d+)\s+к\s+(?:общей сумме\s+)?урона/i,
         build: m => ({ op: 'extraDamage', n: Number(m[1]) }),
+    },
+    // "the health of all your units grows by 1 during this combat"
+    {
+        re: /значение здоровья всех ваших отрядов повышается на (\d+)/i,
+        build: m => ({ op: 'healthBonus', n: Number(m[1]) }),
+    },
+    // "the health of the opponent's units drops to 3 this round"
+    {
+        re: /здоровье отрядов противника уменьшается до (\d+)/i,
+        build: m => ({ op: 'enemyHealth', n: Number(m[1]) }),
+    },
+    // "in this round ignore all the enemy's `att. cube`"
+    {
+        re: /игнорируйте все вражеские `att\. cube`/i,
+        build: () => ({ op: 'ignoreFoeAtt' }),
+    },
+    // "take 1 stormtrooper from any world and place it in this world"
+    {
+        re: /заберите (\d+) ([^,.;]{2,40}?) из любого мира и (?:размест|перемест)[а-яёa-z]*\s+его/i,
+        build: (m, ctx) => ({
+            op: 'moveUnit', n: num(m[1]), what: m[2],
+            filter: unitFilter(m[2]), pick: true, text: m[0],
+        }),
     },
     // "you may treat your cities as factories while this order is executed"
     {

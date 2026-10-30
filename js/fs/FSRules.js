@@ -1733,7 +1733,9 @@ const FS_RULES = {
     // The offence and the defence of a player.
     combatValues(state, side) {
         const c = state.combat;
-        const dice = c.dice[side] || [];
+        let dice = c.dice[side] || [];
+        // The card may make the attack dice of the enemy useless.
+        if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
         const tokens = c.tokens[side];
         const played = c.cards[side].played;
         let att = 0, def = 0, morale = 0;
@@ -1783,7 +1785,10 @@ const FS_RULES = {
             const unit = state.units.find(u => u.id === id);
             if (unit) {
                 const def = this.unitOf(state, unit);
-                const health = def ? def.health : 1;
+                let health = def ? def.health : 1;
+                // The card may raise the health of the units or lower it.
+                if (c.healthBonus && unit.seat === seat) health += c.healthBonus;
+                if (c.enemyHealth && unit.seat !== seat) health = Math.min(health, c.enemyHealth);
                 if (left >= health) {
                     left -= health;
                     applied.push({ unit: unit.id, destroyed: true });
