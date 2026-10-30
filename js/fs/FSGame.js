@@ -26,6 +26,7 @@ class FSGame {
         this.name = '';
         this.faction = '';
         this.lobby = { code: '', players: [], factions: [] };
+        FSUI.mount();
 
         const params = new URLSearchParams(location.search);
         this.room = (params.get('room') || '').toUpperCase();
@@ -50,6 +51,7 @@ class FSGame {
     setupCamera() {
         const cam = this.app.camera;
         cam.azimuth = -Math.PI / 2;                       // north up
+        cam.leftDragPan = true;                           // board drag is intuitive; a click still selects/acts
         cam.pitch = FS_CAMERA_PITCH_DEG * Math.PI / 180;
         cam.zoom = FS_CAMERA_ZOOM;
         cam.zoomTarget = FS_CAMERA_ZOOM;
@@ -117,6 +119,11 @@ class FSGame {
             this.faction = id;
             this.net.faction(id);
             this.showLobby();
+        }, name => {
+            if (!name || name === this.name) return;
+            this.name = name;
+            Store.set('fs.name', name);
+            if (this.net) this.net.rename(name);
         });
     }
 

@@ -29,7 +29,10 @@ function startGame() {
     updateLoadingProgress(40);
     if (!World3D.init(canvas)) { showBootError('3D недоступен: нет libs/babylon.js или WebGL'); return; }
 
-    const location = new Location3D({ objects: typeof LOCATION_OBJECTS !== 'undefined' ? LOCATION_OBJECTS : [] });
+    // Forbidden Stars owns a dedicated board view. Do not load ArcEngine's sample mill/hero
+    // underneath it; the tabletop board is the entire scene for this game.
+    const isForbiddenStars = typeof FSGame !== 'undefined' && FSGame.enabled();
+    const location = new Location3D({ objects: isForbiddenStars ? [] : (typeof LOCATION_OBJECTS !== 'undefined' ? LOCATION_OBJECTS : []) });
     const camera = new CameraController(location.view, {
         terrain: location.terrain,
         bounds: { w: location.width, h: location.height }

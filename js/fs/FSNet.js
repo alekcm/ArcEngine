@@ -48,6 +48,11 @@ const FSNet = {
             faction(faction) {
                 return net.send({ t: 'faction', faction });
             },
+            rename(name) {
+                net.name = String(name || '').trim().slice(0, 24);
+                // The hello message for the existing id updates the lobby name on the server.
+                return net.send({ t: 'hello', room: net.room, name: net.name, faction: '', id: net.id });
+            },
         };
 
         // The connection: it is restored if the server is restarted.

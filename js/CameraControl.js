@@ -44,6 +44,7 @@ class CameraController {
         this.zoomTarget = 1;
         this.followObj = null;
         this.ignorePointer = null;     // (e) => true — the press is not for the camera (editor: gizmo under the cursor)
+        this.leftDragPan = false;      // game opt-in: left-drag pans the board; a stationary click remains game input
         this.viewVersion = 0;          // grows with every camera move (re-project overlays)
         this._lastCam = null;
         this._pointers = new Map();    // pointerId -> { x, y, mode: 'pan' | 'orbit' | 'look' | 'touch', anchor }
@@ -395,7 +396,7 @@ class CameraController {
         if (this.ignorePointer && this.ignorePointer(e)) return;
         let mode = null;
         if (e.pointerType === 'touch') mode = 'touch';
-        else if (e.button === 1 || (e.button === 0 && this.free && e.shiftKey)) mode = 'pan';
+        else if (e.button === 1 || (e.button === 0 && this.leftDragPan) || (e.button === 0 && this.free && e.shiftKey)) mode = 'pan';
         else if (e.button === 2 && (this.free || this.c.orbit > 0)) mode = this.followObj ? 'orbit' : 'look';
         else if (e.button === 0 && this.free) mode = 'orbit';
         if (!mode) return;
