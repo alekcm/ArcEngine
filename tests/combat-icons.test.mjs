@@ -233,15 +233,19 @@ test('Dark Eldar audit manifest covers 14 cards on one composite sheet and 76 ma
   assert.ok(!references.some(r => r.faction === 'dark-eldar'));
 });
 
-test('Sisters of Battle audit manifest covers 15 cards on two sheets and 73 manually located symbols', () => {
+test('Sisters of Battle audit manifest covers 15 cards on three sources and 80 manually located symbols', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(refDir, 'sisters-of-battle.json'), 'utf8'));
   assert.equal(manifest.faction, 'sisters-of-battle');
   assert.equal(manifest.cards.length, 15);
-  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 2);
+  assert.equal(new Set(manifest.cards.map(c => c.source)).size, 3);
+  assert.equal(manifest.cards.filter(c => c.source.includes('Сестры-Инквизиция-актуальные.png')).length, 4);
+  assert.ok(manifest.cards.some(c => c.name === 'Кара Божья' && c.previousName === 'Божественная кара'));
+  assert.ok(manifest.cards.some(c => c.name === 'Геройское самосожжение' && c.previousName === 'Сжигая мученика'));
+  assert.ok(!manifest.cards.some(c => ['Божественная кара', 'Сжигая мученика'].includes(c.name)));
   const icons = manifest.cards.flatMap(c => c.icons);
-  assert.equal(icons.length, 73);
-  assert.equal(icons.filter(i => i.location === 'column').length, 27);
-  assert.equal(icons.filter(i => i.location === 'text').length, 46);
+  assert.equal(icons.length, 80);
+  assert.equal(icons.filter(i => i.location === 'column').length, 28);
+  assert.equal(icons.filter(i => i.location === 'text').length, 52);
   for (const icon of icons) {
     assert.ok(LABELS.includes(icon.expected));
     assert.equal(icon.box.length, 4);
