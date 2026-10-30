@@ -1,0 +1,618 @@
+{
+  "faction": "orks",
+  "note": "Manual symbol locations and expected transcription from enlarged cards. Boxes are coordinates on the original source sheet. Expected labels are not used by the matcher.",
+  "cards": [
+    {
+      "id": "shuta",
+      "image": "../../../Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            43,
+            1316,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            43,
+            1404,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "upper-def",
+          "box": [
+            574,
+            1849,
+            52,
+            54
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "lower-def",
+          "box": [
+            672,
+            1954,
+            52,
+            54
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+    },
+    {
+      "id": "arda",
+      "image": "../../../Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            800,
+            1313,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            800,
+            1396,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-att",
+          "box": [
+            1331,
+            1849,
+            52,
+            54
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "lower-att",
+          "box": [
+            1429,
+            1954,
+            52,
+            54
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+    },
+    {
+      "id": "mek",
+      "image": "../../../Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1556,
+            1313,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "upper-any",
+          "box": [
+            1732,
+            1781,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+    },
+    {
+      "id": "gretchin",
+      "image": "../../../Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "icons": [
+        {
+          "id": "upper-att",
+          "box": [
+            219,
+            2858,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "upper-def",
+          "box": [
+            323,
+            2858,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+    },
+    {
+      "id": "sauta",
+      "image": "../../../Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            800,
+            2375,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            800,
+            2458,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-morale",
+          "box": [
+            933,
+            2968,
+            52,
+            54
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+    },
+    {
+      "id": "gargant",
+      "image": "../../../Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            43,
+            253,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            43,
+            333,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            43,
+            413,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            43,
+            493,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-5",
+          "box": [
+            43,
+            573,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+    },
+    {
+      "id": "duff",
+      "image": "../../../Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            800,
+            253,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            800,
+            333,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            800,
+            413,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            800,
+            493,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-5",
+          "box": [
+            800,
+            573,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+    },
+    {
+      "id": "rokoboyz",
+      "image": "../../../Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1556,
+            253,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1556,
+            333,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            1556,
+            413,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "lower-att-1",
+          "box": [
+            2109,
+            873,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-def-1",
+          "box": [
+            1543,
+            918,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "lower-att-2",
+          "box": [
+            2086,
+            918,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-def-2",
+          "box": [
+            2194,
+            918,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+    },
+    {
+      "id": "green-tide",
+      "image": "../../../Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1556,
+            2375,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1556,
+            2458,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "upper-morale",
+          "box": [
+            1689,
+            3098,
+            52,
+            54
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/CF72014375714C81CF7D4A4977228AA68CCD30C8_3.jpg"
+    },
+    {
+      "id": "rokkit",
+      "image": "../../../Warhammer/Боевые карты/0001.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            43,
+            2378,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            43,
+            2458,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            43,
+            2538,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "lower-att",
+          "box": [
+            61,
+            3058,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/0001.png"
+    },
+    {
+      "id": "party",
+      "image": "../../../Warhammer/Боевые карты/0001.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            800,
+            2378,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            800,
+            2458,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            800,
+            2538,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "lower-att",
+          "box": [
+            1206,
+            3088,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "lower-def",
+          "box": [
+            1305,
+            3088,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/0001.png"
+    },
+    {
+      "id": "waaagh",
+      "image": "../../../Warhammer/Боевые карты/0001.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1556,
+            2375,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1556,
+            2458,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            1556,
+            2538,
+            88,
+            78
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "lower-att",
+          "box": [
+            1985,
+            3018,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ],
+      "source": "Warhammer/Боевые карты/0001.png"
+    }
+  ]
+}
