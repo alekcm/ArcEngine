@@ -272,6 +272,7 @@ const FS_RULES = {
         const start = { system: fromSystem, pos: fromPos };
         const seen = new Set([fromSystem + ':' + fromPos]);
         const queue = [start];
+        let voids = 0;
         while (queue.length) {
             const cur = queue.shift();
             for (const next of this.areasAround(state, cur.system, cur.pos)) {
@@ -281,7 +282,16 @@ const FS_RULES = {
                 if (this.stormOn(state, cur.system, next.system)) continue;   // a storm blocks the way
                 // The destination may be an empty world — the way must be friendly.
                 if (next.system === toSystem && next.pos === toPos) return true;
-                if (this.control(state, seat, next.system, next.pos) !== 'friendly') continue;
+                if (this.control(state, seat, next.system, next.pos) !== 'friendly') {
+                    // The order may let the units pass through the empty voids.
+                    const order = state.order;
+                    const area = this.area(this.system(state, next.system), next.pos);
+                    if (order && order.passVoid && area && !area.world && voids < order.passVoid) {
+                        voids++;
+                        queue.push(next);
+                    }
+                    continue;
+                }
                 queue.push(next);
             }
         }
@@ -658,7 +668,8 @@ const FS_RULES = {
     cmdPlaceOrder(state, seat, cmd) {
         if (state.phase !== 'planning') return { ok: false, error: 'Сейчас не фаза планирования.' };
         const p = state.players[seat];
-        if (p.placedTokens >= this.ORDER_TOKENS) return { ok: false, error: 'Все четыре приказа уже выложены.' };
+        const limit = this.ORDER_TOKENS + (p.extraOrderTokens || 0);
+        if ((p.placedTokens || 0) >= limit) return { ok: false, error: 'Все приказы уже выложены.' };
         const sys = this.system(state, cmd.system);
         if (!sys) return { ok: false, error: 'Нет такой системы.' };
         if (!this.canPlaceOrder(state, seat, sys.id)) return { ok: false, error: 'Нельзя выложить приказ в эту систему.' };
@@ -676,7 +687,7 @@ const FS_RULES = {
     },
 
     checkPlanningDone(state) {
-        const done = state.players.every(p => (p.placedTokens || 0) >= this.ORDER_TOKENS);
+        const done = state.players.every(p => (p.placedTokens || 0) >= this.ORDER_TOKENS + (p.extraOrderTokens || 0));
         if (!done) return;
         state.phase = 'operations';
         // The operations start with the first player who really has an order on
@@ -881,6 +892,10 @@ const FS_RULES = {
         if (!order || order.order !== 'advance') return { ok: false, error: 'Это не приказ наступления.' };
         if (order.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
         const moves = cmd.moves || [];
+        // The order may limit the number of the units that move.
+        if (order.moveLimit && moves.length > order.moveLimit) {
+            return { ok: false, error: 'Можно переместить не больше ' + order.moveLimit + ' отрядов.' };
+        }
         // Every move is checked before any of them is done: the movement of the
         // ground units is simultaneous.
         const plan = [];
@@ -1103,6 +1118,10 @@ const FS_RULES = {
         const dealFree = deal && ((order.dealBought || 0) % 2 === 1);
         if (!dealFree && (p.supply.units[def.id] || 0) <= 0) return { ok: false, error: 'Такого отряда больше нет в запасе.' };
         if (def.kl > this.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
+        // The order may allow only one kind of unit.
+        if (order.factoryOnly && !FS_EFFECTS.sameName(def.name, order.factoryOnly)) {
+            return { ok: false, error: 'Этим приказом можно производить только ' + order.factoryOnly + '.' };
+        }
         const place = this.canPlaceUnit(state, seat, cmd.system, cmd.pos, def);
         if (!place.ok) return place;
         // The units may have to stand in the world that produced them.
@@ -1145,10 +1164,12 @@ const FS_RULES = {
         const p = state.players[seat];
         if ((p.supply.structures[type] || 0) <= 0) return { ok: false, error: 'Такой постройки больше нет в запасе.' };
         const stats = this.structureStats(type);
-        if (p.materiel < stats.cost) return { ok: false, error: 'Не хватает материи.' };
+        // The order may give a structure for free.
+        const free = !!(order.freeStructure && order.freeStructureKind === type);
+        if (!free && p.materiel < stats.cost) return { ok: false, error: 'Не хватает материи.' };
         const place = this.canPlaceStructure(state, seat, cmd.system, cmd.pos);
         if (!place.ok) return place;
-        p.materiel -= stats.cost;
+        if (!free) p.materiel -= stats.cost;
         p.supply.structures[type]--;
         this.addStructure(state, seat, type, cmd.system, cmd.pos);
         this.log(state, seat, p.name + ' построил: ' + this.structureName(type) + '.');
@@ -1661,7 +1682,9 @@ const FS_RULES = {
                 p.decks.combat = this.shuffle(state, cards.concat(cards));
             }
             const hand = [];
-            for (let i = 0; i < 5; i++) hand.push(p.decks.combat.shift());
+            // The order may give more cards for the combat.
+            const extra = (state.order && state.order.seat === seat && state.order.extraCombatCards) || 0;
+            for (let i = 0; i < 5 + extra; i++) hand.push(p.decks.combat.shift());
             combat.cards[seat === attacker ? 'attacker' : 'defender'].hand = hand;
         }
         state.combat = combat;

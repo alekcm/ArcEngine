@@ -813,6 +813,15 @@ class FSGame {
                 }
                 return;
             }
+            case 'structureTypes': {
+                for (const t of q.options) {
+                    ctx.actions.push({
+                        label: FS_RULES.structureName(t),
+                        onClick: () => send({ type: t }),
+                    });
+                }
+                return;
+            }
             case 'cards': {
                 for (const name of q.options) {
                     ctx.actions.push({

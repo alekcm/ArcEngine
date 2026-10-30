@@ -616,7 +616,49 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'citiesAsFactories': {
-                if (state.order) state.order.citiesAsFactories = true;
+                if (state.order) {
+                    state.order.citiesAsFactories = true;
+                    if (step.only) state.order.factoryOnly = step.only;
+                }
+                return null;
+            }
+            case 'extraOrderTokens': {
+                p.extraOrderTokens = (p.extraOrderTokens || 0) + (step.n || 0);
+                R.log(state, seat, state.players[seat].name + ' получает дополнительные жетоны приказов.');
+                return null;
+            }
+            case 'replaceStructure': {
+                const list = state.structures.filter(s => s.seat === seat && (!state.order || s.system === state.order.system));
+                if (!list.length) return null;
+                return { question: { kind: 'structures', who: seat, op: 'replaceStructure', options: list.map(s => s.id), text: 'Какую постройку заменить?' } };
+            }
+            case 'replaceStructureType': {
+                const s = state.structures.find(x => x.id === step.structure);
+                if (!s) return null;
+                return { question: { kind: 'structureTypes', who: seat, op: 'replaceStructureType', options: ['city', 'factory', 'bastion'], text: 'На что заменить постройку?' } };
+            }
+            case 'lookEvents': {
+                const names = p.decks.event.slice(0, step.n || 3);
+                if (!names.length) return null;
+                return { question: { kind: 'cards', who: seat, op: 'lookEvents', options: names, text: 'Какую карту оставить наверху?' } };
+            }
+            case 'extraCombatCards': {
+                if (state.order) state.order.extraCombatCards = (state.order.extraCombatCards || 0) + (step.n || 0);
+                return null;
+            }
+            case 'moveLimit': {
+                if (state.order) state.order.moveLimit = step.n || 0;
+                return null;
+            }
+            case 'passVoid': {
+                if (state.order) state.order.passVoid = step.n || 0;
+                return null;
+            }
+            case 'freeStructure': {
+                if (state.order) {
+                    state.order.freeStructure = (state.order.freeStructure || 0) + (step.n || 0);
+                    state.order.freeStructureKind = step.kind || 'bastion';
+                }
                 return null;
             }
             case 'bastionsAsFactories': {
@@ -843,6 +885,32 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'chooseSystem': {
+                return null;
+            }
+            case 'replaceStructure': {
+                const s = state.structures.find(x => x.id === answer.structure);
+                if (!s) return null;
+                // The new kind of the structure is asked next.
+                return { replace: [{ op: 'replaceStructureType', structure: s.id }] };
+            }
+            case 'replaceStructureType': {
+                const s = state.structures.find(x => x.id === step.structure);
+                const type = answer.type;
+                if (!s || !type) return null;
+                if (!['city', 'factory', 'bastion'].includes(type)) return null;
+                s.type = type;
+                R.log(state, seat, state.players[seat].name + ' заменяет постройку.');
+                return null;
+            }
+            case 'lookEvents': {
+                const name = answer.card;
+                const deck = p.decks.event;
+                if (!name || !deck.includes(name)) return null;
+                // The chosen card stays on top, the others go to the bottom.
+                const rest = deck.filter(x => x !== name);
+                const top = deck.filter(x => x === name);
+                p.decks.event = top.concat(rest);
+                R.log(state, seat, state.players[seat].name + ' смотрит карты событий.');
                 return null;
             }
             case 'stealDie': {
@@ -1788,6 +1856,46 @@ const RULES = [
     {
         re: /вынудите вашего противника распределять урон своим войскам по 1 единице за раз/i,
         build: () => ({ op: 'damageOneByOne' }),
+    },
+    // "you may put 2 more order tokens on your event deck"
+    {
+        re: /бесплатно положить на свою колоду событий еще (\d+) жетонов приказов/i,
+        build: m => ({ op: 'extraOrderTokens', n: Number(m[1]) }),
+    },
+    // "you may replace 1 structure in this system with any other"
+    {
+        re: /заменить (\d+) постройк[а-яёa-z]* в этой системе на любую другую/i,
+        build: m => ({ op: 'replaceStructure', n: Number(m[1]) }),
+    },
+    // "look at the top three event cards: keep one on top, discard the others"
+    {
+        re: /посмотрите три верхние карты событий/i,
+        build: () => ({ op: 'lookEvents', n: 3 }),
+    },
+    // "draw 2 extra cards and discard 2 of your cards"
+    {
+        re: /вытяните (\d+) дополнительных карт и сбросьте затем (\d+)/i,
+        build: m => ({ op: 'extraCombatCards', n: Number(m[1]), discard: Number(m[2]) }),
+    },
+    // "you may move up to 6 units to this world"
+    {
+        re: /переместить в этот мир до (\d+) отрядов/i,
+        build: m => ({ op: 'moveLimit', n: Number(m[1]) }),
+    },
+    // "you may lead up to 2 of your units through one uncontrolled void"
+    {
+        re: /провести до (\d+) ваших отрядов через одну никем не контролируемую пустую область/i,
+        build: m => ({ op: 'passVoid', n: Number(m[1]) }),
+    },
+    // "you may buy 1 bastion in addition"
+    {
+        re: /вдобавок купить (\d+) бастион/i,
+        build: m => ({ op: 'freeStructure', n: Number(m[1]), kind: 'bastion' }),
+    },
+    // "the cities may be treated as factories that make only Guardsmen"
+    {
+        re: /рассматривать все свои города[^.]*как фабрики, на которых могут производиться только ([^.,;]+)/i,
+        build: m => ({ op: 'citiesAsFactories', only: m[1] }),
     },
     // "2 Guardsmen may be bought for 1 supply token."
     {
