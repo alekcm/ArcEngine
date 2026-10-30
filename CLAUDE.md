@@ -5,7 +5,9 @@ JS + Babylon.js 9.26 (`libs/babylon.js`, локально), ноль npm-зав�
 сборки — классические `<script>` и глобалы. Игра при запуске показывает локацию:
 земля с холмами, небо, свет, тени, toon-шейдер, камера, объекты из `Objects.js` (модели FBX и
 GLB из `assets/models/`; GLB — со скелетом и клипами анимации), HUD из `UILayout.js` и пример
-игры `Game.js`. Рядом — веб-редактор (интерфейс EN/RU): тот же мир, камеры
+игры `Game.js`. Игра в наборе — **Forbidden Stars** (настольная игра по локальной сети, 2–4 игрока):
+`js/fs/` (данные, правила, сеть, доска, интерфейс) и сервер `tools/fs-server.mjs`; пример
+игры `Game.js` — на странице `/?demo=1`. Рядом — веб-редактор (интерфейс EN/RU): тот же мир, камеры
 «свободная/игровая» с ползунком скорости полёта, toon вкл/выкл, вкладка Global Settings (все глобальные настройки,
 сохранение в `Constants.js`), вкладка Sound (константы звука и файлы `assets/sounds`), вкладка
 Objects (импорт FBX/GLB, гизмо, свойства объектов, анимация — вращение части или клип, тег,
@@ -31,6 +33,7 @@ Objects (импорт FBX/GLB, гизмо, свойства объектов, а
 ## Запуск и сборка
 
 ```
+node tools/fs-server.mjs  # Forbidden Stars: сервер локальной сети (0.0.0.0:8080) — игроки по ссылке
 run.bat                  # игра: dev-сервер + браузер, порт 8080 (или следующий свободный)
 editor.bat               # редактор: http://localhost:8090/_utils/editor/
 build.bat                # dist/arcengine-<GAME_VERSION>.zip
@@ -117,6 +120,13 @@ js/               код игры — классические скрипты:
                   якоря 9 точек, масштаб по UI_REF_HEIGHT
   Game.js         пример игры: место игровой логики (кнопка Run — клипы idle/run персонажа, шкала
                   энергии, шаги; персонаж берётся по тегу, не по имени)
+  fs/             Forbidden Stars:
+    FSData.js     данные, сгенерированы tools/fs-import.mjs из docs/forbidden-stars/*.md (не править руками)
+    FSRules.js    правила над состоянием: фазы, приказы, бой, штормы, победа; view(state, seat) — состояние для игрока
+    FSNet.js      клиент: WebSocket до сервера (команды туда, состояние оттуда)
+    FSView.js     доска в 3D: тайлы систем, отряды, постройки, цели, варп-штормы
+    FSUI.js       интерфейс: наполняет записи js/UILayout.js, копии шаблонов fsBtn/fsLobbyBtn
+    FSGame.js     связка: состояние -> доска и панели, клики -> команды движка правил
   main.js         вход: World3D.init -> Location3D(LOCATION_OBJECTS) -> камера -> UI -> Game -> цикл кадров; window.app
 libs/             babylon.js (9.26 UMD), babylonjs.loaders.min.js (glTF-загрузчик той же версии), simplex-noise.js;
                   *.d.ts — их типы для tsc
@@ -124,10 +134,13 @@ assets/           ground_texture_{g,d,s}.jpg — трава, песок, сне�
                   (character.glb — персонаж с клипами idle/run, генерируется tools/make-character.mjs);
                   sounds/*.wav, *.mp3 — звуки (step.wav генерируется tools/make-sounds.mjs)
 tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs (типы + тесты),
-                  make-character.mjs, make-sounds.mjs, export-unity.mjs (перенос в Unity)
+                  make-character.mjs, make-sounds.mjs, export-unity.mjs (перенос в Unity),
+                  fs-import.mjs (импорт данных Forbidden Stars из docs/), fs-server.mjs (сервер игры в локальной сети)
+docs/forbidden-stars/  транскрипция правил и карт Forbidden Stars — источник данных (не читать сканы)
 tsconfig.json     проверка типов игры; globals.d.ts — window.app, material.arcToon, записи объектов
 tests/            *.test.mjs (node --test): Store, heightAt, сканер ассетов, запись редактора, звук,
-                  экспорт в Unity, связка скиллов; browser-scripts.mjs — скрипты игры в node:vm + пустышка Babylon
+                  экспорт в Unity, связка скиллов, игра Forbidden Stars (fs-rules, fs-client, fs-ui, fs-server);
+                  browser-scripts.mjs — скрипты игры в node:vm + пустышка Babylon
 unity/            com.arcengine.runtime — пакет Unity (C#-двойник API набора и импорт сцены; в билд игры
                   не едет); export-unity.mjs копирует его в Unity-проект, скилл unity-port
 _utils/editor/    редактор (в билд не едет): server.mjs (HTTP), save.mjs (запись Constants.js,

@@ -37,8 +37,10 @@ function startGame() {
     camera.attach(canvas);
     UI.init(canvas);
     window.app = { location, camera, game: null };
-    const game = window.app.game = new Game(window.app);
-    console.log('ArcEngine: локация запущена, объектов ' + location.objects.length + '.');
+    // The game: Forbidden Stars (the LAN client) — the sample game with ?demo=1.
+    const GameClass = (typeof FSGame !== 'undefined' && FSGame.enabled()) ? FSGame : Game;
+    const game = window.app.game = new GameClass(window.app);
+    console.log('ArcEngine: локация запущена, объектов ' + location.objects.length + ', игра: ' + GameClass.name + '.');
     updateLoadingProgress(70);
 
     let last = performance.now();

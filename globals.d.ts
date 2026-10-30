@@ -11,7 +11,7 @@ declare namespace BABYLON {
 
 interface Window {
     /** main.js: the game's location, camera and game logic — for the console and game code. */
-    app?: { location: Location3D; camera: CameraController; game: Game | null };
+    app?: { location: Location3D; camera: CameraController; game: Game | FSGame | null };
 }
 
 /** UI_LAYOUT record (UILayout.js, written by the editor's UI tab); fields by kind — UI.DEFAULTS. */

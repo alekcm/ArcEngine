@@ -48,7 +48,7 @@ const LOCATION_WIDTH = 2048;            // px: location width (the area the game
 const LOCATION_HEIGHT = 2048;           // px: location height
 const LOCATION_GROUND = 0;              // ground texture: 0 — grass, 1 — sand, 2 — snow (Location3D.GROUNDS)
 const GROUND_TILE_SIZE = 512;           // world px per one repeat of the ground texture
-const TERRAIN_NOISE_AMP = 66;           // px: hill amplitude (0 — flat ground)
+const TERRAIN_NOISE_AMP = 0;            // px: hill amplitude (0 — flat ground; the board of Forbidden Stars lies on a table)
 const TERRAIN_NOISE_SCALE = 800;        // px: hill size
 const TERRAIN_NOISE_SEED = 4;           // terrain noise seed
 const TERRAIN_BASE = 0;                 // px: mean ground level
@@ -66,6 +66,11 @@ const AUDIO_SFX_VOLUME = 1;             // 0..1: the 'sfx' channel — effects a
 const AUDIO_FALLOFF_MIN = 150;          // px: full volume while the camera is this close to a sound (0 — it fades from the source itself)
 const AUDIO_FALLOFF_MAX = 1024;         // px: from here on it is silent (fades linearly in between); an object may set its own pair. The camera stands ~800 px from its look-at point at zoom 1
 const AUDIO_PAN = 0.7;                  // 0..1: how far a sound at the side of the screen goes into one ear (0 — mono)
+
+// --- FORBIDDEN STARS (js/fs/*): the board of the game
+const FS_TILE_PX = 220;                 // world px of one system tile
+const FS_CAMERA_ZOOM = 0.62;            // the zoom of the board: screen px per world px
+const FS_CAMERA_PITCH_DEG = 62;         // the tilt of the board view: degrees toward the ground
 
 // --- SAMPLE GAME (Game.js): the "Run" button, the energy bar ---
 const GAME_RUN_SEC = 8;                 // s: a full energy bar lasts this long while running
