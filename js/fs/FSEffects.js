@@ -1019,14 +1019,15 @@ const FS_EFFECTS = {
         // The whole name without the spaces: "Гвардейцы" and "Гвардеец".
         const sx = x.replace(/\s+/g, '');
         const sy = y.replace(/\s+/g, '');
-        const n = Math.min(5, sx.length, sy.length);
+        const n = Math.min(4, sx.length, sy.length);
         return sx.slice(0, n) === sy.slice(0, n);
     },
 
     // The stem of the name: the first letters of the word. The endings of the
-    // Russian plural differ: "скаутов" and "скауты" are the same unit.
+    // Russian plural differ: "бойзов", "бойзы" and "Бойзы" are the same unit.
     stem(word) {
-        return String(word || '').slice(0, 5);
+        const w = String(word || '').toLowerCase();
+        return w.slice(0, Math.min(4, w.length));
     },
 };
 
@@ -1166,9 +1167,9 @@ const RULES = [
             return null;
         },
     },
-    // "get 2 materiel"
+    // "get 2 materiel" / "get 1 materiel token"
     {
-        re: /получ[а-яёa-z]*\s+(\d+)?\s*(?:материал[а-яёa-z]*|материи)/i,
+        re: /получ[а-яёa-z]*\s+(\d+)?\s*(?:жетон[а-яёa-z]*\s+)?(?:материал[а-яёa-z]*|материи)/i,
         build: m => ({ op: 'gainMateriel', n: num(m[1]) }),
     },
     // "the opponent must choose and route 1 of his units"
@@ -1191,9 +1192,9 @@ const RULES = [
         re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,50}?уничтож[а-яёa-z]*\s+(?:(\d+)\s+)?(?:свой[а-яёa-z]*\s+)?(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)/i,
         build: m => ({ op: 'destroy', n: num(m[1]), pick: true, who: 'foe' }),
     },
-    // "destroy 1 of your unrouted units"
+    // "destroy 1 of your unrouted units" / "destroy a cultist unit"
     {
-        re: /уничтож[а-яёa-z]*\s+(?:до\s+)?(\d+)?\s*(?:одного|одну|1|ваш[а-яёa-z]*\s+недеморализованн[а-яёa-z]*\s+(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*))/i,
+        re: /уничтож[а-яёa-z]*\s+(?:(\d+)\s+)?(?:одного|одну|1|ваш[а-яёa-z]*\s+недеморализованн[а-яёa-z]*\s+(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)|отряд[а-яёa-z]*|юнит[а-яёa-z]*)/i,
         build: m => ({ op: 'destroy', n: m[1] ? num(m[1]) : 1, max: /до\s/.test(m[0]), pick: true }),
     },
     // "place 1 free Guardsman in a friendly world" / "place 2 free reinforcement tokens"
@@ -1296,7 +1297,7 @@ const RULES = [
     },
     // "get the assets and the materiel of the world"
     {
-        re: /получ[а-яёa-z]*\s+(?:ценные ресурсы и материалы|материал[а-яёa-z]*)\s+этого мира/i,
+        re: /получ[а-яёa-z]*\s+(?:ценные ресурсы и материалы|ценные ресурсы|материал[а-яёa-z]*)\s+этого мира/i,
         build: () => ({ op: 'gainWorldAssets', pick: true }),
     },
     // "get the materiel of all the friendly worlds of the system"

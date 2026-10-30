@@ -32,6 +32,8 @@ export function answerPending(s) {
             case 'assetType': answer = { asset: (q.options || [])[0] }; break;
             case 'choice': answer = { choice: 0 }; break;
             case 'scheme': answer = { choice: 0 }; break;
+            case 'foes': answer = { foe: (q.options || [])[0] }; break;
+            case 'assets': answer = { asset: (q.options || [])[0] }; break;
             default: answer = null;
         }
         if (!answer) break;

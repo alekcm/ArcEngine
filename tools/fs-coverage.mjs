@@ -41,7 +41,7 @@ for (const card of allTexts()) {
     for (const sentence of EFFECTS.sentences(card.text)) {
         total++;
         g.total++;
-        const steps = EFFECTS.parseSentence(sentence, { kind: card.kind });
+        const steps = EFFECTS.parseSentence(sentence, { kind: card.kind, faction: card.faction });
         if (steps.length && steps[0].op !== 'icons') {
             read++;
             g.read++;
