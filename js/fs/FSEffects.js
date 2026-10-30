@@ -377,7 +377,7 @@ const FS_EFFECTS = {
                 if (step.kind === 'any') {
                     return { question: { kind: 'assetType', who: seat, op: 'gainAsset', n: step.n || 1, options: ['forge', 'cache', 'reinforcement'], text: 'Какой жетон ресурса получить?' } };
                 }
-                const limit = p.faction === 'тираниды' && step.kind === 'reinforcement' ? 4 : 3;
+                const limit = p.assetLimit || 3;
                 p.assets[step.kind] = Math.min(limit, (p.assets[step.kind] || 0) + (step.n || 1));
                 R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + step.kind + '.');
                 return null;
@@ -508,6 +508,23 @@ const FS_EFFECTS = {
                 combat.noRoute.push(step.who === 'foe' ? foe : seat);
                 return null;
             }
+            case 'replaceUnit': {
+                const units = this.unitsOf(R, state, seat, combat, { filter: step.filter });
+                if (!units.length) return null;
+                return { question: { kind: 'units', who: seat, op: 'replaceUnit', n: Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: 'Какой отряд заменить?' } };
+            }
+            case 'extraFactory': {
+                if (state.order) state.order.extraFactories = (state.order.extraFactories || 0) + (step.n || 0);
+                return null;
+            }
+            case 'orderDiscount': {
+                if (state.order) state.order.discount = (state.order.discount || 0) + (step.n || 0);
+                return null;
+            }
+            case 'assetLimit': {
+                p.assetLimit = Math.max(p.assetLimit || 3, step.n || 3);
+                return null;
+            }
             case 'citiesAsFactories': {
                 if (state.order) state.order.citiesAsFactories = true;
                 return null;
@@ -523,6 +540,23 @@ const FS_EFFECTS = {
             case 'orderKl': {
                 // The command level of the player is higher while the order runs.
                 if (state.order) state.order.klBonus = (state.order.klBonus || 0) + (step.n || 0);
+                return null;
+            }
+            case 'replaceUnit': {
+                const units = this.unitsOf(R, state, seat, combat, { filter: step.filter });
+                if (!units.length) return null;
+                return { question: { kind: 'units', who: seat, op: 'replaceUnit', n: Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: 'Какой отряд заменить?' } };
+            }
+            case 'extraFactory': {
+                if (state.order) state.order.extraFactories = (state.order.extraFactories || 0) + (step.n || 0);
+                return null;
+            }
+            case 'orderDiscount': {
+                if (state.order) state.order.discount = (state.order.discount || 0) + (step.n || 0);
+                return null;
+            }
+            case 'assetLimit': {
+                p.assetLimit = Math.max(p.assetLimit || 3, step.n || 3);
                 return null;
             }
             case 'citiesAsFactories': {
@@ -631,6 +665,19 @@ const FS_EFFECTS = {
                 const limit = p.faction === 'тираниды' && kind === 'reinforcement' ? 4 : 3;
                 p.assets[kind] = Math.min(limit, (p.assets[kind] || 0) + (step.n || 1));
                 R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + kind + '.');
+                return null;
+            }
+            case 'replaceUnit': {
+                const list = units(answer.units);
+                if (!list.length) return null;
+                const faction = FS_EFFECTS.factionOf({ faction: state.players[seat].faction });
+                const names = FS_EFFECTS.unitNames(step.to, faction);
+                const def = names.length ? faction.units.find(u => u.id === names[0]) : null;
+                if (!def) return null;
+                for (const u of list) {
+                    u.unit = def.id;
+                    R.log(state, seat, state.players[seat].name + ' заменяет отряд на «' + def.name + '».');
+                }
                 return null;
             }
             case 'moveUnits': {
@@ -1227,6 +1274,29 @@ const RULES = [
         re: /куп[а-яёa-z]*\s+(\d+)?\s*(?:одну\s+)?постройк[а-яёa-z]*/i,
         build: m => ({ op: 'placeStructure', kind: 'any', n: num(m[1]) || 1, buy: true, pick: true }),
     },
+    // "replace 1 scout from the supply with a space marine"
+    {
+        re: /замени[а-яёa-z]*\s+(\d+)?\s*отряд[а-яёa-z]*\s+([^,.;]{2,40}?)\s+на\s+(\d+)?\s*отряд[а-яёa-z]*\s+([^,.;]{2,40}?)\s+из запаса/i,
+        build: (m, ctx) => ({
+            op: 'replaceUnit', n: num(m[1]), from: m[2], to: m[4],
+            filter: unitFilter(m[2]), pick: true, text: m[0],
+        }),
+    },
+    // "you may perform the deploy order using one factory"
+    {
+        re: /выполнить приказ развертывания, используя (\d+) фабрик/i,
+        build: m => ({ op: 'extraFactory', n: Number(m[1]) }),
+    },
+    // "buy the units one materiel cheaper"
+    {
+        re: /по цене на (\d+) меньше обычного/i,
+        build: m => ({ op: 'orderDiscount', n: Number(m[1]) }),
+    },
+    // "the number of the asset tokens you may have grows to 4"
+    {
+        re: /количество жетонов ресурсов[^.]*увеличивается до (\d+)/i,
+        build: m => ({ op: 'assetLimit', n: Number(m[1]) }),
+    },
     // "move 1 of your units to a neighbouring friendly area"
     {
         re: /перемест[а-яёa-z]*\s+(\d+)?\s*(?:одним из своих|одного|ваш[а-яёa-z]*|свои|любые)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*|отряда)/i,
@@ -1234,8 +1304,11 @@ const RULES = [
     },
     // "take any number of your units from one world and place them in a friendly world"
     {
-        re: /забра[а-яёa-z]*\s+(?:любое количество\s+)?(?:(\d+)\s+)?ваш[а-яёa-z]*\s+(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*|корабл[а-яёa-z]*)[^`]{0,80}?и размест[а-яёa-z]*\s+их?/i,
-        build: m => ({ op: 'moveUnits', n: m[1] ? num(m[1]) : 99, pick: true }),
+        re: /забра[а-яёa-z]*\s+(?:любое количество\s+)?(?:(\d+)\s+)?([^,.;]{2,50}?)\s+из\s+([^,.;]{2,70}?)\s+и\s+(?:размест|перемест)[а-яёa-z]*\s+(?:их|его|её)?/i,
+        build: (m, ctx) => ({
+            op: 'moveUnits', n: m[1] ? num(m[1]) : 99,
+            filter: unitFilter(m[2]), pick: true, text: m[0],
+        }),
     },
     // "take 1 of your units from any world and place it in this world"
     {

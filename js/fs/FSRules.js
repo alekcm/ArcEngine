@@ -1005,8 +1005,9 @@ const FS_RULES = {
             if (!factory && !(asFactories && city)) continue;
             limit += this.capacity(state, systemId, area.pos);
         }
-        // The order may lower the limit.
+        // The order may lower the limit or give an extra factory.
         if (order && order.seat === seat && order.deployLimitBonus) limit += order.deployLimitBonus;
+        if (order && order.seat === seat && order.extraFactories) limit += order.extraFactories;
         return Math.max(0, limit);
     },
 
@@ -1058,6 +1059,8 @@ const FS_RULES = {
         const place = this.canPlaceUnit(state, seat, cmd.system, cmd.pos, def);
         if (!place.ok) return place;
         let cost = def.cost;
+        // The order may make the units cheaper.
+        if (order.discount) cost = Math.max(0, cost - order.discount);
         if (def.forge) {
             if ((p.assets.forge || 0) < 1) return { ok: false, error: 'Нужен жетон кузницы.' };
             p.assets.forge--;
