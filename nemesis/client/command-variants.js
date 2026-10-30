@@ -90,7 +90,7 @@ export function bountyArmor(slot, variant, { root: R, Z, F, bx, fixed: C }, W, s
     }
 }
 
-export function captainArmor(slot, variant, { root: R, Z, F, bx, cy, fixed: C }, W, side) {
+export function captainArmor(slot, variant, { root: R, Z, F, bx, fixed: C }, W, side) {
     if (slot === 'shoulder') {
         const s = side;
         if (variant === 'layered') {
@@ -104,16 +104,18 @@ export function captainArmor(slot, variant, { root: R, Z, F, bx, cy, fixed: C },
             F('#c9a227', bx(0.19 * W, 0.045, 0.025, pad, 0, 0.03, 0.19));
             Z('armor', bx(0.22 * W, 0.24, 0.29, pad, s * 0.015, -0.19, 0.01));
         } else {
-            // Broad asymmetric search armour with a real forward-facing lamp on the left.
+            // Broad asymmetric armour with a small display inset into the left shoulder.
             const pad = Z('armor', bx(0.4 * W, 0.22, 0.43, R, s * 0.42 * W, 2.13, 0));
             pad.metadata = { captainShoulder: s < 0 ? 'L' : 'R' };
             Z('armor', bx(0.1, 0.28, 0.37, pad, s * 0.18 * W, -0.12, 0));
             F(C.darkSteel, bx(0.29 * W, 0.25, 0.3, pad, 0, -0.21, 0.02));
             if (s < 0) {
-                F(C.darkSteel, bx(0.21, 0.14, 0.18, pad, 0, 0.06, 0.2));
-                F(C.steel, cy(0.17, 0.17, 0.13, 8, pad, 0, 0.06, 0.3, [Math.PI / 2, 0, 0]));
-                Z('lights', cy(0.125, 0.125, 0.025, 8, pad, 0, 0.06, 0.38, [Math.PI / 2, 0, 0]))
-                    .metadata = { captainLamp: true };
+                // A thin bezel and display sit almost flush in the front face, rather than
+                // projecting a separate cylindrical lamp out of the shoulder.
+                F(C.darkSteel, bx(0.17, 0.105, 0.03, pad, 0, 0.025, 0.226))
+                    .metadata = { captainScreenBezel: true };
+                Z('lights', bx(0.125, 0.06, 0.008, pad, 0, 0.025, 0.244))
+                    .metadata = { captainScreen: true };
             } else {
                 F(C.darkSteel, bx(0.23, 0.06, 0.3, pad, 0, 0.13, 0));
                 F(C.steel, bx(0.13, 0.035, 0.035, pad, 0, 0.03, 0.23));

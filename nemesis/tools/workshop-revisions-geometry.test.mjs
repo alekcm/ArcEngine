@@ -78,9 +78,9 @@ test('REV-01: the Sentry optics and the two other Survivor hairstyles are byte-f
     }
 });
 
-test('REV-02: all 432 patient and 243 Sentry combinations build, paint and animate', () => {
+test('REV-02: all 324 patient and 243 Sentry combinations build, paint and animate', () => {
     const worker = fileURLToPath(new URL('./crew-combinations.worker.mjs', import.meta.url));
-    for (const [id, count] of [['labrat', 432], ['sentry', 243]]) {
+    for (const [id, count] of [['labrat', 324], ['sentry', 243]]) {
         const result = spawnSync(process.execPath, [worker, id], { encoding: 'utf8', timeout: 60000 });
         assert.equal(result.status, 0, `${id}: ${result.stderr || result.stdout || result.error}`);
         assert.match(result.stdout, new RegExp(`RESULT ${count}\\b`), `${id}: every combination checked`);
@@ -105,7 +105,7 @@ test('REV-03: Sentry replacements are whole, the cloak is joined and the shotgun
     for (const suit of ['classic', 'patrol', 'breacher']) for (const cloak of ['classic', 'split', 'torn']) {
         const ch = buildCharacter(S, 'sentry', {}, { suit, cloak, shoulders: 'segmented' }); ch.root.scaling.setAll(1);
         const meshes = meshesOf(ch), cloth = slotOf(meshes, 'cloak').filter(m => ch.zones.cloak.includes(m));
-        const back = cloth.find(m => m.metadata?.sentryCloakBack), collar = cloth.find(m => Math.abs(m.position.y - 2.24) < 0.001 && Math.abs(m.position.z + 0.4) < 0.001);
+        const back = cloth.find(m => m.metadata?.sentryCloakBack), collar = cloth.find(m => m.metadata?.sentryCloakJoin);
         const pads = meshes.filter(m => m.metadata?.sentryShoulder), gun = ch.root.getDescendants().find(n => n.name === 'gun');
         const hands = ['L', 'R'].map(side => meshes.find(m => m.metadata?.sentryHand === side));
         assert.ok(back && collar && gun && hands.every(Boolean));
@@ -113,7 +113,7 @@ test('REV-03: Sentry replacements are whole, the cloak is joined and the shotgun
         refresh(ch);
         for (const m of slotOf(meshes, 'suit').filter(m => m.getAbsolutePosition().y < 1.24))
             assert.ok(ancestor(m, 'legL') || ancestor(m, 'legR'), `${suit}: shin, knee and side armour follow a leg`);
-        // Traverse touching cloth panels, including the rear bridge over the backpack.
+        // Traverse touching cloth panels, including the rear join under the backpack.
         const connected = new Set([back]);
         for (let changed = true; changed;) {
             changed = false;
@@ -195,15 +195,27 @@ test('REV-06: Convict tattoos remain on skin and shoulder implants cover the sho
     }
 });
 
-test('REV-07: Captain epaulettes and shoulder lamp are different mounted and paintable models', () => {
+test('REV-07: Captain epaulettes and inset shoulder display are different mounted and paintable models', () => {
     const shapes = [];
     for (const shoulders of ['classic', 'layered', 'heavy']) {
         const ch = buildCharacter(S, 'captain', {}, { shoulders });
         const meshes = slotOf(meshesOf(ch), 'shoulders'); shapes.push(signature(meshes));
         if (shoulders !== 'classic') assert.ok(meshes.every(m => ancestor(m, 'armL') || ancestor(m, 'armR')), `${shoulders}: attached to moving shoulders`);
-        const lamp = meshes.find(m => m.metadata?.captainLamp);
-        assert.equal(!!lamp, shoulders === 'heavy');
-        if (lamp) { ch.setColors({ lights: '#12db83' }); assert.equal(lamp.material.diffuseColor.toHexString().toLowerCase(), '#12db83'); }
+        const screen = meshes.find(m => m.metadata?.captainScreen);
+        assert.equal(!!screen, shoulders === 'heavy');
+        if (screen) {
+            const bezel = meshes.find(m => m.metadata?.captainScreenBezel), pad = screen.parent;
+            assert.ok(bezel && bezel.parent === pad && pad.metadata?.captainShoulder === 'L', 'display and bezel are built into the left pad');
+            const b = screen.getBoundingInfo().boundingBox, padFace = pad.getBoundingInfo().boundingBox.maximum.z;
+            assert.ok(b.extendSize.x > b.extendSize.y && b.extendSize.y > b.extendSize.z, 'the display is a thin rectangle');
+            assert.ok(screen.position.z + b.maximum.z - padFace < 0.035, 'display is almost flush with the armour, not a projecting tube');
+            for (const t of [0, 0.1, 0.2, 0.3]) {
+                ch.animate(t, t > 0); refresh(ch);
+                assert.ok(screen.intersectsMesh(bezel, true) && bezel.intersectsMesh(pad, true), 'display remains connected to its bezel and shoulder');
+            }
+            ch.setColors({ lights: '#12db83' });
+            assert.equal(screen.material.diffuseColor.toHexString().toLowerCase(), '#12db83');
+        }
         ch.root.dispose();
     }
     assert.equal(new Set(shapes.map(s => JSON.stringify(s))).size, 3);
@@ -243,6 +255,148 @@ test('REV-09: all Survivor bandana ends are roughly half-sized and clear of radi
         for (const t of [0, 0.1, 0.2, 0.3]) {
             ch.animate(t, t > 0); refresh(ch);
             for (const tie of ties) for (const m of pack) assert.ok(!tie.intersectsMesh(m, true), `${bandana}/${radio}: tie clears radio`);
+        }
+        ch.root.dispose();
+    }
+});
+
+test('FIX-01: each patient sleeve covers the shoulder and both ankle options stay connected during a stride', () => {
+    for (const outfit of ['gown', 'torn', 'long']) for (const ankle of ['classic', 'tracker', 'tag']) {
+        const ch = buildCharacter(S, 'labrat', {}, { outfit, ankle, wrists: 'bandaged' }); ch.root.scaling.setAll(1);
+        const meshes = meshesOf(ch), pieces = slotOf(meshes, 'ankle');
+        const sleeves = ['L', 'R'].map(side => meshes.find(m => m.metadata?.labSleeve === side));
+        const uppers = ['L', 'R'].map(side => ch.zones.skin.find(m => m.parent?.name === 'arm' + side && Math.abs(m.position.y + 0.21) < 0.001));
+        assert.ok(sleeves.every(Boolean) && uppers.every(Boolean), `${outfit}: both sleeves and upper arms exist`);
+        for (let i = 0; i < 2; i++) {
+            const sleeve = sleeves[i], upper = uppers[i];
+            const a = sleeve.getBoundingInfo().boundingBox.extendSize, b = upper.getBoundingInfo().boundingBox.extendSize;
+            assert.equal(sleeve.parent, upper.parent, `${outfit}: sleeve follows the shoulder`);
+            assert.ok(Math.abs(sleeve.position.x - upper.position.x) + b.x < a.x, `${outfit}: sleeve covers the arm's full width`);
+            assert.ok(Math.abs(sleeve.position.z - upper.position.z) + b.z < a.z, `${outfit}: sleeve covers front and back of the shoulder`);
+            const armTop = upper.position.y + b.y;
+            assert.ok(armTop > sleeve.position.y - a.y && armTop < sleeve.position.y + a.y, `${outfit}: sleeve covers the top of the arm`);
+        }
+        if (ankle === 'classic') assert.equal(pieces.length, 0, 'the original has no leg accessory');
+        else {
+            const side = ankle === 'tracker' ? 'L' : 'R';
+            const band = pieces.find(m => m.metadata?.labAnkleBand);
+            const skin = ch.zones.skin.find(m => m.parent?.name === 'leg' + side && Math.abs(m.position.y + 1.04) < 0.001);
+            const detail = pieces.find(m => ankle === 'tracker' ? m.metadata?.labTrackerDisplay : m.metadata?.labAnkleTag);
+            assert.ok(band && skin && detail && pieces.length >= 4, `${ankle}: complete ankle accessory`);
+            assert.ok(pieces.every(m => ancestor(m, 'leg' + side)), `${ankle}: every piece follows the same leg`);
+            refresh(ch);
+            assert.ok(band.intersectsMesh(skin, true), `${ankle}: band wraps the ankle`);
+            // Each visible part is physically joined to the strap, not floating nearby.
+            const connected = new Set([band]);
+            for (let changed = true; changed;) {
+                changed = false;
+                for (const a of connected) for (const b of pieces) if (!connected.has(b) && a.intersectsMesh(b, true)) { connected.add(b); changed = true; }
+            }
+            assert.equal(connected.size, pieces.length, `${ankle}: all pieces are connected`);
+            for (const m of [skin, ...pieces]) m.isPickable = true;
+            const x = (ankle === 'tracker' ? -1 : 1) * 0.135, y = ankle === 'tracker' ? 0.315 : 0.19;
+            const hit = S.pickWithRay(new B.Ray(new B.Vector3(x, y, 1), new B.Vector3(0, 0, -1), 2), m => m === skin || pieces.includes(m));
+            assert.ok(pieces.includes(hit?.pickedMesh), `${ankle}: the accessory is visible in front of the leg`);
+        }
+        for (const t of [0, 0.1, 0.2, 0.3, 0.4]) {
+            ch.animate(t, t > 0); refresh(ch);
+            assert.ok(sleeves.every((s, i) => s.intersectsMesh(uppers[i], true)), `${outfit}: sleeves stay attached at ${t}`);
+            if (pieces.length) assert.ok(pieces.every(m => ancestor(m, ankle === 'tracker' ? 'legL' : 'legR')), `${ankle}: stays on the leg at ${t}`);
+        }
+        if (ankle === 'tracker') {
+            ch.setColors({ lights: '#32baf1' });
+            assert.equal(pieces.find(m => m.metadata?.labTrackerDisplay).material.diffuseColor.toHexString().toLowerCase(), '#32baf1');
+        }
+        ch.root.dispose();
+    }
+});
+
+test('FIX-02: every Sentry pack stays outside every connected cloak, including while walking', () => {
+    for (const suit of ['classic', 'patrol', 'breacher']) for (const cloak of ['classic', 'split', 'torn']) {
+        const ch = buildCharacter(S, 'sentry', {}, { suit, cloak }); ch.root.scaling.setAll(1);
+        const meshes = meshesOf(ch), pack = meshes.find(m => m.metadata?.sentryBackpack);
+        const cloth = slotOf(meshes, 'cloak').filter(m => ch.zones.cloak.includes(m));
+        const back = cloth.find(m => m.metadata?.sentryCloakBack);
+        assert.ok(pack && back && back.position.z > pack.position.z, `${suit}/${cloak}: cape lies against the back`);
+        for (const m of [pack, ...cloth]) m.isPickable = true;
+        for (const t of [0, 0.1, 0.2, 0.3]) {
+            ch.animate(t, t > 0); refresh(ch);
+            for (const x of [-0.1, 0, 0.1]) for (const y of [1.75, 1.9, 2.05]) {
+                const ray = new B.Ray(new B.Vector3(x, y + ch.root.position.y, -2), new B.Vector3(0, 0, 1), 3);
+                const hit = S.pickWithRay(ray, m => m === pack || cloth.includes(m));
+                assert.equal(hit?.pickedMesh, pack, `${suit}/${cloak}: pack remains outside cape at ${x},${y},${t}`);
+            }
+        }
+        ch.root.dispose();
+    }
+});
+
+test('FIX-03: the classic Convict muzzle remains outside the face on the front and both cheeks', () => {
+    for (const plates of ['classic', 'shoulder', 'asymmetric']) for (const tattoos of ['classic', 'tribal', 'prison']) {
+        const ch = buildCharacter(S, 'convict', {}, { muzzle: 'classic', plates, tattoos }); ch.root.scaling.setAll(1);
+        const meshes = meshesOf(ch), head = named(meshes, 'convict_head'), front = meshes.find(m => m.metadata?.convictMuzzleFront);
+        const muzzle = slotOf(meshes, 'muzzle'), cheeks = ['L', 'R'].map(side => meshes.find(m => m.metadata?.convictMuzzleCheek === side));
+        assert.ok(head && front && cheeks.every(Boolean));
+        for (const m of [head, ...muzzle]) m.isPickable = true;
+        for (const t of [0, 0.1, 0.2, 0.3]) {
+            ch.animate(t, t > 0); refresh(ch);
+            const headBounds = head.getBoundingInfo().boundingBox, frontBounds = front.getBoundingInfo().boundingBox;
+            assert.ok(frontBounds.maximumWorld.z > headBounds.maximumWorld.z + 0.06, 'front cage projects beyond the face');
+            for (const s of [-1, 1]) for (const z of [0.08, 0.14]) {
+                const hit = S.pickWithRay(new B.Ray(new B.Vector3(s, 2.34 + ch.root.position.y, z), new B.Vector3(-s, 0, 0), 2), m => m === head || cheeks.includes(m));
+                assert.equal(hit?.pickedMesh, cheeks[s < 0 ? 0 : 1], `${plates}: cheek plate covers the side of the head`);
+            }
+            for (const x of [-0.1, 0, 0.1]) for (const y of [2.3, 2.36]) {
+                const hit = S.pickWithRay(new B.Ray(new B.Vector3(x, y + ch.root.position.y, 1), new B.Vector3(0, 0, -1), 2), m => m === head || muzzle.includes(m));
+                assert.ok(muzzle.includes(hit?.pickedMesh), `${plates}: muzzle is visible over the face`);
+            }
+        }
+        ch.root.dispose();
+    }
+});
+
+test('FIX-04: the third Survivor bandana is tied at the centre of the nape for every hair and radio', () => {
+    for (const hair of ['classic', 'wavy', 'long']) for (const radio of ['classic', 'dual', 'caged']) {
+        const ch = buildCharacter(S, 'survivor', {}, { hair, radio, bandana: 'tails' }); ch.root.scaling.setAll(1);
+        const meshes = meshesOf(ch), knot = meshes.find(m => m.metadata?.survivorBandanaKnot);
+        const ties = meshes.filter(m => m.metadata?.survivorBandanaTie), pack = slotOf(meshes, 'radio');
+        assert.ok(knot && ties.length === 2);
+        assert.ok(Math.abs(knot.position.x) < 1e-6, 'knot is on the centreline of the head');
+        assert.ok(ties.every(m => Math.abs(m.position.x) <= 0.05) && Math.abs(ties[0].position.x + ties[1].position.x) < 1e-6,
+            'both ends hang immediately to either side of the central knot');
+        for (const t of [0, 0.1, 0.2, 0.3]) {
+            ch.animate(t, t > 0); refresh(ch);
+            assert.ok(ties.every(m => m.intersectsMesh(knot, true)), `${hair}/${radio}: both ends attach to the knot`);
+            for (const tie of ties) {
+                for (const m of pack) assert.ok(!tie.intersectsMesh(m, true), `${hair}/${radio}: ends clear the radio`);
+                for (const h of ch.zones.hair) assert.ok(!tie.intersectsMesh(h, true), `${hair}/${radio}: ends stay visible behind hair`);
+            }
+        }
+        ch.root.dispose();
+    }
+});
+
+test('FIX-05: Xenobiologist lenses sit in front of the face and both frames extend past the sides', () => {
+    for (const hair of ['classic', 'loosecurl', 'longtail']) for (const probe of ['classic', 'twin', 'shield']) {
+        const ch = buildCharacter(S, 'xeno', {}, { hair, probe }); ch.root.scaling.setAll(1);
+        const meshes = meshesOf(ch), head = named(meshes, 'xeno_head'), lenses = meshes.filter(m => m.metadata?.xenoGlasses);
+        const frames = meshes.filter(m => m.metadata?.xenoFrame);
+        assert.equal(lenses.length, 2); assert.ok(head && frames.length >= 9);
+        for (const m of [head, ...lenses, ...frames]) m.isPickable = true;
+        for (const t of [0, 0.1, 0.2, 0.3]) {
+            ch.animate(t, t > 0); refresh(ch);
+            const face = head.getBoundingInfo().boundingBox;
+            for (const lens of lenses) assert.ok(lens.getBoundingInfo().boundingBox.minimumWorld.z > face.maximumWorld.z + 0.02,
+                `${hair}/${probe}: lens is just ahead of the face`);
+            for (const side of [-1, 1]) {
+                const label = side < 0 ? 'L' : 'R';
+                const temple = frames.find(m => m.metadata.xenoFrame === label && Math.abs(m.position.z - 0.035) < 0.001);
+                const b = temple?.getBoundingInfo().boundingBox;
+                assert.ok(temple && (side < 0 ? b.minimumWorld.x < face.minimumWorld.x - 0.02 : b.maximumWorld.x > face.maximumWorld.x + 0.02),
+                    `${hair}/${probe}: frame is wider than the head on ${label}`);
+                const hit = S.pickWithRay(new B.Ray(new B.Vector3(side, 2.48 + ch.root.position.y, 0.035), new B.Vector3(-side, 0, 0), 2), m => m === head || m === temple);
+                assert.equal(hit?.pickedMesh, temple, `${hair}/${probe}: ${label} temple is visible from the side`);
+            }
         }
         ch.root.dispose();
     }

@@ -7,27 +7,27 @@ import { createGame } from '../shared/engine/setup.mjs';
 import { OPS } from '../shared/engine/core.mjs';
 import { viewFor } from '../shared/view.mjs';
 
-const original = { hair: 'loose', eyes: 'bandage', outfit: 'gown', implants: 'classic', wrists: 'classic' };
-const custom = { hair: 'ponytail', eyes: 'layered', outfit: 'torn', implants: 'wrapped', wrists: 'bandaged' };
+const original = { hair: 'loose', eyes: 'bandage', outfit: 'gown', ankle: 'classic', wrists: 'classic' };
+const custom = { hair: 'ponytail', eyes: 'layered', outfit: 'torn', ankle: 'tag', wrists: 'bandaged' };
 const player = (charId, parts = custom) => ({ name: 'Алекс', charId, colors: { gown: '#12abcd' }, parts });
 
 test('LAB-01: preset normalization accepts only the defined Lab Rat options', () => {
     assert.deepEqual(characterParts('labrat'), original);
     assert.deepEqual(characterParts('labrat', custom), custom);
     assert.deepEqual(characterParts('labrat', {
-        hair: '<script>', eyes: ['wide'], outfit: 'suit', implants: null, extra: 'bad',
+        hair: '<script>', eyes: ['wide'], outfit: 'suit', ankle: null, extra: 'bad',
     }), original);
     assert.deepEqual(characterParts('labrat', ['messy', 'wide']), original);
     assert.deepEqual(Object.fromEntries(LABRAT_PARTS.map(slot => [slot.id, slot.options.map(option => option.id)])), {
         hair: ['loose', 'messy', 'ponytail'],
         eyes: ['bandage', 'wide', 'layered', 'tails'],
         outfit: ['gown', 'torn', 'long'],
-        implants: ['classic', 'temples', 'neck', 'wrapped'],
+        ankle: ['classic', 'tracker', 'tag'],
         wrists: ['classic', 'bandaged', 'restraints'],
     });
     // Lobby data saved before the redesign can still arrive. Disallowed choices safely revert
     // independently; previously selected canonical choices (including ponytail) survive.
-    for (const [slot, removed] of Object.entries({ hair: ['bob', 'shaved'], eyes: ['visor', 'none'], outfit: ['coat', 'suit'], implants: ['crown', 'none'] })) {
+    for (const [slot, removed] of Object.entries({ hair: ['bob', 'shaved'], eyes: ['visor', 'none'], outfit: ['coat', 'suit'], ankle: ['implant', 'boots'] })) {
         for (const old of removed) assert.deepEqual(characterParts('labrat', { ...custom, [slot]: old }), { ...custom, [slot]: original[slot] }, `${slot}/${old}`);
     }
     assert.deepEqual(characterParts('pilot', custom), characterParts('pilot'), 'Lab Rat choices do not leak to the pilot');
@@ -243,7 +243,7 @@ test('ROLE-04: existing choices survive the richer workshop schemas', () => {
     });
 });
 
-test('REV-10: removed Android implants and Convict arms migrate without losing other choices', () => {
+test('REV-10: removed implant and arm slots migrate without losing other choices', () => {
     const oldAndroid = { hair: 'tied', implants: 'jaw', vest: 'pockets', arms: 'rolled', sidearm: 'pulse' };
     const android = { hair: 'tied', trousers: 'classic', vest: 'pockets', arms: 'rolled', sidearm: 'pulse' };
     const oldConvict = { muzzle: 'guard', plates: 'shoulder', chains: 'links', trousers: 'cargo', arms: 'cybernetic' };
@@ -253,7 +253,11 @@ test('REV-10: removed Android implants and Convict arms migrate without losing o
     assert.deepEqual(characterParts('android', { ...oldAndroid, trousers: 'utility' }), { ...android, trousers: 'utility' });
     assert.deepEqual(characterParts('convict', { ...oldConvict, tattoos: 'tribal' }), { ...convict, tattoos: 'tribal' });
     assert.deepEqual(characterParts('labrat', { hair: 'ponytail', eyes: 'wide', outfit: 'long', implants: 'neck' }),
-        { hair: 'ponytail', eyes: 'wide', outfit: 'long', implants: 'neck', wrists: 'classic' }, 'old patient selections gain only a default');
+        { hair: 'ponytail', eyes: 'wide', outfit: 'long', ankle: 'classic', wrists: 'classic' }, 'old patient implant slot is discarded while the remaining choices survive');
+    const oldPatient = { hair: 'messy', eyes: 'tails', outfit: 'torn', implants: 'temples', wrists: 'restraints' };
+    const migratedPatient = { hair: 'messy', eyes: 'tails', outfit: 'torn', ankle: 'classic', wrists: 'restraints' };
+    assert.deepEqual(characterParts('labrat', oldPatient), migratedPatient, 'removed implants become the plain ankle without losing other choices');
+    assert.deepEqual(characterParts('labrat', { ...oldPatient, ankle: 'tracker' }), { ...migratedPatient, ankle: 'tracker' });
     assert.deepEqual(characterParts('sentry', { optics: 'cluster', respirator: 'ribbed', shoulders: 'heavy', cloak: 'split' }),
         { suit: 'classic', optics: 'cluster', respirator: 'ribbed', shoulders: 'heavy', cloak: 'split' }, 'old Sentry selections gain only a default');
     const state = createGame({ seed: 'legacy-outfits', draft: false, players: [player('android', oldAndroid), player('convict', oldConvict)] });
@@ -264,4 +268,8 @@ test('REV-10: removed Android implants and Convict arms migrate without losing o
     const draft = createGame({ seed: 'legacy-draft', draft: true, players: [player('android', oldAndroid)] });
     OPS['draft.pick'](draft, { player: 0, answer: 'android', hand: ['android', 'convict'] });
     assert.deepEqual(draft.players[0].parts, android, 'draft preserves the normalized old selections');
+    const patientDraft = createGame({ seed: 'legacy-patient-draft', draft: true, players: [player('labrat', oldPatient)] });
+    OPS['draft.pick'](patientDraft, { player: 0, answer: 'labrat', hand: ['labrat', 'sentry'] });
+    assert.deepEqual(patientDraft.players[0].parts, migratedPatient, 'draft also migrates the patient without losing the remaining choices');
+    assert.equal(viewFor(patientDraft, 0).players[0].colors.gown, '#12abcd', 'legacy patient colours survive the draft');
 });

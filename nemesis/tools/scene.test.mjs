@@ -456,9 +456,9 @@ test('LAB-04: every preset has distinct geometry, the original and other charact
     };
     const defaults = characterParts('labrat');
     const original = signature('labrat');
-    // Intentional patient redesign: longer connected neck and rebuilt loose hairstyle.
+    // The original patient keeps the repaired neck and hair, with sleeves covering the upper arms.
     assert.equal(createHash('sha256').update(JSON.stringify(original)).digest('hex'),
-        '7f2ea3b12ae7b92d64e0aaa1faf5ced0d35a8b219c6b1272a58c76d574ff2bb2');
+        '27686d1c98429667fdc2a624f9001dbd5968114250f7a15fa4e65e4438a0f7ff');
     assert.deepEqual(signature('labrat', defaults), original, 'omitting parts preserves the original model');
     for (const slot of LABRAT_PARTS) {
         const variants = slot.options.map(option => JSON.stringify(signature('labrat', { ...defaults, [slot.id]: option.id })));
@@ -471,15 +471,15 @@ test('LAB-04: every preset has distinct geometry, the original and other charact
     }
 });
 
-test('LAB-06: 144 hair, blindfold, gown and implant combinations preserve the patient features', async () => {
+test('LAB-06: 108 hair, blindfold, gown and ankle combinations preserve the patient features', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     const { LABRAT_PARTS } = await import('../shared/appearance.mjs');
     const options = id => LABRAT_PARTS.find(slot => slot.id === id).options.map(option => option.id);
     const colors = { skin: '#123456', hair: '#234567', gown: '#345678', pants: '#456789', bandage: '#56789a', lights: '#6789ab' };
     let checked = 0;
     for (const hair of options('hair')) for (const eyes of options('eyes'))
-        for (const outfit of options('outfit')) for (const implants of options('implants')) {
-            const parts = { hair, eyes, outfit, implants }, label = JSON.stringify(parts);
+        for (const outfit of options('outfit')) for (const ankle of options('ankle')) {
+            const parts = { hair, eyes, outfit, ankle }, label = JSON.stringify(parts);
             const ch = buildCharacter(scene.scene, 'labrat', {}, parts), meshes = ch.root.getChildMeshes();
             const band = meshes.find(m => m.name === 'lab_blindfold');
             assert.ok(band && ch.zones.bandage.includes(band), label + ': cloth over eyes');
@@ -513,12 +513,12 @@ test('LAB-06: 144 hair, blindfold, gown and implant combinations preserve the pa
             }
             ch.root.dispose(); checked++;
         }
-    assert.equal(checked, 144);
+    assert.equal(checked, 108);
 });
 
 test('LAB-05: the table rebuilds a changed appearance and removes the old shadow casters', () => {
     const v = JSON.parse(JSON.stringify(view));
-    const p = v.players[0]; p.charId = 'labrat'; p.parts = { hair: 'loose', eyes: 'bandage', outfit: 'gown', implants: 'classic' };
+    const p = v.players[0]; p.charId = 'labrat'; p.parts = { hair: 'loose', eyes: 'bandage', outfit: 'gown', ankle: 'classic' };
     scene.updateCharacters(v);
     const first = scene.chars[p.id];
     const oldRoot = first.ch.root, oldMeshes = oldRoot.getChildMeshes();
@@ -547,9 +547,9 @@ test('SENTRY-03: the repaired classic is stable and each option changes real geo
         return result;
     };
     const original = signature();
-    // Classic retains the optics but repairs the cloak, two-handed grip and torso attachment.
+    // Classic retains the optics and two-handed grip; the cloak now sits under the pack.
     assert.equal(createHash('sha256').update(JSON.stringify(original)).digest('hex'),
-        '196a759e02ca2e50eaef08f3ee8e58c343686e3f5cd72600209d21115adab861');
+        'aaac7c1f3acdf3ab507043f3761788fa6e64c05df3147d3284caccd8356e1fb1');
     const defaults = characterParts('sentry');
     assert.deepEqual(signature(defaults), original);
     for (const slot of SENTRY_PARTS) {
@@ -635,8 +635,8 @@ const CREW_ORIGINAL_HASHES = {
     ceo: '2b2c18cf4d057f2eaf93bc20f9a7eabeb3a62e3762773b3d26768bd3301b5def',
     // The original Android only gains a connected neck.
     android: 'a877b7b9066f502aacb19e91aebe3978d773cb5acef01a1f9aae92bab7bc2f78',
-    // Convict: connected neck, slightly enlarged shoulder implants and moving cuffs.
-    convict: 'e14fb488217366ae239989f65ba1e4b3adaccfca423c5bb33c55354a821618e9',
+    // Convict: connected neck, covered shoulders and cuffs, with the original muzzle outside the face.
+    convict: 'e4048536f8252b596e94bf2b06128c656a21d5176bcb10c1afe0ace76b27d348',
     // Psychologist: connected neck and shoulders, drones moved clear of the headsets.
     psych: '25d68589b6316181fd362110094614b1d5d14b408e943924f4ba455ad490f167',
     // Hunter: connected neck/waist, hands posed around the rifle, Laika rigged with a joined neck.
@@ -645,8 +645,8 @@ const CREW_ORIGINAL_HASHES = {
     captain: '28e82c72331869319dc21daa40a51458603d9ea4e621d101dc571bb5f808811b',
     // Survivor: rebuilt original short hair and smaller bandana tie; other hair is unchanged.
     survivor: '2982790e25c0346601b5d059191fa8cd5451730dc07598dbd79699f4bdea73f8',
-    // Xenobiologist: original sample moved into view ahead of the hand.
-    xeno: 'f05cc6a9d3280e385e1240d2c348380478c6c9e8c833d70c22cea0c7398e993b',
+    // Xenobiologist: visible sample and glasses fitted in front of the face.
+    xeno: 'a7754b1c6fdd893a0d2abe18211d27ee6f41fd6c429daf3d80235836ebcac7bf',
 };
 
 test('CREW-03: original miniatures stay stable after joint repairs and every option changes real geometry', async () => {

@@ -1,6 +1,6 @@
 // Patient-only choices: loose hair, cloth over the eyes, hospital gowns and evidence of
 // experimentation. No lab coat, visor or armour; the miniature remains the Lab Rat.
-export function patientVariant(slot, variant, { scene, root: R, Z, F, bx, cy, fixed: C }, W, hair) {
+export function patientVariant(slot, variant, { scene, root: R, Z, F, bx, fixed: C }, W, hair) {
     if (slot === 'hair') {
         Z('hair', bx(0.35, 0.12, 0.34, R, 0, 2.65, 0));
         if (variant === 'ponytail') {
@@ -88,34 +88,25 @@ export function patientVariant(slot, variant, { scene, root: R, Z, F, bx, cy, fi
         }
         skirt.name = 'lab_gown'; skirt.metadata = { labGown: true };
         for (const s of [-1, 1]) {
-            Z('gown', bx((variant === 'torn' ? 0.21 : 0.24) * W, variant === 'torn' ? 0.22 : 0.3, 0.27, R, s * 0.36 * W, 2.04, 0));
-            if (variant === 'long') Z('bandage', bx(0.24 * W, 0.04, 0.28, R, s * 0.36 * W, 1.91, 0));
+            // The cloth overlaps the complete upper arm instead of leaving skin outside its edge.
+            Z('gown', bx((variant === 'torn' ? 0.24 : 0.26) * W, variant === 'torn' ? 0.22 : 0.3, 0.27, R, s * 0.36 * W, 2.04, 0))
+                .metadata = { labSleeve: s < 0 ? 'L' : 'R' };
+            if (variant === 'long') Z('bandage', bx(0.26 * W, 0.04, 0.28, R, s * 0.36 * W, 1.91, 0));
         }
         Z('bandage', bx(0.5 * W, 0.055, 0.035, R, 0, 1.62, 0.19));
-    } else if (slot === 'implants') {
-        if (variant === 'temples') {
-            for (const s of [-1, 1]) {
-                F(C.darkSteel, bx(0.055, 0.17, 0.13, R, s * 0.22, 2.46, 0.02));
-                F(C.steel, cy(0.11, 0.11, 0.055, 8, R, s * 0.255, 2.51, 0.07, [0, 0, Math.PI / 2]));
-                Z('lights', cy(0.065, 0.065, 0.02, 8, R, s * 0.29, 2.51, 0.07, [0, 0, Math.PI / 2]));
-                F(C.steel, bx(0.035, 0.14, 0.03, R, s * 0.23, 2.39, 0.11, [0, 0, -s * 0.15]));
-                Z('lights', bx(0.025, 0.045, 0.025, R, s * 0.23, 2.34, 0.13));
-            }
-        } else if (variant === 'neck') {
-            for (const s of [-1, 1]) {
-                F(C.darkSteel, bx(0.075, 0.1, 0.065, R, s * 0.09, 2.22, 0.09));
-                Z('lights', bx(0.045, 0.06, 0.025, R, s * 0.09, 2.23, 0.13));
-                F(C.steel, bx(0.025, 0.16, 0.025, R, s * 0.1, 2.12, 0.16, [0, 0, s * 0.1]));
-                F(C.darkSteel, bx(0.09, 0.075, 0.035, R, s * 0.12, 2.04, 0.18));
-                Z('lights', bx(0.04, 0.035, 0.02, R, s * 0.12, 2.04, 0.205));
-            }
+    } else if (slot === 'ankle') {
+        // Both options wrap the bare ankle, below even the long gown, and follow that leg.
+        const x = (variant === 'tracker' ? -1 : 1) * 0.15 * W;
+        if (variant === 'tracker') {
+            Z('bandage', bx(0.21, 0.13, 0.22, R, x, 0.3, 0)).metadata = { labAnkleBand: true };
+            F(C.darkSteel, bx(0.15, 0.12, 0.09, R, x, 0.3, 0.14));
+            Z('lights', bx(0.095, 0.045, 0.015, R, x, 0.315, 0.19)).metadata = { labTrackerDisplay: true };
+            F(C.steel, bx(0.09, 0.012, 0.02, R, x, 0.275, 0.192));
         } else {
-            for (const s of [-1, 1]) {
-                F(C.steel, bx(0.065, 0.16, 0.12, R, s * 0.23, 2.47, 0.05));
-                Z('lights', bx(0.025, 0.1, 0.04, R, s * 0.27, 2.47, 0.06));
-                Z('bandage', bx(0.075, 0.06, 0.17, R, s * 0.26, 2.51, 0.04, [0, 0, s * 0.12]));
-                Z('bandage', bx(0.075, 0.05, 0.17, R, s * 0.26, 2.43, 0.04, [0, 0, -s * 0.1]));
-            }
+            Z('bandage', bx(0.21, 0.065, 0.22, R, x, 0.3, 0)).metadata = { labAnkleBand: true };
+            F(C.steel, bx(0.035, 0.11, 0.04, R, x, 0.265, 0.115));
+            Z('bandage', bx(0.14, 0.18, 0.03, R, x, 0.19, 0.14)).metadata = { labAnkleTag: true };
+            for (const y of [0.23, 0.2, 0.17]) F(C.darkSteel, bx(0.095, 0.012, 0.012, R, x, y, 0.16));
         }
     } else if (slot === 'wrists') {
         for (const s of [-1, 1]) {

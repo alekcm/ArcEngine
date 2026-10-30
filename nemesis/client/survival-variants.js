@@ -37,15 +37,15 @@ export function survivorVariant(slot, variant, C, P = C.root, side = 1) {
             for (const k of [-1, 1]) {
                 Z('mask', bx(0.04, 0.09, 0.04, ties, k * 0.07, 2.32, -0.25, [0, 0, k * 0.14])).metadata = { survivorBandanaTie: true };
             }
-        } else { // wide kerchief tied to one side, with clearly visible loose cloth ends
+        } else { // wide kerchief with a small knot and loose ends centred at the nape
             Z('mask', bx(0.35, 0.22, 0.34, R, 0, 2.35, 0.02)).metadata = { survivorMask: true };
             Z('mask', bx(0.37, 0.075, 0.07, R, 0, 2.41, 0.2, [0, 0, 0.1]));
             Z('mask', bx(0.18, 0.16, 0.07, R, 0.05, 2.28, 0.2, [0, 0, -0.14]));
-            Z('mask', bx(0.18, 0.1, 0.12, R, -0.26, 2.35, -0.19));
-            // Both hanging ends run beside the widest radio, not through its cage or the hair.
+            Z('mask', bx(0.14, 0.1, 0.14, R, 0, 2.35, -0.21)).metadata = { survivorBandanaKnot: true };
+            // The short ends sit behind the hair and above the radio, on either side of the knot.
             const ties = new window.BABYLON.TransformNode('survivor_bandana_ties', C.scene); ties.parent = R;
-            Z('mask', bx(0.045, 0.2, 0.04, ties, -0.3, 2.26, -0.21, [0, 0, -0.08])).metadata = { survivorBandanaTie: true };
-            Z('mask', bx(0.04, 0.15, 0.04, ties, -0.33, 2.28, -0.21, [0, 0, -0.18])).metadata = { survivorBandanaTie: true };
+            Z('mask', bx(0.045, 0.2, 0.04, ties, -0.045, 2.26, -0.285, [0, 0, -0.08])).metadata = { survivorBandanaTie: true };
+            Z('mask', bx(0.04, 0.15, 0.04, ties, 0.045, 2.28, -0.285, [0, 0, 0.08])).metadata = { survivorBandanaTie: true };
         }
     } else if (slot === 'radio') {
         if (variant === 'dual') {

@@ -241,6 +241,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 part(slot, variant, () => variant === 'classic' ? legs() : build('leg', variant, roleContext, R, s));
             } else legs();
         }
+        if (sp.labParts && sp.labParts.ankle !== 'classic')
+            part('ankle', sp.labParts.ankle, () => patientVariant('ankle', sp.labParts.ankle, roleContext, W));
         const pelvis = () => Z(sp.legs, bx(0.52 * W, 0.2, 0.28, R, 0, 1.4, 0));
         if (sp.janitorParts) part('outfit', sp.janitorParts.outfit, () => {
             if (sp.janitorParts.outfit === 'classic') pelvis();
@@ -476,7 +478,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             const original = () => {
                 const skirt = Z(sp.gown, bx(0.58 * W, 0.5, 0.36, R, 0, 1.3, 0));
                 skirt.name = 'lab_gown'; skirt.metadata = { labGown: true };
-                for (const s of [-1, 1]) Z(sp.gown, bx(0.2 * W, 0.26, 0.26, R, s * 0.36 * W, 2.04, 0));
+                for (const s of [-1, 1]) Z(sp.gown, bx(0.23 * W, 0.26, 0.26, R, s * 0.36 * W, 2.04, 0))
+                    .metadata = { labSleeve: s < 0 ? 'L' : 'R' };
                 F(FIXED.strap, bx(0.5 * W, 0.04, 0.02, R, 0, 1.62, 0.18));
             };
             if (sp.labParts) part('outfit', sp.labParts.outfit, () => {
@@ -854,11 +857,25 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             else original();
         }
         if (sp.glasses) {
-            F(FIXED.rubber, bx(0.3, 0.02, 0.02, R, 0, 2.47, 0.17));
-            for (const s of [-1, 1]) {
-                const lens = F(FIXED.glass, bx(0.1, 0.08, 0.02, R, s * 0.08, 2.46, 0.18), { alpha: 0.6, spec: 0.8 });
-                if (sp.psychParts) lens.metadata = { psychGlasses: true };
-                if (sp.xenoParts) lens.metadata = { xenoGlasses: true };
+            if (sp.xenoParts) {
+                // Move the lenses just in front of the face and frame them beyond its sides.
+                // The temple arms overlap the rims and run back along the head.
+                F(FIXED.rubber, bx(0.045, 0.025, 0.025, R, 0, 2.47, 0.21)).metadata = { xenoFrame: 'bridge' };
+                for (const s of [-1, 1]) {
+                    const side = s < 0 ? 'L' : 'R';
+                    F(FIXED.glass, bx(0.12, 0.075, 0.02, R, s * 0.085, 2.46, 0.207), { alpha: 0.6, spec: 0.8 })
+                        .metadata = { xenoGlasses: true };
+                    for (const y of [2.415, 2.505])
+                        F(FIXED.rubber, bx(0.15, 0.025, 0.025, R, s * 0.085, y, 0.21)).metadata = { xenoFrame: side };
+                    F(FIXED.rubber, bx(0.025, 0.115, 0.025, R, s * 0.16, 2.46, 0.21)).metadata = { xenoFrame: side };
+                    F(FIXED.rubber, bx(0.025, 0.025, 0.34, R, s * 0.17, 2.48, 0.035)).metadata = { xenoFrame: side };
+                }
+            } else {
+                F(FIXED.rubber, bx(0.3, 0.02, 0.02, R, 0, 2.47, 0.17));
+                for (const s of [-1, 1]) {
+                    const lens = F(FIXED.glass, bx(0.1, 0.08, 0.02, R, s * 0.08, 2.46, 0.18), { alpha: 0.6, spec: 0.8 });
+                    if (sp.psychParts) lens.metadata = { psychGlasses: true };
+                }
             }
         }
         if (sp.gasMask) {
@@ -877,17 +894,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         if (sp.eyeLight) Z(sp.eyeLight, bx(0.05, 0.03, 0.02, R, 0.08, 2.48, 0.18));
         if (sp.bald) Z('skin', bx(0.3, 0.06, 0.3, R, 0, 2.62, 0.02));
         if (sp.implants) {
-            const original = () => {
-                Z(sp.implants, bx(0.04, 0.04, 0.02, R, 0, 2.54, 0.18));
-                Z(sp.implants, bx(0.03, 0.1, 0.03, R, 0.16, 2.44, 0.0));
-                F(FIXED.steel, bx(0.06, 0.12, 0.04, R, -0.17, 2.44, 0.0));
-            };
-            // The Android keeps her original synthetic details, but they are no longer a slot.
-            if (sp.labParts) part('implants', sp.labParts.implants, () => {
-                if (sp.labParts.implants === 'classic') original();
-                else patientVariant('implants', sp.labParts.implants, roleContext, W);
-            });
-            else original();
+            // Keep the characters' small original synthetic details, without a separate implant slot.
+            Z(sp.implants, bx(0.04, 0.04, 0.02, R, 0, 2.54, 0.18));
+            Z(sp.implants, bx(0.03, 0.1, 0.03, R, 0.16, 2.44, 0.0));
+            F(FIXED.steel, bx(0.06, 0.12, 0.04, R, -0.17, 2.44, 0.0));
         }
         if (sp.eyes) { for (const s of [-1, 1]) F(sp.eyes, bx(0.06, 0.035, 0.02, R, s * 0.07, 2.47, 0.175), { emissive: 1.0 }); F(FIXED.rubber, bx(0.2, 0.012, 0.015, R, 0, 2.5, 0.178)); }   // two glowing eyes under a thin brow line
         // hand-held props
@@ -1036,10 +1046,16 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         }
         if (sp.muzzle) {   // steel muzzle: mouth cage with vertical bars, cheek plates, head strap
             const original = () => {
-                Z(sp.muzzle, bx(0.26, 0.14, 0.06, R, 0, 2.33, 0.17)); Z(sp.muzzle, bx(0.14, 0.1, 0.08, R, 0, 2.3, 0.21));
-                for (let i = 0; i < 4; i++) F(FIXED.steel, bx(0.025, 0.16, 0.02, R, -0.09 + i * 0.06, 2.33, 0.25));
-                for (const s of [-1, 1]) { Z(sp.muzzle, bx(0.06, 0.16, 0.14, R, s * 0.16, 2.34, 0.1)); F(FIXED.steel, bx(0.04, 0.04, 0.04, R, s * 0.18, 2.36, 0.16)); }
-                F(FIXED.strap, bx(0.34, 0.04, 0.34, R, 0, 2.4, 0.0));
+                // The cage and cheek pieces must sit outside the face, not coplanar with it.
+                Z(sp.muzzle, bx(0.3, 0.16, 0.085, R, 0, 2.33, 0.205)).metadata = { convictMuzzleFront: true };
+                Z(sp.muzzle, bx(0.26, 0.1, 0.08, R, 0, 2.3, 0.26));
+                for (let i = 0; i < 4; i++) F(FIXED.steel, bx(0.025, 0.16, 0.02, R, -0.09 + i * 0.06, 2.33, 0.3));
+                for (const s of [-1, 1]) {
+                    Z(sp.muzzle, bx(0.07, 0.16, 0.2, R, s * 0.17, 2.34, 0.11))
+                        .metadata = { convictMuzzleCheek: s < 0 ? 'L' : 'R' };
+                    F(FIXED.steel, bx(0.04, 0.04, 0.04, R, s * 0.19, 2.36, 0.205));
+                }
+                F(FIXED.strap, bx(0.36, 0.04, 0.36, R, 0, 2.4, 0.0));
             };
             if (sp.convictParts) part('muzzle', sp.convictParts.muzzle, () => {
                 if (sp.convictParts.muzzle === 'classic') original();
@@ -1340,7 +1356,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             Z('armor', bx(0.74 * K, 0.7, 0.5 * K, R, 0, 1.84, 0)).metadata = { sentryTorso: true };
             Z('accent', bx(0.56, 0.3, 0.14, R, 0, 1.96, 0.28)); Z('armor', bx(0.44, 0.2, 0.14, R, 0, 1.62, 0.27));
             for (const s of [-1, 1]) Z('visor', bx(0.06, 0.04, 0.03, R, s * 0.16, 2.06, 0.36));
-            Z('armor', bx(0.5, 0.56, 0.3, R, 0, 1.9, -0.4));
+            Z('armor', bx(0.5, 0.56, 0.3, R, 0, 1.9, -0.4)).metadata = { sentryBackpack: true };
             for (const s of [-1, 1]) F(FIXED.steel, cy(0.12, 0.12, 0.5, 8, R, s * 0.15, 1.95, -0.58));
         });
         for (const s of [-1, 1]) {

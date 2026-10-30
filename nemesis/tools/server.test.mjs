@@ -249,15 +249,20 @@ test('SRV-06: детали Подопытной проверяются, сохр
         owner.send(message);
         return result;
     }
-    const custom = { hair: 'messy', eyes: 'tails', outfit: 'torn', implants: 'temples', wrists: 'bandaged' };
+    const oldParts = { hair: 'messy', eyes: 'tails', outfit: 'torn', implants: 'temples', wrists: 'bandaged' };
+    const migrated = await change({ t: 'lobby', charId: 'labrat', parts: oldParts },
+        m => m?.t === 'lobby' && m.seats[0].charId === 'labrat', 'legacy patient');
+    assert.deepEqual(migrated.seats[0].parts, { hair: 'messy', eyes: 'tails', outfit: 'torn', ankle: 'classic', wrists: 'bandaged' },
+        'removed implants fall back without erasing the other selections');
+    const custom = { hair: 'messy', eyes: 'tails', outfit: 'torn', ankle: 'tracker', wrists: 'bandaged' };
     const updated = await change({ t: 'lobby', charId: 'labrat', colors: { gown: '#12abcd' }, parts: { ...custom, injected: 'bad' } },
         m => m && m.t === 'lobby' && m.seats[0].parts?.hair === 'messy', 'custom parts');
     assert.deepEqual(updated.seats[0].parts, custom, 'other players receive the canonical preset');
     assert.equal(updated.seats[0].colors.gown, '#12abcd');
 
-    const invalid = await change({ t: 'lobby', parts: { hair: 'bob', eyes: 'visor', outfit: 'coat', implants: 'crown', injected: 'bad' } },
+    const invalid = await change({ t: 'lobby', parts: { hair: 'bob', eyes: 'visor', outfit: 'coat', implants: 'crown', ankle: 'bad', injected: 'bad' } },
         m => m && m.t === 'lobby' && m.seats[0].parts?.outfit === 'gown', 'removed parts fall back safely');
-    assert.deepEqual(invalid.seats[0].parts, { hair: 'loose', eyes: 'bandage', outfit: 'gown', implants: 'classic', wrists: 'classic' });
+    assert.deepEqual(invalid.seats[0].parts, { hair: 'loose', eyes: 'bandage', outfit: 'gown', ankle: 'classic', wrists: 'classic' });
     await change({ t: 'lobby', parts: custom }, m => m && m.t === 'lobby' && m.seats[0].parts?.outfit === 'torn', 'restored parts');
 
     const switched = await change({ t: 'lobby', charId: 'pilot', parts: { hair: 'shaved' } },
@@ -291,7 +296,7 @@ test('SRV-07: Охранник и Подопытная сохраняют нез
         owner.send(message);
         return result;
     }
-    const lab = { hair: 'messy', eyes: 'wide', outfit: 'long', implants: 'neck', wrists: 'restraints' };
+    const lab = { hair: 'messy', eyes: 'wide', outfit: 'long', ankle: 'tag', wrists: 'restraints' };
     const guard = { suit: 'patrol', optics: 'cluster', respirator: 'ribbed', shoulders: 'heavy', cloak: 'split' };
     await change({ t: 'lobby', charId: 'labrat', parts: lab }, m => m?.t === 'lobby' && m.seats[0].parts?.hair === 'messy', 'Lab Rat choices');
     let msg = await change({ t: 'lobby', charId: 'sentry' }, m => m?.t === 'lobby' && m.seats[0].charId === 'sentry', 'new Sentry');
