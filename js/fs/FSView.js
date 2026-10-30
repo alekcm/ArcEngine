@@ -134,6 +134,15 @@ const FSView = {
                 ctx.font = 'bold 22px system-ui, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText(area.world.name, r.x + r.w / 2, r.y + r.h - 26);
+                // The space of an objective token is marked with a gold ring.
+                if (area.world.objective) {
+                    ctx.strokeStyle = '#c9a227';
+                    ctx.lineWidth = 5;
+                    ctx.beginPath();
+                    ctx.arc(r.x + r.w / 2, r.y + r.h / 2, r.w / 2 - 20, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.lineWidth = 4;
+                }
                 // The values: materiel, capacity and the asset icons.
                 ctx.font = '18px system-ui, sans-serif';
                 ctx.fillStyle = '#a8d08a';
@@ -322,6 +331,7 @@ const FSView = {
         }
         // The objective tokens.
         for (const o of state.objectives) {
+            if (o.taken) continue;                  // the token is already in the play area
             const sys = state.systems.find(x => x.id === o.system);
             if (!sys) continue;
             const p = this.areaPos(app, sys, o.area, view.metrics);

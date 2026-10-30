@@ -135,12 +135,14 @@ test('the client: every command of the panels is known to the rules', () => {
     }
 });
 
-test('the client: the panels and the board play a whole game', () => {
+// The panels of the client play the game: the players are the buttons and the
+// clicks on the board.
+function playWholeGame(count, seed) {
     UI.init(canvas);
     const game = new FSGame(app);
     const state = FS_RULES.newGame({
-        seed: 33,
-        players: FS_DATA.factions.slice(0, 2).map((f, i) => ({ name: 'Игрок ' + (i + 1), faction: f })),
+        seed,
+        players: FS_DATA.factions.slice(0, count).map((f, i) => ({ name: 'Игрок ' + (i + 1), faction: f })),
     });
     // The 3D pick: the test chooses the mesh under the pointer.
     let mesh = null;
@@ -205,6 +207,17 @@ test('the client: the panels and the board play a whole game', () => {
     }
     assert.ok(steps > 10, 'the panels did the work of the players: ' + steps + ' steps');
     assert.ok(state.round >= 2 || state.over, 'the game went on: round ' + state.round);
+    return state;
+}
+
+test('the client: the panels and the board play a whole game', () => {
+    const state = playWholeGame(2, 33);
+    assert.ok(state.round >= 1);
+});
+
+test('the client: the panels play a game of four players', () => {
+    const state = playWholeGame(4, 34);
+    assert.ok(state.round >= 1);
 });
 
 test('the client: the game over is shown', () => {
