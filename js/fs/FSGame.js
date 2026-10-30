@@ -233,6 +233,12 @@ class FSGame {
             ctx.status = '';
             return;
         }
+        // The order that is being resolved is already open.
+        if (s.order) {
+            ctx.text = 'Приказ уже в игре — закончите его.';
+            ctx.status = '';
+            return;
+        }
         ctx.text = 'Ваш ход: вскройте верхний приказ в системе.';
         ctx.status = '';
         const orders = FS_RULES.availableOrders(s, me);
@@ -356,8 +362,13 @@ class FSGame {
             for (const def of faction.units) {
                 const n = p.supply.units[def.id] || 0;
                 if (n <= 0) continue;
+                if (p.materiel < def.cost) continue;
+                if (def.kl > FS_RULES.commandLevel(s, me)) continue;
+                if (def.forge && !(p.assets.forge || 0)) continue;
                 ctx.actions.push({
-                    label: def.name + ' ×' + n + ' (' + def.cost + ' материи, КЛ ' + def.kl + (def.forge ? ', кузница' : '') + ')',
+                    label: def.name + ' ×' + n + ' (' + def.cost + ' материи, КЛ ' + def.kl
+                        + ', бой ' + def.combat + ', ' + (def.type === 'ship' ? 'корабль' : 'наземный')
+                        + (def.forge ? ', кузница' : '') + ')',
                     onClick: () => {
                         this.mode = 'placeUnit';
                         this.pending = { unit: def.id, def };
@@ -396,13 +407,11 @@ class FSGame {
         if (!sys) return;
         const list = [];
         for (const area of sys.areas) {
-            if (def) {
-                // The ships stand in the voids, the ground units on the worlds.
-                if (def.type === 'ship' && area.world) continue;
-                if (def.type === 'ground' && !area.world) continue;
-            } else if (!area.world) {
-                continue;                       // a structure stands on a world
-            }
+            // Only the places where the piece may stand.
+            const ok = def
+                ? FS_RULES.canPlaceUnit(s, s.seat, sys.id, area.pos, def).ok
+                : FS_RULES.canPlaceStructure(s, s.seat, sys.id, area.pos).ok;
+            if (!ok) continue;
             const p = FSView.areaPos(this.app, sys, area.pos, this.view.metrics);
             const h = this.app.location.terrain.heightAt(p.x, p.y);
             list.push({ x: p.x, y: h + 14, z: p.y });
@@ -416,15 +425,29 @@ class FSGame {
         ctx.title = 'Стратегия — улучшения';
         ctx.text = 'Материя: ' + p.materiel + '. Можно купить одно боевое улучшение и одно улучшение приказа.';
         ctx.status = '';
+        // The upgrades are bought only with his units or structures in the system.
+        if (!s.order || !FS_RULES.hasUnitsOrStructures(s, me, s.order.system)) {
+            ctx.text = 'В активной системе нет ваших отрядов и построек — улучшения купить нельзя.';
+            ctx.actions.push({
+                label: 'Закончить стратегию',
+                onClick: () => this.net.cmd({ type: 'finishStrategize' }),
+            });
+            return;
+        }
+        // Only the cards the player may buy: the level of command and the materiel.
+        const level = FS_RULES.commandLevel(s, me);
         const ccards = FS_DATA.combat.filter(c => c.faction === p.faction && c.upgrade);
-        for (const c of ccards) {
+        const mayBuy = c => c.kl <= level && c.cost <= p.materiel;
+        ctx.text += '\n' + ccards.filter(mayBuy).map(c => c.name + ' (КЛ ' + c.kl + '): ' + (c.general || '') + ' ' + (c.unit || '')).join('\n');
+        for (const c of ccards.filter(mayBuy)) {
             ctx.actions.push({
                 label: 'Боевое: ' + c.name + ' (' + c.cost + ' материи)',
                 onClick: () => this.net.cmd({ type: 'buyUpgrade', kind: 'combat', card: c.name }),
             });
         }
         const ocards = FS_DATA.orders.filter(c => c.faction === p.faction);
-        for (const c of ocards) {
+        ctx.text += '\n' + ocards.filter(mayBuy).map(c => c.name + ' (КЛ ' + c.kl + '): ' + (c.text || '')).join('\n');
+        for (const c of ocards.filter(mayBuy)) {
             ctx.actions.push({
                 label: 'Приказ: ' + c.name + ' (' + c.cost + ' материи)',
                 onClick: () => this.net.cmd({ type: 'buyUpgrade', kind: 'order', card: c.name }),
@@ -577,9 +600,22 @@ class FSGame {
                 if (this.lastCard) {
                     ctx.text += '\n\n«' + this.lastCard.name + '»: ' + (this.lastCard.general || '')
                         + (this.lastCard.unit ? ' ' + this.lastCard.unit : '');
+                    // The quick effects of the card: the tokens and the dice.
+                    const face = d => d === 'att' ? 'атака' : d === 'def' ? 'оборона' : d === 'morale' ? 'мораль' : 'пусто';
                     ctx.actions.push({ label: 'Жетон атаки +1', onClick: () => this.net.cmd({ type: 'combat', action: 'token', tokenType: 'att', count: 1 }) });
                     ctx.actions.push({ label: 'Жетон обороны +1', onClick: () => this.net.cmd({ type: 'combat', action: 'token', tokenType: 'def', count: 1 }) });
-                    ctx.actions.push({ label: 'Кубик +1', onClick: () => this.net.cmd({ type: 'combat', action: 'die', count: 1 }) });
+                    ctx.actions.push({ label: 'Жетон атаки у противника -1', onClick: () => this.net.cmd({ type: 'combat', action: 'token', tokenType: 'att', target: 'foe', count: 1 }) });
+                    ctx.actions.push({ label: 'Жетон обороны у противника -1', onClick: () => this.net.cmd({ type: 'combat', action: 'token', tokenType: 'def', target: 'foe', count: 1 }) });
+                    ctx.actions.push({ label: 'Кубик атаки +1', onClick: () => this.net.cmd({ type: 'combat', action: 'die', face: 'att', count: 1 }) });
+                    ctx.actions.push({ label: 'Кубик обороны +1', onClick: () => this.net.cmd({ type: 'combat', action: 'die', face: 'def', count: 1 }) });
+                    ctx.actions.push({ label: 'Кубик морали +1', onClick: () => this.net.cmd({ type: 'combat', action: 'die', face: 'morale', count: 1 }) });
+                    ctx.actions.push({ label: 'Кубик противника -1', onClick: () => this.net.cmd({ type: 'combat', action: 'die', target: 'foe', count: 1 }) });
+                    (c.dice[side] || []).forEach((d, i) => {
+                        ctx.actions.push({
+                            label: 'Перебросить кубик ' + (i + 1) + ' (' + face(d) + ')',
+                            onClick: () => this.net.cmd({ type: 'combat', action: 'reroll', index: i }),
+                        });
+                    });
                 }
                 return;
             }

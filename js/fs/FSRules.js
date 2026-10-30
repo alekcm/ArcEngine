@@ -984,6 +984,31 @@ const FS_RULES = {
         return sys.areas.some(a => this.structuresAt(state, systemId, a.pos).some(s => s.seat === seat && s.type === 'factory'));
     },
 
+    // May a unit stand here after the purchase?
+    canPlaceUnit(state, seat, systemId, pos, def) {
+        const sys = this.system(state, systemId);
+        const area = this.area(sys, pos);
+        if (!area) return { ok: false, error: 'Нет такой области.' };
+        // The ships stand in the voids, the ground units on the worlds.
+        if (def.type === 'ship' && area.world) return { ok: false, error: 'Корабль может стоять только в пустоте.' };
+        if (def.type === 'ground' && !area.world) return { ok: false, error: 'Наземный отряд не может стоять в пустоте.' };
+        // Only the friendly and the uncontrolled areas.
+        const theirs = state.units.some(u => u.system === systemId && u.area === pos && u.seat !== seat)
+            || state.structures.some(st => st.seat !== seat && st.system === systemId && st.area === pos);
+        if (theirs) return { ok: false, error: 'Нельзя развёртывать в чужую область.' };
+        return { ok: true };
+    },
+
+    // May a structure stand here?
+    canPlaceStructure(state, seat, systemId, pos) {
+        const sys = this.system(state, systemId);
+        const area = this.area(sys, pos);
+        if (!area || !area.world) return { ok: false, error: 'Постройка ставится только на мир.' };
+        if (this.control(state, seat, systemId, pos) !== 'friendly') return { ok: false, error: 'Мир должен быть вашим.' };
+        if (this.structuresAt(state, systemId, pos).length) return { ok: false, error: 'На мире уже есть постройка.' };
+        return { ok: true };
+    },
+
     cmdBuyUnit(state, seat, cmd) {
         const order = state.order;
         if (!order || order.order !== 'deploy' || order.seat !== seat) {
@@ -999,18 +1024,8 @@ const FS_RULES = {
         const p = state.players[seat];
         if ((p.supply.units[def.id] || 0) <= 0) return { ok: false, error: 'Такого отряда больше нет в запасе.' };
         if (def.kl > this.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
-        const sys = this.system(state, cmd.system);
-        const area = this.area(sys, cmd.pos);
-        if (!area) return { ok: false, error: 'Нет такой области.' };
-        // The ships stand in the voids, the ground units on the worlds.
-        if (def.type === 'ship' && area.world) return { ok: false, error: 'Корабль может стоять только в пустоте.' };
-        if (def.type === 'ground' && !area.world) return { ok: false, error: 'Наземный отряд не может стоять в пустоте.' };
-        // Only the friendly and the uncontrolled areas.
-        const control = this.control(state, seat, cmd.system, cmd.pos);
-        if (control === 'contested') return { ok: false, error: 'Спорная область — нельзя развёртывать.' };
-        const theirs = state.units.some(u => u.system === cmd.system && u.area === cmd.pos && u.seat !== seat)
-            || state.structures.some(st => st.seat !== seat && st.system === cmd.system && st.area === cmd.pos);
-        if (theirs) return { ok: false, error: 'Нельзя развёртывать в чужую область.' };
+        const place = this.canPlaceUnit(state, seat, cmd.system, cmd.pos, def);
+        if (!place.ok) return place;
         let cost = def.cost;
         if (def.forge) {
             if ((p.assets.forge || 0) < 1) return { ok: false, error: 'Нужен жетон кузницы.' };
@@ -1042,11 +1057,8 @@ const FS_RULES = {
         if ((p.supply.structures[type] || 0) <= 0) return { ok: false, error: 'Такой постройки больше нет в запасе.' };
         const stats = this.structureStats(type);
         if (p.materiel < stats.cost) return { ok: false, error: 'Не хватает материи.' };
-        const sys = this.system(state, cmd.system);
-        const area = this.area(sys, cmd.pos);
-        if (!area || !area.world) return { ok: false, error: 'Постройка ставится только на мир.' };
-        if (this.control(state, seat, cmd.system, cmd.pos) !== 'friendly') return { ok: false, error: 'Мир должен быть вашим.' };
-        if (this.structuresAt(state, cmd.system, cmd.pos).length) return { ok: false, error: 'На мире уже есть постройка.' };
+        const place = this.canPlaceStructure(state, seat, cmd.system, cmd.pos);
+        if (!place.ok) return place;
         p.materiel -= stats.cost;
         p.supply.structures[type]--;
         this.addStructure(state, seat, type, cmd.system, cmd.pos);

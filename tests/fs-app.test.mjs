@@ -135,6 +135,78 @@ test('the client: every command of the panels is known to the rules', () => {
     }
 });
 
+test('the client: the panels and the board play a whole game', () => {
+    UI.init(canvas);
+    const game = new FSGame(app);
+    const state = FS_RULES.newGame({
+        seed: 33,
+        players: FS_DATA.factions.slice(0, 2).map((f, i) => ({ name: 'Игрок ' + (i + 1), faction: f })),
+    });
+    // The 3D pick: the test chooses the mesh under the pointer.
+    let mesh = null;
+    scene.pick = () => (mesh ? { hit: true, pickedMesh: mesh, pickedPoint: { x: 0, y: 0, z: 0 } } : null);
+    const buttons = () => [...UI.elements.values()]
+        .filter(e => e.def.parent === 'fsActions' && e.def.kind === 'button' && e.def.id !== 'fsBtn');
+    let steps = 0;
+    let bi = 0;              // the button of the panel: the next one is pressed
+    while (!state.over && steps++ < 300) {
+        // Who acts now.
+        let seat = null;
+        if (state.phase === 'planning') {
+            const p = state.players.find(x => (x.placedTokens || 0) < FS_RULES.ORDER_TOKENS);
+            seat = p ? p.seat : null;
+        } else if (state.phase === 'operations') {
+            seat = state.turn;
+        } else if (state.phase === 'refresh') {
+            seat = state.event ? state.event.seat : null;
+        }
+        if (seat === null) break;
+        game.mode = 'idle';
+        game.pending = null;
+        game.damageTargets = [];
+        game.onState(FS_RULES.view(state, seat));
+        const before = sent.length;
+        for (let attempt = 0; attempt < 30 && sent.length === before; attempt++) {
+            const list = buttons();
+            if (!list.length) break;
+            const b = list[bi % list.length];
+            bi++;
+            b._click(b);
+            if (sent.length > before) break;
+            // The click waits for the board: the test clicks the right place.
+            if (game.mode === 'placeOrder') {
+                const sys = state.systems.find(x => FS_RULES.canPlaceOrder(state, seat, x.id));
+                if (!sys) { game.mode = 'idle'; continue; }
+                mesh = { metadata: { fs: 'system', system: sys.id } };
+                game.onClick();
+            } else if (game.mode === 'move' && game.pending) {
+                const unit = state.units.find(u => u.id === game.pending.unit);
+                const active = state.systems.find(x => x.id === state.order.system);
+                const area = active && active.areas.find(a => FS_RULES.canMove(state, seat, unit, { system: active.id, pos: a.pos }).ok);
+                if (!area) { game.mode = 'idle'; continue; }
+                mesh = { metadata: { fs: 'unit', system: active.id, pos: area.pos } };
+                game.onClick();
+            } else if (game.mode === 'placeUnit' || game.mode === 'placeStructure') {
+                const active = state.systems.find(x => x.id === state.order.system);
+                const def = game.pending.def;
+                const area = active && active.areas.find(a => (def
+                    ? FS_RULES.canPlaceUnit(state, seat, active.id, a.pos, def).ok
+                    : FS_RULES.canPlaceStructure(state, seat, active.id, a.pos).ok));
+                if (!area) { game.mode = 'idle'; continue; }
+                mesh = { metadata: { fs: 'unit', system: active.id, pos: area.pos } };
+                game.onClick();
+            }
+        }
+        if (sent.length === before) { console.log('DBG stop', state.phase, 'seat', seat, 'order', JSON.stringify(state.order), 'combat', state.combat ? state.combat.step : '-', 'buttons', buttons().length, 'mode', game.mode, 'steps', steps); break; }
+        const cmd = sent[sent.length - 1];
+        const res = FS_RULES.apply(state, seat, cmd);
+        // The storm may not go everywhere — the board decides.
+        if (cmd.type !== 'moveStorm') assert.equal(res.ok, true, cmd.type + ': ' + res.error);
+    }
+    assert.ok(steps > 10, 'the panels did the work of the players: ' + steps + ' steps');
+    assert.ok(state.round >= 2 || state.over, 'the game went on: round ' + state.round);
+});
+
 test('the client: the game over is shown', () => {
     UI.init(canvas);
     const game = new FSGame(app);
