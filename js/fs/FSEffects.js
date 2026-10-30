@@ -465,6 +465,17 @@ const FS_EFFECTS = {
                 if (!hand.length) return null;
                 return { question: { kind: 'cards', who: seat, op: 'playCard', options: hand.slice(), text: 'Какую карту разыграть?' } };
             }
+            case 'chooseWorld': {
+                const worlds = this.friendlyWorlds(R, state, seat);
+                if (!worlds.length) return null;
+                return { question: { kind: 'areas', who: seat, op: 'chooseWorld', options: worlds, text: 'Выберите дружественный мир.' } };
+            }
+            case 'loseAsset': {
+                const p2 = state.players[target];
+                const kinds = ['forge', 'cache', 'reinforcement'].filter(k => (p2.assets[k] || 0) > 0);
+                if (!kinds.length) return null;
+                return { question: { kind: 'assets', who: target, op: 'loseAsset', n: Math.min(step.n || 1, kinds.length), options: kinds, text: 'Какой жетон ресурса теряется?' } };
+            }
             case 'gainWorldAssets': {
                 const worlds = this.friendlyWorlds(R, state, seat);
                 if (!worlds.length) return null;
@@ -489,6 +500,21 @@ const FS_EFFECTS = {
                 if (!inCombat) return null;
                 combat.noRoute = combat.noRoute || [];
                 combat.noRoute.push(step.who === 'foe' ? foe : seat);
+                return null;
+            }
+            case 'orderKl': {
+                // The command level of the player is higher while the order runs.
+                if (state.order) state.order.klBonus = (state.order.klBonus || 0) + (step.n || 0);
+                return null;
+            }
+            case 'orderKl': {
+                // The command level of the player is higher while the order runs.
+                if (state.order) state.order.klBonus = (state.order.klBonus || 0) + (step.n || 0);
+                return null;
+            }
+            case 'once':
+            case 'note': {
+                // The sentence says no rule of its own.
                 return null;
             }
             case 'scheme': {
@@ -716,8 +742,32 @@ const FS_EFFECTS = {
                 combat.cards[side].played.push({ name, card, valuesOnly: true });
                 return null;
             }
+            case 'chooseWorld': {
+                const worlds = this.friendlyWorlds(R, state, seat);
+                if (!worlds.length) return null;
+                return { question: { kind: 'areas', who: seat, op: 'chooseWorld', options: worlds, text: 'Выберите дружественный мир.' } };
+            }
+            case 'loseAsset': {
+                const p2 = state.players[target];
+                const kinds = ['forge', 'cache', 'reinforcement'].filter(k => (p2.assets[k] || 0) > 0);
+                if (!kinds.length) return null;
+                return { question: { kind: 'assets', who: target, op: 'loseAsset', n: Math.min(step.n || 1, kinds.length), options: kinds, text: 'Какой жетон ресурса теряется?' } };
+            }
+            case 'chooseWorld': {
+                // The world of the effect: the next steps work with it.
+                if (answer.area) ctx.world = answer.area;
+                return null;
+            }
+            case 'loseAsset': {
+                const p2 = state.players[target];
+                const kind = answer.asset || (answer.assets || [])[0];
+                if (!kind) return null;
+                p2.assets[kind] = Math.max(0, (p2.assets[kind] || 0) - (step.n || 1));
+                R.log(state, target, state.players[target].name + ' теряет жетон: ' + kind + '.');
+                return null;
+            }
             case 'gainWorldAssets': {
-                const area = answer.area;
+                const area = answer.area || ctx.world;
                 if (!area) return null;
                 const sys = R.system(state, area.system);
                 const a = R.area(sys, area.pos);
@@ -870,13 +920,18 @@ const FS_EFFECTS = {
     // The moment of the scheme: when the card may be discarded.
     triggerOf(text) {
         const s = String(text || '').toLowerCase();
-        if (/орбитальн[а-яёa-z]*\s+удар/.test(s)) return 'strike';
         if (/начал[а-яёa-z]*\s+шага нанесения повреждений/.test(s)) return 'damage';
         if (/начал[а-яёa-z]*\s+раунда боя/.test(s)) return 'round';
+        if (/начал[а-яёa-z]*\s+боя/.test(s)) return 'combat-start';
+        if (/конц[а-яёa-z]*\s+боя/.test(s)) return 'combat-end';
+        if (/орбитальн[а-яёa-z]*\s+удар/.test(s)) return 'strike';
         if (/начал[а-яёa-z]*\s+фазы планирования/.test(s)) return 'planning';
         if (/конц[а-яёa-z]*\s+фазы планирования/.test(s)) return 'planning-end';
+        if (/начал[а-яёa-z]*\s+фазы действий/.test(s)) return 'operations';
         if (/перемеща[а-яёa-z]*\s+варп-шторм/.test(s)) return 'storm';
         if (/покупк[а-яёa-z]*\s+отряда/.test(s)) return 'buy-unit';
+        if (/активаци[а-яёa-z]*\s+(?:любого\s+)?вашего приказа/.test(s)) return 'order';
+        if (/вынужден[а-яёa-z]*\s+пропустить ход/.test(s)) return 'skip';
         return null;
     },
 
@@ -891,9 +946,11 @@ const FS_EFFECTS = {
     unitNames(what, faction) {
         if (!what || !faction) return [];
         const text = String(what).toLowerCase();
+        const words = text.split(/[^а-яёa-z']+/).filter(Boolean);
+        const last = words.length ? words[words.length - 1] : text;
         const names = [];
         for (const u of faction.units) {
-            if (this.sameName(u.name, text)) names.push(u.name);
+            if (this.sameName(u.name, text) || this.sameName(u.name, last)) names.push(u.name);
         }
         return names;
     },
@@ -944,12 +1001,12 @@ const RULES = [
     // "You may discard this card <when>, to <the effect>." — the scheme waits
     // for its moment.
     {
-        re: /(?:вы можете|можете|можно)\s+сбросить эту карту\s+(.*?)[,.]?\s*(?:для того,)?\s*чтобы\s+(.*)$/i,
-        build: (m, ctx) => {
-            const trigger = FS_EFFECTS.triggerOf(m[0]);
+        re: /сбросить эту карту\s*(.*?)(?:,\s*(?:для того,)?\s*чтобы\s+(.*))?$/i,
+        build: (m, ctx, s) => {
+            const trigger = FS_EFFECTS.triggerOf(s);
             if (!trigger) return null;
-            const steps = FS_EFFECTS.parse(m[2], ctx || {});
-            return { op: 'trigger', trigger, steps, text: m[0], note: !steps.length };
+            const steps = m[2] ? FS_EFFECTS.parse(m[2], ctx || {}) : [];
+            return { op: 'trigger', trigger, steps, text: s, note: !steps.length };
         },
     },
     // "your opponent loses 2 `att. token`" / "the opponent loses 1 `def. cube`"
@@ -957,8 +1014,8 @@ const RULES = [
         re: /(?:противник|вражеск[а-яёa-z]*|он)(?![а-яёa-z])[^.`]{0,40}?(?:теряет|потеряет|теряют)\s+(\d+|одно|два)?\s*`([^`]+)`/i,
         build: m => {
             const kind = FS_EFFECTS.iconKind(m[2]);
-            if (kind === 'token') return { op: 'loseToken', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]) };
-            if (kind === 'cube') return { op: 'loseDie', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]), pick: true };
+            if (kind === 'token') return { op: 'loseToken', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]), who: 'foe' };
+            if (kind === 'cube') return { op: 'loseDie', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]), pick: true, who: 'foe' };
             return null;
         },
     },
@@ -993,10 +1050,10 @@ const RULES = [
     },
     // "flip up to 2 of your `att. cube` to `def. cube`"
     {
-        re: /переверн[а-яёa-z]*\s+(?:до\s+)?(всех|(\d+))?\s*(?:ваш[а-яёa-z]*|из своих|своих)\s*`([^`]+)`\s*на\s*`([^`]+)`/i,
+        re: /переверн[а-яёa-z]*\s+(?:до\s+)?(всех|(\d+))?\s*(?:ваш[а-яёa-z]*|из своих|своих|свои)?\s*(?:`([^`]+)`\s*)?(?:кубик[а-яёa-z]*\s*)?на\s*`([^`]+)`/i,
         build: m => ({
             op: 'flipDie', n: /все/.test(m[1] || '') ? 99 : num(m[2]),
-            kind: FS_EFFECTS.icon(m[3]), to: FS_EFFECTS.icon(m[4]),
+            kind: m[3] ? FS_EFFECTS.icon(m[3]) : 'any', to: FS_EFFECTS.icon(m[4]),
             all: /все/.test(m[1] || ''), pick: true,
         }),
     },
@@ -1014,10 +1071,15 @@ const RULES = [
             return { op: 'spendDie', n: all ? 99 : num(m[2]), kind: FS_EFFECTS.icon(m[3]), all, pick: true };
         },
     },
-    // "spend any number of dice"
+    // "spend any number of dice" / "spend up to 2 dice"
     {
-        re: /потрат[а-яёa-z]*\s+любое количество\s+кубик/i,
-        build: () => ({ op: 'spendDie', n: 99, kind: 'any', all: true, pick: true }),
+        re: /потрат[а-яёa-z]*\s+(?:любое количество|до\s+(\d+))?\s*кубик/i,
+        build: m => ({ op: 'spendDie', n: m[1] ? num(m[1]) : 99, kind: 'any', all: !m[1], pick: true }),
+    },
+    // "the opponent must reroll 1 die of your choice"
+    {
+        re: /(?:противник|он)(?![а-яёa-z])[^.`]{0,40}?переброс[а-яёa-z]*\s+(\d+)?\s*кубик/i,
+        build: m => ({ op: 'rerollDie', n: num(m[1]), kind: 'any', who: 'foe', pick: true }),
     },
     // "get 1 `att. token` for every unrouted Guardsman or Cruiser, maximum 3"
     {
@@ -1139,8 +1201,8 @@ const RULES = [
     },
     // "play 1 card from your hand" / "take the top card of your deck"
     {
-        re: /(?:разыгра[а-яёa-z]*\s+(?:боевую карту|карту)|достаньте верхнюю карту|возьм[а-яёa-z]*\s+1\s+боевую карту)[^.]{0,60}?(1\s+боевую карту|верхнюю карту|карту)?/i,
-        build: m => ({ op: 'playCard', values: /верхнюю карту/.test(m[0]), pick: true }),
+        re: /(?:разыгра[а-яёa-z]*|достаньте|возьм[а-яёa-z]*)\s+(?:1\s+)?(?:верхнюю\s+)?(?:боевую\s+)?карту[а-яёa-z]*/i,
+        build: m => ({ op: 'playCard', values: /верхнюю/.test(m[0]), pick: true }),
     },
     // "your opponent must discard 1 random combat card from their hand"
     {
@@ -1154,6 +1216,16 @@ const RULES = [
             op: 'gainAsset', n: num(m[1]) || 1,
             kind: /кузниц/.test(m[2]) ? 'forge' : /тайник/.test(m[2]) ? 'cache' : /подкреплен/.test(m[2]) ? 'reinforcement' : 'any',
         }),
+    },
+    // "choose a friendly world"
+    {
+        re: /выберите дружественный мир/i,
+        build: () => ({ op: 'chooseWorld', pick: true }),
+    },
+    // "the opponent loses 1 asset token of their choice"
+    {
+        re: /(?:противник|он)(?![а-яёa-z])[^.`]{0,40}?теря[а-яёa-z]*\s+(\d+)?\s*ценный ресурс/i,
+        build: m => ({ op: 'loseAsset', n: num(m[1]), who: 'foe', pick: true }),
     },
     // "get the assets and the materiel of the world"
     {
@@ -1170,9 +1242,14 @@ const RULES = [
         re: /добавьте\s+(\d+)\s+к\s+(?:общей сумме\s+)?урона/i,
         build: m => ({ op: 'extraDamage', n: Number(m[1]) }),
     },
+    // "your command level increases by 1 while this order is executed"
+    {
+        re: /командный уровень\s+(?:увеличивается|повышается)\s+на\s+(\d+)\s+во время выполнения этого приказа/i,
+        build: m => ({ op: 'orderKl', n: Number(m[1]) }),
+    },
     // "the bastions of the opponent cannot prevent this orbital strike"
     {
-        re: /бастион[а-яёa-z]*\s+противник[а-яёa-z]*\s+не могут предотвратить/i,
+        re: /бастион[а-яёa-z]*\s+(?:противник[а-яёa-z]*\s+)?(?:не могут предотвратить|не защищают от этого орбитального удара)/i,
         build: () => ({ op: 'ignoreBastion' }),
     },
     // "your units cannot become routed this round"
@@ -1189,6 +1266,11 @@ const RULES = [
     {
         re: /^\s*один раз за раунд\s*\.?\s*$/i,
         build: () => ({ op: 'once' }),
+    },
+    // The sentences that say no rule of their own: the engine keeps them.
+    {
+        re: /^(?:—\s*\([^)]*\)|если одинаково, выбираете вы\.?|это может привести к новому сражению[^.]*\.?|не нарушая базовых правил размещения\.?|неиспользованный остаток материалов пропадает\.?|нужно быть главным по машинам\.?|требуются\s*\.?|пассивно|используйте эти материалы только для покупки любого количества кораблей\.?|уничтоженный город засчитывается[^.]*\.?|командный уровень этой карты не может превышать[^.]*\.?|неиспользованный остаток[^.]*\.?)$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
     },
 ];
 

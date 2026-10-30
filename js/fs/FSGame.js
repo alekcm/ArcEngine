@@ -797,6 +797,7 @@ class FSGame {
                 }
                 return;
             }
+            case 'assets':
             case 'assetType': {
                 const names = { forge: 'кузница', cache: 'тайник', reinforcement: 'подкрепление' };
                 for (const kind of q.options) {

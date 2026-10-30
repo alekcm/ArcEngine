@@ -640,6 +640,8 @@ const FS_RULES = {
         // The operations start with the first player who really has an order on
         // top of a stack — the tokens of the players lie in one stack.
         state.turn = this.firstWithOrder(state);
+        // The schemes of the start of the operations phase.
+        this.maybeScheme(state, state.turn, 'operations', { kind: 'order', ctx: null });
         this.log(state, -1, 'Фаза операций: приказы вскрываются по очереди.');
     },
 
@@ -686,6 +688,8 @@ const FS_RULES = {
         this.log(state, seat, p.name + ' раскрыл приказ «' + this.orderName(top.order) + '» в системе ' + sys.tile + '.');
         const res = this.resolveOrder(state, seat, top.order, sys.id);
         if (res && res.ok === false) return res;
+        // The schemes of the activation of the order.
+        if (this.maybeScheme(state, seat, 'order', { kind: 'order', ctx: null })) return { ok: true, pending: true };
         return { ok: true };
     },
 
@@ -1510,11 +1514,15 @@ const FS_RULES = {
         const schemes = this.schemesOf(state, seat).filter(s => s.trigger === trigger);
         if (!schemes.length) return false;
         const c = ctx || {};
+        // The card whose text the engine did not read: the player sees the text.
+        const manual = schemes.find(s => s.note);
         state.pending = {
             seat, answerSeat: seat, kind: 'scheme', steps: [], index: 0,
             question: {
                 kind: 'scheme', who: seat, options: schemes.map(s => s.name),
-                text: 'Сбросить карту: ' + schemes.map(s => '«' + s.name + '»').join(', ') + '?',
+                text: manual
+                    ? manual.text + '\n(Эффект выполняется вручную: сбросьте карту, когда выполните его.)'
+                    : 'Сбросить карту: ' + schemes.map(s => '«' + s.name + '»').join(', ') + '?',
             },
             ctx: { kind: c.kind || 'event', ctx: c.ctx || null, schemes },
         };
@@ -1579,6 +1587,8 @@ const FS_RULES = {
         state.combat = combat;
         this.log(state, attacker, 'Бой в системе ' + this.system(state, systemId).tile + ': '
             + state.players[attacker].name + ' против ' + state.players[defender].name + '.');
+        // The schemes of the start of the combat.
+        this.maybeScheme(state, attacker, 'combat-start', { kind: 'combat', ctx: { side: 'attacker' } });
     },
 
     // The commands of the combat.
@@ -1845,6 +1855,8 @@ const FS_RULES = {
         }
         c.loser = loser;
         c.step = 'retreat';
+        // The schemes of the end of the combat.
+        this.maybeScheme(state, winner, 'combat-end', { kind: 'combat', ctx: { side: winner === c.attacker ? 'attacker' : 'defender' } });
         // The combat cards go back into the deck, the reinforcement tokens too.
         for (const side of ['attacker', 'defender']) {
             const seat = side === 'attacker' ? c.attacker : c.defender;
