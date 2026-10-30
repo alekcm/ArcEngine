@@ -1132,6 +1132,8 @@ const FS_RULES = {
         let cost = def.cost;
         // The order may make the units cheaper.
         if (order.discount) cost = Math.max(0, cost - order.discount);
+        // The order may sell a unit of command level 0 for 1 materiel.
+        if (order.cheapUnit && def.kl === 0) cost = Math.min(cost, order.cheapUnit);
         // The card of the player may make the purchase cheaper.
         if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
         if (def.forge) {

@@ -682,6 +682,10 @@ const FS_EFFECTS = {
                 }
                 return null;
             }
+            case 'cheapUnit': {
+                if (state.order) state.order.cheapUnit = step.n || 1;
+                return null;
+            }
             case 'upgradeLimit': {
                 if (state.order) state.order.upgradeLimit = step.n || 1;
                 return null;
@@ -1737,7 +1741,7 @@ const RULES = [
     },
     // "the health of the opponent's units drops to 3 this round"
     {
-        re: /здоровье отрядов противника уменьшается до (\d+)/i,
+        re: /здоровье отрядов (?:вашего |ваших )?противника уменьша[а-яёa-z]* до (\d+)/i,
         build: m => ({ op: 'enemyHealth', n: Number(m[1]) }),
     },
     // "in this round ignore all the enemy's `att. cube`"
@@ -1790,7 +1794,7 @@ const RULES = [
     },
     // "once per round" — the limit of the upgrade.
     {
-        re: /^\s*один раз за раунд\s*\.?\s*$/i,
+        re: /^\s*(?:\([^)]*\)\s*)?один раз за раунд\s*\.?\s*$/i,
         build: () => ({ op: 'once' }),
     },
     // "The battle lasts 1 round."
@@ -1804,7 +1808,7 @@ const RULES = [
     },
     // "The capacity of the friendly worlds with a city grows by 2, up to 4."
     {
-        re: /вместимость\s+дружественных миров[^.]*увеличивается на (\d+)(?:,\s*максимум до (\d+))?/i,
+        re: /вместимость\s+дружественных миров[^.]*увеличива[а-яёa-z]* на (\d+)(?:,\s*максимум до (\d+))?/i,
         build: m => ({ op: 'capacityBonus', n: Number(m[1]), max: m[2] ? Number(m[2]) : 0 }),
     },
     // "you may treat all the bastions as factories"
@@ -1816,6 +1820,16 @@ const RULES = [
     {
         re: /стоимость в материалах\s+(?:снижается|уменьшается) на (\d+)\s+за каждого культиста/i,
         build: m => ({ op: 'orderDiscount', n: Number(m[1]), per: 'cultist' }),
+    },
+    // "you may spend 1 materiel to place 1 unit of command level 0"
+    {
+        re: /потратить (\d+) матери[а-яёa-z]*, чтобы разместить 1 отряд с командным уровнем 0/i,
+        build: m => ({ op: 'cheapUnit', n: Number(m[1]) }),
+    },
+    // "this unit or bastion takes the damage first" — the engine asks the order.
+    {
+        re: /^этот отряд(?: или бастион)? (?:получит урон|получает повреждения|получает урон) первым/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s }),
     },
     // "you may buy only 1 upgrade"
     {
@@ -1920,7 +1934,7 @@ const RULES = [
     },
     // "you may put 2 more order tokens on your event deck"
     {
-        re: /бесплатно положить на свою колоду событий еще (\d+) жетонов приказов/i,
+        re: /бесплатно положить на свою колоду событий еще (\d+) жетон[а-яёa-z]* приказов/i,
         build: m => ({ op: 'extraOrderTokens', n: Number(m[1]) }),
     },
     // "you may replace 1 structure in this system with any other"
@@ -1935,7 +1949,7 @@ const RULES = [
     },
     // "draw 2 extra cards and discard 2 of your cards"
     {
-        re: /вытяните (\d+) дополнительных карт и сбросьте затем (\d+)/i,
+        re: /вытяните (\d+) дополнительных карт[а-яёa-z]* и сбросьте затем (\d+)/i,
         build: m => ({ op: 'extraCombatCards', n: Number(m[1]), discard: Number(m[2]) }),
     },
     // "you may move up to 6 units to this world"
@@ -1998,7 +2012,7 @@ const RULES = [
     },
     // The sentences that say no rule of their own: the engine keeps them.
     {
-        re: /^(?:—\s*\([^)]*\)|если одинаково, выбираете вы\.?|это может привести к новому (?:сражению|битве)[^.]*\.?|не нарушая базовых правил размещения\.?|неиспользованный остаток материалов пропадает\.?|нужно быть главным по машинам\.?|требуются\s*\.?|пассивно|используйте эти материалы только для покупки любого количества кораблей\.?|уничтоженный город засчитывается[^.]*\.?|командный уровень этой карты не может превышать[^.]*\.?|неиспользованный остаток[^.]*\.?)$/i,
+        re: /^(?:—\s*\([^)]*\)|если одинаково, выбираете вы\.?|это может привести к нов[а-яёa-z]+ (?:сражению|битве)[^.]*\.?|не нарушая базовых правил размещения\.?|неиспользованный остаток материалов пропадает\.?|нужно быть главным по машинам\.?|требуются\s*\.?|пассивно|используйте эти материалы только для покупки любого количества кораблей\.?|уничтоженный город засчитывается[^.]*\.?|командный уровень этой карты не может превышать[^.]*\.?|неиспользованный остаток[^.]*\.?)$/i,
         build: (m, ctx, s) => ({ op: 'note', text: s }),
     },
 ];
