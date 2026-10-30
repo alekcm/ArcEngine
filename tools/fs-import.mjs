@@ -578,7 +578,9 @@ function parseEvents(md) {
                 name: clean,
                 type,
                 storm: parseStorm(stormCell),
-                text: rich(row[iText] || ''),
+                // The notes of the transcription after the dash are not the
+                // text of the card.
+                text: rich(row[iText] || '').split(/\s+—\s+/)[0],
             });
         }
     }
