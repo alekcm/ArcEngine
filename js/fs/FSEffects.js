@@ -100,9 +100,10 @@ const FS_EFFECTS = {
         for (const rule of RULES) {
             const m = rule.re.exec(s);
             if (!m) continue;
-            const step = rule.build(m, ctx || {}, s);
-            if (!step) continue;
-            return [this.withScope(step, scope)];
+            const built = rule.build(m, ctx || {}, s);
+            if (!built) continue;
+            const steps = Array.isArray(built) ? built : [built];
+            return steps.map(x => this.withScope(x, scope));
         }
         // Nothing matched: the icon phrases are taken as a simple effect.
         const fallback = this.fallback(s);
@@ -1011,12 +1012,18 @@ const RULES = [
     },
     // "your opponent loses 2 `att. token`" / "the opponent loses 1 `def. cube`"
     {
-        re: /(?:противник|вражеск[а-яёa-z]*|он)(?![а-яёa-z])[^.`]{0,40}?(?:теряет|потеряет|теряют)\s+(\d+|одно|два)?\s*`([^`]+)`/i,
+        re: /(?:противник|вражеск[а-яёa-z]*|он)(?![а-яёa-z])[^.`]{0,40}?(?:теряет|потеряет|теряют)\s+([^;]{0,80})/i,
         build: m => {
-            const kind = FS_EFFECTS.iconKind(m[2]);
-            if (kind === 'token') return { op: 'loseToken', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]), who: 'foe' };
-            if (kind === 'cube') return { op: 'loseDie', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]), pick: true, who: 'foe' };
-            return null;
+            const icons = [...m[1].matchAll(/`([^`]+)`/g)].map(x => x[1]);
+            if (!icons.length) return null;
+            const n = num((m[1].match(/\d+/) || [])[0]);
+            const steps = [];
+            for (const ic of icons) {
+                const kind = FS_EFFECTS.iconKind(ic);
+                if (kind === 'token') steps.push({ op: 'loseToken', n, kind: FS_EFFECTS.icon(ic), who: 'foe' });
+                else if (kind === 'cube') steps.push({ op: 'loseDie', n, kind: FS_EFFECTS.icon(ic), pick: true, who: 'foe' });
+            }
+            return steps.length ? steps : null;
         },
     },
     // "the opponent loses 1 die of their choice"
@@ -1026,7 +1033,7 @@ const RULES = [
     },
     // "you must reroll 1 `any cube`" / "reroll all your `def. cube`"
     {
-        re: /переброс[а-яёa-z]*\s+(?:до\s+)?(всех|все|(\d+))?\s*(?:ваш[а-яёa-z]*|свои|своих|из своих)?\s*`([^`]+)`/i,
+        re: /(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\s+(?:до\s+)?(всех|все|(\d+))?\s*(?:ваш[а-яёa-z]*|свои|своих|из своих)?\s*`([^`]+)`/i,
         build: m => {
             if (FS_EFFECTS.iconKind(m[3]) !== 'cube') return null;
             const all = /все/.test(m[1] || '');
