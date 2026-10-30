@@ -5,7 +5,6 @@
 // Every part is bound to a paint zone (CHARACTERS[*].zones) so the player can recolour it.
 
 import { characterParts } from '../shared/appearance.mjs';
-import { addCrewDetails } from './crew-variants.js';
 import { soldierVariant, mechanicVariant } from './role-variants.js';
 import { scoutVariant, pilotVariant } from './explorer-variants.js';
 import { hackerVariant, scientistVariant } from './research-variants.js';
@@ -13,6 +12,7 @@ import { medicVariant, janitorVariant, connectClassicJanitorHose } from './servi
 import { ceoVariant, androidVariant, rigBodyguard } from './corporate-variants.js';
 import { convictVariant, psychVariant, floatPsychDrones } from './crew-specialists.js';
 import { commandHair, commandOutfit, bountyArmor, captainArmor, commandGun, bountyDog } from './command-variants.js';
+import { survivorVariant, xenoVariant, xenoProbeVariant } from './survival-variants.js';
 
 const B = () => window.BABYLON;
 
@@ -71,9 +71,19 @@ export const DEFAULTS = {
     psych: { skin: '#f2d2bd', hair: '#1c1c1c', coat: '#dfe6ee', shirt: '#2c3e50', drone: '#6b7682', lights: '#3bb8ff' },
     bounty: { skin: '#d29b7c', hair: '#2a2420', armor: '#4b4f55', shirt: '#2d3436', dog: '#5a5f66', lights: '#ff3b3b' },
     captain: { skin: '#d29b7c', hair: '#2a1b12', armor: '#2c3e50', shirt: '#4b3d2a', gloves: '#2d3436', lights: '#3bb8ff' },
-    survivor: { skin: '#e8c4a8', hair: '#c9a86a', armor: '#3b3a36', shirt: '#6b5a44', pants: '#3a3530', lights: '#ff8c3b' },
-    xeno: { skin: '#5a3a28', hair: '#cfd3d6', coat: '#2f3a52', shirt: '#e8e8e8', gear: '#7a8694', lights: '#ffb347' },
+    survivor: { skin: '#e8c4a8', hair: '#c9a86a', armor: '#3b3a36', mask: '#2b2a28', bandage: '#d9d2c2', shirt: '#6b5a44', pants: '#3a3530', lights: '#ff8c3b' },
+    xeno: { skin: '#5a3a28', hair: '#cfd3d6', coat: '#2f3a52', pants: '#2f3a52', shirt: '#e8e8e8', gear: '#7a8694', lights: '#ffb347' },
 };
+
+/** Resolve paint in exactly the same way in the workshop and on the table.
+ * Old Xenobiologist palettes used one coat colour for both jacket and trousers; retain that look
+ * until the player explicitly chooses the new independent trouser colour. */
+export function characterColors(charId, colors = {}) {
+    const defaults = DEFAULTS[charId] || {};
+    const result = { ...defaults, ...colors };
+    if (charId === 'xeno' && !colors.pants) result.pants = colors.coat || defaults.coat;
+    return result;
+}
 
 // Parametric humanoids for the expansion crew. Each spec names the paint zone used by a body part and
 // lists the accessories that make the character recognisable (see CHARACTERS[*].zones in cards.mjs).
@@ -92,7 +102,7 @@ const SPECS = {
     bounty:    { legs: 'shirt', boots: 'armor', torso: 'shirt', arms: 'shirt', hands: 'armor', hair: 'shortBeard', hairZone: 'hair', fullBeard: 'hair', pads: 'armor', harness: 'armor', chestPlate: 'armor', rifleHands: true, husky: 'dog', build: 'bulky' },
     captain:   { legs: 'shirt', boots: 'gloves', torso: 'shirt', arms: 'shirt', hands: 'gloves', hair: 'shortBeard', hairZone: 'hair', heavyVest: 'armor', cigarette: true, revolver: true, shoulderLamp: 'lights', build: 'athletic' },
     survivor:  { legs: 'pants', boots: 'armor', torso: 'shirt', arms: 'shirt', forearms: 'skin', hands: 'armor', hair: 'shaggyBob', hairZone: 'hair', bandana: true, chestPlate: 'armor', harness: 'armor', pistolR: true, slingL: true, radioPack: 'armor', female: true, bust: 0, build: 'athletic' },   // sleeves rolled up, right glove, left arm bandaged in a neck sling, radio backpack
-    xeno:      { legs: 'coat', boots: 'coat', torso: 'shirt', denimVest: 'coat', piping: 'shirt', arms: 'coat', forearms: 'skin', hands: 'skin', hair: 'afroPony', hairZone: 'hair', glasses: true, scanArm: 'gear', armHarness: true, vial: true, female: true, build: 'slim' },   // lab shirt under a short-sleeved denim jacket, afro ponytail, scanner arm strapped to the belt
+    xeno:      { legs: 'pants', boots: 'pants', torso: 'shirt', denimVest: 'coat', piping: 'shirt', arms: 'coat', forearms: 'skin', hands: 'skin', hair: 'afroPony', hairZone: 'hair', glasses: true, scanArm: 'gear', armHarness: true, vial: true, female: true, build: 'slim' },   // lab shirt under a short-sleeved denim jacket, afro ponytail, scanner arm strapped to the belt
 };
 // Fixed (non-paintable) materials
 const FIXED = { gun: '#23282e', gunLight: '#4a525c', steel: '#8c96a0', darkSteel: '#3a424b', rubber: '#1a1d21', glass: '#9fd8ff', strap: '#3b3127' };
@@ -120,11 +130,9 @@ function crewSpec(charId, parts) {
     if (charId === 'psych') return { ...spec, psychParts: parts };
     if (charId === 'bounty') return { ...spec, bountyParts: parts };
     if (charId === 'captain') return { ...spec, captainParts: parts };
-    const hair = {
-        survivor: { wavy: 'labMessy', long: 'longLoose' },
-        xeno: { loosecurl: 'curly', longtail: 'afroLongPony' },
-    }[charId]?.[parts.hair];
-    return hair ? { ...spec, hair, crewChin: charId === 'captain' } : spec;
+    if (charId === 'survivor') return { ...spec, survivorParts: parts };
+    if (charId === 'xeno') return { ...spec, xenoParts: parts };
+    return spec;
 }
 
 /**
@@ -178,9 +186,6 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     else if (charId === 'mechanic') buildMechanic(selectedParts);
     else if (charId === 'sentry') buildSentry(selectedParts);
     else buildHumanoid(charId === 'labrat' ? labratSpec(selectedParts) : crewSpec(charId, selectedParts));
-    if (!['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android', 'convict', 'psych', 'bounty', 'captain', 'labrat', 'sentry'].includes(charId)) {
-        addCrewDetails(charId, selectedParts, roleContext);
-    }
 
     // ---------------------------------------------------------------------------------------
     function buildHumanoid(sp) {
@@ -204,6 +209,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 const captain = !!sp.captainParts, slot = captain ? 'uniform' : 'outfit';
                 const variant = (sp.captainParts || sp.bountyParts)[slot];
                 part(slot, variant, () => variant === 'classic' ? boots() : commandOutfit('boot', variant, roleContext, W, s, captain));
+            } else if (sp.survivorParts || sp.xenoParts) {
+                const survivor = !!sp.survivorParts, slot = survivor ? 'outfit' : 'trousers';
+                const variant = (sp.survivorParts || sp.xenoParts)[slot], build = survivor ? survivorVariant : xenoVariant;
+                part(slot, variant, () => variant === 'classic' ? boots() : build('boots', variant, roleContext, R, s));
             } else boots();
             const legs = () => {
                 Z(sp.legs, bx(0.21 * W, 0.5, 0.22, R, s * 0.15 * W, 0.68, 0));
@@ -221,6 +230,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 const captain = !!sp.captainParts, slot = captain ? 'uniform' : 'outfit';
                 const variant = (sp.captainParts || sp.bountyParts)[slot];
                 part(slot, variant, () => variant === 'classic' ? legs() : commandOutfit('leg', variant, roleContext, W, s, captain));
+            } else if (sp.survivorParts || sp.xenoParts) {
+                const survivor = !!sp.survivorParts, slot = survivor ? 'outfit' : 'trousers';
+                const variant = (sp.survivorParts || sp.xenoParts)[slot], build = survivor ? survivorVariant : xenoVariant;
+                part(slot, variant, () => variant === 'classic' ? legs() : build('leg', variant, roleContext, R, s));
             } else legs();
         }
         const pelvis = () => Z(sp.legs, bx(0.52 * W, 0.2, 0.28, R, 0, 1.4, 0));
@@ -236,9 +249,19 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             const captain = !!sp.captainParts, slot = captain ? 'uniform' : 'outfit';
             const variant = (sp.captainParts || sp.bountyParts)[slot];
             part(slot, variant, () => variant === 'classic' ? pelvis() : commandOutfit('pelvis', variant, roleContext, W, null, captain));
+        } else if (sp.survivorParts || sp.xenoParts) {
+            const survivor = !!sp.survivorParts, slot = survivor ? 'outfit' : 'trousers';
+            const variant = (sp.survivorParts || sp.xenoParts)[slot], build = survivor ? survivorVariant : xenoVariant;
+            part(slot, variant, () => variant === 'classic' ? pelvis() : build('pelvis', variant, roleContext));
         } else pelvis();
-        F(FIXED.strap, bx(0.56 * W, 0.08, 0.32, R, 0, 1.5, 0));                 // belt
-        F(FIXED.steel, bx(0.1, 0.08, 0.04, R, 0, 1.5, 0.17));
+        const originalBelt = () => {
+            F(FIXED.strap, bx(0.56 * W, 0.08, 0.32, R, 0, 1.5, 0));
+            F(FIXED.steel, bx(0.1, 0.08, 0.04, R, 0, 1.5, 0.17));
+        };
+        if (sp.survivorParts || sp.xenoParts) {
+            const slot = sp.survivorParts ? 'outfit' : 'trousers';
+            if ((sp.survivorParts || sp.xenoParts)[slot] === 'classic') part(slot, 'classic', originalBelt);
+        } else originalBelt();
         // torso
         const T = (m) => sp.torso[0] === '#' ? F(sp.torso, m) : Z(sp.torso, m);   // torso zone, or a fixed colour
         let torso;
@@ -255,6 +278,15 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                     torso.metadata = { commandTorso: true };
                 } else commandOutfit('torso', variant, roleContext, W, null, captain);
             });
+        } else if (sp.survivorParts || sp.xenoParts) {
+            const survivor = !!sp.survivorParts, slot = survivor ? 'outfit' : 'jacket';
+            const variant = (sp.survivorParts || sp.xenoParts)[slot], build = survivor ? survivorVariant : xenoVariant;
+            part(slot, variant, () => {
+                if (variant === 'classic') {
+                    torso = T(bx(0.54 * W, 0.64, 0.32, R, 0, 1.86, 0));
+                    torso.metadata = survivor ? { survivorTorso: true } : { xenoShirt: true };
+                } else build('torso', variant, roleContext);
+            });
         } else torso = T(bx((sp.convictParts || sp.psychParts ? 0.6 : 0.54) * W, 0.64, 0.32, R, 0, 1.86, 0)); // bridge the shoulders to the arms
         if (sp.scientistParts) torso.name = 'scientist_torso';
         if (sp.medicParts) torso.name = 'medic_torso';
@@ -270,11 +302,17 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         }
         if (sp.female) {
             const bf = sp.bust == null ? 1 : sp.bust;
-            if (bf > 0 && (!sp.androidParts || sp.androidParts.vest === 'classic') && (!sp.psychParts || sp.psychParts.vest === 'classic')) {
+            if (bf > 0 && (!sp.androidParts || sp.androidParts.vest === 'classic') && (!sp.psychParts || sp.psychParts.vest === 'classic') && (!sp.xenoParts || sp.xenoParts.jacket === 'classic')) {
                 const original = () => { const m = bx(0.46 * W, 0.24 * bf, 0.16 * bf, R, 0, 1.98, 0.14 + 0.08 * bf); if (sp.bustZone) Z(sp.bustZone, m); else T(m); };
-                if (sp.androidParts || sp.psychParts) part('vest', 'classic', original); else original();
+                if (sp.androidParts || sp.psychParts) part('vest', 'classic', original);
+                else if (sp.xenoParts) part('jacket', 'classic', original);
+                else original();
             }
-            Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0));
+            const hips = () => Z(sp.legs, bx(0.6 * W, 0.22, 0.34, R, 0, 1.36, 0));
+            if (sp.survivorParts || sp.xenoParts) {
+                const survivor = !!sp.survivorParts, slot = survivor ? 'outfit' : 'trousers';
+                if ((sp.survivorParts || sp.xenoParts)[slot] === 'classic') part(slot, 'classic', hips);
+            } else hips();
         }   // chest and hips
         if (sp.underV || sp.vneck) { Z('skin', bx(0.16 * W, 0.16, 0.04, R, 0, 2.1, 0.16)); Z('skin', bx(0.08 * W, 0.1, 0.04, R, 0, 2.0, 0.17)); }   // open neckline
         if (sp.furCoat) {   // thick fur coat: one solid collar ring, solid cuffs and a fur hem, coat body over the torso
@@ -338,7 +376,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 for (const s of [-1, 1]) { Z(sp.heavyVest, bx(0.34 * W, 0.26, 0.4, R, s * 0.4 * W, 2.16, 0)); F(FIXED.darkSteel, bx(0.3 * W, 0.08, 0.36, R, s * 0.42 * W, 2.3, 0)); Z(sp.heavyVest, bx(0.22 * W, 0.3, 0.3, R, s * 0.42 * W, 1.94, 0.02)); }
             }
         }
-        if (sp.piping) { for (const s of [-1, 1]) Z(sp.piping, bx(0.03, 0.66, 0.02, R, s * 0.1 * W, 1.84, 0.245)); Z(sp.piping, bx(0.5 * W, 0.03, 0.02, R, 0, 1.52, 0.245)); for (const s of [-1, 1]) Z(sp.piping, bx(0.03, 0.4, 0.02, R, s * 0.39 * W, 1.84, 0.1)); }   // light seams on a dark coat
+        if (sp.piping && (!sp.xenoParts || sp.xenoParts.jacket === 'classic')) {
+            const original = () => { for (const s of [-1, 1]) Z(sp.piping, bx(0.03, 0.66, 0.02, R, s * 0.1 * W, 1.84, 0.245)); Z(sp.piping, bx(0.5 * W, 0.03, 0.02, R, 0, 1.52, 0.245)); for (const s of [-1, 1]) Z(sp.piping, bx(0.03, 0.4, 0.02, R, s * 0.39 * W, 1.84, 0.1)); };
+            if (sp.xenoParts) part('jacket', 'classic', original); else original();
+        }   // light seams on the original jacket
         if (sp.vest) {
             const original = () => { Z(sp.vest, bx(0.5 * W, 0.5, 0.1, R, 0, 1.84, 0.18)); Z(sp.vest, bx(0.5 * W, 0.5, 0.08, R, 0, 1.84, -0.18)); for (const s of [-1, 1]) Z(sp.vest, bx(0.08, 0.5, 0.36, R, s * 0.25 * W, 1.84, 0)); };
             if (sp.androidParts) part('vest', sp.androidParts.vest, () => {
@@ -370,21 +411,27 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             });
             else original();
         }
-        if (sp.denimVest) {   // short-sleeved denim jacket thrown over the shirt: back, two open front flaps, side panels, short sleeves, collar
-            Z(sp.denimVest, bx(0.58 * W, 0.6, 0.1, R, 0, 1.86, -0.2));
-            for (const s of [-1, 1]) { Z(sp.denimVest, bx(0.11 * W, 0.58, 0.1, R, s * 0.24 * W, 1.86, 0.19)); Z(sp.denimVest, bx(0.1, 0.58, 0.34, R, s * 0.27 * W, 1.86, 0)); }   // narrow flaps leave the white shirt visible
-            for (const s of [-1, 1]) Z(sp.denimVest, bx(0.21 * W, 0.26, 0.23, R, s * 0.38 * W, 1.92, 0));                 // short sleeves to mid-upper-arm
-            for (const s of [-1, 1]) Z(sp.denimVest, bx(0.12, 0.2, 0.1, R, s * 0.2 * W, 2.2, 0.1, [0, s * 0.5, 0]));        // open collar
-            F('#c9a24a', bx(0.08, 0.08, 0.02, R, 0.2 * W, 2.0, 0.245)); F('#c9a24a', bx(0.06, 0.06, 0.02, R, -0.2 * W, 1.78, 0.245));   // yellow badges
+        if (sp.denimVest && (!sp.xenoParts || sp.xenoParts.jacket === 'classic')) {
+            const original = () => { // open original jacket over the pale shirt
+                Z(sp.denimVest, bx(0.58 * W, 0.6, 0.1, R, 0, 1.86, -0.2));
+                for (const s of [-1, 1]) { Z(sp.denimVest, bx(0.11 * W, 0.58, 0.1, R, s * 0.24 * W, 1.86, 0.19)); Z(sp.denimVest, bx(0.1, 0.58, 0.34, R, s * 0.27 * W, 1.86, 0)); }
+                for (const s of [-1, 1]) Z(sp.denimVest, bx(0.21 * W, 0.26, 0.23, R, s * 0.38 * W, 1.92, 0));
+                for (const s of [-1, 1]) Z(sp.denimVest, bx(0.12, 0.2, 0.1, R, s * 0.2 * W, 2.2, 0.1, [0, s * 0.5, 0]));
+                F('#c9a24a', bx(0.08, 0.08, 0.02, R, 0.2 * W, 2.0, 0.245)); F('#c9a24a', bx(0.06, 0.06, 0.02, R, -0.2 * W, 1.78, 0.245));
+            };
+            if (sp.xenoParts) part('jacket', 'classic', original); else original();
         }
         if (sp.chestPlate) {
             const original = () => { Z(sp.chestPlate, bx(0.42 * W, 0.3, 0.12, R, 0, 1.96, 0.2)); Z(sp.chestPlate, bx(0.36 * W, 0.18, 0.1, R, 0, 1.7, 0.2)); };
             if (sp.bountyParts) part('armor', sp.bountyParts.armor, () => sp.bountyParts.armor === 'classic' ? original() : bountyArmor('torso', sp.bountyParts.armor, roleContext, W));
+            else if (sp.survivorParts) part('outfit', sp.survivorParts.outfit, () => sp.survivorParts.outfit === 'classic' ? original() : survivorVariant('vest', sp.survivorParts.outfit, roleContext));
             else original();
         }
-        if (sp.harness && (!sp.bountyParts || sp.bountyParts.armor === 'classic')) {
+        if (sp.harness && (!sp.bountyParts || sp.bountyParts.armor === 'classic') && (!sp.survivorParts || sp.survivorParts.outfit === 'classic')) {
             const original = () => { for (const s of [-1, 1]) Z(sp.harness, bx(0.08, 0.6, 0.04, R, s * 0.14 * W, 1.86, 0.18)); Z(sp.harness, bx(0.5 * W, 0.06, 0.04, R, 0, 1.64, 0.18)); for (let i = 0; i < 3; i++) F(FIXED.darkSteel, bx(0.08, 0.1, 0.06, R, -0.2 * W + i * 0.2 * W, 1.6, 0.2)); };
-            if (sp.bountyParts) part('armor', 'classic', original); else original();
+            if (sp.bountyParts) part('armor', 'classic', original);
+            else if (sp.survivorParts) part('outfit', 'classic', original);
+            else original();
         }
         if (sp.tie) { Z('shirt', bx(0.14, 0.3, 0.03, R, 0, 1.98, sp.robe ? 0.23 : 0.18)); F('#7a1f1f', bx(0.06, 0.28, 0.02, R, 0, 1.9, sp.robe ? 0.25 : 0.2)); }
         if (sp.redCross) {
@@ -509,29 +556,60 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
                 Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03)).name = (isMedic ? 'medic' : 'janitor') + '_hand_' + (s < 0 ? 'L' : 'R');
                 continue;
             }
-            const upper = Z(sp.arms, bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0));
+            let upper;
+            if (sp.survivorParts || sp.xenoParts) {
+                const survivor = !!sp.survivorParts, slot = survivor ? 'outfit' : 'jacket';
+                const variant = (sp.survivorParts || sp.xenoParts)[slot], build = survivor ? survivorVariant : xenoVariant;
+                part(slot, variant, () => {
+                    if (variant === 'classic') {
+                        // Widen the original upper sleeve just enough to meet the torso.
+                        upper = Z(sp.arms, bx(0.23 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0));
+                        upper.metadata = { [survivor ? 'survivorUpper' : 'xenoUpper']: s < 0 ? 'L' : 'R' };
+                    } else build('sleeve', variant, roleContext, R, s);
+                });
+            } else upper = Z(sp.arms, bx(0.17 * W, 0.42, 0.19, R, s * 0.38 * W, 1.84, 0));
             if (sp.slingL && s === -1) continue;                                                   // left forearm is in the sling (drawn below)
             const forearm = Z(sp.forearms || sp.arms, bx(0.15 * W, 0.4, 0.17, R, s * 0.39 * W, 1.44, 0.02));
             const hand = Z(sp.hands, bx(0.14, 0.14, 0.14, R, s * 0.39 * W, 1.2, 0.03));
+            if (sp.survivorParts || sp.xenoParts) {
+                const prefix = sp.survivorParts ? 'survivor' : 'xeno', side = s < 0 ? 'L' : 'R';
+                forearm.name = prefix + '_forearm_' + side; hand.name = prefix + '_hand_' + side;
+            }
             if (sp.scientistParts) {
                 const side = s < 0 ? 'L' : 'R';
                 upper.name = 'scientist_upper_' + side; forearm.name = 'scientist_forearm_' + side; hand.name = 'scientist_hand_' + side;
             }
         }
-        if (sp.slingL) {   // bandaged left forearm bent across the chest, hung from a bandage looped around the neck
-            const BND = '#d9d2c2';
-            F(BND, bx(0.17 * W, 0.24, 0.19, R, -0.38 * W, 1.66, 0.02));                                   // bandage wrap on the elbow
-            F(BND, bx(0.44 * W, 0.14, 0.14, R, -0.14 * W, 1.66, 0.22, [0, 0, 0.12]));                     // forearm across the belly
-            F(BND, bx(0.14, 0.14, 0.14, R, 0.1 * W, 1.7, 0.22));                                          // bandaged hand
-            for (const s of [-1, 1]) F(BND, bx(0.05, 0.56, 0.03, R, s * 0.1 * W, 1.96, 0.25, [0, 0, -s * 0.22]));   // sling straps from the neck down to the forearm
-            F(BND, bx(0.2, 0.05, 0.2, R, 0, 2.22, 0));                                                    // loop around the neck
+        if (sp.slingL) {   // a continuous injured arm and neck sling, kept still while walking
+            const bandage = (mesh, component) => { mesh.metadata = { survivorBandage: component }; return mesh; };
+            bandage(Z('bandage', bx(0.17 * W, 0.24, 0.19, R, -0.38 * W, 1.66, 0.02)), 'elbow');
+            // The original elbow and horizontal forearm were separated in depth; bridge the turn.
+            bandage(Z('bandage', bx(0.17, 0.17, 0.4, R, -0.32, 1.66, 0.22)), 'join');
+            // The sling sits in front of every vest, including the deeper salvage armour.
+            bandage(Z('bandage', bx(0.44 * W, 0.14, 0.14, R, -0.14 * W, 1.66, 0.4, [0, 0, 0.12])), 'forearm');
+            bandage(Z('bandage', bx(0.14, 0.14, 0.14, R, 0.1 * W, 1.7, 0.4)), 'hand');
+            for (const s of [-1, 1]) {
+                bandage(Z('bandage', bx(0.05, 0.56, 0.03, R, s * 0.1 * W, 1.96, 0.42, [0, 0, -s * 0.22])), 'strap');
+                bandage(Z('bandage', bx(0.05, 0.06, 0.44, R, s * 0.08, 2.2, 0.21)), 'shoulder');
+            }
+            bandage(Z('bandage', bx(0.2, 0.05, 0.2, R, 0, 2.22, 0)), 'neck');
         }
-        if (sp.radioPack) {   // field radio backpack: boxy unit, whip antenna, dials, handset on a coiled cable
-            Z(sp.radioPack, bx(0.4 * W, 0.46, 0.22, R, 0, 1.86, -0.28)); F(FIXED.darkSteel, bx(0.3 * W, 0.12, 0.06, R, 0, 2.0, -0.41));
-            for (let i = 0; i < 3; i++) Z(LZ, bx(0.04, 0.04, 0.02, R, -0.08 + i * 0.08, 1.98, -0.445)); F(FIXED.steel, cy(0.05, 0.05, 0.03, 8, R, 0.1, 1.8, -0.4, [Math.PI / 2, 0, 0]));
-            F(FIXED.steel, cy(0.02, 0.02, 0.9, 4, R, -0.16 * W, 2.5, -0.34)); F(FIXED.steel, bx(0.06, 0.1, 0.06, R, -0.16 * W, 2.06, -0.34));   // antenna + base
-            for (const s of [-1, 1]) F(FIXED.strap, bx(0.07, 0.6, 0.03, R, s * 0.16 * W, 1.86, 0.17));                                        // shoulder straps
-            F(FIXED.darkSteel, bx(0.08, 0.14, 0.06, R, 0.22 * W, 2.06, 0.16)); for (let i = 0; i < 4; i++) F(FIXED.rubber, bx(0.03, 0.03, 0.03, R, 0.24 * W + (i % 2) * 0.03, 2.14 + i * 0.03, 0.1 - i * 0.05));   // handset + coiled cable
+        if (sp.radioPack) {   // each radio replaces the entire backpack rather than decorating it
+            const original = () => {
+                Z(sp.radioPack, bx(0.4 * W, 0.46, 0.22, R, 0, 1.86, -0.28)); F(FIXED.darkSteel, bx(0.3 * W, 0.12, 0.06, R, 0, 2.0, -0.41));
+                for (let i = 0; i < 3; i++) Z(LZ, bx(0.04, 0.04, 0.02, R, -0.08 + i * 0.08, 1.98, -0.445));
+                F(FIXED.steel, cy(0.05, 0.05, 0.03, 8, R, 0.1, 1.8, -0.4, [Math.PI / 2, 0, 0]));
+                // Move the whip to the side of the shaggy hair rather than through it.
+                F(FIXED.steel, cy(0.02, 0.02, 0.9, 4, R, -0.27, 2.5, -0.34));
+                F(FIXED.steel, bx(0.06, 0.1, 0.06, R, -0.27, 2.06, -0.34));
+                F(FIXED.steel, bx(0.16, 0.07, 0.08, R, -0.22, 2.05, -0.34));
+            };
+            if (sp.survivorParts) part('radio', sp.survivorParts.radio, () => sp.survivorParts.radio === 'classic' ? original() : survivorVariant('radio', sp.survivorParts.radio, roleContext));
+            else original();
+            // Shoulder straps and handset are shared equipment rather than part of a pack shell.
+            for (const s of [-1, 1]) F(FIXED.strap, bx(0.07, 0.6, 0.03, R, s * 0.16 * W, 1.86, 0.17));
+            F(FIXED.darkSteel, bx(0.08, 0.14, 0.06, R, 0.22 * W, 2.06, 0.16));
+            for (let i = 0; i < 4; i++) F(FIXED.rubber, bx(0.03, 0.03, 0.03, R, 0.24 * W + (i % 2) * 0.03, 2.14 + i * 0.03, 0.1 - i * 0.05));
         }
         if (sp.cyberArms && (!sp.hackerParts || sp.hackerParts.arms === 'classic')) {   // original cybernetic arms
             const original = () => { for (const s of [-1, 1]) {
@@ -557,7 +635,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         if (sp.toolBelt && (!sp.janitorParts || sp.janitorParts.outfit === 'classic')) { for (let i = 0; i < 3; i++) F(FIXED.steel, bx(0.06, 0.14, 0.06, R, -0.22 * W + i * 0.1, 1.42, 0.17)); F(FIXED.strap, bx(0.14, 0.16, 0.1, R, 0.26 * W, 1.4, 0.12)); }
         if (sp.shoulderLamp) Z(sp.shoulderLamp, bx(0.08, 0.06, 0.06, R, -0.38 * W, 2.2, 0.12));
         // Bridge the head and shoulders on each reworked humanoid.
-        const joinedNeck = sp.scientistParts || sp.medicParts || sp.janitorParts || sp.ceoParts || sp.androidParts || sp.convictParts || sp.psychParts || sp.bountyParts || sp.captainParts;
+        const joinedNeck = sp.scientistParts || sp.medicParts || sp.janitorParts || sp.ceoParts || sp.androidParts || sp.convictParts || sp.psychParts || sp.bountyParts || sp.captainParts || sp.survivorParts || sp.xenoParts;
         const neck = Z('skin', bx(0.14, joinedNeck ? 0.16 : 0.1, 0.14, R, 0, 2.2, 0));
         // The Hacker's original mask had skin-coloured gaps at the temples and cheeks. Keep the
         // original geometry but make the underlying balaclava opaque for every mask option.
@@ -573,6 +651,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         if (sp.psychParts) { neck.name = 'psych_neck_joint'; head.name = 'psych_head'; }
         if (sp.bountyParts) { neck.name = 'bounty_neck_joint'; head.name = 'bounty_head'; }
         if (sp.captainParts) { neck.name = 'captain_neck_joint'; head.name = 'captain_head'; }
+        if (sp.survivorParts || sp.xenoParts) {
+            const prefix = sp.survivorParts ? 'survivor' : 'xeno';
+            neck.name = prefix + '_neck_joint'; head.name = prefix + '_head';
+        }
         if (!sp.respirator && !sp.gasMask && !sp.faceMask && !sp.bandana) Z('skin', bx(0.06, 0.06, 0.05, R, 0, 2.42, 0.18));    // nose (hidden under masks)
         const H = sp.hairZone || 'hair';
         const buildOriginalHair = () => {
@@ -661,6 +743,9 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
         else if (sp.bountyParts || sp.captainParts) {
             const captain = !!sp.captainParts, variant = (sp.captainParts || sp.bountyParts).hair;
             part('hair', variant, () => variant === 'classic' ? buildOriginalHair() : commandHair(variant, roleContext, captain));
+        } else if (sp.survivorParts || sp.xenoParts) {
+            const survivor = !!sp.survivorParts, variant = (sp.survivorParts || sp.xenoParts).hair;
+            part('hair', variant, () => variant === 'classic' ? buildOriginalHair() : (survivor ? survivorVariant : xenoVariant)('hair', variant, roleContext));
         } else buildOriginalHair();
         if (sp.crewChin) Z(H, bx(0.28, 0.12, 0.08, R, 0, 2.3, 0.14));   // the Captain keeps his beard with every haircut
         if (sp.beard) Z(sp.beard, bx(0.26, 0.08, 0.06, R, 0, 2.3, 0.16));
@@ -754,6 +839,7 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             for (const s of [-1, 1]) {
                 const lens = F(FIXED.glass, bx(0.1, 0.08, 0.02, R, s * 0.08, 2.46, 0.18), { alpha: 0.6, spec: 0.8 });
                 if (sp.psychParts) lens.metadata = { psychGlasses: true };
+                if (sp.xenoParts) lens.metadata = { xenoGlasses: true };
             }
         }
         if (sp.gasMask) {
@@ -816,7 +902,9 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             // held at the side: grip in the fist, barrel pointing down along the arm (slightly forward)
             const g = new (B().TransformNode)('gun', S); g.parent = R; g.position.set(side * 0.39 * W, 1.16, 0.1); g.rotation.x = 1.25;
             const original = () => {
-                F(FIXED.gun, bx(0.06, 0.1, 0.36, g, 0, 0.04, 0.16)); F(FIXED.gunLight, bx(0.08, 0.14, 0.12, g, 0, -0.02, 0));
+                F(FIXED.gun, bx(0.06, 0.1, 0.36, g, 0, 0.04, 0.16));
+                const grip = F(FIXED.gunLight, bx(0.08, 0.14, sp.survivorParts ? 0.18 : 0.12, g, 0, -0.02, 0));
+                if (sp.survivorParts) grip.metadata = { survivorGunGrip: true };
                 if (sp.revolver && side === 1) { F(FIXED.steel, cy(0.1, 0.1, 0.08, 6, g, 0, 0.06, 0.1, [0, 0, Math.PI / 2])); F(FIXED.gun, cy(0.03, 0.03, 0.3, 6, g, 0, 0.06, 0.3, [Math.PI / 2, 0, 0])); }
                 Z(LZ, bx(0.03, 0.03, 0.03, g, 0, 0.1, 0.1));
             };
@@ -835,6 +923,10 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             else if (sp.captainParts && side === 1) part('sidearm', sp.captainParts.sidearm, () => {
                 if (sp.captainParts.sidearm === 'classic') original();
                 else commandGun('sidearm', sp.captainParts.sidearm, roleContext, g);
+            });
+            else if (sp.survivorParts && side === 1) part('sidearm', sp.survivorParts.sidearm, () => {
+                if (sp.survivorParts.sidearm === 'classic') original();
+                else survivorVariant('sidearm', sp.survivorParts.sidearm, roleContext, g);
             });
             else original();
         }
@@ -949,31 +1041,63 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             else original();
         }
         if (sp.cigarette) { F('#f4f1e6', bx(0.03, 0.03, 0.16, R, 0.06, 2.34, 0.24, [0, -0.3, 0])); Z(LZ, bx(0.03, 0.03, 0.02, R, 0.085, 2.34, 0.315)); }
-        if (sp.bandana) { F('#2b2a28', bx(0.3, 0.22, 0.1, R, 0, 2.36, 0.15)); F('#2b2a28', bx(0.34, 0.1, 0.34, R, 0, 2.36, 0.0)); F('#2b2a28', bx(0.12, 0.2, 0.04, R, 0.05, 2.22, -0.17)); }   // cloth covers nose and mouth   // cloth over nose and mouth, knotted at the back
-        if (sp.vial) { F(FIXED.glass, cy(0.05, 0.05, 0.18, 6, R, 0.39 * W, 1.3, 0.14), { alpha: 0.7, spec: 0.8 }); Z(LZ, cy(0.035, 0.035, 0.1, 6, R, 0.39 * W, 1.27, 0.14)); F(FIXED.darkSteel, cy(0.05, 0.05, 0.03, 6, R, 0.39 * W, 1.4, 0.14)); }
+        if (sp.bandana) {
+            const original = () => {
+                Z('mask', bx(0.3, 0.22, 0.1, R, 0, 2.36, 0.15)).metadata = { survivorMask: true };
+                Z('mask', bx(0.34, 0.1, 0.34, R, 0, 2.36, 0));
+                Z('mask', bx(0.12, 0.2, 0.04, R, 0.05, 2.22, -0.17));
+            };
+            if (sp.survivorParts) part('bandana', sp.survivorParts.bandana, () => sp.survivorParts.bandana === 'classic' ? original() : survivorVariant('bandana', sp.survivorParts.bandana, roleContext));
+            else original();
+        }
+        if (sp.vial) {
+            // One prop node follows the right hand. The tube now touches the grip and the palm.
+            const tool = new (B().TransformNode)('xeno_tool', S); tool.parent = R; tool.position.set(0.39 * W, 1.2, 0.05);
+            const original = () => {
+                F(FIXED.darkSteel, bx(0.1, 0.16, 0.13, tool, 0, 0, 0)).metadata = { xenoToolGrip: true };
+                F(FIXED.glass, cy(0.05, 0.05, 0.18, 6, tool, 0, 0.1, 0.04), { alpha: 0.7, spec: 0.8 });
+                Z(LZ, cy(0.035, 0.035, 0.1, 6, tool, 0, 0.07, 0.04)).metadata = { xenoSample: true };
+                F(FIXED.darkSteel, cy(0.05, 0.05, 0.03, 6, tool, 0, 0.2, 0.04));
+            };
+            if (sp.xenoParts) part('tool', sp.xenoParts.tool, () => sp.xenoParts.tool === 'classic' ? original() : xenoVariant('tool', sp.xenoParts.tool, roleContext, tool));
+            else original();
+        }
         if (sp.syringe) { F(FIXED.glass, cy(0.03, 0.03, 0.26, 6, R, -0.39 * W, 1.24, 0.14, [0.9, 0, 0]), { alpha: 0.7 }); F(FIXED.steel, cy(0.01, 0.01, 0.16, 4, R, -0.39 * W, 1.15, 0.32, [0.9, 0, 0])); }
         if (sp.chains) {
             if (sp.convictParts) part('chains', sp.convictParts.chains, () => convictVariant('chains', sp.convictParts.chains, roleContext, W));
             else { for (let i = 0; i < 5; i++) Z(sp.chains, bx(0.06, 0.04, 0.03, R, -0.2 + i * 0.1, 1.08 - Math.abs(i - 2) * 0.03, 0.06)); for (const s of [-1, 1]) Z(sp.chains, bx(0.18, 0.08, 0.18, R, s * 0.39 * W, 1.12, 0.03)); }
         }
         // companions
-        if (sp.scanArm) {   // single industrial probe arm as on the original art: backpack unit, two long jointed segments rising behind the right shoulder and arching high over the head, boxy scanner head with a red laser
-            const seg = (a, b, r) => {   // cylinder segment between two points
-                const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.hypot(dx, dy, dz);
-                const m = cy(r, r, len, 6, R, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
-                m.rotationQuaternion = B().Quaternion.FromUnitVectorsToRef(new (B().Vector3)(0, 1, 0), new (B().Vector3)(dx / len, dy / len, dz / len), new (B().Quaternion)());
-                return m;
+        if (sp.scanArm) { // an intact over-shoulder manipulator on a common backpack mount
+            // The whole assembly is a root-level transform.  Otherwise autoRig would mistake low,
+            // outboard probe pieces for an arm and tear them off when the character walks.
+            const assembly = new (B().TransformNode)('xeno_probe', S); assembly.parent = R;
+            const h = new (B().TransformNode)('scanHead', S); h.parent = assembly;
+            const original = () => {
+                const seg = (a, b, r) => {
+                    const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.hypot(dx, dy, dz);
+                    const m = cy(r, r, len, 6, assembly, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+                    m.rotationQuaternion = B().Quaternion.FromUnitVectorsToRef(new (B().Vector3)(0, 1, 0), new (B().Vector3)(dx / len, dy / len, dz / len), new (B().Quaternion)());
+                    return m;
+                };
+                const P0 = [0.18 * W, 2.12, -0.3], P1 = [0.24 * W, 2.98, -0.36], P2 = [0.2 * W, 3.34, 0.12], P3 = [0.16 * W, 3.16, 0.4];
+                F(FIXED.darkSteel, bx(0.12, 0.12, 0.1, assembly, 0.18 * W, 2.04, -0.3));
+                F(FIXED.darkSteel, sp_(0.11, 6, assembly, ...P0)); Z(sp.scanArm, seg(P0, P1, 0.05)); F(FIXED.steel, seg([P0[0] + 0.07, P0[1] + 0.1, P0[2] - 0.06], [P1[0] + 0.07, P1[1] - 0.1, P1[2] - 0.06], 0.02));
+                F(FIXED.darkSteel, sp_(0.11, 6, assembly, ...P1)); Z(sp.scanArm, seg(P1, P2, 0.05)); F(FIXED.darkSteel, sp_(0.09, 6, assembly, ...P2)); Z(sp.scanArm, seg(P2, P3, 0.04));
+                h.position.set(P3[0], P3[1], P3[2]); h.rotation.x = 0.9;
+                Z(sp.scanArm, bx(0.16, 0.14, 0.24, h, 0, 0, 0.06)); F(FIXED.darkSteel, bx(0.1, 0.08, 0.08, h, 0, -0.1, 0.1)); F(FIXED.steel, bx(0.03, 0.08, 0.1, h, 0.1, 0, 0.14));
+                Z(LZ, cy(0.05, 0.05, 0.02, 8, h, 0, 0, 0.19, [Math.PI / 2, 0, 0])); F('#ff3030', cy(0.02, 0.02, 0.02, 6, h, 0, -0.1, 0.15, [Math.PI / 2, 0, 0]), { emissive: 1.0 });
             };
-            const P0 = [0.18 * W, 2.12, -0.3], P1 = [0.24 * W, 2.98, -0.36], P2 = [0.2 * W, 3.34, 0.12], P3 = [0.16 * W, 3.16, 0.4];
-            Z(sp.scanArm, bx(0.34 * W, 0.44, 0.16, R, 0, 1.8, -0.26)); F(FIXED.darkSteel, bx(0.12, 0.12, 0.1, R, 0.18 * W, 2.04, -0.3));   // backpack unit + mount
-            F(FIXED.darkSteel, sp_(0.11, 6, R, ...P0)); Z(sp.scanArm, seg(P0, P1, 0.05)); F(FIXED.steel, seg([P0[0] + 0.07, P0[1] + 0.1, P0[2] - 0.06], [P1[0] + 0.07, P1[1] - 0.1, P1[2] - 0.06], 0.02));   // lower segment + hydraulic rod
-            F(FIXED.darkSteel, sp_(0.11, 6, R, ...P1)); Z(sp.scanArm, seg(P1, P2, 0.05)); F(FIXED.darkSteel, sp_(0.09, 6, R, ...P2)); Z(sp.scanArm, seg(P2, P3, 0.04));   // elbow, upper segment arching forward, wrist
-            const h = new (B().TransformNode)('scanHead', S); h.parent = R; h.position.set(P3[0], P3[1], P3[2]); h.rotation.x = 0.9;   // scanner head tilted down toward what she looks at
-            Z(sp.scanArm, bx(0.16, 0.14, 0.24, h, 0, 0, 0.06)); F(FIXED.darkSteel, bx(0.1, 0.08, 0.08, h, 0, -0.1, 0.1)); F(FIXED.steel, bx(0.03, 0.08, 0.1, h, 0.1, 0, 0.14));   // body, under-lamp, side antenna
-            Z(LZ, cy(0.05, 0.05, 0.02, 8, h, 0, 0, 0.19, [Math.PI / 2, 0, 0])); F('#ff3030', cy(0.02, 0.02, 0.02, 6, h, 0, -0.1, 0.15, [Math.PI / 2, 0, 0]), { emissive: 1.0 });   // lens + red laser emitter
-            if (sp.armHarness) {   // crossed chest straps tie the back unit down to the belt
+            const build = () => {
+                Z(sp.scanArm, bx(0.34 * W, 0.44, 0.16, assembly, 0, 1.8, -0.26));
+                if (!sp.xenoParts || sp.xenoParts.probe === 'classic') original();
+                else xenoProbeVariant(sp.xenoParts.probe, roleContext, assembly, h);
+            };
+            if (sp.xenoParts) part('probe', sp.xenoParts.probe, build); else build();
+            if (sp.armHarness) {   // crossed chest straps tie the back unit to the belt
                 for (const s of [-1, 1]) F(FIXED.strap, bx(0.07, 0.76, 0.03, R, s * 0.08 * W, 1.84, 0.255, [0, 0, s * 0.3]));
-                F(FIXED.steel, bx(0.1, 0.1, 0.02, R, 0, 1.84, 0.27)); for (const s of [-1, 1]) F(FIXED.strap, bx(0.08, 0.5, 0.03, R, s * 0.18 * W, 1.74, -0.19));   // buckle, back straps down to the belt
+                F(FIXED.steel, bx(0.1, 0.1, 0.02, R, 0, 1.84, 0.27));
+                for (const s of [-1, 1]) F(FIXED.strap, bx(0.08, 0.5, 0.03, R, s * 0.18 * W, 1.74, -0.19));
             }
         }
         if (sp.drone) {   // two independent hovering sensor drones
@@ -1442,16 +1566,17 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     // ---------------------------------------------------------------------------------------
     const emissiveZones = new Set(['visor', 'lights']);
     for (const [mesh, hex, opts] of fixed) mesh.material = flatMat(S, hex, opts || { spec: 0.3 });
-    function setColors(c) {
+    function setColors(c = {}) {
+        const resolved = characterColors(charId, c);
         for (const [zone, meshes] of Object.entries(zones)) {
-            const hex = c[zone] || DEFAULTS[charId][zone] || '#888888';
+            const hex = resolved[zone] || '#888888';
             const mat = flatMat(S, hex, emissiveZones.has(zone) ? { emissive: 1.0 } : { spec: zone === 'skin' || zone === 'hair' ? 0.02 : 0.2 });
             for (const m of meshes) m.material = mat;
         }
     }
     setColors(colors);
     for (const m of root.getChildMeshes()) m.isPickable = false;
-    const anim = autoRig(S, root, { seated: !!(SPECS[charId] && SPECS[charId].wheelchair) });
+    const anim = autoRig(S, root, { seated: !!(SPECS[charId] && SPECS[charId].wheelchair), slingLeft: charId === 'survivor' });
     // scale to ~1.8 units tall (built at ~2.8)
     root.scaling.setAll(0.66);
     const updateConnections = (t, moving) => { for (const update of updates) update(t, moving); };
@@ -1475,7 +1600,7 @@ function autoRig(S, root, opts = {}) {
         const p = c.position; const s = p.x < 0 ? '-1' : '1';
         if (c.name === 'gun') guns.push(c);
         if (c.getClassName && c.getClassName() !== 'Mesh') {   // hand-held props follow the arm
-            if ((c.name === 'gun' || c.name === 'janitor_wand') && Math.abs(p.x) > 0.3 && !opts.seated) { p.y -= SHOULDER; c.parent = arms[s]; }
+            if ((c.name === 'gun' || c.name === 'janitor_wand' || c.name === 'xeno_tool') && Math.abs(p.x) > 0.3 && !opts.seated) { p.y -= SHOULDER; c.parent = arms[s]; }
             continue;
         }
         if (c.name === 'wheel') { wheels.push(c); continue; }
@@ -1493,7 +1618,7 @@ function autoRig(S, root, opts = {}) {
         if (moving) phase += dt * 11;
         const a = Math.sin(phase) * 0.75 * swing;
         legs['-1'].rotation.x = a; legs['1'].rotation.x = -a;
-        arms['-1'].rotation.x = -a * 0.6; arms['1'].rotation.x = a * 0.6;
+        arms['-1'].rotation.x = opts.slingLeft ? 0 : -a * 0.6; arms['1'].rotation.x = a * 0.6;
         root.position.y = opts.seated ? 0 : Math.abs(Math.sin(phase)) * 0.08 * swing;
         for (const w of wheels) w.rotation.x = -phase * 0.6;
         // recoil: guns jump back and the torso leans for ~250 ms after a shot

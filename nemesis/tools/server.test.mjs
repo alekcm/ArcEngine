@@ -348,6 +348,8 @@ test('SRV-08: все мастерские независимо сохраняю�
         assert.deepEqual(msg.seats[0].colors, {}, id + ': no color leaks from the previous character');
         const parts = Object.fromEntries(slots.map((slot, i) => [slot.id, slot.options[1 + i % 2].id]));
         const colors = { skin: '#' + (0x112233 + index * 0x010101).toString(16).padStart(6, '0') };
+        if (id === 'survivor') Object.assign(colors, { mask: '#a12345', bandage: '#b12345' });
+        if (id === 'xeno') Object.assign(colors, { coat: '#123456', pants: '#654321' });
         saved[id] = parts; savedColors[id] = colors;
         msg = await change({ t: 'lobby', parts: { ...parts, injected: 'not allowed' }, colors },
             m => m?.t === 'lobby' && m.seats[0].parts?.[slots[0].id] === parts[slots[0].id], 'custom ' + id);
@@ -360,19 +362,19 @@ test('SRV-08: все мастерские независимо сохраняю�
         assert.deepEqual(msg.seats[0].colors, savedColors[id], id + ': palette is restored independently');
     }
     const slot = characterPartSlots('xeno')[0];
-    let msg = await change({ t: 'lobby', parts: { ...saved.xeno, [slot.id]: ['invalid'] }, colors: { coat: '#12abcd' } },
+    let msg = await change({ t: 'lobby', parts: { ...saved.xeno, [slot.id]: ['invalid'] }, colors: { coat: '#12abcd', pants: '#ab12cd', mask: '#ffffff', fake: '#abcdef' } },
         m => m?.t === 'lobby' && m.seats[0].parts[slot.id] === 'classic', 'invalid xeno part');
     assert.deepEqual(msg.seats[0].parts, { ...saved.xeno, [slot.id]: 'classic' }, 'only the invalid slot is reset');
-    assert.equal(msg.seats[0].colors.coat, '#12abcd');
+    assert.deepEqual(msg.seats[0].colors, { coat: '#12abcd', pants: '#ab12cd' }, 'only valid zones for this character survive');
     await change({ t: 'lobby', parts: saved.xeno }, m => m?.t === 'lobby' && m.seats[0].parts[slot.id] === saved.xeno[slot.id], 'restore xeno');
     msg = await change({ t: 'start' }, m => m?.t === 'state' && m.view?.players.length === 2, 'public game');
     assert.deepEqual(msg.view.players[0].parts, saved.xeno);
-    assert.equal(msg.view.players[0].colors.coat, '#12abcd');
+    assert.deepEqual(msg.view.players[0].colors, { coat: '#12abcd', pants: '#ab12cd' });
     assert.deepEqual(msg.view.players[1].parts, characterParts('labrat'));
 });
 
 test('SRV-09: драфт сохраняет выбранный образ только при совпадении персонажа', async (t) => {
-    const chosen = { hair: 'longtail', probe: 'twin', jacket: 'pockets' };
+    const chosen = { hair: 'longtail', probe: 'twin', jacket: 'pockets', trousers: 'field', tool: 'analyzer' };
     for (const sameCharacter of [true, false]) {
         const { child, port } = await startServer(pickPort());
         t.after(() => { try { child.kill(); } catch { /* gone */ } });

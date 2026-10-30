@@ -645,8 +645,10 @@ const CREW_ORIGINAL_HASHES = {
     bounty: 'bc9c9ce274d40cdf9329a0cce7dfa5d667c50b146cba35650ef710cc695c621c',
     // Captain: connected neck, waist and shoulders, with the original suit retained.
     captain: '28e82c72331869319dc21daa40a51458603d9ea4e621d101dc571bb5f808811b',
-    survivor: '5ff5ab81068aed27b51da8ef22abca159ba0531292a14efc23f204667ea9ef0d',
-    xeno: '85d76328df00a5820a85f907986fa50e87e65499e9f922c4f87443cf95c84374',
+    // Survivor: joined neck and sling, antenna moved clear of hair, pistol grip repaired.
+    survivor: '308c848db234a25d2dc594d5c6a2b40b929ada85f664d61c2e44f869e78e63d2',
+    // Xenobiologist: neck and shoulders joined, hand-held vial attached to the hand and probe kept whole.
+    xeno: '671c6aa27b616f949099415d43e727a695084f1793909be030180853238abd64',
 };
 
 test('CREW-03: original miniatures stay stable after joint repairs and every option changes real geometry', async () => {
@@ -683,7 +685,7 @@ test('CREW-04: all combinations retain their equipment, paintability and attache
         assert.equal(count, slots.reduce((n, s) => n * s.options.length, 1), id + ': every combination checked');
         checked += count;
     }
-    assert.equal(checked, 14 * 243 + 2 * 27);
+    assert.equal(checked, 16 * 243);
 });
 
 test('CREW-05: extra shoulders, bracers, wheels and companions move with their originals', async () => {
@@ -753,12 +755,16 @@ test('CREW-07: workshop framing sets its target before the orbit and restores th
 test('CREW-08: the Survivor’s bandana ties remain outside every radio pack and hair combination', async () => {
     const { buildCharacter } = await import('../client/characters.js');
     for (const hair of ['classic', 'wavy', 'long']) for (const radio of ['classic', 'dual', 'caged']) {
-        const ch = buildCharacter(scene.scene, 'survivor', {}, { hair, radio, bandana: 'tails' });
-        const ties = ch.root.getChildMeshes().filter(m => m.name === 'crew_survivor_bandana' && m.position.z <= -0.49);
-        assert.equal(ties.length, 2, `${hair}/${radio}: both ties lie behind the backpack cage`);
-        assert.ok(ties.every(m => m.parent === ch.root), 'the ties remain attached to the head/body');
-        ch.animate(0.1, true); ch.animate(0.2, true);
-        assert.ok(ties.every(m => m.parent === ch.root), 'the ties do not attach to the running limbs');
+        const ch = buildCharacter(scene.scene, 'survivor', {}, { hair, radio, bandana: 'tails' }); ch.root.scaling.setAll(1);
+        const meshes = ch.root.getChildMeshes(), ties = meshes.filter(m => m.metadata?.survivorBandanaTie);
+        const packs = meshes.filter(m => m.metadata?.appearancePart?.slot === 'radio');
+        assert.equal(ties.length, 2, `${hair}/${radio}: two cloth ends`);
+        for (const t of [0, 0.1, 0.2, 0.3]) {
+            ch.animate(t, t > 0); for (const m of meshes) m.computeWorldMatrix(true);
+            assert.ok(ties.every(m => m.parent?.name === 'survivor_bandana_ties' && m.parent.parent === ch.root), 'ties follow the body, not the arm');
+            for (const tie of ties) for (const pack of packs)
+                assert.ok(!tie.intersectsMesh(pack, true), `${hair}/${radio}: cloth end remains outside the radio at ${t}`);
+        }
         ch.root.dispose();
     }
 });
@@ -768,7 +774,7 @@ test('ROLE-01: reworked crew options replace the original meshes, rather than ov
     const { CREW_PARTS, characterParts } = await import('../shared/appearance.mjs');
     const partMeshes = (ch, slot) => ch.root.getChildMeshes().filter(m => m.metadata?.appearancePart?.slot === slot);
     const signature = meshes => geometrySignature({ root: { getChildMeshes: () => meshes } });
-    for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android', 'convict', 'psych', 'bounty', 'captain']) for (const slot of CREW_PARTS[id]) {
+    for (const id of ['soldier', 'scout', 'mechanic', 'pilot', 'hacker', 'scientist', 'medic', 'janitor', 'ceo', 'android', 'convict', 'psych', 'bounty', 'captain', 'survivor', 'xeno']) for (const slot of CREW_PARTS[id]) {
         const original = buildCharacter(scene.scene, id, {}, characterParts(id));
         const base = partMeshes(original, slot.id);
         assert.ok(base.length >= 2, `${id}/${slot.id}: the original part is marked`);

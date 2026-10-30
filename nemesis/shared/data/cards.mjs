@@ -688,7 +688,9 @@ export const CHARACTERS = {
         name: 'Выжившая', color: '#b9770e', health: 10, zones: [
             { id: 'skin',   label: 'Кожа',          presets: SKIN },
             { id: 'hair',   label: 'Волосы',        presets: ['#c9a86a', '#e8e2d0', '#2a1b12', '#8a1f3a', '#c4c4c4'] },
-            { id: 'armor',  label: 'Жилет и бандана', presets: ['#3b3a36', '#2d3436', '#1f2a44', '#4a1f2f', '#5a6b5c'] },
+            { id: 'armor',  label: 'Жилет',         presets: ['#3b3a36', '#2d3436', '#1f2a44', '#4a1f2f', '#5a6b5c'] },
+            { id: 'mask',   label: 'Бандана',       presets: ['#2b2a28', '#4a3b35', '#2c3e50', '#5a3b3b'] },
+            { id: 'bandage', label: 'Перевязь',     presets: ['#d9d2c2', '#e8e8e8', '#b8a992', '#7f8c8d'] },
             { id: 'shirt',  label: 'Одежда',        presets: ['#6b5a44', '#7f8c8d', '#2c3e50', '#4a5560'] },
             { id: 'pants',  label: 'Штаны',         presets: ['#3a3530', '#2d3436', '#4b3d2a', '#1e3d2b'] },
             { id: 'lights', label: 'Подсветка',     presets: ['#ff8c3b', '#ff3b3b', '#3bb8ff', '#ffd23b'] },
@@ -709,7 +711,8 @@ export const CHARACTERS = {
         name: 'Ксенобиолог', color: '#7d6608', health: 10, zones: [
             { id: 'skin',   label: 'Кожа',          presets: SKIN },
             { id: 'hair',   label: 'Волосы',        presets: ['#cfd3d6', '#2a1b12', '#1c1c1c', '#8a1f3a', '#e8e2d0'] },
-            { id: 'coat',   label: 'Плащ',          presets: ['#2c3034', '#1f2a44', '#4a1f2f', '#3a3f44', '#2d3436'] },
+            { id: 'coat',   label: 'Куртка',        presets: ['#2c3034', '#1f2a44', '#4a1f2f', '#3a3f44', '#2d3436'] },
+            { id: 'pants',  label: 'Брюки',         presets: ['#2f3a52', '#2c3034', '#1f2a44', '#3a3f44', '#4b3d2a'] },
             { id: 'shirt',  label: 'Кант и одежда', presets: ['#e8e8e8', '#c9a227', '#7f8c8d', '#3bb8ff'] },
             { id: 'gear',   label: 'Манипулятор',   presets: ['#7a8694', '#8c96a0', '#c9a227', '#2d3436'] },
             { id: 'lights', label: 'Подсветка',     presets: ['#ffb347', '#3bff7a', '#3bb8ff', '#ff3bd1'] },

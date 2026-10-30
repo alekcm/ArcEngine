@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { CREW_PARTS } from '../shared/appearance.mjs';
+import { CHARACTERS } from '../shared/data/cards.mjs';
 
 const noop = () => {};
 const el = () => ({
@@ -51,6 +52,8 @@ for (const parts of combos) {
     if (id === 'scientist') assert.equal(ch.root.getChildMeshes().filter(m => m.name === 'wheel').length, 4, label + ': powered wheelchair');
     if (id === 'convict') assert.ok(ch.zones.skin?.length && ch.zones.mask?.length && ch.zones.chains?.length, label + ': skin, muzzle and chains');
     if (id === 'survivor') assert.ok(ch.root.getChildMeshes().some(m => m.material.diffuseColor?.toHexString().toLowerCase() === '#2b2a28'), label + ': face remains covered');
+    if (id === 'survivor' || id === 'xeno') for (const { id: zone } of CHARACTERS[id].zones)
+        assert.ok(ch.zones[zone]?.length, label + ': advertised paint zone ' + zone + ' has visible geometry');
     const colors = Object.fromEntries(Object.keys(ch.zones).map((z, i) => [z, '#' + (0x123456 + i * 0x010101).toString(16).padStart(6, '0')]));
     ch.setColors(colors);
     for (const [zone, hex] of Object.entries(colors))

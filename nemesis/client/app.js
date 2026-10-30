@@ -4,7 +4,7 @@
 import { Scene3D, Preview3D, setPreviewCameraPose } from './scene3d.js';
 import { TUNE } from './tuning.js';
 import { galleryPods } from './gallery.js';
-import { DEFAULTS } from './characters.js';
+import { characterColors } from './characters.js';
 import { characterPartSlots, characterParts } from '../shared/appearance.mjs';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
@@ -31,8 +31,8 @@ const WORKSHOP_LABELS = {
     psych: { title: 'Психолог', button: 'Мастерская Психолога', hint: 'Причёска, гарнитура и дроны', caption: 'Модель · поддержка экипажа' },
     bounty: { title: 'Охотник за головами', button: 'Мастерская Охотника', hint: 'Причёска, броня и снаряжение собаки', caption: 'Модель · охотник и спутник' },
     captain: { title: 'Капитан', button: 'Мастерская Капитана', hint: 'Причёска и броня', caption: 'Модель · командование' },
-    survivor: { title: 'Выжившая', button: 'Мастерская Выжившей', hint: 'Причёска, бандана и рация', caption: 'Модель · выживание' },
-    xeno: { title: 'Ксенобиолог', button: 'Мастерская Ксенобиолога', hint: 'Причёска, сканер и куртка', caption: 'Модель · ксенобиология' },
+    survivor: { title: 'Выжившая', button: 'Мастерская Выжившей', hint: 'Причёска, бандана, рация и снаряжение', caption: 'Модель · выживание' },
+    xeno: { title: 'Ксенобиолог', button: 'Мастерская Ксенобиолога', hint: 'Кудри, манипулятор и исследовательское снаряжение', caption: 'Модель · ксенобиология' },
     labrat: { title: 'Подопытная', button: 'Мастерская Подопытной', hint: 'Причёска, одежда и другие детали', caption: 'Модель · эксперимент' },
     sentry: { title: 'Охранник', button: 'Мастерская Охранника', hint: 'Оптика, броня и другие детали', caption: 'Модель · служба охраны' },
 };
@@ -257,11 +257,10 @@ function renderLobby() {
     // paint zones
     const ch = L.characters[app.charId];
     if (ch) {
-        const def = DEFAULTS[app.charId] || {};
         const keepPicker = activePicker && app.charId === previousCharId;
         if (!keepPicker) {
             $('paintZones').innerHTML = ch.zones.map(z => {
-                const cur = app.colors[z.id] || def[z.id] || z.presets[0];
+                const cur = characterColors(app.charId, app.colors)[z.id] || z.presets[0];
                 const presetSelected = z.presets.some(p => p.toLowerCase() === cur.toLowerCase());
                 return '<div class="zone"><span class="zname">' + esc(z.label) + '</span>' +
                     z.presets.map(p => '<button type="button" class="swatch ' + (p.toLowerCase() === cur.toLowerCase() ? 'sel' : '') + '" data-zone="' + z.id + '" data-color="' + p + '" style="background:' + p + '" aria-label="' + esc(z.label) + ': ' + p + '" aria-pressed="' + (p.toLowerCase() === cur.toLowerCase()) + '"></button>').join('') +
@@ -276,7 +275,7 @@ function renderLobby() {
                 el.oninput = () => {
                     app.colors = Object.assign({}, app.colors, { [zone]: el.value });
                     updateSwatches(zone, el.value);
-                    if (preview) preview.show(app.charId, Object.assign({}, def, app.colors), app.parts);
+                    if (preview) preview.show(app.charId, app.colors, app.parts);
                 };
                 el.onchange = () => sendColor(zone, el.value);
             }
@@ -288,7 +287,7 @@ function renderLobby() {
             }
         }
         if (!preview) preview = new Preview3D($('previewCanvas'));
-        preview.show(app.charId, Object.assign({}, def, app.colors), app.parts);
+        preview.show(app.charId, app.colors, app.parts);
         if (app.labWorkshop) updateLabSelection();
     }
     // seats
@@ -326,16 +325,16 @@ function sendColor(zone, color) {
         // A picker may have changed the local preview, but it cannot be saved while offline.
         const seat = app.lobby?.seats.find(s => s.id === app.me);
         app.colors = Object.assign({}, seat?.colors);
-        const current = app.colors[zone] || DEFAULTS[app.charId]?.[zone]
+        const current = characterColors(app.charId, app.colors)[zone]
             || app.lobby?.characters?.[app.charId]?.zones?.find(z => z.id === zone)?.presets?.[0] || '#888888';
         updateSwatches(zone, current);
-        if (preview) preview.show(app.charId, Object.assign({}, DEFAULTS[app.charId], app.colors), app.parts);
+        if (preview) preview.show(app.charId, app.colors, app.parts);
         notice('Нет связи с сервером — изменения не сохранены.', 'error');
         return;
     }
     app.colors = Object.assign({}, app.colors, { [zone]: color });
     updateSwatches(zone, color);
-    if (preview) preview.show(app.charId, Object.assign({}, DEFAULTS[app.charId], app.colors), app.parts);
+    if (preview) preview.show(app.charId, app.colors, app.parts);
     net.send({ t: 'lobby', colors: app.colors });
 }
 
@@ -365,7 +364,7 @@ function setLabParts(parts) {
     app.parts = characterParts(app.charId, parts);
     app.pendingParts = JSON.stringify(app.parts);
     updateLabSelection();
-    if (preview) preview.show(app.charId, Object.assign({}, DEFAULTS[app.charId], app.colors), app.parts);
+    if (preview) preview.show(app.charId, app.colors, app.parts);
     net.send({ t: 'lobby', parts: app.parts });
 }
 function openLabWorkshop() {
@@ -389,7 +388,7 @@ function openLabWorkshop() {
         target: new (window.BABYLON.Vector3)(framing.x, framing.y, 0),
         alpha: Math.PI / 2 - 0.28, beta: 1.3, radius: framing.radius,
     });
-    preview.show(app.charId, Object.assign({}, DEFAULTS[app.charId], app.colors), app.parts);
+    preview.show(app.charId, app.colors, app.parts);
     updateLabSelection();
     preview.engine.resize();
     requestAnimationFrame(() => { if (app.labWorkshop && preview) preview.engine.resize(); });
@@ -430,7 +429,7 @@ $('labReset').onclick = () => setLabParts({});
 $('labColorReset').onclick = () => {
     if (!ws || ws.readyState !== 1) { notice('Нет связи с сервером — изменения не сохранены.', 'error'); return; }
     app.colors = {};
-    if (preview) preview.show(app.charId, Object.assign({}, DEFAULTS[app.charId]), app.parts);
+    if (preview) preview.show(app.charId, {}, app.parts);
     net.send({ t: 'lobby', colors: {} });
 };
 
