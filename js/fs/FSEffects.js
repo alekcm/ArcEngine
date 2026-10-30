@@ -81,9 +81,9 @@ const FS_EFFECTS = {
 
     // The sentence of the payment that avoids the effect.
     avoidOf(sentence) {
-        const m = /может избежать этого[^,]*,\s*если потрат[а-яёa-z]*\s+(?:(\d+)|любое количество)?\s*`([^`]+)`/i.exec(sentence);
+        const m = /может избежать этого[^,]*,\s*если потрат[а-яёa-z]*\s+(?:(\d+)|любое количество)?\s*(?:`([^`]+)`|куб[а-яёa-z]*)/i.exec(sentence);
         if (!m) return null;
-        return { n: m[1] ? Number(m[1]) : 1, kind: this.icon(m[2]) };
+        return { n: m[1] ? Number(m[1]) : 1, kind: m[2] ? this.icon(m[2]) : 'any' };
     },
 
     // One sentence -> the steps.
@@ -622,6 +622,16 @@ const FS_EFFECTS = {
                 }
                 return null;
             }
+            case 'exchangeMateriel': {
+                const kinds = ['forge', 'cache', 'reinforcement', 'prosperity'];
+                return { question: { kind: 'assetType', who: seat, op: 'exchangeMateriel', options: kinds, n: step.n || 1, gain: step.gain || 1, text: 'Какой жетон ресурса получить?' } };
+            }
+            case 'exchangeAsset': {
+                const p2 = state.players[seat];
+                const kinds = ['forge', 'cache', 'reinforcement', 'prosperity'].filter(k => (p2.assets[k] || 0) > 0);
+                if (!kinds.length) return null;
+                return { question: { kind: 'assetType', who: seat, op: 'exchangeAsset', options: kinds, n: step.n || 1, gain: step.gain || 1, text: 'Какой жетон ресурса потратить?' } };
+            }
             case 'extraOrderTokens': {
                 p.extraOrderTokens = (p.extraOrderTokens || 0) + (step.n || 0);
                 R.log(state, seat, state.players[seat].name + ' получает дополнительные жетоны приказов.');
@@ -885,6 +895,24 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'chooseSystem': {
+                return null;
+            }
+            case 'exchangeMateriel': {
+                const kind = answer.asset || answer.assetType || 'forge';
+                const n = Math.min(step.n || 1, p.materiel);
+                if (n <= 0) return null;
+                p.materiel -= n;
+                p.assets[kind] = Math.min(3, (p.assets[kind] || 0) + n * (step.gain || 1));
+                R.log(state, seat, state.players[seat].name + ' меняет материю на жетон ресурса.');
+                return null;
+            }
+            case 'exchangeAsset': {
+                const kind = answer.asset || answer.assetType || 'forge';
+                const n = Math.min(step.n || 1, p.assets[kind] || 0);
+                if (n <= 0) return null;
+                p.assets[kind] -= n;
+                p.materiel = Math.min(this.MATERIEL_MAX, p.materiel + n * (step.gain || 1));
+                R.log(state, seat, state.players[seat].name + ' меняет жетон ресурса на материю.');
                 return null;
             }
             case 'replaceStructure': {
@@ -1326,6 +1354,7 @@ const FS_EFFECTS = {
         if (/выполнени[а-яёa-z]*\s+(?:любого\s+)?приказа/.test(s)) return 'order';
         if (/активаци[а-яёa-z]*\s+(?:любого\s+)?вашего приказа/.test(s)) return 'order';
         if (/вынужден[а-яёa-z]*\s+пропустить ход/.test(s)) return 'skip';
+        if (/(?:игра[а-яёa-z]*|разыгра[а-яёa-z]*)\s+боевую карту/.test(s)) return 'combat-play';
         return null;
     },
 
@@ -1696,6 +1725,11 @@ const RULES = [
         re: /добавьте\s+(\d+)\s+к\s+(?:общей сумме\s+)?урона/i,
         build: m => ({ op: 'extraDamage', n: Number(m[1]) }),
     },
+    // "you and your opponent take 3 more damage"
+    {
+        re: /вы и ваш противник получ[а-яёa-z]*\s+(\d+)\s+дополнительн[а-яёa-z]*\s+урона/i,
+        build: m => ({ op: 'extraDamage', n: Number(m[1]), who: 'both' }),
+    },
     // "the health of all your units grows by 1 during this combat"
     {
         re: /значение здоровья всех ваших отрядов повышается на (\d+)/i,
@@ -1790,8 +1824,35 @@ const RULES = [
     },
     // "Its cost in materiel is lowered by 1 for every <X>."
     {
-        re: /стоимость в материалах уменьшается на (\d+) за каждый ([^.,;]+)/i,
-        build: m => ({ op: 'costDiscount', n: Number(m[1]), per: countKind(m[2]) }),
+        re: /(?:стоимость в материалах\s+(?:уменьшается|снижается)|уменьшите\s+его\s+стоимость)\s+на\s+(\d+)\s+за\s+кажд[а-яёa-z]+\s+([^.;]+)/i,
+        build: (m, ctx, s) => {
+            const limit = /не более чем на (\d+)/i.exec(s);
+            return { op: 'costDiscount', n: Number(m[1]), per: countKind(m[2]), max: limit ? Number(limit[1]) : 0 };
+        },
+    },
+    // "spend up to 2 materiel to get 1 asset"
+    {
+        re: /потратьте до (\d+) материалов, чтобы получить (\d+) ценн[а-яёa-z]* ресурс/i,
+        build: m => ({ op: 'exchangeMateriel', n: Number(m[1]), gain: Number(m[2]) }),
+    },
+    // "spend up to 2 assets to get 2 materiel each"
+    {
+        re: /потратьте до (\d+) ценн[а-яёa-z]* ресурс[а-яёa-z]*, чтобы получить по (\d+) материала/i,
+        build: m => ({ op: 'exchangeAsset', n: Number(m[1]), gain: Number(m[2]) }),
+    },
+    // "replace 1 Skirmisher with 1 Warp Runner"
+    {
+        re: /замени[а-яёa-z]*\s+(\d+)?\s*([А-ЯЁ][а-яёa-z'’]+)\s+на\s+(\d+)?\s*([А-ЯЁ][а-яёa-z'’]+)/i,
+        build: (m, ctx) => {
+            const faction = FS_EFFECTS.factionOf(ctx);
+            const from = FS_EFFECTS.unitNames(m[2], faction);
+            const to = FS_EFFECTS.unitNames(m[4], faction);
+            if (!from.length || !to.length) return null;
+            return {
+                op: 'replaceUnit', n: num(m[1]), from: from[0], to: to[0],
+                filter: unitFilter(from[0]), pick: true, free: true, text: m[0],
+            };
+        },
     },
     // "Take the top 3 cards of your event deck."
     {
@@ -1937,20 +1998,20 @@ const RULES = [
     },
     // The sentences that say no rule of their own: the engine keeps them.
     {
-        re: /^(?:—\s*\([^)]*\)|если одинаково, выбираете вы\.?|это может привести к новому сражению[^.]*\.?|не нарушая базовых правил размещения\.?|неиспользованный остаток материалов пропадает\.?|нужно быть главным по машинам\.?|требуются\s*\.?|пассивно|используйте эти материалы только для покупки любого количества кораблей\.?|уничтоженный город засчитывается[^.]*\.?|командный уровень этой карты не может превышать[^.]*\.?|неиспользованный остаток[^.]*\.?)$/i,
+        re: /^(?:—\s*\([^)]*\)|если одинаково, выбираете вы\.?|это может привести к новому (?:сражению|битве)[^.]*\.?|не нарушая базовых правил размещения\.?|неиспользованный остаток материалов пропадает\.?|нужно быть главным по машинам\.?|требуются\s*\.?|пассивно|используйте эти материалы только для покупки любого количества кораблей\.?|уничтоженный город засчитывается[^.]*\.?|командный уровень этой карты не может превышать[^.]*\.?|неиспользованный остаток[^.]*\.?)$/i,
         build: (m, ctx, s) => ({ op: 'note', text: s }),
     },
 ];
 
 // What is counted for the discount: "for every friendly world with a bastion".
 function countKind(text) {
-    const s = String(text || '').toLowerCase();
+    const s = String(text || '').toLowerCase().trim();
     if (/бастион/.test(s)) return 'friendlyBastion';
     if (/город/.test(s)) return 'yourCity';
     if (/культист/.test(s)) return 'cultist';
     if (/жетон/.test(s)) return 'reinforcement';
-    if (/система/.test(s) && /противник/.test(s)) return 'mixedSystem';
-    if (/система/.test(s) && /не содержит/.test(s)) return 'noFoeSystem';
+    if (/систем[а-яёa-z]*/.test(s) && /противник/.test(s)) return 'mixedSystem';
+    if (/систем[а-яёa-z]*/.test(s) && /не содержит/.test(s)) return 'noFoeSystem';
     return null;
 }
 
