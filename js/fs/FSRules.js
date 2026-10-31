@@ -386,7 +386,8 @@ const FS_RULES = {
         });
 
         // --- the tiles: every player gets their home tile and two base tiles
-        const base = this.shuffle(state, FS_DATA.tiles.filter(t => !t.home));
+        // A and B are the two faces of one physical tile, not separate tiles.
+        const base = this.shuffle(state, FS_DATA.tiles.filter(t => !t.home && /A$/.test(t.id)));
         const tiles = [];
         for (let seat = 0; seat < count; seat++) {
             const home = FS_DATA.tiles.find(t => t.home === state.players[seat].faction);
@@ -445,15 +446,30 @@ const FS_RULES = {
         return state;
     },
 
-    createSystemFromTile(state, tile, seat, row, col) {
+    // Quarter-turns are clockwise in board coordinates (x right, row down).
+    rotateArea(pos, turns) {
+        const clockwise = { TL: 'TR', TR: 'BR', BR: 'BL', BL: 'TL' };
+        let result = pos;
+        for (let i = 0; i < turns; i++) result = clockwise[result];
+        return result;
+    },
+
+    tileFaces(id) {
+        const physical = String(id).replace(/[AB]$/, '');
+        return FS_DATA.tiles.filter(t => t.id.replace(/[AB]$/, '') === physical);
+    },
+
+    createSystemFromTile(state, tile, seat, row, col, rotation = 0) {
         return {
             id: 'sys' + (state.systems.length + 1),
             tile: tile.id,
             owner: seat,
             row,
             col,
+            rotation,
             areas: tile.areas.map(a => ({
-                pos: a.pos,
+                pos: this.rotateArea(a.pos, rotation),
+                sourcePos: a.pos,
                 world: a.world ? {
                     name: a.world.name,
                     materiel: a.world.materiel,
@@ -507,7 +523,7 @@ const FS_RULES = {
         if (setup.turn !== seat) return { ok: false, error: 'Сейчас очередь другого игрока выкладывать тайл.' };
         if (setup.stage !== 'tile') return { ok: false, error: 'Сначала завершите текущий этап размещения.' };
         const hand = setup.hands[seat] || [];
-        const tileIndex = hand.indexOf(cmd.tile);
+        const tileIndex = hand.findIndex(id => this.tileFaces(id).some(t => t.id === cmd.tile));
         if (tileIndex < 0) return { ok: false, error: 'Этого системного тайла нет у вас в руке.' };
         const cell = { row: Number(cmd.row), col: Number(cmd.col) };
         if (!this.setupLegalCells(state).some(c => c.row === cell.row && c.col === cell.col)) {
@@ -515,7 +531,10 @@ const FS_RULES = {
         }
         const tile = FS_DATA.tiles.find(t => t.id === cmd.tile);
         if (!tile) return { ok: false, error: 'Неизвестный системный тайл.' };
-        const sys = this.createSystemFromTile(state, tile, seat, cell.row, cell.col);
+        const rotation = cmd.rotation == null ? 0 : cmd.rotation;
+        if (!Number.isInteger(rotation) || rotation < 0 || rotation > 3) return { ok: false, error: 'Недопустимый поворот тайла.' };
+        if (!this.setupForcesFit(state, seat, tile, tileIndex)) return { ok: false, error: 'На этой стороне и оставшихся тайлах не поместятся начальные силы. Выберите другую сторону или тайл.' };
+        const sys = this.createSystemFromTile(state, tile, seat, cell.row, cell.col, rotation);
         state.systems.push(sys);
         hand.splice(tileIndex, 1);
         setup.placedBySeat[seat]++;
@@ -571,14 +590,10 @@ const FS_RULES = {
 
     // Future tiles must have enough room for everything left; this prevents an
     // irreversible setup dead end after the player confirms a tile.
-    setupForcesFit(state, seat) {
+    setupForcesFit(state, seat, chosenTile = null, chosenIndex = -1) {
         const initial = state.players[seat].initialForces;
-        const future = state.setup.hands[seat].map(id => FS_DATA.tiles.find(t => t.id === id)).filter(Boolean);
-        let ground = 0, ships = 0, worlds = 0;
-        for (const tile of future) for (const area of tile.areas) {
-            if (area.world) { ground += Math.min(area.world.capacity || this.AREA_CAP, this.AREA_MAX_UNITS); worlds++; }
-            else ships += this.AREA_CAP;
-        }
+        const future = state.setup.hands[seat].filter((_, i) => i !== chosenIndex).map(id => this.tileFaces(id));
+        if (chosenTile) future.push([chosenTile]);
         let needGround = 0, needShips = 0;
         for (const [id, n] of Object.entries(initial.units)) {
             const def = this.unitDef(state, seat, id);
@@ -586,7 +601,20 @@ const FS_RULES = {
             else needGround += n;
         }
         const structures = Object.values(initial.structures).reduce((sum, n) => sum + n, 0);
-        return needGround <= ground && needShips <= ships && structures <= worlds;
+        // A face is one indivisible choice: do not combine the best capacity of
+        // one side with the best ship/structure capacity of the other side.
+        const fits = (index, ground, ships, worlds) => {
+            if (index === future.length) return needGround <= ground && needShips <= ships && structures <= worlds;
+            return future[index].some(tile => {
+                let g = 0, s = 0, w = 0;
+                for (const area of tile.areas) {
+                    if (area.world) { g += Math.min(area.world.capacity || this.AREA_CAP, this.AREA_MAX_UNITS); w++; }
+                    else s += this.AREA_CAP;
+                }
+                return fits(index + 1, ground + g, ships + s, worlds + w);
+            });
+        };
+        return fits(0, 0, 0, 0);
     },
 
     cmdFinishSetupForces(state, seat) {

@@ -50,6 +50,7 @@ class FSGame {
 
         this.setupCamera();
         this.bindPointer();
+        this.bindSetupKeys();
         this.connect();
     }
 
@@ -115,10 +116,12 @@ class FSGame {
         });
         this.net.on('state', msg => this.onState(msg.view));
         this.net.on('err', msg => {
+            this.setupSubmitting = false;
             this.status = msg.msg || 'Ошибка.';
             this.refresh();
         });
         this.net.on('close', () => {
+            this.setupSubmitting = false;
             this.status = 'Связи с сервером нет. Запустите сервер игры: node tools/fs-server.mjs (или fs.bat)';
             this.refresh();
         });
@@ -148,7 +151,9 @@ class FSGame {
     // --- the state -------------------------------------------------------------
     onState(view) {
         const setupKey = view.setup ? [view.setup.stage, view.setup.turn, view.setup.currentSystem].join(':') : '';
+        this.setupSubmitting = false;
         if (this.setupKey !== setupKey) {
+            FSView.clearSetupPreview(this.view);
             this.mode = 'idle'; this.pending = null;
             FSView.clearHighlights(this.view);
             this.setupKey = setupKey;
@@ -190,7 +195,7 @@ class FSGame {
             return;
         }
         const me = s.seat;
-        const ctx = { title: '', text: '', status: this.status || '', actions: [], inspection: this.inspection, mode: this.mode };
+        const ctx = { title: '', text: '', status: this.status || '', actions: [], inspection: this.inspection, mode: this.mode, setupCellSelected: false };
         // A new order (or a new step of it) — the pending action is dropped.
         const orderKey = s.order ? s.order.order + ':' + s.order.phase : '';
         if (this.orderKey !== orderKey) {
@@ -308,25 +313,99 @@ class FSGame {
             return;
         }
         const hand = setup.hand || [];
-        ctx.text = 'Выберите один из своих тайлов, затем поставьте его в свободное место рядом с уже выложенной системой. Осталось выложить: ' + hand.length + '.';
-        ctx.status = this.status || (this.mode === 'placeTile' ? 'Теперь нажмите на подсвеченное место на карте.' : 'Ваш ход — выберите системный тайл.');
+        const selected = this.mode === 'placeTile' && this.pending;
+        ctx.setupCellSelected = !!(selected && selected.cell);
+        ctx.text = 'Выберите тайл и свободное место: сначала появится предпросмотр. Поверните или переверните тайл и подтвердите размещение.';
+        ctx.status = this.status || (selected
+            ? (selected.cell ? 'Предпросмотр системы ' + selected.tile + ' · поворот ' + (selected.rotation * 90) + '°. Q/E — поворот, F — другая сторона.' : 'Нажмите на подсвеченное место. Q/E — поворот, F — другая сторона.')
+            : 'Ваш ход — выберите системный тайл.');
+        if (selected) {
+            if (selected.cell && !this.setupSubmitting) ctx.actions.push({ label: 'Подтвердить размещение системы', onClick: () => this.confirmSetupTile() });
+            ctx.actions.push({ label: '↶ Повернуть влево · Q', onClick: () => this.transformSetupTile('left') });
+            ctx.actions.push({ label: '↷ Повернуть вправо · E', onClick: () => this.transformSetupTile('right') });
+            ctx.actions.push({ label: '⇄ Перевернуть · F', onClick: () => this.transformSetupTile('flip') });
+            ctx.actions.push({ label: 'Отменить выбор тайла', onClick: () => this.cancelSetupTile() });
+        }
         hand.forEach(id => {
-            const tile = FS_DATA.tiles.find(t => t.id === id);
+            const active = selected && selected.handTile === id;
+            const face = active ? selected.tile : id;
+            const raw = FS_DATA.tiles.find(t => t.id === face);
+            // The small hand card follows the selected face and its orientation too.
+            const tile = raw && active ? Object.assign({}, raw, {
+                areas: FS_RULES.createSystemFromTile({ systems: [] }, raw, s.seat, 0, 0, selected.rotation).areas,
+            }) : raw;
             const worlds = tile ? tile.areas.filter(a => a.world).map(a => a.world.name).join(' · ') : '';
             ctx.actions.push({
-                label: 'Система ' + id + (worlds ? ' — ' + worlds : ''),
-                tile, selected: this.mode === 'placeTile' && this.pending && this.pending.tile === id,
+                label: 'Система ' + face + (worlds ? ' — ' + worlds : ''),
+                tile, selected: !!active,
                 onClick: () => {
+                    if (this.setupSubmitting) return;
+                    const cell = selected ? selected.cell : null;
                     this.mode = 'placeTile';
-                    this.pending = { tile: id };
+                    this.pending = { handTile: id, tile: id, rotation: 0, cell };
+                    this.status = '';
                     this.highlightSetupCells();
+                    this.updateSetupPreview();
                     this.refresh();
                 },
             });
         });
-        if (this.mode === 'placeTile') ctx.actions.push({ label: 'Отменить выбор тайла', onClick: () => {
-            this.mode = 'idle'; this.pending = null; FSView.clearHighlights(this.view); this.refresh();
-        } });
+    }
+
+    updateSetupPreview() {
+        if (this.mode !== 'placeTile' || !this.pending || !this.pending.cell) {
+            FSView.clearSetupPreview(this.view);
+            return;
+        }
+        const tile = FS_DATA.tiles.find(t => t.id === this.pending.tile);
+        FSView.showSetupPreview(this.app, this.view, this.state, tile, this.pending.cell, this.pending.rotation);
+    }
+
+    transformSetupTile(action) {
+        if (this.mode !== 'placeTile' || !this.pending || this.setupSubmitting) return;
+        if (action === 'left') this.pending.rotation = (this.pending.rotation + 3) % 4;
+        else if (action === 'right') this.pending.rotation = (this.pending.rotation + 1) % 4;
+        else if (action === 'flip') {
+            const faces = FS_RULES.tileFaces(this.pending.handTile);
+            const other = faces.find(t => t.id !== this.pending.tile);
+            if (other) this.pending.tile = other.id;
+        }
+        this.status = '';
+        this.updateSetupPreview();
+        this.refresh();
+    }
+
+    confirmSetupTile() {
+        const s = this.state, p = this.pending;
+        if (this.setupSubmitting || this.mode !== 'placeTile' || !p || !p.cell || !s || !s.setup || !s.setup.myTurn || s.setup.stage !== 'tile') return;
+        this.setupSubmitting = true;
+        const sent = this.net.cmd({ type: 'placeSystemTile', tile: p.tile, rotation: p.rotation, row: p.cell.row, col: p.cell.col });
+        if (sent === false) { this.setupSubmitting = false; this.status = 'Нет связи с сервером.'; }
+        else this.status = 'Подтверждаем размещение…';
+        this.refresh();
+    }
+
+    cancelSetupTile() {
+        if (this.setupSubmitting) return;
+        this.mode = 'idle'; this.pending = null; this.status = '';
+        FSView.clearSetupPreview(this.view);
+        FSView.clearHighlights(this.view);
+        this.refresh();
+    }
+
+    bindSetupKeys() {
+        if (typeof window === 'undefined' || !window.addEventListener) return;
+        // Capture first: Q/E also control the free camera outside tile placement.
+        window.addEventListener('keydown', e => {
+            const target = /** @type {HTMLElement | null} */ (e.target);
+            if (target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable)) return;
+            if (e.ctrlKey || e.metaKey || e.altKey || this.mode !== 'placeTile' || !this.pending || !this.state || !this.state.setup || !this.state.setup.myTurn) return;
+            const action = { KeyQ: 'left', KeyE: 'right', KeyF: 'flip' }[e.code];
+            if (!action) return;
+            e.preventDefault(); e.stopImmediatePropagation();
+            if (this.app.camera && this.app.camera._keys) this.app.camera._keys.delete(e.code);
+            if (!e.repeat) this.transformSetupTile(action);
+        }, true);
     }
 
     highlightSetupTargets() {
@@ -1108,10 +1187,11 @@ class FSGame {
         const me = s.seat;
         if (this.mode === 'placeTile') {
             if (s.phase !== 'setup' || !s.setup || !s.setup.myTurn || meta.fs !== 'setupCell') return;
-            this.net.cmd({ type: 'placeSystemTile', tile: this.pending.tile, row: meta.row, col: meta.col });
-            this.mode = 'idle';
-            this.pending = null;
-            FSView.clearHighlights(this.view);
+            if (this.setupSubmitting || !(s.setup.legalCells || []).some(c => c.row === meta.row && c.col === meta.col)) return;
+            this.pending.cell = { row: meta.row, col: meta.col };
+            this.status = '';
+            this.updateSetupPreview();
+            this.refresh();
             return;
         }
         if (this.mode === 'placeOrder') {

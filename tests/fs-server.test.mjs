@@ -144,10 +144,20 @@ test('the server: the room, the factions, the game and the commands', async t =>
         const client = seat === 0 ? a : b;
         const ownView = seat === 0 ? state.view : stateB.view;
         const cmd = setupCommand(FS_RULES, FS_DATA, ownView);
+        const firstTile = cmd.type === 'placeSystemTile' && !state.view.systems.length;
+        if (firstTile) { cmd.tile = FS_RULES.tileFaces(cmd.tile).find(t => t.id !== cmd.tile).id; cmd.rotation = 1; }
         client.send({ t: 'cmd', cmd });
         const states = await Promise.all([a.wait('state'), b.wait('state')]);
         state = states[0]; stateB = states[1];
         assert.equal(client === a ? state.view.seat : stateB.view.seat, seat);
+        if (firstTile) {
+            for (const result of states) {
+                const sys = result.view.systems[0];
+                assert.equal(sys.tile, cmd.tile);
+                assert.equal(sys.rotation, 1);
+                for (const area of sys.areas) assert.equal(area.pos, FS_RULES.rotateArea(area.sourcePos, 1));
+            }
+        }
     }
     assert.equal(state.view.phase, 'planning', 'planning follows the last tile placement');
 

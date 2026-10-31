@@ -31,7 +31,8 @@ const FSView = {
             app,
             scene: app.location.view.scene,
             tiles: new Map(),
-            setupSlots: new Map(),      // system id -> { base, top, tex }
+            setupSlots: new Map(),      // free cells during board assembly
+            setupPreview: null,         // local, uncommitted tile
             markers: [],
             highlights: [],
             inspectionRing: null,
@@ -161,7 +162,7 @@ const FSView = {
         const base = BABYLON.MeshBuilder.CreateBox('fs-tile-' + sys.id, { width: this.TILE - 6, depth: this.TILE - 6, height: 8 }, view.scene);
         base.position.set(p.x, h + 2, p.y);
         base.material = view.material('tileBase', '#1b2530');
-        World3D.addObject(app.location.view, base, 'prop', { outline: false });
+        World3D.addObject(app.location.view, base, 'prop', { outline: false, castShadow: !view.preview });
         base.isPickable = true;
         base.metadata = { fs: 'system', system: sys.id };
 
@@ -177,7 +178,7 @@ const FSView = {
         const top = BABYLON.MeshBuilder.CreateGround('fs-top-' + sys.id, { width: this.TILE - 6, height: this.TILE - 6 }, view.scene);
         top.position.set(p.x, h + 6.5, p.y);
         top.material = mat;
-        World3D.addObject(app.location.view, top, 'prop', { outline: false });
+        World3D.addObject(app.location.view, top, 'prop', { outline: false, castShadow: !view.preview });
         top.isPickable = true;
         top.metadata = { fs: 'system', system: sys.id };
 
@@ -224,12 +225,20 @@ const FSView = {
         const ctx = rec.tex.getContext();
         const S = 512;
         ctx.clearRect(0, 0, S, S);
+        // Rotate the printed face as a physical tile; areas in state are already
+        // rotated into board coordinates for picking, units and adjacency.
+        ctx.save();
+        if (sys.rotation) {
+            ctx.translate(S / 2, S / 2);
+            ctx.rotate(sys.rotation * Math.PI / 2);
+            ctx.translate(-S / 2, -S / 2);
+        }
         // The background of the tile.
         ctx.fillStyle = '#0d1620';
         ctx.fillRect(0, 0, S, S);
         // Four inset data panels give each area a printed, machined surface rather than a flat quadrant.
         for (const area of sys.areas) {
-            const r = this.areaRect(area.pos);
+            const r = this.areaRect(area.sourcePos || area.pos);
             const panel = ctx.createLinearGradient(r.x, r.y, r.x + r.w, r.y + r.h);
             panel.addColorStop(0, area.world ? '#142638' : '#0b1724');
             panel.addColorStop(.52, area.world ? '#101b28' : '#080f19');
@@ -271,7 +280,9 @@ const FSView = {
             } else {
                 // A void: layered starfield with a few brighter navigational stars.
                 ctx.fillStyle = '#080d14'; ctx.fillRect(r.x + 4, r.y + 4, r.w - 8, r.h - 8);
-                let seed = sys.id.charCodeAt(3) * 31 + r.x + r.y * 3;
+                // Use the printed face, not the transient system id, so a preview
+                // and its confirmed tile have identical stars.
+                let seed = Array.from(sys.tile).reduce((n, ch) => n * 31 + ch.charCodeAt(0), 0) + r.x + r.y * 3;
                 for (let i = 0; i < 34; i++) {
                     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
                     const x = r.x + 12 + (seed % (r.w - 24));
@@ -324,7 +335,7 @@ const FSView = {
         ctx.strokeStyle = '#c9a227';
         ctx.lineWidth = 4;
         for (const area of sys.areas) {
-            const r = this.areaRect(area.pos);
+            const r = this.areaRect(area.sourcePos || area.pos);
             ctx.strokeRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4);
         }
         // The hex of the order tokens in the centre.
@@ -344,6 +355,7 @@ const FSView = {
         ctx.font = '16px system-ui, sans-serif';
         ctx.textAlign = 'left';
         ctx.fillText(sys.tile, 10, S - 12);
+        ctx.restore();
         rec.tex.update();
     },
 
@@ -474,7 +486,7 @@ const FSView = {
                 mesh.material = mats.surface; mesh.isPickable = true;
                 const metadata = { fs: 'area', system: sys.id, pos: area.pos, world: name };
                 mesh.metadata = metadata;
-                World3D.addObject(app.location.view, mesh, 'prop', { castShadow: true, ink: false, outline: false });
+                World3D.addObject(app.location.view, mesh, 'prop', { castShadow: !view.preview, ink: false, outline: false });
                 mesh.metadata = Object.assign({}, mesh.metadata, metadata);
                 const clouds = BABYLON.MeshBuilder.CreateSphere('fs-world-clouds-' + key, { diameter: diameter * 1.025, segments: 24 }, view.scene);
                 clouds.material = mats.clouds; clouds.isPickable = false;
@@ -534,6 +546,34 @@ const FSView = {
         for (const [key, mesh] of view.setupSlots) {
             if (!setup || occupied.has(key) || !legal.has(key)) mesh.setEnabled(false);
         }
+    },
+
+    // The candidate is local to this client. It uses the same artwork and 3D
+    // worlds as a committed system, but does not intercept the underlying slot.
+    showSetupPreview(app, view, state, tile, cell, rotation) {
+        this.clearSetupPreview(view);
+        if (!tile || !cell) return;
+        const sys = FS_RULES.createSystemFromTile({ systems: [] }, tile, state.seat, cell.row, cell.col, rotation);
+        sys.id = 'fs-preview';
+        const ghost = Object.assign({}, view, { preview: true, tiles: new Map(), planets: new Map() });
+        const rec = this.ensureTile(app, ghost, sys);
+        rec.mat.alpha = .82;
+        this.drawTile(ghost, sys, rec, state);
+        this.updatePlanets(app, ghost, { systems: [sys] });
+        for (const mesh of [rec.base, rec.top, ...rec.decorations]) mesh.isPickable = false;
+        for (const planet of ghost.planets.values()) for (const mesh of [planet.mesh, planet.clouds, planet.atmosphere, planet.orbit]) mesh.isPickable = false;
+        view.setupPreview = { ghost, rec, sys };
+    },
+
+    clearSetupPreview(view) {
+        const preview = view && view.setupPreview;
+        if (!preview) return;
+        const locationView = view.app.location.view;
+        for (const mesh of [preview.rec.base, preview.rec.top, ...preview.rec.decorations]) World3D.removeObject(locationView, mesh);
+        for (const planet of preview.ghost.planets.values()) for (const mesh of [planet.mesh, planet.clouds, planet.atmosphere, planet.orbit]) World3D.removeObject(locationView, mesh);
+        preview.rec.mat.dispose(false, false);
+        preview.rec.tex.dispose();
+        view.setupPreview = null;
     },
 
     // --- the markers --------------------------------------------------------

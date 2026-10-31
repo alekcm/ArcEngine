@@ -64,12 +64,13 @@ const FSUI = {
             return;
         }
         this.deferredRender = null;
-        const stageKey = state && state.setup ? [state.setup.stage, state.setup.turn, state.setup.currentSystem].join(':') : '';
+        const stageKey = state && state.setup ? [state.setup.stage, state.setup.turn, state.setup.currentSystem, ctx.mode, ctx.setupCellSelected].join(':') : '';
         const previousActions = root.querySelector ? root.querySelector('.fs-actions') : null;
         const scrollTop = this.actionStage === stageKey && previousActions ? previousActions.scrollTop : 0;
         this.actionStage = stageKey;
         root.replaceChildren();
         root.classList.toggle('is-no-state', !state);
+        root.classList.toggle('is-placing-tile', !!(state && state.phase === 'setup' && ctx.mode === 'placeTile'));
         if (this.currentLobby) { this.renderModernLobby(); return; }
         const header = this.el('div', 'fs-topbar');
         header.append(this.el('span', 'fs-brand', 'FORBIDDEN STARS'), this.el('i', 'fs-divider'));
@@ -95,6 +96,7 @@ const FSUI = {
             const pop = this.el('div', 'fs-help-pop'); pop.append(this.el('h3', '', 'Управление доской'));
             pop.append(this.el('p', '', 'Перетаскивайте поле мышью, чтобы перемещать камеру. Колесо мыши — приближение и отдаление.'));
             pop.append(this.el('p', '', 'Выберите действие справа, затем укажите нужную систему или область на доске. Подсвеченные кольца показывают допустимые места.'));
+            pop.append(this.el('p', '', 'При сборке выберите тайл и место для предпросмотра. Q/E поворачивают его, F переключает сторону; подтвердите размещение справа.'));
             pop.append(this.el('p', '', 'На телефоне используйте жесты двумя пальцами для масштаба и перетаскивайте доску одним пальцем.'));
             root.append(pop);
         }
