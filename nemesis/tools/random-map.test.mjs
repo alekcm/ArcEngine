@@ -117,6 +117,7 @@ test('MAP-GEN-04: connectivity and degree limits on all generated ships', () => 
             }
         }
         assert.equal(visited.size, 21, 'All 21 rooms are connected');
+        assert.ok(Object.keys(ship.corridors).length <= 30, 'Ship has at most 30 corridors, got ' + Object.keys(ship.corridors).length);
 
         // Degree limits
         for (const [id, r] of Object.entries(ship.rooms)) {
