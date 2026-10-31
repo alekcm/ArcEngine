@@ -33,6 +33,19 @@
                         </select></div>
                     <div class="row"><label>Зерно (необязательно)</label><input id="seedInput" maxlength="32" placeholder="любая строка"></div>
                     <div class="row"><label>Драфт персонажей</label><select id="draftSelect"><option value="1">По правилам: 3 карты → выбрать 1</option><option value="0" selected>Без драфта: персонаж из лобби</option></select></div>
+                    <div class="row"><label>Адаптации чужих</label>
+                        <select id="adaptSelect">
+                            <option value="3" selected>Стандарт: 3 случайные адаптации</option>
+                            <option value="0">Отключены: без адаптаций (легче)</option>
+                            <option value="1">1 адаптация (легче)</option>
+                            <option value="2">2 адаптации</option>
+                            <option value="all">Кошмар: все 8 адаптаций (сложнее)</option>
+                        </select></div>
+                    <div class="row"><label>Кубик шума</label>
+                        <select id="noiseDieSelect">
+                            <option value="standard" selected>Стандарт: 2 встречи, 1 шум, 1 тишина</option>
+                            <option value="safe">Мягкий кубик: +1 шум и +1 тишина (без встреч)</option>
+                        </select></div>
                 </div>
                 <div class="row"><label>Адрес для друзей</label><div id="lanAddr" class="lan-addr">—</div></div>
                 <div class="lobby-buttons">

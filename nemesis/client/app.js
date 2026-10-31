@@ -277,7 +277,11 @@ function renderLobby() {
     for (const el of $('seatList').querySelectorAll('[data-kick]')) el.onclick = () => net.send({ t: 'lobby', kick: Number(el.dataset.kick) });
     // settings
     $('modeSelect').value = L.settings.mode; $('draftSelect').value = L.settings.draft === false ? '0' : '1'; if (document.activeElement !== $('seedInput')) $('seedInput').value = L.settings.seed || '';
+    if ($('adaptSelect')) $('adaptSelect').value = L.settings.adaptations !== undefined ? String(L.settings.adaptations) : '3';
+    if ($('noiseDieSelect')) $('noiseDieSelect').value = L.settings.noiseVariant ? 'safe' : 'standard';
     $('modeSelect').disabled = !app.host; $('seedInput').disabled = !app.host;
+    if ($('adaptSelect')) $('adaptSelect').disabled = !app.host;
+    if ($('noiseDieSelect')) $('noiseDieSelect').disabled = !app.host;
     $('lanAddr').textContent = L.addresses.length ? L.addresses.map(a => 'http://' + a + ':' + L.port).join('   ') : location.origin;
     $('readyBtn').textContent = app.ready ? 'Не готов' : 'Готов';
     $('readyBtn').disabled = app.spectator;
@@ -393,10 +397,18 @@ $('readyBtn').onclick = () => net.send({ t: 'lobby', ready: !app.ready });
 $('galleryBtn').onclick = () => openGallery();
 $('galleryClose').onclick = () => closeGallery();
 $('startBtn').onclick = () => net.send({ t: 'start' });
-const sendSettings = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value, draft: $('draftSelect').value === '1' } });
+const sendSettings = () => net.send({ t: 'lobby', settings: {
+    mode: $('modeSelect').value,
+    seed: $('seedInput').value,
+    draft: $('draftSelect').value === '1',
+    adaptations: $('adaptSelect') ? $('adaptSelect').value : '3',
+    noiseVariant: $('noiseDieSelect') ? $('noiseDieSelect').value === 'safe' : false,
+} });
 $('modeSelect').onchange = sendSettings;
 $('seedInput').onchange = sendSettings;
 $('draftSelect').onchange = sendSettings;
+if ($('adaptSelect')) $('adaptSelect').onchange = sendSettings;
+if ($('noiseDieSelect')) $('noiseDieSelect').onchange = sendSettings;
 $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else $('endOverlay').classList.add('hidden'); };
 
 // ---------------------------------------------------------------------------------------------
@@ -704,7 +716,7 @@ function renderPrompt() {
     if (pr && pr.kind !== 'dice' && tableFx && tableFx.holding) {
         el.classList.add('hidden'); tg.classList.add('hidden'); app.promptDeferred = true; return;
     }
-    if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); el.classList.remove('bagmode', 'eventmode'); closeItemPicker(); return; }   // dice prompts are shown by DiceUI
+    if (!pr || pr.kind === 'dice') { if ($('scannedCardModal')) $('scannedCardModal').classList.add('hidden'); el.classList.add('hidden'); tg.classList.add('hidden'); el.classList.remove('bagmode', 'eventmode'); closeItemPicker(); return; }   // dice prompts are shown by DiceUI
     // A state update can land in the middle of the half-second the card takes to turn. Rewriting
     // #prompt then rebuilt the card — the turn restarted, or finished in a flash. The card is left
     // alone (with the ready ticks it carries) until the turn is over.
@@ -777,6 +789,35 @@ function renderPrompt() {
         }
     }
     if (app.itemPick) closeItemPicker();
+
+    let scanModal = $('scannedCardModal');
+    if (pr && pr.scannedCard && pr.player === app.me && !pr.waiting) {
+        if (!scanModal) {
+            scanModal = document.createElement('div');
+            scanModal.id = 'scannedCardModal';
+            scanModal.className = 'scanned-card-modal';
+            document.body.appendChild(scanModal);
+        }
+        const sc = pr.scannedCard;
+        scanModal.innerHTML = '<div class="scanned-card-box">' +
+            '<div class="scanned-card-header">Сканер эмоций</div>' +
+            '<div class="scanned-card-target">Верхняя карта колоды: <b>' + esc(sc.target) + '</b></div>' +
+            '<div class="scanned-card-preview">' +
+                '<div class="scanned-card-title">«' + esc(sc.name) + '»</div>' +
+                '<div class="scanned-card-text">' + esc(sc.text) + '</div>' +
+            '</div>' +
+            '<div class="scanned-card-actions">' +
+                '<button class="btn" id="scanBtnDiscard">Сбросить в сброс</button>' +
+                '<button class="btn primary" id="scanBtnHand">Отдать в руку</button>' +
+            '</div>' +
+        '</div>';
+        scanModal.classList.remove('hidden');
+        const bDisc = $('scanBtnDiscard'), bHand = $('scanBtnHand');
+        if (bDisc) bDisc.onclick = () => { scanModal.classList.add('hidden'); act('discard'); };
+        if (bHand) bHand.onclick = () => { scanModal.classList.add('hidden'); act('hand'); };
+    } else if (scanModal) {
+        scanModal.classList.add('hidden');
+    }
     let html = '<h4>' + esc(pr.title) + '</h4>';
     if (pr.text) html += '<div class="ptext">' + esc(pr.text) + '</div>';
     switch (pr.kind) {

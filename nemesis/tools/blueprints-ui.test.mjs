@@ -1,5 +1,6 @@
 // blueprints-ui.test.mjs — tests for Nemesis Plans room selection, fullscreen button,
-// center-screen turn notification, and intruder rotation facing combat targets.
+// center-screen turn notification, intruder rotation facing combat targets,
+// Emotion Scanner card fixes, and difficulty editor (adaptations & noise die variant).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -85,4 +86,97 @@ test('ROT-01: Intruder rotation faces character who attacks it or whom it attack
     const sceneJs = fs.readFileSync('nemesis/client/scene3d.js', 'utf8');
     assert.match(sceneJs, /view\.lastCombatAction/, 'scene3d.js inspects view.lastCombatAction for intruder rotation');
     assert.match(sceneJs, /Math\.atan2\(/, 'computes facing angle towards combat target');
+});
+
+test('SCAN-01: Emotion Scanner allows choosing player in neighbouring room, shows normal card name and full text', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const engine = await import('../shared/engine/core.mjs');
+    await import('../shared/engine/actions2.mjs');
+
+    const state = createGame({
+        seed: 'scan-test',
+        players: [
+            { name: 'Psych', charId: 'psych' },
+            { name: 'Android', charId: 'android' }
+        ]
+    });
+    const p1 = state.players[0];
+    const p2 = state.players[1];
+
+    // Put p1 in Hibernatorium (011) and p2 in neighbouring room (006)
+    p1.room = '011';
+    p2.room = '006';
+    p2.deck = ['android.protocolOverride#0'];
+
+    state.prompt = null;
+    state.queue = [{ op: 'card.emotionScanner', player: p1.id }];
+    engine.run(state);
+
+    assert.ok(state.prompt, 'Target selection prompt displayed');
+    assert.ok(state.prompt.options.some(o => o.id === String(p2.id)), 'Android in neighbouring room is selectable');
+
+    engine.answer(state, p1.id, state.prompt.id, String(p2.id));
+
+    assert.ok(state.prompt, 'Scanned card choice prompt displayed');
+    assert.ok(state.prompt.scannedCard, 'scannedCard object present');
+    assert.equal(state.prompt.scannedCard.name, 'Обход протокола', 'Shows normal Russian card name, not code identifier');
+    assert.match(state.prompt.scannedCard.text, /Сбросьте 1 жетон ИБП/, 'Contains full printed card text');
+    assert.match(state.prompt.text, /Обход протокола/, 'Prompt text includes localized card title');
+    assert.match(state.prompt.text, /Сбросьте 1 жетон ИБП/, 'Prompt text includes full card description');
+
+    // Test action: discard
+    engine.answer(state, p1.id, state.prompt.id, 'discard');
+    assert.equal(p2.discard[p2.discard.length - 1], 'android.protocolOverride#0', 'Card moved to target discard');
+
+    // UI elements check
+    const appJs = fs.readFileSync('nemesis/client/app.js', 'utf8');
+    assert.match(appJs, /scannedCardModal/, 'Client app manages scannedCardModal for center-screen card text');
+    const css = fs.readFileSync('nemesis/client/style.css', 'utf8');
+    assert.match(css, /\.scanned-card-modal/, 'CSS styles centered scanned-card modal');
+});
+
+test('DIFF-01: Difficulty editor in lobby configures or disables alien adaptations', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+
+    // 1. Adaptations disabled (0)
+    const state0 = createGame({ seed: 'diff-0', adaptations: '0', players: [{ name: 'A', charId: 'soldier' }] });
+    assert.equal(state0.adaptations.length, 0, '0 adaptations when configured to 0');
+
+    // 2. All 8 adaptations (Nightmare mode)
+    const stateAll = createGame({ seed: 'diff-all', adaptations: 'all', players: [{ name: 'A', charId: 'soldier' }] });
+    assert.equal(stateAll.adaptations.length, 8, 'All 8 adaptations active in nightmare mode');
+
+    // 3. Custom count (1 adaptation)
+    const state1 = createGame({ seed: 'diff-1', adaptations: '1', players: [{ name: 'A', charId: 'soldier' }] });
+    assert.equal(state1.adaptations.length, 1, '1 adaptation active');
+
+    // 4. Default is 3
+    const stateDef = createGame({ seed: 'diff-def', players: [{ name: 'A', charId: 'soldier' }] });
+    assert.equal(stateDef.adaptations.length, 3, 'Default 3 adaptations');
+
+    // HTML lobby check
+    const html = fs.readFileSync('nemesis/client/index.html', 'utf8');
+    assert.match(html, /id="adaptSelect"/, 'adaptSelect present in hostSettings');
+});
+
+test('DIFF-02: Noise die variant replaces encounters with +1 noise and +1 silence', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const { NOISE_DIE, NOISE_DIE_SAFE, roll } = await import('../shared/engine/core.mjs');
+
+    // Standard die has 2 encounters, 1 silence, 1 danger
+    assert.equal(NOISE_DIE.filter(f => f === 'encounter').length, 2);
+    assert.equal(NOISE_DIE.filter(f => f === 'silence').length, 1);
+    assert.equal(NOISE_DIE.filter(f => f === 'danger').length, 1);
+
+    // Safe/variant die has 0 encounters, 2 silences, 2 dangers
+    assert.equal(NOISE_DIE_SAFE.filter(f => f === 'encounter').length, 0, 'No encounter faces on safe die');
+    assert.equal(NOISE_DIE_SAFE.filter(f => f === 'silence').length, 2, '+1 silence (2 total)');
+    assert.equal(NOISE_DIE_SAFE.filter(f => f === 'danger').length, 2, '+1 noise/danger (2 total)');
+
+    const state = createGame({ seed: 'noise-safe', noiseVariant: true, players: [{ name: 'A', charId: 'soldier' }] });
+    assert.equal(state.noiseVariant, true, 'noiseVariant saved in state');
+
+    // HTML lobby check
+    const html = fs.readFileSync('nemesis/client/index.html', 'utf8');
+    assert.match(html, /id="noiseDieSelect"/, 'noiseDieSelect present in hostSettings');
 });

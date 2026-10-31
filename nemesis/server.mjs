@@ -176,7 +176,7 @@ function upgrade(req, sock) {
 const game = {
     phase: 'lobby',                   // 'lobby' | 'playing'
     seats: [],                        // [{token, name, charId, colors, ready, socket|null}]
-    settings: { mode: 'original', seed: '', draft: false }, poses: {},
+    settings: { mode: 'original', seed: '', draft: false, adaptations: '3', noiseVariant: false }, poses: {},
     state: null,
     undo: [],                         // [{json, label}]
     history: [],                      // labels of accepted actions (for the undo list)
@@ -272,7 +272,13 @@ function onMessage(socket, m) {
             if (m.charId && CHARACTERS[m.charId] && !game.seats.some(s => s !== seat && s.charId === m.charId)) seat.charId = m.charId;
             if (m.colors && typeof m.colors === 'object') seat.colors = sanitizeColors(seat.charId, m.colors);
             if (typeof m.ready === 'boolean') seat.ready = m.ready;
-            if (m.settings && isHost(socket)) { if (m.settings.mode === 'random' || m.settings.mode === 'original') game.settings.mode = m.settings.mode; if (typeof m.settings.seed === 'string') game.settings.seed = m.settings.seed.slice(0, 32); if (typeof m.settings.draft === 'boolean') game.settings.draft = m.settings.draft; }
+            if (m.settings && isHost(socket)) {
+                if (m.settings.mode === 'random' || m.settings.mode === 'original') game.settings.mode = m.settings.mode;
+                if (typeof m.settings.seed === 'string') game.settings.seed = m.settings.seed.slice(0, 32);
+                if (typeof m.settings.draft === 'boolean') game.settings.draft = m.settings.draft;
+                if (typeof m.settings.adaptations === 'string' && ['0', '1', '2', '3', 'all', 'none'].includes(m.settings.adaptations)) game.settings.adaptations = m.settings.adaptations;
+                if (typeof m.settings.noiseVariant === 'boolean') game.settings.noiseVariant = m.settings.noiseVariant;
+            }
             if (m.kick !== undefined && isHost(socket)) { const k = game.seats[m.kick]; if (k && k !== seat) { if (k.socket) k.socket.close(); game.seats.splice(m.kick, 1); } }
             broadcastLobby();
             break;
@@ -283,6 +289,7 @@ function onMessage(socket, m) {
             if (seats.length < 1) return;
             game.seats = seats;
             game.state = createGame({ seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, draft: game.settings.draft,
+                adaptations: game.settings.adaptations, noiseVariant: game.settings.noiseVariant,
                 players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors })),
                 ui: { bagClick: true, eventAck: true } });
             game.phase = 'playing'; game.undo = []; game.history = []; game.poses = {};

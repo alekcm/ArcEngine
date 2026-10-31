@@ -4,7 +4,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, isContam, payCost, placeNoise, corridorsOf, secretTile,
-    payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES, computerHere, breakWeapon } from './core.mjs';
+    payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES, computerHere, breakWeapon, cardDef } from './core.mjs';
 import { ITEMS, dropLocked, canLoadWith, hasOpenQuest, connectedTo, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, WOUNDS, EVENT_CARDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
@@ -656,23 +656,69 @@ OPS['card.shortTemper.noise'] = (state, step) => { const p = player(state, step.
 // ---------------------------------------------------------------------------------------------
 OPS['card.emotionScanner'] = (state, step) => {
     const p = player(state, step.player);
-    const rooms = hasOpenQuest(p, 'oculobe') ? Object.keys(state.ship.rooms) : [p.room];
+    const nbrs = neighbours(state, p.room);
+    const hasOculobe = hasOpenQuest(p, 'oculobe');
     const opts = [];
-    for (const r of rooms) for (const o of others(state, p, r)) {
-        if (r !== p.room && !connectedTo(p, o)) continue;
-        if (o.deck.length) opts.push({ id: String(o.id), label: pname(o) + (r === p.room ? '' : ' — ' + roomName(state, r) + ' (жетон связи)') });
+    for (const o of state.players) {
+        if (o.id === p.id || o.status !== 'active') continue;
+        const inReach = o.room === p.room || nbrs.includes(o.room) || (hasOculobe && connectedTo(p, o));
+        if (!inReach) continue;
+        const totalCards = o.deck.length + o.discard.length;
+        if (totalCards > 0) {
+            let label = pname(o);
+            if (o.room === p.room) label += ' (в вашей комнате)';
+            else if (nbrs.includes(o.room)) label += ' (в соседней комнате: ' + roomName(state, o.room) + ')';
+            else label += ' (жетон связи: ' + roomName(state, o.room) + ')';
+            opts.push({ id: String(o.id), label });
+        }
+    }
+    if (!opts.length) {
+        log(state, 'Сканер эмоций: рядом нет других персонажей с картами в колоде.', 'minor');
+        next(state, BACK);
+        return;
     }
     choice(state, p, 'Сканер эмоций: чью колоду посмотреть?', opts, 'card.emotionScanner.pick');
 };
 OPS['card.emotionScanner.pick'] = (state, step) => {
-    const p = player(state, step.player); const t = player(state, Number(step.answer));
-    const c = t.deck[0]; const d = c.startsWith('contam#') ? { name: 'Заражение' } : (() => { const [ch, key] = c.split('#')[0].split('.'); return (state.fieldData && state.fieldData[key]) || { name: key }; })();
-    const name = c.startsWith('contam#') ? 'Заражение' : (d.name || c);
-    ask(state, { kind: 'choice', player: p.id, title: 'Верхняя карта ' + pname(t) + ': ' + name, options: [{ id: 'discard', label: 'Сбросить её' }, { id: 'hand', label: 'Отдать в руку' }] }, { op: 'card.emotionScanner.do', player: p.id, target: t.id });
+    const p = player(state, step.player);
+    const t = player(state, Number(step.answer));
+    if (!t.deck.length && t.discard.length) {
+        t.deck = shuffle(state, t.discard.splice(0));
+    }
+    const c = t.deck[0];
+    if (!c) {
+        ask(state, { kind: 'info', player: p.id, title: 'Сканер эмоций', text: 'У ' + pname(t) + ' нет карт в колоде.' }, { op: 'noop', then: BACK });
+        return;
+    }
+    const def = cardDef(state, c) || { name: c, text: '' };
+    const title = 'Сканер эмоций: верхняя карта ' + pname(t);
+    const text = '«' + def.name + '»\n\n' + (def.text || '');
+    ask(state, {
+        kind: 'choice',
+        player: p.id,
+        title,
+        text,
+        scannedCard: { name: def.name, text: def.text || '', cardId: c, target: pname(t) },
+        options: [
+            { id: 'discard', label: 'Сбросить карту в сброс' },
+            { id: 'hand', label: 'Отдать карту в руку' }
+        ]
+    }, { op: 'card.emotionScanner.do', player: p.id, target: t.id });
 };
 OPS['card.emotionScanner.do'] = (state, step) => {
-    const t = player(state, step.target); const c = t.deck.shift();
-    if (c) { if (step.answer === 'discard') t.discard.push(c); else t.hand.push(c); }
+    const p = player(state, step.player);
+    const t = player(state, step.target);
+    const c = t.deck.shift();
+    if (c) {
+        const def = cardDef(state, c) || { name: c, text: '' };
+        if (step.answer === 'discard') {
+            t.discard.push(c);
+            log(state, pname(p) + ' («Сканер эмоций»): сбрасывает верхнюю карту колоды ' + pname(t) + ' («' + def.name + '»).', 'action');
+        } else {
+            t.hand.push(c);
+            log(state, pname(p) + ' («Сканер эмоций»): отдаёт верхнюю карту колоды ' + pname(t) + ' в руку («' + def.name + '»).', 'action');
+        }
+    }
     next(state, BACK);
 };
 OPS['card.lendAHand'] = (state, step) => {

@@ -187,6 +187,7 @@ export class DiceUI {
             else if (f.value === 'encounter') ctx.font = 'bold 84px Arial';
             else ctx.font = 'bold 86px Arial';
             if (glyph) ctx.fillText(glyph, 64, 70);
+            f.dt = dt;
             if (/^[69]$/.test(glyph)) ctx.fillRect(44, 112, 40, 6);
             dt.update();
             const labelMaterial = new (B().StandardMaterial)('noise_lm', scene);
@@ -238,9 +239,35 @@ export class DiceUI {
         return { root, body, faces };
     }
 
+    syncNoiseFaces(variant) {
+        if (!this.dice || !this.dice.noise) return;
+        const faces = this.dice.noise.faces;
+        const noiseFaces = variant
+            ? ['1', '1', '2', '2', '3', '3', '4', '4', 'silence', 'silence', 'danger', 'danger']
+            : NOISE_FACES;
+        faces.forEach((f, i) => {
+            f.value = noiseFaces[i % noiseFaces.length];
+            if (!f.dt) return;
+            const ctx = f.dt.getContext();
+            ctx.clearRect(0, 0, 128, 128);
+            const glyph = faceGlyph(f.value);
+            ctx.fillStyle = '#1b1b1b'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            if (f.value === 'danger') { ctx.fillStyle = '#7a1010'; ctx.font = 'bold 96px Arial'; }
+            else if (f.value === 'encounter') ctx.font = 'bold 84px Arial';
+            else ctx.font = 'bold 86px Arial';
+            if (glyph) ctx.fillText(glyph, 64, 70);
+            if (/^[69]$/.test(glyph)) ctx.fillRect(44, 112, 40, 6);
+            f.dt.update();
+        });
+    }
+
     /** Called on every state update. `opts.title` lets the client rename the die (an unexplored room
      *  must stay "???" until its tile has been turned over). */
     update(view, me, playerName, opts) {
+        if (view && view.noiseVariant !== this.lastNoiseVariant) {
+            this.lastNoiseVariant = view.noiseVariant;
+            this.syncNoiseFaces(view.noiseVariant);
+        }
         const pr = view.prompt;
         const roll = view.lastRoll;
         if (this.lastSeen === null) this.lastSeen = roll ? roll.n : 0;   // nothing to replay on (re)connect

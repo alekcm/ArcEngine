@@ -138,13 +138,14 @@ export function log(state, text, kind = 'info') {
 // Lookups
 // ---------------------------------------------------------------------------------------------
 export const NOISE_DIE = [1, 1, 2, 2, 3, 3, 4, 4, 'silence', 'danger', 'encounter', 'encounter'];
+export const NOISE_DIE_SAFE = [1, 1, 2, 2, 3, 3, 4, 4, 'silence', 'silence', 'danger', 'danger'];
 export const COMBAT_DIE = ['crit', 2, 3, 3, 4, 4, 5, 5, 5, 6];
 /** The Battle Suit's "special Blue Combat die", as printed on its own face sheet: two 2s, three 3s,
  *  two 4s, one 5, one 6 and one Critical. */
 export const BLUE_DIE = ['crit', 2, 2, 3, 3, 3, 4, 4, 5, 6];
 const DIE_BY_ID = { noise: NOISE_DIE, blue: BLUE_DIE, combat: COMBAT_DIE };
 /** Prompt/log id of a die: 'noise', 'blue' or 'combat'. */
-export function dieId(die) { return die === NOISE_DIE ? 'noise' : die === BLUE_DIE ? 'blue' : 'combat'; }
+export function dieId(die) { return (die === NOISE_DIE || die === NOISE_DIE_SAFE) ? 'noise' : die === BLUE_DIE ? 'blue' : 'combat'; }
 export const HIBERNATION_TIME = 8;
 export const SELF_DESTRUCT_LENGTH = 6;  // 1-3 stoppable, 4-5 yellow (pods unlock), 6 red = boom
 
