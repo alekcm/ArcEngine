@@ -1,7 +1,7 @@
 // ship.mjs — the Nemesis ship: room tiles, the original board graph and a random ship generator.
 // Coordinates are abstract board units (the original board is ~1400 x 950); the client scales them.
 
-import { shuffle, randInt, rand, pick } from './rng.mjs';
+import { shuffle, randInt, rand, pick, seedFromString } from './rng.mjs';
 
 // ---------------------------------------------------------------------------------------------
 // Room tiles. `slot` — which stack the tile belongs to ('1' basic, '2' additional).
@@ -239,7 +239,7 @@ function agreeNumbers(rooms, pinned = {}) {
             return out;
         };
         const go = () => {
-            if (++nodes > 200000) return false;
+            if (++nodes > 25000) return false;
             for (const rd of doors) {
                 const seen = new Set();
                 for (const k of rd.list) if (assign.has(k)) for (const n of assign.get(k)) { if (seen.has(n)) return false; seen.add(n); }
@@ -403,6 +403,11 @@ const SYMMETRIC_CANDIDATE_GROUPS = [
 ];
 
 export function randomShip(holder) {
+    if (!holder) holder = { rng: (Math.random() * 0x100000000) >>> 0 };
+    else if (typeof holder === 'string') holder = { seed: holder, rng: seedFromString(holder) };
+    else if (holder.rng === undefined) {
+        holder.rng = holder.seed ? seedFromString(String(holder.seed)) : ((Math.random() * 0x100000000) >>> 0);
+    }
     for (let attempt = 0; attempt < 50; attempt++) {
         const ship = tryRandomShip(holder);
         if (ship) return ship;
