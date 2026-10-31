@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts } from './browser-scripts.mjs';
 
-const { get } = loadScripts(['js/fs/FSData.js', 'js/fs/FSEffects.js', 'js/fs/FSRules.js', 'js/fs/FSGame.js']);
+const { get } = loadScripts(['js/fs/FSData.js', 'js/fs/FSEffects.js', 'js/fs/FSRules.js', 'js/fs/FSView.js', 'js/fs/FSGame.js']);
 const FS_DATA = get('FS_DATA');
 const FS_RULES = get('FS_RULES');
 const FSGame = get('FSGame');
@@ -64,11 +64,10 @@ test('the client: the planning phase offers the four orders', () => {
 
 test('the client: the operations phase lists the orders of the player', () => {
     const raw = rawGame();
-    for (const p of raw.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = raw.systems.find(x => FS_RULES.canPlaceOrder(raw, p.seat, x.id));
-            FS_RULES.apply(raw, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-        }
+    while (raw.phase === 'planning') {
+        const seat = raw.turn;
+        const sys = raw.systems.find(x => FS_RULES.canPlaceOrder(raw, seat, x.id));
+        assert.ok(FS_RULES.apply(raw, seat, { type: 'placeOrder', system: sys.id, order: 'advance' }).ok);
     }
     const state = FS_RULES.view(raw, 0);
     const client = fakeClient(state);

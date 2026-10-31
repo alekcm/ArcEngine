@@ -121,11 +121,10 @@ test('the client: the lobby, the state and the panels of the phases', () => {
         seed: 21,
         players: FS_DATA.factions.slice(0, 2).map((f, i) => ({ name: 'Игрок ' + (i + 1), faction: f })),
     });
-    for (const p of raw.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = raw.systems.find(x => FS_RULES.canPlaceOrder(raw, p.seat, x.id));
-            FS_RULES.apply(raw, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-        }
+    while (raw.phase === 'planning') {
+        const seat = raw.turn;
+        const sys = raw.systems.find(x => FS_RULES.canPlaceOrder(raw, seat, x.id));
+        assert.ok(FS_RULES.apply(raw, seat, { type: 'placeOrder', system: sys.id, order: 'advance' }).ok);
     }
     game.onState(FS_RULES.view(raw, 0));
     assert.ok(UI.get('fsSideTitle').inner.textContent.includes('Операции'));
@@ -173,8 +172,7 @@ function playWholeGame(count, seed) {
             // The question of the effect of a card: the player answers it.
             seat = state.pending.answerSeat === undefined ? state.pending.seat : state.pending.answerSeat;
         } else if (state.phase === 'planning') {
-            const p = state.players.find(x => (x.placedTokens || 0) < FS_RULES.ORDER_TOKENS);
-            seat = p ? p.seat : null;
+            seat = state.turn;
         } else if (state.phase === 'operations') {
             seat = state.turn;
         } else if (state.phase === 'refresh') {

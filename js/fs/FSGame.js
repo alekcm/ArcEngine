@@ -80,7 +80,7 @@ class FSGame {
         if (!s || !s.systems.length) return;
         const m = this.view.metrics;
         if (!m) return;
-        // On desktop the glass HUD occupies unequal side rails (250 px left, 356 px right).
+        // On desktop the glass HUD occupies unequal side rails (250 px left, 420 px right).
         // Bias the board toward the free viewport so interactive systems are not hidden underneath it.
         const hudBias = typeof window !== 'undefined' && window.innerWidth > 980 ? 84 : 0;
         this.app.camera.lookAt(m.cx + hudBias, m.cy);
@@ -172,6 +172,10 @@ class FSGame {
             this.lastRound = view.round;
         }
         this.status = '';
+        if ((view.phase === 'planning' || view.phase === 'operations') && view.turn !== view.seat) {
+            if (this.mode === 'placeOrder' || this.mode === 'selectOrder') { this.mode = 'idle'; this.pending = null; }
+            FSView.clearHighlights(this.view);
+        }
         if (view.phase === 'setup' && view.setup && this.pending && view.setup.myTurn) {
             const initial = view.players[view.seat].initialForces;
             const exhausted = (this.mode === 'setupUnit' && !(initial.units[this.pending.unit] > 0))
@@ -259,7 +263,7 @@ class FSGame {
             const sys = s.systems.find(x => x.id === setup.currentSystem);
             const initial = s.players[s.seat].initialForces;
             ctx.text = 'Система ' + sys.tile + '. Выберите начальные силы и нажмите на подходящий сектор этого тайла. На третьем тайле нужно разместить всё оставшееся.';
-            ctx.status = this.status || (this.mode === 'setupUnit' || this.mode === 'setupStructure' ? 'Нажмите на подсвеченную область. Выбранную фигуру можно размещать несколько раз.' : 'Выберите отряд или постройку; размещение можно отменить кнопками ниже.');
+            ctx.status = this.status || (this.mode === 'setupUnit' || this.mode === 'setupStructure' ? 'Нажмите на подсвеченную область. Чтобы убрать свою фигуру, нажмите на неё.' : 'Выберите отряд или постройку. Чтобы убрать фигуру, нажмите на неё на карте.');
             const faction = FS_DATA.factions.find(f => f.id === s.players[s.seat].faction);
             for (const [id, count] of Object.entries(initial.units)) {
                 if (!count) continue;
@@ -276,15 +280,6 @@ class FSGame {
                 } });
             }
             ctx.actions.push({ label: 'Завершить размещение сил', onClick: () => this.net.cmd({ type: 'finishSetupForces' }) });
-            for (const unit of s.units.filter(u => u.system === sys.id && u.seat === s.seat)) {
-                const def = faction.units.find(u => u.id === unit.unit);
-                const area = sys.areas.find(a => a.pos === unit.area);
-                ctx.actions.push({ label: 'Убрать: ' + (def ? def.name : unit.unit) + ' · ' + (area.world ? area.world.name : 'пустота ' + area.pos), onClick: () => this.net.cmd({ type: 'removeSetupForce', kind: 'unit', id: unit.id }) });
-            }
-            for (const st of s.structures.filter(x => x.system === sys.id && x.seat === s.seat)) {
-                const area = sys.areas.find(a => a.pos === st.area);
-                ctx.actions.push({ label: 'Убрать: ' + names[st.type] + ' · ' + (area.world ? area.world.name : area.pos), onClick: () => this.net.cmd({ type: 'removeSetupForce', kind: 'structure', id: st.id }) });
-            }
             return;
         }
         if (setup.stage === 'objectives') {
@@ -300,16 +295,8 @@ class FSGame {
             return;
         }
         if (setup.stage === 'storms') {
-            const sys = this.pending && this.mode === 'setupStorm' && s.systems.find(x => x.id === this.pending.system);
-            ctx.text = 'Выберите систему на карте, затем её сторону. Шторм можно разместить и на внешнем краю карты. Ход идёт от последнего игрока против часовой стрелки.';
-            ctx.status = this.status || (sys ? 'Выбрана система ' + sys.tile + '. Выберите сторону справа.' : 'Нажмите на любую систему карты.');
-            if (sys) {
-                for (const [side, name] of [['N', 'сверху'], ['E', 'справа'], ['S', 'снизу'], ['W', 'слева']]) {
-                    const other = FS_RULES.across(s, sys.id, side);
-                    const legal = (setup.stormEdges || []).some(e => (e.system === sys.id && e.side === side) || (other && e.system === other && FS_RULES.across(s, other, e.side) === sys.id));
-                    if (legal) ctx.actions.push({ label: 'Шторм: ' + sys.tile + ' · ' + name, onClick: () => this.net.cmd({ type: 'setupStorm', system: sys.id, side }) });
-                }
-            }
+            ctx.text = 'Нажмите на подсвеченную границу на карте, чтобы разместить варп-шторм. Можно выбрать общую границу систем или внешний край карты.';
+            ctx.status = this.status || 'Доступные границы подсвечены фиолетовым.';
             return;
         }
         const hand = setup.hand || [];
@@ -328,27 +315,24 @@ class FSGame {
         }
         hand.forEach(id => {
             const active = selected && selected.handTile === id;
-            const face = active ? selected.tile : id;
-            const raw = FS_DATA.tiles.find(t => t.id === face);
-            // The small hand card follows the selected face and its orientation too.
-            const tile = raw && active ? Object.assign({}, raw, {
-                areas: FS_RULES.createSystemFromTile({ systems: [] }, raw, s.seat, 0, 0, selected.rotation).areas,
-            }) : raw;
-            const worlds = tile ? tile.areas.filter(a => a.world).map(a => a.world.name).join(' · ') : '';
-            ctx.actions.push({
-                label: 'Система ' + face + (worlds ? ' — ' + worlds : ''),
-                tile, selected: !!active,
-                onClick: () => {
+            const faces = FS_RULES.tileFaces(id).map(raw => {
+                const isSelected = !!(active && selected.tile === raw.id);
+                const tile = isSelected ? Object.assign({}, raw, {
+                    areas: FS_RULES.createSystemFromTile({ systems: [] }, raw, s.seat, 0, 0, selected.rotation).areas,
+                }) : raw;
+                return { tile, selected: isSelected, onClick: () => {
                     if (this.setupSubmitting) return;
                     const cell = selected ? selected.cell : null;
+                    const rotation = active ? selected.rotation : 0;
                     this.mode = 'placeTile';
-                    this.pending = { handTile: id, tile: id, rotation: 0, cell };
+                    this.pending = { handTile: id, tile: raw.id, rotation, cell };
                     this.status = '';
                     this.highlightSetupCells();
                     this.updateSetupPreview();
                     this.refresh();
-                },
+                } };
             });
+            ctx.actions.push({ label: 'Стороны системы ' + id.slice(0, -1), faces });
         });
     }
 
@@ -444,10 +428,15 @@ class FSGame {
         const me = s.seat;
         const p = s.players[me];
         ctx.title = 'Планирование — раунд ' + s.round;
-        ctx.text = 'Приказов выложено: ' + (p.placedTokens || 0) + ' из ' + FS_RULES.ORDER_TOKENS
-            + '. Выберите приказ и щёлкните по системе, где он допустим.';
-        ctx.status = this.mode === 'placeOrder' ? 'Щёлкните по системе для приказа «'
-            + FS_RULES.orderName(this.pending.order) + '».' : 'Ваш ход: выложите приказы.';
+        if (s.turn !== me) {
+            ctx.text = 'Приказы выкладываются по одному по очереди. Сейчас ход игрока ' + (s.players[s.turn]?.name || '—') + '.';
+            ctx.status = 'Ожидайте своей очереди.';
+            return;
+        }
+        ctx.text = 'Приказов выложено: ' + (p.placedTokens || 0) + ' из ' + (FS_RULES.ORDER_TOKENS + (p.extraOrderTokens || 0))
+            + '. Выберите один приказ и нажмите на подходящую систему. Затем ход перейдёт сопернику.';
+        ctx.status = this.status || (this.mode === 'placeOrder' ? 'Щёлкните по системе для приказа «'
+            + FS_RULES.orderName(this.pending.order) + '».' : 'Ваш ход: выложите один приказ.');
         const kinds = [['advance', 'Наступление'], ['deploy', 'Развёртывание'],
             ['strategize', 'Стратегия'], ['dominate', 'Доминирование']];
         for (const k of kinds) {
@@ -494,9 +483,21 @@ class FSGame {
             ctx.status = '';
             return;
         }
-        ctx.text = 'Ваш ход: вскройте верхний приказ в системе.';
-        ctx.status = '';
+        ctx.text = 'Ваш ход: выберите свой верхний приказ на карте или в списке.';
         const orders = FS_RULES.availableOrders(s, me);
+        if (this.mode === 'selectOrder' && this.pending) {
+            const sys = s.systems.find(x => x.id === this.pending.system);
+            const top = sys && sys.tokens[sys.tokens.length - 1];
+            if (top && top.seat === me) {
+                ctx.status = this.status || ('Выбран верхний приказ в системе ' + sys.tile + ': ' + FS_RULES.orderName(top.order) + '.');
+                ctx.actions.push({ label: 'Вскрыть и выполнить', onClick: () => this.net.cmd({ type: 'resolveOrder', system: sys.id }) });
+                if (top.order !== 'strategize') ctx.actions.push({ label: 'Вместо выполнения — на колоду событий', onClick: () => this.net.cmd({ type: 'resolveOrder', system: sys.id, toEventDeck: true }) });
+            }
+        } else ctx.status = this.status || 'На карте отмечены системы, где ваш приказ лежит сверху.';
+        FSView.highlight(this.view, orders.map(o => {
+            const sys = s.systems.find(x => x.id === o.system), p = FSView.tilePos(this.app, sys, this.view.metrics);
+            return { x: p.x, y: this.app.location.terrain.heightAt(p.x, p.y) + 22 + sys.tokens.length * 5, z: p.y };
+        }));
         for (const o of orders) {
             const sys = s.systems.find(x => x.id === o.system);
             if (!sys) continue;
@@ -524,20 +525,10 @@ class FSGame {
         if (order.phase === 'move') {
             const units = FS_RULES.movableUnits(s, me);
             ctx.text = 'Отряды, которые могут двигаться: ' + units.length
-                + '. Выберите отряд, потом щёлкните по цели.';
-            ctx.status = this.mode === 'move' ? 'Щёлкните по цели для отряда.' : 'Выберите отряд.';
-            for (const u of units) {
-                const def = FS_RULES.unitOf(s, u);
-                ctx.actions.push({
-                    label: (def ? def.name : u.id) + ' (' + u.system + ')',
-                    onClick: () => {
-                        this.mode = 'move';
-                        this.pending = { unit: u.id };
-                        this.highlightMove(u);
-                        this.refresh();
-                    },
-                });
-            }
+                + '. Нажмите на свой отряд на карте, затем на подсвеченную область назначения.';
+            const selectedUnit = this.mode === 'move' && this.pending && units.find(u => u.id === this.pending.unit);
+            const selectedDef = selectedUnit && FS_RULES.unitOf(s, selectedUnit);
+            ctx.status = this.status || (selectedUnit ? 'Выбран: ' + (selectedDef ? selectedDef.name : selectedUnit.id) + '. Нажмите на подсвеченную цель или выберите другой отряд.' : 'Выберите отряд на карте.');
             ctx.actions.push({
                 label: 'Закончить движение',
                 onClick: () => this.net.cmd({ type: 'endAdvance' }),
@@ -1176,9 +1167,35 @@ class FSGame {
         if (!pick || !pick.hit || !pick.pickedMesh) return;
         const meta = pick.pickedMesh.metadata;
         const point = pick.pickedPoint;
-        if (s.phase === 'setup' && s.setup && s.setup.myTurn && s.setup.stage === 'storms' && meta.system) {
-            this.status = ''; this.mode = 'setupStorm'; this.pending = { system: meta.system };
-            this.highlightSetupTargets(); this.refresh(); return;
+        if (s.phase === 'setup' && s.setup && s.setup.myTurn && s.setup.stage === 'storms') {
+            if (meta.fs === 'setupStormEdge') this.net.cmd({ type: 'setupStorm', system: meta.system, side: meta.side });
+            return;
+        }
+        if (s.phase === 'setup' && s.setup && s.setup.myTurn && s.setup.stage === 'forces' && meta.system === s.setup.currentSystem) {
+            const kind = meta.fs === 'unit' ? 'unit' : meta.fs === 'structure' ? 'structure' : null;
+            const id = kind === 'unit' ? meta.unit : meta.structure;
+            const items = kind === 'unit' ? s.units : s.structures;
+            if (kind && items.some(item => item.id === id && item.seat === s.seat && item.system === s.setup.currentSystem)) {
+                this.net.cmd({ type: 'removeSetupForce', kind, id });
+                return;
+            }
+        }
+        if (s.phase === 'operations' && !s.order && s.turn === s.seat && meta.fs === 'orderToken') {
+            if (FS_RULES.availableOrders(s, s.seat).some(o => o.system === meta.system)) {
+                this.mode = 'selectOrder'; this.pending = { system: meta.system }; this.status = ''; this.refresh();
+            } else { this.status = 'В этой стопке сверху не ваш приказ.'; this.refresh(); }
+            return;
+        }
+        if (s.phase === 'operations' && s.order && s.order.order === 'advance' && s.order.phase === 'move' && s.order.seat === s.seat && meta.fs === 'unit') {
+            const unit = FS_RULES.movableUnits(s, s.seat).find(u => u.id === meta.unit);
+            if (unit) {
+                if (this.mode === 'move' && this.pending && this.pending.unit === unit.id) {
+                    this.mode = 'idle'; this.pending = null; FSView.clearHighlights(this.view);
+                } else {
+                    this.mode = 'move'; this.pending = { unit: unit.id }; this.highlightMove(unit);
+                }
+                this.status = ''; this.refresh(); return;
+            }
         }
         if (this.mode === 'idle') {
             this.inspectAt(meta, point);
@@ -1196,7 +1213,7 @@ class FSGame {
         }
         if (this.mode === 'placeOrder') {
             // A unit or a structure also means its system.
-            if (meta.fs !== 'system' && meta.fs !== 'area' && meta.fs !== 'unit' && meta.fs !== 'structure') return;
+            if (meta.fs !== 'system' && meta.fs !== 'area' && meta.fs !== 'unit' && meta.fs !== 'structure' && meta.fs !== 'orderToken') return;
             this.net.cmd({ type: 'placeOrder', system: meta.system, order: this.pending.order });
             this.mode = 'idle';
             this.pending = null;
@@ -1224,7 +1241,11 @@ class FSGame {
         if (this.mode === 'move') {
             const unit = s.units.find(u => u.id === this.pending.unit);
             if (!unit) return;
+            if (!pos) return;
+            const check = FS_RULES.canMove(s, me, unit, { system: systemId, pos });
+            if (!check.ok) { this.status = check.error; this.refresh(); return; }
             this.net.cmd({ type: 'moveUnits', moves: [{ unit: unit.id, system: systemId, pos }] });
+            this.mode = 'idle'; this.pending = null; FSView.clearHighlights(this.view); this.refresh();
             return;
         }
         if (this.mode === 'placeUnit') {

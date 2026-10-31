@@ -121,13 +121,10 @@ test('a new game of four players: the layout of four rows', () => {
 
 test('the planning phase: four order tokens, then the operations', () => {
     const s = newGame(2);
-    for (const p of s.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, p.seat, x.id));
-            assert.ok(sys, 'there is a system for the order');
-            const res = FS_RULES.apply(s, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-            assert.equal(res.ok, true, res.error);
-        }
+    while (s.phase === 'planning') {
+        const seat = s.turn;
+        const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, seat, x.id));
+        assert.ok(FS_RULES.apply(s, seat, { type: 'placeOrder', system: sys.id, order: 'advance' }).ok);
     }
     assert.equal(s.phase, 'operations');
     assert.equal(s.turn, s.firstPlayer);
@@ -135,11 +132,10 @@ test('the planning phase: four order tokens, then the operations', () => {
 
 test('the operations phase: the order of the player is resolved', () => {
     const s = newGame(2);
-    for (const p of s.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, p.seat, x.id));
-            FS_RULES.apply(s, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-        }
+    while (s.phase === 'planning') {
+        const seat = s.turn;
+        const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, seat, x.id));
+        assert.ok(FS_RULES.apply(s, seat, { type: 'placeOrder', system: sys.id, order: 'advance' }).ok);
     }
     const seat = s.turn;
     const orders = FS_RULES.availableOrders(s, seat);
@@ -291,11 +287,10 @@ test('the combat: the hand of the opponent is hidden', () => {
 test('the refresh phase: the objectives, the materiel and the events', () => {
     const s = newGame(2);
     // The planning phase of the first round is over.
-    for (const p of s.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, p.seat, x.id));
-            FS_RULES.apply(s, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-        }
+    while (s.phase === 'planning') {
+        const seat = s.turn;
+        const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, seat, x.id));
+        assert.ok(FS_RULES.apply(s, seat, { type: 'placeOrder', system: sys.id, order: 'advance' }).ok);
     }
     // Everybody resolves his orders — then the refresh begins.
     let guard = 0;
@@ -511,7 +506,7 @@ test('a whole game: the bot plays the rounds without a crash', () => {
     let rounds = 0;
     while (!s.over && rounds < 10) {
         rounds++;
-        for (const p of s.players) { playRound(s, p.seat); answerPending(s); }
+        while (s.phase === 'planning') { playRound(s, s.turn); answerPending(s); }
         assert.equal(s.phase, 'operations');
         // The operations: every order of every player.
         let guard = 0;

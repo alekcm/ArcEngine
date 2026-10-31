@@ -274,13 +274,10 @@ test('the server: a whole game over the socket', async t => {
             return run(client, setupCommand(FS_RULES, FS_DATA, st), snapshot(st));
         }
         if (st.phase === 'planning') {
-            for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-                const legal = st.systems.filter(x => FS_RULES.canPlaceOrder(st, seat, x.id));
-                if (!legal.length) break;
-                const sys = legal[i % legal.length];
-                st = await run(client, { type: 'placeOrder', system: sys.id, order: 'advance' }, snapshot(st));
-            }
-            return;
+            if (st.turn !== seat) return st;
+            const legal = st.systems.filter(x => FS_RULES.canPlaceOrder(st, seat, x.id));
+            if (!legal.length) return st;
+            return run(client, { type: 'placeOrder', system: legal[0].id, order: 'advance' }, snapshot(st));
         }
         if (st.phase === 'operations' && st.turn === seat) {
             const orders = FS_RULES.availableOrders(st, seat);

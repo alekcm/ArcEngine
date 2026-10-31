@@ -30,11 +30,10 @@ function foreignSystem(s, seat) {
 
 // The planning phase of everybody: the operations phase begins.
 function enterOperations(s) {
-    for (const p of s.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, p.seat, x.id));
-            FS_RULES.apply(s, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-        }
+    while (s.phase === 'planning') {
+        const seat = s.turn;
+        const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, seat, x.id));
+        assert.ok(FS_RULES.apply(s, seat, { type: 'placeOrder', system: sys.id, order: 'advance' }).ok);
     }
     assert.equal(s.phase, 'operations');
 }

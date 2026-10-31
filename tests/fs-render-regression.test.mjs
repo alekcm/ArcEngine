@@ -93,3 +93,16 @@ test('incoming panel refresh waits for a pressed button and cannot overwrite a l
     ui.renderModern(null,{}); events.blur(); queued.shift()();
     assert.equal(root.replacements,3);
 });
+
+test('storm targets are visible, clickable geometry on exactly the legal tile edges', () => {
+    const page=loadScripts(['js/fs/FSView.js'],{BABYLON:B,World3D:{addObject(){},removeObject(_v,m){m.dispose();}}});
+    const fs=page.get('FSView'),engine=new B.NullEngine(),scene=new B.Scene(engine);
+    const app={location:{width:2048,height:2048,terrain:{heightAt:()=>12},view:{}}};
+    const view={scene,metrics:null,stormTargets:new Map(),material:n=>new B.StandardMaterial(n,scene)};
+    const state={phase:'setup',setup:{myTurn:true,stage:'storms',stormEdges:[{system:'s',side:'N'},{system:'s',side:'E'}]},systems:[{id:'s',row:0,col:0}]};
+    fs.updateStormTargets(app,view,state);assert.equal(view.stormTargets.size,2);
+    const n=view.stormTargets.get('s:N'),e=view.stormTargets.get('s:E'),center=fs.tilePos(app,state.systems[0],null),side=fs.TILE/2;
+    assert.equal(n.metadata.fs,'setupStormEdge');assert.equal(n.metadata.side,'N');assert.equal(n.position.z,center.y-side);
+    assert.equal(e.metadata.side,'E');assert.equal(e.position.x,center.x+side);
+    assert.ok(n.isPickable&&e.isPickable);state.setup.myTurn=false;fs.updateStormTargets(app,view,state);assert.equal(n.isEnabled(),false);assert.equal(e.isEnabled(),false);assert.equal(n.isPickable,false);engine.dispose();
+});

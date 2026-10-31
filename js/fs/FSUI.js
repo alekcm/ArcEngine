@@ -70,7 +70,7 @@ const FSUI = {
         this.actionStage = stageKey;
         root.replaceChildren();
         root.classList.toggle('is-no-state', !state);
-        root.classList.toggle('is-placing-tile', !!(state && state.phase === 'setup' && ctx.mode === 'placeTile'));
+        root.classList.toggle('is-placing-tile', !!(state && ((state.phase === 'setup' && state.setup && state.setup.myTurn && (ctx.mode === 'placeTile' || state.setup.stage === 'storms' || state.setup.stage === 'forces' || state.setup.stage === 'objectives')) || (state.phase === 'planning' && ctx.mode === 'placeOrder') || (state.phase === 'operations' && state.turn === state.seat && (!state.order || (state.order.order === 'advance' && state.order.phase === 'move' && state.order.seat === state.seat))))));
         if (this.currentLobby) { this.renderModernLobby(); return; }
         const header = this.el('div', 'fs-topbar');
         header.append(this.el('span', 'fs-brand', 'FORBIDDEN STARS'), this.el('i', 'fs-divider'));
@@ -97,6 +97,7 @@ const FSUI = {
             pop.append(this.el('p', '', 'Перетаскивайте поле мышью, чтобы перемещать камеру. Колесо мыши — приближение и отдаление.'));
             pop.append(this.el('p', '', 'Выберите действие справа, затем укажите нужную систему или область на доске. Подсвеченные кольца показывают допустимые места.'));
             pop.append(this.el('p', '', 'При сборке выберите тайл и место для предпросмотра. Q/E поворачивают его, F переключает сторону; подтвердите размещение справа.'));
+            pop.append(this.el('p', '', 'Для снятия начальной фигуры нажмите на неё. Варп-шторм ставится на подсвеченное ребро карты. В операциях нажмите на верхний приказ, а при наступлении — на отряд и область назначения.'));
             pop.append(this.el('p', '', 'На телефоне используйте жесты двумя пальцами для масштаба и перетаскивайте доску одним пальцем.'));
             root.append(pop);
         }
@@ -146,6 +147,20 @@ const FSUI = {
         const icons = ['✦','⬡','◈','⚔','⌖','⛨','✧','➤'];
         (ctx.actions || []).forEach((a, i) => {
             if (a.enabled === false) return;
+            if (a.faces) {
+                const pair = this.el('div', 'fs-tile-pair');
+                a.faces.forEach((face, index) => {
+                    if (index) pair.append(this.el('span', 'fs-tile-link', '⇄'));
+                    const choice = this.el('button', 'fs-tile-choice' + (face.selected ? ' is-selected' : ''));
+                    choice.type = 'button';
+                    choice.setAttribute('aria-pressed', face.selected ? 'true' : 'false');
+                    choice.append(this.tilePreview(face.tile));
+                    choice.addEventListener('click', () => face.onClick());
+                    pair.append(choice);
+                });
+                actions.append(pair);
+                return;
+            }
             const button = this.el('button', a.tile ? 'fs-tile-choice' + (a.selected ? ' is-selected' : '') : 'fs-action'); button.type = 'button';
             if (a.tile) {
                 button.setAttribute('aria-pressed', a.selected ? 'true' : 'false');
@@ -421,6 +436,10 @@ const FSUI = {
         // The buttons of the current action.
         let y = 8;
         for (const a of ctx.actions || []) {
+            if (a.faces) {
+                for (const face of a.faces) { this.add('fsBtn', 'fsA' + y, 8, y, 'Система ' + face.tile.id, face.onClick, 234); y += 30; }
+                continue;
+            }
             const el = this.add('fsBtn', 'fsA' + y, 8, y, a.label, a.onClick, a.w || 234);
             if (el && a.enabled === false) el.show(false);
             y += 30;

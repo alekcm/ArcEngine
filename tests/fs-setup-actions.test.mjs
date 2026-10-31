@@ -133,7 +133,7 @@ test('shared storm edges are occupied from both sides; invalid commands do not a
     assert.equal(s.phase, 'planning');
 });
 
-test('setup board clicks send selected force and objective commands; storm selection chooses a system', () => {
+test('setup board clicks send selected force and objective commands; storm selection chooses an edge', () => {
     const s = game(), sys = tile(s), seat = s.setup.turn;
     const client = Object.create(Game.prototype), sent = [];
     Object.assign(client, { state: rules.view(s, seat), mode: 'setupUnit', pending: { unit: 'test-unit' }, status: '',
@@ -145,6 +145,7 @@ test('setup board clicks send selected force and objective commands; storm selec
     client.onClick(20, 30);
     assert.equal(sent[1].type, 'setupObjective'); assert.equal(sent[1].faction, 'opponent');
     client.state.setup.stage = 'storms'; client.mode = 'idle'; client.pending = null;
+    client.view.scene.pick = () => ({ hit: true, pickedMesh: { metadata: { fs: 'setupStormEdge', system: sys.id, side: 'N' } } });
     client.onClick(20, 30);
-    assert.equal(client.mode, 'setupStorm'); assert.equal(client.pending.system, sys.id);
+    assert.equal(sent[2].type, 'setupStorm'); assert.equal(sent[2].system, sys.id); assert.equal(sent[2].side, 'N');
 });

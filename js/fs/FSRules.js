@@ -888,6 +888,7 @@ const FS_RULES = {
 
     cmdPlaceOrder(state, seat, cmd) {
         if (state.phase !== 'planning') return { ok: false, error: 'Сейчас не фаза планирования.' };
+        if (state.turn !== seat) return { ok: false, error: 'Сейчас очередь другого игрока.' };
         const p = state.players[seat];
         const limit = this.ORDER_TOKENS + (p.extraOrderTokens || 0);
         if ((p.placedTokens || 0) >= limit) return { ok: false, error: 'Все приказы уже выложены.' };
@@ -898,8 +899,14 @@ const FS_RULES = {
         if (!types.includes(cmd.order)) return { ok: false, error: 'Неизвестный приказ.' };
         sys.tokens.push({ seat, order: cmd.order, faceUp: false });
         p.placedTokens = (p.placedTokens || 0) + 1;
-        this.log(state, seat, p.name + ' выложил приказ «' + this.orderName(cmd.order) + '».');
+        this.log(state, seat, p.name + ' выложил закрытый приказ.');
         this.checkPlanningDone(state);
+        if (state.phase === 'planning') {
+            for (let i = 1; i <= state.players.length; i++) {
+                const next = (seat + i) % state.players.length, player = state.players[next];
+                if ((player.placedTokens || 0) < this.ORDER_TOKENS + (player.extraOrderTokens || 0)) { state.turn = next; break; }
+            }
+        }
         return { ok: true };
     },
 
@@ -948,6 +955,7 @@ const FS_RULES = {
         if (top.seat !== seat) return { ok: false, error: 'Это не ваш приказ.' };
         // The player may put the token on his event deck instead of resolving it.
         if (cmd.toEventDeck) {
+            if (top.order === 'strategize') return { ok: false, error: 'Приказ стратегии сначала выполняется.' };
             sys.tokens.pop();
             const p = state.players[seat];
             p.eventTokens++;
@@ -2273,6 +2281,13 @@ const FS_RULES = {
                 units: p.supply.units,
                 structures: p.supply.structures,
             };
+        }
+        // Only a player's own exposed top token may be inspected. Never send
+        // opponents' or buried order faces to the browser, including planning.
+        for (const sys of copy.systems) {
+            sys.tokens.forEach((token, i) => {
+                if (!token.faceUp && (token.seat !== seat || i !== sys.tokens.length - 1)) token.order = null;
+            });
         }
         // The cards of the combat: only the player sees his own hand.
         if (copy.combat) {

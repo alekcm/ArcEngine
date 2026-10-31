@@ -32,6 +32,7 @@ const FSView = {
             scene: app.location.view.scene,
             tiles: new Map(),
             setupSlots: new Map(),      // free cells during board assembly
+            stormTargets: new Map(),    // clickable physical borders
             setupPreview: null,         // local, uncommitted tile
             markers: [],
             highlights: [],
@@ -548,6 +549,36 @@ const FSView = {
         }
     },
 
+    // Show each legal physical edge once, including the outside of the board.
+    // Thin raised meshes remain easy to click regardless of camera rotation.
+    updateStormTargets(app, view, state) {
+        if (!view.stormTargets) view.stormTargets = new Map();
+        const setup = state.phase === 'setup' && state.setup;
+        const edges = setup && setup.stage === 'storms' && setup.myTurn ? setup.stormEdges || [] : [];
+        const active = new Set();
+        for (const edge of edges) {
+            const sys = state.systems.find(s => s.id === edge.system);
+            if (!sys) continue;
+            const key = edge.system + ':' + edge.side;
+            active.add(key);
+            let mesh = view.stormTargets.get(key);
+            if (!mesh) {
+                const p = this.tilePos(app, sys, view.metrics), half = this.TILE / 2;
+                const delta = { N: [0, -half], S: [0, half], E: [half, 0], W: [-half, 0] }[edge.side];
+                const horizontal = edge.side === 'N' || edge.side === 'S';
+                mesh = BABYLON.MeshBuilder.CreateBox('fs-storm-target-' + key,
+                    { width: horizontal ? this.TILE - 30 : 20, depth: horizontal ? 20 : this.TILE - 30, height: 3 }, view.scene);
+                mesh.position.set(p.x + delta[0], app.location.terrain.heightAt(p.x, p.y) + 13, p.y + delta[1]);
+                mesh.material = view.material('storm-target', '#b45ce8', { alpha: .8, emissive: true });
+                World3D.addObject(app.location.view, mesh, 'prop', { castShadow: false, ink: false, outline: false });
+                mesh.metadata = { fs: 'setupStormEdge', system: edge.system, side: edge.side };
+                view.stormTargets.set(key, mesh);
+            }
+            mesh.setEnabled(true); mesh.isPickable = true;
+        }
+        for (const [key, mesh] of view.stormTargets) if (!active.has(key)) { mesh.setEnabled(false); mesh.isPickable = false; }
+    },
+
     // The candidate is local to this client. It uses the same artwork and 3D
     // worlds as a committed system, but does not intercept the underlying slot.
     showSetupPreview(app, view, state, tile, cell, rotation) {
@@ -775,6 +806,7 @@ const FSView = {
             }
         }
         this.updateSetupSlots(app, view, state);
+        this.updateStormTargets(app, view, state);
         this.updatePlanets(app, view, state);
         // The markers.
         this.clearMarkers(view);
@@ -914,16 +946,14 @@ const FSView = {
             const p = this.tilePos(app, sys, view.metrics);
             sys.tokens.forEach((tok, i) => {
                 const mesh = BABYLON.MeshBuilder.CreateBox('fs-tok' + sys.id + i, { width: 30, depth: 30, height: 5 }, view.scene);
-                mesh.position.set(p.x + (i % 3 - 1) * 24, h(p.x, p.y) + 9 + this.MARKER_Y + Math.floor(i / 3) * 6, p.y);
+                mesh.position.set(p.x, h(p.x, p.y) + 9 + this.MARKER_Y + i * 5, p.y);
                 const owner = state.players.find(p2 => p2.seat === tok.seat);
                 const color = (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
                 // The letter of the order on the colour of the player.
-                const mat = view.material('tok' + tok.order + tok.seat, color);
-                mat.diffuseTexture = this.orderTexture(view, tok.order);
-                mat.opacityTexture = mat.diffuseTexture;
-                mat.useAlphaFromDiffuseTexture = true;
+                const mat = view.material('tok-back-' + tok.seat, color);
                 mesh.material = mat;
-                mesh.isPickable = false;
+                mesh.isPickable = true;
+                mesh.metadata = { fs: 'orderToken', system: sys.id };
                 this.addMarker(view, mesh, 'actor');
             });
         }
