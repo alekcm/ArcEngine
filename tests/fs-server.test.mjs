@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { ROOT, loadScripts } from './browser-scripts.mjs';
+import { setupCommand } from './fs-setup-helper.mjs';
 
 const { get } = loadScripts(['js/fs/FSData.js', 'js/fs/FSEffects.js', 'js/fs/FSRules.js']);
 const FS_DATA = get('FS_DATA');
@@ -142,10 +143,8 @@ test('the server: the room, the factions, the game and the commands', async t =>
         const seat = state.view.setup.turn;
         const client = seat === 0 ? a : b;
         const ownView = seat === 0 ? state.view : stateB.view;
-        const tile = ownView.setup.hand[0];
-        const cell = ownView.setup.legalCells[0];
-        assert.ok(tile && cell, 'the active player has a tile and a legal cell');
-        client.send({ t: 'cmd', cmd: { type: 'placeSystemTile', tile, row: cell.row, col: cell.col } });
+        const cmd = setupCommand(FS_RULES, FS_DATA, ownView);
+        client.send({ t: 'cmd', cmd });
         const states = await Promise.all([a.wait('state'), b.wait('state')]);
         state = states[0]; stateB = states[1];
         assert.equal(client === a ? state.view.seat : stateB.view.seat, seat);
@@ -203,7 +202,7 @@ test('the server: a whole game over the socket', async t => {
     // The interesting part of the state: it changes with every command.
     const snapshot = st => JSON.stringify([
         st.phase, st.turn,
-        st.setup ? st.setup.placedTotal + ':' + st.setup.turn : '-',
+        st.setup ? JSON.stringify([st.setup, st.players.map(p => p.initialForces), st.units.length, st.structures.length, st.objectives.length]) : '-',
         st.order ? st.order.order + ':' + st.order.phase : '-',
         st.players.map(p => p.placedTokens || 0),
         st.event ? st.event.seat + ':' + (st.event.chosen || '') : '-',
@@ -262,9 +261,7 @@ test('the server: a whole game over the socket', async t => {
         if (st.pending) return answerEffect(client, st);
         if (st.phase === 'setup') {
             if (!st.setup.myTurn) return st;
-            const cell = (st.setup.legalCells || [])[0], tile = (st.setup.hand || [])[0];
-            if (!cell || !tile) return st;
-            return run(client, { type: 'placeSystemTile', tile, row: cell.row, col: cell.col }, snapshot(st));
+            return run(client, setupCommand(FS_RULES, FS_DATA, st), snapshot(st));
         }
         if (st.phase === 'planning') {
             for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
@@ -303,7 +300,7 @@ test('the server: a whole game over the socket', async t => {
     };
 
     // The bot plays until the second round.
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 120; i++) {
         for (const client of [a, b]) {
             await bot(client, lastState(client));
         }

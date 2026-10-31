@@ -354,6 +354,10 @@ function parseSystems(md) {
                 },
             });
         }
+        // The expansion tiles 17–20 carry faction icons too; their headings
+        // identify the source image rather than naming the faction in brackets.
+        const expansionHomes = { 17: 'темные-эльдары', 18: 'адептус-механикус', 19: 'сестры-битвы', 20: 'инквизиция' };
+        if (expansionHomes[parseInt(id, 10)]) tile.home = expansionHomes[parseInt(id, 10)];
         // The home tile of a faction: "### Тайл 9A (Эльдары)"
         const f = /\(([^)]+)\)/.exec(sec.title);
         if (f) {

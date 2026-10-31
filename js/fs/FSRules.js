@@ -23,8 +23,8 @@
 const FS_RULES = {
     // The board: the rows of the system tiles, top to bottom. Every player has
     // three tiles (their home tile and two base ones), so the board is
-    // 3 x players tiles. The rows are staggered like the real board.
-    LAYOUTS: { 2: [2, 2, 2], 3: [3, 3, 3], 4: [2, 3, 4, 3] },
+    // 3 x players tiles, on an aligned square grid.
+    LAYOUTS: { 2: [2, 2, 2], 3: [3, 3, 3], 4: [4, 4, 4] },
     TILE: 100,             // px of one system tile
     MATERIEL_MAX: 14,      // the materiel dial stops at 14
     DICE_MAX: 8,           // no more than eight dice in a combat
@@ -216,45 +216,24 @@ const FS_RULES = {
     neighbors(state, systemId) {
         const sys = this.system(state, systemId);
         if (!sys) return [];
-        const out = [];
-        for (const other of state.systems) {
-            if (other.id === sys.id) continue;
-            if (other.row === sys.row && Math.abs(other.col - sys.col) === 1) { out.push(other.id); continue; }
-            if (Math.abs(other.row - sys.row) !== 1) continue;
-            // The rows are staggered: the tiles of the next row overlap by half.
-            const shift = (other.row % 2 === 1 ? 1 : 0) - (sys.row % 2 === 1 ? 1 : 0);
-            const diff = other.col - sys.col;
-            if (diff === 0 || diff === -shift) out.push(other.id);
-        }
-        return out;
+        return state.systems.filter(other => other.id !== sys.id
+            && Math.abs(other.row - sys.row) + Math.abs(other.col - sys.col) === 1).map(other => other.id);
     },
 
-    // The side of a system that faces another system ('N', 'E', 'S', 'W').
+    // Only full shared edges count as adjacency.
     sideBetween(state, aId, bId) {
         const a = this.system(state, aId), b = this.system(state, bId);
-        if (!a || !b) return null;
+        if (!a || !b || Math.abs(a.row - b.row) + Math.abs(a.col - b.col) !== 1) return null;
         if (a.row === b.row) return b.col > a.col ? 'E' : 'W';
-        const shift = (b.row % 2 === 1 ? 1 : 0) - (a.row % 2 === 1 ? 1 : 0);
-        if (b.col === a.col) return b.row > a.row ? 'S' : 'N';
-        if (b.col === a.col - 1) return b.row > a.row ? 'SW' : 'NW';
-        return b.row > a.row ? 'SE' : 'NE';
+        return b.row > a.row ? 'S' : 'N';
     },
 
-    // The system across a side of a system (null — the edge of the board).
     across(state, systemId, side) {
         const sys = this.system(state, systemId);
         if (!sys) return null;
-        const shift = sys.row % 2 === 1 ? 1 : 0;
-        let row = sys.row, col = sys.col;
-        if (side === 'N') row -= 1;
-        else if (side === 'S') row += 1;
-        else if (side === 'E') col += 1;
-        else if (side === 'W') col -= 1;
-        else if (side === 'NE') { row -= 1; col += shift; }
-        else if (side === 'NW') { row -= 1; col -= 1 + shift; }
-        else if (side === 'SE') { row += 1; col += shift; }
-        else if (side === 'SW') { row += 1; col -= 1 + shift; }
-        const other = state.systems.find(s => s.row === row && s.col === col);
+        const offset = { N: [-1, 0], S: [1, 0], E: [0, 1], W: [0, -1] }[side];
+        if (!offset) return null;
+        const other = state.systems.find(s => s.row === sys.row + offset[0] && s.col === sys.col + offset[1]);
         return other ? other.id : null;
     },
 
@@ -268,31 +247,29 @@ const FS_RULES = {
     // A path may not pass through an enemy, uncontrolled or contested area,
     // and not through a warp storm.
     pathExists(state, seat, fromSystem, fromPos, toSystem, toPos) {
-        if (fromSystem === toSystem) return true;
-        const start = { system: fromSystem, pos: fromPos };
-        const seen = new Set([fromSystem + ':' + fromPos]);
+        if (fromSystem === toSystem && fromPos === toPos) return true;
+        const start = { system: fromSystem, pos: fromPos, voids: 0 };
+        const seen = new Map([[fromSystem + ':' + fromPos, 0]]);
         const queue = [start];
-        let voids = 0;
         while (queue.length) {
             const cur = queue.shift();
             for (const next of this.areasAround(state, cur.system, cur.pos)) {
                 const key = next.system + ':' + next.pos;
-                if (seen.has(key)) continue;
-                seen.add(key);
-                if (this.stormOn(state, cur.system, next.system)) continue;   // a storm blocks the way
+                if (this.stormOn(state, cur.system, next.system)) continue;
                 // The destination may be an empty world — the way must be friendly.
                 if (next.system === toSystem && next.pos === toPos) return true;
+                let voids = cur.voids;
                 if (this.control(state, seat, next.system, next.pos) !== 'friendly') {
-                    // The order may let the units pass through the empty voids.
                     const order = state.order;
                     const area = this.area(this.system(state, next.system), next.pos);
-                    if (order && order.passVoid && area && !area.world && voids < order.passVoid) {
-                        voids++;
-                        queue.push(next);
-                    }
-                    continue;
+                    if (!order || !order.passVoid || !area || area.world || voids >= order.passVoid
+                        || this.unitsAt(state, next.system, next.pos).length
+                        || this.structuresAt(state, next.system, next.pos).length) continue;
+                    voids++;
                 }
-                queue.push(next);
+                if (seen.has(key) && seen.get(key) <= voids) continue;
+                seen.set(key, voids);
+                queue.push({ system: next.system, pos: next.pos, voids });
             }
         }
         return false;
@@ -325,16 +302,12 @@ const FS_RULES = {
         if (!a || !b) return false;
         const side = this.sideBetween(state, sysA, sysB);
         if (!side) return false;
-        // The side of the tile touches the areas of that side of the neighbour.
-        const near = {
-            N: ['TL', 'TR'], S: ['BL', 'BR'], E: ['TR', 'BR'], W: ['TL', 'BL'],
-            NE: ['TR'], NW: ['TL'], SE: ['BR'], SW: ['BL'],
-        }[side] || [];
-        const far = {
-            N: ['TL', 'TR'], S: ['BL', 'BR'], E: ['TR', 'BR'], W: ['TL', 'BL'],
-            NE: ['TR'], NW: ['TL'], SE: ['BR'], SW: ['BL'],
-        }[this.sideBetween(state, sysB, sysA)] || [];
-        return near.includes(posA) && far.includes(posB);
+        // Opposing half-edges must line up; diagonal quarters do not touch.
+        const pairs = {
+            N: { TL: 'BL', TR: 'BR' }, S: { BL: 'TL', BR: 'TR' },
+            E: { TR: 'TL', BR: 'BL' }, W: { TL: 'TR', BL: 'BR' },
+        };
+        return !!pairs[side] && pairs[side][posA] === posB;
     },
 
     // -----------------------------------------------------------------------
@@ -380,6 +353,7 @@ const FS_RULES = {
                 assets: { forge: 0, cache: 0, reinforcement: 0, prosperity: 0 },
                 objectives: 0,
                 supply: { units: {}, structures: { city: 0, factory: 0, bastion: 0 } },
+                initialForces: { units: {}, structures: {} },
                 orderTokens: this.ORDER_TOKENS,
                 eventTokens: 0,
                 decks: { combat: [], upgradeCombat: [], event: [], upgradeOrder: [] },
@@ -392,13 +366,15 @@ const FS_RULES = {
             // The initial forces: the units of the sheet and the structures and
             // tokens of the "Initial Forces" box.
             for (const u of faction.units) {
-                if (u.start > 0) state.players[seat].supply.units[u.id] = u.start;
+                state.players[seat].supply.units[u.id] = Math.max(0, (u.max || 0) - (u.start || 0));
+                if (u.start > 0) state.players[seat].initialForces.units[u.id] = u.start;
             }
             const st = faction.start;
             // A player has three cities, three factories and three bastions.
             // The initial forces lie on the board, the rest waits in the supply.
             for (const type of ['city', 'factory', 'bastion']) {
                 state.players[seat].supply.structures[type] = Math.max(0, this.STRUCTURE_LIMIT - (st[type] || 0));
+                state.players[seat].initialForces.structures[type] = st[type] || 0;
             }
             state.players[seat].assets.forge = st.forge || 0;
             state.players[seat].assets.cache = st.cache || 0;
@@ -430,17 +406,19 @@ const FS_RULES = {
         for (let i = 0; i < count; i++) seatOrder.push((state.firstPlayer + i) % count);
         for (const p of state.players) {
             p.objectivePool = [];
-            for (let i = 0; i < 2 * (count - 1); i++) p.objectivePool.push(p.faction);
+            for (const opponent of state.players) {
+                if (opponent.seat !== p.seat) p.objectivePool.push(opponent.faction, opponent.faction);
+            }
         }
 
         if (opts.interactiveSetup) {
             const hands = Array.from({ length: count }, () => []);
             for (const entry of tiles) hands[entry.seat].push(entry.tile.id);
-            const midRow = Math.floor(rows.length / 2);
-            const center = { row: midRow, col: Math.floor(rows[midRow] / 2) };
+            const center = { row: 0, col: 0 };
             state.setup = {
-                slots: cells,
                 hands,
+                stage: 'tile',
+                currentSystem: null,
                 placedBySeat: Array(count).fill(0),
                 placedTotal: 0,
                 totalTiles: tiles.length,
@@ -457,10 +435,8 @@ const FS_RULES = {
                 if (!entry) continue;
                 const sys = this.createSystemFromTile(state, entry.tile, entry.seat, cell.row, cell.col);
                 state.systems.push(sys);
-                if (state.players[entry.seat].placed === 0) {
-                    this.placeInitialForces(state, entry.seat, sys);
-                    state.players[entry.seat].placed++;
-                }
+                this.placeInitialForces(state, entry.seat, sys);
+                state.players[entry.seat].placed++;
                 this.placeSetupObjectives(state, sys);
             }
             this.finishBoardSetup(state);
@@ -502,26 +478,34 @@ const FS_RULES = {
     },
 
     setupAdjacent(a, b) {
-        if (a.row === b.row) return Math.abs(a.col - b.col) === 1;
-        if (Math.abs(a.row - b.row) !== 1) return false;
-        const shift = (b.row % 2 === 1 ? 1 : 0) - (a.row % 2 === 1 ? 1 : 0);
-        const diff = b.col - a.col;
-        return diff === 0 || diff === -shift;
+        return Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
     },
 
     setupLegalCells(state) {
-        const setup = state.setup;
-        if (!setup) return [];
+        if (!state.setup) return [];
+        if (!state.systems.length) return [{ row: 0, col: 0 }];
         const occupied = new Set(state.systems.map(s => s.row + ':' + s.col));
-        if (!state.systems.length) return [{ row: setup.center.row, col: setup.center.col }];
-        return setup.slots.filter(cell => !occupied.has(cell.row + ':' + cell.col)
-            && state.systems.some(sys => this.setupAdjacent(sys, cell)));
+        const candidates = new Map();
+        for (const sys of state.systems) {
+            for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+                const cell = { row: sys.row + dr, col: sys.col + dc };
+                const key = cell.row + ':' + cell.col;
+                if (occupied.has(key)) continue;
+                const all = state.systems.concat([cell]);
+                const height = Math.max(...all.map(s => s.row)) - Math.min(...all.map(s => s.row)) + 1;
+                const width = Math.max(...all.map(s => s.col)) - Math.min(...all.map(s => s.col)) + 1;
+                const short = state.players.length, long = 3;
+                if ((height <= short && width <= long) || (height <= long && width <= short)) candidates.set(key, cell);
+            }
+        }
+        return [...candidates.values()];
     },
 
     cmdPlaceSystemTile(state, seat, cmd) {
         const setup = state.setup;
         if (state.phase !== 'setup' || !setup) return { ok: false, error: 'Сейчас не этап сборки карты.' };
         if (setup.turn !== seat) return { ok: false, error: 'Сейчас очередь другого игрока выкладывать тайл.' };
+        if (setup.stage !== 'tile') return { ok: false, error: 'Сначала завершите текущий этап размещения.' };
         const hand = setup.hands[seat] || [];
         const tileIndex = hand.indexOf(cmd.tile);
         if (tileIndex < 0) return { ok: false, error: 'Этого системного тайла нет у вас в руке.' };
@@ -534,35 +518,166 @@ const FS_RULES = {
         const sys = this.createSystemFromTile(state, tile, seat, cell.row, cell.col);
         state.systems.push(sys);
         hand.splice(tileIndex, 1);
-        if (state.players[seat].placed === 0) {
-            this.placeInitialForces(state, seat, sys);
-            state.players[seat].placed++;
-        }
-        this.placeSetupObjectives(state, sys);
         setup.placedBySeat[seat]++;
         setup.placedTotal++;
+        setup.currentSystem = sys.id;
+        setup.stage = 'forces';
         this.log(state, seat, state.players[seat].name + ' разместил систему ' + tile.id + '.');
+        return { ok: true };
+    },
 
-        if (setup.placedTotal >= setup.totalTiles) {
-            this.finishBoardSetup(state);
-            return { ok: true };
-        }
-        for (let step = 1; step <= setup.turnOrder.length; step++) {
-            const index = (setup.turnIndex + step) % setup.turnOrder.length;
-            const nextSeat = setup.turnOrder[index];
-            if ((setup.hands[nextSeat] || []).length) {
-                setup.turnIndex = index;
-                setup.turn = nextSeat;
-                break;
-            }
+    setupGuard(state, seat, stage) {
+        const setup = state.setup;
+        if (state.phase !== 'setup' || !setup || setup.stage !== stage) return { ok: false, error: 'Сейчас это действие недоступно.' };
+        if (setup.turn !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        return null;
+    },
+
+    cmdSetupForce(state, seat, cmd, kind) {
+        const error = this.setupGuard(state, seat, 'forces');
+        if (error) return error;
+        const sys = this.system(state, state.setup.currentSystem);
+        const area = this.area(sys, cmd.pos);
+        if (!area) return { ok: false, error: 'Выберите область только что размещённой системы.' };
+        const initial = state.players[seat].initialForces;
+        if (kind === 'unit') {
+            const def = this.unitDef(state, seat, cmd.unit);
+            if (!def || !(initial.units[cmd.unit] > 0)) return { ok: false, error: 'Такого начального отряда больше нет.' };
+            if ((def.type === 'ground') !== !!area.world) return { ok: false, error: 'Наземные отряды размещаются на мирах, корабли — в пустоте.' };
+            if (this.unitsAt(state, sys.id, area.pos).length >= this.capacity(state, sys.id, area.pos)) return { ok: false, error: 'Вместимость области исчерпана.' };
+            initial.units[cmd.unit]--;
+            this.addUnit(state, seat, cmd.unit, sys.id, area.pos);
+        } else {
+            if (!['city', 'factory', 'bastion'].includes(cmd.structure) || !(initial.structures[cmd.structure] > 0)) return { ok: false, error: 'Такой начальной постройки больше нет.' };
+            if (!area.world || this.structuresAt(state, sys.id, area.pos).length) return { ok: false, error: 'Постройка размещается на мире без постройки.' };
+            initial.structures[cmd.structure]--;
+            this.addStructure(state, seat, cmd.structure, sys.id, area.pos);
         }
         return { ok: true };
     },
 
-    finishBoardSetup(state) {
+    cmdRemoveSetupForce(state, seat, cmd) {
+        const error = this.setupGuard(state, seat, 'forces');
+        if (error) return error;
+        const items = cmd.kind === 'unit' ? state.units : cmd.kind === 'structure' ? state.structures : null;
+        const item = items && items.find(x => x.id === cmd.id && x.seat === seat && x.system === state.setup.currentSystem);
+        if (!item) return { ok: false, error: 'Можно убрать только свою начальную фигуру с текущего тайла.' };
+        items.splice(items.indexOf(item), 1);
+        const pool = state.players[seat].initialForces[cmd.kind === 'unit' ? 'units' : 'structures'];
+        const id = cmd.kind === 'unit' ? item.unit : item.type;
+        pool[id] = (pool[id] || 0) + 1;
+        return { ok: true };
+    },
+
+    // Future tiles must have enough room for everything left; this prevents an
+    // irreversible setup dead end after the player confirms a tile.
+    setupForcesFit(state, seat) {
+        const initial = state.players[seat].initialForces;
+        const future = state.setup.hands[seat].map(id => FS_DATA.tiles.find(t => t.id === id)).filter(Boolean);
+        let ground = 0, ships = 0, worlds = 0;
+        for (const tile of future) for (const area of tile.areas) {
+            if (area.world) { ground += Math.min(area.world.capacity || this.AREA_CAP, this.AREA_MAX_UNITS); worlds++; }
+            else ships += this.AREA_CAP;
+        }
+        let needGround = 0, needShips = 0;
+        for (const [id, n] of Object.entries(initial.units)) {
+            const def = this.unitDef(state, seat, id);
+            if (def && def.type === 'ship') needShips += n;
+            else needGround += n;
+        }
+        const structures = Object.values(initial.structures).reduce((sum, n) => sum + n, 0);
+        return needGround <= ground && needShips <= ships && structures <= worlds;
+    },
+
+    cmdFinishSetupForces(state, seat) {
+        const error = this.setupGuard(state, seat, 'forces');
+        if (error) return error;
+        if (!this.setupForcesFit(state, seat)) return { ok: false, error: 'Оставшиеся начальные силы не поместятся на следующих тайлах. Разместите больше фигур здесь или уберите и переставьте их.' };
+        state.setup.stage = 'objectives';
+        if (!this.setupObjectiveOptions(state).length) this.advanceSetupTurn(state);
+        return { ok: true };
+    },
+
+    setupObjectiveOptions(state) {
+        const setup = state.setup;
+        if (!setup || setup.stage !== 'objectives') return [];
+        const sys = this.system(state, setup.currentSystem);
+        const pool = state.players[setup.turn].objectivePool;
+        const used = new Set(state.objectives.filter(o => o.system === sys.id).map(o => o.faction));
+        const occupied = new Set(state.objectives.filter(o => o.system === sys.id).map(o => o.area));
+        const areas = sys.areas.filter(a => a.world && a.world.objective && !occupied.has(a.pos)).map(a => a.pos);
+        if (!areas.length || !pool.length) return [];
+        const counts = {};
+        for (const f of pool) counts[f] = (counts[f] || 0) + 1;
+        const max = Math.max(...Object.values(counts));
+        return Object.keys(counts).filter(f => counts[f] === max && !used.has(f)).map(faction => ({ faction, areas }));
+    },
+
+    cmdSetupObjective(state, seat, cmd) {
+        const error = this.setupGuard(state, seat, 'objectives');
+        if (error) return error;
+        const option = this.setupObjectiveOptions(state).find(x => x.faction === cmd.faction && x.areas.includes(cmd.pos));
+        if (!option) return { ok: false, error: 'Выберите допустимый жетон и свободное место цели на текущем тайле.' };
+        const pool = state.players[seat].objectivePool;
+        pool.splice(pool.indexOf(cmd.faction), 1);
+        state.objectives.push({ id: this.uid(state, 'obj'), faction: cmd.faction, system: state.setup.currentSystem, area: cmd.pos });
+        if (!this.setupObjectiveOptions(state).length) this.advanceSetupTurn(state);
+        return { ok: true };
+    },
+
+    advanceSetupTurn(state) {
+        const setup = state.setup;
+        if (setup.placedTotal >= setup.totalTiles) {
+            setup.stage = 'storms';
+            setup.currentSystem = null;
+            setup.stormsPlaced = 0;
+            this.log(state, -1, 'Расстановка варп-штормов: начиная с последнего игрока против часовой стрелки.');
+            return;
+        }
+        for (let step = 1; step <= setup.turnOrder.length; step++) {
+            const index = (setup.turnIndex + step) % setup.turnOrder.length;
+            const next = setup.turnOrder[index];
+            if (setup.hands[next].length) {
+                setup.turnIndex = index;
+                setup.turn = next;
+                setup.stage = 'tile';
+                setup.currentSystem = null;
+                return;
+            }
+        }
+    },
+
+    setupStormEdges(state) {
+        return this.allEdges(state).filter(e => !state.storms.some(storm =>
+            (storm.system === e.system && storm.side === e.side)
+            || (this.across(state, e.system, e.side) === storm.system && this.across(state, storm.system, storm.side) === e.system)));
+    },
+
+    cmdSetupStorm(state, seat, cmd) {
+        const error = this.setupGuard(state, seat, 'storms');
+        if (error) return error;
+        const sys = this.system(state, cmd.system);
+        if (!sys || !['N', 'E', 'S', 'W'].includes(cmd.side)) return { ok: false, error: 'Выберите сторону системы.' };
+        const other = this.across(state, sys.id, cmd.side);
+        const edge = this.setupStormEdges(state).find(e => (e.system === sys.id && e.side === cmd.side)
+            || (other && e.system === other && this.across(state, other, e.side) === sys.id));
+        if (!edge) return { ok: false, error: 'На этой границе уже есть варп-шторм.' };
+        state.storms.push({ id: this.uid(state, 'storm'), system: sys.id, side: cmd.side, moved: {} });
+        const setup = state.setup;
+        setup.stormsPlaced++;
+        this.log(state, seat, state.players[seat].name + ' разместил варп-шторм в системе ' + sys.tile + '.');
+        if (setup.stormsPlaced === state.players.length) this.finishBoardSetup(state, false);
+        else {
+            setup.turnIndex = (setup.turnIndex - 1 + setup.turnOrder.length) % setup.turnOrder.length;
+            setup.turn = setup.turnOrder[setup.turnIndex];
+        }
+        return { ok: true };
+    },
+
+    finishBoardSetup(state, automatic = true) {
         const count = state.players.length;
-        const shuffled = this.shuffle(state, this.allEdges(state));
-        for (let i = 0; i < count && i < shuffled.length; i++) {
+        const shuffled = automatic ? this.shuffle(state, this.allEdges(state)) : [];
+        for (let i = 0; automatic && i < count && i < shuffled.length; i++) {
             const e = shuffled[i];
             state.storms.push({ id: this.uid(state, 'storm'), system: e.system, side: e.side, moved: {} });
         }
@@ -574,31 +689,26 @@ const FS_RULES = {
 
     // The initial forces of a player on his first tile.
     placeInitialForces(state, seat, sys) {
-        const p = state.players[seat];
-        const areas = sys.areas.filter(a => a.world);
-        for (const unitId of Object.keys(p.supply.units)) {
+        const initial = state.players[seat].initialForces;
+        for (const [unitId, amount] of Object.entries(initial.units)) {
             const def = this.unitDef(state, seat, unitId);
-            if (!def) continue;
-            let left = p.supply.units[unitId];
-            for (const area of areas) {
+            let left = amount;
+            for (const area of sys.areas) {
+                if ((def.type === 'ground') !== !!area.world) continue;
                 while (left > 0 && this.unitsAt(state, sys.id, area.pos).length < this.capacity(state, sys.id, area.pos)) {
-                    this.addUnit(state, seat, unitId, sys.id, area.pos);
-                    left--;
+                    this.addUnit(state, seat, unitId, sys.id, area.pos); left--;
                 }
-                if (left <= 0) break;
             }
-            p.supply.units[unitId] = left;
+            initial.units[unitId] = left;
         }
-        // The structures: a city and a factory on friendly worlds.
         for (const type of ['factory', 'bastion', 'city']) {
-            let left = p.supply.structures[type] || 0;
-            for (const area of areas) {
-                if (left <= 0) break;
-                if (this.structuresAt(state, sys.id, area.pos).length > 0) continue;
-                this.addStructure(state, seat, type, sys.id, area.pos);
-                left--;
+            let left = initial.structures[type] || 0;
+            for (const area of sys.areas) {
+                if (!left) break;
+                if (!area.world || this.structuresAt(state, sys.id, area.pos).length) continue;
+                this.addStructure(state, seat, type, sys.id, area.pos); left--;
             }
-            p.supply.structures[type] = left;
+            initial.structures[type] = left;
         }
     },
 
@@ -626,7 +736,7 @@ const FS_RULES = {
             for (const side of ['N', 'E', 'S', 'W']) {
                 const other = this.across(state, sys.id, side);
                 const key = other
-                    ? [sys.id, other].sort().join('|') + ':' + (other ? this.sideBetween(state, sys.id, other) : '')
+                    ? [sys.id, other].sort().join('|')
                     : sys.id + ':' + side;
                 if (seen.has(key)) continue;
                 seen.add(key);
@@ -702,6 +812,12 @@ const FS_RULES = {
         const type = cmd && cmd.type;
         switch (type) {
             case 'placeSystemTile': return this.cmdPlaceSystemTile(state, seat, cmd);
+            case 'setupUnit': return this.cmdSetupForce(state, seat, cmd, 'unit');
+            case 'setupStructure': return this.cmdSetupForce(state, seat, cmd, 'structure');
+            case 'removeSetupForce': return this.cmdRemoveSetupForce(state, seat, cmd);
+            case 'finishSetupForces': return this.cmdFinishSetupForces(state, seat);
+            case 'setupObjective': return this.cmdSetupObjective(state, seat, cmd);
+            case 'setupStorm': return this.cmdSetupStorm(state, seat, cmd);
             case 'placeOrder': return this.cmdPlaceOrder(state, seat, cmd);
             case 'resolveOrder': return this.cmdResolveOrder(state, seat, cmd);
             case 'moveUnits': return this.cmdMoveUnits(state, seat, cmd);
@@ -1215,11 +1331,9 @@ const FS_RULES = {
         if (order.cheapUnit && def.kl === 0) cost = Math.min(cost, order.cheapUnit);
         // The card of the player may make the purchase cheaper.
         if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
-        if (def.forge) {
-            if ((p.assets.forge || 0) < 1) return { ok: false, error: 'Нужен жетон кузницы.' };
-            p.assets.forge--;
-        }
+        if (def.forge && (p.assets.forge || 0) < 1) return { ok: false, error: 'Нужен жетон кузницы.' };
         if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
+        if (def.forge) p.assets.forge--;
         p.materiel -= cost;
         if (!dealFree) p.supply.units[def.id]--;
         if (deal) order.dealBought = (order.dealBought || 0) + 1;
@@ -2148,7 +2262,10 @@ const FS_RULES = {
         if (copy.setup) {
             copy.setup.hand = (copy.setup.hands[seat] || []).slice();
             delete copy.setup.hands;
-            copy.setup.legalCells = this.setupLegalCells(copy);
+            copy.setup.legalCells = copy.setup.stage === 'tile' ? this.setupLegalCells(copy) : [];
+            copy.setup.objectiveOptions = [];
+            if (copy.setup.stage === 'objectives' && copy.setup.turn === seat) copy.setup.objectiveOptions = this.setupObjectiveOptions(state);
+            copy.setup.stormEdges = copy.setup.stage === 'storms' ? this.setupStormEdges(state) : [];
             copy.setup.myTurn = copy.setup.turn === seat;
         }
         copy.seat = seat;

@@ -47,6 +47,7 @@ const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\
 // ---------------------------------------------------------------------------
 const context = vm.createContext({ console, Math, JSON, Date, Object, Array, String, Number, Boolean, Error });
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/fs/FSData.js'), 'utf8'), context, { filename: 'js/fs/FSData.js' });
+vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/fs/FSEffects.js'), 'utf8'), context, { filename: 'js/fs/FSEffects.js' });
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/fs/FSRules.js'), 'utf8'), context, { filename: 'js/fs/FSRules.js' });
 const FS_DATA = vm.runInContext('FS_DATA', context);
 const FS_RULES = vm.runInContext('FS_RULES', context);

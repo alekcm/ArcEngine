@@ -436,7 +436,7 @@ const FS_DATA = {
      "health": 2,
      "morale": 2,
      "type": "ship",
-     "start": 0,
+     "start": 1,
      "max": 3
     },
     {
@@ -535,7 +535,7 @@ const FS_DATA = {
      "health": 3,
      "morale": 2,
      "type": "ship",
-     "start": 0,
+     "start": 1,
      "max": 3
     },
     {
@@ -1168,7 +1168,7 @@ const FS_DATA = {
      "health": 5,
      "morale": 4,
      "type": "ground",
-     "start": 0,
+     "start": 1,
      "max": 3
     }
    ],
@@ -2766,7 +2766,7 @@ const FS_DATA = {
   },
   {
    "id": "17A",
-   "home": null,
+   "home": "темные-эльдары",
    "areas": [
     {
      "pos": "TL",
@@ -2814,7 +2814,7 @@ const FS_DATA = {
   },
   {
    "id": "17B",
-   "home": null,
+   "home": "темные-эльдары",
    "areas": [
     {
      "pos": "TL",
@@ -2862,7 +2862,7 @@ const FS_DATA = {
   },
   {
    "id": "18A",
-   "home": null,
+   "home": "адептус-механикус",
    "areas": [
     {
      "pos": "TL",
@@ -2914,7 +2914,7 @@ const FS_DATA = {
   },
   {
    "id": "18B",
-   "home": null,
+   "home": "адептус-механикус",
    "areas": [
     {
      "pos": "TL",
@@ -2967,7 +2967,7 @@ const FS_DATA = {
   },
   {
    "id": "19A",
-   "home": null,
+   "home": "сестры-битвы",
    "areas": [
     {
      "pos": "TL",
@@ -3015,7 +3015,7 @@ const FS_DATA = {
   },
   {
    "id": "19B",
-   "home": null,
+   "home": "сестры-битвы",
    "areas": [
     {
      "pos": "TL",
@@ -3063,7 +3063,7 @@ const FS_DATA = {
   },
   {
    "id": "20A",
-   "home": null,
+   "home": "инквизиция",
    "areas": [
     {
      "pos": "TL",
@@ -3111,7 +3111,7 @@ const FS_DATA = {
   },
   {
    "id": "20B",
-   "home": null,
+   "home": "инквизиция",
    "areas": [
     {
      "pos": "TL",

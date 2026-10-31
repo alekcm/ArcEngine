@@ -147,6 +147,12 @@ class FSGame {
 
     // --- the state -------------------------------------------------------------
     onState(view) {
+        const setupKey = view.setup ? [view.setup.stage, view.setup.turn, view.setup.currentSystem].join(':') : '';
+        if (this.setupKey !== setupKey) {
+            this.mode = 'idle'; this.pending = null;
+            FSView.clearHighlights(this.view);
+            this.setupKey = setupKey;
+        }
         this.state = view;
         FSUI.show('fsLobby', false);
         FSView.update(this.app, this.view, view);
@@ -161,6 +167,13 @@ class FSGame {
             this.lastRound = view.round;
         }
         this.status = '';
+        if (view.phase === 'setup' && view.setup && this.pending && view.setup.myTurn) {
+            const initial = view.players[view.seat].initialForces;
+            const exhausted = (this.mode === 'setupUnit' && !(initial.units[this.pending.unit] > 0))
+                || (this.mode === 'setupStructure' && !(initial.structures[this.pending.structure] > 0));
+            if (exhausted) { this.mode = 'idle'; this.pending = null; FSView.clearHighlights(this.view); }
+        }
+        if (view.phase === 'setup' && this.mode.startsWith('setup')) this.highlightSetupTargets();
         // The selected unit may have moved — the rings follow it.
         if (this.mode === 'move' && this.pending && this.pending.unit) {
             const unit = view.units.find(u => u.id === this.pending.unit);
@@ -231,20 +244,78 @@ class FSGame {
     panelSetup(s, ctx) {
         const setup = s.setup || {};
         const turnPlayer = s.players[setup.turn];
-        ctx.title = 'Сборка галактической карты';
+        ctx.title = setup.stage === 'storms' ? 'Расстановка варп-штормов' : 'Сборка галактической карты';
         if (!setup.myTurn) {
-            ctx.text = 'Игрок ' + (turnPlayer ? turnPlayer.name : '—') + ' выбирает системный тайл и место на доске.';
-            ctx.status = 'Когда очередь дойдёт до вас, выберите один из оставшихся тайлов.';
+            ctx.text = 'Сейчас ход игрока ' + (turnPlayer ? turnPlayer.name : '—') + '. Ожидайте завершения его действий.';
+            ctx.status = this.status || 'Когда очередь дойдёт до вас, справа появятся доступные действия.';
+            return;
+        }
+        if (setup.stage === 'forces') {
+            const sys = s.systems.find(x => x.id === setup.currentSystem);
+            const initial = s.players[s.seat].initialForces;
+            ctx.text = 'Система ' + sys.tile + '. Выберите начальные силы и нажмите на подходящий сектор этого тайла. На третьем тайле нужно разместить всё оставшееся.';
+            ctx.status = this.status || (this.mode === 'setupUnit' || this.mode === 'setupStructure' ? 'Нажмите на подсвеченную область. Выбранную фигуру можно размещать несколько раз.' : 'Выберите отряд или постройку; размещение можно отменить кнопками ниже.');
+            const faction = FS_DATA.factions.find(f => f.id === s.players[s.seat].faction);
+            for (const [id, count] of Object.entries(initial.units)) {
+                if (!count) continue;
+                const def = faction.units.find(u => u.id === id);
+                ctx.actions.push({ label: (def ? def.name : id) + ' · осталось ' + count + (def && def.type === 'ship' ? ' · пустота' : ' · мир'), onClick: () => {
+                    this.status = ''; this.mode = 'setupUnit'; this.pending = { unit: id }; this.highlightSetupTargets(); this.refresh();
+                } });
+            }
+            const names = { factory: 'Фабрика', bastion: 'Бастион', city: 'Город' };
+            for (const [type, count] of Object.entries(initial.structures)) {
+                if (!count) continue;
+                ctx.actions.push({ label: names[type] + ' · осталось ' + count + ' · мир', onClick: () => {
+                    this.status = ''; this.mode = 'setupStructure'; this.pending = { structure: type }; this.highlightSetupTargets(); this.refresh();
+                } });
+            }
+            ctx.actions.push({ label: 'Завершить размещение сил', onClick: () => this.net.cmd({ type: 'finishSetupForces' }) });
+            for (const unit of s.units.filter(u => u.system === sys.id && u.seat === s.seat)) {
+                const def = faction.units.find(u => u.id === unit.unit);
+                const area = sys.areas.find(a => a.pos === unit.area);
+                ctx.actions.push({ label: 'Убрать: ' + (def ? def.name : unit.unit) + ' · ' + (area.world ? area.world.name : 'пустота ' + area.pos), onClick: () => this.net.cmd({ type: 'removeSetupForce', kind: 'unit', id: unit.id }) });
+            }
+            for (const st of s.structures.filter(x => x.system === sys.id && x.seat === s.seat)) {
+                const area = sys.areas.find(a => a.pos === st.area);
+                ctx.actions.push({ label: 'Убрать: ' + names[st.type] + ' · ' + (area.world ? area.world.name : area.pos), onClick: () => this.net.cmd({ type: 'removeSetupForce', kind: 'structure', id: st.id }) });
+            }
+            return;
+        }
+        if (setup.stage === 'objectives') {
+            const sys = s.systems.find(x => x.id === setup.currentSystem);
+            ctx.text = 'Система ' + sys.tile + '. Выберите жетон соперника, затем место цели на подсвеченном мире. Одинаковые жетоны на одном тайле запрещены.';
+            ctx.status = this.status || (this.mode === 'setupObjective' ? 'Нажмите на подсвеченный мир с местом цели.' : 'Выберите жетон цели.');
+            for (const option of setup.objectiveOptions || []) {
+                const faction = FS_DATA.factions.find(f => f.id === option.faction);
+                ctx.actions.push({ label: 'Жетон цели: ' + (faction ? faction.name : option.faction), onClick: () => {
+                    this.status = ''; this.mode = 'setupObjective'; this.pending = { faction: option.faction }; this.highlightSetupTargets(); this.refresh();
+                } });
+            }
+            return;
+        }
+        if (setup.stage === 'storms') {
+            const sys = this.pending && this.mode === 'setupStorm' && s.systems.find(x => x.id === this.pending.system);
+            ctx.text = 'Выберите систему на карте, затем её сторону. Шторм можно разместить и на внешнем краю карты. Ход идёт от последнего игрока против часовой стрелки.';
+            ctx.status = this.status || (sys ? 'Выбрана система ' + sys.tile + '. Выберите сторону справа.' : 'Нажмите на любую систему карты.');
+            if (sys) {
+                for (const [side, name] of [['N', 'сверху'], ['E', 'справа'], ['S', 'снизу'], ['W', 'слева']]) {
+                    const other = FS_RULES.across(s, sys.id, side);
+                    const legal = (setup.stormEdges || []).some(e => (e.system === sys.id && e.side === side) || (other && e.system === other && FS_RULES.across(s, other, e.side) === sys.id));
+                    if (legal) ctx.actions.push({ label: 'Шторм: ' + sys.tile + ' · ' + name, onClick: () => this.net.cmd({ type: 'setupStorm', system: sys.id, side }) });
+                }
+            }
             return;
         }
         const hand = setup.hand || [];
         ctx.text = 'Выберите один из своих тайлов, затем поставьте его в свободное место рядом с уже выложенной системой. Осталось выложить: ' + hand.length + '.';
-        ctx.status = this.mode === 'placeTile' ? 'Теперь нажмите на подсвеченное место на карте.' : 'Ваш ход — выберите системный тайл.';
+        ctx.status = this.status || (this.mode === 'placeTile' ? 'Теперь нажмите на подсвеченное место на карте.' : 'Ваш ход — выберите системный тайл.');
         hand.forEach(id => {
             const tile = FS_DATA.tiles.find(t => t.id === id);
             const worlds = tile ? tile.areas.filter(a => a.world).map(a => a.world.name).join(' · ') : '';
             ctx.actions.push({
                 label: 'Система ' + id + (worlds ? ' — ' + worlds : ''),
+                tile, selected: this.mode === 'placeTile' && this.pending && this.pending.tile === id,
                 onClick: () => {
                     this.mode = 'placeTile';
                     this.pending = { tile: id };
@@ -256,6 +327,26 @@ class FSGame {
         if (this.mode === 'placeTile') ctx.actions.push({ label: 'Отменить выбор тайла', onClick: () => {
             this.mode = 'idle'; this.pending = null; FSView.clearHighlights(this.view); this.refresh();
         } });
+    }
+
+    highlightSetupTargets() {
+        const s = this.state, setup = s && s.setup;
+        if (!setup || !setup.myTurn) return;
+        const sys = s.systems.find(x => x.id === (this.mode === 'setupStorm' ? this.pending.system : setup.currentSystem));
+        if (!sys) return;
+        let areas = [];
+        if (this.mode === 'setupUnit') {
+            const faction = FS_DATA.factions.find(f => f.id === s.players[s.seat].faction);
+            const def = faction && faction.units.find(u => u.id === this.pending.unit);
+            if (def) areas = sys.areas.filter(a => (def.type === 'ground') === !!a.world && FS_RULES.unitsAt(s, sys.id, a.pos).length < FS_RULES.capacity(s, sys.id, a.pos));
+        } else if (this.mode === 'setupStructure') {
+            areas = sys.areas.filter(a => a.world && !FS_RULES.structuresAt(s, sys.id, a.pos).length);
+        } else if (this.mode === 'setupObjective') {
+            const option = (setup.objectiveOptions || []).find(x => x.faction === this.pending.faction);
+            areas = sys.areas.filter(a => option && option.areas.includes(a.pos));
+        }
+        const list = this.mode === 'setupStorm' ? [FSView.tilePos(this.app, sys, this.view.metrics)] : areas.map(a => FSView.areaPos(this.app, sys, a.pos, this.view.metrics));
+        FSView.highlight(this.view, list.map(p => ({ x: p.x, y: this.app.location.terrain.heightAt(p.x, p.y) + 14, z: p.y })));
     }
 
     highlightSetupCells() {
@@ -443,7 +534,7 @@ class FSGame {
         ctx.status = this.mode === 'placeUnit' ? 'Щёлкните по месту для отряда.'
             : this.mode === 'placeStructure' ? 'Щёлкните по миру для постройки.' : '';
         const faction = FS_DATA.factions.find(f => f.id === p.faction);
-        if (faction) {
+        if (faction && FS_RULES.hasFactory(s, me, order.system) && (order.bought || 0) < limit) {
             for (const def of faction.units) {
                 const n = p.supply.units[def.id] || 0;
                 if (n <= 0) continue;
@@ -465,7 +556,7 @@ class FSGame {
         }
         for (const type of ['city', 'factory', 'bastion']) {
             const n = p.supply.structures[type] || 0;
-            if (n <= 0) continue;
+            if (n <= 0 || order.structureBought || (p.materiel < FS_RULES.structureStats(type).cost && !(order.freeStructure && order.freeStructureKind === type))) continue;
             ctx.actions.push({
                 label: 'Построить: ' + FS_RULES.structureName(type) + ' ×' + n,
                 onClick: () => {
@@ -964,14 +1055,16 @@ class FSGame {
         const canvas = this.app.location.view.world.canvas;
         if (!canvas) return;
         let down = null;
-        canvas.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
+        canvas.addEventListener('pointerdown', e => { if (e.button === 0) down = { x: e.clientX, y: e.clientY, id: e.pointerId }; });
         canvas.addEventListener('pointerup', e => {
-            if (!down) return;
+            if (!down || down.id !== e.pointerId) return;
             const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
             down = null;
             if (moved > 6) return;             // a drag — the camera
-            this.onClick();
+            const rect = canvas.getBoundingClientRect();
+            this.onClick(e.clientX - rect.left, e.clientY - rect.top);
         });
+        canvas.addEventListener('pointercancel', () => { down = null; });
     }
 
     inspectAt(meta, point) {
@@ -996,14 +1089,18 @@ class FSGame {
         this.refresh();
     }
 
-    onClick() {
+    onClick(px, py) {
         const s = this.state;
         if (!s) return;
         const scene = this.view.scene;
-        const pick = scene.pick(scene.pointerX, scene.pointerY, m => !!m.metadata && !!m.metadata.fs);
+        const pick = scene.pick(px == null ? scene.pointerX : px, py == null ? scene.pointerY : py, m => m.isPickable !== false && m.isVisible !== false && (!m.isEnabled || m.isEnabled()) && !!m.metadata && !!m.metadata.fs);
         if (!pick || !pick.hit || !pick.pickedMesh) return;
         const meta = pick.pickedMesh.metadata;
         const point = pick.pickedPoint;
+        if (s.phase === 'setup' && s.setup && s.setup.myTurn && s.setup.stage === 'storms' && meta.system) {
+            this.status = ''; this.mode = 'setupStorm'; this.pending = { system: meta.system };
+            this.highlightSetupTargets(); this.refresh(); return;
+        }
         if (this.mode === 'idle') {
             this.inspectAt(meta, point);
             return;
@@ -1037,6 +1134,12 @@ class FSGame {
             const p = FSView.tilePos(this.app, sys, this.view.metrics);
             const dx = point.x - p.x, dy = point.z - p.y;
             pos = (dy < 0 ? 'T' : 'B') + (dx < 0 ? 'L' : 'R');
+        }
+        if (s.phase === 'setup' && s.setup && s.setup.myTurn && systemId === s.setup.currentSystem && pos) {
+            if (this.mode === 'setupUnit') this.net.cmd({ type: 'setupUnit', unit: this.pending.unit, pos });
+            else if (this.mode === 'setupStructure') this.net.cmd({ type: 'setupStructure', structure: this.pending.structure, pos });
+            else if (this.mode === 'setupObjective') this.net.cmd({ type: 'setupObjective', faction: this.pending.faction, pos });
+            return;
         }
         if (this.mode === 'move') {
             const unit = s.units.find(u => u.id === this.pending.unit);

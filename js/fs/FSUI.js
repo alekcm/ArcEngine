@@ -39,6 +39,10 @@ const FSUI = {
     renderModern(state, ctx) {
         const root = this.modernRoot;
         if (!root) return;
+        const stageKey = state && state.setup ? [state.setup.stage, state.setup.turn, state.setup.currentSystem].join(':') : '';
+        const previousActions = root.querySelector ? root.querySelector('.fs-actions') : null;
+        const scrollTop = this.actionStage === stageKey && previousActions ? previousActions.scrollTop : 0;
+        this.actionStage = stageKey;
         root.replaceChildren();
         root.classList.toggle('is-no-state', !state);
         if (this.currentLobby) { this.renderModernLobby(); return; }
@@ -115,21 +119,56 @@ const FSUI = {
         const icons = ['✦','⬡','◈','⚔','⌖','⛨','✧','➤'];
         (ctx.actions || []).forEach((a, i) => {
             if (a.enabled === false) return;
-            const button = this.el('button', 'fs-action'); button.type = 'button';
-            const icon = this.el('span', 'fs-action-icon', icons[i % icons.length]);
-            button.append(icon, this.el('span', 'fs-action-label', a.label), this.el('span', 'fs-action-arrow', '›'));
+            const button = this.el('button', a.tile ? 'fs-tile-choice' + (a.selected ? ' is-selected' : '') : 'fs-action'); button.type = 'button';
+            if (a.tile) {
+                button.setAttribute('aria-pressed', a.selected ? 'true' : 'false');
+                button.append(this.tilePreview(a.tile));
+            } else {
+                const icon = this.el('span', 'fs-action-icon', icons[i % icons.length]);
+                button.append(icon, this.el('span', 'fs-action-label', a.label), this.el('span', 'fs-action-arrow', '›'));
+            }
             button.addEventListener('click', () => a.onClick && a.onClick()); actions.append(button);
         });
         if (!(ctx.actions || []).length) actions.append(this.el('div', 'fs-empty', state.over ? 'Партия завершена.' : 'Сейчас нет доступных действий. Следите за ходом соперников.'));
         panel.append(actions); root.append(panel);
+        actions.scrollTop = scrollTop;
         const hint = this.el('div', 'fs-map-hint');
         hint.innerHTML = state.phase === 'setup'
-            ? '<b>СБОРКА КАРТЫ</b>　•　Выберите систему справа　•　Клик по подсвеченной клетке размещает тайл'
+            ? '<b>СБОРКА КАРТЫ</b>　•　Следуйте подсказкам справа　•　Выбирайте подсвеченные места на карте'
             : ctx.mode === 'idle'
                 ? '<b>ДОСКА</b>　•　Клик по сектору — сведения　•　Перетаскивание — камера　•　Колесо — масштаб'
                 : '<b>ДОСКА</b>　•　Выберите подсвеченную область для действия　•　Перетаскивание — камера';
         root.append(hint);
         if (ctx.status && this.statusError(ctx.status)) root.append(this.el('div', 'fs-toast', ctx.status));
+    },
+
+    // A readable miniature of the four sectors, in the same orientation as the board.
+    tilePreview(tile) {
+        const wrap = this.el('div', 'fs-tile-preview');
+        const title = this.el('div', 'fs-tile-preview-title', 'Система ' + tile.id + (tile.home ? ' · родная система' : ''));
+        wrap.append(title);
+        const grid = this.el('div', 'fs-tile-grid');
+        const names = { forge: 'Кузница', cache: 'Запасы', reinforcement: 'Подкрепление', prosperity: 'Процветание' };
+        for (const pos of ['TL', 'TR', 'BL', 'BR']) {
+            const area = tile.areas.find(a => a.pos === pos);
+            const world = area && area.world;
+            const sector = this.el('div', 'fs-tile-sector' + (world ? ' is-world' : ' is-void'));
+            if (world) {
+                sector.append(this.el('span', 'fs-tile-planet', '●'));
+                const info = this.el('div', 'fs-tile-world-info');
+                info.append(this.el('strong', '', world.name));
+                info.append(this.el('span', 'fs-tile-stats', 'Материя ' + (world.materiel || 0) + ' · Вместимость ' + world.capacity));
+                const assets = (world.assets || []).map(a => names[a] || a);
+                if (world.objective) assets.push('Цель');
+                info.append(this.el('span', 'fs-tile-assets', assets.length ? assets.join(' · ') : 'Без ресурса'));
+                sector.append(info);
+            } else {
+                sector.append(this.el('span', 'fs-tile-void', '✧ Пустота'), this.el('span', 'fs-tile-stats', 'Вместимость 3'));
+            }
+            grid.append(sector);
+        }
+        wrap.append(grid);
+        return wrap;
     },
 
     statusError(text) { return /ошиб|связи|нет связи|нельзя|не удалось/i.test(text || ''); },

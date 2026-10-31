@@ -140,7 +140,7 @@ const FSView = {
     tilePos(app, sys, metrics) {
         const m = metrics || view_metrics_fallback(app);
         return {
-            x: m.originX + sys.col * this.TILE + (sys.row % 2 === 1 ? this.TILE / 2 : 0),
+            x: m.originX + sys.col * this.TILE,
             y: m.originY + sys.row * this.TILE,
         };
     },
@@ -511,7 +511,7 @@ const FSView = {
         const occupied = new Set(state.systems.map(s => s.row + ':' + s.col));
         const legal = new Set((setup && setup.legalCells || []).map(c => c.row + ':' + c.col));
         if (setup) {
-            for (const cell of setup.slots) {
+            for (const cell of setup.legalCells || []) {
                 const key = cell.row + ':' + cell.col;
                 if (occupied.has(key)) continue;
                 let mesh = view.setupSlots.get(key);
@@ -532,7 +532,7 @@ const FSView = {
             }
         }
         for (const [key, mesh] of view.setupSlots) {
-            if (!setup || occupied.has(key)) mesh.setEnabled(false);
+            if (!setup || occupied.has(key) || !legal.has(key)) mesh.setEnabled(false);
         }
     },
 
@@ -692,22 +692,22 @@ const FSView = {
     // The metrics of the board: where the tiles stand and where the middle is.
     measure(app, view, state) {
         const raw = sys => ({
-            x: sys.col * this.TILE + (sys.row % 2 === 1 ? this.TILE / 2 : 0),
+            x: sys.col * this.TILE,
             y: sys.row * this.TILE,
         });
-        const pts = (state.phase === 'setup' && state.setup ? state.setup.slots : state.systems).map(raw);
+        const pts = (state.phase === 'setup' && state.setup ? state.systems.concat(state.setup.legalCells || []) : state.systems).map(raw);
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         for (const p of pts) {
             minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x + this.TILE);
             minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y + this.TILE);
         }
         if (!pts.length) { view.metrics = null; return; }
-        const originX = (app.location.width - (maxX - minX)) / 2 - minX;
-        const originY = (app.location.height - (maxY - minY)) / 2 - minY;
+        const originX = app.location.width / 2;
+        const originY = app.location.height / 2;
         view.metrics = {
             originX, originY,
-            cx: originX + (minX + maxX) / 2,
-            cy: originY + (minY + maxY) / 2,
+            cx: originX + (minX + maxX - this.TILE) / 2,
+            cy: originY + (minY + maxY - this.TILE) / 2,
             w: maxX - minX,
             h: maxY - minY,
         };

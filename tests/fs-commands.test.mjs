@@ -125,6 +125,9 @@ test('the advance order: the orbital strike hits the enemy world', () => {
     // The ships of the player and an enemy unit on a world of the system.
     const ship = s.units.find(u => u.seat === 0 && FS_RULES.unitOf(s, u).type === 'ship');
     const void0 = sys.areas.find(a => !a.world);
+    // The automatic setup can put an enemy ship in this void. This test
+    // exercises an uncontested orbital strike, not a space battle.
+    s.units = s.units.filter(u => u.seat === 0 || u.system !== sys.id || u.area !== void0.pos);
     ship.system = sys.id;
     ship.area = void0.pos;
     const world = sys.areas.find(a => a.world);
