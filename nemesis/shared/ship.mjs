@@ -319,13 +319,88 @@ export function originalShip() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Random ship: 21 cells of a hex grid grown into a connected, ship-like blob. Cockpit is the
-// leftmost cell, the three Engines are the rightmost ones, the Hibernatorium sits near the
-// centre; the rest are 11 "1" slots and 5 "2" slots. Corridors are thinned to about the density
-// of the original board, max 4 exits per room, Engines keep at most 2 exits.
+// Random ship: 21 rooms in a horizontally symmetrical ship layout.
+// - Strictly symmetrical across the horizontal centerline (Y = 470).
+// - Divided into:
+//   * Inner ring (circle 2): exactly 5 rooms of slot2 (006, 007, 008, 014, 015) surrounding Hibernatorium (011).
+//   * Outer ring (circle 1): exactly 11 rooms of slot1 (002, 003, 004, 005, 009, 010, 012, 013, 016, 017, 018).
+//   * Special mandatory rooms: Hibernatorium (011, starting room), 3 Engines (019 top, 020 center, 021 bottom),
+//     and Cockpit (001 front). All open from the start of the game.
+// - Symmetrical corridor generation respecting noise-die degree limits (max 4 per room, max 3 if tech).
 // ---------------------------------------------------------------------------------------------
-const HEX_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
-const HEX_W = 175, HEX_H = 150;
+const BASE_ROOM_COORDS = {
+    '001': [95, 460],
+    '002': [330, 240],
+    '003': [300, 470],
+    '004': [330, 700],
+    '005': [590, 110],
+    '006': [600, 290],
+    '007': [465, 470],
+    '008': [600, 650],
+    '009': [590, 830],
+    '010': [790, 170],
+    '011': [745, 470],
+    '012': [790, 770],
+    '013': [1030, 180],
+    '014': [930, 330],
+    '015': [930, 610],
+    '016': [1030, 760],
+    '017': [1120, 330],
+    '018': [1120, 610],
+    '019': [1270, 180],
+    '020': [1270, 470],
+    '021': [1270, 760],
+};
+
+const SYMMETRIC_ROOM_KINDS = {
+    '001': 'cockpit',
+    '011': 'hibernatorium',
+    '019': 'engine', '020': 'engine', '021': 'engine',
+    // Inner ring (5 rooms of slot2):
+    '006': 'slot2', '007': 'slot2', '008': 'slot2', '014': 'slot2', '015': 'slot2',
+    // Outer ring (11 rooms of slot1):
+    '002': 'slot1', '003': 'slot1', '004': 'slot1', '005': 'slot1', '009': 'slot1',
+    '010': 'slot1', '012': 'slot1', '013': 'slot1', '016': 'slot1', '017': 'slot1', '018': 'slot1',
+};
+
+const SYMMETRIC_CANDIDATE_GROUPS = [
+    // Cockpit
+    { id: 'cockpit_wings', edges: [['001', '002'], ['001', '004']], weight: 1.0, required: true },
+    { id: 'cockpit_center', edges: [['001', '003']], weight: 0.8 },
+
+    // Front outer to front inner
+    { id: 'front_wings_to_inner', edges: [['002', '006'], ['004', '008']], weight: 1.0, required: true },
+    { id: 'front_center_to_inner', edges: [['003', '007']], weight: 1.0, required: true },
+    { id: 'front_wings_to_center', edges: [['002', '003'], ['004', '003']], weight: 0.5 },
+
+    // Mid outer to inner / perimeter
+    { id: 'mid1_outer_to_inner', edges: [['005', '006'], ['009', '008']], weight: 1.0, required: true },
+    { id: 'outer_front_to_mid1', edges: [['002', '005'], ['004', '009']], weight: 0.4 },
+    { id: 'outer_mid1_to_mid2', edges: [['005', '010'], ['009', '012']], weight: 0.85 },
+    { id: 'outer_mid2_to_inner_front', edges: [['006', '010'], ['008', '012']], weight: 0.35 },
+
+    // Inner ring & Hibernatorium
+    { id: 'inner_front_loop', edges: [['006', '007'], ['008', '007']], weight: 1.0, required: true },
+    { id: 'hiber_to_inner_front', edges: [['006', '011'], ['008', '011']], weight: 1.0, required: true },
+    { id: 'hiber_to_inner_rear', edges: [['011', '014'], ['011', '015']], weight: 1.0, required: true },
+    { id: 'hiber_to_inner_center', edges: [['007', '011']], weight: 0.4 },
+    { id: 'inner_bypass', edges: [['006', '014'], ['008', '015']], weight: 0.4 },
+    { id: 'inner_rear_cross', edges: [['014', '015']], weight: 0.3 },
+
+    // Rear outer & inner
+    { id: 'outer_mid2_to_rear1', edges: [['010', '013'], ['012', '016']], weight: 0.85 },
+    { id: 'outer_mid2_to_inner_rear', edges: [['010', '014'], ['012', '015']], weight: 0.4 },
+    { id: 'outer_rear1_to_inner_rear', edges: [['013', '014'], ['016', '015']], weight: 0.85 },
+    { id: 'outer_rear1_to_rear2', edges: [['013', '017'], ['016', '018']], weight: 0.4 },
+    { id: 'outer_rear2_to_inner_rear', edges: [['014', '017'], ['015', '018']], weight: 1.0, required: true },
+
+    // Engines
+    { id: 'engine_wings_outer_rear1', edges: [['013', '019'], ['016', '021']], weight: 0.85 },
+    { id: 'engine_wings_outer_rear2', edges: [['017', '019'], ['018', '021']], weight: 1.0, required: true },
+    { id: 'engine_mid_outer_rear2', edges: [['017', '020'], ['018', '020']], weight: 1.0, required: true },
+    { id: 'engine_mid_inner_rear', edges: [['014', '020'], ['015', '020']], weight: 0.3 },
+    { id: 'engine_wings_to_mid', edges: [['019', '020'], ['021', '020']], weight: 0.25 },
+];
 
 export function randomShip(holder) {
     for (let attempt = 0; attempt < 50; attempt++) {
@@ -336,111 +411,137 @@ export function randomShip(holder) {
 }
 
 function tryRandomShip(holder) {
-    const key = (q, r) => q + ',' + r;
-    const cells = new Map();
-    cells.set(key(0, 0), [0, 0]);
-    // Grow: prefer cells near the horizontal axis to make the ship elongated.
-    while (cells.size < 21) {
-        const frontier = [];
-        for (const [q, r] of cells.values()) {
-            for (const [dq, dr] of HEX_DIRS) {
-                const nq = q + dq, nr = r + dr;
-                if (cells.has(key(nq, nr))) continue;
-                const x = nq + nr / 2, y = nr;
-                const w = 1 / (1 + Math.abs(y) * 0.9 + Math.abs(x) * 0.15);
-                frontier.push({ q: nq, r: nr, w });
+    const Y_c = 470;
+    const yScale = 0.92 + rand(holder) * 0.16;
+    const xScale = 0.96 + rand(holder) * 0.08;
+
+    // Generate horizontally symmetric coordinates for all 21 rooms
+    const coords = {};
+    const PAIR_KEYS = [
+        ['002', '004'], ['005', '009'], ['006', '008'], ['010', '012'],
+        ['014', '015'], ['013', '016'], ['017', '018'], ['019', '021'],
+    ];
+    const CENTER_KEYS = ['001', '003', '007', '011', '020'];
+
+    for (const id of CENTER_KEYS) {
+        const [bx] = BASE_ROOM_COORDS[id];
+        const dx = Math.round((rand(holder) - 0.5) * (id === '001' ? 12 : 24));
+        coords[id] = [Math.round(bx * xScale + dx), Y_c];
+    }
+    for (const [topId, botId] of PAIR_KEYS) {
+        const [bx, by] = BASE_ROOM_COORDS[topId];
+        const dx = Math.round((rand(holder) - 0.5) * 24);
+        const dy = Math.round((rand(holder) - 0.5) * 20);
+        const x = Math.round(bx * xScale + dx);
+        const yTop = Math.round(Y_c - (Y_c - by) * yScale + dy);
+        const yBot = 2 * Y_c - yTop;
+        coords[topId] = [x, yTop];
+        coords[botId] = [x, yBot];
+    }
+
+    // Technical corridor entrances: pick 3 to 4 pairs symmetrically (6 to 8 tech rooms total)
+    const TECH_CANDIDATE_PAIRS = [
+        ['002', '004'], ['005', '009'], ['010', '012'], ['013', '016'],
+        ['014', '015'], ['019', '021'],
+    ];
+    const techPairsShuffled = shuffle(holder, [...TECH_CANDIDATE_PAIRS]);
+    const techCount = 3 + randInt(holder, 2); // 3 or 4 pairs
+    const techRooms = techPairsShuffled.slice(0, techCount).flat();
+
+    // Degree limits:
+    // Engines <= 2 exits
+    // Cockpit <= 3 exits
+    // Rooms with tech hatch <= 3 exits (so exits + tech <= 4 noise slots)
+    // Other rooms <= 4 exits
+    const maxDeg = id => {
+        if (id === '019' || id === '020' || id === '021') return 2;
+        if (id === '001') return 3;
+        if (techRooms.includes(id)) return 3;
+        return 4;
+    };
+
+    const deg = {};
+    for (let r = 1; r <= 21; r++) deg[String(r).padStart(3, '0')] = 0;
+
+    const selectedEdges = [];
+    // 1. Add required backbone groups
+    for (const g of SYMMETRIC_CANDIDATE_GROUPS) {
+        if (g.required) {
+            for (const [a, b] of g.edges) {
+                selectedEdges.push([a, b]);
+                deg[a]++; deg[b]++;
             }
         }
-        let total = frontier.reduce((s, f) => s + f.w, 0), t = rand(holder) * total;
-        let chosen = frontier[frontier.length - 1];
-        for (const f of frontier) { t -= f.w; if (t <= 0) { chosen = f; break; } }
-        cells.set(key(chosen.q, chosen.r), [chosen.q, chosen.r]);
     }
-    const list = [...cells.values()].map(([q, r]) => ({ q, r, x: (q + r / 2) * HEX_W, y: r * HEX_H }));
-    const minX = Math.min(...list.map(c => c.x)), minY = Math.min(...list.map(c => c.y));
-    for (const c of list) { c.x = Math.round(c.x - minX + 100); c.y = Math.round(c.y - minY + 100); }
 
-    // Roles
-    const byX = [...list].sort((a, b) => a.x - b.x || a.y - b.y);
-    const cockpit = byX[0];
-    const engines = byX.slice(-3);
-    if (new Set(engines.map(e => e.y)).size < 2) return null; // engines stacked oddly — retry
-    const cx = list.reduce((s, c) => s + c.x, 0) / list.length, cy = list.reduce((s, c) => s + c.y, 0) / list.length;
-    const rest = list.filter(c => c !== cockpit && !engines.includes(c));
-    rest.sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy));
-    const hiber = rest[0];
-    const slots = rest.slice(1);
-    shuffle(holder, slots);
-    const kinds = new Map();
-    kinds.set(cockpit, 'cockpit'); kinds.set(hiber, 'hibernatorium');
-    engines.forEach(e => kinds.set(e, 'engine'));
-    slots.forEach((c, i) => kinds.set(c, i < 11 ? 'slot1' : 'slot2'));
+    // 2. Select optional groups with randomized weights while respecting degree bounds
+    const optional = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !g.required);
+    shuffle(holder, optional);
+    optional.sort((a, b) => (b.weight + rand(holder) * 0.3) - (a.weight + rand(holder) * 0.3));
 
-    // Ids: number rooms left to right like the original board
-    const ordered = [...list].sort((a, b) => a.x - b.x || a.y - b.y);
-    ordered.forEach((c, i) => { c.id = String(i + 1).padStart(3, '0'); });
-    const engineNumbers = {};
-    [...engines].sort((a, b) => b.y - a.y).forEach((e, i) => { engineNumbers[e.id] = i + 1; });
-
-    // All hex adjacencies
-    const byKey = new Map(list.map(c => [key(c.q, c.r), c]));
-    let edges = [];
-    for (const c of list) {
-        for (const [dq, dr] of HEX_DIRS.slice(0, 3)) {         // each pair once
-            const n = byKey.get(key(c.q + dq, c.r + dr));
-            if (n) edges.push([c, n]);
+    for (const g of optional) {
+        let canAdd = true;
+        for (const [a, b] of g.edges) {
+            if (deg[a] + 1 > maxDeg(a) || deg[b] + 1 > maxDeg(b)) {
+                canAdd = false;
+                break;
+            }
+        }
+        if (canAdd) {
+            for (const [a, b] of g.edges) {
+                selectedEdges.push([a, b]);
+                deg[a]++; deg[b]++;
+            }
         }
     }
-    // Thin out: target ~33 edges, honour degree limits, keep connectivity
-    const maxDeg = c => kinds.get(c) === 'engine' ? 2 : kinds.get(c) === 'cockpit' ? 3 : 4;
-    const degree = () => { const d = new Map(); for (const [a, b] of edges) { d.set(a, (d.get(a) || 0) + 1); d.set(b, (d.get(b) || 0) + 1); } return d; };
-    const connected = (es) => {
-        const adj = new Map(list.map(c => [c, []]));
-        for (const [a, b] of es) { adj.get(a).push(b); adj.get(b).push(a); }
-        const seen = new Set([list[0]]), stack = [list[0]];
-        while (stack.length) { const c = stack.pop(); for (const n of adj.get(c)) if (!seen.has(n)) { seen.add(n); stack.push(n); } }
-        return seen.size === list.length;
-    };
-    shuffle(holder, edges);
-    const target = 32 + randInt(holder, 3);
-    // first: enforce degree limits
-    let guard = 0;
-    while (guard++ < 500) {
-        const d = degree();
-        const over = edges.filter(([a, b]) => d.get(a) > maxDeg(a) || d.get(b) > maxDeg(b));
-        if (!over.length) break;
-        const e = pick(holder, over);
-        const rest2 = edges.filter(x => x !== e);
-        if (connected(rest2)) edges = rest2; else if (guard > 400) return null;
-    }
-    // then: thin to the target
-    guard = 0;
-    while (edges.length > target && guard++ < 500) {
-        const i = randInt(holder, edges.length);
-        const rest2 = edges.filter((_, j) => j !== i);
-        if (connected(rest2)) edges = rest2;
-    }
-    const d = degree();
-    if ([...d.values()].some((v, i) => v > 4) || list.some(c => !d.get(c))) return null;
 
-    // Technical corridor entrances: 6–7 rooms, not the cockpit, spread around
-    const techCandidates = shuffle(holder, list.filter(c => c !== cockpit));
-    const tech = techCandidates.slice(0, 6 + randInt(holder, 2)).map(c => c.id);
+    // 3. Verify graph connectivity across all 21 rooms
+    const adj = {};
+    for (let r = 1; r <= 21; r++) adj[String(r).padStart(3, '0')] = [];
+    for (const [a, b] of selectedEdges) {
+        adj[a].push(b); adj[b].push(a);
+    }
+    const visited = new Set(['001']);
+    const q = ['001'];
+    while (q.length) {
+        const u = q.pop();
+        for (const v of adj[u]) {
+            if (!visited.has(v)) { visited.add(v); q.push(v); }
+        }
+    }
+    if (visited.size !== 21) return null;
 
-    const roomsSpec = list.map(c => [c.id, kinds.get(c), c.x, c.y]);
-    const edgeSpec = edges.map(([a, b]) => [a.id, b.id]);
-    // Some corridors bend (L or S shapes) like on the printed board.
+    // Room specification
+    const roomsSpec = [];
+    for (let r = 1; r <= 21; r++) {
+        const id = String(r).padStart(3, '0');
+        const [x, y] = coords[id];
+        roomsSpec.push([id, SYMMETRIC_ROOM_KINDS[id], x, y]);
+    }
+
+    const engineNumbers = { '021': 1, '020': 2, '019': 3 };
+
+    // Symmetrical curved paths for corridors that curve
     const paths = {};
-    for (const [a, b] of edges) {
-        const roll = rand(holder);
-        if (roll > 0.45) continue;
-        const id = a.id < b.id ? a.id + '-' + b.id : b.id + '-' + a.id;
-        const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
-        const nx = -dy / len, ny = dx / len, off = (rand(holder) < 0.5 ? -1 : 1) * (28 + rand(holder) * 22);
-        if (roll < 0.25) paths[id] = [[a.x + dx * 0.5 + nx * off, a.y + dy * 0.5 + ny * off]];
-        else paths[id] = [[a.x + dx * 0.33 + nx * off, a.y + dy * 0.33 + ny * off], [a.x + dx * 0.67 - nx * off, a.y + dy * 0.67 - ny * off]];
+    for (const [aId, bId] of selectedEdges) {
+        const id = aId < bId ? aId + '-' + bId : bId + '-' + aId;
+        const [ax, ay] = coords[aId], [bx, by] = coords[bId];
+        if (id === '001-002' || id === '001-004') {
+            const ym = Math.round(ay + (by - ay) * 0.6);
+            paths[id] = [[Math.round(ax + (bx - ax) * 0.25), ym]];
+        } else if (id === '006-011' || id === '008-011') {
+            const ym = Math.round(ay + (by - ay) * 0.35);
+            paths[id] = [[Math.round(ax + (bx - ax) * 0.6), ym]];
+        } else if (id === '011-014' || id === '011-015') {
+            const ym = Math.round(ay + (by - ay) * 0.65);
+            paths[id] = [[Math.round(ax + (bx - ax) * 0.55), ym]];
+        } else if (id === '002-006' || id === '004-008') {
+            const sign = id === '002-006' ? -1 : 1;
+            paths[id] = [[Math.round((ax + bx) / 2), Math.round((ay + by) / 2 + sign * 20)]];
+        }
     }
-    return buildShip(roomsSpec, edgeSpec, tech, engineNumbers, 'random', paths);
+
+    return buildShip(roomsSpec, selectedEdges, techRooms, engineNumbers, 'random', paths);
 }
 
 // ---------------------------------------------------------------------------------------------
