@@ -115,7 +115,7 @@ OPS['attack'] = (state, step) => {
         opts.push({ id: 'armorRedirect', label: '«' + ITEMS[p.armor.item].name + '»: атака переходит на другого персонажа' });
     if (opts.length && !step.noReaction) {
         opts.push({ id: 'no', label: 'Принять атаку' });
-        ask(state, { kind: 'choice', player: p.id, title: intruderLabel(state, it) + ' атакует вас. Предотвратить?', options: opts },
+        ask(state, { kind: 'choice', reaction: true, player: p.id, title: intruderLabel(state, it) + ' атакует вас. Предотвратить?', options: opts },
             { ...step, op: 'attack.reaction', player: p.id, card: nerves, strafe, panic, deact, sentinel, pher, duck, stopIt });
         return;
     }
@@ -206,6 +206,10 @@ OPS['attack.strafeShoot'] = (state, step) => {
     if (step.answer === 'yes' && state.intruders[step.intruder]) next(state, { op: 'shoot.start', player: step.player, forcedTarget: step.intruder, then: { op: 'noop' } });
 };
 function resolveAttack(state, step, it, p) {
+    if (p && it && it.uid) {
+        state.combatSeq = (state.combatSeq || 0) + 1;
+        state.lastCombatAction = { n: state.combatSeq, type: 'intruderAttacks', player: p.id, intruder: it.uid, room: p.room };
+    }
     let cardId = step.cardId;
     if (!cardId) {
         if (!state.attackDeck.length) { state.attackDeck = shuffle(state, state.attackDiscard.splice(0)); log(state, 'Колода атак перемешана.', 'minor'); }
@@ -503,6 +507,8 @@ OPS['shoot.fire'] = (state, step) => {
     }
     state.shotSeq = (state.shotSeq || 0) + 1;
     state.lastShot = { n: state.shotSeq, player: p.id, target: it.uid, room: it.room };
+    state.combatSeq = (state.combatSeq || 0) + 1;
+    state.lastCombatAction = { n: state.combatSeq, type: 'charAttacks', player: p.id, intruder: it.uid, room: it.room };
     if (!wd.noAmmo) spendAmmo(p, w, 1);
     let hits = 1 + (step.bonusHits || 0) + (wd.bonusHit || 0) + (it.room !== p.room ? 1 : 0);
     if (wd.firstShotBonus && !p.firstShotUsed) { hits++; p.firstShotUsed = true; }
@@ -562,6 +568,10 @@ function faceEffect(state, wd, natural, name) {
 }
 /** Deal `hits` to an intruder, then the kill-check roll. */
 export function dealHits(state, p, it, hits, mod, opts = {}) {
+    if (p && it && it.uid) {
+        state.combatSeq = (state.combatSeq || 0) + 1;
+        state.lastCombatAction = { n: state.combatSeq, type: 'charAttacks', player: p.id, intruder: it.uid, room: it.room };
+    }
     if (it.type === 'larva') { log(state, 'Личинка погибает.', 'good'); removeIntruder(state, it.uid, false); return true; }
     if (it.type === 'queen') return queenHits(state, p, it, hits, mod, opts);
     it.hits += hits;

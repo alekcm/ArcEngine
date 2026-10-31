@@ -5,7 +5,7 @@ import { buildMenu } from './engine/turn.mjs';
 import { handSlots } from './engine/core.mjs';
 import { CHARACTERS, FIELD_DATA, ITEMS } from './data/cards.mjs';
 
-const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'fx', 'version', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'ship', 'roomState',
+const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'lastCombatAction', 'fx', 'version', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'turnSeq', 'ship', 'roomState',
     'intruders', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods',
     'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'adaptations', 'adaptationsRemoved', 'seating', 'feats', 'featsUsed', 'result', 'lastEvent'];
 

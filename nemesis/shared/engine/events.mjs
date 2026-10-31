@@ -288,7 +288,7 @@ OPS['risk.ask'] = (state, step) => {
     if (step.answer === 'yes' && p.hand.includes(step.card)) { discardCard(state, p, step.card); log(state, pname(p) + ' играет «' + name + '»: броска шума нет.', 'good'); return; }
     if (step.answer) { next(state, step.then); return; }
     if (!p.hand.includes(step.card)) { next(state, step.then); return; }
-    ask(state, { kind: 'choice', player: p.id, title: 'Сыграть «' + name + '», чтобы не бросать шум?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, step);
+    ask(state, { kind: 'choice', reaction: true, player: p.id, title: 'Сыграть «' + name + '», чтобы не бросать шум?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, step);
 };
 OPS['perimeter.ask'] = (state, step) => {
     const p = player(state, step.player);
@@ -303,7 +303,7 @@ OPS['perimeter.ask'] = (state, step) => {
     }
     if (step.answer) { next(state, step.then); return; }
     if (!payableCards(p).length) { next(state, step.then); return; }
-    ask(state, { kind: 'choice', player: p.id, title: 'Охранный периметр: сбросить 1 карту действия, чтобы не бросать шум?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, step);
+    ask(state, { kind: 'choice', reaction: true, player: p.id, title: 'Охранный периметр: сбросить 1 карту действия, чтобы не бросать шум?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, step);
 };
 OPS['event.finish'] = (state, step) => {
     const ev = EVENT_BY_ID[step.id];

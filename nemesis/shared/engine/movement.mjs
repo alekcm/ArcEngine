@@ -295,7 +295,7 @@ export function fieldExpAsk(state, token, resume) {
     const x = state.players.find(o => o.status === 'active' && o.tissue > 0 && o.hand.some(c => (cardDef(state, c) || {}).reactionToo === 'fieldExpReaction'));
     if (!x) return false;
     const card = x.hand.find(c => (cardDef(state, c) || {}).reactionToo === 'fieldExpReaction');
-    ask(state, { kind: 'choice', player: x.id, title: 'Из мешка вытянут жетон «' + INTRUDER_NAMES[token] + '». Сыграть «Полевой опыт» (−1 образец ткани): вернуть жетон и вытянуть другой?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
+    ask(state, { kind: 'choice', reaction: true, player: x.id, title: 'Из мешка вытянут жетон «' + INTRUDER_NAMES[token] + '». Сыграть «Полевой опыт» (−1 образец ткани): вернуть жетон и вытянуть другой?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
         { op: 'fieldExp.answer', player: x.id, card, token, resume });
     return true;
 }

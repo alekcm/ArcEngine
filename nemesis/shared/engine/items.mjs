@@ -256,10 +256,21 @@ OPS['item.use'] = (state, step) => {
         case 'nemesisPlans': {
             consume();
             const un = Object.keys(state.ship.rooms).filter(r => !room(state, r).explored);
-            const two = shuffle(state, [...un]).slice(0, 2);
-            p.knownTiles = p.knownTiles || {};
-            for (const r of two) p.knownTiles[r] = state.secret.tiles[r];
-            ask(state, { kind: 'info', player: p.id, title: 'Чертежи (только вы это видите)', text: two.map(r => 'Комната ' + r + ': ' + ROOM_TILES[state.secret.tiles[r]].name).join('\n') || 'Неразведанных комнат нет' }, { op: 'noop', then: back });
+            if (!un.length) {
+                ask(state, { kind: 'info', player: p.id, title: 'Чертежи «Немезиды»', text: 'Неразведанных комнат нет.' }, { op: 'noop', then: back });
+                return;
+            }
+            if (un.length === 1) {
+                const r = un[0];
+                p.knownTiles = p.knownTiles || {};
+                p.knownTiles[r] = state.secret.tiles[r];
+                log(state, pname(p) + ' изучает чертежи корабля («Чертежи «Немезиды»»).', 'action');
+                ask(state, { kind: 'info', player: p.id, title: 'Чертежи «Немезиды» (только вы это видите)', text: 'Комната ' + r + ': ' + ROOM_TILES[state.secret.tiles[r]].name }, { op: 'noop', then: back });
+                return;
+            }
+            log(state, pname(p) + ' изучает чертежи корабля («Чертежи «Немезиды»»).', 'action');
+            ask(state, { kind: 'room', player: p.id, title: 'Чертежи «Немезиды»: выберите первую неразведанную комнату (1 из 2)', rooms: un },
+                { op: 'item.nemesisPlans.first', player: p.id, then: back });
             return;
         }
         case 'reagent': {
@@ -528,5 +539,27 @@ OPS['item.glowstick'] = (state, step) => {
     else next(state, { op: 'melee.start', player: p.id, noContam: true, noRetaliation: true, then: step.then });
 };
 OPS['item.techMove'] = (state, step) => { next(state, { op: 'move.direct', player: step.player, dest: step.answer, then: step.then }); };
+OPS['item.nemesisPlans.first'] = (state, step) => {
+    const p = player(state, step.player);
+    const r1 = step.answer;
+    p.knownTiles = p.knownTiles || {};
+    p.knownTiles[r1] = state.secret.tiles[r1];
+    const un = Object.keys(state.ship.rooms).filter(r => !room(state, r).explored && r !== r1);
+    if (!un.length) {
+        ask(state, { kind: 'info', player: p.id, title: 'Чертежи «Немезиды» (только вы это видите)', text: 'Комната ' + r1 + ': ' + ROOM_TILES[state.secret.tiles[r1]].name }, { op: 'noop', then: step.then });
+        return;
+    }
+    ask(state, { kind: 'room', player: p.id, title: 'Чертежи «Немезиды»: выберите вторую неразведанную комнату (2 из 2)', rooms: un },
+        { op: 'item.nemesisPlans.second', player: p.id, r1, then: step.then });
+};
+OPS['item.nemesisPlans.second'] = (state, step) => {
+    const p = player(state, step.player);
+    const r1 = step.r1;
+    const r2 = step.answer;
+    p.knownTiles = p.knownTiles || {};
+    p.knownTiles[r2] = state.secret.tiles[r2];
+    const text = 'Комната ' + r1 + ': ' + ROOM_TILES[state.secret.tiles[r1]].name + '\nКомната ' + r2 + ': ' + ROOM_TILES[state.secret.tiles[r2]].name;
+    ask(state, { kind: 'info', player: p.id, title: 'Чертежи «Немезиды» (только вы это видите)', text }, { op: 'noop', then: step.then });
+};
 
 export { searchRoom as search };

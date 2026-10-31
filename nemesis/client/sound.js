@@ -40,8 +40,25 @@ function tone(t, dur, { type = 'sine', freq = 440, to = null, gain = 0.3, a = 0.
     const g = c.createGain(); env(g, t, a, dur, gain);
     o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
 }
+function bell(t, dur, freq, gain = 0.25) {
+    tone(t, dur, { type: 'sine', freq, gain, a: 0.008 });
+    tone(t, dur * 0.6, { type: 'sine', freq: freq * 2.01, gain: gain * 0.22, a: 0.008 });
+}
 
 const FX = {
+    /** polite, attention-catching chime when the player's turn begins (D5 -> A5 -> D6) */
+    turnStart(t) {
+        const g = 0.35;
+        bell(t, 0.45, 587.3, g * 0.8);
+        bell(t + 0.12, 0.45, 880, g * 0.85);
+        bell(t + 0.24, 0.8, 1174.7, g);
+    },
+    /** crisp, distinct prompt chime when a reaction can be played (G5 -> E6) */
+    reaction(t) {
+        const g = 0.38;
+        bell(t, 0.35, 784, g * 0.85);
+        bell(t + 0.10, 0.65, 1318.5, g);
+    },
     /** quick riffle of a card deck */
     shuffle(t) { for (let i = 0; i < 9; i++) noise(t + i * 0.035, 0.03, { freq: 2600 + i * 150, q: 2, gain: 0.25 }); },
     /** one card dealt / slapped on the table */
@@ -81,7 +98,12 @@ const FX = {
 /** Play a named effect (ignored when audio is unavailable). */
 export function play(name, delayMs = 0) {
     const c = ac(); if (!c || !FX[name]) return;
-    if (c.state === 'suspended') return;
+    if (c.state === 'suspended') {
+        c.resume().then(() => {
+            FX[name](c.currentTime + delayMs / 1000);
+        }).catch(() => {});
+        return;
+    }
     FX[name](c.currentTime + delayMs / 1000);
 }
 /** Footsteps throttled to a running cadence; call every frame while something runs. */
