@@ -239,7 +239,7 @@ function agreeNumbers(rooms, pinned = {}) {
             return out;
         };
         const go = () => {
-            if (++nodes > 25000) return false;
+            if (++nodes > 5000) return false;
             for (const rd of doors) {
                 const seen = new Set();
                 for (const k of rd.list) if (assign.has(k)) for (const n of assign.get(k)) { if (seen.has(n)) return false; seen.add(n); }
@@ -365,41 +365,43 @@ const SYMMETRIC_ROOM_KINDS = {
 
 const SYMMETRIC_CANDIDATE_GROUPS = [
     // Cockpit
-    { id: 'cockpit_wings', edges: [['001', '002'], ['001', '004']], weight: 1.0, required: true },
-    { id: 'cockpit_center', edges: [['001', '003']], weight: 0.8 },
+    { id: 'cockpit_wings', edges: [['001', '002'], ['001', '004']], weight: 1.0 },
+    { id: 'cockpit_center', edges: [['001', '003']], weight: 0.5 },
 
-    // Front outer to front inner
-    { id: 'front_wings_to_inner', edges: [['002', '006'], ['004', '008']], weight: 1.0, required: true },
-    { id: 'front_center_to_inner', edges: [['003', '007']], weight: 1.0, required: true },
-    { id: 'front_wings_to_center', edges: [['002', '003'], ['004', '003']], weight: 0.5 },
+    // Front section
+    { id: 'front_wings_to_inner', edges: [['002', '006'], ['004', '008']], weight: 0.85 },
+    { id: 'front_center_to_inner', edges: [['003', '007']], weight: 0.8 },
+    { id: 'front_wings_to_center', edges: [['002', '003'], ['004', '003']], weight: 0.65 },
+    { id: 'front_center_to_inner_wings', edges: [['003', '006'], ['003', '008']], weight: 0.4 },
+    { id: 'outer_front_to_mid1', edges: [['002', '005'], ['004', '009']], weight: 0.6 },
+    { id: 'mid1_outer_to_inner', edges: [['005', '006'], ['009', '008']], weight: 0.8 },
 
-    // Mid outer to inner / perimeter
-    { id: 'mid1_outer_to_inner', edges: [['005', '006'], ['009', '008']], weight: 1.0, required: true },
-    { id: 'outer_front_to_mid1', edges: [['002', '005'], ['004', '009']], weight: 0.4 },
-    { id: 'outer_mid1_to_mid2', edges: [['005', '010'], ['009', '012']], weight: 0.85 },
-    { id: 'outer_mid2_to_inner_front', edges: [['006', '010'], ['008', '012']], weight: 0.35 },
+    // Mid section & perimeter
+    { id: 'outer_mid1_to_mid2', edges: [['005', '010'], ['009', '012']], weight: 0.8 },
+    { id: 'outer_mid2_to_inner_front', edges: [['006', '010'], ['008', '012']], weight: 0.45 },
+    { id: 'outer_mid2_to_hiber', edges: [['010', '011'], ['012', '011']], weight: 0.35 },
+    { id: 'outer_mid2_to_rear1', edges: [['010', '013'], ['012', '016']], weight: 0.8 },
+    { id: 'outer_mid2_to_inner_rear', edges: [['010', '014'], ['012', '015']], weight: 0.4 },
 
     // Inner ring & Hibernatorium
-    { id: 'inner_front_loop', edges: [['006', '007'], ['008', '007']], weight: 1.0, required: true },
-    { id: 'hiber_to_inner_front', edges: [['006', '011'], ['008', '011']], weight: 1.0, required: true },
-    { id: 'hiber_to_inner_rear', edges: [['011', '014'], ['011', '015']], weight: 1.0, required: true },
-    { id: 'hiber_to_inner_center', edges: [['007', '011']], weight: 0.4 },
-    { id: 'inner_bypass', edges: [['006', '014'], ['008', '015']], weight: 0.4 },
-    { id: 'inner_rear_cross', edges: [['014', '015']], weight: 0.3 },
+    { id: 'inner_front_loop', edges: [['006', '007'], ['008', '007']], weight: 0.85 },
+    { id: 'hiber_to_inner_front', edges: [['006', '011'], ['008', '011']], weight: 0.8 },
+    { id: 'hiber_to_inner_rear', edges: [['011', '014'], ['011', '015']], weight: 0.85 },
+    { id: 'hiber_to_inner_center', edges: [['007', '011']], weight: 0.5 },
+    { id: 'inner_bypass', edges: [['006', '014'], ['008', '015']], weight: 0.5 },
+    { id: 'inner_rear_cross', edges: [['014', '015']], weight: 0.35 },
 
     // Rear outer & inner
-    { id: 'outer_mid2_to_rear1', edges: [['010', '013'], ['012', '016']], weight: 0.85 },
-    { id: 'outer_mid2_to_inner_rear', edges: [['010', '014'], ['012', '015']], weight: 0.4 },
-    { id: 'outer_rear1_to_inner_rear', edges: [['013', '014'], ['016', '015']], weight: 0.85 },
-    { id: 'outer_rear1_to_rear2', edges: [['013', '017'], ['016', '018']], weight: 0.4 },
-    { id: 'outer_rear2_to_inner_rear', edges: [['014', '017'], ['015', '018']], weight: 1.0, required: true },
+    { id: 'outer_rear1_to_inner_rear', edges: [['013', '014'], ['016', '015']], weight: 0.8 },
+    { id: 'outer_rear1_to_rear2', edges: [['013', '017'], ['016', '018']], weight: 0.6 },
+    { id: 'outer_rear2_to_inner_rear', edges: [['014', '017'], ['015', '018']], weight: 0.85 },
 
     // Engines
-    { id: 'engine_wings_outer_rear1', edges: [['013', '019'], ['016', '021']], weight: 0.85 },
-    { id: 'engine_wings_outer_rear2', edges: [['017', '019'], ['018', '021']], weight: 1.0, required: true },
-    { id: 'engine_mid_outer_rear2', edges: [['017', '020'], ['018', '020']], weight: 1.0, required: true },
-    { id: 'engine_mid_inner_rear', edges: [['014', '020'], ['015', '020']], weight: 0.3 },
-    { id: 'engine_wings_to_mid', edges: [['019', '020'], ['021', '020']], weight: 0.25 },
+    { id: 'engine_wings_outer_rear1', edges: [['013', '019'], ['016', '021']], weight: 0.65 },
+    { id: 'engine_wings_outer_rear2', edges: [['017', '019'], ['018', '021']], weight: 0.8 },
+    { id: 'engine_mid_outer_rear2', edges: [['017', '020'], ['018', '020']], weight: 0.8 },
+    { id: 'engine_mid_inner_rear', edges: [['014', '020'], ['015', '020']], weight: 0.45 },
+    { id: 'engine_wings_to_mid', edges: [['019', '020'], ['021', '020']], weight: 0.35 },
 ];
 
 export function randomShip(holder) {
@@ -417,10 +419,21 @@ export function randomShip(holder) {
 
 function tryRandomShip(holder) {
     const Y_c = 470;
-    const yScale = 0.92 + rand(holder) * 0.16;
-    const xScale = 0.96 + rand(holder) * 0.08;
 
-    // Generate horizontally symmetric coordinates for all 21 rooms
+    // Archetype selection gives ships distinct architectural silhouettes:
+    // 0: Cruiser (wide swept wings, broad lateral silhouette)
+    // 1: Arrowhead (elongated streamlined forward hull)
+    // 2: Hammerhead (expanded forward wings & bridge modules)
+    // 3: Heavy freighter (staggered engines, bulky midsection)
+    // 4: Balanced
+    const archetype = randInt(holder, 5);
+
+    let xScale = 0.94 + rand(holder) * 0.12;
+    let yScale = 0.88 + rand(holder) * 0.22;
+    if (archetype === 0) { yScale = 1.04 + rand(holder) * 0.12; xScale = 0.93 + rand(holder) * 0.08; }
+    else if (archetype === 1) { xScale = 1.02 + rand(holder) * 0.10; yScale = 0.85 + rand(holder) * 0.10; }
+    else if (archetype === 2) { yScale = 1.02 + rand(holder) * 0.12; }
+
     const coords = {};
     const PAIR_KEYS = [
         ['002', '004'], ['005', '009'], ['006', '008'], ['010', '012'],
@@ -428,20 +441,40 @@ function tryRandomShip(holder) {
     ];
     const CENTER_KEYS = ['001', '003', '007', '011', '020'];
 
+    const cJitter = {
+        '001': Math.round((rand(holder) - 0.5) * 30),
+        '003': Math.round((rand(holder) - 0.5) * 30),
+        '007': Math.round((rand(holder) - 0.5) * 30),
+        '011': Math.round((rand(holder) - 0.5) * 30),
+        '020': Math.round((rand(holder) - 0.5) * 30),
+    };
+    if (archetype === 1) cJitter['001'] -= 15;
+    if (archetype === 3) cJitter['020'] += 15;
+
     for (const id of CENTER_KEYS) {
-        const [bx] = BASE_ROOM_COORDS[id];
-        const dx = Math.round((rand(holder) - 0.5) * (id === '001' ? 12 : 24));
-        coords[id] = [Math.round(bx * xScale + dx), Y_c];
+        coords[id] = [Math.round(BASE_ROOM_COORDS[id][0] * xScale + cJitter[id]), Y_c];
     }
     for (const [topId, botId] of PAIR_KEYS) {
-        const [bx, by] = BASE_ROOM_COORDS[topId];
-        const dx = Math.round((rand(holder) - 0.5) * 24);
-        const dy = Math.round((rand(holder) - 0.5) * 20);
-        const x = Math.round(bx * xScale + dx);
-        const yTop = Math.round(Y_c - (Y_c - by) * yScale + dy);
+        let dx = Math.round((rand(holder) - 0.5) * 35);
+        let dy = Math.round((rand(holder) - 0.5) * 28);
+        if (archetype === 0 && (topId === '005' || topId === '010')) dy -= 18;
+        if (archetype === 2 && topId === '002') { dx -= 18; dy -= 18; }
+        if (archetype === 3 && topId === '019') dx -= 20;
+
+        const x = Math.round(BASE_ROOM_COORDS[topId][0] * xScale + dx);
+        const yTop = Math.round(Y_c - (Y_c - BASE_ROOM_COORDS[topId][1]) * yScale + dy);
         const yBot = 2 * Y_c - yTop;
         coords[topId] = [x, yTop];
         coords[botId] = [x, yBot];
+    }
+
+    // Minimum clearance between room centers to prevent overlapping hexes
+    const roomKeys = Object.keys(coords);
+    for (let i = 0; i < roomKeys.length; i++) {
+        for (let j = i + 1; j < roomKeys.length; j++) {
+            const d = Math.hypot(coords[roomKeys[i]][0] - coords[roomKeys[j]][0], coords[roomKeys[i]][1] - coords[roomKeys[j]][1]);
+            if (d < 145) return null;
+        }
     }
 
     // Technical corridor entrances: pick 3 to 4 pairs symmetrically (6 to 8 tech rooms total)
@@ -469,38 +502,78 @@ function tryRandomShip(holder) {
     for (let r = 1; r <= 21; r++) deg[String(r).padStart(3, '0')] = 0;
 
     const selectedEdges = [];
-    // 1. Add required backbone groups
-    for (const g of SYMMETRIC_CANDIDATE_GROUPS) {
-        if (g.required) {
-            for (const [a, b] of g.edges) {
-                selectedEdges.push([a, b]);
-                deg[a]++; deg[b]++;
-            }
-        }
-    }
+    const addedGroups = new Set();
 
-    // 2. Select optional groups with randomized weights while respecting degree bounds
-    const optional = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !g.required);
-    shuffle(holder, optional);
-    optional.sort((a, b) => (b.weight + rand(holder) * 0.3) - (a.weight + rand(holder) * 0.3));
-
-    for (const g of optional) {
-        let canAdd = true;
+    const addGroup = g => {
+        if (!g || addedGroups.has(g.id)) return false;
+        const delta = {};
         for (const [a, b] of g.edges) {
-            if (deg[a] + 1 > maxDeg(a) || deg[b] + 1 > maxDeg(b)) {
-                canAdd = false;
-                break;
-            }
+            delta[a] = (delta[a] || 0) + 1;
+            delta[b] = (delta[b] || 0) + 1;
         }
-        if (canAdd) {
-            for (const [a, b] of g.edges) {
-                selectedEdges.push([a, b]);
-                deg[a]++; deg[b]++;
-            }
+        for (const [id, count] of Object.entries(delta)) {
+            if (deg[id] + count > maxDeg(id)) return false;
+        }
+        for (const [a, b] of g.edges) {
+            selectedEdges.push([a, b]);
+            deg[a]++; deg[b]++;
+        }
+        addedGroups.add(g.id);
+        return true;
+    };
+
+    // 1. Mandatory anchor: Cockpit needs wings
+    addGroup(SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'cockpit_wings'));
+
+    // 2. Select Engine 2 route:
+    // Strategy A: outer rear 2 (017/018)
+    // Strategy B: inner rear (014/015)
+    // Strategy C: inter-engine catwalks (019/021)
+    const engine2Options = [
+        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'engine_mid_outer_rear2'),
+        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'engine_mid_inner_rear'),
+        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'engine_wings_to_mid'),
+    ];
+    addGroup(engine2Options[randInt(holder, engine2Options.length)]);
+
+    // Ensure Engines 1 & 3 (019/021) have an exit
+    if (deg['019'] === 0) {
+        const e13Options = [
+            SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'engine_wings_outer_rear2'),
+            SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'engine_wings_outer_rear1'),
+        ];
+        shuffle(holder, e13Options);
+        for (const opt of e13Options) {
+            if (addGroup(opt)) break;
         }
     }
 
-    // 3. Verify graph connectivity across all 21 rooms
+    // 3. Target density: varied corridor network size (25 to 34 corridors)
+    const targetGroups = 13 + randInt(holder, 6);
+
+    const remaining = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !addedGroups.has(g.id));
+    shuffle(holder, remaining);
+    remaining.sort((a, b) => (b.weight + rand(holder) * 0.4) - (a.weight + rand(holder) * 0.4));
+
+    for (const g of remaining) {
+        if (addedGroups.size >= targetGroups) break;
+        addGroup(g);
+    }
+
+    // 4. Ensure all non-engine rooms have at least degree 2 (no dead-ends)
+    for (let r = 1; r <= 21; r++) {
+        const id = String(r).padStart(3, '0');
+        if (id === '019' || id === '020' || id === '021') continue;
+        if (deg[id] < 2) {
+            const candidates = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !addedGroups.has(g.id) && g.edges.some(([a, b]) => a === id || b === id));
+            for (const g of candidates) {
+                if (addGroup(g)) break;
+            }
+        }
+        if (deg[id] < 2) return null;
+    }
+
+    // 5. Verify graph connectivity across all 21 rooms
     const adj = {};
     for (let r = 1; r <= 21; r++) adj[String(r).padStart(3, '0')] = [];
     for (const [a, b] of selectedEdges) {
@@ -543,6 +616,9 @@ function tryRandomShip(holder) {
         } else if (id === '002-006' || id === '004-008') {
             const sign = id === '002-006' ? -1 : 1;
             paths[id] = [[Math.round((ax + bx) / 2), Math.round((ay + by) / 2 + sign * 20)]];
+        } else if (id === '014-020' || id === '015-020') {
+            const sign = id === '014-020' ? -1 : 1;
+            paths[id] = [[Math.round(ax + (bx - ax) * 0.4), Math.round(ay + sign * 15)]];
         }
     }
 
