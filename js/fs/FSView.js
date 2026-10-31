@@ -34,6 +34,7 @@ const FSView = {
             setupSlots: new Map(),      // free cells during board assembly
             stormTargets: new Map(),    // clickable physical borders
             setupPreview: null,         // local, uncommitted tile
+            previewState: null,
             markers: [],
             highlights: [],
             inspectionRing: null,
@@ -45,6 +46,8 @@ const FSView = {
             modelCache: new Map(),
             modelLoads: new Map(),
             modelMaterials: new Map(),
+            assetImages: {},
+            orderMaterials: new Map(),
             onModelReady: null,
             built: false,
         };
@@ -54,6 +57,8 @@ const FSView = {
             view.glow = new BABYLON.GlowLayer('fs-astral-glow', view.scene, { blurKernelSize: 32 });
             view.glow.intensity = .38;
         }
+
+        this.loadAssetImages(view);
 
         // --- the materials (one per colour, shared by the markers)
         view.material = (name, hex, opts) => {
@@ -94,6 +99,29 @@ const FSView = {
         }
 
         return view;
+    },
+
+    // Printed resource markers load asynchronously. Redraw a preview as well
+    // as committed tiles if an image arrives after they were first painted.
+    loadAssetImages(view) {
+        if (typeof Image === 'undefined') return;
+        const paths = {
+            forge: 'assets/fs-icons/asset-forge.png', cache: 'assets/fs-icons/asset-cache.png',
+            reinforcement: 'assets/fs-icons/asset-reinforcement.png',
+        };
+        for (const kind of Object.keys(paths)) {
+            const image = new Image();
+            image.onload = () => {
+                view.assetImages[kind] = image;
+                for (const rec of view.tiles.values()) rec.drawn = '';
+                if (view.onModelReady) view.onModelReady();
+                if (view.setupPreview && view.previewState) {
+                    const preview = view.setupPreview;
+                    this.drawTile(preview.ghost, preview.sys, preview.rec, view.previewState);
+                }
+            };
+            image.src = paths[kind];
+        }
     },
 
     spaceGround(app) {
@@ -272,11 +300,16 @@ const FSView = {
                 ctx.textAlign = 'left'; ctx.font = 'bold 15px system-ui, sans-serif';
                 ctx.fillStyle = '#a8d08a'; ctx.fillText('◈ ' + area.world.materiel, r.x + 16, r.y + 31);
                 ctx.fillStyle = '#d8c9a8'; ctx.fillText('⌂ ' + area.world.capacity, r.x + 16, r.y + 54);
-                const assetGlyph = { forge: '⚒', cache: '▦', reinforcement: '✚', prosperity: '✧' };
-                const assets = area.world.assets.map(asset => assetGlyph[asset] || asset).join('  ');
-                if (assets) {
-                    ctx.fillStyle = '#8fd5f2'; ctx.font = 'bold 14px system-ui, sans-serif';
-                    ctx.fillText(assets, r.x + 16, r.y + 77);
+                // Use the supplied physical-token artwork, not font-dependent glyphs.
+                let assetX = r.x + 14;
+                for (const asset of area.world.assets) {
+                    const image = view.assetImages && view.assetImages[asset];
+                    if (image) ctx.drawImage(image, assetX, r.y + 61, 24, 24);
+                    else {
+                        ctx.fillStyle = '#8fd5f2'; ctx.font = 'bold 14px system-ui, sans-serif';
+                        ctx.fillText(({ forge: '⚒', cache: '▦', reinforcement: '✚', prosperity: '✧' })[asset] || asset, assetX, r.y + 79);
+                    }
+                    assetX += 27;
                 }
             } else {
                 // A void: layered starfield with a few brighter navigational stars.
@@ -367,21 +400,30 @@ const FSView = {
         return { x: r.x, y: r.y, w: half, h: half };
     },
 
-    // The texture of an order token: the letter of the order (the colour is the owner).
-    orderTexture(view, order) {
-        if (!view.orderTex) view.orderTex = new Map();
-        if (view.orderTex.has(order)) return view.orderTex.get(order);
-        const tex = new BABYLON.DynamicTexture('fs-order-' + order, { width: 64, height: 64 }, view.scene, true);
-        tex.hasAlpha = true;
-        const ctx = tex.getContext();
-        ctx.clearRect(0, 0, 64, 64);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 44px system-ui, sans-serif';
-        // The letter is drawn by hand: the centre of the square is (32, 32).
-        ctx.fillText({ advance: 'Н', deploy: 'Р', strategize: 'С', dominate: 'Д' }[order] || '?', 19, 47);
-        tex.update();
-        view.orderTex.set(order, tex);
-        return tex;
+    // Only an exposed own token (or an explicitly revealed token) gets a face.
+    // Do not rely solely on the server redaction when deciding what to render.
+    visibleOrder(state, sys, token, index) {
+        if (!['advance', 'deploy', 'strategize', 'dominate'].includes(token.order)) return null;
+        return index === sys.tokens.length - 1 && (token.faceUp || token.seat === state.seat) ? token.order : null;
+    },
+
+    orderMaterial(view, order) {
+        if (!view.orderMaterials) view.orderMaterials = new Map();
+        if (view.orderMaterials.has(order)) return view.orderMaterials.get(order);
+        const paths = {
+            advance: 'assets/fs-icons/order-advance.png', deploy: 'assets/fs-icons/order-deploy.png',
+            strategize: 'assets/fs-icons/order-strategize.png', dominate: 'assets/fs-icons/order-dominate.png',
+        };
+        const texture = new BABYLON.Texture(paths[order], view.scene, true, false);
+        texture.hasAlpha = true;
+        const material = new BABYLON.StandardMaterial('fs-order-face-' + order, view.scene);
+        material.diffuseTexture = texture;
+        material.useAlphaFromDiffuseTexture = true;
+        material.emissiveColor = new BABYLON.Color3(.5, .5, .5);
+        material.specularColor = new BABYLON.Color3(0, 0, 0);
+        material.backFaceCulling = false;
+        view.orderMaterials.set(order, material);
+        return material;
     },
 
     // The colour of a faction.
@@ -594,6 +636,7 @@ const FSView = {
         for (const mesh of [rec.base, rec.top, ...rec.decorations]) mesh.isPickable = false;
         for (const planet of ghost.planets.values()) for (const mesh of [planet.mesh, planet.clouds, planet.atmosphere, planet.orbit]) mesh.isPickable = false;
         view.setupPreview = { ghost, rec, sys };
+        view.previewState = state;
     },
 
     clearSetupPreview(view) {
@@ -605,6 +648,7 @@ const FSView = {
         preview.rec.mat.dispose(false, false);
         preview.rec.tex.dispose();
         view.setupPreview = null;
+        view.previewState = null;
     },
 
     // --- the markers --------------------------------------------------------
@@ -949,11 +993,17 @@ const FSView = {
                 mesh.position.set(p.x, h(p.x, p.y) + 9 + this.MARKER_Y + i * 5, p.y);
                 const owner = state.players.find(p2 => p2.seat === tok.seat);
                 const color = (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
-                // The letter of the order on the colour of the player.
-                const mat = view.material('tok-back-' + tok.seat, color);
-                mesh.material = mat;
+                mesh.material = view.material('tok-back-' + tok.seat, color);
                 mesh.isPickable = true;
                 mesh.metadata = { fs: 'orderToken', system: sys.id };
+                // The face is a separate, non-pickable plane on the top of the
+                // colored piece; the same box remains the click target.
+                const order = this.visibleOrder(state, sys, tok, i);
+                if (order) {
+                    const face = BABYLON.MeshBuilder.CreatePlane('fs-order-face-' + sys.id + '-' + i, { width: 28, height: 25 }, view.scene);
+                    face.parent = mesh; face.position.y = 2.55; face.rotation.x = Math.PI / 2;
+                    face.material = this.orderMaterial(view, order); face.isPickable = false;
+                }
                 this.addMarker(view, mesh, 'actor');
             });
         }

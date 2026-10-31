@@ -19,3 +19,16 @@
 .fs-tile-pair .fs-tile-world-info strong{font-size:10px}
 .fs-tile-pair .fs-tile-stats,.fs-tile-pair .fs-tile-assets,.fs-tile-pair .fs-tile-void{font-size:9px}
 .fs-shell.is-mobile .fs-actions:has(.fs-tile-pair){grid-template-columns:1fr}
+
+/* Physical token artwork in the player rail, inspectors, tile previews and actions. */
+.fs-token-icon{display:inline-block;object-fit:contain;vertical-align:middle;flex:none}
+.fs-asset-chip{display:inline-flex;align-items:center;gap:2px}
+.fs-asset-chip .fs-asset-icon{width:16px;height:16px}
+.fs-tile-assets{display:flex;align-items:center;flex-wrap:wrap;gap:2px}
+.fs-tile-assets .fs-asset-icon{width:18px;height:18px}
+.fs-tile-objective{font-size:8px}
+.fs-inspector-chip.is-asset{display:inline-flex;align-items:center;padding:2px}
+.fs-inspector-chip .fs-asset-icon{width:22px;height:22px}
+.fs-action-icon:has(.fs-token-icon){width:30px;height:30px;background:none}
+.fs-action-icon .fs-token-icon{width:30px;height:30px}
+.fs-panel-heading h2 .fs-order-icon{width:28px;height:28px;margin-right:8px}

@@ -441,7 +441,7 @@ class FSGame {
             ['strategize', 'Стратегия'], ['dominate', 'Доминирование']];
         for (const k of kinds) {
             ctx.actions.push({
-                label: k[1],
+                label: k[1], orderIcon: k[0],
                 onClick: () => {
                     this.mode = 'placeOrder';
                     this.pending = { order: k[0] };
@@ -490,8 +490,8 @@ class FSGame {
             const top = sys && sys.tokens[sys.tokens.length - 1];
             if (top && top.seat === me) {
                 ctx.status = this.status || ('Выбран верхний приказ в системе ' + sys.tile + ': ' + FS_RULES.orderName(top.order) + '.');
-                ctx.actions.push({ label: 'Вскрыть и выполнить', onClick: () => this.net.cmd({ type: 'resolveOrder', system: sys.id }) });
-                if (top.order !== 'strategize') ctx.actions.push({ label: 'Вместо выполнения — на колоду событий', onClick: () => this.net.cmd({ type: 'resolveOrder', system: sys.id, toEventDeck: true }) });
+                ctx.actions.push({ label: 'Вскрыть и выполнить', orderIcon: top.order, onClick: () => this.net.cmd({ type: 'resolveOrder', system: sys.id }) });
+                if (top.order !== 'strategize') ctx.actions.push({ label: 'Вместо выполнения — на колоду событий', orderIcon: top.order, onClick: () => this.net.cmd({ type: 'resolveOrder', system: sys.id, toEventDeck: true }) });
             }
         } else ctx.status = this.status || 'На карте отмечены системы, где ваш приказ лежит сверху.';
         FSView.highlight(this.view, orders.map(o => {
@@ -503,13 +503,13 @@ class FSGame {
             if (!sys) continue;
             const tok = sys.tokens[sys.tokens.length - 1];
             ctx.actions.push({
-                label: 'Приказ в ' + sys.tile + ' — ' + FS_RULES.orderName(tok.order),
+                label: 'Приказ в ' + sys.tile + ' — ' + FS_RULES.orderName(tok.order), orderIcon: tok.order,
                 onClick: () => this.net.cmd({ type: 'resolveOrder', system: o.system }),
             });
             // The token of the advance, deploy and dominate orders may go to the event deck.
             if (tok.order !== 'strategize') {
                 ctx.actions.push({
-                    label: 'Отложить приказ из ' + sys.tile + ' в колоду событий',
+                    label: 'Отложить приказ из ' + sys.tile + ' в колоду событий', orderIcon: tok.order,
                     onClick: () => this.net.cmd({ type: 'resolveOrder', system: o.system, toEventDeck: true }),
                 });
             }
@@ -715,7 +715,7 @@ class FSGame {
         for (let i = 0; i < (s.order.prosperity || 0); i++) {
             for (const asset of ['forge', 'cache', 'reinforcement']) {
                 ctx.actions.push({
-                    label: 'Процветание: ' + FS_RULES.assetName(asset),
+                    label: 'Процветание: ' + FS_RULES.assetName(asset), assetIcon: asset,
                     onClick: () => this.net.cmd({ type: 'takeProsperity', asset }),
                 });
             }
@@ -1028,7 +1028,7 @@ class FSGame {
                 const names = { forge: 'кузница', cache: 'тайник', reinforcement: 'подкрепление' };
                 for (const kind of q.options) {
                     ctx.actions.push({
-                        label: 'Жетон: ' + (names[kind] || kind),
+                        label: 'Жетон: ' + (names[kind] || kind), assetIcon: kind,
                         onClick: () => send({ asset: kind }),
                     });
                 }

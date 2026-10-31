@@ -56,6 +56,34 @@ const FSUI = {
         return node;
     },
 
+    // Cropped artwork from the original physical tokens; labels remain available
+    // to screen readers and as tooltips, without spelling out every marker.
+    assetIcon(kind) {
+        const names = { forge: 'Кузница', cache: 'Запасы материалов', reinforcement: 'Подкрепление' };
+        if (!names[kind]) return null;
+        const img = this.el('img', 'fs-token-icon fs-asset-icon');
+        const paths = {
+            forge: 'assets/fs-icons/asset-forge.png', cache: 'assets/fs-icons/asset-cache.png',
+            reinforcement: 'assets/fs-icons/asset-reinforcement.png',
+        };
+        img.src = paths[kind];
+        img.alt = names[kind]; img.title = names[kind];
+        return img;
+    },
+
+    orderIcon(kind) {
+        const names = { advance: 'Наступление', deploy: 'Развёртывание', strategize: 'Стратегия', dominate: 'Доминирование' };
+        if (!names[kind]) return null;
+        const img = this.el('img', 'fs-token-icon fs-order-icon');
+        const paths = {
+            advance: 'assets/fs-icons/order-advance.png', deploy: 'assets/fs-icons/order-deploy.png',
+            strategize: 'assets/fs-icons/order-strategize.png', dominate: 'assets/fs-icons/order-dominate.png',
+        };
+        img.src = paths[kind];
+        img.alt = ''; img.title = names[kind];
+        return img;
+    },
+
     renderModern(state, ctx) {
         const root = this.modernRoot;
         if (!root) return;
@@ -122,8 +150,11 @@ const FSUI = {
             const assets = p.assets || {};
             const reserves = Object.values((p.supply && p.supply.units) || {}).reduce((sum, count) => sum + (Number(count) || 0), 0);
             const resourceLine = this.el('div', 'fs-player-assets');
-            [['⚒', assets.forge, 'Кузницы'], ['⬡', assets.cache, 'Запасы'], ['✚', assets.reinforcement, 'Подкрепления'], ['✧', assets.prosperity, 'Процветание'], ['♟', reserves, 'Отряды в запасе']].forEach(([icon, count, title]) => {
-                const chip = this.el('span', 'fs-asset-chip', icon + ' ' + (count || 0)); chip.title = title; resourceLine.append(chip);
+            [['forge', assets.forge, 'Кузницы'], ['cache', assets.cache, 'Запасы материалов'], ['reinforcement', assets.reinforcement, 'Подкрепления'], ['✧', assets.prosperity, 'Процветание'], ['♟', reserves, 'Отряды в запасе']].forEach(([icon, count, title]) => {
+                const chip = this.el('span', 'fs-asset-chip'); chip.title = title;
+                const image = this.assetIcon(icon);
+                if (image) chip.append(image); else chip.append(this.el('span', '', icon));
+                chip.append(this.el('span', '', String(count || 0))); resourceLine.append(chip);
             });
             row.append(resourceLine);
             list.append(row);
@@ -138,7 +169,10 @@ const FSUI = {
 
         const panel = this.el('section', 'fs-main-panel');
         const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', state.over ? 'Итоги сражения' : 'Текущий этап'));
-        head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
+        const heading = this.el('h2', '', ctx.title || 'Галактическая кампания');
+        const activeOrder = state.order && this.orderIcon(state.order.order);
+        if (activeOrder) heading.prepend(activeOrder);
+        head.append(heading);
         head.append(this.el('p', '', ctx.text || 'Выберите действие, чтобы продолжить партию.')); panel.append(head);
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
         const inspection = this.renderInspector(state, ctx.inspection);
@@ -166,7 +200,9 @@ const FSUI = {
                 button.setAttribute('aria-pressed', a.selected ? 'true' : 'false');
                 button.append(this.tilePreview(a.tile));
             } else {
-                const icon = this.el('span', 'fs-action-icon', icons[i % icons.length]);
+                const icon = this.el('span', 'fs-action-icon');
+                const image = this.orderIcon(a.orderIcon) || this.assetIcon(a.assetIcon);
+                if (image) icon.append(image); else icon.textContent = icons[i % icons.length];
                 button.append(icon, this.el('span', 'fs-action-label', a.label), this.el('span', 'fs-action-arrow', '›'));
             }
             button.addEventListener('click', () => a.onClick && a.onClick()); actions.append(button);
@@ -190,7 +226,6 @@ const FSUI = {
         const title = this.el('div', 'fs-tile-preview-title', 'Система ' + tile.id + (tile.home ? ' · родная система' : ''));
         wrap.append(title);
         const grid = this.el('div', 'fs-tile-grid');
-        const names = { forge: 'Кузница', cache: 'Запасы', reinforcement: 'Подкрепление', prosperity: 'Процветание' };
         for (const pos of ['TL', 'TR', 'BL', 'BR']) {
             const area = tile.areas.find(a => a.pos === pos);
             const world = area && area.world;
@@ -200,9 +235,15 @@ const FSUI = {
                 const info = this.el('div', 'fs-tile-world-info');
                 info.append(this.el('strong', '', world.name));
                 info.append(this.el('span', 'fs-tile-stats', 'Материя ' + (world.materiel || 0) + ' · Вместимость ' + world.capacity));
-                const assets = (world.assets || []).map(a => names[a] || a);
-                if (world.objective) assets.push('Цель');
-                info.append(this.el('span', 'fs-tile-assets', assets.length ? assets.join(' · ') : 'Без ресурса'));
+                const assets = this.el('span', 'fs-tile-assets');
+                for (const kind of world.assets || []) {
+                    const image = this.assetIcon(kind);
+                    if (image) assets.append(image);
+                    else assets.append(this.el('span', '', kind === 'prosperity' ? '✧' : kind));
+                }
+                if (world.objective) assets.append(this.el('span', 'fs-tile-objective', 'Цель'));
+                if (!(world.assets || []).length && !world.objective) assets.textContent = 'Без ресурса';
+                info.append(assets);
                 sector.append(info);
             } else {
                 sector.append(this.el('span', 'fs-tile-void', '✧ Пустота'), this.el('span', 'fs-tile-stats', 'Вместимость 3'));
@@ -255,10 +296,11 @@ const FSUI = {
             [['◈', world.materiel, 'Материалы'], ['⌂', world.capacity, 'Вместимость'], ['◎', world.objective ? 'Да' : '—', 'Цель']].forEach(([icon, value, label]) => {
                 const chip = this.el('span', 'fs-inspector-chip', icon + ' ' + value); chip.title = label; stats.append(chip);
             });
-            const glyph = { forge: '⚒', cache: '▦', reinforcement: '✚', prosperity: '✧' };
             for (const asset of world.assets || []) {
-                const chip = this.el('span', 'fs-inspector-chip is-asset', glyph[asset] || asset);
-                chip.title = ({ forge: 'Кузница', cache: 'Запасы', reinforcement: 'Подкрепление', prosperity: 'Процветание' })[asset] || asset;
+                const chip = this.el('span', 'fs-inspector-chip is-asset');
+                const image = this.assetIcon(asset);
+                if (image) { chip.append(image); chip.title = image.title; }
+                else { chip.textContent = asset === 'prosperity' ? '✧' : asset; chip.title = asset === 'prosperity' ? 'Процветание' : asset; }
                 stats.append(chip);
             }
             panel.append(stats);

@@ -127,7 +127,7 @@ test('tile preview presents all four sectors and world properties', () => {
     const loaded = loadScripts(['js/fs/FSData.js', 'js/fs/FSUI.js'], { document: { createElement: element } });
     const tile = loaded.get('FS_DATA').tiles.find(t => t.id === '13A');
     const preview = loaded.get('FSUI').tilePreview(tile);
-    const text = node => node.textContent + node.children.map(text).join(' ');
+    const text = node => node.textContent + (node.alt || '') + node.children.map(text).join(' ');
     const contents = text(preview);
     assert.equal(preview.children[1].children.length, 4);
     for (const expected of ['13A', 'Fendris', 'Isthar', 'Carnac', 'Пустота', 'Материя', 'Вместимость', 'Кузница', 'Запасы', 'Цель']) {
