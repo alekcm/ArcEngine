@@ -146,6 +146,7 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 #topbar { position: fixed; top: 0; left: 0; right: 0; height: 46px; display: flex; align-items: center; gap: 14px; padding: 0 14px; background: linear-gradient(#0d141dee, #0d141dcc); border-bottom: 1px solid var(--line); z-index: 10; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 #topbar::-webkit-scrollbar { display: none; }
 #topbar .tb-item, #topbar .btn { flex: none; }
+#fsBtn { font-size: 16px; padding: 0 8px; cursor: pointer; }
 #track { flex: none; }
 .tb-item { display: flex; flex-direction: column; line-height: 1.1; }
 .tb-item .lbl { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
@@ -319,6 +320,33 @@ body.pl-collapsed #prompt:not(.hidden) ~ #menuToggle { left: 34px; }
 @keyframes card-burn { 0% { filter: brightness(1); opacity: 1; } 40% { filter: brightness(2) sepia(1) hue-rotate(-30deg); } 100% { filter: brightness(0.2); opacity: 0; transform: rotateY(180deg) scale(0.6) translateY(-30px); } }
 .notice.ping { border-color: #5ad1ff; }
 
+.turn-center-banner {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.85);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 100;
+    padding: 20px 52px;
+    background: radial-gradient(ellipse at center, rgba(16, 36, 58, 0.96) 0%, rgba(9, 16, 25, 0.94) 100%);
+    border: 2px solid var(--accent, #42a5f5);
+    border-radius: 12px;
+    box-shadow: 0 0 38px rgba(66, 165, 245, 0.55), inset 0 0 22px rgba(66, 165, 245, 0.2);
+    color: #ffffff;
+    font-size: 32px;
+    font-weight: 900;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    text-align: center;
+    text-shadow: 0 0 16px rgba(66, 165, 245, 0.85);
+    transition: opacity 0.28s ease, transform 0.28s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+.turn-center-banner.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
 /* ---- hand fan ---- */
 #hand { overflow: visible; padding: 6px 30px 0; align-items: flex-end; gap: 0; }
 #hand .card { margin: 0 -14px; transform-origin: 50% 140%; transform: rotate(var(--fan, 0deg)) translateY(var(--lift, 0px)); transition: transform .15s, margin .15s; }
@@ -447,6 +475,8 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #tbPop .pre { white-space: pre-line; }
 /* the copy inside the bar must never open on its own: it would be clipped by the bar */
 #topbar .ipop { display: none !important; }
+#players .ipop { display: none !important; }
+#players .pcard { cursor: default; }
 
 .flycard .fc-art { height: 110px; margin: -10px -10px 2px; background-size: cover; background-position: center; border-bottom: 1px solid #ffffff22; flex: none; }
 /* secret objectives: small illustrated cards (personal = planet rim, corporate = gold hull) */

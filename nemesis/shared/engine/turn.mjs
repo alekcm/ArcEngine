@@ -18,6 +18,7 @@ OPS['phase.player'] = (state) => {
 };
 
 OPS['turn.start'] = (state) => {
+    state.turnSeq = (state.turnSeq || 0) + 1;
     if (state.selfDestruct > 0) fx(state, { type: 'sdBeep', count: state.selfDestruct });
     const order = turnOrder(state);
     let found = null;
@@ -332,7 +333,7 @@ OPS['react.interrupt'] = (state, step) => {
     const holder = playersInRoom(state, p.room).find(o => o.id !== p.id && o.status === 'active' && !asked.includes(o.id) && hasEffect(state, o, 'interruption'));
     if (!holder) { next(state, step.then); return; }
     const card = hasEffect(state, holder, 'interruption');
-    ask(state, { kind: 'choice', player: holder.id, title: pname(p) + ' ' + step.label + '. Сыграть «Вмешательство» и отменить эффект?', options: [{ id: 'yes', label: 'Да, вмешаться' }, { id: 'no', label: 'Нет' }] },
+    ask(state, { kind: 'choice', reaction: true, player: holder.id, title: pname(p) + ' ' + step.label + '. Сыграть «Вмешательство» и отменить эффект?', options: [{ id: 'yes', label: 'Да, вмешаться' }, { id: 'no', label: 'Нет' }] },
         { ...step, op: 'react.interruptAns', holder: holder.id, card, asked: [...asked, holder.id] });
 };
 OPS['react.interruptAns'] = (state, step) => {
@@ -405,7 +406,7 @@ OPS['pass.discard.done'] = (state, step) => {
     // after which you must Pass.
     const card = p.justOneMoreUsed ? null : p.hand.find(c => (cardDef(state, c) || {}).effect === 'justOneMoreThing');
     if (card) {
-        ask(state, { kind: 'choice', player: p.id, title: '«Ещё одну вещь»: возьмите 1 карту и выполните дополнительный ход? После него вы обязаны спасовать.',
+        ask(state, { kind: 'choice', reaction: true, player: p.id, title: '«Ещё одну вещь»: возьмите 1 карту и выполните дополнительный ход? После него вы обязаны спасовать.',
             options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, { op: 'card.justOneMore', player: p.id, card });
         return;
     }

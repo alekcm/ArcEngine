@@ -219,6 +219,21 @@ function notice(text, kind) {
     setTimeout(() => el.remove(), kind === 'undo' || kind === 'error' ? 7000 : 3500);
 }
 
+function showCenterTurnBanner(text = 'Ваш ход') {
+    let el = $('turnCenterBanner');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'turnCenterBanner';
+        document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.className = 'turn-center-banner show';
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => {
+        el.classList.remove('show');
+    }, 2200);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Lobby
 // ---------------------------------------------------------------------------------------------
@@ -872,13 +887,35 @@ function renderPrompt() {
         if (tk !== app.turnKey) { app.turnKey = tk; app.menuCollapsed = true; }
         app.promptCollapsed = app.menuCollapsed;
     } else if (pr.id !== app.lastPromptId) app.promptCollapsed = false;
+
+    // Notification for beginning of player's turn:
+    if (v.phase === 'player') {
+        const isMyTurn = v.current === app.me && pr.kind === 'turn' && pr.player === app.me && !pr.waiting;
+        const turnKey = (v.turnSeq !== undefined ? v.turnSeq : (v.round + ':' + v.current));
+        if (isMyTurn && app.lastActiveTurnKey !== turnKey) {
+            app.lastActiveTurnKey = turnKey;
+            showCenterTurnBanner('Ваш ход');
+            notice('Ваш ход.', 'turn');
+            Snd.play('turnStart');
+        } else if (!isMyTurn && v.current !== app.me) {
+            app.lastActiveTurnKey = null;
+        }
+    } else {
+        app.lastActiveTurnKey = null;
+    }
+
     if (pr.id !== app.lastPromptId) {
         app.lastPromptId = pr.id;
-        // QoL: a cue when the table needs ME (my turn, my die, my token, my Ready).
+        // QoL: a cue when the table needs ME (my turn, my die, my token, my Ready, my reaction).
         const forMe = pr.player === app.me || (pr.kind === 'ack' && pr.mine);
         if (forMe && !pr.waiting) {
-            if (pr.kind === 'turn') { notice('Ваш ход.', 'turn'); Snd.play('ping'); }
-            else if (pr.kind === 'dice' || pr.kind === 'bag') Snd.play('click');
+            const isReaction = !!pr.reaction || (pr.title && /Предотвратить|Вмешательство|реакци|Полевой опыт|Ещё одну вещь|охранный периметр/i.test(pr.title));
+            if (isReaction) {
+                notice('⚡ Доступна реакция!', 'reaction');
+                Snd.play('reaction');
+            } else if (pr.kind === 'dice' || pr.kind === 'bag') {
+                Snd.play('click');
+            }
         }
     }
     const isAck = pr.kind === 'ack';
@@ -1545,10 +1582,28 @@ function focusMe() {
     const me = v.players.find(p => p.id === app.me);
     if (me) scene.focusRoom(me.room);
 }
-$('players').addEventListener('click', e => { if (e.target.closest('.pcard.me')) openSheet(); });
 $('sheetBtn').onclick = () => openSheet();
 $('decksBtn').onclick = () => openDeck(app.deckKind || 'event');
 $('focusBtn').onclick = () => focusMe();
+if ($('fsBtn')) {
+    $('fsBtn').onclick = () => {
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            const el = document.documentElement;
+            if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        } else {
+            if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        }
+    };
+    const updateFs = () => {
+        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        $('fsBtn').textContent = isFs ? '🗗' : '⛶';
+        $('fsBtn').title = isFs ? 'Выйти из полноэкранного режима' : 'Во весь экран';
+    };
+    document.addEventListener('fullscreenchange', updateFs);
+    document.addEventListener('webkitfullscreenchange', updateFs);
+}
 
 function openSaveOverlay(mode) {
     const el = $('saveOverlay');

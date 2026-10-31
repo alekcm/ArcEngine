@@ -4800,7 +4800,32 @@ export class Scene3D {
             n.target = this.slotPos(roomPos, k - 1, 'intr'); n.target.y = FLOOR_Y; n.room = it.room;
             if (!n.placed) { n.root.position.copyFrom(n.target); n.placed = true; }
             else if (wasRoom && wasRoom !== it.room) n.route = this.routeTo(wasRoom, it.room);   // crawl the corridor
-            n.root.rotation.y = Math.PI * 0.75 + Math.PI;  // face the characters
+
+            // Turn towards the character who attacks it or whom it attacks:
+            let targetPlayerId = null;
+            if (view.lastCombatAction && view.lastCombatAction.intruder === it.uid) {
+                targetPlayerId = view.lastCombatAction.player;
+            } else if (view.lastShot && view.lastShot.target === it.uid) {
+                targetPlayerId = view.lastShot.player;
+            } else if (view.prompt && view.prompt.intruder === it.uid && view.prompt.player != null) {
+                targetPlayerId = view.prompt.player;
+            } else {
+                const charsInRoom = view.players.filter(p => p.room === it.room && (p.status === 'active' || p.status === 'hibernating'));
+                if (charsInRoom.length) {
+                    const activeP = charsInRoom.find(p => p.id === view.current) || charsInRoom[0];
+                    targetPlayerId = activeP.id;
+                }
+            }
+            if (targetPlayerId != null && this.chars[targetPlayerId] && this.chars[targetPlayerId].ch) {
+                const charPos = this.chars[targetPlayerId].ch.root.position;
+                const d = charPos.subtract(n.root.position);
+                if (Math.hypot(d.x, d.z) > 0.05) {
+                    n.faceY = Math.atan2(d.x, d.z);
+                }
+            } else if (n.faceY == null) {
+                n.faceY = Math.PI * 0.75 + Math.PI;  // default face characters' side
+            }
+            if (!wasRoom) n.root.rotation.y = n.faceY;
             this.setLabel(n.label, names[it.type] + (it.hits ? ' ✚' + it.hits : ''), '', '#9cff3b');
         }
         for (const uid of Object.keys(this.intr)) if (!seen.has(uid)) { this.intr[uid].root.dispose(); delete this.intr[uid]; }
@@ -4860,7 +4885,33 @@ export class Scene3D {
         else if (view.lastShot && view.lastShot.n !== this.lastShotSeen) {
             this.lastShotSeen = view.lastShot.n;
             const n = this.chars[view.lastShot.player];
-            if (n && n.ch.shoot && n.placed) { const it = this.intr[view.lastShot.target]; if (it) { const d = it.root.position.subtract(n.ch.root.position); n.faceY = Math.atan2(d.x, d.z); n.ch.root.rotation.y = n.faceY; } n.ch.shoot(); Snd.play('shot'); }
+            if (n && n.ch.shoot && n.placed) {
+                const it = this.intr[view.lastShot.target];
+                if (it) {
+                    const d = it.root.position.subtract(n.ch.root.position);
+                    n.faceY = Math.atan2(d.x, d.z);
+                    n.ch.root.rotation.y = n.faceY;
+                    const di = n.ch.root.position.subtract(it.root.position);
+                    it.faceY = Math.atan2(di.x, di.z);
+                    it.root.rotation.y = it.faceY;
+                }
+                n.ch.shoot();
+                Snd.play('shot');
+            }
+        }
+        // combat action orientation (attacks/melee): face each other
+        if (this.lastCombatSeen === null) this.lastCombatSeen = view.lastCombatAction ? view.lastCombatAction.n : 0;
+        else if (view.lastCombatAction && view.lastCombatAction.n !== this.lastCombatSeen) {
+            this.lastCombatSeen = view.lastCombatAction.n;
+            const ca = view.lastCombatAction;
+            const chNode = this.chars[ca.player];
+            const intrNode = this.intr[ca.intruder];
+            if (chNode && intrNode) {
+                const d = intrNode.root.position.subtract(chNode.ch.root.position);
+                chNode.faceY = Math.atan2(d.x, d.z);
+                const di = chNode.ch.root.position.subtract(intrNode.root.position);
+                intrNode.faceY = Math.atan2(di.x, di.z);
+            }
         }
     }
 
@@ -4975,6 +5026,7 @@ export class Scene3D {
         for (const n of Object.values(this.intr)) if (n.target) {
             let goal = n.target;
             const ip = n.root.position;
+            const moving = n.route && n.route.length;
             while (n.route && n.route.length) {
                 const wp = n.route[0];
                 if (Math.hypot(wp.x - ip.x, wp.z - ip.z) <= 0.35) { n.route.shift(); continue; }
@@ -4982,6 +5034,15 @@ export class Scene3D {
             }
             B().Vector3.LerpToRef(ip, goal, lerp, ip);
             ip.y = FLOOR_Y + Math.abs(Math.sin(t * 3 + ip.x)) * 0.05;   // on the floor, a slight crawl bob
+            if (moving) {
+                const d = goal.subtract(ip);
+                if (Math.hypot(d.x, d.z) > 0.05) n.root.rotation.y = Math.atan2(d.x, d.z);
+            } else if (n.faceY != null) {
+                let diff = (n.faceY - n.root.rotation.y) % (Math.PI * 2);
+                if (diff > Math.PI) diff -= Math.PI * 2;
+                if (diff < -Math.PI) diff += Math.PI * 2;
+                n.root.rotation.y += diff * Math.min(1, dt * 8);
+            }
         }
         // Floating labels grow with distance so the board stays readable when zoomed out: room numbers
         // and the Alt overlay names. The corridor numbers are painted on the beams, so they stay put.

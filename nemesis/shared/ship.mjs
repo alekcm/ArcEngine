@@ -240,7 +240,7 @@ function agreeNumbers(rooms, pinned = {}) {
             return out;
         };
         const go = () => {
-            if (++nodes > 5000) return false;
+            if (++nodes > 800) return false;
             for (const rd of doors) {
                 const seen = new Set();
                 for (const k of rd.list) if (assign.has(k)) for (const n of assign.get(k)) { if (seen.has(n)) return false; seen.add(n); }
@@ -268,13 +268,27 @@ function agreeNumbers(rooms, pinned = {}) {
     const solveMRV = () => {
         const corridors = [];
         const seenCors = new Set();
-        for (const r of roomList) for (const e of r.exits) { if (!seenCors.has(e.corridor)) { seenCors.add(e.corridor); corridors.push(e.corridor); } }
-        const C_DOMAIN = sets;
+        const corridorRooms = new Map();
+        for (const r of roomList) {
+            for (const e of r.exits) {
+                if (!seenCors.has(e.corridor)) { seenCors.add(e.corridor); corridors.push(e.corridor); }
+                if (!corridorRooms.has(e.corridor)) corridorRooms.set(e.corridor, []);
+                corridorRooms.get(e.corridor).push(r);
+            }
+        }
         const candidateOptions = new Map();
         for (const cid of corridors) {
             const pin = pinned[cid];
             if (pin) { candidateOptions.set(cid, [pin]); continue; }
-            const scored = C_DOMAIN.slice().sort((x, y) => cost(cid, x) - cost(cid, y));
+            const rList = corridorRooms.get(cid) || [];
+            let allowedSizes = [1, 2];
+            for (const r of rList) {
+                if (!r.tech && r.exits.length === 4) allowedSizes = allowedSizes.filter(s => s === 1);
+                else if (!r.tech && r.exits.length === 2) allowedSizes = allowedSizes.filter(s => s === 2);
+            }
+            if (!allowedSizes.length) return null;
+            const domain = sets.filter(opt => allowedSizes.includes(opt.length));
+            const scored = domain.sort((x, y) => cost(cid, x) - cost(cid, y));
             candidateOptions.set(cid, scored);
         }
         const assign = new Map();
@@ -282,26 +296,32 @@ function agreeNumbers(rooms, pinned = {}) {
             const present = new Set();
             let unassigned = 0;
             for (const e of r.exits) {
-                if (assign.has(e.corridor)) { for (const n of assign.get(e.corridor)) present.add(n); }
+                if (assign.has(e.corridor)) {
+                    for (const n of assign.get(e.corridor)) {
+                        if (present.has(n)) return false;
+                        present.add(n);
+                    }
+                }
                 else unassigned++;
             }
             if (unassigned === 0) {
                 const missing = [1, 2, 3, 4].filter(n => !present.has(n));
-                if (missing.length === 0) return true;
-                if (r.tech && missing.length <= 2) return true;
-                return false;
+                if (!r.tech) return missing.length === 0;
+                return missing.length >= 1 && missing.length <= 2;
             }
-            const needed = 4 - present.size - (r.tech ? 2 : 0);
-            if (needed > unassigned * 2) return false;
+            const remMin = r.tech ? (4 - present.size - 2) : (4 - present.size);
+            const remMax = r.tech ? (4 - present.size - 1) : (4 - present.size);
+            if (unassigned * 1 > remMax) return false;
+            if (unassigned * 2 < remMin) return false;
             return true;
         };
         let nodes = 0;
         const bt = () => {
-            if (++nodes > 15000) return false;
+            if (++nodes > 600) return false;
             let bestC = null, bestOpts = null;
             for (const cid of corridors) {
                 if (assign.has(cid)) continue;
-                const rPair = roomList.filter(r => r.exits.some(e => e.corridor === cid));
+                const rPair = corridorRooms.get(cid);
                 const valid = [];
                 for (const opt of candidateOptions.get(cid)) {
                     assign.set(cid, opt);
@@ -317,7 +337,12 @@ function agreeNumbers(rooms, pinned = {}) {
             if (!bestC) {
                 for (const r of roomList) {
                     const present = new Set();
-                    for (const e of r.exits) for (const n of assign.get(e.corridor)) present.add(n);
+                    for (const e of r.exits) {
+                        for (const n of assign.get(e.corridor)) {
+                            if (present.has(n)) return false;
+                            present.add(n);
+                        }
+                    }
                     const missing = [1, 2, 3, 4].filter(n => !present.has(n));
                     if (missing.length > 0 && (!r.tech || missing.length > 2)) return false;
                 }
@@ -333,7 +358,8 @@ function agreeNumbers(rooms, pinned = {}) {
         return bt() ? assign : null;
     };
 
-    const done = solve(sets) || solve(wide) || solveMRV();
+    const isPinned = pinned && Object.keys(pinned).length > 0;
+    const done = isPinned ? (solve(sets) || solve(wide) || solveMRV()) : solveMRV();
     if (!done) return false;
     for (const r of roomList) {
         for (const e of r.exits) {
@@ -350,6 +376,25 @@ function agreeNumbers(rooms, pinned = {}) {
                 r.techNums = [1, 2, 3, 4].filter(n => !present.has(n));
             }
         }
+    }
+
+    // Invariant: in every room, no corridors can share identical noise digits.
+    // Each digit 1..4 must trigger exactly one corridor (or tech hatch).
+    for (const r of roomList) {
+        const present = new Set();
+        for (const e of r.exits) {
+            for (const n of (e.nums || [])) {
+                if (present.has(n)) return false;
+                present.add(n);
+            }
+        }
+        if (r.tech) {
+            for (const n of (r.techNums || [])) {
+                if (present.has(n)) return false;
+                present.add(n);
+            }
+        }
+        if (present.size !== 4) return false;
     }
     return true;
 }
@@ -409,7 +454,7 @@ export function originalShip() {
 // - Symmetrical corridor generation respecting noise-die degree limits (max 4 per room, max 3 if tech).
 // ---------------------------------------------------------------------------------------------
 const BASE_ROOM_COORDS = {
-    '001': [95, 460],
+    '001': [95, 470],
     '002': [330, 240],
     '003': [300, 470],
     '004': [330, 700],
@@ -459,7 +504,6 @@ const SYMMETRIC_CANDIDATE_GROUPS = [
     // Mid section & perimeter
     { id: 'outer_mid1_to_mid2', edges: [['005', '010'], ['009', '012']], weight: 0.8 },
     { id: 'outer_mid2_to_inner_front', edges: [['006', '010'], ['008', '012']], weight: 0.45 },
-    { id: 'outer_mid2_to_hiber', edges: [['010', '011'], ['012', '011']], weight: 0.35 },
     { id: 'outer_mid2_to_rear1', edges: [['010', '013'], ['012', '016']], weight: 0.8 },
     { id: 'outer_mid2_to_inner_rear', edges: [['010', '014'], ['012', '015']], weight: 0.4 },
 
@@ -490,7 +534,7 @@ export function randomShip(holder) {
     else if (holder.rng === undefined) {
         holder.rng = holder.seed ? seedFromString(String(holder.seed)) : ((Math.random() * 0x100000000) >>> 0);
     }
-    for (let attempt = 0; attempt < 50; attempt++) {
+    for (let attempt = 0; attempt < 120; attempt++) {
         const ship = tryRandomShip(holder);
         if (ship) return ship;
     }
@@ -628,34 +672,19 @@ function tryRandomShip(holder) {
         }
     }
 
-    // Anchor Hibernatorium (011): must have strictly 3 or 4 exits
-    const hiberTwoEdgeOptions = [
-        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'hiber_to_inner_front'),
-        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'hiber_to_inner_rear'),
-        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'outer_mid2_to_hiber'),
-    ];
-    shuffle(holder, hiberTwoEdgeOptions);
-
-    const hiberTarget = randInt(holder, 2) === 0 ? 3 : 4;
-    if (hiberTarget === 3) {
-        addGroup(SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'hiber_to_inner_center'));
-        for (const opt of hiberTwoEdgeOptions) {
-            if (addGroup(opt)) break;
-        }
-    } else {
-        let count = 0;
-        for (const opt of hiberTwoEdgeOptions) {
-            if (addGroup(opt)) {
-                count++;
-                if (count >= 2) break;
-            }
-        }
-    }
+    // Anchor Hibernatorium (011): max 2 corridors to front of ship.
+    // Either 2 to front (006, 008) and 2 to rear (014, 015) if 4 exits;
+    // Or 1 to front (007) and 2 to rear (014, 015) if 3 exits.
+    addGroup(SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'hiber_to_inner_rear'));
+    const hiberFrontChoice = randInt(holder, 2) === 0 ? 'hiber_to_inner_front' : 'hiber_to_inner_center';
+    addGroup(SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === hiberFrontChoice));
 
     // 3. Target density: varied corridor network size (strictly <= 30 corridors)
     const targetMaxCorridors = 24 + randInt(holder, 7); // 24 to 30
 
-    const remaining = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !addedGroups.has(g.id));
+    const remaining = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !addedGroups.has(g.id) &&
+        !g.edges.some(([a, b]) => a === '011' || b === '011') &&
+        (hiberFrontChoice !== 'hiber_to_inner_center' || g.id !== 'front_center_to_inner'));
     shuffle(holder, remaining);
     remaining.sort((a, b) => (b.weight + rand(holder) * 0.4) - (a.weight + rand(holder) * 0.4));
 
@@ -669,25 +698,21 @@ function tryRandomShip(holder) {
         const id = String(r).padStart(3, '0');
         if (id === '019' || id === '020' || id === '021') continue;
         if (deg[id] < 2) {
-            const candidates = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !addedGroups.has(g.id) && g.edges.some(([a, b]) => a === id || b === id));
+            const candidates = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !addedGroups.has(g.id) &&
+                g.edges.some(([a, b]) => a === id || b === id) &&
+                !g.edges.some(([a, b]) => a === '011' || b === '011') &&
+                (hiberFrontChoice !== 'hiber_to_inner_center' || g.id !== 'front_center_to_inner'));
             for (const g of candidates) {
                 if (selectedEdges.length + g.edges.length <= 30) {
-                    if (addGroup(g)) break;
+                    if (addGroup(g)) {
+                        if (deg[id] >= 2) break;
+                    }
                 }
             }
         }
         if (deg[id] < 2) return null;
     }
 
-    // Ensure Hibernatorium strictly has 3 or 4 exits
-    if (deg['011'] < 3) {
-        const candidates = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !addedGroups.has(g.id) && g.edges.some(([a, b]) => a === '011' || b === '011'));
-        for (const g of candidates) {
-            if (selectedEdges.length + g.edges.length <= 30) {
-                if (addGroup(g) && (deg['011'] === 3 || deg['011'] === 4)) break;
-            }
-        }
-    }
     if (deg['011'] !== 3 && deg['011'] !== 4) return null;
 
     if (selectedEdges.length > 30) return null;
