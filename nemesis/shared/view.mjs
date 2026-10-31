@@ -64,6 +64,9 @@ function playerView(state, p, mine) {
         passed: p.passed, pod: p.pod, larva: p.larva, laika: p.laika || null,
         handCount: p.hand.length, deckCount: p.deck.length, discardCount: p.discard.length,
         contamInDiscard: p.discard.filter(c => c.startsWith('contam#')).length,
+        contamTotal: (p.hand.concat(p.deck, p.discard)).filter(c => c.startsWith('contam#')).length,
+        contamInHand: p.hand.filter(c => c.startsWith('contam#')).length,
+        contamInDeck: p.deck.filter(c => c.startsWith('contam#')).length,
     };
     if (mine) {
         pub.hand = p.hand; pub.discard = p.discard;

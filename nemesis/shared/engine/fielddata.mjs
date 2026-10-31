@@ -106,6 +106,15 @@ OPS['card.fdAnalysis.place'] = (state, step) => {
     const p = player(state, step.player);
     const deck = step.deck === 'event' ? state.eventDeck : state.attackDeck;
     const name = id => step.deck === 'event' ? EVENT_BY_ID[id].name : ATTACK_BY_ID[id].name;
+    const textOf = id => {
+        if (step.deck === 'event') {
+            const ev = EVENT_BY_ID[id];
+            return ev ? (ev.name + ' — ' + ev.text + (ev.intruders ? ' (Движение: ' + ev.intruders + ')' : '')) : id;
+        } else {
+            const at = ATTACK_BY_ID[id];
+            return at ? (at.name + ' — ' + (at.text || '')) : id;
+        }
+    };
     if (step.answer !== undefined) {
         const [where, idx] = step.answer.split(':');
         const c = step.cards.splice(Number(idx), 1)[0];
@@ -117,9 +126,13 @@ OPS['card.fdAnalysis.place'] = (state, step) => {
         log(state, pname(p) + ' изучает колоду ' + (step.deck === 'event' ? 'событий' : 'атак') + '.', 'action');
         next(state, BACK); return;
     }
+    const cardSummary = step.cards.map((c, i) => (i + 1) + '. ' + textOf(c)).join('\n');
     const opts = [];
-    step.cards.forEach((c, i) => { opts.push({ id: 'top:' + i, label: 'Наверх: ' + name(c) }); opts.push({ id: 'bottom:' + i, label: 'Вниз: ' + name(c) }); });
-    ask(state, { kind: 'choice', player: p.id, title: 'Критический анализ (только вы видите): куда положить карту?', secret: true, options: opts }, { ...step, answer: undefined });
+    step.cards.forEach((c, i) => {
+        opts.push({ id: 'top:' + i, label: 'Наверх: «' + name(c) + '»', desc: textOf(c) });
+        opts.push({ id: 'bottom:' + i, label: 'Вниз: «' + name(c) + '»', desc: textOf(c) });
+    });
+    ask(state, { kind: 'choice', player: p.id, title: 'Критический анализ (только вы видите): куда положить карту?', text: cardSummary, secret: true, options: opts }, { ...step, answer: undefined });
 };
 
 // --- Damage Expertise ----------------------------------------------------------------------------

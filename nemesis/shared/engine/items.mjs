@@ -2,7 +2,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeFire, removeMalfunction, placeFire, placeMalfunction, drawCards, discardCard, isContam, gainContamination,
-    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice , computerHere } from './core.mjs';
+    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice, computerHere, HIBERNATION_TIME } from './core.mjs';
 import { ITEMS, WOUNDS, DECK_NAMES, canLoadWith } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { shuffle } from '../rng.mjs';
@@ -420,19 +420,51 @@ OPS['quest.open'] = (state, step) => {
     const def = ITEMS[q.item];
     if (!step.ignore) {
         const tile = tileOf(state, p.room);
-        if (def.questRoom && def.questRoom !== 'any' && tile !== def.questRoom) {
-            log(state, '«' + def.name + '» открывается только в комнате «' + ((ROOM_TILES[def.questRoom] || {}).name || def.questRoom) + '».', 'minor');
+        const where = def.questRoom;
+        const here = !where || where === 'any' || (where === 'engine' ? (tile === 'engine' || tile === 'engineRoom') : where === tile);
+        if (!here) {
+            log(state, '«' + def.name + '» открывается только в комнате «' + ((ROOM_TILES[where] || {}).name || where) + '».', 'minor');
             next(state, back); return;
         }
         if (def.questNoIntruder && intrudersIn(state, p.room).length) {
             log(state, '«' + def.name + '» открывается только в комнате без чужих.', 'minor');
             next(state, back); return;
         }
-        if (!def.questBlue) {
-            const src = p.items.find(i => (i.charge || 0) > 0) || (p.armor && (p.armor.charge || 0) > 0 ? p.armor : null);
-            if (!src) { log(state, 'Чтобы открыть «' + def.name + '», надо сбросить 1 жетон, а жетонов нет.', 'minor'); next(state, back); return; }
-            src.charge -= 1;
-            log(state, pname(p) + ' сбрасывает 1 жетон с «' + ITEMS[src.item].name + '».', 'minor');
+        if (def.questBlue && state.time > HIBERNATION_TIME) {
+            log(state, '«' + def.name + '» открывается только в синей зоне времени.', 'minor');
+            next(state, back); return;
+        }
+        if (def.questGreen) {
+            const greens = p.items.filter(i => ITEMS[i.item] && ITEMS[i.item].deck === 'green');
+            if (!greens.length) {
+                log(state, 'Чтобы открыть «' + def.name + '», нужен зелёный предмет.', 'minor');
+                next(state, back); return;
+            }
+            if (greens.length === 1) {
+                const it = greens[0];
+                p.items.splice(p.items.indexOf(it), 1);
+                state.itemDiscard.green = state.itemDiscard.green || [];
+                state.itemDiscard.green.push(it.item);
+                log(state, pname(p) + ' сбрасывает «' + ITEMS[it.item].name + '».', 'minor');
+            } else {
+                ask(state, {
+                    kind: 'choice', player: p.id,
+                    title: 'Сбросьте 1 зелёный предмет для открытия «' + def.name + '»',
+                    options: greens.map(g => ({ id: g.uid, label: ITEMS[g.item].name }))
+                }, { op: 'quest.payGreen', player: p.id, uid: q.uid, then: back });
+                return;
+            }
+        }
+        if (def.questEnergy) {
+            const idx = p.items.findIndex(i => i.item === 'energyCharge');
+            if (idx < 0) {
+                log(state, 'Чтобы открыть «' + def.name + '», нужен предмет «Заряд энергии».', 'minor');
+                next(state, back); return;
+            }
+            const it = p.items.splice(idx, 1)[0];
+            state.itemDiscard.yellow = state.itemDiscard.yellow || [];
+            state.itemDiscard.yellow.push(it.item);
+            log(state, pname(p) + ' сбрасывает «' + ITEMS[it.item].name + '».', 'minor');
         }
     }
     q.open = true;
@@ -441,6 +473,17 @@ OPS['quest.open'] = (state, step) => {
     else p.items.push(inst);        // a second armor-slot card is carried in the pack until the slot frees up
     log(state, pname(p) + ' открывает квестовый предмет «' + def.name + '».', 'good');
     next(state, back);
+};
+OPS['quest.payGreen'] = (state, step) => {
+    const p = player(state, step.player);
+    const idx = p.items.findIndex(i => i.uid === step.answer);
+    if (idx >= 0) {
+        const it = p.items.splice(idx, 1)[0];
+        state.itemDiscard.green = state.itemDiscard.green || [];
+        state.itemDiscard.green.push(it.item);
+        log(state, pname(p) + ' сбрасывает «' + ITEMS[it.item].name + '».', 'minor');
+    }
+    next(state, { op: 'quest.open', player: p.id, uid: step.uid, ignore: true, then: step.then });
 };
 /** engine.toggle — the player secretly sets the engine in their room to working or damaged. */
 OPS['engine.toggle'] = (state, step) => {

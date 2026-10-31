@@ -2,7 +2,7 @@
 
 import { OPS, ask, next, later, log, player, pname, removeCardFromGame, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
     discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards,
-    HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom, corridorsOf, computerHere } from './core.mjs';
+    HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom, corridorsOf, computerHere, HIBERNATION_TIME } from './core.mjs';
 import { repairOptions } from './actions.mjs';
 import { ITEMS, dropLocked, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
@@ -91,10 +91,21 @@ export function buildMenu(state, p) {
     if (closedQuest) {
         const qd = ITEMS[closedQuest.item];
         const where = !qd.questRoom || qd.questRoom === 'any' ? null : qd.questRoom;
-        const here = !where || where === tile;
-        const marker = [...p.items, ...(p.armor ? [p.armor] : [])].some(i => (i.charge || 0) > 0);
-        add('quest', 'Открыть квестовый предмет: «' + qd.name + '»', 1, here && (marker || qd.questBlue),
-            !here ? 'Нужна комната «' + ((ROOM_TILES[where] || {}).name || where) + '»' : 'Нет жетона, чтобы заплатить');
+        const here = !where || (qd.questRoom === 'engine' ? (tile === 'engine' || tile === 'engineRoom') : where === tile);
+        let ok = here, reason = !here ? 'Нужна комната «' + ((ROOM_TILES[where] || {}).name || where) + '»' : '';
+        if (ok && qd.questBlue && state.time > HIBERNATION_TIME) {
+            ok = false; reason = 'Маркер времени должен быть в синей зоне (≤ ' + HIBERNATION_TIME + ')';
+        }
+        if (ok && qd.questGreen && !p.items.some(i => ITEMS[i.item] && ITEMS[i.item].deck === 'green')) {
+            ok = false; reason = 'Нужен зелёный предмет (медицина) для сброса';
+        }
+        if (ok && qd.questEnergy && !p.items.some(i => i.item === 'energyCharge')) {
+            ok = false; reason = 'Нужен предмет «Заряд энергии»';
+        }
+        if (ok && qd.questNoIntruder && intrudersIn(state, p.room).length) {
+            ok = false; reason = 'В комнате не должно быть чужих';
+        }
+        add('quest', 'Открыть квестовый предмет: «' + qd.name + '»', 1, ok, reason);
     }
     add('pass', 'Спасовать', 0, true);
     if (p.objectives.length === 2) actions.push({ id: 'objective', label: 'Выбрать цель (бесплатно)', cost: 0, enabled: true, reason: '' });

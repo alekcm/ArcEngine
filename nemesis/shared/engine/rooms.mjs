@@ -536,8 +536,10 @@ OPS['computer.option'] = (state, step) => {
         }
         case 'event': {
             const ev = EVENT_CARDS.find(e => e.id === state.eventDeck[0]);
-            ask(state, { kind: 'choice', player: p.id, title: 'Верхняя карта событий (только вы это видите): «' + ev.name + '» — ' + ev.text,
-                options: [{ id: 'top', label: 'Оставить сверху' }, { id: 'bottom', label: 'Положить под низ' }] }, { op: 'computer.event', player: p.id, then: done });
+            const desc = ev ? '«' + ev.name + '» — ' + ev.text + (ev.intruders ? ' (Движение чужих: ' + ev.intruders + ')' : '') : '';
+            ask(state, { kind: 'choice', player: p.id, title: 'Верхняя карта событий (только вы это видите)',
+                text: desc,
+                options: [{ id: 'top', label: 'Оставить сверху', desc }, { id: 'bottom', label: 'Положить под низ', desc }] }, { op: 'computer.event', player: p.id, then: done });
             return;
         }
     }
@@ -578,7 +580,6 @@ OPS['computer.malf'] = (state, step) => { placeMalfunction(state, step.answer, '
 OPS['computer.event'] = (state, step) => { if (step.answer === 'bottom') { state.eventDeck.push(state.eventDeck.shift()); log(state, 'Карта событий положена под низ колоды.', 'minor'); } else log(state, 'Карта событий оставлена сверху.', 'minor'); next(state, step.then); };
 OPS['computer.done'] = (state, step) => {
     const p = player(state, step.player);
-    gainKnowledge(state, p, 1);
     revealComputerCard(state);
     log(state, 'Новая карта компьютера: «' + COMPUTER_CARDS[state.computerCard].name + '».', 'info');
     // 16.2: a Lockdown revealed AFTER a Computer Action is resolved right away: a malfunction in

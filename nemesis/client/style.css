@@ -350,7 +350,14 @@ body.pl-collapsed #prompt:not(.hidden) ~ #menuToggle { left: 34px; }
 #track .tphase b { display: block; color: #fff; font-size: 12px; }
 #muteBtn.off { opacity: .5; text-decoration: line-through; }
 
-/* ---- damage / contamination overlays ---- */
+/* ---- save / load overlay ---- */
+.save-item { display: flex; justify-content: space-between; align-items: center; background: #0c121a; border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; gap: 12px; }
+.save-item:hover { border-color: #3a506b; background: #111a26; }
+.save-meta { flex: 1; min-width: 0; }
+.save-name { font-weight: 600; color: #fff; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.save-info { font-size: 11px; color: var(--dim); margin-top: 2px; }
+.save-actions { display: flex; gap: 6px; align-items: center; }
+
 .vignette { position: fixed; inset: 0; pointer-events: none; z-index: 50; animation: vig .9s ease-out forwards; }
 .vignette.red { box-shadow: inset 0 0 160px 60px #c0202088; background: radial-gradient(ellipse at center, transparent 55%, #ff202040 100%); }
 .vignette.green { box-shadow: inset 0 0 160px 60px #30c05088; background: radial-gradient(ellipse at center, transparent 55%, #40ff6040 100%); }
@@ -658,10 +665,15 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
    separates every cell and every section, so the ten squares read as one row instead of "green packed
    together, then a hole". The suit is not a wound and not a fourth slot either: it lies in the slot of
    the third Heavy Wound (under 4-2), which is free until the third wound — and old by then. */
-#selfHud { position: fixed; left: 10px; bottom: 58px; z-index: 9; width: 272px;
-           background: #0b1118dd; border: 1px solid var(--line); border-left: 4px solid var(--green);
-           border-radius: 10px; padding: 7px 10px 8px; backdrop-filter: blur(4px); font-size: 12px;
-           cursor: pointer; transition: border-color .2s; }
+#selfHud { position: fixed; left: 10px; bottom: 58px; z-index: 9; width: 284px;
+           display: flex; flex-direction: column; gap: 6px; max-height: calc(100vh - 120px); overflow-y: auto;
+           border: none; background: none; padding: 0; }
+.sh-player { background: #0b1118dd; border: 1px solid var(--line); border-left: 4px solid var(--green);
+             border-radius: 8px; padding: 6px 8px 7px; backdrop-filter: blur(4px); font-size: 12px;
+             cursor: pointer; transition: border-color .2s, background .2s; }
+.sh-player:hover { border-color: var(--acc); background: #121a24ee; }
+.sh-player.is-me { border-color: #3b5068; }
+.sh-player.dead { border-left-color: var(--red); }
 #selfHud:hover { border-color: var(--acc); }
 #selfHud.dead { border-left-color: var(--red); }
 #selfHud .sh-head { display: flex; align-items: baseline; gap: 6px; }

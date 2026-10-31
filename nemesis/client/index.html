@@ -39,6 +39,7 @@
                 <div class="lobby-buttons">
                     <button id="readyBtn" class="btn">Готов</button>
                     <button id="startBtn" class="btn primary" disabled>Начать игру</button>
+                    <button id="lobbyLoadBtn" class="btn" title="Загрузить сохраненную игру">📂 Загрузить игру</button>
                 </div>
                 <div class="lobby-buttons">
                     <button id="galleryBtn" class="btn" title="Все комнаты игры на одном корабле, уже открытые">🔍 Тестовый корабль: все комнаты</button>
@@ -113,6 +114,8 @@
         <div class="tb-item"><span class="lbl">Адаптации чужих</span><b id="tbAdapt">—</b></div>
         <div class="tb-spacer"></div>
         <button id="undoBtn" class="btn small" title="Откатить последнее действие (только ведущий)">⟲ Откатить ход</button>
+        <button id="saveBtn" class="btn small" title="Сохранить игру">💾 Сохранить</button>
+        <button id="loadBtn" class="btn small" title="Загрузить игру">📂 Загрузить</button>
         <button id="sheetBtn" class="btn small" title="Мой персонаж: рюкзак, травмы, костюм, цель (C)">🧍 Персонаж</button>
         <button id="decksBtn" class="btn small" title="Просмотр колод и сбросов (нажмите на любую колоду внизу справа)">🃏 Колоды</button>
         <button id="focusBtn" class="btn small" title="Показать мою комнату (F)">🎯 Я</button>
@@ -184,6 +187,41 @@
         <h2 id="deckTitle">Колоды</h2>
         <div id="deckBody" class="deck-grid"></div>
         <div class="prompt-buttons"><button class="btn" id="deckClose">Закрыть (Esc)</button></div>
+    </div>
+</div>
+
+<div id="saveOverlay" class="overlay hidden">
+    <div class="help-box" style="width: min(640px, 95vw); max-width: 640px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--line); padding-bottom:8px;">
+            <h2 id="saveOverlayTitle" style="margin:0;">Сохранение / Загрузка</h2>
+            <button class="btn small" id="saveOverlayClose">✕ Закрыть</button>
+        </div>
+        <div id="saveOverlayContent">
+            <div id="saveSection" style="margin-bottom:20px; background:#101722; padding:12px; border-radius:8px; border:1px solid var(--line);">
+                <h3 style="margin-top:0; font-size:15px; color:#42b883;">💾 Сохранить текущую игру</h3>
+                <div style="display:flex; gap:8px; margin-top:8px;">
+                    <input id="saveNameInput" placeholder="Имя сохранения…" style="flex:1; padding:6px 10px; background:#0b1118; border:1px solid var(--line); border-radius:6px; color:#fff;">
+                    <button class="btn small primary" id="saveSubmitBtn">Сохранить</button>
+                    <button class="btn small" id="saveDownloadBtn" title="Скачать как .json файл">Скачать файл</button>
+                </div>
+            </div>
+            <div id="loadSection" style="background:#101722; padding:12px; border-radius:8px; border:1px solid var(--line);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <h3 style="margin:0; font-size:15px; color:#3498db;">📂 Сохраненные игры</h3>
+                    <button class="btn small" id="saveRefreshBtn">Обновить</button>
+                </div>
+                <div id="savesList" style="display:flex; flex-direction:column; gap:6px; max-height:240px; overflow-y:auto; margin:8px 0;">
+                    <div style="color:var(--text-dim); font-size:13px;">Загрузка списка…</div>
+                </div>
+                <div style="margin-top:10px; border-top:1px solid var(--line); padding-top:10px; display:flex; justify-content:space-between; align-items:center;">
+                    <label class="btn small" style="cursor:pointer; display:inline-block; margin:0;">
+                        📁 Загрузить из файла JSON…
+                        <input type="file" id="saveFileInput" accept=".json" style="display:none;">
+                    </label>
+                    <span style="font-size:11px; color:var(--dim);">Сохранения хранятся на сервере</span>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
