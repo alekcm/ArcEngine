@@ -23,6 +23,10 @@ import { CHARACTERS } from './shared/data/cards.mjs';
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
+const SAVES_DIR = path.join(HERE, 'saves');
+if (!fs.existsSync(SAVES_DIR)) {
+    try { fs.mkdirSync(SAVES_DIR, { recursive: true }); } catch { /* ignore */ }
+}
 const argPort = process.argv.find(a => /^--port=\d+$/.test(a));
 const PORT_BASE = argPort ? Number(argPort.split('=')[1]) : 8090;
 const MAX_PLAYERS = 5;
@@ -67,8 +71,26 @@ const BUILD = buildStamp();
 // ---------------------------------------------------------------------------------------------
 // Static files
 // ---------------------------------------------------------------------------------------------
+function cleanSaveName(n) { return String(n || '').replace(/[^\p{L}\p{N} _\-\.]/gu, '').trim().slice(0, 50); }
+
 function serveStatic(req, res) {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (p.startsWith('/api/save/download')) {
+        const urlObj = new URL(req.url, 'http://x');
+        const name = cleanSaveName(urlObj.searchParams.get('name'));
+        const file = path.join(SAVES_DIR, name + '.json');
+        if (fs.existsSync(file)) {
+            const data = fs.readFileSync(file);
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Content-Disposition': 'attachment; filename="' + encodeURIComponent(name) + '.json"',
+                'Content-Length': data.length,
+            });
+            res.end(data);
+            return;
+        }
+        res.writeHead(404); res.end('Not found'); return;
+    }
     if (p === '/' || p === '/index.html') { res.writeHead(302, { Location: '/client/' }); res.end(); return; }
     if (p === '/client' || p === '/client/') p = '/client/index.html';
     let file;
@@ -384,6 +406,104 @@ function onMessage(socket, m) {
             const msg = { t: 'chat', from: seat ? seat.name : 'Зритель', text, time: Date.now() };
             game.chat.push(msg);
             for (const c of clients) c.send(msg);
+            break;
+        }
+        case 'save': {
+            if (!game.state) {
+                socket.send({ t: 'notice', text: 'Нет активной игры для сохранения.', kind: 'error' });
+                return;
+            }
+            const name = cleanSaveName(m.name) || ('save_' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19));
+            const saveData = {
+                version: 1,
+                timestamp: Date.now(),
+                name,
+                state: game.state,
+                phase: game.phase,
+                settings: game.settings,
+                seats: game.seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors })),
+                history: game.history,
+                poses: game.poses,
+            };
+            try {
+                fs.writeFileSync(path.join(SAVES_DIR, name + '.json'), JSON.stringify(saveData, null, 2), 'utf8');
+                broadcastNotice('💾 Игра сохранена: «' + name + '».', 'good');
+                socket.send({ t: 'saved', name, data: saveData });
+            } catch (err) {
+                socket.send({ t: 'notice', text: 'Ошибка сохранения: ' + err.message, kind: 'error' });
+            }
+            break;
+        }
+        case 'listSaves': {
+            const list = [];
+            try {
+                const files = fs.readdirSync(SAVES_DIR);
+                for (const f of files) {
+                    if (!f.endsWith('.json')) continue;
+                    try {
+                        const raw = fs.readFileSync(path.join(SAVES_DIR, f), 'utf8');
+                        const parsed = JSON.parse(raw);
+                        list.push({
+                            filename: f.replace(/\.json$/, ''),
+                            name: parsed.name || f.replace(/\.json$/, ''),
+                            timestamp: parsed.timestamp || fs.statSync(path.join(SAVES_DIR, f)).mtimeMs,
+                            players: (parsed.seats || []).map(s => s.name + (s.charId ? ' (' + (CHARACTERS[s.charId]?.name || s.charId) + ')' : '')).join(', '),
+                            round: parsed.state?.time != null ? 'Раунд ' + (16 - parsed.state.time) + ' · время ' + parsed.state.time : '',
+                        });
+                    } catch { /* skip corrupted save */ }
+                }
+                list.sort((a, b) => b.timestamp - a.timestamp);
+            } catch { /* ignore */ }
+            socket.send({ t: 'savesList', saves: list });
+            break;
+        }
+        case 'load': {
+            let saveData = m.data;
+            if (!saveData && typeof m.name === 'string') {
+                const safe = cleanSaveName(m.name);
+                const file = path.join(SAVES_DIR, safe + '.json');
+                if (fs.existsSync(file)) {
+                    try { saveData = JSON.parse(fs.readFileSync(file, 'utf8')); }
+                    catch (e) { socket.send({ t: 'notice', text: 'Ошибка чтения файла: ' + e.message, kind: 'error' }); return; }
+                }
+            }
+            if (!saveData || !saveData.state) {
+                socket.send({ t: 'notice', text: 'Не удалось загрузить сохранение.', kind: 'error' });
+                return;
+            }
+            game.state = saveData.state;
+            game.phase = saveData.phase || 'playing';
+            game.settings = saveData.settings || game.settings;
+            game.history = saveData.history || [];
+            game.poses = saveData.poses || {};
+            game.undo = [];
+            if (Array.isArray(saveData.seats)) {
+                for (let i = 0; i < saveData.seats.length; i++) {
+                    const savedSeat = saveData.seats[i];
+                    if (game.seats[i]) {
+                        game.seats[i].name = savedSeat.name || game.seats[i].name;
+                        game.seats[i].charId = savedSeat.charId || game.seats[i].charId;
+                        game.seats[i].colors = savedSeat.colors || game.seats[i].colors;
+                    } else {
+                        game.seats[i] = { token: crypto.randomBytes(8).toString('hex'), name: savedSeat.name, charId: savedSeat.charId, colors: savedSeat.colors, ready: true, socket: null };
+                    }
+                }
+            }
+            for (const c of clients) c.logSeen = 0;
+            broadcastNotice('📂 Игра загружена: «' + (saveData.name || m.name || 'сохранение') + '».', 'good');
+            broadcastLobby();
+            broadcastState(true);
+            break;
+        }
+        case 'deleteSave': {
+            if (typeof m.name === 'string') {
+                const safe = cleanSaveName(m.name);
+                const file = path.join(SAVES_DIR, safe + '.json');
+                if (fs.existsSync(file)) {
+                    try { fs.unlinkSync(file); } catch { /* ignore */ }
+                }
+            }
+            onMessage(socket, { t: 'listSaves' });
             break;
         }
         case 'restart': {

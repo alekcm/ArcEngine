@@ -178,6 +178,17 @@ test('DR-03 the number is printed in the same paint as the "?", and Alt turns it
     const back = n.decal.metadata.dt.rec.filter(r => r.text === want && r.kind === 'fill');
     assert.ok(back.length >= 1 && back.every(r => r.blur < 20), 'releasing Alt returns the printed look');
     assert.equal(back[0].fill, '#56687c', 'and the same paint');
+
+    // Corridor noise turns the door numbers yellow
+    n.state = null;
+    Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { noise: true }));
+    const noisy = n.decal.metadata.dt.rec.filter(r => r.text === want && r.kind === 'fill');
+    assert.equal(noisy[0].fill, '#f1c40f', 'noise makes digits yellow');
+
+    n.state = null;
+    Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { noise: false }));
+    const quiet = n.decal.metadata.dt.rec.filter(r => r.text === want && r.kind === 'fill');
+    assert.equal(quiet[0].fill, '#56687c', 'clearing noise restores paint');
 });
 
 test('DR-04 one central door panel appears only when closed; no side leaves are built', () => {

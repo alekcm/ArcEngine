@@ -527,21 +527,28 @@ test('QUEST-02 / a closed quest card opens by an Action and lands in its slot', 
     assert.equal(p.items.find(i => i.uid === 'mk1').charge, 5, 'ignoring the requirement skips the marker too');
 });
 
-test('QUEST-03 / the printed requirement is a room and 1 marker', () => {
-    const s = fresh(['soldier', 'scout']), p = s.players[0];
+test('QUEST-03 / quest items do not require universal markers; medic discards green item', () => {
+    const s = fresh(['soldier', 'medic']), p = s.players[0];
     const q = p.quests[0];                                   // Heavy Armor: the Repository Room
-    p.items.push({ uid: 'mk2', item: 'robot', charge: 5, start: false });
     const repo = Object.keys(s.ship.rooms).find(id => !['cockpit', 'hibernatorium', 'engine'].includes(s.ship.rooms[id].kind));
     s.roomState[repo].tile = 'repository'; s.roomState[repo].explored = true; p.room = repo;
     execute(s, { op: 'quest.open', player: 0, uid: q.uid, then: { op: 'turn.choose' } });
-    assert.equal(p.quests[0].open, true, 'opened where the card says');
-    assert.equal(p.items.find(i => i.uid === 'mk2').charge, 4, 'the marker is discarded');
-    // an "any room" card needs no particular room, but still costs a marker: the Convict pays one
-    // of the six on his handcuffs, and the pipe becomes a weapon in his pack
+    assert.equal(p.quests[0].open, true, 'opened where the card says without any markers');
+
+    // Medic's quest item (Surgery Kit): opens anywhere, discards 1 green item
+    const m = s.players[1];
+    m.items.push({ uid: 'med1', item: 'medkit', start: false });
+    const mq = m.quests[0];
+    s.queue = []; s.prompt = null; s.resume = null;
+    execute(s, { op: 'quest.open', player: 1, uid: mq.uid, then: { op: 'turn.choose' } });
+    assert.equal(mq.open, true, 'medic surgery kit opened');
+    assert.equal(m.items.some(i => i.uid === 'med1'), false, 'green item was discarded');
+
+    // an "any room" card (Convict pipe) opens anywhere without needing cuff markers
     const s2 = fresh(['convict', 'scout']), c = s2.players[0];
     execute(s2, { op: 'quest.open', player: 0, uid: c.quests[0].uid, then: { op: 'turn.choose' } });
     assert.equal(c.quests[0].open, true, 'the pipe opens anywhere');
-    assert.equal(c.items.find(i => i.item === 'cuffs').charge, 5, 'paid with a cuff marker');
+    assert.equal(c.items.find(i => i.item === 'cuffs').charge, 6, 'cuffs markers are not touched');
     assert.ok(c.items.some(i => i.item === 'pipe'), 'the pipe is now in the pack');
 });
 

@@ -4147,9 +4147,9 @@ export class Scene3D {
 
     /** The corridor number stenciled on the door beam. Printed state: the same pale slate paint as the
      *  "?" on an unexplored room's floor, no glow, no shadow. Alt turns the very same stencil neon, so
-     *  the number only lights up while the key is held. */
-    setDecal(plane, text, neon) {
-        const key = text + '|' + (neon ? 'n' : 'p');
+     *  the number only lights up while the key is held. If corridor has noise, digits turn yellow. */
+    setDecal(plane, text, neon, noise = false) {
+        const key = text + '|' + (neon ? 'n' : 'p') + (noise ? '|y' : '');
         if (plane.metadata.decal === key) return;
         plane.metadata.decal = key;
         const dt = plane.metadata.dt, ctx = dt.getContext();
@@ -4163,12 +4163,18 @@ export class Scene3D {
         // A dark edge first: the paint sits on the beam's own light steel, not on a dark panel.
         ctx.lineJoin = 'round';
         ctx.lineWidth = Math.max(3, size * 0.07);
-        ctx.strokeStyle = TUNE.color(neon ? 'door.neonGlow' : 'door.outline');
-        if (neon) { ctx.shadowColor = TUNE.color('door.neonGlow'); ctx.shadowBlur = 30; }
+        const strokeColor = noise
+            ? (neon ? '#b7791f' : '#2b2005')
+            : TUNE.color(neon ? 'door.neonGlow' : 'door.outline');
+        ctx.strokeStyle = strokeColor;
+        if (neon || noise) {
+            ctx.shadowColor = noise ? '#f1c40f' : TUNE.color('door.neonGlow');
+            ctx.shadowBlur = neon ? 30 : 15;
+        }
         ctx.strokeText(text, W / 2, H / 2 + 6);
-        ctx.fillStyle = TUNE.color(neon ? 'door.neon' : 'door.paint');
+        ctx.fillStyle = noise ? '#f1c40f' : TUNE.color(neon ? 'door.neon' : 'door.paint');
         ctx.fillText(text, W / 2, H / 2 + 6);
-        if (neon) { ctx.shadowBlur = 8; ctx.fillStyle = '#ffffff'; ctx.fillText(text, W / 2, H / 2 + 6); }
+        if (neon) { ctx.shadowBlur = 8; ctx.fillStyle = noise ? '#fffbe6' : '#ffffff'; ctx.fillText(text, W / 2, H / 2 + 6); }
         dt.update();
     }
 
@@ -4533,7 +4539,7 @@ export class Scene3D {
         }
         // Corridor numbers and the tech-entrance numbers: plain paint by default, neon while Alt is held.
         for (const n of Object.values(this.corridorNodes)) {
-            if (n.decal) this.setDecal(n.decal, n.nums.join(' / '), this.alt);
+            if (n.decal) this.setDecal(n.decal, n.nums.join(' / '), this.alt, !!n.hasNoise);
         }
         for (const n of Object.values(this.roomNodes)) {
             if (n.techDecal) this.setDecal(n.techDecal, ((n.data.techNums && n.data.techNums.length) ? n.data.techNums : [4]).join(' / '), this.alt);
@@ -4670,6 +4676,8 @@ export class Scene3D {
         // arch bands: unlit steel normally, orange glow only while a noise marker sits in the corridor
         const col = c.noise ? '#ffb347' : '#4a5563';
         for (const mat of [n.matA, n.matB]) { mat.diffuseColor = B().Color3.FromHexString(col); mat.emissiveColor = B().Color3.FromHexString(col).scale(c.noise ? 1 : 0.08); }
+        n.hasNoise = !!c.noise;
+        if (n.decal) this.setDecal(n.decal, n.nums.join(' / '), this.alt, n.hasNoise);
     }
 
     /** Slot position plus the player's own offset (figure dragged inside the room), clamped to the platform. */

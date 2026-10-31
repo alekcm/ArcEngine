@@ -159,8 +159,9 @@ OPS['card.riskAssessment'] = (state, step) => {
     if (!compHere(state, p) || !noMalf(state, p)) { log(state, 'Нужна комната с компьютером без поломки.', 'minor'); next(state, BACK); return; }
     if (!state.eventDeck.length) state.eventDeck = shuffle(state, state.eventDiscard.splice(0));
     const id = state.eventDeck[0]; const ev = EVENT_CARDS.find(e => e.id === id);
-    ask(state, { kind: 'choice', player: p.id, title: 'Верхняя карта событий (только вы это видите)', text: ev ? ev.name + '\n' + ev.text : id,
-        options: [{ id: 'top', label: 'Оставить сверху' }, { id: 'bottom', label: 'Положить вниз' }] }, { op: 'card.riskAssessment.pick', player: p.id });
+    const desc = ev ? '«' + ev.name + '» — ' + ev.text + (ev.intruders ? ' (Движение чужих: ' + ev.intruders + ')' : '') : id;
+    ask(state, { kind: 'choice', player: p.id, title: 'Верхняя карта событий (только вы это видите)', text: desc,
+        options: [{ id: 'top', label: 'Оставить сверху', desc }, { id: 'bottom', label: 'Положить вниз', desc }] }, { op: 'card.riskAssessment.pick', player: p.id });
 };
 OPS['card.riskAssessment.pick'] = (state, step) => {
     if (step.answer === 'bottom') state.eventDeck.push(state.eventDeck.shift());
