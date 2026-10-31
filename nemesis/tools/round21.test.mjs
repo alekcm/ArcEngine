@@ -49,6 +49,44 @@ test('R21-01: a pass is confirmed without picking a card first', () => {
     assert.ok(app.includes("id=\"cardsOk\"' + (needPick ? ' disabled' : '')"), 'кнопка активна, если min = 0');
 });
 
+test('PASS-CONTAM-01: passing automatically discards all contamination cards even if not selected', () => {
+    const s = fresh();
+    const actionCard = s.players[0].deck.splice(0, 1)[0];
+    const contam1 = 'contam#1';
+    const contam2 = 'contam#2';
+    s.players[0].hand = [actionCard, contam1, contam2];
+
+    next(s, { op: 'pass.discard', player: 0 });
+    run(s);
+    assert.equal(s.prompt && s.prompt.kind, 'cards');
+    // Player selects nothing ([])
+    answer(s, 0, s.prompt.id, []);
+    run(s);
+
+    assert.deepEqual(s.players[0].hand, [actionCard], 'action card is kept in hand');
+    assert.ok(s.players[0].discard.includes(contam1), 'contam1 was discarded automatically');
+    assert.ok(s.players[0].discard.includes(contam2), 'contam2 was discarded automatically');
+});
+
+test('PASS-CONTAM-02: passing discards contamination cards when selected or partially selected', () => {
+    const s = fresh();
+    const actionCard = s.players[0].deck.splice(0, 1)[0];
+    const contam1 = 'contam#3';
+    const contam2 = 'contam#4';
+    s.players[0].hand = [actionCard, contam1, contam2];
+
+    next(s, { op: 'pass.discard', player: 0 });
+    run(s);
+    // Player selects only contam1 and the actionCard
+    answer(s, 0, s.prompt.id, [actionCard, contam1]);
+    run(s);
+
+    assert.deepEqual(s.players[0].hand, [], 'all cards are discarded');
+    assert.ok(s.players[0].discard.includes(actionCard));
+    assert.ok(s.players[0].discard.includes(contam1));
+    assert.ok(s.players[0].discard.includes(contam2));
+});
+
 test('R21-02: the event is logged as movement / effect / dice inside one card', () => {
     const ev = EVENT_CARDS.find(e => e.id === 'bulkheadsOpen');
     const lines = eventLogLines(ev);

@@ -287,6 +287,8 @@ OPS['card.techCorridors.go'] = (state, step) => {
 OPS['card.techCorridors.dest'] = (state, step) => {
     const p = player(state, step.player);
     p.passed = true;
+    const contams = p.hand.filter(isContam);
+    for (const c of contams) discardCard(state, p, c);
     next(state, { op: 'move.direct', player: p.id, dest: step.answer, then: { op: 'turn.end' } });
 };
 

@@ -628,6 +628,30 @@ function tryRandomShip(holder) {
         }
     }
 
+    // Anchor Hibernatorium (011): must have strictly 3 or 4 exits
+    const hiberTwoEdgeOptions = [
+        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'hiber_to_inner_front'),
+        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'hiber_to_inner_rear'),
+        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'outer_mid2_to_hiber'),
+    ];
+    shuffle(holder, hiberTwoEdgeOptions);
+
+    const hiberTarget = randInt(holder, 2) === 0 ? 3 : 4;
+    if (hiberTarget === 3) {
+        addGroup(SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'hiber_to_inner_center'));
+        for (const opt of hiberTwoEdgeOptions) {
+            if (addGroup(opt)) break;
+        }
+    } else {
+        let count = 0;
+        for (const opt of hiberTwoEdgeOptions) {
+            if (addGroup(opt)) {
+                count++;
+                if (count >= 2) break;
+            }
+        }
+    }
+
     // 3. Target density: varied corridor network size (strictly <= 30 corridors)
     const targetMaxCorridors = 24 + randInt(holder, 7); // 24 to 30
 
@@ -654,6 +678,17 @@ function tryRandomShip(holder) {
         }
         if (deg[id] < 2) return null;
     }
+
+    // Ensure Hibernatorium strictly has 3 or 4 exits
+    if (deg['011'] < 3) {
+        const candidates = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !addedGroups.has(g.id) && g.edges.some(([a, b]) => a === '011' || b === '011'));
+        for (const g of candidates) {
+            if (selectedEdges.length + g.edges.length <= 30) {
+                if (addGroup(g) && (deg['011'] === 3 || deg['011'] === 4)) break;
+            }
+        }
+    }
+    if (deg['011'] !== 3 && deg['011'] !== 4) return null;
 
     if (selectedEdges.length > 30) return null;
 
