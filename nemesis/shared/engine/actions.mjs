@@ -150,7 +150,7 @@ OPS['card.forcingFire.pick'] = (state, step) => {
     const w = p.items.find(i => i.uid === step.answer);
     if (w) w.ammo -= 1;
     const a = intrudersIn(state, p.room).find(i => i.type === 'adult');
-    if (a && repelIntruder(state, a)) { next(state, { op: 'noise.roll', player: p.id, room: a.room }, BACK); return; }
+    if (a) repelIntruder(state, a);
     next(state, BACK);
 };
 OPS['card.myLittleFriend'] = (state, step) => {

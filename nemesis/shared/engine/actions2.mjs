@@ -4,7 +4,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, isContam, payCost, placeNoise, corridorsOf, secretTile,
-    payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES, computerHere } from './core.mjs';
+    payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES, computerHere, breakWeapon } from './core.mjs';
 import { ITEMS, dropLocked, canLoadWith, hasOpenQuest, connectedTo, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, WOUNDS, EVENT_CARDS } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
@@ -422,7 +422,7 @@ OPS['card.shriek'] = (state, step) => {
     const a = intrudersIn(state, p.room).find(i => i.type === 'adult');
     if (!a) { log(state, 'Взрослых чужих нет.', 'minor'); next(state, BACK); return; }
     gainContamination(state, p, 1);
-    if (repelIntruder(state, a)) { next(state, { op: 'noise.roll', player: p.id, room: a.room }, BACK); return; }
+    repelIntruder(state, a);
     next(state, BACK);
 };
 OPS['card.weirdMetabolism'] = (state, step) => {
@@ -486,8 +486,19 @@ OPS['card.securityControl.pick'] = (state, step) => {
 OPS['card.stun'] = (state, step) => {
     const p = player(state, step.player);
     const opts = [];
-    for (const o of state.players) if (o.status === 'active' && o.hand.length <= 3 && !o.passed) opts.push({ id: 'stun:' + o.id, label: 'Оглушить: ' + pname(o) + ' (карт: ' + o.hand.length + ')' });
-    if (intrudersIn(state, p.room).some(i => i.type === 'adult')) for (const w of p.items.filter(i => ITEMS[i.item].weapon && !i.broken)) opts.push({ id: 'break:' + w.uid, label: 'Сломать «' + ITEMS[w.item].name + '»: отогнать взрослого' });
+    for (const o of playersInRoom(state, p.room)) {
+        if (o.id !== p.id && o.status === 'active' && o.hand.length <= 3 && !o.passed) {
+            opts.push({ id: 'stun:' + o.id, label: 'Оглушить: ' + pname(o) + ' (карт: ' + o.hand.length + ')' });
+        }
+    }
+    if (intrudersIn(state, p.room).some(i => i.type === 'adult')) {
+        for (const w of p.items.filter(i => ITEMS[i.item].weapon)) {
+            opts.push({
+                id: 'break:' + w.uid,
+                label: (w.broken ? 'Сломать второй раз (уничтожить «' : 'Сломать «') + ITEMS[w.item].name + (w.broken ? '»)' : '» — жетон поломки') + ': отогнать взрослого',
+            });
+        }
+    }
     choice(state, p, 'Оглушение', opts, 'card.stun.pick');
 };
 OPS['card.stun.pick'] = (state, step) => {
@@ -499,9 +510,10 @@ OPS['card.stun.pick'] = (state, step) => {
         if (t.id === p.id) { next(state, { op: 'turn.end' }); return; }
         next(state, BACK); return;
     }
-    const w = p.items.find(i => i.uid === step.answer.slice(6)); if (w) w.broken = true;
+    const w = p.items.find(i => i.uid === step.answer.slice(6));
+    if (w) breakWeapon(state, p, w);
     const a = intrudersIn(state, p.room).find(i => i.type === 'adult');
-    if (a && repelIntruder(state, a)) { next(state, { op: 'noise.roll', player: p.id, room: a.room }, BACK); return; }
+    if (a) repelIntruder(state, a);
     next(state, BACK);
 };
 

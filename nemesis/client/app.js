@@ -1588,7 +1588,7 @@ function sheetItemHtml(inst, picks) {
     meta.push(d.kind === 'heavy' ? 'тяжёлый предмет' : d.kind === 'armor' ? 'броня (костюм)' : 'лёгкий предмет');
     if (d.weapon) meta.push('патроны ' + (inst.ammo ?? 0) + '/' + d.weapon.max);
     if (d.markers !== undefined) meta.push('жетоны ' + (inst.charge ?? d.markers) + '/' + d.markers);
-    if (inst.broken) meta.push('сломано');
+    if (inst.broken) meta.push('жетон поломки (сломано)');
     if (d.oneUse) meta.push('одноразовый');
     const opt = picks ? picks.get('item:' + inst.uid) : null;
     return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + (opt ? ' pickable' : '') + '" data-item="' + esc(inst.uid) + '"' +

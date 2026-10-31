@@ -426,6 +426,17 @@ export function heavyOptions(p) {
     return opts;
 }
 export const HEAVY_NAMES = { corpse: 'Человеческий труп', charCorpse: 'Труп персонажа', carcass: 'Туша чужого', egg: 'Яйцо чужого' };
+export function breakWeapon(state, p, w) {
+    if (w.broken) {
+        p.items = p.items.filter(i => i.uid !== w.uid);
+        log(state, '«' + ITEMS[w.item].name + '» уже имело жетон поломки и уничтожено (вторая поломка).', 'bad');
+        return 'destroyed';
+    } else {
+        w.broken = true;
+        log(state, '«' + ITEMS[w.item].name + '» получает жетон поломки (первая поломка).', 'minor');
+        return 'broken';
+    }
+}
 OPS['drop.heavy'] = (state, step) => {
     const p = player(state, step.player);
     dropHeavy(state, p, step.answer);

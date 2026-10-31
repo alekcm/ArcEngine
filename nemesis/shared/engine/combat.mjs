@@ -3,7 +3,7 @@
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, healthState, loseHealth, gainWound,
     gainContamination, killPlayer, discardCard, COMBAT_DIE, roll, fmtRoll, needDice, fx, removeIntruder, intruderLabel, INTRUDER_RANK,
     drawCards, placeFire, placeNoise, cardDef, orderIndex, hasAdapt, placeMalfunction, removeCardFromGame, infectLarva, heavyCount, handLimit,
-    handSlots, dropHeavy, BLUE_DIE, dieId } from './core.mjs';
+    handSlots, dropHeavy, BLUE_DIE, dieId, breakWeapon } from './core.mjs';
 import { repelIntruder, moveOneToward, hyperAttackStep } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
 import { ATTACK_CARDS, ITEMS, dropLocked, hasOpenQuest, connectedTo, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
@@ -419,7 +419,8 @@ OPS['shoot.modeChosen'] = (state, step) => {
         const it = intrudersIn(state, p.room).find(i => i.type === 'adult');
         spendAmmo(p, w, 2);
         log(state, pname(p) + ' отгоняет взрослого выстрелом из «' + ITEMS[w.item].name + '».', 'combat');
-        if (it && repelIntruder(state, it)) next(state, { op: 'noise.roll', player: p.id, room: it.room }, then); else next(state, then);
+        if (it) repelIntruder(state, it);
+        next(state, then);
         return;
     }
     if (mode === 'repelShot') {
@@ -446,7 +447,8 @@ OPS['shoot.repelShot'] = (state, step) => {
     const then = step.then || { op: 'turn.choose' };
     if (!it) { next(state, then); return; }
     log(state, pname(p) + ': игольник отгоняет ' + intruderLabel(state, it) + '.', 'combat');
-    if (repelIntruder(state, it)) next(state, { op: 'noise.roll', player: p.id, room: it.room }, then); else next(state, then);
+    if (it) repelIntruder(state, it);
+    next(state, then);
 };
 OPS['shoot.grenade'] = (state, step) => {
     const p = player(state, step.player);
@@ -694,8 +696,8 @@ OPS['melee.hit'] = (state, step) => {
     if (survived && state.intruders[it.uid] && !step.noRetaliation) {
         const weapons = p.items.filter(i => ITEMS[i.item].weapon);
         if (weapons.length) {
-            ask(state, { kind: 'choice', player: p.id, title: 'Чужой выжил и отвечает атакой. Подставить оружие (оранжевая поломка; уже сломанное — сбрасывается), чтобы избежать атаки?',
-                options: [{ id: 'none', label: 'Принять атаку' }, ...weapons.map(w => ({ id: w.uid, label: (w.broken ? 'Сбросить «' : 'Сломать «') + ITEMS[w.item].name + '»' }))] },
+            ask(state, { kind: 'choice', player: p.id, title: 'Чужой выжил и отвечает атакой. Подставить оружие (первая поломка — жетон поломки; уже сломанное — уничтожается), чтобы избежать атаки?',
+                options: [{ id: 'none', label: 'Принять атаку' }, ...weapons.map(w => ({ id: w.uid, label: (w.broken ? 'Уничтожить сломанное «' : 'Сломать «') + ITEMS[w.item].name + (w.broken ? '»' : '» (жетон поломки)') }))] },
                 { op: 'melee.block', player: p.id, target: it.uid, then });
             return;
         }
@@ -708,8 +710,7 @@ OPS['melee.block'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'none') { next(state, { op: 'attack', intruder: step.target, player: p.id, context: 'retaliation' }, step.then); return; }
     const w = p.items.find(i => i.uid === step.answer);
-    if (w.broken) { p.items = p.items.filter(i => i !== w); log(state, '«' + ITEMS[w.item].name + '» уже было сломано — предмет уничтожен.', 'bad'); }
-    else { w.broken = true; log(state, '«' + ITEMS[w.item].name + '» получает оранжевую поломку; ответная атака предотвращена.', 'minor'); }
+    if (w) breakWeapon(state, p, w);
     next(state, step.then);
 };
 

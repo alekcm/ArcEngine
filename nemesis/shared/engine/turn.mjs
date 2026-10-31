@@ -161,6 +161,11 @@ function cardRequirement(state, p, d) {
         case 'fanning': return p.items.some(i => i.item === 'sixShooter' && i.ammo > 0 && !i.broken) ? (inCombat(state, p) ? '' : 'Нет чужих') : 'Шестизарядник пуст';
         case 'bash': case 'roboticPunch': return inCombat(state, p) ? '' : 'Нет чужих';
         case 'shriek': return intrudersIn(state, p.room).some(i => i.type === 'adult') ? '' : 'Нет взрослого чужого';
+        case 'stun': {
+            const canStunPlayer = playersInRoom(state, p.room).some(o => o.id !== p.id && o.status === 'active' && o.hand.length <= 3 && !o.passed);
+            const canRepel = intrudersIn(state, p.room).some(i => i.type === 'adult') && p.items.some(i => ITEMS[i.item].weapon);
+            return canStunPlayer || canRepel ? '' : 'Нет персонажа с ≤3 картами в комнате или взрослого чужого с оружием для поломки';
+        }
         case 'neurotoxicGas': return p.items.some(i => ITEMS[i.item].deck === 'green') ? '' : 'Нужен зелёный предмет';
         case 'catchThis': return p.items.some(i => ITEMS[i.item].kind === 'heavy' && !dropLocked(i.item)) ? '' : 'Нет тяжёлого предмета';
         case 'tacticalMove': return p.items.some(i => ITEMS[i.item].weapon && i.ammo > 0 && !i.broken) ? '' : 'Нужен патрон';

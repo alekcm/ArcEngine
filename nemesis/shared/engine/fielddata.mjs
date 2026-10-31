@@ -65,14 +65,14 @@ OPS['card.fdInsight.pick'] = (state, step) => {
     if (it) {
         const rooms = state.ship.rooms[p.room].exits.filter(e => state.ship.corridors[e.corridor].door !== 'closed').map(e => e.to);
         if (rooms.length > 1) { ask(state, { kind: 'room', player: p.id, title: 'Куда отогнать взрослого?', rooms }, { op: 'card.fdInsight.to', player: p.id, uid: it.uid }); return; }
-        if (repelIntruder(state, it, rooms[0])) { next(state, { op: 'noise.roll', player: p.id, room: it.room }, BACK); return; }
+        if (repelIntruder(state, it, rooms[0])) { next(state, BACK); return; }
     }
     next(state, BACK);
 };
 OPS['card.fdInsight.to'] = (state, step) => {
     const p = player(state, step.player);
     const it = state.intruders[step.uid];
-    if (it && repelIntruder(state, it, step.answer)) { next(state, { op: 'noise.roll', player: p.id, room: it.room }, BACK); return; }
+    if (it) repelIntruder(state, it, step.answer);
     next(state, BACK);
 };
 

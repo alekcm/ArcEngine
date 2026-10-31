@@ -105,7 +105,7 @@ export function itemLabel(inst) {
     let s = d.name;
     if (d.weapon) s += ' [' + inst.ammo + '/' + d.weapon.max + ']';
     if (d.markers !== undefined) s += ' [' + (inst.charge ?? d.markers) + ' ⬢]';
-    if (inst.broken) s += ' (сломано)';
+    if (inst.broken) s += ' [жетон поломки]';
     return s;
 }
 export function itemTitle(inst) { const d = ITEMS[inst.item]; return d.text || ''; }
