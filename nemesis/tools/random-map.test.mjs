@@ -133,3 +133,16 @@ test('MAP-GEN-04: connectivity and degree limits on all generated ships', () => 
         }
     }
 });
+
+test('MAP-GEN-05: Hibernatorium (011) has strictly 3 or 4 exits on all random ships', () => {
+    let count3 = 0, count4 = 0;
+    for (let i = 0; i < 40; i++) {
+        const ship = randomShip({ seed: 'hiber_test_' + i });
+        const exits = ship.rooms['011'].exits.length;
+        assert.ok(exits === 3 || exits === 4, 'Hibernatorium must have strictly 3 or 4 exits, got ' + exits + ' on seed ' + i);
+        if (exits === 3) count3++;
+        if (exits === 4) count4++;
+    }
+    assert.ok(count3 > 0, 'Should have instances of 3 exits, got ' + count3);
+    assert.ok(count4 > 0, 'Should have instances of 4 exits, got ' + count4);
+});

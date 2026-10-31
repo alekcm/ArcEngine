@@ -175,6 +175,9 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 .pcard .tags { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; }
 .tag { background: #22304a; border-radius: 4px; padding: 1px 6px; color: #cfd8e3; }
 .tag.red { background: #5a2323; } .tag.green { background: #1f4a2f; } .tag.yellow { background: #5b4a12; } .tag.purple { background: #45245a; } .tag.blue { background: #1f3b5a; }
+.tag.heavy { background: #4e2912; color: #ffbe8a; border: 1px solid #7d4420; }
+.tag.light { background: #16324a; color: #8ad2ff; border: 1px solid #28547b; }
+.tag.armor { background: #351c4a; color: #d09eff; border: 1px solid #5d357f; }
 .pcard .items { font-size: 12px; color: #c8d2dd; margin-top: 4px; }
 .pcard .items span { display: inline-block; margin-right: 6px; }
 
@@ -611,6 +614,7 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #itemPick .ip-card .ip-noart { height: 104px; border-radius: 7px; border: 1px dashed #3a4f6b; display: flex; align-items: center; justify-content: center; font-size: 30px; color: #4a5d75; }
 #itemPick .ip-card b { font-size: 13px; }
 #itemPick .ip-card small { color: #b9c7d8; font-size: 11px; line-height: 1.3; }
+#itemPick .ip-card .tags { display: flex; flex-wrap: wrap; gap: 4px; align-self: flex-start; margin-top: auto; }
 #itemPick .ip-card .tag { align-self: flex-start; }
 #itemPick .ip-card.plain { grid-column: 1 / -1; flex-direction: row; align-items: center; }
 #itemRestore, #ipRestore { position: fixed; left: 50%; bottom: 208px; transform: translateX(-50%); z-index: 25; box-shadow: 0 8px 24px #000a; }

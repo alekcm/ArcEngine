@@ -229,4 +229,7 @@ test('QA-13 item choices carry the item key so the client can draw a picture', (
     run(s);
     assert.equal(s.prompt.kind, 'choice');
     assert.deepEqual(s.prompt.options.map(o => o.item), ['medkit', 'grenade']);
+    assert.equal(s.prompt.options[0].weight, 'Тяжёлый');
+    assert.equal(s.prompt.options[0].kind, 'heavy');
+    assert.equal(s.prompt.options[1].weight, 'Лёгкий');
 });

@@ -150,7 +150,7 @@ OPS['card.forcingFire.pick'] = (state, step) => {
     const w = p.items.find(i => i.uid === step.answer);
     if (w) w.ammo -= 1;
     const a = intrudersIn(state, p.room).find(i => i.type === 'adult');
-    if (a && repelIntruder(state, a)) { next(state, { op: 'noise.roll', player: p.id, room: a.room }, BACK); return; }
+    if (a) repelIntruder(state, a);
     next(state, BACK);
 };
 OPS['card.myLittleFriend'] = (state, step) => {
@@ -287,6 +287,8 @@ OPS['card.techCorridors.go'] = (state, step) => {
 OPS['card.techCorridors.dest'] = (state, step) => {
     const p = player(state, step.player);
     p.passed = true;
+    const contams = p.hand.filter(isContam);
+    for (const c of contams) discardCard(state, p, c);
     next(state, { op: 'move.direct', player: p.id, dest: step.answer, then: { op: 'turn.end' } });
 };
 

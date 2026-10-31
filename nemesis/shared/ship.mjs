@@ -148,7 +148,8 @@ function buildShip(roomsSpec, edges, techRooms, engineNumbers, mode, paths = {},
     // door (see agreeNumbers): the same digits on both sides of a passage.
     for (const r of Object.values(rooms)) for (const e of r.exits) { const p = pinned[e.corridor]; if (p) { e.nums = p.slice(); e.num = p[0]; } }
     for (const r of Object.values(rooms)) { const p = pinned['t:' + r.id]; if (p) r.techNums = p.slice(); }
-    agreeNumbers(rooms, pinned);
+    const agreed = agreeNumbers(rooms, pinned);
+    if (!agreed && mode === 'random') return null;
     const ship = { mode, rooms, corridors, techNoise: false };
     computeBounds(ship);
     return ship;
@@ -208,7 +209,7 @@ function agreeNumbers(rooms, pinned = {}) {
         if (r.tech) before.set('t:' + r.id, [r.techNums.slice()]);
     }
     const sets = [[1], [2], [3], [4], [1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4]];
-    const wide = sets.concat([[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4], [1, 2, 3, 4]]);
+    const wide = sets.concat([[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);
     const cost = (k, v) => {
         const o = before.get(k) || [];
         let best = 9;
@@ -216,12 +217,12 @@ function agreeNumbers(rooms, pinned = {}) {
         return best;
     };
     const doors = roomList.map(r => ({ id: r.id, list: r.exits.map(e => e.corridor).concat(r.tech ? ['t:' + r.id] : []) }));
-    const solve = (domain, allowEmpty) => {
+    const solve = (domain) => {
         const dom = new Map([...doorKeys].map(k => {
             const pin = pinned[k];
             if (pin) return [k, [pin]];
             const base = domain.slice().sort((x, y) => cost(k, x) - cost(k, y));
-            return [k, allowEmpty ? [[]].concat(base) : base];
+            return [k, base];
         }));
         const assign = new Map();
         let nodes = 0;
@@ -262,16 +263,95 @@ function agreeNumbers(rooms, pinned = {}) {
         };
         return go() ? assign : null;
     };
-    const done = solve(sets, false) || solve(wide, false) || solve(wide, true);
-    if (!done) return;
+
+    // Fast MRV-based solver for random ships where all doors must receive numbers 1..4 (never empty or 1/2/3/4)
+    const solveMRV = () => {
+        const corridors = [];
+        const seenCors = new Set();
+        for (const r of roomList) for (const e of r.exits) { if (!seenCors.has(e.corridor)) { seenCors.add(e.corridor); corridors.push(e.corridor); } }
+        const C_DOMAIN = sets;
+        const candidateOptions = new Map();
+        for (const cid of corridors) {
+            const pin = pinned[cid];
+            if (pin) { candidateOptions.set(cid, [pin]); continue; }
+            const scored = C_DOMAIN.slice().sort((x, y) => cost(cid, x) - cost(cid, y));
+            candidateOptions.set(cid, scored);
+        }
+        const assign = new Map();
+        const roomPossible = (r) => {
+            const present = new Set();
+            let unassigned = 0;
+            for (const e of r.exits) {
+                if (assign.has(e.corridor)) { for (const n of assign.get(e.corridor)) present.add(n); }
+                else unassigned++;
+            }
+            if (unassigned === 0) {
+                const missing = [1, 2, 3, 4].filter(n => !present.has(n));
+                if (missing.length === 0) return true;
+                if (r.tech && missing.length <= 2) return true;
+                return false;
+            }
+            const needed = 4 - present.size - (r.tech ? 2 : 0);
+            if (needed > unassigned * 2) return false;
+            return true;
+        };
+        let nodes = 0;
+        const bt = () => {
+            if (++nodes > 15000) return false;
+            let bestC = null, bestOpts = null;
+            for (const cid of corridors) {
+                if (assign.has(cid)) continue;
+                const rPair = roomList.filter(r => r.exits.some(e => e.corridor === cid));
+                const valid = [];
+                for (const opt of candidateOptions.get(cid)) {
+                    assign.set(cid, opt);
+                    if (rPair.every(roomPossible)) valid.push(opt);
+                    assign.delete(cid);
+                }
+                if (!valid.length) return false;
+                if (!bestOpts || valid.length < bestOpts.length) {
+                    bestC = cid; bestOpts = valid;
+                    if (valid.length === 1) break;
+                }
+            }
+            if (!bestC) {
+                for (const r of roomList) {
+                    const present = new Set();
+                    for (const e of r.exits) for (const n of assign.get(e.corridor)) present.add(n);
+                    const missing = [1, 2, 3, 4].filter(n => !present.has(n));
+                    if (missing.length > 0 && (!r.tech || missing.length > 2)) return false;
+                }
+                return true;
+            }
+            for (const opt of bestOpts) {
+                assign.set(bestC, opt);
+                if (bt()) return true;
+                assign.delete(bestC);
+            }
+            return false;
+        };
+        return bt() ? assign : null;
+    };
+
+    const done = solve(sets) || solve(wide) || solveMRV();
+    if (!done) return false;
     for (const r of roomList) {
         for (const e of r.exits) {
             const v = done.get(e.corridor);
-            if (v === undefined) continue;
+            if (!v || !v.length) continue;
             e.nums = v.slice(); e.num = v[0];
         }
-        if (r.tech) { const v = done.get('t:' + r.id); if (v !== undefined) r.techNums = v.slice(); }
+        if (r.tech) {
+            const v = done.get('t:' + r.id);
+            if (v && v.length) r.techNums = v.slice();
+            else {
+                const present = new Set();
+                for (const e of r.exits) for (const n of e.nums) present.add(n);
+                r.techNums = [1, 2, 3, 4].filter(n => !present.has(n));
+            }
+        }
     }
+    return true;
 }
 
 function angleOf(from, to) {
@@ -548,6 +628,30 @@ function tryRandomShip(holder) {
         }
     }
 
+    // Anchor Hibernatorium (011): must have strictly 3 or 4 exits
+    const hiberTwoEdgeOptions = [
+        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'hiber_to_inner_front'),
+        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'hiber_to_inner_rear'),
+        SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'outer_mid2_to_hiber'),
+    ];
+    shuffle(holder, hiberTwoEdgeOptions);
+
+    const hiberTarget = randInt(holder, 2) === 0 ? 3 : 4;
+    if (hiberTarget === 3) {
+        addGroup(SYMMETRIC_CANDIDATE_GROUPS.find(g => g.id === 'hiber_to_inner_center'));
+        for (const opt of hiberTwoEdgeOptions) {
+            if (addGroup(opt)) break;
+        }
+    } else {
+        let count = 0;
+        for (const opt of hiberTwoEdgeOptions) {
+            if (addGroup(opt)) {
+                count++;
+                if (count >= 2) break;
+            }
+        }
+    }
+
     // 3. Target density: varied corridor network size (strictly <= 30 corridors)
     const targetMaxCorridors = 24 + randInt(holder, 7); // 24 to 30
 
@@ -574,6 +678,17 @@ function tryRandomShip(holder) {
         }
         if (deg[id] < 2) return null;
     }
+
+    // Ensure Hibernatorium strictly has 3 or 4 exits
+    if (deg['011'] < 3) {
+        const candidates = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !addedGroups.has(g.id) && g.edges.some(([a, b]) => a === '011' || b === '011'));
+        for (const g of candidates) {
+            if (selectedEdges.length + g.edges.length <= 30) {
+                if (addGroup(g) && (deg['011'] === 3 || deg['011'] === 4)) break;
+            }
+        }
+    }
+    if (deg['011'] !== 3 && deg['011'] !== 4) return null;
 
     if (selectedEdges.length > 30) return null;
 

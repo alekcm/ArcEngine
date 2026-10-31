@@ -925,9 +925,11 @@ function renderPrompt() {
         case 'choice':
             html += '<div class="opts">' + pr.options.map(o => {
                 const art = o.item ? itemArt(o.item) : (o.art ? 'art/' + o.art + '.jpg' : null);
+                const d = o.item ? ITEMS[o.item] : null;
+                const weight = d ? (d.kind === 'heavy' ? ' · 📦 Тяжёлый' : d.kind === 'armor' ? ' · 🛡️ Броня' : ' · 🔹 Лёгкий') : (o.weight ? ' · ' + o.weight : '');
                 return '<button class="opt' + (art ? ' opt-art' : '') + '" data-opt="' + esc(o.id) + '" ' + (o.disabled ? 'disabled' : '') + '>' +
                     (art ? '<i class="oart" style="background-image:url(' + esc(art) + ')"></i>' : '') +
-                    '<span>' + esc(o.label) + (o.tag ? ' <small>· ' + esc(o.tag) + '</small>' : '') + '</span>' + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') + '</button>';
+                    '<span>' + esc(o.label) + (o.tag ? ' <small>· ' + esc(o.tag) + '</small>' : '') + (weight ? ' <small>' + esc(weight) + '</small>' : '') + '</span>' + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') + '</button>';
             }).join('') + '</div>';
             {
                 // The same choice can be made on the cards of my own backpack (C opens the sheet).
@@ -1387,10 +1389,24 @@ function openItemPicker(pr, options) {
     } else if (invBtn) invBtn.remove();
     $('ipBody').innerHTML = options.map(o => {
         const art = o.item ? itemArt(o.item) : null;
+        const d = o.item ? ITEMS[o.item] : null;
+        let weightTag = '';
+        if (d || o.kind || o.weight) {
+            const isHeavy = (d && d.kind === 'heavy') || o.kind === 'heavy' || o.weight === 'Тяжёлый';
+            const isArmor = (d && d.kind === 'armor') || o.kind === 'armor' || o.weight === 'Броня';
+            weightTag = isHeavy
+                ? '<span class="tag heavy">📦 Тяжёлый</span>'
+                : isArmor
+                    ? '<span class="tag armor">🛡️ Броня</span>'
+                    : '<span class="tag light">🔹 Лёгкий</span>';
+        }
+        const deckCls = d && d.deck ? d.deck : '';
+        const deckTag = o.tag ? '<span class="tag ' + deckCls + '">' + esc(o.tag) + '</span>' : '';
         return '<button class="ip-card' + (o.item ? '' : ' plain') + '" data-opt="' + esc(o.id) + '">' +
             (o.item ? (art ? '<div class="ip-art" style="background-image:url(' + art + ')"></div>' : '<div class="ip-noart">📦</div>') : '') +
             '<b>' + esc(o.label) + '</b>' + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') +
-            (o.tag ? '<span class="tag">' + esc(o.tag) + '</span>' : '') + '</button>';
+            (o.item ? '<div class="tags">' + deckTag + weightTag + '</div>' : (o.tag ? '<span class="tag">' + esc(o.tag) + '</span>' : '')) +
+            '</button>';
     }).join('');
     for (const b of $('ipBody').querySelectorAll('[data-opt]')) b.onclick = () => { const ans = b.dataset.opt; closeItemPicker(); act(ans); };
     if (!app.itemPickMin) { $('itemPick').classList.remove('hidden'); $('ipRestore').classList.add('hidden'); }
@@ -1751,7 +1767,7 @@ function sheetItemHtml(inst, picks) {
     meta.push(d.kind === 'heavy' ? 'тяжёлый предмет' : d.kind === 'armor' ? 'броня (костюм)' : 'лёгкий предмет');
     if (d.weapon) meta.push('патроны ' + (inst.ammo ?? 0) + '/' + d.weapon.max);
     if (d.markers !== undefined) meta.push('жетоны ' + (inst.charge ?? d.markers) + '/' + d.markers);
-    if (inst.broken) meta.push('сломано');
+    if (inst.broken) meta.push('жетон поломки (сломано)');
     if (d.oneUse) meta.push('одноразовый');
     const opt = picks ? picks.get('item:' + inst.uid) : null;
     return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + (opt ? ' pickable' : '') + '" data-item="' + esc(inst.uid) + '"' +

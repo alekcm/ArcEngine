@@ -20,7 +20,11 @@ export function drawSupport(state, n) {
 /** Offer `cards` (item keys); the chosen one is gained, the rest go to the bottom of their decks. */
 export function keepOneOf(state, p, cards, label, then, keep = 1, optional = false) {
     if (!cards.length) { log(state, 'Колода пуста — ничего не найдено.', 'minor'); next(state, then); return; }
-    const options = cards.map((c, i) => ({ id: String(i), item: c, label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] }));
+    const options = cards.map((c, i) => {
+        const d = ITEMS[c];
+        const weight = d.kind === 'heavy' ? 'Тяжёлый' : d.kind === 'armor' ? 'Броня' : 'Лёгкий';
+        return { id: String(i), item: c, label: d.name, desc: d.text, kind: d.kind, weight, tag: DECK_NAMES[d.deck] };
+    });
     if (optional) options.push({ id: 'none', label: 'Ничего не брать', desc: 'Все карты — под низ колоды.' });
     ask(state, { kind: 'choice', player: p.id, title: keep > 1 ? 'Выберите предмет (можно оставить ещё ' + keep + ')' : 'Выберите 1 предмет (остальные — под низ колод)', secret: true, options },
         { op: 'item.keepOne', player: p.id, cards, then, keep });
@@ -35,7 +39,11 @@ OPS['item.keepOne'] = (state, step) => {
     if (keep > 0 && rest.length) {
         giveItem(state, p, key);
         ask(state, { kind: 'choice', player: p.id, title: 'Разгрузочный жилет: оставить ещё один предмет?', secret: true,
-            options: [{ id: 'none', label: 'Нет — остальные под низ колод' }, ...rest.map((c, i) => ({ id: String(i), item: c, label: ITEMS[c].name, desc: ITEMS[c].text, tag: DECK_NAMES[ITEMS[c].deck] }))] },
+            options: [{ id: 'none', label: 'Нет — остальные под низ колод' }, ...rest.map((c, i) => {
+                const d = ITEMS[c];
+                const weight = d.kind === 'heavy' ? 'Тяжёлый' : d.kind === 'armor' ? 'Броня' : 'Лёгкий';
+                return { id: String(i), item: c, label: d.name, desc: d.text, kind: d.kind, weight, tag: DECK_NAMES[d.deck] };
+            })] },
             { op: 'item.keepMore', player: p.id, cards: rest, then: step.then });
         return;
     }

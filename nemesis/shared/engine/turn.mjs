@@ -161,6 +161,11 @@ function cardRequirement(state, p, d) {
         case 'fanning': return p.items.some(i => i.item === 'sixShooter' && i.ammo > 0 && !i.broken) ? (inCombat(state, p) ? '' : 'Нет чужих') : 'Шестизарядник пуст';
         case 'bash': case 'roboticPunch': return inCombat(state, p) ? '' : 'Нет чужих';
         case 'shriek': return intrudersIn(state, p.room).some(i => i.type === 'adult') ? '' : 'Нет взрослого чужого';
+        case 'stun': {
+            const canStunPlayer = playersInRoom(state, p.room).some(o => o.id !== p.id && o.status === 'active' && o.hand.length <= 3 && !o.passed);
+            const canRepel = intrudersIn(state, p.room).some(i => i.type === 'adult') && p.items.some(i => ITEMS[i.item].weapon);
+            return canStunPlayer || canRepel ? '' : 'Нет персонажа с ≤3 картами в комнате или взрослого чужого с оружием для поломки';
+        }
         case 'neurotoxicGas': return p.items.some(i => ITEMS[i.item].deck === 'green') ? '' : 'Нужен зелёный предмет';
         case 'catchThis': return p.items.some(i => ITEMS[i.item].kind === 'heavy' && !dropLocked(i.item)) ? '' : 'Нет тяжёлого предмета';
         case 'tacticalMove': return p.items.some(i => ITEMS[i.item].weapon && i.ammo > 0 && !i.broken) ? '' : 'Нужен патрон';
@@ -383,13 +388,19 @@ OPS['pass.discard'] = (state, step) => {
     if (p.wounds.includes('bleeding')) loseHealth(state, p, 1, 'кровотечение');
     if (p.status === 'active' && p.wounds.includes('guts')) gainContamination(state, p, 1);
     if (p.status !== 'active' || !p.hand.length) { next(state, { op: 'turn.end' }); return; }
-    ask(state, { kind: 'cards', player: p.id, title: 'Пас: можете сбросить любые карты (включая заражения)', cards: [...p.hand], min: 0, max: p.hand.length },
+    ask(state, { kind: 'cards', player: p.id, title: 'Пас: можете сбросить любые карты (все заражения сбросятся автоматически)', cards: [...p.hand], min: 0, max: p.hand.length },
         { op: 'pass.discard.done', player: p.id });
 };
 OPS['pass.discard.done'] = (state, step) => {
     const p = player(state, step.player);
-    for (const c of step.answer) discardCard(state, p, c);
-    if (step.answer.length) log(state, pname(p) + ' сбрасывает ' + step.answer.length + ' карт при пасе.', 'minor');
+    const chosen = Array.isArray(step.answer) ? step.answer : [];
+    for (const c of chosen) discardCard(state, p, c);
+    const contams = p.hand.filter(isContam);
+    for (const c of contams) discardCard(state, p, c);
+    const totalCount = chosen.length + contams.length;
+    if (totalCount) {
+        log(state, pname(p) + ' сбрасывает ' + totalCount + ' карт при пасе' + (contams.length ? ' (заражения сброшены автоматически: ' + contams.length + ')' : '') + '.', 'minor');
+    }
     // CEO "Just One More Thing": after you have Passed, draw 1 and take an extra Turn,
     // after which you must Pass.
     const card = p.justOneMoreUsed ? null : p.hand.find(c => (cardDef(state, c) || {}).effect === 'justOneMoreThing');
@@ -414,7 +425,13 @@ OPS['card.justOneMore'] = (state, step) => {
 
 OPS['turn.end'] = (state) => {
     const p = player(state, state.current);
-    if (p.justOneMore) { p.justOneMore = false; p.passed = true; log(state, pname(p) + ' обязан(а) спасовать после дополнительного хода.', 'action'); }
+    if (p.justOneMore) {
+        p.justOneMore = false;
+        p.passed = true;
+        const contams = p.hand.filter(isContam);
+        for (const c of contams) discardCard(state, p, c);
+        log(state, pname(p) + ' обязан(а) спасовать после дополнительного хода.', 'action');
+    }
     // Battle Suit (printed): "You never lose health as a result of a Fire at the End of your Turn."
     const fireProof = !!(p.armor && p.armor.item === 'battleSuit');
     if (p.status === 'active' && !p.pod && room(state, p.room).fire && !p.firePaidThisTurn && !fireProof) {
@@ -452,7 +469,10 @@ OPS['pod.decide'] = (state, step) => {
         pod.launched = true; pod.occupants = [];
         next(state, { op: 'turn.end' });
     } else if (step.answer === 'wait') {
-        p.passed = true; next(state, { op: 'turn.end' });
+        p.passed = true;
+        const contams = p.hand.filter(isContam);
+        for (const c of contams) discardCard(state, p, c);
+        next(state, { op: 'turn.end' });
     } else {
         pod.occupants = pod.occupants.filter(x => x !== p.id); p.pod = null;
         log(state, pname(p) + ' выходит из капсулы.', 'action');
