@@ -44,8 +44,10 @@ const FSUI = {
         if (this.currentLobby) { this.renderModernLobby(); return; }
         const header = this.el('div', 'fs-topbar');
         header.append(this.el('span', 'fs-brand', 'FORBIDDEN STARS'), this.el('i', 'fs-divider'));
-        header.append(this.el('span', 'fs-phase', state ? ('Раунд ' + state.round + ' · ' + ({planning:'Планирование',operations:'Операции',refresh:'Обновление'}[state.phase] || state.phase)) : 'Галактическая война'));
-        if (state && state.players[state.turn]) header.append(this.el('span', 'fs-room-pill', 'ХОД · ' + state.players[state.turn].name));
+        const phaseLabel = state && state.phase === 'setup' ? 'Сборка карты' : ({planning:'Планирование',operations:'Операции',refresh:'Обновление'}[(state || {}).phase] || (state && state.phase) || 'Галактическая война');
+        header.append(this.el('span', 'fs-phase', state ? (state.phase === 'setup' ? phaseLabel : 'Раунд ' + state.round + ' · ' + phaseLabel) : phaseLabel));
+        const activeSeat = state && state.phase === 'setup' && state.setup ? state.setup.turn : state && state.turn;
+        if (state && state.players[activeSeat]) header.append(this.el('span', 'fs-room-pill', 'ХОД · ' + state.players[activeSeat].name));
         root.append(header);
 
         const tools = this.el('div', 'fs-toolbar');
@@ -74,7 +76,9 @@ const FSUI = {
         }
         const rail = this.el('div', 'fs-left-rail');
         const playersCard = this.el('section', 'fs-card');
-        const ph = this.el('div', 'fs-card-head'); ph.append(this.el('span', 'fs-eyebrow', 'Участники'), this.el('span', 'fs-round-chip', 'ЦЕЛЬ · ' + state.players.length)); playersCard.append(ph);
+        const ph = this.el('div', 'fs-card-head');
+        const boardProgress = state.phase === 'setup' && state.setup ? 'КАРТА · ' + state.setup.placedTotal + '/' + state.setup.totalTiles : 'ИГРОКИ · ' + state.players.length;
+        ph.append(this.el('span', 'fs-eyebrow', 'Участники'), this.el('span', 'fs-round-chip', boardProgress)); playersCard.append(ph);
         const list = this.el('div', 'fs-player-list');
         state.players.forEach(p => {
             const row = this.el('div', 'fs-player' + (p.seat === state.seat ? ' is-me' : ''));
@@ -83,6 +87,13 @@ const FSUI = {
             const name = this.el('div', 'fs-player-name', p.name); name.append(this.el('span', 'fs-player-faction', this.factionName(p.faction) + (p.seat === state.seat ? ' · вы' : '')));
             row.append(name);
             const stats = this.el('div', 'fs-player-stats'); stats.append(this.el('span', '', '✦ ' + (p.objectives || 0)), this.el('span', '', '◈ ' + (p.materiel || 0))); row.append(stats);
+            const assets = p.assets || {};
+            const reserves = Object.values((p.supply && p.supply.units) || {}).reduce((sum, count) => sum + (Number(count) || 0), 0);
+            const resourceLine = this.el('div', 'fs-player-assets');
+            [['⚒', assets.forge, 'Кузницы'], ['⬡', assets.cache, 'Запасы'], ['✚', assets.reinforcement, 'Подкрепления'], ['✧', assets.prosperity, 'Процветание'], ['♟', reserves, 'Отряды в запасе']].forEach(([icon, count, title]) => {
+                const chip = this.el('span', 'fs-asset-chip', icon + ' ' + (count || 0)); chip.title = title; resourceLine.append(chip);
+            });
+            row.append(resourceLine);
             list.append(row);
         });
         playersCard.append(list); rail.append(playersCard);
@@ -98,6 +109,8 @@ const FSUI = {
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
         head.append(this.el('p', '', ctx.text || 'Выберите действие, чтобы продолжить партию.')); panel.append(head);
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
+        const inspection = this.renderInspector(state, ctx.inspection);
+        if (inspection) panel.append(inspection);
         const actions = this.el('div', 'fs-actions');
         const icons = ['✦','⬡','◈','⚔','⌖','⛨','✧','➤'];
         (ctx.actions || []).forEach((a, i) => {
@@ -110,11 +123,100 @@ const FSUI = {
         if (!(ctx.actions || []).length) actions.append(this.el('div', 'fs-empty', state.over ? 'Партия завершена.' : 'Сейчас нет доступных действий. Следите за ходом соперников.'));
         panel.append(actions); root.append(panel);
         const hint = this.el('div', 'fs-map-hint');
-        hint.innerHTML = '<b>ДОСКА</b>　•　Перетаскивание — камера　•　Колесо — масштаб　•　Кольца — доступные действия'; root.append(hint);
+        hint.innerHTML = state.phase === 'setup'
+            ? '<b>СБОРКА КАРТЫ</b>　•　Выберите систему справа　•　Клик по подсвеченной клетке размещает тайл'
+            : ctx.mode === 'idle'
+                ? '<b>ДОСКА</b>　•　Клик по сектору — сведения　•　Перетаскивание — камера　•　Колесо — масштаб'
+                : '<b>ДОСКА</b>　•　Выберите подсвеченную область для действия　•　Перетаскивание — камера';
+        root.append(hint);
         if (ctx.status && this.statusError(ctx.status)) root.append(this.el('div', 'fs-toast', ctx.status));
     },
 
     statusError(text) { return /ошиб|связи|нет связи|нельзя|не удалось/i.test(text || ''); },
+
+    renderInspector(state, selected) {
+        if (!selected || !selected.system) return null;
+        const system = state.systems.find(s => s.id === selected.system);
+        if (!system) return null;
+        const area = system.areas.find(a => a.pos === selected.pos);
+        const world = area && area.world;
+        const panel = this.el('section', 'fs-inspector');
+        const head = this.el('div', 'fs-inspector-head');
+        const title = this.el('div', 'fs-inspector-title');
+        title.append(this.el('span', 'fs-inspector-kicker', 'СИСТЕМА ' + system.tile + ' · ' + system.id.toUpperCase()));
+        title.append(this.el('strong', '', world ? world.name : area ? 'Пустотный сектор' : 'Орбитальная система'));
+        const close = this.el('button', 'fs-inspector-close', '×'); close.type = 'button'; close.title = 'Закрыть сведения';
+        close.addEventListener('click', () => {
+            const game = window.app ? /** @type {any} */ (window.app.game) : null;
+            if (game) {
+                game.inspection = null;
+                FSView.clearInspection(game.view);
+                game.refresh();
+            }
+        });
+        head.append(title, close); panel.append(head);
+        const ownerLine = this.el('div', 'fs-inspector-owner');
+        if (area) {
+            const seats = [...new Set([
+                ...state.units.filter(u => u.system === system.id && u.area === area.pos).map(u => u.seat),
+                ...state.structures.filter(s => s.system === system.id && s.area === area.pos).map(s => s.seat),
+            ])].sort((a, b) => a - b);
+            ownerLine.textContent = seats.length === 1
+                ? 'Контроль: ' + state.players[seats[0]].name
+                : seats.length > 1
+                    ? 'Спорная зона: ' + seats.map(seat => state.players[seat].name).join(' / ')
+                    : 'Никем не контролируется';
+        } else ownerLine.textContent = 'Выберите сектор для просмотра контроля';
+        if (selected.storm) ownerLine.textContent += ' · Варп-шторм ' + selected.storm;
+        panel.append(ownerLine);
+        if (world) {
+            const stats = this.el('div', 'fs-inspector-stats');
+            [['◈', world.materiel, 'Материалы'], ['⌂', world.capacity, 'Вместимость'], ['◎', world.objective ? 'Да' : '—', 'Цель']].forEach(([icon, value, label]) => {
+                const chip = this.el('span', 'fs-inspector-chip', icon + ' ' + value); chip.title = label; stats.append(chip);
+            });
+            const glyph = { forge: '⚒', cache: '▦', reinforcement: '✚', prosperity: '✧' };
+            for (const asset of world.assets || []) {
+                const chip = this.el('span', 'fs-inspector-chip is-asset', glyph[asset] || asset);
+                chip.title = ({ forge: 'Кузница', cache: 'Запасы', reinforcement: 'Подкрепление', prosperity: 'Процветание' })[asset] || asset;
+                stats.append(chip);
+            }
+            panel.append(stats);
+        }
+        if (area) {
+            const units = state.units.filter(u => u.system === system.id && u.area === area.pos);
+            const structures = state.structures.filter(s => s.system === system.id && s.area === area.pos);
+            const summaries = [];
+            const bySeat = new Map();
+            for (const unit of units) {
+                const def = FS_RULES.unitOf(state, unit);
+                if (!def) continue;
+                const key = unit.seat + ':' + def.name;
+                const item = bySeat.get(key) || { seat: unit.seat, name: def.name, type: def.type, count: 0 };
+                item.count++; bySeat.set(key, item);
+            }
+            for (const item of bySeat.values()) {
+                const player = state.players[item.seat];
+                summaries.push((player ? player.name : 'Игрок') + ': ' + item.name + ' ×' + item.count);
+            }
+            if (structures.length) {
+                const labels = { city: 'города', factory: 'фабрики', bastion: 'бастиона' };
+                const counts = {};
+                structures.forEach(x => { counts[x.type] = (counts[x.type] || 0) + 1; });
+                for (const [type, count] of Object.entries(counts)) summaries.push((labels[type] || type) + ' ×' + count);
+            }
+            if (!summaries.length) summaries.push('Отрядов и построек нет');
+            if (selected.unit) {
+                const unit = state.units.find(u => u.id === selected.unit);
+                const def = unit && FS_RULES.unitOf(state, unit);
+                if (def) summaries.unshift('Выбрано: ' + def.name + (unit.routed ? ' · отступает' : ''));
+            }
+            if (selected.structure) summaries.unshift('Выбрано строение');
+            const list = this.el('div', 'fs-inspector-roster');
+            summaries.slice(0, 4).forEach(text => list.append(this.el('span', '', text)));
+            panel.append(list);
+        }
+        return panel;
+    },
 
     renderModernLobby() {
         const root = this.modernRoot, info = this.currentLobby;
@@ -229,9 +331,10 @@ const FSUI = {
         const me = state.players[state.seat];
         // The top panel: the phase, the round and the players.
         const phaseName = {
-            planning: 'планирование', operations: 'операции', refresh: 'обновление',
+            setup: 'сборка карты', planning: 'планирование', operations: 'операции', refresh: 'обновление',
         }[state.phase] || state.phase;
-        const who = state.players[state.turn] ? state.players[state.turn].name : '';
+        const activeSeat = state.phase === 'setup' && state.setup ? state.setup.turn : state.turn;
+        const who = state.players[activeSeat] ? state.players[activeSeat].name : '';
         this.set('fsPhase', 'Раунд ' + state.round + ' · ' + phaseName + (state.phase === 'refresh' ? '' : ' · ход: ' + who));
         const lines = state.players.map(p => {
             const marks = [];

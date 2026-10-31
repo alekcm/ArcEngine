@@ -349,7 +349,7 @@ const FS_RULES = {
             rng: (opts.seed || 1) | 0,
             uid: 0,
             round: 1,
-            phase: 'planning',
+            phase: opts.interactiveSetup ? 'setup' : 'planning',
             firstPlayer: 0,
             turn: 0,
             players: [],
@@ -364,6 +364,7 @@ const FS_RULES = {
             winner: null,
             over: false,
             eventsLeft: 0,
+            setup: null,
         };
 
         // --- the players
@@ -419,81 +420,156 @@ const FS_RULES = {
             for (const t of mine) if (t) tiles.push({ tile: t, seat });
         }
 
-        // --- the board: the rows of the layout, the players place in turn
+        // --- the board. Online games use the actual placement phase: players take turns,
+        // choosing one of their three tiles and an adjacent empty cell. The old automatic
+        // composition remains available to rule tests and deterministic simulations.
         const rows = this.LAYOUTS[count] || this.LAYOUTS[2];
         const cells = [];
         rows.forEach((n, r) => { for (let c = 0; c < n; c++) cells.push({ row: r, col: c }); });
-        const order = [];
-        for (let i = 0; i < cells.length; i++) {
-            order.push(cells[i]);
-        }
-        // The first player places first, then clockwise.
         const seatOrder = [];
         for (let i = 0; i < count; i++) seatOrder.push((state.firstPlayer + i) % count);
-        let ti = 0;
-        for (const cell of order) {
-            const seat = seatOrder[ti % count];
-            const entry = tiles[ti];
-            ti++;
-            if (!entry) continue;
-            const sys = {
-                id: 'sys' + (state.systems.length + 1),
-                tile: entry.tile.id,
-                owner: entry.seat,
-                row: cell.row,
-                col: cell.col,
-                areas: entry.tile.areas.map(a => ({
-                    pos: a.pos,
-                    world: a.world ? {
-                        name: a.world.name,
-                        materiel: a.world.materiel,
-                        capacity: a.world.capacity,
-                        assets: a.world.assets.slice(),
-                        objective: !!a.world.objective,
-                    } : null,
-                })),
-                tokens: [],
-            };
-            state.systems.push(sys);
-            // The first tile of a player holds his initial forces.
-            if (state.players[entry.seat].placed === 0) {
-                this.placeInitialForces(state, entry.seat, sys);
-                state.players[entry.seat].placed++;
-            }
-        }
-
-        // --- the objective tokens: every player gives two tokens to every other
         for (const p of state.players) {
             p.objectivePool = [];
             for (let i = 0; i < 2 * (count - 1); i++) p.objectivePool.push(p.faction);
         }
-        for (const sys of state.systems) {
-            const owner = sys.owner;
-            const spaces = sys.areas.filter(a => a.world && a.world.objective);
-            const used = new Set();
-            for (const space of spaces) {
-                const token = this.pickObjectiveToken(state, owner, used);
-                if (!token) continue;
-                used.add(token);
-                state.objectives.push({
-                    id: this.uid(state, 'obj'),
-                    faction: token,
-                    system: sys.id,
-                    area: space.pos,
-                });
+
+        if (opts.interactiveSetup) {
+            const hands = Array.from({ length: count }, () => []);
+            for (const entry of tiles) hands[entry.seat].push(entry.tile.id);
+            const midRow = Math.floor(rows.length / 2);
+            const center = { row: midRow, col: Math.floor(rows[midRow] / 2) };
+            state.setup = {
+                slots: cells,
+                hands,
+                placedBySeat: Array(count).fill(0),
+                placedTotal: 0,
+                totalTiles: tiles.length,
+                turnOrder: seatOrder,
+                turnIndex: 0,
+                turn: seatOrder[0],
+                center,
+            };
+            this.log(state, -1, 'Сборка галактической карты: игроки по очереди выкладывают системные тайлы.');
+        } else {
+            let ti = 0;
+            for (const cell of cells) {
+                const entry = tiles[ti++];
+                if (!entry) continue;
+                const sys = this.createSystemFromTile(state, entry.tile, entry.seat, cell.row, cell.col);
+                state.systems.push(sys);
+                if (state.players[entry.seat].placed === 0) {
+                    this.placeInitialForces(state, entry.seat, sys);
+                    state.players[entry.seat].placed++;
+                }
+                this.placeSetupObjectives(state, sys);
             }
+            this.finishBoardSetup(state);
         }
 
-        // --- the warp storms: one per player, on the edges of the board
-        const edges = this.allEdges(state);
-        const shuffled = this.shuffle(state, edges);
+        return state;
+    },
+
+    createSystemFromTile(state, tile, seat, row, col) {
+        return {
+            id: 'sys' + (state.systems.length + 1),
+            tile: tile.id,
+            owner: seat,
+            row,
+            col,
+            areas: tile.areas.map(a => ({
+                pos: a.pos,
+                world: a.world ? {
+                    name: a.world.name,
+                    materiel: a.world.materiel,
+                    capacity: a.world.capacity,
+                    assets: a.world.assets.slice(),
+                    objective: !!a.world.objective,
+                } : null,
+            })),
+            tokens: [],
+        };
+    },
+
+    placeSetupObjectives(state, sys) {
+        const owner = sys.owner, used = new Set();
+        for (const area of sys.areas) {
+            if (!area.world || !area.world.objective) continue;
+            const faction = this.pickObjectiveToken(state, owner, used);
+            if (!faction) continue;
+            used.add(faction);
+            state.objectives.push({ id: this.uid(state, 'obj'), faction, system: sys.id, area: area.pos });
+        }
+    },
+
+    setupAdjacent(a, b) {
+        if (a.row === b.row) return Math.abs(a.col - b.col) === 1;
+        if (Math.abs(a.row - b.row) !== 1) return false;
+        const shift = (b.row % 2 === 1 ? 1 : 0) - (a.row % 2 === 1 ? 1 : 0);
+        const diff = b.col - a.col;
+        return diff === 0 || diff === -shift;
+    },
+
+    setupLegalCells(state) {
+        const setup = state.setup;
+        if (!setup) return [];
+        const occupied = new Set(state.systems.map(s => s.row + ':' + s.col));
+        if (!state.systems.length) return [{ row: setup.center.row, col: setup.center.col }];
+        return setup.slots.filter(cell => !occupied.has(cell.row + ':' + cell.col)
+            && state.systems.some(sys => this.setupAdjacent(sys, cell)));
+    },
+
+    cmdPlaceSystemTile(state, seat, cmd) {
+        const setup = state.setup;
+        if (state.phase !== 'setup' || !setup) return { ok: false, error: 'Сейчас не этап сборки карты.' };
+        if (setup.turn !== seat) return { ok: false, error: 'Сейчас очередь другого игрока выкладывать тайл.' };
+        const hand = setup.hands[seat] || [];
+        const tileIndex = hand.indexOf(cmd.tile);
+        if (tileIndex < 0) return { ok: false, error: 'Этого системного тайла нет у вас в руке.' };
+        const cell = { row: Number(cmd.row), col: Number(cmd.col) };
+        if (!this.setupLegalCells(state).some(c => c.row === cell.row && c.col === cell.col)) {
+            return { ok: false, error: 'Выберите пустое место рядом с уже выложенной системой.' };
+        }
+        const tile = FS_DATA.tiles.find(t => t.id === cmd.tile);
+        if (!tile) return { ok: false, error: 'Неизвестный системный тайл.' };
+        const sys = this.createSystemFromTile(state, tile, seat, cell.row, cell.col);
+        state.systems.push(sys);
+        hand.splice(tileIndex, 1);
+        if (state.players[seat].placed === 0) {
+            this.placeInitialForces(state, seat, sys);
+            state.players[seat].placed++;
+        }
+        this.placeSetupObjectives(state, sys);
+        setup.placedBySeat[seat]++;
+        setup.placedTotal++;
+        this.log(state, seat, state.players[seat].name + ' разместил систему ' + tile.id + '.');
+
+        if (setup.placedTotal >= setup.totalTiles) {
+            this.finishBoardSetup(state);
+            return { ok: true };
+        }
+        for (let step = 1; step <= setup.turnOrder.length; step++) {
+            const index = (setup.turnIndex + step) % setup.turnOrder.length;
+            const nextSeat = setup.turnOrder[index];
+            if ((setup.hands[nextSeat] || []).length) {
+                setup.turnIndex = index;
+                setup.turn = nextSeat;
+                break;
+            }
+        }
+        return { ok: true };
+    },
+
+    finishBoardSetup(state) {
+        const count = state.players.length;
+        const shuffled = this.shuffle(state, this.allEdges(state));
         for (let i = 0; i < count && i < shuffled.length; i++) {
             const e = shuffled[i];
             state.storms.push({ id: this.uid(state, 'storm'), system: e.system, side: e.side, moved: {} });
         }
-
+        state.setup = null;
+        state.phase = 'planning';
+        state.turn = state.firstPlayer;
         this.log(state, -1, 'Игра началась: раунд 1, фаза планирования.');
-        return state;
     },
 
     // The initial forces of a player on his first tile.
@@ -625,6 +701,7 @@ const FS_RULES = {
     dispatch(state, seat, cmd) {
         const type = cmd && cmd.type;
         switch (type) {
+            case 'placeSystemTile': return this.cmdPlaceSystemTile(state, seat, cmd);
             case 'placeOrder': return this.cmdPlaceOrder(state, seat, cmd);
             case 'resolveOrder': return this.cmdResolveOrder(state, seat, cmd);
             case 'moveUnits': return this.cmdMoveUnits(state, seat, cmd);
@@ -2067,6 +2144,12 @@ const FS_RULES = {
         if (copy.pending && copy.pending.question && copy.pending.question.kind === 'cards') {
             const owner = copy.pending.seat;
             if (owner !== seat) copy.pending.question.options = [];
+        }
+        if (copy.setup) {
+            copy.setup.hand = (copy.setup.hands[seat] || []).slice();
+            delete copy.setup.hands;
+            copy.setup.legalCells = this.setupLegalCells(copy);
+            copy.setup.myTurn = copy.setup.turn === seat;
         }
         copy.seat = seat;
         return copy;

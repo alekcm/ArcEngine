@@ -100,6 +100,7 @@ class Room {
         this.state = FS_RULES.newGame({
             seed: (Date.now() % 100000) + 1,
             players: this.players.map(p => ({ name: p.name, faction: p.faction })),
+            interactiveSetup: true,
         });
         this.started = true;
         return true;

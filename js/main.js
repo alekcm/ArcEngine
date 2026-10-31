@@ -32,7 +32,11 @@ function startGame() {
     // Forbidden Stars owns a dedicated board view. Do not load ArcEngine's sample mill/hero
     // underneath it; the tabletop board is the entire scene for this game.
     const isForbiddenStars = typeof FSGame !== 'undefined' && FSGame.enabled();
-    const location = new Location3D({ objects: isForbiddenStars ? [] : (typeof LOCATION_OBJECTS !== 'undefined' ? LOCATION_OBJECTS : []) });
+    const location = new Location3D({
+        objects: isForbiddenStars ? [] : (typeof LOCATION_OBJECTS !== 'undefined' ? LOCATION_OBJECTS : []),
+        // The Forbidden Stars tabletop is a level orbital plane, not the sample's rolling landscape.
+        terrainNoise: isForbiddenStars ? { amp: 0, base: 0, seed: 'forbidden-stars' } : undefined
+    });
     const camera = new CameraController(location.view, {
         terrain: location.terrain,
         bounds: { w: location.width, h: location.height }

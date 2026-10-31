@@ -127,14 +127,30 @@ test('the server: the room, the factions, the game and the commands', async t =>
     // The factions: the game starts when both have chosen.
     a.send({ t: 'faction', faction: 'некроны' });
     b.send({ t: 'faction', faction: 'имперская-гвардия' });
-    const state = await a.wait('state');
+    let state = await a.wait('state');
     assert.ok(state.view, 'the state came');
     assert.equal(state.view.players.length, 2);
     assert.equal(state.view.players[0].faction, 'некроны');
     assert.equal(state.view.seat, 0);
     // The hands of the opponent are hidden.
-    const stateB = await b.wait('state');
+    let stateB = await b.wait('state');
     assert.equal(stateB.view.seat, 1);
+    assert.equal(state.view.phase, 'setup', 'the game opens on board construction, not the first planning phase');
+
+    // Players compose the map in turn. Keep both private views current; each sees only its own tile hand.
+    while (state.view.phase === 'setup') {
+        const seat = state.view.setup.turn;
+        const client = seat === 0 ? a : b;
+        const ownView = seat === 0 ? state.view : stateB.view;
+        const tile = ownView.setup.hand[0];
+        const cell = ownView.setup.legalCells[0];
+        assert.ok(tile && cell, 'the active player has a tile and a legal cell');
+        client.send({ t: 'cmd', cmd: { type: 'placeSystemTile', tile, row: cell.row, col: cell.col } });
+        const states = await Promise.all([a.wait('state'), b.wait('state')]);
+        state = states[0]; stateB = states[1];
+        assert.equal(client === a ? state.view.seat : stateB.view.seat, seat);
+    }
+    assert.equal(state.view.phase, 'planning', 'planning follows the last tile placement');
 
     // A command: the order of the planning phase.
     const sys = state.view.systems.find(s => {
@@ -147,8 +163,8 @@ test('the server: the room, the factions, the game and the commands', async t =>
     assert.equal(tokens.length, 1);
     assert.equal(tokens[0].seat, 0);
 
-    // The command of the other player is refused (it is not his turn).
-    b.send({ t: 'cmd', cmd: { type: 'placeOrder', system: sys.id, order: 'advance' } });
+    // Setup commands are rejected once the board has entered the live game.
+    b.send({ t: 'cmd', cmd: { type: 'placeSystemTile', tile: 'not-a-tile', row: 0, col: 0 } });
     const err = await b.wait('err');
     assert.ok(err.msg, 'the error is sent');
     b.messages.length = 0;
@@ -187,6 +203,7 @@ test('the server: a whole game over the socket', async t => {
     // The interesting part of the state: it changes with every command.
     const snapshot = st => JSON.stringify([
         st.phase, st.turn,
+        st.setup ? st.setup.placedTotal + ':' + st.setup.turn : '-',
         st.order ? st.order.order + ':' + st.order.phase : '-',
         st.players.map(p => p.placedTokens || 0),
         st.event ? st.event.seat + ':' + (st.event.chosen || '') : '-',
@@ -243,6 +260,12 @@ test('the server: a whole game over the socket', async t => {
     const bot = async (client, st) => {
         const seat = st.seat;
         if (st.pending) return answerEffect(client, st);
+        if (st.phase === 'setup') {
+            if (!st.setup.myTurn) return st;
+            const cell = (st.setup.legalCells || [])[0], tile = (st.setup.hand || [])[0];
+            if (!cell || !tile) return st;
+            return run(client, { type: 'placeSystemTile', tile, row: cell.row, col: cell.col }, snapshot(st));
+        }
         if (st.phase === 'planning') {
             for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
                 const legal = st.systems.filter(x => FS_RULES.canPlaceOrder(st, seat, x.id));

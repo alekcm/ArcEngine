@@ -9,6 +9,7 @@ function fakeElement(tag) {
     return {
         tagName: tag, style: {}, dataset: {}, children: [], textContent: '', className: '',
         appendChild(c) { this.children.push(c); return c; },
+        append(...nodes) { this.children.push(...nodes); },
         removeChild(c) { this.children = this.children.filter(x => x !== c); },
         remove() { }, addEventListener() { }, removeEventListener() { },
     };
@@ -42,6 +43,7 @@ const FS_DATA = get('FS_DATA');
 const FS_RULES = get('FS_RULES');
 const FSNet = get('FSNet');
 const FSGame = get('FSGame');
+const FSUI = get('FSUI');
 
 // The network: the commands of the client are collected.
 const sent = [];
@@ -91,6 +93,19 @@ test('the client: the lobby, the state and the panels of the phases', () => {
     }), 0);
     game.onState(state);
     assert.equal(UI.get('fsLobby').visible, false);
+    // An idle board click opens the sector inspector without issuing a game command.
+    const inspectedSystem = state.systems[0];
+    scene.pick = () => ({ hit: true, pickedMesh: { metadata: { fs: 'area', system: inspectedSystem.id, pos: 'TL' } }, pickedPoint: null });
+    game.mode = 'idle';
+    game.onClick();
+    assert.equal(game.inspection.system, inspectedSystem.id);
+    assert.equal(game.inspection.pos, 'TL');
+    assert.equal(game.inspection.unit, null);
+    assert.equal(sent.some(c => c.type === 'placeOrder'), false, 'inspection does not send a command');
+    const inspector = FSUI.renderInspector(state, game.inspection);
+    const inspectorText = node => (node.textContent || '') + (node.children || []).map(inspectorText).join(' ');
+    assert.ok(inspectorText(inspector).includes(inspectedSystem.areas[0].world?.name || 'Пустотный сектор'));
+    scene.pick = () => null;
     assert.ok(UI.get('fsPhase').inner.textContent.includes('Раунд 1'));
     assert.ok(UI.get('fsPlayers').inner.textContent.includes('Игрок 1'));
     // The planning phase: the four orders.

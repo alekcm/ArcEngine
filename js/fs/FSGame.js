@@ -14,7 +14,21 @@ class FSGame {
     constructor(app) {
         this.app = app;
         this.view = FSView.create(app);
+        // Location3D may finish loading its sample terrain texture after this client starts.
+        // Re-assert the game's space material once the base scene is ready.
+        if (app.location.ready && typeof app.location.ready.then === 'function') app.location.ready.then(() => FSView.spaceGround(app));
+        else FSView.spaceGround(app);
         this.state = null;
+        this.view.onModelReady = () => {
+            if (!this.state || this.view.modelRefreshQueued) return;
+            this.view.modelRefreshQueued = true;
+            const redraw = () => {
+                this.view.modelRefreshQueued = false;
+                if (this.state) FSView.update(this.app, this.view, this.state);
+            };
+            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(redraw);
+            else setTimeout(redraw, 0);
+        };
         this.net = null;
         this.mode = 'idle';
         /** @type {any} */
@@ -22,6 +36,7 @@ class FSGame {
         /** @type {any} */
         this.lastCard = null;
         this.damageTargets = [];
+        this.inspection = null;
         this.status = '';
         this.name = '';
         this.faction = '';
@@ -64,7 +79,10 @@ class FSGame {
         if (!s || !s.systems.length) return;
         const m = this.view.metrics;
         if (!m) return;
-        this.app.camera.lookAt(m.cx, m.cy);
+        // On desktop the glass HUD occupies unequal side rails (250 px left, 356 px right).
+        // Bias the board toward the free viewport so interactive systems are not hidden underneath it.
+        const hudBias = typeof window !== 'undefined' && window.innerWidth > 980 ? 84 : 0;
+        this.app.camera.lookAt(m.cx + hudBias, m.cy);
     }
 
     // --- the connection --------------------------------------------------------
@@ -132,6 +150,7 @@ class FSGame {
         this.state = view;
         FSUI.show('fsLobby', false);
         FSView.update(this.app, this.view, view);
+        FSView.showInspection(this.app, this.view, view, this.inspection);
         this.aimCamera();
         // A new round or a new phase — the pending action is dropped.
         if (this.lastPhase !== view.phase || this.lastRound !== view.round) {
@@ -158,7 +177,7 @@ class FSGame {
             return;
         }
         const me = s.seat;
-        const ctx = { title: '', text: '', status: this.status || '', actions: [] };
+        const ctx = { title: '', text: '', status: this.status || '', actions: [], inspection: this.inspection, mode: this.mode };
         // A new order (or a new step of it) — the pending action is dropped.
         const orderKey = s.order ? s.order.order + ':' + s.order.phase : '';
         if (this.orderKey !== orderKey) {
@@ -178,6 +197,8 @@ class FSGame {
             ctx.title = 'Игра окончена';
             ctx.text = 'Побеждает: ' + (s.winner != null ? s.players[s.winner].name : '—');
             ctx.status = '';
+        } else if (s.phase === 'setup') {
+            this.panelSetup(s, ctx);
         } else if (s.phase === 'planning') {
             this.panelPlanning(s, ctx);
         } else if (s.phase === 'operations') {
@@ -204,6 +225,48 @@ class FSGame {
         // The combat.
         if (s.combat) this.panelCombat(s, ctx);
         FSUI.update(s, ctx);
+    }
+
+    // --- compose the galaxy ---------------------------------------------------
+    panelSetup(s, ctx) {
+        const setup = s.setup || {};
+        const turnPlayer = s.players[setup.turn];
+        ctx.title = 'Сборка галактической карты';
+        if (!setup.myTurn) {
+            ctx.text = 'Игрок ' + (turnPlayer ? turnPlayer.name : '—') + ' выбирает системный тайл и место на доске.';
+            ctx.status = 'Когда очередь дойдёт до вас, выберите один из оставшихся тайлов.';
+            return;
+        }
+        const hand = setup.hand || [];
+        ctx.text = 'Выберите один из своих тайлов, затем поставьте его в свободное место рядом с уже выложенной системой. Осталось выложить: ' + hand.length + '.';
+        ctx.status = this.mode === 'placeTile' ? 'Теперь нажмите на подсвеченное место на карте.' : 'Ваш ход — выберите системный тайл.';
+        hand.forEach(id => {
+            const tile = FS_DATA.tiles.find(t => t.id === id);
+            const worlds = tile ? tile.areas.filter(a => a.world).map(a => a.world.name).join(' · ') : '';
+            ctx.actions.push({
+                label: 'Система ' + id + (worlds ? ' — ' + worlds : ''),
+                onClick: () => {
+                    this.mode = 'placeTile';
+                    this.pending = { tile: id };
+                    this.highlightSetupCells();
+                    this.refresh();
+                },
+            });
+        });
+        if (this.mode === 'placeTile') ctx.actions.push({ label: 'Отменить выбор тайла', onClick: () => {
+            this.mode = 'idle'; this.pending = null; FSView.clearHighlights(this.view); this.refresh();
+        } });
+    }
+
+    highlightSetupCells() {
+        const setup = this.state && this.state.setup;
+        if (!setup || !this.view.metrics) return;
+        const cells = setup.legalCells || [];
+        const list = cells.map(cell => {
+            const p = FSView.tilePos(this.app, cell, this.view.metrics);
+            return { x: p.x, y: this.app.location.terrain.heightAt(p.x, p.y) + 14, z: p.y };
+        });
+        FSView.highlight(this.view, list);
     }
 
     // --- the planning phase ---------------------------------------------------
@@ -911,18 +974,52 @@ class FSGame {
         });
     }
 
+    inspectAt(meta, point) {
+        const state = this.state;
+        if (!state || !meta || !meta.system) return;
+        let pos = meta.pos || null;
+        if (meta.fs === 'system' && point) {
+            const system = state.systems.find(x => x.id === meta.system);
+            if (system) {
+                const center = FSView.tilePos(this.app, system, this.view.metrics);
+                pos = (point.z < center.y ? 'T' : 'B') + (point.x < center.x ? 'L' : 'R');
+            }
+        }
+        this.inspection = {
+            system: meta.system,
+            pos,
+            unit: meta.fs === 'unit' ? meta.unit : null,
+            structure: meta.fs === 'structure' ? meta.structure : null,
+            storm: meta.fs === 'storm' ? meta.side : null,
+        };
+        FSView.showInspection(this.app, this.view, state, this.inspection);
+        this.refresh();
+    }
+
     onClick() {
         const s = this.state;
-        if (!s || this.mode === 'idle') return;
+        if (!s) return;
         const scene = this.view.scene;
         const pick = scene.pick(scene.pointerX, scene.pointerY, m => !!m.metadata && !!m.metadata.fs);
         if (!pick || !pick.hit || !pick.pickedMesh) return;
         const meta = pick.pickedMesh.metadata;
         const point = pick.pickedPoint;
+        if (this.mode === 'idle') {
+            this.inspectAt(meta, point);
+            return;
+        }
         const me = s.seat;
+        if (this.mode === 'placeTile') {
+            if (s.phase !== 'setup' || !s.setup || !s.setup.myTurn || meta.fs !== 'setupCell') return;
+            this.net.cmd({ type: 'placeSystemTile', tile: this.pending.tile, row: meta.row, col: meta.col });
+            this.mode = 'idle';
+            this.pending = null;
+            FSView.clearHighlights(this.view);
+            return;
+        }
         if (this.mode === 'placeOrder') {
             // A unit or a structure also means its system.
-            if (meta.fs !== 'system' && meta.fs !== 'unit' && meta.fs !== 'structure') return;
+            if (meta.fs !== 'system' && meta.fs !== 'area' && meta.fs !== 'unit' && meta.fs !== 'structure') return;
             this.net.cmd({ type: 'placeOrder', system: meta.system, order: this.pending.order });
             this.mode = 'idle';
             this.pending = null;
