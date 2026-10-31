@@ -2,7 +2,7 @@
 
 import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
     NOISE_DIE, roll, fmtRoll, needDice, fx, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
-    clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt } from './core.mjs';
+    clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt, inCombat } from './core.mjs';
 import { hyperAttackStep } from './intruders.mjs';
 import { applyHitsNoRoll, resolveFollows } from './combat.mjs';
 import { ROOM_TILES } from '../ship.mjs';
@@ -153,7 +153,12 @@ OPS['noise.place'] = (state, step) => {
 /** noise.roll { player, room } — the standard Noise roll in `room` for `player`. */
 OPS['noise.roll'] = (state, step) => {
     const p = player(state, step.player);
+    if (!p || p.status !== 'active' || p.pod) return;
     const roomId = step.room || p.room;
+    if (inCombat(state, p)) {
+        log(state, pname(p) + ' в бою — бросок шума не делается.', 'minor');
+        return;
+    }
     if (needDice(state, step, 'noise', p.id, 'Бросок шума — ' + (step.laika ? 'Лайка, ' : '') + roomName(state, roomId), { room: roomId })) return;
     const r = step.forced !== undefined ? step.forced : roll(state, NOISE_DIE);
     log(state, '🎲 Шум (' + (step.laika ? '🐕 Лайка' : pname(p)) + ', ' + roomName(state, roomId) + '): ' + fmtRoll(r) + '.', 'noise');
@@ -226,6 +231,11 @@ OPS['predict.danger'] = (state, step) => {
 };
 OPS['encounter'] = (state, step) => {
     const roomId = step.room;
+    const p = step.player !== undefined ? player(state, step.player) : null;
+    if (p && step.reason && step.reason.startsWith('Событие') && inCombat(state, p)) {
+        log(state, pname(p) + ' в бою — встреча по событию не происходит.', 'minor');
+        return;
+    }
     clearNoiseAround(state, roomId);
     // The token is pulled out of the bag by the player themselves (table flow, state.ui.bagClick).
     if (step.token === undefined) {
@@ -252,7 +262,6 @@ OPS['encounter'] = (state, step) => {
     const it = spawnIntruder(state, token, roomId);
     if (!it) { afterNoIntruder(state, roomId); return; }
     if (token === 'queen' && !state.queenOnBoardOnce) state.queenOnBoardOnce = true;
-    const p = step.player !== undefined ? player(state, step.player) : null;
     // Reaction: Predictable Movements — the placed intruder takes 1 hit
     const holder = playersInRoom(state, roomId).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
     if (holder && !step.noPredict) {

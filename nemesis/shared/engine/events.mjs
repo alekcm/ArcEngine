@@ -239,17 +239,19 @@ OPS['event.noise'] = (state, step) => {
     // [Encounter] in turn order», not «makes a Noise roll»:
     //  * no Action cards in hand (Bulkheads Open, Damaging Fire, On the Hunt, System Failure);
     //  * a Room with Malfunction or Fire (Damage, Short Circuit).
-    // The card prints no exception for Characters already in Combat, so there is none here either.
+    // Characters already in Combat (intruders present in room) do NOT resolve Encounters or Noise rolls.
     const encounters = [];
     if (ev.noise === 'noCards') {
         for (const p of turnOrder(state)) {
             if (p.status !== 'active' || p.pod) continue;
+            if (inCombat(state, p)) continue;
             if (p.hand.some(c => !String(c).startsWith('contam#'))) continue;   // Contamination is not an Action card
             encounters.push({ op: 'encounter', room: p.room, player: p.id, reason: 'Событие «' + ev.name + '»: в руке нет карт действий' });
         }
     } else if (ev.noise === 'fireMalf') {
         for (const p of turnOrder(state)) {
             if (p.status !== 'active' || p.pod) continue;
+            if (inCombat(state, p)) continue;
             const rs = room(state, p.room);
             if (!rs.fire && !rs.malfunction) continue;
             encounters.push({ op: 'encounter', room: p.room, player: p.id, noSurprise: false,
@@ -261,7 +263,7 @@ OPS['event.noise'] = (state, step) => {
     for (const p of turnOrder(state)) {
         if (p.status !== 'active' || p.pod) continue;
         const crowded = ev.noise === 'all' && playersInRoom(state, p.room).length >= 3;   // 7.8 overcrowding
-        if (inCombat(state, p) && !crowded) continue;
+        if (inCombat(state, p) || crowded) continue;
         if (ev.noise !== 'all') continue;   // everything else has been answered above, as Encounters
         const dev = p.items.find(i => ITEMS[i.item].perimeter && i.ammo > 0 && !i.broken);
         // Reactions that skip the roll: Risk Prevention (Field Data), Inconspicuous (Lab Rat), Perimeter device

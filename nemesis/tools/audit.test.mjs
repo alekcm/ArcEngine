@@ -633,6 +633,23 @@ test('EVENT-03 / Bulkheads Open: no Action cards means Encounter, NOT a Noise ro
     OPS['event.noise'](s, { id: 'bulkheadsOpen' });
     assert.ok(s.queue.some(step => step.op === 'encounter'), 'Event must schedule an Encounter rather than a Noise roll');
 });
+test('EVENT-03b / Event phase: Character in Combat does NOT resolve Encounter (noCards or fireMalf)', () => {
+    const s = fresh(), p = s.players[0]; p.hand = []; s.players[1].status = 'dead';
+    intruder(s, 'adult', p.room);
+    OPS['event.noise'](s, { id: 'bulkheadsOpen' });
+    assert.equal(s.queue.some(step => step.op === 'encounter'), false, 'In Combat: Bulkheads Open must NOT schedule an Encounter');
+
+    s.queue = [];
+    s.roomState[p.room].malfunction = true;
+    OPS['event.noise'](s, { id: 'damage' });
+    assert.equal(s.queue.some(step => step.op === 'encounter'), false, 'In Combat: Damage must NOT schedule an Encounter');
+});
+test('EVENT-03c / Event phase: Character in Combat does NOT roll Noise', () => {
+    const s = fresh(), p = s.players[0]; s.players[1].status = 'dead';
+    intruder(s, 'adult', p.room);
+    OPS['event.noise'](s, { id: 'breakingIn' });
+    assert.equal(s.queue.some(step => step.op === 'noise.roll'), false, 'In Combat: Breaking In must NOT schedule a Noise roll');
+});
 test('EVENT-04 / Bulkheads Open: a hand of only Contamination has NO Action cards', () => {
     const s = fresh(); s.players[0].hand = ['contam#1']; s.players[1].status = 'dead';
     OPS['event.noise'](s, { id: 'bulkheadsOpen' });
