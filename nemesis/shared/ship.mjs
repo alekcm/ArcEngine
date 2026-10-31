@@ -548,15 +548,15 @@ function tryRandomShip(holder) {
         }
     }
 
-    // 3. Target density: varied corridor network size (25 to 34 corridors)
-    const targetGroups = 13 + randInt(holder, 6);
+    // 3. Target density: varied corridor network size (strictly <= 30 corridors)
+    const targetMaxCorridors = 24 + randInt(holder, 7); // 24 to 30
 
     const remaining = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !addedGroups.has(g.id));
     shuffle(holder, remaining);
     remaining.sort((a, b) => (b.weight + rand(holder) * 0.4) - (a.weight + rand(holder) * 0.4));
 
     for (const g of remaining) {
-        if (addedGroups.size >= targetGroups) break;
+        if (selectedEdges.length + g.edges.length > targetMaxCorridors) continue;
         addGroup(g);
     }
 
@@ -567,11 +567,15 @@ function tryRandomShip(holder) {
         if (deg[id] < 2) {
             const candidates = SYMMETRIC_CANDIDATE_GROUPS.filter(g => !addedGroups.has(g.id) && g.edges.some(([a, b]) => a === id || b === id));
             for (const g of candidates) {
-                if (addGroup(g)) break;
+                if (selectedEdges.length + g.edges.length <= 30) {
+                    if (addGroup(g)) break;
+                }
             }
         }
         if (deg[id] < 2) return null;
     }
+
+    if (selectedEdges.length > 30) return null;
 
     // 5. Verify graph connectivity across all 21 rooms
     const adj = {};
