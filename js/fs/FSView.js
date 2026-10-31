@@ -72,7 +72,7 @@ const FSView = {
             ring.material = view.material('hl', '#ffd479', { emissive: true });
             ring.isPickable = false;
             ring.setEnabled(false);
-            World3D.addObject(app.location.view, ring, 'prop', { castShadow: false });
+            World3D.addObject(app.location.view, ring, 'prop', { castShadow: false, outline: false });
             view.highlights.push(ring);
         }
         view.inspectionRing = BABYLON.MeshBuilder.CreateTorus('fs-inspection-ring', { diameter: 82, thickness: 1.6, tessellation: 48 }, view.scene);
@@ -161,23 +161,23 @@ const FSView = {
         const base = BABYLON.MeshBuilder.CreateBox('fs-tile-' + sys.id, { width: this.TILE - 6, depth: this.TILE - 6, height: 8 }, view.scene);
         base.position.set(p.x, h + 2, p.y);
         base.material = view.material('tileBase', '#1b2530');
-        World3D.addObject(app.location.view, base, 'prop');
+        World3D.addObject(app.location.view, base, 'prop', { outline: false });
         base.isPickable = true;
         base.metadata = { fs: 'system', system: sys.id };
 
         const tex = new BABYLON.DynamicTexture('fs-tex-' + sys.id, { width: 512, height: 512 }, view.scene, true);
         tex.hasAlpha = false;
-        // Babylon's Ground UVs run in the opposite horizontal direction from the printed tile.
-        // Flip U once here so every label, world and asset reads left-to-right in the camera view.
-        tex.uScale = -1;
-        tex.uOffset = 1;
+        // DynamicTexture is vertically inverted when uploaded. Flip V so the
+        // printed quadrants match the world-space areaPos and picking geometry.
+        tex.vScale = -1;
+        tex.vOffset = 1;
         const mat = new BABYLON.StandardMaterial('fs-tile-mat-' + sys.id, view.scene);
         mat.diffuseTexture = tex;
         mat.specularColor = new BABYLON.Color3(0, 0, 0);
         const top = BABYLON.MeshBuilder.CreateGround('fs-top-' + sys.id, { width: this.TILE - 6, height: this.TILE - 6 }, view.scene);
         top.position.set(p.x, h + 6.5, p.y);
         top.material = mat;
-        World3D.addObject(app.location.view, top, 'prop');
+        World3D.addObject(app.location.view, top, 'prop', { outline: false });
         top.isPickable = true;
         top.metadata = { fs: 'system', system: sys.id };
 
@@ -461,7 +461,7 @@ const FSView = {
     },
 
     updatePlanets(app, view, state) {
-        const active = new Set(), ground = app.location.terrain.heightAt;
+        const active = new Set(), ground = (x, y) => app.location.terrain.heightAt(x, y);
         for (const sys of state.systems) for (const area of sys.areas) {
             if (!area.world) continue;
             const key = sys.id + ':' + area.pos, name = area.world.name;
@@ -474,7 +474,7 @@ const FSView = {
                 mesh.material = mats.surface; mesh.isPickable = true;
                 const metadata = { fs: 'area', system: sys.id, pos: area.pos, world: name };
                 mesh.metadata = metadata;
-                World3D.addObject(app.location.view, mesh, 'prop', { castShadow: true, ink: false, outline: true });
+                World3D.addObject(app.location.view, mesh, 'prop', { castShadow: true, ink: false, outline: false });
                 mesh.metadata = Object.assign({}, mesh.metadata, metadata);
                 const clouds = BABYLON.MeshBuilder.CreateSphere('fs-world-clouds-' + key, { diameter: diameter * 1.025, segments: 24 }, view.scene);
                 clouds.material = mats.clouds; clouds.isPickable = false;
@@ -521,7 +521,7 @@ const FSView = {
                         width: this.TILE - 12, depth: this.TILE - 12, height: 2,
                     }, view.scene);
                     mesh.position.set(p.x, app.location.terrain.heightAt(p.x, p.y) + 1, p.y);
-                    World3D.addObject(app.location.view, mesh, 'prop', { castShadow: false });
+                    World3D.addObject(app.location.view, mesh, 'prop', { castShadow: false, outline: false });
                     mesh.metadata = { fs: 'setupCell', row: cell.row, col: cell.col };
                     view.setupSlots.set(key, mesh);
                 }
@@ -553,7 +553,9 @@ const FSView = {
     },
 
     addMarker(view, mesh, kind) {
-        World3D.addObject(view.app.location.view, mesh, kind || 'actor');
+        // HighlightLayer's stencil mask floods these overlapping tabletop meshes.
+        // Keep the ink edges but don't obscure the miniatures with silhouette masks.
+        World3D.addObject(view.app.location.view, mesh, kind || 'actor', { outline: false });
         view.markers.push({ mesh });
         return mesh;
     },
@@ -618,7 +620,11 @@ const FSView = {
         const spec = specs[faction] && specs[faction][unitType];
         const loader = typeof BABYLON !== 'undefined' && /** @type {any} */ (BABYLON.SceneLoader);
         if (!spec || !loader || !loader.ImportMeshAsync) { view.modelCache.set(key, null); return null; }
-        const imported = loader.ImportMeshAsync('', spec[0], spec[1], view.scene);
+        // All imported meshes receive our faction material, so OBJ material files are
+        // unnecessary (and several of the source models reference missing .mtl files).
+        const imported = typeof BABYLON.ImportMeshAsync === 'function'
+            ? BABYLON.ImportMeshAsync(spec[1], view.scene, { rootUrl: spec[0], pluginOptions: { obj: { skipMaterials: true } } })
+            : loader.ImportMeshAsync('', spec[0], spec[1], view.scene);
         if (!imported || typeof imported.then !== 'function') { view.modelCache.set(key, null); return null; }
         const promise = imported.then(result => {
             const root = new BABYLON.TransformNode('fs-model-' + faction, view.scene);
@@ -732,7 +738,7 @@ const FSView = {
         this.updatePlanets(app, view, state);
         // The markers.
         this.clearMarkers(view);
-        const h = app.location.terrain.heightAt;
+        const h = (x, y) => app.location.terrain.heightAt(x, y);
         // The units.
         const byArea = new Map();
         for (const u of state.units) {

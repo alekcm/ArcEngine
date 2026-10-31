@@ -23,6 +23,26 @@ const FSUI = {
         this.modernRoot = root;
         root.className = 'fs-shell' + (window.innerWidth < 850 || IS_MOBILE ? ' is-mobile' : '');
         document.body.appendChild(root);
+        // Keep the pressed button alive until the browser dispatches its click.
+        // A remote state can arrive between pointerdown and pointerup.
+        root.addEventListener('pointerdown', e => {
+            const target = /** @type {Element | null} */ (e.target);
+            if (target && target.closest && target.closest('button')) this.pressedPointer = e.pointerId;
+        });
+        const release = e => {
+            if (this.pressedPointer !== e.pointerId) return;
+            this.pressedPointer = null;
+            setTimeout(() => {
+                const pending = this.deferredRender;
+                this.deferredRender = null;
+                if (pending) this.renderModern(pending.state, pending.ctx);
+            }, 0);
+        };
+        window.addEventListener('pointerup', release);
+        window.addEventListener('pointercancel', release);
+        window.addEventListener('blur', () => {
+            if (this.pressedPointer != null) release({ pointerId: this.pressedPointer });
+        });
         window.addEventListener('resize', () => {
             if (this.modernRoot) this.modernRoot.classList.toggle('is-mobile', window.innerWidth < 850 || IS_MOBILE);
         });
@@ -39,6 +59,11 @@ const FSUI = {
     renderModern(state, ctx) {
         const root = this.modernRoot;
         if (!root) return;
+        if (this.pressedPointer != null) {
+            this.deferredRender = { state, ctx };
+            return;
+        }
+        this.deferredRender = null;
         const stageKey = state && state.setup ? [state.setup.stage, state.setup.turn, state.setup.currentSystem].join(':') : '';
         const previousActions = root.querySelector ? root.querySelector('.fs-actions') : null;
         const scrollTop = this.actionStage === stageKey && previousActions ? previousActions.scrollTop : 0;
