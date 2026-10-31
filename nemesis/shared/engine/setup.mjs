@@ -160,7 +160,7 @@ function assignCharacter(state, p, charId) {
     for (const key of Object.keys(ch.cards)) p.deck.push(charId + '.' + key + '#0');
     for (const s of ch.startItems) {
         const def = ITEMS[s.item];
-        const inst = { uid: 'it' + (++state.itemSeq), item: s.item, ammo: def.weapon ? (s.ammo ?? def.weapon.max) : undefined, broken: false, charge: def.markers, start: true };
+        const inst = { uid: 'it' + (++state.itemSeq), item: s.item, ammo: def.weapon ? (s.ammo !== undefined ? Math.min(s.ammo, def.weapon.max) : def.weapon.max) : undefined, broken: false, charge: def.markers, start: true };
         if (def.kind === 'armor') p.armor = inst; else p.items.push(inst);
         if (s.item === 'laika') p.laika = 'board';
     }

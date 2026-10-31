@@ -414,7 +414,7 @@ export const CHARACTERS = {
             { id: 'gloves', label: 'Перчатки',      presets: ['#2d3436', '#6b4f3a', '#7f8c8d', '#1c1c1c'] },
             { id: 'visor',  label: 'Монокль',       presets: ['#3bff7a', '#3bb8ff', '#ffd23b', '#ff3b3b'] },
         ],
-        startItems: [{ item: 'pilotShotgun', ammo: 3 }], questItems: ['pilotEvacKey'],
+        startItems: [{ item: 'pilotShotgun', ammo: 2 }], questItems: ['pilotEvacKey'],
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, noCombat: true, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition,
@@ -434,7 +434,7 @@ export const CHARACTERS = {
             { id: 'gear',   label: 'Снаряжение',    presets: ['#8c96a0', '#c9a227', '#7f8c8d', '#2d3436'] },
             { id: 'lights', label: 'Подсветка',     presets: ['#3bff7a', '#3bb8ff', '#ffd23b', '#ff3bd1'] },
         ],
-        startItems: [{ item: 'smartGun', ammo: 2 }], questItems: ['cheatCodes'],
+        startItems: [{ item: 'smartGun', ammo: 3 }], questItems: ['cheatCodes'],
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, noCombat: true, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition, interruption: COMMON_CARDS.interruption,
@@ -476,7 +476,7 @@ export const CHARACTERS = {
             { id: 'pants',  label: 'Брюки',         presets: ['#2d3436', '#4b3d2a', '#3b2f4a', '#555'] },
             { id: 'lights', label: 'Индикаторы',    presets: ['#ff3b3b', '#3bff7a', '#3bb8ff', '#ff3bd1'] },
         ],
-        startItems: [{ item: 'needleGun', ammo: 3 }], questItems: ['surgeryKit'],
+        startItems: [{ item: 'needleGun', ammo: 2 }], questItems: ['surgeryKit'],
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, noCombat: true, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition,
@@ -498,7 +498,7 @@ export const CHARACTERS = {
             { id: 'gear',   label: 'Пылесос',       presets: ['#3a424b', '#7f8c8d', '#c0392b', '#2c3e50'] },
             { id: 'lights', label: 'Индикаторы',    presets: ['#ffd23b', '#3bff7a', '#3bb8ff', '#ff3b3b'] },
         ],
-        startItems: [{ item: 'nailGun', ammo: 3 }], questItems: ['karcher'],
+        startItems: [{ item: 'nailGun', ammo: 5 }], questItems: ['karcher'],
         cards: {
             cleanUp: { name: 'Уборка', cost: 1, noCombat: true, effect: 'cleanUp', text: 'Уберите поломку в вашей комнате. ИЛИ уберите огонь в вашей комнате.' },
             demolition: COMMON_CARDS.demolition,
@@ -544,7 +544,7 @@ export const CHARACTERS = {
             { id: 'bandage',label: 'Повязка',       presets: ['#dfe6ee', '#c9a227', '#7f8c8d'] },
             { id: 'lights', label: 'Импланты',      presets: ['#ff3bd1', '#3bb8ff', '#3bff7a', '#ff3b3b'] },
         ],
-        startItems: [{ item: 'labRatGun', ammo: 4 }], questItems: ['bloodyCamouflage'],
+        startItems: [{ item: 'labRatGun', ammo: 3 }], questItems: ['bloodyCamouflage'],
         cards: {
             demolition: COMMON_CARDS.demolition,
             feelOfDark: { name: 'Чувство темноты', cost: 1, effect: 'feelOfDark', text: 'Сбросьте ещё 1 карту: переместитесь без броска шума, предотвратив 1 атаку чужого.' },

@@ -815,6 +815,24 @@ test('START-08 / every starting weapon carries the printed MAX AMMO', () => {
     assert.equal(ITEMS.armGun.weapon.noAmmo, true);
     assert.equal(ITEMS.armGun.noDrop, true, 'the Arm Gun cannot be traded or discarded');
 });
+test('START-08b / every character starts with weapon loaded to full capacity (neither under- nor overloaded)', () => {
+    for (const [charId, ch] of Object.entries(CHARACTERS)) {
+        for (const si of ch.startItems) {
+            const def = ITEMS[si.item];
+            if (def.weapon && !def.weapon.noAmmo) {
+                assert.equal(si.ammo, def.weapon.max, charId + ' weapon ' + si.item + ' startItems ammo must equal max ' + def.weapon.max);
+            }
+        }
+        const s = createGame({ seed: 'ammo-' + charId, players: [{ name: 'P1', charId }, { name: 'P2', charId: charId === 'soldier' ? 'scout' : 'soldier' }] });
+        const p = s.players[0];
+        for (const it of p.items) {
+            const def = ITEMS[it.item];
+            if (def.weapon && !def.weapon.noAmmo) {
+                assert.equal(it.ammo, def.weapon.max, charId + ' weapon in game ' + it.item + ' ammo must equal max ' + def.weapon.max);
+            }
+        }
+    }
+});
 test('START-09 / the printed Shoot effects that the engine models', () => {
     assert.equal(ITEMS.soldierGun.weapon.firstShotBonus, true);
     assert.equal(ITEMS.sawedOff.weapon.firstShotBonus, true);
