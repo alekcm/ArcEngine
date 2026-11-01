@@ -20,7 +20,7 @@ const noMalf = (state, p) => !room(state, p.room).malfunction;
 const others = (state, p, roomId) => state.players.filter(o => o.id !== p.id && o.status === 'active' && o.room === roomId && !o.pod);
 const neighbours = (state, roomId) => state.ship.rooms[roomId].exits.map(e => e.to);
 const unexploredOpts = state => Object.keys(state.ship.rooms).filter(r => !room(state, r).explored).map(r => ({ id: 'peek:' + r, label: 'Посмотреть тайл комнаты ' + r }));
-const markers = (p, key) => p.items.find(i => i.item === key);
+const markers = (p, key) => p.items.find(i => i.item === key) || (p.quests || []).find(q => q.item === key);
 
 /** Shared "peek:xxx" resolver — reveals the tile to the player only. */
 function peek(state, p, roomId, then) {
@@ -552,11 +552,16 @@ OPS['card.powerUp'] = (state, step) => {
     for (const i of p.items.filter(i => i.item === 'energyCharge')) opts.push({ id: 'en:' + i.uid, label: 'Сбросить «Энергозаряд»: +2 жетона ИБП' });
     choice(state, p, 'Подзарядка', opts, 'card.powerUp.pick');
 };
+const syncUps = (p, charge) => {
+    const q = (p.quests || []).find(x => x.item === 'ups'); if (q) q.charge = charge;
+    const it = p.items.find(x => x.item === 'ups'); if (it) it.charge = charge;
+};
 OPS['card.powerUp.pick'] = (state, step) => {
     const p = player(state, step.player); const u = upsOf(p);
-    if (step.answer === 'malf') { placeMalfunction(state, p.room, 'андроид'); if (u) u.charge = (u.charge ?? ITEMS.ups.markers) + 1; }
-    else { const inst = p.items.find(i => i.uid === step.answer.slice(3)); if (inst) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard[ITEMS[inst.item].deck] = state.itemDiscard[ITEMS[inst.item].deck] || []).push(inst.item); } if (u) u.charge = (u.charge ?? ITEMS.ups.markers) + 2; }
-    if (u) log(state, 'ИБП: ' + u.charge + ' жетонов.', 'good');
+    const max = (p.items.some(i => i.item === 'ups') || (p.quests || []).some(q => q.item === 'ups' && q.open)) ? (ITEMS.ups.markersMax || 5) : ITEMS.ups.markers;
+    if (step.answer === 'malf') { placeMalfunction(state, p.room, 'андроид'); if (u) u.charge = Math.min(max, (u.charge ?? ITEMS.ups.markers) + 1); }
+    else { const inst = p.items.find(i => i.uid === step.answer.slice(3)); if (inst) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard[ITEMS[inst.item].deck] = state.itemDiscard[ITEMS[inst.item].deck] || []).push(inst.item); } if (u) u.charge = Math.min(max, (u.charge ?? ITEMS.ups.markers) + 2); }
+    if (u) { syncUps(p, u.charge); log(state, 'ИБП: ' + u.charge + ' жетонов.', 'good'); }
     next(state, BACK);
 };
 OPS['card.protocolOverride'] = (state, step) => {
@@ -568,7 +573,7 @@ OPS['card.protocolOverride'] = (state, step) => {
 };
 OPS['card.protocolOverride.pick'] = (state, step) => {
     const p = player(state, step.player); const u = upsOf(p);
-    if (u) u.charge = (u.charge ?? ITEMS.ups.markers) - 1;
+    if (u) { u.charge = (u.charge ?? ITEMS.ups.markers) - 1; syncUps(p, u.charge); }
     if (step.answer === 'coords') {
         const other = COORDINATE_CARDS.filter(c => c.id !== state.secret.coordinates);
         state.secret.coordinates = other[Math.floor(state.time) % other.length].id;

@@ -175,13 +175,13 @@ function assignCharacter(state, p, charId) {
     }
     // Quest items are not starting gear: the card lies closed on the character's sheet and is
     // flipped open by an Action (stand in the room printed on it and discard 1 marker, or let the
-    // Tools card do it anywhere). The android's UPS is the one card that is already open.
+    // Tools card do it anywhere).
     for (const key of ch.questItems || []) {
         const def = ITEMS[key];
         const inst = { uid: 'it' + (++state.itemSeq), item: key, ammo: def.weapon ? def.weapon.max : undefined,
             broken: false, charge: def.markers, start: true, quest: true };
         if (def.questOpen) { if (def.kind === 'armor') p.armor = inst; else p.items.push(inst); }
-        else p.quests.push({ uid: inst.uid, item: key, open: false });
+        else p.quests.push({ uid: inst.uid, item: key, open: false, charge: def.markers });
     }
 }
 OPS['setup.finish'] = (state) => {

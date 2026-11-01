@@ -487,10 +487,13 @@ OPS['quest.open'] = (state, step) => {
         }
     }
     q.open = true;
-    const inst = { uid: q.uid, item: q.item, ammo: def.weapon ? def.weapon.max : undefined, broken: false, charge: def.markers, start: true, quest: true };
+    const currentCharge = q.charge !== undefined ? q.charge : def.markers;
+    const newCharge = q.item === 'ups' ? Math.min(def.markersMax || 5, currentCharge + 2) : currentCharge;
+    q.charge = newCharge;
+    const inst = { uid: q.uid, item: q.item, ammo: def.weapon ? def.weapon.max : undefined, broken: false, charge: newCharge, start: true, quest: true };
     if (def.kind === 'armor' && !p.armor) p.armor = inst;
     else p.items.push(inst);        // a second armor-slot card is carried in the pack until the slot frees up
-    log(state, pname(p) + ' открывает квестовый предмет «' + def.name + '».', 'good');
+    log(state, pname(p) + ' открывает квестовый предмет «' + def.name + '»' + (q.item === 'ups' ? ' (+2 жетона ИБП, всего ' + newCharge + ')' : '') + '.', 'good');
     next(state, back);
 };
 OPS['quest.payGreen'] = (state, step) => {

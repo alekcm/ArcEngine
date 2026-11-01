@@ -180,3 +180,58 @@ test('DIFF-02: Noise die variant replaces encounters with +1 noise and +1 silenc
     const html = fs.readFileSync('nemesis/client/index.html', 'utf8');
     assert.match(html, /id="noiseDieSelect"/, 'noiseDieSelect present in hostSettings');
 });
+
+test('ANDROID-QUEST-01: Android UPS is in quest items and activates in Generator room', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const engine = await import('../shared/engine/core.mjs');
+    await import('../shared/engine/items.mjs');
+    await import('../shared/engine/turn.mjs');
+
+    const state = createGame({ seed: 'and-quest-test', players: [{ name: 'And', charId: 'android' }] });
+    const p = state.players[0];
+
+    // 1. Check starting state
+    assert.ok(p.quests.some(q => q.item === 'ups' && !q.open), 'UPS is in quest items as closed');
+    assert.ok(!p.items.some(i => i.item === 'ups'), 'UPS is not in backpack items initially');
+    const q = p.quests.find(q => q.item === 'ups');
+    assert.equal(q.charge, 3, 'UPS starts with 3 charges');
+
+    // 2. In non-generator room (e.g. Hibernatorium), quest action cannot be performed
+    p.room = '011'; // Hibernatorium
+    p.hand = ['android.alwaysPrepared#0', 'android.computerSkills#0', 'android.deactivation#0', 'android.fastRepairs#0', 'android.powerUp#0'];
+    state.prompt = null;
+    state.queue = [{ op: 'turn.choose' }];
+    engine.run(state);
+
+    assert.ok(state.prompt, 'Turn prompt is displayed');
+    const questActionNonGen = state.prompt.actions.find(a => a.id === 'quest');
+    assert.ok(questActionNonGen, 'Quest action listed in menu');
+    assert.equal(questActionNonGen.enabled, false, 'Quest action disabled outside Generator');
+    assert.match(questActionNonGen.reason, /Генератор/, 'Reason mentions Generator');
+
+    // 3. Move Android to Generator room
+    // Find Generator room in ship (from secret.tiles and reveal it)
+    const genRoomId = Object.entries(state.secret.tiles).find(([, tile]) => tile === 'generator')[0];
+    assert.ok(genRoomId, 'Generator room exists on ship');
+    state.roomState[genRoomId].explored = true;
+    state.roomState[genRoomId].tile = 'generator';
+    p.room = genRoomId;
+
+    state.prompt = null;
+    state.queue = [{ op: 'turn.choose' }];
+    engine.run(state);
+
+    const questActionGen = state.prompt.actions.find(a => a.id === 'quest');
+    assert.ok(questActionGen, 'Quest action listed in Generator');
+    assert.equal(questActionGen.enabled, true, 'Quest action enabled in Generator');
+
+    // 4. Activate quest item in Generator
+    const ansOk = engine.answer(state, p.id, state.prompt.id, { action: 'quest' });
+    assert.equal(ansOk, true, 'Turn answer accepted');
+
+    assert.equal(q.open, true, 'UPS quest card is now open');
+    assert.equal(q.charge, 5, 'UPS charges increased by +2 to 5');
+    const openedUps = p.items.find(i => i.item === 'ups');
+    assert.ok(openedUps, 'UPS is now in active player items');
+    assert.equal(openedUps.charge, 5, 'Active UPS has 5 charges');
+});

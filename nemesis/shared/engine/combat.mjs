@@ -525,8 +525,13 @@ OPS['shoot.fire'] = (state, step) => {
     if (wd.spreadChars) for (const o of playersInRoom(state, p.room)) if (o.id !== p.id && o.status === 'active') gainWound(state, o, 1);
     // Android Arm Gun (printed): on a 2 or a Critical, discard 1 marker from your UPS.
     if (wd.upsOn && wd.upsOn.includes(rolled)) {
-        const ups = p.items.find(i => i.item === 'ups');
-        if (ups) { ups.charge = Math.max(0, (ups.charge ?? ITEMS.ups.markers) - 1); log(state, 'Ручная пушка: с ИБП сброшен 1 жетон (осталось ' + ups.charge + ').', 'minor'); }
+        const ups = p.items.find(i => i.item === 'ups') || (p.quests || []).find(i => i.item === 'ups');
+        if (ups) {
+            ups.charge = Math.max(0, (ups.charge ?? ITEMS.ups.markers) - 1);
+            const q = (p.quests || []).find(x => x.item === 'ups'); if (q) q.charge = ups.charge;
+            const it = p.items.find(x => x.item === 'ups'); if (it) it.charge = ups.charge;
+            log(state, 'Ручная пушка: с ИБП сброшен 1 жетон (осталось ' + ups.charge + ').', 'minor');
+        }
     }
     if (step.repeat && state.intruders[it.uid] === undefined && w.ammo > 0 && intrudersIn(state, p.room).length) { next(state, { ...step, op: 'shoot.target', answer: undefined }); return; }
     if (step.repeat && state.intruders[it.uid] !== undefined && w.ammo > 0) { next(state, { ...step, op: 'shoot.fire' }); return; }

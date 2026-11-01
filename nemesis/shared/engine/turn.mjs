@@ -178,7 +178,7 @@ function cardRequirement(state, p, d) {
         case 'synthesizedDrugs': return tile && ROOM_TILES[tile].items.includes('green') && !rs.malfunction && !rs.fire ? '' : 'Нужна зелёная комната без поломки и огня';
         case 'fieldSurgery': return state.players.some(o => o.status === 'active' && o.room === p.room && o.wounds.length) ? '' : 'Нет тяжёлых травм';
         case 'weirdMetabolism': return p.hand.some(isContam) || rs.objects.length ? '' : 'Нет заражения и объектов';
-        case 'protocolOverride': { const u = p.items.find(i => i.item === 'ups'); return u && (u.charge ?? 0) > 0 ? '' : 'Нет жетонов ИБП'; }
+        case 'protocolOverride': { const u = p.items.find(i => i.item === 'ups') || (p.quests || []).find(i => i.item === 'ups'); return u && (u.charge ?? 0) > 0 ? '' : 'Нет жетонов ИБП'; }
         case 'emotionScanner': case 'lendAHand': case 'command': case 'wouldYouKindly': return '';
         default: return '';
     }

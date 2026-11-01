@@ -269,10 +269,12 @@ export function drawCards(state, p, n, silent) {
         if (!p.deck.length) {
             if (!p.discard.length) break;
             // Android UPS: every reshuffle spends one marker; with no markers left the Android dies.
-            const ups = p.charId === 'android' ? p.items.find(x => x.item === 'ups') : null;
+            const ups = p.charId === 'android' ? (p.items.find(x => x.item === 'ups') || (p.quests || []).find(x => x.item === 'ups')) : null;
             if (ups) {
                 const left = (ups.charge ?? ITEMS.ups.markers) - 1;
                 ups.charge = Math.max(0, left);
+                const q = (p.quests || []).find(x => x.item === 'ups'); if (q) q.charge = ups.charge;
+                const it = p.items.find(x => x.item === 'ups'); if (it) it.charge = ups.charge;
                 if (left < 0) { killPlayer(state, p, 'ИБП разряжен при перемешивании колоды'); break; }
                 log(state, pname(p) + ': ИБП расходует жетон при перемешивании (осталось ' + ups.charge + ').', 'minor');
             }

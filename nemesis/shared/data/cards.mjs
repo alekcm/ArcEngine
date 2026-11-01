@@ -259,9 +259,8 @@ export const ITEMS = {
 
     // --- quest items (Quest Item Deck) ---
     // `questRoom` is the activation room, `slot` is what the card becomes once it is open.
-    // The UPS is the one card that starts open.
-    ups:         { deck: 'start', count: 0, name: 'ИБП андроида', quest: true, slot: 'passive', questRoom: 'any', questOpen: true, use: null, markers: 3, markersMax: 5,
-                   text: 'Квестовый предмет андроида, открыт с начала игры: 3 жетона. После переворота добавьте 2 жетона, максимум ИБП становится 5. Пассивно: при каждом перемешивании своей колоды сбрасывайте 1 жетон; если сбрасывать нечего — андроид погибает.' },
+    ups:         { deck: 'start', count: 0, name: 'ИБП андроида', quest: true, slot: 'passive', questRoom: 'generator', use: null, markers: 3, markersMax: 5,
+                   text: 'Квестовый предмет андроида. Активация: комната «Генератор». На старте: 3 жетона. После активации добавьте 2 жетона (максимум ИБП становится 5). Пассивно: при каждом перемешивании своей колоды сбрасывайте 1 жетон; если сбрасывать нечего — андроид погибает.' },
     canineUpgrades: { deck: 'start', count: 0, name: 'Апгрейды Лайки', quest: true, slot: 'passive', questRoom: 'surgery', use: null,
                    text: 'Квестовый предмет охотницы. Нельзя передать или сбросить. Пассивно: когда Лайка должна уйти из комнаты с охотницей, вместо этого нанесите 1 ранение любому чужому в этой комнате; «Поиск» можно разыграть в комнате Лайки.' },
     intercom:    { deck: 'start', count: 0, name: 'Интерком', quest: true, slot: 'passive', questRoom: 'comms', use: null,

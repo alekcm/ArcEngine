@@ -1721,10 +1721,11 @@ function openSheet(quiet, targetPlayerId) {
             : '1 действие';
         const art = itemArt(q.item);
         const open = isMine && !!(questMenu && questMenu.enabled);
+        const chargeHtml = q.charge !== undefined ? ' <span class="tag yellow">⚡ ' + q.charge + '</span>' : '';
         return '<div class="sheet-item quest closed' + (open ? ' pickable' : '') + '"' + (open ? ' data-pick="quest"' : '') +
             ' title="' + esc(open ? 'Нажмите, чтобы открыть: это стоит 1 действие' : (questMenu && questMenu.reason) || 'Закрыт: откроется по правилам карты') + '">' +
             (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
-            '<div><b>' + esc(d.name || q.item) + ' · закрыт 🔒</b>' +
+            '<div><b>' + esc(d.name || q.item) + ' · закрыт 🔒' + chargeHtml + '</b>' +
             '<small>' + esc(d.text || '') + '</small>' +
             '<small style="color:#8394a8">Активация: ' + esc(where) + ' · ' + esc(pay) + ' · 1 действие</small>' +
             ((isMine && questMenu && !questMenu.enabled && questMenu.reason) ? '<small style="color:#e2a33f">' + esc(questMenu.reason) + '</small>' : '') +

@@ -409,7 +409,8 @@ test('ANDROID-02 / Synthetic: a Larva cannot infect the Android', () => {
 });
 test('ANDROID-03 / UPS: reshuffling with zero markers kills the Android', () => {
     const s = fresh(['android', 'soldier']), p = s.players[0];
-    p.items.find(i => i.item === 'ups').charge = 0; p.deck = []; p.hand = []; p.discard = ['android.search#0'];
+    const ups = p.items.find(i => i.item === 'ups') || p.quests.find(i => i.item === 'ups');
+    ups.charge = 0; p.deck = []; p.hand = []; p.discard = ['android.search#0'];
     drawCards(s, p, 1); assert.equal(p.status, 'dead');
 });
 test('START-01 / original starters: Cuffs 6, Robot 5, UPS 3 markers', () => {
@@ -471,10 +472,8 @@ test('START-08 / quest cards sit closed on the sheet; only the Android UPS is op
         assert.deepEqual(held, [...CHARACTERS[id].startItems.map(si => si.item), ...open].sort(), id + ': what the character holds');
         assert.deepEqual(p.quests.map(q => q.item).sort(), [...closed].sort(), id + ': closed quest cards');
         assert.ok(p.quests.every(q => q.open === false), id + ': they start closed');
-        // the android is the one exception printed on the card
         if (id === 'android') {
-            assert.deepEqual(p.quests, [], 'the UPS is already open');
-            assert.ok(p.items.some(i => i.item === 'ups' && i.charge === 3), 'the UPS is in hand with 3 markers');
+            assert.ok(p.quests.some(i => i.item === 'ups' && i.charge === 3), 'the UPS starts closed with 3 markers');
         }
         // nothing closed may be used, dropped or worn
         for (const q of p.quests) {
@@ -874,15 +873,16 @@ test('START-10 / the personal gear that has no printed card still sits in the ri
     assert.equal(CHARACTERS.android.startItems.some(si => si.item === 'synthetic'), true,
         'the Android starts with the Synthetic passive');
 });
-test('START-11 / the Android’s UPS is the one quest card that starts open', () => {
+test('START-11 / the Android’s UPS is in quest items and opens in the Generator', () => {
     const s = fresh(['android', 'soldier']);
     const a = s.players[0];
-    assert.equal(ITEMS.ups.questOpen, true);
-    const ups = a.items.find(i => i.item === 'ups');
-    assert.ok(ups, 'the UPS is on the table from the first turn');
+    assert.equal(!ITEMS.ups.questOpen, true);
+    assert.equal(ITEMS.ups.questRoom, 'generator');
+    const ups = a.quests.find(i => i.item === 'ups');
+    assert.ok(ups, 'the UPS is in quest items from the first turn');
+    assert.equal(ups.open, false, 'starts closed');
     assert.equal(ups.charge, 3, 'with 3 markers');
     assert.equal(ITEMS.ups.markersMax, 5, 'flipping it raises the cap to 5');
-    assert.equal(a.quests.filter(q => !q.open).length, 0, 'the Android has no closed quest cards');
     assert.equal(a.items.some(i => i.item === 'synthetic'), true);
 });
 test('QUEST-05 / every Quest Item Deck card names its slot and its activation room', () => {
@@ -897,7 +897,7 @@ test('QUEST-05 / every Quest Item Deck card names its slot and its activation ro
         if (d.slot === 'weapon') assert.ok(d.weapon || d.use === 'pipeMelee', k + ' is a weapon');
     }
     // and the room names match the printed ones
-    assert.equal(ITEMS.ups.questRoom, 'any');
+    assert.equal(ITEMS.ups.questRoom, 'generator');
     assert.equal(ITEMS.plasmaTorch.questRoom, 'engine');
     assert.equal(ITEMS.karcher.questRoom, 'fireControl');
     assert.equal(ITEMS.pilotEvacKey.questRoom, 'cockpit');
