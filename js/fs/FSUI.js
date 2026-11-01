@@ -93,11 +93,12 @@ const FSUI = {
         full.addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
         tools.append(help, center, full); root.append(tools);
         if (this.helpOpen) {
-            const pop = this.el('div', 'fs-help-pop'); pop.append(this.el('h3', '', 'Управление доской'));
-            pop.append(this.el('p', '', 'Перетаскивайте поле мышью, чтобы перемещать камеру. Колесо мыши — приближение и отдаление.'));
-            pop.append(this.el('p', '', 'Выберите действие справа, затем укажите нужную систему или область на доске. Подсвеченные кольца показывают допустимые места.'));
-            pop.append(this.el('p', '', 'При сборке выберите тайл и место для предпросмотра. Q/E поворачивают его, F переключает сторону; подтвердите размещение справа.'));
-            pop.append(this.el('p', '', 'На телефоне используйте жесты двумя пальцами для масштаба и перетаскивайте доску одним пальцем.'));
+            const pop = this.el('div', 'fs-help-pop'); pop.append(this.el('h3', '', 'Как играть мышью'));
+            pop.append(this.el('p', '', 'Перетаскивание — камера, колесо — масштаб, клик — выбор.'));
+            pop.append(this.el('p', '', 'Наступление: клик по своим отрядам на доске берёт их в группу, кольца показывают, куда можно идти, стрелка показывает маршрут. Клик по сектору отправляет группу, клик по отряду убирает его из группы.'));
+            pop.append(this.el('p', '', 'Операции: клик по своему жетону приказа вскрывает его прямо на доске.'));
+            pop.append(this.el('p', '', 'Сборка карты: выберите систему справа, клик по месту — предпросмотр, Q/E — поворот, F — другая сторона. Подтверждение — на табличке над системой.'));
+            pop.append(this.el('p', '', 'В панели справа — только то, что нужно сейчас: сколько у вас жетонов каждого вида (включая нули) и одна кнопка «дальше».'));
             root.append(pop);
         }
         if (!state) {
@@ -135,6 +136,9 @@ const FSUI = {
             lines.append(this.el('div', 'fs-log-line', who + l.text));
         }); logCard.append(lines); rail.append(logCard); root.append(rail);
 
+        // The right panel does one thing at a time: what is going on, the tokens the
+        // player owns (counted, zeros included), the choice of the moment and a
+        // single button to go on. Everything else happens on the board itself.
         const panel = this.el('section', 'fs-main-panel');
         const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', state.over ? 'Итоги сражения' : 'Текущий этап'));
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
@@ -142,31 +146,169 @@ const FSUI = {
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
         const inspection = this.renderInspector(state, ctx.inspection);
         if (inspection) panel.append(inspection);
+        const tokens = this.renderTokens(ctx.tokens);
+        if (tokens) panel.append(tokens);
+        const hand = this.renderHand(ctx.hand, ctx.handTitle);
+        if (hand) panel.append(hand);
+        const selection = this.renderSelection(ctx.selection);
+        if (selection) panel.append(selection);
         const actions = this.el('div', 'fs-actions');
-        const icons = ['✦','⬡','◈','⚔','⌖','⛨','✧','➤'];
-        (ctx.actions || []).forEach((a, i) => {
-            if (a.enabled === false) return;
-            const button = this.el('button', a.tile ? 'fs-tile-choice' + (a.selected ? ' is-selected' : '') : 'fs-action'); button.type = 'button';
-            if (a.tile) {
+        const items = (ctx.actions || []).filter(a => a.enabled !== false);
+        const tiles = items.filter(a => a.tile);
+        const picks = items.filter(a => !a.tile && a.kind === 'pick');
+        const chips = items.filter(a => !a.tile && (!a.kind || a.kind === 'chip'));
+        const primaries = items.filter(a => a.kind === 'primary');
+        const secondaries = items.filter(a => a.kind === 'secondary');
+        if (tiles.length) {
+            const grid = this.el('div', 'fs-tile-list');
+            for (const a of tiles) {
+                const button = this.el('button', 'fs-tile-choice' + (a.selected ? ' is-selected' : '')); button.type = 'button';
                 button.setAttribute('aria-pressed', a.selected ? 'true' : 'false');
                 button.append(this.tilePreview(a.tile));
-            } else {
-                const icon = this.el('span', 'fs-action-icon', icons[i % icons.length]);
-                button.append(icon, this.el('span', 'fs-action-label', a.label), this.el('span', 'fs-action-arrow', '›'));
+                button.addEventListener('click', () => a.onClick && a.onClick());
+                grid.append(button);
             }
-            button.addEventListener('click', () => a.onClick && a.onClick()); actions.append(button);
-        });
-        if (!(ctx.actions || []).length) actions.append(this.el('div', 'fs-empty', state.over ? 'Партия завершена.' : 'Сейчас нет доступных действий. Следите за ходом соперников.'));
-        panel.append(actions); root.append(panel);
+            actions.append(grid);
+        }
+        if (picks.length) {
+            const grid = this.el('div', 'fs-pick-grid');
+            for (const a of picks) {
+                const button = this.el('button', 'fs-pick' + (a.selected ? ' is-selected' : '')); button.type = 'button';
+                if (a.hint) button.title = a.hint;
+                if (a.icon) button.append(this.el('span', 'fs-pick-icon', a.icon));
+                button.append(this.el('span', 'fs-pick-label', a.label));
+                if (a.count != null) button.append(this.el('span', 'fs-pick-count', typeof a.count === 'number' ? a.count + '×' : a.count));
+                button.addEventListener('click', () => a.onClick && a.onClick());
+                grid.append(button);
+            }
+            actions.append(grid);
+        }
+        for (const a of chips) {
+            const button = this.el('button', 'fs-chip' + (a.selected ? ' is-selected' : '')); button.type = 'button';
+            if (a.hint) button.title = a.hint;
+            if (a.icon) button.append(this.el('span', 'fs-chip-icon', a.icon));
+            button.append(this.el('span', 'fs-chip-label', a.label));
+            if (a.count != null) button.append(this.el('span', 'fs-chip-count', typeof a.count === 'number' ? a.count + '×' : a.count));
+            button.addEventListener('click', () => a.onClick && a.onClick());
+            actions.append(button);
+        }
+        if (!items.length) actions.append(this.el('div', 'fs-empty', state.over ? 'Партия завершена.' : 'Следите за ходом соперников.'));
+        panel.append(actions);
+        for (const a of primaries) {
+            const button = this.el('button', 'fs-primary'); button.type = 'button';
+            button.append(this.el('span', 'fs-primary-icon', a.icon || '➤'), this.el('span', '', a.label));
+            button.addEventListener('click', () => a.onClick && a.onClick());
+            panel.append(button);
+        }
+        for (const a of secondaries) {
+            const button = this.el('button', 'fs-secondary'); button.type = 'button';
+            button.textContent = a.label;
+            button.addEventListener('click', () => a.onClick && a.onClick());
+            panel.append(button);
+        }
+        root.append(panel);
         actions.scrollTop = scrollTop;
         const hint = this.el('div', 'fs-map-hint');
         hint.innerHTML = state.phase === 'setup'
-            ? '<b>СБОРКА КАРТЫ</b>　•　Следуйте подсказкам справа　•　Выбирайте подсвеченные места на карте'
+            ? '<b>СБОРКА КАРТЫ</b>　•　Клик по месту — предпросмотр　•　<b>Q</b>/<b>E</b> поворот　•　<b>F</b> другая сторона'
             : ctx.mode === 'idle'
-                ? '<b>ДОСКА</b>　•　Клик по сектору — сведения　•　Перетаскивание — камера　•　Колесо — масштаб'
-                : '<b>ДОСКА</b>　•　Выберите подсвеченную область для действия　•　Перетаскивание — камера';
+                ? '<b>ДОСКА</b>　•　Клик — сведения　•　Перетаскивание — камера　•　Колесо — масштаб'
+                : '<b>ДОСКА</b>　•　Клик по отряду — выделить　•　Клик по сектору — идти　•　Перетаскивание — камера';
         root.append(hint);
         if (ctx.status && this.statusError(ctx.status)) root.append(this.el('div', 'fs-toast', ctx.status));
+        this.renderPlaque();
+    },
+
+    // The owned tokens at a glance: "2× Кузница", "0× Подкрепление" — the zeros
+    // stay in the list so one look says what is missing.
+    renderTokens(tokens) {
+        if (!tokens || !tokens.length) return null;
+        const card = this.el('section', 'fs-tokens');
+        card.append(this.el('div', 'fs-eyebrow', 'Ваши жетоны'));
+        for (const token of tokens) {
+            const count = Number(token.count) || 0;
+            const row = this.el('div', 'fs-token-row' + (count ? '' : ' is-zero'));
+            if (token.hint) row.title = token.hint;
+            row.append(this.el('span', 'fs-token-icon', token.icon || '◆'));
+            row.append(this.el('b', 'fs-token-count', count + '×'));
+            row.append(this.el('span', 'fs-token-label', token.label));
+            card.append(row);
+        }
+        return card;
+    },
+
+    // The choice of the moment: the token or the card that is played now.
+    renderHand(hand, title) {
+        if (!hand || !hand.length) return null;
+        const card = this.el('section', 'fs-hand');
+        card.append(this.el('div', 'fs-eyebrow', title || 'Выберите жетон'));
+        for (const item of hand) {
+            const button = this.el('button', 'fs-hand-card' + (item.selected ? ' is-selected' : '')); button.type = 'button';
+            if (item.hint) button.title = item.hint;
+            button.append(this.el('span', 'fs-hand-icon', item.icon || '◆'));
+            button.append(this.el('span', 'fs-hand-count', (Number(item.count) || 1) + '×'));
+            const text = this.el('span', 'fs-hand-text');
+            text.append(this.el('span', 'fs-hand-name', item.label));
+            if (item.kind) text.append(this.el('span', 'fs-hand-kind', item.kind));
+            button.append(text);
+            button.addEventListener('click', () => item.onClick && item.onClick());
+            card.append(button);
+        }
+        return card;
+    },
+
+    // What the mouse has picked on the board.
+    renderSelection(selection) {
+        if (!selection) return null;
+        const card = this.el('section', 'fs-selection');
+        card.append(this.el('span', 'fs-selection-count', (selection.count || 0) + '×'));
+        const text = this.el('span', 'fs-selection-text');
+        text.append(this.el('strong', '', selection.title || 'Отряды выбраны'));
+        if (selection.hint) text.append(this.el('span', 'fs-selection-hint', selection.hint));
+        card.append(text);
+        return card;
+    },
+
+    // --- the plaques that float over the board ------------------------------
+    // The confirmation never hides in the panel: it appears above the system the
+    // player is looking at, where the finger or the pointer already is.
+
+    setPlaque(info) {
+        this.plaqueInfo = info;
+        this.renderPlaque();
+    },
+
+    movePlaque(x, y) {
+        const el = this.plaqueEl;
+        if (!el || !el.style) return;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        el.style.left = Math.round(x) + 'px';
+        el.style.top = Math.round(y) + 'px';
+    },
+
+    renderPlaque() {
+        if (!this.modernRoot) return;
+        if (this.plaqueEl) {
+            if (typeof this.plaqueEl.remove === 'function') this.plaqueEl.remove();
+            this.plaqueEl = null;
+        }
+        const info = this.plaqueInfo;
+        if (!info || !this.modernRoot.append) return;
+        const el = this.el('div', 'fs-plaque' + (info.ok === false ? ' is-blocked' : '') + (info.top ? ' is-top' : ''));
+        const text = this.el('div', 'fs-plaque-text');
+        if (info.kicker) text.append(this.el('span', 'fs-plaque-kicker', info.kicker));
+        text.append(this.el('strong', 'fs-plaque-title', info.title || ''));
+        if (info.hint) text.append(this.el('span', 'fs-plaque-hint', info.hint));
+        el.append(text);
+        for (const action of info.actions || []) {
+            const button = this.el('button', 'fs-plaque-btn' + (action.primary ? ' is-primary' : '')); button.type = 'button';
+            button.append(this.el('span', 'fs-plaque-btn-icon', action.icon || '✓'), this.el('span', '', action.label));
+            button.addEventListener('click', () => action.onClick && action.onClick());
+            el.append(button);
+        }
+        this.modernRoot.append(el);
+        this.plaqueEl = el;
+        this.movePlaque(info.x || 0, info.y || 0);
     },
 
     // A readable miniature of the four sectors, in the same orientation as the board.
@@ -421,8 +563,14 @@ const FSUI = {
         // The buttons of the current action.
         let y = 8;
         for (const a of ctx.actions || []) {
-            const el = this.add('fsBtn', 'fsA' + y, 8, y, a.label, a.onClick, a.w || 234);
-            if (el && a.enabled === false) el.show(false);
+            if (a.enabled === false) continue;
+            this.add('fsBtn', 'fsA' + y, 8, y, a.label, a.onClick, a.w || 234);
+            y += 30;
+        }
+        // The hand of the moment (event cards, objective tokens) is part of the
+        // same list for the simple HUD: the player sees one column of choices.
+        for (const item of ctx.hand || []) {
+            this.add('fsBtn', 'fsA' + y, 8, y, (item.count || 1) + '× ' + item.label, item.onClick, 234);
             y += 30;
         }
     },

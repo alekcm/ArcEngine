@@ -21,9 +21,18 @@ function view_metrics_fallback(app) {
 
 /** @satisfies {Record<string, any>} */
 const FSView = {
-    TILE: typeof FS_TILE_PX !== 'undefined' ? FS_TILE_PX : 220,   // world px of one system tile
+    TILE: typeof FS_TILE_PX !== 'undefined' ? FS_TILE_PX : 260,   // world px of one system tile
     AREA: 0.46,            // the share of the tile an area takes
     MARKER_Y: 6,           // the height of the markers over the tile
+
+    // A world is a flat, round piece of the planet laid into its sector — not a
+    // sphere. The units and the structures stand ON that circle, so it carries
+    // the whole visual identity of the world (the same map on every client).
+    PLANET_D: 96,          // world px: the diameter of the round face of a world
+    PLANET_H: 7,           // world px: how thick the piece of the planet is
+    PLANET_SHIFT: -8,      // world px: the circle is lifted toward the far edge, clear of the printed name
+    ON_WORLD: 0.72,        // the miniatures on a world are smaller than the ones in the void
+    SELECT_Y: 8,           // the height of the selection ring and of the direction arrow
 
     /** @param {{location: Location3D, camera: CameraController}} app */
     create(app) {
@@ -46,6 +55,12 @@ const FSView = {
             modelMaterials: new Map(),
             onModelReady: null,
             built: false,
+            // The mouse-first interaction: what the player picked and where the
+            // group is heading. The rings and the arrow are the only feedback.
+            selection: [],
+            arrow: null,
+            ghost: null,
+            clock: 0,
         };
 
         // The game's nebula ground is applied by FSGame after Location3D finishes loading its defaults.
@@ -84,11 +99,18 @@ const FSView = {
         if (view.scene.onBeforeRenderObservable && view.scene.onBeforeRenderObservable.add) {
             view.scene.onBeforeRenderObservable.add(() => {
                 const dt = Math.min(0.05, view.scene.getEngine().getDeltaTime() / 1000);
+                view.clock += dt;
+                // The weather of a flat world drifts; the planet itself stays put so
+                // the miniatures standing on it never look like they are sliding.
                 for (const planet of view.planets.values()) {
-                    planet.mesh.rotation.y += dt * 0.035;
-                    planet.clouds.rotation.y -= dt * 0.022;
+                    if (planet.clouds) planet.clouds.rotation.y += dt * 0.06;
+                    if (planet.glow) {
+                        const s = 1 + Math.sin(view.clock * 1.1) * 0.012;
+                        planet.glow.scaling.set(s, 1, s);
+                    }
                 }
                 for (const item of view.animated) item.mesh.rotation[item.axis] += dt * item.speed;
+                this.pulse(view);
             });
         }
 
@@ -396,80 +418,146 @@ const FSView = {
         return 'hsl(' + hue + ', 55%, 43%)';
     },
 
-    // A printed orbital cradle remains on the tile; the world itself is rendered as a lit 3D globe.
+    // The printed cradle of a world: the sector keeps a fine landing rim around
+    // the place where the round piece of the planet lies.
     drawPlanet(ctx, r, name) {
-        const cx = r.x + r.w / 2, cy = r.y + r.h / 2 - 7;
-        const radius = Math.min(r.w, r.h) * .30;
+        const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+        const radius = this.PLANET_D / (this.TILE - 6) * 512 / 2 + 13;
         ctx.save();
-        ctx.strokeStyle = 'rgba(94,174,207,.55)'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.ellipse(cx, cy + 11, radius + 12, radius * .31, -.14, 0, Math.PI * 2); ctx.stroke();
-        ctx.strokeStyle = 'rgba(212,177,104,.42)'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.ellipse(cx, cy + 11, radius + 18, radius * .40, -.14, Math.PI * .96, Math.PI * 2.05); ctx.stroke();
-        ctx.fillStyle = 'rgba(2,8,16,.62)'; ctx.beginPath(); ctx.ellipse(cx, cy + 12, radius * .78, radius * .22, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(94,174,207,.34)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, radius + 5, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = 'rgba(212,177,104,.30)'; ctx.lineWidth = 1.2;
+        ctx.setLineDash([9, 7]);
+        ctx.beginPath(); ctx.arc(cx, cy, radius + 11, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
         ctx.restore();
+        void name;
     },
 
-    planetMaterial(view, name) {
-        if (view.planetMaterials.has(name)) return view.planetMaterials.get(name);
+    // The round map of a world seen from above: continents, bands, caps and a
+    // lit rim. Only the inscribed circle of the texture is sampled by the disc.
+    planetTexture(view, name) {
+        const size = 512, R = size / 2;
         let seed = 0;
         for (let i = 0; i < name.length; i++) seed = (seed * 31 + name.charCodeAt(i)) >>> 0;
         const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
         const gas = /gas|jupiter|saturn|tempest|vigilus|shroud/i.test(name);
         const ice = /fenris|ice|frost|crucible|cadia/i.test(name);
         const ocean = /macragge|ultramar|aurelia|mundo|prandium|caliban|terra|earth/i.test(name);
-        const texture = new BABYLON.DynamicTexture('fs-planet-map-' + name, { width: 512, height: 256 }, view.scene, true);
-        texture.hasAlpha = false;
-        const ctx = /** @type {any} */ (texture.getContext());
-        const gradient = ctx.createLinearGradient(0, 0, 0, 256);
-        gradient.addColorStop(0, '#152d42'); gradient.addColorStop(.18, this.worldColor(name));
-        gradient.addColorStop(.72, this.worldColor(name)); gradient.addColorStop(1, '#07101b');
-        ctx.fillStyle = gradient; ctx.fillRect(0, 0, 512, 256);
-        // Deterministic continents / cloud bands in equirectangular projection. No remote assets,
-        // and each named world gets its own persistent map and atmosphere tint.
-        for (let i = 0; i < 28; i++) {
-            const x = rand() * 512, y = 26 + rand() * 204;
-            const rx = 9 + rand() * (gas ? 90 : 54), ry = 4 + rand() * (gas ? 16 : 26);
-            ctx.globalAlpha = gas ? .16 + rand() * .18 : .24 + rand() * .34;
-            ctx.fillStyle = gas ? (rand() > .5 ? '#e9b77c' : '#6d4c6e')
-                : ice ? (rand() > .5 ? '#e9f3f3' : '#8ba9b9')
-                    : ocean ? (rand() > .46 ? '#70a577' : '#c7ae78')
-                        : (rand() > .48 ? '#b68b60' : '#464953');
-            ctx.beginPath(); ctx.ellipse(x, y, rx, ry, (rand() - .5) * .8, 0, Math.PI * 2); ctx.fill();
+        const base = this.worldColor(name);
+        const tex = new BABYLON.DynamicTexture('fs-planet-disc-' + name, { width: size, height: size }, view.scene, true);
+        tex.hasAlpha = false;
+        const ctx = /** @type {any} */ (tex.getContext());
+        ctx.clearRect(0, 0, size, size);
+        ctx.save();
+        ctx.beginPath(); ctx.arc(R, R, R - 1, 0, Math.PI * 2); ctx.clip();
+        // The ground of the world.
+        const ground = ctx.createRadialGradient(R * .72, R * .62, R * .12, R, R, R);
+        if (gas) {
+            ground.addColorStop(0, '#f3d6a6'); ground.addColorStop(.55, base); ground.addColorStop(1, '#2a2033');
+        } else if (ocean) {
+            ground.addColorStop(0, '#3f7fa8'); ground.addColorStop(.55, '#1d4a6d'); ground.addColorStop(1, '#081825');
+        } else {
+            ground.addColorStop(0, base); ground.addColorStop(.55, base); ground.addColorStop(1, '#0a1119');
         }
-        for (let i = 0; i < 48; i++) {
-            const y = 18 + rand() * 220;
-            ctx.globalAlpha = .06 + rand() * .13;
-            ctx.strokeStyle = gas ? '#ffe0aa' : '#e2f1f4';
-            ctx.lineWidth = 1 + rand() * 5;
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.bezierCurveTo(140, y - 16, 360, y + 18, 512, y - 4); ctx.stroke();
+        ctx.fillStyle = ground; ctx.fillRect(0, 0, size, size);
+        // Continents (gas worlds get long bands instead).
+        for (let i = 0; i < (gas ? 16 : 30); i++) {
+            const x = 24 + rand() * (size - 48), y = 24 + rand() * (size - 48);
+            if (Math.hypot(x - R, y - R) > R - 18) continue;
+            const rx = gas ? 46 + rand() * 120 : 14 + rand() * 62;
+            const ry = gas ? 6 + rand() * 16 : 10 + rand() * 44;
+            ctx.globalAlpha = gas ? .22 + rand() * .2 : .3 + rand() * .4;
+            ctx.fillStyle = gas ? (rand() > .5 ? '#f6e2b8' : '#7b5d78')
+                : ice ? (rand() > .45 ? '#eaf4f4' : '#96b3c1')
+                    : ocean ? (rand() > .42 ? '#78ab74' : '#cbb083')
+                        : (rand() > .48 ? '#b98f63' : '#4b4e58');
+            ctx.beginPath(); ctx.ellipse(x, y, rx, ry, (rand() - .5) * 1.4, 0, Math.PI * 2); ctx.fill();
         }
+        // The poles.
+        ctx.globalAlpha = .5;
+        ctx.fillStyle = '#eaf6ff';
+        ctx.beginPath(); ctx.ellipse(R, R * .1, R * .78, R * .16, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(R, size - R * .1, R * .82, R * .18, 0, 0, Math.PI * 2); ctx.fill();
+        // Weather.
+        for (let i = 0; i < 26; i++) {
+            const y = 20 + rand() * (size - 40);
+            ctx.globalAlpha = .05 + rand() * .12;
+            ctx.strokeStyle = '#e8f7ff'; ctx.lineWidth = 1 + rand() * 4;
+            ctx.beginPath();
+            ctx.moveTo(0, y); ctx.bezierCurveTo(R * .7, y - 14, R * 1.4, y + 16, size, y - 2); ctx.stroke();
+        }
+        // Lit from the top-left: a planet reads as a body, not as a sticker.
         ctx.globalAlpha = 1;
-        texture.update(false);
-        const surface = new BABYLON.StandardMaterial('fs-planet-surface-' + name, view.scene);
-        surface.diffuseTexture = texture;
-        surface.specularColor = new BABYLON.Color3(.52, .58, .68);
-        surface.specularPower = 52;
-        const cloudsTex = new BABYLON.DynamicTexture('fs-planet-clouds-' + name, { width: 512, height: 256 }, view.scene, true);
-        cloudsTex.hasAlpha = true;
-        const cc = /** @type {any} */ (cloudsTex.getContext()); cc.clearRect(0, 0, 512, 256);
-        for (let i = 0; i < 36; i++) {
-            cc.globalAlpha = .06 + rand() * .17; cc.strokeStyle = '#d7f3ff'; cc.lineWidth = 1 + rand() * 4;
-            const y = 22 + rand() * 212;
-            cc.beginPath(); cc.moveTo(0, y); cc.bezierCurveTo(110, y - 12, 330, y + 12, 512, y - 3); cc.stroke();
+        const light = ctx.createLinearGradient(0, 0, size, size);
+        light.addColorStop(0, 'rgba(255,247,230,.22)');
+        light.addColorStop(.5, 'rgba(255,255,255,0)');
+        light.addColorStop(1, 'rgba(2,6,12,.55)');
+        ctx.fillStyle = light; ctx.fillRect(0, 0, size, size);
+        // The rim of the piece.
+        ctx.globalAlpha = .55; ctx.strokeStyle = 'rgba(226,244,255,.75)'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(R, R, R - 5, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+        tex.update(false);
+        return tex;
+    },
+
+    planetCloudTexture(view, name) {
+        const size = 512, R = size / 2;
+        let seed = 7;
+        for (let i = 0; i < name.length; i++) seed = (seed * 53 + name.charCodeAt(i)) >>> 0;
+        const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+        const tex = new BABYLON.DynamicTexture('fs-planet-clouds-' + name, { width: size, height: size }, view.scene, true);
+        tex.hasAlpha = true;
+        const ctx = /** @type {any} */ (tex.getContext());
+        ctx.clearRect(0, 0, size, size);
+        ctx.save();
+        ctx.beginPath(); ctx.arc(R, R, R - 3, 0, Math.PI * 2); ctx.clip();
+        for (let i = 0; i < 22; i++) {
+            const y = 40 + rand() * (size - 80), h = 10 + rand() * 26;
+            ctx.globalAlpha = .06 + rand() * .13;
+            ctx.fillStyle = '#f2fbff';
+            ctx.beginPath();
+            ctx.ellipse(rand() * size, y, 60 + rand() * 130, h, (rand() - .5) * .5, 0, Math.PI * 2);
+            ctx.fill();
         }
-        cc.globalAlpha = 1; cloudsTex.update(false);
-        const cloudsMat = new BABYLON.StandardMaterial('fs-planet-cloud-mat-' + name, view.scene);
-        cloudsMat.diffuseTexture = cloudsTex; cloudsMat.opacityTexture = cloudsTex;
-        cloudsMat.useAlphaFromDiffuseTexture = true; cloudsMat.alpha = .58;
-        cloudsMat.backFaceCulling = false; cloudsMat.disableLighting = true;
-        const atmosphereMat = new BABYLON.StandardMaterial('fs-planet-atmosphere-' + name, view.scene);
-        atmosphereMat.diffuseColor = new BABYLON.Color3(.12, .48, .72);
-        atmosphereMat.emissiveColor = new BABYLON.Color3(.045, .19, .31);
-        atmosphereMat.alpha = .14; atmosphereMat.backFaceCulling = false; atmosphereMat.disableLighting = true;
-        const orbitMat = new BABYLON.StandardMaterial('fs-planet-orbit-' + name, view.scene);
-        orbitMat.diffuseColor = new BABYLON.Color3(.24, .61, .78); orbitMat.emissiveColor = new BABYLON.Color3(.04, .16, .22);
-        view.planetMaterials.set(name, { surface, clouds: cloudsMat, atmosphere: atmosphereMat, orbit: orbitMat });
-        return view.planetMaterials.get(name);
+        ctx.restore();
+        tex.update(false);
+        return tex;
+    },
+
+    planetMaterial(view, name) {
+        if (view.planetMaterials.has(name)) return view.planetMaterials.get(name);
+        const surface = new BABYLON.StandardMaterial('fs-planet-surface-' + name, view.scene);
+        surface.diffuseTexture = this.planetTexture(view, name);
+        surface.specularColor = new BABYLON.Color3(.16, .18, .22);
+        surface.specularPower = 48;
+        surface.backFaceCulling = false;
+        const clouds = new BABYLON.StandardMaterial('fs-planet-cloud-mat-' + name, view.scene);
+        const cloudTex = this.planetCloudTexture(view, name);
+        clouds.diffuseTexture = cloudTex; clouds.opacityTexture = cloudTex;
+        clouds.useAlphaFromDiffuseTexture = true; clouds.alpha = .8;
+        clouds.backFaceCulling = false; clouds.disableLighting = true;
+        clouds.specularColor = BABYLON.Color3.Black();
+        const rim = new BABYLON.StandardMaterial('fs-planet-rim-' + name, view.scene);
+        rim.diffuseColor = new BABYLON.Color3(.10, .13, .17);
+        rim.emissiveColor = BABYLON.Color3.FromHexString(this.worldColor(name)).scale(.22);
+        rim.specularColor = new BABYLON.Color3(.28, .30, .34);
+        const glow = new BABYLON.StandardMaterial('fs-planet-glow-' + name, view.scene);
+        glow.diffuseColor = BABYLON.Color3.FromHexString(this.worldColor(name));
+        glow.emissiveColor = BABYLON.Color3.FromHexString(this.worldColor(name)).scale(.55);
+        glow.alpha = .5; glow.disableLighting = true; glow.backFaceCulling = false;
+        const mats = { surface, clouds, rim, glow };
+        view.planetMaterials.set(name, mats);
+        return mats;
+    },
+
+    // The centre of the round face of a world and the height the pieces stand on.
+    discAt(app, sys, pos, metrics) {
+        const p = this.areaPos(app, sys, pos, metrics);
+        const z = p.y + this.PLANET_SHIFT;
+        const base = app.location.terrain.heightAt(p.x, z) + 6.5;
+        return { x: p.x, y: base + this.PLANET_H + .12, z, base };
     },
 
     updatePlanets(app, view, state) {
@@ -481,38 +569,60 @@ const FSView = {
             let planet = view.planets.get(key);
             if (!planet) {
                 const mats = this.planetMaterial(view, name);
-                const diameter = 40;
-                const mesh = BABYLON.MeshBuilder.CreateSphere('fs-world-' + key, { diameter, segments: 32 }, view.scene);
-                mesh.material = mats.surface; mesh.isPickable = true;
-                const metadata = { fs: 'area', system: sys.id, pos: area.pos, world: name };
-                mesh.metadata = metadata;
-                World3D.addObject(app.location.view, mesh, 'prop', { castShadow: !view.preview, ink: false, outline: false });
-                mesh.metadata = Object.assign({}, mesh.metadata, metadata);
-                const clouds = BABYLON.MeshBuilder.CreateSphere('fs-world-clouds-' + key, { diameter: diameter * 1.025, segments: 24 }, view.scene);
+                const radius = this.PLANET_D / 2;
+                // The body of the piece: a thin cylinder under the face.
+                const body = BABYLON.MeshBuilder.CreateCylinder('fs-world-body-' + key,
+                    { diameter: this.PLANET_D, height: this.PLANET_H, tessellation: 64 }, view.scene);
+                body.material = mats.rim; body.isPickable = false;
+                World3D.addObject(app.location.view, body, 'prop', { castShadow: true, ink: false, outline: false });
+                // The face: the planet itself, lying flat and facing up.
+                const face = BABYLON.MeshBuilder.CreateDisc('fs-world-' + key,
+                    { radius, tessellation: 64 }, view.scene);
+                face.rotation.x = Math.PI / 2;
+                face.material = mats.surface; face.isPickable = true;
+                World3D.addObject(app.location.view, face, 'prop', { castShadow: false, ink: false, outline: false });
+                // The weather drifts above the face without moving the ground.
+                const clouds = BABYLON.MeshBuilder.CreateDisc('fs-world-clouds-' + key,
+                    { radius: radius - 1, tessellation: 64 }, view.scene);
+                clouds.rotation.x = Math.PI / 2;
                 clouds.material = mats.clouds; clouds.isPickable = false;
                 World3D.addObject(app.location.view, clouds, 'prop', { castShadow: false, ink: false, outline: false });
-                const atmosphere = BABYLON.MeshBuilder.CreateSphere('fs-world-halo-' + key, { diameter: diameter * 1.09, segments: 20 }, view.scene);
-                atmosphere.material = mats.atmosphere; atmosphere.isPickable = false;
-                World3D.addObject(app.location.view, atmosphere, 'prop', { castShadow: false, ink: false, outline: false });
-                const orbit = BABYLON.MeshBuilder.CreateTorus('fs-world-orbit-' + key, { diameter: diameter * 1.48, thickness: .8, tessellation: 48 }, view.scene);
-                orbit.material = mats.orbit; orbit.isPickable = false;
-                World3D.addObject(app.location.view, orbit, 'prop', { castShadow: false, ink: false, outline: false });
-                planet = { mesh, clouds, atmosphere, orbit };
+                // A soft halo marks the edge of the world at game zoom.
+                const glow = BABYLON.MeshBuilder.CreateTorus('fs-world-halo-' + key,
+                    { diameter: this.PLANET_D + 5, thickness: 1.6, tessellation: 64 }, view.scene);
+                glow.material = mats.glow; glow.isPickable = false;
+                World3D.addObject(app.location.view, glow, 'prop', { castShadow: false, ink: false, outline: false });
+                planet = { mesh: face, clouds, atmosphere: glow, rim: body };
                 view.planets.set(key, planet);
             }
-            const p = this.areaPos(app, sys, area.pos, view.metrics);
-            const y = ground(p.x, p.y) + 6.5 + 18;
-            for (const layer of [planet.mesh, planet.clouds, planet.atmosphere, planet.orbit]) layer.position.set(p.x, y, p.y);
+            const disc = this.discAt(app, sys, area.pos, view.metrics);
+            const cx = disc.x, cz = disc.z, base = disc.y - this.PLANET_H - .12;
+            planet.rim.position.set(cx, base + this.PLANET_H / 2, cz);
+            planet.mesh.position.set(cx, base + this.PLANET_H + .12, cz);
+            planet.clouds.position.set(cx, base + this.PLANET_H + .34, cz);
+            planet.atmosphere.position.set(cx, base + this.PLANET_H + .2, cz);
             planet.mesh.metadata = Object.assign({}, planet.mesh.metadata, { fs: 'area', system: sys.id, pos: area.pos, world: name });
             planet.mesh.isPickable = true;
+            for (const layer of [planet.rim, planet.clouds, planet.atmosphere]) layer.metadata = planet.mesh.metadata;
         }
         for (const [key, planet] of view.planets) if (!active.has(key)) {
-            planet.mesh.setEnabled(false); planet.clouds.setEnabled(false); planet.atmosphere.setEnabled(false); planet.orbit.setEnabled(false);
+            for (const layer of [planet.mesh, planet.clouds, planet.atmosphere, planet.rim]) layer.setEnabled(false);
         }
         for (const key of active) {
             const p = view.planets.get(key);
-            p.mesh.setEnabled(true); p.clouds.setEnabled(true); p.atmosphere.setEnabled(true); p.orbit.setEnabled(true);
+            for (const layer of [p.mesh, p.clouds, p.atmosphere, p.rim]) layer.setEnabled(true);
         }
+    },
+
+    // Where a piece stands on a world: the ring of minimap places keeps the
+    // structure at the far edge and the troops in front of it, inside the circle.
+    discSpread(count, index, hasStructure) {
+        const r = this.PLANET_D * 0.31;
+        const step = Math.PI * 2 / Math.max(1, count);
+        // North (0, -1) belongs to the structure; the troops start half a step away from it.
+        const start = -Math.PI / 2 + (hasStructure ? step / 2 : 0);
+        const a = start + index * step;
+        return { x: Math.cos(a) * r, y: Math.sin(a) * r };
     },
 
 
@@ -561,7 +671,7 @@ const FSView = {
         this.drawTile(ghost, sys, rec, state);
         this.updatePlanets(app, ghost, { systems: [sys] });
         for (const mesh of [rec.base, rec.top, ...rec.decorations]) mesh.isPickable = false;
-        for (const planet of ghost.planets.values()) for (const mesh of [planet.mesh, planet.clouds, planet.atmosphere, planet.orbit]) mesh.isPickable = false;
+        for (const planet of ghost.planets.values()) for (const mesh of [planet.mesh, planet.clouds, planet.atmosphere, planet.rim]) mesh.isPickable = false;
         view.setupPreview = { ghost, rec, sys };
     },
 
@@ -570,7 +680,7 @@ const FSView = {
         if (!preview) return;
         const locationView = view.app.location.view;
         for (const mesh of [preview.rec.base, preview.rec.top, ...preview.rec.decorations]) World3D.removeObject(locationView, mesh);
-        for (const planet of preview.ghost.planets.values()) for (const mesh of [planet.mesh, planet.clouds, planet.atmosphere, planet.orbit]) World3D.removeObject(locationView, mesh);
+        for (const planet of preview.ghost.planets.values()) for (const mesh of [planet.mesh, planet.clouds, planet.atmosphere, planet.rim]) World3D.removeObject(locationView, mesh);
         preview.rec.mat.dispose(false, false);
         preview.rec.tex.dispose();
         view.setupPreview = null;
@@ -579,6 +689,9 @@ const FSView = {
     // --- the markers --------------------------------------------------------
 
     clearMarkers(view) {
+        // Where every piece stands, in world coordinates: the client draws the
+        // selection rings and the arrow of the march from here.
+        view.unitPositions = new Map();
         for (const m of view.markers) {
             // removeObject disposes the mesh with its children.
             World3D.removeObject(view.app.location.view, m.mesh);
@@ -704,23 +817,26 @@ const FSView = {
         return null;
     },
 
-    addFactionUnit(view, unit, pos, offset, color, unitType) {
+    addFactionUnit(view, unit, pos, offset, color, unitType, scale) {
         const model = this.factionModel(view, unit.faction, unitType);
         if (!model) return null;
+        const k = scale || 1;
         const metadata = { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area };
         if (unitType === 'ground') {
-            const base = BABYLON.MeshBuilder.CreateCylinder('fs-unit-base-' + unit.id, { diameter: 30, height: 3.5, tessellation: 32 }, view.scene);
-            base.position.set(pos.x + offset.x, pos.y - 1.75, pos.z + offset.y);
+            const diameter = 30 * k;
+            const base = BABYLON.MeshBuilder.CreateCylinder('fs-unit-base-' + unit.id, { diameter, height: 3.5 * k, tessellation: 32 }, view.scene);
+            base.position.set(pos.x + offset.x, pos.y - 1.75 * k, pos.z + offset.y);
             base.material = view.material('mini-base', '#121a22'); base.isPickable = true; base.metadata = metadata;
             this.addMarker(view, base, 'prop');
-            const rim = BABYLON.MeshBuilder.CreateTorus('fs-unit-rim-' + unit.id, { diameter: 30, thickness: 1.2, tessellation: 32 }, view.scene);
+            const rim = BABYLON.MeshBuilder.CreateTorus('fs-unit-rim-' + unit.id, { diameter, thickness: 1.2, tessellation: 32 }, view.scene);
             rim.position.set(pos.x + offset.x, pos.y + .35, pos.z + offset.y);
             rim.material = view.material('mini-rim-' + unit.seat, color, { emissive: true });
             rim.isPickable = false; this.addMarker(view, rim, 'prop');
         }
         const holder = new BABYLON.TransformNode('fs-unit-model-' + unit.id, view.scene);
-        holder.position.set(pos.x + offset.x + model.root.position.x, pos.y + model.root.position.y, pos.z + offset.y + model.root.position.z);
+        holder.position.set(pos.x + offset.x + model.root.position.x * k, pos.y + model.root.position.y * k, pos.z + offset.y + model.root.position.z * k);
         holder.scaling.copyFrom(model.root.scaling);
+        holder.scaling.scaleInPlace(k);
         holder.metadata = { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area };
         for (let i = 0; i < model.parts.length; i++) {
             const source = model.parts[i];
@@ -790,14 +906,31 @@ const FSView = {
             const [sysId, pos] = key.split(':');
             const sys = state.systems.find(s => s.id === sysId);
             if (!sys) continue;
-            const p = this.areaPos(app, sys, pos, view.metrics);
-            list.forEach((u, i) => {
+            const area = sys.areas.find(a => a.pos === pos);
+            const world = !!(area && area.world);
+            // A world is a round table-piece: the troops stand on it. In the void
+            // they hover over the sector itself.
+            const disc = world ? this.discAt(app, sys, pos, view.metrics) : null;
+            const hasStructure = world && state.structures.some(st => st.system === sysId && st.area === pos);
+            const ground = list.filter(u => { const d = FS_RULES.unitOf(state, u); return !d || d.type !== 'ship'; });
+            const onWorld = world ? FSView.ON_WORLD : 1;
+            list.forEach(u => {
                 const owner = state.players.find(p2 => p2.seat === u.seat);
                 const color = (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
-                const off = this.spread(list.length, i);
-                const base = { x: p.x, y: h(p.x, p.y) + 4 + this.MARKER_Y, z: p.y };
                 const def = FS_RULES.unitOf(state, u);
-                if (def && !u.routed && this.addFactionUnit(view, u, base, off, color, def.type)) return;
+                const isShip = !!(def && def.type === 'ship');
+                const p = this.areaPos(app, sys, pos, view.metrics);
+                let base, off;
+                if (world && !isShip) {
+                    const index = ground.indexOf(u);
+                    off = this.discSpread(ground.length, index, hasStructure);
+                    base = { x: disc.x, y: disc.y, z: disc.z };
+                } else {
+                    off = this.spread(list.length, list.indexOf(u));
+                    base = { x: p.x, y: h(p.x, p.y) + 4 + this.MARKER_Y, z: p.y };
+                }
+                if (view.unitPositions) view.unitPositions.set(u.id, { x: base.x + off.x, y: base.y, z: base.z + off.y });
+                if (def && !u.routed && this.addFactionUnit(view, u, base, off, color, def.type, onWorld)) return;
                 // Until a faction OBJ loads (or for ships), use sculpted silhouettes rather than
                 // identical flat counters: ships read as long hulls, ground units as raised pieces.
                 const ship = def && def.type === 'ship';
@@ -838,15 +971,18 @@ const FSView = {
                 }
             });
         }
-        // Structures are small tabletop miniatures rather than single placeholder primitives.
+        // Structures are small tabletop miniatures standing on the round world
+        // itself, at its far edge — never beside the planet.
         for (const s of state.structures) {
             const sys = state.systems.find(x => x.id === s.system);
             if (!sys) continue;
-            const p = this.areaPos(app, sys, s.area, view.metrics);
+            const disc = this.discAt(app, sys, s.area, view.metrics);
             const owner = state.players.find(p2 => p2.seat === s.seat);
             const color = (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
             const root = new BABYLON.TransformNode('fs-structure-' + s.id, view.scene);
-            root.position.set(p.x - 34, h(p.x, p.y) + 6.5, p.y - 34);
+            const k = .62;
+            root.scaling.setAll(k);
+            root.position.set(disc.x, disc.y, disc.z - this.PLANET_D * 0.27);
             const meta = { fs: 'structure', structure: s.id, system: s.system, pos: s.area };
             root.metadata = meta;
             const main = view.material('struct-' + s.type, color);
@@ -895,7 +1031,7 @@ const FSView = {
             if (!sys) continue;
             const p = this.areaPos(app, sys, o.area, view.metrics);
             const root = new BABYLON.TransformNode('fs-objective-' + o.id, view.scene);
-            root.position.set(p.x + 34, h(p.x, p.y) + 6.5, p.y + 34);
+            root.position.set(p.x + 40, h(p.x, p.y) + 6.5, p.y + 40);
             const gold = view.material('objective-bronze', '#b88a43');
             const gem = view.material('objective-' + o.faction, this.factionColor(o.faction), { emissive: true });
             const plinth = BABYLON.MeshBuilder.CreateCylinder('fs-objective-plinth-' + o.id, { diameter: 17, height: 3, tessellation: 12 }, view.scene);
@@ -923,7 +1059,9 @@ const FSView = {
                 mat.opacityTexture = mat.diffuseTexture;
                 mat.useAlphaFromDiffuseTexture = true;
                 mesh.material = mat;
-                mesh.isPickable = false;
+                // The token is a mouse target: clicking it opens its order.
+                mesh.isPickable = true;
+                mesh.metadata = { fs: 'order', system: sys.id, seat: tok.seat, order: tok.order };
                 this.addMarker(view, mesh, 'actor');
             });
         }
@@ -957,11 +1095,10 @@ const FSView = {
         }
     },
 
-    // The markers of one area around each other.
+    // The markers of a void sector around each other.
     spread(count, index) {
-        // Keep miniatures on the orbital landing ring, clear of the 3D world in the area's centre.
         const a = count <= 1 ? Math.PI / 4 : index / count * Math.PI * 2;
-        const r = 38;
+        const r = 34;
         return { x: Math.cos(a) * r, y: Math.sin(a) * r };
     },
 
@@ -997,6 +1134,187 @@ const FSView = {
 
     clearHighlights(view) {
         for (const ring of view.highlights) ring.setEnabled(false);
+    },
+
+    // --- what the mouse is doing --------------------------------------------
+    //
+    // The player picks a group of units on the board and points at a sector.
+    // The board answers with the drifting arrow of the march and with a ring
+    // under every picked piece — no list of units in the panel is needed.
+
+    ensureArrow(app, view) {
+        if (view.arrow) return view.arrow;
+        const scene = view.scene;
+        const root = new BABYLON.TransformNode('fs-arrow', scene);
+        // Dashed stripes: uScale is set per length, uOffset makes them march.
+        const tex = new BABYLON.DynamicTexture('fs-arrow-tex', { width: 64, height: 16 }, scene, true);
+        tex.hasAlpha = true;
+        const ctx = /** @type {any} */ (tex.getContext());
+        ctx.clearRect(0, 0, 64, 16);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 38, 16);
+        tex.update(false);
+        tex.uScale = 1; tex.vScale = 1;
+        const beamMat = new BABYLON.StandardMaterial('fs-arrow-mat', scene);
+        beamMat.diffuseTexture = tex;
+        beamMat.opacityTexture = tex;
+        beamMat.useAlphaFromDiffuseTexture = true;
+        beamMat.emissiveColor = new BABYLON.Color3(.42, .95, .62);
+        beamMat.diffuseColor = new BABYLON.Color3(.5, 1, .7);
+        beamMat.specularColor = BABYLON.Color3.Black();
+        beamMat.disableLighting = true;
+        beamMat.alpha = .85;
+        const headMat = new BABYLON.StandardMaterial('fs-arrow-head-mat', scene);
+        headMat.diffuseColor = new BABYLON.Color3(.5, 1, .7);
+        headMat.emissiveColor = new BABYLON.Color3(.4, .95, .62);
+        headMat.specularColor = BABYLON.Color3.Black();
+        headMat.disableLighting = true;
+        const beam = BABYLON.MeshBuilder.CreateGround('fs-arrow-beam', { width: 1, height: 9 }, scene);
+        beam.parent = root; beam.material = beamMat; beam.isPickable = false;
+        const head = BABYLON.MeshBuilder.CreateDisc('fs-arrow-head', { radius: 7, tessellation: 3 }, scene);
+        head.rotation.x = Math.PI / 2;
+        head.parent = root; head.material = headMat; head.isPickable = false;
+        for (const mesh of [beam, head]) {
+            World3D.addObject(app.location.view, mesh, 'prop', { castShadow: false, ink: false, outline: false });
+        }
+        root.setEnabled(false);
+        view.arrow = { root, beam, head, beamMat, headMat, tex };
+        return view.arrow;
+    },
+
+    // from/to: {x, z} on the board; ok: the move is legal (green) or not (red).
+    showArrow(app, view, from, to, ok) {
+        const arrow = this.ensureArrow(app, view);
+        const dx = to.x - from.x, dz = to.z - from.z;
+        const len = Math.hypot(dx, dz);
+        if (!Number.isFinite(len) || len < 6) { this.hideArrow(view); return; }
+        // The callers pass board coordinates; a missing height must not turn the
+        // whole arrow into NaN and make it invisible.
+        const fy = Number.isFinite(from.y) ? from.y : 0;
+        const ty = Number.isFinite(to.y) ? to.y : fy;
+        const y = Math.max(fy, ty) + this.SELECT_Y * .6;
+        arrow.root.position.set(from.x, y, from.z);
+        arrow.root.rotation.y = Math.atan2(-dz, dx);
+        // The strip stops short of the arrowhead so the head reads as a tip.
+        const body = Math.max(2, len - 16);
+        arrow.beam.scaling.x = body;
+        arrow.beam.position.set(body / 2, 0, 0);
+        arrow.tex.uScale = Math.max(1, body / 26);
+        arrow.head.position.set(len - 7, 0, 0);
+        const color = ok ? new BABYLON.Color3(.44, .98, .66) : new BABYLON.Color3(1, .38, .32);
+        arrow.beamMat.emissiveColor = color; arrow.beamMat.diffuseColor = color;
+        arrow.headMat.emissiveColor = color; arrow.headMat.diffuseColor = color;
+        arrow.root.setEnabled(true);
+    },
+
+    hideArrow(view) {
+        if (view && view.arrow) view.arrow.root.setEnabled(false);
+    },
+
+    // A ring under every picked piece.
+    showSelection(app, view, list) {
+        if (!view.selection) view.selection = [];
+        if (!view.selectionRings) view.selectionRings = [];
+        while (view.selectionRings.length < 10) {
+            const ring = BABYLON.MeshBuilder.CreateTorus('fs-pick-' + view.selectionRings.length,
+                { diameter: 34, thickness: 2.4, tessellation: 32 }, view.scene);
+            ring.isPickable = false;
+            ring.setEnabled(false);
+            const material = new BABYLON.StandardMaterial('fs-pick-mat-' + view.selectionRings.length, view.scene);
+            material.emissiveColor = new BABYLON.Color3(.55, .95, .62);
+            material.diffuseColor = new BABYLON.Color3(.55, .95, .62);
+            material.disableLighting = true;
+            ring.material = material;
+            World3D.addObject(app.location.view, ring, 'prop', { castShadow: false, ink: false, outline: false });
+            view.selectionRings.push(ring);
+        }
+        for (let i = 0; i < view.selectionRings.length; i++) {
+            const ring = view.selectionRings[i];
+            const item = list[i];
+            if (!item) { ring.setEnabled(false); continue; }
+            ring.setEnabled(true);
+            ring.position.set(item.x, item.y + .6, item.z);
+            if (ring.material && item.color) ring.material.emissiveColor = BABYLON.Color3.FromHexString(item.color);
+            if (ring.metadata == null) ring.metadata = {};
+            ring.metadata.phase = i * 0.8;
+        }
+        view.selection = list.slice(0, view.selectionRings.length);
+    },
+
+    clearSelection(view) {
+        if (!view) return;
+        view.selection = [];
+        for (const ring of view.selectionRings || []) ring.setEnabled(false);
+    },
+
+    // A translucent token shows where an objective would be placed.
+    showGhost(app, view, pos, color) {
+        this.clearGhost(view);
+        const scene = view.scene;
+        const root = new BABYLON.TransformNode('fs-ghost', scene);
+        root.position.set(pos.x, pos.y + 8, pos.z);
+        const gem = new BABYLON.StandardMaterial('fs-ghost-mat', scene);
+        gem.diffuseColor = BABYLON.Color3.FromHexString(color || '#d8b873');
+        gem.emissiveColor = BABYLON.Color3.FromHexString(color || '#d8b873').scale(.7);
+        gem.alpha = .55; gem.disableLighting = true;
+        const disc = BABYLON.MeshBuilder.CreateCylinder('fs-ghost-disc', { diameter: 20, height: 3, tessellation: 20 }, scene);
+        disc.parent = root; disc.position.y = 1; disc.material = gem; disc.isPickable = false;
+        const ring = BABYLON.MeshBuilder.CreateTorus('fs-ghost-ring', { diameter: 30, thickness: 1.6, tessellation: 28 }, scene);
+        ring.parent = root; ring.material = gem; ring.isPickable = false;
+        for (const mesh of [disc, ring]) World3D.addObject(app.location.view, mesh, 'prop', { castShadow: false, ink: false, outline: false });
+        view.ghost = { root, disc, ring };
+        return root;
+    },
+
+    clearGhost(view) {
+        const ghost = view && view.ghost;
+        if (!ghost) return;
+        World3D.removeObject(view.app.location.view, ghost.disc);
+        World3D.removeObject(view.app.location.view, ghost.ring);
+        view.ghost = null;
+    },
+
+    // The pulse of everything that has to be alive: the arrow, the rings.
+    pulse(view) {
+        const t = view.clock || 0;
+        const arrow = view.arrow;
+        if (arrow && arrow.root && arrow.root.isEnabled()) {
+            if (arrow.tex) arrow.tex.uOffset = (-t * 1.6) % 1;
+            const s = .92 + Math.sin(t * 7) * .13;
+            arrow.head.scaling.set(s, 1, s);
+            arrow.beamMat.alpha = .62 + Math.sin(t * 5) * .18;
+        }
+        for (const ring of view.selectionRings || []) {
+            if (ring.isEnabled && ring.isEnabled()) {
+                const phase = (ring.metadata && ring.metadata.phase) || 0;
+                const s = 1 + Math.sin(t * 4.2 + phase) * .07;
+                ring.scaling.set(s, 1, s);
+            }
+        }
+        if (view.ghost) {
+            const s = 1 + Math.sin(t * 3.4) * .06;
+            view.ghost.ring.scaling.set(s, 1, s);
+        }
+    },
+
+    // Where a point of the board is on the screen, in the CSS pixels of the canvas.
+    // The floating plaques of the interface sit on top of it.
+    project(app, x, y, z) {
+        const scene = app.location.view.scene;
+        const engine = scene.getEngine ? scene.getEngine() : null;
+        const camera = scene.activeCamera;
+        if (!engine || !camera || !BABYLON.Vector3 || !BABYLON.Matrix) return null;
+        const width = engine.getRenderWidth(), height = engine.getRenderHeight();
+        if (!width || !height) return null;
+        const p = BABYLON.Vector3.Project(new BABYLON.Vector3(x, y, z), BABYLON.Matrix.Identity(),
+            scene.getTransformMatrix(), camera.viewport.toGlobal(width, height));
+        const canvas = app.location.view.world && app.location.view.world.canvas;
+        // Before the first frame the transform matrix is not ready yet.
+        if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+        const cssWidth = (canvas && canvas.clientWidth) || width;
+        const k = cssWidth / width;
+        if (!Number.isFinite(k) || k <= 0) return { x: p.x, y: p.y };
+        return { x: p.x * k, y: p.y * k };
     },
 
     // What is under the pointer.

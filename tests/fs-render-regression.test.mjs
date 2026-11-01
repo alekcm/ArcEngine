@@ -17,16 +17,23 @@ test('planet and unit placement invoke the actual Terrain3D.heightAt with its re
     const page = loadScripts(['js/Terrain3D.js', 'js/fs/FSView.js'], { FS_RULES: { unitOf: () => ({ type: 'ground' }) } });
     const v = Object.create(page.get('FSView'));
     const t = terrain(page.get('Terrain3D'));
-    const layer = () => ({ position: { set(x,y,z) { Object.assign(this,{x,y,z}); } }, setEnabled() {}, metadata: {} });
-    const planet = { mesh: layer(), clouds: layer(), atmosphere: layer(), orbit: layer() };
+    const layer = () => ({ position: { set(x,y,z) { Object.assign(this,{x,y,z}); } }, rotation: { x: 0, y: 0, z: 0 }, scaling: { set() {}, setAll() {} }, setEnabled() {}, metadata: {} });
+    // A world is a flat, round piece: its body, its face, its weather and its halo.
+    const planet = { mesh: layer(), clouds: layer(), atmosphere: layer(), rim: layer() };
     const sys = { id: 's', row: 0, col: 0, areas: [{ pos: 'TL', world: { name: 'Test', assets: [], capacity: 3 } }], tokens: [] };
     const state = { phase:'planning', systems:[sys], units:[{id:'u',system:'s',area:'TL',seat:0}], players:[{seat:0,color:'#fff'}], structures:[], objectives:[], storms:[] };
     const app = { location: { width: 2048, height:2048, terrain:t } };
     const view = { planets:new Map([['s:TL',planet]]), metrics:null };
     Object.assign(v, { ensureTile: () => ({ drawn:'' }), drawTile() {}, updateSetupSlots() {}, clearMarkers() {}, addFactionUnit(_view,_unit,base) { this.unitBase = base; return true; } });
     v.update(app,view,state);
-    assert.equal(planet.mesh.position.y, 17 + 6.5 + 18);
-    assert.equal(v.unitBase.y, 17 + 4 + v.MARKER_Y);
+    const surface = 17 + 6.5 + v.PLANET_H + .12;
+    assert.equal(planet.mesh.position.y, surface, 'the face of the world lies on the tile');
+    assert.equal(planet.rim.position.y, 17 + 6.5 + v.PLANET_H / 2, 'the body of the world sits under the face');
+    // The unit stands on the round face itself, inside the circle — not beside it.
+    assert.equal(v.unitBase.y, surface);
+    const dx = v.unitBase.x - planet.mesh.position.x;
+    const dz = v.unitBase.z - planet.mesh.position.z;
+    assert.ok(Math.hypot(dx, dz) < v.PLANET_D / 2, 'the miniature is on the world');
 });
 
 test('TransformNode roots register only real mesh descendants in Babylon shadow lists', () => {
@@ -92,4 +99,24 @@ test('incoming panel refresh waits for a pressed button and cannot overwrite a l
     events['root:pointerdown']({pointerId:3,target:{closest:()=>true}});
     ui.renderModern(null,{}); events.blur(); queued.shift()();
     assert.equal(root.replacements,3);
+});
+
+test('the arrow of the march lands on the board when the target has no height', () => {
+    const page = loadScripts(['js/fs/FSView.js'], { BABYLON: B });
+    const v = Object.create(page.get('FSView'));
+    const node = () => ({
+        position: { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+        rotation: { y: 0 },
+        scaling: { x: 1, y: 1, z: 1, set(s) { this.x = s; this.y = s; this.z = s; } },
+        setEnabled() {},
+    });
+    const arrow = { root: node(), beam: node(), head: node(), beamMat: {}, headMat: {}, tex: {} };
+    v.ensureArrow = () => arrow;
+    const view = { arrow };
+    // The pointer passes {x, z} of the sector: no height at all.
+    v.showArrow({}, view, { x: 0, y: 24, z: 0 }, { x: 120, z: 40 }, true);
+    assert.equal(arrow.root.position.y, 24 + v.SELECT_Y * .6, 'the arrow hangs over the board, not at NaN');
+    assert.equal(arrow.root.position.x, 0);
+    assert.ok(arrow.beam.scaling.x > 0, 'the beam runs from the group to the sector');
+    assert.equal(arrow.head.position.x, Math.hypot(120, 40) - 7);
 });

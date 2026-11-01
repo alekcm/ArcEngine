@@ -131,8 +131,12 @@ test('the client: the lobby, the state and the panels of the phases', () => {
     assert.ok(UI.get('fsSideTitle').inner.textContent.includes('Операции'));
     const ops = [...UI.elements.values()].filter(e => e.def.parent === 'fsActions' && e.def.kind === 'button' && e.def.id !== 'fsBtn');
     assert.ok(ops.length >= 1);
-    // The click of the order sends the command.
+    // The click opens the order on the board: the plaque above the token confirms it.
     ops[0]._click(ops[0]);
+    assert.equal(game.mode, 'order');
+    assert.ok(game.plaque && game.plaque.view, 'the plaque of the order is over the board');
+    assert.ok(game.plaque.view.title.includes('Вскрыть приказ'));
+    game.plaque.view.actions[0].onClick();
     assert.ok(sent.some(c => c.type === 'resolveOrder'));
 });
 
@@ -192,6 +196,10 @@ function playWholeGame(count, seed) {
             const b = list[bi % list.length];
             bi++;
             b._click(b);
+            // An order is opened on the board — the plaque above the token confirms it.
+            if (sent.length === before && game.mode === 'order' && game.plaque && game.plaque.view) {
+                game.plaque.view.actions[0].onClick();
+            }
             if (sent.length > before) break;
             // The click waits for the board: the test clicks the right place.
             if (game.mode === 'placeOrder') {
@@ -199,12 +207,18 @@ function playWholeGame(count, seed) {
                 if (!sys) { game.mode = 'idle'; continue; }
                 mesh = { metadata: { fs: 'system', system: sys.id } };
                 game.onClick();
-            } else if (game.mode === 'move' && game.pending) {
-                const unit = state.units.find(u => u.id === game.pending.unit);
+            } else if (game.mode === 'move') {
+                // The movement lives on the board: a click picks the piece,
+                // a second click on a legal sector sends the group there.
+                const unit = FS_RULES.movableUnits(state, seat)[0];
                 const active = state.systems.find(x => x.id === state.order.system);
-                const area = active && active.areas.find(a => FS_RULES.canMove(state, seat, unit, { system: active.id, pos: a.pos }).ok);
-                if (!area) { game.mode = 'idle'; continue; }
-                mesh = { metadata: { fs: 'unit', system: active.id, pos: area.pos } };
+                const area = unit && active && active.areas.find(a => FS_RULES.canMove(state, seat, unit, { system: active.id, pos: a.pos }).ok);
+                if (!unit || !area) { game.mode = 'idle'; continue; }
+                game.selected = [];
+                mesh = { metadata: { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area } };
+                game.onClick();
+                assert.deepEqual(game.selected, [unit.id], 'the click picks the miniature');
+                mesh = { metadata: { fs: 'area', system: active.id, pos: area.pos } };
                 game.onClick();
             } else if (game.mode === 'placeUnit' || game.mode === 'placeStructure') {
                 const active = state.systems.find(x => x.id === state.order.system);

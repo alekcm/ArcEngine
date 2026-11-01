@@ -141,9 +141,18 @@ test('setup board clicks send selected force and objective commands; storm selec
         net: { cmd: c => sent.push(c) }, refresh() {}, highlightSetupTargets() {} });
     client.onClick(20, 30);
     assert.equal(sent[0].type, 'setupUnit'); assert.equal(sent[0].pos, 'TL');
-    client.mode = 'setupObjective'; client.pending = { faction: 'opponent' };
+    // The objective token is placed in two steps: the click picks the world, the
+    // plaque above it confirms — the same way the system tile is placed.
+    client.state.setup.stage = 'objectives';
+    client.state.setup.currentSystem = sys.id;
+    client.state.setup.objectiveOptions = [{ faction: 'opponent', areas: ['TL'] }];
+    client.mode = 'setupObjective'; client.pending = { faction: 'opponent', pos: null };
     client.onClick(20, 30);
+    assert.equal(sent.length, 1, 'the click does not send the token yet');
+    assert.equal(client.pending.pos, 'TL');
+    client.confirmSetupObjective();
     assert.equal(sent[1].type, 'setupObjective'); assert.equal(sent[1].faction, 'opponent');
+    assert.equal(sent[1].pos, 'TL');
     client.state.setup.stage = 'storms'; client.mode = 'idle'; client.pending = null;
     client.onClick(20, 30);
     assert.equal(client.mode, 'setupStorm'); assert.equal(client.pending.system, sys.id);

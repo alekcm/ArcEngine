@@ -68,7 +68,7 @@ const AUDIO_FALLOFF_MAX = 1024;         // px: from here on it is silent (fades 
 const AUDIO_PAN = 0.7;                  // 0..1: how far a sound at the side of the screen goes into one ear (0 — mono)
 
 // --- FORBIDDEN STARS (js/fs/*): the board of the game
-const FS_TILE_PX = 220;                 // world px of one system tile
+const FS_TILE_PX = 260;                 // world px of one system tile
 const FS_CAMERA_ZOOM = 0.62;            // the zoom of the board: screen px per world px
 const FS_CAMERA_PITCH_DEG = 62;         // the tilt of the board view: degrees toward the ground
 

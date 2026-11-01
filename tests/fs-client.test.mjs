@@ -18,6 +18,7 @@ function fakeClient(state) {
         state,
         mode: 'idle',
         pending: null,
+        selected: [],
         damageTargets: [],
         status: '',
         lastCard: null,
@@ -59,22 +60,40 @@ test('the client: the planning phase offers the four orders', () => {
     const ctx = panel(client, 'planning');
     assert.equal(ctx.actions.length, 4);
     assert.deepEqual(ctx.actions.map(a => a.label), ['Наступление', 'Развёртывание', 'Стратегия', 'Доминирование']);
-    assert.ok(ctx.text.includes('0 из 4'), 'the counter of the orders is shown');
+    // The counter of the orders is one counted token among the others: "4× Приказы в руке".
+    assert.equal(ctx.tokens[0].label, 'Приказы в руке');
+    assert.equal(ctx.tokens[0].count, FS_RULES.ORDER_TOKENS);
+    assert.equal(ctx.tokens[0].count + '× ' + ctx.tokens[0].label, '4× Приказы в руке');
 });
 
 test('the client: the operations phase lists the orders of the player', () => {
-    const raw = rawGame();
-    for (const p of raw.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = raw.systems.find(x => FS_RULES.canPlaceOrder(raw, p.seat, x.id));
-            FS_RULES.apply(raw, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-        }
-    }
-    const state = FS_RULES.view(raw, 0);
+    const state = newGame();
+    state.phase = 'operations';
+    state.turn = 0;
+    state.order = null;
+    // Two own tokens on top of two systems: both are the player's to open.
+    state.systems[0].tokens = [{ seat: 0, order: 'advance', faceUp: false }];
+    state.systems[1].tokens = [{ seat: 0, order: 'deploy', faceUp: false }];
     const client = fakeClient(state);
     const ctx = panel(client, 'operations');
-    assert.ok(ctx.actions.length >= 2, 'the orders of the player are listed');
-    assert.ok(ctx.actions[0].label.includes('наступление'), ctx.actions[0].label);
+    assert.equal(ctx.actions.length, 2, 'the orders of the player are listed');
+    // The compact list shows the system and the order as a hint, not a wall of text.
+    assert.deepEqual(ctx.actions.map(a => a.hint), ['наступление', 'развёртывание']);
+    assert.equal(ctx.actions[0].label, state.systems[0].tile);
+    // The tokens of the player are counted by kind, zeros included: one glance
+    // says what is left to play — "1× Наступление", "0× Стратегия".
+    const byKind = Object.fromEntries(ctx.tokens.map(t => [t.label, t.count]));
+    assert.equal(byKind['Наступление'], 1);
+    assert.equal(byKind['Развёртывание'], 1);
+    assert.equal(byKind['Стратегия'], 0);
+    assert.equal(byKind['Доминирование'], 0);
+    assert.equal(ctx.tokens.length, 7, 'four kinds and the three counters of the player');
+    // The click opens the order on the board instead of sending it at once.
+    client.pending = null;
+    client.refresh = () => { };
+    ctx.actions[0].onClick();
+    assert.equal(client.mode, 'order');
+    assert.equal(client.pending.system, state.systems[0].id);
 });
 
 test('the client: the advance order offers the units and the end of the movement', () => {
@@ -106,8 +125,12 @@ test('the client: the refresh phase offers the event cards', () => {
     state.event = { seat: 0, drawn: ['Какая-то карта'], chosen: null };
     const client = fakeClient(state);
     const ctx = panel(client, 'refresh');
-    assert.equal(ctx.actions.length, 1);
-    assert.ok(ctx.actions[0].label.includes('Какая-то карта'));
+    // The drawn cards are the hand of the moment: one card, counted, with its type.
+    assert.equal(ctx.hand.length, 1);
+    assert.ok(ctx.hand[0].label.includes('Какая-то карта'));
+    assert.equal(ctx.hand[0].count, 1);
+    assert.equal(ctx.tokens[0].label, 'Жетоны событий');
+    assert.equal(ctx.tokens[0].count, 1);
 });
 
 test('the client: the combat panel follows the steps of the combat', () => {
@@ -122,10 +145,17 @@ test('the client: the combat panel follows the steps of the combat', () => {
     client.panelCombat(state, ctx);
     // The preparation: the reinforcement tokens of the attacker.
     assert.ok(ctx.actions.length >= 1);
-    assert.ok(ctx.actions[0].label.includes('Подкреплений'));
+    // The reinforcement tokens are counted, not written out in a sentence.
+    assert.ok(ctx.actions.every(a => a.kind === 'pick'));
+    assert.ok(ctx.actions[0].hint.includes('Без подкреплений'));
+    if (ctx.actions.length > 1) {
+        assert.ok(ctx.actions[ctx.actions.length - 1].hint.includes('Поставить жетонов'));
+    }
     // The choice of the card.
     state.combat.step = 'choose-attacker';
     const ctx2 = { title: '', text: '', status: '', actions: [] };
     client.panelCombat(state, ctx2);
     assert.ok(ctx2.actions.length >= 6, 'the five cards of the hand and the skip');
+    assert.ok(ctx2.actions.filter(a => a.kind === 'pick').length >= 5, 'the hand is a grid of cards');
+    assert.ok(ctx2.actions[0].hint.includes('⚔'), 'the icons of the card are in the hint');
 });
