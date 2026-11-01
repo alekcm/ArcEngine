@@ -4,7 +4,7 @@ import { OPS, ask, next, later, log, player, pname, removeCardFromGame, intruder
     discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards,
     HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom, corridorsOf, computerHere, HIBERNATION_TIME } from './core.mjs';
 import { repairOptions } from './actions.mjs';
-import { ITEMS, dropLocked, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf } from '../data/cards.mjs';
+import { ITEMS, dropLocked, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf, hasOpenQuest } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { canFire } from './combat.mjs';
 import { roomActionAvailable, roomActionCost } from './rooms.mjs';
@@ -94,6 +94,9 @@ export function buildMenu(state, p) {
         const where = !qd.questRoom || qd.questRoom === 'any' ? null : qd.questRoom;
         const here = !where || (qd.questRoom === 'engine' ? (tile === 'engine' || tile === 'engineRoom') : where === tile);
         let ok = here, reason = !here ? 'Нужна комната «' + ((ROOM_TILES[where] || {}).name || where) + '»' : '';
+        if (ok && qd.questComputer && (!computerHere(state, p) || rs.malfunction)) {
+            ok = false; reason = 'Нужен компьютер без поломки';
+        }
         if (ok && qd.questBlue && state.time > HIBERNATION_TIME) {
             ok = false; reason = 'Маркер времени должен быть в синей зоне (≤ ' + HIBERNATION_TIME + ')';
         }
@@ -103,7 +106,7 @@ export function buildMenu(state, p) {
         if (ok && qd.questEnergy && !p.items.some(i => i.item === 'energyCharge')) {
             ok = false; reason = 'Нужен предмет «Заряд энергии»';
         }
-        if (ok && qd.questNoIntruder && intrudersIn(state, p.room).length) {
+        if (ok && intrudersIn(state, p.room).length) {
             ok = false; reason = 'В комнате не должно быть чужих';
         }
         add('quest', 'Открыть квестовый предмет: «' + qd.name + '»', 1, ok, reason);
@@ -138,10 +141,18 @@ function extraCost(d) {
 function cardRequirement(state, p, d) {
     const rs = room(state, p.room), tile = tileOf(state, p.room);
     switch (d.effect) {
-        case 'search': case 'scavenging':
+        case 'search': case 'scavenging': {
+            if (p.charId === 'bounty' && hasOpenQuest(p, 'canineUpgrades') && p.laika && p.laika !== 'board' && p.laika !== p.room) {
+                const laikaTile = tileOf(state, p.laika);
+                const laikaHasItems = laikaTile && ROOM_TILES[laikaTile].items.length > 0;
+                const hereHasItems = tile && ROOM_TILES[tile].items.length > 0;
+                if (!hereHasItems && !laikaHasItems) return 'В комнате нет предметов';
+                return '';
+            }
             if (!tile || !ROOM_TILES[tile].items.length) return 'В комнате нет предметов';
             if (d.effect === 'scavenging' && rs.malfunction) return 'Поломка в комнате';
             return '';
+        }
         case 'weakSpot': return inCombat(state, p) ? '' : 'Нет чужих';
         case 'scoutAdrenaline': return inCombat(state, p) ? '' : 'Только в комнате с чужим';
         case 'coveringFire': return p.items.some(i => ITEMS[i.item].weapon && i.ammo >= 2 && !i.broken) ? '' : 'Нужно 2 патрона';
@@ -206,6 +217,11 @@ export function itemRequirement(state, p, it) {
         case 'removeContam1': case 'sampleJar': return p.hand.some(isContam) ? '' : 'Нет заражений в руке';
         case 'wrench': return rs.malfunction || rs.fire ? '' : 'Нет поломки или огня';
         case 'pipeMelee': return inCombat(state, p) ? '' : 'Нет чужих';
+        case 'torchDoor': return corridorsOf(state, p.room).length ? '' : 'В комнате нет дверей';
+        case 'karcher': return rs.fire ? '' : 'В комнате нет огня';
+        case 'cheatCodes': return computerHere(state, p) && !rs.malfunction ? '' : 'Нужен компьютер без поломки';
+        case 'surgeryKit': case 'shipCodes': return intrudersIn(state, p.room).length ? 'В комнате не должно быть чужих' : '';
+        case 'research': return intrudersIn(state, p.room).length ? 'В комнате есть чужие' : !rs.objects.length ? 'В комнате нет тяжёлого объекта' : '';
         default: return '';
     }
 }

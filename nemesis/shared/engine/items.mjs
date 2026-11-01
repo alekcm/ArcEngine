@@ -84,13 +84,13 @@ OPS['item.freeUse'] = (state, step) => {
 };
 
 /** Search: one item per icon in the room, keep one. */
-export function searchRoom(state, p, then) {
-    const tile = tileOf(state, p.room);
+export function searchRoom(state, p, then, roomId = p.room) {
+    const tile = tileOf(state, roomId);
     const icons = tile ? ROOM_TILES[tile].items : [];
     const drawn = [];
     // Quiet: the drawn items are already on the table as a picker, no card has to fly anywhere.
     for (const color of icons) { const c = drawItem(state, color, true); if (c) drawn.push(c); }
-    log(state, pname(p) + ' обыскивает комнату (' + icons.length + ' предм.).', 'action');
+    log(state, pname(p) + ' обыскивает комнату' + (roomId !== p.room ? ' (' + roomName(state, roomId) + ')' : '') + ' (' + icons.length + ' предм.).', 'action');
     keepOneOf(state, p, drawn, 'items', then, p.armor && ITEMS[p.armor.item].vest ? 2 : 1);
 }
 
@@ -445,8 +445,12 @@ OPS['quest.open'] = (state, step) => {
             log(state, '«' + def.name + '» открывается только в комнате «' + ((ROOM_TILES[where] || {}).name || where) + '».', 'minor');
             next(state, back); return;
         }
-        if (def.questNoIntruder && intrudersIn(state, p.room).length) {
+        if (intrudersIn(state, p.room).length) {
             log(state, '«' + def.name + '» открывается только в комнате без чужих.', 'minor');
+            next(state, back); return;
+        }
+        if (def.questComputer && (!computerHere(state, p) || room(state, p.room).malfunction)) {
+            log(state, '«' + def.name + '» открывается только в комнате с компьютером без поломки.', 'minor');
             next(state, back); return;
         }
         if (def.questBlue && state.time > HIBERNATION_TIME) {
@@ -493,6 +497,11 @@ OPS['quest.open'] = (state, step) => {
     const inst = { uid: q.uid, item: q.item, ammo: def.weapon ? def.weapon.max : undefined, broken: false, charge: newCharge, start: true, quest: true };
     if (def.kind === 'armor' && !p.armor) p.armor = inst;
     else p.items.push(inst);        // a second armor-slot card is carried in the pack until the slot frees up
+    if (q.item === 'shipCodes' && (p.removedCards || []).length) {
+        p.discard.push(...p.removedCards);
+        log(state, pname(p) + ' возвращает удалённые карты действий (' + p.removedCards.length + ') в сброс.', 'good');
+        p.removedCards = [];
+    }
     log(state, pname(p) + ' открывает квестовый предмет «' + def.name + '»' + (q.item === 'ups' ? ' (+2 жетона ИБП, всего ' + newCharge + ')' : '') + '.', 'good');
     next(state, back);
 };

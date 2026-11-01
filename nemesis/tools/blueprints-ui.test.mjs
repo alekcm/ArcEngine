@@ -304,3 +304,226 @@ test('CONVICT-CUFFS-01: Convict cuffs automatically come off hands and flip when
     assert.equal(engine.heavyCount(p), 0, 'Cuffs are no longer heavy (heavyCount=0)');
     assert.ok(engine.handSlots(state, p).every(s => s.kind === 'empty'), 'Both hands are now empty');
 });
+
+test('QUEST-AUDIT-01: Bloody Camouflage requires Nest room and no intruders', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const engine = await import('../shared/engine/core.mjs');
+    await import('../shared/engine/items.mjs');
+    const { buildMenu } = await import('../shared/engine/turn.mjs');
+
+    const state = createGame({ seed: 'test-labrat-nest', players: [{ name: 'LR', charId: 'labrat' }] });
+    const p = state.players[0];
+    const q = p.quests[0];
+    assert.equal(q.item, 'bloodyCamouflage');
+
+    // Use regular room (not hibernatorium fixture)
+    const regRoom = Object.keys(state.ship.rooms).find(id => !['cockpit', 'hibernatorium', 'engine'].includes(state.ship.rooms[id].kind));
+    p.room = regRoom;
+
+    // Not in Nest: quest action disabled
+    state.roomState[p.room].tile = 'storage';
+    state.roomState[p.room].explored = true;
+    let menu = buildMenu(state, p);
+    let qAct = menu.actions.find(a => a.id === 'quest');
+    assert.equal(qAct.enabled, false, 'Disabled outside Nest');
+
+    // In Nest with intruder: quest action disabled
+    state.roomState[p.room].tile = 'nest';
+    state.intruders = { it1: { uid: 'it1', room: p.room, type: 'adult' } };
+    menu = buildMenu(state, p);
+    qAct = menu.actions.find(a => a.id === 'quest');
+    assert.equal(qAct.enabled, false, 'Disabled with intruder');
+
+    // In Nest without intruder: quest action enabled
+    delete state.intruders.it1;
+    menu = buildMenu(state, p);
+    qAct = menu.actions.find(a => a.id === 'quest');
+    assert.equal(qAct.enabled, true, 'Enabled in Nest without intruders');
+
+    // Open it
+    state.prompt = null;
+    state.queue = [{ op: 'quest.open', player: p.id, uid: q.uid }];
+    engine.run(state);
+    assert.equal(q.open, true);
+    assert.equal(p.armor?.item, 'bloodyCamouflage');
+});
+
+test('QUEST-AUDIT-02: Research Equipment requires Computer without malfunction; is consumed on use', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const engine = await import('../shared/engine/core.mjs');
+    await import('../shared/engine/items.mjs');
+    await import('../shared/engine/actions2.mjs');
+    await import('../shared/engine/rooms.mjs');
+    const { buildMenu } = await import('../shared/engine/turn.mjs');
+
+    const state = createGame({ seed: 'test-xeno-res', players: [{ name: 'Xen', charId: 'xeno' }] });
+    const p = state.players[0];
+    const q = p.quests[0];
+    assert.equal(q.item, 'researchEquipment');
+
+    const regRoom = Object.keys(state.ship.rooms).find(id => !['cockpit', 'hibernatorium', 'engine'].includes(state.ship.rooms[id].kind));
+    p.room = regRoom;
+
+    // Non-computer room: disabled
+    state.roomState[p.room].tile = 'storage';
+    state.roomState[p.room].explored = true;
+    let menu = buildMenu(state, p);
+    assert.equal(menu.actions.find(a => a.id === 'quest').enabled, false);
+
+    // Computer room with malfunction: disabled
+    state.roomState[p.room].tile = 'commandCenter';
+    state.roomState[p.room].malfunction = true;
+    menu = buildMenu(state, p);
+    assert.equal(menu.actions.find(a => a.id === 'quest').enabled, false);
+
+    // Computer room without malfunction: enabled
+    state.roomState[p.room].malfunction = false;
+    menu = buildMenu(state, p);
+    assert.equal(menu.actions.find(a => a.id === 'quest').enabled, true);
+
+    // Open quest item
+    state.prompt = null;
+    state.queue = [{ op: 'quest.open', player: p.id, uid: q.uid }];
+    engine.run(state);
+    assert.equal(q.open, true);
+    const equip = p.items.find(i => i.item === 'researchEquipment');
+    assert.ok(equip);
+
+    // Put a carcass in the room and use research equipment
+    state.roomState[p.room].objects = [{ type: 'carcass' }];
+    state.prompt = null;
+    state.queue = [{ op: 'item.use', player: p.id, uid: equip.uid }];
+    engine.run(state);
+    assert.equal(state.prompt.kind, 'choice');
+    engine.answer(state, p.id, state.prompt.id, 'room:0');
+
+    // Equipment must be consumed (removed from items)
+    assert.equal(p.items.some(i => i.item === 'researchEquipment'), false, 'Research equipment is one-use and consumed');
+    assert.equal(p.knowledge, 3, 'Gained 2 knowledge (started at 1)');
+});
+
+test('QUEST-AUDIT-03: Canine Upgrades lets Bounty Hunter Search in Laika room and recalls Laika', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const engine = await import('../shared/engine/core.mjs');
+    await import('../shared/engine/items.mjs');
+    await import('../shared/engine/actions.mjs');
+    const { buildMenu } = await import('../shared/engine/turn.mjs');
+
+    const state = createGame({ seed: 'test-bounty-search', players: [{ name: 'Bounty', charId: 'bounty' }] });
+    const p = state.players[0];
+    p.quests[0].open = true;
+    p.items.push({ uid: 'cu1', item: 'canineUpgrades', quest: true });
+
+    // Hunter is in empty room with no items (e.g. cockpit)
+    p.room = Object.keys(state.ship.rooms).find(id => state.ship.rooms[id].kind === 'cockpit');
+    p.hand = ['bounty.search#0'];
+
+    // Laika is on board: search cannot be played because cockpit has no items
+    p.laika = 'board';
+    let menu = buildMenu(state, p);
+    assert.equal(menu.cards.find(c => c.id === 'bounty.search#0').enabled, false);
+
+    // Send Laika to an explored regular room with items (e.g. laboratory)
+    const otherRoom = Object.keys(state.ship.rooms).find(id => !['cockpit', 'hibernatorium', 'engine'].includes(state.ship.rooms[id].kind));
+    state.roomState[otherRoom].tile = 'laboratory';
+    state.roomState[otherRoom].explored = true;
+    p.laika = otherRoom;
+
+    // Now search card should be enabled thanks to Canine Upgrades
+    menu = buildMenu(state, p);
+    assert.equal(menu.cards.find(c => c.id === 'bounty.search#0').enabled, true);
+
+    // Play search card
+    state.prompt = null;
+    state.queue = [{ op: 'card.search', player: p.id }];
+    engine.run(state);
+
+    // Laika returns to the hunter and items are drawn from Laika's room
+    assert.equal(p.laika, 'board', 'Laika returned to hunter');
+    assert.ok(state.prompt && state.prompt.kind === 'choice', 'Prompt offers drawn items');
+});
+
+test('QUEST-AUDIT-04: Ship Codes regains removed Action cards on activation', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const engine = await import('../shared/engine/core.mjs');
+    await import('../shared/engine/items.mjs');
+
+    const state = createGame({ seed: 'test-ceo-shipcodes', players: [{ name: 'CEO', charId: 'ceo' }] });
+    const p = state.players[0];
+    const q = p.quests[0];
+
+    // Remove an action card from game
+    const removedCard = p.hand[0];
+    engine.removeCardFromGame(state, p, removedCard);
+    assert.equal(p.hand.includes(removedCard), false);
+    assert.deepEqual(p.removedCards, [removedCard]);
+
+    // Go to regular room explored as Archives room and activate Ship Codes
+    const regRoom = Object.keys(state.ship.rooms).find(id => !['cockpit', 'hibernatorium', 'engine'].includes(state.ship.rooms[id].kind));
+    p.room = regRoom;
+    state.roomState[p.room].tile = 'archives';
+    state.roomState[p.room].explored = true;
+    state.prompt = null;
+    state.queue = [{ op: 'quest.open', player: p.id, uid: q.uid }];
+    engine.run(state);
+
+    assert.equal(q.open, true);
+    assert.ok(p.discard.includes(removedCard), 'Removed action card was returned to discard');
+    assert.equal(p.removedCards.length, 0, 'removedCards array is cleared');
+});
+
+test('QUEST-AUDIT-05: Surgery Kit discards hand & deck, clears contaminations, removes larva, passes', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const engine = await import('../shared/engine/core.mjs');
+    await import('../shared/engine/items.mjs');
+    await import('../shared/engine/actions2.mjs');
+
+    const state = createGame({ seed: 'test-medic-surgery', players: [{ name: 'Doc', charId: 'medic' }, { name: 'Soldier', charId: 'soldier' }] });
+    const p = state.players[0];
+    p.items.push({ uid: 'sk1', item: 'surgeryKit', quest: true });
+    p.hand = ['medic.firstAid#0', 'contam#1'];
+    p.deck = ['medic.rest#0', 'contam#2'];
+    p.discard = ['medic.search#0', 'contam#3'];
+    p.larva = true;
+
+    state.prompt = null;
+    state.queue = [{ op: 'item.surgeryKit', player: p.id, uid: 'sk1', answer: String(p.id), then: { op: 'turn.choose' } }];
+    engine.run(state);
+
+    assert.equal(p.larva, false, 'Larva removed');
+    assert.equal(p.passed, true, 'Target forced to pass');
+    assert.equal(p.hand.length, 0, 'Hand discarded');
+    assert.equal(p.deck.length, 0, 'Deck discarded');
+    assert.ok(p.discard.includes('medic.firstAid#0'), 'Action card from hand in discard');
+    assert.ok(p.discard.includes('medic.rest#0'), 'Action card from deck in discard');
+    assert.ok(p.discard.includes('medic.search#0'), 'Action card from discard retained');
+    assert.equal(p.discard.some(c => c.startsWith('contam#')), false, 'All contamination cards removed');
+    assert.equal(p.items.some(i => i.item === 'surgeryKit'), false, 'Surgery kit consumed');
+});
+
+test('QUEST-AUDIT-06: Universal rule - Quest items cannot be opened when intruders are present in room', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const { buildMenu } = await import('../shared/engine/turn.mjs');
+
+    const state = createGame({ seed: 'test-quest-nointruders', players: [{ name: 'Capt', charId: 'captain' }] });
+    const p = state.players[0];
+    const q = p.quests[0];
+    assert.ok(q, 'Captain has intercom quest');
+
+    // Comms room without intruder -> enabled
+    const regRoom = Object.keys(state.ship.rooms).find(id => !['cockpit', 'hibernatorium', 'engine'].includes(state.ship.rooms[id].kind));
+    p.room = regRoom;
+    state.roomState[p.room].tile = 'comms';
+    state.roomState[p.room].explored = true;
+
+    let menu = buildMenu(state, p);
+    let qAct = menu.actions.find(a => a.id === 'quest');
+    assert.equal(qAct.enabled, true, 'Enabled without intruder');
+
+    // Add intruder -> disabled with reason
+    state.intruders = { it1: { uid: 'it1', room: p.room, type: 'creeper' } };
+    menu = buildMenu(state, p);
+    qAct = menu.actions.find(a => a.id === 'quest');
+    assert.equal(qAct.enabled, false, 'Disabled with intruder');
+    assert.match(qAct.reason, /чуж/i, 'Reason mentions intruder');
+});

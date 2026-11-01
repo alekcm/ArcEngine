@@ -285,10 +285,10 @@ export const ITEMS = {
                    text: 'Квестовый предмет охранника, броня. В конце своего хода не теряете здоровье от пожара в комнате. Стреляя, используйте особый синий кубик боя (грани 2,2,3,3,3,4,4,5,6 и КРИТ).' },
     heavyArmor:  { deck: 'start', count: 0, name: 'Тяжёлая броня', kind: 'armor', quest: true, slot: 'armor', questRoom: 'repository', adultGuard: true, use: null,
                    text: 'Квестовый предмет солдата, броня. Когда чужой атакует вас, можете предотвратить атаку и потерять 1 здоровье вместо неё.' },
-    bloodyCamouflage: { deck: 'start', count: 0, name: 'Кровавый камуфляж', kind: 'armor', quest: true, slot: 'armor', questRoom: 'any', redirectAttack: true, use: null,
-                   text: 'Квестовый предмет подопытной, броня. Когда чужой атакует вас, выберите другого персонажа в этой комнате — чужой атакует его.' },
-    researchEquipment:{ deck: 'start', count: 0, name: 'Исследовательское оборудование', quest: true, slot: 'item', questRoom: 'any', questNoIntruder: true, use: 'research', oneUse: true,
-                   text: 'Квестовый предмет ксенобиолога, одноразовый, только в комнате без чужих. Проанализируйте 1 тяжёлый объект в комнате (не несомый персонажем) и получите 2 знания; если такой тип ещё не изучен, положите объект над активной адаптацией и сбросьте её.' },
+    bloodyCamouflage: { deck: 'start', count: 0, name: 'Кровавый камуфляж', kind: 'armor', quest: true, slot: 'armor', questRoom: 'nest', redirectAttack: true, use: null,
+                   text: 'Квестовый предмет подопытной, броня. Активация: комната «Гнездо». Когда чужой атакует вас, выберите другого персонажа в этой комнате — чужой атакует его.' },
+    researchEquipment:{ deck: 'start', count: 0, name: 'Исследовательское оборудование', quest: true, slot: 'item', questRoom: 'any', questComputer: true, use: 'research', oneUse: true,
+                   text: 'Квестовый предмет ксенобиолога, одноразовый. Активация: в комнате с компьютером без поломки. Проанализируйте 1 тяжёлый объект в комнате (не несомый персонажем) и получите 2 знания; если такой тип ещё не изучен, положите объект над активной адаптацией и сбросьте её.' },
     oculobe:     { deck: 'start', count: 0, name: 'Дрон «Окулоб»', quest: true, slot: 'passive', questRoom: 'emergency', use: null,
                    text: 'Квестовый предмет психолога. Пассивно: когда другой персонаж принимает эффект ваших «Не паникуй» или «Помоги», положите ему жетон связи. «Не паникуй», «Сканер эмоций», «Помоги» и «Будь так добр» можно играть на персонажа в любой комнате, если у него есть жетон связи.' },
 };
@@ -314,7 +314,8 @@ export function canLoadWith(key, source) {
 export function hasOpenQuest(p, key) {
     if (!p) return false;
     if ((p.items || []).some(i => i.item === key)) return true;
-    return !!(p.armor && p.armor.item === key);
+    if (p.armor && p.armor.item === key) return true;
+    return (p.quests || []).some(q => q.item === key && q.open);
 }
 /** The Oculobe Drone's Connection token: `holder` put one on `target` by helping them. */
 export function connectedTo(holder, target) {

@@ -3,7 +3,7 @@
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire, placeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, removeCardFromGame, isContam, isInfected, payCost,
     clearNoiseAround, killPlayer, spawnIntruder, intruderLabel, corridorsOf, secretTile, payableCards, infectLarva , computerHere } from './core.mjs';
-import { ITEMS, dropLocked } from '../data/cards.mjs';
+import { ITEMS, dropLocked, hasOpenQuest } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
 import { dealHits } from './combat.mjs';
@@ -106,7 +106,41 @@ OPS['card.repairs'] = (state, step) => {
     choice(state, p, 'Ремонт', repairOptions(state, p, true), 'card.repairPick', { enginePay: 1, malfPay: 1 });
 };
 OPS['card.rest'] = (state, step) => { infectionProcedure(state, player(state, step.player), true); next(state, BACK); };
-OPS['card.search'] = (state, step) => { search(state, player(state, step.player), BACK); };
+OPS['card.search'] = (state, step) => {
+    const p = player(state, step.player);
+    if (hasOpenQuest(p, 'canineUpgrades') && p.laika && p.laika !== 'board' && p.laika !== p.room) {
+        const laikaTile = tileOf(state, p.laika);
+        const laikaHasItems = laikaTile && ROOM_TILES[laikaTile].items.length > 0;
+        const hereTile = tileOf(state, p.room);
+        const hereHasItems = hereTile && ROOM_TILES[hereTile].items.length > 0;
+        if (laikaHasItems && hereHasItems) {
+            ask(state, {
+                kind: 'choice', player: p.id,
+                title: 'Поиск: в какой комнате обыскивать?',
+                options: [
+                    { id: 'here', label: 'В своей комнате (' + roomName(state, p.room) + ')' },
+                    { id: 'laika', label: 'В комнате Лайки (' + roomName(state, p.laika) + ')' },
+                ]
+            }, { op: 'card.search.where', player: p.id });
+            return;
+        } else if (laikaHasItems) {
+            next(state, { op: 'card.search.where', player: p.id, answer: 'laika' });
+            return;
+        }
+    }
+    search(state, p, BACK);
+};
+OPS['card.search.where'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'laika') {
+        const r = p.laika;
+        p.laika = 'board';
+        log(state, '🐕 Лайка возвращается к охотнице после поиска.', 'good');
+        search(state, p, BACK, r);
+    } else {
+        search(state, p, BACK);
+    }
+};
 OPS['card.weakSpot'] = (state, step) => {
     const p = player(state, step.player);
     const opts = [];

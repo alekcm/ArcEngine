@@ -313,6 +313,8 @@ export function removeCardFromGame(state, p, cardId) {
     if (i >= 0) p.hand.splice(i, 1);
     const j = p.discard.indexOf(cardId); if (j >= 0) p.discard.splice(j, 1);
     const k = p.deck.indexOf(cardId); if (k >= 0) p.deck.splice(k, 1);
+    p.removedCards = p.removedCards || [];
+    p.removedCards.push(cardId);
     fx(state, { type: 'remove', player: p.id, card: cardId, fromHand: i >= 0 });
 }
 export function payableCards(p) { return p.hand.filter(c => !isContam(c)); }

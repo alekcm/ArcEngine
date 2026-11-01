@@ -909,7 +909,9 @@ test('QUEST-05 / every Quest Item Deck card names its slot and its activation ro
     assert.equal(ITEMS.intercom.questRoom, 'comms');
     assert.equal(ITEMS.canineUpgrades.questRoom, 'surgery');
     assert.equal(ITEMS.portableDevice.questRoom, 'laboratory');
-    for (const k of ['surgeryKit', 'researchEquipment', 'bloodyCamouflage', 'motionScanner', 'survivorFavorite', 'pipe']) {
+    assert.equal(ITEMS.bloodyCamouflage.questRoom, 'nest');
+    assert.equal(ITEMS.researchEquipment.questComputer, true);
+    for (const k of ['surgeryKit', 'researchEquipment', 'motionScanner', 'survivorFavorite', 'pipe']) {
         assert.equal(ITEMS[k].questRoom, 'any', k + ' opens in any room');
     }
 });

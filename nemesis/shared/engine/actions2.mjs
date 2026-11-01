@@ -970,13 +970,24 @@ OPS['item.surgeryKit'] = (state, step) => {
     const inst = p.items.find(i => i.uid === step.uid);
     const o = player(state, Number(step.answer)) || p;
     let n = 0;
-    for (const c of [...o.hand]) if (isContam(c)) { discardCard(state, o, c); n++; }
-    o.deck = o.deck.filter(c => !isContam(c));
+    for (const c of [...o.hand]) {
+        if (isContam(c)) n++;
+        else o.discard.push(c);
+    }
+    o.hand = [];
+    for (const c of [...o.deck]) {
+        if (isContam(c)) n++;
+        else o.discard.push(c);
+    }
+    o.deck = [];
+    for (const c of [...o.discard]) {
+        if (isContam(c)) n++;
+    }
     o.discard = o.discard.filter(c => !isContam(c));
     if (o.larva) { o.larva = false; log(state, pname(o) + ': личинка удалена.', 'good'); }
     if (inst) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard[ITEMS[inst.item].deck] = state.itemDiscard[ITEMS[inst.item].deck] || []).push(inst.item); }
     o.passed = true;
-    log(state, pname(o) + ': операция — рука и колода очищены от заражения (' + n + ' карт), обязательный пас.', 'good');
+    log(state, pname(o) + ': операция — рука и колода сброшены, заражения удалены (' + n + ' карт), личинка удалена, обязательный пас.', 'good');
     next(state, step.then);
 };
 OPS['item.shipCodes'] = (state, step) => {
@@ -1053,6 +1064,12 @@ OPS['item.cheatCodes.doors'] = (state, step) => {
     next(state, step.then);
 };
 OPS['item.research'] = (state, step) => {
+    const p = player(state, step.player);
+    const inst = p.items.find(i => i.uid === step.uid);
+    if (inst) {
+        p.items = p.items.filter(i => i !== inst);
+        (state.itemDiscard[ITEMS[inst.item].deck] = state.itemDiscard[ITEMS[inst.item].deck] || []).push(inst.item);
+    }
     // Same analysis as the Laboratory action: 2 Knowledge, and the first object of a type removes an
     // active Adaptation.
     OPS['room.lab'](state, { player: step.player, answer: step.answer, then: step.then });
