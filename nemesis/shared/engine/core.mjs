@@ -369,7 +369,7 @@ export function loseHealth(state, p, n, reason) {
         p.health--;
         if (p.health < 0) break;
         // armor sits in the heavily injured section: entering it discards the armor
-        if (p.armor && healthState(p) === 'heavy') {
+        if (p.armor && !ITEMS[p.armor.item].noDrop && !ITEMS[p.armor.item].quest && healthState(p) === 'heavy') {
             log(state, pname(p) + ': броня «' + ITEMS[p.armor.item].name + '» разрушена.', 'bad');
             p.armor = null;
         }

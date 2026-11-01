@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createGame } from '../shared/engine/setup.mjs';
 import * as engine from '../shared/engine/core.mjs';
 import '../shared/engine/items.mjs';
-import '../shared/engine/rooms.mjs';
+import { resolveAirlocks, roomActionAvailable } from '../shared/engine/rooms.mjs';
 import '../shared/engine/combat.mjs';
 import '../shared/engine/movement.mjs';
 import '../shared/engine/actions.mjs';
@@ -312,4 +312,127 @@ test('ITEM-AUDIT-04: Support deck items work per card text (Engineering Equipmen
     engine.answer(state, p.id, state.prompt.id, 'malf');
     assert.equal(state.roomState[p.room].malfunction, false, 'Engineering equipment fixed malfunction');
     assert.ok(p.items.some(i => i.uid === 'ee1'), 'Engineering equipment is reusable (not consumed)');
+});
+
+// =============================================================================================
+// 4. RULE AUDIT REGRESSION TESTS (CONFIRMED BUGS FIXED)
+// =============================================================================================
+
+test('AUDIT-FIX-01: Wheelchair and quest armors are never prompted to be discarded to ignore attacks', () => {
+    const state = createGame({ seed: 'test-wheelchair-armor', players: [{ name: 'Scientist', charId: 'scientist' }] });
+    const p = state.players[0];
+    assert.equal(p.armor?.item, 'wheelchair');
+    state.intruders = { it1: { uid: 'it1', room: p.room, type: 'adult' } };
+
+    state.prompt = null;
+    state.queue = [{ op: 'attack', intruder: 'it1', player: p.id, cardId: 'scratch1', noReaction: true }];
+    engine.run(state);
+
+    // Player should NOT be asked to discard their wheelchair
+    assert.notEqual(state.prompt?.title?.includes('Сбросить броню'), true, 'Wheelchair must not be offered for discard');
+    assert.ok(p.armor && p.armor.item === 'wheelchair', 'Wheelchair stays equipped');
+});
+
+test('AUDIT-FIX-02: Security armor discard applies ONLY to Adult attacks, not Queen, and discards to red discard', () => {
+    const state = createGame({ seed: 'test-security-armor', players: [{ name: 'P', charId: 'soldier' }] });
+    const p = state.players[0];
+    p.armor = { uid: 'sec1', item: 'armor' };
+
+    // Against Queen: Security Armor must NOT be offered
+    state.intruders = { q1: { uid: 'q1', room: p.room, type: 'queen' } };
+    state.prompt = null;
+    state.queue = [{ op: 'attack', intruder: 'q1', player: p.id, cardId: 'scratch1', noReaction: true }];
+    engine.run(state);
+    assert.notEqual(state.prompt?.title?.includes('Сбросить броню'), true, 'Security armor does not trigger on Queen attacks');
+
+    // Against Adult: Security Armor is offered and can be discarded to red item discard
+    state.intruders = { it1: { uid: 'it1', room: p.room, type: 'adult' } };
+    state.prompt = null;
+    state.queue = [{ op: 'attack', intruder: 'it1', player: p.id, cardId: 'scratch1', noReaction: true }];
+    engine.run(state);
+    assert.ok(state.prompt?.title?.includes('Сбросить броню'), 'Security armor offers discard against Adult attack');
+    engine.answer(state, p.id, state.prompt.id, 'yes');
+    assert.equal(p.armor, null, 'Armor was discarded');
+    assert.ok((state.itemDiscard.red || []).includes('armor'), 'Armor went to red discard pile');
+});
+
+test('AUDIT-FIX-03: Tactical armor reduces attack health loss by 1 and does NOT offer Heavy Armor guard', () => {
+    const state = createGame({ seed: 'test-tactical-armor', players: [{ name: 'P', charId: 'soldier' }] });
+    const p = state.players[0];
+    p.armor = { uid: 'ta1', item: 'tacticalArmor' };
+    state.intruders = { it1: { uid: 'it1', room: p.room, type: 'adult' } };
+
+    // Does NOT offer Heavy Armor reaction
+    state.prompt = null;
+    state.queue = [{ op: 'attack', intruder: 'it1', player: p.id }];
+    engine.run(state);
+    assert.notEqual(state.prompt?.options?.some(o => o.id === 'armorGuard'), true, 'Tactical Armor is not Soldier quest Heavy Armor');
+
+    // Scratch 3 deals 2 damage, tactical armor reduces it to 1
+    p.health = 10;
+    state.prompt = null;
+    state.queue = [{ op: 'attack', intruder: 'it1', player: p.id, cardId: 'scratch3', noReaction: true }];
+    engine.run(state);
+    assert.equal(p.health, 9, 'Took 1 damage instead of 2 due to Tactical Armor');
+});
+
+test('AUDIT-FIX-04: Wheelchair and quest armors are not destroyed when reaching heavy health state', () => {
+    const state = createGame({ seed: 'test-wheelchair-heavy', players: [{ name: 'Scientist', charId: 'scientist' }] });
+    const p = state.players[0];
+    assert.equal(p.armor?.item, 'wheelchair');
+    engine.loseHealth(state, p, 8, 'ранения');
+    assert.equal(engine.healthState(p), 'heavy');
+    assert.ok(p.armor && p.armor.item === 'wheelchair', 'Wheelchair is not destroyed on heavy health state');
+});
+
+test('AUDIT-FIX-05: Airlock unpasses characters inside, and aborts if any door is opened or destroyed', () => {
+    const state = createGame({ seed: 'test-airlock-unpass', players: [{ name: 'P1', charId: 'soldier' }, { name: 'P2', charId: 'scout' }] });
+    const p1 = state.players[0], p2 = state.players[1];
+    setupRoom(state, p1, 'airlock');
+    p2.room = p1.room;
+    p2.passed = true;
+
+    // Airlock action unpasses characters inside
+    state.prompt = null;
+    state.queue = [{ op: 'room.airlock', player: p1.id, answer: p1.room, then: { op: 'turn.choose' } }];
+    engine.run(state);
+    assert.equal(p2.passed, false, 'Character inside airlock was unpassed');
+
+    // If a door is open, resolveAirlocks aborts and does not kill occupants
+    const cors = engine.corridorsOf(state, p1.room);
+    state.ship.corridors[cors[0].id].door = 'open';
+    resolveAirlocks(state);
+    assert.equal(p2.status, 'active', 'Airlock aborted because door was open');
+});
+
+test('AUDIT-FIX-06: Remote detonator targets rooms with red ammo icon and deals skull (instant kill)', () => {
+    const state = createGame({ seed: 'test-detonator-skull', players: [{ name: 'P', charId: 'soldier' }] });
+    const p = state.players[0];
+
+    // Comms has ['red', 'yellow'] (1 red icon) - must be a valid target!
+    setupRoom(state, p, 'comms');
+    state.intruders = { it1: { uid: 'it1', room: p.room, type: 'adult', hits: 0 } };
+    p.items.push({ uid: 'det1', item: 'detonator' });
+
+    state.prompt = null;
+    state.queue = [{ op: 'item.use', player: p.id, uid: 'det1' }];
+    engine.run(state);
+
+    assert.equal(state.prompt.kind, 'room');
+    assert.ok(state.prompt.rooms.includes(p.room), 'Room with 1 red item icon is valid target');
+
+    engine.answer(state, p.id, state.prompt.id, p.room);
+    engine.run(state);
+    assert.equal(state.intruders.it1, undefined, 'Intruder instantly killed by skull');
+});
+
+test('AUDIT-FIX-07: Generator autodestruct action is disabled when a character is hibernating', () => {
+    const state = createGame({ seed: 'test-gen-hibernate', players: [{ name: 'P1', charId: 'soldier' }, { name: 'P2', charId: 'scout' }] });
+    const p1 = state.players[0], p2 = state.players[1];
+    setupRoom(state, p1, 'generator');
+    p2.status = 'hibernating';
+
+    const av = roomActionAvailable(state, p1);
+    assert.equal(av.ok, false);
+    assert.equal(av.reason, 'Кто-то уже в гибернации');
 });

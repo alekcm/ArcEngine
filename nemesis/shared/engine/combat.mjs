@@ -108,7 +108,7 @@ OPS['attack'] = (state, step) => {
         if (d.preventAttack === 'marker' && !i.charge && !i.broken) opts.push({ id: 'item:' + i.uid, label: '«' + d.name + '»: положить жетон' });
     }
     // Heavy Armor (printed): an Intruder's attack can be prevented for 1 Health.
-    if (p.armor && (ITEMS[p.armor.item].adultGuard || ITEMS[p.armor.item].heavyArmor))
+    if (p.armor && ITEMS[p.armor.item].adultGuard)
         opts.push({ id: 'armorGuard', label: '«' + ITEMS[p.armor.item].name + '»: предотвратить атаку и потерять 1 здоровье' });
     // Bloody Camouflage (printed): the attack hits another Character in the Room instead.
     if (p.armor && ITEMS[p.armor.item].redirectAttack && othersHere.length && !step.redirected)
@@ -220,7 +220,7 @@ function resolveAttack(state, step, it, p) {
     let effects = card[it.type];
     if (typeof effects === 'string') effects = card[effects];
     if (!step.cardId) log(state, '⚔ ' + intruderLabel(state, it) + ' атакует ' + pname(p) + ': «' + card.name + '».', 'combat');
-    if (p.armor && ITEMS[p.armor.item].deck !== 'support' && !effects.some(e => e.op === 'miss')) {
+    if (p.armor && ITEMS[p.armor.item].discardArmor && it.type === 'adult' && !effects.some(e => e.op === 'miss')) {
         ask(state, { kind: 'choice', player: p.id, title: intruderLabel(state, it) + ': «' + card.name + '». Сбросить броню и проигнорировать атаку?',
             options: [{ id: 'yes', label: 'Да, сбросить броню' }, { id: 'no', label: 'Нет, принять атаку' }] },
             { op: 'attack.armor', player: p.id, intruder: it.uid, phantom: it.uid === '_phantom' ? it : undefined, cardId, moving: step.moving, dest: step.dest, context: step.context, ravenous: step.ravenous });
@@ -253,7 +253,15 @@ OPS['attack.armorReplace'] = (state, step) => {
 };
 OPS['attack.armor'] = (state, step) => {
     const p = player(state, step.player), it = step.phantom || state.intruders[step.intruder];
-    if (step.answer === 'yes') { p.armor = null; log(state, pname(p) + ' сбрасывает броню: атака проигнорирована.', 'good'); return; }
+    if (step.answer === 'yes') {
+        if (p.armor) {
+            const def = ITEMS[p.armor.item];
+            (state.itemDiscard[def.deck] = state.itemDiscard[def.deck] || []).push(p.armor.item);
+            p.armor = null;
+        }
+        log(state, pname(p) + ' сбрасывает броню: атака проигнорирована.', 'good');
+        return;
+    }
     const card = ATTACK_BY_ID[step.cardId];
     let effects = card[it.type]; if (typeof effects === 'string') effects = card[effects];
     applyAttackEffects(state, effects, it, p, step);

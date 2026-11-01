@@ -2,8 +2,8 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeFire, removeMalfunction, placeFire, placeMalfunction, drawCards, discardCard, isContam, gainContamination,
-    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice, computerHere, HIBERNATION_TIME } from './core.mjs';
-import { ITEMS, WOUNDS, DECK_NAMES, canLoadWith } from '../data/cards.mjs';
+    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice, computerHere, HIBERNATION_TIME, removeIntruder } from './core.mjs';
+import { ITEMS, WOUNDS, DECK_NAMES, canLoadWith, INTRUDER_NAMES } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { shuffle } from '../rng.mjs';
 import { repelIntruder, checkNest } from './intruders.mjs';
@@ -193,8 +193,8 @@ OPS['item.use'] = (state, step) => {
         }
         case 'detonator': {
             consume();
-            const rooms = Object.keys(state.ship.rooms).filter(r => { const t = tileOf(state, r); return t && ROOM_TILES[t].items.filter(x => x === 'red').length >= 2; });
-            if (!rooms.length) { log(state, 'Нет комнаты с достаточным числом красных значков.', 'minor'); next(state, back); return; }
+            const rooms = Object.keys(state.ship.rooms).filter(r => { const t = tileOf(state, r); return t && ROOM_TILES[t].items.includes('red'); });
+            if (!rooms.length) { log(state, 'Нет разведанных комнат с военным снаряжением.', 'minor'); next(state, back); return; }
             ask(state, { kind: 'room', player: p.id, title: 'Детонатор: какую комнату взорвать?', rooms }, { op: 'item.detonate', player: p.id, then: back });
             return;
         }
@@ -403,7 +403,15 @@ OPS['item.detonate'] = (state, step) => {
     const p = player(state, step.player);
     const r = step.answer;
     log(state, '💥 Детонация в ' + roomName(state, r) + '!', 'combat');
-    for (const it of intrudersIn(state, r)) if (state.intruders[it.uid]) dealHits(state, p, it, 3, 0, {});
+    for (const it of intrudersIn(state, r)) {
+        if (!state.intruders[it.uid]) continue;
+        if (it.type === 'queen') {
+            next(state, { op: 'queen.card', player: p.id });
+        } else {
+            log(state, '✔ ' + INTRUDER_NAMES[it.type] + ' уничтожен детонатором!', 'good');
+            removeIntruder(state, it.uid, true);
+        }
+    }
     for (const o of playersInRoom(state, r)) loseHealth(state, o, 3, 'взрыв');
     next(state, step.then);
 };
