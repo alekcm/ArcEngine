@@ -516,3 +516,61 @@ test('AUDIT-FIX-11: Tactical Hatchet deals 2 hits and marks weapon with malfunct
     assert.equal(h.broken, true, 'Hatchet marked broken (malfunction)');
     assert.equal(state.intruders.it1?.hits, 2, 'Dealt 2 hits');
 });
+
+test('AUDIT-FIX-12: Items with noCombat icon cannot be used while in combat', () => {
+    const state = createGame({ seed: 'test-no-combat-item', players: [{ name: 'P', charId: 'soldier' }] });
+    const p = state.players[0];
+    p.items.push({ uid: 'med1', item: 'medkit' });
+    p.items.push({ uid: 'st1', item: 'stapler' });
+    p.hand = ['soldier.search#0', 'soldier.repairs#0'];
+
+    // In combat
+    state.intruders = { it1: { uid: 'it1', room: p.room, type: 'adult' } };
+    state.prompt = null;
+    state.queue = [{ op: 'turn.choose' }];
+    engine.run(state);
+
+    assert.equal(state.prompt.kind, 'turn');
+    const medItem = state.prompt.items.find(i => i.uid === 'med1');
+    const staplerItem = state.prompt.items.find(i => i.uid === 'st1');
+
+    assert.equal(medItem.enabled, false, 'Medkit disabled in combat (noCombat icon)');
+    assert.equal(medItem.reason, 'Нельзя в бою');
+    assert.equal(staplerItem.enabled, true, 'Medical stapler can be used in combat');
+});
+
+test('AUDIT-FIX-13: Cables reloads up to 3 ammo into weapon', () => {
+    const state = createGame({ seed: 'test-cables-ammo', players: [{ name: 'P', charId: 'soldier' }] });
+    const p = state.players[0];
+    const gun = p.items.find(i => i.item === 'soldierGun');
+    gun.ammo = 0; // max is 6
+    p.items.push({ uid: 'cb1', item: 'cables' });
+
+    state.prompt = null;
+    state.queue = [{ op: 'item.use', player: p.id, uid: 'cb1' }];
+    engine.run(state);
+
+    assert.equal(state.prompt.kind, 'choice');
+    engine.answer(state, p.id, state.prompt.id, 'w:' + gun.uid);
+    assert.equal(gun.ammo, 3, 'Cables added up to 3 ammo, not full 6');
+});
+
+test('AUDIT-FIX-14: Duct Tape tapes 2 heavy items together and increases hand capacity', () => {
+    const state = createGame({ seed: 'test-duct-tape-hands', players: [{ name: 'P', charId: 'soldier' }] });
+    const p = state.players[0];
+    p.items.push({ uid: 'dt1', item: 'ductTape' });
+
+    const beforeLimit = engine.handLimit(p);
+    assert.equal(beforeLimit, 2, 'Default hand limit is 2');
+
+    state.prompt = null;
+    state.queue = [{ op: 'item.use', player: p.id, uid: 'dt1' }];
+    engine.run(state);
+
+    assert.equal(state.prompt.kind, 'choice');
+    assert.ok(state.prompt.options.some(o => o.id === 'tape'), 'Duct Tape offers taping heavy items');
+    engine.answer(state, p.id, state.prompt.id, 'tape');
+
+    assert.equal(p.ductTaped, 1, 'Character has 1 duct taped pair');
+    assert.equal(engine.handLimit(p), 3, 'Hand limit increased to 3');
+});

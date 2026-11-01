@@ -235,7 +235,7 @@ export function maxAllowedHealth(p) {
     for (let i = covered; i < 4; i++) return s[i][0];
     return 0;
 }
-export function handLimit(p) { return p.wounds.includes('arm') ? 1 : 2; }
+export function handLimit(p) { return (p.wounds.includes('arm') ? 1 : 2) + (p.ductTaped || 0); }
 export function heavyCount(p) {
     let n = p.heavy.length;
     const hasRanged = p.items.some(i => ITEMS[i.item].weapon);

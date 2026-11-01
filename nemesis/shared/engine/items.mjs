@@ -200,7 +200,7 @@ OPS['item.use'] = (state, step) => {
         }
         case 'cables': {
             consume();
-            const opts = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'cables')).map(w => ({ id: 'w:' + w.uid, label: 'Полностью зарядить: ' + ITEMS[w.item].name }));
+            const opts = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'cables')).map(w => ({ id: 'w:' + w.uid, label: 'Зарядить (+3): ' + ITEMS[w.item].name }));
             const tile = tileOf(state, p.room);
             if (computerHere(state, p) && room(state, p.room).malfunction) opts.push({ id: 'fix', label: 'Устранить поломку и использовать компьютер' });
             if (!opts.length) { next(state, back); return; }
@@ -212,6 +212,9 @@ OPS['item.use'] = (state, step) => {
             const opts = [];
             if (room(state, p.room).malfunction) opts.push({ id: 'malf', label: 'Устранить поломку в комнате' });
             if (state.ship.rooms[p.room].kind === 'engine') opts.push({ id: 'engine', label: 'Починить/сломать двигатель' });
+            if (def.use === 'ductTape') {
+                opts.push({ id: 'tape', label: 'Склеить 2 тяжёлых предмета (+1 к вместимости рук)' });
+            }
             // Printed on Tools: "you may activate your Quest Item ignoring its activation requirement".
             if (def.use === 'tools') {
                 const quest = (p.quests || []).find(q => !q.open);
@@ -419,12 +422,22 @@ OPS['item.cables'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'fix') { removeMalfunction(state, p.room); next(state, { op: 'computer.start', player: p.id, then: step.then }); return; }
     const w = p.items.find(i => i.uid === step.answer.slice(2));
-    if (w) { w.ammo = ITEMS[w.item].weapon.max; log(state, '«' + ITEMS[w.item].name + '» полностью заряжено.', 'good'); }
+    if (w) {
+        const before = w.ammo;
+        w.ammo = Math.min(ITEMS[w.item].weapon.max, (w.ammo || 0) + 3);
+        log(state, '«' + ITEMS[w.item].name + '»: патроны ' + before + ' → ' + w.ammo + '.', 'good');
+    }
     next(state, step.then);
 };
 OPS['item.repair'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'malf') { removeMalfunction(state, p.room); next(state, step.then); return; }
+    if (step.answer === 'tape') {
+        p.ductTaped = (p.ductTaped || 0) + 1;
+        log(state, pname(p) + ' использует скотч: связывает 2 тяжёлых предмета (+1 к вместимости рук).', 'good');
+        next(state, step.then);
+        return;
+    }
     if (step.answer === 'quest') {
         const quest = (p.quests || []).find(q => !q.open);
         if (quest) { next(state, { op: 'quest.open', player: p.id, uid: quest.uid, ignore: true, then: step.then }); return; }

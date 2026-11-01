@@ -128,6 +128,7 @@ export function buildMenu(state, p) {
         const d = ITEMS[i.item];
         const cost = (d.free ? 0 : 1) + (p.wounds.includes('hand') && !d.free ? 1 : 0);
         if (i.broken) return { uid: i.uid, enabled: false, reason: 'Поломка', cost };
+        if (d.noCombat && !noCombatOk) return { uid: i.uid, enabled: false, reason: 'Нельзя в бою', cost };
         const req = itemRequirement(state, p, i);
         return { uid: i.uid, enabled: !req && payable >= cost, reason: req || (payable < cost ? 'Не хватает карт' : ''), cost };
     });
@@ -257,6 +258,7 @@ OPS['turn.do'] = (state, step) => {
         if (!it || !it.enabled) { next(state, back); return; }
         const inst = p.items.find(x => x.uid === a.itemId) || p.armor;
         const d = ITEMS[inst.item];
+        if (d.noCombat && inCombat(state, p)) useContainment(state, p);
         log(state, pname(p) + ' использует предмет «' + d.name + '».', 'action');
         fx(state, { type: 'useItem', player: p.id, item: inst.item });
         if (!d.free) spend();
