@@ -242,6 +242,7 @@ export function heavyCount(p) {
     for (const i of p.items) {
         const d = ITEMS[i.item];
         if (d.kind !== 'heavy') continue;
+        if (i.flipped || (i.item === 'cuffs' && ((i.charge ?? ITEMS.cuffs.markers) <= 0 || i.flipped))) continue;
         if (d.bayonet && hasRanged) continue;        // Bayonet shares the slot of a ranged weapon
         n += d.twoSlots ? 2 : 1;                      // Gatling Gun blocks the other hand slot
     }
@@ -458,6 +459,7 @@ export function handSlots(state, p) {
     for (const i of p.items) {
         const d = ITEMS[i.item];
         if (d.kind !== 'heavy') continue;
+        if (i.flipped || (i.item === 'cuffs' && ((i.charge ?? ITEMS.cuffs.markers) <= 0 || i.flipped))) continue;
         if (d.bayonet && p.items.some(o => ITEMS[o.item].weapon)) continue;   // shares the ranged weapon slot
         put('item:' + i.uid, d.name, 'item', d.twoSlots);
     }

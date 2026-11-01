@@ -275,3 +275,32 @@ test('ARMOR-QUEEN-01: Heavy Armor can prevent Queen attack when moving away', as
     assert.equal(p.status, 'active', 'Player is alive');
     assert.equal(p.room, exitRoom, 'Player successfully moved to target room');
 });
+
+test('CONVICT-CUFFS-01: Convict cuffs automatically come off hands and flip when last marker is removed', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const engine = await import('../shared/engine/core.mjs');
+    await import('../shared/engine/actions2.mjs');
+
+    const state = createGame({ seed: 'convict-cuffs-test', players: [{ name: 'Con', charId: 'convict' }] });
+    const p = state.players[0];
+    const cuffs = p.items.find(i => i.item === 'cuffs');
+
+    assert.ok(cuffs, 'Convict starts with cuffs');
+    assert.equal(cuffs.charge, 6, 'Cuffs start with 6 markers');
+    assert.equal(engine.heavyCount(p), 1, 'Cuffs occupy hand space (heavyCount=1)');
+    assert.equal(engine.handSlots(state, p)[0].kind, 'item', 'Cuffs are in hands');
+
+    // Remove 5 markers down to 1
+    cuffs.charge = 1;
+
+    // Use bash card to remove the 6th (last) marker
+    state.prompt = null;
+    p.hand = ['convict.bash#0'];
+    state.queue = [{ op: 'card.bash', player: p.id }];
+    engine.run(state);
+
+    assert.equal(cuffs.charge, 0, 'Cuffs charge is 0');
+    assert.equal(cuffs.flipped, true, 'Cuffs are flipped over');
+    assert.equal(engine.heavyCount(p), 0, 'Cuffs are no longer heavy (heavyCount=0)');
+    assert.ok(engine.handSlots(state, p).every(s => s.kind === 'empty'), 'Both hands are now empty');
+});

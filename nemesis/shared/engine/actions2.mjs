@@ -602,11 +602,24 @@ OPS['card.selfRepair.pick'] = (state, step) => {
 // ---------------------------------------------------------------------------------------------
 // Convict (cuffs)
 // ---------------------------------------------------------------------------------------------
-const cuffsOn = p => { const c = markers(p, 'cuffs'); return c && (c.charge ?? ITEMS.cuffs.markers) > 0; };
+const cuffsOn = p => {
+    const c = markers(p, 'cuffs');
+    if (!c) return false;
+    if ((c.charge ?? ITEMS.cuffs.markers) <= 0) {
+        c.flipped = true;
+        return false;
+    }
+    return !c.flipped;
+};
 function dropCuffMarker(state, p) {
     const c = markers(p, 'cuffs'); if (!c) return;
-    c.charge = (c.charge ?? ITEMS.cuffs.markers) - 1;
-    log(state, 'Наручники: осталось жетонов ' + c.charge + (c.charge <= 0 ? ' — наручники сняты!' : '.'), c.charge <= 0 ? 'good' : 'minor');
+    c.charge = Math.max(0, (c.charge ?? ITEMS.cuffs.markers) - 1);
+    if (c.charge <= 0) {
+        c.flipped = true;
+        log(state, 'Наручники: снят последний жетон — наручники перевёрнуты, сняты с рук и убраны в рюкзак!', 'good');
+    } else {
+        log(state, 'Наручники: осталось жетонов ' + c.charge + '.', 'minor');
+    }
 }
 OPS['card.bash'] = (state, step) => {
     const p = player(state, step.player);

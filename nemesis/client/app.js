@@ -656,7 +656,10 @@ function renderPlayers() {
         tags.push('<span class="tag yellow">знания ' + p.knowledge + (p.knowledgeActive ? ' ✓' : '') + '</span>');
         const cCount = p.contamTotal ?? p.contamInDiscard ?? 0;
         tags.push('<span class="tag" title="Карт в руке / колоде / сбросе (всего заражений)">🂠 ' + p.handCount + ' / ' + p.deckCount + ' / ' + p.discardCount + (cCount ? ' ☣ Заражений: ' + cCount : '') + '</span>');
-        const items = p.items.map(i => '<span class="itag" title="' + esc(itemTitle(i)) + '">' + itemArtHtml(i) + (ITEMS[i.item].weapon ? '🔫' : ITEMS[i.item].kind === 'heavy' ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>').join('')
+        const items = p.items.map(i => {
+            const isHeavy = ITEMS[i.item].kind === 'heavy' && !(i.item === 'cuffs' && (i.flipped || (i.charge ?? ITEMS.cuffs.markers) <= 0));
+            return '<span class="itag" title="' + esc(itemTitle(i)) + '">' + itemArtHtml(i) + (ITEMS[i.item].weapon ? '🔫' : isHeavy ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>';
+        }).join('')
             + p.heavy.map(h => '<span>🧳 ' + ({ corpse: 'труп', charCorpse: 'труп персонажа', carcass: 'туша', egg: 'яйцо' })[h.type] + '</span>').join('')
             // p. 14: another character's light items are hidden; show only how many there are.
             + ((p.itemCount || 0) > p.items.length ? '<span class="tag" title="Лёгкие предметы другого персонажа скрыты">🔒 карт предметов: ' + p.itemCount + '</span>' : '');
@@ -1668,6 +1671,7 @@ function myHandSlots(me) {
     const slots = [];
     for (const i of me.items || []) {
         const d = ITEMS[i.item]; if (!d || d.kind !== 'heavy') continue;
+        if (i.flipped || (i.item === 'cuffs' && ((i.charge ?? ITEMS.cuffs.markers) <= 0 || i.flipped))) continue;
         if (d.bayonet && (me.items || []).some(o => ITEMS[o.item] && ITEMS[o.item].weapon)) continue;
         slots.push({ ref: 'item:' + i.uid, name: d.name, kind: 'item' });
         if (d.twoSlots) slots.push({ ref: null, name: d.name, kind: 'filler' });
@@ -1681,16 +1685,20 @@ function sheetItemHtml(inst, picks) {
     const d = ITEMS[inst.item]; if (!d) return '';
     const art = itemArt(inst.item);
     const meta = [];
-    meta.push(d.kind === 'heavy' ? 'тяжёлый предмет' : d.kind === 'armor' ? 'броня (костюм)' : 'лёгкий предмет');
+    const isCuffsFlipped = inst.item === 'cuffs' && (inst.flipped || (inst.charge ?? ITEMS.cuffs.markers) <= 0);
+    const isHeavy = d.kind === 'heavy' && !isCuffsFlipped;
+    meta.push(isHeavy ? 'тяжёлый предмет' : d.kind === 'armor' ? 'броня (костюм)' : 'лёгкий предмет');
     if (d.weapon) meta.push('патроны ' + (inst.ammo ?? 0) + '/' + d.weapon.max);
-    if (d.markers !== undefined) meta.push('жетоны ' + (inst.charge ?? d.markers) + '/' + d.markers);
+    if (d.markers !== undefined && !isCuffsFlipped) meta.push('жетоны ' + (inst.charge ?? d.markers) + '/' + d.markers);
     if (inst.broken) meta.push('жетон поломки (сломано)');
     if (d.oneUse) meta.push('одноразовый');
     const opt = picks ? picks.get('item:' + inst.uid) : null;
+    const itemName = isCuffsFlipped ? 'Наручники (сняты)' : d.name;
+    const itemText = isCuffsFlipped ? 'Лёгкий предмет (в рюкзаке). Нельзя передать или сбросить. Наручники сняты с ваших рук.' : (d.text || '');
     return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + (opt ? ' pickable' : '') + '" data-item="' + esc(inst.uid) + '"' +
         (opt ? ' data-pick="' + esc(opt) + '" title="Нажмите, чтобы выбрать этот предмет"' : '') + '>' +
         (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
-        '<div><b>' + esc(d.name) + (d.quest ? ' · квестовый' : '') + '</b><small>' + esc(d.text || '') + '</small>' +
+        '<div><b>' + esc(itemName) + (d.quest ? ' · квестовый' : '') + (isCuffsFlipped ? ' · перевёрнуты 🔓' : '') + '</b><small>' + esc(itemText) + '</small>' +
         '<small style="color:#8394a8">' + esc(meta.join(' · ')) + '</small></div>' +
         (opt ? '<span class="si-pick">Выбрать</span>' : '') + '</div>';
 }
