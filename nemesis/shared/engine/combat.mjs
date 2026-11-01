@@ -102,10 +102,12 @@ OPS['attack'] = (state, step) => {
     if (pher && step.context === 'surprise' && p.tissue > 0) opts.push({ id: 'pher', label: 'Сыграть «Феромоны»: сбросить 1 образец ткани — предотвратить атаку' });
     const othersHere = playersInRoom(state, it.room).filter(o => o.id !== p.id && o.status === 'active');
     if (duck && othersHere.length && !step.redirected) opts.push({ id: 'duck', label: 'Сыграть «Пригнуться»: чужой атакует другого персонажа' });
-    for (const i of p.items) {
-        const d = ITEMS[i.item];
-        if (d.preventAttack === 'allAmmo' && i.ammo > 0 && !i.broken) opts.push({ id: 'item:' + i.uid, label: '«' + d.name + '»: сбросить все патроны (' + i.ammo + ') — 1 ранение чужому' });
-        if (d.preventAttack === 'marker' && !i.charge && !i.broken) opts.push({ id: 'item:' + i.uid, label: '«' + d.name + '»: положить жетон' });
+    if (it.type === 'adult') {
+        for (const i of p.items) {
+            const d = ITEMS[i.item];
+            if (d.preventAttack === 'allAmmo' && i.ammo > 0 && !i.broken) opts.push({ id: 'item:' + i.uid, label: '«' + d.name + '»: сбросить все патроны (' + i.ammo + ') — 1 ранение чужому' });
+            if (d.preventAttack === 'marker' && !i.broken) opts.push({ id: 'item:' + i.uid, label: '«' + d.name + '»: положить поломку' });
+        }
     }
     // Heavy Armor (printed): an Intruder's attack can be prevented for 1 Health.
     if (p.armor && ITEMS[p.armor.item].adultGuard)
@@ -190,7 +192,7 @@ OPS['attack.reaction'] = (state, step) => {
     if (String(step.answer).startsWith('item:')) {
         const i = p.items.find(x => x.uid === step.answer.slice(5));
         if (i && ITEMS[i.item].preventAttack === 'allAmmo') { i.ammo = 0; if (it) applyHitsNoRoll(state, it, 1); }
-        else if (i) i.charge = 1;
+        else if (i) i.broken = true;
         log(state, pname(p) + ': «' + ITEMS[i.item].name + '» — атака предотвращена.', 'good');
         return;
     }
@@ -707,7 +709,7 @@ OPS['melee.hit'] = (state, step) => {
     if (!hatchet && it.type !== 'larva' && needDice(state, step, 'combat', p.id, 'Бросок боя — ближний бой')) return;
     if (!step.noContam && !step.contamFaces) gainContamination(state, p, 1);
     log(state, '🗡 ' + pname(p) + ' атакует ' + intruderLabel(state, it) + ' в ближнем бою.', 'combat');
-    if (hatchet) hatchet.charge = 1;
+    if (hatchet) { hatchet.broken = true; hatchet.charge = 1; }
     // Printed: "Deal 2 Hits instead of rolling the Combat die, and place an Orange Malfunction
     // on this Weapon." — no die is rolled at all.
     const hits = (hatchet ? 2 : 1) + (step.bonusHits || 0);

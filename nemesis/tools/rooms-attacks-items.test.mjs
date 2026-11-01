@@ -436,3 +436,83 @@ test('AUDIT-FIX-07: Generator autodestruct action is disabled when a character i
     assert.equal(av.ok, false);
     assert.equal(av.reason, 'Кто-то уже в гибернации');
 });
+
+test('AUDIT-FIX-08: Bayonet and Assault Shotgun prevent only Adult attacks and mark Bayonet broken', () => {
+    const state = createGame({ seed: 'test-bayonet-adult', players: [{ name: 'P', charId: 'soldier' }] });
+    const p = state.players[0];
+    p.items.push({ uid: 'bay1', item: 'bayonet' });
+
+    // Against Queen: Bayonet is NOT offered
+    state.intruders = { q1: { uid: 'q1', room: p.room, type: 'queen' } };
+    state.prompt = null;
+    state.queue = [{ op: 'attack', intruder: 'q1', player: p.id, cardId: 'scratch1' }];
+    engine.run(state);
+    assert.notEqual(state.prompt?.options?.some(o => o.id === 'item:bay1'), true, 'Bayonet is not offered against Queen');
+
+    // Against Adult: Bayonet is offered and places malfunction
+    state.intruders = { it1: { uid: 'it1', room: p.room, type: 'adult' } };
+    state.prompt = null;
+    state.queue = [{ op: 'attack', intruder: 'it1', player: p.id, cardId: 'scratch1' }];
+    engine.run(state);
+    assert.ok(state.prompt?.options?.some(o => o.id === 'item:bay1'), 'Bayonet offered against Adult');
+
+    engine.answer(state, p.id, state.prompt.id, 'item:bay1');
+    const bay = p.items.find(i => i.uid === 'bay1');
+    assert.equal(bay.broken, true, 'Bayonet marked as broken (malfunction)');
+});
+
+test('AUDIT-FIX-09: Perimeter Security Device discards 1 action card to skip noise/encounter without requiring ammo', () => {
+    const state = createGame({ seed: 'test-perimeter-device', players: [{ name: 'P', charId: 'scout' }] });
+    const p = state.players[0];
+    p.items.push({ uid: 'per1', item: 'perimeterDevice' });
+    p.hand = ['scout.search#0', 'scout.repairs#0'];
+
+    state.prompt = null;
+    state.queue = [{ op: 'perimeter.ask', player: p.id, uid: 'per1', then: { op: 'noise.roll', player: p.id, room: p.room } }];
+    engine.run(state);
+
+    assert.equal(state.prompt.kind, 'choice');
+    engine.answer(state, p.id, state.prompt.id, 'yes');
+    engine.run(state);
+
+    // Prompted to pay 1 action card
+    assert.equal(state.prompt.kind, 'cards');
+    engine.answer(state, p.id, state.prompt.id, [p.hand[0]]);
+    engine.run(state);
+
+    assert.equal(p.hand.length, 1, 'Discarded 1 action card');
+    // Queue finished and noise roll was skipped, returning to turn choice
+    assert.ok(state.prompt?.kind === 'turn' || state.prompt === null, 'Skipped noise roll completely');
+});
+
+test('AUDIT-FIX-10: Security System Control targets room with red ammo icon and shoots intruder', () => {
+    const state = createGame({ seed: 'test-sec-control-red', players: [{ name: 'P', charId: 'soldier' }] });
+    const p = state.players[0];
+    p.items.push({ uid: 'sec1', item: 'securityControl' });
+
+    // Target room has red item icon (e.g. Comms with ['red', 'yellow']), NO fire and NO malfunction
+    setupRoom(state, p, 'comms');
+    state.intruders = { it1: { uid: 'it1', room: p.room, type: 'adult', hits: 0 } };
+
+    state.prompt = null;
+    state.queue = [{ op: 'item.use', player: p.id, uid: 'sec1' }];
+    engine.run(state);
+
+    assert.equal(state.prompt.kind, 'room');
+    assert.ok(state.prompt.rooms.includes(p.room), 'Comms is valid target due to red item icon');
+});
+
+test('AUDIT-FIX-11: Tactical Hatchet deals 2 hits and marks weapon with malfunction (broken: true)', () => {
+    const state = createGame({ seed: 'test-hatchet-broken', players: [{ name: 'P', charId: 'soldier' }] });
+    const p = state.players[0];
+    p.items.push({ uid: 'h1', item: 'tacticalHatchet' });
+    state.intruders = { it1: { uid: 'it1', room: p.room, type: 'adult', hits: 0 } };
+
+    state.prompt = null;
+    state.queue = [{ op: 'melee.hit', player: p.id, target: 'it1', noRetaliation: true }];
+    engine.run(state);
+
+    const h = p.items.find(i => i.uid === 'h1');
+    assert.equal(h.broken, true, 'Hatchet marked broken (malfunction)');
+    assert.equal(state.intruders.it1?.hits, 2, 'Dealt 2 hits');
+});

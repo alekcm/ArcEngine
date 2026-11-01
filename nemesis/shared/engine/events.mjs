@@ -265,7 +265,7 @@ OPS['event.noise'] = (state, step) => {
         const crowded = ev.noise === 'all' && playersInRoom(state, p.room).length >= 3;   // 7.8 overcrowding
         if (inCombat(state, p) || crowded) continue;
         if (ev.noise !== 'all') continue;   // everything else has been answered above, as Encounters
-        const dev = p.items.find(i => ITEMS[i.item].perimeter && i.ammo > 0 && !i.broken);
+        const dev = p.items.find(i => ITEMS[i.item].perimeter && !i.broken && p.hand.length > 0);
         // Reactions that skip the roll: Risk Prevention (Field Data), Inconspicuous (Lab Rat), Perimeter device
         let chain = { op: 'noise.roll', player: p.id, room: p.room };
         if (dev) chain = { op: 'perimeter.ask', player: p.id, uid: dev.uid, then: chain };
@@ -297,7 +297,7 @@ OPS['perimeter.ask'] = (state, step) => {
     if (step.answer === 'yes') {
         // Printed: discard 1 Action card — no charges are tracked on this device.
         if (!payableCards(p).length) { log(state, pname(p) + ': нет карт действий для охранного периметра.', 'minor'); next(state, step.then); return; }
-        payCost(state, p, 1, step.then, 'Охранный периметр: сбросьте 1 карту действия');
+        payCost(state, p, 1, undefined, 'Охранный периметр: сбросьте 1 карту действия');
         log(state, pname(p) + ': охранный периметр — броска шума нет.', 'good');
         return;
     }
