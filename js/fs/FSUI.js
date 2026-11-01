@@ -78,6 +78,8 @@ const FSUI = {
         header.append(this.el('span', 'fs-phase', state ? (state.phase === 'setup' ? phaseLabel : 'Раунд ' + state.round + ' · ' + phaseLabel) : phaseLabel));
         const activeSeat = state && state.phase === 'setup' && state.setup ? state.setup.turn : state && state.turn;
         if (state && state.players[activeSeat]) header.append(this.el('span', 'fs-room-pill', 'ХОД · ' + state.players[activeSeat].name));
+        // A test party: one person plays both seats, the interface says which one is his now.
+        if (state && state.solo) header.append(this.el('span', 'fs-room-pill is-solo', 'ТЕСТ · вы за обоих'));
         root.append(header);
 
         const tools = this.el('div', 'fs-toolbar');
@@ -459,8 +461,97 @@ const FSUI = {
             button.addEventListener('click', () => info.onFaction && info.onFaction(f.id)); grid.append(button);
         });
         body.append(grid);
-        const foot = this.el('div', 'fs-lobby-foot', 'Игра начнётся автоматически, когда все участники выберут разные фракции. Отправьте код комнаты друзьям.'); body.append(foot);
+        // How to enter the game: the ordinary party or one of the two test modes.
+        const modes = this.el('div', 'fs-mode-grid');
+        (info.modes || []).forEach(m => {
+            const button = this.el('button', 'fs-mode' + (info.mode === m.id ? ' is-selected' : ''));
+            button.type = 'button';
+            const text = this.el('div', 'fs-mode-text');
+            text.append(this.el('strong', 'fs-mode-title', m.title));
+            text.append(this.el('span', 'fs-mode-note', m.text));
+            button.append(this.el('span', 'fs-mode-icon', m.icon || '◆'), text);
+            button.addEventListener('click', () => info.onMode && info.onMode(m.id));
+            modes.append(button);
+        });
+        body.append(modes);
+        if (info.mode === 'battle' && info.battle) body.append(this.renderBattleSetup(info.battle, info));
+        if (info.mode !== 'game') {
+            const start = this.el('button', 'fs-start-test');
+            start.type = 'button';
+            start.append(this.el('span', 'fs-start-icon', info.mode === 'battle' ? '⚔' : '▦'));
+            start.append(this.el('span', '', info.mode === 'battle'
+                ? 'Начать бой (' + info.battle.total + ' отр. · ' + info.battle.deck + ' карт)'
+                : 'Открыть готовую карту'));
+            start.addEventListener('click', () => info.onStart && info.onStart());
+            body.append(start);
+        }
+        if (info.status) body.append(this.el('div', 'fs-lobby-error', info.status));
+        const foot = this.el('div', 'fs-lobby-foot', info.mode === 'game'
+            ? 'Игра начнётся автоматически, когда все участники выберут разные фракции. Отправьте код комнаты друзьям.'
+            : 'Тест играется одним человеком: оба места за вами, интерфейс показывает, чей сейчас ход. Обновите страницу, чтобы вернуться к выбору режима.');
+        body.append(foot);
         card.append(body); overlay.append(card); root.append(overlay);
+    },
+
+    // The battlefield of the test mode: the kind of the fight, the troops and
+    // the cards of the deck. Everything is chosen here, before the fight.
+    renderBattleSetup(battle, info) {
+        const wrap = this.el('div', 'fs-battle');
+        const head = this.el('div', 'fs-battle-head');
+        head.append(this.el('span', 'fs-eyebrow', 'Поле боя'));
+        const kinds = this.el('div', 'fs-battle-kinds');
+        [['ground', '⌂ Наземный'], ['space', '✦ Космический']].forEach(([id, label]) => {
+            const button = this.el('button', 'fs-kind' + (battle.kind === id ? ' is-selected' : ''), label);
+            button.type = 'button';
+            button.addEventListener('click', () => info.onBattle && info.onBattle({ kind: id }));
+            kinds.append(button);
+        });
+        head.append(kinds);
+        wrap.append(head);
+
+        const unitRow = this.el('div', 'fs-battle-row');
+        unitRow.append(this.el('span', 'fs-eyebrow', 'Ваши отряды'));
+        unitRow.append(this.el('span', 'fs-battle-sum', battle.total + ' / 5 · нажмите, чтобы добавить'));
+        wrap.append(unitRow);
+        const units = this.el('div', 'fs-battle-units');
+        (battle.units || []).forEach(u => {
+            const button = this.el('button', 'fs-unit' + (u.count ? ' is-selected' : ''));
+            button.type = 'button';
+            button.title = u.name + ' · сила ' + u.combat;
+            button.append(this.el('span', 'fs-unit-count', u.count ? u.count + '×' : '+'));
+            const text = this.el('span', 'fs-unit-text');
+            text.append(this.el('span', 'fs-unit-name', u.name));
+            text.append(this.el('span', 'fs-unit-force', 'сила ' + u.combat));
+            button.append(text);
+            button.addEventListener('click', () => info.onBattle && info.onBattle({ toggleUnit: u.id }));
+            units.append(button);
+        });
+        if (!(battle.units || []).length) units.append(this.el('div', 'fs-empty', 'У этой фракции нет подходящих отрядов.'));
+        wrap.append(units);
+
+        const cardsRow = this.el('div', 'fs-battle-row');
+        cardsRow.append(this.el('span', 'fs-eyebrow', 'Карты в колоде'));
+        cardsRow.append(this.el('span', 'fs-battle-sum', battle.deck + ' карт · по две копии'));
+        wrap.append(cardsRow);
+        const cards = this.el('div', 'fs-battle-cards');
+        (battle.cards || []).forEach(c => {
+            const button = this.el('button', 'fs-card-toggle' + (c.selected ? ' is-selected' : ''));
+            button.type = 'button';
+            const icons = c.icons || {};
+            const line = this.el('span', 'fs-card-icons');
+            line.append(this.el('span', 'is-att', '⚔ ' + (icons.att || 0)));
+            line.append(this.el('span', 'is-def', '🛡 ' + (icons.def || 0)));
+            line.append(this.el('span', 'is-morale', '✦ ' + (icons.morale || 0)));
+            button.append(this.el('span', 'fs-card-name', c.name), line);
+            button.addEventListener('click', () => info.onBattle && info.onBattle({ toggleCard: c.name }));
+            cards.append(button);
+        });
+        wrap.append(cards);
+        if (battle.foe) {
+            wrap.append(this.el('div', 'fs-battle-note', 'Противник — ' + battle.foe.name
+                + ': его отряды и колоду выбирает игра. Вы играете и за него тоже.'));
+        }
+        return wrap;
     },
 
     // A runtime copy of the template record.

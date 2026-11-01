@@ -133,6 +133,64 @@ test('the client: the refresh phase offers the event cards', () => {
     assert.equal(ctx.tokens[0].count, 1);
 });
 
+test('the client: the battlefield of the lobby is chosen by troops and cards', () => {
+    const sent = [];
+    const client = Object.create(FSGame.prototype);
+    Object.assign(client, {
+        faction: 'орки',
+        battle: { kind: 'ground', units: {}, cards: [] },
+        status: '',
+        testMode: 'battle',
+        // The socket adds the type of the message, as FSNet.test does.
+        net: { connected: true, test: message => sent.push(Object.assign({ t: 'test' }, message)) },
+        showLobby() { },
+    });
+    const faction = FS_DATA.factions.find(f => f.id === 'орки');
+    const ground = faction.units.filter(u => u.type !== 'ship');
+    const ships = faction.units.filter(u => u.type === 'ship');
+    const cards = FS_DATA.combat.filter(c => c.faction === 'орки' && !c.upgrade).map(c => c.name);
+
+    client.resetBattle('ground');
+    let info = client.battleInfo();
+    assert.deepEqual(info.units.map(u => u.id), ground.map(u => u.id), 'only the ground troops enter a ground battle');
+    assert.equal(info.units[0].count, 2, 'two troops of the first kind are chosen');
+    assert.equal(info.deck, cards.length * 2, 'the whole base deck: two copies of every card');
+
+    // The count of a troop grows on a click and stops at four.
+    client.onBattle({ toggleUnit: ground[0].id });
+    assert.equal(client.battleInfo().units[0].count, 3);
+    client.onBattle({ toggleUnit: ground[0].id });
+    assert.equal(client.battleInfo().units[0].count, 0, 'the fourth click takes it off the field');
+    client.onBattle({ toggleUnit: ground[0].id });
+
+    // A card may be taken out of the deck and returned to it.
+    client.onBattle({ toggleCard: cards[0] });
+    assert.equal(client.battleInfo().deck, (cards.length - 1) * 2);
+    client.onBattle({ toggleCard: cards[0] });
+    assert.equal(client.battleInfo().deck, cards.length * 2);
+
+    // The space battle: the ships, the deck is the same.
+    client.onBattle({ kind: 'space' });
+    info = client.battleInfo();
+    assert.deepEqual(info.units.map(u => u.id), ships.map(u => u.id));
+    assert.equal(info.kind, 'space');
+
+    // The command of the start carries the chosen troops and cards.
+    client.onBattle({ kind: 'ground' });
+    client.startTest();
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].t, 'test');
+    assert.equal(sent[0].mode, 'battle');
+    assert.equal(sent[0].battle.kind, 'ground');
+    assert.ok(Object.keys(sent[0].battle.units).length > 0, 'the troops are sent');
+    assert.deepEqual(sent[0].battle.cards, cards, 'the deck is sent');
+
+    // The ready map needs no troops at all.
+    client.testMode = 'map';
+    client.startTest();
+    assert.equal(sent[1].mode, 'map');
+});
+
 test('the client: the combat panel follows the steps of the combat', () => {
     const raw = rawGame();
     const sys = raw.systems[0];

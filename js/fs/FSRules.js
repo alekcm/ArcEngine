@@ -446,6 +446,128 @@ const FS_RULES = {
         return state;
     },
 
+    // -----------------------------------------------------------------------
+    //  The test modes of the lobby
+    //
+    //  'game'   — the ordinary game: the galaxy is assembled tile by tile.
+    //  'map'    — the same game with the board already assembled: the planning
+    //             starts at once, so the play after the construction is testable.
+    //  'battle' — a battlefield: the chosen troops fight with the chosen deck.
+    // -----------------------------------------------------------------------
+
+    // The map is built by the engine itself (the same code the rule tests use):
+    // tiles, initial forces, the objective tokens and the storms.
+    newReadyGame(opts) {
+        const state = this.newGame(Object.assign({}, opts, { interactiveSetup: false }));
+        state.testMode = 'map';
+        this.log(state, -1, 'Тестовая партия: карта собрана автоматически, ход сразу за планированием.');
+        return state;
+    },
+
+    // The deck of a test battle: the chosen cards, two copies of each, as in the
+    // real deck. An empty or foreign choice falls back to the whole base deck.
+    buildTestDeck(state, seat, names) {
+        const p = state.players[seat];
+        if (!p) return [];
+        const base = FS_DATA.combat.filter(c => c.faction === p.faction && !c.upgrade).map(c => c.name);
+        const chosen = (names || []).filter(n => base.includes(n));
+        const cards = chosen.length ? chosen : base;
+        // Two copies of every card — and enough cards to deal the hand of a combat.
+        let deck = cards.concat(cards);
+        while (deck.length < 10) deck = deck.concat(cards);
+        p.decks.combat = this.shuffle(state, deck);
+        return cards;
+    },
+
+    // The battlefield: a ready map without any troops but the chosen ones. The
+    // host attacks, the opponent defends; the ground battle happens on a world,
+    // the space battle over the system.
+    newBattleTest(opts) {
+        const o = opts || {};
+        const kind = o.kind === 'space' ? 'space' : 'ground';
+        const state = this.newGame({ seed: o.seed, players: o.players || [], interactiveSetup: false });
+        // An empty board: only the battlefield matters here.
+        state.units = [];
+        state.structures = [];
+        state.objectives = [];
+        state.storms = [];
+        for (const sys of state.systems) sys.tokens = [];
+        const attacker = 0, defender = 1;
+        const sys = state.systems[Math.floor(state.systems.length / 2)] || state.systems[0];
+        const wanted = a => (kind === 'space' ? !a.world : !!a.world);
+        const area = sys.areas.find(wanted) || sys.areas[0];
+        state.phase = 'operations';
+        state.turn = attacker;
+        // The troops of the two sides, the host first.
+        const roster = [];
+        const place = (seat, units) => {
+            const faction = state.players[seat].faction;
+            const defs = (FS_DATA.factions.find(f => f.id === faction) || { units: [] }).units;
+            for (const [unitId, count] of Object.entries(units || {})) {
+                const def = defs.find(u => u.id === unitId);
+                if (!def) continue;
+                if ((def.type === 'ship') !== (kind === 'space')) continue;
+                const n = Math.max(0, Math.min(5, Number(count) || 0));
+                for (let i = 0; i < n; i++) {
+                    this.addUnit(state, seat, unitId, sys.id, area.pos);
+                    roster.push({ seat, unit: unitId });
+                }
+            }
+        };
+        place(attacker, o.units);
+        place(defender, o.foeUnits && Object.keys(o.foeUnits).length ? o.foeUnits : this.defaultFoeUnits(state, defender, kind));
+        // The decks of the battle: the chosen cards only.
+        const attCards = this.buildTestDeck(state, attacker, o.cards);
+        const defCards = this.buildTestDeck(state, defender, o.foeCards);
+        for (const seat of [attacker, defender]) state.players[seat].assets.reinforcement = 2;
+        state.testBattle = {
+            kind, attacker, defender, system: sys.id, pos: area.pos,
+            roster,
+            decks: { attacker: attCards, defender: defCards },
+            reinforcement: 2,
+        };
+        state.phase = 'operations';
+        state.turn = attacker;
+        state.order = { seat: attacker, order: 'advance', system: sys.id, pos: area.pos, phase: 'combat' };
+        state.testMode = 'battle';
+        this.log(state, -1, (kind === 'space' ? 'Космический' : 'Наземный')
+            + ' бой: ' + state.players[attacker].name + ' против ' + state.players[defender].name + '.');
+        this.startCombat(state, attacker, defender, sys.id, area.pos);
+        return state;
+    },
+
+    // The opponent of a battle test: two of his troops of the right kind.
+    defaultFoeUnits(state, seat, kind) {
+        const faction = FS_DATA.factions.find(f => f.id === state.players[seat].faction);
+        const units = ((faction && faction.units) || []).filter(u => (u.type === 'ship') === (kind === 'space'));
+        const out = {};
+        for (const u of units.slice(0, 2)) out[u.id] = 2;
+        return out;
+    },
+
+    // The same battle again: the fallen return, the decks are dealt anew.
+    cmdRematchBattle(state, seat) {
+        const test = state.testBattle;
+        if (!test) return { ok: false, error: 'Сейчас не тестовый бой.' };
+        if (state.combat) return { ok: false, error: 'Бой ещё идёт.' };
+        const p = state.players[seat];
+        if (!p || (seat !== test.attacker && seat !== test.defender)) return { ok: false, error: 'Вы не участник боя.' };
+        state.units = state.units.filter(u => !(u.system === test.system && u.area === test.pos && (u.seat === test.attacker || u.seat === test.defender)));
+        for (const entry of test.roster) this.addUnit(state, entry.seat, entry.unit, test.system, test.pos);
+        for (const side of ['attacker', 'defender']) {
+            const s = test[side];
+            this.buildTestDeck(state, s, test.decks[side]);
+            state.players[s].assets.reinforcement = test.reinforcement;
+        }
+        state.combat = null;
+        state.phase = 'operations';
+        state.turn = test.attacker;
+        state.order = { seat: test.attacker, order: 'advance', system: test.system, pos: test.pos, phase: 'combat' };
+        this.log(state, -1, 'Тот же бой начинается снова.');
+        this.startCombat(state, test.attacker, test.defender, test.system, test.pos);
+        return { ok: true };
+    },
+
     // Quarter-turns are clockwise in board coordinates (x right, row down).
     rotateArea(pos, turns) {
         const clockwise = { TL: 'TR', TR: 'BR', BR: 'BL', BL: 'TL' };
@@ -867,6 +989,7 @@ const FS_RULES = {
             case 'rally': return this.cmdRally(state, seat, cmd);
             case 'takeProsperity': return this.cmdTakeProsperity(state, seat, cmd);
             case 'effect': return this.cmdEffect(state, seat, cmd);
+            case 'rematchBattle': return this.cmdRematchBattle(state, seat);
             default: return { ok: false, error: 'Неизвестная команда: ' + type };
         }
     },
@@ -1907,7 +2030,11 @@ const FS_RULES = {
             const hand = [];
             // The order may give more cards for the combat.
             const extra = (state.order && state.order.seat === seat && state.order.extraCombatCards) || 0;
-            for (let i = 0; i < 5 + extra; i++) hand.push(p.decks.combat.shift());
+            // A short deck (a battle test with a few chosen cards) deals what it has.
+            for (let i = 0; i < 5 + extra; i++) {
+                const card = p.decks.combat.shift();
+                if (card) hand.push(card);
+            }
             combat.cards[seat === attacker ? 'attacker' : 'defender'].hand = hand;
         }
         state.combat = combat;
@@ -2249,6 +2376,11 @@ const FS_RULES = {
         if (target) this.checkCapacity(state, seat, target.system, target.pos);
         this.log(state, seat, state.players[seat].name + ' отступает.');
         state.combat = null;
+        // A test battle stays on the field: the player may start it again.
+        if (state.testBattle) {
+            state.order = null;
+            return { ok: true };
+        }
         // The order that started the combat is over.
         this.finishOrder(state, seat);
         return { ok: true };

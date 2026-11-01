@@ -12,6 +12,14 @@
 // The glyphs of the four order tokens: one look at the panel or at the board.
 const FS_ORDER_ICONS = { advance: '⚔', deploy: '✚', strategize: '✧', dominate: '⌂' };
 
+// The three ways into the game on the lobby screen. The first one is the party
+// itself; the other two are tests of a single person who plays both seats.
+const FS_TEST_MODES = [
+    { id: 'game', icon: '⌘', title: 'Обычная игра', text: 'Сборка галактики с нуля и партия по сети: 2–4 игрока.' },
+    { id: 'map', icon: '▦', title: 'Готовая карта', text: 'Галактика уже собрана, 1 на 1: игра начинается с планирования. Вы играете за обоих.' },
+    { id: 'battle', icon: '⚔', title: 'Тест боя', text: 'Наземный или космический бой: выберите свои отряды и карты в колоде.' },
+];
+
 class FSGame {
     /** @param {{ location: Location3D, camera: CameraController }} app */
     constructor(app) {
@@ -53,6 +61,10 @@ class FSGame {
         this.name = '';
         this.faction = '';
         this.lobby = { code: '', players: [], factions: [] };
+        // The three ways into the game: the ordinary party (the galaxy is built
+        // together) and the two test modes — a ready map and a battlefield.
+        this.testMode = 'game';
+        this.battle = { kind: 'ground', units: {}, cards: [] };
         FSUI.mount();
 
         const params = new URLSearchParams(location.search);
@@ -140,6 +152,7 @@ class FSGame {
     }
 
     showLobby() {
+        if (!this.battle.cards.length) this.resetBattle(this.battle.kind);
         const info = {
             code: this.lobby.code,
             name: this.name,
@@ -147,9 +160,17 @@ class FSGame {
             players: this.lobby.players,
             factions: this.lobby.factions,
             link: location.origin + '/?room=' + this.lobby.code,
+            modes: FS_TEST_MODES,
+            mode: this.testMode,
+            status: this.status,
+            battle: this.battleInfo(),
+            onMode: id => { this.testMode = id; this.showLobby(); },
+            onBattle: patch => { this.onBattle(patch); },
+            onStart: () => this.startTest(),
         };
         FSUI.lobby(info, id => {
             this.faction = id;
+            this.resetBattle(this.battle.kind);
             this.net.faction(id);
             this.showLobby();
         }, name => {
@@ -158,6 +179,89 @@ class FSGame {
             Store.set('fs.name', name);
             if (this.net) this.net.rename(name);
         });
+    }
+
+    // --- the test modes -------------------------------------------------------
+    // The ordinary party starts by itself when every player has a faction. The
+    // two test modes are opened by one person who plays both seats: the ready
+    // map (the game after the construction) and the battlefield.
+
+    battleFaction() {
+        return FS_DATA.factions.find(f => f.id === this.faction) || FS_DATA.factions[0];
+    }
+
+    // The troops that may enter this kind of battle: the ground ones stand on a
+    // world, the ships fight over the system.
+    battleUnits(kind) {
+        return this.battleFaction().units.filter(u => (u.type === 'ship') === (kind === 'space'));
+    }
+
+    battleCards() {
+        return FS_DATA.combat.filter(c => c.faction === this.battleFaction().id && !c.upgrade);
+    }
+
+    // A fresh choice: the first troops of the kind and the whole base deck.
+    resetBattle(kind) {
+        if (kind) this.battle.kind = kind === 'space' ? 'space' : 'ground';
+        const units = this.battleUnits(this.battle.kind);
+        this.battle.units = {};
+        if (units[0]) this.battle.units[units[0].id] = 2;
+        this.battle.cards = this.battleCards().map(c => c.name);
+    }
+
+    // What the lobby shows: the troops with their counts and the cards with
+    // their icons, so the deck is chosen by reading, not by guessing.
+    battleInfo() {
+        const units = this.battleUnits(this.battle.kind).map(u => ({
+            id: u.id, name: u.name, combat: u.combat,
+            count: this.battle.units[u.id] || 0,
+        }));
+        const cards = this.battleCards().map(c => ({
+            name: c.name, icons: c.icons, kl: c.kl,
+            selected: this.battle.cards.includes(c.name),
+        }));
+        return {
+            kind: this.battle.kind,
+            units,
+            total: units.reduce((n, u) => n + u.count, 0),
+            cards,
+            deck: cards.filter(c => c.selected).length * 2,
+            foe: FS_DATA.factions.find(f => f.id !== this.battleFaction().id),
+        };
+    }
+
+    onBattle(patch) {
+        if (patch && patch.kind) this.resetBattle(patch.kind);
+        if (patch && patch.toggleUnit) {
+            const id = patch.toggleUnit;
+            const total = Object.values(this.battle.units).reduce((n, v) => n + v, 0);
+            const next = ((this.battle.units[id] || 0) + 1) % 4;
+            if (this.battle.units[id]) delete this.battle.units[id];
+            if (next && total + next <= 5) this.battle.units[id] = next;
+        }
+        if (patch && patch.toggleCard) {
+            const name = patch.toggleCard;
+            const i = this.battle.cards.indexOf(name);
+            if (i >= 0) this.battle.cards.splice(i, 1);
+            else this.battle.cards.push(name);
+        }
+        this.showLobby();
+    }
+
+    // The test party of the chosen mode: the server builds the board.
+    startTest() {
+        if (!this.net || !this.net.connected) { this.status = 'Нет связи с сервером.'; this.showLobby(); return; }
+        if (this.testMode === 'map') {
+            this.net.test({ mode: 'map' });
+            return;
+        }
+        if (this.testMode === 'battle') {
+            if (!this.battleInfo().total) { this.status = 'Выберите хотя бы один отряд.'; this.showLobby(); return; }
+            this.net.test({
+                mode: 'battle',
+                battle: { kind: this.battle.kind, units: this.battle.units, cards: this.battle.cards },
+            });
+        }
     }
 
     // --- the state -------------------------------------------------------------
@@ -171,6 +275,22 @@ class FSGame {
             this.setupKey = setupKey;
         }
         this.state = view;
+        // In a solo test the chair changes with every step of the combat or with
+        // every order token: the action of the previous seat must not leak into
+        // the next one.
+        if (this.lastSeat !== view.seat) {
+            if (this.lastSeat !== undefined) {
+                this.mode = 'idle';
+                this.pending = null;
+                this.damageTargets = [];
+                FSView.clearHighlights(this.view);
+            }
+            this.lastSeat = view.seat;
+        }
+        // A test party is played by one person: the server sends the view of the
+        // seat whose turn it is, and the interface says so.
+        this.solo = !!view.solo;
+        this.testMode = view.mode || this.testMode;
         FSUI.show('fsLobby', false);
         FSView.update(this.app, this.view, view);
         FSView.showInspection(this.app, this.view, view, this.inspection);
@@ -228,6 +348,10 @@ class FSGame {
             ctx.title = 'Игра окончена';
             ctx.text = 'Побеждает: ' + (s.winner != null ? s.players[s.winner].name : '—');
             ctx.status = '';
+        } else if (s.testMode === 'battle' && !s.combat) {
+            this.panelTestBattle(s, ctx);
+        } else if (s.testMode === 'battle') {
+            // The fight is on: the combat panel below is the whole interface.
         } else if (s.phase === 'setup') {
             this.panelSetup(s, ctx);
         } else if (s.phase === 'planning') {
@@ -237,8 +361,9 @@ class FSGame {
         } else if (s.phase === 'refresh') {
             this.panelRefresh(s, ctx);
         }
-        // The order that is being resolved.
-        if (s.order && s.order.seat === me) {
+        // The order that is being resolved. A test battle has no order of its own:
+        // its whole interface is the combat below.
+        if (s.order && s.order.seat === me && s.testMode !== 'battle') {
             if (s.order.order === 'advance') this.panelAdvance(s, ctx);
             else if (s.order.order === 'deploy') this.panelDeploy(s, ctx);
             else if (s.order.order === 'strategize') this.panelStrategize(s, ctx);
@@ -1039,6 +1164,26 @@ class FSGame {
             default:
                 return;
         }
+    }
+
+    // The end of a test battle: the field is free for the next one.
+    panelTestBattle(s, ctx) {
+        const t = s.testBattle || {};
+        const foe = s.players[t.defender != null ? t.defender : 1];
+        const attacker = s.players[t.attacker != null ? t.attacker : 0];
+        ctx.title = 'Тестовый бой окончен';
+        ctx.text = (t.kind === 'space' ? 'Космический' : 'Наземный') + ' бой в системе '
+            + ((s.systems.find(x => x.id === t.system) || {}).tile || '?')
+            + ': ' + (attacker ? attacker.name : '—') + ' против ' + (foe ? foe.name : '—') + '.';
+        ctx.status = s.log.length ? s.log[s.log.length - 1].text : '';
+        ctx.actions.push({
+            kind: 'primary', icon: '↻', label: 'Ещё бой',
+            onClick: () => this.net.cmd({ type: 'rematchBattle' }),
+        });
+        ctx.actions.push({
+            kind: 'secondary', label: 'Другой тест (обновить страницу)',
+            onClick: () => { if (typeof location !== 'undefined') location.reload(); },
+        });
     }
 
     // The areas a defeated player may retreat to: the areas around the place

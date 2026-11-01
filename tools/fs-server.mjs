@@ -67,6 +67,11 @@ class Room {
         this.started = false;
         this.nextId = 1;
         this.log = [];
+        // 'game' — the ordinary party; 'map' and 'battle' — the test modes of the lobby.
+        this.mode = 'game';
+        // A test party is played by one person: both seats belong to him, so the
+        // server sends the view of the seat that has to act right now.
+        this.solo = false;
     }
 
     add(name, faction, id) {
@@ -106,6 +111,83 @@ class Room {
         this.started = true;
         return true;
     }
+}
+
+// The seat a solo player has to act for right now: the question of an effect,
+// the step of a combat, the placement of a tile or the ordinary turn.
+function activeSeat(state) {
+    if (!state) return 0;
+    if (state.pending) {
+        return state.pending.answerSeat === undefined ? state.pending.seat : state.pending.answerSeat;
+    }
+    const c = state.combat;
+    if (c) {
+        if (c.step === 'retreat') return c.loser != null ? c.loser : c.defender;
+        const side = String(c.step).slice(String(c.step).indexOf('-') + 1);
+        return side === 'attacker' ? c.attacker : c.defender;
+    }
+    if (state.setup) return state.setup.turn;
+    // The planning phase has no turn of its own: the players lay their tokens in
+    // turn, so the seat that still has tokens is the one to act.
+    if (state.phase === 'planning') {
+        const next = state.players.find(p => (p.placedTokens || 0) < FS_RULES.ORDER_TOKENS + (p.extraOrderTokens || 0));
+        if (next) return next.seat;
+    }
+    // The refresh phase resolves the event of one player at a time.
+    if (state.phase === 'refresh' && state.event && state.event.seat != null) return state.event.seat;
+    return state.turn;
+}
+
+// The two seats of a test party: the host and the opponent he also plays.
+function testSeats(room, host) {
+    const hostFaction = host.faction || FS_DATA.factions[0].id;
+    const foe = FS_DATA.factions.find(f => f.id !== hostFaction) || FS_DATA.factions[1];
+    // The host always sits first: the views and the seats of the room agree.
+    const i = room.players.indexOf(host);
+    if (i > 0) {
+        room.players.splice(i, 1);
+        room.players.unshift(host);
+    }
+    host.seat = 0;
+    let foePlayer = room.players.find(p => p.bot);
+    if (!foePlayer) {
+        foePlayer = { id: 'bot', name: 'Противник', faction: foe.id, seat: 1, ws: null, bot: true };
+        room.players[1] = foePlayer;
+    }
+    foePlayer.faction = foe.id;
+    foePlayer.seat = 1;
+    foePlayer.ws = null;
+    return [
+        { name: host.name, faction: hostFaction },
+        { name: foePlayer.name, faction: foe.id },
+    ];
+}
+
+// The two test modes of the lobby. 'map' opens the same 1×1 party with the board
+// already assembled; 'battle' puts the chosen troops and decks on one field.
+function startTest(room, host, msg) {
+    if (room.started) return { ok: false, error: 'Партия уже идёт: обновите страницу, чтобы начать тест.' };
+    const players = testSeats(room, host);
+    const seed = (Date.now() % 100000) + 1;
+    if (msg.mode === 'map') {
+        room.state = FS_RULES.newReadyGame({ seed, players });
+    } else if (msg.mode === 'battle') {
+        const battle = msg.battle || {};
+        room.state = FS_RULES.newBattleTest({
+            seed, players,
+            kind: battle.kind === 'space' ? 'space' : 'ground',
+            units: battle.units || {},
+            foeUnits: battle.foeUnits || {},
+            cards: battle.cards || [],
+            foeCards: battle.foeCards || [],
+        });
+    } else {
+        return { ok: false, error: 'Неизвестный режим теста.' };
+    }
+    room.mode = msg.mode;
+    room.solo = true;
+    room.started = true;
+    return { ok: true };
 }
 
 function roomCode() {
@@ -253,9 +335,16 @@ function broadcast(room, message, except) {
 
 function sendState(room) {
     if (!room.state) return;
+    const soloSeat = room.solo ? activeSeat(room.state) : null;
     for (const p of room.players) {
         if (!p.ws) continue;
-        p.ws.send({ t: 'state', view: FS_RULES.view(room.state, p.seat) });
+        const view = FS_RULES.view(room.state, room.solo ? soloSeat : p.seat);
+        if (room.solo) {
+            // The client shows the same chair to the player and tells him whom he plays.
+            view.solo = true;
+            view.mode = room.mode;
+        }
+        p.ws.send({ t: 'state', view, solo: room.solo || undefined, mode: room.mode });
     }
 }
 
@@ -291,9 +380,20 @@ function handle(ws, msg) {
         const room = ws.room, player = ws.player;
         if (!room || !player) return;
         if (!room.state) { ws.send({ t: 'err', msg: 'Игра ещё не началась.' }); return; }
-        const res = FS_RULES.apply(room.state, player.seat, msg.cmd);
+        // In a test party the player acts for the seat whose turn it is.
+        const seat = room.solo ? activeSeat(room.state) : player.seat;
+        const res = FS_RULES.apply(room.state, seat, msg.cmd);
         if (process.env.FS_DEBUG) console.log('  [fs] apply -> ' + JSON.stringify(res).slice(0, 120));
         if (!res.ok) { ws.send({ t: 'err', msg: res.error || 'Нельзя.' }); return; }
+        sendState(room);
+        return;
+    }
+    if (msg.t === 'test') {
+        const room = ws.room, player = ws.player;
+        if (!room || !player) return;
+        const res = startTest(room, player, msg);
+        if (!res.ok) { ws.send({ t: 'err', msg: res.error }); return; }
+        sendRoomInfo(room);
         sendState(room);
         return;
     }

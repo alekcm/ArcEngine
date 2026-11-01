@@ -7,6 +7,7 @@
 //   net.on('joined' | 'room' | 'state' | 'err', fn)
 //   net.cmd({ type: 'placeOrder', … })     — a command of the rules engine
 //   net.faction('некроны')                  — the choice of the faction
+//   net.test({ mode: 'map' | 'battle', … }) — a test party of the lobby
 //
 // The room code and the player name come from the link:
 //   http://<host>:8080/?room=ABCD&name=Аня
@@ -47,6 +48,11 @@ const FSNet = {
             },
             faction(faction) {
                 return net.send({ t: 'faction', faction });
+            },
+            // The test modes of the lobby: a ready map or a battlefield. The
+            // server builds the party and the player takes both seats.
+            test(opts) {
+                return net.send(Object.assign({ t: 'test' }, opts || {}));
             },
             rename(name) {
                 net.name = String(name || '').trim().slice(0, 24);

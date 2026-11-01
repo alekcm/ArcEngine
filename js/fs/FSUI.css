@@ -81,3 +81,49 @@
 .fs-main-panel>.fs-tokens,.fs-main-panel>.fs-hand,.fs-main-panel>.fs-selection,.fs-main-panel>.fs-inspector{flex:none}
 .fs-pick-grid:has(> .fs-pick:only-child){grid-template-columns:minmax(0,1fr)}
 .fs-shell.is-mobile .fs-main-panel>.fs-primary{position:sticky;bottom:0}
+
+/* ---------------------------------------------------------------------------
+   The lobby: the three ways into the game. The party, the ready map and the
+   battlefield are chosen with the same kind of card, so nothing hides.
+--------------------------------------------------------------------------- */
+.fs-mode-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:16px}
+.fs-mode{display:flex;align-items:flex-start;gap:9px;text-align:left;padding:11px 10px;border:1px solid #ffffff19;border-radius:11px;background:linear-gradient(140deg,#ffffff0b,#ffffff03);color:inherit;cursor:pointer;transition:.16s}
+.fs-mode:hover{border-color:#d8b87388;transform:translateY(-2px)}
+.fs-mode.is-selected{border-color:#e3c780;box-shadow:inset 0 0 0 1px #e3c780,0 10px 26px #0006;background:linear-gradient(140deg,#d8b87322,#ffffff06)}
+.fs-mode-icon{flex:none;width:26px;height:26px;display:grid;place-items:center;border-radius:8px;background:#d8b8731f;color:#f0d79a;font-size:14px}
+.fs-mode-text{display:grid;gap:3px;min-width:0}
+.fs-mode-title{font-size:11px;font-weight:650;color:#f3ead4}
+.fs-mode-note{font-size:9px;line-height:1.3;color:#9faaa8}
+.fs-battle{margin-top:12px;padding:12px;border:1px solid rgba(221,197,140,.24);border-radius:12px;background:linear-gradient(150deg,rgba(23,33,41,.94),rgba(8,13,19,.92))}
+.fs-battle-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.fs-battle-kinds{display:flex;gap:5px}
+.fs-kind{padding:5px 11px;border:1px solid #ffffff1c;border-radius:99px;background:#ffffff08;color:#c8cfcb;font-size:10px;cursor:pointer;transition:.16s}
+.fs-kind:hover{border-color:#7ec0cf;color:#e6f4f6}
+.fs-kind.is-selected{border-color:#e3c780;background:#d8b87322;color:#fbeecb;font-weight:650}
+.fs-battle-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:10px 0 6px}
+.fs-battle-sum{font-size:9px;color:#8fa0a4}
+.fs-battle-units{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.fs-unit{display:flex;align-items:center;gap:7px;padding:7px 8px;border:1px solid #ffffff1a;border-radius:9px;background:linear-gradient(150deg,#18262f,#0b131b);color:inherit;cursor:pointer;text-align:left;transition:.16s}
+.fs-unit:hover{border-color:#d8b87399;background:linear-gradient(150deg,#243441,#101a22)}
+.fs-unit.is-selected{border-color:#e3c780;box-shadow:inset 0 0 0 1px #e3c780}
+.fs-unit-count{flex:none;width:26px;font:700 12px/1 ui-monospace,monospace;color:#f0d79a;text-align:center}
+.fs-unit-text{display:grid;gap:2px;min-width:0}
+.fs-unit-name{font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fs-unit-force{font-size:8px;color:#8fa0a4}
+.fs-battle-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.fs-card-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border:1px solid #ffffff17;border-radius:8px;background:#ffffff06;color:#c9d1cd;cursor:pointer;font-size:10px;text-align:left;opacity:.55;transition:.16s}
+.fs-card-toggle:hover{border-color:#7ec0cf;opacity:.85}
+.fs-card-toggle.is-selected{opacity:1;border-color:#e3c78088;background:#d8b87314;color:#f4ecd8}
+.fs-card-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fs-card-icons{display:flex;gap:5px;flex:none;font:700 9px/1 ui-monospace,monospace}
+.fs-card-icons .is-att{color:#ff9d7a}
+.fs-card-icons .is-def{color:#8fc6ff}
+.fs-card-icons .is-morale{color:#f2d98a}
+.fs-battle-note{margin-top:9px;font-size:9px;color:#8fa0a4}
+.fs-start-test{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;margin-top:12px;padding:12px 14px;border:1px solid #e3c780aa;border-radius:11px;background:linear-gradient(120deg,#d8b87336,#d8b87314);color:#fbeecb;font-size:12px;font-weight:650;cursor:pointer;transition:.16s}
+.fs-start-test:hover{background:linear-gradient(120deg,#d8b87352,#d8b87320);border-color:#f0d79a;transform:translateY(-1px)}
+.fs-start-icon{font-size:13px}
+.fs-room-pill.is-solo{color:#f0d79a;border-color:#d8b87366;background:#d8b87318}
+.fs-shell.is-mobile .fs-mode-grid{grid-template-columns:1fr}
+.fs-shell.is-mobile .fs-battle-units,.fs-shell.is-mobile .fs-battle-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+.fs-lobby-error{margin-top:10px;padding:8px 11px;border:1px solid #a26e60;border-radius:9px;background:#281713ed;color:#ffd1bc;font-size:10px}

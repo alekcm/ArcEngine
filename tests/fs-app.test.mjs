@@ -265,3 +265,63 @@ test('the client: the game over is shown', () => {
     assert.equal(UI.get('fsSideTitle').inner.textContent, 'Игра окончена');
     assert.ok(UI.get('fsSideText').inner.textContent.includes('Игрок 2'));
 });
+
+// The test battle of the lobby played by the panels: one person sits in both
+// chairs, the server (here — the rules engine) tells which chair acts now.
+test('the client: the panels play a test battle to the end and start it again', () => {
+    const seatNow = st => {
+        if (st.pending) return st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
+        const c = st.combat;
+        if (c) {
+            if (c.step === 'retreat') return c.loser != null ? c.loser : c.defender;
+            const side = String(c.step).slice(String(c.step).indexOf('-') + 1);
+            return side === 'attacker' ? c.attacker : c.defender;
+        }
+        return st.turn;
+    };
+    UI.init(canvas);
+    const game = new FSGame(app);
+    scene.pick = () => null;
+    const players = FS_DATA.factions.slice(0, 2).map((f, i) => ({ name: 'Игрок ' + (i + 1), faction: f }));
+    const ground = FS_DATA.factions[0].units.filter(u => u.type !== 'ship');
+    const state = FS_RULES.newBattleTest({
+        seed: 41, players, kind: 'ground',
+        units: { [ground[0].id]: 3, [ground[1].id]: 1 },
+    });
+    const buttons = () => [...UI.elements.values()]
+        .filter(e => e.def.parent === 'fsActions' && e.def.kind === 'button' && e.def.id !== 'fsBtn');
+
+    let steps = 0;
+    while (state.combat && steps++ < 120) {
+        const seat = seatNow(state);
+        game.mode = 'idle';
+        game.pending = null;
+        game.damageTargets = [];
+        game.onState(FS_RULES.view(state, seat));
+        const before = sent.length;
+        // A human presses the last option first: it is the confirmation of the step.
+        for (const button of buttons().slice().reverse()) {
+            button._click(button);
+            if (sent.length > before) break;
+        }
+        if (sent.length === before) break;
+        const cmd = sent[sent.length - 1];
+        const res = FS_RULES.apply(state, seat, cmd);
+        assert.equal(res.ok, true, cmd.type + ' ' + (cmd.action || '') + ': ' + res.error);
+    }
+    assert.ok(steps > 3, 'the fight went on for several steps: ' + steps);
+    assert.equal(state.combat, null, 'the fight is over');
+
+    // The end of the test battle: the panel offers the next one.
+    game.onState(FS_RULES.view(state, state.turn));
+    assert.equal(UI.get('fsSideTitle').inner.textContent, 'Тестовый бой окончен');
+    const before = sent.length;
+    const again = buttons();
+    assert.ok(again.length >= 1);
+    again[0]._click(again[0]);
+    assert.equal(sent.length, before + 1);
+    assert.equal(sent[sent.length - 1].type, 'rematchBattle');
+    const res = FS_RULES.apply(state, seatNow(state), sent[sent.length - 1]);
+    assert.equal(res.ok, true);
+    assert.equal(state.combat.step, 'reinforce-attacker', 'the same field, the same fight');
+});

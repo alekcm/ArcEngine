@@ -120,3 +120,91 @@ test('the arrow of the march lands on the board when the target has no height', 
     assert.ok(arrow.beam.scaling.x > 0, 'the beam runs from the group to the sector');
     assert.equal(arrow.head.position.x, Math.hypot(120, 40) - 7);
 });
+
+test('the lobby offers the three ways into the game and the battlefield', () => {
+    const node = tag => {
+        const n = {
+            tagName: tag, className: '', children: [], listeners: {}, style: { setProperty() {} },
+            classList: { toggle() {}, add() {}, remove() {} },
+            addEventListener(type, fn) { (n.listeners[type] = n.listeners[type] || []).push(fn); },
+            append(...kids) { n.children.push(...kids); },
+            replaceChildren() { n.children = []; },
+            remove() {}, querySelector() { return null; }, setAttribute() {}, blur() {}, focus() {},
+            click() { for (const fn of n.listeners.click || []) fn({}); },
+        };
+        return n;
+    };
+    const events = {};
+    const page = loadScripts(['js/fs/FSData.js', 'js/fs/FSUI.js'], {
+        document: { createElement: node, body: { appendChild() {} } },
+        window: { innerWidth: 1400, addEventListener(type, fn) { events[type] = fn; } },
+        UI: { root: null, get: () => null, show() {}, set() {}, def: () => null, add() { return null; }, remove() {} },
+        IS_MOBILE: false,
+    });
+    const ui = page.get('FSUI');
+    ui.mount();
+    const walk = (n, out = []) => { out.push(n); for (const c of n.children) if (c && c.children) walk(c, out); return out; };
+    const lobby = (mode, battle, picked) => {
+        const calls = { mode: [], battle: [], start: 0 };
+        ui.lobby({
+            code: 'ABCD', name: 'Аня', faction: 'орки',
+            players: [{ id: 'p1', name: 'Аня', faction: 'орки' }],
+            factions: page.get('FS_DATA').factions.map(f => ({ id: f.id, name: f.name, color: f.color })),
+            modes: [
+                { id: 'game', icon: '⌘', title: 'Обычная игра', text: 'сборка карты' },
+                { id: 'map', icon: '▦', title: 'Готовая карта', text: 'сразу планирование' },
+                { id: 'battle', icon: '⚔', title: 'Тест боя', text: 'отряды и карты' },
+            ],
+            mode, battle,
+            onMode: id => { calls.mode.push(id); picked.mode = id; },
+            onBattle: patch => calls.battle.push(patch),
+            onStart: () => { calls.start += 1; },
+        }, () => {}, () => {});
+        return { calls, nodes: walk(ui.modernRoot) };
+    };
+
+    // The three modes are cards of the lobby.
+    const first = lobby('game', null, {});
+    const modes = first.nodes.filter(n => /(^|\s)fs-mode(\s|$)/.test(n.className));
+    assert.equal(modes.length, 3, 'the party, the ready map and the battlefield');
+    assert.ok(modes[0].className.includes('is-selected'), 'the ordinary party is chosen by default');
+    assert.equal(first.nodes.filter(n => /fs-start-test/.test(n.className)).length, 0, 'the party starts by itself');
+
+    // A click on the third card chooses the battlefield.
+    const picked = {};
+    const second = lobby('game', null, picked);
+    second.nodes.filter(n => /(^|\s)fs-mode(\s|$)/.test(n.className))[2].click();
+    assert.deepEqual(second.calls.mode, ['battle']);
+
+    // The battlefield: the kind of the fight, the troops, the cards and the start.
+    const battle = {
+        kind: 'ground', total: 3, deck: 10,
+        units: [{ id: 'бойзы', name: 'Бойзы', combat: 2, count: 3 }, { id: 'нобзы', name: 'Нобзы', combat: 2, count: 0 }],
+        cards: [{ name: 'Шута бойз', icons: { att: 1, def: 0, morale: 0 }, kl: 0, selected: true }],
+        foe: { id: 'некроны', name: 'Некроны' },
+    };
+    const third = lobby('battle', battle, {});
+    const kinds = third.nodes.filter(n => /(^|\s)fs-kind(\s|$)/.test(n.className));
+    assert.equal(kinds.length, 2, 'the ground battle and the space battle');
+    kinds[1].click();
+    // The patch is made in the sandboxed script: compare its shape, not its prototype.
+    assert.equal(JSON.stringify(third.calls.battle), JSON.stringify([{ kind: 'space' }]));
+    const units = third.nodes.filter(n => /(^|\s)fs-unit(\s|$)/.test(n.className));
+    assert.equal(units.length, 2);
+    assert.ok(units[0].className.includes('is-selected'), 'the chosen troops are marked');
+    units[1].click();
+    assert.equal(JSON.stringify(third.calls.battle[1]), JSON.stringify({ toggleUnit: 'нобзы' }));
+    const cards = third.nodes.filter(n => /fs-card-toggle/.test(n.className));
+    assert.equal(cards.length, 1);
+    cards[0].click();
+    assert.equal(JSON.stringify(third.calls.battle[2]), JSON.stringify({ toggleCard: 'Шута бойз' }));
+    const start = third.nodes.filter(n => /fs-start-test/.test(n.className));
+    assert.equal(start.length, 1);
+    start[0].click();
+    assert.equal(third.calls.start, 1, 'the start of the test party');
+
+    // The ready map is opened by the same button.
+    const map = lobby('map', { total: 0, deck: 0 }, {});
+    assert.equal(map.nodes.filter(n => /fs-start-test/.test(n.className)).length, 1);
+    assert.equal(map.nodes.filter(n => /fs-battle/.test(n.className)).length, 0, 'the map has no battlefield');
+});
