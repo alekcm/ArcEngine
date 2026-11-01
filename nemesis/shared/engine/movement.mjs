@@ -1,7 +1,7 @@
 // movement.mjs — Move / Careful Move, exploration, noise rolls and encounters.
 
 import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
-    NOISE_DIE, roll, fmtRoll, needDice, fx, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
+    NOISE_DIE, NOISE_DIE_SAFE, roll, fmtRoll, needDice, fx, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
     clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt, inCombat } from './core.mjs';
 import { hyperAttackStep } from './intruders.mjs';
 import { applyHitsNoRoll, resolveFollows } from './combat.mjs';
@@ -160,7 +160,8 @@ OPS['noise.roll'] = (state, step) => {
         return;
     }
     if (needDice(state, step, 'noise', p.id, 'Бросок шума — ' + (step.laika ? 'Лайка, ' : '') + roomName(state, roomId), { room: roomId })) return;
-    const r = step.forced !== undefined ? step.forced : roll(state, NOISE_DIE);
+    const noiseDie = state.noiseVariant ? NOISE_DIE_SAFE : NOISE_DIE;
+    const r = step.forced !== undefined ? step.forced : roll(state, noiseDie);
     log(state, '🎲 Шум (' + (step.laika ? '🐕 Лайка' : pname(p)) + ', ' + roomName(state, roomId) + '): ' + fmtRoll(r) + '.', 'noise');
     // Motion Scanner (printed): "Whenever you make a Noise roll you may discard 1 card to reroll that
     // roll. You must accept the second result."

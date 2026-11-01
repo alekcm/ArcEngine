@@ -347,6 +347,78 @@ body.pl-collapsed #prompt:not(.hidden) ~ #menuToggle { left: 34px; }
     transform: translate(-50%, -50%) scale(1);
 }
 
+.scanned-card-modal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(4, 9, 16, 0.82);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 95;
+    animation: fadein .2s ease-out;
+}
+.scanned-card-modal.hidden { display: none !important; }
+.scanned-card-box {
+    background: linear-gradient(165deg, #1b2838, #101a26);
+    border: 2px solid var(--acc, #42a5f5);
+    border-radius: 14px;
+    padding: 24px 30px;
+    max-width: 460px;
+    width: 90%;
+    box-shadow: 0 14px 45px rgba(0, 0, 0, 0.85), 0 0 32px rgba(66, 165, 245, 0.3);
+    text-align: center;
+}
+.scanned-card-header {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent, #42a5f5);
+    margin-bottom: 6px;
+    font-weight: 700;
+}
+.scanned-card-target {
+    font-size: 14px;
+    color: var(--dim, #8a99ab);
+    margin-bottom: 16px;
+}
+.scanned-card-target b { color: #fff; }
+.scanned-card-preview {
+    background: linear-gradient(180deg, #24354a, #182433);
+    border: 1px solid #48658a;
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 22px;
+    box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.4);
+    text-align: left;
+}
+.scanned-card-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: #ffd27f;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #48658a;
+    padding-bottom: 8px;
+    text-align: center;
+}
+.scanned-card-text {
+    font-size: 14px;
+    line-height: 1.5;
+    color: #e3ebf5;
+    white-space: pre-wrap;
+}
+.scanned-card-actions {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+}
+.scanned-card-actions .btn {
+    flex: 1;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
 /* ---- hand fan ---- */
 #hand { overflow: visible; padding: 6px 30px 0; align-items: flex-end; gap: 0; }
 #hand .card { margin: 0 -14px; transform-origin: 50% 140%; transform: rotate(var(--fan, 0deg)) translateY(var(--lift, 0px)); transition: transform .15s, margin .15s; }

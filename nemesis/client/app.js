@@ -323,7 +323,11 @@ function renderLobby() {
     for (const el of $('seatList').querySelectorAll('[data-kick]')) el.onclick = () => net.send({ t: 'lobby', kick: Number(el.dataset.kick) });
     // settings
     $('modeSelect').value = L.settings.mode; $('draftSelect').value = L.settings.draft === false ? '0' : '1'; if (document.activeElement !== $('seedInput')) $('seedInput').value = L.settings.seed || '';
+    if ($('adaptSelect')) $('adaptSelect').value = L.settings.adaptations !== undefined ? String(L.settings.adaptations) : '3';
+    if ($('noiseDieSelect')) $('noiseDieSelect').value = L.settings.noiseVariant ? 'safe' : 'standard';
     $('modeSelect').disabled = !app.host; $('seedInput').disabled = !app.host;
+    if ($('adaptSelect')) $('adaptSelect').disabled = !app.host;
+    if ($('noiseDieSelect')) $('noiseDieSelect').disabled = !app.host;
     $('lanAddr').textContent = L.addresses.length ? L.addresses.map(a => 'http://' + a + ':' + L.port).join('   ') : location.origin;
     $('readyBtn').textContent = app.ready ? 'Не готов' : 'Готов';
     $('readyBtn').disabled = app.spectator;
@@ -563,10 +567,18 @@ $('readyBtn').onclick = () => net.send({ t: 'lobby', ready: !app.ready });
 $('galleryBtn').onclick = () => openGallery();
 $('galleryClose').onclick = () => closeGallery();
 $('startBtn').onclick = () => net.send({ t: 'start' });
-const sendSettings = () => net.send({ t: 'lobby', settings: { mode: $('modeSelect').value, seed: $('seedInput').value, draft: $('draftSelect').value === '1' } });
+const sendSettings = () => net.send({ t: 'lobby', settings: {
+    mode: $('modeSelect').value,
+    seed: $('seedInput').value,
+    draft: $('draftSelect').value === '1',
+    adaptations: $('adaptSelect') ? $('adaptSelect').value : '3',
+    noiseVariant: $('noiseDieSelect') ? $('noiseDieSelect').value === 'safe' : false,
+} });
 $('modeSelect').onchange = sendSettings;
 $('seedInput').onchange = sendSettings;
 $('draftSelect').onchange = sendSettings;
+if ($('adaptSelect')) $('adaptSelect').onchange = sendSettings;
+if ($('noiseDieSelect')) $('noiseDieSelect').onchange = sendSettings;
 $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else $('endOverlay').classList.add('hidden'); };
 
 // ---------------------------------------------------------------------------------------------
@@ -814,7 +826,10 @@ function renderPlayers() {
         tags.push('<span class="tag yellow">знания ' + p.knowledge + (p.knowledgeActive ? ' ✓' : '') + '</span>');
         const cCount = p.contamTotal ?? p.contamInDiscard ?? 0;
         tags.push('<span class="tag" title="Карт в руке / колоде / сбросе (всего заражений)">🂠 ' + p.handCount + ' / ' + p.deckCount + ' / ' + p.discardCount + (cCount ? ' ☣ Заражений: ' + cCount : '') + '</span>');
-        const items = p.items.map(i => '<span class="itag" title="' + esc(itemTitle(i)) + '">' + itemArtHtml(i) + (ITEMS[i.item].weapon ? '🔫' : ITEMS[i.item].kind === 'heavy' ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>').join('')
+        const items = p.items.map(i => {
+            const isHeavy = ITEMS[i.item].kind === 'heavy' && !(i.item === 'cuffs' && (i.flipped || (i.charge ?? ITEMS.cuffs.markers) <= 0));
+            return '<span class="itag" title="' + esc(itemTitle(i)) + '">' + itemArtHtml(i) + (ITEMS[i.item].weapon ? '🔫' : isHeavy ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>';
+        }).join('')
             + p.heavy.map(h => '<span>🧳 ' + ({ corpse: 'труп', charCorpse: 'труп персонажа', carcass: 'туша', egg: 'яйцо' })[h.type] + '</span>').join('')
             // p. 14: another character's light items are hidden; show only how many there are.
             + ((p.itemCount || 0) > p.items.length ? '<span class="tag" title="Лёгкие предметы другого персонажа скрыты">🔒 карт предметов: ' + p.itemCount + '</span>' : '');
@@ -874,7 +889,7 @@ function renderPrompt() {
     if (pr && pr.kind !== 'dice' && tableFx && tableFx.holding) {
         el.classList.add('hidden'); tg.classList.add('hidden'); app.promptDeferred = true; return;
     }
-    if (!pr || pr.kind === 'dice') { el.classList.add('hidden'); tg.classList.add('hidden'); el.classList.remove('bagmode', 'eventmode'); closeItemPicker(); return; }   // dice prompts are shown by DiceUI
+    if (!pr || pr.kind === 'dice') { if ($('scannedCardModal')) $('scannedCardModal').classList.add('hidden'); el.classList.add('hidden'); tg.classList.add('hidden'); el.classList.remove('bagmode', 'eventmode'); closeItemPicker(); return; }   // dice prompts are shown by DiceUI
     // A state update can land in the middle of the half-second the card takes to turn. Rewriting
     // #prompt then rebuilt the card — the turn restarted, or finished in a flash. The card is left
     // alone (with the ready ticks it carries) until the turn is over.
@@ -947,6 +962,35 @@ function renderPrompt() {
         }
     }
     if (app.itemPick) closeItemPicker();
+
+    let scanModal = $('scannedCardModal');
+    if (pr && pr.scannedCard && pr.player === app.me && !pr.waiting) {
+        if (!scanModal) {
+            scanModal = document.createElement('div');
+            scanModal.id = 'scannedCardModal';
+            scanModal.className = 'scanned-card-modal';
+            document.body.appendChild(scanModal);
+        }
+        const sc = pr.scannedCard;
+        scanModal.innerHTML = '<div class="scanned-card-box">' +
+            '<div class="scanned-card-header">Сканер эмоций</div>' +
+            '<div class="scanned-card-target">Верхняя карта колоды: <b>' + esc(sc.target) + '</b></div>' +
+            '<div class="scanned-card-preview">' +
+                '<div class="scanned-card-title">«' + esc(sc.name) + '»</div>' +
+                '<div class="scanned-card-text">' + esc(sc.text) + '</div>' +
+            '</div>' +
+            '<div class="scanned-card-actions">' +
+                '<button class="btn" id="scanBtnDiscard">Сбросить в сброс</button>' +
+                '<button class="btn primary" id="scanBtnHand">Отдать в руку</button>' +
+            '</div>' +
+        '</div>';
+        scanModal.classList.remove('hidden');
+        const bDisc = $('scanBtnDiscard'), bHand = $('scanBtnHand');
+        if (bDisc) bDisc.onclick = () => { scanModal.classList.add('hidden'); act('discard'); };
+        if (bHand) bHand.onclick = () => { scanModal.classList.add('hidden'); act('hand'); };
+    } else if (scanModal) {
+        scanModal.classList.add('hidden');
+    }
     let html = '<h4>' + esc(pr.title) + '</h4>';
     if (pr.text) html += '<div class="ptext">' + esc(pr.text) + '</div>';
     switch (pr.kind) {
@@ -1806,6 +1850,7 @@ function myHandSlots(me) {
     const slots = [];
     for (const i of me.items || []) {
         const d = ITEMS[i.item]; if (!d || d.kind !== 'heavy') continue;
+        if (i.flipped || (i.item === 'cuffs' && ((i.charge ?? ITEMS.cuffs.markers) <= 0 || i.flipped))) continue;
         if (d.bayonet && (me.items || []).some(o => ITEMS[o.item] && ITEMS[o.item].weapon)) continue;
         slots.push({ ref: 'item:' + i.uid, name: d.name, kind: 'item' });
         if (d.twoSlots) slots.push({ ref: null, name: d.name, kind: 'filler' });
@@ -1819,16 +1864,20 @@ function sheetItemHtml(inst, picks) {
     const d = ITEMS[inst.item]; if (!d) return '';
     const art = itemArt(inst.item);
     const meta = [];
-    meta.push(d.kind === 'heavy' ? 'тяжёлый предмет' : d.kind === 'armor' ? 'броня (костюм)' : 'лёгкий предмет');
+    const isCuffsFlipped = inst.item === 'cuffs' && (inst.flipped || (inst.charge ?? ITEMS.cuffs.markers) <= 0);
+    const isHeavy = d.kind === 'heavy' && !isCuffsFlipped;
+    meta.push(isHeavy ? 'тяжёлый предмет' : d.kind === 'armor' ? 'броня (костюм)' : 'лёгкий предмет');
     if (d.weapon) meta.push('патроны ' + (inst.ammo ?? 0) + '/' + d.weapon.max);
-    if (d.markers !== undefined) meta.push('жетоны ' + (inst.charge ?? d.markers) + '/' + d.markers);
+    if (d.markers !== undefined && !isCuffsFlipped) meta.push('жетоны ' + (inst.charge ?? d.markers) + '/' + d.markers);
     if (inst.broken) meta.push('жетон поломки (сломано)');
     if (d.oneUse) meta.push('одноразовый');
     const opt = picks ? picks.get('item:' + inst.uid) : null;
+    const itemName = isCuffsFlipped ? 'Наручники (сняты)' : d.name;
+    const itemText = isCuffsFlipped ? 'Лёгкий предмет (в рюкзаке). Нельзя передать или сбросить. Наручники сняты с ваших рук.' : (d.text || '');
     return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + (opt ? ' pickable' : '') + '" data-item="' + esc(inst.uid) + '"' +
         (opt ? ' data-pick="' + esc(opt) + '" title="Нажмите, чтобы выбрать этот предмет"' : '') + '>' +
         (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
-        '<div><b>' + esc(d.name) + (d.quest ? ' · квестовый' : '') + '</b><small>' + esc(d.text || '') + '</small>' +
+        '<div><b>' + esc(itemName) + (d.quest ? ' · квестовый' : '') + (isCuffsFlipped ? ' · перевёрнуты 🔓' : '') + '</b><small>' + esc(itemText) + '</small>' +
         '<small style="color:#8394a8">' + esc(meta.join(' · ')) + '</small></div>' +
         (opt ? '<span class="si-pick">Выбрать</span>' : '') + '</div>';
 }
@@ -1859,10 +1908,11 @@ function openSheet(quiet, targetPlayerId) {
             : '1 действие';
         const art = itemArt(q.item);
         const open = isMine && !!(questMenu && questMenu.enabled);
+        const chargeHtml = q.charge !== undefined ? ' <span class="tag yellow">⚡ ' + q.charge + '</span>' : '';
         return '<div class="sheet-item quest closed' + (open ? ' pickable' : '') + '"' + (open ? ' data-pick="quest"' : '') +
             ' title="' + esc(open ? 'Нажмите, чтобы открыть: это стоит 1 действие' : (questMenu && questMenu.reason) || 'Закрыт: откроется по правилам карты') + '">' +
             (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
-            '<div><b>' + esc(d.name || q.item) + ' · закрыт 🔒</b>' +
+            '<div><b>' + esc(d.name || q.item) + ' · закрыт 🔒' + chargeHtml + '</b>' +
             '<small>' + esc(d.text || '') + '</small>' +
             '<small style="color:#8394a8">Активация: ' + esc(where) + ' · ' + esc(pay) + ' · 1 действие</small>' +
             ((isMine && questMenu && !questMenu.enabled && questMenu.reason) ? '<small style="color:#e2a33f">' + esc(questMenu.reason) + '</small>' : '') +

@@ -31,7 +31,10 @@ export function roomActionAvailable(state, p, opts = {}) {
             return pods.length ? { ok: true } : { ok: false, reason: 'Нет разблокированной капсулы со свободным местом' };
         }
         case 'fireControl': return { ok: true };
-        case 'generator': return state.selfDestruct > 0 && state.selfDestruct >= 4 ? { ok: false, reason: 'Отсчёт уже не остановить' } : { ok: true };
+        case 'generator': {
+            if (state.selfDestruct > 0) return state.selfDestruct >= 4 ? { ok: false, reason: 'Отсчёт уже не остановить' } : { ok: true };
+            return state.players.some(x => x.status === 'hibernating') ? { ok: false, reason: 'Кто-то уже в гибернации' } : { ok: true };
+        }
         case 'laboratory': {
             // 18.3: any Heavy Object may be analyzed — including a character's corpse.
             const objs = [...p.heavy, ...rs.objects];
@@ -302,7 +305,12 @@ OPS['room.airlock'] = (state, step) => {
     // Unpassed. The room is vented at the END of the Player Phase, not immediately.
     for (const c of corridorsOf(state, r)) if (c.id !== 'tech' && state.ship.corridors[c.id].door === 'open') state.ship.corridors[c.id].door = 'closed';
     state.roomState[r].airlock = true;
-    for (const o of playersInRoom(state, r)) { o.passed = true; log(state, pname(o) + ' в шлюзуемой комнате — считается пасующим.', 'bad'); }
+    for (const o of playersInRoom(state, r)) {
+        if (o.passed) {
+            o.passed = false;
+            log(state, pname(o) + ' в шлюзуемой комнате — снимает пас, чтобы попытаться спастись.', 'action');
+        }
+    }
     log(state, '🌀 Жетон шлюзования: ' + roomName(state, r) + '. Комната будет продута в конце фазы игроков.', 'event');
     next(state, step.then);
 };
@@ -311,6 +319,11 @@ export function resolveAirlocks(state) {
     for (const [r, rs] of Object.entries(state.roomState)) {
         if (!rs.airlock) continue;
         rs.airlock = false;
+        const allClosed = corridorsOf(state, r).every(c => c.id === 'tech' || state.ship.corridors[c.id].door === 'closed');
+        if (!allClosed) {
+            log(state, '🌀 Шлюзование в комнате ' + roomName(state, r) + ' сорвано: одна из дверей открыта или уничтожена.', 'event');
+            continue;
+        }
         for (const it of intrudersIn(state, r)) { if (it.type === 'queen') { state.queenDead = true; log(state, 'Королева выброшена в космос!', 'good'); } removeIntruder(state, it.uid, false); }
         for (const o of playersInRoom(state, r)) loseHealth(state, o, 99, 'разгерметизация');
         removeFire(state, r);

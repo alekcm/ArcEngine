@@ -4,7 +4,7 @@ import { OPS, ask, next, later, log, player, pname, removeCardFromGame, intruder
     discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards,
     HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom, corridorsOf, computerHere, HIBERNATION_TIME } from './core.mjs';
 import { repairOptions } from './actions.mjs';
-import { ITEMS, dropLocked, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf } from '../data/cards.mjs';
+import { ITEMS, dropLocked, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf, hasOpenQuest } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { canFire } from './combat.mjs';
 import { roomActionAvailable, roomActionCost } from './rooms.mjs';
@@ -94,6 +94,9 @@ export function buildMenu(state, p) {
         const where = !qd.questRoom || qd.questRoom === 'any' ? null : qd.questRoom;
         const here = !where || (qd.questRoom === 'engine' ? (tile === 'engine' || tile === 'engineRoom') : where === tile);
         let ok = here, reason = !here ? 'Нужна комната «' + ((ROOM_TILES[where] || {}).name || where) + '»' : '';
+        if (ok && qd.questComputer && (!computerHere(state, p) || rs.malfunction)) {
+            ok = false; reason = 'Нужен компьютер без поломки';
+        }
         if (ok && qd.questBlue && state.time > HIBERNATION_TIME) {
             ok = false; reason = 'Маркер времени должен быть в синей зоне (≤ ' + HIBERNATION_TIME + ')';
         }
@@ -103,7 +106,7 @@ export function buildMenu(state, p) {
         if (ok && qd.questEnergy && !p.items.some(i => i.item === 'energyCharge')) {
             ok = false; reason = 'Нужен предмет «Заряд энергии»';
         }
-        if (ok && qd.questNoIntruder && intrudersIn(state, p.room).length) {
+        if (ok && intrudersIn(state, p.room).length) {
             ok = false; reason = 'В комнате не должно быть чужих';
         }
         add('quest', 'Открыть квестовый предмет: «' + qd.name + '»', 1, ok, reason);
@@ -125,6 +128,7 @@ export function buildMenu(state, p) {
         const d = ITEMS[i.item];
         const cost = (d.free ? 0 : 1) + (p.wounds.includes('hand') && !d.free ? 1 : 0);
         if (i.broken) return { uid: i.uid, enabled: false, reason: 'Поломка', cost };
+        if (d.noCombat && !noCombatOk) return { uid: i.uid, enabled: false, reason: 'Нельзя в бою', cost };
         const req = itemRequirement(state, p, i);
         return { uid: i.uid, enabled: !req && payable >= cost, reason: req || (payable < cost ? 'Не хватает карт' : ''), cost };
     });
@@ -138,10 +142,18 @@ function extraCost(d) {
 function cardRequirement(state, p, d) {
     const rs = room(state, p.room), tile = tileOf(state, p.room);
     switch (d.effect) {
-        case 'search': case 'scavenging':
+        case 'search': case 'scavenging': {
+            if (p.charId === 'bounty' && hasOpenQuest(p, 'canineUpgrades') && p.laika && p.laika !== 'board' && p.laika !== p.room) {
+                const laikaTile = tileOf(state, p.laika);
+                const laikaHasItems = laikaTile && ROOM_TILES[laikaTile].items.length > 0;
+                const hereHasItems = tile && ROOM_TILES[tile].items.length > 0;
+                if (!hereHasItems && !laikaHasItems) return 'В комнате нет предметов';
+                return '';
+            }
             if (!tile || !ROOM_TILES[tile].items.length) return 'В комнате нет предметов';
             if (d.effect === 'scavenging' && rs.malfunction) return 'Поломка в комнате';
             return '';
+        }
         case 'weakSpot': return inCombat(state, p) ? '' : 'Нет чужих';
         case 'scoutAdrenaline': return inCombat(state, p) ? '' : 'Только в комнате с чужим';
         case 'coveringFire': return p.items.some(i => ITEMS[i.item].weapon && i.ammo >= 2 && !i.broken) ? '' : 'Нужно 2 патрона';
@@ -178,7 +190,7 @@ function cardRequirement(state, p, d) {
         case 'synthesizedDrugs': return tile && ROOM_TILES[tile].items.includes('green') && !rs.malfunction && !rs.fire ? '' : 'Нужна зелёная комната без поломки и огня';
         case 'fieldSurgery': return state.players.some(o => o.status === 'active' && o.room === p.room && o.wounds.length) ? '' : 'Нет тяжёлых травм';
         case 'weirdMetabolism': return p.hand.some(isContam) || rs.objects.length ? '' : 'Нет заражения и объектов';
-        case 'protocolOverride': { const u = p.items.find(i => i.item === 'ups'); return u && (u.charge ?? 0) > 0 ? '' : 'Нет жетонов ИБП'; }
+        case 'protocolOverride': { const u = p.items.find(i => i.item === 'ups') || (p.quests || []).find(i => i.item === 'ups'); return u && (u.charge ?? 0) > 0 ? '' : 'Нет жетонов ИБП'; }
         case 'emotionScanner': case 'lendAHand': case 'command': case 'wouldYouKindly': return '';
         default: return '';
     }
@@ -199,13 +211,18 @@ export function itemRequirement(state, p, it) {
             if (p.items.some(i => ITEMS[i.item].weapon && ITEMS[i.item].weapon.grenadeOnly && i.ammo < ITEMS[i.item].weapon.max)) return '';
             return ok ? '' : 'Нет цели рядом';
         }
-        case 'secControl': return Object.keys(state.ship.rooms).some(r => intrudersIn(state, r).length && (room(state, r).fire || room(state, r).malfunction)) ? '' : 'Нет комнаты с пожаром/поломкой и чужими';
+        case 'secControl': return Object.keys(state.ship.rooms).some(r => intrudersIn(state, r).length && tileOf(state, r) && ROOM_TILES[tileOf(state, r)].items.includes('red')) ? '' : 'Нет комнаты с военным снаряжением и чужими';
         case 'repelAdult': case 'reagent': return '';
         case 'taser': return '';
         case 'medkit': case 'woundOrHeal2': return '';
         case 'removeContam1': case 'sampleJar': return p.hand.some(isContam) ? '' : 'Нет заражений в руке';
         case 'wrench': return rs.malfunction || rs.fire ? '' : 'Нет поломки или огня';
         case 'pipeMelee': return inCombat(state, p) ? '' : 'Нет чужих';
+        case 'torchDoor': return corridorsOf(state, p.room).length ? '' : 'В комнате нет дверей';
+        case 'karcher': return rs.fire ? '' : 'В комнате нет огня';
+        case 'cheatCodes': return computerHere(state, p) && !rs.malfunction ? '' : 'Нужен компьютер без поломки';
+        case 'surgeryKit': case 'shipCodes': return intrudersIn(state, p.room).length ? 'В комнате не должно быть чужих' : '';
+        case 'research': return intrudersIn(state, p.room).length ? 'В комнате есть чужие' : !rs.objects.length ? 'В комнате нет тяжёлого объекта' : '';
         default: return '';
     }
 }
@@ -241,6 +258,7 @@ OPS['turn.do'] = (state, step) => {
         if (!it || !it.enabled) { next(state, back); return; }
         const inst = p.items.find(x => x.uid === a.itemId) || p.armor;
         const d = ITEMS[inst.item];
+        if (d.noCombat && inCombat(state, p)) useContainment(state, p);
         log(state, pname(p) + ' использует предмет «' + d.name + '».', 'action');
         fx(state, { type: 'useItem', player: p.id, item: inst.item });
         if (!d.free) spend();

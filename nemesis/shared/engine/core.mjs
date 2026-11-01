@@ -138,13 +138,14 @@ export function log(state, text, kind = 'info') {
 // Lookups
 // ---------------------------------------------------------------------------------------------
 export const NOISE_DIE = [1, 1, 2, 2, 3, 3, 4, 4, 'silence', 'danger', 'encounter', 'encounter'];
+export const NOISE_DIE_SAFE = [1, 1, 2, 2, 3, 3, 4, 4, 'silence', 'silence', 'danger', 'danger'];
 export const COMBAT_DIE = ['crit', 2, 3, 3, 4, 4, 5, 5, 5, 6];
 /** The Battle Suit's "special Blue Combat die", as printed on its own face sheet: two 2s, three 3s,
  *  two 4s, one 5, one 6 and one Critical. */
 export const BLUE_DIE = ['crit', 2, 2, 3, 3, 3, 4, 4, 5, 6];
 const DIE_BY_ID = { noise: NOISE_DIE, blue: BLUE_DIE, combat: COMBAT_DIE };
 /** Prompt/log id of a die: 'noise', 'blue' or 'combat'. */
-export function dieId(die) { return die === NOISE_DIE ? 'noise' : die === BLUE_DIE ? 'blue' : 'combat'; }
+export function dieId(die) { return (die === NOISE_DIE || die === NOISE_DIE_SAFE) ? 'noise' : die === BLUE_DIE ? 'blue' : 'combat'; }
 export const HIBERNATION_TIME = 8;
 export const SELF_DESTRUCT_LENGTH = 6;  // 1-3 stoppable, 4-5 yellow (pods unlock), 6 red = boom
 
@@ -234,13 +235,14 @@ export function maxAllowedHealth(p) {
     for (let i = covered; i < 4; i++) return s[i][0];
     return 0;
 }
-export function handLimit(p) { return p.wounds.includes('arm') ? 1 : 2; }
+export function handLimit(p) { return (p.wounds.includes('arm') ? 1 : 2) + (p.ductTaped || 0); }
 export function heavyCount(p) {
     let n = p.heavy.length;
     const hasRanged = p.items.some(i => ITEMS[i.item].weapon);
     for (const i of p.items) {
         const d = ITEMS[i.item];
         if (d.kind !== 'heavy') continue;
+        if (i.flipped || (i.item === 'cuffs' && ((i.charge ?? ITEMS.cuffs.markers) <= 0 || i.flipped))) continue;
         if (d.bayonet && hasRanged) continue;        // Bayonet shares the slot of a ranged weapon
         n += d.twoSlots ? 2 : 1;                      // Gatling Gun blocks the other hand slot
     }
@@ -268,10 +270,12 @@ export function drawCards(state, p, n, silent) {
         if (!p.deck.length) {
             if (!p.discard.length) break;
             // Android UPS: every reshuffle spends one marker; with no markers left the Android dies.
-            const ups = p.charId === 'android' ? p.items.find(x => x.item === 'ups') : null;
+            const ups = p.charId === 'android' ? (p.items.find(x => x.item === 'ups') || (p.quests || []).find(x => x.item === 'ups')) : null;
             if (ups) {
                 const left = (ups.charge ?? ITEMS.ups.markers) - 1;
                 ups.charge = Math.max(0, left);
+                const q = (p.quests || []).find(x => x.item === 'ups'); if (q) q.charge = ups.charge;
+                const it = p.items.find(x => x.item === 'ups'); if (it) it.charge = ups.charge;
                 if (left < 0) { killPlayer(state, p, 'ИБП разряжен при перемешивании колоды'); break; }
                 log(state, pname(p) + ': ИБП расходует жетон при перемешивании (осталось ' + ups.charge + ').', 'minor');
             }
@@ -309,6 +313,8 @@ export function removeCardFromGame(state, p, cardId) {
     if (i >= 0) p.hand.splice(i, 1);
     const j = p.discard.indexOf(cardId); if (j >= 0) p.discard.splice(j, 1);
     const k = p.deck.indexOf(cardId); if (k >= 0) p.deck.splice(k, 1);
+    p.removedCards = p.removedCards || [];
+    p.removedCards.push(cardId);
     fx(state, { type: 'remove', player: p.id, card: cardId, fromHand: i >= 0 });
 }
 export function payableCards(p) { return p.hand.filter(c => !isContam(c)); }
@@ -363,7 +369,7 @@ export function loseHealth(state, p, n, reason) {
         p.health--;
         if (p.health < 0) break;
         // armor sits in the heavily injured section: entering it discards the armor
-        if (p.armor && healthState(p) === 'heavy') {
+        if (p.armor && !ITEMS[p.armor.item].noDrop && !ITEMS[p.armor.item].quest && healthState(p) === 'heavy') {
             log(state, pname(p) + ': броня «' + ITEMS[p.armor.item].name + '» разрушена.', 'bad');
             p.armor = null;
         }
@@ -455,6 +461,7 @@ export function handSlots(state, p) {
     for (const i of p.items) {
         const d = ITEMS[i.item];
         if (d.kind !== 'heavy') continue;
+        if (i.flipped || (i.item === 'cuffs' && ((i.charge ?? ITEMS.cuffs.markers) <= 0 || i.flipped))) continue;
         if (d.bayonet && p.items.some(o => ITEMS[o.item].weapon)) continue;   // shares the ranged weapon slot
         put('item:' + i.uid, d.name, 'item', d.twoSlots);
     }

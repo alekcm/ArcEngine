@@ -102,13 +102,20 @@ export function cardHtml(cardId, info, selected) {
 
 export function itemLabel(inst) {
     const d = ITEMS[inst.item];
-    let s = d.name;
+    const isCuffsFlipped = inst.item === 'cuffs' && (inst.flipped || (inst.charge ?? ITEMS.cuffs.markers) <= 0);
+    let s = isCuffsFlipped ? 'Наручники (сняты)' : d.name;
     if (d.weapon) s += ' [' + inst.ammo + '/' + d.weapon.max + ']';
-    if (d.markers !== undefined) s += ' [' + (inst.charge ?? d.markers) + ' ⬢]';
+    if (d.markers !== undefined && !isCuffsFlipped) s += ' [' + (inst.charge ?? d.markers) + ' ⬢]';
     if (inst.broken) s += ' [жетон поломки]';
     return s;
 }
-export function itemTitle(inst) { const d = ITEMS[inst.item]; return d.text || ''; }
+export function itemTitle(inst) {
+    if (inst.item === 'cuffs' && (inst.flipped || (inst.charge ?? ITEMS.cuffs.markers) <= 0)) {
+        return 'Лёгкий предмет (в рюкзаке). Нельзя передать или сбросить. Наручники сняты с ваших рук.';
+    }
+    const d = ITEMS[inst.item];
+    return d.text || '';
+}
 export function woundName(w) { return WOUNDS[w] ? WOUNDS[w].name : w; }
 // The health band in the corner gives a wound one narrow slot under its section — enough for a short
 // word, not for the printed name ("Кровотечение" would be clipped). The full name and the rules text

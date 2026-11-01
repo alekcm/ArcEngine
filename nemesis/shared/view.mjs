@@ -6,7 +6,7 @@ import { handSlots } from './engine/core.mjs';
 import { CHARACTERS, FIELD_DATA, ITEMS } from './data/cards.mjs';
 
 const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'lastCombatAction', 'fx', 'version', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'turnSeq', 'ship', 'roomState',
-    'intruders', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods',
+    'intruders', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods', 'noiseVariant',
     'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'adaptations', 'adaptationsRemoved', 'seating', 'feats', 'featsUsed', 'result', 'lastEvent'];
 
 /**
@@ -57,7 +57,7 @@ function playerView(state, p, mine) {
         room: p.room, status: p.status, health: p.health, maxHealth: p.charId ? CHARACTERS[p.charId].health : 0, wounds: p.wounds, armor: p.armor,
         items: visibleItems, itemCount: p.items.length, heavy: p.heavy,
         // Quest items are public: a closed card lies next to its owner's sheet from the start.
-        quests: (p.quests || []).map(q => ({ uid: q.uid, item: q.item, open: !!q.open })),
+        quests: (p.quests || []).map(q => ({ uid: q.uid, item: q.item, open: !!q.open, charge: q.charge })),
         // Hand slots name what lies in each hand, so they are only sent to their owner (p. 14).
         handSlots: mine ? handSlots(state, p) : undefined,
         knowledge: p.knowledge, knowledgeActive: p.knowledgeActive, signal: p.signal,

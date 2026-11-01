@@ -2,8 +2,8 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeFire, removeMalfunction, placeFire, placeMalfunction, drawCards, discardCard, isContam, gainContamination,
-    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice, computerHere, HIBERNATION_TIME } from './core.mjs';
-import { ITEMS, WOUNDS, DECK_NAMES, canLoadWith } from '../data/cards.mjs';
+    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice, computerHere, HIBERNATION_TIME, removeIntruder } from './core.mjs';
+import { ITEMS, WOUNDS, DECK_NAMES, canLoadWith, INTRUDER_NAMES } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { shuffle } from '../rng.mjs';
 import { repelIntruder, checkNest } from './intruders.mjs';
@@ -84,13 +84,13 @@ OPS['item.freeUse'] = (state, step) => {
 };
 
 /** Search: one item per icon in the room, keep one. */
-export function searchRoom(state, p, then) {
-    const tile = tileOf(state, p.room);
+export function searchRoom(state, p, then, roomId = p.room) {
+    const tile = tileOf(state, roomId);
     const icons = tile ? ROOM_TILES[tile].items : [];
     const drawn = [];
     // Quiet: the drawn items are already on the table as a picker, no card has to fly anywhere.
     for (const color of icons) { const c = drawItem(state, color, true); if (c) drawn.push(c); }
-    log(state, pname(p) + ' обыскивает комнату (' + icons.length + ' предм.).', 'action');
+    log(state, pname(p) + ' обыскивает комнату' + (roomId !== p.room ? ' (' + roomName(state, roomId) + ')' : '') + ' (' + icons.length + ' предм.).', 'action');
     keepOneOf(state, p, drawn, 'items', then, p.armor && ITEMS[p.armor.item].vest ? 2 : 1);
 }
 
@@ -193,14 +193,14 @@ OPS['item.use'] = (state, step) => {
         }
         case 'detonator': {
             consume();
-            const rooms = Object.keys(state.ship.rooms).filter(r => { const t = tileOf(state, r); return t && ROOM_TILES[t].items.filter(x => x === 'red').length >= 2; });
-            if (!rooms.length) { log(state, 'Нет комнаты с достаточным числом красных значков.', 'minor'); next(state, back); return; }
+            const rooms = Object.keys(state.ship.rooms).filter(r => { const t = tileOf(state, r); return t && ROOM_TILES[t].items.includes('red'); });
+            if (!rooms.length) { log(state, 'Нет разведанных комнат с военным снаряжением.', 'minor'); next(state, back); return; }
             ask(state, { kind: 'room', player: p.id, title: 'Детонатор: какую комнату взорвать?', rooms }, { op: 'item.detonate', player: p.id, then: back });
             return;
         }
         case 'cables': {
             consume();
-            const opts = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'cables')).map(w => ({ id: 'w:' + w.uid, label: 'Полностью зарядить: ' + ITEMS[w.item].name }));
+            const opts = p.items.filter(i => ITEMS[i.item].weapon && i.ammo < ITEMS[i.item].weapon.max && canLoadWith(i.item, 'cables')).map(w => ({ id: 'w:' + w.uid, label: 'Зарядить (+3): ' + ITEMS[w.item].name }));
             const tile = tileOf(state, p.room);
             if (computerHere(state, p) && room(state, p.room).malfunction) opts.push({ id: 'fix', label: 'Устранить поломку и использовать компьютер' });
             if (!opts.length) { next(state, back); return; }
@@ -212,6 +212,9 @@ OPS['item.use'] = (state, step) => {
             const opts = [];
             if (room(state, p.room).malfunction) opts.push({ id: 'malf', label: 'Устранить поломку в комнате' });
             if (state.ship.rooms[p.room].kind === 'engine') opts.push({ id: 'engine', label: 'Починить/сломать двигатель' });
+            if (def.use === 'ductTape') {
+                opts.push({ id: 'tape', label: 'Склеить 2 тяжёлых предмета (+1 к вместимости рук)' });
+            }
             // Printed on Tools: "you may activate your Quest Item ignoring its activation requirement".
             if (def.use === 'tools') {
                 const quest = (p.quests || []).find(q => !q.open);
@@ -296,8 +299,8 @@ OPS['item.use'] = (state, step) => {
             return;
         }
         case 'secControl': {
-            const rooms = Object.keys(state.ship.rooms).filter(r => intrudersIn(state, r).length && (room(state, r).fire || room(state, r).malfunction));
-            if (!rooms.length) { log(state, 'Нет комнат с пожаром/поломкой и чужими.', 'minor'); next(state, back); return; }
+            const rooms = Object.keys(state.ship.rooms).filter(r => intrudersIn(state, r).length && tileOf(state, r) && ROOM_TILES[tileOf(state, r)].items.includes('red'));
+            if (!rooms.length) { log(state, 'Нет комнат с военным снаряжением и чужими.', 'minor'); next(state, back); return; }
             ask(state, { kind: 'room', player: p.id, title: 'Пульт охраны: в какой комнате стрелять?', rooms }, { op: 'item.secRoom', player: p.id, uid: inst.uid, then: back });
             return;
         }
@@ -403,7 +406,15 @@ OPS['item.detonate'] = (state, step) => {
     const p = player(state, step.player);
     const r = step.answer;
     log(state, '💥 Детонация в ' + roomName(state, r) + '!', 'combat');
-    for (const it of intrudersIn(state, r)) if (state.intruders[it.uid]) dealHits(state, p, it, 3, 0, {});
+    for (const it of intrudersIn(state, r)) {
+        if (!state.intruders[it.uid]) continue;
+        if (it.type === 'queen') {
+            next(state, { op: 'queen.card', player: p.id });
+        } else {
+            log(state, '✔ ' + INTRUDER_NAMES[it.type] + ' уничтожен детонатором!', 'good');
+            removeIntruder(state, it.uid, true);
+        }
+    }
     for (const o of playersInRoom(state, r)) loseHealth(state, o, 3, 'взрыв');
     next(state, step.then);
 };
@@ -411,12 +422,22 @@ OPS['item.cables'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'fix') { removeMalfunction(state, p.room); next(state, { op: 'computer.start', player: p.id, then: step.then }); return; }
     const w = p.items.find(i => i.uid === step.answer.slice(2));
-    if (w) { w.ammo = ITEMS[w.item].weapon.max; log(state, '«' + ITEMS[w.item].name + '» полностью заряжено.', 'good'); }
+    if (w) {
+        const before = w.ammo;
+        w.ammo = Math.min(ITEMS[w.item].weapon.max, (w.ammo || 0) + 3);
+        log(state, '«' + ITEMS[w.item].name + '»: патроны ' + before + ' → ' + w.ammo + '.', 'good');
+    }
     next(state, step.then);
 };
 OPS['item.repair'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'malf') { removeMalfunction(state, p.room); next(state, step.then); return; }
+    if (step.answer === 'tape') {
+        p.ductTaped = (p.ductTaped || 0) + 1;
+        log(state, pname(p) + ' использует скотч: связывает 2 тяжёлых предмета (+1 к вместимости рук).', 'good');
+        next(state, step.then);
+        return;
+    }
     if (step.answer === 'quest') {
         const quest = (p.quests || []).find(q => !q.open);
         if (quest) { next(state, { op: 'quest.open', player: p.id, uid: quest.uid, ignore: true, then: step.then }); return; }
@@ -445,8 +466,12 @@ OPS['quest.open'] = (state, step) => {
             log(state, '«' + def.name + '» открывается только в комнате «' + ((ROOM_TILES[where] || {}).name || where) + '».', 'minor');
             next(state, back); return;
         }
-        if (def.questNoIntruder && intrudersIn(state, p.room).length) {
+        if (intrudersIn(state, p.room).length) {
             log(state, '«' + def.name + '» открывается только в комнате без чужих.', 'minor');
+            next(state, back); return;
+        }
+        if (def.questComputer && (!computerHere(state, p) || room(state, p.room).malfunction)) {
+            log(state, '«' + def.name + '» открывается только в комнате с компьютером без поломки.', 'minor');
             next(state, back); return;
         }
         if (def.questBlue && state.time > HIBERNATION_TIME) {
@@ -487,10 +512,18 @@ OPS['quest.open'] = (state, step) => {
         }
     }
     q.open = true;
-    const inst = { uid: q.uid, item: q.item, ammo: def.weapon ? def.weapon.max : undefined, broken: false, charge: def.markers, start: true, quest: true };
+    const currentCharge = q.charge !== undefined ? q.charge : def.markers;
+    const newCharge = q.item === 'ups' ? Math.min(def.markersMax || 5, currentCharge + 2) : currentCharge;
+    q.charge = newCharge;
+    const inst = { uid: q.uid, item: q.item, ammo: def.weapon ? def.weapon.max : undefined, broken: false, charge: newCharge, start: true, quest: true };
     if (def.kind === 'armor' && !p.armor) p.armor = inst;
     else p.items.push(inst);        // a second armor-slot card is carried in the pack until the slot frees up
-    log(state, pname(p) + ' открывает квестовый предмет «' + def.name + '».', 'good');
+    if (q.item === 'shipCodes' && (p.removedCards || []).length) {
+        p.discard.push(...p.removedCards);
+        log(state, pname(p) + ' возвращает удалённые карты действий (' + p.removedCards.length + ') в сброс.', 'good');
+        p.removedCards = [];
+    }
+    log(state, pname(p) + ' открывает квестовый предмет «' + def.name + '»' + (q.item === 'ups' ? ' (+2 жетона ИБП, всего ' + newCharge + ')' : '') + '.', 'good');
     next(state, back);
 };
 OPS['quest.payGreen'] = (state, step) => {

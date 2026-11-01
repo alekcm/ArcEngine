@@ -84,7 +84,18 @@ export function createGame(config) {
     state.queenDeck = shuffle(state, QUEEN_CARDS.map((c, i) => i));
     state.feats = shuffle(state, Object.keys(FEATS)).slice(0, 6);
     state.featsUsed = [];   // taken from the pool (played or discarded) — shown in the deck viewer
-    state.adaptations = shuffle(state, Object.keys(ADAPTATIONS)).slice(0, 3);
+    state.noiseVariant = !!config.noiseVariant;
+
+    const adaptCfg = config.adaptations !== undefined ? String(config.adaptations) : '3';
+    if (adaptCfg === '0' || adaptCfg === 'none') {
+        state.adaptations = [];
+    } else if (adaptCfg === 'all') {
+        state.adaptations = Object.keys(ADAPTATIONS);
+    } else {
+        const count = parseInt(adaptCfg, 10);
+        const nAdapt = Number.isFinite(count) ? Math.max(0, Math.min(8, count)) : 3;
+        state.adaptations = shuffle(state, Object.keys(ADAPTATIONS)).slice(0, nAdapt);
+    }
 
     // Players: ids follow the lobby seats; player NUMBERS (Help cards 1..n) are random and define
     // clockwise order, the first player and the "Player N" objectives.
@@ -166,13 +177,13 @@ function assignCharacter(state, p, charId) {
     }
     // Quest items are not starting gear: the card lies closed on the character's sheet and is
     // flipped open by an Action (stand in the room printed on it and discard 1 marker, or let the
-    // Tools card do it anywhere). The android's UPS is the one card that is already open.
+    // Tools card do it anywhere).
     for (const key of ch.questItems || []) {
         const def = ITEMS[key];
         const inst = { uid: 'it' + (++state.itemSeq), item: key, ammo: def.weapon ? def.weapon.max : undefined,
             broken: false, charge: def.markers, start: true, quest: true };
         if (def.questOpen) { if (def.kind === 'armor') p.armor = inst; else p.items.push(inst); }
-        else p.quests.push({ uid: inst.uid, item: key, open: false });
+        else p.quests.push({ uid: inst.uid, item: key, open: false, charge: def.markers });
     }
 }
 OPS['setup.finish'] = (state) => {
@@ -189,7 +200,8 @@ OPS['setup.finish'] = (state) => {
     state.round = 1;
     log(state, 'Игра началась. Корабль: ' + (state.mode === 'random' ? 'случайная компоновка' : 'оригинальный «Немезида»') + '. Первый игрок — ' + pname(state.players[state.firstPlayer]) + ' (Игрок 1).', 'event');
     log(state, 'Все персонажи просыпаются в Гибернатории.', 'info');
-    log(state, 'Активные адаптации чужих: ' + state.adaptations.map(k => '«' + ADAPTATIONS[k].name + '»').join(', ') + '.', 'event');
+    log(state, 'Активные адаптации чужих: ' + (state.adaptations.length ? state.adaptations.map(k => '«' + ADAPTATIONS[k].name + '»').join(', ') : 'отключены') + '.', 'event');
+    if (state.noiseVariant) log(state, 'Кубик шума: мягкий вариант (+1 шум, +1 тишина, без встреч).', 'event');
     log(state, 'Доступные подвиги: ' + state.feats.map(k => '«' + FEATS[k].name + '»').join(', ') + '.', 'info');
     next(state, { op: 'phase.player' });
 };
