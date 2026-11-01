@@ -284,7 +284,7 @@ export const ITEMS = {
     battleSuit:  { deck: 'start', count: 0, name: 'Боевой костюм', kind: 'armor', quest: true, slot: 'armor', questRoom: 'evacB', use: null,
                    text: 'Квестовый предмет охранника, броня. В конце своего хода не теряете здоровье от пожара в комнате. Стреляя, используйте особый синий кубик боя (грани 2,2,3,3,3,4,4,5,6 и КРИТ).' },
     heavyArmor:  { deck: 'start', count: 0, name: 'Тяжёлая броня', kind: 'armor', quest: true, slot: 'armor', questRoom: 'repository', adultGuard: true, use: null,
-                   text: 'Квестовый предмет солдата, броня. Когда взрослый чужой атакует вас, можете предотвратить атаку и потерять 1 здоровье вместо неё.' },
+                   text: 'Квестовый предмет солдата, броня. Когда чужой атакует вас, можете предотвратить атаку и потерять 1 здоровье вместо неё.' },
     bloodyCamouflage: { deck: 'start', count: 0, name: 'Кровавый камуфляж', kind: 'armor', quest: true, slot: 'armor', questRoom: 'any', redirectAttack: true, use: null,
                    text: 'Квестовый предмет подопытной, броня. Когда чужой атакует вас, выберите другого персонажа в этой комнате — чужой атакует его.' },
     researchEquipment:{ deck: 'start', count: 0, name: 'Исследовательское оборудование', quest: true, slot: 'item', questRoom: 'any', questNoIntruder: true, use: 'research', oneUse: true,

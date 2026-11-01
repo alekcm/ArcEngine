@@ -107,8 +107,8 @@ OPS['attack'] = (state, step) => {
         if (d.preventAttack === 'allAmmo' && i.ammo > 0 && !i.broken) opts.push({ id: 'item:' + i.uid, label: '«' + d.name + '»: сбросить все патроны (' + i.ammo + ') — 1 ранение чужому' });
         if (d.preventAttack === 'marker' && !i.charge && !i.broken) opts.push({ id: 'item:' + i.uid, label: '«' + d.name + '»: положить жетон' });
     }
-    // Heavy Armor (printed): an Adult Intruder's attack can be prevented for 1 Health.
-    if (p.armor && ITEMS[p.armor.item].adultGuard && it.type === 'adult')
+    // Heavy Armor (printed): an Intruder's attack can be prevented for 1 Health.
+    if (p.armor && (ITEMS[p.armor.item].adultGuard || ITEMS[p.armor.item].heavyArmor))
         opts.push({ id: 'armorGuard', label: '«' + ITEMS[p.armor.item].name + '»: предотвратить атаку и потерять 1 здоровье' });
     // Bloody Camouflage (printed): the attack hits another Character in the Room instead.
     if (p.armor && ITEMS[p.armor.item].redirectAttack && othersHere.length && !step.redirected)
@@ -220,8 +220,8 @@ function resolveAttack(state, step, it, p) {
     let effects = card[it.type];
     if (typeof effects === 'string') effects = card[effects];
     if (!step.cardId) log(state, '⚔ ' + intruderLabel(state, it) + ' атакует ' + pname(p) + ': «' + card.name + '».', 'combat');
-    if (it.type === 'adult' && p.armor && ITEMS[p.armor.item].deck !== 'support' && !effects.some(e => e.op === 'miss')) {
-        ask(state, { kind: 'choice', player: p.id, title: 'Атака взрослого: «' + card.name + '». Сбросить броню и проигнорировать атаку?',
+    if (p.armor && ITEMS[p.armor.item].deck !== 'support' && !effects.some(e => e.op === 'miss')) {
+        ask(state, { kind: 'choice', player: p.id, title: intruderLabel(state, it) + ': «' + card.name + '». Сбросить броню и проигнорировать атаку?',
             options: [{ id: 'yes', label: 'Да, сбросить броню' }, { id: 'no', label: 'Нет, принять атаку' }] },
             { op: 'attack.armor', player: p.id, intruder: it.uid, phantom: it.uid === '_phantom' ? it : undefined, cardId, moving: step.moving, dest: step.dest, context: step.context, ravenous: step.ravenous });
         return;

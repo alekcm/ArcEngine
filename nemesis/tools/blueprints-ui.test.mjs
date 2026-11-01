@@ -235,3 +235,43 @@ test('ANDROID-QUEST-01: Android UPS is in quest items and activates in Generator
     assert.ok(openedUps, 'UPS is now in active player items');
     assert.equal(openedUps.charge, 5, 'Active UPS has 5 charges');
 });
+
+test('ARMOR-QUEEN-01: Heavy Armor can prevent Queen attack when moving away', async () => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const engine = await import('../shared/engine/core.mjs');
+    await import('../shared/engine/combat.mjs');
+    await import('../shared/engine/movement.mjs');
+
+    const state = createGame({ seed: 'queen-armor-test', players: [{ name: 'Sol', charId: 'soldier' }] });
+    const p = state.players[0];
+    p.armor = { uid: 'a1', item: 'heavyArmor' };
+    p.wounds.push('body'); // heavily wounded
+    p.health = 4; // heavily wounded health zone
+
+    // Queen is in player's room
+    const q = { uid: 'queen_test', type: 'queen', room: p.room, hits: 0 };
+    state.intruders['queen_test'] = q;
+
+    // Stack lethal bite attack on top of attack deck
+    state.attackDeck.unshift('bite');
+
+    const exitRoom = state.ship.rooms[p.room].exits[0].to;
+    state.roomState[exitRoom].explored = true;
+
+    state.prompt = null;
+    state.queue = [{ op: 'move.chosen', player: p.id, answer: exitRoom }];
+    engine.run(state);
+
+    // Player should be prompted with reaction to Queen's attack
+    assert.ok(state.prompt, 'Reaction prompt displayed for Queen attack');
+    const armorOpt = state.prompt.options.find(o => o.id === 'armorGuard');
+    assert.ok(armorOpt, 'Heavy Armor reaction option is available against Queen attack');
+
+    // Use Heavy Armor reaction
+    const ans = engine.answer(state, p.id, state.prompt.id, 'armorGuard');
+    assert.equal(ans, true, 'Armor reaction accepted');
+
+    // Player survived, avoided instant death from bite, and moved to target room
+    assert.equal(p.status, 'active', 'Player is alive');
+    assert.equal(p.room, exitRoom, 'Player successfully moved to target room');
+});
