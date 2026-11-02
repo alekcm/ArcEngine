@@ -225,6 +225,12 @@ const FS_EFFECTS = {
         if (must !== seat) return { ok: false, error: 'Сейчас не ваш ход.' };
         const question = pending.question;
         const answer = cmd.answer || {};
+        // The question may carry what was already chosen — the unit that is being
+        // placed. The next question (the place) is answered without it, so the
+        // choice is put back before the step reads the answer.
+        if (answer.type === undefined && question.op === 'placeUnit' && question.kind2 !== undefined) {
+            answer.type = question.kind2;
+        }
         // A branch of a choice keeps its own question: while that question waits,
         // the answer belongs to the branch, not to the choice again.
         const step = pending.choice || pending.steps[pending.index];
@@ -433,7 +439,10 @@ const FS_EFFECTS = {
                 if (step.kind === 'any') {
                     return { question: { kind: 'assetType', who: seat, op: 'gainAsset', n: step.n || 1, options: ['forge', 'cache', 'reinforcement'], text: 'Какой жетон ресурса получить?' } };
                 }
-                const limit = p.assetLimit || 3;
+                // The printed limit is three; the Tyranids keep four reinforcement
+                // tokens and a card may raise the limit for the whole game.
+                const base = p.faction === 'тираниды' && step.kind === 'reinforcement' ? 4 : 3;
+                const limit = Math.max(base, p.assetLimit || 0);
                 p.assets[step.kind] = Math.min(limit, (p.assets[step.kind] || 0) + (step.n || 1));
                 R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + step.kind + '.');
                 return null;
@@ -490,7 +499,9 @@ const FS_EFFECTS = {
                 const faction = R.faction(state, seat);
                 const names = this.unitNames(step.what, faction);
                 const types = (faction ? faction.units : []).filter(u => !names.length || names.some(n => this.sameName(u.name, n)));
-                const free = types.filter(u => (p.supply.units[u.id] || 0) > 0 || step.free);
+                // A free unit also comes from the supply: without a model there is
+                // nothing to place (the rules, "Free Units").
+                const free = types.filter(u => (p.supply.units[u.id] || 0) > 0);
                 if (!free.length) return null;
                 return { question: { kind: 'types', who: seat, op: 'placeUnit', n: step.n || 1, options: free.map(u => u.id), text: 'Какой отряд разместить?' } };
             }
@@ -903,7 +914,8 @@ const FS_EFFECTS = {
             }
             case 'gainAsset': {
                 const kind = answer.asset || 'forge';
-                const limit = p.faction === 'тираниды' && kind === 'reinforcement' ? 4 : 3;
+                const base = p.faction === 'тираниды' && kind === 'reinforcement' ? 4 : 3;
+                const limit = Math.max(base, p.assetLimit || 0);
                 p.assets[kind] = Math.min(limit, (p.assets[kind] || 0) + (step.n || 1));
                 R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + kind + '.');
                 return null;
@@ -924,7 +936,10 @@ const FS_EFFECTS = {
                 const n = Math.min(step.n || 1, p.materiel);
                 if (n <= 0) return null;
                 p.materiel -= n;
-                p.assets[kind] = Math.min(3, (p.assets[kind] || 0) + n * (step.gain || 1));
+                // The Tyranids keep four reinforcement tokens: the faction sheet
+                // takes precedence over the printed limit of three.
+                const assetLimit = p.faction === 'тираниды' && kind === 'reinforcement' ? 4 : 3;
+                p.assets[kind] = Math.min(assetLimit, (p.assets[kind] || 0) + n * (step.gain || 1));
                 R.log(state, seat, state.players[seat].name + ' меняет материю на жетон ресурса.');
                 return null;
             }
@@ -1020,8 +1035,15 @@ const FS_EFFECTS = {
                 const names = FS_EFFECTS.unitNames(step.to, faction);
                 const def = names.length ? faction.units.find(u => u.id === names[0]) : null;
                 if (!def) return null;
+                const p = state.players[seat];
                 for (const u of list) {
+                    // Both models come from the supply: the new one stands up
+                    // unrouted, the old one goes back to the reserve.
+                    if ((p.supply.units[def.id] || 0) <= 0) break;
+                    p.supply.units[def.id]--;
+                    if (u.unit) p.supply.units[u.unit] = (p.supply.units[u.unit] || 0) + 1;
                     u.unit = def.id;
+                    u.routed = false;
                     R.log(state, seat, state.players[seat].name + ' заменяет отряд на «' + def.name + '».');
                 }
                 return null;
@@ -1092,7 +1114,8 @@ const FS_EFFECTS = {
                 const sys = R.system(state, area.system);
                 const a = R.area(sys, area.pos);
                 if (!a) return null;
-                if (!step.free) p.supply.units[def.id]--;
+                if ((p.supply.units[def.id] || 0) <= 0) return null;
+                p.supply.units[def.id]--;
                 R.addUnit(state, seat, def.id, area.system, area.pos);
                 R.log(state, seat, state.players[seat].name + ' размещает «' + def.name + '».');
                 return null;

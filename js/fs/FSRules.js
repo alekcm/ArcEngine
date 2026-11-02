@@ -1656,7 +1656,10 @@ const FS_RULES = {
             const city = structures.some(s => s.type === 'city');
             const bastion = structures.some(s => s.type === 'bastion');
             if (!factory && !(asFactories && city) && !(bastions && bastion)) continue;
-            limit += this.capacity(state, systemId, area.pos);
+            // Two factories on one world double the capacity of that world for the
+            // deploy limit (the rules, "Factories").
+            const factories = structures.filter(s => s.type === 'factory').length;
+            limit += this.capacity(state, systemId, area.pos) * Math.max(1, factories);
         }
         // The order may lower the limit or give an extra factory.
         if (order && order.seat === seat && order.deployLimitBonus) limit += order.deployLimitBonus;

@@ -1058,6 +1058,22 @@ rule('asset-1', '«Cache tokens cannot be spent to reduce the cost of upgrade ca
     eq(st.players[0].assets.cache, 2, 'кеш остался');
 });
 
+rule('asset-2', '«A player cannot have more than three of each asset token» — у тиранидов четыре жетона подкрепления (планшет главнее)', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    st.players[0].assets.reinforcement = 0;
+    const steps = [{ op: 'gainAsset', kind: 'reinforcement', n: 3 }];
+    FS_RULES.runEffects(st, 0, steps, { kind: 'ability' });
+    st.players[0].faction = 'имперская-гвардия';
+    FS_RULES.runEffects(st, 0, steps, { kind: 'ability' });
+    eq(st.players[0].assets.reinforcement, 3, 'три жетона — предел');
+    st.players[0].faction = 'тираниды';
+    FS_RULES.runEffects(st, 0, steps, { kind: 'ability' });
+    eq(st.players[0].assets.reinforcement, 4, 'тираниды держат четыре');
+});
+
 rule('adj-1', '«Systems that only share the corner of a border are not adjacent.»', () => {
     const st = game();
     let bad = 0;
@@ -1153,6 +1169,62 @@ rule('rein-2', '«Reinforcement tokens do not contribute dice to a combat»', ()
 });
 
 // ============================================================================
+//  Free units, factories, forge tokens
+// ============================================================================
+head('Свободные отряды, фабрики, кузница');
+
+rule('free-1', '«Free units come from the player’s supply … if the player does not have any of that unit in his supply, he cannot place that unit.»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    st.players[0].supply.units['гвардейцы'] = 0;
+    const before = st.units.filter(u => u.seat === 0).length;
+    FS_RULES.runEffects(st, 0, [{ op: 'placeUnit', n: 1, what: 'Гвардейцы', free: true, pick: true }], { kind: 'ability' });
+    let guardLoop = 0;
+    while (st.pending && guardLoop++ < 10) answerFirst(st);
+    eq(st.units.filter(u => u.seat === 0).length, before, 'без модели в запасе отряд не появляется');
+    eq(st.players[0].supply.units['гвардейцы'], 0, 'запас не ушёл в минус');
+    // With a model in the reserve the same step places it and takes it from the supply.
+    st.players[0].supply.units['гвардейцы'] = 1;
+    FS_RULES.runEffects(st, 0, [{ op: 'placeUnit', n: 1, what: 'Гвардейцы', free: true, pick: true }], { kind: 'ability' });
+    guardLoop = 0;
+    while (st.pending && guardLoop++ < 10) answerFirst(st);
+    eq(st.units.filter(u => u.seat === 0).length, before + 1, 'модель из запаса встала на доску');
+    eq(st.players[0].supply.units['гвардейцы'], 0, 'модель ушла из запаса');
+});
+
+rule('fac-1', '«If the active player has more than one factory in a system, the deploy limit is the sum of the unit capacities for each friendly world containing a factory»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    // Two factories on the same world (a card may allow it) double that world.
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+    const one = FS_RULES.deployLimit(st, 0, sys.id);
+    eq(one, FS_RULES.capacity(st, sys.id, pos), 'одна фабрика — вместимость мира');
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+    eq(FS_RULES.deployLimit(st, 0, sys.id), one * 2, 'две фабрики на мире удваивают предел');
+});
+
+rule('forge-1', '«A player cannot spend forge tokens to reduce the command level restriction for upgrade cards.»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    st.players[0].materiel = 14;
+    st.players[0].assets.forge = 2;
+    st.order = { seat: 0, order: 'strategize', system: sys.id, phase: 'strategize' };
+    const faction = FS_DATA.factions.find(f => f.id === st.players[0].faction);
+    const high = (FS_DATA.orders || []).filter(c => c.faction === faction.id).sort((a, b) => b.kl - a.kl)[0];
+    if (!high) return 'у фракции нет улучшений приказов';
+    const res = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: high.name, forgeKl: true });
+    if (high.kl === 0) return 'у карты нет требования уровня';
+    eq(res.ok, false, 'кузница не снижает уровень улучшения');
+    eq(st.players[0].assets.forge, 2, 'кузница не потрачена');
+});
+
+// ============================================================================
 //  Components and spending
 // ============================================================================
 head('Компоненты и траты');
@@ -1219,10 +1291,17 @@ function answerFirst(st) {
     const value = first && typeof first === 'object'
         ? (first.id !== undefined ? first.id : first)
         : first;
+    // Every kind of question gets the answer the engine reads for it.
     if (q.kind === 'units') answer.units = [value].filter(v => v !== undefined);
     else if (q.kind === 'dice' || q.kind === 'diceFace') answer.dice = [0];
     else if (q.kind === 'face') answer.face = 'att';
     else if (q.kind === 'assets' || q.kind === 'assetType') answer.asset = value || 'forge';
+    else if (q.kind === 'types') answer.type = value;
+    else if (q.kind === 'structures' || q.kind === 'structureTypes') answer.structure = value;
+    else if (q.kind === 'areas') answer.area = typeof first === 'object' ? { system: first.system, pos: first.pos } : undefined;
+    else if (q.kind === 'systems') answer.system = value;
+    else if (q.kind === 'foes') answer.foe = value;
+    else if (q.kind === 'cards') answer.card = value;
     else if (q.kind === 'yesno') answer.yes = false;
     else answer.choice = 0;
     const seat = st.pending.answerSeat !== undefined ? st.pending.answerSeat : st.pending.seat;
