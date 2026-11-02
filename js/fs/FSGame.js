@@ -379,7 +379,9 @@ class FSGame {
         }
         if (s.over) {
             ctx.title = 'Игра окончена';
-            ctx.text = 'Побеждает: ' + (s.winner != null ? s.players[s.winner].name : '—');
+            ctx.text = s.shared && s.shared.length > 1
+                ? 'Победа делится: ' + s.shared.map(seat => s.players[seat].name).join(' и ')
+                : 'Побеждает: ' + (s.winner != null ? s.players[s.winner].name : '—');
             ctx.status = '';
         } else if (s.testMode === 'battle' && !s.combat) {
             this.panelTestBattle(s, ctx);

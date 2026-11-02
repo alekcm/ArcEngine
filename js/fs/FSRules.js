@@ -2188,6 +2188,9 @@ const FS_RULES = {
             state.over = true;
             winners.sort((a, b) => b.objectives - a.objectives);
             state.winner = winners[0].seat;
+            if (winners.length > 1 && winners[0].objectives === winners[1].objectives) {
+                state.shared = winners.filter(p => p.objectives === winners[0].objectives).map(p => p.seat);
+            }
             this.log(state, -1, 'Игра закончена. Побеждает ' + winners[0].name + '.');
             return;
         }
@@ -2197,6 +2200,17 @@ const FS_RULES = {
                 || (this.friendlyWorlds(state, b.seat) - this.friendlyWorlds(state, a.seat))
                 || (this.unitsOf(state, b.seat) - this.unitsOf(state, a.seat)));
             state.winner = best[0].seat;
+            // The tie-breaks of the rules: objectives, friendly worlds, units, and
+            // only then a shared victory.
+            const same = (a, b) => a.objectives === b.objectives
+                && this.friendlyWorlds(state, a.seat) === this.friendlyWorlds(state, b.seat)
+                && this.unitsOf(state, a.seat) === this.unitsOf(state, b.seat);
+            const shared = best.filter(p => same(p, best[0]));
+            if (shared.length > 1) {
+                state.shared = shared.map(p => p.seat);
+                this.log(state, -1, 'Восьмой раунд закончен. Победа делится между ' + shared.map(p => p.name).join(' и ') + '.');
+                return;
+            }
             this.log(state, -1, 'Восьмой раунд закончен. Побеждает ' + best[0].name + '.');
             return;
         }

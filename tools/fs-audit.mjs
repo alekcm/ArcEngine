@@ -885,6 +885,31 @@ rule('win-2', '«When a player is eliminated, this does not reduce the number of
 // ============================================================================
 head('Орбитальный удар (Orbital Strike)');
 
+rule('win-3', '«If no player has won the game by the end of the eighth game round … the player that has gathered the most objective tokens wins. If still tied, the player that has the most friendly worlds wins.»', () => {
+    const st = empty();
+    const a = st.systems[0], b = st.systems[2] || st.systems[1];
+    guard(st, 0, a.id, worldOf(st, a.id));
+    olk(st, 1, b.id, worldOf(st, b.id));
+    st.round = FS_RULES.ROUNDS;
+    st.players[0].objectives = 1;
+    st.players[1].objectives = 2;
+    FS_RULES.endRound(st);
+    eq(st.over, true, 'игра кончилась после восьмого раунда');
+    eq(st.winner, 1, 'побеждает тот, у кого больше целей');
+    // Equal objectives: the friendly worlds decide.
+    const st2 = empty();
+    const a2 = st2.systems[0], b2 = st2.systems[2] || st2.systems[1];
+    const c2 = st2.systems[3] || st2.systems[2];
+    guard(st2, 0, a2.id, worldOf(st2, a2.id));
+    guard(st2, 0, c2.id, worldOf(st2, c2.id));
+    olk(st2, 1, b2.id, worldOf(st2, b2.id));
+    st2.round = FS_RULES.ROUNDS;
+    st2.players[0].objectives = 1;
+    st2.players[1].objectives = 1;
+    FS_RULES.endRound(st2);
+    eq(st2.winner, 0, 'при равных целях побеждают миры');
+});
+
 rule('strike-1', '«Both the void and world areas must be in the active system. The void and world must be adjacent to each other.»', () => {
     const st = empty();
     const sys = st.systems[0];
