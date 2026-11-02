@@ -648,6 +648,19 @@ class FSGame {
         const p = s.players[me];
         const left = Math.max(0, FS_RULES.ORDER_TOKENS + (p.extraOrderTokens || 0) - (p.placedTokens || 0));
         ctx.title = 'Планирование';
+        // The tokens go one at a time, in a circle: while it is not your turn the
+        // panel only says whose turn it is.
+        if (s.turn !== me) {
+            const who = s.players[s.turn] ? s.players[s.turn].name : '—';
+            ctx.text = 'Жетон приказа выкладывает ' + who + '.';
+            ctx.status = 'Осталось приказов у вас: ' + left + '.';
+            ctx.tokens = [
+                { icon: '⚑', label: 'Приказы в руке', count: left },
+                { icon: '◈', label: 'Материя', count: p.materiel },
+                { icon: '◎', label: 'Цели', count: p.objectives || 0 },
+            ];
+            return;
+        }
         ctx.text = this.mode === 'placeOrder'
             ? 'Щёлкните по системе с кольцом.'
             : 'Выберите приказ и щёлкните по системе.';

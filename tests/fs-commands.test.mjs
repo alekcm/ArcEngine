@@ -259,3 +259,18 @@ test('the rally: a routed unit stands again', () => {
     assert.equal(res.ok, true, res.error);
     assert.equal(unit.routed, false);
 });
+
+test('the advance order: no bombardment without ships and enemy worlds', () => {
+    const s = newGame(2);
+    const sys = s.systems[0];
+    const void_ = sys.areas.find(a => !a.world);
+    // The attacker has no ship in the system and the worlds are not the enemy's.
+    for (const u of s.units) { u.system = s.systems[1].id; u.area = s.systems[1].areas[0].pos; }
+    s.order = { seat: 0, order: 'advance', system: sys.id, phase: 'move', moved: [] };
+    assert.equal(FS_RULES.orbitalStrikeTargets(s, 0).length, 0, 'there is nothing to hit');
+    const res = FS_RULES.apply(s, 0, { type: 'endAdvance' });
+    assert.equal(res.ok, true, res.error);
+    // The order is over at once: no strike phase and no question about it.
+    assert.notEqual(s.order && s.order.phase, 'strike', 'no strike step without a target');
+    void void_;
+});
