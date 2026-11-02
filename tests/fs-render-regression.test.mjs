@@ -208,3 +208,76 @@ test('the lobby offers the three ways into the game and the battlefield', () => 
     assert.equal(map.nodes.filter(n => /fs-start-test/.test(n.className)).length, 1);
     assert.equal(map.nodes.filter(n => /fs-battle/.test(n.className)).length, 0, 'the map has no battlefield');
 });
+
+// The battle on the table: the dice and the tokens are real meshes of the board,
+// and the dice are thrown with an animation, not dropped into place.
+test('the dice and the tokens of a combat are meshes of the board', () => {
+    // The faces of the dice are drawn on a canvas: a flat 2D context is enough.
+    class Texture {
+        constructor() { this.hasAlpha = false; }
+        getContext() {
+            const noop = () => { };
+            return {
+                clearRect: noop, fillRect: noop, strokeRect: noop, beginPath: noop, closePath: noop,
+                moveTo: noop, lineTo: noop, arc: noop, quadraticCurveTo: noop, fill: noop, stroke: noop,
+                save: noop, restore: noop, translate: noop, rotate: noop, setLineDash: noop,
+                fillText: noop, measureText: () => ({ width: 10 }),
+                createLinearGradient: () => ({ addColorStop: noop }),
+            };
+        }
+        update() { }
+    }
+    const Babylon = { ...B, DynamicTexture: Texture };
+    const page = loadScripts(['js/Constants.js', 'js/fs/FSData.js', 'js/fs/FSView.js'], { BABYLON: Babylon, FS_RULES: { unitOf: () => ({ type: 'ground' }) } });
+    const FSView = page.get('FSView');
+    const engine = new B.NullEngine();
+    const scene = new B.Scene(engine);
+    scene.render = () => { };
+    const v = Object.create(FSView);
+    const app = { location: { terrain: { heightAt: () => 0 } } };
+    const made = [];
+    const view = {
+        scene,
+        metrics: { tile: 60 },
+        markers: [],
+        animated: [],
+        materials: new Map(),
+        material(key, color) {
+            if (!this.materials.has(key)) {
+                const m = new B.StandardMaterial(key, scene);
+                m.diffuseColor = B.Color3.FromHexString(/^#/.test(color) ? color : '#8899aa');
+                this.materials.set(key, m);
+            }
+            return this.materials.get(key);
+        },
+        addMarker(_v, mesh) { this.markers.push({ mesh }); made.push(mesh.name || (mesh.metadata && 'root')); return mesh; },
+        addAnimated() { },
+        tilePos() { return { x: 0, y: 0 }; },
+        discAt() { return { x: 0, z: 0, y: 10, r: 20 }; },
+        throwIn() { },  // the throwing of the pieces is checked below
+    };
+    const thrown = [];
+    Object.assign(v, {
+        addMarker: view.addMarker.bind(view),
+        addAnimated: view.addAnimated.bind(view),
+        throwIn(_v, root) { thrown.push(root.name); },
+    });
+    const state = {
+        systems: [{ id: 's', tile: 'A1', row: 0, col: 0, areas: [{ pos: 'TL', world: { name: 'Test', assets: [] } }], tokens: [] }],
+        players: [{ seat: 0, color: '#fff', faction: 'имперская-гвардия' }],
+        combat: {
+            system: 's', pos: 'TL', attacker: 0, defender: 1, round: 1, step: 'choose-attacker',
+            dice: { attacker: ['att', 'def', 'morale'], defender: ['def'] },
+            tokens: { attacker: { att: 1, def: 0 }, defender: { att: 0, def: 2 } },
+            reinforcе: {},
+        },
+    };
+    v.drawCombat(app, view, state);
+    const names = view.markers.map(x => x.mesh.name);
+    assert.ok(names.some(n => /fs-die-attacker-0/.test(n)), 'the dice of the attacker are on the table');
+    assert.ok(names.some(n => /fs-die-defender-0/.test(n)), 'the dice of the defender are on the table');
+    assert.ok(names.some(n => /fs-ctok-attacker-0/.test(n)), 'the combat tokens lie next to them');
+    assert.ok(names.some(n => /fs-combat-ring-s/.test(n)), 'the battlefield is marked');
+    assert.equal(thrown.length, 3 + 1 + 1 + 2, 'every new die and token is thrown in');
+    engine.dispose();
+});
