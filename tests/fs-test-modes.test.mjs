@@ -161,8 +161,9 @@ test('the test mode: the battlefield takes the chosen troops and cards', async t
     assert.ok(state.combat.cards.attacker.hand.length > 0, 'the attacker sees his hand again');
     state = await send(a, { type: 'combat', action: 'playCard', index: 0 });
     assert.ok(state.combat.cards.attacker.played.length === 1 || state.pending, 'the card is played');
-    if (state.combat.step === 'choose-attacker') {
-        state = await send(a, { type: 'combat', action: 'skipCard' });
+    if (state.combat.step === 'choose-attacker' && state.combat.cards.attacker.hand.length) {
+        // A card is never skipped: the step goes on only when the hand is empty.
+        state = await send(a, { type: 'combat', action: 'playCard', index: 0 });
     }
     while (state.pending) {
         const pending = state.pending;

@@ -50,3 +50,28 @@ export function placeAllOrders(rules, state, pick = null, order = 'advance') {
     }
     return placed;
 }
+
+// One step of a combat, done by the seat that has to act: the reinforcement is
+// taken without tokens, a card of the hand is played and the damage of the seat
+// goes to all of its pieces. Returns what was done (or null at the end).
+export function playCombatStep(rules, state, seat) {
+    const c = state.combat;
+    if (!c) return null;
+    const side = seat === c.attacker ? 'attacker' : seat === c.defender ? 'defender' : null;
+    if (!side) return null;
+    if (c.step === 'reinforce-attacker' || c.step === 'reinforce-defender') {
+        return rules.apply(state, seat, { type: 'combat', action: 'reinforce', count: 0 });
+    }
+    if (c.step === 'choose-attacker' || c.step === 'choose-defender') {
+        if (!(c.cards[side].hand || []).length) return null;
+        return rules.apply(state, seat, { type: 'combat', action: 'playCard', index: 0 });
+    }
+    if (c.step === 'damage-attacker' || c.step === 'damage-defender') {
+        const targets = rules.damageCandidates(state, side).map(x => x.id);
+        return rules.apply(state, seat, { type: 'combat', action: 'damage', targets });
+    }
+    if (c.step === 'retreat') {
+        return rules.apply(state, seat, { type: 'combat', action: 'retreat' });
+    }
+    return null;
+}

@@ -80,14 +80,12 @@ test('the client: the operations phase lists the orders of the player', () => {
     // The compact list shows the system and the order as a hint, not a wall of text.
     assert.deepEqual(ctx.actions.map(a => a.hint), ['наступление', 'развёртывание']);
     assert.equal(ctx.actions[0].label, state.systems[0].tile);
-    // The tokens of the player are counted by kind, zeros included: one glance
-    // says what is left to play — "1× Наступление", "0× Стратегия".
+    // The corner counts only the resources of the player: the whole list of the
+    // order tokens lives in its own window, not in the column.
     const byKind = Object.fromEntries(ctx.tokens.map(t => [t.label, t.count]));
-    assert.equal(byKind['Наступление'], 1);
-    assert.equal(byKind['Развёртывание'], 1);
-    assert.equal(byKind['Стратегия'], 0);
-    assert.equal(byKind['Доминирование'], 0);
-    assert.equal(ctx.tokens.length, 7, 'four kinds and the three counters of the player');
+    assert.equal(byKind['Наступление'], undefined, 'the orders are not listed here');
+    assert.equal(byKind['Материя'], state.players[0].materiel);
+    assert.equal(ctx.tokens.length, 3, 'the three counters of the player');
     // The click opens the order on the board instead of sending it at once.
     client.pending = null;
     client.refresh = () => { };
@@ -205,15 +203,37 @@ test('the client: the combat panel follows the steps of the combat', () => {
     assert.ok(ctx.actions.length >= 1);
     // The reinforcement tokens are counted, not written out in a sentence.
     assert.ok(ctx.actions.every(a => a.kind === 'pick'));
-    assert.ok(ctx.actions[0].hint.includes('Без подкреплений'));
-    if (ctx.actions.length > 1) {
-        assert.ok(ctx.actions[ctx.actions.length - 1].hint.includes('Поставить жетонов'));
-    }
-    // The choice of the card.
+    assert.equal(ctx.actions[0].label, 'Без подкреплений');
+    // The board of the battle: the dice of both sides and their totals.
+    assert.ok(ctx.battle, 'the dice panel is there');
+    assert.equal(ctx.battle.sides.length, 2);
+    assert.ok(Array.isArray(ctx.battle.sides[0].dice));
+    assert.ok(ctx.battle.sides[0].values && typeof ctx.battle.sides[0].values.att === 'number');
+    // The choice of the card: the hand, and no way to skip it.
     state.combat.step = 'choose-attacker';
     const ctx2 = { title: '', text: '', status: '', actions: [] };
     client.panelCombat(state, ctx2);
-    assert.ok(ctx2.actions.length >= 6, 'the five cards of the hand and the skip');
-    assert.ok(ctx2.actions.filter(a => a.kind === 'pick').length >= 5, 'the hand is a grid of cards');
-    assert.ok(ctx2.actions[0].hint.includes('⚔'), 'the icons of the card are in the hint');
+    assert.ok(ctx2.actions.length >= 5, 'the five cards of the hand');
+    assert.ok(ctx2.actions.every(a => a.kind === 'pick'), 'every action is a card');
+    assert.ok(ctx2.actions.some(a => a.count && a.count.includes('⚔')), 'the icons of the card are counted');
+    assert.ok(!ctx2.actions.some(a => /пропуст/i.test(a.label)), 'a card is never skipped');
+    // The hand at the bottom of the screen holds the same cards.
+    assert.equal(client.hand.length, 5);
+    assert.ok(client.hand.every(c => c.playable));
+    // The damage: the pieces to pick and the total that is left to place.
+    state.combat.step = 'damage-attacker';
+    const ctx3 = { title: '', text: '', status: '', actions: [] };
+    client.damageTargets = [];
+    client.panelCombat(state, ctx3);
+    assert.ok(ctx3.battle.damage, 'the damage of the step is on the board');
+    assert.ok(typeof ctx3.battle.damage.total === 'number');
+    assert.ok(ctx3.battle.damage.rows.length >= 1, 'the pieces that may take the damage');
+    const confirm = ctx3.actions.find(a => a.kind === 'primary');
+    if (ctx3.battle.damage.total > 0) {
+        assert.equal(confirm.enabled, false, 'nothing is accepted before the whole damage is placed');
+        // A click on a piece takes it into the group of the damaged ones.
+        const pick = ctx3.actions.find(a => a.kind === 'pick');
+        pick.onClick();
+        assert.equal(client.damageTargets.length, 1);
+    }
 });

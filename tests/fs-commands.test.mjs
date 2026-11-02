@@ -201,7 +201,9 @@ test('the refresh phase: the storm moves once per player', () => {
                     continue;
                 }
                 if (c.step === 'choose-attacker' || c.step === 'choose-defender') {
-                    FS_RULES.apply(seat, seat, { type: 'combat', action: 'skipCard' });
+                    const side = c.step === 'choose-attacker' ? 'attacker' : 'defender';
+                    if (!(c.cards[side].hand || []).length) break;
+                    FS_RULES.apply(seat, seat, { type: 'combat', action: 'playCard', index: 0 });
                     continue;
                 }
                 if (c.step === 'damage-attacker' || c.step === 'damage-defender') {

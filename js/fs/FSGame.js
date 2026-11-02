@@ -47,6 +47,9 @@ class FSGame {
         /** @type {any} */
         this.lastCard = null;
         this.damageTargets = [];
+        // The hand of the battle at the bottom of the screen.
+        /** @type {any[]} */
+        this.hand = [];
         this.inspection = null;
         this.status = '';
         // The mouse-first play: the pieces picked on the board, the sector under
@@ -69,6 +72,13 @@ class FSGame {
         this.testMode = 'game';
         this.battle = { kind: 'ground', units: {}, cards: [] };
         FSUI.mount();
+        // The hand of the battle: a click on a card plays it.
+        FSUI.onHandPlay = item => {
+            if (!item || item.playable === false) return;
+            const s = this.state;
+            if (!s || !s.combat) return;
+            this.net.cmd({ type: 'combat', action: 'playCard', index: item.index });
+        };
 
         const params = new URLSearchParams(location.search);
         this.room = (params.get('room') || '').toUpperCase();
@@ -382,7 +392,10 @@ class FSGame {
             }
         }
         // The combat.
+        this.hand = [];
         if (s.combat) this.panelCombat(s, ctx);
+        ctx.battleHand = this.hand || [];
+        if (!s.combat) ctx.battle = null;
         ctx.mode = this.mode;
         this.refreshPlaque();
         FSUI.update(s, ctx);
@@ -1086,35 +1099,64 @@ class FSGame {
         const c = s.combat;
         const me = s.seat;
         const side = me === c.attacker ? 'attacker' : me === c.defender ? 'defender' : null;
+        const other = side === 'attacker' ? 'defender' : 'attacker';
         const sys = s.systems.find(x => x.id === c.system);
-        const foe = side === 'attacker' ? c.defender : c.attacker;
         const names = [s.players[c.attacker] ? s.players[c.attacker].name : '?',
             s.players[c.defender] ? s.players[c.defender].name : '?'];
-        ctx.title = 'Бой — ' + (sys ? sys.tile : '') + ' — раунд ' + c.round + ' из 3';
-        const diceText = (arr) => (arr || []).map(d => d === 'att' ? '⚔' : d === 'def' ? '🛡' : d === 'morale' ? '✦' : '·').join(' ');
-        ctx.text = 'Атакующий: ' + names[0] + ' — ' + diceText(c.dice.attacker)
-            + '\nЗащитник: ' + names[1] + ' — ' + diceText(c.dice.defender);
+        ctx.title = 'Бой — ' + (sys ? sys.tile : '') + ' — раунд ' + c.round + ' из ' + (c.maxRounds || 3);
+        // The board of the battle: two sides, the thrown dice, the combat tokens and
+        // the icons of the played cards, each with its total.
+        const sideOf = (id) => {
+            const seat = id === 'attacker' ? c.attacker : c.defender;
+            const p = s.players[seat] || {};
+            const values = FS_RULES.combatValues(s, id);
+            /** @type {{att: number, def: number, morale: number}} */
+            const none = { att: 0, def: 0, morale: 0 };
+            const played = (c.cards[id].played || []).map(x => (x.card && x.card.icons) || none);
+            return {
+                side: id, seat,
+                name: p.name || '?',
+                color: p.color || FSView.factionColor(p.faction),
+                faction: p.faction,
+                dice: (c.dice[id] || []).slice(),
+                tokens: { att: c.tokens[id].att || 0, def: c.tokens[id].def || 0 },
+                reinforce: (c.reinforce && c.reinforce[id]) || 0,
+                cards: played,
+                values,
+                takes: FS_RULES.combatDamageFor(s, id),
+                hand: (c.cards[id].hand || []).length,
+                mine: id === side,
+            };
+        };
+        ctx.battle = {
+            system: sys ? sys.tile : '',
+            area: c.pos,
+            round: c.round,
+            maxRounds: c.maxRounds || 3,
+            step: c.step,
+            mine: side,
+            sides: [sideOf('attacker'), sideOf('defender')],
+            names,
+        };
         if (!side) {
-            ctx.text += '\nВы не участвуете в этом бою.';
+            ctx.text = 'Вы не участвуете в этом бою.';
             return;
         }
         const my = FS_RULES.combatValues(s, side);
-        const their = FS_RULES.combatValues(s, side === 'attacker' ? 'defender' : 'attacker');
-        ctx.text += '\nВаши значения: атака ' + my.att + ', оборона ' + my.def + ', мораль ' + my.morale
-            + '. Противник: атака ' + their.att + ', оборона ' + their.def + ', мораль ' + their.morale
-            + '. Ваши жетоны: атака ' + c.tokens[side].att + ', оборона ' + c.tokens[side].def + '.';
+        const their = FS_RULES.combatValues(s, other);
         ctx.status = '';
         switch (c.step) {
             case 'reinforce-attacker':
             case 'reinforce-defender': {
-                if (c.step === 'reinforce-attacker' && side !== 'attacker') { ctx.text += '\nАтакующий выбирает подкрепления.'; return; }
-                if (c.step === 'reinforce-defender' && side !== 'defender') { ctx.text += '\nЗащитник выбирает подкрепления.'; return; }
+                const whose = c.step === 'reinforce-attacker' ? 'attacker' : 'defender';
+                if (whose !== side) { ctx.text = 'Подкрепления выбирает ' + (whose === 'attacker' ? names[0] : names[1]) + '.'; return; }
                 const max = FS_RULES.maxReinforce(s, me, side);
-                ctx.text += '\nПодкрепления (жетонов: ' + (s.players[me].assets.reinforcement || 0) + '):';
+                ctx.text = 'Подкрепления: у вас ' + (s.players[me].assets.reinforcement || 0)
+                    + ' жетонов, поставить можно не больше ' + max + '.';
                 for (let i = 0; i <= max; i++) {
                     ctx.actions.push({
-                        kind: 'pick', label: String(i),
-                        hint: i === 0 ? 'Без подкреплений' : 'Поставить жетонов: ' + i,
+                        kind: 'pick', icon: '✚', label: i === 0 ? 'Без подкреплений' : i + ' жетон(ов)',
+                        hint: 'Подкрепление даёт жетоны атаки и обороны в этом бою',
                         onClick: () => this.net.cmd({ type: 'combat', action: 'reinforce', count: i }),
                     });
                 }
@@ -1123,65 +1165,96 @@ class FSGame {
             case 'choose-attacker':
             case 'choose-defender': {
                 const whose = c.step === 'choose-attacker' ? 'attacker' : 'defender';
-                if (whose !== side) { ctx.text += '\n' + (whose === 'attacker' ? 'Атакующий' : 'Защитник') + ' выбирает карту.'; return; }
-                const hand = c.cards[side].hand;
-                ctx.text += '\nВаша рука (' + hand.length + ' карт):';
-                hand.forEach((name, i) => {
+                const hand = c.cards[side].hand || [];
+                // The hand of combat lives at the bottom of the screen, as a hand.
+                this.fillHand(s, side, whose === side);
+                if (whose !== side) {
+                    ctx.text = 'Карту выбирает ' + (whose === 'attacker' ? names[0] : names[1]) + '.';
+                    return;
+                }
+                ctx.text = 'Разыграйте карту из руки — карту нельзя пропустить.';
+                ctx.status = 'В руке ' + hand.length + ' карт(ы).';
+                // The same hand as the cards at the bottom of the screen, listed here
+                // with the icons of every card.
+                hand.forEach((name, index) => {
                     const data = FS_DATA.combat.find(x => x.faction === s.players[me].faction && x.name === name);
+                    const icons = (data && data.icons) || { att: 0, def: 0, morale: 0 };
                     ctx.actions.push({
-                        kind: 'pick',
-                        label: name,
-                        hint: data ? '⚔ ' + (data.icons.att || 0) + ' · 🛡 ' + (data.icons.def || 0) + ' · ✦ ' + (data.icons.morale || 0) : '',
+                        kind: 'pick', icon: '🃏', label: name,
+                        count: '⚔' + (icons.att || 0) + ' 🛡' + (icons.def || 0) + ' ✦' + (icons.morale || 0),
+                        hint: data ? ((data.general || '') + (data.unit ? ' ' + data.unit : '')) : '',
                         onClick: () => {
-                            this.net.cmd({ type: 'combat', action: 'playCard', index: i });
                             this.lastCard = data || null;
+                            this.net.cmd({ type: 'combat', action: 'playCard', index });
                         },
                     });
                 });
-                ctx.actions.push({
-                    kind: 'chip', icon: '⤼', label: 'Пропустить карту',
-                    onClick: () => this.net.cmd({ type: 'combat', action: 'skipCard' }),
-                });
-                if (this.lastCard) {
-                    // The text of the card: the engine has already applied it.
-                    ctx.text += '\n\n«' + this.lastCard.name + '»: ' + (this.lastCard.general || '')
-                        + (this.lastCard.unit ? ' ' + this.lastCard.unit : '');
-                }
                 return;
             }
             case 'damage-attacker':
             case 'damage-defender': {
                 const whose = c.step === 'damage-attacker' ? 'attacker' : 'defender';
-                if (whose !== side) { ctx.text += '\nПротивник распределяет урон.'; return; }
+                if (whose !== side) { ctx.text = 'Урон распределяет ' + (whose === 'attacker' ? names[0] : names[1]) + '.'; return; }
                 const damage = FS_RULES.combatDamageFor(s, side);
-                ctx.text += '\nУрон: ' + damage + '. Выберите отряды, которые его получают.';
-                const units = s.units.filter(u => u.seat === me && u.system === c.system && u.area === c.pos && !u.routed);
-                for (const u of units) {
-                    const def = FS_RULES.unitOf(s, u);
+                // The pieces of the area take the damage; the mouse picks them.
+                this.mode = 'damage';
+                const preview = FS_RULES.damagePreview(s, side, this.damageTargets);
+                const rows = FS_RULES.damageCandidates(s, side).map(x => {
+                    const row = preview.rows.find(r => r.id === x.id);
+                    return {
+                        id: x.id, name: x.name, health: x.health, morale: x.morale,
+                        routed: x.routed, kind: x.kind,
+                        take: row ? row.take : 0,
+                        destroyed: row ? row.destroyed : false,
+                        demoralised: row ? !!row.routed && !row.destroyed : false,
+                        selected: this.damageTargets.indexOf(x.id) >= 0,
+                    };
+                });
+                ctx.battle.damage = {
+                    total: damage,
+                    left: preview.left,
+                    placed: preview.placed,
+                    rows,
+                };
+                ctx.text = damage
+                    ? 'Урон ' + damage + ' — щёлкните по отрядам на доске (или здесь), чтобы распределить его.'
+                    : 'Урона нет: щиты выдержали.';
+                ctx.status = damage ? 'Осталось распределить: ' + preview.left : '';
+                for (const row of rows) {
                     ctx.actions.push({
-                        kind: 'pick',
-                        icon: '☠',
-                        label: def ? def.name : u.id,
-                        selected: this.damageTargets.indexOf(u.id) >= 0,
+                        kind: 'pick', icon: row.kind === 'structure' ? '⌂' : '♟',
+                        label: row.name, count: '♥ ' + row.health,
+                        hint: row.routed ? 'Деморализован' : (row.demoralised ? 'Будет деморализован' : 'В строю'),
+                        selected: row.selected,
+                        onClick: () => this.toggleDamage(row.id),
+                    });
+                }
+                if (damage) {
+                    // The whole damage has to be placed — unless every piece already
+                    // takes it and the rest has nowhere to go.
+                    const allPicked = rows.length > 0 && rows.every(r => r.selected);
+                    const ready = preview.left === 0 || allPicked;
+                    ctx.actions.push({
+                        kind: 'primary', icon: '☠',
+                        label: ready ? 'Принять урон' : 'Распределите весь урон (осталось ' + preview.left + ')',
+                        enabled: ready,
                         onClick: () => {
-                            const i = this.damageTargets.indexOf(u.id);
-                            if (i >= 0) this.damageTargets.splice(i, 1); else this.damageTargets.push(u.id);
-                            this.refresh();
+                            if (preview.left > 0 && !allPicked) {
+                                this.status = 'Осталось распределить ' + preview.left + ' урона.';
+                                this.refresh();
+                                return;
+                            }
+                            this.net.cmd({ type: 'combat', action: 'damage', targets: this.damageTargets.slice() });
+                            this.damageTargets = [];
+                            this.mode = 'idle';
                         },
                     });
                 }
-                ctx.actions.push({
-                    kind: 'primary', icon: '☠', label: 'Принять урон (' + this.damageTargets.length + ')',
-                    onClick: () => {
-                        this.net.cmd({ type: 'combat', action: 'damage', targets: this.damageTargets.slice() });
-                        this.damageTargets = [];
-                    },
-                });
                 return;
             }
             case 'retreat': {
-                if (c.loser !== me) { ctx.text += '\nПроигравший отступает.'; return; }
-                ctx.text += '\nОтступление: выберите, куда отойти.';
+                if (c.loser !== me) { ctx.text = 'Проигравший отступает.'; return; }
+                ctx.text = 'Отступление: выберите, куда отойти.';
                 const areas = this.retreatAreas(s, c);
                 for (const a of areas) {
                     const sys2 = s.systems.find(x => x.id === a.system);
@@ -1200,6 +1273,31 @@ class FSGame {
             default:
                 return;
         }
+    }
+
+    // The clicked piece of the damage: it joins or leaves the group that takes it.
+    toggleDamage(id) {
+        const i = this.damageTargets.indexOf(id);
+        if (i >= 0) this.damageTargets.splice(i, 1);
+        else this.damageTargets.push(id);
+        this.refresh();
+    }
+
+    // The hand at the bottom of the screen: the combat cards, each with its icons.
+    fillHand(s, side, mine) {
+        const c = s.combat;
+        if (!c) { this.hand = []; return; }
+        const hand = (c.cards[side].hand || []);
+        const faction = s.players[s.seat] ? s.players[s.seat].faction : '';
+        this.hand = hand.map((name, index) => {
+            const data = FS_DATA.combat.find(x => x.faction === faction && x.name === name);
+            return {
+                index, name,
+                icons: (data && data.icons) || {},
+                text: data ? ((data.general || '') + (data.unit ? ' ' + data.unit : '')) : '',
+                playable: !!mine,
+            };
+        });
     }
 
     // The end of a test battle: the field is free for the next one.
@@ -1805,6 +1903,21 @@ class FSGame {
         }
         // The movement lives on the board itself.
         if (this.mode === 'move') { this.clickMove(meta, target); return; }
+        // The damage of the battle: a click on a piece picks who takes it.
+        if (this.mode === 'damage' && s.combat && (meta.fs === 'unit' || meta.fs === 'structure')) {
+            const id = meta.fs === 'unit' ? meta.unit : meta.structure;
+            const c = s.combat;
+            const seat = s.seat;
+            const own = meta.fs === 'unit'
+                ? (s.units.find(u => u.id === id) || {}).seat === seat
+                : (s.structures.find(x => x.id === id) || {}).seat === seat;
+            const here = meta.fs === 'unit'
+                ? (() => { const u = s.units.find(x => x.id === id); return u && u.system === c.system && u.area === c.pos; })()
+                : (() => { const x = s.structures.find(v => v.id === id); return x && x.system === c.system && x.area === c.pos; })();
+            if (!own || !here) { this.status = 'Урон получают только ваши отряды в этой области.'; this.refresh(); return; }
+            this.toggleDamage(id);
+            return;
+        }
         if (this.mode === 'idle') {
             // A click on an own order token opens it right there.
             if (meta.fs === 'order' && meta.seat === s.seat && s.phase === 'operations' && s.turn === s.seat && !s.order) {

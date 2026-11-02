@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts } from './browser-scripts.mjs';
-import { placeAllOrders } from './fs-setup-helper.mjs';
+import { placeAllOrders, playCombatStep } from './fs-setup-helper.mjs';
 
 const { get } = loadScripts(['js/fs/FSData.js', 'js/fs/FSEffects.js', 'js/fs/FSRules.js']);
 const FS_DATA = get('FS_DATA');
@@ -196,12 +196,13 @@ test('the order of the card: the combat of one round ends at once', () => {
     s.order = { seat: 0, order: 'advance', system: sys.id, phase: 'combat' };
     FS_RULES.startCombat(s, 0, 1, sys.id, area.pos);
     s.combat.maxRounds = 1;
-    FS_RULES.apply(s, 0, { type: 'combat', action: 'reinforce', count: 0 });
-    FS_RULES.apply(s, 1, { type: 'combat', action: 'reinforce', count: 0 });
-    FS_RULES.apply(s, 0, { type: 'combat', action: 'skipCard' });
-    FS_RULES.apply(s, 1, { type: 'combat', action: 'skipCard' });
-    FS_RULES.apply(s, 0, { type: 'combat', action: 'damage', targets: [] });
-    FS_RULES.apply(s, 1, { type: 'combat', action: 'damage', targets: [] });
+    let guard = 0;
+    while (s.combat && s.combat.step !== 'retreat' && guard++ < 40) {
+        const c = s.combat;
+        const seat = c.step.indexOf('defender') >= 0 ? c.defender : c.attacker;
+        if (!playCombatStep(FS_RULES, s, seat)) break;
+        answerPending(s);
+    }
     assert.ok(s.combat.winner, 'the fight is over after one round');
 });
 
@@ -253,16 +254,15 @@ test('the combat: the preparation, the three rounds and the result', () => {
     assert.equal(r.ok, true, r.error);
     r = FS_RULES.apply(s, 1, { type: 'combat', action: 'reinforce', count: 0 });
     assert.equal(r.ok, true, r.error);
-    // Three execution rounds: a card, the damage, the damage of the opponent.
-    for (let round = 0; round < 3; round++) {
-        assert.equal(s.combat.step, 'choose-attacker');
-        FS_RULES.apply(s, 0, { type: 'combat', action: 'skipCard' });
-        assert.equal(s.combat.step, 'choose-defender');
-        FS_RULES.apply(s, 1, { type: 'combat', action: 'skipCard' });
-        assert.equal(s.combat.step, 'damage-attacker');
-        FS_RULES.apply(s, 0, { type: 'combat', action: 'damage', targets: [] });
-        assert.equal(s.combat.step, 'damage-defender');
-        FS_RULES.apply(s, 1, { type: 'combat', action: 'damage', targets: [] });
+    // Three execution rounds: a card and the damage of both sides. A card is
+    // never skipped: the step goes on when the hand is empty.
+    assert.equal(s.combat.step, 'choose-attacker');
+    let guard = 0;
+    while (s.combat && s.combat.step !== 'retreat' && guard++ < 40) {
+        const c = s.combat;
+        const seat = c.step.indexOf('defender') >= 0 ? c.defender : c.attacker;
+        if (!playCombatStep(FS_RULES, s, seat)) break;
+        answerPending(s);
     }
     // The combat is over, the loser retreats.
     assert.ok(s.combat.winner, 'the winner is known');
@@ -318,7 +318,8 @@ test('the refresh phase: the objectives, the materiel and the events', () => {
                     }
                     if (c.step === 'choose-attacker' || c.step === 'choose-defender') {
                         if ((c.step === 'choose-attacker' ? 'attacker' : 'defender') !== side) break;
-                        FS_RULES.apply(s, seat, { type: 'combat', action: 'skipCard' });
+                        if (!(c.cards[side].hand || []).length) break;
+                        FS_RULES.apply(s, seat, { type: 'combat', action: 'playCard', index: 0 });
                         continue;
                     }
                     if (c.step === 'damage-attacker' || c.step === 'damage-defender') {
@@ -457,7 +458,8 @@ function playOrder(s, seat) {
             if (c.step === 'choose-attacker' || c.step === 'choose-defender') {
                 const whose = c.step === 'choose-attacker' ? 'attacker' : 'defender';
                 if (whose !== side) break;
-                FS_RULES.apply(s, seat, { type: 'combat', action: 'skipCard' });
+                if (!(c.cards[side].hand || []).length) break;
+                FS_RULES.apply(s, seat, { type: 'combat', action: 'playCard', index: 0 });
                 continue;
             }
             if (c.step === 'damage-attacker' || c.step === 'damage-defender') {

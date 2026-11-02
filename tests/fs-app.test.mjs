@@ -185,6 +185,12 @@ function playWholeGame(count, seed) {
         game.mode = 'idle';
         game.pending = null;
         game.damageTargets = [];
+        // The mouse picks the pieces that take the damage: the bot picks them all.
+        const c = state.combat;
+        if (c && (c.step === 'damage-attacker' || c.step === 'damage-defender')) {
+            const side = c.step === 'damage-attacker' ? 'attacker' : 'defender';
+            game.damageTargets = FS_RULES.damageCandidates(state, side).map(x => x.id);
+        }
         game.onState(FS_RULES.view(state, seat));
         const before = sent.length;
         for (let attempt = 0; attempt < 30 && sent.length === before; attempt++) {
@@ -296,6 +302,12 @@ test('the client: the panels play a test battle to the end and start it again', 
         game.mode = 'idle';
         game.pending = null;
         game.damageTargets = [];
+        // The mouse picks the pieces that take the damage: the bot picks them all.
+        const c = state.combat;
+        if (c && (c.step === 'damage-attacker' || c.step === 'damage-defender')) {
+            const side = c.step === 'damage-attacker' ? 'attacker' : 'defender';
+            game.damageTargets = FS_RULES.damageCandidates(state, side).map(x => x.id);
+        }
         game.onState(FS_RULES.view(state, seat));
         const before = sent.length;
         // A human presses the last option first: it is the confirmation of the step.
@@ -308,7 +320,7 @@ test('the client: the panels play a test battle to the end and start it again', 
         const res = FS_RULES.apply(state, seat, cmd);
         assert.equal(res.ok, true, cmd.type + ' ' + (cmd.action || '') + ': ' + res.error);
     }
-    assert.ok(steps > 3, 'the fight went on for several steps: ' + steps);
+    assert.ok(steps > 3, 'the fight went on for several steps: ' + steps + ' step ' + (state.combat && state.combat.step));
     assert.equal(state.combat, null, 'the fight is over');
 
     // The end of the test battle: the panel offers the next one.

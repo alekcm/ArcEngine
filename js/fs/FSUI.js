@@ -126,6 +126,9 @@ const FSUI = {
         return ({ advance: 'Наступление', deploy: 'Развёртывание', strategize: 'Стратегия', dominate: 'Доминирование' })[order] || order;
     },
 
+    /** @type {((item: any) => void) | null} */
+    onHandPlay: null,
+
     renderModern(state, ctx) {
         const root = this.modernRoot;
         if (!root) return;
@@ -248,6 +251,8 @@ const FSUI = {
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
         const inspection = this.renderInspector(state, ctx.inspection);
         if (inspection) panel.append(inspection);
+        const battle = this.renderBattle(ctx.battle);
+        if (battle) panel.append(battle);
         const tokens = this.renderTokens(ctx.tokens);
         if (tokens) panel.append(tokens);
         const hand = this.renderHand(ctx.hand, ctx.handTitle);
@@ -255,7 +260,7 @@ const FSUI = {
         const selection = this.renderSelection(ctx.selection);
         if (selection) panel.append(selection);
         const actions = this.el('div', 'fs-actions');
-        const items = (ctx.actions || []).filter(a => a.enabled !== false);
+        const items = (ctx.actions || []).filter(a => a.enabled !== false || a.kind === 'primary' || a.kind === 'secondary');
         const tiles = items.filter(a => a.tile);
         const picks = items.filter(a => !a.tile && a.kind === 'pick');
         const chips = items.filter(a => !a.tile && (!a.kind || a.kind === 'chip'));
@@ -299,7 +304,8 @@ const FSUI = {
         for (const a of primaries) {
             const button = this.el('button', 'fs-primary'); button.type = 'button';
             button.append(this.el('span', 'fs-primary-icon', a.icon || '➤'), this.el('span', '', a.label));
-            button.addEventListener('click', () => a.onClick && a.onClick());
+            if (a.enabled === false) { button.disabled = true; button.classList.add('is-disabled'); }
+            button.addEventListener('click', () => { if (a.enabled !== false && a.onClick) a.onClick(); });
             panel.append(button);
         }
         for (const a of secondaries) {
@@ -309,6 +315,9 @@ const FSUI = {
             panel.append(button);
         }
         root.append(panel);
+        // The combat hand lies at the bottom of the screen, as a hand of cards.
+        const battleHand = this.renderBattleHand(ctx.battleHand);
+        if (battleHand) root.append(battleHand);
         actions.scrollTop = scrollTop;
         const hint = this.el('div', 'fs-map-hint');
         hint.innerHTML = state.phase === 'setup'
@@ -321,7 +330,122 @@ const FSUI = {
         this.renderPlaque();
     },
 
-    // The owned tokens at a glance: "2× Кузница", "0× Подкрепление" — the zeros
+    // The board of the battle: the dice that were rolled, the combat tokens and the
+    // icons of the played cards — each with its total, both sides side by side.
+    renderBattle(battle) {
+        if (!battle) return null;
+        const card = this.el('section', 'fs-battle');
+        const head = this.el('div', 'fs-battle-head');
+        head.append(this.el('span', 'fs-eyebrow', 'Бой · ' + (battle.system || '')));
+        head.append(this.el('span', 'fs-battle-round', 'раунд ' + battle.round + '/' + battle.maxRounds));
+        card.append(head);
+        const faces = { att: '⚔', def: '🛡', morale: '✦' };
+        for (const side of battle.sides || []) {
+            const row = this.el('div', 'fs-battle-side' + (side.mine ? ' is-mine' : ''));
+            row.style.setProperty('--battle-color', side.color || '#8899aa');
+            const who = this.el('div', 'fs-battle-who');
+            who.append(this.el('i', 'fs-battle-dot'));
+            who.append(this.el('span', 'fs-battle-name', side.name));
+            if (side.side === 'attacker') who.append(this.el('span', 'fs-battle-role', 'атакует'));
+            else who.append(this.el('span', 'fs-battle-role', 'держит'));
+            row.append(who);
+            // The dice, as they fell.
+            const dice = this.el('div', 'fs-battle-dice');
+            const counts = { att: 0, def: 0, morale: 0 };
+            for (const d of side.dice || []) {
+                counts[d] = (counts[d] || 0) + 1;
+                const die = this.el('span', 'fs-die is-' + d, faces[d] || '·');
+                die.title = d === 'att' ? 'Атака' : d === 'def' ? 'Оборона' : 'Мораль';
+                dice.append(die);
+            }
+            if (!(side.dice || []).length) dice.append(this.el('span', 'fs-die is-none', '—'));
+            row.append(dice);
+            // The tokens and the cards of the side: a symbol and its number.
+            const extras = this.el('div', 'fs-battle-extras');
+            const chip = (icon, count, cls, title) => {
+                const c = this.el('span', 'fs-battle-chip ' + (cls || ''), icon + ' ' + count);
+                c.title = title || '';
+                if (!count) c.classList.add('is-empty');
+                return c;
+            };
+            extras.append(chip('⚔', counts.att, 'is-att', 'Кубики атаки'));
+            extras.append(chip('🛡', counts.def, 'is-def', 'Кубики обороны'));
+            extras.append(chip('✦', counts.morale, 'is-morale', 'Кубики морали'));
+            if (side.tokens.att) extras.append(chip('◉', side.tokens.att, 'is-token', 'Жетоны атаки'));
+            if (side.tokens.def) extras.append(chip('◍', side.tokens.def, 'is-token', 'Жетоны обороны'));
+            if (side.reinforce) extras.append(chip('✚', side.reinforce, 'is-reinforce', 'Жетоны подкрепления'));
+            const cardIcons = (side.cards || []).reduce((acc, i) => ({
+                att: acc.att + (i.att || 0), def: acc.def + (i.def || 0), morale: acc.morale + (i.morale || 0),
+            }), { att: 0, def: 0, morale: 0 });
+            if (cardIcons.att || cardIcons.def || cardIcons.morale) {
+                extras.append(chip('🃏', [cardIcons.att ? '⚔' + cardIcons.att : '', cardIcons.def ? '🛡' + cardIcons.def : '', cardIcons.morale ? '✦' + cardIcons.morale : ''].filter(Boolean).join(' '), 'is-card', 'Иконки сыгранных карт'));
+            }
+            row.append(extras);
+            // The totals: the attack, the defence and the morale of the side.
+            const totals = this.el('div', 'fs-battle-totals');
+            totals.append(this.el('span', 'fs-battle-total is-att', '⚔ ' + side.values.att));
+            totals.append(this.el('span', 'fs-battle-total is-def', '🛡 ' + side.values.def));
+            totals.append(this.el('span', 'fs-battle-total is-morale', '✦ ' + side.values.morale));
+            row.append(totals);
+            card.append(row);
+        }
+        // The damage of the moment: who takes how much.
+        if (battle.damage) {
+            const dmg = this.el('div', 'fs-battle-damage');
+            const line = this.el('div', 'fs-battle-damage-line');
+            line.append(this.el('span', 'fs-eyebrow', 'Урон'));
+            line.append(this.el('span', 'fs-battle-total', '☠ ' + battle.damage.total));
+            if (battle.damage.total) {
+                line.append(this.el('span', 'fs-battle-left' + (battle.damage.left ? ' is-open' : ''), 'осталось ' + battle.damage.left));
+            }
+            dmg.append(line);
+            for (const row of battle.damage.rows || []) {
+                const item = this.el('div', 'fs-battle-target'
+                    + (row.destroyed ? ' is-dead' : row.demoralised ? ' is-routed' : row.selected ? ' is-picked' : ''));
+                item.append(this.el('span', 'fs-battle-target-name', row.name));
+                item.append(this.el('span', 'fs-battle-target-health', '♥ ' + row.health));
+                if (row.take) item.append(this.el('span', 'fs-battle-target-take', '−' + row.take));
+                if (row.destroyed) item.append(this.el('span', 'fs-battle-target-state', 'уничтожен'));
+                else if (row.demoralised) item.append(this.el('span', 'fs-battle-target-state', 'деморализован'));
+                else if (row.routed) item.append(this.el('span', 'fs-battle-target-state is-faint', 'деморализован'));
+                dmg.append(item);
+            }
+            card.append(dmg);
+        }
+        return card;
+    },
+
+    // The hand of the battle at the bottom of the screen: the cards with their
+    // icons. A click plays the card — a card is never skipped — and the whole
+    // text of the card is one hover away.
+    renderBattleHand(hand) {
+        if (!hand || !hand.length) return null;
+        const bar = this.el('section', 'fs-battle-hand');
+        const cards = this.el('div', 'fs-battle-cards');
+        for (const item of hand) {
+            const card = this.el('button', 'fs-battle-card');
+            card.type = 'button';
+            const top = this.el('div', 'fs-battle-card-top');
+            top.append(this.el('span', 'fs-battle-card-name', item.name));
+            const icons = this.el('div', 'fs-card-icons');
+            icons.append(this.el('span', 'is-att', '⚔ ' + (item.icons.att || 0)));
+            icons.append(this.el('span', 'is-def', '🛡 ' + (item.icons.def || 0)));
+            icons.append(this.el('span', 'is-morale', '✦ ' + (item.icons.morale || 0)));
+            card.append(top, icons);
+            if (item.playable) card.append(this.el('span', 'fs-battle-card-play', 'Разыграть ▶'));
+            else card.disabled = true;
+            card.title = item.text || '';
+            card.addEventListener('click', () => {
+                if (!item.playable) return;
+                if (this.onHandPlay) this.onHandPlay(item);
+            });
+            cards.append(card);
+        }
+        bar.append(cards);
+        return bar;
+    },
+
+    // The owned tokens at a glance:     // The owned tokens at a glance: "2× Кузница", "0× Подкрепление" — the zeros
     // stay in the list so one look says what is missing.
     renderTokens(tokens) {
         if (!tokens || !tokens.length) return null;

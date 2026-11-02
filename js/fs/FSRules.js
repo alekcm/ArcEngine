@@ -2174,7 +2174,7 @@ const FS_RULES = {
         c.reinforceUsed = c.reinforceUsed || {};
         c.reinforceUsed[side] = count;
         if (side === 'attacker') c.step = 'reinforce-defender';
-        else c.step = 'choose-attacker';
+        else { c.step = 'choose-attacker'; this.advanceCombatSteps(state); }
         return { ok: true };
     },
 
@@ -2241,8 +2241,8 @@ const FS_RULES = {
         hand.played.push({ name, card });
         this.log(state, seat, state.players[seat].name + ' играет боевую карту «' + name + '».');
         // The icons of the card count from now on.
-        if (side === 'attacker') c.step = 'choose-defender';
-        else c.step = 'damage-attacker';
+        if (side === 'attacker') { c.step = 'choose-defender'; this.advanceCombatSteps(state); }
+        else { c.step = 'damage-attacker'; this.advanceCombatSteps(state); }
         // The text of the card is the rule: the engine performs it.
         const steps = this.cardSteps(state, seat, card);
         if (steps.length) {
@@ -2253,11 +2253,43 @@ const FS_RULES = {
         return { ok: true, card: card || null };
     },
 
+    // A card is never skipped: the hand of the combat is played. The step passes
+    // only when the hand is empty — and the engine does that by itself.
     combatSkipCard(state, seat, side) {
+        void state; void seat; void side;
+        return { ok: false, error: 'Боевую карту нельзя пропустить.' };
+    },
+
+    // The steps with nothing to do pass by themselves: an empty hand is not played
+    // and a damage of zero is not assigned — the player is never asked about either.
+    advanceCombatSteps(state) {
         const c = state.combat;
-        if (side === 'attacker') c.step = 'choose-defender';
-        else c.step = 'damage-attacker';
-        return { ok: true };
+        if (!c) return null;
+        for (let i = 0; i < 10; i++) {
+            const before = c.step;
+            if (c.step === 'choose-attacker' && !(c.cards.attacker.hand || []).length) c.step = 'choose-defender';
+            if (c.step === 'choose-defender' && !(c.cards.defender.hand || []).length) c.step = 'damage-attacker';
+            if (c.step === 'damage-attacker' && this.combatDamageFor(state, 'attacker') <= 0) {
+                c.damage.attacker = 0;
+                c.applied = c.applied || {};
+                c.applied.attacker = [];
+                c.step = 'damage-defender';
+            }
+            if (c.step === 'damage-defender' && this.combatDamageFor(state, 'defender') <= 0) {
+                c.damage.defender = 0;
+                c.applied = c.applied || {};
+                c.applied.defender = [];
+                this.endCombatRound(state);
+                if (!state.combat) return null;
+            }
+            if (c.step === before) break;
+        }
+        return c.step;
+    },
+
+    // The old name of the same step machine.
+    skipEmptyChoose(state) {
+        return this.advanceCombatSteps(state);
     },
 
     // The offence and the defence of a player.
@@ -2302,16 +2334,81 @@ const FS_RULES = {
         return damage;
     },
 
+    // The damage a player has to place on his own pieces, as a plan: the same
+    // arithmetic the rules use, without touching the game. The panel shows it
+    // while the player picks the pieces with the mouse.
+    damagePreview(state, side, targets) {
+        const c = state.combat;
+        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const damage = this.combatDamageFor(state, side);
+        const oneByOne = !!(c.damageOneByOne && side === 'defender');
+        const rows = [];
+        let left = damage;
+        for (const id of targets || []) {
+            if (left <= 0) break;
+            const unit = state.units.find(u => u.id === id);
+            if (unit) {
+                const def = this.unitOf(state, unit);
+                let health = def ? def.health : 1;
+                if (c.healthBonus && unit.seat === seat) health += c.healthBonus;
+                if (c.enemyHealth && unit.seat !== seat) health = Math.min(health, c.enemyHealth);
+                const take = oneByOne ? 1 : Math.min(left, health);
+                const destroyed = oneByOne ? health <= 1 : left >= health;
+                left -= take;
+                rows.push({ id: unit.id, name: def ? def.name : unit.id, health, take, destroyed, routed: destroyed ? !!unit.routed : !destroyed });
+                continue;
+            }
+            const bastion = state.structures.find(st => st.id === id);
+            if (bastion) {
+                const health = this.structureStats(bastion.type).health;
+                const take = Math.min(left, health);
+                const destroyed = left >= health;
+                left -= take;
+                rows.push({ id: bastion.id, name: this.structureStats(bastion.type).name || bastion.type, health, take, destroyed, bastion: true });
+            }
+        }
+        return { damage, placed: damage - left, left: Math.max(0, left), rows, oneByOne };
+    },
+
+    // The pieces that may take the damage of this side: the troops and the
+    // bastions of the contested area that are still standing.
+    damageCandidates(state, side) {
+        const c = state.combat;
+        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const out = [];
+        for (const u of state.units) {
+            if (u.seat !== seat || u.system !== c.system || u.area !== c.pos) continue;
+            const def = this.unitOf(state, u);
+            if (!def) continue;
+            out.push({ id: u.id, name: def.name, health: def.health, morale: def.morale, routed: !!u.routed, kind: 'unit' });
+        }
+        for (const s of state.structures) {
+            if (s.seat !== seat || s.system !== c.system || s.area !== c.pos) continue;
+            const st = this.structureStats(s.type);
+            out.push({ id: s.id, name: st.name || s.type, health: st.health, morale: st.morale || 0, routed: false, kind: 'structure' });
+        }
+        return out;
+    },
+
     // The player assigns the damage to his own units and bastions.
     combatDamage(state, seat, side, cmd) {
         const c = state.combat;
+        const damage = this.combatDamageFor(state, side);
+        // No real damage — no question and no assignment: the shields did the work.
+        if (damage <= 0) {
+            c.damage[side] = 0;
+            c.applied = c.applied || {};
+            c.applied[side] = [];
+            if (side === 'attacker') { c.step = 'damage-defender'; this.advanceCombatSteps(state); }
+            else { this.endCombatRound(state); this.advanceCombatSteps(state); }
+            return { ok: true, damage: 0, applied: [] };
+        }
         // The schemes of the damage step are used before the damage.
         c.damageHook = c.damageHook || {};
         if (!c.damageHook[side]) {
             c.damageHook[side] = true;
             if (this.maybeScheme(state, seat, 'damage', { kind: 'combat', ctx: { side } })) return { ok: true, pending: true };
         }
-        const damage = this.combatDamageFor(state, side);
         c.damage[side] = damage;
         // The card may make the damage go one point at a time.
         const oneByOne = !!(c.damageOneByOne && side === 'defender');
@@ -2366,8 +2463,8 @@ const FS_RULES = {
         c.applied = c.applied || {};
         c.applied[side] = applied;
         // The combat tokens are returned to the supply at the end of the round.
-        if (side === 'attacker') c.step = 'damage-defender';
-        else this.endCombatRound(state);
+        if (side === 'attacker') { c.step = 'damage-defender'; this.advanceCombatSteps(state); }
+        else { this.endCombatRound(state); this.advanceCombatSteps(state); }
         return { ok: true, damage, applied };
     },
 
@@ -2395,6 +2492,7 @@ const FS_RULES = {
         }
         if (c.round > (c.maxRounds || 3)) { this.finishCombat(state); return; }
         c.step = 'choose-attacker';
+        this.advanceCombatSteps(state);
         // The schemes of the start of the round.
         this.maybeScheme(state, c.attacker, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
         c.damage = { attacker: 0, defender: 0 };
