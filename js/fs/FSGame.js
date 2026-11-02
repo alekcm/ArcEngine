@@ -763,10 +763,12 @@ class FSGame {
                 };
             }
             // Two separate flows — a ship does not march with the army and vice versa.
-            for (const [id, icon, label, hint] of [
+            /** @type {[('ship'|'ground'), string, string, string][]} */
+            const flows = [
                 ['ship', '🛦', 'Корабли', 'Двигать корабли: только пустота, штормы и переходы'],
                 ['ground', '⛨', 'Наземные войска', 'Двигать войска: только миры, путь через свои области'],
-            ]) {
+            ];
+            for (const [id, icon, label, hint] of flows) {
                 const count = all.filter(u => { const d = FS_RULES.unitOf(s, u); return d && d.type === id; }).length;
                 ctx.actions.push({
                     kind: 'pick', icon, label, hint: hint + ' · ' + count,
@@ -1749,7 +1751,8 @@ class FSGame {
                     return;
                 }
                 const def = FS_RULES.unitOf(s, unit);
-                const type = def ? def.type : 'ground';
+                /** @type {'ship' | 'ground'} */
+                const type = def && def.type === 'ship' ? 'ship' : 'ground';
                 // Ships and ground troops go in separate marches: a group already
                 // picked is not mixed with the other kind.
                 if (this.moveKind && this.moveKind !== type && this.selected.length) {

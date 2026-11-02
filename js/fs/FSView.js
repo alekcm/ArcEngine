@@ -397,7 +397,7 @@ const FSView = {
         const S = 128;
         const tex = new BABYLON.DynamicTexture('fs-order-' + order, { width: S, height: S }, view.scene, true);
         tex.hasAlpha = true;
-        const ctx = tex.getContext();
+        const ctx = /** @type {any} */ (tex.getContext());
         ctx.clearRect(0, 0, S, S);
         const c = S / 2;
         // The rim of the token.
@@ -460,7 +460,7 @@ const FSView = {
         const S = 128;
         const tex = new BABYLON.DynamicTexture('fs-faction-' + factionId, { width: S, height: S }, view.scene, true);
         tex.hasAlpha = true;
-        const ctx = tex.getContext();
+        const ctx = /** @type {any} */ (tex.getContext());
         const f = FS_DATA.factions.find(x => x.id === factionId);
         const color = (f && f.color) || '#8899aa';
         const c = S / 2;
