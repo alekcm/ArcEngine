@@ -2320,8 +2320,19 @@ const FS_RULES = {
     // defender that still stand in the area.
     captureStructures(state, systemId, pos, winner, loser) {
         const taken = [];
+        const p = state.players[winner];
         for (const st of this.structuresAt(state, systemId, pos)) {
             if (st.seat !== loser) continue;
+            // A structure without a free control token of the winner is destroyed
+            // at once: the components are limited (the rules, "Component Limitations").
+            const supply = p && p.supply && p.supply.structures ? p.supply.structures : null;
+            if (supply && (supply[st.type] || 0) <= 0) {
+                state.structures = state.structures.filter(x => x !== st);
+                if (p.supply && p.supply.structures) p.supply.structures[st.type] = (p.supply.structures[st.type] || 0) + 1;
+                this.log(state, winner, state.players[winner].name + ': жетона контроля нет, постройка уничтожена.');
+                continue;
+            }
+            if (supply) supply[st.type] = Math.max(0, (supply[st.type] || 0) - 1);
             st.seat = winner;
             taken.push(st);
         }

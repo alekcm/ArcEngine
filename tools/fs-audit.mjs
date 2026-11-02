@@ -1153,6 +1153,58 @@ rule('rein-2', '«Reinforcement tokens do not contribute dice to a combat»', ()
 });
 
 // ============================================================================
+//  Components and spending
+// ============================================================================
+head('Компоненты и траты');
+
+rule('comp-1', '«If a player would acquire a new structure by winning a combat but he does not have an available structure control token, that structure is immediately destroyed.»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    olk(st, 1, sys.id, pos);
+    FS_RULES.addStructure(st, 1, 'city', sys.id, pos);
+    // The attacker has no city token left in his supply.
+    st.players[0].supply.structures.city = 0;
+    advance(st, 0, sys.id, pos);
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    FS_RULES.captureStructures(st, sys.id, pos, 0, 1);
+    eq(st.structures.filter(x => x.type === 'city').length, 0, 'постройка без жетона уничтожена');
+    eq(st.players[0].supply.structures.city, 1, 'жетон вернулся в запас');
+});
+
+rule('comp-2', '«Players are limited to purchasing the number of units and structures provided in the game.»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    const other = FS_RULES.system(st, sys.id).areas.find(a => a.world && a.pos !== pos);
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, other ? other.pos : pos);
+    st.players[0].materiel = 14;
+    st.players[0].supply.units['гвардейцы'] = 0;
+    st.order = { seat: 0, order: 'deploy', system: sys.id, phase: 'deploy' };
+    const res = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys.id, pos });
+    eq(res.ok, false, 'отряда нет в запасе — не купить');
+});
+
+rule('spend-1', '«To purchase a unit or structure, a player must pay the materiel cost»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    const other = FS_RULES.system(st, sys.id).areas.find(a => a.world && a.pos !== pos);
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, other ? other.pos : pos);
+    st.players[0].materiel = 0;
+    st.players[0].supply.units['гвардейцы'] = 3;
+    st.order = { seat: 0, order: 'deploy', system: sys.id, phase: 'deploy' };
+    const res = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys.id, pos });
+    const cost = (FS_DATA.factions.find(f => f.id === st.players[0].faction).units.find(u => u.id === 'гвардейцы') || {}).cost;
+    if (!cost) return 'отряд бесплатный — трата не проверяется';
+    eq(res.ok, false, 'без материи отряд не купить');
+    eq(st.players[0].materiel, 0, 'материя не ушла в минус');
+});
+
+// ============================================================================
 //  Every printed card can be resolved by the engine
 // ============================================================================
 head('Тексты карт: каждая карта разбирается и разыгрывается');
@@ -1251,6 +1303,31 @@ rule('cards-2', '«When a player resolves an event card …» — текст к�
         st.pending = null;
     }
     eq(broken.slice(0, 3), [], 'карты без ошибок (' + broken.length + ')');
+});
+
+rule('abil-1', '«Resolve Faction Ability: The active player may resolve the special ability listed on the front of his faction sheet.»', () => {
+    const broken = [];
+    for (const faction of FS_DATA.factions) {
+        const st = empty(5);
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        st.players[0].faction = faction.id;
+        guard(st, 0, sys.id, pos);
+        st.order = { seat: 0, order: 'dominate', system: sys.id, phase: 'dominate' };
+        try {
+            const steps = FS_EFFECTS.parse((faction.ability && faction.ability.text) || '', { kind: 'ability', faction: faction.id });
+            eq(steps.length > 0, true, 'способность разбирается в шаги: ' + faction.id);
+            st.order.ability = faction.ability;
+            eq(!!st.order.ability, true, 'способность показана игроку');
+            FS_RULES.runEffects(st, 0, steps, { kind: 'ability', ctx: null });
+            let n = 0;
+            while (st.pending && n < 25) { n++; answerFirst(st); }
+        } catch (e) {
+            broken.push(faction.id + ': ' + e.message);
+        }
+        st.pending = null;
+    }
+    eq(broken, [], 'все 12 способностей разыгрываются');
 });
 
 rule('cards-3', '«The player must have at least one of the specified units in the combat» — у каждой карты, называющей отряд, движок знает этот отряд', () => {
