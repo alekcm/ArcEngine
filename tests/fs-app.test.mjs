@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadScripts, stub } from './browser-scripts.mjs';
+import { placeAllOrders } from './fs-setup-helper.mjs';
 
 function fakeElement(tag) {
     return {
@@ -121,12 +122,7 @@ test('the client: the lobby, the state and the panels of the phases', () => {
         seed: 21,
         players: FS_DATA.factions.slice(0, 2).map((f, i) => ({ name: 'Игрок ' + (i + 1), faction: f })),
     });
-    for (const p of raw.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = raw.systems.find(x => FS_RULES.canPlaceOrder(raw, p.seat, x.id));
-            FS_RULES.apply(raw, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-        }
-    }
+    placeAllOrders(FS_RULES, raw);
     game.onState(FS_RULES.view(raw, 0));
     assert.ok(UI.get('fsSideTitle').inner.textContent.includes('Операции'));
     const ops = [...UI.elements.values()].filter(e => e.def.parent === 'fsActions' && e.def.kind === 'button' && e.def.id !== 'fsBtn');
@@ -177,8 +173,9 @@ function playWholeGame(count, seed) {
             // The question of the effect of a card: the player answers it.
             seat = state.pending.answerSeat === undefined ? state.pending.seat : state.pending.answerSeat;
         } else if (state.phase === 'planning') {
-            const p = state.players.find(x => (x.placedTokens || 0) < FS_RULES.ORDER_TOKENS);
-            seat = p ? p.seat : null;
+            // The tokens go one at a time, in a circle: the engine says whose turn it is.
+            const p = state.players[state.turn];
+            seat = p && (p.placedTokens || 0) < FS_RULES.ORDER_TOKENS ? p.seat : null;
         } else if (state.phase === 'operations') {
             seat = state.turn;
         } else if (state.phase === 'refresh') {
@@ -231,7 +228,9 @@ function playWholeGame(count, seed) {
                 game.onClick();
             }
         }
-        if (sent.length === before) { break; }
+        if (sent.length === before) {
+            break;
+        }
         const cmd = sent[sent.length - 1];
         const res = FS_RULES.apply(state, seat, cmd);
         // The storm may not go everywhere — the board decides.

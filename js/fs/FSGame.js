@@ -988,7 +988,12 @@ class FSGame {
                 { icon: '◎', label: 'Цели', count: p.objectives || 0 },
             ];
             if (!(ev.drawn || []).length) {
-                ctx.text = 'Нет жетонов приказов: вскрывается верхняя карта колоды (событие не разыгрывается).';
+                ctx.text = 'Нет жетонов событий: вскрывается верхняя карта колоды (событие не разыгрывается, шторм всё равно ходит).';
+                // Nothing to choose — the only way on is to resolve the opened card.
+                ctx.actions.push({
+                    kind: 'primary', icon: '➤', label: 'Разыграть событие',
+                    onClick: () => this.net.cmd({ type: 'resolveEvent' }),
+                });
             }
             const counts = new Map();
             for (const name of ev.drawn || []) counts.set(name, (counts.get(name) || 0) + 1);

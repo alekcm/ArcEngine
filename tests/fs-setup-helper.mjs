@@ -33,3 +33,20 @@ export function setupCommand(rules, data, state) {
     }
     throw new Error('unknown setup stage: ' + setup.stage);
 }
+
+// The planning phase of the whole table: the players lay their tokens one at a
+// time, in a circle, until everybody is done. Returns the number of the tokens.
+export function placeAllOrders(rules, state, pick = null, order = 'advance') {
+    let placed = 0;
+    let guard = 0;
+    while (state.phase === 'planning' && guard++ < 200) {
+        const seat = state.turn;
+        const legal = state.systems.filter(sys => rules.canPlaceOrder(state, seat, sys.id));
+        if (!legal.length) break;
+        const sys = pick ? pick(state, seat, legal) : legal[placed % legal.length];
+        const res = rules.apply(state, seat, { type: 'placeOrder', system: sys.id, order });
+        if (!res.ok) break;
+        placed++;
+    }
+    return placed;
+}

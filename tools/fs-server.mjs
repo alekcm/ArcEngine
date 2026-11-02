@@ -127,12 +127,6 @@ function activeSeat(state) {
         return side === 'attacker' ? c.attacker : c.defender;
     }
     if (state.setup) return state.setup.turn;
-    // The planning phase has no turn of its own: the players lay their tokens in
-    // turn, so the seat that still has tokens is the one to act.
-    if (state.phase === 'planning') {
-        const next = state.players.find(p => (p.placedTokens || 0) < FS_RULES.ORDER_TOKENS + (p.extraOrderTokens || 0));
-        if (next) return next.seat;
-    }
     // The refresh phase resolves the event of one player at a time.
     if (state.phase === 'refresh' && state.event && state.event.seat != null) return state.event.seat;
     return state.turn;

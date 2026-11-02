@@ -997,11 +997,16 @@ const FS_RULES = {
     // --- planning phase ----------------------------------------------------
 
     // May a player put an order token on this system?
+    // The order token may be placed in any system of the board: the player plans
+    // the marches of the whole round, so a system he only reaches with the first
+    // march still has to take an order.
     canPlaceOrder(state, seat, systemId) {
         const sys = this.system(state, systemId);
         if (!sys) return false;
-        if (this.hasUnitsOrStructures(state, seat, systemId)) return true;
-        return this.neighbors(state, systemId).some(n => this.hasUnitsOrStructures(state, seat, n));
+        if (state.phase !== 'planning') return false;
+        const p = state.players[seat];
+        if (!p) return false;
+        return (p.placedTokens || 0) < this.ORDER_TOKENS + (p.extraOrderTokens || 0);
     },
 
     hasUnitsOrStructures(state, seat, systemId) {
@@ -1011,6 +1016,7 @@ const FS_RULES = {
 
     cmdPlaceOrder(state, seat, cmd) {
         if (state.phase !== 'planning') return { ok: false, error: 'Сейчас не фаза планирования.' };
+        if (seat !== state.turn) return { ok: false, error: 'Сейчас очередь другого игрока.' };
         const p = state.players[seat];
         const limit = this.ORDER_TOKENS + (p.extraOrderTokens || 0);
         if ((p.placedTokens || 0) >= limit) return { ok: false, error: 'Все приказы уже выложены.' };
@@ -1021,9 +1027,24 @@ const FS_RULES = {
         if (!types.includes(cmd.order)) return { ok: false, error: 'Неизвестный приказ.' };
         sys.tokens.push({ seat, order: cmd.order, faceUp: false });
         p.placedTokens = (p.placedTokens || 0) + 1;
-        this.log(state, seat, p.name + ' выложил приказ «' + this.orderName(cmd.order) + '».');
+        this.log(state, seat, p.name + ' выложил приказ «' + this.orderName(cmd.order) + '» в систему ' + sys.tile + '.');
+        // The players lay their tokens one at a time, in a circle.
         this.checkPlanningDone(state);
+        if (state.phase === 'planning') state.turn = this.nextPlanner(state, seat);
         return { ok: true };
+    },
+
+    // The next player in the circle who still has tokens in hand.
+    nextPlanner(state, from) {
+        const n = state.players.length;
+        for (let i = 1; i <= n; i++) {
+            const seat = (from + i) % n;
+            const p = state.players[seat];
+            if (!p || p.eliminated) continue;
+            const limit = this.ORDER_TOKENS + (p.extraOrderTokens || 0);
+            if ((p.placedTokens || 0) < limit) return seat;
+        }
+        return from;
     },
 
     orderName(order) {
@@ -1095,6 +1116,10 @@ const FS_RULES = {
         const p = state.players[seat];
         if (order === 'advance') {
             state.order.phase = 'move';
+            // The legal destinations are frozen here: the march of one unit never
+            // opens a longer road for the next one.
+            state.order.moved = [];
+            state.order.route = this.advanceRoutes(state, seat);
             return { ok: true };
         }
         if (order === 'deploy') {
@@ -1193,15 +1218,18 @@ const FS_RULES = {
         if (!order || order.order !== 'advance') return [];
         const sys = order.system;
         const from = new Set([sys].concat(this.neighbors(state, sys)));
-        return state.units.filter(u => u.seat === seat && from.has(u.system) && !u.routed);
+        const moved = order.moved || [];
+        const units = state.units.filter(u => u.seat === seat && from.has(u.system) && !u.routed && !moved.includes(u.id));
+        // The frozen routes decide: a unit without a road does not count.
+        if (order.route) return units.filter(u => order.route[u.id]);
+        return units;
     },
 
     // May this unit move to that area?
-    canMove(state, seat, unit, target) {
+    // The geometry of one march: whether this unit may end up in this area of the
+    // active system at all. The turn of the movement is checked in canMove.
+    moveAllowed(state, seat, unit, target) {
         const order = state.order;
-        if (!order || order.order !== 'advance') return { ok: false, error: 'Это не приказ наступления.' };
-        if (unit.seat !== seat) return { ok: false, error: 'Это не ваш отряд.' };
-        if (unit.routed) return { ok: false, error: 'Деморализованный отряд не двигается.' };
         const def = this.unitOf(state, unit);
         if (!def) return { ok: false, error: 'Неизвестный отряд.' };
         const sys = this.system(state, target.system);
@@ -1219,16 +1247,62 @@ const FS_RULES = {
         // A warp storm on the edge blocks the way — unless the order says that
         // the ships may pass through the storms.
         if (from !== target.system && this.stormOn(state, from, target.system)
-            && !(def.type === 'ship' && order.shipsThroughStorms)) {
+            && !(def.type === 'ship' && state.order.shipsThroughStorms)) {
             return { ok: false, error: 'Варп-шторм преграждает путь.' };
         }
-        // Ground units need a legal path, ships do not.
+        // Ground units need a legal path through the worlds they already hold:
+        // a neutral world stops the march. The path is measured from where the
+        // unit stood when the movement began.
         if (def.type === 'ground' && unit.system !== target.system) {
             if (!this.pathExists(state, seat, unit.system, unit.area, target.system, target.pos)) {
-                return { ok: false, error: 'Нет законного пути до этого мира.' };
+                return { ok: false, error: 'Нет законного пути через свои миры до этого мира.' };
             }
         }
         return { ok: true };
+    },
+
+    // May the unit march into this area right now? The legal destinations are
+    // frozen when the movement starts: a unit that already marched does not get
+    // a new, longer reach, and no unit marches twice in one order.
+    canMove(state, seat, unit, target) {
+        const order = state.order;
+        if (!order || order.order !== 'advance') return { ok: false, error: 'Это не приказ наступления.' };
+        if (unit.seat !== seat) return { ok: false, error: 'Это не ваш отряд.' };
+        if (unit.routed) return { ok: false, error: 'Деморализованный отряд не двигается.' };
+        if ((order.moved || []).includes(unit.id)) return { ok: false, error: 'Этот отряд уже сдвинулся в этом приказе.' };
+        const route = order.route && order.route[unit.id];
+        if (route) {
+            const found = route.some(t => t.system === target.system && t.pos === target.pos);
+            if (!found) {
+                const same = route.length;
+                return { ok: false, error: same ? 'Этот мир не был доступен в начале движения.' : 'Этому отряду некуда идти.' };
+            }
+            return { ok: true };
+        }
+        return this.moveAllowed(state, seat, unit, target);
+    },
+
+    // The worlds every unit of the player may reach — taken once, when the
+    // movement of the order begins. Ships and ground troops are counted apart:
+    // they march by different rules and stand in different places.
+    advanceRoutes(state, seat) {
+        const order = state.order;
+        const out = {};
+        for (const unit of state.units) {
+            if (unit.seat !== seat || unit.routed) continue;
+            const def = this.unitOf(state, unit);
+            if (!def) continue;
+            const from = unit.system;
+            if (!(from === order.system || this.neighbors(state, order.system).includes(from))) continue;
+            const list = [];
+            for (const area of this.system(state, order.system).areas) {
+                if (this.moveAllowed(state, seat, unit, { system: order.system, pos: area.pos }).ok) {
+                    list.push({ system: order.system, pos: area.pos });
+                }
+            }
+            if (list.length) out[unit.id] = list;
+        }
+        return out;
     },
 
     cmdMoveUnits(state, seat, cmd) {
@@ -1282,6 +1356,8 @@ const FS_RULES = {
             unit.system = m.system;
             unit.area = m.pos;
         }
+        // The units that marched this time do not march again in the same order.
+        order.moved = (order.moved || []).concat(plan.map(m => m.id));
         return { ok: true };
     },
 
@@ -1319,7 +1395,13 @@ const FS_RULES = {
             this.startCombat(state, seat, defender, area.system, area.pos);
             return { ok: true };
         }
-        // No combat — the player may make an orbital strike.
+        // No combat. An orbital strike is offered only when it has a target: an
+        // enemy world under the friendly ships of the system.
+        if (!this.orbitalStrikeTargets(state, seat).length) {
+            order.phase = 'done';
+            this.finishOrder(state, seat);
+            return { ok: true };
+        }
         order.phase = 'strike';
         return { ok: true };
     },
@@ -1327,7 +1409,12 @@ const FS_RULES = {
     // An orbital strike: the ships of a void hit a world of the same system.
     orbitalStrikeTargets(state, seat) {
         const order = state.order;
-        if (!order || order.system !== order.system) return [];
+        if (!order) return [];
+        // A strike comes from the ships over the system: without them there is
+        // nothing to shoot with.
+        const ships = state.units.some(u => u.seat === seat && u.system === order.system && !u.routed
+            && (this.unitOf(state, u) || {}).type === 'ship');
+        if (!ships) return [];
         const sys = this.system(state, order.system);
         const out = [];
         for (const area of sys.areas) {

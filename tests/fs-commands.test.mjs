@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts } from './browser-scripts.mjs';
+import { placeAllOrders } from './fs-setup-helper.mjs';
 
 const { get } = loadScripts(['js/fs/FSData.js', 'js/fs/FSEffects.js', 'js/fs/FSRules.js']);
 const FS_DATA = get('FS_DATA');
@@ -30,12 +31,8 @@ function foreignSystem(s, seat) {
 
 // The planning phase of everybody: the operations phase begins.
 function enterOperations(s) {
-    for (const p of s.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, p.seat, x.id));
-            FS_RULES.apply(s, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-        }
-    }
+    // One token at a time, in a circle, until everybody is done.
+    placeAllOrders(FS_RULES, s);
     assert.equal(s.phase, 'operations');
 }
 

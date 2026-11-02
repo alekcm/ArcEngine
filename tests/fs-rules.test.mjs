@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts } from './browser-scripts.mjs';
+import { placeAllOrders } from './fs-setup-helper.mjs';
 
 const { get } = loadScripts(['js/fs/FSData.js', 'js/fs/FSEffects.js', 'js/fs/FSRules.js']);
 const FS_DATA = get('FS_DATA');
@@ -121,26 +122,24 @@ test('a new game of four players: the layout of four rows', () => {
 
 test('the planning phase: four order tokens, then the operations', () => {
     const s = newGame(2);
-    for (const p of s.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, p.seat, x.id));
-            assert.ok(sys, 'there is a system for the order');
-            const res = FS_RULES.apply(s, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-            assert.equal(res.ok, true, res.error);
-        }
-    }
+    // The tokens are laid one at a time, in a circle: the turn moves to the next
+    // player after every token.
+    const first = s.turn;
+    let res = FS_RULES.apply(s, s.players[first].seat, {
+        type: 'placeOrder', system: s.systems[0].id, order: 'advance',
+    });
+    assert.equal(res.ok, true, res.error);
+    assert.equal(s.turn, (first + 1) % 2, 'the next player lays his token');
+    res = FS_RULES.apply(s, first, { type: 'placeOrder', system: s.systems[1].id, order: 'advance' });
+    assert.equal(res.ok, false, 'a player may not lay two tokens in a row');
+    placeAllOrders(FS_RULES, s);
     assert.equal(s.phase, 'operations');
     assert.equal(s.turn, s.firstPlayer);
 });
 
 test('the operations phase: the order of the player is resolved', () => {
     const s = newGame(2);
-    for (const p of s.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, p.seat, x.id));
-            FS_RULES.apply(s, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-        }
-    }
+    placeAllOrders(FS_RULES, s);
     const seat = s.turn;
     const orders = FS_RULES.availableOrders(s, seat);
     assert.ok(orders.length > 0);
@@ -291,12 +290,7 @@ test('the combat: the hand of the opponent is hidden', () => {
 test('the refresh phase: the objectives, the materiel and the events', () => {
     const s = newGame(2);
     // The planning phase of the first round is over.
-    for (const p of s.players) {
-        for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
-            const sys = s.systems.find(x => FS_RULES.canPlaceOrder(s, p.seat, x.id));
-            FS_RULES.apply(s, p.seat, { type: 'placeOrder', system: sys.id, order: 'advance' });
-        }
-    }
+    placeAllOrders(FS_RULES, s);
     // Everybody resolves his orders — then the refresh begins.
     let guard = 0;
     while (s.phase === 'operations' && guard++ < 40) {
@@ -410,9 +404,10 @@ test('the movement: the path goes through the friendly areas, the target may be 
 // A bot that plays the game through: the phases, the orders, the combat.
 // It must not crash the engine — that is what the test checks.
 function playRound(s, seat) {
-    // The planning phase: four orders.
+    // The planning phase: the bot lays the tokens of the seat whose turn it is,
+    // one at a time, in a circle.
     let guard = 0;
-    while ((s.players[seat].placedTokens || 0) < FS_RULES.ORDER_TOKENS && guard++ < 20) {
+    while (s.phase === 'planning' && s.turn === seat && guard++ < 20) {
         const legal = s.systems.filter(x => FS_RULES.canPlaceOrder(s, seat, x.id));
         if (!legal.length) break;
         // The generator of the game: the test must be the same every time.
@@ -511,7 +506,9 @@ test('a whole game: the bot plays the rounds without a crash', () => {
     let rounds = 0;
     while (!s.over && rounds < 10) {
         rounds++;
-        for (const p of s.players) { playRound(s, p.seat); answerPending(s); }
+        // The planning: the players lay their tokens one at a time, in a circle.
+        let planning = 0;
+        while (s.phase === 'planning' && planning++ < 40) { playRound(s, s.turn); answerPending(s); }
         assert.equal(s.phase, 'operations');
         // The operations: every order of every player.
         let guard = 0;
