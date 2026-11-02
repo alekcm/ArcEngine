@@ -186,9 +186,16 @@ test('the refresh phase: the storm moves once per player', () => {
         const orders = FS_RULES.availableOrders(s, seat);
         if (!orders.length) break;
         FS_RULES.apply(s, seat, { type: 'resolveOrder', system: orders[0].system });
+        // Every order is finished by its own command.
         if (s.order && s.order.order === 'advance') {
             FS_RULES.apply(s, seat, { type: 'endAdvance' });
-            FS_RULES.apply(s, seat, { type: 'finishAdvance' });
+            if (s.order && s.order.phase === 'strike') FS_RULES.apply(s, seat, { type: 'finishAdvance' });
+        } else if (s.order && s.order.order === 'deploy') {
+            FS_RULES.apply(s, seat, { type: 'finishDeploy' });
+        } else if (s.order && s.order.order === 'strategize') {
+            FS_RULES.apply(s, seat, { type: 'finishStrategize' });
+        } else if (s.order && s.order.order === 'dominate') {
+            FS_RULES.apply(s, seat, { type: 'finishDominate' });
         }
         if (s.combat) {
             let g2 = 0;

@@ -209,10 +209,11 @@ test('the lobby offers the three ways into the game and the battlefield', () => 
     assert.equal(map.nodes.filter(n => /fs-battle/.test(n.className)).length, 0, 'the map has no battlefield');
 });
 
-// The battle on the table: the dice and the tokens are real meshes of the board,
-// and the dice are thrown with an animation, not dropped into place.
-test('the dice and the tokens of a combat are meshes of the board', () => {
-    // The faces of the dice are drawn on a canvas: a flat 2D context is enough.
+// The battle is its own table in the world: the miniatures fight one stand per
+// model, the dice fly in from over the map and stay where they landed, and the
+// cards of the battle lie on the cloth.
+test('the battle table carries the dice, the cards and one stand per model', () => {
+    // The faces of the dice and the cards are drawn on a canvas: a flat 2D context is enough.
     class Texture {
         constructor() { this.hasAlpha = false; }
         getContext() {
@@ -220,7 +221,7 @@ test('the dice and the tokens of a combat are meshes of the board', () => {
             return {
                 clearRect: noop, fillRect: noop, strokeRect: noop, beginPath: noop, closePath: noop,
                 moveTo: noop, lineTo: noop, arc: noop, quadraticCurveTo: noop, fill: noop, stroke: noop,
-                save: noop, restore: noop, translate: noop, rotate: noop, setLineDash: noop,
+                save: noop, restore: noop, translate: noop, rotate: noop, scale: noop, setLineDash: noop,
                 fillText: noop, measureText: () => ({ width: 10 }),
                 createLinearGradient: () => ({ addColorStop: noop }),
             };
@@ -228,7 +229,9 @@ test('the dice and the tokens of a combat are meshes of the board', () => {
         update() { }
     }
     const Babylon = { ...B, DynamicTexture: Texture };
-    const page = loadScripts(['js/Constants.js', 'js/fs/FSData.js', 'js/fs/FSView.js'], { BABYLON: Babylon, FS_RULES: { unitOf: () => ({ type: 'ground' }) } });
+    const page = loadScripts(['js/Constants.js', 'js/fs/FSData.js', 'js/fs/FSIcons.js', 'js/fs/FSView.js'], {
+        BABYLON: Babylon, FS_RULES: { unitOf: () => ({ type: 'ground' }) },
+    });
     const FSView = page.get('FSView');
     const engine = new B.NullEngine();
     const scene = new B.Scene(engine);
@@ -250,34 +253,63 @@ test('the dice and the tokens of a combat are meshes of the board', () => {
             }
             return this.materials.get(key);
         },
-        addMarker(_v, mesh) { this.markers.push({ mesh }); made.push(mesh.name || (mesh.metadata && 'root')); return mesh; },
+        addMarker(_v, mesh) { this.markers.push({ mesh }); made.push(mesh.name); return mesh; },
         addAnimated() { },
         tilePos() { return { x: 0, y: 0 }; },
         discAt() { return { x: 0, z: 0, y: 10, r: 20 }; },
-        throwIn() { },  // the throwing of the pieces is checked below
     };
-    const thrown = [];
     Object.assign(v, {
         addMarker: view.addMarker.bind(view),
         addAnimated: view.addAnimated.bind(view),
-        throwIn(_v, root) { thrown.push(root.name); },
     });
+    const cards = { hand: ['Свежеватели'], played: [{ name: 'Свежеватели', card: { name: 'Свежеватели', icons: { att: 1, def: 0, morale: 0 }, general: 'Получите 2 `att. token`.', unit: '*Воин:* если есть `morale cube`, получите 1 `morale cube`.' } }] };
     const state = {
+        seat: 0,
         systems: [{ id: 's', tile: 'A1', row: 0, col: 0, areas: [{ pos: 'TL', world: { name: 'Test', assets: [] } }], tokens: [] }],
-        players: [{ seat: 0, color: '#fff', faction: 'имперская-гвардия' }],
+        players: [
+            { seat: 0, name: 'Аня', color: '#fff', faction: 'имперская-гвардия' },
+            { seat: 1, name: 'Борис', color: '#f00', faction: 'некроны' },
+        ],
+        units: [
+            { id: 'u1', system: 's', area: 'TL', seat: 0 },
+            { id: 'u2', system: 's', area: 'TL', seat: 0 },
+            { id: 'u3', system: 's', area: 'TL', seat: 0 },
+            { id: 'u4', system: 's', area: 'TL', seat: 1 },
+        ],
         combat: {
-            system: 's', pos: 'TL', attacker: 0, defender: 1, round: 1, step: 'choose-attacker',
+            system: 's', pos: 'TL', attacker: 0, defender: 1, round: 1, step: 'damage-attacker',
             dice: { attacker: ['att', 'def', 'morale'], defender: ['def'] },
             tokens: { attacker: { att: 1, def: 0 }, defender: { att: 0, def: 2 } },
-            reinforcе: {},
+            reinforce: { attacker: 1, defender: 0 },
+            cards: { attacker: cards, defender: { hand: [], played: [] } },
+            chosen: { attacker: false, defender: false },
+            damage: { attacker: 0, defender: 0 },
         },
     };
     v.drawCombat(app, view, state);
     const names = view.markers.map(x => x.mesh.name);
+    // The table itself.
+    assert.ok(names.includes('fs-arena'), 'the battle has a table of its own');
+    // Every model of the area stands on the table as itself.
+    for (const i of [0, 1, 2]) {
+        assert.ok(names.includes('fs-arena-unit-attacker-' + i), 'the model ' + i + ' of the attacker is on the table');
+    }
+    assert.ok(names.includes('fs-arena-unit-defender-0'), 'the defender stands on the table');
+    // The dice lie next to their side, and the cubes of the cards as well.
     assert.ok(names.some(n => /fs-die-attacker-0/.test(n)), 'the dice of the attacker are on the table');
     assert.ok(names.some(n => /fs-die-defender-0/.test(n)), 'the dice of the defender are on the table');
     assert.ok(names.some(n => /fs-ctok-attacker-0/.test(n)), 'the combat tokens lie next to them');
-    assert.ok(names.some(n => /fs-combat-ring-s/.test(n)), 'the battlefield is marked');
-    assert.equal(thrown.length, 3 + 1 + 1 + 2, 'every new die and token is thrown in');
+    // The hand and the cards that were turned over lie on the cloth as cards.
+    assert.ok(names.some(n => /fs-card-hand-attacker-0/.test(n)), 'the hand of the player lies on the table');
+    assert.ok(names.some(n => /fs-card-played-attacker-0/.test(n)), 'the cards already played stay on the table');
+    // Every die and every card of the side is thrown in: the flight starts far from
+    // the table, over the map, so the dice cross the board before they land.
+    const flights = [...view.flights.values()].filter(f => f.kind === 'die');
+    assert.equal(flights.length, 3 + 1, 'all four dice are thrown');
+    for (const f of flights) {
+        assert.ok(Math.abs(f.from.x) > FSView.ARENA.w, 'the die starts over the map, not over the table');
+        assert.ok(f.ctrl.y > f.to.y + 40, 'the die flies in an arc');
+        assert.ok(f.from.z !== f.to.z, 'the way of the die crosses the board');
+    }
     engine.dispose();
 });

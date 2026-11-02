@@ -30,6 +30,7 @@ const FS_RULES = {
     DICE_MAX: 8,           // no more than eight dice in a combat
     ORDER_TOKENS: 4,       // four order tokens per round
     ROUNDS: 8,             // the game ends after the eighth round
+    ORDER_SUPPLY: 2,       // two tokens of every kind in the hand of a player
     AREA_CAP: 3,           // the unit capacity of a void
     AREA_MAX_UNITS: 5,     // no more than five units in one area
     STRUCTURE_LIMIT: 3,    // three cities, three factories and three bastions
@@ -971,6 +972,7 @@ const FS_RULES = {
             case 'placeOrder': return this.cmdPlaceOrder(state, seat, cmd);
             case 'resolveOrder': return this.cmdResolveOrder(state, seat, cmd);
             case 'moveUnits': return this.cmdMoveUnits(state, seat, cmd);
+            case 'undoMove': return this.cmdUndoMove(state, seat, cmd);
             case 'endAdvance': return this.cmdEndAdvance(state, seat, cmd);
             case 'buyUnit': return this.cmdBuyUnit(state, seat, cmd);
             case 'buyStructure': return this.cmdBuyStructure(state, seat, cmd);
@@ -1014,6 +1016,14 @@ const FS_RULES = {
             || state.structures.some(s => s.seat === seat && s.system === systemId);
     },
 
+    // How many tokens of this kind the player may still lay: two of every kind.
+    orderLeft(state, seat, kind) {
+        const p = state.players[seat];
+        if (!p) return 0;
+        const used = p.placedOf ? (p.placedOf[kind] || 0) : 0;
+        return Math.max(0, this.ORDER_SUPPLY - used);
+    },
+
     cmdPlaceOrder(state, seat, cmd) {
         if (state.phase !== 'planning') return { ok: false, error: 'Сейчас не фаза планирования.' };
         if (seat !== state.turn) return { ok: false, error: 'Сейчас очередь другого игрока.' };
@@ -1025,8 +1035,15 @@ const FS_RULES = {
         if (!this.canPlaceOrder(state, seat, sys.id)) return { ok: false, error: 'Нельзя выложить приказ в эту систему.' };
         const types = ['advance', 'deploy', 'strategize', 'dominate'];
         if (!types.includes(cmd.order)) return { ok: false, error: 'Неизвестный приказ.' };
+        if (this.orderLeft(state, seat, cmd.order) <= 0) {
+            return { ok: false, error: 'Жетоны этого приказа кончились: их по два.' };
+        }
+        // The face of the token stays hidden: only the faction is seen until the
+        // token is turned over.
         sys.tokens.push({ seat, order: cmd.order, faceUp: false });
         p.placedTokens = (p.placedTokens || 0) + 1;
+        p.placedOf = p.placedOf || {};
+        p.placedOf[cmd.order] = (p.placedOf[cmd.order] || 0) + 1;
         this.log(state, seat, p.name + ' выложил приказ «' + this.orderName(cmd.order) + '» в систему ' + sys.tile + '.');
         // The players lay their tokens one at a time, in a circle.
         this.checkPlanningDone(state);
@@ -1324,10 +1341,11 @@ const FS_RULES = {
             const check = this.canMove(state, seat, unit, { system: m.system, pos: m.pos });
             if (!check.ok) return check;
             const from = unit.system;
+            const fromArea = unit.area;
             const def = this.unitOf(state, unit);
             unit.system = m.system;
             unit.area = m.pos;
-            plan.push({ id: unit.id, from, type: def ? def.type : 'ground', system: m.system, pos: m.pos });
+            plan.push({ id: unit.id, from, fromArea, type: def ? def.type : 'ground', system: m.system, pos: m.pos });
         }
         // The ground units may come into the active system from one neighbour only.
         // A ship that came from a neighbour closes the way for the others.
@@ -1358,7 +1376,29 @@ const FS_RULES = {
         }
         // The units that marched this time do not march again in the same order.
         order.moved = (order.moved || []).concat(plan.map(m => m.id));
+        // The step is remembered: the player may take it back with Esc.
+        order.steps = order.steps || [];
+        order.steps.push(plan.map(m => ({ id: m.id, fromSystem: m.from, fromArea: m.fromArea })));
         return { ok: true };
+    },
+
+    // The march of the last step is taken back: the Esc of the player, while the
+    // movement of the order is not finished yet.
+    cmdUndoMove(state, seat) {
+        const order = state.order;
+        if (!order || order.order !== 'advance' || order.seat !== seat) return { ok: false, error: 'Нечего отменять.' };
+        if (order.phase !== 'move') return { ok: false, error: 'Движение уже закончено.' };
+        const steps = order.steps || [];
+        const last = steps.pop();
+        if (!last) return { ok: false, error: 'Отменять нечего.' };
+        for (const m of last.slice().reverse()) {
+            const unit = state.units.find(u => u.id === m.id);
+            if (!unit) continue;
+            unit.system = m.fromSystem;
+            unit.area = m.fromArea;
+            order.moved = (order.moved || []).filter(id => id !== m.id);
+        }
+        return { ok: true, undone: last.length };
     },
 
     contestedAreas(state) {
@@ -1379,12 +1419,8 @@ const FS_RULES = {
         const order = state.order;
         if (!order || order.order !== 'advance') return { ok: false, error: 'Это не приказ наступления.' };
         if (order.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
-        // The units over the capacity of an area are destroyed.
-        for (const sys of state.systems) {
-            for (const area of sys.areas) {
-                this.checkCapacity(state, seat, sys.id, area.pos);
-            }
-        }
+        // The troops stay as they are: a world of one place may hold a whole army,
+        // and a battle is fought by every unit that stands there.
         const contested = this.contestedAreas(state);
         if (contested.length === 1) {
             const area = contested[0];
@@ -1419,8 +1455,14 @@ const FS_RULES = {
         const out = [];
         for (const area of sys.areas) {
             if (!area.world) continue;
-            const control = this.control(state, seat, order.system, area.pos);
-            if (control === 'friendly') continue;
+            // Only a world of the enemy is a target: the player's own worlds and
+            // the neutral ones are never bombarded.
+            const theirs = state.units.some(u => u.system === order.system && u.area === area.pos && u.seat !== seat && !u.routed)
+                || state.structures.some(st => st.system === order.system && st.area === area.pos && st.seat !== seat)
+                || (sys.owner != null && sys.owner !== seat);
+            if (!theirs) continue;
+            // A world held only by the player is not a target either.
+            if (this.control(state, seat, order.system, area.pos) === 'friendly') continue;
             if (this.structuresAt(state, order.system, area.pos).some(s => s.type === 'bastion')) continue;
             out.push({ system: order.system, pos: area.pos });
         }
@@ -1579,7 +1621,6 @@ const FS_RULES = {
         this.log(state, seat, p.name + ' купил отряд «' + def.name + '».');
         order.bought = (order.bought || 0) + 1;
         void unit;
-        this.checkCapacity(state, seat, cmd.system, cmd.pos);
         return { ok: true };
     },
 
@@ -1618,12 +1659,6 @@ const FS_RULES = {
     cmdFinishDeploy(state, seat) {
         const order = state.order;
         if (!order || order.order !== 'deploy' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
-        // The units over the capacity are destroyed.
-        for (const sys of state.systems) {
-            for (const area of sys.areas) {
-                this.checkCapacity(state, seat, sys.id, area.pos);
-            }
-        }
         this.finishOrder(state, seat);
         return { ok: true };
     },
@@ -1946,6 +1981,7 @@ const FS_RULES = {
         state.round++;
         for (const p of state.players) {
             p.placedTokens = 0;
+            p.placedOf = {};
             for (const u of p.upgrades) u.used = false;
         }
         for (const s of state.storms) s.moved = {};
@@ -2230,27 +2266,57 @@ const FS_RULES = {
         return { ok: true };
     },
 
-    // The card a player plays in this execution round.
+    // A card is chosen, not played: both players choose first, then the cards are
+    // turned over — the attacker's card, then the defender's.
     combatPlayCard(state, seat, side, cmd) {
         const c = state.combat;
         const hand = c.cards[side];
         const index = Number(cmd.index);
         if (!(index >= 0 && index < hand.hand.length)) return { ok: false, error: 'Нет такой карты.' };
+        // The card is taken out of the hand and laid face down on the table.
         const name = hand.hand.splice(index, 1)[0];
         const card = FS_DATA.combat.find(x => x.faction === state.players[seat].faction && x.name === name);
-        hand.played.push({ name, card });
-        this.log(state, seat, state.players[seat].name + ' играет боевую карту «' + name + '».');
-        // The icons of the card count from now on.
-        if (side === 'attacker') { c.step = 'choose-defender'; this.advanceCombatSteps(state); }
-        else { c.step = 'damage-attacker'; this.advanceCombatSteps(state); }
-        // The text of the card is the rule: the engine performs it.
-        const steps = this.cardSteps(state, seat, card);
-        if (steps.length) {
-            c.nextStep = c.step;
-            c.step = 'effect';
-            this.runEffects(state, seat, steps, { kind: 'combat', ctx: { side } });
+        c.staged = c.staged || { attacker: null, defender: null };
+        c.staged[side] = { name, card, seat };
+        hand.chosen = { name, card };
+        this.log(state, seat, state.players[seat].name + ' выбирает боевую карту и кладёт её закрытой.');
+        if (side === 'attacker') c.step = 'choose-defender';
+        else c.step = 'reveal';
+        this.advanceCombatSteps(state);
+        return { ok: true, card: card || null, staged: true };
+    },
+
+    // The turn-over of the chosen cards: the attacker's card first, then the
+    // defender's. The steps of a card are performed where it is turned over.
+    combatReveal(state) {
+        const c = state.combat;
+        if (!c || c.step !== 'reveal') return null;
+        c.staged = c.staged || { attacker: null, defender: null };
+        // The first card that was chosen and is not yet in play.
+        const order = ['attacker', 'defender'];
+        for (const side of order) {
+            const staged = c.staged[side];
+            if (staged) {
+                c.staged[side] = null;
+                const hand = c.cards[side];
+                hand.chosen = null;
+                hand.played.push({ name: staged.name, card: staged.card, side, round: c.round });
+                this.log(state, staged.seat, state.players[staged.seat].name
+                    + ' вскрывает боевую карту «' + staged.name + '».');
+                const steps = this.cardSteps(state, staged.seat, staged.card);
+                if (steps.length) {
+                    c.nextStep = 'reveal';
+                    c.step = 'effect';
+                    this.runEffects(state, staged.seat, steps, { kind: 'combat', ctx: { side } });
+                    return c.step;
+                }
+                return c.step;
+            }
         }
-        return { ok: true, card: card || null };
+        // Both cards are open: the damage of the round comes next.
+        c.step = 'damage-attacker';
+        this.advanceCombatSteps(state);
+        return c.step;
     },
 
     // A card is never skipped: the hand of the combat is played. The step passes
@@ -2265,10 +2331,20 @@ const FS_RULES = {
     advanceCombatSteps(state) {
         const c = state.combat;
         if (!c) return null;
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 12; i++) {
             const before = c.step;
+            // The reinforcement is asked only from the player who has the tokens.
+            if (c.step === 'reinforce-attacker' && this.maxReinforce(state, c.attacker, 'attacker') <= 0) {
+                c.step = 'reinforce-defender';
+            }
+            if (c.step === 'reinforce-defender' && this.maxReinforce(state, c.defender, 'defender') <= 0) {
+                c.step = 'choose-attacker';
+            }
             if (c.step === 'choose-attacker' && !(c.cards.attacker.hand || []).length) c.step = 'choose-defender';
-            if (c.step === 'choose-defender' && !(c.cards.defender.hand || []).length) c.step = 'damage-attacker';
+            if (c.step === 'choose-defender' && !(c.cards.defender.hand || []).length) {
+                c.step = c.staged && c.staged.attacker ? 'reveal' : 'damage-attacker';
+            }
+            if (c.step === 'reveal') { this.combatReveal(state); if (!state.combat) return null; }
             if (c.step === 'damage-attacker' && this.combatDamageFor(state, 'attacker') <= 0) {
                 c.damage.attacker = 0;
                 c.applied = c.applied || {};
@@ -2491,6 +2567,8 @@ const FS_RULES = {
             }
         }
         if (c.round > (c.maxRounds || 3)) { this.finishCombat(state); return; }
+        c.staged = { attacker: null, defender: null };
+        for (const side of ['attacker', 'defender']) c.cards[side].chosen = null;
         c.step = 'choose-attacker';
         this.advanceCombatSteps(state);
         // The schemes of the start of the round.
@@ -2534,6 +2612,9 @@ const FS_RULES = {
         }
         c.loser = loser;
         c.step = 'retreat';
+        // A player whose troops all died has nothing to retreat: the combat ends
+        // without asking where the dead should go.
+        const noTroops = !state.units.some(u => u.seat === loser && u.system === c.system && u.area === c.pos);
         // The schemes of the end of the combat.
         this.maybeScheme(state, winner, 'combat-end', { kind: 'combat', ctx: { side: winner === c.attacker ? 'attacker' : 'defender' } });
         // The combat cards go back into the deck, the reinforcement tokens too.
@@ -2545,6 +2626,7 @@ const FS_RULES = {
             p.assets.reinforcement += c.reinforceUsed && c.reinforceUsed[side] ? c.reinforceUsed[side] : 0;
             c.reinforceUsed[side] = 0;
         }
+        if (noTroops) this.combatRetreat(state, loser, attackerWins ? 'defender' : 'attacker', {});
     },
 
     // The loser retreats: all his units leave the area (they are routed).
@@ -2591,12 +2673,20 @@ const FS_RULES = {
                 structures: p.supply.structures,
             };
         }
-        // The cards of the combat: only the player sees his own hand.
+        // The cards of the combat: only the player sees his own hand. The card that
+        // was chosen stays closed — the other side only knows that it is there.
         if (copy.combat) {
             for (const side of ['attacker', 'defender']) {
                 const combatSeat = copy.combat[side];
                 if (combatSeat !== seat) copy.combat.cards[side].hand = [];
+                copy.combat.cards[side].chosen = null;
             }
+            const staged = copy.combat.staged || {};
+            copy.combat.chosen = {
+                attacker: !!(staged.attacker),
+                defender: !!(staged.defender),
+            };
+            delete copy.combat.staged;
         }
         // The question of the effect: the cards of the hand of the opponent
         // are not shown.

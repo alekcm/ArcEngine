@@ -201,10 +201,13 @@ const FS_EFFECTS = {
             index++;
         }
         state.pending = null;
-        // The combat goes on with the step that waited for the effect.
+        // The combat goes on with the step that waited for the effect. The step
+        // machine then passes the steps that have nothing to do (a closed card of
+        // the other side, a damage of zero).
         if (c.kind === 'combat' && state.combat && state.combat.nextStep) {
             state.combat.step = state.combat.nextStep;
             state.combat.nextStep = null;
+            if (typeof R.advanceCombatSteps === 'function') R.advanceCombatSteps(state);
         }
         // The order of the ability is over when the effect is done.
         if (c.kind === 'ability' && state.order && state.order.finishAfterEffect) {

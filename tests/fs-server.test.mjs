@@ -274,11 +274,15 @@ test('the server: a whole game over the socket', async t => {
             return run(client, setupCommand(FS_RULES, FS_DATA, st), snapshot(st));
         }
         if (st.phase === 'planning') {
+            // Two tokens of every kind: the hand is four different orders.
+            const kinds = ['advance', 'deploy', 'strategize', 'dominate'];
             for (let i = 0; i < FS_RULES.ORDER_TOKENS; i++) {
                 const legal = st.systems.filter(x => FS_RULES.canPlaceOrder(st, seat, x.id));
                 if (!legal.length) break;
                 const sys = legal[i % legal.length];
-                st = await run(client, { type: 'placeOrder', system: sys.id, order: 'advance' }, snapshot(st));
+                const laid = (st.players[seat] && st.players[seat].placedOf) || {};
+                const kind = kinds.find(k => (laid[k] || 0) < 2) || 'advance';
+                st = await run(client, { type: 'placeOrder', system: sys.id, order: kind }, snapshot(st));
             }
             return;
         }
@@ -286,10 +290,19 @@ test('the server: a whole game over the socket', async t => {
             const orders = FS_RULES.availableOrders(st, seat);
             if (!orders.length) return;
             st = await run(client, { type: 'resolveOrder', system: orders[0].system }, snapshot(st));
-            // The advance order: no movement, no strike.
-            st = await run(client, { type: 'endAdvance' }, snapshot(st));
-            if (st.order && st.order.phase === 'strike') {
-                st = await run(client, { type: 'finishAdvance' }, snapshot(st));
+            // Every order is closed by its own command; the advance order makes no
+            // movement and no strike.
+            if (st.order && st.order.order === 'advance') {
+                st = await run(client, { type: 'endAdvance' }, snapshot(st));
+                if (st.order && st.order.phase === 'strike') {
+                    st = await run(client, { type: 'finishAdvance' }, snapshot(st));
+                }
+            } else if (st.order && st.order.order === 'deploy') {
+                st = await run(client, { type: 'finishDeploy' }, snapshot(st));
+            } else if (st.order && st.order.order === 'strategize') {
+                st = await run(client, { type: 'finishStrategize' }, snapshot(st));
+            } else if (st.order && st.order.order === 'dominate') {
+                st = await run(client, { type: 'finishDominate' }, snapshot(st));
             }
             return;
         }

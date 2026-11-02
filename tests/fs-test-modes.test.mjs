@@ -95,13 +95,17 @@ test('the test mode: the ready map starts 1×1 straight at the planning', async 
     // The planning: the seat with tokens in hand acts, and the view follows it.
     let state = view;
     const seats = new Set();
+    const kinds = ['advance', 'deploy', 'strategize', 'dominate'];
     for (let i = 0; i < 8 && state.phase === 'planning'; i++) {
         const seat = state.seat;
         seats.add(seat);
         const legal = state.systems.filter(sys => FS_RULES.canPlaceOrder(state, seat, sys.id));
         assert.ok(legal.length, 'the player has a system for an order');
         const tokens = state.systems.reduce((n, sys) => n + sys.tokens.length, 0);
-        state = await send(a, { type: 'placeOrder', system: legal[0].id, order: 'advance' });
+        // Two tokens of every kind: the hand is four different orders.
+        const placed = state.players[seat].placedOf || {};
+        const kind = kinds.find(k => (placed[k] || 0) < 2) || 'advance';
+        state = await send(a, { type: 'placeOrder', system: legal[0].id, order: kind });
         assert.equal(state.systems.reduce((n, sys) => n + sys.tokens.length, 0), tokens + 1, 'the order token is on the board');
     }
     assert.equal(state.phase, 'operations', 'eight orders end the planning');
@@ -160,7 +164,7 @@ test('the test mode: the battlefield takes the chosen troops and cards', async t
     assert.equal(state.seat, 0);
     assert.ok(state.combat.cards.attacker.hand.length > 0, 'the attacker sees his hand again');
     state = await send(a, { type: 'combat', action: 'playCard', index: 0 });
-    assert.ok(state.combat.cards.attacker.played.length === 1 || state.pending, 'the card is played');
+    assert.ok(state.combat.chosen.attacker === true || state.pending, 'the card is chosen and lies closed');
     if (state.combat.step === 'choose-attacker' && state.combat.cards.attacker.hand.length) {
         // A card is never skipped: the step goes on only when the hand is empty.
         state = await send(a, { type: 'combat', action: 'playCard', index: 0 });

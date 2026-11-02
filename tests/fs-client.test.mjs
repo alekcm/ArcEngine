@@ -199,27 +199,37 @@ test('the client: the combat panel follows the steps of the combat', () => {
     const client = fakeClient(state);
     const ctx = { title: '', text: '', status: '', actions: [] };
     client.panelCombat(state, ctx);
-    // The preparation: the reinforcement tokens of the attacker.
-    assert.ok(ctx.actions.length >= 1);
-    // The reinforcement tokens are counted, not written out in a sentence.
-    assert.ok(ctx.actions.every(a => a.kind === 'pick'));
-    assert.equal(ctx.actions[0].label, 'Без подкреплений');
+    // No token in the hand — no question about the reinforcement at all.
+    assert.equal(ctx.actions.length, 0, 'there is nothing to ask without a token');
+    // A player with the tokens is asked, and the tokens are counted, not spelled out.
+    raw.players[0].assets.reinforcement = 2;
+    const withTokens = FS_RULES.view(raw, 0);
+    const ctx1 = { title: '', text: '', status: '', actions: [] };
+    fakeClient(withTokens).panelCombat(withTokens, ctx1);
+    assert.ok(ctx1.actions.length >= 1);
+    assert.ok(ctx1.actions.every(a => a.kind === 'pick'));
+    assert.equal(ctx1.actions[0].label, 'Без подкреплений');
     // The board of the battle: the dice of both sides and their totals.
     assert.ok(ctx.battle, 'the dice panel is there');
     assert.equal(ctx.battle.sides.length, 2);
     assert.ok(Array.isArray(ctx.battle.sides[0].dice));
     assert.ok(ctx.battle.sides[0].values && typeof ctx.battle.sides[0].values.att === 'number');
-    // The choice of the card: the hand, and no way to skip it.
+    // The choice of the card: the cards lie on the table and in the hand at the
+    // bottom — the panel itself offers no card and no way to skip one.
     state.combat.step = 'choose-attacker';
     const ctx2 = { title: '', text: '', status: '', actions: [] };
     client.panelCombat(state, ctx2);
-    assert.ok(ctx2.actions.length >= 5, 'the five cards of the hand');
-    assert.ok(ctx2.actions.every(a => a.kind === 'pick'), 'every action is a card');
-    assert.ok(ctx2.actions.some(a => a.count && a.count.includes('⚔')), 'the icons of the card are counted');
+    assert.equal(ctx2.actions.length, 0, 'the cards are on the table, not in the panel');
     assert.ok(!ctx2.actions.some(a => /пропуст/i.test(a.label)), 'a card is never skipped');
-    // The hand at the bottom of the screen holds the same cards.
+    assert.ok(!/Бой —/.test(ctx2.title) && !/Система/.test(ctx2.title), 'the place of the battle is not written');
+    // The hand at the bottom of the screen holds the same cards, with real text.
     assert.equal(client.hand.length, 5);
     assert.ok(client.hand.every(c => c.playable));
+    // The rules of a card come as runs: no asterisk and no backtick reaches the screen.
+    assert.ok(client.hand.every(c => Array.isArray(c.runs)));
+    const markup = client.hand.flatMap(c => c.runs)
+        .flat().filter(r => r.t === 'text').map(r => r.v).join(' ');
+    assert.ok(!/[*`_]/.test(markup), 'the markup of the card is not text: ' + markup);
     // The damage: the pieces to pick and the total that is left to place.
     state.combat.step = 'damage-attacker';
     const ctx3 = { title: '', text: '', status: '', actions: [] };

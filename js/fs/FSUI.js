@@ -56,6 +56,40 @@ const FSUI = {
         return node;
     },
 
+    // An icon of the game: a shape drawn by FSIcons, never a character of a font.
+    // A name that is not a shape stays a letter of the interface ('?' or a digit).
+    iconEl(name, cls) {
+        const node = this.el('span', 'fs-ico' + (cls ? ' ' + cls : ''));
+        if (!name) return node;
+        const known = typeof FSIcons !== 'undefined' && FSIcons.shape(name);
+        if (known) {
+            node.className = 'fs-ico fs-ico-svg' + (cls ? ' ' + cls : '');
+            node.style.backgroundImage = FSIcons.url(name);
+            node.setAttribute('data-icon', name);
+            return node;
+        }
+        node.textContent = String(name);
+        return node;
+    },
+
+    // The text of a card, with its real italics, its real bold and its cubes drawn as
+    // cubes: no asterisks, no underscores and no words for a symbol.
+    richText(text, cls) {
+        const box = this.el('div', 'fs-rich' + (cls ? ' ' + cls : ''));
+        if (typeof FSIcons === 'undefined') { box.textContent = String(text || ''); return box; }
+        const blocks = FSIcons.runs(text || '');
+        blocks.forEach((block, i) => {
+            if (i) box.append(this.el('br'));
+            for (const run of block) {
+                if (run.t === 'icon') { box.append(this.iconEl(FSIcons.fromCardWord(run.name) || 'cube.any', 'fs-rich-ico')); continue; }
+                const span = this.el('span', run.bold ? 'fs-rich-bold' : run.italic ? 'fs-rich-italic' : '');
+                span.textContent = run.v;
+                box.append(span);
+            }
+        });
+        return box;
+    },
+
     // The board furniture the player may put away: the participants, the chronicle
     // and the window with the order tokens of the hand.
     panelState() {
@@ -69,17 +103,18 @@ const FSUI = {
         const pop = this.el('section', 'fs-orders-pop');
         const head = this.el('div', 'fs-orders-head');
         head.append(this.el('span', 'fs-eyebrow', 'Жетоны приказов · ' + (state.players[state.seat] ? state.players[state.seat].name : '')));
-        const close = this.el('button', 'fs-pop-close', '✕');
+        const close = this.el('button', 'fs-pop-close');
         close.type = 'button';
         close.title = 'Закрыть';
+        close.append(this.iconEl('ui.close'));
         close.addEventListener('click', () => { this.panelState().orders = false; this.update(state, this.lastCtx); });
         head.append(close);
         pop.append(head);
         const me = state.seat;
         const p = state.players[me] || {};
         const kinds = [
-            ['advance', 'Наступление', '⚔'], ['deploy', 'Развёртывание', '✚'],
-            ['strategize', 'Стратегия', '✧'], ['dominate', 'Доминирование', '⌂'],
+            ['advance', 'Наступление'], ['deploy', 'Развёртывание'],
+            ['strategize', 'Стратегия'], ['dominate', 'Доминирование'],
         ];
         const laid = { advance: 0, deploy: 0, strategize: 0, dominate: 0 };
         const rows = [];
@@ -87,35 +122,29 @@ const FSUI = {
             for (const tok of sys.tokens) {
                 if (tok.seat !== me) continue;
                 laid[tok.order] = (laid[tok.order] || 0) + 1;
-                rows.push({ tile: sys.tile, order: tok.order });
+                rows.push({ tile: sys.tile, order: tok.order, faceUp: !!tok.faceUp });
             }
         }
+        // The hand of the player: one icon per order kind and the number of the
+        // tokens that are still there. Two of every kind, never four of one.
+        const per = typeof FS_RULES === 'undefined' ? 2 : FS_RULES.ORDER_SUPPLY;
         const hand = this.el('div', 'fs-orders-hand');
-        for (const [id, label, icon] of kinds) {
-            const chip = this.el('span', 'fs-orders-chip');
-            chip.append(this.el('span', 'fs-orders-icon', icon));
-            chip.append(this.el('span', 'fs-orders-name', label));
-            const count = this.el('span', 'fs-orders-count', String(laid[id] || 0));
-            count.title = 'На доске';
-            chip.append(count);
+        for (const [id, label] of kinds) {
+            const left = Math.max(0, per - (laid[id] || 0));
+            const chip = this.el('span', 'fs-orders-chip' + (left ? '' : ' is-empty'));
+            chip.append(this.iconEl('order.' + id, 'fs-orders-icon'));
+            chip.append(this.el('b', 'fs-orders-count', String(left)));
+            chip.title = label + ' · осталось ' + left + ' из ' + per;
             hand.append(chip);
         }
-        // The tokens still in the hand: one per order that is not laid yet.
-        const perPlayer = typeof FS_RULES === 'undefined' ? 4 : FS_RULES.ORDER_TOKENS;
-        const left = Math.max(0, perPlayer + (p.extraOrderTokens || 0) - (p.placedTokens || 0));
-        if (left > 0) {
-            const note = this.el('div', 'fs-orders-note', 'В руке ещё ' + left + ' — их можно положить в любую систему.');
-            hand.append(note);
-        }
         pop.append(hand);
+        // What already lies on the board: the same icons, small, one per token.
         const list = this.el('div', 'fs-orders-list');
-        if (!rows.length) list.append(this.el('div', 'fs-empty', 'Приказов на доске пока нет.'));
+        if (!rows.length) list.append(this.el('div', 'fs-empty', 'На доске пока ничего.'));
         for (const row of rows) {
-            const line = this.el('div', 'fs-orders-row');
-            const icon = (kinds.find(k => k[0] === row.order) || [])[2] || '⚑';
-            line.append(this.el('span', 'fs-orders-icon', icon));
-            line.append(this.el('span', 'fs-orders-tile', row.tile));
-            line.append(this.el('span', 'fs-orders-order', this.orderLabel(row.order)));
+            const line = this.el('span', 'fs-orders-placed' + (row.faceUp ? ' is-open' : ''));
+            line.append(this.iconEl('order.' + row.order, 'fs-orders-placed-icon'));
+            line.title = row.tile + ' · ' + this.orderLabel(row.order) + (row.faceUp ? ' · открыт' : ' · закрыт');
             list.append(line);
         }
         pop.append(list);
@@ -143,6 +172,9 @@ const FSUI = {
         this.actionStage = stageKey;
         root.replaceChildren();
         root.classList.toggle('is-no-state', !state);
+        // A fight is its own screen: the rails of the board stand aside while the
+        // battle table is played.
+        root.classList.toggle('is-battle', !!(state && state.combat));
         root.classList.toggle('is-placing-tile', !!(state && state.phase === 'setup' && ctx.mode === 'placeTile'));
         if (this.currentLobby) { this.renderModernLobby(); return; }
         const header = this.el('div', 'fs-topbar');
@@ -158,17 +190,20 @@ const FSUI = {
         const tools = this.el('div', 'fs-toolbar');
         const help = this.el('button', 'fs-icon-btn', '?'); help.title = 'Как управлять';
         help.addEventListener('click', () => { this.helpOpen = !this.helpOpen; this.renderModern(state, ctx); });
-        const center = this.el('button', 'fs-icon-btn', '⌖'); center.title = 'Вернуть камеру к доске';
+        const center = this.el('button', 'fs-icon-btn'); center.title = 'Вернуть камеру к доске';
+        center.append(this.iconEl('ui.center'));
         center.addEventListener('click', () => {
             const game = window.app ? /** @type {any} */ (window.app.game) : null;
             if (game && game.aimCamera) game.aimCamera();
             if (window.app && window.app.camera) { window.app.camera.zoomTarget = FS_CAMERA_ZOOM; }
         });
-        const full = this.el('button', 'fs-icon-btn', '⛶'); full.title = 'Во весь экран';
+        const full = this.el('button', 'fs-icon-btn'); full.title = 'Во весь экран';
+        full.append(this.iconEl('ui.full'));
         full.addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
         tools.append(help, center, full);
         // The order tokens live in their own window, opened from here.
-        const tokensBtn = this.el('button', 'fs-icon-btn' + (this.panelState().orders ? ' is-on' : ''), '⚑');
+        const tokensBtn = this.el('button', 'fs-icon-btn' + (this.panelState().orders ? ' is-on' : ''));
+        tokensBtn.append(this.iconEl('order.event'));
         tokensBtn.title = 'Жетоны приказов';
         tokensBtn.addEventListener('click', () => {
             const ps = this.panelState();
@@ -180,9 +215,10 @@ const FSUI = {
 
         // The two cards of the left rail hide and come back by these buttons.
         const switches = this.el('div', 'fs-panel-switches');
-        for (const [key, icon, title] of [['players', '👥', 'Участники'], ['chronicle', '📜', 'Хроника']]) {
+        for (const [key, icon, title] of [['players', 'mark.ground', 'Участники'], ['chronicle', 'ui.card', 'Хроника']]) {
             const on = this.panelState()[key];
-            const button = this.el('button', 'fs-panel-switch' + (on ? ' is-on' : ''), icon);
+            const button = this.el('button', 'fs-panel-switch' + (on ? ' is-on' : ''));
+            button.append(this.iconEl(icon));
             button.type = 'button';
             button.title = (on ? 'Скрыть: ' : 'Показать: ') + title;
             button.addEventListener('click', () => {
@@ -220,12 +256,21 @@ const FSUI = {
             row.append(this.el('i', 'fs-player-dot'));
             const name = this.el('div', 'fs-player-name', p.name); name.append(this.el('span', 'fs-player-faction', this.factionName(p.faction) + (p.seat === state.seat ? ' · вы' : '')));
             row.append(name);
-            const stats = this.el('div', 'fs-player-stats'); stats.append(this.el('span', '', '✦ ' + (p.objectives || 0)), this.el('span', '', '◈ ' + (p.materiel || 0))); row.append(stats);
+            const stats = this.el('div', 'fs-player-stats');
+            for (const [icon, count] of [['mark.objective', p.objectives || 0], ['asset.materiel', p.materiel || 0]]) {
+                const stat = this.el('span');
+                stat.append(this.iconEl(icon), this.el('b', '', String(count)));
+                stats.append(stat);
+            }
+            row.append(stats);
             const assets = p.assets || {};
             const reserves = Object.values((p.supply && p.supply.units) || {}).reduce((sum, count) => sum + (Number(count) || 0), 0);
             const resourceLine = this.el('div', 'fs-player-assets');
-            [['⚒', assets.forge, 'Кузницы'], ['⬡', assets.cache, 'Запасы'], ['✚', assets.reinforcement, 'Подкрепления'], ['✧', assets.prosperity, 'Процветание'], ['♟', reserves, 'Отряды в запасе']].forEach(([icon, count, title]) => {
-                const chip = this.el('span', 'fs-asset-chip', icon + ' ' + (count || 0)); chip.title = title; resourceLine.append(chip);
+            [['asset.forge', assets.forge, 'Кузницы'], ['asset.cache', assets.cache, 'Запасы'], ['ui.reinforce', assets.reinforcement, 'Подкрепления'], ['asset.prosperity', assets.prosperity, 'Процветание'], ['mark.ground', reserves, 'Отряды в запасе']].forEach(([icon, count, title]) => {
+                const chip = this.el('span', 'fs-asset-chip');
+                chip.append(this.iconEl(icon), this.el('b', '', String(count || 0)));
+                chip.title = title;
+                resourceLine.append(chip);
             });
             row.append(resourceLine);
             list.append(row);
@@ -249,8 +294,8 @@ const FSUI = {
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
         head.append(this.el('p', '', ctx.text || 'Выберите действие, чтобы продолжить партию.')); panel.append(head);
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
-        const inspection = this.renderInspector(state, ctx.inspection);
-        if (inspection) panel.append(inspection);
+        // No system is written in this panel: what a sector is made of is shown by
+        // the plaque over the board itself. The panel belongs to the action.
         const battle = this.renderBattle(ctx.battle);
         if (battle) panel.append(battle);
         const tokens = this.renderTokens(ctx.tokens);
@@ -282,7 +327,7 @@ const FSUI = {
             for (const a of picks) {
                 const button = this.el('button', 'fs-pick' + (a.selected ? ' is-selected' : '')); button.type = 'button';
                 if (a.hint) button.title = a.hint;
-                if (a.icon) button.append(this.el('span', 'fs-pick-icon', a.icon));
+                if (a.icon) button.append(this.iconEl(a.icon, 'fs-pick-icon'));
                 button.append(this.el('span', 'fs-pick-label', a.label));
                 if (a.count != null) button.append(this.el('span', 'fs-pick-count', typeof a.count === 'number' ? a.count + '×' : a.count));
                 button.addEventListener('click', () => a.onClick && a.onClick());
@@ -293,7 +338,7 @@ const FSUI = {
         for (const a of chips) {
             const button = this.el('button', 'fs-chip' + (a.selected ? ' is-selected' : '')); button.type = 'button';
             if (a.hint) button.title = a.hint;
-            if (a.icon) button.append(this.el('span', 'fs-chip-icon', a.icon));
+            if (a.icon) button.append(this.iconEl(a.icon, 'fs-chip-icon'));
             button.append(this.el('span', 'fs-chip-label', a.label));
             if (a.count != null) button.append(this.el('span', 'fs-chip-count', typeof a.count === 'number' ? a.count + '×' : a.count));
             button.addEventListener('click', () => a.onClick && a.onClick());
@@ -303,7 +348,7 @@ const FSUI = {
         panel.append(actions);
         for (const a of primaries) {
             const button = this.el('button', 'fs-primary'); button.type = 'button';
-            button.append(this.el('span', 'fs-primary-icon', a.icon || '➤'), this.el('span', '', a.label));
+            button.append(this.iconEl(a.icon || 'ui.next', 'fs-primary-icon'), this.el('span', '', a.label));
             if (a.enabled === false) { button.disabled = true; button.classList.add('is-disabled'); }
             button.addEventListener('click', () => { if (a.enabled !== false && a.onClick) a.onClick(); });
             panel.append(button);
@@ -330,71 +375,65 @@ const FSUI = {
         this.renderPlaque();
     },
 
-    // The board of the battle: the dice that were rolled, the combat tokens and the
-    // icons of the played cards — each with its total, both sides side by side.
+    // The score of the battle: the two sides, their dice and their cubes. There is
+    // no word about the place of the fight — the battle table stands on the board
+    // and the panel has nothing to say about it.
     renderBattle(battle) {
         if (!battle) return null;
         const card = this.el('section', 'fs-battle');
         const head = this.el('div', 'fs-battle-head');
-        head.append(this.el('span', 'fs-eyebrow', 'Бой · ' + (battle.system || '')));
+        head.append(this.el('span', 'fs-eyebrow', 'Бой'));
         head.append(this.el('span', 'fs-battle-round', 'раунд ' + battle.round + '/' + battle.maxRounds));
         card.append(head);
-        const faces = { att: '⚔', def: '🛡', morale: '✦' };
         for (const side of battle.sides || []) {
             const row = this.el('div', 'fs-battle-side' + (side.mine ? ' is-mine' : ''));
-            row.style.setProperty('--battle-color', side.color || '#8899aa');
+            if (row.style) row.style.setProperty('--battle-color', side.color || '#8899aa');
             const who = this.el('div', 'fs-battle-who');
             who.append(this.el('i', 'fs-battle-dot'));
             who.append(this.el('span', 'fs-battle-name', side.name));
-            if (side.side === 'attacker') who.append(this.el('span', 'fs-battle-role', 'атакует'));
-            else who.append(this.el('span', 'fs-battle-role', 'держит'));
+            who.append(this.el('span', 'fs-battle-role', side.side === 'attacker' ? 'атакует' : 'держит'));
             row.append(who);
-            // The dice, as they fell.
+            // The dice: the same blazons that lie on the table.
             const dice = this.el('div', 'fs-battle-dice');
-            const counts = { att: 0, def: 0, morale: 0 };
             for (const d of side.dice || []) {
-                counts[d] = (counts[d] || 0) + 1;
-                const die = this.el('span', 'fs-die is-' + d, faces[d] || '·');
-                die.title = d === 'att' ? 'Атака' : d === 'def' ? 'Оборона' : 'Мораль';
+                const die = this.el('span', 'fs-die is-' + d);
+                die.append(this.iconEl({ att: 'die.att', def: 'die.def', morale: 'die.morale' }[d] || 'die.blank'));
+                die.title = d === 'att' ? 'Атака' : d === 'def' ? 'Оборона' : d === 'morale' ? 'Мораль' : 'Пусто';
                 dice.append(die);
             }
             if (!(side.dice || []).length) dice.append(this.el('span', 'fs-die is-none', '—'));
             row.append(dice);
-            // The tokens and the cards of the side: a symbol and its number.
+            // The cubes of the side and its closed card.
             const extras = this.el('div', 'fs-battle-extras');
             const chip = (icon, count, cls, title) => {
-                const c = this.el('span', 'fs-battle-chip ' + (cls || ''), icon + ' ' + count);
-                c.title = title || '';
-                if (!count) c.classList.add('is-empty');
-                return c;
+                const node = this.el('span', 'fs-battle-chip ' + (cls || ''));
+                node.append(this.iconEl(icon), this.el('span', 'fs-battle-chip-n', String(count)));
+                node.title = title || '';
+                return node;
             };
-            extras.append(chip('⚔', counts.att, 'is-att', 'Кубики атаки'));
-            extras.append(chip('🛡', counts.def, 'is-def', 'Кубики обороны'));
-            extras.append(chip('✦', counts.morale, 'is-morale', 'Кубики морали'));
-            if (side.tokens.att) extras.append(chip('◉', side.tokens.att, 'is-token', 'Жетоны атаки'));
-            if (side.tokens.def) extras.append(chip('◍', side.tokens.def, 'is-token', 'Жетоны обороны'));
-            if (side.reinforce) extras.append(chip('✚', side.reinforce, 'is-reinforce', 'Жетоны подкрепления'));
-            const cardIcons = (side.cards || []).reduce((acc, i) => ({
-                att: acc.att + (i.att || 0), def: acc.def + (i.def || 0), morale: acc.morale + (i.morale || 0),
-            }), { att: 0, def: 0, morale: 0 });
-            if (cardIcons.att || cardIcons.def || cardIcons.morale) {
-                extras.append(chip('🃏', [cardIcons.att ? '⚔' + cardIcons.att : '', cardIcons.def ? '🛡' + cardIcons.def : '', cardIcons.morale ? '✦' + cardIcons.morale : ''].filter(Boolean).join(' '), 'is-card', 'Иконки сыгранных карт'));
-            }
+            const tokens = side.tokens || { att: 0, def: 0 };
+            extras.append(chip('cube.att', tokens.att, 'is-token', 'Жетоны атаки'));
+            extras.append(chip('cube.def', tokens.def, 'is-token', 'Жетоны обороны'));
+            if (side.reinforce) extras.append(chip('ui.reinforce', side.reinforce, 'is-reinforce', 'Подкрепления'));
+            if (side.hand) extras.append(chip('ui.card', side.hand, 'is-card', 'Карты в руке'));
             row.append(extras);
-            // The totals: the attack, the defence and the morale of the side.
+            // The totals of the side.
             const totals = this.el('div', 'fs-battle-totals');
-            totals.append(this.el('span', 'fs-battle-total is-att', '⚔ ' + side.values.att));
-            totals.append(this.el('span', 'fs-battle-total is-def', '🛡 ' + side.values.def));
-            totals.append(this.el('span', 'fs-battle-total is-morale', '✦ ' + side.values.morale));
+            const values = side.values || { att: 0, def: 0, morale: 0 };
+            for (const [kind, value] of [['att', values.att], ['def', values.def], ['morale', values.morale]]) {
+                const total = this.el('span', 'fs-battle-total is-' + kind);
+                total.append(this.iconEl('cube.' + kind), this.el('b', '', String(value)));
+                totals.append(total);
+            }
             row.append(totals);
             card.append(row);
         }
-        // The damage of the moment: who takes how much.
+        // The damage of the moment: the pieces that take it are picked on the table.
         if (battle.damage) {
             const dmg = this.el('div', 'fs-battle-damage');
             const line = this.el('div', 'fs-battle-damage-line');
-            line.append(this.el('span', 'fs-eyebrow', 'Урон'));
-            line.append(this.el('span', 'fs-battle-total', '☠ ' + battle.damage.total));
+            line.append(this.iconEl('mark.damage', 'fs-battle-damage-icon'));
+            line.append(this.el('b', '', String(battle.damage.total)));
             if (battle.damage.total) {
                 line.append(this.el('span', 'fs-battle-left' + (battle.damage.left ? ' is-open' : ''), 'осталось ' + battle.damage.left));
             }
@@ -402,12 +441,12 @@ const FSUI = {
             for (const row of battle.damage.rows || []) {
                 const item = this.el('div', 'fs-battle-target'
                     + (row.destroyed ? ' is-dead' : row.demoralised ? ' is-routed' : row.selected ? ' is-picked' : ''));
+                item.append(this.iconEl(row.kind === 'structure' ? 'mark.bastion' : 'mark.ground', 'fs-battle-target-icon'));
                 item.append(this.el('span', 'fs-battle-target-name', row.name));
-                item.append(this.el('span', 'fs-battle-target-health', '♥ ' + row.health));
+                item.append(this.el('span', 'fs-battle-target-health', String(row.health)));
                 if (row.take) item.append(this.el('span', 'fs-battle-target-take', '−' + row.take));
                 if (row.destroyed) item.append(this.el('span', 'fs-battle-target-state', 'уничтожен'));
                 else if (row.demoralised) item.append(this.el('span', 'fs-battle-target-state', 'деморализован'));
-                else if (row.routed) item.append(this.el('span', 'fs-battle-target-state is-faint', 'деморализован'));
                 dmg.append(item);
             }
             card.append(dmg);
@@ -415,26 +454,49 @@ const FSUI = {
         return card;
     },
 
-    // The hand of the battle at the bottom of the screen: the cards with their
-    // icons. A click plays the card — a card is never skipped — and the whole
-    // text of the card is one hover away.
+    // The hand of the battle at the bottom of the screen: the cards themselves —
+    // the name, the cubes and the rules, in real type, with no markup and no words
+    // for the cubes. A click plays the card; a card is never skipped.
     renderBattleHand(hand) {
         if (!hand || !hand.length) return null;
         const bar = this.el('section', 'fs-battle-hand');
         const cards = this.el('div', 'fs-battle-cards');
         for (const item of hand) {
-            const card = this.el('button', 'fs-battle-card');
+            const card = this.el('button', 'fs-battle-card' + (item.playable ? ' is-playable' : ' is-closed'));
             card.type = 'button';
             const top = this.el('div', 'fs-battle-card-top');
             top.append(this.el('span', 'fs-battle-card-name', item.name));
+            card.append(top);
             const icons = this.el('div', 'fs-card-icons');
-            icons.append(this.el('span', 'is-att', '⚔ ' + (item.icons.att || 0)));
-            icons.append(this.el('span', 'is-def', '🛡 ' + (item.icons.def || 0)));
-            icons.append(this.el('span', 'is-morale', '✦ ' + (item.icons.morale || 0)));
-            card.append(top, icons);
-            if (item.playable) card.append(this.el('span', 'fs-battle-card-play', 'Разыграть ▶'));
+            const faces = { att: 'cube.att', def: 'cube.def', morale: 'cube.morale' };
+            let any = false;
+            for (const kind of ['att', 'def', 'morale']) {
+                const n = (item.icons && item.icons[kind]) || 0;
+                if (!n) continue;
+                any = true;
+                const chip = this.el('span', 'fs-card-cube is-' + kind);
+                chip.append(this.iconEl(faces[kind]));
+                if (n > 1) chip.append(this.el('b', '', String(n)));
+                icons.append(chip);
+            }
+            if (any) card.append(icons);
+            if (item.runs && item.runs.length) {
+                const body = this.el('div', 'fs-rich fs-battle-card-text');
+                item.runs.forEach((block, i) => {
+                    if (i) body.append(this.el('br'));
+                    for (const run of block) {
+                        if (run.t === 'icon') { body.append(this.iconEl(FSIcons.fromCardWord(run.name) || 'cube.any', 'fs-rich-ico')); continue; }
+                        const span = this.el('span', run.bold ? 'fs-rich-bold' : run.italic ? 'fs-rich-italic' : '');
+                        span.textContent = run.v;
+                        body.append(span);
+                    }
+                });
+                card.append(body);
+            } else if (item.text) {
+                card.append(this.richText(item.text, 'fs-battle-card-text'));
+            }
+            if (item.playable) card.append(this.el('span', 'fs-battle-card-play', 'Разыграть'));
             else card.disabled = true;
-            card.title = item.text || '';
             card.addEventListener('click', () => {
                 if (!item.playable) return;
                 if (this.onHandPlay) this.onHandPlay(item);
@@ -455,7 +517,7 @@ const FSUI = {
             const count = Number(token.count) || 0;
             const row = this.el('div', 'fs-token-row' + (count ? '' : ' is-zero'));
             if (token.hint) row.title = token.hint;
-            row.append(this.el('span', 'fs-token-icon', token.icon || '◆'));
+            row.append(this.iconEl(token.icon || 'cube.any', 'fs-token-icon'));
             row.append(this.el('b', 'fs-token-count', count + '×'));
             row.append(this.el('span', 'fs-token-label', token.label));
             card.append(row);
@@ -528,7 +590,7 @@ const FSUI = {
         el.append(text);
         for (const action of info.actions || []) {
             const button = this.el('button', 'fs-plaque-btn' + (action.primary ? ' is-primary' : '')); button.type = 'button';
-            button.append(this.el('span', 'fs-plaque-btn-icon', action.icon || '✓'), this.el('span', '', action.label));
+            button.append(this.iconEl(action.icon || 'ui.check', 'fs-plaque-btn-icon'), this.el('span', '', action.label));
             button.addEventListener('click', () => action.onClick && action.onClick());
             el.append(button);
         }
@@ -558,7 +620,7 @@ const FSUI = {
                 info.append(this.el('span', 'fs-tile-assets', assets.length ? assets.join(' · ') : 'Без ресурса'));
                 sector.append(info);
             } else {
-                sector.append(this.el('span', 'fs-tile-void', '✧ Пустота'), this.el('span', 'fs-tile-stats', 'Вместимость 3'));
+                sector.append(this.iconEl('ui.storm', 'fs-tile-void-icon'), this.el('span', 'fs-tile-void', 'Пустота'), this.el('span', 'fs-tile-stats', 'Вместимость 3'));
             }
             grid.append(sector);
         }
@@ -608,7 +670,7 @@ const FSUI = {
             [['◈', world.materiel, 'Материалы'], ['⌂', world.capacity, 'Вместимость'], ['◎', world.objective ? 'Да' : '—', 'Цель']].forEach(([icon, value, label]) => {
                 const chip = this.el('span', 'fs-inspector-chip', icon + ' ' + value); chip.title = label; stats.append(chip);
             });
-            const glyph = { forge: '⚒', cache: '▦', reinforcement: '✚', prosperity: '✧' };
+            const glyph = { forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'ui.reinforce', prosperity: 'asset.prosperity' };
             for (const asset of world.assets || []) {
                 const chip = this.el('span', 'fs-inspector-chip is-asset', glyph[asset] || asset);
                 chip.title = ({ forge: 'Кузница', cache: 'Запасы', reinforcement: 'Подкрепление', prosperity: 'Процветание' })[asset] || asset;
@@ -661,8 +723,18 @@ const FSUI = {
         hero.append(this.el('h1', 'fs-lobby-title', 'Forbidden Stars'));
         hero.append(this.el('div', 'fs-lobby-subtitle', 'Выберите фракцию и вступите в борьбу за сектора галактики.'));
         const meta = this.el('div', 'fs-lobby-meta'); meta.append(this.el('span', 'fs-room-code', info.code || '…'));
-        const copy = this.el('button', 'fs-copy-link', '⧉ Скопировать ссылку для друзей');
-        copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(info.link || location.href); copy.textContent = '✓ Ссылка скопирована'; } catch { copy.textContent = info.link || location.href; } });
+        const copy = this.el('button', 'fs-copy-link');
+        copy.append(this.iconEl('ui.card'), this.el('span', '', ' Скопировать ссылку для друзей'));
+        copy.addEventListener('click', async () => {
+            const mark = this.el('span', '', ' Ссылка скопирована');
+            try {
+                await navigator.clipboard.writeText(info.link || location.href);
+                copy.textContent = '';
+                copy.append(this.iconEl('ui.check'), mark);
+            } catch (e) {
+                copy.textContent = info.link || location.href;
+            }
+        });
         meta.append(copy); hero.append(meta); card.append(hero);
         const body = this.el('div', 'fs-lobby-body'); const top = this.el('div', 'fs-lobby-topline');
         top.append(this.el('h3', '', info.faction ? 'Ваша фракция выбрана' : 'Выберите фракцию'));
@@ -678,7 +750,7 @@ const FSUI = {
             const taken = (info.players || []).some(p => p.faction === f.id && p.name !== info.name);
             const button = this.el('button', 'fs-faction' + (info.faction === f.id ? ' is-selected' : ''));
             button.type = 'button'; button.style.setProperty('--faction-color', f.color || this.factionColor(f.id));
-            const crest = this.el('span', 'fs-faction-crest', (f.name || '★').slice(0,1));
+            const crest = this.el('span', 'fs-faction-crest', (f.name || '·').slice(0, 1));
             const copyName = this.el('span', 'fs-faction-name', f.name || f.id); copyName.append(this.el('span', 'fs-faction-state', info.faction === f.id ? 'Выбрана вами' : (taken ? 'Уже занята' : 'Нажмите, чтобы выбрать')));
             button.append(crest, copyName); button.disabled = taken && info.faction !== f.id;
             if (button.disabled) button.style.opacity = '.4';
@@ -702,7 +774,7 @@ const FSUI = {
         if (info.mode !== 'game') {
             const start = this.el('button', 'fs-start-test');
             start.type = 'button';
-            start.append(this.el('span', 'fs-start-icon', info.mode === 'battle' ? '⚔' : '▦'));
+            start.append(this.iconEl(info.mode === 'battle' ? 'mark.damage' : 'ui.card', 'fs-start-icon'));
             start.append(this.el('span', '', info.mode === 'battle'
                 ? 'Начать бой (' + info.battle.total + ' отр. · ' + info.battle.deck + ' карт)'
                 : 'Открыть готовую карту'));
@@ -724,8 +796,9 @@ const FSUI = {
         const head = this.el('div', 'fs-battle-head');
         head.append(this.el('span', 'fs-eyebrow', 'Поле боя'));
         const kinds = this.el('div', 'fs-battle-kinds');
-        [['ground', '⌂ Наземный'], ['space', '✦ Космический']].forEach(([id, label]) => {
-            const button = this.el('button', 'fs-kind' + (battle.kind === id ? ' is-selected' : ''), label);
+        [['ground', 'mark.ground', 'Наземный'], ['space', 'mark.ship', 'Космический']].forEach(([id, icon, label]) => {
+            const button = this.el('button', 'fs-kind' + (battle.kind === id ? ' is-selected' : ''));
+            button.append(this.iconEl(icon), this.el('span', '', label));
             button.type = 'button';
             button.addEventListener('click', () => info.onBattle && info.onBattle({ kind: id }));
             kinds.append(button);
@@ -763,9 +836,11 @@ const FSUI = {
             button.type = 'button';
             const icons = c.icons || {};
             const line = this.el('span', 'fs-card-icons');
-            line.append(this.el('span', 'is-att', '⚔ ' + (icons.att || 0)));
-            line.append(this.el('span', 'is-def', '🛡 ' + (icons.def || 0)));
-            line.append(this.el('span', 'is-morale', '✦ ' + (icons.morale || 0)));
+            for (const [kind, icon] of [['att', 'cube.att'], ['def', 'cube.def'], ['morale', 'cube.morale']]) {
+                const chip = this.el('span', 'fs-card-cube is-' + kind);
+                chip.append(this.iconEl(icon), this.el('b', '', String(icons[kind] || 0)));
+                line.append(chip);
+            }
             button.append(this.el('span', 'fs-card-name', c.name), line);
             button.addEventListener('click', () => info.onBattle && info.onBattle({ toggleCard: c.name }));
             cards.append(button);
@@ -887,6 +962,15 @@ const FSUI = {
         // same list for the simple HUD: the player sees one column of choices.
         for (const item of ctx.hand || []) {
             this.add('fsBtn', 'fsA' + y, 8, y, (item.count || 1) + '× ' + item.label, item.onClick, 234);
+            y += 30;
+        }
+        // The cards of the battle lie on the table and in the hand at the bottom —
+        // the simple HUD offers them as the same list of choices.
+        for (const item of ctx.battleHand || []) {
+            if (!item.playable) continue;
+            this.add('fsBtn', 'fsA' + y, 8, y, 'Карта: ' + item.name, () => {
+                if (this.onHandPlay) this.onHandPlay(item);
+            }, 234);
             y += 30;
         }
     },

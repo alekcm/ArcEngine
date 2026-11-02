@@ -213,3 +213,70 @@
 .fs-battle-card-play{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-hi);border-top:1px solid #ffffff14;padding-top:4px}
 .fs-primary.is-disabled{opacity:.45;cursor:default}
 .fs-shell.is-mobile .fs-battle-hand{bottom:12px;left:10px;right:10px;transform:none;max-width:none;overflow:auto;justify-content:flex-start}
+
+/* ---------------------------------------------------------------------------
+   The icons of the game are drawn, not typed: every symbol is a small vector
+   shape of FSIcons, so no emoji, no glyph of a font, no asterisks in the text.
+--------------------------------------------------------------------------- */
+.fs-ico{display:inline-flex;align-items:center;justify-content:center;flex:none;line-height:1;color:inherit}
+.fs-ico-svg{width:1.25em;height:1.25em;background-repeat:no-repeat;background-position:center;background-size:contain}
+.fs-pick-icon.fs-ico-svg,.fs-chip-icon.fs-ico-svg{width:20px;height:20px}
+.fs-primary-icon.fs-ico-svg{width:17px;height:17px}
+.fs-token-icon.fs-ico-svg{width:16px;height:16px;margin:0 auto}
+.fs-battle-damage-icon.fs-ico-svg{width:15px;height:15px}
+.fs-battle-target-icon.fs-ico-svg{width:13px;height:13px;opacity:.85}
+.fs-orders-icon.fs-ico-svg{width:15px;height:15px}
+.fs-orders-placed-icon.fs-ico-svg{width:13px;height:13px}
+.fs-battle-chip .fs-ico-svg{width:12px;height:12px}
+.fs-battle-total .fs-ico-svg{width:13px;height:13px}
+
+/* The text of a card: real italics, real bold, cubes in the flow of the words. */
+.fs-rich{display:block;font-size:10px;line-height:1.45;color:#cfc7b6}
+.fs-rich-bold{font-weight:700;color:#f2e8d2}
+.fs-rich-italic{font-style:italic;color:#ded4c1}
+.fs-rich-ico{width:13px;height:13px;vertical-align:-3px;margin:0 2px}
+
+/* --- the token tower of the orders: four icon cells with what is left ------ */
+.fs-orders-hand{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:10px 12px 8px}
+.fs-orders-chip{display:flex;align-items:center;justify-content:center;gap:4px;padding:6px 4px;border:1px solid #ffffff16;border-radius:8px;background:#ffffff08}
+.fs-orders-chip.is-empty{opacity:.32}
+.fs-orders-count{font:700 12px/1 ui-monospace,SFMono-Regular,monospace;color:#f2e3bd}
+.fs-orders-list{display:flex;flex-wrap:wrap;gap:5px;padding:0 12px 11px}
+.fs-orders-placed{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid #ffffff14;border-radius:6px;background:#ffffff06}
+.fs-orders-placed.is-open{border-color:#d8b87388;background:#d8b8731f}
+
+/* --- the hand of the battle: the cards themselves -------------------------- */
+.fs-battle-card.is-closed{opacity:.6}
+.fs-battle-card .fs-card-icons{gap:5px;margin-top:2px}
+.fs-card-cube{display:inline-flex;align-items:center;gap:2px}
+.fs-card-cube .fs-ico-svg{width:13px;height:13px}
+.fs-card-cube.is-att b{color:#f0b8a4}
+.fs-card-cube.is-def b{color:#b9cdf2}
+.fs-card-cube.is-morale b{color:#e2cfa0}
+.fs-battle-card-text{max-height:78px;overflow:hidden;border-top:1px solid #ffffff12;padding-top:5px}
+.fs-battle-card-text.fs-rich{font-size:8px;line-height:1.35}
+.fs-battle-card-text .fs-rich-ico{width:10px;height:10px;vertical-align:-2px}
+.fs-battle-card.is-playable{border-color:#d8b87355}
+
+/* --- the battle is its own screen ----------------------------------------- */
+.fs-shell.is-battle .fs-left-rail{display:none}
+.fs-shell.is-battle .fs-main-panel{width:min(330px,calc(100vw - 36px))}
+.fs-shell.is-battle .fs-map-hint{display:none}
+.fs-shell.is-battle .fs-panel-heading h2{font-size:20px}
+
+/* --- the score of a battle: the dice first, the totals on their own line ---- */
+.fs-battle-side{grid-template-columns:1fr auto;align-items:start}
+.fs-battle-who{grid-column:1/3}
+.fs-battle-dice{grid-column:1/3;min-height:23px;align-items:center}
+.fs-die{padding:2px}
+.fs-die .fs-ico-svg{width:16px;height:16px}
+.fs-die.is-none{background:#ffffff12;color:#8b949e;box-shadow:none}
+.fs-battle-extras{grid-column:1/2;display:flex;flex-wrap:wrap;gap:4px}
+.fs-battle-chip{display:inline-flex;align-items:center;gap:3px;font:700 10px/1 ui-monospace,monospace}
+.fs-battle-chip-n{font-variant-numeric:tabular-nums}
+.fs-battle-totals{grid-column:2/3;display:flex;gap:6px}
+.fs-battle-total{display:inline-flex;align-items:center;gap:3px;font:700 13px/1 ui-monospace,monospace;color:#f2e6ca}
+.fs-battle-total .fs-ico-svg{width:15px;height:15px}
+.fs-battle-damage-line{display:flex;align-items:center;gap:7px;font:700 14px/1 ui-monospace,monospace;color:#ffc9b6}
+.fs-battle-target{display:flex;align-items:center;gap:6px}
+.fs-battle-target-health{font:700 11px/1 ui-monospace,monospace;color:#f0b8a4}

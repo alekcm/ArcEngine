@@ -36,7 +36,10 @@ export function setupCommand(rules, data, state) {
 
 // The planning phase of the whole table: the players lay their tokens one at a
 // time, in a circle, until everybody is done. Returns the number of the tokens.
-export function placeAllOrders(rules, state, pick = null, order = 'advance') {
+export function placeAllOrders(rules, state, pick = null, order = null) {
+    // Two tokens of every kind, so the whole hand is four different orders unless
+    // the caller names one.
+    const kinds = ['advance', 'deploy', 'strategize', 'dominate'];
     let placed = 0;
     let guard = 0;
     while (state.phase === 'planning' && guard++ < 200) {
@@ -44,7 +47,10 @@ export function placeAllOrders(rules, state, pick = null, order = 'advance') {
         const legal = state.systems.filter(sys => rules.canPlaceOrder(state, seat, sys.id));
         if (!legal.length) break;
         const sys = pick ? pick(state, seat, legal) : legal[placed % legal.length];
-        const res = rules.apply(state, seat, { type: 'placeOrder', system: sys.id, order });
+        const p = state.players[seat];
+        // The kind has to have a token left in the hand of this player.
+        const kind = order || kinds.find(k => !p.placedOf || (p.placedOf[k] || 0) < 2);
+        const res = rules.apply(state, seat, { type: 'placeOrder', system: sys.id, order: kind });
         if (!res.ok) break;
         placed++;
     }
@@ -65,6 +71,10 @@ export function playCombatStep(rules, state, seat) {
     if (c.step === 'choose-attacker' || c.step === 'choose-defender') {
         if (!(c.cards[side].hand || []).length) return null;
         return rules.apply(state, seat, { type: 'combat', action: 'playCard', index: 0 });
+    }
+    if (c.step === 'reveal') {
+        // The engine turns the chosen cards over by itself; nothing to send.
+        return { ok: true, reveal: true };
     }
     if (c.step === 'damage-attacker' || c.step === 'damage-defender') {
         const targets = rules.damageCandidates(state, side).map(x => x.id);

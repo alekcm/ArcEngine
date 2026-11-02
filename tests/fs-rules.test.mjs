@@ -141,9 +141,11 @@ test('the operations phase: the order of the player is resolved', () => {
     const s = newGame(2);
     placeAllOrders(FS_RULES, s);
     const seat = s.turn;
-    const orders = FS_RULES.availableOrders(s, seat);
-    assert.ok(orders.length > 0);
-    const res = FS_RULES.apply(s, seat, { type: 'resolveOrder', system: orders[0].system });
+    // The advance token on top of the stack of the system where the troops stand.
+    const sys = s.systems.find(x => s.units.some(u => u.seat === seat && u.system === x.id));
+    assert.ok(sys, 'the player has troops on the board');
+    sys.tokens.push({ seat, order: 'advance', faceUp: false });
+    const res = FS_RULES.apply(s, seat, { type: 'resolveOrder', system: sys.id });
     assert.equal(res.ok, true, res.error);
     assert.equal(s.order.order, 'advance');
     assert.equal(s.order.seat, seat);
@@ -299,11 +301,14 @@ test('the refresh phase: the objectives, the materiel and the events', () => {
         if (!orders.length) break;
         const res = FS_RULES.apply(s, seat, { type: 'resolveOrder', system: orders[0].system });
         assert.equal(res.ok, true, res.error);
-        // The order of the bot: advance — move and finish.
+        // The order of the bot: every kind is finished by its own command.
+        if (s.order && s.order.order === 'deploy') FS_RULES.apply(s, seat, { type: 'finishDeploy' });
+        if (s.order && s.order.order === 'strategize') FS_RULES.apply(s, seat, { type: 'finishStrategize' });
+        if (s.order && s.order.order === 'dominate') FS_RULES.apply(s, seat, { type: 'finishDominate' });
         if (s.order && s.order.order === 'advance') {
             FS_RULES.apply(s, seat, { type: 'endAdvance' });
             // The bot makes no orbital strike.
-            FS_RULES.apply(s, seat, { type: 'finishAdvance' });
+            if (s.order && s.order.phase === 'strike') FS_RULES.apply(s, seat, { type: 'finishAdvance' });
             if (s.combat) {
                 // The bot does not fight: it accepts the retreat.
                 let g2 = 0;
@@ -561,6 +566,10 @@ test('the card «Свежеватели»: the morale die is taken, never a ques
     c.cards.attacker.hand = ['Свежеватели'];
     const res = FS_RULES.apply(s, 0, { type: 'combat', action: 'playCard', index: 0 });
     assert.equal(res.ok, true, res.error);
+    // Both players choose their card first: the defender has none, so the cards
+    // are turned over at once — the attacker's card is the only one.
+    c.cards.defender.hand = [];
+    FS_RULES.advanceCombatSteps(s);
     // The die of the text is a die of morale: the engine takes it itself, without
     // asking which die of the shield to remove.
     assert.equal(s.pending, null, 'no question about a die that is chosen by the text');
