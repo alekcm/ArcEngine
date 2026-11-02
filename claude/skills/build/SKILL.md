@@ -1,14 +1,14 @@
 ---
 name: build
-description: Dev server, build and code checks — dev server (tools/dev-server.mjs), archive builder (tools/build.mjs, asset-scan.mjs, zip.mjs), tsc type check and node --test tests (tools/check.mjs, tsconfig.json, globals.d.ts, tests/), assets. Read before editing tools/ and tests/, before adding a script or an asset, on a tsc error and before building the archive.
+description: Dev server, build and code checks — dev server (tools/dev-server.mjs), archive builder (tools/build.mjs, asset-scan.mjs, zip.mjs), tsc type check and the Forbidden Stars rules audit (tools/check.mjs, tools/fs-audit.mjs, tsconfig.json, globals.d.ts), assets. Read before editing tools/, before adding a script or an asset, on a tsc error or a failed rules check, and before building the archive.
 ---
 
 # Dev server, build, code checks
 
 ```
-node tools/check.mjs         # game and editor types + tests (check.bat — the same with a pause)
+node tools/check.mjs         # game and editor types + the rules audit (check.bat — the same with a pause)
 node tools/check.mjs --types
-node tools/check.mjs --tests
+node tools/check.mjs --rules
 run.bat                      # dev server + browser, port 8080 (or the next free one)
 run.bat 9000 --no-open
 build.bat                    # dist/arcengine-<GAME_VERSION>.zip
@@ -66,7 +66,7 @@ Mode: `strict` without `noImplicitAny`, `strictNullChecks`, `useUnknownInCatchVa
 catches typos in fields and methods and Babylon calls that do not match the API, without
 demanding JSDoc on every parameter. `libs/babylon.d.ts` — types for exactly Babylon 9.26:
 upgrading `babylon.js` = a new file (`cdn.jsdelivr.net/npm/babylonjs@<version>/babylon.d.ts`).
-`.mjs` (tools, editor server) is not checked by tsc — those have tests.
+`.mjs` (tools, editor server) is not checked by tsc: the tools are one-shot scripts.
 
 Pitfalls:
 - An object literal in JS is "open": `const X = { … }` accepts any `X.typo`. Above every
@@ -82,43 +82,26 @@ Pitfalls:
 - `window.NAME` of a constant in the editor — `/** @type {any} */ (window).NAME`: the `Window`
   type has no constants.
 
-## Tests (`tests/*.test.mjs`, `node --test`)
+## Rules audit (`tools/fs-audit.mjs`)
 
-Logic without 3D: `store` (Store with storage open and blocked), `terrain` (`heightAt` — nodes,
-cell diagonal same as the mesh, continuity, edge, seed, mobile cell), `camera` (`CameraController`
-on a stub view: flight along the view, Q/E, look-around keeps the camera in place, ground floor,
-`CAMERA_LIMITS` on and off, what goes to the shadow frustum — the flight speed is read from
-`Constants.js`, not written as a number: the user tunes it), `shadow`
-(`View3D.fitShadowFrustum` on a fake view: the box takes the caster nearest the camera — next to a
-building, zoomed out, nothing behind the camera, empty scene — and still hugs the bounds), `asset-scan`
-(`collectRefs`, the project has no missing assets), `editor-save` (`_utils/editor/save.mjs`:
-number patching, BOM, backups, every number of `Constants.js` is rewritten losslessly,
-`Objects.js` is readable by the game and the scanner, `.glb` and `clip`, invalid records are rejected),
-`ui` (anchor math of `js/UI.js` including a stretched axis, `UI_FIELDS` of `save.mjs` =
-`UI.DEFAULTS`, `formatUI`, nesting — `parent` written, self-parent, a missing parent and a cycle
-rejected, `UI.parentOf`/`isInside`, the kit's `UILayout.js` round-trips through the editor format),
-`sound` (`Sound3D.spatial` — the audible sphere and the pan by the camera heading;
-`Location3D.updateSound` — no copies piling up frame after frame, restart only on a file or mode
-change, a hidden object silent; `removeObject` stops the sound; `findByTag`), `gltf` (`character.glb` on disk equals the
-generator — after editing `tools/make-character.mjs` run it; the file's skeleton and seamless
-clips; `Clips3D` cross-fade on fake animation groups), `instances` (`Instances3D.fill` — the
-matrix of a copy as Babylon applies it: position, heading, scale; `Debug3D.copyGroups`), `debug3d`
-(the pure parts of `js/Debug3D.js`: winding against normals, the side verdict with a mirrored
-matrix, the normal map verdict by file name, the held view pose kept above the ground), `claude`
-(skills in `claude/skills/` are linked to the CLAUDE.md table, `claude/launch.json` starts the
-servers, there is no `.claude/skills/` folder — GitHub web upload skips dot-prefixed names, so
-skills from there would never reach users).
+There are no unit tests of the game: they passed while the rules were wrong, so they were
+deleted. The witness of the rules is `tools/fs-audit.mjs`: every check quotes a line of
+`docs/forbidden-stars/01-rules-reference.md`, builds the state of exactly that case in a
+`node:vm` with `FSData.js`, `FSEffects.js` and `FSRules.js` (the `index.html` order), and looks
+at what the engine does. A failed check prints what was expected and what came out.
 
-`browser-scripts.mjs`: `loadScripts(files, globals)` runs classic scripts in one `node:vm`
-context (like `<script>`), `get('Name')` fetches a top-level `const`/`class`; `stub()` — a
-stub for `BABYLON`/`World3D` when a constructor builds meshes along the way. Objects from the
-context belong to another realm: copy them for `assert.deepEqual` (`{ ...obj }`, `JSON`).
-Files go into temp folders, `after()` removes them.
+```
+node tools/fs-audit.mjs            all checks
+node tools/fs-audit.mjs combat     only the checks whose id or text contains the word
+```
 
-## Checklist
+The audit is grouped by the sections of the Rules Reference: planning, advance, deploy,
+strategize and dominate, combat, retreats, capacity/refresh/victory, orbital strike,
+structures and command level, movement corners, and the card texts (every printed combat,
+event and order card must parse into steps the engine has a handler for, and every card must
+run on a prepared board without an error). A new rule in the engine means a new check with the
+sentence it comes from — quoting the rule is what makes the check readable later.
 
-1. New script — file in `js/`, `<script>` in `index.html` (and in the editor's `index.html` if the
-   editor needs it) and a line in `CODE_FILES`; new asset — a literal `'assets/…'` in code.
-2. `node tools/check.mjs` passes; new non-3D logic — a test next to similar ones.
-3. `build.bat` passes without `--force`.
-4. The game starts on the dev server — console without errors.
+Adding a check: `rule('id', '«quoted sentence»', () => { … })` with `eq(actual, expected, what)`;
+helpers `empty()`, `game(seed)`, `guard`/`olk`, `worldOf`/`voidOf`, `advance`, `battleFor`,
+`playCombat`. Keep the id short and the section name in `head('…')`.

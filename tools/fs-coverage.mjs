@@ -13,11 +13,24 @@
 //   node tools/fs-coverage.mjs --all      — the sentences that are not read
 //   node tools/fs-coverage.mjs --notes    — the clarifications of the rules
 
-import { loadScripts } from '../tests/browser-scripts.mjs';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import path from 'node:path';
+import url from 'node:url';
 
-const { get } = loadScripts(['js/fs/FSData.js', 'js/fs/FSEffects.js']);
-const DATA = get('FS_DATA');
-const EFFECTS = get('FS_EFFECTS');
+// The engine scripts are loaded the way index.html loads them: in one context,
+// as plain scripts with their globals.
+const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
+const ctx = vm.createContext({
+    console, Math, JSON, Date, Set, Map, Array, Object, Number, String, Boolean, Error,
+    parseInt, parseFloat, isNaN, RegExp, Promise, Symbol, TypeError, RangeError,
+});
+for (const [file, name] of [['js/fs/FSData.js', 'FS_DATA'], ['js/fs/FSEffects.js', 'FS_EFFECTS']]) {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, file), 'utf8') + `\n;globalThis.${name} = ${name};`,
+        ctx, { filename: file });
+}
+const DATA = ctx.FS_DATA;
+const EFFECTS = ctx.FS_EFFECTS;
 
 /** All the texts of the cards with their kind. */
 export function allTexts() {

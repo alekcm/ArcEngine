@@ -17,7 +17,7 @@ const FSUI = {
     mount() {
         if (this.modernRoot) return this.modernRoot;
         const root = document.createElement('div');
-        // Tiny DOM stubs used by logic tests intentionally skip the visual shell.
+        // Tiny DOM stubs used by the headless runs skip the visual shell.
         if (!root.classList || typeof root.replaceChildren !== 'function') return null;
         if (UI.root) UI.root.style.visibility = 'hidden';
         this.modernRoot = root;
@@ -533,7 +533,7 @@ const FSUI = {
         for (const item of hand) {
             const button = this.el('button', 'fs-hand-card' + (item.selected ? ' is-selected' : '')); button.type = 'button';
             if (item.hint) button.title = item.hint;
-            button.append(this.el('span', 'fs-hand-icon', item.icon || '◆'));
+            button.append(this.iconEl(item.icon || 'ui.card', 'fs-hand-icon'));
             button.append(this.el('span', 'fs-hand-count', (Number(item.count) || 1) + '×'));
             const text = this.el('span', 'fs-hand-text');
             text.append(this.el('span', 'fs-hand-name', item.label));
@@ -611,7 +611,7 @@ const FSUI = {
             const world = area && area.world;
             const sector = this.el('div', 'fs-tile-sector' + (world ? ' is-world' : ' is-void'));
             if (world) {
-                sector.append(this.el('span', 'fs-tile-planet', '●'));
+                sector.append(this.iconEl('mark.world', 'fs-tile-planet'));
                 const info = this.el('div', 'fs-tile-world-info');
                 info.append(this.el('strong', '', world.name));
                 info.append(this.el('span', 'fs-tile-stats', 'Материя ' + (world.materiel || 0) + ' · Вместимость ' + world.capacity));
@@ -629,90 +629,6 @@ const FSUI = {
     },
 
     statusError(text) { return /ошиб|связи|нет связи|нельзя|не удалось/i.test(text || ''); },
-
-    renderInspector(state, selected) {
-        if (!selected || !selected.system) return null;
-        const system = state.systems.find(s => s.id === selected.system);
-        if (!system) return null;
-        const area = system.areas.find(a => a.pos === selected.pos);
-        const world = area && area.world;
-        const panel = this.el('section', 'fs-inspector');
-        const head = this.el('div', 'fs-inspector-head');
-        const title = this.el('div', 'fs-inspector-title');
-        title.append(this.el('span', 'fs-inspector-kicker', 'СИСТЕМА ' + system.tile + ' · ' + system.id.toUpperCase()));
-        title.append(this.el('strong', '', world ? world.name : area ? 'Пустотный сектор' : 'Орбитальная система'));
-        const close = this.el('button', 'fs-inspector-close', '×'); close.type = 'button'; close.title = 'Закрыть сведения';
-        close.addEventListener('click', () => {
-            const game = window.app ? /** @type {any} */ (window.app.game) : null;
-            if (game) {
-                game.inspection = null;
-                FSView.clearInspection(game.view);
-                game.refresh();
-            }
-        });
-        head.append(title, close); panel.append(head);
-        const ownerLine = this.el('div', 'fs-inspector-owner');
-        if (area) {
-            const seats = [...new Set([
-                ...state.units.filter(u => u.system === system.id && u.area === area.pos).map(u => u.seat),
-                ...state.structures.filter(s => s.system === system.id && s.area === area.pos).map(s => s.seat),
-            ])].sort((a, b) => a - b);
-            ownerLine.textContent = seats.length === 1
-                ? 'Контроль: ' + state.players[seats[0]].name
-                : seats.length > 1
-                    ? 'Спорная зона: ' + seats.map(seat => state.players[seat].name).join(' / ')
-                    : 'Никем не контролируется';
-        } else ownerLine.textContent = 'Выберите сектор для просмотра контроля';
-        if (selected.storm) ownerLine.textContent += ' · Варп-шторм ' + selected.storm;
-        panel.append(ownerLine);
-        if (world) {
-            const stats = this.el('div', 'fs-inspector-stats');
-            [['◈', world.materiel, 'Материалы'], ['⌂', world.capacity, 'Вместимость'], ['◎', world.objective ? 'Да' : '—', 'Цель']].forEach(([icon, value, label]) => {
-                const chip = this.el('span', 'fs-inspector-chip', icon + ' ' + value); chip.title = label; stats.append(chip);
-            });
-            const glyph = { forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'ui.reinforce', prosperity: 'asset.prosperity' };
-            for (const asset of world.assets || []) {
-                const chip = this.el('span', 'fs-inspector-chip is-asset', glyph[asset] || asset);
-                chip.title = ({ forge: 'Кузница', cache: 'Запасы', reinforcement: 'Подкрепление', prosperity: 'Процветание' })[asset] || asset;
-                stats.append(chip);
-            }
-            panel.append(stats);
-        }
-        if (area) {
-            const units = state.units.filter(u => u.system === system.id && u.area === area.pos);
-            const structures = state.structures.filter(s => s.system === system.id && s.area === area.pos);
-            const summaries = [];
-            const bySeat = new Map();
-            for (const unit of units) {
-                const def = FS_RULES.unitOf(state, unit);
-                if (!def) continue;
-                const key = unit.seat + ':' + def.name;
-                const item = bySeat.get(key) || { seat: unit.seat, name: def.name, type: def.type, count: 0 };
-                item.count++; bySeat.set(key, item);
-            }
-            for (const item of bySeat.values()) {
-                const player = state.players[item.seat];
-                summaries.push((player ? player.name : 'Игрок') + ': ' + item.name + ' ×' + item.count);
-            }
-            if (structures.length) {
-                const labels = { city: 'города', factory: 'фабрики', bastion: 'бастиона' };
-                const counts = {};
-                structures.forEach(x => { counts[x.type] = (counts[x.type] || 0) + 1; });
-                for (const [type, count] of Object.entries(counts)) summaries.push((labels[type] || type) + ' ×' + count);
-            }
-            if (!summaries.length) summaries.push('Отрядов и построек нет');
-            if (selected.unit) {
-                const unit = state.units.find(u => u.id === selected.unit);
-                const def = unit && FS_RULES.unitOf(state, unit);
-                if (def) summaries.unshift('Выбрано: ' + def.name + (unit.routed ? ' · отступает' : ''));
-            }
-            if (selected.structure) summaries.unshift('Выбрано строение');
-            const list = this.el('div', 'fs-inspector-roster');
-            summaries.slice(0, 4).forEach(text => list.append(this.el('span', '', text)));
-            panel.append(list);
-        }
-        return panel;
-    },
 
     renderModernLobby() {
         const root = this.modernRoot, info = this.currentLobby;
@@ -765,7 +681,7 @@ const FSUI = {
             const text = this.el('div', 'fs-mode-text');
             text.append(this.el('strong', 'fs-mode-title', m.title));
             text.append(this.el('span', 'fs-mode-note', m.text));
-            button.append(this.el('span', 'fs-mode-icon', m.icon || '◆'), text);
+            button.append(this.iconEl(m.icon || 'ui.card', 'fs-mode-icon'), text);
             button.addEventListener('click', () => info.onMode && info.onMode(m.id));
             modes.append(button);
         });

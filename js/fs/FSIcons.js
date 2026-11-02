@@ -157,6 +157,21 @@ const FS_SHAPES = {
             { t: 'p', pts: [[12, 24], [20, 24], [16, 29]], alpha: 0.7 },
         ],
     }),
+    // A world and a void: the two kinds of an area of a system tile.
+    'mark.world': () => ({
+        color: '#9fd0a0', parts: [
+            { t: 'c', x: 16, y: 16, r: 9, fill: 'none', ring: 2.6 },
+            { t: 'l', pts: [[5, 12], [27, 20]], width: 2.2, alpha: 0.85 },
+            { t: 'c', x: 12, y: 19, r: 2.4, fill: 'main', alpha: 0.9 },
+        ],
+    }),
+    'mark.void': () => ({
+        color: '#8fbfe0', parts: [
+            { t: 'c', x: 16, y: 16, r: 8, fill: 'none', ring: 1.8, alpha: 0.75 },
+            { t: 'c', x: 12, y: 13, r: 1.7, fill: 'main' },
+            { t: 'c', x: 20, y: 19, r: 2.2, fill: 'main' },
+        ],
+    }),
     'mark.ground': () => ({
         color: '#cfd6de',
         parts: [

@@ -77,8 +77,8 @@ about 800 px at zoom 1 — so the radii are measured from there, not from the mi
 - Pan: by which side of the SCREEN the source is on — it follows the camera heading
   (`camera.azimuth`), and it does not flip when a source passes through the center.
 - No obstacles, no echo, no Doppler. Sound is presentation, not logic (invariant 4).
-- The math is pure and tested: `Sound3D.spatial(source, listener, min, max, pan)` -> `{ gain, pan }`
-  (`tests/sound.test.mjs`).
+- The math is pure: `Sound3D.spatial(source, listener, min, max, pan)` -> `{ gain, pan }`
+  (checked by ear in the game — the project has no unit tests).
 
 ## Constants (`Constants.js`, the editor's Sound tab)
 
@@ -151,6 +151,6 @@ the filter runs one loop ahead of the part that is kept.
    a sound of an event — `Sound3D.play` in game code, with a LITERAL path.
 2. A looped sound has an owner who calls `stop()`.
 3. New numbers — in `Constants.js` + a row in `_utils/editor/schema.js` (skill `editor`).
-4. `node tools/check.mjs` passes; new sound math — a test next to `tests/sound.test.mjs`.
+4. `node tools/check.mjs` passes (types and the rules audit).
 5. Heard in the game (`run.bat`) after a click on the page: the effect where it should be,
    a sound on the map quieter as the camera moves away.

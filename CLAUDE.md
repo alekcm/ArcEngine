@@ -25,7 +25,7 @@ Objects (импорт FBX/GLB, гизмо, свойства объектов, а
 | ЛЮБОЙ элемент интерфейса игры (текст, счётчик, шкала, кнопка, панель, меню, диалог, экран паузы): `js/UI.js`, `js/UILayout.js`, вложенность и растяжение, вкладка UI редактора (`ui-panel.js`), новый вид элемента | `claude/skills/ui/SKILL.md` |
 | ЛЮБОЙ звук: эффект, музыка, звук объекта локации, `js/Sound3D.js`, поле `sound` в `Objects.js`, константы `AUDIO_*`, файлы в `assets/sounds` | `claude/skills/sound/SKILL.md` |
 | `_utils/`, редактор, инспектор, вкладки Objects и Sound, новая константа или вкладка в редакторе, текст интерфейса | `claude/skills/editor/SKILL.md` |
-| `tools/`, `tests/`, ассеты, новый скрипт, архив, проверка типов и ошибки tsc | `claude/skills/build/SKILL.md` |
+| `tools/`, ассеты, новый скрипт, архив, проверка типов и сверка правил, ошибки tsc | `claude/skills/build/SKILL.md` |
 | своя геометрия (сетка из вершин, порт генератора, импорт glTF), материал с картой нормалей, новый источник света, свой шейдер, thin instances и процедурная расстановка; «сетка вывернута», «свет не с той стороны», пропал свет или меш | `claude/skills/render-conventions/SKILL.md` |
 | проверка правки глазами и числами: панель браузера, `Debug3D` (удержание вида, кадры без rAF, замер, линтер сцены, отладочные режимы), замер цены кадра, воспроизведение состояния пользователя | `claude/skills/verify/SKILL.md` |
 | перенос прототипа в Unity: `tools/export-unity.mjs`, пакет `unity/com.arcengine.runtime` (C#), отчёт `MIGRATION.md`, тег `arc-base` — до переноса не нужен | `claude/skills/unity-port/SKILL.md` |
@@ -37,7 +37,7 @@ node tools/fs-server.mjs  # Forbidden Stars: сервер локальной с�
 run.bat                  # игра: dev-сервер + браузер, порт 8080 (или следующий свободный)
 editor.bat               # редактор: http://localhost:8090/_utils/editor/
 build.bat                # dist/arcengine-<GAME_VERSION>.zip
-check.bat                # типы (tsc по JSDoc) + тесты; агенту — node tools/check.mjs [--types|--tests]
+check.bat                # типы (tsc по JSDoc) + сверка правил; агенту — node tools/check.mjs [--types|--rules]
 ```
 
 Git: что не едет в репозиторий — `.gitignore` (`.claude/`, бэкапы редактора, `build/`, `dist/`);
@@ -81,9 +81,9 @@ Git: что не едет в репозиторий — `.gitignore` (`.claude/`
    пропускает `.claude/`, `.github/`, `.gitignore` — любое имя с точкой в начале. Скиллы —
    `claude/skills/<имя>/SKILL.md` (новый — ещё строка в таблице скиллов), шаблон панели
    браузера — `claude/launch.json`. В `.claude/` — только локальное (`settings.local.json`,
-   копия `launch.json`); папку `.claude/skills/` тесты не пропустят.
-10. **Скиллы и комментарии в коде — на английском.** Кириллица в скилле — провал теста; в коде
-   русский остаётся только в строках (словарь `ru` редактора, вывод инструментов, имена тестов).
+   копия `launch.json`).
+10. **Скиллы и комментарии в коде — на английском.** В коде русский остаётся только в строках
+   (словарь `ru` редактора, вывод инструментов, тексты интерфейса игры).
 11. **Любой элемент интерфейса — запись в `UILayout.js`, через вкладку UI редактора.** Код игры
    не создаёт, не позиционирует и не красит HUD сам: берёт элемент по id — `UI.get('score').setText(…)`,
    `setValue`, `show`, `onClick`. Элемент, созданный в коде, редактору не виден — его не подвинуть.
@@ -154,15 +154,12 @@ libs/             babylon.js (9.26 UMD), babylonjs.loaders.min.js (glTF-загр
 assets/           ground_texture_{g,d,s}.jpg — трава, песок, снег; models/*.fbx, *.glb — модели объектов
                   (character.glb — персонаж с клипами idle/run, генерируется tools/make-character.mjs);
                   sounds/*.wav, *.mp3 — звуки (step.wav генерируется tools/make-sounds.mjs)
-tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs (типы + тесты),
+tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs (типы + сверка правил),
+                  fs-audit.mjs (сверка движка Forbidden Stars с текстом правил),
                   make-character.mjs, make-sounds.mjs, export-unity.mjs (перенос в Unity),
                   fs-import.mjs (импорт данных Forbidden Stars из docs/), fs-server.mjs (сервер игры в локальной сети)
 docs/forbidden-stars/  транскрипция правил и карт Forbidden Stars — источник данных (не читать сканы)
 tsconfig.json     проверка типов игры; globals.d.ts — window.app, material.arcToon, записи объектов
-tests/            *.test.mjs (node --test): Store, heightAt, сканер ассетов, запись редактора, звук,
-                  экспорт в Unity, связка скиллов, игра Forbidden Stars (fs-rules, fs-commands, fs-client,
-                  fs-ui, fs-app, fs-server);
-                  browser-scripts.mjs — скрипты игры в node:vm + пустышка Babylon
 unity/            com.arcengine.runtime — пакет Unity (C#-двойник API набора и импорт сцены; в билд игры
                   не едет); export-unity.mjs копирует его в Unity-проект, скилл unity-port
 _utils/editor/    редактор (в билд не едет): server.mjs (HTTP), save.mjs (запись Constants.js,
@@ -200,6 +197,6 @@ claude/           для Claude Code, едет пользователям (в б
 логики), текстур и скелета у FBX (`Model3D` — геометрия и цвета материалов бинарного FBX, центр
 и оси частей; скелет, клипы и текстуры — только в GLB), картинок и привязки к точке мира в UI
 (виды элементов — текст, панель, шкала, кнопка), нескольких сцен/уровней
-(одна локация), сохранений прогресса, тестов рендера и ввода (тесты — только логика без 3D).
+(одна локация), сохранений прогресса, тестов рендера и ввода.
 У звука (`Sound3D.js`) нет преград, эха и доплера: громкость — по расстоянию от камеры (область
 слышимости — шар), панорама — по стороне экрана.

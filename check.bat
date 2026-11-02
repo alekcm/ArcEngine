@@ -1,10 +1,10 @@
 @echo off
 rem ==========================================================================
-rem  ArcEngine - code check: types (tsc via npx) and unit tests (node --test)
+rem  ArcEngine - code check: types (tsc via npx) and the rules audit
 rem
-rem    check.bat            -> types and tests
+rem    check.bat            -> types and the rules audit
 rem    check.bat --types    -> types only
-rem    check.bat --tests    -> tests only
+rem    check.bat --rules    -> the rules audit only
 rem ==========================================================================
 setlocal
 cd /d "%~dp0"

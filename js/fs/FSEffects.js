@@ -225,7 +225,9 @@ const FS_EFFECTS = {
         if (must !== seat) return { ok: false, error: 'Сейчас не ваш ход.' };
         const question = pending.question;
         const answer = cmd.answer || {};
-        const step = pending.steps[pending.index];
+        // A branch of a choice keeps its own question: while that question waits,
+        // the answer belongs to the branch, not to the choice again.
+        const step = pending.choice || pending.steps[pending.index];
         const ctx = pending.ctx || {};
         const owner = ctx.owner === undefined ? pending.seat : ctx.owner;
         // The scheme: the player discards the card and the effect happens.
@@ -274,6 +276,10 @@ const FS_EFFECTS = {
             return this.next(R, state, pending);
         }
         if (res && res.question) {
+            // The chosen branch asks its own question: remember it for the answer.
+            if (!pending.choice && pending.steps[pending.index] && pending.steps[pending.index].op === 'choice') {
+                pending.choice = step;
+            }
             pending.question = res.question;
             return { ok: true, pending: true };
         }
@@ -291,7 +297,7 @@ const FS_EFFECTS = {
     // The chain goes on with the next step.
     next(R, state, pending, replace) {
         const list = replace || pending.steps;
-        const saved = { seat: pending.seat, kind: pending.kind, steps: list, index: replace ? 0 : pending.index + 1, ctx: pending.ctx };
+        const saved = { seat: pending.seat, kind: pending.kind, steps: list, index: replace ? 0 : pending.index + 1, ctx: pending.ctx, choice: null };
         state.pending = null;
         return this.run(R, state, saved.seat, list, saved.ctx, saved.index);
     },
@@ -310,8 +316,12 @@ const FS_EFFECTS = {
         const side = inCombat ? (seat === combat.attacker ? 'attacker' : 'defender') : null;
         const foe = inCombat ? (seat === combat.attacker ? combat.defender : combat.attacker) : null;
         const p = state.players[seat];
-        // The player of the step: the card's player or his opponent.
-        const target = step.who === 'foe' ? foe : seat;
+        // The player of the step: the card's player or his opponent — the other side
+        // of the combat, the foe chosen by the card, or any other player at the table.
+        const chosenFoe = ctx && ctx.foe !== undefined ? ctx.foe : null;
+        const target = step.who === 'foe'
+            ? (foe !== null ? foe : (chosenFoe !== null ? chosenFoe : (state.players.find(x => x.seat !== seat) || {}).seat))
+            : seat;
         switch (step.op) {
             case 'gainToken': {
                 const n = this.count(R, state, seat, step);
@@ -635,12 +645,6 @@ const FS_EFFECTS = {
                 if (combat) combat.damageOneByOne = true;
                 return null;
             }
-            case 'noRoute': {
-                if (!inCombat) return null;
-                combat.noRoute = combat.noRoute || [];
-                combat.noRoute.push({ seat: step.who === 'foe' ? foe : seat, kl: step.kl || 0 });
-                return null;
-            }
             case 'stealDie': {
                 if (!inCombat) return null;
                 const s2 = side === 'attacker' ? 'defender' : 'attacker';
@@ -781,9 +785,6 @@ const FS_EFFECTS = {
                 if (state.order) state.order.deployInFactoryWorld = true;
                 return null;
             }
-            case 'discardCard': {
-                return null;
-            }
             case 'chooseSystem': {
                 const list = state.systems.map(sys => sys.id);
                 if (!list.length) return null;
@@ -793,56 +794,6 @@ const FS_EFFECTS = {
                 const list = this.unitsOf(R, state, seat, combat, {});
                 if (!list.length) return null;
                 return { question: { kind: 'units', who: seat, op: 'destroyUnit', options: list.map(u => u.id), text: 'Какой отряд уничтожить?' } };
-            }
-            case 'shipsThroughStorms': {
-                if (state.order) state.order.shipsThroughStorms = true;
-                return null;
-            }
-            case 'deployLimit': {
-                if (state.order) state.order.deployLimitBonus = (state.order.deployLimitBonus || 0) + (step.n || 0);
-                return null;
-            }
-            case 'orderKl': {
-                // The command level of the player is higher while the order runs.
-                if (state.order) state.order.klBonus = (state.order.klBonus || 0) + (step.n || 0);
-                return null;
-            }
-            case 'replaceUnit': {
-                const units = this.unitsOf(R, state, seat, combat, { filter: step.filter });
-                if (!units.length) return null;
-                return { question: { kind: 'units', who: seat, op: 'replaceUnit', n: Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: 'Какой отряд заменить?' } };
-            }
-            case 'extraFactory': {
-                if (state.order) state.order.extraFactories = (state.order.extraFactories || 0) + (step.n || 0);
-                return null;
-            }
-            case 'orderDiscount': {
-                if (state.order) {
-                    // The discount may be counted: "1 for every cultist".
-                    const count = step.per && R.countFor ? R.countFor(state, seat, step.per) : 1;
-                    state.order.discount = (state.order.discount || 0) + (step.n || 0) * count;
-                }
-                return null;
-            }
-            case 'assetLimit': {
-                p.assetLimit = Math.max(p.assetLimit || 3, step.n || 3);
-                return null;
-            }
-            case 'healthBonus': {
-                if (combat) combat.healthBonus = (combat.healthBonus || 0) + (step.n || 0);
-                return null;
-            }
-            case 'enemyHealth': {
-                if (combat) combat.enemyHealth = step.n || 3;
-                return null;
-            }
-            case 'ignoreFoeAtt': {
-                if (combat) combat.ignoreFoeAtt = true;
-                return null;
-            }
-            case 'citiesAsFactories': {
-                if (state.order) state.order.citiesAsFactories = true;
-                return null;
             }
             case 'shipsThroughStorms': {
                 if (state.order) state.order.shipsThroughStorms = true;
@@ -907,7 +858,14 @@ const FS_EFFECTS = {
         const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
         const owner = ctx && ctx.owner !== undefined ? ctx.owner : seat;
         const side = inCombat ? (owner === combat.attacker ? 'attacker' : 'defender') : null;
-        const target = step.who === 'foe' && inCombat ? (owner === combat.attacker ? combat.defender : combat.attacker) : owner;
+        // The opponent of the effect: the other side of the combat, the foe that was
+        // chosen by the card, or simply another player at the table.
+        const other = ctx && ctx.foe !== undefined ? ctx.foe : null;
+        const target = step.who === 'foe'
+            ? (inCombat
+                ? (owner === combat.attacker ? combat.defender : combat.attacker)
+                : (other !== null ? other : (state.players.find(x => x.seat !== owner) || {}).seat))
+            : owner;
         const units = ids => (answer.units || ids || []).map(id => state.units.find(u => u.id === id)).filter(Boolean);
         switch (step.op) {
             case 'loseDie': {
@@ -1207,27 +1165,6 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'chooseFoe': {
-                const foes = state.players.filter(p => p.seat !== seat).map(p => p.seat);
-                if (!foes.length) return null;
-                return { question: { kind: 'foes', who: seat, op: 'chooseFoe', options: foes, text: 'Выберите противника.' } };
-            }
-            case 'chooseWorld': {
-                const worlds = this.friendlyWorlds(R, state, seat);
-                if (!worlds.length) return null;
-                return { question: { kind: 'areas', who: seat, op: 'chooseWorld', options: worlds, text: 'Выберите дружественный мир.' } };
-            }
-            case 'loseAsset': {
-                const p2 = state.players[target];
-                const kinds = ['forge', 'cache', 'reinforcement'].filter(k => (p2.assets[k] || 0) > 0);
-                if (!kinds.length) return null;
-                return { question: { kind: 'assets', who: target, op: 'loseAsset', n: Math.min(step.n || 1, kinds.length), options: kinds, text: 'Какой жетон ресурса теряется?' } };
-            }
-            case 'chooseFoe': {
-                const foes = state.players.filter(p => p.seat !== seat).map(p => p.seat);
-                if (!foes.length) return null;
-                return { question: { kind: 'foes', who: seat, op: 'chooseFoe', options: foes, text: 'Выберите противника.' } };
-            }
-            case 'chooseFoe': {
                 // The opponent of the effect.
                 if (answer.foe !== undefined) ctx.foe = answer.foe;
                 return null;
@@ -1238,11 +1175,11 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'loseAsset': {
-                const p2 = state.players[target];
+                const p2 = state.players[target] || state.players[seat];
                 const kind = answer.asset || (answer.assets || [])[0];
-                if (!kind) return null;
+                if (!kind || !p2) return null;
                 p2.assets[kind] = Math.max(0, (p2.assets[kind] || 0) - (step.n || 1));
-                R.log(state, target, state.players[target].name + ' теряет жетон: ' + kind + '.');
+                R.log(state, p2.seat, p2.name + ' теряет жетон: ' + kind + '.');
                 return null;
             }
             case 'gainWorldAssets': {

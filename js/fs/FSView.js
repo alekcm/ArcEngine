@@ -329,15 +329,20 @@ const FSView = {
                     ctx.arc(r.x + r.w / 2, r.y + r.h / 2 - 7, r.w / 2 - 22, 0, Math.PI * 2);
                     ctx.stroke();
                 }
-                // Compact resource readout with recognizable, localized glyphs.
+                // The values of the world are drawn with the icons of the game, not
+                // written with letters: materiel, capacity, then one icon per asset.
                 ctx.textAlign = 'left'; ctx.font = 'bold 15px system-ui, sans-serif';
-                ctx.fillStyle = '#a8d08a'; ctx.fillText('◈ ' + area.world.materiel, r.x + 16, r.y + 31);
-                ctx.fillStyle = '#d8c9a8'; ctx.fillText('⌂ ' + area.world.capacity, r.x + 16, r.y + 54);
-                const assetGlyph = { forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'ui.reinforce', prosperity: 'asset.prosperity' };
-                const assets = area.world.assets.map(asset => assetGlyph[asset] || asset).join('  ');
-                if (assets) {
-                    ctx.fillStyle = '#8fd5f2'; ctx.font = 'bold 14px system-ui, sans-serif';
-                    ctx.fillText(assets, r.x + 16, r.y + 77);
+                if (typeof FSIcons !== 'undefined') {
+                    FSIcons.canvas(ctx, 'asset.materiel', r.x + 24, r.y + 26, 16);
+                    ctx.fillStyle = '#a8d08a'; ctx.fillText(String(area.world.materiel || 0), r.x + 36, r.y + 32);
+                    FSIcons.canvas(ctx, 'mark.health', r.x + 24, r.y + 49, 16);
+                    ctx.fillStyle = '#d8c9a8'; ctx.fillText(String(area.world.capacity || 0), r.x + 36, r.y + 55);
+                    const assetGlyph = { forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'ui.reinforce', prosperity: 'asset.prosperity' };
+                    let ax = r.x + 24;
+                    for (const asset of area.world.assets || []) {
+                        FSIcons.canvas(ctx, assetGlyph[asset] || 'asset.cache', ax, r.y + 74, 15);
+                        ax += 20;
+                    }
                 }
             } else {
                 // A void: layered starfield with a few brighter navigational stars.

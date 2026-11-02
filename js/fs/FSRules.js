@@ -400,7 +400,7 @@ const FS_RULES = {
 
         // --- the board. Online games use the actual placement phase: players take turns,
         // choosing one of their three tiles and an adjacent empty cell. The old automatic
-        // composition remains available to rule tests and deterministic simulations.
+        // composition remains available to deterministic simulations and the rules audit.
         const rows = this.LAYOUTS[count] || this.LAYOUTS[2];
         const cells = [];
         rows.forEach((n, r) => { for (let c = 0; c < n; c++) cells.push({ row: r, col: c }); });
@@ -456,7 +456,7 @@ const FS_RULES = {
     //  'battle' — a battlefield: the chosen troops fight with the chosen deck.
     // -----------------------------------------------------------------------
 
-    // The map is built by the engine itself (the same code the rule tests use):
+    // The map is built by the engine itself (the same code the audit uses):
     // tiles, initial forces, the objective tokens and the storms.
     newReadyGame(opts) {
         const state = this.newGame(Object.assign({}, opts, { interactiveSetup: false }));
@@ -961,6 +961,11 @@ const FS_RULES = {
 
     dispatch(state, seat, cmd) {
         const type = cmd && cmd.type;
+        // A player who has troops above the capacity of an area chooses which of
+        // them go back to the supply before he does anything else.
+        if (type !== 'trimUnit' && (state.trim || []).some(t => t.seat === seat)) {
+            return { ok: false, error: 'Сначала уберите отряды сверх вместимости области.' };
+        }
         switch (type) {
             case 'placeSystemTile': return this.cmdPlaceSystemTile(state, seat, cmd);
             case 'setupUnit': return this.cmdSetupForce(state, seat, cmd, 'unit');
@@ -988,9 +993,10 @@ const FS_RULES = {
             case 'resolveEvent': return this.cmdResolveEvent(state, seat, cmd);
             case 'moveStorm': return this.cmdMoveStorm(state, seat, cmd);
             case 'nextPhase': return this.cmdNextPhase(state, seat, cmd);
-            case 'rally': return this.cmdRally(state, seat, cmd);
             case 'takeProsperity': return this.cmdTakeProsperity(state, seat, cmd);
             case 'effect': return this.cmdEffect(state, seat, cmd);
+            case 'trimUnit': return this.cmdTrimUnit(state, seat, cmd);
+            case 'strikeDamage': return this.cmdStrikeDamage(state, seat, cmd);
             case 'rematchBattle': return this.cmdRematchBattle(state, seat);
             default: return { ok: false, error: 'Неизвестная команда: ' + type };
         }
@@ -1008,7 +1014,23 @@ const FS_RULES = {
         if (state.phase !== 'planning') return false;
         const p = state.players[seat];
         if (!p) return false;
-        return (p.placedTokens || 0) < this.ORDER_TOKENS + (p.extraOrderTokens || 0);
+        if ((p.placedTokens || 0) >= this.ORDER_TOKENS + (p.extraOrderTokens || 0)) return false;
+        // The rule of the planning: the token goes into a system with the troops of
+        // the player or into a system next to one of his systems.
+        if (this.hasUnitsOrStructures(state, seat, sys.id)) return true;
+        return this.neighbors(state, sys.id).some(id => this.hasUnitsOrStructures(state, seat, id));
+    },
+
+    // The state of an area for a player, exactly as the rules name it.
+    areaState(state, seat, systemId, pos) {
+        const mine = this.unitsAt(state, systemId, pos).some(u => u.seat === seat)
+            || this.structuresAt(state, systemId, pos).some(x => x.seat === seat);
+        const theirs = state.units.some(u => u.system === systemId && u.area === pos && u.seat !== seat)
+            || state.structures.some(x => x.system === systemId && x.area === pos && x.seat !== seat);
+        if (mine && theirs) return 'contested';
+        if (mine) return 'friendly';
+        if (theirs) return 'enemy';
+        return 'uncontrolled';
     },
 
     hasUnitsOrStructures(state, seat, systemId) {
@@ -1099,6 +1121,9 @@ const FS_RULES = {
 
     cmdResolveOrder(state, seat, cmd) {
         if (state.phase !== 'operations') return { ok: false, error: 'Сейчас не фаза операций.' };
+        if ((state.trim || []).some(t => t.seat === seat)) {
+            return { ok: false, error: 'Сначала уберите отряды сверх вместимости области.' };
+        }
         if (state.turn !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
         // One order at a time: the previous one must be finished.
         if (state.order) return { ok: false, error: 'Сначала закончите текущий приказ.' };
@@ -1191,8 +1216,13 @@ const FS_RULES = {
         state.order.ability = this.faction(state, seat).ability;
     },
 
-    // The end of an order: the token goes to the play area, the turn passes.
+    // The end of an order: the token goes to the play area, the turn passes. The
+    // troops over the capacity of their areas are chosen by the player before the
+    // next order: the engine only asks.
     finishOrder(state, seat) {
+        // The capacity is checked for every player: a card may have put troops of
+        // another player into an area as well.
+        for (const p of state.players) this.trimPlayer(state, p.seat);
         state.order = null;
         this.nextTurn(state);
     },
@@ -1266,6 +1296,12 @@ const FS_RULES = {
         if (from !== target.system && this.stormOn(state, from, target.system)
             && !(def.type === 'ship' && state.order.shipsThroughStorms)) {
             return { ok: false, error: 'Варп-шторм преграждает путь.' };
+        }
+        // The movement may go over the capacity of an area, but never above five
+        // units: the rules cap the end of the movement at five models.
+        const same = this.unitsAt(state, target.system, target.pos).filter(u => u.seat === seat);
+        if (same.length + 1 > this.AREA_MAX_UNITS) {
+            return { ok: false, error: 'В области не может стоять больше пяти отрядов.' };
         }
         // Ground units need a legal path through the worlds they already hold:
         // a neutral world stops the march. The path is measured from where the
@@ -1347,19 +1383,47 @@ const FS_RULES = {
             unit.area = m.pos;
             plan.push({ id: unit.id, from, fromArea, type: def ? def.type : 'ground', system: m.system, pos: m.pos });
         }
-        // The ground units may come into the active system from one neighbour only.
-        // A ship that came from a neighbour closes the way for the others.
+        // No area may end the movement with more than five of the player's units.
+        const totals = new Map();
+        for (const u of state.units) {
+            if (u.seat !== seat) continue;
+            const id = (plan.find(m => m.id === u.id) || u);
+            const key = id.system + ':' + id.pos;
+            totals.set(key, (totals.get(key) || 0) + 1);
+        }
+        for (const [, n] of totals) {
+            if (n > this.AREA_MAX_UNITS) return { ok: false, error: 'В области не может стоять больше пяти отрядов.' };
+        }
+        // The ground units may come into the active system from one neighbour only,
+        // and a ship that came from a neighbour closes the way for the others. The
+        // rule holds for the whole order, not only for one command.
         const ground = plan.filter(m => m.type === 'ground' && m.from !== order.system);
         const ships = plan.filter(m => m.type === 'ship' && m.from !== order.system);
-        if (ground.length) {
-            const ways = new Set(ground.map(m => m.from));
-            if (ships.length) ways.add(ships[0].from);
-            if (ways.size > 1) {
-                return { ok: false, error: 'Наземные отряды могут прийти в активную систему только из одной соседней системы.' };
+        const ways = order.ways = order.ways || { ground: null, ship: null };
+        const froms = new Set();
+        for (const m of ground) froms.add(m.from);
+        for (const m of ships) froms.add(m.from);
+        if (froms.size > 1) {
+            return { ok: false, error: 'Наземные отряды могут прийти в активную систему только из одной соседней системы.' };
+        }
+        if (froms.size === 1) {
+            const way = [...froms][0];
+            if (ground.length && ways.ground && ways.ground !== way) {
+                return { ok: false, error: 'Наземные отряды уже пришли из другой системы.' };
+            }
+            if (ships.length && ways.ship && ways.ship !== way) {
+                return { ok: false, error: 'Корабли уже пришли из другой системы.' };
+            }
+            if (ground.length && ways.ship && ways.ship !== way) {
+                return { ok: false, error: 'Корабли пришли из другой системы: наземные отряды не могут прийти из этой.' };
+            }
+            if (ships.length && ways.ground && ways.ground !== way) {
+                return { ok: false, error: 'Наземные отряды пришли из другой системы: корабли не могут прийти из этой.' };
             }
         }
-        // Only one area may become contested: the check is done on the copy,
-        // before anything is changed in the game.
+        // Only one area may become contested during the whole order: the check is
+        // done on a copy, before anything is changed in the game.
+        const before = new Set(this.contestedAreas(state).map(a => a.system + ':' + a.pos));
         const tempUnits = state.units.map(u => ({ ...u }));
         for (const m of plan) {
             const unit = tempUnits.find(u => u.id === m.id);
@@ -1367,8 +1431,21 @@ const FS_RULES = {
             unit.area = m.pos;
         }
         const tempState = { ...state, units: tempUnits };
-        const contested = this.contestedAreas(tempState);
-        if (contested.length > 1) return { ok: false, error: 'Спорной может стать только одна область.' };
+        const fresh = this.contestedAreas(tempState).filter(a => !before.has(a.system + ':' + a.pos));
+        if (fresh.length > 1) return { ok: false, error: 'Спорной может стать только одна область.' };
+        if (fresh.length === 1) {
+            const key = fresh[0].system + ':' + fresh[0].pos;
+            if (order.contested && order.contested !== key) {
+                return { ok: false, error: 'Спорной может стать только одна область.' };
+            }
+            order.contested = key;
+        }
+        // The ways of this command are remembered for the rest of the order.
+        if (froms.size === 1) {
+            const way = [...froms][0];
+            if (ground.length) ways.ground = way;
+            if (ships.length) ways.ship = way;
+        }
         for (const m of plan) {
             const unit = state.units.find(u => u.id === m.id);
             unit.system = m.system;
@@ -1416,12 +1493,19 @@ const FS_RULES = {
 
     // The end of the movement: a combat or an orbital strike.
     cmdEndAdvance(state, seat, cmd) {
+        if (state.strike) return { ok: false, error: 'Сначала распределите урон орбитального удара.' };
         const order = state.order;
         if (!order || order.order !== 'advance') return { ok: false, error: 'Это не приказ наступления.' };
         if (order.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
         // The troops stay as they are: a world of one place may hold a whole army,
         // and a battle is fought by every unit that stands there.
-        const contested = this.contestedAreas(state);
+        let contested = this.contestedAreas(state);
+        // The area that became contested during this order is the one to fight for.
+        if (order.contested) {
+            const [system, pos] = order.contested.split(':');
+            const found = contested.find(a => a.system === system && a.pos === pos);
+            if (found) contested = [found];
+        }
         if (contested.length === 1) {
             const area = contested[0];
             const mine = state.units.some(u => u.seat === seat && u.system === area.system && u.area === area.pos);
@@ -1442,29 +1526,34 @@ const FS_RULES = {
         return { ok: true };
     },
 
-    // An orbital strike: the ships of a void hit a world of the same system.
+    // An orbital strike: the ships of ONE void hit an enemy world of the same
+    // system, adjacent to that void. A world with a bastion cannot be hit.
     orbitalStrikeTargets(state, seat) {
         const order = state.order;
         if (!order) return [];
-        // A strike comes from the ships over the system: without them there is
-        // nothing to shoot with.
-        const ships = state.units.some(u => u.seat === seat && u.system === order.system && !u.routed
-            && (this.unitOf(state, u) || {}).type === 'ship');
-        if (!ships) return [];
         const sys = this.system(state, order.system);
+        if (!sys) return [];
         const out = [];
-        for (const area of sys.areas) {
-            if (!area.world) continue;
-            // Only a world of the enemy is a target: the player's own worlds and
-            // the neutral ones are never bombarded.
-            const theirs = state.units.some(u => u.system === order.system && u.area === area.pos && u.seat !== seat && !u.routed)
-                || state.structures.some(st => st.system === order.system && st.area === area.pos && st.seat !== seat)
-                || (sys.owner != null && sys.owner !== seat);
-            if (!theirs) continue;
-            // A world held only by the player is not a target either.
-            if (this.control(state, seat, order.system, area.pos) === 'friendly') continue;
-            if (this.structuresAt(state, order.system, area.pos).some(s => s.type === 'bastion')) continue;
-            out.push({ system: order.system, pos: area.pos });
+        for (const from of sys.areas) {
+            if (from.world) continue;
+            const ships = state.units.filter(u => {
+                if (u.seat !== seat || u.system !== order.system || u.area !== from.pos || u.routed) return false;
+                const def = this.unitOf(state, u);
+                return !!def && def.type === 'ship';
+            });
+            if (!ships.length) continue;
+            // The world must stand next to the void the ships shoot from.
+            const near = this.areasAround(state, order.system, from.pos)
+                .filter(a => a.system === order.system);
+            for (const area of sys.areas) {
+                if (!area.world) continue;
+                if (!near.some(a => a.pos === area.pos)) continue;
+                // Only an enemy world is a target: it holds the troops or the
+                // buildings of another player, and none of ours.
+                if (this.areaState(state, seat, order.system, area.pos) !== 'enemy') continue;
+                if (this.structuresAt(state, order.system, area.pos).some(st => st.type === 'bastion')) continue;
+                out.push({ system: order.system, pos: area.pos, from: from.pos, ships: ships.map(u => u.id) });
+            }
         }
         return out;
     },
@@ -1477,11 +1566,13 @@ const FS_RULES = {
             order.strikeHook = true;
             if (this.maybeScheme(state, seat, 'strike', { kind: 'order', ctx: null })) return { ok: true, pending: true };
         }
-        const target = { system: cmd.system, pos: cmd.pos };
-        if (!this.orbitalStrikeTargets(state, seat).some(t => t.system === target.system && t.pos === target.pos)) {
-            return { ok: false, error: 'По этому миру нельзя нанести удар.' };
-        }
-        const ships = (cmd.ships || []).map(id => state.units.find(u => u.id === id)).filter(Boolean);
+        const targets = this.orbitalStrikeTargets(state, seat);
+        const target = targets.find(t => t.system === cmd.system && t.pos === cmd.pos
+            && (cmd.from === undefined || t.from === cmd.from));
+        if (!target) return { ok: false, error: 'По этому миру нельзя нанести удар.' };
+        // Only the ships of the chosen void take part: the others stay out.
+        const ids = (cmd.ships && cmd.ships.length ? cmd.ships : target.ships);
+        const ships = ids.map(id => state.units.find(u => u.id === id && target.ships.includes(id))).filter(Boolean);
         if (!ships.length) return { ok: false, error: 'Нужен хотя бы один корабль.' };
         const offence = ships.reduce((n, u) => {
             const def = this.unitOf(state, u);
@@ -1490,23 +1581,53 @@ const FS_RULES = {
         const dice = this.rollDice(state, Math.min(offence, this.DICE_MAX));
         const hits = dice.filter(d => d === 'att').length;
         this.log(state, seat, state.players[seat].name + ' наносит орбитальный удар: ' + hits + ' урона.');
-        // The damage hits the enemy units of the world (they are not routed).
-        let left = hits;
-        const targets = state.units.filter(u => u.system === target.system && u.area === target.pos && u.seat !== seat);
-        while (left > 0 && targets.length) {
-            const unit = targets[0];
-            const def = this.unitOf(state, unit);
-            const health = def ? def.health : 1;
-            if (left >= health) {
-                left -= health;
-                this.destroyUnit(state, unit);
-                targets.shift();
-            } else {
-                left = 0;   // the damage is ignored
-            }
+        // The damage is assigned by the player who suffers it — his units are the
+        // ones that go back to the supply, and the damage that does not destroy a
+        // unit is ignored (no routing during a strike).
+        const defender = state.players.findIndex(p => p.seat !== seat
+            && (state.units.some(u => u.seat === p.seat && u.system === target.system && u.area === target.pos)
+                || state.structures.some(s => s.seat === p.seat && s.system === target.system && s.area === target.pos)));
+        const victims = state.units.filter(u => u.system === target.system && u.area === target.pos && u.seat !== seat);
+        if (hits > 0 && victims.length && defender >= 0) {
+            state.strike = { seat: defender, system: target.system, pos: target.pos, left: hits, attacker: seat };
+            order.phase = 'strike-damage';
+            return { ok: true, pending: true, hits };
         }
         order.phase = 'done';
         this.finishOrder(state, seat);
+        return { ok: true, hits };
+    },
+
+    // The defender of the strike picks the unit that takes the damage.
+    cmdStrikeDamage(state, seat, cmd) {
+        const st = state.strike;
+        if (!st) return { ok: false, error: 'Сейчас нет орбитального удара.' };
+        if (st.seat !== seat) return { ok: false, error: 'Урон распределяет защитник.' };
+        const unit = state.units.find(u => u.id === cmd.unit && u.seat === seat && u.system === st.system && u.area === st.pos);
+        if (!unit) return { ok: false, error: 'Нет такого отряда.' };
+        const def = this.unitOf(state, unit);
+        const health = def ? def.health : 1;
+        if (st.left >= health) {
+            st.left -= health;
+            this.destroyUnit(state, unit);
+            this.log(state, seat, state.players[seat].name + ' теряет отряд под ударом с орбиты.');
+        } else {
+            // Not enough damage: it is ignored, the unit is not routed.
+            st.left = 0;
+        }
+        const left = state.units.filter(u => u.seat === seat && u.system === st.system && u.area === st.pos).length;
+        if (st.left <= 0 || !left) this.endStrike(state);
+        return { ok: true };
+    },
+
+    endStrike(state) {
+        const st = state.strike;
+        state.strike = null;
+        const order = state.order;
+        if (order) {
+            order.phase = 'done';
+            this.finishOrder(state, st ? st.attacker : (order.seat));
+        }
         return { ok: true };
     },
 
@@ -1592,7 +1713,12 @@ const FS_RULES = {
         const dealFree = deal && ((order.dealBought || 0) % 2 === 1);
         void dealFree;
         if (!dealFree && (p.supply.units[def.id] || 0) <= 0) return { ok: false, error: 'Такого отряда больше нет в запасе.' };
-        if (def.kl > this.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
+        // A forge token lowers the command level restriction of one unit by one.
+        const forgeKl = !!cmd.forgeKl;
+        if (forgeKl && (p.assets.forge || 0) < 1) return { ok: false, error: 'Нужен жетон кузницы, чтобы снизить уровень командования.' };
+        if (def.kl - (forgeKl ? 1 : 0) > this.commandLevel(state, seat)) {
+            return { ok: false, error: 'Не хватает уровня командования.' };
+        }
         // The order may allow only one kind of unit.
         if (order.factoryOnly && !FS_EFFECTS.sameName(def.name, order.factoryOnly)) {
             return { ok: false, error: 'Этим приказом можно производить только ' + order.factoryOnly + '.' };
@@ -1607,6 +1733,10 @@ const FS_RULES = {
         let cost = def.cost;
         // The order may make the units cheaper.
         if (order.discount) cost = Math.max(0, cost - order.discount);
+        // One cache token lowers the cost of one unit by two materiel.
+        const cache = !!cmd.cache;
+        if (cache && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
+        if (cache) cost = Math.max(0, cost - 2);
         // The order may sell a unit of command level 0 for 1 materiel.
         if (order.cheapUnit && def.kl === 0) cost = Math.min(cost, order.cheapUnit);
         // The card of the player may make the purchase cheaper.
@@ -1614,6 +1744,8 @@ const FS_RULES = {
         if (def.forge && (p.assets.forge || 0) < 1) return { ok: false, error: 'Нужен жетон кузницы.' };
         if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
         if (def.forge) p.assets.forge--;
+        if (forgeKl) p.assets.forge--;
+        if (cache) p.assets.cache--;
         p.materiel -= cost;
         if (!dealFree) p.supply.units[def.id]--;
         if (deal) order.dealBought = (order.dealBought || 0) + 1;
@@ -1640,10 +1772,15 @@ const FS_RULES = {
         const stats = this.structureStats(type);
         // The order may give a structure for free.
         const free = !!(order.freeStructure && order.freeStructureKind === type);
-        if (!free && p.materiel < stats.cost) return { ok: false, error: 'Не хватает материи.' };
+        // One cache token lowers the cost of one structure by two materiel.
+        const cache = !!cmd.cache;
+        if (cache && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
+        const cost = Math.max(0, stats.cost - (cache ? 2 : 0));
+        if (!free && p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
         const place = this.canPlaceStructure(state, seat, cmd.system, cmd.pos);
         if (!place.ok) return place;
-        if (!free) p.materiel -= stats.cost;
+        if (cache) p.assets.cache--;
+        if (!free) p.materiel -= cost;
         p.supply.structures[type]--;
         this.addStructure(state, seat, type, cmd.system, cmd.pos);
         this.log(state, seat, p.name + ' построил: ' + this.structureName(type) + '.');
@@ -1663,17 +1800,37 @@ const FS_RULES = {
         return { ok: true };
     },
 
-    // Destroy the units of a player over the capacity of an area.
-    checkCapacity(state, seat, systemId, pos) {
+    // The troops over the capacity of an area are never taken away behind the
+    // back of the player: the areas are put into state.trim and he chooses which
+    // of his units go back to the supply.
+    trimArea(state, seat, systemId, pos) {
         const cap = this.capacity(state, systemId, pos);
         const mine = this.unitsAt(state, systemId, pos).filter(u => u.seat === seat);
-        let over = mine.length - cap;
-        if (over <= 0) return;
-        for (const unit of mine) {
-            if (over <= 0) break;
-            this.destroyUnit(state, unit);
-            over--;
+        if (mine.length <= cap) return;
+        state.trim = (state.trim || []).filter(t => !(t.seat === seat && t.system === systemId && t.pos === pos));
+        state.trim.push({ seat, system: systemId, pos, cap, count: mine.length });
+    },
+
+    // Every area of the player that is over its capacity.
+    trimPlayer(state, seat) {
+        for (const sys of state.systems) {
+            for (const area of sys.areas) this.trimArea(state, seat, sys.id, area.pos);
         }
+    },
+
+    // The player returns one unit of his choice to the supply.
+    cmdTrimUnit(state, seat, cmd) {
+        const list = state.trim || [];
+        const entry = list.find(t => t.seat === seat && (cmd.system === undefined || (t.system === cmd.system && t.pos === cmd.pos)));
+        if (!entry) return { ok: false, error: 'Сейчас ничего не надо убирать.' };
+        const unit = state.units.find(u => u.id === cmd.unit && u.seat === seat && u.system === entry.system && u.area === entry.pos);
+        if (!unit) return { ok: false, error: 'Этот отряд стоит не в переполненной области.' };
+        this.destroyUnit(state, unit);
+        this.log(state, seat, state.players[seat].name + ' отводит отряд сверх вместимости области.');
+        const left = this.unitsAt(state, entry.system, entry.pos).filter(u => u.seat === seat).length;
+        if (left <= this.capacity(state, entry.system, entry.pos)) state.trim = list.filter(t => t !== entry);
+        if (!state.trim || !state.trim.length) state.trim = null;
+        return { ok: true, left: Math.max(0, left - this.capacity(state, entry.system, entry.pos)) };
     },
 
     // --- strategize order: the upgrade cards --------------------------------
@@ -1701,9 +1858,22 @@ const FS_RULES = {
             if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
             p.materiel -= cost;
             order.upgradesBought = (order.upgradesBought || 0) + 1;
-            // The card replaces two copies of a card of the deck.
+            // Two copies of ONE card of the deck leave it and two copies of the
+            // upgrade card come in. The player may name the card; the engine takes
+            // the first one it has two copies of.
             const deck = p.decks.combat;
-            const removed = deck.splice(0, 2);
+            const counts = {};
+            for (const n of deck) counts[n] = (counts[n] || 0) + 1;
+            const wanted = cmd.remove && counts[cmd.remove] >= 2 ? cmd.remove : Object.keys(counts).find(n => counts[n] >= 2);
+            if (!wanted) return { ok: false, error: 'В колоде нет двух копий одной карты.' };
+            let taken = 0;
+            const kept = [];
+            for (const n of deck) {
+                if (n === wanted && taken < 2) { taken++; continue; }
+                kept.push(n);
+            }
+            const removed = [wanted, wanted];
+            p.decks.combat = kept;
             p.decks.combat.push(card.name, card.name);
             order.combatUpgrade = true;
             this.log(state, seat, p.name + ' купил боевое улучшение «' + card.name + '».');
@@ -1830,7 +2000,13 @@ const FS_RULES = {
 
     // The player whose event card is resolved now.
     nextEventPlayer(state) {
-        if (state.eventsLeft <= 0) { this.endRound(state); return; }
+        if (state.eventsLeft <= 0) {
+            // The end of the event phase: the capacity of every area is checked
+            // again, and every player chooses his own excess troops.
+            for (const p of state.players) this.trimPlayer(state, p.seat);
+            this.endRound(state);
+            return;
+        }
         const seat = state.turn;
         const p = state.players[seat];
         const drawn = [];
@@ -1918,9 +2094,8 @@ const FS_RULES = {
         if (!state.event || state.event.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
         const storm = state.storms.find(s => s.id === cmd.storm);
         if (!storm) return { ok: false, error: 'Нет такого шторма.' };
-        // Every player moves every storm once per round.
-        if (!storm.moved) storm.moved = {};
-        if (storm.moved[seat]) return { ok: false, error: 'Вы уже двигали этот шторм в этом раунде.' };
+        // Each storm moves only once during a refresh phase, whoever moves it.
+        if (storm.moved === true) return { ok: false, error: 'Этот шторм уже двигался в этой фазе.' };
         const dir = cmd.dir;
         // The card that is in play: the chosen one, or the top card of the deck
         // when the player had no order token.
@@ -1938,7 +2113,7 @@ const FS_RULES = {
         }
         storm.system = target.system;
         storm.side = target.side;
-        storm.moved[seat] = true;
+        storm.moved = true;
         this.log(state, seat, state.players[seat].name + ' сдвинул варп-шторм.');
         return { ok: true };
     },
@@ -1984,7 +2159,7 @@ const FS_RULES = {
             p.placedOf = {};
             for (const u of p.upgrades) u.used = false;
         }
-        for (const s of state.storms) s.moved = {};
+        for (const s of state.storms) s.moved = false;
         // The players without a friendly world are out of the game.
         for (const p of state.players) {
             const has = state.systems.some(sys => sys.areas.some(a => this.control(state, p.seat, sys.id, a.pos) === 'friendly'));
@@ -2002,8 +2177,9 @@ const FS_RULES = {
             this.log(state, -1, 'Игра закончена. Побеждает ' + (state.winner != null ? state.players[state.winner].name : '—') + '.');
             return;
         }
-        // The victory conditions.
-        const needed = alive.length;
+        // The victory conditions: the objectives needed do not shrink when a
+        // player is eliminated (the rules).
+        const needed = state.players.length;
         const winners = alive.filter(p => p.objectives >= needed);
         if (winners.length) {
             state.over = true;
@@ -2014,7 +2190,9 @@ const FS_RULES = {
         }
         if (state.round > this.ROUNDS) {
             state.over = true;
-            const best = alive.slice().sort((a, b) => b.objectives - a.objectives);
+            const best = alive.slice().sort((a, b) => (b.objectives - a.objectives)
+                || (this.friendlyWorlds(state, b.seat) - this.friendlyWorlds(state, a.seat))
+                || (this.unitsOf(state, b.seat) - this.unitsOf(state, a.seat)));
             state.winner = best[0].seat;
             this.log(state, -1, 'Восьмой раунд закончен. Побеждает ' + best[0].name + '.');
             return;
@@ -2024,18 +2202,25 @@ const FS_RULES = {
         this.log(state, -1, 'Раунд ' + state.round + ': фаза планирования.');
     },
 
+    // The friendly worlds and the units of a player: the tie-breaks of the rules.
+    friendlyWorlds(state, seat) {
+        let n = 0;
+        for (const sys of state.systems) {
+            for (const area of sys.areas) {
+                if (area.world && this.control(state, seat, sys.id, area.pos) === 'friendly') n++;
+            }
+        }
+        return n;
+    },
+
+    unitsOf(state, seat) {
+        return state.units.filter(u => u.seat === seat).length;
+    },
+
     cmdNextPhase(state, seat) {
         if (state.phase !== 'refresh') return { ok: false, error: 'Сейчас не фаза обновления.' };
         if (state.eventsLeft > 0) return { ok: false, error: 'Сначала разыграйте события.' };
         this.endRound(state);
-        return { ok: true };
-    },
-
-    // Rally a routed unit (a card effect).
-    cmdRally(state, seat, cmd) {
-        const unit = state.units.find(u => u.id === cmd.unit && u.seat === seat);
-        if (!unit) return { ok: false, error: 'Нет такого отряда.' };
-        unit.routed = false;
         return { ok: true };
     },
 
@@ -2047,16 +2232,19 @@ const FS_RULES = {
     // the unit works only if the unit is in the combat.
     cardSteps(state, seat, card) {
         if (!card) return [];
-        const steps = FS_EFFECTS.parse(card.general || '', { kind: 'combat' });
+        // The faction is needed by the text: a card may name a unit of the deck.
+        const faction = (state.players[seat] || {}).faction;
+        const steps = FS_EFFECTS.parse(card.general || '', { kind: 'combat', faction });
         if (card.unit) {
             const combat = state.combat;
             const reqs = card.reqs || [];
+            // «A unit used to meet this requisite must be unrouted.»
             const there = combat && state.units.some(u => {
-                if (u.seat !== seat || u.system !== combat.system || u.area !== combat.pos) return false;
+                if (u.seat !== seat || u.routed || u.system !== combat.system || u.area !== combat.pos) return false;
                 const def = this.unitOf(state, u);
                 return def && reqs.some(r => FS_EFFECTS.sameName(def.name, r));
             });
-            if (there) steps.push(...FS_EFFECTS.parse(card.unit, { kind: 'combat' }));
+            if (there) steps.push(...FS_EFFECTS.parse(card.unit, { kind: 'combat', faction, reqs }));
         }
         return steps;
     },
@@ -2120,10 +2308,41 @@ const FS_RULES = {
             const def = this.unitOf(state, u);
             if (def) sum += def.combat;
         }
+        // A bastion fights with its printed values, as if it were a unit.
+        for (const st of this.structuresAt(state, systemId, pos)) {
+            if (st.seat === seat && st.type === 'bastion') sum += this.structureStats('bastion').combat;
+        }
         return sum;
     },
 
+    // The winner of a combat takes the structures of the loser: the rules give
+    // them to the attacker only, and only the bastions and buildings of the
+    // defender that still stand in the area.
+    captureStructures(state, systemId, pos, winner, loser) {
+        const taken = [];
+        for (const st of this.structuresAt(state, systemId, pos)) {
+            if (st.seat !== loser) continue;
+            st.seat = winner;
+            taken.push(st);
+        }
+        return taken;
+    },
+
     startCombat(state, attacker, defender, systemId, pos) {
+        // The defender without a single unrouted unit or bastion loses at once:
+        // the preparation and the execution are skipped (the rules, "Combat").
+        const ready = state.units.some(u => u.seat === defender && u.system === systemId && u.area === pos && !u.routed)
+            || state.structures.some(x => x.seat === defender && x.system === systemId && x.area === pos && x.type === 'bastion');
+        if (!ready) {
+            this.log(state, attacker, 'Защищать область некому: ' + state.players[attacker].name + ' побеждает сразу.');
+            this.captureStructures(state, systemId, pos, attacker, defender);
+            state.combat = null;
+            if (state.testBattle) { state.order = null; return null; }
+            const order = state.order;
+            if (order) order.phase = 'done';
+            this.finishOrder(state, attacker);
+            return null;
+        }
         const roll = seat => {
             const n = Math.min(this.combatValue(state, seat, systemId, pos), this.DICE_MAX);
             return this.rollDice(state, n);
@@ -2186,10 +2405,27 @@ const FS_RULES = {
         }
     },
 
-    // The number of reinforcement tokens a player may use in the combat.
+    // The troops and bastions of a side that still stand in the contested area.
+    pieces(state, c, side) {
+        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
+        const bastions = state.structures.filter(s => s.seat === seat && s.system === c.system && s.area === c.pos && s.type === 'bastion');
+        return units.concat(bastions);
+    },
+
+    // The units and bastions that may still be assigned damage: the unrouted
+    // troops and the bastions; the routed ones only when nothing else is left.
+    canTakeDamage(state, c, side) {
+        const items = this.pieces(state, c, side);
+        const ready = items.filter(x => x.type ? x.type === 'bastion' : !x.routed);
+        return ready.length ? ready : items;
+    },
+
+    // The number of reinforcement tokens a player may use in the combat: no more
+    // than the plastic units he has there (the bastion is not a unit).
     maxReinforce(state, seat, side) {
         const c = state.combat;
-        const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos && !u.routed);
+        const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
         return Math.min(units.length, state.players[seat].assets.reinforcement || 0);
     },
 
@@ -2458,12 +2694,15 @@ const FS_RULES = {
             if (!def) continue;
             out.push({ id: u.id, name: def.name, health: def.health, morale: def.morale, routed: !!u.routed, kind: 'unit' });
         }
+        // Only a bastion has a health value: a city or a factory takes no damage.
         for (const s of state.structures) {
-            if (s.seat !== seat || s.system !== c.system || s.area !== c.pos) continue;
-            const st = this.structureStats(s.type);
-            out.push({ id: s.id, name: st.name || s.type, health: st.health, morale: st.morale || 0, routed: false, kind: 'structure' });
+            if (s.seat !== seat || s.system !== c.system || s.area !== c.pos || s.type !== 'bastion') continue;
+            const st = this.structureStats('bastion');
+            out.push({ id: s.id, name: st.name || 'bastion', health: st.health, morale: st.morale || 0, routed: false, kind: 'structure' });
         }
-        return out;
+        // A routed unit can take damage only when the side has nothing else.
+        const allowed = new Set(this.canTakeDamage(state, c, side).map(x => x.id));
+        return out.filter(x => allowed.has(x.id));
     },
 
     // The player assigns the damage to his own units and bastions.
@@ -2484,6 +2723,12 @@ const FS_RULES = {
         if (!c.damageHook[side]) {
             c.damageHook[side] = true;
             if (this.maybeScheme(state, seat, 'damage', { kind: 'combat', ctx: { side } })) return { ok: true, pending: true };
+        }
+        // Only the pieces the rules allow may be chosen: an unrouted unit, a
+        // bastion — or a routed unit when the side has nothing else left.
+        const able = new Set(this.canTakeDamage(state, c, side).map(x => x.id));
+        for (const id of (cmd.targets || [])) {
+            if (!able.has(id)) return { ok: false, error: 'Этот отряд не может получить урон.' };
         }
         c.damage[side] = damage;
         // The card may make the damage go one point at a time.
@@ -2523,9 +2768,9 @@ const FS_RULES = {
                 }
                 continue;
             }
-            const bastion = state.structures.find(s => s.id === id);
+            const bastion = state.structures.find(s => s.id === id && s.type === 'bastion');
             if (bastion) {
-                const health = this.structureStats(bastion.type).health;
+                const health = this.structureStats('bastion').health;
                 if (left >= health) {
                     left -= health;
                     applied.push({ bastion: bastion.id, destroyed: true });
@@ -2547,16 +2792,9 @@ const FS_RULES = {
     // The end of an execution round: the third one ends the combat.
     endCombatRound(state) {
         const c = state.combat;
-        c.round++;
-        // The combat tokens return to the supply at the end of the execution round.
-        for (const side of ['attacker', 'defender']) {
-            const seat = side === 'attacker' ? c.attacker : c.defender;
-            const tokens = c.tokens[side];
-            const p = state.players[seat];
-            p.assets.reinforcement += c.reinforceUsed && c.reinforceUsed[side] ? c.reinforceUsed[side] : 0;
-            c.reinforceUsed[side] = 0;
-            void tokens;
-        }
+        // The combat tokens go back to the supply at the end of every execution
+        // round: only the dice and the cards are counted again.
+        c.tokens = { attacker: { att: 0, def: 0 }, defender: { att: 0, def: 0 } };
         // The card may destroy the units that became routed.
         if (c.destroyRouted) {
             for (const u of state.units.slice()) {
@@ -2566,6 +2804,13 @@ const FS_RULES = {
                 }
             }
         }
+        // The side without a single unit or bastion left loses the combat: the
+        // rest of the execution round is over and the resolution begins.
+        if (!this.pieces(state, c, 'attacker').length || !this.pieces(state, c, 'defender').length) {
+            this.finishCombat(state, true);
+            return;
+        }
+        c.round++;
         if (c.round > (c.maxRounds || 3)) { this.finishCombat(state); return; }
         c.staged = { attacker: null, defender: null };
         for (const side of ['attacker', 'defender']) c.cards[side].chosen = null;
@@ -2595,21 +2840,28 @@ const FS_RULES = {
     },
 
     // The end of the combat: the winner by morale, the retreat, the cleanup.
-    finishCombat(state) {
+    finishCombat(state, wiped = false) {
         const c = state.combat;
         const attMorale = this.combatMorale(state, 'attacker');
         const defMorale = this.combatMorale(state, 'defender');
-        // A tie goes to the defender.
-        const attackerWins = attMorale > defMorale;
+        // A tie goes to the defender; a side whose troops are all gone loses
+        // without any morale count.
+        let attackerWins;
+        if (wiped) {
+            const attLeft = this.pieces(state, c, 'attacker').length;
+            const defLeft = this.pieces(state, c, 'defender').length;
+            attackerWins = attLeft > 0 && defLeft === 0;
+        } else {
+            attackerWins = attMorale > defMorale;
+        }
         c.winner = attackerWins ? 'attacker' : 'defender';
         c.morale = { attacker: attMorale, defender: defMorale };
         const loser = attackerWins ? c.defender : c.attacker;
         const winner = attackerWins ? c.attacker : c.defender;
-        this.log(state, winner, 'Бой выигран: мораль ' + (attackerWins ? attMorale : defMorale) + ' против ' + (attackerWins ? defMorale : attMorale) + '.');
-        // The winner takes the structures.
-        for (const s of this.structuresAt(state, c.system, c.pos)) {
-            if (s.seat === loser) s.seat = winner;
-        }
+        this.log(state, winner, 'Бой ' + (wiped ? 'закончен' : 'выигран') + ': мораль '
+            + (attackerWins ? attMorale : defMorale) + ' против ' + (attackerWins ? defMorale : attMorale) + '.');
+        // Only the attacker takes the structures of the world (the rules).
+        if (attackerWins) this.captureStructures(state, c.system, c.pos, c.attacker, c.defender);
         c.loser = loser;
         c.step = 'retreat';
         // A player whose troops all died has nothing to retreat: the combat ends
@@ -2621,26 +2873,93 @@ const FS_RULES = {
         for (const side of ['attacker', 'defender']) {
             const seat = side === 'attacker' ? c.attacker : c.defender;
             const p = state.players[seat];
+            // Both the cards that were played and the cards that stayed in the hand
+            // go back into the deck: a combat deals five cards and returns five.
             for (const card of c.cards[side].played) p.decks.combat.push(card.name);
+            for (const name of (c.cards[side].hand || [])) p.decks.combat.push(name);
             c.cards[side].played = [];
+            c.cards[side].hand = [];
+            // The reinforcement tokens of the combat go back to the supply here, at
+            // the clean-up of the combat.
             p.assets.reinforcement += c.reinforceUsed && c.reinforceUsed[side] ? c.reinforceUsed[side] : 0;
-            c.reinforceUsed[side] = 0;
+            if (c.reinforceUsed) c.reinforceUsed[side] = 0;
         }
         if (noTroops) this.combatRetreat(state, loser, attackerWins ? 'defender' : 'attacker', {});
+    },
+
+    // Where the loser may retreat: the rules differ for the attacker and the
+    // defender, and all the retreating units go to one area.
+    retreatTargets(state, seat) {
+        const c = state.combat;
+        if (!c) return [];
+        const side = seat === c.attacker ? 'attacker' : 'defender';
+        const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
+        if (!units.length) return [];
+        const defs = units.map(u => this.unitOf(state, u)).filter(Boolean);
+        const ground = defs.length ? defs[0].type === 'ground' : true;
+        // The areas the attacking troops left: the defender may not walk into
+        // them and the attacker must go back to one of them.
+        const came = [];
+        for (const step of ((state.order && state.order.steps) || [])) {
+            for (const m of step) came.push({ system: m.fromSystem, pos: m.fromArea });
+        }
+        if (state.combat.attackerFrom) {
+            for (const a of state.combat.attackerFrom) came.push(a);
+        }
+        const systems = [c.system].concat(this.neighbors(state, c.system));
+        const out = [];
+        for (const sid of systems) {
+            const sys = this.system(state, sid);
+            if (!sys) continue;
+            for (const area of sys.areas) {
+                if (!!area.world !== ground) continue;
+                if (sid === c.system && area.pos === c.pos) continue;
+                const where = this.areaState(state, seat, sid, area.pos);
+                if (where === 'contested' || where === 'enemy') continue;
+                if (side === 'defender') {
+                    // Never back into the area the attackers came from.
+                    if (came.some(x => x.system === sid && x.pos === area.pos)) continue;
+                } else if (came.length) {
+                    // The attacker goes back to the area his troops left.
+                    if (!came.some(x => x.system === sid && x.pos === area.pos)) continue;
+                }
+                // A ground unit walks a legal path to the area it retreats to.
+                if (ground && !this.pathExists(state, seat, c.system, c.pos, sid, area.pos)) continue;
+                out.push({ system: sid, pos: area.pos, state: where });
+            }
+        }
+        // The defender prefers a friendly area; uncontrolled is the last resort.
+        if (side === 'defender') {
+            const friendly = out.filter(t => t.state === 'friendly');
+            if (friendly.length) return friendly.map(({ system, pos }) => ({ system, pos }));
+        }
+        return out.map(({ system, pos }) => ({ system, pos }));
     },
 
     // The loser retreats: all his units leave the area (they are routed).
     combatRetreat(state, seat, side, cmd) {
         const c = state.combat;
         if (c.loser !== seat) return { ok: false, error: 'Отступает проигравший.' };
-        const target = cmd && cmd.target ? { system: cmd.target.system, pos: cmd.target.pos } : null;
         const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
+        const targets = this.retreatTargets(state, seat);
+        let target = null;
+        if (cmd && cmd.target) {
+            target = targets.find(t => t.system === cmd.target.system && t.pos === cmd.target.pos) || null;
+            if (!target) return { ok: false, error: 'Отступать в эту область нельзя.' };
+        } else if (targets.length) {
+            return { ok: false, error: 'Выберите, куда отступить.' };
+        }
         for (const u of units) {
             if (target) { u.system = target.system; u.area = target.pos; }
             u.routed = true;
         }
-        // The units over the capacity of the area are destroyed.
-        if (target) this.checkCapacity(state, seat, target.system, target.pos);
+        // No area to retreat to: the unit is destroyed (the rules, "Retreats").
+        if (!target) {
+            for (const u of units) this.destroyUnit(state, u);
+            if (units.length) this.log(state, seat, state.players[seat].name + ': отступать некуда, отряды гибнут.');
+        }
+        // The troops over the capacity of the new area are chosen by the player.
+        if (target) this.trimArea(state, seat, target.system, target.pos);
         this.log(state, seat, state.players[seat].name + ' отступает.');
         state.combat = null;
         // A test battle stays on the field: the player may start it again.

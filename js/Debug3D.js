@@ -44,7 +44,7 @@ const Debug3D = {
     // with shadow, outline and ink edges (World3D.addObject): 1000 such meshes ≈ 13 ms.
     LIMITS: { meshTriangles: 300000, sampleTriangles: 20000, copies: 200, meshes: 1000 },
 
-    // --- Lint: pure parts (tests/debug3d.test.mjs) ----------------------------------------
+    // --- Lint: the pure parts (no scene needed) ---------------------------------------------
 
     // Share of triangles whose winding normal points against the vertex normals (0..1), over at
     // most maxTris evenly spaced triangles. total = 0 — nothing to judge by.
