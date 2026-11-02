@@ -2069,15 +2069,15 @@ const FS_RULES = {
             });
             this.log(state, seat, p0.name + ' держит план «' + card.name + '».');
         }
-        // The chosen card goes back into the deck.
+        // Every drawn card goes back into the deck — the chosen one and the
+        // others that were not played (a deck holds all the events of the faction).
         const p = state.players[seat];
-        if (card) {
-            p.decks.event.push(card.name);
-            this.log(state, seat, p.name + ' разыграл(а) карту «' + card.name + '».');
-        } else if (state.event.top) {
+        for (const name of (state.event.drawn || [])) p.decks.event.push(name);
+        if (!(state.event.drawn || []).length && state.event.top) {
             // The card that was opened for the storm only goes back to the deck.
             p.decks.event.push(state.event.top);
         }
+        if (card) this.log(state, seat, p.name + ' разыграл(а) карту «' + card.name + '».');
         state.event = null;
         state.eventsLeft--;
         // The text of the card is the rule: the engine performs it.

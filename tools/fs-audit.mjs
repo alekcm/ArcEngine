@@ -171,6 +171,45 @@ function playCombat(st, limit = 60) {
 }
 
 // ============================================================================
+//  Setup
+// ============================================================================
+head('Сборка карты (Setup)');
+
+rule('setup-1', '«Each player claims all components listed in the “Initial Forces” box … he claims a materiel dial and sets the number at “6”»', () => {
+    for (const faction of FS_DATA.factions) {
+        const st = FS_RULES.newGame({ seed: 3, players: [{ faction: faction.id }], interactiveSetup: true });
+        const p = st.players[0];
+        eq(p.materiel, 6, 'материя на старте: ' + faction.id);
+        for (const u of faction.units) {
+            eq(p.initialForces.units[u.id] || 0, u.start || 0, 'начальные отряды: ' + faction.id + ' / ' + u.id);
+            eq((p.supply.units[u.id] || 0) + (u.start || 0), u.max || 0, 'запас плюс доска: ' + faction.id + ' / ' + u.id);
+        }
+    }
+});
+
+rule('setup-2', '«He cannot exceed an area’s unit capacity» — при сборке карты силы ставятся по вместимости', () => {
+    const st = FS_RULES.newGame({ seed: 3, players: [{ faction: 'имперская-гвардия' }, { faction: 'орки' }], interactiveSetup: true });
+    const setup = st.setup;
+    const seat = setup.turn;
+    const cell = FS_RULES.setupLegalCells(st)[0];
+    const tile = setup.hands[seat][0];
+    const placed = FS_RULES.apply(st, seat, { type: 'placeSystemTile', tile, row: cell.row, col: cell.col });
+    eq(placed.ok, true, 'тайл выложен');
+    const sys = FS_RULES.system(st, st.setup.currentSystem);
+    const world = sys.areas.find(a => a.world);
+    const cap = FS_RULES.capacity(st, sys.id, world.pos);
+    let placedUnits = 0;
+    for (let i = 0; i < cap + 2; i++) {
+        const res = FS_RULES.apply(st, seat, { type: 'setupUnit', unit: 'гвардейцы', pos: world.pos });
+        if (res.ok) placedUnits++;
+    }
+    const pool = st.players[seat].faction === 'имперская-гвардия'
+        ? (FS_DATA.factions.find(f => f.id === 'имперская-гвардия').units.find(u => u.id === 'гвардейцы').start || 0)
+        : 0;
+    eq(placedUnits, Math.min(cap, pool), 'сверх вместимости и сверх запаса силы не ставятся');
+});
+
+// ============================================================================
 //  Planning phase
 // ============================================================================
 head('Планирование (Planning Phase)');
@@ -843,6 +882,41 @@ rule('refresh-3', '«Each Warp Storm can move only once during each Refresh Phas
     if (!first.ok) return 'шторм не двинулся: ' + first.error;
     const second = FS_RULES.apply(st, 1, { type: 'moveStorm', storm: 'st1', dir: dir === 'E' ? 'W' : 'S' });
     eq(second.ok, false, 'второе движение того же шторма в той же фазе');
+});
+
+rule('event-1', '«each player draws one card for each order token that is on top of his event deck … A player can choose any one of his drawn event cards to resolve» — неразыгранные карты возвращаются в колоду', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    guard(st, 0, sys.id, worldOf(st, sys.id));
+    st.phase = 'refresh';
+    st.eventsLeft = 2;
+    st.players[0].eventTokens = 2;
+    st.turn = 0;
+    FS_RULES.nextEventPlayer(st);
+    const ev = st.event;
+    eq(ev.drawn.length, 2, 'вытянуто две карты');
+    const deckBefore = st.players[0].decks.event.length;
+    const card = FS_DATA.events.find(e => e.faction === st.players[0].faction && e.name === ev.drawn[0]);
+    eq(!!card, true, 'карта найдена в данных');
+    FS_RULES.apply(st, 0, { type: 'drawEvent', card: ev.drawn[0] });
+    FS_RULES.apply(st, 0, { type: 'resolveEvent' });
+    eq(st.players[0].decks.event.length, deckBefore + 2, 'обе карты вернулись в колоду');
+});
+
+rule('event-2', '«Scheme event cards remain in play» — план остаётся в игровой зоне', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    guard(st, 0, sys.id, worldOf(st, sys.id));
+    const faction = st.players[0].faction;
+    const scheme = FS_DATA.events.find(e => e.faction === faction && e.type === 'scheme');
+    if (!scheme) return 'у фракции нет карт-планов';
+    st.phase = 'refresh';
+    st.eventsLeft = 2;
+    st.turn = 0;
+    st.event = { seat: 0, drawn: [scheme.name], chosen: scheme.name, card: scheme };
+    FS_RULES.apply(st, 0, { type: 'resolveEvent' });
+    eq((st.players[0].schemes || []).length, 1, 'план лёг в игровую зону');
+    eq(st.players[0].schemes[0].name, scheme.name, 'это именно та карта');
 });
 
 rule('refresh-4', '«During the Refresh Phase, each player draws one card for each order token that is on top of his event deck»', () => {
