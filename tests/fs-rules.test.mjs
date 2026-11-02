@@ -539,3 +539,33 @@ test('a whole game: the bot plays the rounds without a crash', () => {
     assert.ok(rounds >= 1, 'the game went through at least one round');
     assert.ok(s.round > 1 || s.over, 'the round counter grows or the game is over');
 });
+
+test('the card «Свежеватели»: the morale die is taken, never a question about which', () => {
+    const s = newGame(2);
+    const sys = s.systems[0];
+    const area = sys.areas.find(a => a.world);
+    for (const u of s.units) { u.system = sys.id; u.area = area.pos; }
+    s.order = { seat: 0, order: 'advance', system: sys.id, phase: 'combat' };
+    FS_RULES.startCombat(s, 0, 1, sys.id, area.pos);
+    const c = s.combat;
+    // The hand of the attacker: the card of the Necrons is not his, so the step is
+    // taken by a hand that holds it; the dice are set by hand as well.
+    c.dice.attacker = ['att'];
+    c.dice.defender = ['morale', 'def'];
+    c.step = 'choose-attacker';
+    const necron = FS_DATA.combat.find(x => x.name === 'Свежеватели');
+    // The card belongs to the Necrons: the faction of the attacker is switched for
+    // the test, and a Warrior stands in the fight for the unit ability of the card.
+    s.players[0].faction = necron.faction;
+    s.units.push({ id: 'test-warrior', seat: 0, faction: necron.faction, unit: 'воины', system: sys.id, area: area.pos, routed: false });
+    c.cards.attacker.hand = ['Свежеватели'];
+    const res = FS_RULES.apply(s, 0, { type: 'combat', action: 'playCard', index: 0 });
+    assert.equal(res.ok, true, res.error);
+    // The die of the text is a die of morale: the engine takes it itself, without
+    // asking which die of the shield to remove.
+    assert.equal(s.pending, null, 'no question about a die that is chosen by the text');
+    assert.deepEqual(s.combat.dice.defender, ['def'], 'the morale die of the opponent is gone, the shield stays');
+    assert.ok(s.combat.dice.attacker.includes('morale'), 'the attacker took the morale die');
+    // The icons of the card: one attack die.
+    assert.equal(s.combat.cards.attacker.played.length, 1);
+});

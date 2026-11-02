@@ -24,6 +24,11 @@ const FS_EFFECTS = {
         return 'any';
     },
 
+    // The name of a die kind for the log.
+    kindName(kind) {
+        return kind === 'att' ? 'атаки' : kind === 'def' ? 'обороны' : 'морали';
+    },
+
     // The kind of the icon: a token, a cube (a die) or an icon (a value).
     iconKind(text) {
         const t = (text || '').toLowerCase();
@@ -324,10 +329,16 @@ const FS_EFFECTS = {
             case 'gainDie': {
                 const n = this.count(R, state, seat, step);
                 if (!inCombat) return null;
+                // The condition of the text: "if the opponent has a die of this kind".
+                if (step.onlyIfFoeHas) {
+                    const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                    if (!(combat.dice[s2] || []).includes(step.onlyIfFoeHas)) return null;
+                }
                 for (let i = 0; i < n; i++) {
                     combat.dice[side].push(step.kind === 'any' ? R.rollDice(state, 1)[0] : step.kind);
                 }
-                R.log(state, seat, state.players[seat].name + ' получает ' + n + ' кубик(ов).');
+                R.log(state, seat, state.players[seat].name + ' получает ' + n + ' кубик(ов)'
+                    + (step.kind !== 'any' ? ' ' + this.kindName(step.kind) : '') + '.');
                 return null;
             }
             case 'loseDie': {
@@ -335,7 +346,17 @@ const FS_EFFECTS = {
                 const s2 = side === 'attacker' ? 'defender' : 'attacker';
                 const options = combat.dice[s2].map((d, i) => i).filter(i => step.kind === 'any' || combat.dice[s2][i] === step.kind);
                 if (!options.length) return null;
-                return { question: { kind: 'dice', who: this.seatOf(combat, s2), op: 'loseDie', n: Math.min(step.n, options.length), options, kind2: step.kind, text: 'Какие кубики теряются?' } };
+                const n = Math.min(step.n, options.length);
+                // The dice of one kind are alike and a loss of all that is possible is
+                // not a choice either: the engine takes them itself, without a question.
+                if (step.kind !== 'any' || n >= options.length) {
+                    const gone = options.slice(0, n).sort((a, b) => b - a);
+                    for (const i of gone) combat.dice[s2].splice(i, 1);
+                    R.log(state, seat, (s2 === side ? 'Вы теряете ' : 'Противник теряет ') + n
+                        + ' кубик(ов)' + (step.kind !== 'any' ? ' ' + this.kindName(step.kind) : '') + '.');
+                    return null;
+                }
+                return { question: { kind: 'dice', who: this.seatOf(combat, s2), op: 'loseDie', n, options, kind2: step.kind, text: 'Какие кубики теряются?' } };
             }
             case 'rerollDie': {
                 if (!inCombat) return null;
@@ -1494,13 +1515,29 @@ const RULES = [
         },
     },
     // "your opponent loses 2 `att. token`" / "the opponent loses 1 `def. cube`"
+    // A loss inside a sentence that starts with a gain gives the gain as well:
+    // "get 1 `morale cube`, your opponent loses 1 `morale cube`".
     {
         re: /(?:противник[а-яёa-z]*|вражеск[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?:теряет|терять|потеряет|потерять|теряют|потеряют)\s+([^;]{0,80})/i,
-        build: m => {
+        build: (m, ctx, sentence) => {
             const icons = [...m[1].matchAll(/`([^`]+)`/g)].map(x => x[1]);
             if (!icons.length) return null;
             const n = num((m[1].match(/\d+/) || [])[0]);
             const steps = [];
+            // The gain of the same sentence, before the loss.
+            const gain = /получ(?:ите|ает|ают)\s+(?:(\d+|один|одно|два)\s*)?(?:`([^`]+)`|куб[а-яёa-z]*)/i.exec(String(sentence || ''));
+            if (gain && gain[2]) {
+                const kind = FS_EFFECTS.iconKind(gain[2]);
+                if (kind === 'cube' || kind === 'token') {
+                    steps.push({
+                        op: kind === 'cube' ? 'gainDie' : 'gainToken',
+                        n: num(gain[1]),
+                        kind: FS_EFFECTS.icon(gain[2]),
+                        onlyIfFoeHas: kind === 'cube' ? FS_EFFECTS.icon(gain[2]) : undefined,
+                        who: 'me',
+                    });
+                }
+            }
             for (const ic of icons) {
                 const kind = FS_EFFECTS.iconKind(ic);
                 if (kind === 'token') steps.push({ op: 'loseToken', n, kind: FS_EFFECTS.icon(ic), who: 'foe' });

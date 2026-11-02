@@ -310,6 +310,16 @@ test('the client: the panels play a test battle to the end and start it again', 
         }
         game.onState(FS_RULES.view(state, seat));
         const before = sent.length;
+        // The damage is placed on the pieces that were picked by the mouse: the
+        // confirmation of the step sends them all.
+        const stepNow = state.combat && state.combat.step;
+        if (stepNow && String(stepNow).indexOf('damage') === 0) {
+            const side = stepNow === 'damage-attacker' ? 'attacker' : 'defender';
+            const targets = FS_RULES.damageCandidates(state, side).map(x => x.id);
+            const res = FS_RULES.apply(state, seat, { type: 'combat', action: 'damage', targets });
+            assert.equal(res.ok, true, 'damage: ' + res.error);
+            continue;
+        }
         // A human presses the last option first: it is the confirmation of the step.
         for (const button of buttons().slice().reverse()) {
             button._click(button);

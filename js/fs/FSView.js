@@ -1205,6 +1205,167 @@ const FSView = {
             this.addAnimated(view, ringA, 'y', .8 + view.animated.length * .01);
             this.addAnimated(view, ringB, 'x', -.55 - view.animated.length * .01);
         }
+        this.drawCombat(app, view, state);
+    },
+
+    // The fight on the table: the dice that were rolled are thrown on the battlefield
+    // — the dice of the attacker on one side of the area, the dice of the defender on
+    // the other — and the combat tokens lie next to them.
+    drawCombat(app, view, state) {
+        const c = state.combat;
+        if (!c) { view.combatSeen = new Set(); return; }
+        const sys = state.systems.find(x => x.id === c.system);
+        if (!sys) return;
+        const h = (x, y) => app.location.terrain.heightAt(x, y);
+        const tile = this.tilePos(app, sys, view.metrics);
+        const area = sys.areas.find(a => a.pos === c.pos);
+        const world = !!(area && area.world);
+        const disc = world ? this.discAt(app, sys, c.pos, view.metrics) : null;
+        const cx = disc ? disc.x : tile.x;
+        const cz = disc ? disc.z : tile.y;
+        const radius = disc ? disc.r : this.TILE * 0.22;
+        if (!view.combatSeen) view.combatSeen = new Set();
+        const step = c.round + ':' + c.step;
+        // The battlefield itself: a ring of fire around the contested area.
+        const ring = BABYLON.MeshBuilder.CreateTorus('fs-combat-ring-' + sys.id, {
+            diameter: Math.max(30, radius * 2.1), thickness: 2.2, tessellation: 40,
+        }, view.scene);
+        ring.position.set(cx, h(cx, cz) + 4 + this.MARKER_Y, cz);
+        ring.material = view.material('combat-ring', '#e2704c', { emissive: true });
+        ring.isPickable = false;
+        ring.metadata = { fs: 'area', system: sys.id, pos: c.pos };
+        this.addMarker(view, ring, 'prop');
+        this.addAnimated(view, ring, 'y', .35);
+        const sides = [
+            { id: 'attacker', dir: -1, color: '#f0d79a' },
+            { id: 'defender', dir: 1, color: '#9fc4ff' },
+        ];
+        for (const side of sides) {
+            const dice = (c.dice[side.id] || []);
+            dice.forEach((face, i) => {
+                // The dice lie in two fans: the attacker in front, the defender behind.
+                const n = Math.max(1, dice.length);
+                const spreadX = (i - (n - 1) / 2) * 13;
+                const x = cx + spreadX;
+                const z = cz + side.dir * (radius + 12);
+                const base = h(x, z) + 6 + this.MARKER_Y;
+                const key = step + ':' + side.id + ':' + i + ':' + face;
+                const root = new BABYLON.TransformNode('fs-die-' + side.id + '-' + i, view.scene);
+                root.position.set(x, base, z);
+                root.rotation.y = (i * 1.7) % (Math.PI / 2);
+                const cube = BABYLON.MeshBuilder.CreateBox('fs-die-body-' + side.id + '-' + i, {
+                    size: 9.4,
+                }, view.scene);
+                cube.parent = root;
+                cube.material = view.material('die-' + face, face === 'att' ? '#c9684f' : face === 'def' ? '#5f83b8' : face === 'morale' ? '#8a63b0' : '#6a6a6a', { emissive: true });
+                // The face of the die on the top: the blazon of what it rolled.
+                const faceMesh = BABYLON.MeshBuilder.CreateDisc('fs-die-face-' + side.id + '-' + i, {
+                    radius: 4.4, tessellation: 16,
+                }, view.scene);
+                faceMesh.parent = root;
+                faceMesh.rotation.x = Math.PI / 2;
+                faceMesh.position.y = 4.72;
+                const mat = view.material('die-face-' + face, '#f4ecd9');
+                mat.diffuseTexture = this.dieTexture(view, face);
+                mat.opacityTexture = mat.diffuseTexture;
+                mat.useAlphaFromDiffuseTexture = true;
+                mat.backFaceCulling = false;
+                faceMesh.material = mat;
+                for (const mesh of [cube, faceMesh]) {
+                    mesh.isPickable = true;
+                    mesh.metadata = { fs: 'die', system: sys.id, pos: c.pos, side: side.id, face };
+                }
+                root.metadata = { fs: 'die', system: sys.id, pos: c.pos, side: side.id, face };
+                this.addMarker(view, root, 'actor');
+                // A die that was not on the table before is thrown: it falls in.
+                if (!view.combatSeen.has(key)) {
+                    view.combatSeen.add(key);
+                    this.throwIn(view, root, base, i);
+                }
+            });
+            // The combat tokens of the side: one small disc per token.
+            const tokens = (c.tokens && c.tokens[side.id]) || { att: 0, def: 0 };
+            const list = [];
+            for (let i = 0; i < (tokens.att || 0); i++) list.push('#d8b873');
+            for (let i = 0; i < (tokens.def || 0); i++) list.push('#7fa8d8');
+            const reinforce = Number((c.reinforce && c.reinforce[side.id]) || 0);
+            for (let i = 0; i < reinforce; i++) list.push('#8fc79a');
+            list.forEach((color, i) => {
+                const x = cx + (radius + 26) * (side.dir < 0 ? -1 : 1) * 0.55 + (i % 4) * 7 - 10;
+                const z = cz + side.dir * (radius + 30) + Math.floor(i / 4) * 7;
+                const base = h(x, z) + 4 + this.MARKER_Y;
+                const root = new BABYLON.TransformNode('fs-ctok-' + side.id + '-' + i, view.scene);
+                root.position.set(x, base, z);
+                const disc2 = BABYLON.MeshBuilder.CreateCylinder('fs-ctok-body-' + side.id + '-' + i, {
+                    diameter: 7.6, height: 2.6, tessellation: 6,
+                }, view.scene);
+                disc2.parent = root;
+                disc2.material = view.material('ctok-' + color, color, { emissive: true });
+                disc2.isPickable = true;
+                disc2.metadata = { fs: 'token', system: sys.id, pos: c.pos, side: side.id };
+                root.metadata = disc2.metadata;
+                this.addMarker(view, root, 'prop');
+                const key = step + ':tok:' + side.id + ':' + i;
+                if (!view.combatSeen.has(key)) { view.combatSeen.add(key); this.throwIn(view, root, base, i + 2); }
+            });
+        }
+    },
+
+    // A piece thrown on the table: it falls from above, turns and settles.
+    throwIn(view, root, base, delay) {
+        const scene = view.scene;
+        if (!scene || !BABYLON.Animation || typeof BABYLON.Animation.CreateAndStartAnimation !== 'function') return;
+        const ease = typeof BABYLON.QuadraticEase === 'function' ? new BABYLON.QuadraticEase() : undefined;
+        const startY = base + 42;
+        root.position.y = startY;
+        const frames = 20;
+        const shift = Math.min(12, (delay || 0) * 2);
+        BABYLON.Animation.CreateAndStartAnimation('fs-throw-y', root, 'position.y', 60, frames + shift, startY, base,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT, ease);
+        BABYLON.Animation.CreateAndStartAnimation('fs-throw-rx', root, 'rotation.x', 60, frames + shift, 1.7, 0,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT, ease);
+        BABYLON.Animation.CreateAndStartAnimation('fs-throw-rz', root, 'rotation.z', 60, frames + shift, -1.1, 0,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT, ease);
+    },
+
+    // The blazon of a die face, drawn as a shape: the blades, the shield, the star.
+    dieTexture(view, face) {
+        if (!view.dieTex) view.dieTex = new Map();
+        if (view.dieTex.has(face)) return view.dieTex.get(face);
+        const S = 64;
+        const tex = new BABYLON.DynamicTexture('fs-die-' + face, { width: S, height: S }, view.scene, true);
+        tex.hasAlpha = true;
+        const ctx = /** @type {any} */ (tex.getContext());
+        ctx.clearRect(0, 0, S, S);
+        const c = S / 2;
+        ctx.strokeStyle = face === 'att' ? '#5d1d0d' : face === 'def' ? '#0d1f3d' : face === 'morale' ? '#2a1240' : '#2b2b2b';
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (face === 'att') {
+            ctx.beginPath(); ctx.moveTo(c - 14, c + 14); ctx.lineTo(c + 14, c - 14); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(c + 14, c + 14); ctx.lineTo(c - 14, c - 14); ctx.stroke();
+        } else if (face === 'def') {
+            ctx.beginPath();
+            ctx.moveTo(c, c - 16); ctx.lineTo(c + 15, c - 8); ctx.lineTo(c + 15, c + 4);
+            ctx.quadraticCurveTo(c, c + 19, c - 15, c + 4); ctx.lineTo(c - 15, c - 8);
+            ctx.closePath(); ctx.fill();
+        } else if (face === 'morale') {
+            ctx.beginPath();
+            for (let i = 0; i < 10; i++) {
+                const a = -Math.PI / 2 + i * Math.PI / 5;
+                const r = i % 2 ? 7 : 17;
+                const x = c + Math.cos(a) * r, y = c + Math.sin(a) * r;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.closePath(); ctx.fill();
+        } else {
+            ctx.beginPath(); ctx.arc(c, c, 9, 0, Math.PI * 2); ctx.fill();
+        }
+        tex.update();
+        view.dieTex.set(face, tex);
+        return tex;
     },
 
     // The markers of a void sector around each other.
