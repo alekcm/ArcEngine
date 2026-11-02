@@ -693,22 +693,13 @@ class FSGame {
         }
         ctx.text = 'Щёлкните по своему жетону на доске — или выберите его здесь.';
         ctx.status = '';
-        // How many tokens of every kind are left, zeros included: one glance at the
-        // list says what the player still owns ("2× Развёртывание", "0× Стратегия").
-        const mine = [];
-        for (const sys of s.systems) for (const tok of sys.tokens) if (tok.seat === me) mine.push(tok.order);
-        const rest = { icon: '◈', label: 'Материя', count: s.players[me].materiel };
+        // The tally of the corner is short: the tokens of every kind live in their
+        // own window (the button at the top right), not in this column.
         ctx.tokens = [
-            ['advance', 'Наступление', '⚔'], ['deploy', 'Развёртывание', '✚'],
-            ['strategize', 'Стратегия', '✧'], ['dominate', 'Доминирование', '⌂'],
-        ].map(([order, label, icon]) => ({
-            icon, label,
-            count: mine.filter(o => o === order).length,
-            hint: FS_RULES.orderName(order),
-        }));
-        ctx.tokens.push(rest,
+            { icon: '◈', label: 'Материя', count: s.players[me].materiel },
             { icon: '✧', label: 'Жетоны событий', count: s.players[me].eventTokens || 0 },
-            { icon: '◎', label: 'Цели', count: s.players[me].objectives || 0 });
+            { icon: '◎', label: 'Цели', count: s.players[me].objectives || 0 },
+        ];
         for (const o of FS_RULES.availableOrders(s, me)) {
             const sys = s.systems.find(x => x.id === o.system);
             if (!sys) continue;

@@ -388,20 +388,100 @@ const FSView = {
         return { x: r.x, y: r.y, w: half, h: half };
     },
 
-    // The texture of an order token: the letter of the order (the colour is the owner).
+    // The face of an order token: the mark of the order drawn as a shape, not as a
+    // letter — a crossed blade, a drop pod, a star and a crown. The shapes are
+    // vector paths so that no font is needed on the texture.
     orderTexture(view, order) {
         if (!view.orderTex) view.orderTex = new Map();
         if (view.orderTex.has(order)) return view.orderTex.get(order);
-        const tex = new BABYLON.DynamicTexture('fs-order-' + order, { width: 64, height: 64 }, view.scene, true);
+        const S = 128;
+        const tex = new BABYLON.DynamicTexture('fs-order-' + order, { width: S, height: S }, view.scene, true);
         tex.hasAlpha = true;
         const ctx = tex.getContext();
-        ctx.clearRect(0, 0, 64, 64);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 44px system-ui, sans-serif';
-        // The letter is drawn by hand: the centre of the square is (32, 32).
-        ctx.fillText({ advance: 'Н', deploy: 'Р', strategize: 'С', dominate: 'Д' }[order] || '?', 19, 47);
+        ctx.clearRect(0, 0, S, S);
+        const c = S / 2;
+        // The rim of the token.
+        ctx.strokeStyle = 'rgba(255,236,190,.85)';
+        ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(c, c, c - 7, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = 'rgba(24,18,26,.55)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(c, c, c - 13, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#fff6dd';
+        ctx.fillStyle = '#fff6dd';
+        ctx.lineWidth = 9;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (order === 'advance') {
+            // Two blades crossed: the march and the battle.
+            ctx.beginPath(); ctx.moveTo(c - 27, c + 27); ctx.lineTo(c + 27, c - 27); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(c + 27, c + 27); ctx.lineTo(c - 27, c - 27); ctx.stroke();
+            ctx.lineWidth = 5;
+            for (const k of [1, -1]) {
+                ctx.beginPath(); ctx.moveTo(c + k * 6, c + k * 33); ctx.lineTo(c + k * 20, c + k * 33); ctx.stroke();
+            }
+        } else if (order === 'deploy') {
+            // A drop pod: a shield with a cross of reinforcement.
+            ctx.beginPath();
+            ctx.moveTo(c, c - 32); ctx.lineTo(c + 26, c - 18); ctx.lineTo(c + 26, c + 12);
+            ctx.quadraticCurveTo(c, c + 38, c - 26, c + 12); ctx.lineTo(c - 26, c - 18);
+            ctx.closePath(); ctx.stroke();
+            ctx.lineWidth = 7;
+            ctx.beginPath(); ctx.moveTo(c - 13, c - 2); ctx.lineTo(c + 13, c - 2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(c, c - 15); ctx.lineTo(c, c + 11); ctx.stroke();
+        } else if (order === 'strategize') {
+            // A six-pointed star: the plan.
+            ctx.beginPath();
+            for (let i = 0; i < 12; i++) {
+                const a = -Math.PI / 2 + i * Math.PI / 6;
+                const r = i % 2 ? 14 : 34;
+                const x = c + Math.cos(a) * r, y = c + Math.sin(a) * r;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.closePath(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(c, c, 6, 0, Math.PI * 2); ctx.fill();
+        } else {
+            // A crown: domination.
+            ctx.beginPath();
+            ctx.moveTo(c - 30, c + 20); ctx.lineTo(c - 30, c - 16); ctx.lineTo(c - 15, c + 2);
+            ctx.lineTo(c, c - 24); ctx.lineTo(c + 15, c + 2); ctx.lineTo(c + 30, c - 16);
+            ctx.lineTo(c + 30, c + 20); ctx.closePath(); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(c - 30, c + 28); ctx.lineTo(c + 30, c + 28); ctx.stroke();
+        }
         tex.update();
         view.orderTex.set(order, tex);
+        return tex;
+    },
+
+    // The other face of the order token: the mark of the faction that laid it.
+    factionTexture(view, factionId) {
+        if (!view.factionTex) view.factionTex = new Map();
+        if (view.factionTex.has(factionId)) return view.factionTex.get(factionId);
+        const S = 128;
+        const tex = new BABYLON.DynamicTexture('fs-faction-' + factionId, { width: S, height: S }, view.scene, true);
+        tex.hasAlpha = true;
+        const ctx = tex.getContext();
+        const f = FS_DATA.factions.find(x => x.id === factionId);
+        const color = (f && f.color) || '#8899aa';
+        const c = S / 2;
+        ctx.clearRect(0, 0, S, S);
+        ctx.fillStyle = 'rgba(16,13,20,.92)';
+        ctx.beginPath(); ctx.arc(c, c, c - 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(c, c, c - 14, 0, Math.PI * 2); ctx.fill();
+        // The initials of the faction over the field of its colour.
+        const words = ((f && (f.full || f.name)) || '?').split(/\s+/).filter(Boolean);
+        const letters = words.slice(0, 2).map(w => w[0].toUpperCase()).join('');
+        ctx.fillStyle = 'rgba(18,14,20,.92)';
+        ctx.font = 'bold ' + (letters.length > 1 ? 54 : 66) + 'px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(letters, c, c + 3);
+        ctx.strokeStyle = 'rgba(255,244,214,.85)';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(c, c, c - 8, 0, Math.PI * 2); ctx.stroke();
+        tex.update();
+        view.factionTex.set(factionId, tex);
         return tex;
     },
 
@@ -1044,25 +1124,57 @@ const FSView = {
             root.metadata = meta; plinth.metadata = meta; medallion.metadata = meta; crest.metadata = meta;
             this.addMarker(view, root, 'prop');
         }
-        // The order tokens in the hexes of the tiles.
+        // The order tokens in the hexes of the tiles: a hex of the colour of the
+        // owner, the mark of the order on the top face and the mark of the faction
+        // on the bottom one. The tokens of one system lie on top of each other.
         for (const sys of state.systems) {
             if (!sys.tokens.length) continue;
             const p = this.tilePos(app, sys, view.metrics);
+            const base = h(p.x, p.y) + 8 + this.MARKER_Y;
             sys.tokens.forEach((tok, i) => {
-                const mesh = BABYLON.MeshBuilder.CreateBox('fs-tok' + sys.id + i, { width: 30, depth: 30, height: 5 }, view.scene);
-                mesh.position.set(p.x + (i % 3 - 1) * 24, h(p.x, p.y) + 9 + this.MARKER_Y + Math.floor(i / 3) * 6, p.y);
                 const owner = state.players.find(p2 => p2.seat === tok.seat);
-                const color = (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
-                // The letter of the order on the colour of the player.
-                const mat = view.material('tok' + tok.order + tok.seat, color);
-                mat.diffuseTexture = this.orderTexture(view, tok.order);
-                mat.opacityTexture = mat.diffuseTexture;
-                mat.useAlphaFromDiffuseTexture = true;
-                mesh.material = mat;
+                const faction = owner ? owner.faction : '';
+                const color = (owner && owner.color) || this.factionColor(faction);
+                const root = new BABYLON.TransformNode('fs-tok-' + sys.id + '-' + i, view.scene);
+                // The pile grows upwards: every new token lies on the one below.
+                root.position.set(p.x, base + i * 7.4, p.y);
+                root.rotation.y = i * 0.35;
+                const body = BABYLON.MeshBuilder.CreateCylinder('fs-tok-body-' + sys.id + '-' + i, {
+                    diameter: 30, height: 6, tessellation: 6,
+                }, view.scene);
+                body.parent = root;
+                body.material = view.material('tok-body-' + color, color, { emissive: true });
+                // The top face — the order of the token.
+                const top = BABYLON.MeshBuilder.CreateDisc('fs-tok-top-' + sys.id + '-' + i, {
+                    radius: 13.4, tessellation: 24,
+                }, view.scene);
+                top.parent = root;
+                top.rotation.x = Math.PI / 2;
+                top.position.y = 3.15;
+                const topMat = view.material('tok-face-' + tok.order + '-' + color, color);
+                topMat.diffuseTexture = this.orderTexture(view, tok.order);
+                topMat.opacityTexture = topMat.diffuseTexture;
+                topMat.useAlphaFromDiffuseTexture = true;
+                topMat.backFaceCulling = false;
+                top.material = topMat;
+                // The bottom face — the faction that laid the token.
+                const bottom = BABYLON.MeshBuilder.CreateDisc('fs-tok-bottom-' + sys.id + '-' + i, {
+                    radius: 13.4, tessellation: 24,
+                }, view.scene);
+                bottom.parent = root;
+                bottom.rotation.x = -Math.PI / 2;
+                bottom.position.y = -3.15;
+                const low = view.material('tok-faction-' + faction + '-face', color);
+                low.diffuseTexture = this.factionTexture(view, faction);
+                low.opacityTexture = low.diffuseTexture;
+                low.useAlphaFromDiffuseTexture = true;
+                low.backFaceCulling = false;
+                bottom.material = low;
                 // The token is a mouse target: clicking it opens its order.
-                mesh.isPickable = true;
-                mesh.metadata = { fs: 'order', system: sys.id, seat: tok.seat, order: tok.order };
-                this.addMarker(view, mesh, 'actor');
+                const meta = { fs: 'order', system: sys.id, seat: tok.seat, order: tok.order };
+                root.metadata = meta;
+                for (const mesh of [body, top, bottom]) { mesh.isPickable = true; mesh.metadata = meta; }
+                this.addMarker(view, root, 'actor');
             });
         }
         // The warp storms are animated 3D anomalies; their barrier is aligned to the actual tile edge.

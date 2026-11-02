@@ -56,6 +56,76 @@ const FSUI = {
         return node;
     },
 
+    // The board furniture the player may put away: the participants, the chronicle
+    // and the window with the order tokens of the hand.
+    panelState() {
+        if (!this.panels) this.panels = { players: true, chronicle: true, orders: false };
+        return this.panels;
+    },
+
+    // The window of the order tokens: what is still in the hand, what lies on the
+    // board and where. A list, not a corner of the right column.
+    renderOrdersPop(state) {
+        const pop = this.el('section', 'fs-orders-pop');
+        const head = this.el('div', 'fs-orders-head');
+        head.append(this.el('span', 'fs-eyebrow', 'Жетоны приказов · ' + (state.players[state.seat] ? state.players[state.seat].name : '')));
+        const close = this.el('button', 'fs-pop-close', '✕');
+        close.type = 'button';
+        close.title = 'Закрыть';
+        close.addEventListener('click', () => { this.panelState().orders = false; this.update(state, this.lastCtx); });
+        head.append(close);
+        pop.append(head);
+        const me = state.seat;
+        const p = state.players[me] || {};
+        const kinds = [
+            ['advance', 'Наступление', '⚔'], ['deploy', 'Развёртывание', '✚'],
+            ['strategize', 'Стратегия', '✧'], ['dominate', 'Доминирование', '⌂'],
+        ];
+        const laid = { advance: 0, deploy: 0, strategize: 0, dominate: 0 };
+        const rows = [];
+        for (const sys of state.systems) {
+            for (const tok of sys.tokens) {
+                if (tok.seat !== me) continue;
+                laid[tok.order] = (laid[tok.order] || 0) + 1;
+                rows.push({ tile: sys.tile, order: tok.order });
+            }
+        }
+        const hand = this.el('div', 'fs-orders-hand');
+        for (const [id, label, icon] of kinds) {
+            const chip = this.el('span', 'fs-orders-chip');
+            chip.append(this.el('span', 'fs-orders-icon', icon));
+            chip.append(this.el('span', 'fs-orders-name', label));
+            const count = this.el('span', 'fs-orders-count', String(laid[id] || 0));
+            count.title = 'На доске';
+            chip.append(count);
+            hand.append(chip);
+        }
+        // The tokens still in the hand: one per order that is not laid yet.
+        const perPlayer = typeof FS_RULES === 'undefined' ? 4 : FS_RULES.ORDER_TOKENS;
+        const left = Math.max(0, perPlayer + (p.extraOrderTokens || 0) - (p.placedTokens || 0));
+        if (left > 0) {
+            const note = this.el('div', 'fs-orders-note', 'В руке ещё ' + left + ' — их можно положить в любую систему.');
+            hand.append(note);
+        }
+        pop.append(hand);
+        const list = this.el('div', 'fs-orders-list');
+        if (!rows.length) list.append(this.el('div', 'fs-empty', 'Приказов на доске пока нет.'));
+        for (const row of rows) {
+            const line = this.el('div', 'fs-orders-row');
+            const icon = (kinds.find(k => k[0] === row.order) || [])[2] || '⚑';
+            line.append(this.el('span', 'fs-orders-icon', icon));
+            line.append(this.el('span', 'fs-orders-tile', row.tile));
+            line.append(this.el('span', 'fs-orders-order', this.orderLabel(row.order)));
+            list.append(line);
+        }
+        pop.append(list);
+        return pop;
+    },
+
+    orderLabel(order) {
+        return ({ advance: 'Наступление', deploy: 'Развёртывание', strategize: 'Стратегия', dominate: 'Доминирование' })[order] || order;
+    },
+
     renderModern(state, ctx) {
         const root = this.modernRoot;
         if (!root) return;
@@ -93,7 +163,34 @@ const FSUI = {
         });
         const full = this.el('button', 'fs-icon-btn', '⛶'); full.title = 'Во весь экран';
         full.addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
-        tools.append(help, center, full); root.append(tools);
+        tools.append(help, center, full);
+        // The order tokens live in their own window, opened from here.
+        const tokensBtn = this.el('button', 'fs-icon-btn' + (this.panelState().orders ? ' is-on' : ''), '⚑');
+        tokensBtn.title = 'Жетоны приказов';
+        tokensBtn.addEventListener('click', () => {
+            const ps = this.panelState();
+            ps.orders = !ps.orders;
+            this.update(state, ctx);
+        });
+        tools.append(tokensBtn);
+        root.append(tools);
+
+        // The two cards of the left rail hide and come back by these buttons.
+        const switches = this.el('div', 'fs-panel-switches');
+        for (const [key, icon, title] of [['players', '👥', 'Участники'], ['chronicle', '📜', 'Хроника']]) {
+            const on = this.panelState()[key];
+            const button = this.el('button', 'fs-panel-switch' + (on ? ' is-on' : ''), icon);
+            button.type = 'button';
+            button.title = (on ? 'Скрыть: ' : 'Показать: ') + title;
+            button.addEventListener('click', () => {
+                const ps = this.panelState();
+                ps[key] = !ps[key];
+                this.update(state, ctx);
+            });
+            switches.append(button);
+        }
+        root.append(switches);
+        if (state && this.panelState().orders) root.append(this.renderOrdersPop(state));
         if (this.helpOpen) {
             const pop = this.el('div', 'fs-help-pop'); pop.append(this.el('h3', '', 'Как играть мышью'));
             pop.append(this.el('p', '', 'Перетаскивание — камера, колесо — масштаб, клик — выбор.'));
@@ -109,7 +206,7 @@ const FSUI = {
             return;
         }
         const rail = this.el('div', 'fs-left-rail');
-        const playersCard = this.el('section', 'fs-card');
+        let playersCard = this.el('section', 'fs-card');
         const ph = this.el('div', 'fs-card-head');
         const boardProgress = state.phase === 'setup' && state.setup ? 'КАРТА · ' + state.setup.placedTotal + '/' + state.setup.totalTiles : 'ИГРОКИ · ' + state.players.length;
         ph.append(this.el('span', 'fs-eyebrow', 'Участники'), this.el('span', 'fs-round-chip', boardProgress)); playersCard.append(ph);
@@ -130,13 +227,16 @@ const FSUI = {
             row.append(resourceLine);
             list.append(row);
         });
-        playersCard.append(list); rail.append(playersCard);
+        playersCard.append(list);
+        if (this.panelState().players) rail.append(playersCard); else playersCard = null;
         const logCard = this.el('section', 'fs-card fs-log-card'); const lh = this.el('div', 'fs-card-head'); lh.append(this.el('span', 'fs-eyebrow', 'Хроника')); logCard.append(lh);
         const lines = this.el('div', 'fs-log-lines');
         (state.log || []).slice(-6).reverse().forEach(l => {
             const who = l.seat >= 0 && state.players[l.seat] ? state.players[l.seat].name + ': ' : '';
             lines.append(this.el('div', 'fs-log-line', who + l.text));
-        }); logCard.append(lines); rail.append(logCard); root.append(rail);
+        }); logCard.append(lines);
+        if (this.panelState().chronicle) rail.append(logCard);
+        root.append(rail);
 
         // The right panel does one thing at a time: what is going on, the tokens the
         // player owns (counted, zeros included), the choice of the moment and a
@@ -624,6 +724,7 @@ const FSUI = {
     //  The state of the game
     // -----------------------------------------------------------------------
     update(state, ctx) {
+        this.lastCtx = ctx;
         this.currentLobby = null;
         this.renderModern(state, ctx);
         this.clearAdded();
