@@ -19,6 +19,16 @@ function view_metrics_fallback(app) {
     };
 }
 
+// A darker or lighter version of a colour of the board.
+function shadeHex(hex, k) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '#8899aa'));
+    if (!m) return hex;
+    const n = parseInt(m[1], 16);
+    const parts = [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+        .map(v => Math.max(0, Math.min(255, Math.round(v * k))));
+    return '#' + parts.map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
 // The colour of the body of a die: the face is drawn on top of it.
 function fsDieColor(face) {
     return ({
@@ -45,10 +55,10 @@ const FSView = {
     // The battle table: a raised cloth above the contested sector, tipped toward
     // the camera so the cards on it can be read.
     ARENA: {
-        lift: 76,           // world px above the ground
+        lift: 98,           // world px above the ground
         tilt: 0.46,         // how far the table leans toward the viewer
         w: 280,             // the width of the cloth
-        d: 142,             // its depth: the hand, the dice, the cards, the miniatures
+        d: 264,             // its depth: the miniature ranks, the dice, the cards, the hand
         cardW: 34,          // the cardboard of a card
         cardH: 48,
         die: 11,            // the edge of a die
@@ -1296,6 +1306,15 @@ const FSView = {
             const seat = side.id === 'attacker' ? c.attacker : c.defender;
             const p = state.players[seat] || {};
             const color = p.color || this.factionColor(p.faction);
+            // The shelf of the hand: the cards of the side lie on it, off the cloth.
+            const shelf = BABYLON.MeshBuilder.CreateBox('fs-arena-shelf-' + side.id, {
+                width: A.w * 0.92, depth: 52, height: 2.4,
+            }, view.scene);
+            shelf.parent = root;
+            shelf.position.set(0, -1.4, side.sign * (A.d / 2 + 22));
+            shelf.material = view.material('arena-shelf-' + side.id, shadeHex(color, 0.45), { emissive: true });
+            shelf.isPickable = false;
+            shelf.metadata = { fs: 'arena', system: sys.id, pos: c.pos };
             const rim = BABYLON.MeshBuilder.CreateBox('fs-arena-rim-' + side.id, {
                 width: A.w, depth: 4, height: 6,
             }, view.scene);
@@ -1329,7 +1348,7 @@ const FSView = {
                 const x = (i - (n - 1) / 2) * 22;
                 const stand = new BABYLON.TransformNode('fs-arena-unit-' + side.id + '-' + i, view.scene);
                 stand.parent = root;
-                stand.position.set(x, 3.2, zAt(34));
+                stand.position.set(x, 3.2, zAt(62));
                 stand.metadata = { fs: 'unit', unit: u.id, system: c.system, pos: c.pos };
                 const body = BABYLON.MeshBuilder.CreateCylinder('fs-arena-unit-body-' + side.id + '-' + i, {
                     diameter: 16, height: 4.6, tessellation: 20,
@@ -1364,7 +1383,7 @@ const FSView = {
                 const x = (i - (dn - 1) / 2) * Math.min(24, A.w / (dn + 2));
                 const root2 = new BABYLON.TransformNode('fs-die-' + side.id + '-' + i, view.scene);
                 root2.parent = root;
-                root2.position.set(x, A.die / 2 + 3.4, zAt(18));
+                root2.position.set(x, A.die / 2 + 3.4, zAt(28));
                 root2.rotation.y = (i * 1.7) % (Math.PI / 2);
                 root2.metadata = { fs: 'die', system: c.system, pos: c.pos, side: side.id, face, index: i };
                 const cube = BABYLON.MeshBuilder.CreateBox('fs-die-body-' + side.id + '-' + i, { size: A.die }, view.scene);
@@ -1392,7 +1411,7 @@ const FSView = {
                     view.combatSeen.add(key);
                     // The die lands where it was put: the flight takes it there from
                     // over the map.
-                    this.throwDie(view, root2, key, i, side.id, { x, y: A.die / 2 + 3.4, z: zAt(18) });
+                    this.throwDie(view, root2, key, i, side.id, { x, y: A.die / 2 + 3.4, z: zAt(28) });
                 } else {
                     const f = view.flights.get(key);
                     if (f) { f.node = root2; if (!f.done) this.placeFlight(root2, f); }
@@ -1408,7 +1427,7 @@ const FSView = {
             for (let i = 0; i < reinforce; i++) cubes.push('token.morale');
             cubes.forEach((icon, i) => {
                 const x = (i % 10 - 4.5) * 11;
-                const z = zAt(9) + Math.floor(i / 10) * 9 * side.sign;
+                const z = zAt(12) + Math.floor(i / 10) * 9 * side.sign;
                 const node = new BABYLON.TransformNode('fs-ctok-' + side.id + '-' + i, view.scene);
                 node.parent = root;
                 node.position.set(x, 3, z);
@@ -1426,7 +1445,7 @@ const FSView = {
             played.forEach((entry, i) => {
                 const x = (i - (played.length - 1) / 2) * (A.cardW + 5);
                 const key = 'play:' + c.round + ':' + side.id + ':' + i + ':' + (entry.name || '');
-                this.arenaCard(view, root, 'fs-card-played-' + side.id + '-' + i, x, zAt(48), entry.card, {
+                this.arenaCard(view, root, 'fs-card-played-' + side.id + '-' + i, x, zAt(95), entry.card, {
                     up: true, key, flipDelay: side.id === 'defender' ? 0.5 : 0, faction: p.faction,
                 });
             });
@@ -1438,7 +1457,7 @@ const FSView = {
             hand.forEach((name, i) => {
                 const x = (i - (hand.length - 1) / 2) * (hw + 5);
                 const data = cardData(state, side.seat, name);
-                this.arenaCard(view, root, 'fs-card-hand-' + side.id + '-' + i, x, zAt(60), data, {
+                this.arenaCard(view, root, 'fs-card-hand-' + side.id + '-' + i, x, zAt(150), data, {
                     up: mine, faction: p.faction, index: mine ? i : -1, side: side.id,
                 });
             });

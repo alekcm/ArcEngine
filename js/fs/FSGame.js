@@ -660,7 +660,7 @@ class FSGame {
             const point = FSView.arenaFocus(this.app, s);
             if (!point) return;
             if (camera.lookAt) camera.lookAt(point.x, point.z);
-            if (camera.zoomTarget != null) camera.zoomTarget = Math.max(1.9, camera.zoomTarget || 1);
+            if (camera.zoomTarget != null) camera.zoomTarget = Math.max(1.35, camera.zoomTarget || 1);
         } else if (was && this.boardZoom && camera.zoomTarget != null) {
             camera.zoomTarget = this.boardZoom;
         }
@@ -912,7 +912,7 @@ class FSGame {
                 });
             }
             ctx.actions.push({
-                kind: 'primary', icon: '⌖', label: 'Нанести удар',
+                kind: 'primary', icon: 'mark.damage', label: 'Нанести удар',
                 onClick: () => {
                     const t = this.pending && this.pending.target;
                     const ships2 = (this.pending && this.pending.ships) || [];
@@ -933,7 +933,7 @@ class FSGame {
         const order = s.order;
         const sys = s.systems.find(x => x.id === order.system);
         const limit = FS_RULES.deployLimit(s, me, order.system);
-        ctx.title = 'Развёртывание · ' + (sys ? sys.tile : '');
+        ctx.title = 'Развёртывание';
         ctx.text = this.mode === 'placeUnit' ? 'Щёлкните по месту для отряда.'
             : this.mode === 'placeStructure' ? 'Щёлкните по миру для постройки.'
                 : 'Выберите покупку, затем место.';
