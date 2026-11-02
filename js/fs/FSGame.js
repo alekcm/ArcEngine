@@ -392,6 +392,9 @@ class FSGame {
             }
         }
         // The combat.
+        // The picking of the damage is a mode of its own: it is set again by the panel
+        // of the battle below and it never outlives the step that asked for it.
+        if (this.mode === 'damage') this.mode = 'idle';
         this.hand = [];
         if (s.combat) this.panelCombat(s, ctx);
         ctx.battleHand = this.hand || [];
