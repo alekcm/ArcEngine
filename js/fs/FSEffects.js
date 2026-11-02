@@ -346,7 +346,14 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'gainDie': {
-                const n = this.count(R, state, seat, step);
+                let n = this.count(R, state, seat, step);
+                if (step.inBattle && combat && step.per === 'unit') {
+                    // "in the reinforce step" — the units of this battle, not the board.
+                    const here = state.units.filter(u => u.seat === seat && !u.routed
+                        && u.system === combat.system && u.area === combat.pos
+                        && this.unitFits(R.unitOf(state, u), step.filter));
+                    n = (step.n || 1) * here.length;
+                }
                 if (!inCombat) return null;
                 // The condition of the text: "if the opponent has a die of this kind".
                 if (step.onlyIfFoeHas) {
@@ -731,6 +738,15 @@ const FS_EFFECTS = {
             }
             case 'moveLimit': {
                 if (state.order) state.order.moveLimit = step.n || 0;
+                return null;
+            }
+            case 'uncontrolledMarch': {
+                // "treat the uncontrolled worlds as friendly for moving up to 2
+                // of your units": the budget is spent per unit, not per area.
+                if (state.order) {
+                    state.order.uncontrolled = step.n || 0;
+                    state.order.uncontrolledUsed = 0;
+                }
                 return null;
             }
             case 'passVoid': {
@@ -1249,11 +1265,8 @@ const FS_EFFECTS = {
         let n = step.n || 1;
         if (step.per === 'unit') {
             const units = state.units.filter(u => u.seat === seat && !u.routed);
-            const matching = step.filter && step.filter.types
-                ? units.filter(u => {
-                    const def = R.unitOf(state, u);
-                    return def && step.filter.types.some(t => this.sameName(def.name, t));
-                })
+            const matching = step.filter
+                ? units.filter(u => this.unitFits(R.unitOf(state, u), step.filter))
                 : units;
             // "for every unit of a different command level" — one for each level.
             const byLevel = step.distinctLevel || (step.text && /разным командным уровнем/i.test(step.text));
@@ -1298,6 +1311,18 @@ const FS_EFFECTS = {
     },
 
     // The units of the area of the combat (or the whole board).
+    // Does a unit definition fit the filter of the card? "types" are the names,
+    // "contains" are the stems of the printed names (see UNIT_STEMS).
+    unitFits(def, filter) {
+        if (!def || !filter) return true;
+        if (filter.types && filter.types.some(t => this.sameName(def.name, t))) return true;
+        if (filter.contains) {
+            const name = String(def.name || '').toLowerCase();
+            if (filter.contains.some(c => name.includes(c))) return true;
+        }
+        return !filter.types && !filter.contains;
+    },
+
     unitsOf(R, state, seat, combat, step) {
         let units;
         if (combat) {
@@ -1307,12 +1332,7 @@ const FS_EFFECTS = {
         }
         if (step.routed) units = units.filter(u => u.routed);
         else units = units.filter(u => !u.routed);
-        if (step.filter && step.filter.types) {
-            units = units.filter(u => {
-                const def = R.unitOf(state, u);
-                return def && step.filter.types.some(t => this.sameName(def.name, t));
-            });
-        }
+        if (step.filter) units = units.filter(u => this.unitFits(R.unitOf(state, u), step.filter));
         return units;
     },
 
@@ -1577,6 +1597,14 @@ const RULES = [
         re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))\s*[^.`]{0,40}?(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\s+(\d+)?\s*(?:своих\s+)?куб[а-яёa-z]*/i,
         build: m => ({ op: 'rerollDie', n: num(m[1]), kind: 'any', who: 'foe', pick: true }),
     },
+    // "for every unrouted Sister Repentia in the reinforce step"
+    {
+        re: /получите (\d+) `([^`]+)` за каждую недеморализованную ([^.]{3,60}?) в шаге/i,
+        build: m => ({
+            op: 'gainDie', n: Number(m[1]), kind: FS_EFFECTS.icon(m[2]),
+            per: 'unit', inBattle: true, filter: unitFilter(m[3]), text: m[0],
+        }),
+    },
     // "get 1 `att. token` for every unrouted Guardsman or Cruiser, maximum 3"
     {
         re: /(?:получ[а-яёa-z]*|взять|возьм[а-яёa-z]*|достаньте)\s+(\d+)?\s*`([^`]+)`[^.`]{0,90}?за кажд[а-яёa-z]+\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+([^,.]{2,70}?)(?:,\s*максимум\s+(\d+))?/i,
@@ -1614,6 +1642,17 @@ const RULES = [
     {
         re: /получ[а-яёa-z]*\s+(\d+)?\s*(?:жетон[а-яёa-z]*\s+)?(?:материал[а-яёa-z]*|материи)/i,
         build: m => ({ op: 'gainMateriel', n: num(m[1]) }),
+    },
+    // "demoralise any number of your ships — for each flip up to 2 dice":
+    // the choice of the ships and the flips is the player's, the engine only
+    // counts the budget, so the card is played by hand (see 09-rules-audit.md).
+    {
+        re: /деморализовать любое количество кораблей, участвующих в этом орбитальном ударе/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'священное-пламя' }),
+    },
+    {
+        re: /^за каждый деморализованный корабль переверните до 2 ваших/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'священное-пламя' }),
     },
     // "the opponent must choose and route 1 of his units"
     {
@@ -2001,7 +2040,7 @@ const RULES = [
         build: (m, ctx, s) => ({ op: 'note', text: s }),
     },
     {
-        re: /^за каждый потраченный вами `att\. cube`[^.]*\.?$/i,
+        re: /^за каждый потраченный вами `(?:(?:att|def)\. cube|morale cube)`[^.]*\.?$/i,
         build: (m, ctx, s) => ({ op: 'note', text: s }),
     },
     {
@@ -2203,6 +2242,11 @@ const RULES = [
         re: /провести до (\d+) ваших отрядов через одну никем не контролируемую пустую область/i,
         build: m => ({ op: 'passVoid', n: Number(m[1]) }),
     },
+    // "treat the uncontrolled worlds as friendly for moving up to 2 of your units"
+    {
+        re: /считать неконтролируемые миры дружественными для перемещения не более (\d+) ваших отрядов/i,
+        build: m => ({ op: 'uncontrolledMarch', n: Number(m[1]) }),
+    },
     // "you may buy 1 bastion in addition"
     {
         re: /вдобавок купить (\d+) бастион/i,
@@ -2282,8 +2326,15 @@ function num(text) {
 }
 
 // The filter of the units: "Guardsman or Cruiser" -> the stems of the names.
+// The names printed on the cards against the names of the unit list: the card
+// says "сестру Ренентию", the faction sheet "Сестры ренетентии".
+// The name of one unit is printed in four ways in the sources
+// ("Сестра Репентия", "Сестра Ренентиля", "сестру Ренентию", "Сестры ренетентии").
+/** @type {[RegExp, string[]][]} */
+const UNIT_STEMS = [[/ре[пн]е[нт]/i, ['репен', 'ренент', 'ренетент']]];
 function unitFilter(text) {
     if (!text) return null;
+    for (const [re, stems] of UNIT_STEMS) if (re.test(text)) return { contains: stems };
     const names = text.split(/\s+или\s+|\s+и\s+/)
         .map(s => s.trim().replace(/[^А-Яа-яЁё']/g, ''))
         .filter(s => s.length >= 3);

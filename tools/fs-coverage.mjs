@@ -5,9 +5,14 @@
 // shows the ones that are not — the work of the interpreter.
 //
 // The report has two numbers:
-//   применено — the sentence becomes a rule of the game (the engine acts);
-//   пояснено  — the sentence is a clarification of the rules: the engine
-//               shows it to the player and acts as the rules say.
+//   применено — the sentence becomes a step of the game (the engine acts);
+//   пояснено  — the engine sees the sentence and shows it to the player, but
+//               performs no action for it: the rule is applied by hand (or it
+//               is a clarification of the text).
+//
+// "пояснено" is NOT proof that the card works by itself. The honest claim of
+// this tool is: every sentence of every card is either a step of the engine or
+// an explicit note; there are no sentences that the engine silently drops.
 //
 //   node tools/fs-coverage.mjs            — the report
 //   node tools/fs-coverage.mjs --all      — the sentences that are not read
@@ -92,8 +97,7 @@ console.log('──────────────────────�
 console.log('  ВСЕГО         ' + String(applied).padStart(4) + ' / ' + String(total).padStart(4)
     + '  (' + String(pct(applied, total)).padStart(3) + ' %)'
     + '   пояснено: ' + String(noted).padStart(3));
-console.log('  С ПОЯСНЕНИЯМИ  ' + String(applied + noted).padStart(4) + ' / ' + String(total).padStart(4)
-    + '  (' + String(pct(applied + noted, total)).padStart(3) + ' %)');
+console.log('  ── из них только пояснения (движок показывает текст, но сам не действует): ' + noted);
 
 if (process.argv.includes('--notes')) {
     console.log('');

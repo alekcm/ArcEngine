@@ -144,25 +144,17 @@ function col(header, name) {
     return i < 0 ? -1 : i;
 }
 
-// Merge conflict markers left in the transcription: keep the first (HEAD)
-// side by default, the second side for the sections listed in PREFER_SECOND.
-const PREFER_SECOND = ['Сестры битвы — 2 карты'];
-function resolveConflicts(text, preferSecond) {
-    const out = [];
-    let block = null;
-    for (const line of text.split(/\r?\n/)) {
-        if (line.startsWith('<<<<<<< ')) { block = { ours: [], theirs: [] }; continue; }
-        if (block && line.startsWith('=======')) { block.inTheirs = true; continue; }
-        if (block && line.startsWith('>>>>>>> ')) {
-            const side = (preferSecond && block.theirs.length) ? block.theirs : block.ours;
-            out.push(...side);
-            block = null;
-            continue;
+// The transcription is the source of the cards: it must be a single text.
+// Merge-conflict markers are a defect of the document, not a choice for the
+// importer — the import stops and names the file and the line.
+function checkTranscription(name, text) {
+    text.split(/\r?\n/).forEach((line, i) => {
+        if (/^(<<<<<<< |=======$|>>>>>>> )/.test(line)) {
+            throw new Error(`${name}:${i + 1}: в транскрипции остались маркеры конфликта — ` +
+                'сведите редакции в документе, импорт молча выбирать сторону не будет');
         }
-        if (block) (block.inTheirs ? block.theirs : block.ours).push(line);
-        else out.push(line);
-    }
-    return out.join('\n');
+    });
+    return text;
 }
 
 // ---------------------------------------------------------------------------
@@ -484,8 +476,7 @@ const ORDER_BY_ICON = [
 
 function parseOrderCards(md) {
     const out = [];
-    const text = resolveConflicts(md, false);
-    for (const sec of sections(text)) {
+    for (const sec of sections(md)) {
         if (sec.level !== 2 && sec.level !== 3) continue;
         const faction = slug(sec.title.split('—')[0]);
         if (!FACTION_ORDER.includes(faction)) continue;
@@ -498,44 +489,21 @@ function parseOrderCards(md) {
             const name = cardName(row[iName]);
             if (!name) continue;
             const icon = plain(row[iIcon]);
-            const order = (ORDER_BY_ICON.find(([re]) => re.test(icon)) || [null, 'any'])[1];
+            const found = ORDER_BY_ICON.find(([re]) => re.test(icon));
+            // An icon that is not read is a hole in the rules, not "any order".
+            if (!found) throw new Error(`05-order-upgrades.md: ${faction} · ${name}: иконка приказа не распознана: "${icon}"`);
+            if (out.some(o => o.faction === faction && o.name === name)) {
+                throw new Error(`05-order-upgrades.md: ${faction} · ${name}: карта перечислена дважды`);
+            }
             out.push({
                 faction,
                 name,
                 kl: Number(row[iKl]) || 0,
                 cost: Number(row[iCost]) || 0,
-                order,
+                order: found[1],
                 icon,
                 text: rich(row[iText] || ''),
             });
-        }
-    }
-    // The Sisters' two cards are read from the new sheet — the second conflict side.
-    const text2 = resolveConflicts(md, true);
-    for (const sec of sections(text2)) {
-        if (!PREFER_SECOND.some(p => sec.title.includes(p))) continue;
-        const faction = slug(sec.title.split('—')[0]);
-        if (!FACTION_ORDER.includes(faction)) continue;
-        const t = tableByHeader(sec.lines, 'Карта', 'КЛ', 'Стоимость');
-        if (!t) continue;
-        const h = t.header.map(plain);
-        const iName = h.findIndex(x => x === 'Карта'), iKl = col(h, 'КЛ'),
-            iCost = col(h, 'Стоимость'), iIcon = col(h, 'Иконка приказа'), iText = h.length - 1;
-        for (const row of t.rows) {
-            const name = cardName(row[iName]);
-            if (!name) continue;
-            const icon = plain(row[iIcon]);
-            const order = (ORDER_BY_ICON.find(([re]) => re.test(icon)) || [null, 'any'])[1];
-            const idx = out.findIndex(o => o.faction === faction && o.name === name);
-            const card = {
-                faction, name,
-                kl: Number(row[iKl]) || 0,
-                cost: Number(row[iCost]) || 0,
-                order,
-                icon,
-                text: rich(row[iText] || ''),
-            };
-            if (idx >= 0) out[idx] = card; else out.push(card);
         }
     }
     return out;
@@ -596,7 +564,7 @@ function parseEvents(md) {
 // ---------------------------------------------------------------------------
 
 function build() {
-    const read = f => fs.readFileSync(path.join(DOCS, f), 'utf8');
+    const read = f => checkTranscription(f, fs.readFileSync(path.join(DOCS, f), 'utf8'));
     const factions = parseFactions(read('02-factions.md'));
     const tiles = parseSystems(read('03-systems.md'));
     const combat = parseCombatCards(read('04-combat-cards.md'));
@@ -644,6 +612,12 @@ if (process.argv.includes('--check')) {
 const worldCount = data.tiles.reduce((n, t) => n + t.areas.filter(a => a.world).length, 0);
 const spaceCount = data.tiles.reduce((n, t) => n + t.areas.filter(a => a.world && a.world.objective).length, 0);
 console.log(`  фракций: ${data.factions.length}, отрядов: ${data.factions.reduce((n, f) => n + f.units.length, 0)}`);
+const orderCount = new Map();
+for (const o of data.orders) orderCount.set(o.faction, (orderCount.get(o.faction) || 0) + 1);
+const uneven = [...orderCount].filter(([, n]) => n !== 5);
+console.log(`  приказов-апгрейдов по фракциям: ` +
+    (uneven.length ? 'НЕ по 5: ' + uneven.map(([f, n]) => `${f}: ${n}`).join(', ')
+        : 'по 5 у каждой из ' + orderCount.size));
 console.log(`  тайлов: ${data.tiles.length}, миров: ${worldCount}, мест под жетоны: ${spaceCount}`);
 console.log(`  боевых карт: ${data.combat.length} (колода ${data.combat.filter(c => !c.upgrade).length}, улучшения ${data.combat.filter(c => c.upgrade).length})`);
 console.log(`  приказов-апгрейдов: ${data.orders.length}, событий: ${data.events.length}`);

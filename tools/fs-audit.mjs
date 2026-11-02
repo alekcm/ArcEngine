@@ -1532,6 +1532,115 @@ rule('cards-3', '«The player must have at least one of the specified units in t
     eq([...unknown], [], 'нет шагов, которых движок не понимает');
 });
 
+// ----------------------------------------------------------------------------
+//  The order upgrades of the Sisters of Battle (the five cards of the sheet)
+// ----------------------------------------------------------------------------
+head('Приказы Сестёр битвы');
+
+rule('orders-sisters-1', '«Крестный ход» — неконтролируемый мир становится дружественным для пути, но только для двух отрядов', () => {
+    // A chain of three worlds of one system: TR — TL — BL (the gold lines).
+    let st = null, chain = null;
+    for (let seed = 1; seed <= 40 && !chain; seed++) {
+        const board = empty(seed);
+        const found = board.systems.find(sys => ['TR', 'TL', 'BL'].every(p => sys.areas.some(a => a.pos === p && a.world)));
+        if (found) { st = board; chain = found; }
+    }
+    eq(!!chain, true, 'на карте есть система с тремя мирами цепочкой');
+    st.order = null;
+    eq(FS_RULES.pathExists(st, 0, chain.id, 'TR', chain.id, 'BL'), false,
+        'без апгрейда путь через неконтролируемый мир закрыт');
+    st.order = { seat: 0, order: 'advance', system: chain.id, uncontrolled: 2, uncontrolledUsed: 0 };
+    eq(FS_RULES.pathExists(st, 0, chain.id, 'TR', chain.id, 'BL'), true,
+        'апгрейд открывает путь');
+    st.order.uncontrolledUsed = 2;
+    eq(FS_RULES.pathExists(st, 0, chain.id, 'TR', chain.id, 'BL'), false,
+        'два отряда уже прошли — третьему путь закрыт');
+    const steps = FS_EFFECTS.parse('Во время выполнения этого приказа вы можете считать неконтролируемые миры дружественными для перемещения не более 2 ваших отрядов. Один раз за раунд.',
+        { kind: 'order', faction: 'сестры-битвы' });
+    eq(steps.some(x => x.op === 'uncontrolledMarch' && x.n === 2), true, 'текст карты даёт шаг с пределом 2');
+});
+
+rule('orders-sisters-2', '«Божественное избавление» — кубик за каждую недеморализованную сестру Ренентию в этом бою', () => {
+    const steps = FS_EFFECTS.parse('Если во время выполнения этого приказа вы начали битву в мире, то получите 1 `any cube` за каждую недеморализованную сестру Ренентию в шаге вызова подкреплений. Один раз за раунд.',
+        { kind: 'order', faction: 'сестры-битвы' });
+    const gain = steps.find(x => x.op === 'gainDie');
+    eq(!!gain, true, 'есть шаг получения кубика');
+    eq(gain.inBattle, true, 'кубики считаются по отрядам этого боя');
+    eq(!!(gain.filter && gain.filter.contains && gain.filter.contains.includes('ренент')), true,
+        'отбор — сёстры Ренентиты');
+    // And the unit of the faction sheet is found by that filter.
+    const def = FS_DATA.factions.find(f => f.id === 'сестры-битвы').units.find(u => /ре[пн]е[нт]/i.test(u.name));
+    eq(!!def, true, 'отряд «' + (def && def.name) + '» есть в списке фракции');
+    eq(FS_EFFECTS.unitFits(def, gain.filter), true, 'фильтр карты узнаёт этот отряд');
+});
+
+rule('orders-sisters-3', '«Священное пламя» — карта играется вручную: движок не деморализует свои корабли сам', () => {
+    const steps = FS_EFFECTS.parse('Бастионы противника не могут предотвратить этот орбитальный удар. Во время этого орбитального удара вы можете деморализовать любое количество кораблей, участвующих в этом орбитальном ударе. За каждый деморализованный корабль переверните до 2 ваших `def. cube` или `att. cube` на `morale cube`. Один раз за раунд.',
+        { kind: 'order', faction: 'сестры-битвы' });
+    eq(steps.some(x => x.op === 'route'), false, 'движок не деморализует корабли без выбора игрока');
+    eq(steps.filter(x => x.op === 'note' && x.manual === 'священное-пламя').length, 2, 'оба предложения — ручные пояснения');
+});
+
+// ----------------------------------------------------------------------------
+//  The inventory of the cards: the counts are stated, not implied
+// ----------------------------------------------------------------------------
+head('Карты: состав колод');
+
+rule('cards-4', '«Each faction has its own deck of 10 combat cards» — у каждой фракции 5 базовых карт (10 копий) и 5 приказов-апгрейдов', () => {
+    const byFaction = new Map();
+    for (const f of FS_DATA.factions) byFaction.set(f.id, { base: 0, upgrade: 0, events: 0, orders: 0 });
+    for (const c of FS_DATA.combat) {
+        const row = byFaction.get(c.faction);
+        if (!row) continue;
+        if (c.upgrade) row.upgrade++; else row.base++;
+    }
+    for (const e of FS_DATA.events) { const row = byFaction.get(e.faction); if (row) row.events++; }
+    for (const o of FS_DATA.orders) { const row = byFaction.get(o.faction); if (row) row.orders++; }
+    const bad = [...byFaction].filter(([, r]) => r.base !== 5 || r.orders !== 5 || r.events !== 8);
+    eq(bad.map(([f, r]) => `${f}: базовых ${r.base}, приказов ${r.orders}, событий ${r.events}`), [],
+        'у каждой фракции 5 базовых боевых карт, 5 приказов-апгрейдов и 8 событий');
+    eq([...byFaction.values()].reduce((n, r) => n + r.base, 0), 60, 'базовых боевых карт: 5 × 12');
+    eq([...byFaction.values()].reduce((n, r) => n + r.orders, 0), 60, 'приказов-апгрейдов: 5 × 12');
+    eq(FS_DATA.events.length, 96, 'событий: 8 × 12');
+    // The upgrade cards are printed apart from the deck: the deck is 5 base
+    // cards in two copies, the upgrades replace two copies when bought.
+    const upgrades = FS_DATA.combat.filter(c => c.upgrade);
+    eq(upgrades.length, 111, 'боевых карт-улучшений (9 у каждой фракции, 12 у тиранидов)');
+});
+
+rule('cards-5', 'Транскрипция — один текст: в документах нет маркеров конфликта слияния', () => {
+    const dir = path.join(ROOT, 'docs/forbidden-stars');
+    const found = [];
+    for (const name of fs.readdirSync(dir)) {
+        if (!name.endsWith('.md')) continue;
+        const lines = fs.readFileSync(path.join(dir, name), 'utf8').split(/\r?\n/);
+        lines.forEach((line, i) => {
+            if (/^(<<<<<<< |=======$|>>>>>>> )/.test(line)) found.push(`${name}:${i + 1}`);
+        });
+    }
+    eq(found, [], 'маркеров конфликта нет');
+});
+
+rule('cards-6', 'Каждое предложение текста карт попадает в шаг движка или в пояснение; список непрочитанного пуст', () => {
+    const misses = [];
+    const texts = [];
+    for (const c of FS_DATA.combat) {
+        if (c.general) texts.push({ kind: 'combat', faction: c.faction, name: c.name, text: c.general });
+        if (c.unit) texts.push({ kind: 'combat-unit', faction: c.faction, name: c.name, text: c.unit });
+    }
+    for (const c of FS_DATA.events) texts.push({ kind: 'event', faction: c.faction, name: c.name, text: c.text });
+    for (const c of FS_DATA.orders) texts.push({ kind: 'order', faction: c.faction, name: c.name, text: c.text });
+    for (const f of FS_DATA.factions) if (f.ability) texts.push({ kind: 'ability', faction: f.id, name: f.name, text: f.ability.text });
+    for (const card of texts) {
+        for (const sentence of FS_EFFECTS.sentences(card.text || '')) {
+            const steps = FS_EFFECTS.parseSentence(sentence, { kind: card.kind, faction: card.faction });
+            const ops = steps.map(x => x.op);
+            if (!ops.length || (ops[0] === 'icons' && ops.length === 1)) misses.push(`${card.kind} · ${card.name}: ${sentence}`);
+        }
+    }
+    eq(misses, [], 'нет предложений без шага');
+});
+
 // ============================================================================
 //  The report
 // ============================================================================

@@ -247,8 +247,13 @@ const FS_RULES = {
     // The systems a ground unit may walk through: a chain of friendly areas.
     // A path may not pass through an enemy, uncontrolled or contested area,
     // and not through a warp storm.
-    pathExists(state, seat, fromSystem, fromPos, toSystem, toPos) {
+    pathExists(state, seat, fromSystem, fromPos, toSystem, toPos, opts) {
         if (fromSystem === toSystem && fromPos === toPos) return true;
+        // The order upgrade "Крестный ход": uncontrolled worlds are friendly for
+        // the march, but only for the number of units the card allows.
+        const march = opts && opts.uncontrolled === false ? 0
+            : (state.order && state.order.uncontrolled
+                ? Math.max(0, state.order.uncontrolled - (state.order.uncontrolledUsed || 0)) : 0);
         const start = { system: fromSystem, pos: fromPos, voids: 0 };
         const seen = new Map([[fromSystem + ':' + fromPos, 0]]);
         const queue = [start];
@@ -260,9 +265,16 @@ const FS_RULES = {
                 // The destination may be an empty world — the way must be friendly.
                 if (next.system === toSystem && next.pos === toPos) return true;
                 let voids = cur.voids;
-                if (this.control(state, seat, next.system, next.pos) !== 'friendly') {
+                const area = this.area(this.system(state, next.system), next.pos);
+                const control = this.control(state, seat, next.system, next.pos);
+                // The order upgrade "Крестный ход": an uncontrolled world is a
+                // friendly stepping stone for the units the card allows.
+                // "Uncontrolled" is control() === 'none': no piece of either side.
+                const byMarch = control !== 'friendly' && march > 0 && area && area.world
+                    && !this.unitsAt(state, next.system, next.pos).length
+                    && !this.structuresAt(state, next.system, next.pos).length;
+                if (control !== 'friendly' && !byMarch) {
                     const order = state.order;
-                    const area = this.area(this.system(state, next.system), next.pos);
                     if (!order || !order.passVoid || !area || area.world || voids >= order.passVoid
                         || this.unitsAt(state, next.system, next.pos).length
                         || this.structuresAt(state, next.system, next.pos).length) continue;
@@ -1451,11 +1463,23 @@ const FS_RULES = {
             unit.system = m.system;
             unit.area = m.pos;
         }
+        // "Крестный ход": the passage through an uncontrolled world is paid for by
+        // the unit, not by the area; the ordinary path is tried first.
+        if (order.uncontrolled) {
+            for (const m of plan) {
+                if (!this.pathExists(state, seat, m.from, m.fromArea, m.system, m.pos, { uncontrolled: false })) {
+                    order.uncontrolledUsed = (order.uncontrolledUsed || 0) + 1;
+                    m.usedUncontrolled = true;
+                }
+            }
+        }
         // The units that marched this time do not march again in the same order.
         order.moved = (order.moved || []).concat(plan.map(m => m.id));
         // The step is remembered: the player may take it back with Esc.
         order.steps = order.steps || [];
-        order.steps.push(plan.map(m => ({ id: m.id, fromSystem: m.from, fromArea: m.fromArea })));
+        order.steps.push(plan.map(m => ({
+            id: m.id, fromSystem: m.from, fromArea: m.fromArea, usedUncontrolled: !!m.usedUncontrolled,
+        })));
         return { ok: true };
     },
 
@@ -1473,6 +1497,7 @@ const FS_RULES = {
             if (!unit) continue;
             unit.system = m.fromSystem;
             unit.area = m.fromArea;
+            if (m.usedUncontrolled) order.uncontrolledUsed = Math.max(0, (order.uncontrolledUsed || 0) - 1);
             order.moved = (order.moved || []).filter(id => id !== m.id);
         }
         return { ok: true, undone: last.length };
