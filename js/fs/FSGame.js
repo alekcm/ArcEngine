@@ -53,6 +53,9 @@ class FSGame {
         // the pointer and the plaque that floats over the place of an action.
         /** @type {string[]} */
         this.selected = [];
+        // Ships and ground troops march apart: the flow is chosen before the picking.
+        /** @type {'ship' | 'ground' | null} */
+        this.moveKind = null;
         /** @type {{system: string, pos: string | null} | null} */
         this.hover = null;
         this.hoverAt = 0;
@@ -734,14 +737,27 @@ class FSGame {
         const sys = s.systems.find(x => x.id === order.system);
         if (order.phase === 'move') {
             // The board itself is the tool of the movement: every click picks or marches.
+            // A new order starts a new march: the flow and the group are empty again.
+            const mark = order.seat + ':' + order.system + ':' + (order.moved || []).length;
+            if (this.moveFor !== mark && !(order.moved || []).length) {
+                this.moveFor = mark;
+                this.moveKind = null;
+                this.selected = [];
+            }
             if (this.mode !== 'move') { this.mode = 'move'; this.pending = null; }
             ctx.title = 'Наступление · движение';
-            const units = FS_RULES.movableUnits(s, me);
+            const kind = this.moveKind;
+            const all = FS_RULES.movableUnits(s, me);
+            const units = kind ? all.filter(u => { const d = FS_RULES.unitOf(s, u); return d && d.type === kind; }) : all;
             const picked = this.selectedUnits();
             ctx.text = picked.length
                 ? 'Клик по сектору — отряды идут туда.'
-                : 'Клик по отряду на доске — взять его.';
-            ctx.status = this.status || ('Могут двигаться: ' + units.length + ' · выбрано: ' + picked.length);
+                : kind === 'ship' ? 'Клик по кораблю на доске — взять его.'
+                    : kind === 'ground' ? 'Клик по войску на доске — взять его.'
+                        : 'Выберите, что двигать: корабли или наземные войска.';
+            ctx.status = this.status || (kind
+                ? (kind === 'ship' ? 'Корабли' : 'Наземные войска') + ' · могут двигаться: ' + units.length + ' · выбрано: ' + picked.length
+                : 'Могут двигаться: ' + all.length + ' отрядов');
             const names = new Map();
             for (const u of picked) {
                 const def = FS_RULES.unitOf(s, u);
@@ -755,8 +771,30 @@ class FSGame {
                     hint: 'Клик по сектору — идти · клик по отряду — убрать из группы',
                 };
             }
+            // Two separate flows — a ship does not march with the army and vice versa.
+            for (const [id, icon, label, hint] of [
+                ['ship', '🛦', 'Корабли', 'Двигать корабли: только пустота, штормы и переходы'],
+                ['ground', '⛨', 'Наземные войска', 'Двигать войска: только миры, путь через свои области'],
+            ]) {
+                const count = all.filter(u => { const d = FS_RULES.unitOf(s, u); return d && d.type === id; }).length;
+                ctx.actions.push({
+                    kind: 'pick', icon, label, hint: hint + ' · ' + count,
+                    selected: kind === id,
+                    onClick: () => {
+                        this.moveKind = this.moveKind === id ? null : id;
+                        // The pieces of the other kind leave the group.
+                        this.selected = this.selected.filter(uid => {
+                            const u = s.units.find(x => x.id === uid);
+                            const d = u && FS_RULES.unitOf(s, u);
+                            return !this.moveKind || (d && d.type === this.moveKind);
+                        });
+                        this.updateSelection();
+                        this.refresh();
+                    },
+                });
+            }
             ctx.actions.push({
-                kind: 'chip', icon: '✓', label: 'Выбрать все отряды',
+                kind: 'chip', icon: '✓', label: kind === 'ground' ? 'Выбрать все войска' : kind === 'ship' ? 'Выбрать все корабли' : 'Выбрать все отряды',
                 onClick: () => {
                     this.selected = units.map(u => u.id);
                     this.updateSelection();
@@ -1719,6 +1757,19 @@ class FSGame {
                     this.refresh();
                     return;
                 }
+                const def = FS_RULES.unitOf(s, unit);
+                const type = def ? def.type : 'ground';
+                // Ships and ground troops go in separate marches: a group already
+                // picked is not mixed with the other kind.
+                if (this.moveKind && this.moveKind !== type && this.selected.length) {
+                    this.status = this.moveKind === 'ship'
+                        ? 'В группе корабли. Снимите выделение, чтобы двинуть войска.'
+                        : 'В группе войска. Снимите выделение, чтобы двинуть корабли.';
+                    this.refresh();
+                    return;
+                }
+                // The first click of the march also tells what is being moved.
+                this.moveKind = type;
                 this.status = '';
                 this.toggleUnit(unit);
                 this.refresh();
@@ -1735,7 +1786,9 @@ class FSGame {
         const left = this.selected.length - units.length;
         this.status = left > 0 ? 'Идут ' + units.length + ' из ' + this.selected.length + ' отрядов.' : '';
         this.net.cmd({ type: 'moveUnits', moves: units.map(u => ({ unit: u.id, system: target.system, pos: target.pos })) });
-        this.selected = units.map(u => u.id);
+        // The troops that marched are no longer picked: the next click is a new march.
+        this.selected = [];
+        this.updateSelection();
         this.refresh();
     }
 
