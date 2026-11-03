@@ -682,7 +682,7 @@ const FSUI = {
         input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
         nameField.append(input); top.append(nameField); body.append(top);
         const players = this.el('div', 'fs-lobby-players');
-        (info.players || []).forEach(p => { const chip = this.el('div', 'fs-lobby-player'); chip.style.setProperty('--player-color', this.factionColor(p.faction)); chip.append(this.el('i', 'fs-player-dot'), this.el('span', '', p.name + (p.faction ? ' · ' + this.factionName(p.faction) : ' · выбирает фракцию'))); players.append(chip); });
+        (info.players || []).forEach(p => { const chip = this.el('div', 'fs-lobby-player'); chip.style.setProperty('--player-color', this.factionColor(p.faction)); chip.append(this.el('i', 'fs-player-dot'), this.el('span', '', p.name + (p.faction ? ' · ' + this.factionName(p.faction) : ' · выбирает фракцию'))); if (p.palette && p.palette.primary) { const sw = this.el('span', 'fs-pal-swatches'); for (const c of [p.palette.primary, p.palette.secondary1, p.palette.secondary2]) { const s = this.el('i'); s.style.background = c || '#888'; sw.append(s); } chip.append(sw); } players.append(chip); });
         body.append(players);
         const grid = this.el('div', 'fs-faction-grid');
         (info.factions || []).forEach((f, i) => {
@@ -696,6 +696,33 @@ const FSUI = {
             button.addEventListener('click', () => info.onFaction && info.onFaction(f.id)); grid.append(button);
         });
         body.append(grid);
+        // The army paint: the player picks one primary and two secondary colors;
+        // they are spread over different parts of every model of his army.
+        if (info.faction) {
+            const cur = Object.assign(this.defaultPalette(info.faction), info.palette || {});
+            const row = this.el('div', 'fs-palette-row');
+            row.append(this.el('span', 'fs-palette-title', 'Раскраска армии'));
+            const fields = [
+                ['primary', 'Основной'],
+                ['secondary1', 'Доп. 1'],
+                ['secondary2', 'Доп. 2'],
+            ];
+            for (const [key, label] of fields) {
+                const cell = this.el('label', 'fs-palette-field');
+                const input = this.el('input');
+                input.type = 'color';
+                input.value = cur[key] || '#888888';
+                input.title = label;
+                input.addEventListener('change', () => {
+                    if (!info.onPalette) return;
+                    cur[key] = input.value;
+                    info.onPalette({ primary: cur.primary, secondary1: cur.secondary1, secondary2: cur.secondary2 });
+                });
+                cell.append(input, this.el('span', '', label));
+                row.append(cell);
+            }
+            body.append(row);
+        }
         // How to enter the game: the ordinary party or one of the two test modes.
         const modes = this.el('div', 'fs-mode-grid');
         (info.modes || []).forEach(m => {
@@ -856,6 +883,19 @@ const FSUI = {
     factionColor(id) {
         const f = FS_DATA.factions.find(x => x.id === id);
         return f ? f.color : '#8899aa';
+    },
+
+    shade(hex, amt) {
+        const n = parseInt(String(hex || '').replace('#', ''), 16);
+        if (!Number.isFinite(n)) return '#888888';
+        const f = v => Math.max(0, Math.min(255, Math.round(v + amt * 2.55)));
+        return '#' + (((f((n >> 16) & 255)) << 16) | ((f((n >> 8) & 255)) << 8) | f(n & 255)).toString(16).padStart(6, '0');
+    },
+
+    // The default army paint of a faction: the faction color plus two shades.
+    defaultPalette(factionId) {
+        const base = this.factionColor(factionId);
+        return { primary: base, secondary1: this.shade(base, 48), secondary2: this.shade(base, -38) };
     },
 
     // -----------------------------------------------------------------------

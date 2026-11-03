@@ -72,6 +72,7 @@ class FSGame {
         this.name = '';
         this.faction = '';
         this.lobby = { code: '', players: [], factions: [] };
+        this.palette = null;
         // The three ways into the game: the ordinary party (the galaxy is built
         // together) and the two test modes — a ready map and a battlefield.
         this.testMode = 'game';
@@ -143,6 +144,7 @@ class FSGame {
             this.lobby.factions = msg.factions || [];
             this.lobby.code = msg.room;
             this.lobby.players = this.lobby.players || [];
+            if (msg.palette) this.palette = msg.palette;
             // The room code in the link — the host sends this link to the friends.
             try {
                 const url = new URL(location.href);
@@ -176,6 +178,7 @@ class FSGame {
             code: this.lobby.code,
             name: this.name,
             faction: this.faction,
+            palette: this.palette,
             players: this.lobby.players,
             factions: this.lobby.factions,
             link: location.origin + '/?room=' + this.lobby.code,
@@ -186,9 +189,16 @@ class FSGame {
             onMode: id => { this.testMode = id; this.showLobby(); },
             onBattle: patch => { this.onBattle(patch); },
             onStart: () => this.startTest(),
+            onPalette: pal => {
+                this.palette = pal;
+                if (this.net) this.net.palette(pal);
+            },
         };
         FSUI.lobby(info, id => {
             this.faction = id;
+            // A new faction resets the paint to that faction's default shades.
+            this.palette = null;
+            if (this.net) this.net.palette(null);
             this.resetBattle(this.battle.kind);
             this.net.faction(id);
             this.showLobby();
