@@ -4,9 +4,9 @@
 1 фабрика
 
 Максимумы:
-6 разведчиков
-3 ударных крейсера
-6 космодесандтника
-6 лендрейдеров
-3 боевые баржи
-3 титаны варлорд
+6 разведчиков - SpaceScout02.obj
+3 ударных крейсера - 0E405721B5FD19190188F6C4C9EDBE696489835F_stormtalon_bolter.obj
+6 космодесандтника - SpaceMarine05.obj
+6 лендрейдеров - SpaceLandRaider01.obj
+3 боевые баржи - httpsdrivegooglecomucexportdownloadid0BHqqb4mcF7STUJuUXZRSF8yNWc.obj
+3 титаны варлорд - 1CC0F9F686C4C83D69BC2EB4D827FFB228BA901F_httpsdldropboxusercontentcomu14731293TTS40KKnights40kKnightErrantobj.obj

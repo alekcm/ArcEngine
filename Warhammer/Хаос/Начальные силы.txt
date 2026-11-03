@@ -4,9 +4,9 @@
 1 фабрика
 
 Максимумы:
-9 культистов
-3 иконоборца
-6 космодесантов хаоса
-3 хелбрута
-3 отвратительных тяжелых крейсера
-3 титана "Налётчик"
+9 культистов - ChaosCultist.obj
+3 иконоборца - httpsdrivegooglecomucexportdownloadid0BHqqb4mcF7SekxxQWpZWVZ6NUk.obj
+6 космодесантов хаоса - ChaosMarine.obj
+3 хелбрута - ChaosHelbrute.obj
+3 отвратительных тяжелых крейсера - httpsdrivegooglecomucexportdownloadid0BHqqb4mcF7SazZ1QzVUcTM5V3c.obj
+3 титана "Налётчик" - ChaosTitan.obj
