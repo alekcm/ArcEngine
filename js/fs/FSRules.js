@@ -2902,6 +2902,30 @@ const FS_RULES = {
         return { att, def, morale };
     },
 
+    // The same values, split by where they come from: dice, combat tokens and
+    // the faceup combat cards — the panel shows every line as a sum.
+    combatValuesParts(state, side) {
+        const c = state.combat;
+        let dice = c.dice[side] || [];
+        if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
+        const tokens = c.tokens[side];
+        const played = c.cards[side].played;
+        const parts = {
+            att: { dice: 0, tokens: tokens.att || 0, cards: 0, total: 0 },
+            def: { dice: 0, tokens: tokens.def || 0, cards: 0, total: 0 },
+            morale: { dice: 0, tokens: 0, cards: 0, total: 0 },
+        };
+        for (const d of dice) if (parts[d]) parts[d].dice++;
+        for (const card of played) {
+            if (!card.card || !card.card.icons) continue;
+            for (const kind of ['att', 'def', 'morale']) parts[kind].cards += card.card.icons[kind] || 0;
+        }
+        for (const kind of ['att', 'def', 'morale']) {
+            parts[kind].total = parts[kind].dice + parts[kind].tokens + parts[kind].cards;
+        }
+        return parts;
+    },
+
     // The damage of a player: the difference between the offence of the
     // opponent and his own defence.
     combatDamageFor(state, side) {

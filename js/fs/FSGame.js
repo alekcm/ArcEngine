@@ -1417,6 +1417,7 @@ class FSGame {
                 reinforce: (c.reinforce && c.reinforce[id]) || 0,
                 cards: played,
                 values,
+                parts: FS_RULES.combatValuesParts(s, id),
                 takes: FS_RULES.combatDamageFor(s, id),
                 hand: (c.cards[id].hand || []).length,
                 closed: !!(c.chosen && c.chosen[id]),

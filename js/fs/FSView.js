@@ -927,17 +927,8 @@ const FSView = {
         if (!model) return null;
         const k = scale || 1;
         const metadata = { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area };
-        if (unitType === 'ground') {
-            const diameter = 30 * k;
-            const base = BABYLON.MeshBuilder.CreateCylinder('fs-unit-base-' + unit.id, { diameter, height: 3.5 * k, tessellation: 32 }, view.scene);
-            base.position.set(pos.x + offset.x, pos.y - 1.75 * k, pos.z + offset.y);
-            base.material = view.material('mini-base', '#121a22'); base.isPickable = true; base.metadata = metadata;
-            this.addMarker(view, base, 'prop');
-            const rim = BABYLON.MeshBuilder.CreateTorus('fs-unit-rim-' + unit.id, { diameter, thickness: 1.2, tessellation: 32 }, view.scene);
-            rim.position.set(pos.x + offset.x, pos.y + .35, pos.z + offset.y);
-            rim.material = view.material('mini-rim-' + unit.seat, color, { emissive: true });
-            rim.isPickable = false; this.addMarker(view, rim, 'prop');
-        }
+        // No extra base disc or rim under the miniature: the model itself has
+        // its own stand, and a black circle around it only gets in the way.
         const holder = new BABYLON.TransformNode('fs-unit-model-' + unit.id, view.scene);
         holder.position.set(pos.x + offset.x + model.root.position.x * k, pos.y + model.root.position.y * k, pos.z + offset.y + model.root.position.z * k);
         holder.scaling.copyFrom(model.root.scaling);
@@ -1299,7 +1290,9 @@ const FSView = {
                 const row = Math.floor(i / 6);
                 const inRow = i % 6;
                 const nRow = Math.min(6, dice.length - row * 6);
-                const pt = rowPos(Math.min(d - 10 + row * 12, d + 2), (inRow - (nRow - 1) / 2) * 14.5);
+                // Spacing by the die's diagonal, not its edge: a turned die must
+                // not cut into its neighbour.
+                const pt = rowPos(Math.min(d - 10 + row * C.die * 1.55, d + 2), (inRow - (nRow - 1) / 2) * C.die * 1.7);
                 const rest = { x: pt.x, y: groundY(pt.x, pt.z) + C.die / 2, z: pt.z };
                 const node = new BABYLON.TransformNode('fs-die-' + side.id + '-' + i, view.scene);
                 node.position.set(rest.x, rest.y, rest.z);
@@ -1346,24 +1339,56 @@ const FSView = {
             const cubes = [];
             for (let i = 0; i < (tokens.att || 0); i++) cubes.push('cube.att');
             for (let i = 0; i < (tokens.def || 0); i++) cubes.push('cube.def');
-            const reinforce = Number((c.reinforce && c.reinforce[side.id]) || 0);
-            for (let i = 0; i < reinforce; i++) cubes.push('token.morale');
             cubes.forEach((icon, i) => {
                 const row = Math.floor(i / 8);
                 const inRow = i % 8;
                 const nRow = Math.min(8, cubes.length - row * 8);
-                const pt = rowPos(d - 24 - row * 9.5, (inRow - (nRow - 1) / 2) * 11);
+                const pt = rowPos(d - 24 - row * 10.5, (inRow - (nRow - 1) / 2) * 12.5);
                 const node = new BABYLON.TransformNode('fs-ctok-' + side.id + '-' + i, view.scene);
                 node.position.set(pt.x, groundY(pt.x, pt.z) + 3.8, pt.z);
                 node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id };
                 const cube = BABYLON.MeshBuilder.CreateBox('fs-ctok-body-' + side.id + '-' + i, { size: 7.6 }, view.scene);
                 cube.parent = node;
-                cube.material = view.material('ctok-' + icon, icon.indexOf('att') > 0 ? '#c85a3f'
-                    : icon.indexOf('def') > 0 ? '#4173ba' : '#c3a03c', { emissive: true });
+                cube.material = view.material('ctok-' + icon, icon.indexOf('att') > 0 ? '#c85a3f' : '#4173ba', { emissive: true });
                 cube.isPickable = true;
                 cube.metadata = node.metadata;
                 this.addMarker(view, node, 'prop');
             });
+            // The reinforcement tokens are tokens, not cubes: flat discs with
+            // the white flag, lying on the ground in front of the troops.
+            const reinforce = Number((c.reinforce && c.reinforce[side.id]) || 0);
+            const routed = Number((c.reinforceRouted && c.reinforceRouted[side.id]) || 0);
+            for (let i = 0; i < reinforce; i++) {
+                const row = Math.floor(i / 8);
+                const inRow = i % 8;
+                const nRow = Math.min(8, reinforce - row * 8);
+                const pt = rowPos(d - 24 - (cubes.length ? 1 : 0) * 10.5 - row * 10.5,
+                    (inRow - (nRow - 1) / 2) * 12.5 + (cubes.length ? 0 : 0));
+                const node = new BABYLON.TransformNode('fs-rein-' + side.id + '-' + i, view.scene);
+                node.position.set(pt.x, groundY(pt.x, pt.z) + 1.4, pt.z);
+                node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id, reinforce: true };
+                const disc = BABYLON.MeshBuilder.CreateCylinder('fs-rein-body-' + side.id + '-' + i,
+                    { diameter: 10, height: 2.8, tessellation: 24 }, view.scene);
+                disc.parent = node;
+                const isRouted = i < routed;
+                disc.material = view.material('rein-' + side.id + '-' + i + (isRouted ? '-r' : ''),
+                    isRouted ? '#6b6257' : '#e8e2d2', { emissive: !isRouted });
+                const face = BABYLON.MeshBuilder.CreateDisc('fs-rein-face-' + side.id + '-' + i,
+                    { radius: 4.4, tessellation: 24 }, view.scene);
+                face.parent = node;
+                face.rotation.x = Math.PI / 2;
+                face.position.y = 1.45;
+                const fmat = view.material('rein-face-' + side.id + '-' + i + (isRouted ? '-r' : ''), '#f4ecd9');
+                fmat.diffuseTexture = this.iconTexture(view, 'ui.reinforce', isRouted ? '#8a8175' : '#3a3428');
+                fmat.opacityTexture = fmat.diffuseTexture;
+                fmat.useAlphaFromDiffuseTexture = true;
+                fmat.backFaceCulling = false;
+                face.material = fmat;
+                if (isRouted) node.rotation.z = Math.PI / 2;
+                disc.isPickable = true;
+                disc.metadata = node.metadata;
+                this.addMarker(view, node, 'prop');
+            }
         }
     },
 

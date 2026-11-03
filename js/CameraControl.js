@@ -584,7 +584,7 @@ CameraController.FLY_KEYS = {
     KeyQ: [0, 0, -1], KeyE: [0, 0, 1]
 };
 
-CameraController.EYE_MIN = 40;   // px: the camera no lower than this above the ground under it
+CameraController.EYE_MIN = 8;    // px: the camera no lower than this above the ground under it — zoomed all the way in it presses into the table
 
 // Free camera pitch, °: look-around — almost the full sphere, orbit — not under the target.
 CameraController.FREE_PITCH = { min: -85, max: 88, orbitMin: 8 };
