@@ -263,6 +263,14 @@
 .fs-shell.is-battle .fs-main-panel{width:min(330px,calc(100vw - 36px))}
 .fs-shell.is-battle .fs-map-hint{display:none}
 .fs-shell.is-battle .fs-panel-heading h2{font-size:20px}
+/* The hand of cards lies lower while the hint bar is hidden. */
+.fs-shell.is-battle:not(.is-mobile) .fs-battle-hand{bottom:26px}
+
+/* The cards a side has already played in this fight: small cube chips. */
+.fs-battle-played{grid-column:1/3;display:flex;flex-wrap:wrap;gap:4px}
+.fs-battle-played-card{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:99px;background:#ffffff10;border:1px solid #ffffff12;font-size:9px}
+.fs-battle-played-card .fs-ico-svg{width:11px;height:11px}
+.fs-battle-chip.is-closed{background:#8fb2e02e;color:#d3e4ff}
 
 /* --- the score of a battle: the dice first, the totals on their own line ---- */
 .fs-battle-side{grid-template-columns:1fr auto;align-items:start}

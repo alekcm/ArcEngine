@@ -173,7 +173,7 @@ const FSUI = {
         root.replaceChildren();
         root.classList.toggle('is-no-state', !state);
         // A fight is its own screen: the rails of the board stand aside while the
-        // battle table is played.
+        // battle in the contested sector is played.
         root.classList.toggle('is-battle', !!(state && state.combat));
         root.classList.toggle('is-placing-tile', !!(state && state.phase === 'setup' && ctx.mode === 'placeTile'));
         if (this.currentLobby) { this.renderModernLobby(); return; }
@@ -376,9 +376,9 @@ const FSUI = {
         this.renderPlaque();
     },
 
-    // The score of the battle: the two sides, their dice and their cubes. There is
-    // no word about the place of the fight — the battle table stands on the board
-    // and the panel has nothing to say about it.
+    // The score of the battle: the two sides, their dice, their cubes and the
+    // cards they have played. There is no word about the place of the fight —
+    // the fight is on the board, and the panel has nothing to say about it.
     renderBattle(battle) {
         if (!battle) return null;
         const card = this.el('section', 'fs-battle');
@@ -394,7 +394,7 @@ const FSUI = {
             who.append(this.el('span', 'fs-battle-name', side.name));
             who.append(this.el('span', 'fs-battle-role', side.side === 'attacker' ? 'атакует' : 'держит'));
             row.append(who);
-            // The dice: the same blazons that lie on the table.
+            // The dice: the same blazons that lie on the ground of the sector.
             const dice = this.el('div', 'fs-battle-dice');
             for (const d of side.dice || []) {
                 const die = this.el('span', 'fs-die is-' + d);
@@ -417,7 +417,27 @@ const FSUI = {
             extras.append(chip('cube.def', tokens.def, 'is-token', 'Жетоны обороны'));
             if (side.reinforce) extras.append(chip('ui.reinforce', side.reinforce, 'is-reinforce', 'Подкрепления'));
             if (side.hand) extras.append(chip('ui.card', side.hand, 'is-card', 'Карты в руке'));
+            if (side.closed) extras.append(chip('ui.card', 1, 'is-closed', 'Закрытая карта выбрана'));
             row.append(extras);
+            // The cards the side has already played in this fight.
+            const played = this.el('div', 'fs-battle-played');
+            for (const pc of side.cards || []) {
+                const node = this.el('span', 'fs-battle-played-card');
+                node.title = pc.name || '';
+                let any = false;
+                for (const kind of ['att', 'def', 'morale']) {
+                    const n = (pc.icons && pc.icons[kind]) || 0;
+                    if (!n) continue;
+                    any = true;
+                    const cc = this.el('span', 'fs-card-cube is-' + kind);
+                    cc.append(this.iconEl('cube.' + kind));
+                    if (n > 1) cc.append(this.el('b', '', String(n)));
+                    node.append(cc);
+                }
+                if (!any) node.append(this.iconEl('ui.card'));
+                played.append(node);
+            }
+            if (played.childNodes.length) row.append(played);
             // The totals of the side.
             const totals = this.el('div', 'fs-battle-totals');
             const values = side.values || { att: 0, def: 0, morale: 0 };
@@ -429,7 +449,7 @@ const FSUI = {
             row.append(totals);
             card.append(row);
         }
-        // The damage of the moment: the pieces that take it are picked on the table.
+        // The damage of the moment: the pieces that take it are picked on the board.
         if (battle.damage) {
             const dmg = this.el('div', 'fs-battle-damage');
             const line = this.el('div', 'fs-battle-damage-line');

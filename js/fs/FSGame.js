@@ -676,8 +676,8 @@ class FSGame {
         }, true);
     }
 
-    // The fight is a place of its own: while it lasts the camera stands over the
-    // battle table, and afterwards it goes back to the zoom of the board.
+    // The fight is on the board: while it lasts the camera stands over the
+    // contested sector itself, and afterwards it goes back to the board zoom.
     focusArena(s) {
         const c = s && s.combat;
         const key = c ? c.system + ':' + c.pos : null;
@@ -688,10 +688,10 @@ class FSGame {
         if (!camera) return;
         if (c) {
             if (!this.boardZoom && camera.zoomTarget != null) this.boardZoom = camera.zoomTarget;
-            const point = FSView.arenaFocus(this.app, s);
+            const point = FSView.combatFocus(this.app, s);
             if (!point) return;
             if (camera.lookAt) camera.lookAt(point.x, point.z);
-            if (camera.zoomTarget != null) camera.zoomTarget = Math.max(1.35, camera.zoomTarget || 1);
+            if (camera.zoomTarget != null) camera.zoomTarget = Math.max(1.5, camera.zoomTarget || 1);
         } else if (was && this.boardZoom && camera.zoomTarget != null) {
             camera.zoomTarget = this.boardZoom;
         }
@@ -1386,9 +1386,10 @@ class FSGame {
 
     // --- the combat -----------------------------------------------------------
     //
-    // A fight is played on its own table: the miniatures, the dice and the cards
-    // lie on it, in the world. This panel says only whose step it is and what can
-    // be pressed now — and never a word about the place of the battle.
+    // A fight is played on the board itself, in the contested sector: the
+    // miniatures stand where they are, the dice lie on the ground next to
+    // them. This panel says only whose step it is and what can be pressed
+    // now; the cards of the hand are the bar at the bottom of the screen.
     panelCombat(s, ctx) {
         const c = s.combat;
         const me = s.seat;
@@ -1403,7 +1404,7 @@ class FSGame {
             const values = FS_RULES.combatValues(s, id);
             /** @type {{att: number, def: number, morale: number}} */
             const none = { att: 0, def: 0, morale: 0 };
-            const played = (c.cards[id].played || []).map(x => (x.card && x.card.icons) || none);
+            const played = (c.cards[id].played || []).map(x => ({ name: x.name, icons: (x.card && x.card.icons) || none }));
             return {
                 side: id, seat,
                 name: p.name || '?',
@@ -1434,6 +1435,9 @@ class FSGame {
             return;
         }
         ctx.status = '';
+        // The hand is always at the bottom of the screen during the fight; a
+        // card is playable only in the step of its side.
+        this.fillHand(s, side, this.canPlayCard(s));
         switch (c.step) {
             case 'reinforce-attacker':
             case 'reinforce-defender': {
@@ -1457,14 +1461,11 @@ class FSGame {
             case 'choose-attacker':
             case 'choose-defender': {
                 const whose = c.step === 'choose-attacker' ? 'attacker' : 'defender';
-                // The cards of the table are the hand of the player: the bottom bar
-                // draws them as cards, the table itself shows them lying down.
-                this.fillHand(s, side, whose === side);
                 if (whose !== side) {
                     ctx.text = 'Карту выбирает ' + nameOf(whose) + '.';
                     return;
                 }
-                ctx.text = 'Возьмите карту со стола — карту нельзя пропустить.';
+                ctx.text = 'Возьмите карту из руки внизу экрана — карту нельзя пропустить.';
                 ctx.status = 'В руке ' + (c.cards[side].hand || []).length + ' карт.';
                 return;
             }
@@ -1473,7 +1474,7 @@ class FSGame {
                 const whose = c.step === 'damage-attacker' ? 'attacker' : 'defender';
                 if (whose !== side) { ctx.text = 'Урон распределяет ' + nameOf(whose) + '.'; return; }
                 const damage = FS_RULES.combatDamageFor(s, side);
-                // The pieces of the table take the damage; the mouse picks them.
+                // The fighters on the board take the damage; the mouse picks them.
                 this.mode = 'damage';
                 const preview = FS_RULES.damagePreview(s, side, this.damageTargets);
                 const rows = FS_RULES.damageCandidates(s, side).map(x => {
@@ -1494,7 +1495,7 @@ class FSGame {
                     rows,
                 };
                 ctx.text = damage
-                    ? 'Урон ' + damage + ': щёлкните по отрядам на столе.'
+                    ? 'Урон ' + damage + ': щёлкните по своим отрядам в области боя.'
                     : 'Щиты выдержали удар.';
                 ctx.status = damage ? 'Осталось распределить: ' + preview.left : '';
                 for (const row of rows) {
@@ -2343,8 +2344,9 @@ class FSGame {
         const meta = pick.pickedMesh.metadata;
         const point = pick.pickedPoint;
         const target = this.areaTarget(meta, point);
-        // The dice of the battle are on the table: a click on one of them answers the
-        // question about a reroll — no list in the panel is needed.
+        // The dice of the battle lie on the ground of the contested sector: a
+        // click on one of them answers the question about a reroll — no list
+        // in the panel is needed.
         if (s.pending && s.pending.question && meta.fs === 'die'
             && /^dice/.test(String(s.pending.question.kind || ''))) {
             const q = s.pending.question;
@@ -2379,12 +2381,8 @@ class FSGame {
             this.toggleDamage(id);
             return;
         }
-        // The cards of the battle lie on the table: a click on a card of the hand
-        // plays it, and nothing else in the interface can.
-        if (meta.fs === 'card' && meta.index >= 0 && s.combat && this.canPlayCard(s)) {
-            this.net.cmd({ type: 'combat', action: 'playCard', index: meta.index });
-            return;
-        }
+        // The cards of the battle are played from the hand at the bottom of the
+        // screen — there are no cards in the world any more.
         // The retreat is chosen on the map.
         if (this.mode === 'retreat' && s.combat && target && target.pos) {
             const ok = this.retreatAreas(s, s.combat).some(a => a.system === target.system && a.pos === target.pos);
