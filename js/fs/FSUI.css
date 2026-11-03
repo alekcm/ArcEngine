@@ -184,6 +184,18 @@
 .fs-battle-total.is-att{color:#ffc9b6}
 .fs-battle-total.is-def{color:#c9dcff}
 .fs-battle-total.is-morale{color:#e4c8ff}
+/* The three lines of the score of a side: ⚔ dice + tokens + cards = total. */
+.fs-battle-lines{grid-column:1/-1;display:flex;flex-direction:column;gap:3px;margin-top:2px}
+.fs-battle-line{display:flex;align-items:center;gap:7px;padding:3px 7px;border-radius:7px;background:#ffffff08;font:700 11px/1 ui-monospace,monospace}
+.fs-battle-line-icon{width:16px;height:16px}
+.fs-battle-line.is-att .fs-battle-line-icon{color:#ffc9b6}
+.fs-battle-line.is-def .fs-battle-line-icon{color:#c9dcff}
+.fs-battle-line.is-morale .fs-battle-line-icon{color:#e4c8ff}
+.fs-battle-line-sum{display:inline-flex;align-items:center;gap:4px;flex:1}
+.fs-battle-part{display:inline-flex;align-items:center;gap:2px}
+.fs-battle-part .fs-ico-svg{width:13px;height:13px}
+.fs-battle-plus{opacity:.5;font-weight:400}
+.fs-battle-line-total{margin-left:auto;font-size:13px;color:#f2e6ca}
 /* The damage of the moment: what the mouse has already picked. */
 .fs-battle-damage{display:flex;flex-direction:column;gap:4px;padding-top:7px;border-top:1px dashed #ffffff1c}
 .fs-battle-damage-line{display:flex;align-items:center;gap:8px}
@@ -288,6 +300,11 @@
 .fs-battle-totals{grid-column:2/3;display:flex;gap:6px}
 .fs-battle-total{display:inline-flex;align-items:center;gap:3px;font:700 13px/1 ui-monospace,monospace;color:#f2e6ca}
 .fs-battle-total .fs-ico-svg{width:15px;height:15px}
+.fs-battle-lines{grid-column:1/-1}
+.fs-battle-line{font-size:12.5px;padding:4px 9px;gap:8px}
+.fs-battle-line-icon{width:18px;height:18px}
+.fs-battle-part .fs-ico-svg{width:15px;height:15px}
+.fs-battle-line-total{font-size:15px}
 .fs-battle-damage-line{display:flex;align-items:center;gap:7px;font:700 14px/1 ui-monospace,monospace;color:#ffc9b6}
 .fs-battle-target{display:flex;align-items:center;gap:6px}
 .fs-battle-target-health{font:700 11px/1 ui-monospace,monospace;color:#f0b8a4}

@@ -413,49 +413,33 @@ const FSUI = {
             who.append(this.el('span', 'fs-battle-name', side.name));
             who.append(this.el('span', 'fs-battle-role', side.side === 'attacker' ? 'атакует' : 'держит'));
             row.append(who);
-            // The dice: the same blazons that lie on the ground of the sector.
-            const dice = this.el('div', 'fs-battle-dice');
-            for (const d of side.dice || []) {
-                const die = this.el('span', 'fs-die is-' + d);
-                die.append(this.iconEl({ att: 'die.att', def: 'die.def', morale: 'die.morale' }[d] || 'die.blank'));
-                die.title = d === 'att' ? 'Атака' : d === 'def' ? 'Оборона' : d === 'morale' ? 'Мораль' : 'Пусто';
-                dice.append(die);
+            // Three lines of the score, as in the rules: attack, defence,
+            // morale — every line is a sum of the dice, the tokens and the
+            // faceup cards: ⚔ 2 + ▣ 3 + □ 0.
+            const lines = this.el('div', 'fs-battle-lines');
+            const parts = side.parts || {};
+            for (const kind of ['att', 'def', 'morale']) {
+                const p = parts[kind] || { dice: 0, tokens: 0, cards: 0, total: 0 };
+                const line = this.el('div', 'fs-battle-line is-' + kind);
+                const sum = this.el('span', 'fs-battle-line-sum');
+                const part = (icon, n, title) => {
+                    const s = this.el('span', 'fs-battle-part');
+                    s.append(this.iconEl(icon), this.el('b', '', String(n)));
+                    s.title = title;
+                    return s;
+                };
+                sum.append(
+                    part('die.' + kind, p.dice, 'С кубиков'),
+                    this.el('span', 'fs-battle-plus', '+'),
+                    part('token.' + kind, p.tokens, 'С жетонов'),
+                    this.el('span', 'fs-battle-plus', '+'),
+                    part('ui.card', p.cards, 'С карт'),
+                );
+                line.append(this.iconEl('cube.' + kind, 'fs-battle-line-icon'), sum,
+                    this.el('b', 'fs-battle-line-total', String(p.total)));
+                lines.append(line);
             }
-            if (!(side.dice || []).length) dice.append(this.el('span', 'fs-die is-none', '—'));
-            row.append(dice);
-            // The cubes of the side and its closed card.
-            const extras = this.el('div', 'fs-battle-extras');
-            const chip = (icon, count, cls, title) => {
-                const node = this.el('span', 'fs-battle-chip ' + (cls || ''));
-                node.append(this.iconEl(icon), this.el('span', 'fs-battle-chip-n', String(count)));
-                node.title = title || '';
-                return node;
-            };
-            const tokens = side.tokens || { att: 0, def: 0 };
-            extras.append(chip('token.att', tokens.att, 'is-token', 'Жетоны атаки'));
-            extras.append(chip('token.def', tokens.def, 'is-token', 'Жетоны обороны'));
-            if (side.reinforce) extras.append(chip('ui.reinforce', side.reinforce, 'is-reinforce', 'Подкрепления'));
-            if (side.closed) extras.append(chip('ui.card', 1, 'is-closed', 'Закрытая карта выбрана'));
-            row.append(extras);
-            // The cards the side has already played in this fight.
-            const played = this.el('div', 'fs-battle-played');
-            for (const pc of side.cards || []) {
-                const node = this.el('span', 'fs-battle-played-card');
-                node.title = pc.name || '';
-                let any = false;
-                for (const kind of ['att', 'def', 'morale']) {
-                    const n = (pc.icons && pc.icons[kind]) || 0;
-                    if (!n) continue;
-                    any = true;
-                    const cc = this.el('span', 'fs-card-cube is-' + kind);
-                    cc.append(this.iconEl('cube.' + kind));
-                    if (n > 1) cc.append(this.el('b', '', String(n)));
-                    node.append(cc);
-                }
-                if (!any) node.append(this.iconEl('ui.card'));
-                played.append(node);
-            }
-            if (played.childNodes.length) row.append(played);
+            row.append(lines);
             // The totals of the side.
             const totals = this.el('div', 'fs-battle-totals');
             const values = side.values || { att: 0, def: 0, morale: 0 };
