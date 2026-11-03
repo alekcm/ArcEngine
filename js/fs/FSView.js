@@ -1164,6 +1164,7 @@ const FSView = {
             const hasStructure = world && state.structures.some(st => st.system === sysId && st.area === pos);
             const ground = list.filter(u => { const d = FS_RULES.unitOf(state, u); return !d || d.type !== 'ship'; });
             const onWorld = world ? FSView.ON_WORLD : 1;
+            const placed = [];
             list.forEach(u => {
                 const owner = state.players.find(p2 => p2.seat === u.seat);
                 const color = (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
@@ -1180,7 +1181,9 @@ const FSView = {
                     base = { x: p.x, y: h(p.x, p.y) + 4 + this.MARKER_Y, z: p.y };
                 }
                 if (view.unitPositions) view.unitPositions.set(u.id, { x: base.x + off.x, y: base.y, z: base.z + off.y });
-                if (def && !u.routed && this.addFactionUnit(view, u, base, off, color, def.type, onWorld)) return;
+                placed.push({ root: null, x: base.x + off.x, z: base.z + off.y, seat: u.seat, routed: !!u.routed });
+                const slot = placed[placed.length - 1];
+                if (def && !u.routed && this.addFactionUnit(view, u, base, off, color, def.type, onWorld)) { slot.root = view.markers[view.markers.length - 1].mesh; return; }
                 // Until a faction OBJ loads (or for ships), use sculpted silhouettes rather than
                 // identical flat counters: ships read as long hulls, ground units as raised pieces.
                 const ship = def && def.type === 'ship';
@@ -1189,6 +1192,7 @@ const FSView = {
                 if (ship) {
                     // Distinct fallback silhouette: a tapered hull, broad swept wings and a lit cockpit.
                     const craft = new BABYLON.TransformNode('fs-u' + u.id, view.scene);
+                    slot.root = craft;
                     craft.position.set(base.x + off.x, base.y + 8, base.z + off.y);
                     craft.metadata = unitMeta;
                     const hull = BABYLON.MeshBuilder.CreateCylinder('fs-ship-hull-' + u.id,
@@ -1214,12 +1218,30 @@ const FSView = {
                     const mesh = BABYLON.MeshBuilder.CreateCylinder('fs-u' + u.id,
                         { diameterTop: 16, diameterBottom: 24, height: 18, tessellation: 8 }, view.scene);
                     mesh.position.set(base.x + off.x, base.y + 3, base.z + off.y);
+                    slot.root = mesh;
                     mesh.material = unitMaterial;
                     if (u.routed) mesh.rotation.z = Math.PI / 2;
                     mesh.isPickable = true; mesh.metadata = unitMeta;
                     this.addMarker(view, mesh, 'actor');
                 }
             });
+            // During a battle every miniature turns to face the enemy: the front
+            // of the model (the gun) is its +Z, so rotation.y = atan2(dx, dz).
+            const co = state.combat;
+            if (co && co.system === sysId && co.pos === pos) {
+                for (const side of ['attacker', 'defender']) {
+                    const seat = side === 'attacker' ? co.attacker : co.defender;
+                    const foeSeat = side === 'attacker' ? co.defender : co.attacker;
+                    const foes = placed.filter(q => q.seat === foeSeat);
+                    if (!foes.length) continue;
+                    const fx = foes.reduce((a, q) => a + q.x, 0) / foes.length;
+                    const fz = foes.reduce((a, q) => a + q.z, 0) / foes.length;
+                    for (const q of placed) {
+                        if (q.seat !== seat || q.routed || !q.root) continue;
+                        q.root.rotation.y = Math.atan2(fx - q.x, fz - q.z);
+                    }
+                }
+            }
         }
         // Structures are small tabletop miniatures standing on the round world
         // itself, at its far edge — never beside the planet.
@@ -1448,18 +1470,16 @@ const FSView = {
                 if (len > 2) dir = { x: dx / len, z: dz / len };
                 cd = len;
             }
-            // On a world the dice lie on the planet itself, not piled on its rim:
-            // the outer edge of the rows is the planet's edge, not the sector's.
-            const edge = disc ? Math.min(d - 10, this.PLANET_D / 2 - 6) : d - 10;
-            // The dice start right next to the troops and the extra rows go
-            // inward, so they never clamp into one heap.
-            const base = ups.length ? Math.min(cd + 14, edge) : edge;
+            // On a world the dice lie on the table ring just OUTSIDE the planet,
+            // clear of the miniatures that stand on it; in the void they start
+            // beyond the troops' centroid. Extra rows never clamp into one heap.
+            const base = disc ? this.PLANET_D / 2 + 8 : (ups.length ? Math.min(cd + 26, d - 10) : d - 10);
             // A point at `dist` from the centre along the side's direction, shifted
             // `along` across it (the rows run perpendicular to the direction),
-            // clamped back into the sector.
+            // clamped back into the tile.
             const rowPos = (dist, along) => ({
-                x: Math.max(ax - (d - 10), Math.min(ax + (d - 10), ax + dir.x * dist - dir.z * along)),
-                z: Math.max(az - (d - 10), Math.min(az + (d - 10), az + dir.z * dist + dir.x * along)),
+                x: Math.max(ax - (d + 2), Math.min(ax + (d + 2), ax + dir.x * dist - dir.z * along)),
+                z: Math.max(az - (d + 2), Math.min(az + (d + 2), az + dir.z * dist + dir.x * along)),
             });
             // The dice of the side land on the ground of the sector, in rows at
             // the edge on the side of its own troops.
@@ -1469,8 +1489,10 @@ const FSView = {
                 const inRow = i % 6;
                 const nRow = Math.min(6, dice.length - row * 6);
                 // Spacing by the die's diagonal, not its edge: a turned die must
-                // not cut into its neighbour; the next row goes inward.
-                const pt = rowPos(Math.max(10, base - row * C.die * 1.55), (inRow - (nRow - 1) / 2) * C.die * 1.7);
+                // not cut into its neighbour. On a world all dice of the side lie
+                // in one arc on the table ring outside the planet.
+                const dist = disc ? base : Math.max(10, base - row * C.die * 1.55);
+                const pt = rowPos(dist, (inRow - (nRow - 1) / 2) * C.die * (disc ? 1.55 : 1.7));
                 const rest = { x: pt.x, y: groundY(pt.x, pt.z) + C.die / 2, z: pt.z };
                 const node = new BABYLON.TransformNode('fs-die-' + side.id + '-' + i, view.scene);
                 node.position.set(rest.x, rest.y, rest.z);
@@ -1521,7 +1543,7 @@ const FSView = {
                 const row = Math.floor(i / 8);
                 const inRow = i % 8;
                 const nRow = Math.min(8, cubes.length - row * 8);
-                const pt = rowPos(Math.max(6, base - 16 - row * 10.5), (inRow - (nRow - 1) / 2) * 12.5);
+                const pt = rowPos(disc ? base - 13 : Math.max(6, base - 16 - row * 10.5), (inRow - (nRow - 1) / 2) * 12.5);
                 const node = new BABYLON.TransformNode('fs-ctok-' + side.id + '-' + i, view.scene);
                 node.position.set(pt.x, groundY(pt.x, pt.z) + 3.8, pt.z);
                 node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id };
@@ -1540,16 +1562,16 @@ const FSView = {
                 const row = Math.floor(i / 8);
                 const inRow = i % 8;
                 const nRow = Math.min(8, reinforce - row * 8);
-                const pt = rowPos(Math.max(6, base - 16 - (cubes.length ? 10.5 : 0) - row * 10.5),
+                const pt = rowPos(disc ? base - 13 - (cubes.length ? 10.5 : 0) : Math.max(6, base - 16 - (cubes.length ? 10.5 : 0) - row * 10.5),
                     (inRow - (nRow - 1) / 2) * 12.5);
                 const node = new BABYLON.TransformNode('fs-rein-' + side.id + '-' + i, view.scene);
                 node.position.set(pt.x, groundY(pt.x, pt.z) + 1.4, pt.z);
                 node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id, reinforce: true };
-                const disc = BABYLON.MeshBuilder.CreateCylinder('fs-rein-body-' + side.id + '-' + i,
+                const tokenDisc = BABYLON.MeshBuilder.CreateCylinder('fs-rein-body-' + side.id + '-' + i,
                     { diameter: 10, height: 2.8, tessellation: 24 }, view.scene);
-                disc.parent = node;
+                tokenDisc.parent = node;
                 const isRouted = i < routed;
-                disc.material = view.material('rein-' + side.id + '-' + i + (isRouted ? '-r' : ''),
+                tokenDisc.material = view.material('rein-' + side.id + '-' + i + (isRouted ? '-r' : ''),
                     isRouted ? '#6b6257' : '#e8e2d2', { emissive: !isRouted });
                 const face = BABYLON.MeshBuilder.CreateDisc('fs-rein-face-' + side.id + '-' + i,
                     { radius: 4.4, tessellation: 24 }, view.scene);
@@ -1563,8 +1585,8 @@ const FSView = {
                 fmat.backFaceCulling = false;
                 face.material = fmat;
                 if (isRouted) node.rotation.z = Math.PI / 2;
-                disc.isPickable = true;
-                disc.metadata = node.metadata;
+                tokenDisc.isPickable = true;
+                tokenDisc.metadata = node.metadata;
                 this.addMarker(view, node, 'prop');
             }
         }

@@ -363,7 +363,7 @@ const FSUI = {
             button.addEventListener('click', () => a.onClick && a.onClick());
             actions.append(button);
         }
-        if (!items.length) actions.append(this.el('div', 'fs-empty', state.over ? 'Партия завершена.' : 'Следите за ходом соперников.'));
+        if (!items.length && state.over) actions.append(this.el('div', 'fs-empty', 'Партия завершена.'));
         panel.append(actions);
         for (const a of primaries) {
             const button = this.el('button', 'fs-primary'); button.type = 'button';
@@ -518,7 +518,7 @@ const FSUI = {
             } else if (item.text) {
                 card.append(this.richText(item.text, 'fs-battle-card-text'));
             }
-            if (item.playable) card.append(this.el('span', 'fs-battle-card-play', 'Разыграть'));
+            // no «Разыграть» label — the card itself is the button.
             else card.disabled = true;
             card.addEventListener('click', () => {
                 if (!item.playable) return;
