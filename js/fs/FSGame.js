@@ -54,6 +54,8 @@ class FSGame {
         // The warning of the interface (a full area, for example) and the units
         // picked for the way back to the supply.
         /** @type {any} */ this.warn = '';
+        // Марш в переполненную область ждёт подтверждения.
+        /** @type {any} */ this.overflow = null;
         /** @type {string[]} */ this.trimPick = [];
         // The mouse-first play: the pieces picked on the board, the sector under
         // the pointer and the plaque that floats over the place of an action.
@@ -352,6 +354,7 @@ class FSGame {
             this.pending = null;
             this.damageTargets = [];
             this.warn = '';
+            this.overflow = null;
             FSView.clearHighlights(this.view);
         }
         // The question of the effect of a card: the player chooses.
@@ -853,6 +856,23 @@ class FSGame {
     // mark the picked pieces, the arrow shows the march, the click on a sector
     // sends the group there.
     panelAdvance(s, ctx) {
+        // Марш в переполненную область: игрок подтверждает его сам.
+        if (this.overflow) {
+            const picked = (this.overflow.units || [])
+                .map(id => s.units.find(u => u.id === id))
+                .filter(Boolean);
+            const goal = { system: this.overflow.system, pos: this.overflow.pos };
+            ctx.actions.push({
+                kind: 'primary', icon: 'ui.next', label: 'Двинуть всё равно',
+                hint: 'часть отрядов погибнет после приказа',
+                onClick: () => {
+                    this.overflow = null;
+                    this.warn = '';
+                    if (!picked.length) { this.status = 'Эти отряды уже не могут идти.'; this.refresh(); return; }
+                    this.sendAdvance(picked, goal);
+                },
+            });
+        }
         const me = s.seat;
         const order = s.order;
         const sys = s.systems.find(x => x.id === order.system);
@@ -993,8 +1013,11 @@ class FSGame {
         const excess = entry ? Math.max(0, mine.length - entry.cap) : 0;
         this.trimPick = (this.trimPick || []).filter(id => mine.some(u => u.id === id));
         ctx.text = this.trimPick.length
-            ? 'Отмечено: ' + this.trimPick.length + ' из ' + excess + '. Подтвердите — и они уйдут в запас.'
-            : 'Щёлкните по своим отрядам — они уйдут в запас. Затем подтвердите.';
+            ? 'Отмечено ' + this.trimPick.length + ' из ' + excess + '. Подтвердите — и они вернутся в запас.'
+            : (excess > 0
+                ? 'В области больше отрядов, чем она вмещает: лишние ' + excess
+                    + ' погибнут. Отметьте мышью, кого отправить в запас, и подтвердите.'
+                : 'Отметьте мышью своих отрядов, кого отправить в запас, и подтвердите.');
         // One chip per kind of model: a click marks one model of that kind.
         const kinds = new Map();
         for (const u of mine) {
@@ -2270,10 +2293,29 @@ class FSGame {
         // надо предупредить до того, как он закончит движение.
         const cap = FS_RULES.capacity(s, target.system, target.pos);
         const already = FS_RULES.unitsAt(s, target.system, target.pos).filter(u => u.seat === s.seat).length;
-        this.warn = already + units.length > cap
-            ? 'Область будет перенаселена (' + (already + units.length) + ' из ' + cap
-                + '): после окончания движения часть ваших отрядов погибнет — выбрать их придётся вам.'
-            : '';
+        const over = already + units.length > cap;
+        if (over) {
+            // Первый клик в переполненную область только предупреждает: марш
+            // уходит со второго клика или с кнопки в панели. Так игрок видит
+            // цену хода до того, как он случится.
+            const key = target.system + ':' + target.pos + ':' + units.map(u => u.id).join(',');
+            if (!this.overflow || this.overflow.key !== key) {
+                this.overflow = { key, units: units.map(u => u.id), system: target.system, pos: target.pos };
+                this.warn = 'Область будет перенаселена (' + (already + units.length) + ' из ' + cap
+                    + '): после окончания движения лишние ваши отряды погибнут. '
+                    + 'Нажмите ещё раз, чтобы двинуть, или отмечайте мышью, кого оставить.';
+                this.refresh();
+                return;
+            }
+        }
+        this.overflow = null;
+        this.warn = '';
+        this.sendAdvance(units, target);
+    }
+
+    // The march itself: the group of the picking goes into one area.
+    sendAdvance(units, target) {
+        this.overflow = null;
         this.net.cmd({ type: 'moveUnits', moves: units.map(u => ({ unit: u.id, system: target.system, pos: target.pos })) });
         // The troops that marched are no longer picked: the next click is a new march.
         this.selected = [];
