@@ -949,6 +949,62 @@ const FSView = {
         },
     },
 
+    // The tabletop models of the structures, as the author put them into
+    // Warhammer/ (Бастион.obj, Город.obj, фабрика.obj).
+    STRUCTURE_MODELS: {
+        bastion: 'Бастион.obj',
+        city: 'Город.obj',
+        factory: 'фабрика.obj',
+    },
+
+    // The loaded OBJ of a structure type (geometry only — the colour of the
+    // owner is put on the clones). Null until it arrives; then a model.
+    structureModel(view, type) {
+        const file = this.STRUCTURE_MODELS[type];
+        if (!file) return null;
+        if (!view.structureModelCache) view.structureModelCache = new Map();
+        if (!view.structureModelLoads) view.structureModelLoads = new Map();
+        const key = type;
+        if (view.structureModelCache.has(key)) return view.structureModelCache.get(key);
+        if (view.structureModelLoads.has(key)) return null;
+        const loader = typeof BABYLON !== 'undefined' && BABYLON.SceneLoader;
+        if (!loader || !loader.ImportMeshAsync) { view.structureModelCache.set(key, null); return null; }
+        const imported = typeof BABYLON.ImportMeshAsync === 'function'
+            ? BABYLON.ImportMeshAsync(file, view.scene, { rootUrl: 'Warhammer/', pluginOptions: { obj: { skipMaterials: true } } })
+            : loader.ImportMeshAsync('', 'Warhammer/', file, view.scene);
+        if (!imported || typeof imported.then !== 'function') { view.structureModelCache.set(key, null); return null; }
+        const promise = imported.then(result => {
+            const root = new BABYLON.TransformNode('fs-structure-model-' + type, view.scene);
+            const parts = (result.meshes || []).filter(m => m && m.getTotalVertices && m.getTotalVertices() > 0);
+            for (const mesh of parts) { mesh.parent = root; mesh.isPickable = false; mesh.computeWorldMatrix(true); }
+            let min = new BABYLON.Vector3(Infinity, Infinity, Infinity);
+            let max = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
+            for (const mesh of parts) {
+                const box = mesh.getBoundingInfo().boundingBox;
+                min = BABYLON.Vector3.Minimize(min, box.minimumWorld);
+                max = BABYLON.Vector3.Maximize(max, box.maximumWorld);
+            }
+            const size = max.subtract(min), largest = Math.max(size.x, size.y, size.z);
+            if (!parts.length || !Number.isFinite(largest) || largest <= 0) throw new Error('OBJ не содержит видимой геометрии');
+            const scale = 30 / largest;
+            root.scaling.setAll(scale);
+            root.position.set(-(min.x + max.x) * .5 * scale, -min.y * scale, -(min.z + max.z) * .5 * scale);
+            root.setEnabled(false);
+            const model = { root, parts };
+            view.structureModelCache.set(key, model);
+            view.structureModelLoads.delete(key);
+            if (view.onModelReady) view.onModelReady();
+            return model;
+        }).catch(error => {
+            console.warn('FSView: не удалось загрузить модель строения ' + type + ': ' + ((error && error.message) || error));
+            view.structureModelCache.set(key, null);
+            view.structureModelLoads.delete(key);
+            return null;
+        });
+        view.structureModelLoads.set(key, promise);
+        return null;
+    },
+
     factionModel(view, faction, unitType, unitId) {
         // The model of the unit itself, per the faction's smoly file; the old
         // per-type pair stays as the fallback.
@@ -1181,6 +1237,22 @@ const FSView = {
             const dark = view.material('struct-metal', '#26313c');
             const trim = view.material('struct-trim-' + s.seat, color, { emissive: true });
             const light = view.material('struct-lights', '#8bdcf4', { emissive: true });
+            // The real tabletop model of the structure, in the owner's colour;
+            // until it loads (or if it fails) the procedural miniature stands.
+            const structModel = this.structureModel(view, s.type);
+            if (structModel) {
+                const mat = view.material('struct-obj-' + s.type + '-' + s.seat, color, { emissive: true });
+                for (let i = 0; i < structModel.parts.length; i++) {
+                    const clone = structModel.parts[i].clone('fs-struct-part-' + s.id + '-' + i, root, false);
+                    if (!clone) continue;
+                    clone.material = mat;
+                    clone.isPickable = true;
+                    clone.metadata = meta;
+                    clone.setEnabled(true);
+                }
+                this.addMarker(view, root, 'actor');
+                continue;
+            }
             const part = (name, shape, x, y, z, material) => {
                 const mesh = shape.kind === 'box'
                     ? BABYLON.MeshBuilder.CreateBox(name, shape.opts, view.scene)
