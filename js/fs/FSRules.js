@@ -3087,6 +3087,9 @@ const FS_RULES = {
             const def = this.unitOf(state, u);
             if (def) morale += def.morale;
         }
+        // A reinforcement token used in the combat is a command level zero unit:
+        // it gives no dice, but it counts as a unit — one morale each.
+        morale += Number((c.reinforce && c.reinforce[side]) || 0);
         for (const s of this.structuresAt(state, c.system, c.pos)) {
             if (s.seat !== seat) continue;
             morale += this.structureStats(s.type).morale;

@@ -479,7 +479,7 @@ const FSUI = {
     // for the cubes. A click plays the card; a card is never skipped.
     renderBattleHand(hand) {
         if (!hand || !hand.length) return null;
-        const bar = this.el('section', 'fs-battle-hand');
+        const bar = this.el('section', 'fs-battle-hand' + (this.altZoom ? ' is-alt' : ''));
         const cards = this.el('div', 'fs-battle-cards');
         for (const item of hand) {
             const card = this.el('button', 'fs-battle-card' + (item.playable ? ' is-playable' : ' is-closed'));

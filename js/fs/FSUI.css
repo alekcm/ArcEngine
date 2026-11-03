@@ -253,9 +253,9 @@
 .fs-card-cube.is-att b{color:#f0b8a4}
 .fs-card-cube.is-def b{color:#b9cdf2}
 .fs-card-cube.is-morale b{color:#e2cfa0}
-.fs-battle-card-text{max-height:78px;overflow:hidden;border-top:1px solid #ffffff12;padding-top:5px}
-.fs-battle-card-text.fs-rich{font-size:8px;line-height:1.35}
-.fs-battle-card-text .fs-rich-ico{width:10px;height:10px;vertical-align:-2px}
+.fs-battle-card-text{max-height:112px;overflow:hidden;border-top:1px solid #ffffff12;padding-top:6px}
+.fs-battle-card-text.fs-rich{font-size:9.5px;line-height:1.4}
+.fs-battle-card-text .fs-rich-ico{width:12px;height:12px;vertical-align:-2px}
 .fs-battle-card.is-playable{border-color:#d8b87355}
 
 /* --- the battle is its own screen ----------------------------------------- */

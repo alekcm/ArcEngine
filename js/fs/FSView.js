@@ -1270,16 +1270,37 @@ const FSView = {
         const d = this.TILE * this.AREA / 2;
         for (const side of [{ id: 'attacker', seat: c.attacker }, { id: 'defender', seat: c.defender }]) {
             const sign = side.id === 'attacker' ? 1 : -1;
+            // The direction from the centre of the sector to the centroid of the
+            // side's fighters: the dice and the cubes of a side lie on its own
+            // side of the battlefield, next to its miniatures — never across.
+            const ups = state.units
+                .filter(u => u.system === c.system && u.area === c.pos && u.seat === side.seat)
+                .map(u => view.unitPositions && view.unitPositions.get(u.id))
+                .filter(Boolean);
+            let dir = { x: 0, z: sign };
+            if (ups.length) {
+                let mx = 0, mz = 0;
+                for (const p of ups) { mx += p.x; mz += p.z; }
+                const dx = mx / ups.length - ax, dz = mz / ups.length - az;
+                const len = Math.hypot(dx, dz);
+                if (len > 2) dir = { x: dx / len, z: dz / len };
+            }
+            // A point at `dist` from the centre along the side's direction, shifted
+            // `along` across it (the rows run perpendicular to the direction),
+            // clamped back into the sector.
+            const rowPos = (dist, along) => ({
+                x: Math.max(ax - (d - 10), Math.min(ax + (d - 10), ax + dir.x * dist - dir.z * along)),
+                z: Math.max(az - (d - 10), Math.min(az + (d - 10), az + dir.z * dist + dir.x * along)),
+            });
             // The dice of the side land on the ground of the sector, in rows at
-            // its outer edge — the attacker near the camera, the defender far.
+            // the edge on the side of its own troops.
             const dice = c.dice[side.id] || [];
             dice.forEach((face, i) => {
                 const row = Math.floor(i / 6);
                 const inRow = i % 6;
                 const nRow = Math.min(6, dice.length - row * 6);
-                const x = ax + (inRow - (nRow - 1) / 2) * 14.5;
-                const z = az + sign * Math.min(d - 10 + row * 12, d + 2);
-                const rest = { x, y: groundY(x, z) + C.die / 2, z };
+                const pt = rowPos(Math.min(d - 10 + row * 12, d + 2), (inRow - (nRow - 1) / 2) * 14.5);
+                const rest = { x: pt.x, y: groundY(pt.x, pt.z) + C.die / 2, z: pt.z };
                 const node = new BABYLON.TransformNode('fs-die-' + side.id + '-' + i, view.scene);
                 node.position.set(rest.x, rest.y, rest.z);
                 node.rotation.y = (i * 1.7) % (Math.PI / 2);
@@ -1331,10 +1352,9 @@ const FSView = {
                 const row = Math.floor(i / 8);
                 const inRow = i % 8;
                 const nRow = Math.min(8, cubes.length - row * 8);
-                const x = ax + (inRow - (nRow - 1) / 2) * 11;
-                const z = az + sign * (d - 24 - row * 9.5);
+                const pt = rowPos(d - 24 - row * 9.5, (inRow - (nRow - 1) / 2) * 11);
                 const node = new BABYLON.TransformNode('fs-ctok-' + side.id + '-' + i, view.scene);
-                node.position.set(x, groundY(x, z) + 3.8, z);
+                node.position.set(pt.x, groundY(pt.x, pt.z) + 3.8, pt.z);
                 node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id };
                 const cube = BABYLON.MeshBuilder.CreateBox('fs-ctok-body-' + side.id + '-' + i, { size: 7.6 }, view.scene);
                 cube.parent = node;

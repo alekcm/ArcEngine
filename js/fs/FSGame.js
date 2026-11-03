@@ -312,7 +312,9 @@ class FSGame {
         this.testMode = view.mode || this.testMode;
         FSUI.show('fsLobby', false);
         FSView.update(this.app, this.view, view);
-        this.aimCamera();
+        // During a fight the camera belongs to the contested sector (focusArena
+        // glides it there smoothly) — the board centre must not yank it back.
+        if (!view.combat) this.aimCamera();
         // A new round or a new phase — the pending action is dropped.
         if (this.lastPhase !== view.phase || this.lastRound !== view.round) {
             this.mode = 'idle';
