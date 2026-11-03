@@ -330,7 +330,7 @@ const FS_EFFECTS = {
             : seat;
         switch (step.op) {
             case 'gainToken': {
-                const n = this.count(R, state, seat, step);
+                const n = this.count(R, state, seat, step, ctx);
                 if (!inCombat) return null;
                 const s2 = side;
                 combat.tokens[s2][step.kind] += n;
@@ -338,7 +338,7 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'loseToken': {
-                const n = this.count(R, state, seat, step);
+                const n = this.count(R, state, seat, step, ctx);
                 if (!inCombat) return null;
                 const s2 = target === seat ? side : (side === 'attacker' ? 'defender' : 'attacker');
                 combat.tokens[s2][step.kind] = Math.max(0, combat.tokens[s2][step.kind] - n);
@@ -346,13 +346,14 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'gainDie': {
-                let n = this.count(R, state, seat, step);
+                let n = this.count(R, state, seat, step, ctx);
                 if (step.inBattle && combat && step.per === 'unit') {
                     // "in the reinforce step" — the units of this battle, not the board.
                     const here = state.units.filter(u => u.seat === seat && !u.routed
                         && u.system === combat.system && u.area === combat.pos
                         && this.unitFits(R.unitOf(state, u), step.filter));
-                    n = (step.n || 1) * here.length;
+                    n = (step.n || 1) * (here.length
+                        + (step.filter ? 0 : R.tokenUnits(state, side).alive));
                 }
                 if (!inCombat) return null;
                 // The condition of the text: "if the opponent has a die of this kind".
@@ -1264,11 +1265,15 @@ const FS_EFFECTS = {
         }
     },
 
-    // The number of the effect: "for every unit" is counted here.
-    count(R, state, seat, step) {
+    // The number of the effect: "for every unit" is counted here. In a combat
+    // the reinforcement tokens count as units too — a routed token does not.
+    count(R, state, seat, step, ctx) {
         let n = step.n || 1;
         if (step.per === 'unit') {
-            const units = state.units.filter(u => u.seat === seat && !u.routed);
+            const combat = state.combat;
+            const inBattle = !!(ctx && ctx.kind === 'combat' && combat && step.inBattle);
+            const units = state.units.filter(u => u.seat === seat && !u.routed
+                && (!inBattle || (u.system === combat.system && u.area === combat.pos)));
             const matching = step.filter
                 ? units.filter(u => this.unitFits(R.unitOf(state, u), step.filter))
                 : units;
@@ -1281,6 +1286,10 @@ const FS_EFFECTS = {
                 })).size
                 : matching.length;
             n = (step.n || 1) * amount;
+            if (inBattle && !step.filter) {
+                const side = seat === combat.attacker ? 'attacker' : 'defender';
+                n += (step.n || 1) * R.tokenUnits(state, side).alive;
+            }
             if (step.max) n = Math.min(n, step.max);
         }
         return Math.max(0, n);
