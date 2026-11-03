@@ -422,6 +422,7 @@ class FSGame {
         if (this.mode === 'damage') this.mode = 'idle';
         if (this.mode === 'retreat' && !(s.combat && s.combat.step === 'retreat')) this.mode = 'idle';
         if (this.mode === 'trim' && !(s.trim || []).some(t => t.seat === me)) this.mode = 'idle';
+        if (!(s.trim || []).some(t => t.seat === me)) this.trimPick = [];
         if (this.mode === 'strike-damage' && !s.strike) this.mode = 'idle';
         this.hand = [];
         if (s.combat) this.panelCombat(s, ctx);
@@ -649,7 +650,9 @@ class FSGame {
             if (e.key !== 'Escape' && e.code !== 'Escape') return;
             const s = this.state;
             if (!s) return;
-            const mine = s.order && s.order.seat === s.seat && s.order.order === 'advance' && s.order.phase === 'move';
+            // Отмена работает и в начале боя: пока в нём ничего не сделано.
+            const mine = s.order && s.order.seat === s.seat && s.order.order === 'advance'
+                && (s.order.phase === 'move' || s.order.phase === 'combat');
             if (mine && (s.order.steps || []).length) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1156,6 +1159,13 @@ class FSGame {
                 });
             }
         }
+        if ((order.purchases || []).length) {
+            ctx.actions.push({
+                kind: 'chip', icon: 'ui.close', label: 'Снять последнюю покупку',
+                hint: 'правый клик по фигуре — снять любую',
+                onClick: () => this.net.cmd({ type: 'undoPurchase' }),
+            });
+        }
         if (step === 'units') {
             ctx.actions.push({
                 kind: 'primary', icon: 'ui.next', label: 'Закончить размещение отрядов',
@@ -1167,12 +1177,6 @@ class FSGame {
                 hint: spent ? 'спишется ' + spent + ' материи' : '',
                 onClick: () => this.net.cmd({ type: 'finishDeploy' }),
             });
-            if ((order.purchases || []).length) {
-                ctx.actions.push({
-                    kind: 'chip', icon: 'ui.close', label: 'Снять последнюю покупку',
-                    onClick: () => this.net.cmd({ type: 'undoPurchase' }),
-                });
-            }
         }
     }
 
