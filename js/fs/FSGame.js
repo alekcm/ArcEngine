@@ -1451,7 +1451,7 @@ class FSGame {
                 // «Без подкреплений» button is always there, so the fight never
                 // waits for a player who cannot reinforce.
                 ctx.text = max > 0
-                    ? 'Подкрепление: ' + (s.players[me].assets.reinforcement || 0) + ' жетон(ов) в руке.'
+                    ? 'Подкрепление: выберите, сколько жетонов поставить.'
                     : 'Подкреплений нет — пропустите шаг.';
                 for (let i = 0; i <= max; i++) {
                     ctx.actions.push({
@@ -1471,8 +1471,8 @@ class FSGame {
                     ctx.text = 'Карту выбирает ' + nameOf(whose) + '.';
                     return;
                 }
-                ctx.text = 'Возьмите карту из руки внизу экрана — карту нельзя пропустить.';
-                ctx.status = 'В руке ' + (c.cards[side].hand || []).length + ' карт.';
+                ctx.text = 'Ваш ход: выберите карту.';
+                ctx.status = '';
                 return;
             }
             case 'damage-attacker':

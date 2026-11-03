@@ -60,6 +60,7 @@
             background: #7cc0c7;
             transition: width 0.3s ease;
         }
+    #fs-build{position:fixed;right:8px;bottom:4px;z-index:99999;font:10px/1 ui-monospace,monospace;color:#ffffff40;pointer-events:none;user-select:none}
     </style>
 </head>
 <body>
@@ -98,5 +99,7 @@
         // A long tap and RMB must not open the browser menu.
         document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
+<div id="fs-build" title="Хэш коммита, который отдаёт этот сервер">__GIT_COMMIT__</div>
+<script>document.getElementById('fs-build').textContent = '__GIT_COMMIT__';</script>
 </body>
 </html>

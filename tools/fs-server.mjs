@@ -14,6 +14,7 @@
 //  starts when everybody has chosen a faction.
 // ============================================================================
 import http from 'node:http';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -27,6 +28,13 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 const NO_OPEN = process.argv.includes('--no-open');
 const argPort = process.argv.find(a => /^--port=\d+$/.test(a));
 const PORT_BASE = argPort ? Number(argPort.split('=')[1]) : (Number(process.env.PORT) || 8080);
+
+// The build stamp: the short hash of the commit the server runs from, printed
+// into the page — so it is always visible which build is actually served.
+let GIT_COMMIT = 'unknown';
+try {
+    GIT_COMMIT = execSync('git rev-parse --short HEAD', { cwd: ROOT }).toString().trim();
+} catch { /* not a git checkout — the stamp stays 'unknown' */ }
 
 const MIME = {
     '.html': 'text/html; charset=utf-8',
@@ -442,6 +450,19 @@ const server = http.createServer(async (req, res) => {
     }
     if (st.isDirectory()) { res.writeHead(403); return res.end('No listing'); }
     const type = MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+    // index.html gets the build stamp injected: which commit is being served.
+    if (pathname === '/index.html') {
+        let html = fs.readFileSync(filePath, 'utf8');
+        html = html.split('__GIT_COMMIT__').join(GIT_COMMIT);
+        const body = Buffer.from(html, 'utf8');
+        res.writeHead(200, {
+            'Content-Type': type,
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Content-Length': body.length,
+        });
+        if (req.method === 'HEAD') return res.end();
+        return res.end(body);
+    }
     res.writeHead(200, {
         'Content-Type': type,
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
