@@ -760,8 +760,9 @@ class FSGame {
             return;
         }
         ctx.text = this.mode === 'placeOrder'
-            ? 'Щёлкните по системе с кольцом.'
-            : 'Выберите приказ и щёлкните по системе.';
+            ? 'Щёлкните по системе с кольцом: приказ кладётся в свою систему или рядом со своей.'
+            : 'Выберите приказ и щёлкните по системе. Приказ кладётся только в систему со своими '
+                + 'отрядами или постройками либо в соседнюю с такой системой.';
         ctx.status = this.status || (left ? 'Осталось приказов: ' + left : 'Все приказы выложены.');
         ctx.tokens = [
             { icon: 'order.event', label: 'Приказы в руке', count: left },
@@ -2409,6 +2410,12 @@ class FSGame {
         if (this.mode === 'placeOrder') {
             // A unit or a structure also means its system.
             if (!target) return;
+            if (!FS_RULES.canPlaceOrder(s, s.seat, target.system)) {
+                this.status = 'Приказ кладётся только в систему со своими отрядами или постройками '
+                    + 'либо в соседнюю с такой системой. Кольца показывают, куда можно.';
+                this.refresh();
+                return;
+            }
             this.net.cmd({ type: 'placeOrder', system: target.system, order: this.pending.order });
             this.mode = 'idle';
             this.pending = null;

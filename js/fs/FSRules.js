@@ -1096,7 +1096,17 @@ const FS_RULES = {
         if ((p.placedTokens || 0) >= limit) return { ok: false, error: 'Все приказы уже выложены.' };
         const sys = this.system(state, cmd.system);
         if (!sys) return { ok: false, error: 'Нет такой системы.' };
-        if (!this.canPlaceOrder(state, seat, sys.id)) return { ok: false, error: 'Нельзя выложить приказ в эту систему.' };
+        if (!this.canPlaceOrder(state, seat, sys.id)) {
+            // Rules Reference, Planning Phase: «A player must place his order token
+            // in either a system containing one of his units or structures, or a
+            // system adjacent to a system containing one of his units or
+            // structures.» — отказ объясняет это же.
+            return {
+                ok: false,
+                error: 'Приказ кладётся только в систему со своими отрядами или постройками '
+                    + 'либо в соседнюю с такой системой.',
+            };
+        }
         const types = ['advance', 'deploy', 'strategize', 'dominate'];
         if (!types.includes(cmd.order)) return { ok: false, error: 'Неизвестный приказ.' };
         if (this.orderLeft(state, seat, cmd.order) <= 0) {
