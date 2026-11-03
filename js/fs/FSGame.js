@@ -2403,8 +2403,8 @@ class FSGame {
                 cache: !!this.pending.cache, forgeKl: !!this.pending.forgeKl,
             });
             if (this.pending.cache || this.pending.forgeKl) this.deployOpts = { cache: false, forgeKl: false };
-            this.mode = 'idle';
-            this.pending = null;
+            // Отрядов за приказ можно поставить сколько угодно: выбор остаётся
+            // в руке, пока игрок не нажмёт «Закончить размещение отрядов».
             this.refresh();
             return;
         }
