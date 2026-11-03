@@ -413,10 +413,9 @@ const FSUI = {
                 return node;
             };
             const tokens = side.tokens || { att: 0, def: 0 };
-            extras.append(chip('cube.att', tokens.att, 'is-token', 'Жетоны атаки'));
-            extras.append(chip('cube.def', tokens.def, 'is-token', 'Жетоны обороны'));
+            extras.append(chip('token.att', tokens.att, 'is-token', 'Жетоны атаки'));
+            extras.append(chip('token.def', tokens.def, 'is-token', 'Жетоны обороны'));
             if (side.reinforce) extras.append(chip('ui.reinforce', side.reinforce, 'is-reinforce', 'Подкрепления'));
-            if (side.hand) extras.append(chip('ui.card', side.hand, 'is-card', 'Карты в руке'));
             if (side.closed) extras.append(chip('ui.card', 1, 'is-closed', 'Закрытая карта выбрана'));
             row.append(extras);
             // The cards the side has already played in this fight.

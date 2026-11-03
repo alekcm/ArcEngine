@@ -48,7 +48,6 @@ const FSView = {
     // not in the world at all — the hand is the bar at the bottom of the screen.
     COMBAT: {
         die: 11,            // the edge of a die on the ground
-        ringGap: 16,        // how far outside the sector the battle ring lies
     },
 
     // A world is a flat, round piece of the planet laid into its sector — not a
@@ -1245,8 +1244,7 @@ const FSView = {
     //
     // A battle is not a separate table: it happens right where the armies
     // stand, in the contested sector of the board, on the same 3D plane as the
-    // whole game. The sector gets a pulsing ring and every fighter a ring of
-    // its side; the dice fly in from over the map and land on the ground of
+    // whole game. The dice fly in from over the map and land on the ground of
     // the sector next to the fighters; the cubes of the played cards lie in
     // front of them. The cards themselves are not in the world — the hand is
     // the bar at the bottom of the screen, the played cards are in the panel.
@@ -1254,7 +1252,6 @@ const FSView = {
         const c = state.combat;
         if (!view.flights) view.flights = new Map();
         if (!view.combatSeen) view.combatSeen = new Set();
-        view.combatRings = [];
         if (!c) { view.combatSeen.clear(); view.flights.clear(); return; }
         const sys = state.systems.find(x => x.id === c.system);
         if (!sys) return;
@@ -1271,47 +1268,8 @@ const FSView = {
         const tileTop = app.location.terrain.heightAt(tile.x, tile.y) + 6.5;
         const groundY = (x, z) => tileTop + (disc && Math.hypot(x - disc.x, z - disc.z) < this.PLANET_D / 2 ? this.PLANET_H : 0);
         const d = this.TILE * this.AREA / 2;
-        // The ring that marks the contested sector for the whole fight.
-        const battleRing = BABYLON.MeshBuilder.CreateTorus('fs-combat-ring', {
-            diameter: this.TILE * this.AREA + C.ringGap * 2, thickness: 2.6, tessellation: 48,
-        }, view.scene);
-        battleRing.position.set(ax, groundY(ax, az) + 1.2, az);
-        battleRing.material = view.material('combat-ring', '#e86a5a', { emissive: true });
-        battleRing.isPickable = false;
-        battleRing.metadata = { fs: 'combat', system: sys.id, pos: c.pos };
-        this.addMarker(view, battleRing, 'prop');
-        view.combatRings.push(battleRing);
         for (const side of [{ id: 'attacker', seat: c.attacker }, { id: 'defender', seat: c.defender }]) {
-            const p = state.players[side.seat] || {};
-            const color = p.color || this.factionColor(p.faction);
             const sign = side.id === 'attacker' ? 1 : -1;
-            // Every fighter gets a ring of its side where it already stands on
-            // the board — the miniatures of the fight are the board's own.
-            for (const u of state.units.filter(u => u.system === c.system && u.area === c.pos && u.seat === side.seat)) {
-                const pos = view.unitPositions && view.unitPositions.get(u.id);
-                if (!pos) continue;
-                const ring = BABYLON.MeshBuilder.CreateTorus('fs-combat-fig-' + u.id, {
-                    diameter: 36, thickness: 2.2, tessellation: 32,
-                }, view.scene);
-                ring.position.set(pos.x, pos.y + 0.7, pos.z);
-                ring.material = view.material('combat-fig-' + side.id, color, { emissive: true });
-                ring.isPickable = false;
-                ring.metadata = { fs: 'unit', unit: u.id, system: c.system, pos: c.pos };
-                this.addMarker(view, ring, 'prop');
-                view.combatRings.push(ring);
-            }
-            for (const st of state.structures.filter(x => x.system === c.system && x.area === c.pos && x.seat === side.seat)) {
-                if (!disc) continue;
-                const ring = BABYLON.MeshBuilder.CreateTorus('fs-combat-struct-' + st.id, {
-                    diameter: 42, thickness: 2.2, tessellation: 32,
-                }, view.scene);
-                ring.position.set(disc.x, disc.y + 0.7, disc.z - this.PLANET_D * 0.27);
-                ring.material = view.material('combat-fig-' + side.id, color, { emissive: true });
-                ring.isPickable = false;
-                ring.metadata = { fs: 'structure', structure: st.id, system: c.system, pos: c.pos };
-                this.addMarker(view, ring, 'prop');
-                view.combatRings.push(ring);
-            }
             // The dice of the side land on the ground of the sector, in rows at
             // its outer edge — the attacker near the camera, the defender far.
             const dice = c.dice[side.id] || [];
@@ -1328,9 +1286,9 @@ const FSView = {
                 node.metadata = { fs: 'die', system: c.system, pos: c.pos, side: side.id, face, index: i };
                 const cube = BABYLON.MeshBuilder.CreateBox('fs-die-body-' + side.id + '-' + i, { size: C.die }, view.scene);
                 cube.parent = node;
-                cube.material = view.material('die-body-' + (face || 'blank'), fsDieColor(face), { emissive: true });
+                cube.material = view.material('die-body-' + (face || 'blank'), fsDieColor(face));
                 const faceMesh = BABYLON.MeshBuilder.CreateDisc('fs-die-face-' + side.id + '-' + i, {
-                    radius: C.die * 0.46, tessellation: 18,
+                    radius: C.die * 0.48, tessellation: 18,
                 }, view.scene);
                 faceMesh.parent = node;
                 faceMesh.rotation.x = Math.PI / 2;
@@ -1463,7 +1421,8 @@ const FSView = {
         return tex;
     },
 
-    // The face of a die, drawn as the game draws it: a blazon, not a number.
+    // The face of a die, drawn as the game draws it: the blazon in dark ink on
+    // the paper face, large enough to read at the zoom of the board.
     dieTexture(view, face) {
         if (!view.dieTex) view.dieTex = new Map();
         if (view.dieTex.has(face)) return view.dieTex.get(face);
@@ -1474,7 +1433,7 @@ const FSView = {
         if (ctx) {
             ctx.clearRect(0, 0, S, S);
             const name = ({ att: 'die.att', def: 'die.def', morale: 'die.morale' })[face] || 'die.blank';
-            if (typeof FSIcons !== 'undefined') FSIcons.canvas(ctx, name, S / 2, S / 2, S * 0.8);
+            if (typeof FSIcons !== 'undefined') FSIcons.canvas(ctx, name, S / 2, S / 2, S * 0.94, { color: FSIcons.color.ink });
         }
         tex.update();
         view.dieTex.set(face, tex);
@@ -1677,12 +1636,6 @@ const FSView = {
         if (view.ghost) {
             const s = 1 + Math.sin(t * 3.4) * .06;
             view.ghost.ring.scaling.set(s, 1, s);
-        }
-        // The ring of the contested sector and the rings of the fighters pulse.
-        for (const ring of view.combatRings || []) {
-            if (!ring.isEnabled || !ring.isEnabled()) continue;
-            const s = 1 + Math.sin(t * 3.2) * .05;
-            ring.scaling.set(s, 1, s);
         }
     },
 

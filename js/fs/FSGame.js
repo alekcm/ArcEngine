@@ -1444,9 +1444,12 @@ class FSGame {
                 const whose = c.step === 'reinforce-attacker' ? 'attacker' : 'defender';
                 if (whose !== side) { ctx.text = 'Подкрепления ставит ' + nameOf(whose) + '.'; return; }
                 const max = FS_RULES.maxReinforce(s, me, side);
-                // The question exists only when the player really has the tokens.
-                if (max <= 0) { ctx.text = 'Подкреплений нет.'; return; }
-                ctx.text = 'Подкрепление: ' + (s.players[me].assets.reinforcement || 0) + ' жетон(ов) в руке.';
+                // Even with no tokens the step is answered with a command — the
+                // «Без подкреплений» button is always there, so the fight never
+                // waits for a player who cannot reinforce.
+                ctx.text = max > 0
+                    ? 'Подкрепление: ' + (s.players[me].assets.reinforcement || 0) + ' жетон(ов) в руке.'
+                    : 'Подкреплений нет — пропустите шаг.';
                 for (let i = 0; i <= max; i++) {
                     ctx.actions.push({
                         kind: 'pick', icon: i ? 'ui.reinforce' : 'ui.next',
@@ -1507,12 +1510,13 @@ class FSGame {
                         onClick: () => this.toggleDamage(row.id),
                     });
                 }
-                if (damage) {
+                {
                     const allPicked = rows.length > 0 && rows.every(r => r.selected);
                     const ready = preview.left === 0 || allPicked;
                     ctx.actions.push({
                         kind: 'primary', icon: 'mark.damage',
-                        label: ready ? 'Принять урон' : 'Разложите урон (осталось ' + preview.left + ')',
+                        label: damage ? (ready ? 'Принять урон' : 'Разложите урон (осталось ' + preview.left + ')')
+                            : 'Щиты выдержали — дальше',
                         enabled: ready,
                         onClick: () => {
                             if (preview.left > 0 && !allPicked) {

@@ -2537,11 +2537,12 @@ const FS_RULES = {
     //  Combat
     // -----------------------------------------------------------------------
 
+    // The die of the game has six faces: two of attack, two of defence and two
+    // of morale — a blank face never comes up.
     rollDice(state, n) {
         const out = [];
         for (let i = 0; i < n; i++) {
-            const r = this.rand(state, 4);
-            out.push(['att', 'def', 'morale', 'blank'][r]);
+            out.push(['att', 'def', 'morale'][this.rand(state, 3)]);
         }
         return out;
     },

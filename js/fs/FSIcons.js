@@ -15,11 +15,32 @@ const FS_ICON_COLOR = {
     steel: '#2b3542',
 };
 
-// A glyph of a cube or a token: coordinates in the unit circle.
+// A glyph of a die face, a cube or a token: coordinates in the unit circle.
+// The three combat symbols of the Warhammer setting: the bolter (attack),
+// the shield (defence) and the imperial eagle (morale).
 const FS_GLYPH = {
-    att: { lines: [[[-0.74, 0.74], [0.74, -0.74]], [[0.74, 0.74], [-0.74, -0.74]]], width: 0.3 },
-    def: { polys: [[[0, -1], [0.86, -0.46], [0.86, 0.2], [0.5, 0.72], [0, 1], [-0.5, 0.72], [-0.86, 0.2], [-0.86, -0.46]]] },
-    morale: { polys: [starPoints(10, 1, 0.42)] },
+    // A bolter, pointing right: barrel, body, magazine and stock.
+    att: {
+        polys: [
+            [[-0.3, -0.44], [1.0, -0.44], [1.0, -0.2], [-0.3, -0.2]],
+            [[-0.55, -0.52], [0.35, -0.52], [0.35, 0.2], [-0.55, 0.2]],
+            [[0.0, 0.2], [0.3, 0.2], [0.2, 0.85], [-0.1, 0.85]],
+            [[-0.55, -0.35], [-1.0, 0.1], [-1.0, 0.5], [-0.55, 0.2]],
+        ],
+    },
+    // A heater shield with a boss in the middle.
+    def: {
+        polys: [[[0, -1], [0.82, -0.55], [0.82, 0.2], [0, 1], [-0.82, 0.2], [-0.82, -0.55]]],
+        dots: [[0, 0.05, 0.24, 'paper']],
+    },
+    // The imperial eagle: body with a head and two spread wings.
+    morale: {
+        polys: [
+            [[0, -0.95], [0.3, -0.5], [0.2, 0.25], [0, 0.95], [-0.2, 0.25], [-0.3, -0.5]],
+            [[-0.25, -0.35], [-1.0, -0.8], [-0.75, -0.4], [-1.0, -0.05], [-0.55, 0.1], [-0.2, 0.15]],
+            [[0.25, -0.35], [1.0, -0.8], [0.75, -0.4], [1.0, -0.05], [0.55, 0.1], [0.2, 0.15]],
+        ],
+    },
     any: { polys: [[[0, -1], [0.82, 0], [0, 1], [-0.82, 0]]], dots: [[0, 0, 0.3]] },
 };
 
@@ -40,19 +61,21 @@ function iconMap(pts, cx, cy, r) {
 // The shapes of the interface: every entry is a list of parts in the 32×32 box.
 // t: 'p' — filled polygon, 'l' — a stroked line, 'c' — a filled circle.
 const FS_SHAPES = {
-    // --- the cubes of the game ------------------------------------------------
-    'cube.att': () => cubeShape('att', true),
-    'cube.def': () => cubeShape('def', true),
-    'cube.morale': () => cubeShape('morale', true),
-    'cube.any': () => cubeShape('any', false),
+    // --- the combat symbols ---------------------------------------------------
+    // cube.* — the plain blazon (dice counts, card icons); token.* — the same
+    // blazon enclosed in a circle, as the combat tokens of the game are.
+    'cube.att': () => cubeShape('att'),
+    'cube.def': () => cubeShape('def'),
+    'cube.morale': () => cubeShape('morale'),
+    'cube.any': () => cubeShape('any'),
     'token.att': () => tokenShape('att'),
     'token.def': () => tokenShape('def'),
     'token.morale': () => tokenShape('morale'),
     'token.any': () => tokenShape('any'),
     // --- the faces of a die ---------------------------------------------------
-    'die.att': () => ({ color: FS_ICON_COLOR.paper, parts: glyphParts('att', 16, 16, 10, 'main') }),
-    'die.def': () => ({ color: FS_ICON_COLOR.paper, parts: glyphParts('def', 16, 16, 10, 'main') }),
-    'die.morale': () => ({ color: FS_ICON_COLOR.paper, parts: glyphParts('morale', 16, 16, 10, 'main') }),
+    'die.att': () => ({ color: FS_ICON_COLOR.paper, parts: glyphParts('att', 16, 16, 11.5, 'main') }),
+    'die.def': () => ({ color: FS_ICON_COLOR.paper, parts: glyphParts('def', 16, 16, 11.5, 'main') }),
+    'die.morale': () => ({ color: FS_ICON_COLOR.paper, parts: glyphParts('morale', 16, 16, 11.5, 'main') }),
     'die.blank': () => ({ color: FS_ICON_COLOR.paper, parts: [{ t: 'c', x: 16, y: 16, r: 4, fill: 'dark' }] }),
     // --- the orders -----------------------------------------------------------
     'order.advance': () => ({
@@ -254,27 +277,22 @@ function shade(hex, k) {
     return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
-// An isometric cube: three faces, the blazon of its kind on the top one.
-function cubeShape(kind, glyph) {
+// A flat blazon of the combat kind: the bolter, the shield or the eagle,
+// drawn large in the 32×32 box so it stays readable at any icon size.
+function cubeShape(kind) {
     const color = FS_ICON_COLOR[kind] || FS_ICON_COLOR.any;
-    const parts = [
-        { t: 'p', pts: [[16, 3.5], [27, 9.5], [16, 15.5], [5, 9.5]], fill: 'light' },
-        { t: 'p', pts: [[5, 9.5], [16, 15.5], [16, 28], [5, 22]], fill: 'main' },
-        { t: 'p', pts: [[27, 9.5], [16, 15.5], [16, 28], [27, 22]], fill: 'dark' },
-    ];
-    if (glyph) parts.push(...glyphParts(kind, 16, 9.6, 4.6, 'ink', 0.92));
-    return { color, parts };
+    return { color, parts: glyphParts(kind, 16, 16, 12.5, 'main') };
 }
 
+// The same blazon enclosed in a circle: the combat token of the game.
 function tokenShape(kind) {
     const color = FS_ICON_COLOR[kind] || FS_ICON_COLOR.any;
     return {
         color,
         parts: [
-            { t: 'c', x: 16, y: 16, r: 13, fill: 'main' },
-            { t: 'c', x: 16, y: 16, r: 13, fill: 'none', ring: 2.4, stroke: 'dark' },
-            { t: 'c', x: 16, y: 16, r: 9.4, fill: 'light' },
-            ...glyphParts(kind, 16, 16, 6.2, 'ink'),
+            { t: 'c', x: 16, y: 16, r: 13.5, fill: 'none', ring: 3, stroke: 'main' },
+            { t: 'c', x: 16, y: 16, r: 10.5, fill: 'main', alpha: 0.16 },
+            ...glyphParts(kind, 16, 16, 7.6, 'main'),
         ],
     };
 }
@@ -284,7 +302,7 @@ function glyphParts(kind, cx, cy, r, fill, alpha) {
     const out = [];
     for (const poly of g.polys || []) out.push({ t: 'p', pts: iconMap(poly, cx, cy, r), fill, alpha });
     for (const line of g.lines || []) out.push({ t: 'l', pts: iconMap(line, cx, cy, r), width: r * (g.width || 0.28), fill, alpha });
-    for (const dot of g.dots || []) out.push({ t: 'c', x: cx + dot[0] * r, y: cy + dot[1] * r, r: dot[2] * r, fill: 'main', alpha });
+    for (const dot of g.dots || []) out.push({ t: 'c', x: cx + dot[0] * r, y: cy + dot[1] * r, r: dot[2] * r, fill: dot[3] || 'main', alpha });
     return out;
 }
 
