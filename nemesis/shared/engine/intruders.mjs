@@ -1,7 +1,7 @@
 // intruders.mjs — Intruder Phase (burning, attacks), intruder movement rules, bag development.
 
 import { OPS, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, removeIntruder, spawnIntruder,
-    INTRUDER_RANK, intruderLabel, orderIndex, drawBagToken, hasAdapt } from './core.mjs';
+    INTRUDER_RANK, intruderLabel, orderIndex, drawBagToken, hasAdapt, hasWeak, canDestroyDoor } from './core.mjs';
 import { distances, roomOfKind } from '../ship.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
 import { countAvailable, fieldExpAsk } from './movement.mjs';
@@ -14,9 +14,10 @@ OPS['phase.intruder'] = (state) => {
         if (!rs.fire) continue;
         for (const it of intrudersIn(state, id)) {
             if (it.type === 'larva') { log(state, 'Личинка сгорает в ' + roomName(state, id) + '.', 'good'); removeIntruder(state, it.uid, false); continue; }
-            if (it.type === 'queen') { state.queenHits++; log(state, 'Королева получает ранение от огня (' + state.queenHits + ').', 'combat'); if (state.queenHits >= 6) next(state, { op: 'queen.card' }); continue; }
-            it.hits++;
-            log(state, INTRUDER_NAMES[it.type] + ' в ' + roomName(state, id) + ' получает ранение от огня (' + it.hits + ').', 'combat');
+            const fireHits = hasWeak(state, 'fireVuln') ? 2 : 1;   // Vulnerability to Fire: +1 Injury from Fire
+            if (it.type === 'queen') { state.queenHits += fireHits; log(state, 'Королева получает ранение от огня (' + state.queenHits + ')' + (fireHits > 1 ? ' — уязвимость к огню: 2 ранения.' : '.'), 'combat'); if (state.queenHits >= 6) next(state, { op: 'queen.card' }); continue; }
+            it.hits += fireHits;
+            log(state, INTRUDER_NAMES[it.type] + ' в ' + roomName(state, id) + ' получает ранение от огня (' + it.hits + ')' + (fireHits > 1 ? ' — уязвимость к огню: 2 ранения.' : '.'), 'combat');
         }
         if (tileOf(state, id) === 'nest' && state.nestEggs > 0) { state.nestEggs--; log(state, 'Огонь в Гнезде уничтожает яйцо (осталось ' + state.nestEggs + ').', 'event'); checkNest(state); }
     }
@@ -55,7 +56,11 @@ export function moveIntrudersByCorridor(state, num) {
             continue;
         }
         const c = state.ship.corridors[exit.corridor];
-        if (c.door === 'closed') { c.door = 'destroyed'; log(state, INTRUDER_NAMES[it.type] + ' ломает дверь ' + c.id + '.', 'event'); continue; }
+        if (c.door === 'closed') {
+            if (canDestroyDoor(state, it)) { c.door = 'destroyed'; log(state, INTRUDER_NAMES[it.type] + ' ломает дверь ' + c.id + '.', 'event'); }
+            else log(state, INTRUDER_NAMES[it.type] + ' упирается в закрытую дверь ' + c.id + ' и не может её разрушить (повадки движения).', 'event');
+            continue;
+        }
         it.room = exit.to;
         log(state, INTRUDER_NAMES[it.type] + ' переходит по коридору ' + num + ' в ' + roomName(state, exit.to) + '.', 'event');
         const h = hyperAttackStep(state, it); if (h) attacks.push(h);
@@ -91,7 +96,11 @@ export function moveOneToward(state, it, targets) {
     if (!options.length) return;
     const e = options[0];
     const c = state.ship.corridors[e.corridor];
-    if (c.door === 'closed') { c.door = 'destroyed'; log(state, INTRUDER_NAMES[it.type] + ' ломает дверь ' + c.id + '.', 'event'); return; }
+    if (c.door === 'closed') {
+        if (canDestroyDoor(state, it)) { c.door = 'destroyed'; log(state, INTRUDER_NAMES[it.type] + ' ломает дверь ' + c.id + '.', 'event'); }
+        else log(state, INTRUDER_NAMES[it.type] + ' упирается в закрытую дверь ' + c.id + ' и не может её разрушить (повадки движения).', 'event');
+        return;
+    }
     it.room = e.to;
     log(state, INTRUDER_NAMES[it.type] + ' движется к ' + pname(best.p) + ': ' + roomName(state, e.to) + '.', 'event');
     return true;
@@ -104,7 +113,11 @@ export function repelIntruder(state, it, toRoom, force) {
     const e = toRoom ? exits.find(x => x.to === toRoom) : exits[0];
     if (!e) return false;
     const c = state.ship.corridors[e.corridor];
-    if (c.door === 'closed') { c.door = 'destroyed'; log(state, 'Дверь ' + c.id + ' уничтожена при отступлении чужого.', 'event'); return false; }
+    if (c.door === 'closed') {
+        if (canDestroyDoor(state, it)) { c.door = 'destroyed'; log(state, 'Дверь ' + c.id + ' уничтожена при отступлении чужого.', 'event'); }
+        else log(state, 'Закрытая дверь ' + c.id + ' останавливает отступление: разрушить её чужой не может (повадки движения).', 'event');
+        return false;
+    }
     it.room = e.to;
     log(state, INTRUDER_NAMES[it.type] + ' отогнан в ' + roomName(state, e.to) + '.', 'good');
     const h = hyperAttackStep(state, it); if (h) next(state, h);

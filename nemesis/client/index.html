@@ -34,6 +34,11 @@
                         </select></div>
                     <div class="row"><label>Зерно (необязательно)</label><input id="seedInput" maxlength="32" placeholder="любая строка"></div>
                     <div class="row"><label>Драфт персонажей</label><select id="draftSelect"><option value="1">По правилам: 3 карты → выбрать 1</option><option value="0" selected>Без драфта: персонаж из лобби</option></select></div>
+                    <div class="row"><label>Эволюции чужих</label>
+                        <select id="alienModeSelect">
+                            <option value="evolutions" selected>Адаптации: активны со старта, анализ удаляет</option>
+                            <option value="weaknesses">Слабости: 3 скрытые, открывает анализ в Лаборатории</option>
+                        </select></div>
                     <div class="row"><label>Адаптации чужих</label>
                         <select id="adaptSelect">
                             <option value="3" selected>Стандарт: 3 случайные адаптации</option>
@@ -45,7 +50,7 @@
                     <div class="row"><label>Кубик шума</label>
                         <select id="noiseDieSelect">
                             <option value="standard" selected>Стандарт: 2 встречи, 1 шум, 1 тишина</option>
-                            <option value="safe">Мягкий кубик: +1 шум и +1 тишина (без встреч)</option>
+                            <option value="safe">Альтернативный d10: без встреч (когти — Опасность, ✕ — Тишина)</option>
                         </select></div>
                 </div>
                 <div class="row"><label>Адрес для друзей</label><div id="lanAddr" class="lan-addr">—</div></div>
@@ -125,7 +130,7 @@
         <div class="tb-item"><span class="lbl">Огонь/поломки</span><b id="tbMarkers">8/8</b></div>
         <div class="tb-item"><span class="lbl">Спасательные капсулы</span><b id="tbPods">—</b></div>
         <div class="tb-item"><span class="lbl">Компьютер</span><b id="tbComputer">—</b></div>
-        <div class="tb-item"><span class="lbl">Адаптации чужих</span><b id="tbAdapt">—</b></div>
+        <div class="tb-item"><span class="lbl" id="tbAdaptLbl">Адаптации чужих</span><b id="tbAdapt">—</b></div>
         <div class="tb-spacer"></div>
         <button id="undoBtn" class="btn small" title="Откатить последнее действие (только ведущий)">⟲ Откатить ход</button>
         <button id="saveBtn" class="btn small" title="Сохранить игру">💾 Сохранить</button>

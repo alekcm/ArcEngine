@@ -138,7 +138,10 @@ export function log(state, text, kind = 'info') {
 // Lookups
 // ---------------------------------------------------------------------------------------------
 export const NOISE_DIE = [1, 1, 2, 2, 3, 3, 4, 4, 'silence', 'danger', 'encounter', 'encounter'];
-export const NOISE_DIE_SAFE = [1, 1, 2, 2, 3, 3, 4, 4, 'silence', 'silence', 'danger', 'danger'];
+// Alternative noise die: a plain d10 with no Encounter faces — one Danger (claw marks) and one
+// Silence (✕). Selected with state.noiseVariant; the interactive roll in `dice.rolled` below
+// must draw from it too, or the table keeps rolling the standard die (the old variant bug).
+export const NOISE_DIE_SAFE = [1, 1, 2, 2, 3, 3, 4, 4, 'danger', 'silence'];
 export const COMBAT_DIE = ['crit', 2, 3, 3, 4, 4, 5, 5, 5, 6];
 /** The Battle Suit's "special Blue Combat die", as printed on its own face sheet: two 2s, three 3s,
  *  two 4s, one 5, one 6 and one Critical. */
@@ -618,6 +621,10 @@ export function intruderLabel(state, it) {
 export const INTRUDER_RANK = { queen: 0, drone: 1, adult: 2, larva: 3 };
 /** Is the given intruder Adaptation currently active? */
 export function hasAdapt(state, key) { return !!(state.adaptations && state.adaptations.includes(key)); }
+/** Is the given intruder Weakness already revealed (weakness variant)? Hidden ones stay inactive. */
+export function hasWeak(state, key) { return !!(state.weaknesses && state.weaknesses.includes(key)); }
+/** Movement Habits weakness: only the Queen and Drones («Охотники») may destroy closed Doors. */
+export function canDestroyDoor(state, it) { return !hasWeak(state, 'movementHabits') || it.type === 'queen' || it.type === 'drone'; }
 
 /** Roll `die`. If the acting player already rolled interactively (state.pendingRoll from the
  *  'dice' prompt) that value is consumed instead. Every roll is recorded in state.lastRoll so
@@ -643,7 +650,10 @@ export function needDice(state, step, die, playerId, title, extra) {
     return true;
 }
 OPS['dice.rolled'] = (state, step) => {
-    const die = DIE_BY_ID[step.die] || COMBAT_DIE;
+    // The alternative noise die lives outside DIE_BY_ID (both dice report id 'noise'), so the
+    // variant must be picked here — otherwise interactive rolls silently use the standard die
+    // and Encounter faces keep appearing in the "no encounters" variant.
+    const die = (step.die === 'noise' && state.noiseVariant) ? NOISE_DIE_SAFE : (DIE_BY_ID[step.die] || COMBAT_DIE);
     state.pendingRoll = { die: step.die, value: die[randInt(state, die.length)] };
     state.pendingRollPlayer = step.player;
     next(state, step.then);

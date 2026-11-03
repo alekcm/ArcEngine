@@ -2,7 +2,7 @@
 
 import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
     NOISE_DIE, NOISE_DIE_SAFE, roll, fmtRoll, needDice, fx, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
-    clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt, inCombat } from './core.mjs';
+    clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt, hasWeak, canDestroyDoor, inCombat } from './core.mjs';
 import { hyperAttackStep } from './intruders.mjs';
 import { applyHitsNoRoll, resolveFollows } from './combat.mjs';
 import { ROOM_TILES } from '../ship.mjs';
@@ -196,7 +196,11 @@ OPS['noise.roll'] = (state, step) => {
             for (const it of intrudersIn(state, e.to)) {
                 if (playersInRoom(state, e.to).length) continue;
                 const c = state.ship.corridors[e.corridor];
-                if (c.door === 'closed') { c.door = 'destroyed'; moved++; log(state, 'Чужой выламывает дверь ' + c.id + '.', 'event'); continue; }
+                if (c.door === 'closed') {
+                    if (canDestroyDoor(state, it)) { c.door = 'destroyed'; moved++; log(state, 'Чужой выламывает дверь ' + c.id + '.', 'event'); }
+                    else log(state, INTRUDER_NAMES[it.type] + ' не может выломать закрытую дверь ' + c.id + ' (повадки движения).', 'event');
+                    continue;
+                }
                 it.room = roomId; moved++;
                 log(state, INTRUDER_NAMES[it.type] + ' врывается из ' + roomName(state, e.to) + '!', 'combat');
                 const h = hyperAttackStep(state, it); if (h) next(state, h);
@@ -283,7 +287,8 @@ OPS['encounter.surprise'] = (state, step) => {
     if (!it) return;
     const p = step.player !== undefined ? player(state, step.player) : null;
     if (p && p.status === 'active' && p.room === roomId && !step.noSurprise) {
-        const threshold = { larva: 1, adult: 3, drone: 4, queen: 5 }[token] + (hasAdapt(state, 'swiftStrikes') && token !== 'larva' ? 1 : 0);
+        let threshold = { larva: 1, adult: 3, drone: 4, queen: 5 }[token] + (hasAdapt(state, 'swiftStrikes') && token !== 'larva' ? 1 : 0);
+        if (hasWeak(state, 'dangerSense')) threshold = Math.max(1, threshold - 1);   // Reaction to Danger weakness
         const cards = p.hand.length;
         if (cards < threshold) {
             log(state, 'Внезапная атака! (карт в руке ' + cards + ' < ' + threshold + ')', 'combat');

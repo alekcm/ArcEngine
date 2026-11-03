@@ -11,7 +11,7 @@ import { TableFX } from './fx.js';
 import * as Snd from './sound.js';
 import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip, tileKeyedEdits } from '/shared/ship.mjs';
-import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, FEATS, objectiveTextOf,
+import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, WEAKNESSES, FEATS, objectiveTextOf,
     EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
 
 const $ = id => document.getElementById(id);
@@ -324,9 +324,11 @@ function renderLobby() {
     // settings
     $('modeSelect').value = L.settings.mode; $('draftSelect').value = L.settings.draft === false ? '0' : '1'; if (document.activeElement !== $('seedInput')) $('seedInput').value = L.settings.seed || '';
     if ($('adaptSelect')) $('adaptSelect').value = L.settings.adaptations !== undefined ? String(L.settings.adaptations) : '3';
+    if ($('alienModeSelect')) $('alienModeSelect').value = L.settings.alienMode === 'weaknesses' ? 'weaknesses' : 'evolutions';
     if ($('noiseDieSelect')) $('noiseDieSelect').value = L.settings.noiseVariant ? 'safe' : 'standard';
     $('modeSelect').disabled = !app.host; $('seedInput').disabled = !app.host;
-    if ($('adaptSelect')) $('adaptSelect').disabled = !app.host;
+    if ($('adaptSelect')) $('adaptSelect').disabled = !app.host || L.settings.alienMode === 'weaknesses';
+    if ($('alienModeSelect')) $('alienModeSelect').disabled = !app.host;
     if ($('noiseDieSelect')) $('noiseDieSelect').disabled = !app.host;
     $('lanAddr').textContent = L.addresses.length ? L.addresses.map(a => 'http://' + a + ':' + L.port).join('   ') : location.origin;
     $('readyBtn').textContent = app.ready ? 'Не готов' : 'Готов';
@@ -572,12 +574,14 @@ const sendSettings = () => net.send({ t: 'lobby', settings: {
     seed: $('seedInput').value,
     draft: $('draftSelect').value === '1',
     adaptations: $('adaptSelect') ? $('adaptSelect').value : '3',
+    alienMode: $('alienModeSelect') ? $('alienModeSelect').value : 'evolutions',
     noiseVariant: $('noiseDieSelect') ? $('noiseDieSelect').value === 'safe' : false,
 } });
 $('modeSelect').onchange = sendSettings;
 $('seedInput').onchange = sendSettings;
 $('draftSelect').onchange = sendSettings;
 if ($('adaptSelect')) $('adaptSelect').onchange = sendSettings;
+if ($('alienModeSelect')) $('alienModeSelect').onchange = sendSettings;
 if ($('noiseDieSelect')) $('noiseDieSelect').onchange = sendSettings;
 $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else $('endOverlay').classList.add('hidden'); };
 
@@ -704,7 +708,18 @@ function renderTopbar() {
           'Сколько их — зависит от числа игроков; открываются после первой смерти или на жёлтой зоне самоуничтожения.'
         : '';
     const ad = v.adaptations || [];
-    $('tbAdapt').innerHTML = ad.length ? ad.map(k => '<span class="itag adapt">' + esc(ADAPTATIONS[k].name) + '<span class="ipop"><b>🧬 ' + esc(ADAPTATIONS[k].name) + '</b><span>' + esc(ADAPTATIONS[k].text) + '</span></span></span>').join('<span class="sep"> · </span>') : 'нет' + (v.adaptationsRemoved ? ' (удалено ' + v.adaptationsRemoved + ')' : '');
+    if (v.weaknessMode) {
+        $('tbAdaptLbl').textContent = 'Слабости чужих';
+        $('tbAdapt').classList.add('weak');
+        const wk = v.weaknesses || [];
+        const hidden = [['corpse', 'труп'], ['carcass', 'туша'], ['egg', 'яйцо']].filter(([t]) => !(v.analyzed && v.analyzed[t])).map(([, n]) => n);
+        $('tbAdapt').innerHTML = (wk.length ? wk.map(k => '<span class="itag adapt">' + esc(WEAKNESSES[k].name) + '<span class="ipop"><b>🔬 ' + esc(WEAKNESSES[k].name) + '</b><span>' + esc(WEAKNESSES[k].text) + '</span></span></span>').join('<span class="sep"> · </span>') : 'пока скрыты')
+            + (hidden.length ? ' <span class="sep">·</span> скрыто: ' + hidden.join(', ') : ' <span class="sep">·</span> все открыты');
+    } else {
+        $('tbAdaptLbl').textContent = 'Адаптации чужих';
+        $('tbAdapt').classList.remove('weak');
+        $('tbAdapt').innerHTML = ad.length ? ad.map(k => '<span class="itag adapt">' + esc(ADAPTATIONS[k].name) + '<span class="ipop"><b>🧬 ' + esc(ADAPTATIONS[k].name) + '</b><span>' + esc(ADAPTATIONS[k].text) + '</span></span></span>').join('<span class="sep"> · </span>') : 'нет' + (v.adaptationsRemoved ? ' (удалено ' + v.adaptationsRemoved + ')' : '');
+    }
     const cur = v.players[v.current];
     const mineTurn = v.phase === 'player' && v.current === app.me;
     $('tbTurn').textContent = v.phase === 'player' && cur ? (mineTurn ? 'Ваш ход' : cur.name) : (PHASES[v.phase] || '—');

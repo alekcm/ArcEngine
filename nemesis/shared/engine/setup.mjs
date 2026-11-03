@@ -3,7 +3,7 @@
 import { seedFromString, shuffle, randInt, pick } from '../rng.mjs';
 import { characterParts } from '../appearance.mjs';
 import { originalShip, randomShip, BASIC_TILES, ADDITIONAL_TILES, ADDITIONAL_IN_PLAY, EXPLORATION_TOKENS, roomOfKind } from '../ship.mjs';
-import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS, ADAPTATIONS, COMMON_CARDS } from '../data/cards.mjs';
+import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS, ADAPTATIONS, WEAKNESSES, COMMON_CARDS } from '../data/cards.mjs';
 import { OPS, ask, log, next, run, pname } from './core.mjs';
 import './turn.mjs';
 import './movement.mjs';
@@ -42,6 +42,7 @@ export function createGame(config) {
         nestEggs: 5, nestDestroyed: false, nestDiscovered: false,
         analyzed: { corpse: false, carcass: false, egg: false },
         adaptations: [], adaptationsRemoved: 0, finishOrder: [], carcassCount: 0,
+        weaknesses: [], weaknessMode: false,   // revealed Weakness keys; hidden ones live in secret.weaknesses
         // Table flow (the server turns it on): players pull Intruder Bag tokens themselves and the
         // Event card waits for everybody's "Ready". Tests and bots keep the engine-only defaults.
         ui: { bagClick: !!(config.ui && config.ui.bagClick), eventAck: !!(config.ui && config.ui.eventAck) },
@@ -95,6 +96,18 @@ export function createGame(config) {
         const count = parseInt(adaptCfg, 10);
         const nAdapt = Number.isFinite(count) ? Math.max(0, Math.min(8, count)) : 3;
         state.adaptations = shuffle(state, Object.keys(ADAPTATIONS)).slice(0, nAdapt);
+    }
+
+    // Weakness variant (alternative to Adaptations): no adaptations; instead 3 Weakness cards
+    // lie face down, one bound to each Laboratory research object. Analyzing the object in the
+    // Lab reveals its Weakness (rooms.mjs). The hidden assignment lives in `secret`, so clients
+    // only ever see `state.weaknesses` — the ones already revealed.
+    state.weaknessMode = !!config.weaknessMode;
+    if (state.weaknessMode) {
+        state.adaptations = [];
+        state.weaknesses = [];
+        const wkeys = shuffle(state, Object.keys(WEAKNESSES));
+        state.secret.weaknesses = { corpse: wkeys[0], carcass: wkeys[1], egg: wkeys[2] };
     }
 
     // Players: ids follow the lobby seats; player NUMBERS (Help cards 1..n) are random and define
@@ -200,8 +213,9 @@ OPS['setup.finish'] = (state) => {
     state.round = 1;
     log(state, 'Игра началась. Корабль: ' + (state.mode === 'random' ? 'случайная компоновка' : 'оригинальный «Немезида»') + '. Первый игрок — ' + pname(state.players[state.firstPlayer]) + ' (Игрок 1).', 'event');
     log(state, 'Все персонажи просыпаются в Гибернатории.', 'info');
-    log(state, 'Активные адаптации чужих: ' + (state.adaptations.length ? state.adaptations.map(k => '«' + ADAPTATIONS[k].name + '»').join(', ') : 'отключены') + '.', 'event');
-    if (state.noiseVariant) log(state, 'Кубик шума: мягкий вариант (+1 шум, +1 тишина, без встреч).', 'event');
+    if (state.weaknessMode) log(state, '🔬 Слабости чужих: 3 скрытые карты — человеческий труп, туша чужого и яйцо чужого хранят по одной. Анализируйте объекты в Лаборатории, чтобы открыть их.', 'event');
+    else log(state, 'Активные адаптации чужих: ' + (state.adaptations.length ? state.adaptations.map(k => '«' + ADAPTATIONS[k].name + '»').join(', ') : 'отключены') + '.', 'event');
+    if (state.noiseVariant) log(state, 'Кубик шума: альтернативный d10 без граней «Встреча» (когти — Опасность, ✕ — Тишина).', 'event');
     log(state, 'Доступные подвиги: ' + state.feats.map(k => '«' + FEATS[k].name + '»').join(', ') + '.', 'info');
     next(state, { op: 'phase.player' });
 };

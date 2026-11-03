@@ -4,9 +4,9 @@ import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, r
     gainKnowledge, restoreHealth, removeWound, removeFire, removeMalfunction, placeMalfunction, loseHealth, discardCard,
     removeCardFromGame, isContam, drawCards, spawnIntruder, HIBERNATION_TIME, handLimit, heavyCount, findRoomsByTile,
     clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx, intruderLabel, healthState, payableCards } from './core.mjs';
-import { dealHits } from './combat.mjs';
+import { dealHits, phosphateWound } from './combat.mjs';
 import { ROOM_TILES, engineRooms } from '../ship.mjs';
-import { ITEMS, WOUNDS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, INTRUDER_NAMES, ADAPTATIONS, EVENT_CARDS, canLoadWith } from '../data/cards.mjs';
+import { ITEMS, WOUNDS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, INTRUDER_NAMES, ADAPTATIONS, WEAKNESSES, EVENT_CARDS, canLoadWith } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
 import { startSelfDestruct, stopSelfDestruct } from './events.mjs';
 import { repelIntruder, checkNest } from './intruders.mjs';
@@ -262,7 +262,7 @@ export function removeOneContam(state, p) {
 OPS['room.fireControl'] = (state, step) => {
     const r = step.answer;
     removeFire(state, r);
-    for (const it of intrudersIn(state, r)) repelIntruder(state, it);
+    for (const it of intrudersIn(state, r)) { repelIntruder(state, it); phosphateWound(state, it); }
     next(state, step.then);
 };
 OPS['room.generator'] = (state, step) => { if (step.answer === 'start') startSelfDestruct(state); next(state, step.then); };
@@ -280,10 +280,23 @@ OPS['room.lab'] = (state, step) => {
 /** Lab rule: the first analyzed object of each type removes one active intruder Adaptation. */
 export function analyzeAdaptation(state, p, type, then) {
     if (type === 'charCorpse') type = 'corpse';   // a character's corpse is a Human Corpse (18.3: one object type)
+    // Weakness variant: the same first analysis reveals the Weakness bound to this object type.
+    if (state.weaknessMode) { revealWeakness(state, type, then); return; }
     if (state.analyzed[type] || !state.adaptations.length) { if (state.analyzed[type]) log(state, 'Объект этого типа уже использовался против адаптаций.', 'minor'); next(state, then); return; }
     state.analyzed[type] = true;
     ask(state, { kind: 'choice', player: p.id, title: 'Анализ «' + objName({ type }) + '»: какую адаптацию чужих удалить?',
         options: state.adaptations.map(k => ({ id: k, label: ADAPTATIONS[k].name, desc: ADAPTATIONS[k].text })) }, { op: 'adaptation.remove', player: p.id, then });
+}
+/** Weakness variant of the Lab rule: the first analyzed object of each type reveals its Weakness. */
+function revealWeakness(state, type, then) {
+    if (state.analyzed[type]) { log(state, 'Объект этого типа уже открывал слабость чужих.', 'minor'); next(state, then); return; }
+    state.analyzed[type] = true;
+    const k = state.secret.weaknesses && state.secret.weaknesses[type];
+    if (!k || !WEAKNESSES[k]) { next(state, then); return; }
+    state.weaknesses = state.weaknesses || [];
+    state.weaknesses.push(k);
+    log(state, '🔬 Открыта слабость чужих «' + WEAKNESSES[k].name + '»: ' + WEAKNESSES[k].text, 'good');
+    next(state, then);
 }
 OPS['adaptation.remove'] = (state, step) => {
     const k = step.answer;

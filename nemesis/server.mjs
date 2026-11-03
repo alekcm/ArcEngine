@@ -177,7 +177,7 @@ function upgrade(req, sock) {
 const game = {
     phase: 'lobby',                   // 'lobby' | 'playing'
     seats: [],                        // [{token, name, charId, colors, appearances, ready, socket|null}]
-    settings: { mode: 'original', seed: '', draft: false, adaptations: '3', noiseVariant: false }, poses: {},
+    settings: { mode: 'original', seed: '', draft: false, adaptations: '3', noiseVariant: false, alienMode: 'evolutions' }, poses: {},
     state: null,
     undo: [],                         // [{json, label}]
     history: [],                      // labels of accepted actions (for the undo list)
@@ -293,6 +293,7 @@ function onMessage(socket, m) {
                 if (typeof m.settings.draft === 'boolean') game.settings.draft = m.settings.draft;
                 if (typeof m.settings.adaptations === 'string' && ['0', '1', '2', '3', 'all', 'none'].includes(m.settings.adaptations)) game.settings.adaptations = m.settings.adaptations;
                 if (typeof m.settings.noiseVariant === 'boolean') game.settings.noiseVariant = m.settings.noiseVariant;
+                if (m.settings.alienMode === 'evolutions' || m.settings.alienMode === 'weaknesses') game.settings.alienMode = m.settings.alienMode;
             }
             if (m.kick !== undefined && isHost(socket)) { const k = game.seats[m.kick]; if (k && k !== seat) { if (k.socket) k.socket.close(); game.seats.splice(m.kick, 1); } }
             broadcastLobby();
@@ -304,7 +305,7 @@ function onMessage(socket, m) {
             if (seats.length < 1) return;
             game.seats = seats;
             game.state = createGame({ seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, draft: game.settings.draft,
-                adaptations: game.settings.adaptations, noiseVariant: game.settings.noiseVariant,
+                adaptations: game.settings.adaptations, noiseVariant: game.settings.noiseVariant, weaknessMode: game.settings.alienMode === 'weaknesses',
                 players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors, parts: characterParts(s.charId, s.appearances[s.charId]) })),
                 ui: { bagClick: true, eventAck: true } });
             game.phase = 'playing'; game.undo = []; game.history = []; game.poses = {};

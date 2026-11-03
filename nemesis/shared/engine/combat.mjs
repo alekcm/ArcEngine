@@ -2,7 +2,7 @@
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, healthState, loseHealth, gainWound,
     gainContamination, killPlayer, discardCard, COMBAT_DIE, roll, fmtRoll, needDice, fx, removeIntruder, intruderLabel, INTRUDER_RANK,
-    drawCards, placeFire, placeNoise, cardDef, orderIndex, hasAdapt, placeMalfunction, removeCardFromGame, infectLarva, heavyCount, handLimit,
+    drawCards, placeFire, placeNoise, cardDef, orderIndex, hasAdapt, hasWeak, placeMalfunction, removeCardFromGame, infectLarva, heavyCount, handLimit,
     handSlots, dropHeavy, BLUE_DIE, dieId, breakWeapon } from './core.mjs';
 import { repelIntruder, moveOneToward, hyperAttackStep } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
@@ -207,6 +207,16 @@ OPS['attack.deactPass'] = (state, step) => {
 OPS['attack.strafeShoot'] = (state, step) => {
     if (step.answer === 'yes' && state.intruders[step.intruder]) next(state, { op: 'shoot.start', player: step.player, forcedTarget: step.intruder, then: { op: 'noop' } });
 };
+/** Attack-card effects for this intruder's rank, with the Attack Habits weakness applied:
+ *  an Adult's Bite («Трутень» on the printed card) gives a Light Injury (−1 health here)
+ *  instead of a Serious Wound. */
+function attackEffectsFor(state, card, it) {
+    let effects = card[it.type];
+    if (typeof effects === 'string') effects = card[effects];
+    if (card.id === 'bite' && it.type === 'adult' && hasWeak(state, 'attackHabits'))
+        effects = (effects || []).map(e => e.op === 'wound' ? { op: 'dmg', n: e.n } : e);
+    return effects;
+}
 function resolveAttack(state, step, it, p) {
     if (p && it && it.uid) {
         state.combatSeq = (state.combatSeq || 0) + 1;
@@ -219,9 +229,9 @@ function resolveAttack(state, step, it, p) {
         state.attackDiscard.push(cardId);
     }
     const card = ATTACK_BY_ID[cardId];
-    let effects = card[it.type];
-    if (typeof effects === 'string') effects = card[effects];
+    let effects = attackEffectsFor(state, card, it);
     if (!step.cardId) log(state, '⚔ ' + intruderLabel(state, it) + ' атакует ' + pname(p) + ': «' + card.name + '».', 'combat');
+    if (card.id === 'bite' && it.type === 'adult' && hasWeak(state, 'attackHabits')) log(state, '🦷 Повадки атаки: Укус Взрослого даёт лёгкую травму вместо тяжёлой.', 'good');
     if (p.armor && ITEMS[p.armor.item].discardArmor && it.type === 'adult' && !effects.some(e => e.op === 'miss')) {
         ask(state, { kind: 'choice', player: p.id, title: intruderLabel(state, it) + ': «' + card.name + '». Сбросить броню и проигнорировать атаку?',
             options: [{ id: 'yes', label: 'Да, сбросить броню' }, { id: 'no', label: 'Нет, принять атаку' }] },
@@ -242,7 +252,7 @@ function resolveAttack(state, step, it, p) {
 OPS['attack.armorReplace'] = (state, step) => {
     const p = player(state, step.player), it = step.phantom || state.intruders[step.intruder];
     const card = ATTACK_BY_ID[step.cardId];
-    let effects = card[it.type]; if (typeof effects === 'string') effects = card[effects];
+    let effects = attackEffectsFor(state, card, it);
     if (step.answer === 'yes' && p.armor) {
         const cost = ITEMS[p.armor.item].woundToHp;
         const at = effects.findIndex(e => e.op === 'wound');
@@ -265,7 +275,7 @@ OPS['attack.armor'] = (state, step) => {
         return;
     }
     const card = ATTACK_BY_ID[step.cardId];
-    let effects = card[it.type]; if (typeof effects === 'string') effects = card[effects];
+    let effects = attackEffectsFor(state, card, it);
     applyAttackEffects(state, effects, it, p, step);
 };
 
@@ -588,6 +598,8 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
         state.lastCombatAction = { n: state.combatSeq, type: 'charAttacks', player: p.id, intruder: it.uid, room: it.room };
     }
     if (it.type === 'larva') { log(state, 'Личинка погибает.', 'good'); removeIntruder(state, it.uid, false); return true; }
+    // Energy Vulnerability: an Energy-weapon attack that deals at least 1 Injury deals +1.
+    if (hits >= 1 && opts.weapon && ITEMS[opts.weapon.item].weapon.energy && hasWeak(state, 'energyVuln')) { hits += 1; log(state, '⚡ Уязвимость к энергии: +1 ранение.', 'good'); }
     if (it.type === 'queen') return queenHits(state, p, it, hits, mod, opts);
     it.hits += hits;
     const wd = opts.weapon ? ITEMS[opts.weapon.item].weapon : {};
@@ -605,12 +617,15 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
     const face = faceEffect(state, wd, natural, opts.weapon ? ITEMS[opts.weapon.item].name : '');
     if (wd.critOn2 && natural === 2) { r = 'crit'; log(state, 'Штурмовая винтовка: «2» считается КРИТОМ.', 'combat'); }
     else r = adaptRoll(state, face);
+    // Weak Spots: against Adults («Трутни» on the printed card) a natural 6 counts as a Critical.
+    if (natural === 6 && it.type === 'adult' && hasWeak(state, 'weakSpots')) { r = 'crit'; log(state, '🎯 Уязвимые места: «6» против Взрослого считается КРИТом.', 'good'); }
     // The Convict's Pipe: a Melee Attack contaminates only on the faces the card names.
     if (opts.contamFaces && opts.contamFaces.includes(natural)) gainContamination(state, p, 1);
     if (wd.plusOn5 && r === 5) { it.hits++; log(state, 'BF-пушка: «5» — дополнительное ранение.', 'combat'); }
     let val = r === 'crit' ? 'crit' : r + mod;
-    log(state, '🎲 Бой: ' + fmtRoll(r) + (mod ? ' +' + mod + ' = ' + val : '') + ' против ранений ' + it.hits + '.', 'combat');
-    if (val === 'crit' || val <= it.hits) {
+    const frail = hasWeak(state, 'endangered') ? 1 : 0;   // Dying Species: Toughness of all Intruders −1
+    log(state, '🎲 Бой: ' + fmtRoll(r) + (mod ? ' +' + mod + ' = ' + val : '') + ' против ранений ' + it.hits + (frail ? ' (стойкость −1)' : '') + '.', 'combat');
+    if (val === 'crit' || val - frail <= it.hits) {
         log(state, '✔ ' + INTRUDER_NAMES[it.type] + ' убит!', 'good');
         removeIntruder(state, it.uid, true);
         onKill(state, p, opts);
@@ -632,6 +647,12 @@ export function applyHitsNoRoll(state, it, n) {
     it.hits += n;
     log(state, INTRUDER_NAMES[it.type] + ' получает ' + n + ' ранений (всего ' + it.hits + ').', 'combat');
 }
+/** Phosphates weakness: a Fire Extinguisher / Fire Control System also inflicts 1 Injury. */
+export function phosphateWound(state, it) {
+    if (!it || !state.intruders[it.uid] || !hasWeak(state, 'phosphates')) return;
+    log(state, '🧪 Восприимчивость к фосфатам: ' + INTRUDER_NAMES[it.type] + ' получает 1 рану.', 'good');
+    applyHitsNoRoll(state, it, 1);
+}
 function onKill(state, p, opts) {
     if (opts.weapon && ITEMS[opts.weapon.item].weapon.drawOnKill && !p.rifleDrawUsed) { p.rifleDrawUsed = true; drawCards(state, p, 1); }
 }
@@ -645,8 +666,9 @@ function queenHits(state, p, it, hits, mod, opts = {}) {
     if (wd.critOn2 && natural === 2) { r = 'crit'; log(state, 'Штурмовая винтовка: «2» — КРИТ по Королеве.', 'combat'); }
     else r = adaptRoll(state, face);
     const val = r === 'crit' ? 'crit' : r + mod;
-    log(state, '🎲 Бой с Королевой: ' + fmtRoll(r) + (mod ? ' +' + mod : '') + ', ранений на треке ' + state.queenHits + '.', 'combat');
-    if (val === 'crit' || val <= state.queenHits || state.queenHits >= 6) next(state, { op: 'queen.card', player: p.id });
+    const frail = hasWeak(state, 'endangered') ? 1 : 0;   // Dying Species: Toughness of all Intruders −1
+    log(state, '🎲 Бой с Королевой: ' + fmtRoll(r) + (mod ? ' +' + mod : '') + ', ранений на треке ' + state.queenHits + (frail ? ' (стойкость −1)' : '') + '.', 'combat');
+    if (val === 'crit' || val - frail <= state.queenHits || state.queenHits >= 6) next(state, { op: 'queen.card', player: p.id });
     else log(state, 'Королева держится.', 'combat');
     return false;
 }

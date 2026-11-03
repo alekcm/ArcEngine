@@ -9,7 +9,7 @@ import { shuffle } from '../rng.mjs';
 import { repelIntruder, checkNest } from './intruders.mjs';
 import { startSelfDestruct, stopSelfDestruct } from './events.mjs';
 import { drawItem, giveItem, healChoice, removeOneContam } from './rooms.mjs';
-import { dealHits } from './combat.mjs';
+import { dealHits, phosphateWound } from './combat.mjs';
 
 export function drawSupport(state, n) {
     const out = [];
@@ -563,7 +563,7 @@ OPS['item.engineKey'] = (state, step) => {
 };
 OPS['item.extinguisher'] = (state, step) => {
     const p = player(state, step.player);
-    if (step.answer === 'fire') removeFire(state, p.room); else { const it = state.intruders[step.answer.slice(2)]; if (it) repelIntruder(state, it); }
+    if (step.answer === 'fire') removeFire(state, p.room); else { const it = state.intruders[step.answer.slice(2)]; if (it) { repelIntruder(state, it); phosphateWound(state, it); } }
     next(state, step.then);
 };
 OPS['item.glowstick'] = (state, step) => {

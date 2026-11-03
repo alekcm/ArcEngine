@@ -1,4 +1,5 @@
-// dice.js — the big die in the middle of the screen (real 3D: yellow D12 for noise, red D10 for combat).
+// dice.js — the big die in the middle of the screen (real 3D: yellow D12 for noise — or a black
+// D10 for the alternative noise variant — and a red D10 for combat).
 import * as Snd from './sound.js';
 //
 // Two situations show it:
@@ -12,6 +13,9 @@ const B = () => window.BABYLON;
 
 // Face sets in the order they are printed on the dice (Nemesis Redux values).
 const NOISE_FACES = ['1', '1', '2', '2', '3', '3', '4', '4', 'silence', 'danger', 'encounter', 'encounter'];
+// The alternative noise variant: a black d10 with no Encounter faces — 'danger' is printed as
+// claw marks, 'silence' as ✕. Mirrors NOISE_DIE_SAFE on the server.
+const NOISE10_FACES = ['1', '1', '2', '2', '3', '3', '4', '4', 'danger', 'silence'];
 const COMBAT_FACES = ['crit', '2', '3', '3', '4', '4', '5', '5', '5', '6'];
 // The Battle Suit's printed Blue Combat die: two 2s, three 3s, two 4s, one 5, one 6 and a Critical.
 const BLUE_FACES = ['crit', '2', '2', '3', '3', '3', '4', '4', '5', '6'];
@@ -79,7 +83,7 @@ export function d10Faces(kind = 'combat') {
     faces.sort((a, b) => positiveAngle(yawToShowFace(a.normal)) - positiveAngle(yawToShowFace(b.normal)));
     const anchor = faces.indexOf(first);
     const ordered = anchor > 0 ? faces.slice(anchor).concat(faces.slice(0, anchor)) : faces;
-    const values = kind === 'blue' ? BLUE_FACES : COMBAT_FACES;
+    const values = kind === 'blue' ? BLUE_FACES : kind === 'noise10' ? NOISE10_FACES : COMBAT_FACES;
     return ordered.map((face, i) => ({ ...face, value: values[i % values.length] }));
 }
 
@@ -157,8 +161,8 @@ export class DiceUI {
         const h = new (B().HemisphericLight)('dh', new (B().Vector3)(0.3, 1, -0.6), scene); h.intensity = 0.8; h.groundColor = new (B().Color3)(0.25, 0.2, 0.2);
         const d = new (B().DirectionalLight)('dd', new (B().Vector3)(-0.5, -1, 0.7), scene); d.intensity = 0.8;
         this.engine = engine; this.scene = scene;
-        this.dice = { noise: this.makeDie(scene, 'noise'), combat: this.makeDie(scene, 'combat'), blue: this.makeDie(scene, 'blue') };
-        this.dice.combat.root.setEnabled(false); this.dice.blue.root.setEnabled(false);
+        this.dice = { noise: this.makeDie(scene, 'noise'), noise10: this.makeDie(scene, 'noise10'), combat: this.makeDie(scene, 'combat'), blue: this.makeDie(scene, 'blue') };
+        this.dice.combat.root.setEnabled(false); this.dice.blue.root.setEnabled(false); this.dice.noise10.root.setEnabled(false);
         this.t = 0;
         engine.runRenderLoop(() => { if (this.el.classList.contains('hidden')) return; this.t += engine.getDeltaTime() / 1000; this.tick(); scene.render(); });
     }
@@ -210,7 +214,7 @@ export class DiceUI {
         const body = new (B().TransformNode)('d10_body_' + kind, scene);
         body.parent = root; body.scaling.setAll(0.95);
         const faces = d10Faces(kind);
-        const baseColor = kind === 'blue' ? '#1d6fb8' : '#b8262c';
+        const baseColor = kind === 'blue' ? '#1d6fb8' : kind === 'noise10' ? '#16161c' : '#b8262c';
         faces.forEach((face, i) => {
             const mesh = new (B().Mesh)('d10_face_' + i, scene);
             d10FaceVertexData(face).applyToMesh(mesh);
@@ -225,12 +229,18 @@ export class DiceUI {
             texture.wrapU = B().Texture.CLAMP_ADDRESSMODE; texture.wrapV = B().Texture.CLAMP_ADDRESSMODE;
             const ctx = texture.getContext();
             ctx.fillStyle = baseColor; ctx.fillRect(0, 0, 128, 128);
-            const glyph = faceGlyph(face.value);
+            const glyph = kind === 'noise10' && face.value === 'silence' ? '✕' : faceGlyph(face.value);
             ctx.fillStyle = '#f7f2ea'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            if (face.value === 'crit') ctx.font = 'bold 84px Arial';
-            else ctx.font = 'bold 86px Arial';
-            if (glyph) ctx.fillText(glyph, 64, 70);
-            if (/^[69]$/.test(glyph)) ctx.fillRect(44, 112, 40, 6);
+            if (kind === 'noise10' && face.value === 'danger') {
+                // Claw marks, as printed on the alternative d10.
+                ctx.strokeStyle = '#f7f2ea'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+                for (let s = 0; s < 3; s++) { ctx.beginPath(); ctx.moveTo(40 + s * 24, 32); ctx.quadraticCurveTo(52 + s * 24, 64, 36 + s * 24, 98); ctx.stroke(); }
+            } else {
+                if (face.value === 'crit') ctx.font = 'bold 84px Arial';
+                else ctx.font = 'bold 86px Arial';
+                if (glyph) ctx.fillText(glyph, 64, 70);
+                if (/^[69]$/.test(glyph)) ctx.fillRect(44, 112, 40, 6);
+            }
             texture.update();
 
             const material = new (B().StandardMaterial)('d10_face_material_' + i, scene);
@@ -244,34 +254,13 @@ export class DiceUI {
         return { root, body, faces };
     }
 
-    syncNoiseFaces(variant) {
-        if (!this.dice || !this.dice.noise) return;
-        const faces = this.dice.noise.faces;
-        const noiseFaces = variant
-            ? ['1', '1', '2', '2', '3', '3', '4', '4', 'silence', 'silence', 'danger', 'danger']
-            : NOISE_FACES;
-        faces.forEach((f, i) => {
-            f.value = noiseFaces[i % noiseFaces.length];
-            if (!f.dt) return;
-            const ctx = f.dt.getContext();
-            ctx.clearRect(0, 0, 128, 128);
-            const glyph = faceGlyph(f.value);
-            ctx.fillStyle = '#1b1b1b'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            if (f.value === 'danger') { ctx.fillStyle = '#7a1010'; ctx.font = 'bold 96px Arial'; }
-            else if (f.value === 'encounter') ctx.font = 'bold 84px Arial';
-            else ctx.font = 'bold 86px Arial';
-            if (glyph) ctx.fillText(glyph, 64, 70);
-            if (/^[69]$/.test(glyph)) ctx.fillRect(44, 112, 40, 6);
-            f.dt.update();
-        });
-    }
-
     /** Called on every state update. `opts.title` lets the client rename the die (an unexplored room
      *  must stay "???" until its tile has been turned over). */
     update(view, me, playerName, opts) {
         if (view && view.noiseVariant !== this.lastNoiseVariant) {
             this.lastNoiseVariant = view.noiseVariant;
-            this.syncNoiseFaces(view.noiseVariant);
+            this.noiseVariant = !!view.noiseVariant;
+            this.setDie(this.die);   // swap the mesh: standard D12 ⇄ alternative D10
         }
         const pr = view.prompt;
         const roll = view.lastRoll;
@@ -293,12 +282,15 @@ export class DiceUI {
         } else if (!dicePrompt && !this.rolling && !this.hideTimer) this.hide();
     }
 
+    /** Mesh key for a logical die: the alternative noise variant is a black D10, not the D12. */
+    keyFor(die) { return die === 'noise' && this.noiseVariant ? 'noise10' : die; }
     setDie(die) {
-        this.die = die; this.el.classList.toggle('combat', die === 'combat'); this.el.classList.toggle('noise', die === 'noise');
+        this.die = die; this.dieKey = this.keyFor(die);
+        this.el.classList.toggle('combat', die === 'combat'); this.el.classList.toggle('noise', die === 'noise');
         this.el.classList.toggle('blue', die === 'blue');
-        if (this.dice) for (const k of ['noise', 'combat', 'blue']) this.dice[k].root.setEnabled(die === k);
+        if (this.dice) for (const k of Object.keys(this.dice)) this.dice[k].root.setEnabled(k === this.dieKey);
     }
-    cur() { return this.dice ? this.dice[this.die] : null; }
+    cur() { return this.dice ? (this.dice[this.dieKey || this.die] || this.dice[this.die]) : null; }
     show() { this.el.classList.remove('hidden'); if (this.engine) this.engine.resize(); }
     hide() { this.el.classList.add('hidden'); this.el.classList.remove('mine', 'landed'); this.clickable = false; }
     clearHide() { if (this.hideTimer) { clearTimeout(this.hideTimer); this.hideTimer = null; } }
@@ -372,8 +364,9 @@ export class DiceUI {
         } else if (this.idle) {
             // Keep both combat D10s standing on their long axis while they idle; the D12 may still
             // wobble in pitch and roll. The actual roll animation above continues to tumble freely.
-            const pitch = this.die === 'noise' ? Math.sin(this.t * 0.7) * 0.5 : 0;
-            const roll = this.die === 'noise' ? 0.3 : 0;
+            const d12 = (this.dieKey || this.die) === 'noise';
+            const pitch = d12 ? Math.sin(this.t * 0.7) * 0.5 : 0;
+            const roll = d12 ? 0.3 : 0;
             d.root.rotationQuaternion = Q.RotationYawPitchRoll(this.t * 0.9, pitch, roll);
             d.root.position.y = Math.sin(this.t * 2) * 0.05; d.root.scaling.setAll(1);
         } else { d.root.position.y = 0; d.root.scaling.setAll(1.1); }

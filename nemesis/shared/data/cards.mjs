@@ -181,7 +181,7 @@ export const ITEMS = {
                       text: 'Броня. Вместо тяжёлой травмы можете потерять 2 здоровья (если здоровья хватает).' },
     perimeterDevice:{ deck: 'support', count: 1, name: 'Охранный периметр', kind: 'heavy', perimeter: true, use: null,
                       text: 'Тяжёлый предмет. Пассивно: если вам нужно сделать бросок шума или разрешить встречу в фазу событий, сбросьте 1 карту действия: предотвратите это.' },
-    plasmaGun:      { deck: 'support', count: 1, name: 'Плазменная пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true, plasma: true }, use: null,
+    plasmaGun:      { deck: 'support', count: 1, name: 'Плазменная пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true, plasma: true, energy: true }, use: null,
                       text: 'Дальнобойное оружие, патроны не нужны. При «2» или «6»: теряете 2 здоровья за каждый жетон на оружии, затем кладёте 1 жетон.' },
     riotgun:        { deck: 'support', count: 1, name: 'Штурмовое ружьё', kind: 'heavy', weapon: { max: 4, repelMode: true }, use: null,
                       text: 'Дальнобойное оружие, 4 патрона. Вместо обычного выстрела: потратьте 2 патрона — отгоните 1 взрослого из комнаты.' },
@@ -191,7 +191,7 @@ export const ITEMS = {
                       text: 'Дальнобойное оружие, 4 патрона. Выстрел: неудачный бросок перебрасывается один раз, второй результат окончателен.' },
     sniperRifle:    { deck: 'support', count: 1, name: 'Снайперская винтовка', kind: 'heavy', weapon: { max: 4, sniper: true }, use: null,
                       text: 'Дальнобойное оружие, 4 патрона. Можно стрелять в соседнюю комнату (не через закрытую дверь) — тогда +1 ранение.' },
-    sonicGun:       { deck: 'support', count: 1, name: 'Звуковая пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true, plusOne: true, malfOn: [2, 6] }, use: null,
+    sonicGun:       { deck: 'support', count: 1, name: 'Звуковая пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true, plusOne: true, malfOn: [2, 6], energy: true }, use: null,
                       text: 'Дальнобойное оружие, патроны не нужны. +1 к результату броска. При «2» или «6» положите поломку в вашей комнате.' },
     smg:            { deck: 'support', count: 1, name: 'Пистолет-пулемёт', kind: 'heavy', weapon: { max: 5, boost: { ammo: 1, hits: 1 } }, use: null,
                       text: 'Дальнобойное оружие, 5 патронов. Выстрел: можете потратить 1 доп. патрон — +1 ранение.' },
@@ -228,7 +228,7 @@ export const ITEMS = {
                    text: 'Дальнобойное оружие, 3 патрона. Выстрел: результаты «2» и «3» получают +1.' },
     sentrySmg:   { deck: 'start', count: 0, name: 'Пистолет-пулемёт охранника', kind: 'heavy', weapon: { max: 5, boost: { ammo: 1, hits: 1 } }, use: null,
                    text: 'Дальнобойное оружие, 5 патронов. Выстрел: можете потратить 1 доп. патрон, чтобы нанести 1 доп. ранение.' },
-    armGun:      { deck: 'start', count: 0, name: 'Ручная пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true, upsOn: [2, 'crit'] }, noDrop: true, use: null,
+    armGun:      { deck: 'start', count: 0, name: 'Ручная пушка', kind: 'heavy', weapon: { max: 0, noAmmo: true, upsOn: [2, 'crit'], energy: true }, noDrop: true, use: null,
                    text: 'Дальнобойное оружие, патроны не нужны. Нельзя передать или сбросить. Выстрел: при результате «2» или «✖» сбросьте 1 жетон с ИБП.' },
     bountyRifle: { deck: 'start', count: 0, name: 'Карабин охотника', kind: 'heavy', weapon: { max: 5 }, use: null,
                    text: 'Дальнобойное оружие, 5 патронов. Особых правил нет.' },
@@ -798,6 +798,24 @@ export const ADAPTATIONS = {
     venomous:         { name: 'Ядовитость',        text: 'Любая атака (кроме «Промаха») даёт заражение, если ещё не даёт его.' },
 };
 
+// ---------------------------------------------------------------------------------------------\
+// Intruder Weaknesses (alternative variant, replaces Adaptations). 3 random ones lie face down,
+// one bound to each research object (Human Corpse / Intruder Carcass / Intruder Egg); analyzing
+// that object in the Laboratory reveals its Weakness for the rest of the game. Card texts follow
+// the printed Weakness cards, with «Трутень» read as this game's Adult («Взрослый») and
+// «Охотники» as its Drones («Дроны»).
+// ---------------------------------------------------------------------------------------------
+export const WEAKNESSES = {
+    fireVuln:       { name: 'Уязвимость к огню',       text: 'Когда Чужой получает Рану от Огня, он получает 1 дополнительную Рану.' },
+    energyVuln:     { name: 'Уязвимость к энергии',    text: 'Каждая атака из Энергооружия, которая наносит хотя бы 1 Рану, наносит 1 дополнительную Рану.' },
+    dangerSense:    { name: 'Реакция на опасность',    text: 'Значение проверки Внезапной Атаки снижено на 1 (но не ниже 1).' },
+    movementHabits: { name: 'Повадки движения',        text: 'Закрытые Двери могут разрушать только Королева или Дроны.' },
+    weakSpots:      { name: 'Уязвимые места',          text: 'При атаке Взрослых натуральная «6» на кубике боя считается КРИТом.' },
+    endangered:     { name: 'Вид на грани вымирания',  text: 'Стойкость всех Чужих снижена на 1.' },
+    attackHabits:   { name: 'Повадки атаки',           text: 'Если Взрослый атакует вас Укусом, вы получаете Лёгкую Травму (−1 здоровье) вместо Тяжёлой травмы.' },
+    phosphates:     { name: 'Восприимчивость к фосфатам', text: 'Когда на Чужого действует Огнетушитель или Система Пожаротушения, он Отступает и получает 1 Рану.' },
+};
+
 // ---------------------------------------------------------------------------------------------
 // Feats (Nemesis Redux). After choosing an Objective the player picks 1 Feat, resolves it and
 // removes it from the game. One pool for the whole crew.
@@ -842,7 +860,7 @@ export const OBJECTIVES = {
         alienCoverUp:   { name: 'Сокрытие чужих', text: 'Отправьте сигнал. Ни один другой персонаж с 7+ знаниями не должен выжить.', check: 'alienCoverUp', minPlayers: 5 },
         bugHunt:        { name: 'Охота на жуков', text: 'К концу игры все 4 туши чужих должны быть выложены на корабле, в руках персонажей или сброшены (убейте не менее 4 взрослых/дронов).', check: 'bugHunt', minPlayers: 4 },
         contract:       { name: 'Корпоративный контракт', text: 'Игрок 5 ({seat}) не должен выжить. Если вы и есть Игрок 5 — вы должны быть единственным выжившим.', check: 'seat', seat: 5, minPlayers: 5 },
-        extremeBiology: { name: 'Экстремальная полевая биология', text: 'Не менее 2 адаптаций чужих должны быть удалены.', check: 'extremeBiology', minPlayers: 2 },
+        extremeBiology: { name: 'Экстремальная полевая биология', text: 'Не менее 2 адаптаций чужих должны быть удалены (в варианте слабостей — не менее 2 слабостей открыто).', check: 'extremeBiology', minPlayers: 2 },
         fortune:        { name: 'Удача любит смелых', text: 'Корабль должен долететь до Венеры (в гибернации вы не погибнете от пункта назначения). ИЛИ Отправьте сигнал И корабль должен быть уничтожен.', check: 'fortune', hiberSafe: 'venus' },
         greener:        { name: 'Новые горизонты', text: 'Игрок 2 ({seat}) не должен выжить. Если вы и есть Игрок 2 — вы должны быть единственным выжившим.', check: 'seat', seat: 2, minPlayers: 2 },
         harsh:          { name: 'Жёсткое увольнение', text: 'Игрок 3 ({seat}) не должен выжить. Если вы и есть Игрок 3 — вы должны быть единственным выжившим.', check: 'seat', seat: 3, minPlayers: 3 },

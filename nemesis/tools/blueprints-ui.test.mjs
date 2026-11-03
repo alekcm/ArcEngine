@@ -159,7 +159,7 @@ test('DIFF-01: Difficulty editor in lobby configures or disables alien adaptatio
     assert.match(html, /id="adaptSelect"/, 'adaptSelect present in hostSettings');
 });
 
-test('DIFF-02: Noise die variant replaces encounters with +1 noise and +1 silence', async () => {
+test('DIFF-02: Noise die variant is a d10 without encounter faces', async () => {
     const { createGame } = await import('../shared/engine/setup.mjs');
     const { NOISE_DIE, NOISE_DIE_SAFE, roll } = await import('../shared/engine/core.mjs');
 
@@ -168,10 +168,12 @@ test('DIFF-02: Noise die variant replaces encounters with +1 noise and +1 silenc
     assert.equal(NOISE_DIE.filter(f => f === 'silence').length, 1);
     assert.equal(NOISE_DIE.filter(f => f === 'danger').length, 1);
 
-    // Safe/variant die has 0 encounters, 2 silences, 2 dangers
-    assert.equal(NOISE_DIE_SAFE.filter(f => f === 'encounter').length, 0, 'No encounter faces on safe die');
-    assert.equal(NOISE_DIE_SAFE.filter(f => f === 'silence').length, 2, '+1 silence (2 total)');
-    assert.equal(NOISE_DIE_SAFE.filter(f => f === 'danger').length, 2, '+1 noise/danger (2 total)');
+    // Alternative die: a d10 — 0 encounters, 1 danger (claw marks), 1 silence (✕), numbers ×2
+    assert.equal(NOISE_DIE_SAFE.length, 10, 'Alternative noise die is a d10');
+    assert.equal(NOISE_DIE_SAFE.filter(f => f === 'encounter').length, 0, 'No encounter faces on the d10');
+    assert.equal(NOISE_DIE_SAFE.filter(f => f === 'silence').length, 1, 'One silence face');
+    assert.equal(NOISE_DIE_SAFE.filter(f => f === 'danger').length, 1, 'One danger face');
+    for (const n of [1, 2, 3, 4]) assert.equal(NOISE_DIE_SAFE.filter(f => f === n).length, 2, 'Two faces of ' + n);
 
     const state = createGame({ seed: 'noise-safe', noiseVariant: true, players: [{ name: 'A', charId: 'soldier' }] });
     assert.equal(state.noiseVariant, true, 'noiseVariant saved in state');

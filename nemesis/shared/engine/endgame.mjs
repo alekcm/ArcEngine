@@ -145,7 +145,7 @@ export function checkObjective(state, p, def, destination) {
             if (!t || t.id === p.id) return onlySurvivor;
             return !alive(t) || onlySurvivor;
         }
-        case 'extremeBiology': return (state.adaptationsRemoved || 0) >= 2;
+        case 'extremeBiology': return state.weaknessMode ? (state.weaknesses || []).length >= 2 : (state.adaptationsRemoved || 0) >= 2;
         case 'fortune': return arrived === 'venus' || (signal && state.shipDestroyed);
         case 'necroscopy': return signal && p.analyzed.carcass;
         case 'priceless': return p.knowledgeActive && !state.shipDestroyed;

@@ -52,7 +52,7 @@ assert.ok(B && B.MeshBuilder, 'Babylon loaded');
 globalThis.window = sandbox;
 globalThis.localStorage = sandbox.localStorage;
 const { d10Faces, d10FaceVertexData, extractFaces, DiceUI } = await import('../client/dice.js');
-const { NOISE_DIE, COMBAT_DIE, BLUE_DIE } = await import('../shared/engine/core.mjs');
+const { NOISE_DIE, NOISE_DIE_SAFE, COMBAT_DIE, BLUE_DIE } = await import('../shared/engine/core.mjs');
 
 const engine = new B.NullEngine();
 const scene = new B.Scene(engine);
@@ -345,5 +345,27 @@ test('DICE-12: attack face culling follows Babylon when the scene uses right-han
         }
     } finally {
         rightScene.dispose();
+    }
+});
+
+test('DICE-13: the alternative noise D10 matches the server die and lands on every value', () => {
+    const audio = sandbox.AudioContext;
+    sandbox.AudioContext = undefined;
+    try {
+        // The claw-mark face is drawn with canvas paths; the shared stub only knows rects/text.
+        for (const m of ['beginPath', 'moveTo', 'quadraticCurveTo', 'stroke']) canvasContext[m] = canvasContext[m] || noop;
+        const ui = makeTestUI(scene);
+        ui.dice.noise10 = ui.makeDie(scene, 'noise10');
+        ui.noiseVariant = true;
+        const die = ui.dice.noise10;
+        assert.deepEqual(die.faces.map(f => f.value), NOISE_DIE_SAFE.map(String), 'matches server faces');
+        const text = { silence: 'Тишина', danger: 'Опасность' };
+        for (const value of new Set(NOISE_DIE_SAFE)) {
+            ui.land({ die: 'noise', value }, 'Алекс');
+            ui.clearHide();
+            assert.equal(ui.hint.textContent, 'Результат: ' + (text[value] || value));
+        }
+    } finally {
+        sandbox.AudioContext = audio;
     }
 });
