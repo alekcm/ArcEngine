@@ -1642,6 +1642,126 @@ rule('cards-6', 'Каждое предложение текста карт по�
 });
 
 // ============================================================================
+//  Cards: the markdown transcription against the engine
+// ----------------------------------------------------------------------------
+//  Источник истины для карт — файлы docs/forbidden-stars/04..06, а не фото.
+//  Здесь движок сверяется с ними построчно: имя, КЛ, стоимость, значки, оба
+//  текста. Так расхождение «в движке одно, в транскрипции другое» не может
+//  пройти молча.
+// ============================================================================
+const MD = file => fs.readFileSync(path.join(ROOT, 'docs/forbidden-stars', file), 'utf8').split('\n');
+const cellsOf = l => l.split('|').slice(1, -1).map(s => s.trim());
+const plain = s => (s || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+// в таблицах бывают пометки вычитки поверх текста карты: «— на карте напечатана
+// только эта строка», «— (коричневой плашки нет)». Это не текст карты.
+const stripNote = s => plain(s)
+    .replace(/\s+—\s+(?:на карте|проверено|коричневой|поле|Похоже|пусто|см\.).*$/i, '')
+    .replace(/^—\s*\(.*\)$/i, '')
+    .trim();
+const FACTION_BY_RU = {
+    'Имперская гвардия': 'имперская-гвардия', 'Некроны': 'некроны', 'Тираниды': 'тираниды',
+    'Эльдары': 'эльдары', 'Космодесант Хаоса': 'космодесант-хаоса', 'Орки': 'орки',
+    'Космодесант': 'космодесант', 'Империя Тау': 'империя-тау', 'Инквизиция': 'инквизиция',
+    'Тёмные эльдары': 'темные-эльдары', 'Сестры битвы': 'сестры-битвы',
+    'Адептус Механикус': 'адептус-механикус',
+};
+/** Таблицы карт из markdown: имя, а остальные колонки — по началу заголовка. */
+function mdCards(file) {
+    const rows = [];
+    let faction = null, head = null;
+    for (const line of MD(file)) {
+        const h = line.match(/^(#{1,4}) (.+)$/);
+        if (h) {
+            const level = h[1].length;
+            const title = h[2].split('—')[0].trim().replace(/\s*\([^)]*\)\s*$/, '');
+            const id = FACTION_BY_RU[title];
+            // заголовок фракции задаёт колоду; подзаголовок внутри неё («Базовые карты
+            // колоды», «Прочитано дословно») — нет; заголовок первого уровня без
+            // фракции («Приложения», «Вычитка остальных наборов») закрывает колоду
+            // заголовок первого уровня без фракции («Приложения», «Вычитка
+            // остальных наборов») закрывает колоду; прочие служебные разделы тоже
+            const closes = level === 1 || /^(Спорные|Приложени|Инвентарь|Что |Правила|Метод|Иконки)/.test(title);
+            if (id) faction = id;
+            else if (closes) faction = null;
+            head = null;
+            continue;
+        }
+        if (!faction) continue;
+        if (!line.startsWith('|')) { if (line.trim() && !line.startsWith('>')) head = null; continue; }
+        const cells = cellsOf(line);
+        if (cells.includes('Карта')) { head = cells; continue; }
+        if (!head || cells.every(c => /^:?-+:?$/.test(c) || c === '')) continue;
+        const iName = head.indexOf('Карта');
+        if (!/^\*\*/.test(cells[iName] || '')) continue;
+        const col = k => { const i = head.findIndex(x => x.startsWith(k)); return i < 0 ? null : (cells[i] ?? ''); };
+        // у карт событий направление шторма записано стрелками в скобках после имени
+        const name = plain(cells[iName]).replace(/\s*\([^)]*[⬆⬇⬅➡⮕↩][^)]*\)$/, '');
+        rows.push({ faction, name, kl: col('КЛ'), cost: col('Стоимость'),
+            icons: col('Иконки') || '', icon: col('Иконка приказа'),
+            general: col('Верхняя') || col('Способность') || '', unit: col('Нижняя') || col('Способность отряда') || '',
+            text: col('Текст'), type: col('Тип шторм') || col('Тип') });
+    }
+    return rows;
+}
+const iconCount = s => {
+    const r = { att: 0, def: 0, morale: 0 };
+    for (const m of (s || '').matchAll(/`?(att|def|morale)\.?\s*(icon|token|cube)`?/g)) r[m[1]]++;
+    return r;
+};
+const sameCards = (rows, engine, what, map) => {
+    const diffs = [];
+    const byKey = new Map(engine.map(c => [c.faction + '|' + c.name, c]));
+    for (const r of rows) {
+        const e = byKey.get(r.faction + '|' + r.name);
+        if (!e) { diffs.push(`${what}: в движке нет «${r.name}» (${r.faction})`); continue; }
+        byKey.delete(r.faction + '|' + r.name);
+        const want = map(r, e);
+        for (const [k, v] of Object.entries(want)) {
+            const a = e[k], b = v;
+            const same = (typeof b === 'string' || typeof a === 'string')
+                ? plain(a) === plain(b)
+                : JSON.stringify(a) === JSON.stringify(b);
+            if (!same) diffs.push(`${r.faction} · ${r.name}: ${k} — в markdown ${JSON.stringify(b)}, в движке ${JSON.stringify(a)}`);
+        }
+    }
+    for (const e of byKey.values()) diffs.push(`${what}: в движке лишняя «${e.name}» (${e.faction})`);
+    return diffs;
+};
+
+head('Карты: markdown против движка');
+rule('cards-md-1', 'Боевые карты (04-combat-cards.md): имя, КЛ, стоимость, значки и оба текста — 171 карта', () => {
+    const rows = mdCards('04-combat-cards.md');
+    eq(rows.length, 171, 'строк в 04-combat-cards.md');
+    const diffs = sameCards(rows, FS_DATA.combat, '04', (r, e) => ({
+        upgrade: !!r.kl,
+        kl: r.kl ? Number(r.kl) : e.kl,
+        cost: r.cost ? Number(r.cost) : e.cost,
+        icons: iconCount(r.icons),
+        general: stripNote(r.general) || e.general,
+        unit: /^—/.test(plain(r.unit)) ? e.unit : (stripNote(r.unit) || e.unit),
+    }));
+    return diffs.length ? diffs.slice(0, 5).join('\n       ') : true;
+});
+rule('cards-md-2', 'Приказы (05-order-upgrades.md): имя, КЛ, стоимость, иконка приказа и текст — 60 карт', () => {
+    const rows = mdCards('05-order-upgrades.md');
+    eq(rows.length, 60, 'строк в 05-order-upgrades.md');
+    const diffs = sameCards(rows, FS_DATA.orders, '05', r => ({
+        kl: Number(r.kl), cost: Number(r.cost), icon: plain(r.icon), text: stripNote(r.text),
+    }));
+    return diffs.length ? diffs.slice(0, 5).join('\n       ') : true;
+});
+rule('cards-md-3', 'События (06-events.md): имя, тип и текст — 96 карт', () => {
+    const rows = mdCards('06-events.md');
+    eq(rows.length, 96, 'строк в 06-events.md');
+    const TYPES = { 'ПЛАН': 'scheme', 'ТАКТИКА': 'tactic' };
+    const diffs = sameCards(rows, FS_DATA.events, '06', r => {
+        const t = (r.type || '').match(/ПЛАН|ТАКТИКА/);
+        return { type: t ? TYPES[t[0]] : null, text: stripNote(r.text) };
+    });
+    return diffs.length ? diffs.slice(0, 5).join('\n       ') : true;
+});
+
+// ============================================================================
 //  The report
 // ============================================================================
 console.log('');
