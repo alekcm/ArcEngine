@@ -50,8 +50,11 @@ class FSGame {
         // The hand of the battle at the bottom of the screen.
         /** @type {any[]} */
         this.hand = [];
-        this.inspection = null;
         this.status = '';
+        // The warning of the interface (a full area, for example) and the units
+        // picked for the way back to the supply.
+        /** @type {any} */ this.warn = '';
+        /** @type {string[]} */ this.trimPick = [];
         // The mouse-first play: the pieces picked on the board, the sector under
         // the pointer and the plaque that floats over the place of an action.
         /** @type {string[]} */
@@ -307,7 +310,6 @@ class FSGame {
         this.testMode = view.mode || this.testMode;
         FSUI.show('fsLobby', false);
         FSView.update(this.app, this.view, view);
-        FSView.showInspection(this.app, this.view, view, this.inspection);
         this.aimCamera();
         // A new round or a new phase — the pending action is dropped.
         if (this.lastPhase !== view.phase || this.lastRound !== view.round) {
@@ -341,7 +343,7 @@ class FSGame {
         }
         const me = s.seat;
         this.focusArena(s);
-        const ctx = { title: '', text: '', status: this.status || '', actions: [], inspection: this.inspection, mode: this.mode, setupCellSelected: false };
+        const ctx = { title: '', text: '', status: this.status || '', warn: this.warn || '', actions: [], mode: this.mode, setupCellSelected: false };
         // A new order (or a new step of it) — the pending action is dropped.
         const orderKey = s.order ? s.order.order + ':' + s.order.phase : '';
         if (this.orderKey !== orderKey) {
@@ -349,6 +351,7 @@ class FSGame {
             this.mode = 'idle';
             this.pending = null;
             this.damageTargets = [];
+            this.warn = '';
             FSView.clearHighlights(this.view);
         }
         // The question of the effect of a card: the player chooses.
@@ -860,16 +863,20 @@ class FSGame {
                 this.selected = [];
             }
             if (this.mode !== 'move') { this.mode = 'move'; this.pending = null; }
-            ctx.title = 'Наступление · движение';
+            // Движение идёт двумя шагами: сначала корабли, затем наземные войска.
+            const step = order.moveStep === 'ground' ? 'ground' : 'ships';
+            /** @type {'ship' | 'ground'} */
+            const kindOfStep = step === 'ground' ? 'ground' : 'ship';
+            this.moveKind = kindOfStep;
+            ctx.title = step === 'ships' ? 'Наступление · корабли' : 'Наступление · наземные войска';
             const kind = this.moveKind;
             const all = FS_RULES.movableUnits(s, me);
             const units = kind ? all.filter(u => { const d = FS_RULES.unitOf(s, u); return d && d.type === kind; }) : all;
             const picked = this.selectedUnits();
             ctx.text = picked.length
                 ? 'Клик по сектору — отряды идут туда.'
-                : kind === 'ship' ? 'Клик по кораблю на доске — взять его.'
-                    : kind === 'ground' ? 'Клик по войску на доске — взять его.'
-                        : 'Выберите, что двигать: корабли или наземные войска.';
+                : step === 'ships' ? 'Клик по кораблю на доске — взять его.'
+                    : 'Клик по войску на доске — взять его.';
             ctx.status = this.status || (kind
                 ? (kind === 'ship' ? 'Корабли' : 'Наземные войска') + ' · могут двигаться: ' + units.length + ' · выбрано: ' + picked.length
                 : 'Могут двигаться: ' + all.length + ' отрядов');
@@ -886,30 +893,16 @@ class FSGame {
                     hint: 'Клик по сектору — идти · правый клик по отряду — убрать',
                 };
             }
-            // Two separate flows — a ship does not march with the army and vice versa.
-            /** @type {[('ship'|'ground'), string, string, string][]} */
-            const flows = [
-                ['ship', 'mark.ship', 'Корабли', 'Двигать корабли: только пустота, штормы и переходы'],
-                ['ground', 'mark.bastion', 'Наземные войска', 'Двигать войска: только миры, путь через свои области'],
-            ];
-            for (const [id, icon, label, hint] of flows) {
-                const count = all.filter(u => { const d = FS_RULES.unitOf(s, u); return d && d.type === id; }).length;
-                ctx.actions.push({
-                    kind: 'pick', icon, label, hint: hint + ' · ' + count,
-                    selected: kind === id,
-                    onClick: () => {
-                        this.moveKind = this.moveKind === id ? null : id;
-                        // The pieces of the other kind leave the group.
-                        this.selected = this.selected.filter(uid => {
-                            const u = s.units.find(x => x.id === uid);
-                            const d = u && FS_RULES.unitOf(s, u);
-                            return !this.moveKind || (d && d.type === this.moveKind);
-                        });
-                        this.updateSelection();
-                        this.refresh();
-                    },
-                });
-            }
+            // The step is not a choice any more: the rules move the ships first.
+            ctx.actions.push({
+                kind: 'chip', icon: step === 'ships' ? 'mark.ship' : 'mark.bastion',
+                label: step === 'ships' ? 'Шаг 1 из 2 · корабли' : 'Шаг 2 из 2 · наземные войска',
+                hint: step === 'ships'
+                    ? 'Только пустота активной системы; путь не нужен'
+                    : 'Только миры; путь через свои области',
+                selected: true,
+                onClick: () => this.refresh(),
+            });
             if (picked.length) {
                 ctx.actions.push({
                     kind: 'chip', icon: 'ui.close', label: 'Снять выделение',
@@ -917,8 +910,22 @@ class FSGame {
                 });
             }
             ctx.actions.push({
-                kind: 'primary', icon: 'ui.next', label: 'Закончить движение',
+                kind: 'primary', icon: 'ui.next',
+                label: step === 'ships' ? 'Закончить движение кораблей' : 'Закончить движение',
                 onClick: () => this.net.cmd({ type: 'endAdvance' }),
+            });
+            if ((order.steps || []).length) {
+                ctx.actions.push({
+                    kind: 'chip', icon: 'ui.close', label: 'Вернуть последний ход',
+                    onClick: () => this.net.cmd({ type: 'undoMove' }),
+                });
+            }
+        } else if (order.phase === 'combat') {
+            // Бой начался, но ничего в нём ещё не сделано: ход можно вернуть.
+            ctx.actions.push({
+                kind: 'chip', icon: 'ui.close', label: 'Вернуть последний ход',
+                hint: 'пока в бою не потрачено ни одного кубика',
+                onClick: () => this.net.cmd({ type: 'undoMove' }),
             });
         } else if (order.phase === 'strike') {
             ctx.title = 'Орбитальный удар';
@@ -978,7 +985,14 @@ class FSGame {
                 + ' · отрядов ' + mine.length + ' · вместимость ' + entry.cap
             : '';
         this.ringAreas((s.trim || []).filter(t => t.seat === me));
-        // One chip per kind of model: a click takes one model of that kind back.
+        // The units that go back are picked first and confirmed after: the click
+        // only marks them, nothing leaves the board until the player agrees.
+        const excess = entry ? Math.max(0, mine.length - entry.cap) : 0;
+        this.trimPick = (this.trimPick || []).filter(id => mine.some(u => u.id === id));
+        ctx.text = this.trimPick.length
+            ? 'Отмечено: ' + this.trimPick.length + ' из ' + excess + '. Подтвердите — и они уйдут в запас.'
+            : 'Щёлкните по своим отрядам — они уйдут в запас. Затем подтвердите.';
+        // One chip per kind of model: a click marks one model of that kind.
         const kinds = new Map();
         for (const u of mine) {
             const def = FS_RULES.unitOf(s, u);
@@ -987,9 +1001,34 @@ class FSGame {
             kinds.get(name).push(u);
         }
         for (const [name, list] of kinds) {
+            const picked = list.filter(u => this.trimPick.includes(u.id)).length;
             ctx.actions.push({
-                kind: 'chip', icon: 'ui.down', label: name, hint: 'в запас · ' + list.length,
-                onClick: () => this.net.cmd({ type: 'trimUnit', system: entry.system, pos: entry.pos, unit: list[list.length - 1].id }),
+                kind: 'chip', icon: 'ui.down', label: name,
+                hint: 'в запас · ' + list.length + (picked ? ' · отмечено ' + picked : ''),
+                selected: picked > 0,
+                onClick: () => {
+                    const free = list.find(u => !this.trimPick.includes(u.id));
+                    if (free) this.trimPick.push(free.id);
+                    else this.trimPick = this.trimPick.filter(id => !list.some(u => u.id === id));
+                    this.refresh();
+                },
+            });
+        }
+        if (this.trimPick.length) {
+            ctx.actions.push({
+                kind: 'primary', icon: 'ui.check', label: 'Подтвердить',
+                hint: this.trimPick.length + ' в запас',
+                onClick: () => {
+                    const picks = this.trimPick.slice();
+                    this.trimPick = [];
+                    for (const id of picks) {
+                        this.net.cmd({ type: 'trimUnit', system: entry.system, pos: entry.pos, unit: id });
+                    }
+                },
+            });
+            ctx.actions.push({
+                kind: 'chip', icon: 'ui.close', label: 'Сбросить отметки',
+                onClick: () => { this.trimPick = []; this.refresh(); },
             });
         }
     }
@@ -1026,26 +1065,29 @@ class FSGame {
     }
 
     // --- the deploy order -----------------------------------------------------
+    // Two steps, as the rules say: the units first, then one structure. Nothing
+    // is paid until the player presses "finish": the purchases of the order are
+    // a list, and a right click takes any of them back.
     panelDeploy(s, ctx) {
         const me = s.seat;
         const p = s.players[me];
         const order = s.order;
-        const sys = s.systems.find(x => x.id === order.system);
+        const step = FS_RULES.deployStep(order);
         const limit = FS_RULES.deployLimit(s, me, order.system);
+        const spent = FS_RULES.spentOf(order);
+        const canStructureFirst = !!order.structureFirst && step === 'units';
         ctx.title = 'Развёртывание';
-        ctx.text = this.mode === 'placeUnit' ? 'Щёлкните по месту для отряда.'
-            : this.mode === 'placeStructure' ? 'Щёлкните по миру для постройки.'
-                : 'Выберите покупку, затем место.';
-        ctx.status = this.status || ('Материя: ' + p.materiel + ' · лимит развёртывания: ' + limit);
+        ctx.text = step === 'units'
+            ? 'Сначала отряды: ставьте сколько нужно, материя спишется в конце приказа.'
+            : 'Теперь постройка — одна на приказ.';
+        ctx.status = this.status || ('Материя: ' + p.materiel
+            + (spent ? ' · в приказе: ' + spent : '')
+            + (step === 'units' ? ' · лимит развёртывания: ' + limit : ''));
         const faction = FS_DATA.factions.find(f => f.id === p.faction);
         const supply = (p.supply && p.supply.units) || {};
-        const structures = (p.supply && p.supply.structures) || { city: 0, factory: 0, bastion: 0 };
         ctx.tokens = [];
         for (const def of (faction ? faction.units : [])) {
             ctx.tokens.push({ icon: def.type === 'ship' ? 'mark.ship' : 'mark.ground', label: def.name, count: supply[def.id] || 0, hint: 'В запасе · цена ' + def.cost });
-        }
-        for (const type of ['city', 'factory', 'bastion']) {
-            ctx.tokens.push({ icon: 'mark.city', label: FS_RULES.structureName(type), count: structures[type] || 0, hint: 'В запасе' });
         }
         // The two ways of paying less: a cache token for two materiel, a forge token
         // for one command level. Both are chosen before the purchase.
@@ -1056,12 +1098,12 @@ class FSGame {
         if (!canForge) opts.forgeKl = false;
         const cl = FS_RULES.commandLevel(s, me);
         const mayBuild = faction && FS_RULES.hasFactory(s, me, order.system);
-        if (mayBuild && (order.bought || 0) < limit) {
+        if (step === 'units' && mayBuild && (order.bought || 0) < limit) {
             for (const def of faction.units) {
                 const n = supply[def.id] || 0;
                 const cost = Math.max(0, def.cost - (opts.cache ? 2 : 0));
                 const kl = def.kl - (opts.forgeKl ? 1 : 0);
-                const blocked = !n || p.materiel < cost || kl > cl || (def.forge && !(p.assets.forge || 0));
+                const blocked = !n || p.materiel - spent < cost || kl > cl || (def.forge && !(p.assets.forge || 0));
                 ctx.actions.push({
                     kind: 'pick', icon: def.type === 'ship' ? 'mark.ship' : 'mark.ground', label: def.name, count: n,
                     hint: cost + ' материи · КЛ ' + Math.max(0, kl) + ' · бой ' + def.combat + (def.forge ? ' · нужна кузница' : ''),
@@ -1092,28 +1134,46 @@ class FSGame {
                 });
             }
         }
-        for (const type of ['city', 'factory', 'bastion']) {
-            const n = structures[type] || 0;
-            const free = order.freeStructure && order.freeStructureKind === type;
-            const price = Math.max(0, FS_RULES.structureStats(type).cost - (opts.cache ? 2 : 0));
-            const blocked = !n || order.structureBought || (p.materiel < price && !free);
-            ctx.actions.push({
-                kind: 'pick', icon: 'mark.city', label: FS_RULES.structureName(type), count: n,
-                hint: free ? 'бесплатно' : price + ' материи',
-                enabled: !blocked,
-                selected: this.mode === 'placeStructure' && this.pending && this.pending.structure === type,
-                onClick: () => {
-                    this.mode = 'placeStructure';
-                    this.pending = { structure: type, cache: opts.cache };
-                    this.highlightPlace(null);
-                    this.refresh();
-                },
-            });
+        // The structure: the second step of the order (or the first one with the
+        // card of the Orks "Строй быстрее!").
+        if (step === 'structures' || canStructureFirst) {
+            for (const type of ['city', 'factory', 'bastion']) {
+                const can = FS_RULES.canTakeStructure(s, me, type);
+                const free = order.freeStructure && order.freeStructureKind === type;
+                const price = free ? 0 : Math.max(0, FS_RULES.structureStats(type).cost - (opts.cache ? 2 : 0));
+                const blocked = !can.ok || order.structureBought || (p.materiel - spent < price && !free);
+                ctx.actions.push({
+                    kind: 'pick', icon: 'mark.city', label: FS_RULES.structureName(type),
+                    hint: free ? 'бесплатно' : price + ' материи' + (can.ok ? '' : ' · ' + can.error),
+                    enabled: !blocked,
+                    selected: this.mode === 'placeStructure' && this.pending && this.pending.structure === type,
+                    onClick: () => {
+                        this.mode = 'placeStructure';
+                        this.pending = { structure: type, cache: opts.cache };
+                        this.highlightPlace(null);
+                        this.refresh();
+                    },
+                });
+            }
         }
-        ctx.actions.push({
-            kind: 'primary', icon: 'ui.next', label: 'Закончить развёртывание',
-            onClick: () => this.net.cmd({ type: 'finishDeploy' }),
-        });
+        if (step === 'units') {
+            ctx.actions.push({
+                kind: 'primary', icon: 'ui.next', label: 'Закончить размещение отрядов',
+                onClick: () => this.net.cmd({ type: 'deployStructures' }),
+            });
+        } else {
+            ctx.actions.push({
+                kind: 'primary', icon: 'ui.check', label: 'Закончить развёртывание',
+                hint: spent ? 'спишется ' + spent + ' материи' : '',
+                onClick: () => this.net.cmd({ type: 'finishDeploy' }),
+            });
+            if ((order.purchases || []).length) {
+                ctx.actions.push({
+                    kind: 'chip', icon: 'ui.close', label: 'Снять последнюю покупку',
+                    onClick: () => this.net.cmd({ type: 'undoPurchase' }),
+                });
+            }
+        }
     }
 
     // --- the strategize order -------------------------------------------------
@@ -1933,34 +1993,6 @@ class FSGame {
                 },
             };
         }
-        // The sector under the last click: its name and its stock are written over
-        // the board, never in the panel.
-        if (this.mode === 'idle' && this.inspection && this.inspection.system) {
-            const sys = s.systems.find(x => x.id === this.inspection.system);
-            if (!sys) return null;
-            const area = this.inspection.pos ? sys.areas.find(a => a.pos === this.inspection.pos) : null;
-            const world = area && area.world;
-            const disc = this.inspection.pos ? FSView.discAt(this.app, sys, this.inspection.pos, metrics) : null;
-            const tile = FSView.tilePos(this.app, sys, metrics);
-            const stock = world && world.assets && world.assets.length ? world.assets.join(' · ') : '';
-            const units = this.inspection.pos
-                ? s.units.filter(u => u.system === sys.id && u.area === this.inspection.pos).length : 0;
-            const holder = sys.owner != null && s.players[sys.owner] ? s.players[sys.owner].name : 'ничья';
-            return {
-                world: disc
-                    ? { x: disc.x, y: disc.y + 30, z: disc.z }
-                    : { x: tile.x, y: this.app.location.terrain.heightAt(tile.x, tile.y) + 40, z: tile.y },
-                view: {
-                    kicker: 'Система ' + sys.tile,
-                    title: world ? world.name : area ? 'Пустотный сектор' : 'Орбитальная система',
-                    hint: [stock, units ? 'отрядов: ' + units : '', 'владеет: ' + holder].filter(Boolean).join(' · '),
-                    actions: [{
-                        label: 'Понятно', icon: 'ui.close',
-                        onClick: () => { this.inspection = null; FSView.clearInspection(this.view); this.refresh(); },
-                    }],
-                },
-            };
-        }
         if (this.mode === 'order' && this.pending && this.pending.system) {
             const sys = s.systems.find(x => x.id === this.pending.system);
             const tok = sys && sys.tokens[sys.tokens.length - 1];
@@ -2074,6 +2106,14 @@ class FSGame {
         const scene = this.view.scene;
         const pick = scene.pick(px == null ? scene.pointerX : px, py == null ? scene.pointerY : py, m => this.pickable(m));
         const meta = pick && pick.hit && pick.pickedMesh ? pick.pickedMesh.metadata : null;
+        // Развёртывание: правый клик по купленной фигуре возвращает её, пока
+        // приказ не закончен (материя ещё не списана).
+        const o = s.order;
+        if (o && o.order === 'deploy' && o.seat === s.seat
+            && (this.mode === 'placeUnit' || this.mode === 'placeStructure' || this.mode === 'idle')) {
+            if (meta && meta.fs === 'unit') { this.net.cmd({ type: 'undoPurchase', unit: meta.unit }); return; }
+            if (meta && meta.fs === 'structure') { this.net.cmd({ type: 'undoPurchase', structure: meta.structure }); return; }
+        }
         if (this.mode === 'move' && this.selected && this.selected.length) {
             const unit = meta && meta.fs === 'unit' ? s.units.find(u => u.id === meta.unit) : null;
             let victim = unit && this.selected.indexOf(unit.id) >= 0 ? unit.id : null;
@@ -2103,22 +2143,6 @@ class FSGame {
         }
     }
 
-    inspectAt(meta, point) {
-        const state = this.state;
-        if (!state || !meta || !meta.system) return;
-        const target = this.areaTarget(meta, point);
-        const pos = target ? target.pos : null;
-        this.inspection = {
-            system: meta.system,
-            pos,
-            unit: meta.fs === 'unit' ? meta.unit : null,
-            structure: meta.fs === 'structure' ? meta.structure : null,
-            storm: meta.fs === 'storm' ? meta.side : null,
-        };
-        FSView.showInspection(this.app, this.view, state, this.inspection);
-        this.refresh();
-    }
-
     // The click on a model that is over the capacity of its area: it goes back to
     // the supply, and the ring of the area follows what is left.
     clickTrim(meta) {
@@ -2142,7 +2166,12 @@ class FSGame {
             return;
         }
         this.status = '';
-        this.net.cmd({ type: 'trimUnit', system: entry.system, pos: entry.pos, unit: unit.id });
+        // The click marks the model: the removal itself waits for the confirmation.
+        const picked = this.trimPick || (this.trimPick = []);
+        const at = picked.indexOf(unit.id);
+        if (at >= 0) picked.splice(at, 1);
+        else picked.push(unit.id);
+        this.refresh();
     }
 
     // The click on a model that takes the damage of the orbital strike.
@@ -2225,7 +2254,6 @@ class FSGame {
             }
         }
         if (!this.selected.length) {
-            if (meta.fs === 'area' || meta.fs === 'system') this.inspectAt(meta, null);
             return;
         }
         if (!target.pos) { this.status = 'Выберите сектор, а не систему целиком.'; this.refresh(); return; }
@@ -2233,6 +2261,15 @@ class FSGame {
         if (!units.length) { this.status = 'Эти отряды туда не пройдут.'; this.refresh(); return; }
         const left = this.selected.length - units.length;
         this.status = left > 0 ? 'Идут ' + units.length + ' из ' + this.selected.length + ' отрядов.' : '';
+        // Вместимость области: по правилам её можно превысить при движении, но
+        // после приказа лишние отряды погибают — и выбирает их игрок. Об этом
+        // надо предупредить до того, как он закончит движение.
+        const cap = FS_RULES.capacity(s, target.system, target.pos);
+        const already = FS_RULES.unitsAt(s, target.system, target.pos).filter(u => u.seat === s.seat).length;
+        this.warn = already + units.length > cap
+            ? 'Область будет перенаселена (' + (already + units.length) + ' из ' + cap
+                + '): после окончания движения часть ваших отрядов погибнет — выбрать их придётся вам.'
+            : '';
         this.net.cmd({ type: 'moveUnits', moves: units.map(u => ({ unit: u.id, system: target.system, pos: target.pos })) });
         // The troops that marched are no longer picked: the next click is a new march.
         this.selected = [];
@@ -2312,7 +2349,6 @@ class FSGame {
                 this.refresh();
                 return;
             }
-            this.inspectAt(meta, point);
             return;
         }
         if (this.mode === 'placeTile') {

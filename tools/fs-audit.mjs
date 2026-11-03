@@ -102,10 +102,13 @@ function voidOf(st, systemId) {
 }
 
 // The advance order of a player, ready for the movement.
-function advance(st, seat, systemId, pos) {
+function advance(st, seat, systemId, pos, step = 'ground') {
     st.phase = 'operations';
     st.turn = seat;
-    st.order = { seat, order: 'advance', system: systemId, pos, phase: 'move', moved: [], steps: [] };
+    // Ход наземных войск: проверки, которым нужен бой или марш пехоты, начинают
+    // со второго шага движения (первый — корабли).
+    st.order = { seat, order: 'advance', system: systemId, pos, phase: 'move', moveStep: step, moved: [], steps: [] };
+    if (step === 'ships') st.order.route = FS_RULES.advanceRoutes(st, seat, 'ship');
     return st.order;
 }
 
@@ -318,8 +321,9 @@ rule('adv-3', '«Only one area can become contested during a single Advance Orde
 rule('adv-4', '«Ships do not require a path to move. They may move to any void in the active system»', () => {
     const st = empty();
     const active = st.systems[0];
-    advance(st, 0, active.id, voidOf(st, active.id));
+    advance(st, 0, active.id, voidOf(st, active.id), 'ships');
     const ship = unit(st, 0, 'крейсеры', FS_RULES.neighbors(st, active.id)[0], voidOf(st, FS_RULES.neighbors(st, active.id)[0]));
+    st.order.route = FS_RULES.advanceRoutes(st, 0, 'ship');
     const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: ship.id, system: active.id, pos: voidOf(st, active.id) }] });
     eq(res.ok, true, 'корабль без пути');
 });
@@ -403,6 +407,10 @@ rule('dep-3', '«A player cannot purchase more than one structure while resolvin
     guard(st, 0, active.id, pos);
     st.order = { seat: 0, order: 'deploy', system: active.id, phase: 'deploy' };
     st.players[0].materiel = 14;
+    // Шаг отрядов: постройка здесь запрещена (кроме карты орков).
+    const early = FS_RULES.apply(st, 0, { type: 'buyStructure', system: active.id, pos, structure: 'factory' });
+    eq(early.ok, false, 'постройка до отрядов');
+    FS_RULES.apply(st, 0, { type: 'deployStructures' });
     const first = FS_RULES.apply(st, 0, { type: 'buyStructure', system: active.id, pos, structure: 'factory' });
     eq(first.ok, true, 'первая постройка');
     const other = FS_RULES.system(st, active.id).areas.filter(a => a.world && a.pos !== pos)[0];
@@ -425,11 +433,17 @@ rule('dep-4', '«A player can spend one cache token when purchasing a unit or st
     st.players[0].supply.units['гвардейцы'] = 3;
     // two guardsmen cost 2 each: materiel 3 is enough for one
     eq(FS_RULES.apply(st, 0, { type: 'buyUnit', system: active.id, pos, unit: 'гвардейцы' }).ok, true, 'первый по полной цене');
-    eq(st.players[0].materiel, 1, 'материя после первой покупки');
+    // Материя списывается не в момент покупки, а в конце приказа.
+    eq(st.players[0].materiel, 3, 'материя в момент покупки не уходит');
+    eq(FS_RULES.spentOf(st.order), 2, 'долг приказа');
     const second = FS_RULES.apply(st, 0, { type: 'buyUnit', system: active.id, pos, unit: 'гвардейцы', cache: true });
     eq(second.ok, true, 'вторая покупка с тайником');
-    eq(st.players[0].materiel, 1, 'материя после тайника');
-    eq(st.players[0].assets.cache, 0, 'тайник потрачен');
+    eq(FS_RULES.spentOf(st.order), 2, 'цена с тайником: 2 − 2 = 0, долг остался 2');
+    eq(st.players[0].assets.cache, 0, 'тайник потрачен сразу');
+    // Конец приказа: списывается вся сумма. (Сразу после него начинается фаза
+    // обновления со своим доходом, поэтому смотрим на сумму платежа.)
+    const fin = FS_RULES.apply(st, 0, { type: 'finishDeploy' });
+    eq(fin.paid, 2, 'материя списана в конце приказа одним платежом');
 });
 
 rule('dep-5', '«A player cannot purchase a unit … whose command level requirement exceeds his command level» + «may spend one forge token to reduce that unit\'s command level restriction by one»', () => {
@@ -1224,9 +1238,12 @@ rule('mov-2', '«During an Advance Order, if a ship moved from an adjacent syste
     const [a, b] = nbs;
     const ship = unit(st, 0, 'крейсеры', a, voidOf(st, a));
     const guardUnit = guard(st, 0, b, worldOf(st, b));
-    advance(st, 0, sys.id, voidOf(st, sys.id));
+    advance(st, 0, sys.id, voidOf(st, sys.id), 'ships');
+    st.order.route = FS_RULES.advanceRoutes(st, 0, 'ship');
     const first = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: ship.id, system: sys.id, pos: voidOf(st, sys.id) }] });
     eq(first.ok, true, 'корабль пришёл из соседней системы');
+    // Второй шаг — наземные войска; дороги считаются заново.
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
     const second = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: guardUnit.id, system: sys.id, pos: worldOf(st, sys.id) }] });
     eq(second.ok, false, 'войска из другой соседней системы уже не приходят');
 });
@@ -1335,13 +1352,17 @@ rule('comp-1', '«If a player would acquire a new structure by winning a combat 
     guard(st, 0, sys.id, pos);
     olk(st, 1, sys.id, pos);
     FS_RULES.addStructure(st, 1, 'city', sys.id, pos);
-    // The attacker has no city token left in his supply.
-    st.players[0].supply.structures.city = 0;
+    // У атакующего заняты все девять жетонов контроля: девять его построек на доске.
+    const worlds = [];
+    for (const s of st.systems) for (const a of s.areas) if (a.world) worlds.push({ system: s.id, pos: a.pos });
+    for (let i = 0; i < 9 && i < worlds.length; i++) {
+        st.structures.push({ id: 'own' + i, seat: 0, type: 'factory', system: worlds[i].system, area: worlds[i].pos });
+    }
+    eq(FS_RULES.structureTokensLeft(st, 0), 0, 'жетонов контроля не осталось');
     advance(st, 0, sys.id, pos);
     FS_RULES.apply(st, 0, { type: 'endAdvance' });
     FS_RULES.captureStructures(st, sys.id, pos, 0, 1);
     eq(st.structures.filter(x => x.type === 'city').length, 0, 'постройка без жетона уничтожена');
-    eq(st.players[0].supply.structures.city, 1, 'жетон вернулся в запас');
 });
 
 rule('comp-2', '«Players are limited to purchasing the number of units and structures provided in the game.»', () => {
@@ -1727,6 +1748,125 @@ const sameCards = (rows, engine, what, map) => {
     for (const e of byKey.values()) diffs.push(`${what}: в движке лишняя «${e.name}» (${e.faction})`);
     return diffs;
 };
+
+head('Движение и развёртывание: шаги приказа');
+
+rule('step-1', '«1. Move Ships … 2. Move Ground Units … 3. Resolve Combat» — двумя шагами движения, а не одним', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const w1 = worldOf(st, sys.id);
+    const v = voidOf(st, sys.id);
+    const g = guard(st, 0, sys.id, w1);
+    const ship = unit(st, 0, 'крейсеры', sys.id, v);
+    advance(st, 0, sys.id, w1, 'ships');
+    st.order.route = FS_RULES.advanceRoutes(st, 0, 'ship');
+    // Первый шаг: пехота не идёт.
+    const early = FS_RULES.canMove(st, 0, g, { system: sys.id, pos: w1 });
+    eq(early.ok, false, 'пехота ждёт шага наземных войск');
+    // Корабль идёт.
+    const otherVoid = FS_RULES.system(st, sys.id).areas.find(a => !a.world && a.pos !== v);
+    if (otherVoid) {
+        const moved = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: ship.id, system: sys.id, pos: otherVoid.pos }] });
+        eq(moved.ok, true, 'корабль идёт первым шагом');
+    }
+    // Второй шаг: теперь корабли стоят.
+    const next = FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    eq(next.ok, true, 'шаг наземных войск открыт');
+    eq(next.step, 'ground', 'второй шаг — наземные войска');
+    const late = FS_RULES.canMove(st, 0, ship, { system: sys.id, pos: v });
+    eq(late.ok, false, 'корабль уже отлетал');
+});
+
+rule('step-2', '«all legal paths are determined before moving any ground units» — дороги наземных войск считаются после шага кораблей', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const w1 = worldOf(st, sys.id);
+    const v = voidOf(st, sys.id);
+    const g = guard(st, 0, sys.id, w1);
+    unit(st, 0, 'крейсеры', sys.id, v);
+    // Приказ начинается с шага кораблей: у пехоты дорог ещё нет.
+    FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys.id }).ok;
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos: v, phase: 'move', moveStep: 'ships', moved: [], steps: [] };
+    st.order.route = FS_RULES.advanceRoutes(st, 0, 'ship');
+    eq(!!(st.order.route || {})[g.id], false, 'в шаге кораблей у пехоты дорог нет');
+    // Переход ко второму шагу: дороги пехоты считаются здесь — по тем местам,
+    // где корабли стоят ПОСЛЕ своего хода.
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    eq(st.order.moveStep, 'ground', 'идёт второй шаг');
+    eq(!!(st.order.route || {})[g.id], true, 'дороги пехоты посчитаны после хода кораблей');
+});
+
+rule('step-3', '«Отменить движение, пока приказ не закончен» — ход возвращается даже после начала боя', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const home = worldOf(st, sys.id);
+    const away = FS_RULES.system(st, sys.id).areas.find(a => a.world && a.pos !== home);
+    if (!away) return 'в системе один мир';
+    const g = guard(st, 0, sys.id, home);
+    olk(st, 1, sys.id, away.pos);
+    advance(st, 0, sys.id, home, 'ground');
+    st.order.route = FS_RULES.advanceRoutes(st, 0, 'ground');
+    const moved = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: g.id, system: sys.id, pos: away.pos }] });
+    eq(moved.ok, true, 'отряд вошёл в чужой мир');
+    const battle = FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    eq(battle.ok, true, 'бой начался');
+    eq(!!st.combat, true, 'бой идёт');
+    const back = FS_RULES.apply(st, 0, { type: 'undoMove' });
+    eq(back.ok, true, 'ход возвращается в начале боя');
+    eq(!!st.combat, false, 'бой отменён');
+    eq(FS_RULES.unitsAt(st, sys.id, home).some(u => u.id === g.id), true, 'отряд вернулся домой');
+});
+
+rule('dep-7', '«Покупки приказа платятся в конце» — правый клик снимает покупку, материя не тронута', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+    st.players[0].materiel = 6;
+    st.players[0].supply.units['гвардейцы'] = 3;
+    st.order = { seat: 0, order: 'deploy', system: sys.id, phase: 'deploy', purchases: [] };
+    const buy = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys.id, pos });
+    eq(buy.ok, true, 'отряд куплен');
+    const unitId = st.order.purchases[0].id;
+    eq(st.players[0].materiel, 6, 'материя не списана');
+    eq(st.players[0].supply.units['гвардейцы'], 2, 'отряд взят из запаса');
+    const undo = FS_RULES.apply(st, 0, { type: 'undoPurchase', unit: unitId });
+    eq(undo.ok, true, 'покупка снята');
+    eq(FS_RULES.unitsAt(st, sys.id, pos).filter(u => u.seat === 0).length, 0, 'отряд ушёл с доски');
+    eq(st.players[0].supply.units['гвардейцы'], 3, 'отряд вернулся в запас');
+    eq(FS_RULES.spentOf(st.order), 0, 'долг приказа обнулён');
+});
+
+rule('struct-3', '«Players are limited to purchasing the number of … structures provided in the game» — 15 городов, 10 фабрик, 10 бастионов и 9 жетонов на игрока, а не «по три»', () => {
+    const st = empty();
+    const worlds = [];
+    for (const sys of st.systems) for (const a of sys.areas) if (a.world) worlds.push({ system: sys.id, pos: a.pos });
+    eq(FS_RULES.STRUCTURE_TOKENS, 9, 'жетонов контроля на игрока');
+    eq(FS_RULES.STRUCTURE_POOL.city, 15, 'городов в коробке');
+    eq(FS_RULES.STRUCTURE_POOL.factory, 10, 'фабрик в коробке');
+    eq(FS_RULES.STRUCTURE_POOL.bastion, 10, 'бастионов в коробке');
+    // Четыре фабрики одного игрока — не запрещены: лимита «три» нет.
+    for (let i = 0; i < 4; i++) FS_RULES.addStructure(st, 0, 'factory', worlds[i].system, worlds[i].pos);
+    eq(FS_RULES.canTakeStructure(st, 0, 'factory').ok, true, 'четвёртая фабрика разрешена');
+    eq(FS_RULES.structureTokensLeft(st, 0), 5, 'жетоны считаются по постройкам на доске');
+    for (let i = 4; i < 9; i++) FS_RULES.addStructure(st, 0, 'factory', worlds[i].system, worlds[i].pos);
+    eq(FS_RULES.canTakeStructure(st, 0, 'factory').ok, false, 'девять построек — жетоны кончились');
+    // Общая коробка: десятая фабрика на всю партию недоступна.
+    for (let i = 9; i < 10; i++) FS_RULES.addStructure(st, 1, 'factory', worlds[i].system, worlds[i].pos);
+    eq(FS_RULES.structurePoolLeft(st, 'factory'), 0, 'фабрики в коробке закончились');
+    eq(FS_RULES.canTakeStructure(st, 1, 'factory').ok, false, 'из коробки фабрику не взять');
+});
+
+rule('cards-md-4', 'Спорные значки приказов — редакция A, подтверждённая владельцем по картам', () => {
+    const text = name => (FS_DATA.orders.find(o => o.name === name) || {}).text || '';
+    eq(text('Ужасный удар').includes('потратить 1 `def. cube`'), true, 'Ужасный удар: def. cube');
+    eq(text('Ужасный удар').includes('потратить 2 `def. cube`'), true, 'Ужасный удар: отступление за def. cube');
+    eq(text('Неотвратимые раскопки').includes('потратить 1 `morale cube`'), true, 'Неотвратимые раскопки: morale cube');
+    eq(text('Мицетические споры').includes('до 2 `att. cube`'), true, 'Мицетические споры: att. cube');
+    eq(text('Разведка генокрадов').includes('до 2 `att. cube`'), true, 'Разведка генокрадов: att. cube');
+    eq(text('Маскированная бомбардировка').includes('1 из своих `morale cube` на `att. cube`'), true, 'Маскированная бомбардировка: morale → att');
+    eq(text('Изъяны плоти').includes('потратить 2 `def. cube`'), true, 'Изъяны плоти: def. cube');
+});
 
 head('Карты: markdown против движка');
 rule('cards-md-1', 'Боевые карты (04-combat-cards.md): имя, КЛ, стоимость, значки и оба текста — 171 карта', () => {

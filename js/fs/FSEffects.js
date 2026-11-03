@@ -760,6 +760,10 @@ const FS_EFFECTS = {
                 }
                 return null;
             }
+            case 'structureFirst': {
+                if (state.order) state.order.structureFirst = true;
+                return null;
+            }
             case 'bastionsAsFactories': {
                 if (state.order) state.order.bastionsAsFactories = true;
                 return null;
@@ -1140,8 +1144,8 @@ const FS_EFFECTS = {
                 const area = answer.area;
                 if (!area) return null;
                 const stats = R.structureStats(step.kind);
-                if ((p.supply.structures[step.kind] || 0) <= 0) return null;
-                p.supply.structures[step.kind]--;
+                // The plastic of the structures is shared and counted on the board.
+                if (!R.canTakeStructure(state, seat, step.kind).ok) return null;
                 // The structure may be free, but it always comes from the reserve.
                 if (!step.free) p.materiel -= stats.cost;
                 R.addStructure(state, seat, step.kind, area.system, area.pos);
@@ -1627,6 +1631,12 @@ const RULES = [
     {
         re: /не применяйте[а-яёa-z]*\s+е[её]\s+способности[^.]*,\s*но получите[а-яёa-z]*\s+е[её]\s+боев/i,
         build: () => ({ op: 'playCard', values: true, pick: true }),
+    },
+    // «Строй быстрее!» (орки): «Вы можете купить постройку до того, как будете
+    // покупать отряды». Приказ развёртывания из-за этой карты меняет порядок шагов.
+    {
+        re: /купить постройку до того, как будете покупать отряды/i,
+        build: (m, ctx, s) => ({ op: 'structureFirst', text: s }),
     },
     // "get 1 `any cube`" / "get 2 `att. token`"
     {

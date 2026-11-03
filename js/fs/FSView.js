@@ -83,7 +83,6 @@ const FSView = {
             setupPreview: null,         // local, uncommitted tile
             markers: [],
             highlights: [],
-            inspectionRing: null,
             materials: new Map(),
             planets: new Map(),
             planetMaterials: new Map(),
@@ -130,11 +129,6 @@ const FSView = {
             World3D.addObject(app.location.view, ring, 'prop', { castShadow: false, outline: false });
             view.highlights.push(ring);
         }
-        view.inspectionRing = BABYLON.MeshBuilder.CreateTorus('fs-inspection-ring', { diameter: 82, thickness: 1.6, tessellation: 48 }, view.scene);
-        view.inspectionRing.material = view.material('inspection', '#6bd5e8', { emissive: true });
-        view.inspectionRing.isPickable = false;
-        view.inspectionRing.setEnabled(false);
-        World3D.addObject(app.location.view, view.inspectionRing, 'prop', { castShadow: false, ink: false, outline: false });
         if (view.scene.onBeforeRenderObservable && view.scene.onBeforeRenderObservable.add) {
             view.scene.onBeforeRenderObservable.add(() => {
                 const dt = Math.min(0.05, view.scene.getEngine().getDeltaTime() / 1000);
@@ -1701,25 +1695,6 @@ const FSView = {
         const a = count <= 1 ? Math.PI / 4 : index / count * Math.PI * 2;
         const r = 34;
         return { x: Math.cos(a) * r, y: Math.sin(a) * r };
-    },
-
-    // A cool-toned locator tracks the sector shown in the inspection card.
-    showInspection(app, view, state, selected) {
-        const ring = view.inspectionRing;
-        if (!ring) return;
-        if (!selected || !selected.system) { ring.setEnabled(false); return; }
-        const system = state.systems.find(s => s.id === selected.system);
-        if (!system) { ring.setEnabled(false); return; }
-        const p = selected.pos
-            ? this.areaPos(app, system, selected.pos, view.metrics)
-            : this.tilePos(app, system, view.metrics);
-        const y = app.location.terrain.heightAt(p.x, p.y) + 7.6;
-        ring.position.set(p.x, y, p.y);
-        ring.setEnabled(true);
-    },
-
-    clearInspection(view) {
-        if (view && view.inspectionRing) view.inspectionRing.setEnabled(false);
     },
 
     // The legal moves are shown as rings.

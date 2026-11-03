@@ -371,7 +371,8 @@ const FSUI = {
                 ? '<b>ДОСКА</b>　•　Клик — сведения　•　Перетаскивание — камера　•　Колесо — масштаб'
                 : '<b>ДОСКА</b>　•　Клик по отряду — выделить　•　Клик по сектору — идти　•　Перетаскивание — камера';
         root.append(hint);
-        if (ctx.status && this.statusError(ctx.status)) root.append(this.el('div', 'fs-toast', ctx.status));
+        if (ctx.warn) root.append(this.el('div', 'fs-toast', ctx.warn));
+        else if (ctx.status && this.statusError(ctx.status)) root.append(this.el('div', 'fs-toast', ctx.status));
         this.renderPlaque();
     },
 

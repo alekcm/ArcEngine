@@ -33,7 +33,11 @@ const FS_RULES = {
     ORDER_SUPPLY: 2,       // two tokens of every kind in the hand of a player
     AREA_CAP: 3,           // the unit capacity of a void
     AREA_MAX_UNITS: 5,     // no more than five units in one area
-    STRUCTURE_LIMIT: 3,    // three cities, three factories and three bastions
+    // The structures are shared plastic: 35 in the box (15 cities, 10 factories,
+    // 10 bastions), and every player has 9 structure control tokens. There is no
+    // "three of each" rule — that number was invented by the engine.
+    STRUCTURE_POOL: { city: 15, factory: 10, bastion: 10 },
+    STRUCTURE_TOKENS: 9,
 
     // -----------------------------------------------------------------------
     //  Small helpers
@@ -383,10 +387,10 @@ const FS_RULES = {
                 if (u.start > 0) state.players[seat].initialForces.units[u.id] = u.start;
             }
             const st = faction.start;
-            // A player has three cities, three factories and three bastions.
-            // The initial forces lie on the board, the rest waits in the supply.
+            // The structures are not counted per player: the plastic is shared and
+            // the player is limited by his control tokens (see canTakeStructure).
             for (const type of ['city', 'factory', 'bastion']) {
-                state.players[seat].supply.structures[type] = Math.max(0, this.STRUCTURE_LIMIT - (st[type] || 0));
+                state.players[seat].supply.structures[type] = this.STRUCTURE_POOL[type] || 0;
                 state.players[seat].initialForces.structures[type] = st[type] || 0;
             }
             state.players[seat].assets.forge = st.forge || 0;
@@ -943,8 +947,32 @@ const FS_RULES = {
     destroyStructure(state, s) {
         const i = state.structures.indexOf(s);
         if (i >= 0) state.structures.splice(i, 1);
-        const p = state.players[s.seat];
-        p.supply.structures[s.type] = (p.supply.structures[s.type] || 0) + 1;
+        // The plastic and the control token are free again: the counters are
+        // computed from the board (structurePoolLeft, structureTokensLeft).
+    },
+
+    // How many structures of this kind are still in the box: the plastic is common
+    // to all players (15 cities, 10 factories, 10 bastions in the game).
+    structurePoolLeft(state, type) {
+        const used = state.structures.filter(st => st.type === type).length;
+        return Math.max(0, (this.STRUCTURE_POOL[type] || 0) - used);
+    },
+
+    // The free structure control tokens of a player: nine per faction, and one of
+    // them lies under every structure he already owns.
+    structureTokensLeft(state, seat) {
+        const used = state.structures.filter(st => st.seat === seat).length;
+        return Math.max(0, this.STRUCTURE_TOKENS - used);
+    },
+
+    // May this player take a structure of this kind at all? The rules limit the
+    // structures by the components only ("Component Limitations"), never by a
+    // number of buildings per player.
+    canTakeStructure(state, seat, type) {
+        if (!this.STRUCTURE_POOL[type]) return { ok: false, error: 'Неизвестная постройка.' };
+        if (this.structureTokensLeft(state, seat) <= 0) return { ok: false, error: 'Не осталось жетонов контроля построек.' };
+        if (this.structurePoolLeft(state, type) <= 0) return { ok: false, error: 'Такие постройки закончились в коробке.' };
+        return { ok: true };
     },
 
     // The structure values (07-tokens.md).
@@ -996,6 +1024,8 @@ const FS_RULES = {
             case 'buyUpgrade': return this.cmdBuyUpgrade(state, seat, cmd);
             case 'useUpgrade': return this.cmdUseUpgrade(state, seat, cmd);
             case 'finishDeploy': return this.cmdFinishDeploy(state, seat);
+            case 'deployStructures': return this.cmdDeployStructures(state, seat);
+            case 'undoPurchase': return this.cmdUndoPurchase(state, seat, cmd);
             case 'finishStrategize': return this.cmdFinishStrategize(state, seat);
             case 'finishDominate': return this.cmdFinishDominate(state, seat);
             case 'finishAdvance': return this.cmdFinishAdvance(state, seat);
@@ -1103,7 +1133,11 @@ const FS_RULES = {
     },
 
     checkPlanningDone(state) {
-        const done = state.players.every(p => (p.placedTokens || 0) >= this.ORDER_TOKENS + (p.extraOrderTokens || 0));
+        // A player who has lost every unit and structure no longer resolves any
+        // phase of the game (the rules, "Eliminating a Player"): his shed tokens
+        // do not hold the planning back.
+        const done = state.players.every(p => p.eliminated
+            || (p.placedTokens || 0) >= this.ORDER_TOKENS + (p.extraOrderTokens || 0));
         if (!done) return;
         state.phase = 'operations';
         // The operations start with the first player who really has an order on
@@ -1170,15 +1204,23 @@ const FS_RULES = {
         const p = state.players[seat];
         if (order === 'advance') {
             state.order.phase = 'move';
-            // The legal destinations are frozen here: the march of one unit never
-            // opens a longer road for the next one.
+            // The movement has two steps: the ships first, then the ground units
+            // (the rules, "Advance Order"). The roads of each step are frozen when
+            // the step begins: a march never opens a longer road for the next unit.
+            state.order.moveStep = 'ships';
             state.order.moved = [];
-            state.order.route = this.advanceRoutes(state, seat);
+            state.order.route = this.advanceRoutes(state, seat, 'ship');
             return { ok: true };
         }
         if (order === 'deploy') {
-            state.order.phase = 'deploy';
-            this.log(state, seat, p.name + ' может покупать отряды и постройку.');
+            // Two steps: the units first, then the one structure. The materiel is
+            // paid at the end of the order (cmdFinishDeploy).
+            state.order.phase = 'units';
+            state.order.purchases = [];
+            state.order.structureBought = false;
+            // The card of the Orks lets the structure come before the units.
+            if ((p.upgrades || []).some(u => /Строй быстрее/i.test(u.name || ''))) state.order.structureFirst = true;
+            this.log(state, seat, p.name + ' может покупать отряды, а затем постройку.');
             return { ok: true };
         }
         if (order === 'strategize') {
@@ -1278,7 +1320,14 @@ const FS_RULES = {
         const sys = order.system;
         const from = new Set([sys].concat(this.neighbors(state, sys)));
         const moved = order.moved || [];
-        const units = state.units.filter(u => u.seat === seat && from.has(u.system) && !u.routed && !moved.includes(u.id));
+        const step = order.moveStep === 'ground' ? 'ground' : 'ships';
+        const units = state.units.filter(u => {
+            if (u.seat !== seat || !from.has(u.system) || u.routed || moved.includes(u.id)) return false;
+            const def = this.unitOf(state, u);
+            if (!def) return false;
+            // The ships move in the first step, the ground units in the second one.
+            return step === 'ships' ? def.type === 'ship' : def.type === 'ground';
+        });
         // The frozen routes decide: a unit without a road does not count.
         if (order.route) return units.filter(u => order.route[u.id]);
         return units;
@@ -1334,6 +1383,15 @@ const FS_RULES = {
         if (!order || order.order !== 'advance') return { ok: false, error: 'Это не приказ наступления.' };
         if (unit.seat !== seat) return { ok: false, error: 'Это не ваш отряд.' };
         if (unit.routed) return { ok: false, error: 'Деморализованный отряд не двигается.' };
+        // The step of the movement: the ships first, then the ground units.
+        const def0 = this.unitOf(state, unit);
+        const step = order.moveStep === 'ground' ? 'ground' : 'ships';
+        if (def0 && step === 'ships' && def0.type !== 'ship') {
+            return { ok: false, error: 'Сначала двигаются корабли, затем наземные войска.' };
+        }
+        if (def0 && step === 'ground' && def0.type !== 'ground') {
+            return { ok: false, error: 'Корабли уже отлетали: теперь двигаются только наземные войска.' };
+        }
         if ((order.moved || []).includes(unit.id)) return { ok: false, error: 'Этот отряд уже сдвинулся в этом приказе.' };
         const route = order.route && order.route[unit.id];
         if (route) {
@@ -1350,13 +1408,14 @@ const FS_RULES = {
     // The worlds every unit of the player may reach — taken once, when the
     // movement of the order begins. Ships and ground troops are counted apart:
     // they march by different rules and stand in different places.
-    advanceRoutes(state, seat) {
+    advanceRoutes(state, seat, kind) {
         const order = state.order;
         const out = {};
         for (const unit of state.units) {
             if (unit.seat !== seat || unit.routed) continue;
             const def = this.unitOf(state, unit);
             if (!def) continue;
+            if (kind && def.type !== kind) continue;
             const from = unit.system;
             if (!(from === order.system || this.neighbors(state, order.system).includes(from))) continue;
             const list = [];
@@ -1488,6 +1547,26 @@ const FS_RULES = {
     cmdUndoMove(state, seat) {
         const order = state.order;
         if (!order || order.order !== 'advance' || order.seat !== seat) return { ok: false, error: 'Нечего отменять.' };
+        // The last march may be taken back while the movement runs — and also
+        // right after the combat has started: nothing has happened in the battle
+        // yet (no reinforcements, no cards, no dice).
+        if (order.phase === 'combat') {
+            const c = state.combat;
+            const fresh = c && c.round === 1 && c.step === 'reinforce-attacker'
+                && !c.reinforce.attacker && !c.reinforce.defender
+                && !c.cards.attacker.played.length && !c.cards.defender.played.length
+                && c.damage.attacker === 0 && c.damage.defender === 0;
+            if (!fresh) return { ok: false, error: 'Бой уже начался: отменить движение нельзя.' };
+            // The hands go back to the decks and the battle is cancelled.
+            for (const side of ['attacker', 'defender']) {
+                const combatSeat = c[side];
+                const p = state.players[combatSeat];
+                p.decks.combat = c.cards[side].hand.concat(p.decks.combat);
+            }
+            state.combat = null;
+            order.phase = 'move';
+            order.moveStep = 'ground';
+        }
         if (order.phase !== 'move') return { ok: false, error: 'Движение уже закончено.' };
         const steps = order.steps || [];
         const last = steps.pop();
@@ -1517,11 +1596,22 @@ const FS_RULES = {
     },
 
     // The end of the movement: a combat or an orbital strike.
+    // The first call closes the march of the ships and opens the march of the
+    // ground units; the second one goes on to the combat (the rules say the
+    // movement has three steps: ships, ground units, combat).
     cmdEndAdvance(state, seat, cmd) {
         if (state.strike) return { ok: false, error: 'Сначала распределите урон орбитального удара.' };
         const order = state.order;
         if (!order || order.order !== 'advance') return { ok: false, error: 'Это не приказ наступления.' };
         if (order.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        if (order.phase === 'move' && order.moveStep !== 'ground') {
+            order.moveStep = 'ground';
+            // The roads of the ground units are measured now — after the ships
+            // have taken their places, as the rules require.
+            order.route = this.advanceRoutes(state, seat, 'ground');
+            this.log(state, seat, state.players[seat].name + ': корабли встали, идут наземные войска.');
+            return { ok: true, step: 'ground' };
+        }
         // The troops stay as they are: a world of one place may hold a whole army,
         // and a battle is fought by every unit that stands there.
         let contested = this.contestedAreas(state);
@@ -1722,11 +1812,26 @@ const FS_RULES = {
         return { ok: true };
     },
 
+    // The two steps of the Deploy Order: the units, then the one structure. The
+    // old records (phase: 'deploy') mean the first step.
+    deployStep(order) {
+        return order && order.phase === 'structures' ? 'structures' : 'units';
+    },
+
+    // The money of the order is not spent at once: every purchase is a record of
+    // the order, and the materiel leaves the dial when the order is finished.
+    // order.spent is the sum of the records.
+    spentOf(order) {
+        return (order.purchases || []).reduce((sum, x) => sum + (x.cost || 0), 0);
+    },
+
     cmdBuyUnit(state, seat, cmd) {
         const order = state.order;
         if (!order || order.order !== 'deploy' || order.seat !== seat) {
             return { ok: false, error: 'Сейчас нельзя покупать отряды.' };
         }
+        // The units are bought only in the first step of the order.
+        if (this.deployStep(order) !== 'units') return { ok: false, error: 'Отряды покупаются до постройки.' };
         // The units are bought only in the active system and only with a factory in it.
         if (cmd.system !== order.system) return { ok: false, error: 'Отряды покупаются в активной системе.' };
         if (!this.hasFactory(state, seat, order.system)) return { ok: false, error: 'В активной системе нет фабрики.' };
@@ -1769,18 +1874,22 @@ const FS_RULES = {
         if (order.cheapUnit && def.kl === 0) cost = Math.min(cost, order.cheapUnit);
         // The card of the player may make the purchase cheaper.
         if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
-        if (def.forge && (p.assets.forge || 0) < 1) return { ok: false, error: 'Нужен жетон кузницы.' };
-        if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
+        if (def.forge && (p.assets.forge || 0) < (forgeKl ? 1 : 0) + 1) return { ok: false, error: 'Нужен жетон кузницы.' };
+        if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
+        // The tokens are paid at once, the materiel — at the end of the order.
         if (def.forge) p.assets.forge--;
         if (forgeKl) p.assets.forge--;
         if (cache) p.assets.cache--;
-        p.materiel -= cost;
         if (!dealFree) p.supply.units[def.id]--;
         if (deal) order.dealBought = (order.dealBought || 0) + 1;
         const unit = this.addUnit(state, seat, def.id, cmd.system, cmd.pos);
         this.log(state, seat, p.name + ' купил отряд «' + def.name + '».');
         order.bought = (order.bought || 0) + 1;
-        void unit;
+        order.purchases = order.purchases || [];
+        order.purchases.push({
+            kind: 'unit', id: unit.id, def: def.id, name: def.name, cost,
+            forge: !!def.forge, forgeKl, cache,
+        });
         return { ok: true };
     },
 
@@ -1789,6 +1898,11 @@ const FS_RULES = {
         if (!order || order.order !== 'deploy' || order.seat !== seat) {
             return { ok: false, error: 'Сейчас нельзя покупать постройки.' };
         }
+        // The structure is bought after the units — the card of the Orks
+        // ("Строй быстрее!") allows the other way round.
+        if (this.deployStep(order) !== 'structures' && !order.structureFirst) {
+            return { ok: false, error: 'Сначала отряды: постройка покупается в конце приказа.' };
+        }
         if (order.structureBought) return { ok: false, error: 'За один приказ можно построить только одну постройку.' };
         // cmd.type is the command itself — the kind of the structure is cmd.structure.
         const type = cmd.structure || (cmd.kind && cmd.kind !== 'buyStructure' ? cmd.kind : '');
@@ -1796,23 +1910,67 @@ const FS_RULES = {
         // The structure stands in the active system.
         if (cmd.system !== order.system) return { ok: false, error: 'Постройка ставится в активной системе.' };
         const p = state.players[seat];
-        if ((p.supply.structures[type] || 0) <= 0) return { ok: false, error: 'Такой постройки больше нет в запасе.' };
+        const can = this.canTakeStructure(state, seat, type);
+        if (!can.ok) return can;
         const stats = this.structureStats(type);
         // The order may give a structure for free.
         const free = !!(order.freeStructure && order.freeStructureKind === type);
         // One cache token lowers the cost of one structure by two materiel.
         const cache = !!cmd.cache;
         if (cache && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
-        const cost = Math.max(0, stats.cost - (cache ? 2 : 0));
-        if (!free && p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
+        const cost = free ? 0 : Math.max(0, stats.cost - (cache ? 2 : 0));
+        if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
         const place = this.canPlaceStructure(state, seat, cmd.system, cmd.pos);
         if (!place.ok) return place;
         if (cache) p.assets.cache--;
-        if (!free) p.materiel -= cost;
-        p.supply.structures[type]--;
-        this.addStructure(state, seat, type, cmd.system, cmd.pos);
+        const structure = this.addStructure(state, seat, type, cmd.system, cmd.pos);
         this.log(state, seat, p.name + ' построил: ' + this.structureName(type) + '.');
         order.structureBought = true;
+        order.purchases = order.purchases || [];
+        order.purchases.push({ kind: 'structure', id: structure.id, type, name: this.structureName(type), cost, cache });
+        return { ok: true };
+    },
+
+    // The right button of the mouse: a purchase of this order is taken back while
+    // the order is not finished. Nothing has been paid yet, so nothing is lost.
+    cmdUndoPurchase(state, seat, cmd) {
+        const order = state.order;
+        if (!order || order.order !== 'deploy' || order.seat !== seat) return { ok: false, error: 'Нечего отменять.' };
+        const list = order.purchases || [];
+        const p = state.players[seat];
+        let entry = null;
+        if (cmd && cmd.unit) entry = list.find(x => x.kind === 'unit' && x.id === cmd.unit);
+        else if (cmd && cmd.structure) entry = list.find(x => x.kind === 'structure' && x.id === cmd.structure);
+        else entry = list[list.length - 1] || null;
+        if (!entry) return { ok: false, error: 'В этом приказе ещё ничего не куплено.' };
+        if (entry.kind === 'unit') {
+            const unit = state.units.find(u => u.id === entry.id);
+            if (!unit) return { ok: false, error: 'Этого отряда уже нет на доске.' };
+            this.destroyUnit(state, unit);
+            if (entry.forge) p.assets.forge++;
+            if (entry.forgeKl) p.assets.forge++;
+            order.bought = Math.max(0, (order.bought || 0) - 1);
+            if (order.supplyDeal && FS_EFFECTS.sameName(entry.name, order.supplyDeal.unit || 'Гвардец')) {
+                order.dealBought = Math.max(0, (order.dealBought || 0) - 1);
+            }
+        } else {
+            const structure = state.structures.find(x => x.id === entry.id);
+            if (!structure) return { ok: false, error: 'Этой постройки уже нет на доске.' };
+            this.destroyStructure(state, structure);
+            order.structureBought = false;
+        }
+        if (entry.cache) p.assets.cache++;
+        order.purchases = list.filter(x => x !== entry);
+        this.log(state, seat, p.name + ' отменил покупку: ' + entry.name + '.');
+        return { ok: true, refunded: entry.cost };
+    },
+
+    // The end of the first step of the Deploy Order: the structure comes next.
+    cmdDeployStructures(state, seat) {
+        const order = state.order;
+        if (!order || order.order !== 'deploy' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        if (this.deployStep(order) === 'structures') return { ok: true };
+        order.phase = 'structures';
         return { ok: true };
     },
 
@@ -1820,12 +1978,21 @@ const FS_RULES = {
         return { city: 'город', factory: 'фабрика', bastion: 'бастион' }[type] || type;
     },
 
-    // End the deploy order.
+    // End the deploy order: now the materiel of every purchase leaves the dial.
     cmdFinishDeploy(state, seat) {
         const order = state.order;
         if (!order || order.order !== 'deploy' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        const p = state.players[seat];
+        const total = this.spentOf(order);
+        if (total > p.materiel) return { ok: false, error: 'Не хватает материи.' };
+        p.materiel -= total;
+        for (const entry of order.purchases || []) {
+            if (!entry.cost) continue;
+            this.log(state, seat, p.name + ' платит ' + entry.cost + ' материи за «' + entry.name + '».');
+        }
+        order.phase = 'done';
         this.finishOrder(state, seat);
-        return { ok: true };
+        return { ok: true, paid: total };
     },
 
     // The troops over the capacity of an area are never taken away behind the
@@ -2240,7 +2407,11 @@ const FS_RULES = {
             return;
         }
         state.phase = 'planning';
-        state.turn = state.firstPlayer;
+        // The first player may be out of the game: the planning starts with the
+        // first player who still has tokens in hand.
+        state.turn = state.players[state.firstPlayer] && state.players[state.firstPlayer].eliminated
+            ? this.nextPlanner(state, state.firstPlayer - 1 < 0 ? state.players.length - 1 : state.firstPlayer - 1)
+            : state.firstPlayer;
         this.log(state, -1, 'Раунд ' + state.round + ': фаза планирования.');
     },
 
@@ -2367,14 +2538,11 @@ const FS_RULES = {
             if (st.seat !== loser) continue;
             // A structure without a free control token of the winner is destroyed
             // at once: the components are limited (the rules, "Component Limitations").
-            const supply = p && p.supply && p.supply.structures ? p.supply.structures : null;
-            if (supply && (supply[st.type] || 0) <= 0) {
+            if (this.structureTokensLeft(state, winner) <= 0) {
                 state.structures = state.structures.filter(x => x !== st);
-                if (p.supply && p.supply.structures) p.supply.structures[st.type] = (p.supply.structures[st.type] || 0) + 1;
                 this.log(state, winner, state.players[winner].name + ': жетона контроля нет, постройка уничтожена.');
                 continue;
             }
-            if (supply) supply[st.type] = Math.max(0, (supply[st.type] || 0) - 1);
             st.seat = winner;
             taken.push(st);
         }
