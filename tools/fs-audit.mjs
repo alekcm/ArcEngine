@@ -1817,6 +1817,60 @@ rule('step-3', '«Отменить движение, пока приказ не 
     eq(FS_RULES.unitsAt(st, sys.id, home).some(u => u.id === g.id), true, 'отряд вернулся домой');
 });
 
+rule('step-4', '«the roll-back returns to the step the march belongs to» — Esc возвращает на прошлый шаг приказа', () => {
+    const st = empty();
+    // Ищем место, где корабль в войде — единственный мост для пехоты: мир A в
+    // соседней системе касается этого войда, а мир W активной системы — тоже.
+    let fx = null;
+    for (const S of st.systems) {
+        for (const V of S.areas.filter(a => !a.world)) {
+            for (const nid of FS_RULES.neighbors(st, S.id)) {
+                const N = FS_RULES.system(st, nid);
+                for (const A of N.areas.filter(a => a.world)) {
+                    const touches = FS_RULES.areasAround(st, nid, A.pos)
+                        .some(x => x.system === S.id && x.pos === V.pos);
+                    if (!touches) continue;
+                    for (const W of S.areas.filter(a => a.world)) {
+                        const near = FS_RULES.areasAround(st, S.id, W.pos)
+                            .some(x => x.system === S.id && x.pos === V.pos);
+                        if (!near) continue;
+                        const other = S.areas.find(a => !a.world && a.pos !== V.pos);
+                        if (!other) continue;
+                        fx = { S, V, N, A, W, other };
+                        break;
+                    }
+                    if (fx) break;
+                }
+                if (fx) break;
+            }
+            if (fx) break;
+        }
+        if (fx) break;
+    }
+    if (!fx) return 'на этой карте нет узкого моста через войд — проверка не построена';
+    const g = guard(st, 0, fx.N.id, fx.A.pos);
+    const ship = unit(st, 0, 'крейсеры', fx.S.id, fx.V.pos);
+    st.order = {
+        seat: 0, order: 'advance', system: fx.S.id, pos: fx.V.pos,
+        phase: 'move', moveStep: 'ships', moved: [], steps: [],
+    };
+    st.order.route = FS_RULES.advanceRoutes(st, 0, 'ship');
+    const mv = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: ship.id, system: fx.S.id, pos: fx.other.pos }] });
+    eq(mv.ok, true, 'корабль перелетел в другой войд');
+    eq(FS_RULES.apply(st, 0, { type: 'endAdvance' }).ok, true, 'шаг кораблей закончен');
+    eq(st.order.moveStep, 'ground', 'идёт второй шаг');
+    eq(!!(st.order.route || {})[g.id], false, 'через опустевший войд пехота не идёт');
+    // Esc: возврат на прошлый шаг приказа вместе с маршем корабля.
+    const undo = FS_RULES.apply(st, 0, { type: 'undoMove' });
+    eq(undo.ok, true, 'отмена принята');
+    eq(st.order.moveStep, 'ships', 'вернулись на первый шаг приказа');
+    const back = st.units.find(u => u.id === ship.id);
+    eq([back.system, back.area], [fx.S.id, fx.V.pos], 'корабль вернулся на место');
+    eq(FS_RULES.apply(st, 0, { type: 'endAdvance' }).ok, true, 'второй шаг начат заново');
+    eq(st.order.moveStep, 'ground', 'снова второй шаг');
+    eq(!!(st.order.route || {})[g.id], true, 'дорога пехоты снова есть');
+});
+
 rule('dep-7', '«Покупки приказа платятся в конце» — правый клик снимает покупку, материя не тронута', () => {
     const st = empty();
     const sys = st.systems[0];

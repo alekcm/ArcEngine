@@ -939,8 +939,15 @@ class FSGame {
                 onClick: () => this.net.cmd({ type: 'endAdvance' }),
             });
             if ((order.steps || []).length) {
+                // Отмена возвращает и шаг приказа: марш кораблей — снова шаг 1.
+                const steps = order.steps || [];
+                const last = steps[steps.length - 1] || [];
+                const lastKind = last[0] && last[0].kind === 'ship' ? 'ship' : 'ground';
                 ctx.actions.push({
                     kind: 'chip', icon: 'ui.close', label: 'Вернуть последний ход',
+                    hint: lastKind === 'ship'
+                        ? 'вернёт на шаг 1 · корабли'
+                        : (step === 'ground' ? 'вернёт на шаг 2 · войска' : 'вернёт ход кораблей'),
                     onClick: () => this.net.cmd({ type: 'undoMove' }),
                 });
             }

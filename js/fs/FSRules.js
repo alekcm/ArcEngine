@@ -1544,10 +1544,20 @@ const FS_RULES = {
         }
         // The units that marched this time do not march again in the same order.
         order.moved = (order.moved || []).concat(plan.map(m => m.id));
-        // The step is remembered: the player may take it back with Esc.
+        // The step is remembered: the player may take it back with Esc. Each step
+        // knows whose march it was, so the roll-back can return to the step of the
+        // order it belongs to (ships or ground units).
         order.steps = order.steps || [];
+        const kinds = new Map();
+        for (const m of plan) {
+            const u = state.units.find(x => x.id === m.id);
+            const def = u ? this.unitOf(state, u) : null;
+            kinds.set(m.id, def && def.type === 'ship' ? 'ship' : 'ground');
+        }
+        const stepContested = order.contested || null;
         order.steps.push(plan.map(m => ({
             id: m.id, fromSystem: m.from, fromArea: m.fromArea, usedUncontrolled: !!m.usedUncontrolled,
+            kind: kinds.get(m.id) || 'ground', contested: stepContested,
         })));
         return { ok: true };
     },
@@ -1589,7 +1599,20 @@ const FS_RULES = {
             if (m.usedUncontrolled) order.uncontrolledUsed = Math.max(0, (order.uncontrolledUsed || 0) - 1);
             order.moved = (order.moved || []).filter(id => id !== m.id);
         }
-        return { ok: true, undone: last.length };
+        // The roll-back goes back a step of the order as well: a returned march of
+        // the ships puts the player into the first step again, and the roads are
+        // measured anew with the ships where they now stand. Without this the
+        // player stayed in the second step with a ship that had been put back.
+        const kind = last[0] && last[0].kind === 'ship' ? 'ship' : 'ground';
+        const area = last.map(m => m.contested).find(Boolean);
+        if (area && order.contested === area) order.contested = null;
+        if (kind === 'ship') {
+            order.moveStep = 'ships';
+            order.route = this.advanceRoutes(state, seat, 'ship');
+        } else if (order.phase === 'move') {
+            order.moveStep = 'ground';
+        }
+        return { ok: true, undone: last.length, step: kind === 'ship' ? 'ships' : 'ground' };
     },
 
     contestedAreas(state) {
