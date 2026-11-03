@@ -24,7 +24,7 @@ function fsDieColor(face) {
     return ({
         att: '#b8513a',
         def: '#3f6fb2',
-        morale: '#7d5a9e',
+        morale: '#d8b23c',
         blank: '#5c6470',
     })[face] || '#5c6470';
 }
@@ -857,7 +857,103 @@ const FSView = {
 
     // The repository contains faction OBJ miniatures. Babylon's bundled loader imports them
     // directly; normalize their arbitrary source scale once, cache them, then clone for units.
-    factionModel(view, faction, unitType) {
+    // The model of every unit, as the faction's own smoly file lists them
+    // (Warhammer/<faction>/Начальные силы.txt): unit id -> [folder, obj file].
+    FACTION_UNIT_MODELS: {
+        "адептус-механикус": {
+            "скитарии": ["Warhammer/Адептус механикус/", "D431C9519F34BBE811FFCD0D2609BDA9735C741D_T0.obj"],
+            "крепкие-крейсеры": ["Warhammer/Адептус механикус/", "3BE5D3DB99F0A3C584A3DA58B36C2CC406D931CE_AM_0.obj"],
+            "катафроны": ["Warhammer/Адептус механикус/", "AFC42C2393DAD418C7B2B601224BA90079D0985A_AMT1.obj"],
+            "онагры": ["Warhammer/Адептус механикус/", "C304DE083789B61E2FB865F744E148F5DF44B84E_AMT2.obj"],
+            "боевые-ковчеги": ["Warhammer/Адептус механикус/", "A96F77829B8CAC97D2BCE819B2D06FBB86A9687B_AM_2.obj"],
+            "тяжелые-титаны": ["Warhammer/Адептус механикус/", "994C1CD1DB5EA6A1E1FB1902141B7FA8F4494174_warlord titan MARS model.obj"],
+        },
+        "имперская-гвардия": {
+            "гвардейцы": ["Warhammer/Имперская гвардия/", "httpcloud3steamusercontentcomugc26496097488227680129294A782921CE77B7507EBA8D7ED2A3006C7B65.obj"],
+            "крейсеры": ["Warhammer/Имперская гвардия/", "ChaosValkyrie04.obj"],
+            "огрины": ["Warhammer/Имперская гвардия/", "httpcloud3steamusercontentcomugc26496097488230945447A6EE60C64DC360A66F170C11DA907C59DE3A1D.obj"],
+            "танки-леман-русс": ["Warhammer/Имперская гвардия/", "httpcloud3steamusercontentcomugc2649609748823623469F753CAF7D6C1BF58A61A877D82D25C238B8E10F.obj"],
+            "линкоры": ["Warhammer/Имперская гвардия/", "httpswwwdropboxcomsid3nfm1xvj9s2q3Imperial20Battleshipobjdl1.obj"],
+            "титаны": ["Warhammer/Имперская гвардия/", "httppastebincomrawphpi5WJEx919.obj"],
+        },
+        "инквизиция": {
+            "инквизиторские-штурмовики": ["Warhammer/Инквизиция/", "95B7BC4021996924208CB2160EF132E56E03B730_IT0.obj"],
+            "инквизиторские-крейсеры": ["Warhammer/Инквизиция/", "FFDD6945972A41BFABAADA65DA589D2F46C809DB_I_0.obj"],
+            "караул-смерти": ["Warhammer/Инквизиция/", "2D71889AA08FB8BEDA139B52DFFF7D6A717C4146_HellblasterAssault.obj"],
+            "вилькирии": ["Warhammer/Инквизиция/", "9D8EE79386E31D5DD2575149D33709418ADB183F_IT2.obj"],
+            "черные-корабли": ["Warhammer/Инквизиция/", "6F3B44EADB288257CC4D6BAF8580B791A45A6DF6_I_2.obj"],
+            "рыцари-немезиды": ["Warhammer/Инквизиция/", "957DA5F5A445692801FA5D6C27851B74533A6215_T3.obj"],
+        },
+        "космодесант": {
+            "скауты": ["Warhammer/Космодесантники/", "SpaceScout02.obj"],
+            "ударные-крейсера": ["Warhammer/Космодесантники/", "0E405721B5FD19190188F6C4C9EDBE696489835F_stormtalon_bolter.obj"],
+            "космодесант": ["Warhammer/Космодесантники/", "SpaceMarine05.obj"],
+            "ленд-рейдеры": ["Warhammer/Космодесантники/", "SpaceLandRaider01.obj"],
+            "боевые-баржи": ["Warhammer/Космодесантники/", "httpsdrivegooglecomucexportdownloadid0BHqqb4mcF7STUJuUXZRSF8yNWc.obj"],
+            "титаны-класса-варлорд": ["Warhammer/Космодесантники/", "1CC0F9F686C4C83D69BC2EB4D827FFB228BA901F_httpsdldropboxusercontentcomu14731293TTS40KKnights40kKnightErrantobj.obj"],
+        },
+        "некроны": {
+            "воины": ["Warhammer/Некроны/", "httpsmymixtapemoejhrctrobj.obj"],
+            "крейсеры-жнец": ["Warhammer/Некроны/", "4F00FB00519DBF071C1B86E18162B85CAA4622AD_necron ships long.obj"],
+            "бессмертные": ["Warhammer/Некроны/", "httpcloud3steamusercontentcomugc848475996211039793137E820AA2286700A764245F86B3562BBD25ED7.obj"],
+            "монолиты": ["Warhammer/Некроны/", "httpsmymixtapemoejfekczobj.obj"],
+            "корабли-гробницы": ["Warhammer/Некроны/", "6BF96780487A503FF692A757FFC42B92C011D75A_necron ship big2.obj"],
+            "ктан": ["Warhammer/Некроны/", "httpsmymixtapemoeibzatkobj.obj"],
+        },
+        "орки": {
+            "бойзы": ["Warhammer/Орки/", "OrkBoyz02.obj"],
+            "атакующие-корабли-класса-натиск": ["Warhammer/Орки/", "571F92A507921521517B943BB75A75BEBDA155A2_Dakkajet Wazbomm.obj"],
+            "нобзы": ["Warhammer/Орки/", "OrkNobz06.obj"],
+            "батлвагоны": ["Warhammer/Орки/", "OrkBattlewagon02.obj"],
+            "килл-круизеры": ["Warhammer/Орки/", "OrkLanda.obj"],
+            "гарганты": ["Warhammer/Орки/", "68658BD82767739E6BC307FACCADE8B4F962E9E2_httpsdldropboxusercontentcomu98218671OrksEpicGreatGargantobj.obj"],
+        },
+        "сестры-битвы": {
+            "сестры-ренетентии": ["Warhammer/Сестры битвы/", "86471B86C1F5BA8CA41811BDB47FFAF83D277BBC_SoBT0.obj"],
+            "легкие-крейсеры-непокорный": ["Warhammer/Сестры битвы/", "28E7C22A9EE990CB7DC6C1CAC67E5B2AED74AEF5_AS_0.obj"],
+            "сестры-битвы": ["Warhammer/Сестры битвы/", "675403A6C99587F1EAC8A3726A43B440949B0AD5_BattleSister_model.obj"],
+            "танки-экзорцист": ["Warhammer/Сестры битвы/", "DCAB1D653F0E028AEF368AF08D11CAA6126A6529_Exorcist_model.obj"],
+            "гранд-крейсеры-месть": ["Warhammer/Сестры битвы/", "46F0CC7C10546B8C268635ED698A7BE4CF4560BC_AS_2.obj"],
+            "живая-святая": ["Warhammer/Сестры битвы/", "B4A4AC190E83DB41970D6FF91951FDC85A68C0BD_Celestine8.obj"],
+        },
+        "империя-тау": {
+            "воины-огня": ["Warhammer/Тау/", "httppastebincomrawphpi9HhMFJgb.obj"],
+            "крейсеры-защитник": ["Warhammer/Тау/", "httpsmymixtapemoeqciqzoobj.obj"],
+            "бронекостюмы": ["Warhammer/Тау/", "httpspasteeerj5tuE.obj"],
+            "танки-рыба-молот": ["Warhammer/Тау/", "httpsmymixtapemoecxnotmobj.obj"],
+            "линкоры-хранитель": ["Warhammer/Тау/", "httpsmymixtapemoekbloohobj.obj"],
+            "бронекостюмы-превосходство": ["Warhammer/Тау/", "httpsmymixtapemoekfulghobj.obj"],
+        },
+        "тираниды": {
+            "гаунты": ["Warhammer/Тираниды/", "httpcloud3steamusercontentcomugc84847428632403524DED796262D17635176C51507FDA4E5DB04604335.obj"],
+            "пожиратели": ["Warhammer/Тираниды/", "httpswwwdropboxcomsm74w1tnhkb63zobVoid20Fiend20Cruiserobjdl1.obj"],
+            "воины": ["Warhammer/Тираниды/", "httpcloud3steamusercontentcomugc8484742863241109907A85B1915B21411B8729014BADDF7EF4050349D.obj"],
+            "карнифексы": ["Warhammer/Тираниды/", "httpcloud3steamusercontentcomugc84847599620931370FB6427684D91D871693916BDED5236E7A06A7743.obj"],
+            "корабли-ульи": ["Warhammer/Тираниды/", "httpswwwdropboxcomsi1sn8luql1hudt7Hive20Shipobjdl1 (1).obj"],
+            "био-титаны": ["Warhammer/Тираниды/", "httpcloud3steamusercontentcomugc848475996209410615F019F4B182734CA046B21935BDBA5B1D411B025.obj"],
+        },
+        "космодесант-хаоса": {
+            "культисты": ["Warhammer/Хаос/", "ChaosCultist.obj"],
+            "эсминцы-класса-иконоборец": ["Warhammer/Хаос/", "httpsdrivegooglecomucexportdownloadid0BHqqb4mcF7SekxxQWpZWVZ6NUk.obj"],
+            "космодесант-хаоса": ["Warhammer/Хаос/", "ChaosMarine.obj"],
+            "хелбруты": ["Warhammer/Хаос/", "ChaosHelbrute.obj"],
+            "отвратительные-тяжелые-крейсеры": ["Warhammer/Хаос/", "httpsdrivegooglecomucexportdownloadid0BHqqb4mcF7SazZ1QzVUcTM5V3c.obj"],
+            "титаны-хаоса-класса-налетчик": ["Warhammer/Хаос/", "ChaosTitan.obj"],
+        },
+        "эльдары": {
+            "аспектные-воины": ["Warhammer/Эльдары/", "Аспектные воины.obj"],
+            "призрачные-стражи": ["Warhammer/Эльдары/", "EldarWraithguard01.obj"],
+            "гравитанки-сокол": ["Warhammer/Эльдары/", "EldarFalcon02.obj"],
+            "исследователи-пустоты": ["Warhammer/Эльдары/", "EldarStalker02.obj"],
+            "боевые-титаны-класса-варлок": ["Warhammer/Эльдары/", "EldarTitan.obj"],
+        },
+    },
+
+    factionModel(view, faction, unitType, unitId) {
+        // The model of the unit itself, per the faction's smoly file; the old
+        // per-type pair stays as the fallback.
+        const byUnit = this.FACTION_UNIT_MODELS[faction] && unitId
+            ? this.FACTION_UNIT_MODELS[faction][unitId] : null;
         const specs = {
             'космодесант': { ground: ['Warhammer/Космодесантники/', 'SpaceMarine05.obj'], ship: ['Warhammer/Космодесантники/', '0E405721B5FD19190188F6C4C9EDBE696489835F_stormtalon_bolter.obj'] },
             'орки': { ground: ['Warhammer/Орки/', 'OrkBoyz02.obj'], ship: ['Warhammer/Орки/', 'OrkLanda.obj'] },
@@ -872,10 +968,10 @@ const FSView = {
             'тираниды': { ground: ['Warhammer/Тираниды/', 'httpcloud3steamusercontentcomugc84847428632403524DED796262D17635176C51507FDA4E5DB04604335.obj'], ship: ['Warhammer/Тираниды/', 'httpswwwdropboxcomsm74w1tnhkb63zobVoid20Fiend20Cruiserobjdl1.obj'] },
             'империя-тау': { ground: ['Warhammer/Тау/', 'httppastebincomrawphpi9HhMFJgb.obj'], ship: ['Warhammer/Тау/', 'httpsmymixtapemoecxnotmobj.obj'] },
         };
-        const key = faction + ':' + unitType;
+        const key = faction + ':' + unitType + ':' + (unitId || '');
         if (view.modelCache.has(key)) return view.modelCache.get(key);
         if (view.modelLoads.has(key)) return null;
-        const spec = specs[faction] && specs[faction][unitType];
+        const spec = byUnit || (specs[faction] && specs[faction][unitType]);
         const loader = typeof BABYLON !== 'undefined' && /** @type {any} */ (BABYLON.SceneLoader);
         if (!spec || !loader || !loader.ImportMeshAsync) { view.modelCache.set(key, null); return null; }
         // All imported meshes receive our faction material, so OBJ material files are
@@ -923,7 +1019,7 @@ const FSView = {
     },
 
     addFactionUnit(view, unit, pos, offset, color, unitType, scale) {
-        const model = this.factionModel(view, unit.faction, unitType);
+        const model = this.factionModel(view, unit.faction, unitType, unit.id);
         if (!model) return null;
         const k = scale || 1;
         const metadata = { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area };
@@ -1269,13 +1365,21 @@ const FSView = {
                 .map(u => view.unitPositions && view.unitPositions.get(u.id))
                 .filter(Boolean);
             let dir = { x: 0, z: sign };
+            let cd = 0;   // how far the troops' centroid stands from the centre
             if (ups.length) {
                 let mx = 0, mz = 0;
                 for (const p of ups) { mx += p.x; mz += p.z; }
                 const dx = mx / ups.length - ax, dz = mz / ups.length - az;
                 const len = Math.hypot(dx, dz);
                 if (len > 2) dir = { x: dx / len, z: dz / len };
+                cd = len;
             }
+            // On a world the dice lie on the planet itself, not piled on its rim:
+            // the outer edge of the rows is the planet's edge, not the sector's.
+            const edge = disc ? Math.min(d - 10, this.PLANET_D / 2 - 6) : d - 10;
+            // The dice start right next to the troops and the extra rows go
+            // inward, so they never clamp into one heap.
+            const base = ups.length ? Math.min(cd + 14, edge) : edge;
             // A point at `dist` from the centre along the side's direction, shifted
             // `along` across it (the rows run perpendicular to the direction),
             // clamped back into the sector.
@@ -1291,8 +1395,8 @@ const FSView = {
                 const inRow = i % 6;
                 const nRow = Math.min(6, dice.length - row * 6);
                 // Spacing by the die's diagonal, not its edge: a turned die must
-                // not cut into its neighbour.
-                const pt = rowPos(Math.min(d - 10 + row * C.die * 1.55, d + 2), (inRow - (nRow - 1) / 2) * C.die * 1.7);
+                // not cut into its neighbour; the next row goes inward.
+                const pt = rowPos(Math.max(10, base - row * C.die * 1.55), (inRow - (nRow - 1) / 2) * C.die * 1.7);
                 const rest = { x: pt.x, y: groundY(pt.x, pt.z) + C.die / 2, z: pt.z };
                 const node = new BABYLON.TransformNode('fs-die-' + side.id + '-' + i, view.scene);
                 node.position.set(rest.x, rest.y, rest.z);
@@ -1343,7 +1447,7 @@ const FSView = {
                 const row = Math.floor(i / 8);
                 const inRow = i % 8;
                 const nRow = Math.min(8, cubes.length - row * 8);
-                const pt = rowPos(d - 24 - row * 10.5, (inRow - (nRow - 1) / 2) * 12.5);
+                const pt = rowPos(Math.max(6, base - 16 - row * 10.5), (inRow - (nRow - 1) / 2) * 12.5);
                 const node = new BABYLON.TransformNode('fs-ctok-' + side.id + '-' + i, view.scene);
                 node.position.set(pt.x, groundY(pt.x, pt.z) + 3.8, pt.z);
                 node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id };
@@ -1362,8 +1466,8 @@ const FSView = {
                 const row = Math.floor(i / 8);
                 const inRow = i % 8;
                 const nRow = Math.min(8, reinforce - row * 8);
-                const pt = rowPos(d - 24 - (cubes.length ? 1 : 0) * 10.5 - row * 10.5,
-                    (inRow - (nRow - 1) / 2) * 12.5 + (cubes.length ? 0 : 0));
+                const pt = rowPos(Math.max(6, base - 16 - (cubes.length ? 10.5 : 0) - row * 10.5),
+                    (inRow - (nRow - 1) / 2) * 12.5);
                 const node = new BABYLON.TransformNode('fs-rein-' + side.id + '-' + i, view.scene);
                 node.position.set(pt.x, groundY(pt.x, pt.z) + 1.4, pt.z);
                 node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id, reinforce: true };

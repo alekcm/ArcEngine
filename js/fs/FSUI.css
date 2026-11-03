@@ -169,13 +169,13 @@
 .fs-die{width:21px;height:21px;display:grid;place-items:center;border-radius:5px;font-size:11px;background:linear-gradient(150deg,#f4ecd9,#d9cdb0);color:#241a12;box-shadow:0 2px 0 #00000055,inset 0 0 0 1px #ffffff88}
 .fs-die.is-att{background:linear-gradient(150deg,#ffd9c9,#e88f74);color:#3a1105}
 .fs-die.is-def{background:linear-gradient(150deg,#cfe3ff,#8fb2e0);color:#0b1b33}
-.fs-die.is-morale{background:linear-gradient(150deg,#f3e0ff,#c39ee6);color:#231038}
+.fs-die.is-morale{background:linear-gradient(150deg,#ffe9a8,#e8c558);color:#3a2c05}
 .fs-die.is-none,.fs-die.is-empty{background:#ffffff10;color:#8d8a82;box-shadow:none}
 .fs-battle-extras{display:flex;flex-wrap:wrap;gap:4px}
 .fs-battle-chip{font-size:9px;padding:2px 6px;border-radius:99px;background:#ffffff12;color:#efe6d4;white-space:nowrap}
 .fs-battle-chip.is-att{background:#e88f742e;color:#ffd2c1}
 .fs-battle-chip.is-def{background:#8fb2e02e;color:#d3e4ff}
-.fs-battle-chip.is-morale{background:#c39ee62e;color:#eed6ff}
+.fs-battle-chip.is-morale{background:#e8c55833;color:#f2d98a}
 .fs-battle-chip.is-token{background:#d8b87333;color:#f6e5b4}
 .fs-battle-chip.is-card{background:#ffffff18}
 .fs-battle-chip.is-empty{opacity:.4}
@@ -183,14 +183,14 @@
 .fs-battle-total{font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;background:#00000038;border:1px solid #ffffff14}
 .fs-battle-total.is-att{color:#ffc9b6}
 .fs-battle-total.is-def{color:#c9dcff}
-.fs-battle-total.is-morale{color:#e4c8ff}
+.fs-battle-total.is-morale{color:#f2d98a}
 /* The three lines of the score of a side: ⚔ dice + tokens + cards = total. */
 .fs-battle-lines{grid-column:1/-1;display:flex;flex-direction:column;gap:3px;margin-top:2px}
 .fs-battle-line{display:flex;align-items:center;gap:7px;padding:3px 7px;border-radius:7px;background:#ffffff08;font:700 11px/1 ui-monospace,monospace}
 .fs-battle-line-icon{width:16px;height:16px}
 .fs-battle-line.is-att .fs-battle-line-icon{color:#ffc9b6}
 .fs-battle-line.is-def .fs-battle-line-icon{color:#c9dcff}
-.fs-battle-line.is-morale .fs-battle-line-icon{color:#e4c8ff}
+.fs-battle-line.is-morale .fs-battle-line-icon{color:#f2d98a}
 .fs-battle-line-sum{display:inline-flex;align-items:center;gap:4px;flex:1}
 .fs-battle-part{display:inline-flex;align-items:center;gap:2px}
 .fs-battle-part .fs-ico-svg{width:13px;height:13px}
@@ -224,7 +224,7 @@
 .fs-battle-card .fs-card-icons{display:flex;flex-wrap:wrap;gap:5px;font-size:12px;color:#cfc6b4;margin-top:auto}
 .fs-battle-card .fs-card-icons .is-att{color:#ffc9b6}
 .fs-battle-card .fs-card-icons .is-def{color:#c9dcff}
-.fs-battle-card .fs-card-icons .is-morale{color:#e4c8ff}
+.fs-battle-card .fs-card-icons .is-morale{color:#f2d98a}
 .fs-battle-card-play{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-hi);border-top:1px solid #ffffff14;padding-top:6px}
 .fs-primary.is-disabled{opacity:.45;cursor:default}
 .fs-shell.is-mobile .fs-battle-hand{bottom:12px;left:10px;right:10px;transform:none;max-width:none;overflow:auto;justify-content:flex-start}
@@ -267,7 +267,7 @@
 .fs-card-cube .fs-ico-svg{width:17px;height:17px}
 .fs-card-cube.is-att b{color:#f0b8a4}
 .fs-card-cube.is-def b{color:#b9cdf2}
-.fs-card-cube.is-morale b{color:#e2cfa0}
+.fs-card-cube.is-morale b{color:#e8cf7a}
 .fs-battle-card-text{max-height:150px;overflow:hidden;border-top:1px solid #ffffff12;padding-top:8px}
 .fs-battle-card-text.fs-rich{font-size:11.5px;line-height:1.45}
 .fs-battle-card-text .fs-rich-ico{width:15px;height:15px;vertical-align:-2px}

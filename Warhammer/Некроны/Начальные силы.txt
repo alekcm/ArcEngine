@@ -5,9 +5,9 @@
 1 бастион
 
 Максимумы:
-4 воины
-3 жнеца
-3 бессмертные
-2 монолиты
-2 корабли гробницы
-1 ктан
+4 воины - httpsmymixtapemoejhrctrobj.obj
+3 жнеца - 4F00FB00519DBF071C1B86E18162B85CAA4622AD_necron ships long.obj
+3 бессмертные - httpcloud3steamusercontentcomugc848475996211039793137E820AA2286700A764245F86B3562BBD25ED7.obj
+2 монолиты - httpsmymixtapemoejfekczobj.obj
+2 корабли гробницы - 6BF96780487A503FF692A757FFC42B92C011D75A_necron ship big2.obj
+1 ктан - httpsmymixtapemoeibzatkobj.obj

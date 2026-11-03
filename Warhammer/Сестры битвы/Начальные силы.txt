@@ -4,9 +4,9 @@
 1 фабрика
 
 Максимумы:
-6 кающихся сестёр
-3 крейсера
-6 сестры битвы
-3 экзорциста
-3 гранд-крейсер
-1 живая святая
+6 кающихся сестёр - 86471B86C1F5BA8CA41811BDB47FFAF83D277BBC_SoBT0.obj
+3 крейсера - 28E7C22A9EE990CB7DC6C1CAC67E5B2AED74AEF5_AS_0.obj
+6 сестры битвы - 675403A6C99587F1EAC8A3726A43B440949B0AD5_BattleSister_model.obj
+3 экзорциста - DCAB1D653F0E028AEF368AF08D11CAA6126A6529_Exorcist_model.obj
+3 гранд-крейсер - 46F0CC7C10546B8C268635ED698A7BE4CF4560BC_AS_2.obj
+1 живая святая - B4A4AC190E83DB41970D6FF91951FDC85A68C0BD_Celestine8.obj

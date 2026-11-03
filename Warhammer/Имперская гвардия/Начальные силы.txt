@@ -4,9 +4,9 @@
 1 фабрика
 
 Максимумы:
-12 гвердейцев
-3 крейсеров
-6 огринов
-6 леман русов
-3 линкоров
-3 титанов
+12 гвердейцев - httpcloud3steamusercontentcomugc26496097488227680129294A782921CE77B7507EBA8D7ED2A3006C7B65.obj
+3 крейсеров - ChaosValkyrie04.obj
+6 огринов - httpcloud3steamusercontentcomugc26496097488230945447A6EE60C64DC360A66F170C11DA907C59DE3A1D.obj
+6 леман русов - httpcloud3steamusercontentcomugc2649609748823623469F753CAF7D6C1BF58A61A877D82D25C238B8E10F.obj
+3 линкоров - httpswwwdropboxcomsid3nfm1xvj9s2q3Imperial20Battleshipobjdl1.obj
+3 титанов - httppastebincomrawphpi5WJEx919.obj
