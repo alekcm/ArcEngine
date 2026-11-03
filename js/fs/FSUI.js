@@ -40,7 +40,15 @@ const FSUI = {
         };
         window.addEventListener('pointerup', release);
         window.addEventListener('pointercancel', release);
+        // Alt held: the battle hand zooms in even more (the hovered card most of all).
+        window.addEventListener('keydown', e => {
+            if (e.key === 'Alt') { e.preventDefault(); this.setAltZoom(true); }
+        });
+        window.addEventListener('keyup', e => {
+            if (e.key === 'Alt') this.setAltZoom(false);
+        });
         window.addEventListener('blur', () => {
+            this.setAltZoom(false);
             if (this.pressedPointer != null) release({ pointerId: this.pressedPointer });
         });
         window.addEventListener('resize', () => {
@@ -54,6 +62,17 @@ const FSUI = {
         if (cls) node.className = cls;
         if (text != null) node.textContent = String(text);
         return node;
+    },
+
+    // Alt is held or not: the class is toggled on the hand that is already on
+    // the screen, and remembered for the next render.
+    altZoom: false,
+    setAltZoom(on) {
+        if (this.altZoom === !!on) return;
+        this.altZoom = !!on;
+        const bar = this.modernRoot && this.modernRoot.querySelector
+            ? this.modernRoot.querySelector('.fs-battle-hand') : null;
+        if (bar && bar.classList) bar.classList.toggle('is-alt', this.altZoom);
     },
 
     // An icon of the game: a shape drawn by FSIcons, never a character of a font.
