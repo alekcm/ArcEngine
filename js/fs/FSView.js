@@ -1075,7 +1075,9 @@ const FSView = {
     },
 
     addFactionUnit(view, unit, pos, offset, color, unitType, scale) {
-        const model = this.factionModel(view, unit.faction, unitType, unit.id);
+        // unit.unit is the type id ('гвардейцы'), unit.id is just the uid —
+        // the per-unit model table is keyed by the type id.
+        const model = this.factionModel(view, unit.faction, unitType, unit.unit);
         if (!model) return null;
         const k = scale || 1;
         const metadata = { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area };
