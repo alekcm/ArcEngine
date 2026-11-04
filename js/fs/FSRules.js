@@ -3089,7 +3089,9 @@ const FS_RULES = {
                 if (steps.length) {
                     c.nextStep = 'reveal';
                     c.step = 'effect';
-                    this.runEffects(state, staged.seat, steps, { kind: 'combat', ctx: { side } });
+                    // «A player can choose not to resolve one of his abilities»:
+                    // the owner of the card decides about each of them.
+                    this.runEffects(state, staged.seat, steps, { kind: 'combat', ctx: { side }, optional: true });
                     return c.step;
                 }
                 return c.step;

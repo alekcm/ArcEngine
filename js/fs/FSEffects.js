@@ -83,6 +83,10 @@ const FS_EFFECTS = {
                 continue;
             }
             if (!parsed.length) continue;
+            // «Each paragraph is a separate ability.» The transcription gives
+            // the text sentence by sentence, so a sentence is one ability:
+            // the step keeps it, the player may refuse the whole ability.
+            for (const one of parsed) if (one && !one.ability) one.ability = sentence;
             steps.push(...parsed);
             prev = parsed[parsed.length - 1];
         }
@@ -180,6 +184,20 @@ const FS_EFFECTS = {
         let index = startIndex !== undefined ? startIndex : (pending ? pending.index : 0);
         while (index < list.length) {
             const step = list[index];
+            // The abilities of a combat card are optional: the owner of the card
+            // is asked about each of them before the engine performs it.
+            if (c.optional && !step.asked) {
+                const ask = this.abilityQuestion(step, c);
+                if (ask && !this.emptyQuestion(ask.question)) {
+                    step.asked = true;
+                    state.pending = {
+                        seat, answerSeat: c.owner === undefined ? seat : c.owner,
+                        kind: c.kind || 'card', steps: list, index,
+                        question: ask.question, ctx: c,
+                    };
+                    return { ok: true, pending: true };
+                }
+            }
             const res = this.step(R, state, seat, step, c);
             if (res && res.question && this.emptyQuestion(res.question)) {
                 // There is nothing to choose: the effect is skipped.
@@ -252,6 +270,21 @@ const FS_EFFECTS = {
             if (!list.length) return { ok: true, done: true };
             return this.run(R, state, pending.seat, list, { kind, ctx: cctx }, 0);
         }
+        // The permission of the owner of the card: an ability he refuses does
+        // not happen, and the rest of the card goes on.
+        if (question.op === 'ability') {
+            if (answer.no) {
+                R.log(state, owner, state.players[owner].name + ' отказывается от способности: «'
+                    + String(step.ability || '').slice(0, 60) + '».');
+                return this.next(R, state, pending);
+            }
+            const q = this.step(R, state, owner, step, ctx);
+            if (q && q.question && !this.emptyQuestion(q.question)) {
+                pending.question = q.question;
+                return { ok: true, pending: true };
+            }
+            return this.next(R, state, pending);
+        }
         // The payment that avoids the effect.
         if (question.op === 'avoid') {
             const paid = (answer.dice || []).length > 0;
@@ -293,10 +326,12 @@ const FS_EFFECTS = {
         return this.next(R, state, pending);
     },
 
-    // The question without options: there is nothing to choose.
+    // The question without options: there is nothing to choose. A yes-or-no
+    // question always has something to answer, and so does the permission of
+    // an ability — the choice there is written on the buttons, not in options.
     emptyQuestion(question) {
         if (!question) return true;
-        if (question.kind === 'yesno') return false;
+        if (question.kind === 'yesno' || question.kind === 'ability') return false;
         return !question.options || !question.options.length;
     },
 
@@ -312,6 +347,31 @@ const FS_EFFECTS = {
     seatOf(combat, side) {
         if (!combat) return null;
         return side === 'attacker' ? combat.attacker : combat.defender;
+    },
+
+    // «A player can choose not to resolve one of his abilities, unless that
+    // ability uses the word must.» The Russian card says должен / обязан.
+    abilityIsMust(text) {
+        // \b is a boundary of [A-Za-z0-9_] only: with the Cyrillic letters it
+        // never matches, so the edges are written by hand.
+        return /(^|[^а-яёa-z])(должен|должна|должно|должны|обязан|обязана|обязано|обязаны|обязательно)([^а-яёa-z]|$)/i
+            .test(String(text || ''));
+    },
+
+    // The question of the permission: the owner of the card decides whether the
+    // ability happens at all. A clarification (op 'note') decides nothing, and
+    // an ability that says «must» is not offered for refusal.
+    abilityQuestion(step, ctx) {
+        if (!step || !step.ability || step.op === 'note') return null;
+        if (this.abilityIsMust(step.ability)) return null;
+        const owner = ctx && ctx.owner !== undefined ? ctx.owner : null;
+        return {
+            question: {
+                kind: 'ability', op: 'ability', who: owner,
+                text: step.ability,
+                yes: 'Применить', no: 'Пропустить',
+            },
+        };
     },
 
     // One step of the game.

@@ -212,6 +212,34 @@ function battleOf(faction, foe, seed = 11) {
     return st;
 }
 
+// A combat where the attacker plays one named card of his own faction. The
+// hands are forced: the card under the test, and nothing for the defender.
+function cardBattle(cardName, faction = 'имперская-гвардия', seed = 11) {
+    const foe = faction === 'орки' ? 'имперская-гвардия' : 'орки';
+    const cl0 = id => FS_DATA.factions.find(f => f.id === id).units.find(u => u.kl === 0 && u.type === 'ground').id;
+    const st = FS_RULES.newReadyGame({ seed, players: [{ faction, name: 'A' }, { faction: foe, name: 'B' }] });
+    st.units = [];
+    st.structures = [];
+    st.objectives = [];
+    st.storms = [];
+    for (const s of st.systems) s.tokens = [];
+    st.phase = 'operations';
+    st.turn = 0;
+    st.order = null;
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    for (let i = 0; i < 3; i++) unit(st, 0, cl0(faction), sys.id, pos);
+    for (let i = 0; i < 3; i++) unit(st, 1, cl0(foe), sys.id, pos);
+    advance(st, 0, sys.id, pos);
+    const res = FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    if (!res.ok) throw new Error('бой не начался: ' + res.error);
+    st.combat.cards.attacker.hand = [cardName];
+    st.combat.cards.defender.hand = [];
+    const played = FS_RULES.apply(st, 0, { type: 'combat', action: 'playCard', index: 0 });
+    if (!played.ok) throw new Error('карта не сыграна: ' + played.error);
+    return st;
+}
+
 // How many asset tokens a player holds.
 function assetsOf(p) {
     return (p.assets.forge || 0) + (p.assets.cache || 0) + (p.assets.reinforcement || 0);
@@ -2378,6 +2406,45 @@ rule('combat-d2', '«do not discard your def. tokens at the end of this round of
     if (!st.combat) return 'бой кончился раньше времени';
     eq(st.combat.tokens.defender.def, 2, 'жетоны защиты остались у владельца карты');
     eq(st.combat.tokens.attacker.def, 0, 'жетоны противника сброшены');
+});
+
+rule('card-d1', '«A player can choose not to resolve one of his abilities» (Combat Card Resolution) — способность боевой карты можно пропустить', () => {
+    const name = 'Ложись!';
+    const no = cardBattle(name);
+    if (!no.pending || no.pending.question.kind !== 'ability') return 'движок не спросил о способности';
+    eq(no.pending.answerSeat, 0, 'спрашивают владельца карты');
+    const before = no.combat.dice.attacker.length;
+    FS_RULES.apply(no, 0, { type: 'effect', answer: { no: true } });
+    eq(no.combat.dice.attacker.length, before, 'отказ: кубик не получен');
+    // The consent: the very same ability happens.
+    const yes = cardBattle(name);
+    if (!yes.pending || yes.pending.question.kind !== 'ability') return 'движок не спросил о способности';
+    FS_RULES.apply(yes, 0, { type: 'effect', answer: { yes: true } });
+    eq(yes.combat.dice.attacker.length, before + 1, 'согласие: кубик получен');
+});
+
+rule('card-d2', '«unless that ability uses the word must» — обязательную способность пропустить нельзя', () => {
+    const MUST = /(^|[^а-яёa-z])(должен|должна|должно|должны|обязан|обязана|обязано|обязаны|обязательно)([^а-яёa-z]|$)/i;
+    const card = FS_DATA.combat.find(c => !c.upgrade && MUST.test(c.general || ''));
+    if (!card) return 'нет карты со словом «должен» или «обязан»';
+    const st = cardBattle(card.name, card.faction);
+    const asked = [];
+    for (let i = 0; i < 8 && st.pending; i++) {
+        if (st.pending.question.kind === 'ability') asked.push(st.pending.question.text);
+        FS_RULES.apply(st, st.pending.answerSeat, { type: 'effect', answer: { yes: true } });
+    }
+    eq(asked.some(t => MUST.test(t)), false, 'обязательную способность не предлагают пропустить');
+    // The abilities without the word must are offered: the permission is real.
+    const other = FS_DATA.combat.find(c => !c.upgrade && c.faction === card.faction
+        && c.name !== card.name && !MUST.test(c.general || '') && !MUST.test(c.unit || ''));
+    if (!other) return true;
+    const st2 = cardBattle(other.name, other.faction);
+    let offers = 0;
+    for (let i = 0; i < 8 && st2.pending; i++) {
+        if (st2.pending.question.kind === 'ability') offers++;
+        FS_RULES.apply(st2, st2.pending.answerSeat, { type: 'effect', answer: { yes: true } });
+    }
+    eq(offers > 0, true, 'необязательную способность предлагают');
 });
 
 rule('dom-3', '«The active player may resolve the special ability listed on the front of his faction sheet.» — способность можно и не применять', () => {

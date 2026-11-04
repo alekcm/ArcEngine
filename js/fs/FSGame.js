@@ -1873,6 +1873,24 @@ class FSGame {
                 }
                 return;
             }
+            // The abilities of a combat card are optional: the owner of the card
+            // decides about each of them («A player can choose not to resolve
+            // one of his abilities»).
+            case 'ability': {
+                ctx.text = 'Способность карты: «' + (q.text || '') + '»';
+                ctx.status = 'Применять её не обязательно.';
+                ctx.actions.push({
+                    kind: 'primary', icon: 'ui.check',
+                    label: q.yes || 'Применить',
+                    onClick: () => send({ yes: true }),
+                });
+                ctx.actions.push({
+                    kind: 'secondary',
+                    label: q.no || 'Пропустить',
+                    onClick: () => send({ no: true }),
+                });
+                return;
+            }
             case 'yesno': {
                 ctx.actions.push({
                     kind: 'primary', icon: 'cube.morale',
