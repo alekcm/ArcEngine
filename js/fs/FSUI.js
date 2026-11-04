@@ -112,7 +112,7 @@ const FSUI = {
     // The board furniture the player may put away: the participants, the chronicle
     // and the window with the order tokens of the hand.
     panelState() {
-        if (!this.panels) this.panels = { players: true, chronicle: true, orders: false, plaque: true };
+        if (!this.panels) this.panels = { players: true, chronicle: true, orders: false, topbar: true };
         return this.panels;
     },
 
@@ -204,33 +204,27 @@ const FSUI = {
         if (state && state.players[activeSeat]) header.append(this.el('span', 'fs-room-pill', 'ХОД · ' + state.players[activeSeat].name));
         // A test party: one person plays both seats, the interface says which one is his now.
         if (state && state.solo) header.append(this.el('span', 'fs-room-pill is-solo', 'ТЕСТ · вы за обоих'));
+        // The plaque with the round counter folds away: only the toggle stays.
+        const topbarBtn = this.el('button', 'fs-topbar-toggle' + (this.panelState().topbar ? '' : ' is-off'));
+        topbarBtn.type = 'button';
+        topbarBtn.title = this.panelState().topbar ? 'Скрыть плашку' : 'Показать плашку';
+        topbarBtn.append(this.iconEl('ui.up'));
+        topbarBtn.addEventListener('click', () => {
+            const ps = this.panelState();
+            ps.topbar = !ps.topbar;
+            this.update(state, ctx);
+        });
+        header.append(topbarBtn);
+        if (!this.panelState().topbar) root.classList.add('is-topbar-off');
         root.append(header);
 
-        const tools = this.el('div', 'fs-toolbar');
-        const help = this.el('button', 'fs-icon-btn', '?'); help.title = 'Как управлять';
-        help.addEventListener('click', () => { this.helpOpen = !this.helpOpen; this.renderModern(state, ctx); });
-        const center = this.el('button', 'fs-icon-btn'); center.title = 'Вернуть камеру к доске';
-        center.append(this.iconEl('ui.center'));
-        center.addEventListener('click', () => {
-            const game = window.app ? /** @type {any} */ (window.app.game) : null;
-            if (game && game.aimCamera) game.aimCamera();
-            if (window.app && window.app.camera) { window.app.camera.zoomTarget = FS_CAMERA_ZOOM; }
-        });
+        // The top-right toolbar is gone. Only the fullscreen button survives,
+        // moved to the very top-left corner together with the rail switches.
+        const corner = this.el('div', 'fs-corner-left');
         const full = this.el('button', 'fs-icon-btn'); full.title = 'Во весь экран';
         full.append(this.iconEl('ui.full'));
         full.addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
-        tools.append(help, center, full);
-        // The order tokens live in their own window, opened from here.
-        const tokensBtn = this.el('button', 'fs-icon-btn' + (this.panelState().orders ? ' is-on' : ''));
-        tokensBtn.append(this.iconEl('order.event'));
-        tokensBtn.title = 'Жетоны приказов';
-        tokensBtn.addEventListener('click', () => {
-            const ps = this.panelState();
-            ps.orders = !ps.orders;
-            this.update(state, ctx);
-        });
-        tools.append(tokensBtn);
-        root.append(tools);
+        corner.append(full);
 
         // The two cards of the left rail hide and come back by these buttons.
         const switches = this.el('div', 'fs-panel-switches');
@@ -247,7 +241,8 @@ const FSUI = {
             });
             switches.append(button);
         }
-        root.append(switches);
+        corner.append(switches);
+        root.append(corner);
         if (state && this.panelState().orders) root.append(this.renderOrdersPop(state));
         if (this.helpOpen) {
             const pop = this.el('div', 'fs-help-pop'); pop.append(this.el('h3', '', 'Как играть мышью'));
@@ -312,18 +307,6 @@ const FSUI = {
         const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', state.over ? 'Итоги сражения' : 'Текущий этап'));
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
         head.append(this.el('p', '', ctx.text || 'Выберите действие, чтобы продолжить партию.'));
-        // The plaque (round counter, phase title, hint) can be folded away.
-        const plaqueBtn = this.el('button', 'fs-plaque-toggle' + (this.panelState().plaque ? '' : ' is-off'));
-        plaqueBtn.type = 'button';
-        plaqueBtn.title = this.panelState().plaque ? 'Скрыть плашку' : 'Показать плашку';
-        plaqueBtn.append(this.iconEl('ui.up'));
-        plaqueBtn.addEventListener('click', () => {
-            const ps = this.panelState();
-            ps.plaque = !ps.plaque;
-            this.update(state, ctx);
-        });
-        head.append(plaqueBtn);
-        if (!this.panelState().plaque) panel.classList.add('is-plaque-off');
         panel.append(head);
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
         // No system is written in this panel: what a sector is made of is shown by
