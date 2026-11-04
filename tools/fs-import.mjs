@@ -226,16 +226,22 @@ function parseFactions(md) {
 
         // "Прочее на старте: 1 фабрика." / "1 бастион, 1 фабрика, 1 жетон подкрепления."
         const extra = /Прочее на старте:\s*([^\n]+)/.exec(body);
-        const start = { factory: 0, city: 0, bastion: 0, forge: 0, cache: 0, reinforcement: 0, prosperity: 0 };
+        const start = { factory: 0, city: 0, bastion: 0, forge: 0, cache: 0, reinforcement: 0, prosperity: 0, choice: 0 };
         if (extra) {
             const txt = plain(extra[1]);
             const cnt = (re) => { const m = re.exec(txt); return m ? Number(m[1]) || 0 : 0; };
             start.factory = cnt(/(\d+)\s*фабрик/);
             start.city = cnt(/(\d+)\s*город/);
             start.bastion = cnt(/(\d+)\s*бастион/);
-            start.forge = cnt(/(\d+)\s*жетон\w*\s*кузниц/);
-            start.cache = cnt(/(\d+)\s*жетон\w*\s*тайник/);
-            start.reinforcement = cnt(/(\d+)\s*жетон\w*\s*подкреплен/);
+            // \w is ASCII only in JavaScript, and the endings of the Russian
+            // words ("жетонА материалов") are Cyrillic: [а-я]* covers them.
+            const tail = '[а-я]*';
+            start.forge = cnt(new RegExp('(\\d+)\\s*жетон' + tail + '\\s*кузниц'));
+            start.cache = cnt(new RegExp('(\\d+)\\s*жетон' + tail + '\\s*тайник'));
+            start.reinforcement = cnt(new RegExp('(\\d+)\\s*жетон' + tail + '\\s*подкреплен'));
+            // "2 жетона материалов (ассетов)" (Инквизиция): the sheet does not
+            // name the assets, the player takes any tokens he likes (07-tokens.md).
+            start.choice = cnt(new RegExp('(\\d+)\\s*жетон' + tail + '\\s*(?:материал|ресурс|ассет)'));
         }
 
         // The faction ability: **Особенность «Mass Production».** text

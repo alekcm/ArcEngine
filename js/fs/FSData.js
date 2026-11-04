@@ -103,7 +103,8 @@ const FS_DATA = {
     "forge": 0,
     "cache": 0,
     "reinforcement": 0,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 0
    },
    "ability": {
     "name": "Массовое Производство",
@@ -202,7 +203,8 @@ const FS_DATA = {
     "forge": 0,
     "cache": 0,
     "reinforcement": 1,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 0
    },
    "ability": {
     "name": "Тёмный Портал",
@@ -301,7 +303,8 @@ const FS_DATA = {
     "forge": 0,
     "cache": 0,
     "reinforcement": 1,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 0
    },
    "ability": {
     "name": "Пожиратели Миров",
@@ -400,7 +403,8 @@ const FS_DATA = {
     "forge": 0,
     "cache": 0,
     "reinforcement": 0,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 0
    },
    "ability": {
     "name": "Портал в паутину",
@@ -499,7 +503,8 @@ const FS_DATA = {
     "forge": 0,
     "cache": 0,
     "reinforcement": 0,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 0
    },
    "ability": {
     "name": "Зараза хаоса",
@@ -598,7 +603,8 @@ const FS_DATA = {
     "forge": 0,
     "cache": 0,
     "reinforcement": 1,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 0
    },
    "ability": {
     "name": "Споры орков",
@@ -697,7 +703,8 @@ const FS_DATA = {
     "forge": 0,
     "cache": 0,
     "reinforcement": 0,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 0
    },
    "ability": {
     "name": "За Императора",
@@ -796,7 +803,8 @@ const FS_DATA = {
     "forge": 0,
     "cache": 0,
     "reinforcement": 0,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 0
    },
    "ability": {
     "name": "Адаптивная тактика",
@@ -895,7 +903,8 @@ const FS_DATA = {
     "forge": 0,
     "cache": 0,
     "reinforcement": 0,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 2
    },
    "ability": {
     "name": "Глубочайший Ужас",
@@ -981,7 +990,8 @@ const FS_DATA = {
     "forge": 0,
     "cache": 0,
     "reinforcement": 0,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 0
    },
    "ability": {
     "name": "Неутолимая Жажда",
@@ -1080,7 +1090,8 @@ const FS_DATA = {
     "forge": 0,
     "cache": 0,
     "reinforcement": 0,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 0
    },
    "ability": {
     "name": "Ритуал Вечного Крестового Похода",
@@ -1179,7 +1190,8 @@ const FS_DATA = {
     "forge": 1,
     "cache": 0,
     "reinforcement": 0,
-    "prosperity": 0
+    "prosperity": 0,
+    "choice": 0
    },
    "ability": {
     "name": "Юркая промышленность",

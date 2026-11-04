@@ -213,9 +213,13 @@ const FS_RULES = {
         return out;
     },
 
-    // The command level of a player: one per city he controls.
+    // The command level of a player: one per city he controls, plus whatever
+    // the order in play adds («Сила воли»: «ваш командный уровень
+    // увеличивается на 1 во время выполнения этого приказа»).
     commandLevel(state, seat) {
-        return state.structures.filter(s => s.seat === seat && s.type === 'city').length;
+        const cities = state.structures.filter(s => s.seat === seat && s.type === 'city').length;
+        const bonus = state.order && state.order.seat === seat ? (state.order.klBonus || 0) : 0;
+        return cities + bonus;
     },
 
     // The number of materiel a player gains in the refresh phase.
@@ -416,9 +420,20 @@ const FS_RULES = {
             state.players[seat].assets.cache = st.cache || 0;
             state.players[seat].assets.reinforcement = st.reinforcement || 0;
             state.players[seat].assets.prosperity = st.prosperity || 0;
+            // "2 жетона материалов (ассетов)": the sheet of the Inquisition
+            // does not name them, the player takes any assets he likes
+            // (07-tokens.md: prosperity = one asset of the player's choice).
+            state.players[seat].startChoice = st.choice || 0;
             // The combat deck: five cards, two copies of every card.
             const base = FS_DATA.combat.filter(c => c.faction === faction.id && !c.upgrade).map(c => c.name);
             state.players[seat].decks.combat = this.shuffle(state, base.concat(base));
+            // The cards the player may buy: the upgrade cards of his faction
+            // lie in their own piles next to the board («Combat Cards And
+            // Combat Upgrade Cards», «Order Upgrade Cards»).
+            state.players[seat].decks.upgradeCombat = FS_DATA.combat
+                .filter(c => c.faction === faction.id && c.upgrade).map(c => c.name);
+            state.players[seat].decks.upgradeOrder = FS_DATA.orders
+                .filter(c => c.faction === faction.id).map(c => c.name);
         });
 
         // --- the tiles: every player gets their home tile and two base tiles
@@ -860,6 +875,38 @@ const FS_RULES = {
         return { ok: true };
     },
 
+    // The starting assets nobody chose: the engine takes the ones the player
+    // holds least of, so nothing of the sheet is lost.
+    takeStartChoiceLeft(state) {
+        for (const p of state.players) {
+            while ((p.startChoice || 0) > 0) {
+                const kinds = ['forge', 'cache', 'reinforcement'];
+                const limit = k => (p.faction === 'тираниды' && k === 'reinforcement' ? 4 : 3);
+                const free = kinds.filter(k => (p.assets[k] || 0) < limit(k));
+                if (!free.length) break;
+                free.sort((a, b) => (p.assets[a] || 0) - (p.assets[b] || 0));
+                p.assets[free[0]] = (p.assets[free[0]] || 0) + 1;
+                p.startChoice--;
+                this.log(state, p.seat, p.name + ' берёт стартовый ресурс: ' + this.assetName(free[0]) + '.');
+            }
+            p.startChoice = 0;
+        }
+    },
+
+    // The starting assets of the player's own choice (Инквизиция).
+    cmdStartAsset(state, seat, cmd) {
+        const p = state.players[seat];
+        if (!p.startChoice) return { ok: false, error: 'Нет стартовых ресурсов на выбор.' };
+        const asset = cmd.asset;
+        if (!['forge', 'cache', 'reinforcement'].includes(asset)) return { ok: false, error: 'Неизвестный ресурс.' };
+        const limit = p.faction === 'тираниды' && asset === 'reinforcement' ? 4 : 3;
+        if ((p.assets[asset] || 0) >= limit) return { ok: false, error: 'У вас уже максимум таких жетонов.' };
+        p.assets[asset] = (p.assets[asset] || 0) + 1;
+        p.startChoice--;
+        this.log(state, seat, p.name + ' берёт стартовый ресурс: ' + this.assetName(asset) + '.');
+        return { ok: true };
+    },
+
     finishBoardSetup(state, automatic = true) {
         const count = state.players.length;
         const shuffled = automatic ? this.shuffle(state, this.allEdges(state)) : [];
@@ -867,6 +914,7 @@ const FS_RULES = {
             const e = shuffled[i];
             state.storms.push({ id: this.uid(state, 'storm'), system: e.system, side: e.side, moved: {} });
         }
+        this.takeStartChoiceLeft(state);
         state.setup = null;
         state.phase = 'planning';
         state.turn = state.firstPlayer;
@@ -920,10 +968,9 @@ const FS_RULES = {
         const seen = new Set();
         for (const sys of state.systems) {
             for (const side of ['N', 'E', 'S', 'W']) {
-                const other = this.across(state, sys.id, side);
-                const key = other
-                    ? [sys.id, other].sort().join('|')
-                    : sys.id + ':' + side;
+                // Two records may name one edge: the S side of a tile is the N
+                // side of the tile below it. The key is what tells them apart.
+                const key = this.edgeKey(state, { system: sys.id, side });
                 if (seen.has(key)) continue;
                 seen.add(key);
                 out.push({ system: sys.id, side });
@@ -1046,7 +1093,7 @@ const FS_RULES = {
             case 'deployStructures': return this.cmdDeployStructures(state, seat);
             case 'undoPurchase': return this.cmdUndoPurchase(state, seat, cmd);
             case 'finishStrategize': return this.cmdFinishStrategize(state, seat);
-            case 'finishDominate': return this.cmdFinishDominate(state, seat);
+            case 'finishDominate': return this.cmdFinishDominate(state, seat, cmd);
             case 'finishAdvance': return this.cmdFinishAdvance(state, seat);
             case 'orbitalStrike': return this.cmdOrbitalStrike(state, seat, cmd);
             case 'combat': return this.cmdCombat(state, seat, cmd);
@@ -1055,6 +1102,7 @@ const FS_RULES = {
             case 'moveStorm': return this.cmdMoveStorm(state, seat, cmd);
             case 'nextPhase': return this.cmdNextPhase(state, seat, cmd);
             case 'takeProsperity': return this.cmdTakeProsperity(state, seat, cmd);
+            case 'startAsset': return this.cmdStartAsset(state, seat, cmd);
             case 'effect': return this.cmdEffect(state, seat, cmd);
             case 'trimUnit': return this.cmdTrimUnit(state, seat, cmd);
             case 'strikeDamage': return this.cmdStrikeDamage(state, seat, cmd);
@@ -1219,6 +1267,10 @@ const FS_RULES = {
         sys.tokens.pop();
         top.faceUp = true;
         const p = state.players[seat];
+        // Every order starts with a clean sheet: the retreats of a combat look
+        // for the areas the attacking units came from, and those are recorded
+        // only while this order is being resolved.
+        state.moves = [];
         state.order = { seat, order: top.order, system: sys.id, phase: 'resolve' };
         this.log(state, seat, p.name + ' раскрыл приказ «' + this.orderName(top.order) + '» в системе ' + sys.tile + '.');
         const res = this.resolveOrder(state, seat, top.order, sys.id);
@@ -1303,6 +1355,11 @@ const FS_RULES = {
     // troops over the capacity of their areas are chosen by the player before the
     // next order: the engine only asks.
     finishOrder(state, seat) {
+        // A prosperity token that was never exchanged still gives one asset of
+        // the player's choice: the engine picks one for him instead of losing
+        // it («if he gains a prosperity asset, he gains one asset token of his
+        // choice»).
+        this.takeProsperityLeft(state, seat);
         // The capacity is checked for every player: a card may have put troops of
         // another player into an area as well.
         for (const p of state.players) this.trimPlayer(state, p.seat);
@@ -1395,8 +1452,11 @@ const FS_RULES = {
         }
         // Ground units need a legal path through the worlds they already hold:
         // a neutral world stops the march. The path is measured from where the
-        // unit stood when the movement began.
-        if (def.type === 'ground' && unit.system !== target.system) {
+        // unit stood when the movement began — inside the active system too,
+        // where the march is not limited to the neighbouring worlds
+        // («Ground units on a world adjacent to the destination world always
+        // have a legal movement path»).
+        if (def.type === 'ground') {
             if (!this.pathExists(state, seat, unit.system, unit.area, target.system, target.pos)) {
                 return { ok: false, error: 'Нет законного пути через свои миры до этого мира.' };
             }
@@ -1548,6 +1608,8 @@ const FS_RULES = {
         }
         for (const m of plan) {
             const unit = state.units.find(u => u.id === m.id);
+            // The trace of the march: a combat judges the retreats by it.
+            this.noteMove(state, seat, unit, m);
             unit.system = m.system;
             unit.area = m.pos;
         }
@@ -1718,7 +1780,9 @@ const FS_RULES = {
                 // Only an enemy world is a target: it holds the troops or the
                 // buildings of another player, and none of ours.
                 if (this.areaState(state, seat, order.system, area.pos) !== 'enemy') continue;
-                if (this.structuresAt(state, order.system, area.pos).some(st => st.type === 'bastion')) continue;
+                // A bastion shields the world — unless the card that grants the
+                // strike ignores it («Ужасный удар», «Полное разрушение», ...).
+                if (!order.ignoreBastion && this.structuresAt(state, order.system, area.pos).some(st => st.type === 'bastion')) continue;
                 out.push({ system: order.system, pos: area.pos, from: from.pos, ships: ships.map(u => u.id) });
             }
         }
@@ -2120,8 +2184,7 @@ const FS_RULES = {
                 kept.push(n);
             }
             const removed = [wanted, wanted];
-            p.decks.combat = kept;
-            p.decks.combat.push(card.name, card.name);
+            p.decks.combat = this.shuffle(state, kept.concat([card.name, card.name]));
             order.combatUpgrade = true;
             this.log(state, seat, p.name + ' купил боевое улучшение «' + card.name + '».');
             void removed;
@@ -2176,15 +2239,36 @@ const FS_RULES = {
         return { forge: 'кузница', cache: 'тайник', reinforcement: 'подкрепление', prosperity: 'процветание' }[asset] || asset;
     },
 
+    // The prosperity tokens nobody exchanged: the player keeps one asset of his
+    // choice for each of them. The engine takes the one he holds least of.
+    takeProsperityLeft(state, seat) {
+        const order = state.order;
+        if (!order || !order.prosperity) return;
+        const p = state.players[seat];
+        while (order.prosperity > 0) {
+            const kinds = ['forge', 'cache', 'reinforcement'];
+            const limit = k => (p.faction === 'тираниды' && k === 'reinforcement' ? 4 : 3);
+            const free = kinds.filter(k => (p.assets[k] || 0) < limit(k));
+            if (!free.length) break;    // every asset is at its limit
+            free.sort((a, b) => (p.assets[a] || 0) - (p.assets[b] || 0));
+            p.assets[free[0]] = (p.assets[free[0]] || 0) + 1;
+            order.prosperity--;
+            this.log(state, seat, p.name + ' берёт за жетон процветания: ' + this.assetName(free[0]) + '.');
+        }
+        order.prosperity = 0;
+    },
+
     // The end of the dominate order (after the faction ability).
-    cmdFinishDominate(state, seat) {
+    cmdFinishDominate(state, seat, cmd = {}) {
         const order = state.order;
         if (!order || order.order !== 'dominate' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
         // The ability of the faction: the text is the rule.
         const faction = this.faction(state, seat);
         const text = faction && faction.ability ? faction.ability.text : '';
         const steps = FS_EFFECTS.parse(text || '', { kind: 'ability', faction: state.players[seat].faction });
-        if (steps.length) {
+        // A faction ability is a permission, not a duty: the player may leave
+        // it alone («you may ...»).
+        if (steps.length && !cmd.skip) {
             // The order is over when the effect of the ability is done.
             order.finishAfterEffect = true;
             this.runEffects(state, seat, steps, { kind: 'ability', ctx: null });
@@ -2202,10 +2286,30 @@ const FS_RULES = {
             const known = p.upgrades.some(u => u.name === cmd.card);
             return { ok: false, error: known ? 'Это улучшение уже использовано в этом раунде.' : 'Нет такого улучшения.' };
         }
+        // An order upgrade belongs to one order: it is played while that order
+        // is being resolved, and by the player who resolved it (the rules,
+        // «Order Upgrade Cards»).
+        const card0 = FS_DATA.orders.find(c => c.faction === p.faction && c.name === up.name);
+        const kind = up.order || (card0 && card0.order) || null;
+        if (kind) {
+            if (!state.order || state.order.seat !== seat) {
+                return { ok: false, error: 'Это улучшение применяется во время приказа.' };
+            }
+            // An orbital upgrade belongs to the orbital strike of an advance,
+            // every other one to the order printed on it (the rules, «Order
+            // Upgrade Cards»: the icon of the order is on the card).
+            if (kind === 'orbital') {
+                if (state.order.phase !== 'strike') {
+                    return { ok: false, error: 'Это улучшение применяется во время орбитального удара.' };
+                }
+            } else if (state.order.order !== kind) {
+                return { ok: false, error: 'Это улучшение применяется во время приказа «' + this.orderName(kind) + '».' };
+            }
+        }
         up.used = true;
         this.log(state, seat, p.name + ' применяет улучшение «' + up.name + '».');
         // The text of the card is the rule: the engine performs it.
-        const card = FS_DATA.orders.find(c => c.faction === p.faction && c.name === up.name);
+        const card = card0;
         const steps = FS_EFFECTS.parse((card && card.text) || '', { kind: 'order' });
         if (steps.length) this.runEffects(state, seat, steps, { kind: 'order', ctx: null });
         return { ok: true, text: up.text || '' };
@@ -2217,17 +2321,19 @@ const FS_RULES = {
         state.phase = 'refresh';
         state.order = null;
         // 1. the objective tokens on friendly worlds
-        for (const p of state.players) {
-            let taken = 0;
-            for (const obj of state.objectives) {
-                if (obj.faction !== p.faction) continue;
-                if (this.control(state, p.seat, obj.system, obj.area) !== 'friendly') continue;
-                obj.taken = true;
-                taken++;
-            }
-            if (taken) this.log(state, p.seat, p.name + ' забрал целей: ' + taken + '.');
-            p.objectives += taken;
+        // A collected token leaves the board: it lies on the faction sheet of its
+        // owner and is never counted again (the rules, "Objective Tokens" —
+        // "During step 1 of each Refresh Phase, each player collects each of his
+        // faction's objective tokens that are on worlds he controls").
+        const left = [];
+        for (const obj of state.objectives) {
+            const p = state.players.find(x => x.faction === obj.faction);
+            const mine = p && this.control(state, p.seat, obj.system, obj.area) === 'friendly';
+            if (!mine) { left.push(obj); continue; }
+            p.objectives += 1;
+            this.log(state, p.seat, p.name + ' забрал цель с мира ' + (this.area(this.system(state, obj.system), obj.area).world || {}).name + '.');
         }
+        state.objectives = left;
         // 2. the materiel
         for (const p of state.players) {
             const income = this.materielIncome(state, p.seat);
@@ -2295,6 +2401,13 @@ const FS_RULES = {
     cmdResolveEvent(state, seat, cmd) {
         if (state.phase !== 'refresh') return { ok: false, error: 'Сейчас не фаза обновления.' };
         if (!state.event || state.event.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        // The storm movement of the card is not a choice — only its ability is.
+        // «A player can choose not to resolve the ability on his chosen event
+        // card, but must resolve the card's Warp Storm movement icon.»
+        const canMove = this.stormOptions(state, seat).length;
+        if (canMove && !state.event.stormMoved) {
+            return { ok: false, error: 'Сначала сдвиньте варп-шторм по иконке карты.' };
+        }
         const card = state.event.card;
         // Without a card in the hand there is nothing to play: the player only
         // moves the storm and the refresh goes on.
@@ -2313,10 +2426,13 @@ const FS_RULES = {
             });
             this.log(state, seat, p0.name + ' держит план «' + card.name + '».');
         }
-        // Every drawn card goes back into the deck — the chosen one and the
-        // others that were not played (a deck holds all the events of the faction).
+        // Every drawn card goes back into the deck — the ones that were not
+        // played at least: a scheme that stays in play is excluded (the rules:
+        // "he shuffles all event cards back into his event deck, excluding the
+        // 'Scheme' event card if it is in play").
         const p = state.players[seat];
-        for (const name of (state.event.drawn || [])) p.decks.event.push(name);
+        const inPlay = card && card.type === 'scheme' ? card.name : null;
+        for (const name of (state.event.drawn || [])) if (name !== inPlay) p.decks.event.push(name);
         if (!(state.event.drawn || []).length && state.event.top) {
             // The card that was opened for the storm only goes back to the deck.
             p.decks.event.push(state.event.top);
@@ -2344,57 +2460,127 @@ const FS_RULES = {
         // Each storm moves only once during a refresh phase, whoever moves it.
         if (storm.moved === true) return { ok: false, error: 'Этот шторм уже двигался в этой фазе.' };
         const dir = cmd.dir;
-        // The card that is in play: the chosen one, or the top card of the deck
-        // when the player had no order token.
-        const card = state.event.card || state.event.top;
-        const allowed = card && card.storm && card.storm[0] !== 'any' ? card.storm : ['N', 'E', 'S', 'W'];
-        if (!allowed.includes(dir)) return { ok: false, error: 'Карта не разрешает такое направление.' };
-        const target = this.stormTarget(state, storm, dir);
-        if (!target) return { ok: false, error: 'Шторм не может туда пойти.' };
-        // The storm may not stand on a busy edge.
-        for (const other of state.storms) {
-            if (other === storm) continue;
-            if (other.system === target.system && other.side === target.side) {
-                return { ok: false, error: 'На этой границе уже стоит шторм.' };
-            }
+        // Only the moves the card really allows are offered: the direction, the
+        // free edge and the limit of one move per storm are all checked here.
+        const options = this.stormOptions(state, seat);
+        if (!options.some(o => o.storm === storm.id && o.dir === dir)) {
+            const card = state.event.card || state.event.top;
+            const allowed = card && card.storm && card.storm[0] !== 'any' ? card.storm : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            if (!allowed.includes(dir)) return { ok: false, error: 'Карта не разрешает такое направление.' };
+            if (storm.moved === true) return { ok: false, error: 'Этот шторм уже двигался в этой фазе.' };
+            return { ok: false, error: 'Шторм не может туда пойти.' };
         }
+        const target = this.stormTarget(state, storm, dir);
         storm.system = target.system;
         storm.side = target.side;
         storm.moved = true;
+        // The card is not resolved before its storm has moved (the rules).
+        state.event.stormMoved = true;
         this.log(state, seat, state.players[seat].name + ' сдвинул варп-шторм.');
         return { ok: true };
     },
 
-    // Where does a storm go when it moves in a direction?
-    stormTarget(state, storm, dir) {
-        const side = storm.side;
-        const vertical = side === 'N' || side === 'S';
-        if (vertical) {
-            if (dir === 'N' || dir === 'S') {
-                const step = dir === 'N' ? -1 : 1;
-                const row = this.system(state, storm.system).row + step;
-                const other = state.systems.find(s => s.row === row && this.inRow(state, s, storm.system));
-                if (!other) return null;
-                return { system: other.id, side: dir === 'N' ? 'N' : 'S' };
-            }
-            // Along the edge: the storm turns around the tile.
-            return { system: storm.system, side: dir === 'E' ? 'E' : 'W' };
-        }
-        if (dir === 'E' || dir === 'W') {
-            const step = dir === 'E' ? 1 : -1;
-            const col = this.system(state, storm.system).col + step;
-            const other = state.systems.find(s => s.col === col && this.inRow(state, s, storm.system));
-            if (!other) return null;
-            return { system: other.id, side: dir === 'E' ? 'E' : 'W' };
-        }
-        return { system: storm.system, side: dir === 'N' ? 'N' : 'S' };
+    // --- the edges of the board -------------------------------------------
+    //
+    // A storm stands on an edge of the grid, and two records may name the very
+    // same edge: the S side of a tile is the N side of the tile below it, and
+    // the E side of a tile is the W side of the tile to its right. So the
+    // engine keeps every edge in one canonical form and compares those:
+    //   H(row, col) — the horizontal edge above the tile (row, col)
+    //   V(row, col) — the vertical edge left of the tile (row, col)
+
+    stormEdge(state, ref) {
+        const sys = this.system(state, ref.system);
+        if (!sys) return null;
+        if (ref.side === 'N') return { kind: 'H', row: sys.row, col: sys.col };
+        if (ref.side === 'S') return { kind: 'H', row: sys.row + 1, col: sys.col };
+        if (ref.side === 'W') return { kind: 'V', row: sys.row, col: sys.col };
+        return { kind: 'V', row: sys.row, col: sys.col + 1 };       // E
     },
 
-    // Is the system in the same row (or the row of a neighbour) of another?
-    inRow(state, a, bId) {
-        const b = this.system(state, bId);
-        if (!b) return false;
-        return Math.abs(a.row - b.row) <= 1;
+    // The canonical edge back into a record of the board. An outer edge of the
+    // board still belongs to the one tile that touches it.
+    edgeRef(state, edge) {
+        const here = state.systems.find(s => s.row === edge.row && s.col === edge.col);
+        if (edge.kind === 'H') {
+            if (here) return { system: here.id, side: 'N' };
+            const below = state.systems.find(s => s.row === edge.row - 1 && s.col === edge.col);
+            return below ? { system: below.id, side: 'S' } : null;
+        }
+        if (here) return { system: here.id, side: 'W' };
+        const left = state.systems.find(s => s.row === edge.row && s.col === edge.col - 1);
+        return left ? { system: left.id, side: 'E' } : null;
+    },
+
+    // One name for one edge: two records may name the same edge, and this is
+    // what tells them apart.
+    gridKey(edge) {
+        return edge ? edge.kind + ':' + edge.row + ':' + edge.col : '?';
+    },
+
+    edgeKey(state, ref) {
+        return this.gridKey(this.stormEdge(state, ref));
+    },
+
+    // The storms that may still be moved, with the directions the card allows.
+    // The rules: "A player must choose a Warp Storm that he can legally move",
+    // "A Warp Storm cannot move onto a border occupied by another Warp Storm"
+    // and "A Warp Storm can move to the edge of the game board, but cannot move
+    // off the edge of the game board."
+    stormOptions(state, seat) {
+        const event = state.event || {};
+        const card = event.card || event.top;
+        // "Any" is any of the eight directions of the compass; a card that
+        // prints an arrow allows only the directions it shows.
+        const all = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        const dirs = card && card.storm && card.storm[0] !== 'any' ? card.storm : all;
+        const out = [];
+        for (const storm of state.storms) {
+            if (storm.moved === true) continue;
+            const taken = this.gridKey(this.stormEdge(state, storm));
+            for (const dir of dirs) {
+                const target = this.stormTarget(state, storm, dir);
+                if (!target) continue;
+                const key = this.gridKey(this.stormEdge(state, target));
+                if (key === taken) continue;
+                if (state.storms.some(o => o !== storm && this.gridKey(this.stormEdge(state, o)) === key)) continue;
+                out.push({ storm: storm.id, dir });
+            }
+        }
+        void seat;
+        return out;
+    },
+
+    // Where does a storm go when it moves in a direction? The eight directions
+    // of the compass: the four straight ones slide the storm along the grid or
+    // turn it around a corner of its own tile, the four diagonal ones do the
+    // slide and the turn together.
+    stormTarget(state, storm, dir) {
+        const edge = this.stormEdge(state, storm);
+        if (!edge) return null;
+        let next = null;
+        if (edge.kind === 'H') {
+            if (dir === 'N') next = { kind: 'H', row: edge.row - 1, col: edge.col };
+            else if (dir === 'S') next = { kind: 'H', row: edge.row + 1, col: edge.col };
+            else if (dir === 'E') next = { kind: 'V', row: edge.row, col: edge.col + 1 };
+            else if (dir === 'W') next = { kind: 'V', row: edge.row, col: edge.col };
+            else {
+                const dr = dir[0] === 'N' ? -1 : 1;
+                next = { kind: 'V', row: edge.row + dr, col: edge.col + (dir[1] === 'E' ? 1 : 0) };
+            }
+        } else {
+            if (dir === 'E') next = { kind: 'V', row: edge.row, col: edge.col + 1 };
+            else if (dir === 'W') next = { kind: 'V', row: edge.row, col: edge.col - 1 };
+            else if (dir === 'N') next = { kind: 'H', row: edge.row, col: edge.col };
+            else if (dir === 'S') next = { kind: 'H', row: edge.row + 1, col: edge.col };
+            else {
+                const dc = dir[1] === 'E' ? 1 : -1;
+                next = { kind: 'H', row: edge.row + (dir[0] === 'S' ? 1 : 0), col: edge.col + dc };
+            }
+        }
+        // Off the board there is no edge to stand on.
+        if (!this.edgeRef(state, next)) return null;
+        return this.edgeRef(state, next);
     },
 
     endRound(state) {
@@ -2621,11 +2807,17 @@ const FS_RULES = {
             const n = Math.min(this.combatValue(state, seat, systemId, pos), this.DICE_MAX);
             return this.rollDice(state, n);
         };
+        // Where the attacking units came from: the retreats are judged by it,
+        // and only the movement of this order counts.
+        const origins = this.attackerOrigins(state, systemId, pos, attacker);
+        const viaAdvance = !!(state.order && state.order.order === 'advance' && origins.length);
         const combat = {
             system: systemId,
             pos,
             attacker,
             defender,
+            attackerFrom: origins,
+            viaAdvance,
             round: 1,
             step: 'reinforce-attacker',
             dice: { attacker: roll(attacker), defender: roll(defender) },
@@ -2722,6 +2914,57 @@ const FS_RULES = {
         const items = this.pieces(state, c, side);
         const ready = items.filter(x => x.type ? x.type === 'bastion' : !x.routed);
         return ready.length ? ready : items;
+    },
+
+    // A unit that changes area leaves a trace: a combat needs to know where the
+    // attacking units came from, and the rules judge the retreats by it.
+    noteMove(state, seat, unit, dest) {
+        if (!unit) return;
+        if (!state.moves) state.moves = [];
+        state.moves.push({
+            seat,
+            from: { system: unit.system, pos: unit.area },
+            to: { system: dest.system !== undefined ? dest.system : unit.system, pos: dest.pos !== undefined ? dest.pos : unit.area },
+        });
+    },
+
+    // The areas the attacking units of this combat came from.
+    attackerOrigins(state, systemId, pos, seat) {
+        const out = [];
+        const push = ref => {
+            if (!ref) return;
+            if (!out.some(x => x.system === ref.system && x.pos === ref.pos)) out.push({ system: ref.system, pos: ref.pos });
+        };
+        for (const step of ((state.order && state.order.steps) || [])) {
+            for (const m of step) {
+                // A step of the march knows the area it contested: only the
+                // troops that walked into this very area count here.
+                const dest = m.contested || (state.order && state.order.contested) || '';
+                const [sid, areaPos] = dest.split(':');
+                if (sid !== systemId || areaPos !== pos) continue;
+                push({ system: m.fromSystem, pos: m.fromArea });
+            }
+        }
+        for (const m of (state.moves || [])) {
+            if (m.seat !== seat) continue;
+            if (m.to.system !== systemId || m.to.pos !== pos) continue;
+            push(m.from);
+        }
+        return out;
+    },
+
+    // The morale the reinforcement tokens of a side bring into the combat.
+    // Each unrouted token stands for the CL0 miniature of its owner: a land
+    // unit on a world, a ship in the void. That miniature has a morale of its
+    // own — the Necrons' is 0, the Sisters' is 3.
+    tokenMorale(state, side) {
+        const c = state.combat;
+        if (!c) return 0;
+        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const area = this.area(this.system(state, c.system), c.pos);
+        const type = area && area.world ? 'ground' : 'ship';
+        const def = this.reinforceUnitDef(state.players[seat].faction, type);
+        return this.tokenUnits(state, side).alive * (def ? def.morale : 0);
     },
 
     // The number of reinforcement tokens a player may use in the combat: no more
@@ -2894,7 +3137,7 @@ const FS_RULES = {
                 c.damage.defender = 0;
                 c.applied = c.applied || {};
                 c.applied.defender = [];
-                this.endCombatRound(state);
+                this.endDamageStep(state);
                 if (!state.combat) return null;
             }
             if (c.step === before) break;
@@ -3037,12 +3280,18 @@ const FS_RULES = {
             const st = this.structureStats('bastion');
             out.push({ id: s.id, name: st.name || 'bastion', health: st.health, morale: st.morale || 0, routed: false, kind: 'structure' });
         }
-        // A reinforcement token is a unit too: one point of damage routes it
-        // (flips it to its routed side), it is not destroyed.
+        // A reinforcement token is treated like a plastic unit for all rules and
+        // game effects: it has the health and the morale of the command level
+        // zero miniature it stands for. A routed token is flipped to its routed
+        // side, not destroyed.
         const t = this.tokenUnits(state, side);
+        const area0 = this.area(this.system(state, c.system), c.pos);
+        const type0 = area0 && area0.world ? 'ground' : 'ship';
+        const def0 = this.reinforceUnitDef(state.players[seat].faction, type0);
         for (let i = 0; i < t.used; i++) {
             out.push({
-                id: 'reinforce-' + side + '-' + i, name: 'Подкрепление', health: 1, morale: 1,
+                id: 'reinforce-' + side + '-' + i, name: def0 ? def0.name : 'Подкрепление',
+                health: def0 ? def0.health : 1, morale: def0 ? def0.morale : 0,
                 routed: i < t.routed, kind: 'token',
             });
         }
@@ -3061,7 +3310,7 @@ const FS_RULES = {
             c.applied = c.applied || {};
             c.applied[side] = [];
             if (side === 'attacker') { c.step = 'damage-defender'; this.advanceCombatSteps(state); }
-            else { this.endCombatRound(state); this.advanceCombatSteps(state); }
+            else { this.endDamageStep(state); this.advanceCombatSteps(state); }
             return { ok: true, damage: 0, applied: [] };
         }
         // The schemes of the damage step are used before the damage.
@@ -3139,18 +3388,41 @@ const FS_RULES = {
         }
         c.applied = c.applied || {};
         c.applied[side] = applied;
-        // The combat tokens are returned to the supply at the end of the round.
         if (side === 'attacker') { c.step = 'damage-defender'; this.advanceCombatSteps(state); }
-        else { this.endCombatRound(state); this.advanceCombatSteps(state); }
+        else { this.endDamageStep(state); this.advanceCombatSteps(state); }
         return { ok: true, damage, applied };
+    },
+
+    // The end of the damage step of the defender. Usually it ends the
+    // execution round, but a card may repeat the damage step:
+    // «repeat the damage step during this round of combat (the opponent also
+    // deals damage)» (Бронекулак).
+    endDamageStep(state) {
+        const c = state.combat;
+        if (!c) return;
+        if (c.repeatDamage && !c.damageRepeated) {
+            c.damageRepeated = true;
+            c.damageHook = {};
+            c.damage = { attacker: 0, defender: 0 };
+            c.applied = {};
+            c.step = 'damage-attacker';
+            this.log(state, -1, 'Шаг нанесения повреждений повторяется.');
+            return;
+        }
+        this.endCombatRound(state);
     },
 
     // The end of an execution round: the third one ends the combat.
     endCombatRound(state) {
         const c = state.combat;
         // The combat tokens go back to the supply at the end of every execution
-        // round: only the dice and the cards are counted again.
-        c.tokens = { attacker: { att: 0, def: 0 }, defender: { att: 0, def: 0 } };
+        // round: only the dice and the cards are counted again. A card may keep
+        // the defence tokens of its player («Шустрое судно»).
+        const keep = c.keepTokens || {};
+        c.tokens = {
+            attacker: { att: 0, def: keep.attacker ? (c.tokens.attacker.def || 0) : 0 },
+            defender: { att: 0, def: keep.defender ? (c.tokens.defender.def || 0) : 0 },
+        };
         // The card may destroy the units that became routed.
         if (c.destroyRouted) {
             for (const u of state.units.slice()) {
@@ -3190,8 +3462,8 @@ const FS_RULES = {
         }
         // A reinforcement token used in the combat is a command level zero
         // unit: it gives no dice, but while it is not routed it counts as a
-        // unit — one morale each, like every other unrouted unit.
-        morale += this.tokenUnits(state, side).alive;
+        // unit — so it brings the morale of that miniature, not a flat 1.
+        morale += this.tokenMorale(state, side);
         for (const s of this.structuresAt(state, c.system, c.pos)) {
             if (s.seat !== seat) continue;
             morale += this.structureStats(s.type).morale;
@@ -3235,10 +3507,18 @@ const FS_RULES = {
             const p = state.players[seat];
             // Both the cards that were played and the cards that stayed in the hand
             // go back into the deck: a combat deals five cards and returns five.
+            // «discards the combat cards he used during the combat by shuffling
+            // them back into his combat deck». A card that was only chosen and
+            // never turned over (the combat ended in between) is returned too.
             for (const card of c.cards[side].played) p.decks.combat.push(card.name);
             for (const name of (c.cards[side].hand || [])) p.decks.combat.push(name);
+            const staged = c.staged && c.staged[side];
+            if (staged && !c.cards[side].played.some(x => x.name === staged.name)) {
+                p.decks.combat.push(staged.name);
+            }
             c.cards[side].played = [];
             c.cards[side].hand = [];
+            p.decks.combat = this.shuffle(state, p.decks.combat);
             // The reinforcement tokens of the combat go back to the supply here, at
             // the clean-up of the combat.
             p.assets.reinforcement += c.reinforceUsed && c.reinforceUsed[side] ? c.reinforceUsed[side] : 0;
@@ -3257,15 +3537,12 @@ const FS_RULES = {
         if (!units.length) return [];
         const defs = units.map(u => this.unitOf(state, u)).filter(Boolean);
         const ground = defs.length ? defs[0].type === 'ground' : true;
-        // The areas the attacking troops left: the defender may not walk into
-        // them and the attacker must go back to one of them.
-        const came = [];
-        for (const step of ((state.order && state.order.steps) || [])) {
-            for (const m of step) came.push({ system: m.fromSystem, pos: m.fromArea });
-        }
-        if (state.combat.attackerFrom) {
-            for (const a of state.combat.attackerFrom) came.push(a);
-        }
+        // The areas the attacking units moved from to start the combat.
+        const came = c.attackerFrom || [];
+        // «If the units did not move into the contested area via an Advance
+        // Order, they must move to an area that at least one unit moved from to
+        // start the combat.» Otherwise the general retreat rules apply.
+        const free = side === 'attacker' && c.viaAdvance;
         const systems = [c.system].concat(this.neighbors(state, c.system));
         const out = [];
         for (const sid of systems) {
@@ -3277,10 +3554,17 @@ const FS_RULES = {
                 const where = this.areaState(state, seat, sid, area.pos);
                 if (where === 'contested' || where === 'enemy') continue;
                 if (side === 'defender') {
-                    // Never back into the area the attackers came from.
+                    // «The area the retreating units move to must either be in
+                    // the active system or in a system adjacent to the active
+                    // system. If attacking units moved from an adjacent system,
+                    // the defender's units cannot retreat to that system.
+                    // Defending units cannot retreat to an area from which
+                    // attacking units moved from.»
+                    if (came.some(x => x.system === sid)) continue;
                     if (came.some(x => x.system === sid && x.pos === area.pos)) continue;
-                } else if (came.length) {
-                    // The attacker goes back to the area his troops left.
+                } else if (!free) {
+                    // Not an Advance: back to an area a unit moved from. Without
+                    // such an area the units cannot retreat and are destroyed.
                     if (!came.some(x => x.system === sid && x.pos === area.pos)) continue;
                 }
                 // A ground unit walks a legal path to the area it retreats to.

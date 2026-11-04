@@ -658,7 +658,12 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'keepTokens': {
-                if (combat) combat.keepTokens = true;
+                // «do not discard your def. tokens at the end of this round of
+                // combat» — the side that played the card keeps them.
+                if (combat) {
+                    combat.keepTokens = combat.keepTokens || {};
+                    combat.keepTokens[side] = true;
+                }
                 return null;
             }
             case 'noReinforce': {
@@ -1083,6 +1088,7 @@ const FS_EFFECTS = {
                     return { question: { kind: 'areas', who: seat, op: 'moveUnits', options: areas, text: 'Куда переместить отряды?' } };
                 }
                 for (const u of list) {
+                    R.noteMove(state, seat, u, area);
                     u.system = area.system;
                     u.area = area.pos;
                 }
@@ -1177,6 +1183,7 @@ const FS_EFFECTS = {
                     const areas = this.friendlyAreas(R, state, seat);
                     return { question: { kind: 'areas', who: seat, op: 'moveUnit', options: areas, text: 'Куда переместить отряд?' } };
                 }
+                R.noteMove(state, seat, u, area);
                 u.system = area.system;
                 u.area = area.pos;
                 return null;
