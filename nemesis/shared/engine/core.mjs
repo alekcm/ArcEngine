@@ -1,3 +1,4 @@
+import { KNOWLEDGE_MAX, KNOWLEDGE_THRESHOLDS } from '../knowledge.mjs';
 import { giveChySpore } from './chytrids.mjs';
 // core.mjs — the rules interpreter. The whole game is a plain JSON object; every procedure is a
 // list of steps in state.queue, executed by run(). A step that needs a decision calls ask():
@@ -266,7 +267,7 @@ export function drawLimit(p) {
 export function fx(state, obj) {
     state.fxSeq = (state.fxSeq || 0) + 1;
     (state.fx = state.fx || []).push(Object.assign({ n: state.fxSeq }, obj));
-    if (state.fx.length > 24) state.fx.splice(0, state.fx.length - 24);
+    if (state.fx.length > 256) state.fx.splice(0, state.fx.length - 256);
 }
 export function drawCards(state, p, n, silent) {
     let drawn = 0, guard = 0;
@@ -510,10 +511,10 @@ export function killPlayer(state, p, reason) {
 // ---------------------------------------------------------------------------------------------
 export function gainKnowledge(state, p, n) {
     const before = p.knowledge;
-    p.knowledge = Math.min(8, p.knowledge + n);
+    p.knowledge = Math.min(KNOWLEDGE_MAX, p.knowledge + n);
     log(state, pname(p) + ': знания ' + before + ' → ' + p.knowledge + '.', 'good');
     // Resolve the thresholds in ascending order: next() unshifts, so queue the later ones first.
-    for (const t of [8, 5, 3]) if (before < t && p.knowledge >= t) next(state, { op: 'knowledge.threshold', player: p.id, t });
+    for (const t of [...KNOWLEDGE_THRESHOLDS].reverse()) if (before < t && p.knowledge >= t) next(state, { op: 'knowledge.threshold', player: p.id, t });
 }
 OPS['knowledge.threshold'] = (state, step) => {
     const p = player(state, step.player);

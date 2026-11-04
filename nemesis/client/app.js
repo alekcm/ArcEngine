@@ -10,6 +10,7 @@ import { characterColors } from './characters.js';
 import { characterPartSlots, characterParts } from '../shared/appearance.mjs';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
+import { itemDeckBadge, knowledgeTrack, larvaBadge } from './status-display.mjs';
 import * as Snd from './sound.js';
 import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, panicArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip, tileKeyedEdits } from '/shared/ship.mjs';
@@ -123,7 +124,11 @@ function onMessage(m) {
             if (!m.view) { app.view = null; $('hud').classList.add('hidden'); $('lobby').classList.remove('hidden'); $('endOverlay').classList.add('hidden'); return; }
             if (app.labWorkshop) closeLabWorkshop(false);
             app.me = m.you; app.host = m.host;
-            if (m.full) app.logEntries = [];
+            if (m.full) {
+                app.logEntries = [];
+                // A reconnect, undo or restored game is a new baseline, not new table events.
+                if (tableFx) tableFx.reset();
+            }
             app.logEntries.push(...m.view.log);
             app.view = m.view; app.undoDepth = m.undoDepth; app.history = m.history; app.canUndo = !!m.canUndo;
             if (app.gallery) closeGallery();       // the table started while the gallery was open
@@ -819,7 +824,7 @@ function renderSelfHud() {
         const armorBadge = me.armor && armorAt < 0 ? ' · 🛡 ' + esc(itemLabel(me.armor)) : '';
         const handC = me.handCount ?? (me.hand ? me.hand.length : 0);
         return '<div class="sh-player' + (isMe ? ' is-me' : '') + (me.health <= 1 ? ' dead' : '') + '" data-player-id="' + me.id + '" title="' + esc(me.charName || me.name) + ' — нажмите, чтобы открыть планшет">' +
-            '<div class="sh-head"><b>' + esc(me.charName || me.name) + (isMe ? ' (Вы)' : '') + '</b>' +
+            '<div class="sh-head"><b>' + esc(me.charName || me.name) + (isMe ? ' (Вы)' : '') + '</b>' + larvaBadge(me) +
             '<small>' + esc(st) + ' · ❤️ ' + me.health + '/10 · 🂠 ' + handC + ' в руке' + armorBadge + '</small></div>' +
             '<div class="sh-hp">' + bar + lastCell + hpSkull(me) + '</div>' +
             '</div>';
@@ -1932,7 +1937,7 @@ function sheetItemHtml(inst, picks) {
     return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + (opt ? ' pickable' : '') + '" data-item="' + esc(inst.uid) + '"' +
         (opt ? ' data-pick="' + esc(opt) + '" title="Нажмите, чтобы выбрать этот предмет"' : '') + '>' +
         (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
-        '<div><b>' + esc(itemName) + (d.quest ? ' · квестовый' : '') + (isCuffsFlipped ? ' · перевёрнуты 🔓' : '') + '</b><small>' + esc(itemText) + '</small>' +
+        '<div><b>' + esc(itemName) + (d.quest ? ' · квестовый' : '') + (isCuffsFlipped ? ' · перевёрнуты 🔓' : '') + '</b>' + itemDeckBadge(d.deck) + '<small>' + esc(itemText) + '</small>' +
         '<small style="color:#8394a8">' + esc(meta.join(' · ')) + '</small></div>' +
         (opt ? '<span class="si-pick">Выбрать</span>' : '') + '</div>';
 }
@@ -1967,7 +1972,7 @@ function openSheet(quiet, targetPlayerId) {
         return '<div class="sheet-item quest closed' + (open ? ' pickable' : '') + '"' + (open ? ' data-pick="quest"' : '') +
             ' title="' + esc(open ? 'Нажмите, чтобы открыть: это стоит 1 действие' : (questMenu && questMenu.reason) || 'Закрыт: откроется по правилам карты') + '">' +
             (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
-            '<div><b>' + esc(d.name || q.item) + ' · закрыт 🔒' + chargeHtml + '</b>' +
+            '<div><b>' + esc(d.name || q.item) + ' · закрыт 🔒' + chargeHtml + '</b>' + itemDeckBadge(d.deck) +
             '<small>' + esc(d.text || '') + '</small>' +
             '<small style="color:#8394a8">Активация: ' + esc(where) + ' · ' + esc(pay) + ' · 1 действие</small>' +
             ((isMine && questMenu && !questMenu.enabled && questMenu.reason) ? '<small style="color:#e2a33f">' + esc(questMenu.reason) + '</small>' : '') +
@@ -1984,7 +1989,6 @@ function openSheet(quiet, targetPlayerId) {
         ? ((me.hand || []).map(c => cardHtml(c, null, false)).join('') || '<div class="deck-empty">Пусто</div>')
         : '<div class="empty">🔒 Карты в руке скрыты (' + (me.handCount ?? 0) + ' шт.).</div>';
     const chips = [];
-    chips.push('<span class="tag yellow">знания ' + me.knowledge + (me.knowledgeActive ? ' ✓' : '') + ' / 8</span>');
     if (me.signal) chips.push('<span class="tag green">сигнал отправлен</span>');
     if (me.larva) chips.push('<span class="tag purple">личинка</span>');
     if (v.enemySet === 'chytrids' && me.chySpore) chips.push('<span class="tag green">🟢 спора: повторное заражение смертельно</span>');
@@ -2032,7 +2036,7 @@ function openSheet(quiet, targetPlayerId) {
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">' + playerTabs + '</div>' +
         '<div class="sheet-head"><div><h2>' + esc(me.name) + (isMine ? ' (Вы)' : '') + '</h2><div class="sub">' + esc(me.charName) +
         (me.number ? ' · игрок №' + me.number : '') + ' · ' + esc(statusName(me) || 'на борту') + ' · 📍 ' + esc(roomLabel(me.room)) + '</div></div>' +
-        healthCells(me) + '<div class="sheet-chips">' + chips.join('') + '</div></div>' +
+        healthCells(me) + knowledgeTrack(me) + '<div class="sheet-chips">' + chips.join('') + '</div></div>' +
         '<div class="sheet-decks"><button class="btn small" ' + (isMine ? 'data-sheet-deck="own"' : 'disabled') + ' title="Колода закрыта: видно только количество">🂠 Колода действий · ' + me.deckCount + '</button>' +
         '<button class="btn small" ' + (isMine ? 'data-sheet-deck="owndisc"' : 'disabled') + ' title="Открыть сброс">⤵ Сброс · ' + me.discardCount + '</button>' +
         (cTotal ? '<button class="btn small danger" ' + (isMine ? 'data-sheet-deck="owndisc"' : 'disabled') + ' title="Всего заражений: ' + cTotal + '">☣ Заражений: ' + cTotal + '</button>' : '') + '</div>' +

@@ -43,6 +43,9 @@ export class TableFX {
         this.pump();
     }
 
+    /** Discard stale effects on reconnect, undo or loading a snapshot. */
+    reset() { this.lastSeen = null; this.queue = []; }
+
     /** True while the table is showing a token pull or an attack card: the next question waits. */
     get holding() { return this.busy && (this.playing === 'bag' || this.playing === 'attack'); }
 
@@ -237,6 +240,16 @@ export class TableFX {
                 if (isMe) { this.vignette('red'); if (this.onShake) this.onShake(Math.min(1, 0.4 + f.n * 0.2)); }
                 else { const el = this.getPlayerEl(f.player); if (el) { el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit'); } }
                 done(); break;
+            }
+            case 'lockdown': {
+                const el = document.createElement('div');
+                el.className = 'lockdown-alert';
+                el.setAttribute('role', 'alert');
+                el.textContent = '⚠ БЛОКИРОВКА — карта компьютерных действий';
+                document.body.appendChild(el);
+                setTimeout(() => el.remove(), 3500);
+                setTimeout(done, 3500);
+                break;
             }
             case 'siren': { Snd.play('siren'); this.banner('⚠ САМОУНИЧТОЖЕНИЕ ЗАПУЩЕНО', 'red', 2600); setTimeout(done, 600); break; }
             case 'sdBeep': { Snd.play('beep'); this.banner('⏱ Самоуничтожение: ' + f.count + '/6', f.count >= 4 ? 'red' : 'blue', 1500); done(); break; }

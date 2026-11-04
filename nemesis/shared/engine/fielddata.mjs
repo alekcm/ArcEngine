@@ -4,6 +4,10 @@ import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, r
     removeMalfunction, drawCards, discardCard, isContam, payCost, clearNoiseAround, intruderLabel, turnOrder, drawLimit,
     COMBAT_DIE, roll, fmtRoll, needDice, corridorsOf , computerHere } from './core.mjs';
 import { ITEMS, WOUNDS, EVENT_CARDS, ATTACK_CARDS } from '../data/cards.mjs';
+import { CARNOMORPH_ATTACK_CARDS } from '../data/carnomorphs.mjs';
+import { CARNOMORPH_EVENT_CARDS, carnomorphEventText } from '../data/carnomorph-events.mjs';
+import { VOID_ATTACK_CARDS, VOID_EVENT_CARDS } from '../data/voidseeders.mjs';
+import { CHYTRID_ATTACK_CARDS, CHYTRID_EVENT_CARDS, chytridEventText } from '../data/chytrids.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
 import { dealHits, applyHitsNoRoll, canFire } from './combat.mjs';
@@ -15,8 +19,8 @@ const BACK = { op: 'turn.choose' };
 const SAFETY_HAND_CAP = 7;
 const ANALYSIS_EVENTS = 2;
 const ANALYSIS_ATTACKS = 3;
-const EVENT_BY_ID = Object.fromEntries(EVENT_CARDS.map(e => [e.id, e]));
-const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(c => [c.id, c]));
+const EVENT_BY_ID = Object.fromEntries([...EVENT_CARDS, ...CARNOMORPH_EVENT_CARDS, ...VOID_EVENT_CARDS, ...CHYTRID_EVENT_CARDS].map(e => [e.id, e]));
+const ATTACK_BY_ID = Object.fromEntries([...ATTACK_CARDS, ...CARNOMORPH_ATTACK_CARDS, ...VOID_ATTACK_CARDS, ...CHYTRID_ATTACK_CARDS].map(c => [c.id, c]));
 
 function choose(state, p, title, options, op, extra = {}) {
     ask(state, { kind: 'choice', player: p.id, title, options }, { op, player: p.id, ...extra });
@@ -106,14 +110,20 @@ OPS['card.fdAnalysis.deck'] = (state, step) => {
 OPS['card.fdAnalysis.place'] = (state, step) => {
     const p = player(state, step.player);
     const deck = step.deck === 'event' ? state.eventDeck : state.attackDeck;
-    const name = id => step.deck === 'event' ? EVENT_BY_ID[id].name : ATTACK_BY_ID[id].name;
+    const name = id => (step.deck === 'event' ? EVENT_BY_ID[id] : ATTACK_BY_ID[id])?.name || id;
     const textOf = id => {
         if (step.deck === 'event') {
             const ev = EVENT_BY_ID[id];
-            return ev ? (ev.name + ' — ' + ev.text + (ev.intruders ? ' (Движение: ' + ev.intruders + ')' : '')) : id;
+            if (!ev) return id;
+            const detail = id.startsWith('carnoEvent') ? carnomorphEventText(ev) : id.startsWith('chyEvent') ? chytridEventText(ev) :
+                ev.text + (ev.move?.types ? ' (Движение: ' + ev.move.types.join(', ') + ', коридор ' + ev.move.num + ')' : ev.intruders ? ' (Движение: ' + ev.intruders + ')' : '');
+            return ev.name + ' — ' + detail;
         } else {
             const at = ATTACK_BY_ID[id];
-            return at ? (at.name + ' — ' + (at.text || '')) : id;
+            if (!at) return id;
+            const toughness = at.metagorger !== undefined ? ' (Стойкость глодателя: ' + at.metagorger + ', остальных: ' + at.other + ')' :
+                at.toughness !== undefined ? ' (Стойкость на карте: ' + at.toughness + ')' : '';
+            return at.name + ' — ' + (at.text || '') + toughness;
         }
     };
     if (step.answer !== undefined) {

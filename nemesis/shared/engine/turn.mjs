@@ -129,7 +129,10 @@ export function buildMenu(state, p) {
         if (d.noCombat && combat && !(containment && containment !== c)) return { id: c, enabled: false, reason: 'Нельзя в бою' };
         const req = cardRequirement(state, p, d);
         if (req) return { id: c, enabled: false, reason: req };
-        return { id: c, enabled: payable >= (d.cost || 1) + extraCost(d), reason: '' };
+        // Containment is spent to lift the restriction and cannot also pay this card's cost.
+        const available = payable - (d.noCombat && combat && containment && containment !== c ? 1 : 0);
+        const enough = available >= (d.cost || 1) + extraCost(d);
+        return { id: c, enabled: enough, reason: enough ? '' : 'Не хватает карт' };
     });
     const items = [...p.items, ...(p.armor ? [p.armor] : [])].filter(i => ITEMS[i.item].use).map(i => {
         const d = ITEMS[i.item];

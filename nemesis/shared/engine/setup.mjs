@@ -7,7 +7,7 @@ import { initVoidseeders } from './voidseeders.mjs';
 import { characterParts } from '../appearance.mjs';
 import { originalShip, randomShip, BASIC_TILES, ADDITIONAL_TILES, ADDITIONAL_IN_PLAY, EXPLORATION_TOKENS, roomOfKind } from '../ship.mjs';
 import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS, ADAPTATIONS, WEAKNESSES, COMMON_CARDS } from '../data/cards.mjs';
-import { OPS, ask, log, next, run, pname } from './core.mjs';
+import { OPS, ask, log, next, run, pname, fx } from './core.mjs';
 import './turn.mjs';
 import './movement.mjs';
 import './combat.mjs';
@@ -248,4 +248,6 @@ export function revealComputerCard(state, setup) {
         card = state.computerDeck.shift();
     }
     state.computerCard = card || null;
+    // Record the actual face-up card, not a Lockdown put back during setup or reshuffling.
+    if (card === 'lockdown') fx(state, { type: 'lockdown' });
 }
