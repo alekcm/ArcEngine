@@ -361,11 +361,16 @@ const FS_EFFECTS = {
                     const s2 = side === 'attacker' ? 'defender' : 'attacker';
                     if (!(combat.dice[s2] || []).includes(step.onlyIfFoeHas)) return null;
                 }
-                for (let i = 0; i < n; i++) {
+                // No more than DICE_MAX dice in a combat: a card that gives a
+                // die past the limit simply adds nothing.
+                const room = Math.max(0, R.DICE_MAX - combat.dice[side].length);
+                const got = Math.min(n, room);
+                for (let i = 0; i < got; i++) {
                     combat.dice[side].push(step.kind === 'any' ? R.rollDice(state, 1)[0] : step.kind);
                 }
-                R.log(state, seat, state.players[seat].name + ' получает ' + n + ' кубик(ов)'
-                    + (step.kind !== 'any' ? ' ' + this.kindName(step.kind) : '') + '.');
+                R.log(state, seat, state.players[seat].name + ' получает ' + got + ' кубик(ов)'
+                    + (step.kind !== 'any' ? ' ' + this.kindName(step.kind) : '') + '.'
+                    + (got < n ? ' Больше восьми кубиков быть не может.' : ''));
                 return null;
             }
             case 'loseDie': {

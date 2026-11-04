@@ -315,8 +315,10 @@ const FSUI = {
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
         // No system is written in this panel: what a sector is made of is shown by
         // the plaque over the board itself. The panel belongs to the action.
+        // The score of the battle is NOT here: it is its own panel at the top
+        // left of the screen, so the damage choice always fits.
         const battle = this.renderBattle(ctx.battle);
-        if (battle) panel.append(battle);
+        if (battle) root.append(battle);
         const tokens = this.renderTokens(ctx.tokens);
         if (tokens) panel.append(tokens);
         const hand = this.renderHand(ctx.hand, ctx.handTitle);
@@ -400,7 +402,7 @@ const FSUI = {
     // the fight is on the board, and the panel has nothing to say about it.
     renderBattle(battle) {
         if (!battle) return null;
-        const card = this.el('section', 'fs-battle');
+        const card = this.el('section', 'fs-battle fs-battle-panel');
         const head = this.el('div', 'fs-battle-head');
         head.append(this.el('span', 'fs-eyebrow', 'Бой'));
         head.append(this.el('span', 'fs-battle-round', 'раунд ' + battle.round + '/' + battle.maxRounds));
@@ -449,6 +451,13 @@ const FSUI = {
                 totals.append(total);
             }
             row.append(totals);
+            // Who hurts whom at the current values: the damage this side
+            // deals to its opponent right now.
+            const deal = this.el('div', 'fs-battle-deal');
+            deal.append(this.iconEl('mark.damage', 'fs-battle-deal-icon'));
+            deal.append(this.el('span', '', 'Урон по сопернику: '));
+            deal.append(this.el('b', '', String(side.takes || 0)));
+            row.append(deal);
             card.append(row);
         }
         // The damage of the moment: the pieces that take it are picked on the board.
