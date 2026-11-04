@@ -174,7 +174,7 @@ export const ITEMS = {
     gatlingGun:     { deck: 'support', count: 1, name: 'Пулемёт Гатлинга', kind: 'heavy', weapon: { max: 6, boost: { ammo: 2, hits: 2 } }, twoSlots: true, use: null,
                       text: 'Дальнобойное оружие, 6 патронов. Занимает оба слота рук. Выстрел: можете потратить 2 доп. патрона — +2 ранения.' },
     grenadeLauncher:{ deck: 'support', count: 1, name: 'Гранатомёт', kind: 'heavy', weapon: { max: 1, grenadeMode: true, grenadeOnly: true }, use: null,
-                      text: 'Дальнобойное оружие, 1 патрон. Вместо обычного выстрела: выберите свою или соседнюю комнату (не через закрытую дверь) — двери уничтожены, все чужие получают 1 ранение, все персонажи — 1 тяжёлую травму. Заряжается только «Гранатой».' },
+                      text: 'Дальнобойное оружие, 1 патрон. Вместо обычного выстрела: выберите свою или соседнюю комнату (не через закрытую дверь) — двери уничтожены, каждый чужой получает критический результат, все персонажи — 1 тяжёлую травму. Заряжается только «Гранатой».' },
     handCannon:     { deck: 'support', count: 1, name: 'Пушка на руке', kind: 'heavy', weapon: { max: 3, minusOne: true }, use: null,
                       text: 'Дальнобойное оружие, 3 патрона. Выстрел: −1 к результату броска.' },
     hardenedArmor:  { deck: 'support', count: 1, name: 'Усиленная броня', kind: 'armor', woundToHp: 2, woundToHpOptional: true, use: null,
@@ -873,7 +873,14 @@ export const OBJECTIVES = {
     },
 };
 /** Objective text with the seat placeholder filled in ({seat} → the name of that player). */
-export function objectiveTextOf(def, players) {
+export function objectiveTextOf(def, players, enemySet) {
+    if (['carnomorphs', 'voidseeders', 'chytrids'].includes(enemySet) && (def.check === 'trophyHunter' || def.check === 'priorityOne')) {
+        const boss = enemySet === 'carnomorphs' ? 'Мясник' : enemySet === 'voidseeders' ? 'Гнетущий' : 'Королева хитридов';
+        const phrase = def.check === 'trophyHunter'
+            ? boss + (enemySet === 'chytrids' ? ' должна быть убита' : ' должен быть убит')
+            : boss + (enemySet === 'chytrids' ? ' не убита' : ' не убит');
+        return def.text.replace(def.check === 'trophyHunter' ? 'Королева должна быть убита' : 'Королева не убита', phrase);
+    }
     if (!def.seat) return def.text;
     const t = players.find(p => p.number === def.seat) || players[def.seat - 1];
     return def.text.replace('{seat}', t ? t.name : '—');
@@ -914,7 +921,9 @@ export const QUEEN_CARDS = QUEEN_FACES.flatMap(c => Array.from({ length: c.copie
 })));
 
 
-export const INTRUDER_NAMES = { larva: 'Личинка', adult: 'Взрослый', drone: 'Дрон', queen: 'Королева', blank: 'Пусто' };
+export const INTRUDER_NAMES = { larva: 'Личинка', adult: 'Взрослый', drone: 'Дрон', queen: 'Королева', blank: 'Пусто',
+    metagorger: 'Глодатель', shambler: 'Падальщик', breeder: 'Свежеватель', butcher: 'Мясник',
+    lurker: 'Таящийся', whisperer: 'Шепчущий', creeper: 'Крадущийся', despoiler: 'Гнетущий', lair: 'Логово', stinkhorn: 'Отросток', deathcap: 'Шляпка', chyQueen: 'Королева хитридов' };
 export const INTRUDER_SUPPLY = { larva: 8, adult: 12, drone: 12, queen: 1 };
 /** Intruder token pools (Queen Health card «add up to 3 Queen tokens» implies 3 Queen tokens). */
 export const INTRUDER_TOKENS = { blank: 1, larva: 8, adult: 12, drone: 12, queen: 3 };

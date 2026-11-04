@@ -1,3 +1,5 @@
+import { removeCarnomorphMutation } from './carnomorphs.mjs';
+import { isAdultEquivalent } from './core.mjs';
 // actions2.mjs — action-card effects of the expansion characters (Pilot, Hacker, Scientist, Medic,
 // Janitor, CEO, Lab Rat, Sentry, Android, Convict, Psychologist, Bounty Hunter, Captain) and the
 // uses of their starting items. Shares helpers with actions.mjs.
@@ -419,7 +421,7 @@ OPS['card.sensitiveHearing.pick'] = (state, step) => {
 };
 OPS['card.shriek'] = (state, step) => {
     const p = player(state, step.player);
-    const a = intrudersIn(state, p.room).find(i => i.type === 'adult');
+    const a = intrudersIn(state, p.room).find(i => isAdultEquivalent(state, i));
     if (!a) { log(state, 'Взрослых чужих нет.', 'minor'); next(state, BACK); return; }
     gainContamination(state, p, 1);
     repelIntruder(state, a);
@@ -491,7 +493,7 @@ OPS['card.stun'] = (state, step) => {
             opts.push({ id: 'stun:' + o.id, label: 'Оглушить: ' + pname(o) + ' (карт: ' + o.hand.length + ')' });
         }
     }
-    if (intrudersIn(state, p.room).some(i => i.type === 'adult')) {
+    if (intrudersIn(state, p.room).some(i => isAdultEquivalent(state, i))) {
         for (const w of p.items.filter(i => ITEMS[i.item].weapon)) {
             opts.push({
                 id: 'break:' + w.uid,
@@ -512,7 +514,7 @@ OPS['card.stun.pick'] = (state, step) => {
     }
     const w = p.items.find(i => i.uid === step.answer.slice(6));
     if (w) breakWeapon(state, p, w);
-    const a = intrudersIn(state, p.room).find(i => i.type === 'adult');
+    const a = intrudersIn(state, p.room).find(i => isAdultEquivalent(state, i));
     if (a) repelIntruder(state, a);
     next(state, BACK);
 };
@@ -593,6 +595,7 @@ OPS['card.selfRepair.pick'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'malf') { removeMalfunction(state, p.room); next(state, BACK); return; }
     const inst = p.items.find(i => i.uid === step.answer.slice(4));
+    removeCarnomorphMutation(state, o);
     if (inst) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard[ITEMS[inst.item].deck] = state.itemDiscard[ITEMS[inst.item].deck] || []).push(inst.item); }
     restoreHealth(state, p, 2);
     if (p.wounds.length) { ask(state, { kind: 'choice', player: p.id, title: 'Убрать тяжёлую травму?', options: [{ id: 'none', label: 'Нет' }, ...p.wounds.map(w => ({ id: w, label: WOUNDS[w].name }))] }, { op: 'card.removeWoundPick', player: p.id }); return; }
@@ -634,6 +637,7 @@ OPS['card.catchThis'] = (state, step) => {
 OPS['card.catchThis.pick'] = (state, step) => {
     const p = player(state, step.player);
     const inst = p.items.find(i => i.uid === step.answer);
+    removeCarnomorphMutation(state, o);
     if (inst) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard[ITEMS[inst.item].deck] = state.itemDiscard[ITEMS[inst.item].deck] || []).push(inst.item); log(state, pname(p) + ' швыряет «' + ITEMS[inst.item].name + '».', 'action'); }
     next(state, { op: 'move.start', player: p.id, noAttacks: true, noNoise: !cuffsOn(p), then: BACK });
 };
@@ -985,9 +989,10 @@ OPS['item.surgeryKit'] = (state, step) => {
     }
     o.discard = o.discard.filter(c => !isContam(c));
     if (o.larva) { o.larva = false; log(state, pname(o) + ': личинка удалена.', 'good'); }
+    removeCarnomorphMutation(state, o);
     if (inst) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard[ITEMS[inst.item].deck] = state.itemDiscard[ITEMS[inst.item].deck] || []).push(inst.item); }
     o.passed = true;
-    log(state, pname(o) + ': операция — рука и колода сброшены, заражения удалены (' + n + ' карт), личинка удалена, обязательный пас.', 'good');
+    log(state, pname(o) + ': операция — рука и колода сброшены, заражения удалены (' + n + ' карт), обязательный пас.', 'good');
     next(state, step.then);
 };
 OPS['item.shipCodes'] = (state, step) => {

@@ -1,6 +1,9 @@
 // setup.mjs — createGame(): builds the initial state from the lobby configuration.
 
 import { seedFromString, shuffle, randInt, pick } from '../rng.mjs';
+import { playableEnemySet } from '../dlc.mjs';
+import { initCarnomorphPack } from './carnomorph-setup.mjs';
+import { initVoidseeders } from './voidseeders.mjs';
 import { characterParts } from '../appearance.mjs';
 import { originalShip, randomShip, BASIC_TILES, ADDITIONAL_TILES, ADDITIONAL_IN_PLAY, EXPLORATION_TOKENS, roomOfKind } from '../ship.mjs';
 import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS, ADAPTATIONS, WEAKNESSES, COMMON_CARDS } from '../data/cards.mjs';
@@ -9,6 +12,14 @@ import './turn.mjs';
 import './movement.mjs';
 import './combat.mjs';
 import './intruders.mjs';
+import './carnomorphs.mjs';
+import './carnomorph-events.mjs';
+import './carnomorph-mutations.mjs';
+import './void-flow.mjs';
+import './chy-flow.mjs';
+import './chy-events.mjs';
+import { initChytrids } from './chytrids.mjs';
+import './void-events.mjs';
 import './events.mjs';
 import './rooms.mjs';
 import './items.mjs';
@@ -20,9 +31,11 @@ import './fielddata.mjs';
 import './endgame.mjs';
 
 export function createGame(config) {
+    const enemySet = config.enemySet ?? 'redux';
+    if (!playableEnemySet(enemySet)) throw new RangeError('Enemy set is not playable: ' + enemySet);
     const seedStr = config.seed || String(Date.now());
     const state = {
-        version: 1,
+        version: 1, enemySet,
         seedStr, rng: seedFromString(seedStr),
         mode: config.mode === 'random' ? 'random' : 'original',
         round: 0, phase: 'setup',
@@ -132,6 +145,9 @@ export function createGame(config) {
     // Bag & pods
     state.bag = ['blank', 'larva', 'larva', 'larva', 'larva'];
     for (let i = 0; i < 5 + n; i++) state.bag.push('adult');
+    if (state.enemySet === 'carnomorphs') initCarnomorphPack(state);
+    else if (state.enemySet === 'voidseeders') initVoidseeders(state);
+    else if (state.enemySet === 'chytrids') initChytrids(state);
     const podCount = n <= 2 ? 2 : n <= 4 ? 3 : 4;
     for (let i = 0; i < podCount; i++) state.pods.push({ num: i + 1, section: i % 2 === 0 ? 'A' : 'B', locked: true, occupants: [], launched: false, removed: false });
 
@@ -213,7 +229,10 @@ OPS['setup.finish'] = (state) => {
     state.round = 1;
     log(state, 'Игра началась. Корабль: ' + (state.mode === 'random' ? 'случайная компоновка' : 'оригинальный «Немезида»') + '. Первый игрок — ' + pname(state.players[state.firstPlayer]) + ' (Игрок 1).', 'event');
     log(state, 'Все персонажи просыпаются в Гибернатории.', 'info');
-    if (state.weaknessMode) log(state, '🔬 Слабости чужих: 3 скрытые карты — человеческий труп, туша чужого и яйцо чужого хранят по одной. Анализируйте объекты в Лаборатории, чтобы открыть их.', 'event');
+    if (state.enemySet === 'carnomorphs') log(state, '🧬 Адаптации карноморфов закрыты до появления соответствующих типов.', 'event');
+    else if (state.enemySet === 'voidseeders') log(state, '🔬 Уязвимости кошмаров закрыты до исследования соответствующих объектов и безумия.', 'event');
+    else if (state.enemySet === 'chytrids') log(state, '🔬 Уязвимости хитридов закрыты до исследования соответствующих объектов.', 'event');
+    else if (state.weaknessMode) log(state, '🔬 Слабости чужих: 3 скрытые карты — человеческий труп, туша чужого и яйцо чужого хранят по одной. Анализируйте объекты в Лаборатории, чтобы открыть их.', 'event');
     else log(state, 'Активные адаптации чужих: ' + (state.adaptations.length ? state.adaptations.map(k => '«' + ADAPTATIONS[k].name + '»').join(', ') : 'отключены') + '.', 'event');
     if (state.noiseVariant) log(state, 'Кубик шума: альтернативный d10 без граней «Встреча» (когти — Опасность, ✕ — Тишина).', 'event');
     log(state, 'Доступные подвиги: ' + state.feats.map(k => '«' + FEATS[k].name + '»').join(', ') + '.', 'info');

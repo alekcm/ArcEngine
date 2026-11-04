@@ -1642,8 +1642,105 @@ function autoRig(S, root, opts = {}) {
     return { animate, shoot };
 }
 
-/** Low-poly intruder. type: larva | adult | drone | queen */
+// Temporary procedural Carnomorph silhouettes, not the supplied OBJ miniatures. They are
+// intentionally distinct at table scale; the shared cached materials are not owned by a figure.
+function buildCarnomorph(scene, type) {
+    const root = new (B().TransformNode)('intr_' + type, scene);
+    const body = new (B().TransformNode)('carno_' + type, scene); body.parent = root;
+    const scale = { metagorger: 0.65, shambler: 1, breeder: 1.3, butcher: 1.65 }[type];
+    body.scaling.setAll(scale);
+    const flesh = flatMat(scene, type === 'metagorger' ? '#7c3940' : type === 'shambler' ? '#74372d' : type === 'breeder' ? '#74405a' : '#702520', { spec: 0.35 });
+    const dark = flatMat(scene, '#321d22'), bone = flatMat(scene, '#d2b998');
+    const gore = flatMat(scene, '#c74636', { emissive: 0.25 });
+    const sp = (...a) => sphere(scene, ...a), bx = (...a) => box(scene, ...a), cy = (...a) => cyl(scene, ...a);
+    const small = type === 'metagorger';
+    const y = small ? 0.42 : 1.05;
+    sp(0.85, 6, body, 0, y, 0, [type === 'butcher' ? 1.45 : 1.1, 0.9, 1.35]).material = flesh;
+    sp(0.56, 6, body, 0, y + 0.22, 0.58, [1, 0.8, 0.9]).material = bone;
+    bx(0.45, 0.15, 0.35, body, 0, y + 0.02, 0.84, [0.3, 0, 0]).material = dark;
+    for (const side of [-1, 1]) {
+        sp(0.1, 4, body, side * 0.17, y + 0.24, 0.82).material = gore;
+        for (let k = 0; k < 3; k++) cy(0.015, 0.07, 0.16, 4, body, side * (0.07 + k * 0.07), y - 0.03, 0.91, [0.25, 0, 0]).material = bone;
+        if (!small) {
+            cy(0.13, 0.25, 0.75, 5, body, side * 0.30, 0.42, -0.13, [0.18, 0, -side * 0.14]).material = flesh;
+            sp(0.25, 4, body, side * 0.34, 0.12, 0.15, [1, 0.5, 1.5]).material = dark;
+        }
+        const limbs = small || type === 'breeder' ? 3 : 1;
+        for (let k = 0; k < limbs; k++) {
+            const z = limbs === 1 ? 0.18 : 0.48 - 0.38 * k;
+            const armY = small ? 0.26 : y + 0.1;
+            cy(0.11, 0.23, 0.78, 5, body, side * 0.65, armY - 0.18, z, [0.35, 0, side * 0.95]).material = flesh;
+            cy(0.02, 0.12, 0.4, 4, body, side * 0.96, armY - 0.35, z + 0.12, [0.55, 0, side * 0.4]).material = bone;
+        }
+        if (type === 'butcher') {
+            cy(0.02, 0.22, 0.62, 5, body, side * 0.42, y + 0.65, 0.4, [0.1, 0, -side * 0.65]).material = bone;
+            sp(0.45, 5, body, side * 0.48, y + 0.15, -0.1).material = flesh;
+        }
+    }
+    if (type === 'breeder') {
+        sp(0.75, 6, body, 0, y + 0.35, -0.45, [1.0, 1.05, 1.2]).material = gore;
+        for (let i = 0; i < 3; i++) cy(0.02, 0.16, 0.42, 4, body, (i - 1) * 0.25, y + 0.8, -0.4, [0.1, 0, (i - 1) * 0.35]).material = bone;
+    }
+    for (const mesh of root.getChildMeshes()) mesh.isPickable = false;
+    return root;
+}
+
+// Temporary, deliberately distinct Voidseeder silhouettes; the source OBJ models are not
+// imported here. Shared materials are cached globally, while each figure owns its transforms.
+function buildVoidseeder(scene, type) {
+    const root = new (B().TransformNode)('intr_' + type, scene);
+    const body = new (B().TransformNode)('void_' + type, scene); body.parent = root;
+    body.scaling.setAll({ lurker: 0.70, whisperer: 0.95, creeper: 1.25, despoiler: 1.55, lair: 1.15 }[type]);
+    const flesh = flatMat(scene, '#3d344d', { spec: 0.35 });
+    const dark = flatMat(scene, '#211d30', { spec: 0.4 });
+    const glow = flatMat(scene, '#ac76ce', { emissive: 0.55 });
+    const sp = (...a) => sphere(scene, ...a), cy = (...a) => cyl(scene, ...a);
+    const lair = type === 'lair', low = type === 'lurker' || lair;
+    const y = low ? 0.48 : 1.05;
+    sp(lair ? 1.0 : 0.8, 7, body, 0, y, 0, [1.1, lair ? 0.72 : 1.0, 1.2]).material = flesh;
+    sp(0.44, 6, body, 0, y + 0.18, 0.44, [1.2, 0.7, 0.75]).material = dark;
+    for (const side of [-1, 1]) {
+        sp(0.10, 5, body, side * 0.18, y + 0.2, 0.66).material = glow;
+        for (let i = 0; i < (lair ? 4 : type === 'creeper' ? 3 : 2); i++) {
+            const z = 0.5 - i * 0.34;
+            cy(0.02, 0.13, 0.75, 5, body, side * 0.64, low ? 0.3 : y - 0.23, z, [0.15 + i * .12, 0, side * 1.05]).material = dark;
+        }
+        if (!low) cy(0.1, 0.18, 0.75, 5, body, side * .27, .42, -.2, [.14, 0, -side*.14]).material = flesh;
+        if (type === 'despoiler') cy(.02, .17, .86, 5, body, side * .38, y + .65, -.15, [.1, 0, -side*.48]).material = glow;
+    }
+    if (lair) {
+        for (let i = 0; i < 5; i++) cy(.02, .19, .65, 5, body, (i-2)*.22, .91, -.12, [.15, 0, (i-2)*.22]).material = dark;
+        sp(.3, 5, body, 0, .77, .4).material = glow;
+    }
+    for (const mesh of root.getChildMeshes()) mesh.isPickable = false;
+    return root;
+}
+
+// Temporary procedural silhouettes; not extracted from the supplied Unity bundles.
+function buildChytrid(scene, type) {
+    const root = new (B().TransformNode)('intr_'+type, scene);
+    const body = new (B().TransformNode)('chy_'+type, scene); body.parent=root;
+    body.scaling.setAll({stinkhorn:0.85,deathcap:1.08,chyQueen:1.45}[type]);
+    const flesh=flatMat(scene,'#849061',{spec:.3}), dark=flatMat(scene,'#3b523c'), glow=flatMat(scene,'#a5d35e',{emissive:.3});
+    const sp=(...a)=>sphere(scene,...a), cy=(...a)=>cyl(scene,...a);
+    const queen=type==='chyQueen', cap=type==='deathcap';
+    cy(.28,.48,1.35,7,body,0,.8,0,[0,0,.12]).material=flesh;
+    sp(cap?1.05:.72,7,body,0,1.48,0,[cap?1.35:1,.65,1]).material=dark;
+    for(let k=0;k<(queen?8:cap?5:3);k++) {
+        const a=k*Math.PI*2/(queen?8:cap?5:3);
+        cy(.04,.17,queen?1.15:.7,5,body,Math.cos(a)*.58,1.32,Math.sin(a)*.58,[.55*Math.sin(a),0,.55*Math.cos(a)]).material=flesh;
+        sp(.19,5,body,Math.cos(a)*.57,1.62,Math.sin(a)*.57).material=glow;
+    }
+    if(queen) for(let k=0;k<3;k++) sp(.4,6,body,(k-1)*.35,1.95,0).material=flesh;
+    for(const mesh of root.getChildMeshes())mesh.isPickable=false;
+    return root;
+}
+
+/** Low-poly intruder; Carnomorph miniatures have separate placeholder silhouettes. */
 export function buildIntruder(scene, type) {
+    if (['stinkhorn', 'deathcap', 'chyQueen'].includes(type)) return buildChytrid(scene, type);
+    if (['metagorger', 'shambler', 'breeder', 'butcher'].includes(type)) return buildCarnomorph(scene, type);
+    if (['lurker', 'whisperer', 'creeper', 'despoiler', 'lair'].includes(type)) return buildVoidseeder(scene, type);
     const S = scene;
     const root = new (B().TransformNode)('intr_' + type, S);
     const dark = flatMat(S, '#14181d', { spec: 0.6 }), mid = flatMat(S, '#262f36', { spec: 0.6 }), chitin = flatMat(S, '#323c3a', { spec: 0.7 });

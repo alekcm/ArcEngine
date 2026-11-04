@@ -1,3 +1,6 @@
+import { killChytrid } from './chytrids.mjs';
+import { killCarnomorph } from './carnomorphs.mjs';
+import { killVoid } from './voidseeders.mjs';
 // Feats (Nemesis Redux): after keeping one Objective the player picks a Feat from the shared pool,
 // resolves it immediately and removes it from the game.
 import { OPS, ask, next, log, player, pname, intrudersIn, room, roomName, drawCards, discardCard, isContam,
@@ -102,6 +105,18 @@ OPS['feat.conviction.kill'] = (state, step) => {
         if (it.type === 'queen') {
             log(state, 'Решимость: критический результат по Королеве — карта здоровья.', 'combat');
             next(state, { op: 'queen.card', player: p.id }, step.then);
+            return;
+        }
+        if (state.enemySet === 'voidseeders') {
+            if (killVoid(state, it)) log(state, 'Решимость: ' + intruderLabel(state, it) + ' уничтожен.', 'combat');
+            else log(state, 'Гнетущий защищён логовами.', 'combat');
+            next(state, step.then); return;
+        }
+        if (state.enemySet === 'chytrids') { killChytrid(state, it); next(state, step.then); return; }
+        if (state.enemySet === 'carnomorphs') {
+            log(state, 'Решимость: ' + intruderLabel(state, it) + ' убит.', 'combat');
+            killCarnomorph(state, it);
+            next(state, step.then);
             return;
         }
         log(state, 'Решимость: ' + intruderLabel(state, it) + ' получает 3 ранения.', 'combat');

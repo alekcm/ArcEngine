@@ -1,3 +1,4 @@
+import { isAdultEquivalent, hasAttackTarget } from './core.mjs';
 // fielddata.mjs — the 18 Field Data cards (Nemesis Redux FieldDataDeck).
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeMalfunction, drawCards, discardCard, isContam, payCost, clearNoiseAround, intruderLabel, turnOrder, drawLimit,
@@ -26,8 +27,8 @@ OPS['card.fdAdvance'] = (state, step) => {
     const p = player(state, step.player);
     const second = !!step.second;
     const opts = [];
-    if (intrudersIn(state, p.room).length && p.items.some(i => canFire(p, i))) opts.push({ id: 'shoot', label: 'Стрелять' });
-    if (intrudersIn(state, p.room).length) opts.push({ id: 'melee', label: 'Ближний бой' });
+    if (hasAttackTarget(state, p.room) && p.items.some(i => canFire(p, i))) opts.push({ id: 'shoot', label: 'Стрелять' });
+    if (hasAttackTarget(state, p.room)) opts.push({ id: 'melee', label: 'Ближний бой' });
     opts.push({ id: 'move', label: 'Перемещение' });
     if (second) opts.push({ id: 'stop', label: 'Хватит' });
     choose(state, p, 'Передовая тактика: ' + (second ? 'второе действие?' : 'какое действие?'), opts, 'card.fdAdvance.pick', { second });
@@ -52,7 +53,7 @@ OPS['card.fdAsymptomatic'] = (state, step) => {
 OPS['card.fdInsight'] = (state, step) => {
     const p = player(state, step.player);
     const opts = [];
-    if (intrudersIn(state, p.room).some(i => i.type === 'adult')) opts.push({ id: 'repel', label: 'Сбросить 1 карту: отогнать взрослого' });
+    if (intrudersIn(state, p.room).some(i => isAdultEquivalent(state, i))) opts.push({ id: 'repel', label: 'Сбросить 1 карту: отогнать взрослого' });
     if (tileOf(state, p.room) === 'nest') opts.push({ id: 'nest', label: 'Использовать Гнездо (без броска шума)' });
     if (!opts.length) { next(state, BACK); return; }
     choose(state, p, 'Понимание поведения', opts, 'card.fdInsight.pick');
@@ -61,7 +62,7 @@ OPS['card.fdInsight.pick'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'nest') { next(state, { op: 'room.action', player: p.id, noNoise: true, then: BACK }); return; }
     if (step.answer === 'repel' && !step.paid) { payCost(state, p, 1, { ...step, paid: true }, 'Понимание поведения: сброс карты'); return; }
-    const it = intrudersIn(state, p.room).find(i => i.type === 'adult');
+    const it = intrudersIn(state, p.room).find(i => isAdultEquivalent(state, i));
     if (it) {
         const rooms = state.ship.rooms[p.room].exits.filter(e => state.ship.corridors[e.corridor].door !== 'closed').map(e => e.to);
         if (rooms.length > 1) { ask(state, { kind: 'room', player: p.id, title: 'Куда отогнать взрослого?', rooms }, { op: 'card.fdInsight.to', player: p.id, uid: it.uid }); return; }

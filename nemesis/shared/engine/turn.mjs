@@ -1,3 +1,4 @@
+import { isAdultEquivalent, hasAttackTarget } from './core.mjs';
 // turn.mjs — Player Phase: turns, the main action prompt and dispatch to the action procedures.
 
 import { OPS, ask, next, later, log, player, pname, removeCardFromGame, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
@@ -7,6 +8,7 @@ import { repairOptions } from './actions.mjs';
 import { ITEMS, dropLocked, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf, hasOpenQuest } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { canFire } from './combat.mjs';
+import { mutationActionAvailability } from './carnomorph-mutations.mjs';
 import { roomActionAvailable, roomActionCost } from './rooms.mjs';
 
 OPS['phase.player'] = (state) => {
@@ -76,9 +78,10 @@ export function buildMenu(state, p) {
     add('careful', 'Осторожное перемещение', moveCost + 1, noCombatOk && carefulDest, !noCombatOk ? 'Нельзя в бою' : 'Вокруг всех соседних комнат уже шум');
     const weapons = p.items.filter(i => canFire(p, i));
     const sniperHere = weapons.some(i => ITEMS[i.item].weapon.sniper);
-    const nearbyTarget = sniperHere && state.ship.rooms[p.room].exits.some(e => state.ship.corridors[e.corridor].door !== 'closed' && intrudersIn(state, e.to).length);
-    add('shoot', 'Стрелять', 1, (combat || nearbyTarget) && weapons.length > 0, !weapons.length ? 'Нет заряженного оружия' : 'Нет чужих в комнате');
-    add('melee', 'Ближний бой', 1, combat, 'Нет чужих в комнате');
+    const germHere = state.enemySet === 'chytrids' && !!rs.chyGerm;
+    const nearbyTarget = sniperHere && state.ship.rooms[p.room].exits.some(e => state.ship.corridors[e.corridor].door !== 'closed' && (intrudersIn(state, e.to).length || (state.enemySet === 'chytrids' && room(state, e.to).chyGerm)));
+    add('shoot', 'Стрелять', 1, (combat || germHere || nearbyTarget) && weapons.length > 0, !weapons.length ? 'Нет заряженного оружия' : 'Нет чужих в комнате');
+    add('melee', 'Ближний бой', 1, combat || germHere, 'Нет чужих в комнате');
     const objs = rs.objects.length > 0;
     // Hands full is no longer a hard "no": the pickup prompt offers to free a slot (dropping is free).
     add('pickup', 'Поднять тяжёлый объект', 1, objs && noCombatOk, !objs ? 'В комнате нет объектов' : 'Нельзя в бою');
@@ -110,6 +113,10 @@ export function buildMenu(state, p) {
             ok = false; reason = 'В комнате не должно быть чужих';
         }
         add('quest', 'Открыть квестовый предмет: «' + qd.name + '»', 1, ok, reason);
+    }
+    if (state.enemySet === 'carnomorphs' && p.mutationCard) {
+        const mutation = mutationActionAvailability(state, p);
+        if (mutation) actions.push({ id: 'mutation', label: mutation.label, cost: 0, enabled: mutation.ok, reason: mutation.reason });
     }
     add('pass', 'Спасовать', 0, true);
     if (p.objectives.length === 2) actions.push({ id: 'objective', label: 'Выбрать цель (бесплатно)', cost: 0, enabled: true, reason: '' });
@@ -154,16 +161,16 @@ function cardRequirement(state, p, d) {
             if (d.effect === 'scavenging' && rs.malfunction) return 'Поломка в комнате';
             return '';
         }
-        case 'weakSpot': return inCombat(state, p) ? '' : 'Нет чужих';
+        case 'weakSpot': return hasAttackTarget(state, p.room) ? '' : 'Нет цели для атаки';
         case 'scoutAdrenaline': return inCombat(state, p) ? '' : 'Только в комнате с чужим';
         case 'coveringFire': return p.items.some(i => ITEMS[i.item].weapon && i.ammo >= 2 && !i.broken) ? '' : 'Нужно 2 патрона';
-        case 'forcingFire': return p.items.some(i => ITEMS[i.item].weapon && i.ammo >= 1 && !i.broken) ? (intrudersIn(state, p.room).some(i => i.type === 'adult') ? '' : 'Нет взрослого чужого') : 'Нужен патрон';
+        case 'forcingFire': return p.items.some(i => ITEMS[i.item].weapon && i.ammo >= 1 && !i.broken) ? (intrudersIn(state, p.room).some(i => isAdultEquivalent(state, i)) ? '' : 'Нет взрослого чужого') : 'Нужен патрон';
         case 'myLittleFriend': return p.items.some(i => i.item === 'soldierGun' && !i.broken) ? '' : 'Нет винтовки солдата';
         case 'distraction': return p.items.length ? '' : 'Нет предмета для сброса';
         case 'techCorridors': return state.ship.rooms[p.room].tech ? '' : 'Нет входа в тех. коридоры';
-        case 'fdPrecision': return inCombat(state, p) && p.items.some(i => canFire(p, i)) ? '' : 'Нужно оружие и чужой';
+        case 'fdPrecision': return hasAttackTarget(state, p.room) && p.items.some(i => canFire(p, i)) ? '' : 'Нужно оружие и чужой';
         case 'fdAsymptomatic': return p.hand.some(isContam) ? '' : 'Нет заражений в руке';
-        case 'fdInsight': return intrudersIn(state, p.room).some(i => i.type === 'adult') || tileOf(state, p.room) === 'nest' ? '' : 'Нет взрослого и это не Гнездо';
+        case 'fdInsight': return intrudersIn(state, p.room).some(i => isAdultEquivalent(state, i)) || tileOf(state, p.room) === 'nest' ? '' : 'Нет взрослого и это не Гнездо';
         case 'fdQuickHands': return tile && ROOM_TILES[tile].items.length ? '' : 'В комнате нет предметов';
         case 'fdReposition': return state.ship.rooms[p.room].exits.some(e => state.ship.corridors[e.corridor].door !== 'closed' && intrudersIn(state, e.to).length) ? '' : 'Нет чужого в соседней комнате';
         case 'fdSafety': return playersInRoom(state, p.room).length > 1 ? '' : 'Нет другого персонажа в комнате';
@@ -172,11 +179,12 @@ function cardRequirement(state, p, d) {
         case 'recharge': return p.items.some(i => i.item === 'smartGun') ? '' : 'Нет умного пистолета';
         case 'reload': return p.items.some(i => i.item === 'sixShooter') ? '' : 'Нет шестизарядника';
         case 'fanning': return p.items.some(i => i.item === 'sixShooter' && i.ammo > 0 && !i.broken) ? (inCombat(state, p) ? '' : 'Нет чужих') : 'Шестизарядник пуст';
-        case 'bash': case 'roboticPunch': return inCombat(state, p) ? '' : 'Нет чужих';
-        case 'shriek': return intrudersIn(state, p.room).some(i => i.type === 'adult') ? '' : 'Нет взрослого чужого';
+        case 'bash': return hasAttackTarget(state, p.room) ? '' : 'Нет цели для атаки';
+        case 'roboticPunch': return inCombat(state, p) ? '' : 'Нет чужих';
+        case 'shriek': return intrudersIn(state, p.room).some(i => isAdultEquivalent(state, i)) ? '' : 'Нет взрослого чужого';
         case 'stun': {
             const canStunPlayer = playersInRoom(state, p.room).some(o => o.id !== p.id && o.status === 'active' && o.hand.length <= 3 && !o.passed);
-            const canRepel = intrudersIn(state, p.room).some(i => i.type === 'adult') && p.items.some(i => ITEMS[i.item].weapon);
+            const canRepel = intrudersIn(state, p.room).some(i => isAdultEquivalent(state, i)) && p.items.some(i => ITEMS[i.item].weapon);
             return canStunPlayer || canRepel ? '' : 'Нет персонажа с ≤3 картами в комнате или взрослого чужого с оружием для поломки';
         }
         case 'neurotoxicGas': return p.items.some(i => ITEMS[i.item].deck === 'green') ? '' : 'Нужен зелёный предмет';
@@ -269,6 +277,10 @@ OPS['turn.do'] = (state, step) => {
     const act = menu.actions.find(x => x.id === a.action);
     if (!act || !act.enabled) { next(state, back); return; }
     switch (a.action) {
+        case 'mutation':
+            spend();
+            next(state, { op: 'mutation.start', player: p.id, then: back });
+            return;
         case 'pass':
             p.passed = true;
             log(state, pname(p) + ' пасует.', 'action');
@@ -370,7 +382,7 @@ OPS['react.interruptAns'] = (state, step) => {
     next(state, { ...step, op: 'react.interrupt', answer: undefined, holder: undefined, card: undefined });
 };
 
-export function objectiveText(state, o) { return objectiveTextOf(OBJECTIVES[o.kind][o.id], state.players); }
+export function objectiveText(state, o) { return objectiveTextOf(OBJECTIVES[o.kind][o.id], state.players, state.enemySet); }
 
 OPS['objective.pick'] = (state, step) => {
     const p = player(state, step.player);
@@ -459,7 +471,9 @@ OPS['turn.end'] = (state) => {
         log(state, pname(p) + ': боевой костюм не даёт пожару навредить.', 'minor');
     }
     p.firePaidThisTurn = false;
-    next(state, { op: 'turn.start' });
+    if (state.enemySet === 'voidseeders' && p.status === 'active' && !p.pod && intrudersIn(state, p.room).some(it => it.type === 'lair')) {
+        next(state, { op: 'noise.roll', player: p.id, room: p.room, allowCombat: true }, { op: 'turn.start' });
+    } else next(state, { op: 'turn.start' });
 };
 
 // Card effects dispatch — implemented in actions.mjs; the op is registered here so the order of

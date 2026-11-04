@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -27,8 +28,8 @@ const CLIENT_HTML = fs.readFileSync(path.join(HERE, '..', 'client', 'index.html'
 const pickPort = () => 8600 + Math.floor(Math.random() * 300);
 
 /** Start the game server and resolve as soon as it says which port it took. */
-function startServer(port) {
-    const child = spawn(process.execPath, [SERVER, '--port=' + port], { cwd: path.join(HERE, '..'), stdio: ['ignore', 'pipe', 'pipe'] });
+function startServer(port, serverPath = SERVER) {
+    const child = spawn(process.execPath, [serverPath, '--port=' + port], { cwd: path.dirname(serverPath), stdio: ['ignore', 'pipe', 'pipe'] });
     const out = [];
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => { child.kill(); reject(new Error('the server did not start: ' + out.join(''))); }, 10000);
@@ -436,4 +437,123 @@ test('SRV-10: старые импланты Андроида и руки Зак�
     assert.deepEqual(msg.seats[0].parts, selectedConvict); assert.deepEqual(msg.seats[0].colors, { tattoo: '#345678' });
     const state = await change({ t: 'start' }, m => m?.t === 'state' && m.view?.players.length === 2, 'game view');
     assert.deepEqual(state.view.players[0].parts, selectedConvict); assert.deepEqual(state.view.players[0].colors, { tattoo: '#345678' });
+});
+
+test('SRV-DLC: packs can be selected through the socket, unknown IDs are ignored', async (t) => {
+    const { child, port } = await startServer(pickPort());
+    t.after(() => { try { child.kill(); } catch { /* gone */ } });
+    const client = await wsClient(port); t.after(() => client.close());
+    client.send({ t: 'join', token: null, name: 'Автор' });
+    const joined = await waitFor(client, m => m?.t === 'lobby' && m.seats.length === 1, 'joined');
+    assert.equal(joined.settings.enemySet, 'redux');
+    for (const enemySet of ['carnomorphs', 'voidseeders', 'chytrids', '__proto__']) {
+        const from = client.messages.length;
+        const received = waitFor(client, m => client.messages.indexOf(m) >= from && m?.t === 'lobby', 'settings reply');
+        client.send({ t: 'lobby', settings: { enemySet } });
+        assert.equal((await received).settings.enemySet, enemySet === '__proto__' ? 'chytrids' : enemySet);
+    }
+});
+
+test('DLC original model and Chytrid converted model are served without path escape', async () => {
+    const { MODEL_SOURCES } = await import('../client/intruder-models.js');
+    const { child, port } = await startServer(pickPort());
+    try {
+        for (const key of ['metagorger','stinkhorn']) {
+            const src=MODEL_SOURCES[key];
+            const res=await fetch('http://127.0.0.1:'+port+encodeURI(src.obj));
+            assert.equal(res.status,200,key); assert.ok((await res.text()).includes('\nv '),key);
+            const image=await fetch('http://127.0.0.1:'+port+encodeURI(src.texture || src.bump)); assert.equal(image.status,200,key);
+        }
+    } finally { child.kill(); }
+});
+
+test('DLC privacy: secret answers are redacted in socket history and undo notices', async (t) => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const { ask } = await import('../shared/engine/core.mjs');
+    const { child, port } = await startServer(pickPort());
+    t.after(() => child.kill());
+    const host = await wsClient(port), guest = await wsClient(port); t.after(() => { host.close(); guest.close(); });
+    host.send({t:'join',name:'Ведущий'}); await waitFor(host,m=>m?.t==='lobby'&&m.seats.length===1,'host');
+    guest.send({t:'join',name:'Игрок'}); await waitFor(guest,m=>m?.t==='lobby'&&m.seats.length===2,'guest');
+    const s=createGame({seed:'secret-history',draft:false,players:[{name:'Ведущий',charId:'soldier'},{name:'Игрок',charId:'scout'}]});
+    s.phase='setup';s.queue=[];s.prompt=null;s.resume=null;
+    ask(s,{kind:'choice',secret:true,player:1,title:'СЕКРЕТНОЕ НАЗВАНИЕ',options:[{id:'hiddenA',label:'СЕКРЕТНАЯ МУТАЦИЯ'},{id:'hiddenB',label:'ДРУГАЯ МУТАЦИЯ'}]},{op:'noop'});
+    const loaded=waitFor(guest,m=>m?.t==='state'&&m.view?.prompt?.title==='СЕКРЕТНОЕ НАЗВАНИЕ','private prompt');
+    host.send({t:'load',data:{state:s,phase:'playing'}});const privateView=await loaded;
+    const publicView=await waitFor(host,m=>m?.t==='state'&&m.view?.prompt?.waiting,'redacted prompt');
+    assert.equal(publicView.view.prompt.options,undefined);assert.doesNotMatch(JSON.stringify(publicView.view.prompt),/МУТАЦИЯ|НАЗВАНИЕ/);
+    const from=host.messages.length;
+    const changed=waitFor(host,m=>host.messages.indexOf(m)>=from&&m?.t==='state'&&m.undoDepth===1,'redacted history');
+    guest.send({t:'act',promptId:privateView.view.prompt.id,answer:'hiddenA'});
+    const out=await changed;assert.match(out.history.at(-1),/скрытое действие/);assert.doesNotMatch(JSON.stringify(out.history),/МУТАЦИЯ|НАЗВАНИЕ|hiddenA/);
+    const offset=guest.messages.length;
+    const undone=waitFor(guest,m=>guest.messages.indexOf(m)>=offset&&m?.t==='notice'&&m.kind==='undo','undo notice');
+    host.send({t:'undo'});const notice=await undone;assert.match(notice.text,/скрытое действие/);assert.doesNotMatch(notice.text,/МУТАЦИЯ|НАЗВАНИЕ|hiddenA/);
+    const restored=await waitFor(guest,m=>guest.messages.indexOf(m)>=offset&&m?.t==='state'&&m.view?.prompt?.title==='СЕКРЕТНОЕ НАЗВАНИЕ','restored private choice');
+    assert.equal(restored.view.prompt.options[0].id,'hiddenA');
+});
+
+test('save files require the host and unknown enemy sets cannot bypass guards', async (t) => {
+    const { createGame } = await import('../shared/engine/setup.mjs');
+    const { child, port } = await startServer(pickPort());t.after(()=>child.kill());
+    const host=await wsClient(port),guest=await wsClient(port);t.after(()=>{host.close();guest.close();});
+    host.send({t:'join',name:'Host'});await waitFor(host,m=>m?.t==='lobby'&&m.seats.length===1,'host');
+    guest.send({t:'join',name:'Guest'});await waitFor(guest,m=>m?.t==='lobby'&&m.seats.length===2,'guest');
+    const state=createGame({seed:'server-save',draft:false,players:[{name:'Host',charId:'soldier'},{name:'Guest',charId:'scout'}]});
+    const initial=waitFor(host,m=>m?.t==='state'&&m.view,'loaded');
+    host.send({t:'load',data:{state,phase:'playing',history:['PRIVATE LEGACY CHOICE']}});
+    assert.deepEqual((await initial).history,[]);
+    for(const request of [{t:'save',name:'notallowed'}, {t:'downloadSave',name:'notallowed'}, {t:'load',data:{state}}, {t:'deleteSave',name:'notallowed'}, {t:'listSaves'}]) {
+        const from=guest.messages.length; const denied=waitFor(guest,m=>guest.messages.indexOf(m)>=from&&m?.t==='notice'&&m.kind==='error','host-only denial');
+        guest.send(request); await denied;
+    }
+    assert.equal((await fetch('http://127.0.0.1:'+port+'/api/save/download?name=notallowed')).status,403);
+    for(const enemySet of ['unknown','__proto__']){
+        const from=host.messages.length,denied=waitFor(host,m=>host.messages.indexOf(m)>=from&&m?.t==='notice'&&m.kind==='error','DLC load denied');
+        host.send({t:'load',data:{state:{...state,enemySet},phase:'playing'}});await denied;
+    }
+    const name='test-private-'+crypto.randomBytes(6).toString('hex');t.after(()=>{try{fs.unlinkSync(path.join(HERE,'..','saves',name+'.json'));}catch{}});
+    const saved=waitFor(host,m=>m?.t==='saved'&&m.name===name,'host save');host.send({t:'save',name});const savedMsg=await saved;
+    assert.ok(savedMsg.data.state.secret);
+    for (const url of ['/saves/'+name+'.json', '/client/%2e%2e%2fsaves%2f'+name+'.json', '/shared/%2e%2e%2fsaves%2f'+name+'.json']) {
+        assert.equal((await fetch('http://127.0.0.1:'+port+url)).status,403, url);
+    }
+    const downloaded=waitFor(host,m=>m?.t==='saveDownload'&&m.name===name,'host download');
+    host.send({t:'downloadSave',name});assert.deepEqual((await downloaded).data.state.secret,savedMsg.data.state.secret);
+});
+
+test('isolated server: each enabled DLC starts, hides private state, saves, loads and undoes',async(t)=>{
+    const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'nemesis-ws-dlc-'));
+    const dest=path.join(tmp,'nemesis');fs.mkdirSync(dest);fs.cpSync(path.join(HERE,'..','shared'),path.join(dest,'shared'),{recursive:true});
+    fs.copyFileSync(SERVER,path.join(dest,'server.mjs'));
+    t.after(()=>fs.rmSync(tmp,{recursive:true,force:true}));
+    for(const pack of ['carnomorphs','voidseeders','chytrids']){
+        const {child,port}=await startServer(pickPort(),path.join(dest,'server.mjs'));
+        const host=await wsClient(port),guest=await wsClient(port);
+        try{
+            host.send({t:'join',name:'Host'});await waitFor(host,m=>m?.t==='lobby'&&m.seats.length===1,'host');
+            guest.send({t:'join',name:'Guest'});await waitFor(guest,m=>m?.t==='lobby'&&m.seats.length===2,'guest');
+            const configured=waitFor(host,m=>m?.t==='lobby'&&m.settings.enemySet===pack,'configured pack');
+            host.send({t:'lobby',settings:{enemySet:pack,seed:'ws-'+pack},ready:true});await configured;
+            const ready=waitFor(host,m=>m?.t==='lobby'&&m.seats.length===2&&m.seats.every(s=>s.ready),'both ready');
+            guest.send({t:'lobby',ready:true});await ready;
+            const started=waitFor(host,m=>m?.t==='state'&&m.view?.enemySet===pack,'DLC game');
+            host.send({t:'start'});const first=await started;
+            const other=await waitFor(guest,m=>m?.t==='state'&&m.view?.enemySet===pack,'guest game');
+            assert.equal(first.view.players[1].hand,undefined);assert.equal(first.view.players[1].objectives,undefined);
+            assert.equal(other.view.players[0].hand,undefined);assert.equal(other.view.players[0].objectives,undefined);
+            assert.equal(first.view.secret,undefined);assert.ok(first.view.players[0].hand.length);
+            const prompt=first.view.prompt,actor=prompt.player===0?host:guest;
+            assert.equal(prompt.kind,'turn');
+            const moved=waitFor(host,m=>m?.t==='state'&&m.undoDepth===1,'pass');
+            actor.send({t:'act',promptId:prompt.id,answer:{action:'pass'}});await moved;
+            const undone=waitFor(host,m=>m?.t==='state'&&m.full&&m.undoDepth===0&&m.view?.prompt?.id===prompt.id,'undo');
+            host.send({t:'undo'});await undone;
+            const saved=waitFor(host,m=>m?.t==='saved'&&m.name===pack,'saved');host.send({t:'save',name:pack});
+            const data=(await saved).data;assert.equal(data.state.enemySet,pack);assert.ok(data.state.secret);
+            const offset=guest.messages.length;const loaded=waitFor(guest,m=>guest.messages.indexOf(m)>=offset&&m?.t==='state'&&m.full&&m.view?.enemySet===pack,'loaded DLC');
+            host.send({t:'load',data});const restored=await loaded;
+            assert.equal(restored.view.prompt.id,prompt.id);assert.equal(restored.undoDepth,0);assert.equal(restored.view.secret,undefined);
+        } finally {host.close();guest.close();child.kill();}
+    }
 });

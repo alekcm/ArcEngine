@@ -17,6 +17,7 @@ import url from 'node:url';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { createGame } from './shared/engine/setup.mjs';
+import { playableEnemySet } from './shared/dlc.mjs';
 import { answer } from './shared/engine/core.mjs';
 import { viewFor } from './shared/view.mjs';
 import { CHARACTERS } from './shared/data/cards.mjs';
@@ -76,30 +77,22 @@ function cleanSaveName(n) { return String(n || '').replace(/[^\p{L}\p{N} _\-\.]/
 
 function serveStatic(req, res) {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    if (p.startsWith('/api/save/download')) {
-        const urlObj = new URL(req.url, 'http://x');
-        const name = cleanSaveName(urlObj.searchParams.get('name'));
-        const file = path.join(SAVES_DIR, name + '.json');
-        if (fs.existsSync(file)) {
-            const data = fs.readFileSync(file);
-            res.writeHead(200, {
-                'Content-Type': 'application/json',
-                'Content-Disposition': 'attachment; filename="' + encodeURIComponent(name) + '.json"',
-                'Content-Length': data.length,
-            });
-            res.end(data);
-            return;
-        }
-        res.writeHead(404); res.end('Not found'); return;
-    }
+    // Save files contain every player's hidden state. Download them over the host-only WebSocket.
+    if (p.startsWith('/api/save/download')) { res.writeHead(403); res.end('Forbidden'); return; }
     if (p === '/' || p === '/index.html') { res.writeHead(302, { Location: '/client/' }); res.end(); return; }
     if (p === '/client' || p === '/client/') p = '/client/index.html';
-    let file;
-    if (p.startsWith('/libs/')) file = path.join(REPO, p);
-    else if (p.startsWith('/Nemesis/')) file = path.join(REPO, p);
-    else file = path.join(HERE, p);
-    const rel = path.relative(REPO, file);
-    if (rel.startsWith('..')) { res.writeHead(403); res.end(); return; }
+    if (p === '/favicon.ico') { res.writeHead(204); res.end(); return; }
+    // Never serve arbitrary repository files: saves contain the full, unredacted game state.
+    // Enforce the selected root after decoding as well, so encoded slashes cannot escape it.
+    const root = p.startsWith('/client/') ? path.join(HERE, 'client')
+        : p.startsWith('/shared/') ? path.join(HERE, 'shared')
+        : p.startsWith('/libs/') ? path.join(REPO, 'libs')
+        : p.startsWith('/Nemesis/') ? path.join(REPO, 'Nemesis') : null;
+    if (!root) { res.writeHead(403); res.end(); return; }
+    const prefix = p.slice(1).split('/')[0];
+    const file = path.join(root, p.slice(prefix.length + 2));
+    const rel = path.relative(root, file);
+    if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) { res.writeHead(403); res.end(); return; }
     fs.stat(file, (err, st) => {
         if (err || !st.isFile()) { if (p === '/favicon.ico') { res.writeHead(204); res.end(); return; } res.writeHead(404); res.end('404 ' + p); return; }
         const head = { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Content-Length': st.size, 'Cache-Control': 'no-store' };
@@ -177,7 +170,7 @@ function upgrade(req, sock) {
 const game = {
     phase: 'lobby',                   // 'lobby' | 'playing'
     seats: [],                        // [{token, name, charId, colors, appearances, ready, socket|null}]
-    settings: { mode: 'original', seed: '', draft: false, adaptations: '3', noiseVariant: false, alienMode: 'evolutions' }, poses: {},
+    settings: { enemySet: 'redux', mode: 'original', seed: '', draft: false, adaptations: '3', noiseVariant: false, alienMode: 'evolutions' }, poses: {},
     state: null,
     undo: [],                         // [{json, label}]
     history: [],                      // labels of accepted actions (for the undo list)
@@ -243,7 +236,8 @@ function label(state, choice, pid) {
     const who = pr.kind === 'ack' ? (pid != null && state.players[pid] ? state.players[pid].name : 'Игрок')
         : pr.player === 'host' ? 'Ведущий' : state.players[pr.player].name;
     let what = '';
-    if (pr.kind === 'ack') what = choice === 'all' ? 'готово за всех' : 'готово';
+    if (pr.secret || pr.kind === 'info') what = 'скрытое действие';
+    else if (pr.kind === 'ack') what = choice === 'all' ? 'готово за всех' : 'готово';
     else if (pr.kind === 'bag') what = 'вытягивает жетон из мешка';
     else if (pr.kind === 'turn') what = choice.action === 'card' ? 'карта' : choice.action === 'item' ? 'предмет' : (pr.actions.find(a => a.id === choice.action) || {}).label || choice.action;
     else if (pr.kind === 'choice') what = pr.title + ' → ' + ((pr.options.find(o => o.id === choice) || {}).label || choice);
@@ -288,6 +282,7 @@ function onMessage(socket, m) {
             }
             if (typeof m.ready === 'boolean') seat.ready = m.ready;
             if (m.settings && isHost(socket)) {
+                if (typeof m.settings.enemySet === 'string' && playableEnemySet(m.settings.enemySet)) game.settings.enemySet = m.settings.enemySet;
                 if (m.settings.mode === 'random' || m.settings.mode === 'original') game.settings.mode = m.settings.mode;
                 if (typeof m.settings.seed === 'string') game.settings.seed = m.settings.seed.slice(0, 32);
                 if (typeof m.settings.draft === 'boolean') game.settings.draft = m.settings.draft;
@@ -304,7 +299,7 @@ function onMessage(socket, m) {
             const seats = game.seats.filter(s => s.socket);
             if (seats.length < 1) return;
             game.seats = seats;
-            game.state = createGame({ seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, draft: game.settings.draft,
+            game.state = createGame({ enemySet: game.settings.enemySet, seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, draft: game.settings.draft,
                 adaptations: game.settings.adaptations, noiseVariant: game.settings.noiseVariant, weaknessMode: game.settings.alienMode === 'weaknesses',
                 players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors, parts: characterParts(s.charId, s.appearances[s.charId]) })),
                 ui: { bagClick: true, eventAck: true } });
@@ -432,6 +427,7 @@ function onMessage(socket, m) {
             break;
         }
         case 'save': {
+            if (!isHost(socket)) { socket.send({ t: 'notice', text: 'Сохранения доступны только ведущему.', kind: 'error' }); return; }
             if (!game.state) {
                 socket.send({ t: 'notice', text: 'Нет активной игры для сохранения.', kind: 'error' });
                 return;
@@ -446,6 +442,7 @@ function onMessage(socket, m) {
                 settings: game.settings,
                 seats: game.seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors })),
                 history: game.history,
+                historyRedacted: true,
                 poses: game.poses,
             };
             try {
@@ -458,6 +455,7 @@ function onMessage(socket, m) {
             break;
         }
         case 'listSaves': {
+            if (!isHost(socket)) { socket.send({ t: 'notice', text: 'Сохранения доступны только ведущему.', kind: 'error' }); return; }
             const list = [];
             try {
                 const files = fs.readdirSync(SAVES_DIR);
@@ -480,7 +478,17 @@ function onMessage(socket, m) {
             socket.send({ t: 'savesList', saves: list });
             break;
         }
+        case 'downloadSave': {
+            if (!isHost(socket)) { socket.send({ t: 'notice', text: 'Сохранения доступны только ведущему.', kind: 'error' }); return; }
+            const name = cleanSaveName(m.name);
+            try {
+                const data = JSON.parse(fs.readFileSync(path.join(SAVES_DIR, name + '.json'), 'utf8'));
+                socket.send({ t: 'saveDownload', name, data });
+            } catch (e) { socket.send({ t: 'notice', text: 'Не удалось скачать сохранение.', kind: 'error' }); }
+            break;
+        }
         case 'load': {
+            if (!isHost(socket)) { socket.send({ t: 'notice', text: 'Загружать игру может только ведущий.', kind: 'error' }); return; }
             let saveData = m.data;
             if (!saveData && typeof m.name === 'string') {
                 const safe = cleanSaveName(m.name);
@@ -494,10 +502,16 @@ function onMessage(socket, m) {
                 socket.send({ t: 'notice', text: 'Не удалось загрузить сохранение.', kind: 'error' });
                 return;
             }
+            // Older Redux saves have no enemySet; incomplete DLC must not bypass the lobby guard.
+            if (!playableEnemySet(saveData.state.enemySet || 'redux')) {
+                socket.send({ t: 'notice', text: 'Дополнение из сохранения ещё недоступно.', kind: 'error' }); return;
+            }
             game.state = saveData.state;
             game.phase = saveData.phase || 'playing';
-            game.settings = saveData.settings || game.settings;
-            game.history = saveData.history || [];
+            game.settings = { ...game.settings, ...(saveData.settings || {}), enemySet: saveData.state.enemySet || 'redux' };
+            // Old saves may contain secret answers in historical labels; their undo stack is
+            // not restored, so discard untrusted legacy history rather than broadcasting it.
+            game.history = saveData.historyRedacted === true && Array.isArray(saveData.history) ? saveData.history : [];
             game.poses = saveData.poses || {};
             game.undo = [];
             if (Array.isArray(saveData.seats)) {
@@ -519,6 +533,7 @@ function onMessage(socket, m) {
             break;
         }
         case 'deleteSave': {
+            if (!isHost(socket)) { socket.send({ t: 'notice', text: 'Удалять сохранения может только ведущий.', kind: 'error' }); return; }
             if (typeof m.name === 'string') {
                 const safe = cleanSaveName(m.name);
                 const file = path.join(SAVES_DIR, safe + '.json');

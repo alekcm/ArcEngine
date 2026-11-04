@@ -650,6 +650,7 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .sheet-item.quest.closed b { color: #c9b071; }
 .sheet-item.armor { border-color: #2f5a7a; }
 .sheet-wound { background: #241014; border: 1px solid #5a2323; border-radius: 6px; padding: 5px 8px; margin-bottom: 5px; font-size: 12px; }
+.mutation-art { display: block; height: 96px; margin: -5px -8px 6px; border-radius: 5px 5px 0 0; background-size: cover; background-position: center; }
 .sheet-wound b { color: #ff9c9c; }
 .sheet-wound small { display: block; color: #d8b4b4; font-size: 11px; line-height: 1.25; }
 .sheet-hp { display: flex; align-items: center; gap: 5px; }

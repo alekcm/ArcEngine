@@ -1420,3 +1420,81 @@ test('ROLE-20: Convict masks cover the mouth and Psychologist glasses remain vis
         ch.root.dispose();
     }
 });
+
+test('CARNO scene: four distinct silhouettes and in-place evolution rebuild without stale shadows', async () => {
+    const { buildIntruder } = await import('../client/characters.js');
+    const signatures = [];
+    for (const type of ['metagorger', 'shambler', 'breeder', 'butcher']) {
+        const figure = buildIntruder(scene.scene, type);
+        signatures.push(JSON.stringify(geometrySignature({ root: figure })));
+        assert.ok(figure.getChildMeshes().length > 5, type);
+        figure.dispose();
+    }
+    assert.equal(new Set(signatures).size, 4);
+    const v = JSON.parse(JSON.stringify(view));
+    v.intruders = { testCarno: { uid: 'testCarno', type: 'metagorger', room: v.players[0].room, hits: 0 } };
+    scene.updateIntruders(v, INTRUDER_NAMES);
+    const old = scene.intr.testCarno, oldRoot = old.root, oldMeshes = oldRoot.getChildMeshes();
+    old.root.position.set(4, 1, 6); old.root.rotation.y = 0.7;
+    old.route = ['in flight']; old.faceY = 0.7;
+    v.intruders.testCarno.type = 'shambler';
+    scene.updateIntruders(v, INTRUDER_NAMES);
+    const n = scene.intr.testCarno;
+    assert.notEqual(n.root, oldRoot); assert.ok(oldRoot.isDisposed());
+    assert.deepEqual([n.root.position.x, n.root.position.y, n.root.position.z], [4, 1, 6]);
+    assert.equal(n.root.rotation.y, 0.7); assert.deepEqual(n.route, ['in flight']);
+    assert.ok(!n.label.isPickable);
+    assert.ok(n.root.getChildMeshes().some(m => m.isPickable && m.metadata?.intruder === 'testCarno'));
+    let shadows = scene.shadows.getShadowMap().renderList || [];
+    assert.ok(oldMeshes.every(m => !shadows.includes(m)));
+    const newMeshes = n.root.getChildMeshes();
+    assert.ok(newMeshes.some(m => shadows.includes(m)));
+    v.intruders = {}; scene.updateIntruders(v, INTRUDER_NAMES);
+    shadows = scene.shadows.getShadowMap().renderList || [];
+    assert.ok(n.root.isDisposed()); assert.ok(newMeshes.every(m => !shadows.includes(m)));
+});
+
+test('VOID scene: five distinguishable procedural placeholders build and dispose', async () => {
+    const { buildIntruder } = await import('../client/characters.js');
+    const signatures = [];
+    for (const type of ['lurker', 'whisperer', 'creeper', 'despoiler', 'lair']) {
+        const figure = buildIntruder(scene.scene, type);
+        signatures.push(JSON.stringify(geometrySignature({ root: figure })));
+        assert.ok(figure.getChildMeshes().length > 5, type);
+        figure.dispose(); assert.ok(figure.isDisposed());
+    }
+    assert.equal(new Set(signatures).size, 5);
+});
+
+test('CHY scene: distinct placeholders and finite, replaceable room colony markers', async () => {
+    const { buildIntruder } = await import('../client/characters.js');
+    const sigs = [];
+    for (const type of ['stinkhorn', 'deathcap', 'chyQueen']) {
+        const fig=buildIntruder(scene.scene,type); sigs.push(JSON.stringify(geometrySignature({root:fig})));
+        assert.ok(fig.getChildMeshes().length>5); fig.dispose();
+    }
+    assert.equal(new Set(sigs).size,3);
+    const node=scene.roomNodes['002'];
+    scene.syncChyMarker(node,{chySpore:true}); const spore=node.chyRoot;
+    assert.ok(spore.getChildMeshes().length); scene.syncChyMarker(node,{chySpore:true}); assert.equal(node.chyRoot,spore);
+    scene.syncChyMarker(node,{chyGerm:{color:'purple',level:3}}); assert.ok(spore.isDisposed()); assert.equal(node.chyRoot.getChildMeshes().length,4);
+    const growth=node.chyRoot; scene.syncChyMarker(node,{chyMycelium:true}); assert.ok(growth.isDisposed()); assert.equal(node.chyRoot.getChildMeshes().length,8);
+    scene.syncChyMarker(node,{}); assert.equal(node.chyRoot,null);
+});
+
+test('DLC scene: original user model replaces its fallback without losing picking or shadow lifecycle', async () => {
+    const { MODEL_SOURCES, loadOriginalModel }=await import('../client/intruder-models.js');
+    // Keep the scene suite below Node's heap limit: real user OBJs are tested separately.
+    sandbox.fetch=async url=>({ok:true,text:async()=> 'v 0 0 0\nv 1 1 0\nv 0 1 1\nvt 0 0\nvt 1 0\nvt 0 1\nf 1/1 2/2 3/3\n'});
+    const v=JSON.parse(JSON.stringify(view));v.intruders={orig:{uid:'orig',type:'metagorger',room:v.players[0].room,hits:0}};
+    scene.updateIntruders(v,INTRUDER_NAMES);
+    const fallback=scene.intr.orig.root.getChildMeshes().find(m=>m!==scene.intr.orig.label);
+    await loadOriginalModel('metagorger');
+    // The replacement callback is queued from the same promise as the await continuation.
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const loaded=scene.intr.orig.root.getChildMeshes().find(m=>m.name==='original_metagorger');
+    assert.ok(loaded);assert.ok(fallback.isDisposed());assert.equal(loaded.metadata.intruder,'orig');assert.equal(loaded.isPickable,true);
+    assert.ok((scene.shadows.getShadowMap().renderList||[]).includes(loaded));
+    v.intruders={};scene.updateIntruders(v,INTRUDER_NAMES);assert.ok(loaded.isDisposed());
+    delete sandbox.fetch;
+});

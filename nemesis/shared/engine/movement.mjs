@@ -1,10 +1,14 @@
+import { transmitChySpore, placeMycelium, hasChyWeakness, moveLargeChytrid } from './chytrids.mjs';
+import { bagTokenLabel } from '../bag-tokens.mjs';
+import { hasCarnomorphAdaptation } from './carnomorphs.mjs';
 // movement.mjs — Move / Careful Move, exploration, noise rolls and encounters.
 
 import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
     NOISE_DIE, NOISE_DIE_SAFE, roll, fmtRoll, needDice, fx, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
-    clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt, hasWeak, canDestroyDoor, inCombat } from './core.mjs';
-import { hyperAttackStep } from './intruders.mjs';
+    clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt, hasWeak, canDestroyDoor, inCombat, isContam } from './core.mjs';
+import { hyperAttackStep, ignoresIntruderDoor } from './intruders.mjs';
 import { applyHitsNoRoll, resolveFollows } from './combat.mjs';
+import { spawnVoid } from './voidseeders.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { INTRUDER_NAMES, INTRUDER_TOKENS } from '../data/cards.mjs';
 
@@ -62,7 +66,7 @@ OPS['move.go'] = (state, step) => {
     p.room = step.dest;
     p.movedThisRound = true;
     log(state, pname(p) + ' переходит: ' + roomName(state, from) + ' → ' + roomName(state, step.dest) + '.', 'action');
-    if (door && door.door === 'closed') { door.door = 'open'; log(state, pname(p) + ' открывает дверь ' + door.id + '.', 'action'); }
+    if (door && door.door === 'closed' && !step.preserveDoor) { door.door = 'open'; log(state, pname(p) + ' открывает дверь ' + door.id + '.', 'action'); }
     resolveFollows(state);   // "Blood Sense": the intruder follows the character to the destination
     if (step.companion !== undefined) {
         const c = player(state, step.companion);
@@ -83,12 +87,18 @@ OPS['explore'] = (state, step) => {
     rs.token = token;
     const p = step.player !== undefined ? player(state, step.player) : null;
     log(state, '🔎 Разведана комната ' + step.room + ': ' + ROOM_TILES[rs.tile].name + '.', 'event');
+    if (state.enemySet === 'chytrids' && token) {
+        const n = state.secret.chyExploreNumbers[step.room];
+        if (n != null) { log(state, 'Жетон исследования хитридов: коридор ' + n + '.', 'event'); transmitChySpore(state, step.room, n); }
+    }
+    if (rs.tile === 'nest' && state.enemySet === 'chytrids') placeMycelium(state, step.room);
     if (rs.tile === 'nest' && !state.nestDiscovered) {
         state.nestDiscovered = true;
         if (p) { log(state, pname(p) + ' первым находит Гнездо: +1 знание.', 'good'); gainKnowledge(state, p, 1); }
     }
     if (step.ignoreToken && token) log(state, 'Жетон исследования проигнорирован (обход объекта).', 'minor');
     switch (step.ignoreToken ? null : token) {
+        case 'lair': if (state.enemySet === 'voidseeders') spawnVoid(state, 'lair', step.room); break;
         case 'malfunction': placeMalfunction(state, step.room, 'жетон разведки'); break;
         case 'fire': placeFire(state, step.room, 'жетон разведки'); break;
         case 'corpse': rs.objects.push({ type: 'corpse' }); log(state, 'В комнате найден человеческий труп.', 'event'); break;
@@ -129,8 +139,14 @@ OPS['move.afterExplore'] = (state, step) => {
 };
 OPS['noise.reroll'] = (state, step) => {
     const p = player(state, step.player);
-    if (step.answer !== 'yes') { next(state, { op: 'noise.roll', player: p.id, room: step.room, rerolled: true, forced: step.first, then: step.then }); return; }
-    payCost(state, p, 1, { op: 'noise.roll', player: p.id, room: step.room, rerolled: true, then: step.then }, 'Сканер движения: сброс карты');
+    if (step.answer !== 'yes') { next(state, { op: 'noise.roll', player: p.id, room: step.room, rerolled: true, forced: step.first, mutationOffered: step.mutationOffered, chyOffered: step.chyOffered, allowCombat: step.allowCombat, then: step.then }); return; }
+    payCost(state, p, 1, { op: 'noise.roll', player: p.id, room: step.room, rerolled: true, mutationOffered: step.mutationOffered, chyOffered: step.chyOffered, allowCombat: step.allowCombat, then: step.then }, 'Сканер движения: сброс карты');
+};
+OPS['noise.chyReroll'] = (state, step) => {
+    const chosen = { ...step.noise, op: 'noise.roll', answer: undefined };
+    if (step.answer === 'yes') { delete chosen.forced; delete chosen.mutationForced; chosen.rerolled = true; }
+    else chosen.forced = step.first;
+    next(state, chosen);
 };
 OPS['noise.place'] = (state, step) => {
     const p = player(state, step.player);
@@ -155,21 +171,33 @@ OPS['noise.roll'] = (state, step) => {
     const p = player(state, step.player);
     if (!p || p.status !== 'active' || p.pod) return;
     const roomId = step.room || p.room;
-    if (inCombat(state, p)) {
+    if (inCombat(state, p) && !step.allowCombat) {
         log(state, pname(p) + ' в бою — бросок шума не делается.', 'minor');
         return;
     }
-    if (needDice(state, step, 'noise', p.id, 'Бросок шума — ' + (step.laika ? 'Лайка, ' : '') + roomName(state, roomId), { room: roomId })) return;
+    if (step.mutationForced === undefined && step.forced === undefined && needDice(state, step, 'noise', p.id, 'Бросок шума — ' + (step.laika ? 'Лайка, ' : '') + roomName(state, roomId), { room: roomId })) return;
     const noiseDie = state.noiseVariant ? NOISE_DIE_SAFE : NOISE_DIE;
-    const r = step.forced !== undefined ? step.forced : roll(state, noiseDie);
+    const r = step.mutationForced !== undefined ? step.mutationForced : step.forced !== undefined ? step.forced : roll(state, noiseDie);
     log(state, '🎲 Шум (' + (step.laika ? '🐕 Лайка' : pname(p)) + ', ' + roomName(state, roomId) + '): ' + fmtRoll(r) + '.', 'noise');
+    if (state.enemySet === 'carnomorphs' && !step.laika && !step.mutationOffered && p.mutationCard === 'senses' && p.hand.some(isContam)) {
+        ask(state, { kind: 'choice', secret: !p.mutationRevealed, reaction: true, player: p.id,
+            title: 'Использовать мутацию после броска шума?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
+            { op: 'mutation.offerSenses', player: p.id, first: r, noise: { ...step, room: roomId, mutationOffered: true } });
+        return;
+    }
+    if (!step.laika && state.enemySet === 'chytrids' && room(state, roomId).chyMycelium && hasChyWeakness(state, 'slowReaction') && !step.chyOffered) {
+        ask(state, { kind: 'choice', player: p.id, title: 'Медленная реакция: перебросить кубик шума? Второй результат окончателен.',
+            options: [{ id: 'yes', label: 'Перебросить' }, { id: 'no', label: 'Оставить' }] },
+            { op: 'noise.chyReroll', first: r, noise: { ...step, room: roomId, chyOffered: true } });
+        return;
+    }
     // Motion Scanner (printed): "Whenever you make a Noise roll you may discard 1 card to reroll that
     // roll. You must accept the second result."
     const scanner = !step.laika && p.items.find(i => i.item === 'motionScanner');
     if (scanner && !step.rerolled && p.hand.length && r !== 'silence') {
         ask(state, { kind: 'choice', player: p.id, title: 'Сканер движения: сбросить 1 карту и перебросить бросок шума? (второй результат обязателен)',
             options: [{ id: 'yes', label: 'Перебросить' }, { id: 'no', label: 'Оставить' }] },
-            { op: 'noise.reroll', player: p.id, room: roomId, first: r, then: step.then });
+            { op: 'noise.reroll', player: p.id, room: roomId, first: r, mutationOffered: step.mutationOffered, chyOffered: step.chyOffered, allowCombat: step.allowCombat, then: step.then });
         return;
     }
     if (r === 'silence') return;
@@ -184,7 +212,7 @@ OPS['noise.roll'] = (state, step) => {
     if (r === 'danger') {
         const holder = playersInRoom(state, roomId).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
         const incoming = [];
-        for (const e of state.ship.rooms[roomId].exits) if (!playersInRoom(state, e.to).length && state.ship.corridors[e.corridor].door !== 'closed') incoming.push(...intrudersIn(state, e.to).map(i => i.uid));
+        for (const e of state.ship.rooms[roomId].exits) if (!playersInRoom(state, e.to).length) incoming.push(...intrudersIn(state, e.to).filter(it => !(state.enemySet === 'voidseeders' && it.type === 'lair') && (state.ship.corridors[e.corridor].door !== 'closed' || ignoresIntruderDoor(state, it))).map(i => i.uid));
         if (holder && incoming.length && !step.noPredict) {
             const card = holder.hand.find(c => (cardDef(state, c) || {}).effect === 'fdPredictable');
             ask(state, { kind: 'choice', player: holder.id, title: 'Опасность: чужие врываются. Сыграть «Предсказуемые движения» (не входят, каждый получает 1 ранение)?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
@@ -194,13 +222,15 @@ OPS['noise.roll'] = (state, step) => {
         let moved = 0;
         for (const e of state.ship.rooms[roomId].exits) {
             for (const it of intrudersIn(state, e.to)) {
+                if (state.enemySet === 'voidseeders' && it.type === 'lair') continue;
                 if (playersInRoom(state, e.to).length) continue;
                 const c = state.ship.corridors[e.corridor];
-                if (c.door === 'closed') {
+                if (c.door === 'closed' && !ignoresIntruderDoor(state, it)) {
                     if (canDestroyDoor(state, it)) { c.door = 'destroyed'; moved++; log(state, 'Чужой выламывает дверь ' + c.id + '.', 'event'); }
                     else log(state, INTRUDER_NAMES[it.type] + ' не может выломать закрытую дверь ' + c.id + ' (повадки движения).', 'event');
                     continue;
                 }
+                if (state.enemySet === 'chytrids' && ['deathcap','chyQueen'].includes(it.type)) { if (moveLargeChytrid(state, it, roomId)) moved++; continue; }
                 it.room = roomId; moved++;
                 log(state, INTRUDER_NAMES[it.type] + ' врывается из ' + roomName(state, e.to) + '!', 'combat');
                 const h = hyperAttackStep(state, it); if (h) next(state, h);
@@ -231,8 +261,9 @@ OPS['predict.danger'] = (state, step) => {
         log(state, pname(p) + ' играет «Предсказуемые движения»: чужие не входят.', 'good');
         return;
     }
-    state.pendingRoll = { die: 'noise', value: 'danger' };
-    next(state, step.then);
+    // The result has already been rolled; re-queue it explicitly because pending rolls are
+    // cleared by the interpreter between operations. Do not ask for or roll another die.
+    next(state, { ...step.then, forced: 'danger', mutationForced: undefined, mutationOffered: true });
 };
 OPS['encounter'] = (state, step) => {
     const roomId = step.room;
@@ -251,6 +282,18 @@ OPS['encounter'] = (state, step) => {
         return;
     }
     const token = step.token;
+    if (state.enemySet === 'carnomorphs') {
+        if (token && !step.noFE && fieldExpAsk(state, token, { ...step, op: 'encounter' })) return;
+        next(state, { ...step, op: 'carnomorph.encounter' }); return;
+    }
+    if (state.enemySet === 'voidseeders') {
+        if (token && !step.noFE && fieldExpAsk(state, token, { ...step, op: 'encounter' })) return;
+        next(state, { ...step, op: 'void.encounter' }); return;
+    }
+    if (state.enemySet === 'chytrids') {
+        if (token && !step.noFE && fieldExpAsk(state, token, { ...step, op: 'encounter' })) return;
+        next(state, { ...step, op: 'chy.encounter' }); return;
+    }
     if (!token) { log(state, 'Мешок пуст — встречи нет.', 'minor'); return; }
     if (state.bagLast) state.bagLast.effect = token === 'blank' ? 'Пустой жетон — чужой не появляется.' : 'Появляется «' + INTRUDER_NAMES[token] + '».';
     log(state, '👁 Встреча: из мешка — ' + INTRUDER_NAMES[token] + '.', 'combat');
@@ -301,7 +344,7 @@ export function fieldExpAsk(state, token, resume) {
     const x = state.players.find(o => o.status === 'active' && o.tissue > 0 && o.hand.some(c => (cardDef(state, c) || {}).reactionToo === 'fieldExpReaction'));
     if (!x) return false;
     const card = x.hand.find(c => (cardDef(state, c) || {}).reactionToo === 'fieldExpReaction');
-    ask(state, { kind: 'choice', reaction: true, player: x.id, title: 'Из мешка вытянут жетон «' + INTRUDER_NAMES[token] + '». Сыграть «Полевой опыт» (−1 образец ткани): вернуть жетон и вытянуть другой?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
+    ask(state, { kind: 'choice', reaction: true, player: x.id, title: 'Из мешка вытянут жетон «' + bagTokenLabel(token) + '». Сыграть «Полевой опыт» (−1 образец ткани): вернуть жетон и вытянуть другой?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
         { op: 'fieldExp.answer', player: x.id, card, token, resume });
     return true;
 }
@@ -311,7 +354,7 @@ OPS['fieldExp.answer'] = (state, step) => {
         discardCard(state, x, step.card); x.tissue--;
         state.bag.push(step.token);
         const t = drawBagToken(state);
-        log(state, '🧪 ' + pname(x) + ' играет «Полевой опыт»: жетон «' + INTRUDER_NAMES[step.token] + '» возвращён в мешок, новый жетон — ' + (t ? INTRUDER_NAMES[t] : 'нет') + '.', 'good');
+        log(state, '🧪 ' + pname(x) + ' играет «Полевой опыт»: жетон «' + bagTokenLabel(step.token) + '» возвращён в мешок, новый жетон — ' + (t ? bagTokenLabel(t) : 'нет') + '.', 'good');
         next(state, { ...step.resume, token: t, noFE: false, answer: undefined });
         return;
     }

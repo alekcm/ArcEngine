@@ -1,3 +1,4 @@
+import { giveChySpore } from './chytrids.mjs';
 // core.mjs — the rules interpreter. The whole game is a plain JSON object; every procedure is a
 // list of steps in state.queue, executed by run(). A step that needs a decision calls ask():
 // the prompt is stored in the state and execution stops until answer() is called with the
@@ -327,6 +328,7 @@ export function infectLarva(state, p, quiet) {
         if (!quiet) log(state, pname(p) + ': «Синтетик» — личинка не может заразить Андроида.', 'minor');
         return false;
     }
+    if (state.enemySet === 'chytrids') return giveChySpore(state, p);
     if (p.larva) { if (!quiet) log(state, pname(p) + ' уже носит личинку — вторая не добавляется.', 'minor'); return false; }
     p.larva = true;
     log(state, pname(p) + ' заражён личинкой!', 'bad');
@@ -598,11 +600,15 @@ export function destroyShip(state, why) {
 // ---------------------------------------------------------------------------------------------
 // Intruders
 // ---------------------------------------------------------------------------------------------
+// Redux effects explicitly naming an Adult map to a Shambler in Carnomorph games.
+export function isAdultEquivalent(state, it) { return !!it && it.type === (state.enemySet === 'carnomorphs' ? 'shambler' : state.enemySet === 'voidseeders' ? 'whisperer' : state.enemySet === 'chytrids' ? 'stinkhorn' : 'adult'); }
+
 export function spawnIntruder(state, type, roomId) {
     const onBoard = Object.values(state.intruders).filter(i => i.type === type).length + (type === 'larva' ? state.players.filter(p => p.larva).length : 0);
-    const limit = { larva: 8, adult: 12, drone: 12, queen: 1 }[type];
+    const limit = { larva: 8, adult: 12, drone: 12, queen: 1, metagorger: 8, shambler: 8, breeder: 3, butcher: 1, lurker: 6, whisperer: 4, creeper: 1, despoiler: 1, lair: 3, stinkhorn: 8, deathcap: 3, chyQueen: 1 }[type];
+    if (limit === undefined) throw new RangeError('Unknown intruder type: ' + type);
     if (onBoard >= limit) { log(state, 'Миниатюры «' + INTRUDER_NAMES[type] + '» закончились — чужой не появляется.', 'minor'); return null; }
-    if (type === 'queen' && state.queenDead) return null;
+    if ((type === 'queen' && state.queenDead) || (type === 'butcher' && state.carnomorphButcherDead) || (type === 'despoiler' && state.voidDespoilerDead) || (type === 'chyQueen' && state.chyQueenDead)) return null;
     const uid = 'i' + (++state.intruderSeq);
     state.intruders[uid] = { uid, type, room: roomId, hits: 0 };
     fx(state, { type: 'spawn', intruder: type, room: roomId });
@@ -618,7 +624,7 @@ export function removeIntruder(state, uid, leaveCarcass) {
 export function intruderLabel(state, it) {
     return INTRUDER_NAMES[it.type] + (it.type === 'queen' ? ' (ранений ' + state.queenHits + ')' : it.hits ? ' (ранений ' + it.hits + ')' : '');
 }
-export const INTRUDER_RANK = { queen: 0, drone: 1, adult: 2, larva: 3 };
+export const INTRUDER_RANK = { queen: 0, drone: 1, adult: 2, larva: 3, butcher: 0, breeder: 1, shambler: 2, metagorger: 3, chyQueen: 0, deathcap: 1, stinkhorn: 2 };
 /** Is the given intruder Adaptation currently active? */
 export function hasAdapt(state, key) { return !!(state.adaptations && state.adaptations.includes(key)); }
 /** Is the given intruder Weakness already revealed (weakness variant)? Hidden ones stay inactive. */
@@ -637,6 +643,10 @@ export function roll(state, die) {
     state.rollSeq = (state.rollSeq || 0) + 1;
     state.lastRoll = { n: state.rollSeq, die: id, value: v, player: state.pendingRollPlayer == null ? null : state.pendingRollPlayer };
     return v;
+}
+/** A growth is an attack target, but is not an Intruder and does not put a player in combat. */
+export function hasAttackTarget(state, roomId) {
+    return intrudersIn(state, roomId).length > 0 || (state.enemySet === 'chytrids' && !!room(state, roomId).chyGerm);
 }
 /** Insert an interactive dice prompt before `step` (which is re-queued afterwards).
  *  Returns true when the caller must return and wait; false when the roll is already pending. */
@@ -676,6 +686,22 @@ export const BAG_TOKEN_MEANING_DEAD_QUEEN = {
     queen: 'Королева мертва: добавить в мешок 1 жетон дрона и убрать жетон Королевы из игры.',
 };
 export function bagTokenMeaning(state, token) {
+    if (state.enemySet === 'voidseeders') {
+        if (token === 'blank') return 'Пустой жетон кошмаров: эффект зависит от причины вытягивания.';
+        if (token && token.madness !== undefined) return 'Жетон безумия персонажа: эффект зависит от причины вытягивания.';
+        if (token && token.value !== undefined) return 'Жетон кошмара со значением ' + token.value + ': эффект зависит от причины вытягивания.';
+        return '';
+    }
+    if (state.enemySet === 'chytrids') {
+        if (token === 'blank') return 'Пустой жетон хитридов: эффект зависит от причины вытягивания.';
+        if (token && typeof token === 'object') return 'Жетон хитрида со значением ' + token.value + ': эффект зависит от причины вытягивания.';
+        return '';
+    }
+    if (state.enemySet === 'carnomorphs') {
+        if (token === 'blank') return 'Пустой жетон карноморфов: эффект зависит от причины вытягивания.';
+        if (token && typeof token === 'object') return 'Жетон карноморфа со значением ' + token.value + ': эффект зависит от причины вытягивания.';
+        return '';
+    }
     const table = state.queenDead ? BAG_TOKEN_MEANING_DEAD_QUEEN : BAG_TOKEN_MEANING;
     return table[token] || '';
 }

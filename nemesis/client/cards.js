@@ -68,10 +68,21 @@ export function itemArtHtml(inst) {
 /** Event cards with illustrations in client/art/events/<eventId>.jpg. */
 const ART_EVENTS = ['breakingIn', 'bulkheadsOpen', 'damage', 'damagingFire', 'eggProtection', 'podEjection', 'fireWave', 'flammable', 'generatorOverheats', 'hatching',
     'leavingShell', 'lifeSupport', 'lurking', 'malfunction', 'onTheHunt', 'protectAndServe', 'scentOfPrey', 'shortCircuit', 'systemFailure', 'queenAwakens'];
-export function eventArt(id) { return ART_EVENTS.includes(id) ? 'art/events/' + id + '.jpg' : null; }
+export function eventArt(id) {
+    if (/^chyEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/event/' + id + '.jpg';
+    if (/^voidEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/voidseeders/event/' + id + '.jpg';
+    if (/^carnoEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/event/' + id + '.jpg';
+    return ART_EVENTS.includes(id) ? 'art/events/' + id + '.jpg' : null;
+}
 /** Attack cards share one illustration per name: claws1..3 -> claws, fury1/2 -> fury, scratch1..4 -> scratch, tail1/2 -> tail. */
 const ART_ATTACK = ['bite', 'bloodSense', 'claws', 'fury', 'infecting', 'miss', 'scratch', 'tail'];
-export function attackArt(id) { const k = String(id).replace(/\d+$/, ''); return ART_ATTACK.includes(k) ? 'art/attack/' + k + '.jpg' : null; }
+export function attackArt(id) {
+    if (/^chyAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/attack/' + id + '.jpg';
+    if (/^voidAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/voidseeders/attack/' + id + '.jpg';
+    if (/^carnoAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/attack/' + id + '.jpg';
+    const k = String(id).replace(/\d+$/, ''); return ART_ATTACK.includes(k) ? 'art/attack/' + k + '.jpg' : null;
+}
+export function panicArt(id) { return /^voidPanic(?:[1-9]|1[0-9]|20)$/.test(id) ? 'art/voidseeders/panic/' + id + '.jpg' : null; }
 /** Shared illustrations: every Queen card uses one art, Computer cards one (Lock-down its red variant), objectives one per kind. */
 export function queenArt() { return 'art/misc/queen.jpg'; }
 export function computerArt(id) { return id === 'lockdown' ? 'art/misc/lockdown.jpg' : 'art/misc/computer.jpg'; }
