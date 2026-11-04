@@ -117,11 +117,11 @@ const FS_SHAPES = {
     }),
     // --- the assets of a player -----------------------------------------------
     'asset.materiel': () => ({
-        color: '#d9c48a',
+        // The materiel a world yields: a green gear.
+        color: '#7fce6a',
         parts: [
-            { t: 'p', pts: [[16, 4], [27, 10], [27, 22], [16, 28], [5, 22], [5, 10]], fill: 'main' },
-            { t: 'p', pts: [[16, 4], [27, 10], [16, 16], [5, 10]], fill: 'light' },
-            { t: 'p', pts: [[16, 16], [27, 10], [27, 22], [16, 28]], fill: 'dark' },
+            { t: 'p', pts: ringPolygon(16, 16, 13.5, 9.5, 8), fill: 'main' },
+            { t: 'c', x: 16, y: 16, r: 4.6, fill: 'dark' },
         ],
     }),
     'asset.cache': () => ({
@@ -149,6 +149,20 @@ const FS_SHAPES = {
     'mark.health': () => ({
         color: '#c9563f',
         parts: [{ t: 'p', pts: [[16, 27], [4, 14], [8, 6], [16, 11], [24, 6], [28, 14]] }],
+    }),
+    // A skull: the unit capacity printed on a world.
+    'mark.skull': () => ({
+        color: '#e8e2d2',
+        parts: [
+            { t: 'c', x: 16, y: 13.5, r: 8, fill: 'main' },
+            { t: 'p', pts: [[9.5, 17.5], [22.5, 17.5], [21, 26.5], [11, 26.5]], fill: 'main' },
+            { t: 'c', x: 12.4, y: 13.5, r: 2.5, fill: 'dark' },
+            { t: 'c', x: 19.6, y: 13.5, r: 2.5, fill: 'dark' },
+            { t: 'p', pts: [[16, 17], [14.5, 20.2], [17.5, 20.2]], fill: 'dark' },
+            { t: 'l', pts: [[13, 22.5], [13, 26]], width: 1.3 },
+            { t: 'l', pts: [[16, 22.5], [16, 26.5]], width: 1.3 },
+            { t: 'l', pts: [[19, 22.5], [19, 26]], width: 1.3 },
+        ],
     }),
 
     // --- the marks of the board ------------------------------------------------
