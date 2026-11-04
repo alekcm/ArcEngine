@@ -452,11 +452,12 @@ const FSUI = {
             }
             row.append(totals);
             // Who hurts whom at the current values: the damage this side
-            // deals to its opponent right now.
+            // deals to its opponent, and the damage it suffers itself.
             const deal = this.el('div', 'fs-battle-deal');
             deal.append(this.iconEl('mark.damage', 'fs-battle-deal-icon'));
-            deal.append(this.el('span', '', 'Урон по сопернику: '));
-            deal.append(this.el('b', '', String(side.takes || 0)));
+            deal.append(this.el('span', '', 'сопернику '));
+            deal.append(this.el('b', '', String(side.deals || 0)));
+            deal.append(this.el('span', 'fs-battle-deal-take', 'получит ' + String(side.takes || 0)));
             row.append(deal);
             card.append(row);
         }

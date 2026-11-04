@@ -1630,7 +1630,7 @@ const FSView = {
                 ? FS_RULES.reinforceUnitDef(sidePlayer.faction, area.world ? 'ground' : 'ship') : null;
             const reinModel = reinDef
                 ? this.factionModel(view, sidePlayer.faction, reinDef.type, reinDef.id, null) : null;
-            const whiteMat = view.material('rein-white', '#ffffff', { emissive: true });
+            const whiteMat = view.material('rein-white', '#f4f1e8');
             for (let i = 0; i < reinforce; i++) {
                 const row = Math.floor(i / 8);
                 const inRow = i % 8;
