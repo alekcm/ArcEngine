@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.location.medical_room",
+  "name": "Медпункт",
+  "tags": ["cat:medical"],
+  "minW": 5, "minL": 5, "maxW": 12, "maxL": 12,
+  "indoor": true,
+  "floors": "any",
+  "groupKey": "",
+  "wallStyle": "", "floorMaterial": "",
+  "slots": [
+    { "id": "bed",   "filterTags": ["bed"],         "required": false, "countMin": 1, "countMax": 1, "anchor": "Wall",   "loadoutCategory": "", "probability": 1.0 },
+    { "id": "table", "filterTags": ["cat:generic"], "required": false, "countMin": 1, "countMax": 1, "anchor": "Center", "loadoutCategory": "", "probability": 0.7 }
+  ],
+  "decor": { "density": 0.06, "filterTags": ["cat:decor"] }
+}

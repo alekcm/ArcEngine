@@ -1,0 +1,40 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.location.medical_room_modern",
+  "name": "Медпункт (современный)",
+  "tags": [ "medbay", "cat:medical", "modern" ],
+  "minW": 6, "minL": 5, "maxW": 12, "maxL": 12,
+  "indoor": true,
+  "floors": "any",
+  "weight": 1.5,
+
+  "slots": [
+    {
+      "id": "med_bed",
+      "filterTags": [ "cat:bed", "style:modern" ],
+      "required": true,
+      "countMin": 2, "countMax": 3,
+      "anchor": "Wall"
+    },
+    {
+      "id": "blood_packs",
+      "filterTags": [ "cat:storage", "style:modern" ],
+      "required": true,
+      "countMin": 2, "countMax": 4,
+      "anchor": "Surface"
+    },
+    {
+      "id": "cabinet",
+      "filterTags": [ "cat:cabinet", "style:modern" ],
+      "required": true,
+      "countMin": 1, "countMax": 2,
+      "anchor": "Corner"
+    }
+  ],
+
+  "decor": {
+    "density": 0.06,
+    "filterTags": [ "cat:decor", "style:modern" ]
+  }
+}

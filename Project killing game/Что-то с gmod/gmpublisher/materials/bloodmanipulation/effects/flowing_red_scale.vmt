@@ -1,0 +1,9 @@
+"Sprite"
+{
+	"$basetexture" "bloodmanipulation/effects/flowing_red_scale"
+	"$spriteorientation" "vp_parallel"
+	"$spriteorigin" "[ 0.50 0.50 ]"
+	"$nocull" "1"
+	"$vertexcolor" "1"
+
+}

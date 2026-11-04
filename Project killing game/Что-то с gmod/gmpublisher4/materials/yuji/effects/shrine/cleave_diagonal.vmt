@@ -1,0 +1,34 @@
+"Sprite"
+{
+
+	"$basetexture" "yuji/effects/shrine/cleave_diagonal"
+	"$spriteorientation" "vp_parallel"
+	"$spriteorigin" "[ 0.50 0.50 ]"
+	"$translucent" "1"
+	"$vertexcolor" "1"
+	"$vertexalpha" "1"
+
+	"Proxies"
+
+	{
+
+	"UniformNoise"
+		{
+
+		"minVal" "1"
+		"maxVal" "4"
+		"resultvar" "$frame"
+
+		}
+
+
+		"AnimatedTexture"
+		{
+
+		"animatedTextureVar" "$basetexture"
+		"animatedTextureFrameNumVar" "$frame"
+		"animatedTextureFrameRate" "20"
+
+		}
+	}
+}

@@ -1,0 +1,69 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.location.personal_room",
+  "name": "Личная комната",
+  "tags": ["sys:personal_room", "cat:bedroom"],
+  "minW": 5,
+  "minL": 5,
+  "maxW": 8,
+  "maxL": 8,
+  "indoor": true,
+  "floors": "any",
+  "groupKey": "dorm_wing",
+  "wallStyle": "",
+  "floorMaterial": "",
+  "slots": [
+    {
+      "id": "bed",
+      "filterTags": ["loadout:bed"],
+      "required": true,
+      "countMin": 1,
+      "countMax": 1,
+      "anchor": "Wall",
+      "loadoutCategory": "bed",
+      "probability": 1.0
+    },
+    {
+      "id": "storage",
+      "filterTags": ["loadout:storage"],
+      "required": true,
+      "countMin": 1,
+      "countMax": 1,
+      "anchor": "Wall",
+      "loadoutCategory": "storage",
+      "probability": 1.0
+    },
+    {
+      "id": "personal",
+      "filterTags": ["loadout:personal"],
+      "required": false,
+      "countMin": 1,
+      "countMax": 2,
+      "anchor": "Free",
+      "loadoutCategory": "personal",
+      "probability": 0.7
+    },
+    {
+      "id": "nameplate",
+      "filterTags": ["sys:name_plate"],
+      "required": false,
+      "countMin": 1,
+      "countMax": 1,
+      "anchor": "NearDoor",
+      "loadoutCategory": "",
+      "probability": 1.0
+    },
+    {
+      "id": "decor",
+      "filterTags": ["cat:decor"],
+      "required": false,
+      "countMin": 0,
+      "countMax": 2,
+      "anchor": "Free",
+      "loadoutCategory": "",
+      "probability": 0.5
+    }
+  ],
+  "decor": { "density": 0.15, "filterTags": ["cat:decor"] }
+}

@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.stamp.table_dining",
+  "name": "Стол",
+  "author": "core",
+  "tags": ["table", "dining_set", "cat:dining", "cat:generic"],
+  "footprintW": 2,
+  "footprintL": 2,
+  "floorSpan": 1,
+  "anchor": "Center",
+  "anchorEdge": "",
+  "weight": 1.0,
+  "clearance": [],
+  "content": {
+    "placedObjects": [
+      { "definitionId": "3", "useGridPlacement": true, "cellX": 0, "cellY": 0, "rotationSteps": 0, "rotationY": 0, "baseY": 0 }
+    ],
+    "walls": [],
+    "pathStrokes": []
+  },
+  "sockets": [
+    {
+      "id": "table_center",
+      "kind": "Surface",
+      "cells": [ { "x": 0, "y": 0, "w": 1, "l": 1 } ],
+      "filterTags": ["size:small", "cat:decor"],
+      "required": false,
+      "countMin": 0,
+      "countMax": 1,
+      "probability": 0.5
+    }
+  ]
+}

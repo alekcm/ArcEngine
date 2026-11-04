@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.stamp.sink_basic",
+  "name": "Раковина",
+  "author": "core",
+  "tags": ["sink", "cat:kitchen"],
+  "footprintW": 1,
+  "footprintL": 1,
+  "floorSpan": 1,
+  "anchor": "Wall",
+  "anchorEdge": "south",
+  "weight": 1.0,
+  "clearance": [ { "x": 0, "y": -1, "w": 1, "l": 1 } ],
+  "content": {
+    "placedObjects": [
+      { "definitionId": "104", "useGridPlacement": true, "cellX": 0, "cellY": 0, "rotationSteps": 0, "rotationY": 0, "baseY": 0 }
+    ],
+    "walls": [],
+    "pathStrokes": []
+  },
+  "sockets": []
+}

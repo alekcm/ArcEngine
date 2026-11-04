@@ -1,0 +1,68 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.stamp.counter.object_countermodgenwoodenlow_01",
+  "name": "object_countermodgenwoodenlow_01",
+  "author": "catalog_ai",
+  "tags": [
+    "cat:kitchen",
+    "cat:counter",
+    "style:basics"
+  ],
+  "footprintW": 1,
+  "footprintL": 1,
+  "floorSpan": 1,
+  "anchor": "Wall",
+  "anchorEdge": "",
+  "weight": 1.0,
+  "clearance": [],
+  "content": {
+    "placedObjects": [
+      {
+        "definitionId": "5761",
+        "useGridPlacement": true,
+        "cellX": 0,
+        "cellY": 0,
+        "rotationSteps": 0,
+        "rotationY": 0.0,
+        "baseY": 0.0,
+        "localPosition": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        }
+      }
+    ],
+    "walls": [],
+    "pathStrokes": []
+  },
+  "sockets": [
+    {
+      "id": "top",
+      "kind": "Surface",
+      "area": {
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "l": 1
+      },
+      "cells": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "l": 1
+        }
+      ],
+      "hostObjectIndex": 0,
+      "filterTags": [
+        "cat:decor",
+        "cat:clutter"
+      ],
+      "required": false,
+      "countMin": 0,
+      "countMax": 2,
+      "probability": 0.5
+    }
+  ]
+}

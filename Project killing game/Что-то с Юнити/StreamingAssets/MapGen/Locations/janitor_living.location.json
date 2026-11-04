@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.location.janitor_living",
+  "name": "Жилая комната уборщиков",
+  "tags": ["cat:living"],
+  "minW": 4, "minL": 4, "maxW": 12, "maxL": 12,
+  "indoor": true,
+  "floors": "any",
+  "groupKey": "",
+  "wallStyle": "", "floorMaterial": "",
+  "slots": [
+    { "id": "bed",   "filterTags": ["bed"],         "required": false, "countMin": 1, "countMax": 1, "anchor": "Wall",   "loadoutCategory": "", "probability": 1.0 },
+    { "id": "table", "filterTags": ["cat:generic"], "required": false, "countMin": 1, "countMax": 1, "anchor": "Center", "loadoutCategory": "", "probability": 0.6 }
+  ],
+  "decor": { "density": 0.1, "filterTags": ["cat:decor"] }
+}

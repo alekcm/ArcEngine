@@ -1,0 +1,37 @@
+{
+    "id": "core.template.school",
+    "name": "Закрытая школа",
+    "description": "Школьное здание с несколькими этажами. Рекомендуется 10-16 игроков.",
+    "minFloors": 3,
+    "maxFloors": 4,
+    "hasBasement": false,
+    "maxBuildings": 2,
+    "defaultCorridorStyle": 2,
+    "maxCellsPerFloor": 2000,
+    "recommendedPlayersMin": 10,
+    "recommendedPlayersMax": 16,
+    "locations": [
+        {
+            "locationId": "core.location.courtroom",
+            "countMin": 1,
+            "countMax": 1,
+            "required": true,
+            "constraints": ""
+        },
+        {
+            "locationId": "core.location.personal_room",
+            "countMin": 10,
+            "countMax": 16,
+            "required": true,
+            "constraints": ""
+        },
+        {
+            "locationId": "core.location.classroom",
+            "countMin": 3,
+            "countMax": 6,
+            "required": true,
+            "constraints": ""
+        }
+    ],
+    "allowedStampSets": []
+}

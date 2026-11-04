@@ -1,0 +1,25 @@
+"VertexlitGeneric"
+{
+	"$basetexture" "yukio/hair"
+	"$basetexture2" "yukio/hair"
+	"$bumpmap" "shareds\normal"
+	//"$translucent" "1"
+	//"$model" "1"
+	"$nodecal" "1"
+	"$nocull" "1"
+	//"$alphatest" 1
+	//"$allowalphatocoverage" 1
+	//"$halflambert" "1"
+
+	"$lightwarptexture" "shareds\lightwarptexture"
+
+	"$phong" "1"
+	"$phongboost"	"15"
+	"$phongalbedotint" "1"
+	"$phongexponenttexture" "shareds\phong_exp"
+	"$phongfresnelranges"	"[0 0 1]"
+
+	"$rimlight"               "1"
+	"$rimlightexponent"       "1"
+	"$rimlightboost"          "1"
+}

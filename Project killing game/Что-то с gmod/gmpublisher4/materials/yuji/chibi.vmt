@@ -1,0 +1,6 @@
+"UnlitGeneric"
+{
+	"$basetexture" "yuji/chibi"
+	"$translucent" 1
+	"$vertexalpha" 1
+}

@@ -1,0 +1,40 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.stamp.bed.object_beddoublesc_01",
+  "name": "object_bedDoubleSC_01",
+  "author": "catalog_ai",
+  "tags": [
+    "cat:bed",
+    "loadout:bed",
+    "style:suburban_contempo"
+  ],
+  "footprintW": 2,
+  "footprintL": 2,
+  "floorSpan": 1,
+  "anchor": "Wall",
+  "anchorEdge": "",
+  "weight": 1.0,
+  "clearance": [],
+  "content": {
+    "placedObjects": [
+      {
+        "definitionId": "1378",
+        "useGridPlacement": true,
+        "cellX": 0,
+        "cellY": 0,
+        "rotationSteps": 0,
+        "rotationY": 0.0,
+        "baseY": 0.0,
+        "localPosition": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        }
+      }
+    ],
+    "walls": [],
+    "pathStrokes": []
+  },
+  "sockets": []
+}

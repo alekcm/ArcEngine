@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.stamp.bed_nightstand_basic",
+  "name": "Кровать с тумбочкой",
+  "author": "core",
+  "tags": ["bed", "bed_with_nightstand", "loadout:bed", "cat:bedroom"],
+  "footprintW": 3,
+  "footprintL": 2,
+  "floorSpan": 1,
+  "anchor": "Wall",
+  "anchorEdge": "south",
+  "weight": 1.0,
+  "clearance": [
+    { "x": 0, "y": -1, "w": 3, "l": 1 }
+  ],
+  "content": {
+    "placedObjects": [
+      { "definitionId": "103", "useGridPlacement": true, "cellX": 0, "cellY": 0, "rotationSteps": 0, "rotationY": 0, "baseY": 0 },
+      { "definitionId": "1",   "useGridPlacement": true, "cellX": 2, "cellY": 0, "rotationSteps": 0, "rotationY": 0, "baseY": 0 }
+    ],
+    "walls": [],
+    "pathStrokes": []
+  },
+  "sockets": [
+    {
+      "id": "on_nightstand",
+      "kind": "Surface",
+      "cells": [ { "x": 2, "y": 0, "w": 1, "l": 1 } ],
+      "filterTags": ["size:small", "cat:decor"],
+      "required": false,
+      "countMin": 0,
+      "countMax": 1,
+      "probability": 0.7
+    }
+  ]
+}

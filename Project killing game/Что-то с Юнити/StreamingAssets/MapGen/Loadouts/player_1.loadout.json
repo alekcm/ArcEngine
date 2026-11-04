@@ -1,0 +1,11 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "characterId": "player_1",
+  "signatureColor": "color:red",
+  "choices": [
+    { "category": "bed",      "stampIds": ["core.stamp.bed_canopy"] },
+    { "category": "storage",  "stampIds": ["core.stamp.wardrobe_basic"] },
+    { "category": "personal", "stampIds": ["core.stamp.easel", "core.stamp.decor_flower_small"] }
+  ]
+}

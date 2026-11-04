@@ -1,0 +1,2642 @@
+{
+  "bed": [
+    {
+      "id": "core.stamp.bed.object_bedsingle_bunkbed_top_ef29sc",
+      "name": "object_bedSingle_BunkBed_Top_EF29SC",
+      "defid": "871",
+      "fp": "1x2",
+      "tags": [
+        "cat:bed",
+        "loadout:bed",
+        "style:basics",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bed.object_bedsinglemisslats_01",
+      "name": "object_bedSingleMISSlats_01",
+      "defid": "2468",
+      "fp": "1x3",
+      "tags": [
+        "cat:bed",
+        "loadout:bed",
+        "style:mission"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bed.object_beddoublemisslats_01",
+      "name": "object_bedDoubleMISSlats_01",
+      "defid": "2467",
+      "fp": "2x3",
+      "tags": [
+        "cat:bed",
+        "loadout:bed",
+        "style:mission"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bed.object_bedsinglesc_01",
+      "name": "object_bedSingleSC_01",
+      "defid": "1511",
+      "fp": "1x2",
+      "tags": [
+        "cat:bed",
+        "loadout:bed",
+        "style:basics",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bed.object_beddouble_norouteunder",
+      "name": "object_bedDouble_NoRouteUnder",
+      "defid": "1999",
+      "fp": "2x3",
+      "tags": [
+        "cat:bed",
+        "loadout:bed",
+        "style:gothic_farmhouse"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bed.object_beddoubleqa_02",
+      "name": "object_bedDoubleQA_02",
+      "defid": "1274",
+      "fp": "2x3",
+      "tags": [
+        "cat:bed",
+        "loadout:bed",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bed.object_crib_travel",
+      "name": "object_Crib_Travel",
+      "defid": "2322",
+      "fp": "1x2",
+      "tags": [
+        "cat:bed",
+        "loadout:bed",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bed.object_beddoublesc_01",
+      "name": "object_bedDoubleSC_01",
+      "defid": "1378",
+      "fp": "2x2",
+      "tags": [
+        "cat:bed",
+        "loadout:bed",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    }
+  ],
+  "storage": [
+    {
+      "id": "core.stamp.storage.object_dresser",
+      "name": "object_dresser",
+      "defid": "781",
+      "fp": "1x1",
+      "tags": [
+        "cat:cabinet",
+        "cat:storage",
+        "loadout:storage",
+        "style:modern"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.storage.cabinetmodc_01_set1",
+      "name": "cabinetModC_01_set1",
+      "defid": "1169",
+      "fp": "1x1",
+      "tags": [
+        "cat:cabinet",
+        "cat:storage",
+        "loadout:storage",
+        "style:contemporary"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.storage.object_dresser_standardroute",
+      "name": "object_dresser_StandardRoute",
+      "defid": "1165",
+      "fp": "2x1",
+      "tags": [
+        "cat:cabinet",
+        "cat:storage",
+        "loadout:storage",
+        "style:cosmolux",
+        "style:suburban_contempo"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.storage.object_dresserc2x1_01",
+      "name": "object_dresserC2x1_01",
+      "defid": "4877",
+      "fp": "2x1",
+      "tags": [
+        "cat:cabinet",
+        "cat:storage",
+        "loadout:storage",
+        "style:contemporary"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.storage.object_dressersc2x1_01",
+      "name": "object_dresserSC2x1_01",
+      "defid": "4981",
+      "fp": "2x1",
+      "tags": [
+        "cat:cabinet",
+        "cat:storage",
+        "loadout:storage",
+        "style:suburban_contempo"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.storage.cabinetmod_sdx037shaker_set1",
+      "name": "cabinetMod_SDX037SHAKER_set1",
+      "defid": "3525",
+      "fp": "1x1",
+      "tags": [
+        "cat:cabinet",
+        "cat:storage",
+        "loadout:storage",
+        "style:double_gallery"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.storage.cabinetmodgenwoodenlow_01_set1",
+      "name": "cabinetmodgenwoodenlow_01_set1",
+      "defid": "1903",
+      "fp": "1x1",
+      "tags": [
+        "cat:cabinet",
+        "cat:storage",
+        "loadout:storage",
+        "style:basics"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.storage.cabinetmodgfindustrial_01_country01",
+      "name": "cabinetModGFIndustrial_01_country01",
+      "defid": "459",
+      "fp": "1x1",
+      "tags": [
+        "cat:cabinet",
+        "cat:storage",
+        "loadout:storage",
+        "style:gothic_farmhouse"
+      ],
+      "socket": "Surface"
+    }
+  ],
+  "fridge": [
+    {
+      "id": "core.stamp.fridge.object_fridgeds_02",
+      "name": "object_fridgeDS_02",
+      "defid": "1048",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:modern",
+        "style:contemporary"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.fridge.object_fridgelow_mini",
+      "name": "object_fridgeLOW_Mini",
+      "defid": "3489",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:double_gallery"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.fridge.object_fridgemed_01",
+      "name": "object_fridgeMED_01",
+      "defid": "319",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:basics"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.fridge.object_fridgelow_01",
+      "name": "object_fridgeLOW_01",
+      "defid": "1191",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:basics",
+        "style:shabby"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.fridge.object_fridgehigh_01",
+      "name": "object_fridgeHIGH_01",
+      "defid": "1190",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:modern",
+        "style:suburban_contempo",
+        "style:industrial"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.fridge.object_fridgegfvintage_01",
+      "name": "object_fridgeGFVintage_01",
+      "defid": "2736",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:tudor",
+        "style:french_country",
+        "style:gothic_farmhouse"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.fridge.object_fridgemodrwculinary_01",
+      "name": "object_fridgeModRWCulinary_01",
+      "defid": "1923",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:modern",
+        "style:industrial"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.fridge.object_fridgemed_02",
+      "name": "object_fridgeMED_02",
+      "defid": "1192",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:suburban_contempo"
+      ],
+      "socket": "Surface"
+    }
+  ],
+  "stove": [
+    {
+      "id": "core.stamp.stove.object_stoveminords_01",
+      "name": "object_stoveMinorDS_01",
+      "defid": "1114",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.stove.object_stovehood",
+      "name": "object_stoveHood",
+      "defid": "891",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.stove.object_stoveminorlow_01",
+      "name": "object_stoveMinorLOW_01",
+      "defid": "252",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:basics",
+        "style:shabby"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.stove.stovehoodceilingsc1x1_01_set1",
+      "name": "stoveHoodCeilingSC1x1_01_set1",
+      "defid": "5589",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.stove.stovehoodceilingsc1x1x4_01_set1",
+      "name": "stoveHoodCeilingSC1x1x4_01_set1",
+      "defid": "5924",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.stove.stovehoodceilingsc1x1x5_01_set1",
+      "name": "stoveHoodCeilingSC1x1x5_01_set1",
+      "defid": "5925",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.stove.object_stoveminormed_01",
+      "name": "object_stoveMinorMED_01",
+      "defid": "307",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.stove.stovehoodwallqa1x1_01_set1",
+      "name": "stoveHoodWallQA1x1_01_Set1",
+      "defid": "4982",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    }
+  ],
+  "sink": [
+    {
+      "id": "core.stamp.sink.object_sinkpedfc_01",
+      "name": "object_sinkPedFC_01",
+      "defid": "1877",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:sink",
+        "style:french_country"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sink.object_sinkpedclsquare_01",
+      "name": "object_sinkPedCLSquare_01",
+      "defid": "2766",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:sink",
+        "style:cosmolux"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sink.object_sink",
+      "name": "object_sink",
+      "defid": "6561",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:sink",
+        "style:cosmolux"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sink.object_sinkpedqa_01",
+      "name": "object_sinkPedQA_01",
+      "defid": "1885",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:sink",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sink.object_sinkpedgfframe_01",
+      "name": "object_sinkPedGFFrame_01",
+      "defid": "2767",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:sink",
+        "style:gothic_farmhouse",
+        "style:industrial"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sink.object_sinkcountergfindustrial_01",
+      "name": "object_sinkCounterGFIndustrial_01",
+      "defid": "2765",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:sink",
+        "style:industrial"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sink.object_sinkcountersc_01",
+      "name": "object_sinkCounterSC_01",
+      "defid": "2250",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:sink",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sink.object_sinkpedc_02",
+      "name": "object_sinkPedC_02",
+      "defid": "1095",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:sink",
+        "style:contemporary"
+      ],
+      "socket": ""
+    }
+  ],
+  "counter": [
+    {
+      "id": "core.stamp.counter.object_counter_noparts",
+      "name": "object_Counter_NoParts",
+      "defid": "1953",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:counter",
+        "style:basics"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.counter.object_counter",
+      "name": "object_Counter",
+      "defid": "439",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:counter",
+        "style:gothic_farmhouse",
+        "style:industrial"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.counter.object_counterisle",
+      "name": "object_CounterIsle",
+      "defid": "455",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:counter",
+        "style:gothic_farmhouse",
+        "style:industrial"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.counter.object_countermodgenvintagehigh_01",
+      "name": "object_counterModGENVintageHigh_01",
+      "defid": "5797",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:counter",
+        "style:basics"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.counter.object_countermodgenvintagemed_01",
+      "name": "object_counterModGENVintageMed_01",
+      "defid": "5892",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:counter",
+        "style:basics"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.counter.object_counterislemodgenvintagemed_01",
+      "name": "object_counterIsleModGENVintageMed_01",
+      "defid": "5926",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:counter",
+        "style:basics"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.counter.object_countermodgenwoodenlow_01",
+      "name": "object_countermodgenwoodenlow_01",
+      "defid": "5761",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:counter",
+        "style:basics"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.counter.object_counterislemodgenwoodenlow_01",
+      "name": "object_counterIslemodgenwoodenlow_01",
+      "defid": "5807",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:counter",
+        "style:basics"
+      ],
+      "socket": "Surface"
+    }
+  ],
+  "microwave": [
+    {
+      "id": "core.stamp.microwave.object_coffeemaker_ds",
+      "name": "object_CoffeeMaker_DS",
+      "defid": "1278",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.microwave.object_cupcakemachine",
+      "name": "object_cupcakeMachine",
+      "defid": "1325",
+      "fp": "3x3",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:shabby"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.microwave.object_microwave_ds",
+      "name": "object_Microwave_DS",
+      "defid": "1285",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "cat:medical",
+        "medbay"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.microwave.object_microwave_low_siminventory_dormstorage",
+      "name": "object_Microwave_Low_simInventory_dormStorage",
+      "defid": "1287",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:basics",
+        "style:shabby",
+        "cat:medical",
+        "medbay"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.microwave.object_coffeemaker_low",
+      "name": "object_CoffeeMaker_Low",
+      "defid": "1280",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.microwave.sdx036gen_hotdrinktray",
+      "name": "SDX036GEN_HotDrinkTray",
+      "defid": "3621",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:double_gallery"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.microwave.object_microwave_low",
+      "name": "object_Microwave_Low",
+      "defid": "5101",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.microwave.object_coffeemaker_high",
+      "name": "object_CoffeeMaker_High",
+      "defid": "1279",
+      "fp": "1x1",
+      "tags": [
+        "cat:kitchen",
+        "cat:appliance",
+        "style:industrial"
+      ],
+      "socket": ""
+    }
+  ],
+  "table": [
+    {
+      "id": "core.stamp.table.object_tablegeneric",
+      "name": "object_tableGeneric",
+      "defid": "809",
+      "fp": "2x1",
+      "tags": [
+        "cat:table",
+        "cat:decor",
+        "style:modern"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.table.object_tabledining_1x1",
+      "name": "object_tableDining_1x1",
+      "defid": "16",
+      "fp": "1x1",
+      "tags": [
+        "cat:table",
+        "cat:decor",
+        "style:queen_anne"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.table.object_tablediningqa1x1_01",
+      "name": "object_tableDiningQA1X1_01",
+      "defid": "4008",
+      "fp": "1x1",
+      "tags": [
+        "cat:table",
+        "cat:decor",
+        "style:queen_anne"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.table.object_tablediningmissquare1x1_01",
+      "name": "object_tableDiningMISSquare1x1_01",
+      "defid": "6270",
+      "fp": "1x1",
+      "tags": [
+        "cat:table",
+        "cat:decor",
+        "style:mission"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.table.object_tablehallwayc2x1_01",
+      "name": "object_tableHallwayC2x1_01",
+      "defid": "6278",
+      "fp": "2x1",
+      "tags": [
+        "cat:table",
+        "cat:decor",
+        "style:contemporary"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.table.object_tablehallwayfc2x1_01",
+      "name": "object_tableHallwayFC2x1_01",
+      "defid": "6280",
+      "fp": "2x1",
+      "tags": [
+        "cat:table",
+        "cat:decor",
+        "style:french_country"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.table.object_tablediningfc3x1_01",
+      "name": "object_tableDiningFC3x1_01",
+      "defid": "5484",
+      "fp": "3x1",
+      "tags": [
+        "cat:table",
+        "cat:decor",
+        "style:french_country"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.table.object_tablediningfc1x1_01",
+      "name": "object_tableDiningFC1x1_01",
+      "defid": "4077",
+      "fp": "1x1",
+      "tags": [
+        "cat:table",
+        "cat:decor",
+        "style:french_country"
+      ],
+      "socket": "Surface"
+    }
+  ],
+  "chair": [
+    {
+      "id": "core.stamp.chair.object_sitbarstoolqa_01",
+      "name": "object_sitBarstoolQA_01",
+      "defid": "9",
+      "fp": "1x1",
+      "tags": [
+        "cat:chair",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.chair.object_sitbarstoolqa_03",
+      "name": "object_sitBarstoolQA_03",
+      "defid": "649",
+      "fp": "1x1",
+      "tags": [
+        "cat:chair",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.chair.object_sitdiningqa_02",
+      "name": "object_sitDiningQA_02",
+      "defid": "490",
+      "fp": "1x1",
+      "tags": [
+        "cat:chair",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.chair.object_sitdiningqa_01",
+      "name": "object_sitDiningQA_01",
+      "defid": "10",
+      "fp": "1x1",
+      "tags": [
+        "cat:chair",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.chair.object_sitlivingqa_02",
+      "name": "object_sitLivingQA_02",
+      "defid": "197",
+      "fp": "1x1",
+      "tags": [
+        "cat:chair",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.chair.object_sitlivingqa_01",
+      "name": "object_sitLivingQA_01",
+      "defid": "730",
+      "fp": "1x1",
+      "tags": [
+        "cat:chair"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.chair.object_sitlivingfc_02",
+      "name": "object_sitLivingFC_02",
+      "defid": "506",
+      "fp": "1x1",
+      "tags": [
+        "cat:chair",
+        "style:french_country"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.chair.object_sitbarstoolfc_02",
+      "name": "object_sitBarstoolFC_02",
+      "defid": "745",
+      "fp": "1x1",
+      "tags": [
+        "cat:chair",
+        "style:french_country"
+      ],
+      "socket": ""
+    }
+  ],
+  "sofa": [
+    {
+      "id": "core.stamp.sofa.object_sitloveseatqa2x1_02",
+      "name": "object_sitLoveseatQA2x1_02",
+      "defid": "492",
+      "fp": "2x1",
+      "tags": [
+        "cat:sofa",
+        "cat:chair",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sofa.object_sitsofaqa3x1_02",
+      "name": "object_sitSofaQA3x1_02",
+      "defid": "493",
+      "fp": "3x1",
+      "tags": [
+        "cat:sofa",
+        "cat:chair",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sofa.object_sitloveseatqa2x1_01",
+      "name": "object_sitLoveseatQA2x1_01",
+      "defid": "12",
+      "fp": "2x1",
+      "tags": [
+        "cat:sofa",
+        "cat:chair",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sofa.object_sitsofaqa3x1_01",
+      "name": "object_sitSofaQA3x1_01",
+      "defid": "15",
+      "fp": "3x1",
+      "tags": [
+        "cat:sofa",
+        "cat:chair",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sofa.object_sitloveseatfc2x1_01",
+      "name": "object_sitLoveseatFC2x1_01",
+      "defid": "130",
+      "fp": "2x1",
+      "tags": [
+        "cat:sofa",
+        "cat:chair",
+        "style:french_country"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sofa.object_sitsofafc3x1_01",
+      "name": "object_sitSofaFC3x1_01",
+      "defid": "102",
+      "fp": "2x1",
+      "tags": [
+        "cat:sofa",
+        "cat:chair",
+        "style:french_country"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sofa.object_sitloveseatal2x1_01",
+      "name": "object_sitLoveseatAL2x1_01",
+      "defid": "1202",
+      "fp": "2x1",
+      "tags": [
+        "cat:sofa",
+        "cat:chair"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sofa.object_sitsofasc3x1_01",
+      "name": "object_sitSofaSC3x1_01",
+      "defid": "1358",
+      "fp": "3x1",
+      "tags": [
+        "cat:sofa",
+        "cat:chair",
+        "style:basics",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    }
+  ],
+  "desk": [
+    {
+      "id": "core.stamp.desk.object_desksc2x1_01",
+      "name": "object_deskSC2x1_01",
+      "defid": "5153",
+      "fp": "3x1",
+      "tags": [
+        "cat:desk",
+        "cat:personal",
+        "style:suburban_contempo"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.desk.object_deskc2x1_01",
+      "name": "object_deskC2x1_01",
+      "defid": "4876",
+      "fp": "2x1",
+      "tags": [
+        "cat:desk",
+        "cat:personal",
+        "style:contemporary"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.desk.object_deskfc2x1_01",
+      "name": "object_deskFC2x1_01",
+      "defid": "5095",
+      "fp": "2x1",
+      "tags": [
+        "cat:desk",
+        "cat:personal",
+        "style:french_country"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.desk.object_desk",
+      "name": "object_desk",
+      "defid": "773",
+      "fp": "2x1",
+      "tags": [
+        "cat:desk",
+        "cat:personal",
+        "style:queen_anne"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.desk.object_deskqa2x1_01",
+      "name": "object_deskQA2x1_01",
+      "defid": "4630",
+      "fp": "2x1",
+      "tags": [
+        "cat:desk",
+        "cat:personal",
+        "style:queen_anne"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.desk.object_deskgfdrafting_01",
+      "name": "object_deskGFDrafting_01",
+      "defid": "6284",
+      "fp": "2x1",
+      "tags": [
+        "cat:desk",
+        "cat:personal",
+        "style:gothic_farmhouse"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.desk.object_deskrwwriterantique2x1_01",
+      "name": "object_deskRWWriterAntique2x1_01",
+      "defid": "1912",
+      "fp": "2x1",
+      "tags": [
+        "cat:desk",
+        "cat:personal",
+        "style:french_country",
+        "style:shabby"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.desk.object_desk_environment",
+      "name": "object_desk_environment",
+      "defid": "3203",
+      "fp": "2x1",
+      "tags": [
+        "cat:desk",
+        "cat:personal",
+        "style:suburban_contempo"
+      ],
+      "socket": "Surface"
+    }
+  ],
+  "computer": [
+    {
+      "id": "core.stamp.computer.object_computer_portable_ef15rwfreelancer",
+      "name": "object_Computer_Portable_EF15RWfreelancer",
+      "defid": "3854",
+      "fp": "1x1",
+      "tags": [
+        "cat:personal",
+        "cat:computer",
+        "style:modern"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.computer.object_tablet",
+      "name": "object_tablet",
+      "defid": "1265",
+      "fp": "1x1",
+      "tags": [
+        "cat:personal",
+        "cat:computer"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.computer.object_computer_prim",
+      "name": "object_Computer_PRIM",
+      "defid": "1963",
+      "fp": "1x1",
+      "tags": [
+        "cat:personal",
+        "cat:computer",
+        "style:modern"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.computer.object_computer_ds",
+      "name": "object_Computer_DS",
+      "defid": "2405",
+      "fp": "1x1",
+      "tags": [
+        "cat:personal",
+        "cat:computer",
+        "style:modern"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.computer.object_computerlow_01",
+      "name": "object_computerLOW_01",
+      "defid": "2406",
+      "fp": "1x1",
+      "tags": [
+        "cat:personal",
+        "cat:computer",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.computer.object_computer_high",
+      "name": "object_Computer_High",
+      "defid": "1035",
+      "fp": "1x1",
+      "tags": [
+        "cat:personal",
+        "cat:computer",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.computer.object_computer_tesla",
+      "name": "object_Computer_Tesla",
+      "defid": "1863",
+      "fp": "1x1",
+      "tags": [
+        "cat:personal",
+        "cat:computer",
+        "style:cosmolux"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.computer.object_computer_crimsuitcase",
+      "name": "object_Computer_CrimSuitcase",
+      "defid": "1926",
+      "fp": "1x1",
+      "tags": [
+        "cat:personal",
+        "cat:computer",
+        "style:industrial"
+      ],
+      "socket": ""
+    }
+  ],
+  "bookshelf": [
+    {
+      "id": "core.stamp.bookshelf.object_bookcasefloor_toddler",
+      "name": "object_bookcaseFloor_Toddler",
+      "defid": "3453",
+      "fp": "1x1",
+      "tags": [
+        "cat:storage",
+        "cat:bookshelf",
+        "cat:personal",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bookshelf.object_bookcasewallsc1x1x2_01",
+      "name": "object_bookcaseWallSC1x1x2_01",
+      "defid": "536",
+      "fp": "1x1",
+      "tags": [
+        "cat:storage",
+        "cat:bookshelf",
+        "cat:personal",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bookshelf.object_bookshelf",
+      "name": "object_bookshelf",
+      "defid": "535",
+      "fp": "1x1",
+      "tags": [
+        "cat:storage",
+        "cat:bookshelf",
+        "cat:personal",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bookshelf.object_bookcasefloorfc2x1_01",
+      "name": "object_bookcaseFloorFC2x1_01",
+      "defid": "4609",
+      "fp": "2x1",
+      "tags": [
+        "cat:storage",
+        "cat:bookshelf",
+        "cat:personal",
+        "style:french_country"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bookshelf.object_bookcasefloormis2x1_01",
+      "name": "object_bookcaseFloorMIS2x1_01",
+      "defid": "5091",
+      "fp": "1x1",
+      "tags": [
+        "cat:storage",
+        "cat:bookshelf",
+        "cat:personal",
+        "style:mission"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bookshelf.object_bookcasefloorqa2x1_02",
+      "name": "object_bookcaseFloorQA2x1_02",
+      "defid": "4492",
+      "fp": "2x1",
+      "tags": [
+        "cat:storage",
+        "cat:bookshelf",
+        "cat:personal",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bookshelf.object_bookshelf_bookend",
+      "name": "object_bookshelf_BookEnd",
+      "defid": "1175",
+      "fp": "1x1",
+      "tags": [
+        "cat:storage",
+        "cat:bookshelf",
+        "cat:personal",
+        "style:basics",
+        "style:queen_anne",
+        "style:vintage"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.bookshelf.object_bookshelfwall_toddler",
+      "name": "object_bookshelfwall_Toddler",
+      "defid": "3097",
+      "fp": "1x1",
+      "tags": [
+        "cat:storage",
+        "cat:bookshelf",
+        "cat:personal",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    }
+  ],
+  "toilet": [
+    {
+      "id": "core.stamp.toilet.object_toiletclsquare_01",
+      "name": "object_toiletCLSquare_01",
+      "defid": "2784",
+      "fp": "1x1",
+      "tags": [
+        "cat:bathroom",
+        "style:cosmolux"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.toilet.object_toileta_01",
+      "name": "object_toiletA_01",
+      "defid": "549",
+      "fp": "1x1",
+      "tags": [
+        "cat:bathroom"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.toilet.object_toiletfc_01",
+      "name": "object_toiletFC_01",
+      "defid": "2292",
+      "fp": "1x1",
+      "tags": [
+        "cat:bathroom",
+        "style:french_country"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.toilet.object_toiletgfband_01",
+      "name": "object_toiletGFBand_01",
+      "defid": "2785",
+      "fp": "1x1",
+      "tags": [
+        "cat:bathroom",
+        "style:gothic_farmhouse"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.toilet.object_toddler_pottychair",
+      "name": "object_toddler_pottyChair",
+      "defid": "3409",
+      "fp": "1x1",
+      "tags": [
+        "cat:bathroom"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.toilet.object_toilet",
+      "name": "object_toilet",
+      "defid": "2428",
+      "fp": "1x1",
+      "tags": [
+        "cat:bathroom",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.toilet.object_toiletgenbath_01",
+      "name": "object_toiletGENBath_01",
+      "defid": "2432",
+      "fp": "1x1",
+      "tags": [
+        "cat:bathroom"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.toilet.object_toiletc_02",
+      "name": "object_toiletC_02",
+      "defid": "1119",
+      "fp": "1x1",
+      "tags": [
+        "cat:bathroom",
+        "style:basics",
+        "style:contemporary"
+      ],
+      "socket": ""
+    }
+  ],
+  "shower": [
+    {
+      "id": "core.stamp.shower.object_showerboxgenbath1x1_01",
+      "name": "object_showerBoxGENBath1x1_01",
+      "defid": "2426",
+      "fp": "1x1",
+      "tags": [
+        "cat:bathroom",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.shower.object_showerbathtubgen_01",
+      "name": "object_showerBathtubGEN_01",
+      "defid": "617",
+      "fp": "2x1",
+      "tags": [
+        "cat:bathroom",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.shower.object_bathtubclsquare_01",
+      "name": "object_bathtubCLSquare_01",
+      "defid": "2724",
+      "fp": "2x1",
+      "tags": [
+        "cat:bathroom",
+        "style:cosmolux"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.shower.showerbathtubfc_01_offthegridcompatible",
+      "name": "showerBathtubFC_01_OffTheGridCompatible",
+      "defid": "2271",
+      "fp": "2x1",
+      "tags": [
+        "cat:bathroom",
+        "style:french_country"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.shower.object_showerbathtubfc_01",
+      "name": "object_showerBathtubFC_01",
+      "defid": "6061",
+      "fp": "2x1",
+      "tags": [
+        "cat:bathroom",
+        "style:french_country"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.shower.object_hottub_evg_anniversary",
+      "name": "object_hottub_EVG_Anniversary",
+      "defid": "3953",
+      "fp": "3x3",
+      "tags": [
+        "cat:bathroom"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.shower.object_showerclglass1x1_01",
+      "name": "object_ShowerCLGlass1x1_01",
+      "defid": "2763",
+      "fp": "1x1",
+      "tags": [
+        "cat:bathroom",
+        "style:cosmolux"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.shower.object_showersc1x1_01",
+      "name": "object_ShowerSC1x1_01",
+      "defid": "2423",
+      "fp": "1x1",
+      "tags": [
+        "cat:bathroom",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    }
+  ],
+  "lamp_floor": [
+    {
+      "id": "core.stamp.lamp_floor.object_lightfloorqacandleholder_01",
+      "name": "object_lightFloorQACandleholder_01",
+      "defid": "485",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:decor",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_floor.object_lightfloorgen_01",
+      "name": "object_lightFloorGEN_01",
+      "defid": "5575",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:decor",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_floor.object_lightfloorc_01",
+      "name": "object_lightFloorC_01",
+      "defid": "4909",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:decor",
+        "style:modern",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_floor.object_lighttableqa_04",
+      "name": "object_lightTableQA_04",
+      "defid": "4499",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:decor",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_floor.object_lighttableqa_05",
+      "name": "object_lightTableQA_05",
+      "defid": "4500",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:decor",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_floor.object_light_table",
+      "name": "object_light_table",
+      "defid": "8",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:decor",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_floor.object_lightfloorsc_01",
+      "name": "object_lightFloorSC_01",
+      "defid": "5154",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:decor",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_floor.object_light_table_therapylamp_purple",
+      "name": "object_light_table_TherapyLamp_Purple",
+      "defid": "3138",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:decor",
+        "style:modern"
+      ],
+      "socket": ""
+    }
+  ],
+  "lamp_ceiling": [
+    {
+      "id": "core.stamp.lamp_ceiling.object_light_ceiling",
+      "name": "object_light_ceiling",
+      "defid": "639",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_ceiling.object_lightceilingc_02",
+      "name": "object_lightCeilingC_02",
+      "defid": "4953",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_ceiling.object_lightceilingc_03",
+      "name": "object_lightCeilingC_03",
+      "defid": "5439",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_ceiling.object_lightceilingc_01",
+      "name": "object_lightCeilingC_01",
+      "defid": "4908",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_ceiling.object_lightceilingsc_02",
+      "name": "object_lightCeilingSC_02",
+      "defid": "5441",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_ceiling.object_lightceilingdghigh_01",
+      "name": "object_lightCeilingDGHigh_01",
+      "defid": "5505",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "style:double_gallery"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_ceiling.object_lightceilinggfround_01",
+      "name": "object_lightCeilingGFRound_01",
+      "defid": "6216",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "style:gothic_farmhouse"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_ceiling.object_lightceilinggen_02",
+      "name": "object_lightCeilingGEN_02",
+      "defid": "5580",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "style:basics"
+      ],
+      "socket": ""
+    }
+  ],
+  "lamp_wall": [
+    {
+      "id": "core.stamp.lamp_wall.object_light_wall",
+      "name": "object_light_wall",
+      "defid": "55",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:wall",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_wall.object_lightwallqa_11",
+      "name": "object_lightWallQA_11",
+      "defid": "4503",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:wall",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_wall.object_lightwallc_02",
+      "name": "object_lightWallC_02",
+      "defid": "4932",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:wall",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_wall.object_lightwallc_03",
+      "name": "object_lightWallC_03",
+      "defid": "4962",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:wall",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_wall.object_lightwallmiscandle_01",
+      "name": "object_lightWallMISCandle_01",
+      "defid": "6224",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:wall",
+        "style:mission"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_wall.object_lightwallmisenclosed_01",
+      "name": "object_lightWallMISEnclosed_01",
+      "defid": "6225",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:wall",
+        "style:mission"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_wall.object_lightwallkid_01_monster_deterent_nightlight",
+      "name": "object_lightWallKid_01_Monster_Deterent_NightLight",
+      "defid": "3380",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:wall",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.lamp_wall.object_lightwallc_04",
+      "name": "object_lightWallC_04",
+      "defid": "4980",
+      "fp": "1x1",
+      "tags": [
+        "cat:light",
+        "cat:wall",
+        "style:contemporary"
+      ],
+      "socket": ""
+    }
+  ],
+  "plant": [
+    {
+      "id": "core.stamp.plant.object_plant_non_gardening_generic_nonretail",
+      "name": "object_plant_non_gardening_generic_nonretail",
+      "defid": "468",
+      "fp": "2x2",
+      "tags": [
+        "cat:decor",
+        "cat:plant"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.plant.object_plant_non_gardening_generic",
+      "name": "object_plant_non_gardening_generic",
+      "defid": "85",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:plant",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.plant.object_bonsai",
+      "name": "object_bonsai",
+      "defid": "1470",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:plant"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.plant.object_sculpture_world",
+      "name": "object_sculpture_world",
+      "defid": "1875",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:plant",
+        "style:french_country"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.plant.object_vase",
+      "name": "object_vase",
+      "defid": "743",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:plant",
+        "style:french_country"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.plant.object_sculpture",
+      "name": "object_sculpture",
+      "defid": "2167",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:plant",
+        "style:garden",
+        "style:shabby"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.plant.object_sculpture_siminventorycompatible",
+      "name": "object_sculpture_SimInventoryCompatible",
+      "defid": "2013",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:plant",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.plant.object_gardeningpot",
+      "name": "object_GardeningPot",
+      "defid": "5258",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:plant"
+      ],
+      "socket": ""
+    }
+  ],
+  "sculpture": [
+    {
+      "id": "core.stamp.sculpture.prototype_retailcompatible",
+      "name": "prototype_RetailCompatible",
+      "defid": "67",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:outdoor",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sculpture.sculptfloorclottoman_01_set1",
+      "name": "sculptFloorCLOttoman_01_set1",
+      "defid": "6534",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:outdoor",
+        "style:cosmolux"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sculpture.object_rug",
+      "name": "object_rug",
+      "defid": "3161",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:outdoor"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sculpture.object_sculpture",
+      "name": "object_sculpture",
+      "defid": "92",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:outdoor",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sculpture.object_ponds_vfxobject_lilypad_1x1_2",
+      "name": "object_Ponds_VFXObject_Lilypad_1x1_2",
+      "defid": "1940",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:outdoor"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sculpture.object_fountain_round2x2",
+      "name": "object_fountain_Round2x2",
+      "defid": "2661",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:outdoor",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sculpture.object_woodworksculpture",
+      "name": "object_woodworkSculpture",
+      "defid": "1365",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:outdoor"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.sculpture.object_light_wall",
+      "name": "object_light_wall",
+      "defid": "2501",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:outdoor",
+        "style:gothic_farmhouse",
+        "style:industrial"
+      ],
+      "socket": ""
+    }
+  ],
+  "painting": [
+    {
+      "id": "core.stamp.painting.decalwallkidstencilbunny1x1x1_01_set1",
+      "name": "decalWallKIDStencilBunny1x1x1_01_set1",
+      "defid": "6352",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:wall",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.painting.decalwallkidstencilbunny2x1x1_01_set1",
+      "name": "decalWallKIDStencilBunny2x1x1_01_set1",
+      "defid": "6353",
+      "fp": "2x1",
+      "tags": [
+        "cat:decor",
+        "cat:wall",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.painting.decalwallkidstencilclouds1x1x1_01_set1",
+      "name": "decalWallKIDStencilClouds1x1x1_01_set1",
+      "defid": "6354",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:wall",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.painting.decalwallkidstencilclouds2x1x1_01_set1",
+      "name": "decalWallKIDStencilClouds2x1x1_01_set1",
+      "defid": "6355",
+      "fp": "2x1",
+      "tags": [
+        "cat:decor",
+        "cat:wall",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.painting.decalwallkidstencildino1x1x1_01_set1",
+      "name": "decalWallKIDStencilDino1x1x1_01_set1",
+      "defid": "6356",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:wall",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.painting.decalwallkidstencildino2x1x1_01_set1",
+      "name": "decalWallKIDStencilDino2x1x1_01_set1",
+      "defid": "6357",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:wall",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.painting.object_painting",
+      "name": "object_painting",
+      "defid": "44",
+      "fp": "2x1",
+      "tags": [
+        "cat:decor",
+        "cat:wall",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.painting.object_painting_r3event",
+      "name": "object_painting_R3Event",
+      "defid": "3555",
+      "fp": "2x1",
+      "tags": [
+        "cat:decor",
+        "cat:wall",
+        "style:vintage"
+      ],
+      "socket": ""
+    }
+  ],
+  "clock": [
+    {
+      "id": "core.stamp.clock.object_sculpture_noview_wall",
+      "name": "object_Sculpture_NoView_Wall",
+      "defid": "540",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:clock",
+        "style:basics",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.clock.object_alarmclock",
+      "name": "object_AlarmClock",
+      "defid": "3616",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:clock",
+        "style:double_gallery"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.clock.clockwallfcantique_01_set1",
+      "name": "clockWallFCAntique_01_set1",
+      "defid": "5688",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:clock",
+        "style:french_country"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.clock.object_ev009reward_queenclock",
+      "name": "object_EV009Reward_queenClock",
+      "defid": "1121",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:clock",
+        "style:queen_anne",
+        "style:vintage"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.clock.object_sculpture",
+      "name": "object_sculpture",
+      "defid": "1045",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:clock",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.clock.sculpttabletudclock_01_set1",
+      "name": "sculptTableTUDClock_01_set1",
+      "defid": "5005",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:clock",
+        "style:queen_anne"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.clock.clockwallsc1x1_01_set1",
+      "name": "clockWallSC1x1_01_set1",
+      "defid": "6073",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:clock",
+        "style:suburban_contempo"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.clock.clockwallgfround_01_set1",
+      "name": "clockWallGFRound_01_set1",
+      "defid": "6283",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:clock",
+        "style:gothic_farmhouse"
+      ],
+      "socket": ""
+    }
+  ],
+  "rug": [
+    {
+      "id": "core.stamp.rug.object_rug_siminventory_dormstorage",
+      "name": "object_rug_simInventory_dormStorage",
+      "defid": "2797",
+      "fp": "4x3",
+      "tags": [
+        "cat:decor",
+        "cat:rug"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.rug.object_rug",
+      "name": "object_rug",
+      "defid": "63",
+      "fp": "3x2",
+      "tags": [
+        "cat:decor",
+        "cat:rug",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.rug.object_rug_sdx037brick",
+      "name": "object_rug_SDX037Brick",
+      "defid": "3604",
+      "fp": "2x1",
+      "tags": [
+        "cat:decor",
+        "cat:rug"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.rug.object_infant_blanket",
+      "name": "object_Infant_Blanket",
+      "defid": "2324",
+      "fp": "1x1",
+      "tags": [
+        "cat:decor",
+        "cat:rug"
+      ],
+      "socket": ""
+    }
+  ],
+  "outdoor_plant": [
+    {
+      "id": "core.stamp.outdoor_plant.object_gardeningpot",
+      "name": "object_GardeningPot",
+      "defid": "5258",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:plant"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_plant.object_gardeningsoil",
+      "name": "object_GardeningSoil",
+      "defid": "5259",
+      "fp": "2x2",
+      "tags": [
+        "cat:outdoor",
+        "cat:plant"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_plant.plantso_aloevera_01",
+      "name": "plantSO_aloeVera_01",
+      "defid": "938",
+      "fp": "3x3",
+      "tags": [
+        "cat:outdoor",
+        "cat:plant"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_plant.object_plant_non_gardening_generic_nonretail",
+      "name": "object_plant_non_gardening_generic_nonretail",
+      "defid": "1703",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:plant"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_plant.object_plant_non_gardening_generic",
+      "name": "object_plant_non_gardening_generic",
+      "defid": "5536",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:plant"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_plant.object_interactivebush_generic",
+      "name": "object_InteractiveBush_Generic",
+      "defid": "3382",
+      "fp": "2x2",
+      "tags": [
+        "cat:outdoor",
+        "cat:plant"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_plant.object_petbush",
+      "name": "object_PetBush",
+      "defid": "3551",
+      "fp": "2x2",
+      "tags": [
+        "cat:outdoor",
+        "cat:plant"
+      ],
+      "socket": ""
+    }
+  ],
+  "outdoor_tree": [
+    {
+      "id": "core.stamp.outdoor_tree.treelot_ev007evrpalmlights_set2",
+      "name": "treeLot_EV007EVRpalmLights_set2",
+      "defid": "145",
+      "fp": "3x3",
+      "tags": [
+        "cat:outdoor",
+        "cat:tree"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_tree.object_gardeningpot",
+      "name": "object_GardeningPot",
+      "defid": "5258",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:tree"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_tree.object_gardeningsoil",
+      "name": "object_GardeningSoil",
+      "defid": "5259",
+      "fp": "2x2",
+      "tags": [
+        "cat:outdoor",
+        "cat:tree"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_tree.treelotmedgcwcypress_02",
+      "name": "treeLotMedGCWCypress_02",
+      "defid": "1683",
+      "fp": "2x2",
+      "tags": [
+        "cat:outdoor",
+        "cat:tree"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_tree.treelotsmsopalm_01",
+      "name": "treeLotSmSOPalm_01",
+      "defid": "1702",
+      "fp": "2x2",
+      "tags": [
+        "cat:outdoor",
+        "cat:tree"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_tree.treelotmedsocypress_02",
+      "name": "treeLotMedSOCypress_02",
+      "defid": "1696",
+      "fp": "2x3",
+      "tags": [
+        "cat:outdoor",
+        "cat:tree"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_tree.treelotmedsocypress_01",
+      "name": "treeLotMedSOCypress_01",
+      "defid": "1695",
+      "fp": "2x3",
+      "tags": [
+        "cat:outdoor",
+        "cat:tree"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_tree.treelotlgsopalm_02",
+      "name": "treeLotLgSOPalm_02",
+      "defid": "1699",
+      "fp": "4x4",
+      "tags": [
+        "cat:outdoor",
+        "cat:tree"
+      ],
+      "socket": ""
+    }
+  ],
+  "outdoor_rock": [
+    {
+      "id": "core.stamp.outdoor_rock.rocklot1x1_ef63evrclustersround_set1",
+      "name": "rockLot1x1_EF63EVRclustersRound_set1",
+      "defid": "3879",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_rock.rocklot1x1_ef63evrclustersshort_set1",
+      "name": "rockLot1x1_EF63EVRclustersShort_set1",
+      "defid": "3880",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_rock.rocklot1x1_ef63evrclusterstall_set1",
+      "name": "rockLot1x1_EF63EVRclustersTall_set1",
+      "defid": "3881",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "style:basics"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_rock.rocklotgenboulder_02_set1",
+      "name": "rockLotGENBoulder_02_set1",
+      "defid": "2280",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "style:garden"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_rock.rocklotgenboulder_04_set1",
+      "name": "rockLotGENBoulder_04_set1",
+      "defid": "2282",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "style:garden"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_rock.rocklotgenboulder_01_set1",
+      "name": "rockLotGENBoulder_01_set1",
+      "defid": "2279",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "style:garden"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_rock.rocklotgenboulder_03_set1",
+      "name": "rockLotGENBoulder_03_set1",
+      "defid": "2281",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "style:garden"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_rock.rocklotgenboulder_05_set1",
+      "name": "rockLotGENBoulder_05_set1",
+      "defid": "2285",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "style:garden"
+      ],
+      "socket": ""
+    }
+  ],
+  "outdoor_seat": [
+    {
+      "id": "core.stamp.outdoor_seat.object_sitdiningtk_01",
+      "name": "object_sitDiningTK_01",
+      "defid": "883",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:chair"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_seat.object_sitdiningal_01",
+      "name": "object_sitDiningAL_01",
+      "defid": "2288",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:chair"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_seat.object_sitloveseatal2x1_01",
+      "name": "object_sitLoveseatAL2x1_01",
+      "defid": "1202",
+      "fp": "2x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:chair"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_seat.object_chair_living",
+      "name": "object_chair_living",
+      "defid": "3913",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:chair",
+        "style:modern",
+        "style:contemporary"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_seat.object_sitdining_ef07irn02",
+      "name": "object_sitDining_EF07IRN02",
+      "defid": "3575",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:chair"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_seat.object_sitdiningirn_01",
+      "name": "object_sitDiningIRN_01",
+      "defid": "2869",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:chair"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_seat.object_sitloveseatirn2x1_01",
+      "name": "object_sitLoveseatIRN2x1_01",
+      "defid": "1196",
+      "fp": "2x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:chair"
+      ],
+      "socket": ""
+    },
+    {
+      "id": "core.stamp.outdoor_seat.object_sitloveseattk2x1_01",
+      "name": "object_sitLoveseatTK2x1_01",
+      "defid": "2876",
+      "fp": "2x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:chair"
+      ],
+      "socket": ""
+    }
+  ],
+  "outdoor_table": [
+    {
+      "id": "core.stamp.outdoor_table.object_tablediningumbrellaal1x1_01",
+      "name": "object_tableDiningUmbrellaAL1x1_01",
+      "defid": "884",
+      "fp": "2x2",
+      "tags": [
+        "cat:outdoor",
+        "cat:table"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.outdoor_table.object_tablediningumbrellatk1x1_01",
+      "name": "object_tableDiningUmbrellaTK1x1_01",
+      "defid": "4725",
+      "fp": "2x2",
+      "tags": [
+        "cat:outdoor",
+        "cat:table"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.outdoor_table.object_tablediningumbrellairn1x1_01",
+      "name": "object_tableDiningUmbrellaIRN1x1_01",
+      "defid": "4965",
+      "fp": "2x2",
+      "tags": [
+        "cat:outdoor",
+        "cat:table"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.outdoor_table.object_tablecoffee_1x1",
+      "name": "object_tableCoffee_1x1",
+      "defid": "1648",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:table"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.outdoor_table.object_tablegeneric",
+      "name": "object_tableGeneric",
+      "defid": "5481",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:table"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.outdoor_table.object_tablediningal1x1_01",
+      "name": "object_tableDiningAL1x1_01",
+      "defid": "6080",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:table"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.outdoor_table.object_tablediningirn1x1_01",
+      "name": "object_tableDiningIRN1x1_01",
+      "defid": "6646",
+      "fp": "1x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:table"
+      ],
+      "socket": "Surface"
+    },
+    {
+      "id": "core.stamp.outdoor_table.object_tabledining_2x1",
+      "name": "object_tableDining_2x1",
+      "defid": "1197",
+      "fp": "2x1",
+      "tags": [
+        "cat:outdoor",
+        "cat:table"
+      ],
+      "socket": "Surface"
+    }
+  ]
+}

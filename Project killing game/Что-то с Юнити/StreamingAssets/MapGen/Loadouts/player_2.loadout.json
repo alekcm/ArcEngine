@@ -1,0 +1,11 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "characterId": "player_2",
+  "signatureColor": "color:blue",
+  "choices": [
+    { "category": "bed",      "stampIds": ["core.stamp.bed_nightstand_basic"] },
+    { "category": "storage",  "stampIds": ["core.stamp.wardrobe_basic"] },
+    { "category": "personal", "stampIds": ["core.stamp.katana_stand"] }
+  ]
+}

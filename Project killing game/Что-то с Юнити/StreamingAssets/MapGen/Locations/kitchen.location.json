@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.location.kitchen",
+  "name": "Кухня",
+  "tags": ["cat:kitchen"],
+  "minW": 5, "minL": 5, "maxW": 14, "maxL": 14,
+  "indoor": true,
+  "floors": "any",
+  "groupKey": "",
+  "wallStyle": "", "floorMaterial": "",
+  "slots": [
+    { "id": "fridge", "filterTags": ["fridge"], "required": true,  "countMin": 1, "countMax": 1, "anchor": "Wall",  "loadoutCategory": "", "probability": 1.0 },
+    { "id": "stove",  "filterTags": ["stove"],  "required": true,  "countMin": 1, "countMax": 1, "anchor": "Wall",  "loadoutCategory": "", "probability": 1.0 },
+    { "id": "sink",   "filterTags": ["sink"],   "required": true,  "countMin": 1, "countMax": 1, "anchor": "Wall",  "loadoutCategory": "", "probability": 1.0 },
+    { "id": "table",  "filterTags": ["cat:dining"], "required": false, "countMin": 1, "countMax": 1, "anchor": "Center", "loadoutCategory": "", "probability": 0.8 }
+  ],
+  "decor": { "density": 0.08, "filterTags": ["cat:decor"] }
+}

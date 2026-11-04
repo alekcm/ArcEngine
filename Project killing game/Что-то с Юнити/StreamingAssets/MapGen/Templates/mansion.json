@@ -1,0 +1,44 @@
+{
+    "id": "core.template.mansion",
+    "name": "Заброшенный особняк",
+    "description": "Классический особняк с двором и подвалом. Рекомендуется 8-16 игроков.",
+    "minFloors": 2,
+    "maxFloors": 3,
+    "hasBasement": true,
+    "maxBuildings": 2,
+    "defaultCorridorStyle": 1,
+    "maxCellsPerFloor": 2000,
+    "recommendedPlayersMin": 8,
+    "recommendedPlayersMax": 16,
+    "locations": [
+        {
+            "locationId": "core.location.courtroom",
+            "countMin": 1,
+            "countMax": 1,
+            "required": true,
+            "constraints": "floor:basement"
+        },
+        {
+            "locationId": "core.location.personal_room",
+            "countMin": 8,
+            "countMax": 16,
+            "required": true,
+            "constraints": ""
+        },
+        {
+            "locationId": "core.location.kitchen",
+            "countMin": 1,
+            "countMax": 1,
+            "required": true,
+            "constraints": ""
+        },
+        {
+            "locationId": "core.location.dining",
+            "countMin": 1,
+            "countMax": 1,
+            "required": true,
+            "constraints": ""
+        }
+    ],
+    "allowedStampSets": []
+}

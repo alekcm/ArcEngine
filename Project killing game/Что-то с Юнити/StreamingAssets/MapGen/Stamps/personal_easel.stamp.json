@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.stamp.easel",
+  "name": "Мольберт",
+  "author": "core",
+  "tags": ["loadout:personal", "personal_item", "cat:bedroom"],
+  "footprintW": 2,
+  "footprintL": 2,
+  "floorSpan": 1,
+  "anchor": "Free",
+  "anchorEdge": "",
+  "weight": 1.0,
+  "clearance": [],
+  "content": {
+    "placedObjects": [
+      { "definitionId": "3", "useGridPlacement": true, "cellX": 0, "cellY": 0, "rotationSteps": 0, "rotationY": 0, "baseY": 0 }
+    ],
+    "walls": [],
+    "pathStrokes": []
+  },
+  "sockets": []
+}

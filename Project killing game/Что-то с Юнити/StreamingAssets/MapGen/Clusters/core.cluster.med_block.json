@@ -1,0 +1,27 @@
+{
+  "clusterId": "core.cluster.med_block",
+  "clusterType": "medical",
+  "displayName": "Медпункт (универсальный блок)",
+  "minCount": 1,
+
+  "requiredLocations": [
+    {
+      "ruleId": "med_room",
+      "locationId": "",
+      "requiredTag": "medbay",
+      "minCount": 1,
+      "variantIds": [ "core.location.medical_room", "core.location.medical_room_modern" ],
+      "variantPolicy": "weighted"
+    },
+    {
+      "ruleId": "med_storage",
+      "locationId": "core.location.med_storage",
+      "minCount": 1
+    },
+    {
+      "ruleId": "med_reception",
+      "requiredTag": "reception",
+      "minCount": 1
+    }
+  ]
+}

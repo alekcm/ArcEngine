@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.location.storage",
+  "name": "Кладовая",
+  "tags": ["cat:storage"],
+  "minW": 3, "minL": 3, "maxW": 10, "maxL": 10,
+  "indoor": true,
+  "floors": "any",
+  "groupKey": "",
+  "wallStyle": "", "floorMaterial": "",
+  "slots": [
+    { "id": "shelf", "filterTags": ["cat:generic"], "required": false, "countMin": 1, "countMax": 3, "anchor": "Wall", "loadoutCategory": "", "probability": 0.8 }
+  ],
+  "decor": { "density": 0.05, "filterTags": ["cat:decor"] }
+}

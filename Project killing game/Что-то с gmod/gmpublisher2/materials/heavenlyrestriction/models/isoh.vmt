@@ -1,0 +1,12 @@
+"VertexLitGeneric"
+{
+    "$basetexture" "heavenlyrestriction/models/isoh"
+    "$envmap" "env_cubemap"
+    "$nocull" "1"
+
+
+    "$phong" "1"
+    "$phongboost" "24"
+    "$phongexponent" "10"
+    "$phongfresnelranges" "[0 0 1]"
+}

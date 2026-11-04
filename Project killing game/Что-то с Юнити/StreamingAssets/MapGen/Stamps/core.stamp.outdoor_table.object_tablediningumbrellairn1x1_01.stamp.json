@@ -1,0 +1,67 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.stamp.outdoor_table.object_tablediningumbrellairn1x1_01",
+  "name": "object_tableDiningUmbrellaIRN1x1_01",
+  "author": "catalog_ai",
+  "tags": [
+    "cat:outdoor",
+    "cat:table"
+  ],
+  "footprintW": 2,
+  "footprintL": 2,
+  "floorSpan": 1,
+  "anchor": "Free",
+  "anchorEdge": "",
+  "weight": 1.0,
+  "clearance": [],
+  "content": {
+    "placedObjects": [
+      {
+        "definitionId": "4965",
+        "useGridPlacement": true,
+        "cellX": 0,
+        "cellY": 0,
+        "rotationSteps": 0,
+        "rotationY": 0.0,
+        "baseY": 0.0,
+        "localPosition": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        }
+      }
+    ],
+    "walls": [],
+    "pathStrokes": []
+  },
+  "sockets": [
+    {
+      "id": "top",
+      "kind": "Surface",
+      "area": {
+        "x": 0,
+        "y": 0,
+        "w": 2,
+        "l": 2
+      },
+      "cells": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "l": 2
+        }
+      ],
+      "hostObjectIndex": 0,
+      "filterTags": [
+        "cat:decor",
+        "cat:clutter"
+      ],
+      "required": false,
+      "countMin": 0,
+      "countMax": 2,
+      "probability": 0.5
+    }
+  ]
+}

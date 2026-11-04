@@ -1,0 +1,25 @@
+{
+  "formatVersion": 1,
+  "contentVersion": 1,
+  "id": "core.stamp.wardrobe_basic",
+  "name": "Шкаф",
+  "author": "core",
+  "tags": ["wardrobe", "loadout:storage", "cat:bedroom"],
+  "footprintW": 2,
+  "footprintL": 1,
+  "floorSpan": 1,
+  "anchor": "Wall",
+  "anchorEdge": "south",
+  "weight": 1.0,
+  "clearance": [
+    { "x": 0, "y": -1, "w": 2, "l": 1 }
+  ],
+  "content": {
+    "placedObjects": [
+      { "definitionId": "5", "useGridPlacement": true, "cellX": 0, "cellY": 0, "rotationSteps": 0, "rotationY": 0, "baseY": 0 }
+    ],
+    "walls": [],
+    "pathStrokes": []
+  },
+  "sockets": []
+}

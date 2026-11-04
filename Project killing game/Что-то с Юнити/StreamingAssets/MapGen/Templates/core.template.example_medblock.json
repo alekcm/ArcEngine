@@ -1,0 +1,69 @@
+{
+  "formatVersion": 1,
+  "id": "core.template.example_medblock",
+  "name": "Пример: универсальный медблок в двух контекстах",
+  "description": "Один и тот же core.cluster.med_block вызывается из крыла особняка (×2 пакетов крови) и из пляжного домика (другие койки). Это демонстрирует clusterRef + overrides. variantPolicy внутри медблока случайно выбирает классический/современный вариант медпункта.",
+  "requireOutdoorConnectivity": true,
+
+  "requiredClusters": [
+    {
+      "ruleId": "mansion",
+      "clusterId": "mansion",
+      "clusterType": "mansion",
+      "minCount": 1,
+      "requiredClusters": [
+        {
+          "ruleId": "mansion_med_wing",
+          "clusterId": "mansion_med_wing",
+          "clusterType": "wing",
+          "floor": 1,
+          "restrictFloor": true,
+          "minCount": 1,
+          "clusterRef": "core.cluster.med_block",
+          "overrides": [
+            {
+              "targetRuleId": "med_room",
+              "slotOverrides": [
+                { "targetSlotId": "blood_packs", "countScale": 2.0 }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ruleId": "beach_cabin",
+      "clusterId": "beach_cabin",
+      "clusterType": "cabin",
+      "placement": "Outdoor",
+      "restrictPlacement": true,
+      "minCount": 1,
+      "requiredClusters": [
+        {
+          "ruleId": "beach_med",
+          "clusterId": "beach_med",
+          "clusterType": "wing",
+          "minCount": 1,
+          "clusterRef": "core.cluster.med_block",
+          "overrides": [
+            {
+              "targetRuleId": "med_room",
+              "slotOverrides": [
+                {
+                  "targetSlotId": "med_bed",
+                  "replaceFilterTags": [ "cat:beach_lounger", "cat:medical" ]
+                }
+              ]
+            },
+            {
+              "targetRuleId": "*",
+              "slotOverrides": [
+                { "targetSlotId": "*", "addFilterTags": [ "style:suburban_contempo" ] }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

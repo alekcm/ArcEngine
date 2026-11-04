@@ -1,0 +1,19 @@
+"VertexlitGeneric"
+{
+	"$basetexture" "yukio/komahada"
+	"$bumpmap" "models/dewobedil/nagito_komaeda/default/normal"
+
+	"$lightwarptexture" "models/dewobedil/nagito_komaeda/default/cartoon_shader"
+
+	$alphatest 1
+	$nocull 1
+
+	$phongfresnelranges "[0.3 0.3 2]"
+	$phongalbedotint 1
+	$phongboost 0.03
+	$phongexponenttexture "models/dewobedil/nagito_komaeda/default/phong_exp"
+
+	"$rimlight"               "1"
+	"$rimlightexponent"       "3"
+	"$rimlightboost"          "4"
+}
