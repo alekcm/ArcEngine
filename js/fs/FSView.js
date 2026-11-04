@@ -302,28 +302,8 @@ const FSView = {
                 ctx.shadowColor = '#000'; ctx.shadowBlur = 5;
                 ctx.fillText(area.world.name, r.x + r.w / 2, plateY + 17, r.w - 66);
                 ctx.shadowBlur = 0; ctx.textBaseline = 'alphabetic';
-                // Objective worlds receive a fine orbital marker, distinct from the nameplate.
-                if (area.world.objective) {
-                    ctx.strokeStyle = 'rgba(236,190,91,.86)'; ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.arc(r.x + r.w / 2, r.y + r.h / 2 - 7, r.w / 2 - 22, 0, Math.PI * 2);
-                    ctx.stroke();
-                }
-                // The values of the world are drawn with the icons of the game, not
-                // written with letters: materiel, capacity, then one icon per asset.
-                ctx.textAlign = 'left'; ctx.font = 'bold 15px system-ui, sans-serif';
-                if (typeof FSIcons !== 'undefined') {
-                    FSIcons.canvas(ctx, 'asset.materiel', r.x + 24, r.y + 26, 16);
-                    ctx.fillStyle = '#a8d08a'; ctx.fillText(String(area.world.materiel || 0), r.x + 36, r.y + 32);
-                    FSIcons.canvas(ctx, 'mark.health', r.x + 24, r.y + 49, 16);
-                    ctx.fillStyle = '#d8c9a8'; ctx.fillText(String(area.world.capacity || 0), r.x + 36, r.y + 55);
-                    const assetGlyph = { forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'ui.reinforce', prosperity: 'asset.prosperity' };
-                    let ax = r.x + 24;
-                    for (const asset of area.world.assets || []) {
-                        FSIcons.canvas(ctx, assetGlyph[asset] || 'asset.cache', ax, r.y + 74, 15);
-                        ax += 20;
-                    }
-                }
+                // The victory token of an objective world is a 3D flag planted
+                // on the planet (updatePlanets) — not a ring printed on the tile.
             } else {
                 // A void: layered starfield with a few brighter navigational stars.
                 ctx.fillStyle = '#080d14'; ctx.fillRect(r.x + 4, r.y + 4, r.w - 8, r.h - 8);
@@ -403,6 +383,31 @@ const FSView = {
         ctx.textAlign = 'left';
         ctx.fillText(sys.tile, 10, S - 12);
         ctx.restore();
+        // The values of a world are NOT printed on the rotating tile: they are
+        // stamped in board space after the restore, so they always face the
+        // same way in the game world no matter how the tile was turned during
+        // the map build. Materiel is a green gear, the unit capacity a skull,
+        // every asset a chip like the physical token (dark disc, gold rim).
+        if (typeof FSIcons !== 'undefined') {
+            for (const area of sys.areas) {
+                if (!area.world) continue;
+                const r = this.areaRect(area.pos);
+                ctx.textAlign = 'left'; ctx.font = 'bold 15px system-ui, sans-serif';
+                FSIcons.canvas(ctx, 'asset.materiel', r.x + 24, r.y + 26, 16);
+                ctx.fillStyle = '#a8d08a'; ctx.fillText(String(area.world.materiel || 0), r.x + 44, r.y + 39);
+                FSIcons.canvas(ctx, 'mark.skull', r.x + 24, r.y + 49, 16);
+                ctx.fillStyle = '#d8c9a8'; ctx.fillText(String(area.world.capacity || 0), r.x + 44, r.y + 62);
+                const assetGlyph = { forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'ui.reinforce', prosperity: 'asset.prosperity' };
+                let ax = r.x + 24;
+                for (const asset of area.world.assets || []) {
+                    ctx.beginPath(); ctx.arc(ax + 8, r.y + 82, 8.5, 0, Math.PI * 2);
+                    ctx.fillStyle = '#141c25'; ctx.fill();
+                    ctx.strokeStyle = '#c9a86a'; ctx.lineWidth = 1.4; ctx.stroke();
+                    FSIcons.canvas(ctx, assetGlyph[asset] || 'asset.cache', ax + 8, r.y + 82, 12);
+                    ax += 21;
+                }
+            }
+        }
         rec.tex.update();
     },
 
@@ -697,7 +702,23 @@ const FSView = {
                     { diameter: this.PLANET_D + 5, thickness: 1.6, tessellation: 64 }, view.scene);
                 glow.material = mats.glow; glow.isPickable = false;
                 World3D.addObject(app.location.view, glow, 'prop', { castShadow: false, ink: false, outline: false });
-                planet = { mesh: face, clouds, atmosphere: glow, rim: body };
+                // The victory token of an objective world: a 3D flag planted on
+                // the far (top) edge of the planet, always facing the same way.
+                let flag = null;
+                if (area.world.objective) {
+                    flag = new BABYLON.TransformNode('fs-world-flag-' + key, view.scene);
+                    const pole = BABYLON.MeshBuilder.CreateCylinder('fs-world-flag-pole-' + key,
+                        { diameter: .9, height: 16, tessellation: 8 }, view.scene);
+                    pole.parent = flag; pole.position.y = 8;
+                    pole.material = view.material('flag-pole', '#8a94a0');
+                    const cloth = BABYLON.MeshBuilder.CreateBox('fs-world-flag-cloth-' + key,
+                        { width: 11, height: 6.5, depth: .5 }, view.scene);
+                    cloth.parent = flag; cloth.position.set(5.7, 12.8, 0);
+                    cloth.material = view.material('flag-cloth', '#e3b64f', { emissive: true });
+                    flag.isPickable = false;
+                    World3D.addObject(app.location.view, flag, 'prop', { castShadow: true, ink: false, outline: false });
+                }
+                planet = { mesh: face, clouds, atmosphere: glow, rim: body, flag };
                 view.planets.set(key, planet);
             }
             const disc = this.discAt(app, sys, area.pos, view.metrics);
@@ -706,16 +727,17 @@ const FSView = {
             planet.mesh.position.set(cx, base + this.PLANET_H + .12, cz);
             planet.clouds.position.set(cx, base + this.PLANET_H + .34, cz);
             planet.atmosphere.position.set(cx, base + this.PLANET_H + .2, cz);
+            if (planet.flag) planet.flag.position.set(cx, base + this.PLANET_H + .1, cz - (this.PLANET_D / 2) * .8);
             planet.mesh.metadata = Object.assign({}, planet.mesh.metadata, { fs: 'area', system: sys.id, pos: area.pos, world: name });
             planet.mesh.isPickable = true;
             for (const layer of [planet.rim, planet.clouds, planet.atmosphere]) layer.metadata = planet.mesh.metadata;
         }
         for (const [key, planet] of view.planets) if (!active.has(key)) {
-            for (const layer of [planet.mesh, planet.clouds, planet.atmosphere, planet.rim]) layer.setEnabled(false);
+            for (const layer of [planet.mesh, planet.clouds, planet.atmosphere, planet.rim, planet.flag]) if (layer) layer.setEnabled(false);
         }
         for (const key of active) {
             const p = view.planets.get(key);
-            for (const layer of [p.mesh, p.clouds, p.atmosphere, p.rim]) layer.setEnabled(true);
+            for (const layer of [p.mesh, p.clouds, p.atmosphere, p.rim, p.flag]) if (layer) layer.setEnabled(true);
         }
     },
 
@@ -1630,7 +1652,7 @@ const FSView = {
                 ? FS_RULES.reinforceUnitDef(sidePlayer.faction, area.world ? 'ground' : 'ship') : null;
             const reinModel = reinDef
                 ? this.factionModel(view, sidePlayer.faction, reinDef.type, reinDef.id, null) : null;
-            const whiteMat = view.material('rein-white', '#ffffff', { emissive: true });
+            const whiteMat = view.material('rein-white', '#f4f1e8');
             for (let i = 0; i < reinforce; i++) {
                 const row = Math.floor(i / 8);
                 const inRow = i % 8;

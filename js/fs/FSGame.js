@@ -1429,6 +1429,9 @@ class FSGame {
                 values,
                 parts: FS_RULES.combatValuesParts(s, id),
                 takes: FS_RULES.combatDamageFor(s, id),
+                // combatDamageFor(side) is the damage the side SUFFERS; the
+                // damage it deals to the opponent is the opponent's value.
+                deals: FS_RULES.combatDamageFor(s, id === 'attacker' ? 'defender' : 'attacker'),
                 hand: (c.cards[id].hand || []).length,
                 closed: !!(c.chosen && c.chosen[id]),
                 mine: id === side,
