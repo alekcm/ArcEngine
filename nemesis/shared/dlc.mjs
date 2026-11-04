@@ -1,5 +1,4 @@
-// DLC definitions and rule primitives. The expansion packs are available for playtesting;
-// see docs/NEMESIS_DLC_STATUS.md for agreed adaptations and remaining validation.
+// DLC definitions and rule primitives. See docs/NEMESIS_DLC_STATUS.md for agreed adaptations.
 import { shuffle } from './rng.mjs';
 import { CHYTRID_TOKEN_VALUES } from './data/chytrids.mjs';
 

@@ -1,5 +1,4 @@
-// Automated legal-action journeys through the released playtest packs. These complement, but
-// do not replace, human playtests and further rules/interaction audits.
+// Automated legal-action journeys through the expansion packs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame } from '../shared/engine/setup.mjs';
