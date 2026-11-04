@@ -2695,6 +2695,17 @@ const FS_RULES = {
         return units.concat(bastions, tokens);
     },
 
+    // The CL0 unit of a faction — the miniature a reinforcement token is
+    // treated as (the rules, "Reinforcement Tokens"): ground on a world,
+    // ship in the void.
+    reinforceUnitDef(factionId, type) {
+        const f = this.factionById(factionId);
+        if (!f) return null;
+        return f.units.find(u => u.kl === 0 && u.type === (type || 'ground'))
+            || f.units.find(u => u.kl === 0)
+            || null;
+    },
+
     // The reinforcement tokens of a side in the combat as the rules see them:
     // used in total, routed (flipped) ones, and the ones still counting as
     // units. The only thing a token does not do is contribute dice.

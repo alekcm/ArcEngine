@@ -1620,10 +1620,17 @@ const FSView = {
                 body.metadata = node.metadata;
                 this.addMarker(view, node, 'prop');
             });
-            // The reinforcement tokens are tokens, not cubes: flat discs with
-            // the white flag, lying on the ground in front of the troops.
+            // A reinforcement token IS the faction's CL0 unit (the rules,
+            // "Reinforcement Tokens"): its own miniature, painted fully white.
+            // Until the OBJ loads (or if it fails) a flat white disc stands in.
             const reinforce = Number((c.reinforce && c.reinforce[side.id]) || 0);
             const routed = Number((c.reinforceRouted && c.reinforceRouted[side.id]) || 0);
+            const sidePlayer = state.players[side.seat] || {};
+            const reinDef = typeof FS_RULES !== 'undefined'
+                ? FS_RULES.reinforceUnitDef(sidePlayer.faction, area.world ? 'ground' : 'ship') : null;
+            const reinModel = reinDef
+                ? this.factionModel(view, sidePlayer.faction, reinDef.type, reinDef.id, null) : null;
+            const whiteMat = view.material('rein-white', '#ffffff', { emissive: true });
             for (let i = 0; i < reinforce; i++) {
                 const row = Math.floor(i / 8);
                 const inRow = i % 8;
@@ -1633,26 +1640,44 @@ const FSView = {
                 const node = new BABYLON.TransformNode('fs-rein-' + side.id + '-' + i, view.scene);
                 node.position.set(pt.x, groundY(pt.x, pt.z) + 1.4, pt.z);
                 node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id, reinforce: true };
-                const tokenDisc = BABYLON.MeshBuilder.CreateCylinder('fs-rein-body-' + side.id + '-' + i,
-                    { diameter: 10, height: 2.8, tessellation: 24 }, view.scene);
-                tokenDisc.parent = node;
                 const isRouted = i < routed;
-                tokenDisc.material = view.material('rein-' + side.id + '-' + i + (isRouted ? '-r' : ''),
-                    isRouted ? '#6b6257' : '#e8e2d2', { emissive: !isRouted });
-                const face = BABYLON.MeshBuilder.CreateDisc('fs-rein-face-' + side.id + '-' + i,
-                    { radius: 4.4, tessellation: 24 }, view.scene);
-                face.parent = node;
-                face.rotation.x = Math.PI / 2;
-                face.position.y = 1.45;
-                const fmat = view.material('rein-face-' + side.id + '-' + i + (isRouted ? '-r' : ''), '#f4ecd9');
-                fmat.diffuseTexture = this.iconTexture(view, 'ui.reinforce', isRouted ? '#8a8175' : '#3a3428');
-                fmat.opacityTexture = fmat.diffuseTexture;
-                fmat.useAlphaFromDiffuseTexture = true;
-                fmat.backFaceCulling = false;
-                face.material = fmat;
-                if (isRouted) node.rotation.z = Math.PI / 2;
-                tokenDisc.isPickable = true;
-                tokenDisc.metadata = node.metadata;
+                if (reinModel) {
+                    // The CL0 miniature, every part plain white; a routed token
+                    // lies flipped on its side, inert.
+                    const k = area.world ? this.ON_WORLD : 1;
+                    node.position.set(pt.x + reinModel.root.position.x * k, groundY(pt.x, pt.z) + reinModel.root.position.y * k, pt.z + reinModel.root.position.z * k);
+                    node.scaling.copyFrom(reinModel.root.scaling);
+                    node.scaling.scaleInPlace(k);
+                    for (let p = 0; p < reinModel.parts.length; p++) {
+                        const clone = reinModel.parts[p].clone('fs-rein-part-' + side.id + '-' + i + '-' + p, node, false);
+                        if (!clone) continue;
+                        clone.material = whiteMat;
+                        clone.isPickable = true;
+                        clone.metadata = node.metadata;
+                        clone.setEnabled(true);
+                    }
+                    if (isRouted) node.rotation.z = Math.PI / 2;
+                } else {
+                    const tokenDisc = BABYLON.MeshBuilder.CreateCylinder('fs-rein-body-' + side.id + '-' + i,
+                        { diameter: 10, height: 2.8, tessellation: 24 }, view.scene);
+                    tokenDisc.parent = node;
+                    tokenDisc.material = view.material('rein-' + side.id + '-' + i + (isRouted ? '-r' : ''),
+                        isRouted ? '#6b6257' : '#e8e2d2', { emissive: !isRouted });
+                    const face = BABYLON.MeshBuilder.CreateDisc('fs-rein-face-' + side.id + '-' + i,
+                        { radius: 4.4, tessellation: 24 }, view.scene);
+                    face.parent = node;
+                    face.rotation.x = Math.PI / 2;
+                    face.position.y = 1.45;
+                    const fmat = view.material('rein-face-' + side.id + '-' + i + (isRouted ? '-r' : ''), '#f4ecd9');
+                    fmat.diffuseTexture = this.iconTexture(view, 'ui.reinforce', isRouted ? '#8a8175' : '#3a3428');
+                    fmat.opacityTexture = fmat.diffuseTexture;
+                    fmat.useAlphaFromDiffuseTexture = true;
+                    fmat.backFaceCulling = false;
+                    face.material = fmat;
+                    if (isRouted) node.rotation.z = Math.PI / 2;
+                    tokenDisc.isPickable = true;
+                    tokenDisc.metadata = node.metadata;
+                }
                 this.addMarker(view, node, 'prop');
             }
         }
