@@ -112,7 +112,7 @@ const FSUI = {
     // The board furniture the player may put away: the participants, the chronicle
     // and the window with the order tokens of the hand.
     panelState() {
-        if (!this.panels) this.panels = { players: true, chronicle: true, orders: false };
+        if (!this.panels) this.panels = { players: true, chronicle: true, orders: false, plaque: true };
         return this.panels;
     },
 
@@ -311,7 +311,20 @@ const FSUI = {
         const panel = this.el('section', 'fs-main-panel');
         const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', state.over ? 'Итоги сражения' : 'Текущий этап'));
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
-        head.append(this.el('p', '', ctx.text || 'Выберите действие, чтобы продолжить партию.')); panel.append(head);
+        head.append(this.el('p', '', ctx.text || 'Выберите действие, чтобы продолжить партию.'));
+        // The plaque (round counter, phase title, hint) can be folded away.
+        const plaqueBtn = this.el('button', 'fs-plaque-toggle' + (this.panelState().plaque ? '' : ' is-off'));
+        plaqueBtn.type = 'button';
+        plaqueBtn.title = this.panelState().plaque ? 'Скрыть плашку' : 'Показать плашку';
+        plaqueBtn.append(this.iconEl('ui.up'));
+        plaqueBtn.addEventListener('click', () => {
+            const ps = this.panelState();
+            ps.plaque = !ps.plaque;
+            this.update(state, ctx);
+        });
+        head.append(plaqueBtn);
+        if (!this.panelState().plaque) panel.classList.add('is-plaque-off');
+        panel.append(head);
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
         // No system is written in this panel: what a sector is made of is shown by
         // the plaque over the board itself. The panel belongs to the action.
