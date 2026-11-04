@@ -1003,7 +1003,9 @@ const FSView = {
             }
             const size = max.subtract(min), largest = Math.max(size.x, size.y, size.z);
             if (!parts.length || !Number.isFinite(largest) || largest <= 0) throw new Error('OBJ не содержит видимой геометрии');
-            const scale = 30 / largest;
+            // The structure stands on the planet's rim: about half the planet's
+            // diameter, so it reads as a landmark and still fits on the table.
+            const scale = 42 / largest;
             root.scaling.setAll(scale);
             root.position.set(-(min.x + max.x) * .5 * scale, -min.y * scale, -(min.z + max.z) * .5 * scale);
             root.setEnabled(false);
@@ -1290,7 +1292,7 @@ const FSView = {
             const owner = state.players.find(p2 => p2.seat === s.seat);
             const color = (owner && owner.palette && owner.palette.primary) || (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
             const root = new BABYLON.TransformNode('fs-structure-' + s.id, view.scene);
-            const k = .62;
+            const k = 1;
             root.scaling.setAll(k);
             root.position.set(disc.x, disc.y, disc.z - this.PLANET_D * 0.27);
             const meta = { fs: 'structure', structure: s.id, system: s.system, pos: s.area };
