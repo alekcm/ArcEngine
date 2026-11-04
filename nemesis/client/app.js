@@ -1,3 +1,5 @@
+import { CHYTRID_ATTACK_CARDS, CHYTRID_EVENT_CARDS, CHYTRID_WEAKNESSES, chytridEventText } from '/shared/data/chytrids.mjs';
+import { bagTokenLabel, bagTokenIcon } from '/shared/bag-tokens.mjs';
 // app.js — Nemesis client: lobby, HUD, prompts, hand, log, chat, undo. Talks to server.mjs over
 // WebSocket and renders the 3D board through scene3d.js.
 
@@ -8,11 +10,16 @@ import { characterColors } from './characters.js';
 import { characterPartSlots, characterParts } from '../shared/appearance.mjs';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
+import { itemDeckBadge, knowledgeTrack, larvaBadge } from './status-display.mjs';
 import * as Snd from './sound.js';
-import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, queenArt, itemArt } from './cards.js';
+import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, panicArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip, tileKeyedEdits } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, WEAKNESSES, FEATS, objectiveTextOf,
     EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
+import { adaptationSlots, toughnessText } from './carnomorph-ui.mjs';
+import { CARNOMORPH_MUTATIONS, CARNOMORPH_ATTACK_CARDS } from '/shared/data/carnomorphs.mjs';
+import { CARNOMORPH_EVENT_CARDS, carnomorphEventText } from '/shared/data/carnomorph-events.mjs';
+import { VOID_ATTACK_CARDS, VOID_EVENT_CARDS, VOID_PANIC_CARDS, VOID_WEAKNESSES } from '/shared/data/voidseeders.mjs';
 
 const $ = id => document.getElementById(id);
 const PHASES = { setup: 'Подготовка', draft: 'Выбор персонажей', player: 'Фаза игроков', intruder: 'Фаза чужих', event: 'Фаза событий', cleanup: 'Завершение раунда' };
@@ -91,9 +98,9 @@ const app = {
     showCid: '',        // id of my own show, so the server echo does not draw it twice
     showTimer: null,
 };
-const EVENT_BY_ID = Object.fromEntries(EVENT_CARDS.map(e => [e.id, e]));
-const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(e => [e.id, e]));
-const TOKEN_ICON = { blank: '○', larva: '🐛', adult: '👾', drone: '🦂', queen: '👑' };
+const EVENT_BY_ID = Object.fromEntries([...EVENT_CARDS, ...CARNOMORPH_EVENT_CARDS, ...VOID_EVENT_CARDS, ...CHYTRID_EVENT_CARDS].map(e => [e.id, e]));
+const ATTACK_BY_ID = Object.fromEntries([...ATTACK_CARDS, ...CARNOMORPH_ATTACK_CARDS, ...VOID_ATTACK_CARDS, ...CHYTRID_ATTACK_CARDS].map(e => [e.id, e]));
+const PANIC_BY_ID = Object.fromEntries(VOID_PANIC_CARDS.map(c => [c.id, c]));
 let scene = null, preview = null, dice = null, tableFx = null;
 let galleryScene = null;   // lobby room gallery: its own small 3D scene, built on first open
 let cursorSent = 0, lastFloor = null;
@@ -117,7 +124,11 @@ function onMessage(m) {
             if (!m.view) { app.view = null; $('hud').classList.add('hidden'); $('lobby').classList.remove('hidden'); $('endOverlay').classList.add('hidden'); return; }
             if (app.labWorkshop) closeLabWorkshop(false);
             app.me = m.you; app.host = m.host;
-            if (m.full) app.logEntries = [];
+            if (m.full) {
+                app.logEntries = [];
+                // A reconnect, undo or restored game is a new baseline, not new table events.
+                if (tableFx) tableFx.reset();
+            }
             app.logEntries.push(...m.view.log);
             app.view = m.view; app.undoDepth = m.undoDepth; app.history = m.history; app.canUndo = !!m.canUndo;
             if (app.gallery) closeGallery();       // the table started while the gallery was open
@@ -128,6 +139,7 @@ function onMessage(m) {
         case 'notice': notice(m.text, m.kind); break;
         case 'chat': addChat(m); break;
         case 'savesList': renderSavesList(m.saves); break;
+        case 'saveDownload': downloadJson(m.name + '.json', m.data); break;
         case 'saved':
             notice('Игра сохранена: ' + m.name, 'good');
             if (m.data && app.downloadingSave) {
@@ -323,6 +335,7 @@ function renderLobby() {
     for (const el of $('seatList').querySelectorAll('[data-kick]')) el.onclick = () => net.send({ t: 'lobby', kick: Number(el.dataset.kick) });
     // settings
     $('modeSelect').value = L.settings.mode; $('draftSelect').value = L.settings.draft === false ? '0' : '1'; if (document.activeElement !== $('seedInput')) $('seedInput').value = L.settings.seed || '';
+    if ($('enemySetSelect')) { $('enemySetSelect').value = L.settings.enemySet || 'redux'; $('enemySetSelect').disabled = !app.host; }
     if ($('adaptSelect')) $('adaptSelect').value = L.settings.adaptations !== undefined ? String(L.settings.adaptations) : '3';
     if ($('alienModeSelect')) $('alienModeSelect').value = L.settings.alienMode === 'weaknesses' ? 'weaknesses' : 'evolutions';
     if ($('noiseDieSelect')) $('noiseDieSelect').value = L.settings.noiseVariant ? 'safe' : 'standard';
@@ -571,12 +584,14 @@ $('galleryClose').onclick = () => closeGallery();
 $('startBtn').onclick = () => net.send({ t: 'start' });
 const sendSettings = () => net.send({ t: 'lobby', settings: {
     mode: $('modeSelect').value,
+    enemySet: $('enemySetSelect') ? $('enemySetSelect').value : 'redux',
     seed: $('seedInput').value,
     draft: $('draftSelect').value === '1',
     adaptations: $('adaptSelect') ? $('adaptSelect').value : '3',
     alienMode: $('alienModeSelect') ? $('alienModeSelect').value : 'evolutions',
     noiseVariant: $('noiseDieSelect') ? $('noiseDieSelect').value === 'safe' : false,
 } });
+if ($('enemySetSelect')) $('enemySetSelect').onchange = sendSettings;
 $('modeSelect').onchange = sendSettings;
 $('seedInput').onchange = sendSettings;
 $('draftSelect').onchange = sendSettings;
@@ -688,7 +703,7 @@ function renderTopbar() {
     const v = app.view;
     renderTrack(v);
     $('tbDest').textContent = v.destination;
-    const bk = v.bagKnown; $('tbBag').textContent = v.bagCount + ' (' + ['blank', 'larva', 'adult', 'drone', 'queen'].filter(k => bk[k]).map(k => INTRUDER_NAMES[k][0] + bk[k]).join(' ') + ')';
+    const bk = v.bagKnown; $('tbBag').textContent = v.bagCount + ' (' + Object.entries(bk).map(([k, n]) => bagTokenLabel(k) + ': ' + n).join(' · ') + ')';
     $('tbMarkers').textContent = (8 - v.fireLeft) + '/8 · ' + (8 - v.malfLeft) + '/8';
     const cc = v.computerCard ? COMPUTER_CARDS[v.computerCard] : null;
     const ccText = cc ? (cc.options ? Object.values(cc.options).map(t => '• ' + t).join('\n') : cc.text) : '';
@@ -708,7 +723,29 @@ function renderTopbar() {
           'Сколько их — зависит от числа игроков; открываются после первой смерти или на жёлтой зоне самоуничтожения.'
         : '';
     const ad = v.adaptations || [];
-    if (v.weaknessMode) {
+    if (v.enemySet === 'carnomorphs') {
+        $('tbAdaptLbl').textContent = 'Адаптации карноморфов';
+        $('tbAdapt').classList.remove('weak');
+        $('tbAdapt').innerHTML = adaptationSlots(v).map(slot => {
+            const label = esc(slot.label) + ': ';
+            if (slot.status === 'removed') return '<span class="itag">' + label + 'удалена</span>';
+            if (slot.status === 'hidden') return '<span class="itag">' + label + '🔒 скрыта</span>';
+            return '<span class="itag adapt">' + label + esc(slot.name) + '<span class="ipop"><b>🧬 ' + esc(slot.name) + '</b><span>' + esc(slot.text) + '</span></span></span>';
+        }).join('<span class="sep"> · </span>');
+    } else if (v.enemySet === 'voidseeders') {
+        $('tbAdaptLbl').textContent = 'Уязвимости кошмаров';
+        $('tbAdapt').classList.add('weak');
+        const wk = v.voidWeaknesses || [];
+        const hidden = [['madness', 'безумие'], ['carcass', 'останки'], ['egg', 'яйцо']].filter(([t]) => !(v.voidAnalyzed && v.voidAnalyzed[t])).map(([, label]) => label);
+        $('tbAdapt').innerHTML = (wk.length ? wk.map(k => VOID_WEAKNESSES[k] ? '<span class="itag adapt">' + esc(VOID_WEAKNESSES[k].name) + '<span class="ipop"><b>🔬 ' + esc(VOID_WEAKNESSES[k].name) + '</b><span>' + esc(VOID_WEAKNESSES[k].text) + '</span></span></span>' : '').join('<span class="sep"> · </span>') : 'пока скрыты') + (hidden.length ? ' <span class="sep">·</span> скрыто: ' + hidden.join(', ') : ' <span class="sep">·</span> все открыты') + ' <span class="sep">·</span> логов уничтожено: ' + (v.voidLairsDestroyed || 0) + '/3';
+    } else if (v.enemySet === 'chytrids') {
+        $('tbAdaptLbl').textContent = 'Хитриды'; $('tbAdapt').classList.add('weak');
+        const wk = v.chyWeaknesses || [], hidden = [['corpse','труп'],['carcass','туша'],['egg','яйцо']].filter(([t])=>!(v.chyAnalyzed||{})[t]).map(([,label])=>label);
+        const cells = (v.chyGermSlots || []).map(s => s.cube ? (s.color === 'green' ? '🟩' : '🟪') + s.cube.level : '▫️').join(' ');
+        const queen = (v.chyQueenSlots || []).filter(Boolean).length;
+        $('tbAdapt').innerHTML = (wk.length ? wk.map(k=>CHYTRID_WEAKNESSES[k] ? '<span class="itag adapt">'+esc(CHYTRID_WEAKNESSES[k].name)+'<span class="ipop"><b>🔬 '+esc(CHYTRID_WEAKNESSES[k].name)+'</b><span>'+esc(CHYTRID_WEAKNESSES[k].text)+'</span></span></span>' : '').join(' · ') : 'уязвимости скрыты') +
+            (hidden.length ? ' · скрыто: '+hidden.join(', ') : '') + ' · наросты: '+cells+' · отростков на планшете: '+queen+'/8 · споры: '+v.chySporesLeft+' · мицелий: '+v.chyMyceliumLeft;
+    } else if (v.weaknessMode) {
         $('tbAdaptLbl').textContent = 'Слабости чужих';
         $('tbAdapt').classList.add('weak');
         const wk = v.weaknesses || [];
@@ -787,7 +824,7 @@ function renderSelfHud() {
         const armorBadge = me.armor && armorAt < 0 ? ' · 🛡 ' + esc(itemLabel(me.armor)) : '';
         const handC = me.handCount ?? (me.hand ? me.hand.length : 0);
         return '<div class="sh-player' + (isMe ? ' is-me' : '') + (me.health <= 1 ? ' dead' : '') + '" data-player-id="' + me.id + '" title="' + esc(me.charName || me.name) + ' — нажмите, чтобы открыть планшет">' +
-            '<div class="sh-head"><b>' + esc(me.charName || me.name) + (isMe ? ' (Вы)' : '') + '</b>' +
+            '<div class="sh-head"><b>' + esc(me.charName || me.name) + (isMe ? ' (Вы)' : '') + '</b>' + larvaBadge(me) +
             '<small>' + esc(st) + ' · ❤️ ' + me.health + '/10 · 🂠 ' + handC + ' в руке' + armorBadge + '</small></div>' +
             '<div class="sh-hp">' + bar + lastCell + hpSkull(me) + '</div>' +
             '</div>';
@@ -831,6 +868,8 @@ function renderPlayers() {
         if (p.pod) tags.push('<span class="tag blue">капсула №' + p.pod + '</span>');
         if (p.passed && v.phase === 'player') tags.push('<span class="tag">пас</span>');
         for (const w of p.wounds) tags.push('<span class="tag red" title="' + esc(woundName(w)) + '">травма: ' + esc(woundName(w)) + '</span>');
+        if (v.enemySet === 'chytrids' && p.chySpore) tags.push('<span class="tag green">🟢 спора</span>');
+        if (v.enemySet === 'voidseeders') tags.push('<span class="tag purple" title="С уровня 3 безумие нельзя снизить ниже 3 обычными способами; увеличение выше 5 смертельно">🧠 безумие ' + p.madness + '/5</span>');
         if (p.larva) tags.push('<span class="tag purple">личинка</span>');
         if (p.armor) tags.push('<span class="tag itag" title="' + esc(itemTitle(p.armor)) + '">' + itemArtHtml(p.armor) + '🛡 ' + esc(itemLabel(p.armor)) + (p.armor.item === 'probeArm' ? ' · жетонов свободно ' + (p.armor.charge ?? ITEMS.probeArm.markers) : '') + '</span>');
         if (p.tissue) tags.push('<span class="tag yellow">🧫 ткань ×' + p.tissue + '</span>');
@@ -849,7 +888,7 @@ function renderPlayers() {
             // p. 14: another character's light items are hidden; show only how many there are.
             + ((p.itemCount || 0) > p.items.length ? '<span class="tag" title="Лёгкие предметы другого персонажа скрыты">🔒 карт предметов: ' + p.itemCount + '</span>' : '');
         let obj = '';
-        if (me && p.objectives) obj = '<div class="objs">' + p.objectives.map(o => '<div class="obj ' + o.kind + '" style="background-image:url(' + objectiveArt(o.kind) + ')"><b>🎯 ' + esc(OBJECTIVES[o.kind][o.id].name) + '</b><span>' + esc(objectiveTextOf(OBJECTIVES[o.kind][o.id], v.players)) + '</span></div>').join('') + '</div>';
+        if (me && p.objectives) obj = '<div class="objs">' + p.objectives.map(o => '<div class="obj ' + o.kind + '" style="background-image:url(' + objectiveArt(o.kind) + ')"><b>🎯 ' + esc(OBJECTIVES[o.kind][o.id].name) + '</b><span>' + esc(objectiveTextOf(OBJECTIVES[o.kind][o.id], v.players, v.enemySet)) + '</span></div>').join('') + '</div>';
         let known = '';
         if (me) {
             const ke = Object.entries(p.knownEngines || {}); if (ke.length) known += '<div class="items">⚙ ' + ke.map(([n, w]) => '№' + n + ': ' + (w ? 'исправен' : 'повреждён')).join(', ') + '</div>';
@@ -1155,8 +1194,8 @@ function renderBagStrip() {
     if (app.bagShown === b.n) return;
     app.bagShown = b.n;
     const who = b.by != null && v.players[b.by] ? v.players[b.by].name : '';
-    el.innerHTML = '<span class="bt-ico">' + (TOKEN_ICON[b.token] || '🎒') + '</span>' +
-        '<div><div class="bt-name">' + esc(INTRUDER_NAMES[b.token] || b.token) + (who ? ' · ' + esc(who) : '') + '</div>' +
+    el.innerHTML = '<span class="bt-ico">' + bagTokenIcon(b.token) + '</span>' +
+        '<div><div class="bt-name">' + esc(bagTokenLabel(b.token)) + (who ? ' · ' + esc(who) : '') + '</div>' +
         '<div class="bt-why">' + esc(b.reason || '—') + '</div>' +
         '<div class="bt-effect">' + esc(b.effect || b.meaning || '') + '</div></div>' +
         '<button class="bt-close" title="Скрыть">✕</button>';
@@ -1170,6 +1209,9 @@ function renderBagStrip() {
 function renderHint() {
     const v = app.view; if (!v) return;
     const pr = v.prompt; const hints = [];
+    if (v.enemySet === 'chytrids') hints.push('Правила DLC: нарост не считается боем; споры и мицелий видны в отсеках');
+    if (v.enemySet === 'voidseeders') hints.push('Правила DLC: «взрослый» = шепчущий; логово вызывает шум в конце хода');
+    if (v.enemySet === 'carnomorphs') hints.push('Правила DLC: «взрослый» = падальщик; «Королева» в целях = мясник');
     if (pr && !pr.waiting && pr.kind !== 'dice' && pr.kind !== 'ack') hints.push('<b>1–9</b> выбор');
     if (app.canUndo) hints.push('<b>Esc</b> шаг назад');
     hints.push('<b>ЛКМ</b> по комнате — идти, по чужому — атака', '<b>Alt</b> названия комнат, неоновые номера на дверях и поиск', '<b>C</b> персонаж', '<b>F</b> к себе', '<b>Q/E</b> поворот', '<b>WASD</b> камера');
@@ -1248,6 +1290,7 @@ function onRoomHover(id, x, y) {
     else if (me && me.knownTiles && me.knownTiles[id]) html += '<div class="dim">Вам известно: ' + esc(ROOM_TILES[me.knownTiles[id]].name) + '</div>';
     else html += '<div class="dim">??? — не разведана</div>';
     const flags = [];
+    if (rs.chySpore) flags.push('🟢 споры'); if (rs.chyGerm) flags.push((rs.chyGerm.color === 'green' ? '🟩' : '🟪') + ' нарост: ' + rs.chyGerm.level); if (rs.chyMycelium) flags.push('🍄 мицелий');
     if (rs.fire) flags.push('🔥 огонь'); if (rs.malfunction) flags.push('⚠ поломка'); if (r.tech) flags.push('🕳 тех. вход');
     const intr = Object.values(v.intruders).filter(i => i.room === id);
     if (intr.length) flags.push('👾 ' + intr.map(i => INTRUDER_NAMES[i.type] + (i.hits ? '(' + i.hits + ')' : '')).join(', '));
@@ -1665,6 +1708,7 @@ if ($('fsBtn')) {
 }
 
 function openSaveOverlay(mode) {
+    if (!app.host) { notice('Сохранения доступны только ведущему.', 'error'); return; }
     const el = $('saveOverlay');
     if (!el) return;
     el.classList.remove('hidden');
@@ -1699,7 +1743,7 @@ function renderSavesList(saves) {
             </div>
             <div class="save-actions">
                 <button class="btn small primary load-btn">Загрузить</button>
-                <a href="/api/save/download?name=${encodeURIComponent(s.filename)}" download class="btn small" style="text-decoration:none;" title="Скачать .json">⬇</a>
+                <button class="btn small download-btn" title="Скачать .json">⬇</button>
                 <button class="btn small danger del-btn" title="Удалить">✕</button>
             </div>
         `;
@@ -1709,6 +1753,7 @@ function renderSavesList(saves) {
                 $('saveOverlay').classList.add('hidden');
             }
         };
+        item.querySelector('.download-btn').onclick = () => net.send({ t: 'downloadSave', name: s.filename });
         item.querySelector('.del-btn').onclick = () => {
             if (confirm('Удалить сохранение «' + (s.name || s.filename) + '»?')) {
                 net.send({ t: 'deleteSave', name: s.filename });
@@ -1892,7 +1937,7 @@ function sheetItemHtml(inst, picks) {
     return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + (opt ? ' pickable' : '') + '" data-item="' + esc(inst.uid) + '"' +
         (opt ? ' data-pick="' + esc(opt) + '" title="Нажмите, чтобы выбрать этот предмет"' : '') + '>' +
         (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
-        '<div><b>' + esc(itemName) + (d.quest ? ' · квестовый' : '') + (isCuffsFlipped ? ' · перевёрнуты 🔓' : '') + '</b><small>' + esc(itemText) + '</small>' +
+        '<div><b>' + esc(itemName) + (d.quest ? ' · квестовый' : '') + (isCuffsFlipped ? ' · перевёрнуты 🔓' : '') + '</b>' + itemDeckBadge(d.deck) + '<small>' + esc(itemText) + '</small>' +
         '<small style="color:#8394a8">' + esc(meta.join(' · ')) + '</small></div>' +
         (opt ? '<span class="si-pick">Выбрать</span>' : '') + '</div>';
 }
@@ -1927,7 +1972,7 @@ function openSheet(quiet, targetPlayerId) {
         return '<div class="sheet-item quest closed' + (open ? ' pickable' : '') + '"' + (open ? ' data-pick="quest"' : '') +
             ' title="' + esc(open ? 'Нажмите, чтобы открыть: это стоит 1 действие' : (questMenu && questMenu.reason) || 'Закрыт: откроется по правилам карты') + '">' +
             (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
-            '<div><b>' + esc(d.name || q.item) + ' · закрыт 🔒' + chargeHtml + '</b>' +
+            '<div><b>' + esc(d.name || q.item) + ' · закрыт 🔒' + chargeHtml + '</b>' + itemDeckBadge(d.deck) +
             '<small>' + esc(d.text || '') + '</small>' +
             '<small style="color:#8394a8">Активация: ' + esc(where) + ' · ' + esc(pay) + ' · 1 действие</small>' +
             ((isMine && questMenu && !questMenu.enabled && questMenu.reason) ? '<small style="color:#e2a33f">' + esc(questMenu.reason) + '</small>' : '') +
@@ -1938,15 +1983,17 @@ function openSheet(quiet, targetPlayerId) {
     const gear = items.filter(i => !(ITEMS[i.item] && (ITEMS[i.item].quest || ITEMS[i.item].weapon)));
     const wounds = (me.wounds || []).map(w => '<div class="sheet-wound"><b>' + esc(WOUNDS[w] ? WOUNDS[w].name : w) + '</b><small>' + esc(WOUNDS[w] ? WOUNDS[w].text : '') + '</small></div>').join('');
     const objs = isMine
-        ? ((me.objectives || []).map(o => '<div class="sheet-goal" style="background-image:url(' + objectiveArt(o.kind) + ')"><b>🎯 ' + esc(OBJECTIVES[o.kind][o.id].name) + ' · ' + (o.kind === 'corporate' ? 'корпоративная' : 'личная') + '</b><span>' + esc(objectiveTextOf(OBJECTIVES[o.kind][o.id], v.players)) + '</span></div>').join('') || '<div class="empty">Цель ещё не выбрана — выберите бесплатным действием.</div>')
+        ? ((me.objectives || []).map(o => '<div class="sheet-goal" style="background-image:url(' + objectiveArt(o.kind) + ')"><b>🎯 ' + esc(OBJECTIVES[o.kind][o.id].name) + ' · ' + (o.kind === 'corporate' ? 'корпоративная' : 'личная') + '</b><span>' + esc(objectiveTextOf(OBJECTIVES[o.kind][o.id], v.players, v.enemySet)) + '</span></div>').join('') || '<div class="empty">Цель ещё не выбрана — выберите бесплатным действием.</div>')
         : '<div class="empty">🔒 Карты целей скрыты.</div>';
     const hand = isMine
         ? ((me.hand || []).map(c => cardHtml(c, null, false)).join('') || '<div class="deck-empty">Пусто</div>')
         : '<div class="empty">🔒 Карты в руке скрыты (' + (me.handCount ?? 0) + ' шт.).</div>';
     const chips = [];
-    chips.push('<span class="tag yellow">знания ' + me.knowledge + (me.knowledgeActive ? ' ✓' : '') + ' / 8</span>');
     if (me.signal) chips.push('<span class="tag green">сигнал отправлен</span>');
     if (me.larva) chips.push('<span class="tag purple">личинка</span>');
+    if (v.enemySet === 'chytrids' && me.chySpore) chips.push('<span class="tag green">🟢 спора: повторное заражение смертельно</span>');
+    if (v.enemySet === 'voidseeders') chips.push('<span class="tag purple">🧠 безумие: ' + me.madness + ' / 5</span>');
+    if (v.enemySet === 'carnomorphs') chips.push('<span class="tag purple">🧬 фишек мутации: ' + (me.mutationMarkers || 0) + ' / 4</span>');
     if (me.laika) chips.push('<span class="tag yellow">🐕 Лайка: ' + (me.laika === 'board' ? 'рядом' : esc(roomLabel(me.laika))) + '</span>');
     if (me.canFire === false) chips.push('<span class="tag red">нельзя стрелять</span>');
     chips.push('<span class="tag">карт в колоде: ' + me.deckCount + '</span>');
@@ -1976,6 +2023,12 @@ function openSheet(quiet, targetPlayerId) {
         esc(p.charName || p.name) + (p.id === app.me ? ' (Вы)' : '') + '</button>'
     ).join(' ');
 
+    const mutation = v.enemySet !== 'carnomorphs' ? '' : (() => {
+        const card = CARNOMORPH_MUTATIONS[me.mutationCard];
+        if (card) return '<div class="sheet-sec"><h4>🧬 Мутация' + (me.mutationRevealed ? ' · раскрыта' : ' · только вам') + '</h4><div class="sheet-wound"><i class="mutation-art" style="background-image:url(art/carnomorph/mutation/' + esc(me.mutationCard) + '.jpg)"></i><b>' + esc(card.name) + '</b><small>Заражён: ' + esc(card.infected) + '</small><small>Не заражён: ' + esc(card.clean) + '</small></div></div>';
+        return '<div class="sheet-sec"><h4>🧬 Мутация</h4><div class="empty">' + (me.hasMutation ? '🔒 Карта мутации скрыта.' : 'Карты мутации нет.') + '</div></div>';
+    })();
+
     const hiddenItemsNotice = (!isMine && (me.itemCount || 0) > items.length)
         ? '<div class="empty" style="margin-top:6px">🔒 Карты лёгких предметов скрыты (' + (me.itemCount - items.length) + ' шт.).</div>' : '';
 
@@ -1983,7 +2036,7 @@ function openSheet(quiet, targetPlayerId) {
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">' + playerTabs + '</div>' +
         '<div class="sheet-head"><div><h2>' + esc(me.name) + (isMine ? ' (Вы)' : '') + '</h2><div class="sub">' + esc(me.charName) +
         (me.number ? ' · игрок №' + me.number : '') + ' · ' + esc(statusName(me) || 'на борту') + ' · 📍 ' + esc(roomLabel(me.room)) + '</div></div>' +
-        healthCells(me) + '<div class="sheet-chips">' + chips.join('') + '</div></div>' +
+        healthCells(me) + knowledgeTrack(me) + '<div class="sheet-chips">' + chips.join('') + '</div></div>' +
         '<div class="sheet-decks"><button class="btn small" ' + (isMine ? 'data-sheet-deck="own"' : 'disabled') + ' title="Колода закрыта: видно только количество">🂠 Колода действий · ' + me.deckCount + '</button>' +
         '<button class="btn small" ' + (isMine ? 'data-sheet-deck="owndisc"' : 'disabled') + ' title="Открыть сброс">⤵ Сброс · ' + me.discardCount + '</button>' +
         (cTotal ? '<button class="btn small danger" ' + (isMine ? 'data-sheet-deck="owndisc"' : 'disabled') + ' title="Всего заражений: ' + cTotal + '">☣ Заражений: ' + cTotal + '</button>' : '') + '</div>' +
@@ -1995,7 +2048,7 @@ function openSheet(quiet, targetPlayerId) {
         (closedQuests.length ? '<div class="empty" style="margin-top:6px">Закрытая карта ждёт действия «Открыть квестовый предмет» в комнате, напечатанной на ней. Карта «Инструменты» открывает её где угодно.</div>' : '') + '</div>' +
         '<div class="sheet-sec"><h4>🎒 Рюкзак · оружие</h4><div class="sheet-items">' + (weapons.map(i => sheetItemHtml(i, picks)).join('') || '<div class="empty">Оружия нет.</div>') + '</div></div>' +
         '<div class="sheet-sec"><h4>📦 Предметы и костюм</h4><div class="sheet-items">' + (armor + gear.map(i => sheetItemHtml(i, picks)).join('') + heavy || '<div class="empty">Пусто.</div>') + hiddenItemsNotice + '</div></div>' +
-        '<div class="sheet-sec"><h4>🩸 Травмы</h4>' + (wounds || '<div class="empty">Травм нет.</div>') + '</div>' +
+        '<div class="sheet-sec"><h4>🩸 Травмы</h4>' + (wounds || '<div class="empty">Травм нет.</div>') + '</div>' + mutation +
         '<div class="sheet-sec" style="grid-column:1/-1"><h4>🂠 Карты в руке · ' + (me.handCount ?? (me.hand || []).length) + '</h4><div class="sheet-hand">' + hand + '</div></div>' +
         '</div>';
     for (const b of $('sheetBody').querySelectorAll('[data-sheet-player]')) b.onclick = () => openSheet(true, Number(b.dataset.sheetPlayer));
@@ -2015,7 +2068,7 @@ function refreshOverlays() {
 // ---------------------------------------------------------------------------------------------
 // Deck viewer: every face-up pile on the table plus my own discard
 // ---------------------------------------------------------------------------------------------
-const DECK_TITLES = { event: 'События · сброс', attack: 'Атаки чужих · сброс', queen: 'Здоровье Королевы · открытые', wound: 'Тяжёлые травмы · сброс',
+const DECK_TITLES = { panic: 'Паника · сброс', event: 'События · сброс', attack: 'Атаки чужих · сброс', queen: 'Здоровье Королевы · открытые', wound: 'Тяжёлые травмы · сброс',
     green: 'Зелёные предметы · сброс', red: 'Красные предметы · сброс', yellow: 'Жёлтые предметы · сброс', support: 'Поддержка · сброс',
     computer: 'Компьютер · сброс', feats: 'Подвиги · запас', own: 'Моя колода', owndisc: 'Мой сброс карт действий' };
 function deckList(kind, v, me) {
@@ -2029,8 +2082,9 @@ function deckList(kind, v, me) {
         for (const c of (me.discard || [])) { const d = describeCard(c); list.push({ name: d.name, text: d.text, tag: d.contam ? 'заражение' : '' }); }
         return { note: 'Карты в вашем сбросе (' + list.length + ').', cards: list };
     }
-    if (kind === 'event') for (const id of (piles.event || [])) { const e = EVENT_BY_ID[id]; if (e) list.push({ name: e.name, text: e.text, tag: 'событие' }); }
-    if (kind === 'attack') for (const id of (piles.attack || [])) { const a = ATTACK_BY_ID[id]; if (a) list.push({ name: a.name, text: a.text, tag: 'атака' }); }
+    if (kind === 'event') for (const id of (piles.event || [])) { const e = EVENT_BY_ID[id]; if (e) list.push({ name: e.name, text: e.id.startsWith('chyEvent') ? chytridEventText(e) : e.move && e.move.types ? carnomorphEventText(e) : e.text, tag: 'событие', art: eventArt(e.id) }); }
+    if (kind === 'attack') for (const id of (piles.attack || [])) { const a = ATTACK_BY_ID[id]; if (a) list.push({ name: a.name, text: a.text + (a.targets ? ' Цели: ' + a.targets.map(t => INTRUDER_NAMES[t]).join(', ') + '. ' + (!a.id.startsWith('chyAttack') && a.toughness !== undefined ? 'Стойкость: ' + (a.toughness === 'retreat' ? 'отступление' : a.toughness) + '.' : (a.id.startsWith('chyAttack') ? 'Стойкость проверяется кубиком Redux.' : toughnessText(a))) : ''), tag: 'атака', art: attackArt(a.id) }); }
+    if (kind === 'panic') for (const id of (piles.panic || [])) { const c = PANIC_BY_ID[id]; if (c) list.push({ name: c.name, text: c.text + ' (уровень ' + c.level + '+)', tag: 'паника', art: panicArt(id) }); }
     if (kind === 'queen') for (const idx of (piles.queen || [])) { const q = QUEEN_CARDS[idx]; if (q) list.push({ name: 'Карта здоровья', text: q.text + ' (сбросить ещё: ' + q.extra + ')', tag: 'королева' }); }
     if (kind === 'wound') for (const w of (piles.wound || [])) list.push({ name: WOUNDS[w] ? WOUNDS[w].name : w, text: WOUNDS[w] ? WOUNDS[w].text : '', tag: 'травма' });
     if (kind === 'computer') for (const id of (piles.computer || [])) { const c = COMPUTER_CARDS[id]; if (c) list.push({ name: c.name, text: c.text || Object.values(c.options || {}).join(' / '), tag: 'компьютер' }); }
@@ -2052,8 +2106,8 @@ function openDeck(kind, quiet) {
     const v = app.view; if (!v) return;
     app.deckKind = kind || 'event';
     const me = v.players.find(p => p.id === app.me);
-    const tabs = ['event', 'attack', 'queen', 'wound', 'green', 'red', 'yellow', 'support', 'computer', 'feats', 'own', 'owndisc'];
-    const counts = { event: (v.piles && v.piles.event || []).length, attack: (v.piles && v.piles.attack || []).length, queen: (v.piles && v.piles.queen || []).length,
+    const tabs = ['event', 'attack', ...(v.enemySet === 'voidseeders' ? ['panic'] : ['queen']), 'wound', 'green', 'red', 'yellow', 'support', 'computer', 'feats', 'own', 'owndisc'];
+    const counts = { panic: (v.piles && v.piles.panic || []).length, event: (v.piles && v.piles.event || []).length, attack: (v.piles && v.piles.attack || []).length, queen: (v.piles && v.piles.queen || []).length,
         wound: (v.piles && v.piles.wound || []).length, computer: (v.piles && v.piles.computer || []).length,
         green: ((v.piles && v.piles.items && v.piles.items.green) || []).length, red: ((v.piles && v.piles.items && v.piles.items.red) || []).length,
         yellow: ((v.piles && v.piles.items && v.piles.items.yellow) || []).length, support: ((v.piles && v.piles.items && v.piles.items.support) || []).length,

@@ -1,3 +1,4 @@
+import { isAdultEquivalent, hasAttackTarget } from './core.mjs';
 // actions.mjs — effects of action cards (character decks + field data), the infection procedure.
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire, placeFire,
@@ -6,9 +7,11 @@ import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, r
 import { ITEMS, dropLocked, hasOpenQuest } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
-import { dealHits } from './combat.mjs';
+import { dealHits, canFire } from './combat.mjs';
 import { search, drawSupport, keepOneOf } from './items.mjs';
 import { countAvailable } from './movement.mjs';
+import { removeChySpore, spawnChytrid } from './chytrids.mjs';
+import { alterMadness, infectMadness } from './voidseeders.mjs';
 
 const BACK = { op: 'turn.choose' };
 
@@ -16,7 +19,7 @@ const BACK = { op: 'turn.choose' };
 // Infection / eclosion
 // ---------------------------------------------------------------------------------------------
 /** Scan every contamination card in hand: clean ones leave the game, infected ones hatch a larva. */
-export function infectionProcedure(state, p, removeClean) {
+export function infectionProcedure(state, p, removeClean, source) {
     const cards = p.hand.filter(isContam);
     if (!cards.length) { log(state, pname(p) + ': заражений в руке нет.', 'minor'); return; }
     let bad = 0;
@@ -28,11 +31,15 @@ export function infectionProcedure(state, p, removeClean) {
         if (!inf && removeClean) removeCardFromGame(state, p, c); else discardCard(state, p, c);
     }
     log(state, pname(p) + ' проверяет заражения: ' + cards.length + ' карт, заражено — ' + bad + '.', bad ? 'bad' : 'good');
-    if (bad) infectLarva(state, p);
+    if (bad && state.enemySet === 'voidseeders' && source === 'rest') infectMadness(state, p);
+    else if (bad && state.enemySet === 'carnomorphs' && source === 'rest') {
+        next(state, ...Array.from({ length: bad }, () => ({ op: 'carnomorph.gainMarker', player: p.id })));
+    } else if (bad) infectLarva(state, p);
 }
 /** 20.3 Eclosion Procedure: draw 4 cards; any Contamination card in hand kills the character, otherwise discard the hand. */
-export function eclosionProcedure(state, p) {
-    drawCards(state, p, 4, true);
+export function eclosionProcedure(state, p, { final = false } = {}) {
+    const drawn = final && state.enemySet === 'chytrids' && state.chyWeaknesses.includes('parasitism') ? 3 : 4;
+    drawCards(state, p, drawn, true);
     const bad = p.hand.filter(isContam).length;
     if (!bad) {
         log(state, pname(p) + ': процедура вылупления — заражений в руке нет, персонаж выживает; рука сбрасывается.', 'good');
@@ -42,8 +49,9 @@ export function eclosionProcedure(state, p) {
     const r = p.room;
     log(state, '🐛 Процедура вылупления: в руке ' + pname(p) + ' ' + bad + ' заражений — из тела вырывается чужой!', 'death');
     p.larva = false;
+    if (state.enemySet === 'chytrids') removeChySpore(state, p);
     killPlayer(state, p, 'вылупление личинки');
-    const it = spawnIntruder(state, 'adult', r);
+    const it = state.enemySet === 'chytrids' ? spawnChytrid(state, 'stinkhorn', r) : spawnIntruder(state, 'adult', r);
     if (it && playersInRoom(state, r).length) next(state, { op: 'attack', intruder: it.uid, context: 'eclosion' });
 }
 
@@ -105,7 +113,26 @@ OPS['card.repairs'] = (state, step) => {
     // Action card: Repair/Break the Engine in the Engine Room you are in."
     choice(state, p, 'Ремонт', repairOptions(state, p, true), 'card.repairPick', { enginePay: 1, malfPay: 1 });
 };
-OPS['card.rest'] = (state, step) => { infectionProcedure(state, player(state, step.player), true); next(state, BACK); };
+OPS['card.rest'] = (state, step) => {
+    if (state.enemySet === 'voidseeders') { next(state, { op: 'void.rest', player: step.player }, BACK); return; }
+    infectionProcedure(state, player(state, step.player), true, 'rest'); next(state, BACK);
+};
+OPS['void.rest'] = (state, step) => {
+    const p = player(state, step.player); if (!p || p.status !== 'active') return;
+    const canReduce = p.madness === 2 || p.madness > 3, canScan = p.hand.some(isContam);
+    const options = [];
+    if (canReduce) options.push({ id: 'reduce', label: 'Уменьшить безумие на 1' });
+    if (canScan) options.push({ id: 'scan', label: 'Просканировать инфекции в руке' });
+    if (canReduce && canScan) options.push({ id: 'both', label: 'Уменьшить безумие и просканировать инфекции' });
+    options.push({ id: 'none', label: 'Ничего не делать' });
+    if (options.length === 1) return;
+    ask(state, { kind: 'choice', secret: true, player: p.id, title: 'Отдых: что сделать?', options }, { op: 'void.restChoice', player: p.id });
+};
+OPS['void.restChoice'] = (state, step) => {
+    const p = player(state, step.player); if (!p || p.status !== 'active') return;
+    if (step.answer === 'reduce' || step.answer === 'both') alterMadness(state, p, -1);
+    if (step.answer === 'scan' || step.answer === 'both') infectionProcedure(state, p, true, 'rest');
+};
 OPS['card.search'] = (state, step) => {
     const p = player(state, step.player);
     if (hasOpenQuest(p, 'canineUpgrades') && p.laika && p.laika !== 'board' && p.laika !== p.room) {
@@ -144,8 +171,8 @@ OPS['card.search.where'] = (state, step) => {
 OPS['card.weakSpot'] = (state, step) => {
     const p = player(state, step.player);
     const opts = [];
-    if (p.items.some(i => ITEMS[i.item].weapon && i.ammo > 0) && intrudersIn(state, p.room).length) opts.push({ id: 'shoot', label: 'Выстрелить (+1 ранение)' });
-    if (intrudersIn(state, p.room).length) opts.push({ id: 'melee', label: 'Ближний бой (+1 ранение)' });
+    if (p.items.some(i => canFire(p, i)) && hasAttackTarget(state, p.room)) opts.push({ id: 'shoot', label: 'Выстрелить (+1 ранение)' });
+    if (hasAttackTarget(state, p.room)) opts.push({ id: 'melee', label: 'Ближний бой (+1 ранение)' });
     choice(state, p, 'Уязвимое место', opts, 'card.weakSpot.pick');
 };
 OPS['card.weakSpot.pick'] = (state, step) => {
@@ -175,7 +202,7 @@ OPS['card.coveringFire.go'] = (state, step) => {
 };
 OPS['card.forcingFire'] = (state, step) => {
     const p = player(state, step.player);
-    const adults = intrudersIn(state, p.room).filter(i => i.type === 'adult');
+    const adults = intrudersIn(state, p.room).filter(i => isAdultEquivalent(state, i));
     if (!adults.length) { log(state, 'Взрослых чужих нет.', 'minor'); next(state, BACK); return; }
     choice(state, p, 'Подавляющий огонь: из какого оружия потратить 1 патрон?', rangedWithAmmo(p, 1).map(w => ({ id: w.uid, item: w.item, label: ITEMS[w.item].name + ' (' + w.ammo + ')' })), 'card.forcingFire.pick');
 };
@@ -183,7 +210,7 @@ OPS['card.forcingFire.pick'] = (state, step) => {
     const p = player(state, step.player);
     const w = p.items.find(i => i.uid === step.answer);
     if (w) w.ammo -= 1;
-    const a = intrudersIn(state, p.room).find(i => i.type === 'adult');
+    const a = intrudersIn(state, p.room).find(i => isAdultEquivalent(state, i));
     if (a) repelIntruder(state, a);
     next(state, BACK);
 };

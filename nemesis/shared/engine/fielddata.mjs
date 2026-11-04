@@ -1,8 +1,13 @@
+import { isAdultEquivalent, hasAttackTarget } from './core.mjs';
 // fielddata.mjs — the 18 Field Data cards (Nemesis Redux FieldDataDeck).
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeMalfunction, drawCards, discardCard, isContam, payCost, clearNoiseAround, intruderLabel, turnOrder, drawLimit,
     COMBAT_DIE, roll, fmtRoll, needDice, corridorsOf , computerHere } from './core.mjs';
 import { ITEMS, WOUNDS, EVENT_CARDS, ATTACK_CARDS } from '../data/cards.mjs';
+import { CARNOMORPH_ATTACK_CARDS } from '../data/carnomorphs.mjs';
+import { CARNOMORPH_EVENT_CARDS, carnomorphEventText } from '../data/carnomorph-events.mjs';
+import { VOID_ATTACK_CARDS, VOID_EVENT_CARDS } from '../data/voidseeders.mjs';
+import { CHYTRID_ATTACK_CARDS, CHYTRID_EVENT_CARDS, chytridEventText } from '../data/chytrids.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
 import { dealHits, applyHitsNoRoll, canFire } from './combat.mjs';
@@ -14,8 +19,8 @@ const BACK = { op: 'turn.choose' };
 const SAFETY_HAND_CAP = 7;
 const ANALYSIS_EVENTS = 2;
 const ANALYSIS_ATTACKS = 3;
-const EVENT_BY_ID = Object.fromEntries(EVENT_CARDS.map(e => [e.id, e]));
-const ATTACK_BY_ID = Object.fromEntries(ATTACK_CARDS.map(c => [c.id, c]));
+const EVENT_BY_ID = Object.fromEntries([...EVENT_CARDS, ...CARNOMORPH_EVENT_CARDS, ...VOID_EVENT_CARDS, ...CHYTRID_EVENT_CARDS].map(e => [e.id, e]));
+const ATTACK_BY_ID = Object.fromEntries([...ATTACK_CARDS, ...CARNOMORPH_ATTACK_CARDS, ...VOID_ATTACK_CARDS, ...CHYTRID_ATTACK_CARDS].map(c => [c.id, c]));
 
 function choose(state, p, title, options, op, extra = {}) {
     ask(state, { kind: 'choice', player: p.id, title, options }, { op, player: p.id, ...extra });
@@ -26,8 +31,8 @@ OPS['card.fdAdvance'] = (state, step) => {
     const p = player(state, step.player);
     const second = !!step.second;
     const opts = [];
-    if (intrudersIn(state, p.room).length && p.items.some(i => canFire(p, i))) opts.push({ id: 'shoot', label: 'Стрелять' });
-    if (intrudersIn(state, p.room).length) opts.push({ id: 'melee', label: 'Ближний бой' });
+    if (hasAttackTarget(state, p.room) && p.items.some(i => canFire(p, i))) opts.push({ id: 'shoot', label: 'Стрелять' });
+    if (hasAttackTarget(state, p.room)) opts.push({ id: 'melee', label: 'Ближний бой' });
     opts.push({ id: 'move', label: 'Перемещение' });
     if (second) opts.push({ id: 'stop', label: 'Хватит' });
     choose(state, p, 'Передовая тактика: ' + (second ? 'второе действие?' : 'какое действие?'), opts, 'card.fdAdvance.pick', { second });
@@ -52,7 +57,7 @@ OPS['card.fdAsymptomatic'] = (state, step) => {
 OPS['card.fdInsight'] = (state, step) => {
     const p = player(state, step.player);
     const opts = [];
-    if (intrudersIn(state, p.room).some(i => i.type === 'adult')) opts.push({ id: 'repel', label: 'Сбросить 1 карту: отогнать взрослого' });
+    if (intrudersIn(state, p.room).some(i => isAdultEquivalent(state, i))) opts.push({ id: 'repel', label: 'Сбросить 1 карту: отогнать взрослого' });
     if (tileOf(state, p.room) === 'nest') opts.push({ id: 'nest', label: 'Использовать Гнездо (без броска шума)' });
     if (!opts.length) { next(state, BACK); return; }
     choose(state, p, 'Понимание поведения', opts, 'card.fdInsight.pick');
@@ -61,7 +66,7 @@ OPS['card.fdInsight.pick'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'nest') { next(state, { op: 'room.action', player: p.id, noNoise: true, then: BACK }); return; }
     if (step.answer === 'repel' && !step.paid) { payCost(state, p, 1, { ...step, paid: true }, 'Понимание поведения: сброс карты'); return; }
-    const it = intrudersIn(state, p.room).find(i => i.type === 'adult');
+    const it = intrudersIn(state, p.room).find(i => isAdultEquivalent(state, i));
     if (it) {
         const rooms = state.ship.rooms[p.room].exits.filter(e => state.ship.corridors[e.corridor].door !== 'closed').map(e => e.to);
         if (rooms.length > 1) { ask(state, { kind: 'room', player: p.id, title: 'Куда отогнать взрослого?', rooms }, { op: 'card.fdInsight.to', player: p.id, uid: it.uid }); return; }
@@ -105,14 +110,20 @@ OPS['card.fdAnalysis.deck'] = (state, step) => {
 OPS['card.fdAnalysis.place'] = (state, step) => {
     const p = player(state, step.player);
     const deck = step.deck === 'event' ? state.eventDeck : state.attackDeck;
-    const name = id => step.deck === 'event' ? EVENT_BY_ID[id].name : ATTACK_BY_ID[id].name;
+    const name = id => (step.deck === 'event' ? EVENT_BY_ID[id] : ATTACK_BY_ID[id])?.name || id;
     const textOf = id => {
         if (step.deck === 'event') {
             const ev = EVENT_BY_ID[id];
-            return ev ? (ev.name + ' — ' + ev.text + (ev.intruders ? ' (Движение: ' + ev.intruders + ')' : '')) : id;
+            if (!ev) return id;
+            const detail = id.startsWith('carnoEvent') ? carnomorphEventText(ev) : id.startsWith('chyEvent') ? chytridEventText(ev) :
+                ev.text + (ev.move?.types ? ' (Движение: ' + ev.move.types.join(', ') + ', коридор ' + ev.move.num + ')' : ev.intruders ? ' (Движение: ' + ev.intruders + ')' : '');
+            return ev.name + ' — ' + detail;
         } else {
             const at = ATTACK_BY_ID[id];
-            return at ? (at.name + ' — ' + (at.text || '')) : id;
+            if (!at) return id;
+            const toughness = at.metagorger !== undefined ? ' (Стойкость глодателя: ' + at.metagorger + ', остальных: ' + at.other + ')' :
+                at.toughness !== undefined ? ' (Стойкость на карте: ' + at.toughness + ')' : '';
+            return at.name + ' — ' + (at.text || '') + toughness;
         }
     };
     if (step.answer !== undefined) {

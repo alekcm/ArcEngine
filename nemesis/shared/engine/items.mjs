@@ -1,3 +1,7 @@
+import { removeChySpore, killChytrid } from './chytrids.mjs';
+import { isAdultEquivalent, hasAttackTarget } from './core.mjs';
+import { killCarnomorph, removeCarnomorphMutation } from './carnomorphs.mjs';
+import { killVoid } from './voidseeders.mjs';
 // items.mjs — item actions, searching, the support deck.
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
@@ -119,7 +123,7 @@ OPS['item.use'] = (state, step) => {
     }
     switch (def.use) {
         case 'repelAdult': {
-            const adults = intrudersIn(state, p.room).filter(i => i.type === 'adult');
+            const adults = intrudersIn(state, p.room).filter(i => isAdultEquivalent(state, i));
             consume();
             if (!adults.length) { log(state, 'Взрослых чужих нет.', 'minor'); next(state, back); return; }
             const it = adults[0];
@@ -137,6 +141,8 @@ OPS['item.use'] = (state, step) => {
             for (const c of [...p.deck]) { p.deck.splice(p.deck.indexOf(c), 1); p.discard.push(c); }
             p.discard = p.discard.filter(c => !isContam(c));
             if (p.larva) { p.larva = false; log(state, 'Личинка удалена.', 'good'); }
+            if (state.enemySet === 'chytrids' && removeChySpore(state, p)) log(state, 'Спора удалена.', 'good');
+            removeCarnomorphMutation(state, p);
             log(state, pname(p) + ': автодок удалил все заражения.', 'good');
             p.passed = true; next(state, { op: 'turn.end' }); return;
         case 'medkit': consume(); healChoice(state, p, 3, back, 2); return;   // Serious Wound and/or 3 Health
@@ -252,7 +258,7 @@ OPS['item.use'] = (state, step) => {
         case 'glowstick': {
             consume();
             const opts = [{ id: 'move', label: 'Перейти в неразведанную комнату без шума' }];
-            if (intrudersIn(state, p.room).length) opts.push({ id: 'melee', label: 'Ближний бой без заражения и ответа' });
+            if (hasAttackTarget(state, p.room)) opts.push({ id: 'melee', label: 'Ближний бой без заражения и ответа' });
             choose('Химический фонарь', opts, 'item.glowstick');
             return;
         }
@@ -279,7 +285,7 @@ OPS['item.use'] = (state, step) => {
         case 'reagent': {
             consume();
             placeFire(state, p.room, 'реагент');
-            const a = intrudersIn(state, p.room).find(i => i.type === 'adult');
+            const a = intrudersIn(state, p.room).find(i => isAdultEquivalent(state, i));
             if (a) repelIntruder(state, a);
             next(state, back); return;
         }
@@ -361,7 +367,8 @@ OPS['item.grenade'] = (state, step) => {
     const p = player(state, step.player);
     const r = step.answer;
     log(state, '💣 ' + pname(p) + ' бросает гранату в ' + roomName(state, r) + '!', 'combat');
-    for (const it of intrudersIn(state, r)) { if (!state.intruders[it.uid]) continue; dealHits(state, p, it, 2, 0, {}); }
+    for (const it of intrudersIn(state, r)) { if (!state.intruders[it.uid]) continue; dealHits(state, p, it, 2, 0, { explosive: true }); }
+    // Growth is not an Intruder for item effects; only an actual attack can target it.
     const rs = room(state, r);
     let eggs = 0;
     for (let i = rs.objects.length - 1; i >= 0 && eggs < 2; i--) if (rs.objects[i].type === 'egg') { rs.objects.splice(i, 1); eggs++; }
@@ -397,7 +404,7 @@ OPS['item.logCodes'] = (state, step) => {
 OPS['item.logCodes.show'] = (state, step) => {
     const p = player(state, step.player);
     const o = player(state, step.target);
-    const txt = o.objectives.map(ob => OBJ(ob.kind, ob.id).name + ': ' + objectiveTextOf(OBJ(ob.kind, ob.id), state.players)).join('\n');
+    const txt = o.objectives.map(ob => OBJ(ob.kind, ob.id).name + ': ' + objectiveTextOf(OBJ(ob.kind, ob.id), state.players, state.enemySet)).join('\n');
     ask(state, { kind: 'info', player: p.id, title: 'Цели ' + pname(o) + ' (только вы это видите)', text: txt }, { op: 'noop', then: step.then });
 };
 import { OBJECTIVES, objectiveTextOf } from '../data/cards.mjs';
@@ -411,8 +418,15 @@ OPS['item.detonate'] = (state, step) => {
         if (it.type === 'queen') {
             next(state, { op: 'queen.card', player: p.id });
         } else {
-            log(state, '✔ ' + INTRUDER_NAMES[it.type] + ' уничтожен детонатором!', 'good');
-            removeIntruder(state, it.uid, true);
+            if (state.enemySet === 'voidseeders') {
+                if (killVoid(state, it)) log(state, '✔ ' + INTRUDER_NAMES[it.type] + ' уничтожен детонатором!', 'good');
+                else log(state, 'Гнетущий защищён логовами и не уничтожен взрывом.', 'combat');
+            } else {
+                log(state, '✔ ' + INTRUDER_NAMES[it.type] + ' уничтожен детонатором!', 'good');
+                if (state.enemySet === 'carnomorphs') killCarnomorph(state, it);
+                else if (state.enemySet === 'chytrids') killChytrid(state, it);
+                else removeIntruder(state, it.uid, true);
+            }
         }
     }
     for (const o of playersInRoom(state, r)) loseHealth(state, o, 3, 'взрыв');

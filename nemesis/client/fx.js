@@ -1,3 +1,4 @@
+import { bagTokenType, bagTokenLabel, bagTokenIcon } from '/shared/bag-tokens.mjs';
 // fx.js — "physical table" feel: deck piles on screen and flying-card animations.
 //
 // The engine records card movements in view.fx ({n, type, ...}); every client replays the
@@ -9,14 +10,13 @@
 //   item    — a card is pulled from the coloured item deck (green/red/yellow/support)
 //   event / attack / queen — a card is drawn from the shared deck, flips face up in the centre
 //                            and slides to its discard
-import { esc, describeCard, eventArt, attackArt, queenArt, cardArt, itemArt } from './cards.js';
+import { esc, describeCard, eventArt, attackArt, panicArt, queenArt, cardArt, itemArt } from './cards.js';
 import { ITEMS } from '/shared/data/cards.mjs';
 import * as Snd from './sound.js';
 
-const DECK_LABELS = { green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая', support: 'Поддержка', event: 'События', attack: 'Атаки', queen: 'Королева', bag: 'Мешок' };
-const DECK_COLORS = { green: '#2f9e55', red: '#b63a3a', yellow: '#c9a227', support: '#6b7fa3', event: '#8a5a2b', attack: '#7a2d5a', queen: '#5b2a86', own: '#2c5a7a', contam: '#5a7a2a', bag: '#6b4f2a' };
+const DECK_LABELS = { green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая', support: 'Поддержка', event: 'События', attack: 'Атаки', queen: 'Королева', panic: 'Паника', bag: 'Мешок' };
+const DECK_COLORS = { green: '#2f9e55', red: '#b63a3a', yellow: '#c9a227', support: '#6b7fa3', event: '#8a5a2b', attack: '#7a2d5a', queen: '#5b2a86', panic: '#704a89', own: '#2c5a7a', contam: '#5a7a2a', bag: '#6b4f2a' };
 
-const TOKEN_ICON = { blank: '○', larva: '🐛', adult: '👾', drone: '🦂', queen: '👑' };
 
 export class TableFX {
     constructor(tableEl, layerEl, getPlayerEl, intruderNames) {
@@ -32,7 +32,7 @@ export class TableFX {
         const mine = view.players.find(p => p.id === me);
         const piles = [];
         if (mine) { piles.push(['own', 'Моя колода', mine.deckCount]); piles.push(['owndisc', 'Мой сброс', mine.discardCount]); }
-        for (const k of ['event', 'attack', 'queen', 'bag']) piles.push([k, DECK_LABELS[k], k === 'bag' ? view.bagCount : view.decks[k]]);
+        for (const k of ['event', 'attack', view.enemySet === 'voidseeders' ? 'panic' : 'queen', 'bag']) piles.push([k, DECK_LABELS[k], k === 'bag' ? view.bagCount : view.decks[k]]);
         for (const k of ['green', 'red', 'yellow', 'support']) piles.push([k, DECK_LABELS[k], view.decks[k]]);
         this.table.innerHTML = piles.map(([k, label, n]) =>
             '<div class="pile' + (n === 0 ? ' empty' : '') + '" data-pile="' + k + '" title="' + esc(label) + ': ' + n + ' — нажмите, чтобы посмотреть"><div class="pback" style="--pc:' + (DECK_COLORS[k === 'owndisc' ? 'own' : k] || '#345') + '">' +
@@ -42,6 +42,9 @@ export class TableFX {
         for (const f of fx) if (f.n > this.lastSeen) { this.lastSeen = f.n; this.queue.push(Object.assign({ me, view }, f)); }
         this.pump();
     }
+
+    /** Discard stale effects on reconnect, undo or loading a snapshot. */
+    reset() { this.lastSeen = null; this.queue = []; }
 
     /** True while the table is showing a token pull or an attack card: the next question waits. */
     get holding() { return this.busy && (this.playing === 'bag' || this.playing === 'attack'); }
@@ -188,15 +191,15 @@ export class TableFX {
                 this.fly(el, from || to, to, 650, { rotA: 8, rotB: -4, arc: 90, scaleA: 0.9, scaleB: 1.05, fadeOut: true }, () => { el.remove(); done(); });
                 break;
             }
-            case 'event': case 'attack': case 'queen': {
+            case 'event': case 'attack': case 'queen': case 'panic': {
                 const k = f.type;
                 // The Event card is drawn by the table-wide event window itself (centred, closed by
                 // «Готово»), so a second flying copy would sit on top of it.
                 if (k === 'event' && f.view && f.view.prompt && f.view.prompt.kind === 'ack' && f.view.prompt.event === f.card) { Snd.play('card'); done(); break; }
                 const from = this.pileRect(k);
                 const mid = this.centerRect();
-                const title = k === 'event' ? 'Событие' : k === 'attack' ? 'Атака' + (f.intruder ? ' · ' + (this.intruderNames[f.intruder] || f.intruder) : '') : 'Королева';
-                const art = k === 'event' ? eventArt(f.card) : k === 'attack' ? attackArt(f.card) : queenArt(f.card);
+                const title = k === 'panic' ? 'Паника · ' + f.level + '+' : k === 'event' ? 'Событие' : k === 'attack' ? (f.check ? 'Проверка стойкости' : 'Атака') + (f.intruder ? ' · ' + (this.intruderNames[f.intruder] || f.intruder) : '') : 'Королева';
+                const art = k === 'panic' ? panicArt(f.card) : k === 'event' ? eventArt(f.card) : k === 'attack' ? attackArt(f.card) : queenArt(f.card);
                 // An attack card printed for all three ranks lists all three ("Взрослый: … Дрон: …
                 // Королева: …"). Only the line of the intruder that is actually attacking belongs on
                 // the table: the effect the runner really suffers (`effect`). The rest of the card is
@@ -220,13 +223,14 @@ export class TableFX {
             case 'bag': {
                 // the intruder bag: a pouch slides in, a token is pulled out and flipped
                 Snd.play('bag');
-                const name = this.intruderNames[f.token] || f.token;
+                const name = bagTokenLabel(f.token);
+                const tokenType = bagTokenType(f.token);
                 const el = document.createElement('div');
                 el.className = 'bagfx';
-                el.innerHTML = '<div class="bag-pouch">🎒<small>мешок · ' + (f.left ?? '') + '</small></div><div class="bag-token tok-' + esc(f.token) + '"><div class="bt-inner"><div class="bt-back">?</div><div class="bt-front"><b>' + esc(TOKEN_ICON[f.token] || '?') + '</b><span>' + esc(name) + '</span></div></div></div>';
+                el.innerHTML = '<div class="bag-pouch">🎒<small>мешок · ' + (f.left ?? '') + '</small></div><div class="bag-token tok-' + esc(tokenType) + '"><div class="bt-inner"><div class="bt-back">?</div><div class="bt-front"><b>' + esc(bagTokenIcon(f.token)) + '</b><span>' + esc(name) + '</span></div></div></div>';
                 this.layer.appendChild(el);
                 setTimeout(() => { el.classList.add('pulled'); }, 450);
-                setTimeout(() => { el.classList.add('shown'); Snd.play('flip'); if (f.token !== 'blank') Snd.play('roar', 150); }, 1000);
+                setTimeout(() => { el.classList.add('shown'); Snd.play('flip'); if (tokenType !== 'blank') Snd.play('roar', 150); }, 1000);
                 setTimeout(() => { el.classList.add('gone'); setTimeout(() => { el.remove(); done(); }, 350); }, 2500);
                 break;
             }
@@ -236,6 +240,16 @@ export class TableFX {
                 if (isMe) { this.vignette('red'); if (this.onShake) this.onShake(Math.min(1, 0.4 + f.n * 0.2)); }
                 else { const el = this.getPlayerEl(f.player); if (el) { el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit'); } }
                 done(); break;
+            }
+            case 'lockdown': {
+                const el = document.createElement('div');
+                el.className = 'lockdown-alert';
+                el.setAttribute('role', 'alert');
+                el.textContent = '⚠ БЛОКИРОВКА — карта компьютерных действий';
+                document.body.appendChild(el);
+                setTimeout(() => el.remove(), 3500);
+                setTimeout(done, 3500);
+                break;
             }
             case 'siren': { Snd.play('siren'); this.banner('⚠ САМОУНИЧТОЖЕНИЕ ЗАПУЩЕНО', 'red', 2600); setTimeout(done, 600); break; }
             case 'sdBeep': { Snd.play('beep'); this.banner('⏱ Самоуничтожение: ' + f.count + '/6', f.count >= 4 ? 'red' : 'blue', 1500); done(); break; }

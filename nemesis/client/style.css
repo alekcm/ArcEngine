@@ -211,6 +211,7 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 .card.disabled { opacity: 0.55; }
 .card .cname { font-weight: 700; font-size: 12px; color: #fff; margin-bottom: 4px; }
 .card .ctext { color: #c7d0da; flex: 1; overflow: hidden; line-height: 1.25; }
+.card .ccombat { position: absolute; top: 4px; left: 4px; z-index: 1; border: 1px solid #a94b4b; border-radius: 4px; padding: 2px 4px; color: #ffe2df; background: #3b1518ec; font-size: 9px; font-weight: 700; line-height: 1.1; }
 .card .ccost { position: absolute; top: 6px; right: 8px; background: var(--acc); color: #000; font-weight: 800; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 11px; }
 .card.contam { background: linear-gradient(#2b1a2e, #150c17); border-color: #7a3a8a; }
 .card.contam .cname { color: #e0a0f0; }
@@ -650,6 +651,7 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .sheet-item.quest.closed b { color: #c9b071; }
 .sheet-item.armor { border-color: #2f5a7a; }
 .sheet-wound { background: #241014; border: 1px solid #5a2323; border-radius: 6px; padding: 5px 8px; margin-bottom: 5px; font-size: 12px; }
+.mutation-art { display: block; height: 96px; margin: -5px -8px 6px; border-radius: 5px 5px 0 0; background-size: cover; background-position: center; }
 .sheet-wound b { color: #ff9c9c; }
 .sheet-wound small { display: block; color: #d8b4b4; font-size: 11px; line-height: 1.25; }
 .sheet-hp { display: flex; align-items: center; gap: 5px; }
@@ -810,3 +812,22 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 /* The suit lies in the third Heavy Wound slot (under 4-2), not on a line of its own below the track. */
 #selfHud .sh-slot.armor { background: #12283acc; border: 1px solid #2f6fa8; color: #b9dcff; min-height: 17px; }
 @media (max-width: 900px) { #selfHud { left: 6px; bottom: 52px; width: 264px; } #selfHud .sh-cells i { width: 16px; } }
+
+/* Item origin, independent of the item's text and usable without colour vision. */
+.item-deck { display: inline-block; margin: 3px 0; padding: 2px 6px; border: 1px solid; border-radius: 4px; font-size: 10px; font-weight: 700; line-height: 1.2; }
+.item-deck.green { color: #adf1be; border-color: #2f9e55; background: #173b25; }
+.item-deck.red { color: #ffc1c1; border-color: #b63a3a; background: #471c1c; }
+.item-deck.yellow { color: #ffe899; border-color: #c9a227; background: #4b3d14; }
+.item-deck.support { color: #d0dcf4; border-color: #6b7fa3; background: #28364c; }
+.item-deck.start { color: #c3cbd4; border-color: #68727f; background: #252b33; }
+.sheet-knowledge { margin: 8px 0; }
+.knowledge-label { margin-bottom: 5px; font-weight: 700; font-size: 12px; }
+.knowledge-label span, .sheet-knowledge small { color: #aab9c9; font-size: 10px; font-weight: 400; }
+.knowledge-track { display: flex; flex-wrap: wrap; gap: 5px; }
+.knowledge-cell { display: inline-flex; align-items: center; justify-content: center; min-width: 29px; height: 22px; padding: 0 3px; border: 1px solid #43516a; border-radius: 3px; background: #1b2735; color: #a9b5c5; font-size: 11px; }
+.knowledge-cell.on { background: #8a681b; color: #fff3c6; border-color: #d6ad46; }
+.knowledge-cell.reward { border-color: #d5a83b; color: #ffdb77; }
+.knowledge-cell.reward.on { background: #a36e13; color: #fff; }
+.knowledge-cell.here { box-shadow: 0 0 0 2px #fff2b5; }
+.sh-larva { flex: none; font-size: 14px; line-height: 1; cursor: help; }
+.lockdown-alert { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 200; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 16px 24px; border: 2px solid #ed5b59; border-radius: 10px; background: #210e10f5; color: #ffd3cd; box-shadow: 0 0 35px #ed4b4b99; text-align: center; font-size: clamp(16px, 3vw, 24px); font-weight: 800; pointer-events: none; }

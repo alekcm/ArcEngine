@@ -1,3 +1,6 @@
+import { removeChySpore, revealChyWeakness, killChytrid, spawnChytrid } from './chytrids.mjs';
+import { analyzeCarnomorphAdaptation, removeCarnomorphMutation, spawnCarnomorph } from './carnomorphs.mjs';
+import { revealVoidWeakness, alterMadness, spawnVoid, killVoid, addVoidToken } from './voidseeders.mjs';
 // rooms.mjs — Room Actions (Redux room sheet) and Computer Actions.
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, secretTile, inCombat,
@@ -37,8 +40,9 @@ export function roomActionAvailable(state, p, opts = {}) {
         }
         case 'laboratory': {
             // 18.3: any Heavy Object may be analyzed — including a character's corpse.
-            const objs = [...p.heavy, ...rs.objects];
-            return objs.length ? { ok: true } : { ok: false, reason: 'Нет объекта для анализа' };
+            const objs = [...p.heavy, ...rs.objects].filter(h => state.enemySet !== 'voidseeders' || h.type !== 'charCorpse');
+            const canAnalyzeMind = state.enemySet === 'voidseeders' && playersInRoom(state, roomId).some(o => o.madness >= 3);
+            return objs.length || canAnalyzeMind ? { ok: true } : { ok: false, reason: 'Нет объекта для анализа' };
         }
         case 'nest': return state.nestEggs > 0 ? { ok: true } : { ok: false, reason: 'Яиц не осталось' };
         case 'surgery': return { ok: true };
@@ -96,8 +100,9 @@ OPS['room.action'] = (state, step) => {
             return;
         case 'laboratory': {
             const opts = [];
-            p.heavy.forEach((h, i) => opts.push({ id: 'mine:' + i, label: 'В руках: ' + objName(h) }));
-            rs.objects.forEach((h, i) => opts.push({ id: 'room:' + i, label: 'В комнате: ' + objName(h) }));
+            p.heavy.forEach((h, i) => { if (state.enemySet !== 'voidseeders' || h.type !== 'charCorpse') opts.push({ id: 'mine:' + i, label: 'В руках: ' + objName(h) }); });
+            rs.objects.forEach((h, i) => { if (state.enemySet !== 'voidseeders' || h.type !== 'charCorpse') opts.push({ id: 'room:' + i, label: 'В комнате: ' + objName(h) }); });
+            if (state.enemySet === 'voidseeders') for (const o of playersInRoom(state, roomId)) if (o.madness >= 3) opts.push({ id: 'mind:' + o.id, label: 'Безумие: ' + pname(o) + ' (' + o.madness + ')' });
             if (!opts.length) { log(state, 'Нечего анализировать.', 'minor'); next(state, back); return; }
             ask(state, { kind: 'choice', player: p.id, title: 'Лаборатория: что анализировать?', options: opts }, { op: 'room.lab', player: p.id, room: roomId, then: back });
             return;
@@ -114,6 +119,9 @@ OPS['room.action'] = (state, step) => {
             for (const c of [...p.deck]) { p.deck.splice(p.deck.indexOf(c), 1); p.discard.push(c); }
             p.discard = p.discard.filter(c => !isContam(c));
             if (p.larva) { p.larva = false; log(state, 'Личинка удалена.', 'good'); }
+            if (state.enemySet === 'chytrids' && removeChySpore(state, p)) log(state, 'Спора удалена.', 'good');
+            removeCarnomorphMutation(state, p);
+            if (state.enemySet === 'voidseeders' && p.madness > 3) alterMadness(state, p, 3 - p.madness);
             log(state, pname(p) + ': все заражения удалены из колоды.', 'good');
             loseHealth(state, p, 1, 'операция');
             if (p.status === 'active') { p.passed = true; log(state, pname(p) + ' пасует после операции.', 'action'); next(state, { op: 'turn.end' }); }
@@ -135,6 +143,7 @@ OPS['room.action'] = (state, step) => {
             return;
         }
         case 'cafeteria':
+            if (state.enemySet === 'voidseeders') { restoreHealth(state, p, 1); next(state, { op: 'void.rest', player: p.id }, back); return; }
             restoreHealth(state, p, 2);
             removeOneContam(state, p);
             next(state, back); return;
@@ -144,13 +153,15 @@ OPS['room.action'] = (state, step) => {
         }
         case 'containment': {
             const rooms = Object.keys(state.ship.rooms).filter(r => state.ship.rooms[r].tech && !intrudersIn(state, r).length);
-            ask(state, { kind: 'room', player: p.id, title: 'Изолятор: куда выпустить взрослого чужого?', rooms }, { op: 'room.containment', player: p.id, then: back });
+            ask(state, { kind: 'room', player: p.id, title: state.enemySet === 'carnomorphs' ? 'Изолятор: куда выпустить падальщика?' : state.enemySet === 'voidseeders' ? 'Изолятор: куда выпустить шепчущего?' : state.enemySet === 'chytrids' ? 'Изолятор: куда выпустить отросток?' : 'Изолятор: куда выпустить взрослого чужого?', rooms }, { op: 'room.containment', player: p.id, then: back });
             return;
         }
         case 'decon': {
+            if (state.enemySet === 'voidseeders') { next(state, { op: 'void.rest', player: p.id }, back); return; }
             const n = p.hand.filter(isContam).length;
             p.hand = p.hand.filter(c => !isContam(c));
             if (p.larva) { p.larva = false; log(state, 'Личинка удалена.', 'good'); }
+            if (state.enemySet === 'chytrids' && removeChySpore(state, p)) log(state, 'Спора удалена.', 'good');
             log(state, pname(p) + ': удалено заражений из руки — ' + n + '.', 'good');
             next(state, back); return;
         }
@@ -269,6 +280,11 @@ OPS['room.generator'] = (state, step) => { if (step.answer === 'start') startSel
 OPS['room.lab'] = (state, step) => {
     const p = player(state, step.player);
     const [where, idx] = step.answer.split(':');
+    if (where === 'mind' && state.enemySet === 'voidseeders') {
+        const target = state.players[Number(idx)];
+        if (target && target.status === 'active' && !target.pod && target.room === (step.room || p.room) && target.madness >= 3) { gainKnowledge(state, p, 2); revealVoidWeakness(state, 'madness'); }
+        next(state, step.then); return;
+    }
     const list = where === 'mine' ? p.heavy : room(state, step.room || p.room).objects;
     const h = list.splice(Number(idx), 1)[0];
     gainKnowledge(state, p, 2);
@@ -279,6 +295,9 @@ OPS['room.lab'] = (state, step) => {
 };
 /** Lab rule: the first analyzed object of each type removes one active intruder Adaptation. */
 export function analyzeAdaptation(state, p, type, then) {
+    if (state.enemySet === 'carnomorphs') { analyzeCarnomorphAdaptation(state, type); next(state, then); return; }
+    if (state.enemySet === 'voidseeders') { revealVoidWeakness(state, type); next(state, then); return; }
+    if (state.enemySet === 'chytrids') { revealChyWeakness(state, type); next(state, then); return; }
     if (type === 'charCorpse') type = 'corpse';   // a character's corpse is a Human Corpse (18.3: one object type)
     // Weakness variant: the same first analysis reveals the Weakness bound to this object type.
     if (state.weaknessMode) { revealWeakness(state, type, then); return; }
@@ -337,7 +356,18 @@ export function resolveAirlocks(state) {
             log(state, '🌀 Шлюзование в комнате ' + roomName(state, r) + ' сорвано: одна из дверей открыта или уничтожена.', 'event');
             continue;
         }
-        for (const it of intrudersIn(state, r)) { if (it.type === 'queen') { state.queenDead = true; log(state, 'Королева выброшена в космос!', 'good'); } removeIntruder(state, it.uid, false); }
+        for (const it of intrudersIn(state, r)) {
+            if (!state.intruders[it.uid]) continue;
+            if (state.enemySet === 'voidseeders') {
+                if (it.type === 'despoiler') { removeIntruder(state, it.uid, false); addVoidToken(state); log(state, 'Гнетущий выброшен, но не уничтожен.', 'event'); }
+                else killVoid(state, it, { space: true });
+                continue;
+            }
+            if (state.enemySet === 'chytrids') { killChytrid(state, it, { space: true }); continue; }
+            if (it.type === 'queen') { state.queenDead = true; log(state, 'Королева выброшена в космос!', 'good'); }
+            if (state.enemySet === 'carnomorphs' && it.type === 'butcher') state.carnomorphButcherDead = true;
+            removeIntruder(state, it.uid, false);
+        }
         for (const o of playersInRoom(state, r)) loseHealth(state, o, 99, 'разгерметизация');
         removeFire(state, r);
         log(state, '🌀 Комната ' + roomName(state, r) + ' продута в космос.', 'event');
@@ -364,7 +394,10 @@ OPS['room.doors.done'] = (state, step) => {
 };
 OPS['room.containment'] = (state, step) => {
     const p = player(state, step.player);
-    spawnIntruder(state, 'adult', step.answer);
+    if (state.enemySet === 'carnomorphs') spawnCarnomorph(state, 'shambler', step.answer);
+    else if (state.enemySet === 'voidseeders') spawnVoid(state, 'whisperer', step.answer);
+    else if (state.enemySet === 'chytrids') spawnChytrid(state, 'stinkhorn', step.answer);
+    else spawnIntruder(state, 'adult', step.answer);
     placeMalfunction(state, p.room, 'изолятор');
     next(state, step.then);
 };

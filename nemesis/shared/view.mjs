@@ -1,3 +1,4 @@
+import { bagTokenCounts } from './bag-tokens.mjs';
 // view.mjs — builds the per-player view of the game state (hidden information removed).
 // The server sends only views to clients; the full state never leaves the host process.
 
@@ -6,7 +7,7 @@ import { handSlots } from './engine/core.mjs';
 import { CHARACTERS, FIELD_DATA, ITEMS } from './data/cards.mjs';
 
 const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'lastCombatAction', 'fx', 'version', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'turnSeq', 'ship', 'roomState',
-    'intruders', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods', 'noiseVariant',
+    'intruders', 'enemySet', 'chyGermSlots', 'chyQueenSlots', 'chyDeadStinkhorns', 'chyQueenDead', 'chySporesLeft', 'chyMyceliumLeft', 'chyWeaknesses', 'chyAnalyzed', 'chyOverrun', 'voidDespoilerDead', 'voidLairsDestroyed', 'voidWeaknesses', 'voidAnalyzed', 'carnomorphButcherDead', 'carnomorphAdaptations', 'carnomorphRemoved', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods', 'noiseVariant',
     'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'adaptations', 'adaptationsRemoved', 'weaknesses', 'weaknessMode', 'seating', 'feats', 'featsUsed', 'result', 'lastEvent'];
 
 /**
@@ -18,17 +19,19 @@ export function viewFor(state, viewer, logFrom = 0) {
     const v = {};
     for (const k of PUBLIC_KEYS) v[k] = state[k];
     v.bagCount = state.bag.length;
-    v.bagKnown = countTokens(state.bag);
+    v.bagKnown = bagTokenCounts(state.bag);
     v.decks = {
         event: state.eventDeck.length, attack: state.attackDeck.length,
         green: state.itemDecks.green.length, red: state.itemDecks.red.length, yellow: state.itemDecks.yellow.length, support: state.itemDecks.support.length,
         queen: state.queenDeck.length,
+        ...(state.enemySet === 'voidseeders' ? { panic: (state.voidPanicDeck || []).length } : {}),
     };
     // Face-up piles on the table (discard piles are open information in the physical game).
     v.piles = {
         event: (state.eventDiscard || []).slice(),
         attack: (state.attackDiscard || []).slice(),
         queen: (state.queenPlayed || []).slice(),
+        ...(state.enemySet === 'voidseeders' ? { panic: (state.voidPanicDiscard || []).slice() } : {}),
         wound: (state.woundDiscard || []).slice(),
         computer: (state.computerDiscard || []).slice(),
         items: Object.fromEntries(Object.keys(state.itemDecks).map(k => [k, (state.itemDiscard[k] || []).slice()])),
@@ -40,12 +43,6 @@ export function viewFor(state, viewer, logFrom = 0) {
     v.log = state.log.filter(l => l.n > logFrom);
     v.prompt = promptView(state, viewer);
     return v;
-}
-
-function countTokens(bag) {
-    const c = {};
-    for (const t of bag) c[t] = (c[t] || 0) + 1;
-    return c;
 }
 
 function playerView(state, p, mine) {
@@ -61,7 +58,9 @@ function playerView(state, p, mine) {
         // Hand slots name what lies in each hand, so they are only sent to their owner (p. 14).
         handSlots: mine ? handSlots(state, p) : undefined,
         knowledge: p.knowledge, knowledgeActive: p.knowledgeActive, signal: p.signal,
-        passed: p.passed, pod: p.pod, larva: p.larva, laika: p.laika || null,
+        passed: p.passed, pod: p.pod, larva: p.larva, chySpore: p.chySpore, laika: p.laika || null,
+        madness: p.madness, mutationMarkers: p.mutationMarkers, hasMutation: !!p.mutationCard, mutationCard: (mine || p.mutationRevealed) ? p.mutationCard : undefined,
+        mutationRevealed: p.mutationRevealed,
         handCount: p.hand.length, deckCount: p.deck.length, discardCount: p.discard.length,
         contamInDiscard: p.discard.filter(c => c.startsWith('contam#')).length,
         contamTotal: (p.hand.concat(p.deck, p.discard)).filter(c => c.startsWith('contam#')).length,

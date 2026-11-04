@@ -1,3 +1,4 @@
+import { burnChytrids, returnStinkhornToQueen, moveLargeChytrid } from './chytrids.mjs';
 // intruders.mjs — Intruder Phase (burning, attacks), intruder movement rules, bag development.
 
 import { OPS, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, removeIntruder, spawnIntruder,
@@ -5,14 +6,21 @@ import { OPS, next, log, player, pname, intrudersIn, playersInRoom, room, roomNa
 import { distances, roomOfKind } from '../ship.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
 import { countAvailable, fieldExpAsk } from './movement.mjs';
+import { VOID_TYPES } from '../data/voidseeders.mjs';
+import { addVoidToken } from './void-bag.mjs';
+import { addCarnomorphToken, hasCarnomorphAdaptation } from './carnomorphs.mjs';
 
 OPS['phase.intruder'] = (state) => {
     state.phase = 'intruder';
     log(state, '— Фаза чужих —', 'phase');
+    if (state.enemySet === 'carnomorphs') { next(state, { op: 'carnomorph.phaseStart' }); return; }
+    if (state.enemySet === 'voidseeders') { next(state, { op: 'void.phaseStart' }); return; }
     // 1. Burning
+    if (state.enemySet === 'chytrids') burnChytrids(state);
     for (const [id, rs] of Object.entries(state.roomState)) {
         if (!rs.fire) continue;
         for (const it of intrudersIn(state, id)) {
+            if (state.enemySet === 'chytrids') continue; // already wounded by burnChytrids
             if (it.type === 'larva') { log(state, 'Личинка сгорает в ' + roomName(state, id) + '.', 'good'); removeIntruder(state, it.uid, false); continue; }
             const fireHits = hasWeak(state, 'fireVuln') ? 2 : 1;   // Vulnerability to Fire: +1 Injury from Fire
             if (it.type === 'queen') { state.queenHits += fireHits; log(state, 'Королева получает ранение от огня (' + state.queenHits + ')' + (fireHits > 1 ? ' — уязвимость к огню: 2 ранения.' : '.'), 'combat'); if (state.queenHits >= 6) next(state, { op: 'queen.card' }); continue; }
@@ -37,26 +45,39 @@ export function checkNest(state) {
     if (state.nestEggs <= 0 && !state.nestDestroyed) { state.nestDestroyed = true; log(state, '🥚 Гнездо уничтожено!', 'event'); }
 }
 
+/** A Nightmare ignores a closed door until Solid Bulkheads has been revealed. */
+export function ignoresIntruderDoor(state, it) {
+    return (state.enemySet === 'carnomorphs' && hasCarnomorphAdaptation(state, 'substitution')) ||
+        (state.enemySet === 'voidseeders' && VOID_TYPES.includes(it.type) && !(state.voidWeaknesses || []).includes('solidBulkheads'));
+}
+
 // ---------------------------------------------------------------------------------------------
 // Movement helpers
 // ---------------------------------------------------------------------------------------------
 /** Move every intruder not in combat through the corridor with the given number. */
-export function moveIntrudersByCorridor(state, num) {
+export function moveIntrudersByCorridor(state, num, types = null) {
     const attacks = [];
     for (const it of Object.values(state.intruders)) {
+        if (state.enemySet === 'voidseeders' && it.type === 'lair') continue;
+        if (types && !types.includes(it.type)) continue;
         if (playersInRoom(state, it.room).length) continue;
         const r = state.ship.rooms[it.room];
         const exit = r.exits.find(e => (e.nums || [e.num]).includes(num));
         if (!exit) {
             if (r.tech && (r.techNums || []).includes(num)) {   // route into technical corridors: leaves the board
+                if (state.enemySet === 'carnomorphs' && it.type === 'butcher') continue;
                 log(state, INTRUDER_NAMES[it.type] + ' уходит в тех. коридоры из ' + roomName(state, it.room) + '.', 'event');
+                if (state.enemySet === 'chytrids' && it.type === 'stinkhorn') { returnStinkhornToQueen(state, it); continue; }
+                if (state.enemySet === 'chytrids' && (it.type === 'deathcap' || it.type === 'chyQueen')) continue;
                 removeIntruder(state, it.uid, false);
-                state.bag.push(it.type);
+                if (state.enemySet === 'carnomorphs') addCarnomorphToken(state, it.type);
+                else if (state.enemySet === 'voidseeders' && VOID_TYPES.includes(it.type)) addVoidToken(state);
+                else state.bag.push(it.type);
             }
             continue;
         }
         const c = state.ship.corridors[exit.corridor];
-        if (c.door === 'closed') {
+        if (c.door === 'closed' && !ignoresIntruderDoor(state, it)) {
             if (canDestroyDoor(state, it)) { c.door = 'destroyed'; log(state, INTRUDER_NAMES[it.type] + ' ломает дверь ' + c.id + '.', 'event'); }
             else log(state, INTRUDER_NAMES[it.type] + ' упирается в закрытую дверь ' + c.id + ' и не может её разрушить (повадки движения).', 'event');
             continue;
@@ -80,6 +101,7 @@ export function moveIntrudersToClosest(state) {
     return attacks;
 }
 export function moveOneToward(state, it, targets) {
+    if (state.enemySet === 'voidseeders' && it.type === 'lair') return;
     const dist = distances(state.ship, it.room);
     let best = null;
     for (const p of targets) {
@@ -95,8 +117,9 @@ export function moveOneToward(state, it, targets) {
     const options = state.ship.rooms[it.room].exits.filter(e => fromTarget[e.to] === best.d - 1).sort((a, b) => a.to.localeCompare(b.to));
     if (!options.length) return;
     const e = options[0];
+    if (state.enemySet === 'chytrids' && ['deathcap','chyQueen'].includes(it.type)) return moveLargeChytrid(state, it, e.to);
     const c = state.ship.corridors[e.corridor];
-    if (c.door === 'closed') {
+    if (c.door === 'closed' && !ignoresIntruderDoor(state, it)) {
         if (canDestroyDoor(state, it)) { c.door = 'destroyed'; log(state, INTRUDER_NAMES[it.type] + ' ломает дверь ' + c.id + '.', 'event'); }
         else log(state, INTRUDER_NAMES[it.type] + ' упирается в закрытую дверь ' + c.id + ' и не может её разрушить (повадки движения).', 'event');
         return;
@@ -108,12 +131,14 @@ export function moveOneToward(state, it, targets) {
 
 /** Repel: move an intruder to a neighbouring room (chooser picks if several). */
 export function repelIntruder(state, it, toRoom, force) {
+    if (state.enemySet === 'voidseeders' && it.type === 'lair') return false;
     if (hasAdapt(state, 'fearless') && !force) { log(state, '🧬 Бесстрашие: ' + INTRUDER_NAMES[it.type] + ' нельзя отогнать.', 'bad'); return false; }
     const exits = state.ship.rooms[it.room].exits;
     const e = toRoom ? exits.find(x => x.to === toRoom) : exits[0];
     if (!e) return false;
+    if (state.enemySet === 'chytrids' && ['deathcap', 'chyQueen'].includes(it.type)) return moveLargeChytrid(state, it, e.to);
     const c = state.ship.corridors[e.corridor];
-    if (c.door === 'closed') {
+    if (c.door === 'closed' && !ignoresIntruderDoor(state, it)) {
         if (canDestroyDoor(state, it)) { c.door = 'destroyed'; log(state, 'Дверь ' + c.id + ' уничтожена при отступлении чужого.', 'event'); }
         else log(state, 'Закрытая дверь ' + c.id + ' останавливает отступление: разрушить её чужой не может (повадки движения).', 'event');
         return false;
@@ -142,6 +167,18 @@ OPS['bag.develop'] = (state, step) => {
         return;
     }
     const token = step.token;
+    if (state.enemySet === 'carnomorphs') {
+        if (token && !step.noFE && fieldExpAsk(state, token, { op: 'bag.develop' })) return;
+        next(state, { op: 'carnomorph.bagDevelop', token }); return;
+    }
+    if (state.enemySet === 'voidseeders') {
+        if (token && !step.noFE && fieldExpAsk(state, token, { op: 'bag.develop' })) return;
+        next(state, { op: 'void.bagDevelop', token }); return;
+    }
+    if (state.enemySet === 'chytrids') {
+        if (token && !step.noFE && fieldExpAsk(state, token, { op: 'bag.develop' })) return;
+        next(state, { op: 'chy.bagDevelop', token }); return;
+    }
     if (!token) { log(state, 'Развитие мешка: мешок пуст.', 'minor'); return; }
     log(state, '🎒 Развитие мешка: ' + INTRUDER_NAMES[token] + '.', 'event');
     if (!step.noFE && fieldExpAsk(state, token, { op: 'bag.develop' })) return;

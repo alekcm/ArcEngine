@@ -42,11 +42,13 @@ const freeProbeMarker = (state, p) => { const a = probeArm(p); if (!a) return; a
 OPS['card.desperateAttack'] = (state, step) => {
     const p = player(state, step.player);
     const targets = intrudersIn(state, p.room);
-    choice(state, p, 'Отчаянная атака: цель', targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) })), 'card.desperateAttack.target');
+    const options = targets.map(t => ({ id: t.uid, label: intruderLabel(state, t) }));
+    if (state.enemySet === 'chytrids' && room(state, p.room).chyGerm) options.push({ id: 'germ:' + p.room, label: 'Нарост' });
+    choice(state, p, 'Отчаянная атака: цель', options, 'card.desperateAttack.target');
 };
 OPS['card.desperateAttack.target'] = (state, step) => {
     const p = player(state, step.player);
-    next(state, { op: 'melee.hit', player: p.id, target: step.answer, bonusHits: 2, noRetaliation: true, then: { op: 'card.desperateAttack.after', player: p.id, target: step.answer } });
+    next(state, { op: String(step.answer).startsWith('germ:') ? 'chy.germMelee' : 'melee.hit', player: p.id, target: step.answer, bonusHits: 2, noRetaliation: true, then: { op: 'card.desperateAttack.after', player: p.id, target: step.answer } });
 };
 OPS['card.desperateAttack.after'] = (state, step) => {
     const p = player(state, step.player); const it = state.intruders[step.target];

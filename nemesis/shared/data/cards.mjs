@@ -174,7 +174,7 @@ export const ITEMS = {
     gatlingGun:     { deck: 'support', count: 1, name: 'Пулемёт Гатлинга', kind: 'heavy', weapon: { max: 6, boost: { ammo: 2, hits: 2 } }, twoSlots: true, use: null,
                       text: 'Дальнобойное оружие, 6 патронов. Занимает оба слота рук. Выстрел: можете потратить 2 доп. патрона — +2 ранения.' },
     grenadeLauncher:{ deck: 'support', count: 1, name: 'Гранатомёт', kind: 'heavy', weapon: { max: 1, grenadeMode: true, grenadeOnly: true }, use: null,
-                      text: 'Дальнобойное оружие, 1 патрон. Вместо обычного выстрела: выберите свою или соседнюю комнату (не через закрытую дверь) — двери уничтожены, все чужие получают 1 ранение, все персонажи — 1 тяжёлую травму. Заряжается только «Гранатой».' },
+                      text: 'Дальнобойное оружие, 1 патрон. Вместо обычного выстрела: выберите свою или соседнюю комнату (не через закрытую дверь) — двери уничтожены, каждый чужой получает критический результат, все персонажи — 1 тяжёлую травму. Заряжается только «Гранатой».' },
     handCannon:     { deck: 'support', count: 1, name: 'Пушка на руке', kind: 'heavy', weapon: { max: 3, minusOne: true }, use: null,
                       text: 'Дальнобойное оружие, 3 патрона. Выстрел: −1 к результату броска.' },
     hardenedArmor:  { deck: 'support', count: 1, name: 'Усиленная броня', kind: 'armor', woundToHp: 2, woundToHpOptional: true, use: null,
@@ -335,7 +335,7 @@ export const COMMON_CARDS = {
     demolition:  { name: 'Подрыв', cost: 1, effect: 'demolition', text: 'Поставьте поломку ИЛИ уничтожьте 1 закрытую дверь.' },
     interruption:{ name: 'Вмешательство', cost: 1, reaction: true, effect: 'interruption',
                    text: 'Реакция (пока не автоматизирована — можно сбросить как оплату). Когда персонаж в вашей комнате играет карту: отмените её эффект.' },
-    repairs:     { name: 'Ремонт', cost: 1, effect: 'repairs', text: 'Сбросьте ещё 1 карту: уберите поломку ИЛИ откройте/закройте дверь ИЛИ (ещё 1 карта) почините/сломайте двигатель в его комнате.' },
+    repairs:     { name: 'Ремонт', cost: 1, noCombat: true, effect: 'repairs', text: 'Сбросьте ещё 1 карту: уберите поломку ИЛИ откройте/закройте дверь ИЛИ (ещё 1 карта) почините/сломайте двигатель в его комнате.' },
     rest:        { name: 'Отдых', cost: 1, noCombat: true, effect: 'rest', text: 'Процедура инфекции: проверьте все заражения в руке; незаражённые уходят из игры.' },
     search:      { name: 'Поиск', cost: 1, noCombat: true, effect: 'search', text: 'За каждый значок предмета в комнате возьмите 1 предмет соответствующего цвета. Оставьте 1.' },
     weakSpot:    { name: 'Уязвимое место', cost: 1, effect: 'weakSpot', text: 'Выстрелите или атакуйте в ближнем бою и нанесите на 1 ранение больше.' },
@@ -377,7 +377,7 @@ export const CHARACTERS = {
             demolition: COMMON_CARDS.demolition,
             distraction: { name: 'Отвлечение', cost: 1, effect: 'distraction', text: 'Сбросьте 1 предмет: переместитесь, атаки чужих при этом не происходят.' },
             interruption: COMMON_CARDS.interruption,
-            reconnaissance: { name: 'Разведка', cost: 1, effect: 'reconnaissance', text: 'Посмотрите соседнюю неразведанную комнату и её жетон; можно сбросить ещё 1 карту и переместиться туда без броска шума. ИЛИ сбросьте ещё 1 карту: переместитесь в разведанную комнату без шума.' },
+            reconnaissance: { name: 'Разведка', cost: 1, noCombat: true, effect: 'reconnaissance', text: 'Посмотрите соседнюю неразведанную комнату и её жетон; можно сбросить ещё 1 карту и переместиться туда без броска шума. ИЛИ сбросьте ещё 1 карту: переместитесь в разведанную комнату без шума.' },
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest,
             scavenging: { name: 'Мародёрство', cost: 1, noCombat: true, effect: 'scavenging', text: 'В комнате без поломки, сбросьте ещё 1 карту: поиск (как карта «Поиск»).' },
             search: COMMON_CARDS.search, weakSpot: COMMON_CARDS.weakSpot,
@@ -418,10 +418,10 @@ export const CHARACTERS = {
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, noCombat: true, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition,
-            determination: { name: 'Решимость', cost: 1, effect: 'determination', text: 'В комнате без поломки и огня: возьмите 2 карты, затем сбросьте 1 (можно заражение).' },
+            determination: { name: 'Решимость', cost: 1, noCombat: true, effect: 'determination', text: 'В комнате без поломки и огня: возьмите 2 карты, затем сбросьте 1 (можно заражение).' },
             interruption: COMMON_CARDS.interruption,
-            knowledgeOfShip: { name: 'Знание корабля', cost: 1, effect: 'knowledgeOfShip', text: 'В комнате без компьютера: используйте комнату. ИЛИ откройте/закройте 1 дверь. ИЛИ посмотрите тайл любой неразведанной комнаты (без жетона).' },
-            piloting: { name: 'Пилотирование', cost: 1, effect: 'piloting', text: 'В кабине или комнате с компьютером (без поломки): используйте комнату. ИЛИ в комнате с компьютером (без поломки): тайно посмотрите координаты.' },
+            knowledgeOfShip: { name: 'Знание корабля', cost: 1, noCombat: true, effect: 'knowledgeOfShip', text: 'В комнате без компьютера: используйте комнату. ИЛИ откройте/закройте 1 дверь. ИЛИ посмотрите тайл любой неразведанной комнаты (без жетона).' },
+            piloting: { name: 'Пилотирование', cost: 1, noCombat: true, effect: 'piloting', text: 'В кабине или комнате с компьютером (без поломки): используйте комнату. ИЛИ в комнате с компьютером (без поломки): тайно посмотрите координаты.' },
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search, weakSpot: COMMON_CARDS.weakSpot,
         },
     },
@@ -436,12 +436,12 @@ export const CHARACTERS = {
         ],
         startItems: [{ item: 'smartGun', ammo: 3 }], questItems: ['cheatCodes'],
         cards: {
-            computerSkills: { name: 'Компьютерные навыки', cost: 1, noCombat: true, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
+            computerSkills: { name: 'Компьютерные навыки', cost: 1, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition, interruption: COMMON_CARDS.interruption,
-            masterPlan: { name: 'Генеральный план', cost: 1, effect: 'masterPlan', text: 'В комнате с компьютером (без поломки): выполните 2 действия компьютера (поломки от «Блокировки» не ставятся). ИЛИ посмотрите тайл любой неразведанной комнаты.' },
+            masterPlan: { name: 'Генеральный план', cost: 1, noCombat: true, effect: 'masterPlan', text: 'В комнате с компьютером (без поломки): выполните 2 действия компьютера (поломки от «Блокировки» не ставятся). ИЛИ посмотрите тайл любой неразведанной комнаты.' },
             neuralink: { name: 'Нейроинтерфейс', cost: 1, effect: 'neuralink', text: 'Выполните действие компьютера, даже в комнате без компьютера.' },
-            override: { name: 'Переопределение', cost: 1, effect: 'override', text: 'В комнате с компьютером (без поломки): выберите любую карту компьютера текущей, остальные перемешайте. ИЛИ в комнате с компьютером: уберите поломку.' },
-            recharge: { name: 'Подзарядка', cost: 1, effect: 'recharge', text: 'Зарядите до 2 зарядов в Умный пистолет.' },
+            override: { name: 'Переопределение', cost: 1, noCombat: true, effect: 'override', text: 'В комнате с компьютером (без поломки): выберите любую карту компьютера текущей, остальные перемешайте. ИЛИ в комнате с компьютером: уберите поломку.' },
+            recharge: { name: 'Подзарядка', cost: 1, noCombat: true, effect: 'recharge', text: 'Зарядите до 2 зарядов в Умный пистолет.' },
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search,
         },
     },
@@ -457,13 +457,13 @@ export const CHARACTERS = {
         startItems: [{ item: 'scientistPistol', ammo: 3 }, { item: 'wheelchair' }], questItems: ['portableDevice'],
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, noCombat: true, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
-            connection: { name: 'Соединение', cost: 1, effect: 'connection', text: 'В комнате с компьютером: используйте комнату (даже с поломкой). ИЛИ в комнате с компьютером (без поломки): поставьте или уберите поломку в любой другой комнате с компьютером.' },
+            connection: { name: 'Соединение', cost: 1, noCombat: true, effect: 'connection', text: 'В комнате с компьютером: используйте комнату (даже с поломкой). ИЛИ в комнате с компьютером (без поломки): поставьте или уберите поломку в любой другой комнате с компьютером.' },
             demolition: COMMON_CARDS.demolition,
             duckAndCover: { name: 'Пригнуться', cost: 1, effect: 'duckAndCover', text: 'Сбросьте ещё 1 карту: переместитесь, предотвратив 1 атаку чужого.' },
             interruption: COMMON_CARDS.interruption,
-            intranet: { name: 'Интранет', cost: 1, effect: 'intranet', text: 'В комнате с компьютером (без поломки): используйте любую другую разведанную комнату с компьютером (без поломки).' },
+            intranet: { name: 'Интранет', cost: 1, noCombat: true, effect: 'intranet', text: 'В комнате с компьютером (без поломки): используйте любую другую разведанную комнату с компьютером (без поломки).' },
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest,
-            riskAssessment: { name: 'Оценка рисков', cost: 1, effect: 'riskAssessment', text: 'В комнате с компьютером (без поломки): посмотрите верхнюю карту колоды событий и верните её наверх или вниз.' },
+            riskAssessment: { name: 'Оценка рисков', cost: 1, noCombat: true, effect: 'riskAssessment', text: 'В комнате с компьютером (без поломки): посмотрите верхнюю карту колоды событий и верните её наверх или вниз.' },
             search: COMMON_CARDS.search,
         },
     },
@@ -480,8 +480,8 @@ export const CHARACTERS = {
         cards: {
             computerSkills: { name: 'Компьютерные навыки', cost: 1, noCombat: true, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition,
-            fieldSurgery: { name: 'Полевая хирургия', cost: 1, effect: 'fieldSurgery', text: 'Уберите 1 тяжёлую травму у персонажа в вашей комнате. Он сбрасывает 1 карту или получает заражение.' },
-            firstAid: { name: 'Первая помощь', cost: 1, effect: 'firstAid', text: 'Восстановите 2 здоровья. ИЛИ в комнате с зелёным значком (без поломки): возьмите 1 зелёный предмет, можно оставить.' },
+            fieldSurgery: { name: 'Полевая хирургия', cost: 1, noCombat: true, effect: 'fieldSurgery', text: 'Уберите 1 тяжёлую травму у персонажа в вашей комнате. Он сбрасывает 1 карту или получает заражение.' },
+            firstAid: { name: 'Первая помощь', cost: 1, noCombat: true, effect: 'firstAid', text: 'Восстановите 2 здоровья. ИЛИ в комнате с зелёным значком (без поломки): возьмите 1 зелёный предмет, можно оставить.' },
             interruption: COMMON_CARDS.interruption,
             neurotoxicGas: { name: 'Нейротоксин', cost: 1, effect: 'neurotoxicGas', text: 'Сбросьте ещё 1 карту и 1 зелёный предмет: переместитесь (можно с другим персонажем), атаки чужих не происходят. Оставшиеся в комнате персонажи сбрасывают 1 карту.' },
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search,
@@ -505,8 +505,8 @@ export const CHARACTERS = {
             duckAndCover: { name: 'Пригнуться', cost: 1, effect: 'duckAndCover', text: 'Сбросьте ещё 1 карту: переместитесь, предотвратив 1 атаку чужого.' },
             emergencyKey: { name: 'Аварийный ключ', cost: 1, noCombat: true, effect: 'emergencyKey', text: 'В комнате с входом в тех. коридоры: переместитесь в другую комнату с таким входом. ИЛИ откройте/закройте 1 дверь.' },
             interruption: COMMON_CARDS.interruption,
-            itShouldWork: { name: 'Должно работать', cost: 1, effect: 'itShouldWork', text: 'Зарядите 1 патрон в дальнобойное оружие. ИЛИ почините сломанный предмет. ИЛИ сбросьте ещё 1 карту: используйте комнату (даже с поломкой).' },
-            maintenancePlan: { name: 'План обслуживания', cost: 1, effect: 'maintenancePlan', text: 'В комнате с компьютером (без поломки), сбросьте ещё 1 карту: уберите поломку в любой комнате с жёлтым значком. ИЛИ посмотрите тайл любой неразведанной комнаты.' },
+            itShouldWork: { name: 'Должно работать', cost: 1, noCombat: true, effect: 'itShouldWork', text: 'Зарядите 1 патрон в дальнобойное оружие. ИЛИ почините сломанный предмет. ИЛИ сбросьте ещё 1 карту: используйте комнату (даже с поломкой).' },
+            maintenancePlan: { name: 'План обслуживания', cost: 1, noCombat: true, effect: 'maintenancePlan', text: 'В комнате с компьютером (без поломки), сбросьте ещё 1 карту: уберите поломку в любой комнате с жёлтым значком. ИЛИ посмотрите тайл любой неразведанной комнаты.' },
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search,
         },
     },
@@ -523,7 +523,7 @@ export const CHARACTERS = {
         cards: {
             backupBattery: { name: 'Запасная батарея', cost: 1, removeAfter: true, effect: 'backupBattery', text: 'Уберите карту из игры: восстановите все жетоны энергии робота.' },
             command: { name: 'Приказ', cost: 1, effect: 'command', text: 'Выберите другого персонажа в вашей или соседней комнате: он перемещается или стреляет (выбираете вы), затем он берёт 1 карту. Нельзя заставить уйти из комнаты с чужим. Нельзя прервать «Вмешательством».' },
-            computerSkills: { name: 'Компьютерные навыки', cost: 1, noCombat: true, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
+            computerSkills: { name: 'Компьютерные навыки', cost: 1, effect: 'computerSkills', text: 'В комнате с компьютером без поломки: используйте комнату. ИЛИ откройте/закройте дверь в любом коридоре корабля.' },
             demolition: COMMON_CARDS.demolition,
             fastRepairs: { name: 'Быстрый ремонт', cost: 1, noCombat: true, effect: 'fastRepairs', text: 'Уберите поломку ИЛИ откройте/закройте дверь ИЛИ почините/сломайте двигатель в его комнате.' },
             interruption: COMMON_CARDS.interruption,
@@ -548,12 +548,12 @@ export const CHARACTERS = {
         cards: {
             demolition: COMMON_CARDS.demolition,
             feelOfDark: { name: 'Чувство темноты', cost: 1, effect: 'feelOfDark', text: 'Сбросьте ещё 1 карту: переместитесь без броска шума, предотвратив 1 атаку чужого.' },
-            inconspicuous: { name: 'Незаметность', cost: 1, reaction: true, effect: 'inconspicuous', text: 'Реакция: если в фазе событий вам нужно бросать шум или разыгрывать встречу — не делайте этого.' },
+            inconspicuous: { name: 'Незаметность', cost: 1, noCombat: true, reaction: true, effect: 'inconspicuous', text: 'Реакция: если в фазе событий вам нужно бросать шум или разыгрывать встречу — не делайте этого.' },
             interruption: COMMON_CARDS.interruption,
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search,
-            sensitiveHearing: { name: 'Острый слух', cost: 1, effect: 'sensitiveHearing', text: 'Уберите жетон шума из любого коридора корабля. ИЛИ положите жетон шума в любой коридор без шума.' },
+            sensitiveHearing: { name: 'Острый слух', cost: 1, noCombat: true, effect: 'sensitiveHearing', text: 'Уберите жетон шума из любого коридора корабля. ИЛИ положите жетон шума в любой коридор без шума.' },
             shriek: { name: 'Визг', cost: 1, effect: 'shriek', text: 'Получите заражение: отгоните 1 взрослого чужого из вашей комнаты.' },
-            weirdMetabolism: { name: 'Странный метаболизм', cost: 1, effect: 'weirdMetabolism', text: 'Сбросьте 1 заражение, чтобы взять 2 карты. ИЛИ в комнате с тяжёлым объектом (не в руках): уничтожьте его, чтобы восстановить 2 здоровья и/или убрать 1 тяжёлую травму.' },
+            weirdMetabolism: { name: 'Странный метаболизм', cost: 1, noCombat: true, effect: 'weirdMetabolism', text: 'Сбросьте 1 заражение, чтобы взять 2 карты. ИЛИ в комнате с тяжёлым объектом (не в руках): уничтожьте его, чтобы восстановить 2 здоровья и/или убрать 1 тяжёлую травму.' },
         },
     },
     sentry: {
@@ -568,12 +568,12 @@ export const CHARACTERS = {
         ],
         startItems: [{ item: 'sentrySmg', ammo: 5 }], questItems: ['battleSuit'],
         cards: {
-            defensePlan: { name: 'План обороны', cost: 1, effect: 'defensePlan', text: 'Уберите жетон шума из коридора у вашей комнаты; можно закрыть 1 дверь у вашей комнаты. ИЛИ посмотрите тайл любой неразведанной комнаты.' },
+            defensePlan: { name: 'План обороны', cost: 1, noCombat: true, effect: 'defensePlan', text: 'Уберите жетон шума из коридора у вашей комнаты; можно закрыть 1 дверь у вашей комнаты. ИЛИ посмотрите тайл любой неразведанной комнаты.' },
             demolition: COMMON_CARDS.demolition,
             facilityTour: { name: 'Обход объекта', cost: 1, effect: 'facilityTour', text: 'Сбросьте ещё 1 карту: вы или другой персонаж из вашей комнаты перемещаетесь без атак чужих; жетон исследования можно проигнорировать.' },
             interruption: COMMON_CARDS.interruption,
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search,
-            securityControl: { name: 'Пульт охраны', cost: 1, effect: 'securityControl', text: 'В комнате с компьютером (без поломки): нанесите 2 ранения любому чужому на корабле. ИЛИ откройте/закройте дверь в любом коридоре.' },
+            securityControl: { name: 'Пульт охраны', cost: 1, noCombat: true, effect: 'securityControl', text: 'В комнате с компьютером (без поломки): нанесите 2 ранения любому чужому на корабле. ИЛИ откройте/закройте дверь в любом коридоре.' },
             stun: { name: 'Оглушение', cost: 1, effect: 'stun', text: 'Выберите персонажа с 3 картами или меньше: он сбрасывает все карты и пасует. ИЛИ сломайте своё оружие, чтобы отогнать 1 взрослого чужого.' },
             weakSpot: COMMON_CARDS.weakSpot,
         },
@@ -595,10 +595,10 @@ export const CHARACTERS = {
             demolition: COMMON_CARDS.demolition,
             fastRepairs: { name: 'Быстрый ремонт', cost: 1, noCombat: true, effect: 'fastRepairs', text: 'Уберите поломку ИЛИ откройте/закройте дверь ИЛИ почините/сломайте двигатель в его комнате.' },
             interruption: COMMON_CARDS.interruption,
-            powerUp: { name: 'Подзарядка', cost: 1, effect: 'powerUp', text: 'Поставьте поломку в вашей комнате: +1 жетон ИБП. ИЛИ сбросьте предмет «Энергозаряд»: +2 жетона ИБП.' },
-            protocolOverride: { name: 'Обход протокола', cost: 1, removeAfter: true, effect: 'protocolOverride', text: 'Сбросьте 1 жетон ИБП: выбранный персонаж получает тяжёлую травму. ИЛИ в комнате с компьютером (без поломки): сбросьте жетон ИБП, чтобы сменить карту координат (пока время не на синем). Карта уходит из игры.' },
+            powerUp: { name: 'Подзарядка', cost: 1, noCombat: true, effect: 'powerUp', text: 'Поставьте поломку в вашей комнате: +1 жетон ИБП. ИЛИ сбросьте предмет «Энергозаряд»: +2 жетона ИБП.' },
+            protocolOverride: { name: 'Обход протокола', cost: 1, noCombat: true, removeAfter: true, effect: 'protocolOverride', text: 'Сбросьте 1 жетон ИБП: выбранный персонаж получает тяжёлую травму. ИЛИ в комнате с компьютером (без поломки): сбросьте жетон ИБП, чтобы сменить карту координат (пока время не на синем). Карта уходит из игры.' },
             search: COMMON_CARDS.search,
-            selfRepair: { name: 'Самопочинка', cost: 1, effect: 'selfRepair', text: 'Сбросьте скотч, инструменты или кабели: уберите 1 тяжёлую травму и/или восстановите 2 здоровья. ИЛИ уберите поломку в комнате.' },
+            selfRepair: { name: 'Самопочинка', cost: 1, noCombat: true, effect: 'selfRepair', text: 'Сбросьте скотч, инструменты или кабели: уберите 1 тяжёлую травму и/или восстановите 2 здоровья. ИЛИ уберите поломку в комнате.' },
         },
     },
     convict: {
@@ -619,7 +619,7 @@ export const CHARACTERS = {
             interruption: COMMON_CARDS.interruption,
             intimidate: { name: 'Запугивание', cost: 1, effect: 'intimidate', text: 'Выберите другого персонажа в комнате: он снимает 1 жетон с ваших наручников, теряет 2 здоровья или сбрасывает 2 карты.' },
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search,
-            shortTemper: { name: 'Вспыльчивость', cost: 1, effect: 'shortTemper', text: 'Используйте комнату (даже с поломкой) ИЛИ снимите 1 жетон с наручников. Затем бросок шума в комнате (если наручники сняты — может бросить другой персонаж в комнате).' },
+            shortTemper: { name: 'Вспыльчивость', cost: 1, noCombat: true, effect: 'shortTemper', text: 'Используйте комнату (даже с поломкой) ИЛИ снимите 1 жетон с наручников. Затем бросок шума в комнате (если наручники сняты — может бросить другой персонаж в комнате).' },
         },
     },
     psych: {
@@ -638,7 +638,7 @@ export const CHARACTERS = {
             dontPanic: { name: 'Без паники', cost: 1, reaction: true, effect: 'dontPanic', text: 'Реакция: когда вас или другого персонажа в вашей комнате атакует чужой — этот персонаж может предотвратить атаку.' },
             emotionScanner: { name: 'Сканер эмоций', cost: 1, effect: 'emotionScanner', text: 'Выберите другого персонажа в вашей или соседней комнате: посмотрите верхнюю карту его колоды и сбросьте её или отдайте ему в руку.' },
             interruption: COMMON_CARDS.interruption,
-            lendAHand: { name: 'Помощь', cost: 1, effect: 'lendAHand', text: 'Выберите персонажа в вашей комнате: он берёт 2 карты, остальные в комнате — по 1. Затем все в комнате сбрасывают по 1.' },
+            lendAHand: { name: 'Помощь', cost: 1, noCombat: true, effect: 'lendAHand', text: 'Выберите персонажа в вашей комнате: он берёт 2 карты, остальные в комнате — по 1. Затем все в комнате сбрасывают по 1.' },
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search,
             wouldYouKindly: { name: 'Будьте любезны', cost: 1, effect: 'wouldYouKindly', text: 'Выберите другого персонажа в вашей комнате: он перемещается (вы выбираете куда) или стреляет. Нельзя заставить уйти из комнаты с чужим.' },
         },
@@ -655,7 +655,7 @@ export const CHARACTERS = {
         startItems: [{ item: 'bountyRifle', ammo: 5 }, { item: 'laika' }], questItems: ['canineUpgrades'],
         cards: {
             demolition: COMMON_CARDS.demolition,
-            determination: { name: 'Решимость', cost: 1, effect: 'determination', text: 'В комнате без поломки и огня: возьмите 2 карты, затем сбросьте 1 (можно заражение).' },
+            determination: { name: 'Решимость', cost: 1, noCombat: true, effect: 'determination', text: 'В комнате без поломки и огня: возьмите 2 карты, затем сбросьте 1 (можно заражение).' },
             goGirl: { name: 'Вперёд, девочка!', cost: 1, effect: 'goGirl', text: 'Отправьте Лайку в соседнюю комнату или верните её к себе.' },
             interruption: COMMON_CARDS.interruption,
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search,
@@ -705,7 +705,7 @@ export const CHARACTERS = {
             interruption: COMMON_CARDS.interruption,
             obstinate: { name: 'Упрямство', cost: 1, noCombat: true, effect: 'obstinate', text: 'Возьмите 1 карту и ещё по 1 за каждое серьёзное ранение (не больше 7 карт в руке). Затем можно сбросить 1 предмет, чтобы снять 1 серьёзное ранение.' },
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search,
-            vents: { name: 'Вентиляция', cost: 1, effect: 'vents', text: 'В комнате с входом в тех. коридоры сбросьте ещё 1 карту: выберите другую разведанную комнату с таким входом. Перенесите атаку чужого (как взрослого), затем переместитесь туда.' },
+            vents: { name: 'Вентиляция', cost: 1, noCombat: true, effect: 'vents', text: 'В комнате с входом в тех. коридоры сбросьте ещё 1 карту: выберите другую разведанную комнату с таким входом. Перенесите атаку чужого (как взрослого), затем переместитесь туда.' },
         },
     },
     xeno: {
@@ -723,11 +723,11 @@ export const CHARACTERS = {
             demolition: COMMON_CARDS.demolition,
             fieldExperience: { name: 'Полевой опыт', cost: 1, effect: 'fieldExperience', reactionToo: 'fieldExpReaction', text: 'Положите 1 образец ткани на свой планшет. Если в комнате есть чужой, выбранный чужой получает 1 ранение. ИЛИ Реакция: после вытягивания жетона чужого из мешка сбросьте 1 образец ткани — верните жетон в мешок и вытяните другой.' },
             interruption: COMMON_CARDS.interruption,
-            overmind: { name: 'Сверхразум', cost: 1, effect: 'overmind', text: 'Сбросьте 1 карту и 1 образец ткани: переместите любого чужого с корабля в соседнюю комнату. ИЛИ снимите 1 жетон с Манипулятора-зонда.' },
+            overmind: { name: 'Сверхразум', cost: 1, noCombat: true, effect: 'overmind', text: 'Сбросьте 1 карту и 1 образец ткани: переместите любого чужого с корабля в соседнюю комнату. ИЛИ снимите 1 жетон с Манипулятора-зонда.' },
             pheromones: { name: 'Феромоны', cost: 1, effect: 'pheromones', reactionToo: 'pheromonesReaction', text: 'Сбросьте 1 образец ткани и переместитесь; во время этого перемещения чужие не атакуют. ИЛИ Реакция: когда вас внезапно атакует чужой — сбросьте 1 образец ткани, чтобы предотвратить атаку.' },
             repairs: COMMON_CARDS.repairs, rest: COMMON_CARDS.rest, search: COMMON_CARDS.search,
             vivisection: { name: 'Вивисекция', cost: 1, effect: 'vivisection', text: 'Нанесите чужому в комнате по 1 ранению за каждый ваш образец ткани, затем сбросьте 1 образец. ИЛИ снимите 1 жетон с Манипулятора-зонда.' },
-            workspacePlan: { name: 'План работ', cost: 1, effect: 'workspacePlan', text: 'В комнате с зелёным значком предмета (без поломки): получите 1 знание. ИЛИ посмотрите тайл любой неразведанной комнаты (без жетона).' },
+            workspacePlan: { name: 'План работ', cost: 1, noCombat: true, effect: 'workspacePlan', text: 'В комнате с зелёным значком предмета (без поломки): получите 1 знание. ИЛИ посмотрите тайл любой неразведанной комнаты (без жетона).' },
         },
     },
 };
@@ -873,7 +873,14 @@ export const OBJECTIVES = {
     },
 };
 /** Objective text with the seat placeholder filled in ({seat} → the name of that player). */
-export function objectiveTextOf(def, players) {
+export function objectiveTextOf(def, players, enemySet) {
+    if (['carnomorphs', 'voidseeders', 'chytrids'].includes(enemySet) && (def.check === 'trophyHunter' || def.check === 'priorityOne')) {
+        const boss = enemySet === 'carnomorphs' ? 'Мясник' : enemySet === 'voidseeders' ? 'Гнетущий' : 'Королева хитридов';
+        const phrase = def.check === 'trophyHunter'
+            ? boss + (enemySet === 'chytrids' ? ' должна быть убита' : ' должен быть убит')
+            : boss + (enemySet === 'chytrids' ? ' не убита' : ' не убит');
+        return def.text.replace(def.check === 'trophyHunter' ? 'Королева должна быть убита' : 'Королева не убита', phrase);
+    }
     if (!def.seat) return def.text;
     const t = players.find(p => p.number === def.seat) || players[def.seat - 1];
     return def.text.replace('{seat}', t ? t.name : '—');
@@ -914,7 +921,9 @@ export const QUEEN_CARDS = QUEEN_FACES.flatMap(c => Array.from({ length: c.copie
 })));
 
 
-export const INTRUDER_NAMES = { larva: 'Личинка', adult: 'Взрослый', drone: 'Дрон', queen: 'Королева', blank: 'Пусто' };
+export const INTRUDER_NAMES = { larva: 'Личинка', adult: 'Взрослый', drone: 'Дрон', queen: 'Королева', blank: 'Пусто',
+    metagorger: 'Глодатель', shambler: 'Падальщик', breeder: 'Свежеватель', butcher: 'Мясник',
+    lurker: 'Таящийся', whisperer: 'Шепчущий', creeper: 'Крадущийся', despoiler: 'Гнетущий', lair: 'Логово', stinkhorn: 'Отросток', deathcap: 'Шляпка', chyQueen: 'Королева хитридов' };
 export const INTRUDER_SUPPLY = { larva: 8, adult: 12, drone: 12, queen: 1 };
 /** Intruder token pools (Queen Health card «add up to 3 Queen tokens» implies 3 Queen tokens). */
 export const INTRUDER_TOKENS = { blank: 1, larva: 8, adult: 12, drone: 12, queen: 3 };

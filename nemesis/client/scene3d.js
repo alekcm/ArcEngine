@@ -9,6 +9,7 @@
 // only the half next to an explored room is shown, LEDs turn yellow when the corridor has noise.
 
 import { buildCharacter, buildIntruder, buildBody, flatMat } from './characters.js';
+import { loadOriginalModel, originalModelMesh } from './intruder-models.js';
 import { characterParts } from '../shared/appearance.mjs';
 import { TUNE, doorSpec } from './tuning.js';
 import * as Snd from './sound.js';
@@ -4303,12 +4304,31 @@ export class Scene3D {
             this.setRoomLights(node, !node.malfunction);
         }
         this.syncFire(node, !!rs.fire);
+        this.syncChyMarker(node, rs);
         let k = 0;
         this.owner('room:' + r.id + ':obj', () => { for (const o of rs.objects) this.addObject(o.type, node.root, k++, r.id, k - 1); });
         if (tile === 'nest' && rs.explored) for (let i = 0; i < view.nestEggs; i++) this.addObject('egg', node.root, 10 + i);
         // Escape pods in their section (rules p. 2 step 7: 2 pods for 1-2 players, 3 for 3-4, 4 for 5,
         // alternating A/B). The tiles are hidden until explored, so the pods appear with the room.
         this.syncPods(node, view, tile === 'evacA' ? 'A' : tile === 'evacB' ? 'B' : null);
+    }
+
+    /** Persistent room markers for Chytrid spores, growths and irreversible mycelium. */
+    syncChyMarker(node, rs) {
+        const key=rs.chyGerm ? 'germ:'+rs.chyGerm.color+':'+rs.chyGerm.level : rs.chyMycelium ? 'mycelium' : rs.chySpore ? 'spore' : '';
+        if(node.chyKey===key) return;
+        node.chyKey=key; if(node.chyRoot){node.chyRoot.dispose();node.chyRoot=null;}
+        if(!key)return;
+        const S=this.scene, root=new (B().TransformNode)('chyMarker_'+node.data.id,S);root.parent=node.root;root.position.set(-2.2,FLOOR_Y,1.0);
+        const color=rs.chyGerm ? (rs.chyGerm.color==='green'?'#75bf4b':'#a66bca') : '#629753';
+        if(rs.chyGerm) {
+            const cube=B().MeshBuilder.CreateBox('growth',{size:1.2},S);cube.parent=root;cube.position.y=.65;cube.material=this.M(color,.25);cube.isPickable=false;
+            for(let i=0;i<rs.chyGerm.level;i++) {const n=B().MeshBuilder.CreateSphere('growthLevel',{diameter:.22,segments:4},S);n.parent=root;n.position.set((i-1)*.32,1.3,0);n.material=this.M('#e2efbc',.25);n.isPickable=false;}
+        } else {
+            const count=rs.chyMycelium?8:3;
+            for(let i=0;i<count;i++){const a=i*Math.PI*2/count;const m=B().MeshBuilder.CreateSphere('colony',{diameter:rs.chyMycelium?.62:.38,segments:5},S);m.parent=root;m.position.set(Math.cos(a)*.55,.2,Math.sin(a)*.55);m.scaling.y=.48;m.material=this.M(color,.18);m.isPickable=false;}
+        }
+        node.chyRoot=root;
     }
 
     /** Escape pods of one section, rebuilt only when their state (lock/occupants/launch) changes. */
@@ -4781,17 +4801,40 @@ export class Scene3D {
         const S = this.scene;
         const seen = new Set();
         const perRoom = {};
+        const dispose = n => {
+            for (const mesh of n.root.getChildMeshes()) this.shadows.removeShadowCaster(mesh);
+            if (n.label && n.label.material) n.label.material.dispose(false, true);
+            n.root.dispose();
+        };
         for (const it of Object.values(view.intruders)) {
             seen.add(it.uid);
             let n = this.intr[it.uid];
-            if (!n) {
-                n = { root: buildIntruder(S, it.type), label: null, uid: it.uid };
+            if (!n || n.type !== it.type) {
+                // Carnomorph feeding evolves in place (same UID). Preserve an in-flight route,
+                // orientation and position while replacing the silhouette and its pick targets.
+                const old = n;
+                const root = buildIntruder(S, it.type);
+                if (old) { root.position.copyFrom(old.root.position); root.rotation.copyFrom(old.root.rotation); dispose(old); }
+                n = { ...old, root, type: it.type, label: null, uid: it.uid };
                 n.label = this.makeLabel('il', '', '', n.root, 0, 3.0, 0, 2.6);
                 this.intr[it.uid] = n;
                 for (const m of n.root.getChildMeshes()) {
+                    if (m === n.label) continue;
                     this.shadows.addShadowCaster(m);
                     m.isPickable = true; m.metadata = Object.assign({}, m.metadata, { intruder: it.uid, roomId: it.room });
                 }
+                const loading = loadOriginalModel(it.type);
+                if (loading) loading.then(data => {
+                    if (!data || this.intr[it.uid] !== n || n.root.isDisposed()) return;
+                    const mesh = originalModelMesh(S, it.type, data);
+                    for (const oldMesh of n.root.getChildMeshes()) {
+                        if (oldMesh === n.label) continue;
+                        this.shadows.removeShadowCaster(oldMesh); oldMesh.dispose();
+                    }
+                    mesh.parent=n.root; mesh.isPickable=true; mesh.metadata={intruder:it.uid,roomId:n.room};
+                    this.shadows.addShadowCaster(mesh);
+                });
+
             }
             for (const m of n.root.getChildMeshes()) if (m.metadata) m.metadata.roomId = it.room;
             const k = perRoom[it.room] = (perRoom[it.room] || 0) + 1;
@@ -4828,7 +4871,7 @@ export class Scene3D {
             if (!wasRoom) n.root.rotation.y = n.faceY;
             this.setLabel(n.label, names[it.type] + (it.hits ? ' ✚' + it.hits : ''), '', '#9cff3b');
         }
-        for (const uid of Object.keys(this.intr)) if (!seen.has(uid)) { this.intr[uid].root.dispose(); delete this.intr[uid]; }
+        for (const uid of Object.keys(this.intr)) if (!seen.has(uid)) { dispose(this.intr[uid]); delete this.intr[uid]; }
     }
 
     updateCharacters(view) {

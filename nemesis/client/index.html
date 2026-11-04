@@ -27,6 +27,14 @@
                 <div id="seatList" class="seat-list"></div>
                 <h3>Настройки партии</h3>
                 <div id="hostSettings">
+                    <div class="row"><label>Набор врагов</label>
+                        <select id="enemySetSelect" aria-describedby="enemySetHint">
+                            <option value="redux" selected>Чужие Redux</option>
+                            <option value="carnomorphs">Карноморфы</option>
+                            <option value="voidseeders">Кошмары</option>
+                            <option value="chytrids">Хитриды</option>
+                        </select></div>
+                    <p id="enemySetHint" class="hint">Выберите набор врагов для партии.</p>
                     <div class="row"><label>Карта</label>
                         <select id="modeSelect">
                             <option value="original">Оригинальный корабль</option>

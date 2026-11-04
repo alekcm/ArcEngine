@@ -7,11 +7,15 @@ import { OPS, ask, askAck, next, log, player, pname, intrudersIn, playersInRoom,
 import { shuffle } from '../rng.mjs';
 import { EVENT_CARDS, INTRUDER_NAMES, ITEMS } from '../data/cards.mjs';
 import { ROOM_TILES, roomOfKind } from '../ship.mjs';
+import { CARNOMORPH_EVENT_BY_ID, carnomorphEventText } from '../data/carnomorph-events.mjs';
+import { CHYTRID_EVENT_BY_ID, chytridEventText } from '../data/chytrids.mjs';
+import { VOID_EVENT_BY_ID } from '../data/voidseeders.mjs';
 import { moveIntrudersByCorridor, moveIntrudersToClosest, bagDevelopment, checkNest } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
 import { infectionProcedure, eclosionProcedure } from './actions.mjs';
 
 const EVENT_BY_ID = Object.fromEntries(EVENT_CARDS.map(e => [e.id, e]));
+const eventById = (state, id) => state.enemySet === 'carnomorphs' ? CARNOMORPH_EVENT_BY_ID[id] : state.enemySet === 'voidseeders' ? VOID_EVENT_BY_ID[id] : state.enemySet === 'chytrids' ? CHYTRID_EVENT_BY_ID[id] : EVENT_BY_ID[id];
 
 const cap = (t) => t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
 /** What the intruders do on this card, in one line. */
@@ -43,6 +47,11 @@ function rollLabel(ev) {
  *  the effect of the card and the dice it demands. The table reads them one at a time instead of
  *  picking the requirement out of a single wall of printed text. */
 export function eventLogLines(ev) {
+    if (ev.move && ev.move.types) return [
+        '📜 Событие: «' + ev.name + '».',
+        'Движение: ' + ev.move.types.map(t => INTRUDER_NAMES[t]).join(', ') + ' — коридор ' + ev.move.num + '.',
+        'Эффект: ' + ev.text,
+    ];
     const sentences = String(ev.text || '').split(/(?<=\.)\s+/).map(x => x.trim()).filter(Boolean);
     const isRoll = x => /бросок|встреч/i.test(x);
     const move = sentences.filter(x => /движ/i.test(x));
@@ -60,20 +69,31 @@ OPS['phase.event'] = (state) => {
     log(state, '— Фаза событий —', 'phase');
     if (!state.eventDeck.length) { state.eventDeck = shuffle(state, state.eventDiscard.splice(0)); }
     const id = state.eventDeck.shift();
+    if (!id && state.enemySet === 'voidseeders') {
+        log(state, 'Колода событий пуста.', 'minor');
+        next(state, { op: 'void.dissipate' }, { op: 'phase.cleanup' }); return;
+    }
+    if (!id && state.enemySet === 'chytrids') { next(state, { op: 'bag.develop' }, { op: 'phase.cleanup' }); return; }
+    if (!id && state.enemySet === 'carnomorphs') {
+        log(state, 'Колода событий пуста.', 'minor');
+        next(state, { op: 'bag.develop' }, { op: 'phase.cleanup' });
+        return;
+    }
     next(state, { op: 'event.reveal', id });
 };
 
 /** Reveal the card and let the whole table read it. In table mode (state.ui.eventAck) the card
  *  stays face up until every player on board has pressed "Готово"; only then do its effects run. */
 OPS['event.reveal'] = (state, step) => {
-    const id = step.id, ev = EVENT_BY_ID[id];
+    const id = step.id, ev = eventById(state, id);
     state.lastEvent = id;
     state.lastEventN = (state.lastEventN || 0) + 1;
-    fx(state, { type: 'event', card: id, name: ev.name, text: ev.text });
-    log(state, eventLogLines(ev).join('\n'), 'event');
+    const text = state.enemySet === 'chytrids' ? chytridEventText(ev) : ev.move && ev.move.types ? carnomorphEventText(ev) : ev.text;
+    fx(state, { type: 'event', card: id, name: ev.name, text });
+    log(state, state.enemySet === 'chytrids' ? '📜 Событие: «' + ev.name + '». ' + text : eventLogLines(ev).join('\n'), 'event');
     if (state.ui && state.ui.eventAck) {
         const waiting = state.players.filter(p => p.status === 'active' || p.status === 'hibernating').map(p => p.id);
-        if (askAck(state, { title: 'Событие: «' + ev.name + '»', text: ev.text, event: id, players: waiting },
+        if (askAck(state, { title: 'Событие: «' + ev.name + '»', text, event: id, players: waiting },
             { op: 'event.movement', id })) return;
     }
     next(state, { op: 'event.movement', id });
@@ -81,10 +101,19 @@ OPS['event.reveal'] = (state, step) => {
 
 /** 1. Intruder movement printed on the card. */
 OPS['event.movement'] = (state, step) => {
-    const id = step.id, ev = EVENT_BY_ID[id];
+    const id = step.id, ev = eventById(state, id);
     let attacks = [];
-    if (ev.move.type === 'corridor') attacks = moveIntrudersByCorridor(state, ev.move.num);
+    if (state.enemySet === 'chytrids') { next(state, { op: 'chy.eventMovement', id }, { op: 'chy.eventEffect', id }, { op: 'event.finish', id }, { op: 'phase.cleanup' }); return; }
+    if (ev.move.type === 'corridor') attacks = moveIntrudersByCorridor(state, ev.move.num, ev.move.types || null);
     else if (ev.move.type === 'closest') { attacks = moveIntrudersToClosest(state); if (id === 'onTheHunt') attacks = attacks.concat(moveIntrudersToClosest(state)); }
+    if (state.enemySet === 'voidseeders') {
+        next(state, ...attacks, { op: 'void.eventEffect', id }, { op: 'event.finish', id }, { op: 'void.dissipate' }, { op: 'phase.cleanup' });
+        return;
+    }
+    if (state.enemySet === 'carnomorphs') {
+        next(state, ...attacks, { op: 'carnomorph.eventEffect', id }, { op: 'event.finish', id }, { op: 'phase.cleanup' });
+        return;
+    }
     next(state, ...attacks, { op: 'event.effect', id }, { op: 'event.noise', id }, { op: 'event.finish', id }, { op: 'phase.cleanup' });
 };
 
@@ -306,7 +335,35 @@ OPS['perimeter.ask'] = (state, step) => {
     ask(state, { kind: 'choice', reaction: true, player: p.id, title: 'Охранный периметр: сбросить 1 карту действия, чтобы не бросать шум?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] }, step);
 };
 OPS['event.finish'] = (state, step) => {
-    const ev = EVENT_BY_ID[step.id];
+    const ev = eventById(state, step.id);
+    if (state.enemySet === 'chytrids' && ev) {
+        if (ev.finish === 'remove') { (state.chyEventRemoved || (state.chyEventRemoved = [])).push(step.id); state.eventDeck.push(...state.eventDiscard.splice(0)); shuffle(state, state.eventDeck); }
+        else state.eventDiscard.push(step.id);
+        next(state, { op: 'bag.develop' }); return;
+    }
+    if (state.enemySet === 'voidseeders' && ev) {
+        if (ev.finish === 'remove') {
+            (state.voidEventRemoved || (state.voidEventRemoved = [])).push(step.id);
+            state.eventDeck.push(...state.eventDiscard.splice(0)); shuffle(state, state.eventDeck);
+        } else if (ev.finish === 'shuffleDiscard') {
+            state.eventDeck.push(...state.eventDiscard.splice(0), step.id); shuffle(state, state.eventDeck);
+        } else state.eventDiscard.push(step.id);
+        return;
+    }
+    if (state.enemySet === 'carnomorphs' && ev) {
+        if (ev.finish === 'remove') {
+            (state.carnomorphEventRemoved || (state.carnomorphEventRemoved = [])).push(step.id);
+            state.eventDeck.push(...state.eventDiscard.splice(0));
+            shuffle(state, state.eventDeck);
+            log(state, 'Карта события удалена, сброс замешан в колоду.', 'minor');
+        } else if (ev.finish === 'self') {
+            state.eventDeck.push(step.id);
+            shuffle(state, state.eventDeck);
+            log(state, 'Карта события замешана обратно в колоду.', 'minor');
+        } else state.eventDiscard.push(step.id);
+        next(state, { op: 'bag.develop' });
+        return;
+    }
     if (ev && ev.reshuffle) { state.eventDeck.push(...state.eventDiscard.splice(0), step.id); shuffle(state, state.eventDeck); log(state, 'Колода событий перемешана.', 'minor'); }
     else if (step.id) state.eventDiscard.push(step.id);
     next(state, { op: 'bag.develop' });
@@ -328,13 +385,15 @@ OPS['phase.cleanup'] = (state) => {
         const need = Math.max(0, limit - p.hand.length);
         if (need) drawCards(state, p, need);
     }
-    state.time--;
-    log(state, '⏱ Время: ' + state.time + (state.time <= HIBERNATION_TIME ? ' (гибернация доступна)' : '') + '.', 'info');
-    if (state.selfDestruct > 0) {
-        state.selfDestruct++;
-        log(state, '☢ Самоуничтожение: ' + state.selfDestruct + '/' + SELF_DESTRUCT_LENGTH + '.', 'death');
-        if (state.selfDestruct === 4 && !state.podsUnlocked) { state.podsUnlocked = true; for (const pod of state.pods) pod.locked = false; log(state, 'Жёлтая зона: капсулы разблокированы, отсчёт не остановить.', 'event'); }
-        if (state.selfDestruct >= SELF_DESTRUCT_LENGTH) { destroyShip(state, 'самоуничтожение'); return; }
+    if (state.enemySet !== 'carnomorphs' && state.enemySet !== 'voidseeders') {
+        state.time--;
+        log(state, '⏱ Время: ' + state.time + (state.time <= HIBERNATION_TIME ? ' (гибернация доступна)' : '') + '.', 'info');
+        if (state.selfDestruct > 0) {
+            state.selfDestruct++;
+            log(state, '☢ Самоуничтожение: ' + state.selfDestruct + '/' + SELF_DESTRUCT_LENGTH + '.', 'death');
+            if (state.selfDestruct === 4 && !state.podsUnlocked) { state.podsUnlocked = true; for (const pod of state.pods) pod.locked = false; log(state, 'Жёлтая зона: капсулы разблокированы, отсчёт не остановить.', 'event'); }
+            if (state.selfDestruct >= SELF_DESTRUCT_LENGTH) { destroyShip(state, 'самоуничтожение'); return; }
+        }
     }
     if (state.time <= 0) { log(state, 'Время вышло — корабль уходит в гиперпространство.', 'event'); next(state, { op: 'game.end' }); return; }
     if (!state.players.some(p => p.status === 'active')) {
