@@ -112,7 +112,7 @@ const FSUI = {
     // The board furniture the player may put away: the participants, the chronicle
     // and the window with the order tokens of the hand.
     panelState() {
-        if (!this.panels) this.panels = { players: true, chronicle: true, orders: false, topbar: true };
+        if (!this.panels) this.panels = { players: true, chronicle: true, orders: false, topbar: true, battlePanel: 'third' };
         return this.panels;
     },
 
@@ -215,7 +215,7 @@ const FSUI = {
             this.update(state, ctx);
         });
         header.append(topbarBtn);
-        if (!this.panelState().topbar) root.classList.add('is-topbar-off');
+        root.classList.toggle('is-topbar-off', !this.panelState().topbar);
         root.append(header);
 
         // The top-right toolbar is gone. Only the fullscreen button survives,
@@ -306,15 +306,26 @@ const FSUI = {
         const panel = this.el('section', 'fs-main-panel');
         const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', state.over ? 'Итоги сражения' : 'Текущий этап'));
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
-        head.append(this.el('p', '', ctx.text || 'Выберите действие, чтобы продолжить партию.'));
         panel.append(head);
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
         // No system is written in this panel: what a sector is made of is shown by
         // the plaque over the board itself. The panel belongs to the action.
         // The score of the battle is NOT here: it is its own panel at the top
         // left of the screen, so the damage choice always fits.
+        this.renderState = state; this.renderCtx = ctx;
         const battle = this.renderBattle(ctx.battle);
         if (battle) root.append(battle);
+        // When the battle panel is hidden, a small tab at the bottom-left brings it back.
+        if (ctx.battle && this.panelState().battlePanel === 'hidden') {
+            const rb = this.el('button', 'fs-battle-restore'); rb.type = 'button';
+            rb.title = 'Показать панель боя';
+            rb.append(this.iconEl('cube.att'));
+            rb.addEventListener('click', () => {
+                this.panelState().battlePanel = 'third';
+                this.update(this.renderState, this.renderCtx);
+            });
+            root.append(rb);
+        }
         const tokens = this.renderTokens(ctx.tokens);
         if (tokens) panel.append(tokens);
         const hand = this.renderHand(ctx.hand, ctx.handTitle);
@@ -398,12 +409,36 @@ const FSUI = {
     // the fight is on the board, and the panel has nothing to say about it.
     renderBattle(battle) {
         if (!battle) return null;
-        const card = this.el('section', 'fs-battle fs-battle-panel');
+        const ps = this.panelState();
+        const mode = ps.battlePanel || 'third';
+        const card = this.el('section', 'fs-battle fs-battle-panel'
+            + (mode === 'full' ? ' is-full' : '') + (mode === 'hidden' ? ' is-hidden' : ''));
         const head = this.el('div', 'fs-battle-head');
         head.append(this.el('span', 'fs-eyebrow', 'Бой'));
         head.append(this.el('span', 'fs-battle-round', 'раунд ' + battle.round + '/' + battle.maxRounds));
+        // Expand the panel bigger / hide it back.
+        const ctls = this.el('span', 'fs-battle-ctls');
+        const expand = this.el('button', 'fs-battle-ctl'); expand.type = 'button';
+        expand.title = mode === 'full' ? 'Свернуть панель боя' : 'Развернуть панель боя';
+        expand.append(this.iconEl('ui.full'));
+        expand.addEventListener('click', () => {
+            this.panelState().battlePanel = mode === 'full' ? 'third' : 'full';
+            this.update(this.renderState, this.renderCtx);
+        });
+        const hide = this.el('button', 'fs-battle-ctl'); hide.type = 'button';
+        hide.title = 'Скрыть панель боя';
+        hide.append(this.iconEl('ui.close'));
+        hide.addEventListener('click', () => {
+            this.panelState().battlePanel = 'hidden';
+            this.update(this.renderState, this.renderCtx);
+        });
+        ctls.append(expand, hide);
+        head.append(ctls);
         card.append(head);
-        for (const side of battle.sides || []) {
+        // Left is me, right is the enemy — not top and bottom.
+        const sides = this.el('div', 'fs-battle-sides');
+        const ordered = [...(battle.sides || [])].sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0));
+        for (const side of ordered) {
             const row = this.el('div', 'fs-battle-side' + (side.mine ? ' is-mine' : ''));
             if (row.style) row.style.setProperty('--battle-color', side.color || '#8899aa');
             const who = this.el('div', 'fs-battle-who');
@@ -455,8 +490,9 @@ const FSUI = {
             deal.append(this.el('b', '', String(side.deals || 0)));
             deal.append(this.el('span', 'fs-battle-deal-take', 'получит ' + String(side.takes || 0)));
             row.append(deal);
-            card.append(row);
+            sides.append(row);
         }
+        card.append(sides);
         // The damage of the moment: the pieces that take it are picked on the board.
         if (battle.damage) {
             const dmg = this.el('div', 'fs-battle-damage');

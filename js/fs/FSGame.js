@@ -425,6 +425,15 @@ class FSGame {
         // The upgrades of the player: once per round.
         if (s.phase === 'operations' && s.players[me]) {
             for (const u of (s.players[me].upgrades || []).filter(x => !x.used)) {
+                // An order upgrade belongs to one order: it is offered only
+                // while that order is being resolved.
+                const c = FS_DATA.orders.find(x => x.faction === s.players[me].faction && x.name === u.name);
+                const kind = u.order || (c && c.order);
+                // An orbital upgrade is played during the strike of an advance,
+                // any other one during the order printed on the card.
+                const right = !kind || (s.order && s.order.seat === me
+                    && (kind === 'orbital' ? s.order.phase === 'strike' : s.order.order === kind));
+                if (!right) continue;
                 ctx.actions.push({
                     label: 'Применить улучшение: ' + u.name,
                     onClick: () => this.net.cmd({ type: 'useUpgrade', card: u.name }),
@@ -462,6 +471,18 @@ class FSGame {
             ctx.text = 'Ход игрока ' + (turnPlayer ? turnPlayer.name : '—') + '.';
             ctx.status = this.status || 'Ждём.';
             return;
+        }
+        // The starting assets of the player's own choice (the Inquisition
+        // begins with two tokens of any kind).
+        const left = s.players[s.seat].startChoice || 0;
+        if (left) {
+            ctx.status = 'Выберите стартовые ресурсы: осталось ' + left + '.';
+            for (const asset of ['forge', 'cache', 'reinforcement']) {
+                ctx.actions.push({
+                    kind: 'chip', label: 'Старт: ' + FS_RULES.assetName(asset),
+                    onClick: () => this.net.cmd({ type: 'startAsset', asset }),
+                });
+            }
         }
         if (setup.stage === 'forces') {
             const sys = s.systems.find(x => x.id === setup.currentSystem);
@@ -1293,7 +1314,7 @@ class FSGame {
     // --- the dominate order ---------------------------------------------------
     panelDominate(s, ctx) {
         ctx.title = 'Доминирование';
-        ctx.text = (s.order.ability || '') + '\nРесурсы получены. Можете применить способность фракции.';
+        ctx.text = (s.order.ability || '') + '\nРесурсы получены. Способность фракции применять не обязательно.';
         ctx.status = '';
         // The prosperity: the player chooses the asset of his choice.
         for (let i = 0; i < (s.order.prosperity || 0); i++) {
@@ -1305,8 +1326,12 @@ class FSGame {
             }
         }
         ctx.actions.push({
-            label: 'Закончить приказ',
+            label: 'Применить способность фракции',
             onClick: () => this.net.cmd({ type: 'finishDominate' }),
+        });
+        ctx.actions.push({
+            label: 'Пропустить способность',
+            onClick: () => this.net.cmd({ type: 'finishDominate', skip: true }),
         });
     }
 
@@ -1362,11 +1387,13 @@ class FSGame {
         const data = FS_DATA.events.find(e => e.faction === p.faction && e.name === ev.chosen);
         ctx.text = ((data && data.text) || '') + (card && card.storm ? ' · шторм: ' + card.storm.join(', ') : '');
         ctx.status = 'Шторм может сдвинуться на одно деление по стрелке карты.';
-        const dirs = (card && card.storm && card.storm[0] !== 'any') ? card.storm : ['N', 'E', 'S', 'W'];
+        // Only the moves the rules really allow are offered: a storm that
+        // already moved, or one that has no free edge to go to, is not here.
+        const options = FS_RULES.stormOptions(s, me);
         const stormNames = { N: 'ui.up сверху', E: 'ui.right справа', S: 'ui.down снизу', W: 'ui.left слева' };
+        const open = new Set(options.map(o => o.storm));
         for (const storm of s.storms) {
-            // Every player moves every storm once per round.
-            if (storm.moved && storm.moved[me]) continue;
+            if (!open.has(storm.id)) continue;
             ctx.actions.push({
                 kind: 'pick', icon: 'ui.storm', label: 'Шторм',
                 hint: 'Сдвинуть шторм (' + storm.system + ' ' + storm.side + ')',
@@ -1379,11 +1406,12 @@ class FSGame {
             });
         }
         if (this.mode === 'storm' && this.pending && this.pending.storm) {
-            for (const dir of dirs) {
+            for (const opt of options) {
+                if (opt.storm !== this.pending.storm) continue;
                 ctx.actions.push({
-                    kind: 'chip', icon: 'ui.storm', label: stormNames[dir] || dir,
+                    kind: 'chip', icon: 'ui.storm', label: stormNames[opt.dir] || opt.dir,
                     onClick: () => {
-                        this.net.cmd({ type: 'moveStorm', storm: this.pending.storm, dir });
+                        this.net.cmd({ type: 'moveStorm', storm: this.pending.storm, dir: opt.dir });
                         this.mode = 'idle';
                         this.pending = null;
                     },
@@ -1391,7 +1419,9 @@ class FSGame {
             }
         }
         ctx.actions.push({
-            kind: 'primary', icon: 'ui.next', label: 'Разыграть событие',
+            kind: 'primary', icon: 'ui.next',
+            label: options.length ? 'Сначала сдвиньте шторм' : 'Разыграть событие',
+            enabled: !options.length,
             onClick: () => this.net.cmd({ type: 'resolveEvent' }),
         });
     }
@@ -1841,6 +1871,24 @@ class FSGame {
                         onClick: () => send({ type: id }),
                     });
                 }
+                return;
+            }
+            // The abilities of a combat card are optional: the owner of the card
+            // decides about each of them («A player can choose not to resolve
+            // one of his abilities»).
+            case 'ability': {
+                ctx.text = 'Способность карты: «' + (q.text || '') + '»';
+                ctx.status = 'Применять её не обязательно.';
+                ctx.actions.push({
+                    kind: 'primary', icon: 'ui.check',
+                    label: q.yes || 'Применить',
+                    onClick: () => send({ yes: true }),
+                });
+                ctx.actions.push({
+                    kind: 'secondary',
+                    label: q.no || 'Пропустить',
+                    onClick: () => send({ no: true }),
+                });
                 return;
             }
             case 'yesno': {
