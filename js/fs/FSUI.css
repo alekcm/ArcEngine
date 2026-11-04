@@ -308,3 +308,4 @@
 .fs-battle-damage-line{display:flex;align-items:center;gap:7px;font:700 14px/1 ui-monospace,monospace;color:#ffc9b6}
 .fs-battle-target{display:flex;align-items:center;gap:6px}
 .fs-battle-target-health{font:700 11px/1 ui-monospace,monospace;color:#f0b8a4}
+.fs-palette-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 4px;padding:10px 12px;border:1px solid #ffffff16;border-radius:10px;background:#ffffff08}.fs-palette-title{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:700}.fs-palette-field{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--muted);cursor:pointer}.fs-palette-field input{width:30px;height:24px;padding:0;border:1px solid #ffffff2e;border-radius:6px;background:#070c10;cursor:pointer}.fs-pal-swatches{display:inline-flex;gap:3px;margin-left:2px}.fs-pal-swatches i{width:9px;height:9px;border-radius:3px;border:1px solid #ffffff30;display:block}

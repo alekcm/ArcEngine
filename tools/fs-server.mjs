@@ -82,17 +82,19 @@ class Room {
         this.solo = false;
     }
 
-    add(name, faction, id) {
+    add(name, faction, id, palette) {
         let player = id ? this.players.find(p => p.id === id) : null;
         if (player) {
             player.name = name;
             if (faction) player.faction = faction;
+            if (palette) player.palette = palette;
             return player;
         }
         player = {
             id: id || ('p' + this.nextId++),
             name: name || ('Игрок ' + (this.players.length + 1)),
             faction: faction || '',
+            palette: palette || null,
             seat: this.players.length,
             ws: null,
         };
@@ -113,7 +115,7 @@ class Room {
         if (factions.size !== this.players.length) return false;
         this.state = FS_RULES.newGame({
             seed: (Date.now() % 100000) + 1,
-            players: this.players.map(p => ({ name: p.name, faction: p.faction })),
+            players: this.players.map(p => ({ name: p.name, faction: p.faction, palette: p.palette })),
             interactiveSetup: true,
         });
         this.started = true;
@@ -160,8 +162,8 @@ function testSeats(room, host) {
     foePlayer.seat = 1;
     foePlayer.ws = null;
     return [
-        { name: host.name, faction: hostFaction },
-        { name: foePlayer.name, faction: foe.id },
+        { name: host.name, faction: hostFaction, palette: host.palette || null },
+        { name: foePlayer.name, faction: foe.id, palette: foePlayer.palette || null },
     ];
 }
 
@@ -350,12 +352,21 @@ function sendState(room) {
     }
 }
 
+// Only well-formed #rrggbb colors survive; anything else is dropped so the
+// clients can fall back to faction-color shades.
+function cleanPalette(pal) {
+    if (!pal || typeof pal !== 'object') return null;
+    const hex = c => /^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c).toLowerCase() : null;
+    const out = { primary: hex(pal.primary), secondary1: hex(pal.secondary1), secondary2: hex(pal.secondary2) };
+    return out.primary || out.secondary1 || out.secondary2 ? out : null;
+}
+
 function sendRoomInfo(room) {
     broadcast(room, {
         t: 'room',
         code: room.code,
         started: room.started,
-        players: room.players.map(p => ({ id: p.id, name: p.name, faction: p.faction, seat: p.seat })),
+        players: room.players.map(p => ({ id: p.id, name: p.name, faction: p.faction, palette: p.palette || null, seat: p.seat })),
     });
 }
 
@@ -369,11 +380,11 @@ function handle(ws, msg) {
             room = new Room(msg.room || roomCode());
             rooms.set(room.code, room);
         }
-        const player = room.add(msg.name, msg.faction, msg.id);
+        const player = room.add(msg.name, msg.faction, msg.id, cleanPalette(msg.palette));
         player.ws = ws;
         ws.room = room;
         ws.player = player;
-        ws.send({ t: 'joined', id: player.id, room: room.code, seat: player.seat, factions: FS_DATA.factions.map(f => ({ id: f.id, name: f.name, color: f.color })) });
+        ws.send({ t: 'joined', id: player.id, room: room.code, seat: player.seat, palette: player.palette || null, factions: FS_DATA.factions.map(f => ({ id: f.id, name: f.name, color: f.color })) });
         sendRoomInfo(room);
         if (room.state) sendState(room);
         return;
@@ -409,6 +420,14 @@ function handle(ws, msg) {
             sendRoomInfo(room);
             sendState(room);
         }
+        return;
+    }
+    if (msg.t === 'palette') {
+        const room = ws.room, player = ws.player;
+        if (!room || !player) return;
+        if (room.started) { ws.send({ t: 'err', msg: 'Игра уже идёт.' }); return; }
+        player.palette = cleanPalette(msg.palette);
+        sendRoomInfo(room);
         return;
     }
     if (msg.t === 'leave') {

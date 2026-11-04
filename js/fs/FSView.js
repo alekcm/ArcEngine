@@ -818,11 +818,28 @@ const FSView = {
         return mesh;
     },
 
+    // Lighten (amt > 0) or darken (amt < 0) a #rrggbb color.
+    shade(hex, amt) {
+        const n = parseInt(String(hex || '').replace('#', ''), 16);
+        if (!Number.isFinite(n)) return '#888888';
+        const f = v => Math.max(0, Math.min(255, Math.round(v + amt * 2.55)));
+        const r = f((n >> 16) & 255), g = f((n >> 8) & 255), b = f(n & 255);
+        return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+    },
+
+    // The palette of one army: primary + two secondary colors painted onto
+    // different parts of every model of that army.
+    paletteKey(palette) {
+        if (!palette) return '';
+        return [palette.primary, palette.secondary1, palette.secondary2].map(c => String(c || '').toLowerCase()).join('|');
+    },
+
     // A reusable, subtle armor pattern keeps UV-mapped OBJ miniatures from reading as flat solid-color plastic.
-    factionModelMaterial(view, faction) {
-        if (view.modelMaterials.has(faction)) return view.modelMaterials.get(faction);
-        const base = this.factionColor(faction);
-        const texture = new BABYLON.DynamicTexture('fs-armor-map-' + faction, { width: 256, height: 256 }, view.scene, true);
+    factionModelMaterial(view, faction, color) {
+        const base = color || this.factionColor(faction);
+        const cacheKey = faction + ':' + base.toLowerCase();
+        if (view.modelMaterials.has(cacheKey)) return view.modelMaterials.get(cacheKey);
+        const texture = new BABYLON.DynamicTexture('fs-armor-map-' + cacheKey, { width: 256, height: 256 }, view.scene, true);
         const ctx = /** @type {any} */ (texture.getContext());
         ctx.fillStyle = base; ctx.fillRect(0, 0, 256, 256);
         const gradient = ctx.createLinearGradient(0, 0, 256, 256);
@@ -846,12 +863,12 @@ const FSView = {
         for (let x = -28; x < 72; x += 12) { ctx.beginPath(); ctx.moveTo(x, 256); ctx.lineTo(x + 36, 220); ctx.stroke(); }
         ctx.restore();
         texture.update(false);
-        const material = new BABYLON.StandardMaterial('fs-mini-' + faction, view.scene);
+        const material = new BABYLON.StandardMaterial('fs-mini-' + cacheKey, view.scene);
         material.diffuseTexture = texture;
         material.diffuseColor = new BABYLON.Color3(1, 1, 1);
         material.specularColor = new BABYLON.Color3(.34, .31, .25);
         material.specularPower = 36;
-        view.modelMaterials.set(faction, material);
+        view.modelMaterials.set(cacheKey, material);
         return material;
     },
 
@@ -1005,11 +1022,13 @@ const FSView = {
         return null;
     },
 
-    factionModel(view, faction, unitType, unitId) {
+    factionModel(view, faction, unitType, unitId, palette) {
         // The model of the unit itself, per the faction's smoly file; the old
-        // per-type pair stays as the fallback.
+        // per-type pair stays as the fallback. The army palette changes the
+        // paint, so it is part of the cache key.
         const byUnit = this.FACTION_UNIT_MODELS[faction] && unitId
             ? this.FACTION_UNIT_MODELS[faction][unitId] : null;
+        const pKey = this.paletteKey(palette);
         const specs = {
             'космодесант': { ground: ['Warhammer/Космодесантники/', 'SpaceMarine05.obj'], ship: ['Warhammer/Космодесантники/', '0E405721B5FD19190188F6C4C9EDBE696489835F_stormtalon_bolter.obj'] },
             'орки': { ground: ['Warhammer/Орки/', 'OrkBoyz02.obj'], ship: ['Warhammer/Орки/', 'OrkLanda.obj'] },
@@ -1024,7 +1043,7 @@ const FSView = {
             'тираниды': { ground: ['Warhammer/Тираниды/', 'httpcloud3steamusercontentcomugc84847428632403524DED796262D17635176C51507FDA4E5DB04604335.obj'], ship: ['Warhammer/Тираниды/', 'httpswwwdropboxcomsm74w1tnhkb63zobVoid20Fiend20Cruiserobjdl1.obj'] },
             'империя-тау': { ground: ['Warhammer/Тау/', 'httppastebincomrawphpi9HhMFJgb.obj'], ship: ['Warhammer/Тау/', 'httpsmymixtapemoecxnotmobj.obj'] },
         };
-        const key = faction + ':' + unitType + ':' + (unitId || '');
+        const key = faction + ':' + unitType + ':' + (unitId || '') + ':' + pKey;
         if (view.modelCache.has(key)) return view.modelCache.get(key);
         if (view.modelLoads.has(key)) return null;
         const spec = byUnit || (specs[faction] && specs[faction][unitType]);
@@ -1039,12 +1058,30 @@ const FSView = {
         const promise = imported.then(result => {
             const root = new BABYLON.TransformNode('fs-model-' + faction, view.scene);
             const parts = (result.meshes || []).filter(m => m && m.getTotalVertices && m.getTotalVertices() > 0);
-            const material = this.factionModelMaterial(view, faction);
+            // The army palette: primary on the big body, secondary1 on the high
+            // parts (helm, backpack, top of the hull), secondary2 on the rest.
+            const pal = palette || {};
+            const materials = [
+                this.factionModelMaterial(view, faction, pal.primary),
+                this.factionModelMaterial(view, faction, pal.secondary1 || this.shade(pal.primary || this.factionColor(faction), 45)),
+                this.factionModelMaterial(view, faction, pal.secondary2 || this.shade(pal.primary || this.factionColor(faction), -35)),
+            ];
             for (const mesh of parts) {
                 mesh.parent = root;
-                mesh.material = material;
                 mesh.isPickable = false;
                 mesh.computeWorldMatrix(true);
+            }
+            const partMats = parts.map(mesh => {
+                const box = mesh.getBoundingInfo().boundingBox;
+                const s = box.maximumWorld.subtract(box.minimumWorld);
+                return { mesh, vol: s.x * s.y * s.z, cy: (box.minimumWorld.y + box.maximumWorld.y) * .5 };
+            });
+            const maxVol = Math.max(0, ...partMats.map(p => p.vol));
+            const rest = partMats.filter(p => p.vol < maxVol * .25).sort((a, b) => b.cy - a.cy);
+            const topCount = Math.max(1, Math.ceil(rest.length * .5));
+            const topSet = new Set(rest.slice(0, topCount).map(p => p.mesh));
+            for (const p of partMats) {
+                p.mesh.material = p.vol >= maxVol * .25 ? materials[0] : (topSet.has(p.mesh) ? materials[1] : materials[2]);
             }
             let min = new BABYLON.Vector3(Infinity, Infinity, Infinity);
             let max = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
@@ -1059,7 +1096,7 @@ const FSView = {
             root.scaling.setAll(scale);
             root.position.set(-(min.x + max.x) * .5 * scale, -min.y * scale, -(min.z + max.z) * .5 * scale);
             root.setEnabled(false);
-            const model = { root, parts, material };
+            const model = { root, parts, materials, partMats: parts.map(m => materials.indexOf(m.material)) };
             view.modelCache.set(key, model);
             view.modelLoads.delete(key);
             if (view.onModelReady) view.onModelReady();
@@ -1074,10 +1111,11 @@ const FSView = {
         return null;
     },
 
-    addFactionUnit(view, unit, pos, offset, color, unitType, scale) {
+    addFactionUnit(view, unit, pos, offset, color, unitType, scale, palette) {
         // unit.unit is the type id ('гвардейцы'), unit.id is just the uid —
-        // the per-unit model table is keyed by the type id.
-        const model = this.factionModel(view, unit.faction, unitType, unit.unit);
+        // the per-unit model table is keyed by the type id. The owner's army
+        // palette decides which color each part of the miniature gets.
+        const model = this.factionModel(view, unit.faction, unitType, unit.unit, palette);
         if (!model) return null;
         const k = scale || 1;
         const metadata = { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area };
@@ -1092,7 +1130,7 @@ const FSView = {
             const source = model.parts[i];
             const clone = source.clone('fs-unit-part-' + unit.id + '-' + i, holder, false);
             if (!clone) continue;
-            clone.material = model.material;
+            clone.material = model.materials[model.partMats[i]] || model.materials[0];
             clone.isPickable = true;
             clone.metadata = { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area };
             clone.setEnabled(true);
@@ -1183,7 +1221,7 @@ const FSView = {
                 if (view.unitPositions) view.unitPositions.set(u.id, { x: base.x + off.x, y: base.y, z: base.z + off.y });
                 placed.push({ root: null, x: base.x + off.x, z: base.z + off.y, seat: u.seat, routed: !!u.routed });
                 const slot = placed[placed.length - 1];
-                if (def && !u.routed && this.addFactionUnit(view, u, base, off, color, def.type, onWorld)) { slot.root = view.markers[view.markers.length - 1].mesh; return; }
+                if (def && !u.routed && this.addFactionUnit(view, u, base, off, color, def.type, onWorld, owner && owner.palette)) { slot.root = view.markers[view.markers.length - 1].mesh; return; }
                 // Until a faction OBJ loads (or for ships), use sculpted silhouettes rather than
                 // identical flat counters: ships read as long hulls, ground units as raised pieces.
                 const ship = def && def.type === 'ship';
@@ -1250,7 +1288,7 @@ const FSView = {
             if (!sys) continue;
             const disc = this.discAt(app, sys, s.area, view.metrics);
             const owner = state.players.find(p2 => p2.seat === s.seat);
-            const color = (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
+            const color = (owner && owner.palette && owner.palette.primary) || (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
             const root = new BABYLON.TransformNode('fs-structure-' + s.id, view.scene);
             const k = .62;
             root.scaling.setAll(k);

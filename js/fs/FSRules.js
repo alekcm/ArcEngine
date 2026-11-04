@@ -89,6 +89,24 @@ const FS_RULES = {
         return FS_DATA.factions.find(f => f.id === id);
     },
 
+    // The army paint: one primary and two secondary colors, chosen in the lobby.
+    // Anything missing falls back to shades of the faction color.
+    normalizePalette(pal, fallback) {
+        const hex = c => /^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c).toLowerCase() : null;
+        const base = hex(fallback) || '#888888';
+        const shade = amt => {
+            const n = parseInt(base.slice(1), 16);
+            const f = v => Math.max(0, Math.min(255, Math.round(v + amt * 2.55)));
+            return '#' + (((f((n >> 16) & 255)) << 16) | ((f((n >> 8) & 255)) << 8) | f(n & 255)).toString(16).padStart(6, '0');
+        };
+        pal = pal || {};
+        return {
+            primary: hex(pal.primary) || base,
+            secondary1: hex(pal.secondary1) || shade(48),
+            secondary2: hex(pal.secondary2) || shade(-38),
+        };
+    },
+
     unitDef(state, seat, unitId) {
         const f = this.faction(state, seat);
         return f ? f.units.find(u => u.id === unitId) : null;
@@ -366,6 +384,7 @@ const FS_RULES = {
                 name: p.name || faction.name,
                 faction: faction.id,
                 color: faction.color,
+                palette: this.normalizePalette(p.palette, faction.color),
                 materiel: 6,
                 assets: { forge: 0, cache: 0, reinforcement: 0, prosperity: 0 },
                 objectives: 0,

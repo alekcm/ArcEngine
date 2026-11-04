@@ -49,6 +49,11 @@ const FSNet = {
             faction(faction) {
                 return net.send({ t: 'faction', faction });
             },
+            // The army paint chosen in the lobby: { primary, secondary1, secondary2 }.
+            palette(palette) {
+                net.palette = palette;
+                return net.send({ t: 'palette', palette });
+            },
             // The test modes of the lobby: a ready map or a battlefield. The
             // server builds the party and the player takes both seats.
             test(opts) {
@@ -57,7 +62,7 @@ const FSNet = {
             rename(name) {
                 net.name = String(name || '').trim().slice(0, 24);
                 // The hello message for the existing id updates the lobby name on the server.
-                return net.send({ t: 'hello', room: net.room, name: net.name, faction: '', id: net.id });
+                return net.send({ t: 'hello', room: net.room, name: net.name, faction: '', palette: net.palette || null, id: net.id });
             },
         };
 
@@ -67,7 +72,7 @@ const FSNet = {
             const ws = net.ws = new WebSocket(url);
             ws.onopen = () => {
                 net.connected = true;
-                net.send({ t: 'hello', room: net.room, name: net.name, faction: '', id: net.id });
+                net.send({ t: 'hello', room: net.room, name: net.name, faction: '', palette: net.palette || null, id: net.id });
             };
             ws.onclose = () => {
                 net.connected = false;
