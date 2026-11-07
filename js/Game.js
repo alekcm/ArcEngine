@@ -193,10 +193,12 @@ class Game {
         const cy = (minY + maxY) / 2;
 
         const c = this.camera;
+        const D = Math.PI / 180;
         c.target = { x: cx, y: cy, h: 0 };
-        // Прямо сверху, чуть со strony — комфортно для игры «с высоты птичьего полёта»
-        c.azimuth = -45 * Math.PI / 180;
-        c.pitch = 80 * Math.PI / 180;
+        // Статичная камера игры — вид со сверху на весь этаж особняка.
+        // Значения подобраны под этот этаж; пользователь не должен летать по карте.
+        c.azimuth = -45 * D;
+        c.pitch = 78 * D;
         c.zoom = 0.35;
         c.zoomTarget = c.zoom;
         c.lift = 0;
