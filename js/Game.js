@@ -193,9 +193,9 @@ class Game {
 
         const c = this.camera;
         c.target = { x: cx, y: cy, h: 0 };
-        c.azimuth = -45 * Math.PI / 180;   // изометрический вид со стороны
-        c.pitch = 68 * Math.PI / 180;      // смотрим под углом сверху
-        c.zoom = 0.62;                     // охватываем весь этаж
+        c.azimuth = -30 * Math.PI / 180;   // вид со стороны, чуть равномернее
+        c.pitch = 75 * Math.PI / 180;      // выше — больше похоже на план этажа
+        c.zoom = 0.42;                     // охватываем весь этаж поближе
         c.zoomTarget = c.zoom;
         c.lift = 0;
         c.followObj = null;
@@ -433,11 +433,12 @@ class Game {
         if (!ms) return;
         const urgency = Math.max(10, Math.min(20, Math.round(def.duration / 3)));
         const first = this.nextMissionIndex === 0;
-        ms.appear = this.realSec + (first ? 20 : 0);
+        const gap = first ? 20 : 55;   // пауза между квестами — человек должен успеть сориентироваться
+        ms.appear = this.realSec + gap;
         ms.expire = ms.appear + urgency;
         ms.status = 'hidden';
         this.nextMissionIndex++;
-        this.pushLog('На этаже появилось задание: ' + def.name + '.');
+        this.pushLog('Скоро на этаже появится задание: ' + def.name + '.');
     }
 
     showIcon(ms) {
@@ -697,7 +698,7 @@ class Game {
         UI.get('resultWindow').show(false);
         const ms = this.missionState.find(m => m.def.id === (this.openMissionId || ''));
         if (ms) ms.result = null;
-        this._nextSpawn = this.realSec + 3;
+        this._nextSpawn = this.realSec + 40;   // пауза после результата перед следующим квестом
     }
 
     // --- Основной цикл ---
