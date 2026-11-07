@@ -114,9 +114,10 @@ class Game {
             missionId: null, target: null, _from: null, t: 1, mesh: null,
         }));
 
-        // Миссии с run-time состоянием.
+        // Миссии с run-time состоянием. appear/expire = Infinity до вызова spawnNextMission,
+        // чтобы все квесты не открылись одновременно на первом же тике.
         this.missionState = MISSIONS.map(def => ({
-            def, status: 'hidden', workerIds: [], end: 0, appear: 0, expire: 0,
+            def, status: 'hidden', workerIds: [], end: 0, appear: Infinity, expire: Infinity,
             result: null, overlap: 0, showUntil: 0,
         }));
 
@@ -193,9 +194,10 @@ class Game {
 
         const c = this.camera;
         c.target = { x: cx, y: cy, h: 0 };
-        c.azimuth = -30 * Math.PI / 180;   // вид со стороны, чуть равномернее
-        c.pitch = 75 * Math.PI / 180;      // выше — больше похоже на план этажа
-        c.zoom = 0.42;                     // охватываем весь этаж поближе
+        // Прямо сверху, чуть со strony — комфортно для игры «с высоты птичьего полёта»
+        c.azimuth = -45 * Math.PI / 180;
+        c.pitch = 80 * Math.PI / 180;
+        c.zoom = 0.35;
         c.zoomTarget = c.zoom;
         c.lift = 0;
         c.followObj = null;
@@ -428,12 +430,17 @@ class Game {
 
     spawnNextMission() {
         if (this.nextMissionIndex >= MISSIONS.length) return;
+        // Не спауним новый квест, пока предыдущий ещё висит на этаже
+        for (const ms of this.missionState) {
+            if (ms.status === 'open' || ms.status === 'sent') return;
+        }
         const def = MISSIONS[this.nextMissionIndex];
         const ms = this.missionState.find(m => m.def.id === def.id);
         if (!ms) return;
-        const urgency = Math.max(10, Math.min(20, Math.round(def.duration / 3)));
+        // Квест висит на этаже столько же секунд, сколько длится выполнение (человеческое время)
+        const urgency = def.duration;
         const first = this.nextMissionIndex === 0;
-        const gap = first ? 20 : 55;   // пауза между квестами — человек должен успеть сориентироваться
+        const gap = first ? 15 : 60;   // пауза между квестами — minuta, чтобы сориентироваться
         ms.appear = this.realSec + gap;
         ms.expire = ms.appear + urgency;
         ms.status = 'hidden';
@@ -727,11 +734,13 @@ class Game {
             if (ms.status === 'hidden' && this.realSec + EPS >= ms.appear) {
                 ms.status = 'open';
                 this.showIcon(ms);
-            } else if (ms.status === 'open' && this.realSec + EPS >= ms.expire) {
-                ms.status = 'hidden';
-                this.hideIcon(ms);
-                this.pushLog('Задание «' + ms.def.name + '» снято с этажа (время вышло).');
-                this.spawnNextMission();
+        } else if (ms.status === 'open' && this.realSec + EPS >= ms.expire) {
+            ms.status = 'hidden';
+            ms.appear = Infinity;   // не появляется повторно после истечения
+            ms.expire = Infinity;
+            this.hideIcon(ms);
+            this.pushLog('Задание «' + ms.def.name + '» снято с этажа (время вышло).');
+            this.spawnNextMission();
             } else if (ms.status === 'sent' && now + EPS >= ms.end) {
                 this.finish(ms);
             } else if (ms.status === 'done' && now + EPS >= ms.showUntil) {
