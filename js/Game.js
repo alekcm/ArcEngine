@@ -1,13 +1,14 @@
-// Game.js — fantasy «Dispatch» на первом этаже гостевого двора (через ArcEngine).
-// Игрок управляет персонажами и отправляет их на задания, которые появляются на
-// карте иконкой восклицательного знака. Успех определяется совпадением
-// суммарных характеристик команды с требуемыми (процент в六угольнике + бросок d100).
+// Game.js — fantasy «Dispatch» в гостевом дворе (через ArcEngine).
+// Игрок управляет сотрудниками и отправляет их на задания, которые появляются на
+// карте иконкой восклицательного знака над комнатой. Успех определяется совпадением
+// суммарных характеристик команды с требуемыми (процент в шестиугольнике + d100).
+// Камера статична, всегда показывает весь этаж особняка.
 // Комментарии на английском по конвенции набора; строки интерфейса — по-русски.
 
 /** @typedef {{ id: string, name: string, color: number, stats: Record<string, number> }} StaffMember */
-/** @typedef {{ key: string, name: string, color: number, x: number, y: number, w: number, d: number }} Room */
+/** @typedef {{ key: string, name: string, color: number, x: number, y: number, w: number, d: number, connections: string[] }} Room */
 /** @typedef {{ id: string, roomKey: string, name: string, desc: string, reqs: Record<string, number>, slots: number, duration: number, gold: number, xp: number, hintWords: string[], revealStats: string[] }} MissionDef */
-/** @typedef {{ def: MissionDef, status: 'open' | 'sent' | 'done', workerIds: string[], end: number, appear: number, expire: number, result: boolean | null, overlap: number, showUntil: number }} MissionState */
+/** @typedef {{ def: MissionDef, status: 'hidden' | 'open' | 'sent' | 'done', workerIds: string[], end: number, appear: number, expire: number, result: boolean | null, overlap: number, showUntil: number }} MissionState */
 
 /** Шесть характеристик (углы шестиугольника), диапазон 1..10. */
 const STAT_KEYS = ['strength', 'endurance', 'agility', 'wisdom', 'literacy', 'charisma'];
@@ -20,6 +21,8 @@ const STAT_LABEL_RU = {
     charisma: 'Харизма'
 };
 
+const STAT_SHORT = { strength: 'С', endurance: 'В', agility: 'Л', wisdom: 'М', literacy: 'Н', charisma: 'Х' };
+
 const STAFF = [
     { id: 'centaur', name: 'Кентавр', color: 0x8dd3a0, stats: { strength: 2, endurance: 4, wisdom: 4 } },
     { id: 'minotaur', name: 'Девушка бык', color: 0xe07050, stats: { strength: 4, endurance: 4, agility: 2 } },
@@ -28,27 +31,27 @@ const STAFF = [
     { id: 'arachne', name: 'Арахна', color: 0xd080e0, stats: { strength: 1, endurance: 1, agility: 4, literacy: 5 } },
 ];
 
+/** Комнаты этажа особняка. connections — ключи комнат, между которыми есть проход (дверь). */
 const ROOMS = [
-    { key: 'reception', name: 'Парадная со стойкой регистрации', color: 0xefe6cc, x: 700, y: 560, w: 300, d: 220 },
-    { key: 'kitchen', name: 'Кухня', color: 0xf2c98a, x: 460, y: 880, w: 220, d: 180 },
-    { key: 'hall', name: 'Большой обеденный зал', color: 0xc9d8c2, x: 1440, y: 880, w: 320, d: 260 },
-    { key: 'bar', name: 'Бар', color: 0xd9b973, x: 1500, y: 1240, w: 200, d: 150 },
-    { key: 'cellar', name: 'Винный погреб', color: 0x5c3c2f, x: 1590, y: 1310, w: 100, d: 90 },
-    { key: 'baths', name: 'Купальни', color: 0xa9c9ea, x: 590, y: 1320, w: 190, d: 150 },
-    { key: 'toilets', name: 'Туалеты', color: 0xeaa0a0, x: 800, y: 1480, w: 120, d: 100 },
-    { key: 'staff', name: 'Комната прислуги', color: 0xd8c8e8, x: 430, y: 1040, w: 160, d: 130 },
-    { key: 'stairs', name: 'Холл у лестницы', color: 0xe8e8d4, x: 1000, y: 620, w: 180, d: 160 },
-    { key: 'pantry', name: 'Кладовая продуктов', color: 0xc9b894, x: 820, y: 720, w: 140, d: 120 },
-    { key: 'guest1', name: 'Гостевая комната №1', color: 0xf0e0d0, x: 1240, y: 660, w: 150, d: 130 },
-    { key: 'guest2', name: 'Гостевая комната №2', color: 0xf0e0d0, x: 620, y: 990, w: 150, d: 130 },
-    { key: 'fireplace', name: 'Комната с камином', color: 0xe0c0a0, x: 1180, y: 960, w: 160, d: 140 },
-    { key: 'crockery', name: 'Комната для посуды', color: 0xc8c0b8, x: 1340, y: 1120, w: 140, d: 120 },
-    { key: 'guard', name: 'Комната охраны', color: 0xb8a8a8, x: 680, y: 1120, w: 140, d: 120 },
-    { key: 'maid', name: 'Комната горничных', color: 0xd4c4e4, x: 1090, y: 1220, w: 150, d: 130 },
-    { key: 'inventory', name: 'Кладовая инвентаря', color: 0xb7a896, x: 900, y: 1180, w: 130, d: 110 },
+    { key: 'reception', name: 'Парадная со стойкой регистрации', color: 0xe8dcc8, x: 640, y: 520, w: 340, d: 220, connections: ['hall', 'kitchen', 'toilets'] },
+    { key: 'kitchen', name: 'Кухня', color: 0xf2c98a, x: 500, y: 860, w: 260, d: 200, connections: ['reception', 'hall', 'staff'] },
+    { key: 'hall', name: 'Большой обеденный зал', color: 0xc9d8c2, x: 1100, y: 800, w: 380, d: 300, connections: ['reception', 'kitchen', 'bar', 'guest1', 'guest2', 'stairs'] },
+    { key: 'bar', name: 'Бар', color: 0xd9b973, x: 1420, y: 1120, w: 240, d: 180, connections: ['hall', 'cellar'] },
+    { key: 'cellar', name: 'Винный погреб', color: 0x5c3c2f, x: 1490, y: 1260, w: 120, d: 100, connections: ['bar'] },
+    { key: 'baths', name: 'Купальни', color: 0xa9c9ea, x: 620, y: 1300, w: 220, d: 180, connections: ['guest2', 'maid'] },
+    { key: 'toilets', name: 'Туалеты', color: 0xeaa0a0, x: 800, y: 420, w: 160, d: 120, connections: ['reception'] },
+    { key: 'staff', name: 'Комната прислуги', color: 0xd8c8e8, x: 540, y: 1040, w: 200, d: 160, connections: ['kitchen'] },
+    { key: 'stairs', name: 'Холл у лестницы', color: 0xe8e8d4, x: 1080, y: 520, w: 180, d: 160, connections: ['hall', 'guest1', 'guest2'] },
+    { key: 'pantry', name: 'Кладовая продуктов', color: 0xc9b894, x: 820, y: 700, w: 140, d: 120, connections: ['kitchen', 'hall'] },
+    { key: 'guest1', name: 'Гостевая комната №1', color: 0xf0e0d0, x: 1280, y: 600, w: 180, d: 160, connections: ['hall', 'stairs', 'baths'] },
+    { key: 'guest2', name: 'Гостевая комната №2', color: 0xf0e0d0, x: 660, y: 960, w: 180, d: 160, connections: ['hall', 'stairs', 'baths'] },
+    { key: 'fireplace', name: 'Комната с камином', color: 0xe0c0a0, x: 1160, y: 940, w: 180, d: 160, connections: ['hall'] },
+    { key: 'crockery', name: 'Комната для посуды', color: 0xc8c0b8, x: 1320, y: 1080, w: 160, d: 140, connections: ['kitchen', 'bar'] },
+    { key: 'guard', name: 'Комната охраны', color: 0xb8a8a8, x: 700, y: 1120, w: 160, d: 140, connections: ['staff'] },
+    { key: 'maid', name: 'Комната горничных', color: 0xd4c4e4, x: 1120, y: 1200, w: 180, d: 160, connections: ['baths', 'hall'] },
+    { key: 'inventory', name: 'Кладовая инвентаря', color: 0xb7a896, x: 940, y: 1160, w: 140, d: 120, connections: ['staff', 'hall'] },
 ];
 
-/** Задания (шаблоны). appearSec — через сколько секунд после старта появится на карте. */
 const MISSIONS = [
     {
         id: 'wine', roomKey: 'cellar', name: 'Принести лучшее вино из погреба',
@@ -78,7 +81,7 @@ const MISSIONS = [
         id: 'kitchen', roomKey: 'kitchen', name: 'Помощь шеф-повару',
         desc: 'На кухне нужна помощь шеф-повару: кто-то, кто уверенно орудует ножом и следит за котлом.',
         reqs: { agility: 4, endurance: 4 }, slots: 2, duration: 50, gold: 65, xp: 13,
-        hintWords: 'нарежьте'.split(' ').concat(['варите']), revealStats: ['agility', 'endurance'],
+        hintWords: ['нарежьте', 'варите'], revealStats: ['agility', 'endurance'],
     },
     {
         id: 'bardShow', roomKey: 'hall', name: 'Выступление барда',
@@ -94,59 +97,48 @@ class Game {
         this.app = app;
         this.scene = app.location.view.scene;
         this.terrain = app.location.terrain;
+        this.camera = app.camera;
+
+        // --- Статичная камера: отключаем ввод и фиксируем вид на весь этаж ---
+        this.camera.detach();
+        this._setupStaticCamera();
 
         this.realSec = 0;
         this.uiTick = 0;
         this.coins = 0;
+        this._log = [];
 
-        // Staff with run-time state.
+        // Сотрудники с run-time состоянием.
         this.staff = STAFF.map(s => Object.assign({}, s, {
-            status: 'free',      // free | busy | returning | injured | out
-            injuries: 0,         // 0, 1, 2 (2 — выбыл навсегда)
-            xp: 0,
-            missionId: null,
-            target: null,
-            _from: null,
-            t: 1,
-            mesh: null,
+            status: 'free', injuries: 0, xp: 0,
+            missionId: null, target: null, _from: null, t: 1, mesh: null,
         }));
 
-        // Missions with run-time state.
+        // Миссии с run-time состоянием.
         this.missionState = MISSIONS.map(def => ({
             def, status: 'hidden', workerIds: [], end: 0, appear: 0, expire: 0,
             result: null, overlap: 0, showUntil: 0,
         }));
 
-        // Next mission to spawn (in template order).
         this.nextMissionIndex = 0;
 
-        // 3D sketch of the first floor.
+        // 3D интерьер этажа особняка: полы, стены, двери.
         this.roomMesh = new Map();
-        for (const room of ROOMS) this.addRoom(room);
+        this.wallMeshes = [];
+        this.buildMansion();
 
-        // Exclamation-mark icons over rooms (shown when a mission is open there).
-        this.missionIcons = new Map();   // room key -> mesh
-        for (const room of ROOMS) {
-            const mesh = BABYLON.MeshBuilder.CreateBox('icon-' + room.key, { width: 24, height: 24, depth: 4 }, this.scene);
-            const h = this.terrain ? this.terrain.heightAt(room.x, room.y) : 0;
-            mesh.position.set(room.x, h + 30, room.y);
-            mesh.setEnabled(false);
-            const mat = new BABYLON.StandardMaterial('mat-icon-' + room.key, this.scene);
-            mat.diffuseColor = new BABYLON.Color3(1, 0.9, 0.2);
-            mat.specularColor = new BABYLON.Color3(0, 0, 0);
-            mesh.material = mat;
-            World3D.addObject(this.app.location.view, mesh, 'prop');
-            this.missionIcons.set(room.key, mesh);
-        }
+        // Иконки восклицательного знака над комнатами с активными миссиями.
+        this.missionIcons = new Map();
+        for (const room of ROOMS) this.addQuestIcon(room);
 
-        // Workers start in the staff room.
+        // Сотрудники начинают в комнате прислуги.
         const staffRoom = ROOMS.find(r => r.key === 'staff');
         for (const w of this.staff) {
             w.target = { x: staffRoom.x, y: staffRoom.y };
             this.addWorker(w);
         }
 
-        // UI handlers.
+        // UI обработчики.
         for (let i = 0; i < 4; i++) {
             const btn = UI.get('slot' + (i + 1));
             if (btn) btn.onClick(() => this.toggleSlot(i));
@@ -158,33 +150,10 @@ class Game {
         const okBtn = UI.get('resultOk');
         if (okBtn) okBtn.onClick(() => this.closeResult());
 
-        this.selected = new Set();   // staff ids selected for the open mission
-        this.openMissionId = null;   // mission def id currently being configured
+        this.selected = new Set();
+        this.openMissionId = null;
 
-        // Click on the map: open the mission whose exclamation icon is under the pointer.
-        const canvas = document.getElementById('world3d');
-        if (canvas) {
-            canvas.addEventListener('click', (e) => {
-                if (this.openMissionId) return;
-                const rect = canvas.getBoundingClientRect();
-                const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
-                for (const ms of this.missionState) {
-                    if (ms.status !== 'open') continue;
-                    const mesh = this.missionIcons.get(ms.def.roomKey);
-                    if (!mesh) continue;
-                    const scr = this.app.location.view.projectToScreen(mesh.position.x, mesh.position.z, mesh.position.y);
-                    if (scr && scr.visible && !scr.behind) {
-                        const dx = scr.x - cx, dy = scr.y - cy;
-                        if (dx * dx + dy * dy <= 900) {   // 30 px radius
-                            this.openMission(ms.def.id);
-                            return;
-                        }
-                    }
-                }
-            });
-        }
-
-        this.pushLog('Постоялый двор открыт. Следите за восклицательными знаками на карте.');
+        this.pushLog('Постоялый двор открыт. Следите за восклицательными знаками на этаже.');
         this.tick();
         this.spawnNextMission();
     }
@@ -208,27 +177,234 @@ class Game {
 
     now() { return performance.now() / 1000; }
 
-    // ----- 3D sketch -----
+    // --- Камера ---
 
-    addRoom(room) {
-        const mesh = BABYLON.MeshBuilder.CreateBox('room-' + room.key,
-            { width: room.w, height: 14, depth: room.d }, this.scene);
-        const h = this.terrain ? this.terrain.heightAt(room.x, room.y) : 0;
-        mesh.position.set(room.x, h + 7, room.y);
-        const mat = new BABYLON.StandardMaterial('mat-' + room.key, this.scene);
-        const c = room.color;
-        mat.diffuseColor = new BABYLON.Color3(((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255);
+    _setupStaticCamera() {
+        // Центр особняка (по комнатам)
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const r of ROOMS) {
+            minX = Math.min(minX, r.x - r.w / 2);
+            minY = Math.min(minY, r.y - r.d / 2);
+            maxX = Math.max(maxX, r.x + r.w / 2);
+            maxY = Math.max(maxY, r.y + r.d / 2);
+        }
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+
+        const c = this.camera;
+        c.target = { x: cx, y: cy, h: 0 };
+        c.azimuth = -45 * Math.PI / 180;   // изометрический вид со стороны
+        c.pitch = 68 * Math.PI / 180;      // смотрим под углом сверху
+        c.zoom = 0.62;                     // охватываем весь этаж
+        c.zoomTarget = c.zoom;
+        c.lift = 0;
+        c.followObj = null;
+        c._apply();
+    }
+
+    // --- Постройка интерьера особняка ---
+
+    buildMansion() {
+        const wallH = 70;      // высота стены
+        const wallTh = 6;      // толщина стены
+        const floorH = 2;      // толщина пола
+
+        // Внешний контур здания (около всех комнат с отступом)
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const r of ROOMS) {
+            minX = Math.min(minX, r.x - r.w / 2 - 10);
+            minY = Math.min(minY, r.y - r.d / 2 - 10);
+            maxX = Math.max(maxX, r.x + r.w / 2 + 10);
+            maxY = Math.max(maxY, r.y + r.d / 2 + 10);
+        }
+        const buildingW = maxX - minX;
+        const buildingD = maxY - minY;
+        const buildingX = (minX + maxX) / 2;
+        const buildingY = (minY + maxY) / 2;
+
+        // Пол здания (одна большая плита)
+        const floorMesh = BABYLON.MeshBuilder.CreateBox('mansion-floor',
+            { width: buildingW, height: floorH, depth: buildingD }, this.scene);
+        floorMesh.position.set(buildingX, floorH / 2, buildingY);
+        const floorMat = new BABYLON.StandardMaterial('mat-mansion-floor', this.scene);
+        floorMat.diffuseColor = new BABYLON.Color3(0.62, 0.58, 0.50);
+        floorMat.specularColor = new BABYLON.Color3(0, 0, 0);
+        floorMesh.material = floorMat;
+        World3D.addObject(this.app.location.view, floorMesh, 'prop');
+
+        // Внешние стены здания
+        this.addWall('wall-north', buildingX, minY - wallTh / 2, buildingW, wallH, wallTh);
+        this.addWall('wall-south', buildingX, maxY + wallTh / 2, buildingW, wallH, wallTh);
+        this.addWall('wall-west', minX - wallTh / 2, buildingY, wallTh, wallH, buildingD);
+        this.addWall('wall-east', maxX + wallTh / 2, buildingY, wallTh, wallH, buildingD);
+
+        // Каждая комната: пол + стены с проёмами для дверей
+        for (const room of ROOMS) this.addRoomWithWalls(room, wallH, wallTh, floorH);
+    }
+
+    addWall(name, x, y, w, h, d) {
+        const mesh = BABYLON.MeshBuilder.CreateBox(name, { width: w, height: h, depth: d }, this.scene);
+        mesh.position.set(x, h / 2, y);
+        const mat = new BABYLON.StandardMaterial('mat-' + name, this.scene);
+        mat.diffuseColor = new BABYLON.Color3(0.45, 0.40, 0.36);
         mat.specularColor = new BABYLON.Color3(0, 0, 0);
         mesh.material = mat;
         World3D.addObject(this.app.location.view, mesh, 'prop');
-        this.roomMesh.set(room.key, mesh);
+        this.wallMeshes.push(mesh);
+    }
+
+    addRoomWithWalls(room, wallH, wallTh, floorH) {
+        // Пол комнаты
+        const floorMesh = BABYLON.MeshBuilder.CreateBox('floor-' + room.key,
+            { width: room.w - 4, height: floorH, depth: room.d - 4 }, this.scene);
+        const h = this.terrain ? this.terrain.heightAt(room.x, room.y) : 0;
+        floorMesh.position.set(room.x, h + floorH / 2, room.y);
+        const floorMat = new BABYLON.StandardMaterial('mat-floor-' + room.key, this.scene);
+        const c = room.color;
+        floorMat.diffuseColor = new BABYLON.Color3(((c >> 16) & 255) / 255 * 0.85, ((c >> 8) & 255) / 255 * 0.85, (c & 255) / 255 * 0.85);
+        floorMat.specularColor = new BABYLON.Color3(0, 0, 0);
+        floorMesh.material = floorMat;
+        World3D.addObject(this.app.location.view, floorMesh, 'prop');
+        this.roomMesh.set(room.key, floorMesh);
+
+        // Стены комнаты со скруглёнными углами и проёмами для дверей
+        const hw = room.w / 2, hd = room.d / 2;
+        const doorW = 46;   // ширина дверного проёма
+
+        // Северная стена
+        if (!room.connections.includes('north') && this._hasConnectionToNorth(room)) {
+            // стена целиком
+            this.addWallSegment('wall-' + room.key + '-n', room.x, room.y - hd - wallTh / 2, room.w - wallTh, wallH, wallTh);
+        } else {
+            // две части стены с дверным проёмом посередине
+            const partW = (room.w - wallTh - doorW) / 2;
+            if (partW > 0) {
+                this.addWallSegment('wall-' + room.key + '-n1', room.x - hw + partW / 2 + wallTh / 2, room.y - hd - wallTh / 2, partW, wallH, wallTh);
+                this.addWallSegment('wall-' + room.key + '-n2', room.x + hw - partW / 2 - wallTh / 2, room.y - hd - wallTh / 2, partW, wallH, wallTh);
+            }
+        }
+        // Южная стена
+        if (!room.connections.includes('south') && this._hasConnectionToSouth(room)) {
+            this.addWallSegment('wall-' + room.key + '-s', room.x, room.y + hd + wallTh / 2, room.w - wallTh, wallH, wallTh);
+        } else {
+            const partW = (room.w - wallTh - doorW) / 2;
+            if (partW > 0) {
+                this.addWallSegment('wall-' + room.key + '-s1', room.x - hw + partW / 2 + wallTh / 2, room.y + hd + wallTh / 2, partW, wallH, wallTh);
+                this.addWallSegment('wall-' + room.key + '-s2', room.x + hw - partW / 2 - wallTh / 2, room.y + hd + wallTh / 2, partW, wallH, wallTh);
+            }
+        }
+        // Западная стена
+        if (!room.connections.includes('west') && this._hasConnectionToWest(room)) {
+            this.addWallSegment('wall-' + room.key + '-w', room.x - hw - wallTh / 2, room.y, wallTh, wallH, room.d - wallTh);
+        } else {
+            const partD = (room.d - wallTh - doorW) / 2;
+            if (partD > 0) {
+                this.addWallSegment('wall-' + room.key + '-w1', room.x - hw - wallTh / 2, room.y - hd + partD / 2 + wallTh / 2, wallTh, wallH, partD);
+                this.addWallSegment('wall-' + room.key + '-w2', room.x - hw - wallTh / 2, room.y + hd - partD / 2 - wallTh / 2, wallTh, wallH, partD);
+            }
+        }
+        // Восточная стена
+        if (!room.connections.includes('east') && this._hasConnectionToEast(room)) {
+            this.addWallSegment('wall-' + room.key + '-e', room.x + hw + wallTh / 2, room.y, wallTh, wallH, room.d - wallTh);
+        } else {
+            const partD = (room.d - wallTh - doorW) / 2;
+            if (partD > 0) {
+                this.addWallSegment('wall-' + room.key + '-e1', room.x + hw + wallTh / 2, room.y - hd + partD / 2 + wallTh / 2, wallTh, wallH, partD);
+                this.addWallSegment('wall-' + room.key + '-e2', room.x + hw + wallTh / 2, room.y + hd - partD / 2 - wallTh / 2, wallTh, wallH, partD);
+            }
+        }
+    }
+
+    _hasConnectionToNorth(room) {
+        // проверяем, есть ли комната на севере с которой соединены
+        for (const other of ROOMS) {
+            if (other.key === room.key) continue;
+            if (room.connections.includes(other.key)) {
+                const dy = other.y - room.y;
+                const dx = Math.abs(other.x - room.x);
+                if (dy < -40 && dx < Math.max(room.w, other.w) * 0.7) return true;
+            }
+        }
+        return false;
+    }
+    _hasConnectionToSouth(room) {
+        for (const other of ROOMS) {
+            if (other.key === room.key) continue;
+            if (room.connections.includes(other.key)) {
+                const dy = other.y - room.y;
+                const dx = Math.abs(other.x - room.x);
+                if (dy > 40 && dx < Math.max(room.w, other.w) * 0.7) return true;
+            }
+        }
+        return false;
+    }
+    _hasConnectionToWest(room) {
+        for (const other of ROOMS) {
+            if (other.key === room.key) continue;
+            if (room.connections.includes(other.key)) {
+                const dx = other.x - room.x;
+                const dy = Math.abs(other.y - room.y);
+                if (dx < -40 && dy < Math.max(room.d, other.d) * 0.7) return true;
+            }
+        }
+        return false;
+    }
+    _hasConnectionToEast(room) {
+        for (const other of ROOMS) {
+            if (other.key === room.key) continue;
+            if (room.connections.includes(other.key)) {
+                const dx = other.x - room.x;
+                const dy = Math.abs(other.y - room.y);
+                if (dx > 40 && dy < Math.max(room.d, other.d) * 0.7) return true;
+            }
+        }
+        return false;
+    }
+
+    addWallSegment(name, x, y, w, h, d) {
+        const mesh = BABYLON.MeshBuilder.CreateBox(name, { width: Math.max(4, w), height: h, depth: Math.max(4, d) }, this.scene);
+        mesh.position.set(x, h / 2, y);
+        const mat = new BABYLON.StandardMaterial('mat-' + name, this.scene);
+        mat.diffuseColor = new BABYLON.Color3(0.45, 0.40, 0.36);
+        mat.specularColor = new BABYLON.Color3(0, 0, 0);
+        mesh.material = mat;
+        World3D.addObject(this.app.location.view, mesh, 'prop');
+        this.wallMeshes.push(mesh);
+    }
+
+    // Иконка восклицательного знака над комнатой
+    addQuestIcon(room) {
+        const group = new BABYLON.Mesh('icon-group-' + room.key, this.scene);
+        group.position.set(room.x, 40, room.y);
+
+        // Вертикальный Stroke "!"
+        const stroke = BABYLON.MeshBuilder.CreateBox('icon-stroke-' + room.key,
+            { width: 10, height: 46, depth: 10 }, this.scene);
+        stroke.position.set(0, 0, 0);
+        stroke.parent = group;
+
+        // Точка под восклицательным знаком
+        const dot = BABYLON.MeshBuilder.CreateBox('icon-dot-' + room.key,
+            { width: 16, height: 16, depth: 16 }, this.scene);
+        dot.position.set(0, -32, 0);
+        dot.parent = group;
+
+        const mat = new BABYLON.StandardMaterial('mat-icon-' + room.key, this.scene);
+        mat.diffuseColor = new BABYLON.Color3(1, 0.85, 0.2);
+        mat.specularColor = new BABYLON.Color3(0, 0, 0);
+        stroke.material = mat;
+        dot.material = mat;
+
+        World3D.addObject(this.app.location.view, group, 'prop');
+        group.setEnabled(false);
+        this.missionIcons.set(room.key, group);
     }
 
     addWorker(w) {
         const mesh = BABYLON.MeshBuilder.CreateBox('worker-' + w.id,
-            { width: 20, height: 36, depth: 20 }, this.scene);
+            { width: 20, height: 34, depth: 20 }, this.scene);
         const h = this.terrain ? this.terrain.heightAt(w.target.x, w.target.y) : 0;
-        mesh.position.set(w.target.x, h + 18, w.target.y);
+        mesh.position.set(w.target.x, h + 17, w.target.y);
         const mat = new BABYLON.StandardMaterial('mat-worker-' + w.id, this.scene);
         const c = w.color;
         mat.diffuseColor = new BABYLON.Color3(((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255);
@@ -243,7 +419,12 @@ class Game {
         return room ? { x: room.x, y: room.y } : null;
     }
 
-    // ----- missions -----
+    pushLog(text) {
+        this._log.push(text);
+        if (this._log.length > 10) this._log = this._log.slice(this._log.length - 10);
+    }
+
+    // --- Миссии ---
 
     spawnNextMission() {
         if (this.nextMissionIndex >= MISSIONS.length) return;
@@ -252,14 +433,13 @@ class Game {
         if (!ms) return;
         const urgency = Math.max(10, Math.min(20, Math.round(def.duration / 3)));
         const first = this.nextMissionIndex === 0;
-        ms.appear = this.realSec + (first ? 20 : 0);   // first mission after 20 s, rest immediately
+        ms.appear = this.realSec + (first ? 20 : 0);
         ms.expire = ms.appear + urgency;
         ms.status = 'hidden';
         this.nextMissionIndex++;
-        this.pushLog('Скоро на карте появится задание: ' + def.name + '.');
+        this.pushLog('На этаже появилось задание: ' + def.name + '.');
     }
 
-    /** Show an exclamation icon over the mission's room. */
     showIcon(ms) {
         const mesh = this.missionIcons.get(ms.def.roomKey);
         if (mesh) mesh.setEnabled(true);
@@ -270,15 +450,6 @@ class Game {
         if (mesh) mesh.setEnabled(false);
     }
 
-    pushLog(text) {
-        const log = UI.get('log');
-        // keep simple: store in array, render in tick
-        if (!this._log) this._log = [];
-        this._log.push(text);
-        if (this._log.length > 14) this._log = this._log.slice(this._log.length - 14);
-    }
-
-    /** Called when the exclamation icon is clicked (from the 3D picker — here simulated by a hotkey per room). */
     openMission(missionId) {
         const ms = this.missionState.find(m => m.def.id === missionId);
         if (!ms || ms.status !== 'open') return;
@@ -287,23 +458,35 @@ class Game {
         const def = ms.def;
         UI.get('sendTitle').setText(def.name);
         UI.get('sendDesc').setText(def.desc);
-        // Hints: highlight key words in orange.
-        const hintText = 'Подсказки: ' + def.hintWords.map(w => '*' + w + '*').join(' · ');
-        UI.get('sendHints').setText(hintText);
-        // Required stats (revealed as hexagon corners).
-        let reqLine = 'Требуется: ';
-        const reqParts = [];
-        for (const key of Object.keys(def.reqs)) reqParts.push(STAT_LABEL_RU[key] + ' ' + def.reqs[key]);
-        UI.get('sendOverlap').setText(reqLine + reqParts.join(', '));
-        // Slots.
+        UI.get('sendHints').setText('Подсказки: ' + def.hintWords.map(w => '*' + w + '*').join(' · '));
+
+        // Шестиугольник требований: 6 углов
+        const corners = [
+            { key: 'strength', el: 'sendHexTop' },
+            { key: 'charisma', el: 'sendHexUpperRight' },
+            { key: 'agility', el: 'sendHexLowerRight' },
+            { key: 'endurance', el: 'sendHexBottom' },
+            { key: 'wisdom', el: 'sendHexLowerLeft' },
+            { key: 'literacy', el: 'sendHexUpperLeft' },
+        ];
+        for (const { key, el } of corners) {
+            const req = def.reqs[key] || 1;
+            UI.get(el).setText(STAT_SHORT[key] + req);
+        }
+        // Сумма requirement в центре
+        const totalReq = Object.values(def.reqs).reduce((a, b) => a + b, 0);
+        UI.get('sendHexCenter').setText(String(totalReq));
+
+        // Слоты
         for (let i = 0; i < 4; i++) {
             const btn = UI.get('slot' + (i + 1));
             btn.setText((i < def.slots ? 'Слот ' + (i + 1) + ' — пусто' : '—'));
-            btn.def.fill = (i < def.slots ? '#2a4a60' : '#1a1a1a');
+            btn.def.fill = (i < def.slots ? '#1c2a38' : '#0a1018');
             btn.apply();
         }
         UI.get('sendDim').show(true);
         UI.get('sendWindow').show(true);
+        this.updateOverlap();
     }
 
     closeSend() {
@@ -318,17 +501,15 @@ class Game {
         if (!ms) return;
         const def = ms.def;
         if (slotIdx >= def.slots) return;
-        // Assign a free worker to this slot if empty, or remove if already selected.
         const already = [...this.selected].find(sid => {
             const w = this.staff.find(st => st.id === sid);
             return w && w._slot === slotIdx;
         });
         if (already) {
             const w = this.staff.find(st => st.id === already);
-            if (w) { w._slot = null; }
+            if (w) w._slot = null;
             this.selected.delete(already);
         } else {
-            // Pick first free worker not already selected.
             const free = this.staff.find(w => w.status === 'free' && !this.selected.has(w.id));
             if (free) { free._slot = slotIdx; this.selected.add(free.id); }
         }
@@ -339,7 +520,6 @@ class Game {
         const ms = this.missionState.find(m => m.def.id === this.openMissionId);
         if (!ms) return;
         const def = ms.def;
-        // Show selected workers in slots by their slot index.
         for (let i = 0; i < 4; i++) {
             const btn = UI.get('slot' + (i + 1));
             const sid = [...this.selected].find(sid => {
@@ -350,7 +530,7 @@ class Game {
             if (i >= def.slots) {
                 btn.setText('—');
             } else if (w) {
-                btn.setText(w.name + ' · готов');
+                btn.setText(w.name + ' · готовится');
             } else {
                 btn.setText('Слот ' + (i + 1) + ' — пусто');
             }
@@ -392,11 +572,10 @@ class Game {
             w.target = this.roomPos(ms.def.roomKey);
         }
         this.hideIcon(ms);
-        this.pushLog('Отправлена команда на: ' + ms.def.name + '.');
+        this.pushLog('Команда отправлена на: ' + ms.def.name + '.');
         this.closeSend();
     }
 
-    /** Resolve a finished mission: overlap % -> d100 roll. */
     finish(ms) {
         const c = Game.cfg();
         const sent = {};
@@ -415,16 +594,15 @@ class Game {
 
         let ok;
         if (ms.overlap >= 1.0) {
-            ok = true;   // 100% — auto success
+            ok = true;
         } else {
-            ok = Math.random() * 100 <= pct;   // d100 <= percent
+            ok = Math.random() * 100 <= pct;
         }
 
         ms.result = ok;
         ms.status = 'done';
         ms.showUntil = this.now() + c.resultShow;
 
-        // Workers return home.
         for (const sid of ms.workerIds) {
             const w = this.staff.find(st => st.id === sid);
             if (w) {
@@ -441,16 +619,14 @@ class Game {
                 const w = this.staff.find(st => st.id === sid);
                 if (w) w.xp += ms.def.xp;
             }
-            this.pushLog('Задание «' + ms.def.name + '» выполнено успешно. +' + ms.def.gold + ' монет, +' + ms.def.xp + ' опыта.');
+            this.pushLog('Задание «' + ms.def.name + '» выполнено. +' + ms.def.gold + '💰, +' + ms.def.xp + ' опыта.');
         } else {
             for (const sid of ms.workerIds) {
                 const w = this.staff.find(st => st.id === sid);
                 if (w) this.injure(w);
             }
-            this.pushLog('Задание «' + ms.def.name + '» провалено. Персонажи получили травму.');
+            this.pushLog('Задание «' + ms.def.name + '» провалено. Травмы у команды.');
         }
-
-
     }
 
     injure(w) {
@@ -460,14 +636,13 @@ class Game {
         }
         if (w.injuries >= 2) {
             w.status = 'out';
-            this.pushLog(w.name + ' получил вторую травму и выбывает из службы.');
+            this.pushLog(w.name + ' выбывает из службы (вторая травма).');
         } else {
             w.status = 'injured';
-            this.pushLog(w.name + ' травмирован: характеристики понижены на 1.');
+            this.pushLog(w.name + ' traumatized: −1 ко всем характеристикам.');
         }
     }
 
-    /** Worker arrives back at staff room: clear busy state. */
     completeReturn(w) {
         w.status = 'free';
         w.missionId = null;
@@ -475,7 +650,6 @@ class Game {
         w.t = 1;
     }
 
-    /** Result window. */
     showResult(ms) {
         UI.get('resultTitle').setText(ms.result ? 'Задание выполнено' : 'Задание провалено');
         UI.get('resultText').setText(ms.result
@@ -485,12 +659,34 @@ class Game {
         const reqParts = [];
         for (const key of Object.keys(ms.def.reqs)) reqParts.push(STAT_LABEL_RU[key] + ' ' + ms.def.reqs[key]);
         detail += reqParts.join(', ') + '. ';
-        detail += 'Отправленные характеристики покрывают на ' + Math.round(ms.overlap * 100) + '%.';
+        detail += 'Покрытие требований: ' + Math.round(ms.overlap * 100) + '%.';
         UI.get('resultDetail').setText(detail);
+
+        // Шестиугольник требуемых характеристик
+        const corners = [
+            { key: 'strength', el: 'resultHexTop' },
+            { key: 'charisma', el: 'resultHexUpperRight' },
+            { key: 'agility', el: 'resultHexLowerRight' },
+            { key: 'endurance', el: 'resultHexBottom' },
+            { key: 'wisdom', el: 'resultHexLowerLeft' },
+            { key: 'literacy', el: 'resultHexUpperLeft' },
+        ];
+        for (const { key, el } of corners) {
+            const req = ms.def.reqs[key] || 1;
+            UI.get(el).setText(STAT_SHORT[key] + req);
+        }
+
+        // Скрытые характеристики (подсказки, что на самом деле требовалось)
+        const revealParts = [];
+        for (const key of ms.def.revealStats) {
+            revealParts.push(STAT_LABEL_RU[key] + ' ' + ms.def.reqs[key]);
+        }
+        UI.get('resultReveal').setText(revealParts.join(' · ') || '—');
+
         if (ms.result) {
-            UI.get('resultReward').setText('Награда: +' + ms.def.gold + ' монет, +' + ms.def.xp + ' опыта.');
+            UI.get('resultReward').setText('Награда: +' + ms.def.gold + '💰, +' + ms.def.xp + ' опыта.');
         } else {
-            UI.get('resultReward').setText('Все отправленные персонажи получили травму.');
+            UI.get('resultReward').setText('Все сотрудники получили травму.');
         }
         UI.get('resultDim').show(true);
         UI.get('resultWindow').show(true);
@@ -500,15 +696,11 @@ class Game {
         UI.get('resultDim').show(false);
         UI.get('resultWindow').show(false);
         const ms = this.missionState.find(m => m.def.id === (this.openMissionId || ''));
-        // Clear result state so the mission icon can be reused / removed.
-        if (ms) {
-            ms.result = null;
-        }
-        // Spawn the next mission in sequence shortly after.
+        if (ms) ms.result = null;
         this._nextSpawn = this.realSec + 3;
     }
 
-    // ----- main loop -----
+    // --- Основной цикл ---
 
     moveWorkers(dt) {
         const moveSec = Game.cfg().moveSec;
@@ -519,13 +711,9 @@ class Game {
             m.position.x = w._from.x + (w.target.x - w._from.x) * w.t;
             m.position.z = w._from.z + (w.target.y - w._from.z) * w.t;
             const h = this.terrain ? this.terrain.heightAt(m.position.x, m.position.z) : 0;
-            m.position.y = h + 18;
+            m.position.y = h + 17;
             if (w.t >= 1) {
-                if (w.status === 'busy') {
-                    // Arrived at mission room: nothing more to do until timer ends.
-                } else if (w.status === 'returning') {
-                    this.completeReturn(w);
-                }
+                if (w.status === 'returning') this.completeReturn(w);
             }
         }
     }
@@ -541,7 +729,7 @@ class Game {
             } else if (ms.status === 'open' && this.realSec + EPS >= ms.expire) {
                 ms.status = 'hidden';
                 this.hideIcon(ms);
-                this.pushLog('Задание «' + ms.def.name + '» истекло и снято с карты.');
+                this.pushLog('Задание «' + ms.def.name + '» снято с этажа (время вышло).');
                 this.spawnNextMission();
             } else if (ms.status === 'sent' && now + EPS >= ms.end) {
                 this.finish(ms);
@@ -549,13 +737,9 @@ class Game {
                 this.showResult(ms);
             }
         }
-        // Returning workers arrive.
         for (const w of this.staff) {
-            if (w.status === 'returning' && w.t >= 1) {
-                this.completeReturn(w);
-            }
+            if (w.status === 'returning' && w.t >= 1) this.completeReturn(w);
         }
-        // Delayed next-mission spawn (after result window closed).
         if (this._nextSpawn && this.realSec + EPS >= this._nextSpawn) {
             this.spawnNextMission();
             this._nextSpawn = 0;
@@ -570,19 +754,19 @@ class Game {
         const clock = UI.get('clock');
         if (clock) clock.setText(hh + ':' + mm);
         const coins = UI.get('coins');
-        if (coins) coins.setText('Монеты: ' + this.coins);
+        if (coins) coins.setText('💰 ' + this.coins);
 
-        // Staff cards.
+        // Карточки сотрудников
         for (const w of this.staff) {
-            const statsText = STAT_KEYS.map(k => STAT_LABEL_RU[k][0] + this.stat(w, k)).join(' ');
+            const statsText = STAT_KEYS.map(k => STAT_SHORT[k] + this.stat(w, k)).join(' ');
             const statsEl = UI.get('card-' + w.id + '-stats');
             if (statsEl) statsEl.setText(statsText);
             const statusEl = UI.get('card-' + w.id + '-status');
-            const hurtEl = UI.get('card-' + w.id + '-hurt');
+            const badgeEl = UI.get('card-' + w.id + '-badge-text');
             const xpEl = UI.get('card-' + w.id + '-xp');
-            let statusText = '', statusColor = '', hurtText = '';
-            if (w.status === 'out') { statusText = 'ВЫБЫВШИЙ'; statusColor = '#a0a0a0'; hurtText = 'Травма ×2 — выбыл'; }
-            else if (w.status === 'injured') { statusText = 'ТРАВМИРОВАН'; statusColor = '#f0a0a0'; hurtText = 'Травма ×1: −1 ко всем характеристикам'; }
+            let statusText = '', statusColor = '';
+            if (w.status === 'out') { statusText = 'ВЫБЫВШИЙ'; statusColor = '#a0a0a0'; }
+            else if (w.status === 'injured') { statusText = 'ТРАВМА'; statusColor = '#f0a0a0'; }
             else if (w.status === 'busy') {
                 const ms = this.missionState.find(m => m.def.id === w.missionId) || null;
                 statusText = 'В РЕЙСЕ: ' + (ms ? ms.def.name : '?');
@@ -590,16 +774,23 @@ class Game {
             } else if (w.status === 'returning') { statusText = 'ВОЗВРАЩАЕТСЯ'; statusColor = '#c0c0f0'; }
             else { statusText = 'СВОБОДЕН'; statusColor = '#7fd07f'; }
             if (statusEl) { statusEl.setText(statusText); statusEl.def.color = statusColor; statusEl.apply(); }
-            if (hurtEl) { hurtEl.setText(hurtText); hurtEl.apply(); }
+            if (badgeEl) {
+                if (w.status === 'busy') badgeEl.setText('!');
+                else if (w.status === 'returning') badgeEl.setText('↺');
+                else if (w.status === 'injured') badgeEl.setText('⚑');
+                else if (w.status === 'out') badgeEl.setText('✖');
+                else badgeEl.setText('—');
+                badgeEl.apply();
+            }
             if (xpEl) xpEl.setText('ОП ' + w.xp);
         }
 
-        // Mission icons pulse while open.
+        // Иконки квестов пульсируют
         for (const ms of this.missionState) {
             if (ms.status === 'open') {
                 const mesh = this.missionIcons.get(ms.def.roomKey);
                 if (mesh) {
-                    const s = 1 + 0.15 * Math.sin(this.realSec * 4);
+                    const s = 1 + 0.2 * Math.sin(this.realSec * 6);
                     mesh.scaling.set(s, s, 1);
                 }
             }
