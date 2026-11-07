@@ -48,7 +48,7 @@ const LOCATION_WIDTH = 2048;            // px: location width (the area the game
 const LOCATION_HEIGHT = 2048;           // px: location height
 const LOCATION_GROUND = 0;              // ground texture: 0 — grass, 1 — sand, 2 — snow (Location3D.GROUNDS)
 const GROUND_TILE_SIZE = 512;           // world px per one repeat of the ground texture
-const TERRAIN_NOISE_AMP = 66;           // px: hill amplitude (0 — flat ground)
+const TERRAIN_NOISE_AMP = 0;            // px: hill amplitude (0 — flat ground: the inn's first floor)
 const TERRAIN_NOISE_SCALE = 800;        // px: hill size
 const TERRAIN_NOISE_SEED = 4;           // terrain noise seed
 const TERRAIN_BASE = 0;                 // px: mean ground level
@@ -71,6 +71,12 @@ const AUDIO_PAN = 0.7;                  // 0..1: how far a sound at the side of 
 const GAME_RUN_SEC = 8;                 // s: a full energy bar lasts this long while running
 const GAME_REST_SEC = 4;                // s: an empty energy bar refills in this time while standing
 const GAME_STEP_SEC = 0.35;             // s: between footstep sounds while the character runs
+
+// --- INN GAME (Game.js): fantasy "Dispatch" on the first floor of the inn ---
+const GAME_UI_TICK_SEC = 0.25;          // s: how often the HUD is refreshed
+const GAME_RESULT_SHOW_SEC = 5;         // s: how long a task result is shown
+const GAME_MOVE_SEC = 1.5;              // s: a worker walks from one room to another
+const GAME_TIME_SCALE = 60;             // game minutes per one real second
 
 // --- CAMERA (CameraControl.js): target on the map, azimuth, pitch and zoom. Zoom is
 // screen px per world px at the look-at point; distance is derived from it. Flight
