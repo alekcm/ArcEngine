@@ -1585,7 +1585,6 @@ class FSGame {
     }
 
     panelDominate(s, ctx) {
-        ctx.panelClass = 'is-dominate';
         ctx.title = 'Доминирование';
         ctx.text = 'Ресурсы получены. Способность фракции применять не обязательно.';
         // The faction ability is the point of the Dominate order — print it in the panel.
