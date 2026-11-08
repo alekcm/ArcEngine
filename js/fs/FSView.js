@@ -1348,18 +1348,22 @@ const FSView = {
             if (!sys) continue;
             const disc = this.discAt(app, sys, s.area, view.metrics);
             const diag = (this.PLANET_D / 2 + 15) * Math.SQRT1_2;   // past the rim, to the upper-left
-            const sx = disc.x - diag, sz = disc.z - diag;
+            let sx = disc.x - diag;
+            const sz = disc.z - diag;
+            if (s.type === 'factory') sx -= 10;   // the factory stands a touch further left
             const tileH = h(sx, sz) + 6.5;   // the flat printed top of the tile
             const owner = state.players.find(p2 => p2.seat === s.seat);
             const color = (owner && owner.palette && owner.palette.primary) || (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
             const root = new BABYLON.TransformNode('fs-structure-' + s.id, view.scene);
             const structModel = this.structureModel(view, s.type);
+            // 30% smaller than the landmark size the models normalise to —
+            // the fort keeps its own extra notch below the rest.
+            const scaleMul = s.type === 'bastion' ? 0.6 : 0.7;
             if (structModel) {
-                // 30% smaller than the landmark size the models normalise to.
-                root.scaling.setAll(structModel.scale * 0.7);
-                root.position.set(sx + structModel.offset.x * 0.7, tileH + structModel.offset.y * 0.7, sz + structModel.offset.z * 0.7);
+                root.scaling.setAll(structModel.scale * scaleMul);
+                root.position.set(sx + structModel.offset.x * scaleMul, tileH + structModel.offset.y * scaleMul, sz + structModel.offset.z * scaleMul);
             } else {
-                root.scaling.setAll(this.STRUCTURE_SIZE / 28 * 0.7);
+                root.scaling.setAll(this.STRUCTURE_SIZE / 28 * scaleMul);
                 root.position.set(sx, tileH, sz);
             }
             const meta = { fs: 'structure', structure: s.id, system: s.system, pos: s.area };

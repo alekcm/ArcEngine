@@ -733,7 +733,7 @@ const FSUI = {
 
         // The upgrade cards of the faction — every one of them, bought or not:
         // the count of affordable and locked stays visible at a glance.
-        const ORDER_ICONS = { advance: 'order.advance', deploy: 'mark.city', strategize: 'order.strategize', dominate: 'order.dominate', orbital: 'ui.storm' };
+        const ORDER_ICONS = { advance: 'order.advance', deploy: 'order.deploy', strategize: 'order.strategize', dominate: 'order.dominate', orbital: 'ui.storm' };
         const level = hasRules && FS_RULES.commandLevel ? FS_RULES.commandLevel(state, seat) : 0;
         const materiel = p.materiel || 0;
         const upgradesHave = new Set((p.upgrades || []).map(u => u.name));
@@ -965,7 +965,7 @@ const FSUI = {
         if (!sections) return null;
         const wrap = this.el('div', 'fs-upgrades');
         const groups = [['combat', 'Боевые улучшения'], ['order', 'Улучшения приказа']];
-        const ORDER_ICONS = { advance: 'order.advance', deploy: 'mark.city', strategize: 'order.strategize', dominate: 'order.dominate', orbital: 'ui.storm' };
+        const ORDER_ICONS = { advance: 'order.advance', deploy: 'order.deploy', strategize: 'order.strategize', dominate: 'order.dominate', orbital: 'ui.storm' };
         for (const [key, title] of groups) {
             const rows = sections[key] || [];
             if (!rows.length) continue;

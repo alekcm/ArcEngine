@@ -86,10 +86,21 @@ const FS_SHAPES = {
         ],
     }),
     'order.strategize': () => ({
+        // Two tilted cards of a hand: the strategy order is the cards.
         color: '#e4d5b0',
         parts: [
-            { t: 'p', pts: [[16, 3], [19, 13], [29, 16], [19, 19], [16, 29], [13, 19], [3, 16], [13, 13]] },
-            { t: 'c', x: 16, y: 16, r: 3.4, fill: 'dark' },
+            { t: 'p', pts: [[22.1, 21.5], [17.5, 3.1], [3.9, 6.5], [8.5, 24.9]], alpha: 0.72 },
+            { t: 'p', pts: [[24.2, 28.1], [27.5, 9.4], [13.8, 6.9], [10.5, 25.6]] },
+            { t: 'p', pts: [[24.2, 28.1], [27.5, 9.4], [13.8, 6.9], [10.5, 25.6]], fill: 'none', stroke: 1.4 },
+            { t: 'p', pts: [[19, 13.4], [21.3, 17.6], [19, 21.8], [16.7, 17.6]], fill: 'dark' },
+        ],
+    }),
+    'order.deploy': () => ({
+        // The deploy order is the plus of fresh troops.
+        color: '#e4d5b0',
+        parts: [
+            { t: 'l', pts: [[16, 5], [16, 27]], width: 5.2 },
+            { t: 'l', pts: [[5, 16], [27, 16]], width: 5.2 },
         ],
     }),
     // The double-headed eagle of dominion, drawn symmetric around x = 16.

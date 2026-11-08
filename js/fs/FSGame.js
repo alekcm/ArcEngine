@@ -10,7 +10,7 @@
 // `pending` holds the data of the current action.
 
 // The glyphs of the four order tokens: one look at the panel or at the board.
-const FS_ORDER_ICONS = { advance: 'order.advance', deploy: 'mark.city', strategize: 'order.strategize', dominate: 'order.dominate' };
+const FS_ORDER_ICONS = { advance: 'order.advance', deploy: 'order.deploy', strategize: 'order.strategize', dominate: 'order.dominate' };
 
 // The three ways into the game on the lobby screen. The first one is the party
 // itself; the other two are test modes for a single person who plays both seats.
@@ -811,7 +811,7 @@ class FSGame {
         ].concat(this.assetTokens(s, me));
         const kinds = [
             ['advance', 'Наступление', 'order.advance', 'Движение и бой'],
-            ['deploy', 'Развёртывание', 'mark.city', 'Покупка отрядов и построек'],
+            ['deploy', 'Развёртывание', 'order.deploy', 'Покупка отрядов и построек'],
             ['strategize', 'Стратегия', 'order.strategize', 'Улучшения'],
             ['dominate', 'Доминирование', 'order.dominate', 'Ресурсы и способность'],
         ];
