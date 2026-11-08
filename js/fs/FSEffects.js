@@ -252,11 +252,16 @@ const FS_EFFECTS = {
         if (must !== seat) return { ok: false, error: 'Сейчас не ваш ход.' };
         const question = pending.question;
         const answer = cmd.answer || {};
+        // A step that asks twice keeps the choice already made on the question
+        // object itself: the second question of the same step is answered with
+        // both answers merged (the unit that is being moved, the place it goes).
+        const stash = pending.stash || null;
+        const merged = stash ? Object.assign({}, stash, answer) : answer;
         // The question may carry what was already chosen — the unit that is being
         // placed. The next question (the place) is answered without it, so the
         // choice is put back before the step reads the answer.
-        if (answer.type === undefined && question.op === 'placeUnit' && question.kind2 !== undefined) {
-            answer.type = question.kind2;
+        if (merged.type === undefined && question.op === 'placeUnit' && question.kind2 !== undefined) {
+            merged.type = question.kind2;
         }
         // A branch of a choice keeps its own question: while that question waits,
         // the answer belongs to the branch, not to the choice again.
@@ -314,7 +319,7 @@ const FS_EFFECTS = {
             }
             return this.next(R, state, pending);
         }
-        const res = this.apply(R, state, seat, step, answer, ctx);
+        const res = this.apply(R, state, seat, step, merged, ctx);
         if (res && res.replace) {
             // The step has other steps of its own.
             return this.next(R, state, pending, res.replace);
@@ -324,10 +329,14 @@ const FS_EFFECTS = {
             return this.next(R, state, pending);
         }
         if (res && res.question) {
-            // The chosen branch asks its own question: remember it for the answer.
+            // The branch of a choice that asks its own question: the answer goes
+            // to the branch, not into the choice again.
             if (!pending.choice && pending.steps[pending.index] && pending.steps[pending.index].op === 'choice') {
-                pending.choice = step;
+                const i = Number((merged || {}).choice);
+                const branch = Number.isFinite(i) && Array.isArray(step && step.options) ? step.options[i] : null;
+                if (branch) pending.choice = branch;
             }
+            pending.stash = merged;
             pending.question = res.question;
             return { ok: true, pending: true };
         }
