@@ -519,18 +519,23 @@ function parseOrderCards(md) {
 //  06-events.md
 // ---------------------------------------------------------------------------
 
-// The warp storm icon: a set of arrows. Each arrow is one of the eight
-// directions (the transcription is not fully verified — see 00-verification.md).
-const ARROW_DIR = {
-    '⬆': 'N', '⬇': 'S', '⬅': 'W', '➡': 'E',
-    '↩': 'NW', '↪': 'NE', '⮕': 'SE', '⮖': 'SW',
-};
+// The warp storm icon is a drawn pair of arrows, and the transcription of
+// 06-events.md names the four pairs glyph by glyph: «⬆⬇⬆» is the vertical
+// diamond (north/south), «⬅➡⬅» the horizontal one (west/east), «⬆↩» the S-curve
+// running north-east/south-west and «⬇⮕» the S-curve running north-west/
+// south-east. The legend of the same file fixes the pairs; a card without an
+// icon (Теософия) may go any of the eight ways.
+const STORM_ICONS = [
+    { re: /⬆\s*⬇\s*⬆/, pair: ['N', 'S'] },
+    { re: /⬅\s*➡\s*⬅/, pair: ['W', 'E'] },
+    { re: /⬆\s*↩/, pair: ['NE', 'SW'] },
+    { re: /⬇\s*⮕/, pair: ['NW', 'SE'] },
+];
 
 function parseStorm(text) {
-    const dirs = [];
-    for (const ch of String(text || '')) if (ARROW_DIR[ch] && !dirs.includes(ARROW_DIR[ch])) dirs.push(ARROW_DIR[ch]);
-    if (!dirs.length) return ['any'];
-    return dirs.slice(0, 2);
+    const s = String(text || '');
+    for (const icon of STORM_ICONS) if (icon.re.test(s)) return icon.pair.slice();
+    return ['any'];
 }
 
 function parseEvents(md) {

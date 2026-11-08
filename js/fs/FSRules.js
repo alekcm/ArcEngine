@@ -143,7 +143,7 @@ const FS_RULES = {
 
     // The capacity of an area: the skulls of the world banner, three for a void.
     // No more than five units may stand in one area, whatever the banner says.
-    capacity(state, systemId, pos) {
+    capacity(state, systemId, pos, def) {
         const sys = this.system(state, systemId);
         const area = this.area(sys, pos);
         if (!area) return 0;
@@ -152,7 +152,11 @@ const FS_RULES = {
         const order = state.order;
         if (order && order.capacityBonus) {
             const city = this.structuresAt(state, systemId, pos).some(s => s.type === 'city' && s.seat === order.seat);
-            if (city) {
+            // «Дополнительная вместимость распространяется только на Гвардейцев»:
+            // the world holds the extra only for the unit the card names.
+            const only = order.capacityBonusOnly;
+            const fits = !only || !def || FS_EFFECTS.sameName(def.name, only);
+            if (city && fits) {
                 cap += order.capacityBonus;
                 if (order.capacityMax) cap = Math.min(cap, order.capacityMax);
             }
@@ -1541,6 +1545,15 @@ const FS_RULES = {
         if (order.moveLimit && moves.length > order.moveLimit) {
             return { ok: false, error: 'Можно переместить не больше ' + order.moveLimit + ' отрядов.' };
         }
+        // «… если хотя бы один из этих отрядов — Гвардеец» («Адептус Астрономика»).
+        if (order.mustInclude && moves.length) {
+            const ok = moves.some(m => {
+                const u = state.units.find(x => x.id === m.unit);
+                const def = u ? this.unitOf(state, u) : null;
+                return !!def && FS_EFFECTS.sameName(def.name, order.mustInclude);
+            });
+            if (!ok) return { ok: false, error: 'Среди перемещаемых отрядов должен быть ' + order.mustInclude + '.' };
+        }
         // Every move is checked before any of them is done: the movement of the
         // ground units is simultaneous.
         const plan = [];
@@ -1556,6 +1569,13 @@ const FS_RULES = {
             unit.system = m.system;
             unit.area = m.pos;
             plan.push({ id: unit.id, from, fromArea, type: def ? def.type : 'ground', system: m.system, pos: m.pos });
+        }
+        // «перемещение из 1 области» («Департаменто муниторум»).
+        if (order.moveAreaLimit) {
+            const src = new Set(plan.map(m => m.from + ':' + m.fromArea));
+            if (src.size > order.moveAreaLimit) {
+                return { ok: false, error: 'Перемещение ограничено ' + order.moveAreaLimit + ' областью.' };
+            }
         }
         // No area may end the movement with more than five of the player's units.
         // A plan entry names its target; a unit that stays put names its own
@@ -1859,7 +1879,10 @@ const FS_RULES = {
             return n + (def ? def.combat : 0);
         }, 0);
         const dice = this.rollDice(state, Math.min(offence, this.DICE_MAX));
-        const hits = dice.filter(d => d === 'att').length;
+        // The cube of «Набега жнецов» adds its own hit to the strike.
+        const bonus = order.strikeBonus || 0;
+        order.strikeBonus = 0;
+        const hits = dice.filter(d => d === 'att').length + bonus;
         this.log(state, seat, state.players[seat].name + ' наносит орбитальный удар: ' + hits + ' урона.');
         // The damage is assigned by the player who suffers it — his units are the
         // ones that go back to the supply, and the damage that does not destroy a
@@ -1868,14 +1891,48 @@ const FS_RULES = {
             && (state.units.some(u => u.seat === p.seat && u.system === target.system && u.area === target.pos)
                 || state.structures.some(s => s.seat === p.seat && s.system === target.system && s.area === target.pos)));
         const victims = state.units.filter(u => u.system === target.system && u.area === target.pos && u.seat !== seat);
+        // «Вы можете выбрать 1 отряд с командным уровнем 0 в этом мире. Этот
+        // отряд получит урон первым во время этого орбитального удара»
+        // («Набег жнецов»): the choice of the card comes first.
+        if (hits > 0 && victims.length && defender >= 0 && order.strikeFirstWanted && !order.strikeFirst) {
+            order.strikePlanned = {
+                system: target.system, pos: target.pos, hits, defender,
+                victims: victims.map(u => u.id),
+            };
+            order.phase = 'strike-first';
+            this.runEffects(state, seat, [{ op: 'strikeFirstPick', maxKl: order.strikeFirstKl || 0 }], { kind: 'order', ctx: null });
+            return { ok: true, pending: true, hits };
+        }
+        return this.finishStrike(state, seat, target, hits, victims, defender);
+    },
+
+    // The strike itself: the defender picks the units that take the damage (the
+    // unit of «Набега жнецов» goes first).
+    finishStrike(state, seat, target, hits, victims, defender) {
+        const order = state.order;
         if (hits > 0 && victims.length && defender >= 0) {
-            state.strike = { seat: defender, system: target.system, pos: target.pos, left: hits, attacker: seat };
+            state.strike = {
+                seat: defender, system: target.system, pos: target.pos,
+                left: hits, hits, attacker: seat,
+                first: order && order.strikeFirst ? order.strikeFirst : null,
+            };
             order.phase = 'strike-damage';
             return { ok: true, pending: true, hits };
         }
-        order.phase = 'done';
+        if (order) order.phase = 'done';
         this.finishOrder(state, seat);
         return { ok: true, hits };
+    },
+
+    // The scheme of «Набега жнецов» is resolved: the strike goes on.
+    resumeStrike(state, seat) {
+        const order = state.order;
+        const planned = order && order.strikePlanned;
+        if (!planned) return { ok: true };
+        order.strikePlanned = null;
+        const victims = (planned.victims || []).map(id => state.units.find(u => u.id === id)).filter(Boolean);
+        return this.finishStrike(state, seat, { system: planned.system, pos: planned.pos },
+            planned.hits, victims, planned.defender);
     },
 
     // The defender of the strike picks the unit that takes the damage.
@@ -1885,8 +1942,17 @@ const FS_RULES = {
         if (st.seat !== seat) return { ok: false, error: 'Урон распределяет защитник.' };
         const unit = state.units.find(u => u.id === cmd.unit && u.seat === seat && u.system === st.system && u.area === st.pos);
         if (!unit) return { ok: false, error: 'Нет такого отряда.' };
+        // The unit of «Набега жнецов» receives the damage before the others.
+        if (st.first && st.left === st.hits && unit.id !== st.first) {
+            const first = state.units.find(u => u.id === st.first);
+            if (first) return { ok: false, error: 'Сначала урон получает выбранный отряд.' };
+        }
         const def = this.unitOf(state, unit);
-        const health = def ? def.health : 1;
+        let health = def ? def.health : 1;
+        // «Во время этого орбитального удара здоровье отрядов вашего противника
+        // уменьшается до 3» («Вирусные бомбы»).
+        const cap = state.order && state.order.seat === st.attacker ? state.order.enemyHealth : null;
+        if (cap) health = Math.min(health, cap);
         if (st.left >= health) {
             st.left -= health;
             this.destroyUnit(state, unit);
@@ -2035,7 +2101,10 @@ const FS_RULES = {
         // of the pair costs one cache token instead of materiel.
         const deal = !!(order.supplyDeal
             && FS_EFFECTS.sameName(def.name, order.supplyDeal.unit || 'Гвардец'));
-        const pairMate = deal && ((order.dealBought || 0) % 2 === 1);
+        // «2 Гвардейца МОГУТ быть куплены за 1 жетон запасов» (способность
+        // Имперской гвардии): the pair is a permission — without a cache token
+        // the second Guardsman is paid for as usual.
+        const pairMate = deal && ((order.dealBought || 0) % 2 === 1) && (p.assets.cache || 0) > 0;
         if ((p.supply.units[def.id] || 0) <= 0) return { ok: false, error: 'Такого отряда больше нет в запасе.' };
         // A forge token lowers the command level restriction of one unit by one.
         const forgeKl = !!cmd.forgeKl;
@@ -2043,9 +2112,21 @@ const FS_RULES = {
         if (def.kl - (forgeKl ? 1 : 0) > this.commandLevel(state, seat)) {
             return { ok: false, error: 'Не хватает уровня командования.' };
         }
-        // The order may allow only one kind of unit.
-        if (order.factoryOnly && !FS_EFFECTS.sameName(def.name, order.factoryOnly)) {
+        // The order may allow only one kind of unit — but only in the worlds
+        // that are factories by the word of the card («все свои города … как
+        // фабрики, на которых могут производиться только Гвардейцы»): a real
+        // factory of the system keeps its whole list.
+        const realFactory = this.structuresAt(state, cmd.system, cmd.pos)
+            .some(st => st.seat === seat && st.type === 'factory');
+        if (order.factoryOnly && !realFactory && !FS_EFFECTS.sameName(def.name, order.factoryOnly)) {
             return { ok: false, error: 'Этим приказом можно производить только ' + order.factoryOnly + '.' };
+        }
+        // «развертывание в 1 области» («Департаменто муниторум»).
+        if (order.deployAreaLimit) {
+            const used = order.deployAreas || [];
+            if (used.length >= order.deployAreaLimit && !used.includes(cmd.pos)) {
+                return { ok: false, error: 'Развертывание ограничено ' + order.deployAreaLimit + ' областью.' };
+            }
         }
         const place = this.canPlaceUnit(state, seat, cmd.system, cmd.pos, def);
         if (!place.ok) return place;
@@ -2085,6 +2166,10 @@ const FS_RULES = {
         p.supply.units[def.id]--;
         if (deal) order.dealBought = (order.dealBought || 0) + 1;
         const unit = this.addUnit(state, seat, def.id, cmd.system, cmd.pos);
+        if (order.deployAreaLimit) {
+            order.deployAreas = order.deployAreas || [];
+            if (!order.deployAreas.includes(cmd.pos)) order.deployAreas.push(cmd.pos);
+        }
         if (isGuard && !order.unitsLocked) order.unitsLocked = def.id;
         this.log(state, seat, p.name + ' купил отряд «' + def.name + '».');
         order.bought = (order.bought || 0) + 1;
@@ -2234,9 +2319,32 @@ const FS_RULES = {
     // back of the player: the areas are put into state.trim and he chooses which
     // of his units go back to the supply.
     trimArea(state, seat, systemId, pos) {
-        const cap = this.capacity(state, systemId, pos);
+        // The capacity of the world for the units that stand in it: the bonus of
+        // an order may belong to one kind of unit only.
+        let cap = this.capacity(state, systemId, pos);
+        for (const u of this.unitsAt(state, systemId, pos)) {
+            if (u.seat !== seat) continue;
+            cap = Math.max(cap, this.capacity(state, systemId, pos, this.unitOf(state, u)));
+        }
         const mine = this.unitsAt(state, systemId, pos).filter(u => u.seat === seat);
         if (mine.length <= cap) return;
+        // «После выполнения этого приказа можете отступить любым числом
+        // Гвардейцев, превышающим вместимость этого мира» («Адептус Астрономика»):
+        // those units leave by a retreat, not by the supply: the engine does not
+        // take them away, it names them in the log.
+        const order = state.order;
+        const named = order && order.retreatExcessUnits ? order.retreatExcessUnits : null;
+        if (named) {
+            const over = mine.filter(u => {
+                const def = this.unitOf(state, u);
+                return def && FS_EFFECTS.sameName(def.name, named);
+            });
+            if (over.length) {
+                this.log(state, seat, state.players[seat].name + ': ' + over.length
+                    + ' отряд(ов) «' + named + '» сверх вместимости могут отступить.');
+                return;
+            }
+        }
         state.trim = (state.trim || []).filter(t => !(t.seat === seat && t.system === systemId && t.pos === pos));
         state.trim.push({ seat, system: systemId, pos, cap, count: mine.length });
     },
@@ -2384,6 +2492,26 @@ const FS_RULES = {
     cmdFinishStrategize(state, seat) {
         const order = state.order;
         if (!order || order.order !== 'strategize' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        // «Затем разыграйте ограниченное Развертывание …, Продвижение … или
+        // Доминирование … в активной системе» («Департаменто муниторум»): the
+        // order turns into the second, limited one instead of ending.
+        if (order.nestedKind) {
+            const kind = order.nestedKind;
+            order.nestedKind = null;
+            order.nested = true;
+            order.order = kind;
+            order.phase = null;
+            order.purchases = [];
+            order.bought = 0;
+            order.upgradesBought = 0;
+            if (kind === 'advance') order.moveAreaLimit = 1;
+            if (kind === 'deploy') { order.deployAreaLimit = 1; order.deployAreas = []; }
+            const res = this.resolveOrder(state, seat, kind, order.system);
+            if (res && res.ok === false) return res;
+            this.log(state, seat, state.players[seat].name + ' разыгрывает ограниченный приказ: '
+                + this.orderName(kind) + '.');
+            return { ok: true, nested: true };
+        }
         state.players[seat].eventTokens++;
         this.log(state, seat, state.players[seat].name + ' кладёт приказ на колоду событий.');
         this.finishOrder(state, seat);
@@ -2480,6 +2608,12 @@ const FS_RULES = {
             } else if (state.order.order !== kind) {
                 return { ok: false, error: 'Это улучшение применяется во время приказа «' + this.orderName(kind) + '».' };
             }
+        }
+        // «Когда вы покупаете что-либо этим приказом, можете вдобавок купить 1
+        // бастион» («Миры-гробницы»): the card comes after a purchase, and a
+        // refusal here must not spend it.
+        if (/миры-гробницы/i.test(up.name) && state.order && !(state.order.purchases || []).length) {
+            return { ok: false, error: 'Сначала купите отряд или постройку этим приказом.' };
         }
         up.used = true;
         this.log(state, seat, p.name + ' применяет улучшение «' + up.name + '».');
@@ -2634,6 +2768,9 @@ const FS_RULES = {
                 trigger: trig ? trig.trigger : null,
                 steps: trig ? trig.steps : [],
                 note: trig ? !!trig.note : true,
+                // A reaction card («когда … деморализован») is not offered at the
+                // start of the step: it waits for the moment it reacts to.
+                defer: trig ? !!trig.defer : false,
             });
             this.log(state, seat, p0.name + ' держит план «' + card.name + '».');
         }
@@ -2913,7 +3050,15 @@ const FS_RULES = {
                 const def = this.unitOf(state, u);
                 return def && reqs.some(r => FS_EFFECTS.sameName(def.name, r));
             });
-            if (there) steps.push(...FS_EFFECTS.parse(card.unit, { kind: 'combat', faction, reqs }));
+            if (there) {
+                // The paragraphs of the text may name their own requisites
+                // («*Титан «Гончая»:* … *Линкор:* …»): only the paragraphs whose
+                // unit stands in the battle are read.
+                const present = state.units.filter(u => u.seat === seat && !u.routed
+                    && u.system === combat.system && u.area === combat.pos)
+                    .map(u => (this.unitOf(state, u) || {}).name).filter(Boolean);
+                steps.push(...FS_EFFECTS.parse(card.unit, { kind: 'combat', faction, reqs, present }));
+            }
         }
         return steps;
     },
@@ -2938,7 +3083,7 @@ const FS_RULES = {
 
     // The moment of a scheme has come: the player may discard the card.
     maybeScheme(state, seat, trigger, ctx) {
-        const schemes = this.schemesOf(state, seat).filter(s => s.trigger === trigger);
+        const schemes = this.schemesOf(state, seat).filter(s => s.trigger === trigger && !s.defer);
         if (!schemes.length) return false;
         const c = ctx || {};
         // The card whose text the engine did not read: the player sees the text.
@@ -3067,8 +3212,16 @@ const FS_RULES = {
         state.combat = combat;
         this.log(state, attacker, 'Бой в системе ' + this.system(state, systemId).tile + ': '
             + state.players[attacker].name + ' против ' + state.players[defender].name + '.');
-        // The schemes of the start of the combat.
+        // The schemes of the start of the combat; a scheme of «the start of a
+        // round of combat» has its round 1 here as well as every next one.
         this.maybeScheme(state, attacker, 'combat-start', { kind: 'combat', ctx: { side: 'attacker' } });
+        if (!state.pending) {
+            this.maybeScheme(state, attacker, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
+        } else if (this.schemesOf(state, attacker).some(x => x.trigger === 'round' && !x.defer)) {
+            // Both questions at once are impossible: the round one waits for the
+            // answer to the question of the start of the combat.
+            combat.roundSchemeQueued = true;
+        }
     },
 
     // The commands of the combat.
@@ -3209,9 +3362,50 @@ const FS_RULES = {
         state.players[seat].assets.reinforcement -= count;
         c.reinforceUsed = c.reinforceUsed || {};
         c.reinforceUsed[side] = count;
+        // «В конце шага призыва подкреплений …» («Зов астропатов»): the moment of
+        // the card, offered before the step is closed.
+        if (!c.reinforceHook || !c.reinforceHook[side]) {
+            c.reinforceHook = c.reinforceHook || {};
+            c.reinforceHook[side] = true;
+            if (this.maybeScheme(state, seat, 'reinforce-end', { kind: 'combat', ctx: { side } })) {
+                c.reinforcePending = side;
+                return { ok: true, pending: true };
+            }
+        }
+        this.finishReinforce(state, side);
+        return { ok: true };
+    },
+
+    // The reinforce step of a side is closed: the other side comes next.
+    finishReinforce(state, side) {
+        const c = state.combat;
+        if (!c) return;
         if (side === 'attacker') c.step = 'reinforce-defender';
         else { c.step = 'choose-attacker'; this.advanceCombatSteps(state); }
-        return { ok: true };
+    },
+
+    // «ваш противник уничтожит 1 жетон подкрепления в этой области» — the
+    // tokens a side brought into the battle are taken out of it: the routed ones
+    // first (they are already flipped), then the standing ones.
+    loseReinforcementTokens(state, side, n) {
+        const c = state.combat;
+        if (!c || !n) return 0;
+        c.reinforceRouted = c.reinforceRouted || { attacker: 0, defender: 0 };
+        let left = n;
+        while (left > 0 && (c.reinforceRouted[side] || 0) > 0) {
+            c.reinforceRouted[side] -= 1;
+            c.reinforce[side] -= 1;
+            c.reinforceUsed[side] = Math.max(0, (c.reinforceUsed[side] || 0) - 1);
+            left -= 1;
+        }
+        while (left > 0 && (c.reinforce[side] || 0) > 0) {
+            c.reinforce[side] -= 1;
+            c.reinforceUsed[side] = Math.max(0, (c.reinforceUsed[side] || 0) - 1);
+            left -= 1;
+        }
+        const lost = n - left;
+        if (lost) this.log(state, -1, 'Уничтожено жетонов подкрепления: ' + lost + '.');
+        return lost;
     },
 
     // A combat token (att or def) is gained or lost.
@@ -3343,6 +3537,21 @@ const FS_RULES = {
             if (c.step === 'reinforce-defender' && this.maxReinforce(state, c.defender, 'defender') <= 0) {
                 c.step = 'choose-attacker';
             }
+            // «Вместо того, чтобы играть боевую карту из руки, вы можете сбросить
+            // эту карту…» («Тактический гений»): the moment of the card play.
+            if (c.step === 'choose-attacker' || c.step === 'choose-defender') {
+                const hs = c.step === 'choose-attacker' ? 'attacker' : 'defender';
+                const hseat = hs === 'attacker' ? c.attacker : c.defender;
+                c.playHook = c.playHook || {};
+                if (!c.playHook[hs]) {
+                    c.playHook[hs] = true;
+                    const was = c.step;
+                    if (this.maybeScheme(state, hseat, 'combat-play', { kind: 'combat', ctx: { side: hs } })) {
+                        c.nextStep = was;
+                        return null;
+                    }
+                }
+            }
             if (c.step === 'choose-attacker' && !(c.cards.attacker.hand || []).length) c.step = 'choose-defender';
             if (c.step === 'choose-defender' && !(c.cards.defender.hand || []).length) {
                 c.step = c.staged && c.staged.attacker ? 'reveal' : 'damage-attacker';
@@ -3359,6 +3568,12 @@ const FS_RULES = {
                 c.applied = c.applied || {};
                 c.applied.defender = [];
                 this.endDamageStep(state);
+                if (!state.combat) return null;
+            }
+            // The effect of a card took the place of the end of the round: when
+            // it is over the round ends for good.
+            if (c.step === 'round-end') {
+                this.endCombatRound(state);
                 if (!state.combat) return null;
             }
             if (c.step === before) break;
@@ -3566,6 +3781,19 @@ const FS_RULES = {
         // The card may make the damage go one point at a time.
         const oneByOne = !!(c.damageOneByOne && side === 'defender');
         const targets = cmd.targets || [];
+        // «Этот отряд или бастион получает урон первым» («Бронетанковый клин»):
+        // the piece the card chose takes the damage before everything else.
+        const firstHit = (c.damageFirst || []).find(x => x && x.side === side
+            && (x.round === undefined || x.round === c.round) && able.has(x.id));
+        if (firstHit && damage > 0) {
+            const at = targets.indexOf(firstHit.id);
+            if (at > 0) {
+                targets.splice(at, 1);
+                targets.unshift(firstHit.id);
+            } else if (at < 0) {
+                return { ok: false, error: 'Урон сначала получает выбранный картой отряд или бастион.' };
+            }
+        }
         // The damage is applied to the chosen units in order.
         let left = damage;
         const applied = [];
@@ -3591,20 +3819,31 @@ const FS_RULES = {
                 if (left >= health && !oneByOne) {
                     left -= health;
                     applied.push({ unit: unit.id, destroyed: true });
+                    this.noteResurrect(state, unit, true);
                     this.destroyUnit(state, unit);
                 } else if (oneByOne) {
                     // The damage goes one point at a time.
                     left -= 1;
                     if (health <= 1) {
                         applied.push({ unit: unit.id, destroyed: true });
+                        this.noteResurrect(state, unit, true);
                         this.destroyUnit(state, unit);
                     } else {
                         applied.push({ unit: unit.id, destroyed: false });
                     }
                 } else {
                     // The card may keep the unit from being routed.
-                    const keep = (c.noRoute || []).some(x => x.seat === unit.seat && (!x.kl || (def && def.kl <= x.kl)));
-                    if (!keep) unit.routed = true;
+                    const keep = (c.noRoute || []).some(x => {
+                        const one = typeof x === 'number' ? { seat: x } : x;
+                        if (one.seat !== unit.seat) return false;
+                        if (one.round !== undefined && one.round !== c.round) return false;
+                        return !one.kl || (def && (def.kl || 0) <= one.kl);
+                    });
+                    if (!keep) {
+                        unit.routed = true;
+                        unit.routedRound = c.round;
+                        this.noteResurrect(state, unit, false);
+                    }
                     left = 0;
                     applied.push({ unit: unit.id, destroyed: false });
                 }
@@ -3646,12 +3885,147 @@ const FS_RULES = {
             this.log(state, -1, 'Шаг нанесения повреждений повторяется.');
             return;
         }
+        // «вернуть этого юнита недеморализованным обратно после этапа получения
+        // урона» («Сфера воскрешения»).
+        if (this.schemeResurrect(state)) return;
+        // «если в этом раунде боя отряд противника становится деморализованным,
+        // он уничтожается» («Фаланга судного дня»).
+        if (this.destroyRoutedFoe(state)) return;
+        // «… в конце первого шага нанесения повреждений» («Ракета Death Strike»).
+        if (this.deferredDamage(state)) return;
         this.endCombatRound(state);
+    },
+
+    // The scheme of «Сфера воскрешения» keeps the unit that the damage step
+    // destroyed or routed; after the step it comes back unrouted.
+    noteResurrect(state, unit, destroyed) {
+        const c = state.combat;
+        if (!c) return;
+        // Only a scheme of the fall of a unit of the printed command level.
+        const scheme = this.schemesOf(state, unit.seat)
+            .find(x => (x.steps || []).some(y => y.op === 'resurrect'));
+        if (!scheme) return;
+        const stepR = (scheme.steps || []).find(y => y.op === 'resurrect');
+        const def = this.unitOf(state, unit);
+        if (!def) return;
+        const kl = stepR && stepR.maxKl !== undefined ? stepR.maxKl : 1;
+        if ((def.kl || 0) > kl) return;
+        c.resurrectCandidates = c.resurrectCandidates || [];
+        if (c.resurrectCandidates.some(x => x.id === unit.id)) return;
+        c.resurrectCandidates.push({
+            unit: unit.unit, def: def.id, id: unit.id, seat: unit.seat,
+            system: unit.system, pos: unit.area, destroyed,
+        });
+    },
+
+    // The unit the card brings back: after the damage step it is whole again.
+    applyResurrect(state) {
+        const c = state.combat;
+        const pending = c && (c.resurrectCandidates || [])[0];
+        if (!pending) return;
+        c.resurrectCandidates = [];
+        c.resurrectPlan = [];
+        const alive = state.units.find(u => u.id === pending.id);
+        if (alive) {
+            alive.routed = false;
+            alive.routedRound = 0;
+        } else if (pending.destroyed) {
+            const p = state.players[pending.seat];
+            if ((p.supply.units[pending.def] || 0) > 0) p.supply.units[pending.def] -= 1;
+            this.addUnit(state, pending.seat, pending.def, pending.system, pending.pos);
+        }
+        this.log(state, pending.seat, state.players[pending.seat].name + ': «Сфера воскрешения» возвращает отряд.');
+    },
+
+    // «Когда 1 из ваших отрядов с командным уровнем 0 или 1 деморализован или
+    // уничтожен, вы можете сбросить эту карту, чтобы вернуть этого юнита
+    // недеморализованным обратно после этапа получения урона» («Сфера
+    // воскрешения»): the scheme waits in play, the player is asked at the end of
+    // the damage step, and only a «yes» spends the card.
+    schemeResurrect(state) {
+        const c = state.combat;
+        if (!c || !(c.resurrectCandidates || []).length) return false;
+        const candidate = c.resurrectCandidates[0];
+        if (c.resurrectAsked === candidate.seat) return false;
+        const scheme = this.schemesOf(state, candidate.seat)
+            .find(x => (x.steps || []).some(y => y.op === 'resurrect'));
+        if (!scheme) { c.resurrectCandidates = []; return false; }
+        c.resurrectAsked = candidate.seat;
+        c.step = 'effect';
+        c.nextStep = 'round-end';
+        const side = candidate.seat === c.attacker ? 'attacker' : 'defender';
+        this.runEffects(state, candidate.seat, [{ op: 'resurrectOffer' }], { kind: 'combat', ctx: { side } });
+        return true;
+    },
+
+    // The foe of «Фаланги судного дня» pays a `def` cube for every routed unit,
+    // or the unit is destroyed.
+    destroyRoutedFoe(state) {
+        const c = state.combat;
+        const d = c && c.destroyRoutedFoe;
+        if (!d || d.done) return false;
+        if (d.round !== c.round) { c.destroyRoutedFoe = null; return false; }
+        const foeSide = d.seat === c.attacker ? 'defender' : 'attacker';
+        const foeSeat = foeSide === 'attacker' ? c.attacker : c.defender;
+        // «если в этом раунде боя отряд противника становится деморализованным» —
+        // the units that were routed in this round.
+        const units = state.units.filter(u => u.seat === foeSeat
+            && u.system === c.system && u.area === c.pos && u.routed
+            && (u.routedRound === undefined || u.routedRound === c.round));
+        d.done = true;
+        if (!units.length) return false;
+        const avoid = d.avoid || { kind: 'def', n: 1 };
+        const steps = units.map(u => ({
+            op: 'avoidDestroy',
+            unit: u.id,
+            avoid,
+            ability: 'деморализованный отряд уничтожается; можно избежать уничтожения за 1 `def. cube`',
+        }));
+        c.step = 'effect';
+        c.nextStep = 'round-end';
+        this.runEffects(state, d.seat, steps, { kind: 'combat', ctx: { side: d.seat === c.attacker ? 'attacker' : 'defender' } });
+        return true;
+    },
+
+    // The effect of a card that waits for the end of the first damage step
+    // («Ракета Death Strike»): it happens once, before the round is closed.
+    deferredDamage(state) {
+        const c = state.combat;
+        const d = c && c.deferDamage;
+        if (!d || d.done) return false;
+        d.done = true;
+        const foeSeat = d.seat === c.attacker ? c.defender : c.attacker;
+        const targets = state.units.filter(u => u.seat === foeSeat && u.system === c.system && u.area === c.pos);
+        if (!targets.length) return false;
+        c.step = 'effect';
+        c.nextStep = 'round-end';
+        this.runEffects(state, d.seat, d.steps, {
+            kind: 'combat', ctx: { side: d.seat === c.attacker ? 'attacker' : 'defender' },
+        });
+        return true;
     },
 
     // The end of an execution round: the third one ends the combat.
     endCombatRound(state) {
         const c = state.combat;
+        // «Если ваши отряды или бастионы не получат урона в конце этого раунда,
+        // ваш противник отступает одним из своих отрядов» («Фаланга монолита»).
+        c.noDamageRetreat = (c.noDamageRetreat || []).filter(x => x.round === c.round || !x.fired);
+        const pendingRetreat = (c.noDamageRetreat || []).filter(x => x.round === c.round && !x.fired);
+        if (pendingRetreat.length) {
+            const entry = pendingRetreat[0];
+            entry.fired = true;
+            const side = entry.seat === c.attacker ? 'attacker' : 'defender';
+            // «если ваши отряды или бастионы не получат урона в конце этого
+            // раунда»: the damage the card's owner placed on his own pieces.
+            const damage = (c.damage && c.damage[side]) || 0;
+            if (damage === 0) {
+                c.step = 'effect';
+                c.nextStep = 'round-end';
+                this.runEffects(state, entry.seat, entry.steps, { kind: 'combat', ctx: { side } });
+                return;
+            }
+        }
         // The combat tokens go back to the supply at the end of every execution
         // round: only the dice and the cards are counted again. A card may keep
         // the defence tokens of its player («Шустрое судно»).
@@ -3679,6 +4053,12 @@ const FS_RULES = {
         if (c.round > (c.maxRounds || 3)) { this.finishCombat(state); return; }
         c.staged = { attacker: null, defender: null };
         for (const side of ['attacker', 'defender']) c.cards[side].chosen = null;
+        // The effects that belonged to the previous round are over.
+        if (c.destroyRoutedFoe && c.destroyRoutedFoe.round !== c.round) c.destroyRoutedFoe = null;
+        c.resurrectPlan = (c.resurrectPlan || []).filter(x => x.round === c.round);
+        c.resurrectCandidates = [];
+        c.resurrectAsked = null;
+        c.noDamageRetreat = (c.noDamageRetreat || []).filter(x => x.round === c.round);
         c.step = 'choose-attacker';
         this.advanceCombatSteps(state);
         // The schemes of the start of the round.
