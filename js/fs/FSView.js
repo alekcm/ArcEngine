@@ -528,12 +528,13 @@ const FSView = {
     // The poles carry the world's dossier printed straight on the ice: the unit
     // capacity on the north cap, the materiel and the asset tokens on the south.
     // The icons keep their colours and take a small black rim so they read on
-    // any cap — no plates, no backing, nothing else.
+    // any cap — and the digits ride ON their icons, not next to them. No plates,
+    // no backing, nothing else.
     drawPlanetPoles(ctx, size, world) {
         if (!world) return;
         const R = size / 2;
         const hasIcons = typeof FSIcons !== 'undefined';
-        const icon = 46, font = 'bold 52px system-ui, sans-serif';
+        const icon = 46;
         // Slightly off the silhouette: the caps narrow at the rim and clip at the poles' apex.
         const northY = R * .15, southY = size - R * .15;
         const outline = '#101010';
@@ -541,44 +542,41 @@ const FSView = {
             if (hasIcons) FSIcons.canvas(ctx, iconName, cx, cy, s, { outline });
         };
         const number = (text, x, y, fill) => {
-            ctx.font = font;
+            let sizeFont = 52;
+            ctx.font = 'bold ' + sizeFont + 'px system-ui, sans-serif';
+            const w = ctx.measureText(text).width;
+            const fit = icon * .95;
+            if (w > fit) { sizeFont = Math.max(20, Math.floor(sizeFont * fit / w)); ctx.font = 'bold ' + sizeFont + 'px system-ui, sans-serif'; }
             ctx.lineJoin = 'round';
             ctx.lineWidth = 8;
             ctx.strokeStyle = outline;
+            ctx.textAlign = 'center';
             ctx.strokeText(text, x, y);
             ctx.fillStyle = fill;
             ctx.fillText(text, x, y);
         };
         ctx.save();
         ctx.textBaseline = 'middle';
-        ctx.textAlign = 'left';
-        // North — the unit capacity.
+        ctx.textAlign = 'center';
+        // North — the unit capacity, printed on the skull it belongs to.
         const cap = String(world.capacity != null ? world.capacity : 0);
-        ctx.font = font;
-        const capW = ctx.measureText(cap).width;
-        const capBlock = (hasIcons ? icon + 14 : 0) + capW;
-        let x = R - capBlock / 2;
-        print('mark.skull', x + icon / 2, northY, icon);
-        x += hasIcons ? icon + 14 : 0;
-        number(cap, x, northY + 2, '#e9dec3');
+        print('mark.skull', R, northY, icon);
+        number(cap, R, northY + 2, '#e9dec3');
         // South — the materiel value and the asset tokens. A world that yields no
         // materiel prints nothing of it: neither the icon nor the digit.
         const materiel = world.materiel != null ? world.materiel : 0;
         const hasMateriel = materiel > 0;
         const num = String(materiel);
-        ctx.font = font;
-        const numW = hasMateriel ? ctx.measureText(num).width : 0;
         const assetGlyph = { forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'order.event', prosperity: 'asset.prosperity' };
         const assets = world.assets || [];
         const chip = 42, gap = 12;
-        const materielBlock = hasMateriel ? (hasIcons ? icon + 14 : 0) + numW : 0;
+        const materielBlock = hasMateriel ? icon : 0;
         const block = materielBlock + (assets.length ? (hasMateriel ? 16 : 0) + assets.length * chip + (assets.length - 1) * gap : 0);
         let sx = R - block / 2;
         if (hasMateriel) {
             print('asset.materiel', sx + icon / 2, southY, icon);
-            sx += hasIcons ? icon + 14 : 0;
-            number(num, sx, southY + 2, '#a8d08a');
-            sx += numW + 16;
+            number(num, sx + icon / 2, southY + 2, '#a8d08a');
+            sx += icon + 16;
         }
         for (const asset of assets) {
             print(assetGlyph[asset] || 'asset.cache', sx + chip / 2, southY, chip);
