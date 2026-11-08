@@ -452,6 +452,7 @@ class FSGame {
         // its whole interface is the combat below.
         if (s.order && s.order.seat === me && s.testMode !== 'battle') {
             if (s.order.order === 'advance') this.panelAdvance(s, ctx);
+            if (s.order.phase === 'guardDeploy') this.panelGuardDeploy(s, ctx);
             else if (s.order.order === 'deploy') this.panelDeploy(s, ctx);
             else if (s.order.order === 'strategize') this.panelStrategize(s, ctx);
             else if (s.order.order === 'dominate') this.panelDominate(s, ctx);
@@ -1278,6 +1279,113 @@ class FSGame {
         }
     }
 
+    // --- the nested production of the Imperial Guard's «Массовое Производство»
+    // The dominate ability is a deploy order produced by ONE chosen factory:
+    // a minimum of two units of the same type, price minus one, into the
+    // factory's own world. Two Guardsmen go for one supply token.
+    panelGuardDeploy(s, ctx) {
+        const me = s.seat;
+        const p = s.players[me];
+        const order = s.order;
+        const factory = order.guardFactory;
+        const sys = factory ? s.systems.find(x => x.id === factory.system) : null;
+        const area = sys && factory ? sys.areas.find(a => a.pos === factory.pos) : null;
+        const worldName = area && area.world ? area.world.name : 'мир-производитель';
+        const limit = FS_RULES.deployLimit(s, me, order.system);
+        const spent = FS_RULES.spentOf(order);
+        const purchases = order.purchases || [];
+        const faction = FS_DATA.factions.find(f => f.id === p.faction);
+        const supply = (p.supply && p.supply.units) || {};
+        const locked = order.unitsLocked;
+        const lockedDef = locked && faction ? faction.units.find(u => u.id === locked) : null;
+        const lockedName = lockedDef ? lockedDef.name : locked;
+        ctx.title = 'Массовое Производство';
+        ctx.text = 'Фабрика выпускает отряды в свой мир. Минимум 2 отряда одного типа, каждый на 1 материи дешевле. 2 Гвардейца за 1 жетон запасов.';
+        ctx.status = this.status || ('Фабрика: ' + worldName
+            + ' · материя: ' + p.materiel
+            + (spent ? ' · в приказе: ' + spent : '')
+            + ' · куплено: ' + purchases.length + ' из ' + limit
+            + (lockedName ? ' · тип: ' + lockedName : ''));
+        ctx.tokens = [];
+        for (const def of (faction ? faction.units : [])) {
+            ctx.tokens.push({
+                icon: def.type === 'ship' ? 'mark.ship' : 'mark.ground',
+                label: def.name, count: supply[def.id] || 0, hint: 'В запасе · цена ' + def.cost,
+            });
+        }
+        // The two ways of paying less — the same as in the deploy order.
+        const opts = this.deployOpts = this.deployOpts || { cache: false, forgeKl: false };
+        const canCache = (p.assets.cache || 0) > 0;
+        const canForge = (p.assets.forge || 0) > 0;
+        if (!canCache) opts.cache = false;
+        if (!canForge) opts.forgeKl = false;
+        const cl = FS_RULES.commandLevel(s, me);
+        // The pair deal: after the first Guardsman, every second one costs one
+        // supply token instead of materiel — the price below already shows 0.
+        const dealUnit = (order.supplyDeal && order.supplyDeal.unit) || 'Гвардейца';
+        const dealName = dealUnit.toLowerCase().replace(/а/g, '');
+        const isDealUnit = def => order.supplyDeal && String(def.name).toLowerCase().indexOf(dealName) >= 0;
+        const dealNextFree = def => isDealUnit(def) && (order.dealBought || 0) % 2 === 1;
+        if ((order.bought || 0) < limit) {
+            for (const def of faction.units) {
+                const n = supply[def.id] || 0;
+                const pairSecond = dealNextFree(def);
+                const cost = pairSecond ? 0 : Math.max(0, def.cost - 1 - (opts.cache ? 2 : 0));
+                const kl = def.kl - (opts.forgeKl ? 1 : 0);
+                const blockedByLock = !!locked && def.id !== locked;
+                const blocked = blockedByLock || !n || p.materiel - spent < cost || kl > cl || (def.forge && !(p.assets.forge || 0));
+                const dealHint = isDealUnit(def) ? ' · каждая вторая пара: 1 жетон запасов' : '';
+                ctx.actions.push({
+                    kind: 'pick', icon: def.type === 'ship' ? 'mark.ship' : 'mark.ground', label: def.name, count: n,
+                    hint: cost + ' материи · КЛ ' + Math.max(0, kl) + ' · бой ' + def.combat
+                        + (def.forge ? ' · нужна кузница' : '') + dealHint
+                        + (blockedByLock ? ' · другой тип' : ''),
+                    enabled: !blocked,
+                    selected: this.mode === 'placeUnit' && this.pending && this.pending.unit === def.id,
+                    onClick: () => {
+                        this.mode = 'placeUnit';
+                        this.pending = { unit: def.id, def, cache: opts.cache, forgeKl: opts.forgeKl };
+                        this.highlightPlace(def);
+                        this.refresh();
+                    },
+                });
+            }
+            if (canCache) {
+                ctx.actions.push({
+                    kind: 'chip', icon: 'asset.materiel', label: 'Тайник: −2 материи',
+                    hint: 'Тайников: ' + (p.assets.cache || 0),
+                    selected: opts.cache,
+                    onClick: () => { opts.cache = !opts.cache; this.refresh(); },
+                });
+            }
+            if (canForge) {
+                ctx.actions.push({
+                    kind: 'chip', icon: 'asset.materiel', label: 'Кузница: КЛ −1',
+                    hint: 'Кузниц: ' + (p.assets.forge || 0),
+                    selected: opts.forgeKl,
+                    onClick: () => { opts.forgeKl = !opts.forgeKl; this.refresh(); },
+                });
+            }
+        }
+        if (purchases.length) {
+            ctx.actions.push({
+                kind: 'chip', icon: 'ui.close', label: 'Снять последнюю покупку',
+                hint: 'правый клик по фигуре — снять любую',
+                onClick: () => this.net.cmd({ type: 'undoPurchase' }),
+            });
+        }
+        const minOk = purchases.length === 0 || purchases.length >= 2;
+        ctx.actions.push({
+            kind: 'primary', icon: 'ui.check',
+            label: purchases.length
+                ? 'Закончить производство — спишется ' + spent + ' материи'
+                : 'Закончить производство (без покупки)',
+            enabled: minOk,
+            hint: minOk ? '' : 'нужно минимум 2 отряда одного типа (сейчас ' + purchases.length + ')',
+            onClick: () => this.net.cmd({ type: 'finishGuardDeploy' }),
+        });
+    }
+
     // --- the strategize order -------------------------------------------------
     // The areas of the active system where the piece may be placed.
     highlightPlace(def) {
@@ -1287,6 +1395,30 @@ class FSGame {
         const sys = s.systems.find(x => x.id === order.system);
         if (!sys) return;
         const list = [];
+        // «Массовое Производство»: the ring is over the factory world; a ship
+        // goes out into the void of the same system instead.
+        if (order.phase === 'guardDeploy' && order.guardFactory) {
+            const gsys = s.systems.find(x => x.id === order.guardFactory.system);
+            if (!gsys) { FSView.highlight(this.view, []); return; }
+            const rings = [];
+            if (def && def.type === 'ship') {
+                for (const area of gsys.areas) {
+                    if (area.world) continue;
+                    const p = FSView.areaPos(this.app, gsys, area.pos, this.view.metrics);
+                    const h = this.app.location.terrain.heightAt(p.x, p.y);
+                    rings.push({ x: p.x, y: h + 14, z: p.y });
+                }
+            } else {
+                const garea = gsys.areas.find(a => a.pos === order.guardFactory.pos);
+                if (garea) {
+                    const p = FSView.areaPos(this.app, gsys, garea.pos, this.view.metrics);
+                    const h = this.app.location.terrain.heightAt(p.x, p.y);
+                    rings.push({ x: p.x, y: h + 14, z: p.y });
+                }
+            }
+            FSView.highlight(this.view, rings);
+            return;
+        }
         for (const area of sys.areas) {
             // Only the places where the piece may stand.
             const ok = def
@@ -2005,7 +2137,7 @@ class FSGame {
                     ctx.actions.push({
                         kind: 'pick',
                         label: (sys ? sys.tile : area.system) + ' — ' + (world && world.world ? world.world.name : 'пустота'),
-                        onClick: () => send({ area }),
+                        onClick: () => send({ [q.answerKey || 'area']: area }),
                     });
                 }
                 return;
@@ -2722,6 +2854,24 @@ class FSGame {
         }
         if (this.mode === 'placeUnit') {
             if (!target) return;
+            const ord = s.order;
+            if (ord && ord.phase === 'guardDeploy' && ord.guardFactory) {
+                const isShip = this.pending && this.pending.def && this.pending.def.type === 'ship';
+                const inFactoryWorld = target.system === ord.guardFactory.system && target.pos === ord.guardFactory.pos;
+                if (isShip) {
+                    const csys = s.systems.find(x => x.id === target.system);
+                    const isVoid = csys && csys.areas.some(a => a.pos === target.pos && !a.world);
+                    if (!isVoid) {
+                        this.status = 'Корабль выходит в пустоту системы фабрики.';
+                        this.refresh();
+                        return;
+                    }
+                } else if (!inFactoryWorld) {
+                    this.status = 'В этой способности отряды выходят только из мира-производителя.';
+                    this.refresh();
+                    return;
+                }
+            }
             // Покупка сверх вместимости сектора не запрещена — по правилам лишние
             // отряды погибают после приказа; но об этом надо предупредить до покупки:
             // первый клик только предупреждает, второй — ставит отряд.

@@ -1586,7 +1586,9 @@ rule('abil-1', '«Resolve Faction Ability: The active player may resolve the spe
         guard(st, 0, sys.id, pos);
         st.order = { seat: 0, order: 'dominate', system: sys.id, phase: 'dominate' };
         try {
-            const steps = FS_EFFECTS.parse((faction.ability && faction.ability.text) || '', { kind: 'ability', faction: faction.id });
+            const steps = FS_EFFECTS.abilityFor
+                ? FS_EFFECTS.abilityFor(faction)
+                : FS_EFFECTS.parse((faction.ability && faction.ability.text) || '', { kind: 'ability', faction: faction.id });
             eq(steps.length > 0, true, 'способность разбирается в шаги: ' + faction.id);
             st.order.ability = faction.ability;
             eq(!!st.order.ability, true, 'способность показана игроку');

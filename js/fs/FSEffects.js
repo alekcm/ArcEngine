@@ -104,6 +104,120 @@ const FS_EFFECTS = {
         return { n: m[1] ? Number(m[1]) : 1, kind: m[2] ? this.icon(m[2]) : 'any' };
     },
 
+    // The nested deploy of «Массовое Производство»: the order of the ability is
+    // not a card — it is a production, and it ends with finishGuardDeploy.
+    startGuardDeploy(R, state, seat, factory) {
+        const order = state.order;
+        if (!order) return null;
+        const p = state.players[seat];
+        order.phase = 'guardDeploy';
+        order.guardFactory = { system: factory.system, pos: factory.pos };
+        // «Купите минимум 2 отряда одного типа по цене на 1 меньше обычного»
+        order.discount = (order.discount || 0) + 1;
+        // «2 Гвардейца могут быть куплены за 1 жетон запасов»
+        order.supplyDeal = { n: 2, unit: 'Гвардейца' };
+        // «Они должны быть развернуты в мире, который их произвёл»
+        order.deployInFactoryWorld = true;
+        // «минимум 2 одного типа» — the first purchase locks the type.
+        order.unitsLocked = null;
+        // The ability is not over: the factory is still producing.
+        order.finishAfterEffect = false;
+        R.log(state, seat, p.name + ' отдаёт приказ развёртывания: фабрика выпускает отряды в свой мир.');
+        return null;
+    },
+
+    // --- the abilities of the factions ----------------------------------------
+    // The twelve faction abilities are fixed texts: their steps are written once,
+    // by hand, instead of being chopped out of the sentence by the text rules.
+    // Whatever the text parser cannot say in the words of the card (a second
+    // route step, a destination by hand, the presence condition) lives here.
+    abilitySteps(factionId) {
+        const T = {
+            'адептус-механикус': [
+                { op: 'moveStructure', n: 1, kind: 'factory', ofSystem: 'active',
+                  dest: 'worldActiveOrAdjacentNeutralOrFriendly', pick: true,
+                  ability: 'передвинуть 1 из ваших фабрик на нейтральный или дружественный мир в этой или соседней системе по правилам передвижения наземных юнитов' },
+            ],
+            'имперская-гвардия': [
+                { op: 'guardDeploy',
+                  ability: 'выполнить приказ развертывания, используя 1 фабрику в активной системе: минимум 2 отряда одного типа, цена на 1 меньше, производство в мире-производителе, 2 Гвардейца за 1 жетон запасов' },
+            ],
+            'империя-тау': [
+                { op: 'require', what: 'unitsOrStructures', system: 'active' },
+                { op: 'drawEvents', n: 4, who: 'me' },
+                { op: 'playEvent' },
+            ],
+            'инквизиция': [
+                { op: 'choice', ability: 'способность «Глубочайший Ужас» — выберите ветку',
+                  options: [
+                    { op: 'sequence', steps: [
+                        { op: 'route', n: 1, who: 'me', ofSystem: 'active', filter: { contains: ['крейсер'] },
+                          ability: 'деморализовать 1 Инквизиторский Крейсер в активной системе' },
+                        { op: 'route', n: 1, who: 'foe', ofSystem: 'adjacent', unitType: 'ship',
+                          ability: 'деморализовать вражеский корабль в соседней системе' } ] },
+                    { op: 'sequence', steps: [
+                        { op: 'route', n: 1, who: 'me', ofSystem: 'active', filter: { contains: ['штурмовик'] },
+                          ability: 'деморализовать 1 Штурмовика в активной системе' },
+                        { op: 'route', n: 1, who: 'foe', ofSystem: 'adjacent', unitType: 'ground', maxKl: 2,
+                          ability: 'деморализовать вражеский наземный отряд с командным уровнем 2 или ниже в соседней системе' } ] },
+                  ] },
+            ],
+            'космодесант': [
+                { op: 'require', what: 'materiel', n: 1 },
+                { op: 'payMateriel', n: 1 },
+                { op: 'choice', ability: 'способность «За Императора» — выберите ветку',
+                  options: [
+                    { op: 'replaceUnit', n: 1, pick: true, ofSystem: 'active', filter: { contains: ['скаут'] },
+                      to: 'космодесант',
+                      ability: 'заменить 1 отряд скаутов в активной системе на 1 отряд космодесанта из запаса' },
+                    { op: 'replaceUnit', n: 1, pick: true, ofSystem: 'active', filter: { contains: ['космодесант'] },
+                      to: 'ленд рейдер',
+                      ability: 'заменить 1 отряд космодесанта в активной системе на ленд рейдер из запаса' },
+                  ] },
+            ],
+            'космодесант-хаоса': [
+                { op: 'moveUnits', n: 1, pick: true, ofSystem: 'active', filter: { contains: ['культист'] },
+                  dest: 'friendlyOrUncontrolledWorldAdjacent',
+                  ability: 'забрать 1 культиста из активной системы и переместить его в любой дружественный или никем не контролируемый мир в соседней системе' },
+            ],
+            'орки': [
+                { op: 'placeUnit', n: 1, pick: true, buy: true, dest: 'friendlyWorldActive', unitType: 'ground',
+                  ability: 'купить 1 отряд и разместить его в дружественном мире в активной системе' },
+            ],
+            'темные-эльдары': [
+                { op: 'require', what: 'unroutedShip', system: 'active' },
+                { op: 'gainAsset', kind: 'reinforcement', who: 'me', nFromWorlds: 'enemyOrUncontrolled', system: 'active' },
+                { op: 'choice', ability: 'способность «Неутолимая Жажда» — переместить корабль?',
+                  options: [
+                    { op: 'moveUnit', n: 1, pick: true, unitType: 'ship', areaType: 'void', dest: 'friendlyVoidActive',
+                      ability: 'взять один из ваших кораблей из любой пустоты и разместить его в дружественной пустоте в активной системе' },
+                    { op: 'note', text: 'Корабль остаётся на месте.', ability: 'не перемещать корабль' },
+                  ] },
+            ],
+            'эльдары': [
+                { op: 'moveUnits', n: 1, pick: true, ofSystem: 'active', areaType: 'world', dest: 'friendlyWorldsAny',
+                  ability: 'забрать 1 отряд из любого мира в активной системе и переместить его в любой дружественный мир' },
+            ],
+            'некроны': [
+                { op: 'moveUnits', n: 99, pick: true, sourceWorld: true, dest: 'friendlyWorldWithStructureActive',
+                  ability: 'забрать любое количество ваших отрядов из одного мира и разместить их в любом дружественном мире активной системы, который содержит постройку' },
+            ],
+        };
+        return T[factionId] || null;
+    },
+
+    abilityFor(faction) {
+        const id = faction && faction.id;
+        const steps = id ? this.abilitySteps(id) : null;
+        if (steps) {
+            return typeof structuredClone === 'function'
+                ? structuredClone(steps)
+                : JSON.parse(JSON.stringify(steps));
+        }
+        const ability = faction && faction.ability ? faction.ability.text : '';
+        return this.parse(ability, { kind: 'ability', faction: id });
+    },
+
     // One sentence -> the steps.
     parseSentence(sentence, ctx) {
         const s = sentence.trim();
@@ -263,6 +377,11 @@ const FS_EFFECTS = {
         if (merged.type === undefined && question.op === 'placeUnit' && question.kind2 !== undefined) {
             merged.type = question.kind2;
         }
+        // A staged question (the world a stack of units comes from, the factory of
+        // the nested deploy) may be answered with the generic «area»: the value is
+        // remembered under the name the step reads.
+        if (question.stage === 'source' && merged.area && !merged.source) { merged.source = merged.area; delete merged.area; }
+        if (question.stage === 'factory' && merged.area && !merged.factory) { merged.factory = merged.area; delete merged.area; }
         // A branch of a choice keeps its own question: while that question waits,
         // the answer belongs to the branch, not to the choice again.
         const step = pending.choice || pending.steps[pending.index];
@@ -527,6 +646,28 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'gainAsset': {
+                // «за каждый неконтролируемый или вражеский мир в активной системе» —
+                // counted before any question is asked.
+                if (step.nFromWorlds === 'enemyOrUncontrolled') {
+                    const active = state.order ? state.order.system : null;
+                    let count = 0;
+                    if (active) {
+                        const sys = state.systems.find(x => x.id === active);
+                        for (const area of (sys ? sys.areas : [])) {
+                            if (!area.world) continue;
+                            if (this.areaStanding(state, seat, active, area.pos) !== 'friendly') count++;
+                        }
+                    }
+                    if (count > 0) {
+                        const base = p.faction === 'тираниды' && step.kind === 'reinforcement' ? 4 : 3;
+                        const limit = Math.max(base, p.assetLimit || 0);
+                        p.assets[step.kind] = Math.min(limit, (p.assets[step.kind] || 0) + count);
+                        R.log(state, seat, p.name + ' получает жетоны подкрепления: ' + count + ' (за неконтролируемые или вражеские миры).');
+                    } else {
+                        R.log(state, seat, 'В активной системе нет неконтролируемых или вражеских миров — жетон подкрепления не получен.');
+                    }
+                    return null;
+                }
                 if (step.kind === 'any') {
                     return { question: { kind: 'assetType', who: seat, op: 'gainAsset', n: step.n || 1, options: ['forge', 'cache', 'reinforcement'], text: 'Какой жетон ресурса получить?' } };
                 }
@@ -538,13 +679,70 @@ const FS_EFFECTS = {
                 R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + step.kind + '.');
                 return null;
             }
+            // «При выполнении приказа доминирования…» — the condition of the ability.
+            case 'require': {
+                const active = state.order ? state.order.system : null;
+                let ok = true;
+                if (step.what === 'materiel') {
+                    ok = (p.materiel || 0) >= (step.n || 1);
+                } else if (step.what === 'unitsOrStructures') {
+                    ok = !!(active && R.hasUnitsOrStructures(state, seat, active));
+                } else if (step.what === 'unroutedShip') {
+                    ok = !!active && state.units.some(u => u.seat === seat && !u.routed && u.system === active
+                        && (R.unitOf(state, u) || {}).type === 'ship');
+                }
+                if (ok) return null;
+                R.log(state, seat, 'Способность не может быть применена: не хватает условий.');
+                if (state.order && state.order.finishAfterEffect) state.order.finishAfterEffect = false;
+                if (state.order && state.order.seat === seat) R.finishOrder(state, seat);
+                return { stop: true };
+            }
+            case 'payMateriel': {
+                const n = step.n || 1;
+                if ((p.materiel || 0) < n) {
+                    R.log(state, seat, 'Способность не может быть применена: не хватает материи.');
+                    if (state.order && state.order.finishAfterEffect) state.order.finishAfterEffect = false;
+                    if (state.order && state.order.seat === seat) R.finishOrder(state, seat);
+                    return { stop: true };
+                }
+                p.materiel -= n;
+                R.log(state, seat, p.name + ' тратит ' + n + ' материи.');
+                return null;
+            }
+            case 'sequence': {
+                // The steps of the step: the answer flow replaces the list with it.
+                return { replace: step.steps || [] };
+            }
+            case 'guardDeploy': {
+                const active = state.order ? state.order.system : null;
+                const factories = active
+                    ? state.structures.filter(st => st.seat === seat && st.type === 'factory' && st.system === active)
+                    : [];
+                if (!factories.length) {
+                    R.log(state, seat, 'Способность «Массовое Производство» не применена: в активной системе нет вашей фабрики.');
+                    return null;
+                }
+                const areas = factories.map(st => ({ system: st.system, pos: st.area }));
+                if (areas.length > 1) {
+                    return { question: { kind: 'areas', answerKey: 'factory', stage: 'factory', who: seat, op: 'guardDeploy', options: areas, text: 'Какая фабрика производит отряды?' } };
+                }
+                return this.startGuardDeploy(R, state, seat, areas[0]);
+            }
             case 'moveUnits': {
-                const units = this.unitsOf(R, state, seat, combat, {});
+                if (step.sourceWorld) {
+                    const worlds = this.sourceWorlds(R, state, seat);
+                    if (!worlds.length) return null;
+                    return { question: { kind: 'areas', answerKey: 'source', stage: 'source', who: seat, op: 'moveUnits', options: worlds, text: 'С какого мира забрать отряды?' } };
+                }
+                const units = this.unitsOf(R, state, seat, combat, step);
                 if (!units.length) return null;
-                return { question: { kind: 'units', who: seat, op: 'moveUnits', n: Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: 'Какие отряды переместить?' } };
+                return { question: { kind: 'units', who: seat, op: 'moveUnits', n: Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: step.questionText || 'Какие отряды переместить?' } };
             }
             case 'moveStructure': {
-                const structures = state.structures.filter(s => s.seat === seat && (!step.kind || s.type === step.kind));
+                const active = state.order ? state.order.system : null;
+                const structures = state.structures.filter(s =>
+                    s.seat === seat && (!step.kind || s.type === step.kind)
+                    && (!step.ofSystem || !active || s.system === active));
                 if (!structures.length) return null;
                 return { question: { kind: 'structures', who: seat, op: 'moveStructure', options: structures.map(s => s.id), text: 'Что переместить?' } };
             }
@@ -589,10 +787,18 @@ const FS_EFFECTS = {
             case 'placeUnit': {
                 const faction = R.faction(state, seat);
                 const names = this.unitNames(step.what, faction);
-                const types = (faction ? faction.units : []).filter(u => !names.length || names.some(n => this.sameName(u.name, n)));
+                let types = (faction ? faction.units : []).filter(u => !names.length || names.some(n => this.sameName(u.name, n)));
+                // «разместить его в дружественном мире» — a ship has nowhere to
+                // stand there, so the ability covers ground units («1 отряд»).
+                if (step.unitType) types = types.filter(u => u.type === step.unitType);
                 // A free unit also comes from the supply: without a model there is
                 // nothing to place (the rules, "Free Units").
-                const free = types.filter(u => (p.supply.units[u.id] || 0) > 0);
+                let free = types.filter(u => (p.supply.units[u.id] || 0) > 0);
+                if (step.buy) {
+                    // «купить 1 отряд» — the price and the command level are paid.
+                    const cl = R.commandLevel(state, seat);
+                    free = free.filter(u => (u.cost || 0) <= (p.materiel || 0) && (u.kl || 0) <= cl);
+                }
                 if (!free.length) return null;
                 return { question: { kind: 'types', who: seat, op: 'placeUnit', n: step.n || 1, options: free.map(u => u.id), text: 'Какой отряд разместить?' } };
             }
@@ -607,9 +813,9 @@ const FS_EFFECTS = {
                 return { question: { kind: 'areas', who: seat, op: 'placeReinforcement', n: step.n || 1, options: areas, text: 'Где разместить жетон подкрепления?' } };
             }
             case 'moveUnit': {
-                const units = this.unitsOf(R, state, seat, combat, {});
+                const units = this.unitsOf(R, state, seat, combat, step);
                 if (!units.length) return null;
-                return { question: { kind: 'units', who: seat, op: 'moveUnit', n: 1, options: units.map(u => u.id), text: 'Какой отряд переместить?' } };
+                return { question: { kind: 'units', who: seat, op: 'moveUnit', n: 1, options: units.map(u => u.id), text: step.questionText || 'Какой отряд переместить?' } };
             }
             case 'buyUpgrade': {
                 const kind = step.kind || 'combat';
@@ -670,7 +876,7 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'replaceUnit': {
-                const units = this.unitsOf(R, state, seat, combat, { filter: step.filter });
+                const units = this.unitsOf(R, state, seat, combat, step);
                 if (!units.length) return null;
                 return { question: { kind: 'units', who: seat, op: 'replaceUnit', n: Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: 'Какой отряд заменить?' } };
             }
@@ -1142,7 +1348,7 @@ const FS_EFFECTS = {
                 if (!list.length) return null;
                 const faction = FS_EFFECTS.factionOf({ faction: state.players[seat].faction });
                 const names = FS_EFFECTS.unitNames(step.to, faction);
-                const def = names.length ? faction.units.find(u => u.id === names[0]) : null;
+                const def = names.length ? faction.units.find(u => this.sameName(u.name, names[0])) : null;
                 if (!def) return null;
                 const p = state.players[seat];
                 for (const u of list) {
@@ -1158,11 +1364,31 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'moveUnits': {
+                if (step.sourceWorld) {
+                    // The first question: the world the units are taken from.
+                    if (!answer.source) {
+                        const worlds = this.sourceWorlds(R, state, seat);
+                        if (!worlds.length) return null;
+                        return { question: { kind: 'areas', answerKey: 'source', stage: 'source', who: seat, op: 'moveUnits', options: worlds, text: 'С какого мира забрать отряды?' } };
+                    }
+                    // The second question: any number of my unrouted units from it.
+                    if (answer.units === undefined) {
+                        const all = state.units.filter(u => u.seat === seat && !u.routed
+                            && u.system === answer.source.system && u.area === answer.source.pos);
+                        if (!all.length) return null;
+                        return { question: { kind: 'units', who: seat, op: 'moveUnits', n: all.length, options: all.map(u => u.id), text: 'Какие отряды забрать? (любое количество)' } };
+                    }
+                    if (!answer.units.length) return null;
+                } else {
+                    const list0 = units(answer.units);
+                    if (!list0.length) return null;
+                }
                 const list = units(answer.units);
                 if (!list.length) return null;
                 const area = answer.area;
                 if (!area) {
-                    const areas = this.friendlyAreas(R, state, seat);
+                    const areas = this.areasForAbility(R, state, seat, step.dest);
+                    if (!areas.length) return null;
                     return { question: { kind: 'areas', who: seat, op: 'moveUnits', options: areas, text: 'Куда переместить отряды?' } };
                 }
                 for (const u of list) {
@@ -1176,10 +1402,18 @@ const FS_EFFECTS = {
             case 'moveStructure': {
                 const s = state.structures.find(x => x.id === (answer.structure || answer.id));
                 const area = answer.area;
-                if (!s || !area) return null;
+                if (!s) return null;
+                if (!area) {
+                    // «в ДРУГОЙ мир» — the world the factory stands in is not a
+                    // destination.
+                    const areas = this.areasForAbility(R, state, seat, step.dest || 'worldActiveOrAdjacentNeutralOrFriendly')
+                        .filter(a => a.system !== s.system || a.pos !== s.area);
+                    if (!areas.length) return null;
+                    return { question: { kind: 'areas', who: seat, op: 'moveStructure', options: areas, text: 'Куда передвинуть фабрику?' } };
+                }
                 s.system = area.system;
                 s.area = area.pos;
-                R.log(state, seat, state.players[seat].name + ' перемещает постройку.');
+                R.log(state, seat, state.players[seat].name + ' перемещает фабрику.');
                 return null;
             }
             case 'setDie': {
@@ -1218,13 +1452,24 @@ const FS_EFFECTS = {
                 const area = answer.area;
                 if (!area) {
                     // The place of the unit is the next question.
-                    const areas = this.areasFor(R, state, seat, def.type === 'ship' ? 'void' : 'world');
+                    const areas = step.dest
+                        ? this.areasForAbility(R, state, seat, step.dest)
+                        : this.areasFor(R, state, seat, def.type === 'ship' ? 'void' : 'world');
                     return { question: { kind: 'areas', who: seat, op: 'placeUnit', kind2: def.id, options: areas, text: 'Где разместить отряд?' } };
                 }
                 const sys = R.system(state, area.system);
                 const a = R.area(sys, area.pos);
                 if (!a) return null;
                 if ((p.supply.units[def.id] || 0) <= 0) return null;
+                // «купить 1 отряд» — the ability buys at the printed price.
+                if (step.buy) {
+                    if ((p.materiel || 0) < def.cost) {
+                        R.log(state, seat, state.players[seat].name + ' не хватает материи, чтобы купить «' + def.name + '».');
+                        return null;
+                    }
+                    p.materiel -= def.cost;
+                    R.log(state, seat, state.players[seat].name + ' тратит ' + def.cost + ' материи.');
+                }
                 p.supply.units[def.id]--;
                 R.addUnit(state, seat, def.id, area.system, area.pos);
                 R.log(state, seat, state.players[seat].name + ' размещает «' + def.name + '».');
@@ -1258,7 +1503,8 @@ const FS_EFFECTS = {
                 const area = answer.area;
                 if (!u) return null;
                 if (!area) {
-                    const areas = this.friendlyAreas(R, state, seat);
+                    const areas = this.areasForAbility(R, state, seat, step.dest);
+                    if (!areas.length) return null;
                     return { question: { kind: 'areas', who: seat, op: 'moveUnit', options: areas, text: 'Куда переместить отряд?' } };
                 }
                 R.noteMove(state, seat, u, area);
@@ -1342,6 +1588,15 @@ const FS_EFFECTS = {
                 }
                 p.materiel = Math.min(R.MATERIEL_MAX, p.materiel + sum);
                 R.log(state, seat, state.players[seat].name + ' получает материю: ' + sum + '.');
+                return null;
+            }
+            case 'sequence': {
+                // The steps of the sequence are executed in the place of it.
+                return { replace: step.steps || [] };
+            }
+            case 'guardDeploy': {
+                const factory = answer.factory || answer.area;
+                if (factory) return this.startGuardDeploy(R, state, seat, factory);
                 return null;
             }
             case 'choice': {
@@ -1436,6 +1691,24 @@ const FS_EFFECTS = {
         if (step.routed) units = units.filter(u => u.routed);
         else units = units.filter(u => !u.routed);
         if (step.filter) units = units.filter(u => this.unitFits(R.unitOf(state, u), step.filter));
+        // The scope of the ability: the active system, the systems next to it,
+        // worlds only, voids only, ships only, ground only, a command level cap.
+        if (step.ofSystem) units = units.filter(u => this.inScope(R, state, u.system, step.ofSystem));
+        if (step.areaType) {
+            units = units.filter(u => this.areaWorld(state, u.system, u.area) === (step.areaType === 'world'));
+        }
+        if (step.unitType) {
+            units = units.filter(u => {
+                const d = R.unitOf(state, u);
+                return d && d.type === step.unitType;
+            });
+        }
+        if (step.maxKl !== undefined) {
+            units = units.filter(u => {
+                const d = R.unitOf(state, u);
+                return d && (d.kl || 0) <= step.maxKl;
+            });
+        }
         return units;
     },
 
@@ -1473,6 +1746,104 @@ const FS_EFFECTS = {
                 if (!area.world) continue;
                 if (R.control(state, seat, sys.id, area.pos) !== 'friendly') continue;
                 out.push({ system: sys.id, pos: area.pos });
+            }
+        }
+        return out;
+    },
+
+    // --- the printed areas of the faction abilities -------------------------
+    // The tile keeps the areas of a system: worlds and voids. A world is a
+    // world; anything else is a void.
+    areaWorld(state, systemId, pos) {
+        const sys = state.systems.find(x => x.id === systemId);
+        const area = sys && sys.areas.find(a => a.pos === pos);
+        return area ? !!area.world : false;
+    },
+
+    // Who stands in the area, from the point of view of one player: 'friendly'
+    // (only this player), 'enemy' (only the opponent), 'contested' (both),
+    // 'uncontrolled' (nobody). Control cannot say it: an area with the foe
+    // alone and a neutral empty world are both 'none' to control().
+    areaStanding(state, seat, systemId, pos) {
+        const mine = state.units.some(u => u.seat === seat && u.system === systemId && u.area === pos)
+            || state.structures.some(st => st.seat === seat && st.system === systemId && st.area === pos);
+        const foe = state.units.some(u => u.seat !== seat && u.system === systemId && u.area === pos)
+            || state.structures.some(st => st.seat !== seat && st.system === systemId && st.area === pos);
+        if (mine && foe) return 'contested';
+        if (mine) return 'friendly';
+        if (foe) return 'enemy';
+        return 'uncontrolled';
+    },
+
+    // Is the system in the scope of the ability: the active system itself or a
+    // system next to it? No order in flight — everything is in scope.
+    inScope(R, state, systemId, ofSystem) {
+        const active = state.order ? state.order.system : null;
+        if (!ofSystem || !active) return true;
+        if (ofSystem === 'active') return systemId === active;
+        if (ofSystem === 'adjacent') return R.neighbors(state, active).includes(systemId);
+        return true;
+    },
+
+    // The worlds with at least one unrouted unit of the player — the source of
+    // «забрать любое количество отрядов из одного мира».
+    sourceWorlds(R, state, seat) {
+        const seen = new Map();
+        for (const u of state.units) {
+            if (u.seat !== seat || u.routed) continue;
+            if (!this.areaWorld(state, u.system, u.area)) continue;
+            const key = u.system + '|' + u.area;
+            if (!seen.has(key)) seen.set(key, { system: u.system, pos: u.area });
+        }
+        return [...seen.values()];
+    },
+
+    // The destinations of the ability steps: the exact list of worlds and voids
+    // printed on the faction sheet.
+    areasForAbility(R, state, seat, dest) {
+        const active = state.order ? state.order.system : null;
+        const neighbors = active ? R.neighbors(state, active) : [];
+        const out = [];
+        for (const sys of state.systems) {
+            for (const area of sys.areas) {
+                const world = !!area.world;
+                const standing = this.areaStanding(state, seat, sys.id, area.pos);
+                const mine = R.control(state, seat, sys.id, area.pos) === 'friendly';
+                let ok = false;
+                switch (dest) {
+                    // Any friendly world, any system («в любой дружественный мир»).
+                    case 'friendlyWorldsAny':
+                        ok = world && mine;
+                        break;
+                    // A friendly world of the active system («в активной системе»).
+                    case 'friendlyWorldActive':
+                        ok = world && sys.id === active && mine;
+                        break;
+                    // A friendly world of the active system with a structure on it.
+                    case 'friendlyWorldWithStructureActive':
+                        ok = world && sys.id === active && mine
+                            && R.structuresAt(state, sys.id, area.pos).length > 0;
+                        break;
+                    // A friendly void of the active system.
+                    case 'friendlyVoidActive':
+                        ok = !world && sys.id === active && mine;
+                        break;
+                    // A friendly or uncontrolled world of a neighbouring system.
+                    case 'friendlyOrUncontrolledWorldAdjacent':
+                        ok = world && neighbors.includes(sys.id)
+                            && (standing === 'friendly' || standing === 'uncontrolled');
+                        break;
+                    // A neutral or friendly world of this or a neighbouring system.
+                    case 'worldActiveOrAdjacentNeutralOrFriendly':
+                        ok = world && (sys.id === active || neighbors.includes(sys.id))
+                            && (standing === 'friendly' || standing === 'uncontrolled');
+                        break;
+                    default:
+                        // The destination of an ordinary move: a friendly world of
+                        // the active system.
+                        ok = world && sys.id === active && mine;
+                }
+                if (ok) out.push({ system: sys.id, pos: area.pos });
             }
         }
         return out;
