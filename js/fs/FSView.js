@@ -1886,22 +1886,6 @@ const FSView = {
         return tex;
     },
 
-    // Where the fight is, in the world: the camera flies to the contested
-    // sector on the board itself when the battle begins.
-    combatFocus(app, state) {
-        const c = state.combat;
-        if (!c) return null;
-        const sys = state.systems.find(x => x.id === c.system);
-        if (!sys) return null;
-        const area = sys.areas.find(a => a.pos === c.pos);
-        if (!area) return null;
-        const ap = this.areaPos(app, sys, c.pos, null);
-        const disc = area.world ? this.discAt(app, sys, c.pos, null) : null;
-        const x = disc ? disc.x : ap.x;
-        const z = disc ? disc.z : ap.y;
-        return { x, z, y: app.location.terrain.heightAt(x, z) + 30 };
-    },
-
     // The markers of a void sector around each other.
     spread(count, index) {
         const a = count <= 1 ? Math.PI / 4 : index / count * Math.PI * 2;

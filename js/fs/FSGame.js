@@ -387,7 +387,7 @@ class FSGame {
             return;
         }
         const me = s.seat;
-        this.focusArena(s);
+        // The camera belongs to the player — it never moves, not even for the battle.
         this.hand = [];
         const ctx = { title: '', text: '', status: this.status || '', warn: this.warn || '', actions: [], mode: this.mode, setupCellSelected: false };
         // A new order (or a new step of it) — the pending action is dropped.
@@ -738,27 +738,6 @@ class FSGame {
                 this.refresh();
             }
         }, true);
-    }
-
-    // The fight is on the board: while it lasts the camera stands over the
-    // contested sector itself, and afterwards it goes back to the board zoom.
-    focusArena(s) {
-        const c = s && s.combat;
-        const key = c ? c.system + ':' + c.pos : null;
-        if (this.arenaKey === key) return;
-        const was = this.arenaKey;
-        this.arenaKey = key;
-        const camera = this.app && this.app.camera;
-        if (!camera) return;
-        if (c) {
-            if (!this.boardZoom && camera.zoomTarget != null) this.boardZoom = camera.zoomTarget;
-            const point = FSView.combatFocus(this.app, s);
-            if (!point) return;
-            if (camera.lookAt) camera.lookAt(point.x, point.z);
-            if (camera.zoomTarget != null) camera.zoomTarget = Math.max(1.5, camera.zoomTarget || 1);
-        } else if (was && this.boardZoom && camera.zoomTarget != null) {
-            camera.zoomTarget = this.boardZoom;
-        }
     }
 
     highlightSetupTargets() {
