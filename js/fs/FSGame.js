@@ -121,18 +121,6 @@ class FSGame {
         cam.lookAt(this.app.location.width / 2, this.app.location.height / 2);
     }
 
-    // The camera looks at the middle of the board.
-    aimCamera() {
-        const s = this.state;
-        if (!s || !s.systems.length) return;
-        const m = this.view.metrics;
-        if (!m) return;
-        // On desktop the glass HUD occupies unequal side rails (250 px left, 356 px right).
-        // Bias the board toward the free viewport so interactive systems are not hidden underneath it.
-        const hudBias = typeof window !== 'undefined' && window.innerWidth > 980 ? 84 : 0;
-        this.app.camera.lookAt(m.cx + hudBias, m.cy);
-    }
-
     // --- the connection --------------------------------------------------------
     connect() {
         this.net = FSNet.connect({ room: this.room, name: this.name, id: this.id });
@@ -366,9 +354,8 @@ class FSGame {
             }
         }
         FSView.update(this.app, this.view, view);
-        // During a fight the camera belongs to the contested sector (focusArena
-        // glides it there smoothly) — the board centre must not yank it back.
-        if (!view.combat) this.aimCamera();
+        // The camera never moves on its own between state refreshes — not on an
+        // order, not on a purchase, not on a refund. It stays where the player left it.
         // A new round or a new phase — the pending action is dropped.
         if (this.lastPhase !== view.phase || this.lastRound !== view.round) {
             this.mode = 'idle';
