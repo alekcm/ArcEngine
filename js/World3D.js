@@ -210,7 +210,7 @@ const World3D = {
     // --- World objects -----------------------------------------------------------
 
     // Object registration: materials (of child meshes too) — into the kind group (specular
-    // highlight from constants, toon), meshes — into the shadow map, edges — into the ink
+    // highlight from constants, toon), the root — into the shadow map, edges — into the ink
     // edges, the silhouette — into the outline. The root and the children get THEIR OWN
     // metadata: clone() copies it by reference, and the ink edges/outline of clones would
     // write into a shared object.
@@ -238,12 +238,7 @@ const World3D = {
             // All parts — into ONE outline layer: the line follows the overall silhouette, not a part.
             if (solid && o.outline !== false) this.outlineAdd(view, m, k, c);
         }
-        if (o.castShadow !== false) {
-            // ShadowGenerator accepts meshes, not TransformNode containers.
-            // Adding a container itself corrupts the shadow render list.
-            if (mesh.getTotalVertices) view.addShadowCaster(mesh, true);
-            else for (const part of parts.slice(1)) view.addShadowCaster(part, false);
-        }
+        if (o.castShadow !== false) view.addShadowCaster(mesh, true);
         return mesh;
     },
 
@@ -261,10 +256,7 @@ const World3D = {
         if (!mesh) return;
         const parts = [mesh].concat(mesh.getChildMeshes ? mesh.getChildMeshes(false) : []);
         for (const m of parts) this.outlineRemove(view, m);
-        if (view) {
-            if (mesh.getTotalVertices) view.removeShadowCaster(mesh);
-            else for (const part of parts.slice(1)) view.removeShadowCaster(part);
-        }
+        if (view) view.removeShadowCaster(mesh);
         mesh.dispose(false, false);
     },
 

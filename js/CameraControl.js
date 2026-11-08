@@ -44,7 +44,6 @@ class CameraController {
         this.zoomTarget = 1;
         this.followObj = null;
         this.ignorePointer = null;     // (e) => true — the press is not for the camera (editor: gizmo under the cursor)
-        this.leftDragPan = false;      // game opt-in: left-drag pans the board; a stationary click remains game input
         this.viewVersion = 0;          // grows with every camera move (re-project overlays)
         this._lastCam = null;
         this._pointers = new Map();    // pointerId -> { x, y, mode: 'pan' | 'orbit' | 'look' | 'touch', anchor }
@@ -302,14 +301,9 @@ class CameraController {
     }
 
     // Look around: azimuth and pitch change, the camera stays in place — the target swings around it.
-    // Шашки карт направлений (штормы) привязаны к миру, а не к экрану:
-    // игра может заблокировать азимут, чтобы стороны на карте всегда совпадали
-    // со стрелками на экране.
-    lockAzimuth(on) { this.azimuthLocked = on !== false; }
-
     _look(dAzimuth, dPitch) {
         const e = this._eye();
-        if (!this.azimuthLocked) this.azimuth += dAzimuth;
+        this.azimuth += dAzimuth;
         this.pitch = this._clampPitch(this.pitch + dPitch);
         const d = this.distance(), cp = Math.cos(this.pitch);
         this._setTarget3(
@@ -401,7 +395,7 @@ class CameraController {
         if (this.ignorePointer && this.ignorePointer(e)) return;
         let mode = null;
         if (e.pointerType === 'touch') mode = 'touch';
-        else if (e.button === 1 || (e.button === 0 && this.leftDragPan) || (e.button === 0 && this.free && e.shiftKey)) mode = 'pan';
+        else if (e.button === 1 || (e.button === 0 && this.free && e.shiftKey)) mode = 'pan';
         else if (e.button === 2 && (this.free || this.c.orbit > 0)) mode = this.followObj ? 'orbit' : 'look';
         else if (e.button === 0 && this.free) mode = 'orbit';
         if (!mode) return;
@@ -429,7 +423,7 @@ class CameraController {
             // Orbit without limits does not go under the target: the pitch floor is higher than
             // for look-around (a pitch already below it only rises).
             const floor = this._limited() ? -Infinity : Math.min(this.pitch, CameraController.FREE_PITCH.orbitMin * Math.PI / 180);
-            if (!this.azimuthLocked) this.azimuth += (p.x - rec.x) * k;
+            this.azimuth += (p.x - rec.x) * k;
             this.pitch = Math.max(floor, this._clampPitch(this.pitch + (p.y - rec.y) * k));
         } else if (this._pinch && rec.mode === 'touch') {
             rec.x = p.x;
@@ -589,7 +583,7 @@ CameraController.FLY_KEYS = {
     KeyQ: [0, 0, -1], KeyE: [0, 0, 1]
 };
 
-CameraController.EYE_MIN = 8;    // px: the camera no lower than this above the ground under it — zoomed all the way in it presses into the table
+CameraController.EYE_MIN = 40;   // px: the camera no lower than this above the ground under it
 
 // Free camera pitch, °: look-around — almost the full sphere, orbit — not under the target.
 CameraController.FREE_PITCH = { min: -85, max: 88, orbitMin: 8 };

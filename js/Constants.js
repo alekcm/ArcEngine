@@ -48,7 +48,7 @@ const LOCATION_WIDTH = 2048;            // px: location width (the area the game
 const LOCATION_HEIGHT = 2048;           // px: location height
 const LOCATION_GROUND = 0;              // ground texture: 0 — grass, 1 — sand, 2 — snow (Location3D.GROUNDS)
 const GROUND_TILE_SIZE = 512;           // world px per one repeat of the ground texture
-const TERRAIN_NOISE_AMP = 0;            // px: hill amplitude (0 — flat ground; the board of Forbidden Stars lies on a table)
+const TERRAIN_NOISE_AMP = 66;           // px: hill amplitude (0 — flat ground)
 const TERRAIN_NOISE_SCALE = 800;        // px: hill size
 const TERRAIN_NOISE_SEED = 4;           // terrain noise seed
 const TERRAIN_BASE = 0;                 // px: mean ground level
@@ -67,11 +67,6 @@ const AUDIO_FALLOFF_MIN = 150;          // px: full volume while the camera is t
 const AUDIO_FALLOFF_MAX = 1024;         // px: from here on it is silent (fades linearly in between); an object may set its own pair. The camera stands ~800 px from its look-at point at zoom 1
 const AUDIO_PAN = 0.7;                  // 0..1: how far a sound at the side of the screen goes into one ear (0 — mono)
 
-// --- FORBIDDEN STARS (js/fs/*): the board of the game
-const FS_TILE_PX = 260;                 // world px of one system tile
-const FS_CAMERA_ZOOM = 0.62;            // the zoom of the board: screen px per world px
-const FS_CAMERA_PITCH_DEG = 62;         // the tilt of the board view: degrees toward the ground
-
 // --- SAMPLE GAME (Game.js): the "Run" button, the energy bar ---
 const GAME_RUN_SEC = 8;                 // s: a full energy bar lasts this long while running
 const GAME_REST_SEC = 4;                // s: an empty energy bar refills in this time while standing
@@ -86,7 +81,7 @@ const CAMERA_PITCH_DEG = 57;            // pitch toward the ground: 90 — strai
 const CAMERA_ZOOM = 1;                  // starting zoom: PC and tablets
 const CAMERA_ZOOM_MOBILE = 0.7;         // starting zoom: phones (longer screen side < 1024)
 const CAMERA_ZOOM_MIN = 0.5;            // wheel and pinch won't zoom out further (below this the ground edge gets into the frame)
-const CAMERA_ZOOM_MAX = 80;             // won't zoom in closer — the camera can press right into the table (EYE_MIN holds the floor)
+const CAMERA_ZOOM_MAX = 3;              // won't zoom in closer
 const CAMERA_ZOOM_WHEEL_STEP = 0.12;    // fraction of zoom per one wheel notch
 const CAMERA_ZOOM_LERP = 0.18;          // zoom smoothing: fraction of the remainder per frame
 const CAMERA_FOLLOW_LERP = 0.05;        // following an object (follow): fraction of the remainder per frame
