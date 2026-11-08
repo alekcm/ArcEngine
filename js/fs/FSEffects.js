@@ -112,7 +112,7 @@ const FS_EFFECTS = {
             // sentence: «В конце этого раунда, если вы обороняетесь, …» —
             // the tail is classified, the head and the tail-remainder are
             // rejoined as one body.
-            const peeled = this.peelCond(sentence) || this.peelCondMid(sentence);
+            const peeled = this.peelCond(sentence) || this.peelCondMid(sentence) || this.peelImplicitCond(sentence);
             if (peeled) {
                 const parsed = this.parseSentence(peeled.rest, ctx || {});
                 for (const one of parsed) if (one) one.cond = Object.assign(one.cond || {}, peeled.cond);
@@ -368,6 +368,7 @@ const FS_EFFECTS = {
         }
         condText = condText.replace(/[.,\s]+$/, '').trim();
         rest = rest.replace(/^[,\s]+/, '').replace(/[,\s]+$/, '').trim();
+        rest = rest.replace(/^чем у (?:вашего )?(?:противник[а-яёa-z]*|него|неё|нее)\s*,\s*/i, '');
         if (!condText || !rest) return null;
         const cond = this.classifyCond(condText);
         if (!cond) return null;
@@ -386,6 +387,28 @@ const FS_EFFECTS = {
         if (/больше/.test(t) && /недеморализованн|(отрядов с командным уровнем)/.test(t)) {
             const kl = /командным уровнем (\d+)/.exec(t);
             return { unitMore: true, kl: kl ? Number(kl[1]) : null };
+        }
+        return null;
+    },
+
+    // «у вас больше `morale cube`, чем у него, …» — the leader started with
+    // the predicate: the leading-if form written without «если».
+    peelImplicitCond(sentence) {
+        const s = String(sentence || '').replace(/^\s+/, '');
+        const R = [
+            { re: /^(?:число )?у вас (больше|меньше) [^.;]{0,40}?`morale cube`[^.;]{0,40}?,\s*чем у (?:вашего )?(?:противник[а-яёa-z]*|него|неё|нее)[^.;,]*,\s*/i,
+              cond: m => (m[1] === 'меньше' ? { cubeLess: 'morale' } : { cubeMore: 'morale' }) },
+            { re: /^у вас больше [^.;]{0,30}?недеморализованн[а-яёa-z]* отрядов(?: с командным уровнем (\d+))?[^.;]{0,40}?,\s*чем у (?:вашего )?(?:противник[а-яёa-z]*|него|неё|нее)[^.;,]*,\s*/i,
+              cond: m => ({ unitMore: true, kl: m[1] ? Number(m[1]) : null }) },
+            { re: /^у (?:вашего )?противника есть хотя бы (\d+) деморализованн[а-яёa-z]+ отряд[а-яёa-z]*,\s*/i,
+              cond: m => ({ foeRouted: Number(m[1]) }) },
+        ];
+        for (const one of R) {
+            const m = one.re.exec(s);
+            if (!m) continue;
+            const rest = s.slice(m[0].length);
+            if (!rest.trim()) return null;
+            return { cond: one.cond(m), rest };
         }
         return null;
     },
@@ -416,7 +439,7 @@ const FS_EFFECTS = {
     // «уничтожить N <кто>, чтобы <эффект>» — the destroy is the price, the
     // part after «чтобы» is the reward: both happen together, or nothing.
     destroyToReward(s, ctx) {
-        const m = /^уничтож[а-яёa-z]*\s+(?:(\d+)\s+)?(?:(?:одного|одну|1)\s+)?([^.`,]{3,80}?)\s*,?\s*чтобы\s+(.*)$/i.exec(String(s || ''));
+        const m = /^уничтож(?!енн)[а-яёa-z]*\s+(?:(\d+)\s+)?(?:(?:оди?[а-яёa-z]*н[а-яёa-z]*|1)\s+)?([^.`,]{3,80}?)\s*,?\s*чтобы\s+(.*)$/i.exec(String(s || ''));
         if (!m) return null;
         const tail = String(m[3] || '');
         const parts = tail.split(/\s+,?\s*и\s+затем\s+/i);
@@ -425,7 +448,8 @@ const FS_EFFECTS = {
         if (!pieces.length) return null;
         const what = String(m[2] || '').trim();
         const clean = stripQualifier(what).replace(/в \S+(?: \S+){0,3}$/u, '').trim();
-        const units = this.unitNames(clean, this.factionOf(ctx));
+        const faction = this.factionOf(ctx);
+        const units = this.unitNames(clean, faction);
         const filter = units.length ? { types: units } : (typeFilter(clean) || unitFilter(clean));
         const steps = [{ op: 'destroy', n: num(m[1]), who: 'me', pick: true, filter, text: 'уничтожьте: ' + clean }];
         return steps.concat(pieces);
@@ -441,8 +465,9 @@ const FS_EFFECTS = {
         // The «за каждый ... получите 1 X либо 1 Y» ability: one choice.
         const perUnit = this.perUnitEither(s);
         if (perUnit) return perUnit;
-        // "either ... or ..." — the player chooses.
-        const either = s.replace(/^\s*либо\s+/i, '').split(/\s+либо\s+/i);
+        // "either ... or ..." — the player chooses. A sentence that starts with
+        // «потратьте» pays for one effect: the rules read it as one piece.
+        const either = /^потрат/i.test(s) ? [s] : s.replace(/^\s*либо\s+/i, '').split(/\s+либо\s+/i);
         if (either.length >= 2) {
             // Every option keeps the sentence it came from — the buttons of the
             // choice name what each branch actually does.
@@ -833,7 +858,7 @@ const FS_EFFECTS = {
         const parts = m[1].split(/\s+и\s+/);
         const steps = [];
         for (const p of parts) {
-            const pair = /^(\d+|один|одно|два|две)?\s*`([^`]+)`\s*\.?$/.exec(p.trim());
+            const pair = /^(\d+|один|одно|два|две)?\s*`([^`]+)`\s*\.*$/.exec(p.trim());
             if (!pair) return null;
             const k = this.iconKind(pair[2]);
             if (k !== 'token' && k !== 'cube') return null;
@@ -1248,9 +1273,14 @@ const FS_EFFECTS = {
             }
             case 'extraDamage': {
                 if (!inCombat) return null;
-                // The extra damage goes to one side or to both.
+                // The extra damage goes to one side or to both. The «foe» of a
+                // card that offers «the opponent takes 3 more damage» is the side
+                // other than the card's player: the role is fixed for this combat.
                 if (step.who === 'both') combat.extraDamageBoth = (combat.extraDamageBoth || 0) + (step.n || 0);
-                else if (step.who === 'foe') combat.extraDamageFoe = (combat.extraDamageFoe || 0) + (step.n || 0);
+                else if (step.who === 'foe') {
+                    combat.extraDamageFoe = (combat.extraDamageFoe || 0) + (step.n || 0);
+                    combat.extraDamageFoeSide = (seat === combat.attacker) ? 'defender' : 'attacker';
+                }
                 else combat.extraDamage = (combat.extraDamage || 0) + (step.n || 0);
                 return null;
             }
@@ -2372,14 +2402,25 @@ const FS_EFFECTS = {
     // The names of the units of the text: "a Guardsman" -> the guardsmen.
     unitNames(what, faction) {
         if (!what || !faction) return [];
-        const text = String(what).toLowerCase();
-        const words = text.split(/[^а-яёa-z']+/).filter(Boolean);
-        const last = words.length ? words[words.length - 1] : text;
-        const names = [];
-        for (const u of faction.units) {
-            if (this.sameName(u.name, text) || this.sameName(u.name, last)) names.push(u.name);
+        const resolveOne = (seg) => {
+            const text = String(seg || '').toLowerCase();
+            const words = text.split(/[^а-яёa-z']+/).filter(Boolean);
+            const last = words.length ? words[words.length - 1] : text;
+            const names = [];
+            for (const u of faction.units) {
+                if (this.sameName(u.name, text) || this.sameName(u.name, last)) names.push(u.name);
+            }
+            return names;
+        };
+        const base = resolveOne(what);
+        // «Карнифекс или Корабль-Улей» — each part names a unit: the union.
+        if (!/или|либо/i.test(String(what))) return base;
+        const seen = new Set(base);
+        const out = [...base];
+        for (const piece of String(what).split(/\s+или\s+|\s+либо\s+/i)) {
+            for (const u of resolveOne(piece)) if (!seen.has(u)) { seen.add(u); out.push(u); }
         }
-        return names;
+        return out;
     },
 
     // The names of the units are written in different cases: "Гвардейца" and
@@ -2446,38 +2487,6 @@ const RULES = [
             return { op: 'trigger', trigger, steps, text: s, note: !steps.length };
         },
     },
-    // "your opponent loses 2 `att. token`" / "the opponent loses 1 `def. cube`"
-    // A loss inside a sentence that starts with a gain gives the gain as well:
-    // "get 1 `morale cube`, your opponent loses 1 `morale cube`".
-    {
-        re: /(?:противник[а-яёa-z]*|вражеск[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?:теряет|терять|потеряет|потерять|теряют|потеряют|потерял|потеряли)\s+([^;]{0,80})/i,
-        build: (m, ctx, sentence) => {
-            const icons = [...m[1].matchAll(/`([^`]+)`/g)].map(x => x[1]);
-            if (!icons.length) return null;
-            const n = num((m[1].match(/\d+/) || [])[0]);
-            const steps = [];
-            // The gain of the same sentence, before the loss.
-            const gain = /получ(?:ите|ает|ают)\s+(?:(\d+|один|одно|два)\s*)?(?:`([^`]+)`|куб[а-яёa-z]*)/i.exec(String(sentence || ''));
-            if (gain && gain[2]) {
-                const kind = FS_EFFECTS.iconKind(gain[2]);
-                if (kind === 'cube' || kind === 'token') {
-                    steps.push({
-                        op: kind === 'cube' ? 'gainDie' : 'gainToken',
-                        n: num(gain[1]),
-                        kind: FS_EFFECTS.icon(gain[2]),
-                        onlyIfFoeHas: kind === 'cube' ? FS_EFFECTS.icon(gain[2]) : undefined,
-                        who: 'me',
-                    });
-                }
-            }
-            for (const ic of icons) {
-                const kind = FS_EFFECTS.iconKind(ic);
-                if (kind === 'token') steps.push({ op: 'loseToken', n, kind: FS_EFFECTS.icon(ic), who: 'foe' });
-                else if (kind === 'cube') steps.push({ op: 'loseDie', n, kind: FS_EFFECTS.icon(ic), pick: true, who: 'foe' });
-            }
-            return steps.length ? steps : null;
-        },
-    },
     // "the opponent loses 1 die of their choice"
     {
         re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?теря[а-яёa-z]*\s+(\d+)?\s*кубик/i,
@@ -2526,7 +2535,7 @@ const RULES = [
     // card: ONE spend of ONE die of ANY of the kinds listed, never a pair of
     // sequential demands.
     {
-        re: /потрат[а-яёa-z]*\s+(?:любое количество\s+)?(?:до\s+)?(всех|(\d+))?\s*(?:ваш[а-яёa-z]*|своих|свои)?\s*`([^`]+)`([^;]{0,40})/i,
+        re: /потрат[а-яёa-z]*\s+(?:(?:либо|или)\s+)?(?:любое количество\s+)?(?:до\s+)?(всех|(\d+))?\s*(?:ваш[а-яёa-z]*|своих|свои)?\s*`([^`]+)`([^;]{0,40})/i,
         build: (m, ctx, s) => {
             // The «тратится всё перечисленное» half of the sentence ends at
             // «чтобы» — the gain half is not part of the payment.
@@ -2538,19 +2547,32 @@ const RULES = [
                 if (FS_EFFECTS.iconKind(mm[1]) !== 'cube') continue;
                 spots.push({ end: mm.index + mm[0].length, start: mm.index, kind: FS_EFFECTS.icon(mm[1]) });
             }
-            const all = /все/.test(m[1] || '');
+            const all = /все|любое количество/i.test(m[0] || '');
             const n = all ? 99 : num(m[2]);
             const union = spots.length > 1
-                && spots.every((q, i) => i === 0 || /или/i.test(src.slice(spots[i - 1].end, q.start)));
+                && spots.every((q, i) => i === 0 || /или|либо/i.test(src.slice(spots[i - 1].end, q.start)));
             if (union) {
                 const kinds = spots.map(q => q.kind);
-                return [{ op: 'spendDie', n, kind: kinds[0], kinds, all, pick: true }].concat(/** @type {any[]} */ (gainStep(s)));
+                return [{ op: 'spendDie', n, kind: kinds[0], kinds, all, pick: true, who: 'me' }]
+                    .concat(/** @type {any[]} */ (gainStep(s)))
+                    .concat(/** @type {any[]} */ (foeLoseSteps(s)));
             }
-            const steps = spots.map(q => ({ op: 'spendDie', n, kind: q.kind, all, pick: true }));
+            const steps = spots.map(q => ({ op: 'spendDie', n, kind: q.kind, all, pick: true, who: 'me' }));
             if (!steps.length) return null;
             // The «…чтобы получить 2 `att. token`» half of the same sentence is
             // its own step: the tokens a payment buys are given to the payer.
-            return steps.concat(/** @type {any[]} */ (gainStep(s)));
+            return steps.concat(/** @type {any[]} */ (gainStep(s)))
+                .concat(/** @type {any[]} */ (foeLoseSteps(s)));
+        },
+    },
+    {
+        re: /(?:противник[а-яёa-z]*|вражеск[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?:теряет|терять|потеряет|потерять|теряют|потеряют|потерял|потеряли)\s+([^;]{0,80})/i,
+        // The «Ваш противник потерял …» half of a payment is resolved by the
+        // spend rule itself (foeLoseSteps): this rule serves sentences without
+        // «потратьте».
+        build: (m, ctx, sentence) => {
+            const steps = foeLoseSteps(sentence);
+            return steps.length ? steps : null;
         },
     },
     // "spend any number of dice" / "spend up to 2 dice"
@@ -2669,7 +2691,7 @@ const RULES = [
     // «деморализованный отряд» inside it must not fire the route rules.
     // "restore 1 of your routed units" / "restore all your units"
     {
-        re: /восстанов[а-яёa-z]*\s+(всех?\s*)?(?:(\d+)\s+)?(?:ваш[а-яёa-z]*|сво[а-яёa-z]*)?\s*(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*|пехот[а-яёa-z]*)/i,
+        re: /восстанов[а-яёa-z]*\s+(всех?\s*)?(?:(\d+|оди?[а-яёa-z]*н[а-яёa-z]*|одной?)\s+)?(?:ваш[а-яёa-z]*|сво[а-яёa-z]*)?\s*(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*|пехот[а-яёa-z]*)/i,
         build: m => ({ op: 'restore', n: m[2] ? num(m[2]) : 1, all: !!m[1], pick: true }),
     },
     // "деморализуйте 1 отряд с командным уровнем N в этом мире" — the card
@@ -2682,24 +2704,24 @@ const RULES = [
     // "the opponent must choose and route 1 of his units"
     {
         noWhen: true,
-        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?<!не)деморализ[а-яёa-z]*\s+(?:и\s+)?(?:(\d+)\s*)?(?:свой|ваш|одного|одну|1)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)?/i,
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?<!не)деморализ(?!ованн)[а-яёa-z]*\s+(?:и\s+)?(?:(\d+)\s*)?(?:свой|ваш|одного|одну|1)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)?/i,
         build: m => ({ op: 'route', n: num(m[1]), pick: true, who: 'foe' }),
     },
     // "you must route 1 of your units" / "demoralise 1 enemy unit"
     {
         noWhen: true,
-        re: /(?<!не)деморализ[а-яёa-z]*\s+(?:(\d+)\s*)?(?:ваш|вражеск|противник[а-яёa-z]*|1|одного|одну)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)?/i,
+        re: /(?<!не)деморализ(?!ованн)[а-яёa-z]*\s+(?:(\d+)\s*)?(?:ваш|вражеск|противник[а-яёa-z]*|1|одного|одну)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)?/i,
         build: m => ({ op: 'route', n: num(m[1]), pick: true }),
     },
     // "destroy 1 of your unrouted units" / "destroy a cultist unit"
     {
-        re: /уничтож[а-яёa-z]*\s+(?:(\d+)\s+)?(?:одного|одну|1|ваш[а-яёa-z]*\s+недеморализованн[а-яёa-z]*\s+(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)|отряд[а-яёa-z]*|юнит[а-яёa-z]*)/i,
+        re: /уничтож(?!енн)[а-яёa-z]*\s+(?:(\d+)\s+)?(?:одного|одну|1|ваш[а-яёa-z]*\s+недеморализованн[а-яёa-z]*\s+(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)|отряд[а-яёa-z]*|юнит[а-яёa-z]*)/i,
         build: m => ({ op: 'destroy', n: m[1] ? num(m[1]) : 1, max: /до\s/.test(m[0]), pick: true }),
     },
     // "place 1 free Guardsman in a friendly world" / "place 2 free reinforcement tokens"
     {
-        re: /(?:размест[а-яёa-z]*|помест[а-яёa-z]*)\s+(?:(\d+)\s+)?(?:бесплатн[а-яёa-z]+\s+)?([^,.;]{2,60}?)(?:\s+в\s+|\s+на\s+|\.?\s*$)/i,
-        build: (m, ctx) => {
+        re: /(?:размест[а-яёa-z]*|помест[а-яёa-z]*)\s+(?:(\d+|оди?[а-яёa-z]*н[а-яёa-z]*)\s+)?(?:бесплатн[а-яёa-z]+\s+)?([^,.;]{2,60}?)(?:\s+в\s+|\s+на\s+|\.?\s*$)/i,
+        build: (m, ctx, s) => {
             const what = (m[2] || '').trim();
             const n = num(m[1]) || 1;
             if (/подкреплен/.test(what)) return { op: 'placeReinforcement', n, pick: true };
@@ -2710,7 +2732,7 @@ const RULES = [
             const names = FS_EFFECTS.unitNames(what, faction);
             if (names.length) {
                 const step = { op: 'placeUnit', n, what: names[0], pick: true, free: true };
-                if (/в этом мире|эту область|эти области/i.test(m[0])) step.dest = 'combatWorld';
+                if (/в этот мир|в этом мире|этого мира|эту область|эти области|спорную область|спорной области/i.test(s || '')) step.dest = 'combatWorld';
                 return step;
             }
             return null;
@@ -2919,7 +2941,7 @@ const RULES = [
     // "if the opponent takes damage, he takes 3 more damage"
     {
         re: /если\s+(?:противник[а-яёa-z]*|он)(?![а-яёa-z])[^.`]{0,40}?получ[а-яёa-z]*\s+урон[^.`]{0,40}?получ[а-яёa-z]*\s+ещё\s+(\d+)\s+урона/i,
-        build: m => ({ op: 'extraDamage', n: Number(m[1]), when: 'damage' }),
+        build: m => ({ op: 'extraDamage', n: Number(m[1]), when: 'damage', who: 'foe' }),
     },
     // "once per round" — the limit of the upgrade.
     {
@@ -3316,6 +3338,25 @@ const RULES = [
         re: /уничтожьте этот отряд/i,
         build: () => ({ op: 'destroyUnit' }),
     },
+    // The sentences the engine cannot act on by itself yet — the player
+    // performs them by hand at the end of the damage step; the card is never
+    // silent and never fires the wrong thing:
+    {
+        re: /получ[а-яёa-z]*\s+по\s+(\d+)\s+материал[а-яёa-z]*\s+за\s+кажд[а-яёa-z]*\s+[^,.;]{0,80}?уничтож[а-яёa-z]*/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'materiel-per-destroyed' }),
+    },
+    {
+        re: /любой\s+отряд[а-яёa-z]*[^.;]{0,80}?уничтожается[.!]?$/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'destroy-routed-foe' }),
+    },
+    {
+        re: /нанести\s+(?:его\s+)?ваш[а-яёa-z]*\s+деморализованн[а-яёa-z]*\s+отряд[а-яёa-z]*/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'damage-own-routed' }),
+    },
+    {
+        re: /половину\s+значения\s+боевого\s+духа/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'morale-from-routed' }),
+    },
     // The sentences that say no rule of their own: the engine keeps them.
     {
         re: /^(?:—\s*\([^)]*\)|если одинаково, выбираете вы\.?|это может привести к нов[а-яёa-z]+ (?:сражению|битве)[^.]*\.?|не нарушая базовых правил размещения\.?|неиспользованный остаток материалов пропадает\.?|нужно быть главным по машинам\.?|требуются\s*\.?|пассивно|используйте эти материалы только для покупки любого количества кораблей\.?|уничтоженный город засчитывается[^.]*\.?|командный уровень этой карты не может превышать[^.]*\.?|неиспользованный остаток[^.]*\.?)$/i,
@@ -3337,6 +3378,37 @@ function countKind(text) {
 }
 
 // The number of the text: "2" or "up to 2" or "one".
+// The loss of the opponent in the words of the same sentence:
+// «… Ваш противник потерял 2 `def. cube`.»
+function foeLoseSteps(sentence) {
+    const m = /(?:противник[а-яёa-z]*|вражеск[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?:теряет|терять|потеряет|потерять|теряют|потеряют|потерял|потеряли)\s+([^;]{0,80})/i.exec(String(sentence || ''));
+    if (!m) return [];
+    const icons = [...m[1].matchAll(/`([^`]+)`/g)].map(x => x[1]);
+    if (!icons.length) return [];
+    const n = num((m[1].match(/\d+/) || [])[0]);
+    const steps = [];
+    // The gain of the same sentence, before the loss.
+    const gain = /получ(?:ите|ает|ают)\s+(?:(\d+|один|одно|два)\s*)?(?:`([^`]+)`|куб[а-яёa-z]*)/i.exec(String(sentence || ''));
+    if (gain && gain[2]) {
+        const kind = FS_EFFECTS.iconKind(gain[2]);
+        if (kind === 'cube' || kind === 'token') {
+            steps.push({
+                op: kind === 'cube' ? 'gainDie' : 'gainToken',
+                n: num(gain[1]),
+                kind: FS_EFFECTS.icon(gain[2]),
+                onlyIfFoeHas: kind === 'cube' ? FS_EFFECTS.icon(gain[2]) : undefined,
+                who: 'me',
+            });
+        }
+    }
+    for (const ic of icons) {
+        const kind = FS_EFFECTS.iconKind(ic);
+        if (kind === 'token') steps.push({ op: 'loseToken', n, kind: FS_EFFECTS.icon(ic), who: 'foe' });
+        else if (kind === 'cube') steps.push({ op: 'loseDie', n, kind: FS_EFFECTS.icon(ic), pick: true, who: 'foe' });
+    }
+    return steps;
+}
+
 function gainStep(src) {
     // The «…чтобы получить 2 `att. token`» half of a payment: the tokens the
     // payment buys. Nothing when the clause is absent.
@@ -3345,8 +3417,8 @@ function gainStep(src) {
     const kind = FS_EFFECTS.icon(m[2]);
     const k = FS_EFFECTS.iconKind(m[2]);
     const n = num(m[1]);
-    if (k === 'token') return [{ op: 'gainToken', n, kind }];
-    if (k === 'cube') return [{ op: 'gainDie', n, kind }];
+    if (k === 'token') return [{ op: 'gainToken', n, kind, who: 'me' }];
+    if (k === 'cube') return [{ op: 'gainDie', n, kind, who: 'me' }];
     return [];
 }
 
@@ -3354,7 +3426,7 @@ function num(text) {
     if (!text) return 1;
     const t = String(text).toLowerCase().replace(/^\s*до\s*/, '').trim();
     if (/два/.test(t)) return 2;
-    if (/одно|один/.test(t)) return 1;
+    if (/оди?[а-яёa-z]*н[а-яёa-z]*/i.test(t)) return 1;
     const n = parseInt(t, 10);
     return isNaN(n) ? 1 : n;
 }

@@ -3441,7 +3441,11 @@ const FS_RULES = {
         const them = this.combatValues(state, other);
         let damage = Math.max(0, them.att - me.def);
         // The card may add the damage to one side or to both.
-        if (side === 'attacker') {
+        if (c.extraDamageFoeSide) {
+            // The extra damage belongs to the side other than the owner's.
+            if (c.extraDamageFoeSide === side) damage += (c.extraDamageFoe || 0);
+            damage += (c.extraDamageBoth || 0);
+        } else if (side === 'attacker') {
             damage += (c.extraDamageFoe || 0) + (c.extraDamageBoth || 0);
         } else {
             damage += (c.extraDamage || 0) + (c.extraDamageBoth || 0);
