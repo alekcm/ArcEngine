@@ -143,6 +143,13 @@ rooms.set(defaultRoom.code, defaultRoom);
 // the step of a combat, the placement of a tile or the ordinary turn.
 function activeSeat(state) {
     if (!state) return 0;
+    // A seat that has troops above the capacity of an area owes the choice of
+    // what goes back to the supply before anything else can happen. In a solo
+    // party the view shows his chair (and the «сверх вместимости» panel with it)
+    // until the excess is chosen; the LAN seats keep their usual views.
+    for (const p of state.players) {
+        if ((state.trim || []).some(t => t.seat === p.seat)) return p.seat;
+    }
     if (state.pending) {
         return state.pending.answerSeat === undefined ? state.pending.seat : state.pending.answerSeat;
     }

@@ -56,6 +56,7 @@ class FSGame {
         /** @type {any} */ this.warn = '';
         // Марш в переполненную область ждёт подтверждения.
         /** @type {any} */ this.overflow = null;
+        /** @type {any} */ this.deployOverflow = null;
         /** @type {string[]} */ this.trimPick = [];
         // The mouse-first play: the pieces picked on the board, the sector under
         // the pointer and the plaque that floats over the place of an action.
@@ -399,6 +400,7 @@ class FSGame {
             this.damageTargets = [];
             this.warn = '';
             this.overflow = null;
+            this.deployOverflow = null;
             FSView.clearHighlights(this.view);
         }
         // The question of the effect of a card: the player chooses.
@@ -1142,6 +1144,32 @@ class FSGame {
     // is paid until the player presses "finish": the purchases of the order are
     // a list, and a right click takes any of them back.
     panelDeploy(s, ctx) {
+        // Первый клик в переполненный сектор только предупредил: здесь игрок
+        // решается — поставить отряд с переполнением или передумать.
+        if (this.deployOverflow) {
+            const ov = this.deployOverflow;
+            ctx.warn = this.warn || 'Сектор будет переполнен';
+            ctx.title = 'Развёртывание';
+            ctx.text = 'Сектор будет переполнен. Отряд всё равно будет поставлен — '
+                + 'лишние ваши отряды погибнут после окончания приказа, и вы сами выберете, какие.';
+            ctx.actions.push({
+                kind: 'primary', icon: 'ui.next', label: 'Поставить всё равно',
+                hint: 'лишние погибнут после приказа',
+                onClick: () => {
+                    this.deployOverflow = null;
+                    this.warn = '';
+                    this.net.cmd({ type: 'buyUnit', unit: ov.unit, system: ov.system, pos: ov.pos,
+                        cache: ov.cache, forgeKl: ov.forgeKl });
+                    if (ov.cache || ov.forgeKl) this.deployOpts = { cache: false, forgeKl: false };
+                    this.refresh();
+                },
+            });
+            ctx.actions.push({
+                kind: 'chip', icon: 'ui.close', label: 'Отмена',
+                onClick: () => { this.deployOverflow = null; this.warn = ''; this.refresh(); },
+            });
+            return;
+        }
         const me = s.seat;
         const p = s.players[me];
         const order = s.order;
@@ -2694,6 +2722,26 @@ class FSGame {
         }
         if (this.mode === 'placeUnit') {
             if (!target) return;
+            // Покупка сверх вместимости сектора не запрещена — по правилам лишние
+            // отряды погибают после приказа; но об этом надо предупредить до покупки:
+            // первый клик только предупреждает, второй — ставит отряд.
+            const cap = FS_RULES.capacity(s, target.system, target.pos);
+            const there = FS_RULES.unitsAt(s, target.system, target.pos).length;
+            if (there + 1 > cap) {
+                const key = 'deploy:' + this.pending.unit + ':' + target.system + ':' + target.pos;
+                if (!this.deployOverflow || this.deployOverflow.key !== key) {
+                    this.deployOverflow = { key, unit: this.pending.unit, system: target.system, pos: target.pos,
+                        cache: !!this.pending.cache, forgeKl: !!this.pending.forgeKl };
+                    this.warn = 'Сектор будет переполнен (' + (there + 1) + ' из ' + cap + '): '
+                        + 'после окончания приказа лишние ваши отряды погибнут. '
+                        + 'Нажмите ещё раз, чтобы поставить отряд.';
+                    this.status = '';
+                    this.refresh();
+                    return;
+                }
+            }
+            this.deployOverflow = null;
+            this.warn = '';
             this.net.cmd({
                 type: 'buyUnit', unit: this.pending.unit, system: target.system, pos: target.pos,
                 cache: !!this.pending.cache, forgeKl: !!this.pending.forgeKl,
