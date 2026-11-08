@@ -3163,14 +3163,15 @@ const FS_RULES = {
         const count = Math.max(0, Number(cmd.count) || 0);
         const dice = c.dice[target];
         if (target === foe) {
-            const take = Math.min(count, dice.length);
-            for (let i = 0; i < take; i++) {
-                const idx = dice.findIndex(d => d !== 'blank');
-                dice.splice(idx >= 0 ? idx : 0, 1);
+            const take = Math.min(count, dice.filter(Boolean).length);
+            for (let k = 0; k < take; k++) {
+                const idx = dice.findIndex(d => d && d !== 'blank');
+                if (idx < 0) break;
+                dice[idx] = null;
             }
             return { ok: true, count: take };
         }
-        if (dice.length + count > this.DICE_MAX) return { ok: false, error: 'Больше восьми кубиков быть не может.' };
+        if (dice.filter(Boolean).length + count > this.DICE_MAX) return { ok: false, error: 'Больше восьми кубиков быть не может.' };
         const faces = ['att', 'def', 'morale', 'blank'];
         for (let i = 0; i < count; i++) {
             const face = faces.includes(cmd.face) ? cmd.face : 'any';
@@ -3296,11 +3297,12 @@ const FS_RULES = {
     // The offence and the defence of a player.
     combatValues(state, side) {
         const c = state.combat;
-        let dice = c.dice[side] || [];
+        let dice = (c.dice[side] || []).filter(Boolean);
         // The card may make the attack dice of the enemy useless.
         if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
         const tokens = c.tokens[side];
         const played = c.cards[side].played;
+        const seat = side === 'attacker' ? c.attacker : c.defender;
         let att = 0, def = 0, morale = 0;
         for (const d of dice) {
             if (d === 'att') att++;
@@ -3315,21 +3317,31 @@ const FS_RULES = {
             def += card.card.icons.def;
             morale += card.card.icons.morale;
         }
+        // The printed morale of the unrouted units, the bastions and the
+        // reinforcement tokens is the bulk of the combat morale (the rules,
+        // "Morale"); only the icons on the cards and the dice add to it.
+        morale += this.moraleFromPieces(state, c.system, c.pos, seat);
+        morale += this.tokenMorale(state, side);
         return { att, def, morale };
     },
 
     // The same values, split by where they come from: dice, combat tokens and
-    // the faceup combat cards — the panel shows every line as a sum.
+    // the faceup combat cards — the panel shows every line as a sum. The
+    // morale line counts the printed morale of the unrouted units (and the
+    // bastions) of the side, including the reinforcement tokens as CL0 units.
     combatValuesParts(state, side) {
         const c = state.combat;
-        let dice = c.dice[side] || [];
+        let dice = (c.dice[side] || []).filter(Boolean);
         if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
         const tokens = c.tokens[side];
         const played = c.cards[side].played;
+        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const unitsMorale = this.moraleFromPieces(state, c.system, c.pos, seat)
+            + this.tokenMorale(state, side);
         const parts = {
-            att: { dice: 0, tokens: tokens.att || 0, cards: 0, total: 0 },
-            def: { dice: 0, tokens: tokens.def || 0, cards: 0, total: 0 },
-            morale: { dice: 0, tokens: 0, cards: 0, total: 0 },
+            att: { dice: 0, tokens: tokens.att || 0, cards: 0, units: 0, total: 0 },
+            def: { dice: 0, tokens: tokens.def || 0, cards: 0, units: 0, total: 0 },
+            morale: { dice: 0, tokens: 0, cards: 0, units: unitsMorale, total: 0 },
         };
         for (const d of dice) if (parts[d]) parts[d].dice++;
         for (const card of played) {
@@ -3337,7 +3349,8 @@ const FS_RULES = {
             for (const kind of ['att', 'def', 'morale']) parts[kind].cards += card.card.icons[kind] || 0;
         }
         for (const kind of ['att', 'def', 'morale']) {
-            parts[kind].total = parts[kind].dice + parts[kind].tokens + parts[kind].cards;
+            const p = parts[kind];
+            p.total = p.dice + p.tokens + p.cards + p.units;
         }
         return parts;
     },
@@ -3592,26 +3605,29 @@ const FS_RULES = {
         c.damage = { attacker: 0, defender: 0 };
     },
 
+    // The printed morale the units and the bastions of a side bring into the
+    // combat. Routed units do not contribute; a bastion counts as a unit
+    // with its own values (the rules, "Morale").
+    moraleFromPieces(state, systemId, pos, seat) {
+        let units = 0;
+        for (const u of this.unitsAt(state, systemId, pos)) {
+            if (u.seat !== seat || u.routed) continue;
+            const def = this.unitOf(state, u);
+            if (def) units += def.morale || 0;
+        }
+        for (const s of this.structuresAt(state, systemId, pos)) {
+            if (s.seat !== seat) continue;
+            units += this.structureStats(s.type).morale || 0;
+        }
+        return units;
+    },
+
     // The morale of a player at the end of the combat.
     combatMorale(state, side) {
         const c = state.combat;
-        const seat = side === 'attacker' ? c.attacker : c.defender;
-        const values = this.combatValues(state, side);
-        let morale = values.morale;
-        for (const u of this.unitsAt(state, c.system, c.pos)) {
-            if (u.seat !== seat || u.routed) continue;
-            const def = this.unitOf(state, u);
-            if (def) morale += def.morale;
-        }
-        // A reinforcement token used in the combat is a command level zero
-        // unit: it gives no dice, but while it is not routed it counts as a
-        // unit — so it brings the morale of that miniature, not a flat 1.
-        morale += this.tokenMorale(state, side);
-        for (const s of this.structuresAt(state, c.system, c.pos)) {
-            if (s.seat !== seat) continue;
-            morale += this.structureStats(s.type).morale;
-        }
-        return morale;
+        // The combat values already carry the units, the bastions, the
+        // reinforcement tokens, the cards and the dice.
+        return this.combatValues(state, side).morale;
     },
 
     // The end of the combat: the winner by morale, the retreat, the cleanup.

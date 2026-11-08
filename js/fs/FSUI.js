@@ -70,6 +70,13 @@ const FSUI = {
         };
         window.addEventListener('pointerup', release);
         window.addEventListener('pointercancel', release);
+        // The chips of the combat units (health and morale) are DOM elements:
+        // created once, positioned every frame by the 3D pass.
+        const chips = document.createElement('div');
+        chips.className = 'fs-unit-chips';
+        chips.id = 'fs-unit-chips';
+        this.chipsEl = chips;
+        root.appendChild(chips);
         // Alt held: the battle hand zooms in even more (the hovered card most of all).
         window.addEventListener('keydown', e => {
             if (e.key === 'Alt') { e.preventDefault(); this.setAltZoom(true); return; }
@@ -250,6 +257,16 @@ const FSUI = {
         const scrollTop = this.actionStage === stageKey && previousActions ? previousActions.scrollTop : 0;
         this.actionStage = stageKey;
         root.replaceChildren();
+        // A full rebuild just wiped the shell: the unit chips live next to the
+        // board, not inside the panel — put them back.
+        if (this.chipsEl) root.appendChild(this.chipsEl);
+        else {
+            const chips = document.createElement('div');
+            chips.className = 'fs-unit-chips';
+            chips.id = 'fs-unit-chips';
+            this.chipsEl = chips;
+            root.appendChild(chips);
+        }
         root.classList.toggle('is-no-state', !state);
         // A fight is its own screen: the rails of the board stand aside while the
         // battle in the contested sector is played.
@@ -395,9 +412,11 @@ const FSUI = {
         const panel = this.el('section', 'fs-main-panel' + (ctx.panelClass ? ' ' + ctx.panelClass : ''));
         const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', state.over ? 'Итоги сражения' : 'Текущий этап'));
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
-        if (ctx.text) head.append(this.el('p', '', ctx.text));
+        if (ctx.richText) head.append(this.richText(ctx.richText, 'fs-panel-rich'));
+        else if (ctx.text) head.append(this.el('p', '', ctx.text));
         panel.append(head);
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
+        if (ctx.counter) panel.append(this.renderCounter(ctx.counter));
         // No system is written in this panel: what a sector is made of is shown by
         // the plaque over the board itself. The panel belongs to the action.
         // The score of the battle is NOT here: it is its own panel at the top
@@ -789,6 +808,31 @@ const FSUI = {
         return drawer;
     },
 
+    // The reinforcement counter of the combat: «Отправлено подкрепления» —
+    // a minus, how many are placed, a plus, and the rule as printed, not
+    // invented.
+    renderCounter(counter) {
+        const box = this.el('div', 'fs-reinforce');
+        box.append(this.el('div', 'fs-reinforce-title', counter.label || 'Отправлено подкрепления'));
+        const row = this.el('div', 'fs-reinforce-row');
+        const minus = this.el('button', 'fs-reinforce-btn'); minus.type = 'button'; minus.textContent = '−';
+        minus.disabled = !counter.value;
+        minus.setAttribute('aria-label', 'Убрать одно подкрепление');
+        minus.addEventListener('click', () => counter.onMinus && counter.onMinus());
+        const mid = this.el('div', 'fs-reinforce-mid');
+        mid.append(this.el('b', '', String(counter.value)));
+        mid.append(this.el('span', 'fs-reinforce-of', '/ ' + counter.max));
+        const plus = this.el('button', 'fs-reinforce-btn'); plus.type = 'button'; plus.textContent = '+';
+        plus.disabled = counter.value >= counter.max;
+        plus.setAttribute('aria-label', 'Поставить одно подкрепление');
+        plus.addEventListener('click', () => counter.onPlus && counter.onPlus());
+        row.append(minus, mid, plus);
+        box.append(row);
+        box.append(this.el('div', 'fs-reinforce-have', 'Жетонов подкрепления у вас: ' + counter.have));
+        if (counter.rule) box.append(this.el('div', 'fs-reinforce-rule', counter.rule));
+        return box;
+    },
+
     // The score of the battle: the two sides, their dice, their cubes and the
     // cards they have played. There is no word about the place of the fight —
     // the fight is on the board, and the panel has nothing to say about it.
@@ -832,12 +876,13 @@ const FSUI = {
             who.append(this.el('span', 'fs-battle-role', side.side === 'attacker' ? 'атакует' : 'держит'));
             row.append(who);
             // Three lines of the score, as in the rules: attack, defence,
-            // morale — every line is a sum of the dice, the tokens and the
-            // faceup cards: ⚔ 2 + ▣ 3 + □ 0.
+            // morale — every line is a sum of where the value comes from:
+            // the dice, the tokens, the cards and (only for morale) the
+            // printed morale of the unrouted units and bastions.
             const lines = this.el('div', 'fs-battle-lines');
             const parts = side.parts || {};
             for (const kind of ['att', 'def', 'morale']) {
-                const p = parts[kind] || { dice: 0, tokens: 0, cards: 0, total: 0 };
+                const p = parts[kind] || { dice: 0, tokens: 0, cards: 0, units: 0, total: 0 };
                 const line = this.el('div', 'fs-battle-line is-' + kind);
                 const sum = this.el('span', 'fs-battle-line-sum');
                 const part = (icon, n, title) => {
@@ -846,13 +891,16 @@ const FSUI = {
                     s.title = title;
                     return s;
                 };
-                sum.append(
+                const cells = [
                     part('die.' + kind, p.dice, 'С кубиков'),
-                    this.el('span', 'fs-battle-plus', '+'),
                     part('token.' + kind, p.tokens, 'С жетонов'),
-                    this.el('span', 'fs-battle-plus', '+'),
                     part('ui.card', p.cards, 'С карт'),
-                );
+                ];
+                if (kind === 'morale') cells.push(part('mark.ground', p.units || 0, 'С отрядов и бастионов'));
+                cells.forEach((cell, i) => {
+                    if (i) sum.append(this.el('span', 'fs-battle-plus', '+'));
+                    sum.append(cell);
+                });
                 line.append(this.iconEl('cube.' + kind, 'fs-battle-line-icon'), sum,
                     this.el('b', 'fs-battle-line-total', String(p.total)));
                 lines.append(line);

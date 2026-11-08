@@ -396,6 +396,9 @@ class FSGame {
             this.overflow = null;
             this.deployOverflow = null;
             this.strikeTargets = null;
+            this.reinforcePick = 0;
+            this.reinforceStep = null;
+            this.autoReinforced = null;
             FSView.clearHighlights(this.view);
         }
         // A NEW question from the server is a new choice: the picks of the old
@@ -407,9 +410,21 @@ class FSGame {
             this.effectDie = null;
         }
         if (s.pending) this.questionMarkersActive = true;
+        // A new reinforcement step is a fresh count: the counter starts at 0.
+        const reinforceKey = s.combat ? s.combat.system + ':' + (s.combat.round || 1) + ':' + s.combat.step : null;
+        if (this.reinforceStep !== reinforceKey) {
+            this.reinforceStep = reinforceKey;
+            this.reinforcePick = 0;
+        }
         // The question of the effect of a card: the player chooses.
         if (s.pending) {
+            // The combat HUD never goes away during the fight — not while a
+            // card effect is waiting for an answer either: the battle panel,
+            // the hand at the bottom and the battle statistics stay on
+            // screen, exactly as they are outside the question.
+            if (s.combat) this.panelCombat(s, ctx);
             this.panelQuestion(s, ctx);
+            if (s.combat) { ctx.battleHand = this.hand || []; if (!ctx.battle) ctx.battle = null; }
             this.updateQuestionMarkers();
             ctx.mode = this.mode;
             this.refreshPlaque();
@@ -1853,22 +1868,44 @@ class FSGame {
             case 'reinforce-defender': {
                 const whose = c.step === 'reinforce-attacker' ? 'attacker' : 'defender';
                 if (whose !== side) { ctx.text = 'Подкрепления ставит ' + nameOf(whose) + '.'; return; }
-                const max = FS_RULES.maxReinforce(s, me, side);
-                // Even with no tokens the step is answered with a command — the
-                // «Без подкреплений» button is always there, so the fight never
-                // waits for a player who cannot reinforce.
-                ctx.text = max > 0
-                    ? 'Подкрепление: выберите, сколько жетонов поставить.'
-                    : 'Подкреплений нет — пропустите шаг.';
-                for (let i = 0; i <= max; i++) {
-                    ctx.actions.push({
-                        kind: 'pick', icon: i ? 'order.event' : 'ui.next',
-                        label: i === 0 ? 'Без подкреплений' : String(i),
-                        count: i ? '1×' : null,
-                        hint: 'Подкрепление даёт жетоны атаки и обороны',
-                        onClick: () => this.net.cmd({ type: 'combat', action: 'reinforce', count: i }),
-                    });
+                const have = s.players[me] && s.players[me].assets ? (s.players[me].assets.reinforcement || 0) : 0;
+                const max = Math.min(have, FS_RULES.maxReinforce(s, me, side));
+                if (max <= 0) {
+                    // The step needs no decision: no tokens are ever offered
+                    // and the fight simply goes on. It is not even shown.
+                    const key = c.system + ':' + (c.round || 1) + ':' + c.step;
+                    ctx.text = have > 0 ? 'Подкреплению не за что устоять: в бою нет ваших отрядов.' : 'У вас нет жетонов подкрепления.';
+                    if (this.autoReinforced !== key) {
+                        this.autoReinforced = key;
+                        const net = this.net;
+                        setTimeout(() => net.cmd({ type: 'combat', action: 'reinforce', count: 0 }), 0);
+                    }
+                    return;
                 }
+                // The rule, as it is printed — attacker first, then defender,
+                // a token is a command level zero unit standing with the
+                // miniatures, at most as many as the units in the fight.
+                ctx.text = 'Подкрепление. Атакующий размещает жетоны первым, затем защищающийся.';
+                this.reinforcePick = Math.min(Math.max(0, this.reinforcePick || 0), max);
+                ctx.counter = {
+                    label: 'Отправлено подкрепления',
+                    value: this.reinforcePick,
+                    max,
+                    have,
+                    rule: 'Жетон подкрепления — это отряд командного уровня 0 вашей фракции: на мир ставится как наземный отряд, в пустоту — как корабль. Жетонов не может быть больше, чем ваших пластиковых отрядов в этом бою — бастион отрядом не считается. Жетон считается отрядом для всех целей, включая требования боевых карт; мораль он несёт по юниту КЛ 0; деморализованный жетон переворачивается; после боя все жетоны возвращаются в запас.',
+                    onMinus: () => { this.reinforcePick = Math.max(0, (this.reinforcePick || 0) - 1); this.refresh(); },
+                    onPlus: () => { this.reinforcePick = Math.min(max, (this.reinforcePick || 0) + 1); this.refresh(); },
+                };
+                ctx.actions.push({
+                    kind: 'primary', icon: 'ui.next',
+                    label: 'Начать бой',
+                    enabled: true,
+                    onClick: () => {
+                        const n = this.reinforcePick || 0;
+                        this.reinforcePick = 0;
+                        this.net.cmd({ type: 'combat', action: 'reinforce', count: n });
+                    },
+                });
                 return;
             }
             case 'choose-attacker':
@@ -2154,10 +2191,11 @@ class FSGame {
         const must = pending.answerSeat === undefined ? pending.seat : pending.answerSeat;
         if (must !== me) {
             const who = s.players[must] ? s.players[must].name : '—';
-            ctx.text = (q.text || 'Карта требует решения.') + '\nРешает: ' + who + '. Ждём.';
+            ctx.richText = q.text || 'Карта требует решения.';
+            ctx.status = 'Решает ' + who + '. Ждём.';
             return;
         }
-        ctx.text = (q.text || 'Выберите.');
+        ctx.richText = q.text || 'Выберите.';
         const send = answer => {
             this.net.cmd({ type: 'effect', answer });
             this.effectPick = [];
@@ -2191,8 +2229,8 @@ class FSGame {
             case 'dice':
             case 'diceFace': {
                 const combat = s.combat;
-                const side = pending.seat === (combat ? combat.attacker : -1) ? 'attacker' : 'defender';
-                const dice = combat ? (combat.dice[side] || []) : [];
+                const dSide = q.diceSide || (combat && must === combat.attacker ? 'attacker' : 'defender');
+                const dice = combat ? (combat.dice[dSide] || []) : [];
                 // The die of a dieFace question: the face is the second choice.
                 const picked = q.kind === 'diceFace' ? this.effectDie : null;
                 if (picked !== null && picked !== undefined) {
@@ -2235,8 +2273,8 @@ class FSGame {
             }
             case 'face': {
                 const combat = s.combat;
-                const side = pending.seat === (combat ? combat.attacker : -1) ? 'attacker' : 'defender';
-                const dice = combat ? (combat.dice[side] || []) : [];
+                const dSide = q.diceSide || (combat && must === combat.attacker ? 'attacker' : 'defender');
+                const dice = combat ? (combat.dice[dSide] || []).filter(Boolean) : [];
                 const faces = ['att', 'def', 'morale', 'blank'];
                 for (const face of faces) {
                     const count = dice.filter(d => d === face).length;
@@ -2965,12 +3003,18 @@ class FSGame {
         if (s.pending && s.pending.question && this.questionClick(meta)) return;
         // The dice of the battle lie on the ground of the contested sector: a
         // click on one of them answers the question about a reroll — no list
-        // in the panel is needed.
+        // in the panel is needed. Only a die of the side the question is
+        // about, and only when it is this seat's answer, counts.
         if (s.pending && s.pending.question && meta.fs === 'die'
             && /^dice/.test(String(s.pending.question.kind || ''))) {
             const q = s.pending.question;
+            const cbt = s.combat;
+            const mustSeat = s.pending.answerSeat === undefined ? s.pending.seat : s.pending.answerSeat;
+            const qSide = q.diceSide || (cbt ? (mustSeat === cbt.attacker ? 'attacker' : 'defender') : null);
             const index = typeof meta.index === 'number' ? meta.index : -1;
-            if (index >= 0 && (q.options || []).indexOf(index) >= 0) {
+            if (mustSeat === s.seat && index >= 0
+                && (!cbt || !meta.side || meta.side === qSide)
+                && (q.options || []).indexOf(index) >= 0) {
                 if (q.kind === 'diceFace') { this.effectDie = index; this.refresh(); return; }
                 this.net.cmd({ type: 'effect', answer: { dice: [index] } });
                 return;

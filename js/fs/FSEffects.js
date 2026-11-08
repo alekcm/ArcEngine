@@ -249,7 +249,14 @@ const FS_EFFECTS = {
             const built = rule.build(m, ctx || {}, s);
             if (!built) continue;
             const steps = Array.isArray(built) ? built : [built];
-            return steps.map(x => this.withScope(x, scope));
+            return steps.map(x => {
+                const s2 = this.withScope(x, scope);
+                // «… на ваш выбор» — the resolving player chooses the foe's
+                // dice, not the foe.
+                if (s2.who === 'foe' && /на ваш выбор|по вашему выбору/i.test(s)
+                    && ['rerollDie', 'spendDie', 'flipDie', 'setDie', 'loseDie'].includes(s2.op)) s2.picker = 'me';
+                return s2;
+            });
         }
         // The payment that avoids the effect stands alone.
         const avoid = this.avoidOf(s);
@@ -312,7 +319,12 @@ const FS_EFFECTS = {
             if (c.optional && !step.asked) {
                 const ask = this.abilityQuestion(step, c);
                 if (ask && !this.emptyQuestion(ask.question)) {
-                    step.asked = true;
+                    // One sentence is one ability: the steps it produced share
+                    // the text, so they share the single permission — the gain
+                    // half of «потратьте…, чтобы получить…» is not a second
+                    // optional ability.
+                    const group = step.ability;
+                    for (const one of list) if (one && one.ability === group) one.asked = true;
                     state.pending = {
                         seat, answerSeat: c.owner === undefined ? seat : c.owner,
                         kind: c.kind || 'card', steps: list, index,
@@ -409,9 +421,25 @@ const FS_EFFECTS = {
             if (answer.no) {
                 R.log(state, owner, state.players[owner].name + ' отказывается от способности: «'
                     + String(step.ability || '').slice(0, 60) + '».');
-                return this.next(R, state, pending);
+                // Refusing the permission discards the whole sentence — every
+                // step it produced — not only the step that asked.
+                const group = step.ability;
+                let i = pending.index + 1;
+                while (i < pending.steps.length && pending.steps[i] && pending.steps[i].ability === group) i++;
+                state.pending = null;
+                return this.run(R, state, pending.seat, pending.steps, pending.ctx || {}, i);
             }
             const q = this.step(R, state, owner, step, ctx);
+            if (q && q.stop) {
+                // «Нечем оплатить»: the cost is not paid, so the whole sentence
+                // — its gain half included — does not happen; the next ability
+                // of the card goes on.
+                const group = step.ability;
+                let i = pending.index + 1;
+                while (i < pending.steps.length && pending.steps[i] && pending.steps[i].ability === group) i++;
+                state.pending = null;
+                return this.run(R, state, pending.seat, pending.steps, pending.ctx || {}, i);
+            }
             if (q && q.question && !this.emptyQuestion(q.question)) {
                 pending.question = q.question;
                 return { ok: true, pending: true };
@@ -424,8 +452,9 @@ const FS_EFFECTS = {
             if (paid) {
                 const combat = state.combat;
                 const s2 = seat === combat.attacker ? 'attacker' : 'defender';
-                for (const i of (answer.dice || []).slice().sort((a, b) => b - a)) {
-                    if (i >= 0 && i < combat.dice[s2].length) combat.dice[s2].splice(i, 1);
+                for (const i of (answer.dice || [])) {
+                    if (Number.isInteger(i) && combat.dice[s2][i] !== null
+                        && combat.dice[s2][i] !== undefined) combat.dice[s2][i] = null;
                 }
                 R.log(state, seat, state.players[seat].name + ' тратит кубик и избегает эффекта.');
             } else {
@@ -484,6 +513,22 @@ const FS_EFFECTS = {
     seatOf(combat, side) {
         if (!combat) return null;
         return side === 'attacker' ? combat.attacker : combat.defender;
+    },
+
+    // Which side's dice a step points at: the resolving player's own by
+    // default, the opponent's for an effect text that says so.
+    diceSideOf(combat, side, step) {
+        if (!combat) return side;
+        if (step && step.who === 'foe') return side === 'attacker' ? 'defender' : 'attacker';
+        return side;
+    },
+
+    // Who answers a question about dice: the affected player chooses his own
+    // dice, unless the card leaves the choice to the resolving player
+    // («на ваш выбор» / «по вашему выбору»).
+    diceAsker(combat, side, step) {
+        if (step && step.picker === 'me') return this.seatOf(combat, side);
+        return this.seatOf(combat, this.diceSideOf(combat, side, step));
     },
 
     // «A player can choose not to resolve one of his abilities, unless that
@@ -560,7 +605,7 @@ const FS_EFFECTS = {
                 }
                 // No more than DICE_MAX dice in a combat: a card that gives a
                 // die past the limit simply adds nothing.
-                const room = Math.max(0, R.DICE_MAX - combat.dice[side].length);
+                const room = Math.max(0, R.DICE_MAX - combat.dice[side].filter(Boolean).length);
                 const got = Math.min(n, room);
                 for (let i = 0; i < got; i++) {
                     combat.dice[side].push(step.kind === 'any' ? R.rollDice(state, 1)[0] : step.kind);
@@ -573,62 +618,79 @@ const FS_EFFECTS = {
             case 'loseDie': {
                 if (!inCombat) return null;
                 const s2 = side === 'attacker' ? 'defender' : 'attacker';
-                const options = combat.dice[s2].map((d, i) => i).filter(i => step.kind === 'any' || combat.dice[s2][i] === step.kind);
+                const live = d => d !== null && d !== undefined;
+                const options = combat.dice[s2].map((d, i) => i)
+                    .filter(i => live(combat.dice[s2][i])
+                        && (step.kind === 'any' || combat.dice[s2][i] === step.kind));
                 if (!options.length) return null;
                 const n = Math.min(step.n, options.length);
                 // The dice of one kind are alike and a loss of all that is possible is
                 // not a choice either: the engine takes them itself, without a question.
                 if (step.kind !== 'any' || n >= options.length) {
-                    const gone = options.slice(0, n).sort((a, b) => b - a);
-                    for (const i of gone) combat.dice[s2].splice(i, 1);
+                    const gone = options.slice(0, n);
+                    for (const i of gone) combat.dice[s2][i] = null;
                     R.log(state, seat, (s2 === side ? 'Вы теряете ' : 'Противник теряет ') + n
                         + ' кубик(ов)' + (step.kind !== 'any' ? ' ' + this.kindName(step.kind) : '') + '.');
                     return null;
                 }
-                return { question: { kind: 'dice', who: this.seatOf(combat, s2), op: 'loseDie', n, options, kind2: step.kind, text: 'Какие кубики теряются?' } };
+                return { question: { kind: 'dice', who: this.seatOf(combat, s2), diceSide: s2, op: 'loseDie', n, options, kind2: step.kind, text: 'Какие кубики теряются?' } };
             }
             case 'rerollDie': {
                 if (!inCombat) return null;
-                const options = combat.dice[side].map((d, i) => i).filter(i => step.kind === 'any' || combat.dice[side][i] === step.kind);
+                const s2 = this.diceSideOf(combat, side, step);
+                const options = combat.dice[s2].map((d, i) => i).filter(i => combat.dice[s2][i] !== null && combat.dice[s2][i] !== undefined && (step.kind === 'any' || combat.dice[s2][i] === step.kind));
                 if (!options.length) return null;
                 if (step.all) {
                     // All the dice of the kind are rerolled.
-                    for (const i of options) combat.dice[side][i] = R.rollDice(state, 1)[0];
+                    for (const i of options) combat.dice[s2][i] = R.rollDice(state, 1)[0];
                     R.log(state, seat, state.players[seat].name + ' перебрасывает кубики.');
                     return null;
                 }
-                return { question: { kind: 'dice', who: this.seatOf(combat, side), op: 'rerollDie', n: Math.min(step.n, options.length), options, kind2: step.kind, text: 'Какие кубики перебросить?' } };
+                return { question: { kind: 'dice', who: this.diceAsker(combat, side, step), diceSide: s2, op: 'rerollDie', n: Math.min(step.n, options.length), options, kind2: step.kind, text: 'Какие кубики перебросить?' } };
             }
             case 'spendDie': {
                 if (!inCombat) return null;
-                const options = combat.dice[side].map((d, i) => i).filter(i => step.kind === 'any' || combat.dice[side][i] === step.kind);
-                if (!options.length) return null;
+                const s2 = this.diceSideOf(combat, side, step);
+                // A step may cover a union of cube kinds («тратится def. или morale»):
+                // one spend of one die of ANY listed kind resolves the card.
+                const kinds = Array.isArray(step.kinds) && step.kinds.length ? step.kinds : [step.kind];
+                const match = d => d !== null && d !== undefined && (kinds.includes('any') || kinds.includes(d));
+                const options = combat.dice[s2].map((d, i) => i).filter(i => match(combat.dice[s2][i]));
+                if (!options.length) {
+                    // «Потратьте … чтобы …» — a payment that cannot be made
+                    // buys nothing: the rest of the ability does not happen.
+                    R.log(state, seat, state.players[seat].name + ' нечем оплатить: «'
+                        + String(step.ability || '').slice(0, 60) + '» не выполняется.');
+                    return step.pick ? { stop: true } : null;
+                }
                 if (step.all) {
-                    // All the dice of the kind are spent.
-                    for (const i of options) {
-                        if (combat.dice[side][i] === step.kind || step.kind === 'any') combat.dice[side][i] = null;
-                    }
-                    combat.dice[side] = combat.dice[side].filter(d => d !== null);
+                    // All the dice of the kind are spent: they lie on the
+                    // ground, spent in place — never spliced out, so the
+                    // remaining dice keep their identity.
+                    for (const i of options) combat.dice[s2][i] = null;
                     R.log(state, seat, state.players[seat].name + ' тратит кубики.');
                     return null;
                 }
-                return { question: { kind: 'dice', who: this.seatOf(combat, side), op: 'spendDie', n: Math.min(step.n, options.length), options, kind2: step.kind, text: 'Какие кубики потратить?' } };
+                return { question: { kind: 'dice', who: this.diceAsker(combat, side, step), diceSide: s2, op: 'spendDie', n: Math.min(step.n, options.length), options, kind2: step.kind, kinds, text: 'Какие кубики потратить?' } };
             }
             case 'flipDie': {
                 if (!inCombat) return null;
-                const options = combat.dice[side].map((d, i) => i).filter(i => step.kind === 'any' || combat.dice[side][i] === step.kind);
+                const s2 = this.diceSideOf(combat, side, step);
+                const options = combat.dice[s2].map((d, i) => i).filter(i => combat.dice[s2][i] !== null && combat.dice[s2][i] !== undefined && (step.kind === 'any' || combat.dice[s2][i] === step.kind));
                 if (!options.length) return null;
                 if (step.all) {
-                    for (const i of options) combat.dice[side][i] = step.to;
+                    for (const i of options) combat.dice[s2][i] = step.to;
                     return null;
                 }
-                return { question: { kind: 'dice', who: this.seatOf(combat, side), op: 'flipDie', n: Math.min(step.n, options.length), options, kind2: step.kind, text: 'Какие кубики перевернуть на ' + (step.to === 'att' ? 'атаку' : step.to === 'def' ? 'оборону' : 'мораль') + '?' } };
+                return { question: { kind: 'dice', who: this.diceAsker(combat, side, step), diceSide: s2, op: 'flipDie', n: Math.min(step.n, options.length), options, kind2: step.kind, text: 'Какие кубики перевернуть на ' + (step.to === 'att' ? 'атаку' : step.to === 'def' ? 'оборону' : 'мораль') + '?' } };
             }
             case 'rerollValue': {
                 if (!inCombat) return null;
-                const options = combat.dice[side].map((d, i) => i);
+                const s2 = this.diceSideOf(combat, side, step);
+                const options = combat.dice[s2].map((d, i) => i)
+                    .filter(i => combat.dice[s2][i] !== null && combat.dice[s2][i] !== undefined);
                 if (!options.length) return null;
-                return { question: { kind: 'face', who: this.seatOf(combat, side), op: 'rerollValue', options, text: 'Какое значение кубиков перебросить?' } };
+                return { question: { kind: 'face', who: this.diceAsker(combat, side, step), diceSide: s2, op: 'rerollValue', options, text: 'Какое значение кубиков перебросить?' } };
             }
             case 'discardCard': {
                 if (!inCombat) return null;
@@ -748,9 +810,10 @@ const FS_EFFECTS = {
             }
             case 'setDie': {
                 if (!inCombat) return null;
-                const options = combat.dice[side].map((d, i) => i);
+                const s2 = this.diceSideOf(combat, side, step);
+                const options = combat.dice[s2].map((d, i) => i).filter(i => combat.dice[s2][i] !== null && combat.dice[s2][i] !== undefined);
                 if (!options.length) return null;
-                return { question: { kind: 'diceFace', who: side, op: 'setDie', n: 1, options, text: 'Какой кубик перевернуть и на какую грань?' } };
+                return { question: { kind: 'diceFace', who: this.diceAsker(combat, side, step), diceSide: s2, op: 'setDie', n: 1, options, text: 'Какой кубик перевернуть и на какую грань?' } };
             }
             case 'route': {
                 const units = this.unitsOf(R, state, target, combat, step);
@@ -908,9 +971,10 @@ const FS_EFFECTS = {
             }
             case 'rerollAll': {
                 if (!inCombat) return null;
-                // Both sides roll all the dice again.
+                // Both sides roll all of their unspent dice again: the spent
+                // stay spent, where they lie.
                 for (const s2 of ['attacker', 'defender']) {
-                    combat.dice[s2] = R.rollDice(state, combat.dice[s2].length);
+                    combat.dice[s2] = combat.dice[s2].map(d => d === null || d === undefined ? null : R.rollDice(state, 1)[0]);
                 }
                 R.log(state, seat, 'Все кубики перебрасываются.');
                 return null;
@@ -923,7 +987,7 @@ const FS_EFFECTS = {
                 if (theirs <= mine) return null;
                 const at = combat.dice[s2].indexOf(step.kind || 'morale');
                 if (at < 0) return null;
-                combat.dice[s2].splice(at, 1);
+                combat.dice[s2][at] = null;
                 R.log(state, seat, 'Противник теряет кубик морали.');
                 return null;
             }
@@ -963,16 +1027,16 @@ const FS_EFFECTS = {
             case 'stealDie': {
                 if (!inCombat) return null;
                 const s2 = side === 'attacker' ? 'defender' : 'attacker';
-                const options = combat.dice[s2].map((d, i) => i);
+                const options = combat.dice[s2].map((d, i) => i).filter(i => combat.dice[s2][i] !== null && combat.dice[s2][i] !== undefined);
                 if (!options.length) return null;
-                return { question: { kind: 'dice', who: this.seatOf(combat, s2), op: 'stealDie', options, text: 'Какой кубик сбросить?' } };
+                return { question: { kind: 'dice', who: this.seatOf(combat, s2), diceSide: s2, op: 'stealDie', options, text: 'Какой кубик сбросить?' } };
             }
             case 'convertFoeDice': {
                 if (!inCombat) return null;
                 const s2 = side === 'attacker' ? 'defender' : 'attacker';
-                const faces = [...new Set(combat.dice[s2])];
+                const faces = [...new Set(combat.dice[s2])].filter(d => d !== null && d !== undefined);
                 if (!faces.length) return null;
-                return { question: { kind: 'face', who: this.seatOf(combat, s2), op: 'convertFoeDice', options: faces, n: step.n || 2, text: 'Какие кубики сконвертировать?' } };
+                return { question: { kind: 'face', who: this.seatOf(combat, s2), diceSide: s2, op: 'convertFoeDice', options: faces, n: step.n || 2, text: 'Какие кубики сконвертировать?' } };
             }
             case 'discardFoeCard': {
                 if (!inCombat) return null;
@@ -1168,7 +1232,7 @@ const FS_EFFECTS = {
                         if (step.who === 'foe') combat.tokens[s2][ic.icon] = Math.max(0, combat.tokens[s2][ic.icon] - 1);
                         else combat.tokens[s2][ic.icon] += 1;
                     } else if (ic.kind === 'cube') {
-                        if (step.who === 'foe') combat.dice[s2].pop();
+                        if (step.who === 'foe') { const at = combat.dice[s2].map(Boolean).lastIndexOf(true); if (at >= 0) combat.dice[s2][at] = null; }
                         else combat.dice[s2].push(ic.icon === 'any' ? R.rollDice(state, 1)[0] : ic.icon);
                     }
                 }
@@ -1195,37 +1259,57 @@ const FS_EFFECTS = {
                 : (other !== null ? other : (state.players.find(x => x.seat !== owner) || {}).seat))
             : owner;
         const units = ids => (answer.units || ids || []).map(id => state.units.find(u => u.id === id)).filter(Boolean);
+        // The dice the step points at and the faces they may have: the answer
+        // cannot reach a die that is spent, of a wrong face, or on the wrong
+        // side of the combat.
+        const diceSide = s2 => (inCombat ? (step && step.who === 'foe' ? s2 : side) : side);
+        const diceTarget = () => diceSide(side === 'attacker' ? 'defender' : 'attacker');
+        const diceAllowed = (face) => {
+            if (!inCombat) return true;
+            const kinds = Array.isArray(step && step.kinds) && step.kinds.length ? step.kinds : [step && step.kind];
+            if (!kinds.length || kinds.includes('any')) return true;
+            return kinds.includes(face);
+        };
+        const liveIndex = (s2, i) => {
+            const dice = combat.dice[s2] || [];
+            return Number.isInteger(i) && i >= 0 && i < dice.length
+                && dice[i] !== null && dice[i] !== undefined && diceAllowed(dice[i]);
+        };
         switch (step.op) {
             case 'loseDie': {
                 const s2 = side === 'attacker' ? 'defender' : 'attacker';
-                for (const i of (answer.dice || [])) {
-                    if (i >= 0 && i < combat.dice[s2].length) combat.dice[s2].splice(i, 1);
+                for (const i of (answer.dice || []).slice().sort((a, b) => b - a)) {
+                    if (liveIndex(s2, i)) combat.dice[s2][i] = null;
                 }
                 return null;
             }
             case 'rerollDie': {
+                const s2 = diceTarget();
                 for (const i of (answer.dice || [])) {
-                    if (i >= 0 && i < combat.dice[side].length) combat.dice[side][i] = R.rollDice(state, 1)[0];
+                    if (liveIndex(s2, i)) combat.dice[s2][i] = R.rollDice(state, 1)[0];
                 }
                 return null;
             }
             case 'spendDie': {
-                for (const i of (answer.dice || []).slice().sort((a, b) => b - a)) {
-                    if (i >= 0 && i < combat.dice[side].length) combat.dice[side].splice(i, 1);
+                const s2 = diceTarget();
+                for (const i of (answer.dice || [])) {
+                    if (liveIndex(s2, i)) combat.dice[s2][i] = null;
                 }
                 return null;
             }
             case 'flipDie': {
+                const s2 = diceTarget();
                 for (const i of (answer.dice || [])) {
-                    if (i >= 0 && i < combat.dice[side].length) combat.dice[side][i] = step.to;
+                    if (liveIndex(s2, i)) combat.dice[s2][i] = step.to;
                 }
                 return null;
             }
             case 'rerollValue': {
                 // All the dice of the chosen value are rerolled.
+                const s2 = diceTarget();
                 const face = answer.face || 'att';
-                for (let i = 0; i < combat.dice[side].length; i++) {
-                    if (combat.dice[side][i] === face) combat.dice[side][i] = R.rollDice(state, 1)[0];
+                for (let i = 0; i < combat.dice[s2].length; i++) {
+                    if (combat.dice[s2][i] === face) combat.dice[s2][i] = R.rollDice(state, 1)[0];
                 }
                 return null;
             }
@@ -1299,8 +1383,9 @@ const FS_EFFECTS = {
                 const s2 = side === 'attacker' ? 'defender' : 'attacker';
                 const dice = combat.dice[s2];
                 for (const i of (answer.dice || [])) {
-                    if (i >= 0 && i < dice.length) {
-                        const value = dice.splice(i, 1)[0];
+                    if (i >= 0 && i < dice.length && dice[i] !== null && dice[i] !== undefined) {
+                        const value = dice[i];
+                        dice[i] = null;
                         combat.dice[side].push(value);
                     }
                 }
@@ -1419,8 +1504,9 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'setDie': {
+                const s2 = inCombat ? diceTarget() : side;
                 const i = answer.dice && answer.dice.length ? answer.dice[0] : -1;
-                if (i >= 0 && i < combat.dice[side].length) combat.dice[side][i] = answer.face || 'att';
+                if (inCombat ? liveIndex(s2, i) : (i >= 0 && i < combat.dice[s2].length)) combat.dice[s2][i] = answer.face || 'att';
                 return null;
             }
             case 'route': {
@@ -2072,19 +2158,36 @@ const RULES = [
         re: /переверн[а-яёa-z]*\s+любое количество\s*`([^`]+)`\s*на\s*`([^`]+)`/i,
         build: m => ({ op: 'flipDie', n: 99, kind: FS_EFFECTS.icon(m[1]), to: FS_EFFECTS.icon(m[2]), all: true, pick: true }),
     },
-    // "you must spend 1 `def. cube`" / "spend up to 3 `morale cube`"
+    // "you must spend 1 `def. cube`" / "spend up to 3 `morale cube`" /
+    // "Потратьте 1 `def. cube` или 1 `morale cube`" — either cube answers the
+    // card: ONE spend of ONE die of ANY of the kinds listed, never a pair of
+    // sequential demands.
     {
         re: /потрат[а-яёa-z]*\s+(?:любое количество\s+)?(?:до\s+)?(всех|(\d+))?\s*(?:ваш[а-яёa-z]*|своих|свои)?\s*`([^`]+)`([^;]{0,40})/i,
-        build: m => {
-            const icons = [m[3]].concat([...(m[4] || '').matchAll(/`([^`]+)`/g)].map(x => x[1]));
+        build: (m, ctx, s) => {
+            // The «тратится всё перечисленное» half of the sentence ends at
+            // «чтобы» — the gain half is not part of the payment.
+            const src = String(s || m[0]).split(/\s+чтобы\s+/i)[0];
+            const spots = [];
+            const re2 = /`([^`]+)`/g;
+            let mm;
+            while ((mm = re2.exec(src))) {
+                if (FS_EFFECTS.iconKind(mm[1]) !== 'cube') continue;
+                spots.push({ end: mm.index + mm[0].length, start: mm.index, kind: FS_EFFECTS.icon(mm[1]) });
+            }
             const all = /все/.test(m[1] || '');
             const n = all ? 99 : num(m[2]);
-            const steps = [];
-            for (const ic of icons) {
-                if (FS_EFFECTS.iconKind(ic) !== 'cube') continue;
-                steps.push({ op: 'spendDie', n, kind: FS_EFFECTS.icon(ic), all, pick: true });
+            const union = spots.length > 1
+                && spots.every((q, i) => i === 0 || /или/i.test(src.slice(spots[i - 1].end, q.start)));
+            if (union) {
+                const kinds = spots.map(q => q.kind);
+                return [{ op: 'spendDie', n, kind: kinds[0], kinds, all, pick: true }].concat(/** @type {any[]} */ (gainStep(s)));
             }
-            return steps.length ? steps : null;
+            const steps = spots.map(q => ({ op: 'spendDie', n, kind: q.kind, all, pick: true }));
+            if (!steps.length) return null;
+            // The «…чтобы получить 2 `att. token`» half of the same sentence is
+            // its own step: the tokens a payment buys are given to the payer.
+            return steps.concat(/** @type {any[]} */ (gainStep(s)));
         },
     },
     // "spend any number of dice" / "spend up to 2 dice"
@@ -2822,6 +2925,19 @@ function countKind(text) {
 }
 
 // The number of the text: "2" or "up to 2" or "one".
+function gainStep(src) {
+    // The «…чтобы получить 2 `att. token`» half of a payment: the tokens the
+    // payment buys. Nothing when the clause is absent.
+    const m = /(?:чтобы\s+)?получ[а-яёa-z]*\s+(\d+|два|одно|один)?\s*`([^`]+)`/i.exec(String(src || ''));
+    if (!m) return [];
+    const kind = FS_EFFECTS.icon(m[2]);
+    const k = FS_EFFECTS.iconKind(m[2]);
+    const n = num(m[1]);
+    if (k === 'token') return [{ op: 'gainToken', n, kind }];
+    if (k === 'cube') return [{ op: 'gainDie', n, kind }];
+    return [];
+}
+
 function num(text) {
     if (!text) return 1;
     const t = String(text).toLowerCase().replace(/^\s*до\s*/, '').trim();

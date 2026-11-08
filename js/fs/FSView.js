@@ -133,6 +133,7 @@ const FSView = {
                 }
                 for (const item of view.animated) item.mesh.rotation[item.axis] += dt * item.speed;
                 this.tweenTick(view);
+                this.chipTick(view);
                 this.pulse(view);
             });
         }
@@ -1587,7 +1588,11 @@ const FSView = {
         const c = state.combat;
         if (!view.flights) view.flights = new Map();
         if (!view.combatSeen) view.combatSeen = new Set();
-        if (!c) { view.combatSeen.clear(); view.flights.clear(); return; }
+        if (!view.reinforceAnchors) view.reinforceAnchors = [];
+        view.reinforceAnchors.length = 0;
+        view.unitChips = view.unitChips || [];
+        view.unitChips.length = 0;
+        if (!c) { view.combatSeen.clear(); view.flights.clear(); this.drawUnitChips(app, view, state); return; }
         const sys = state.systems.find(x => x.id === c.system);
         if (!sys) return;
         const area = sys.areas.find(a => a.pos === c.pos);
@@ -1636,12 +1641,15 @@ const FSView = {
             // The dice of the side land on the ground of the sector, in rows at
             // the edge on the side of its own troops.
             const dice = c.dice[side.id] || [];
+            // A spent die lies on the ground, spent where it fell: it is
+            // marked spent and stays; the living dice keep their places.
+            const diceLive = dice.map((face, i) => ({ face, i })).filter(x => x.face !== null && x.face !== undefined);
             // Spacing by the die's diagonal, not its edge: a turned die must
             // not cut into its neighbour. On a world ALL dice of the side lie
             // in one arc on the table ring OUTSIDE the planet (around the
             // planet's centre, so even the 8th die keeps its own place); in
             // the void they stand in rows of four marching inwards.
-            dice.forEach((face, i) => {
+            diceLive.forEach(({ face, i }) => {
                 let pt;
                 if (disc) {
                     const ang = Math.max(C.die * 1.45, C.die * Math.SQRT2 * 1.03) / base;
@@ -1743,12 +1751,38 @@ const FSView = {
             const reinModel = reinDef
                 ? this.factionModel(view, sidePlayer.faction, reinDef.type, reinDef.id, null) : null;
             const whiteMat = view.material('rein-white', '#f4f1e8');
+            // The reinforcement stands WITH the fighters — on the same ring the
+            // miniatures occupy, in the gaps between them, never down among
+            // the dice or the tokens.
+            const reinPositions = [];
+            {
+                const ringR = disc ? this.PLANET_D * 0.31 : 34;
+                const centroid = ups.length
+                    ? { x: ups.reduce((sx, p) => sx + p.x, 0) / ups.length, z: ups.reduce((sx, p) => sx + p.z, 0) / ups.length }
+                    : (disc ? { x: disc.x, z: disc.z } : ap);
+                const angles = ups.map(p => Math.atan2(p.z - centroid.z, p.x - centroid.x)).sort((a, b) => a - b);
+                if (angles.length) {
+                    const gaps = [];
+                    for (let ai = 0; ai < angles.length; ai++) {
+                        const a = angles[ai], b = ai + 1 < angles.length ? angles[ai + 1] : angles[0] + Math.PI * 2;
+                        gaps.push({ mid: (a + b) / 2, width: b - a });
+                    }
+                    gaps.sort((a, b) => b.width - a.width);
+                    for (let i = 0; i < reinforce; i++) {
+                        const g = gaps[i % gaps.length];
+                        const ang = g.mid + Math.floor(i / gaps.length) * 0.38;
+                        reinPositions.push({ x: centroid.x + Math.cos(ang) * ringR, z: centroid.z + Math.sin(ang) * ringR });
+                    }
+                } else {
+                    const step = Math.PI * 2 / Math.max(1, reinforce);
+                    for (let i = 0; i < reinforce; i++) {
+                        const ang = -Math.PI / 2 + i * step;
+                        reinPositions.push({ x: centroid.x + Math.cos(ang) * ringR, z: centroid.z + Math.sin(ang) * ringR });
+                    }
+                }
+            }
             for (let i = 0; i < reinforce; i++) {
-                const row = Math.floor(i / 8);
-                const inRow = i % 8;
-                const nRow = Math.min(8, reinforce - row * 8);
-                const pt = rowPos(disc ? base - 13 - (cubes.length ? 10.5 : 0) : Math.max(6, base - 16 - (cubes.length ? 10.5 : 0) - row * 10.5),
-                    (inRow - (nRow - 1) / 2) * 12.5);
+                const pt = reinPositions[i];
                 const node = new BABYLON.TransformNode('fs-rein-' + side.id + '-' + i, view.scene);
                 node.position.set(pt.x, groundY(pt.x, pt.z) + 1.4, pt.z);
                 node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id, reinforce: true };
@@ -1769,6 +1803,7 @@ const FSView = {
                         clone.setEnabled(true);
                     }
                     if (isRouted) node.rotation.z = Math.PI / 2;
+                    view.reinforceAnchors.push({ side: side.id, index: i, routed: isRouted, x: node.position.x, y: node.position.y, z: node.position.z });
                 } else {
                     const tokenDisc = BABYLON.MeshBuilder.CreateCylinder('fs-rein-body-' + side.id + '-' + i,
                         { diameter: 10, height: 2.8, tessellation: 24 }, view.scene);
@@ -1789,9 +1824,119 @@ const FSView = {
                     if (isRouted) node.rotation.z = Math.PI / 2;
                     tokenDisc.isPickable = true;
                     tokenDisc.metadata = node.metadata;
+                    view.reinforceAnchors.push({ side: side.id, index: i, routed: isRouted, x: node.position.x, y: node.position.y, z: node.position.z });
                 }
                 this.addMarker(view, node, 'prop');
             }
+        }
+        // The chips are rebuilt after the whole sector is placed.
+        this.drawUnitChips(app, view, state);
+    },
+
+    // The health and the morale of every fighter in the contested sector are
+    // printed under its miniature: the rulebook's own attributes, updated on
+    // every state change — never after a frame has gone by.
+    drawUnitChips(app, view, state) {
+        const layer = typeof document !== 'undefined' ? document.getElementById('fs-unit-chips') : null;
+        if (layer) layer.replaceChildren();
+        view.unitChipNodes = [];
+        view.unitChips = view.unitChips || [];
+        view.unitChips.length = 0;
+        const c = state.combat;
+        if (!c) return;
+        const items = [];
+        const seatSide = seat => (seat === c.attacker ? 'attacker' : 'defender');
+        const sysAreas = ((state.systems.find(s2 => s2.id === c.system) || {}).areas) || [];
+        const world = !!((sysAreas.find(a => a.pos === c.pos)) || {}).world;
+        for (const u of state.units) {
+            if (u.system !== c.system || u.area !== c.pos) continue;
+            const def = FS_RULES.unitOf(state, u);
+            if (!def) continue;
+            const p = view.unitPositions && view.unitPositions.get(u.id);
+            if (!p) continue;
+            const side = seatSide(u.seat);
+            const sideSeat = side === 'attacker' ? c.attacker : c.defender;
+            let hp = def.health || 1;
+            if (c.healthBonus && u.seat === sideSeat) hp += c.healthBonus;
+            if (c.enemyHealth && u.seat !== sideSeat) hp = Math.min(hp, c.enemyHealth);
+            items.push({
+                key: u.id + ':' + hp + ':' + (u.routed ? 1 : 0) + ':' + (def.morale || 0),
+                x: p.x, y: p.y + 1, z: p.z,
+                hp, morale: u.routed ? 0 : (def.morale || 0),
+                routed: !!u.routed,
+                label: def.name || 'Отряд',
+            });
+        }
+        for (const slot of (view.reinforceAnchors || [])) {
+            const seat = slot.side === 'attacker' ? c.attacker : c.defender;
+            const type = world ? 'ground' : 'ship';
+            const def0 = typeof FS_RULES !== 'undefined'
+                ? FS_RULES.reinforceUnitDef(state.players[seat].faction, type) : null;
+            items.push({
+                key: 'rein:' + slot.side + ':' + slot.index + ':' + (slot.routed ? 1 : 0),
+                x: slot.x, y: slot.y + 1, z: slot.z,
+                hp: 1, morale: slot.routed ? 0 : (def0 ? def0.morale || 0 : 0),
+                routed: !!slot.routed,
+                label: 'Подкрепление',
+            });
+        }
+        view.unitChips = items;
+    },
+
+    // One frame: every chip is folded to its miniature's screen place.
+    chipTick(view) {
+        try {
+            const layer = typeof document !== 'undefined' ? document.getElementById('fs-unit-chips') : null;
+            if (!layer || !view.scene || typeof BABYLON === 'undefined') return;
+            const items = view.unitChips || [];
+            const nodes = view.unitChipNodes || (view.unitChipNodes = []);
+            while (nodes.length > items.length) { const n = nodes.pop(); if (layer.contains(n)) layer.removeChild(n); }
+            while (nodes.length < items.length) {
+                const chip = document.createElement('div');
+                chip.className = 'fs-unit-chip';
+                layer.appendChild(chip);
+                nodes.push(chip);
+            }
+            if (!items.length) return;
+            const engine = view.scene.getEngine();
+            const cam = view.scene.activeCamera || view.scene.camera;
+            if (!cam || !cam.viewport || typeof cam.viewport.toGlobal !== 'function') return;
+            const viewport = cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());
+            const transform = view.scene.getTransformMatrix();
+            for (let i = 0; i < items.length; i++) {
+                const it = items[i], chip = nodes[i];
+                const p = BABYLON.Vector3.Project(new BABYLON.Vector3(it.x, it.y, it.z),
+                    BABYLON.Matrix.IdentityReadOnly, transform, viewport);
+                if (!p || !(p.z >= 0 && p.z <= 1)) { chip.style.display = 'none'; continue; }
+                chip.style.display = 'flex';
+                chip.style.left = p.x + 'px';
+                chip.style.top = (p.y - 4) + 'px';
+                if (chip.dataset.key !== it.key) {
+                    chip.dataset.key = it.key;
+                    chip.className = 'fs-unit-chip' + (it.routed ? ' is-routed' : '');
+                    chip.title = it.label + ' · Здоровье: ' + it.hp + ' · Мораль: ' + it.morale;
+                    chip.innerHTML = '';
+                    if (typeof FSIcons !== 'undefined' && FSIcons.url) {
+                        const mk = (icon, text) => {
+                            const box = document.createElement('span');
+                            const ico = document.createElement('span');
+                            ico.className = 'fs-ico fs-ico-svg';
+                            ico.style.backgroundImage = FSIcons.url(icon);
+                            box.appendChild(ico);
+                            const b = document.createElement('b');
+                            b.textContent = String(text);
+                            box.appendChild(b);
+                            return box;
+                        };
+                        chip.appendChild(mk('mark.health', it.hp));
+                        chip.appendChild(mk('cube.morale', it.morale));
+                    } else {
+                        chip.textContent = it.hp + ' / ' + it.morale;
+                    }
+                }
+            }
+        } catch (e) {
+            if (!this._chipWarn) { this._chipWarn = true; console.warn('FSView.chipTick:', e && e.message); }
         }
     },
 
