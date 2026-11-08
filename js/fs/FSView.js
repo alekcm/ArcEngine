@@ -646,7 +646,9 @@ const FSView = {
     // The victory flag: a small 3D flag planted at the far edge of the planet.
     // The flag stands only where an objective token really lies — updatePlanets
     // creates it lazily and toggles it from the state of the objectives.
-    createWorldFlag(app, view, key) {
+    // The cloth carries the colour of the token's owner: the player who needs
+    // to take that token on the world.
+    createWorldFlag(app, view, key, color) {
         const flag = new BABYLON.TransformNode('fs-world-flag-' + key, view.scene);
         const pole = BABYLON.MeshBuilder.CreateCylinder('fs-world-flag-pole-' + key,
             { diameter: .9, height: 16, tessellation: 8 }, view.scene);
@@ -655,10 +657,10 @@ const FSView = {
         const cloth = BABYLON.MeshBuilder.CreateBox('fs-world-flag-cloth-' + key,
             { width: 11, height: 6.5, depth: .5 }, view.scene);
         cloth.parent = flag; cloth.position.set(5.7, 12.8, 0);
-        cloth.material = view.material('flag-cloth', '#e3b64f', { emissive: true });
+        cloth.material = view.material('flag-cloth-' + (color || '#e3b64f'), color || '#e3b64f', { emissive: true });
         pole.isPickable = false; cloth.isPickable = false;
         World3D.addObject(app.location.view, flag, 'prop', { castShadow: true, ink: false, outline: false });
-        return flag;
+        return { root: flag, cloth };
     },
 
     // A plate lying flat on the tile at one of the planet's poles: the unit
@@ -783,7 +785,7 @@ const FSView = {
                 // The victory flag is created lazily by the token logic below:
                 // it stands only where an objective token really lies.
                 let flag = null;
-                planet = { mesh: face, clouds, atmosphere: glow, rim: body, flag, northPlate: null, southPlate: null };
+                planet = { mesh: face, clouds, atmosphere: glow, rim: body, flag, flagCloth: null, flagOwner: null, northPlate: null, southPlate: null };
                 view.planets.set(key, planet);
             }
             const disc = this.discAt(app, sys, area.pos, view.metrics);
@@ -794,14 +796,26 @@ const FSView = {
             planet.clouds.position.set(cx, base + this.PLANET_H + .34, cz);
             planet.atmosphere.position.set(cx, base + this.PLANET_H + .2, cz);
             // The victory flag stands only where an objective token really lies
-            // (the objective pool loses it once a player collects it).
-            const tokensHere = !!(state.objectives && state.objectives.some(o => o.system === sys.id && o.area === area.pos));
-            if (tokensHere && !planet.flag) planet.flag = this.createWorldFlag(app, view, key);
+            // (the objective pool loses it once a player collects it), and it is
+            // painted with the owner's colour — the player who needs to take that
+            // token from the world.
+            const token = state.objectives && state.objectives.find(o => o.system === sys.id && o.area === area.pos);
+            const tokensHere = !!token;
+            const owner = token ? state.players.find(p => p.faction === token.faction) : null;
+            const ownerColor = (owner && owner.color) || this.factionColor(owner ? owner.faction : (token ? token.faction : '')) || '#e3b64f';
+            if (tokensHere && !planet.flag) {
+                const made = this.createWorldFlag(app, view, key, ownerColor);
+                planet.flag = made.root; planet.flagCloth = made.cloth; planet.flagOwner = ownerColor;
+            }
             if (planet.flag) {
                 planet.flag.setEnabled(tokensHere);
                 // The flag stands on the tile beside the token itself, clear of
                 // the structure (which fills the far, north edge of the planet).
                 planet.flag.position.set(cx + 56, gy, cz + 32);
+                if (planet.flagCloth && token && planet.flagOwner !== ownerColor) {
+                    planet.flagCloth.material = view.material('flag-cloth-' + ownerColor, ownerColor, { emissive: true });
+                    planet.flagOwner = ownerColor;
+                }
             }
             // The plates at the poles of the planet: north — the unit capacity,
             // south — the materiel value and the asset tokens.
@@ -1551,7 +1565,9 @@ const FSView = {
             if (!sys) continue;
             const p = this.tilePos(app, sys, view.metrics);
             const horizontal = storm.side === 'N' || storm.side === 'S';
-            const d = this.TILE / 2 - 14;
+            // The barrier lies exactly on the shared edge of the two tiles —
+            // the storm is an anomaly of the border, not of a system.
+            const d = this.TILE / 2;
             const off = { N: [0, -d], S: [0, d], E: [d, 0], W: [-d, 0] }[storm.side] || [0, 0];
             const root = new BABYLON.TransformNode('fs-storm-' + storm.id, view.scene);
             root.position.set(p.x + off[0], h(p.x, p.y) + 6.5, p.y + off[1]);

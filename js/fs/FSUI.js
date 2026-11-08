@@ -318,17 +318,21 @@ const FSUI = {
             row.append(this.el('i', 'fs-player-dot'));
             const name = this.el('div', 'fs-player-name', p.name); name.append(this.el('span', 'fs-player-faction', this.factionName(p.faction) + (p.seat === state.seat ? ' · вы' : '')));
             row.append(name);
+            // How much materiel this player takes at the end of the round: the
+            // income of the worlds he controls (the same count the refresh step uses).
+            const income = typeof FS_RULES !== 'undefined' && FS_RULES.materielIncome ? FS_RULES.materielIncome(state, p.seat) : 0;
             const stats = this.el('div', 'fs-player-stats');
-            for (const [icon, count] of [['mark.objective', p.objectives || 0], ['asset.materiel', p.materiel || 0]]) {
+            for (const [icon, text, title] of [['mark.objective', String(p.objectives || 0), 'Жетоны целей'], ['asset.materiel', String(p.materiel || 0), 'Материя'], ['asset.materiel', '+' + income, 'Материи в конце раунда']]) {
                 const stat = this.el('span');
-                stat.append(this.iconEl(icon), this.el('b', '', String(count)));
+                if (title) stat.title = title;
+                stat.append(this.iconEl(icon), this.el('b', '', text));
+                if (text.charAt(0) === '+') stat.classList.add('fs-stat-income');
                 stats.append(stat);
             }
             row.append(stats);
             const assets = p.assets || {};
-            const reserves = Object.values((p.supply && p.supply.units) || {}).reduce((sum, count) => sum + (Number(count) || 0), 0);
             const resourceLine = this.el('div', 'fs-player-assets');
-            [['asset.forge', assets.forge, 'Кузницы'], ['asset.cache', assets.cache, 'Запасы'], ['order.event', assets.reinforcement, 'Подкрепления'], ['asset.prosperity', assets.prosperity, 'Процветание'], ['mark.ground', reserves, 'Отряды в запасе']].forEach(([icon, count, title]) => {
+            [['asset.forge', assets.forge, 'Кузницы'], ['asset.cache', assets.cache, 'Запасы'], ['order.event', assets.reinforcement, 'Подкрепления']].forEach(([icon, count, title]) => {
                 const chip = this.el('span', 'fs-asset-chip');
                 chip.append(this.iconEl(icon), this.el('b', '', String(count || 0)));
                 chip.title = title;
