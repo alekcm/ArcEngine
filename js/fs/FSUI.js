@@ -40,6 +40,8 @@ const FSUI = {
     modernActions: [],
     currentLobby: null,
     helpOpen: false,
+    factionSeat: null,      // the seat of the open faction dossier, or null
+    drawerMounted: false,   // the slide-in animation plays once per opening
 
     // The full-screen game shell is deliberately separate from ArcEngine's sample HUD.
     mount() {
@@ -70,7 +72,12 @@ const FSUI = {
         window.addEventListener('pointercancel', release);
         // Alt held: the battle hand zooms in even more (the hovered card most of all).
         window.addEventListener('keydown', e => {
-            if (e.key === 'Alt') { e.preventDefault(); this.setAltZoom(true); }
+            if (e.key === 'Alt') { e.preventDefault(); this.setAltZoom(true); return; }
+            if (e.key === 'Escape' && !e.defaultPrevented && this.factionSeat != null) {
+                this.factionSeat = null;
+                this.drawerMounted = false;
+                if (this.renderState) this.update(this.renderState, this.renderCtx);
+            }
         });
         window.addEventListener('keyup', e => {
             if (e.key === 'Alt') this.setAltZoom(false);
@@ -234,7 +241,14 @@ const FSUI = {
         const phaseLabel = state && state.phase === 'setup' ? 'Сборка карты' : ({planning:'Планирование',operations:'Операции',refresh:'Обновление'}[(state || {}).phase] || (state && state.phase) || 'Галактическая война');
         header.append(this.el('span', 'fs-phase', state ? (state.phase === 'setup' ? phaseLabel : 'Раунд ' + state.round + ' · ' + phaseLabel) : phaseLabel));
         const activeSeat = state && state.phase === 'setup' && state.setup ? state.setup.turn : state && state.turn;
-        if (state && state.players[activeSeat]) header.append(this.el('span', 'fs-room-pill', 'ХОД · ' + state.players[activeSeat].name));
+        if (state && state.players[activeSeat]) {
+            // The active player: clicking the pill opens his faction dossier on the right.
+            const pill = this.el('button', 'fs-room-pill', 'ХОД · ' + state.players[activeSeat].name);
+            pill.type = 'button';
+            pill.title = 'Информация о фракции';
+            pill.addEventListener('click', () => this.toggleFactionDrawer(activeSeat));
+            header.append(pill);
+        }
         // A test party: one person plays both seats, the interface says which one is his now.
         if (state && state.solo) header.append(this.el('span', 'fs-room-pill is-solo', 'ТЕСТ · вы за обоих'));
         // The plaque with the round counter folds away: only the toggle stays.
@@ -251,9 +265,9 @@ const FSUI = {
         root.classList.toggle('is-topbar-off', !this.panelState().topbar);
         root.append(header);
 
-        // The top-right toolbar is gone. Only the fullscreen button survives,
-        // moved to the very top-left corner together with the rail switches.
-        const corner = this.el('div', 'fs-corner-left');
+        // Every button and pill of the board lives in the top-right corner:
+        // fullscreen, the undo of the last command and the rail switches.
+        const corner = this.el('div', 'fs-corner-right');
         const full = this.el('button', 'fs-icon-btn'); full.title = 'Во весь экран';
         full.append(this.iconEl('ui.full'));
         full.addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
@@ -313,7 +327,14 @@ const FSUI = {
         ph.append(this.el('span', 'fs-eyebrow', 'Участники'), this.el('span', 'fs-round-chip', boardProgress)); playersCard.append(ph);
         const list = this.el('div', 'fs-player-list');
         state.players.forEach(p => {
-            const row = this.el('div', 'fs-player' + (p.seat === state.seat ? ' is-me' : ''));
+            const row = this.el('div', 'fs-player' + (p.seat === state.seat ? ' is-me' : '') + ' is-clickable');
+            row.title = 'Информация о фракции';
+            row.tabIndex = 0;
+            row.setAttribute('role', 'button');
+            row.addEventListener('click', () => this.toggleFactionDrawer(p.seat));
+            row.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.toggleFactionDrawer(p.seat); }
+            });
             row.style.setProperty('--player-color', p.color || this.factionColor(p.faction));
             row.append(this.el('i', 'fs-player-dot'));
             const name = this.el('div', 'fs-player-name', p.name); name.append(this.el('span', 'fs-player-faction', this.factionName(p.faction) + (p.seat === state.seat ? ' · вы' : '')));
@@ -433,6 +454,8 @@ const FSUI = {
             panel.append(button);
         }
         root.append(panel);
+        const drawer = this.renderFactionDrawer(state);
+        if (drawer) root.append(drawer);
         // The combat hand lies at the bottom of the screen, as a hand of cards.
         const battleHand = this.renderBattleHand(ctx.battleHand);
         if (battleHand) root.append(battleHand);
@@ -440,6 +463,109 @@ const FSUI = {
         if (ctx.warn) root.append(this.el('div', 'fs-toast', ctx.warn));
         else if (ctx.status && this.statusError(ctx.status)) root.append(this.el('div', 'fs-toast', ctx.status));
         this.renderPlaque();
+    },
+
+    // Open or close the faction dossier for a seat: one more click on the same
+    // player closes it. The slide-in animation plays once per opening.
+    toggleFactionDrawer(seat) {
+        this.factionSeat = this.factionSeat === seat ? null : seat;
+        this.drawerMounted = false;
+        if (this.renderState) this.update(this.renderState, this.renderCtx);
+    },
+
+    // How many of every unit of a faction stand on the board right now.
+    deployedUnits(state, seat) {
+        const counts = {};
+        let total = 0;
+        for (const u of state.units || []) {
+            if (u.seat !== seat) continue;
+            counts[u.unit] = (counts[u.unit] || 0) + 1;
+            total += 1;
+        }
+        return { counts, total };
+    },
+
+    // The slide-out dossier of a faction, on the right edge of the screen: the
+    // ability of the faction, what its units have in cubes, health and morale,
+    // and how many of them stand on the board against how many it can field.
+    // Opened by clicking a player — the «ХОД» pill of the active one, or a row
+    // in the participants card.
+    renderFactionDrawer(state) {
+        const seat = this.factionSeat;
+        if (seat == null || !state || !state.players || !state.players[seat]) { this.drawerMounted = false; return null; }
+        const p = state.players[seat];
+        const hasRules = typeof FS_RULES !== 'undefined';
+        const faction = (hasRules && FS_RULES.faction) ? FS_RULES.faction(state, seat)
+            : FS_DATA.factions.find(f => f.id === p.faction);
+        if (!faction) { this.drawerMounted = false; return null; }
+        const color = p.color || faction.color || '#d8b873';
+        const deployed = this.deployedUnits(state, seat);
+        const units = faction.units || [];
+        const totalMax = units.reduce((n, u) => n + (u.max || 0), 0);
+
+        const drawer = this.el('aside', 'fs-faction-drawer' + (this.drawerMounted ? '' : ' is-entering'));
+        this.drawerMounted = true;
+        drawer.style.setProperty('--faction-color', color);
+        drawer.setAttribute('role', 'dialog');
+        drawer.setAttribute('aria-label', 'Информация о фракции');
+
+        const head = this.el('div', 'fs-drawer-head');
+        head.append(this.el('span', 'fs-drawer-crest', (faction.name || '·').slice(0, 1)));
+        const titles = this.el('div', 'fs-drawer-titles');
+        titles.append(this.el('div', 'fs-drawer-faction', faction.name || ''));
+        const sub = [faction.full, p.name + (seat === state.seat ? ' · вы' : '') + (p.eliminated ? ' · выбыл' : '')].filter(Boolean).join(' · ');
+        titles.append(this.el('div', 'fs-drawer-sub', sub));
+        head.append(titles);
+        const close = this.el('button', 'fs-drawer-close'); close.type = 'button'; close.title = 'Закрыть';
+        close.append(this.iconEl('ui.close'));
+        close.addEventListener('click', () => { this.factionSeat = null; this.drawerMounted = false; this.update(this.renderState, this.renderCtx); });
+        head.append(close);
+        drawer.append(head);
+
+        const body = this.el('div', 'fs-drawer-body');
+        body.append(this.el('div', 'fs-drawer-eyebrow', 'Способность фракции'));
+        const ability = this.el('div', 'fs-drawer-ability');
+        if (faction.ability) {
+            ability.append(this.el('b', '', (faction.ability.name || '') + '. '));
+            ability.append(document.createTextNode(faction.ability.text || ''));
+        } else ability.textContent = '—';
+        body.append(ability);
+
+        body.append(this.el('div', 'fs-drawer-eyebrow', 'Отряды'));
+        const list = this.el('div', 'fs-unit-list');
+        for (const def of units) {
+            const count = deployed.counts[def.id] || 0;
+            const row = this.el('div', 'fs-unit-row');
+            const icon = this.el('div', 'fs-unit-ico');
+            icon.append(this.iconEl(def.type === 'ship' ? 'mark.ship' : 'mark.ground'));
+            const main = this.el('div', 'fs-unit-main');
+            const nameLine = this.el('div', 'fs-unit-name');
+            nameLine.append(this.el('span', '', def.name || ''));
+            nameLine.append(this.el('span', 'fs-unit-meta', 'КЛ ' + (def.kl != null ? def.kl : 0) + ' · ' + (def.cost != null ? def.cost : 0) + ' мат.' + (def.forge ? ' · Кузница' : '')));
+            const stats = this.el('div', 'fs-unit-stats');
+            for (const [ic, val, title] of [['ui.die', def.combat, 'Кубики в бою'], ['mark.health', def.health, 'Здоровье'], ['cube.morale', def.morale, 'Мораль']]) {
+                const cell = this.el('span'); cell.title = title;
+                cell.append(this.iconEl(ic), this.el('b', '', String(val != null ? val : 0)));
+                stats.append(cell);
+            }
+            main.append(nameLine, stats);
+            const cnt = this.el('div', 'fs-unit-count');
+            cnt.append(this.el('b', '', String(count)));
+            cnt.append(this.el('span', '', '/ ' + (def.max != null ? def.max : 0)));
+            cnt.append(this.el('span', 'fs-unit-count-cap', 'на поле боя'));
+            row.append(icon, main, cnt);
+            list.append(row);
+        }
+        body.append(list);
+        const total = this.el('div', 'fs-drawer-total');
+        total.append(document.createTextNode('Всего на поле боя: '));
+        total.append(this.el('b', '', String(deployed.total)));
+        total.append(document.createTextNode(' из '));
+        total.append(this.el('b', '', String(totalMax)));
+        total.append(document.createTextNode(' возможных по снабжению'));
+        body.append(total);
+        drawer.append(body);
+        return drawer;
     },
 
     // The score of the battle: the two sides, their dice, their cubes and the

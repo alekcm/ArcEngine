@@ -1336,8 +1336,9 @@ class FSGame {
     // --- the dominate order ---------------------------------------------------
     panelDominate(s, ctx) {
         ctx.title = 'Доминирование';
-        ctx.text = (s.order.ability || '') + '\nРесурсы получены. Способность фракции применять не обязательно.';
-        ctx.status = '';
+        ctx.text = 'Ресурсы получены. Способность фракции применять не обязательно.';
+        // The faction ability is the point of the Dominate order — print it in the panel.
+        ctx.status = s.order.ability ? 'Способность фракции: ' + s.order.ability : 'Способность фракции: —';
         // The prosperity: the player chooses the asset of his choice.
         for (let i = 0; i < (s.order.prosperity || 0); i++) {
             for (const asset of ['forge', 'cache', 'reinforcement']) {
