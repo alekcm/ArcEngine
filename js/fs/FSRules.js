@@ -2667,7 +2667,13 @@ const FS_RULES = {
     // off the edge of the game board."
     stormOptions(state, seat) {
         const event = state.event || {};
-        const card = event.card || event.top;
+        // The revealed top card (the no-tokens path) must restrict the storm the
+        // same way a chosen card does — its directions are looked up by name.
+        let card = event.card || null;
+        if (!card && event.top) {
+            const p = state.players[seat];
+            card = FS_DATA.events.find(e => e.name === event.top && (!p || e.faction === p.faction)) || null;
+        }
         // "Any" is any of the eight directions of the compass; a card that
         // prints an arrow allows only the directions it shows.
         const all = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -2685,7 +2691,6 @@ const FS_RULES = {
                 out.push({ storm: storm.id, dir });
             }
         }
-        void seat;
         return out;
     },
 

@@ -1585,6 +1585,7 @@ class FSGame {
     }
 
     panelDominate(s, ctx) {
+        ctx.panelClass = 'is-dominate';
         ctx.title = 'Доминирование';
         ctx.text = 'Ресурсы получены. Способность фракции применять не обязательно.';
         // The faction ability is the point of the Dominate order — print it in the panel.
@@ -1642,11 +1643,31 @@ class FSGame {
             ];
             if (!(ev.drawn || []).length) {
                 ctx.text = 'Нет жетонов событий: вскрывается верхняя карта колоды (событие не разыгрывается, шторм всё равно ходит).';
-                // Nothing to choose — the only way on is to resolve the opened card.
-                ctx.actions.push({
-                    kind: 'primary', icon: 'ui.next', label: 'Разыграть событие',
-                    onClick: () => this.net.cmd({ type: 'resolveEvent' }),
-                });
+                // Nothing to choose — the opened card decides the storm; show it
+                // before anything is resolved, like every other event card.
+                const topName = ev.top;
+                const topData = FS_DATA.events.find(e => e.faction === p.faction && e.name === topName);
+                const modalItem = {
+                    kind: 'Карта из колоды событий', name: topName || '—',
+                    text: (topData && topData.text) || '',
+                    storm: (topData && topData.storm) || [],
+                    okLabel: 'Вскрыта для шторма',
+                };
+                const stormStepDone = !!ev.stormMoved;
+                const canMove = FS_RULES.stormOptions(s, me).length > 0;
+                if (stormStepDone || !canMove) {
+                    ctx.actions.push({
+                        kind: 'primary', icon: 'ui.next', label: 'Показать событие',
+                        enabled: true,
+                        onClick: () => FSUI.showEventConfirm(modalItem, () => this.net.cmd({ type: 'resolveEvent' })),
+                    });
+                } else {
+                    ctx.actions.push({
+                        kind: 'primary', icon: 'ui.next', label: 'Сначала сдвиньте шторм',
+                        enabled: false,
+                        onClick: () => this.refresh(),
+                    });
+                }
             }
             const counts = new Map();
             for (const name of ev.drawn || []) counts.set(name, (counts.get(name) || 0) + 1);
@@ -1665,6 +1686,13 @@ class FSGame {
             return;
         }
         const data = FS_DATA.events.find(e => e.faction === p.faction && e.name === ev.chosen);
+        const eventModalItem = () => ({
+            kind: 'Событие', name: ev.chosen,
+            text: (data && data.text) || '',
+            storm: (card && card.storm) || (data && data.storm) || [],
+            okLabel: 'Карта события',
+        });
+        const confirmResolve = () => FSUI.showEventConfirm(eventModalItem(), () => this.net.cmd({ type: 'resolveEvent' }));
         ctx.text = ((data && data.text) || '');
         ctx.previewCard = {
             kind: 'Событие', name: ev.chosen, text: (data && data.text) || '',
@@ -1683,7 +1711,7 @@ class FSGame {
                 kind: 'primary', icon: 'ui.next',
                 label: 'Разыграть событие',
                 enabled: true,
-                onClick: () => this.net.cmd({ type: 'resolveEvent' }),
+                onClick: confirmResolve,
             });
             return;
         }
@@ -1707,7 +1735,7 @@ class FSGame {
                 kind: 'primary', icon: 'ui.next',
                 label: 'Разыграть событие',
                 enabled: true,
-                onClick: () => this.net.cmd({ type: 'resolveEvent' }),
+                onClick: confirmResolve,
             });
         }
     }

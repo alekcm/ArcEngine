@@ -392,7 +392,7 @@ const FSUI = {
         // The right panel does one thing at a time: what is going on, the tokens the
         // player owns (counted, zeros included), the choice of the moment and a
         // single button to go on. Everything else happens on the board itself.
-        const panel = this.el('section', 'fs-main-panel');
+        const panel = this.el('section', 'fs-main-panel' + (ctx.panelClass ? ' ' + ctx.panelClass : ''));
         const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', state.over ? 'Итоги сражения' : 'Текущий этап'));
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
         if (ctx.text) head.append(this.el('p', '', ctx.text));
@@ -1084,6 +1084,35 @@ const FSUI = {
             wrap.append(ok);
         }
         return wrap;
+    },
+
+    // The confirmation of the refresh: the event card, big and centred, with a
+    // yes/no under it. «Разыграть событие» must show what is being played —
+    // never resolve silently.
+    showEventConfirm(item, onConfirm) {
+        this.hideEventConfirm();
+        const root = this.modernRoot;
+        if (!root || !root.append || !item) return;
+        const overlay = this.el('div', 'fs-event-overlay');
+        const modal = this.el('section', 'fs-event-modal');
+        const face = this.renderCardPreview(Object.assign({ okLabel: 'Карта события' }, item));
+        if (face) modal.append(face);
+        const buttons = this.el('div', 'fs-event-modal-actions');
+        const cancel = this.el('button', 'fs-secondary'); cancel.type = 'button';
+        cancel.textContent = 'Отмена';
+        const go = this.el('button', 'fs-primary fs-event-modal-confirm'); go.type = 'button';
+        go.append(this.iconEl('ui.check', 'fs-primary-icon'), this.el('span', '', 'Разыграть событие'));
+        cancel.addEventListener('click', () => this.hideEventConfirm());
+        go.addEventListener('click', () => { this.hideEventConfirm(); if (onConfirm) onConfirm(); });
+        overlay.addEventListener('click', e => { if (e.target === overlay) this.hideEventConfirm(); });
+        buttons.append(cancel, go);
+        modal.append(buttons);
+        overlay.append(modal);
+        root.append(overlay);
+        this.eventOverlay = overlay;
+    },
+    hideEventConfirm() {
+        if (this.eventOverlay) { this.eventOverlay.remove(); this.eventOverlay = null; }
     },
 
     // The owned tokens at a glance:     // The owned tokens at a glance: "2× Кузница", "0× Подкрепление" — the zeros

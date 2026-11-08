@@ -476,3 +476,15 @@ button.fs-room-pill:hover{border-color:#d8b87366;color:#efe6c8;background:#d8b87
 .fs-panel-note-icons{display:flex;align-items:center;gap:12px;margin-top:7px;padding:7px 10px;background:#ffffff0e;border:1px solid #ffffff14;border-radius:9px}
 .fs-panel-note-ico{width:22px;height:22px}
 .fs-panel-note-num{color:#e9dec3;font-size:13px}
+
+/* The refresh confirmation: the event card, centred, big — with «Разыграть
+   событие» / «Отмена» underneath it. */
+.fs-event-overlay{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:24px;background:rgba(4,8,12,.72);backdrop-filter:blur(4px);pointer-events:auto}
+.fs-event-modal{display:flex;flex-direction:column;align-items:center;gap:14px;padding:16px 20px 18px;border:1px solid rgba(221,197,140,.35);border-radius:18px;background:linear-gradient(165deg,rgba(26,22,32,.97),rgba(11,13,18,.96));box-shadow:0 34px 90px #000c;max-width:min(420px,100%);max-height:92vh;overflow:auto}
+.fs-event-modal .fs-card-preview{position:static;right:auto;bottom:auto;width:250px}
+.fs-event-modal-actions{display:flex;gap:12px;justify-content:center;width:100%}
+.fs-event-modal-actions .fs-primary{flex:1;justify-content:center}
+.fs-event-modal-actions .fs-secondary{flex:1;text-align:center;padding:10px 12px;cursor:pointer}
+
+/* The Dominate panel is 1.5x the standard height of the main panel. */
+.fs-main-panel.is-dominate{height:69vh;max-height:69vh}
