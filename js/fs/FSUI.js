@@ -289,12 +289,12 @@ const FSUI = {
         root.append(header);
 
         // Every button and pill of the board lives in the top-right corner:
-        // fullscreen, the undo of the last command and the rail switches.
+        // undo on the left, the rail switches in the middle, the fullscreen in
+        // the very right corner.
         const corner = this.el('div', 'fs-corner-right');
         const full = this.el('button', 'fs-icon-btn'); full.title = 'Во весь экран';
         full.append(this.iconEl('ui.full'));
         full.addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
-        corner.append(full);
 
         // «Отменить ход»: every player can take back the last command, whoever
         // made it — the server keeps the history and decides what a step is.
@@ -327,6 +327,7 @@ const FSUI = {
             switches.append(button);
         }
         corner.append(switches);
+        corner.append(full);
         root.append(corner);
         if (state && this.panelState().orders) root.append(this.renderOrdersPop(state));
         if (this.helpOpen) {

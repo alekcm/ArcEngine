@@ -1342,16 +1342,16 @@ const FSView = {
                 }
             }
         }
-        // Structures are small, quiet tabletop miniatures standing in the
-        // far-left corner of the tile they are built on — off the planet, never
-        // on its face, and without glow: printed-board furniture, not a lamp.
+        // Structures are small, quiet tabletop miniatures standing at the
+        // upper-left shoulder of the world they stand on — off the planet's rim,
+        // on the printed tile, never on the planet's face, and without glow.
         for (const s of state.structures) {
             const sys = state.systems.find(x => x.id === s.system);
             if (!sys) continue;
-            const tp = this.tilePos(app, sys, view.metrics);
-            const corner = this.TILE / 2 - 20;   // world px from the tile centre into the far-left corner
-            const tileH = h(tp.x, tp.y) + 6.5;   // the flat printed top of the tile
-            const sx = tp.x - corner, sz = tp.y - corner;
+            const disc = this.discAt(app, sys, s.area, view.metrics);
+            const diag = (this.PLANET_D / 2 + 15) * Math.SQRT1_2;   // past the rim, to the upper-left
+            const sx = disc.x - diag, sz = disc.z - diag;
+            const tileH = h(sx, sz) + 6.5;   // the flat printed top of the tile
             const owner = state.players.find(p2 => p2.seat === s.seat);
             const color = (owner && owner.palette && owner.palette.primary) || (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
             const root = new BABYLON.TransformNode('fs-structure-' + s.id, view.scene);
