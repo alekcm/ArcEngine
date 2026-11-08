@@ -1913,6 +1913,10 @@ const FS_RULES = {
         // The ships stand in the voids, the ground units on the worlds.
         if (def.type === 'ship' && area.world) return { ok: false, error: 'Корабль может стоять только в пустоте.' };
         if (def.type === 'ground' && !area.world) return { ok: false, error: 'Наземный отряд не может стоять в пустоте.' };
+        // The capacity of an area is absolute — fresh troops do not exceed it either.
+        if (this.unitsAt(state, systemId, pos).length >= this.capacity(state, systemId, pos)) {
+            return { ok: false, error: 'Вместимость области исчерпана.' };
+        }
         // Only the friendly and the uncontrolled areas.
         const theirs = state.units.some(u => u.system === systemId && u.area === pos && u.seat !== seat)
             || state.structures.some(st => st.seat !== seat && st.system === systemId && st.area === pos);
