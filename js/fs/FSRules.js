@@ -3729,11 +3729,11 @@ const FS_RULES = {
             copy.setup.stormEdges = copy.setup.stage === 'storms' ? this.setupStormEdges(state) : [];
             copy.setup.myTurn = copy.setup.turn === seat;
         }
-        // The owner of the combat deck may see its contents — the draw order stays
-        // on the server, so the client gets the sorted list of card names only.
-        const mine = copy.players[seat];
-        if (mine && state.players[seat] && state.players[seat].decks) {
-            mine.decksCombatKnown = (state.players[seat].decks.combat || []).slice().sort();
+        // The combat deck is not hidden information: every player sees every
+        // deck's contents (sorted names only — the draw order stays on the server).
+        for (let i = 0; i < copy.players.length; i++) {
+            const src = state.players[i];
+            if (src && src.decks) copy.players[i].decksCombatKnown = (src.decks.combat || []).slice().sort();
         }
         copy.seat = seat;
         return copy;

@@ -401,6 +401,7 @@ class FSGame {
         }
         const me = s.seat;
         this.focusArena(s);
+        this.hand = [];
         const ctx = { title: '', text: '', status: this.status || '', warn: this.warn || '', actions: [], mode: this.mode, setupCellSelected: false };
         // A new order (or a new step of it) — the pending action is dropped.
         const orderKey = s.order ? s.order.order + ':' + s.order.phase : '';
@@ -492,7 +493,6 @@ class FSGame {
         if (this.mode === 'trim' && !(s.trim || []).some(t => t.seat === me)) this.mode = 'idle';
         if (!(s.trim || []).some(t => t.seat === me)) this.trimPick = [];
         if (this.mode === 'strike-damage' && !s.strike) this.mode = 'idle';
-        this.hand = [];
         if (s.combat) this.panelCombat(s, ctx);
         ctx.battleHand = this.hand || [];
         if (!s.combat) ctx.battle = null;
@@ -1311,19 +1311,17 @@ class FSGame {
         const p = s.players[me];
         const order = s.order;
         ctx.title = 'Стратегия · улучшения';
-        ctx.text = 'Купите одно боевое улучшение и одно улучшение приказа. Чтобы взять боевое улучшение, из колоды сбрасывается пара одинаковых карт — пару выбираете вы.';
+        ctx.text = 'Купите одно боевое улучшение и одно улучшение приказа.';
         const level = FS_RULES.commandLevel(s, me);
         const costOf = c => Math.max(0, c.cost - (p.cardDiscount || 0));
         const noUnits = !order || !FS_RULES.hasUnitsOrStructures(s, me, order.system);
-        // The 5 unique cards of the combat deck — never the ten copies.
+        // The combat deck, card for card, in the same component as the hand of the
+        // battle; the discard for a combat upgrade is two cards of the same name.
         const deckNames = FSUI.combatDeckKnown(p, true);
         const deckCounts = {};
         for (const n of deckNames) deckCounts[n] = (deckCounts[n] || 0) + 1;
-        const seen = new Set();
         this.hand = [];
         for (const n of deckNames) {
-            if (seen.has(n)) continue;
-            seen.add(n);
             const def = FS_DATA.combat.find(c => c.faction === p.faction && c.name === n);
             const text = def ? [def.general, def.unit].filter(Boolean).join('\n') : '';
             this.hand.push({
@@ -1381,18 +1379,8 @@ class FSGame {
             general: selRow.general, unit: selRow.unit,
             icons: selRow.icons, order: selRow.order, locked: selRow.locked, reason: selRow.reason,
         } : null;
-        // What the player is told right now.
-        if (noUnits) {
-            ctx.status = 'В активной системе нет ваших отрядов и построек — улучшения купить нельзя.';
-        } else if (!selRow) {
-            ctx.status = 'Материя: ' + p.materiel + ' · выберите карту улучшения — нажмите на неё';
-        } else if (selRow.locked && !selRow.owned) {
-            ctx.status = 'Материя: ' + p.materiel + ' · ' + selRow.reason;
-        } else if (sel.kind === 'combat' && !pairValid) {
-            ctx.status = 'Боевая карта выбрана. Теперь кликните по двум копиям одной карты в руке — эта пара будет сброшена.';
-        } else {
-            ctx.status = 'Материя: ' + p.materiel + ' · подтвердите выбор слева внизу';
-        }
+        // No hints in the beige strip of this window — every one of them goes.
+        ctx.status = '';
         // The buttons of the bottom-left corner — always finishable.
         const combatBought = !!(order && order.combatUpgrade);
         const orderBought = !!(order && order.orderUpgrade);
@@ -1456,11 +1444,7 @@ class FSGame {
             if (!sel || sel.kind !== 'combat') return;
             const counts = {};
             for (const n of FSUI.combatDeckKnown(p, true)) counts[n] = (counts[n] || 0) + 1;
-            if (!this.pairPick || (counts[this.pairPick] || 0) < 2) {
-                this.status = 'Сначала выберите пару одинаковых карт — кликните по ним в руке снизу.';
-                this.refresh();
-                return;
-            }
+            if (!this.pairPick || (counts[this.pairPick] || 0) < 2) return;
             this.net.cmd({ type: 'buyUpgrade', kind: 'combat', card: sel.name, remove: this.pairPick });
             this.upgradeSel = null;
             this.pairPick = null;

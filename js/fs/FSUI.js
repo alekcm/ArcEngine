@@ -256,6 +256,7 @@ const FSUI = {
         // battle in the contested sector is played.
         root.classList.toggle('is-battle', !!(state && state.combat));
         root.classList.toggle('is-deploy', !!(state && state.order && state.order.order === 'deploy'));
+        root.classList.toggle('is-strategize', !!(state && state.order && state.order.order === 'strategize'));
         root.classList.toggle('is-placing-tile', !!(state && state.phase === 'setup' && ctx.mode === 'placeTile'));
         if (this.currentLobby) { this.renderModernLobby(); return; }
         const header = this.el('div', 'fs-topbar');
@@ -552,10 +553,6 @@ const FSUI = {
     // leaves the server). For someone else's dossier it is a closed box.
     renderDeckTab(body, state, seat, p) {
         body.append(this.el('div', 'fs-drawer-eyebrow', 'Текущая боевая колода'));
-        if (seat !== state.seat) {
-            body.append(this.el('div', 'fs-drawer-note', 'Содержимое чужой боевой колоды скрыто — оно известно только владельцу.'));
-            return;
-        }
         const names = this.combatDeckKnown(p, true);
         if (!names.length) {
             body.append(this.el('div', 'fs-drawer-note', 'Колода пуста.'));
