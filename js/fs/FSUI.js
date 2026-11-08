@@ -145,14 +145,14 @@ const FSUI = {
         return box;
     },
 
-    // The two-panel print of a combat card, as on the real thing: the general
-    // ability on parchment, the unit-gated one on darker tan, between the teeth.
-    // Cards without a unit gate get no tan panel and no teeth.
+    // The two-panel print of a combat card: the general ability on parchment,
+    // the unit-gated one below it, separated by one solid line.
+    // Cards without a unit gate get no divider.
     appendCardZones(box, general, unit) {
         const gen = String(general || '').trim();
         const un = String(unit || '').trim();
         if (gen) box.append(this.cardZone(gen, 'is-general', !un));
-        if (gen && un) box.append(this.cardTeeth());
+        if (gen && un) box.append(this.cardDivider());
         if (un) box.append(this.cardZone(un, 'is-unit', !gen));
     },
     cardZone(text, cls, only) {
@@ -160,10 +160,8 @@ const FSUI = {
         zone.append(this.richText(text, 'fs-card-zone-text'));
         return zone;
     },
-    cardTeeth() {
-        const wrap = this.el('span', 'fs-card-teeth');
-        for (let i = 0; i < 14; i++) wrap.append(this.el('i', 'fs-card-tooth'));
-        return wrap;
+    cardDivider() {
+        return this.el('div', 'fs-card-divider');
     },
 
     // The board furniture the player may put away: the participants

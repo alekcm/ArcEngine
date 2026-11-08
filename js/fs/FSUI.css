@@ -464,8 +464,7 @@ button.fs-room-pill:hover{border-color:#d8b87366;color:#efe6c8;background:#d8b87
 .fs-card-zone .fs-rich{color:inherit;font-size:inherit;line-height:inherit}
 .fs-card-zone .fs-rich-bold,.fs-card-zone .fs-rich-italic{color:inherit}
 .fs-card-zone-text{font-size:inherit}
-.fs-card-teeth{display:flex;justify-content:space-between;align-items:flex-start;background:#a2906b;padding:0 6px;gap:1px;height:7px}
-.fs-card-tooth{display:block;width:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid #c9c19c}
+.fs-card-divider{height:2px;background:#241f1459}
 .fs-card-preview-zones{margin-top:9px;font-size:10px;overflow:hidden;border-radius:8px;border:1px solid #00000055}
 .fs-battle-card-text.fs-card-zones{margin:2px 0 0;padding-top:0;border-top:0;flex:1;min-height:0;border-radius:8px;overflow:hidden}
 
