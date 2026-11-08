@@ -1588,15 +1588,46 @@ const FSView = {
             const off = { N: [0, -d], S: [0, d], E: [d, 0], W: [-d, 0] }[storm.side] || [0, 0];
             const root = new BABYLON.TransformNode('fs-storm-' + storm.id, view.scene);
             root.position.set(p.x + off[0], h(p.x, p.y) + 6.5, p.y + off[1]);
-            root.metadata = { fs: 'storm', system: storm.system, side: storm.side };
+            const moved = storm.moved === true;
+            const selected = view.stormPending === storm.id;
+            root.metadata = { fs: 'storm', system: storm.system, side: storm.side, storm: storm.id };
             const barrier = BABYLON.MeshBuilder.CreateBox('fs-storm-barrier-' + storm.id, {
                 width: horizontal ? this.TILE - 20 : 6,
                 depth: horizontal ? 6 : this.TILE - 20,
                 height: 4,
             }, view.scene);
-            barrier.parent = root; barrier.position.y = 2; barrier.material = view.material('storm-barrier', '#8b376f', { emissive: true });
-            // The anomaly is just the barrier: the purple strip along the edge of the tile.
-            barrier.isPickable = false; barrier.metadata = root.metadata;
+            barrier.parent = root; barrier.position.y = 2;
+            // A storm that already moved this phase is duller; the chosen one glows green.
+            barrier.material = selected
+                ? view.material('storm-barrier-sel', '#35d07f', { emissive: true, alpha: 0.95 })
+                : moved
+                    ? view.material('storm-barrier-moved', '#463c50', {})
+                    : view.material('storm-barrier', '#8b376f', { emissive: true });
+            // The barrier is the mouse target: a click on it selects the storm.
+            barrier.isPickable = true;
+            barrier.metadata = { fs: 'storm', system: storm.system, side: storm.side, storm: storm.id };
+            this.addMarker(view, root, 'prop');
+        }
+        // The green ghosts: where the chosen storm may go right now.
+        for (const ghost of view.stormGhosts || []) {
+            const sys = state.systems.find(x => x.id === ghost.system);
+            if (!sys) continue;
+            const p = this.tilePos(app, sys, view.metrics);
+            const horizontal = ghost.side === 'N' || ghost.side === 'S';
+            const d = this.TILE / 2;
+            const off = { N: [0, -d], S: [0, d], E: [d, 0], W: [-d, 0] }[ghost.side] || [0, 0];
+            const root = new BABYLON.TransformNode('fs-storm-ghost-' + ghost.storm + '-' + ghost.dir, view.scene);
+            root.position.set(p.x + off[0], h(p.x, p.y) + 6.5, p.y + off[1]);
+            root.metadata = { fs: 'storm-ghost', system: ghost.system, side: ghost.side, storm: ghost.storm, dir: ghost.dir };
+            const barrier = BABYLON.MeshBuilder.CreateBox('fs-storm-ghost-barrier-' + ghost.storm + '-' + ghost.dir, {
+                width: horizontal ? this.TILE - 20 : 6,
+                depth: horizontal ? 6 : this.TILE - 20,
+                height: 5,
+            }, view.scene);
+            barrier.parent = root; barrier.position.y = 2.5;
+            barrier.material = view.material('storm-ghost', '#35d07f', { emissive: true, alpha: 0.45 });
+            barrier.isPickable = true;
+            barrier.metadata = root.metadata;
             this.addMarker(view, root, 'prop');
         }
         this.drawCombat(app, view, state);

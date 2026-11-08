@@ -1088,6 +1088,7 @@ const FS_RULES = {
             case 'buyUnit': return this.cmdBuyUnit(state, seat, cmd);
             case 'buyStructure': return this.cmdBuyStructure(state, seat, cmd);
             case 'buyUpgrade': return this.cmdBuyUpgrade(state, seat, cmd);
+            case 'refundUpgrade': return this.cmdRefundUpgrade(state, seat, cmd);
             case 'useUpgrade': return this.cmdUseUpgrade(state, seat, cmd);
             case 'finishDeploy': return this.cmdFinishDeploy(state, seat);
             case 'deployStructures': return this.cmdDeployStructures(state, seat);
@@ -1343,6 +1344,7 @@ const FS_RULES = {
                 }
             }
         }
+        state.order.gained = gained;
         if (gained.length) {
             this.log(state, seat, p.name + ' получил ресурсы: ' + gained.join(', ') + '.');
         }
@@ -2167,27 +2169,30 @@ const FS_RULES = {
             if (card.kl > this.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
             const cost = Math.max(0, card.cost - (p.cardDiscount || 0));
             if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
-            p.materiel -= cost;
-            order.upgradesBought = (order.upgradesBought || 0) + 1;
+            // An upgrade card is unique: the deck cannot hold a second pair of it.
+            const ownedCount = p.decks.combat.filter(n => n === card.name).length;
+            if (ownedCount >= 2) return { ok: false, error: 'Эта карта улучшения уже есть у вас в колоде.' };
             // Two copies of ONE card of the deck leave it and two copies of the
-            // upgrade card come in. The player may name the card; the engine takes
-            // the first one it has two copies of.
+            // upgrade card come in. The UI always names the pair; the first pair
+            // it finds is taken only as a fallback.
             const deck = p.decks.combat;
             const counts = {};
             for (const n of deck) counts[n] = (counts[n] || 0) + 1;
             const wanted = cmd.remove && counts[cmd.remove] >= 2 ? cmd.remove : Object.keys(counts).find(n => counts[n] >= 2);
             if (!wanted) return { ok: false, error: 'В колоде нет двух копий одной карты.' };
+            p.materiel -= cost;
+            order.upgradesBought = (order.upgradesBought || 0) + 1;
             let taken = 0;
             const kept = [];
             for (const n of deck) {
                 if (n === wanted && taken < 2) { taken++; continue; }
                 kept.push(n);
             }
-            const removed = [wanted, wanted];
             p.decks.combat = this.shuffle(state, kept.concat([card.name, card.name]));
             order.combatUpgrade = true;
+            // Kept for the refund: the pair that left the deck, the card that came in.
+            order.combatBuy = { card: card.name, removed: [wanted, wanted] };
             this.log(state, seat, p.name + ' купил боевое улучшение «' + card.name + '».');
-            void removed;
             return { ok: true };
         }
         if (kind === 'order') {
@@ -2197,11 +2202,62 @@ const FS_RULES = {
             if (card.kl > this.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
             const cost = Math.max(0, card.cost - (p.cardDiscount || 0));
             if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
+            // One copy of each order upgrade per player: already-owned cards are not offered twice.
+            if ((p.upgrades || []).some(u => u.name === card.name)) {
+                return { ok: false, error: 'Такое улучшение приказа у вас уже есть.' };
+            }
             p.materiel -= cost;
             order.upgradesBought = (order.upgradesBought || 0) + 1;
             p.upgrades.push({ name: card.name, used: false, order: card.order });
             order.orderUpgrade = true;
+            // Kept for the refund.
+            order.orderUpgradeName = card.name;
             this.log(state, seat, p.name + ' купил улучшение приказа «' + card.name + '».');
+            return { ok: true };
+        }
+        return { ok: false, error: 'Неизвестный тип улучшения.' };
+    },
+
+    // The player may change his mind about the upgrade of this order: whatever
+    // was bought this order comes back exactly as it was — the materiel, the
+    // pair of the combat deck, the flags of the order.
+    cmdRefundUpgrade(state, seat, cmd) {
+        const order = state.order;
+        if (!order || order.order !== 'strategize' || order.seat !== seat) {
+            return { ok: false, error: 'Отменить можно только улучшения приказа стратегии.' };
+        }
+        const p = state.players[seat];
+        if (cmd.kind === 'combat') {
+            const buy = order.combatBuy;
+            if (!buy || buy.card !== cmd.card) return { ok: false, error: 'Это улучшение сейчас не куплено.' };
+            const card = FS_DATA.combat.find(c => c.faction === p.faction && c.upgrade && c.name === buy.card);
+            let taken = 0;
+            const kept = [];
+            for (const n of p.decks.combat) {
+                if (n === buy.card && taken < 2) { taken++; continue; }
+                kept.push(n);
+            }
+            if (taken < 2) return { ok: false, error: 'В колоде нет купленных копий — отмена невозможна.' };
+            p.decks.combat = this.shuffle(state, kept.concat(buy.removed));
+            p.materiel = (p.materiel || 0) + (card ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0);
+            order.combatUpgrade = false;
+            order.combatBuy = null;
+            order.upgradesBought = Math.max(0, (order.upgradesBought || 0) - 1);
+            this.log(state, seat, p.name + ' отменил покупку боевого улучшения «' + buy.card + '».');
+            return { ok: true };
+        }
+        if (cmd.kind === 'order') {
+            const name = order.orderUpgradeName;
+            if (!name || name !== cmd.card) return { ok: false, error: 'Это улучшение сейчас не куплено.' };
+            const idx = (p.upgrades || []).findIndex(u => u.name === name);
+            if (idx < 0) return { ok: false, error: 'Улучшение уже куда-то пропало — отмена невозможна.' };
+            const card = FS_DATA.orders.find(c => c.faction === p.faction && c.name === name);
+            p.upgrades.splice(idx, 1);
+            p.materiel = (p.materiel || 0) + (card ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0);
+            order.orderUpgrade = false;
+            order.orderUpgradeName = null;
+            order.upgradesBought = Math.max(0, (order.upgradesBought || 0) - 1);
+            this.log(state, seat, p.name + ' отменил покупку улучшения приказа «' + name + '».');
             return { ok: true };
         }
         return { ok: false, error: 'Неизвестный тип улучшения.' };
@@ -2320,6 +2376,8 @@ const FS_RULES = {
     startRefresh(state) {
         state.phase = 'refresh';
         state.order = null;
+        // A new round wipes the marks of the storms: every strip is bright again.
+        for (const st of state.storms) st.moved = {};
         // 1. the objective tokens on friendly worlds
         // A collected token leaves the board: it lies on the faction sheet of its
         // owner and is never counted again (the rules, "Objective Tokens" —
@@ -2455,6 +2513,9 @@ const FS_RULES = {
     cmdMoveStorm(state, seat, cmd) {
         if (state.phase !== 'refresh') return { ok: false, error: 'Сейчас не фаза обновления.' };
         if (!state.event || state.event.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        // The event moves exactly one Warp Storm ("The active player chooses one
+        // Warp Storm on the game board and moves it").
+        if (state.event.stormMoved === true) return { ok: false, error: 'Шторм в эту фазу уже сдвигался.' };
         const storm = state.storms.find(s => s.id === cmd.storm);
         if (!storm) return { ok: false, error: 'Нет такого шторма.' };
         // Each storm moves only once during a refresh phase, whoever moves it.
@@ -3667,6 +3728,12 @@ const FS_RULES = {
             if (copy.setup.stage === 'objectives' && copy.setup.turn === seat) copy.setup.objectiveOptions = this.setupObjectiveOptions(state);
             copy.setup.stormEdges = copy.setup.stage === 'storms' ? this.setupStormEdges(state) : [];
             copy.setup.myTurn = copy.setup.turn === seat;
+        }
+        // The owner of the combat deck may see its contents — the draw order stays
+        // on the server, so the client gets the sorted list of card names only.
+        const mine = copy.players[seat];
+        if (mine && state.players[seat] && state.players[seat].decks) {
+            mine.decksCombatKnown = (state.players[seat].decks.combat || []).slice().sort();
         }
         copy.seat = seat;
         return copy;

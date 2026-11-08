@@ -111,7 +111,16 @@ const FS_EFFECTS = {
         // "either ... or ..." — the player chooses.
         const either = s.replace(/^\s*либо\s+/i, '').split(/\s+либо\s+/i);
         if (either.length >= 2) {
-            const options = either.flatMap(part => this.parseSentence(part.replace(/^\s*или\s+/i, ''), ctx));
+            // Every option keeps the sentence it came from — the buttons of the
+            // choice name what each branch actually does.
+            const options = [];
+            for (const part of either) {
+                const branch = part.replace(/^\s*или\s+/i, '').trim();
+                for (const step of this.parseSentence(branch, ctx)) {
+                    if (step && !step.ability) step.ability = branch;
+                    options.push(step);
+                }
+            }
             if (options.length > 1) {
                 const scope = this.scope(s);
                 return [{ op: 'choice', options: options.map(o => this.withScope(o, scope)), text: s }];

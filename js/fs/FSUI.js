@@ -234,6 +234,7 @@ const FSUI = {
         // A fight is its own screen: the rails of the board stand aside while the
         // battle in the contested sector is played.
         root.classList.toggle('is-battle', !!(state && state.combat));
+        root.classList.toggle('is-deploy', !!(state && state.order && state.order.order === 'deploy'));
         root.classList.toggle('is-placing-tile', !!(state && state.phase === 'setup' && ctx.mode === 'placeTile'));
         if (this.currentLobby) { this.renderModernLobby(); return; }
         const header = this.el('div', 'fs-topbar');
@@ -372,6 +373,7 @@ const FSUI = {
         const panel = this.el('section', 'fs-main-panel');
         const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', state.over ? 'Итоги сражения' : 'Текущий этап'));
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
+        if (ctx.text) head.append(this.el('p', '', ctx.text));
         panel.append(head);
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
         // No system is written in this panel: what a sector is made of is shown by
@@ -398,6 +400,8 @@ const FSUI = {
         if (hand) panel.append(hand);
         const selection = this.renderSelection(ctx.selection);
         if (selection) panel.append(selection);
+        const upgrades = this.renderUpgrades(ctx.upgrades);
+        if (upgrades) panel.append(upgrades);
         const actions = this.el('div', 'fs-actions');
         const items = (ctx.actions || []).filter(a => a.enabled !== false || a.kind === 'primary' || a.kind === 'secondary');
         const tiles = items.filter(a => a.tile);
@@ -453,6 +457,7 @@ const FSUI = {
             button.addEventListener('click', () => a.onClick && a.onClick());
             panel.append(button);
         }
+        if (ctx.note) panel.append(this.el('div', 'fs-panel-note', ctx.note));
         root.append(panel);
         const drawer = this.renderFactionDrawer(state);
         if (drawer) root.append(drawer);
@@ -462,6 +467,10 @@ const FSUI = {
         actions.scrollTop = scrollTop;
         if (ctx.warn) root.append(this.el('div', 'fs-toast', ctx.warn));
         else if (ctx.status && this.statusError(ctx.status)) root.append(this.el('div', 'fs-toast', ctx.status));
+        const leftActions = this.renderLeftActions(ctx.leftActions);
+        if (leftActions) root.append(leftActions);
+        const preview = this.renderCardPreview(ctx.previewCard);
+        if (preview) root.append(preview);
         this.renderPlaque();
     },
 
@@ -564,6 +573,63 @@ const FSUI = {
         total.append(this.el('b', '', String(totalMax)));
         total.append(document.createTextNode(' возможных по снабжению'));
         body.append(total);
+
+        // The upgrade cards of the faction — every one of them, bought or not:
+        // the count of affordable and locked stays visible at a glance.
+        const ORDER_ICONS = { advance: 'order.advance', deploy: 'order.deploy', strategize: 'order.strategize', dominate: 'order.dominate', orbital: 'ui.storm' };
+        const level = hasRules && FS_RULES.commandLevel ? FS_RULES.commandLevel(state, seat) : 0;
+        const materiel = p.materiel || 0;
+        const upgradesHave = new Set((p.upgrades || []).map(u => u.name));
+        const combatHave = {};
+        for (const n of this.combatDeckKnown(p, seat === state.seat)) combatHave[n] = (combatHave[n] || 0) + 1;
+        const mkStatic = (card, isCombat) => {
+            const kl = card.kl != null ? card.kl : 0;
+            const cost = card.cost != null ? card.cost : 0;
+            const owned = isCombat ? (combatHave[card.name] || 0) >= 2 : upgradesHave.has(card.name);
+            const locked = !owned && (kl > level || cost > materiel);
+            const row = this.el('div', 'fs-upgrade-row is-static' + (locked ? ' is-locked' : '') + (owned ? ' is-owned' : ''));
+            const ico = this.el('span', 'fs-upgrade-ico');
+            if (isCombat) {
+                if (card.icons) {
+                    let cubes = 0;
+                    for (const kind of ['att', 'def', 'morale']) {
+                        const n = card.icons[kind] || 0;
+                        if (n > 0) { cubes += n; ico.append(this.iconEl('cube.' + kind)); if (n > 1) ico.append(this.el('b', '', String(n))); }
+                    }
+                    if (!cubes) ico.append(this.iconEl('ui.die'));
+                } else ico.append(this.iconEl('ui.die'));
+            } else {
+                ico.append(this.iconEl(ORDER_ICONS[card.order] || 'order.event'));
+            }
+            row.append(ico);
+            const main = this.el('span', 'fs-upgrade-main');
+            main.append(this.el('span', 'fs-upgrade-name', card.name || ''));
+            const meta = this.el('span', 'fs-upgrade-meta');
+            meta.append(this.iconEl('ui.die', 'fs-upgrade-meta-ico'));
+            meta.append(this.el('span', '', 'КЛ ' + kl));
+            meta.append(this.iconEl('asset.materiel', 'fs-upgrade-meta-ico'));
+            meta.append(this.el('span', '', String(cost)));
+            if (owned) meta.append(this.el('span', 'fs-upgrade-reason', 'Уже есть'));
+            else if (locked) meta.append(this.el('span', 'fs-upgrade-reason', kl > level ? 'Нужен КЛ ' + kl : 'Нужно ' + cost + ' материи'));
+            main.append(meta);
+            row.append(main);
+            const right = this.el('span', 'fs-upgrade-right');
+            right.append(this.el('span', 'fs-upgrade-tag', isCombat ? 'Пара' : 'Приказ'));
+            row.append(right);
+            return row;
+        };
+        /** @type {Array<[string, any[], boolean]>} */
+        const groups = [
+            ['Улучшения приказа', (FS_DATA.orders || []).filter(c => c.faction === p.faction), false],
+            ['Боевые улучшения', (FS_DATA.combat || []).filter(c => c.faction === p.faction && c.upgrade), true],
+        ];
+        for (const [title, cards, isCombat] of groups) {
+            if (!cards.length) continue;
+            body.append(this.el('div', 'fs-drawer-eyebrow', title));
+            const list = this.el('div', 'fs-upgrade-list is-static-list');
+            for (const card of cards) list.append(mkStatic(card, isCombat));
+            body.append(list);
+        }
         drawer.append(body);
         return drawer;
     },
@@ -726,7 +792,9 @@ const FSUI = {
             }
             // no «Разыграть» label — the card itself is the button.
             else card.disabled = true;
+            if (item.pairPicked) card.classList.add('is-pair-picked');
             card.addEventListener('click', () => {
+                if (item.onClick) { item.onClick(); return; }
                 if (!item.playable) return;
                 if (this.onHandPlay) this.onHandPlay(item);
             });
@@ -734,6 +802,141 @@ const FSUI = {
         }
         bar.append(cards);
         return bar;
+    },
+
+    // --- the strategize order: the upgrade sections of the panel --------------
+
+    // The compact rows of every purchasable card of a faction. Locked cards are
+    // never hidden — they wear a less saturated background and say why.
+    // The names in a player's combat deck, as the client is allowed to see them:
+    // the server sends the sorted list to the owner only. Others fall back to
+    // nothing — their deck is hidden information.
+    combatDeckKnown(p, own) {
+        if (p && Array.isArray(p.decksCombatKnown)) return p.decksCombatKnown;
+        if (!own) return [];
+        const f = p && p.faction;
+        const starter = (typeof FS_DATA !== 'undefined' && FS_DATA.combat ? FS_DATA.combat : [])
+            .filter(c => c.faction === f && !c.upgrade);
+        const out = [];
+        for (const c of starter) { out.push(c.name); out.push(c.name); }
+        return out;
+    },
+
+    renderUpgrades(sections) {
+        if (!sections) return null;
+        const wrap = this.el('div', 'fs-upgrades');
+        const groups = [['combat', 'Боевые улучшения'], ['order', 'Улучшения приказа']];
+        const ORDER_ICONS = { advance: 'order.advance', deploy: 'order.deploy', strategize: 'order.strategize', dominate: 'order.dominate', orbital: 'ui.storm' };
+        for (const [key, title] of groups) {
+            const rows = sections[key] || [];
+            if (!rows.length) continue;
+            wrap.append(this.el('div', 'fs-upgrade-sec-title', title));
+            const list = this.el('div', 'fs-upgrade-list');
+            for (const r of rows) {
+                const row = this.el('button', 'fs-upgrade-row'
+                    + (r.locked ? ' is-locked' : '')
+                    + (r.owned ? ' is-owned' : '')
+                    + (r.selected ? ' is-selected' : ''));
+                row.type = 'button';
+                row.setAttribute('aria-pressed', r.selected ? 'true' : 'false');
+                row.title = (r.reason ? r.reason + '\n' : '') + (r.text || '');
+                const ico = this.el('span', 'fs-upgrade-ico');
+                if (key === 'combat') {
+                    if (r.icons) {
+                        let cubes = 0;
+                        for (const kind of ['att', 'def', 'morale']) {
+                            const n = r.icons[kind] || 0;
+                            if (n > 0) { cubes += n; ico.append(this.iconEl('cube.' + kind)); if (n > 1) ico.append(this.el('b', '', String(n))); }
+                        }
+                        if (!cubes) ico.append(this.iconEl('ui.die'));
+                    } else ico.append(this.iconEl('ui.die'));
+                } else {
+                    ico.append(this.iconEl(ORDER_ICONS[r.order] || 'order.event'));
+                }
+                row.append(ico);
+                const main = this.el('span', 'fs-upgrade-main');
+                main.append(this.el('span', 'fs-upgrade-name', r.name));
+                const meta = this.el('span', 'fs-upgrade-meta');
+                meta.append(this.iconEl('ui.die', 'fs-upgrade-meta-ico'));
+                meta.append(this.el('span', '', 'КЛ ' + (r.kl != null ? r.kl : 0)));
+                meta.append(this.iconEl('asset.materiel', 'fs-upgrade-meta-ico'));
+                meta.append(this.el('span', '', String(r.cost != null ? r.cost : 0)));
+                if (r.reason) meta.append(this.el('span', 'fs-upgrade-reason', r.reason));
+                main.append(meta);
+                row.append(main);
+                const right = this.el('span', 'fs-upgrade-right');
+                if (r.owned) right.append(this.el('span', 'fs-upgrade-tag', 'У вас'));
+                else if (r.locked) right.append(this.iconEl('ui.close', 'fs-upgrade-lock'));
+                else right.append(this.iconEl('ui.next', 'fs-upgrade-go'));
+                row.append(right);
+                row.addEventListener('click', () => { if (r.onClick) r.onClick(); });
+                list.append(row);
+            }
+            wrap.append(list);
+        }
+        return wrap;
+    },
+
+    // The buttons stacked in the bottom-left corner: the confirmations of the
+    // two purchases of the strategize order and the way to end it.
+    renderLeftActions(list) {
+        if (!list || !list.length) return null;
+        const stack = this.el('div', 'fs-left-actions');
+        for (const a of list) {
+            const button = this.el('button', 'fs-left-btn' + (a.kind ? ' is-' + a.kind : '') + (a.enabled === false ? ' is-disabled' : ''));
+            button.type = 'button';
+            button.disabled = a.enabled === false;
+            if (a.icon) button.append(this.iconEl(a.icon, 'fs-left-btn-icon'));
+            button.append(this.el('span', 'fs-left-btn-label', a.label || ''));
+            button.addEventListener('click', () => {
+                if (a.enabled !== false && a.onClick) a.onClick();
+            });
+            stack.append(button);
+        }
+        return stack;
+    },
+
+    // The big card slightly to the left of the main panel: the icons and the
+    // full print of the card, never a squeeze of letters.
+    renderCardPreview(item) {
+        if (!item) return null;
+        const wrap = this.el('div', 'fs-card-preview');
+        wrap.append(this.el('div', 'fs-card-preview-kind', item.kind || ''));
+        wrap.append(this.el('div', 'fs-card-preview-name', item.name || ''));
+        const meta = this.el('div', 'fs-card-preview-meta');
+        meta.append(this.iconEl('ui.die', 'fs-card-preview-meta-ico'));
+        meta.append(this.el('span', '', 'КЛ ' + (item.kl != null ? item.kl : 0)));
+        meta.append(this.iconEl('asset.materiel', 'fs-card-preview-meta-ico'));
+        meta.append(this.el('span', '', String(item.cost != null ? item.cost : 0) + ' материя'));
+        wrap.append(meta);
+        if (item.icons) {
+            const faces = { att: 'cube.att', def: 'cube.def', morale: 'cube.morale' };
+            const icons = this.el('div', 'fs-card-icons fs-card-preview-cubes');
+            let any = false;
+            for (const kind of ['att', 'def', 'morale']) {
+                const n = item.icons[kind] || 0;
+                if (!n) continue;
+                any = true;
+                const chip = this.el('span', 'fs-card-cube is-' + kind);
+                chip.append(this.iconEl(faces[kind]));
+                if (n > 1) chip.append(this.el('b', '', String(n)));
+                icons.append(chip);
+            }
+            if (any) wrap.append(icons);
+        }
+        if (item.text) wrap.append(this.richText(item.text, 'fs-card-preview-text'));
+        if (item.locked) {
+            const lock = this.el('div', 'fs-card-preview-lock');
+            lock.append(this.iconEl('ui.close', 'fs-card-preview-lock-ico'));
+            lock.append(this.el('span', '', item.reason || 'Сейчас недоступна'));
+            wrap.append(lock);
+        } else {
+            const ok = this.el('div', 'fs-card-preview-ok');
+            ok.append(this.iconEl('ui.check', 'fs-card-preview-ok-ico'));
+            ok.append(this.el('span', '', 'Можно купить'));
+            wrap.append(ok);
+        }
+        return wrap;
     },
 
     // The owned tokens at a glance:     // The owned tokens at a glance: "2× Кузница", "0× Подкрепление" — the zeros

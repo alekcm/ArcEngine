@@ -348,6 +348,23 @@ class FSGame {
         this.solo = !!view.solo;
         this.testMode = view.mode || this.testMode;
         FSUI.show('fsLobby', false);
+        // The ghost storms of the pending move: where the storm may go now.
+        this.view.stormPending = null;
+        this.view.stormGhosts = [];
+        if (view && view.phase === 'refresh' && view.event && view.event.seat === view.seat && !view.event.stormMoved) {
+            const pid = this.mode === 'storm' && this.pending ? this.pending.storm : null;
+            if (pid) {
+                const storm = (view.storms || []).find(x => x.id === pid);
+                this.view.stormPending = pid;
+                this.view.stormGhosts = FS_RULES.stormOptions(view, view.seat)
+                    .filter(o => o.storm === pid)
+                    .map(o => {
+                        const t = storm ? FS_RULES.stormTarget(view, storm, o.dir) : null;
+                        return t ? { system: t.system, side: t.side, dir: o.dir, storm: pid } : null;
+                    })
+                    .filter(Boolean);
+            }
+        }
         FSView.update(this.app, this.view, view);
         // During a fight the camera belongs to the contested sector (focusArena
         // glides it there smoothly) — the board centre must not yank it back.
@@ -1291,54 +1308,190 @@ class FSGame {
     panelStrategize(s, ctx) {
         const me = s.seat;
         const p = s.players[me];
+        const order = s.order;
         ctx.title = 'Стратегия · улучшения';
-        ctx.text = 'Купите одно боевое улучшение и одно улучшение приказа.';
-        ctx.status = 'Материя: ' + p.materiel;
-        // The upgrades are bought only with his units or structures in the system.
-        if (!s.order || !FS_RULES.hasUnitsOrStructures(s, me, s.order.system)) {
-            ctx.text = 'В активной системе нет ваших отрядов и построек — улучшения купить нельзя.';
-            ctx.actions.push({
-                kind: 'primary', icon: 'ui.next', label: 'Закончить стратегию',
-                onClick: () => this.net.cmd({ type: 'finishStrategize' }),
-            });
-            return;
-        }
-        // Only the cards the player may buy: the level of command and the materiel.
+        ctx.text = 'Купите одно боевое улучшение и одно улучшение приказа. Чтобы взять боевое улучшение, из колоды сбрасывается пара одинаковых карт — пару выбираете вы.';
         const level = FS_RULES.commandLevel(s, me);
-        const ccards = FS_DATA.combat.filter(c => c.faction === p.faction && c.upgrade);
-        const mayBuy = c => c.kl <= level && c.cost <= p.materiel;
-        // One combat upgrade and one order upgrade per order.
-        if (!s.order.combatUpgrade) {
-            for (const c of ccards.filter(mayBuy)) {
-                ctx.actions.push({
-                    kind: 'pick', icon: 'cube.att', label: c.name, count: c.cost,
-                    hint: 'Боевое улучшение · КЛ ' + c.kl + ' · ' + (c.general || '') + ' ' + (c.unit || ''),
-                    onClick: () => this.net.cmd({ type: 'buyUpgrade', kind: 'combat', card: c.name }),
-                });
-            }
+        const costOf = c => Math.max(0, c.cost - (p.cardDiscount || 0));
+        const noUnits = !order || !FS_RULES.hasUnitsOrStructures(s, me, order.system);
+        // The 5 unique cards of the combat deck — never the ten copies.
+        const deckNames = FSUI.combatDeckKnown(p, true);
+        const deckCounts = {};
+        for (const n of deckNames) deckCounts[n] = (deckCounts[n] || 0) + 1;
+        const seen = new Set();
+        this.hand = [];
+        for (const n of deckNames) {
+            if (seen.has(n)) continue;
+            seen.add(n);
+            const def = FS_DATA.combat.find(c => c.faction === p.faction && c.name === n);
+            const text = def ? [def.general, def.unit].filter(Boolean).join('\n') : '';
+            this.hand.push({
+                name: n,
+                playable: true,
+                icons: def && def.icons ? def.icons : {},
+                // Real italics, real bold and the cubes as shapes — as in the battle.
+                runs: typeof FSIcons !== 'undefined' ? FSIcons.runs(text) : null,
+                text,
+                onClick: (name => () => this.pickDeckPair(name))(n),
+                pairPicked: this.pairPick === n,
+            });
         }
-        const ocards = FS_DATA.orders.filter(c => c.faction === p.faction);
-        if (!s.order.orderUpgrade) {
-            for (const c of ocards.filter(mayBuy)) {
-                ctx.actions.push({
-                    kind: 'pick', icon: 'order.event', label: c.name, count: c.cost,
-                    hint: 'Улучшение приказа · ' + (c.text || ''),
-                    onClick: () => this.net.cmd({ type: 'buyUpgrade', kind: 'order', card: c.name }),
-                });
-            }
+        const pairValid = !!this.pairPick && (deckCounts[this.pairPick] || 0) >= 2;
+        // Every upgrade card of the faction — buyable and locked, none hidden.
+        const combatUp = FS_DATA.combat.filter(c => c.faction === p.faction && c.upgrade);
+        const orderUp = FS_DATA.orders.filter(c => c.faction === p.faction);
+        const ownedOrder = new Set((p.upgrades || []).map(u => u.name));
+        const mkRow = (c, kind) => {
+            const cost = costOf(c);
+            const owned = kind === 'order' ? ownedOrder.has(c.name) : (deckCounts[c.name] || 0) >= 2;
+            const bought = kind === 'order' ? !!(order && order.orderUpgrade) : !!(order && order.combatUpgrade);
+            let locked = null;
+            let reason = '';
+            if (owned) { locked = true; reason = 'Уже у вас'; }
+            else if (bought) { locked = true; reason = kind === 'order' ? 'Принято в этом приказе' : 'Пара уже куплена'; }
+            else if (c.kl > level) { locked = true; reason = 'Нужен КЛ ' + c.kl + ' (у вас ' + level + ')'; }
+            else if (p.materiel < cost) { locked = true; reason = 'Не хватает материи (нужно ' + cost + ')'; }
+            else if (noUnits) { locked = true; reason = 'Нет отрядов или построек в системе'; }
+            const selected = !!(this.upgradeSel && this.upgradeSel.kind === kind && this.upgradeSel.name === c.name);
+            return {
+                kind, name: c.name, cost, kl: c.kl,
+                text: kind === 'order' ? (c.text || '') : ((c.general && c.general !== '—' ? c.general + ' ' : '') + (c.unit || '')),
+                icons: kind === 'combat' && c.icons ? c.icons : null,
+                order: kind === 'order' ? c.order : null,
+                locked: !!locked, reason, owned, selected,
+                onClick: (name => () => this.pickUpgrade(kind, name))(c.name),
+            };
+        };
+        ctx.upgrades = {
+            combat: combatUp.map(c => mkRow(c, 'combat')),
+            order: orderUp.map(c => mkRow(c, 'order')),
+        };
+        const sel = this.upgradeSel;
+        const selRow = sel ? ctx.upgrades[sel.kind].find(r => r.name === sel.name) : null;
+        if (this.upgradeSel && !selRow) this.upgradeSel = null;
+        // The big card slightly to the left of the panel.
+        ctx.previewCard = selRow ? {
+            kind: selRow.kind === 'order' ? 'Улучшение приказа' : 'Боевое улучшение',
+            name: selRow.name, cost: selRow.cost, kl: selRow.kl, text: selRow.text,
+            icons: selRow.icons, order: selRow.order, locked: selRow.locked, reason: selRow.reason,
+        } : null;
+        // What the player is told right now.
+        if (noUnits) {
+            ctx.status = 'В активной системе нет ваших отрядов и построек — улучшения купить нельзя.';
+        } else if (!selRow) {
+            ctx.status = 'Материя: ' + p.materiel + ' · выберите карту улучшения — нажмите на неё';
+        } else if (selRow.locked && !selRow.owned) {
+            ctx.status = 'Материя: ' + p.materiel + ' · ' + selRow.reason;
+        } else if (sel.kind === 'combat' && !pairValid) {
+            ctx.status = 'Боевая карта выбрана. Теперь кликните по двум копиям одной карты в руке — эта пара будет сброшена.';
+        } else {
+            ctx.status = 'Материя: ' + p.materiel + ' · подтвердите выбор слева внизу';
         }
-        ctx.actions.push({
-            kind: 'primary', icon: 'ui.next', label: 'Закончить стратегию',
-            onClick: () => this.net.cmd({ type: 'finishStrategize' }),
-        });
+        // The buttons of the bottom-left corner — always finishable.
+        const combatBought = !!(order && order.combatUpgrade);
+        const orderBought = !!(order && order.orderUpgrade);
+        const combatName = combatBought && order.combatBuy ? order.combatBuy.card : null;
+        const orderName = orderBought ? (order.orderUpgradeName || null) : null;
+        const selUsable = !!selRow && !selRow.locked && !noUnits;
+        ctx.leftActions = [
+            {
+                icon: 'cube.att',
+                kind: combatBought ? 'refund' : 'confirm',
+                label: combatBought ? 'Отменить выбор боевой карты ' + combatName : 'Подтвердить выбор боевой карты',
+                enabled: combatBought ? true : selUsable && !!selRow && selRow.kind === 'combat' && pairValid,
+                onClick: () => this.confirmUpgrade('combat'),
+            },
+            {
+                icon: 'order.strategize',
+                kind: orderBought ? 'refund' : 'confirm',
+                label: orderBought ? 'Отменить выбор карты ' + orderName : 'Подтвердить выбор карты улучшения',
+                enabled: orderBought ? true : selUsable && !!selRow && selRow.kind === 'order',
+                onClick: () => this.confirmUpgrade('order'),
+            },
+            {
+                icon: 'ui.next',
+                kind: 'primary',
+                label: 'Закончить приказ Улучшение',
+                enabled: true,
+                onClick: () => this.net.cmd({ type: 'finishStrategize' }),
+            },
+        ];
     }
 
-    // --- the dominate order ---------------------------------------------------
+    // The purchase of the strategize order — the cards are never bought by a
+    // bare click: the click only selects the card (item C), the button buys.
+    pickUpgrade(kind, name) {
+        const cur = this.upgradeSel;
+        this.upgradeSel = (cur && cur.kind === kind && cur.name === name) ? null : { kind, name };
+        this.refresh();
+    }
+
+    // The pair of the combat deck chosen for the discard — the player chooses.
+    pickDeckPair(name) {
+        this.pairPick = (this.pairPick === name ? null : name);
+        this.refresh();
+    }
+
+    // Confirm or refund the purchase the player chose.
+    confirmUpgrade(kind) {
+        const s = this.state;
+        if (!s || !s.order || s.order.order !== 'strategize' || s.order.seat !== s.seat) return;
+        const p = s.players[s.seat];
+        if (kind === 'combat') {
+            if (s.order.combatUpgrade) {
+                const card = s.order.combatBuy ? s.order.combatBuy.card : null;
+                if (card) this.net.cmd({ type: 'refundUpgrade', kind: 'combat', card });
+                this.upgradeSel = null;
+                this.pairPick = null;
+                this.refresh();
+                return;
+            }
+            const sel = this.upgradeSel;
+            if (!sel || sel.kind !== 'combat') return;
+            const counts = {};
+            for (const n of FSUI.combatDeckKnown(p, true)) counts[n] = (counts[n] || 0) + 1;
+            if (!this.pairPick || (counts[this.pairPick] || 0) < 2) {
+                this.status = 'Сначала выберите пару одинаковых карт — кликните по ним в руке снизу.';
+                this.refresh();
+                return;
+            }
+            this.net.cmd({ type: 'buyUpgrade', kind: 'combat', card: sel.name, remove: this.pairPick });
+            this.upgradeSel = null;
+            this.pairPick = null;
+            this.refresh();
+            return;
+        }
+        if (kind === 'order') {
+            if (s.order.orderUpgrade) {
+                const card = s.order.orderUpgradeName || null;
+                if (card) this.net.cmd({ type: 'refundUpgrade', kind: 'order', card });
+                this.upgradeSel = null;
+                this.refresh();
+                return;
+            }
+            const sel = this.upgradeSel;
+            if (!sel || sel.kind !== 'order') return;
+            this.net.cmd({ type: 'buyUpgrade', kind: 'order', card: sel.name });
+            this.upgradeSel = null;
+            this.refresh();
+        }
+    }
+
     panelDominate(s, ctx) {
         ctx.title = 'Доминирование';
         ctx.text = 'Ресурсы получены. Способность фракции применять не обязательно.';
         // The faction ability is the point of the Dominate order — print it in the panel.
         ctx.status = s.order.ability ? 'Способность фракции: ' + s.order.ability : 'Способность фракции: —';
+        // What the order just gave — the same list the engine granted; listed at the bottom.
+        const assetNames = { forge: 'Кузница', cache: 'Запасы', reinforcement: 'Подкрепление', prosperity: 'Процветание' };
+        const counts = {};
+        for (const a of (s.order.gained || [])) counts[a] = (counts[a] || 0) + 1;
+        const parts = [];
+        for (const key of ['forge', 'cache', 'reinforcement']) {
+            if (counts[key]) parts.push(assetNames[key] + (counts[key] > 1 ? ' ×' + counts[key] : ''));
+        }
+        if (counts.prosperity) parts.push('Процветание (на выбор)' + (counts.prosperity > 1 ? ' ×' + counts.prosperity : ''));
+        ctx.note = 'После этого вы получите следующие жетоны: ' + (parts.length ? parts.join(' · ') : '—');
         // The prosperity: the player chooses the asset of his choice.
         for (let i = 0; i < (s.order.prosperity || 0); i++) {
             for (const asset of ['forge', 'cache', 'reinforcement']) {
@@ -1375,7 +1528,7 @@ class FSGame {
         // player holds — "2× Такая-то", the same shape as the token list.
         if (!ev.chosen) {
             ctx.text = 'Выберите карту события из руки.';
-            ctx.status = this.status || '';
+            ctx.status = 'Выберите карту, чей эффект вы разыграете:' + (this.status ? ' ' + this.status : '');
             ctx.tokens = [
                 { icon: 'order.strategize', label: 'Жетоны событий', count: (ev.drawn || []).length },
                 { icon: 'asset.materiel', label: 'Материя', count: p.materiel },
@@ -1390,8 +1543,6 @@ class FSGame {
             }
             const counts = new Map();
             for (const name of ev.drawn || []) counts.set(name, (counts.get(name) || 0) + 1);
-            const faction = FS_DATA.factions.find(f => f.id === p.faction);
-            void faction;
             ctx.handTitle = 'Карты в руке';
             ctx.hand = [...counts.entries()].map(([name, count]) => {
                 const data = FS_DATA.events.find(e => e.faction === p.faction && e.name === name);
@@ -1408,44 +1559,46 @@ class FSGame {
         }
         const data = FS_DATA.events.find(e => e.faction === p.faction && e.name === ev.chosen);
         ctx.text = ((data && data.text) || '') + (card && card.storm ? ' · шторм: ' + card.storm.join(', ') : '');
-        ctx.status = 'Шторм может сдвинуться на одно деление по стрелке карты.';
-        // Only the moves the rules really allow are offered: a storm that
-        // already moved, or one that has no free edge to go to, is not here.
+        // The storms move with the mouse on the board itself: no buttons here.
         const options = FS_RULES.stormOptions(s, me);
-        const stormNames = { N: 'ui.up сверху', E: 'ui.right справа', S: 'ui.down снизу', W: 'ui.left слева' };
-        const open = new Set(options.map(o => o.storm));
-        for (const storm of s.storms) {
-            if (!open.has(storm.id)) continue;
+        const stormStepDone = !!ev.stormMoved;
+        const sel = (this.mode === 'storm' && this.pending && this.pending.storm) ? this.pending.storm : null;
+        if (sel && !options.some(o => o.storm === sel)) { this.pending = null; this.mode = 'idle'; }
+        if (stormStepDone) {
+            this.mode = 'idle';
+            this.pending = null;
+            ctx.status = this.status || 'Шторм сдвинут — событие можно разыгрывать.';
             ctx.actions.push({
-                kind: 'pick', icon: 'ui.storm', label: 'Шторм',
-                hint: 'Сдвинуть шторм (' + storm.system + ' ' + storm.side + ')',
-                selected: this.mode === 'storm' && this.pending && this.pending.storm === storm.id,
-                onClick: () => {
-                    this.mode = 'storm';
-                    this.pending = { storm: storm.id };
-                    this.refresh();
-                },
+                kind: 'primary', icon: 'ui.next',
+                label: 'Разыграть событие',
+                enabled: true,
+                onClick: () => this.net.cmd({ type: 'resolveEvent' }),
+            });
+            return;
+        }
+        if (options.length) {
+            if (this.pending && this.pending.storm) this.mode = 'storm';
+            else this.mode = 'idle';
+            ctx.status = this.pending && this.pending.storm
+                ? 'Шторм выбран: щёлкните по зелёному призраку, куда его сдвинуть.'
+                : 'Щёлкните по варп-шторму на поле, который вы хотите сдвинуть.';
+            ctx.actions.push({
+                kind: 'primary', icon: 'ui.next',
+                label: 'Сначала сдвиньте шторм',
+                enabled: false,
+                onClick: () => this.refresh(),
+            });
+        } else {
+            this.mode = 'idle';
+            this.pending = null;
+            ctx.status = this.status || 'Шторм не может сдвинуться ни в одну сторону — разыграйте событие.';
+            ctx.actions.push({
+                kind: 'primary', icon: 'ui.next',
+                label: 'Разыграть событие',
+                enabled: true,
+                onClick: () => this.net.cmd({ type: 'resolveEvent' }),
             });
         }
-        if (this.mode === 'storm' && this.pending && this.pending.storm) {
-            for (const opt of options) {
-                if (opt.storm !== this.pending.storm) continue;
-                ctx.actions.push({
-                    kind: 'chip', icon: 'ui.storm', label: stormNames[opt.dir] || opt.dir,
-                    onClick: () => {
-                        this.net.cmd({ type: 'moveStorm', storm: this.pending.storm, dir: opt.dir });
-                        this.mode = 'idle';
-                        this.pending = null;
-                    },
-                });
-            }
-        }
-        ctx.actions.push({
-            kind: 'primary', icon: 'ui.next',
-            label: options.length ? 'Сначала сдвиньте шторм' : 'Разыграть событие',
-            enabled: !options.length,
-            onClick: () => this.net.cmd({ type: 'resolveEvent' }),
-        });
     }
 
     // --- the combat -----------------------------------------------------------
@@ -1929,9 +2082,13 @@ class FSGame {
             case 'choice': {
                 for (let i = 0; i < q.options.length; i++) {
                     const opt = q.options[i];
+                    // The option is a step of the card; its own sentence is the label.
+                    const label = (opt && (opt.ability || opt.text))
+                        ? String(opt.ability || opt.text).replace(/[,;:\s]+$/, '').slice(0, 90)
+                        : ('Вариант ' + (i + 1));
                     ctx.actions.push({
                         kind: 'pick',
-                        label: (opt && opt.text) ? opt.text.slice(0, 60) : ('Вариант ' + (i + 1)),
+                        label,
                         onClick: () => send({ choice: i }),
                     });
                 }
@@ -2422,6 +2579,39 @@ class FSGame {
         this.refresh();
     }
 
+    // The click on a warp storm — or on its green ghost — during the storm step
+    // of the refresh: the panel does not move storms any more.
+    stormClick(meta) {
+        const s = this.state;
+        if (!s) return;
+        const seat = s.seat;
+        const stage = s.phase === 'refresh' && s.event && s.event.seat === seat && !s.event.stormMoved;
+        if (!stage) return;                       // outside the storm step the marker is inert
+        if (meta.fs === 'storm-ghost') {
+            // The ghost is the destination: the storm stands there at once.
+            if (!(this.mode === 'storm' && this.pending && this.pending.storm)) return;
+            if (meta.storm !== this.pending.storm) return;
+            const dir = meta.dir;
+            this.net.cmd({ type: 'moveStorm', storm: this.pending.storm, dir });
+            this.mode = 'idle';
+            this.pending = null;
+            this.status = '';
+            this.refresh();
+            return;
+        }
+        // Clicking the storm itself selects (or re-selects) it.
+        const movable = FS_RULES.stormOptions(s, seat).filter(o => o.storm === meta.storm);
+        if (!movable.length) {
+            this.status = 'Этот шторм в эту фазу не двигается: он уже сдвигался либо карта не даёт такой ход.';
+            this.refresh();
+            return;
+        }
+        this.mode = 'storm';
+        this.pending = { storm: meta.storm };
+        this.status = '';
+        this.refresh();
+    }
+
     onClick(px, py) {
         const s = this.state;
         if (!s) return;
@@ -2434,6 +2624,11 @@ class FSGame {
         const meta = pick.pickedMesh.metadata;
         const point = pick.pickedPoint;
         const target = this.areaTarget(meta, point);
+        // The warp storms move with the mouse, on the board itself.
+        if (meta && (meta.fs === 'storm' || meta.fs === 'storm-ghost')) {
+            this.stormClick(meta);
+            return;
+        }
         // The dice of the battle lie on the ground of the contested sector: a
         // click on one of them answers the question about a reroll — no list
         // in the panel is needed.
