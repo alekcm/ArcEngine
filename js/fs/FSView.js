@@ -534,7 +534,8 @@ const FSView = {
         const R = size / 2;
         const hasIcons = typeof FSIcons !== 'undefined';
         const icon = 46, font = 'bold 52px system-ui, sans-serif';
-        const northY = R * .10, southY = size - R * .10;
+        // Slightly off the silhouette: the caps narrow at the rim and clip at the poles' apex.
+        const northY = R * .15, southY = size - R * .15;
         const outline = '#101010';
         const print = (iconName, cx, cy, s) => {
             if (hasIcons) FSIcons.canvas(ctx, iconName, cx, cy, s, { outline });
