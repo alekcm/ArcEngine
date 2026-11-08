@@ -71,7 +71,10 @@ class FSGame {
         this.plaque = null;
         this.name = '';
         this.faction = '';
-        this.lobby = { code: '', players: [], factions: [] };
+        this.lobby = { code: '', players: [], factions: [], started: false };
+        // The invite links reported by the server (one per LAN address); used
+        // for the "for friends" link when this page was opened through localhost.
+        this.invites = [];
         this.palette = null;
         // The three ways into the game: the ordinary party (the galaxy is built
         // together) and the two test modes — a ready map and a battlefield.
@@ -134,9 +137,15 @@ class FSGame {
     connect() {
         this.net = FSNet.connect({ room: this.room, name: this.name, id: this.id });
         this.net.on('joined', msg => {
-            this.id = msg.id;
+            // The id is empty when the server turned this guest away (the party has
+            // started) — keep the stored identity in that case.
+            if (msg.id) {
+                this.id = msg.id;
+                Store.set('fs.id', msg.id);
+            }
             this.room = msg.room;
-            Store.set('fs.id', msg.id);
+            this.lobby.started = !!msg.started;
+            if (Array.isArray(msg.invites)) this.invites = msg.invites;
             if (!this.name) {
                 this.name = 'Игрок ' + (msg.seat + 1);
                 Store.set('fs.name', this.name);
@@ -163,6 +172,8 @@ class FSGame {
         this.net.on('err', msg => {
             this.setupSubmitting = false;
             this.status = msg.msg || 'Ошибка.';
+            // The lobby shows the status line; re-render it so the message is visible.
+            if (!this.state) this.showLobby();
             this.refresh();
         });
         this.net.on('close', () => {
@@ -170,6 +181,16 @@ class FSGame {
             this.status = 'Связи с сервером нет. Запустите сервер игры: node tools/fs-server.mjs (или fs.bat)';
             this.refresh();
         });
+    }
+
+    // The link a friend can open in this LAN. Opened through localhost (fs.bat
+    // opens it that way) localhost is useless for the friends, so the invite
+    // link the server reported in 'joined' is used instead.
+    shareLink() {
+        const host = location.hostname;
+        const local = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+        if (local && this.invites.length) return this.invites[0];
+        return location.origin + '/?room=' + this.lobby.code;
     }
 
     showLobby() {
@@ -181,7 +202,7 @@ class FSGame {
             palette: this.palette,
             players: this.lobby.players,
             factions: this.lobby.factions,
-            link: location.origin + '/?room=' + this.lobby.code,
+            link: this.shareLink(),
             modes: FS_TEST_MODES,
             mode: this.testMode,
             status: this.status,

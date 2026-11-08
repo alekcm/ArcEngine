@@ -2,7 +2,8 @@
 rem ==========================================================================
 rem  ArcEngine - Forbidden Stars: the LAN server
 rem  Starts the game server (tools/fs-server.mjs) on 0.0.0.0 and opens a browser.
-rem  The printed address is for the friends in the same network.
+rem  The printed invite link (with the room code) is for the friends in the same
+rem  network. Opening the plain address also lands in the common room.
 rem  Needs Node.js only - the kit itself has zero dependencies.
 rem
 rem    fs.bat              -> port 8080 (or the next free one), opens a browser

@@ -8,10 +8,11 @@
 //      node tools/fs-server.mjs [--port=8080]
 //
 //  The server owns the game: the clients send commands (FSRules.apply) and get
-//  the new state back. Two to four players join a room by its code:
+//  the new state back. Two to four players play in a room. A client that opens
+//  the plain address lands in the default room (the one printed at startup);
+//  anybody with a link ?room=CODE joins that room explicitly:
 //      http://<this computer>:8080/?room=ABCD
-//  The first player of a room may be joined by anybody with the code; the game
-//  starts when everybody has chosen a faction.
+//  The game starts when everybody has chosen a faction.
 // ============================================================================
 import http from 'node:http';
 import { execSync } from 'node:child_process';
@@ -28,6 +29,9 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 const NO_OPEN = process.argv.includes('--no-open');
 const argPort = process.argv.find(a => /^--port=\d+$/.test(a));
 const PORT_BASE = argPort ? Number(argPort.split('=')[1]) : (Number(process.env.PORT) || 8080);
+// The port the server actually bound to (it may differ from PORT_BASE when the
+// port is taken and the next one is tried) — the invite links are built from it.
+let boundPort = PORT_BASE;
 
 // The build stamp: the short hash of the commit the server runs from, printed
 // into the page — so it is always visible which build is actually served.
@@ -122,6 +126,12 @@ class Room {
         return true;
     }
 }
+
+// The default room: everybody who opens the plain address the server prints
+// lands in one common room — the friends do not have to exchange a code at all.
+// Rooms with an explicit ?room=CODE still work for separate games.
+const defaultRoom = new Room(roomCode());
+rooms.set(defaultRoom.code, defaultRoom);
 
 // The seat a solo player has to act for right now: the question of an effect,
 // the step of a combat, the placement of a tile or the ordinary turn.
@@ -375,16 +385,26 @@ function handle(ws, msg) {
     // FS_DEBUG=1 — what the server receives (for the diagnosis).
     if (process.env.FS_DEBUG) console.log('  [fs] ' + msg.t + ' ' + JSON.stringify(msg).slice(0, 120));
     if (msg.t === 'hello') {
-        let room = rooms.get(msg.room);
+        const code = String(msg.room || '').trim().toUpperCase();
+        let room = code ? rooms.get(code) : defaultRoom;
         if (!room) {
-            room = new Room(msg.room || roomCode());
+            room = new Room(code || roomCode());
             rooms.set(room.code, room);
+        }
+        // A party that has already started cannot take a new player: the seats are
+        // fixed. The player who was in the room rejoins by his id; anybody else is
+        // told so honestly instead of being handed a seat that does not exist.
+        const known = msg.id ? room.players.find(p => p.id === String(msg.id)) : null;
+        if (room.started && !known) {
+            ws.send({ t: 'joined', id: '', room: room.code, seat: 0, palette: null, started: true, factions: FS_DATA.factions.map(f => ({ id: f.id, name: f.name, color: f.color })), invites: [] });
+            ws.send({ t: 'err', msg: 'Игра в этой комнате уже идёт. Дождитесь конца партии.' });
+            return;
         }
         const player = room.add(msg.name, msg.faction, msg.id, cleanPalette(msg.palette));
         player.ws = ws;
         ws.room = room;
         ws.player = player;
-        ws.send({ t: 'joined', id: player.id, room: room.code, seat: player.seat, palette: player.palette || null, factions: FS_DATA.factions.map(f => ({ id: f.id, name: f.name, color: f.color })) });
+        ws.send({ t: 'joined', id: player.id, room: room.code, seat: player.seat, palette: player.palette || null, started: room.started, factions: FS_DATA.factions.map(f => ({ id: f.id, name: f.name, color: f.color })), invites: roomInvites(room) });
         sendRoomInfo(room);
         if (room.state) sendState(room);
         return;
@@ -521,6 +541,16 @@ server.on('connection', () => { /* the upgrade handler sets everything up */ });
 // ---------------------------------------------------------------------------
 //  Start
 // ---------------------------------------------------------------------------
+// Prefer the ordinary private ranges for the invite link (the friends sit on the
+// same LAN); link-local addresses go last — they are rarely reachable by peers.
+function addressRank(ip) {
+    if (ip.startsWith('192.168.')) return 0;
+    if (ip.startsWith('10.')) return 1;
+    if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(ip)) return 2;
+    if (ip.startsWith('169.254.')) return 9;
+    return 5;
+}
+
 function localAddresses() {
     const out = [];
     const ifaces = osInterfaces();
@@ -530,11 +560,21 @@ function localAddresses() {
             out.push(i.address);
         }
     }
+    out.sort((a, b) => addressRank(a) - addressRank(b));
     return out;
 }
 
 function osInterfaces() {
     return os.networkInterfaces();
+}
+
+// The invite links of a room: one per LAN address of this machine. The clients
+// use them to build the link they show in the lobby — that way the link works
+// even when the host opened the game through localhost.
+function roomInvites(room) {
+    const out = [];
+    for (const ip of localAddresses()) out.push('http://' + ip + ':' + boundPort + '/?room=' + room.code);
+    return out;
 }
 
 function listen(port, attempt = 0) {
@@ -547,12 +587,16 @@ function listen(port, attempt = 0) {
         process.exit(1);
     });
     server.listen(port, '0.0.0.0', () => {
+        boundPort = port;
         const addr = `http://localhost:${port}/`;
+        const ips = localAddresses();
         console.log(`\n${C.cyn}${C.b}  Forbidden Stars${C.r} ${C.dim}— сервер для локальной сети${C.r}`);
         console.log(`${C.dim}  ${'-'.repeat(46)}${C.r}`);
-        console.log(`  ${C.grn}${C.b}${addr}${C.r}`);
-        for (const ip of localAddresses()) console.log(`  ${C.grn}${C.b}http://${ip}:${port}/${C.r}  ${C.dim}— для друзей в этой сети${C.r}`);
-        console.log(`${C.dim}  комната: игроки открывают ссылку с ?room=КОД (код покажет хост).${C.r}`);
+        console.log(`  этот компьютер: ${C.grn}${C.b}${addr}${C.r}`);
+        console.log(`  ${C.grn}${C.b}комната «${defaultRoom.code}»${C.r} ${C.dim}— ссылка для друзей (отправьте её в чат):${C.r}`);
+        for (const ip of ips) console.log(`    ${C.grn}${C.b}http://${ip}:${port}/?room=${defaultRoom.code}${C.r}`);
+        if (ips.length) console.log(`${C.dim}  Простая ссылка ${C.r}${C.dim}http://<этот-компьютер>:${port}/${C.r}${C.dim} тоже ведёт в эту комнату.${C.r}`);
+        console.log(`${C.dim}  Другая комната: добавьте ?room=КОД к ссылке (код придумает хост).${C.r}`);
         console.log(`${C.dim}  Ctrl+C — остановить${C.r}\n`);
         if (!NO_OPEN) {
             const cmd = process.platform === 'win32' ? 'cmd' : (process.platform === 'darwin' ? 'open' : 'xdg-open');

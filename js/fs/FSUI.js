@@ -5,6 +5,34 @@
 // The dynamic lists (the buttons of the current action, the rows of the lobby)
 // are copies of the template records 'fsBtn' and 'fsRow'.
 
+// Copy text to the clipboard. navigator.clipboard only exists in a secure
+// context (HTTPS / localhost); a game on a LAN is plain HTTP, so a hidden
+// textarea and execCommand are used there. Resolves to whether the copy worked.
+function fsCopyText(text) {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).then(() => true, () => fsCopyTextFallback(text));
+    }
+    return Promise.resolve(fsCopyTextFallback(text));
+}
+
+function fsCopyTextFallback(text) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '0';
+        ta.style.left = '0';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        ta.remove();
+        return ok;
+    } catch (e) { return false; }
+}
+
 /** @satisfies {Record<string, any>} */
 const FSUI = {
     added: [],          // the ids of the runtime copies
@@ -707,13 +735,15 @@ const FSUI = {
         const copy = this.el('button', 'fs-copy-link');
         copy.append(this.iconEl('ui.card'), this.el('span', '', ' Скопировать ссылку для друзей'));
         copy.addEventListener('click', async () => {
-            const mark = this.el('span', '', ' Ссылка скопирована');
-            try {
-                await navigator.clipboard.writeText(info.link || location.href);
+            const link = info.link || location.href;
+            if (await fsCopyText(link)) {
+                const mark = this.el('span', '', ' Ссылка скопирована');
                 copy.textContent = '';
                 copy.append(this.iconEl('ui.check'), mark);
-            } catch (e) {
-                copy.textContent = info.link || location.href;
+            } else {
+                // The clipboard did not work (a plain-HTTP LAN page): show the link
+                // right on the button so it can be copied by hand.
+                copy.textContent = link;
             }
         });
         meta.append(copy); hero.append(meta); card.append(hero);
