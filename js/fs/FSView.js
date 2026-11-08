@@ -561,19 +561,25 @@ const FSView = {
         print('mark.skull', x + icon / 2, northY, icon);
         x += hasIcons ? icon + 14 : 0;
         number(cap, x, northY + 2, '#e9dec3');
-        // South — the materiel value and the asset tokens.
-        const num = String(world.materiel != null ? world.materiel : 0);
+        // South — the materiel value and the asset tokens. A world that yields no
+        // materiel prints nothing of it: neither the icon nor the digit.
+        const materiel = world.materiel != null ? world.materiel : 0;
+        const hasMateriel = materiel > 0;
+        const num = String(materiel);
         ctx.font = font;
-        const numW = ctx.measureText(num).width;
+        const numW = hasMateriel ? ctx.measureText(num).width : 0;
         const assetGlyph = { forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'order.event', prosperity: 'asset.prosperity' };
         const assets = world.assets || [];
         const chip = 42, gap = 12;
-        const block = (hasIcons ? icon + 14 : 0) + numW + (assets.length ? 16 + assets.length * chip + (assets.length - 1) * gap : 0);
+        const materielBlock = hasMateriel ? (hasIcons ? icon + 14 : 0) + numW : 0;
+        const block = materielBlock + (assets.length ? (hasMateriel ? 16 : 0) + assets.length * chip + (assets.length - 1) * gap : 0);
         let sx = R - block / 2;
-        print('asset.materiel', sx + icon / 2, southY, icon);
-        sx += hasIcons ? icon + 14 : 0;
-        number(num, sx, southY + 2, '#a8d08a');
-        sx += numW + 16;
+        if (hasMateriel) {
+            print('asset.materiel', sx + icon / 2, southY, icon);
+            sx += hasIcons ? icon + 14 : 0;
+            number(num, sx, southY + 2, '#a8d08a');
+            sx += numW + 16;
+        }
         for (const asset of assets) {
             print(assetGlyph[asset] || 'asset.cache', sx + chip / 2, southY, chip);
             sx += chip + gap;

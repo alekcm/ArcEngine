@@ -425,7 +425,8 @@ const FSUI = {
         const upgrades = this.renderUpgrades(ctx.upgrades);
         if (upgrades) panel.append(upgrades);
         const actions = this.el('div', 'fs-actions');
-        const items = (ctx.actions || []).filter(a => a.enabled !== false || a.kind === 'primary' || a.kind === 'secondary');
+        // A spent choice stays on screen, dimmed — never silently dropped.
+        const items = (ctx.actions || []).filter(a => a.enabled !== false || a.kind === 'primary' || a.kind === 'secondary' || a.kind === 'pick');
         const tiles = items.filter(a => a.tile);
         const picks = items.filter(a => !a.tile && a.kind === 'pick');
         const chips = items.filter(a => !a.tile && (!a.kind || a.kind === 'chip'));
