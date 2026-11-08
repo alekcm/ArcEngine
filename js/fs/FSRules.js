@@ -1547,11 +1547,13 @@ const FS_RULES = {
             plan.push({ id: unit.id, from, fromArea, type: def ? def.type : 'ground', system: m.system, pos: m.pos });
         }
         // No area may end the movement with more than five of the player's units.
+        // A plan entry names its target; a unit that stays put names its own
+        // system and area (the board's field is «area», not «pos»).
         const totals = new Map();
         for (const u of state.units) {
             if (u.seat !== seat) continue;
-            const id = (plan.find(m => m.id === u.id) || u);
-            const key = id.system + ':' + id.pos;
+            const p2 = plan.find(m => m.id === u.id);
+            const key = p2 ? p2.system + ':' + p2.pos : u.system + ':' + u.area;
             totals.set(key, (totals.get(key) || 0) + 1);
         }
         for (const [, n] of totals) {
