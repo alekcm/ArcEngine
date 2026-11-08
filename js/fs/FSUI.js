@@ -478,8 +478,120 @@ const FSUI = {
     // player closes it. The slide-in animation plays once per opening.
     toggleFactionDrawer(seat) {
         this.factionSeat = this.factionSeat === seat ? null : seat;
+        if (this.factionSeat != null) this.drawerTab = 'faction';
         this.drawerMounted = false;
         if (this.renderState) this.update(this.renderState, this.renderCtx);
+    },
+
+    // The cubes combat card gives in a fight, printed one icon per cube —
+    // never a digit after a single icon.
+    appendCubeIcons(parent, icons) {
+        const faces = { att: 'cube.att', def: 'cube.def', morale: 'cube.morale' };
+        let any = false;
+        for (const kind of ['att', 'def', 'morale']) {
+            const n = (icons && icons[kind]) || 0;
+            if (n <= 0) continue;
+            any = true;
+            const chip = this.el('span', 'fs-card-cube is-' + kind);
+            for (let i = 0; i < n; i++) chip.append(this.iconEl(faces[kind]));
+            parent.append(chip);
+        }
+        return any;
+    },
+
+    // The hover print of a card: the same big card the battle hand uses,
+    // floating next to the dossier so the rules can be read off it.
+    peekCard(peek) {
+        this.hidePeek();
+        if (!peek) return;
+        const root = this.modernRoot;
+        if (!root || !root.append) return;
+        const peekEl = this.renderCardPreview(peek);
+        if (!peekEl) return;
+        peekEl.classList.add('fs-card-peek');
+        root.append(peekEl);
+        this.peekEl = peekEl;
+    },
+    hidePeek() {
+        if (this.peekEl) { this.peekEl.remove(); this.peekEl = null; }
+    },
+    bindPeek(row, peek) {
+        row.addEventListener('mouseenter', () => this.peekCard(peek));
+        row.addEventListener('mouseleave', () => this.hidePeek());
+        row.addEventListener('click', () => {
+            if (this.peekEl) this.hidePeek();
+            else this.peekCard(peek);
+        });
+    },
+
+    // The «Текущая боевая колода» tab: exactly what shuffles tonight — the
+    // sorted, duplicated names of the viewer's own deck (draw order never
+    // leaves the server). For someone else's dossier it is a closed box.
+    renderDeckTab(body, state, seat, p) {
+        body.append(this.el('div', 'fs-drawer-eyebrow', 'Текущая боевая колода'));
+        if (seat !== state.seat) {
+            body.append(this.el('div', 'fs-drawer-note', 'Содержимое чужой боевой колоды скрыто — оно известно только владельцу.'));
+            return;
+        }
+        const names = this.combatDeckKnown(p, true);
+        if (!names.length) {
+            body.append(this.el('div', 'fs-drawer-note', 'Колода пуста.'));
+            return;
+        }
+        const counts = new Map();
+        for (const n of names) counts.set(n, (counts.get(n) || 0) + 1);
+        const rows = [];
+        for (const [name, count] of counts) {
+            rows.push({ name, count, def: (FS_DATA.combat || []).find(c => c.faction === p.faction && c.name === name) || null });
+        }
+        rows.sort((a, b) => (((a.def && a.def.kl) || 0) - ((b.def && b.def.kl) || 0))
+            || (((a.def && a.def.cost) || 0) - ((b.def && b.def.cost) || 0))
+            || String(a.name).localeCompare(String(b.name), 'ru'));
+        body.append(this.el('div', 'fs-drawer-note', 'Всего карт: ' + names.length + ' · до две копии каждой — как в боевых колодах'));
+        const list = this.el('div', 'fs-upgrade-list is-static-list');
+        for (const r of rows) {
+            const kl = r.def && r.def.kl != null ? r.def.kl : 0;
+            const cost = r.def && r.def.cost != null ? r.def.cost : 0;
+            const row = this.el('div', 'fs-upgrade-row is-static');
+            const ico = this.el('span', 'fs-upgrade-ico');
+            if (!this.appendCubeIcons(ico, r.def && r.def.icons)) ico.append(this.iconEl('ui.die'));
+            row.append(ico);
+            const main = this.el('span', 'fs-upgrade-main');
+            main.append(this.el('span', 'fs-upgrade-name', r.name));
+            const meta = this.el('span', 'fs-upgrade-meta');
+            meta.append(this.iconEl('ui.die', 'fs-upgrade-meta-ico'));
+            meta.append(this.el('span', '', 'КЛ ' + kl));
+            meta.append(this.iconEl('asset.materiel', 'fs-upgrade-meta-ico'));
+            meta.append(this.el('span', '', String(cost)));
+            if (r.def && r.def.upgrade) meta.append(this.el('span', 'fs-upgrade-reason', 'Улучшение'));
+            main.append(meta);
+            row.append(main);
+            const right = this.el('span', 'fs-upgrade-right');
+            right.append(this.el('span', 'fs-deck-count', '×' + r.count));
+            row.append(right);
+            list.append(row);
+            const peek = this.peekOf(r.def || { name: r.name, icons: null }, true);
+            peek.kind = 'Боевая карта';
+            peek.owned = true;
+            peek.okLabel = 'В колоде';
+            this.bindPeek(row, peek);
+        }
+        body.append(list);
+    },
+
+    // The peek descriptor of one card of a faction (combat or order upgrade).
+    peekOf(card, isCombat) {
+        const kl = card.kl != null ? card.kl : 0;
+        const cost = card.cost != null ? card.cost : 0;
+        return {
+            kind: isCombat ? 'Боевое улучшение' : 'Улучшение приказа',
+            name: card.name, kl, cost,
+            text: isCombat
+                ? [card.general, card.unit].filter(t => t && t !== '—').join('\n')
+                : (card.text || ''),
+            icons: isCombat ? (card.icons || null) : null,
+            order: isCombat ? null : (card.order || null),
+        };
     },
 
     // How many of every unit of a faction stand on the board right now.
@@ -531,7 +643,26 @@ const FSUI = {
         head.append(close);
         drawer.append(head);
 
+        // The dossier has two tabs: the faction itself, and the battle deck
+        // that will actually be shuffled.
+        const activeTab = this.drawerTab === 'deck' ? 'deck' : 'faction';
+        const tabs = this.el('div', 'fs-drawer-tabs');
+        for (const [id, label] of [['faction', 'Фракция'], ['deck', 'Текущая боевая колода']]) {
+            const b = this.el('button', 'fs-drawer-tab' + (id === activeTab ? ' is-active' : ''));
+            b.type = 'button';
+            b.textContent = label;
+            b.setAttribute('aria-pressed', id === activeTab ? 'true' : 'false');
+            b.addEventListener('click', () => { this.drawerTab = id; this.update(this.renderState, this.renderCtx); });
+            tabs.append(b);
+        }
+        drawer.append(tabs);
+
         const body = this.el('div', 'fs-drawer-body');
+        if (activeTab === 'deck') {
+            this.renderDeckTab(body, state, seat, p);
+            drawer.append(body);
+            return drawer;
+        }
         body.append(this.el('div', 'fs-drawer-eyebrow', 'Способность фракции'));
         const ability = this.el('div', 'fs-drawer-ability');
         if (faction.ability) {
@@ -540,7 +671,10 @@ const FSUI = {
         } else ability.textContent = '—';
         body.append(ability);
 
-        body.append(this.el('div', 'fs-drawer-eyebrow', 'Отряды'));
+        const unitsHead = this.el('div', 'fs-drawer-eyebrow is-row');
+        unitsHead.append(this.el('span', '', 'Отряды'));
+        unitsHead.append(this.el('span', 'fs-drawer-col', 'на поле боя'));
+        body.append(unitsHead);
         const list = this.el('div', 'fs-unit-list');
         for (const def of units) {
             const count = deployed.counts[def.id] || 0;
@@ -561,7 +695,6 @@ const FSUI = {
             const cnt = this.el('div', 'fs-unit-count');
             cnt.append(this.el('b', '', String(count)));
             cnt.append(this.el('span', '', '/ ' + (def.max != null ? def.max : 0)));
-            cnt.append(this.el('span', 'fs-unit-count-cap', 'на поле боя'));
             row.append(icon, main, cnt);
             list.append(row);
         }
@@ -590,14 +723,7 @@ const FSUI = {
             const row = this.el('div', 'fs-upgrade-row is-static' + (locked ? ' is-locked' : '') + (owned ? ' is-owned' : ''));
             const ico = this.el('span', 'fs-upgrade-ico');
             if (isCombat) {
-                if (card.icons) {
-                    let cubes = 0;
-                    for (const kind of ['att', 'def', 'morale']) {
-                        const n = card.icons[kind] || 0;
-                        if (n > 0) { cubes += n; ico.append(this.iconEl('cube.' + kind)); if (n > 1) ico.append(this.el('b', '', String(n))); }
-                    }
-                    if (!cubes) ico.append(this.iconEl('ui.die'));
-                } else ico.append(this.iconEl('ui.die'));
+                if (!this.appendCubeIcons(ico, card.icons)) ico.append(this.iconEl('ui.die'));
             } else {
                 ico.append(this.iconEl(ORDER_ICONS[card.order] || 'order.event'));
             }
@@ -616,12 +742,20 @@ const FSUI = {
             const right = this.el('span', 'fs-upgrade-right');
             right.append(this.el('span', 'fs-upgrade-tag', isCombat ? 'Пара' : 'Приказ'));
             row.append(right);
+            // The card opens on hover — the name alone is never enough.
+            const peek = this.peekOf(card, isCombat);
+            peek.locked = locked;
+            peek.reason = owned ? 'Уже у вас' : (locked ? (kl > level ? 'Нужен КЛ ' + kl : 'Нужно ' + (card.cost != null ? card.cost : 0) + ' материи') : '');
+            peek.owned = owned;
+            if (owned) peek.okLabel = 'Уже у вас';
+            this.bindPeek(row, peek);
             return row;
         };
+        const byKlCost = (a, b) => (a.kl || 0) - (b.kl || 0) || (a.cost || 0) - (b.cost || 0) || String(a.name).localeCompare(String(b.name), 'ru');
         /** @type {Array<[string, any[], boolean]>} */
         const groups = [
-            ['Улучшения приказа', (FS_DATA.orders || []).filter(c => c.faction === p.faction), false],
-            ['Боевые улучшения', (FS_DATA.combat || []).filter(c => c.faction === p.faction && c.upgrade), true],
+            ['Улучшения приказа', (FS_DATA.orders || []).filter(c => c.faction === p.faction).sort(byKlCost), false],
+            ['Боевые улучшения', (FS_DATA.combat || []).filter(c => c.faction === p.faction && c.upgrade).sort(byKlCost), true],
         ];
         for (const [title, cards, isCombat] of groups) {
             if (!cards.length) continue;
@@ -763,18 +897,7 @@ const FSUI = {
             top.append(this.el('span', 'fs-battle-card-name', item.name));
             card.append(top);
             const icons = this.el('div', 'fs-card-icons');
-            const faces = { att: 'cube.att', def: 'cube.def', morale: 'cube.morale' };
-            let any = false;
-            for (const kind of ['att', 'def', 'morale']) {
-                const n = (item.icons && item.icons[kind]) || 0;
-                if (!n) continue;
-                any = true;
-                const chip = this.el('span', 'fs-card-cube is-' + kind);
-                chip.append(this.iconEl(faces[kind]));
-                if (n > 1) chip.append(this.el('b', '', String(n)));
-                icons.append(chip);
-            }
-            if (any) card.append(icons);
+            if (this.appendCubeIcons(icons, item.icons)) card.append(icons);
             if (item.runs && item.runs.length) {
                 const body = this.el('div', 'fs-rich fs-battle-card-text');
                 item.runs.forEach((block, i) => {
@@ -842,14 +965,7 @@ const FSUI = {
                 row.title = (r.reason ? r.reason + '\n' : '') + (r.text || '');
                 const ico = this.el('span', 'fs-upgrade-ico');
                 if (key === 'combat') {
-                    if (r.icons) {
-                        let cubes = 0;
-                        for (const kind of ['att', 'def', 'morale']) {
-                            const n = r.icons[kind] || 0;
-                            if (n > 0) { cubes += n; ico.append(this.iconEl('cube.' + kind)); if (n > 1) ico.append(this.el('b', '', String(n))); }
-                        }
-                        if (!cubes) ico.append(this.iconEl('ui.die'));
-                    } else ico.append(this.iconEl('ui.die'));
+                    if (!this.appendCubeIcons(ico, r.icons)) ico.append(this.iconEl('ui.die'));
                 } else {
                     ico.append(this.iconEl(ORDER_ICONS[r.order] || 'order.event'));
                 }
@@ -910,19 +1026,8 @@ const FSUI = {
         meta.append(this.el('span', '', String(item.cost != null ? item.cost : 0) + ' материя'));
         wrap.append(meta);
         if (item.icons) {
-            const faces = { att: 'cube.att', def: 'cube.def', morale: 'cube.morale' };
             const icons = this.el('div', 'fs-card-icons fs-card-preview-cubes');
-            let any = false;
-            for (const kind of ['att', 'def', 'morale']) {
-                const n = item.icons[kind] || 0;
-                if (!n) continue;
-                any = true;
-                const chip = this.el('span', 'fs-card-cube is-' + kind);
-                chip.append(this.iconEl(faces[kind]));
-                if (n > 1) chip.append(this.el('b', '', String(n)));
-                icons.append(chip);
-            }
-            if (any) wrap.append(icons);
+            if (this.appendCubeIcons(icons, item.icons)) wrap.append(icons);
         }
         if (item.text) wrap.append(this.richText(item.text, 'fs-card-preview-text'));
         if (item.locked) {
@@ -933,7 +1038,7 @@ const FSUI = {
         } else {
             const ok = this.el('div', 'fs-card-preview-ok');
             ok.append(this.iconEl('ui.check', 'fs-card-preview-ok-ico'));
-            ok.append(this.el('span', '', 'Можно купить'));
+            ok.append(this.el('span', '', item.okLabel || (item.owned ? 'Уже есть' : 'Можно купить')));
             wrap.append(ok);
         }
         return wrap;
@@ -1214,11 +1319,7 @@ const FSUI = {
             button.type = 'button';
             const icons = c.icons || {};
             const line = this.el('span', 'fs-card-icons');
-            for (const [kind, icon] of [['att', 'cube.att'], ['def', 'cube.def'], ['morale', 'cube.morale']]) {
-                const chip = this.el('span', 'fs-card-cube is-' + kind);
-                chip.append(this.iconEl(icon), this.el('b', '', String(icons[kind] || 0)));
-                line.append(chip);
-            }
+            this.appendCubeIcons(line, icons);
             button.append(this.el('span', 'fs-card-name', c.name), line);
             button.addEventListener('click', () => info.onBattle && info.onBattle({ toggleCard: c.name }));
             cards.append(button);
@@ -1314,6 +1415,7 @@ const FSUI = {
     //  The state of the game
     // -----------------------------------------------------------------------
     update(state, ctx) {
+        this.hidePeek();
         this.lastCtx = ctx;
         this.currentLobby = null;
         this.renderModern(state, ctx);

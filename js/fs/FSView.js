@@ -57,9 +57,9 @@ const FSView = {
     PLANET_H: 7,           // world px: how thick the piece of the planet is
     PLANET_SHIFT: -8,      // world px: the circle is lifted toward the far edge, clear of the printed name
     ON_WORLD: 0.72,        // the miniatures on a world are smaller than the ones in the void
-    // world px: the bounding size a structure is normalised to — about ten times
-    // the raw units of the OBJ models (what they rendered as before), a landmark on the table.
-    STRUCTURE_SIZE: 52,
+    // world px: the bounding size a structure is normalised to — 25% smaller again
+    // (the OBJ models additionally stand at 0.7 of that size; the fallback uses the same constant).
+    STRUCTURE_SIZE: 39,
     SELECT_Y: 8,           // the height of the selection ring and of the direction arrow
 
     /** @param {{location: Location3D, camera: CameraController}} app */
@@ -525,9 +525,51 @@ const FSView = {
         void name;
     },
 
+    // The poles carry the world's dossier printed straight on the ice: the unit
+    // capacity on the north cap, the materiel and the asset tokens on the south.
+    // Dark print on the white caps — no plates, no backing, nothing else.
+    drawPlanetPoles(ctx, size, world) {
+        if (!world) return;
+        const R = size / 2;
+        const hasIcons = typeof FSIcons !== 'undefined';
+        const ink = '#12181f';
+        const northY = R * .10, southY = size - R * .10;
+        const icon = 46, font = 'bold 52px system-ui, sans-serif';
+        ctx.save();
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        // North — the unit capacity.
+        const cap = String(world.capacity != null ? world.capacity : 0);
+        ctx.font = font;
+        const capW = ctx.measureText(cap).width;
+        const capBlock = (hasIcons ? icon + 14 : 0) + capW;
+        let x = R - capBlock / 2;
+        if (hasIcons) { FSIcons.canvas(ctx, 'mark.skull', x + icon / 2, northY, icon, { color: ink }); x += icon + 14; }
+        ctx.fillStyle = ink;
+        ctx.fillText(cap, x, northY + 2);
+        // South — the materiel value and the asset tokens.
+        const num = String(world.materiel != null ? world.materiel : 0);
+        ctx.font = font;
+        const numW = ctx.measureText(num).width;
+        const assetGlyph = { forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'order.event', prosperity: 'asset.prosperity' };
+        const assets = world.assets || [];
+        const chip = 42, gap = 12;
+        const block = (hasIcons ? icon + 14 : 0) + numW + (assets.length ? 16 + assets.length * chip + (assets.length - 1) * gap : 0);
+        let sx = R - block / 2;
+        if (hasIcons) { FSIcons.canvas(ctx, 'asset.materiel', sx + icon / 2, southY, icon, { color: ink }); sx += icon + 14; }
+        ctx.fillStyle = ink;
+        ctx.fillText(num, sx, southY + 2);
+        sx += numW + 16;
+        for (const asset of assets) {
+            if (hasIcons) FSIcons.canvas(ctx, assetGlyph[asset] || 'asset.cache', sx + chip / 2, southY, chip, { color: ink });
+            sx += chip + gap;
+        }
+        ctx.restore();
+    },
+
     // The round map of a world seen from above: continents, bands, caps and a
     // lit rim. Only the inscribed circle of the texture is sampled by the disc.
-    planetTexture(view, name) {
+    planetTexture(view, name, world) {
         const size = 512, R = size / 2;
         let seed = 0;
         for (let i = 0; i < name.length; i++) seed = (seed * 31 + name.charCodeAt(i)) >>> 0;
@@ -565,9 +607,9 @@ const FSView = {
                         : (rand() > .48 ? '#b98f63' : '#4b4e58');
             ctx.beginPath(); ctx.ellipse(x, y, rx, ry, (rand() - .5) * 1.4, 0, Math.PI * 2); ctx.fill();
         }
-        // The poles.
-        ctx.globalAlpha = .5;
-        ctx.fillStyle = '#eaf6ff';
+        // The poles: solid white caps — the dossier is printed on them.
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#f7fdff';
         ctx.beginPath(); ctx.ellipse(R, R * .1, R * .78, R * .16, 0, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.ellipse(R, size - R * .1, R * .82, R * .18, 0, 0, Math.PI * 2); ctx.fill();
         // Weather.
@@ -585,6 +627,8 @@ const FSView = {
         light.addColorStop(.5, 'rgba(255,255,255,0)');
         light.addColorStop(1, 'rgba(2,6,12,.55)');
         ctx.fillStyle = light; ctx.fillRect(0, 0, size, size);
+        // The dossier of the world goes on the poles, over the shading.
+        this.drawPlanetPoles(ctx, size, world);
         // The rim of the piece.
         ctx.globalAlpha = .55; ctx.strokeStyle = 'rgba(226,244,255,.75)'; ctx.lineWidth = 5;
         ctx.beginPath(); ctx.arc(R, R, R - 5, 0, Math.PI * 2); ctx.stroke();
@@ -617,10 +661,10 @@ const FSView = {
         return tex;
     },
 
-    planetMaterial(view, name) {
+    planetMaterial(view, name, world) {
         if (view.planetMaterials.has(name)) return view.planetMaterials.get(name);
         const surface = new BABYLON.StandardMaterial('fs-planet-surface-' + name, view.scene);
-        surface.diffuseTexture = this.planetTexture(view, name);
+        surface.diffuseTexture = this.planetTexture(view, name, world);
         surface.specularColor = new BABYLON.Color3(.16, .18, .22);
         surface.specularPower = 48;
         surface.backFaceCulling = false;
@@ -643,115 +687,6 @@ const FSView = {
         return mats;
     },
 
-    // The victory flag: a small 3D flag planted at the far edge of the planet.
-    // The flag stands only where an objective token really lies — updatePlanets
-    // creates it lazily and toggles it from the state of the objectives.
-    // The cloth carries the colour of the token's owner: the player who needs
-    // to take that token on the world.
-    createWorldFlag(app, view, key, color) {
-        const flag = new BABYLON.TransformNode('fs-world-flag-' + key, view.scene);
-        const pole = BABYLON.MeshBuilder.CreateCylinder('fs-world-flag-pole-' + key,
-            { diameter: .9, height: 16, tessellation: 8 }, view.scene);
-        pole.parent = flag; pole.position.y = 8;
-        pole.material = view.material('flag-pole', '#8a94a0');
-        const cloth = BABYLON.MeshBuilder.CreateBox('fs-world-flag-cloth-' + key,
-            { width: 11, height: 6.5, depth: .5 }, view.scene);
-        cloth.parent = flag; cloth.position.set(5.7, 12.8, 0);
-        cloth.material = view.material('flag-cloth-' + (color || '#e3b64f'), color || '#e3b64f', { emissive: true });
-        pole.isPickable = false; cloth.isPickable = false;
-        World3D.addObject(app.location.view, flag, 'prop', { castShadow: true, ink: false, outline: false });
-        return { root: flag, cloth };
-    },
-
-    // The plates at the poles of the planet: north — the unit capacity, south —
-    // the materiel value and the asset tokens. They lie just outside the rim,
-    // above the tile top, and draw over the world (depth test bypassed), so the
-    // planet's information always reads. The texture and the material are cached
-    // per world; the plane itself is created per planet.
-    polePlate(app, view, name, world, pole) {
-        if (!view.polePlates) view.polePlates = new Map();
-        const key = name + ':' + pole;
-        let entry = view.polePlates.get(key);
-        if (!entry) {
-            const tex = new BABYLON.DynamicTexture('fs-pole-' + key, { width: 512, height: 168 }, view.scene, true);
-            tex.hasAlpha = true;
-            const ctx = /** @type {any} */ (tex.getContext());
-            ctx.clearRect(0, 0, 512, 168);
-            // A dark machined plate with a thin gold rim.
-            ctx.beginPath();
-            const x0 = 6, y0 = 8, w = 500, h = 152, r = 34;
-            ctx.moveTo(x0 + r, y0);
-            ctx.arcTo(x0 + w, y0, x0 + w, y0 + h, r);
-            ctx.arcTo(x0 + w, y0 + h, x0, y0 + h, r);
-            ctx.arcTo(x0, y0 + h, x0, y0, r);
-            ctx.arcTo(x0, y0, x0 + w, y0, r);
-            ctx.closePath();
-            ctx.fillStyle = 'rgba(5,10,17,.88)'; ctx.fill();
-            ctx.strokeStyle = 'rgba(214,177,104,.65)'; ctx.lineWidth = 3; ctx.stroke();
-            const hasIcons = typeof FSIcons !== 'undefined';
-            ctx.textBaseline = 'middle';
-            if (pole === 'north') {
-                // The unit capacity: a skull and the number.
-                const num = String(world.capacity || 0);
-                ctx.font = 'bold 96px system-ui, sans-serif';
-                const numW = ctx.measureText(num).width;
-                const icon = hasIcons ? 96 : 0;
-                const block = icon + (hasIcons ? 16 : 0) + numW;
-                let x = (512 - block) / 2;
-                if (hasIcons) { FSIcons.canvas(ctx, 'mark.skull', x + icon / 2, 86, icon); x += icon + 16; }
-                ctx.fillStyle = '#e9dec3'; ctx.textAlign = 'left';
-                ctx.fillText(num, x, 88);
-            } else {
-                // The materiel value: a gear and the number, then the asset chips.
-                const assetGlyph = /** @type {Record<string, string>} */ ({ forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'order.event', prosperity: 'asset.prosperity' });
-                const assets = world.assets || [];
-                const num = String(world.materiel || 0);
-                const icon = hasIcons ? 96 : 0;
-                ctx.font = 'bold 92px system-ui, sans-serif';
-                const numW = ctx.measureText(num).width;
-                const block = icon + (hasIcons ? 14 : 0) + numW + (assets.length ? 36 + assets.length * 86 : 0);
-                let x = (512 - block) / 2;
-                if (hasIcons) { FSIcons.canvas(ctx, 'asset.materiel', x + icon / 2, 86, icon); x += icon + 14; }
-                ctx.fillStyle = '#a8d08a'; ctx.textAlign = 'left';
-                ctx.fillText(num, x, 88);
-                x += numW + 36;
-                for (const asset of assets) {
-                    ctx.beginPath(); ctx.arc(x + 40, 84, 38, 0, Math.PI * 2);
-                    ctx.fillStyle = '#141c25'; ctx.fill();
-                    ctx.strokeStyle = '#c9a86a'; ctx.lineWidth = 4; ctx.stroke();
-                    if (hasIcons) FSIcons.canvas(ctx, assetGlyph[asset] || 'asset.cache', x + 40, 84, 48);
-                    x += 86;
-                }
-            }
-            tex.update(false);
-            const mat = new BABYLON.StandardMaterial('fs-pole-mat-' + key, view.scene);
-            mat.diffuseTexture = tex;
-            // The alpha comes from the diffuse texture itself (the background is
-            // cleared to transparent). An opacityTexture would read the GREEN
-            // channel of this mostly dark artwork and blank the plates out —
-            // that is why no icons were visible on the worlds.
-            mat.useAlphaFromDiffuseTexture = true;
-            // The plate is board information: it draws over the world whatever
-            // stands in front of it — the face, the clouds, the miniatures.
-            mat.depthFunction = BABYLON.Engine.ALWAYS;
-            mat.disableDepthWrite = true;
-            mat.specularColor = BABYLON.Color3.Black();
-            mat.disableLighting = true;
-            mat.backFaceCulling = false;
-            entry = { tex, mat };
-            view.polePlates.set(key, entry);
-        }
-        const mesh = BABYLON.MeshBuilder.CreatePlane('fs-pole-plate-' + key, { width: 56, height: 18.4 }, view.scene);
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.material = entry.mat;
-        mesh.isPickable = false;
-        // Drawn after the world in the ACTOR group; with the depth test bypassed
-        // in the material the plate can never be hidden behind the visuals.
-        mesh.renderingGroupId = World3D.LAYER.ACTOR;
-        World3D.addObject(app.location.view, mesh, 'prop', { castShadow: false, ink: false, outline: false });
-        return mesh;
-    },
-
     // The centre of the round face of a world and the height the pieces stand on.
     discAt(app, sys, pos, metrics) {
         const p = this.areaPos(app, sys, pos, metrics);
@@ -768,7 +703,7 @@ const FSView = {
             active.add(key);
             let planet = view.planets.get(key);
             if (!planet) {
-                const mats = this.planetMaterial(view, name);
+                const mats = this.planetMaterial(view, name, area.world);
                 const radius = this.PLANET_D / 2;
                 // The body of the piece: a thin cylinder under the face.
                 const body = BABYLON.MeshBuilder.CreateCylinder('fs-world-body-' + key,
@@ -792,61 +727,25 @@ const FSView = {
                     { diameter: this.PLANET_D + 5, thickness: 1.6, tessellation: 64 }, view.scene);
                 glow.material = mats.glow; glow.isPickable = false;
                 World3D.addObject(app.location.view, glow, 'prop', { castShadow: false, ink: false, outline: false });
-                // The victory flag is created lazily by the token logic below:
-                // it stands only where an objective token really lies.
-                let flag = null;
-                planet = { mesh: face, clouds, atmosphere: glow, rim: body, flag, flagCloth: null, flagOwner: null, northPlate: null, southPlate: null };
+                planet = { mesh: face, clouds, atmosphere: glow, rim: body };
                 view.planets.set(key, planet);
             }
             const disc = this.discAt(app, sys, area.pos, view.metrics);
             const cx = disc.x, cz = disc.z, base = disc.y - this.PLANET_H - .12;
-            const gy = app.location.terrain.heightAt(cx, cz) + 8.6;
             planet.rim.position.set(cx, base + this.PLANET_H / 2, cz);
             planet.mesh.position.set(cx, base + this.PLANET_H + .12, cz);
             planet.clouds.position.set(cx, base + this.PLANET_H + .34, cz);
             planet.atmosphere.position.set(cx, base + this.PLANET_H + .2, cz);
-            // The victory flag stands only where an objective token really lies
-            // (the objective pool loses it once a player collects it), and it is
-            // painted with the owner's colour — the player who needs to take that
-            // token from the world.
-            const token = state.objectives && state.objectives.find(o => o.system === sys.id && o.area === area.pos);
-            const tokensHere = !!token;
-            const owner = token ? state.players.find(p => p.faction === token.faction) : null;
-            const ownerColor = (owner && owner.color) || this.factionColor(owner ? owner.faction : (token ? token.faction : '')) || '#e3b64f';
-            if (tokensHere && !planet.flag) {
-                const made = this.createWorldFlag(app, view, key, ownerColor);
-                planet.flag = made.root; planet.flagCloth = made.cloth; planet.flagOwner = ownerColor;
-            }
-            if (planet.flag) {
-                planet.flag.setEnabled(tokensHere);
-                // The flag of the objective stands at the very centre of the world,
-                // planted on its face, readable from every side.
-                planet.flag.position.set(cx, base + this.PLANET_H + .12, cz);
-                if (planet.flagCloth && token && planet.flagOwner !== ownerColor) {
-                    planet.flagCloth.material = view.material('flag-cloth-' + ownerColor, ownerColor, { emissive: true });
-                    planet.flagOwner = ownerColor;
-                }
-            }
-            // The plates at the poles of the planet: north — the unit capacity,
-            // south — the materiel value and the asset tokens.
-            if (!planet.northPlate) planet.northPlate = this.polePlate(app, view, name, area.world, 'north');
-            if (!planet.southPlate) planet.southPlate = this.polePlate(app, view, name, area.world, 'south');
-            planet.northPlate.position.set(cx, gy, cz - (this.PLANET_D / 2 + 11));
-            planet.southPlate.position.set(cx, gy, cz + (this.PLANET_D / 2 + 11));
-            planet.northPlate.setEnabled(true);
-            planet.southPlate.setEnabled(true);
             planet.mesh.metadata = Object.assign({}, planet.mesh.metadata, { fs: 'area', system: sys.id, pos: area.pos, world: name });
             planet.mesh.isPickable = true;
             for (const layer of [planet.rim, planet.clouds, planet.atmosphere]) layer.metadata = planet.mesh.metadata;
         }
         for (const [key, planet] of view.planets) if (!active.has(key)) {
-            for (const layer of [planet.mesh, planet.clouds, planet.atmosphere, planet.rim, planet.flag, planet.northPlate, planet.southPlate]) if (layer) layer.setEnabled(false);
+            for (const layer of [planet.mesh, planet.clouds, planet.atmosphere, planet.rim]) if (layer) layer.setEnabled(false);
         }
         for (const key of active) {
             const p = view.planets.get(key);
-            // The flag is not re-enabled here: it follows the presence of the
-            // objective token, decided in the per-area loop above.
-            for (const layer of [p.mesh, p.clouds, p.atmosphere, p.rim, p.northPlate, p.southPlate]) if (layer) layer.setEnabled(true);
+            for (const layer of [p.mesh, p.clouds, p.atmosphere, p.rim]) if (layer) layer.setEnabled(true);
         }
     },
 
@@ -918,7 +817,7 @@ const FSView = {
         if (!preview) return;
         const locationView = view.app.location.view;
         for (const mesh of [preview.rec.base, preview.rec.top, ...preview.rec.decorations]) World3D.removeObject(locationView, mesh);
-        for (const planet of preview.ghost.planets.values()) for (const mesh of [planet.mesh, planet.clouds, planet.atmosphere, planet.rim, planet.northPlate, planet.southPlate]) if (mesh) World3D.removeObject(locationView, mesh);
+        for (const planet of preview.ghost.planets.values()) for (const mesh of [planet.mesh, planet.clouds, planet.atmosphere, planet.rim]) if (mesh) World3D.removeObject(locationView, mesh);
         preview.rec.mat.dispose(false, false);
         preview.rec.tex.dispose();
         view.setupPreview = null;
@@ -1512,6 +1411,22 @@ const FSView = {
             medallion.parent = root; medallion.position.y = 3.4; medallion.material = gem;
             const crest = BABYLON.MeshBuilder.CreatePolyhedron('fs-objective-crest-' + o.id, { type: 1, size: 4 }, view.scene);
             crest.parent = root; crest.position.y = 5.3; crest.material = gold; crest.isPickable = false;
+            // The flag of the objective stands ON the token — one piece, moved
+            // and collected as one, painted with the colour of the player who
+            // needs to take it. It stands where the token stands.
+            const owner = state.players.find(p2 => p2.faction === o.faction);
+            const ownerColor = (owner && owner.color) || this.factionColor(o.faction) || '#e3b64f';
+            const flag = new BABYLON.TransformNode('fs-objective-flag-' + o.id, view.scene);
+            flag.parent = root;
+            flag.position.y = 8.2;
+            const pole = BABYLON.MeshBuilder.CreateCylinder('fs-objective-flagpole-' + o.id,
+                { diameter: .9, height: 12, tessellation: 8 }, view.scene);
+            pole.parent = flag; pole.position.y = 6; pole.material = view.material('flag-pole', '#8a94a0');
+            const cloth = BABYLON.MeshBuilder.CreateBox('fs-objective-flagcloth-' + o.id,
+                { width: 10, height: 5.6, depth: .5 }, view.scene);
+            cloth.parent = flag; cloth.position.set(5.1, 10.4, 0);
+            cloth.material = view.material('flag-cloth-' + ownerColor, ownerColor, { emissive: true });
+            pole.isPickable = false; cloth.isPickable = false;
             const meta = { fs: 'area', system: o.system, pos: o.area };
             root.metadata = meta; plinth.metadata = meta; medallion.metadata = meta; crest.metadata = meta;
             this.addMarker(view, root, 'prop');

@@ -1338,8 +1338,10 @@ class FSGame {
         }
         const pairValid = !!this.pairPick && (deckCounts[this.pairPick] || 0) >= 2;
         // Every upgrade card of the faction — buyable and locked, none hidden.
-        const combatUp = FS_DATA.combat.filter(c => c.faction === p.faction && c.upgrade);
-        const orderUp = FS_DATA.orders.filter(c => c.faction === p.faction);
+        // Command level from top to bottom, then the price, then the name.
+        const byKl = (a, b) => (a.kl || 0) - (b.kl || 0) || (a.cost || 0) - (b.cost || 0) || String(a.name).localeCompare(String(b.name), 'ru');
+        const combatUp = FS_DATA.combat.filter(c => c.faction === p.faction && c.upgrade).sort(byKl);
+        const orderUp = FS_DATA.orders.filter(c => c.faction === p.faction).sort(byKl);
         const ownedOrder = new Set((p.upgrades || []).map(u => u.name));
         const mkRow = (c, kind) => {
             const cost = costOf(c);
