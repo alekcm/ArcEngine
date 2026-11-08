@@ -1301,6 +1301,64 @@ rule('adv-bare-factory', '«Only one area can become contested during a single A
     eq(/Спорн/.test(res2.error || ''), true, 'два бастиона — две спорные области');
 });
 
+rule('adv-capture-1', '«Занято — захвачено» — мир без бойцов противника, куда вошли наземные отряды (завод и город), считается захваченным', () => {
+    let found = null;
+    for (let seed = 1; seed <= 40 && !found; seed++) found = chainBoard(seed);
+    if (!found) return 'не нашлось системы с цепочкой трёх миров';
+    const { board: st, chain: active } = found;
+    advance(st, 0, active.id, 'TR');
+    const a = guard(st, 0, active.id, 'TL');
+    const b = guard(st, 0, active.id, 'TL');
+    FS_RULES.addStructure(st, 1, 'factory', active.id, 'TR');
+    FS_RULES.addStructure(st, 1, 'city', active.id, 'BL');
+    const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: a.id, system: active.id, pos: 'TR' }, { unit: b.id, system: active.id, pos: 'BL' }] });
+    eq(res.ok, true, 'марш в миры без бойцов прошёл: ' + (res.error || ''));
+    eq(st.structures.every(x => x.seat === 0), true, 'все постройки на захваченных мирах перешли захватчику');
+    eq(st.order.contested || null, null, 'захваченное без боя — не спорная область');
+});
+
+rule('adv-capture-2', 'мир, где есть бойцы противника, не захватывается маршем — постройка остаётся до боя', () => {
+    let found = null;
+    for (let seed = 1; seed <= 40 && !found; seed++) found = chainBoard(seed);
+    if (!found) return 'не нашлось системы с цепочкой трёх миров';
+    const { board: st, chain: active } = found;
+    advance(st, 0, active.id, 'TR');
+    const a = guard(st, 0, active.id, 'TL');
+    const b = guard(st, 0, active.id, 'TL');
+    FS_RULES.addStructure(st, 1, 'factory', active.id, 'TR');
+    FS_RULES.addStructure(st, 1, 'factory', active.id, 'BL');
+    olk(st, 1, active.id, 'BL');               // бойцы противника в BL
+    const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: a.id, system: active.id, pos: 'TR' }, { unit: b.id, system: active.id, pos: 'BL' }] });
+    eq(res.ok, true, 'один бой за приказ: march перешёл спорный район');
+    const tr = st.structures.find(x => x.area === 'TR');
+    const bl = st.structures.find(x => x.area === 'BL');
+    eq(tr.seat, 0, 'завод в TR — захвачен');
+    eq(bl.seat, 1, 'завод в BL — ждёт боя, не захвачен');
+});
+
+rule('adv-capture-3', 'откат марша (Esc) возвращает захваченные постройки прежнему владельцу', () => {
+    let found = null;
+    for (let seed = 1; seed <= 40 && !found; seed++) found = chainBoard(seed);
+    if (!found) return 'не нашлось системы с цепочкой трёх миров';
+    const { board: st, chain: active } = found;
+    advance(st, 0, active.id, 'TR');
+    const a = guard(st, 0, active.id, 'TL');
+    const b = guard(st, 0, active.id, 'TL');
+    FS_RULES.addStructure(st, 1, 'factory', active.id, 'TR');
+    FS_RULES.addStructure(st, 1, 'city', active.id, 'BL');
+    const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: a.id, system: active.id, pos: 'TR' }, { unit: b.id, system: active.id, pos: 'BL' }] });
+    eq(res.ok, true, 'марш прошёл');
+    const undo = FS_RULES.apply(st, 0, { type: 'undoMove' });
+    eq(undo.ok, true, 'откат марша выполнился: ' + (undo.error || ''));
+    eq(st.structures.every(x => x.seat === 1), true, 'постройки снова у прежнего владельца');
+    // и повторный марш — снова захват:
+    advance(st, 0, active.id, 'TR');
+    const units = st.units.filter(x => x.seat === 0).map(x => x.id);
+    const res2 = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: units[0], system: active.id, pos: 'TR' }, { unit: units[1], system: active.id, pos: 'BL' }] });
+    eq(res2.ok, true, 'повторный марш после откатки прошёл');
+    eq(st.structures.every(x => x.seat === 0), true, 'после повторного марша постройки снова захвачены');
+});
+
 rule('bastion-1', '«If the active player moves one or more units to a world that contains an opponent’s bastion, that area is contested and he must resolve a combat, even if there are no defending units.»', () => {
     const st = empty();
     const sys = st.systems[0];

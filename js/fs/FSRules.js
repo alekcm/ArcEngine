@@ -1629,6 +1629,35 @@ const FS_RULES = {
             unit.system = m.system;
             unit.area = m.pos;
         }
+        // «Занято — захвачено»: мир, куда вошли наземные отряды и где нет
+        // бойцов противника (ни отрядов, ни бастионов), считается захваченным:
+        // постройки противника переходят новому владельцу, отпор возможен
+        // только в бою. Ручная откатка марша (Esc) вернёт постройки прежнему
+        // владельцу — смета захвата хранится в записи шага.
+        const captures = {};
+        for (const m of plan) {
+            if (m.type !== 'ground') continue;
+            const sys = this.system(state, m.system);
+            const area = this.area(sys, m.pos);
+            if (!area || !area.world) continue;
+            const war = this.warSeatsAt(state, m.system, m.pos);
+            let hostile = false;
+            for (const s of war) if (s !== seat) { hostile = true; break; }
+            if (hostile) continue;
+            const losers = new Set();
+            for (const s of state.structures) {
+                if (s.system === m.system && s.area === m.pos && s.seat !== seat) losers.add(s.seat);
+            }
+            for (const loser of losers) {
+                for (const st of this.captureStructures(state, m.system, m.pos, seat, loser)) {
+                    (captures[m.id] = captures[m.id] || []).push({ id: st.id, from: loser });
+                }
+            }
+        }
+        if (Object.keys(captures).length) {
+            const n = new Set(Object.values(captures).flat().map(c => c.id)).size;
+            this.log(state, seat, state.players[seat].name + ' захватывает постройки противника: ' + n + '.');
+        }
         // "Крестный ход": the passage through an uncontrolled world is paid for by
         // the unit, not by the area; the ordinary path is tried first.
         if (order.uncontrolled) {
@@ -1654,7 +1683,7 @@ const FS_RULES = {
         const stepContested = order.contested || null;
         order.steps.push(plan.map(m => ({
             id: m.id, fromSystem: m.from, fromArea: m.fromArea, usedUncontrolled: !!m.usedUncontrolled,
-            kind: kinds.get(m.id) || 'ground', contested: stepContested,
+            kind: kinds.get(m.id) || 'ground', contested: stepContested, captured: captures[m.id] || [],
         })));
         return { ok: true };
     },
@@ -1693,6 +1722,12 @@ const FS_RULES = {
             if (!unit) continue;
             unit.system = m.fromSystem;
             unit.area = m.fromArea;
+            // The structures taken during this march go back to their former
+            // owner (a control token ran out: they were destroyed instead).
+            for (const cap of m.captured || []) {
+                const stDef = state.structures.find(x => x.id === cap.id);
+                if (stDef && stDef.seat === seat) stDef.seat = cap.from;
+            }
             if (m.usedUncontrolled) order.uncontrolledUsed = Math.max(0, (order.uncontrolledUsed || 0) - 1);
             order.moved = (order.moved || []).filter(id => id !== m.id);
         }
