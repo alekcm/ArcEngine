@@ -70,6 +70,22 @@ const FS_EFFECTS = {
         let prev = null;
         let prevCond = null;
         for (const sentence of this.sentences(text)) {
+            // «Если вы это сделаете, то …» — the effect of the scheme the card
+            // said it is waiting for: the steps join the trigger, not the card.
+            const mThen = /^если вы это сдела[а-яёa-z]*,?\s*(?:то\s+)?/i.exec(sentence);
+            if (mThen && prev && prev.op === 'trigger') {
+                const body = sentence.slice(mThen[0].length).trim();
+                const inner = this.parseSentence(body, ctx || {});
+                prev.steps = (Array.isArray(prev.steps) ? prev.steps : []).concat(inner);
+                continue;
+            }
+            // «Не применяйте её способности, но получите её боевые значения …» —
+            // the restriction refines the play before it: one card, values only.
+            if (/^не применяйте её способности/i.test(sentence) && prev && prev.op === 'playCard' && !prev.values) {
+                prev.values = true;
+                prev.ability = sentence;
+                continue;
+            }
             // The leading condition of the sentence is cut off here: the rest is
             // parsed as usual and every produced step carries it — the ability
             // is not offered, and in a non-optional context does not fire.
@@ -397,10 +413,31 @@ const FS_EFFECTS = {
         }];
     },
 
+    // «уничтожить N <кто>, чтобы <эффект>» — the destroy is the price, the
+    // part after «чтобы» is the reward: both happen together, or nothing.
+    destroyToReward(s, ctx) {
+        const m = /^уничтож[а-яёa-z]*\s+(?:(\d+)\s+)?(?:(?:одного|одну|1)\s+)?([^.`,]{3,80}?)\s*,?\s*чтобы\s+(.*)$/i.exec(String(s || ''));
+        if (!m) return null;
+        const tail = String(m[3] || '');
+        const parts = tail.split(/\s+,?\s*и\s+затем\s+/i);
+        const pieces = [];
+        for (const p of parts) pieces.push(...this.parse(String(p).trim() + '.', ctx || {}));
+        if (!pieces.length) return null;
+        const what = String(m[2] || '').trim();
+        const clean = stripQualifier(what).replace(/в \S+(?: \S+){0,3}$/u, '').trim();
+        const units = this.unitNames(clean, this.factionOf(ctx));
+        const filter = units.length ? { types: units } : (typeFilter(clean) || unitFilter(clean));
+        const steps = [{ op: 'destroy', n: num(m[1]), who: 'me', pick: true, filter, text: 'уничтожьте: ' + clean }];
+        return steps.concat(pieces);
+    },
+
     // One sentence -> the steps.
     parseSentence(sentence, ctx) {
         const s = sentence.trim();
         if (!s || s === '—') return [];
+        // «уничтожить N <кто>, чтобы <эффект>» — the price before the reward.
+        const dr = this.destroyToReward(s, ctx);
+        if (dr) return dr;
         // The «за каждый ... получите 1 X либо 1 Y» ability: one choice.
         const perUnit = this.perUnitEither(s);
         if (perUnit) return perUnit;
@@ -426,6 +463,7 @@ const FS_EFFECTS = {
         const scope = this.scope(s);
         // The rules. The first that matches wins.
         for (const rule of RULES) {
+            if (rule.noWhen && /когда/i.test(s)) continue;
             const m = rule.re.exec(s);
             if (!m) continue;
             const built = rule.build(m, ctx || {}, s);
@@ -2302,6 +2340,8 @@ const FS_EFFECTS = {
         const s = String(text || '').toLowerCase();
         // The damage of the combat.
         if (/шаг[а-яёa-z]*\s+нанесения (?:урон|поврежд)/.test(s)) return 'damage';
+        if (/становится деморализован/.test(s)) return 'damage';
+        if (/деморализован или уничтожен|уничтожен или деморализован/.test(s)) return 'damage';
         if (/получа[а-яёa-z]*\s+урон/.test(s)) return 'damage';
         // The rounds and the combats.
         if (/начал[а-яёa-z]*\s+раунда (?:боя|битвы)/.test(s)) return 'round';
@@ -2383,7 +2423,7 @@ function combatArea(state, systemId, pos) {
 }
 
 // The rules of the sentences. The first that matches wins.
-/** @type {{re: RegExp, build: (m: RegExpExecArray, ctx: any, s: string) => any}[]} */
+/** @type {{re: RegExp, build: (m: RegExpExecArray, ctx: any, s: string) => any, noWhen?: boolean}[]} */
 const RULES = [
     // "Place this card in your play area and discard all your other schemes."
     {
@@ -2410,7 +2450,7 @@ const RULES = [
     // A loss inside a sentence that starts with a gain gives the gain as well:
     // "get 1 `morale cube`, your opponent loses 1 `morale cube`".
     {
-        re: /(?:противник[а-яёa-z]*|вражеск[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?:теряет|терять|потеряет|потерять|теряют|потеряют)\s+([^;]{0,80})/i,
+        re: /(?:противник[а-яёa-z]*|вражеск[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?:теряет|терять|потеряет|потерять|теряют|потеряют|потерял|потеряли)\s+([^;]{0,80})/i,
         build: (m, ctx, sentence) => {
             const icons = [...m[1].matchAll(/`([^`]+)`/g)].map(x => x[1]);
             if (!icons.length) return null;
@@ -2632,13 +2672,22 @@ const RULES = [
         re: /восстанов[а-яёa-z]*\s+(всех?\s*)?(?:(\d+)\s+)?(?:ваш[а-яёa-z]*|сво[а-яёa-z]*)?\s*(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*|пехот[а-яёa-z]*)/i,
         build: m => ({ op: 'restore', n: m[2] ? num(m[2]) : 1, all: !!m[1], pick: true }),
     },
+    // "деморализуйте 1 отряд с командным уровнем N в этом мире" — the card
+    // ведёт бой в этом мире: целью является отряд противника уровня N.
+    {
+        noWhen: true,
+        re: /деморализ[а-яёa-z]*\s+(?:(\d+)\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)\s+с командным уровнем\s+(\d+)(?:\s+или\s+(\d+))?\s+в этом мире/i,
+        build: m => ({ op: 'route', n: num(m[1]), pick: true, who: 'foe', kl: Number(m[2]), klMax: m[3] ? Number(m[3]) : null }),
+    },
     // "the opponent must choose and route 1 of his units"
     {
+        noWhen: true,
         re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?<!не)деморализ[а-яёa-z]*\s+(?:и\s+)?(?:(\d+)\s*)?(?:свой|ваш|одного|одну|1)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)?/i,
         build: m => ({ op: 'route', n: num(m[1]), pick: true, who: 'foe' }),
     },
     // "you must route 1 of your units" / "demoralise 1 enemy unit"
     {
+        noWhen: true,
         re: /(?<!не)деморализ[а-яёa-z]*\s+(?:(\d+)\s*)?(?:ваш|вражеск|противник[а-яёa-z]*|1|одного|одну)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)?/i,
         build: m => ({ op: 'route', n: num(m[1]), pick: true }),
     },
@@ -3319,7 +3368,10 @@ function num(text) {
 const UNIT_STEMS = [[/ре[пн]е[нт]/i, ['репен', 'ренент', 'ренетент']]];
 // The «разного командного уровня» is a counting rule, not a name.
 function stripQualifier(text) {
-    return String(text || '').replace(/\s*разного[а-яёa-z\s]*?(уровня|тип[а-яёa-z]*)\s*/i, ' ').trim();
+    return String(text || '')
+        .replace(/\s*разного[а-яёa-z\s]*?(уровня|тип[а-яёa-z]*)\s*/i, ' ')
+        .replace(/\s*(?:недеморализованн|недеморализован)[а-яёa-z]*\s*/gi, ' ')
+        .trim();
 }
 // The broad classes: «наземный отряд» / «корабль».
 function typeFilter(text) {
