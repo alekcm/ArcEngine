@@ -663,11 +663,11 @@ const FSView = {
         return { root: flag, cloth };
     },
 
-    // A plate lying flat on the tile at one of the planet's poles: the unit
-    // capacity on the north pole, the materiel value and the asset tokens on
-    // the south one. The texture and the material are cached per world; the
-    // plane itself is created per planet. The planet's face is crowded with
-    // the miniatures and the structure, so the plates lie just outside the rim.
+    // The plates at the poles of the planet: north — the unit capacity, south —
+    // the materiel value and the asset tokens. They lie just outside the rim,
+    // above the tile top, and draw over the world (depth test bypassed), so the
+    // planet's information always reads. The texture and the material are cached
+    // per world; the plane itself is created per planet.
     polePlate(app, view, name, world, pole) {
         if (!view.polePlates) view.polePlates = new Map();
         const key = name + ':' + pole;
@@ -726,8 +726,15 @@ const FSView = {
             tex.update(false);
             const mat = new BABYLON.StandardMaterial('fs-pole-mat-' + key, view.scene);
             mat.diffuseTexture = tex;
-            mat.opacityTexture = tex;
+            // The alpha comes from the diffuse texture itself (the background is
+            // cleared to transparent). An opacityTexture would read the GREEN
+            // channel of this mostly dark artwork and blank the plates out —
+            // that is why no icons were visible on the worlds.
             mat.useAlphaFromDiffuseTexture = true;
+            // The plate is board information: it draws over the world whatever
+            // stands in front of it — the face, the clouds, the miniatures.
+            mat.depthFunction = BABYLON.Engine.ALWAYS;
+            mat.disableDepthWrite = true;
             mat.specularColor = BABYLON.Color3.Black();
             mat.disableLighting = true;
             mat.backFaceCulling = false;
@@ -738,6 +745,9 @@ const FSView = {
         mesh.rotation.x = -Math.PI / 2;
         mesh.material = entry.mat;
         mesh.isPickable = false;
+        // Drawn after the world in the ACTOR group; with the depth test bypassed
+        // in the material the plate can never be hidden behind the visuals.
+        mesh.renderingGroupId = World3D.LAYER.ACTOR;
         World3D.addObject(app.location.view, mesh, 'prop', { castShadow: false, ink: false, outline: false });
         return mesh;
     },
@@ -790,7 +800,7 @@ const FSView = {
             }
             const disc = this.discAt(app, sys, area.pos, view.metrics);
             const cx = disc.x, cz = disc.z, base = disc.y - this.PLANET_H - .12;
-            const gy = app.location.terrain.heightAt(cx, cz) + 7.2;
+            const gy = app.location.terrain.heightAt(cx, cz) + 8.6;
             planet.rim.position.set(cx, base + this.PLANET_H / 2, cz);
             planet.mesh.position.set(cx, base + this.PLANET_H + .12, cz);
             planet.clouds.position.set(cx, base + this.PLANET_H + .34, cz);
@@ -809,9 +819,9 @@ const FSView = {
             }
             if (planet.flag) {
                 planet.flag.setEnabled(tokensHere);
-                // The flag stands on the tile beside the token itself, clear of
-                // the structure (which fills the far, north edge of the planet).
-                planet.flag.position.set(cx + 56, gy, cz + 32);
+                // The flag of the objective stands at the very centre of the world,
+                // planted on its face, readable from every side.
+                planet.flag.position.set(cx, base + this.PLANET_H + .12, cz);
                 if (planet.flagCloth && token && planet.flagOwner !== ownerColor) {
                     planet.flagCloth.material = view.material('flag-cloth-' + ownerColor, ownerColor, { emissive: true });
                     planet.flagOwner = ownerColor;
@@ -845,7 +855,9 @@ const FSView = {
     discSpread(count, index, hasStructure) {
         const r = this.PLANET_D * 0.31;
         const step = Math.PI * 2 / Math.max(1, count);
-        // North (0, -1) belongs to the structure; the troops start half a step away from it.
+        // Keep the half-step stagger on worlds with a structure — a legacy of
+        // structures standing on the face; harmless, and avoids moving every
+        // miniature for no reason.
         const start = -Math.PI / 2 + (hasStructure ? step / 2 : 0);
         const a = start + index * step;
         return { x: Math.cos(a) * r, y: Math.sin(a) * r };
@@ -1406,33 +1418,38 @@ const FSView = {
                 }
             }
         }
-        // Structures are small tabletop miniatures standing on the round world
-        // itself, at its far edge — never beside the planet.
+        // Structures are small, quiet tabletop miniatures standing in the
+        // far-left corner of the tile they are built on — off the planet, never
+        // on its face, and without glow: printed-board furniture, not a lamp.
         for (const s of state.structures) {
             const sys = state.systems.find(x => x.id === s.system);
             if (!sys) continue;
-            const disc = this.discAt(app, sys, s.area, view.metrics);
+            const tp = this.tilePos(app, sys, view.metrics);
+            const corner = this.TILE / 2 - 20;   // world px from the tile centre into the far-left corner
+            const tileH = h(tp.x, tp.y) + 6.5;   // the flat printed top of the tile
+            const sx = tp.x - corner, sz = tp.y - corner;
             const owner = state.players.find(p2 => p2.seat === s.seat);
             const color = (owner && owner.palette && owner.palette.primary) || (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
             const root = new BABYLON.TransformNode('fs-structure-' + s.id, view.scene);
             const structModel = this.structureModel(view, s.type);
             if (structModel) {
-                root.scaling.setAll(structModel.scale);
-                root.position.set(disc.x + structModel.offset.x, disc.y + structModel.offset.y, disc.z - this.PLANET_D * 0.27 + structModel.offset.z);
+                // 30% smaller than the landmark size the models normalise to.
+                root.scaling.setAll(structModel.scale * 0.7);
+                root.position.set(sx + structModel.offset.x * 0.7, tileH + structModel.offset.y * 0.7, sz + structModel.offset.z * 0.7);
             } else {
-                root.scaling.setAll(this.STRUCTURE_SIZE / 28);
-                root.position.set(disc.x, disc.y, disc.z - this.PLANET_D * 0.27);
+                root.scaling.setAll(this.STRUCTURE_SIZE / 28 * 0.7);
+                root.position.set(sx, tileH, sz);
             }
             const meta = { fs: 'structure', structure: s.id, system: s.system, pos: s.area };
             root.metadata = meta;
             const main = view.material('struct-' + s.type, color);
             const dark = view.material('struct-metal', '#26313c');
-            const trim = view.material('struct-trim-' + s.seat, color, { emissive: true });
-            const light = view.material('struct-lights', '#8bdcf4', { emissive: true });
+            const trim = view.material('struct-trim-' + s.seat, color);
+            const light = view.material('struct-lights', '#8bdcf4');
             // The real tabletop model of the structure, in the owner's colour;
             // until it loads (or if it fails) the procedural miniature stands.
             if (structModel) {
-                const mat = view.material('struct-obj-' + s.type + '-' + s.seat, color, { emissive: true });
+                const mat = view.material('struct-obj-' + s.type + '-' + s.seat, color);
                 for (let i = 0; i < structModel.parts.length; i++) {
                     const clone = structModel.parts[i].clone('fs-struct-part-' + s.id + '-' + i, root, false);
                     if (!clone) continue;
