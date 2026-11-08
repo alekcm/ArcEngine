@@ -338,22 +338,7 @@ class FSGame {
         this.testMode = view.mode || this.testMode;
         FSUI.show('fsLobby', false);
         // The ghost storms of the pending move: where the storm may go now.
-        this.view.stormPending = null;
-        this.view.stormGhosts = [];
-        if (view && view.phase === 'refresh' && view.event && view.event.seat === view.seat && !view.event.stormMoved) {
-            const pid = this.mode === 'storm' && this.pending ? this.pending.storm : null;
-            if (pid) {
-                const storm = (view.storms || []).find(x => x.id === pid);
-                this.view.stormPending = pid;
-                this.view.stormGhosts = FS_RULES.stormOptions(view, view.seat)
-                    .filter(o => o.storm === pid)
-                    .map(o => {
-                        const t = storm ? FS_RULES.stormTarget(view, storm, o.dir) : null;
-                        return t ? { system: t.system, side: t.side, dir: o.dir, storm: pid } : null;
-                    })
-                    .filter(Boolean);
-            }
-        }
+        this.updateStormGhosts();
         FSView.update(this.app, this.view, view);
         // The camera never moves on its own between state refreshes — not on an
         // order, not on a purchase, not on a refund. It stays where the player left it.
@@ -1446,13 +1431,19 @@ class FSGame {
         const deckNames = FSUI.combatDeckKnown(p, true);
         const deckCounts = {};
         for (const n of deckNames) deckCounts[n] = (deckCounts[n] || 0) + 1;
+        // The hand of the discard: one card per unique name — the pair of the
+        // combat deck leaves as one piece (the upgrade replaces a pair).
         this.hand = [];
+        const deckSeen = new Set();
         for (const n of deckNames) {
+            if (deckSeen.has(n)) continue;
+            deckSeen.add(n);
             const def = FS_DATA.combat.find(c => c.faction === p.faction && c.name === n);
             const text = def ? [def.general, def.unit].filter(Boolean).join('\n') : '';
             this.hand.push({
                 name: n,
                 playable: true,
+                count: deckCounts[n] || 1,
                 icons: def && def.icons ? def.icons : {},
                 text,
                 general: def && def.general,
@@ -1598,16 +1589,16 @@ class FSGame {
         ctx.text = 'Ресурсы получены. Способность фракции применять не обязательно.';
         // The faction ability is the point of the Dominate order — print it in the panel.
         ctx.status = s.order.ability ? 'Способность фракции: ' + s.order.ability : 'Способность фракции: —';
-        // What the order just gave — the same list the engine granted; listed at the bottom.
-        const assetNames = { forge: 'Кузница', cache: 'Запасы', reinforcement: 'Подкрепление', prosperity: 'Процветание' };
+        // What the order just gave — the same list the engine granted; printed as icons.
         const counts = {};
         for (const a of (s.order.gained || [])) counts[a] = (counts[a] || 0) + 1;
-        const parts = [];
-        for (const key of ['forge', 'cache', 'reinforcement']) {
-            if (counts[key]) parts.push(assetNames[key] + (counts[key] > 1 ? ' ×' + counts[key] : ''));
+        const assetIcons = { forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'order.event', prosperity: 'asset.prosperity' };
+        const noteIcons = [];
+        for (const key of ['forge', 'cache', 'reinforcement', 'prosperity']) {
+            if (counts[key]) noteIcons.push({ icon: assetIcons[key], count: counts[key] });
         }
-        if (counts.prosperity) parts.push('Процветание (на выбор)' + (counts.prosperity > 1 ? ' ×' + counts.prosperity : ''));
-        ctx.note = 'После этого вы получите следующие жетоны: ' + (parts.length ? parts.join(' · ') : '—');
+        ctx.note = 'После этого вы получите следующие жетоны:';
+        ctx.noteIcons = noteIcons;
         // The prosperity: the player chooses the asset of his choice.
         for (let i = 0; i < (s.order.prosperity || 0); i++) {
             for (const asset of ['forge', 'cache', 'reinforcement']) {
@@ -1674,7 +1665,11 @@ class FSGame {
             return;
         }
         const data = FS_DATA.events.find(e => e.faction === p.faction && e.name === ev.chosen);
-        ctx.text = ((data && data.text) || '') + (card && card.storm ? ' · шторм: ' + card.storm.join(', ') : '');
+        ctx.text = ((data && data.text) || '');
+        ctx.previewCard = {
+            kind: 'Событие', name: ev.chosen, text: (data && data.text) || '',
+            storm: (card && card.storm) || (data && data.storm) || [], okLabel: 'На руке',
+        };
         // The storms move with the mouse on the board itself: no buttons here.
         const options = FS_RULES.stormOptions(s, me);
         const stormStepDone = !!ev.stormMoved;
@@ -2696,6 +2691,29 @@ class FSGame {
         this.refresh();
     }
 
+    // Where may the pending storm go — the green ghosts of the move.
+    // Recomputed on every click that may change the selection: the server only
+    // speaks when a command is sent, and picking a storm is not a command.
+    updateStormGhosts() {
+        this.view.stormPending = null;
+        this.view.stormGhosts = [];
+        const view = this.state;
+        if (view && view.phase === 'refresh' && view.event && view.event.seat === view.seat && !view.event.stormMoved) {
+            const pid = this.mode === 'storm' && this.pending ? this.pending.storm : null;
+            if (pid) {
+                const storm = (view.storms || []).find(x => x.id === pid);
+                this.view.stormPending = pid;
+                this.view.stormGhosts = FS_RULES.stormOptions(view, view.seat)
+                    .filter(o => o.storm === pid)
+                    .map(o => {
+                        const t = storm ? FS_RULES.stormTarget(view, storm, o.dir) : null;
+                        return t ? { system: t.system, side: t.side, dir: o.dir, storm: pid } : null;
+                    })
+                    .filter(Boolean);
+            }
+        }
+    }
+
     // The click on a warp storm — or on its green ghost — during the storm step
     // of the refresh: the panel does not move storms any more.
     stormClick(meta) {
@@ -2713,6 +2731,8 @@ class FSGame {
             this.mode = 'idle';
             this.pending = null;
             this.status = '';
+            this.updateStormGhosts();
+            if (typeof FSView !== 'undefined' && this.app && this.view) FSView.update(this.app, this.view, this.state);
             this.refresh();
             return;
         }
@@ -2723,9 +2743,13 @@ class FSGame {
             this.refresh();
             return;
         }
+        // Clicking another storm while one is chosen: switch the selection —
+        // its ghosts take over the board, the previous ones disappear.
         this.mode = 'storm';
         this.pending = { storm: meta.storm };
         this.status = '';
+        this.updateStormGhosts();
+        if (typeof FSView !== 'undefined' && this.app && this.view) FSView.update(this.app, this.view, this.state);
         this.refresh();
     }
 

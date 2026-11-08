@@ -295,6 +295,16 @@ const FS_SHAPES = {
             { t: 'c', x: 16, y: 16, r: 4, fill: 'ink' },
         ],
     }),
+    // The warthe gate arrows of an event card: the eight directions a card may
+    // drag its storm. Printed on the card before it moves anything.
+    'ui.storm-n': () => ({ color: '#eb6dc6', parts: [{ t: 'p', pts: [[16.0, 2.0], [27.0, 17.0], [21.0, 17.0], [21.0, 30.0], [11.0, 30.0], [11.0, 17.0], [5.0, 17.0]] }] }),
+    'ui.storm-ne': () => ({ color: '#eb6dc6', parts: [{ t: 'p', pts: [[25.9, 6.1], [23.1, 24.5], [18.8, 20.2], [9.6, 29.4], [2.6, 22.4], [11.8, 13.2], [7.5, 8.9]] }] }),
+    'ui.storm-e': () => ({ color: '#eb6dc6', parts: [{ t: 'p', pts: [[30.0, 16.0], [15.0, 27.0], [15.0, 21.0], [2.0, 21.0], [2.0, 11.0], [15.0, 11.0], [15.0, 5.0]] }] }),
+    'ui.storm-se': () => ({ color: '#eb6dc6', parts: [{ t: 'p', pts: [[25.9, 25.9], [7.5, 23.1], [11.8, 18.8], [2.6, 9.6], [9.6, 2.6], [18.8, 11.8], [23.1, 7.5]] }] }),
+    'ui.storm-s': () => ({ color: '#eb6dc6', parts: [{ t: 'p', pts: [[16.0, 30.0], [5.0, 15.0], [11.0, 15.0], [11.0, 2.0], [21.0, 2.0], [21.0, 15.0], [27.0, 15.0]] }] }),
+    'ui.storm-sw': () => ({ color: '#eb6dc6', parts: [{ t: 'p', pts: [[6.1, 25.9], [8.9, 7.5], [13.2, 11.8], [22.4, 2.6], [29.4, 9.6], [20.2, 18.8], [24.5, 23.1]] }] }),
+    'ui.storm-w': () => ({ color: '#eb6dc6', parts: [{ t: 'p', pts: [[2.0, 16.0], [17.0, 5.0], [17.0, 11.0], [30.0, 11.0], [30.0, 21.0], [17.0, 21.0], [17.0, 27.0]] }] }),
+    'ui.storm-nw': () => ({ color: '#eb6dc6', parts: [{ t: 'p', pts: [[6.1, 6.1], [24.5, 8.9], [20.2, 13.2], [29.4, 22.4], [22.4, 29.4], [13.2, 20.2], [8.9, 24.5]] }] }),
     'ui.retreat': () => ({
         color: '#cbd3dc',
         parts: [{ t: 'l', pts: [[24, 6], [10, 16], [24, 26]], width: 4 }, { t: 'l', pts: [[17, 6], [3, 16], [17, 26]], width: 4, alpha: 0.6 }],
@@ -505,7 +515,9 @@ const FSIcons = {
             }
             if (ch === '*') {
                 const j = src.indexOf('*', i + 1);
-                if (j > i) { flush(); line.push({ t: 'text', v: src.slice(i + 1, j), italic: true }); i = j + 1; continue; }
+                // One asterisk pair on a card is the required-units prefix —
+                // it is always printed bold italic («Гвардеец/Крейсер:»).
+                if (j > i) { flush(); line.push({ t: 'text', v: src.slice(i + 1, j), bold: true, italic: true }); i = j + 1; continue; }
             }
             if (ch === '\n') { endLine(); i++; continue; }
             buf += ch; i++;

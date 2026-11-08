@@ -259,7 +259,7 @@
 /* The text of a card: real italics, real bold, cubes in the flow of the words. */
 .fs-rich{display:block;font-size:10px;line-height:1.45;color:#cfc7b6}
 .fs-rich-bold{font-weight:700;color:#f2e8d2}
-.fs-rich-italic{font-style:italic;color:#ded4c1}
+.fs-rich-italic{font-style:italic}
 .fs-rich-ico{width:13px;height:13px;vertical-align:-3px;margin:0 2px}
 
 /* --- the token tower of the orders: four icon cells with what is left ------ */
@@ -458,13 +458,22 @@ button.fs-room-pill:hover{border-color:#d8b87366;color:#efe6c8;background:#d8b87
 .fs-card-zones{display:flex;flex-direction:column}
 .fs-card-zone{padding:8px 10px;font-size:10px;line-height:1.5}
 .fs-card-zone.is-general{background:#c9c19c;color:#241f14;border-radius:8px 8px 0 0}
-.fs-card-zone.is-unit{background:#a2906b;color:#231f13;border-radius:0 0 8px 8px}
+.fs-card-zone.is-unit{background:#c9c19c;color:#241f14;border-radius:0 0 8px 8px}
 .fs-card-zone.is-general.is-only{border-radius:8px}
 .fs-card-zone.is-unit.is-only{border-radius:8px}
 .fs-card-zone .fs-rich{color:inherit;font-size:inherit;line-height:inherit}
-.fs-card-zone .fs-rich-bold{color:#1d1910}
+.fs-card-zone .fs-rich-bold,.fs-card-zone .fs-rich-italic{color:inherit}
 .fs-card-zone-text{font-size:inherit}
 .fs-card-teeth{display:flex;justify-content:space-between;align-items:flex-start;background:#a2906b;padding:0 6px;gap:1px;height:7px}
 .fs-card-tooth{display:block;width:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid #c9c19c}
 .fs-card-preview-zones{margin-top:9px;font-size:10px;overflow:hidden;border-radius:8px;border:1px solid #00000055}
 .fs-battle-card-text.fs-card-zones{margin:2px 0 0;padding-top:0;border-top:0;flex:1;min-height:0;border-radius:8px;overflow:hidden}
+
+.fs-card-preview-storm{display:flex;align-items:center;gap:7px;margin-top:8px;padding:5px 9px;border:1px solid #eb6dc633;border-radius:9px;background:#eb6dc614}
+.fs-card-preview-storm-label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#eb9ed4}
+.fs-card-preview-storm-ico{width:22px;height:22px}
+.fs-battle-card-count{position:absolute;top:5px;right:6px;font-size:11px;font-weight:700;color:#e9dec3;background:#000000aa;border-radius:6px;padding:1px 6px;pointer-events:none;z-index:2}
+.fs-battle-card{position:relative}
+.fs-panel-note-icons{display:flex;align-items:center;gap:12px;margin-top:7px;padding:7px 10px;background:#ffffff0e;border:1px solid #ffffff14;border-radius:9px}
+.fs-panel-note-ico{width:22px;height:22px}
+.fs-panel-note-num{color:#e9dec3;font-size:13px}

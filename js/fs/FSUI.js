@@ -136,7 +136,8 @@ const FSUI = {
             if (i) box.append(this.el('br'));
             for (const run of block) {
                 if (run.t === 'icon') { box.append(this.iconEl(FSIcons.fromCardWord(run.name) || 'cube.any', 'fs-rich-ico')); continue; }
-                const span = this.el('span', run.bold ? 'fs-rich-bold' : run.italic ? 'fs-rich-italic' : '');
+                const cls = [run.bold ? 'fs-rich-bold' : '', run.italic ? 'fs-rich-italic' : ''].filter(Boolean).join(' ');
+                const span = this.el('span', cls);
                 span.textContent = run.v;
                 box.append(span);
             }
@@ -484,6 +485,14 @@ const FSUI = {
             panel.append(button);
         }
         if (ctx.note) panel.append(this.el('div', 'fs-panel-note', ctx.note));
+        if (ctx.noteIcons && ctx.noteIcons.length) {
+            const icons = this.el('div', 'fs-panel-note-icons');
+            for (const item of ctx.noteIcons) {
+                icons.append(this.iconEl(item.icon || 'ui.die', 'fs-panel-note-ico'));
+                icons.append(this.el('b', 'fs-panel-note-num', '×' + (item.count || 1)));
+            }
+            panel.append(icons);
+        }
         root.append(panel);
         const drawer = this.renderFactionDrawer(state);
         if (drawer) root.append(drawer);
@@ -917,6 +926,7 @@ const FSUI = {
         for (const item of hand) {
             const card = this.el('button', 'fs-battle-card' + (item.playable ? ' is-playable' : ' is-closed'));
             card.type = 'button';
+            if (item.count > 1) card.append(this.el('span', 'fs-battle-card-count', '×' + item.count));
             const top = this.el('div', 'fs-battle-card-top');
             top.append(this.el('span', 'fs-battle-card-name', item.name));
             card.append(top);
@@ -1035,12 +1045,24 @@ const FSUI = {
         const wrap = this.el('div', 'fs-card-preview');
         wrap.append(this.el('div', 'fs-card-preview-kind', item.kind || ''));
         wrap.append(this.el('div', 'fs-card-preview-name', item.name || ''));
-        const meta = this.el('div', 'fs-card-preview-meta');
-        meta.append(this.iconEl('ui.die', 'fs-card-preview-meta-ico'));
-        meta.append(this.el('span', '', 'КЛ ' + (item.kl != null ? item.kl : 0)));
-        meta.append(this.iconEl('asset.materiel', 'fs-card-preview-meta-ico'));
-        meta.append(this.el('span', '', String(item.cost != null ? item.cost : 0) + ' материя'));
-        wrap.append(meta);
+        if (item.kl != null || item.cost != null) {
+            const meta = this.el('div', 'fs-card-preview-meta');
+            if (item.kl != null) {
+                meta.append(this.iconEl('ui.die', 'fs-card-preview-meta-ico'));
+                meta.append(this.el('span', '', 'КЛ ' + item.kl));
+            }
+            if (item.cost != null) {
+                meta.append(this.iconEl('asset.materiel', 'fs-card-preview-meta-ico'));
+                meta.append(this.el('span', '', String(item.cost) + ' материя'));
+            }
+            wrap.append(meta);
+        }
+        if (item.storm && item.storm.length) {
+            const row = this.el('div', 'fs-card-preview-storm');
+            row.append(this.el('span', 'fs-card-preview-storm-label', 'Сдвиг шторма'));
+            for (const dir of item.storm) row.append(this.iconEl('ui.storm-' + String(dir).toLowerCase(), 'fs-card-preview-storm-ico'));
+            wrap.append(row);
+        }
         if (item.icons) {
             const icons = this.el('div', 'fs-card-icons fs-card-preview-cubes');
             if (this.appendCubeIcons(icons, item.icons)) wrap.append(icons);

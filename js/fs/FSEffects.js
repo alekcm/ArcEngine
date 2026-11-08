@@ -847,6 +847,8 @@ const FS_EFFECTS = {
                 return { question: { kind: 'assets', who: target, op: 'loseAsset', n: Math.min(step.n || 1, kinds.length), options: kinds, text: 'Какой жетон ресурса теряется?' } };
             }
             case 'gainWorldAssets': {
+                // «этого мира» — the world chosen by the previous step is the world.
+                if (ctx && ctx.world) return this.gainWorldAssetsBody(R, state, seat, step, ctx.world);
                 const worlds = this.friendlyWorlds(R, state, seat);
                 if (!worlds.length) return null;
                 return { question: { kind: 'areas', who: seat, op: 'gainWorldAssets', options: worlds, text: 'С какого мира взять ресурсы?' } };
@@ -1564,18 +1566,18 @@ const FS_EFFECTS = {
             }
             case 'gainWorldAssets': {
                 const area = answer.area || ctx.world;
-                if (!area) return null;
-                const sys = R.system(state, area.system);
-                const a = R.area(sys, area.pos);
-                if (!a || !a.world) return null;
-                p.materiel = Math.min(R.MATERIEL_MAX, p.materiel + (a.world.materiel || 0));
-                for (const asset of a.world.assets || []) {
-                    if (asset === 'prosperity') continue;
-                    const limit = p.faction === 'тираниды' && asset === 'reinforcement' ? 4 : 3;
-                    if ((p.assets[asset] || 0) < limit) p.assets[asset] = (p.assets[asset] || 0) + 1;
+                // The second leg of the step: the token the player chose for the
+                // world's prosperity icon.
+                if (answer.asset) {
+                    const kind = answer.asset;
+                    const base = p.faction === 'тираниды' && kind === 'reinforcement' ? 4 : 3;
+                    const limit = Math.max(base, p.assetLimit || 0);
+                    p.assets[kind] = Math.min(limit, (p.assets[kind] || 0) + (step.prosperity || 1));
+                    R.log(state, seat, state.players[seat].name + ' берёт жетон процветания: ' + kind + '.');
+                    return null;
                 }
-                R.log(state, seat, state.players[seat].name + ' берёт ресурсы мира ' + a.world.name + '.');
-                return null;
+                if (!area) return null;
+                return this.gainWorldAssetsBody(R, state, seat, step, area);
             }
             case 'gainSystemMateriel': {
                 const sys = state.systems.find(x => x.id === answer.system);
@@ -1749,6 +1751,30 @@ const FS_EFFECTS = {
             }
         }
         return out;
+    },
+
+
+    // «Получите ценные ресурсы и материалы этого мира» — the shared body of the
+    // step: the materials, the tokens, and the question of the prosperity token.
+    gainWorldAssetsBody(R, state, seat, step, area) {
+        const p = state.players[seat];
+        const sys = R.system(state, area.system);
+        const a = R.area(sys, area.pos);
+        if (!a || !a.world) return null;
+        p.materiel = Math.min(R.MATERIEL_MAX, p.materiel + (a.world.materiel || 0));
+        let prosperity = 0;
+        for (const asset of a.world.assets || []) {
+            if (asset === 'prosperity') { prosperity++; continue; }
+            const limit = p.faction === 'тираниды' && asset === 'reinforcement' ? 4 : 3;
+            if ((p.assets[asset] || 0) < limit) p.assets[asset] = (p.assets[asset] || 0) + 1;
+        }
+        R.log(state, seat, p.name + ' берёт ресурсы мира ' + a.world.name + '.');
+        if (prosperity) {
+            // «ценные ресурсы» включают процветание: игрок решает, на какой жетон он похож.
+            step.prosperity = prosperity;
+            return { question: { kind: 'assetType', who: seat, op: 'gainWorldAssets', n: prosperity, options: ['forge', 'cache', 'reinforcement'], text: 'Мир даёт жетон процветания. Какой жетон взять?' } };
+        }
+        return null;
     },
 
     // --- the printed areas of the faction abilities -------------------------
