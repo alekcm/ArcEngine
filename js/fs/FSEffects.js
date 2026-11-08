@@ -866,8 +866,30 @@ const FS_EFFECTS = {
                 return { question: { kind: 'types', who: seat, op: 'placeUnit', n: step.n || 1, options: free.map(u => u.id), text: 'Какой отряд разместить?' } };
             }
             case 'placeStructure': {
+                // «Купите 1 постройку» — the player chooses which one: only the
+                // structures he can afford and actually take from the box are
+                // offered; an empty offer ends the ability honestly in the log.
+                const offer = ['factory', 'city', 'bastion'].filter(t => {
+                    if (!step.free && p.materiel < R.structureStats(t).cost) return false;
+                    const can = R.canTakeStructure(state, seat, t);
+                    return can && can.ok;
+                });
+                if (step.kind === 'any') {
+                    if (!offer.length) {
+                        R.log(state, seat, p.name + ' не может купить постройку: нет денег или жетонов контроля.');
+                        return null;
+                    }
+                    return { question: { kind: 'structureTypes', who: seat, op: 'placeStructure', options: offer, text: 'Какую постройку построить?' } };
+                }
+                if (offer.indexOf(step.kind) < 0) {
+                    R.log(state, seat, p.name + ' не может построить постройку.');
+                    return null;
+                }
                 const areas = this.areasFor(R, state, seat, 'structure');
-                if (!areas.length) return null;
+                if (!areas.length) {
+                    R.log(state, seat, p.name + ' некуда ставить постройку: нет дружественного мира без построек.');
+                    return null;
+                }
                 return { question: { kind: 'areas', who: seat, op: 'placeStructure', kind2: step.kind, options: areas, text: 'Где построить?' } };
             }
             case 'placeReinforcement': {
@@ -1564,11 +1586,31 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'placeStructure': {
+                // The first answer of a «buy a structure» step: which kind was
+                // bought. The choice stays on the step; the question about the
+                // world follows.
+                if (answer.type !== undefined && !answer.area) {
+                    const t = answer.type;
+                    if (['factory', 'city', 'bastion'].indexOf(t) < 0) return { ok: false, error: 'Такой постройки нет.' };
+                    const stats = R.structureStats(t);
+                    if (!step.free && p.materiel < stats.cost) return { ok: false, error: 'Не хватает материи.' };
+                    const can = R.canTakeStructure(state, seat, t);
+                    if (!can.ok) return { ok: false, error: can.error };
+                    step.kind = t;
+                    const areas = this.areasFor(R, state, seat, 'structure');
+                    if (!areas.length) {
+                        R.log(state, seat, p.name + ' некуда ставить постройку: нет дружественного мира без построек.');
+                        return null;
+                    }
+                    return { question: { kind: 'areas', who: seat, op: 'placeStructure', kind2: t, options: areas, text: 'Где построить?' } };
+                }
                 const area = answer.area;
                 if (!area) return null;
                 const stats = R.structureStats(step.kind);
                 // The plastic of the structures is shared and counted on the board.
-                if (!R.canTakeStructure(state, seat, step.kind).ok) return null;
+                const can = R.canTakeStructure(state, seat, step.kind);
+                if (!can.ok) return { ok: false, error: can.error };
+                if (!step.free && p.materiel < stats.cost) return { ok: false, error: 'Не хватает материи.' };
                 // The structure may be free, but it always comes from the reserve.
                 if (!step.free) p.materiel -= stats.cost;
                 R.addStructure(state, seat, step.kind, area.system, area.pos);

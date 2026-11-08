@@ -1133,12 +1133,23 @@ const FS_RULES = {
     },
 
     // The state of an area for a player, exactly as the rules name it.
+    // The seats that can fight for an area: the units in it and the bastions.
+    // A factory or a city never holds the field on its own — it cannot fight,
+    // it cannot open a battle and it does not consume the one-battle limit of
+    // an advance order («possibly he starts one battle»).
+    warSeatsAt(state, systemId, pos) {
+        const seats = new Set();
+        for (const u of state.units) if (u.system === systemId && u.area === pos) seats.add(u.seat);
+        for (const s of state.structures) if (s.system === systemId && s.area === pos && s.type === 'bastion') seats.add(s.seat);
+        return seats;
+    },
+
     areaState(state, seat, systemId, pos) {
         const mine = this.unitsAt(state, systemId, pos).some(u => u.seat === seat)
             || this.structuresAt(state, systemId, pos).some(x => x.seat === seat);
         const theirs = state.units.some(u => u.system === systemId && u.area === pos && u.seat !== seat)
             || state.structures.some(x => x.system === systemId && x.area === pos && x.seat !== seat);
-        if (mine && theirs) return 'contested';
+        if (this.warSeatsAt(state, systemId, pos).size > 1) return 'contested';
         if (mine) return 'friendly';
         if (theirs) return 'enemy';
         return 'uncontrolled';
@@ -1705,10 +1716,7 @@ const FS_RULES = {
         const out = [];
         for (const sys of state.systems) {
             for (const area of sys.areas) {
-                const seats = new Set();
-                for (const u of state.units) if (u.system === sys.id && u.area === area.pos) seats.add(u.seat);
-                for (const s of state.structures) if (s.system === sys.id && s.area === area.pos) seats.add(s.seat);
-                if (seats.size > 1) out.push({ system: sys.id, pos: area.pos });
+                if (this.warSeatsAt(state, sys.id, area.pos).size > 1) out.push({ system: sys.id, pos: area.pos });
             }
         }
         return out;
@@ -1744,7 +1752,8 @@ const FS_RULES = {
             const area = contested[0];
             const mine = state.units.some(u => u.seat === seat && u.system === area.system && u.area === area.pos);
             const their = state.units.find(u => u.seat !== seat && u.system === area.system && u.area === area.pos);
-            const defender = their ? their.seat : state.structures.find(s => s.seat !== seat && s.system === area.system && s.area === area.pos).seat;
+            const bastion = state.structures.find(s => s.seat !== seat && s.system === area.system && s.area === area.pos && s.type === 'bastion');
+            const defender = their ? their.seat : bastion ? bastion.seat : seat;
             order.phase = 'combat';
             this.startCombat(state, seat, defender, area.system, area.pos);
             return { ok: true };
@@ -2446,6 +2455,26 @@ const FS_RULES = {
         return { ok: true, text: up.text || '' };
     },
 
+    // The players who reached the objective threshold — with the tie-breaks of
+    // the rules («Winning And Losing The Game»): objectives, then friendly
+    // worlds, then units, and only then a shared victory.
+    objectiveWinners(state) {
+        const needed = state.players.length;
+        const alive = state.players.filter(p => !p.eliminated && p.objectives >= needed);
+        if (!alive.length) return null;
+        alive.sort((a, b) => (b.objectives - a.objectives)
+            || (this.friendlyWorlds(state, b.seat) - this.friendlyWorlds(state, a.seat))
+            || (this.unitsOf(state, b.seat) - this.unitsOf(state, a.seat)));
+        const same = (a, b) => a.objectives === b.objectives
+            && this.friendlyWorlds(state, a.seat) === this.friendlyWorlds(state, b.seat)
+            && this.unitsOf(state, a.seat) === this.unitsOf(state, b.seat);
+        const shared = alive.filter(p => same(p, alive[0]));
+        return {
+            winner: alive[0].seat,
+            shared: shared.length > 1 ? shared.map(p => p.seat) : null,
+        };
+    },
+
     // --- the refresh phase --------------------------------------------------
 
     startRefresh(state) {
@@ -2467,6 +2496,20 @@ const FS_RULES = {
             this.log(state, p.seat, p.name + ' забрал цель с мира ' + (this.area(this.system(state, obj.system), obj.area).world || {}).name + '.');
         }
         state.objectives = left;
+        // «When a player has collected a number of his objective tokens equal to
+        // or exceeding the number of players, the game ends and he wins the
+        // game» — immediately at step 1; the materiel, the rally, the storms and
+        // the event cards of this refresh never happen.
+        const won = this.objectiveWinners(state);
+        if (won) {
+            state.over = true;
+            state.winner = won.winner;
+            if (won.shared) state.shared = won.shared;
+            this.log(state, -1, won.shared
+                ? 'Игра закончена вничью: цели собраны.'
+                : 'Игра закончена. Побеждает ' + state.players[won.winner].name + ': цели собраны.');
+            return;
+        }
         // 2. the materiel
         for (const p of state.players) {
             const income = this.materielIncome(state, p.seat);
@@ -2752,17 +2795,16 @@ const FS_RULES = {
             return;
         }
         // The victory conditions: the objectives needed do not shrink when a
-        // player is eliminated (the rules).
-        const needed = state.players.length;
-        const winners = alive.filter(p => p.objectives >= needed);
-        if (winners.length) {
+        // player is eliminated (the rules). The tie-breaks are the same as at
+        // the first step of the refresh phase.
+        const won = this.objectiveWinners(state);
+        if (won) {
             state.over = true;
-            winners.sort((a, b) => b.objectives - a.objectives);
-            state.winner = winners[0].seat;
-            if (winners.length > 1 && winners[0].objectives === winners[1].objectives) {
-                state.shared = winners.filter(p => p.objectives === winners[0].objectives).map(p => p.seat);
-            }
-            this.log(state, -1, 'Игра закончена. Побеждает ' + winners[0].name + '.');
+            state.winner = won.winner;
+            if (won.shared) state.shared = won.shared;
+            this.log(state, -1, won.shared
+                ? 'Игра закончена вничью.'
+                : 'Игра закончена. Побеждает ' + state.players[won.winner].name + '.');
             return;
         }
         if (state.round > this.ROUNDS) {

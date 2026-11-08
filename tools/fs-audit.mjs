@@ -373,21 +373,28 @@ rule('adv-2', '«Ground units cannot move into the active system from more than 
 });
 
 rule('adv-3', '«Only one area can become contested during a single Advance Order.»', () => {
-    const st = empty();
-    const active = st.systems[0];
-    const near = FS_RULES.neighbors(st, active.id)[0];
-    const w1 = worldOf(st, active.id);
-    const w2 = FS_RULES.system(st, active.id).areas.filter(a => a.world && a.pos !== w1)[0];
-    if (!w2) return 'на тайле один мир';
-    advance(st, 0, active.id, w1);
-    const mine = guard(st, 0, near, worldOf(st, near));
-    olk(st, 1, active.id, w1);
-    olk(st, 1, active.id, w2.pos);
+    let st = null;
+    for (let seed = 1; seed <= 40 && !st; seed++) {
+        const board = empty(seed);
+        if (['TR', 'TL', 'BL'].every(p => board.systems.some(sys => sys.areas.some(a => a.pos === p && a.world)))) {
+            const sys = board.systems.find(sys2 => ['TR', 'TL', 'BL'].every(p => sys2.areas.some(a => a.pos === p && a.world)));
+            st = board;
+            st.__chain = sys;
+        }
+    }
+    if (!st) return 'не нашлось системы с цепочкой трёх миров';
+    const active = st.__chain;
+    delete st.__chain;
+    advance(st, 0, active.id, 'TR');
+    const a = guard(st, 0, active.id, 'TL');
+    const b = guard(st, 0, active.id, 'TL');
+    olk(st, 1, active.id, 'TR');
+    olk(st, 1, active.id, 'BL');
     const res = FS_RULES.apply(st, 0, {
         type: 'moveUnits',
-        moves: [{ unit: mine.id, system: active.id, pos: w1 }, { unit: mine.id + 'x', system: active.id, pos: w2.pos }],
+        moves: [{ unit: a.id, system: active.id, pos: 'TR' }, { unit: b.id, system: active.id, pos: 'BL' }],
     });
-    eq(res.ok, false, 'два спорных района за один приказ');
+    eq(/Спорн/.test(res.error || ''), true, 'два спорных района за один приказ: ' + res.error);
 });
 
 rule('adv-4', '«Ships do not require a path to move. They may move to any void in the active system»', () => {
@@ -1070,6 +1077,72 @@ rule('win-3', '«If no player has won the game by the end of the eighth game rou
     eq(st2.winner, 0, 'при равных целях побеждают миры');
 });
 
+// ============================================================================
+//  The refresh phase — the ends of the game are at its first step
+// ============================================================================
+head('Фаза обновления (Refresh Phase)');
+
+rule('win-refresh-1', '«When a player has collected a number of his objective tokens equal to or exceeding the number of players, the game ends» — the refresh ends at step 1, the storms and the events never happen', () => {
+    const st = empty();
+    st.firstPlayer = 0;
+    st.phase = 'refresh';
+    st.players[0].objectives = 1;      // two players in the game
+    st.round = 2;
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);         // a friendly world with the objectives
+    st.objectives = [{ id: 'obj-a', faction: st.players[0].faction, system: sys.id, area: pos },
+                     { id: 'obj-b', faction: st.players[0].faction, system: sys.id, area: pos }];
+    const eventsBefore = st.eventsLeft;
+    FS_RULES.startRefresh(st);
+    eq(st.over, true, 'игра закончилась в шаге сбора целей');
+    eq(st.winner, 0, 'победил обладатель целей');
+    eq(st.eventsLeft, eventsBefore, 'события и штормы после победы не начинаются');
+});
+
+rule('win-refresh-2', '«The game is a draw» — both players cross the threshold on the same refresh: a shared victory', () => {
+    const st = empty();
+    st.firstPlayer = 0;
+    st.phase = 'refresh';
+    st.players[0].objectives = 1;
+    st.players[1].objectives = 1;     // two players, two objectives each needed
+    st.round = 2;
+    const sys = st.systems[0], sys2 = st.systems[1];
+    guard(st, 0, sys.id, worldOf(st, sys.id));
+    guard(st, 1, sys2.id, worldOf(st, sys2.id));
+    st.objectives = [{ id: 'o0a', faction: st.players[0].faction, system: sys.id, area: worldOf(st, sys.id) },
+                     { id: 'o0b', faction: st.players[0].faction, system: sys.id, area: worldOf(st, sys.id) },
+                     { id: 'o1a', faction: st.players[1].faction, system: sys2.id, area: worldOf(st, sys2.id) },
+                     { id: 'o1b', faction: st.players[1].faction, system: sys2.id, area: worldOf(st, sys2.id) }];
+    FS_RULES.startRefresh(st);
+    eq(st.over, true, 'игра закончилась у обоих');
+    eq(JSON.stringify(st.shared), JSON.stringify([0, 1]), 'ничья: равные цели, равные миры и войска');
+});
+
+rule('cards-awaken', '«Купите 1 постройку и поместите её в дружественный мир, не содержащий другие постройки.» — событие «Пробуждение мира-гробницы» можно разыграть', () => {
+    const card = FS_DATA.events.find(c => c.name === 'Пробуждение мира-гробницы');
+    eq(!!card, true, 'карта существует в данных');
+    const st = empty();
+    st.phase = 'refresh';
+    st.players[0].materiel = 10;
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);       // a friendly world without structures
+    const steps = FS_EFFECTS.parse(card.text, { kind: 'event', faction: card.faction });
+    FS_RULES.runEffects(st, 0, steps, { kind: 'event', ctx: null });
+    eq(st.pending && st.pending.question.kind, 'structureTypes', 'спрашивают, какую постройку купить');
+    eq(st.pending.question.options.length, 3, 'доступны все три постройки');
+    answerFirst(st);                    // {type: 'factory'} — первая в списке
+    eq(st.pending && st.pending.question.kind, 'areas', 'спрашивают, где построить');
+    eq(st.structures.length, 0, 'постройки до ответа нет');
+    answerFirst(st);                    // {area: {...}}
+    eq(st.structures.length, 1, 'постройка построена');
+    eq(st.structures[0].type, 'factory', 'именно фабрика');
+    eq(st.players[0].materiel, 8, 'материя списана');
+    // «не содержащий другие постройки»: мира с постройкой в выборе не осталось у фабрики на поле
+    eq(st.pending === null, true, 'студия карты завершена');
+});
+
 rule('strike-1', '«Both the void and world areas must be in the active system. The void and world must be adjacent to each other.»', () => {
     const st = empty();
     const sys = st.systems[0];
@@ -1187,6 +1260,45 @@ rule('struct-2', '«Structures do not count toward a world’s unit capacity.»'
     for (let i = 0; i < cap; i++) guard(st, 0, sys.id, pos);
     FS_RULES.trimPlayer(st, 0);
     eq((st.trim || []).length, 0, 'полная область с постройками не переполнена');
+});
+
+const chainBoard = (seed) => {
+    const board = empty(seed);
+    const chain = board.systems.find(sys => ['TR', 'TL', 'BL'].every(p => sys.areas.some(a => a.pos === p && a.world)));
+    return chain ? { board, chain } : null;
+};
+
+rule('adv-bare-factory', '«Only one area can become contested during a single Advance Order» — a world with only an enemy structure (no units, no bastions) does not fight and does not consume the one-battle limit of the order; a world with an enemy bastion does', () => {
+    let found = null;
+    for (let seed = 1; seed <= 40 && !found; seed++) found = chainBoard(seed);
+    if (!found) return 'не нашлось системы с цепочкой трёх миров';
+    const { board: st, chain: active } = found;
+    advance(st, 0, active.id, 'TR');
+    const a = guard(st, 0, active.id, 'TL');
+    const b = guard(st, 0, active.id, 'TL');
+    FS_RULES.addStructure(st, 1, 'factory', active.id, 'TR');
+    FS_RULES.addStructure(st, 1, 'factory', active.id, 'BL');
+    const res = FS_RULES.apply(st, 0, {
+        type: 'moveUnits',
+        moves: [{ unit: a.id, system: active.id, pos: 'TR' }, { unit: b.id, system: active.id, pos: 'BL' }],
+    });
+    eq(res.ok, true, 'две планеты с заводом не делают две спорные области: ' + (res.error || ''));
+    // The control case: a bastion is a fighting structure — the second bastion
+    // world would again make two contested areas and the march is refused.
+    let found2 = null;
+    for (let seed = 1; seed <= 40 && !found2; seed++) found2 = chainBoard(seed);
+    if (!found2) return 'не нашлось второй системы с цепочкой трёх миров';
+    const { board: st2, chain: active2 } = found2;
+    advance(st2, 0, active2.id, 'TR');
+    const a2 = guard(st2, 0, active2.id, 'TL');
+    const b2 = guard(st2, 0, active2.id, 'TL');
+    FS_RULES.addStructure(st2, 1, 'bastion', active2.id, 'TR');
+    FS_RULES.addStructure(st2, 1, 'bastion', active2.id, 'BL');
+    const res2 = FS_RULES.apply(st2, 0, {
+        type: 'moveUnits',
+        moves: [{ unit: a2.id, system: active2.id, pos: 'TR' }, { unit: b2.id, system: active2.id, pos: 'BL' }],
+    });
+    eq(/Спорн/.test(res2.error || ''), true, 'два бастиона — две спорные области');
 });
 
 rule('bastion-1', '«If the active player moves one or more units to a world that contains an opponent’s bastion, that area is contested and he must resolve a combat, even if there are no defending units.»', () => {
@@ -1489,7 +1601,8 @@ function answerFirst(st) {
     else if (q.kind === 'face') answer.face = 'att';
     else if (q.kind === 'assets' || q.kind === 'assetType') answer.asset = value || 'forge';
     else if (q.kind === 'types') answer.type = value;
-    else if (q.kind === 'structures' || q.kind === 'structureTypes') answer.structure = value;
+    else if (q.kind === 'structures') answer.structure = value;
+    else if (q.kind === 'structureTypes') answer.type = value;
     else if (q.kind === 'areas') answer.area = typeof first === 'object' ? { system: first.system, pos: first.pos } : undefined;
     else if (q.kind === 'systems') answer.system = value;
     else if (q.kind === 'foes') answer.foe = value;
