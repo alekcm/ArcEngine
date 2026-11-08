@@ -541,6 +541,40 @@ server.on('connection', () => { /* the upgrade handler sets everything up */ });
 // ---------------------------------------------------------------------------
 //  Start
 // ---------------------------------------------------------------------------
+// Ctrl+C does NOT stop the server: in the Windows console it is also the copy
+// shortcut, and copying the room link must not kill the party. The server
+// stops when the user types «q» (or «стоп») and presses Enter.
+let stopping = false;
+function shutdown() {
+    if (stopping) return;
+    stopping = true;
+    console.log(`\n${C.dim}  Останавливаю сервер…${C.r}`);
+    for (const room of rooms.values()) for (const p of room.players) if (p.ws && p.ws.open) p.ws.close();
+    try { server.close(); } catch { /* the sockets are already gone */ }
+    const t1 = setTimeout(() => process.exit(0), 300);
+    const t2 = setTimeout(() => process.exit(0), 1500);
+    t1.unref(); t2.unref();
+}
+
+process.on('SIGINT', () => {
+    console.log(`${C.dim}  Ctrl+C свободен для копирования. Чтобы остановить сервер, наберите q и нажмите Enter.${C.r}`);
+});
+
+try {
+    process.stdin.setEncoding('utf8');
+    let buf = '';
+    process.stdin.on('data', chunk => {
+        buf += chunk;
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, i).trim().toLowerCase();
+            buf = buf.slice(i + 1);
+            if (line === 'q' || line === 'quit' || line === 'exit' || line === 'stop' || line === 'стоп') shutdown();
+        }
+    });
+    process.stdin.resume();
+} catch { /* no stdin — the window close stops the server */ }
+
 // Prefer the ordinary private ranges for the invite link (the friends sit on the
 // same LAN); link-local addresses go last — they are rarely reachable by peers.
 function addressRank(ip) {
@@ -597,7 +631,7 @@ function listen(port, attempt = 0) {
         for (const ip of ips) console.log(`    ${C.grn}${C.b}http://${ip}:${port}/?room=${defaultRoom.code}${C.r}`);
         if (ips.length) console.log(`${C.dim}  Простая ссылка ${C.r}${C.dim}http://<этот-компьютер>:${port}/${C.r}${C.dim} тоже ведёт в эту комнату.${C.r}`);
         console.log(`${C.dim}  Другая комната: добавьте ?room=КОД к ссылке (код придумает хост).${C.r}`);
-        console.log(`${C.dim}  Ctrl+C — остановить${C.r}\n`);
+        console.log(`${C.dim}  q + Enter — остановить (Ctrl+C свободен для копирования)${C.r}\n`);
         if (!NO_OPEN) {
             const cmd = process.platform === 'win32' ? 'cmd' : (process.platform === 'darwin' ? 'open' : 'xdg-open');
             const args = process.platform === 'win32' ? ['/c', 'start', '', addr] : [addr];
