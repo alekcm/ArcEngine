@@ -152,8 +152,8 @@ its record like the rest — not DOM positioned by hand in game code.
    restart `editor.bat` and bump `EDITOR_API_VERSION` (skill `editor`).
 3. `UIPanel.FIELDS` — a row for a new field; `ui.kind.<kind>` / `ui.f.<field>` in BOTH
    dictionaries of `i18n.js`; `UIRecord` in `globals.d.ts`.
-4. `UI_FIELDS` must list exactly the fields of `UI.DEFAULTS` in the same order — the editor
-   reads them positionally, and the project has no unit test that would catch a divergence.
+4. `tests/ui.test.mjs` compares `UI_FIELDS` with `UI.DEFAULTS` and round-trips the kit's
+   `UILayout.js` through `formatUI`.
 
 ## Pitfalls
 
@@ -170,6 +170,6 @@ its record like the rest — not DOM positioned by hand in game code.
 2. A menu, a dialog, a pause screen — a panel plus children with `parent`, shown by one
    `show()` on the container; a full-screen backdrop — `stretch: 'both'`.
 3. The new element is visible and draggable in the UI tab; "Save to UILayout.js" writes a file
-   that `node tools/check.mjs` accepts and the game loads without an error.
+   that `node tools/check.mjs` accepts (`tests/ui.test.mjs`).
 3. Looked at in the game on a wide and a narrow (portrait) window: nothing overlaps — anchors
    chosen by the edge the element belongs to.

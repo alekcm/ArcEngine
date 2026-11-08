@@ -184,7 +184,7 @@ const Sound3D = {
         for (const handle of this.playing) if (handle.at && handle.gain) handle._place(c, false);
     },
 
-    // --- Distance and pan math (no audio, pure numbers) -------------------------------
+    // --- Distance and pan math (no audio — tests/sound.test.mjs) ----------------------
 
     // source and listener — world points { x, y (map px), h (height) }; the listener also
     // carries the camera azimuth. The distance is the straight 3D one, so the audible region is

@@ -78,7 +78,7 @@ class Instances3D {
     }
 
     // One copy -> 16 floats at index i: scale, turn by the heading about the vertical, move to
-    // (x, h, y). No Babylon here: the math is pure.
+    // (x, h, y). No Babylon here (tests/instances.test.mjs).
     static fill(out, i, item) {
         const s = item.scale == null ? 1 : item.scale;
         const sx = Array.isArray(s) ? s[0] : s, sy = Array.isArray(s) ? s[1] : s, sz = Array.isArray(s) ? s[2] : s;
