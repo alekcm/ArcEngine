@@ -459,6 +459,23 @@ const FS_EFFECTS = {
     parseSentence(sentence, ctx) {
         const s = sentence.trim();
         if (!s || s === '—') return [];
+        // «… противник должен потратить 3 N / … не потратит 1 …, то … деморализовать
+        // 1 свой отряд / … если противник не потратит …» — the payment fork of
+        // the OPPONENT: the engine cannot ask the other player, so the card is
+        // resolved by hand together (no cube is spent, no unit routed by us).
+        if (/противник[а-яёa-z]*[^.;]{0,90}?(?:не\s+потрат[а-яёa-z]*|должен\s+потрат[а-яёa-z]*|может\s+избежать|может\s+отступить|должен\s+отступить|не\s+позволит|станет\s+уничтожен|должен\s+выбрать\s+и\s+деморализ)/i.test(s)
+            || /(?:если\s+)?(?:владелец|противник[а-яёa-z]*)\s+не\s+потрат[а-яёa-z]*/i.test(s)) {
+            return [{ op: 'note', text: s, manual: 'foe-fork' }];
+        }
+        if (/который\s+(?:он|она|они|владелец)\s+не\s+может\s+потрат[а-яёa-z]*/i.test(s)) {
+            return [{ op: 'note', text: s, manual: 'foe-fork' }];
+        }
+        // «если вы атакуете, то ваш противник не может получать `def. token` …» —
+        // a restriction on the FOE the engine cannot enforce: a note, never a grant.
+        if (/(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.;]{0,80}?не\s+(?:может|сможет)\s+(?:получа|разыгрыв|разыгра)/i.test(s)
+            && /`(?:att|def|morale)\.\s*(?:token|cube)`/i.test(s)) {
+            return [{ op: 'note', text: s, manual: 'foe-ban' }];
+        }
         // «уничтожить N <кто>, чтобы <эффект>» — the price before the reward.
         const dr = this.destroyToReward(s, ctx);
         if (dr) return dr;
@@ -467,14 +484,30 @@ const FS_EFFECTS = {
         if (perUnit) return perUnit;
         // "either ... or ..." — the player chooses. A sentence that starts with
         // «потратьте» pays for one effect: the rules read it as one piece.
-        const either = /^потрат/i.test(s) ? [s] : s.replace(/^\s*либо\s+/i, '').split(/\s+либо\s+/i);
+        let either = /^потрат/i.test(s) ? [s] : s.replace(/^\s*либо\s+/i, '').split(/\s+либо\s+/i);
+        const splitAt = s.search(/\s+либо\s+/i);
+        if (either.length >= 2 && splitAt > 0 && !/^потрат/i.test(s)) {
+            // The head of the shared prefix («Удалите 1 `morale cube`, чтобы
+            // получить » / «получите ») is reattached to every branch: each
+            // option a player picks is a complete, executable sentence.
+            const headText = s.slice(0, splitAt).trim();
+            either = either.map((part, i) => (i === 0 ? part : headText + ' ' + part));
+        }
         if (either.length >= 2) {
             // Every option keeps the sentence it came from — the buttons of the
             // choice name what each branch actually does.
             const options = [];
             for (const part of either) {
                 const branch = part.replace(/^\s*или\s+/i, '').trim();
-                for (const step of this.parseSentence(branch, ctx)) {
+                // «Удалите 1 `morale cube`, чтобы получить» — an open verb at the
+                // end of the shared prefix: the sentence is not complete, the
+                // branch belongs to the alternatives, not to the choice list.
+                if (/(?:чтобы|для того, чтобы)\s+[а-яёa-z]+(?:\s+[а-яёa-z]+){0,2}[.!,]?\s*$/i.test(branch)) continue;
+                const steps = this.parseSentence(branch, ctx);
+                // A branch that yields nothing (the dangling head of the shared
+                // prefix) is not an option either.
+                if (!steps.length) continue;
+                for (const step of steps) {
                     if (step && !step.ability) step.ability = branch;
                     options.push(step);
                 }
@@ -2622,7 +2655,7 @@ const RULES = [
     },
     // "get 1 `att. token` for every unrouted Guardsman or Cruiser, maximum 3"
     {
-        re: /(?:получ[а-яёa-z]*|взять|возьм[а-яёa-z]*|достаньте)\s+(\d+)?\s*`([^`]+)`[^.`]{0,90}?за кажд[а-яёa-z]+\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+([^,.]{2,70}?)(?:,\s*максимум\s+(\d+))?/i,
+        re: /(?:получ[а-яёa-z]*|взять|возьм[а-яёa-z]*|достаньте)\s+(\d+)?\s*`([^`]+)`[^.`]{0,90}?за кажд[а-яёa-z]+\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+([^,.]{2,70}?)(?:,\s*максимум\s+(\d+))?\s*[.!]?\s*$/i,
         build: m => {
             const kind = FS_EFFECTS.iconKind(m[2]);
             if (kind !== 'token' && kind !== 'cube') return null;
@@ -3357,7 +3390,15 @@ const RULES = [
         re: /половину\s+значения\s+боевого\s+духа/i,
         build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'morale-from-routed' }),
     },
+    {
+        re: /каждый раз[^.;]{0,120}?когда\s+(?:противник[а-яёa-z]*|он)(?![а-яёa-z])/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'foe-trigger-gain' }),
+    },
     // The sentences that say no rule of their own: the engine keeps them.
+    {
+        re: /кажд[а-яёa-z]*\s+пару\s+недеморализованн[а-яёa-z]*[^.;]{0,90}?(?:либо|или)/i,
+        build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'per-pair' }),
+    },
     {
         re: /^(?:—\s*\([^)]*\)|если одинаково, выбираете вы\.?|это может привести к нов[а-яёa-z]+ (?:сражению|битве)[^.]*\.?|не нарушая базовых правил размещения\.?|неиспользованный остаток материалов пропадает\.?|нужно быть главным по машинам\.?|требуются\s*\.?|пассивно|используйте эти материалы только для покупки любого количества кораблей\.?|уничтоженный город засчитывается[^.]*\.?|командный уровень этой карты не может превышать[^.]*\.?|неиспользованный остаток[^.]*\.?)$/i,
         build: (m, ctx, s) => ({ op: 'note', text: s }),
