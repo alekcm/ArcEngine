@@ -1970,6 +1970,10 @@ const FS_RULES = {
         if ((order.bought || 0) >= limit) return { ok: false, error: 'Предел развёртывания исчерпан.' };
         const def = this.unitDef(state, seat, cmd.unit);
         if (!def) return { ok: false, error: 'Нет такого отряда.' };
+        // «Массовое Производство» производит только наземные отряды в мир фабрики — космос это другой мир.
+        if (isGuard && def.type === 'ship') {
+            return { ok: false, error: '«Массовое Производство» производит только наземные отряды в мир фабрики.' };
+        }
         // «Купите минимум 2 отряда одного типа» — the type is locked by the first
         // purchase; the wrong kind is refused before anything else is checked.
         if (isGuard && order.unitsLocked && def.id !== order.unitsLocked) {
@@ -1977,16 +1981,10 @@ const FS_RULES = {
             return { ok: false, error: 'Способность производит только один тип отрядов: «' + (locked ? locked.name : order.unitsLocked) + '».' };
         }
         const p = state.players[seat];
-        // The ability: ground units stand in the producing world, ships in the void.
+        // The ability: the produced units stand in the producing world.
         if (isGuard) {
-            if (def.type !== 'ship') {
-                if (cmd.system !== order.guardFactory.system || cmd.pos !== order.guardFactory.pos) {
-                    return { ok: false, error: 'Отряд ставится в мир, который его производит.' };
-                }
-            } else {
-                const sysObj = this.system(state, cmd.system);
-                const pos = sysObj && sysObj.areas.find(a => a.pos === cmd.pos);
-                if (!pos || pos.world) return { ok: false, error: 'Корабль выходит в пустоту системы фабрики.' };
+            if (cmd.system !== order.guardFactory.system || cmd.pos !== order.guardFactory.pos) {
+                return { ok: false, error: 'Отряд ставится в мир, который его производит.' };
             }
         }
         // The order may sell two Guardsmen for one supply token: the second one

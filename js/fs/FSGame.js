@@ -1292,7 +1292,9 @@ class FSGame {
             + ' · куплено: ' + purchases.length + ' из ' + limit
             + (lockedName ? ' · тип: ' + lockedName : ''));
         ctx.tokens = [];
+        // «Массовое Производство» даёт только наземные отряды — в полосе запасов корабли не показываем.
         for (const def of (faction ? faction.units : [])) {
+            if (def.type === 'ship') continue;
             ctx.tokens.push({
                 icon: def.type === 'ship' ? 'mark.ship' : 'mark.ground',
                 label: def.name, count: supply[def.id] || 0, hint: 'В запасе · цена ' + def.cost,
@@ -1312,7 +1314,10 @@ class FSGame {
         const isDealUnit = def => order.supplyDeal && String(def.name).toLowerCase().indexOf(dealName) >= 0;
         const dealNextFree = def => isDealUnit(def) && (order.dealBought || 0) % 2 === 1;
         if ((order.bought || 0) < limit) {
+            // «Массовое Производство» производит только наземные отряды и только
+            // в мир, который их произвёл — космос это другой мир.
             for (const def of faction.units) {
+                if (def.type === 'ship') continue;
                 const n = supply[def.id] || 0;
                 const pairSecond = dealNextFree(def);
                 const cost = pairSecond ? 0 : Math.max(0, def.cost - 1 - (opts.cache ? 2 : 0));
@@ -1387,19 +1392,14 @@ class FSGame {
             if (!gsys) { FSView.highlight(this.view, []); return; }
             const rings = [];
             if (def && def.type === 'ship') {
-                for (const area of gsys.areas) {
-                    if (area.world) continue;
-                    const p = FSView.areaPos(this.app, gsys, area.pos, this.view.metrics);
-                    const h = this.app.location.terrain.heightAt(p.x, p.y);
-                    rings.push({ x: p.x, y: h + 14, z: p.y });
-                }
-            } else {
-                const garea = gsys.areas.find(a => a.pos === order.guardFactory.pos);
-                if (garea) {
-                    const p = FSView.areaPos(this.app, gsys, garea.pos, this.view.metrics);
-                    const h = this.app.location.terrain.heightAt(p.x, p.y);
-                    rings.push({ x: p.x, y: h + 14, z: p.y });
-                }
+                FSView.highlight(this.view, []);
+                return;
+            }
+            const garea = gsys.areas.find(a => a.pos === order.guardFactory.pos);
+            if (garea) {
+                const p = FSView.areaPos(this.app, gsys, garea.pos, this.view.metrics);
+                const h = this.app.location.terrain.heightAt(p.x, p.y);
+                rings.push({ x: p.x, y: h + 14, z: p.y });
             }
             FSView.highlight(this.view, rings);
             return;
@@ -1489,6 +1489,20 @@ class FSGame {
         const sel = this.upgradeSel;
         const selRow = sel ? ctx.upgrades[sel.kind].find(r => r.name === sel.name) : null;
         if (this.upgradeSel && !selRow) this.upgradeSel = null;
+        // «…» — всегда на экране, что делать на каждом шаге покупки.
+        if (!selRow) {
+            ctx.status = noUnits
+                ? 'В активной системе нет ваших отрядов и построек — по правилам в этот ход улучшения не купить.'
+                : 'Выберите карту улучшения выше (боевое и/или приказа — по одной каждой), затем подтвердите слева внизу.';
+        } else if (selRow.locked) {
+            ctx.status = selRow.reason ? selRow.reason + ' — эта карта сейчас недоступна.' : 'Эта карта сейчас недоступна.';
+        } else if (selRow.kind === 'combat') {
+            ctx.status = pairValid
+                ? 'Карта выбрана, пара выбрана — жмите «Подтвердить выбор боевой карты» слева внизу.'
+                : 'Боевое улучшение выбрано. Теперь выберите одну пару одинаковых карт вашей боевой колоды в нижней полосе.';
+        } else {
+            ctx.status = 'Улучшение приказа выбрано — жмите «Подтвердить выбор карты улучшения» слева внизу.';
+        }
         // The big card slightly to the left of the panel.
         ctx.previewCard = selRow ? {
             kind: selRow.kind === 'order' ? 'Улучшение приказа' : 'Боевое улучшение',
@@ -1496,8 +1510,7 @@ class FSGame {
             general: selRow.general, unit: selRow.unit,
             icons: selRow.icons, order: selRow.order, locked: selRow.locked, reason: selRow.reason,
         } : null;
-        // No hints in the beige strip of this window — every one of them goes.
-        ctx.status = '';
+        // The status line above says exactly what to do next — buy order.
         // The buttons of the bottom-left corner — always finishable.
         const combatBought = !!(order && order.combatUpgrade);
         const orderBought = !!(order && order.orderUpgrade);
@@ -2910,13 +2923,9 @@ class FSGame {
                 const isShip = this.pending && this.pending.def && this.pending.def.type === 'ship';
                 const inFactoryWorld = target.system === ord.guardFactory.system && target.pos === ord.guardFactory.pos;
                 if (isShip) {
-                    const csys = s.systems.find(x => x.id === target.system);
-                    const isVoid = csys && csys.areas.some(a => a.pos === target.pos && !a.world);
-                    if (!isVoid) {
-                        this.status = 'Корабль выходит в пустоту системы фабрики.';
-                        this.refresh();
-                        return;
-                    }
+                    this.status = '«Массовое Производство» производит только наземные отряды в мир фабрики.';
+                    this.refresh();
+                    return;
                 } else if (!inFactoryWorld) {
                     this.status = 'В этой способности отряды выходят только из мира-производителя.';
                     this.refresh();
