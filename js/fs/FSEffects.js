@@ -68,7 +68,86 @@ const FS_EFFECTS = {
     parse(text, ctx) {
         const steps = [];
         let prev = null;
+        let prevCond = null;
         for (const sentence of this.sentences(text)) {
+            // The leading condition of the sentence is cut off here: the rest is
+            // parsed as usual and every produced step carries it — the ability
+            // is not offered, and in a non-optional context does not fire.
+            const mOther = /^иначе\s*/i.exec(sentence);
+            if (mOther) {
+                // «Иначе …» — the opposite branch of the condition of the
+                // ability sentence before it (the same card): the steps are
+                // the same body with the condition inverted.
+                const body = sentence.slice(mOther[0].length).trim();
+                const parsed = this.parseSentence(body, ctx || {});
+                for (const one of parsed) if (one) one.cond = Object.assign({ not: prevCond }, one.cond || {});
+                if (!parsed.length) {
+                    steps.push({ op: 'note', text: sentence });
+                    prevCond = null;
+                    continue;
+                }
+                for (const one of parsed) if (one && !one.ability) one.ability = sentence;
+                steps.push(...parsed);
+                prev = parsed[parsed.length - 1];
+                prevCond = null;
+                continue;
+            }
+            // The condition may also sit in the middle or at the end of the
+            // sentence: «В конце этого раунда, если вы обороняетесь, …» —
+            // the tail is classified, the head and the tail-remainder are
+            // rejoined as one body.
+            const peeled = this.peelCond(sentence) || this.peelCondMid(sentence);
+            if (peeled) {
+                const parsed = this.parseSentence(peeled.rest, ctx || {});
+                for (const one of parsed) if (one) one.cond = Object.assign(one.cond || {}, peeled.cond);
+                const avoidPeeled = this.avoidOf(sentence);
+                if (avoidPeeled && parsed.length) { parsed[parsed.length - 1].avoid = avoidPeeled; }
+                if (!parsed.length) {
+                    steps.push({ op: 'note', text: sentence });
+                    prevCond = null;
+                    continue;
+                }
+                for (const one of parsed) if (one && !one.ability) one.ability = sentence;
+                steps.push(...parsed);
+                prev = parsed[parsed.length - 1];
+                prevCond = peeled.cond;
+                continue;
+            }
+            const perCube = this.peelPerCube(sentence);
+            if (perCube) {
+                prevCond = null;
+                const parsed = this.parseSentence(perCube.rest, ctx || {});
+                for (const one of parsed) {
+                    if (!one) continue;
+                    one.per = 'cube';
+                    one.perKind = perCube.perKind;
+                }
+                if (!parsed.length) {
+                    steps.push({ op: 'note', text: sentence });
+                    prevCond = null;
+                    continue;
+                }
+                for (const one of parsed) if (one && !one.ability) one.ability = sentence;
+                steps.push(...parsed);
+                prev = parsed[parsed.length - 1];
+                continue;
+            }
+            const multiGain = this.multiGain(sentence);
+            if (multiGain) {
+                for (const one of multiGain) one.ability = sentence;
+                steps.push(...multiGain);
+                prev = multiGain[multiGain.length - 1];
+                prevCond = null;
+                continue;
+            }
+            prevCond = null;
+            const dieEnum = this.dieEnum(sentence, ctx || {});
+            if (dieEnum) {
+                steps.push(...dieEnum);
+                prev = dieEnum[dieEnum.length - 1];
+                continue;
+            }
+            prevCond = null;
             const parsed = this.parseSentence(sentence, ctx || {});
             const avoid = this.avoidOf(sentence);
             if (avoid && prev) {
@@ -82,7 +161,11 @@ const FS_EFFECTS = {
                 steps.push({ op: 'note', text: sentence, avoid });
                 continue;
             }
-            if (!parsed.length) continue;
+            if (!parsed.length) {
+                steps.push({ op: 'note', text: sentence });
+                prevCond = null;
+                continue;
+            }
             // «Each paragraph is a separate ability.» The transcription gives
             // the text sentence by sentence, so a sentence is one ability:
             // the step keeps it, the player may refuse the whole ability.
@@ -218,6 +301,85 @@ const FS_EFFECTS = {
         return this.parse(ability, { kind: 'ability', faction: id });
     },
 
+    // The leading condition of the sentence, if any: it is cut off, the rest is
+    // parsed as usual, and every step of the sentence gets it — an ability the
+    // condition does not allow is not offered to the player at all (all the
+    // other «not this side of the table» cases simply press «Пропустить»).
+    peelCond(sentence) {
+        const s = sentence.replace(/^\s+/, '');
+        const R = /** @type {{re: RegExp, cond: any, kl?: number, n?: number}[]} */ ([
+            { re: /^если вы (?:—\s*)?атак[а-яёa-z]*[\s,]*(?:то[\s,]*)?/i, cond: { side: 'attack' } },
+            { re: /^если (?:вы|Вы) (?:защищ|оборон)[а-яёa-z]*[\s,]*(?:то[\s,]*)?/i, cond: { side: 'defense' } },
+            { re: /^если у вас больше недеморализованн[а-яёa-z]+ отрядов(?: с командным уровнем (\d+))?\s*,?\s*чем у (?:вашего )?противника[а-яёa-z]*[\s,]*(?:то[\s,]*)?/i, cond: { unitMore: true }, kl: 1 },
+            { re: /^если у вас больше отрядов с командным уровнем (\d+)[а-яёa-z]*\s*,?\s*чем у (?:вашего )?противника[а-яёa-z]*[\s,]*(?:то[\s,]*)?/i, cond: { unitMore: true }, kl: 1 },
+            { re: /^если (?:число )?у вас больше `morale cube`[^,.;]*,?\s*чем у (?:вашего )?(?:противник[а-яёa-z]*|него|неё|нее)[\s,]*(?:то[\s,]*)?/i, cond: { cubeMore: 'morale' } },
+            { re: /^если у вас больше `morale cube`, чем у (?:вашего )?(?:противник[а-яёa-z]*|него|неё|нее)[\s,]*(?:то[\s,]*)?/i, cond: { cubeMore: 'morale' } },
+            { re: /^если число ваших `morale cube` больше,? чем у (?:вашего )?(?:противник[а-яёa-z]*|него|неё|нее)[\s,]*(?:то[\s,]*)?/i, cond: { cubeMore: 'morale' } },
+            { re: /^если у (?:вашего )?противника есть хотя бы (\d+) деморализованн[а-яёa-z]+ отряд[а-яёa-z]*[\s,]*(?:то[\s,]*)?/i, cond: { foeRouted: 1 }, n: 1 },
+        ]);
+        for (const one of R) {
+            const m = one.re.exec(s);
+            if (!m) continue;
+            const cond = Object.assign({}, one.cond || {});
+            if (one.kl && m[1]) cond.kl = Number(m[1]);
+            if (one.n && m[1]) cond.foeRouted = Number(m[1]);
+            const rest = s.slice(m[0].length);
+            if (!rest) return null;
+            return { cond, rest };
+        }
+        return null;
+    },
+
+    // «per cube I own» scaling: «за каждый имеющийся у вас `morale cube`».
+    // The condition inside the sentence: «бесплатно разместите 1 отряд, если …»,
+    // «В конце этого раунда, если вы обороняетесь, …». The clause between
+    // «, если» and the next comma (or the end of the sentence) is the
+    // condition; the rest is rejoined as the body.
+    peelCondMid(sentence) {
+        const s = String(sentence || '').replace(/^\s+/, '').trim();
+        const m = /,\s*если\s+/i.exec(s);
+        if (!m) return null;
+        const head = s.slice(0, m.index).trim();
+        const tail = s.slice(m.index + m[0].length);
+        const sep = tail.search(/,\s|\s*;\s/);
+        let condText, rest;
+        if (sep < 0) {
+            condText = tail;
+            rest = head;
+        } else {
+            condText = tail.slice(0, sep);
+            rest = (head + ' ' + tail.slice(sep).trim()).trim();
+        }
+        condText = condText.replace(/[.,\s]+$/, '').trim();
+        rest = rest.replace(/^[,\s]+/, '').replace(/[,\s]+$/, '').trim();
+        if (!condText || !rest) return null;
+        const cond = this.classifyCond(condText);
+        if (!cond) return null;
+        return { cond, rest };
+    },
+
+    // The condition of the trailing/mid clause, classified strictly.
+    classifyCond(text) {
+        const t = String(text || '').toLowerCase().trim().replace(/[.,]+\s*$/, '').trim();
+        if (/^вы атаку/.test(t)) return { side: 'attack' };
+        if (/^вы (защищ|оборон)/.test(t)) return { side: 'defense' };
+        if (/меньше[^`]*`?morale cube`?/.test(t) || /`?morale cube`?[^`]*меньше/.test(t)) return { cubeLess: 'morale' };
+        if (/больше[^`]*`?morale cube`?/.test(t) || /`?morale cube`?[^`]*больше/.test(t)) return { cubeMore: 'morale' };
+        const foe = /противник[а-яёa-z]* есть хотя бы (\d+) деморализованн/.exec(t);
+        if (foe) return { foeRouted: Number(foe[1]) };
+        if (/больше/.test(t) && /недеморализованн|(отрядов с командным уровнем)/.test(t)) {
+            const kl = /командным уровнем (\d+)/.exec(t);
+            return { unitMore: true, kl: kl ? Number(kl[1]) : null };
+        }
+        return null;
+    },
+
+    peelPerCube(sentence) {
+        const m = /^за каждый имеющийся у вас\s+`([^`]+cube)`([^]*)$/i.exec(sentence.replace(/^\s+/, ''));
+        if (!m) return null;
+        return { perKind: this.icon(m[1]), rest: m[2].replace(/^[\s,:]+/, '') };
+    },
+
     // One sentence -> the steps.
     parseSentence(sentence, ctx) {
         const s = sentence.trim();
@@ -317,6 +479,12 @@ const FS_EFFECTS = {
             // The abilities of a combat card are optional: the owner of the card
             // is asked about each of them before the engine performs it.
             if (c.optional && !step.asked) {
+                if (!this.condSatisfied(R, state, seat, step, c)) {
+                    const group = step.ability;
+                    for (const one of list) if (one && one.ability === group) one.asked = true;
+                    index++;
+                    continue;
+                }
                 const ask = this.abilityQuestion(step, c);
                 if (ask && !this.emptyQuestion(ask.question)) {
                     // One sentence is one ability: the steps it produced share
@@ -531,6 +699,53 @@ const FS_EFFECTS = {
         return this.seatOf(combat, this.diceSideOf(combat, side, step));
     },
 
+    // «Если вы атакуете...» — the condition of the ability: false ⇒ the ability
+    // is not offered at all (and in a non-optional context does not happen).
+    condSatisfied(R, state, seat, step, ctx) {
+        const cond = step && step.cond;
+        if (!cond) return true;
+        const combat = state.combat;
+        if (cond.not) return !this.condSatisfied(R, state, seat, { cond: cond.not }, ctx);
+        const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
+        if (cond.side) {
+            if (!inCombat) return false;
+            const mine = seat === combat.attacker ? 'attack' : 'defense';
+            return mine === cond.side;
+        }
+        if (cond.cubeLess) {
+            if (!inCombat) return false;
+            const s2 = seat === combat.attacker ? 'attacker' : 'defender';
+            const o2 = seat === combat.attacker ? 'defender' : 'attacker';
+            const mine = (combat.dice[s2] || []).filter(Boolean).filter(d => d === cond.cubeLess).length;
+            const theirs = (combat.dice[o2] || []).filter(Boolean).filter(d => d === cond.cubeLess).length;
+            return mine < theirs;
+        }
+        if (cond.cubeMore) {
+            if (!inCombat) return false;
+            const s2 = seat === combat.attacker ? 'attacker' : 'defender';
+            const o2 = seat === combat.attacker ? 'defender' : 'attacker';
+            const mine = (combat.dice[s2] || []).filter(Boolean).filter(d => d === cond.cubeMore).length;
+            const theirs = (combat.dice[o2] || []).filter(Boolean).filter(d => d === cond.cubeMore).length;
+            return mine > theirs;
+        }
+        if (cond.foeRouted) {
+            const n = cond.foeRouted;
+            const foeSide = inCombat ? (seat === combat.attacker ? combat.defender : combat.attacker) : null;
+            const list = inCombat
+                ? state.units.filter(u => u.routed && u.seat === foeSide && u.system === combat.system && u.area === combat.pos)
+                : state.units.filter(u => u.routed && u.seat !== seat);
+            return list.length >= n;
+        }
+        if (cond.unitMore) {
+            if (!inCombat) return false;
+            const fit = u => !cond.kl || (R.unitOf(state, u) && R.unitOf(state, u).kl === cond.kl);
+            const mine = state.units.filter(u => u.seat === seat && !u.routed && fit(u)).length;
+            const theirs = state.units.filter(u => u.seat !== seat && !u.routed && fit(u)).length;
+            return mine > theirs;
+        }
+        return true;
+    },
+
     // «A player can choose not to resolve one of his abilities, unless that
     // ability uses the word must.» The Russian card says должен / обязан.
     abilityIsMust(text) {
@@ -543,6 +758,32 @@ const FS_EFFECTS = {
     // The question of the permission: the owner of the card decides whether the
     // ability happens at all. A clarification (op 'note') decides nothing, and
     // an ability that says «must» is not offered for refusal.
+    // «Получите 1 `att. cube`, 1 `def. cube` или 1 `morale cube`.» — the choice of a single die.
+    dieEnum(sentence, ctx) {
+        const s = sentence.replace(/^\s+/, '');
+        const list = [...s.matchAll(/`([^`]+cube)`/g)].map(m => this.icon(m[1]));
+        if (!/^получ\w+/i.test(s) || list.length < 2 || !/(или|либо)/i.test(s)) return null;
+        return [{ op: 'choice', text: s, options: list.map(kind => ({ op: 'gainDie', n: 1, kind, who: 'me', ability: s })) }];
+    },
+
+    // «получаете 2 `att. token` и 1 `def. token`» — several gains in one
+    // sentence: one step per icon.
+    multiGain(sentence) {
+        const s = String(sentence || '').trim();
+        const m = /^(?:вы\s+|также\s+)*получ[а-яёa-z]*\s+([^;]{0,160})$/i.exec(s);
+        if (!m) return null;
+        const parts = m[1].split(/\s+и\s+/);
+        const steps = [];
+        for (const p of parts) {
+            const pair = /^(\d+|один|одно|два|две)?\s*`([^`]+)`\s*\.?$/.exec(p.trim());
+            if (!pair) return null;
+            const k = this.iconKind(pair[2]);
+            if (k !== 'token' && k !== 'cube') return null;
+            steps.push({ op: k === 'token' ? 'gainToken' : 'gainDie', n: num(pair[1]), kind: this.icon(pair[2]), who: 'me' });
+        }
+        return steps.length >= 2 ? steps : null;
+    },
+
     abilityQuestion(step, ctx) {
         if (!step || !step.ability || step.op === 'note') return null;
         if (this.abilityIsMust(step.ability)) return null;
@@ -558,6 +799,9 @@ const FS_EFFECTS = {
 
     // One step of the game.
     step(R, state, seat, step, ctx) {
+        // The condition of the ability is checked before anything else — it is
+        // the very first gate of the step.
+        if (step && step.cond && !this.condSatisfied(R, state, seat, step, ctx)) return null;
         const combat = state.combat;
         // The card of the combat may be played when the fight is already over.
         const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
@@ -1744,6 +1988,17 @@ const FS_EFFECTS = {
     // the reinforcement tokens count as units too — a routed token does not.
     count(R, state, seat, step, ctx) {
         let n = step.n || 1;
+        if (step.per === 'cube') {
+            const combat = state.combat;
+            if (combat) {
+                const s2 = seat === combat.attacker ? 'attacker' : 'defender';
+                n = (step.n || 1) * (combat.dice[s2] || []).filter(d => d === (step.perKind || 'morale')).length;
+                if (step.max) n = Math.min(n, step.max);
+            } else {
+                n = step.n || 1;
+            }
+            return Math.max(0, n);
+        }
         if (step.per === 'unit') {
             const combat = state.combat;
             const inBattle = !!(ctx && ctx.kind === 'combat' && combat && step.inBattle);
@@ -1979,6 +2234,11 @@ const FS_EFFECTS = {
                             && R.structuresAt(state, sys.id, area.pos).length > 0;
                         break;
                     // A friendly void of the active system.
+                    case 'combatWorld': {
+                        const combat = state.combat;
+                        ok = world && combat && sys.id === combat.system && area.pos === combat.pos;
+                        break;
+                    }
                     case 'friendlyVoidActive':
                         ok = !world && sys.id === active && mine;
                         break;
@@ -2305,6 +2565,12 @@ const RULES = [
         re: /^за каждый деморализованный корабль переверните до 2 ваших/i,
         build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'священное-пламя' }),
     },
+    // "destroy 1 routed unit of the opponent" (the word order of the
+    // attacked card: «уничтожьте 1 деморализованный отряд противника»)
+    {
+        re: /уничтож[а-яёa-z]*\s+(?:(\d+)\s*)?(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)\s*противник[а-яёa-z]*/i,
+        build: m => ({ op: 'destroy', n: num(m[1]), pick: true, who: 'foe' }),
+    },
     // "the opponent must choose and route 1 of his units"
     {
         re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?<!не)деморализ[а-яёa-z]*\s+(?:и\s+)?(?:(\d+)\s*)?(?:свой|ваш|одного|одну|1)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)?/i,
@@ -2342,7 +2608,11 @@ const RULES = [
             if (/фабрик/.test(what)) return { op: 'placeStructure', kind: 'factory', n: 1, free: true, pick: true };
             const faction = FS_EFFECTS.factionOf(ctx);
             const names = FS_EFFECTS.unitNames(what, faction);
-            if (names.length) return { op: 'placeUnit', n, what: names[0], pick: true, free: true };
+            if (names.length) {
+                const step = { op: 'placeUnit', n, what: names[0], pick: true, free: true };
+                if (/в этом мире|эту область|эти области/i.test(m[0])) step.dest = 'combatWorld';
+                return step;
+            }
             return null;
         },
     },
