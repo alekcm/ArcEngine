@@ -380,10 +380,30 @@ const FS_EFFECTS = {
         return { perKind: this.icon(m[1]), rest: m[2].replace(/^[\s,:]+/, '') };
     },
 
+    // «За каждый ... получите 1 `att. token` либо 1 `def. token`» — the
+    // either is inside the ability, not between abilities: one choice.
+    perUnitEither(s) {
+        const m = /^за кажд[а-яёa-z]*\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+([^.;:]{2,80}?)получ[а-яёa-z]*\s+(\d+)?\s*`([^`]+)`\s+(?:либо|или)\s+(\d+)?\s*`([^`]+)`(?:[^.;]*?максимум\s+(\d+))?/i.exec(String(s || ''));
+        if (!m) return null;
+        const k1 = this.iconKind(m[3]), k2 = this.iconKind(m[5]);
+        if (k1 !== 'token' || k2 !== 'token') return null;
+        const filter = typeFilter(m[1]) || unitFilter(m[1]);
+        const max = m[6] ? Number(m[6]) : null;
+        const t = { op: 'gainToken', per: 'unit', filter, max, who: 'me' };
+        return [{
+            op: 'choice', text: s,
+            options: [Object.assign({ n: num(m[2]), kind: this.icon(m[3]) }, t),
+                      Object.assign({ n: num(m[4]), kind: this.icon(m[5]) }, t)],
+        }];
+    },
+
     // One sentence -> the steps.
     parseSentence(sentence, ctx) {
         const s = sentence.trim();
         if (!s || s === '—') return [];
+        // The «за каждый ... получите 1 X либо 1 Y» ability: one choice.
+        const perUnit = this.perUnitEither(s);
+        if (perUnit) return perUnit;
         // "either ... or ..." — the player chooses.
         const either = s.replace(/^\s*либо\s+/i, '').split(/\s+либо\s+/i);
         if (either.length >= 2) {
@@ -762,7 +782,7 @@ const FS_EFFECTS = {
     dieEnum(sentence, ctx) {
         const s = sentence.replace(/^\s+/, '');
         const list = [...s.matchAll(/`([^`]+cube)`/g)].map(m => this.icon(m[1]));
-        if (!/^получ\w+/i.test(s) || list.length < 2 || !/(или|либо)/i.test(s)) return null;
+        if (!/^получ[а-яёa-z]+/i.test(s) || list.length < 2 || !/(или|либо)/i.test(s)) return null;
         return [{ op: 'choice', text: s, options: list.map(kind => ({ op: 'gainDie', n: 1, kind, who: 'me', ability: s })) }];
     },
 
@@ -2058,6 +2078,7 @@ const FS_EFFECTS = {
     // "contains" are the stems of the printed names (see UNIT_STEMS).
     unitFits(def, filter) {
         if (!def || !filter) return true;
+        if (filter.type) return def.type === filter.type;
         if (filter.types && filter.types.some(t => this.sameName(def.name, t))) return true;
         if (filter.contains) {
             const name = String(def.name || '').toLowerCase();
@@ -2510,16 +2531,44 @@ const RULES = [
             per: 'unit', inBattle: true, filter: unitFilter(m[3]), text: m[0],
         }),
     },
+    // "за каждый ваш недеморализованный отряд … получите 1 att. token либо 1 def. token"
+    {
+        re: /^за кажд[а-яёa-z]*\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+([^.;:]{2,80}?)получ[а-яёa-z]*\s+(\d+)?\s*`([^`]+)`\s+(?:либо|или)\s+(\d+)?\s*`([^`]+)`(?:[^.;]*?максимум\s+(\d+))?/i,
+        build: (m, ctx, s) => {
+            const k1 = FS_EFFECTS.iconKind(m[3]), k2 = FS_EFFECTS.iconKind(m[5]);
+            if (k1 !== 'token' || k2 !== 'token') return null;
+            const filter = typeFilter(m[1]) || unitFilter(m[1]);
+            const n = num(m[2]);
+            const max = m[6] ? Number(m[6]) : null;
+            const t = { op: 'gainToken', per: 'unit', filter, max, who: 'me' };
+            return {
+                op: 'choice', text: s || m[0],
+                options: [Object.assign({ n, kind: FS_EFFECTS.icon(m[3]) }, t),
+                          Object.assign({ n: num(m[4]), kind: FS_EFFECTS.icon(m[5]) }, t)],
+            };
+        },
+    },
+    // "за каждый ваш недеморализованный отряд … получите N icon"
+    {
+        re: /^за кажд[а-яёa-z]*\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+([^.;:]{2,80}?)получ[а-яёa-z]*\s+(\d+)?\s*`([^`]+)`(?:[^.;]*?максимум\s+(\d+))?/i,
+        build: m => {
+            const kind = FS_EFFECTS.iconKind(m[3]);
+            if (kind !== 'token' && kind !== 'cube') return null;
+            const filter = typeFilter(m[1]) || unitFilter(m[1]);
+            return { op: kind === 'token' ? 'gainToken' : 'gainDie', n: num(m[2]), kind: FS_EFFECTS.icon(m[3]), per: 'unit', filter, max: m[4] ? Number(m[4]) : null, text: m[0] };
+        },
+    },
     // "get 1 `att. token` for every unrouted Guardsman or Cruiser, maximum 3"
     {
         re: /(?:получ[а-яёa-z]*|взять|возьм[а-яёa-z]*|достаньте)\s+(\d+)?\s*`([^`]+)`[^.`]{0,90}?за кажд[а-яёa-z]+\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+([^,.]{2,70}?)(?:,\s*максимум\s+(\d+))?/i,
         build: m => {
             const kind = FS_EFFECTS.iconKind(m[2]);
             if (kind !== 'token' && kind !== 'cube') return null;
+            const filter = typeFilter(m[3]) || unitFilter(m[3]);
             return {
                 op: kind === 'token' ? 'gainToken' : 'gainDie',
                 n: num(m[1]), kind: FS_EFFECTS.icon(m[2]), per: 'unit',
-                filter: unitFilter(m[3]), max: m[4] ? Number(m[4]) : null, text: m[0],
+                filter, max: m[4] ? Number(m[4]) : null, text: m[0],
             };
         },
     },
@@ -2571,6 +2620,18 @@ const RULES = [
         re: /уничтож[а-яёa-z]*\s+(?:(\d+)\s*)?(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)\s*противник[а-яёa-z]*/i,
         build: m => ({ op: 'destroy', n: num(m[1]), pick: true, who: 'foe' }),
     },
+    // "the opponent chooses and destroys 1 of his routed units"
+    {
+        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,50}?уничтож[а-яёa-z]*\s+(?:(\d+)\s+)?(?:свой[а-яёa-z]*\s+)?(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)/i,
+        build: m => ({ op: 'destroy', n: num(m[1]), pick: true, who: 'foe' }),
+    },
+    // «Восстановите …» — the restoring ability comes first: the words
+    // «деморализованный отряд» inside it must not fire the route rules.
+    // "restore 1 of your routed units" / "restore all your units"
+    {
+        re: /восстанов[а-яёa-z]*\s+(всех?\s*)?(?:(\d+)\s+)?(?:ваш[а-яёa-z]*|сво[а-яёa-z]*)?\s*(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*|пехот[а-яёa-z]*)/i,
+        build: m => ({ op: 'restore', n: m[2] ? num(m[2]) : 1, all: !!m[1], pick: true }),
+    },
     // "the opponent must choose and route 1 of his units"
     {
         re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?(?<!не)деморализ[а-яёa-z]*\s+(?:и\s+)?(?:(\d+)\s*)?(?:свой|ваш|одного|одну|1)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)?/i,
@@ -2580,16 +2641,6 @@ const RULES = [
     {
         re: /(?<!не)деморализ[а-яёa-z]*\s+(?:(\d+)\s*)?(?:ваш|вражеск|противник[а-яёa-z]*|1|одного|одну)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)?/i,
         build: m => ({ op: 'route', n: num(m[1]), pick: true }),
-    },
-    // "restore 1 of your routed units" / "restore all your units"
-    {
-        re: /восстанов[а-яёa-z]*\s+(всех?\s*)?(?:(\d+)\s+)?(?:ваш[а-яёa-z]*|сво[а-яёa-z]*)?\s*(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*|пехот[а-яёa-z]*)/i,
-        build: m => ({ op: 'restore', n: m[2] ? num(m[2]) : 1, all: !!m[1], pick: true }),
-    },
-    // "the opponent chooses and destroys 1 of his routed units"
-    {
-        re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,50}?уничтож[а-яёa-z]*\s+(?:(\d+)\s+)?(?:свой[а-яёa-z]*\s+)?(?:деморализованн[а-яёa-z]*\s+)?(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)/i,
-        build: m => ({ op: 'destroy', n: num(m[1]), pick: true, who: 'foe' }),
     },
     // "destroy 1 of your unrouted units" / "destroy a cultist unit"
     {
@@ -3266,8 +3317,20 @@ function num(text) {
 // ("Сестра Репентия", "Сестра Ренентиля", "сестру Ренентию", "Сестры ренетентии").
 /** @type {[RegExp, string[]][]} */
 const UNIT_STEMS = [[/ре[пн]е[нт]/i, ['репен', 'ренент', 'ренетент']]];
+// The «разного командного уровня» is a counting rule, not a name.
+function stripQualifier(text) {
+    return String(text || '').replace(/\s*разного[а-яёa-z\s]*?(уровня|тип[а-яёa-z]*)\s*/i, ' ').trim();
+}
+// The broad classes: «наземный отряд» / «корабль».
+function typeFilter(text) {
+    const s = String(text || '').toLowerCase();
+    if (/наземн/.test(s)) return { type: 'ground' };
+    if (/корабл/.test(s)) return { type: 'ship' };
+    return null;
+}
 function unitFilter(text) {
     if (!text) return null;
+    text = stripQualifier(text);
     for (const [re, stems] of UNIT_STEMS) if (re.test(text)) return { contains: stems };
     const names = text.split(/\s+или\s+|\s+и\s+/)
         .map(s => s.trim().replace(/[^А-Яа-яЁё']/g, ''))
