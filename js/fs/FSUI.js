@@ -144,6 +144,27 @@ const FSUI = {
         return box;
     },
 
+    // The two-panel print of a combat card, as on the real thing: the general
+    // ability on parchment, the unit-gated one on darker tan, between the teeth.
+    // Cards without a unit gate get no tan panel and no teeth.
+    appendCardZones(box, general, unit) {
+        const gen = String(general || '').trim();
+        const un = String(unit || '').trim();
+        if (gen) box.append(this.cardZone(gen, 'is-general', !un));
+        if (gen && un) box.append(this.cardTeeth());
+        if (un) box.append(this.cardZone(un, 'is-unit', !gen));
+    },
+    cardZone(text, cls, only) {
+        const zone = this.el('div', 'fs-card-zone ' + cls + (only ? ' is-only' : ''));
+        zone.append(this.richText(text, 'fs-card-zone-text'));
+        return zone;
+    },
+    cardTeeth() {
+        const wrap = this.el('span', 'fs-card-teeth');
+        for (let i = 0; i < 14; i++) wrap.append(this.el('i', 'fs-card-tooth'));
+        return wrap;
+    },
+
     // The board furniture the player may put away: the participants
     // and the window with the order tokens of the hand.
     panelState() {
@@ -421,14 +442,16 @@ const FSUI = {
             actions.append(grid);
         }
         if (picks.length) {
-            const grid = this.el('div', 'fs-pick-grid');
+            const grid = this.el('div', 'fs-pick-grid' + (picks.some(a => a.grid2) ? ' is-2x2' : ''));
             for (const a of picks) {
-                const button = this.el('button', 'fs-pick' + (a.selected ? ' is-selected' : '')); button.type = 'button';
+                const off = a.enabled === false;
+                const button = this.el('button', 'fs-pick' + (a.selected ? ' is-selected' : '') + (off ? ' is-disabled' : '')); button.type = 'button';
+                if (off) button.disabled = true;
                 if (a.hint) button.title = a.hint;
                 if (a.icon) button.append(this.iconEl(a.icon, 'fs-pick-icon'));
                 button.append(this.el('span', 'fs-pick-label', a.label));
                 if (a.count != null) button.append(this.el('span', 'fs-pick-count', typeof a.count === 'number' ? a.count + '×' : a.count));
-                button.addEventListener('click', () => a.onClick && a.onClick());
+                button.addEventListener('click', () => { if (!off && a.onClick) a.onClick(); });
                 grid.append(button);
             }
             actions.append(grid);
@@ -589,6 +612,8 @@ const FSUI = {
             text: isCombat
                 ? [card.general, card.unit].filter(t => t && t !== '—').join('\n')
                 : (card.text || ''),
+            general: isCombat && card.general && card.general !== '—' ? card.general : undefined,
+            unit: isCombat && card.unit && card.unit !== '—' ? card.unit : undefined,
             icons: isCombat ? (card.icons || null) : null,
             order: isCombat ? null : (card.order || null),
         };
@@ -694,7 +719,7 @@ const FSUI = {
             main.append(nameLine, stats);
             const cnt = this.el('div', 'fs-unit-count');
             cnt.append(this.el('b', '', String(count)));
-            cnt.append(this.el('span', '', '/ ' + (def.max != null ? def.max : 0)));
+            cnt.append(this.el('span', '', '/' + (def.max != null ? def.max : 0)));
             row.append(icon, main, cnt);
             list.append(row);
         }
@@ -709,7 +734,7 @@ const FSUI = {
 
         // The upgrade cards of the faction — every one of them, bought or not:
         // the count of affordable and locked stays visible at a glance.
-        const ORDER_ICONS = { advance: 'order.advance', deploy: 'order.deploy', strategize: 'order.strategize', dominate: 'order.dominate', orbital: 'ui.storm' };
+        const ORDER_ICONS = { advance: 'order.advance', deploy: 'mark.city', strategize: 'order.strategize', dominate: 'order.dominate', orbital: 'ui.storm' };
         const level = hasRules && FS_RULES.commandLevel ? FS_RULES.commandLevel(state, seat) : 0;
         const materiel = p.materiel || 0;
         const upgradesHave = new Set((p.upgrades || []).map(u => u.name));
@@ -898,18 +923,10 @@ const FSUI = {
             card.append(top);
             const icons = this.el('div', 'fs-card-icons');
             if (this.appendCubeIcons(icons, item.icons)) card.append(icons);
-            if (item.runs && item.runs.length) {
-                const body = this.el('div', 'fs-rich fs-battle-card-text');
-                item.runs.forEach((block, i) => {
-                    if (i) body.append(this.el('br'));
-                    for (const run of block) {
-                        if (run.t === 'icon') { body.append(this.iconEl(FSIcons.fromCardWord(run.name) || 'cube.any', 'fs-rich-ico')); continue; }
-                        const span = this.el('span', run.bold ? 'fs-rich-bold' : run.italic ? 'fs-rich-italic' : '');
-                        span.textContent = run.v;
-                        body.append(span);
-                    }
-                });
-                card.append(body);
+            if (item.general || item.unit) {
+                const zones = this.el('div', 'fs-battle-card-text fs-card-zones');
+                this.appendCardZones(zones, item.general, item.unit);
+                card.append(zones);
             } else if (item.text) {
                 card.append(this.richText(item.text, 'fs-battle-card-text'));
             }
@@ -949,7 +966,7 @@ const FSUI = {
         if (!sections) return null;
         const wrap = this.el('div', 'fs-upgrades');
         const groups = [['combat', 'Боевые улучшения'], ['order', 'Улучшения приказа']];
-        const ORDER_ICONS = { advance: 'order.advance', deploy: 'order.deploy', strategize: 'order.strategize', dominate: 'order.dominate', orbital: 'ui.storm' };
+        const ORDER_ICONS = { advance: 'order.advance', deploy: 'mark.city', strategize: 'order.strategize', dominate: 'order.dominate', orbital: 'ui.storm' };
         for (const [key, title] of groups) {
             const rows = sections[key] || [];
             if (!rows.length) continue;
@@ -1029,7 +1046,13 @@ const FSUI = {
             const icons = this.el('div', 'fs-card-icons fs-card-preview-cubes');
             if (this.appendCubeIcons(icons, item.icons)) wrap.append(icons);
         }
-        if (item.text) wrap.append(this.richText(item.text, 'fs-card-preview-text'));
+        if (item.general || item.unit) {
+            const zones = this.el('div', 'fs-card-preview-zones');
+            this.appendCardZones(zones, item.general, item.unit);
+            wrap.append(zones);
+        } else if (item.text) {
+            wrap.append(this.richText(item.text, 'fs-card-preview-text'));
+        }
         if (item.locked) {
             const lock = this.el('div', 'fs-card-preview-lock');
             lock.append(this.iconEl('ui.close', 'fs-card-preview-lock-ico'));

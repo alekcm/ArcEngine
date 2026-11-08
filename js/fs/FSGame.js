@@ -10,7 +10,7 @@
 // `pending` holds the data of the current action.
 
 // The glyphs of the four order tokens: one look at the panel or at the board.
-const FS_ORDER_ICONS = { advance: 'order.advance', deploy: 'order.deploy', strategize: 'order.strategize', dominate: 'order.dominate' };
+const FS_ORDER_ICONS = { advance: 'order.advance', deploy: 'mark.city', strategize: 'order.strategize', dominate: 'order.dominate' };
 
 // The three ways into the game on the lobby screen. The first one is the party
 // itself; the other two are test modes for a single person who plays both seats.
@@ -836,14 +836,13 @@ class FSGame {
         }
         ctx.text = this.mode === 'placeOrder'
             ? 'Щёлкните по системе с кольцом: приказ кладётся в свою систему или рядом со своей.'
-            : 'Выберите приказ и щёлкните по системе. Приказ кладётся только в систему со своими '
-                + 'отрядами или постройками либо в соседнюю с такой системой.';
+            : 'Выберите приказ и щёлкните по системе.';
         ctx.status = this.status || (left ? 'Осталось приказов: ' + left : 'Все приказы выложены.');
         ctx.tokens = [
             { icon: 'asset.materiel', label: 'Материя', count: p.materiel },
         ].concat(this.assetTokens(s, me));
         const kinds = [
-            ['advance', 'Наступление', 'cube.att', 'Движение и бой'],
+            ['advance', 'Наступление', 'order.advance', 'Движение и бой'],
             ['deploy', 'Развёртывание', 'mark.city', 'Покупка отрядов и построек'],
             ['strategize', 'Стратегия', 'order.strategize', 'Улучшения'],
             ['dominate', 'Доминирование', 'order.dominate', 'Ресурсы и способность'],
@@ -852,13 +851,15 @@ class FSGame {
         const laid = p.placedOf || {};
         for (const [order, name, icon, hint] of kinds) {
             const left = Math.max(0, supply - (laid[order] || 0));
-            // Two tokens of every order: a kind that is spent is not offered again.
-            if (!left) continue;
+            // Two tokens of every order: a spent kind stays in the list, only dimmed.
             ctx.actions.push({
                 kind: 'pick', icon, label: name, count: left + '×',
                 hint: hint + ' · осталось ' + left + ' из ' + supply,
+                enabled: left > 0,
+                grid2: true,
                 selected: this.mode === 'placeOrder' && this.pending && this.pending.order === order,
                 onClick: () => {
+                    if (left <= 0) return;
                     this.mode = 'placeOrder';
                     this.pending = { order };
                     this.highlightOrders();
@@ -1329,9 +1330,9 @@ class FSGame {
                 name: n,
                 playable: true,
                 icons: def && def.icons ? def.icons : {},
-                // Real italics, real bold and the cubes as shapes — as in the battle.
-                runs: typeof FSIcons !== 'undefined' ? FSIcons.runs(text) : null,
                 text,
+                general: def && def.general,
+                unit: def && def.unit,
                 onClick: (name => () => this.pickDeckPair(name))(n),
                 pairPicked: this.pairPick === n,
             });
@@ -1358,6 +1359,8 @@ class FSGame {
             return {
                 kind, name: c.name, cost, kl: c.kl,
                 text: kind === 'order' ? (c.text || '') : ((c.general && c.general !== '—' ? c.general + ' ' : '') + (c.unit || '')),
+                general: kind === 'combat' ? (c.general || '') : undefined,
+                unit: kind === 'combat' ? (c.unit || '') : undefined,
                 icons: kind === 'combat' && c.icons ? c.icons : null,
                 order: kind === 'order' ? c.order : null,
                 locked: !!locked, reason, owned, selected,
@@ -1375,6 +1378,7 @@ class FSGame {
         ctx.previewCard = selRow ? {
             kind: selRow.kind === 'order' ? 'Улучшение приказа' : 'Боевое улучшение',
             name: selRow.name, cost: selRow.cost, kl: selRow.kl, text: selRow.text,
+            general: selRow.general, unit: selRow.unit,
             icons: selRow.icons, order: selRow.order, locked: selRow.locked, reason: selRow.reason,
         } : null;
         // What the player is told right now.
@@ -1820,9 +1824,10 @@ class FSGame {
             return {
                 index, name,
                 icons: (data && data.icons) || {},
-                // The card is drawn from these runs: real italics, real bold and the
-                // cubes as shapes — the markup of the data never reaches the screen.
-                runs: typeof FSIcons !== 'undefined' ? FSIcons.runs(text) : [],
+                // The card is drawn from the two panels of the real thing — the
+                // markup of the data never reaches the screen.
+                general: data && data.general,
+                unit: data && data.unit,
                 text,
                 playable: !!mine,
             };

@@ -527,14 +527,27 @@ const FSView = {
 
     // The poles carry the world's dossier printed straight on the ice: the unit
     // capacity on the north cap, the materiel and the asset tokens on the south.
-    // Dark print on the white caps — no plates, no backing, nothing else.
+    // The icons keep their colours and take a small black rim so they read on
+    // any cap — no plates, no backing, nothing else.
     drawPlanetPoles(ctx, size, world) {
         if (!world) return;
         const R = size / 2;
         const hasIcons = typeof FSIcons !== 'undefined';
-        const ink = '#12181f';
-        const northY = R * .10, southY = size - R * .10;
         const icon = 46, font = 'bold 52px system-ui, sans-serif';
+        const northY = R * .10, southY = size - R * .10;
+        const outline = '#101010';
+        const print = (iconName, cx, cy, s) => {
+            if (hasIcons) FSIcons.canvas(ctx, iconName, cx, cy, s, { outline });
+        };
+        const number = (text, x, y, fill) => {
+            ctx.font = font;
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = 8;
+            ctx.strokeStyle = outline;
+            ctx.strokeText(text, x, y);
+            ctx.fillStyle = fill;
+            ctx.fillText(text, x, y);
+        };
         ctx.save();
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
@@ -544,9 +557,9 @@ const FSView = {
         const capW = ctx.measureText(cap).width;
         const capBlock = (hasIcons ? icon + 14 : 0) + capW;
         let x = R - capBlock / 2;
-        if (hasIcons) { FSIcons.canvas(ctx, 'mark.skull', x + icon / 2, northY, icon, { color: ink }); x += icon + 14; }
-        ctx.fillStyle = ink;
-        ctx.fillText(cap, x, northY + 2);
+        print('mark.skull', x + icon / 2, northY, icon);
+        x += hasIcons ? icon + 14 : 0;
+        number(cap, x, northY + 2, '#e9dec3');
         // South — the materiel value and the asset tokens.
         const num = String(world.materiel != null ? world.materiel : 0);
         ctx.font = font;
@@ -556,12 +569,12 @@ const FSView = {
         const chip = 42, gap = 12;
         const block = (hasIcons ? icon + 14 : 0) + numW + (assets.length ? 16 + assets.length * chip + (assets.length - 1) * gap : 0);
         let sx = R - block / 2;
-        if (hasIcons) { FSIcons.canvas(ctx, 'asset.materiel', sx + icon / 2, southY, icon, { color: ink }); sx += icon + 14; }
-        ctx.fillStyle = ink;
-        ctx.fillText(num, sx, southY + 2);
+        print('asset.materiel', sx + icon / 2, southY, icon);
+        sx += hasIcons ? icon + 14 : 0;
+        number(num, sx, southY + 2, '#a8d08a');
         sx += numW + 16;
         for (const asset of assets) {
-            if (hasIcons) FSIcons.canvas(ctx, assetGlyph[asset] || 'asset.cache', sx + chip / 2, southY, chip, { color: ink });
+            print(assetGlyph[asset] || 'asset.cache', sx + chip / 2, southY, chip);
             sx += chip + gap;
         }
         ctx.restore();
@@ -607,9 +620,9 @@ const FSView = {
                         : (rand() > .48 ? '#b98f63' : '#4b4e58');
             ctx.beginPath(); ctx.ellipse(x, y, rx, ry, (rand() - .5) * 1.4, 0, Math.PI * 2); ctx.fill();
         }
-        // The poles: solid white caps — the dossier is printed on them.
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = '#f7fdff';
+        // The poles.
+        ctx.globalAlpha = .5;
+        ctx.fillStyle = '#eaf6ff';
         ctx.beginPath(); ctx.ellipse(R, R * .1, R * .78, R * .16, 0, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.ellipse(R, size - R * .1, R * .82, R * .18, 0, 0, Math.PI * 2); ctx.fill();
         // Weather.
@@ -665,6 +678,11 @@ const FSView = {
         if (view.planetMaterials.has(name)) return view.planetMaterials.get(name);
         const surface = new BABYLON.StandardMaterial('fs-planet-surface-' + name, view.scene);
         surface.diffuseTexture = this.planetTexture(view, name, world);
+        // The disc samples the texture vertically mirrored — flip it back, so the
+        // poles print on the caps and the icons stand upright.
+        const disc = /** @type {any} */ (surface.diffuseTexture);
+        disc.vScale = -1;
+        disc.vOffset = 1;
         surface.specularColor = new BABYLON.Color3(.16, .18, .22);
         surface.specularPower = 48;
         surface.backFaceCulling = false;

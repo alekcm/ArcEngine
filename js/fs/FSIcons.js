@@ -85,15 +85,6 @@ const FS_SHAPES = {
             { t: 'l', pts: [[17, 7], [26, 16], [17, 25]], width: 4.4, alpha: 0.66 },
         ],
     }),
-    'order.deploy': () => ({
-        color: '#e4d5b0',
-        parts: [
-            { t: 'p', pts: [[5, 6], [15, 6], [15, 14], [5, 14]] },
-            { t: 'p', pts: [[17, 6], [27, 6], [27, 14], [17, 14]], alpha: 0.7 },
-            { t: 'p', pts: [[5, 17], [15, 17], [15, 25], [5, 25]], alpha: 0.7 },
-            { t: 'p', pts: [[17, 17], [27, 17], [27, 25], [17, 25]] },
-        ],
-    }),
     'order.strategize': () => ({
         color: '#e4d5b0',
         parts: [
@@ -371,6 +362,8 @@ const FSIcons = {
     },
 
     // Paint a shape in the canvas, centred on (cx, cy).
+    // opts.outline — a dark silhouette painted under the colour, in eight small
+    // offsets: a thin black rim around the icon, never a repaint of it.
     canvas(ctx, name, cx, cy, size, opts) {
         const shape = this.shape(name);
         if (!shape || !ctx) return false;
@@ -378,38 +371,58 @@ const FSIcons = {
         ctx.save();
         ctx.translate(cx - size / 2, cy - size / 2);
         ctx.scale(k, k);
-        for (const part of shape.parts) {
-            const color = this.resolve(part, shape.color, opts);
-            ctx.globalAlpha = part.alpha == null ? 1 : part.alpha;
-            if (part.t === 'p') {
-                ctx.beginPath();
-                part.pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
-                ctx.closePath();
-                if (color !== 'none') { ctx.fillStyle = color; ctx.fill(); }
-                if (part.stroke) {
-                    ctx.lineWidth = part.stroke;
-                    ctx.strokeStyle = this.resolve({ fill: 'dark' }, shape.color, opts);
+        const outline = opts && opts.outline;
+        const paint = (shiftX, shiftY, mono) => {
+            ctx.save();
+            ctx.translate(shiftX, shiftY);
+            for (const part of shape.parts) {
+                // A stroke-only part keeps its opening: the rim widens the
+                // stroke instead of introducing a fill of its own.
+                const strokeOnly = part.fill === 'none';
+                const color = mono ? (strokeOnly ? 'none' : mono) : this.resolve(part, shape.color, opts);
+                ctx.globalAlpha = part.alpha == null ? 1 : part.alpha;
+                if (part.t === 'p') {
+                    ctx.beginPath();
+                    part.pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+                    ctx.closePath();
+                    if (color !== 'none') { ctx.fillStyle = color; ctx.fill(); }
+                    if (mono && part.stroke) {
+                        ctx.lineWidth = part.stroke + 2.2;
+                        ctx.strokeStyle = mono;
+                        ctx.stroke();
+                    } else if (!mono && part.stroke) {
+                        ctx.lineWidth = part.stroke;
+                        ctx.strokeStyle = this.resolve({ fill: 'dark' }, shape.color, opts);
+                        ctx.stroke();
+                    }
+                } else if (part.t === 'l') {
+                    ctx.beginPath();
+                    part.pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+                    ctx.lineWidth = (part.width || 2) + (mono ? 1.6 : 0);
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.strokeStyle = mono ? mono : (color === 'none' ? FS_ICON_COLOR.ink : color);
                     ctx.stroke();
-                }
-            } else if (part.t === 'l') {
-                ctx.beginPath();
-                part.pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
-                ctx.lineWidth = part.width || 2;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.strokeStyle = color === 'none' ? FS_ICON_COLOR.ink : color;
-                ctx.stroke();
-            } else if (part.t === 'c') {
-                ctx.beginPath();
-                ctx.arc(part.x, part.y, part.r, 0, Math.PI * 2);
-                if (color !== 'none') { ctx.fillStyle = color; ctx.fill(); }
-                if (part.ring) {
-                    ctx.lineWidth = part.ring;
-                    ctx.strokeStyle = this.resolve({ fill: part.stroke || 'dark' }, shape.color, opts);
-                    ctx.stroke();
+                } else if (part.t === 'c') {
+                    ctx.beginPath();
+                    ctx.arc(part.x, part.y, strokeOnly ? part.r : part.r + (mono ? .9 : 0), 0, Math.PI * 2);
+                    if (color !== 'none') { ctx.fillStyle = color; ctx.fill(); }
+                    if (mono ? part.ring : part.ring) {
+                        ctx.lineWidth = mono ? part.ring + 2.2 : part.ring;
+                        ctx.strokeStyle = mono ? mono : this.resolve({ fill: part.stroke || 'dark' }, shape.color, opts);
+                        ctx.stroke();
+                    }
                 }
             }
+            ctx.restore();
+        };
+        if (outline) {
+            const rim = typeof outline === 'string' ? outline : '#0d0d0d';
+            for (const [dx, dy] of [[-1.15, 0], [1.15, 0], [0, -1.15], [0, 1.15], [-.85, -.85], [.85, -.85], [-.85, .85], [.85, .85]]) {
+                paint(dx, dy, rim);
+            }
         }
+        paint(0, 0, null);
         ctx.restore();
         return true;
     },
