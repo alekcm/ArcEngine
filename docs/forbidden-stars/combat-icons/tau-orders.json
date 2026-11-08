@@ -1,0 +1,57 @@
+{
+  "faction": "tau",
+  "note": "Three inline symbols on the five Tau order upgrades from Карти наказів (3).jpg. Manual locations on the original sheet; expected labels are never classifier input. These are order upgrades, not additions to the 27-print combat-card manifest tau.json.",
+  "cards": [
+    {
+      "id": "targeting-device",
+      "card": "targeting-device",
+      "name": "Устройство наведения",
+      "source": "Warhammer/Тау/Карти наказів (3).jpg",
+      "image": "../../../Warhammer/Тау/Карти наказів (3).jpg",
+      "icons": [
+        {
+          "id": "main-any-cube",
+          "box": [
+            1894,
+            703,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "precise-strikes",
+      "card": "precise-strikes",
+      "name": "Точные удары",
+      "source": "Warhammer/Тау/Карти наказів (3).jpg",
+      "image": "../../../Warhammer/Тау/Карти наказів (3).jpg",
+      "icons": [
+        {
+          "id": "main-any-cube",
+          "box": [
+            285,
+            1739,
+            48,
+            48
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "unit-any-cube",
+          "box": [
+            155,
+            1781,
+            40,
+            40
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    }
+  ]
+}

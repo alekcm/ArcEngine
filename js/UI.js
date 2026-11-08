@@ -171,7 +171,7 @@ const UI = {
         return { w: c ? c.clientWidth / s : 0, h: c ? c.clientHeight / s : 0 };
     },
 
-    // --- Anchor math (no DOM — tests/ui.test.mjs) -------------------------------------
+    // --- Anchor math (no DOM, pure numbers) -------------------------------------------
 
     // 'bottom-right' -> { v: 'bottom', h: 'right' }; garbage -> top-left.
     parseAnchor(anchor) {

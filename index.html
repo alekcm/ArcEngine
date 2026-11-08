@@ -3,7 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>ArcEngine</title>
+    <title>Forbidden Stars — ArcEngine</title>
+    <link rel="stylesheet" href="js/fs/FSUI.css">
+    <meta name="theme-color" content="#0b1117">
     <script src="libs/simplex-noise.js"></script>
     <script src="libs/babylon.js"></script>
     <script src="libs/babylonjs.loaders.min.js"></script>
@@ -58,6 +60,7 @@
             background: #7cc0c7;
             transition: width 0.3s ease;
         }
+    #fs-build{position:fixed;right:8px;bottom:4px;z-index:99999;font:10px/1 ui-monospace,monospace;color:#ffffff40;pointer-events:none;user-select:none}
     </style>
 </head>
 <body>
@@ -82,10 +85,21 @@
     <script src="js/Debug3D.js"></script>
     <script src="js/UI.js"></script>
     <script src="js/Game.js"></script>
+    <!-- Forbidden Stars: the data, the rules, the network, the board and the interface -->
+    <script src="js/fs/FSIcons.js"></script>
+    <script src="js/fs/FSData.js"></script>
+    <script src="js/fs/FSEffects.js"></script>
+    <script src="js/fs/FSRules.js"></script>
+    <script src="js/fs/FSNet.js"></script>
+    <script src="js/fs/FSView.js"></script>
+    <script src="js/fs/FSUI.js"></script>
+    <script src="js/fs/FSGame.js"></script>
     <script src="js/main.js"></script>
     <script>
         // A long tap and RMB must not open the browser menu.
         document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
+<div id="fs-build" title="Хэш коммита, который отдаёт этот сервер">__GIT_COMMIT__</div>
+<script>document.getElementById('fs-build').textContent = '__GIT_COMMIT__';</script>
 </body>
 </html>

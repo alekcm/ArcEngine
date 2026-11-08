@@ -10,7 +10,7 @@
 
 class Location3D {
     // opts: { assetBase?: '' — game (paths from index.html) | '/' — editor (from the server root),
-    //         objects?: LOCATION_OBJECTS records }
+    //         objects?: LOCATION_OBJECTS records, terrainNoise?: Terrain noise options }
     constructor(opts) {
         this.opts = opts || {};
         this.view = World3D.createView({});
@@ -36,7 +36,8 @@ class Location3D {
         this.terrain = new Terrain3D(this.view, {
             worldW: this.width,
             worldH: this.height,
-            groundImage: this._groundImage
+            groundImage: this._groundImage,
+            noise: this.opts.terrainNoise
         });
         this.placeObjects();
         return this.terrain;

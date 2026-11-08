@@ -29,7 +29,14 @@ function startGame() {
     updateLoadingProgress(40);
     if (!World3D.init(canvas)) { showBootError('3D недоступен: нет libs/babylon.js или WebGL'); return; }
 
-    const location = new Location3D({ objects: typeof LOCATION_OBJECTS !== 'undefined' ? LOCATION_OBJECTS : [] });
+    // Forbidden Stars owns a dedicated board view. Do not load ArcEngine's sample mill/hero
+    // underneath it; the tabletop board is the entire scene for this game.
+    const isForbiddenStars = typeof FSGame !== 'undefined' && FSGame.enabled();
+    const location = new Location3D({
+        objects: isForbiddenStars ? [] : (typeof LOCATION_OBJECTS !== 'undefined' ? LOCATION_OBJECTS : []),
+        // The Forbidden Stars tabletop is a level orbital plane, not the sample's rolling landscape.
+        terrainNoise: isForbiddenStars ? { amp: 0, base: 0, seed: 'forbidden-stars' } : undefined
+    });
     const camera = new CameraController(location.view, {
         terrain: location.terrain,
         bounds: { w: location.width, h: location.height }
@@ -37,8 +44,10 @@ function startGame() {
     camera.attach(canvas);
     UI.init(canvas);
     window.app = { location, camera, game: null };
-    const game = window.app.game = new Game(window.app);
-    console.log('ArcEngine: локация запущена, объектов ' + location.objects.length + '.');
+    // The game: Forbidden Stars (the LAN client) — the sample game with ?demo=1.
+    const GameClass = (typeof FSGame !== 'undefined' && FSGame.enabled()) ? FSGame : Game;
+    const game = window.app.game = new GameClass(window.app);
+    console.log('ArcEngine: локация запущена, объектов ' + location.objects.length + ', игра: ' + GameClass.name + '.');
     updateLoadingProgress(70);
 
     let last = performance.now();

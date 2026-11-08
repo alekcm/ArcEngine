@@ -1,0 +1,968 @@
+{
+  "faction": "dark-eldar",
+  "note": "All 14 Dark Eldar combat cards on 5DD5794E..._1.png (rows 3-5). Boxes are original-sheet coordinates; expected labels are manual transcription and are never classifier input. No Dark Eldar samples are used as references.",
+  "cards": [
+    {
+      "id": "r3-c8",
+      "card": "vects-messengers",
+      "name": "Посланники Векта",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            5218,
+            2337,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            5403,
+            2697,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        }
+      ]
+    },
+    {
+      "id": "r3-c9",
+      "card": "stealthy-murder",
+      "name": "Скрытное убийство",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            5957,
+            2337,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            6142,
+            2757,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            6275,
+            2818,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            6366,
+            2818,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            5978,
+            2959,
+            44,
+            44
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            5969,
+            3052,
+            44,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            6053,
+            3052,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            6190,
+            3052,
+            44,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "r3-c10",
+      "card": "attack-from-shadow",
+      "name": "Нападение из тени",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            6696,
+            2337,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            6881,
+            2757,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            7018,
+            2757,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            7141,
+            3053,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "r4-c1",
+      "card": "hunt-the-weak",
+      "name": "Охота на слабых",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            45,
+            3383,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            230,
+            3964,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-any-cube",
+          "box": [
+            615,
+            4100,
+            40,
+            38
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "r4-c2",
+      "card": "winged-strike",
+      "name": "Крылатый удар",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            784,
+            3383,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            969,
+            3844,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            1238,
+            3978,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "r4-c3",
+      "card": "teachings-of-slaughter",
+      "name": "Упоение резней",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1523,
+            3383,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1523,
+            3463,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-att-token-1",
+          "box": [
+            1796,
+            3823,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            2117,
+            3924,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "main-att-token-2",
+          "box": [
+            1933,
+            3964,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "r4-c4",
+      "card": "shoot-and-vanish",
+      "name": "Выстрелить и исчезнуть",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            2262,
+            3383,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            2262,
+            3463,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            2447,
+            3803,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            2585,
+            3803,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            2636,
+            4099,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            2774,
+            4098,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "r4-c5",
+      "card": "always-moving",
+      "name": "Всегда в движении",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            3001,
+            3383,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            3001,
+            3463,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            3186,
+            3844,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            3203,
+            3925,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-att-cube-1",
+          "box": [
+            3489,
+            4019,
+            44,
+            41
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-def-cube-1",
+          "box": [
+            3573,
+            4018,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            3078,
+            4059,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-att-cube-2",
+          "box": [
+            3447,
+            4059,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            3550,
+            4058,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-def-cube-2",
+          "box": [
+            3013,
+            4099,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            3116,
+            4099,
+            42,
+            40
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "r4-c6",
+      "card": "raider-tactics",
+      "name": "Тактика рейдеров",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            3740,
+            3383,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            3740,
+            3463,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            4293,
+            3757,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            4352,
+            3937,
+            40,
+            40
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            4263,
+            4099,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "r4-c7",
+      "card": "enjoyment-of-torture",
+      "name": "Наслаждение пытками",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            4479,
+            3383,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            4479,
+            3463,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            4479,
+            3543,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            5026,
+            3884,
+            44,
+            41
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            4907,
+            4025,
+            44,
+            44
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            4871,
+            4098,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "r4-c8",
+      "card": "finish-the-scoundrel",
+      "name": "Добить поодиночке",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            5218,
+            3383,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            5218,
+            3463,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            5218,
+            3543,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            5765,
+            3886,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            5403,
+            4018,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "r4-c9",
+      "card": "knowledge-of-agony",
+      "name": "Познание агонии",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            5957,
+            3383,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            5957,
+            3463,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            5957,
+            3543,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        }
+      ]
+    },
+    {
+      "id": "r4-c10",
+      "card": "driven-by-hatred",
+      "name": "Движимые ненавистью",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            6696,
+            3383,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            6696,
+            3463,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            6696,
+            3543,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-att-token-1",
+          "box": [
+            6963,
+            3844,
+            43,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-def-token-1",
+          "box": [
+            7301,
+            3842,
+            44,
+            44
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "main-att-token-2",
+          "box": [
+            6709,
+            3924,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-def-token-2",
+          "box": [
+            6811,
+            3925,
+            41,
+            40
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            6708,
+            4099,
+            44,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            6792,
+            4099,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            6894,
+            4099,
+            43,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "r5-c1",
+      "card": "insidious-obsession",
+      "name": "Коварная одержимость",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            45,
+            4429,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            45,
+            4509,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            45,
+            4589,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            45,
+            4669,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            230,
+            4963,
+            42,
+            41
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    }
+  ]
+}

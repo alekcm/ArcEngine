@@ -1,6 +1,6 @@
 // ============================================================================
 //  ArcEngine — the editor writing game files: Constants.js patch, the whole
-//  Objects.js, backups. No HTTP: server.mjs calls these functions, and so does tests/.
+//  Objects.js, backups. No HTTP: server.mjs calls these functions.
 // ----------------------------------------------------------------------------
 //  The Constants.js patch is deliberately dumb and safe:
 //   - ONLY lines of the form `const NAME = <number>;` are changed (a formula is left
@@ -262,7 +262,7 @@ const UI_ID = /^[A-Za-z_][A-Za-z0-9_-]{0,47}$/;
 const UI_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 // Fields of a record by kind, in file order — the same set as UI.DEFAULTS in js/UI.js
-// (tests/ui.test.mjs compares them). type: px — a number, size — a number ≥ 0, unit — 0..1,
+// (the editor reads them positionally). type: px — a number, size — a number ≥ 0, unit — 0..1,
 // color — '#rrggbb' or '', text — a string, flag — 0 | 1, id — an element id, stretch — an axis.
 // An empty parent or stretch is not written: the screen and a fixed size are the defaults.
 const UI_TYPES = {

@@ -326,7 +326,7 @@ Groups in `Constants.js`: `LOCATION_*`/`GROUND_TILE_SIZE`/`TERRAIN_*` (location)
 3. New world object — through `World3D.addObject`; screen↔world projections — through `View3D`.
 4. Do not touch: `useRightHandedSystem`, CSS px in `createPickingRay`, light order,
    `shadowMinZ/MaxZ`, the terrain normal check.
-5. `node tools/check.mjs` passes (types and tests, skill `build`); a new field on a Babylon
+5. `node tools/check.mjs` passes (types and the rules audit, skill `build`); a new field on a Babylon
    object goes into `globals.d.ts`.
 6. Check the game (`run.bat`) and the editor (`editor.bat`) in the browser: console without errors.
 7. Own geometry, a material with a normal map, a new light or shader: `await Debug3D.lint()` — no

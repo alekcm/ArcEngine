@@ -1,0 +1,1974 @@
+{
+  "faction": "mechanicus",
+  "note": "All 28 printed Mechanicus combat cards: 14 on the dedicated sheet and 14 alternate-translation prints on the composite sheet. Boxes are original-sheet coordinates; expected labels are manual transcription and are never classifier input. No Mechanicus samples are used as references.",
+  "cards": [
+    {
+      "id": "ded-r4-c2",
+      "card": "machine-spirit",
+      "name": "Почитание духа машины",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            482,
+            2043,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            752,
+            2465,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "ded-r4-c3",
+      "card": "tech-priests",
+      "name": "Техножрецы",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            936,
+            2043,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            1030,
+            2405,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            1110,
+            2413,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            1211,
+            2465,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        }
+      ]
+    },
+    {
+      "id": "ded-r4-c4",
+      "card": "vanguard",
+      "name": "Авангард скитариев",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1390,
+            2043,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            1484,
+            2345,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "ded-r5-c1",
+      "card": "infiltrators",
+      "name": "Скитарии-инфильтраторы",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "main-def-cube",
+          "box": [
+            168,
+            3027,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            258,
+            3027,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            298,
+            3093,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            348,
+            3093,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            413,
+            3093,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "ded-r5-c2",
+      "card": "ruststalkers",
+      "name": "Ржавые сталкеры",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            482,
+            2675,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            582,
+            2983,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            797,
+            3053,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            667,
+            3093,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "ded-r5-c3",
+      "card": "transcendent",
+      "name": "Трансцендентная дума",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            936,
+            2675,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            936,
+            2725,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        }
+      ]
+    },
+    {
+      "id": "ded-r5-c4",
+      "card": "bionics",
+      "name": "Лютая бионика",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1390,
+            2675,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1390,
+            2725,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            1530,
+            2993,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            1620,
+            2993,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            1660,
+            3063,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            1568,
+            3080,
+            32,
+            32
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        }
+      ]
+    },
+    {
+      "id": "ded-r6-c1",
+      "card": "aggression",
+      "name": "Подавление агрессии",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            28,
+            3306,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            28,
+            3356,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            168,
+            3624,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            258,
+            3624,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            298,
+            3694,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            223,
+            3724,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        }
+      ]
+    },
+    {
+      "id": "ded-r6-c2",
+      "card": "life-drain",
+      "name": "Жизнеотсос",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            482,
+            3306,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            482,
+            3356,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            792,
+            3648,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "main-any-cube",
+          "box": [
+            632,
+            3684,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "ded-r6-c3",
+      "card": "machine-superiority",
+      "name": "Превосходство машин",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            936,
+            3306,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            936,
+            3356,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            936,
+            3406,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-any-cube",
+          "box": [
+            1031,
+            3534,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            1098,
+            3526,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            1021,
+            3559,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            996,
+            3649,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            1036,
+            3649,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        }
+      ]
+    },
+    {
+      "id": "ded-r6-c4",
+      "card": "swift-ship",
+      "name": "Шустрое судно",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1390,
+            3306,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1390,
+            3356,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            1390,
+            3406,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            1630,
+            3576,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-morale-cube-1",
+          "box": [
+            1668,
+            3580,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "main-morale-cube-2",
+          "box": [
+            1475,
+            3606,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            1665,
+            3606,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            1715,
+            3679,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "ded-r7-c1",
+      "card": "hard-volley",
+      "name": "Жёсткий залп",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            28,
+            3937,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            28,
+            3987,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            128,
+            4215,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "ded-r7-c2",
+      "card": "machine-vengeance",
+      "name": "Месть духа машины",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            482,
+            3937,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            482,
+            3987,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            482,
+            4037,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            482,
+            4087,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            622,
+            4220,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            717,
+            4220,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            717,
+            4245,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-def-cube-2",
+          "box": [
+            757,
+            4245,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            747,
+            4310,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            802,
+            4323,
+            32,
+            32
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            577,
+            4360,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "ded-r7-c3",
+      "card": "machine-wrath",
+      "name": "Гнев машины",
+      "source": "Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "image": "../../../Warhammer/Адептус механикус/31AD59AC6FB2B882979E4DD2BB485D6ABE0E048E_Mech_all_cards.jpg",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            936,
+            3937,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            936,
+            3987,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            936,
+            4037,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            936,
+            4087,
+            50,
+            50
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            1036,
+            4245,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            1251,
+            4325,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            1071,
+            4350,
+            28,
+            28
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "alt-r1-c1",
+      "card": "sicarian-lasstalkers",
+      "name": "Сикарийцы лазутчики",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "main-att-cube",
+          "box": [
+            232,
+            822,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            367,
+            822,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            662,
+            922,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            57,
+            962,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            197,
+            962,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "alt-r1-c2",
+      "card": "sicarian-ruststalkers",
+      "name": "Сикарийцы ржаволовчие",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            784,
+            245,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            971,
+            747,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            1401,
+            842,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            1166,
+            922,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "alt-r1-c3",
+      "card": "skitarii-rangers",
+      "name": "Скитарии рейнджеры",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1523,
+            245,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-any-cube",
+          "box": [
+            1710,
+            747,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            2128,
+            950,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "alt-r1-c4",
+      "card": "skitarii-vanguard",
+      "name": "Скитарии авангарда",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            2262,
+            245,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            2449,
+            712,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "alt-r1-c5",
+      "card": "engineseer",
+      "name": "Инженер техножрец",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            3001,
+            245,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            3017,
+            871,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            3117,
+            863,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-any-cube",
+          "box": [
+            3618,
+            962,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "alt-r1-c6",
+      "card": "aggression-switch",
+      "name": "Переключение на агрессию",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            3740,
+            245,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            3740,
+            325,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            3927,
+            787,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            4062,
+            787,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            4357,
+            882,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            4192,
+            962,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        }
+      ]
+    },
+    {
+      "id": "alt-r1-c7",
+      "card": "improved-bionics",
+      "name": "Улучшенная бионика",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            4479,
+            245,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            4479,
+            325,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            4666,
+            787,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            4801,
+            787,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            5096,
+            882,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            4931,
+            962,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        }
+      ]
+    },
+    {
+      "id": "alt-r1-c8",
+      "card": "energy-redistribution",
+      "name": "Перераспределение энергии",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            5218,
+            245,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            5218,
+            325,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "main-any-cube-1",
+          "box": [
+            5405,
+            777,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            5835,
+            777,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            5265,
+            822,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            5369,
+            814,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "main-any-cube-2",
+          "box": [
+            5385,
+            875,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "any cube"
+        }
+      ]
+    },
+    {
+      "id": "alt-r1-c9",
+      "card": "unfathomable-reflections",
+      "name": "Размышления о непостижимом",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            5957,
+            245,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            5957,
+            325,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "unit-att-cube-1",
+          "box": [
+            6474,
+            879,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-def-cube-1",
+          "box": [
+            6554,
+            887,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-morale-cube-1",
+          "box": [
+            6024,
+            927,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-att-cube-2",
+          "box": [
+            6392,
+            924,
+            44,
+            44
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-def-cube-2",
+          "box": [
+            6462,
+            923,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-morale-cube-2",
+          "box": [
+            5974,
+            967,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "alt-r1-c10",
+      "card": "lethal-fire",
+      "name": "Огонь на поражение",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            6696,
+            245,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            6696,
+            325,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        }
+      ]
+    },
+    {
+      "id": "alt-r2-c1",
+      "card": "machine-superiority-alt",
+      "name": "Превосходство машины",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            45,
+            1291,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            45,
+            1371,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            45,
+            1451,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            267,
+            1618,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "main-any-cube",
+          "box": [
+            232,
+            1718,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "any cube"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            367,
+            1718,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            172,
+            1833,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            262,
+            1833,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-choice-att-cube",
+          "box": [
+            202,
+            1893,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-choice-def-cube",
+          "box": [
+            252,
+            1893,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-choice-morale-cube",
+          "box": [
+            355,
+            1897,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        }
+      ]
+    },
+    {
+      "id": "alt-r2-c2",
+      "card": "archaeopter",
+      "name": "Археоптер механикус",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            784,
+            1291,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            784,
+            1371,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            784,
+            1451,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            1176,
+            1773,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-morale-cube",
+          "box": [
+            1266,
+            1773,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            971,
+            1833,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            1401,
+            1928,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-def-token",
+          "box": [
+            1136,
+            1968,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. token"
+        }
+      ]
+    },
+    {
+      "id": "alt-r2-c3",
+      "card": "machine-vengeance-alt",
+      "name": "Месть духа машины",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            1523,
+            1291,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            1523,
+            1371,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            1523,
+            1451,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            1523,
+            1531,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-def-cube",
+          "box": [
+            1710,
+            1793,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "main-def-token",
+          "box": [
+            1845,
+            1793,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. token"
+        },
+        {
+          "id": "main-att-cube",
+          "box": [
+            1915,
+            1833,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "main-def-cube-2",
+          "box": [
+            2005,
+            1833,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-def-cube",
+          "box": [
+            2140,
+            1928,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "def. cube"
+        },
+        {
+          "id": "unit-att-cube",
+          "box": [
+            1895,
+            1984,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            1905,
+            2008,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    },
+    {
+      "id": "alt-r2-c4",
+      "card": "machine-wrath-alt",
+      "name": "Ярость машины",
+      "source": "Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "image": "../../../Warhammer/Тёмные эльдары/5DD5794E6FDA00DC53676D9BB06E4C689F179933_1.png",
+      "icons": [
+        {
+          "id": "col-1",
+          "box": [
+            2262,
+            1291,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-2",
+          "box": [
+            2262,
+            1371,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "att. icon"
+        },
+        {
+          "id": "col-3",
+          "box": [
+            2262,
+            1451,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "def. icon"
+        },
+        {
+          "id": "col-4",
+          "box": [
+            2262,
+            1531,
+            70,
+            65
+          ],
+          "location": "column",
+          "expected": "morale icon"
+        },
+        {
+          "id": "main-att-token",
+          "box": [
+            2449,
+            1833,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. token"
+        },
+        {
+          "id": "unit-morale-cube",
+          "box": [
+            2879,
+            1928,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "morale cube"
+        },
+        {
+          "id": "unit-att-token",
+          "box": [
+            2614,
+            1968,
+            42,
+            42
+          ],
+          "location": "text",
+          "expected": "att. token"
+        }
+      ]
+    }
+  ]
+}

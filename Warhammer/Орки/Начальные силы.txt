@@ -1,0 +1,12 @@
+4 бойзов
+1 ноб
+1 жетон подкрепления
+1 фабрика
+
+Максимумы:
+9 бойзов - OrkBoyz02.obj
+3 натиска - 571F92A507921521517B943BB75A75BEBDA155A2_Dakkajet Wazbomm.obj
+6 нобзов - OrkNobz06.obj
+3 баттлвагоны - OrkBattlewagon02.obj
+3 килл крузеры - OrkLanda.obj
+3 гарганты - 68658BD82767739E6BC307FACCADE8B4F962E9E2_httpsdldropboxusercontentcomu98218671OrksEpicGreatGargantobj.obj

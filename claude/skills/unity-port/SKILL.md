@@ -148,7 +148,7 @@ points at the folder (`"com.arcengine.runtime": "file:<path to unity/com.arcengi
 `"testables": ["com.arcengine.runtime"]`), run the import and the tests in batchmode. Unity writes
 `.meta` files into the folder — they belong to the repository (scenes reference the GUIDs).
 `arc-export.json` format change: `FORMAT` in `export-unity.mjs` and `Format` in `ArcImporter.cs`
-together — `tests/unity-export.test.mjs` compares them.
+together — nothing compares them automatically, so a format change means reading both sides.
 
 ## Pitfalls (each already cost an iteration)
 

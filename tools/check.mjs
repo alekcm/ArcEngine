@@ -1,18 +1,19 @@
 // ============================================================================
-//  ArcEngine — code check: types (tsc) and tests (node --test)
+//  ArcEngine — code check: types (tsc) and the rules audit
 // ----------------------------------------------------------------------------
-//  node tools/check.mjs            types and tests
+//  node tools/check.mjs            types and the rules audit
 //  node tools/check.mjs --types    types only
-//  node tools/check.mjs --tests    tests only
+//  node tools/check.mjs --rules    the rules audit only
 //
 //  Types: TypeScript checks the JS via JSDoc — tsconfig.json (game) and
 //  _utils/editor/tsconfig.json (editor). TypeScript is not a project dependency:
 //  npx takes it from the npm cache (the first run downloads it). Babylon types —
 //  libs/babylon.d.ts, own declarations — globals.d.ts. None of this goes into the archive.
 //
-//  Tests: tests/*.test.mjs — logic without 3D: Store, Terrain3D.heightAt, the asset
-//  scanner, the editor's writing of Constants.js and Objects.js (_utils/editor/save.mjs),
-//  the link between the claude/skills/ skills and CLAUDE.md.
+//  Rules audit: tools/fs-audit.mjs — every check quotes a line of the Rules
+//  Reference (docs/forbidden-stars/01-rules-reference.md), builds the state of
+//  exactly that case and looks at what the engine does. There are no unit tests
+//  of the game: they missed rules and were replaced by this audit.
 // ============================================================================
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -26,10 +27,10 @@ const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\
 const STEPS = [
   { flag: '--types', title: 'типы игры', run: () => spawnSync(TSC + ' -p tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--types', title: 'типы редактора', run: () => spawnSync(TSC + ' -p _utils/editor/tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
-  { flag: '--tests', title: 'тесты', run: () => spawnSync(process.execPath, ['--test', 'tests/*.test.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
+  { flag: '--rules', title: 'правила', run: () => spawnSync(process.execPath, ['tools/fs-audit.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
 ];
 
-const only = ['--types', '--tests'].filter(f => process.argv.includes(f));
+const only = ['--types', '--rules'].filter(f => process.argv.includes(f));
 const failed = [];
 console.log('\n' + C.cyn + C.b + '  ArcEngine' + C.r + ' ' + C.dim + '— проверка' + C.r);
 for (const step of STEPS) {

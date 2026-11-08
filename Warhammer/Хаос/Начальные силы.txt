@@ -1,0 +1,12 @@
+2 культиста
+2 космодесантника хаоса
+1 иконоборец
+1 фабрика
+
+Максимумы:
+9 культистов - ChaosCultist.obj
+3 иконоборца - httpsdrivegooglecomucexportdownloadid0BHqqb4mcF7SekxxQWpZWVZ6NUk.obj
+6 космодесантов хаоса - ChaosMarine.obj
+3 хелбрута - ChaosHelbrute.obj
+3 отвратительных тяжелых крейсера - httpsdrivegooglecomucexportdownloadid0BHqqb4mcF7SazZ1QzVUcTM5V3c.obj
+3 титана "Налётчик" - ChaosTitan.obj
