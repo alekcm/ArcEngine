@@ -120,6 +120,9 @@ class FSGame {
         cam.zoom = FS_CAMERA_ZOOM;
         cam.zoomTarget = FS_CAMERA_ZOOM;
         cam.lookAt(this.app.location.width / 2, this.app.location.height / 2);
+        // Стороны света (штормы) привязаны к миру: азимут не крутим —
+        // «север» на экране всегда вверху, стрелки на картах совпадают с полем.
+        if (cam.lockAzimuth) cam.lockAzimuth(true);
     }
 
     // --- the connection --------------------------------------------------------
@@ -375,6 +378,12 @@ class FSGame {
         const me = s.seat;
         // The camera belongs to the player — it never moves, not even for the battle.
         this.hand = [];
+        // The question of the last effect is closed: the rings it lit go out.
+        if (!s.pending && this.questionMarkersActive) {
+            this.questionMarkersActive = false;
+            FSView.showSelection(this.app, this.view, []);
+            FSView.clearHighlights(this.view);
+        }
         const ctx = { title: '', text: '', status: this.status || '', warn: this.warn || '', actions: [], mode: this.mode, setupCellSelected: false };
         // A new order (or a new step of it) — the pending action is dropped.
         const orderKey = s.order ? s.order.order + ':' + s.order.phase : '';
@@ -386,11 +395,22 @@ class FSGame {
             this.warn = '';
             this.overflow = null;
             this.deployOverflow = null;
+            this.strikeTargets = null;
             FSView.clearHighlights(this.view);
         }
+        // A NEW question from the server is a new choice: the picks of the old
+        // one do not carry over. A local refresh triggered by our own clicks
+        // keeps the same question object, so the accumulated picks survive.
+        if (s.pending && this.pendingQuestionRef !== s.pending.question) {
+            this.pendingQuestionRef = s.pending.question;
+            this.effectPick = [];
+            this.effectDie = null;
+        }
+        if (s.pending) this.questionMarkersActive = true;
         // The question of the effect of a card: the player chooses.
         if (s.pending) {
             this.panelQuestion(s, ctx);
+            this.updateQuestionMarkers();
             ctx.mode = this.mode;
             this.refreshPlaque();
             FSUI.update(s, ctx);
@@ -991,6 +1011,8 @@ class FSGame {
             // The engine names the pairs of a void and a world: the ships shoot from one
             // void into the world next to it, and only at an enemy world.
             const targets = FS_RULES.orbitalStrikeTargets(s, me);
+            this.strikeTargets = targets;
+            if (targets.length) this.ringAreas(targets); else FSView.clearHighlights(this.view);
             ctx.text = targets.length ? 'Щёлкните по миру, чтобы ударить с орбиты.' : 'Цели нет.';
             ctx.status = 'Корабли в пустоте бьют по соседнему миру.';
             for (const t of targets) {
@@ -1005,7 +1027,7 @@ class FSGame {
             }
             ctx.actions.push({
                 kind: 'secondary', label: 'Без удара — закончить приказ',
-                onClick: () => this.net.cmd({ type: 'finishAdvance' }),
+                onClick: () => { this.strikeTargets = null; this.net.cmd({ type: 'finishAdvance' }); },
             });
         }
     }
@@ -1654,32 +1676,48 @@ class FSGame {
                 { icon: 'asset.materiel', label: 'Материя', count: p.materiel },
             ];
             if (!(ev.drawn || []).length) {
-                ctx.text = 'Нет жетонов событий: вскрывается верхняя карта колоды (событие не разыгрывается, шторм всё равно ходит).';
-                // Nothing to choose — the opened card decides the storm; show it
-                // before anything is resolved, like every other event card.
+                // Жетона развития на колоде нет: верхняя карта открывается ТОЛЬКО
+                // для движения шторма — она не разыгрывается и возвращается в колоду.
                 const topName = ev.top;
                 const topData = FS_DATA.events.find(e => e.faction === p.faction && e.name === topName);
-                const modalItem = {
-                    kind: 'Карта из колоды событий', name: topName || '—',
+                ctx.text = 'Жетона развития на колоде событий нет. Верхняя карта колоды вскрывается для движения шторма: её эффект не разыгрывается, шторм обязан сдвинуться по её стрелкам.';
+                ctx.status = 'Вскрыта карта: «' + (topName || '—') + '» — передвиньте шторм по её стрелкам.';
+                const wide = ok => ({
+                    kind: 'Вскрыта для шторма — не разыгрывается', name: topName || '—',
                     text: (topData && topData.text) || '',
                     storm: (topData && topData.storm) || [],
-                    okLabel: 'Вскрыта для шторма',
+                    okLabel: ok,
+                });
+                const modalItem = wide('Вернуть карту в колоду — дальше');
+                // Саму карту видно СРАЗУ — до того, как сдвинут шторм, как любую карту.
+                ctx.previewCard = {
+                    kind: 'Вскрыта для шторма — не разыгрывается', name: topName || '—',
+                    text: (topData && topData.text) || '',
+                    storm: (topData && topData.storm) || [], okLabel: 'Вскрыта для шторма',
                 };
+                ctx.handTitle = 'Карта вскрыта для шторма';
+                ctx.hand = topName ? [{
+                    icon: 'cube.morale', count: 1, label: topName,
+                    kind: 'ВСКРЫТА ДЛЯ ШТОРМА',
+                    hint: (topData && topData.text) || '',
+                    onClick: () => FSUI.showEventConfirm(wide('Понятно'), () => this.refresh()),
+                }] : [];
                 const stormStepDone = !!ev.stormMoved;
                 const canMove = FS_RULES.stormOptions(s, me).length > 0;
                 if (stormStepDone || !canMove) {
                     ctx.actions.push({
-                        kind: 'primary', icon: 'ui.next', label: 'Показать событие',
+                        kind: 'primary', icon: 'ui.next', label: 'Вернуть карту в колоду — дальше',
                         enabled: true,
                         onClick: () => FSUI.showEventConfirm(modalItem, () => this.net.cmd({ type: 'resolveEvent' })),
                     });
                 } else {
                     ctx.actions.push({
-                        kind: 'primary', icon: 'ui.next', label: 'Сначала сдвиньте шторм',
+                        kind: 'primary', icon: 'ui.storm', label: 'Сначала сдвиньте шторм',
                         enabled: false,
                         onClick: () => this.refresh(),
                     });
                 }
+                return;
             }
             const counts = new Map();
             for (const name of ev.drawn || []) counts.set(name, (counts.get(name) || 0) + 1);
@@ -2006,6 +2044,105 @@ class FSGame {
         return FS_RULES.retreatTargets(s, s.seat);
     }
 
+    // The units / structures / sectors a pending effect can touch are lit on
+    // the board: the player clicks the models themselves, not a list in the panel.
+    updateQuestionMarkers() {
+        const s = this.state;
+        if (!s || !s.pending) {
+            FSView.showSelection(this.app, this.view, []);
+            FSView.clearHighlights(this.view);
+            return;
+        }
+        const q = s.pending.question || {};
+        // Units: a ring under every one the effect may take.
+        const rings = [];
+        if (q.kind === 'units') {
+            for (const id of q.options || []) {
+                const pos = this.view.unitPositions && this.view.unitPositions.get(id);
+                if (pos) rings.push({ x: pos.x, y: pos.y, z: pos.z, color: '#7df0a1' });
+            }
+            FSView.showSelection(this.app, this.view, rings);
+            FSView.clearHighlights(this.view);
+            return;
+        }
+        FSView.showSelection(this.app, this.view, []);
+        const hl = [];
+        // Structures and sectors: a ring on the spot they stand on / lie in.
+        if (q.kind === 'structures') {
+            for (const id of q.options || []) {
+                const st = (s.structures || []).find(x => x.id === id);
+                if (!st) continue;
+                const sys = s.systems.find(x => x.id === st.system);
+                if (!sys) continue;
+                const disc = FSView.discAt(this.app, sys, st.area, this.view.metrics);
+                hl.push({ x: disc.x, y: disc.y + 2, z: disc.z });
+            }
+        } else if (q.kind === 'areas') {
+            for (const area of q.options || []) {
+                const sys = s.systems.find(x => x.id === area.system);
+                if (!sys) continue;
+                const disc = FSView.discAt(this.app, sys, area.pos, this.view.metrics);
+                hl.push({ x: disc.x, y: disc.y + 2, z: disc.z });
+            }
+        } else if (q.kind === 'systems') {
+            for (const id of q.options || []) {
+                const sys = s.systems.find(x => x.id === id);
+                if (!sys) continue;
+                const p = FSView.tilePos(this.app, sys, this.view.metrics);
+                hl.push({ x: p.x, y: this.app.location.terrain.heightAt(p.x, p.y) + 8, z: p.y });
+            }
+        }
+        FSView.highlight(this.view, hl);
+    }
+
+    // A click on the board answers the pending effect: units, structures,
+    // areas and systems are all picked with the mouse; the panel list is a fallback.
+    questionClick(meta) {
+        const s = this.state;
+        const pending = s.pending;
+        const q = pending && pending.question;
+        if (!q) return false;
+        const seat = pending.answerSeat === undefined ? pending.seat : pending.answerSeat;
+        if (seat !== s.seat) return false;      // ждём не нас
+        const send = answer => {
+            this.net.cmd({ type: 'effect', answer });
+            this.effectPick = [];
+            this.effectDie = null;
+        };
+        if (q.kind === 'units' && meta.fs === 'unit') {
+            const id = meta.unit;
+            if (!(q.options || []).includes(id)) { this.status = 'Этот отряд не подходит.'; this.refresh(); return true; }
+            const n = q.n || 1;
+            if (n <= 1) { send({ units: [id] }); return true; }
+            const list = (this.effectPick = this.effectPick || []);
+            const i = list.indexOf(id);
+            if (i >= 0) list.splice(i, 1);
+            else if (list.length < n) list.push(id);
+            else this.status = 'Можно выбрать не больше ' + n + '.';
+            this.refresh();
+            return true;
+        }
+        if (q.kind === 'structures' && meta.fs === 'structure') {
+            const id = meta.structure;
+            if (!(q.options || []).includes(id)) { this.status = 'Эту постройку выбрать нельзя.'; this.refresh(); return true; }
+            send({ structure: id });
+            return true;
+        }
+        if (q.kind === 'areas' && meta.fs === 'area') {
+            const area = (q.options || []).find(a => a.system === meta.system && a.pos === meta.pos);
+            if (!area) { this.status = 'Этот сектор не подходит.'; this.refresh(); return true; }
+            send({ [q.answerKey || 'area']: area });
+            return true;
+        }
+        if (q.kind === 'systems' && meta.fs === 'system') {
+            const id = meta.system;
+            if (!(q.options || []).includes(id)) { this.status = 'Эту систему выбрать нельзя.'; this.refresh(); return true; }
+            send({ system: id });
+            return true;
+        }
+        return false;
+    }
+
     // The question of the effect: the player chooses the units, the dice, the
     // card or the place. Everything else the engine did itself.
     panelQuestion(s, ctx) {
@@ -2028,6 +2165,7 @@ class FSGame {
         };
         switch (q.kind) {
             case 'units': {
+                ctx.status = 'Щёлкните по отряду на доске — или по строке слева.';
                 const units = q.options.map(id => s.units.find(u => u.id === id)).filter(Boolean);
                 this.effectPick = this.effectPick || [];
                 for (const u of units) {
@@ -2135,6 +2273,7 @@ class FSGame {
                 return;
             }
             case 'structures': {
+                ctx.status = 'Щёлкните по постройке на доске — или по строке слева.';
                 for (const id of q.options) {
                     const st = s.structures.find(x => x.id === id);
                     ctx.actions.push({
@@ -2166,6 +2305,7 @@ class FSGame {
                 return;
             }
             case 'areas': {
+                ctx.status = 'Щёлкните по сектору на доске — или по строке слева.';
                 for (const area of q.options) {
                     const sys = s.systems.find(x => x.id === area.system);
                     const world = sys && sys.areas.find(a => a.pos === area.pos);
@@ -2178,6 +2318,7 @@ class FSGame {
                 return;
             }
             case 'systems': {
+                ctx.status = 'Щёлкните по системе на доске — или по строке слева.';
                 for (const id of q.options) {
                     const sys = s.systems.find(x => x.id === id);
                     ctx.actions.push({
@@ -2810,6 +2951,18 @@ class FSGame {
             this.stormClick(meta);
             return;
         }
+        // The orbital strike: the target is picked on the board itself.
+        if (this.mode === 'strike' && s.order && s.order.phase === 'strike' && meta.fs === 'area' && target) {
+            const t = (this.strikeTargets || []).find(x => x.system === target.system && x.pos === target.pos);
+            if (!t) { this.status = 'Удар идёт по вражескому миру в радиусе пустоты.'; this.refresh(); return; }
+            this.mode = 'idle';
+            this.strikeTargets = null;
+            this.net.cmd({ type: 'orbitalStrike', system: t.system, pos: t.pos, from: t.from });
+            return;
+        }
+        // The pending question of a card is answered by clicking the models on
+        // the board — a list in the panel stays as a fallback only.
+        if (s.pending && s.pending.question && this.questionClick(meta)) return;
         // The dice of the battle lie on the ground of the contested sector: a
         // click on one of them answers the question about a reroll — no list
         // in the panel is needed.

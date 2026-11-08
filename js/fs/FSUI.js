@@ -626,17 +626,6 @@ const FSUI = {
     },
 
     // How many of every unit of a faction stand on the board right now.
-    deployedUnits(state, seat) {
-        const counts = {};
-        let total = 0;
-        for (const u of state.units || []) {
-            if (u.seat !== seat) continue;
-            counts[u.unit] = (counts[u.unit] || 0) + 1;
-            total += 1;
-        }
-        return { counts, total };
-    },
-
     // The slide-out dossier of a faction, on the right edge of the screen: the
     // ability of the faction, what its units have in cubes, health and morale,
     // and how many of them stand on the board against how many it can field.
@@ -651,8 +640,9 @@ const FSUI = {
             : FS_DATA.factions.find(f => f.id === p.faction);
         if (!faction) { this.drawerMounted = false; return null; }
         const color = p.color || faction.color || '#d8b873';
-        const deployed = this.deployedUnits(state, seat);
+        const supplyUnits = (p.supply && p.supply.units) || {};
         const units = faction.units || [];
+        const supplyTotal = units.reduce((n, u) => n + (supplyUnits[u.id] || 0), 0);
         const totalMax = units.reduce((n, u) => n + (u.max || 0), 0);
 
         const drawer = this.el('aside', 'fs-faction-drawer' + (this.drawerMounted ? '' : ' is-entering'));
@@ -704,11 +694,11 @@ const FSUI = {
 
         const unitsHead = this.el('div', 'fs-drawer-eyebrow is-row');
         unitsHead.append(this.el('span', '', 'Отряды'));
-        unitsHead.append(this.el('span', 'fs-drawer-col', 'на поле боя'));
+        unitsHead.append(this.el('span', 'fs-drawer-col', 'в резерве'));
         body.append(unitsHead);
         const list = this.el('div', 'fs-unit-list');
         for (const def of units) {
-            const count = deployed.counts[def.id] || 0;
+            const count = supplyUnits[def.id] || 0;
             const row = this.el('div', 'fs-unit-row');
             const icon = this.el('div', 'fs-unit-ico');
             icon.append(this.iconEl(def.type === 'ship' ? 'mark.ship' : 'mark.ground'));
@@ -731,8 +721,8 @@ const FSUI = {
         }
         body.append(list);
         const total = this.el('div', 'fs-drawer-total');
-        total.append(document.createTextNode('Всего на поле боя: '));
-        total.append(this.el('b', '', String(deployed.total)));
+        total.append(document.createTextNode('В резерве: '));
+        total.append(this.el('b', '', String(supplyTotal)));
         total.append(document.createTextNode(' из '));
         total.append(this.el('b', '', String(totalMax)));
         total.append(document.createTextNode(' возможных по снабжению'));

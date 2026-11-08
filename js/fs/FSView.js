@@ -1989,7 +1989,7 @@ const FSView = {
     showSelection(app, view, list) {
         if (!view.selection) view.selection = [];
         if (!view.selectionRings) view.selectionRings = [];
-        while (view.selectionRings.length < 10) {
+        while (view.selectionRings.length < 24) {
             const ring = BABYLON.MeshBuilder.CreateTorus('fs-pick-' + view.selectionRings.length,
                 { diameter: 34, thickness: 2.4, tessellation: 32 }, view.scene);
             ring.isPickable = false;

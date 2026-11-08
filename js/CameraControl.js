@@ -302,9 +302,14 @@ class CameraController {
     }
 
     // Look around: azimuth and pitch change, the camera stays in place — the target swings around it.
+    // Шашки карт направлений (штормы) привязаны к миру, а не к экрану:
+    // игра может заблокировать азимут, чтобы стороны на карте всегда совпадали
+    // со стрелками на экране.
+    lockAzimuth(on) { this.azimuthLocked = on !== false; }
+
     _look(dAzimuth, dPitch) {
         const e = this._eye();
-        this.azimuth += dAzimuth;
+        if (!this.azimuthLocked) this.azimuth += dAzimuth;
         this.pitch = this._clampPitch(this.pitch + dPitch);
         const d = this.distance(), cp = Math.cos(this.pitch);
         this._setTarget3(
@@ -424,7 +429,7 @@ class CameraController {
             // Orbit without limits does not go under the target: the pitch floor is higher than
             // for look-around (a pitch already below it only rises).
             const floor = this._limited() ? -Infinity : Math.min(this.pitch, CameraController.FREE_PITCH.orbitMin * Math.PI / 180);
-            this.azimuth += (p.x - rec.x) * k;
+            if (!this.azimuthLocked) this.azimuth += (p.x - rec.x) * k;
             this.pitch = Math.max(floor, this._clampPitch(this.pitch + (p.y - rec.y) * k));
         } else if (this._pinch && rec.mode === 'touch') {
             rec.x = p.x;
