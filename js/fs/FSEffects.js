@@ -43,7 +43,7 @@ const FS_EFFECTS = {
         if (!text) return [];
         const clean = String(text)
             .replace(/\*[^*]*\*/g, ' ')          // the unit ability in italics
-            .replace(/«[^»]*»/g, ' ')
+            .replace(/(?<!(?:класс[а-яё]*|корабл[а-яё]*)\s*)«[^»]*»/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
         if (!clean || clean === '—') return [];
@@ -75,7 +75,7 @@ const FS_EFFECTS = {
             const mThen = /^если вы это сдела[а-яёa-z]*,?\s*(?:то\s+)?/i.exec(sentence);
             if (mThen && prev && prev.op === 'trigger') {
                 const body = sentence.slice(mThen[0].length).trim();
-                const inner = this.parseSentence(body, ctx || {});
+                const inner = this.parse(body.replace(/\.+$/, '') + '.', ctx || {});
                 prev.steps = (Array.isArray(prev.steps) ? prev.steps : []).concat(inner);
                 continue;
             }
@@ -95,7 +95,7 @@ const FS_EFFECTS = {
                 // ability sentence before it (the same card): the steps are
                 // the same body with the condition inverted.
                 const body = sentence.slice(mOther[0].length).trim();
-                const parsed = this.parseSentence(body, ctx || {});
+                const parsed = this.parse(body.replace(/\.+$/, '') + '.', ctx || {});
                 for (const one of parsed) if (one) one.cond = Object.assign({ not: prevCond }, one.cond || {});
                 if (!parsed.length) {
                     steps.push({ op: 'note', text: sentence });
@@ -114,7 +114,7 @@ const FS_EFFECTS = {
             // rejoined as one body.
             const peeled = this.peelCond(sentence) || this.peelCondMid(sentence) || this.peelImplicitCond(sentence);
             if (peeled) {
-                const parsed = this.parseSentence(peeled.rest, ctx || {});
+                const parsed = this.parse(peeled.rest.replace(/\.+$/, '') + '.', ctx || {});
                 for (const one of parsed) if (one) one.cond = Object.assign(one.cond || {}, peeled.cond);
                 const avoidPeeled = this.avoidOf(sentence);
                 if (avoidPeeled && parsed.length) { parsed[parsed.length - 1].avoid = avoidPeeled; }
@@ -132,7 +132,7 @@ const FS_EFFECTS = {
             const perCube = this.peelPerCube(sentence);
             if (perCube) {
                 prevCond = null;
-                const parsed = this.parseSentence(perCube.rest, ctx || {});
+                const parsed = this.parse(perCube.rest.replace(/\.+$/, '') + '.', ctx || {});
                 for (const one of parsed) {
                     if (!one) continue;
                     one.per = 'cube';
@@ -198,6 +198,9 @@ const FS_EFFECTS = {
         if (!m) {
             // "Destroy it, unless the opponent spends a number of cubes."
             m = /уничтожьте его, если противник не потрат[а-яёa-z]*\s+(?:(\d+)\s*)?(?:куб[а-яёa-z]*|количество куб[а-яёa-z]*)/i.exec(sentence);
+            // «количество кубиков, равное командному уровню ставки» — the price
+            // is not a fixed number: no avoid to offer.
+        if (/равное командному уровню/i.test(sentence)) return null;
         }
         if (!m) return null;
         return { n: m[1] ? Number(m[1]) : 1, kind: m[2] ? this.icon(m[2]) : 'any' };
@@ -426,7 +429,7 @@ const FS_EFFECTS = {
         if (!m) return null;
         const k1 = this.iconKind(m[3]), k2 = this.iconKind(m[5]);
         if (k1 !== 'token' || k2 !== 'token') return null;
-        const filter = typeFilter(m[1]) || unitFilter(m[1]);
+        const filter = unitFilter(m[1]) || typeFilter(m[1]);
         const max = m[6] ? Number(m[6]) : null;
         const t = { op: 'gainToken', per: 'unit', filter, max, who: 'me' };
         return [{
@@ -444,13 +447,16 @@ const FS_EFFECTS = {
         const tail = String(m[3] || '');
         const parts = tail.split(/\s+,?\s*и\s+затем\s+/i);
         const pieces = [];
-        for (const p of parts) pieces.push(...this.parse(String(p).trim() + '.', ctx || {}));
+        for (const p of parts) pieces.push(...this.parse(String(p).trim().replace(/\.+$/, '') + '.', ctx || {}));
         if (!pieces.length) return null;
         const what = String(m[2] || '').trim();
-        const clean = stripQualifier(what).replace(/в \S+(?: \S+){0,3}$/u, '').trim();
+        const clean = stripQualifier(what)
+            .replace(/\s+для\s+того\s*$/i, '')
+            .replace(/в \S+(?: \S+){0,3}$/u, '')
+            .trim();
         const faction = this.factionOf(ctx);
         const units = this.unitNames(clean, faction);
-        const filter = units.length ? { types: units } : (typeFilter(clean) || unitFilter(clean));
+        const filter = units.length ? { types: units } : (unitFilter(clean) || typeFilter(clean));
         const steps = [{ op: 'destroy', n: num(m[1]), who: 'me', pick: true, filter, text: 'уничтожьте: ' + clean }];
         return steps.concat(pieces);
     },
@@ -476,7 +482,30 @@ const FS_EFFECTS = {
             && /`(?:att|def|morale)\.\s*(?:token|cube)`/i.test(s)) {
             return [{ op: 'note', text: s, manual: 'foe-ban' }];
         }
+        // «каждый раз, когда противник получает …» — the effect follows the FOE
+        // across the whole battle: the engine cannot see those events.
+        if (/каждый раз[^.;]{0,120}?когда\s+(?:противник[а-яёa-z]*|он)(?![а-яёa-z])/i.test(s)) {
+            return [{ op: 'note', text: s, manual: 'foe-trigger-gain' }];
+        }
+        // «Вы и ваш противник обязаны перебросить все ваши `morale cube`.» —
+        // both sides reroll the same kind of die, not the rerollAll default.
+        const mBoth = /вы\s+и\s+ваш\s+противник\s+обязаны\s+перебросить\s+все\s+(?:ваши\s+|свои\s+)?`([^`]+)`/i.exec(s);
+        if (mBoth) {
+            const kind = FS_EFFECTS.icon(mBoth[1]);
+            return [
+                { op: 'rerollDie', n: 99, kind, all: true, pick: true, who: 'me', ability: s },
+                { op: 'rerollDie', n: 99, kind, all: true, pick: true, who: 'foe', ability: s },
+            ];
+        }
         // «уничтожить N <кто>, чтобы <эффект>» — the price before the reward.
+        // «Уничтожьте … постройку» — the engine destroys units, not buildings:
+        // a visible note, never a unit loss. The either/либо sentence is left
+        // to its branch parser (each branch re-enters here without «либо»).
+        if (/уничтож[а-яёa-z]*[^.;]{0,140}?постройк[а-яёa-z]*/i.test(s)
+            && !/сброс[а-яёa-z]*\s+эт[ау]\s+карт[ау]/i.test(s)
+            && !/(?:^|\s)либо\s/i.test(s)) {
+            return [{ op: 'note', text: s, manual: 'destroy-structure' }];
+        }
         const dr = this.destroyToReward(s, ctx);
         if (dr) return dr;
         // The «за каждый ... получите 1 X либо 1 Y» ability: one choice.
@@ -487,11 +516,17 @@ const FS_EFFECTS = {
         let either = /^потрат/i.test(s) ? [s] : s.replace(/^\s*либо\s+/i, '').split(/\s+либо\s+/i);
         const splitAt = s.search(/\s+либо\s+/i);
         if (either.length >= 2 && splitAt > 0 && !/^потрат/i.test(s)) {
-            // The head of the shared prefix («Удалите 1 `morale cube`, чтобы
-            // получить » / «получите ») is reattached to every branch: each
-            // option a player picks is a complete, executable sentence.
+            // The head of the shared prefix is reattached to every branch only
+            // when the head is an open verb phrase («Удалите 1 `morale cube`,
+            // чтобы получить » / «получите »). When the head is a complete
+            // clause already («… в дружественном мире, где есть отряд нобзов, »),
+            // the branches are complete sentences: nothing to reattach.
             const headText = s.slice(0, splitAt).trim();
-            either = either.map((part, i) => (i === 0 ? part : headText + ' ' + part));
+            const tail = (headText.match(/([а-яёa-z]+)\s*,?\s*$/i) || [null, ''])[1] || '';
+            const needsHead = /(?:ть|сте|ете|ите|йте)$/i.test(tail);
+            if (needsHead) {
+                either = either.map((part, i) => (i === 0 ? part : headText + ' ' + part));
+            }
         }
         if (either.length >= 2) {
             // Every option keeps the sentence it came from — the buttons of the
@@ -527,12 +562,16 @@ const FS_EFFECTS = {
             const built = rule.build(m, ctx || {}, s);
             if (!built) continue;
             const steps = Array.isArray(built) ? built : [built];
+            // «… в этом мире» scopes the steps to the world of the combat: the
+            // engine takes that literally when it asks for a piece.
+            const here = /в этот мир|в этом мире|этого мира|этой области|этой области боя/i.test(s);
             return steps.map(x => {
                 const s2 = this.withScope(x, scope);
                 // «… на ваш выбор» — the resolving player chooses the foe's
                 // dice, not the foe.
                 if (s2.who === 'foe' && /на ваш выбор|по вашему выбору/i.test(s)
                     && ['rerollDie', 'spendDie', 'flipDie', 'setDie', 'loseDie'].includes(s2.op)) s2.picker = 'me';
+                if (here && s2 && !s2.dest && ['destroy', 'moveUnit', 'placeUnit', 'placeReinforcement'].includes(s2.op)) s2.dest = 'combatWorld';
                 return s2;
             });
         }
@@ -1006,7 +1045,8 @@ const FS_EFFECTS = {
                     R.log(state, seat, state.players[seat].name + ' перебрасывает кубики.');
                     return null;
                 }
-                return { question: { kind: 'dice', who: this.diceAsker(combat, side, step), diceSide: s2, op: 'rerollDie', n: Math.min(step.n, options.length), options, kind2: step.kind, text: 'Какие кубики перебросить?' } };
+                const want = this.count(R, state, seat, step, ctx);
+                return { question: { kind: 'dice', who: this.diceAsker(combat, side, step), diceSide: s2, op: 'rerollDie', n: Math.min(want, options.length), options, kind2: step.kind, text: 'Какие кубики перебросить?' } };
             }
             case 'spendDie': {
                 if (!inCombat) return null;
@@ -2525,6 +2565,17 @@ const RULES = [
         re: /(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.`]{0,40}?теря[а-яёa-z]*\s+(\d+)?\s*кубик/i,
         build: m => ({ op: 'loseDie', n: num(m[1]), kind: 'any', pick: true }),
     },
+    // "the opponent must reroll 1 cube for every unrouted X" — the count is per unit.
+    {
+        re: /противник[а-яёa-z]*\s+(?:обязана?|вынужден[а-яёa-z]*)\s*перебросить\s+(\d+)?\s*`([^`]+)`[^.;]{0,140}?за кажд[а-яёa-z]+[^.;]{0,140}?(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+([^.;:]{2,70}?)(?:\s+в\s+этом\s+бою|\s+в\s+этой\s+области|$)/i,
+        build: m => {
+            const kind = FS_EFFECTS.icon(m[2]);
+            if (!['att', 'def', 'morale', 'any'].includes(kind)) return null;
+            const filter = unitFilter(m[3]) || typeFilter(m[3]);
+            return { op: 'rerollDie', n: num(m[1]), kind, who: 'foe', pick: true,
+                     per: 'unit', inBattle: true, filter, text: m[0] };
+        },
+    },
     // "you must reroll 1 `any cube`" / "reroll all your `def. cube`"
     {
         re: /(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\s+(?:до\s+)?(всех|все|(\d+))?\s*(?:ваш[а-яёa-z]*|свои|своих|из своих)?\s*`([^`]+)`/i,
@@ -2632,7 +2683,7 @@ const RULES = [
         build: (m, ctx, s) => {
             const k1 = FS_EFFECTS.iconKind(m[3]), k2 = FS_EFFECTS.iconKind(m[5]);
             if (k1 !== 'token' || k2 !== 'token') return null;
-            const filter = typeFilter(m[1]) || unitFilter(m[1]);
+            const filter = unitFilter(m[1]) || typeFilter(m[1]);
             const n = num(m[2]);
             const max = m[6] ? Number(m[6]) : null;
             const t = { op: 'gainToken', per: 'unit', filter, max, who: 'me' };
@@ -2649,7 +2700,7 @@ const RULES = [
         build: m => {
             const kind = FS_EFFECTS.iconKind(m[3]);
             if (kind !== 'token' && kind !== 'cube') return null;
-            const filter = typeFilter(m[1]) || unitFilter(m[1]);
+            const filter = unitFilter(m[1]) || typeFilter(m[1]);
             return { op: kind === 'token' ? 'gainToken' : 'gainDie', n: num(m[2]), kind: FS_EFFECTS.icon(m[3]), per: 'unit', filter, max: m[4] ? Number(m[4]) : null, text: m[0] };
         },
     },
@@ -2659,7 +2710,7 @@ const RULES = [
         build: m => {
             const kind = FS_EFFECTS.iconKind(m[2]);
             if (kind !== 'token' && kind !== 'cube') return null;
-            const filter = typeFilter(m[3]) || unitFilter(m[3]);
+            const filter = unitFilter(m[3]) || typeFilter(m[3]);
             return {
                 op: kind === 'token' ? 'gainToken' : 'gainDie',
                 n: num(m[1]), kind: FS_EFFECTS.icon(m[2]), per: 'unit',
@@ -3390,10 +3441,6 @@ const RULES = [
         re: /половину\s+значения\s+боевого\s+духа/i,
         build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'morale-from-routed' }),
     },
-    {
-        re: /каждый раз[^.;]{0,120}?когда\s+(?:противник[а-яёa-z]*|он)(?![а-яёa-z])/i,
-        build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'foe-trigger-gain' }),
-    },
     // The sentences that say no rule of their own: the engine keeps them.
     {
         re: /кажд[а-яёa-z]*\s+пару\s+недеморализованн[а-яёa-z]*[^.;]{0,90}?(?:либо|или)/i,
@@ -3478,7 +3525,11 @@ function num(text) {
 // The name of one unit is printed in four ways in the sources
 // ("Сестра Репентия", "Сестра Ренентиля", "сестру Ренентию", "Сестры ренетентии").
 /** @type {[RegExp, string[]][]} */
-const UNIT_STEMS = [[/ре[пн]е[нт]/i, ['репен', 'ренент', 'ренетент']]];
+const UNIT_STEMS = [
+    [/ре[пн]е[нт]/i, ['репен', 'ренент', 'ренетент']],
+    [/бойз/i, ['бойз']],
+    [/натиск/i, ['натиск']],
+];
 // The «разного командного уровня» is a counting rule, not a name.
 function stripQualifier(text) {
     return String(text || '')
@@ -3496,7 +3547,9 @@ function typeFilter(text) {
 function unitFilter(text) {
     if (!text) return null;
     text = stripQualifier(text);
-    for (const [re, stems] of UNIT_STEMS) if (re.test(text)) return { contains: stems };
+    const contains = [];
+    for (const [re, stems] of UNIT_STEMS) if (re.test(text)) contains.push(...stems);
+    if (contains.length) return { contains };
     const names = text.split(/\s+или\s+|\s+и\s+/)
         .map(s => s.trim().replace(/[^А-Яа-яЁё']/g, ''))
         .filter(s => s.length >= 3);
