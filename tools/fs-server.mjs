@@ -81,6 +81,11 @@ class Room {
         this.log = [];
         // 'game' — the ordinary party; 'map' and 'battle' — the test modes of the lobby.
         this.mode = 'game';
+        // «Отменить ход»: a snapshot of the state before every successful command,
+        // newest last. One step back restores whatever the last command changed —
+        // whose command it was does not matter.
+        /** @type {any[]} */
+        this.undoStack = [];
         // A test party is played by one person: both seats belong to him, so the
         // server sends the view of the seat that has to act right now.
         this.solo = false;
@@ -123,6 +128,7 @@ class Room {
             interactiveSetup: true,
         });
         this.started = true;
+        this.undoStack = [];
         return true;
     }
 }
@@ -201,6 +207,7 @@ function startTest(room, host, msg) {
     room.mode = msg.mode;
     room.solo = true;
     room.started = true;
+    room.undoStack = [];
     return { ok: true };
 }
 
@@ -353,6 +360,8 @@ function sendState(room) {
     for (const p of room.players) {
         if (!p.ws) continue;
         const view = FS_RULES.view(room.state, room.solo ? soloSeat : p.seat);
+        // How many steps «Отменить ход» can go back.
+        view.undo = room.undoStack.length;
         if (room.solo) {
             // The client shows the same chair to the player and tells him whom he plays.
             view.solo = true;
@@ -415,9 +424,23 @@ function handle(ws, msg) {
         if (!room.state) { ws.send({ t: 'err', msg: 'Игра ещё не началась.' }); return; }
         // In a test party the player acts for the seat whose turn it is.
         const seat = room.solo ? activeSeat(room.state) : player.seat;
+        // The state before the command — the step the undo button will restore.
+        const pre = JSON.parse(JSON.stringify(room.state));
         const res = FS_RULES.apply(room.state, seat, msg.cmd);
         if (process.env.FS_DEBUG) console.log('  [fs] apply -> ' + JSON.stringify(res).slice(0, 120));
         if (!res.ok) { ws.send({ t: 'err', msg: res.error || 'Нельзя.' }); return; }
+        room.undoStack.push(pre);
+        if (room.undoStack.length > 200) room.undoStack.shift();
+        sendState(room);
+        return;
+    }
+    if (msg.t === 'undo') {
+        const room = ws.room;
+        if (!room) return;
+        if (!room.state) { ws.send({ t: 'err', msg: 'Игра ещё не началась.' }); return; }
+        const pre = room.undoStack.pop();
+        if (!pre) { ws.send({ t: 'err', msg: 'Нечего отменять.' }); return; }
+        room.state = pre;
         sendState(room);
         return;
     }

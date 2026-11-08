@@ -54,6 +54,10 @@ const FSNet = {
                 net.palette = palette;
                 return net.send({ t: 'palette', palette });
             },
+            // «Отменить ход»: take back the last command — any player's.
+            undo() {
+                return net.send({ t: 'undo' });
+            },
             // The test modes of the lobby: a ready map or a battlefield. The
             // server builds the party and the player takes both seats.
             test(opts) {

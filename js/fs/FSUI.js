@@ -137,10 +137,10 @@ const FSUI = {
         return box;
     },
 
-    // The board furniture the player may put away: the participants, the chronicle
+    // The board furniture the player may put away: the participants
     // and the window with the order tokens of the hand.
     panelState() {
-        if (!this.panels) this.panels = { players: true, chronicle: true, orders: false, topbar: true, battlePanel: 'third' };
+        if (!this.panels) this.panels = { players: true, orders: false, topbar: true, battlePanel: 'third' };
         return this.panels;
     },
 
@@ -205,6 +205,11 @@ const FSUI = {
     /** @type {((item: any) => void) | null} */
     onHandPlay: null,
 
+    // The undo of the last command, wired by FSGame — it is the server
+    // that owns the history; the button just asks it to take one step back.
+    /** @type {(() => void) | null} */
+    onUndo: null,
+
     renderModern(state, ctx) {
         const root = this.modernRoot;
         if (!root) return;
@@ -254,9 +259,24 @@ const FSUI = {
         full.addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); });
         corner.append(full);
 
-        // The two cards of the left rail hide and come back by these buttons.
+        // «Отменить ход»: every player can take back the last command, whoever
+        // made it — the server keeps the history and decides what a step is.
+        if (state) {
+            const undo = this.el('button', 'fs-undo-btn'); undo.type = 'button';
+            undo.title = 'Отменить последний ход — любого игрока';
+            undo.append(this.iconEl('ui.undo', 'fs-undo-ico'), this.el('span', '', 'Отменить ход'));
+            const canUndo = Number(state.undo) > 0;
+            if (!canUndo) { undo.disabled = true; undo.classList.add('is-disabled'); }
+            undo.addEventListener('click', () => {
+                undo.disabled = true; undo.classList.add('is-disabled');
+                if (this.onUndo) this.onUndo();
+            });
+            corner.append(undo);
+        }
+
+        // The card of the left rail hides and comes back by this button.
         const switches = this.el('div', 'fs-panel-switches');
-        for (const [key, icon, title] of [['players', 'mark.ground', 'Участники'], ['chronicle', 'ui.card', 'Хроника']]) {
+        for (const [key, icon, title] of [['players', 'mark.ground', 'Участники']]) {
             const on = this.panelState()[key];
             const button = this.el('button', 'fs-panel-switch' + (on ? ' is-on' : ''));
             button.append(this.iconEl(icon));
@@ -308,7 +328,7 @@ const FSUI = {
             const assets = p.assets || {};
             const reserves = Object.values((p.supply && p.supply.units) || {}).reduce((sum, count) => sum + (Number(count) || 0), 0);
             const resourceLine = this.el('div', 'fs-player-assets');
-            [['asset.forge', assets.forge, 'Кузницы'], ['asset.cache', assets.cache, 'Запасы'], ['ui.reinforce', assets.reinforcement, 'Подкрепления'], ['asset.prosperity', assets.prosperity, 'Процветание'], ['mark.ground', reserves, 'Отряды в запасе']].forEach(([icon, count, title]) => {
+            [['asset.forge', assets.forge, 'Кузницы'], ['asset.cache', assets.cache, 'Запасы'], ['order.event', assets.reinforcement, 'Подкрепления'], ['asset.prosperity', assets.prosperity, 'Процветание'], ['mark.ground', reserves, 'Отряды в запасе']].forEach(([icon, count, title]) => {
                 const chip = this.el('span', 'fs-asset-chip');
                 chip.append(this.iconEl(icon), this.el('b', '', String(count || 0)));
                 chip.title = title;
@@ -319,13 +339,6 @@ const FSUI = {
         });
         playersCard.append(list);
         if (this.panelState().players) rail.append(playersCard); else playersCard = null;
-        const logCard = this.el('section', 'fs-card fs-log-card'); const lh = this.el('div', 'fs-card-head'); lh.append(this.el('span', 'fs-eyebrow', 'Хроника')); logCard.append(lh);
-        const lines = this.el('div', 'fs-log-lines');
-        (state.log || []).slice(-6).reverse().forEach(l => {
-            const who = l.seat >= 0 && state.players[l.seat] ? state.players[l.seat].name + ': ' : '';
-            lines.append(this.el('div', 'fs-log-line', who + l.text));
-        }); logCard.append(lines);
-        if (this.panelState().chronicle) rail.append(logCard);
         root.append(rail);
 
         // The right panel does one thing at a time: what is going on, the tokens the
@@ -420,13 +433,6 @@ const FSUI = {
         const battleHand = this.renderBattleHand(ctx.battleHand);
         if (battleHand) root.append(battleHand);
         actions.scrollTop = scrollTop;
-        const hint = this.el('div', 'fs-map-hint');
-        hint.innerHTML = state.phase === 'setup'
-            ? '<b>СБОРКА КАРТЫ</b>　•　Клик по месту — предпросмотр　•　<b>Q</b>/<b>E</b> поворот　•　<b>F</b> другая сторона'
-            : ctx.mode === 'idle'
-                ? '<b>ДОСКА</b>　•　Клик — сведения　•　Перетаскивание — камера　•　Колесо — масштаб'
-                : '<b>ДОСКА</b>　•　Клик по отряду — выделить　•　Клик по сектору — идти　•　Перетаскивание — камера';
-        root.append(hint);
         if (ctx.warn) root.append(this.el('div', 'fs-toast', ctx.warn));
         else if (ctx.status && this.statusError(ctx.status)) root.append(this.el('div', 'fs-toast', ctx.status));
         this.renderPlaque();
@@ -606,15 +612,16 @@ const FSUI = {
         if (!tokens || !tokens.length) return null;
         const card = this.el('section', 'fs-tokens');
         card.append(this.el('div', 'fs-eyebrow', 'Ваши жетоны'));
+        const strip = this.el('div', 'fs-tokens-strip');
         for (const token of tokens) {
             const count = Number(token.count) || 0;
-            const row = this.el('div', 'fs-token-row' + (count ? '' : ' is-zero'));
-            if (token.hint) row.title = token.hint;
-            row.append(this.iconEl(token.icon || 'cube.any', 'fs-token-icon'));
-            row.append(this.el('b', 'fs-token-count', count + '×'));
-            row.append(this.el('span', 'fs-token-label', token.label));
-            card.append(row);
+            const item = this.el('span', 'fs-token' + (count ? '' : ' is-zero'));
+            item.title = token.label || '';
+            item.append(this.iconEl(token.icon || 'cube.any', 'fs-token-ico'));
+            item.append(this.el('b', 'fs-token-num', String(count)));
+            strip.append(item);
         }
+        card.append(strip);
         return card;
     },
 

@@ -701,7 +701,7 @@ const FSView = {
                 ctx.fillText(num, x, 88);
             } else {
                 // The materiel value: a gear and the number, then the asset chips.
-                const assetGlyph = /** @type {Record<string, string>} */ ({ forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'ui.reinforce', prosperity: 'asset.prosperity' });
+                const assetGlyph = /** @type {Record<string, string>} */ ({ forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'order.event', prosperity: 'asset.prosperity' });
                 const assets = world.assets || [];
                 const num = String(world.materiel || 0);
                 const icon = hasIcons ? 96 : 0;
@@ -1562,16 +1562,9 @@ const FSView = {
                 height: 4,
             }, view.scene);
             barrier.parent = root; barrier.position.y = 2; barrier.material = view.material('storm-barrier', '#8b376f', { emissive: true });
-            const core = BABYLON.MeshBuilder.CreateSphere('fs-storm-core-' + storm.id, { diameter: 17, segments: 12 }, view.scene);
-            core.parent = root; core.position.y = 12; core.material = view.material('storm-core', '#57205f', { emissive: true });
-            const ringA = BABYLON.MeshBuilder.CreateTorus('fs-storm-ring-a-' + storm.id, { diameter: 24, thickness: 1.6, tessellation: 24 }, view.scene);
-            ringA.parent = root; ringA.position.y = 12; ringA.rotation.x = .78; ringA.material = view.material('storm-ring-a', '#eb6dc6', { emissive: true });
-            const ringB = BABYLON.MeshBuilder.CreateTorus('fs-storm-ring-b-' + storm.id, { diameter: 29, thickness: 1, tessellation: 24 }, view.scene);
-            ringB.parent = root; ringB.position.y = 12; ringB.rotation.z = .72; ringB.material = view.material('storm-ring-b', '#8aa5ff', { emissive: true });
-            for (const mesh of [barrier, core, ringA, ringB]) { mesh.isPickable = false; mesh.metadata = root.metadata; }
+            // The anomaly is just the barrier: the purple strip along the edge of the tile.
+            barrier.isPickable = false; barrier.metadata = root.metadata;
             this.addMarker(view, root, 'prop');
-            this.addAnimated(view, ringA, 'y', .8 + view.animated.length * .01);
-            this.addAnimated(view, ringB, 'x', -.55 - view.animated.length * .01);
         }
         this.drawCombat(app, view, state);
     },
@@ -1782,7 +1775,7 @@ const FSView = {
                     face.rotation.x = Math.PI / 2;
                     face.position.y = 1.45;
                     const fmat = view.material('rein-face-' + side.id + '-' + i + (isRouted ? '-r' : ''), '#f4ecd9');
-                    fmat.diffuseTexture = this.iconTexture(view, 'ui.reinforce', isRouted ? '#8a8175' : '#3a3428');
+                    fmat.diffuseTexture = this.iconTexture(view, 'order.event', isRouted ? '#8a8175' : '#3a3428');
                     fmat.opacityTexture = fmat.diffuseTexture;
                     fmat.useAlphaFromDiffuseTexture = true;
                     fmat.backFaceCulling = false;

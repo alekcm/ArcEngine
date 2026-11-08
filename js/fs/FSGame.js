@@ -181,6 +181,12 @@ class FSGame {
             this.status = 'Связи с сервером нет. Запустите сервер игры: node tools/fs-server.mjs (или fs.bat)';
             this.refresh();
         });
+        // The corner «Отменить ход»: one step back on the server, whoever moved last.
+        FSUI.onUndo = () => {
+            this.status = 'Последний ход отменён.';
+            if (this.net) this.net.undo();
+            this.refresh();
+        };
     }
 
     // The link a friend can open in this LAN. Opened through localhost (fs.bat
@@ -637,7 +643,7 @@ class FSGame {
             });
         });
         if (selected && (selected.cell || selected.tile)) {
-            ctx.actions.push({ kind: 'secondary', label: 'ui.undo Снять выбор тайла', onClick: () => this.cancelSetupTile() });
+            ctx.actions.push({ kind: 'secondary', label: 'Снять выбор тайла', onClick: () => this.cancelSetupTile() });
         }
     }
 
@@ -790,7 +796,7 @@ class FSGame {
         return [
             { icon: 'asset.forge', label: 'Кузница', count: a.forge || 0 },
             { icon: 'asset.cache', label: 'Тайник', count: a.cache || 0 },
-            { icon: 'ui.reinforce', label: 'Подкрепление', count: a.reinforcement || 0 },
+            { icon: 'order.event', label: 'Подкрепление', count: a.reinforcement || 0 },
         ];
     }
 
@@ -807,9 +813,7 @@ class FSGame {
             ctx.text = 'Жетон приказа выкладывает ' + who + '.';
             ctx.status = 'Осталось приказов у вас: ' + left + '.';
             ctx.tokens = [
-                { icon: 'order.event', label: 'Приказы в руке', count: left },
                 { icon: 'asset.materiel', label: 'Материя', count: p.materiel },
-                { icon: 'mark.objective', label: 'Цели', count: p.objectives || 0 },
             ].concat(this.assetTokens(s, me));
             return;
         }
@@ -819,15 +823,13 @@ class FSGame {
                 + 'отрядами или постройками либо в соседнюю с такой системой.';
         ctx.status = this.status || (left ? 'Осталось приказов: ' + left : 'Все приказы выложены.');
         ctx.tokens = [
-            { icon: 'order.event', label: 'Приказы в руке', count: left },
             { icon: 'asset.materiel', label: 'Материя', count: p.materiel },
-            { icon: 'mark.objective', label: 'Цели', count: p.objectives || 0 },
         ].concat(this.assetTokens(s, me));
         const kinds = [
             ['advance', 'Наступление', 'cube.att', 'Движение и бой'],
-            ['deploy', 'Развёртывание', 'ui.reinforce', 'Покупка отрядов и построек'],
+            ['deploy', 'Развёртывание', 'mark.city', 'Покупка отрядов и построек'],
             ['strategize', 'Стратегия', 'order.strategize', 'Улучшения'],
-            ['dominate', 'Доминирование', 'mark.city', 'Ресурсы и способность'],
+            ['dominate', 'Доминирование', 'order.dominate', 'Ресурсы и способность'],
         ];
         const supply = typeof FS_RULES.ORDER_SUPPLY === 'number' ? FS_RULES.ORDER_SUPPLY : 2;
         const laid = p.placedOf || {};
@@ -886,7 +888,6 @@ class FSGame {
         ctx.tokens = [
             { icon: 'asset.materiel', label: 'Материя', count: s.players[me].materiel },
             { icon: 'order.strategize', label: 'Жетоны событий', count: s.players[me].eventTokens || 0 },
-            { icon: 'mark.objective', label: 'Цели', count: s.players[me].objectives || 0 },
         ].concat(this.assetTokens(s, me));
         for (const o of FS_RULES.availableOrders(s, me)) {
             const sys = s.systems.find(x => x.id === o.system);
@@ -1377,7 +1378,6 @@ class FSGame {
             ctx.tokens = [
                 { icon: 'order.strategize', label: 'Жетоны событий', count: (ev.drawn || []).length },
                 { icon: 'asset.materiel', label: 'Материя', count: p.materiel },
-                { icon: 'mark.objective', label: 'Цели', count: p.objectives || 0 },
             ];
             if (!(ev.drawn || []).length) {
                 ctx.text = 'Нет жетонов событий: вскрывается верхняя карта колоды (событие не разыгрывается, шторм всё равно ходит).';
@@ -1519,7 +1519,7 @@ class FSGame {
                     : 'Подкреплений нет — пропустите шаг.';
                 for (let i = 0; i <= max; i++) {
                     ctx.actions.push({
-                        kind: 'pick', icon: i ? 'ui.reinforce' : 'ui.next',
+                        kind: 'pick', icon: i ? 'order.event' : 'ui.next',
                         label: i === 0 ? 'Без подкреплений' : String(i),
                         count: i ? '1×' : null,
                         hint: 'Подкрепление даёт жетоны атаки и обороны',
