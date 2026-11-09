@@ -947,7 +947,8 @@ const FSUI = {
             for (const row of battle.damage.rows || []) {
                 const item = this.el('div', 'fs-battle-target'
                     + (row.destroyed ? ' is-dead' : row.demoralised ? ' is-routed' : row.selected ? ' is-picked' : ''));
-                item.append(this.iconEl(row.kind === 'structure' ? 'mark.bastion' : 'mark.ground', 'fs-battle-target-icon'));
+                item.append(this.iconEl(row.kind === 'structure' ? 'mark.bastion'
+                    : row.type === 'ship' ? 'mark.ship' : 'mark.ground', 'fs-battle-target-icon'));
                 item.append(this.el('span', 'fs-battle-target-name', row.name));
                 item.append(this.el('span', 'fs-battle-target-health', String(row.health)));
                 if (row.take) item.append(this.el('span', 'fs-battle-target-take', '−' + row.take));

@@ -1744,7 +1744,10 @@ const FSView = {
             // "Reinforcement Tokens"): its own miniature, painted fully white.
             // Until the OBJ loads (or if it fails) a flat white disc stands in.
             const reinforce = Number((c.reinforce && c.reinforce[side.id]) || 0);
-            const routed = Number((c.reinforceRouted && c.reinforceRouted[side.id]) || 0);
+            const flipped = typeof FS_RULES !== 'undefined' ? FS_RULES.reinforceFlipped(state, side.id) : [];
+            const destroyed = typeof FS_RULES !== 'undefined' ? FS_RULES.reinforceDestroyed(state, side.id) : [];
+            const live = [];
+            for (let i = 0; i < reinforce; i++) if (destroyed.indexOf(i) < 0) live.push(i);
             const sidePlayer = state.players[side.seat] || {};
             const reinDef = typeof FS_RULES !== 'undefined'
                 ? FS_RULES.reinforceUnitDef(sidePlayer.faction, area.world ? 'ground' : 'ship') : null;
@@ -1768,25 +1771,29 @@ const FSView = {
                         gaps.push({ mid: (a + b) / 2, width: b - a });
                     }
                     gaps.sort((a, b) => b.width - a.width);
-                    for (let i = 0; i < reinforce; i++) {
+                    for (let i = 0; i < live.length; i++) {
                         const g = gaps[i % gaps.length];
                         const ang = g.mid + Math.floor(i / gaps.length) * 0.38;
                         reinPositions.push({ x: centroid.x + Math.cos(ang) * ringR, z: centroid.z + Math.sin(ang) * ringR });
                     }
                 } else {
-                    const step = Math.PI * 2 / Math.max(1, reinforce);
-                    for (let i = 0; i < reinforce; i++) {
+                    const step = Math.PI * 2 / Math.max(1, live.length);
+                    for (let i = 0; i < live.length; i++) {
                         const ang = -Math.PI / 2 + i * step;
                         reinPositions.push({ x: centroid.x + Math.cos(ang) * ringR, z: centroid.z + Math.sin(ang) * ringR });
                     }
                 }
             }
-            for (let i = 0; i < reinforce; i++) {
-                const pt = reinPositions[i];
+            for (let k = 0; k < live.length; k++) {
+                const i = live[k];
+                const pt = reinPositions[k];
                 const node = new BABYLON.TransformNode('fs-rein-' + side.id + '-' + i, view.scene);
                 node.position.set(pt.x, groundY(pt.x, pt.z) + 1.4, pt.z);
-                node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id, reinforce: true };
-                const isRouted = i < routed;
+                // The id is what the damage command names; the white miniature
+                // on the board is therefore pickable like any other unit.
+                node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id,
+                    reinforce: true, index: i, reinforceId: 'reinforce-' + side.id + '-' + i };
+                const isRouted = flipped.indexOf(i) >= 0;
                 if (reinModel) {
                     // The CL0 miniature, every part plain white; a routed token
                     // lies flipped on its side, inert.
@@ -1846,8 +1853,6 @@ const FSView = {
         if (!c) return;
         const items = [];
         const seatSide = seat => (seat === c.attacker ? 'attacker' : 'defender');
-        const sysAreas = ((state.systems.find(s2 => s2.id === c.system) || {}).areas) || [];
-        const world = !!((sysAreas.find(a => a.pos === c.pos)) || {}).world;
         for (const u of state.units) {
             if (u.system !== c.system || u.area !== c.pos) continue;
             const def = FS_RULES.unitOf(state, u);
@@ -1869,15 +1874,16 @@ const FSView = {
         }
         for (const slot of (view.reinforceAnchors || [])) {
             const seat = slot.side === 'attacker' ? c.attacker : c.defender;
-            const type = world ? 'ground' : 'ship';
             const def0 = typeof FS_RULES !== 'undefined'
-                ? FS_RULES.reinforceUnitDef(state.players[seat].faction, type) : null;
+                ? FS_RULES.reinforceTokenDef(state, slot.side) : null;
+            const hp = typeof FS_RULES !== 'undefined'
+                ? FS_RULES.reinforceTokenHealth(state, slot.side, seat) : (def0 ? def0.health : 1);
             items.push({
-                key: 'rein:' + slot.side + ':' + slot.index + ':' + (slot.routed ? 1 : 0),
+                key: 'rein:' + slot.side + ':' + slot.index + ':' + hp + ':' + (slot.routed ? 1 : 0),
                 x: slot.x, y: slot.y + 1, z: slot.z,
-                hp: 1, morale: slot.routed ? 0 : (def0 ? def0.morale || 0 : 0),
+                hp, morale: slot.routed ? 0 : (def0 ? def0.morale || 0 : 0),
                 routed: !!slot.routed,
-                label: 'Подкрепление',
+                label: def0 ? def0.name : 'Подкрепление',
             });
         }
         view.unitChips = items;

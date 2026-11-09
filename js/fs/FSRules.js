@@ -3593,6 +3593,8 @@ const FS_RULES = {
             cards: { attacker: { hand: [], played: [] }, defender: { hand: [], played: [] } },
             reinforce: { attacker: 0, defender: 0 },
             reinforceRouted: { attacker: 0, defender: 0 },
+            reinforceFlipped: { attacker: [], defender: [] },
+            reinforceDestroyed: { attacker: [], defender: [] },
             damage: { attacker: 0, defender: 0 },
             winner: null,
         };
@@ -3742,9 +3744,14 @@ const FS_RULES = {
         const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
         const bastions = state.structures.filter(s => s.seat === seat && s.system === c.system && s.area === c.pos && s.type === 'bastion');
         const t = this.tokenUnits(state, side);
+        const flipped = this.reinforceFlipped(state, side);
+        const dead = this.reinforceDestroyed(state, side);
         const tokens = [];
         for (let i = 0; i < t.used; i++) {
-            tokens.push({ id: 'reinforce-' + side + '-' + i, kind: 'token', routed: i < t.routed });
+            // A destroyed token has left the board; the other slots keep their
+            // ids, so a target picked before the first hit is still valid.
+            if (dead.indexOf(i) >= 0) continue;
+            tokens.push({ id: 'reinforce-' + side + '-' + i, kind: 'token', routed: flipped.indexOf(i) >= 0 });
         }
         return units.concat(bastions, tokens);
     },
@@ -3760,14 +3767,128 @@ const FS_RULES = {
             || null;
     },
 
+    // The tokens of a side that are flipped to their routed side and the ones
+    // that were destroyed. Both lists hold slots, not components: the slot of a
+    // destroyed token stays in `reinforce` so the ids of the other tokens do
+    // not change during a damage step.
+    reinforceFlipped(state, side) {
+        const c = state.combat;
+        if (!c) return [];
+        c.reinforceFlipped = c.reinforceFlipped || { attacker: [], defender: [] };
+        if (!c.reinforceFlipped[side]) {
+            // An older state carries only the count: its first N tokens were
+            // the flipped ones.
+            const n = (c.reinforceRouted && c.reinforceRouted[side]) || 0;
+            const list = [];
+            for (let i = 0; i < n; i++) list.push(i);
+            c.reinforceFlipped[side] = list;
+        }
+        return c.reinforceFlipped[side];
+    },
+
+    reinforceDestroyed(state, side) {
+        const c = state.combat;
+        if (!c) return [];
+        c.reinforceDestroyed = c.reinforceDestroyed || { attacker: [], defender: [] };
+        return c.reinforceDestroyed[side] || (c.reinforceDestroyed[side] = []);
+    },
+
+    // The CL0 miniature a token stands for in this very combat: a ground unit
+    // on a world, a ship in the void (rules, "Reinforcement Tokens").
+    reinforceTokenDef(state, side) {
+        const c = state.combat;
+        if (!c) return null;
+        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const area = this.area(this.system(state, c.system), c.pos);
+        return this.reinforceUnitDef(state.players[seat].faction, area && area.world ? 'ground' : 'ship');
+    },
+
+    // Its printed health, with the same card modifiers a plastic unit gets
+    // («Серебряная броня», «Превосходство»). A token is a unit for all rules
+    // and game effects, so a lethal hit destroys it just like a miniature.
+    reinforceTokenHealth(state, side, seat) {
+        const c = state.combat;
+        if (!c) return 1;
+        const owner = side === 'attacker' ? c.attacker : c.defender;
+        const actor = seat === undefined ? owner : seat;
+        const def = this.reinforceTokenDef(state, side);
+        let health = def ? def.health : 1;
+        if (c.healthBonus && owner === actor) health += c.healthBonus;
+        if (c.enemyHealth && owner !== actor) health = Math.min(health, c.enemyHealth);
+        return Math.max(1, health);
+    },
+
+    // The slot of an id like 'reinforce-defender-2' among the standing tokens.
+    reinforceTokenIndex(state, side, id) {
+        if (typeof id !== 'string' || id.indexOf('reinforce-') !== 0) return -1;
+        const parts = id.split('-');
+        if (parts.length !== 3 || parts[1] !== side) return -1;
+        const i = Number(parts[2]);
+        if (!Number.isInteger(i) || i < 0 || i >= this.tokenUnits(state, side).used) return -1;
+        return this.reinforceDestroyed(state, side).indexOf(i) >= 0 ? -1 : i;
+    },
+
+    // A nonlethal hit flips this very token to its routed side. An already
+    // routed token is inert (rules, "Rout And Rally").
+    routeReinforcementToken(state, side, index) {
+        if (index < 0 || index >= this.tokenUnits(state, side).used) return false;
+        const flipped = this.reinforceFlipped(state, side);
+        if (flipped.indexOf(index) >= 0) return false;
+        flipped.push(index);
+        const c = state.combat;
+        c.reinforceRouted = c.reinforceRouted || { attacker: 0, defender: 0 };
+        c.reinforceRouted[side] = flipped.length;
+        return true;
+    },
+
+    // A lethal hit destroys the token: it leaves the contested area at once.
+    // Every token used in the combat still goes home at clean-up, so
+    // `reinforceUsed` is deliberately left alone here.
+    destroyReinforcementToken(state, side, index, loss) {
+        if (index < 0 || index >= this.tokenUnits(state, side).used) return false;
+        const dead = this.reinforceDestroyed(state, side);
+        if (dead.indexOf(index) >= 0) return false;
+        dead.push(index);
+        const flipped = this.reinforceFlipped(state, side);
+        const at = flipped.indexOf(index);
+        if (at >= 0) flipped.splice(at, 1);
+        const c = state.combat;
+        c.reinforceRouted = c.reinforceRouted || { attacker: 0, defender: 0 };
+        c.reinforceRouted[side] = flipped.length;
+        // «за каждый уничтоженный отряд» counts a token as a unit too.
+        if (loss) c.destroyedNow = (c.destroyedNow || 0) + 1;
+        return true;
+    },
+
+    // «… ваши отряды не деморализуются»: a card that keeps the units standing
+    // keeps the CL0 token standing as well.
+    reinforceNoRoute(state, side) {
+        const c = state.combat;
+        if (!c) return false;
+        const seat = side === 'attacker' ? c.attacker : c.defender;
+        return (c.noRoute || []).some(x => {
+            const one = typeof x === 'number' ? { seat: x } : x;
+            if (one.seat !== seat) return false;
+            if (one.round !== undefined && one.round !== c.round) return false;
+            return !one.kl || one.kl >= 0;   // a token is command level zero
+        });
+    },
+
     // The reinforcement tokens of a side in the combat as the rules see them:
-    // used in total, routed (flipped) ones, and the ones still counting as
-    // units. The only thing a token does not do is contribute dice.
+    // used in total, routed (flipped) ones, destroyed ones, and the ones still
+    // counting as units. The only thing a token does not do is contribute dice.
     tokenUnits(state, side) {
         const c = state.combat;
         const used = (c && c.reinforce && c.reinforce[side]) || 0;
-        const routed = (c && c.reinforceRouted && c.reinforceRouted[side]) || 0;
-        return { used, routed, alive: Math.max(0, used - routed) };
+        const flipped = this.reinforceFlipped(state, side);
+        const dead = this.reinforceDestroyed(state, side);
+        const routed = flipped.filter(i => i < used && dead.indexOf(i) < 0).length;
+        const destroyed = dead.filter(i => i < used).length;
+        if (c) {
+            c.reinforceRouted = c.reinforceRouted || { attacker: 0, defender: 0 };
+            c.reinforceRouted[side] = routed;
+        }
+        return { used, routed, destroyed, alive: Math.max(0, used - routed - destroyed) };
     },
 
     // The units and bastions that may still be assigned damage: the unrouted
@@ -3888,16 +4009,21 @@ const FS_RULES = {
     loseReinforcementTokens(state, side, n) {
         const c = state.combat;
         if (!c || !n) return 0;
-        c.reinforceRouted = c.reinforceRouted || { attacker: 0, defender: 0 };
         let left = n;
-        while (left > 0 && (c.reinforceRouted[side] || 0) > 0) {
-            c.reinforceRouted[side] -= 1;
-            c.reinforce[side] -= 1;
-            c.reinforceUsed[side] = Math.max(0, (c.reinforceUsed[side] || 0) - 1);
-            left -= 1;
-        }
-        while (left > 0 && (c.reinforce[side] || 0) > 0) {
-            c.reinforce[side] -= 1;
+        while (left > 0) {
+            const t = this.tokenUnits(state, side);
+            const dead = this.reinforceDestroyed(state, side);
+            // The flipped tokens are destroyed first, then the standing ones.
+            let index = this.reinforceFlipped(state, side).find(i => i < t.used && dead.indexOf(i) < 0);
+            if (index === undefined) {
+                for (let i = 0; i < t.used; i++) {
+                    if (dead.indexOf(i) < 0) { index = i; break; }
+                }
+            }
+            if (index === undefined) break;
+            this.destroyReinforcementToken(state, side, index, false);
+            // A token destroyed by a card does not come back to the player's
+            // assets at clean-up.
             c.reinforceUsed[side] = Math.max(0, (c.reinforceUsed[side] || 0) - 1);
             left -= 1;
         }
@@ -4185,9 +4311,10 @@ const FS_RULES = {
     // The damage a player has to place on his own pieces, as a plan: the same
     // arithmetic the rules use, without touching the game. The panel shows it
     // while the player picks the pieces with the mouse.
-    damagePreview(state, side, targets) {
+    damagePreview(state, side, targets, seat) {
         const c = state.combat;
-        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const owner = side === 'attacker' ? c.attacker : c.defender;
+        const actor = seat === undefined ? owner : seat;
         const damage = this.combatDamageFor(state, side);
         const oneByOne = !!(c.damageOneByOne && side === 'defender');
         const rows = [];
@@ -4195,21 +4322,26 @@ const FS_RULES = {
         for (const id of targets || []) {
             if (left <= 0) break;
             if (typeof id === 'string' && id.startsWith('reinforce-')) {
-                // One point of damage flips the reinforcement token to its
-                // routed side: it is routed, not destroyed.
-                left -= 1;
-                const sideTok = id.split('-')[1];
-                c.reinforceRouted = c.reinforceRouted || { attacker: 0, defender: 0 };
-                c.reinforceRouted[sideTok] = (c.reinforceRouted[sideTok] || 0) + 1;
-                rows.push({ id, name: 'Подкрепление', health: 1, take: 1, destroyed: false, routed: true, token: true });
+                // A preview is drawn on EVERY click while the player picks the
+                // pieces. It must never change the battle: the old version
+                // flipped the token here, before the damage was even sent.
+                if (this.reinforceTokenIndex(state, side, id) < 0) continue;
+                const def0 = this.reinforceTokenDef(state, side);
+                const health = this.reinforceTokenHealth(state, side, actor);
+                const take = oneByOne ? 1 : Math.min(left, health);
+                const destroyed = oneByOne ? health <= 1 : left >= health;
+                const routed = !destroyed && !this.reinforceNoRoute(state, side);
+                left -= take;
+                rows.push({ id, name: def0 ? def0.name : 'Подкрепление', health, take,
+                    destroyed, routed, token: true });
                 continue;
             }
             const unit = state.units.find(u => u.id === id);
             if (unit) {
                 const def = this.unitOf(state, unit);
                 let health = def ? def.health : 1;
-                if (c.healthBonus && unit.seat === seat) health += c.healthBonus;
-                if (c.enemyHealth && unit.seat !== seat) health = Math.min(health, c.enemyHealth);
+                if (c.healthBonus && unit.seat === actor) health += c.healthBonus;
+                if (c.enemyHealth && unit.seat !== actor) health = Math.min(health, c.enemyHealth);
                 const take = oneByOne ? 1 : Math.min(left, health);
                 const destroyed = oneByOne ? health <= 1 : left >= health;
                 left -= take;
@@ -4230,35 +4362,40 @@ const FS_RULES = {
 
     // The pieces that may take the damage of this side: the troops and the
     // bastions of the contested area that are still standing.
-    damageCandidates(state, side) {
+    damageCandidates(state, side, seat) {
         const c = state.combat;
-        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const owner = side === 'attacker' ? c.attacker : c.defender;
+        const actor = seat === undefined ? owner : seat;
         const out = [];
         for (const u of state.units) {
-            if (u.seat !== seat || u.system !== c.system || u.area !== c.pos) continue;
+            if (u.seat !== owner || u.system !== c.system || u.area !== c.pos) continue;
             const def = this.unitOf(state, u);
             if (!def) continue;
-            out.push({ id: u.id, name: def.name, health: def.health, morale: def.morale, routed: !!u.routed, kind: 'unit' });
+            out.push({ id: u.id, name: def.name, health: def.health, morale: def.morale,
+                routed: !!u.routed, type: def.type, kind: 'unit' });
         }
         // Only a bastion has a health value: a city or a factory takes no damage.
         for (const s of state.structures) {
-            if (s.seat !== seat || s.system !== c.system || s.area !== c.pos || s.type !== 'bastion') continue;
+            if (s.seat !== owner || s.system !== c.system || s.area !== c.pos || s.type !== 'bastion') continue;
             const st = this.structureStats('bastion');
-            out.push({ id: s.id, name: st.name || 'bastion', health: st.health, morale: st.morale || 0, routed: false, kind: 'structure' });
+            out.push({ id: s.id, name: st.name || 'bastion', health: st.health, morale: st.morale || 0,
+                routed: false, type: 'structure', kind: 'structure' });
         }
         // A reinforcement token is treated like a plastic unit for all rules and
         // game effects: it has the health and the morale of the command level
-        // zero miniature it stands for. A routed token is flipped to its routed
-        // side, not destroyed.
+        // zero miniature it stands for. Lethal damage destroys it; a routed
+        // one is flipped to its routed side.
         const t = this.tokenUnits(state, side);
-        const area0 = this.area(this.system(state, c.system), c.pos);
-        const type0 = area0 && area0.world ? 'ground' : 'ship';
-        const def0 = this.reinforceUnitDef(state.players[seat].faction, type0);
+        const def0 = this.reinforceTokenDef(state, side);
+        const health0 = this.reinforceTokenHealth(state, side, actor);
+        const flipped = this.reinforceFlipped(state, side);
+        const dead = this.reinforceDestroyed(state, side);
         for (let i = 0; i < t.used; i++) {
+            if (dead.indexOf(i) >= 0) continue;
             out.push({
                 id: 'reinforce-' + side + '-' + i, name: def0 ? def0.name : 'Подкрепление',
-                health: def0 ? def0.health : 1, morale: def0 ? def0.morale : 0,
-                routed: i < t.routed, kind: 'token',
+                health: health0, morale: def0 ? def0.morale : 0,
+                routed: flipped.indexOf(i) >= 0, type: def0 ? def0.type : 'ground', kind: 'token',
             });
         }
         // A routed unit can take damage only when the side has nothing else.
@@ -4329,13 +4466,33 @@ const FS_RULES = {
         for (const id of targets) {
             if (left <= 0) break;
             if (typeof id === 'string' && id.startsWith('reinforce-')) {
-                // The token is a unit: the damage routes it (flips it to its
-                // routed side) instead of destroying it.
-                left -= 1;
-                const sideTok = id.split('-')[1];
-                c.reinforceRouted = c.reinforceRouted || { attacker: 0, defender: 0 };
-                c.reinforceRouted[sideTok] = (c.reinforceRouted[sideTok] || 0) + 1;
-                applied.push({ token: id, routed: true });
+                const index = this.reinforceTokenIndex(state, side, id);
+                if (index < 0) { dropExcess(id); continue; }
+                const health = this.reinforceTokenHealth(state, side, seat);
+                if (oneByOne) {
+                    // «распределять урон … по 1 единице за раз»: one point on
+                    // this token, the rest goes on to the next chosen piece.
+                    left -= 1;
+                    if (health <= 1) {
+                        this.destroyReinforcementToken(state, side, index, true);
+                        applied.push({ token: id, destroyed: true });
+                    } else {
+                        if (!this.reinforceNoRoute(state, side)) this.routeReinforcementToken(state, side, index);
+                        applied.push({ token: id, destroyed: false, routed: true });
+                    }
+                } else if (left >= health) {
+                    // Damage equal to health destroys the token; the excess is
+                    // assigned to the next piece (rules, "Damage And Health").
+                    left -= health;
+                    this.destroyReinforcementToken(state, side, index, true);
+                    applied.push({ token: id, destroyed: true });
+                } else {
+                    // A nonlethal hit only flips the token. A card may keep it
+                    // standing. Damage that does not destroy a unit is spent.
+                    left = 0;
+                    if (!this.reinforceNoRoute(state, side)) this.routeReinforcementToken(state, side, index);
+                    applied.push({ token: id, destroyed: false, routed: true });
+                }
                 dropExcess(id);
                 continue;
             }
@@ -4650,6 +4807,12 @@ const FS_RULES = {
                 if (u.routed && u.system === c.system && u.area === c.pos) {
                     this.log(state, c.attacker, 'Деморализованный отряд уничтожен.');
                     this.destroyUnit(state, u);
+                }
+            }
+            // A flipped reinforcement token is a routed unit too.
+            for (const side of ['attacker', 'defender']) {
+                for (const i of this.reinforceFlipped(state, side).slice()) {
+                    this.destroyReinforcementToken(state, side, i, false);
                 }
             }
         }

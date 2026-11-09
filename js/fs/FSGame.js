@@ -1937,16 +1937,18 @@ class FSGame {
                     ctx.text = 'Урон распределяет ' + nameOf(who2) + '.';
                     return;
                 }
-                void whose; void side;
-                const damage = FS_RULES.combatDamageFor(s, side);
+                void side;
+                // The damage belongs to the side of this step, even when the
+                // opponent's card makes somebody else distribute it.
+                const damage = FS_RULES.combatDamageFor(s, whose);
                 // The fighters on the board take the damage; the mouse picks them.
                 this.mode = 'damage';
-                const preview = FS_RULES.damagePreview(s, side, this.damageTargets);
-                const rows = FS_RULES.damageCandidates(s, side).map(x => {
+                const preview = FS_RULES.damagePreview(s, whose, this.damageTargets, me);
+                const rows = FS_RULES.damageCandidates(s, whose, me).map(x => {
                     const row = preview.rows.find(r => r.id === x.id);
                     return {
                         id: x.id, name: x.name, health: x.health, morale: x.morale,
-                        routed: x.routed, kind: x.kind,
+                        routed: x.routed, kind: x.kind, type: x.type,
                         take: row ? row.take : 0,
                         destroyed: row ? row.destroyed : false,
                         demoralised: row ? !!row.routed && !row.destroyed : false,
@@ -1960,14 +1962,17 @@ class FSGame {
                     rows,
                 };
                 ctx.text = damage
-                    ? 'Урон ' + damage + ': щёлкните по своим отрядам в области боя.'
+                    ? 'Урон ' + damage + ': щёлкните по отрядам в области боя.'
                     : 'Щиты выдержали удар.';
                 ctx.status = damage ? 'Осталось распределить: ' + preview.left : '';
                 for (const row of rows) {
                     ctx.actions.push({
-                        kind: 'pick', icon: row.kind === 'structure' ? 'mark.bastion' : 'mark.ground',
+                        kind: 'pick', icon: row.kind === 'structure' ? 'mark.bastion'
+                            : row.type === 'ship' ? 'mark.ship' : 'mark.ground',
                         label: row.name, count: String(row.health),
-                        hint: row.routed ? 'Деморализован' : (row.demoralised ? 'Будет деморализован' : 'В строю'),
+                        hint: row.destroyed ? 'Будет уничтожен'
+                            : row.routed ? 'Деморализован'
+                            : (row.demoralised ? 'Будет деморализован' : 'В строю'),
                         selected: row.selected,
                         onClick: () => this.toggleDamage(row.id),
                     });
@@ -3044,18 +3049,29 @@ class FSGame {
         if (this.mode === 'move') { this.clickMove(meta, target); return; }
         if (this.mode === 'trim') { this.clickTrim(meta); return; }
         if (this.mode === 'strike-damage') { this.clickStrikeDamage(meta); return; }
-        // The damage of the battle: a click on a piece picks who takes it.
-        if (this.mode === 'damage' && s.combat && (meta.fs === 'unit' || meta.fs === 'structure')) {
-            const id = meta.fs === 'unit' ? meta.unit : meta.structure;
+        // The damage of the battle: a click on a piece picks who takes it. The
+        // pieces belong to the side whose damage step it is, which is not
+        // always the side of the player who distributes the damage.
+        if (this.mode === 'damage' && s.combat && meta
+            && (meta.fs === 'unit' || meta.fs === 'structure'
+                || (meta.fs === 'token' && meta.reinforce))) {
             const c = s.combat;
-            const seat = s.seat;
-            const own = meta.fs === 'unit'
-                ? (s.units.find(u => u.id === id) || {}).seat === seat
-                : (s.structures.find(x => x.id === id) || {}).seat === seat;
-            const here = meta.fs === 'unit'
-                ? (() => { const u = s.units.find(x => x.id === id); return u && u.system === c.system && u.area === c.pos; })()
-                : (() => { const x = s.structures.find(v => v.id === id); return x && x.system === c.system && x.area === c.pos; })();
-            if (!own || !here) { this.status = 'Урон получают только ваши отряды в этой области.'; this.refresh(); return; }
+            const suffer = c.step === 'damage-attacker' ? 'attacker' : 'defender';
+            const ownerSeat = suffer === 'attacker' ? c.attacker : c.defender;
+            const here = x => x && x.system === c.system && x.area === c.pos && x.seat === ownerSeat;
+            let id = null;
+            if (meta.fs === 'unit') {
+                const u = s.units.find(x => x.id === meta.unit);
+                if (here(u)) id = meta.unit;
+            } else if (meta.fs === 'structure') {
+                const st = s.structures.find(x => x.id === meta.structure);
+                if (here(st) && st.type === 'bastion') id = meta.structure;
+            } else if (meta.side === suffer && meta.system === c.system && meta.pos === c.pos
+                && typeof meta.reinforceId === 'string'
+                && FS_RULES.reinforceTokenIndex(s, suffer, meta.reinforceId) >= 0) {
+                id = meta.reinforceId;
+            }
+            if (!id) { this.status = 'Урон получают только отряды в этой области боя.'; this.refresh(); return; }
             this.toggleDamage(id);
             return;
         }
