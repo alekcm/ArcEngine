@@ -57,6 +57,12 @@ class DeployRules {
         const theirs = state.units.some(u => u.system === systemId && u.area === pos && u.seat !== seat)
             || state.structures.some(st => st.seat !== seat && st.system === systemId && st.area === pos);
         if (theirs) return { ok: false, error: 'Нельзя развёртывать в чужую область.' };
+        // «… can never end the movement with more than five units in a single
+        // area»: the capacity may be exceeded by a deploy, the plastic of the
+        // area may not. One question for every way a unit arrives.
+        if (!this.engine.hasRoom(state, systemId, pos, seat, 1)) {
+            return { ok: false, error: this.engine.unitLimitText() };
+        }
         return { ok: true };
     }
 

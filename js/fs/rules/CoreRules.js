@@ -109,6 +109,24 @@ class CoreRules {
         return this.board(state).capacity(systemId, pos, def);
     }
 
+    /** The plastic of an area: «no more than five units of one player». */
+    unitLimit(state, systemId, pos, seat) {
+        return this.board(state).unitLimit(systemId, pos, seat);
+    }
+
+    hasRoom(state, systemId, pos, seat, n) {
+        return this.board(state).hasRoom(systemId, pos, seat, n);
+    }
+
+    /**
+     * The refusal of the hard limit, worded once. «Five» is the number of the
+     * printed rules and the tests quote them; the count itself stays in the
+     * config.
+     */
+    unitLimitText() {
+        return 'В области не может стоять больше пяти отрядов.';
+    }
+
     countFor(state, seat, kind) {
         const p = state.players[seat];
         if (!kind) return 0;

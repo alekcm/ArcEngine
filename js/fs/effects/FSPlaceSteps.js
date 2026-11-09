@@ -54,9 +54,8 @@ class PlaceSteps {
             // one player, not of both. The printed skulls are therefore
             // no wall here: only the plastic of the area (five units)
             // stops the placement, and the trim follows in finishOrder.
-            const mine = state.units.filter(u => u.seat === seat
-                && u.system === area.system && u.area === area.pos).length;
-            if (mine >= R.AREA_MAX_UNITS) break;
+            // The plastic of the area is asked once, by the board.
+            if (!R.hasRoom(state, area.system, area.pos, seat, 1)) break;
             // «купить 1 отряд» — the ability buys at the printed price.
             if (step.buy) {
                 if ((p.materiel || 0) < price) {

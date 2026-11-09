@@ -167,6 +167,28 @@ class Board {
     // --- capacity -------------------------------------------------------------
 
     /**
+     * The plastic of an area: how many units of ONE player may stand there.
+     * «… can never end the movement with more than five units in a single
+     * area» — the same five for every way a unit arrives (a march, a retreat,
+     * a free placement of a card, a reinforcement). The printed skulls of a
+     * world are its capacity (see `capacity`), which a player may exceed — this
+     * is the hard limit he may not.
+     * @param {string} systemId @param {string} pos @param {number} [seat] whose units
+     */
+    unitLimit(systemId, pos, seat) {
+        const area = this.area(systemId, pos);
+        if (!area) return 0;
+        if (seat === undefined || seat === null) return FS_RULES_CONFIG.AREA_MAX_UNITS;
+        const mine = this.unitsAt(systemId, pos).filter(u => u.seat === seat).length;
+        return Math.max(0, FS_RULES_CONFIG.AREA_MAX_UNITS - mine);
+    }
+
+    /** Is there room for `n` more units of `seat` in the area? */
+    hasRoom(systemId, pos, seat, n) {
+        return this.unitLimit(systemId, pos, seat) >= (n || 1);
+    }
+
+    /**
      * The capacity of an area: the skulls of the world banner, three for a
      * void, never more than five units. The order in play may raise it for the
      * cities (and only for the units it names).

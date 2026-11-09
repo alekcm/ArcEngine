@@ -95,9 +95,8 @@ class AdvanceRules {
         }
         // The movement may go over the capacity of an area, but never above five
         // units: the rules cap the end of the movement at five models.
-        const same = this.engine.unitsAt(state, target.system, target.pos).filter(u => u.seat === seat);
-        if (same.length + 1 > this.engine.AREA_MAX_UNITS) {
-            return { ok: false, error: 'В области не может стоять больше пяти отрядов.' };
+        if (!this.engine.hasRoom(state, target.system, target.pos, seat, 1)) {
+            return { ok: false, error: this.engine.unitLimitText() };
         }
         // Ground units need a legal path through the worlds they already hold:
         // a neutral world stops the march. The path is measured from where the
@@ -218,8 +217,13 @@ class AdvanceRules {
             const key = p2 ? p2.system + ':' + p2.pos : u.system + ':' + u.area;
             totals.set(key, (totals.get(key) || 0) + 1);
         }
-        for (const [, n] of totals) {
-            if (n > this.engine.AREA_MAX_UNITS) return { ok: false, error: 'В области не может стоять больше пяти отрядов.' };
+        for (const [key, n] of totals) {
+            // The same hard limit the one move above asks, counted for the
+            // whole plan: five units of one player in one area.
+            const [systemId, pos] = key.split(':');
+            if (n - this.engine.unitLimit(state, systemId, pos, seat) > 0) {
+                return { ok: false, error: this.engine.unitLimitText() };
+            }
         }
         // The ground units may come into the active system from one neighbour only,
         // and a ship that came from a neighbour closes the way for the others. The

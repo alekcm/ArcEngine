@@ -330,6 +330,35 @@ try {
     fail(e.message);
 }
 
+// --- the hard limit of an area: one question --------------------------------
+section('вместимость и предел области: одно место');
+try {
+    const offenders = [];
+    const files = fs.readdirSync(path.join(ROOT, 'js/fs/rules')).map(f => 'js/fs/rules/' + f)
+        .concat(fs.readdirSync(path.join(ROOT, 'js/fs/effects')).filter(f => f.endsWith('.js')).map(f => 'js/fs/effects/' + f));
+    // The board owns the number and the question «есть ли место?»; the setup
+    // counts the plastic of a tile it has not built yet, and the core words
+    // the refusal. Every other file asks.
+    const owners = new Set(['js/fs/core/FSBoard.js', 'js/fs/core/FSRulesConfig.js',
+        'js/fs/rules/SetupRules.js', 'js/fs/rules/CoreRules.js']);
+    for (const file of files) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // «No more than five units of one player in an area» is asked by the
+        // board (unitLimit/hasRoom), never counted by hand in a rule or a card.
+        const re = /AREA_MAX_UNITS|\.filter\(u => u\.seat === [^)]*\)\.length\s*[+>=]/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('предел области считает только доска');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the subject layer answers the questions the rules ask -------------------
 section('предметный слой');
 try {
