@@ -923,6 +923,14 @@ const FSUI = {
             deal.append(this.el('b', '', String(side.deals || 0)));
             deal.append(this.el('span', 'fs-battle-deal-take', 'получит ' + String(side.takes || 0)));
             row.append(deal);
+            // The card of the opponent the player peeked at this round.
+            if (side.peeked) {
+                const seen = this.el('div', 'fs-battle-peek');
+                seen.append(this.iconEl('ui.card', 'fs-battle-peek-icon'));
+                seen.append(this.el('span', 'fs-battle-peek-label', 'подсмотрено'));
+                seen.append(this.el('b', 'fs-battle-peek-name', side.peeked.name));
+                row.append(seen);
+            }
             sides.append(row);
         }
         card.append(sides);

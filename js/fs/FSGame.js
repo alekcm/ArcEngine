@@ -1843,6 +1843,11 @@ class FSGame {
                 deals: FS_RULES.combatDamageFor(s, id === 'attacker' ? 'defender' : 'attacker'),
                 hand: (c.cards[id].hand || []).length,
                 closed: !!(c.chosen && c.chosen[id]),
+                // «Если вы — атакующий, подсмотрите карту оппонента»
+                // («Скитарии-инфильтраторы»): the card of the other side this
+                // player has seen this round. The state of the player carries it,
+                // the panel of the opponent shows it — to him only.
+                peeked: (id !== side && c.peek && c.peek[me]) ? { name: c.peek[me] } : null,
                 mine: id === side,
             };
         };

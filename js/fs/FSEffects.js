@@ -57,9 +57,15 @@ const FS_EFFECTS = {
         // The abbreviations do not end the sentence: "2 att. token".
         const ABBR = /\b(att|def|any|morale|KL)\.\s/gi;
         const marked = whole.replace(ABBR, (m, w) => w + '\u0002 ');
-        const parts = marked.split(/(?<=[.;])\s+|\s*;\s*/).map(s => s.trim()).filter(Boolean);
+        // The semicolon before «либо» joins the alternatives of ONE sentence
+        // («…в мире с вашей фабрикой; либо разместите …» — «Багровая стража»):
+        // it is not the end of the sentence, so it survives the split as a comma
+        // and the choice of the card is built.
+        const joined = marked.replace(/;\s*(?=(?:либо|или)\s)/gi, '\u0003 ');
+        const parts = joined.split(/(?<=[.;])\s+|\s*;\s*/).map(s => s.trim()).filter(Boolean);
         return parts.map(part => part
             .replace(/\u0001(\d+)\u0001/g, (m, i) => '`' + icons[Number(i)] + '`')
+            .replace(/\u0003/g, ',')
             .replace(/\u0002/g, '.'));
     },
 
@@ -526,6 +532,20 @@ const FS_EFFECTS = {
 
     // «уничтожить N <кто>, чтобы <эффект>» — the destroy is the price, the
     // part after «чтобы» is the reward: both happen together, or nothing.
+    // «Удалите 1 `morale cube`, чтобы получить 3 `def. token`» («Шустрое
+    // судно»), «удалите 1 `def. cube`, чтобы получить 2 `att. token`»
+    // («Геройское самосожжение») — the cube is the price of the effect that
+    // follows «чтобы». The payment comes first: a step that cannot be paid
+    // stops the sentence, so the reward is not given for free.
+    removeToReward(s, ctx) {
+        const m = /^(?:вы\s+можете\s+)?удал[а-яёa-z]*\s+(\d+|один|одно|одну)?\s*`([^`]+cube)`,?\s*(?:чтобы|для того, чтобы)\s+([\s\S]+)$/i.exec(String(s || '').trim());
+        if (!m) return null;
+        const body = String(m[3] || '').trim();
+        const rest = this.parseSentence(body, ctx || {});
+        const spend = { op: 'spendDie', n: num(m[1]), kind: this.icon(m[2]), all: false, pick: true, who: 'me' };
+        return [spend].concat(rest);
+    },
+
     destroyToReward(s, ctx) {
         const m = /^уничтож(?!енн)[а-яёa-z]*\s+(?:(\d+)\s+)?(?:(?:оди?[а-яёa-z]*н[а-яёa-z]*|1)\s+)?([^.`,]{3,80}?)\s*,?\s*чтобы\s+(.*)$/i.exec(String(s || ''));
         if (!m) return null;
@@ -620,6 +640,17 @@ const FS_EFFECTS = {
             if (mFoeRoute[2] !== undefined) step.maxKl = Number(mFoeRoute[2]);
             return [step];
         }
+        // «получите 2 `def. token`, если оппонент не удалит 1 `def. cube`»
+        // («Лютая бионика») — the gain happens unless the opponent removes the
+        // cube: the payment is offered to him first, and only his refusal gives
+        // the tokens to the owner of the card.
+        const mUnless = /получ[а-яёa-z]*\s+(\d+|два|две|один|одно)?\s*`([^`]+token)`,?\s*если\s+(?:ваш\s+)?(?:оппонент|противник)\s+не\s+удал[а-яёa-z]*\s+(\d+|один|одно)?\s*`([^`]+cube)`/i.exec(s);
+        if (mUnless) {
+            return [{
+                op: 'gainToken', n: num(mUnless[1]), kind: this.icon(mUnless[2]), who: 'me',
+                avoid: { n: num(mUnless[3]), kind: this.icon(mUnless[4]), by: 'foe' },
+            }];
+        }
         // «… противник должен потратить 3 N / … не потратит 1 …, то … деморализовать
         // 1 свой отряд / … если противник не потратит …» — the payment fork of
         // the OPPONENT: the engine cannot ask the other player, so the card is
@@ -666,6 +697,9 @@ const FS_EFFECTS = {
         if (fork) return fork;
         const dr = this.destroyToReward(s, ctx);
         if (dr) return dr;
+        // «Удалите 1 `morale cube`, чтобы …» — the cube pays for the effect.
+        const rm = this.removeToReward(s, ctx);
+        if (rm) return rm;
         // «… за каждую пару …» — the count of every effect of the sentence is
         // the number of the pairs of the player.
         const pairs = this.pairScale(s);
@@ -705,10 +739,18 @@ const FS_EFFECTS = {
                 // end of the shared prefix: the sentence is not complete, the
                 // branch belongs to the alternatives, not to the choice list.
                 if (/(?:чтобы|для того, чтобы)\s+[а-яёa-z]+(?:\s+[а-яёa-z]+){0,2}[.!,]?\s*$/i.test(branch)) continue;
-                const steps = this.parseSentence(branch, ctx);
+                // The branch is a sentence of its own. The enumeration of the
+                // icons is read first: «…либо получите 1 `def. token` или
+                // 1 `att. token`» («Техножрецы») is the choice of the two icons,
+                // not one of them.
+                let steps = this.dieEnum(branch, ctx);
+                if (!steps) steps = this.parseSentence(branch, ctx);
                 // A branch that yields nothing (the dangling head of the shared
                 // prefix) is not an option either.
                 if (!steps.length) continue;
+                // A branch that is itself a choice opens into the choice of the
+                // sentence: the card offers its alternatives as one list.
+                if (steps.length === 1 && steps[0] && steps[0].op === 'choice') steps = steps[0].options || [];
                 for (const step of steps) {
                     if (step && !step.ability) step.ability = branch;
                     options.push(step);
@@ -848,6 +890,12 @@ const FS_EFFECTS = {
                 state.pending = null;
                 return { ok: true, done: true };
             }
+            if (res && res.replace) {
+                // The step opens into steps of its own («Некромеханика» activates
+                // the cards it has just taken): they take its place in the list.
+                list.splice(index, 1, ...(res.replace || []));
+                continue;
+            }
             this.spreadCount(list, index, step);
             this.thenSteps(list, index, step);
             index++;
@@ -873,6 +921,13 @@ const FS_EFFECTS = {
             const pend = state.combat.reinforcePending;
             state.combat.reinforcePending = null;
             R.finishReinforce(state, pend);
+        }
+        // The upgrade of the preparation step waited for the scheme of the start
+        // of the combat («Сервочерепа-стражи»): its question is asked now.
+        if (c.kind === 'combat' && state.combat && state.combat.prepQueued
+            && typeof R.prepEffects === 'function' && !state.pending) {
+            state.combat.prepQueued = false;
+            R.prepEffects(state, state.combat.attacker);
         }
         // The scheme of «the start of a round of combat» waited for the question
         // of the start of the combat: it is asked now.
@@ -963,9 +1018,13 @@ const FS_EFFECTS = {
                 return this.run(R, state, pending.seat, pending.steps, pending.ctx || {}, i);
             }
             if (q && q.question && !this.emptyQuestion(q.question)) {
-                pending.question = q.question;
-                return { ok: true, pending: true };
+                return this.retarget(pending, q.question);
             }
+            // The step ran from here, not from the chain: the steps it added
+            // (the repeated ability of a card, «Почитание духа машины») are
+            // spliced in before the chain goes on.
+            this.spreadCount(pending.steps, pending.index, step);
+            this.thenSteps(pending.steps, pending.index, step);
             return this.next(R, state, pending);
         }
         // The payment that avoids the effect.
@@ -987,8 +1046,7 @@ const FS_EFFECTS = {
                 }
                 const q = this.step(R, state, owner, step, ctx);
                 if (q && q.question) {
-                    pending.question = q.question;
-                    return { ok: true, pending: true };
+                    return this.retarget(pending, q.question);
                 }
             }
             return this.next(R, state, pending);
@@ -1017,13 +1075,22 @@ const FS_EFFECTS = {
                 if (branch) pending.choice = branch;
             }
             pending.stash = merged;
-            pending.question = res.question;
-            return { ok: true, pending: true };
+            return this.retarget(pending, res.question);
         }
         // The step is done — the rest of the steps go on.
         this.spreadCount(pending.steps, pending.index, step);
         this.thenSteps(pending.steps, pending.index, step);
         return this.next(R, state, pending);
+    },
+
+    // A step may hand its question to another player — the opponent who decides
+    // whether to pay for the effect («… если оппонент не удалит 1 `def. cube`»)
+    // or who chooses his own dice. The seat that answers follows the question,
+    // otherwise the owner of the card would answer for his opponent.
+    retarget(pending, question) {
+        pending.question = question;
+        if (question && question.who !== undefined) pending.answerSeat = question.who;
+        return { ok: true, pending: true };
     },
 
     // The question without options: there is nothing to choose. A yes-or-no
@@ -1168,15 +1235,31 @@ const FS_EFFECTS = {
     // The question of the permission: the owner of the card decides whether the
     // ability happens at all. A clarification (op 'note') decides nothing, and
     // an ability that says «must» is not offered for refusal.
-    // «Получите 1 `att. cube`, 1 `def. cube` или 1 `morale cube`.» — the choice of a single die.
+    // «Получите 1 `att. cube`, 1 `def. cube` или 1 `morale cube`.» — the choice
+    // of a single die. The list may hold the combat tokens as well («получите
+    // 1 `morale cube`, 2 `att. token` или 2 `def. token`», «Скитарии-
+    // инфильтраторы»): every icon of the list is one alternative of the choice,
+    // each with its own number and its own kind of piece.
     dieEnum(sentence, ctx) {
         const s = sentence.replace(/^\s+/, '');
+        if (!/^получ[а-яёa-z]+/i.test(s) || !/(или|либо)/i.test(s)) return null;
+        // «… за каждый потраченный `morale cube`» — the tail names what the gain
+        // is counted by, not one more alternative of the choice.
+        const cut = s.search(/\s+за кажд/i);
+        const head = cut > 0 ? s.slice(0, cut) : s;
         // Every icon keeps its own number: «Получите 2 `att. cube` или 2 `def. cube`»
         // is two dice of the chosen kind, not one.
-        const list = [...s.matchAll(/(\d+|два|две|одно|один)?\s*`([^`]+cube)`/g)]
-            .map(m => ({ n: m[1] ? num(m[1]) : 1, kind: this.icon(m[2]) }));
-        if (!/^получ[а-яёa-z]+/i.test(s) || list.length < 2 || !/(или|либо)/i.test(s)) return null;
-        return [{ op: 'choice', text: s, options: list.map(x => ({ op: 'gainDie', n: x.n, kind: x.kind, who: 'me', ability: s })) }];
+        const list = [...head.matchAll(/(\d+|два|две|одно|один)?\s*`([^`]+)`/g)]
+            .map(m => ({ n: m[1] ? num(m[1]) : 1, kind: this.icon(m[2]), type: this.iconKind(m[2]) }))
+            .filter(x => x.type === 'cube' || x.type === 'token');
+        if (list.length < 2) return null;
+        return [{
+            op: 'choice', text: s,
+            options: list.map(x => ({
+                op: x.type === 'token' ? 'gainToken' : 'gainDie',
+                n: x.n, kind: x.kind, who: 'me', ability: s,
+            })),
+        }];
     },
 
     // «получаете 2 `att. token` и 1 `def. token`» — several gains in one
@@ -1231,6 +1314,16 @@ const FS_EFFECTS = {
             case 'gainToken': {
                 const n = this.count(R, state, seat, step, ctx);
                 if (!inCombat) return null;
+                // «получите 2 `def. token`, если оппонент не удалит 1 `def. cube`»
+                // — the opponent is asked for the cube first: paid, the tokens
+                // are not given at all.
+                if (step.avoid && step.avoid.by === 'foe' && !step.avoidAsked && foe !== null) {
+                    const ask = this.avoidQuestion(R, state, foe, step, combat, side);
+                    if (ask) {
+                        step.avoidAsked = true;
+                        return ask;
+                    }
+                }
                 const s2 = side;
                 combat.tokens[s2][step.kind] += n;
                 R.log(state, seat, state.players[seat].name + ' получает ' + n + ' ' + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны') + '.');
@@ -1442,11 +1535,27 @@ const FS_EFFECTS = {
                 } else if (step.what === 'unroutedShip') {
                     ok = !!active && state.units.some(u => u.seat === seat && !u.routed && u.system === active
                         && (R.unitOf(state, u) || {}).type === 'ship');
+                } else if (step.what === 'upgrade') {
+                    // «Нужно быть главным по машинам» («Святой трубопровод»): the
+                    // upgrade the card names must be among the cards the player
+                    // has bought — without it the ability is not his to use. The
+                    // text names the card in another case («главным по машинам»
+                    // for «Главный по машинам»), so the words are compared by
+                    // their stems.
+                    const stems = t => String(t || '').toLowerCase().replace(/[^а-яёa-z\s]/g, ' ')
+                        .split(/\s+/).filter(Boolean).map(w => this.stem(w)).join(' ');
+                    const want = stems(step.name);
+                    ok = !!want && (p.upgrades || []).some(u => stems(u.name) === want);
                 }
                 if (ok) return null;
                 R.log(state, seat, 'Способность не может быть применена: не хватает условий.');
-                if (state.order && state.order.finishAfterEffect) state.order.finishAfterEffect = false;
-                if (state.order && state.order.seat === seat) R.finishOrder(state, seat);
+                // The prerequisite of an upgrade card («Нужно быть главным по
+                // машинам») forbids the ability alone: the order the player is
+                // executing goes on without it.
+                if (step.what !== 'upgrade') {
+                    if (state.order && state.order.finishAfterEffect) state.order.finishAfterEffect = false;
+                    if (state.order && state.order.seat === seat) R.finishOrder(state, seat);
+                }
                 return { stop: true };
             }
             case 'payMateriel': {
@@ -1514,6 +1623,23 @@ const FS_EFFECTS = {
             }
             case 'route': {
                 let units = this.unitsOf(R, state, target, combat, step);
+                // «… командный уровень которого не превышает командный уровень
+                // вашего сильнейшего недеморализованного юнита» («Жёсткий залп»):
+                // the cap is the highest command level among the player's own
+                // unrouted units of the contested area.
+                if (step.maxKlFromMine) {
+                    const mine = state.units.filter(u => u.seat === seat && !u.routed
+                        && (!combat || (u.system === combat.system && u.area === combat.pos)));
+                    let best = -1;
+                    for (const u of mine) {
+                        const d = R.unitOf(state, u);
+                        if (d && (d.kl || 0) > best) best = d.kl || 0;
+                    }
+                    units = units.filter(u => {
+                        const d = R.unitOf(state, u);
+                        return !!d && (d.kl || 0) <= best;
+                    });
+                }
                 // «… который находится в системе, содержащей хотя бы 1 из ваших
                 // отрядов, либо находящийся в соседней с ней системе»
                 // («Отбрыски Темпестус»).
@@ -1800,6 +1926,85 @@ const FS_EFFECTS = {
                 }
                 return null;
             }
+            case 'purchaseDiscount': {
+                // «уменьшить общую цену всех покупок (включая здания) на 1»
+                // («Главный по машинам»): the discount of the order covers the
+                // units and the structures, not the units alone.
+                if (state.order) {
+                    state.order.purchaseDiscount = (state.order.purchaseDiscount || 0) + (step.n || 0);
+                    R.log(state, seat, state.players[seat].name + ': покупки приказа дешевле на '
+                        + state.order.purchaseDiscount + '.');
+                }
+                return null;
+            }
+            case 'strikeTakeStructures': {
+                // «Изъяны плоти»: the upgrade is burned before the strike, the
+                // cubes it pays with are the ones the strike rolls — the order
+                // remembers the price and the world answers for it later.
+                if (state.order && state.order.seat === seat) {
+                    state.order.strikeTake = { n: step.n || 1, kind: step.kind || 'def' };
+                    R.log(state, seat, state.players[seat].name
+                        + ': постройки мира удара будут взяты под контроль за '
+                        + (step.n || 1) + ' куб. обороны.');
+                }
+                return null;
+            }
+            case 'prepReroll': {
+                // «После вытягивания карт на этапе подготовки в битве, которую вы
+                // инициировали этим приказом, перебросьте 1 кубик за каждого
+                // юнита в оспариваемой области» («Сервочерепа-стражи»): the
+                // combat asks for the reroll once the hands are dealt.
+                if (state.order && state.order.seat === seat) {
+                    state.order.prepReroll = {
+                        n: step.n || 1, per: step.per || null, kind: step.kind || 'any',
+                        inBattle: !!step.inBattle, ability: step.ability,
+                    };
+                }
+                return null;
+            }
+            case 'strikeHealthDown': {
+                // «временно убавить здоровье всех юнитов в атакуемом мире на 1»
+                // («Заряд радиации»): the strike that follows is deadlier — the
+                // health of the units of the world is lower while it lasts.
+                if (state.order && state.order.seat === seat) {
+                    state.order.strikeHealthDown = (state.order.strikeHealthDown || 0) + (step.n || 1);
+                    R.log(state, seat, state.players[seat].name
+                        + ': здоровье отрядов в мире удара ниже на ' + state.order.strikeHealthDown + '.');
+                }
+                return null;
+            }
+            case 'placeOrderAny': {
+                // «взять 1 ваш приказ с вершины любой стопки и разместить его в
+                // смежной системе» («Научная экспедиция»): the token comes from
+                // the pile of the player, the place follows the basic rules of
+                // the placement.
+                const types = ['advance', 'deploy', 'strategize', 'dominate']
+                    .filter(t => R.orderLeft(state, seat, t) > 0);
+                if (!types.length) return null;
+                step.types = types;
+                return {
+                    question: {
+                        kind: 'choice', who: seat, op: 'placeOrderAny',
+                        options: types.map(t => ({ text: R.orderName(t) })),
+                        text: 'Какой приказ взять?',
+                    },
+                };
+            }
+            case 'activateEvents': {
+                // «взять две верхних карты из колоды событий и активировать их
+                // способности» («Некромеханика»): both cards are taken from the
+                // top of the deck and both abilities happen, one after another.
+                const steps = [];
+                for (let i = 0; i < (step.n || 1); i++) {
+                    const name = R.drawEventCard(state, seat);
+                    if (!name) break;
+                    const card = FS_DATA.events.find(e => e.name === name);
+                    R.log(state, seat, state.players[seat].name + ' активирует карту события «' + name + '».');
+                    if (card) steps.push(...this.parse(card.text || '', { kind: 'event', faction: p.faction }));
+                }
+                step.done = true;
+                return steps.length ? { replace: steps } : null;
+            }
             case 'assetLimit': {
                 p.assetLimit = Math.max(p.assetLimit || 3, step.n || 3);
                 return null;
@@ -1855,11 +2060,115 @@ const FS_EFFECTS = {
             }
             case 'keepTokens': {
                 // «do not discard your def. tokens at the end of this round of
-                // combat» — the side that played the card keeps them.
+                // combat» — the side that played the card keeps the tokens of
+                // the kind the card names («Шустрое судно» keeps `def. token`,
+                // «Гнев машины» keeps `att. token`).
                 if (combat) {
                     combat.keepTokens = combat.keepTokens || {};
-                    combat.keepTokens[side] = true;
+                    const keep = combat.keepTokens[side] || {};
+                    keep[step.kind === 'att' ? 'att' : 'def'] = true;
+                    // The card keeps the tokens of the round it was played in —
+                    // the next round discards them as usual.
+                    keep.round = combat.round;
+                    combat.keepTokens[side] = keep;
                 }
+                return null;
+            }
+            case 'gainByUnit': {
+                // «выберите 1 ваш недеморализованный отряд и получите количество
+                // `att. token`, равное его боевому уровню» («Ржавые сталкеры»):
+                // the unit is chosen, the tokens are its printed combat value.
+                if (!inCombat) return null;
+                const units = this.unitsOf(R, state, seat, combat, { routed: false });
+                if (!units.length) return null;
+                if (!step.picked) {
+                    return { question: { kind: 'units', who: seat, op: 'gainByUnit', n: 1, options: units.map(u => u.id), text: 'Какой отряд выбрать?' } };
+                }
+                const n = step.pickedValue || 0;
+                if (n > 0) {
+                    combat.tokens[side][step.kind] += n;
+                    R.log(state, seat, state.players[seat].name + ' получает ' + n + ' '
+                        + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны')
+                        + ' по боевому значению выбранного отряда.');
+                }
+                return null;
+            }
+            case 'repeatCard': {
+                // «Повторите основную способность карты, разыгранной в
+                // предыдущем раунде боя» («Почитание духа машины») and
+                // «активируйте способность подразделения с карты, разыгранной в
+                // предыдущем раунде боя» («Жизнеотсос»): the box of the card the
+                // player resolved one round ago is read again — with the
+                // requisites of the unit ability checked anew.
+                if (!inCombat) return null;
+                const entry = (combat.cards[side].played || []).find(x => (x.round || 0) === combat.round - 1);
+                const card = entry && entry.card;
+                if (!card) {
+                    R.log(state, seat, 'В предыдущем раунде боя карта не разыгрывалась — повторять нечего.');
+                    return null;
+                }
+                const text = step.box === 'unit' ? (card.unit || '') : (card.general || '');
+                if (!text || /^\s*\*\(/.test(text)) {
+                    R.log(state, seat, 'У карты «' + card.name + '» нет такой способности.');
+                    return null;
+                }
+                const ctx2 = { kind: 'combat', faction: p.faction };
+                if (step.box === 'unit') {
+                    const reqs = card.reqs || [];
+                    const standing = state.units.filter(u => u.seat === seat && !u.routed
+                        && u.system === combat.system && u.area === combat.pos);
+                    const there = standing.some(u => {
+                        const def = R.unitOf(state, u);
+                        return !!def && reqs.some(r => this.sameName(def.name, r));
+                    });
+                    if (!there) {
+                        R.log(state, seat, 'Отряда для способности карты «' + card.name + '» в бою нет.');
+                        return null;
+                    }
+                    ctx2.reqs = reqs;
+                    ctx2.present = standing.map(u => (R.unitOf(state, u) || {}).name).filter(Boolean);
+                }
+                const steps = this.parse(text, ctx2);
+                R.log(state, seat, state.players[seat].name + ' повторяет способность карты «' + card.name + '».');
+                if (!steps.length) return null;
+                // The steps of the repeated ability are performed right after
+                // this one, as a part of the same card.
+                step.then = steps;
+                step.done = true;
+                return null;
+            }
+            case 'peekFoeCard': {
+                // «Если вы — атакующий, подсмотрите карту оппонента»
+                // («Скитарии-инфильтраторы»): the card the opponent laid for this
+                // round is turned face up for the player of the card only.
+                if (!inCombat) return null;
+                if (step.onlyAttacker && side !== 'attacker') {
+                    R.log(state, seat, 'Карта действует только на атакующего: подсмотреть карту нельзя.');
+                    return null;
+                }
+                const foeSide = side === 'attacker' ? 'defender' : 'attacker';
+                const staged = combat.staged && combat.staged[foeSide];
+                const name = (staged && staged.name)
+                    || (combat.cards[foeSide].chosen && combat.cards[foeSide].chosen.name)
+                    || null;
+                if (!name) {
+                    R.log(state, seat, 'Противник ещё не выбрал карту — подсматривать нечего.');
+                    return null;
+                }
+                combat.peek = combat.peek || {};
+                combat.peek[seat] = name;
+                R.log(state, seat, state.players[seat].name + ' подсмотрел карту противника: «' + name + '».');
+                return null;
+            }
+            case 'damageOwnRouted': {
+                // «на этапе нанесения урона в этом раунде вы можете нанести его
+                // вашим деморализованным отрядам» («Авангард скитариев»): for the
+                // rest of this execution round the routed units of the side may
+                // be chosen for the damage as well.
+                if (!inCombat) return null;
+                combat.ownRoutedDamage = combat.ownRoutedDamage || {};
+                combat.ownRoutedDamage[side] = combat.round;
+                R.log(state, seat, state.players[seat].name + ' может нанести урон своим деморализованным отрядам в этом раунде.');
                 return null;
             }
             case 'noReinforce': {
@@ -1940,7 +2249,20 @@ const FS_EFFECTS = {
                 return { question: { kind: 'cards', who: seat, op: 'lookEvents', options: names, text: 'Какую карту оставить наверху?' } };
             }
             case 'extraCombatCards': {
-                if (state.order) state.order.extraCombatCards = (state.order.extraCombatCards || 0) + (step.n || 0);
+                if (!state.order) return null;
+                if (step.discard) {
+                    // «На этапе подготовки битвы, инициированной этим приказом,
+                    // вытяните 2 дополнительных карты и сбросьте затем 2 любых
+                    // своих карты» («Священные масла»): the cards are drawn and
+                    // dropped at the preparation step of that battle, not when
+                    // the hand is dealt.
+                    const prep = state.order.prepDrawCards
+                        || (state.order.prepDrawCards = { n: 0, discard: 0 });
+                    prep.n += step.n || 0;
+                    prep.discard += step.discard || 0;
+                    return null;
+                }
+                state.order.extraCombatCards = (state.order.extraCombatCards || 0) + (step.n || 0);
                 return null;
             }
             case 'moveLimit': {
@@ -2444,15 +2766,36 @@ const FS_EFFECTS = {
             case 'convertFoeDice': {
                 const s2 = side === 'attacker' ? 'defender' : 'attacker';
                 const dice = combat.dice[s2];
-                const face = answer.face;
-                const n = Math.min(step.n || 2, dice.filter(d => d === face).length);
-                for (let i = 0; i < n; i++) {
-                    const at = dice.indexOf(face);
-                    if (at < 0) break;
-                    const value = R.rollDice(state, 1)[0];
-                    dice[at] = value === face ? (value === 'att' ? 'def' : 'att') : value;
+                // «… сконвертировать до 2 его кубов определённого значения в
+                // любое другое значение по его выбору» («Превосходство машин»):
+                // the opponent names the value he converts and then the value he
+                // converts it to — both choices are his.
+                if (step.face === undefined) {
+                    step.face = answer.face;
+                    const names = { att: 'атака', def: 'оборона', morale: 'мораль' };
+                    const others = ['att', 'def', 'morale'].filter(x => x !== step.face);
+                    return {
+                        question: {
+                            kind: 'choice', who: this.seatOf(combat, s2), op: 'convertFoeDice',
+                            options: others.map(x => ({ text: names[x] })),
+                            text: 'В какое значение превратить кубики?',
+                        },
+                    };
                 }
-                R.log(state, seat, state.players[seat].name + ' конвертирует кубики противника.');
+                const face = step.face;
+                const others = ['att', 'def', 'morale'].filter(x => x !== face);
+                const to = others[Number(answer.choice)] || answer.to;
+                if (!to) return null;
+                const n = Math.min(step.n || 2, dice.filter(d => d === face).length);
+                let done = 0;
+                for (let i = 0; i < dice.length && done < n; i++) {
+                    if (dice[i] !== face) continue;
+                    dice[i] = to;
+                    done++;
+                }
+                R.log(state, seat, state.players[this.seatOf(combat, s2)].name
+                    + ' конвертирует ' + done + ' своих кубик(ов) в '
+                    + (to === 'att' ? 'атаку' : to === 'def' ? 'оборону' : 'мораль') + '.');
                 return null;
             }
             case 'discardFoeCard': {
@@ -2487,6 +2830,18 @@ const FS_EFFECTS = {
                 const def = names.length ? faction.units.find(u => this.sameName(u.name, names[0])) : null;
                 if (!def) return null;
                 const p = state.players[seat];
+                // «…либо заплатить 1 жетон кузни и заменить 1 Онагр на 1 Титана»
+                // («Мехаморфоз»): the alternative that names a price pays it
+                // before the model is exchanged.
+                if (step.pay && step.pay.kind) {
+                    if ((p.assets[step.pay.kind] || 0) < (step.pay.n || 1)) {
+                        R.log(state, seat, 'Не хватает жетона: ' + step.pay.kind + '.');
+                        return null;
+                    }
+                    p.assets[step.pay.kind] -= (step.pay.n || 1);
+                    R.log(state, seat, state.players[seat].name + ' платит жетон: '
+                        + (R.assetName ? R.assetName(step.pay.kind) : step.pay.kind) + '.');
+                }
                 for (const u of list) {
                     // Both models come from the supply: the new one stands up
                     // unrouted, the old one goes back to the reserve.
@@ -2601,6 +2956,26 @@ const FS_EFFECTS = {
                 step.done = back.length > 0;
                 return null;
             }
+            case 'gainByUnit': {
+                // The chosen unit decides the number of the tokens: its printed
+                // combat value («Ржавые сталкеры»).
+                const u = units(answer.units)[0];
+                const def = u ? R.unitOf(state, u) : null;
+                step.picked = u ? u.id : null;
+                step.pickedValue = def ? (def[step.stat || 'combat'] || 0) : 0;
+                step.done = !!u;
+                const combat = state.combat;
+                if (!u || !combat) return null;
+                const side = seat === combat.attacker ? 'attacker' : 'defender';
+                const n = step.pickedValue;
+                if (n > 0) {
+                    combat.tokens[side][step.kind] += n;
+                    R.log(state, seat, state.players[seat].name + ' получает ' + n + ' '
+                        + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны')
+                        + ' по боевому значению выбранного отряда.');
+                }
+                return null;
+            }
             case 'destroy': {
                 const dead = units(answer.units);
                 for (const u of dead) R.destroyUnit(state, u);
@@ -2675,18 +3050,31 @@ const FS_EFFECTS = {
                 const a = R.area(sys, area.pos);
                 if (!a) return null;
                 if ((p.supply.units[def.id] || 0) <= 0) return null;
-                // «купить 1 отряд» — the ability buys at the printed price.
-                if (step.buy) {
-                    if ((p.materiel || 0) < def.cost) {
-                        R.log(state, seat, state.players[seat].name + ' не хватает материи, чтобы купить «' + def.name + '».');
-                        return null;
+                // «разместить 2 бесплатных Скитария в мире с вашей фабрикой»
+                // («Багровая стража»): the card may name more than one model. The
+                // models stand in the chosen world while the supply and the
+                // capacity of the world last.
+                const want = Math.max(1, step.n || 1);
+                let placed = 0;
+                for (let i = 0; i < want; i++) {
+                    if ((p.supply.units[def.id] || 0) <= 0) break;
+                    if (R.unitsAt(state, area.system, area.pos).length
+                        >= R.capacity(state, area.system, area.pos, def)) break;
+                    // «купить 1 отряд» — the ability buys at the printed price.
+                    if (step.buy) {
+                        if ((p.materiel || 0) < def.cost) {
+                            R.log(state, seat, state.players[seat].name + ' не хватает материи, чтобы купить «' + def.name + '».');
+                            break;
+                        }
+                        p.materiel -= def.cost;
+                        R.log(state, seat, state.players[seat].name + ' тратит ' + def.cost + ' материи.');
                     }
-                    p.materiel -= def.cost;
-                    R.log(state, seat, state.players[seat].name + ' тратит ' + def.cost + ' материи.');
+                    p.supply.units[def.id]--;
+                    R.addUnit(state, seat, def.id, area.system, area.pos);
+                    placed++;
                 }
-                p.supply.units[def.id]--;
-                R.addUnit(state, seat, def.id, area.system, area.pos);
-                R.log(state, seat, state.players[seat].name + ' размещает «' + def.name + '».');
+                if (!placed) return null;
+                R.log(state, seat, state.players[seat].name + ' размещает «' + def.name + '»: ' + placed + '.');
                 return null;
             }
             case 'placeStructure': {
@@ -2701,7 +3089,12 @@ const FS_EFFECTS = {
                     const can = R.canTakeStructure(state, seat, t);
                     if (!can.ok) return { ok: false, error: can.error };
                     step.kind = t;
-                    const areas = this.areasFor(R, state, seat, 'structure');
+                    // «…разместить её на дружественном мире в активной системе»
+                    // («Боевая кузня»): the card may name the worlds itself.
+                    const areas = (step.dest
+                        ? this.areasForAbility(R, state, seat, step.dest)
+                        : this.areasFor(R, state, seat, 'structure'))
+                        .filter(a => !R.canPlaceStructure || R.canPlaceStructure(state, seat, a.system, a.pos).ok);
                     if (!areas.length) {
                         R.log(state, seat, p.name + ' некуда ставить постройку: нет дружественного мира без построек.');
                         return null;
@@ -2767,8 +3160,12 @@ const FS_EFFECTS = {
                 } else {
                     const c = FS_DATA.orders.find(x => x.faction === p.faction && x.name === card);
                     if (!c) return null;
-                    if (p.materiel < c.cost) return null;
-                    p.materiel -= c.cost;
+                    // The discount of the card covers the upgrades of the orders
+                    // too: «Купите одну карту улучшения приказа, уменьшив её
+                    // стоимость …» («Лингва Технис»).
+                    const price = Math.max(0, (c.cost || 0) - off);
+                    if (p.materiel < price) return null;
+                    p.materiel -= price;
                     p.upgrades.push({ name: c.name, used: false, order: c.order });
                 }
                 R.log(state, seat, state.players[seat].name + ' покупает улучшение «' + card + '».');
@@ -2860,6 +3257,51 @@ const FS_EFFECTS = {
                 // The steps of the sequence are executed in the place of it.
                 return { replace: step.steps || [] };
             }
+            case 'activateEvents': {
+                // «взять две верхних карты из колоды событий и активировать их
+                // способности» («Некромеханика»): both cards are taken from the
+                // top of the deck and both abilities happen, one after another.
+                const steps = [];
+                for (let i = 0; i < (step.n || 1); i++) {
+                    const name = R.drawEventCard(state, seat);
+                    if (!name) break;
+                    const card = FS_DATA.events.find(e => e.name === name);
+                    R.log(state, seat, state.players[seat].name + ' активирует карту события «' + name + '».');
+                    if (card) steps.push(...FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p.faction }));
+                }
+                return steps.length ? { replace: steps } : null;
+            }
+            case 'placeOrderAny': {
+                // «взять 1 ваш приказ с вершины любой стопки и разместить его в
+                // смежной системе» («Научная экспедиция»).
+                const types = step.types || ['advance', 'deploy', 'strategize', 'dominate'];
+                const kind = answer.order || types[Number(answer.choice)];
+                if (!kind || R.orderLeft(state, seat, kind) <= 0) return null;
+                if (!answer.area) {
+                    // «Не нарушая базовых правил размещения»: a system with the
+                    // units or the structures of the player, or one next to it.
+                    const list = state.systems.filter(sys => R.canPlaceOrder(state, seat, sys.id));
+                    if (!list.length) {
+                        R.log(state, seat, 'Приказ некуда положить: нет системы по правилам размещения.');
+                        return null;
+                    }
+                    return {
+                        question: {
+                            kind: 'areas', who: seat, op: 'placeOrderAny', kind2: kind,
+                            options: list.map(sys => ({ system: sys.id, pos: 0 })),
+                            text: 'В какую систему положить приказ?',
+                        },
+                    };
+                }
+                const sys = R.system(state, answer.area.system);
+                if (!sys) return null;
+                sys.tokens.push({ seat, order: kind, faceUp: false });
+                p.placedOf = p.placedOf || {};
+                p.placedOf[kind] = (p.placedOf[kind] || 0) + 1;
+                R.log(state, seat, state.players[seat].name + ' размещает приказ «'
+                    + R.orderName(kind) + '» в системе ' + sys.tile + '.');
+                return null;
+            }
             case 'guardDeploy': {
                 const factory = answer.factory || answer.area;
                 if (factory) return this.startGuardDeploy(R, state, seat, factory);
@@ -2876,7 +3318,16 @@ const FS_EFFECTS = {
                         { n: 1, per: step.per, perKind: step.perKind, max: step.max, filter: step.filter }, ctx);
                     if (total > 1) option.n = (option.n || 1) * total;
                 }
-                return this.step(R, state, seat, option, ctx);
+                const q = this.step(R, state, seat, option, ctx);
+                // The branch of the choice may add steps of its own — the ability
+                // of the card it repeats («Жизнеотсос»): they join the chain
+                // after the choice, not inside it.
+                if (Array.isArray(option.then) && option.then.length) {
+                    step.then = (step.then || []).concat(option.then);
+                    option.then = [];
+                    step.done = true;
+                }
+                return q;
             }
             case 'teleport': {
                 const u = units(answer.units)[0];
@@ -3006,7 +3457,11 @@ const FS_EFFECTS = {
     // дружественный мир, в котором есть фабрика».
     upgradeDiscount(R, state, seat, step) {
         if (!step || !step.discount) return 0;
-        if (step.discount !== 'factories') return Number(step.discount) || 0;
+        // «уменьшив её стоимость … на 1 за каждый мир с вашей фабрикой» («Лингва
+        // Технис»): the discount is counted by the worlds with a factory of the
+        // player, not a flat number.
+        const byFactory = step.discount === 'factories' || step.per === 'yourFactory';
+        if (!byFactory) return Number(step.discount) || 0;
         let n = 0;
         for (const sys of state.systems) {
             for (const a of sys.areas) {
@@ -3020,6 +3475,21 @@ const FS_EFFECTS = {
 
     count(R, state, seat, step, ctx) {
         let n = step.n || 1;
+        if (step.per === 'excess') {
+            // «за каждый ваш `def. cube`, по счёту превышающий количество
+            // вражеских `att. cube`, получите 1 `att. token` (вплоть до 4)»
+            // («Месть духа машины»): only the cubes above the opponent's count
+            // are paid out.
+            const combat = state.combat;
+            if (!combat) return 0;
+            const mine = seat === combat.attacker ? 'attacker' : 'defender';
+            const theirs = mine === 'attacker' ? 'defender' : 'attacker';
+            const my = (combat.dice[mine] || []).filter(d => d === step.myKind).length;
+            const his = (combat.dice[theirs] || []).filter(d => d === step.foeKind).length;
+            n = (step.n || 1) * Math.max(0, my - his);
+            if (step.max) n = Math.min(n, step.max);
+            return Math.max(0, n);
+        }
         if (step.per === 'cube') {
             const combat = state.combat;
             if (combat) {
@@ -3311,6 +3781,14 @@ const FS_EFFECTS = {
                         ok = world && mine && R.structuresAt(state, sys.id, area.pos)
                             .some(st => st.seat === seat && st.type === 'factory');
                         break;
+                    // The world with the factory of the order («в мире с этой
+                    // фабрикой» — «Святой трубопровод»): the Dominate order is
+                    // executed in the system of the factory, so the world is the
+                    // friendly one of the active system that holds it.
+                    case 'friendlyWorldWithFactoryActive':
+                        ok = world && mine && sys.id === active && R.structuresAt(state, sys.id, area.pos)
+                            .some(st => st.seat === seat && st.type === 'factory');
+                        break;
                     // A friendly world with a structure on it, any system
                     // («разместить его в дружественном мире, содержащем постройку»).
                     case 'friendlyWorldWithStructure':
@@ -3551,30 +4029,6 @@ function combatArea(state, systemId, pos) {
 // The rules of the sentences. The first that matches wins.
 /** @type {{re: RegExp, build: (m: RegExpExecArray, ctx: any, s: string) => any, noWhen?: boolean}[]} */
 const RULES = [
-    // "Place this card in your play area and discard all your other schemes."
-    {
-        re: /размест[а-яёa-z]*\s+эту карту в (?:своей|вашей) игровой зоне/i,
-        build: () => ({ op: 'scheme' }),
-    },
-    // «Затем разыграйте ограниченное Развертывание …, Продвижение … или
-    // Доминирование …» («Департаменто муниторум»).
-    {
-        re: /разыграйте ограниченн[а-яё]*\s+(?:Развертывание|развертывание)/i,
-        build: (m, ctx, s) => [{
-            op: 'choice', text: s,
-            options: [
-                { op: 'limitedOrder', kind: 'deploy', text: 'Развертывание (в 1 области)' },
-                { op: 'limitedOrder', kind: 'advance', text: 'Продвижение (перемещение из 1 области)' },
-                { op: 'limitedOrder', kind: 'dominate', text: 'Доминирование (сбор активов из 1 мира)' },
-            ],
-        }],
-    },
-    // «…сыграть любую карту из своей боевой колоды или колоды улучшений, кроме
-    // карты, которая уже была разыграна» («Тактический гений»).
-    {
-        re: /сыграть любую карту из (?:своей )?боевой колоды/i,
-        build: (m, ctx, s) => [{ op: 'playAnyCard', text: s }],
-    },
     // "You may discard this card <when>, to <the effect>." — the scheme waits
     // for its moment.
     {
@@ -3606,6 +4060,88 @@ const RULES = [
             const body = late && steps.length ? [{ op: 'deferDamage', steps }] : steps;
             return { op: 'trigger', trigger, steps: body, text: s, note: !body.length, defer: reaction };
         },
+    },
+    // «…либо заплатить 1 жетон кузни и заменить 1 Онагр на 1 Титана»
+    // («Мехаморфоз»): the alternative that names a price pays the token before
+    // the model is exchanged. The rule stands first — the plain «заменить 1 X на
+    // 1 Y» would take the sentence and drop the price.
+    {
+        re: /(?:заплатить|потратить|заплатите|потратьте)\s+(\d+|один)\s+жетон[а-яёa-z]*\s+(кузн|тайник|подкреплен)[а-яёa-z]*\s+и\s+замен[а-яёa-z]*\s+(\d+)?\s*([А-ЯЁ][а-яёa-z'’]+)\s+на\s+(\d+)?\s*([А-ЯЁ][а-яёa-z'’]+)/i,
+        build: m => ({
+            op: 'replaceUnit', n: num(m[3]) || 1, from: m[4], to: m[6],
+            filter: unitFilter(m[4]), pick: true,
+            pay: {
+                kind: /кузн/.test(m[2]) ? 'forge' : /тайник/.test(m[2]) ? 'cache' : 'reinforcement',
+                n: num(m[1]) || 1,
+            },
+            text: m[0], who: 'me',
+        }),
+    },
+    // «Либо потратьте 2 материала, чтобы разместить 2 бесплатных Скитария в мире
+    // с вашей фабрикой» («Багровая стража»): the materiel is paid for the units,
+    // and the world is the one that holds the factory of the player.
+    {
+        re: /потрат[а-яёa-z]*\s+(\d+|два|три|один)\s+материал[а-яёa-z]*,\s*чтобы\s+размест[а-яёa-z]*\s+(\d+|два|три|один)?\s*(?:бесплатн[а-яёa-z]+\s+)?([^,.;]{2,40}?)(?:\s+в мире с вашей фабрикой|\s+в мире, содержащем вашу фабрику)[.,;]?\s*$/i,
+        build: (m, ctx) => ({
+            op: 'sequence',
+            steps: [
+                { op: 'payMateriel', n: num(m[1]) || 1, who: 'me' },
+                {
+                    op: 'placeUnit', n: num(m[2]) || 1, what: m[3], pick: true, free: true,
+                    dest: 'friendlyWorldWithFactory', who: 'me',
+                },
+            ],
+            text: m[0], who: 'me',
+        }),
+    },
+    // «купить фабрику и разместить её на дружественном мире в активной системе»
+    // («Боевая кузня»): the factory is paid for and stands in the system of the
+    // order that is being executed.
+    {
+        re: /купить фабрику и разместить её на дружественном мире в активной системе/i,
+        build: () => ({ op: 'placeStructure', kind: 'factory', n: 1, buy: true, pick: true, dest: 'friendlyWorldActive', who: 'me' }),
+    },
+    // «взять две верхних карты из колоды событий и активировать их способности»
+    // («Некромеханика»): both cards are taken and both abilities happen.
+    {
+        re: /взять (две|\d+) верхни[ех] карт[ыу]? из колоды событий и активировать их способности/i,
+        build: m => ({ op: 'activateEvents', n: /две/i.test(m[1]) ? 2 : (Number(m[1]) || 1), who: 'me' }),
+    },
+    // «временно убавить здоровье всех юнитов в атакуемом мире на 1» («Заряд
+    // радиации»): the strike that follows kills the units of the world easier.
+    {
+        re: /убавить здоровье всех юнитов в атакуемом мире на (\d+)/i,
+        build: m => ({ op: 'strikeHealthDown', n: Number(m[1]) || 1, who: 'me' }),
+    },
+    // «взять 1 ваш приказ с вершины любой стопки и разместить его в смежной
+    // системе» («Научная экспедиция»).
+    {
+        re: /взять (\d+|один) ваш приказ с вершины любой стопки и разместить его/i,
+        build: () => ({ op: 'placeOrderAny', n: 1, who: 'me' }),
+    },
+    // "Place this card in your play area and discard all your other schemes."
+    {
+        re: /размест[а-яёa-z]*\s+эту карту в (?:своей|вашей) игровой зоне/i,
+        build: () => ({ op: 'scheme' }),
+    },
+    // «Затем разыграйте ограниченное Развертывание …, Продвижение … или
+    // Доминирование …» («Департаменто муниторум»).
+    {
+        re: /разыграйте ограниченн[а-яё]*\s+(?:Развертывание|развертывание)/i,
+        build: (m, ctx, s) => [{
+            op: 'choice', text: s,
+            options: [
+                { op: 'limitedOrder', kind: 'deploy', text: 'Развертывание (в 1 области)' },
+                { op: 'limitedOrder', kind: 'advance', text: 'Продвижение (перемещение из 1 области)' },
+                { op: 'limitedOrder', kind: 'dominate', text: 'Доминирование (сбор активов из 1 мира)' },
+            ],
+        }],
+    },
+    // «…сыграть любую карту из своей боевой колоды или колоды улучшений, кроме
+    // карты, которая уже была разыграна» («Тактический гений»).
+    {
+        re: /сыграть любую карту из (?:своей )?боевой колоды/i,
+        build: (m, ctx, s) => [{ op: 'playAnyCard', text: s }],
     },
     // "the opponent loses 1 die of their choice"
     {
@@ -3703,6 +4239,17 @@ const RULES = [
                     ability: 'взять 1 из ваших отрядов с командным уровнем 0 или 1 из мира, содержащего постройку, и поместить его в этот мир' },
               ] },
         ]),
+    },
+    // «Вы можете потратить 2 `def. cube`, чтобы взять под контроль постройки
+    // этого мира, если в нём нет вражеских юнитов и бастионов» («Изъяны плоти»):
+    // the cubes are the ones the orbital strike has rolled, so the price and the
+    // control of the structures are paid together, after the strike.
+    {
+        re: /потрат[а-яёa-z]*\s+(\d+)\s*`([^`]+)`,\s*чтобы\s+взять под контроль постройки/i,
+        build: m => ({
+            op: 'strikeTakeStructures', n: num(m[1]) || 1, kind: FS_EFFECTS.icon(m[2]),
+            cond: { noEnemyPieces: true }, who: 'me',
+        }),
     },
     // "you must spend 1 `def. cube`" / "spend up to 3 `morale cube`" /
     // "Потратьте 1 `def. cube` или 1 `morale cube`" — either cube answers the
@@ -3824,6 +4371,17 @@ const RULES = [
         re: /купить постройку до того, как будете покупать отряды/i,
         build: (m, ctx, s) => ({ op: 'structureFirst', text: s }),
     },
+    // «за каждый ваш `def. cube`, по счёту превышающий количество вражеских
+    // `att. cube`, получите 1 `att. token` (вплоть до 4)» («Месть духа
+    // машины»): the payout is the difference of the two counts, capped.
+    {
+        re: /за каждый ваш `([^`]+cube)`,?\s*по счёту превышающий количество вражеских `([^`]+cube)`,?\s*получ[а-яёa-z]*\s+(\d+|один|одно)?\s*`([^`]+)`(?:[^.;]*?вплоть до\s+(\d+))?/i,
+        build: m => ({
+            op: 'gainToken', n: num(m[3]), kind: FS_EFFECTS.icon(m[4]),
+            per: 'excess', myKind: FS_EFFECTS.icon(m[1]), foeKind: FS_EFFECTS.icon(m[2]),
+            max: m[5] ? Number(m[5]) : null, who: 'me',
+        }),
+    },
     // "get 1 `any cube`" / "get 2 `att. token`"
     {
         re: /(?:получ[а-яёa-z]*|взять|возьм[а-яёa-z]*|достаньте)\s+(\d+|два|одно)?\s*`([^`]+)`/i,
@@ -3833,6 +4391,18 @@ const RULES = [
             if (kind === 'cube') return { op: 'gainDie', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]) };
             return null;
         },
+    },
+    // «Получите 1 жетон материалов и 1 жетон кузни» («Благословение
+    // Бога-Машины»): the sentence names two tokens, both of them are gained.
+    {
+        re: /получ[а-яёa-z]*\s+(\d+|один|одно|два|две)?\s*жетон[а-яёa-z]*\s+материал[а-яёa-z]*\s+и\s+(\d+|один|одно|два|две)?\s*жетон[а-яёa-z]*\s+(кузн[а-яёa-z]*|тайник[а-яёa-z]*|подкреплен[а-яёa-z]*)/i,
+        build: m => ([
+            { op: 'gainMateriel', n: num(m[1]) || 1, who: 'me' },
+            {
+                op: 'gainAsset', n: num(m[2]) || 1, who: 'me',
+                kind: /кузн/.test(m[3]) ? 'forge' : /тайник/.test(m[3]) ? 'cache' : 'reinforcement',
+            },
+        ]),
     },
     // "get 2 materiel" / "get 1 materiel token"
     {
@@ -3939,6 +4509,9 @@ const RULES = [
                 // «в системе, содержащей хотя бы 1 из ваших отрядов, либо
                 // находящийся в соседней с ней системе» («Отбрыски Темпестус»).
                 nearMine: /в системе, содержащей хотя бы/i.test(String(s || '')),
+                // «командный уровень которого не превышает командный уровень
+                // вашего сильнейшего недеморализованного юнита» («Жёсткий залп»).
+                maxKlFromMine: /не\s+превышает\s+командн[а-яёa-z]*\s+уровень\s+ваш[а-яёa-z]*\s+сильнейш/i.test(String(s || '')),
             };
         },
     },
@@ -4001,6 +4574,13 @@ const RULES = [
             return null;
         },
     },
+    // «увеличить лимит закупки юнитов на 1» («Главный по машинам»): the deploy
+    // order buys one unit more than the command level allows. The rule stands
+    // before «купить N юнитов» — «закупки юнитов» would be read as a purchase.
+    {
+        re: /увеличить лимит закупки (?:юнитов|отрядов) на (\d+)/i,
+        build: m => ({ op: 'deployLimit', n: Number(m[1]) }),
+    },
     // "buy 1 unit" (the ability of the faction: the unit is bought)
     {
         re: /куп[а-яёa-z]*\s+(\d+)?\s*(?:отряд[а-яёa-z]*|юнит[а-яёa-z]*)/i,
@@ -4016,8 +4596,17 @@ const RULES = [
         build: (m, ctx) => {
             const faction = FS_EFFECTS.factionOf(ctx);
             const names = faction ? faction.units.map(u => u.name) : [];
-            return { op: 'placeUnit', n: 1, what: names, pick: true, buy: true };
+            // «После перемещения своей фракции … в мире с этой фабрикой»
+            // («Святой трубопровод»): the unit stands in the world of the
+            // factory of the order, not in any world of the system.
+            return { op: 'placeUnit', n: 1, what: names, pick: true, buy: true, dest: 'friendlyWorldWithFactoryActive' };
         },
+    },
+    // «Нужно быть главным по машинам» («Святой трубопровод»): the prerequisite of
+    // the card — the player must own the upgrade it names.
+    {
+        re: /^нужно быть ([а-яёa-z ]{3,40})\.?$/i,
+        build: m => ({ op: 'require', what: 'upgrade', name: m[1].trim() }),
     },
     // "buy 1 structure and place it"
     {
@@ -4031,6 +4620,33 @@ const RULES = [
             op: 'replaceUnit', n: num(m[1]), from: m[2], to: m[4],
             filter: unitFilter(m[2]), pick: true, text: m[0],
         }),
+    },
+    // «Вы можете бесплатно заменить 1 Скитария на 1 Катафрона, 1 Катафрона на
+    // 1 Онагра, либо заплатить 1 жетон кузни и заменить 1 Онагр на 1 Титана»
+    // («Мехаморфоз»): the sentence lists several exchanges — each of them is an
+    // alternative of its own, and the one that names a price pays it.
+    {
+        re: /замен[а-яёa-z]*\s+\d+\s+[А-ЯЁа-яёa-z]+\s+на\s+\d+\s+[А-ЯЁа-яёa-z]+\s*,\s*\d+\s+[А-ЯЁа-яёa-z]+\s+на\s+\d+\s+[А-ЯЁа-яёa-z]+/i,
+        build: (m, ctx, s) => {
+            const options = [];
+            const re = /(\d+)\s+([А-ЯЁа-яёa-z]+)\s+на\s+(\d+)\s+([А-ЯЁа-яёa-z]+)/g;
+            let pair;
+            while ((pair = re.exec(s)) !== null) {
+                // The price stands right before the exchange it belongs to.
+                const before = s.slice(Math.max(0, pair.index - 46), pair.index);
+                const pay = /(?:заплатить|потратить)\s+(\d+|один)\s+жетон[а-яёa-z]*\s+(кузн|тайник|подкреплен)[а-яёa-z]*\s+и\s*$/i.exec(before);
+                options.push({
+                    op: 'replaceUnit', n: Number(pair[1]) || 1, from: pair[2], to: pair[4],
+                    filter: unitFilter(pair[2]), pick: true, free: !pay,
+                    pay: pay ? {
+                        kind: /кузн/.test(pay[2]) ? 'forge' : /тайник/.test(pay[2]) ? 'cache' : 'reinforcement',
+                        n: num(pay[1]) || 1,
+                    } : null,
+                    text: (pay ? pay[0] : '') + pair[0], who: 'me', ability: s,
+                });
+            }
+            return options.length >= 2 ? { op: 'choice', options, text: s } : null;
+        },
     },
     // "you may perform the deploy order using one factory"
     {
@@ -4146,7 +4762,7 @@ const RULES = [
     },
     // "get 2 forge tokens"
     {
-        re: /получ[а-яёa-z]*\s+(\d+)?\s*(?:жетон[а-яёa-z]*\s+)?(кузниц[а-яёa-z]*|тайник[а-яёa-z]*|подкреплен[а-яёa-z]*|жетон[а-яёa-z]*\s+ресурс[а-яёa-z]*)/i,
+        re: /получ[а-яёa-z]*\s+(\d+)?\s*(?:жетон[а-яёa-z]*\s+)?(кузн[а-яёa-z]*|тайник[а-яёa-z]*|подкреплен[а-яёa-z]*|жетон[а-яёa-z]*\s+ресурс[а-яёa-z]*)/i,
         build: m => ({
             op: 'gainAsset', n: num(m[1]) || 1,
             kind: /кузниц/.test(m[2]) ? 'forge' : /тайник/.test(m[2]) ? 'cache' : /подкреплен/.test(m[2]) ? 'reinforcement' : 'any',
@@ -4247,6 +4863,13 @@ const RULES = [
         re: /лимит развертывания[^.]*уменьшается на (\d+)/i,
         build: m => ({ op: 'deployLimit', n: -Number(m[1]) }),
     },
+    // «уменьшить общую цену всех покупок (включая здания) на 1» («Главный по
+    // машинам»): every purchase of the order is cheaper — the units and the
+    // structures alike.
+    {
+        re: /уменьшить общую цену всех покупок[^.]*?на (\d+)/i,
+        build: m => ({ op: 'purchaseDiscount', n: Number(m[1]) }),
+    },
     // "your command level increases by 1 while this order is executed"
     {
         re: /командный уровень\s+(?:увеличивается|повышается)\s+на\s+(\d+)\s+во время выполнения этого приказа/i,
@@ -4298,13 +4921,16 @@ const RULES = [
     },
     // The sentences the engine already follows: the player is asked the
     // question in the usual way.
+    // «посмотрите выложенную лицом вниз боевую карту противника»,
+    // «Если вы — атакующий, подсмотрите карту оппонента» («Скитарии-
+    // инфильтраторы»): the card the opponent laid for this round is shown.
     {
         re: /^(?:если вы атакуете,?\s+(?:то\s+)?)?(?:посмотрите выложенную лицом вниз|подсмотрите)\s+(?:в игровую зону )?боевую карту противника\.?$/i,
-        build: (m, ctx, s) => ({ op: 'note', text: s }),
+        build: () => ({ op: 'peekFoeCard' }),
     },
     {
         re: /^(?:если вы — атакующий,?\s+)?подсмотрите карту оппонента\.?$/i,
-        build: (m, ctx, s) => ({ op: 'note', text: s }),
+        build: (m, ctx, s) => ({ op: 'peekFoeCard', onlyAttacker: /^если вы — атакующий/i.test(String(s || '')) }),
     },
     {
         re: /^(?:выберите|выбери)\s+(?:1|один|один из)\s+(?:из\s+)?(?:отряд[а-яёa-z]*|бастион[а-яёa-z]*|отрядов или бастион[а-яёa-z]*)[^.]*противника[^.]*\.?$/i,
@@ -4342,9 +4968,12 @@ const RULES = [
         re: /^в следующем раунде (?:боя|битвы) каждый раз, когда ваш противник должен выбрать боевую карту.*$/i,
         build: (m, ctx, s) => ({ op: 'note', text: s }),
     },
+    // «Повторите основную способность карты, разыгранной в предыдущем раунде
+    // боя» («Почитание духа машины»): the general ability box of the card the
+    // player resolved in the round before this one is resolved again.
     {
         re: /^повторите основную способность карты[^.]*\.?$/i,
-        build: (m, ctx, s) => ({ op: 'note', text: s }),
+        build: (m, ctx, s) => ({ op: 'repeatCard', box: 'general', text: s }),
     },
     {
         re: /^если в этом раунде будет уничтожен ваш юнит.*$/i,
@@ -4380,7 +5009,19 @@ const RULES = [
     },
     {
         re: /^после вытягивания карт на этапе подготовки[^.]*\.?$/i,
-        build: (m, ctx, s) => ({ op: 'note', text: s }),
+        build: (m, ctx, s) => {
+            // «…перебросьте 1 кубик за каждого юнита в оспариваемой области»
+            // («Сервочерепа-стражи»): the reroll is counted by the units that
+            // stand in the contested area of the battle the order has started.
+            const reroll = /перебросьте\s+(\d+|один)\s+кубик[а-яёa-z]*\s+за каждого юнита в оспариваемой области/i.exec(s);
+            if (reroll) {
+                return {
+                    op: 'prepReroll', n: num(reroll[1]) || 1, per: 'unit', inBattle: true,
+                    kind: 'any', who: 'me', ability: s,
+                };
+            }
+            return { op: 'note', text: s };
+        },
     },
     {
         re: /^этот отряд выставляется в дружественную область активной системы\.?$/i,
@@ -4539,10 +5180,13 @@ const RULES = [
         re: /игнорируйте весь урон, который превышает здоровье/i,
         build: () => ({ op: 'ignoreExcess' }),
     },
-    // "do not discard your `def. token` at the end of this round"
+    // "do not discard your `def. token` at the end of this round" /
+    // «… чтобы не терять свои `att. token` в конце текущего раунда битвы»
+    // («Гнев машины») — the tokens of the named kind stay with the player when
+    // the execution round ends.
     {
-        re: /не сбрасывайте ваши `def\. token`/i,
-        build: () => ({ op: 'keepTokens' }),
+        re: /не\s+(?:сбрасывайте|сбрасывать|терять)\s+(?:ваши|свои|сво[а-яёa-z]*)\s*`([^`]+token)`/i,
+        build: m => ({ op: 'keepTokens', kind: FS_EFFECTS.icon(m[1]) }),
     },
     // "the opponent cannot place reinforcement tokens"
     {
@@ -4684,6 +5328,20 @@ const RULES = [
         re: /вернуть этого юнита недеморализованным/i,
         build: () => ({ op: 'resurrect', maxKl: 1 }),
     },
+    // «выберите 1 ваш недеморализованный отряд и получите количество `att.
+    // token`, равное его боевому уровню» («Ржавые сталкеры»): the unit is
+    // chosen first, the number of the tokens is its printed combat value.
+    {
+        re: /выбер[а-яёa-z]*\s+(?:1|один)\s+ваш[а-яёa-z]*\s+недеморализованн[а-яёa-z]*\s+отряд[а-яёa-z]*\s+и получ[а-яёa-z]*\s+количество\s+`([^`]+)`,?\s*равное его боевому (?:уровню|значению)/i,
+        build: m => ({ op: 'gainByUnit', kind: FS_EFFECTS.icon(m[1]), stat: 'combat', n: 1, who: 'me' }),
+    },
+    // «активируйте способность подразделения с карты, разыгранной в предыдущем
+    // раунде боя» («Жизнеотсос»): the unit ability box of that card, requisites
+    // included.
+    {
+        re: /активиру[а-яёa-z]*\s+способность\s+подразделения\s+с карт[а-яёa-z]*,?\s+разыгранн[а-яёa-z]*\s+в предыдущем раунде боя/i,
+        build: (m, ctx, s) => ({ op: 'repeatCard', box: 'unit', text: s }),
+    },
     // The sentences the engine cannot act on by itself yet — the player
     // performs them by hand at the end of the damage step; the card is never
     // silent and never fires the wrong thing:
@@ -4695,9 +5353,12 @@ const RULES = [
         re: /любой\s+отряд[а-яёa-z]*[^.;]{0,80}?уничтожается[.!]?$/i,
         build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'destroy-routed-foe' }),
     },
+    // «на этапе нанесения урона в этом раунде вы можете нанести его вашим
+    // деморализованным отрядам» («Авангард скитариев»): for this execution round
+    // the routed units of the player join the pieces he may assign the damage to.
     {
         re: /нанести\s+(?:его\s+)?ваш[а-яёa-z]*\s+деморализованн[а-яёa-z]*\s+отряд[а-яёa-z]*/i,
-        build: (m, ctx, s) => ({ op: 'note', text: s, manual: 'damage-own-routed' }),
+        build: () => ({ op: 'damageOwnRouted' }),
     },
     {
         re: /половину\s+значения\s+боевого\s+духа/i,

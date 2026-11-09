@@ -1391,6 +1391,11 @@ const FS_RULES = {
         for (let i = 0; i < count; i++) {
             turn = (turn + 1) % count;
             if (this.hasOrderToResolve(state, turn)) { state.turn = turn; return; }
+            // «Если вы вынуждены пропустить ход во время фазы операций, можете
+            // сбросить эту карту…» («Некромеханика»): the player whose tokens
+            // lie under the tokens of the others plays the card of the turn he
+            // has to skip.
+            if (!state.pending) this.maybeScheme(state, turn, 'skip', { kind: 'event', ctx: null });
         }
         // Nobody has an order left — the refresh phase begins.
         this.startRefresh(state);
@@ -1884,6 +1889,15 @@ const FS_RULES = {
         order.strikeBonus = 0;
         const hits = dice.filter(d => d === 'att').length + bonus;
         this.log(state, seat, state.players[seat].name + ' наносит орбитальный удар: ' + hits + ' урона.');
+        // «Вы можете потратить 2 `def. cube`, чтобы взять под контроль постройки
+        // этого мира, если в нём нет вражеских юнитов и бастионов» («Изъяны
+        // плоти»): the cubes the card pays with are the ones the strike has just
+        // rolled, so the price is taken from them here.
+        const take = order.strikeTake;
+        if (take && dice.filter(d => d === (take.kind || 'def')).length >= (take.n || 1)) {
+            order.strikeTake = null;
+            this.takeStructuresOf(state, seat, target.system, target.pos);
+        }
         // The damage is assigned by the player who suffers it — his units are the
         // ones that go back to the supply, and the damage that does not destroy a
         // unit is ignored (no routing during a strike).
@@ -1924,6 +1938,24 @@ const FS_RULES = {
         return { ok: true, hits };
     },
 
+    // The structures of the world change hands: the card takes control of them
+    // («Изъяны плоти»). The world must hold neither an enemy unit nor a bastion
+    // — the card says so itself.
+    takeStructuresOf(state, seat, systemId, pos) {
+        const enemies = state.units.filter(u => u.seat !== seat && u.system === systemId && u.area === pos);
+        const list = this.structuresAt(state, systemId, pos).filter(s => s.seat !== seat);
+        if (enemies.length || list.some(s => s.type === 'bastion') || !list.length) {
+            this.log(state, seat, 'Постройки мира нельзя взять под контроль: в нём есть вражеские отряды или бастион.');
+            return false;
+        }
+        for (const s of list) {
+            s.seat = seat;
+            this.log(state, seat, state.players[seat].name + ' берёт под контроль постройку мира: '
+                + (this.structureName ? this.structureName(s.type) : s.type) + '.');
+        }
+        return true;
+    },
+
     // The scheme of «Набега жнецов» is resolved: the strike goes on.
     resumeStrike(state, seat) {
         const order = state.order;
@@ -1953,6 +1985,11 @@ const FS_RULES = {
         // уменьшается до 3» («Вирусные бомбы»).
         const cap = state.order && state.order.seat === st.attacker ? state.order.enemyHealth : null;
         if (cap) health = Math.min(health, cap);
+        // «временно убавить здоровье всех юнитов в атакуемом мире на 1» («Заряд
+        // радиации»): the health of every unit of the world is lower while the
+        // strike lasts — «можно опустить здоровье до 0 и убить мгновенно».
+        const down = state.order && state.order.seat === st.attacker ? (state.order.strikeHealthDown || 0) : 0;
+        if (down) health = Math.max(0, health - down);
         if (st.left >= health) {
             st.left -= health;
             this.destroyUnit(state, unit);
@@ -2143,6 +2180,9 @@ const FS_RULES = {
         let cost = def.cost;
         // The order may make the units cheaper.
         if (order.discount) cost = Math.max(0, cost - order.discount);
+        // «уменьшить общую цену всех покупок (включая здания) на 1» («Главный по
+        // машинам»): the discount of the card covers every purchase of the order.
+        if (order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
         // One cache token lowers the cost of one unit by two materiel. The
         // pair of the faction deal is paid by a cache token in full.
         let cache = !!cmd.cache && !pairMate;
@@ -2206,7 +2246,10 @@ const FS_RULES = {
         // One cache token lowers the cost of one structure by two materiel.
         const cache = !!cmd.cache;
         if (cache && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
-        const cost = free ? 0 : Math.max(0, stats.cost - (cache ? 2 : 0));
+        let cost = free ? 0 : Math.max(0, stats.cost - (cache ? 2 : 0));
+        // «уменьшить общую цену всех покупок (включая здания) на 1» («Главный по
+        // машинам»): the building is a purchase of the order like any other.
+        if (!free && order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
         if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
         const place = this.canPlaceStructure(state, seat, cmd.system, cmd.pos);
         if (!place.ok) return place;
@@ -3005,6 +3048,8 @@ const FS_RULES = {
         state.turn = state.players[state.firstPlayer] && state.players[state.firstPlayer].eliminated
             ? this.nextPlanner(state, state.firstPlayer - 1 < 0 ? state.players.length - 1 : state.firstPlayer - 1)
             : state.firstPlayer;
+        // The schemes of the start of the planning phase.
+        this.maybeScheme(state, state.turn, 'planning', { kind: 'event', ctx: null });
         this.log(state, -1, 'Раунд ' + state.round + ': фаза планирования.');
     },
 
@@ -3222,6 +3267,44 @@ const FS_RULES = {
             // answer to the question of the start of the combat.
             combat.roundSchemeQueued = true;
         }
+        // The upgrade of the preparation step («Сервочерепа-стражи») asks its
+        // question now — or waits for the scheme that is being answered.
+        this.prepEffects(state, attacker);
+    },
+
+    // The abilities of the order upgrades that act once the cards of the
+    // preparation step are dealt: «После вытягивания карт на этапе подготовки в
+    // битве, которую вы инициировали этим приказом, перебросьте 1 кубик за
+    // каждого юнита в оспариваемой области» («Сервочерепа-стражи»).
+    prepEffects(state, seat) {
+        const order = state.order;
+        if (!order || order.seat !== seat || !state.combat) return false;
+        const prep = order.prepReroll;
+        const draw = order.prepDrawCards;
+        if (!prep && !draw) return false;
+        if (state.pending) {
+            // The scheme of the start of the combat is answered first; the
+            // abilities of the order are asked as soon as the answer is in.
+            state.combat.prepQueued = true;
+            return false;
+        }
+        const steps = [];
+        if (draw) {
+            order.prepDrawCards = null;
+            steps.push({
+                op: 'drawCombatCards', n: draw.n || 0, discard: draw.discard || 0, who: 'me',
+                ability: 'Священные масла: дополнительные боевые карты этапа подготовки.',
+            });
+        }
+        if (prep) {
+            order.prepReroll = null;
+            steps.push({
+                op: 'rerollDie', n: prep.n || 1, kind: prep.kind || 'any', per: prep.per || null,
+                inBattle: !!prep.inBattle, who: 'me', ability: prep.ability,
+            });
+        }
+        this.runEffects(state, seat, steps, { kind: 'combat', ctx: { side: seat === state.combat.attacker ? 'attacker' : 'defender' } });
+        return true;
     },
 
     // The commands of the combat.
@@ -3281,8 +3364,11 @@ const FS_RULES = {
 
     // The units and bastions that may still be assigned damage: the unrouted
     // troops and the bastions; the routed ones only when nothing else is left.
+    // A card may open the routed units of the side for the damage of the round
+    // («Авангард скитариев»).
     canTakeDamage(state, c, side) {
         const items = this.pieces(state, c, side);
+        if (c.ownRoutedDamage && c.ownRoutedDamage[side] === c.round) return items;
         const ready = items.filter(x => x.type ? x.type === 'bastion' : !x.routed);
         return ready.length ? ready : items;
     },
@@ -4028,12 +4114,21 @@ const FS_RULES = {
         }
         // The combat tokens go back to the supply at the end of every execution
         // round: only the dice and the cards are counted again. A card may keep
-        // the defence tokens of its player («Шустрое судно»).
-        const keep = c.keepTokens || {};
-        c.tokens = {
-            attacker: { att: 0, def: keep.attacker ? (c.tokens.attacker.def || 0) : 0 },
-            defender: { att: 0, def: keep.defender ? (c.tokens.defender.def || 0) : 0 },
+        // the tokens of the kind it names for the round it was played in
+        // («Шустрое судно» — `def. token`, «Гнев машины» — `att. token`).
+        const keptOf = s => {
+            const k = (c.keepTokens || {})[s];
+            return k && k.round === c.round ? k : null;
         };
+        const keepSide = (s, kind) => {
+            const k = keptOf(s);
+            return k && k[kind] ? ((c.tokens[s] && c.tokens[s][kind]) || 0) : 0;
+        };
+        c.tokens = {
+            attacker: { att: keepSide('attacker', 'att'), def: keepSide('attacker', 'def') },
+            defender: { att: keepSide('defender', 'att'), def: keepSide('defender', 'def') },
+        };
+        c.keepTokens = null;
         // The card may destroy the units that became routed.
         if (c.destroyRouted) {
             for (const u of state.units.slice()) {
@@ -4270,6 +4365,10 @@ const FS_RULES = {
                 defender: !!(staged.defender),
             };
             delete copy.combat.staged;
+            // The card the opponent laid is secret — unless a card let the
+            // player peek at it («Скитарии-инфильтраторы»): only he sees it.
+            const peeked = (copy.combat.peek || {})[seat] || null;
+            copy.combat.peek = peeked ? { name: peeked } : null;
         }
         // The question of the effect: the cards of the hand of the opponent
         // are not shown.

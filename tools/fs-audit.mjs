@@ -2574,7 +2574,9 @@ rule('combat-d2', '«do not discard your def. tokens at the end of this round of
     const st = groundBattle({ att: 2, def: 2 });
     st.combat.tokens.attacker.def = 2;
     st.combat.tokens.defender.def = 2;
-    st.combat.keepTokens = { defender: true };
+    // The card names the kind of the tokens it keeps and the round it was played
+    // in: «Гнев машины» keeps the attack tokens the same way.
+    st.combat.keepTokens = { defender: { def: true, round: st.combat.round } };
     FS_RULES.endCombatRound(st);
     if (!st.combat) return 'бой кончился раньше времени';
     eq(st.combat.tokens.defender.def, 2, 'жетоны защиты остались у владельца карты');
