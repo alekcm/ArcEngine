@@ -1231,7 +1231,7 @@ class FSGame {
         if (!canForge) opts.forgeKl = false;
         const cl = FS_RULES.commandLevel(s, me);
         const mayBuild = faction && FS_RULES.hasFactory(s, me, order.system);
-        if (step === 'units' && mayBuild && (order.bought || 0) < limit) {
+        if (step === 'units' && mayBuild && FS_RULES.unitsBought(order) < limit) {
             for (const def of faction.units) {
                 const n = supply[def.id] || 0;
                 // The price the rules will charge: the panel never counts it itself.
@@ -1275,7 +1275,7 @@ class FSGame {
                 const can = FS_RULES.canTakeStructure(s, me, type);
                 const free = order.freeStructure && order.freeStructureKind === type;
                 const price = free ? 0 : FS_RULES.structurePrice(s, me, type, { cache: opts.cache });
-                const blocked = !can.ok || order.structureBought || (p.materiel - spent < price && !free);
+                const blocked = !can.ok || FS_RULES.structureBought(order) || (p.materiel - spent < price && !free);
                 ctx.actions.push({
                     kind: 'pick', icon: 'mark.city', label: FS_RULES.structureName(type),
                     hint: free ? 'бесплатно' : price + ' материи' + (can.ok ? '' : ' · ' + can.error),
@@ -1360,8 +1360,8 @@ class FSGame {
         const dealUnit = (order.supplyDeal && order.supplyDeal.unit) || 'Гвардейца';
         const dealName = dealUnit.toLowerCase().replace(/а/g, '');
         const isDealUnit = def => order.supplyDeal && String(def.name).toLowerCase().indexOf(dealName) >= 0;
-        const dealNextFree = def => isDealUnit(def) && (order.dealBought || 0) % 2 === 1;
-        if ((order.bought || 0) < limit) {
+        const dealNextFree = def => isDealUnit(def) && FS_RULES.dealBought(order) % 2 === 1;
+        if (FS_RULES.unitsBought(order) < limit) {
             // «Массовое Производство» производит только наземные отряды и только
             // в мир, который их произвёл — космос это другой мир.
             for (const def of faction.units) {

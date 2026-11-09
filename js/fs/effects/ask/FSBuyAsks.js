@@ -40,7 +40,7 @@ class BuyAsks {
     static buyBastionNearby(effects, f) {
         const { R, state, seat, step, p } = f;
         const order = state.order;
-        if (order && !(order.purchases || []).length && !order.bought) {
+        if (order && !(order.purchases || []).length) {
             R.log(state, seat, p.name + ': бастион покупается вдобавок к покупке приказа — сначала купите отряд или постройку.');
             return null;
         }

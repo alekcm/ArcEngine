@@ -145,7 +145,6 @@ class OperationsRules {
             // paid at the end of the order (cmdFinishDeploy).
             state.order.phase = 'units';
             state.order.purchases = [];
-            state.order.structureBought = false;
             // The card of the Orks lets the structure come before the units.
             if ((p.upgrades || []).some(u => /Строй быстрее/i.test(u.name || ''))) state.order.structureFirst = true;
             this.engine.log(state, seat, p.name + ' может покупать отряды, а затем постройку.');

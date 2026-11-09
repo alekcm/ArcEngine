@@ -151,7 +151,6 @@ class StrategizeRules {
             order.order = kind;
             order.phase = null;
             order.purchases = [];
-            order.bought = 0;
             order.upgradesBought = 0;
             if (kind === 'advance') order.moveAreaLimit = 1;
             if (kind === 'deploy') { order.deployAreaLimit = 1; order.deployAreas = []; }

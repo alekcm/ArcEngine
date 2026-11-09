@@ -2201,6 +2201,40 @@ rule('dep-7', '«Покупки приказа платятся в конце» 
     eq(FS_RULES.spentOf(st.order), 0, 'долг приказа обнулён');
 });
 
+rule('dep-8', '«The deploy limit is equal to the combined unit capacity …» — счёт покупок живёт в списке покупок, отмена его уменьшает', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+    guard(st, 0, sys.id, pos);
+    st.order = { seat: 0, order: 'deploy', system: sys.id, phase: 'deploy', purchases: [] };
+    st.players[0].materiel = 14;
+    st.players[0].supply.units['гвардейцы'] = 9;
+    const limit = FS_RULES.deployLimit(st, 0, sys.id);
+    eq(FS_RULES.unitsBought(st.order), 0, 'сначала ничего не куплено');
+    for (let i = 0; i < limit; i++) {
+        const r = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys.id, pos });
+        eq(r.ok, true, 'покупка ' + (i + 1));
+    }
+    eq(FS_RULES.unitsBought(st.order), limit, 'счёт покупок по списку');
+    // A second counter would keep the limit exhausted after the undo.
+    const undo = FS_RULES.apply(st, 0, { type: 'undoPurchase' });
+    eq(undo.ok, true, 'покупка снята');
+    eq(FS_RULES.unitsBought(st.order), limit - 1, 'снятая покупка не считается');
+    eq(FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys.id, pos }).ok, true,
+        'после отмены предел снова свободен на одну покупку');
+    // The structure: one per order, and an undone one may be bought again.
+    FS_RULES.apply(st, 0, { type: 'deployStructures' });
+    const other = FS_RULES.system(st, sys.id).areas.filter(a => a.world && a.pos !== pos)[0];
+    if (!other) return true;
+    FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, other.pos);
+    eq(FS_RULES.apply(st, 0, { type: 'buyStructure', structure: 'city', system: sys.id, pos: other.pos }).ok, true,
+        'постройка куплена');
+    eq(FS_RULES.structureBought(st.order), true, 'постройка видна в списке');
+    eq(FS_RULES.apply(st, 0, { type: 'undoPurchase' }).ok, true, 'постройка снята');
+    eq(FS_RULES.structureBought(st.order), false, 'снятая постройка не считается');
+});
+
 rule('struct-3', '«Players are limited to purchasing the number of … structures provided in the game» — 15 городов, 10 фабрик, 10 бастионов и 9 жетонов на игрока, а не «по три»', () => {
     const st = empty();
     const worlds = [];

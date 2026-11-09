@@ -430,6 +430,29 @@ try {
     fail(e.message);
 }
 
+// --- the purchases of an order: one list -------------------------------------
+section('покупки приказа: один список');
+try {
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (file === 'js/fs/FSData.js') continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // What the order has bought is its list of purchases: the deploy limit,
+        // the one structure and the faction deal are counted from it. A second
+        // counter drifts from the list the moment an undo takes a record away.
+        const re = /\b[A-Za-z_$][\w$]*\.(?:bought|dealBought|structureBought)\s*=(?!=)/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('счёт покупок берётся из списка покупок');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- materiel: one account --------------------------------------------------
 section('материя: одно место учёта');
 try {
