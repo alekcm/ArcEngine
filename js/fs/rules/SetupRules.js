@@ -629,8 +629,8 @@ class SetupRules {
     }
 
     structureTokensLeft(state, seat) {
-        const used = state.structures.filter(st => st.seat === seat).length;
-        return Math.max(0, this.engine.STRUCTURE_TOKENS - used);
+        // One place counts them: the player object (a card may raise the number).
+        return this.engine.player(state, seat).structureTokensLeft();
     }
 
     canTakeStructure(state, seat, type) {

@@ -258,9 +258,10 @@ const FSView = {
     },
 
     areaOccupants(state, systemId, pos) {
+        const board = Board.of(state);
         return [...new Set([
-            ...state.units.filter(unit => unit.system === systemId && unit.area === pos).map(unit => unit.seat),
-            ...state.structures.filter(structure => structure.system === systemId && structure.area === pos).map(structure => structure.seat),
+            ...board.unitsAt(systemId, pos).map(unit => unit.seat),
+            ...board.structuresAt(systemId, pos).map(structure => structure.seat),
         ])].sort((a, b) => a - b);
     },
 
@@ -1250,7 +1251,7 @@ const FSView = {
         }
         for (const [key, list] of byArea) {
             const [sysId, pos] = key.split(':');
-            const sys = state.systems.find(s => s.id === sysId);
+            const sys = Board.of(state).system(sysId);
             if (!sys) continue;
             const area = sys.areas.find(a => a.pos === pos);
             const world = !!(area && area.world);
@@ -1343,7 +1344,7 @@ const FSView = {
         // upper-left shoulder of the world they stand on — off the planet's rim,
         // on the printed tile, never on the planet's face, and without glow.
         for (const s of state.structures) {
-            const sys = state.systems.find(x => x.id === s.system);
+            const sys = Board.of(state).system(s.system);
             if (!sys) continue;
             const disc = this.discAt(app, sys, s.area, view.metrics);
             const diag = (this.PLANET_D / 2 + 15) * Math.SQRT1_2;   // past the rim, to the upper-left
@@ -1424,7 +1425,7 @@ const FSView = {
         // The objective tokens.
         for (const o of state.objectives) {
             if (o.taken) continue;                  // the token is already in the play area
-            const sys = state.systems.find(x => x.id === o.system);
+            const sys = Board.of(state).system(o.system);
             if (!sys) continue;
             const p = this.areaPos(app, sys, o.area, view.metrics);
             const root = new BABYLON.TransformNode('fs-objective-' + o.id, view.scene);
@@ -1589,7 +1590,7 @@ const FSView = {
         view.unitChips = view.unitChips || [];
         view.unitChips.length = 0;
         if (!c) { view.combatSeen.clear(); view.flights.clear(); this.drawUnitChips(app, view, state); return; }
-        const sys = state.systems.find(x => x.id === c.system);
+        const sys = Board.of(state).system(c.system);
         if (!sys) return;
         const area = sys.areas.find(a => a.pos === c.pos);
         if (!area) return;

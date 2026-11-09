@@ -197,12 +197,10 @@ const FSUI = {
             ['advance', 'Наступление'], ['deploy', 'Развёртывание'],
             ['strategize', 'Стратегия'], ['dominate', 'Доминирование'],
         ];
-        const laid = { advance: 0, deploy: 0, strategize: 0, dominate: 0 };
         const rows = [];
         for (const sys of state.systems) {
             for (const tok of sys.tokens) {
                 if (tok.seat !== me) continue;
-                laid[tok.order] = (laid[tok.order] || 0) + 1;
                 rows.push({ tile: sys.tile, order: tok.order, faceUp: !!tok.faceUp });
             }
         }
@@ -211,7 +209,7 @@ const FSUI = {
         const per = typeof FS_RULES === 'undefined' ? 2 : FS_RULES.ORDER_SUPPLY;
         const hand = this.el('div', 'fs-orders-hand');
         for (const [id, label] of kinds) {
-            const left = Math.max(0, per - (laid[id] || 0));
+            const left = FS_RULES.orderLeft(state, me, id);
             const chip = this.el('span', 'fs-orders-chip' + (left ? '' : ' is-empty'));
             chip.append(this.iconEl('order.' + id, 'fs-orders-icon'));
             chip.append(this.el('b', 'fs-orders-count', String(left)));

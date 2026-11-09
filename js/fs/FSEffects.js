@@ -20,9 +20,7 @@ const FS_EFFECTS = {
     // Миров»; 07-tokens.md: «у игрока не может быть больше 3 жетонов каждого
     // типа (у Тиранидов — до 4)»), and a card may raise the limit for the game.
     assetCap(player, kind) {
-        const p = player || {};
-        const base = FS_CATALOG.assetLimit(p.faction, kind);
-        return Math.max(base, p.assetLimit || 0);
+        return FS_CATALOG.assetLimitFor(player, kind);
     },
 
     // --- the icons of the text ------------------------------------------------
@@ -3805,7 +3803,7 @@ const FS_EFFECTS = {
                     R.log(state, seat, p.name + ' не получает материи: уничтоженных отрядов нет.');
                     return null;
                 }
-                p.materiel += n;
+                R.player(state, seat).gainMateriel(n);
                 R.log(state, seat, p.name + ' получает ' + n + ' материи.');
                 return null;
             }

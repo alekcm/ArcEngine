@@ -86,8 +86,7 @@ class PlayerEntity {
      * raises the limit for the whole game (`assetLimit` of the player record).
      */
     assetLimit(kind) {
-        const base = FS_CATALOG.assetLimit(this.factionId, kind);
-        return Math.max(base, this.data.assetLimit || 0);
+        return FS_CATALOG.assetLimitFor(this.data, kind);
     }
 
     hasRoomFor(kind) {
@@ -176,6 +175,17 @@ class PlayerEntity {
     /** The orders the player may still place this round. */
     orderLimit() {
         return FS_RULES_CONFIG.ORDER_TOKENS + (this.data.extraOrderTokens || 0);
+    }
+
+    /** Are there orders to place this round? (the planning panel asks this) */
+    ordersLeft() {
+        return Math.max(0, this.orderLimit() - (this.data.placedTokens || 0));
+    }
+
+    /** How many tokens of one kind are still in hand (two of every kind, less the laid ones). */
+    orderKindLeft(kind) {
+        const used = this.data.placedOf ? (this.data.placedOf[kind] || 0) : 0;
+        return Math.max(0, FS_RULES_CONFIG.ORDER_SUPPLY - used);
     }
 
     /** The order tokens lying in the play area (placed, minus the board and the event deck). */

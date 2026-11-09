@@ -13,7 +13,7 @@ class PlanningRules {
         if (state.phase !== 'planning') return false;
         const p = state.players[seat];
         if (!p) return false;
-        if ((p.placedTokens || 0) >= this.engine.ORDER_TOKENS + (p.extraOrderTokens || 0)) return false;
+        if (this.engine.player(state, seat).ordersLeft() <= 0) return false;
         // The rule of the planning: the token goes into a system with the troops of
         // the player or into a system next to one of his systems.
         if (this.hasUnitsOrStructures(state, seat, sys.id)) return true;
@@ -24,19 +24,23 @@ class PlanningRules {
         return this.engine.board(state).hasUnitsOrStructures(seat, systemId);
     }
 
+    /** Orders the player may still lay this round. */
+    ordersLeft(state, seat) {
+        if (!state.players[seat]) return 0;
+        return this.engine.player(state, seat).ordersLeft();
+    }
+
+    /** How many tokens of one order kind are still in the player's hand. */
     orderLeft(state, seat, kind) {
-        const p = state.players[seat];
-        if (!p) return 0;
-        const used = p.placedOf ? (p.placedOf[kind] || 0) : 0;
-        return Math.max(0, this.engine.ORDER_SUPPLY - used);
+        if (!state.players[seat]) return 0;
+        return this.engine.player(state, seat).orderKindLeft(kind);
     }
 
     cmdPlaceOrder(state, seat, cmd) {
         if (state.phase !== 'planning') return { ok: false, error: 'Сейчас не фаза планирования.' };
         if (seat !== state.turn) return { ok: false, error: 'Сейчас очередь другого игрока.' };
         const p = state.players[seat];
-        const limit = this.engine.ORDER_TOKENS + (p.extraOrderTokens || 0);
-        if ((p.placedTokens || 0) >= limit) return { ok: false, error: 'Все приказы уже выложены.' };
+        if (this.engine.player(state, seat).ordersLeft() <= 0) return { ok: false, error: 'Все приказы уже выложены.' };
         const sys = this.engine.system(state, cmd.system);
         if (!sys) return { ok: false, error: 'Нет такой системы.' };
         if (!this.canPlaceOrder(state, seat, sys.id)) {
@@ -74,8 +78,7 @@ class PlanningRules {
             const seat = (from + i) % n;
             const p = state.players[seat];
             if (!p || p.eliminated) continue;
-            const limit = this.engine.ORDER_TOKENS + (p.extraOrderTokens || 0);
-            if ((p.placedTokens || 0) < limit) return seat;
+            if (this.engine.player(state, seat).ordersLeft() > 0) return seat;
         }
         return from;
     }
@@ -89,7 +92,7 @@ class PlanningRules {
         // phase of the game (the rules, "Eliminating a Player"): his shed tokens
         // do not hold the planning back.
         const done = state.players.every(p => p.eliminated
-            || (p.placedTokens || 0) >= this.engine.ORDER_TOKENS + (p.extraOrderTokens || 0));
+            || this.engine.player(state, p.seat).ordersLeft() <= 0);
         if (!done) return;
         state.phase = 'operations';
         // The operations start with the first player who really has an order on

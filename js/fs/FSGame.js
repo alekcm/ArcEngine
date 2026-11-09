@@ -813,7 +813,7 @@ class FSGame {
     panelPlanning(s, ctx) {
         const me = s.seat;
         const p = s.players[me];
-        const left = Math.max(0, FS_RULES.ORDER_TOKENS + (p.extraOrderTokens || 0) - (p.placedTokens || 0));
+        const left = FS_RULES.ordersLeft(s, me);
         ctx.title = 'Планирование';
         // The tokens go one at a time, in a circle: while it is not your turn the
         // panel only says whose turn it is.
@@ -839,10 +839,9 @@ class FSGame {
             ['strategize', 'Стратегия', 'order.strategize', 'Улучшения'],
             ['dominate', 'Доминирование', 'order.dominate', 'Ресурсы и способность'],
         ];
-        const supply = typeof FS_RULES.ORDER_SUPPLY === 'number' ? FS_RULES.ORDER_SUPPLY : 2;
-        const laid = p.placedOf || {};
+        const supply = FS_RULES.ORDER_SUPPLY;
         for (const [order, name, icon, hint] of kinds) {
-            const left = Math.max(0, supply - (laid[order] || 0));
+            const left = FS_RULES.orderLeft(s, me, order);
             // Two tokens of every order: a spent kind stays in the list, only dimmed.
             ctx.actions.push({
                 kind: 'pick', icon, label: name, count: left + '×',

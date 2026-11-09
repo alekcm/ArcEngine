@@ -172,6 +172,16 @@ class FactionCatalog {
         return limits[kind] || 3;
     }
 
+    /**
+     * The limit for a player RECORD (state.players[seat]): the printed limit of
+     * the faction, or the higher one a card has raised for the whole game. Every
+     * place that asks «is there room for one more token» uses this.
+     */
+    assetLimitFor(player, kind) {
+        const data = player || {};
+        return Math.max(this.assetLimit(data.faction, kind), data.assetLimit || 0);
+    }
+
     // --- colours --------------------------------------------------------------
 
     /** The faction colour darkened (amt < 0) or lightened (amt > 0). */
