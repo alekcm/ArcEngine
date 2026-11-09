@@ -249,25 +249,13 @@ class CombatRules {
     }
 
     reinforceFlipped(state, side) {
-        const c = state.combat;
-        if (!c) return [];
-        c.reinforceFlipped = c.reinforceFlipped || { attacker: [], defender: [] };
-        if (!c.reinforceFlipped[side]) {
-            // An older state carries only the count: its first N tokens were
-            // the flipped ones.
-            const n = (c.reinforceRouted && c.reinforceRouted[side]) || 0;
-            const list = [];
-            for (let i = 0; i < n; i++) list.push(i);
-            c.reinforceFlipped[side] = list;
-        }
-        return c.reinforceFlipped[side];
+        const tokens = CombatTokens.of(state.combat);
+        return tokens ? tokens.flipped(side) : [];
     }
 
     reinforceDestroyed(state, side) {
-        const c = state.combat;
-        if (!c) return [];
-        c.reinforceDestroyed = c.reinforceDestroyed || { attacker: [], defender: [] };
-        return c.reinforceDestroyed[side] || (c.reinforceDestroyed[side] = []);
+        const tokens = CombatTokens.of(state.combat);
+        return tokens ? tokens.destroyed(side) : [];
     }
 
     reinforceTokenDef(state, side) {
@@ -291,37 +279,20 @@ class CombatRules {
     }
 
     reinforceTokenIndex(state, side, id) {
-        if (typeof id !== 'string' || id.indexOf('reinforce-') !== 0) return -1;
-        const parts = id.split('-');
-        if (parts.length !== 3 || parts[1] !== side) return -1;
-        const i = Number(parts[2]);
-        if (!Number.isInteger(i) || i < 0 || i >= this.tokenUnits(state, side).used) return -1;
-        return this.reinforceDestroyed(state, side).indexOf(i) >= 0 ? -1 : i;
+        const tokens = CombatTokens.of(state.combat);
+        return tokens ? tokens.indexOf(side, id) : -1;
     }
 
     routeReinforcementToken(state, side, index) {
-        if (index < 0 || index >= this.tokenUnits(state, side).used) return false;
-        const flipped = this.reinforceFlipped(state, side);
-        if (flipped.indexOf(index) >= 0) return false;
-        flipped.push(index);
-        const c = state.combat;
-        c.reinforceRouted = c.reinforceRouted || { attacker: 0, defender: 0 };
-        c.reinforceRouted[side] = flipped.length;
-        return true;
+        const tokens = CombatTokens.of(state.combat);
+        return tokens ? tokens.route(side, index) : false;
     }
 
     destroyReinforcementToken(state, side, index, loss) {
-        if (index < 0 || index >= this.tokenUnits(state, side).used) return false;
-        const dead = this.reinforceDestroyed(state, side);
-        if (dead.indexOf(index) >= 0) return false;
-        dead.push(index);
-        const flipped = this.reinforceFlipped(state, side);
-        const at = flipped.indexOf(index);
-        if (at >= 0) flipped.splice(at, 1);
-        const c = state.combat;
-        c.reinforceRouted = c.reinforceRouted || { attacker: 0, defender: 0 };
-        c.reinforceRouted[side] = flipped.length;
+        const tokens = CombatTokens.of(state.combat);
+        if (!tokens || !tokens.destroy(side, index)) return false;
         // «за каждый уничтоженный отряд» counts a token as a unit too.
+        const c = state.combat;
         if (loss) c.destroyedNow = (c.destroyedNow || 0) + 1;
         return true;
     }
@@ -339,17 +310,8 @@ class CombatRules {
     }
 
     tokenUnits(state, side) {
-        const c = state.combat;
-        const used = (c && c.reinforce && c.reinforce[side]) || 0;
-        const flipped = this.reinforceFlipped(state, side);
-        const dead = this.reinforceDestroyed(state, side);
-        const routed = flipped.filter(i => i < used && dead.indexOf(i) < 0).length;
-        const destroyed = dead.filter(i => i < used).length;
-        if (c) {
-            c.reinforceRouted = c.reinforceRouted || { attacker: 0, defender: 0 };
-            c.reinforceRouted[side] = routed;
-        }
-        return { used, routed, destroyed, alive: Math.max(0, used - routed - destroyed) };
+        const tokens = CombatTokens.of(state.combat);
+        return tokens ? tokens.units(side) : { used: 0, routed: 0, destroyed: 0, alive: 0 };
     }
 
     /**
@@ -439,19 +401,18 @@ class CombatRules {
         }
         const max = this.maxReinforce(state, seat, side);
         if (count > max) return { ok: false, error: 'Не больше ' + max + ' жетонов подкрепления.' };
-        c.reinforce[side] = count;
+        const tokens = CombatTokens.of(c);
+        tokens.add(side, count, false);
         // A reinforced token leaves the reserve: one counter for every token
         // that comes and goes, so the limit of the faction holds here too.
         this.engine.player(state, seat).payAsset('reinforcement', count);
-        c.reinforceUsed = c.reinforceUsed || {};
-        c.reinforceUsed[side] = count;
+        tokens.setSpent(side, count);
         // «В конце шага призыва подкреплений …» («Зов астропатов»): the moment of
         // the card, offered before the step is closed.
-        if (!c.reinforceHook || !c.reinforceHook[side]) {
-            c.reinforceHook = c.reinforceHook || {};
-            c.reinforceHook[side] = true;
+        if (!tokens.hookAsked(side)) {
+            tokens.askHook(side);
             if (this.engine.maybeScheme(state, seat, 'reinforce-end', { kind: 'combat', ctx: { side } })) {
-                c.reinforcePending = side;
+                tokens.setPending(side);
                 return { ok: true, pending: true };
             }
         }
@@ -484,7 +445,7 @@ class CombatRules {
             this.destroyReinforcementToken(state, side, index, false);
             // A token destroyed by a card does not come back to the player's
             // assets at clean-up.
-            c.reinforceUsed[side] = Math.max(0, (c.reinforceUsed[side] || 0) - 1);
+            CombatTokens.of(c).returnSpent(side);
             left -= 1;
         }
         const lost = n - left;
@@ -1494,9 +1455,9 @@ class CombatRules {
             deck.shuffle();
             // The reinforcement tokens of the combat go back to the supply here, at
             // the clean-up of the combat.
-            this.engine.player(state, seat).addAsset('reinforcement',
-                c.reinforceUsed && c.reinforceUsed[side] ? c.reinforceUsed[side] : 0);
-            if (c.reinforceUsed) c.reinforceUsed[side] = 0;
+            const tokens = CombatTokens.of(c);
+            this.engine.player(state, seat).addAsset('reinforcement', tokens.spent(side));
+            tokens.setSpent(side, 0);
         }
         if (noTroops) this.combatRetreat(state, loser, attackerWins ? 'defender' : 'attacker', {});
     }

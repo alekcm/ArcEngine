@@ -1864,7 +1864,7 @@ class FSGame {
                 faction: p.faction,
                 dice: (c.dice[id] || []).slice(),
                 tokens: { att: c.tokens[id].att || 0, def: c.tokens[id].def || 0 },
-                reinforce: (c.reinforce && c.reinforce[id]) || 0,
+                reinforce: CombatTokens.of(c).used(id),
                 cards: played,
                 values,
                 parts: FS_RULES.combatValuesParts(s, id),

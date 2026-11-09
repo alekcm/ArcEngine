@@ -351,7 +351,7 @@ class AdvanceRules {
         if (PhasePlan.of(order).is('combat')) {
             const c = state.combat;
             const fresh = c && c.round === 1 && c.step === 'reinforce-attacker'
-                && !c.reinforce.attacker && !c.reinforce.defender
+                && !CombatTokens.of(c).any
                 && !c.cards.attacker.played.length && !c.cards.defender.played.length
                 && c.damage.attacker === 0 && c.damage.defender === 0;
             if (!fresh) return { ok: false, error: 'Бой уже начался: отменить движение нельзя.' };

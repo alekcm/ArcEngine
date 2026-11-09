@@ -1620,10 +1620,9 @@ const FS_EFFECTS = {
         }
         // The reinforce step waited for the scheme of its end («Зов астропатов»):
         // the step is closed now.
-        if (c.kind === 'combat' && state.combat && state.combat.reinforcePending
+        if (c.kind === 'combat' && state.combat && CombatTokens.of(state.combat).pending
             && typeof R.finishReinforce === 'function') {
-            const pend = state.combat.reinforcePending;
-            state.combat.reinforcePending = null;
+            const pend = CombatTokens.of(state.combat).takePending();
             R.finishReinforce(state, pend);
         }
         // The upgrade of the preparation step waited for the scheme of the start
@@ -2115,12 +2114,7 @@ const FS_EFFECTS = {
         const n = step.free ? want : Math.min(want, R.player(state, seat).assetCount('reinforcement'));
         if (!n) return 0;
         if (!step.free) R.player(state, seat).payAsset('reinforcement', n);
-        combat.reinforce = combat.reinforce || { attacker: 0, defender: 0 };
-        combat.reinforce[side] = (combat.reinforce[side] || 0) + n;
-        if (step.free) {
-            combat.reinforceFree = combat.reinforceFree || { attacker: 0, defender: 0 };
-            combat.reinforceFree[side] = (combat.reinforceFree[side] || 0) + n;
-        }
+        CombatTokens.of(combat).add(side, n, step.free);
         R.log(state, seat, p.name + ' размещает ' + n + ' жетон(ов) подкрепления'
             + (step.free ? ' бесплатно.' : '.'));
         return n;

@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTokens } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -728,6 +728,51 @@ rule('order-1', '«… this order …» — командный уровень, �
     eq(fight.unspentTemp(7), 0, 'считать больше нечего');
     eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
     eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
+
+rule('combat-0', '«place reinforcement tokens … if a unit is not destroyed it is routed» — жетоны боя считает CombatTokens', () => {
+    // A battle with three tokens on the attacker's side.
+    const combat = { reinforce: { attacker: 3, defender: 0 } };
+    const tokens = CombatTokens.of(combat);
+    eq(CombatTokens.of(combat), tokens, 'у боя один набор жетонов');
+    eq(CombatTokens.of(null), null, 'без боя жетонов нет');
+    eq(tokens.used('attacker'), 3, 'три жетона выставлены');
+    eq(tokens.units('attacker').alive, 3, 'все стоят');
+    // A returned token comes back to the supply: the step counts it again.
+    tokens.add('defender', 2, true);
+    eq(tokens.used('defender'), 2, 'два бесплатных жетона защитника');
+    eq(tokens.free.defender, 2, 'бесплатные не возвращаются в запас');
+    // «if a unit suffers damage and is not destroyed, that unit is routed»:
+    // a routed token does not stand, but it is not destroyed either.
+    eq(tokens.route('attacker', 1), true, 'жетон обращается в бегство');
+    eq(tokens.route('attacker', 1), false, 'второй раз его не обратить');
+    eq(tokens.routed('attacker'), 1, 'счёт обращённых сошёлся с списком');
+    eq(tokens.units('attacker').alive, 2, 'обращённый не стоит');
+    // A destroyed token leaves the table: it is not routed any more.
+    eq(tokens.destroy('attacker', 1), true, 'обращённый жетон уничтожен');
+    eq(tokens.routed('attacker'), 0, 'уничтоженный больше не обращён');
+    eq(tokens.units('attacker').destroyed, 1, 'уничтоженный посчитан');
+    eq(tokens.destroy('attacker', 1), false, 'второй раз он не умирает');
+    eq(tokens.destroy('attacker', 9), false, 'чужого жетона нет');
+    // The slot by the id the panel draws («reinforce-attacker-0»).
+    eq(tokens.indexOf('attacker', 'reinforce-attacker-2'), 2, 'жетон найден по метке');
+    eq(tokens.indexOf('attacker', 'reinforce-attacker-1'), -1, 'уничтоженного не найти');
+    eq(tokens.indexOf('defender', 'reinforce-attacker-2'), -1, 'чужая сторона не подходит');
+    // The step: spent, asked once, and waiting for its scheme.
+    tokens.setSpent('attacker', 2);
+    tokens.returnSpent('attacker');
+    eq(tokens.spent('attacker'), 1, 'возвращённый жетон вернул место в шаге');
+    eq(tokens.hookAsked('attacker'), false, 'схема конца шага не спрошена');
+    tokens.askHook('attacker');
+    eq(tokens.hookAsked('attacker'), true, 'спрошена один раз');
+    tokens.setPending('attacker');
+    eq(tokens.pending, 'attacker', 'шаг ждёт схему');
+    eq(tokens.takePending(), 'attacker', 'схема забрала ожидание');
+    eq(tokens.pending, null, 'ожидание снято');
+    eq(tokens.any, true, 'жетоны выставлены');
+    // An older state carries only the count of the routed tokens.
+    const old = { reinforce: { attacker: 2, defender: 0 }, reinforceRouted: { attacker: 2, defender: 0 } };
+    eq(CombatTokens.of(old).flipped('attacker').join(','), '0,1', 'старый счёт разворачивается в список');
 });
 
 rule('order-0', '«… the active player … the active system …» — чей приказ, какой и где, спрашивают у OrderContext', () => {

@@ -1743,7 +1743,7 @@ const FSView = {
             // A reinforcement token IS the faction's CL0 unit (the rules,
             // "Reinforcement Tokens"): its own miniature, painted fully white.
             // Until the OBJ loads (or if it fails) a flat white disc stands in.
-            const reinforce = Number((c.reinforce && c.reinforce[side.id]) || 0);
+            const reinforce = Number(CombatTokens.of(c).used(side.id));
             const flipped = typeof FS_RULES !== 'undefined' ? FS_RULES.reinforceFlipped(state, side.id) : [];
             const destroyed = typeof FS_RULES !== 'undefined' ? FS_RULES.reinforceDestroyed(state, side.id) : [];
             const live = [];
