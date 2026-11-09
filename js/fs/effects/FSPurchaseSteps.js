@@ -118,7 +118,7 @@ class PurchaseSteps {
 
     static strikePayPick(effects, f) {
         const { R, state, seat, step, answer, ctx, units } = f;
-        const plan = state.order && state.order.strikePlanned;
+        const plan = state.order && StrikePlan.of(state.order).planned;
         const index = step.index || 0;
         const pay = plan && (plan.pays || [])[index];
         if (!plan || !pay) return null;
@@ -139,7 +139,7 @@ class PurchaseSteps {
                 if (at >= 0) pool.splice(at, 1);
             }
             plan.paid[index] = want;
-            if (state.order) state.order.strikePaid = want;
+            if (state.order) StrikePlan.of(state.order).setPaid(want);
             R.log(state, owner, player.name + ' тратит ' + want + ' '
                 + (want === 1 ? 'кубик' : 'кубика') + ' удара.');
         }
@@ -167,17 +167,13 @@ class PurchaseSteps {
         if (reward.routeDamaged) {
             // «Страх с небес»: the damaged units are remembered by
             // cmdStrikeDamage and one of them is routed at the end.
-            if (state.order) state.order.chaosRouteDamaged = true;
+            if (state.order) StrikePlan.of(state.order).routeDamagedAfter();
         }
         if (reward.first) {
             // «Точные удары»: the payment was made, so the chosen enemy
             // unit takes the damage first. The question follows in
             // resumeStrike, after all the payments of the strike.
-            const order = state.order;
-            if (order) {
-                order.strikeFirstWanted = true;
-                order.strikeFirstKl = reward.maxKl === undefined ? null : reward.maxKl;
-            }
+            if (state.order) StrikePlan.of(state.order).wantFirst(reward.maxKl);
         }
         if (reward.asset) {
             const n = want * (reward.n || 1);

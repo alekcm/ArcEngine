@@ -78,7 +78,7 @@ class OrderAsks {
         if (combat) combat.enemyHealth = step.n || 3;
         // «Во время этого орбитального удара здоровье отрядов вашего
         // противника уменьшается до 3» («Вирусные бомбы»).
-        else if (state.order && state.order.seat === seat) state.order.enemyHealth = step.n || 3;
+        else if (state.order && state.order.seat === seat) StrikePlan.of(state.order).setEnemyHealth(step.n || 3);
         return null;
     }
 

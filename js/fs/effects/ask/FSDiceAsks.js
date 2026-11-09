@@ -64,8 +64,7 @@ class DiceAsks {
                 }
                 // The cube the card gave is a cube of the player: the
                 // payment of «Разведка генокрадов» may spend it.
-                state.order.strikeDice = (state.order.strikeDice || []).concat(faces);
-                state.order.strikeBonus = (state.order.strikeBonus || 0) + bonus;
+                StrikePlan.of(state.order).addDice(faces).addBonus(bonus);
                 R.log(state, seat, state.players[seat].name + ' получает кубик для удара с орбиты'
                     + (bonus ? ': он выпал на атаку.' : ': он не выпал на атаку.'));
             }
@@ -191,7 +190,7 @@ class DiceAsks {
             // cube`» во время орбитального удара («Маскированная
             // бомбардировка»): the cube of the strike is a hit.
             if (state.order && state.order.phase === 'strike' && state.order.seat === seat) {
-                state.order.strikeBonus = (state.order.strikeBonus || 0) + (step.n || 1);
+                StrikePlan.of(state.order).addBonus(step.n || 1);
                 R.log(state, seat, state.players[seat].name + ' обращает кубик удара в атаку.');
             }
             return null;

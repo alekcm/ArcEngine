@@ -481,7 +481,8 @@ class AdvanceRules {
                 if (this.engine.areaState(state, seat, order.system, area.pos) !== 'enemy') continue;
                 // A bastion shields the world — unless the card that grants the
                 // strike ignores it («Ужасный удар», «Полное разрушение», ...).
-                if (!order.ignoreBastion && this.engine.structuresAt(state, order.system, area.pos).some(st => st.type === 'bastion')) continue;
+                if (!StrikePlan.of(order).ignoresBastion
+                    && this.engine.structuresAt(state, order.system, area.pos).some(st => st.type === 'bastion')) continue;
                 out.push({ system: order.system, pos: area.pos, from: from.pos, ships: ships.map(u => u.id) });
             }
         }
@@ -490,11 +491,11 @@ class AdvanceRules {
 
     cmdOrbitalStrike(state, seat, cmd) {
         const order = state.order;
-        if (order) order.strikeFirstAsked = false;
+        const strike = StrikePlan.of(order);
+        if (strike) strike.reset();
         if (!order || order.phase !== 'strike') return { ok: false, error: 'Сейчас нельзя наносить орбитальный удар.' };
         // The schemes of the strike are used before the strike.
-        if (!order.strikeHook) {
-            order.strikeHook = true;
+        if (!strike.hookUsed()) {
             if (this.engine.maybeScheme(state, seat, 'strike', { kind: 'order', ctx: null })) return { ok: true, pending: true };
         }
         const targets = this.orbitalStrikeTargets(state, seat);
@@ -507,24 +508,22 @@ class AdvanceRules {
         if (!ships.length) return { ok: false, error: 'Нужен хотя бы один корабль.' };
         // «… и разместите его в этом мире» («Мицетические споры»): the effects of
         // the strike read the world it is aimed at from the order.
-        order.strikeWorld = { system: target.system, pos: target.pos };
+        strike.setWorld({ system: target.system, pos: target.pos });
         const offence = ships.reduce((n, u) => {
             const def = this.engine.unitOf(state, u);
             return n + (def ? def.combat : 0);
         }, 0);
         const dice = this.engine.rollDice(state, Math.min(offence, this.engine.DICE_MAX));
         // The cube of «Набега жнецов» adds its own hit to the strike.
-        const bonus = order.strikeBonus || 0;
-        order.strikeBonus = 0;
+        const bonus = strike.spendBonus();
         const hits = dice.filter(d => d === 'att').length + bonus;
         this.engine.log(state, seat, state.players[seat].name + ' наносит орбитальный удар: ' + hits + ' урона.');
         // «Вы можете потратить 2 `def. cube`, чтобы взять под контроль постройки
         // этого мира, если в нём нет вражеских юнитов и бастионов» («Изъяны
         // плоти»): the cubes the card pays with are the ones the strike has just
         // rolled, so the price is taken from them here.
-        const take = order.strikeTake;
+        const take = strike.takeTake();
         if (take && dice.filter(d => d === (take.kind || 'def')).length >= (take.n || 1)) {
-            order.strikeTake = null;
             this.takeStructuresOf(state, seat, target.system, target.pos);
         }
         // The damage is assigned by the player who suffers it — his units are the
@@ -541,18 +540,18 @@ class AdvanceRules {
         // (01-rules-reference.md, Orbital Strike), so every card keeps its own
         // payment and reward. The questions are asked in the order the cards
         // were used, against one common pool of the cubes of this strike.
-        const pays = order.strikePays || (order.strikePay ? [order.strikePay] : []);
+        const pays = strike.pays;
         /** @type {any} */
         let planned = null;
         const paySteps = [];
-        if (pays.length && !order.strikePayAsked) {
-            order.strikePayAsked = true;
+        if (pays.length && !strike.paysAsked) {
+            strike.askPays(true);
             // The cubes that may be paid: the ones the strike has rolled and the
             // ones a card has given («Разведка генокрадов»).
             const payPlan = {
                 system: target.system, pos: target.pos, hits, defender,
                 victims: victims.map(u => u.id), cap: 0,
-                ships: ships.length, pool: dice.concat(order.strikeDice || []),
+                ships: ships.length, pool: dice.concat(strike.dice),
                 pays: pays.slice(), paid: [],
             };
             const caps = payPlan.pays.map(pay2 => FS_EFFECTS.strikePayCap(payPlan, pay2));
@@ -568,7 +567,7 @@ class AdvanceRules {
         // has one faction, so the two cards never meet in practice, but both
         // are choices made BEFORE the damage is suffered and both are asked.
         const wantsFirst = hits > 0 && victims.length && defender >= 0
-            && order.strikeFirstWanted && !order.strikeFirst;
+            && strike.firstWanted && !strike.first;
         if (paySteps.length || wantsFirst) {
             if (!planned) planned = {
                 system: target.system, pos: target.pos, hits, defender,
@@ -577,9 +576,9 @@ class AdvanceRules {
             };
             if (wantsFirst) paySteps.push({
                 op: 'strikeFirstPick',
-                maxKl: order.strikeFirstKl === undefined ? 0 : order.strikeFirstKl,
+                maxKl: strike.firstKl,
             });
-            order.strikePlanned = planned;
+            strike.setPlanned(planned);
             order.phase = 'strike-first';
             this.engine.runEffects(state, seat, paySteps, { kind: 'order', ctx: null });
             return { ok: true, pending: true, hits };
@@ -593,7 +592,7 @@ class AdvanceRules {
             state.strike = {
                 seat: defender, system: target.system, pos: target.pos,
                 left: hits, hits, attacker: seat,
-                first: order && order.strikeFirst ? order.strikeFirst : null,
+                first: order ? StrikePlan.of(order).first : null,
             };
             order.phase = 'strike-damage';
             return { ok: true, pending: true, hits };
@@ -620,23 +619,24 @@ class AdvanceRules {
 
     resumeStrike(state, seat) {
         const order = state.order;
-        const planned = order && order.strikePlanned;
+        const strike = StrikePlan.of(order);
+        const planned = strike && strike.planned;
         if (!planned) return { ok: true };
         // «Точные удары»: the payment has just been made, so the choice of the
         // unit that suffers the damage first is asked NOW — after all payments,
         // still before the damage. Any enemy unit of the world qualifies.
         const wantsFirst = planned.hits > 0 && (planned.victims || []).length
-            && planned.defender >= 0 && order.strikeFirstWanted && !order.strikeFirst;
-        if (wantsFirst && !order.strikeFirstAsked) {
-            order.strikeFirstAsked = true;
+            && planned.defender >= 0 && strike.firstWanted && !strike.first;
+        if (wantsFirst && !strike.firstAsked) {
+            strike.askFirst(true);
             order.phase = 'strike-first';
             this.engine.runEffects(state, seat, [{
                 op: 'strikeFirstPick',
-                maxKl: order.strikeFirstKl === undefined ? 0 : order.strikeFirstKl,
+                maxKl: strike.firstKl,
             }], { kind: 'order', ctx: null });
             return { ok: true, pending: true };
         }
-        order.strikePlanned = null;
+        strike.clearPlanned();
         const victims = (planned.victims || []).map(id => state.units.find(u => u.id === id)).filter(Boolean);
         return this.finishStrike(state, seat, { system: planned.system, pos: planned.pos },
             planned.hits, victims, planned.defender);
@@ -659,12 +659,14 @@ class AdvanceRules {
         let health = def ? def.health : 1;
         // «Во время этого орбитального удара здоровье отрядов вашего противника
         // уменьшается до 3» («Вирусные бомбы»).
-        const cap = state.order && state.order.seat === st.attacker ? state.order.enemyHealth : null;
+        const cap = state.order && state.order.seat === st.attacker
+            ? StrikePlan.of(state.order).enemyHealth : null;
         if (cap) health = Math.min(health, cap);
         // «временно убавить здоровье всех юнитов в атакуемом мире на 1» («Заряд
         // радиации»): the health of every unit of the world is lower while the
         // strike lasts — «можно опустить здоровье до 0 и убить мгновенно».
-        const down = state.order && state.order.seat === st.attacker ? (state.order.strikeHealthDown || 0) : 0;
+        const down = state.order && state.order.seat === st.attacker
+            ? StrikePlan.of(state.order).healthDown : 0;
         if (down) health = Math.max(0, health - down);
         if (st.left >= health) {
             st.left -= health;
@@ -684,13 +686,13 @@ class AdvanceRules {
         const order = state.order;
         // «Страх с небес»: after the damage, one surviving unit that was hit is
         // routed. The order ends when that last question is answered.
-        if (order && order.chaosRouteDamaged && st && (st.damaged || []).length) {
+        if (order && StrikePlan.of(order).routesAfterDamage && st && (st.damaged || []).length) {
             const ids = [...new Set(st.damaged)].filter(id => state.units.some(u => u.id === id));
             if (ids.length) {
                 state.strike = null;
                 order.chaosRouteDamaged = false;
                 order.phase = 'done';
-                order.chaosStrikeFinish = true;
+                StrikePlan.of(order).finishAfterQuestion(true);
                 this.engine.runEffects(state, st.attacker, [{
                     op: 'strikeRouteDamaged', attacker: st.attacker, options: ids,
                 }], { kind: 'order', ctx: null });

@@ -10,7 +10,7 @@ class StrikeAsks {
     static strikeBonus(effects, f) {
         const { R, state, seat, step } = f;
         if (state.order && state.order.phase === 'strike' && state.order.seat === seat) {
-            state.order.strikeBonus = (state.order.strikeBonus || 0) + (step.n || 0);
+            StrikePlan.of(state.order).addBonus(step.n || 0);
             R.log(state, seat, state.players[seat].name + ' добавляет ' + (step.n || 0) + ' к урону удара.');
             return null;
         }
@@ -27,9 +27,7 @@ class StrikeAsks {
                         : (step.units
                             ? { units: step.units }
                             : { asset: step.asset, n: step.n || 1 })));
-            const list = state.order.strikePays || (state.order.strikePays = []);
-            if (list.length) list[list.length - 1].reward = reward;
-            state.order.strikeReward = reward;
+            StrikePlan.of(state.order).setReward(reward);
         }
         return null;
     }
@@ -40,7 +38,7 @@ class StrikeAsks {
         // cubes it pays with are the ones the strike rolls — the order
         // remembers the price and the world answers for it later.
         if (state.order && state.order.seat === seat) {
-            state.order.strikeTake = { n: step.n || 1, kind: step.kind || 'def' };
+            StrikePlan.of(state.order).setTake({ n: step.n || 1, kind: step.kind || 'def' });
             R.log(state, seat, state.players[seat].name
                 + ': постройки мира удара будут взяты под контроль за '
                 + (step.n || 1) + ' куб. обороны.');
@@ -54,19 +52,16 @@ class StrikeAsks {
         // («Заряд радиации»): the strike that follows is deadlier — the
         // health of the units of the world is lower while it lasts.
         if (state.order && state.order.seat === seat) {
-            state.order.strikeHealthDown = (state.order.strikeHealthDown || 0) + (step.n || 1);
+            const strike = StrikePlan.of(state.order).addHealthDown(step.n || 1);
             R.log(state, seat, state.players[seat].name
-                + ': здоровье отрядов в мире удара ниже на ' + state.order.strikeHealthDown + '.');
+                + ': здоровье отрядов в мире удара ниже на ' + strike.healthDown + '.');
         }
         return null;
     }
 
     static strikeFirst(effects, f) {
         const { state, step } = f;
-        if (state.order) {
-            state.order.strikeFirstWanted = true;
-            state.order.strikeFirstKl = step.maxKl === undefined ? 0 : step.maxKl;
-        }
+        if (state.order) StrikePlan.of(state.order).wantFirst(step.maxKl === undefined ? 0 : step.maxKl);
         step.done = true;
         return null;
     }
@@ -74,7 +69,7 @@ class StrikeAsks {
     static strikeFirstPick(effects, f) {
         const { R, state, seat, step } = f;
         const order = state.order;
-        const planned = order && order.strikePlanned;
+        const planned = order && StrikePlan.of(order).planned;
         if (!planned) return null;
         const list = (planned.victims || [])
             .map(id => state.units.find(u => u.id === id))
@@ -240,7 +235,7 @@ class StrikeAsks {
 
     static ignoreBastion(effects, f) {
         const { state } = f;
-        if (state.order) state.order.ignoreBastion = true;
+        if (state.order) StrikePlan.of(state.order).ignoreBastion();
         return null;
     }
 

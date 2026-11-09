@@ -1606,9 +1606,9 @@ const FS_EFFECTS = {
         }
         // «Страх с небес» routes one damaged unit after the strike: the order
         // finishes only when that last question has been answered.
-        if (c.kind === 'order' && state.order && state.order.chaosStrikeFinish
+        if (c.kind === 'order' && state.order && StrikePlan.of(state.order).finishesAfterQuestion
             && !state.pending) {
-            state.order.chaosStrikeFinish = false;
+            StrikePlan.of(state.order).finishAfterQuestion(false);
             R.finishOrder(state, seat);
         }
         // The order of the ability is over when the effect is done.
@@ -1641,7 +1641,7 @@ const FS_EFFECTS = {
         }
         // The orbital strike waited for the choice of «Набега жнецов»: the strike
         // goes on with the chosen unit first.
-        if (c.kind === 'order' && state.order && state.order.strikePlanned
+        if (c.kind === 'order' && state.order && StrikePlan.of(state.order).planned
             && typeof R.resumeStrike === 'function') {
             R.resumeStrike(state, seat);
         }
@@ -2545,7 +2545,7 @@ const FS_EFFECTS = {
                     // is aimed at («разместите его в этом мире» — «Мицетические
                     // споры»), or the world of the battle.
                     case 'orderWorld': {
-                        const w = state.order && state.order.strikeWorld;
+                        const w = state.order && StrikePlan.of(state.order).world;
                         const c2 = state.combat;
                         const sysId = w ? w.system : (c2 ? c2.system : null);
                         const pos = w ? w.pos : (c2 ? c2.pos : null);

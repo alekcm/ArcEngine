@@ -145,7 +145,7 @@ class ChooseSteps {
     static strikeFirstPick(effects, f) {
         const { state, answer } = f;
         const id = (answer.units || [])[0];
-        if (state.order && id) state.order.strikeFirst = id;
+        if (state.order && id) StrikePlan.of(state.order).setFirst(id);
         return null;
     }
 

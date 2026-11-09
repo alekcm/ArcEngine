@@ -500,6 +500,29 @@ try {
     fail(e.message);
 }
 
+// --- an orbital strike: one object -------------------------------------------
+section('орбитальный удар: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSStrike.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The sixteen fields of the strike of an order are one object: a rule or
+        // a card asks StrikePlan, nobody writes `order.strikeBonus` by hand.
+        const re = /\border\.strike[A-Z]\w*\s*(?:[-+*\/]?=(?!=)|\.\w+\s*\()/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('поля удара пишет только StrikePlan');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- materiel: one account --------------------------------------------------
 section('материя: одно место учёта');
 try {

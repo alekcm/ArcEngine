@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1256,6 +1256,37 @@ rule('strike-2', '«An orbital strike cannot be resolved against a world contain
     FS_RULES.addStructure(st, 1, 'bastion', sys.id, pos);
     st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'strike' };
     eq(FS_RULES.orbitalStrikeTargets(st, 0).length, 0, 'мир с бастионом не цель');
+});
+
+rule('strike-2b', '«An orbital strike …» — удар одного приказа живёт в одном объекте StrikePlan', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    unit(st, 0, 'крейсеры', sys.id, voidOf(st, sys.id));
+    olk(st, 1, sys.id, pos);
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'strike' };
+    // A card of the order changes the strike before it is rolled; one reading
+    // of the object is the same reading for the rule and for the strike.
+    const plan = StrikePlan.of(st.order);
+    plan.addBonus(1).addBonus(1);
+    eq(plan.spendBonus(), 2, 'бонус удара накоплен и отдан один раз');
+    eq(plan.spendBonus(), 0, 'второй удар бонуса не берёт');
+    plan.addHealthDown(1).addHealthDown(1);
+    eq(plan.healthDown, 2, 'здоровье мира удара ниже на два');
+    plan.setTake({ n: 2, kind: 'def' });
+    eq(plan.takeTake(), { n: 2, kind: 'def' }, 'цена построек ждёт своих кубиков');
+    eq(plan.takeTake(), null, 'цена взята однажды');
+    plan.wantFirst(1);
+    eq(plan.firstWanted, true, 'карта зовёт первый отряд');
+    eq(plan.firstKl, 1, 'предел командного уровня первого отряда');
+    plan.setFirst('u1');
+    eq(plan.first, 'u1', 'первый отряд выбран');
+    plan.reset();
+    eq(plan.firstAsked, false, 'новый удар снова спрашивает первый отряд');
+    eq(plan.first, 'u1', 'выбор прошлого удара не стирается рукой правила');
+    // A second order has its own strike.
+    const other = StrikePlan.of({ seat: 1, order: 'advance' });
+    eq(other.healthDown, 0, 'у другого приказа свой удар');
 });
 
 rule('strike-3', '«Each unit that suffers damage during an orbital strike that is not destroyed does not become routed.»', () => {

@@ -64,7 +64,7 @@ class BuyAsks {
 
     static strikePayPick(effects, f) {
         const { state, seat, step } = f;
-        const plan = state.order && state.order.strikePlanned;
+        const plan = state.order && StrikePlan.of(state.order).planned;
         const pay = plan && (plan.pays || [])[step.index || 0];
         if (!plan || !pay) return null;
         const cap = effects.strikePayCap(plan, pay);
@@ -86,10 +86,9 @@ class BuyAsks {
             // used on one orbital strike (01-rules-reference.md,
             // Orbital Strike). Each card keeps its own payment and its
             // own reward, so they are a list, not one pair of fields.
-            const list = state.order.strikePays || (state.order.strikePays = []);
-            const pay = { n: step.n || 1, kind: step.kind || 'att', per: step.per || null, reward: null };
-            list.push(pay);
-            state.order.strikePay = pay;
+            StrikePlan.of(state.order).addPay({
+                n: step.n || 1, kind: step.kind || 'att', per: step.per || null, reward: null,
+            });
         }
         return null;
     }
