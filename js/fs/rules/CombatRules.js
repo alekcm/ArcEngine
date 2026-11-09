@@ -389,9 +389,7 @@ class CombatRules {
         void other;
         // The card names the player who may not reinforce: without a name the
         // ban is the old one, on the defender.
-        const banned = c.noReinforce
-            && (c.noReinforceSeat === undefined ? side === 'defender' : c.noReinforceSeat === seat);
-        if (banned) {
+        if (CombatBans.of(c).forbidsReinforce(seat, side)) {
             return { ok: false, error: 'Противник не может размещать жетоны подкрепления.' };
         }
         const max = this.maxReinforce(state, seat, side);
@@ -630,9 +628,8 @@ class CombatRules {
 
     combatValues(state, side) {
         const c = state.combat;
-        let dice = CombatTurn.of(c).live(side);
         // The card may make the attack dice of the enemy useless.
-        if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
+        const dice = CombatBans.of(c).dice(side, CombatTurn.of(c).live(side));
         const tokens = CombatCubes.of(c).values(side);
         const icons = CombatCards.of(c).icons(side);
         const seat = CombatSides.seatOf(c, side);
@@ -655,8 +652,7 @@ class CombatRules {
 
     combatValuesParts(state, side) {
         const c = state.combat;
-        let dice = CombatTurn.of(c).live(side);
-        if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
+        const dice = CombatBans.of(c).dice(side, CombatTurn.of(c).live(side));
         const tokens = CombatCubes.of(c).values(side);
         const icons = CombatCards.of(c).icons(side);
         const seat = CombatSides.seatOf(c, side);
@@ -1131,7 +1127,7 @@ class CombatRules {
         // leak into the next execution round.
         CombatDamage.of(c).clear();
         // The card may destroy the units that became routed.
-        if (c.destroyRouted) {
+        if (CombatBans.of(c).destroysRouted) {
             for (const u of state.units.slice()) {
                 if (u.routed && u.system === c.system && u.area === c.pos) {
                     this.engine.log(state, c.attacker, 'Деморализованный отряд уничтожен.');

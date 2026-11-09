@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -729,6 +729,38 @@ rule('order-1', '«… this order …» — командный уровень, �
     eq(fight.unspentTemp(7), 0, 'считать больше нечего');
     eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
     eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
+
+rule('combat-0h', '«ваш противник не сможет разыгрывать жетоны подкрепления» + «деморализованные отряды уничтожаются» — запреты боя держит CombatBans', () => {
+    const combat = { attacker: 0, defender: 1 };
+    const bans = CombatBans.of(combat);
+    eq(CombatBans.of(combat), bans, 'у боя один набор запретов');
+    eq(CombatBans.of(null), null, 'без боя запретов нет');
+    // An empty battle forbids nothing.
+    eq(bans.forbidsReinforce(1, 'defender'), false, 'подкрепление разрешено');
+    eq(bans.reinforceBanned, false, 'запрета нет');
+    eq(bans.ignoresFoeAttack('defender'), false, 'кубики атаки считаются');
+    eq(bans.destroysRouted, false, 'деморализованные остаются');
+    // «во время всего боя»: the ban of the card follows its owner.
+    bans.forbidReinforce(0);
+    eq(bans.reinforceBanned, true, 'запрет подкрепления записан');
+    eq(bans.forbidsReinforce(0, 'attacker'), true, 'свой игрок подкрепление не разыгрывает');
+    eq(bans.forbidsReinforce(1, 'defender'), false, 'противник — разыгрывает');
+    // The card that names nobody keeps the old ban: the defender.
+    const old = { attacker: 0, defender: 1 };
+    CombatBans.of(old).forbidReinforce();
+    eq(CombatBans.of(old).forbidsReinforce(0, 'attacker'), false, 'атакующий не назван');
+    eq(CombatBans.of(old).forbidsReinforce(1, 'defender'), true, 'защитник под запретом');
+    // «кубики атаки противника не считаются»: only the defender.
+    bans.ignoreFoeAttack();
+    eq(bans.ignoresFoeAttack('defender'), true, 'кубики атаки защитника не считаются');
+    eq(bans.ignoresFoeAttack('attacker'), false, 'кубики атакующего считаются');
+    eq(bans.dice('defender', ['att', 'def', 'att']).join(','), 'def', 'остаются только не-атаки');
+    eq(bans.dice('attacker', ['att', 'def']).join(','), 'att,def', 'у атакующего всё на месте');
+    eq(bans.dice('defender', null).length, 0, 'пустой стол — пусто');
+    // «деморализованные отряды уничтожаются в конце раунда».
+    bans.markDestroyRouted();
+    eq(bans.destroysRouted, true, 'уничтожение деморализованных обещано');
 });
 
 rule('combat-0g', '«получите 2 `att. token`» + «потеряйте 1 `def. token`» — жетоны карт и урон раунда считают CombatCubes и CombatDamage', () => {

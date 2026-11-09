@@ -209,19 +209,16 @@ class StrikeAsks {
 
     static noReinforce(effects, f) {
         const { seat, step, combat, foe } = f;
-        if (combat) {
-            combat.noReinforce = true;
-            // «Ваш противник не сможет использовать жетоны подкрепления
-            // во время всего боя» («Тень в варпе»): the ban follows the
-            // owner of the card, whoever plays the round.
-            combat.noReinforceSeat = step.who === 'foe' ? foe : seat;
-        }
+        // «Ваш противник не сможет использовать жетоны подкрепления во время
+        // всего боя» («Тень в варпе»): the ban follows the owner of the card,
+        // whoever plays the round.
+        if (combat) CombatBans.of(combat).forbidReinforce(step.who === 'foe' ? foe : seat);
         return null;
     }
 
     static ignoreFoeAtt(effects, f) {
         const { combat } = f;
-        if (combat) combat.ignoreFoeAtt = true;
+        if (combat) CombatBans.of(combat).ignoreFoeAttack();
         return null;
     }
 
@@ -243,7 +240,7 @@ class StrikeAsks {
 
     static destroyRouted(effects, f) {
         const { combat } = f;
-        if (combat) combat.destroyRouted = true;
+        if (combat) CombatBans.of(combat).markDestroyRouted();
         return null;
     }
 

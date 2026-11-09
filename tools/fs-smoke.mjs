@@ -548,6 +548,30 @@ try {
     fail(e.message);
 }
 
+// --- what a battle forbids: one object ---------------------------------------
+section('запреты боя: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSCombatBans.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // «жетоны подкрепления противник не разыгрывает», «кубики атаки не
+        // считаются» и «деморализованные уничтожаются» — три запрета одного
+        // объекта CombatBans.
+        const re = /\b(?:state\.combat|s\.combat|combat|c|cbt)\.(?:noReinforce|noReinforceSeat|ignoreFoeAtt|destroyRouted)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('запреты боя спрашивают у CombatBans');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the cubes of a battle: one object --------------------------------------
 section('жетоны карт бою: один объект');
 try {
