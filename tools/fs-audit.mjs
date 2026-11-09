@@ -22,6 +22,11 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS } = ctx;
+// The steps of a card are executed by the groups of js/fs/effects (see
+// docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
+// a switch in one file.
+const STEP_NAMES = new Set(ctx.STEP_EXECUTORS.keys());
+const ASK_NAMES = new Set(ctx.ASK_EXECUTORS.keys());
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m', yel: '\x1b[33m' };
@@ -1792,8 +1797,10 @@ rule('abil-1', '«Resolve Faction Ability: The active player may resolve the spe
 });
 
 rule('cards-3', '«The player must have at least one of the specified units in the combat» — у каждой карты, называющей отряд, движок знает этот отряд', () => {
-    const source = fs.readFileSync(path.join(ROOT, 'js/fs/FSEffects.js'), 'utf8');
-    const known = new Set([...source.matchAll(/case '([a-zA-Z]+)'/g)].map(m => m[1]));
+    // A parsed step is understood when the engine has a question for it (the
+    // «ask» groups) or an action (the «step» groups) — that is the two halves
+    // of the old switch, now registered by name.
+    const known = new Set([...STEP_NAMES, ...ASK_NAMES]);
     const unknown = new Set();
     const walk = list => {
         for (const step of list || []) {

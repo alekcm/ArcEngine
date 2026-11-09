@@ -16,12 +16,18 @@ class StepContext {
      * @param {any} answer ответ игрока (может быть пустым)
      * @param {any} ctx контекст эффекта (вид, владелец, противник)
      * @param {any} effects FS_EFFECTS — помощники вроде count, kindName, sameName
+     * @param {number} [sideSeat] whose side the frame speaks for; the seat itself
+     *   unless the caller says otherwise (the action of a step looks at the side
+     *   of the owner of the card, the question — at the side of the answering seat)
      */
-    constructor(R, state, seat, step, answer, ctx, effects) {
+    constructor(R, state, seat, step, answer, ctx, effects, sideSeat) {
         const combat = state.combat;
         const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
         const owner = ctx && ctx.owner !== undefined ? ctx.owner : seat;
-        const side = inCombat ? CombatSides.sideOf(combat, owner) : null;
+        const view = sideSeat === undefined || sideSeat === null ? seat : sideSeat;
+        const side = inCombat ? CombatSides.sideOf(combat, view) : null;
+        // The other seat of the battle, from the same point of view.
+        const foe = inCombat ? CombatSides.foeSeat(combat, view) : null;
         // The opponent of the effect: the other side of the combat, the foe that was
         // chosen by the card, or simply another player at the table.
         const other = ctx && ctx.foe !== undefined ? ctx.foe : null;
@@ -37,6 +43,7 @@ class StepContext {
         this.inCombat = inCombat;
         this.owner = owner;
         this.side = side;
+        this.foe = foe;
         this.other = other;
         this.target = step.who === 'foe'
             ? (inCombat

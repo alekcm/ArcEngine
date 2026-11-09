@@ -42,7 +42,8 @@ export function engineFiles() {
 
 /** The names a tool may need after loading: every global the scripts define. */
 const ENGINE_GLOBALS = ['FS_DATA', 'FS_CATALOG', 'FS_RULES_CONFIG', 'FS_WARP_STORMS',
-    'FS_CARDS', 'FS_EFFECTS', 'FS_RULES'];
+    'FS_CARDS', 'FS_EFFECTS', 'FS_RULES', 'Board', 'PlayerEntity', 'TileGeometry',
+    'CombatSides', 'StepContext', 'STEP_EXECUTORS', 'ASK_EXECUTORS'];
 
 /**
  * One context with the engine in it.
