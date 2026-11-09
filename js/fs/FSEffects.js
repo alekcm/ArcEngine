@@ -14,6 +14,17 @@
 
 /** @satisfies {Record<string, any>} */
 const FS_EFFECTS = {
+    // How many resource tokens of a kind a player may hold. The printed limit
+    // is three of each kind; the Tyranids hold four («Количество жетонов
+    // ресурсов, которые вы можете иметь, увеличивается до 4» — «Пожиратели
+    // Миров»; 07-tokens.md: «у игрока не может быть больше 3 жетонов каждого
+    // типа (у Тиранидов — до 4)»), and a card may raise the limit for the game.
+    assetCap(player, kind) {
+        const p = player || {};
+        const base = p.faction === 'тираниды' ? 4 : 3;
+        return Math.max(base, p.assetLimit || 0);
+    },
+
     // --- the icons of the text ------------------------------------------------
     // "att. token" — a combat token, "any cube" — a die from the supply.
     icon(text) {
@@ -413,6 +424,10 @@ const FS_EFFECTS = {
             'некроны': [
                 { op: 'moveUnits', n: 99, pick: true, sourceWorld: true, dest: 'friendlyWorldWithStructureActive',
                   ability: 'забрать любое количество ваших отрядов из одного мира и разместить их в любом дружественном мире активной системы, который содержит постройку' },
+            ],
+            'тираниды': [
+                { op: 'gainAsset', kind: 'any', n: 1, who: 'me',
+                  ability: 'получить 1 жетон ресурса любого типа в дополнение к жетонам, полученным этим приказом доминирования' },
             ],
         };
         return T[factionId] || null;
@@ -1704,8 +1719,7 @@ const FS_EFFECTS = {
                         }
                     }
                     if (count > 0) {
-                        const base = p.faction === 'тираниды' && step.kind === 'reinforcement' ? 4 : 3;
-                        const limit = Math.max(base, p.assetLimit || 0);
+                        const limit = this.assetCap(p, step.kind);
                         p.assets[step.kind] = Math.min(limit, (p.assets[step.kind] || 0) + count);
                         R.log(state, seat, p.name + ' получает жетоны подкрепления: ' + count + ' (за неконтролируемые или вражеские миры).');
                     } else {
@@ -1718,8 +1732,7 @@ const FS_EFFECTS = {
                 }
                 // The printed limit is three; the Tyranids keep four reinforcement
                 // tokens and a card may raise the limit for the whole game.
-                const base = p.faction === 'тираниды' && step.kind === 'reinforcement' ? 4 : 3;
-                const limit = Math.max(base, p.assetLimit || 0);
+                const limit = this.assetCap(p, step.kind);
                 // «… за каждый потраченный `att. cube`» — the payment sets the
                 // count, and a payment of nothing buys nothing.
                 const got = step.per ? this.count(R, state, seat, step, ctx) : (step.n || 1);
@@ -3030,8 +3043,7 @@ const FS_EFFECTS = {
             }
             case 'gainAsset': {
                 const kind = answer.asset || step.kind || 'forge';
-                const base = p.faction === 'тираниды' && kind === 'reinforcement' ? 4 : 3;
-                const limit = Math.max(base, p.assetLimit || 0);
+                const limit = this.assetCap(p, kind);
                 // «получить 1 жетон подкрепления за каждый потраченный `att.
                 // cube`» («Разведка генокрадов»): the payment sets the count.
                 const n = this.count(R, state, seat, step, ctx);
@@ -3061,7 +3073,7 @@ const FS_EFFECTS = {
                 p.materiel -= n;
                 // The Tyranids keep four reinforcement tokens: the faction sheet
                 // takes precedence over the printed limit of three.
-                const assetLimit = p.faction === 'тираниды' && kind === 'reinforcement' ? 4 : 3;
+                const assetLimit = this.assetCap(p, kind);
                 p.assets[kind] = Math.min(assetLimit, (p.assets[kind] || 0) + n * (step.gain || 1));
                 R.log(state, seat, state.players[seat].name + ' меняет материю на жетон ресурса.');
                 return null;
@@ -3594,8 +3606,7 @@ const FS_EFFECTS = {
                 // world's prosperity icon.
                 if (answer.asset) {
                     const kind = answer.asset;
-                    const base = p.faction === 'тираниды' && kind === 'reinforcement' ? 4 : 3;
-                    const limit = Math.max(base, p.assetLimit || 0);
+                    const limit = this.assetCap(p, kind);
                     p.assets[kind] = Math.min(limit, (p.assets[kind] || 0) + (step.prosperity || 1));
                     R.log(state, seat, state.players[seat].name + ' берёт жетон процветания: ' + kind + '.');
                     return null;
@@ -3794,8 +3805,7 @@ const FS_EFFECTS = {
                 }
                 if (reward.asset) {
                     const n = want * (reward.n || 1);
-                    const base = player.faction === 'тираниды' && reward.asset === 'reinforcement' ? 4 : 3;
-                    const limit = Math.max(base, player.assetLimit || 0);
+                    const limit = this.assetCap(player, reward.asset);
                     player.assets[reward.asset] = Math.min(limit, (player.assets[reward.asset] || 0) + n);
                     R.log(state, owner, player.name + ' получает жетон(ы): ' + reward.asset + ' × ' + n + '.');
                 }
@@ -4134,7 +4144,7 @@ const FS_EFFECTS = {
         let prosperity = 0;
         for (const asset of a.world.assets || []) {
             if (asset === 'prosperity') { prosperity++; continue; }
-            const limit = p.faction === 'тираниды' && asset === 'reinforcement' ? 4 : 3;
+            const limit = this.assetCap(p, asset);
             if ((p.assets[asset] || 0) < limit) p.assets[asset] = (p.assets[asset] || 0) + 1;
         }
         R.log(state, seat, p.name + ' берёт ресурсы мира ' + a.world.name + '.');

@@ -2344,6 +2344,63 @@ check('Разум улья', 'командный уровень растёт п�
 });
 
 // ============================================================================
+//  02-factions.md — Тираниды: особенность «Пожиратели Миров»
+// ============================================================================
+head('Особенность фракции', TYR);
+
+/** The dominate order of the Tyranids, at the moment of its faction ability. */
+function dominateState(o = {}) {
+    const st = FS_RULES.newReadyGame({
+        seed: 5, players: players(TYR, 'имперская-гвардия'),
+    });
+    st.phase = 'operations';
+    st.turn = 0;
+    st.order = null;
+    for (const s of st.systems) s.tokens = [];
+    st.systems[0].tokens = [{ seat: 0, order: 'dominate' }];
+    st.order = { seat: 0, order: 'dominate', system: st.systems[0].id, phase: 'dominate' };
+    if (o.assets) Object.assign(st.players[0].assets, o.assets);
+    return st;
+}
+
+// «Во время выполнения приказа доминирования вы можете получить 1 жетон ресурса
+//  любого типа в дополнение к жетонам ресурсов, полученным ранее текущим
+//  приказом.»
+check('Пожиратели Миров', 'в приказе доминирования даётся жетон ресурса любого типа', () => {
+    const st = dominateState({ assets: { forge: 1, cache: 0, reinforcement: 1 } });
+    const res = FS_RULES.apply(st, 0, { type: 'finishDominate' });
+    ok(res.ok, 'приказ не закончен: ' + res.error);
+    const q = pending(st);
+    ok(!!q, 'вопроса о жетоне нет');
+    eq([q.kind, q.op], ['assetType', 'gainAsset'], 'карта предлагает жетон ресурса');
+    eq(q.options, ['forge', 'cache', 'reinforcement'], 'жетон любого типа');
+    effectAnswer(st, { asset: 'cache' }, 4);
+    return eq([st.players[0].assets.forge, st.players[0].assets.cache, st.players[0].assets.reinforcement],
+        [1, 1, 1], 'взят жетон тайника, прочие не тронуты');
+});
+
+check('Пожиратели Миров', 'способность можно не применять', () => {
+    const st = dominateState({ assets: { forge: 1, cache: 1, reinforcement: 1 } });
+    const res = FS_RULES.apply(st, 0, { type: 'finishDominate', skip: true });
+    ok(res.ok, 'приказ не закончен: ' + res.error);
+    eq(!!st.pending, false, 'вопросов нет');
+    return eq([st.players[0].assets.forge, st.players[0].assets.cache, st.players[0].assets.reinforcement],
+        [1, 1, 1], 'жетоны не прибавились');
+});
+
+// «Количество жетонов ресурсов, которые вы можете иметь, увеличивается до 4.»
+check('Пожиратели Миров', 'предел жетонов ресурса — четыре каждого типа', () => {
+    const st = dominateState({ assets: { forge: 3, cache: 3, reinforcement: 3 } });
+    FS_RULES.apply(st, 0, { type: 'finishDominate' });
+    effectAnswer(st, { asset: 'forge' }, 4);
+    // Three is the printed limit of the other factions; the Tyranids hold four.
+    eq(st.players[0].assets.forge, 4, 'четвёртый жетон кузницы взят');
+    eq(FS_EFFECTS.assetCap(st.players[0], 'cache'), 4, 'предел тайника тоже четыре');
+    const guard = players('имперская-гвардия', TYR)[0];
+    return eq(FS_EFFECTS.assetCap({ faction: guard.faction }, 'forge'), 3, 'у прочих фракций предел три');
+});
+
+// ============================================================================
 console.log('\n' + (failed.length
     ? C.red + '  Не прошло: ' + failed.length + ' из ' + done + C.r
     : C.grn + '  Все проверки прошли: ' + done + C.r));
