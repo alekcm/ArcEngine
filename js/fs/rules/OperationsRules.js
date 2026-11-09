@@ -168,6 +168,20 @@ class OperationsRules {
         return { ok: false, error: 'Неизвестный приказ.' };
     }
 
+    /**
+     * Close the order that is running. One end for every way an order ends: a
+     * question that belonged to it goes with it — a purchase that was still
+     * waiting for its pair must not outlive the order it was made in.
+     */
+    closeOrder(state) {
+        state.order = null;
+        // The question of an order (the pair a purchase replaces) holds the
+        // half-done command; the question of an effect belongs to a card, not
+        // to the order, and stays.
+        if (state.pending && state.pending.ctx && state.pending.ctx.buyUpgrade) state.pending = null;
+        return true;
+    }
+
     /** The order tokens the seat has spent (placed, less the board and the event deck). */
     usedOrderTokens(state, seat) {
         if (!state.players[seat]) return 0;
@@ -186,7 +200,7 @@ class OperationsRules {
         if (state.order && state.order.fromEvent) {
             const snap = state.quickResponseSnapshot;
             for (const p of state.players) this.engine.trimPlayer(state, p.seat);
-            state.order = null;
+            this.closeOrder(state);
             if (snap) {
                 state.phase = snap.phase;
                 state.turn = snap.turn;
@@ -208,7 +222,7 @@ class OperationsRules {
         // The capacity is checked for every player: a card may have put troops of
         // another player into an area as well.
         for (const p of state.players) this.engine.trimPlayer(state, p.seat);
-        state.order = null;
+        this.closeOrder(state);
         this.nextTurn(state);
     }
 

@@ -62,7 +62,7 @@ class RefreshRules {
 
     startRefresh(state) {
         state.phase = 'refresh';
-        state.order = null;
+        this.engine.closeOrder(state);
         // A new round wipes the marks of the storms: every strip is bright again.
         for (const st of state.storms) st.moved = false;
         // 1. the objective tokens on friendly worlds

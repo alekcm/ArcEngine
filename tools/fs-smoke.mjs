@@ -359,6 +359,28 @@ try {
     fail(e.message);
 }
 
+// --- the end of an order: one place -----------------------------------------
+section('конец приказа: одно место');
+try {
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (file === 'js/fs/rules/OperationsRules.js' || file === 'js/fs/FSData.js') continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The order of a turn ends through closeOrder: it is the only place that
+        // knows a question of the order ends with it.
+        const re = /\bstate\.order\s*=\s*null/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('приказ закрывается только через closeOrder');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- materiel: one account --------------------------------------------------
 section('материя: одно место учёта');
 try {

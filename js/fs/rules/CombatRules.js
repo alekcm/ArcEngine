@@ -48,7 +48,7 @@ class CombatRules {
             this.engine.log(state, attacker, 'Защищать область некому: ' + state.players[attacker].name + ' побеждает сразу.');
             this.captureStructures(state, systemId, pos, attacker, defender);
             state.combat = null;
-            if (state.testBattle) { state.order = null; return null; }
+            if (state.testBattle) { this.engine.closeOrder(state); return null; }
             const order = state.order;
             if (order) order.phase = 'done';
             this.engine.finishOrder(state, attacker);
@@ -1565,7 +1565,7 @@ class CombatRules {
         state.combat = null;
         // A test battle stays on the field: the player may start it again.
         if (state.testBattle) {
-            state.order = null;
+            this.engine.closeOrder(state);
             return { ok: true };
         }
         // The order that started the combat is over.

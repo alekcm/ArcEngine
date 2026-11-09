@@ -2625,6 +2625,33 @@ rule('deck-2', '«Two copies of the upgrade are added to his combat deck … the
     eq(shuffled > 0, true, 'купленные карты перемешаны, а не положены в конец');
 });
 
+rule('deck-3', '«When a player purchases a combat upgrade card, he chooses and removes two copies of any card from his combat deck» — вопрос живёт ровно столько, сколько приказ', () => {
+    // The purchase asks which pair it replaces. The question belongs to the
+    // order that asked it: an order that ends takes its question with it, and
+    // an answer after that cannot rebuild a deck of a closed order.
+    const st = empty(5);
+    const p = st.players[0];
+    p.materiel = 12;
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    FS_RULES.addStructure(st, 0, 'city', sys.id, pos);
+    guard(st, 0, sys.id, pos);
+    st.phase = 'operations';
+    st.turn = 0;
+    st.order = { seat: 0, order: 'strategize', system: sys.id, phase: 'buy' };
+    const card = FS_DATA.combat.find(c => c.faction === p.faction && c.upgrade && c.kl === 0);
+    if (!card) return 'у фракции нет боевого улучшения нулевого уровня';
+    const ask = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'combat', card: card.name });
+    eq(ask.ok, true, 'покупка прошла');
+    eq(!!st.pending, true, 'покупка спросила пару');
+    const fin = FS_RULES.apply(st, 0, { type: 'finishStrategize' });
+    eq(fin.ok, true, 'приказ закончен');
+    eq(st.order, null, 'приказа больше нет');
+    eq(!!st.pending, false, 'вопрос приказа закрылся вместе с ним');
+    const late = FS_RULES.apply(st, 0, { type: 'effect', answer: { remove: 'x' } });
+    eq(late.ok, false, 'ответить после конца приказа нечем');
+});
+
 rule('strike-4', '«Бастионы противника не могут предотвратить этот орбитальный удар.» (05-order-upgrades.md, «Ужасный удар»)', () => {
     const st = empty();
     let found = null;
