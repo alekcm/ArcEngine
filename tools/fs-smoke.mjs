@@ -92,26 +92,37 @@ const must = (st, seat, cmd, what) => {
     return res;
 };
 
-// --- one full round ---------------------------------------------------------
-section('раунд: планирование → операции → обновление');
-try {
-    const st = R.newReadyGame({ seed: 11, players: seedPlayers() });
+// --- a whole round, for any number of players --------------------------------
+// The same rules must serve a duel and a full table: the map, the factions and
+// the number of players change, the code path does not.
+section('раунд: планирование → операции → обновление (2 и 4 игрока)');
+const FACTION_POOL = ['имперская-гвардия', 'орки', 'некроны', 'эльдары'];
+const seatsOf = n => Array.from({ length: n }, (_, i) => ({
+    faction: FACTION_POOL[i % FACTION_POOL.length], name: 'P' + i, id: 'p' + i,
+}));
+
+function playRound(players, seed) {
+    const st = R.newReadyGame({ seed, players });
     const orders = ['advance', 'deploy', 'strategize', 'dominate'];
+    if (st.phase !== 'planning') throw new Error('партия не началась с планирования');
     let n = 0;
-    while (st.phase === 'planning' && n++ < 32) {
+    while (st.phase === 'planning' && n++ < 64) {
         const seat = st.turn;
         const sys = st.systems.find(s => R.canPlaceOrder(st, seat, s.id));
         if (!sys) throw new Error('некуда положить приказ игроку ' + seat);
-        // The hand holds two tokens of every kind: take the first kind left.
-        const kind = orders.find(o => R.orderLeft(st, seat, o) > 0)
-            || orders.find(o => R.orderLeft(st, 1 - seat, o) > 0);
+        // The hand holds two tokens of every kind: take a kind that is left.
+        const kind = orders.find(o => R.orderLeft(st, seat, o) > 0);
+        if (!kind) throw new Error('у игрока ' + seat + ' кончились приказы, а планирование идёт');
         must(st, seat, { type: 'placeOrder', system: sys.id, order: kind }, 'placeOrder');
     }
-    if (st.phase !== 'operations') throw new Error('планирование не перешло в операции (жетонов ' + st.systems.reduce((a, s) => a + s.tokens.length, 0) + ')');
-    ok('все приказы выложены, фаза операций');
+    const laid = st.systems.reduce((a, s) => a + s.tokens.length, 0);
+    if (st.phase !== 'operations') throw new Error('планирование не перешло в операции (жетонов ' + laid + ')');
+    if (laid !== R.ORDER_TOKENS * players.length) {
+        throw new Error('выложено ' + laid + ' жетонов вместо ' + R.ORDER_TOKENS * players.length);
+    }
 
     n = 0;
-    while (st.phase === 'operations' && n++ < 64) {
+    while (st.phase === 'operations' && n++ < 128) {
         if (st.trim && st.trim.length) {
             const entry = st.trim[0];
             const unit = st.units.find(u => u.seat === entry.seat && u.system === entry.system && u.area === entry.pos);
@@ -135,10 +146,9 @@ try {
         else throw new Error('неизвестный приказ ' + kind);
     }
     if (st.phase !== 'refresh') throw new Error('операции не закончились: фаза ' + st.phase);
-    ok('все приказы разыграны, фаза обновления');
 
     n = 0;
-    while (st.phase === 'refresh' && !st.over && n++ < 32) {
+    while (st.phase === 'refresh' && !st.over && n++ < 64) {
         if (!st.event) { must(st, st.turn, { type: 'nextPhase' }, 'nextPhase'); break; }
         const seat = st.event.seat;
         if (st.eventsLeft <= 0) { must(st, seat, { type: 'nextPhase' }, 'nextPhase'); break; }
@@ -152,9 +162,15 @@ try {
         must(st, seat, { type: 'resolveEvent' }, 'resolveEvent');
     }
     if (!st.over && st.round !== 2) throw new Error('раунд не закончился: round=' + st.round + ', phase=' + st.phase);
-    ok('обновление дошло до конца: раунд ' + st.round);
-} catch (e) {
-    fail(e.message);
+    return 'раунд ' + st.round + ', систем ' + st.systems.length + ', штормов ' + st.storms.length;
+}
+
+for (const count of [2, 4]) {
+    try {
+        ok(count + ' игрока: ' + playRound(seatsOf(count), 11));
+    } catch (e) {
+        fail(count + ' игрока: ' + e.message);
+    }
 }
 
 // --- the deck object the server used to break on ----------------------------

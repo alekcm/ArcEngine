@@ -166,7 +166,7 @@ assets/           ground_texture_{g,d,s}.jpg — трава, песок, сне�
                   sounds/*.wav, *.mp3 — звуки (step.wav генерируется tools/make-sounds.mjs)
 tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs (типы + сверка + дым),
                   fs-engine.mjs (список скриптов движка из index.html: один для сервера и проверок),
-                  fs-smoke.mjs (все скрипты грузятся, раунд играется командами),
+                  fs-smoke.mjs (все скрипты грузятся, раунд играется на 2 и 4 игроках, все имена клиента есть в правилах),
                   fs-audit.mjs (сверка движка Forbidden Stars с текстом правил),
                   make-character.mjs, make-sounds.mjs, export-unity.mjs (перенос в Unity),
                   fs-import.mjs (импорт данных Forbidden Stars из docs/), fs-server.mjs (сервер игры в локальной сети)
