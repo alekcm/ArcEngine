@@ -23,8 +23,12 @@ const FS_STRUCTURE_STATS = {
  * assetLimit — 07-tokens.md: «у игрока не может быть больше 3 жетонов каждого
  *   типа (у Тиранидов — до 4)».
  */
+// assetLimit — «у игрока не может быть больше 3 жетонов каждого типа
+// (у Тиранидов — до 4)»: предел поднимается на 1 для ЛЮБОГО типа жетона, а не
+// только для подкреплений. Раньше здесь стояло `{ reinforcement: 4 }`, и
+// четвёртый жетон кузницы у Тиранидов молча терялся.
 const FS_FACTION_TRAITS = {
-    'тираниды': { assetLimit: { reinforcement: 4 } },
+    'тираниды': { assetLimit: { any: 4 } },
 };
 
 class FactionCatalog {
@@ -178,7 +182,9 @@ class FactionCatalog {
     /** The printed ceiling of one asset kind for a player of the faction. */
     assetLimit(factionId, kind) {
         const limits = this.trait(factionId, 'assetLimit', {});
-        return limits[kind] || 3;
+        // `any` — предел, поднятый для всех типов сразу (особенность фракции);
+        // иначе действует предел именно этого жетона, затем общий.
+        return Math.max(limits[kind] || 0, limits.any || 0) || 3;
     }
 
     /**

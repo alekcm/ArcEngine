@@ -2417,8 +2417,9 @@ const FS_EFFECTS = {
         let prosperity = 0;
         for (const asset of a.world.assets || []) {
             if (asset === 'prosperity') { prosperity++; continue; }
-            const limit = this.assetCap(p, asset);
-            if ((p.assets[asset] || 0) < limit) p.assets[asset] = (p.assets[asset] || 0) + 1;
+            // Всё, что даёт жетон, идёт через один счётчик игрока: предел
+            // считается в одном месте (PlayerEntity.addAsset), а не здесь.
+            R.player(state, seat).addAsset(asset, 1);
         }
         R.log(state, seat, p.name + ' берёт ресурсы мира ' + a.world.name + '.');
         if (prosperity) {
