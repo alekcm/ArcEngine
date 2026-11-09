@@ -144,7 +144,7 @@ class OperationsRules {
             // Two steps: the units first, then the one structure. The materiel is
             // paid at the end of the order (cmdFinishDeploy).
             PhasePlan.of(state.order).set('units');
-            state.order.purchases = [];
+            Purchases.of(state.order).clear();
             // The card of the Orks lets the structure come before the units.
             if ((p.upgrades || []).some(u => /Строй быстрее/i.test(u.name || ''))) {
                 OrderDeal.of(state.order).setStructureFirst();
@@ -286,7 +286,7 @@ class OperationsRules {
         // «Когда вы покупаете что-либо этим приказом, можете вдобавок купить 1
         // бастион» («Миры-гробницы»): the card comes after a purchase, and a
         // refusal here must not spend it.
-        if (/миры-гробницы/i.test(up.name) && state.order && !(state.order.purchases || []).length) {
+        if (/миры-гробницы/i.test(up.name) && state.order && Purchases.of(state.order).empty) {
             return { ok: false, error: 'Сначала купите отряд или постройку этим приказом.' };
         }
         up.used = true;

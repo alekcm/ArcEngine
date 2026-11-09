@@ -139,7 +139,8 @@ class DeployRules {
     }
 
     spentOf(order) {
-        return (order.purchases || []).reduce((sum, x) => sum + (x.cost || 0), 0);
+        const purchases = Purchases.of(order);
+        return purchases ? purchases.spent : 0;
     }
 
     /**
@@ -151,8 +152,8 @@ class DeployRules {
      * @param {any} order @param {string} [kind] 'unit' | 'structure'
      */
     purchasesOf(order, kind) {
-        const list = (order && order.purchases) || [];
-        return kind ? list.filter(x => x.kind === kind) : list;
+        const purchases = Purchases.of(order);
+        return purchases ? purchases.of(kind) : [];
     }
 
     /** «The deploy limit» counts the units bought by this order. */
@@ -320,8 +321,7 @@ class DeployRules {
         scope.use(cmd.pos);
         if (isGuard) scope.lockType(def.id);
         this.engine.log(state, seat, p.name + ' купил отряд «' + def.name + '».');
-        order.purchases = order.purchases || [];
-        order.purchases.push({
+        Purchases.of(order).add({
             kind: 'unit', id: unit.id, def: def.id, name: def.name, cost,
             forge: !!def.forge, forgeKl, cache, deal,
         });
@@ -359,8 +359,7 @@ class DeployRules {
         if (cache) builder.payAsset('cache', 1);
         const structure = this.engine.addStructure(state, seat, type, cmd.system, cmd.pos);
         this.engine.log(state, seat, p.name + ' построил: ' + this.engine.structureName(type) + '.');
-        order.purchases = order.purchases || [];
-        order.purchases.push({ kind: 'structure', id: structure.id, type, name: this.engine.structureName(type), cost, cache });
+        Purchases.of(order).add({ kind: 'structure', id: structure.id, type, name: this.engine.structureName(type), cost, cache });
         return { ok: true };
     }
 
@@ -368,12 +367,9 @@ class DeployRules {
         const order = state.order;
         const isGuard = !!order && PhasePlan.of(order).is('guardDeploy');
         if (!order || (order.order !== 'deploy' && !isGuard) || order.seat !== seat) return { ok: false, error: 'Нечего отменять.' };
-        const list = order.purchases || [];
+        const purchases = Purchases.of(order);
         const p = state.players[seat];
-        let entry = null;
-        if (cmd && cmd.unit) entry = list.find(x => x.kind === 'unit' && x.id === cmd.unit);
-        else if (cmd && cmd.structure) entry = list.find(x => x.kind === 'structure' && x.id === cmd.structure);
-        else entry = list[list.length - 1] || null;
+        const entry = purchases.find(cmd);
         if (!entry) return { ok: false, error: 'В этом приказе ещё ничего не куплено.' };
         if (entry.kind === 'unit') {
             const unit = state.units.find(u => u.id === entry.id);
@@ -387,10 +383,10 @@ class DeployRules {
             this.engine.destroyStructure(state, structure);
         }
         if (entry.cache) this.engine.player(state, seat).addAsset('cache', 1);
-        order.purchases = list.filter(x => x !== entry);
+        purchases.remove(entry);
         const scope = DeployScope.of(order);
         // «одного типа» — the lock follows what is on the board.
-        if (isGuard && !(order.purchases || []).length) scope.unlock();
+        if (isGuard && purchases.empty) scope.unlock();
         this.engine.log(state, seat, p.name + ' отменил покупку: ' + entry.name + '.');
         return { ok: true, refunded: entry.cost };
     }
@@ -414,7 +410,8 @@ class DeployRules {
         const total = this.spentOf(order);
         if (total > p.materiel) return { ok: false, error: 'Не хватает материи.' };
         this.engine.player(state, seat).payMateriel(total);
-        for (const entry of order.purchases || []) {
+        const purchases = Purchases.of(order);
+        for (const entry of purchases.list) {
             if (!entry.cost) continue;
             this.engine.log(state, seat, p.name + ' платит ' + entry.cost + ' материи за «' + entry.name + '».');
         }
@@ -434,7 +431,7 @@ class DeployRules {
         if (!order || !PhasePlan.of(order).is('guardDeploy') || order.seat !== seat) {
             return { ok: false, error: 'Сейчас нельзя закончить производство.' };
         }
-        const bought = (order.purchases || []).filter(x => x.kind === 'unit');
+        const bought = Purchases.of(order).units;
         // «Купите минимум 2 отряда одного типа» — the type is locked already;
         // the count is checked here, on the way out.
         if (bought.length && bought.length < 2) {

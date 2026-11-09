@@ -1296,7 +1296,7 @@ class FSGame {
                 });
             }
         }
-        if ((order.purchases || []).length) {
+        if (!Purchases.of(order).empty) {
             ctx.actions.push({
                 kind: 'chip', icon: 'ui.close', label: 'Снять последнюю покупку',
                 hint: 'правый клик по фигуре — снять любую',
@@ -1332,7 +1332,7 @@ class FSGame {
         const worldName = area && area.world ? area.world.name : 'мир-производитель';
         const limit = FS_RULES.deployLimit(s, me, order.system);
         const spent = FS_RULES.spentOf(order);
-        const purchases = order.purchases || [];
+        const purchases = Purchases.of(order).list;
         const faction = FS_CATALOG.faction(p.faction);
         const supply = (p.supply && p.supply.units) || {};
         const locked = scope.lockedType;

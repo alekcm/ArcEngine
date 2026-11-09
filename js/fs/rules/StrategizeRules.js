@@ -143,7 +143,7 @@ class StrategizeRules {
             order.nested = true;
             order.order = kind;
             PhasePlan.of(order).set(null);
-            order.purchases = [];
+            if (Purchases.of(order)) Purchases.of(order).clear();
             const purchases = UpgradeOrder.of(order);
             if (purchases) purchases.reset();
             if (kind === 'advance') order.moveAreaLimit = 1;

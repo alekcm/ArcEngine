@@ -500,6 +500,29 @@ try {
     fail(e.message);
 }
 
+// --- what an order has bought: one object -----------------------------------
+section('покупки развёртывания: один список');
+try {
+    const owners = new Set(['js/fs/core/FSPurchases.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The list of what an order bought is one object: the deploy limit, the
+        // one structure and the panel ask Purchases, they do not push by hand.
+        const re = /\b(?:state\.order|s\.order|order)\.purchases\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('список покупок приказа спрашивают у Purchases');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- what an order lends to its battle: one object ---------------------------
 section('помощь приказа бою: один объект');
 try {

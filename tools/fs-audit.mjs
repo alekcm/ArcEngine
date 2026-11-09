@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -442,6 +442,27 @@ rule('adv-6', '«A warp storm blocks the way»', () => {
 //  Deploy order
 // ============================================================================
 head('Приказ развёртывания (Deploy Order)');
+
+rule('dep-0a', '«… the purchases of the order …» — список покупок и их цена живут в одном Purchases', () => {
+    const purchases = Purchases.of({ seat: 0, order: 'deploy' });
+    const unit = purchases.add({ kind: 'unit', id: 'u1', def: 'guard', name: 'Гвардеец', cost: 2 });
+    purchases.add({ kind: 'structure', id: 's1', type: 'factory', name: 'Фабрика', cost: 5 });
+    // The limit, the one structure and the price are read from the list.
+    eq(purchases.count, 2, 'обе покупки в списке');
+    eq(purchases.units.length, 1, 'отряд посчитан');
+    eq(purchases.hasStructure, true, 'постройка уже одна');
+    eq(purchases.spent, 7, 'цена приказа собрана из списка');
+    eq(purchases.empty, false, 'список не пуст');
+    // The undo takes the record away and the count follows — no second counter.
+    eq(purchases.find({ unit: 'u1' }), unit, 'отмена находит покупку');
+    purchases.remove(unit);
+    eq(purchases.units.length, 0, 'отмена уменьшила счёт');
+    eq(purchases.spent, 5, 'и цену');
+    purchases.clear();
+    eq(purchases.empty, true, 'новый приказ пуст');
+    eq(Purchases.of(purchases.order), purchases, 'у приказа один список');
+    eq(Purchases.of(null), null, 'без приказа покупок нет');
+});
 
 rule('dep-0b', '«… the price of the purchases is reduced …» — скидки и сделки приказа считает один OrderDeal', () => {
     const deal = OrderDeal.of({ seat: 0, order: 'deploy' });
