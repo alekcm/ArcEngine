@@ -23,4 +23,18 @@ const FS_RULES_CONFIG = {
     // "three of each" rule — that number was invented by the engine.
     STRUCTURE_POOL: { city: 15, factory: 10, bastion: 10 },
     STRUCTURE_TOKENS: 9,
+    // The four orders as the log and the panels name them. One spelling for the
+    // rules («выложил приказ «наступление»») and the panel («Наступление»).
+    ORDER_NAMES: {
+        advance: 'наступление',
+        deploy: 'развёртывание',
+        strategize: 'стратегия',
+        dominate: 'доминирование',
+    },
 };
+
+/** The printed name of an order; `cap` starts it with a capital letter (a panel title). */
+function fsOrderName(order, cap) {
+    const name = FS_RULES_CONFIG.ORDER_NAMES[order] || String(order || '');
+    return cap && name ? name.charAt(0).toUpperCase() + name.slice(1) : name;
+}

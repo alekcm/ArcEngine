@@ -231,7 +231,8 @@ const FSUI = {
     },
 
     orderLabel(order) {
-        return ({ advance: 'Наступление', deploy: 'Развёртывание', strategize: 'Стратегия', dominate: 'Доминирование' })[order] || order;
+        // The same names the log uses, only with a capital letter for a panel.
+        return fsOrderName(order, true);
     },
 
     /** @type {((item: any) => void) | null} */

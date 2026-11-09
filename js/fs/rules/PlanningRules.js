@@ -84,7 +84,7 @@ class PlanningRules {
     }
 
     orderName(order) {
-        return { advance: 'наступление', deploy: 'развёртывание', strategize: 'стратегия', dominate: 'доминирование' }[order] || order;
+        return fsOrderName(order, false);
     }
 
     checkPlanningDone(state) {
