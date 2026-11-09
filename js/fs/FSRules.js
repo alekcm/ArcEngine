@@ -21,23 +21,11 @@
 
 /** @satisfies {Record<string, any>} */
 const FS_RULES = {
-    // The board: the rows of the system tiles, top to bottom. Every player has
-    // three tiles (their home tile and two base ones), so the board is
-    // 3 x players tiles, on an aligned square grid.
-    LAYOUTS: { 2: [2, 2, 2], 3: [3, 3, 3], 4: [4, 4, 4] },
-    TILE: 100,             // px of one system tile
-    MATERIEL_MAX: 14,      // the materiel dial stops at 14
-    DICE_MAX: 8,           // no more than eight dice in a combat
-    ORDER_TOKENS: 4,       // four order tokens per round
-    ROUNDS: 8,             // the game ends after the eighth round
-    ORDER_SUPPLY: 2,       // two tokens of every kind in the hand of a player
-    AREA_CAP: 3,           // the unit capacity of a void
-    AREA_MAX_UNITS: 5,     // no more than five units in one area
-    // The structures are shared plastic: 35 in the box (15 cities, 10 factories,
-    // 10 bastions), and every player has 9 structure control tokens. There is no
-    // "three of each" rule — that number was invented by the engine.
-    STRUCTURE_POOL: { city: 15, factory: 10, bastion: 10 },
-    STRUCTURE_TOKENS: 9,
+    // The numbers of the game live in FSRulesConfig.js: the board layout, the
+    // caps of the areas, the order tokens. Spreading them keeps the old
+    // FS_RULES.ORDER_TOKENS and friends working for the server, the view and
+    // the audit while the constants themselves have one home.
+    ...FS_RULES_CONFIG,
 
     // -----------------------------------------------------------------------
     //  Small helpers
@@ -81,87 +69,75 @@ const FS_RULES = {
     //  Data access
     // -----------------------------------------------------------------------
 
+    // --- the objects of the state ---------------------------------------------
+    // Every rule below asks the same objects: the catalogue for the printed
+    // data, the board for the geometry and the pieces, the player for the
+    // accounting. None of them keeps a second copy of a rule.
+
+    /** The board (systems, areas, control, capacity, paths) of this state. */
+    board(state) {
+        return Board.of(state);
+    },
+
+    /** One player as an object: assets, limits, command level, supply. */
+    player(state, seat) {
+        return PlayerEntity.of(state, seat);
+    },
+
+    /** The printed faction of a seat. */
     faction(state, seat) {
-        return FS_DATA.factions.find(f => f.id === state.players[seat].faction);
+        const p = state.players[seat];
+        return FS_CATALOG.factionOfPlayer(p);
     },
 
     factionById(id) {
-        return FS_DATA.factions.find(f => f.id === id);
+        return FS_CATALOG.faction(id);
     },
 
-    // The army paint: one primary and two secondary colors, chosen in the lobby.
-    // Anything missing falls back to shades of the faction color.
+    // The army paint: a primary and two secondary colours, chosen in the lobby.
     normalizePalette(pal, fallback) {
-        const hex = c => /^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c).toLowerCase() : null;
-        const base = hex(fallback) || '#888888';
-        const shade = amt => {
-            const n = parseInt(base.slice(1), 16);
-            const f = v => Math.max(0, Math.min(255, Math.round(v + amt * 2.55)));
-            return '#' + (((f((n >> 16) & 255)) << 16) | ((f((n >> 8) & 255)) << 8) | f(n & 255)).toString(16).padStart(6, '0');
-        };
-        pal = pal || {};
-        return {
-            primary: hex(pal.primary) || base,
-            secondary1: hex(pal.secondary1) || shade(48),
-            secondary2: hex(pal.secondary2) || shade(-38),
-        };
+        return FS_CATALOG.palette(pal, fallback);
     },
 
     unitDef(state, seat, unitId) {
-        const f = this.faction(state, seat);
-        return f ? f.units.find(u => u.id === unitId) : null;
+        const p = state.players[seat];
+        return p ? FS_CATALOG.unit(p.faction, unitId) : null;
     },
 
-    // The unit type of a unit on the board.
+    /** The printed profile of a unit that stands on the board. */
     unitOf(state, unit) {
-        const f = this.factionById(unit.faction);
-        if (!f) return null;
-        return f.units.find(u => u.id === unit.unit) || null;
+        return FS_CATALOG.unitOfUnit(unit);
     },
 
     system(state, id) {
-        return state.systems.find(s => s.id === id);
+        return this.board(state).system(id);
     },
 
     area(system, pos) {
         return system ? system.areas.find(a => a.pos === pos) : null;
     },
 
-    // The areas of a system, in the order TL, TR, BL, BR.
+    /** The areas of a system, in the order TL, TR, BL, BR. */
     areaIndex(pos) {
-        return ['TL', 'TR', 'BL', 'BR'].indexOf(pos);
+        return TileGeometry.index(pos);
     },
 
-    // Units of a player in an area.
+    /** Units in an area (either player). */
     unitsAt(state, systemId, pos) {
-        return state.units.filter(u => u.system === systemId && u.area === pos);
+        return this.board(state).unitsAt(systemId, pos);
     },
 
     structuresAt(state, systemId, pos) {
-        return state.structures.filter(s => s.system === systemId && s.area === pos);
+        return this.board(state).structuresAt(systemId, pos);
     },
 
-    // The capacity of an area: the skulls of the world banner, three for a void.
-    // No more than five units may stand in one area, whatever the banner says.
+    /**
+     * The capacity of an area: the skulls of the world banner, three for a void,
+     * never more than five units. The order in play may raise it for the cities
+     * (and only for the units it names).
+     */
     capacity(state, systemId, pos, def) {
-        const sys = this.system(state, systemId);
-        const area = this.area(sys, pos);
-        if (!area) return 0;
-        let cap = area.world ? (area.world.capacity || this.AREA_CAP) : this.AREA_CAP;
-        // The order may make the worlds with a city hold more units.
-        const order = state.order;
-        if (order && order.capacityBonus) {
-            const city = this.structuresAt(state, systemId, pos).some(s => s.type === 'city' && s.seat === order.seat);
-            // «Дополнительная вместимость распространяется только на Гвардейцев»:
-            // the world holds the extra only for the unit the card names.
-            const only = order.capacityBonusOnly;
-            const fits = !only || !def || FS_EFFECTS.sameName(def.name, only);
-            if (city && fits) {
-                cap += order.capacityBonus;
-                if (order.capacityMax) cap = Math.min(cap, order.capacityMax);
-            }
-        }
-        return Math.min(cap, this.AREA_MAX_UNITS);
+        return this.board(state).capacity(systemId, pos, def);
     },
 
     // How many things are counted for the discount of the card.
@@ -197,160 +173,72 @@ const FS_RULES = {
         return 0;
     },
 
-    // Friendly / enemy / uncontrolled / contested.
+    // Friendly / enemy / uncontrolled / contested: the one answer of the board.
     control(state, seat, systemId, pos) {
-        const mine = this.unitsAt(state, systemId, pos).some(u => u.seat === seat)
-            || this.structuresAt(state, systemId, pos).some(s => s.seat === seat);
-        if (!mine) return 'none';
-        const theirs = state.units.some(u => u.system === systemId && u.area === pos && u.seat !== seat)
-            || state.structures.some(s => s.system === systemId && s.area === pos && s.seat !== seat);
-        return theirs ? 'contested' : 'friendly';
+        return this.board(state).control(seat, systemId, pos);
+    },
+
+    areaState(state, seat, systemId, pos) {
+        return this.board(state).areaState(seat, systemId, pos);
+    },
+
+    /** The seats that can fight for an area: units and bastions. */
+    warSeatsAt(state, systemId, pos) {
+        return this.board(state).warSeatsAt(systemId, pos);
     },
 
     friendlyAreas(state, seat) {
-        const out = [];
-        for (const sys of state.systems) {
-            for (const area of sys.areas) {
-                if (this.control(state, seat, sys.id, area.pos) === 'friendly') out.push({ system: sys.id, pos: area.pos });
-            }
-        }
-        return out;
+        return this.board(state).friendlyAreas(seat);
     },
 
-    // The command level of a player: one per city he controls, plus whatever
-    // the order in play adds («Сила воли»: «ваш командный уровень
-    // увеличивается на 1 во время выполнения этого приказа»).
+    /** The command level of a player: one per city, plus the order in play. */
     commandLevel(state, seat) {
-        const cities = state.structures.filter(s => s.seat === seat && s.type === 'city').length;
-        const bonus = state.order && state.order.seat === seat ? (state.order.klBonus || 0) : 0;
-        return cities + bonus;
+        const p = this.player(state, seat);
+        return p ? p.commandLevel() : 0;
     },
 
-    // The number of materiel a player gains in the refresh phase.
+    /** The number of materiel a player gains in the refresh phase. */
     materielIncome(state, seat) {
-        let sum = 0;
-        for (const sys of state.systems) {
-            for (const area of sys.areas) {
-                if (!area.world) continue;
-                if (this.control(state, seat, sys.id, area.pos) !== 'friendly') continue;
-                sum += area.world.materiel || 0;
-            }
-        }
-        return sum;
+        return this.board(state).materielIncome(seat);
     },
 
     // -----------------------------------------------------------------------
-    //  Board geometry
+    //  Board geometry — see Board and TileGeometry
     // -----------------------------------------------------------------------
 
-    // The systems next to a system (they share a gold border).
+    /** The systems next to a system (they share a gold border). */
     neighbors(state, systemId) {
-        const sys = this.system(state, systemId);
-        if (!sys) return [];
-        return state.systems.filter(other => other.id !== sys.id
-            && Math.abs(other.row - sys.row) + Math.abs(other.col - sys.col) === 1).map(other => other.id);
+        return this.board(state).neighbors(systemId);
     },
 
-    // Only full shared edges count as adjacency.
+    /** The side of the first system that faces the second; null if they do not touch. */
     sideBetween(state, aId, bId) {
-        const a = this.system(state, aId), b = this.system(state, bId);
-        if (!a || !b || Math.abs(a.row - b.row) + Math.abs(a.col - b.col) !== 1) return null;
-        if (a.row === b.row) return b.col > a.col ? 'E' : 'W';
-        return b.row > a.row ? 'S' : 'N';
+        return this.board(state).sideBetween(aId, bId);
     },
 
+    /** The system across one side of a system. */
     across(state, systemId, side) {
-        const sys = this.system(state, systemId);
-        if (!sys) return null;
-        const offset = { N: [-1, 0], S: [1, 0], E: [0, 1], W: [0, -1] }[side];
-        if (!offset) return null;
-        const other = state.systems.find(s => s.row === sys.row + offset[0] && s.col === sys.col + offset[1]);
-        return other ? other.id : null;
+        return this.board(state).across(systemId, side);
     },
 
-    // Is a warp storm on the edge between two systems? The storm's two
-    // neighbouring tiles are the authority, not a tile-side alias.
+    /** Is a warp storm on the edge between two systems? */
     stormOn(state, aId, bId) {
-        return FS_WARP_STORMS.stormOn(state, aId, bId);
+        return this.board(state).stormOn(aId, bId);
     },
 
-    // The systems a ground unit may walk through: a chain of friendly areas.
-    // A path may not pass through an enemy, uncontrolled or contested area,
-    // and not through a warp storm.
+    /** The way of a ground unit: a chain of friendly areas, storms blocking. */
     pathExists(state, seat, fromSystem, fromPos, toSystem, toPos, opts) {
-        if (fromSystem === toSystem && fromPos === toPos) return true;
-        // The order upgrade "Крестный ход": uncontrolled worlds are friendly for
-        // the march, but only for the number of units the card allows.
-        const march = opts && opts.uncontrolled === false ? 0
-            : (state.order && state.order.uncontrolled
-                ? Math.max(0, state.order.uncontrolled - (state.order.uncontrolledUsed || 0)) : 0);
-        const start = { system: fromSystem, pos: fromPos, voids: 0 };
-        const seen = new Map([[fromSystem + ':' + fromPos, 0]]);
-        const queue = [start];
-        while (queue.length) {
-            const cur = queue.shift();
-            for (const next of this.areasAround(state, cur.system, cur.pos)) {
-                const key = next.system + ':' + next.pos;
-                if (this.stormOn(state, cur.system, next.system) && !(opts && opts.storms)) continue;
-                // The destination may be an empty world — the way must be friendly.
-                if (next.system === toSystem && next.pos === toPos) return true;
-                let voids = cur.voids;
-                const area = this.area(this.system(state, next.system), next.pos);
-                const control = this.control(state, seat, next.system, next.pos);
-                // The order upgrade "Крестный ход": an uncontrolled world is a
-                // friendly stepping stone for the units the card allows.
-                // "Uncontrolled" is control() === 'none': no piece of either side.
-                const byMarch = control !== 'friendly' && march > 0 && area && area.world
-                    && !this.unitsAt(state, next.system, next.pos).length
-                    && !this.structuresAt(state, next.system, next.pos).length;
-                if (control !== 'friendly' && !byMarch) {
-                    const order = state.order;
-                    if (!order || !order.passVoid || !area || area.world || voids >= order.passVoid
-                        || this.unitsAt(state, next.system, next.pos).length
-                        || this.structuresAt(state, next.system, next.pos).length) continue;
-                    voids++;
-                }
-                if (seen.has(key) && seen.get(key) <= voids) continue;
-                seen.set(key, voids);
-                queue.push({ system: next.system, pos: next.pos, voids });
-            }
-        }
-        return false;
+        return this.board(state).pathExists(seat, fromSystem, fromPos, toSystem, toPos, opts);
     },
 
-    // The areas that share a border with an area (not through the order box).
+    /** The areas that share a border with an area. */
     areasAround(state, systemId, pos) {
-        const out = [];
-        const idx = this.areaIndex(pos);
-        // The gold lines run "snake-like" from corner to corner through the
-        // centre: the areas of a tile are adjacent as on the printed tile.
-        const same = [['TL', 'TR'], ['BL', 'BR'], ['TL', 'BL'], ['TR', 'BR']];
-        for (const [a, b] of same) {
-            if (a === pos) { const o = this.area(this.system(state, systemId), b); if (o) out.push({ system: systemId, pos: b }); }
-            if (b === pos) { const o = this.area(this.system(state, systemId), a); if (o) out.push({ system: systemId, pos: a }); }
-        }
-        void idx;
-        // The areas of the neighbouring systems that touch this one.
-        for (const nb of this.neighbors(state, systemId)) {
-            for (const area of this.system(state, nb).areas) {
-                if (this.areasTouch(state, systemId, pos, nb, area.pos)) out.push({ system: nb, pos: area.pos });
-            }
-        }
-        return out;
+        return this.board(state).areasAround(systemId, pos);
     },
 
-    // Do two areas of two neighbouring systems share a gold border?
+    /** Do two areas of two neighbouring systems share a gold border? */
     areasTouch(state, sysA, posA, sysB, posB) {
-        const a = this.system(state, sysA), b = this.system(state, sysB);
-        if (!a || !b) return false;
-        const side = this.sideBetween(state, sysA, sysB);
-        if (!side) return false;
-        // Opposing half-edges must line up; diagonal quarters do not touch.
-        const pairs = {
-            N: { TL: 'BL', TR: 'BR' }, S: { BL: 'TL', BR: 'TR' },
-            E: { TR: 'TL', BR: 'BL' }, W: { TL: 'TR', BL: 'BR' },
-        };
-        return !!pairs[side] && pairs[side][posA] === posB;
+        return this.board(state).areasTouch(sysA, posA, sysB, posB);
     },
 
     // -----------------------------------------------------------------------
@@ -625,15 +513,11 @@ const FS_RULES = {
 
     // Quarter-turns are clockwise in board coordinates (x right, row down).
     rotateArea(pos, turns) {
-        const clockwise = { TL: 'TR', TR: 'BR', BR: 'BL', BL: 'TL' };
-        let result = pos;
-        for (let i = 0; i < turns; i++) result = clockwise[result];
-        return result;
+        return TileGeometry.rotate(pos, turns);
     },
 
     tileFaces(id) {
-        const physical = String(id).replace(/[AB]$/, '');
-        return FS_DATA.tiles.filter(t => t.id.replace(/[AB]$/, '') === physical);
+        return FS_CATALOG.tileFaces(id);
     },
 
     createSystemFromTile(state, tile, seat, row, col, rotation = 0) {
@@ -671,7 +555,7 @@ const FS_RULES = {
     },
 
     setupAdjacent(a, b) {
-        return Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
+        return TileGeometry.cellsTouch(a, b);
     },
 
     setupLegalCells(state) {
@@ -887,12 +771,10 @@ const FS_RULES = {
     takeStartChoiceLeft(state) {
         for (const p of state.players) {
             while ((p.startChoice || 0) > 0) {
-                const kinds = ['forge', 'cache', 'reinforcement'];
-                const limit = k => (p.faction === 'тираниды' && k === 'reinforcement' ? 4 : 3);
-                const free = kinds.filter(k => (p.assets[k] || 0) < limit(k));
+                const player = this.player(state, p.seat);
+                const free = player.freeAssetKinds();
                 if (!free.length) break;
-                free.sort((a, b) => (p.assets[a] || 0) - (p.assets[b] || 0));
-                p.assets[free[0]] = (p.assets[free[0]] || 0) + 1;
+                player.addAsset(free[0], 1);
                 p.startChoice--;
                 this.log(state, p.seat, p.name + ' берёт стартовый ресурс: ' + this.assetName(free[0]) + '.');
             }
@@ -906,9 +788,9 @@ const FS_RULES = {
         if (!p.startChoice) return { ok: false, error: 'Нет стартовых ресурсов на выбор.' };
         const asset = cmd.asset;
         if (!['forge', 'cache', 'reinforcement'].includes(asset)) return { ok: false, error: 'Неизвестный ресурс.' };
-        const limit = p.faction === 'тираниды' && asset === 'reinforcement' ? 4 : 3;
-        if ((p.assets[asset] || 0) >= limit) return { ok: false, error: 'У вас уже максимум таких жетонов.' };
-        p.assets[asset] = (p.assets[asset] || 0) + 1;
+        const player = this.player(state, seat);
+        if (!player.hasRoomFor(asset)) return { ok: false, error: 'У вас уже максимум таких жетонов.' };
+        player.addAsset(asset, 1);
         p.startChoice--;
         this.log(state, seat, p.name + ' берёт стартовый ресурс: ' + this.assetName(asset) + '.');
         return { ok: true };
@@ -1039,11 +921,9 @@ const FS_RULES = {
         return { ok: true };
     },
 
-    // The structure values (07-tokens.md).
+    // The structure values (07-tokens.md), from the one catalogue.
     structureStats(type) {
-        if (type === 'bastion') return { cost: 2, combat: 2, health: 3, morale: 2, kl: 0 };
-        if (type === 'city') return { cost: 3, combat: 0, health: 0, morale: 0, kl: 0 };
-        return { cost: 2, combat: 0, health: 0, morale: 0, kl: 0 };   // factory
+        return FS_CATALOG.structure(type);
     },
 
     // -----------------------------------------------------------------------
@@ -1133,32 +1013,8 @@ const FS_RULES = {
         return this.neighbors(state, sys.id).some(id => this.hasUnitsOrStructures(state, seat, id));
     },
 
-    // The state of an area for a player, exactly as the rules name it.
-    // The seats that can fight for an area: the units in it and the bastions.
-    // A factory or a city never holds the field on its own — it cannot fight,
-    // it cannot open a battle and it does not consume the one-battle limit of
-    // an advance order («possibly he starts one battle»).
-    warSeatsAt(state, systemId, pos) {
-        const seats = new Set();
-        for (const u of state.units) if (u.system === systemId && u.area === pos) seats.add(u.seat);
-        for (const s of state.structures) if (s.system === systemId && s.area === pos && s.type === 'bastion') seats.add(s.seat);
-        return seats;
-    },
-
-    areaState(state, seat, systemId, pos) {
-        const mine = this.unitsAt(state, systemId, pos).some(u => u.seat === seat)
-            || this.structuresAt(state, systemId, pos).some(x => x.seat === seat);
-        const theirs = state.units.some(u => u.system === systemId && u.area === pos && u.seat !== seat)
-            || state.structures.some(x => x.system === systemId && x.area === pos && x.seat !== seat);
-        if (this.warSeatsAt(state, systemId, pos).size > 1) return 'contested';
-        if (mine) return 'friendly';
-        if (theirs) return 'enemy';
-        return 'uncontrolled';
-    },
-
     hasUnitsOrStructures(state, seat, systemId) {
-        return state.units.some(u => u.seat === seat && u.system === systemId)
-            || state.structures.some(s => s.seat === seat && s.system === systemId);
+        return this.board(state).hasUnitsOrStructures(seat, systemId);
     },
 
     // How many tokens of this kind the player may still lay: two of every kind.
@@ -1362,12 +1218,8 @@ const FS_RULES = {
                     // The player chooses the token.
                     gained.push('prosperity');
                     state.order.prosperity = (state.order.prosperity || 0) + 1;
-                } else {
-                    const limit = p.faction === 'тираниды' && asset === 'reinforcement' ? 4 : 3;
-                    if ((p.assets[asset] || 0) < limit) {
-                        p.assets[asset] = (p.assets[asset] || 0) + 1;
-                        gained.push(asset);
-                    }
+                } else if (this.player(state, seat).addAsset(asset, 1)) {
+                    gained.push(asset);
                 }
             }
         }
@@ -1871,13 +1723,7 @@ const FS_RULES = {
     },
 
     contestedAreas(state) {
-        const out = [];
-        for (const sys of state.systems) {
-            for (const area of sys.areas) {
-                if (this.warSeatsAt(state, sys.id, area.pos).size > 1) out.push({ system: sys.id, pos: area.pos });
-            }
-        }
-        return out;
+        return this.board(state).contestedAreas();
     },
 
     // The end of the movement: a combat or an orbital strike.
@@ -2842,16 +2688,16 @@ const FS_RULES = {
         const asset = cmd.asset;
         if (!['forge', 'cache', 'reinforcement'].includes(asset)) return { ok: false, error: 'Неизвестный ресурс.' };
         const p = state.players[seat];
-        const limit = p.faction === 'тираниды' && asset === 'reinforcement' ? 4 : 3;
-        if ((p.assets[asset] || 0) >= limit) return { ok: false, error: 'У вас уже три таких жетона.' };
-        p.assets[asset] = (p.assets[asset] || 0) + 1;
+        const player = this.player(state, seat);
+        if (!player.hasRoomFor(asset)) return { ok: false, error: 'У вас уже ' + player.assetLimit(asset) + ' таких жетонов.' };
+        player.addAsset(asset, 1);
         order.prosperity--;
         this.log(state, seat, p.name + ' взял жетон процветания: ' + this.assetName(asset) + '.');
         return { ok: true };
     },
 
     assetName(asset) {
-        return { forge: 'кузница', cache: 'тайник', reinforcement: 'подкрепление', prosperity: 'процветание' }[asset] || asset;
+        return FS_ASSET_NAMES[asset] || asset;
     },
 
     // The prosperity tokens nobody exchanged: the player keeps one asset of his
@@ -2861,12 +2707,10 @@ const FS_RULES = {
         if (!order || !order.prosperity) return;
         const p = state.players[seat];
         while (order.prosperity > 0) {
-            const kinds = ['forge', 'cache', 'reinforcement'];
-            const limit = k => (p.faction === 'тираниды' && k === 'reinforcement' ? 4 : 3);
-            const free = kinds.filter(k => (p.assets[k] || 0) < limit(k));
+            const player = this.player(state, seat);
+            const free = player.freeAssetKinds();
             if (!free.length) break;    // every asset is at its limit
-            free.sort((a, b) => (p.assets[a] || 0) - (p.assets[b] || 0));
-            p.assets[free[0]] = (p.assets[free[0]] || 0) + 1;
+            player.addAsset(free[0], 1);
             order.prosperity--;
             this.log(state, seat, p.name + ' берёт за жетон процветания: ' + this.assetName(free[0]) + '.');
         }

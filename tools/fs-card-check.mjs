@@ -20,24 +20,20 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
 import url from 'node:url';
+import { createEngineContext } from './fs-engine.mjs';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 
 // --- the engine, loaded the way the browser loads it ------------------------
-const ctx = vm.createContext({
-    console, Math, JSON, Date, Set, Map, Array, Object, Number, String, Boolean, Error,
-    parseInt, parseFloat, isNaN, RegExp, Promise, Symbol, TypeError, RangeError,
-});
+const ctx = createEngineContext();
+// The panel code this tool inspects is not part of the rules engine; load it
+// on top of the same context, in the order index.html does.
 const load = (file, name) => vm.runInContext(
     fs.readFileSync(path.join(ROOT, file), 'utf8') + `\n;globalThis.${name} = ${name};`,
     ctx, { filename: file });
-load('js/fs/FSData.js', 'FS_DATA');
-load('js/fs/FSCards.js', 'FS_CARDS');
-load('js/fs/FSWarpStorms.js', 'FS_WARP_STORMS');
-load('js/fs/FSEffects.js', 'FS_EFFECTS');
-load('js/fs/FSRules.js', 'FS_RULES');
-load('js/fs/FSView.js', 'FSView');
-load('js/fs/FSGame.js', 'FSGame');
+for (const file of ['js/fs/FSView.js', 'js/fs/FSGame.js']) {
+    if (fs.existsSync(path.join(ROOT, file))) load(file, file.split('/').pop().replace(/\.js$/, ''));
+}
 const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame } = ctx;
 
 // --- the report -------------------------------------------------------------

@@ -1564,26 +1564,20 @@ const FSUI = {
     },
 
     factionName(id) {
-        const f = FS_DATA.factions.find(x => x.id === id);
-        return f ? f.name : id;
+        return FS_CATALOG.factionName(id);
     },
 
     factionColor(id) {
-        const f = FS_DATA.factions.find(x => x.id === id);
-        return f ? f.color : '#8899aa';
+        return FS_CATALOG.factionColor(id);
     },
 
     shade(hex, amt) {
-        const n = parseInt(String(hex || '').replace('#', ''), 16);
-        if (!Number.isFinite(n)) return '#888888';
-        const f = v => Math.max(0, Math.min(255, Math.round(v + amt * 2.55)));
-        return '#' + (((f((n >> 16) & 255)) << 16) | ((f((n >> 8) & 255)) << 8) | f(n & 255)).toString(16).padStart(6, '0');
+        return FS_CATALOG.shade(hex, amt);
     },
 
     // The default army paint of a faction: the faction color plus two shades.
     defaultPalette(factionId) {
-        const base = this.factionColor(factionId);
-        return { primary: base, secondary1: this.shade(base, 48), secondary2: this.shade(base, -38) };
+        return FS_CATALOG.defaultPalette(factionId);
     },
 
     // -----------------------------------------------------------------------

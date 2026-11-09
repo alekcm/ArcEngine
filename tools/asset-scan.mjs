@@ -13,19 +13,34 @@
 //  neither "missing asset" nor "used".
 // ============================================================================
 import fsp from 'node:fs/promises';
+import fsync from 'node:fs';
 import path from 'node:path';
+import url from 'node:url';
+
+const ROOT_DIR = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 
 // Paths that cannot be picked up as a literal. Empty for now — all references are literal.
 export const EXTRA_REFS = [];
 
-// Files needed in the build that are not "assets". A new <script> in
-// index.html = a new line here, otherwise the file will not get into the archive.
-export const CODE_FILES = [
-  'index.html',
-  'js/Constants.js', 'js/Objects.js', 'js/UILayout.js', 'js/Sound3D.js', 'js/World3D.js', 'js/Terrain3D.js', 'js/CameraControl.js', 'js/Model3D.js', 'js/Gltf3D.js', 'js/Instances3D.js', 'js/Location3D.js', 'js/Debug3D.js', 'js/UI.js', 'js/Game.js', 'js/main.js',
-  'js/fs/FSIcons.js', 'js/fs/FSData.js', 'js/fs/FSRules.js', 'js/fs/FSNet.js', 'js/fs/FSView.js', 'js/fs/FSUI.js', 'js/fs/FSGame.js',
-  'libs/simplex-noise.js', 'libs/babylon.js', 'libs/babylonjs.loaders.min.js',
-];
+// Files needed in the build that are not "assets". The list is READ FROM
+// index.html: the entry point already names every script and stylesheet in the
+// order the browser loads them, and a hand-kept copy here had silently dropped
+// FSCards.js, FSWarpStorms.js, FSEffects.js and FSUI.css from the archive.
+// One source of truth: add a <script> to index.html and it ships.
+export function htmlCodeFiles() {
+  const src = fsync.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf8');
+  const out = [];
+  for (const m of src.matchAll(/<(?:script|link)\b[^>]*?(?:src|href)=["']([^"']+)["']/g)) {
+    const ref = m[1];
+    if (!ref || /^https?:|^data:|^#/.test(ref) || out.includes(ref)) continue;
+    out.push(ref);
+  }
+  return out;
+}
+
+export const CODE_FILES = (() => {
+  try { return htmlCodeFiles(); } catch (e) { return ['index.html']; }
+})();
 
 // What definitely does not go into the build.
 export const BUILD_EXCLUDE = [

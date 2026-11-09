@@ -29,11 +29,10 @@ function fsDieColor(face) {
     })[face] || '#5c6470';
 }
 
-// The card of a faction by its name — the same lookup the rules do.
+// The card of a faction by its name — through the one catalogue.
 function cardData(state, seat, name) {
     const p = state && state.players ? state.players[seat] : null;
-    if (!p || typeof FS_DATA === 'undefined') return null;
-    return FS_DATA.combat.find(x => x.faction === p.faction && x.name === name) || null;
+    return p ? FS_CATALOG.card('combat', p.faction, name) : null;
 }
 
 /** @satisfies {Record<string, any>} */
@@ -499,8 +498,7 @@ const FSView = {
 
     // The colour of a faction.
     factionColor(id) {
-        const f = FS_DATA.factions.find(x => x.id === id);
-        return f ? f.color : '#8899aa';
+        return FS_CATALOG.factionColor(id);
     },
 
     worldColor(name) {

@@ -21,7 +21,7 @@ const FS_EFFECTS = {
     // типа (у Тиранидов — до 4)»), and a card may raise the limit for the game.
     assetCap(player, kind) {
         const p = player || {};
-        const base = p.faction === 'тираниды' ? 4 : 3;
+        const base = FS_CATALOG.assetLimit(p.faction, kind);
         return Math.max(base, p.assetLimit || 0);
     },
 
@@ -6021,9 +6021,7 @@ const FS_EFFECTS = {
 
     // The faction of the context: the units of the text belong to it.
     factionOf(ctx) {
-        if (!ctx || !ctx.faction) return null;
-        const list = (typeof FS_DATA !== 'undefined' && FS_DATA.factions) ? FS_DATA.factions : [];
-        return list.find(f => f.id === ctx.faction) || null;
+        return ctx && ctx.faction ? FS_CATALOG.faction(ctx.faction) : null;
     },
 
     // The names of the units of the text: "a Guardsman" -> the guardsmen.
@@ -6053,27 +6051,7 @@ const FS_EFFECTS = {
     // The names of the units are written in different cases: "Гвардейца" and
     // "Гвардейцы" are the same unit.
     sameName(a, b) {
-        const clean = t => String(t || '').toLowerCase().replace(/['\u2019]/g, '').replace(/[^а-яёa-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
-        const x = clean(a);
-        const y = clean(b);
-        if (!x || !y) return false;
-        if (x === y) return true;
-        // The last word of the name: "Инквизиторские штурмовики" and
-        // "штурмовика" are the same unit.
-        const words = s => s.split(/\s+/).filter(Boolean);
-        const wx = words(x);
-        const wy = words(y);
-        const last = wx[wx.length - 1];
-        const last2 = wy[wy.length - 1];
-        if (last && last2 && this.stem(last) === this.stem(last2)) return true;
-        // The whole name without the spaces: "Гвардейцы" and "Гвардеец".
-        const sx = x.replace(/\s+/g, '');
-        const sy = y.replace(/\s+/g, '');
-        const n = Math.min(4, sx.length, sy.length);
-        if (sx.slice(0, n) === sy.slice(0, n)) return true;
-        // The short names: "Ктан" and "К'тана" are the same unit.
-        const n3 = Math.min(3, sx.length, sy.length);
-        return sx.slice(0, n3) === sy.slice(0, n3);
+        return FS_CATALOG.sameName(a, b);
     },
 
     // The ceiling of ONE payment of an orbital strike: the cubes of the rolled
@@ -6113,8 +6091,7 @@ const FS_EFFECTS = {
     // The stem of the name: the first letters of the word. The endings of the
     // Russian plural differ: "бойзов", "бойзы" and "Бойзы" are the same unit.
     stem(word) {
-        const w = String(word || '').toLowerCase();
-        return w.slice(0, Math.min(4, w.length));
+        return FS_CATALOG.stem(word);
     },
 };
 

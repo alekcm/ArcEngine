@@ -24,6 +24,7 @@ import os from 'node:os';
 import url from 'node:url';
 import vm from 'node:vm';
 import { execFile } from 'node:child_process';
+import { createEngineContext } from './fs-engine.mjs';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 const NO_OPEN = process.argv.includes('--no-open');
@@ -57,12 +58,9 @@ const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\
 // ---------------------------------------------------------------------------
 //  The game rules in the server: the same classic scripts the browser loads.
 // ---------------------------------------------------------------------------
-const context = vm.createContext({ console, Math, JSON, Date, Object, Array, String, Number, Boolean, Error });
-vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/fs/FSData.js'), 'utf8'), context, { filename: 'js/fs/FSData.js' });
-vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/fs/FSEffects.js'), 'utf8'), context, { filename: 'js/fs/FSEffects.js' });
-vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/fs/FSRules.js'), 'utf8'), context, { filename: 'js/fs/FSRules.js' });
-const FS_DATA = vm.runInContext('FS_DATA', context);
-const FS_RULES = vm.runInContext('FS_RULES', context);
+const context = createEngineContext();
+const FS_DATA = context.FS_DATA;
+const FS_RULES = context.FS_RULES;
 
 // ---------------------------------------------------------------------------
 //  Rooms

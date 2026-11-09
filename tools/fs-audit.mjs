@@ -13,22 +13,14 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
 import url from 'node:url';
+import { createEngineContext } from './fs-engine.mjs';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 
 // --- the engine, loaded the way the browser loads it ------------------------
-const ctx = vm.createContext({
-    console, Math, JSON, Date, Set, Map, Array, Object, Number, String, Boolean, Error,
-    parseInt, parseFloat, isNaN, RegExp, Promise, Symbol, TypeError, RangeError,
-});
-const load = (file, name) => vm.runInContext(
-    fs.readFileSync(path.join(ROOT, file), 'utf8') + `\n;globalThis.${name} = ${name};`,
-    ctx, { filename: file });
-load('js/fs/FSData.js', 'FS_DATA');
-load('js/fs/FSCards.js', 'FS_CARDS');
-load('js/fs/FSWarpStorms.js', 'FS_WARP_STORMS');
-load('js/fs/FSEffects.js', 'FS_EFFECTS');
-load('js/fs/FSRules.js', 'FS_RULES');
+// The list of engine files comes from index.html (tools/fs-engine.mjs): a new
+// core script is never missed by the audit or by the server.
+const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS } = ctx;
 
 // --- the report -------------------------------------------------------------
