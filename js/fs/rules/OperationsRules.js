@@ -135,9 +135,9 @@ class OperationsRules {
             // The movement has two steps: the ships first, then the ground units
             // (the rules, "Advance Order"). The roads of each step are frozen when
             // the step begins: a march never opens a longer road for the next unit.
-            state.order.moveStep = 'ships';
-            state.order.moved = [];
-            state.order.route = this.engine.advanceRoutes(state, seat, 'ship');
+            const march = MarchPlan.of(state.order);
+            march.reset().setStep('ships');
+            march.setRoute(this.engine.advanceRoutes(state, seat, 'ship'));
             return { ok: true };
         }
         if (order === 'deploy') {

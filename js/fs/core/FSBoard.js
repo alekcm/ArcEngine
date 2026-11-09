@@ -312,9 +312,9 @@ class Board {
         const order = this.state.order;
         // «Крестный ход»: uncontrolled worlds are friendly for the march, but
         // only for the number of units the card allows.
+        const plan = order ? MarchPlan.of(order) : null;
         const march = opts && opts.uncontrolled === false ? 0
-            : (order && order.uncontrolled
-                ? Math.max(0, order.uncontrolled - (order.uncontrolledUsed || 0)) : 0);
+            : (plan ? plan.uncontrolledLeft : 0);
         /** @type {Map<string, number>} */
         const seen = new Map([[fromSystem + ':' + fromPos, 0]]);
         const queue = [{ system: fromSystem, pos: fromPos, voids: 0 }];

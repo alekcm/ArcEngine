@@ -747,7 +747,7 @@ class FSGame {
             // Отмена работает и в начале боя: пока в нём ничего не сделано.
             const mine = s.order && s.order.seat === s.seat && s.order.order === 'advance'
                 && (s.order.phase === 'move' || s.order.phase === 'combat');
-            if (mine && (s.order.steps || []).length) {
+            if (mine && MarchPlan.of(s.order).steps.length) {
                 e.preventDefault();
                 e.stopPropagation();
                 this.net.cmd({ type: 'undoMove' });
@@ -951,15 +951,16 @@ class FSGame {
         if (order.phase === 'move') {
             // The board itself is the tool of the movement: every click picks or marches.
             // A new order starts a new march: the flow and the group are empty again.
-            const mark = order.seat + ':' + order.system + ':' + (order.moved || []).length;
-            if (this.moveFor !== mark && !(order.moved || []).length) {
+            const march = MarchPlan.of(order);
+            const mark = order.seat + ':' + order.system + ':' + march.moved.length;
+            if (this.moveFor !== mark && !march.moved.length) {
                 this.moveFor = mark;
                 this.moveKind = null;
                 this.selected = [];
             }
             if (this.mode !== 'move') { this.mode = 'move'; this.pending = null; }
             // Движение идёт двумя шагами: сначала корабли, затем наземные войска.
-            const step = order.moveStep === 'ground' ? 'ground' : 'ships';
+            const step = march.step;
             /** @type {'ship' | 'ground'} */
             const kindOfStep = step === 'ground' ? 'ground' : 'ship';
             this.moveKind = kindOfStep;
@@ -1009,9 +1010,9 @@ class FSGame {
                 label: step === 'ships' ? 'Закончить движение кораблей' : 'Закончить движение',
                 onClick: () => this.net.cmd({ type: 'endAdvance' }),
             });
-            if ((order.steps || []).length) {
+            if (march.steps.length) {
                 // Отмена возвращает и шаг приказа: марш кораблей — снова шаг 1.
-                const steps = order.steps || [];
+                const steps = march.steps;
                 const last = steps[steps.length - 1] || [];
                 const lastKind = last[0] && last[0].kind === 'ship' ? 'ship' : 'ground';
                 ctx.actions.push({

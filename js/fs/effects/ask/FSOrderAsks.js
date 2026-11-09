@@ -125,13 +125,15 @@ class OrderAsks {
 
     static moveLimit(effects, f) {
         const { state, step } = f;
-        if (state.order) state.order.moveLimit = step.n || 0;
+        const march = MarchPlan.of(state.order);
+        if (march) march.setMoveLimit(step.n || 0);
         return null;
     }
 
     static mustInclude(effects, f) {
         const { state, step } = f;
-        if (state.order) state.order.mustInclude = step.what;
+        const march = MarchPlan.of(state.order);
+        if (march) march.setMustInclude(step.what);
         return null;
     }
 
@@ -150,10 +152,8 @@ class OrderAsks {
         const { state, step } = f;
         // "treat the uncontrolled worlds as friendly for moving up to 2
         // of your units": the budget is spent per unit, not per area.
-        if (state.order) {
-            state.order.uncontrolled = step.n || 0;
-            state.order.uncontrolledUsed = 0;
-        }
+        const march = MarchPlan.of(state.order);
+        if (march) march.setUncontrolled(step.n || 0);
         return null;
     }
 

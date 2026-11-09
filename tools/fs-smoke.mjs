@@ -500,6 +500,29 @@ try {
     fail(e.message);
 }
 
+// --- the march of an advance: one object ------------------------------------
+section('марш наступления: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSMarch.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The march of an order (the step, the frozen roads, the marched units,
+        // the undo stack, the contested area) is one object: FSMarch.js.
+        const re = /\border\.(?:moved|route|moveStep|steps|contested|moveLimit|mustInclude|uncontrolledUsed|excludedUnit|preAdvanceUnit)\b\s*(?:[-+*\/]?=(?!=)|\.\w+\s*\()/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('поля марша пишет только MarchPlan');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- an orbital strike: one object -------------------------------------------
 section('орбитальный удар: один объект');
 try {

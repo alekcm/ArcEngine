@@ -384,11 +384,12 @@ class CombatRules {
             if (!ref) return;
             if (!out.some(x => x.system === ref.system && x.pos === ref.pos)) out.push({ system: ref.system, pos: ref.pos });
         };
-        for (const step of ((state.order && state.order.steps) || [])) {
+        const march = state.order ? MarchPlan.of(state.order) : null;
+        for (const step of (march ? march.steps : [])) {
             for (const m of step) {
                 // A step of the march knows the area it contested: only the
                 // troops that walked into this very area count here.
-                const dest = m.contested || (state.order && state.order.contested) || '';
+                const dest = m.contested || march.contested || '';
                 const [sid, areaPos] = dest.split(':');
                 if (sid !== systemId || areaPos !== pos) continue;
                 push({ system: m.fromSystem, pos: m.fromArea });

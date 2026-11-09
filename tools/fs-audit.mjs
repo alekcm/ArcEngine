@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1616,6 +1616,40 @@ rule('mov-1b', '«… can never end the movement with more than five units in a 
     eq(FS_RULES.hasRoom(st, sys.id, pos, 1, 1), true, 'чужой отряд места не занимает');
     eq(FS_RULES.capacity(st, sys.id, pos) < 5 || FS_RULES.hasRoom(st, sys.id, pos, 0, 1),
         true, 'вместимость можно превысить, пластмассу — нет');
+});
+
+rule('mov-1c', '«… the units that marched one step cannot march again …» — шаг, дороги и отменённые ходы живут в одном MarchPlan', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = voidOf(st, sys.id);
+    const u = unit(st, 0, 'крейсеры', sys.id, pos);
+    const order = advance(st, 0, sys.id, pos, 'ships');
+    const march = MarchPlan.of(order);
+    // A new order starts a clean march: the ships again, nothing marched yet.
+    eq(march.step, 'ships', 'приказ начинается с хода кораблей');
+    eq(march.hasMoved(u.id), false, 'никто ещё не шёл');
+    march.addMoved([u.id]);
+    eq(march.hasMoved(u.id), true, 'отряд записан в шедшие');
+    march.addStep([{ id: u.id, fromSystem: sys.id, fromArea: pos, kind: 'ship', contested: null }]);
+    eq(march.steps.length, 1, 'шаг запомнен для отмены');
+    // Only one area may become contested in the order.
+    eq(march.contest(sys.id + ':a'), true, 'первая спорная область принята');
+    eq(march.contest(sys.id + ':b'), false, 'вторая спорная область — отказ');
+    eq(march.contested, sys.id + ':a', 'спорная область не сменилась');
+    // The roll-back takes the step out and returns the unit to the march.
+    const step = march.popStep();
+    eq(step.length, 1, 'шаг возвращён');
+    march.removeMoved([u.id]);
+    march.clearContested(sys.id + ':a');
+    eq(march.hasMoved(u.id), false, 'после отмены отряд снова может идти');
+    eq(march.contested, null, 'после отмены спорной области нет');
+    // The card of «Крестного хода» gives its budget from zero.
+    march.setUncontrolled(2);
+    eq(march.uncontrolledLeft, 2, 'два прохода без дороги');
+    march.useUncontrolled();
+    eq(march.uncontrolledLeft, 1, 'один проход потрачен');
+    march.returnUncontrolled();
+    eq(march.uncontrolledLeft, 2, 'возврат хода вернул проход');
 });
 
 rule('mov-2', '«During an Advance Order, if a ship moved from an adjacent system to the active system, ground units cannot move into the active system from a different adjacent system.»', () => {
