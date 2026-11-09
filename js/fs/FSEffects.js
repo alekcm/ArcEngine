@@ -2067,20 +2067,9 @@ const FS_EFFECTS = {
     // One step of the game.
     step(R, state, seat, step, ctx) {
         // The condition of the ability is checked before anything else — it is
-        // the very first gate of the step.
+        // the very first gate of the step. Everything else the questions need is
+        // computed once in the frame (FSStepContext).
         if (step && step.cond && !this.condSatisfied(R, state, seat, step, ctx)) return null;
-        const combat = state.combat;
-        // The card of the combat may be played when the fight is already over.
-        const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
-        const side = inCombat ? (CombatSides.sideOf(combat, seat)) : null;
-        const foe = inCombat ? (seat === combat.attacker ? combat.defender : combat.attacker) : null;
-        const p = state.players[seat];
-        // The player of the step: the card's player or his opponent — the other side
-        // of the combat, the foe chosen by the card, or any other player at the table.
-        const chosenFoe = ctx && ctx.foe !== undefined ? ctx.foe : null;
-        const target = step.who === 'foe'
-            ? (foe !== null ? foe : (chosenFoe !== null ? chosenFoe : (state.players.find(x => x.seat !== seat) || {}).seat))
-            : seat;
         // The question of the step belongs to its group (js/fs/effects/ask/*):
         // the frame is built once and handed over. A step with no question
         // changes nothing.

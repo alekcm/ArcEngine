@@ -220,6 +220,29 @@ try {
     fail(e.message);
 }
 
+// --- the two halves of a step are registered, not written in a switch -------
+section('шаги карт: реестр исполнителей');
+try {
+    const STEPS = engine('STEP_EXECUTORS');
+    const ASKS = engine('ASK_EXECUTORS');
+    if (!(STEPS instanceof Map) || !(ASKS instanceof Map)) throw new Error('реестры шагов не загрузились');
+    if (STEPS.size < 70) throw new Error('исполнителей шагов слишком мало: ' + STEPS.size);
+    if (ASKS.size < 150) throw new Error('вопросов шага слишком мало: ' + ASKS.size);
+    // A step that the engine reaches but nobody registered would silently do
+    // nothing — that is exactly how a rule disappears in a refactoring.
+    const sample = ['gainToken', 'placeUnit', 'gainAsset', 'once', 'note', 'choice', 'rerollDie'];
+    for (const op of sample) {
+        if (!STEPS.has(op) && !ASKS.has(op)) throw new Error('шаг «' + op + '» никто не исполняет');
+    }
+    // Every registered name must be a function: a typo in an ops list would
+    // register `undefined` and the step would quietly do nothing.
+    for (const [op, fn] of STEPS) if (typeof fn !== 'function') throw new Error('исполнитель «' + op + '» не функция');
+    for (const [op, fn] of ASKS) if (typeof fn !== 'function') throw new Error('вопрос «' + op + '» не функция');
+    ok(STEPS.size + ' исполнителей и ' + ASKS.size + ' вопросов шага, каждый — функция');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- one door to the printed data -------------------------------------------
 // FS_DATA is the generated file; every other script reads it through the
 // catalogue or through the card decks. A new lookup written straight on FS_DATA
