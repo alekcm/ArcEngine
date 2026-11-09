@@ -2343,6 +2343,64 @@ check('Разум улья', 'командный уровень растёт п�
     return eq([before, FS_RULES.commandLevel(st, 0)], [1, 3], 'один город и два Корабля Улья');
 });
 
+head('Улучшения приказов', TYR);
+
+// --- Капиллярные башни ------------------------------------------------------
+// «После выполнения этого приказа вы можете уничтожить любые ваши отряды или
+//  постройки в одном мире активной системы, чтобы временно получить материалы,
+//  равные их стоимости. Используйте эти материалы только для покупки любого
+//  количества кораблей. Вы можете разместить их на дружественных и
+//  неконтролируемых пустотах в активной системе. Неиспользованный остаток
+//  материалов пропадает. Уничтоженный город засчитывается в ваш командный
+//  уровень на время выполнения этого приказа.»
+
+/** The order is resolved, the card is burnt, the questions are answered. */
+function capillary(o) {
+    const st = orderState('strategize', Object.assign({
+        faction: TYR, materiel: 0, upgrades: ['Капиллярные башни'],
+    }, o));
+    const res = burn(st, 'Капиллярные башни');
+    ok(res.ok, 'карта не сгорела: ' + res.error);
+    const asked = [];
+    answerAll(st, (s, q) => {
+        asked.push(q.op);
+        if (q.kind === 'areas') return { area: q.options[0] };
+        if (q.kind === 'types') return { type: q.options[0] };
+        return firstOption(s, q);
+    });
+    st.asked = asked;
+    return st;
+}
+
+check('Капиллярные башни', 'цена уничтоженных отрядов уходит на корабли', () => {
+    // Three Gaunts of one world: 3 × 2 = 6 materiel, three devourer ships.
+    const st = capillary({ units: { 'гаунты': 3 } });
+    eq(st.asked[0], 'destroyForMateriel', 'карта спрашивает мир');
+    eq(st.units.filter(u => u.seat === 0 && (FS_RULES.unitOf(st, u) || {}).name === 'Гаунты').length, 0,
+        'Гаунты уничтожены');
+    const ships = st.units.filter(u => u.seat === 0 && (FS_RULES.unitOf(st, u) || {}).type === 'ship');
+    eq(ships.length, 3, 'три корабля куплены');
+    const sys = st.systems[0];
+    ok(ships.every(u => !FS_RULES.area(FS_RULES.system(st, u.system), u.area).world), 'корабли стоят в пустотах');
+    ok(ships.every(u => u.system === sys.id), 'пустоты активной системы');
+    return eq(st.players[0].materiel, 0, 'материя истрачена без остатка');
+});
+
+check('Капиллярные башни', 'уничтоженный город держит командный уровень', () => {
+    const st = capillary({ units: { 'гаунты': 1 }, structures: ['city'] });
+    eq(st.structures.filter(s => s.seat === 0 && s.type === 'city').length, 0, 'город уничтожен');
+    // The city is gone, but its command level stays for the order: 0 + 1.
+    return eq(FS_RULES.commandLevel(st, 0), 1, 'командный уровень города сохранён');
+});
+
+check('Капиллярные башни', 'неиспользованный остаток материалов пропадает', () => {
+    // A city alone: 3 materiel, one devourer ship for 2 — the last one is lost.
+    const st = capillary({ structures: ['city'] });
+    const ships = st.units.filter(u => u.seat === 0 && (FS_RULES.unitOf(st, u) || {}).type === 'ship');
+    eq(ships.length, 1, 'куплен один корабль');
+    return eq(st.players[0].materiel, 0, 'остаток в 1 материю пропал');
+});
+
 // ============================================================================
 //  02-factions.md — Тираниды: особенность «Пожиратели Миров»
 // ============================================================================

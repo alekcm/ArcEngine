@@ -795,6 +795,14 @@ const FS_EFFECTS = {
         // «Уничтожьте … постройку» — the engine destroys units, not buildings:
         // a visible note, never a unit loss. The either/либо sentence is left
         // to its branch parser (each branch re-enters here without «либо»).
+        // «вы можете уничтожить любые ваши отряды или постройки в одном мире
+        // активной системы, чтобы временно получить материалы, равные их
+        // стоимости» («Капиллярные башни»): the engine destroys both and counts
+        // their price.
+        if (/уничтож[а-яёa-z]*\s+люб[а-яёa-z]*\s+ваш[а-яёa-z]*\s+отряд[а-яёa-z]*\s+или\s+постройк[а-яёa-z]*/i.test(s)
+            && /временно\s+получ[а-яёa-z]*\s+материал[а-яёa-z]*/i.test(s)) {
+            return [{ op: 'destroyForMateriel', ofSystem: 'active', who: 'me' }];
+        }
         if (/уничтож[а-яёa-z]*[^.;]{0,140}?постройк[а-яёa-z]*/i.test(s)
             && !/сброс[а-яёa-z]*\s+эт[ау]\s+карт[ау]/i.test(s)
             && !/(?:^|\s)либо\s/i.test(s)) {
@@ -2189,6 +2197,63 @@ const FS_EFFECTS = {
                 const units = this.unitsOf(R, state, seat, combat, step);
                 if (!units.length) return null;
                 return { question: { kind: 'units', who: seat, op: 'replaceUnit', n: Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: 'Какой отряд заменить?' } };
+            }
+            // «вы можете уничтожить любые ваши отряды или постройки в одном
+            // мире активной системы, чтобы временно получить материалы, равные
+            // их стоимости» («Капиллярные башни»).
+            case 'destroyForMateriel': {
+                const active = state.order ? state.order.system : null;
+                if (!active) return null;
+                const seen = new Map();
+                for (const u of state.units) {
+                    if (u.seat !== seat || u.system !== active) continue;
+                    seen.set(u.system + '|' + u.area, { system: u.system, pos: u.area });
+                }
+                for (const s2 of state.structures) {
+                    if (s2.seat !== seat || s2.system !== active) continue;
+                    seen.set(s2.system + '|' + s2.area, { system: s2.system, pos: s2.area });
+                }
+                const areas = [...seen.values()];
+                if (!areas.length) {
+                    R.log(state, seat, p.name + ': в активной системе нечего уничтожать.');
+                    return null;
+                }
+                return { question: { kind: 'areas', who: seat, op: 'destroyForMateriel', options: areas, text: 'В каком мире уничтожить отряды и постройки?' } };
+            }
+            // «Используйте эти материалы только для покупки любого количества
+            // кораблей» («Капиллярные башни»): the materiel of the destroyed
+            // pieces is added, the ships are bought from it, and the rest of it
+            // disappears at the end of the step.
+            case 'spendTempMateriel': {
+                const order = state.order;
+                const temp = order ? (order.tempMateriel || 0) : 0;
+                if (temp <= 0) return null;
+                order.tempAdded = temp;
+                order.tempBefore = p.materiel || 0;
+                p.materiel = (p.materiel || 0) + temp;
+                R.log(state, seat, p.name + ' временно получает материю: ' + temp + '.');
+                return {
+                    replace: [
+                        {
+                            op: 'placeUnit', n: 99, buy: true, pick: true, who: 'me',
+                            unitType: step.unitType || 'ship',
+                            dest: step.dest || 'friendlyOrUncontrolledVoidActive',
+                        },
+                        { op: 'dropTempMateriel', who: 'me' },
+                    ],
+                };
+            }
+            case 'dropTempMateriel': {
+                const order = state.order;
+                if (!order || !order.tempAdded) return null;
+                // What was not spent on the ships disappears.
+                const spent = Math.max(0, (order.tempBefore || 0) + order.tempAdded - (p.materiel || 0));
+                const left = Math.max(0, order.tempAdded - spent);
+                p.materiel = Math.max(0, (p.materiel || 0) - left);
+                R.log(state, seat, p.name + ': неиспользованный остаток материалов пропадает (' + left + ').');
+                order.tempMateriel = 0;
+                order.tempAdded = 0;
+                return null;
             }
             // «повысить свой командный уровень на 1 за каждый Корабль-Улей»
             // («Разум улья»): the bonus lives while the order of the player does.
@@ -3780,6 +3845,40 @@ const FS_EFFECTS = {
                 if (state.order && id) state.order.strikeFirst = id;
                 return null;
             }
+            case 'destroyForMateriel': {
+                const area = answer.area;
+                if (!area) return null;
+                const owner = ctx && ctx.owner !== undefined ? ctx.owner : seat;
+                const player = state.players[owner];
+                let sum = 0;
+                let cities = 0;
+                const units = state.units.filter(u => u.seat === owner
+                    && u.system === area.system && u.area === area.pos);
+                for (const u of units.slice()) {
+                    const def = R.unitOf(state, u);
+                    sum += def ? (def.cost || 0) : 0;
+                    R.destroyUnit(state, u);
+                }
+                const built = state.structures.filter(s2 => s2.seat === owner
+                    && s2.system === area.system && s2.area === area.pos);
+                for (const s2 of built.slice()) {
+                    sum += (R.structureStats(s2.type) || {}).cost || 0;
+                    if (s2.type === 'city') cities++;
+                    R.destroyStructure(state, s2);
+                }
+                if (!units.length && !built.length) return null;
+                if (state.order) state.order.tempMateriel = sum;
+                // «Уничтоженный город засчитывается в ваш командный уровень на
+                // время выполнения этого приказа.»
+                if (cities && state.order) {
+                    state.order.klBonus = (state.order.klBonus || 0) + cities;
+                }
+                R.log(state, owner, player.name + ' уничтожает в мире ' + units.length
+                    + ' отряд(ов) и ' + built.length + ' постройку(ок): временно '
+                    + sum + ' материи.');
+                step.done = true;
+                return null;
+            }
             case 'strikePayPick': {
                 const i = Number(answer.choice);
                 const want = Number.isFinite(i) ? i : 0;
@@ -4292,6 +4391,14 @@ const FS_EFFECTS = {
                     // дружественную пустоту» — «Флот-осколок»).
                     case 'friendlyVoidAny':
                         ok = !world && mine;
+                        break;
+                    // The friendly and the uncontrolled voids of the active
+                    // system («Вы можете разместить их на дружественных и
+                    // неконтролируемых пустотах в активной системе» —
+                    // «Капиллярные башни»).
+                    case 'friendlyOrUncontrolledVoidActive':
+                        ok = !world && sys.id === active
+                            && (standing === 'friendly' || standing === 'uncontrolled');
                         break;
                     // A friendly or uncontrolled world of a neighbouring system.
                     case 'friendlyOrUncontrolledWorldAdjacent':
@@ -5012,6 +5119,15 @@ const RULES = [
             if (filter) { step.per = 'unit'; step.filter = filter; }
             return step;
         },
+    },
+    // «Используйте эти материалы только для покупки любого количества кораблей»
+    // («Капиллярные башни»).
+    {
+        re: /используйте\s+эти\s+материал[а-яёa-z]*\s+только\s+для\s+покупк[а-яёa-z]*\s+любого\s+количества\s+корабл/i,
+        build: () => ({
+            op: 'spendTempMateriel', unitType: 'ship',
+            dest: 'friendlyOrUncontrolledVoidActive', who: 'me',
+        }),
     },
     // «Получите материалы со всех дружественных миров этой системы»
     // («Пожиратель миров»).
