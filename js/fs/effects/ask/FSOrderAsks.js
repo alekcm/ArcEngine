@@ -286,7 +286,7 @@ class OrderAsks {
         if (!inCombat) return null;
         combat.restoreFallen = combat.restoreFallen || [];
         combat.restoreFallen.push({
-            seat, round: combat.round,
+            seat, round: CombatTurn.of(combat).round,
             maxKl: step.maxKl === undefined ? 0 : step.maxKl,
             asked: false, done: false,
         });
@@ -300,7 +300,7 @@ class OrderAsks {
         // The card stays in play until a unit of the command level falls:
         // the combat asks about it after the damage step.
         combat.resurrectPlan = combat.resurrectPlan || [];
-        combat.resurrectPlan.push({ seat, round: combat.round, maxKl: step.maxKl === undefined ? 1 : step.maxKl });
+        combat.resurrectPlan.push({ seat, round: CombatTurn.of(combat).round, maxKl: step.maxKl === undefined ? 1 : step.maxKl });
         step.done = true;
         return null;
     }
@@ -337,7 +337,7 @@ class OrderAsks {
         // round does.
         combat.noRoute.push({
             seat: step.who === 'foe' ? foe : seat,
-            round: combat.round,
+            round: CombatTurn.of(combat).round,
             kl: step.kl,
         });
         return null;

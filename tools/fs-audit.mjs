@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTokens } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -728,6 +728,57 @@ rule('order-1', '«… this order …» — командный уровень, �
     eq(fight.unspentTemp(7), 0, 'считать больше нечего');
     eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
     eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
+
+rule('combat-0b', '«the attacker reveals and resolves his combat card. Then, the defender reveals and resolves his» — раунд, шаг и кубики боя ведёт CombatTurn', () => {
+    const combat = { round: 1, step: 'reinforce-attacker', dice: { attacker: ['att', null], defender: [] } };
+    const turn = CombatTurn.of(combat);
+    eq(CombatTurn.of(combat), turn, 'у боя один ход');
+    eq(CombatTurn.of(null), null, 'без боя хода нет');
+    // The round is counted from one; the limit is three unless a card says so.
+    eq(turn.round, 1, 'первый раунд');
+    eq(turn.maxRounds, 3, 'три раунда по умолчанию');
+    eq(turn.lastRound, false, 'бой не кончен');
+    eq(turn.nextRound(), 2, 'следующий раунд');
+    eq(turn.round, 2, 'раунд записан');
+    turn.maxRounds = 2;
+    eq(turn.lastRound, true, 'последний раунд боя');
+    // An entry of the table belongs to a round only if it names it.
+    eq(turn.inRound({ round: 2 }), true, 'запись этого раунда');
+    eq(turn.inRound({ round: 1 }), false, 'запись прошлого раунда');
+    eq(turn.inRound({}), true, 'запись без раунда годится всегда');
+    eq(turn.ofRound([{ round: 1 }, { round: 2 }, null]).length, 1, 'в раунде остаётся одна запись');
+    // The step names its side: «damage-attacker» is the attacker's.
+    turn.setStep('damage-attacker');
+    eq(turn.side, 'attacker', 'сторона шага — атакующий');
+    eq(turn.damaging, true, 'это шаг урона');
+    eq(turn.reinforcing, false, 'не шаг подкрепления');
+    eq(CombatTurn.sideOfStep('choose-defender'), 'defender', 'сторона шага — защитник');
+    eq(CombatTurn.sideOfStep('reveal'), 'defender', 'шаг без стороны — защитника');
+    // The step the battle waits to take: an effect holds it and gives it back.
+    turn.hold('reveal');
+    eq(turn.nextStep, 'reveal', 'шаг отложен');
+    eq(turn.release(), true, 'отложенный шаг наступил');
+    eq(turn.step, 'reveal', 'бой на отложенном шаге');
+    eq(turn.nextStep, null, 'отложенного больше нет');
+    eq(turn.release(), false, 'второй раз отдавать нечего');
+    turn.holdEffect('round-end');
+    eq(turn.step, 'effect', 'эффект карты занял шаг');
+    eq(turn.nextStep, 'round-end', 'а конец раунда ждёт');
+    // The dice: a spent die keeps its slot and is not a die any more.
+    const dice = CombatTurn.of({ round: 1, dice: { attacker: ['att', null, 'morale'], defender: [] } });
+    eq(dice.live('attacker').join(','), 'att,morale', 'потраченный кубик не считается');
+    eq(dice.count('attacker', 'att'), 1, 'кубик атаки посчитан');
+    eq(dice.has('attacker', 1), false, 'пустой слот — не кубик');
+    eq(dice.room('attacker'), 6, 'до восьми остаётся шесть');
+    eq(dice.take('attacker', 0), 'att', 'кубик потрачен');
+    eq(dice.has('attacker', 0), false, 'потраченный слот пуст');
+    eq(dice.take('attacker', 0), null, 'второй раз его не потратить');
+    eq(dice.add('attacker', 'def'), true, 'кубик добавлен');
+    eq(dice.slots('attacker', d => d === 'morale').join(','), '2', 'вопрос предлагает свои кубики');
+    eq(dice.faces('attacker').join(','), 'morale,def', 'грани на столе названы однажды');
+    eq(dice.lastOf('attacker'), 3, 'последний кубик найден');
+    eq(dice.indexOf('attacker', 'morale'), 2, 'кубик морали найден по грани');
 });
 
 rule('combat-0', '«place reinforcement tokens … if a unit is not destroyed it is routed» — жетоны боя считает CombatTokens', () => {

@@ -1640,7 +1640,8 @@ const FSView = {
             });
             // The dice of the side land on the ground of the sector, in rows at
             // the edge on the side of its own troops.
-            const dice = c.dice[side.id] || [];
+            const turn = CombatTurn.of(c);
+            const dice = turn.dice(side.id);
             // A spent die lies on the ground, spent where it fell: it is
             // marked spent and stays; the living dice keep their places.
             const diceLive = dice.map((face, i) => ({ face, i })).filter(x => x.face !== null && x.face !== undefined);
@@ -1688,7 +1689,7 @@ const FSView = {
                     mesh.metadata = node.metadata;
                 }
                 this.addMarker(view, node, 'actor');
-                const key = 'die:' + c.round + ':' + side.id + ':' + i + ':' + (face || 'blank');
+                const key = 'die:' + turn.round + ':' + side.id + ':' + i + ':' + (face || 'blank');
                 if (!view.combatSeen.has(key)) {
                     view.combatSeen.add(key);
                     // The die lands where it was put: the flight takes it there

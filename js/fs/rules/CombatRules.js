@@ -69,8 +69,8 @@ class CombatRules {
             defender,
             attackerFrom: origins,
             viaAdvance,
-            round: 1,
             roundUnits: null,
+            round: 1,
             step: 'reinforce-attacker',
             dice: { attacker: roll(attacker), defender: roll(defender) },
             tokens: { attacker: { att: 0, def: 0 }, defender: { att: 0, def: 0 } },
@@ -85,6 +85,7 @@ class CombatRules {
         // The battle is on the table before the deal: the hand of a player is the
         // hand of THIS battle.
         state.combat = combat;
+        const turn = CombatTurn.of(combat);
         // Five combat cards for both players.
         for (const seat of [attacker, defender]) {
             const p = state.players[seat];
@@ -113,8 +114,7 @@ class CombatRules {
             const side = CombatSides.sideOf(combat, OrderContext.of(state.order).seat);
             const dice = tally0.takeChaosCombatMorale();
             for (let i = 0; i < dice; i++) {
-                if (combat.dice[side].filter(Boolean).length >= this.engine.DICE_MAX) break;
-                combat.dice[side].push('morale');
+                if (!turn.add(side, 'morale')) break;
             }
             const owner = OrderContext.of(state.order).seat;
             this.engine.log(state, owner, state.players[owner].name
@@ -124,7 +124,7 @@ class CombatRules {
         // охотники»): the limit belongs to the combat this order starts.
         const fight = OrderFight.of(state.order);
         if (fight && fight.combatRounds && OrderContext.of(state.order).isSeat(attacker)) {
-            combat.maxRounds = fight.combatRounds;
+            turn.maxRounds = fight.combatRounds;
         }
         // The roster of the first round: the cards that pay for the losses of a
         // round read it («Выводок термаганов»).
@@ -204,12 +204,13 @@ class CombatRules {
                 // the other side is placed by the owner of the card.
                 const a = c.assignDamage;
                 const foeSide = CombatSides.foe(side);
-                const foeStep = foeSide === 'attacker' ? 'damage-attacker' : 'damage-defender';
-                const myStep = side === 'attacker' ? 'damage-attacker' : 'damage-defender';
-                if (a && c.step === foeStep && a.seat === seat) {
+                const step = CombatTurn.of(c);
+                const foeStep = CombatSides.damageStep(foeSide);
+                const myStep = CombatSides.damageStep(side);
+                if (a && step.is(foeStep) && a.seat === seat) {
                     return this.combatDamage(state, seat, foeSide, cmd);
                 }
-                if (a && c.step === myStep && a.seat !== seat) {
+                if (a && step.is(myStep) && a.seat !== seat) {
                     return { ok: false, error: 'Урон назначает владелец карты.' };
                 }
                 return this.combatDamage(state, seat, side, cmd);
@@ -304,7 +305,7 @@ class CombatRules {
         return (c.noRoute || []).some(x => {
             const one = typeof x === 'number' ? { seat: x } : x;
             if (one.seat !== seat) return false;
-            if (one.round !== undefined && one.round !== c.round) return false;
+            if (!CombatTurn.of(c).inRound(one)) return false;
             return !one.kl || one.kl >= 0;   // a token is command level zero
         });
     }
@@ -323,8 +324,9 @@ class CombatRules {
     routeUnit(state, unit, round) {
         if (!unit) return false;
         unit.routed = true;
+        const turn = CombatTurn.of(state.combat);
         const r = round !== undefined && round !== null
-            ? round : (state.combat ? state.combat.round : 0);
+            ? round : (turn ? turn.round : 0);
         unit.routedRound = r || 0;
         return true;
     }
@@ -339,7 +341,7 @@ class CombatRules {
 
     canTakeDamage(state, c, side) {
         const items = this.pieces(state, c, side);
-        if (c.ownRoutedDamage && c.ownRoutedDamage[side] === c.round) return items;
+        if (c.ownRoutedDamage && c.ownRoutedDamage[side] === CombatTurn.of(c).round) return items;
         const ready = items.filter(x => x.type ? x.type === 'bastion' : !x.routed);
         return ready.length ? ready : items;
     }
@@ -423,8 +425,9 @@ class CombatRules {
     finishReinforce(state, side) {
         const c = state.combat;
         if (!c) return;
-        if (side === 'attacker') c.step = 'reinforce-defender';
-        else { c.step = 'choose-attacker'; this.advanceCombatSteps(state); }
+        const turn = CombatTurn.of(c);
+        if (side === 'attacker') turn.setStep('reinforce-defender');
+        else { turn.setStep('choose-attacker'); this.advanceCombatSteps(state); }
     }
 
     loseReinforcementTokens(state, side, n) {
@@ -471,35 +474,36 @@ class CombatRules {
     }
 
     combatDie(state, seat, side, cmd) {
-        const c = state.combat;
+        void seat;
+        const turn = CombatTurn.of(state.combat);
         const foe = CombatSides.foe(side);
         const target = cmd.target === 'foe' ? foe : side;
         const count = Math.max(0, Number(cmd.count) || 0);
-        const dice = c.dice[target];
         if (target === foe) {
-            const take = Math.min(count, dice.filter(Boolean).length);
-            for (let k = 0; k < take; k++) {
-                const idx = dice.findIndex(d => d && d !== 'blank');
+            // The dice of the opponent are taken from the table, one by one.
+            let take = 0;
+            for (let k = 0; k < count; k++) {
+                const idx = turn.dice(target).findIndex(d => d && d !== 'blank');
                 if (idx < 0) break;
-                dice[idx] = null;
+                turn.take(target, idx);
+                take++;
             }
             return { ok: true, count: take };
         }
-        if (dice.filter(Boolean).length + count > this.engine.DICE_MAX) return { ok: false, error: 'Больше восьми кубиков быть не может.' };
-        const faces = ['att', 'def', 'morale', 'blank'];
+        if (turn.room(target) < count) return { ok: false, error: 'Больше восьми кубиков быть не может.' };
         for (let i = 0; i < count; i++) {
-            const face = faces.includes(cmd.face) ? cmd.face : 'any';
-            dice.push(face === 'any' ? this.engine.rollDice(state, 1)[0] : face);
+            const face = FACE_KINDS.includes(cmd.face) ? cmd.face : 'any';
+            turn.add(target, face === 'any' ? this.engine.rollDice(state, 1)[0] : face);
         }
         return { ok: true, count };
     }
 
     combatReroll(state, seat, side, cmd) {
-        const c = state.combat;
-        const dice = c.dice[side];
+        void seat;
+        const turn = CombatTurn.of(state.combat);
         const index = Number(cmd.index);
-        if (!(index >= 0 && index < dice.length)) return { ok: false, error: 'Нет такого кубика.' };
-        dice[index] = this.engine.rollDice(state, 1)[0];
+        if (!turn.has(side, index)) return { ok: false, error: 'Нет такого кубика.' };
+        turn.put(side, index, this.engine.rollDice(state, 1)[0]);
         return { ok: true };
     }
 
@@ -525,15 +529,17 @@ class CombatRules {
         const otherSide = CombatSides.foe(side);
         const otherDone = !!c.staged[otherSide]
             || !this.engine.player(state, CombatSides.seatOf(c, otherSide)).combatHand.size();
-        if (otherDone) c.step = 'reveal';
-        else c.step = side === 'attacker' ? 'choose-defender' : 'choose-attacker';
+        const turn = CombatTurn.of(c);
+        if (otherDone) turn.setStep('reveal');
+        else turn.setStep(side === 'attacker' ? 'choose-defender' : 'choose-attacker');
         this.advanceCombatSteps(state);
         return { ok: true, card: card || null, staged: true };
     }
 
     combatReveal(state) {
         const c = state.combat;
-        if (!c || c.step !== 'reveal') return null;
+        const turn = CombatTurn.of(c);
+        if (!turn || !turn.is('reveal')) return null;
         c.staged = c.staged || { attacker: null, defender: null };
         // The first card that was chosen and is not yet in play.
         const order = ['attacker', 'defender'];
@@ -542,26 +548,27 @@ class CombatRules {
             if (staged) {
                 c.staged[side] = null;
                 this.engine.player(state, staged.seat).combatHand.setChosen(null);
-                c.cards[side].played.push({ name: staged.name, card: staged.card, side, round: c.round });
+                c.cards[side].played.push({ name: staged.name, card: staged.card, side, round: turn.round });
                 this.engine.log(state, staged.seat, state.players[staged.seat].name
                     + ' вскрывает боевую карту «' + staged.name + '».');
                 const steps = this.engine.cardSteps(state, staged.seat, staged.card);
                 if (steps.length) {
-                    c.nextStep = 'reveal';
-                    c.step = 'effect';
+                    // The reveal waits for the effect of the card to be over.
+                    turn.step = 'effect';
+                    turn.nextStep = 'reveal';
                     // «A player can choose not to resolve one of his abilities»:
                     // the owner of the card decides about each of them.
                     this.engine.runEffects(state, staged.seat, steps, { kind: 'combat', ctx: { side }, optional: true });
-                    return c.step;
+                    return turn.step;
                 }
-                return c.step;
+                return turn.step;
             }
         }
         // Both cards are open: the damage of the round comes next.
         c.destroyedNow = 0;
-        c.step = 'damage-attacker';
+        turn.setStep('damage-attacker');
         this.advanceCombatSteps(state);
-        return c.step;
+        return turn.step;
     }
 
     combatSkipCard(state, seat, side) {
@@ -571,27 +578,28 @@ class CombatRules {
 
     advanceCombatSteps(state) {
         const c = state.combat;
-        if (!c) return null;
+        const turn = CombatTurn.of(c);
+        if (!turn) return null;
         for (let i = 0; i < 12; i++) {
-            const before = c.step;
+            const before = turn.step;
             // The reinforcement is asked only from the player who has the tokens.
-            if (c.step === 'reinforce-attacker' && this.maxReinforce(state, c.attacker, 'attacker') <= 0) {
-                c.step = 'reinforce-defender';
+            if (turn.is('reinforce-attacker') && this.maxReinforce(state, c.attacker, 'attacker') <= 0) {
+                turn.setStep('reinforce-defender');
             }
-            if (c.step === 'reinforce-defender' && this.maxReinforce(state, c.defender, 'defender') <= 0) {
-                c.step = 'choose-attacker';
+            if (turn.is('reinforce-defender') && this.maxReinforce(state, c.defender, 'defender') <= 0) {
+                turn.setStep('choose-attacker');
             }
             // «Вместо того, чтобы играть боевую карту из руки, вы можете сбросить
             // эту карту…» («Тактический гений»): the moment of the card play.
-            if (c.step === 'choose-attacker' || c.step === 'choose-defender') {
-                const hs = CombatSides.sideFromStep(c.step);
+            if (turn.choosing) {
+                const hs = turn.side;
                 const hseat = CombatSides.seatOf(c, hs);
                 c.playHook = c.playHook || {};
                 if (!c.playHook[hs]) {
                     c.playHook[hs] = true;
-                    const was = c.step;
+                    const was = turn.step;
                     if (this.engine.maybeScheme(state, hseat, 'combat-play', { kind: 'combat', ctx: { side: hs } })) {
-                        c.nextStep = was;
+                        turn.hold(was);
                         return null;
                     }
                 }
@@ -599,18 +607,18 @@ class CombatRules {
             // A side with an empty hand has nothing to lay down: the choice
             // belongs to the other side — the hand says so, not the record.
             const handSize = s2 => this.engine.player(state, CombatSides.seatOf(c, s2)).combatHand.size();
-            if (c.step === 'choose-attacker' && !handSize('attacker')) c.step = 'choose-defender';
-            if (c.step === 'choose-defender' && !handSize('defender')) {
-                c.step = c.staged && c.staged.attacker ? 'reveal' : 'damage-attacker';
+            if (turn.is('choose-attacker') && !handSize('attacker')) turn.setStep('choose-defender');
+            if (turn.is('choose-defender') && !handSize('defender')) {
+                turn.setStep(c.staged && c.staged.attacker ? 'reveal' : 'damage-attacker');
             }
-            if (c.step === 'reveal') { this.combatReveal(state); if (!state.combat) return null; }
-            if (c.step === 'damage-attacker' && this.combatDamageFor(state, 'attacker') <= 0) {
+            if (turn.is('reveal')) { this.combatReveal(state); if (!state.combat) return null; }
+            if (turn.is('damage-attacker') && this.combatDamageFor(state, 'attacker') <= 0) {
                 c.damage.attacker = 0;
                 c.applied = c.applied || {};
                 c.applied.attacker = [];
-                c.step = 'damage-defender';
+                turn.setStep('damage-defender');
             }
-            if (c.step === 'damage-defender' && this.combatDamageFor(state, 'defender') <= 0) {
+            if (turn.is('damage-defender') && this.combatDamageFor(state, 'defender') <= 0) {
                 c.damage.defender = 0;
                 c.applied = c.applied || {};
                 c.applied.defender = [];
@@ -619,13 +627,13 @@ class CombatRules {
             }
             // The effect of a card took the place of the end of the round: when
             // it is over the round ends for good.
-            if (c.step === 'round-end') {
+            if (turn.is('round-end')) {
                 this.endCombatRound(state);
                 if (!state.combat) return null;
             }
-            if (c.step === before) break;
+            if (turn.step === before) break;
         }
-        return c.step;
+        return turn.step;
     }
 
     skipEmptyChoose(state) {
@@ -634,7 +642,7 @@ class CombatRules {
 
     combatValues(state, side) {
         const c = state.combat;
-        let dice = (c.dice[side] || []).filter(Boolean);
+        let dice = CombatTurn.of(c).live(side);
         // The card may make the attack dice of the enemy useless.
         if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
         const tokens = c.tokens[side];
@@ -664,7 +672,7 @@ class CombatRules {
 
     combatValuesParts(state, side) {
         const c = state.combat;
-        let dice = (c.dice[side] || []).filter(Boolean);
+        let dice = CombatTurn.of(c).live(side);
         if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
         const tokens = c.tokens[side];
         const played = c.cards[side].played;
@@ -807,11 +815,12 @@ class CombatRules {
         const c = state.combat;
         const damage = this.combatDamageFor(state, side);
         // No real damage — no question and no assignment: the shields did the work.
+        const turn = CombatTurn.of(c);
         if (damage <= 0) {
             c.damage[side] = 0;
             c.applied = c.applied || {};
             c.applied[side] = [];
-            if (side === 'attacker') { c.step = 'damage-defender'; this.advanceCombatSteps(state); }
+            if (side === 'attacker') { turn.setStep('damage-defender'); this.advanceCombatSteps(state); }
             else { this.endDamageStep(state); this.advanceCombatSteps(state); }
             return { ok: true, damage: 0, applied: [] };
         }
@@ -843,7 +852,7 @@ class CombatRules {
         // «Этот отряд или бастион получает урон первым» («Бронетанковый клин»):
         // the piece the card chose takes the damage before everything else.
         const firstHit = (c.damageFirst || []).find(x => x && x.side === side
-            && (x.round === undefined || x.round === c.round) && able.has(x.id));
+            && turn.inRound(x) && able.has(x.id));
         if (firstHit && damage > 0) {
             const at = targets.indexOf(firstHit.id);
             if (at > 0) {
@@ -856,7 +865,7 @@ class CombatRules {
         // «Урон, превышающий значение здоровья выбранного отряда или
         // бастиона, теряется» («Монт'ка»): the chosen piece is the ONLY one
         // that takes damage this step.
-        const excessId = c.ignoreExcess && c.ignoreExcess.round === c.round
+        const excessId = c.ignoreExcess && turn.inRound(c.ignoreExcess)
             && firstHit && c.ignoreExcess.id === firstHit.id ? c.ignoreExcess.id : null;
         // The damage is applied to the chosen units in order.
         let left = damage;
@@ -931,12 +940,12 @@ class CombatRules {
                     const keep = (c.noRoute || []).some(x => {
                         const one = typeof x === 'number' ? { seat: x } : x;
                         if (one.seat !== unit.seat) return false;
-                        if (one.round !== undefined && one.round !== c.round) return false;
+                        if (!turn.inRound(one)) return false;
                         return !one.kl || (def && (def.kl || 0) <= one.kl);
                     });
                     if (!keep) {
                         this.noteFallen(state, unit, false);
-                        this.routeUnit(state, unit, c.round);
+                        this.routeUnit(state, unit, turn.round);
                         this.noteResurrect(state, unit, false);
                     }
                     left = 0;
@@ -961,7 +970,7 @@ class CombatRules {
         }
         c.applied = c.applied || {};
         c.applied[side] = applied;
-        if (side === 'attacker') { c.step = 'damage-defender'; this.advanceCombatSteps(state); }
+        if (side === 'attacker') { turn.setStep('damage-defender'); this.advanceCombatSteps(state); }
         else { this.endDamageStep(state); this.advanceCombatSteps(state); }
         return { ok: true, damage, applied };
     }
@@ -976,7 +985,7 @@ class CombatRules {
             c.damageEndHook = null;
             c.damage = { attacker: 0, defender: 0 };
             c.applied = {};
-            c.step = 'damage-attacker';
+            CombatTurn.of(c).setStep('damage-attacker');
             this.engine.log(state, -1, 'Шаг нанесения повреждений повторяется.');
             return;
         }
@@ -1052,8 +1061,7 @@ class CombatRules {
             .find(x => (x.steps || []).some(y => y.op === 'resurrect'));
         if (!scheme) { c.resurrectCandidates = []; return false; }
         c.resurrectAsked = candidate.seat;
-        c.step = 'effect';
-        c.nextStep = 'round-end';
+        CombatTurn.of(c).holdEffect('round-end');
         const side = CombatSides.sideOf(c, candidate.seat);
         this.engine.runEffects(state, candidate.seat, [{ op: 'resurrectOffer' }], { kind: 'combat', ctx: { side } });
         return true;
@@ -1061,16 +1069,17 @@ class CombatRules {
 
     destroyRoutedFoe(state) {
         const c = state.combat;
+        const turn = CombatTurn.of(c);
         const d = c && c.destroyRoutedFoe;
         if (!d || d.done) return false;
-        if (d.round !== c.round) { c.destroyRoutedFoe = null; return false; }
+        if (!turn.inRound(d)) { c.destroyRoutedFoe = null; return false; }
         const foeSide = d.seat === c.attacker ? 'defender' : 'attacker';
         const foeSeat = CombatSides.seatOf(c, foeSide);
         // «если в этом раунде боя отряд противника становится деморализованным» —
         // the units that were routed in this round.
         const units = state.units.filter(u => u.seat === foeSeat
             && u.system === c.system && u.area === c.pos && u.routed
-            && (u.routedRound === undefined || u.routedRound === c.round));
+            && (u.routedRound === undefined || u.routedRound === turn.round));
         d.done = true;
         if (!units.length) return false;
         const avoid = d.avoid || { kind: 'def', n: 1 };
@@ -1080,8 +1089,7 @@ class CombatRules {
             avoid,
             ability: 'деморализованный отряд уничтожается; можно избежать уничтожения за 1 `def. cube`',
         }));
-        c.step = 'effect';
-        c.nextStep = 'round-end';
+        turn.holdEffect('round-end');
         this.engine.runEffects(state, d.seat, steps, { kind: 'combat', ctx: { side: CombatSides.sideOf(c, d.seat) } });
         return true;
     }
@@ -1097,8 +1105,7 @@ class CombatRules {
         // потрошителей») needs no piece of the opponent to aim at.
         const needsTarget = (d.steps || []).some(x => x && x.op !== 'gainMateriel');
         if (needsTarget && !targets.length) return false;
-        c.step = 'effect';
-        c.nextStep = 'round-end';
+        CombatTurn.of(c).holdEffect('round-end');
         this.engine.runEffects(state, d.seat, d.steps, {
             kind: 'combat', ctx: { side: CombatSides.sideOf(c, d.seat) },
         });
@@ -1107,25 +1114,26 @@ class CombatRules {
 
     endCombatRound(state) {
         const c = state.combat;
+        const turn = CombatTurn.of(c);
         // «если ни один из ваших отрядов не отступил во время этого раунда»
         // («Притворное отступление»): the answer is known only now, and the
         // combat tokens of this round are about to be discarded — the reward
         // belongs to the next round.
-        const noRet = (c.endRoundNoRetreat || []).find(x => x && x.round === c.round && !x.fired);
+        const noRet = turn.ofRound(c.endRoundNoRetreat).find(x => !x.fired);
         if (noRet) {
             noRet.fired = true;
-            const clean = !c.retreated || c.retreated[noRet.seat] !== c.round;
+            const clean = !c.retreated || c.retreated[noRet.seat] !== turn.round;
             if (clean) {
                 c.laterTokens = c.laterTokens || [];
-                c.laterTokens.push({ side: noRet.side, kind: noRet.kind, n: noRet.n, round: c.round + 1 });
+                c.laterTokens.push({ side: noRet.side, kind: noRet.kind, n: noRet.n, round: turn.round + 1 });
                 this.engine.log(state, noRet.seat, state.players[noRet.seat].name
                     + ' не отступал: ' + noRet.n + ' жетон(ов) в следующем раунде.');
             }
         }
         // «Если ваши отряды или бастионы не получат урона в конце этого раунда,
         // ваш противник отступает одним из своих отрядов» («Фаланга монолита»).
-        c.noDamageRetreat = (c.noDamageRetreat || []).filter(x => x.round === c.round || !x.fired);
-        const pendingRetreat = (c.noDamageRetreat || []).filter(x => x.round === c.round && !x.fired);
+        c.noDamageRetreat = (c.noDamageRetreat || []).filter(x => turn.inRound(x) || !x.fired);
+        const pendingRetreat = turn.ofRound(c.noDamageRetreat).filter(x => !x.fired);
         if (pendingRetreat.length) {
             const entry = pendingRetreat[0];
             entry.fired = true;
@@ -1134,8 +1142,7 @@ class CombatRules {
             // раунда»: the damage the card's owner placed on his own pieces.
             const damage = (c.damage && c.damage[side]) || 0;
             if (damage === 0) {
-                c.step = 'effect';
-                c.nextStep = 'round-end';
+                turn.holdEffect('round-end');
                 this.engine.runEffects(state, entry.seat, entry.steps, { kind: 'combat', ctx: { side } });
                 return;
             }
@@ -1143,11 +1150,10 @@ class CombatRules {
         // «В конце этого раунда … переместить 1 из ваших отрядов из соседней
         // области в эту» («Кауйон»): the move happens before the tokens of the
         // round are discarded, and the dice it gives stay for the damage step.
-        const endPlan = (c.endRoundPlans || []).find(x => x && x.round === c.round && !x.fired);
+        const endPlan = turn.ofRound(c.endRoundPlans).find(x => !x.fired);
         if (endPlan) {
             endPlan.fired = true;
-            c.step = 'effect';
-            c.nextStep = 'round-end';
+            turn.holdEffect('round-end');
             const side = CombatSides.sideOf(c, endPlan.seat);
             this.engine.runEffects(state, endPlan.seat, [{
                 op: 'moveUnitToCombatForDice', who: 'me',
@@ -1161,7 +1167,7 @@ class CombatRules {
         // («Шустрое судно» — `def. token`, «Гнев машины» — `att. token`).
         const keptOf = s => {
             const k = (c.keepTokens || {})[s];
-            return k && k.round === c.round ? k : null;
+            return k && turn.inRound(k) ? k : null;
         };
         const keepSide = (s, kind) => {
             const k = keptOf(s);
@@ -1202,8 +1208,8 @@ class CombatRules {
             this.finishCombat(state, true);
             return;
         }
-        c.round++;
-        if (c.round > (c.maxRounds || 3)) { this.finishCombat(state); return; }
+        if (turn.lastRound) { this.finishCombat(state); return; }
+        turn.nextRound();
         // «получите 2 `att. token` в следующем раунде боя» («Крылатый ужас»):
         // the tokens the card promised come from the supply now. «За каждого
         // вашего уничтоженного или деморализованного в этом раунде юнита
@@ -1219,8 +1225,8 @@ class CombatRules {
             }
             return n;
         };
-        const later = (c.laterTokens || []).filter(x => x.round === c.round);
-        c.laterTokens = (c.laterTokens || []).filter(x => x.round !== c.round);
+        const later = turn.ofRound(c.laterTokens);
+        c.laterTokens = (c.laterTokens || []).filter(x => !turn.inRound(x));
         for (const one of later) {
             const seat = CombatSides.seatOf(c, one.side);
             const n = one.per === 'lostRound' ? (one.n || 1) * lostOf(seat) : (one.n || 1);
@@ -1234,11 +1240,11 @@ class CombatRules {
         c.cards.attacker.chosen = null;
         c.cards.defender.chosen = null;
         // The effects that belonged to the previous round are over.
-        if (c.destroyRoutedFoe && c.destroyRoutedFoe.round !== c.round) c.destroyRoutedFoe = null;
-        c.resurrectPlan = (c.resurrectPlan || []).filter(x => x.round === c.round);
-        c.restoreFallen = (c.restoreFallen || []).filter(x => x.round === c.round && !x.done);
-        c.endRoundPlans = (c.endRoundPlans || []).filter(x => x.round === c.round);
-        c.endRoundNoRetreat = (c.endRoundNoRetreat || []).filter(x => x.round === c.round);
+        if (c.destroyRoutedFoe && !turn.inRound(c.destroyRoutedFoe)) c.destroyRoutedFoe = null;
+        c.resurrectPlan = turn.ofRound(c.resurrectPlan);
+        c.restoreFallen = turn.ofRound(c.restoreFallen).filter(x => !x.done);
+        c.endRoundPlans = turn.ofRound(c.endRoundPlans);
+        c.endRoundNoRetreat = turn.ofRound(c.endRoundNoRetreat);
         c.fallenThisStep = [];
         c.damageHook = {};
         c.criticalHook = {};
@@ -1246,8 +1252,8 @@ class CombatRules {
         c.damageEndResume = false;
         c.resurrectCandidates = [];
         c.resurrectAsked = null;
-        c.noDamageRetreat = (c.noDamageRetreat || []).filter(x => x.round === c.round);
-        c.step = 'choose-attacker';
+        c.noDamageRetreat = turn.ofRound(c.noDamageRetreat);
+        turn.setStep('choose-attacker');
         this.advanceCombatSteps(state);
         // The schemes of the start of the round.
         this.engine.maybeScheme(state, c.attacker, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
@@ -1262,10 +1268,11 @@ class CombatRules {
 
     applyDamageStartTokens(state) {
         const c = state.combat;
-        if (!c || !c.damageStartTokens || c.damageStartRound === c.round) return;
-        c.damageStartRound = c.round;
+        const turn = CombatTurn.of(c);
+        if (!turn || !c.damageStartTokens || c.damageStartRound === turn.round) return;
+        c.damageStartRound = turn.round;
         for (const one of c.damageStartTokens) {
-            if (one.round !== undefined && one.round !== c.round) continue;
+            if (!turn.inRound(one)) continue;
             const side = one.side;
             const kind = one.kind || 'att';
             const n = one.n || 1;
@@ -1294,7 +1301,7 @@ class CombatRules {
     retreatInsteadOfDestroy(state, unit) {
         const c = state.combat;
         const plan = c && c.retreatInstead;
-        if (!plan || plan.seat !== unit.seat || plan.round !== c.round || plan.used) return false;
+        if (!plan || plan.seat !== unit.seat || !CombatTurn.of(c).inRound(plan) || plan.used) return false;
         const def = this.engine.unitOf(state, unit);
         if (!def) return false;
         const ground = def.type === 'ground';
@@ -1320,13 +1327,13 @@ class CombatRules {
         const c = state.combat;
         if (!c) return;
         c.retreated = c.retreated || {};
-        c.retreated[seat] = c.round;
+        c.retreated[seat] = CombatTurn.of(c).round;
     }
 
     offerFallenRestore(state) {
         const c = state.combat;
         if (!c) return false;
-        const plans = (c.restoreFallen || []).filter(x => x.round === c.round && !x.asked && !x.done);
+        const plans = CombatTurn.of(c).ofRound(c.restoreFallen).filter(x => !x.asked && !x.done);
         if (!plans.length) return false;
         const plan = plans[0];
         const candidates = (c.fallenThisStep || [])
@@ -1334,8 +1341,7 @@ class CombatRules {
         if (!candidates.length) return false;
         plan.asked = true;
         plan.candidates = candidates.slice();
-        c.step = 'effect';
-        c.nextStep = 'round-end';
+        CombatTurn.of(c).holdEffect('round-end');
         const side = CombatSides.sideOf(c, plan.seat);
         this.engine.runEffects(state, plan.seat, [{
             op: 'restoreFallenOffer', who: 'me',
@@ -1361,8 +1367,7 @@ class CombatRules {
             c.damageHook[side] = true;
             c.criticalHook[side] = true;
             c.damageResume = { seat, side, cmd: { targets: targets.slice() } };
-            c.step = 'effect';
-            c.nextStep = 'effect';
+            CombatTurn.of(c).holdEffect('effect');
             state.pending = {
                 seat: p.seat, answerSeat: p.seat, kind: 'scheme', steps: [], index: 0,
                 question: {
@@ -1428,7 +1433,7 @@ class CombatRules {
         // Only the attacker takes the structures of the world (the rules).
         if (attackerWins) this.captureStructures(state, c.system, c.pos, c.attacker, c.defender);
         c.loser = loser;
-        c.step = 'retreat';
+        CombatTurn.of(c).setStep('retreat');
         // A player whose troops all died has nothing to retreat: the combat ends
         // without asking where the dead should go.
         const noTroops = !state.units.some(u => u.seat === loser && u.system === c.system && u.area === c.pos);

@@ -104,7 +104,7 @@ class ChooseSteps {
         if (!id) return null;
         const foeSide = CombatSides.foe(side);
         combat.damageFirst = combat.damageFirst || [];
-        combat.damageFirst.push({ side: foeSide, id, round: combat.round });
+        combat.damageFirst.push({ side: foeSide, id, round: CombatTurn.of(combat).round });
         R.log(state, seat, 'Выбранный отряд противника получает урон первым.');
         return null;
     }

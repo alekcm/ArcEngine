@@ -18,7 +18,7 @@ class TokenAsks {
             combat.endRoundNoRetreat = combat.endRoundNoRetreat || [];
             combat.endRoundNoRetreat.push({
                 seat, side, kind: step.kind || 'att', n,
-                round: combat.round, fired: false,
+                round: CombatTurn.of(combat).round, fired: false,
             });
             R.log(state, seat, p.name + ': жетоны ждут конца раунда без отступления.');
             return null;
@@ -61,7 +61,7 @@ class TokenAsks {
             keep[step.kind === 'att' ? 'att' : 'def'] = true;
             // The card keeps the tokens of the round it was played in —
             // the next round discards them as usual.
-            keep.round = combat.round;
+            keep.round = CombatTurn.of(combat).round;
             combat.keepTokens[side] = keep;
         }
         return null;
@@ -82,7 +82,7 @@ class TokenAsks {
         if (!inCombat) return null;
         const kind = step.kind === 'att' ? 'att' : 'def';
         combat.laterTokens = (combat.laterTokens || []).concat([
-            { side: side, kind: kind, n: step.n || 1, round: combat.round + 1 },
+            { side: side, kind: kind, n: step.n || 1, round: CombatTurn.of(combat).round + 1 },
         ]);
         R.log(state, seat, p.name + ' получит ' + (step.n || 1) + ' жетон(ов) '
             + (kind === 'att' ? 'атаки' : 'обороны') + ' в следующем раунде боя.');
@@ -93,9 +93,7 @@ class TokenAsks {
         const { step, combat, inCombat, side } = f;
         if (!inCombat || step.stage === 'dice') return null;
         const foeSide = CombatSides.foe(side);
-        const dice = combat.dice[foeSide] || [];
-        /** @type {any[]} */
-        const options = dice.map((d, i) => i).filter(i => dice[i] === step.kind);
+        const options = CombatTurn.of(combat).slots(foeSide, d => d === step.kind);
         const need = step.n || 3;
         if (!options.length) {
             return { replace: [{ op: 'gainToken', n: (step.per || 2) * need, kind: 'att', who: 'me' }] };

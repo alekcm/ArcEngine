@@ -153,7 +153,7 @@ class StrikeAsks {
         // be chosen for the damage as well.
         if (!inCombat) return null;
         combat.ownRoutedDamage = combat.ownRoutedDamage || {};
-        combat.ownRoutedDamage[side] = combat.round;
+        combat.ownRoutedDamage[side] = CombatTurn.of(combat).round;
         R.log(state, seat, state.players[seat].name + ' может нанести урон своим деморализованным отрядам в этом раунде.');
         return null;
     }
@@ -176,7 +176,7 @@ class StrikeAsks {
         const foeSide = CombatSides.foe(side);
         combat.damageStartTokens = combat.damageStartTokens || [];
         combat.damageStartTokens.push({
-            side: foeSide, kind: step.kind || 'att', n: step.n || 1, round: combat.round,
+            side: foeSide, kind: step.kind || 'att', n: step.n || 1, round: CombatTurn.of(combat).round,
         });
         R.log(state, seat, p.name + ': в начале шага повреждений противник теряет '
             + (step.n || 1) + ' жетон(ов) атаки.');
@@ -193,14 +193,14 @@ class StrikeAsks {
 
     static combatLength(effects, f) {
         const { step, combat } = f;
-        if (combat) combat.maxRounds = step.n || 1;
+        if (combat) CombatTurn.of(combat).maxRounds = step.n || 1;
         return null;
     }
 
     static deferDamage(effects, f) {
         const { R, state, seat, step, combat, inCombat, p } = f;
         if (!inCombat) return null;
-        combat.deferDamage = { seat, round: combat.round, steps: step.steps || [] };
+        combat.deferDamage = { seat, round: CombatTurn.of(combat).round, steps: step.steps || [] };
         step.done = true;
         R.log(state, seat, p.name + ': эффект карты сработает в конце шага повреждений.');
         return null;
@@ -210,7 +210,7 @@ class StrikeAsks {
         const { seat, step, combat, inCombat } = f;
         if (!inCombat) return null;
         combat.noDamageRetreat = combat.noDamageRetreat || [];
-        combat.noDamageRetreat.push({ seat, round: combat.round, steps: step.steps || [] });
+        combat.noDamageRetreat.push({ seat, round: CombatTurn.of(combat).round, steps: step.steps || [] });
         step.done = true;
         return null;
     }
@@ -243,9 +243,9 @@ class StrikeAsks {
         const { R, state, seat, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
         const chosen = (combat.damageFirst || [])
-            .filter(x => x && x.round === combat.round).pop();
+            .filter(x => x && x.round === CombatTurn.of(combat).round).pop();
         if (!chosen) return null;
-        combat.ignoreExcess = { side: chosen.side, id: chosen.id, round: combat.round };
+        combat.ignoreExcess = { side: chosen.side, id: chosen.id, round: CombatTurn.of(combat).round };
         R.log(state, seat, p.name + ': урон сверх здоровья выбранной цели теряется.');
         return null;
     }
@@ -260,7 +260,7 @@ class StrikeAsks {
         const { R, state, seat, step, combat, inCombat, p } = f;
         if (!inCombat) return null;
         combat.destroyRoutedFoe = {
-            seat, round: combat.round,
+            seat, round: CombatTurn.of(combat).round,
             avoid: step.avoid || { kind: 'def', n: 1 },
         };
         R.log(state, seat, p.name + ': деморализованные отряды противника будут уничтожены до конца раунда.');
@@ -272,7 +272,7 @@ class StrikeAsks {
         const { R, state, seat, combat, inCombat, p } = f;
         if (!inCombat) return null;
         combat.endRoundPlans = combat.endRoundPlans || [];
-        combat.endRoundPlans.push({ seat, round: combat.round, fired: false });
+        combat.endRoundPlans.push({ seat, round: CombatTurn.of(combat).round, fired: false });
         R.log(state, seat, p.name + ': «Кауйон» ждёт конца раунда.');
         return null;
     }

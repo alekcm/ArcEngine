@@ -350,7 +350,8 @@ class AdvanceRules {
         // yet (no reinforcements, no cards, no dice).
         if (PhasePlan.of(order).is('combat')) {
             const c = state.combat;
-            const fresh = c && c.round === 1 && c.step === 'reinforce-attacker'
+            const turn = CombatTurn.of(c);
+            const fresh = turn && turn.round === 1 && turn.is('reinforce-attacker')
                 && !CombatTokens.of(c).any
                 && !c.cards.attacker.played.length && !c.cards.defender.played.length
                 && c.damage.attacker === 0 && c.damage.defender === 0;

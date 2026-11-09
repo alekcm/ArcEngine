@@ -411,7 +411,8 @@ class FSGame {
         }
         if (s.pending) this.questionMarkersActive = true;
         // A new reinforcement step is a fresh count: the counter starts at 0.
-        const reinforceKey = s.combat ? s.combat.system + ':' + (s.combat.round || 1) + ':' + s.combat.step : null;
+        const turn0 = CombatTurn.of(s.combat);
+        const reinforceKey = turn0 ? s.combat.system + ':' + turn0.round + ':' + turn0.step : null;
         if (this.reinforceStep !== reinforceKey) {
             this.reinforceStep = reinforceKey;
             this.reinforcePick = 0;
@@ -499,7 +500,7 @@ class FSGame {
         // The picking of the damage is a mode of its own: it is set again by the panel
         // of the battle below and it never outlives the step that asked for it.
         if (this.mode === 'damage') this.mode = 'idle';
-        if (this.mode === 'retreat' && !(s.combat && s.combat.step === 'retreat')) this.mode = 'idle';
+        if (this.mode === 'retreat' && !(CombatTurn.of(s.combat) && CombatTurn.of(s.combat).is('retreat'))) this.mode = 'idle';
         const trimQueue = FS_RULES.trimQueue(s);
         if (this.mode === 'trim' && !trimQueue.blocked(me)) this.mode = 'idle';
         if (!trimQueue.blocked(me)) this.trimPick = [];
@@ -1849,7 +1850,8 @@ class FSGame {
         const other = CombatSides.foe(side);
         const nameOf = which => (s.players[CombatSides.seatOf(c, which)] || {}).name || '?';
         const names = [nameOf('attacker'), nameOf('defender')];
-        ctx.title = 'Бой · раунд ' + c.round + ' из ' + (c.maxRounds || 3);
+        const turn = CombatTurn.of(c);
+        ctx.title = 'Бой · раунд ' + turn.round + ' из ' + turn.maxRounds;
         const sideOf = (id) => {
             const seat = CombatSides.seatOf(c, id);
             const p = s.players[seat] || {};
@@ -1862,7 +1864,7 @@ class FSGame {
                 name: p.name || '?',
                 color: p.color || FSView.factionColor(p.faction),
                 faction: p.faction,
-                dice: (c.dice[id] || []).slice(),
+                dice: turn.dice(id).slice(),
                 tokens: { att: c.tokens[id].att || 0, def: c.tokens[id].def || 0 },
                 reinforce: CombatTokens.of(c).used(id),
                 cards: played,
@@ -1884,9 +1886,9 @@ class FSGame {
         };
         // The score of the fight only: the place is on the board, not in the panel.
         ctx.battle = {
-            round: c.round,
-            maxRounds: c.maxRounds || 3,
-            step: c.step,
+            round: turn.round,
+            maxRounds: turn.maxRounds,
+            step: turn.step,
             mine: side,
             sides: [sideOf('attacker'), sideOf('defender')],
             names,
@@ -1899,17 +1901,17 @@ class FSGame {
         // The hand is always at the bottom of the screen during the fight; a
         // card is playable only in the step of its side.
         this.fillHand(s, side, this.canPlayCard(s));
-        switch (c.step) {
+        switch (turn.step) {
             case 'reinforce-attacker':
             case 'reinforce-defender': {
-                const whose = CombatSides.sideFromStep(c.step);
+                const whose = turn.side;
                 if (whose !== side) { ctx.text = 'Подкрепления ставит ' + nameOf(whose) + '.'; return; }
                 const have = PlayerEntity.of(s, me) ? PlayerEntity.of(s, me).assetCount('reinforcement') : 0;
                 const max = Math.min(have, FS_RULES.maxReinforce(s, me, side));
                 if (max <= 0) {
                     // The step needs no decision: no tokens are ever offered
                     // and the fight simply goes on. It is not even shown.
-                    const key = c.system + ':' + (c.round || 1) + ':' + c.step;
+                    const key = c.system + ':' + turn.round + ':' + turn.step;
                     ctx.text = have > 0 ? 'Подкреплению не за что устоять: в бою нет ваших отрядов.' : 'У вас нет жетонов подкрепления.';
                     if (this.autoReinforced !== key) {
                         this.autoReinforced = key;
@@ -1946,7 +1948,7 @@ class FSGame {
             }
             case 'choose-attacker':
             case 'choose-defender': {
-                const whose = CombatSides.sideFromStep(c.step);
+                const whose = turn.side;
                 if (whose !== side) {
                     ctx.text = 'Карту выбирает ' + nameOf(whose) + '.';
                     return;
@@ -1957,7 +1959,7 @@ class FSGame {
             }
             case 'damage-attacker':
             case 'damage-defender': {
-                const whose = CombatSides.sideFromStep(c.step);
+                const whose = turn.side;
                 // «Во время шага нанесения повреждений Вы назначаете урон
                 // отрядам и бастионам противника» («Величие роя»): the step is
                 // played by the owner of the card, not by the one who suffers.
@@ -2070,7 +2072,9 @@ class FSGame {
         if (!c) return false;
         const mine = s.seat === c.attacker ? 'attacker' : s.seat === c.defender ? 'defender' : null;
         if (!mine) return false;
-        return c.step === (mine === 'attacker' ? 'choose-attacker' : 'choose-defender');
+        // The card is played in the choosing step of its own side.
+        const turn = CombatTurn.of(c);
+        return turn.choosing && turn.side === mine;
     }
 
     // The clicked piece of the damage: it joins or leaves the group that takes it.
@@ -2279,7 +2283,7 @@ class FSGame {
             case 'diceFace': {
                 const combat = s.combat;
                 const dSide = q.diceSide || (combat && CombatSides.sideOf(combat, must));
-                const dice = combat ? (combat.dice[dSide] || []) : [];
+                const dice = combat ? CombatTurn.of(combat).dice(dSide) : [];
                 // The die of a dieFace question: the face is the second choice.
                 const picked = q.kind === 'diceFace' ? this.effectDie : null;
                 if (picked !== null && picked !== undefined) {
@@ -2323,7 +2327,7 @@ class FSGame {
             case 'face': {
                 const combat = s.combat;
                 const dSide = q.diceSide || (combat && CombatSides.sideOf(combat, must));
-                const dice = combat ? (combat.dice[dSide] || []).filter(Boolean) : [];
+                const dice = combat ? CombatTurn.of(combat).live(dSide) : [];
                 const faces = ['att', 'def', 'morale', 'blank'];
                 for (const face of faces) {
                     const count = dice.filter(d => d === face).length;
@@ -3106,7 +3110,7 @@ class FSGame {
             && (meta.fs === 'unit' || meta.fs === 'structure'
                 || (meta.fs === 'token' && meta.reinforce))) {
             const c = s.combat;
-            const suffer = CombatSides.sideFromStep(c.step);
+            const suffer = CombatTurn.of(c).side;
             const ownerSeat = CombatSides.seatOf(c, suffer);
             const here = x => x && x.system === c.system && x.area === c.pos && x.seat === ownerSeat;
             let id = null;

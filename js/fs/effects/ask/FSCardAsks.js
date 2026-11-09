@@ -43,7 +43,7 @@ class CardAsks {
         if (!deck.size()) return null;
         const name = deck.draw();
         const card = FS_CATALOG.card('combat', p.faction, name);
-        combat.cards[side].played.push({ name, card, side, round: combat.round, valuesOnly: true });
+        combat.cards[side].played.push({ name, card, side, round: CombatTurn.of(combat).round, valuesOnly: true });
         R.log(state, seat, p.name + ' достаёт верхнюю карту колоды: «' + name + '» — только её боевые значения.');
         step.done = true;
         return null;
@@ -156,7 +156,7 @@ class CardAsks {
         // player resolved one round ago is read again — with the
         // requisites of the unit ability checked anew.
         if (!inCombat) return null;
-        const entry = (combat.cards[side].played || []).find(x => (x.round || 0) === combat.round - 1);
+        const entry = (combat.cards[side].played || []).find(x => (x.round || 0) === CombatTurn.of(combat).round - 1);
         const card = entry && entry.card;
         if (!card) {
             R.log(state, seat, 'В предыдущем раунде боя карта не разыгрывалась — повторять нечего.');
@@ -406,8 +406,9 @@ class CardAsks {
                 if (step.who === 'foe') combat.tokens[s2][ic.icon] = Math.max(0, combat.tokens[s2][ic.icon] - 1);
                 else combat.tokens[s2][ic.icon] += 1;
             } else if (ic.kind === 'cube') {
-                if (step.who === 'foe') { const at = combat.dice[s2].map(Boolean).lastIndexOf(true); if (at >= 0) combat.dice[s2][at] = null; }
-                else combat.dice[s2].push(ic.icon === 'any' ? R.rollDice(state, 1)[0] : ic.icon);
+                const turn = CombatTurn.of(combat);
+                if (step.who === 'foe') turn.take(s2, turn.lastOf(s2));
+                else turn.add(s2, ic.icon === 'any' ? R.rollDice(state, 1)[0] : ic.icon);
             }
         }
         return null;

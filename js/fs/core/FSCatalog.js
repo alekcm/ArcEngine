@@ -8,6 +8,16 @@
 //
 // The catalogue keeps no game state: it is read-only after construction.
 
+// The faces of a combat die: the rules speak of them by kind, the panel and the
+// log by their names. One place holds both spellings.
+const FACE_KINDS = ['att', 'def', 'morale', 'blank'];
+const FACE_NAMES = { att: 'атака', def: 'оборона', morale: 'мораль', blank: 'пусто' };
+
+/** The printed name of a die face; an unknown face is named as it is written. */
+function fsFaceName(face) {
+    return FACE_NAMES[face] || String(face || '');
+}
+
 /** The structure profiles printed on the tokens (07-tokens.md). */
 const FS_STRUCTURE_STATS = {
     bastion: { cost: 2, combat: 2, health: 3, morale: 2, kl: 0, name: 'Бастион' },

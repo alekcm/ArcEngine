@@ -16,9 +16,9 @@ class DiceAsks {
         if (!inCombat) return null;
         const foe = CombatSides.foe(side);
         const kinds = step.kinds || ['att', 'def', 'morale'];
-        const live = d => d !== null && d !== undefined;
+        const turn = CombatTurn.of(combat);
         const counts = {};
-        for (const k of kinds) counts[k] = (combat.dice[foe] || []).filter(d => d === k).length;
+        for (const k of kinds) counts[k] = turn.count(foe, k);
         const have = kinds.filter(k => counts[k] > 0);
         if (!have.length) return null;
         if (!step.kind) {
@@ -73,7 +73,7 @@ class DiceAsks {
         // The condition of the text: "if the opponent has a die of this kind".
         if (step.onlyIfFoeHas) {
             const s2 = CombatSides.foe(side);
-            if (!(combat.dice[s2] || []).includes(step.onlyIfFoeHas)) return null;
+            if (!(CombatTurn.of(combat).indexOf(s2, step.onlyIfFoeHas) >= 0)) return null;
         }
         // «… для того, чтобы получить 1 `any cube`» (the opponent's
         // branch of «Соблазны Хаоса»): the die belongs to the OTHER side.
@@ -81,10 +81,10 @@ class DiceAsks {
             ? (CombatSides.foe(side)) : side;
         // No more than DICE_MAX dice in a combat: a card that gives a
         // die past the limit simply adds nothing.
-        const room = Math.max(0, R.DICE_MAX - combat.dice[dSide].filter(Boolean).length);
-        const got = Math.min(n, room);
+        const turn = CombatTurn.of(combat);
+        const got = Math.min(n, turn.room(dSide));
         for (let i = 0; i < got; i++) {
-            combat.dice[dSide].push(step.kind === 'any' ? R.rollDice(state, 1)[0] : step.kind);
+            turn.add(dSide, step.kind === 'any' ? R.rollDice(state, 1)[0] : step.kind);
         }
         R.log(state, seat, (step.who === 'foe' ? 'Противник получает '
             : state.players[seat].name + ' получает ') + got + ' кубик(ов)'
@@ -97,17 +97,15 @@ class DiceAsks {
         const { R, state, seat, step, combat, inCombat, side } = f;
         if (!inCombat) return null;
         const s2 = CombatSides.foe(side);
-        const live = d => d !== null && d !== undefined;
-        const options = combat.dice[s2].map((d, i) => i)
-            .filter(i => live(combat.dice[s2][i])
-                && (step.kind === 'any' || combat.dice[s2][i] === step.kind));
+        const turn = CombatTurn.of(combat);
+        const options = turn.slots(s2, d => step.kind === 'any' || d === step.kind);
         if (!options.length) return null;
         const n = Math.min(step.n, options.length);
         // The dice of one kind are alike and a loss of all that is possible is
         // not a choice either: the engine takes them itself, without a question.
         if (step.kind !== 'any' || n >= options.length) {
             const gone = options.slice(0, n);
-            for (const i of gone) combat.dice[s2][i] = null;
+            for (const i of gone) turn.take(s2, i);
             R.log(state, seat, (s2 === side ? 'Вы теряете ' : 'Противник теряет ') + n
                 + ' кубик(ов)' + (step.kind !== 'any' ? ' ' + effects.kindName(step.kind) : '') + '.');
             return null;
@@ -123,12 +121,12 @@ class DiceAsks {
         // и/или `morale cube`» — the dice of any listed kind are offered.
         const kinds = Array.isArray(step.kinds) && step.kinds.length ? step.kinds : [step.kind];
         const fits = d => kinds.includes('any') || kinds.includes(d);
-        const options = combat.dice[s2].map((d, i) => i)
-            .filter(i => combat.dice[s2][i] !== null && combat.dice[s2][i] !== undefined && fits(combat.dice[s2][i]));
+        const turn = CombatTurn.of(combat);
+        const options = turn.slots(s2, fits);
         if (!options.length) return null;
         if (step.all) {
             // All the dice of the kind are rerolled.
-            for (const i of options) combat.dice[s2][i] = R.rollDice(state, 1)[0];
+            for (const i of options) turn.put(s2, i, R.rollDice(state, 1)[0]);
             R.log(state, seat, state.players[seat].name + ' перебрасывает кубики.');
             return null;
         }
@@ -146,8 +144,9 @@ class DiceAsks {
         // A step may cover a union of cube kinds («тратится def. или morale»):
         // one spend of one die of ANY listed kind resolves the card.
         const kinds = Array.isArray(step.kinds) && step.kinds.length ? step.kinds : [step.kind];
-        const match = d => d !== null && d !== undefined && (kinds.includes('any') || kinds.includes(d));
-        const options = combat.dice[s2].map((d, i) => i).filter(i => match(combat.dice[s2][i]));
+        const turn = CombatTurn.of(combat);
+        const match = d => kinds.includes('any') || kinds.includes(d);
+        const options = turn.slots(s2, match);
         // «за каждого недеморализованного Воина или Корабля-Улья
         // потратьте 1 кубик» («Выводок воинов», другая редакция): one
         // cube for every unit the card counts.
@@ -166,7 +165,7 @@ class DiceAsks {
             // All the dice of the kind are spent: they lie on the
             // ground, spent in place — never spliced out, so the
             // remaining dice keep their identity.
-            for (const i of options) combat.dice[s2][i] = null;
+            for (const i of options) turn.take(s2, i);
             R.log(state, seat, state.players[seat].name + ' тратит кубики.');
             return null;
         }
@@ -196,13 +195,14 @@ class DiceAsks {
             return null;
         }
         const s2 = effects.diceSideOf(combat, side, step);
-        const options = combat.dice[s2].map((d, i) => i).filter(i => combat.dice[s2][i] !== null && combat.dice[s2][i] !== undefined && (step.kind === 'any' || combat.dice[s2][i] === step.kind));
+        const turn = CombatTurn.of(combat);
+        const options = turn.slots(s2, d => step.kind === 'any' || d === step.kind);
         if (!options.length) return null;
         if (step.all) {
-            for (const i of options) combat.dice[s2][i] = step.to;
+            for (const i of options) turn.put(s2, i, step.to);
             return null;
         }
-        return { question: { kind: 'dice', who: effects.diceAsker(combat, side, step), diceSide: s2, op: 'flipDie', n: Math.min(step.n, options.length), options, kind2: step.kind, text: 'Какие кубики перевернуть на ' + (step.to === 'att' ? 'атаку' : step.to === 'def' ? 'оборону' : 'мораль') + '?' } };
+        return { question: { kind: 'dice', who: effects.diceAsker(combat, side, step), diceSide: s2, op: 'flipDie', n: Math.min(step.n, options.length), options, kind2: step.kind, text: 'Какие кубики перевернуть на ' + fsFaceName(step.to) + '?' } };
     }
 
     static rerollValue(effects, f) {
@@ -211,8 +211,7 @@ class DiceAsks {
         const s2 = effects.diceSideOf(combat, side, step);
         // «Перебросьте все ваши кубики одного типа» («Огонь и
         // продвижение»): the choice is a FACE, not a die index.
-        const options = [...new Set((combat.dice[s2] || [])
-            .filter(d => d !== null && d !== undefined))];
+        const options = CombatTurn.of(combat).faces(s2);
         if (!options.length) return null;
         return { question: { kind: 'face', who: effects.diceAsker(combat, side, step), diceSide: s2, op: 'rerollValue', options, text: 'Какое значение кубиков перебросить?' } };
     }
@@ -221,7 +220,7 @@ class DiceAsks {
         const { combat, inCombat, side } = f;
         if (!inCombat) return null;
         const s2 = CombatSides.foe(side);
-        const options = combat.dice[s2].map((d, i) => i).filter(i => combat.dice[s2][i] !== null && combat.dice[s2][i] !== undefined);
+        const options = CombatTurn.of(combat).slots(s2);
         if (!options.length) return null;
         return { question: { kind: 'dice', who: effects.seatOf(combat, s2), diceSide: s2, op: 'stealDie', options, text: 'Какой кубик сбросить?' } };
     }
@@ -230,7 +229,7 @@ class DiceAsks {
         const { step, combat, inCombat, side } = f;
         if (!inCombat) return null;
         const s2 = CombatSides.foe(side);
-        const faces = [...new Set(combat.dice[s2])].filter(d => d !== null && d !== undefined);
+        const faces = CombatTurn.of(combat).faces(s2);
         if (!faces.length) return null;
         return { question: { kind: 'face', who: effects.seatOf(combat, s2), diceSide: s2, op: 'convertFoeDice', options: faces, n: step.n || 2, text: 'Какие кубики сконвертировать?' } };
     }
@@ -239,7 +238,7 @@ class DiceAsks {
         const { R, state, seat, step, ctx, combat, inCombat, side } = f;
         if (!inCombat) return null;
         const s2 = effects.diceSideOf(combat, side, step);
-        const options = combat.dice[s2].map((d, i) => i).filter(i => combat.dice[s2][i] !== null && combat.dice[s2][i] !== undefined);
+        const options = CombatTurn.of(combat).slots(s2);
         if (!options.length) return null;
         // «за каждого недеморализованного воина или крейсер переверните
         // 1 ваш кубик» — one flip per unit, each to any side.
@@ -258,9 +257,10 @@ class DiceAsks {
         const mine = effects.countCubes(R, state, seat, combat, 'morale');
         const theirs = effects.countCubes(R, state, effects.seatOf(combat, s2), combat, 'morale');
         if (theirs <= mine) return null;
-        const at = combat.dice[s2].indexOf(step.kind || 'morale');
+        const turn = CombatTurn.of(combat);
+        const at = turn.indexOf(s2, step.kind || 'morale');
         if (at < 0) return null;
-        combat.dice[s2][at] = null;
+        turn.take(s2, at);
         R.log(state, seat, 'Противник теряет кубик морали.');
         return null;
     }
@@ -270,8 +270,9 @@ class DiceAsks {
         if (!inCombat) return null;
         // Both sides roll all of their unspent dice again: the spent
         // stay spent, where they lie.
+        const turn = CombatTurn.of(combat);
         for (const s2 of ['attacker', 'defender']) {
-            combat.dice[s2] = combat.dice[s2].map(d => d === null || d === undefined ? null : R.rollDice(state, 1)[0]);
+            turn.dice(s2).forEach((d, i) => { if (d !== null && d !== undefined) turn.put(s2, i, R.rollDice(state, 1)[0]); });
         }
         R.log(state, seat, 'Все кубики перебрасываются.');
         return null;

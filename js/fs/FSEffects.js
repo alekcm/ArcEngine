@@ -1587,9 +1587,8 @@ const FS_EFFECTS = {
         // The combat goes on with the step that waited for the effect. The step
         // machine then passes the steps that have nothing to do (a closed card of
         // the other side, a damage of zero).
-        if (c.kind === 'combat' && state.combat && state.combat.nextStep) {
-            state.combat.step = state.combat.nextStep;
-            state.combat.nextStep = null;
+        const turn = CombatTurn.of(state.combat);
+        if (c.kind === 'combat' && turn && turn.release()) {
             if (typeof R.advanceCombatSteps === 'function') R.advanceCombatSteps(state);
         }
         // «Критический удар» waited for a unit to take damage: the damage step
@@ -1771,9 +1770,9 @@ const FS_EFFECTS = {
             if (paid) {
                 const combat = state.combat;
                 const s2 = CombatSides.sideOf(combat, seat);
+                const turn = CombatTurn.of(combat);
                 for (const i of (answer.dice || [])) {
-                    if (Number.isInteger(i) && combat.dice[s2][i] !== null
-                        && combat.dice[s2][i] !== undefined) combat.dice[s2][i] = null;
+                    if (turn.has(s2, i)) turn.take(s2, i);
                 }
                 R.log(state, seat, state.players[seat].name + ' тратит кубик и избегает эффекта.');
             } else {
@@ -1931,7 +1930,7 @@ const FS_EFFECTS = {
         }
         if (cond.noRetreat) {
             if (!inCombat) return true;
-            return !combat.retreated || combat.retreated[seat] !== combat.round;
+            return !combat.retreated || combat.retreated[seat] !== CombatTurn.of(combat).round;
         }
         if (cond.side) {
             if (!inCombat) return false;
@@ -1942,16 +1941,16 @@ const FS_EFFECTS = {
             if (!inCombat) return false;
             const s2 = CombatSides.sideOf(combat, seat);
             const o2 = seat === combat.attacker ? 'defender' : 'attacker';
-            const mine = (combat.dice[s2] || []).filter(Boolean).filter(d => d === cond.cubeLess).length;
-            const theirs = (combat.dice[o2] || []).filter(Boolean).filter(d => d === cond.cubeLess).length;
+            const mine = CombatTurn.of(combat).count(s2, cond.cubeLess);
+            const theirs = CombatTurn.of(combat).count(o2, cond.cubeLess);
             return mine < theirs;
         }
         if (cond.cubeMore) {
             if (!inCombat) return false;
             const s2 = CombatSides.sideOf(combat, seat);
             const o2 = seat === combat.attacker ? 'defender' : 'attacker';
-            const mine = (combat.dice[s2] || []).filter(Boolean).filter(d => d === cond.cubeMore).length;
-            const theirs = (combat.dice[o2] || []).filter(Boolean).filter(d => d === cond.cubeMore).length;
+            const mine = CombatTurn.of(combat).count(s2, cond.cubeMore);
+            const theirs = CombatTurn.of(combat).count(o2, cond.cubeMore);
             return mine > theirs;
         }
         if (cond.foeRouted) {
@@ -2157,8 +2156,9 @@ const FS_EFFECTS = {
             if (!combat) return 0;
             const mine = CombatSides.sideOf(combat, seat);
             const theirs = CombatSides.foe(mine);
-            const my = (combat.dice[mine] || []).filter(d => d === step.myKind).length;
-            const his = (combat.dice[theirs] || []).filter(d => d === step.foeKind).length;
+            const turn = CombatTurn.of(combat);
+            const my = turn.count(mine, step.myKind);
+            const his = turn.count(theirs, step.foeKind);
             n = (step.n || 1) * Math.max(0, my - his);
             if (step.max) n = Math.min(n, step.max);
             return Math.max(0, n);
@@ -2167,7 +2167,7 @@ const FS_EFFECTS = {
             const combat = state.combat;
             if (combat) {
                 const s2 = CombatSides.sideOf(combat, seat);
-                n = (step.n || 1) * (combat.dice[s2] || []).filter(d => d === (step.perKind || 'morale')).length;
+                n = (step.n || 1) * CombatTurn.of(combat).count(s2, step.perKind || 'morale');
                 if (step.max) n = Math.min(n, step.max);
             } else {
                 n = step.n || 1;
@@ -2257,7 +2257,7 @@ const FS_EFFECTS = {
     avoidQuestion(R, state, seat, step, combat, side) {
         if (!step.avoid || !combat) return null;
         const s2 = CombatSides.sideOf(combat, seat);
-        const dice = combat.dice[s2] || [];
+        const dice = CombatTurn.of(combat).dice(s2);
         const fit = dice.map((d, i) => i).filter(i => step.avoid.kind === 'any' || dice[i] === step.avoid.kind);
         if (!fit.length) return null;
         return {
@@ -2287,8 +2287,7 @@ const FS_EFFECTS = {
     countCubes(R, state, seat, combat, kind) {
         if (!combat) return 0;
         const side = CombatSides.sideOf(combat, seat);
-        const dice = combat.dice[side] || [];
-        let n = dice.filter(d => d === kind).length;
+        let n = CombatTurn.of(combat).count(side, kind);
         const tokens = combat.tokens[side] || {};
         if (kind === 'att') n += tokens.att || 0;
         if (kind === 'def') n += tokens.def || 0;

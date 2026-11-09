@@ -42,7 +42,8 @@ export function engineFiles() {
 
 /** The names a tool may need after loading: every global the scripts define. */
 const ENGINE_GLOBALS = ['FS_DATA', 'FS_CATALOG', 'FS_RULES_CONFIG', 'FS_WARP_STORMS',
-    'FS_CARDS', 'FS_EFFECTS', 'FS_RULES', 'Board', 'PlayerEntity', 'TrimQueue', 'StrikePlan', 'MarchPlan', 'PhasePlan', 'UpgradeOrder', 'OrderDeal', 'DeployScope', 'DeployLimits', 'OrderFight', 'Purchases', 'OrderMove', 'OrderTally', 'OrderContext', 'CombatTokens',
+    'FACE_KINDS', 'FACE_NAMES', 'fsFaceName',
+    'FS_CARDS', 'FS_EFFECTS', 'FS_RULES', 'Board', 'PlayerEntity', 'TrimQueue', 'StrikePlan', 'MarchPlan', 'PhasePlan', 'UpgradeOrder', 'OrderDeal', 'DeployScope', 'DeployLimits', 'OrderFight', 'Purchases', 'OrderMove', 'OrderTally', 'OrderContext', 'CombatTurn', 'CombatTokens',
     'TileGeometry', 'CombatSides', 'StepContext', 'STEP_EXECUTORS', 'ASK_EXECUTORS'];
 
 /**

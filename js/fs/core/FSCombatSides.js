@@ -48,7 +48,8 @@ const CombatSides = {
      * a side in its name belongs to the defender.
      */
     sideFromStep(step) {
-        return /-attacker$/.test(String(step || '')) ? CombatSides.ATTACKER : CombatSides.DEFENDER;
+        // How a step names its side is the turn's question: one place answers it.
+        return CombatTurn.sideOfStep(step);
     },
 
     /** The step of the damage of a side: the panel and the rules name them alike. */

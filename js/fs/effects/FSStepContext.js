@@ -63,10 +63,10 @@ class StepContext {
             if (!kinds.length || kinds.includes('any')) return true;
             return kinds.includes(face);
         };
-        this.liveIndex = (s2, i) => {
-            const dice = combat.dice[s2] || [];
-            return Number.isInteger(i) && i >= 0 && i < dice.length
-                && dice[i] !== null && dice[i] !== undefined && this.diceAllowed(dice[i]);
-        };
+        // The turn of the battle answers about the dice: which one is still
+        // rolled, whether the answer may reach it, how many are left.
+        this.turn = combat ? CombatTurn.of(combat) : null;
+        this.liveIndex = (s2, i) => !!this.turn && this.turn.has(s2, i)
+            && this.diceAllowed(this.turn.dice(s2)[i]);
     }
 }

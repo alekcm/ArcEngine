@@ -12,14 +12,15 @@ class DiceSteps {
         if (answer.no) return null;
         const kind = step.kind || answer.kind;
         const s2 = CombatSides.foe(side);
-        const at = (combat.dice[s2] || []).findIndex(d => d === kind);
+        const turn = CombatTurn.of(combat);
+        const at = turn.indexOf(s2, kind);
         if (at < 0) return null;
-        combat.dice[s2][at] = null;
+        turn.take(s2, at);
         R.log(state, seat, state.players[seat].name + ': противник теряет ' + effects.kindName(kind) + '.');
         if (step.gain !== false) {
-            const room = Math.max(0, R.DICE_MAX - combat.dice[side].filter(Boolean).length);
+            const room = turn.room(side);
             if (room > 0) {
-                combat.dice[side].push(kind);
+                turn.add(side, kind);
                 R.log(state, seat, state.players[seat].name + ' получает ' + effects.kindName(kind) + '.');
             }
         }
@@ -29,8 +30,9 @@ class DiceSteps {
     static loseDie(effects, f) {
         const { answer, combat, side, liveIndex } = f;
         const s2 = CombatSides.foe(side);
+        const turn = CombatTurn.of(combat);
         for (const i of (answer.dice || []).slice().sort((a, b) => b - a)) {
-            if (liveIndex(s2, i)) combat.dice[s2][i] = null;
+            if (liveIndex(s2, i)) turn.take(s2, i);
         }
         return null;
     }
@@ -38,8 +40,9 @@ class DiceSteps {
     static rerollDie(effects, f) {
         const { R, state, answer, combat, diceTarget, liveIndex } = f;
         const s2 = diceTarget();
+        const turn = CombatTurn.of(combat);
         for (const i of (answer.dice || [])) {
-            if (liveIndex(s2, i)) combat.dice[s2][i] = R.rollDice(state, 1)[0];
+            if (liveIndex(s2, i)) turn.put(s2, i, R.rollDice(state, 1)[0]);
         }
         return null;
     }
@@ -48,9 +51,10 @@ class DiceSteps {
         const { step, answer, combat, diceTarget, liveIndex } = f;
         const s2 = diceTarget();
         const kinds = Array.isArray(step.kinds) && step.kinds.length ? step.kinds : [step.kind];
+        const turn = CombatTurn.of(combat);
         let spent = 0;
         for (const i of (answer.dice || [])) {
-            if (liveIndex(s2, i)) { combat.dice[s2][i] = null; spent++; }
+            if (liveIndex(s2, i)) { turn.take(s2, i); spent++; }
         }
         // «За каждый потраченный `morale cube` Вы получаете …»
         // («Величие роя»): the gain of the card is counted by the cubes
@@ -63,8 +67,9 @@ class DiceSteps {
     static flipDie(effects, f) {
         const { step, answer, combat, diceTarget, liveIndex } = f;
         const s2 = diceTarget();
+        const turn = CombatTurn.of(combat);
         for (const i of (answer.dice || [])) {
-            if (liveIndex(s2, i)) combat.dice[s2][i] = step.to;
+            if (liveIndex(s2, i)) turn.put(s2, i, step.to);
         }
         return null;
     }
@@ -74,8 +79,9 @@ class DiceSteps {
         // All the dice of the chosen value are rerolled.
         const s2 = diceTarget();
         const face = answer.face || 'att';
-        for (let i = 0; i < combat.dice[s2].length; i++) {
-            if (combat.dice[s2][i] === face) combat.dice[s2][i] = R.rollDice(state, 1)[0];
+        const turn = CombatTurn.of(combat);
+        for (let i = 0; i < turn.dice(s2).length; i++) {
+            if (turn.dice(s2)[i] === face) turn.put(s2, i, R.rollDice(state, 1)[0]);
         }
         return null;
     }
@@ -83,13 +89,10 @@ class DiceSteps {
     static stealDie(effects, f) {
         const { R, state, seat, answer, combat, side } = f;
         const s2 = CombatSides.foe(side);
-        const dice = combat.dice[s2];
+        const turn = CombatTurn.of(combat);
         for (const i of (answer.dice || [])) {
-            if (i >= 0 && i < dice.length && dice[i] !== null && dice[i] !== undefined) {
-                const value = dice[i];
-                dice[i] = null;
-                combat.dice[side].push(value);
-            }
+            const value = turn.take(s2, i);
+            if (value !== null) turn.add(side, value);
         }
         R.log(state, seat, state.players[seat].name + ' забирает кубик противника.');
         return null;
@@ -98,7 +101,8 @@ class DiceSteps {
     static convertFoeDice(effects, f) {
         const { R, state, seat, step, answer, combat, side } = f;
         const s2 = CombatSides.foe(side);
-        const dice = combat.dice[s2];
+        const turn = CombatTurn.of(combat);
+        const dice = turn.dice(s2);
         // «… сконвертировать до 2 его кубов определённого значения в
         // любое другое значение по его выбору» («Превосходство машин»):
         // the opponent names the value he converts and then the value he
@@ -136,15 +140,15 @@ class DiceSteps {
         const { step, answer, combat, inCombat, side, units, diceSide, diceTarget, liveIndex } = f;
         const s2 = inCombat ? diceTarget() : side;
         const i = answer.dice && answer.dice.length ? answer.dice[0] : -1;
-        if (inCombat ? liveIndex(s2, i) : (i >= 0 && i < combat.dice[s2].length)) combat.dice[s2][i] = answer.face || 'att';
+        const turn = CombatTurn.of(combat);
+        if (inCombat ? liveIndex(s2, i) : turn.has(s2, i)) turn.put(s2, i, answer.face || 'att');
         step.done = true;
         // «за каждого … переверните 1 ваш кубик» — the next flip is asked
         // until the count of the units is spent.
         if (step.left !== undefined) {
             step.left = Math.max(0, step.left - 1);
             if (step.left > 0) {
-                const dice = combat.dice[s2] || [];
-                const options = dice.map((d, at) => at).filter(at => dice[at] !== null && dice[at] !== undefined);
+                const options = turn.dice(s2).map((d, at) => at).filter(at => turn.has(s2, at));
                 if (options.length) {
                     return { question: { kind: 'diceFace', who: effects.diceAsker(combat, side, step), diceSide: s2, op: 'setDie', n: 1, left: step.left, options, text: 'Какой кубик перевернуть и на какую грань? (' + step.left + ')' } };
                 }
@@ -163,9 +167,8 @@ class DiceSteps {
         const n = def.combat || 0;
         R.board(state).moveUnit(u, { system: combat.system, pos: combat.pos }, { seat });
         if (typeof R.trimArea === 'function') R.trimArea(state, seat, u.system, u.area);
-        const room = Math.max(0, R.DICE_MAX - combat.dice[side].filter(Boolean).length);
-        const got = Math.min(n, room);
-        for (const face of R.rollDice(state, got)) combat.dice[side].push(face);
+        const got = Math.min(n, CombatTurn.of(combat).room(side));
+        CombatTurn.of(combat).addMany(side, R.rollDice(state, got));
         R.log(state, seat, p.name + ' перемещает «' + def.name + '» и получает '
             + got + ' `any cube`.');
         step.done = true;
@@ -176,7 +179,7 @@ class DiceSteps {
         const { R, state, seat, step, answer, p, combat, inCombat, side, diceSide } = f;
         if (!inCombat) return null;
         const foeSide = CombatSides.foe(side);
-        const dice = combat.dice[foeSide] || [];
+        const dice = CombatTurn.of(combat).dice(foeSide);
         /** @type {any[]} */
         const options = dice.map((d, i) => i).filter(i => dice[i] === step.kind);
         const need = step.n || 3;
@@ -199,7 +202,7 @@ class DiceSteps {
             } };
         }
         const picked = (answer.dice || []).filter(i => options.includes(i));
-        for (const i of picked) combat.dice[foeSide][i] = null;
+        for (const i of picked) CombatTurn.of(combat).take(foeSide, i);
         gain(need - picked.length);
         step.done = true;
         return null;
