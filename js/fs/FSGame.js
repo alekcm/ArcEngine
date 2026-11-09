@@ -1964,8 +1964,7 @@ class FSGame {
                 // «Во время шага нанесения повреждений Вы назначаете урон
                 // отрядам и бастионам противника» («Величие роя»): the step is
                 // played by the owner of the card, not by the one who suffers.
-                const assignSeat = c.assignDamage ? c.assignDamage.seat
-                    : (CombatSides.seatOf(c, whose));
+                const assignSeat = CombatHooks.of(c).assignSeat(CombatSides.seatOf(c, whose));
                 if (assignSeat !== me) {
                     const who2 = CombatSides.sideOf(c, assignSeat);
                     ctx.text = 'Урон распределяет ' + nameOf(who2) + '.';

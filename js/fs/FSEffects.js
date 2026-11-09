@@ -1591,17 +1591,15 @@ const FS_EFFECTS = {
         if (c.kind === 'combat' && turn && turn.release()) {
             if (typeof R.advanceCombatSteps === 'function') R.advanceCombatSteps(state);
         }
-        // «Критический удар» waited for a unit to take damage: the damage step
-        // itself resumes after the scheme (or its refusal) is resolved.
-        if (c.kind === 'combat' && state.combat && state.combat.damageResume
+        // The moments a battle waits for: «Критический удар» resumes the step it
+        // interrupted, «Совращённый Хаосом» runs the tail of the damage step again.
+        const hooks = CombatHooks.of(state.combat);
+        if (c.kind === 'combat' && hooks && hooks.damageResume
             && typeof R.resumeDamage === 'function') {
             R.resumeDamage(state);
         }
-        // «Совращённый Хаосом» is used at the END of the damage step: after its
-        // own route the ordinary tail of the damage step must run again.
-        if (c.kind === 'combat' && state.combat && state.combat.damageEndResume
-            && !state.pending) {
-            state.combat.damageEndResume = false;
+        if (c.kind === 'combat' && hooks && hooks.endResume && !state.pending) {
+            hooks.takeEndResume();
             if (typeof R.endDamageStep === 'function') R.endDamageStep(state);
         }
         // «Страх с небес» routes one damaged unit after the strike: the order
@@ -1626,15 +1624,15 @@ const FS_EFFECTS = {
         }
         // The upgrade of the preparation step waited for the scheme of the start
         // of the combat («Сервочерепа-стражи»): its question is asked now.
-        if (c.kind === 'combat' && state.combat && state.combat.prepQueued
+        if (c.kind === 'combat' && hooks && hooks.prepQueued
             && typeof R.prepEffects === 'function' && !state.pending) {
-            state.combat.prepQueued = false;
+            hooks.takePrepQueued();
             R.prepEffects(state, state.combat.attacker);
         }
         // The scheme of «the start of a round of combat» waited for the question
         // of the start of the combat: it is asked now.
-        if (c.kind === 'combat' && state.combat && state.combat.roundSchemeQueued) {
-            state.combat.roundSchemeQueued = false;
+        if (c.kind === 'combat' && hooks && hooks.roundQueued) {
+            hooks.takeRoundQueued();
             if (typeof R.maybeScheme === 'function' && !state.pending) {
                 R.maybeScheme(state, state.combat.attacker, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
             }

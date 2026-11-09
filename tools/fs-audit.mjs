@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage } = ctx;
+    CombatDamage, CombatHooks } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -729,6 +729,55 @@ rule('order-1', '«… this order …» — командный уровень, �
     eq(fight.unspentTemp(7), 0, 'считать больше нечего');
     eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
     eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
+
+rule('combat-0e', '«Сбросить карту: «Критический удар»?» — моменты, в которые бой ждёт схему, ведёт CombatHooks', () => {
+    const combat = { attacker: 0, defender: 1 };
+    const hooks = CombatHooks.of(combat);
+    eq(CombatHooks.of(combat), hooks, 'у боя один набор пауз');
+    eq(CombatHooks.of(null), null, 'без боя пауз нет');
+    // A moment is asked once per side.
+    eq(hooks.asked('damageHook', 'attacker'), false, 'момент ещё не спрошен');
+    eq(hooks.ask('damageHook', 'attacker'), true, 'первый раз его спрашивают');
+    eq(hooks.ask('damageHook', 'attacker'), false, 'второй раз — нет');
+    eq(hooks.asked('damageHook', 'attacker'), true, 'момент отмечен');
+    eq(hooks.ask('damageHook', 'defender'), true, 'у другой стороны свой момент');
+    hooks.forget('damageHook');
+    eq(hooks.ask('damageHook', 'attacker'), true, 'новый шаг спрашивает снова');
+    // The step that waited for the scheme resumes where it stopped.
+    hooks.damageResume = { seat: 0, side: 'attacker', cmd: { targets: [] } };
+    eq(hooks.damageResume.seat, 0, 'прерванный шаг урона запомнен');
+    eq(hooks.takeDamageResume().seat, 0, 'шаг вернулся');
+    eq(hooks.damageResume, null, 'и больше не ждёт');
+    eq(hooks.takeDamageResume(), null, 'второй раз возвращать нечего');
+    // The end of the damage step: one seat after another, then the tail again.
+    eq(hooks.endResume, false, 'конец шага не ждёт');
+    hooks.endResume = true;
+    eq(hooks.takeEndResume(), true, 'пауза конца шага забрана');
+    eq(hooks.endResume, false, 'и снята');
+    eq(hooks.endNext(), 0, 'первый конец шага');
+    eq(hooks.endStep(), 0, 'первый игрок');
+    eq(hooks.endStep(), 1, 'второй игрок');
+    eq(hooks.endNext(), 2, 'оба спрошены');
+    hooks.forgetEnd();
+    eq(hooks.endNext(), 0, 'следующий шаг урона начнёт сначала');
+    // The moments queued from the start of the combat.
+    hooks.prepQueued = true;
+    eq(hooks.prepQueued, true, 'вопрос подготовки отложен');
+    eq(hooks.takePrepQueued(), true, 'вопрос задан');
+    eq(hooks.prepQueued, false, 'и снят с очереди');
+    hooks.roundQueued = true;
+    eq(hooks.takeRoundQueued(), true, 'схема раунда задана');
+    eq(hooks.roundQueued, false, 'и снята');
+    // «Во время шага нанесения повреждений Вы назначаете урон» — the owner of the card.
+    eq(hooks.assignSeat(1), 1, 'без карты урон назначает свой игрок');
+    hooks.assignTo(0, 'defender');
+    eq(hooks.assignSeat(1), 0, 'карта передала урон другому игроку');
+    eq(hooks.assigner.side, 'defender', 'и назвала сторону');
+    // The start of a new round forgets every moment.
+    hooks.ask('playHook', 'attacker');
+    hooks.reset();
+    eq(hooks.asked('playHook', 'attacker'), false, 'новый раунд спрашивает снова');
 });
 
 rule('combat-0d', '«Any damage that exceeds a unit…health value must be applied to one of his other units» + «the health of the enemy is reduced to 3» — урон боя ведёт CombatDamage', () => {

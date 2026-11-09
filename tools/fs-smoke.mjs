@@ -523,6 +523,30 @@ try {
     fail(e.message);
 }
 
+// --- the moments a battle waits for: one object ------------------------------
+section('паузы боя: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSCombatHooks.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The schemes asked once per side and per step, the step that waited for
+        // them and the moments queued from the start of the combat are one
+        // object: CombatHooks.
+        const re = /\b(?:state\.combat|s\.combat|combat|c|cbt)\.(?:damageHook|criticalHook|damageEndHook|damageEndResume|damageResume|playHook|prepQueued|roundSchemeQueued|assignDamage)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('паузы боя спрашивают у CombatHooks');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the damage of a battle: one object -------------------------------------
 section('урон боя: один объект');
 try {

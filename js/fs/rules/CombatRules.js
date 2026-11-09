@@ -153,7 +153,7 @@ class CombatRules {
         } else if (this.engine.schemesOf(state, attacker).some(x => x.trigger === 'round' && !x.defer)) {
             // Both questions at once are impossible: the round one waits for the
             // answer to the question of the start of the combat.
-            combat.roundSchemeQueued = true;
+            CombatHooks.of(combat).roundQueued = true;
         }
         // The upgrade of the preparation step («Сервочерепа-стражи») asks its
         // question now — or waits for the scheme that is being answered.
@@ -170,7 +170,7 @@ class CombatRules {
         if (state.pending) {
             // The scheme of the start of the combat is answered first; the
             // abilities of the order are asked as soon as the answer is in.
-            state.combat.prepQueued = true;
+            CombatHooks.of(state.combat).prepQueued = true;
             return false;
         }
         const taken = fight.takePrep();
@@ -203,7 +203,7 @@ class CombatRules {
                 // «Во время шага нанесения повреждений Вы назначаете урон
                 // отрядам и бастионам противника» («Величие роя»): the damage of
                 // the other side is placed by the owner of the card.
-                const a = c.assignDamage;
+                const a = CombatHooks.of(c).assigner;
                 const foeSide = CombatSides.foe(side);
                 const step = CombatTurn.of(c);
                 const foeStep = CombatSides.damageStep(foeSide);
@@ -587,9 +587,7 @@ class CombatRules {
             if (turn.choosing) {
                 const hs = turn.side;
                 const hseat = CombatSides.seatOf(c, hs);
-                c.playHook = c.playHook || {};
-                if (!c.playHook[hs]) {
-                    c.playHook[hs] = true;
+                if (CombatHooks.of(c).ask('playHook', hs)) {
                     const was = turn.step;
                     if (this.engine.maybeScheme(state, hseat, 'combat-play', { kind: 'combat', ctx: { side: hs } })) {
                         turn.hold(was);
@@ -796,16 +794,13 @@ class CombatRules {
             return { ok: true, damage: 0, applied: [] };
         }
         // The schemes of the damage step are used before the damage.
-        c.damageHook = c.damageHook || {};
-        if (!c.damageHook[side]) {
-            c.damageHook[side] = true;
+        const hooks = CombatHooks.of(c);
+        if (hooks.ask('damageHook', side)) {
             if (this.engine.maybeScheme(state, seat, 'damage', { kind: 'combat', ctx: { side } })) return { ok: true, pending: true };
         }
         // «Критический удар» belongs to the opponent of the player who assigns
         // the damage: its scheme is offered before the units are hit.
-        c.criticalHook = c.criticalHook || {};
-        if (!c.criticalHook[side]) {
-            c.criticalHook[side] = true;
+        if (hooks.ask('criticalHook', side)) {
             if (this.maybeCriticalStrike(state, seat, side, cmd.targets || [])) {
                 return { ok: true, pending: true };
             }
@@ -945,8 +940,7 @@ class CombatRules {
         if (rules.repeats && !rules.repeated) {
             rules.repeatOnce();
             c.destroyedNow = 0;
-            c.damageHook = {};
-            c.damageEndHook = null;
+            CombatHooks.of(c).forget('damageHook').forgetEnd();
             c.damage = { attacker: 0, defender: 0 };
             CombatCards.of(c).clearApplied();
             CombatTurn.of(c).setStep('damage-attacker');
@@ -955,13 +949,13 @@ class CombatRules {
         }
         // «в конце шага нанесения повреждений … деморализовать 1 отряд
         // противника» («Совращённый Хаосом»): both combatants may hold a plan.
-        if (!c.damageEndHook) c.damageEndHook = { next: 0 };
+        const hooks = CombatHooks.of(c);
         const ends = [c.attacker, c.defender];
-        while (c.damageEndHook.next < ends.length) {
-            const seat = ends[c.damageEndHook.next++];
+        for (let at = hooks.endNext(); at < ends.length; at = hooks.endNext()) {
+            const seat = ends[hooks.endStep()];
             const side = CombatSides.sideOf(c, seat);
             if (this.engine.maybeScheme(state, seat, 'damage-end', { kind: 'combat', ctx: { side } })) {
-                c.damageEndResume = true;
+                hooks.endResume = true;
                 return;
             }
         }
@@ -1207,10 +1201,7 @@ class CombatRules {
         c.endRoundPlans = turn.ofRound(c.endRoundPlans);
         c.endRoundNoRetreat = turn.ofRound(c.endRoundNoRetreat);
         c.fallenThisStep = [];
-        c.damageHook = {};
-        c.criticalHook = {};
-        c.damageEndHook = null;
-        c.damageEndResume = false;
+        CombatHooks.of(c).reset();
         c.resurrectCandidates = [];
         c.resurrectAsked = null;
         c.noDamageRetreat = turn.ofRound(c.noDamageRetreat);
@@ -1322,9 +1313,10 @@ class CombatRules {
             const schemes = (p.schemes || []).filter(x => x && x.trigger === 'damage'
                 && (x.steps || []).some(y => y && y.op === 'destroyDamagedFoe'));
             if (!schemes.length) continue;
-            c.damageHook[side] = true;
-            c.criticalHook[side] = true;
-            c.damageResume = { seat, side, cmd: { targets: targets.slice() } };
+            const hooks = CombatHooks.of(c);
+            hooks.ask('damageHook', side);
+            hooks.ask('criticalHook', side);
+            hooks.damageResume = { seat, side, cmd: { targets: targets.slice() } };
             CombatTurn.of(c).holdEffect('effect');
             state.pending = {
                 seat: p.seat, answerSeat: p.seat, kind: 'scheme', steps: [], index: 0,
@@ -1341,9 +1333,8 @@ class CombatRules {
 
     resumeDamage(state) {
         const c = state.combat;
-        const d = c && c.damageResume;
+        const d = CombatHooks.of(c) ? CombatHooks.of(c).takeDamageResume() : null;
         if (!d) return;
-        c.damageResume = null;
         this.combatDamage(state, d.seat, d.side, d.cmd);
     }
 

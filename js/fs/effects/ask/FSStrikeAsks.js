@@ -106,7 +106,7 @@ class StrikeAsks {
     static assignDamage(effects, f) {
         const { R, state, seat, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
-        combat.assignDamage = { seat: seat, side: side };
+        CombatHooks.of(combat).assignTo(seat, side);
         R.log(state, seat, p.name + ' сам назначает урон отрядам и бастионам противника.');
         return null;
     }
