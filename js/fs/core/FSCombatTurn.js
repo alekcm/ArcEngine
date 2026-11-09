@@ -81,6 +81,25 @@ class CombatTurn {
         return (list || []).filter(x => x && this.inRound(x));
     }
 
+    /**
+     * An entry is put on the table of the round: the list of the battle (a plan
+     * of a card, a promise to the next round) gets it with the round it was
+     * made in.
+     */
+    putEntry(field, entry) {
+        if (!this.combat[field]) this.combat[field] = [];
+        const one = Object.assign({}, entry);
+        if (one.round === undefined) one.round = this.round;
+        this.combat[field].push(one);
+        return one;
+    }
+
+    /** The list of the battle a card fills, without a round of its own. */
+    list(field) {
+        if (!this.combat[field]) this.combat[field] = [];
+        return this.combat[field];
+    }
+
     // --- the step ------------------------------------------------------------
 
     /** The step of the battle. */

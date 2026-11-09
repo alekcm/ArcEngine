@@ -274,10 +274,7 @@ class CombatRules {
         const owner = CombatSides.seatOf(c, side);
         const actor = seat === undefined ? owner : seat;
         const def = this.reinforceTokenDef(state, side);
-        let health = def ? def.health : 1;
-        if (c.healthBonus && owner === actor) health += c.healthBonus;
-        if (c.enemyHealth && owner !== actor) health = Math.min(health, c.enemyHealth);
-        return Math.max(1, health);
+        return CombatDamage.of(c).health(owner, actor, def ? def.health : 1);
     }
 
     reinforceTokenIndex(state, side, id) {
@@ -303,12 +300,8 @@ class CombatRules {
         const c = state.combat;
         if (!c) return false;
         const seat = CombatSides.seatOf(c, side);
-        return (c.noRoute || []).some(x => {
-            const one = typeof x === 'number' ? { seat: x } : x;
-            if (one.seat !== seat) return false;
-            if (!CombatTurn.of(c).inRound(one)) return false;
-            return !one.kl || one.kl >= 0;   // a token is command level zero
-        });
+        // A token is a command level zero unit: any ban of its side covers it.
+        return CombatDamage.of(c).forbidsRoute(seat, 0, CombatTurn.of(c).round);
     }
 
     tokenUnits(state, side) {
@@ -342,7 +335,7 @@ class CombatRules {
 
     canTakeDamage(state, c, side) {
         const items = this.pieces(state, c, side);
-        if (c.ownRoutedDamage && c.ownRoutedDamage[side] === CombatTurn.of(c).round) return items;
+        if (CombatDamage.of(c).ownRoutedAllowed(side, CombatTurn.of(c).round)) return items;
         const ready = items.filter(x => x.type ? x.type === 'bastion' : !x.routed);
         return ready.length ? ready : items;
     }
@@ -698,17 +691,7 @@ class CombatRules {
         // противник получил урон, он получает ещё 3 урона» («Секущие когти»),
         // «если ваш противник будет распределять какой-либо урон…» — a blow the
         // shields stopped stays stopped.
-        const extraFoe = damage > 0 ? (c.extraDamageFoe || 0) : 0;
-        if (c.extraDamageFoeSide) {
-            // The extra damage belongs to the side other than the owner's.
-            if (c.extraDamageFoeSide === side) damage += extraFoe;
-            damage += (c.extraDamageBoth || 0);
-        } else if (side === 'attacker') {
-            damage += extraFoe + (c.extraDamageBoth || 0);
-        } else {
-            damage += (c.extraDamage || 0) + (c.extraDamageBoth || 0);
-        }
-        return damage;
+        return CombatDamage.of(c).extra(side, damage);
     }
 
     damagePreview(state, side, targets, seat) {
@@ -716,7 +699,7 @@ class CombatRules {
         const owner = CombatSides.seatOf(c, side);
         const actor = seat === undefined ? owner : seat;
         const damage = this.combatDamageFor(state, side);
-        const oneByOne = !!(c.damageOneByOne && side === 'defender');
+        const oneByOne = CombatDamage.of(c).oneByOne(side);
         const rows = [];
         let left = damage;
         for (const id of targets || []) {
@@ -739,9 +722,7 @@ class CombatRules {
             const unit = state.units.find(u => u.id === id);
             if (unit) {
                 const def = this.engine.unitOf(state, unit);
-                let health = def ? def.health : 1;
-                if (c.healthBonus && unit.seat === actor) health += c.healthBonus;
-                if (c.enemyHealth && unit.seat !== actor) health = Math.min(health, c.enemyHealth);
+                const health = CombatDamage.of(c).health(unit.seat, actor, def ? def.health : 1);
                 const take = oneByOne ? 1 : Math.min(left, health);
                 const destroyed = oneByOne ? health <= 1 : left >= health;
                 left -= take;
@@ -836,13 +817,13 @@ class CombatRules {
             if (!able.has(id)) return { ok: false, error: 'Этот отряд не может получить урон.' };
         }
         c.damage[side] = damage;
+        const rules = CombatDamage.of(c);
         // The card may make the damage go one point at a time.
-        const oneByOne = !!(c.damageOneByOne && side === 'defender');
+        const oneByOne = rules.oneByOne(side);
         const targets = cmd.targets || [];
         // «Этот отряд или бастион получает урон первым» («Бронетанковый клин»):
         // the piece the card chose takes the damage before everything else.
-        const firstHit = (c.damageFirst || []).find(x => x && x.side === side
-            && turn.inRound(x) && able.has(x.id));
+        const firstHit = rules.firstOf(side, turn.round);
         if (firstHit && damage > 0) {
             const at = targets.indexOf(firstHit.id);
             if (at > 0) {
@@ -855,8 +836,8 @@ class CombatRules {
         // «Урон, превышающий значение здоровья выбранного отряда или
         // бастиона, теряется» («Монт'ка»): the chosen piece is the ONLY one
         // that takes damage this step.
-        const excessId = c.ignoreExcess && turn.inRound(c.ignoreExcess)
-            && firstHit && c.ignoreExcess.id === firstHit.id ? c.ignoreExcess.id : null;
+        const keeping = rules.excessOf(turn.round);
+        const excessId = keeping && firstHit && keeping.id === firstHit.id ? keeping.id : null;
         // The damage is applied to the chosen units in order.
         let left = damage;
         const applied = [];
@@ -897,10 +878,8 @@ class CombatRules {
             const unit = state.units.find(u => u.id === id);
             if (unit) {
                 const def = this.engine.unitOf(state, unit);
-                let health = def ? def.health : 1;
                 // The card may raise the health of the units or lower it.
-                if (c.healthBonus && unit.seat === seat) health += c.healthBonus;
-                if (c.enemyHealth && unit.seat !== seat) health = Math.min(health, c.enemyHealth);
+                const health = rules.health(unit.seat, seat, def ? def.health : 1);
                 if (this.retreatInsteadOfDestroy(state, unit)) {
                     left -= health;
                     applied.push({ unit: unit.id, retreated: true });
@@ -927,12 +906,7 @@ class CombatRules {
                     }
                 } else {
                     // The card may keep the unit from being routed.
-                    const keep = (c.noRoute || []).some(x => {
-                        const one = typeof x === 'number' ? { seat: x } : x;
-                        if (one.seat !== unit.seat) return false;
-                        if (!turn.inRound(one)) return false;
-                        return !one.kl || (def && (def.kl || 0) <= one.kl);
-                    });
+                    const keep = rules.forbidsRoute(unit.seat, def ? def.kl || 0 : 0, turn.round);
                     if (!keep) {
                         this.noteFallen(state, unit, false);
                         this.routeUnit(state, unit, turn.round);
@@ -967,8 +941,9 @@ class CombatRules {
     endDamageStep(state) {
         const c = state.combat;
         if (!c) return;
-        if (c.repeatDamage && !c.damageRepeated) {
-            c.damageRepeated = true;
+        const rules = CombatDamage.of(c);
+        if (rules.repeats && !rules.repeated) {
+            rules.repeatOnce();
             c.destroyedNow = 0;
             c.damageHook = {};
             c.damageEndHook = null;
@@ -1170,12 +1145,7 @@ class CombatRules {
         // The effects printed «during this round of combat» end here: the
         // health bonus, the routing ban and the chosen first target must not
         // leak into the next execution round.
-        c.enemyHealth = null;
-        c.healthBonus = null;
-        c.noRoute = null;
-        c.damageFirst = null;
-        c.retreatInstead = null;
-        c.ignoreExcess = null;
+        CombatDamage.of(c).clear();
         // The card may destroy the units that became routed.
         if (c.destroyRouted) {
             for (const u of state.units.slice()) {
@@ -1260,10 +1230,8 @@ class CombatRules {
     applyDamageStartTokens(state) {
         const c = state.combat;
         const turn = CombatTurn.of(c);
-        if (!turn || !c.damageStartTokens || c.damageStartRound === turn.round) return;
-        c.damageStartRound = turn.round;
-        for (const one of c.damageStartTokens) {
-            if (!turn.inRound(one)) continue;
+        if (!turn) return;
+        for (const one of CombatDamage.of(c).takeStartTokens(turn.round)) {
             const side = one.side;
             const kind = one.kind || 'att';
             const n = one.n || 1;
@@ -1272,7 +1240,6 @@ class CombatRules {
             this.engine.log(state, seat, state.players[seat].name + ' теряет ' + n
                 + ' жетон(ов) атаки в начале шага повреждений.');
         }
-        c.damageStartTokens = [];
     }
 
     noteFallen(state, unit, destroyed) {
@@ -1291,8 +1258,8 @@ class CombatRules {
 
     retreatInsteadOfDestroy(state, unit) {
         const c = state.combat;
-        const plan = c && c.retreatInstead;
-        if (!plan || plan.seat !== unit.seat || !CombatTurn.of(c).inRound(plan) || plan.used) return false;
+        const plan = c && CombatDamage.of(c).retreatPlan(unit.seat, CombatTurn.of(c).round);
+        if (!plan) return false;
         const def = this.engine.unitOf(state, unit);
         if (!def) return false;
         const ground = def.type === 'ground';

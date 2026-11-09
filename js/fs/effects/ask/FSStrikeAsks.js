@@ -117,12 +117,7 @@ class StrikeAsks {
         // The extra damage goes to one side or to both. The «foe» of a
         // card that offers «the opponent takes 3 more damage» is the side
         // other than the card's player: the role is fixed for this combat.
-        if (step.who === 'both') combat.extraDamageBoth = (combat.extraDamageBoth || 0) + (step.n || 0);
-        else if (step.who === 'foe') {
-            combat.extraDamageFoe = (combat.extraDamageFoe || 0) + (step.n || 0);
-            combat.extraDamageFoeSide = (seat === combat.attacker) ? 'defender' : 'attacker';
-        }
-        else combat.extraDamage = (combat.extraDamage || 0) + (step.n || 0);
+        CombatDamage.of(combat).addExtra(step.who, step.n || 0, seat);
         return null;
     }
 
@@ -152,21 +147,20 @@ class StrikeAsks {
         // rest of this execution round the routed units of the side may
         // be chosen for the damage as well.
         if (!inCombat) return null;
-        combat.ownRoutedDamage = combat.ownRoutedDamage || {};
-        combat.ownRoutedDamage[side] = CombatTurn.of(combat).round;
+        CombatDamage.of(combat).allowOwnRouted(side, CombatTurn.of(combat).round);
         R.log(state, seat, state.players[seat].name + ' может нанести урон своим деморализованным отрядам в этом раунде.');
         return null;
     }
 
     static damageOneByOne(effects, f) {
         const { combat } = f;
-        if (combat) combat.damageOneByOne = true;
+        if (combat) CombatDamage.of(combat).setOneByOne();
         return null;
     }
 
     static repeatDamage(effects, f) {
         const { combat } = f;
-        if (combat) combat.repeatDamage = true;
+        if (combat) CombatDamage.of(combat).setRepeat();
         return null;
     }
 
@@ -174,8 +168,7 @@ class StrikeAsks {
         const { R, state, seat, step, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
         const foeSide = CombatSides.foe(side);
-        combat.damageStartTokens = combat.damageStartTokens || [];
-        combat.damageStartTokens.push({
+        CombatDamage.of(combat).addStartTokens({
             side: foeSide, kind: step.kind || 'att', n: step.n || 1, round: CombatTurn.of(combat).round,
         });
         R.log(state, seat, p.name + ': в начале шага повреждений противник теряет '
@@ -209,8 +202,7 @@ class StrikeAsks {
     static noDamageRetreat(effects, f) {
         const { seat, step, combat, inCombat } = f;
         if (!inCombat) return null;
-        combat.noDamageRetreat = combat.noDamageRetreat || [];
-        combat.noDamageRetreat.push({ seat, round: CombatTurn.of(combat).round, steps: step.steps || [] });
+        CombatTurn.of(combat).putEntry('noDamageRetreat', { seat, steps: step.steps || [] });
         step.done = true;
         return null;
     }
@@ -242,10 +234,9 @@ class StrikeAsks {
     static ignoreExcess(effects, f) {
         const { R, state, seat, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
-        const chosen = (combat.damageFirst || [])
-            .filter(x => x && x.round === CombatTurn.of(combat).round).pop();
+        const chosen = CombatDamage.of(combat).lastFirst(CombatTurn.of(combat).round);
         if (!chosen) return null;
-        combat.ignoreExcess = { side: chosen.side, id: chosen.id, round: CombatTurn.of(combat).round };
+        CombatDamage.of(combat).setExcess(chosen.side, chosen.id, CombatTurn.of(combat).round);
         R.log(state, seat, p.name + ': урон сверх здоровья выбранной цели теряется.');
         return null;
     }
@@ -271,8 +262,7 @@ class StrikeAsks {
     static endRoundReinforce(effects, f) {
         const { R, state, seat, combat, inCombat, p } = f;
         if (!inCombat) return null;
-        combat.endRoundPlans = combat.endRoundPlans || [];
-        combat.endRoundPlans.push({ seat, round: CombatTurn.of(combat).round, fired: false });
+        CombatTurn.of(combat).putEntry('endRoundPlans', { seat, fired: false });
         R.log(state, seat, p.name + ': «Кауйон» ждёт конца раунда.');
         return null;
     }

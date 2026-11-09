@@ -136,7 +136,7 @@ class MoveSteps {
     static retreatInstead(effects, f) {
         const { R, state, seat, step, answer, p, combat, inCombat } = f;
         if (!inCombat || answer.no) return null;
-        combat.retreatInstead = { seat, round: CombatTurn.of(combat).round, used: false };
+        CombatDamage.of(combat).setRetreatPlan(seat, CombatTurn.of(combat).round);
         R.log(state, seat, p.name + ': уничтоженный отряд отступит вместо гибели.');
         step.done = true;
         return null;

@@ -21,7 +21,8 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
+    CombatDamage } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -728,6 +729,75 @@ rule('order-1', '«… this order …» — командный уровень, �
     eq(fight.unspentTemp(7), 0, 'считать больше нечего');
     eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
     eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
+
+rule('combat-0d', '«Any damage that exceeds a unit…health value must be applied to one of his other units» + «the health of the enemy is reduced to 3» — урон боя ведёт CombatDamage', () => {
+    const combat = { attacker: 0, defender: 1, round: 1 };
+    const damage = CombatDamage.of(combat);
+    eq(CombatDamage.of(combat), damage, 'у боя одно правило урона');
+    eq(CombatDamage.of(null), null, 'без боя урона нет');
+    // The health of a piece: the bonus of its own side, the ceiling of the enemy.
+    damage.addHealthBonus(1);
+    eq(damage.healthBonus, 1, 'здоровье своих поднято');
+    damage.enemyHealth = 3;
+    eq(damage.health(0, 0, 2), 3, 'свой отряд получает надбавку');
+    eq(damage.health(1, 0, 5), 3, 'чужой отряд упирается в предел');
+    eq(damage.health(1, 1, 5), 6, 'свой отряд получает надбавку, а не предел врага');
+    // The extra damage: the foe of a card is the side of its owner.
+    damage.addExtra('both', 2, 0);
+    eq(damage.extra('attacker', 4), 6, 'урон обеим сторонам');
+    damage.clear();
+    damage.addExtra('foe', 3, 0);
+    eq(damage.extra('defender', 2), 5, 'карта атакующего бьёт по защитнику');
+    eq(damage.extra('attacker', 2), 2, 'и не бьёт по себе');
+    eq(damage.extra('defender', 0), 0, 'щиты остановили удар — добавки нет');
+    eq(damage.extra('attacker', 0), 0, 'и по второй стороне тоже');
+    damage.clear();
+    // «… по 1 единице за раз» and «повторяется» are modes of the step.
+    damage.setOneByOne();
+    eq(damage.oneByOne('defender'), true, 'урон защитника идёт по единице');
+    eq(damage.oneByOne('attacker'), false, 'урон атакующего — нет');
+    damage.setRepeat();
+    eq(damage.repeats, true, 'шаг повторяется');
+    eq(damage.repeated, false, 'но ещё не повторён');
+    damage.repeatOnce();
+    eq(damage.repeated, true, 'шаг уже повторён');
+    // «этот отряд не может быть деморализован» — до уровня командования.
+    damage.setNoRoute(0, 2, 1);
+    eq(damage.forbidsRoute(0, 2, 1), true, 'отряд своего уровня не деморализуется');
+    eq(damage.forbidsRoute(0, 3, 1), false, 'выше названного уровня — деморализуется');
+    eq(damage.forbidsRoute(1, 1, 1), false, 'чужая сторона не защищена');
+    eq(damage.forbidsRoute(0, 2, 2), false, 'в другом раунде запрета нет');
+    // «нанесите урон деморализованным отрядам в этом раунде» — по раунду.
+    damage.allowOwnRouted('attacker', 1);
+    eq(damage.ownRoutedAllowed('attacker', 1), true, 'свои деморализованные — цель');
+    eq(damage.ownRoutedAllowed('attacker', 2), false, 'в следующем раунде — нет');
+    // The first target and the damage that keeps its excess.
+    damage.addFirst('defender', 'u7', 1);
+    eq(damage.firstOf('defender', 1).id, 'u7', 'первая цель названа');
+    eq(damage.firstOf('defender', 2), null, 'в другом раунде её нет');
+    eq(damage.firstOf('attacker', 1), null, 'у другой стороны её нет');
+    damage.setExcess('defender', 'u7', 1);
+    eq(damage.excessOf(1).id, 'u7', 'излишек урона теряется на этой цели');
+    eq(damage.excessOf(2), null, 'в другом раунде — нет');
+    // The retreat instead of destruction: a plan of one round, once.
+    const plan = damage.setRetreatPlan(1, 1);
+    eq(damage.retreatPlan(1, 1), plan, 'план отступления этого раунда');
+    eq(damage.retreatPlan(1, 2), null, 'в следующем раунде плана нет');
+    plan.used = true;
+    eq(damage.retreatPlan(1, 1), null, 'использованный план не годится');
+    // The tokens taken at the start of the damage step are taken once.
+    damage.addStartTokens({ side: 'attacker', kind: 'att', n: 1, round: 1 });
+    eq(damage.takeStartTokens(1).length, 1, 'жетоны взяты в начале шага');
+    eq(damage.takeStartTokens(1).length, 0, 'второй раз их нет');
+    // The end of the round clears every effect «during this round».
+    damage.setNoRoute(0, 0, 1);
+    damage.clear();
+    eq(damage.healthBonus, 0, 'надбавка к здоровью снята');
+    eq(damage.forbidsRoute(0, 0, 1), false, 'запрет деморализации снят');
+    eq(damage.firstOf('defender', 1), null, 'первая цель забыта');
+    eq(damage.excessOf(1), null, 'излишек урона забыт');
+    eq(damage.retreatPlan(1, 1), null, 'план отступления забыт');
 });
 
 rule('combat-0c', '«discards the combat cards he used during the combat by shuffling them back into his combat deck» — карты боя держит CombatCards', () => {

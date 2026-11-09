@@ -68,13 +68,13 @@ class OrderAsks {
 
     static healthBonus(effects, f) {
         const { step, combat } = f;
-        if (combat) combat.healthBonus = (combat.healthBonus || 0) + (step.n || 0);
+        if (combat) CombatDamage.of(combat).addHealthBonus(step.n || 0);
         return null;
     }
 
     static enemyHealth(effects, f) {
         const { state, seat, step, combat } = f;
-        if (combat) combat.enemyHealth = step.n || 3;
+        if (combat) CombatDamage.of(combat).enemyHealth = step.n || 3;
         // «Во время этого орбитального удара здоровье отрядов вашего
         // противника уменьшается до 3» («Вирусные бомбы»).
         else if (state.order && OrderContext.of(state.order).isSeat(seat)) StrikePlan.of(state.order).setEnemyHealth(step.n || 3);
@@ -299,8 +299,7 @@ class OrderAsks {
         if (!inCombat) return null;
         // The card stays in play until a unit of the command level falls:
         // the combat asks about it after the damage step.
-        combat.resurrectPlan = combat.resurrectPlan || [];
-        combat.resurrectPlan.push({ seat, round: CombatTurn.of(combat).round, maxKl: step.maxKl === undefined ? 1 : step.maxKl });
+        CombatTurn.of(combat).putEntry('resurrectPlan', { seat, maxKl: step.maxKl === undefined ? 1 : step.maxKl });
         step.done = true;
         return null;
     }
@@ -332,14 +331,9 @@ class OrderAsks {
     static noRoute(effects, f) {
         const { seat, step, combat, inCombat, foe } = f;
         if (!inCombat) return null;
-        combat.noRoute = combat.noRoute || [];
         // «в этом раунде боя» — the immunity of the card lives while the
         // round does.
-        combat.noRoute.push({
-            seat: step.who === 'foe' ? foe : seat,
-            round: CombatTurn.of(combat).round,
-            kl: step.kl,
-        });
+        CombatDamage.of(combat).setNoRoute(step.who === 'foe' ? foe : seat, step.kl, CombatTurn.of(combat).round);
         return null;
     }
 }

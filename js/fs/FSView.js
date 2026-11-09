@@ -1862,9 +1862,7 @@ const FSView = {
             if (!p) continue;
             const side = seatSide(u.seat);
             const sideSeat = CombatSides.seatOf(c, side);
-            let hp = def.health || 1;
-            if (c.healthBonus && u.seat === sideSeat) hp += c.healthBonus;
-            if (c.enemyHealth && u.seat !== sideSeat) hp = Math.min(hp, c.enemyHealth);
+            const hp = CombatDamage.of(c).health(u.seat, sideSeat, def.health || 1);
             items.push({
                 key: u.id + ':' + hp + ':' + (u.routed ? 1 : 0) + ':' + (def.morale || 0),
                 x: p.x, y: p.y + 1, z: p.z,

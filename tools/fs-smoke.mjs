@@ -523,6 +523,29 @@ try {
     fail(e.message);
 }
 
+// --- the damage of a battle: one object -------------------------------------
+section('урон боя: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSCombatDamage.js', 'js/fs/core/FSCombatTurn.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The health the cards grant, the damage they add, the bans and plans of
+        // a round are one object: CombatDamage.
+        const re = /\b(?:state\.combat|s\.combat|combat|c|cbt)\.(?:healthBonus|enemyHealth|extraDamage\w*|damageOneByOne|repeatDamage|damageRepeated|noRoute|ownRoutedDamage|damageFirst|ignoreExcess|retreatInstead|damageStartTokens|damageStartRound)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('урон боя считают у CombatDamage');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the cards of a battle: one object --------------------------------------
 section('карты боя: один объект');
 try {
