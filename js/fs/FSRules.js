@@ -1882,6 +1882,9 @@ const FS_RULES = {
         const ids = (cmd.ships && cmd.ships.length ? cmd.ships : target.ships);
         const ships = ids.map(id => state.units.find(u => u.id === id && target.ships.includes(id))).filter(Boolean);
         if (!ships.length) return { ok: false, error: 'Нужен хотя бы один корабль.' };
+        // «… и разместите его в этом мире» («Мицетические споры»): the effects of
+        // the strike read the world it is aimed at from the order.
+        order.strikeWorld = { system: target.system, pos: target.pos };
         const offence = ships.reduce((n, u) => {
             const def = this.unitOf(state, u);
             return n + (def ? def.combat : 0);
@@ -1908,6 +1911,29 @@ const FS_RULES = {
             && (state.units.some(u => u.seat === p.seat && u.system === target.system && u.area === target.pos)
                 || state.structures.some(s => s.seat === p.seat && s.system === target.system && s.area === target.pos)));
         const victims = state.units.filter(u => u.system === target.system && u.area === target.pos && u.seat !== seat);
+        // «Во время выполнения этого орбитального удара вы можете потратить до
+        // 2 `att. cube` за каждый корабль. За каждый потраченный вами `att.
+        // cube` купите один отряд … и разместите его в этом мире» («Мицетические
+        // споры»): the cubes paid are the ones the strike has rolled, so the
+        // ceiling is the smaller of the two counts.
+        const pay = order.strikePay;
+        if (pay && !order.strikePayAsked && !order.strikeFirstWanted) {
+            order.strikePayAsked = true;
+            // The cubes that may be paid: the ones the strike has rolled and the
+            // ones a card has given («Разведка генокрадов»).
+            const pool = dice.concat(order.strikeDice || []);
+            const cap = Math.min(pool.filter(d => d === (pay.kind || 'att')).length,
+                (pay.n || 1) * (pay.per === 'ship' ? ships.length : 1));
+            if (cap > 0) {
+                order.strikePlanned = {
+                    system: target.system, pos: target.pos, hits, defender,
+                    victims: victims.map(u => u.id), cap: cap,
+                };
+                order.phase = 'strike-first';
+                this.runEffects(state, seat, [{ op: 'strikePayPick', cap: cap }], { kind: 'order', ctx: null });
+                return { ok: true, pending: true, hits };
+            }
+        }
         // «Вы можете выбрать 1 отряд с командным уровнем 0 в этом мире. Этот
         // отряд получит урон первым во время этого орбитального удара»
         // («Набег жнецов»): the choice of the card comes first.
@@ -3262,6 +3288,18 @@ const FS_RULES = {
         // The roster of the first round: the cards that pay for the losses of a
         // round read it («Выводок термаганов»).
         combat.roundUnits = this.rosterOfRound(state, combat);
+        // «Разыграв этот приказ … вы можете разместить 1 бесплатный жетон
+        // подкрепления в спорной области в начале шага призыва подкреплений»
+        // («Бесчисленные»): the token the order promised stands in the area of
+        // the combat its order has just started.
+        const promised = state.order && state.order.seat === attacker && state.order.combatReinforce;
+        if (promised) {
+            state.order.combatReinforce = null;
+            this.runEffects(state, attacker, [{
+                op: 'placeReinforcement', n: promised.n || 1, free: promised.free,
+                here: true, who: 'me', ability: 'Бесчисленные: жетон подкрепления в спорной области.',
+            }], { kind: 'combat', ctx: { side: attacker === combat.attacker ? 'attacker' : 'defender' } });
+        }
         this.log(state, attacker, 'Бой в системе ' + this.system(state, systemId).tile + ': '
             + state.players[attacker].name + ' против ' + state.players[defender].name + '.');
         // The schemes of the start of the combat; a scheme of «the start of a

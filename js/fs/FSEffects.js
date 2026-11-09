@@ -1512,10 +1512,15 @@ const FS_EFFECTS = {
                     // its `att` face adds a hit to the strike.
                     if (state.order && state.order.phase === 'strike' && state.order.seat === seat) {
                         let bonus = 0;
+                        const faces = [];
                         for (let i = 0; i < n; i++) {
                             const face = step.kind === 'any' ? R.rollDice(state, 1)[0] : step.kind;
                             if (face === 'att') bonus += 1;
+                            faces.push(face);
                         }
+                        // The cube the card gave is a cube of the player: the
+                        // payment of «Разведка генокрадов» may spend it.
+                        state.order.strikeDice = (state.order.strikeDice || []).concat(faces);
                         state.order.strikeBonus = (state.order.strikeBonus || 0) + bonus;
                         R.log(state, seat, state.players[seat].name + ' получает кубик для удара с орбиты'
                             + (bonus ? ': он выпал на атаку.' : ': он не выпал на атаку.'));
@@ -1696,8 +1701,15 @@ const FS_EFFECTS = {
                 // tokens and a card may raise the limit for the whole game.
                 const base = p.faction === 'тираниды' && step.kind === 'reinforcement' ? 4 : 3;
                 const limit = Math.max(base, p.assetLimit || 0);
-                p.assets[step.kind] = Math.min(limit, (p.assets[step.kind] || 0) + (step.n || 1));
-                R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + step.kind + '.');
+                // «… за каждый потраченный `att. cube`» — the payment sets the
+                // count, and a payment of nothing buys nothing.
+                const got = step.per ? this.count(R, state, seat, step, ctx) : (step.n || 1);
+                if (got <= 0) {
+                    R.log(state, seat, p.name + ' ничего не заплатил — жетон не получен.');
+                    return null;
+                }
+                p.assets[step.kind] = Math.min(limit, (p.assets[step.kind] || 0) + got);
+                R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + step.kind + ' × ' + got + '.');
                 return null;
             }
             // «При выполнении приказа доминирования…» — the condition of the ability.
@@ -1900,6 +1912,15 @@ const FS_EFFECTS = {
                 return { question: { kind: 'areas', who: seat, op: 'placeFree', n: count, kind2: types[0].id, options: areas, text: 'Где разместить отряды?' } };
             }
             case 'placeUnit': {
+                // «приобрести до 2 отрядов за каждый недеморализованный Корабль
+                // Улей» («Камеры культивирования»): the number the card gives is
+                // the number per unit it counts, and no unit means no purchase.
+                if (step.per && step.left === undefined) {
+                    // `count` already multiplies by the number the card prints.
+                    const total = this.count(R, state, seat, step, ctx);
+                    if (total <= 0) return null;
+                    step.left = total;
+                }
                 const faction = R.faction(state, seat);
                 const names = this.unitNames(step.what, faction);
                 let types = (faction ? faction.units : []).filter(u => !names.length || names.some(n => this.sameName(u.name, n)));
@@ -1914,8 +1935,14 @@ const FS_EFFECTS = {
                     const cl = R.commandLevel(state, seat);
                     free = free.filter(u => (u.cost || 0) <= (p.materiel || 0) && (u.kl || 0) <= cl);
                 }
+                // «… один отряд с командным уровнем 2 или меньше» («Мицетические
+                // споры»): the card caps the command level below the player's own.
+                if (step.maxKl !== undefined && step.maxKl !== null) {
+                    free = free.filter(u => (u.kl || 0) <= step.maxKl);
+                }
                 if (!free.length) return null;
-                return { question: { kind: 'types', who: seat, op: 'placeUnit', n: step.n || 1, options: free.map(u => u.id), text: 'Какой отряд разместить?' } };
+                const want = step.left !== undefined ? step.left : (step.n || 1);
+                return { question: { kind: 'types', who: seat, op: 'placeUnit', n: want, options: free.map(u => u.id), text: 'Какой отряд разместить?' } };
             }
             case 'placeStructure': {
                 // «Купите 1 постройку» — the player chooses which one: only the
@@ -1945,6 +1972,14 @@ const FS_EFFECTS = {
                 return { question: { kind: 'areas', who: seat, op: 'placeStructure', kind2: step.kind, options: areas, text: 'Где построить?' } };
             }
             case 'placeReinforcement': {
+                // «… вы можете разместить 1 бесплатный жетон подкрепления в
+                // спорной области в начале шага призыва подкреплений»
+                // («Бесчисленные»): the order is resolved before its combat
+                // exists, so the token of the card waits for the combat.
+                if (step.here && !combat && state.order && state.order.seat === seat) {
+                    state.order.combatReinforce = { n: step.n || 1, free: !!step.free };
+                    return null;
+                }
                 // «… в спорной области» — the area of the battle is the only one.
                 if (step.here && combat) {
                     this.placeReinforcementAt(R, state, seat, step, { system: combat.system, pos: combat.pos }, side, ctx);
@@ -2072,6 +2107,39 @@ const FS_EFFECTS = {
             case 'ignoreBastion': {
                 if (state.order) state.order.ignoreBastion = true;
                 return null;
+            }
+            // «вы можете потратить до 2 `att. cube` за каждый корабль»
+            // («Мицетические споры»): the strike remembers the ceiling; the
+            // cubes themselves are the ones it rolls.
+            case 'strikePay': {
+                if (state.order) {
+                    state.order.strikePay = {
+                        n: step.n || 1, kind: step.kind || 'att', per: step.per || null,
+                    };
+                }
+                return null;
+            }
+            // What the payment buys: the units that come down into the world of
+            // the strike, or the tokens that come back to the player.
+            case 'strikeReward': {
+                if (state.order) {
+                    state.order.strikeReward = step.units
+                        ? { units: step.units }
+                        : { asset: step.asset, n: step.n || 1 };
+                }
+                return null;
+            }
+            // The units the cubes of the strike buy: the strike has already
+            // counted what may be paid, the player says how much he pays.
+            case 'strikePayPick': {
+                const plan = state.order && state.order.strikePlanned;
+                const cap = plan ? (plan.cap || 0) : 0;
+                if (cap <= 0) return null;
+                const options = [];
+                for (let i = 0; i <= cap; i++) {
+                    options.push(i + ' ' + (i === 1 ? 'кубик' : (i >= 2 && i <= 4 ? 'кубика' : 'кубиков')));
+                }
+                return { question: { kind: 'choice', who: seat, op: 'strikePayPick', options: options, text: 'Сколько кубиков удара потратить?' } };
             }
             case 'noRoute': {
                 if (!inCombat) return null;
@@ -2926,11 +2994,15 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'gainAsset': {
-                const kind = answer.asset || 'forge';
+                const kind = answer.asset || step.kind || 'forge';
                 const base = p.faction === 'тираниды' && kind === 'reinforcement' ? 4 : 3;
                 const limit = Math.max(base, p.assetLimit || 0);
-                p.assets[kind] = Math.min(limit, (p.assets[kind] || 0) + (step.n || 1));
-                R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + kind + '.');
+                // «получить 1 жетон подкрепления за каждый потраченный `att.
+                // cube`» («Разведка генокрадов»): the payment sets the count.
+                const n = this.count(R, state, seat, step, ctx);
+                if (n <= 0) return null;
+                p.assets[kind] = Math.min(limit, (p.assets[kind] || 0) + n);
+                R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + kind + ' × ' + n + '.');
                 return null;
             }
             case 'destroyUnit': {
@@ -3295,7 +3367,7 @@ const FS_EFFECTS = {
                 // («Багровая стража»): the card may name more than one model. The
                 // models stand in the chosen world while the supply and the
                 // capacity of the world last.
-                const want = Math.max(1, step.n || 1);
+                const want = Math.max(1, step.left !== undefined ? step.left : (step.n || 1));
                 let placed = 0;
                 for (let i = 0; i < want; i++) {
                     if ((p.supply.units[def.id] || 0) <= 0) break;
@@ -3649,6 +3721,38 @@ const FS_EFFECTS = {
             case 'strikeFirstPick': {
                 const id = (answer.units || [])[0];
                 if (state.order && id) state.order.strikeFirst = id;
+                return null;
+            }
+            case 'strikePayPick': {
+                const i = Number(answer.choice);
+                const want = Number.isFinite(i) ? i : 0;
+                const owner = ctx && ctx.owner !== undefined ? ctx.owner : seat;
+                const player = state.players[owner];
+                if (want > 0 && state.order) {
+                    state.order.strikePaid = want;
+                    R.log(state, owner, player.name + ' тратит ' + want + ' '
+                        + (want === 1 ? 'кубик' : 'кубика') + ' удара.');
+                }
+                if (want <= 0) return null;
+                const reward = (state.order && state.order.strikeReward) || {};
+                if (reward.units) {
+                    // One question per kind of unit: the models of the chosen
+                    // kind are bought at the printed price and stand in the
+                    // world the strike was aimed at.
+                    return {
+                        replace: [{
+                            op: 'placeUnit', n: want, buy: true, pick: true, who: 'me',
+                            maxKl: reward.units.maxKl, dest: reward.units.dest || 'orderWorld',
+                        }],
+                    };
+                }
+                if (reward.asset) {
+                    const n = want * (reward.n || 1);
+                    const base = player.faction === 'тираниды' && reward.asset === 'reinforcement' ? 4 : 3;
+                    const limit = Math.max(base, player.assetLimit || 0);
+                    player.assets[reward.asset] = Math.min(limit, (player.assets[reward.asset] || 0) + n);
+                    R.log(state, owner, player.name + ' получает жетон(ы): ' + reward.asset + ' × ' + n + '.');
+                }
                 return null;
             }
             case 'resurrectOffer': {
@@ -4058,6 +4162,24 @@ const FS_EFFECTS = {
                     case 'friendlyWorldActive':
                         ok = world && sys.id === active && mine;
                         break;
+                    // A friendly or uncontrolled world of the active system
+                    // («на любых дружественных или никем не контролируемых мирах
+                    // в активной системе» — «Камеры культивирования»).
+                    case 'friendlyOrUncontrolledWorldActive':
+                        ok = world && sys.id === active
+                            && (standing === 'friendly' || standing === 'uncontrolled');
+                        break;
+                    // The world the order acts on — the world the orbital strike
+                    // is aimed at («разместите его в этом мире» — «Мицетические
+                    // споры»), or the world of the battle.
+                    case 'orderWorld': {
+                        const w = state.order && state.order.strikeWorld;
+                        const c2 = state.combat;
+                        const sysId = w ? w.system : (c2 ? c2.system : null);
+                        const pos = w ? w.pos : (c2 ? c2.pos : null);
+                        ok = world && sysId !== null && sys.id === sysId && area.pos === pos;
+                        break;
+                    }
                     // A friendly world of the active system with a structure on it.
                     case 'friendlyWorldWithStructureActive':
                         ok = world && sys.id === active && mine
@@ -4599,6 +4721,35 @@ const RULES = [
             op: 'strikeTakeStructures', n: num(m[1]) || 1, kind: FS_EFFECTS.icon(m[2]),
             cond: { noEnemyPieces: true }, who: 'me',
         }),
+    },
+    // «вы можете потратить до 2 `att. cube` за каждый корабль» («Мицетические
+    // споры»): the ceiling of the payment is the number of the ships of the
+    // strike, and the cubes come from the ones the strike has rolled.
+    {
+        re: /потратить до (\d+)\s*`([^`]+)`([^.]*)/i,
+        build: (m, ctx, s) => {
+            const src2 = String(s || m[0]);
+            const perShip = /за кажд[а-яёa-z]*\s+(?:ваш[а-яёa-z]*\s+)?корабл/i.test(src2);
+            const mAsset = /получ[а-яёa-z]*\s+(\d+)?\s*жетон[а-яё]*\s+(подкрепления|кузни|снабжения|разведки)/i.exec(m[3] || '');
+            // Only the payments of a strike: the cubes of a strike are the ones
+            // it has rolled. The ceiling per ship («Мицетические споры») and the
+            // tokens per cube paid («Разведка генокрадов») are both of them;
+            // any other payment is an ordinary one.
+            if (!perShip && !mAsset) return null;
+            /** @type {any[]} */
+            const steps = [{
+                op: 'strikePay', n: Number(m[1]), kind: FS_EFFECTS.icon(m[2]),
+                per: perShip ? 'ship' : null,
+            }];
+            if (mAsset) {
+                steps.push({
+                    op: 'strikeReward', n: num(mAsset[1]),
+                    asset: /подкрепл/i.test(mAsset[2]) ? 'reinforcement'
+                        : (/кузн/i.test(mAsset[2]) ? 'forge' : (/снабж/i.test(mAsset[2]) ? 'supply' : 'cache')),
+                });
+            }
+            return steps;
+        },
     },
     // "you must spend 1 `def. cube`" / "spend up to 3 `morale cube`" /
     // "Потратьте 1 `def. cube` или 1 `morale cube`" — either cube answers the
@@ -5419,11 +5570,36 @@ const RULES = [
     },
     {
         re: /^за каждый потраченный вами `(?:(?:att|def)\. cube|morale cube)`[^.]*\.?$/i,
-        build: (m, ctx, s) => ({ op: 'note', text: s }),
+        build: (m, ctx, s) => {
+            // «За каждый потраченный вами `att. cube` купите один отряд с
+            // командным уровнем 2 или меньше и разместите его в этом мире»
+            // («Мицетические споры»): one unit bought and placed per cube paid.
+            // The cubes of a strike are the ones it has just rolled, so the
+            // payment is read by the strike itself (like «Изъяны плоти»).
+            const mm = /куп[а-яёa-z]*\s+один\s+отряд\s+с командным уровнем\s+(\d+)\s+или меньше/i.exec(String(s || ''));
+            if (mm) {
+                return { op: 'strikeReward', units: { maxKl: Number(mm[1]), dest: 'orderWorld' } };
+            }
+            return { op: 'note', text: s };
+        },
     },
     {
-        re: /^после того, как вы выполните этот приказ, можете приобрести до 2 отрядов[^.]*\.?$/i,
-        build: (m, ctx, s) => ({ op: 'note', text: s }),
+        re: /^после того, как вы выполните этот приказ, можете приобрести до (\d+) отрядов за кажд[а-яёa-z]*\s+недеморализованн[а-яёa-z]*\s+([^.;]+?)\s+в активной системе[^.]*\.?$/i,
+        build: (m, ctx) => {
+            // «можете приобрести до 2 отрядов за каждый недеморализованный
+            // Корабль Улей в активной системе и разместить их на любых
+            // дружественных или никем не контролируемых мирах в активной
+            // системе» («Камеры культивирования»).
+            const faction = FS_EFFECTS.factionOf(ctx);
+            const names = FS_EFFECTS.unitNames(m[2], faction);
+            const filter = names.length ? { types: names }
+                : (unitFilter(m[2]) || typeFilter(m[2]));
+            return {
+                op: 'placeUnit', n: Number(m[1]), buy: true, pick: true, who: 'me',
+                per: 'unit', filter: filter, ofSystem: 'active',
+                dest: 'friendlyOrUncontrolledWorldActive',
+            };
+        },
     },
     {
         re: /^выполните ограниченный приказ продвижение[^.]*\.?$/i,
