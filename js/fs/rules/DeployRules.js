@@ -296,9 +296,13 @@ class DeployRules {
         return { ok: true };
     }
 
-    cmdFinishDeploy(state, seat) {
-        const order = state.order;
-        if (!order || order.order !== 'deploy' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+    /**
+     * The end of a deploy order: the materiel of everything bought is paid in
+     * one go, the log names every purchase, and the order closes. Shared by the
+     * normal deploy and by the factory production of the guard order, which
+     * differ only in what they allow to be bought.
+     */
+    payAndFinish(state, seat, order) {
         const p = state.players[seat];
         const total = this.spentOf(order);
         if (total > p.materiel) return { ok: false, error: 'Не хватает материи.' };
@@ -312,12 +316,17 @@ class DeployRules {
         return { ok: true, paid: total };
     }
 
+    cmdFinishDeploy(state, seat) {
+        const order = state.order;
+        if (!order || order.order !== 'deploy' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        return this.payAndFinish(state, seat, order);
+    }
+
     cmdFinishGuardDeploy(state, seat) {
         const order = state.order;
         if (!order || order.phase !== 'guardDeploy' || order.seat !== seat) {
             return { ok: false, error: 'Сейчас нельзя закончить производство.' };
         }
-        const p = state.players[seat];
         const bought = (order.purchases || []).filter(x => x.kind === 'unit');
         // «Купите минимум 2 отряда одного типа» — the type is locked already;
         // the count is checked here, on the way out.
@@ -327,16 +336,7 @@ class DeployRules {
         if (new Set(bought.map(x => x.def)).size > 1) {
             return { ok: false, error: 'Отряды одного типа.' };
         }
-        const total = this.spentOf(order);
-        if (total > p.materiel) return { ok: false, error: 'Не хватает материи.' };
-        p.materiel -= total;
-        for (const entry of order.purchases || []) {
-            if (!entry.cost) continue;
-            this.engine.log(state, seat, p.name + ' платит ' + entry.cost + ' материи за «' + entry.name + '».');
-        }
-        order.phase = 'done';
-        this.engine.finishOrder(state, seat);
-        return { ok: true, paid: total };
+        return this.payAndFinish(state, seat, order);
     }
 
     trimArea(state, seat, systemId, pos) {
