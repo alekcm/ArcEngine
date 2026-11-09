@@ -204,6 +204,38 @@ try {
     fail(e.message);
 }
 
+// --- the client and the rules agree on the names -----------------------------
+// The rules are split into services, so a method the panel calls may simply not
+// be on the facade any more. TypeScript sees core/ and rules/ only, so this is
+// the one check that looks at the seam the panel uses.
+section('стык клиента и правил');
+try {
+    const clientFiles = htmlFiles().filter(f => f.startsWith('js/')
+        && !f.startsWith('js/fs/core/') && !f.startsWith('js/fs/rules/'));
+    const problems = [];
+    let seen = 0;
+    for (const file of clientFiles) {
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        for (const m of text.matchAll(/FS_RULES\.([A-Za-z_]\w*)/g)) {
+            seen++;
+            const name = m[1];
+            if (!(name in R)) problems.push(file + ': FS_RULES.' + name + ' нет');
+        }
+        for (const m of text.matchAll(/RULES\.([A-Za-z_]\w*)\s*\(/g)) {
+            seen++;
+            if (typeof R[m[1]] !== 'function') problems.push(file + ': R.' + m[1] + ' не функция');
+        }
+        for (const m of text.matchAll(/FS_CATALOG\.([A-Za-z_]\w*)/g)) {
+            seen++;
+            if (!(m[1] in CAT)) problems.push(file + ': FS_CATALOG.' + m[1] + ' нет');
+        }
+    }
+    if (problems.length) throw new Error(problems.slice(0, 5).join('; '));
+    ok(seen + ' обращений клиента к правилам и каталогу существуют');
+} catch (e) {
+    fail(e.message);
+}
+
 console.log('\n' + (failed
     ? C.red + C.b + '  Дым не прошёл: ' + failed + ' проверок.' + C.r
     : C.grn + C.b + '  Дым прошёл: игра грузится и раунд играется.' + C.r) + '\n');
