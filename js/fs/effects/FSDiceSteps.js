@@ -60,7 +60,7 @@ class DiceSteps {
         // («Величие роя»): the gain of the card is counted by the cubes
         // this very payment took, not by the cubes that are left.
         step.spentCount = spent;
-        combat.lastSpend = { kinds: kinds, n: spent };
+        CombatHooks.of(combat).recordSpend(kinds, spent);
         return null;
     }
 

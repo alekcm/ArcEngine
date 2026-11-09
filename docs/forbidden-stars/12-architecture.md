@@ -97,7 +97,7 @@
 | Что карта приказа разрешает пройти | `core/FSOrderMove.js` (`OrderMove.of(order)`) | не читать `order.passVoid`/`ways`/`preAdvance` в правиле или на доске — это ловит `fs-smoke` |
 | Что приказ добыл, кому должен и что обещал бою | `core/FSOrderTally.js` (`OrderTally.of(order)`) | не читать `order.prosperity`/`gained`/`combatReinforce` в правиле или панели — это ловит `fs-smoke` |
 | Чей приказ, какой и в какой системе | `core/FSOrderContext.js` (`OrderContext.of(order)`) | не сравнивать `order.seat`/`order.order` и не читать `order.system` руками — это ловит `fs-smoke` |
-| Паузы боя: схемы, в которые он ждёт, и шаг, который вернётся | `core/FSCombatHooks.js` (`CombatHooks.of(combat)`) | не читать `combat.damageHook`/`criticalHook`/`damageResume`/`prepQueued` в правиле или эффекте — это ловит `fs-smoke` |
+| Паузы боя: схемы, в которые он ждёт, и шаг, который вернётся | `core/FSCombatHooks.js` (`CombatHooks.of(combat)`) | не читать `combat.damageHook`/`criticalHook`/`damageResume`/`prepQueued`/`lastSpend` в правиле или эффекте — это ловит `fs-smoke` |
 | Приход в бой: откуда пришли отряды и был ли приказ «Наступление» | `core/FSCombatApproach.js` (`CombatApproach.of(combat)`) | не читать `combat.attackerFrom`/`viaAdvance` в правиле — это ловит `fs-smoke` |
 | Итог боя: победившая сторона, проигравший seat и мораль решения | `core/FSCombatOutcome.js` (`CombatOutcome.of(combat)`) | не читать `combat.winner`/`loser`/`morale` в правиле или панели — это ловит `fs-smoke` |
 | Где идёт бой: система, область и «кто здесь стоит» | `core/FSBattleField.js` (`BattleField.of(combat)`) | не сравнивать `combat.system`/`combat.pos` с отрядом руками — это ловит `fs-smoke` |
@@ -245,7 +245,10 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
   спрашивается один раз на сторону и шаг (`asked`/`ask`/`forget`), за ней
   возвращается прерванный шаг (`damageResume`, `endResume`, `endNext`/`endStep`)
   и отложенные с начала боя вопросы (`prepQueued`, `roundQueued`), а карта может
-  передать распределение урона другому игроку (`assigner`, `assignSeat`).
+  передать распределение урона другому игроку (`assigner`, `assignSeat`); там же
+  платёж, которым карта только что заплатила (`recordSpend`, `spentOf`,
+  `spentPairs`), и отряд, который отступил по её слову (`recordRetreat`,
+  `lastRetreat`).
 * урон боя — один объект `CombatDamage` (`core/FSCombatDamage.js`): здоровье
   отряда под картами раунда (`health`), добавки к урону стороны (`addExtra`,
   `extra`), урон по единице и повтор шага, запрет деморализации по уровню

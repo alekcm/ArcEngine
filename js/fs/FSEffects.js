@@ -2196,8 +2196,7 @@ const FS_EFFECTS = {
             // «За каждые 2 кубика, которые вы потратили, восстановите 1 …»
             // («Перегруппировка»): the restores are paid by whole pairs.
             const combat = state.combat;
-            const spent = combat && combat.lastSpend;
-            const pairs = spent ? Math.floor((spent.n || 0) / (step.perN || 2)) : 0;
+            const pairs = combat ? CombatHooks.of(combat).spentPairs(step.perN) : 0;
             n = (step.n || 1) * pairs;
             if (step.max) n = Math.min(n, step.max);
             return Math.max(0, n);
@@ -2205,10 +2204,8 @@ const FS_EFFECTS = {
         if (step.per === 'spent') {
             // The cubes the payment of the same ability has just taken.
             const combat = state.combat;
-            const spent = combat && combat.lastSpend;
-            const fits = !!spent && (!step.perKind
-                || (spent.kinds || []).indexOf(step.perKind) >= 0);
-            n = (step.n || 1) * (fits ? (spent.n || 0) : 0);
+            const spent = combat ? CombatHooks.of(combat).spentOf(step.perKind) : 0;
+            n = (step.n || 1) * spent;
             if (step.max) n = Math.min(n, step.max);
             return Math.max(0, n);
         }

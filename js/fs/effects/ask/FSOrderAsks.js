@@ -271,7 +271,7 @@ class OrderAsks {
     static restoreRetreated(effects, f) {
         const { R, state, seat, step, combat, inCombat, p } = f;
         if (!inCombat) return null;
-        const id = combat.lastRetreat;
+        const id = CombatHooks.of(combat).lastRetreat;
         const u = state.units.find(x => x.id === id && x.seat === seat);
         if (u) {
             R.restoreUnit(state, u);

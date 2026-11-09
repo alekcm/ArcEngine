@@ -675,7 +675,7 @@ try {
         // The schemes asked once per side and per step, the step that waited for
         // them and the moments queued from the start of the combat are one
         // object: CombatHooks.
-        const re = /\b(?:state\.combat|s\.combat|combat|c|cbt)\.(?:damageHook|criticalHook|damageEndHook|damageEndResume|damageResume|playHook|prepQueued|roundSchemeQueued|assignDamage)\b/g;
+        const re = /\b(?:state\.combat|s\.combat|combat|c|cbt)\.(?:damageHook|criticalHook|damageEndHook|damageEndResume|damageResume|playHook|prepQueued|roundSchemeQueued|assignDamage|lastSpend|lastRetreat)\b/g;
         let m;
         while ((m = re.exec(text))) {
             const line = text.slice(0, m.index).split('\n').length;

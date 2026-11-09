@@ -126,7 +126,7 @@ class MoveSteps {
             if (typeof R.trimArea === 'function') R.trimArea(state, u.seat, u.system, u.area);
         }
         R.routeUnit(state, u);
-        if (step.record && combat) combat.lastRetreat = u.id;
+        if (step.record && combat) CombatHooks.of(combat).recordRetreat(u.id);
         if (typeof R.markRetreat === 'function') R.markRetreat(state, u.seat);
         R.log(state, u.seat, state.players[u.seat].name + ': отряд отступает.');
         step.done = true;

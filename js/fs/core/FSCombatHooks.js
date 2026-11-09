@@ -31,6 +31,48 @@ class CombatHooks {
         return hooks;
     }
 
+    // --- what the last payment took ------------------------------------------
+
+    /**
+     * «За каждый потраченный `morale cube` Вы получаете …»: the cubes the payment
+     * of an ability has just taken (`{ kinds, n }`), so the gain of the same card
+     * counts the payment and not what is left on the table.
+     */
+    get lastSpend() {
+        return this.combat.lastSpend || null;
+    }
+
+    recordSpend(kinds, n) {
+        this.combat.lastSpend = { kinds: kinds || [], n: n || 0 };
+        return this.combat.lastSpend;
+    }
+
+    /** The cubes of the payment, if it took a cube of a kind (any when unnamed). */
+    spentOf(kind) {
+        const spent = this.lastSpend;
+        if (!spent) return 0;
+        if (kind && (spent.kinds || []).indexOf(kind) < 0) return 0;
+        return spent.n || 0;
+    }
+
+    /** Whole pairs of the payment: «за каждые 2 кубика». */
+    spentPairs(n) {
+        const pair = n || 2;
+        return Math.floor(this.spentOf() / pair);
+    }
+
+    // --- the unit that retreated by the card of a player ----------------------
+
+    /** «восстановите 1 отступивший отряд»: the unit that just left by a card. */
+    get lastRetreat() {
+        return this.combat.lastRetreat === undefined ? null : this.combat.lastRetreat;
+    }
+
+    recordRetreat(id) {
+        this.combat.lastRetreat = id;
+        return this;
+    }
+
     // --- the moment is asked once --------------------------------------------
 
     /** Has the moment of this side been asked already? */

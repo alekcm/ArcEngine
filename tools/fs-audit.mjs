@@ -1027,6 +1027,22 @@ rule('combat-0e', '«Сбросить карту: «Критический уд�
     hooks.assignTo(0, 'defender');
     eq(hooks.assignSeat(1), 0, 'карта передала урон другому игроку');
     eq(hooks.assigner.side, 'defender', 'и назвала сторону');
+    // «За каждый потраченный `morale cube`»: the payment of the same ability.
+    eq(hooks.lastSpend, null, 'платежей ещё не было');
+    eq(hooks.spentOf('morale'), 0, 'потраченных кубиков нет');
+    hooks.recordSpend(['morale', 'morale'], 2);
+    eq(hooks.spentOf(), 2, 'потрачено два кубика');
+    eq(hooks.spentOf('morale'), 2, 'оба — кубики морали');
+    eq(hooks.spentOf('att'), 0, 'кубиков атаки не тратили');
+    eq(hooks.spentPairs(2), 1, 'одна полная пара кубиков');
+    eq(hooks.spentPairs(), 1, 'пара — по умолчанию два кубика');
+    eq(hooks.spentPairs(3), 0, 'тройки не набралось');
+    hooks.recordSpend([], 0);
+    eq(hooks.spentOf(), 0, 'пустой платёж');
+    // «восстановите 1 отступивший отряд»: the unit the card has just moved.
+    eq(hooks.lastRetreat, null, 'никто не отступал');
+    hooks.recordRetreat('u7');
+    eq(hooks.lastRetreat, 'u7', 'отступивший отряд записан');
     // The start of a new round forgets every moment.
     hooks.ask('playHook', 'attacker');
     hooks.reset();
