@@ -291,7 +291,7 @@ const FS_RULES = {
             const cur = queue.shift();
             for (const next of this.areasAround(state, cur.system, cur.pos)) {
                 const key = next.system + ':' + next.pos;
-                if (this.stormOn(state, cur.system, next.system)) continue;
+                if (this.stormOn(state, cur.system, next.system) && !(opts && opts.storms)) continue;
                 // The destination may be an empty world — the way must be friendly.
                 if (next.system === toSystem && next.pos === toPos) return true;
                 let voids = cur.voids;
@@ -1270,9 +1270,23 @@ const FS_RULES = {
         if (state.turn !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
         // One order at a time: the previous one must be finished.
         if (state.order) return { ok: false, error: 'Сначала закончите текущий приказ.' };
+        // «вместо раскрытия приказа во время фазы действий» (01-rules-
+        // reference.md): the offer is made BEFORE a token is chosen; a refusal
+        // leaves this player's normal reveal intact, and is not offered twice.
         const sys = this.system(state, cmd.system);
         if (!sys) return { ok: false, error: 'Нет такой системы.' };
         if (!sys.tokens.length) return { ok: false, error: 'В этой системе нет приказов.' };
+        // A refusal belongs to THIS attempted reveal: the same player may use
+        // the still-in-play plan instead of his next order later in the round.
+        const offerKey = state.round + ':' + state.turn + ':' + seat + ':'
+            + sys.id + ':' + sys.tokens.length;
+        if (state.operationSchemeOffered !== offerKey) {
+            state.operationSchemeOffered = offerKey;
+            if (this.maybeScheme(state, seat, 'operations',
+                { kind: 'event', ctx: { operationScheme: true } }, { instead: true })) {
+                return { ok: true, pending: true };
+            }
+        }
         const top = sys.tokens[sys.tokens.length - 1];
         if (top.seat !== seat) return { ok: false, error: 'Это не ваш приказ.' };
         // The player may put the token on his event deck instead of resolving it.
@@ -1546,7 +1560,8 @@ const FS_RULES = {
         // A warp storm on the edge blocks the way — unless the order says that
         // the ships may pass through the storms.
         if (from !== target.system && this.stormOn(state, from, target.system)
-            && !(def.type === 'ship' && state.order.shipsThroughStorms)) {
+            && !(state.order.unitsThroughStorms
+                || (def.type === 'ship' && state.order.shipsThroughStorms))) {
             return { ok: false, error: 'Варп-шторм преграждает путь.' };
         }
         // The movement may go over the capacity of an area, but never above five
@@ -1562,7 +1577,8 @@ const FS_RULES = {
         // («Ground units on a world adjacent to the destination world always
         // have a legal movement path»).
         if (def.type === 'ground') {
-            if (!this.pathExists(state, seat, unit.system, unit.area, target.system, target.pos)) {
+            if (!this.pathExists(state, seat, unit.system, unit.area, target.system, target.pos,
+                { storms: !!(order && order.unitsThroughStorms) })) {
                 return { ok: false, error: 'Нет законного пути через свои миры до этого мира.' };
             }
         }
@@ -2130,6 +2146,8 @@ const FS_RULES = {
             const first = state.units.find(u => u.id === st.first);
             if (first) return { ok: false, error: 'Сначала урон получает выбранный отряд.' };
         }
+        st.damaged = st.damaged || [];
+        st.damaged.push(unit.id);
         const def = this.unitOf(state, unit);
         let health = def ? def.health : 1;
         // «Во время этого орбитального удара здоровье отрядов вашего противника
@@ -2156,8 +2174,23 @@ const FS_RULES = {
 
     endStrike(state) {
         const st = state.strike;
-        state.strike = null;
         const order = state.order;
+        // «Страх с небес»: after the damage, one surviving unit that was hit is
+        // routed. The order ends when that last question is answered.
+        if (order && order.chaosRouteDamaged && st && (st.damaged || []).length) {
+            const ids = [...new Set(st.damaged)].filter(id => state.units.some(u => u.id === id));
+            if (ids.length) {
+                state.strike = null;
+                order.chaosRouteDamaged = false;
+                order.phase = 'done';
+                order.chaosStrikeFinish = true;
+                this.runEffects(state, st.attacker, [{
+                    op: 'strikeRouteDamaged', attacker: st.attacker, options: ids,
+                }], { kind: 'order', ctx: null });
+                return { ok: true, pending: true };
+            }
+        }
+        state.strike = null;
         if (order) {
             order.phase = 'done';
             this.finishOrder(state, st ? st.attacker : (order.seat));
@@ -2790,8 +2823,17 @@ const FS_RULES = {
                 + this.orderName(kind) + '.');
             return { ok: true, nested: true };
         }
-        state.players[seat].eventTokens++;
-        this.log(state, seat, state.players[seat].name + ' кладёт приказ на колоду событий.');
+        const p2 = state.players[seat];
+        p2.eventTokens++;
+        this.log(state, seat, p2.name + ' кладёт приказ на колоду событий.');
+        // «помимо этого приказа … еще 2 жетона приказов из своей игровой зоны»:
+        // they are USED tokens, not the strategize token just put on the deck.
+        const bonus = (state.order && state.order.chaosDeckBonus) || 0;
+        if (bonus > 0) {
+            const free = Math.min(bonus, this.usedOrderTokens(state, seat));
+            p2.eventTokens += free;
+            if (free) this.log(state, seat, p2.name + ' кладёт ещё ' + free + ' жетон(ов) приказов на колоду событий.');
+        }
         this.finishOrder(state, seat);
         return { ok: true };
     },
@@ -2897,7 +2939,8 @@ const FS_RULES = {
         this.log(state, seat, p.name + ' применяет улучшение «' + up.name + '».');
         // The text of the card is the rule: the engine performs it.
         const card = card0;
-        const steps = FS_EFFECTS.parse((card && card.text) || '', { kind: 'order' });
+        const steps = FS_EFFECTS.parse((card && card.text) || '',
+            { kind: 'order', faction: p.faction });
         if (steps.length) this.runEffects(state, seat, steps, { kind: 'order', ctx: null });
         return { ok: true, text: up.text || '' };
     },
@@ -2970,12 +3013,19 @@ const FS_RULES = {
         // 4. the event cards and the warp storms
         state.turn = state.firstPlayer;
         state.eventsLeft = state.players.length;
+        delete state.stormReaction;
+        delete state.operationSchemeOffered;
+        delete state.operationSchemeAccepted;
+        delete state.chaosNoStormMove;
         this.log(state, -1, 'Фаза обновления: события и варп-штормы.');
         this.nextEventPlayer(state);
     },
 
     // The player whose event card is resolved now.
     nextEventPlayer(state) {
+        // The suppression belongs to the one event whose three cards were
+        // revealed, not to the next player's event.
+        delete state.chaosNoStormMove;
         if (state.eventsLeft <= 0) {
             // The end of the event phase: the capacity of every area is checked
             // again, and every player chooses his own excess troops.
@@ -3027,7 +3077,7 @@ const FS_RULES = {
         // The storm movement of the card is not a choice — only its ability is.
         // «A player can choose not to resolve the ability on his chosen event
         // card, but must resolve the card's Warp Storm movement icon.»
-        const canMove = this.stormOptions(state, seat).length;
+        const canMove = !state.chaosNoStormMove && this.stormOptions(state, seat).length;
         if (canMove && !state.event.stormMoved) {
             return { ok: false, error: 'Сначала сдвиньте варп-шторм по иконке карты.' };
         }
@@ -3051,6 +3101,8 @@ const FS_RULES = {
                 // A reaction card («когда … деморализован») is not offered at the
                 // start of the step: it waits for the moment it reacts to.
                 defer: trig ? !!trig.defer : false,
+                orderType: trig ? trig.orderType || null : null,
+                insteadOfOrder: trig ? !!trig.insteadOfOrder : false,
             });
             this.log(state, seat, p0.name + ' держит план «' + card.name + '».');
         }
@@ -3102,6 +3154,12 @@ const FS_RULES = {
         // The event moves exactly one Warp Storm ("The active player chooses one
         // Warp Storm on the game board and moves it").
         if (state.event.stormMoved === true) return { ok: false, error: 'Шторм в эту фазу уже сдвигался.' };
+        // «движение варп-шторма по вновь раскрытой карте не производится»
+        // («Инкарнация Тзинча»): the three cards are looked at, but their storm
+        // icons are not a second movement of this event.
+        if (state.chaosNoStormMove) {
+            return { ok: false, error: 'Движение варп-шторма по новой карте не производится.' };
+        }
         const storm = state.storms.find(s => s.id === cmd.storm);
         if (!storm) return { ok: false, error: 'Нет такого шторма.' };
         // Each storm moves only once during a refresh phase, whoever moves it.
@@ -3118,6 +3176,21 @@ const FS_RULES = {
             return { ok: false, error: 'Шторм не может туда пойти.' };
         }
         const target = this.stormTarget(state, storm, dir);
+        // «Молящийся тёмным богам»: another player may cancel THIS movement
+        // and send the same storm in any of the eight legal directions instead.
+        if (!state.stormReaction) {
+            const info = { storm: storm.id, dir, mover: seat, target };
+            for (const other of state.players) {
+                if (other.seat === seat) continue;
+                if (!this.schemesOf(state, other.seat).some(s => s.trigger === 'storm' && !s.defer)) continue;
+                state.stormReaction = info;
+                if (this.maybeScheme(state, other.seat, 'storm',
+                    { kind: 'event', ctx: { stormReaction: info } })) {
+                    return { ok: true, pending: true };
+                }
+                delete state.stormReaction;
+            }
+        }
         storm.system = target.system;
         storm.side = target.side;
         storm.moved = true;
@@ -3125,6 +3198,27 @@ const FS_RULES = {
         state.event.stormMoved = true;
         this.log(state, seat, state.players[seat].name + ' сдвинул варп-шторм.');
         return { ok: true };
+    },
+
+    // The reaction of «Молящегося тёмным богам»: dir === null means the card
+    // was refused and the original movement happens; a chosen direction cancels
+    // that movement and relocates the same storm. One storm still moves once.
+    finishStormReaction(state, info, dir) {
+        delete state.stormReaction;
+        if (!info) return { ok: false };
+        const storm = state.storms.find(s => s.id === info.storm);
+        if (!storm || storm.moved === true) return { ok: false };
+        const chosen = dir || info.dir;
+        const target = this.stormTarget(state, storm, chosen);
+        if (!target) return { ok: false };
+        storm.system = target.system;
+        storm.side = target.side;
+        storm.moved = true;
+        if (state.event) state.event.stormMoved = true;
+        if (dir) {
+            this.log(state, info.mover, 'Перемещение варп-шторма отменено; он уходит в направлении ' + dir + '.');
+        }
+        return { ok: true, canceled: !!dir };
     },
 
     // --- the edges of the board -------------------------------------------
@@ -3380,8 +3474,20 @@ const FS_RULES = {
     },
 
     // The moment of a scheme has come: the player may discard the card.
-    maybeScheme(state, seat, trigger, ctx) {
-        const schemes = this.schemesOf(state, seat).filter(s => s.trigger === trigger && !s.defer);
+    maybeScheme(state, seat, trigger, ctx, opts) {
+        let schemes = this.schemesOf(state, seat).filter(s => s.trigger === trigger && !s.defer);
+        // «Отрава Нургла» says «instead of revealing an order»: it is not one
+        // of the schemes of the START of the operations phase, and lasts only
+        // for the turn on which it was offered.
+        if (trigger === 'operations') {
+            schemes = opts && opts.instead
+                ? schemes.filter(s => s.insteadOfOrder)
+                : schemes.filter(s => !s.insteadOfOrder);
+        }
+        // «Прикосновение варпа» names the advance order in its trigger.
+        if (trigger === 'order' && state.order) {
+            schemes = schemes.filter(s => !s.orderType || s.orderType === state.order.order);
+        }
         if (!schemes.length) return false;
         const c = ctx || {};
         // The card whose text the engine did not read: the player sees the text.
@@ -3509,6 +3615,19 @@ const FS_RULES = {
             combat.cards[seat === attacker ? 'attacker' : 'defender'].hand = hand;
         }
         state.combat = combat;
+        // «… получить 1 `morale cube` в начале боя, вызванного этим приказом»
+        // («Прикосновение варпа»): the advance belongs to the owner of the plan.
+        if (state.order && state.order.chaosCombatMorale
+            && (state.order.seat === attacker || state.order.seat === defender)) {
+            const side = state.order.seat === attacker ? 'attacker' : 'defender';
+            for (let i = 0; i < state.order.chaosCombatMorale; i++) {
+                if (combat.dice[side].filter(Boolean).length >= this.DICE_MAX) break;
+                combat.dice[side].push('morale');
+            }
+            this.log(state, state.order.seat, state.players[state.order.seat].name
+                + ' получает кубик морали в начале боя.');
+            state.order.chaosCombatMorale = 0;
+        }
         // «Если происходит бой, разыграйте только ОДИН раунд» («Мобилизированные
         // охотники»): the limit belongs to the combat this order starts.
         if (state.order && state.order.combatRounds && state.order.seat === attacker) {
@@ -4303,11 +4422,24 @@ const FS_RULES = {
             c.damageRepeated = true;
             c.destroyedNow = 0;
             c.damageHook = {};
+            c.damageEndHook = null;
             c.damage = { attacker: 0, defender: 0 };
             c.applied = {};
             c.step = 'damage-attacker';
             this.log(state, -1, 'Шаг нанесения повреждений повторяется.');
             return;
+        }
+        // «в конце шага нанесения повреждений … деморализовать 1 отряд
+        // противника» («Совращённый Хаосом»): both combatants may hold a plan.
+        if (!c.damageEndHook) c.damageEndHook = { next: 0 };
+        const ends = [c.attacker, c.defender];
+        while (c.damageEndHook.next < ends.length) {
+            const seat = ends[c.damageEndHook.next++];
+            const side = seat === c.attacker ? 'attacker' : 'defender';
+            if (this.maybeScheme(state, seat, 'damage-end', { kind: 'combat', ctx: { side } })) {
+                c.damageEndResume = true;
+                return;
+            }
         }
         // «… поместить обратно в эту область в конце шага нанесения урона»
         // («Уклонение»): the fallen KL0 units come back before the round ends.
@@ -4566,6 +4698,8 @@ const FS_RULES = {
         c.fallenThisStep = [];
         c.damageHook = {};
         c.criticalHook = {};
+        c.damageEndHook = null;
+        c.damageEndResume = false;
         c.resurrectCandidates = [];
         c.resurrectAsked = null;
         c.noDamageRetreat = (c.noDamageRetreat || []).filter(x => x.round === c.round);

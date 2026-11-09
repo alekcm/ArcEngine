@@ -1401,6 +1401,8 @@ function schemeInPlay(st, name, faction) {
         name: card.name, text: card.text || '',
         trigger: trig ? trig.trigger : null, steps: trig ? trig.steps : [],
         note: trig ? !!trig.note : true, defer: trig ? !!trig.defer : false,
+        orderType: trig ? trig.orderType || null : null,
+        insteadOfOrder: trig ? !!trig.insteadOfOrder : false,
     });
     return st.players[0].schemes[st.players[0].schemes.length - 1];
 }
@@ -3328,6 +3330,788 @@ check('Критический удар', 'план уничтожает имен
     eq(stateUnit(st, victim.id), null, 'получивший урон отряд уничтожен');
     eq(st.combat.damageResume, null, 'шаг урона не повторяется');
     return eq(st.players[0].schemes.length, 0, 'план сброшен');
+});
+
+// ============================================================================
+//  02 / 04 / 05 / 06 — Космодесант Хаоса: способность, 14 боевых карт,
+//  5 улучшений приказов и 8 событий (включая 4 плана)
+// ============================================================================
+const CHAOS = 'космодесант-хаоса';
+const CHAOS_FOE = 'имперская-гвардия';
+const CHAOS_GROUND = {
+    'культисты': 2, 'космодесант-хаоса': 1, 'хелбруты': 1,
+    'титаны-хаоса-класса-налётчик': 1,
+};
+const CHAOS_SHIPS = {
+    'эсминцы-класса-иконоборец': 1,
+    'отвратительные-тяжелые-крейсеры': 1,
+};
+const IG_GROUND = { 'гвардейцы': 2, 'титаны': 1 };
+const IG_SHIPS = { 'крейсеры': 2, 'линкоры': 1 };
+
+function chaosBattle(o = {}) {
+    const space = !!o.space;
+    const st = battle(Object.assign({
+        faction: CHAOS, foeFaction: CHAOS_FOE,
+        kind: space ? 'space' : 'ground',
+        units: space ? CHAOS_SHIPS : CHAOS_GROUND,
+        foeUnits: space ? IG_SHIPS : IG_GROUND,
+        dice: ['att', 'att', 'morale'], foeDice: ['def', 'def'],
+    }, o));
+    st.testCard = o.card;
+    return st;
+}
+function chaosEvent(name, o = {}) {
+    return eventState(name, Object.assign({ faction: CHAOS, foeFaction: CHAOS_FOE }, o));
+}
+function chaosOrder(kind, o = {}) {
+    return orderState(kind, Object.assign({
+        faction: CHAOS, foeFaction: CHAOS_FOE,
+        units: { 'культисты': 1 }, foeUnits: { 'гвардейцы': 1 },
+    }, o));
+}
+function chaosStrike(o = {}) {
+    return strikeState(Object.assign({
+        faction: CHAOS, foeFaction: CHAOS_FOE,
+        ships: { 'эсминцы-класса-иконоборец': 2 }, holdUnit: 'культисты',
+    }, o));
+}
+/** All pending effect questions, even those asked of the other player. */
+function chaosEffectAnswer(st, policy = firstOption, limit = 30) {
+    for (let i = 0; i < limit && st.pending; i++) {
+        const q = st.pending.question || {};
+        const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
+        const one = typeof policy === 'function' ? policy(st, q) : policy;
+        const res = FS_RULES.apply(st, seat, { type: 'effect', answer: one });
+        if (!res || res.ok === false) throw new Error('ответ не принят: ' + (res && res.error));
+        if (res.done) break;
+    }
+    return st;
+}
+/**
+ * One printed panel of a Chaos combat card, played through the real parse/run
+ * path. Both panels are real: the game runs the upper one always and the lower
+ * one only when its requisite stands in the battle. A check of ONE sentence
+ * therefore runs just that sentence, without the other panel and without the
+ * unrelated card the opponent has laid face down.
+ */
+function chaosRun(st, panel, policy = firstOption) {
+    const card = FS_DATA.combat.find(c => c.faction === CHAOS && c.name === st.testCard);
+    ok(!!card, 'нет боевой карты «' + st.testCard + '»');
+    const text = panel === 'unit' ? card.unit : card.general;
+    ok(!!text, 'нет текста ' + panel + ' у «' + st.testCard + '»');
+    const steps = FS_EFFECTS.parse(text, { kind: 'combat', faction: CHAOS });
+    ok(steps.length > 0, 'текст не разобран');
+    FS_RULES.runEffects(st, 0, steps, { kind: 'combat', ctx: { side: 'attacker' } });
+    return chaosEffectAnswer(st, policy);
+}
+const chaosNoAvoid = (st, q) => (q.op === 'avoid' ? { no: true } : firstOption(st, q));
+const chaosFoeNo = (st, q) => (q.op === 'foeAllow' ? { no: true } : firstOption(st, q));
+const flattenOps = list => {
+    const out = [];
+    const walk = arr => {
+        for (const s of arr || []) {
+            if (!s || typeof s !== 'object') continue;
+            if (s.op) out.push(s.op);
+            walk(s.steps); walk(s.then); walk(s.yes); walk(s.no);
+            for (const o of s.options || []) if (o && typeof o === 'object') {
+                if (o.op) out.push(o.op);
+                walk(o.steps); walk(o.then); walk(o.yes); walk(o.no);
+            }
+        }
+    };
+    walk(list);
+    return out;
+};
+function chaosScheme(name) {
+    const card = FS_DATA.events.find(e => e.faction === CHAOS && e.name === name);
+    ok(!!card, 'нет события «' + name + '»');
+    const parsed = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: CHAOS });
+    const trig = parsed.find(s => s && s.op === 'trigger');
+    ok(!!trig, 'нет триггера плана «' + name + '»');
+    return {
+        name, text: card.text || '', trigger: trig.trigger, steps: trig.steps || [],
+        note: !!trig.note, defer: !!trig.defer,
+        orderType: trig.orderType || null, insteadOfOrder: !!trig.insteadOfOrder,
+    };
+}
+
+head('Космодесант Хаоса — тексты карт', CHAOS);
+check('Обе плашки карты', ' cardSteps и настоящий розыгрыш читают обе способности', () => {
+    const name = 'Ярость Кхорна (на листе — «Арость Кхорна»)';
+    const card = FS_DATA.combat.find(c => c.faction === CHAOS && c.name === name);
+    const withReq = chaosBattle({ card: name, dice: ['att', 'morale'], foeDice: ['def', 'def'] });
+    const steps = FS_RULES.cardSteps(withReq, 0, card);
+    eq(steps.map(x => x.op), ['spendDie', 'gainToken', 'route'], 'верхняя и нижняя плашки');
+    ok(steps.every(x => x.op !== 'note' && x.op !== 'manual'), 'обе плашки без заглушек');
+    const noReq = chaosBattle({ card: name, units: { 'хелбруты': 1 },
+        dice: ['att', 'morale'], foeDice: ['def', 'def'] });
+    eq(FS_RULES.cardSteps(noReq, 0, card).map(x => x.op), ['spendDie', 'gainToken'],
+        'нижняя плашка требует своего отряда');
+    refuseReinforce(withReq);
+    play(withReq, 0, 0, firstOption);
+    eq(tokens(withReq, 'attacker').att, 3, 'верхняя способность через реальный розыгрыш');
+    return eq(count(withReq, 'defender', 'def'), 1,
+        'нижняя способность через реальный розыгрыш: противник заплатил кубик');
+});
+check('Все 42 текста', 'у каждой способности есть настоящие шаги, без note и manual', () => {
+    const faction = FS_DATA.factions.find(f => f.id === CHAOS);
+    const texts = [['ability', faction.ability.text]];
+    for (const c of FS_DATA.combat.filter(c => c.faction === CHAOS)) {
+        texts.push(['combat:' + c.name + ':general', c.general]);
+        if (c.unit) texts.push(['combat:' + c.name + ':unit', c.unit]);
+    }
+    for (const o of FS_DATA.orders.filter(o => o.faction === CHAOS)) texts.push(['order:' + o.name, o.text]);
+    for (const e of FS_DATA.events.filter(e => e.faction === CHAOS)) texts.push(['event:' + e.name, e.text]);
+    eq(texts.length, 42, '42 текста фракции');
+    for (const [name, text] of texts) {
+        const kind = name.startsWith('combat') ? 'combat' : name.startsWith('order') ? 'order'
+            : name.startsWith('event') ? 'event' : 'ability';
+        const steps = FS_EFFECTS.parse(text, { kind, faction: CHAOS });
+        ok(steps.length > 0, name + ': способность не разобрана');
+        for (const s of flattenOps(steps)) {
+            ok(s !== 'note' && s !== 'manual', name + ': остался шаг «' + s + '»');
+        }
+        eq(FS_EFFECTS.chaosCard(text, { faction: 'адептус-механикус' }), null,
+            name + ': чужая фракция не должна получать специальный разбор');
+    }
+    return true;
+});
+check('Зараза хаоса', 'способность переносит cultist в соседний дружественный/нейтральный мир', () => {
+    const faction = FS_DATA.factions.find(f => f.id === CHAOS);
+    const steps = FS_EFFECTS.abilityFor(faction);
+    eq(steps.map(s => s.op), ['moveUnits'], 'один шаг перемещения');
+    eq([steps[0].n, steps[0].dest], [1, 'friendlyOrUncontrolledWorldAdjacent'], 'культист в соседнюю систему');
+    const parsed = FS_EFFECTS.parse(faction.ability.text, { kind: 'ability', faction: CHAOS });
+    return eq(parsed[0].dest, 'friendlyOrUncontrolledWorldAdjacent', 'текст тоже разобран точно');
+});
+
+// --- 04-combat-cards.md: 5 базовых карт -------------------------------------
+const KHORNE = 'Ярость Кхорна (на листе — «Арость Кхорна»)';
+head('Боевые карты', CHAOS);
+check(KHORNE, '1 `att. cube` покупает 3 `att. token`', () => {
+    const st = chaosBattle({ card: KHORNE, dice: ['att', 'morale'] });
+    chaosRun(st, 'general');
+    eq(tokens(st, 'attacker').att, 3, 'три жетона атаки');
+    return eq(count(st, 'attacker', 'att'), 0, 'кубик атаки потрачен');
+});
+check(KHORNE, 'противник платит `def. cube` и не деморализует отряд', () => {
+    const st = chaosBattle({ card: KHORNE, foeDice: ['def', 'def'] });
+    chaosRun(st, 'unit');
+    eq(foeUnits(st).filter(u => u.routed).length, 0, 'отряд не деморализован');
+    return eq(count(st, 'defender', 'def'), 1, 'один кубик обороны потрачен');
+});
+check(KHORNE, 'без платы противник выбирает и деморализует 1 свой отряд', () => {
+    const st = chaosBattle({ card: KHORNE, foeDice: ['def', 'def'] });
+    chaosRun(st, 'unit', chaosNoAvoid);
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'один вражеский отряд деморализован');
+});
+check('Отвратное поколение', 'верхняя способность даёт 1 `any cube`', () => {
+    const st = chaosBattle({ card: 'Отвратное поколение', dice: ['att'] });
+    const before = dice(st, 'attacker').length;
+    chaosRun(st, 'general');
+    return eq(dice(st, 'attacker').length, before + 1, 'кубик получен');
+});
+check('Отвратное поколение', 'нижняя способность считает недеморализованных культистов', () => {
+    const st = chaosBattle({ card: 'Отвратное поколение', foeRouted: [0] });
+    chaosRun(st, 'unit');
+    return eq(tokens(st, 'attacker').def, 2, 'по жетону за двух культистов');
+});
+check('Тёмная вера', 'верхняя способность даёт 1 `morale cube`', () => {
+    const st = chaosBattle({ card: 'Тёмная вера', dice: ['att'] });
+    chaosRun(st, 'general');
+    return eq(count(st, 'attacker', 'morale'), 1, 'кубик морали получен');
+});
+check('Тёмная вера', 'нижняя способность ставит культиста в ДРУГОЙ мир этой системы', () => {
+    const st = chaosBattle({ card: 'Тёмная вера', dice: ['morale', 'morale'], foeDice: ['att'] });
+    const before = st.units.filter(u => u.seat === 0).length;
+    chaosRun(st, 'unit');
+    const added = st.units.filter(u => u.seat === 0).slice(before);
+    eq(added.length, 1, 'один культист размещён');
+    ok(added[0].area !== st.combat.pos, 'мир не спорная область');
+    return eq(added[0].system, st.combat.system, 'тот же система боя');
+});
+check('Соблазны Хаоса', 'согласившийся противник деморализует свой отряд и получает кубик', () => {
+    const st = chaosBattle({ card: 'Соблазны Хаоса', foeDice: ['def'] });
+    const before = dice(st, 'defender').length;
+    chaosRun(st, 'general', branch(0));
+    eq(foeUnits(st).filter(u => u.routed).length, 1, 'противник деморализовал отряд');
+    return eq(dice(st, 'defender').length, before + 1, 'кубик достался противнику');
+});
+check('Соблазны Хаоса', 'отказ противника размещает 1 культиста в области боя', () => {
+    const st = chaosBattle({ card: 'Соблазны Хаоса' });
+    const before = st.units.filter(u => u.seat === 0).length;
+    let first = true;
+    chaosRun(st, 'general', (s, q) => {
+        if (q.kind === 'choice') {
+            const n = first ? 1 : 0;
+            first = false;
+            return { choice: n };
+        }
+        return firstOption(s, q);
+    });
+    const added = st.units.filter(u => u.seat === 0).slice(before);
+    eq(added.length, 1, 'размещён один отряд');
+    ok(/культист/i.test((FS_RULES.unitOf(st, added[0]) || {}).name || ''), 'размещён культист');
+    return eq([added[0].system, added[0].area], [st.combat.system, st.combat.pos], 'в области боя');
+});
+check('Соблазны Хаоса', 'нижняя способность: 2 `att. token` или 2 `def. token`', () => {
+    const a = chaosBattle({ card: 'Соблазны Хаоса' });
+    chaosRun(a, 'unit', branch(0));
+    eq(tokens(a, 'attacker').att, 2, 'ветка атаки');
+    const b = chaosBattle({ card: 'Соблазны Хаоса' });
+    chaosRun(b, 'unit', branch(1));
+    return eq(tokens(b, 'attacker').def, 2, 'ветка обороны');
+});
+check('Нечистые намерения', 'при большем числе `morale cube` восстанавливает свой отряд', () => {
+    const st = chaosBattle({ card: 'Нечистые намерения', routed: [0],
+        dice: ['morale', 'morale'], foeDice: ['att'] });
+    chaosRun(st, 'general');
+    return eq(myUnits(st).filter(u => u.routed).length, 0, 'отряд восстановлен');
+});
+check('Нечистые намерения', 'отказ противника даёт жетоны за культистов', () => {
+    const st = chaosBattle({ card: 'Нечистые намерения' });
+    chaosRun(st, 'unit', chaosFoeNo);
+    return eq(tokens(st, 'attacker').att, 2, 'два жетона атаки за двух культистов');
+});
+check('Нечистые намерения', 'согласие противника деморализует его отряд без жетонов', () => {
+    const st = chaosBattle({ card: 'Нечистые намерения' });
+    chaosRun(st, 'unit');
+    eq(tokens(st, 'attacker').att, 0, 'жетонов нет');
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'вражеский отряд деморализован');
+});
+
+// --- 04-combat-cards.md: 9 улучшений ---------------------------------------
+check('Отметка Кхорна', '1 `att. cube` ИЛИ 1 `morale cube` покупает 3 `att. token`', () => {
+    const st = chaosBattle({ card: 'Отметка Кхорна', dice: ['morale', 'morale'] });
+    chaosRun(st, 'general');
+    eq(tokens(st, 'attacker').att, 3, 'три жетона атаки');
+    return eq(count(st, 'attacker', 'morale'), 1, 'можно потратить кубик морали');
+});
+check('Отметка Кхорна', 'без `def. cube` уничтожается 1 деморализованный отряд противника', () => {
+    const st = chaosBattle({ card: 'Отметка Кхорна', foeRouted: [0], foeDice: ['def'] });
+    const victim = foeUnits(st).find(u => u.routed);
+    chaosRun(st, 'unit', chaosNoAvoid);
+    return eq(stateUnit(st, victim.id), null, 'деморализованный отряд уничтожен');
+});
+check('Отметка Слаанеш', '1 `any cube` и деморализация при большем числе морали', () => {
+    const st = chaosBattle({ card: 'Отметка Слаанеш', dice: ['morale', 'morale'], foeDice: ['att'] });
+    const before = dice(st, 'attacker').length;
+    chaosRun(st, 'general');
+    eq(dice(st, 'attacker').length, before + 1, 'кубик получен');
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'вражеский отряд деморализован');
+});
+check('Отметка Слаанеш', 'нижняя способность ставит культиста в мир боя при деморализованном враге', () => {
+    const st = chaosBattle({ card: 'Отметка Слаанеш', foeRouted: [0] });
+    const before = st.units.filter(u => u.seat === 0).length;
+    chaosRun(st, 'unit');
+    const added = st.units.filter(u => u.seat === 0).slice(before);
+    eq(added.length, 1, 'культист размещён');
+    return eq([added[0].system, added[0].area], [st.combat.system, st.combat.pos], 'в мире боя');
+});
+check('Отметка Тзинча', '1 `morale cube` и замена культиста на космодесантника хаоса', () => {
+    const st = chaosBattle({ card: 'Отметка Тзинча', dice: ['morale'], foeDice: ['att'] });
+    const cultist = myUnits(st).find(u => /культист/i.test((FS_RULES.unitOf(st, u) || {}).name || ''));
+    chaosRun(st, 'general');
+    eq(count(st, 'attacker', 'morale'), 2, 'кубик морали получен до проверки');
+    return ok(/космодесант хаоса/i.test((FS_RULES.unitOf(st, stateUnit(st, cultist.id)) || {}).name || ''), 'культист заменён');
+});
+check('Отметка Тзинча', 'до 2 `morale cube` дают по кубику за каждый потраченный', () => {
+    const st = chaosBattle({ card: 'Отметка Тзинча', dice: ['morale', 'morale', 'morale'] });
+    chaosRun(st, 'unit', branch(0));
+    eq(count(st, 'attacker', 'att'), 2, 'два кубика атаки за два потраченных');
+    return eq(count(st, 'attacker', 'morale'), 1, 'два кубика морали потрачены');
+});
+check('Отметка Нургла', '1 `def. cube` ИЛИ 1 `morale cube` покупает 3 `def. token`', () => {
+    const st = chaosBattle({ card: 'Отметка Нургла', dice: ['morale', 'morale'] });
+    chaosRun(st, 'general');
+    eq(tokens(st, 'attacker').def, 3, 'три жетона обороны');
+    return eq(count(st, 'attacker', 'morale'), 1, 'кубик морали потрачен');
+});
+check('Отметка Нургла', 'отказ противника даёт 2 `def. token`', () => {
+    const st = chaosBattle({ card: 'Отметка Нургла', foeRouted: [0] });
+    chaosRun(st, 'unit', chaosFoeNo);
+    return eq(tokens(st, 'attacker').def, 2, 'два жетона обороны');
+});
+check('Объединённый Хаос', 'отказ противника даёт 1 из трёх кубиков на выбор', () => {
+    const st = chaosBattle({ card: 'Объединённый Хаос', dice: ['att'] });
+    let first = true;
+    chaosRun(st, 'general', (s, q) => {
+        if (q.op === 'foeAllow') return { no: true };
+        if (q.kind === 'choice') { const n = first ? 2 : 0; first = false; return { choice: n }; }
+        return firstOption(s, q);
+    });
+    return eq(count(st, 'attacker', 'morale'), 1, 'выбран кубик морали');
+});
+check('Объединённый Хаос', 'согласие противника деморализует любой его отряд', () => {
+    const st = chaosBattle({ card: 'Объединённый Хаос' });
+    chaosRun(st, 'general');
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'отряд деморализован');
+});
+check('Объединённый Хаос', 'КЛ перемещённого отряда не выше числа культистов в системе', () => {
+    const st = chaosBattle({ card: 'Объединённый Хаос' });
+    const sys = FS_RULES.system(st, st.combat.system);
+    const other = sys.areas.find(a => a.world && a.pos !== st.combat.pos);
+    const titan = FS_RULES.addUnit(st, 0, 'титаны-хаоса-класса-налётчик', sys.id, other.pos);
+    let options = null;
+    chaosRun(st, 'unit', (s, q) => {
+        if (q.op === 'moveUnit' && !options) options = (q.options || []).slice();
+        return firstOption(s, q);
+    });
+    ok(!!options, 'вопрос о перемещении не задан');
+    ok(!options.includes(titan.id), 'титан КЛ 3 не предлагается при двух культистах');
+    return eq(stateUnit(st, titan.id).area, other.pos, 'титан остался на месте');
+});
+check('Нечеловеческая сила', 'выбор даёт 1 `att. cube` или 1 `def. cube`', () => {
+    const a = chaosBattle({ card: 'Нечеловеческая сила', dice: ['morale'] });
+    chaosRun(a, 'general', branch(0));
+    eq(count(a, 'attacker', 'att'), 1, 'ветка атаки');
+    const b = chaosBattle({ card: 'Нечеловеческая сила', dice: ['morale'] });
+    chaosRun(b, 'general', branch(1));
+    return eq(count(b, 'attacker', 'def'), 1, 'ветка обороны');
+});
+check('Нечеловеческая сила', 'уничтожение своего отряда даёт 4 `att. token`', () => {
+    const st = chaosBattle({ card: 'Нечеловеческая сила' });
+    const before = myUnits(st).length;
+    chaosRun(st, 'unit');
+    eq(myUnits(st).length, before - 1, 'свой отряд уничтожен');
+    return eq(tokens(st, 'attacker').att, 4, 'четыре жетона атаки');
+});
+check('Демоническая гибкость', 'выбор даёт 1 `def. cube` или 1 `morale cube`', () => {
+    const a = chaosBattle({ card: 'Демоническая гибкость', dice: ['att'] });
+    chaosRun(a, 'general', branch(0));
+    eq(count(a, 'attacker', 'def'), 1, 'ветка обороны');
+    const b = chaosBattle({ card: 'Демоническая гибкость', dice: ['att'] });
+    chaosRun(b, 'general', branch(1));
+    return eq(count(b, 'attacker', 'morale'), 1, 'ветка морали');
+});
+check('Демоническая гибкость', 'отказ противника даёт 4 `def. token`', () => {
+    const st = chaosBattle({ card: 'Демоническая гибкость' });
+    chaosRun(st, 'unit', chaosFoeNo);
+    return eq(tokens(st, 'attacker').def, 4, 'четыре жетона обороны');
+});
+check('Демоническая гибкость', 'согласие противника уничтожает 1 его отряд', () => {
+    const st = chaosBattle({ card: 'Демоническая гибкость' });
+    const before = foeUnits(st).length;
+    chaosRun(st, 'unit');
+    return eq(foeUnits(st).length, before - 1, 'вражеский отряд уничтожен');
+});
+check('Смерть и отчаяние', 'за 2 потраченных `morale cube` уничтожаются 2 отряда КЛ 0', () => {
+    const st = chaosBattle({ card: 'Смерть и отчаяние', dice: ['morale', 'morale'], foeDice: ['att'] });
+    const before = st.units.length;
+    chaosRun(st, 'general', branch(0));
+    eq(count(st, 'attacker', 'morale'), 0, 'оба кубика морали потрачены');
+    return eq(st.units.length, before - 2, 'уничтожено два КЛ-0 отряда');
+});
+check('Смерть и отчаяние', 'нижняя способность уничтожает деморализованный отряд противника', () => {
+    const st = chaosBattle({ card: 'Смерть и отчаяние', dice: ['morale', 'morale'], foeDice: ['att'], foeRouted: [0] });
+    const victim = foeUnits(st).find(u => u.routed);
+    chaosRun(st, 'unit');
+    return eq(stateUnit(st, victim.id), null, 'деморализованный отряд уничтожен');
+});
+check('Хаос всепобеждающий', '2 `any cube` и все вражеские отряды КЛ 0 деморализованы', () => {
+    const st = chaosBattle({ card: 'Хаос всепобеждающий', dice: ['morale', 'morale'], foeDice: ['att'] });
+    const kl0 = foeUnits(st).filter(u => (FS_RULES.unitOf(st, u) || {}).kl === 0);
+    const high = foeUnits(st).filter(u => (FS_RULES.unitOf(st, u) || {}).kl > 0);
+    chaosRun(st, 'general');
+    ok(kl0.length >= 1, 'у противника есть отряды КЛ 0');
+    ok(kl0.every(u => stateUnit(st, u.id).routed), 'все КЛ 0 деморализованы');
+    ok(high.every(u => !stateUnit(st, u.id).routed), 'старшие отряды не тронуты');
+    return eq(dice(st, 'attacker').length, 4, 'два полученных кубика');
+});
+check('Хаос всепобеждающий', 'нижняя способность деморализует 1 вражеский отряд на выбор', () => {
+    const st = chaosBattle({ card: 'Хаос всепобеждающий' });
+    chaosRun(st, 'unit');
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'один отряд деморализован');
+});
+
+// --- 05-order-upgrades.md ---------------------------------------------------
+head('Улучшения приказов', CHAOS);
+check('Расположение темных богов', 'после стратегии на колоду событий идут еще 2 использованных жетона', () => {
+    const st = FS_RULES.newReadyGame({ seed: 5, players: players(CHAOS, CHAOS_FOE) });
+    const sys = st.systems[0];
+    for (const s of st.systems) s.tokens = [];
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    st.phase = 'operations'; st.turn = 0; st.trim = [];
+    sys.tokens.push({ seat: 0, order: 'strategize', faceUp: false });
+    const p = st.players[0];
+    p.placedTokens = 4; p.eventTokens = 0;
+    p.upgrades = [{ name: 'Расположение темных богов', used: false }];
+    st.order = { seat: 0, order: 'strategize', system: sys.id, phase: 'resolve' };
+    const used = burn(st, 'Расположение темных богов');
+    ok(used.ok, 'улучшение не применено: ' + used.error);
+    eq(st.order.chaosDeckBonus, 2, 'приказ помнит два дополнительных жетона');
+    const done = FS_RULES.apply(st, 0, { type: 'finishStrategize' });
+    ok(done.ok, 'стратегия не закончена: ' + done.error);
+    return eq(p.eventTokens, 3, 'жетон стратегии + два использованных жетона');
+});
+check('Сквозь варп', 'корабли проходят через варп-шторм во время этого приказа', () => {
+    const st = chaosOrder('advance', { upgrades: ['Сквозь варп'] });
+    const used = burn(st, 'Сквозь варп');
+    ok(used.ok, 'улучшение не применено: ' + used.error);
+    ok(!!st.order.shipsThroughStorms, 'приказ не разрешил проход кораблям');
+    const sys = st.systems[0];
+    let side = null, nb = null;
+    for (const d of ['N', 'E', 'S', 'W']) {
+        const x = FS_RULES.across(st, sys.id, d);
+        if (x) { side = d; nb = x; break; }
+    }
+    ok(!!nb, 'нет соседней системы');
+    st.storms = [{ id: 'storm-chaos', system: sys.id, side, moved: false }];
+    const ship = FS_RULES.addUnit(st, 0, 'эсминцы-класса-иконоборец', nb, voidOf(st, nb));
+    const target = { system: sys.id, pos: voidOf(st, sys.id) };
+    const yes = FS_RULES.moveAllowed(st, 0, ship, target);
+    ok(yes.ok, 'шторм всё ещё мешает: ' + yes.error);
+    st.order.shipsThroughStorms = false;
+    const no = FS_RULES.moveAllowed(st, 0, ship, target);
+    return ok(!no.ok && /варп-шторм/i.test(no.error || ''), 'без улучшения шторм запрещает путь');
+});
+check('Полное разрушение', 'бастион не защищает, а 2 `def. cube` уничтожают отряд или постройку', () => {
+    const st = chaosStrike({
+        upgrades: ['Полное разрушение'], foeStructures: ['bastion'],
+        foeUnits: { 'гвардейцы': 1 },
+    });
+    const bastion = st.structures.find(s => s.type === 'bastion');
+    const used = burn(st, 'Полное разрушение');
+    ok(used.ok, 'улучшение не применено: ' + used.error);
+    ok(!!st.order.ignoreBastion, 'бастион не игнорируется');
+    const target = FS_RULES.orbitalStrikeTargets(st, 0).find(t => t.pos === st.strikeWorld);
+    ok(!!target, 'бастион по-прежнему закрывает цель');
+    withFixedDice(['def', 'def', 'morale'], () => fire(st, ['def', 'def', 'morale']));
+    chaosEffectAnswer(st, (s, q) => {
+        if (q.op === 'strikePayPick') return { choice: 2 };
+        if (q.op === 'strikeDestroyOne') return { units: [bastion.id] };
+        return firstOption(s, q);
+    });
+    return eq(stateUnit(st, bastion.id) || st.structures.find(s => s.id === bastion.id), undefined,
+        'бастион уничтожен');
+});
+check('Страх с небес', `1 morale cube маршрутизирует получивший повреждения отряд`, () => {
+    return withFixedDice(['att', 'morale', 'morale'], () => {
+        const st = chaosStrike({
+            upgrades: ['Страх с небес'], foeStructures: ['factory'],
+            foeUnits: { 'огрины': 1 },
+        });
+        const victim = foeUnits(st)[0];
+        // An order of the other player is still waiting: finishing this strike
+        // must not begin the refresh phase and rally the routed unit at once.
+        st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+        const used = burn(st, 'Страх с небес');
+        ok(used.ok, 'улучшение не применено: ' + used.error);
+        fire(st, ['att', 'morale', 'morale']);
+        chaosEffectAnswer(st, (s, q) => (q.op === 'strikePayPick' ? { choice: 1 } : firstOption(s, q)));
+        ok(!!st.strike, 'удар не дошёл до шага повреждений');
+        const dmg = FS_RULES.apply(st, 1, { type: 'strikeDamage', unit: victim.id });
+        ok(dmg.ok, 'урон не назначен: ' + dmg.error);
+        chaosEffectAnswer(st, (s, q) => (q.op === 'strikeRouteDamaged'
+            ? { units: [victim.id] } : firstOption(s, q)));
+        return eq(stateUnit(st, victim.id).routed, true, 'получивший повреждения отряд деморализован');
+    });
+});
+check('Ужасный ритуал', 'КЛ≤2 покупка в дружественной области со скидкой за культистов', () => {
+    const st = chaosOrder('deploy', { upgrades: ['Ужасный ритуал'],
+        units: { 'культисты': 2 }, foeUnits: {}, materiel: 10 });
+    const used = burn(st, 'Ужасный ритуал');
+    ok(used.ok, 'улучшение не применено: ' + used.error);
+    eq(st.order.discount, 2, 'скидка 1 за каждого из двух культистов');
+    const before = st.units.length;
+    chaosEffectAnswer(st, (s, q) => (q.kind === 'types'
+        ? { type: 'хелбруты' } : firstOption(s, q)));
+    eq(st.units.length, before + 1, 'один отряд куплен');
+    ok(st.units.some(u => (FS_RULES.unitOf(st, u) || {}).kl === 2), 'куплен отряд КЛ 2, хотя городов нет');
+    return eq(st.players[0].materiel, 8, 'цена 4 уменьшена на 2');
+});
+
+// --- 06-events.md -----------------------------------------------------------
+head('Карты событий', CHAOS);
+check('Задетый варпом', 'жертва культиста даёт бесплатное улучшение с КЛ не выше числа штормов', () => {
+    const st = chaosEvent('Задетый варпом', { units: { 'культисты': 1 }, materiel: 3 });
+    const cultist = st.units.find(u => u.seat === 0);
+    st.storms = [
+        { id: 's0', system: st.sys, side: 'N', moved: false },
+        { id: 's1', system: st.sys, side: 'E', moved: false },
+    ];
+    const res = playEvent(st);
+    ok(res.ok, 'событие не разыграно: ' + res.error);
+    chaosEffectAnswer(st, (s, q) => {
+        if (q.op === 'destroy') return { units: [cultist.id] };
+        if (q.op === 'buyAnyUpgrade') return { card: q.options[0] };
+        return firstOption(s, q);
+    });
+    eq(stateUnit(st, cultist.id), null, 'культист уничтожен');
+    eq(st.chaosLastSystem, st.sys, 'система жертвы запомнена');
+    ok(st.players[0].decks.combat.some(n => /Отметка|Объединённый|Нечеловеч|Демоническ/.test(n)),
+        'в колоде появилась карта боевого улучшения');
+    return eq(st.players[0].materiel, 3, 'улучшение бесплатно');
+});
+check('Пророчества и знамения', 'первая ветка ставит 2 культистов в мир системы без культистов', () => {
+    const st = chaosEvent('Пророчества и знамения', { structures: ['factory'] });
+    const other = st.systems[1];
+    FS_RULES.addUnit(st, 0, 'культисты', other.id, worldOf(st, other.id));
+    const res = playEvent(st);
+    ok(res.ok, 'событие не разыграно: ' + res.error);
+    chaosEffectAnswer(st, (s, q) => (q.kind === 'choice' ? { choice: 0 } : firstOption(s, q)));
+    const here = st.units.filter(u => u.seat === 0 && u.system === st.sys);
+    return eq(here.length, 2, 'два культиста в системе без культистов');
+});
+check('Пророчества и знамения', 'вторая ветка ставит 1 культиста в любой дружественный мир', () => {
+    const st = chaosEvent('Пророчества и знамения', { structures: ['factory'] });
+    const res = playEvent(st);
+    ok(res.ok, 'событие не разыграно: ' + res.error);
+    chaosEffectAnswer(st, (s, q) => (q.kind === 'choice' ? { choice: 1 } : firstOption(s, q)));
+    return eq(st.units.filter(u => u.seat === 0).length, 1, 'один культист размещён');
+});
+check('Инкарнация Тзинча', 'способность одной из трёх карт, остальные сброшены без движения шторма', () => {
+    const st = chaosEvent('Инкарнация Тзинча', { assets: { forge: 0, reinforcement: 0 } });
+    st.players[0].decks.event = ['Военные трофеи', 'Пророчества и знамения', 'Задетый варпом'];
+    const res = playEvent(st);
+    ok(res.ok, 'событие не разыграно: ' + res.error);
+    chaosEffectAnswer(st, (s, q) => (q.op === 'chooseEventAbility'
+        ? { card: 'Военные трофеи' } : firstOption(s, q)));
+    eq(st.chaosNoStormMove, true, 'новая карта не двигает варп-шторм');
+    eq(st.players[0].assets.forge, 1, 'жетон кузницы тактики получен');
+    return eq(st.players[0].assets.reinforcement, 1, 'жетон подкреплений тактики получен');
+});
+check('Инкарнация Тзинча', 'шторм по новой карте не двигается', () => {
+    const st = chaosEvent('Инкарнация Тзинча', { assets: { forge: 0, reinforcement: 0 } });
+    st.players[0].decks.event = ['Военные трофеи', 'Пророчества и знамения', 'Задетый варпом'];
+    const res = playEvent(st);
+    ok(res.ok, 'событие не разыграно: ' + res.error);
+    chaosEffectAnswer(st, (s, q) => (q.op === 'chooseEventAbility'
+        ? { card: 'Военные трофеи' } : firstOption(s, q)));
+    eq(st.chaosNoStormMove, true, 'движение шторма новой карты запрещено');
+    // A legal storm edge is needed: otherwise «there was nothing to move»
+    // would look like the card had suppressed the movement.
+    const sys = st.systems[0];
+    let options = [];
+    for (const side of ['N', 'E', 'S', 'W', 'NE', 'SE', 'SW', 'NW']) {
+        st.storms = [{ id: 'storm-chaos', system: sys.id, side, moved: false }];
+        options = FS_RULES.stormOptions(st, 0);
+        if (options.length) break;
+    }
+    ok(options.length, 'нет законного движения варп-шторма для проверки');
+    st.event.stormMoved = false;
+    const blocked = FS_RULES.apply(st, 0, {
+        type: 'moveStorm', storm: options[0].storm, dir: options[0].dir,
+    });
+    ok(!blocked.ok && /не производится/.test(blocked.error || ''),
+        'шторм новой карты не сдвинут');
+    return eq(st.event.stormMoved, false, 'движение не засчитано');
+});
+check('Военные трофеи', '1 жетон кузницы и 1 жетон подкреплений', () => {
+    const st = chaosEvent('Военные трофеи', { assets: { forge: 1, reinforcement: 1 } });
+    const res = playEvent(st);
+    ok(res.ok, 'событие не разыграно: ' + res.error);
+    eq(st.players[0].assets.forge, 2, 'жетон кузницы');
+    return eq(st.players[0].assets.reinforcement, 2, 'жетон подкреплений');
+});
+check('Прикосновение варпа', 'план ждёт приказа продвижения и хранит обе ветки', () => {
+    const st = chaosEvent('Прикосновение варпа', {});
+    const res = playEvent(st);
+    ok(res.ok, 'событие не разыграно: ' + res.error);
+    const scheme = st.players[0].schemes[0];
+    eq([scheme.trigger, scheme.orderType, scheme.insteadOfOrder], ['order', 'advance', false], 'триггер приказа');
+    const ops = flattenOps(scheme.steps);
+    ok(ops.includes('unitsThroughStorms'), 'ветка прохода через штормы');
+    ok(ops.includes('combatStartMorale'), 'ветка кубика морали в начале боя');
+    return eq(flattenOps(scheme.steps).filter(x => x === 'sequence').length, 1, 'ветка «и» тоже есть');
+});
+check('Прикосновение варпа', 'план не предлагается для другого приказа', () => {
+    const st = chaosOrder('deploy', {});
+    schemeInPlay(st, 'Прикосновение варпа', CHAOS);
+    return eq(FS_RULES.maybeScheme(st, 0, 'order', { kind: 'order', ctx: null }), false,
+        'план продвижения не предлагается в развертывании');
+});
+check('Прикосновение варпа', 'ветки плана дают проход, morale cube или оба эффекта', () => {
+    const one = chaosOrder('advance', {});
+    schemeInPlay(one, 'Прикосновение варпа', CHAOS);
+    ok(FS_RULES.maybeScheme(one, 0, 'order', { kind: 'order', ctx: null }), 'план не предложен');
+    chaosEffectAnswer(one, (s, q) => (q.kind === 'choice' ? { choice: 0 } : firstOption(s, q)));
+    eq(one.order.unitsThroughStorms, true, 'первая ветка: проход через штормы');
+
+    const two = chaosOrder('advance', {});
+    schemeInPlay(two, 'Прикосновение варпа', CHAOS);
+    ok(FS_RULES.maybeScheme(two, 0, 'order', { kind: 'order', ctx: null }), 'план не предложен');
+    chaosEffectAnswer(two, (s, q) => (q.kind === 'choice' ? { choice: 1 } : firstOption(s, q)));
+    eq(two.order.chaosCombatMorale, 1, 'вторая ветка: кубик морали');
+
+    const both = chaosOrder('advance', {});
+    schemeInPlay(both, 'Прикосновение варпа', CHAOS);
+    ok(FS_RULES.maybeScheme(both, 0, 'order', { kind: 'order', ctx: null }), 'план не предложен');
+    chaosEffectAnswer(both, (s, q) => (q.kind === 'choice' ? { choice: 2 } : firstOption(s, q)));
+    eq(both.order.unitsThroughStorms, true, 'третья ветка: проход');
+    return eq(both.order.chaosCombatMorale, 1, 'третья ветка: кубик морали');
+});
+check('Прикосновение варпа', 'morale cube приходит в начале боя этого приказа', () => {
+    const st = chaosOrder('advance', { units: { 'культисты': 1 }, foeUnits: { 'гвардейцы': 1 } });
+    const sys = FS_RULES.system(st, st.sys || st.systems[0].id);
+    st.combat = null;
+    st.order = { seat: 0, order: 'advance', system: sys.id, phase: 'move', chaosCombatMorale: 1 };
+    withFixedDice(['def', 'def'], () => FS_RULES.startCombat(st, 0, 1, sys.id, worldOf(st, sys.id)));
+    ok(!!st.combat, 'бой не начался');
+    ok(count(st, 'attacker', 'morale') >= 1, 'кубик морали не добавлен');
+    return eq(st.order.chaosCombatMorale, 0, 'кубик выдан один раз');
+});
+check('Совращённый Хаосом', 'план ждёт конца шага повреждений и деморализует вражеский отряд', () => {
+    const st = chaosEvent('Совращённый Хаосом', {});
+    const res = playEvent(st);
+    ok(res.ok, 'событие не разыграно: ' + res.error);
+    const scheme = st.players[0].schemes[0];
+    return eq([scheme.trigger, scheme.insteadOfOrder], ['damage-end', false], 'триггер конца повреждений');
+});
+check('Совращённый Хаосом', 'движок предлагает план в endDamageStep и продолжает шаг', () => {
+    const st = chaosBattle({});
+    refuseReinforce(st);
+    schemeInPlay(st, 'Совращённый Хаосом', CHAOS);
+    st.combat.step = 'damage-defender';
+    st.combat.damage = { attacker: 0, defender: 0 };
+    st.combat.dice.attacker = ['def'];
+    st.combat.dice.defender = ['def'];
+    FS_RULES.endDamageStep(st);
+    const q = pending(st);
+    ok(!!q && q.kind === 'scheme', 'план конца повреждений не предложен');
+    chaosEffectAnswer(st, firstOption);
+    eq(foeUnits(st).filter(u => u.routed).length, 1, 'вражеский отряд деморализован');
+    eq(st.players[0].schemes.length, 0, 'план сброшен');
+    eq(st.combat.damageEndHook, null, 'хвост шага повреждений выполнен');
+    return eq(st.combat.damageEndResume, false, 'шаг не ждёт план повторно');
+});
+check('Отрава Нургла', 'план заменяет раскрытие приказа, не сбрасывая жетон', () => {
+    const st = FS_RULES.newReadyGame({ seed: 5, players: players(CHAOS, CHAOS_FOE) });
+    const sys = st.systems[0];
+    for (const s of st.systems) s.tokens = [];
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    const pos = worldOf(st, sys.id);
+    FS_RULES.addUnit(st, 0, 'культисты', sys.id, pos);
+    const foe = FS_RULES.addUnit(st, 1, 'гвардейцы', sys.id, pos);
+    sys.tokens.push({ seat: 0, order: 'advance', faceUp: false });
+    sys.tokens.push({ seat: 1, order: 'advance', faceUp: false });
+    st.phase = 'operations'; st.turn = 0; st.order = null; st.trim = [];
+    st.players[0].placedTokens = 1; st.players[1].placedTokens = 1;
+    st.players[0].schemes = [chaosScheme('Отрава Нургла')];
+    const res = FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys.id });
+    ok(res.ok, 'приказ не предложен: ' + res.error);
+    const q = pending(st);
+    ok(!!q && q.kind === 'scheme', 'план «вместо раскрытия» не предложен');
+    chaosEffectAnswer(st, (s, qq) => (qq.op === 'route'
+        ? { units: [foe.id] } : firstOption(s, qq)));
+    eq(stateUnit(st, foe.id).routed, true, 'вражеский отряд в системе деморализован');
+    eq(sys.tokens.length, 2, 'ни один жетон приказа не раскрыт и не сброшен');
+    eq(st.order, null, 'приказ не начат');
+    return eq(st.turn, 1, 'ход переходит следующему игроку');
+});
+check('Отрава Нургла', 'после отказа план снова предлагается вместо другого приказа', () => {
+    const st = FS_RULES.newReadyGame({ seed: 5, players: players(CHAOS, CHAOS_FOE) });
+    for (const sys of st.systems) sys.tokens = [];
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    const sys0 = st.systems[0], sys1 = st.systems[1];
+    const pos = worldOf(st, sys0.id);
+    FS_RULES.addUnit(st, 0, 'культисты', sys0.id, pos);
+    sys0.tokens.push({ seat: 0, order: 'advance', faceUp: false });
+    sys1.tokens.push({ seat: 0, order: 'deploy', faceUp: false });
+    st.phase = 'operations'; st.turn = 0; st.order = null; st.trim = [];
+    st.players[0].placedTokens = 2;
+    st.players[0].schemes = [chaosScheme('Отрава Нургла')];
+    const first = FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys0.id });
+    ok(first.ok, 'первый приказ не предложен: ' + first.error);
+    ok(pending(st) && pending(st).kind === 'scheme', 'план не предложен');
+    const refused = FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: -1 } });
+    ok(refused.ok, 'отказ не принят: ' + refused.error);
+    eq(st.players[0].schemes.length, 1, 'план остался в игре');
+    eq(sys0.tokens.length, 1, 'первый жетон не раскрыт');
+    const second = FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys1.id });
+    ok(second.ok, 'второй приказ не предложен: ' + second.error);
+    ok(pending(st) && pending(st).kind === 'scheme', 'план не предложен вместо второго приказа');
+    return eq(st.players[0].schemes.length, 1, 'план всё ещё ждёт своего момента');
+});
+check('Отрава Нургла', 'план не предлагается как обычный план начала фазы действий', () => {
+    const st = chaosEvent('Отрава Нургла', {});
+    const res = playEvent(st);
+    ok(res.ok, 'событие не разыграно: ' + res.error);
+    const scheme = st.players[0].schemes[0];
+    eq([scheme.trigger, scheme.insteadOfOrder], ['operations', true], 'особый триггер');
+    return eq(FS_RULES.maybeScheme(st, 0, 'operations', { kind: 'event', ctx: null }), false,
+        'начало фазы не тратит этот план');
+});
+check('Молящийся тёмным богам', 'план отменяет движение шторма и выбирает новое направление', () => {
+    const st = chaosEvent('Военные трофеи', {});
+    const sys = st.systems[0];
+    st.event = { seat: 0, drawn: [], chosen: null, card: { name: 'X', storm: ['any'] },
+        top: null, stormMoved: false };
+    st.phase = 'refresh'; st.turn = 0;
+    st.players[0].schemes = [];
+    st.players[1].schemes = [chaosScheme('Молящийся тёмным богам')];
+    let storm = null, move = null;
+    for (const side of ['N', 'E', 'S', 'W']) {
+        st.storms = [{ id: 'storm-chaos', system: sys.id, side, moved: false }];
+        const options = FS_RULES.stormOptions(st, 0);
+        if (options.length) { storm = st.storms[0]; move = options[0]; break; }
+    }
+    ok(!!move, 'нет законного движения шторма');
+    const before = { system: storm.system, side: storm.side };
+    const originalTarget = FS_RULES.stormTarget(st, storm, move.dir);
+    const originalKey = FS_RULES.gridKey(FS_RULES.stormEdge(st, originalTarget));
+    const res = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: move.storm, dir: move.dir });
+    ok(res.ok, 'шторм не предложен: ' + res.error);
+    let chosenDir = null;
+    chaosEffectAnswer(st, (s, q) => {
+        if (q.kind === 'scheme') return { choice: 0 };
+        if (q.op === 'stormReaction') {
+            const dirs = q.options || [];
+            let i = dirs.findIndex(d => d !== move.dir);
+            if (i < 0) i = 0;
+            chosenDir = dirs[i];
+            return { choice: i };
+        }
+        return firstOption(s, q);
+    });
+    ok(!!chosenDir && chosenDir !== move.dir, 'направление не выбрано');
+    const chosenTarget = FS_RULES.stormTarget(st, before, chosenDir);
+    const chosenKey = FS_RULES.gridKey(FS_RULES.stormEdge(st, chosenTarget));
+    const finalKey = FS_RULES.gridKey(FS_RULES.stormEdge(st, storm));
+    eq(finalKey, chosenKey, 'шторм ушёл в выбранном направлении');
+    ok(finalKey !== originalKey, 'исходное перемещение отменено');
+    eq(st.event.stormMoved, true, 'шторм считается сдвинутым в эту фазу');
+    return eq(st.players[1].schemes.length, 0, 'план сброшен');
+});
+check('Молящийся тёмным богам', 'отказ от плана оставляет исходное движение шторма', () => {
+    const st = chaosEvent('Военные трофеи', {});
+    const sys = st.systems[0];
+    st.event = { seat: 0, drawn: [], chosen: null, card: { name: 'X', storm: ['any'] },
+        top: null, stormMoved: false };
+    st.phase = 'refresh'; st.turn = 0;
+    st.players[0].schemes = [];
+    st.players[1].schemes = [chaosScheme('Молящийся тёмным богам')];
+    let storm = null, move = null;
+    for (const side of ['N', 'E', 'S', 'W']) {
+        st.storms = [{ id: 'storm-chaos', system: sys.id, side, moved: false }];
+        const options = FS_RULES.stormOptions(st, 0);
+        if (options.length) { storm = st.storms[0]; move = options[0]; break; }
+    }
+    ok(!!move, 'нет законного движения шторма');
+    const target = FS_RULES.stormTarget(st, storm, move.dir);
+    const key = FS_RULES.gridKey(FS_RULES.stormEdge(st, target));
+    const res = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: move.storm, dir: move.dir });
+    ok(res.ok, 'шторм не предложен: ' + res.error);
+    chaosEffectAnswer(st, (s, q) => (q.kind === 'scheme' ? { no: true } : firstOption(s, q)));
+    eq(FS_RULES.gridKey(FS_RULES.stormEdge(st, storm)), key, 'шторм сдвинут по исходной карте');
+    eq(st.players[1].schemes.length, 1, 'план остался в игре');
+    return eq(st.event.stormMoved, true, 'движение засчитано');
+});
+head('Планы Хаоса — точные триггеры', CHAOS);
+check('Четыре плана', 'все хранят настоящие шаги и не имеют ручных заглушек', () => {
+    for (const name of ['Прикосновение варпа', 'Совращённый Хаосом', 'Отрава Нургла', 'Молящийся тёмным богам']) {
+        const st = chaosEvent(name, {});
+        const res = playEvent(st);
+        ok(res.ok, name + ': событие не разыграно: ' + res.error);
+        const scheme = st.players[0].schemes[0];
+        ok(!!scheme, name + ': план не остался в игре');
+        ok(scheme.steps.length > 0, name + ': у плана нет шагов');
+        ok(!scheme.note && !scheme.defer, name + ': план помечен как ручной/отложенный');
+        const ops = flattenOps(scheme.steps);
+        ok(!ops.includes('note') && !ops.includes('manual'), name + ': осталась заглушка');
+    }
+    return true;
 });
 
 // ============================================================================
