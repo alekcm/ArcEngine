@@ -1375,7 +1375,42 @@ const FS_RULES = {
     // The end of an order: the token goes to the play area, the turn passes. The
     // troops over the capacity of their areas are chosen by the player before the
     // next order: the engine only asks.
+    // The order tokens of the player that are in his PLAY AREA: the ones he
+    // placed this round, minus the ones still on the board and the ones already
+    // lying on his event deck («Учения Тау'вы»).
+    usedOrderTokens(state, seat) {
+        const p = state.players[seat];
+        const onBoard = state.systems.reduce((n, sys) => n
+            + (sys.tokens || []).filter(t => t.seat === seat).length, 0);
+        return Math.max(0, (p.placedTokens || 0) - onBoard - (p.eventTokens || 0));
+    },
+
     finishOrder(state, seat) {
+        // «Мобилизированные охотники»: the extra advance (and a combat it may
+        // start) ends here, but the MAIN advance of the same order goes on.
+        if (state.preAdvanceMain) {
+            this.finishPreAdvance(state, seat);
+            return;
+        }
+        // «Быстрый ответ»: the limited advance was born from a tactic event of
+        // the refresh phase. Its end returns the game to that event phase.
+        if (state.order && state.order.fromEvent) {
+            const snap = state.quickResponseSnapshot;
+            for (const p of state.players) this.trimPlayer(state, p.seat);
+            state.order = null;
+            if (snap) {
+                state.phase = snap.phase;
+                state.turn = snap.turn;
+                state.event = snap.event;
+                state.eventsLeft = snap.eventsLeft;
+                delete state.quickResponseSnapshot;
+                delete state.quickResponsePending;
+                // The next player's event card is drawn only now: the limited
+                // advance itself is not part of the refresh phase.
+                this.nextEventPlayer(state);
+            }
+            return;
+        }
         // A prosperity token that was never exchanged still gives one asset of
         // the player's choice: the engine picks one for him instead of losing
         // it («if he gains a prosperity asset, he gains one asset token of his
@@ -1433,13 +1468,27 @@ const FS_RULES = {
         const from = new Set([sys].concat(this.neighbors(state, sys)));
         const moved = order.moved || [];
         const step = order.moveStep === 'ground' ? 'ground' : 'ships';
-        const units = state.units.filter(u => {
+        let units = state.units.filter(u => {
             if (u.seat !== seat || !from.has(u.system) || u.routed || moved.includes(u.id)) return false;
             const def = this.unitOf(state, u);
             if (!def) return false;
             // The ships move in the first step, the ground units in the second one.
             return step === 'ships' ? def.type === 'ship' : def.type === 'ground';
         });
+        // «Мобилизированные охотники»: the extra advance uses one KL0/1 unit
+        // that was ALREADY in the active system; that same unit then sits out
+        // the main advance.
+        if (order.preAdvance) {
+            units = units.filter(u => {
+                if (u.system !== order.system) return false;
+                const d = this.unitOf(state, u);
+                return !!d && (d.kl || 0) <= 1;
+            });
+        }
+        if (order.excludedUnit) units = units.filter(u => u.id !== order.excludedUnit);
+        // «Быстрый ответ»: only the units that are ALREADY in the chosen
+        // system may take part in the limited advance.
+        if (order.quickResponse) units = units.filter(u => u.system === order.system);
         // The frozen routes decide: a unit without a road does not count.
         if (order.route) return units.filter(u => order.route[u.id]);
         return units;
@@ -1452,6 +1501,36 @@ const FS_RULES = {
         const order = state.order;
         const def = this.unitOf(state, unit);
         if (!def) return { ok: false, error: 'Неизвестный отряд.' };
+        // The unit of the extra advance cannot march twice in the same order.
+        if (order && order.excludedUnit === unit.id) {
+            return { ok: false, error: 'Этот отряд уже участвовал в дополнительном приказе продвижения.' };
+        }
+        if (order && order.preAdvance) {
+            if (unit.system !== order.system) {
+                return { ok: false, error: 'Дополнительный приказ использует отряд из активной системы.' };
+            }
+            if ((def.kl || 0) > 1) {
+                return { ok: false, error: 'Дополнительный приказ использует отряд с командным уровнем 0 или 1.' };
+            }
+        }
+        // «Быстрый ответ»: only the units of the chosen system march, and only
+        // into friendly or uncontrolled areas.
+        if (order && order.quickResponse) {
+            if (unit.system !== order.system) {
+                return { ok: false, error: 'Ограниченное продвижение — только отряды этой системы.' };
+            }
+            const ctrl = this.control(state, seat, target.system, target.pos);
+            // `control` is read from the mover's point of view: an area held
+            // only by another player looks like «none» to him. Such an area is
+            // enemy-controlled, not uncontrolled — check the other seats too.
+            const foreign = state.units.some(u => u.seat !== seat
+                && u.system === target.system && u.area === target.pos)
+                || state.structures.some(s2 => s2.seat !== seat
+                    && s2.system === target.system && s2.area === target.pos);
+            if (foreign || (ctrl !== 'friendly' && ctrl !== 'none')) {
+                return { ok: false, error: 'Продвижение только в дружественные или никем не контролируемые области.' };
+            }
+        }
         const sys = this.system(state, target.system);
         const area = this.area(sys, target.pos);
         if (!area) return { ok: false, error: 'Нет такой области.' };
@@ -1552,6 +1631,11 @@ const FS_RULES = {
         // The order may limit the number of the units that move.
         if (order.moveLimit && moves.length > order.moveLimit) {
             return { ok: false, error: 'Можно переместить не больше ' + order.moveLimit + ' отрядов.' };
+        }
+        // «Мобилизированные охотники»: ONE unit for the whole extra advance,
+        // not one ship and then one ground unit.
+        if (order.preAdvance && moves.length + (order.moved || []).length > 1) {
+            return { ok: false, error: 'Дополнительный приказ использует только 1 отряд.' };
         }
         // «… если хотя бы один из этих отрядов — Гвардеец» («Адептус Астрономика»).
         if (order.mustInclude && moves.length) {
@@ -1698,6 +1782,7 @@ const FS_RULES = {
         }
         // The units that marched this time do not march again in the same order.
         order.moved = (order.moved || []).concat(plan.map(m => m.id));
+        if (order.preAdvance && plan.length) order.preAdvanceUnit = plan[0].id;
         // The step is remembered: the player may take it back with Esc. Each step
         // knows whose march it was, so the roll-back can return to the step of the
         // order it belongs to (ships or ground units).
@@ -1821,6 +1906,13 @@ const FS_RULES = {
             this.startCombat(state, seat, defender, area.system, area.pos);
             return { ok: true };
         }
+        // «Мобилизированные охотники»: the extra advance is over; the main
+        // advance of the same order resumes with its own movement still frozen.
+        if (order.preAdvance) {
+            order.phase = 'done';
+            this.finishOrder(state, seat);
+            return { ok: true };
+        }
         // No combat. An orbital strike is offered only when it has a target: an
         // enemy world under the friendly ships of the system.
         if (!this.orbitalStrikeTargets(state, seat).length) {
@@ -1868,6 +1960,7 @@ const FS_RULES = {
 
     cmdOrbitalStrike(state, seat, cmd) {
         const order = state.order;
+        if (order) order.strikeFirstAsked = false;
         if (!order || order.phase !== 'strike') return { ok: false, error: 'Сейчас нельзя наносить орбитальный удар.' };
         // The schemes of the strike are used before the strike.
         if (!order.strikeHook) {
@@ -1952,7 +2045,10 @@ const FS_RULES = {
                 victims: victims.map(u => u.id), cap: 0,
                 ships: ships.length, pool: [], pays: [], paid: [],
             };
-            if (wantsFirst) paySteps.push({ op: 'strikeFirstPick', maxKl: order.strikeFirstKl || 0 });
+            if (wantsFirst) paySteps.push({
+                op: 'strikeFirstPick',
+                maxKl: order.strikeFirstKl === undefined ? 0 : order.strikeFirstKl,
+            });
             order.strikePlanned = planned;
             order.phase = 'strike-first';
             this.runEffects(state, seat, paySteps, { kind: 'order', ctx: null });
@@ -2002,6 +2098,20 @@ const FS_RULES = {
         const order = state.order;
         const planned = order && order.strikePlanned;
         if (!planned) return { ok: true };
+        // «Точные удары»: the payment has just been made, so the choice of the
+        // unit that suffers the damage first is asked NOW — after all payments,
+        // still before the damage. Any enemy unit of the world qualifies.
+        const wantsFirst = planned.hits > 0 && (planned.victims || []).length
+            && planned.defender >= 0 && order.strikeFirstWanted && !order.strikeFirst;
+        if (wantsFirst && !order.strikeFirstAsked) {
+            order.strikeFirstAsked = true;
+            order.phase = 'strike-first';
+            this.runEffects(state, seat, [{
+                op: 'strikeFirstPick',
+                maxKl: order.strikeFirstKl === undefined ? 0 : order.strikeFirstKl,
+            }], { kind: 'order', ctx: null });
+            return { ok: true, pending: true };
+        }
         order.strikePlanned = null;
         const victims = (planned.victims || []).map(id => state.units.find(u => u.id === id)).filter(Boolean);
         return this.finishStrike(state, seat, { system: planned.system, pos: planned.pos },
@@ -2059,8 +2169,76 @@ const FS_RULES = {
     cmdFinishAdvance(state, seat) {
         const order = state.order;
         if (!order || order.order !== 'advance' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        if (order.preAdvance) {
+            this.finishPreAdvance(state, seat);
+            return { ok: true };
+        }
         this.finishOrder(state, seat);
         return { ok: true };
+    },
+
+    // «Мобилизированные охотники»: a whole extra advance is played before the
+    // main one. The main order waits untouched; the unit that made the extra
+    // march is excluded from the main movement afterwards.
+    startPreAdvance(state, seat) {
+        const main = state.order;
+        if (!main || main.order !== 'advance') return;
+        state.preAdvanceMain = main;
+        state.moves = [];
+        /** @type {any} */
+        const pre = {
+            seat, order: 'advance', system: main.system, phase: 'move', moveStep: 'ships',
+            moved: [], steps: [], route: null, preAdvance: true, moveLimit: 1,
+            maxKl: 1, combatRounds: 1,
+        };
+        state.order = pre;
+        pre.route = this.advanceRoutes(state, seat, 'ship');
+        this.log(state, seat, state.players[seat].name
+            + ' выполняет дополнительный приказ продвижения одним отрядом.');
+    },
+
+    // «Быстрый ответ»: the chosen system becomes a limited advance order. Only
+    // its own units move, and only into friendly or uncontrolled areas.
+    startQuickResponse(state, seat, systemId) {
+        // The event phase is suspended: the limited advance of «Быстрого
+        // ответа» is resolved now, and the snapshot goes back on its end.
+        // cmdResolveEvent() took this snapshot BEFORE the event phase could
+        // advance to the next player. Reuse it: a second `nextEventPlayer`
+        // would draw and discard an extra event card.
+        if (!state.quickResponseSnapshot) {
+            state.quickResponseSnapshot = {
+                phase: state.phase, turn: state.turn,
+                event: state.event, eventsLeft: state.eventsLeft,
+            };
+        }
+        state.quickResponsePending = false;
+        // The limited order belongs to the player of the event even though the
+        // event-phase turn had already passed to the next player.
+        state.turn = seat;
+        state.moves = [];
+        /** @type {any} */
+        const order = {
+            seat, order: 'advance', system: systemId, phase: 'move', moveStep: 'ships',
+            moved: [], steps: [], route: null, quickResponse: true, fromEvent: true,
+        };
+        state.phase = 'operations';
+        state.order = order;
+        order.route = this.advanceRoutes(state, seat, 'ship');
+        this.log(state, seat, state.players[seat].name
+            + ' выполняет ограниченный приказ продвижения в выбранной системе.');
+    },
+
+    finishPreAdvance(state, seat) {
+        const pre = state.order;
+        const main = state.preAdvanceMain;
+        delete state.preAdvanceMain;
+        if (main) {
+            main.excludedUnit = pre && pre.preAdvanceUnit ? pre.preAdvanceUnit : null;
+            main.preAdvanceDone = true;
+            state.order = main;
+            this.log(state, seat, state.players[seat].name
+                + ' возвращается к основному приказу продвижения.');
+        }
     },
 
     // --- deploy order: buying units and a structure ------------------------
@@ -2153,11 +2331,20 @@ const FS_RULES = {
         // The units are bought only in the active system and only with a factory in it —
         // the ability produces only into the chosen factory's world.
         if (cmd.system !== order.system) return { ok: false, error: 'Отряды покупаются в активной системе.' };
-        if (!isGuard && !this.hasFactory(state, seat, order.system)) return { ok: false, error: 'В активной системе нет фабрики.' };
-        const limit = this.deployLimit(state, seat, order.system);
-        if ((order.bought || 0) >= limit) return { ok: false, error: 'Предел развёртывания исчерпан.' };
         const def = this.unitDef(state, seat, cmd.unit);
         if (!def) return { ok: false, error: 'Нет такого отряда.' };
+        // «Союзники Гуэ'веса»: ONE KL0 unit for 1 materiel, in a friendly or
+        // uncontrolled area of the active system. The card is its own
+        // permission: no factory and no deploy limit are needed for it.
+        const ctrl0 = this.control(state, seat, cmd.system, cmd.pos);
+        const cheap = !!order.cheapUnitOnly && !order.cheapUnitUsed
+            && (def.kl || 0) === 0
+            && (ctrl0 === 'friendly' || ctrl0 === 'none');
+        if (!cheap) {
+            if (!isGuard && !this.hasFactory(state, seat, order.system)) return { ok: false, error: 'В активной системе нет фабрики.' };
+            const limit = this.deployLimit(state, seat, order.system);
+            if ((order.bought || 0) >= limit) return { ok: false, error: 'Предел развёртывания исчерпан.' };
+        }
         // «Массовое Производство» производит только наземные отряды в мир фабрики — космос это другой мир.
         if (isGuard && def.type === 'ship') {
             return { ok: false, error: '«Массовое Производство» производит только наземные отряды в мир фабрики.' };
@@ -2218,26 +2405,33 @@ const FS_RULES = {
                 if (!factory) return { ok: false, error: 'Отряд ставится в мир с вашей фабрикой.' };
             }
         }
-        let cost = def.cost;
-        // The order may make the units cheaper.
-        if (order.discount) cost = Math.max(0, cost - order.discount);
-        // «уменьшить общую цену всех покупок (включая здания) на 1» («Главный по
-        // машинам»): the discount of the card covers every purchase of the order.
-        if (order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
-        // One cache token lowers the cost of one unit by two materiel. The
-        // pair of the faction deal is paid by a cache token in full.
-        let cache = !!cmd.cache && !pairMate;
-        if (pairMate) {
-            if ((p.assets.cache || 0) < 1) return { ok: false, error: 'Для «2 Гвардейца за 1 жетон запасов» нужен жетон тайника.' };
-            cost = 0;
-            cache = true;
+        let cost = cheap ? 1 : def.cost;
+        let cache = cheap ? false : (!!cmd.cache && !pairMate);
+        if (cheap) {
+            // «потратить 1 материал, чтобы разместить 1 отряд»: the price is
+            // exactly one materiel, and the permission is spent by this buy.
+            order.cheapUnitUsed = true;
+            order.cheapUnit = 0;
+        } else {
+            // The order may make the units cheaper.
+            if (order.discount) cost = Math.max(0, cost - order.discount);
+            // «уменьшить общую цену всех покупок (включая здания) на 1»
+            // («Главный по машинам»): the discount covers every purchase.
+            if (order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
+            // One cache token lowers the cost of one unit by two materiel. The
+            // pair of the faction deal is paid by a cache token in full.
+            if (pairMate) {
+                if ((p.assets.cache || 0) < 1) return { ok: false, error: 'Для «2 Гвардейца за 1 жетон запасов» нужен жетон тайника.' };
+                cost = 0;
+                cache = true;
+            }
+            if (cache && !pairMate && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
+            if (cache && !pairMate) cost = Math.max(0, cost - 2);
+            // The order may sell a unit of command level 0 for 1 materiel.
+            if (order.cheapUnit && def.kl === 0) cost = Math.min(cost, order.cheapUnit);
+            // The card of the player may make the purchase cheaper.
+            if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
         }
-        if (cache && !pairMate && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
-        if (cache && !pairMate) cost = Math.max(0, cost - 2);
-        // The order may sell a unit of command level 0 for 1 materiel.
-        if (order.cheapUnit && def.kl === 0) cost = Math.min(cost, order.cheapUnit);
-        // The card of the player may make the purchase cheaper.
-        if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
         if (def.forge && (p.assets.forge || 0) < (forgeKl ? 1 : 0) + 1) return { ok: false, error: 'Нужен жетон кузницы.' };
         if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
         // The tokens are paid at once, the materiel — at the end of the order.
@@ -2841,9 +3035,11 @@ const FS_RULES = {
         // Without a card in the hand there is nothing to play: the player only
         // moves the storm and the refresh goes on.
         if (card && card.type === 'scheme') {
-            // A scheme card stays in play: the other schemes are discarded.
+            // «… чтобы осталось не больше 2» (Tau plans): one old plan may
+            // stay; the other factions discard every other plan.
             const p0 = state.players[seat];
-            p0.schemes = [];
+            p0.schemes = /не больше 2/i.test(card.text || '')
+                ? (p0.schemes || []).slice(0, 1) : [];
             const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p0.faction });
             const trig = steps.find(s => s.op === 'trigger');
             p0.schemes.push({
@@ -2875,11 +3071,27 @@ const FS_RULES = {
         // The text of the card is the rule: the engine performs it.
         if (card && card.type !== 'scheme') {
             const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: state.players[seat].faction });
+            // «Быстрый ответ» asks for a system first: the limited advance is
+            // born only when that question is answered. The event phase must
+            // wait until THEN — a premature nextEventPlayer() would already
+            // draw the next player's card and corrupt the snapshot.
+            if (steps.some(step => step && step.op === 'chooseSystem' && step.quickResponse)) {
+                state.quickResponsePending = true;
+                state.quickResponseSnapshot = {
+                    phase: state.phase, turn: state.turn,
+                    event: state.event, eventsLeft: state.eventsLeft,
+                };
+            }
             if (steps.length) {
                 this.runEffects(state, seat, steps, { kind: 'event', ctx: null });
             }
         }
-        this.nextEventPlayer(state);
+        // «Быстрый ответ» starts a limited advance from this event: the event
+        // phase waits until that order is finished. finishOrder() will call
+        // nextEventPlayer() with the restored event-phase snapshot.
+        if (!(state.order && state.order.fromEvent) && !state.quickResponsePending) {
+            this.nextEventPlayer(state);
+        }
         return { ok: true };
     },
 
@@ -3297,6 +3509,11 @@ const FS_RULES = {
             combat.cards[seat === attacker ? 'attacker' : 'defender'].hand = hand;
         }
         state.combat = combat;
+        // «Если происходит бой, разыграйте только ОДИН раунд» («Мобилизированные
+        // охотники»): the limit belongs to the combat this order starts.
+        if (state.order && state.order.combatRounds && state.order.seat === attacker) {
+            combat.maxRounds = state.order.combatRounds;
+        }
         // The roster of the first round: the cards that pay for the losses of a
         // round read it («Выводок термаганов»).
         combat.roundUnits = this.rosterOfRound(state, combat);
@@ -3823,6 +4040,7 @@ const FS_RULES = {
     // opponent and his own defence.
     combatDamageFor(state, side) {
         const c = state.combat;
+        if (c) this.applyDamageStartTokens(state);
         const other = side === 'attacker' ? 'defender' : 'attacker';
         const me = this.combatValues(state, side);
         const them = this.combatValues(state, other);
@@ -3948,6 +4166,15 @@ const FS_RULES = {
             c.damageHook[side] = true;
             if (this.maybeScheme(state, seat, 'damage', { kind: 'combat', ctx: { side } })) return { ok: true, pending: true };
         }
+        // «Критический удар» belongs to the opponent of the player who assigns
+        // the damage: its scheme is offered before the units are hit.
+        c.criticalHook = c.criticalHook || {};
+        if (!c.criticalHook[side]) {
+            c.criticalHook[side] = true;
+            if (this.maybeCriticalStrike(state, seat, side, cmd.targets || [])) {
+                return { ok: true, pending: true };
+            }
+        }
         // Only the pieces the rules allow may be chosen: an unrouted unit, a
         // bastion — or a routed unit when the side has nothing else left.
         const able = new Set(this.canTakeDamage(state, c, side).map(x => x.id));
@@ -3971,9 +4198,15 @@ const FS_RULES = {
                 return { ok: false, error: 'Урон сначала получает выбранный картой отряд или бастион.' };
             }
         }
+        // «Урон, превышающий значение здоровья выбранного отряда или
+        // бастиона, теряется» («Монт'ка»): the chosen piece is the ONLY one
+        // that takes damage this step.
+        const excessId = c.ignoreExcess && c.ignoreExcess.round === c.round
+            && firstHit && c.ignoreExcess.id === firstHit.id ? c.ignoreExcess.id : null;
         // The damage is applied to the chosen units in order.
         let left = damage;
         const applied = [];
+        const dropExcess = id => { if (excessId && id === excessId) left = 0; };
         for (const id of targets) {
             if (left <= 0) break;
             if (typeof id === 'string' && id.startsWith('reinforce-')) {
@@ -3984,6 +4217,7 @@ const FS_RULES = {
                 c.reinforceRouted = c.reinforceRouted || { attacker: 0, defender: 0 };
                 c.reinforceRouted[sideTok] = (c.reinforceRouted[sideTok] || 0) + 1;
                 applied.push({ token: id, routed: true });
+                dropExcess(id);
                 continue;
             }
             const unit = state.units.find(u => u.id === id);
@@ -3993,18 +4227,27 @@ const FS_RULES = {
                 // The card may raise the health of the units or lower it.
                 if (c.healthBonus && unit.seat === seat) health += c.healthBonus;
                 if (c.enemyHealth && unit.seat !== seat) health = Math.min(health, c.enemyHealth);
-                if (left >= health && !oneByOne) {
+                if (this.retreatInsteadOfDestroy(state, unit)) {
+                    left -= health;
+                    applied.push({ unit: unit.id, retreated: true });
+                } else if (left >= health && !oneByOne) {
                     left -= health;
                     applied.push({ unit: unit.id, destroyed: true });
                     this.noteResurrect(state, unit, true);
+                    this.noteFallen(state, unit, true);
                     this.destroyUnit(state, unit);
                 } else if (oneByOne) {
                     // The damage goes one point at a time.
                     left -= 1;
                     if (health <= 1) {
-                        applied.push({ unit: unit.id, destroyed: true });
-                        this.noteResurrect(state, unit, true);
-                        this.destroyUnit(state, unit);
+                        if (this.retreatInsteadOfDestroy(state, unit)) {
+                            applied.push({ unit: unit.id, retreated: true });
+                        } else {
+                            applied.push({ unit: unit.id, destroyed: true });
+                            this.noteResurrect(state, unit, true);
+                            this.noteFallen(state, unit, true);
+                            this.destroyUnit(state, unit);
+                        }
                     } else {
                         applied.push({ unit: unit.id, destroyed: false });
                     }
@@ -4017,6 +4260,7 @@ const FS_RULES = {
                         return !one.kl || (def && (def.kl || 0) <= one.kl);
                     });
                     if (!keep) {
+                        this.noteFallen(state, unit, false);
                         unit.routed = true;
                         unit.routedRound = c.round;
                         this.noteResurrect(state, unit, false);
@@ -4024,6 +4268,7 @@ const FS_RULES = {
                     left = 0;
                     applied.push({ unit: unit.id, destroyed: false });
                 }
+                dropExcess(id);
                 continue;
             }
             const bastion = state.structures.find(s => s.id === id && s.type === 'bastion');
@@ -4037,6 +4282,7 @@ const FS_RULES = {
                     left = 0;    // the damage to a bastion is ignored
                     applied.push({ bastion: bastion.id, destroyed: false });
                 }
+                dropExcess(id);
             }
         }
         c.applied = c.applied || {};
@@ -4063,6 +4309,9 @@ const FS_RULES = {
             this.log(state, -1, 'Шаг нанесения повреждений повторяется.');
             return;
         }
+        // «… поместить обратно в эту область в конце шага нанесения урона»
+        // («Уклонение»): the fallen KL0 units come back before the round ends.
+        if (this.offerFallenRestore(state)) return;
         // «вернуть этого юнита недеморализованным обратно после этапа получения
         // урона» («Сфера воскрешения»).
         if (this.schemeResurrect(state)) return;
@@ -4189,6 +4438,21 @@ const FS_RULES = {
     // The end of an execution round: the third one ends the combat.
     endCombatRound(state) {
         const c = state.combat;
+        // «если ни один из ваших отрядов не отступил во время этого раунда»
+        // («Притворное отступление»): the answer is known only now, and the
+        // combat tokens of this round are about to be discarded — the reward
+        // belongs to the next round.
+        const noRet = (c.endRoundNoRetreat || []).find(x => x && x.round === c.round && !x.fired);
+        if (noRet) {
+            noRet.fired = true;
+            const clean = !c.retreated || c.retreated[noRet.seat] !== c.round;
+            if (clean) {
+                c.laterTokens = c.laterTokens || [];
+                c.laterTokens.push({ side: noRet.side, kind: noRet.kind, n: noRet.n, round: c.round + 1 });
+                this.log(state, noRet.seat, state.players[noRet.seat].name
+                    + ' не отступал: ' + noRet.n + ' жетон(ов) в следующем раунде.');
+            }
+        }
         // «Если ваши отряды или бастионы не получат урона в конце этого раунда,
         // ваш противник отступает одним из своих отрядов» («Фаланга монолита»).
         c.noDamageRetreat = (c.noDamageRetreat || []).filter(x => x.round === c.round || !x.fired);
@@ -4207,6 +4471,21 @@ const FS_RULES = {
                 return;
             }
         }
+        // «В конце этого раунда … переместить 1 из ваших отрядов из соседней
+        // области в эту» («Кауйон»): the move happens before the tokens of the
+        // round are discarded, and the dice it gives stay for the damage step.
+        const endPlan = (c.endRoundPlans || []).find(x => x && x.round === c.round && !x.fired);
+        if (endPlan) {
+            endPlan.fired = true;
+            c.step = 'effect';
+            c.nextStep = 'round-end';
+            const side = endPlan.seat === c.attacker ? 'attacker' : 'defender';
+            this.runEffects(state, endPlan.seat, [{
+                op: 'moveUnitToCombatForDice', who: 'me',
+                ability: 'переместить 1 отряд из соседней области в эту и получить кубики по его боевой силе',
+            }], { kind: 'combat', ctx: { side } });
+            return;
+        }
         // The combat tokens go back to the supply at the end of every execution
         // round: only the dice and the cards are counted again. A card may keep
         // the tokens of the kind it names for the round it was played in
@@ -4224,6 +4503,15 @@ const FS_RULES = {
             defender: { att: keepSide('defender', 'att'), def: keepSide('defender', 'def') },
         };
         c.keepTokens = null;
+        // The effects printed «during this round of combat» end here: the
+        // health bonus, the routing ban and the chosen first target must not
+        // leak into the next execution round.
+        c.enemyHealth = null;
+        c.healthBonus = null;
+        c.noRoute = null;
+        c.damageFirst = null;
+        c.retreatInstead = null;
+        c.ignoreExcess = null;
         // The card may destroy the units that became routed.
         if (c.destroyRouted) {
             for (const u of state.units.slice()) {
@@ -4272,6 +4560,12 @@ const FS_RULES = {
         // The effects that belonged to the previous round are over.
         if (c.destroyRoutedFoe && c.destroyRoutedFoe.round !== c.round) c.destroyRoutedFoe = null;
         c.resurrectPlan = (c.resurrectPlan || []).filter(x => x.round === c.round);
+        c.restoreFallen = (c.restoreFallen || []).filter(x => x.round === c.round && !x.done);
+        c.endRoundPlans = (c.endRoundPlans || []).filter(x => x.round === c.round);
+        c.endRoundNoRetreat = (c.endRoundNoRetreat || []).filter(x => x.round === c.round);
+        c.fallenThisStep = [];
+        c.damageHook = {};
+        c.criticalHook = {};
         c.resurrectCandidates = [];
         c.resurrectAsked = null;
         c.noDamageRetreat = (c.noDamageRetreat || []).filter(x => x.round === c.round);
@@ -4288,6 +4582,147 @@ const FS_RULES = {
         const one = seat => state.units.filter(u => u.seat === seat)
             .map(u => ({ id: u.id, routed: !!u.routed }));
         return { attacker: one(c.attacker), defender: one(c.defender) };
+    },
+
+    // «В этом раунде боя, в начале шага нанесения повреждений, ваш противник
+    // теряет 3 `att. token`» («Перекрестный огонь», «Перестрелка»): before any
+    // damage is computed, once per round.
+    applyDamageStartTokens(state) {
+        const c = state.combat;
+        if (!c || !c.damageStartTokens || c.damageStartRound === c.round) return;
+        c.damageStartRound = c.round;
+        for (const one of c.damageStartTokens) {
+            if (one.round !== undefined && one.round !== c.round) continue;
+            const side = one.side;
+            const kind = one.kind || 'att';
+            const n = one.n || 1;
+            c.tokens[side][kind] = Math.max(0, (c.tokens[side][kind] || 0) - n);
+            const seat = side === 'attacker' ? c.attacker : c.defender;
+            this.log(state, seat, state.players[seat].name + ' теряет ' + n
+                + ' жетон(ов) атаки в начале шага повреждений.');
+        }
+        c.damageStartTokens = [];
+    },
+
+    // The unit that fell in this damage step: «Уклонение» brings the KL0 ones
+    // back at the end of the step, routed or destroyed alike.
+    noteFallen(state, unit, destroyed) {
+        const c = state.combat;
+        if (!c || unit.routed) return;
+        const def = this.unitOf(state, unit);
+        if (!def) return;
+        c.fallenThisStep = c.fallenThisStep || [];
+        if (c.fallenThisStep.some(x => x.id === unit.id)) return;
+        c.fallenThisStep.push({
+            id: unit.id, def: def.id, seat: unit.seat,
+            system: unit.system, pos: unit.area,
+            destroyed: !!destroyed, kl: def.kl || 0,
+        });
+    },
+
+    // «… вместо этого вы можете отступить им» («Огонь и продвижение»): the
+    // lethal hit is still spent, but the unit leaves the contested area routed
+    // instead of going back to the supply.
+    retreatInsteadOfDestroy(state, unit) {
+        const c = state.combat;
+        const plan = c && c.retreatInstead;
+        if (!plan || plan.seat !== unit.seat || plan.round !== c.round || plan.used) return false;
+        const def = this.unitOf(state, unit);
+        if (!def) return false;
+        const ground = def.type === 'ground';
+        const targets = (this.retreatTargets(state, unit.seat) || []).filter(t => {
+            const sys = this.system(state, t.system);
+            const a = sys ? this.area(sys, t.pos) : null;
+            return !!a && !!a.world === ground;
+        });
+        if (!targets.length) return false;
+        plan.used = true;
+        const t = targets[0];
+        this.noteMove(state, unit.seat, unit, t);
+        unit.system = t.system;
+        unit.area = t.pos;
+        unit.routed = true;
+        this.markRetreat(state, unit.seat);
+        this.trimArea(state, unit.seat, t.system, t.pos);
+        this.log(state, unit.seat, state.players[unit.seat].name
+            + ': отряд отступает вместо уничтожения.');
+        return true;
+    },
+
+    // A retreat of this round is remembered: «если ни один из ваших отрядов не
+    // отступил во время этого раунда» («Притворное отступление»).
+    markRetreat(state, seat) {
+        const c = state.combat;
+        if (!c) return;
+        c.retreated = c.retreated || {};
+        c.retreated[seat] = c.round;
+    },
+
+    // «Уклонение»: offer the fallen KL0 units of this round at the end of the
+    // damage step, before the round is closed.
+    offerFallenRestore(state) {
+        const c = state.combat;
+        if (!c) return false;
+        const plans = (c.restoreFallen || []).filter(x => x.round === c.round && !x.asked && !x.done);
+        if (!plans.length) return false;
+        const plan = plans[0];
+        const candidates = (c.fallenThisStep || [])
+            .filter(x => x.seat === plan.seat && (x.kl || 0) <= plan.maxKl);
+        if (!candidates.length) return false;
+        plan.asked = true;
+        plan.candidates = candidates.slice();
+        c.step = 'effect';
+        c.nextStep = 'round-end';
+        const side = plan.seat === c.attacker ? 'attacker' : 'defender';
+        this.runEffects(state, plan.seat, [{
+            op: 'restoreFallenOffer', who: 'me',
+            candidates: candidates.map(x => x.id), plan,
+        }], { kind: 'combat', ctx: { side } });
+        return true;
+    },
+
+    // «Критический удар» is a scheme of the OPPONENT of the player who assigns
+    // the damage: the normal damage-hook asks only the assigner.
+    maybeCriticalStrike(state, seat, side, targets) {
+        const c = state.combat;
+        if (!c || !targets || !targets.length) return false;
+        /** @type {any[]} */
+        const damageTargets = targets.filter(id => {
+            const u = state.units.find(x => x.id === id);
+            return !!u && u.seat === seat;
+        });
+        if (!damageTargets.length) return false;
+        for (const p of state.players) {
+            if (p.seat === seat) continue;
+            const schemes = (p.schemes || []).filter(x => x && x.trigger === 'damage'
+                && (x.steps || []).some(y => y && y.op === 'destroyDamagedFoe'));
+            if (!schemes.length) continue;
+            c.damageHook[side] = true;
+            c.criticalHook[side] = true;
+            c.damageResume = { seat, side, cmd: { targets: targets.slice() } };
+            c.step = 'effect';
+            c.nextStep = 'effect';
+            state.pending = {
+                seat: p.seat, answerSeat: p.seat, kind: 'scheme', steps: [], index: 0,
+                question: {
+                    kind: 'scheme', who: p.seat, options: schemes.map(x => x.name),
+                    text: 'Сбросить карту: ' + schemes.map(x => '«' + x.name + '»').join(', ') + '?',
+                },
+                ctx: { kind: 'combat', ctx: { side, damageTargets }, schemes },
+            };
+            return true;
+        }
+        return false;
+    },
+
+    // The damage step resumes after the scheme of «Критического удара» (or its
+    // refusal): the same targets are assigned once, and only once.
+    resumeDamage(state) {
+        const c = state.combat;
+        const d = c && c.damageResume;
+        if (!d) return;
+        c.damageResume = null;
+        this.combatDamage(state, d.seat, d.side, d.cmd);
     },
 
     // The printed morale the units and the bastions of a side bring into the
@@ -4440,6 +4875,7 @@ const FS_RULES = {
         for (const u of units) {
             if (target) { u.system = target.system; u.area = target.pos; }
             u.routed = true;
+            this.markRetreat(state, seat);
         }
         // No area to retreat to: the unit is destroyed (the rules, "Retreats").
         if (!target) {

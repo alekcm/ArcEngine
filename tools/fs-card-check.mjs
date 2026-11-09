@@ -240,6 +240,7 @@ function firstOption(st, q) {
         case 'diceFace': return { face: first, dice: (q.options || [])[0] };
         case 'types': return { type: first };
         case 'areas': return { area: first };
+        case 'systems': return { system: first };
         case 'cards': return { card: first };
         case 'structures': return { structure: first };
         default: return { choice: 0 };
@@ -2608,6 +2609,725 @@ check('Набег жнецов', 'выбранный отряд КЛ 0 полу�
         answerAll(st, (s2, qq) => (qq.op === 'strikeFirstPick' ? { units: [id] } : firstOption(s2, qq)));
         return eq(st.order && st.order.strikeFirst, id, 'выбор записан в приказе удара');
     });
+});
+
+
+// ============================================================================
+//  02 / 04 / 05 / 06 — Империя Тау: способность, 14 боевых карт, 5 приказов,
+//  8 событий и обе редакции «Во имя Высшего Блага»
+// ============================================================================
+const TAU = 'империя-тау';
+const TAU_FOE = 'имперская-гвардия';
+const TAU_UNITS = {
+    'воины-огня': 2, 'бронекостюмы': 1,
+    'танки-рыба-молот': 1, 'бронекостюмы-превосходство': 1,
+};
+const TAU_FOE_UNITS = { 'гвардейцы': 2, 'огрины': 1 };
+const TAU_ALT = '*Превосходство/Хранитель:* ваш противник может потратить 3 `morale cube`. За каждый `morale cube`, который он не может потратить, получите 2 `att. token`.';
+
+/** The whole Tau roster is in the battle: every requisite has its unit. */
+function tauBattle(o = {}) {
+    return battle(Object.assign({
+        faction: TAU, foeFaction: TAU_FOE,
+        units: TAU_UNITS, foeUnits: TAU_FOE_UNITS,
+    }, o));
+}
+const tauPlay = (st, policy, seat = 0) => {
+    refuseReinforce(st);
+    return play(st, seat, 0, policy);
+};
+const tauStrike = o => strikeState(Object.assign({
+    faction: TAU, foeFaction: TAU_FOE,
+    ships: { 'крейсеры-защитник': 2 }, holdUnit: 'воины-огня',
+}, o));
+const tauEvent = (name, o) => eventState(name, Object.assign({
+    faction: TAU, foeFaction: TAU_FOE,
+}, o || {}));
+const stateUnit = (st, id) => st.units.find(u => u.id === id) || null;
+
+/** A dominate order of the Tau; the opponent keeps one token so the check
+ *  does not fall into the refresh phase when the ability finishes. */
+function tauDominate(o = {}) {
+    const st = FS_RULES.newReadyGame({ seed: 5, players: players(TAU, TAU_FOE) });
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const sys of st.systems) sys.tokens = [];
+    st.phase = 'operations'; st.turn = 0; st.order = null;
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    for (const [id, n] of Object.entries(o.units || {})) {
+        for (let i = 0; i < n; i++) FS_RULES.addUnit(st, 0, id, sys.id, pos);
+    }
+    for (const [id, n] of Object.entries(o.foeUnits || {})) {
+        for (let i = 0; i < n; i++) FS_RULES.addUnit(st, 1, id, sys.id, pos);
+    }
+    for (const type of o.structures || []) {
+        st.structures.push({ id: 'tau-str-' + st.structures.length, seat: 0, type, system: sys.id, area: pos });
+    }
+    sys.tokens.push({ seat: 0, order: 'dominate', faceUp: false });
+    st.order = { seat: 0, order: 'dominate', system: sys.id, phase: 'dominate' };
+    st.systems[1].tokens.push({ seat: 1, order: 'advance', faceUp: false });
+    return st;
+}
+
+head('Разбор текстов', TAU);
+check('Все карты', '14 боевых, 5 приказов, 8 событий; ни один текст не остался пояснением', () => {
+    eq(FS_DATA.combat.filter(c => c.faction === TAU).length, 14, 'боевых карт');
+    eq(FS_DATA.orders.filter(c => c.faction === TAU).length, 5, 'улучшений приказов');
+    eq(FS_DATA.events.filter(c => c.faction === TAU).length, 8, 'событий');
+    const f = FS_DATA.factions.find(x => x.id === TAU);
+    const texts = [['ability', 'ability', FS_EFFECTS.abilityFor(f)]];
+    for (const c of FS_DATA.combat.filter(x => x.faction === TAU)) {
+        texts.push(['combat:' + c.name + ':general', 'combat', c.general]);
+        if (c.unit) texts.push(['combat:' + c.name + ':unit', 'combat', c.unit]);
+    }
+    for (const c of FS_DATA.orders.filter(x => x.faction === TAU)) texts.push(['order:' + c.name, 'order', c.text]);
+    for (const c of FS_DATA.events.filter(x => x.faction === TAU)) texts.push(['event:' + c.name, 'event', c.text]);
+    texts.push(['combat:Во имя Высшего Блага:unit-alt', 'combat', TAU_ALT]);
+    const bad = [];
+    for (const [key, kind, raw] of texts) {
+        const steps = Array.isArray(raw) ? raw
+            : FS_EFFECTS.parse(raw || '', { kind, faction: TAU });
+        for (const s of steps) {
+            if (s && (s.op === 'note' || s.op === 'manual' || s.manual === true || s.note === true)) {
+                bad.push(key + ':' + (s.op || '?'));
+            }
+        }
+    }
+    return eq(bad, [], 'неразобранные тексты');
+});
+
+head('Боевая колода', TAU);
+
+check('Тактическое отступление', 'отряд отступает, `morale cube` возвращает его, реквизит даёт 2 `def. token`', () => {
+    const st = tauBattle({ card: 'Тактическое отступление', dice: ['morale', 'att', 'def'] });
+    tauPlay(st);
+    eq(tokens(st, 'attacker').def, 2, 'жетонов обороны');
+    eq(count(st, 'attacker', 'morale'), 0, 'купленной морали');
+    return eq(myUnits(st).filter(u => u.routed).length, 0, 'деморализованных отрядов');
+});
+
+check('Стелс-команды', '+1 `def. token`; противник может деморализовать свой отряд', () => {
+    const st = tauBattle({ card: 'Стелс-команды' });
+    tauPlay(st, branch(0));
+    eq(tokens(st, 'attacker').def, 1, 'жетонов обороны');
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'деморализованных отрядов противника');
+});
+
+check('Стелс-команды', 'если противник не деморализует отряд, он теряет 1 `any cube`', () => {
+    const st = tauBattle({ card: 'Стелс-команды', foeDice: ['att', 'def', 'morale'] });
+    tauPlay(st, branch(1));
+    eq(tokens(st, 'attacker').def, 1, 'жетонов обороны');
+    return eq(dice(st, 'defender').length, 2, 'кубиков противника');
+});
+
+check('Команды следопытов', 'атакующий смотрит, сбрасывает и разыгрывает новую карту из руки', () => {
+    const st = tauBattle({
+        hand: ['Команды следопытов', 'Стелс-команды'], foeHand: ['Ложись!'],
+    });
+    tauPlay(st);
+    eq(st.combat.peek && st.combat.peek[0], 'Ложись!', 'подсмотренная карта');
+    eq(st.combat.cards.defender.played.length, 0, 'карта противника не вскрыта');
+    ok(st.combat.cards.attacker.played.some(x => x.name === 'Стелс-команды'), 'новая карта разыграна');
+    return ok(st.players[1].decks.combat.includes('Ложись!'), 'карта противника сброшена в колоду');
+});
+
+check('Охотничьи стаи круутов', 'меньше отрядов: 1 `def. token`, противник теряет `att. cube`, реквизит даёт кубик', () => withFixedDice(['def'], () => {
+    const st = tauBattle({
+        card: 'Охотничьи стаи круутов', units: { 'воины-огня': 1 },
+        foeUnits: { 'гвардейцы': 2, 'огрины': 1 },
+        dice: ['morale'], foeDice: ['att', 'def'],
+    });
+    tauPlay(st);
+    eq([tokens(st, 'attacker').def, tokens(st, 'attacker').att], [1, 0], 'жетоны');
+    eq(count(st, 'defender', 'att'), 0, 'кубиков атаки противника');
+    return eq(dice(st, 'attacker').length, 2, 'кубиков владельца карты');
+}));
+
+check('Охотничьи стаи круутов', 'не меньше отрядов: 1 `att. token`, чужие кубики не трогаются', () => withFixedDice(['att'], () => {
+    const st = tauBattle({
+        card: 'Охотничьи стаи круутов',
+        units: { 'воины-огня': 3 }, foeUnits: { 'гвардейцы': 2 },
+        dice: ['def'], foeDice: ['att', 'def'],
+    });
+    tauPlay(st);
+    eq([tokens(st, 'attacker').def, tokens(st, 'attacker').att], [0, 1], 'жетоны');
+    return eq(count(st, 'defender', 'att'), 1, 'кубиков атаки противника');
+}));
+
+check('Перекрестный огонь', 'в начале шага урона противник теряет 3 `att. token`; реквизит даёт 2 своих', () => {
+    const st = tauBattle({ card: 'Перекрестный огонь' });
+    tauPlay(st);
+    eq(tokens(st, 'attacker').att, 2, 'своих жетонов атаки');
+    eq(st.combat.damageStartTokens.length, 1, 'отложенных списаний');
+    st.combat.tokens.defender.att = 3;
+    FS_RULES.combatDamageFor(st, 'defender');
+    eq(tokens(st, 'defender').att, 0, 'жетонов атаки противника');
+    FS_RULES.combatDamageFor(st, 'defender');
+    return eq(tokens(st, 'defender').att, 0, 'списание не повторяется');
+});
+
+check('Превосходство', '2 `att. token`, за два `morale cube` — два кубика; здоровье врага падает до 3', () => {
+    const st = tauBattle({ card: 'Превосходство', dice: ['morale', 'morale', 'att'] });
+    tauPlay(st, branch(0));
+    eq(tokens(st, 'attacker').att, 2, 'жетонов атаки');
+    eq(count(st, 'attacker', 'morale'), 0, 'потраченной морали');
+    eq(count(st, 'attacker', 'att'), 3, 'кубиков атаки');
+    eq(st.combat.enemyHealth, 3, 'предел здоровья врага');
+    FS_RULES.endCombatRound(st);
+    return eq(st.combat.enemyHealth, null, 'эффект только одного раунда');
+});
+
+check('Перегруппировка', 'за каждые 2 потраченных кубика восстанавливается отряд, реквизит даёт 2 кубика', () => withFixedDice(['att'], () => {
+    const st = tauBattle({
+        card: 'Перегруппировка', dice: ['att', 'def', 'morale', 'morale'],
+        routed: [0, 1],
+    });
+    tauPlay(st);
+    eq(myUnits(st).filter(u => u.routed).length, 0, 'деморализованных отрядов');
+    eq(dice(st, 'attacker').length, 2, 'новых кубиков');
+    return eq(dice(st, 'attacker').every(d => d === 'att'), true, 'лица новых кубиков');
+}));
+
+check("Монт'ка", 'выбранный вражеский отряд получает урон первым, избыток урона теряется', () => {
+    const st = tauBattle({ card: "Монт'ка", dice: ['att', 'def', 'morale'], foeDice: ['def'] });
+    tauPlay(st);
+    eq(tokens(st, 'attacker').att, 6, 'жетонов атаки: 2 карты + 4 за два кубика');
+    const chosen = st.combat.damageFirst[st.combat.damageFirst.length - 1].id;
+    const other = foeUnits(st).find(u => u.id !== chosen);
+    ok(!!other, 'в бою есть второй вражеский отряд');
+    eq(st.combat.ignoreExcess && st.combat.ignoreExcess.id, chosen, 'цель потери избытка');
+    st.combat.dice.attacker = Array(8).fill('att');
+    st.combat.dice.defender = ['def'];
+    const res = FS_RULES.combatDamage(st, st.combat.defender, 'defender', {
+        targets: [chosen, other.id],
+    });
+    ok(res.ok, 'урон не назначен: ' + res.error);
+    eq(stateUnit(st, chosen), null, 'выбранный отряд погиб');
+    eq(!!stateUnit(st, other.id), true, 'второй отряд не получил избыток');
+    return eq(res.applied.length, 1, 'повреждений назначено');
+});
+
+check("Монт'ка", 'бастион противника тоже может быть выбранной целью', () => {
+    const st = tauBattle({ card: "Монт'ка", dice: ['att', 'def', 'morale'] });
+    st.structures.push({ id: 'foe-bastion', seat: 1, type: 'bastion',
+        system: st.combat.system, area: st.combat.pos });
+    tauPlay(st, (s, q) => (q.op === 'damageFirst'
+        ? { units: [(q.options || [])[(q.options || []).length - 1]] }
+        : firstOption(s, q)));
+    eq(st.combat.ignoreExcess && st.combat.ignoreExcess.id, 'foe-bastion', 'выбран бастион');
+    const other = foeUnits(st)[0];
+    st.combat.dice.attacker = Array(8).fill('att');
+    st.combat.dice.defender = ['def'];
+    const res = FS_RULES.combatDamage(st, st.combat.defender, 'defender', {
+        targets: ['foe-bastion', other.id],
+    });
+    ok(res.ok, 'урон не назначен: ' + res.error);
+    eq(st.structures.some(x => x.id === 'foe-bastion'), false, 'бастион уничтожен');
+    return eq(!!stateUnit(st, other.id), true, 'отряд за бастионом не пострадал');
+});
+
+check('Кауйон', 'в атаке end-of-round способность не ждёт; 1 `def. token` всё равно приходит', () => {
+    const st = tauBattle({ card: 'Кауйон' });
+    tauPlay(st);
+    eq(tokens(st, 'attacker').def, 1, 'жетонов обороны');
+    return eq((st.combat.endRoundPlans || []).length, 0, 'планов конца раунда');
+});
+
+check('Кауйон', 'в обороне отряд из соседней области приходит и даёт кубики по боевой силе', () => withFixedDice(['att', 'att'], () => {
+    const st = battle({
+        faction: TAU_FOE, foeFaction: TAU,
+        units: { 'гвардейцы': 2 }, foeUnits: { 'воины-огня': 2 },
+        hand: ['Ложись!'], foeHand: ['Кауйон'],
+        // Both damage steps stay open: an empty damage step would end the
+        // execution round while the card is still being revealed.
+        dice: Array(8).fill('att'), foeDice: Array(8).fill('att'), roundEnd: true,
+    });
+    tauPlay(st, undefined, 1);
+    eq(tokens(st, 'defender').def, 1, 'жетонов обороны');
+    eq((st.combat.endRoundPlans || []).length, 1, 'план конца раунда');
+    const around = FS_RULES.areasAround(st, st.combat.system, st.combat.pos)
+        .map(a => ({ area: a, def: FS_RULES.area(FS_RULES.system(st, a.system), a.pos) }))
+        .find(x => x.def && x.def.world && !(x.area.system === st.combat.system && x.area.pos === st.combat.pos));
+    ok(!!around, 'рядом есть мир');
+    const u = FS_RULES.addUnit(st, 1, 'воины-огня', around.area.system, around.area.pos);
+    st.combat.dice.defender = [];
+    FS_RULES.endCombatRound(st);
+    effectAnswer(st, firstOption, 8);
+    eq(u.system, st.combat.system, 'система перемещённого отряда');
+    eq(u.area, st.combat.pos, 'область перемещённого отряда');
+    return eq(dice(st, 'defender').length, 2, 'кубиков по боевой силе Воина Огня');
+}));
+
+check('Во имя Высшего Блага', 'противник обязан перебросить все `att. cube`', () => withFixedDice(['def'], () => {
+    const st = tauBattle({ card: 'Во имя Высшего Блага', foeDice: ['att', 'att', 'def'] });
+    tauPlay(st);
+    eq(count(st, 'defender', 'att'), 0, 'кубиков атаки противника');
+    return eq(count(st, 'defender', 'def'), 3, 'кубиков обороны противника');
+}));
+
+check('Во имя Высшего Блага', '«должен»: за каждый неоплаченный `morale cube` — 2 `att. token`', () => {
+    const st = tauBattle({ card: 'Во имя Высшего Блага', foeDice: ['morale', 'morale', 'def'] });
+    tauPlay(st);
+    eq(tokens(st, 'attacker').att, 2, 'жетонов атаки за один missing cube');
+    return eq(count(st, 'defender', 'morale'), 0, 'оплаченной морали');
+});
+
+check('Во имя Высшего Блага (другая редакция)', '«может»: отказ платит 6 `att. token`', () => {
+    const st = tauBattle({ foeDice: ['morale', 'morale', 'morale', 'def'] });
+    refuseReinforce(st);
+    const steps = FS_EFFECTS.parse(TAU_ALT, { kind: 'combat', faction: TAU });
+    eq(steps.map(x => x.op), ['foeSpendOrPay'], 'альтернативный текст разобран');
+    eq(steps[0].optional, true, 'редакция «может» необязательна');
+    FS_RULES.runEffects(st, 0, steps, { kind: 'combat', ctx: { side: 'attacker' } });
+    answerAll(st, () => ({ no: true }), 0);
+    eq(tokens(st, 'attacker').att, 6, 'жетонов атаки за три неоплаченных кубика');
+    return eq(count(st, 'defender', 'morale'), 3, 'кубики не потрачены');
+});
+
+check('Во имя Высшего Блага (другая редакция)', 'согласие тратит три `morale cube` и не даёт жетонов', () => {
+    const st = tauBattle({ foeDice: ['morale', 'morale', 'morale', 'def'] });
+    refuseReinforce(st);
+    const steps = FS_EFFECTS.parse(TAU_ALT, { kind: 'combat', faction: TAU });
+    FS_RULES.runEffects(st, 0, steps, { kind: 'combat', ctx: { side: 'attacker' } });
+    answerAll(st, (s, q) => (q.op === 'foeSpendOrPay' && q.kind === 'yesno'
+        ? {} : firstOption(s, q)), 0);
+    eq(tokens(st, 'attacker').att, 0, 'жетонов атаки');
+    return eq(count(st, 'defender', 'morale'), 0, 'потраченной морали');
+});
+
+check('Перестрелка', 'ветка `att. cube`: 1 `def. token`, отложенное списание 3 жетонов', () => {
+    const st = tauBattle({ card: 'Перестрелка', foeDice: ['att', 'morale', 'def'] });
+    tauPlay(st, branch(0));
+    eq(tokens(st, 'attacker').def, 1, 'жетонов обороны');
+    eq(count(st, 'defender', 'att'), 0, 'кубиков атаки противника');
+    return eq(st.combat.damageStartTokens.length, 1, 'отложенных списаний');
+});
+
+check('Перестрелка', 'ветка `morale cube`: противник теряет именно мораль', () => {
+    const st = tauBattle({ card: 'Перестрелка', foeDice: ['att', 'morale', 'def'] });
+    tauPlay(st, branch(1));
+    eq(count(st, 'defender', 'morale'), 0, 'кубиков морали противника');
+    return eq(count(st, 'defender', 'att'), 1, 'кубик атаки остался');
+});
+
+check('Огонь и продвижение', 'перебрасываются все кубики одного значения; уничтожение заменяется отступлением', () => withFixedDice(['def'], () => {
+    const st = tauBattle({ card: 'Огонь и продвижение', dice: ['att', 'att', 'def', 'morale'] });
+    tauPlay(st);
+    eq(count(st, 'attacker', 'att'), 0, 'кубиков атаки после переброса');
+    eq(count(st, 'attacker', 'def'), 3, 'кубиков обороны после переброса');
+    ok(st.combat.retreatInstead && st.combat.retreatInstead.seat === 0, 'разрешение на отступление');
+    st.combat.viaAdvance = true;
+    st.combat.dice.attacker = ['def'];
+    st.combat.dice.defender = Array(8).fill('att');
+    const victim = myUnits(st).find(u => !u.routed && (FS_RULES.unitOf(st, u) || {}).kl === 0);
+    ok(!!victim, 'есть отряд КЛ 0');
+    const res = FS_RULES.combatDamage(st, 0, 'attacker', { targets: [victim.id] });
+    ok(res.ok, 'урон не назначен: ' + res.error);
+    eq(res.applied[0] && res.applied[0].retreated, true, 'отряд отступил вместо гибели');
+    eq(!!stateUnit(st, victim.id), true, 'отряд остался на поле');
+    return eq(stateUnit(st, victim.id).routed, true, 'отряд деморализован');
+}));
+
+check('Притворное отступление', 'переброска без отступления: 2 `att. token` приходят в следующем раунде', () => withFixedDice(['att'], () => {
+    const st = tauBattle({
+        card: 'Притворное отступление',
+        dice: ['def', 'def', 'att'], foeDice: ['def', 'def', 'att'],
+    });
+    tauPlay(st, branch(0));
+    eq(count(st, 'attacker', 'att'), 3, 'своих кубиков атаки');
+    eq(count(st, 'defender', 'att'), 3, 'кубиков атаки противника');
+    eq((st.combat.endRoundNoRetreat || []).length, 1, 'ожидающих жетонов');
+    FS_RULES.endCombatRound(st);
+    eq(st.combat.round, 2, 'номер раунда');
+    return eq(tokens(st, 'attacker').att, 2, 'жетонов в новом раунде');
+}));
+
+check('Притворное отступление', 'ветка отступления не даёт жетонов в конце раунда', () => withFixedDice(['att'], () => {
+    const st = tauBattle({
+        card: 'Притворное отступление',
+        dice: ['def', 'def', 'att'], foeDice: ['def', 'def', 'att'],
+    });
+    st.combat.viaAdvance = true;
+    tauPlay(st, branch(1));
+    eq(st.combat.retreated && st.combat.retreated[0], st.combat.round, 'отступление записано');
+    eq((st.combat.endRoundNoRetreat || []).length, 0, 'ожидающих жетонов');
+    FS_RULES.endCombatRound(st);
+    return eq(tokens(st, 'attacker').att, 0, 'жетонов атаки');
+}));
+
+check('Уклонение', '1 `any cube`; деморализованный отряд КЛ 0 возвращается в конце шага урона', () => withFixedDice(['att'], () => {
+    const st = tauBattle({
+        card: 'Уклонение',
+        dice: Array(7).fill('att'), foeDice: Array(8).fill('att'),
+    });
+    tauPlay(st);
+    // The opponent's own card was revealed too: its optional abilities are
+    // answered before the damage step of the round begins.
+    answerAll(st, firstOption);
+    eq(dice(st, 'attacker').length, 8, 'семь кубиков плюс один полученный');
+    eq((st.combat.restoreFallen || []).length, 1, 'план возвращения');
+    const warriors = myUnits(st).filter(u => (FS_RULES.unitOf(st, u) || {}).kl === 0);
+    ok(warriors.length >= 1, 'есть отряд КЛ 0');
+    const victim = warriors[0];
+    const before = warriors.length;
+    st.combat.dice.attacker = Array(8).fill('att');
+    st.combat.dice.defender = Array(8).fill('att');
+    let res = FS_RULES.apply(st, 0, { type: 'combat', action: 'damage', targets: [victim.id] });
+    ok(res.ok, 'урон атакующему не назначен: ' + res.error);
+    eq(stateUnit(st, victim.id), null, 'отряд выбыл на шаге урона');
+    res = FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: [] });
+    ok(res.ok, 'урон защитнику не назначен: ' + res.error);
+    ok(!!st.pending, 'вопрос о возвращении не задан');
+    answerAll(st, firstOption, 0);
+    const after = myUnits(st).filter(u => (FS_RULES.unitOf(st, u) || {}).kl === 0
+        && u.system === st.combat.system && u.area === st.combat.pos && !u.routed).length;
+    return eq(after, before, 'отрядов КЛ 0 вернулось в область боя');
+}));
+
+check('Конец раунда боя', 'здоровье, запрет деморализации и выбранная цель не протекают в следующий раунд', () => {
+    const st = tauBattle({ dice: Array(8).fill('att'), foeDice: Array(8).fill('att'), roundEnd: true });
+    st.combat.healthBonus = 2;
+    st.combat.enemyHealth = 3;
+    st.combat.noRoute = [{ seat: 0, round: 1 }];
+    st.combat.damageFirst = [{ side: 'defender', id: 'old-target', round: 1 }];
+    st.combat.retreatInstead = { seat: 0, round: 1, used: false };
+    st.combat.ignoreExcess = { side: 'defender', id: 'old-target', round: 1 };
+    FS_RULES.endCombatRound(st);
+    eq(st.combat.round, 2, 'номер нового раунда');
+    return eq([st.combat.healthBonus, st.combat.enemyHealth, st.combat.noRoute,
+        st.combat.damageFirst, st.combat.retreatInstead, st.combat.ignoreExcess],
+        [null, null, null, null, null, null], 'эффекты одного раунда сброшены');
+});
+
+head('Особенность фракции', TAU);
+
+check('Адаптивная тактика', 'в системе без своих сил способность не тянет карты', () => {
+    const st = tauDominate();
+    const p = st.players[0];
+    p.decks.event = ['Автономные дроны', 'Саботаж', 'Быстрый ответ', 'Критический удар'];
+    p.eventHand = [];
+    const res = FS_RULES.apply(st, 0, { type: 'finishDominate' });
+    ok(res.ok, 'приказ не закончен: ' + res.error);
+    eq(!!st.pending, false, 'вопросов нет');
+    eq(st.order, null, 'приказ завершён');
+    eq(p.eventHand.length, 0, 'карты не тянулись');
+    return eq(p.decks.event.length, 4, 'колода не тронута');
+});
+
+check('Адаптивная тактика', '4 карты, тактика разыгрывается и все 4 возвращаются в колоду', () => {
+    const st = tauDominate({ units: { 'воины-огня': 1 }, foeUnits: { 'гвардейцы': 1 } });
+    const p = st.players[0];
+    p.decks.event = ['Автономные дроны', 'Саботаж', 'Быстрый ответ', 'Эвакуация'];
+    p.eventHand = []; p.schemes = [];
+    FS_RULES.apply(st, 0, { type: 'finishDominate' });
+    eq(p.eventHand.length, 4, 'вытянуто четыре карты');
+    effectAnswer(st, (s, q) => (q.op === 'playEvent'
+        ? { card: 'Автономные дроны' } : firstOption(s, q)), 12);
+    eq(p.eventHand.length, 0, 'рука пуста');
+    eq(p.decks.event.length, 4, 'все карты вернулись в колоду');
+    eq(p.schemes.length, 0, 'тактика не осталась планом');
+    eq(st.order, null, 'приказ завершён');
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'вражеский отряд деморализован');
+});
+
+check('Адаптивная тактика', 'выбранный план остаётся в игре, невыбранные карты возвращаются', () => {
+    const st = tauDominate({ units: { 'воины-огня': 1 } });
+    const p = st.players[0];
+    p.decks.event = ['Критический удар', 'Саботаж', 'Быстрый ответ', 'Эвакуация'];
+    p.eventHand = []; p.schemes = [];
+    FS_RULES.apply(st, 0, { type: 'finishDominate' });
+    effectAnswer(st, (s, q) => (q.op === 'playEvent'
+        ? { card: 'Критический удар' } : firstOption(s, q)), 12);
+    eq(p.schemes.map(x => x.name), ['Критический удар'], 'план в игре');
+    eq(p.schemes[0].trigger, 'damage', 'триггер плана');
+    eq(p.decks.event.length, 3, 'три невыбранные карты вернулись');
+    return eq(st.order, null, 'приказ завершён');
+});
+
+head('Улучшения приказов', TAU);
+
+check('Союзники Гуэ\'веса', 'один КЛ0 отряд за 1 материю без фабрики и лимита развёртывания', () => {
+    const st = orderState('deploy', {
+        faction: TAU, foeFaction: TAU_FOE,
+        units: { 'воины-огня': 1 }, materiel: 2,
+        upgrades: ["Союзники Гуэ'веса"],
+    });
+    st.systems[1].tokens.push({ seat: 1, order: 'advance', faceUp: false });
+    const res = burn(st, "Союзники Гуэ'веса");
+    ok(res.ok, 'карта не сгорела: ' + res.error);
+    eq(st.order.cheapUnitOnly, true, 'приказ ждёт дешёвый отряд');
+    const sys = st.order.system, pos = worldOf(st, sys);
+    const buy = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'воины-огня', system: sys, pos });
+    ok(buy.ok, 'отряд не куплен: ' + buy.error);
+    eq(st.order.purchases[0].cost, 1, 'цена отряда');
+    eq(st.order.cheapUnitUsed, true, 'разрешение на дешёвый отряд потрачено');
+    const again = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'воины-огня', system: sys, pos });
+    eq(again.ok, false, 'второй отряд не покупается');
+    const done = FS_RULES.apply(st, 0, { type: 'finishDeploy' });
+    ok(done.ok, 'приказ не закончен: ' + done.error);
+    return eq(st.players[0].materiel, 1, 'потрачена ровно 1 материя');
+});
+
+check('Союзники Гуэ\'веса', 'КЛ1 отряд не размещается за 1 материю', () => {
+    const st = orderState('deploy', {
+        faction: TAU, foeFaction: TAU_FOE,
+        units: { 'воины-огня': 1 }, materiel: 2,
+        upgrades: ["Союзники Гуэ'веса"],
+    });
+    burn(st, "Союзники Гуэ'веса");
+    const res = FS_RULES.apply(st, 0, {
+        type: 'buyUnit', unit: 'бронекостюмы',
+        system: st.order.system, pos: worldOf(st, st.order.system),
+    });
+    return eq(res.ok, false, 'КЛ1 не размещается без фабрики');
+});
+
+check('Учения Тау\'вы', 'только использованные жетоны игровой зоны уходят на колоду событий', () => {
+    const st = orderState('strategize', {
+        faction: TAU, foeFaction: TAU_FOE, upgrades: ["Учения Тау'вы"],
+    });
+    const p = st.players[0];
+    p.placedTokens = 4;
+    st.systems[1].tokens.push({ seat: 0, order: 'advance', faceUp: false });
+    eq(FS_RULES.usedOrderTokens(st, 0), 3, 'три жетона в игровой зоне');
+    const res = burn(st, "Учения Тау'вы");
+    ok(res.ok, 'карта не сгорела: ' + res.error);
+    eq(p.eventTokens, 3, 'жетонов на колоде событий');
+    return eq(p.upgrades[0].used, true, 'карта использована');
+});
+
+check('Устройство наведения', 'бастион не защищает, +1 кубик удара добавляет попадание', () => withFixedDice(['att', 'att', 'att'], () => {
+    const faces = ['att', 'att', 'att'];
+    const st = tauStrike({
+        foeStructures: ['bastion'], foeUnits: { 'гвардейцы': 2 },
+        upgrades: ['Устройство наведения'],
+    });
+    const res = burn(st, 'Устройство наведения');
+    ok(res.ok, 'карта не сгорела: ' + res.error);
+    eq(st.order.ignoreBastion, true, 'бастионы игнорируются');
+    eq(st.order.strikeDice, ['att'], 'дополнительный кубик удара');
+    ok(FS_RULES.orbitalStrikeTargets(st, 0).some(t => t.pos === st.strikeWorld), 'мир с бастионом доступен');
+    fire(st, faces);
+    return eq(st.strike && st.strike.hits, 4, 'три попадания кубиков + одно карты');
+}));
+
+check('Точные удары', '+1 кубик, оплата одного кубика и выбор любого вражеского отряда первым', () => withFixedDice(['att', 'att', 'att'], () => {
+    const faces = ['att', 'att', 'att'];
+    const st = tauStrike({
+        foeUnits: { 'гвардейцы': 1, 'огрины': 1 },
+        upgrades: ['Точные удары'],
+    });
+    const res = burn(st, 'Точные удары');
+    ok(res.ok, 'карта не сгорела: ' + res.error);
+    eq(st.order.strikePays.length, 1, 'одна оплата удара');
+    eq(st.order.strikePays[0].reward, { first: true, maxKl: null }, 'награда — первый урон без limits КЛ');
+    fire(st, faces);
+    // resumeStrike() asks the second question after the first effect chain has
+    // already reported `done`; answerAll() keeps going while state.pending lives.
+    const policy = (s, q) => {
+        if (q.op === 'strikePayPick') return { choice: 1 };
+        if (q.op === 'strikeFirstPick') return { units: [(q.options || [])[0]] };
+        return firstOption(s, q);
+    };
+    effectAnswer(st, policy, 12);
+    answerAll(st, policy, 0, 12);
+    eq(st.order.strikePaid, 1, 'потрачен один кубик');
+    ok(!!st.order.strikeFirst, 'отряд выбран');
+    eq(st.strike && st.strike.first, st.order.strikeFirst, 'выбор попал в удар');
+    return eq(st.order.strikePlanned, null, 'удар продолжен');
+}));
+
+check('Мобилизированные охотники', 'дополнительный приказ: один КЛ0/1 отряд, один раунд боя', () => {
+    const st = orderState('advance', {
+        faction: TAU, foeFaction: TAU_FOE,
+        units: { 'воины-огня': 1, 'бронекостюмы': 1, 'бронекостюмы-превосходство': 1 },
+        upgrades: ['Мобилизированные охотники'],
+    });
+    burn(st, 'Мобилизированные охотники');
+    effectAnswer(st, {}, 4);
+    ok(st.preAdvanceMain, 'основной приказ сохранён');
+    eq(st.order.preAdvance, true, 'дополнительный приказ начат');
+    eq([st.order.moveLimit, st.order.maxKl, st.order.combatRounds], [1, 1, 1], 'ограничения приказа');
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    const movable = FS_RULES.movableUnits(st, 0)
+        .map(u => (FS_RULES.unitOf(st, u) || {}).kl);
+    ok(movable.length >= 1, 'есть доступные отряды');
+    return eq(movable.every(kl => kl <= 1), true, 'КЛ3 отряд исключён');
+});
+
+head('Карты событий', TAU);
+
+check('Автономные дроны', 'только враг КЛ≤2 в системе с вашим отрядом может быть деморализован', () => {
+    const st = tauEvent('Автономные дроны', {
+        units: { 'воины-огня': 1 },
+        foeUnits: { 'гвардейцы': 1, 'титаны': 1 },
+    });
+    const res = playEvent(st);
+    ok(res.ok, 'карта не сыграна: ' + res.error);
+    let options = null;
+    effectAnswer(st, (s, q) => {
+        if (q.op === 'route') options = (q.options || []).slice();
+        return firstOption(s, q);
+    }, 8);
+    eq((options || []).length, 1, 'только один подходящий вражеский отряд');
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'деморализован один отряд');
+});
+
+check('Военный совет', 'план восстанавливает все деморализованные отряды одной системы', () => {
+    const st = tauEvent('Военный совет', { units: { 'воины-огня': 1 } });
+    playEvent(st);
+    eq(st.players[0].schemes.map(x => x.name), ['Военный совет'], 'план в игре');
+    const sysA = st.systems[0], sysB = st.systems[1];
+    const a = FS_RULES.addUnit(st, 0, 'воины-огня', sysA.id, worldOf(st, sysA.id));
+    const b = FS_RULES.addUnit(st, 0, 'воины-огня', sysB.id, worldOf(st, sysB.id));
+    a.routed = true; b.routed = true;
+    FS_RULES.maybeScheme(st, 0, 'operations', { kind: 'order', ctx: null });
+    effectAnswer(st, (s, q) => (q.kind === 'systems'
+        ? { system: sysA.id } : firstOption(s, q)), 8);
+    eq(a.routed, false, 'отряды выбранной системы восстановлены');
+    eq(b.routed, true, 'отряд другой системы остался деморализован');
+    return eq(st.players[0].schemes.length, 0, 'план сброшен');
+});
+
+check('Все планы Тау', 'новый план оставляет не больше двух планов в игре', () => {
+    const st = tauEvent('Критический удар', {});
+    st.players[0].schemes = ['A', 'B', 'C'].map(name => ({
+        name, trigger: 'operations', steps: [{ op: 'note', text: name }],
+        note: false, defer: false,
+    }));
+    const res = playEvent(st);
+    ok(res.ok, 'карта не сыграна: ' + res.error);
+    return eq(st.players[0].schemes.map(x => x.name), ['A', 'Критический удар'], 'старый план и новый');
+});
+
+check('Саботаж', 'свой отряд и вражеская постройка одной системы уничтожаются', () => {
+    const st = tauEvent('Саботаж', { units: { 'воины-огня': 1 } });
+    st.structures.push({ id: 'foe-factory', seat: 1, type: 'factory',
+        system: st.sys, area: st.pos });
+    const res = playEvent(st);
+    ok(res.ok, 'карта не сыграна: ' + res.error);
+    effectAnswer(st, firstOption, 8);
+    eq(st.units.length, 0, 'свой отряд уничтожен');
+    return eq(st.structures.length, 0, 'вражеская постройка уничтожена');
+});
+
+check('Быстрый ответ', 'событие приостанавливает фазу, создаёт ограниченное продвижение и возвращается в неё', () => {
+    const st = tauEvent('Быстрый ответ', { units: { 'воины-огня': 1 } });
+    st.turn = 1;
+    st.systems[0].tokens.push({ seat: 0, order: 'advance', faceUp: false });
+    const sys = FS_RULES.system(st, st.sys);
+    const worlds = sys.areas.filter(a => a.world && a.pos !== st.pos);
+    ok(worlds.length >= 2, 'в системе есть два других мира');
+    const dest = worlds[0], enemyDest = worlds[1];
+    st.structures.push({ id: 'foe-qr', seat: 1, type: 'factory', system: st.sys, area: enemyDest.pos });
+    const res = playEvent(st);
+    ok(res.ok, 'карта не сыграна: ' + res.error);
+    eq(st.quickResponsePending, true, 'фаза событий ждёт выбора системы');
+    eq(st.event, null, 'карта следующего игрока ещё не вытянута');
+    effectAnswer(st, (s, q) => (q.kind === 'systems'
+        ? { system: st.sys } : firstOption(s, q)), 6);
+    eq(st.quickResponsePending, false, 'ожидание снято началом приказа');
+    eq(st.order.quickResponse, true, 'ограниченное продвижение');
+    eq(st.order.fromEvent, true, 'приказ born from event');
+    eq(st.order.seat, 0, 'приказ принадлежит игроку события');
+    eq(st.phase, 'operations', 'фаза действий');
+    eq(st.systems[0].tokens.length, 1, 'жетон приказа не снят');
+    const u = st.units.find(x => x.seat === 0);
+    ok(!!u, 'отряд на поле');
+    eq(FS_RULES.moveAllowed(st, 0, u, { system: st.sys, pos: enemyDest.pos }).ok, false,
+        'вражеская область недоступна');
+    eq(FS_RULES.moveAllowed(st, 0, u, { system: st.sys, pos: dest.pos }).ok, true,
+        'неконтролируемая область доступна');
+    let adv = FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    ok(adv.ok, 'шаг кораблей не закончен: ' + adv.error);
+    const routes = st.order.route[u.id] || [];
+    ok(routes.some(a => a.system === st.sys && a.pos === dest.pos), 'замороженный маршрут ведёт в свой мир');
+    eq(routes.some(a => a.system === st.sys && a.pos === enemyDest.pos), false,
+        'замороженный маршрут не ведёт во вражеский мир');
+    const move = FS_RULES.apply(st, 0, { type: 'moveUnits',
+        moves: [{ unit: u.id, system: st.sys, pos: dest.pos }] });
+    ok(move.ok, 'отряд не перемещён: ' + move.error);
+    eq(u.area, dest.pos, 'отряд в дружественной/неконтролируемой области');
+    adv = FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    ok(adv.ok, 'ограниченный приказ не закончен: ' + adv.error);
+    eq(st.order, null, 'временный приказ убран');
+    eq(st.phase, 'refresh', 'фаза событий восстановлена');
+    eq(st.quickResponseSnapshot, undefined, 'снимок фазы удалён');
+    eq(st.event && st.event.seat, 1, 'событие следующего игрока наступило');
+    return eq(st.eventsLeft, 1, 'осталось одно событие');
+});
+
+check('Быстрый ответ', 'отказ от выбора системы не задерживает фазу событий', () => {
+    const st = tauEvent('Быстрый ответ', { units: { 'воины-огня': 1 } });
+    st.turn = 1;
+    const res = playEvent(st);
+    ok(res.ok, 'карта не сыграна: ' + res.error);
+    eq(st.quickResponsePending, true, 'фаза событий ждёт выбора системы');
+    effectAnswer(st, { no: true }, 6);
+    eq(st.quickResponsePending, false, 'ожидание снято');
+    eq(st.quickResponseSnapshot, undefined, 'снимок удалён');
+    eq(st.order, null, 'ограниченный приказ не начался');
+    eq(st.phase, 'refresh', 'фаза событий продолжена');
+    eq(st.event && st.event.seat, 1, 'событие следующего игрока наступило');
+    return eq(st.eventsLeft, 1, 'осталось одно событие');
+});
+
+check('Философия войны', 'план меняет пару боевых карт на пару улучшений того же КЛ', () => {
+    const st = tauBattle({});
+    refuseReinforce(st);
+    const p = st.players[0];
+    p.decks.combat = ['Стелс-команды', 'Стелс-команды'];
+    p.decks.upgradeCombat = ['Кауйон'];
+    schemeInPlay(st, 'Философия войны', TAU);
+    FS_RULES.maybeScheme(st, 0, 'combat-start', { kind: 'combat', ctx: { side: 'attacker' } });
+    effectAnswer(st, firstOption, 12);
+    eq(p.decks.combat.filter(n => n === 'Кауйон').length, 2, 'две карты улучшения в колоде');
+    eq(p.decks.combat.filter(n => n === 'Стелс-команды').length, 0, 'пара удалена');
+    eq(p.decks.upgradeCombat.includes('Кауйон'), false, 'пара снята с колоды улучшений');
+    return eq(p.schemes.length, 0, 'план сброшен');
+});
+
+check('Эвакуация', 'своя постройка бесплатно переезжает в другой дружественный мир', () => {
+    const st = tauEvent('Эвакуация', { structures: ['factory'] });
+    const sys = FS_RULES.system(st, st.sys);
+    const other = sys.areas.find(a => a.world && a.pos !== st.pos);
+    ok(!!other, 'есть другой мир');
+    FS_RULES.addUnit(st, 0, 'воины-огня', st.sys, other.pos);
+    const sourceId = st.structures[0].id;
+    const res = playEvent(st);
+    ok(res.ok, 'карта не сыграна: ' + res.error);
+    effectAnswer(st, firstOption, 12);
+    eq(st.structures.length, 1, 'одна постройка');
+    eq(st.structures[0].id === sourceId, false, 'старая постройка убрана');
+    eq(st.structures[0].area, other.pos, 'новая постройка в другом мире');
+    return eq(st.structures[0].seat, 0, 'постройка осталась своей');
+});
+
+check('Перерезать линии снабжения', 'план запрещает противнику подкрепления в бою', () => {
+    const st = tauBattle({});
+    refuseReinforce(st);
+    schemeInPlay(st, 'Перерезать линии снабжения', TAU);
+    FS_RULES.maybeScheme(st, 0, 'combat-start', { kind: 'combat', ctx: { side: 'attacker' } });
+    effectAnswer(st, { choice: 0 }, 8);
+    eq(st.combat.noReinforce, true, 'запрет подкреплений');
+    eq(st.combat.noReinforceSeat, 1, 'запрет относится к противнику');
+    return eq(st.players[0].schemes.length, 0, 'план сброшен');
+});
+
+check('Критический удар', 'план уничтожает именно вражеский отряд, получивший урон', () => {
+    const st = tauBattle({});
+    refuseReinforce(st);
+    const victim = foeUnits(st)[0];
+    schemeInPlay(st, 'Критический удар', TAU);
+    st.combat.dice.attacker = Array(8).fill('att');
+    st.combat.dice.defender = ['def'];
+    const res = FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: [victim.id] });
+    ok(res.ok, 'урон не начат: ' + res.error);
+    effectAnswer(st, (s, q) => (q.op === 'destroyDamagedFoe'
+        ? { units: [victim.id] } : firstOption(s, q)), 12);
+    eq(stateUnit(st, victim.id), null, 'получивший урон отряд уничтожен');
+    eq(st.combat.damageResume, null, 'шаг урона не повторяется');
+    return eq(st.players[0].schemes.length, 0, 'план сброшен');
 });
 
 // ============================================================================
