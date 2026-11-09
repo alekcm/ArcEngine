@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -728,6 +728,54 @@ rule('order-1', '«… this order …» — командный уровень, �
     eq(fight.unspentTemp(7), 0, 'считать больше нечего');
     eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
     eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
+
+rule('combat-0c', '«discards the combat cards he used during the combat by shuffling them back into his combat deck» — карты боя держит CombatCards', () => {
+    const combat = { attacker: 0, defender: 1, cards: {}, staged: { attacker: null, defender: null } };
+    const cards = CombatCards.of(combat);
+    eq(CombatCards.of(combat), cards, 'у боя один набор карт');
+    eq(CombatCards.of(null), null, 'без боя карт нет');
+    // The hand and the open cards of a side.
+    cards.pile('attacker').hand.push('Приказ пехоте');
+    eq(cards.hand('attacker').length, 1, 'карта в руке');
+    cards.put('attacker', { name: 'Секущие когти', card: { icons: { att: 1, def: 0, morale: 2 } } }, 3);
+    eq(cards.names('attacker').join(','), 'Секущие когти', 'карта открыта');
+    eq(cards.has('attacker', 'Секущие когти'), true, 'её видно в игре');
+    eq(cards.played('attacker')[0].round, 3, 'карта знает свой раунд');
+    eq(cards.icons('attacker').morale, 2, 'иконки открытых карт посчитаны');
+    eq(cards.take('attacker', 'Секущие когти').name, 'Секущие когти', 'карта снята со стола');
+    eq(cards.take('attacker', 'Секущие когти'), null, 'второй раз её не снять');
+    // The card that lies face down: the attacker's waits first.
+    cards.stage('defender', { name: 'Поголовное истребление', seat: 1 });
+    eq(cards.staged('defender').name, 'Поголовное истребление', 'карта защитника закрыта');
+    eq(cards.nextStaged(), 'defender', 'первой вскрывают карту защитника');
+    eq(cards.anyStaged, true, 'на столе есть закрытая карта');
+    eq(cards.unstage('defender').name, 'Поголовное истребление', 'карта вскрыта');
+    eq(cards.anyStaged, false, 'на столе закрытых карт нет');
+    // The card the panel names and the card an opponent has seen.
+    cards.setChosen('attacker', 'Приказ пехоте');
+    eq(cards.chosen('attacker'), 'Приказ пехоте', 'карта в руке отмечена');
+    cards.peek('defender', 0, 'Поголовное истребление');
+    eq(cards.peeked(0).name, 'Поголовное истребление', 'карта противника подсмотрена');
+    eq(cards.peeked(1), null, 'другой игрок её не видел');
+    // What the damage of a step did.
+    cards.setApplied('attacker', [{ unit: 'u1', destroyed: true }]);
+    eq(cards.applied('attacker').length, 1, 'урон записан');
+    cards.clearApplied();
+    eq(cards.applied('attacker').length, 0, 'записи урона стёрты');
+    // The copy one seat gets: the hand of the opponent is hidden, the card is closed.
+    cards.pile('defender').hand.push('Поголовное истребление');
+    cards.stage('defender', { name: 'Поголовное истребление', seat: 1 });
+    cards.hideFrom(0);
+    eq(cards.hand('defender').length, 0, 'рука противника скрыта');
+    eq(cards.hand('attacker').length, 1, 'своя рука видна');
+    eq(cards.staged('defender'), null, 'закрытая карта не уходит другому игроку');
+    eq(cards.chosen('defender'), true, 'но видно, что карта лежит');
+    // The table is cleared for the next round.
+    cards.put('attacker', { name: 'Секущие когти' });
+    cards.clear('attacker');
+    eq(cards.names('attacker').length, 0, 'стол очищен');
+    eq(cards.chosen('attacker'), null, 'отметка карты снята');
 });
 
 rule('combat-0b', '«the attacker reveals and resolves his combat card. Then, the defender reveals and resolves his» — раунд, шаг и кубики боя ведёт CombatTurn', () => {

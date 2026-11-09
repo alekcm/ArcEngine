@@ -75,6 +75,7 @@ class CombatRules {
             dice: { attacker: roll(attacker), defender: roll(defender) },
             tokens: { attacker: { att: 0, def: 0 }, defender: { att: 0, def: 0 } },
             cards: { attacker: { hand: [], played: [] }, defender: { hand: [], played: [] } },
+            staged: { attacker: null, defender: null },
             reinforce: { attacker: 0, defender: 0 },
             reinforceRouted: { attacker: 0, defender: 0 },
             reinforceFlipped: { attacker: [], defender: [] },
@@ -515,8 +516,8 @@ class CombatRules {
         const name = hand.takeAt(index);
         if (!name) return { ok: false, error: 'Нет такой карты.' };
         const card = FS_CATALOG.card('combat', state.players[seat].faction, name);
-        c.staged = c.staged || { attacker: null, defender: null };
-        c.staged[side] = { name, card, seat };
+        const cards = CombatCards.of(c);
+        cards.stage(side, { name, card, seat });
         hand.setChosen(name);
         this.engine.log(state, seat, state.players[seat].name + ' выбирает боевую карту и кладёт её закрытой.');
         // «The attacker and defender simultaneously choose one combat card from
@@ -527,7 +528,7 @@ class CombatRules {
         // other player is still choosing, and his own card play would overwrite
         // the questions the first card is still asking.
         const otherSide = CombatSides.foe(side);
-        const otherDone = !!c.staged[otherSide]
+        const otherDone = !!cards.staged(otherSide)
             || !this.engine.player(state, CombatSides.seatOf(c, otherSide)).combatHand.size();
         const turn = CombatTurn.of(c);
         if (otherDone) turn.setStep('reveal');
@@ -540,15 +541,14 @@ class CombatRules {
         const c = state.combat;
         const turn = CombatTurn.of(c);
         if (!turn || !turn.is('reveal')) return null;
-        c.staged = c.staged || { attacker: null, defender: null };
+        const cards = CombatCards.of(c);
         // The first card that was chosen and is not yet in play.
-        const order = ['attacker', 'defender'];
-        for (const side of order) {
-            const staged = c.staged[side];
+        for (const side of ['attacker', 'defender']) {
+            const staged = cards.staged(side);
             if (staged) {
-                c.staged[side] = null;
+                cards.unstage(side);
                 this.engine.player(state, staged.seat).combatHand.setChosen(null);
-                c.cards[side].played.push({ name: staged.name, card: staged.card, side, round: turn.round });
+                cards.put(side, { name: staged.name, card: staged.card, side }, turn.round);
                 this.engine.log(state, staged.seat, state.players[staged.seat].name
                     + ' вскрывает боевую карту «' + staged.name + '».');
                 const steps = this.engine.cardSteps(state, staged.seat, staged.card);
@@ -609,19 +609,17 @@ class CombatRules {
             const handSize = s2 => this.engine.player(state, CombatSides.seatOf(c, s2)).combatHand.size();
             if (turn.is('choose-attacker') && !handSize('attacker')) turn.setStep('choose-defender');
             if (turn.is('choose-defender') && !handSize('defender')) {
-                turn.setStep(c.staged && c.staged.attacker ? 'reveal' : 'damage-attacker');
+                turn.setStep(CombatCards.of(c).staged('attacker') ? 'reveal' : 'damage-attacker');
             }
             if (turn.is('reveal')) { this.combatReveal(state); if (!state.combat) return null; }
             if (turn.is('damage-attacker') && this.combatDamageFor(state, 'attacker') <= 0) {
                 c.damage.attacker = 0;
-                c.applied = c.applied || {};
-                c.applied.attacker = [];
+                CombatCards.of(c).setApplied('attacker', []);
                 turn.setStep('damage-defender');
             }
             if (turn.is('damage-defender') && this.combatDamageFor(state, 'defender') <= 0) {
                 c.damage.defender = 0;
-                c.applied = c.applied || {};
-                c.applied.defender = [];
+                CombatCards.of(c).setApplied('defender', []);
                 this.endDamageStep(state);
                 if (!state.combat) return null;
             }
@@ -646,7 +644,7 @@ class CombatRules {
         // The card may make the attack dice of the enemy useless.
         if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
         const tokens = c.tokens[side];
-        const played = c.cards[side].played;
+        const icons = CombatCards.of(c).icons(side);
         const seat = CombatSides.seatOf(c, side);
         let att = 0, def = 0, morale = 0;
         for (const d of dice) {
@@ -654,14 +652,9 @@ class CombatRules {
             else if (d === 'def') def++;
             else if (d === 'morale') morale++;
         }
-        att += tokens.att;
-        def += tokens.def;
-        for (const card of played) {
-            if (!card.card) continue;
-            att += card.card.icons.att;
-            def += card.card.icons.def;
-            morale += card.card.icons.morale;
-        }
+        att += tokens.att + icons.att;
+        def += tokens.def + icons.def;
+        morale += icons.morale;
         // The printed morale of the unrouted units, the bastions and the
         // reinforcement tokens is the bulk of the combat morale (the rules,
         // "Morale"); only the icons on the cards and the dice add to it.
@@ -675,7 +668,7 @@ class CombatRules {
         let dice = CombatTurn.of(c).live(side);
         if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
         const tokens = c.tokens[side];
-        const played = c.cards[side].played;
+        const icons = CombatCards.of(c).icons(side);
         const seat = CombatSides.seatOf(c, side);
         const unitsMorale = this.moraleFromPieces(state, c.system, c.pos, seat)
             + this.tokenMorale(state, side);
@@ -685,10 +678,7 @@ class CombatRules {
             morale: { dice: 0, tokens: 0, cards: 0, units: unitsMorale, total: 0 },
         };
         for (const d of dice) if (parts[d]) parts[d].dice++;
-        for (const card of played) {
-            if (!card.card || !card.card.icons) continue;
-            for (const kind of ['att', 'def', 'morale']) parts[kind].cards += card.card.icons[kind] || 0;
-        }
+        for (const kind of ['att', 'def', 'morale']) parts[kind].cards = icons[kind];
         for (const kind of ['att', 'def', 'morale']) {
             const p = parts[kind];
             p.total = p.dice + p.tokens + p.cards + p.units;
@@ -816,10 +806,10 @@ class CombatRules {
         const damage = this.combatDamageFor(state, side);
         // No real damage — no question and no assignment: the shields did the work.
         const turn = CombatTurn.of(c);
+        const cards = CombatCards.of(c);
         if (damage <= 0) {
             c.damage[side] = 0;
-            c.applied = c.applied || {};
-            c.applied[side] = [];
+            cards.setApplied(side, []);
             if (side === 'attacker') { turn.setStep('damage-defender'); this.advanceCombatSteps(state); }
             else { this.endDamageStep(state); this.advanceCombatSteps(state); }
             return { ok: true, damage: 0, applied: [] };
@@ -968,8 +958,7 @@ class CombatRules {
                 dropExcess(id);
             }
         }
-        c.applied = c.applied || {};
-        c.applied[side] = applied;
+        cards.setApplied(side, applied);
         if (side === 'attacker') { turn.setStep('damage-defender'); this.advanceCombatSteps(state); }
         else { this.endDamageStep(state); this.advanceCombatSteps(state); }
         return { ok: true, damage, applied };
@@ -984,7 +973,7 @@ class CombatRules {
             c.damageHook = {};
             c.damageEndHook = null;
             c.damage = { attacker: 0, defender: 0 };
-            c.applied = {};
+            CombatCards.of(c).clearApplied();
             CombatTurn.of(c).setStep('damage-attacker');
             this.engine.log(state, -1, 'Шаг нанесения повреждений повторяется.');
             return;
@@ -1236,9 +1225,11 @@ class CombatRules {
                 + ' жетон(ов) ' + (one.kind === 'att' ? 'атаки' : 'обороны') + '.');
         }
         c.roundUnits = this.rosterOfRound(state, c);
-        c.staged = { attacker: null, defender: null };
-        c.cards.attacker.chosen = null;
-        c.cards.defender.chosen = null;
+        CombatCards.of(c).clearStaged();
+        for (const side of ['attacker', 'defender']) {
+            CombatCards.of(c).setChosen(side, null);
+            this.engine.player(state, CombatSides.seatOf(c, side)).combatHand.setChosen(null);
+        }
         // The effects that belonged to the previous round are over.
         if (c.destroyRoutedFoe && !turn.inRound(c.destroyRoutedFoe)) c.destroyRoutedFoe = null;
         c.resurrectPlan = turn.ofRound(c.resurrectPlan);
@@ -1449,14 +1440,14 @@ class CombatRules {
             // them back into his combat deck». A card that was only chosen and
             // never turned over (the combat ended in between) is returned too.
             const deck = this.engine.player(state, p.seat).combatDeck;
-            for (const card of c.cards[side].played) deck.add(card.name);
+            const cards = CombatCards.of(c);
+            for (const card of cards.played(side)) deck.add(card.name);
             const hand = this.engine.player(state, p.seat).combatHand;
             hand.returnAll();
-            const staged = c.staged && c.staged[side];
-            if (staged && !c.cards[side].played.some(x => x.name === staged.name)) {
-                deck.add(staged.name);
-            }
-            c.cards[side].played = [];
+            // The card that was only chosen and never turned over goes back too.
+            const staged = cards.staged(side);
+            if (staged && !cards.has(side, staged.name)) deck.add(staged.name);
+            cards.clear(side);
             deck.shuffle();
             // The reinforcement tokens of the combat go back to the supply here, at
             // the clean-up of the combat.

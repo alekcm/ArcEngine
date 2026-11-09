@@ -17,7 +17,7 @@ class CardAsks {
     static playAnyCard(effects, f) {
         const { R, state, seat, combat, inCombat, side } = f;
         if (!inCombat) return null;
-        const played = (combat.cards[side].played || []).map(x => x.name);
+        const played = CombatCards.of(combat).names(side);
         const seen = [];
         const list = [];
         for (const n of R.player(state, seat).combatDeck.cards()) {
@@ -43,7 +43,7 @@ class CardAsks {
         if (!deck.size()) return null;
         const name = deck.draw();
         const card = FS_CATALOG.card('combat', p.faction, name);
-        combat.cards[side].played.push({ name, card, side, round: CombatTurn.of(combat).round, valuesOnly: true });
+        CombatCards.of(combat).put(side, { name, card, side, valuesOnly: true }, CombatTurn.of(combat).round);
         R.log(state, seat, p.name + ' достаёт верхнюю карту колоды: «' + name + '» — только её боевые значения.');
         step.done = true;
         return null;
@@ -89,8 +89,8 @@ class CardAsks {
         const { combat, inCombat, side } = f;
         if (!inCombat) return null;
         const s2 = CombatSides.foe(side);
-        const played = (combat.cards[s2] && combat.cards[s2].played) || [];
-        const options = played.map(c2 => c2.card && c2.card.name).filter(Boolean);
+        const options = CombatCards.of(combat).played(s2)
+            .map(c2 => c2.card && c2.card.name).filter(Boolean);
         if (!options.length) return null;
         return { question: { kind: 'cards', who: effects.seatOf(combat, s2), op: 'discardFoeCard', options, text: 'Какую карту сбросить?' } };
     }
@@ -111,9 +111,9 @@ class CardAsks {
         const { R, state, seat, step, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
         const foeSide = CombatSides.foe(side);
-        const staged = combat.staged && combat.staged[foeSide];
+        const staged = CombatCards.of(combat).staged(foeSide);
         if (!staged) return null;
-        combat.staged[foeSide] = null;
+        CombatCards.of(combat).unstage(foeSide);
         const foeSeat = effects.seatOf(combat, foeSide);
         R.player(state, foeSeat).combatHand.setChosen(null);
         R.player(state, foeSeat).combatDeck.add(staged.name);
@@ -133,16 +133,13 @@ class CardAsks {
             return null;
         }
         const foeSide = CombatSides.foe(side);
-        const staged = combat.staged && combat.staged[foeSide];
-        const name = (staged && staged.name)
-            || (combat.cards[foeSide].chosen && combat.cards[foeSide].chosen.name)
-            || null;
+        const staged = CombatCards.of(combat).staged(foeSide);
+        const name = (staged && staged.name) || CombatCards.of(combat).chosen(foeSide) || null;
         if (!name) {
             R.log(state, seat, 'Противник ещё не выбрал карту — подсматривать нечего.');
             return null;
         }
-        combat.peek = combat.peek || {};
-        combat.peek[seat] = name;
+        CombatCards.of(combat).peek(foeSide, seat, name);
         R.log(state, seat, state.players[seat].name + ' подсмотрел карту противника: «' + name + '».');
         return null;
     }
@@ -156,7 +153,8 @@ class CardAsks {
         // player resolved one round ago is read again — with the
         // requisites of the unit ability checked anew.
         if (!inCombat) return null;
-        const entry = (combat.cards[side].played || []).find(x => (x.round || 0) === CombatTurn.of(combat).round - 1);
+        const entry = CombatCards.of(combat).played(side)
+            .find(x => (x.round || 0) === CombatTurn.of(combat).round - 1);
         const card = entry && entry.card;
         if (!card) {
             R.log(state, seat, 'В предыдущем раунде боя карта не разыгрывалась — повторять нечего.');

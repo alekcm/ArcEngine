@@ -353,7 +353,8 @@ class AdvanceRules {
             const turn = CombatTurn.of(c);
             const fresh = turn && turn.round === 1 && turn.is('reinforce-attacker')
                 && !CombatTokens.of(c).any
-                && !c.cards.attacker.played.length && !c.cards.defender.played.length
+                && !CombatCards.of(c).played('attacker').length
+                && !CombatCards.of(c).played('defender').length
                 && c.damage.attacker === 0 && c.damage.defender === 0;
             if (!fresh) return { ok: false, error: 'Бой уже начался: отменить движение нельзя.' };
             // The hands go back to the decks and the battle is cancelled.

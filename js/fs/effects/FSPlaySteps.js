@@ -51,11 +51,10 @@ class PlaySteps {
         if (hand.take(name) === null) return null;
         const card = FS_CATALOG.card('combat', p.faction, name);
         if (step.staged) {
-            combat.staged = combat.staged || { attacker: null, defender: null };
-            combat.staged[side] = { name, card, seat };
+            CombatCards.of(combat).stage(side, { name, card, seat });
             R.log(state, seat, p.name + ' играет новую боевую карту «' + name + '».');
         } else {
-            combat.cards[side].played.push({ name, card, valuesOnly: true });
+            CombatCards.of(combat).put(side, { name, card, valuesOnly: true });
         }
         return null;
     }
@@ -135,7 +134,7 @@ class PlaySteps {
     static discardFoeCard(effects, f) {
         const { R, state, seat, answer, combat, side } = f;
         const s2 = CombatSides.foe(side);
-        const played = combat.cards[s2].played;
+        const played = CombatCards.of(combat).played(s2);
         const name = answer.card;
         const at = played.findIndex(c2 => c2.card && c2.card.name === name);
         if (at < 0) return null;

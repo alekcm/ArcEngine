@@ -298,24 +298,10 @@ class CoreRules {
         // The cards of the combat: only the player sees his own hand. The card that
         // was chosen stays closed — the other side only knows that it is there.
         if (copy.combat) {
-            for (const side of ['attacker', 'defender']) {
-                const combatSeat = copy.combat[side];
-                // The hand of the copy: hidden from the other players, and the
-                // card that lies face down is closed for everybody.
-                const hand = FS_CARDS.combatHand(this.engine, copy, combatSeat);
-                if (combatSeat !== seat) hand.hide();
-                hand.setChosen(null);
-            }
-            const staged = copy.combat.staged || {};
-            copy.combat.chosen = {
-                attacker: !!(staged.attacker),
-                defender: !!(staged.defender),
-            };
-            delete copy.combat.staged;
-            // The card the opponent laid is secret — unless a card let the
-            // player peek at it («Скитарии-инфильтраторы»): only he sees it.
-            const peeked = (copy.combat.peek || {})[seat] || null;
-            copy.combat.peek = peeked ? { name: peeked } : null;
+            // The hand of the copy is hidden from the other players, and the card
+            // that lies face down is closed for everybody: one object knows what a
+            // seat may see.
+            CombatCards.of(copy.combat).hideFrom(seat);
         }
         // The question of the effect: the cards of the hand of the opponent
         // are not shown.

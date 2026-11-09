@@ -1851,6 +1851,7 @@ class FSGame {
         const nameOf = which => (s.players[CombatSides.seatOf(c, which)] || {}).name || '?';
         const names = [nameOf('attacker'), nameOf('defender')];
         const turn = CombatTurn.of(c);
+        const cards = CombatCards.of(c);
         ctx.title = 'Бой · раунд ' + turn.round + ' из ' + turn.maxRounds;
         const sideOf = (id) => {
             const seat = CombatSides.seatOf(c, id);
@@ -1858,7 +1859,7 @@ class FSGame {
             const values = FS_RULES.combatValues(s, id);
             /** @type {{att: number, def: number, morale: number}} */
             const none = { att: 0, def: 0, morale: 0 };
-            const played = (c.cards[id].played || []).map(x => ({ name: x.name, icons: (x.card && x.card.icons) || none }));
+            const played = cards.played(id).map(x => ({ name: x.name, icons: (x.card && x.card.icons) || none }));
             return {
                 side: id, seat,
                 name: p.name || '?',
@@ -1875,12 +1876,12 @@ class FSGame {
                 // damage it deals to the opponent is the opponent's value.
                 deals: FS_RULES.combatDamageFor(s, CombatSides.foe(id)),
                 hand: FS_CARDS.combatHand(FS_RULES, s, c[id]).size(),
-                closed: !!(c.chosen && c.chosen[id]),
+                closed: !!cards.chosen(id),
                 // «Если вы — атакующий, подсмотрите карту оппонента»
                 // («Скитарии-инфильтраторы»): the card of the other side this
                 // player has seen this round. The state of the player carries it,
                 // the panel of the opponent shows it — to him only.
-                peeked: (id !== side && c.peek && c.peek[me]) ? { name: c.peek[me] } : null,
+                peeked: (id !== side && cards.peeked(me)) || null,
                 mine: id === side,
             };
         };

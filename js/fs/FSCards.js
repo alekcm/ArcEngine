@@ -178,10 +178,8 @@ class FSCombatHand {
 
     /** The whole hand of this seat; an empty list outside a battle. */
     cards() {
-        const combat = this.state.combat;
-        if (!combat || !this.side) return [];
-        const cards = combat.cards && combat.cards[this.side];
-        return cards && Array.isArray(cards.hand) ? cards.hand : [];
+        if (!this.side) return [];
+        return CombatCards.of(this.state.combat).hand(this.side);
     }
 
     /** The deck of the player this hand belongs to: a discarded card goes there. */
@@ -195,24 +193,20 @@ class FSCombatHand {
 
     /** The card of this hand that lies face down on the table, if any. */
     chosen() {
-        const cards = this.slot();
-        const name = cards && cards.chosen && cards.chosen.name;
-        return name || null;
+        if (!this.side) return null;
+        return CombatCards.of(this.state.combat).chosen(this.side);
     }
 
     /** Lay the card chosen by the player face down: the panel shows it closed. */
     setChosen(name) {
-        const cards = this.slot();
-        if (!cards) return null;
-        const p = this.state.players[this.seat];
-        cards.chosen = name ? { name, card: FS_CATALOG.card('combat', p.faction, name) } : null;
-        return cards.chosen;
+        if (!this.side) return null;
+        return CombatCards.of(this.state.combat).setChosen(this.side, name);
     }
 
     /** The record of the battle that holds this hand (the server keeps it). */
     slot() {
-        const combat = this.state.combat;
-        return combat && combat.cards ? combat.cards[this.side] : null;
+        if (!this.side) return null;
+        return CombatCards.of(this.state.combat).pile(this.side);
     }
 
     /** Take the named card out of the hand and hand it over; null when absent. */
@@ -236,10 +230,9 @@ class FSCombatHand {
      * face down. A hand is known to its owner only.
      */
     hide() {
-        const slot = this.slot();
-        if (!slot) return false;
-        slot.hand = [];
-        slot.chosen = null;
+        if (!this.side) return false;
+        CombatCards.of(this.state.combat).pile(this.side).hand = [];
+        CombatCards.of(this.state.combat).setChosen(this.side, null);
         return true;
     }
 
