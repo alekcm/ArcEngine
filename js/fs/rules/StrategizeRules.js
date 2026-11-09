@@ -31,9 +31,32 @@ class StrategizeRules {
             if (deck.count(card.name) >= 2) return { ok: false, error: 'Эта карта улучшения уже есть у вас в колоде.' };
             const pile = deck.upgradePile();
             if (pile.length && !pile.includes(card.name)) return { ok: false, error: 'Этой карты нет в колоде улучшений.' };
-            // The UI always names the pair; the first pair is only a fallback.
-            const wanted = cmd.remove && deck.count(cmd.remove) >= 2 ? cmd.remove : deck.pairOptions()[0];
-            if (!wanted || wanted === card.name) return { ok: false, error: 'В колоде нет двух копий одной карты.' };
+            // Which pair leaves the deck is the player's choice and nobody
+            // else's: the rule replaces two copies of one card, and both pairs
+            // are equally legal. The engine used to pick the first legal pair
+            // itself, so a purchase made without naming the pair threw out a
+            // card the player had never chosen. Now the command waits for the
+            // answer — the same way a card's own step does.
+            const pairs = deck.pairOptions().filter(name => name !== card.name);
+            if (!pairs.length) return { ok: false, error: 'В колоде нет двух копий одной карты.' };
+            const wanted = cmd.remove;
+            if (!wanted) {
+                // The question of the order is the SAME object the cards and the
+                // panel use in state.pending: one shape, one reader.
+                state.pending = {
+                    seat, answerSeat: seat, kind: 'order',
+                    steps: [], index: 0,
+                    question: {
+                        kind: 'cards', op: 'buyUpgradeReplace', kind2: 'combat', card: card.name,
+                        options: pairs, text: 'Какую пару карт боевой колоды заменить?',
+                    },
+                    // The remembered half of the purchase: nothing is paid and
+                    // nothing leaves the deck until the pair is named.
+                    ctx: { buyUpgrade: { type: 'buyUpgrade', kind: 'combat', card: card.name } },
+                };
+                return { ok: true, pending: true };
+            }
+            if (!pairs.includes(wanted)) return { ok: false, error: 'Такой пары в колоде нет.' };
             const before = deck.size();
             if (!deck.replacePair(wanted, card.name) || deck.size() !== before) {
                 return { ok: false, error: 'Пару карт заменить не удалось.' };

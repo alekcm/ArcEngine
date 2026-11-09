@@ -66,7 +66,7 @@ class PlaySteps {
         const { R, state, seat, step, answer, p, combat, inCombat, side, other } = f;
         const name = answer.card;
         if (!name || !inCombat) return null;
-        const deck = p.decks.combat || [];
+        const deck = R.player(state, seat).combatDeck.cards();
         const i = deck.indexOf(name);
         if (i < 0) return null;
         // «сыграть любую карту из своей боевой колоды или колоды
@@ -142,7 +142,7 @@ class PlaySteps {
         const at = played.findIndex(c2 => c2.card && c2.card.name === name);
         if (at < 0) return null;
         const card = played.splice(at, 1)[0];
-        state.players[effects.seatOf(combat, s2)].decks.combat.push(card.card.name);
+        R.player(state, effects.seatOf(combat, s2)).combatDeck.add(card.card.name);
         R.log(state, seat, state.players[seat].name + ': карта противника «' + name + '» сброшена.');
         return null;
     }
@@ -153,11 +153,12 @@ class PlaySteps {
         if (!hand) return null;
         const names = answer.cards && answer.cards.length ? answer.cards
             : (answer.card ? [answer.card] : []);
+        const deck = R.player(state, seat).combatDeck;
         for (const name of names) {
             const at = hand.indexOf(name);
             if (at < 0) continue;
             hand.splice(at, 1);
-            p.decks.combat.push(name);
+            deck.add(name);
             R.log(state, seat, state.players[seat].name + ' сбрасывает боевую карту «' + name + '».');
         }
         return null;
@@ -173,7 +174,7 @@ class PlaySteps {
             const at = hand.indexOf(name);
             if (at < 0) continue;
             hand.splice(at, 1);
-            p.decks.combat.push(name);
+            R.player(state, seat).combatDeck.add(name);
             if (step.discardLeft !== undefined) step.discardLeft -= 1;
             R.log(state, seat, state.players[seat].name + ' сбрасывает боевую карту «' + name + '».');
             break;

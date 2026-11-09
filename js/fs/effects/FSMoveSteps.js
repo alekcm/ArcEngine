@@ -190,11 +190,11 @@ class MoveSteps {
     }
 
     static swapCombatCards(effects, f) {
-        const { step, answer, p } = f;
+        const { R, state, seat, step, answer } = f;
         const names = (answer.cards && answer.cards.length)
             ? answer.cards : (answer.card ? [answer.card] : []);
-        /** @type {any[]} */
-        const steps = names.filter(n => (p.decks.combat || []).filter(x => x === n).length >= 2)
+        const deck = R.player(state, seat).combatDeck;
+        const steps = names.filter(n => deck.count(n) >= 2)
             .map(n => ({ op: 'swapCombatPair', name: n, who: 'me' }));
         step.done = true;
         return steps.length ? { replace: steps } : null;
@@ -204,18 +204,14 @@ class MoveSteps {
         const { R, state, seat, step, answer, p, combat } = f;
         const name = answer.card;
         const card = FS_CATALOG.card('combat', p.faction, step.name);
-        const pile = p.decks.upgradeCombat || [];
+        const deck = R.player(state, seat).combatDeck;
+        const pile = deck.upgradePile();
         const up = FS_CATALOG.upgradeCombatCards(p.faction).find(c => c.name === name);
         if (!up || !card || (up.kl || 0) > (card.kl || 0) || !pile.includes(name)) return null;
-        let removed = 0;
-        p.decks.combat = (p.decks.combat || []).filter(n => {
-            if (n === step.name && removed < 2) { removed++; return false; }
-            return true;
-        });
-        if (removed < 2) return null;
-        pile.splice(pile.indexOf(name), 1);
-        p.decks.combat.push(name, name);
-        p.decks.combat = R.shuffle(state, p.decks.combat);
+        // Одна замена пары на всю игру: тот же объект колоды, что у покупки.
+        const pair = deck.pairOptions().includes(step.name) ? step.name : null;
+        if (!pair) return null;
+        if (!deck.replacePair(step.name, name)) return null;
         R.log(state, seat, p.name + ': пара «' + step.name + '» заменена парой «' + name + '».');
         step.done = true;
         return null;

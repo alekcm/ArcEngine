@@ -356,8 +356,11 @@ class AdvanceRules {
             // The hands go back to the decks and the battle is cancelled.
             for (const side of ['attacker', 'defender']) {
                 const combatSeat = c[side];
-                const p = state.players[combatSeat];
-                p.decks.combat = c.cards[side].hand.concat(p.decks.combat);
+                // The hand goes back on top of the deck: the same account of
+                // the deck the purchase and the clean-up use.
+                const deck = this.engine.player(state, combatSeat).combatDeck;
+                for (const name of c.cards[side].hand) deck.add(name);
+                deck.shuffle();
             }
             state.combat = null;
             order.phase = 'move';

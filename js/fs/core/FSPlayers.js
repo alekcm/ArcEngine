@@ -160,6 +160,18 @@ class PlayerEntity {
         return FS_ASSET_NAMES[kind] || kind;
     }
 
+    // --- the combat deck -------------------------------------------------------
+
+    /**
+     * The combat deck of the player as one object: the cards, the pair that a
+     * purchase replaces, the draw. Every writer of the deck (a purchase, a
+     * card that returns a card, the clean-up of a combat) goes through this
+     * account, so the rules about the deck are written once.
+     */
+    get combatDeck() {
+        return FS_CARDS.combatDeck(FS_RULES, this.state, this.seat);
+    }
+
     // --- materiel and command -------------------------------------------------
 
     get materiel() {

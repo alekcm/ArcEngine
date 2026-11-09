@@ -419,8 +419,8 @@ class PlaceAsks {
     }
 
     static swapCombatCards(effects, f) {
-        const { seat, p } = f;
-        const deck = p.decks.combat || [];
+        const { R, state, seat } = f;
+        const deck = R.player(state, seat).combatDeck.cards();
         /** @type {any} */
         const counts = {};
         for (const n of deck) counts[n] = (counts[n] || 0) + 1;
@@ -433,10 +433,10 @@ class PlaceAsks {
     }
 
     static swapCombatPair(effects, f) {
-        const { seat, step, combat, p } = f;
+        const { R, state, seat, step, p } = f;
         const card = FS_CATALOG.card('combat', p.faction, step.name);
         const kl = card ? (card.kl || 0) : 0;
-        const inDeck = n => (p.decks.combat || []).filter(x => x === n).length;
+        const inDeck = n => R.player(state, seat).combatDeck.count(n);
         const options = (p.decks.upgradeCombat || []).filter(n => {
             const up = FS_CATALOG.upgradeCombatCards(p.faction).find(c => c.name === n);
             return up && (up.kl || 0) <= kl && inDeck(n) < 2;

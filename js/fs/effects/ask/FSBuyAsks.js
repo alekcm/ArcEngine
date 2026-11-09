@@ -26,7 +26,7 @@ class BuyAsks {
         const cap = effects.stormCapFor(R, state, sysId);
         const owned = new Set((p.upgrades || []).map(u => u.name));
         const options = FS_CATALOG.upgradeCombatCards(p.faction)
-            .filter(c => (c.kl || 0) <= cap && !(p.decks.combat || []).includes(c.name))
+            .filter(c => (c.kl || 0) <= cap && !R.player(state, seat).combatDeck.cards().includes(c.name))
             .map(c => 'combat:' + c.name)
             .concat(FS_CATALOG.orderCards(p.faction)
                 .filter(c => (c.kl || 0) <= cap && !owned.has(c.name))

@@ -324,6 +324,24 @@ class OperationsRules {
     }
 
     cmdEffect(state, seat, cmd) {
+        // An order that stopped to ask (the pair of the combat deck a purchase
+        // replaces) remembers the half-done command; the answer finishes it.
+        // The question of an effect is the same shape, so the panel and the
+        // tests read both the same way — state.pending.question.
+        const pending = state.pending;
+        if (pending && pending.ctx && pending.ctx.buyUpgrade) {
+            const must = pending.answerSeat === undefined ? pending.seat : pending.answerSeat;
+            if (must !== seat) return { ok: false, error: 'Сейчас не ваш ход.' };
+            const half = pending.ctx.buyUpgrade;
+            const answer = cmd.answer || {};
+            const name = answer.remove || answer.card || answer.choice || answer.value;
+            // The question is closed only by a purchase that went through: a
+            // bad answer keeps it open instead of swallowing the command.
+            const res = this.engine.cmdBuyUpgrade(state, seat,
+                Object.assign({}, half, { remove: name }));
+            if (res && res.ok) state.pending = null;
+            return res;
+        }
         return FS_EFFECTS.answer(this.engine, state, seat, cmd);
     }
 

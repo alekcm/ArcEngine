@@ -15,12 +15,12 @@ class CardAsks {
     }
 
     static playAnyCard(effects, f) {
-        const { seat, combat, inCombat, side, p } = f;
+        const { R, state, seat, combat, inCombat, side } = f;
         if (!inCombat) return null;
         const played = (combat.cards[side].played || []).map(x => x.name);
         const seen = [];
         const list = [];
-        for (const n of (p.decks.combat || [])) {
+        for (const n of R.player(state, seat).combatDeck.cards()) {
             if (played.includes(n) || seen.includes(n)) continue;
             seen.push(n);
             list.push(n);
@@ -39,9 +39,9 @@ class CardAsks {
     static playTopCard(effects, f) {
         const { R, state, seat, step, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
-        const deck = p.decks.combat;
-        if (!deck.length) return null;
-        const name = deck.shift();
+        const deck = R.player(state, seat).combatDeck;
+        if (!deck.size()) return null;
+        const name = deck.draw();
         const card = FS_CATALOG.card('combat', p.faction, name);
         combat.cards[side].played.push({ name, card, side, round: combat.round, valuesOnly: true });
         R.log(state, seat, p.name + ' достаёт верхнюю карту колоды: «' + name + '» — только её боевые значения.');
@@ -53,10 +53,10 @@ class CardAsks {
         const { R, state, seat, step, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
         const hand = combat.cards[side].hand;
-        const deck = p.decks.combat;
+        const deck = R.player(state, seat).combatDeck;
         let drawn = 0;
         for (let i = 0; i < (step.n || 1); i++) {
-            const name = deck.shift();
+            const name = deck.draw();
             if (!name) break;
             hand.push(name);
             drawn++;
@@ -97,10 +97,10 @@ class CardAsks {
         if (!inCombat) return null;
         const s2 = CombatSides.foe(side);
         const seat2 = effects.seatOf(combat, s2);
-        const deck = state.players[seat2].decks.combat;
-        if (!deck.length) return null;
+        const deck = R.player(state, seat2).combatDeck;
+        if (!deck.size()) return null;
         R.log(state, seat, state.players[seat].name + ': противник сбрасывает верхнюю карту боевой колоды.');
-        deck.shift();
+        deck.draw();
         return null;
     }
 
@@ -113,7 +113,7 @@ class CardAsks {
         combat.staged[foeSide] = null;
         combat.cards[foeSide].chosen = null;
         const foeSeat = effects.seatOf(combat, foeSide);
-        state.players[foeSeat].decks.combat.push(staged.name);
+        R.player(state, foeSeat).combatDeck.add(staged.name);
         R.log(state, seat, p.name + ': карта противника «' + staged.name + '» сброшена.');
         step.done = true;
         return null;

@@ -2595,10 +2595,22 @@ rule('deck-2', '«Two copies of the upgrade are added to his combat deck … the
         if (!card) return 'у фракции нет боевого улучшения нулевого уровня';
         guard(st, 0, sys.id, worldOf(st, sys.id));
         st.order = { seat: 0, order: 'strategize', system: sys.id, phase: 'buy' };
+        const before = p.decks.combat.slice();
         const res = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'combat', card: card.name });
         if (!res.ok) return 'покупка не прошла: ' + res.error;
+        // Which pair leaves the deck is the player's choice: the purchase stops
+        // and asks. The engine must not pick a pair behind his back.
+        const q = st.pending && st.pending.question;
+        if (!q) return 'движок заменил пару сам, не спросив игрока';
+        if (JSON.stringify(p.decks.combat.slice().sort()) !== JSON.stringify(before.slice().sort())) {
+            return 'колода изменилась до ответа игрока';
+        }
+        const pair = q.options[0];
+        const done = FS_RULES.apply(st, 0, { type: 'effect', answer: { remove: pair } });
+        if (!done.ok) return 'ответ не принят: ' + done.error;
         const deck = p.decks.combat;
         eq(deck.filter(n => n === card.name).length, 2, 'обе копии в колоде');
+        eq(deck.filter(n => n === pair).length, 0, 'выбранная игроком пара ушла из колоды');
         if (deck[deck.length - 1] !== card.name || deck[deck.length - 2] !== card.name) shuffled++;
     }
     eq(shuffled > 0, true, 'купленные карты перемешаны, а не положены в конец');

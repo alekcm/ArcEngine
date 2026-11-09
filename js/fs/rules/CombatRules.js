@@ -85,10 +85,12 @@ class CombatRules {
         // Five combat cards for both players.
         for (const seat of [attacker, defender]) {
             const p = state.players[seat];
-            if (!p.decks.combat.length) {
+            const deck = this.engine.player(state, seat).combatDeck;
+            if (!deck.size()) {
                 // The basic deck: five cards, two copies of every card.
                 const cards = FS_CATALOG.baseCombatCards(p.faction).map(c => c.name);
-                p.decks.combat = this.engine.shuffle(state, cards.concat(cards));
+                for (const name of cards) deck.add(name, 2);
+                deck.shuffle();
             }
             const hand = [];
             // The order may give more cards for the combat.
@@ -96,7 +98,7 @@ class CombatRules {
             const extra = (myOrder && myOrder.extraCombatCards) || 0;
             // A short deck (a battle test with a few chosen cards) deals what it has.
             for (let i = 0; i < 5 + extra; i++) {
-                const card = p.decks.combat.shift();
+                const card = deck.draw();
                 if (card) hand.push(card);
             }
             combat.cards[CombatSides.sideOf(combat, seat)].hand = hand;
@@ -1460,15 +1462,16 @@ class CombatRules {
             // «discards the combat cards he used during the combat by shuffling
             // them back into his combat deck». A card that was only chosen and
             // never turned over (the combat ended in between) is returned too.
-            for (const card of c.cards[side].played) p.decks.combat.push(card.name);
-            for (const name of (c.cards[side].hand || [])) p.decks.combat.push(name);
+            const deck = this.engine.player(state, p.seat).combatDeck;
+            for (const card of c.cards[side].played) deck.add(card.name);
+            for (const name of (c.cards[side].hand || [])) deck.add(name);
             const staged = c.staged && c.staged[side];
             if (staged && !c.cards[side].played.some(x => x.name === staged.name)) {
-                p.decks.combat.push(staged.name);
+                deck.add(staged.name);
             }
             c.cards[side].played = [];
             c.cards[side].hand = [];
-            p.decks.combat = this.engine.shuffle(state, p.decks.combat);
+            deck.shuffle();
             // The reinforcement tokens of the combat go back to the supply here, at
             // the clean-up of the combat.
             this.engine.player(state, seat).addAsset('reinforcement',
