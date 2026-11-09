@@ -399,7 +399,7 @@ class CombatRules {
     maxReinforce(state, seat, side) {
         const c = state.combat;
         const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
-        return Math.min(units.length, state.players[seat].assets.reinforcement || 0);
+        return Math.min(units.length, this.engine.player(state, seat).assetCount('reinforcement'));
     }
 
     combatReinforce(state, seat, side, cmd) {
@@ -419,7 +419,9 @@ class CombatRules {
         const max = this.maxReinforce(state, seat, side);
         if (count > max) return { ok: false, error: 'Не больше ' + max + ' жетонов подкрепления.' };
         c.reinforce[side] = count;
-        state.players[seat].assets.reinforcement -= count;
+        // A reinforced token leaves the reserve: one counter for every token
+        // that comes and goes, so the limit of the faction holds here too.
+        this.engine.player(state, seat).payAsset('reinforcement', count);
         c.reinforceUsed = c.reinforceUsed || {};
         c.reinforceUsed[side] = count;
         // «В конце шага призыва подкреплений …» («Зов астропатов»): the moment of
@@ -1469,7 +1471,8 @@ class CombatRules {
             p.decks.combat = this.engine.shuffle(state, p.decks.combat);
             // The reinforcement tokens of the combat go back to the supply here, at
             // the clean-up of the combat.
-            p.assets.reinforcement += c.reinforceUsed && c.reinforceUsed[side] ? c.reinforceUsed[side] : 0;
+            this.engine.player(state, seat).addAsset('reinforcement',
+                c.reinforceUsed && c.reinforceUsed[side] ? c.reinforceUsed[side] : 0);
             if (c.reinforceUsed) c.reinforceUsed[side] = 0;
         }
         if (noTroops) this.combatRetreat(state, loser, attackerWins ? 'defender' : 'attacker', {});

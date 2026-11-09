@@ -72,10 +72,12 @@ class SetupRules {
                 state.players[seat].supply.structures[type] = this.engine.STRUCTURE_POOL[type] || 0;
                 state.players[seat].initialForces.structures[type] = st[type] || 0;
             }
-            state.players[seat].assets.forge = st.forge || 0;
-            state.players[seat].assets.cache = st.cache || 0;
-            state.players[seat].assets.reinforcement = st.reinforcement || 0;
-            state.players[seat].assets.prosperity = st.prosperity || 0;
+            /** @type {any} */
+            const player0 = this.engine.player(state, seat);
+            player0.setAsset('forge', st.forge || 0);
+            player0.setAsset('cache', st.cache || 0);
+            player0.setAsset('reinforcement', st.reinforcement || 0);
+            player0.setAsset('prosperity', st.prosperity || 0);
             // "2 жетона материалов (ассетов)": the sheet of the Inquisition
             // does not name them, the player takes any assets he likes
             // (07-tokens.md: prosperity = one asset of the player's choice).
@@ -208,7 +210,7 @@ class SetupRules {
         // The decks of the battle: the chosen cards only.
         const attCards = this.buildTestDeck(state, attacker, o.cards);
         const defCards = this.buildTestDeck(state, defender, o.foeCards);
-        for (const seat of [attacker, defender]) state.players[seat].assets.reinforcement = 2;
+        for (const seat of [attacker, defender]) this.engine.player(state, seat).setAsset('reinforcement', 2);
         state.testBattle = {
             kind, attacker, defender, system: sys.id, pos: area.pos,
             roster,
@@ -244,7 +246,7 @@ class SetupRules {
         for (const side of ['attacker', 'defender']) {
             const s = test[side];
             this.buildTestDeck(state, s, test.decks[side]);
-            state.players[s].assets.reinforcement = test.reinforcement;
+            this.engine.player(state, s).setAsset('reinforcement', test.reinforcement);
         }
         state.combat = null;
         state.phase = 'operations';

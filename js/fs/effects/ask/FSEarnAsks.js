@@ -34,8 +34,7 @@ class EarnAsks {
                 }
             }
             if (count > 0) {
-                const limit = effects.assetCap(p, step.kind);
-                p.assets[step.kind] = Math.min(limit, (p.assets[step.kind] || 0) + count);
+                R.player(state, seat).addAsset(step.kind, count);
                 R.log(state, seat, p.name + ' получает жетоны подкрепления: ' + count + ' (за неконтролируемые или вражеские миры).');
             } else {
                 R.log(state, seat, 'В активной системе нет неконтролируемых или вражеских миров — жетон подкрепления не получен.');
@@ -45,17 +44,15 @@ class EarnAsks {
         if (step.kind === 'any') {
             return { question: { kind: 'assetType', who: seat, op: 'gainAsset', n: step.n || 1, options: ['forge', 'cache', 'reinforcement'], text: 'Какой жетон ресурса получить?' } };
         }
-        // The printed limit is three; the Tyranids keep four reinforcement
-        // tokens and a card may raise the limit for the whole game.
-        const limit = effects.assetCap(p, step.kind);
         // «… за каждый потраченный `att. cube`» — the payment sets the
-        // count, and a payment of nothing buys nothing.
+        // count, and a payment of nothing buys nothing. The limit of the
+        // faction is applied by the one counter, PlayerEntity.addAsset.
         const got = step.per ? effects.count(R, state, seat, step, ctx) : (step.n || 1);
         if (got <= 0) {
             R.log(state, seat, p.name + ' ничего не заплатил — жетон не получен.');
             return null;
         }
-        p.assets[step.kind] = Math.min(limit, (p.assets[step.kind] || 0) + got);
+        R.player(state, seat).addAsset(step.kind, got);
         R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + step.kind + ' × ' + got + '.');
         return null;
     }
@@ -75,9 +72,9 @@ class EarnAsks {
     }
 
     static loseAsset(effects, f) {
-        const { state, step, target } = f;
-        const p2 = state.players[target];
-        const kinds = ['forge', 'cache', 'reinforcement'].filter(k => (p2.assets[k] || 0) > 0);
+        const { R, state, step, target } = f;
+        const face = R.player(state, target);
+        const kinds = ['forge', 'cache', 'reinforcement'].filter(k => face.assetCount(k) > 0);
         if (!kinds.length) return null;
         return { question: { kind: 'assets', who: target, op: 'loseAsset', n: Math.min(step.n || 1, kinds.length), options: kinds, text: 'Какой жетон ресурса теряется?' } };
     }
@@ -106,9 +103,8 @@ class EarnAsks {
     }
 
     static exchangeAsset(effects, f) {
-        const { state, seat, step } = f;
-        const p2 = state.players[seat];
-        const kinds = ['forge', 'cache', 'reinforcement', 'prosperity'].filter(k => (p2.assets[k] || 0) > 0);
+        const { R, state, seat, step } = f;
+        const kinds = ['forge', 'cache', 'reinforcement', 'prosperity'].filter(k => R.player(state, seat).assetCount(k) > 0);
         if (!kinds.length) return null;
         return { question: { kind: 'assetType', who: seat, op: 'exchangeAsset', options: kinds, n: step.n || 1, gain: step.gain || 1, text: 'Какой жетон ресурса потратить?' } };
     }

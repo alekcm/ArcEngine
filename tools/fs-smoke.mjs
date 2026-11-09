@@ -266,6 +266,38 @@ try {
     fail(e.message);
 }
 
+// --- one concept, one place ---------------------------------------------------
+// The bug this guards against: the token limit was counted in twenty places, so
+// raising it for the Tyranids fixed one purchase and left the rest. The account
+// of the tokens now lives in PlayerEntity (js/fs/core/FSPlayers.js) alone; a
+// file that writes `assets[...]` or `assets.x` directly is a second copy of that
+// account, and the next fix will miss it.
+section('жетоны: одно место учёта');
+try {
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js')
+        && !f.startsWith('libs/') && f !== 'js/fs/FSData.js' && f !== 'js/fs/core/FSPlayers.js')) {
+        // The data file names the asset kinds of the printed worlds ("assets": [...])
+        // — that is a description of a tile, not the account of a player.
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        let m;
+        const write = /\bassets\s*\[[^\]]+\]\s*(=(?!=)|\+\+|--|\+=|-=)/g;
+        while ((m = write.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line + ' — assets[…] =');
+        }
+        const field = /\bassets\.(?:forge|cache|reinforcement|prosperity)\s*(=(?!=)|\+\+|--|\+=|-=)/g;
+        while ((m = field.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line + ' — assets.' + m[0].split('.')[1]);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 5).join('; '));
+    ok('ни один скрипт, кроме PlayerEntity, не пишет в assets напрямую');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the subject layer answers the questions the rules ask -------------------
 section('предметный слой');
 try {

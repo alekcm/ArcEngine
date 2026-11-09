@@ -120,6 +120,31 @@ class PlayerEntity {
         return true;
     }
 
+    /**
+     * Put exactly this many tokens in place — for the setup and the tests, where
+     * the board is built rather than earned. The limit is NOT applied: a test
+     * may hand out five tokens to see what the rules do with them.
+     */
+    setAsset(kind, n) {
+        if (!kind) return 0;
+        this.assets[kind] = Math.max(0, Number(n) || 0);
+        return this.assets[kind];
+    }
+
+    /** How many tokens of a kind the player holds. The only reader of the record. */
+    assetCount(kind) {
+        return this.assets[kind] || 0;
+    }
+
+    /** Take tokens away down to zero; returns how many were taken. */
+    takeAsset(kind, n = 1) {
+        if (!kind) return 0;
+        const have = this.assets[kind] || 0;
+        const take = Math.max(0, Math.min(n, have));
+        if (take) this.assets[kind] = have - take;
+        return take;
+    }
+
     /** Spend one asset of any kind the player chooses (an "asset of your choice"). */
     payAnyAsset(kinds) {
         for (const kind of (kinds || FS_ASSET_KINDS)) {

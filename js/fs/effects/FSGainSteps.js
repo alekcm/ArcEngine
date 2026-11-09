@@ -10,12 +10,13 @@ class GainSteps {
     static gainAsset(effects, f) {
         const { R, state, seat, step, answer, ctx, p } = f;
         const kind = answer.asset || step.kind || 'forge';
-        const limit = effects.assetCap(p, kind);
         // «получить 1 жетон подкрепления за каждый потраченный `att.
         // cube`» («Разведка генокрадов»): the payment sets the count.
         const n = effects.count(R, state, seat, step, ctx);
         if (n <= 0) return null;
-        p.assets[kind] = Math.min(limit, (p.assets[kind] || 0) + n);
+        // Предел жетонов считается в одном месте — PlayerEntity.addAsset;
+        // здесь только просьба «дай n», а не арифметика над лимитом.
+        R.player(state, seat).addAsset(kind, n);
         R.log(state, seat, state.players[seat].name + ' получает жетон(ы): ' + kind + ' × ' + n + '.');
         return null;
     }
@@ -26,10 +27,9 @@ class GainSteps {
         const n = Math.min(step.n || 1, p.materiel);
         if (n <= 0) return null;
         p.materiel -= n;
-        // The Tyranids keep four reinforcement tokens: the faction sheet
-        // takes precedence over the printed limit of three.
-        const assetLimit = effects.assetCap(p, kind);
-        p.assets[kind] = Math.min(assetLimit, (p.assets[kind] || 0) + n * (step.gain || 1));
+        // The Tyranids keep four tokens of EVERY kind: the raised limit of the
+        // faction lives in the catalogue and is applied by addAsset.
+        R.player(state, seat).addAsset(kind, n * (step.gain || 1));
         R.log(state, seat, state.players[seat].name + ' меняет материю на жетон ресурса.');
         return null;
     }
@@ -37,9 +37,9 @@ class GainSteps {
     static exchangeAsset(effects, f) {
         const { R, state, seat, step, answer, p } = f;
         const kind = answer.asset || answer.assetType || 'forge';
-        const n = Math.min(step.n || 1, p.assets[kind] || 0);
+        const n = Math.min(step.n || 1, R.player(state, seat).assetCount(kind));
         if (n <= 0) return null;
-        p.assets[kind] -= n;
+        R.player(state, seat).payAsset(kind, n);
         R.player(state, seat).gainMateriel(n * (step.gain || 1));
         R.log(state, seat, state.players[seat].name + ' меняет жетон ресурса на материю.');
         return null;
@@ -50,7 +50,7 @@ class GainSteps {
         const p2 = state.players[target] || state.players[seat];
         const kind = answer.asset || (answer.assets || [])[0];
         if (!kind || !p2) return null;
-        p2.assets[kind] = Math.max(0, (p2.assets[kind] || 0) - (step.n || 1));
+        R.player(state, p2.seat).takeAsset(kind, step.n || 1);
         R.log(state, p2.seat, p2.name + ' теряет жетон: ' + kind + '.');
         return null;
     }
@@ -62,8 +62,7 @@ class GainSteps {
         // world's prosperity icon.
         if (answer.asset) {
             const kind = answer.asset;
-            const limit = effects.assetCap(p, kind);
-            p.assets[kind] = Math.min(limit, (p.assets[kind] || 0) + (step.prosperity || 1));
+            R.player(state, seat).addAsset(kind, step.prosperity || 1);
             R.log(state, seat, state.players[seat].name + ' берёт жетон процветания: ' + kind + '.');
             return null;
         }

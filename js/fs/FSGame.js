@@ -800,12 +800,12 @@ class FSGame {
     // The assets of the player as the rows of the panel: every kind is listed, and
     // a zero is a token as well.
     assetTokens(s, me) {
-        const p = (s.players && s.players[me]) || {};
-        const a = p.assets || {};
+        // Панель только читает: сколько жетонов на столе, считает один объект.
+        const face = PlayerEntity.of(s, me);
         return [
-            { icon: 'asset.forge', label: 'Кузница', count: a.forge || 0 },
-            { icon: 'asset.cache', label: 'Тайник', count: a.cache || 0 },
-            { icon: 'order.event', label: 'Подкрепление', count: a.reinforcement || 0 },
+            { icon: 'asset.forge', label: 'Кузница', count: face ? face.assetCount('forge') : 0 },
+            { icon: 'asset.cache', label: 'Тайник', count: face ? face.assetCount('cache') : 0 },
+            { icon: 'order.event', label: 'Подкрепление', count: face ? face.assetCount('reinforcement') : 0 },
         ];
     }
 
@@ -1222,8 +1222,9 @@ class FSGame {
         // The two ways of paying less: a cache token for two materiel, a forge token
         // for one command level. Both are chosen before the purchase.
         const opts = this.deployOpts = this.deployOpts || { cache: false, forgeKl: false };
-        const canCache = (p.assets.cache || 0) > 0;
-        const canForge = (p.assets.forge || 0) > 0;
+        const face = PlayerEntity.of(s, me);
+        const canCache = face.assetCount('cache') > 0;
+        const canForge = face.assetCount('forge') > 0;
         if (!canCache) opts.cache = false;
         if (!canForge) opts.forgeKl = false;
         const cl = FS_RULES.commandLevel(s, me);
@@ -1234,7 +1235,7 @@ class FSGame {
                 // The price the rules will charge: the panel never counts it itself.
                 const cost = FS_RULES.unitPrice(s, me, def, { cache: opts.cache });
                 const kl = def.kl - (opts.forgeKl ? 1 : 0);
-                const blocked = !n || p.materiel - spent < cost || kl > cl || (def.forge && !(p.assets.forge || 0));
+                const blocked = !n || p.materiel - spent < cost || kl > cl || (def.forge && !face.assetCount('forge'));
                 ctx.actions.push({
                     kind: 'pick', icon: def.type === 'ship' ? 'mark.ship' : 'mark.ground', label: def.name, count: n,
                     hint: cost + ' материи · КЛ ' + Math.max(0, kl) + ' · бой ' + def.combat + (def.forge ? ' · нужна кузница' : ''),
@@ -1251,7 +1252,7 @@ class FSGame {
             if (canCache) {
                 ctx.actions.push({
                     kind: 'chip', icon: 'asset.materiel', label: 'Тайник: −2 материи',
-                    hint: 'Тайников: ' + (p.assets.cache || 0),
+                    hint: 'Тайников: ' + face.assetCount('cache'),
                     selected: opts.cache,
                     onClick: () => { opts.cache = !opts.cache; this.refresh(); },
                 });
@@ -1259,7 +1260,7 @@ class FSGame {
             if (canForge) {
                 ctx.actions.push({
                     kind: 'chip', icon: 'asset.materiel', label: 'Кузница: КЛ −1',
-                    hint: 'Кузниц: ' + (p.assets.forge || 0),
+                    hint: 'Кузниц: ' + face.assetCount('forge'),
                     selected: opts.forgeKl,
                     onClick: () => { opts.forgeKl = !opts.forgeKl; this.refresh(); },
                 });
@@ -1346,8 +1347,9 @@ class FSGame {
         }
         // The two ways of paying less — the same as in the deploy order.
         const opts = this.deployOpts = this.deployOpts || { cache: false, forgeKl: false };
-        const canCache = (p.assets.cache || 0) > 0;
-        const canForge = (p.assets.forge || 0) > 0;
+        const face = PlayerEntity.of(s, me);
+        const canCache = face.assetCount('cache') > 0;
+        const canForge = face.assetCount('forge') > 0;
         if (!canCache) opts.cache = false;
         if (!canForge) opts.forgeKl = false;
         const cl = FS_RULES.commandLevel(s, me);
@@ -1368,7 +1370,7 @@ class FSGame {
                 const cost = FS_RULES.unitPrice(s, me, def, { cache: opts.cache, pairMate: pairSecond });
                 const kl = def.kl - (opts.forgeKl ? 1 : 0);
                 const blockedByLock = !!locked && def.id !== locked;
-                const blocked = blockedByLock || !n || p.materiel - spent < cost || kl > cl || (def.forge && !(p.assets.forge || 0));
+                const blocked = blockedByLock || !n || p.materiel - spent < cost || kl > cl || (def.forge && !face.assetCount('forge'));
                 const dealHint = isDealUnit(def) ? ' · каждая вторая пара: 1 жетон запасов' : '';
                 ctx.actions.push({
                     kind: 'pick', icon: def.type === 'ship' ? 'mark.ship' : 'mark.ground', label: def.name, count: n,
@@ -1388,7 +1390,7 @@ class FSGame {
             if (canCache) {
                 ctx.actions.push({
                     kind: 'chip', icon: 'asset.materiel', label: 'Тайник: −2 материи',
-                    hint: 'Тайников: ' + (p.assets.cache || 0),
+                    hint: 'Тайников: ' + face.assetCount('cache'),
                     selected: opts.cache,
                     onClick: () => { opts.cache = !opts.cache; this.refresh(); },
                 });
@@ -1396,7 +1398,7 @@ class FSGame {
             if (canForge) {
                 ctx.actions.push({
                     kind: 'chip', icon: 'asset.materiel', label: 'Кузница: КЛ −1',
-                    hint: 'Кузниц: ' + (p.assets.forge || 0),
+                    hint: 'Кузниц: ' + face.assetCount('forge'),
                     selected: opts.forgeKl,
                     onClick: () => { opts.forgeKl = !opts.forgeKl; this.refresh(); },
                 });
@@ -1886,7 +1888,7 @@ class FSGame {
             case 'reinforce-defender': {
                 const whose = CombatSides.sideFromStep(c.step);
                 if (whose !== side) { ctx.text = 'Подкрепления ставит ' + nameOf(whose) + '.'; return; }
-                const have = s.players[me] && s.players[me].assets ? (s.players[me].assets.reinforcement || 0) : 0;
+                const have = PlayerEntity.of(s, me) ? PlayerEntity.of(s, me).assetCount('reinforcement') : 0;
                 const max = Math.min(have, FS_RULES.maxReinforce(s, me, side));
                 if (max <= 0) {
                     // The step needs no decision: no tokens are ever offered

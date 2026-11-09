@@ -181,8 +181,7 @@ class PurchaseSteps {
         }
         if (reward.asset) {
             const n = want * (reward.n || 1);
-            const limit = effects.assetCap(player, reward.asset);
-            player.assets[reward.asset] = Math.min(limit, (player.assets[reward.asset] || 0) + n);
+            R.player(state, owner).addAsset(reward.asset, n);
             R.log(state, owner, player.name + ' получает жетон(ы): ' + reward.asset + ' × ' + n + '.');
         }
         return null;

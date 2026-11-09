@@ -162,11 +162,13 @@ class DeployRules {
         // «2 Гвардейца МОГУТ быть куплены за 1 жетон запасов» (способность
         // Имперской гвардии): the pair is a permission — without a cache token
         // the second Guardsman is paid for as usual.
-        const pairMate = deal && ((order.dealBought || 0) % 2 === 1) && (p.assets.cache || 0) > 0;
+        /** @type {any} */
+        const buyer = this.engine.player(state, seat);
+        const pairMate = deal && ((order.dealBought || 0) % 2 === 1) && buyer.assetCount('cache') > 0;
         if ((p.supply.units[def.id] || 0) <= 0) return { ok: false, error: 'Такого отряда больше нет в запасе.' };
         // A forge token lowers the command level restriction of one unit by one.
         const forgeKl = !!cmd.forgeKl;
-        if (forgeKl && (p.assets.forge || 0) < 1) return { ok: false, error: 'Нужен жетон кузницы, чтобы снизить уровень командования.' };
+        if (forgeKl && buyer.assetCount('forge') < 1) return { ok: false, error: 'Нужен жетон кузницы, чтобы снизить уровень командования.' };
         if (def.kl - (forgeKl ? 1 : 0) > this.engine.commandLevel(state, seat)) {
             return { ok: false, error: 'Не хватает уровня командования.' };
         }
@@ -207,18 +209,18 @@ class DeployRules {
         } else {
             // The pair of the faction deal is paid by a cache token in full.
             if (pairMate) {
-                if ((p.assets.cache || 0) < 1) return { ok: false, error: 'Для «2 Гвардейца за 1 жетон запасов» нужен жетон тайника.' };
+                if (buyer.assetCount('cache') < 1) return { ok: false, error: 'Для «2 Гвардейца за 1 жетон запасов» нужен жетон тайника.' };
                 cache = true;
             }
-            if (cache && !pairMate && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
+            if (cache && !pairMate && buyer.assetCount('cache') < 1) return { ok: false, error: 'Нет жетона тайника.' };
         }
         const cost = this.unitPrice(state, seat, def, { cache, pairMate, cheap });
-        if (def.forge && (p.assets.forge || 0) < (forgeKl ? 1 : 0) + 1) return { ok: false, error: 'Нужен жетон кузницы.' };
+        if (def.forge && buyer.assetCount('forge') < (forgeKl ? 1 : 0) + 1) return { ok: false, error: 'Нужен жетон кузницы.' };
         if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
         // The tokens are paid at once, the materiel — at the end of the order.
-        if (def.forge) p.assets.forge--;
-        if (forgeKl) p.assets.forge--;
-        if (cache) p.assets.cache--;
+        if (def.forge) buyer.payAsset('forge', 1);
+        if (forgeKl) buyer.payAsset('forge', 1);
+        if (cache) buyer.payAsset('cache', 1);
         p.supply.units[def.id]--;
         if (deal) order.dealBought = (order.dealBought || 0) + 1;
         const unit = this.engine.addUnit(state, seat, def.id, cmd.system, cmd.pos);
@@ -258,12 +260,14 @@ class DeployRules {
         const free = !!(order.freeStructure && order.freeStructureKind === type);
         // One cache token lowers the cost of one structure by two materiel.
         const cache = !!cmd.cache;
-        if (cache && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
+        /** @type {any} */
+        const builder = this.engine.player(state, seat);
+        if (cache && builder.assetCount('cache') < 1) return { ok: false, error: 'Нет жетона тайника.' };
         const cost = free ? 0 : this.structurePrice(state, seat, type, { cache });
         if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
         const place = this.canPlaceStructure(state, seat, cmd.system, cmd.pos);
         if (!place.ok) return place;
-        if (cache) p.assets.cache--;
+        if (cache) builder.payAsset('cache', 1);
         const structure = this.engine.addStructure(state, seat, type, cmd.system, cmd.pos);
         this.engine.log(state, seat, p.name + ' построил: ' + this.engine.structureName(type) + '.');
         order.structureBought = true;
@@ -287,8 +291,8 @@ class DeployRules {
             const unit = state.units.find(u => u.id === entry.id);
             if (!unit) return { ok: false, error: 'Этого отряда уже нет на доске.' };
             this.engine.destroyUnit(state, unit);
-            if (entry.forge) p.assets.forge++;
-            if (entry.forgeKl) p.assets.forge++;
+            if (entry.forge) this.engine.player(state, seat).addAsset('forge', 1);
+            if (entry.forgeKl) this.engine.player(state, seat).addAsset('forge', 1);
             order.bought = Math.max(0, (order.bought || 0) - 1);
             if (order.supplyDeal && FS_EFFECTS.sameName(entry.name, order.supplyDeal.unit || 'Гвардец')) {
                 order.dealBought = Math.max(0, (order.dealBought || 0) - 1);
@@ -299,7 +303,7 @@ class DeployRules {
             this.engine.destroyStructure(state, structure);
             order.structureBought = false;
         }
-        if (entry.cache) p.assets.cache++;
+        if (entry.cache) this.engine.player(state, seat).addAsset('cache', 1);
         order.purchases = list.filter(x => x !== entry);
         // «одного типа» — the lock follows what is on the board.
         if (isGuard && !(order.purchases || []).length) order.unitsLocked = null;

@@ -2102,9 +2102,9 @@ const FS_EFFECTS = {
         if (!combat || !area) return 0;
         const p = state.players[seat];
         const want = step.n || 1;
-        const n = step.free ? want : Math.min(want, p.assets.reinforcement || 0);
+        const n = step.free ? want : Math.min(want, R.player(state, seat).assetCount('reinforcement'));
         if (!n) return 0;
-        if (!step.free) p.assets.reinforcement -= n;
+        if (!step.free) R.player(state, seat).payAsset('reinforcement', n);
         combat.reinforce = combat.reinforce || { attacker: 0, defender: 0 };
         combat.reinforce[side] = (combat.reinforce[side] || 0) + n;
         if (step.free) {

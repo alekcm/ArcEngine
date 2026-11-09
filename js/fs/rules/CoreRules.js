@@ -127,7 +127,7 @@ class CoreRules {
             return state.units.filter(u => u.seat === seat && (!sys || u.system === sys)
                 && /культист/i.test((this.unitOf(state, u) || {}).name || '')).length;
         }
-        if (kind === 'reinforcement') return p.assets.reinforcement || 0;
+        if (kind === 'reinforcement') return this.engine.player(state, seat).assetCount('reinforcement');
         if (kind === 'mixedSystem') {
             return state.systems.filter(sys => {
                 const mine = state.units.some(u => u.system === sys.id && u.seat === seat);

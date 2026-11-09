@@ -253,11 +253,10 @@ class PlaceSteps {
         // («Мехаморфоз»): the alternative that names a price pays it
         // before the model is exchanged.
         if (step.pay && step.pay.kind) {
-            if ((p.assets[step.pay.kind] || 0) < (step.pay.n || 1)) {
+            if (!R.player(state, seat).payAsset(step.pay.kind, step.pay.n || 1)) {
                 R.log(state, seat, 'Не хватает жетона: ' + step.pay.kind + '.');
                 return null;
             }
-            p.assets[step.pay.kind] -= (step.pay.n || 1);
             R.log(state, seat, state.players[seat].name + ' платит жетон: '
                 + (R.assetName ? R.assetName(step.pay.kind) : step.pay.kind) + '.');
         }
