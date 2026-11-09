@@ -7,21 +7,42 @@ class RefreshRules {
         this.engine = engine;
     }
 
+    /** The tie-breaks of the rules: objectives, then friendly worlds, then units. */
+    rank(state, p) {
+        return {
+            objectives: p.objectives || 0,
+            worlds: this.engine.friendlyWorlds(state, p.seat),
+            units: this.engine.unitsOf(state, p.seat),
+        };
+    }
+
+    /** The better of two ranks: negative when `b` wins, positive when `a` does. */
+    byRank(a, b) {
+        return (b.objectives - a.objectives) || (b.worlds - a.worlds) || (b.units - a.units);
+    }
+
+    /** Is `b` exactly as good as `a` on every tie-break? (a shared victory) */
+    sameRank(a, b) {
+        return a.objectives === b.objectives && a.worlds === b.worlds && a.units === b.units;
+    }
+
+    /** The best players of a list, sorted — with every player who ties with the first. */
+    standings(state, players) {
+        const ranked = players
+            .map(p => ({ p, rank: this.rank(state, p) }))
+            .sort((a, b) => this.byRank(a.rank, b.rank));
+        if (!ranked.length) return { best: null, shared: [] };
+        const top = ranked[0];
+        const shared = ranked.filter(x => this.sameRank(x.rank, top.rank)).map(x => x.p);
+        return { best: top.p, shared };
+    }
+
     objectiveWinners(state) {
         const needed = state.players.length;
         const alive = state.players.filter(p => !p.eliminated && p.objectives >= needed);
         if (!alive.length) return null;
-        alive.sort((a, b) => (b.objectives - a.objectives)
-            || (this.engine.friendlyWorlds(state, b.seat) - this.engine.friendlyWorlds(state, a.seat))
-            || (this.engine.unitsOf(state, b.seat) - this.engine.unitsOf(state, a.seat)));
-        const same = (a, b) => a.objectives === b.objectives
-            && this.engine.friendlyWorlds(state, a.seat) === this.engine.friendlyWorlds(state, b.seat)
-            && this.engine.unitsOf(state, a.seat) === this.engine.unitsOf(state, b.seat);
-        const shared = alive.filter(p => same(p, alive[0]));
-        return {
-            winner: alive[0].seat,
-            shared: shared.length > 1 ? shared.map(p => p.seat) : null,
-        };
+        const { best, shared } = this.standings(state, alive);
+        return { winner: best.seat, shared: shared.length > 1 ? shared.map(p => p.seat) : null };
     }
 
     /**
@@ -250,22 +271,17 @@ class RefreshRules {
         }
         if (state.round > this.engine.ROUNDS) {
             state.over = true;
-            const best = alive.slice().sort((a, b) => (b.objectives - a.objectives)
-                || (this.engine.friendlyWorlds(state, b.seat) - this.engine.friendlyWorlds(state, a.seat))
-                || (this.engine.unitsOf(state, b.seat) - this.engine.unitsOf(state, a.seat)));
-            state.winner = best[0].seat;
             // The tie-breaks of the rules: objectives, friendly worlds, units, and
             // only then a shared victory.
-            const same = (a, b) => a.objectives === b.objectives
-                && this.engine.friendlyWorlds(state, a.seat) === this.engine.friendlyWorlds(state, b.seat)
-                && this.engine.unitsOf(state, a.seat) === this.engine.unitsOf(state, b.seat);
-            const shared = best.filter(p => same(p, best[0]));
+            const { best, shared } = this.standings(state, alive);
+            state.winner = best.seat;
             if (shared.length > 1) {
                 state.shared = shared.map(p => p.seat);
-                this.engine.log(state, -1, 'Восьмой раунд закончен. Победа делится между ' + shared.map(p => p.name).join(' и ') + '.');
+                this.engine.log(state, -1, 'Раунд ' + this.engine.ROUNDS + ' закончен. Победа делится между '
+                    + shared.map(p => p.name).join(' и ') + '.');
                 return;
             }
-            this.engine.log(state, -1, 'Восьмой раунд закончен. Побеждает ' + best[0].name + '.');
+            this.engine.log(state, -1, 'Раунд ' + this.engine.ROUNDS + ' закончен. Побеждает ' + best.name + '.');
             return;
         }
         state.phase = 'planning';
