@@ -193,10 +193,8 @@ const FSUI = {
         pop.append(head);
         const me = state.seat;
         const p = state.players[me] || {};
-        const kinds = [
-            ['advance', 'Наступление'], ['deploy', 'Развёртывание'],
-            ['strategize', 'Стратегия'], ['dominate', 'Доминирование'],
-        ];
+        const kinds = Object.keys(FS_RULES_CONFIG.ORDER_NAMES)
+            .map(order => [order, this.orderLabel(order)]);
         const rows = [];
         for (const sys of state.systems) {
             for (const tok of sys.tokens) {

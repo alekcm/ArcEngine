@@ -833,12 +833,16 @@ class FSGame {
         ctx.tokens = [
             { icon: 'asset.materiel', label: 'Материя', count: p.materiel },
         ].concat(this.assetTokens(s, me));
-        const kinds = [
-            ['advance', 'Наступление', 'order.advance', 'Движение и бой'],
-            ['deploy', 'Развёртывание', 'order.deploy', 'Покупка отрядов и построек'],
-            ['strategize', 'Стратегия', 'order.strategize', 'Улучшения'],
-            ['dominate', 'Доминирование', 'order.dominate', 'Ресурсы и способность'],
-        ];
+        // The names and the icons of the orders are the ones of the catalogue;
+        // only the one-line hint of a panel belongs to the panel.
+        const hints = {
+            advance: 'Движение и бой',
+            deploy: 'Покупка отрядов и построек',
+            strategize: 'Улучшения',
+            dominate: 'Ресурсы и способность',
+        };
+        const kinds = Object.keys(FS_RULES_CONFIG.ORDER_NAMES)
+            .map(order => [order, fsOrderName(order, true), FS_ORDER_ICONS[order], hints[order] || '']);
         const supply = FS_RULES.ORDER_SUPPLY;
         for (const [order, name, icon, hint] of kinds) {
             const left = FS_RULES.orderLeft(s, me, order);
