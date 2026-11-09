@@ -26,7 +26,7 @@ class GainSteps {
         const kind = answer.asset || answer.assetType || 'forge';
         const n = Math.min(step.n || 1, p.materiel);
         if (n <= 0) return null;
-        p.materiel -= n;
+        R.player(state, seat).payMateriel(n);
         // The Tyranids keep four tokens of EVERY kind: the raised limit of the
         // faction lives in the catalogue and is applied by addAsset.
         R.player(state, seat).addAsset(kind, n * (step.gain || 1));

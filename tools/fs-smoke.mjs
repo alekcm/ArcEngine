@@ -359,6 +359,31 @@ try {
     fail(e.message);
 }
 
+// --- materiel: one account --------------------------------------------------
+section('материя: одно место учёта');
+try {
+    const owners = new Set(['js/fs/core/FSPlayers.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The materiel dial (and its limit of 14) belongs to PlayerEntity: a rule
+        // pays with payMateriel and gains with gainMateriel, never by hand.
+        // A write to the field of a player: `p.materiel -= 2`. A local variable
+        // (`const materiel = …`) and the materiel printed on a world are reads.
+        const re = /\b[A-Za-z_$][\w$]*\.materiel\s*(?:[-+]?=(?!=))/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 5).join('; '));
+    ok('материю начисляет и списывает только PlayerEntity');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- a structure on a world: one question -----------------------------------
 section('постройка на мире: одно правило');
 try {

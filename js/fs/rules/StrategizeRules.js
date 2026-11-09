@@ -61,7 +61,7 @@ class StrategizeRules {
             if (!deck.replacePair(wanted, card.name) || deck.size() !== before) {
                 return { ok: false, error: 'Пару карт заменить не удалось.' };
             }
-            p.materiel -= cost;
+            this.engine.player(state, seat).payMateriel(cost);
             order.upgradesBought = (order.upgradesBought || 0) + 1;
             order.combatUpgrade = true;
             // Kept for the refund: the pair that left the deck, the card that came in.
@@ -82,7 +82,7 @@ class StrategizeRules {
             }
             const pile = p.decks && Array.isArray(p.decks.upgradeOrder) ? p.decks.upgradeOrder : null;
             if (pile && !pile.includes(card.name)) return { ok: false, error: 'Этой карты нет в колоде улучшений.' };
-            p.materiel -= cost;
+            this.engine.player(state, seat).payMateriel(cost);
             order.upgradesBought = (order.upgradesBought || 0) + 1;
             p.upgrades.push({ name: card.name, used: false, order: card.order });
             if (pile) pile.splice(pile.indexOf(card.name), 1);
@@ -109,7 +109,7 @@ class StrategizeRules {
             }
             const card = FS_CATALOG.card('combat', p.faction, buy.card);
             const fallback = card ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0;
-            p.materiel = (p.materiel || 0) + (buy.price != null ? buy.price : fallback);
+            this.engine.player(state, seat).gainMateriel(buy.price != null ? buy.price : fallback);
             order.combatUpgrade = false;
             order.combatBuy = null;
             order.upgradesBought = Math.max(0, (order.upgradesBought || 0) - 1);
@@ -126,7 +126,7 @@ class StrategizeRules {
             p.upgrades.splice(idx, 1);
             const pile = p.decks && Array.isArray(p.decks.upgradeOrder) ? p.decks.upgradeOrder : null;
             if (pile && !pile.includes(name)) pile.push(name);
-            p.materiel = (p.materiel || 0) + (order.orderBuy && order.orderBuy.price != null
+            this.engine.player(state, seat).gainMateriel(order.orderBuy && order.orderBuy.price != null
                 ? order.orderBuy.price : fallback);
             order.orderUpgrade = false;
             order.orderUpgradeName = null;

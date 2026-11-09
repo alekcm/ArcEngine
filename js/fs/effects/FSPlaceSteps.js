@@ -62,7 +62,7 @@ class PlaceSteps {
                     R.log(state, seat, state.players[seat].name + ' не хватает материи, чтобы купить «' + def.name + '».');
                     break;
                 }
-                p.materiel -= price;
+                R.player(state, seat).payMateriel(price);
                 R.log(state, seat, state.players[seat].name + ' тратит ' + price + ' материи.');
             }
             p.supply.units[def.id]--;
@@ -104,7 +104,7 @@ class PlaceSteps {
         if (!can.ok) return { ok: false, error: can.error };
         if (!step.free && p.materiel < stats.cost) return { ok: false, error: 'Не хватает материи.' };
         // The structure may be free, but it always comes from the reserve.
-        if (!step.free) p.materiel -= stats.cost;
+        if (!step.free) R.player(state, seat).payMateriel(stats.cost);
         R.addStructure(state, seat, step.kind, area.system, area.pos);
         R.log(state, seat, state.players[seat].name + ' строит: ' + R.structureName(step.kind) + '.');
         return null;

@@ -358,7 +358,7 @@ class DeployRules {
         const p = state.players[seat];
         const total = this.spentOf(order);
         if (total > p.materiel) return { ok: false, error: 'Не хватает материи.' };
-        p.materiel -= total;
+        this.engine.player(state, seat).payMateriel(total);
         for (const entry of order.purchases || []) {
             if (!entry.cost) continue;
             this.engine.log(state, seat, p.name + ' платит ' + entry.cost + ' материи за «' + entry.name + '».');

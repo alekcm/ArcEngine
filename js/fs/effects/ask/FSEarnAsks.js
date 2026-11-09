@@ -66,7 +66,7 @@ class EarnAsks {
             if (state.order && state.order.seat === seat) R.finishOrder(state, seat);
             return { stop: true };
         }
-        p.materiel -= n;
+        R.player(state, seat).payMateriel(n);
         R.log(state, seat, p.name + ' тратит ' + n + ' материи.');
         return null;
     }
@@ -137,7 +137,7 @@ class EarnAsks {
         if (temp <= 0) return null;
         order.tempAdded = temp;
         order.tempBefore = p.materiel || 0;
-        p.materiel = (p.materiel || 0) + temp;
+        R.player(state, seat).gainMateriel(temp);
         R.log(state, seat, p.name + ' временно получает материю: ' + temp + '.');
         return {
             replace: [
@@ -158,7 +158,7 @@ class EarnAsks {
         // What was not spent on the ships disappears.
         const spent = Math.max(0, (order.tempBefore || 0) + order.tempAdded - (p.materiel || 0));
         const left = Math.max(0, order.tempAdded - spent);
-        p.materiel = Math.max(0, (p.materiel || 0) - left);
+        R.player(state, seat).payMateriel(left);
         R.log(state, seat, p.name + ': неиспользованный остаток материалов пропадает (' + left + ').');
         order.tempMateriel = 0;
         order.tempAdded = 0;

@@ -35,7 +35,7 @@ class PurchaseSteps {
             }
             const before = deck.size();
             if (!deck.replacePair(remove, c.name) || deck.size() !== before) return null;
-            p.materiel -= price;
+            R.player(state, seat).payMateriel(price);
             R.log(state, seat, state.players[seat].name + ' заменяет пару «' + remove
                 + '» на боевое улучшение «' + c.name + '».');
             return null;
@@ -49,7 +49,7 @@ class PurchaseSteps {
         if (p.materiel < price) return null;
         if ((p.upgrades || []).some(u => u.name === c.name)) return null;
         const pile = p.decks && Array.isArray(p.decks.upgradeOrder) ? p.decks.upgradeOrder : null;
-        p.materiel -= price;
+        R.player(state, seat).payMateriel(price);
         p.upgrades.push({ name: c.name, used: false, order: c.order });
         if (pile && pile.includes(c.name)) pile.splice(pile.indexOf(c.name), 1);
         R.log(state, seat, state.players[seat].name + ' покупает улучшение приказа «' + c.name + '».');
@@ -109,7 +109,7 @@ class PurchaseSteps {
         if ((buyer.materiel || 0) < cost) return null;
         const can = R.canTakeStructure(state, buyer.seat, 'bastion');
         if (!can.ok) return null;
-        buyer.materiel -= cost;
+        R.player(state, buyer.seat).payMateriel(cost);
         R.addStructure(state, buyer.seat, 'bastion', area.system, area.pos);
         R.log(state, buyer.seat, buyer.name + ' покупает бастион за ' + cost + ' материи.');
         step.done = true;
