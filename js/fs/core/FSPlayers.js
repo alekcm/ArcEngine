@@ -203,7 +203,8 @@ class PlayerEntity {
     /** Command level: the cities, plus whatever the active order adds («Сила воли»). */
     commandLevel() {
         const order = this.state.order;
-        const bonus = order && order.seat === this.seat ? (order.klBonus || 0) : 0;
+        const fight = OrderFight.of(order);
+        const bonus = order && order.seat === this.seat && fight ? fight.klBonus : 0;
         return this.cities() + bonus;
     }
 

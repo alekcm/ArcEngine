@@ -57,12 +57,11 @@ class DestroySteps {
             R.destroyStructure(state, s2);
         }
         if (!units.length && !built.length) return null;
-        if (state.order) state.order.tempMateriel = sum;
+        const fight = OrderFight.of(state.order);
+        if (fight) fight.setTempMateriel(sum);
         // «Уничтоженный город засчитывается в ваш командный уровень на
         // время выполнения этого приказа.»
-        if (cities && state.order) {
-            state.order.klBonus = (state.order.klBonus || 0) + cities;
-        }
+        if (cities && fight) fight.addKlBonus(cities);
         R.log(state, owner, player.name + ' уничтожает в мире ' + units.length
             + ' отряд(ов) и ' + built.length + ' постройку(ок): временно '
             + sum + ' материи.');

@@ -132,11 +132,10 @@ class EarnAsks {
 
     static spendTempMateriel(effects, f) {
         const { R, state, seat, step, p } = f;
-        const order = state.order;
-        const temp = order ? (order.tempMateriel || 0) : 0;
+        const fight = OrderFight.of(state.order);
+        const temp = fight ? fight.tempMateriel : 0;
         if (temp <= 0) return null;
-        order.tempAdded = temp;
-        order.tempBefore = p.materiel || 0;
+        fight.grantTemp(p.materiel || 0);
         R.player(state, seat).gainMateriel(temp);
         R.log(state, seat, p.name + ' временно получает материю: ' + temp + '.');
         return {
@@ -153,15 +152,13 @@ class EarnAsks {
 
     static dropTempMateriel(effects, f) {
         const { R, state, seat, p } = f;
-        const order = state.order;
-        if (!order || !order.tempAdded) return null;
+        const fight = OrderFight.of(state.order);
+        if (!fight || !fight.hasTemp) return null;
         // What was not spent on the ships disappears.
-        const spent = Math.max(0, (order.tempBefore || 0) + order.tempAdded - (p.materiel || 0));
-        const left = Math.max(0, order.tempAdded - spent);
+        const left = fight.unspentTemp(p.materiel || 0);
         R.player(state, seat).payMateriel(left);
         R.log(state, seat, p.name + ': неиспользованный остаток материалов пропадает (' + left + ').');
-        order.tempMateriel = 0;
-        order.tempAdded = 0;
+        fight.clearTemp();
         return null;
     }
 }

@@ -12,7 +12,7 @@ class OrderAsks {
         if (!state.order) return null;
         const n = step.per ? effects.count(R, state, seat, step, ctx) : (step.n || 1);
         if (n <= 0) return null;
-        state.order.klBonus = (state.order.klBonus || 0) + n;
+        OrderFight.of(state.order).addKlBonus(n);
         R.log(state, seat, p.name + ' повышает командный уровень на ' + n + '.');
         return null;
     }
@@ -55,12 +55,8 @@ class OrderAsks {
         // инициировали этим приказом, перебросьте 1 кубик за каждого
         // юнита в оспариваемой области» («Сервочерепа-стражи»): the
         // combat asks for the reroll once the hands are dealt.
-        if (state.order && state.order.seat === seat) {
-            state.order.prepReroll = {
-                n: step.n || 1, per: step.per || null, kind: step.kind || 'any',
-                inBattle: !!step.inBattle, ability: step.ability,
-            };
-        }
+        const fight = OrderFight.of(state.order);
+        if (fight && state.order.seat === seat) fight.setPrepReroll(step);
         return null;
     }
 
@@ -115,13 +111,10 @@ class OrderAsks {
             // своих карты» («Священные масла»): the cards are drawn and
             // dropped at the preparation step of that battle, not when
             // the hand is dealt.
-            const prep = state.order.prepDrawCards
-                || (state.order.prepDrawCards = { n: 0, discard: 0 });
-            prep.n += step.n || 0;
-            prep.discard += step.discard || 0;
+            OrderFight.of(state.order).addPrepDraw(step.n || 0, step.discard || 0);
             return null;
         }
-        state.order.extraCombatCards = (state.order.extraCombatCards || 0) + (step.n || 0);
+        OrderFight.of(state.order).addExtraCombatCards(step.n || 0);
         return null;
     }
 
@@ -144,7 +137,7 @@ class OrderAsks {
         const faction = R.faction(state, seat);
         const names = effects.unitNames(step.what, faction);
         if (state.order && names.length) {
-            state.order.retreatExcessUnits = names[0];
+            OrderFight.of(state.order).setRetreatExcess(names[0]);
             R.log(state, seat, 'После приказа отряды «' + names[0] + '» сверх вместимости могут отступить.');
         }
         return null;
@@ -240,7 +233,8 @@ class OrderAsks {
     static orderKl(effects, f) {
         const { state, step } = f;
         // The command level of the player is higher while the order runs.
-        if (state.order) state.order.klBonus = (state.order.klBonus || 0) + (step.n || 0);
+        const fight = OrderFight.of(state.order);
+        if (fight) fight.addKlBonus(step.n || 0);
         return null;
     }
 

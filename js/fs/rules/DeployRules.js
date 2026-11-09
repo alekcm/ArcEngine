@@ -460,8 +460,8 @@ class DeployRules {
         // Гвардейцев, превышающим вместимость этого мира» («Адептус Астрономика»):
         // those units leave by a retreat, not by the supply: the engine does not
         // take them away, it names them in the log.
-        const order = state.order;
-        const named = order && order.retreatExcessUnits ? order.retreatExcessUnits : null;
+        const fight = OrderFight.of(state.order);
+        const named = fight ? fight.retreatExcess : null;
         if (named) {
             const over = mine.filter(u => {
                 const def = this.engine.unitOf(state, u);

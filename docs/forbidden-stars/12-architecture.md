@@ -93,6 +93,7 @@
 | Скидки и сделки приказа, цена покупки | `core/FSDeal.js` (`OrderDeal.of(order)`) | не читать `order.discount`/`cheapUnit` в правиле или панели — это ловит `fs-smoke` |
 | Где приказ может развернуть отряды | `core/FSDeployScope.js` (`DeployScope.of(order)`) | не читать `order.guardFactory`/`unitsLocked` в правиле или панели — это ловит `fs-smoke` |
 | Предел развёртывания и вместимость мира под картой | `core/FSDeployLimits.js` (`DeployLimits.of(order)`) | не читать `order.capacityBonus`/`deployLimitBonus` в правиле или панели — это ловит `fs-smoke` |
+| Что приказ даёт своему бою | `core/FSOrderFight.js` (`OrderFight.of(order)`) | не читать `order.klBonus`/`prepReroll`/`tempMateriel` в правиле или карте — это ловит `fs-smoke` |
 | Текст карты → шаги игры | `FSEffects.js` (таблица `RULES`) | текст карты — это правило карты, отдельного кода «на карту» нет |
 | Что шаг спросит у игрока | `js/fs/effects/ask/FS*Asks.js` (реестр `ASK_EXECUTORS`) | не добавлять ветку в `switch` — его больше нет |
 | Что шаг сделает с ответом | `js/fs/effects/FS*Steps.js` (реестр `STEP_EXECUTORS`) | не писать действие шага в панели |
@@ -121,7 +122,7 @@
 
 ```
 node tools/check.mjs          # типы (tsc по JSDoc) + сверка правил + дым-тест
-node tools/fs-audit.mjs       # 148 проверок: каждая цитирует Rules Reference
+node tools/fs-audit.mjs       # 149 проверок: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # 82 проверки: карты одной фракции против их текстов
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках
@@ -134,11 +135,11 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 шагов карт (73 «дела» и 155 «вопроса» — каждый объявлен и каждый — функция), а ещё один —
 сам предметный слой: стороны боя и верх стопки приказов.
 
-Восемнадцать разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
+Девятнадцать разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
 (вставленные `assets.forge++`, `cards[side].hand.splice`, `p.materiel -= 1`, ручной счёт
 пяти отрядов, `structuresAt(...).length`, `state.order = null`, `u.routed = true`,
 `order.bought++`, чтение `state.trim` мимо очереди, `storm.edge = …` мимо поля штормов и
-`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits`
+`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` и `order.klBonus` мимо `OrderFight`
 дают провал с именем файла и строкой):
 
 * жетоны: только `PlayerEntity` пишет в `assets`;
@@ -185,6 +186,10 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
   (`core/FSDeployLimits.js`): надбавка к пределу, лишние фабрики, «города и бастионы
   считаются фабриками», единственный отряд городов, «отряды идут в мир фабрики» и
   надбавка к вместимости мира с городом.
+* что приказ даёт своему бою — один объект `OrderFight` (`core/FSOrderFight.js`):
+  надбавка командного уровня, переброс и лишние карты этапа подготовки (забираются
+  боем один раз), «только один раунд», названный отряд сверх вместимости и временная
+  материя разрушенного мира.
 
 ## Шаги карт: две ступени и рамка
 

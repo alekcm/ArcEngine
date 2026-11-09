@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -675,6 +675,39 @@ rule('dep-5', '«A player cannot purchase a unit … whose command level require
 //  Strategize and Dominate
 // ============================================================================
 head('Приказы стратегии и доминирования');
+
+rule('order-1', '«… this order …» — командный уровень, подготовка, раунды и временная материя живут в одном OrderFight', () => {
+    const fight = OrderFight.of({ seat: 0, order: 'advance' });
+    // «командный уровень выше на 1» — the cities and the card add up.
+    fight.addKlBonus(1).addKlBonus(2);
+    eq(fight.klBonus, 3, 'бонус командного уровня накоплен');
+    // «перебросьте кубик за каждого юнита» и «вытяните 2, сбросьте 2» ждут своего боя.
+    fight.setPrepReroll({ n: 1, per: 'unit', ability: 'Сервочерепа' });
+    fight.addPrepDraw(2, 2);
+    eq(fight.prepReroll.per, 'unit', 'переброс запомнен');
+    eq(fight.prepDrawCards.discard, 2, 'сброс запомнен');
+    // The battle takes both once, and never again.
+    const taken = fight.takePrep();
+    eq(taken.prep.n, 1, 'бой забрал переброс');
+    eq(taken.draw.n, 2, 'бой забрал карты');
+    eq(fight.prepReroll, null, 'второй раз переброса нет');
+    eq(fight.prepDrawCards, null, 'второй раз карт нет');
+    // «только один раунд» и «отступить лишними Гвардейцами».
+    eq(fight.combatRounds, 0, 'раунды не ограничены');
+    fight.setRetreatExcess('Гвардеец');
+    eq(fight.retreatExcess, 'Гвардеец', 'названный отряд может отступить');
+    // The temporary materiel: granted, spent, and what is left goes away.
+    fight.setTempMateriel(3);
+    eq(fight.hasTemp, false, 'материя ещё не выдана');
+    eq(fight.grantTemp(5), 3, 'выдано 3 временных');
+    eq(fight.hasTemp, true, 'временная материя на столе');
+    eq(fight.unspentTemp(7), 2, 'из трёх временных потрачен один');
+    fight.clearTemp();
+    eq(fight.hasTemp, false, 'остаток списан');
+    eq(fight.unspentTemp(7), 0, 'считать больше нечего');
+    eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
+    eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
 
 rule('str-1', '«The active player can purchase upgrades only if he has at least one unit or structure in the active system.»', () => {
     const st = empty();

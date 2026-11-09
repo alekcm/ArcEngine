@@ -120,8 +120,9 @@ class CombatRules {
         }
         // «Если происходит бой, разыграйте только ОДИН раунд» («Мобилизированные
         // охотники»): the limit belongs to the combat this order starts.
-        if (state.order && state.order.combatRounds && state.order.seat === attacker) {
-            combat.maxRounds = state.order.combatRounds;
+        const fight = OrderFight.of(state.order);
+        if (fight && fight.combatRounds && state.order.seat === attacker) {
+            combat.maxRounds = fight.combatRounds;
         }
         // The roster of the first round: the cards that pay for the losses of a
         // round read it («Выводок термаганов»).
@@ -158,8 +159,9 @@ class CombatRules {
     prepEffects(state, seat) {
         const order = state.order;
         if (!order || order.seat !== seat || !state.combat) return false;
-        const prep = order.prepReroll;
-        const draw = order.prepDrawCards;
+        const fight = OrderFight.of(order);
+        const prep = fight.prepReroll;
+        const draw = fight.prepDrawCards;
         if (!prep && !draw) return false;
         if (state.pending) {
             // The scheme of the start of the combat is answered first; the
@@ -167,16 +169,15 @@ class CombatRules {
             state.combat.prepQueued = true;
             return false;
         }
+        const taken = fight.takePrep();
         const steps = [];
         if (draw) {
-            order.prepDrawCards = null;
             steps.push({
                 op: 'drawCombatCards', n: draw.n || 0, discard: draw.discard || 0, who: 'me',
                 ability: 'Священные масла: дополнительные боевые карты этапа подготовки.',
             });
         }
         if (prep) {
-            order.prepReroll = null;
             steps.push({
                 op: 'rerollDie', n: prep.n || 1, kind: prep.kind || 'any', per: prep.per || null,
                 inBattle: !!prep.inBattle, who: 'me', ability: prep.ability,

@@ -500,6 +500,30 @@ try {
     fail(e.message);
 }
 
+// --- what an order lends to its battle: one object ---------------------------
+section('помощь приказа бою: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSOrderFight.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // What an order lends to its battle (command level, the preparation, the
+        // extra cards, one round, the excess, the temporary materiel) is one
+        // object: the rules and the cards ask OrderFight.
+        const re = /\b(?:state\.order|s\.order|order)\.(?:klBonus|prepReroll|prepDrawCards|extraCombatCards|combatRounds|retreatExcessUnits|tempMateriel|tempBefore|tempAdded)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('помощь приказа бою спрашивают у OrderFight');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- what an order does to the deploy limit: one object ---------------------
 section('предел и вместимость приказа: один объект');
 try {
