@@ -159,7 +159,8 @@ class StrategizeRules {
         this.engine.log(state, seat, p2.name + ' кладёт приказ на колоду событий.');
         // «помимо этого приказа … еще 2 жетона приказов из своей игровой зоны»:
         // they are USED tokens, not the strategize token just put on the deck.
-        const bonus = (state.order && state.order.chaosDeckBonus) || 0;
+        const tally = OrderTally.of(state.order);
+        const bonus = tally ? tally.chaosDeckBonus : 0;
         if (bonus > 0) {
             const free = Math.min(bonus, this.engine.usedOrderTokens(state, seat));
             p2.eventTokens += free;

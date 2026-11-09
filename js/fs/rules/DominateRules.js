@@ -9,6 +9,7 @@ class DominateRules {
 
     dominate(state, seat, systemId) {
         const p = state.players[seat];
+        const tally = OrderTally.of(state.order);
         const sys = this.engine.system(state, systemId);
         const gained = [];
         for (const area of sys.areas) {
@@ -18,49 +19,51 @@ class DominateRules {
                 if (asset === 'prosperity') {
                     // The player chooses the token.
                     gained.push('prosperity');
-                    state.order.prosperity = (state.order.prosperity || 0) + 1;
+                    tally.addProsperity(1);
                 } else if (this.engine.player(state, seat).addAsset(asset, 1)) {
                     gained.push(asset);
                 }
             }
         }
-        state.order.gained = gained;
+        tally.setGained(gained);
         if (gained.length) {
             this.engine.log(state, seat, p.name + ' получил ресурсы: ' + gained.join(', ') + '.');
         }
         // The faction ability is resolved by the player (it is a card-like text).
         PhasePlan.of(state.order).set('dominate');
-        state.order.ability = this.engine.faction(state, seat).ability;
+        tally.setAbility(this.engine.factionAbilityText(state, seat));
     }
 
     cmdTakeProsperity(state, seat, cmd) {
         const order = this.engine.orderOf(state, seat, 'dominate');
         if (!order) return { ok: false, error: 'Сейчас не приказ доминирования.' };
-        if (!order.prosperity) return { ok: false, error: 'Нет жетонов процветания.' };
+        const tally = OrderTally.of(order);
+        if (!tally.prosperity) return { ok: false, error: 'Нет жетонов процветания.' };
         const asset = cmd.asset;
         if (!['forge', 'cache', 'reinforcement'].includes(asset)) return { ok: false, error: 'Неизвестный ресурс.' };
         const p = state.players[seat];
         const player = this.engine.player(state, seat);
         if (!player.hasRoomFor(asset)) return { ok: false, error: 'У вас уже ' + player.assetLimit(asset) + ' таких жетонов.' };
         player.addAsset(asset, 1);
-        order.prosperity--;
+        tally.spendProsperity();
         this.engine.log(state, seat, p.name + ' взял жетон процветания: ' + this.engine.assetName(asset) + '.');
         return { ok: true };
     }
 
     takeProsperityLeft(state, seat) {
         const order = state.order;
-        if (!order || !order.prosperity) return;
+        const tally = OrderTally.of(order);
+        if (!tally || !tally.prosperity) return;
         const p = state.players[seat];
-        while (order.prosperity > 0) {
+        while (tally.prosperity > 0) {
             const player = this.engine.player(state, seat);
             const free = player.freeAssetKinds();
             if (!free.length) break;    // every asset is at its limit
             player.addAsset(free[0], 1);
-            order.prosperity--;
+            tally.spendProsperity();
             this.engine.log(state, seat, p.name + ' берёт за жетон процветания: ' + this.engine.assetName(free[0]) + '.');
         }
-        order.prosperity = 0;
+        tally.clearProsperity();
     }
 
     cmdFinishDominate(state, seat, cmd = {}) {
@@ -76,7 +79,7 @@ class DominateRules {
         // it alone («you may ...»).
         if (steps.length && !cmd.skip) {
             // The order is over when the effect of the ability is done.
-            order.finishAfterEffect = true;
+            OrderTally.of(order).setFinishesAfterEffect();
             this.engine.runEffects(state, seat, steps, { kind: 'ability', ctx: null });
             return { ok: true, pending: true };
         }

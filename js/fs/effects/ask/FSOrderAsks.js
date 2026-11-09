@@ -255,7 +255,7 @@ class OrderAsks {
     static strategizeDeckBonus(effects, f) {
         const { state, seat, step } = f;
         if (state.order && state.order.seat === seat) {
-            state.order.chaosDeckBonus = (state.order.chaosDeckBonus || 0) + (step.n || 1);
+            OrderTally.of(state.order).addChaosDeckBonus(step.n || 1);
         }
         return null;
     }

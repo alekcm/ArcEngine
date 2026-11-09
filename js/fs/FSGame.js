@@ -1661,10 +1661,11 @@ class FSGame {
         ctx.title = 'Доминирование';
         ctx.text = 'Ресурсы получены. Способность фракции применять не обязательно.';
         // The faction ability is the point of the Dominate order — print it in the panel.
-        ctx.status = s.order.ability ? 'Способность фракции: ' + s.order.ability : 'Способность фракции: —';
+        const tally = OrderTally.of(s.order);
+        ctx.status = tally.ability ? 'Способность фракции: ' + tally.ability : 'Способность фракции: —';
         // What the order just gave — the same list the engine granted; printed as icons.
         const counts = {};
-        for (const a of (s.order.gained || [])) counts[a] = (counts[a] || 0) + 1;
+        for (const a of tally.gained) counts[a] = (counts[a] || 0) + 1;
         const assetIcons = { forge: 'asset.forge', cache: 'asset.cache', reinforcement: 'order.event', prosperity: 'asset.prosperity' };
         const noteIcons = [];
         for (const key of ['forge', 'cache', 'reinforcement', 'prosperity']) {
@@ -1673,7 +1674,7 @@ class FSGame {
         ctx.note = 'После этого вы получите следующие жетоны:';
         ctx.noteIcons = noteIcons;
         // The prosperity: the player chooses the asset of his choice.
-        for (let i = 0; i < (s.order.prosperity || 0); i++) {
+        for (let i = 0; i < tally.prosperity; i++) {
             for (const asset of ['forge', 'cache', 'reinforcement']) {
                 ctx.actions.push({
                     label: 'Процветание: ' + FS_RULES.assetName(asset),

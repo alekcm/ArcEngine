@@ -107,16 +107,17 @@ class CombatRules {
         }
         // «… получить 1 `morale cube` в начале боя, вызванного этим приказом»
         // («Прикосновение варпа»): the advance belongs to the owner of the plan.
-        if (state.order && state.order.chaosCombatMorale
+        const tally0 = OrderTally.of(state.order);
+        if (tally0 && tally0.chaosCombatMorale
             && (state.order.seat === attacker || state.order.seat === defender)) {
             const side = CombatSides.sideOf(combat, state.order.seat);
-            for (let i = 0; i < state.order.chaosCombatMorale; i++) {
+            const dice = tally0.takeChaosCombatMorale();
+            for (let i = 0; i < dice; i++) {
                 if (combat.dice[side].filter(Boolean).length >= this.engine.DICE_MAX) break;
                 combat.dice[side].push('morale');
             }
             this.engine.log(state, state.order.seat, state.players[state.order.seat].name
                 + ' получает кубик морали в начале боя.');
-            state.order.chaosCombatMorale = 0;
         }
         // «Если происходит бой, разыграйте только ОДИН раунд» («Мобилизированные
         // охотники»): the limit belongs to the combat this order starts.
@@ -131,9 +132,10 @@ class CombatRules {
         // подкрепления в спорной области в начале шага призыва подкреплений»
         // («Бесчисленные»): the token the order promised stands in the area of
         // the combat its order has just started.
-        const promised = state.order && state.order.seat === attacker && state.order.combatReinforce;
+        const tally = OrderTally.of(state.order);
+        const promised = state.order && state.order.seat === attacker && tally ? tally.promisedReinforce : null;
         if (promised) {
-            state.order.combatReinforce = null;
+            tally.takePromisedReinforce();
             this.engine.runEffects(state, attacker, [{
                 op: 'placeReinforcement', n: promised.n || 1, free: promised.free,
                 here: true, who: 'me', ability: 'Бесчисленные: жетон подкрепления в спорной области.',

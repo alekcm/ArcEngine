@@ -161,9 +161,8 @@ class OperationsRules {
             // applies the ability of the faction.
             this.engine.dominate(state, seat, systemId);
             PhasePlan.of(state.order).set('dominate');
-            const faction = this.engine.faction(state, seat);
-            state.order.ability = faction && faction.ability
-                ? faction.ability.name + ': ' + faction.ability.text : '';
+            // The same text the dominate rule prints: one place names it.
+            OrderTally.of(state.order).setAbility(this.engine.factionAbilityText(state, seat));
             return { ok: true };
         }
         return { ok: false, error: 'Неизвестный приказ.' };

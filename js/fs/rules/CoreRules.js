@@ -245,6 +245,16 @@ class CoreRules {
         return FS_ASSET_NAMES[asset] || asset;
     }
 
+    /**
+     * The ability of a faction as it is printed in the panel of the Dominate
+     * order: «Название: текст». One place names it — the rule of the order and
+     * the beginning of the phase both ask here.
+     */
+    factionAbilityText(state, seat) {
+        const f = this.faction(state, seat);
+        return f && f.ability ? f.ability.name + ': ' + f.ability.text : '';
+    }
+
     friendlyWorlds(state, seat) {
         let n = 0;
         for (const sys of state.systems) {

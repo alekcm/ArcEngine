@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -854,6 +854,41 @@ rule('phase-1', '«… the steps of an order …» — шаги приказа �
     // One object per order, and no order — no object.
     eq(PhasePlan.of(order), phase, 'у приказа один PhasePlan');
     eq(PhasePlan.of(null), null, 'без приказа шага нет');
+});
+
+rule('dom-1b', '«… he gains the assets …» — что приказ добыл, что остался должен и что обещал бою, держит один OrderTally', () => {
+    const tally = OrderTally.of({ seat: 0, order: 'dominate' });
+    // «получите 2 жетона процветания»: the player still chooses two assets.
+    tally.setGained(['forge', 'prosperity', 'prosperity']);
+    eq(tally.gained.length, 3, 'добыча записана');
+    tally.addProsperity(2);
+    eq(tally.prosperity, 2, 'два жетона процветания ждут выбора');
+    tally.spendProsperity();
+    eq(tally.prosperity, 1, 'один выбран');
+    tally.clearProsperity();
+    eq(tally.prosperity, 0, 'остаток выдан или сгорел');
+    // The ability of the faction: «Название: текст», and the order ends after it.
+    tally.setAbility('Массовое Производство: …');
+    eq(tally.ability.indexOf('Массовое') , 0, 'текст способности в панели');
+    eq(tally.finishesAfterEffect, false, 'приказ не ждёт способности');
+    tally.setFinishesAfterEffect();
+    eq(tally.finishesAfterEffect, true, 'приказ закончится со способностью');
+    tally.finishAfterEffect();
+    eq(tally.finishesAfterEffect, false, 'флаг потрачен один раз');
+    // A chaos card: extra deck tokens and morale dice of the battle.
+    tally.addChaosDeckBonus(2);
+    eq(tally.chaosDeckBonus, 2, 'два жетона на колоду событий');
+    tally.addChaosCombatMorale(1).addChaosCombatMorale(1);
+    eq(tally.chaosCombatMorale, 2, 'два кубика морали');
+    eq(tally.takeChaosCombatMorale(), 2, 'бой забирает их');
+    eq(tally.chaosCombatMorale, 0, 'второй бой без кубиков');
+    // The promised free reinforcement waits for the battle and is taken once.
+    tally.setPromisedReinforce(1, true);
+    eq(tally.promisedReinforce.free, true, 'жетон обещан бесплатно');
+    eq(tally.takePromisedReinforce().n, 1, 'бой забрал обещание');
+    eq(tally.promisedReinforce, null, 'второй раз обещания нет');
+    eq(OrderTally.of(tally.order), tally, 'у приказа один итог');
+    eq(OrderTally.of(null), null, 'без приказа итога нет');
 });
 
 rule('dom-2', '«A player cannot have more than three of each asset token.»', () => {

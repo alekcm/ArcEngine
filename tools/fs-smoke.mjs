@@ -500,6 +500,29 @@ try {
     fail(e.message);
 }
 
+// --- what an order gained and promised: one object --------------------------
+section('итог приказа: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSOrderTally.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // What a dominate order granted, what it still owes the player and what
+        // it promised to its battle are one object: OrderTally.
+        const re = /\b(?:state\.order|s\.order|order)\.(?:gained|prosperity|ability|finishAfterEffect|chaosDeckBonus|chaosCombatMorale|combatReinforce)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('итог приказа спрашивают у OrderTally');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- where an order lets its units march: one object ------------------------
 section('пути приказа: один объект');
 try {

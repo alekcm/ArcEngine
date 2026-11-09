@@ -101,7 +101,7 @@ class PlaceAsks {
         // («Бесчисленные»): the order is resolved before its combat
         // exists, so the token of the card waits for the combat.
         if (step.here && !combat && state.order && state.order.seat === seat) {
-            state.order.combatReinforce = { n: step.n || 1, free: !!step.free };
+            OrderTally.of(state.order).setPromisedReinforce(step.n || 1, step.free);
             return null;
         }
         // «… в спорной области» — the area of the battle is the only one.

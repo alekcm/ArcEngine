@@ -186,7 +186,7 @@ class StrikeAsks {
     static combatStartMorale(effects, f) {
         const { state, seat, step } = f;
         if (state.order && state.order.seat === seat) {
-            state.order.chaosCombatMorale = (state.order.chaosCombatMorale || 0) + (step.n || 1);
+            OrderTally.of(state.order).addChaosCombatMorale(step.n || 1);
         }
         return null;
     }

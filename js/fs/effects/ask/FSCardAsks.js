@@ -321,7 +321,8 @@ class CardAsks {
         // машинам») forbids the ability alone: the order the player is
         // executing goes on without it.
         if (step.what !== 'upgrade' && !step.orderOnly) {
-            if (state.order && state.order.finishAfterEffect) state.order.finishAfterEffect = false;
+            const tally = OrderTally.of(state.order);
+            if (tally && tally.finishesAfterEffect) tally.finishAfterEffect();
             if (state.order && state.order.seat === seat) R.finishOrder(state, seat);
         }
         return { stop: true };

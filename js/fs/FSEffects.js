@@ -897,7 +897,7 @@ const FS_EFFECTS = {
         // «минимум 2 одного типа» — the first purchase locks the type.
         scope.unlock();
         // The ability is not over: the factory is still producing.
-        order.finishAfterEffect = false;
+        OrderTally.of(order).setFinishesAfterEffect(false);
         R.log(state, seat, p.name + ' отдаёт приказ развёртывания: фабрика выпускает отряды в свой мир.');
         return null;
     },
@@ -1613,8 +1613,9 @@ const FS_EFFECTS = {
             R.finishOrder(state, seat);
         }
         // The order of the ability is over when the effect is done.
-        if (c.kind === 'ability' && state.order && state.order.finishAfterEffect) {
-            state.order.finishAfterEffect = false;
+        const tally = OrderTally.of(state.order);
+        if (c.kind === 'ability' && tally && tally.finishesAfterEffect) {
+            tally.finishAfterEffect();
             R.finishOrder(state, seat);
         }
         // The reinforce step waited for the scheme of its end («Зов астропатов»):
