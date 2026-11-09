@@ -220,6 +220,30 @@ try {
     fail(e.message);
 }
 
+// --- the subject layer answers the questions the rules ask -------------------
+section('предметный слой');
+try {
+    const SIDES = engine('CombatSides');
+    const BOARD = engine('Board');
+    // Who is who in a battle, and the step of a side.
+    const c = { attacker: 0, defender: 1 };
+    if (SIDES.sideOf(c, 1) !== 'defender' || SIDES.sideOf(c, 2) !== null) throw new Error('сторона места');
+    if (SIDES.seatOf(c, 'defender') !== 1 || SIDES.foe('defender') !== 'attacker') throw new Error('место стороны');
+    if (SIDES.sideFromStep('damage-attacker') !== 'attacker'
+        || SIDES.sideFromStep('round-end') !== 'defender') throw new Error('сторона шага');
+    // The top of a pile of orders: only it may resolve.
+    const st = R.newReadyGame({ seed: 5, players: seedPlayers() });
+    const sys = st.systems[0];
+    sys.tokens = [{ seat: 0, order: 'advance' }, { seat: 1, order: 'deploy' }];
+    if (BOARD.of(st).topOrder(sys.id).seat !== 1) throw new Error('верх стопки приказов');
+    if (R.availableOrders(st, 0).length !== 0 || R.availableOrders(st, 1).length !== 1) {
+        throw new Error('доступные приказы не совпали с верхом стопки');
+    }
+    ok('стороны боя, верх стопки приказов и доступные приказы');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the client and the rules agree on the names -----------------------------
 // The rules are split into services, so a method the panel calls may simply not
 // be on the facade any more. TypeScript sees core/ and rules/ only, so this is
