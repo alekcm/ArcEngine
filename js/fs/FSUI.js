@@ -273,6 +273,7 @@ const FSUI = {
         root.classList.toggle('is-battle', !!(state && state.combat));
         root.classList.toggle('is-deploy', !!(state && state.order && state.order.order === 'deploy'));
         root.classList.toggle('is-strategize', !!(state && state.order && state.order.order === 'strategize'));
+        root.classList.toggle('is-planning', !!(state && state.phase === 'planning'));
         root.classList.toggle('is-placing-tile', !!(state && state.phase === 'setup' && ctx.mode === 'placeTile'));
         if (this.currentLobby) { this.renderModernLobby(); return; }
         const header = this.el('div', 'fs-topbar');
@@ -439,6 +440,8 @@ const FSUI = {
         if (tokens) panel.append(tokens);
         const hand = this.renderHand(ctx.hand, ctx.handTitle);
         if (hand) panel.append(hand);
+        const cardChoices = this.renderCardChoices(ctx.cardChoices);
+        if (cardChoices) panel.append(cardChoices);
         const selection = this.renderSelection(ctx.selection);
         if (selection) panel.append(selection);
         const upgrades = this.renderUpgrades(ctx.upgrades);
@@ -1014,6 +1017,60 @@ const FSUI = {
         const out = [];
         for (const c of starter) { out.push(c.name); out.push(c.name); }
         return out;
+    },
+
+    // A choice of cards prints EVERY card in full: the title, level and cost,
+    // storm arrows, combat cubes, both printed text zones and the effect. A
+    // list of names and a hover title are not information a player can use.
+    renderCardChoices(choices) {
+        if (!choices || !choices.length) return null;
+        const wrap = this.el('section', 'fs-card-choices');
+        if (choices.title) wrap.append(this.el('div', 'fs-eyebrow', choices.title));
+        const list = this.el('div', 'fs-card-choices-list');
+        for (const choice of choices) {
+            const d = choice.detail || {};
+            const card = this.el(choice.onClick ? 'button' : 'div',
+                'fs-card-choice' + (choice.selected ? ' is-selected' : ''));
+            if (choice.onClick) {
+                card.type = 'button';
+                card.setAttribute('aria-pressed', choice.selected ? 'true' : 'false');
+                card.addEventListener('click', choice.onClick);
+            }
+            card.append(this.el('div', 'fs-card-choice-kind', d.kind || 'КАРТА'));
+            card.append(this.el('div', 'fs-card-choice-name', d.name || choice.name || ''));
+            const meta = this.el('div', 'fs-card-choice-meta');
+            if (d.kl != null) meta.append(this.el('span', '', 'КЛ ' + d.kl));
+            if (d.cost != null) meta.append(this.el('span', '', d.cost + ' материя'));
+            if (d.order) meta.append(this.el('span', '', 'Приказ: ' + d.order));
+            if (choice.count) meta.append(this.el('span', '', choice.count + '× в колоде'));
+            if (meta.childNodes.length) card.append(meta);
+            if (d.storm && d.storm.length) {
+                const storm = this.el('div', 'fs-card-choice-storm');
+                storm.append(this.el('span', '', 'Сдвиг шторма: '));
+                for (const dir of d.storm) {
+                    storm.append(this.iconEl('ui.storm-' + String(dir).toLowerCase(), 'fs-card-choice-ico'));
+                    storm.append(this.el('span', '', String(dir)));
+                }
+                card.append(storm);
+            }
+            if (d.icons) {
+                const cubes = this.el('div', 'fs-card-icons');
+                if (this.appendCubeIcons(cubes, d.icons)) card.append(cubes);
+            }
+            if (d.general || d.unit) {
+                const zones = this.el('div', 'fs-card-choice-zones');
+                this.appendCardZones(zones, d.general, d.unit);
+                card.append(zones);
+            }
+            if (d.text) card.append(this.richText(d.text, 'fs-card-choice-text'));
+            if (!d.general && !d.unit && !d.text && choice.hint) {
+                card.append(this.el('div', 'fs-card-choice-text', choice.hint));
+            }
+            if (choice.onClick) card.append(this.el('div', 'fs-card-choice-pick', 'Выбрать'));
+            list.append(card);
+        }
+        wrap.append(list);
+        return wrap;
     },
 
     renderUpgrades(sections) {

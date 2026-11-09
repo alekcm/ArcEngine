@@ -2739,12 +2739,12 @@ const FS_EFFECTS = {
             }
             case 'buyUpgrade': {
                 const kind = step.kind || 'combat';
-                // «уменьшите его стоимость на 1 за каждый дружественный мир, в
-                // котором есть фабрика» («Приказ верховного командования»).
+                // Only the physical cards still lying in the face-up upgrade
+                // pile can be bought; a basic card returned there costs zero.
                 const discount = this.upgradeDiscount(R, state, seat, step);
                 const list = kind === 'combat'
-                    ? FS_DATA.combat.filter(c => c.faction === p.faction && c.upgrade).map(c => c.name)
-                    : FS_DATA.orders.filter(c => c.faction === p.faction).map(c => c.name);
+                    ? FS_CARDS.combatDeck(R, state, seat).upgradeOptions()
+                    : FS_CARDS.orderUpgradeOptions(state, seat);
                 if (!list.length) return null;
                 return { question: { kind: 'cards', who: seat, op: 'buyUpgrade', kind2: kind, options: list, discount, text: 'Какое улучшение купить?' } };
             }
@@ -4641,26 +4641,46 @@ const FS_EFFECTS = {
                 if (!card) return null;
                 const off = this.upgradeDiscount(R, state, seat, step);
                 if (step.kind === 'combat') {
-                    const c = FS_DATA.combat.find(x => x.faction === p.faction && x.upgrade && x.name === card);
+                    const c = FS_DATA.combat.find(x => x.faction === p.faction && x.name === card);
                     if (!c) return null;
-                    const price = Math.max(0, (c.cost || 0) - off);
+                    // Event cards do not add a command-level gate: the discount
+                    // and the printed text are the whole restriction here.
+                    const price = c.upgrade ? Math.max(0, (c.cost || 0) - off) : 0;
                     if (p.materiel < price) return null;
+                    const deck = FS_CARDS.combatDeck(R, state, seat);
+                    if (deck.count(c.name) >= 2) return null;
+                    const remove = answer.remove || answer.replace || answer.deckCard;
+                    // The player names the pair to replace. No card is added to
+                    // the deck and no materiel is spent before this answer.
+                    if (!remove) {
+                        const pairs = deck.pairOptions();
+                        if (!pairs.length) return null;
+                        return { question: {
+                            kind: 'cards', who: seat, op: 'buyUpgradeReplace', kind2: 'combat',
+                            card: c.name, discount: off, options: pairs,
+                            text: 'Какую пару карт боевой колоды заменить?',
+                        } };
+                    }
+                    const before = deck.size();
+                    if (!deck.replacePair(remove, c.name) || deck.size() !== before) return null;
                     p.materiel -= price;
-                    const deck = p.decks.combat;
-                    deck.splice(0, 2);
-                    deck.push(c.name, c.name);
-                } else {
-                    const c = FS_DATA.orders.find(x => x.faction === p.faction && x.name === card);
-                    if (!c) return null;
-                    // The discount of the card covers the upgrades of the orders
-                    // too: «Купите одну карту улучшения приказа, уменьшив её
-                    // стоимость …» («Лингва Технис»).
-                    const price = Math.max(0, (c.cost || 0) - off);
-                    if (p.materiel < price) return null;
-                    p.materiel -= price;
-                    p.upgrades.push({ name: c.name, used: false, order: c.order });
+                    R.log(state, seat, state.players[seat].name + ' заменяет пару «' + remove
+                        + '» на боевое улучшение «' + c.name + '».');
+                    return null;
                 }
-                R.log(state, seat, state.players[seat].name + ' покупает улучшение «' + card + '».');
+                const c = FS_DATA.orders.find(x => x.faction === p.faction && x.name === card);
+                if (!c) return null;
+                // The discount of the card covers the upgrades of the orders
+                // too: «Купите одну карту улучшения приказа, уменьшив её
+                // стоимость …» («Лингва Технис»).
+                const price = Math.max(0, (c.cost || 0) - off);
+                if (p.materiel < price) return null;
+                if ((p.upgrades || []).some(u => u.name === c.name)) return null;
+                const pile = p.decks && Array.isArray(p.decks.upgradeOrder) ? p.decks.upgradeOrder : null;
+                p.materiel -= price;
+                p.upgrades.push({ name: c.name, used: false, order: c.order });
+                if (pile && pile.includes(c.name)) pile.splice(pile.indexOf(c.name), 1);
+                R.log(state, seat, state.players[seat].name + ' покупает улучшение приказа «' + c.name + '».');
                 return null;
             }
             // «Затем разыграйте ограниченное …» («Департаменто муниторум»): the
@@ -4761,22 +4781,21 @@ const FS_EFFECTS = {
                     const card = FS_DATA.combat.find(c => c.faction === p2.faction
                         && c.upgrade && c.name === name && (c.kl || 0) <= cap);
                     if (!card) return null;
-                    const deck = p2.decks.combat || [];
-                    const counts = {};
-                    for (const n of deck) counts[n] = (counts[n] || 0) + 1;
-                    const remove = Object.keys(counts).find(n => !FS_DATA.combat.some(c => c.faction === p2.faction && c.upgrade && c.name === n) && counts[n] >= 2)
-                        || Object.keys(counts).find(n => counts[n] >= 2);
-                    let taken = 0;
-                    p2.decks.combat = R.shuffle(state, deck.filter(n => {
-                        if (n === remove && taken < 2) { taken++; return false; }
-                        return true;
-                    }).concat([card.name, card.name]));
-                    const pile = p2.decks.upgradeCombat;
-                    if (Array.isArray(pile)) {
-                        const at2 = pile.indexOf(card.name);
-                        if (at2 >= 0) pile.splice(at2, 1);
+                    const deck = FS_CARDS.combatDeck(R, state, seat);
+                    const remove = answer.remove || answer.replace || answer.deckCard;
+                    if (!remove) {
+                        const pairs = deck.pairOptions();
+                        if (!pairs.length) return null;
+                        return { question: {
+                            kind: 'cards', who: seat, op: 'buyAnyUpgradeReplace', kind2: 'combat',
+                            card: raw, options: pairs,
+                            text: 'Какую пару карт боевой колоды заменить?',
+                        } };
                     }
-                    R.log(state, seat, p2.name + ' бесплатно получает боевое улучшение «' + name + '».');
+                    const before = deck.size();
+                    if (!deck.replacePair(remove, name) || deck.size() !== before) return null;
+                    R.log(state, seat, p2.name + ' заменяет пару «' + remove
+                        + '» на бесплатное боевое улучшение «' + name + '».');
                     step.done = true;
                     return null;
                 }

@@ -25,9 +25,11 @@ const load = (file, name) => vm.runInContext(
     fs.readFileSync(path.join(ROOT, file), 'utf8') + `\n;globalThis.${name} = ${name};`,
     ctx, { filename: file });
 load('js/fs/FSData.js', 'FS_DATA');
+load('js/fs/FSCards.js', 'FS_CARDS');
+load('js/fs/FSWarpStorms.js', 'FS_WARP_STORMS');
 load('js/fs/FSEffects.js', 'FS_EFFECTS');
 load('js/fs/FSRules.js', 'FS_RULES');
-const { FS_DATA, FS_RULES, FS_EFFECTS } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS } = ctx;
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m', yel: '\x1b[33m' };
@@ -2319,6 +2321,43 @@ rule('storm-7', '«If a player cannot move any Warp Storms in either direction i
     eq(FS_RULES.stormOptions(st, 0).length, 0, 'двигать нечего');
     const res = FS_RULES.apply(st, 0, { type: 'resolveEvent' });
     eq(res.ok, true, 'без хода шторма карта всё равно разыгрывается');
+});
+
+
+rule('storm-8', 'A Warp Storm is stored on the border BETWEEN two system tiles, not on one tile', () => {
+    const st = empty();
+    const a = st.systems.find(x => x.row === 1 && x.col === 0);
+    const b = st.systems.find(x => x.row === 1 && x.col === 1);
+    if (!a || !b) return 'карта без двух соседних систем';
+    const storm = FS_WARP_STORMS.create(st, 'sx', { system: a.id, side: 'E' });
+    eq(!!storm, true, 'шторм не создан');
+    eq(storm.a, a.id, 'первый сосед границы');
+    eq(storm.b, b.id, 'второй сосед границы');
+    eq(storm.edge.kind, 'V', 'вертикальная граница');
+    const pos = FS_WARP_STORMS.position(st, storm, { originX: 0, originY: 0 }, 260);
+    eq(pos.x, 130, 'центр шторма ровно между центрами двух тайлов');
+    return eq(pos.y, 260, 'шторм лежит на общей линии тайлов');
+});
+
+rule('storm-9', 'Movement is a shift relative to the CURRENT storm edge', () => {
+    const st = empty();
+    const a = st.systems.find(x => x.row === 1 && x.col === 0);
+    const b = st.systems.find(x => x.row === 1 && x.col === 1);
+    if (!a || !b) return 'карта без двух соседних систем';
+    const storm = FS_WARP_STORMS.create(st, 'sx', { system: a.id, side: 'E' });
+    st.storms = [storm];
+    st.phase = 'refresh';
+    st.eventsLeft = 2;
+    st.event = { seat: 0, drawn: ['К'], chosen: 'К', card: { name: 'К', storm: ['N'], type: 'tactic' } };
+    const before = FS_WARP_STORMS.keyOf(storm);
+    const target = FS_WARP_STORMS.target(st, storm, 'N');
+    eq(!!target, true, 'нет целевой границы');
+    eq(target.a === null || target.b === null, false, 'цель тоже между двумя тайлами');
+    const res = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 'sx', dir: 'N' });
+    eq(res.ok, true, 'шторм не сдвинулся: ' + (res.error || ''));
+    eq(FS_WARP_STORMS.keyOf(storm), target.key, 'шторм пришёл на целевую границу');
+    eq(FS_WARP_STORMS.keyOf(storm) !== before, true, 'сдвиг не оставил шторм на месте');
+    return eq(storm.moved, true, 'шторм помечен как сдвинутый');
 });
 
 rule('event-2', '«Then, he shuffles all event cards back into his event deck, excluding the “Scheme” event card if it is in play.»', () => {

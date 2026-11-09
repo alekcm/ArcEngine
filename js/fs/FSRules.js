@@ -268,10 +268,10 @@ const FS_RULES = {
         return other ? other.id : null;
     },
 
-    // Is a warp storm on the edge between two systems?
+    // Is a warp storm on the edge between two systems? The storm's two
+    // neighbouring tiles are the authority, not a tile-side alias.
     stormOn(state, aId, bId) {
-        return state.storms.find(s => (s.system === aId && this.across(state, aId, s.side) === bId)
-            || (s.system === bId && this.across(state, bId, s.side) === aId)) || null;
+        return FS_WARP_STORMS.stormOn(state, aId, bId);
     },
 
     // The systems a ground unit may walk through: a chain of friendly areas.
@@ -853,9 +853,7 @@ const FS_RULES = {
     },
 
     setupStormEdges(state) {
-        return this.allEdges(state).filter(e => !state.storms.some(storm =>
-            (storm.system === e.system && storm.side === e.side)
-            || (this.across(state, e.system, e.side) === storm.system && this.across(state, storm.system, storm.side) === e.system)));
+        return FS_WARP_STORMS.freeEdges(state);
     },
 
     cmdSetupStorm(state, seat, cmd) {
@@ -863,11 +861,16 @@ const FS_RULES = {
         if (error) return error;
         const sys = this.system(state, cmd.system);
         if (!sys || !['N', 'E', 'S', 'W'].includes(cmd.side)) return { ok: false, error: 'Выберите сторону системы.' };
-        const other = this.across(state, sys.id, cmd.side);
-        const edge = this.setupStormEdges(state).find(e => (e.system === sys.id && e.side === cmd.side)
-            || (other && e.system === other && this.across(state, other, e.side) === sys.id));
-        if (!edge) return { ok: false, error: 'На этой границе уже есть варп-шторм.' };
-        state.storms.push({ id: this.uid(state, 'storm'), system: sys.id, side: cmd.side, moved: {} });
+        // The click names a side of a tile; the state stores the BORDER, with
+        // the two system ids it separates (one may be null on an outer edge).
+        const edge = FS_WARP_STORMS.edgeOf(state, cmd);
+        if (!edge || !edge.exists(state)) return { ok: false, error: 'Выберите сторону системы.' };
+        if (!this.setupStormEdges(state).some(e => e.key === edge.key())) {
+            return { ok: false, error: 'На этой границе уже есть варп-шторм.' };
+        }
+        const storm = FS_WARP_STORMS.create(state, this.uid(state, 'storm'), edge);
+        if (!storm) return { ok: false, error: 'Эту границу нельзя занять.' };
+        state.storms.push(storm);
         const setup = state.setup;
         setup.stormsPlaced++;
         this.log(state, seat, state.players[seat].name + ' разместил варп-шторм в системе ' + sys.tile + '.');
@@ -915,8 +918,8 @@ const FS_RULES = {
         const count = state.players.length;
         const shuffled = automatic ? this.shuffle(state, this.allEdges(state)) : [];
         for (let i = 0; automatic && i < count && i < shuffled.length; i++) {
-            const e = shuffled[i];
-            state.storms.push({ id: this.uid(state, 'storm'), system: e.system, side: e.side, moved: {} });
+            const storm = FS_WARP_STORMS.create(state, this.uid(state, 'storm'), shuffled[i]);
+            if (storm) state.storms.push(storm);
         }
         this.takeStartChoiceLeft(state);
         state.setup = null;
@@ -968,19 +971,7 @@ const FS_RULES = {
 
     // Every edge of the board (a storm may stand on any of them).
     allEdges(state) {
-        const out = [];
-        const seen = new Set();
-        for (const sys of state.systems) {
-            for (const side of ['N', 'E', 'S', 'W']) {
-                // Two records may name one edge: the S side of a tile is the N
-                // side of the tile below it. The key is what tells them apart.
-                const key = this.edgeKey(state, { system: sys.id, side });
-                if (seen.has(key)) continue;
-                seen.add(key);
-                out.push({ system: sys.id, side });
-            }
-        }
-        return out;
+        return FS_WARP_STORMS.allEdges(state).map(edge => edge.toRef(state));
     },
 
     // -----------------------------------------------------------------------
@@ -1064,6 +1055,9 @@ const FS_RULES = {
         if (state.over) return { ok: false, error: 'Игра закончена.' };
         const p = state.players[seat];
         if (!p) return { ok: false, error: 'Нет такого игрока.' };
+        // Older saves named a storm by one tile and a side. Bring them to the
+        // canonical border between two tiles before any command reads them.
+        FS_WARP_STORMS.normalize(state);
         try {
             const res = this.dispatch(state, seat, cmd);
             return res || { ok: true };
@@ -2700,35 +2694,29 @@ const FS_RULES = {
         const kind = cmd.kind;       // 'combat' | 'order'
         if (kind === 'combat') {
             if (order.combatUpgrade) return { ok: false, error: 'Боевое улучшение уже куплено.' };
-            const card = FS_DATA.combat.find(c => c.faction === p.faction && c.upgrade && c.name === cmd.card);
+            const card = FS_DATA.combat.find(c => c.faction === p.faction && c.name === cmd.card);
             if (!card) return { ok: false, error: 'Нет такой карты.' };
             if (card.kl > this.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
-            const cost = Math.max(0, card.cost - (p.cardDiscount || 0));
+            // A basic card that was returned to the upgrade pile costs zero.
+            const cost = card.upgrade ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0;
             if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
-            // An upgrade card is unique: the deck cannot hold a second pair of it.
-            const ownedCount = p.decks.combat.filter(n => n === card.name).length;
-            if (ownedCount >= 2) return { ok: false, error: 'Эта карта улучшения уже есть у вас в колоде.' };
-            // Two copies of ONE card of the deck leave it and two copies of the
-            // upgrade card come in. The UI always names the pair; the first pair
-            // it finds is taken only as a fallback.
-            const deck = p.decks.combat;
-            const counts = {};
-            for (const n of deck) counts[n] = (counts[n] || 0) + 1;
-            const wanted = cmd.remove && counts[cmd.remove] >= 2 ? cmd.remove : Object.keys(counts).find(n => counts[n] >= 2);
-            if (!wanted) return { ok: false, error: 'В колоде нет двух копий одной карты.' };
+            const deck = FS_CARDS.combatDeck(this, state, seat);
+            if (deck.count(card.name) >= 2) return { ok: false, error: 'Эта карта улучшения уже есть у вас в колоде.' };
+            const pile = deck.upgradePile();
+            if (pile.length && !pile.includes(card.name)) return { ok: false, error: 'Этой карты нет в колоде улучшений.' };
+            // The UI always names the pair; the first pair is only a fallback.
+            const wanted = cmd.remove && deck.count(cmd.remove) >= 2 ? cmd.remove : deck.pairOptions()[0];
+            if (!wanted || wanted === card.name) return { ok: false, error: 'В колоде нет двух копий одной карты.' };
+            const before = deck.size();
+            if (!deck.replacePair(wanted, card.name) || deck.size() !== before) {
+                return { ok: false, error: 'Пару карт заменить не удалось.' };
+            }
             p.materiel -= cost;
             order.upgradesBought = (order.upgradesBought || 0) + 1;
-            let taken = 0;
-            const kept = [];
-            for (const n of deck) {
-                if (n === wanted && taken < 2) { taken++; continue; }
-                kept.push(n);
-            }
-            p.decks.combat = this.shuffle(state, kept.concat([card.name, card.name]));
             order.combatUpgrade = true;
             // Kept for the refund: the pair that left the deck, the card that came in.
-            order.combatBuy = { card: card.name, removed: [wanted, wanted] };
-            this.log(state, seat, p.name + ' купил боевое улучшение «' + card.name + '».');
+            order.combatBuy = { card: card.name, removed: [wanted, wanted], price: cost };
+            this.log(state, seat, p.name + ' заменяет пару «' + wanted + '» на «' + card.name + '».');
             return { ok: true };
         }
         if (kind === 'order') {
@@ -2742,12 +2730,16 @@ const FS_RULES = {
             if ((p.upgrades || []).some(u => u.name === card.name)) {
                 return { ok: false, error: 'Такое улучшение приказа у вас уже есть.' };
             }
+            const pile = p.decks && Array.isArray(p.decks.upgradeOrder) ? p.decks.upgradeOrder : null;
+            if (pile && !pile.includes(card.name)) return { ok: false, error: 'Этой карты нет в колоде улучшений.' };
             p.materiel -= cost;
             order.upgradesBought = (order.upgradesBought || 0) + 1;
             p.upgrades.push({ name: card.name, used: false, order: card.order });
+            if (pile) pile.splice(pile.indexOf(card.name), 1);
             order.orderUpgrade = true;
             // Kept for the refund.
             order.orderUpgradeName = card.name;
+            order.orderBuy = { name: card.name, price: cost };
             this.log(state, seat, p.name + ' купил улучшение приказа «' + card.name + '».');
             return { ok: true };
         }
@@ -2766,16 +2758,13 @@ const FS_RULES = {
         if (cmd.kind === 'combat') {
             const buy = order.combatBuy;
             if (!buy || buy.card !== cmd.card) return { ok: false, error: 'Это улучшение сейчас не куплено.' };
-            const card = FS_DATA.combat.find(c => c.faction === p.faction && c.upgrade && c.name === buy.card);
-            let taken = 0;
-            const kept = [];
-            for (const n of p.decks.combat) {
-                if (n === buy.card && taken < 2) { taken++; continue; }
-                kept.push(n);
+            const deck = FS_CARDS.combatDeck(this, state, seat);
+            if (!deck.replacePair(buy.card, buy.removed[0])) {
+                return { ok: false, error: 'В колоде нет купленных копий — отмена невозможна.' };
             }
-            if (taken < 2) return { ok: false, error: 'В колоде нет купленных копий — отмена невозможна.' };
-            p.decks.combat = this.shuffle(state, kept.concat(buy.removed));
-            p.materiel = (p.materiel || 0) + (card ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0);
+            const card = FS_DATA.combat.find(c => c.faction === p.faction && c.name === buy.card);
+            const fallback = card ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0;
+            p.materiel = (p.materiel || 0) + (buy.price != null ? buy.price : fallback);
             order.combatUpgrade = false;
             order.combatBuy = null;
             order.upgradesBought = Math.max(0, (order.upgradesBought || 0) - 1);
@@ -2784,14 +2773,19 @@ const FS_RULES = {
         }
         if (cmd.kind === 'order') {
             const name = order.orderUpgradeName;
-            if (!name || name !== cmd.card) return { ok: false, error: 'Это улучшение сейчас не куплено.' };
+            if (!name || name !== cmd.card) return { ok: false, error: 'Улучшение сейчас не куплено.' };
             const idx = (p.upgrades || []).findIndex(u => u.name === name);
             if (idx < 0) return { ok: false, error: 'Улучшение уже куда-то пропало — отмена невозможна.' };
             const card = FS_DATA.orders.find(c => c.faction === p.faction && c.name === name);
+            const fallback = card ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0;
             p.upgrades.splice(idx, 1);
-            p.materiel = (p.materiel || 0) + (card ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0);
+            const pile = p.decks && Array.isArray(p.decks.upgradeOrder) ? p.decks.upgradeOrder : null;
+            if (pile && !pile.includes(name)) pile.push(name);
+            p.materiel = (p.materiel || 0) + (order.orderBuy && order.orderBuy.price != null
+                ? order.orderBuy.price : fallback);
             order.orderUpgrade = false;
             order.orderUpgradeName = null;
+            order.orderBuy = null;
             order.upgradesBought = Math.max(0, (order.upgradesBought || 0) - 1);
             this.log(state, seat, p.name + ' отменил покупку улучшения приказа «' + name + '».');
             return { ok: true };
@@ -2971,7 +2965,7 @@ const FS_RULES = {
         state.phase = 'refresh';
         state.order = null;
         // A new round wipes the marks of the storms: every strip is bright again.
-        for (const st of state.storms) st.moved = {};
+        for (const st of state.storms) st.moved = false;
         // 1. the objective tokens on friendly worlds
         // A collected token leaves the board: it lies on the faction sheet of its
         // owner and is never counted again (the rules, "Objective Tokens" —
@@ -3191,8 +3185,7 @@ const FS_RULES = {
                 delete state.stormReaction;
             }
         }
-        storm.system = target.system;
-        storm.side = target.side;
+        FS_WARP_STORMS.write(state, storm, target);
         storm.moved = true;
         // The card is not resolved before its storm has moved (the rules).
         state.event.stormMoved = true;
@@ -3211,8 +3204,7 @@ const FS_RULES = {
         const chosen = dir || info.dir;
         const target = this.stormTarget(state, storm, chosen);
         if (!target) return { ok: false };
-        storm.system = target.system;
-        storm.side = target.side;
+        FS_WARP_STORMS.write(state, storm, target);
         storm.moved = true;
         if (state.event) state.event.stormMoved = true;
         if (dir) {
@@ -3230,37 +3222,26 @@ const FS_RULES = {
     //   H(row, col) — the horizontal edge above the tile (row, col)
     //   V(row, col) — the vertical edge left of the tile (row, col)
 
+    // The canonical grid edge behind any record or target.
     stormEdge(state, ref) {
-        const sys = this.system(state, ref.system);
-        if (!sys) return null;
-        if (ref.side === 'N') return { kind: 'H', row: sys.row, col: sys.col };
-        if (ref.side === 'S') return { kind: 'H', row: sys.row + 1, col: sys.col };
-        if (ref.side === 'W') return { kind: 'V', row: sys.row, col: sys.col };
-        return { kind: 'V', row: sys.row, col: sys.col + 1 };       // E
+        const edge = FS_WARP_STORMS.edgeOf(state, ref);
+        return edge ? edge.toJSON() : null;
     },
 
-    // The canonical edge back into a record of the board. An outer edge of the
-    // board still belongs to the one tile that touches it.
+    // The canonical edge back into a record of the board. It carries both
+    // neighbouring tiles; the tile-side fields are compatibility aliases.
     edgeRef(state, edge) {
-        const here = state.systems.find(s => s.row === edge.row && s.col === edge.col);
-        if (edge.kind === 'H') {
-            if (here) return { system: here.id, side: 'N' };
-            const below = state.systems.find(s => s.row === edge.row - 1 && s.col === edge.col);
-            return below ? { system: below.id, side: 'S' } : null;
-        }
-        if (here) return { system: here.id, side: 'W' };
-        const left = state.systems.find(s => s.row === edge.row && s.col === edge.col - 1);
-        return left ? { system: left.id, side: 'E' } : null;
+        const found = FS_WARP_STORMS.edgeOf(state, edge);
+        return found ? found.toRef(state) : null;
     },
 
-    // One name for one edge: two records may name the same edge, and this is
-    // what tells them apart.
+    // One name for one edge: two records may name the same edge.
     gridKey(edge) {
-        return edge ? edge.kind + ':' + edge.row + ':' + edge.col : '?';
+        return FS_WARP_STORMS.keyOf(edge);
     },
 
     edgeKey(state, ref) {
-        return this.gridKey(this.stormEdge(state, ref));
+        return FS_WARP_STORMS.keyOfRef(state, ref);
     },
 
     // The storms that may still be moved, with the directions the card allows.
@@ -3281,52 +3262,16 @@ const FS_RULES = {
         // prints an arrow allows only the directions it shows.
         const all = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
         const dirs = card && card.storm && card.storm[0] !== 'any' ? card.storm : all;
-        const out = [];
-        for (const storm of state.storms) {
-            if (storm.moved === true) continue;
-            const taken = this.gridKey(this.stormEdge(state, storm));
-            for (const dir of dirs) {
-                const target = this.stormTarget(state, storm, dir);
-                if (!target) continue;
-                const key = this.gridKey(this.stormEdge(state, target));
-                if (key === taken) continue;
-                if (state.storms.some(o => o !== storm && this.gridKey(this.stormEdge(state, o)) === key)) continue;
-                out.push({ storm: storm.id, dir });
-            }
-        }
-        return out;
+        return FS_WARP_STORMS.options(state, dirs);
     },
 
     // Where does a storm go when it moves in a direction? The eight directions
     // of the compass: the four straight ones slide the storm along the grid or
     // turn it around a corner of its own tile, the four diagonal ones do the
     // slide and the turn together.
+    // The destination is relative to the storm's CURRENT border object.
     stormTarget(state, storm, dir) {
-        const edge = this.stormEdge(state, storm);
-        if (!edge) return null;
-        let next = null;
-        if (edge.kind === 'H') {
-            if (dir === 'N') next = { kind: 'H', row: edge.row - 1, col: edge.col };
-            else if (dir === 'S') next = { kind: 'H', row: edge.row + 1, col: edge.col };
-            else if (dir === 'E') next = { kind: 'V', row: edge.row, col: edge.col + 1 };
-            else if (dir === 'W') next = { kind: 'V', row: edge.row, col: edge.col };
-            else {
-                const dr = dir[0] === 'N' ? -1 : 1;
-                next = { kind: 'V', row: edge.row + dr, col: edge.col + (dir[1] === 'E' ? 1 : 0) };
-            }
-        } else {
-            if (dir === 'E') next = { kind: 'V', row: edge.row, col: edge.col + 1 };
-            else if (dir === 'W') next = { kind: 'V', row: edge.row, col: edge.col - 1 };
-            else if (dir === 'N') next = { kind: 'H', row: edge.row, col: edge.col };
-            else if (dir === 'S') next = { kind: 'H', row: edge.row + 1, col: edge.col };
-            else {
-                const dc = dir[1] === 'E' ? 1 : -1;
-                next = { kind: 'H', row: edge.row + (dir[0] === 'S' ? 1 : 0), col: edge.col + dc };
-            }
-        }
-        // Off the board there is no edge to stand on.
-        if (!this.edgeRef(state, next)) return null;
-        return this.edgeRef(state, next);
+        return FS_WARP_STORMS.target(state, storm, dir);
     },
 
     endRound(state) {
@@ -5201,6 +5146,7 @@ const FS_RULES = {
     // players are hidden.
     view(state, seat) {
         const copy = JSON.parse(JSON.stringify(state));
+        FS_WARP_STORMS.normalize(copy);
         for (const p of copy.players) {
             p.decks.combat = p.decks.combat.length;
             p.decks.event = p.decks.event.length;

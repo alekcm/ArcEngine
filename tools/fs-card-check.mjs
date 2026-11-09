@@ -32,11 +32,13 @@ const load = (file, name) => vm.runInContext(
     fs.readFileSync(path.join(ROOT, file), 'utf8') + `\n;globalThis.${name} = ${name};`,
     ctx, { filename: file });
 load('js/fs/FSData.js', 'FS_DATA');
+load('js/fs/FSCards.js', 'FS_CARDS');
+load('js/fs/FSWarpStorms.js', 'FS_WARP_STORMS');
 load('js/fs/FSEffects.js', 'FS_EFFECTS');
 load('js/fs/FSRules.js', 'FS_RULES');
 load('js/fs/FSView.js', 'FSView');
 load('js/fs/FSGame.js', 'FSGame');
-const { FS_DATA, FS_RULES, FS_EFFECTS, FSGame } = ctx;
+const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame } = ctx;
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m' };
@@ -241,7 +243,8 @@ function firstOption(st, q) {
         case 'types': return { type: first };
         case 'areas': return { area: first };
         case 'systems': return { system: first };
-        case 'cards': return { card: first };
+        case 'cards': return q.op === 'buyUpgradeReplace' || q.op === 'buyAnyUpgradeReplace'
+            ? { remove: first } : { card: first };
         case 'structures': return { structure: first };
         default: return { choice: 0 };
     }
@@ -4112,6 +4115,64 @@ check('Четыре плана', 'все хранят настоящие шаг�
         ok(!ops.includes('note') && !ops.includes('manual'), name + ': осталась заглушка');
     }
     return true;
+});
+
+
+// ============================================================================
+//  Покупка боевого улучшения событием: замена пары, а не добавление карт
+// ============================================================================
+
+/** Answer the two questions of a combat-upgrade event, remembering the picks. */
+function answerUpgradeReplacement(st) {
+    const picked = { card: null, remove: null, asked: false };
+    effectAnswer(st, (s, q) => {
+        if (q.op === 'buyUpgrade') {
+            picked.card = (q.options || [])[0];
+            return { card: picked.card };
+        }
+        if (q.op === 'buyUpgradeReplace') {
+            picked.asked = true;
+            picked.remove = (q.options || [])[0];
+            return { remove: picked.remove };
+        }
+        return firstOption(s, q);
+    }, 10);
+    return picked;
+}
+
+head('Замена боевых карт', 'имперская-гвардия');
+check('Приказ верховного командования', 'спрашивает пару, заменяет её и сохраняет 10 карт', () => {
+    const st = eventState('Приказ верховного командования', {
+        faction: 'имперская-гвардия', materiel: 20, structures: ['factory'],
+    });
+    const before = st.players[0].decks.combat.slice();
+    ok(playEvent(st).ok, 'событие не разыграно');
+    const picked = answerUpgradeReplacement(st);
+    ok(picked.asked, 'вопрос о конкретной паре не задан');
+    const deck = st.players[0].decks.combat;
+    eq(deck.length, before.length, 'колода осталась из десяти карт');
+    eq(deck.filter(n => n === picked.card).length, 2, 'ровно две копии улучшения');
+    eq(deck.filter(n => n === picked.remove).length, before.filter(n => n === picked.remove).length - 2,
+        'выбранная пара удалена');
+    ok(st.players[0].decks.upgradeCombat.includes(picked.remove), 'снятая карта вернулась в колоду улучшений');
+    const detail = FS_CARDS.detail(picked.card, 'имперская-гвардия', 'combat');
+    ok(!!(detail.text || detail.general || detail.unit), 'полная информация о карте улучшения доступна');
+    const event = FS_CARDS.detail('Приказ верховного командования', 'имперская-гвардия', 'event');
+    return ok(!!event.text && Array.isArray(event.storm), 'полная информация о карте события доступна');
+});
+
+head('Замена боевых карт', 'некроны');
+check('Архивы мира-гробницы', 'спрашивает, какую именно карту боевой колоды заменить', () => {
+    const st = eventState('Архивы мира-гробницы', { faction: 'некроны', materiel: 20 });
+    const before = st.players[0].decks.combat.slice();
+    ok(playEvent(st).ok, 'событие не разыграно');
+    const picked = answerUpgradeReplacement(st);
+    ok(picked.asked, 'вопрос о конкретной паре не задан');
+    const deck = st.players[0].decks.combat;
+    eq(deck.length, before.length, 'колода осталась из десяти карт');
+    eq(deck.filter(n => n === picked.card).length, 2, 'ровно две копии улучшения');
+    return eq(deck.filter(n => n === picked.remove).length,
+        before.filter(n => n === picked.remove).length - 2, 'выбранная пара удалена');
 });
 
 // ============================================================================

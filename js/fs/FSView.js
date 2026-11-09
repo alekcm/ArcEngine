@@ -1519,21 +1519,20 @@ const FSView = {
                 this.addMarker(view, root, 'actor');
             });
         }
-        // The warp storms are animated 3D anomalies; their barrier is aligned to the actual tile edge.
+        // Warp storms are barriers on the canonical edge BETWEEN two tiles.
+        // The shared WarpStormField computes that position; no tile centre is
+        // ever offset by a magic half-tile here.
         for (const storm of state.storms) {
-            const sys = state.systems.find(x => x.id === storm.system);
-            if (!sys) continue;
-            const p = this.tilePos(app, sys, view.metrics);
-            const horizontal = storm.side === 'N' || storm.side === 'S';
-            // The barrier lies exactly on the shared edge of the two tiles —
-            // the storm is an anomaly of the border, not of a system.
-            const d = this.TILE / 2;
-            const off = { N: [0, -d], S: [0, d], E: [d, 0], W: [-d, 0] }[storm.side] || [0, 0];
+            const pos = FS_WARP_STORMS.position(state, storm, view.metrics, this.TILE);
+            if (!pos) continue;
+            const horizontal = pos.horizontal;
             const root = new BABYLON.TransformNode('fs-storm-' + storm.id, view.scene);
-            root.position.set(p.x + off[0], h(p.x, p.y) + 6.5, p.y + off[1]);
+            root.position.set(pos.x, h(pos.x, pos.y) + 6.5, pos.y);
             const moved = storm.moved === true;
             const selected = view.stormPending === storm.id;
-            root.metadata = { fs: 'storm', system: storm.system, side: storm.side, storm: storm.id };
+            const meta = { fs: 'storm', storm: storm.id, edge: pos.edge, key: pos.key,
+                tiles: pos.tiles, system: storm.system, side: storm.side };
+            root.metadata = meta;
             const barrier = BABYLON.MeshBuilder.CreateBox('fs-storm-barrier-' + storm.id, {
                 width: horizontal ? this.TILE - 20 : 6,
                 depth: horizontal ? 6 : this.TILE - 20,
@@ -1548,20 +1547,19 @@ const FSView = {
                     : view.material('storm-barrier', '#8b376f', { emissive: true });
             // The barrier is the mouse target: a click on it selects the storm.
             barrier.isPickable = true;
-            barrier.metadata = { fs: 'storm', system: storm.system, side: storm.side, storm: storm.id };
+            barrier.metadata = meta;
             this.addMarker(view, root, 'prop');
         }
         // The green ghosts: where the chosen storm may go right now.
         for (const ghost of view.stormGhosts || []) {
-            const sys = state.systems.find(x => x.id === ghost.system);
-            if (!sys) continue;
-            const p = this.tilePos(app, sys, view.metrics);
-            const horizontal = ghost.side === 'N' || ghost.side === 'S';
-            const d = this.TILE / 2;
-            const off = { N: [0, -d], S: [0, d], E: [d, 0], W: [-d, 0] }[ghost.side] || [0, 0];
+            const pos = FS_WARP_STORMS.position(state, ghost, view.metrics, this.TILE);
+            if (!pos) continue;
+            const horizontal = pos.horizontal;
             const root = new BABYLON.TransformNode('fs-storm-ghost-' + ghost.storm + '-' + ghost.dir, view.scene);
-            root.position.set(p.x + off[0], h(p.x, p.y) + 6.5, p.y + off[1]);
-            root.metadata = { fs: 'storm-ghost', system: ghost.system, side: ghost.side, storm: ghost.storm, dir: ghost.dir };
+            root.position.set(pos.x, h(pos.x, pos.y) + 6.5, pos.y);
+            root.metadata = { fs: 'storm-ghost', storm: ghost.storm, dir: ghost.dir,
+                edge: pos.edge, key: pos.key, tiles: pos.tiles,
+                system: ghost.system, side: ghost.side };
             const barrier = BABYLON.MeshBuilder.CreateBox('fs-storm-ghost-barrier-' + ghost.storm + '-' + ghost.dir, {
                 width: horizontal ? this.TILE - 20 : 6,
                 depth: horizontal ? 6 : this.TILE - 20,

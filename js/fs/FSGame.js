@@ -1697,19 +1697,17 @@ class FSGame {
                 const topData = FS_DATA.events.find(e => e.faction === p.faction && e.name === topName);
                 ctx.text = 'Жетона развития на колоде событий нет. Верхняя карта колоды вскрывается для движения шторма: её эффект не разыгрывается, шторм обязан сдвинуться по её стрелкам.';
                 ctx.status = 'Вскрыта карта: «' + (topName || '—') + '» — передвиньте шторм по её стрелкам.';
-                const wide = ok => ({
-                    kind: 'Вскрыта для шторма — не разыгрывается', name: topName || '—',
-                    text: (topData && topData.text) || '',
-                    storm: (topData && topData.storm) || [],
+                const full = topName ? FS_CARDS.detail(topName, p.faction, 'event') : {};
+                const wide = ok => Object.assign({}, full, {
+                    kind: 'СОБЫТИЕ · ВСКРЫТА ДЛЯ ШТОРМА — НЕ РАЗЫГРЫВАЕТСЯ',
                     okLabel: ok,
                 });
                 const modalItem = wide('Вернуть карту в колоду — дальше');
                 // Саму карту видно СРАЗУ — до того, как сдвинут шторм, как любую карту.
-                ctx.previewCard = {
-                    kind: 'Вскрыта для шторма — не разыгрывается', name: topName || '—',
-                    text: (topData && topData.text) || '',
-                    storm: (topData && topData.storm) || [], okLabel: 'Вскрыта для шторма',
-                };
+                ctx.previewCard = Object.assign({}, full, {
+                    kind: 'СОБЫТИЕ · ВСКРЫТА ДЛЯ ШТОРМА — НЕ РАЗЫГРЫВАЕТСЯ',
+                    okLabel: 'Вскрыта для шторма',
+                });
                 ctx.handTitle = 'Карта вскрыта для шторма';
                 ctx.hand = topName ? [{
                     icon: 'cube.morale', count: 1, label: topName,
@@ -1737,32 +1735,39 @@ class FSGame {
             const counts = new Map();
             for (const name of ev.drawn || []) counts.set(name, (counts.get(name) || 0) + 1);
             ctx.handTitle = 'Карты в руке';
-            ctx.hand = [...counts.entries()].map(([name, count]) => {
-                const data = FS_DATA.events.find(e => e.faction === p.faction && e.name === name);
-                return {
-                    icon: data && data.type === 'scheme' ? 'asset.materiel' : 'cube.morale',
-                    count,
-                    label: name,
-                    kind: data ? (data.type === 'scheme' ? 'ПЛАН' : 'ТАКТИКА') : '',
-                    hint: data ? (data.text || '') : '',
-                    onClick: () => this.net.cmd({ type: 'drawEvent', card: name }),
-                };
+            // Choosing an event card is choosing its whole ability. The same
+            // catalogue prints every candidate, not just its name, and the
+            // click sends the plain card name the rules engine expects.
+            /** @type {any} */
+            const choices = [...counts.entries()].map(([name, count]) => {
+                const opt = FS_CARDS.option(name, p.faction, 'event');
+                return Object.assign({}, opt, { count, onClick: () =>
+                    FSUI.showEventConfirm(Object.assign({}, opt.detail, {
+                        okLabel: 'Выбрать это событие',
+                    }), () => this.net.cmd({ type: 'drawEvent', card: name })) });
             });
+            choices.title = 'Выберите карту события — полная информация';
+            ctx.cardChoices = choices;
+            ctx.hand = choices.map(c => ({
+                icon: c.detail.type === 'scheme' ? 'asset.materiel' : 'cube.morale',
+                count: c.count, label: c.name, kind: c.detail.type === 'scheme' ? 'ПЛАН' : 'ТАКТИКА',
+                hint: c.hint,
+                onClick: () => this.net.cmd({ type: 'drawEvent', card: c.name }),
+            }));
             return;
         }
         const data = FS_DATA.events.find(e => e.faction === p.faction && e.name === ev.chosen);
-        const eventModalItem = () => ({
-            kind: 'Событие', name: ev.chosen,
-            text: (data && data.text) || '',
-            storm: (card && card.storm) || (data && data.storm) || [],
+        const full = FS_CARDS.detail(ev.chosen, p.faction, 'event');
+        const eventModalItem = () => Object.assign({}, full, {
+            kind: data && data.type === 'scheme' ? 'СОБЫТИЕ · ПЛАН' : 'СОБЫТИЕ · ТАКТИКА',
             okLabel: 'Карта события',
         });
         const confirmResolve = () => FSUI.showEventConfirm(eventModalItem(), () => this.net.cmd({ type: 'resolveEvent' }));
-        ctx.text = ((data && data.text) || '');
-        ctx.previewCard = {
-            kind: 'Событие', name: ev.chosen, text: (data && data.text) || '',
-            storm: (card && card.storm) || (data && data.storm) || [], okLabel: 'На руке',
-        };
+        ctx.text = full.text || '';
+        ctx.previewCard = Object.assign({}, full, {
+            kind: data && data.type === 'scheme' ? 'СОБЫТИЕ · ПЛАН' : 'СОБЫТИЕ · ТАКТИКА',
+            okLabel: 'На руке',
+        });
         // The storms move with the mouse on the board itself: no buttons here.
         const options = FS_RULES.stormOptions(s, me);
         const stormStepDone = !!ev.stormMoved;
@@ -2353,13 +2358,33 @@ class FSGame {
                 return;
             }
             case 'cards': {
-                for (const name of q.options) {
-                    ctx.actions.push({
-                        kind: 'pick',
-                        label: name,
-                        onClick: () => send({ card: name }),
-                    });
-                }
+                // Every card-interacting event prints every candidate in full.
+                // The catalogue knows the faction and the kind of the question;
+                // `card` in the answer remains the plain name the rules expect.
+                const faction = (s.players[must] || s.players[0] || {}).faction || '';
+                const hint = (q.op === 'buyAnyUpgrade' || q.op === 'buyAnyUpgradeReplace')
+                    ? '' : (q.op === 'playEvent' || q.op === 'chooseEventAbility'
+                        || q.op === 'lookEvents' ? 'event' : (q.kind2 === 'order' ? 'order' : 'combat'));
+                const unique = [...new Set(q.options || [])];
+                /** @type {any} */
+                const choices = unique.map(name => {
+                    const opt = FS_CARDS.option(name, faction,
+                        q.kind2 || (hint === 'event' ? 'event' : hint));
+                    return {
+                        name: opt.name,
+                        detail: opt.detail,
+                        hint: opt.hint,
+                        onClick: () => send(q.op === 'buyUpgradeReplace' || q.op === 'buyAnyUpgradeReplace'
+                            ? { card: q.card, remove: name }
+                            : { card: name }),
+                    };
+                });
+                choices.title = q.text || 'Выберите карту';
+                ctx.cardChoices = choices;
+                // A compact fallback keeps tiny/headless DOM shells functional.
+                for (const c of choices) ctx.actions.push({
+                    kind: 'pick', label: c.name, hint: c.hint, onClick: c.onClick,
+                });
                 return;
             }
             case 'areas': {
@@ -2946,7 +2971,9 @@ class FSGame {
                     .filter(o => o.storm === pid)
                     .map(o => {
                         const t = storm ? FS_RULES.stormTarget(view, storm, o.dir) : null;
-                        return t ? { system: t.system, side: t.side, dir: o.dir, storm: pid } : null;
+                        // The ghost is the destination BORDER, not a tile side:
+                        // keep the canonical edge and both neighbouring tiles.
+                        return t ? Object.assign({}, t, { dir: o.dir, storm: pid }) : null;
                     })
                     .filter(Boolean);
             }
