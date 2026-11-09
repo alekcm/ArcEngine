@@ -9,15 +9,16 @@ class DeployRules {
 
     deployLimit(state, seat, systemId) {
         const sys = this.engine.system(state, systemId);
-        const order = state.order;
+        // The cards of an order change the limit only while that order runs.
+        const order = this.engine.orderOf(state, seat);
         // «Массовое Производство»: the ability is ONE factory working — the
         // capacity of its own world, doubled factories do not count.
-        if (order && order.seat === seat && order.phase === 'guardDeploy' && order.guardFactory) {
+        if (order && order.phase === 'guardDeploy' && order.guardFactory) {
             return Math.max(0, this.engine.capacity(state, order.guardFactory.system, order.guardFactory.pos));
         }
         // While the order runs, the cities may be treated as factories.
-        const asFactories = !!(order && order.seat === seat && order.citiesAsFactories);
-        const bastions = !!(order && order.seat === seat && order.bastionsAsFactories);
+        const asFactories = !!(order && order.citiesAsFactories);
+        const bastions = !!(order && order.bastionsAsFactories);
         let limit = 0;
         for (const area of sys.areas) {
             if (this.engine.control(state, seat, systemId, area.pos) !== 'friendly') continue;
@@ -32,8 +33,8 @@ class DeployRules {
             limit += this.engine.capacity(state, systemId, area.pos) * Math.max(1, factories);
         }
         // The order may lower the limit or give an extra factory.
-        if (order && order.seat === seat && order.deployLimitBonus) limit += order.deployLimitBonus;
-        if (order && order.seat === seat && order.extraFactories) limit += order.extraFactories;
+        if (order && order.deployLimitBonus) limit += order.deployLimitBonus;
+        if (order && order.extraFactories) limit += order.extraFactories;
         return Math.max(0, limit);
     }
 

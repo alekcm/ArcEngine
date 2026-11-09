@@ -92,7 +92,8 @@ class CombatRules {
             }
             const hand = [];
             // The order may give more cards for the combat.
-            const extra = (state.order && state.order.seat === seat && state.order.extraCombatCards) || 0;
+            const myOrder = this.engine.orderOf(state, seat);
+            const extra = (myOrder && myOrder.extraCombatCards) || 0;
             // A short deck (a battle test with a few chosen cards) deals what it has.
             for (let i = 0; i < 5 + extra; i++) {
                 const card = p.decks.combat.shift();
