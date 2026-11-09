@@ -3499,7 +3499,11 @@ const FS_RULES = {
         const foe = side === 'attacker' ? 'defender' : 'attacker';
         const other = this.combatValues(state, foe);
         void other;
-        if (c.noReinforce && side === 'defender') {
+        // The card names the player who may not reinforce: without a name the
+        // ban is the old one, on the defender.
+        const banned = c.noReinforce
+            && (c.noReinforceSeat === undefined ? side === 'defender' : c.noReinforceSeat === seat);
+        if (banned) {
             return { ok: false, error: 'Противник не может размещать жетоны подкрепления.' };
         }
         const max = this.maxReinforce(state, seat, side);

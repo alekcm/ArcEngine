@@ -1667,8 +1667,27 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'gainMateriel': {
-                p.materiel = Math.min(R.MATERIEL_MAX, p.materiel + (step.n || 1));
-                R.log(state, seat, state.players[seat].name + ' получает материю: ' + (step.n || 1) + '.');
+                let n = step.n || 1;
+                // «Выберите систему. Получите материалы со всех дружественных
+                // миров этой системы» («Пожиратель миров»): the materiel is the
+                // one the worlds of the chosen system print.
+                if (step.nFromWorlds === 'chosenSystem') {
+                    const sysId = state.chosenSystem;
+                    const sys = sysId ? R.system(state, sysId) : null;
+                    if (!sys) return null;
+                    n = 0;
+                    for (const area of sys.areas) {
+                        if (!area.world) continue;
+                        if (R.control(state, seat, sys.id, area.pos) !== 'friendly') continue;
+                        n += area.world.materiel || 0;
+                    }
+                    if (n <= 0) {
+                        R.log(state, seat, p.name + ': в выбранной системе нет дружественных миров.');
+                        return null;
+                    }
+                }
+                p.materiel = Math.min(R.MATERIEL_MAX, p.materiel + n);
+                R.log(state, seat, state.players[seat].name + ' получает материю: ' + n + '.');
                 return null;
             }
             case 'gainAsset': {
@@ -2158,6 +2177,16 @@ const FS_EFFECTS = {
                 if (!units.length) return null;
                 return { question: { kind: 'units', who: seat, op: 'replaceUnit', n: Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: 'Какой отряд заменить?' } };
             }
+            // «повысить свой командный уровень на 1 за каждый Корабль-Улей»
+            // («Разум улья»): the bonus lives while the order of the player does.
+            case 'klBonus': {
+                if (!state.order) return null;
+                const n = step.per ? this.count(R, state, seat, step, ctx) : (step.n || 1);
+                if (n <= 0) return null;
+                state.order.klBonus = (state.order.klBonus || 0) + n;
+                R.log(state, seat, p.name + ' повышает командный уровень на ' + n + '.');
+                return null;
+            }
             case 'extraFactory': {
                 if (state.order) state.order.extraFactories = (state.order.extraFactories || 0) + (step.n || 0);
                 return null;
@@ -2416,7 +2445,13 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'noReinforce': {
-                if (combat) combat.noReinforce = true;
+                if (combat) {
+                    combat.noReinforce = true;
+                    // «Ваш противник не сможет использовать жетоны подкрепления
+                    // во время всего боя» («Тень в варпе»): the ban follows the
+                    // owner of the card, whoever plays the round.
+                    combat.noReinforceSeat = step.who === 'foe' ? foe : seat;
+                }
                 return null;
             }
             case 'damageOneByOne': {
@@ -3014,6 +3049,9 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'chooseSystem': {
+                // «Выберите систему» («Пожиратель миров»): the steps that follow
+                // read the choice.
+                if (answer.system) state.chosenSystem = answer.system;
                 return null;
             }
             case 'exchangeMateriel': {
@@ -3354,11 +3392,19 @@ const FS_EFFECTS = {
                 const area = answer.area;
                 if (!area) {
                     // The place of the unit is the next question.
-                    const areas = step.dest
+                    let areas = step.dest
                         ? this.areasForAbility(R, state, seat, step.dest)
                         : this.areasFor(R, state, seat, def.type === 'ship' ? 'void' : 'world');
+                    // «в двух разных дружественных мирах» («Гнездо выводка»): the
+                    // worlds the card has already used are not offered again —
+                    // the steps of the card share one list.
+                    if (step.used && step.used.length) {
+                        areas = areas.filter(a => !step.used.includes(a.system + '|' + a.pos));
+                    }
+                    if (!areas.length) return null;
                     return { question: { kind: 'areas', who: seat, op: 'placeUnit', kind2: def.id, options: areas, text: 'Где разместить отряд?' } };
                 }
+                if (step.used) step.used.push(area.system + '|' + area.pos);
                 const sys = R.system(state, area.system);
                 const a = R.area(sys, area.pos);
                 if (!a) return null;
@@ -3818,6 +3864,12 @@ const FS_EFFECTS = {
         // «уменьшив её стоимость … на 1 за каждый мир с вашей фабрикой» («Лингва
         // Технис»): the discount is counted by the worlds with a factory of the
         // player, not a flat number.
+        // «уменьшив его стоимость на 1 за каждый Корабль-Улей» («Разведывательные
+        // организмы»): the discount is counted by the units the card names.
+        if (step.per === 'unit') {
+            const one = Number(step.discount) || 1;
+            return this.count(R, state, seat, Object.assign({}, step, { n: one }), null);
+        }
         const byFactory = step.discount === 'factories' || step.per === 'yourFactory';
         if (!byFactory) return Number(step.discount) || 0;
         let n = 0;
@@ -4225,6 +4277,11 @@ const FS_EFFECTS = {
                     }
                     case 'friendlyVoidActive':
                         ok = !world && sys.id === active && mine;
+                        break;
+                    // Any friendly void («Разместите 1 Пожирателя в любую
+                    // дружественную пустоту» — «Флот-осколок»).
+                    case 'friendlyVoidAny':
+                        ok = !world && mine;
                         break;
                     // A friendly or uncontrolled world of a neighbouring system.
                     case 'friendlyOrUncontrolledWorldAdjacent':
@@ -4902,6 +4959,56 @@ const RULES = [
             return null;
         },
     },
+    // «Разместите 1 Пожирателя в любую дружественную пустоту» («Флот-осколок»):
+    // the ship stands in a friendly void, in any system.
+    {
+        re: /размест[а-яёa-z]*\s+(\d+|оди?[а-яёa-z]*н[а-яёa-z]*)\s+([А-ЯЁ][а-яёa-z]+)[а-яёa-z]*\s+в\s+любую\s+дружественную\s+пустоту/i,
+        build: (m, ctx) => {
+            const faction = FS_EFFECTS.factionOf(ctx);
+            const names = FS_EFFECTS.unitNames(m[2], faction);
+            if (!names.length) return null;
+            return {
+                op: 'placeUnit', n: num(m[1]) || 1, what: names[0], pick: true,
+                free: true, dest: 'friendlyVoidAny', who: 'me',
+            };
+        },
+    },
+    // «разместить бесплатно по 1 Гаунту в двух разных дружественных мирах»
+    // («Гнездо выводка»): one model in each of two different friendly worlds —
+    // two steps that share the list of the worlds they have used.
+    {
+        re: /размест[а-яёa-z]*\s+бесплатно\s+по\s+(\d+)\s+([А-ЯЁ][а-яёa-z]+)[а-яёa-z]*\s+в\s+двух\s+разных\s+дружественных\s+мирах/i,
+        build: (m, ctx) => {
+            const faction = FS_EFFECTS.factionOf(ctx);
+            const names = FS_EFFECTS.unitNames(m[2], faction);
+            if (!names.length) return null;
+            const used = [];
+            const one = () => ({
+                op: 'placeUnit', n: num(m[1]) || 1, what: names[0], pick: true,
+                free: true, dest: 'friendlyWorldsAny', who: 'me', used: used,
+            });
+            return [one(), one()];
+        },
+    },
+    // «повысить свой командный уровень на 1 за каждый Корабль-Улей»
+    // («Разум улья»).
+    {
+        re: /повысить\s+свой\s+командный\s+уровень\s+на\s+(\d+)\s+за\s+кажд[а-яёa-z]*\s+([^.;]+)/i,
+        build: (m, ctx) => {
+            const faction = FS_EFFECTS.factionOf(ctx);
+            const names = FS_EFFECTS.unitNames(m[2], faction);
+            const filter = names.length ? { types: names } : (unitFilter(m[2]) || typeFilter(m[2]));
+            const step = { op: 'klBonus', n: Number(m[1]) || 1, who: 'me' };
+            if (filter) { step.per = 'unit'; step.filter = filter; }
+            return step;
+        },
+    },
+    // «Получите материалы со всех дружественных миров этой системы»
+    // («Пожиратель миров»).
+    {
+        re: /получ[а-яёa-z]*\s+материал[а-яёa-z]*\s+со\s+всех\s+дружественных\s+миров\s+этой\s+системы/i,
+        build: () => ({ op: 'gainMateriel', nFromWorlds: 'chosenSystem', who: 'me' }),
+    },
     // «Получите 1 жетон материалов и 1 жетон кузни» («Благословение
     // Бога-Машины»): the sentence names two tokens, both of them are gained.
     {
@@ -5247,9 +5354,19 @@ const RULES = [
         re: /(?:куп[а-яёa-z]*|приобрет[а-яёa-z]*)\s+1\s+(?:боевое улучшение|улучшение)/i,
         build: (m, ctx, s) => {
             const step = { op: 'buyUpgrade', kind: /боевое/.test(m[0]) ? 'combat' : 'order', pick: true };
-            const off = /уменьшите\s+(?:его\s+)?стоимость\s+на\s+(\d+)\s+за\s+каждый\s+([^.;]+)/i.exec(String(s || ''));
+            const off = /уменьш[а-яёa-z]*\s+(?:его\s+)?стоимость\s+на\s+(\d+)\s+за\s+кажд[а-яёa-z]*\s+([^.;]+)/i.exec(String(s || ''));
             if (off) {
                 step.discount = /фабрик/i.test(off[2]) ? 'factories' : Number(off[1]) || 1;
+                // «уменьшив его стоимость на 1 за каждый Корабль-Улей»
+                // («Разведывательные организмы»): the discount is counted by the
+                // units the card names.
+                if (step.discount !== 'factories') {
+                    const faction = FS_EFFECTS.factionOf(ctx);
+                    const names = FS_EFFECTS.unitNames(off[2], faction);
+                    const filter = names.length ? { types: names }
+                        : (unitFilter(off[2]) || typeFilter(off[2]));
+                    if (filter) { step.per = 'unit'; step.filter = filter; }
+                }
             }
             return step;
         },

@@ -1280,6 +1280,12 @@ function eventState(name, o = {}) {
     for (const s of o.structures || []) {
         st.structures.push({ id: 'str' + st.structures.length, seat: 0, type: s, system: sys.id, area: pos });
     }
+    // The ships of the check stand in the void of the system: a card may count
+    // them («Разведывательные организмы») or need the void they hold to be a
+    // friendly one («Флот-осколок»).
+    for (const [id, n] of Object.entries(o.ships || {})) {
+        for (let i = 0; i < n; i++) FS_RULES.addUnit(st, 0, id, sys.id, voidOf(st, sys.id));
+    }
     const p = st.players[0];
     if (o.materiel !== undefined) p.materiel = o.materiel;
     if (o.assets) Object.assign(p.assets, o.assets);
@@ -1384,10 +1390,11 @@ check('Лингва Технис', 'скидка на улучшение при�
 
 // --- Планы: Боевая кузня, Научная экспедиция, Заряд радиации, Некромеханика --
 /** Put a scheme card of the tested faction into play. */
-function schemeInPlay(st, name) {
-    const card = FS_DATA.events.find(e => e.faction === MECH && e.name === name);
+function schemeInPlay(st, name, faction) {
+    const of = faction || MECH;
+    const card = FS_DATA.events.find(e => e.faction === of && e.name === name);
     ok(!!card, 'нет карты «' + name + '»');
-    const trig = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: MECH }).find(s => s.op === 'trigger');
+    const trig = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: of }).find(s => s.op === 'trigger');
     st.players[0].schemes = st.players[0].schemes || [];
     st.players[0].schemes.push({
         name: card.name, text: card.text || '',
@@ -2195,6 +2202,145 @@ check('Камеры культивирования', 'один Корабль У
 check('Камеры культивирования', 'без Корабля Улья покупать нечего', () => {
     const st = cultivate(0);
     return eq(!!st.pending, false, 'вопроса о покупке нет');
+});
+
+// ============================================================================
+//  06-events.md — Тираниды: 8 карт событий
+// ============================================================================
+head('Карты событий', TYR);
+
+/** The event card of the Tyranids, played through the real command path. */
+const tyrEvent = (name, o) => {
+    const st = eventState(name, Object.assign({ faction: TYR, foeFaction: 'имперская-гвардия' }, o));
+    const res = playEvent(st);
+    ok(res.ok, 'карта не сыграна: ' + res.error);
+    return st;
+};
+
+// --- Флот-осколок -----------------------------------------------------------
+// «Разместите 1 Пожирателя в любую дружественную пустоту.»
+check('Флот-осколок', 'Пожиратель встаёт в дружественную пустоту', () => {
+    // The void is friendly because a ship of the player already holds it.
+    const st = tyrEvent('Флот-осколок', { units: { 'гаунты': 1 }, ships: { 'пожиратели': 1 } });
+    effectAnswer(st, (s, q) => firstOption(s, q), 8);
+    const ships = st.units.filter(u => u.seat === 0 && (FS_RULES.unitOf(st, u) || {}).type === 'ship');
+    eq(ships.length, 2, 'второй Пожиратель размещён');
+    const last = ships[ships.length - 1];
+    const sys = FS_RULES.system(st, last.system);
+    const area = FS_RULES.area(sys, last.area);
+    ok(!area.world, 'отряд стоит в пустоте');
+    return eq(FS_RULES.control(st, 0, last.system, last.area), 'friendly', 'пустота дружественная');
+});
+
+// --- Быстрая мутация --------------------------------------------------------
+// «Получите 2 жетона кузницы.»
+check('Быстрая мутация', 'два жетона кузницы', () => {
+    const st = tyrEvent('Быстрая мутация', { assets: { forge: 1, cache: 0, reinforcement: 1 } });
+    effectAnswer(st, {}, 4);
+    return eq(st.players[0].assets.forge, 3, 'жетонов кузницы стало три');
+});
+
+// --- Разведывательные организмы ---------------------------------------------
+// «Приобретите 1 боевое улучшение, уменьшив его стоимость на 1 за каждый
+//  Корабль-Улей.»
+check('Разведывательные организмы', 'цена улучшения падает на 1 за каждый Корабль-Улей', () => {
+    const st = tyrEvent('Разведывательные организмы', {
+        ships: { 'корабли-ульи': 2 }, materiel: 6,
+    });
+    const q = pending(st);
+    ok(!!q, 'вопроса о покупке нет');
+    eq(q.op, 'buyUpgrade', 'карта предлагает купить улучшение');
+    const discount = FS_EFFECTS.upgradeDiscount(FS_RULES, st, 0,
+        (st.pending.steps || []).find(s => s.op === 'buyUpgrade'));
+    return eq(discount, 2, 'скидка равна числу Кораблей-Ульев');
+});
+
+// --- Пожиратель миров -------------------------------------------------------
+// «Выберите систему. Получите материалы со всех дружественных миров этой
+//  системы.»
+check('Пожиратель миров', 'материя приходит с дружественных миров выбранной системы', () => {
+    const st = tyrEvent('Пожиратель миров', { units: { 'гаунты': 1 }, materiel: 0 });
+    const q = pending(st);
+    ok(!!q && q.kind === 'systems', 'карта не спрашивает систему');
+    // The world the units stand on is friendly: its materiel is the income.
+    const sys = FS_RULES.system(st, st.sys);
+    const area = FS_RULES.area(sys, st.pos);
+    const want = area.world.materiel || 0;
+    effectAnswer(st, (s, qq) => (qq.kind === 'systems' ? { system: st.sys } : firstOption(s, qq)), 8);
+    ok(want > 0, 'в мире напечатана материя');
+    return eq(st.players[0].materiel, want, 'материя равна доходу дружественного мира');
+});
+
+// --- Гнездо выводка ---------------------------------------------------------
+// «…разместить бесплатно по 1 Гаунту в двух разных дружественных мирах.»
+check('Гнездо выводка', 'по Гаунту в двух разных дружественных мирах', () => {
+    const st = orderState('advance', {
+        faction: TYR, units: { 'гаунты': 1 }, materiel: 6,
+    });
+    // Two friendly worlds: the card places a model in each of them.
+    const sys0 = st.systems[0];
+    const other = sys0.areas.filter(a => a.world).find(a => a.pos !== worldOf(st, sys0.id));
+    FS_RULES.addUnit(st, 0, 'гаунты', sys0.id, other.pos);
+    const scheme = schemeInPlay(st, 'Гнездо выводка', TYR);
+    eq(scheme.steps.length, 2, 'план размещает два отряда');
+    const was = st.units.filter(u => u.seat === 0).length;
+    FS_RULES.runEffects(st, 0, scheme.steps, { kind: 'event', ctx: null });
+    answerAll(st, (s, q) => {
+        if (q.kind === 'types') return { type: q.options[0] };
+        if (q.kind === 'areas') return { area: q.options[0] };
+        return firstOption(s, q);
+    });
+    const placed = st.units.filter(u => u.seat === 0).slice(was);
+    eq(placed.length, 2, 'два Гаунта размещены');
+    const worlds = new Set(placed.map(u => u.system + '|' + u.area));
+    return eq(worlds.size, 2, 'миры разные');
+});
+
+// --- Восстание верных -------------------------------------------------------
+// «…разместить 1 бесплатный бастион в дружественном мире, не содержащем другие
+//  постройки.»
+check('Восстание верных', 'бесплатный бастион в мире без построек', () => {
+    const st = orderState('advance', {
+        faction: TYR, units: { 'гаунты': 1 }, materiel: 3,
+    });
+    const scheme = schemeInPlay(st, 'Восстание верных', TYR);
+    FS_RULES.runEffects(st, 0, scheme.steps, { kind: 'event', ctx: null });
+    answerAll(st, (s, q) => (q.kind === 'areas' ? { area: q.options[0] } : firstOption(s, q)));
+    const built = st.structures.filter(s => s.seat === 0 && s.type === 'bastion');
+    eq(built.length, 1, 'бастион построен');
+    eq(st.players[0].materiel, 3, 'материя не потрачена');
+    return eq(FS_RULES.control(st, 0, built[0].system, built[0].area), 'friendly', 'мир дружественный');
+});
+
+// --- Тень в варпе -----------------------------------------------------------
+// «…Ваш противник не сможет использовать жетоны подкрепления во время всего
+//  боя.»
+check('Тень в варпе', 'противник не может призвать подкрепление в этом бою', () => {
+    const st = tyrBattle({ units: { 'гаунты': 2 }, foeUnits: { 'гвардейцы': 2 } });
+    st.players[1].assets.reinforcement = 3;
+    const scheme = schemeInPlay(st, 'Тень в варпе', TYR);
+    FS_RULES.runEffects(st, 0, scheme.steps, { kind: 'combat', ctx: { side: 'attacker' } });
+    eq(st.combat.noReinforceSeat, 1, 'запрет называет противника');
+    const res = FS_RULES.apply(st, 1, { type: 'combat', action: 'reinforce', count: 2 });
+    eq(res.ok, false, 'призыв подкрепления запрещён');
+    // The owner of the card keeps his own reinforcement.
+    st.players[0].assets.reinforcement = 2;
+    const mine = FS_RULES.apply(st, 0, { type: 'combat', action: 'reinforce', count: 1 });
+    return eq([mine.ok, st.combat.reinforce.attacker], [true, 1], 'владелец карты призывает подкрепление');
+});
+
+// --- Разум улья -------------------------------------------------------------
+// «При выполнении любого приказа Вы можете сбросить эту карту, чтобы повысить
+//  свой командный уровень на 1 за каждый Корабль-Улей.»
+check('Разум улья', 'командный уровень растёт по числу Кораблей-Ульев', () => {
+    const st = orderState('deploy', {
+        faction: TYR, ships: { 'корабли-ульи': 2 }, units: { 'гаунты': 1 },
+        structures: ['city', 'factory'], materiel: 10,
+    });
+    const before = FS_RULES.commandLevel(st, 0);
+    const scheme = schemeInPlay(st, 'Разум улья', TYR);
+    FS_RULES.runEffects(st, 0, scheme.steps, { kind: 'order', ctx: null });
+    return eq([before, FS_RULES.commandLevel(st, 0)], [1, 3], 'один город и два Корабля Улья');
 });
 
 // ============================================================================
