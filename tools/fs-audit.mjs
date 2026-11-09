@@ -1269,6 +1269,15 @@ rule('struct-1', '«A world cannot contain more than one structure unless a card
     eq(FS_RULES.canPlaceStructure(st, 0, sys.id, pos).ok, false, 'вторая постройка на мире запрещена');
     const free = st.systems.find(x => x.id !== sys.id);
     eq(FS_RULES.canPlaceStructure(st, 0, free.id, worldOf(st, free.id)).ok, false, 'на чужом мире нельзя');
+    // «…unless a card or faction ability specifically states otherwise»: the
+    // permission is an argument of the same question, not a second rule. The
+    // Eldar card «Певцы психокости» builds on his own world of another kind.
+    const ok = FS_RULES.canPlaceStructure(st, 0, sys.id, pos, { allowOccupied: 'otherType', kind: 'city' });
+    eq(ok.ok, true, 'карта разрешает вторую постройку другого типа');
+    eq(FS_RULES.canPlaceStructure(st, 0, sys.id, pos, { allowOccupied: 'otherType', kind: 'factory' }).ok,
+        false, 'постройка того же типа не встаёт даже с картой');
+    const foes = FS_RULES.canPlaceStructure(st, 1, sys.id, pos, { allowOccupied: 'otherType', kind: 'city' });
+    eq(foes.ok, false, 'чужая постройка не разрешает свою');
 });
 
 rule('struct-2', '«Structures do not count toward a world’s unit capacity.»', () => {

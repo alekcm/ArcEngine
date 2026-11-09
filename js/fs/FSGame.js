@@ -777,7 +777,9 @@ class FSGame {
             const def = faction && faction.units.find(u => u.id === this.pending.unit);
             if (def) areas = sys.areas.filter(a => (def.type === 'ground') === !!a.world && FS_RULES.unitsAt(s, sys.id, a.pos).length < FS_RULES.capacity(s, sys.id, a.pos));
         } else if (this.mode === 'setupStructure') {
-            areas = sys.areas.filter(a => a.world && !FS_RULES.structuresAt(s, sys.id, a.pos).length);
+            // «A world cannot contain more than one structure» — the rule of the
+            // structure answers, the panel does not count.
+            areas = sys.areas.filter(a => a.world && FS_RULES.canPlaceStructure(s, s.seat, sys.id, a.pos).ok);
         } else if (this.mode === 'setupObjective') {
             const option = (setup.objectiveOptions || []).find(x => x.faction === this.pending.faction);
             areas = sys.areas.filter(a => option && option.areas.includes(a.pos));

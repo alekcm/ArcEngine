@@ -200,7 +200,7 @@ class PlaceAsks {
                 const sys = R.system(state, u.system);
                 const area = R.area(sys, u.area);
                 if (!area || !area.world) return false;
-                return R.structuresAt(state, u.system, u.area).length > 0;
+                return R.hasStructure(state, u.system, u.area);
             });
         }
         if (!units.length) return null;

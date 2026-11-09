@@ -367,7 +367,10 @@ class SetupRules {
             this.addUnit(state, seat, cmd.unit, sys.id, area.pos);
         } else {
             if (!['city', 'factory', 'bastion'].includes(cmd.structure) || !(initial.structures[cmd.structure] > 0)) return { ok: false, error: 'Такой начальной постройки больше нет.' };
-            if (!area.world || this.engine.structuresAt(state, sys.id, area.pos).length) return { ok: false, error: 'Постройка размещается на мире без постройки.' };
+            if (!area.world) return { ok: false, error: 'Постройка размещается на мире без постройки.' };
+            if (!this.engine.canPlaceStructure(state, seat, sys.id, area.pos, { ignoreControl: true }).ok) {
+                return { ok: false, error: 'Постройка размещается на мире без постройки.' };
+            }
             initial.structures[cmd.structure]--;
             this.addStructure(state, seat, cmd.structure, sys.id, area.pos);
         }
@@ -573,7 +576,8 @@ class SetupRules {
             let left = initial.structures[type] || 0;
             for (const area of sys.areas) {
                 if (!left) break;
-                if (!area.world || this.engine.structuresAt(state, sys.id, area.pos).length) continue;
+                if (!area.world) continue;
+                if (!this.engine.canPlaceStructure(state, seat, sys.id, area.pos, { ignoreControl: true }).ok) continue;
                 this.addStructure(state, seat, type, sys.id, area.pos); left--;
             }
             initial.structures[type] = left;

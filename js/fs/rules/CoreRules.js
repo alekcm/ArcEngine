@@ -97,6 +97,11 @@ class CoreRules {
         return TileGeometry.index(pos);
     }
 
+    /** Is there a structure of anybody on this world? */
+    hasStructure(state, systemId, pos) {
+        return this.board(state).hasStructure(systemId, pos);
+    }
+
     unitsAt(state, systemId, pos) {
         return this.board(state).unitsAt(systemId, pos);
     }

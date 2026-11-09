@@ -89,6 +89,11 @@ class Board {
         return (this.state.structures || []).filter(s => s.system === systemId && s.area === pos);
     }
 
+    /** Is there a structure of anybody on this world? */
+    hasStructure(systemId, pos) {
+        return (this.state.structures || []).some(s => s.system === systemId && s.area === pos);
+    }
+
     /** @param {string} systemId */
     structuresIn(systemId) {
         return (this.state.structures || []).filter(s => s.system === systemId);

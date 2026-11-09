@@ -2038,15 +2038,23 @@ const FS_EFFECTS = {
     // placed on a world. A player cannot build a structure on a world that
     // already contains a structure unless an ability specifically allows it.»
     structureAreas(R, state, seat, step) {
-        const raw = step && step.dest
-            ? this.areasForAbility(R, state, seat, step.dest)
-            : this.areasFor(R, state, seat, 'structure');
+        // «…в дружественном мире, где уже есть 1 ваша постройка другого типа»
+        // («Певцы психокости»): the card is the permission to build on an
+        // occupied world — the rule is asked once, with that permission.
+        const permission = step && step.onOccupied === 'otherType' ? 'otherType' : null;
+        const raw = permission
+            ? this.areasFor(R, state, seat, 'structureAny')
+            : (step && step.dest
+                ? this.areasForAbility(R, state, seat, step.dest)
+                : this.areasFor(R, state, seat, 'structure'));
         return (raw || []).filter(a => {
             // «если там ещё нет построек» — no structure of anybody stands there.
             if (step && step.noStructures) {
-                return !(R.structuresAt(state, a.system, a.pos) || []).length;
+                return !R.hasStructure(state, a.system, a.pos);
             }
-            return !R.canPlaceStructure || R.canPlaceStructure(state, seat, a.system, a.pos).ok;
+            return !R.canPlaceStructure
+                || R.canPlaceStructure(state, seat, a.system, a.pos,
+                    { allowOccupied: permission, kind: step && step.kind }).ok;
         });
     },
 
@@ -2376,10 +2384,12 @@ const FS_EFFECTS = {
         const out = [];
         for (const sys of state.systems) {
             for (const area of sys.areas) {
-                if (what === 'structure') {
+                if (what === 'structure' || what === 'structureAny') {
                     if (!area.world) continue;
                     if (R.control(state, seat, sys.id, area.pos) !== 'friendly') continue;
-                    if (R.structuresAt(state, sys.id, area.pos).length) continue;
+                    // The occupied worlds are a question for canPlaceStructure,
+                    // with the permission of the card in its hand.
+                    if (what === 'structure' && R.hasStructure(state, sys.id, area.pos)) continue;
                 } else if (what === 'reinforcement') {
                     if (!combatArea(state, sys.id, area.pos)) continue;
                 } else if (what === 'void') {
@@ -2545,7 +2555,7 @@ const FS_EFFECTS = {
                     // A friendly world of the active system with a structure on it.
                     case 'friendlyWorldWithStructureActive':
                         ok = world && sys.id === active && mine
-                            && R.structuresAt(state, sys.id, area.pos).length > 0;
+                            && R.hasStructure(state, sys.id, area.pos);
                         break;
                     // A friendly world with a factory on it, any system
                     // («в одном дружественном мире, содержащем фабрику»).
@@ -2564,7 +2574,7 @@ const FS_EFFECTS = {
                     // A friendly world with a structure on it, any system
                     // («разместить его в дружественном мире, содержащем постройку»).
                     case 'friendlyWorldWithStructure':
-                        ok = world && mine && R.structuresAt(state, sys.id, area.pos).length > 0;
+                        ok = world && mine && R.hasStructure(state, sys.id, area.pos);
                         break;
                     // A world of the active system where an unrouted Monolith stands
                     // («Врата вечности»).
@@ -2650,7 +2660,7 @@ const FS_EFFECTS = {
                 const sys = R.system(state, u.system);
                 const area = R.area(sys, u.area);
                 if (!area || !area.world) return false;
-                return R.structuresAt(state, u.system, u.area).length > 0;
+                return R.hasStructure(state, u.system, u.area);
             });
         }
         if (step.unitType) {
@@ -2689,9 +2699,13 @@ const FS_EFFECTS = {
             if (!systems.includes(sys.id)) continue;
             for (const area of sys.areas) {
                 if (!area.world) continue;
-                if (R.structuresAt(state, sys.id, area.pos).length) continue;
                 const standing = this.areaStanding(state, seat, sys.id, area.pos);
                 if (standing !== 'friendly' && standing !== 'uncontrolled') continue;
+                // The world without a structure, asked by the rule of the
+                // structure, not counted here for the third time.
+                const free = !R.canPlaceStructure
+                    || R.canPlaceStructure(state, seat, sys.id, area.pos, { ignoreControl: true }).ok;
+                if (!free) continue;
                 out.push({ system: sys.id, pos: area.pos });
             }
         }
@@ -2784,7 +2798,8 @@ const FS_EFFECTS = {
             for (const a of sys.areas) {
                 if (!a.world || (sid === systemId && a.pos === sourceArea)) continue;
                 if (R.control(state, seat, sid, a.pos) !== 'friendly') continue;
-                if (R.structuresAt(state, sid, a.pos).length) continue;
+                // «…в другом дружественном мире, не содержащим построек».
+                if (R.canPlaceStructure && !R.canPlaceStructure(state, seat, sid, a.pos).ok) continue;
                 out.push({ system: sid, pos: a.pos });
             }
         }
@@ -3576,7 +3591,15 @@ const RULES = [
     // "buy 1 structure and place it"
     {
         re: /куп[а-яёa-z]*\s+(\d+)?\s*(?:одну\s+)?постройк[а-яёa-z]*/i,
-        build: m => ({ op: 'placeStructure', kind: 'any', n: num(m[1]) || 1, buy: true, pick: true }),
+        build: (m, ctx, s) => {
+            const step = { op: 'placeStructure', kind: 'any', n: num(m[1]) || 1, buy: true, pick: true };
+            // «…разместить её в дружественном мире, где уже есть 1 ваша
+            // постройка другого типа» («Певцы психокости»): the permission.
+            if (/где уже есть\s+1\s+(?:ваша|Ваша)\s+постройк[а-яёa-z]*\s+другого типа/i.test(s)) {
+                step.onOccupied = 'otherType';
+            }
+            return step;
+        },
     },
     // "replace 1 scout from the supply with a space marine"
     {

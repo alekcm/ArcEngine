@@ -359,6 +359,45 @@ try {
     fail(e.message);
 }
 
+// --- a structure on a world: one question -----------------------------------
+section('постройка на мире: одно правило');
+try {
+    const offenders = [];
+    // «A world cannot contain more than one structure unless a card or faction
+    // ability specifically states otherwise» is answered by canPlaceStructure,
+    // with the permission of the card in its hand. The board only lists what
+    // stands there; the setup and the rule itself may count.
+    const owners = new Set(['js/fs/rules/DeployRules.js', 'js/fs/core/FSBoard.js', 'js/fs/FSCards.js']);
+    const files = [];
+    const walk = dir => {
+        for (const name of fs.readdirSync(path.join(ROOT, dir))) {
+            const rel = dir + '/' + name;
+            if (fs.statSync(path.join(ROOT, rel)).isDirectory()) walk(rel);
+            else if (name.endsWith('.js')) files.push(rel);
+        }
+    };
+    walk('js/fs');
+    for (const file of files) {
+        if (owners.has(file) || file === 'js/fs/FSData.js') continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        if (/R\.structuresAt\(|FS_RULES\.structuresAt\(/.test(text) && !/canPlaceStructure/.test(text)) {
+            // A file that both counts the structures and asks the rule is fine.
+        }
+        // A count of the structures of a world is a place that asks the rule of
+        // the structure; «стоит ли постройка» is Board.hasStructure.
+        const re = /structuresAt\([^)]*\)\s*(?:\.length|\|\|\s*\[\]\s*\]?\.length)/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('можно ли ставить постройку, решает одно правило');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the subject layer answers the questions the rules ask -------------------
 section('предметный слой');
 try {

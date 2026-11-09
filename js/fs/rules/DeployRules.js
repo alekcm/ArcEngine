@@ -66,13 +66,36 @@ class DeployRules {
         return { ok: true };
     }
 
-    canPlaceStructure(state, seat, systemId, pos) {
+    /**
+     * The one question about a structure on a world: «A world cannot contain
+     * more than one structure unless a card or faction ability specifically
+     * states otherwise.» Every path that puts a structure on the table asks it —
+     * the Deploy Order, a card of an event, «Эвакуация», the setup of the
+     * initial forces — and the permission of the card is the argument, not a
+     * second copy of the rule.
+     * @param {any} state @param {number} seat @param {string} systemId @param {string} pos
+     * @param {any} [opts] { allowOccupied: 'otherType', kind, ignoreControl }
+     */
+    canPlaceStructure(state, seat, systemId, pos, opts) {
+        const o = opts || {};
         const sys = this.engine.system(state, systemId);
         const area = this.engine.area(sys, pos);
         if (!area || !area.world) return { ok: false, error: 'Постройка ставится только на мир.' };
-        if (this.engine.control(state, seat, systemId, pos) !== 'friendly') return { ok: false, error: 'Мир должен быть вашим.' };
-        if (this.engine.structuresAt(state, systemId, pos).length) return { ok: false, error: 'На мире уже есть постройка.' };
-        return { ok: true };
+        if (!o.ignoreControl && this.engine.control(state, seat, systemId, pos) !== 'friendly') {
+            return { ok: false, error: 'Мир должен быть вашим.' };
+        }
+        const there = this.engine.structuresAt(state, systemId, pos) || [];
+        if (!there.length) return { ok: true };
+        // The card that says otherwise: «…в дружественном мире, где уже есть 1
+        // ваша постройка другого типа» — exactly one of his, of another kind.
+        if (o.allowOccupied === 'otherType') {
+            const mine = there.filter(x => x.seat === seat);
+            const other = there.length === 1 && mine.length === 1 && mine[0].type !== o.kind;
+            if (other) return { ok: true };
+            return { ok: false, error: 'Там нужна одна ваша постройка другого типа.' };
+        }
+        if (o.allowOccupied) return { ok: true };
+        return { ok: false, error: 'На мире уже есть постройка.' };
     }
 
     deployStep(order) {
