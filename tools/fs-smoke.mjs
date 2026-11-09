@@ -123,8 +123,8 @@ function playRound(players, seed) {
 
     n = 0;
     while (st.phase === 'operations' && n++ < 128) {
-        if (st.trim && st.trim.length) {
-            const entry = st.trim[0];
+        if (R.trimQueue(st).any()) {
+            const entry = R.trimQueue(st).entries()[0];
             const unit = st.units.find(u => u.seat === entry.seat && u.system === entry.system && u.area === entry.pos);
             if (!unit) throw new Error('переполнение без отряда');
             must(st, entry.seat, { type: 'trimUnit', unit: unit.id }, 'trimUnit');
@@ -449,6 +449,30 @@ try {
     }
     if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
     ok('счёт покупок берётся из списка покупок');
+} catch (e) {
+    fail(e.message);
+}
+
+// --- the excess of an area: one queue ----------------------------------------
+section('сверх вместимости: одна очередь');
+try {
+    const owners = new Set(['js/fs/core/FSTrim.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The areas that wait for their owner's choice are a queue: it owns
+        // `state.trim`. A rule asks the queue, the panel and the server read it
+        // through the same object — nobody rebuilds the list by hand.
+        const re = /\bstate\.trim\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('переполненные области ведёт только очередь');
 } catch (e) {
     fail(e.message);
 }

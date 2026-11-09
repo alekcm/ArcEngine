@@ -933,7 +933,7 @@ rule('cap-1', '«he must destroy units of his choice in that area» — отря
     FS_RULES.apply(st, 0, { type: 'finishDeploy' });
     const mine = st.units.filter(u => u.seat === 0).length;
     eq(mine, cap + 2, 'движок не уничтожает отряды сам');
-    eq((st.trim || []).length, 1, 'область просит убрать лишнее');
+    eq(FS_RULES.trimQueue(st).entries().length, 1, 'область просит убрать лишнее');
     const extra = st.units.filter(u => u.seat === 0)[0];
     eq(FS_RULES.apply(st, 0, { type: 'trimUnit', system: sys.id, pos, unit: extra.id }).ok, true, 'игрок убирает отряд');
     eq(st.units.filter(u => u.seat === 0).length, cap + 1, 'отряд убран');
@@ -946,11 +946,30 @@ rule('cap-2', '«After resolving an order … players must destroy any of their 
     const cap = FS_RULES.capacity(st, sys.id, pos);
     for (let i = 0; i < cap + 2; i++) guard(st, 0, sys.id, pos);
     FS_RULES.trimPlayer(st, 0);
-    eq((st.trim || []).length, 1, 'переполненная область отмечена');
+    eq(FS_RULES.trimQueue(st).entries().length, 1, 'переполненная область отмечена');
     const blocked = FS_RULES.apply(st, 0, { type: 'nextPhase' });
     eq(/вместимост/.test(blocked.error || ''), true, 'пока лишние не убраны, игрок ничего не делает');
     const other = FS_RULES.apply(st, 1, { type: 'nextPhase' });
     eq(/вместимост/.test(other.error || ''), false, 'чужой ход не ждёт чужой уборки');
+});
+
+rule('cap-2b', '«…his units that are in excess of an area’s unit capacity» — очередь переполнения живёт объектом и не копит записи', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    const cap = FS_RULES.capacity(st, sys.id, pos);
+    for (let i = 0; i < cap + 2; i++) guard(st, 0, sys.id, pos);
+    // The same area is counted once, however many times it is asked about.
+    FS_RULES.trimPlayer(st, 0);
+    FS_RULES.trimPlayer(st, 0);
+    eq(FS_RULES.trimQueue(st).entries().length, 1, 'одна область — одна запись');
+    eq(FS_RULES.trimQueue(st).blocked(0), true, 'игрок ждёт выбора');
+    const mine = st.units.filter(u => u.seat === 0);
+    FS_RULES.apply(st, 0, { type: 'trimUnit', system: sys.id, pos, unit: mine[0].id });
+    eq(FS_RULES.trimQueue(st).blocked(0), true, 'одного отряда мало');
+    FS_RULES.apply(st, 0, { type: 'trimUnit', system: sys.id, pos, unit: mine[1].id });
+    eq(FS_RULES.trimQueue(st).blocked(0), false, 'область снова вмещает всех — очередь пуста');
+    eq(st.trim, null, 'поле очереди очищено, а не оставлено пустым списком');
 });
 
 rule('cap-3', '«This is only checked after resolving an order and at the end of each Event Phase»', () => {
@@ -962,7 +981,7 @@ rule('cap-3', '«This is only checked after resolving an order and at the end of
     st.phase = 'refresh';
     st.eventsLeft = 0;
     FS_RULES.nextEventPlayer(st);
-    eq((st.trim || []).length >= 1, true, 'конец фазы событий спрашивает про лишние отряды');
+    eq(FS_RULES.trimQueue(st).any(), true, 'конец фазы событий спрашивает про лишние отряды');
 });
 
 rule('refresh-1', '«Each player increases his materiel dial by … friendly worlds» + «cannot have more than 14 materiel»', () => {
@@ -1314,7 +1333,7 @@ rule('struct-2', '«Structures do not count toward a world’s unit capacity.»'
     eq(FS_RULES.capacity(st, sys.id, pos), cap, 'вместимость не меняется от построек');
     for (let i = 0; i < cap; i++) guard(st, 0, sys.id, pos);
     FS_RULES.trimPlayer(st, 0);
-    eq((st.trim || []).length, 0, 'полная область с постройками не переполнена');
+    eq(FS_RULES.trimQueue(st).entries().length, 0, 'полная область с постройками не переполнена');
 });
 
 const chainBoard = (seed) => {

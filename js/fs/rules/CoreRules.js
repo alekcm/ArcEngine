@@ -46,6 +46,14 @@ class CoreRules {
         return Board.of(state);
     }
 
+    /**
+     * The queue of the areas that wait for their owner's choice: the places that
+     * are over capacity after an order. It owns the field of the queue.
+     */
+    trimQueue(state) {
+        return TrimQueue.of(state);
+    }
+
     player(state, seat) {
         return PlayerEntity.of(state, seat);
     }

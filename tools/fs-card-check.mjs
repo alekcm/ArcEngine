@@ -3731,7 +3731,7 @@ check('Расположение темных богов', 'после страт
     const sys = st.systems[0];
     for (const s of st.systems) s.tokens = [];
     st.units = []; st.structures = []; st.objectives = []; st.storms = [];
-    st.phase = 'operations'; st.turn = 0; st.trim = [];
+    st.phase = 'operations'; st.turn = 0; FS_RULES.trimQueue(st).clear();
     sys.tokens.push({ seat: 0, order: 'strategize', faceUp: false });
     const p = st.players[0];
     p.placedTokens = 4; p.eventTokens = 0;
@@ -3985,7 +3985,7 @@ check('Отрава Нургла', 'план заменяет раскрытие
     const foe = FS_RULES.addUnit(st, 1, 'гвардейцы', sys.id, pos);
     sys.tokens.push({ seat: 0, order: 'advance', faceUp: false });
     sys.tokens.push({ seat: 1, order: 'advance', faceUp: false });
-    st.phase = 'operations'; st.turn = 0; st.order = null; st.trim = [];
+    st.phase = 'operations'; st.turn = 0; st.order = null; FS_RULES.trimQueue(st).clear();
     st.players[0].placedTokens = 1; st.players[1].placedTokens = 1;
     st.players[0].schemes = [chaosScheme('Отрава Нургла')];
     const res = FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys.id });
@@ -4008,7 +4008,7 @@ check('Отрава Нургла', 'после отказа план снова 
     FS_RULES.addUnit(st, 0, 'культисты', sys0.id, pos);
     sys0.tokens.push({ seat: 0, order: 'advance', faceUp: false });
     sys1.tokens.push({ seat: 0, order: 'deploy', faceUp: false });
-    st.phase = 'operations'; st.turn = 0; st.order = null; st.trim = [];
+    st.phase = 'operations'; st.turn = 0; st.order = null; FS_RULES.trimQueue(st).clear();
     st.players[0].placedTokens = 2;
     st.players[0].schemes = [chaosScheme('Отрава Нургла')];
     const first = FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys0.id });

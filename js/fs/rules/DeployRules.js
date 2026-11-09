@@ -438,8 +438,7 @@ class DeployRules {
                 return;
             }
         }
-        state.trim = (state.trim || []).filter(t => !(t.seat === seat && t.system === systemId && t.pos === pos));
-        state.trim.push({ seat, system: systemId, pos, cap, count: mine.length });
+        this.engine.trimQueue(state).ask(seat, systemId, pos, cap, mine.length);
     }
 
     trimPlayer(state, seat) {
@@ -449,17 +448,18 @@ class DeployRules {
     }
 
     cmdTrimUnit(state, seat, cmd) {
-        const list = state.trim || [];
-        const entry = list.find(t => t.seat === seat && (cmd.system === undefined || (t.system === cmd.system && t.pos === cmd.pos)));
+        const queue = this.engine.trimQueue(state);
+        const entry = queue.forSeat(seat)
+            .find(t => cmd.system === undefined || (t.system === cmd.system && t.pos === cmd.pos));
         if (!entry) return { ok: false, error: 'Сейчас ничего не надо убирать.' };
         const unit = state.units.find(u => u.id === cmd.unit && u.seat === seat && u.system === entry.system && u.area === entry.pos);
         if (!unit) return { ok: false, error: 'Этот отряд стоит не в переполненной области.' };
         this.engine.destroyUnit(state, unit);
         this.engine.log(state, seat, state.players[seat].name + ' отводит отряд сверх вместимости области.');
         const left = this.engine.unitsAt(state, entry.system, entry.pos).filter(u => u.seat === seat).length;
-        if (left <= this.engine.capacity(state, entry.system, entry.pos)) state.trim = list.filter(t => t !== entry);
-        if (!state.trim || !state.trim.length) state.trim = null;
-        return { ok: true, left: Math.max(0, left - this.engine.capacity(state, entry.system, entry.pos)) };
+        const cap = this.engine.capacity(state, entry.system, entry.pos);
+        queue.settle(seat, entry.system, entry.pos, left, cap);
+        return { ok: true, left: Math.max(0, left - cap) };
     }
 
 }

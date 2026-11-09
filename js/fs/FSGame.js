@@ -433,7 +433,7 @@ class FSGame {
         }
         // The troops over the capacity of an area: the player chooses which of them
         // go back to the supply before anything else happens.
-        if ((s.trim || []).some(t => t.seat === me)) {
+        if (FS_RULES.trimQueue(s).blocked(me)) {
             this.panelTrim(s, ctx);
             ctx.mode = this.mode;
             this.refreshPlaque();
@@ -500,8 +500,9 @@ class FSGame {
         // of the battle below and it never outlives the step that asked for it.
         if (this.mode === 'damage') this.mode = 'idle';
         if (this.mode === 'retreat' && !(s.combat && s.combat.step === 'retreat')) this.mode = 'idle';
-        if (this.mode === 'trim' && !(s.trim || []).some(t => t.seat === me)) this.mode = 'idle';
-        if (!(s.trim || []).some(t => t.seat === me)) this.trimPick = [];
+        const trimQueue = FS_RULES.trimQueue(s);
+        if (this.mode === 'trim' && !trimQueue.blocked(me)) this.mode = 'idle';
+        if (!trimQueue.blocked(me)) this.trimPick = [];
         if (this.mode === 'strike-damage' && !s.strike) this.mode = 'idle';
         if (s.combat) this.panelCombat(s, ctx);
         ctx.battleHand = this.hand || [];
@@ -1076,7 +1077,7 @@ class FSGame {
     // over-full area is ringed and a click on a model sends it away.
     panelTrim(s, ctx) {
         const me = s.seat;
-        const entry = (s.trim || []).find(t => t.seat === me);
+        const entry = FS_RULES.trimQueue(s).entryOf(me);
         this.mode = 'trim';
         ctx.title = 'Сверх вместимости';
         ctx.text = 'Щёлкните по своему отряду на доске — он вернётся в запас.';
@@ -1087,7 +1088,7 @@ class FSGame {
             ? (area && area.world ? area.world.name : (sys ? sys.tile : 'область'))
                 + ' · отрядов ' + mine.length + ' · вместимость ' + entry.cap
             : '';
-        this.ringAreas((s.trim || []).filter(t => t.seat === me));
+        this.ringAreas(FS_RULES.trimQueue(s).forSeat(me));
         // The units that go back are picked first and confirmed after: the click
         // only marks them, nothing leaves the board until the player agrees.
         const excess = entry ? Math.max(0, mine.length - entry.cap) : 0;
@@ -2815,7 +2816,7 @@ class FSGame {
     // the supply, and the ring of the area follows what is left.
     clickTrim(meta) {
         const s = this.state;
-        const entry = ((s && s.trim) || []).find(t => t.seat === s.seat);
+        const entry = s ? FS_RULES.trimQueue(s).entryOf(s.seat) : null;
         if (!entry) return;
         if (!meta || meta.fs !== 'unit') {
             this.status = 'Щёлкните по отряду в переполненной области.';

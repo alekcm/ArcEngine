@@ -83,6 +83,7 @@
 | Конец приказа и его вопрос | `rules/OperationsRules.js` (`closeOrder`) | не ставить `state.order = null` — вопрос приказа останется висеть |
 | Перенос отряда или постройки, след хода | `core/FSBoard.js` (`moveUnit`/`placeUnit`) | не писать `u.system = …; u.area = …` — это ловит `fs-smoke` |
 | Что приказ уже купил: предел развёртывания, одна постройка, пары сделки | `rules/DeployRules.js` (`unitsBought`/`structureBought`/`dealBought` по `order.purchases`) | не заводить второй счётчик `order.bought` — это ловит `fs-smoke` |
+| Области, где игрок ещё не выбрал лишние отряды | `core/FSTrim.js` (`TrimQueue`) + `FS_RULES.trimQueue(state)` | не читать и не писать `state.trim` мимо очереди — это ловит `fs-smoke` |
 | Текст карты → шаги игры | `FSEffects.js` (таблица `RULES`) | текст карты — это правило карты, отдельного кода «на карту» нет |
 | Что шаг спросит у игрока | `js/fs/effects/ask/FS*Asks.js` (реестр `ASK_EXECUTORS`) | не добавлять ветку в `switch` — его больше нет |
 | Что шаг сделает с ответом | `js/fs/effects/FS*Steps.js` (реестр `STEP_EXECUTORS`) | не писать действие шага в панели |
@@ -111,7 +112,7 @@
 
 ```
 node tools/check.mjs          # типы (tsc по JSDoc) + сверка правил + дым-тест
-node tools/fs-audit.mjs       # 136 проверок: каждая цитирует Rules Reference
+node tools/fs-audit.mjs       # 137 проверок: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # 82 проверки: карты одной фракции против их текстов
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках
@@ -124,10 +125,10 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 шагов карт (73 «дела» и 155 «вопроса» — каждый объявлен и каждый — функция), а ещё один —
 сам предметный слой: стороны боя и верх стопки приказов.
 
-Девять разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
+Десять разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
 (вставленные `assets.forge++`, `cards[side].hand.splice`, `p.materiel -= 1`, ручной счёт
-пяти отрядов, `structuresAt(...).length`, `state.order = null`, `u.routed = true` и
-`order.bought++` дают провал с именем файла и строкой):
+пяти отрядов, `structuresAt(...).length`, `state.order = null`, `u.routed = true`,
+`order.bought++` и чтение `state.trim` мимо очереди дают провал с именем файла и строкой):
 
 * жетоны: только `PlayerEntity` пишет в `assets`;
 * материя: только `PlayerEntity` начисляет и списывает её (`payMateriel`/`gainMateriel`,
@@ -145,7 +146,10 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
   `CombatRules.routeUnit`/`restoreUnit` — её зовут бой, ралли и карты;
 * покупки приказа: сколько куплено, была ли постройка и сколько пар по сделке фракции —
   всё считается из `order.purchases` (`DeployRules.unitsBought/structureBought/dealBought`),
-  поэтому отмена покупки уменьшает счёт сама.
+  поэтому отмена покупки уменьшает счёт сама;
+* сверх вместимости: области, где игрок ещё не выбрал, кого отправить в запас, — очередь
+  `TrimQueue` (`core/FSTrim.js`); поле `state.trim` пишет только она, правило и панель
+  спрашивают `FS_RULES.trimQueue(state)`.
 
 ## Шаги карт: две ступени и рамка
 

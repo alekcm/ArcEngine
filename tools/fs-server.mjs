@@ -146,7 +146,7 @@ function activeSeat(state) {
     // party the view shows his chair (and the «сверх вместимости» panel with it)
     // until the excess is chosen; the LAN seats keep their usual views.
     for (const p of state.players) {
-        if ((state.trim || []).some(t => t.seat === p.seat)) return p.seat;
+        if (FS_RULES.trimQueue(state).blocked(p.seat)) return p.seat;
     }
     if (state.pending) {
         return state.pending.answerSeat === undefined ? state.pending.seat : state.pending.answerSeat;

@@ -28,7 +28,7 @@ class OperationsRules {
 
     /** A player whose area is over capacity may do nothing but trim it. */
     trimBlocked(state, seat) {
-        return (state.trim || []).some(t => t.seat === seat);
+        return this.engine.trimQueue(state).blocked(seat);
     }
 
     dispatch(state, seat, cmd) {
