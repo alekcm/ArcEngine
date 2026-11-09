@@ -91,7 +91,7 @@ class ChooseSteps {
         const { R, state, step, answer, units } = f;
         const back = units(answer.units);
         for (const u of back) {
-            u.routed = false;
+            R.restoreUnit(state, u);
             R.log(state, u.seat, state.players[u.seat].name + ': отряд восстановлен.');
         }
         step.done = back.length > 0;
@@ -135,7 +135,7 @@ class ChooseSteps {
         const id = (answer.units || [])[0];
         const unit = state.units.find(u => u.id === id);
         if (unit) {
-            unit.routed = true;
+            R.routeUnit(state, unit);
             R.log(state, unit.seat, state.players[unit.seat].name + ': отряд деморализован ударом с орбиты.');
         }
         step.done = true;

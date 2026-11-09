@@ -77,10 +77,9 @@ class MoveSteps {
         const { R, state, seat, step, answer, combat, inCombat, units } = f;
         const routed = units(answer.units);
         for (const u of routed) {
-            u.routed = true;
             // The round the unit was routed in: the cards that last
             // «в этом раунде боя» count only these («Фаланга судного дня»).
-            if (inCombat && combat) u.routedRound = combat.round;
+            R.routeUnit(state, u, inCombat && combat ? combat.round : null);
             R.log(state, u.seat, state.players[u.seat].name + ': отряд деморализован.');
         }
         step.done = routed.length > 0;
@@ -126,7 +125,7 @@ class MoveSteps {
             R.board(state).moveUnit(u, answer.area, { seat: u.seat });
             if (typeof R.trimArea === 'function') R.trimArea(state, u.seat, u.system, u.area);
         }
-        u.routed = true;
+        R.routeUnit(state, u);
         if (step.record && combat) combat.lastRetreat = u.id;
         if (typeof R.markRetreat === 'function') R.markRetreat(state, u.seat);
         R.log(state, u.seat, state.players[u.seat].name + ': отряд отступает.');

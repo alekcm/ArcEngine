@@ -404,6 +404,32 @@ try {
     fail(e.message);
 }
 
+// --- a unit is routed: one place ---------------------------------------------
+section('деморализация: одно место');
+try {
+    const owners = new Set(['js/fs/rules/CombatRules.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // «If a unit suffers damage and is not destroyed, that unit is routed.»
+        // The mark and the round it happened in are one fact: a rule or a card
+        // asks routeUnit / restoreUnit, never writes the field by hand.
+        // `step.routed` is not a unit: it is the filter a card puts on its
+        // «уничтожьте деморализованный отряд» step.
+        const re = /\b(?!(?:step|one)\b)[A-Za-z_$][\w$]*\.routed\s*=(?!=)/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('деморализует и восстанавливает только бой');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- materiel: one account --------------------------------------------------
 section('материя: одно место учёта');
 try {

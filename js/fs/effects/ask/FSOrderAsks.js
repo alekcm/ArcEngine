@@ -277,8 +277,7 @@ class OrderAsks {
         const id = combat.lastRetreat;
         const u = state.units.find(x => x.id === id && x.seat === seat);
         if (u) {
-            u.routed = false;
-            u.routedRound = 0;
+            R.restoreUnit(state, u);
             R.log(state, seat, p.name + ': отступивший отряд восстановлен.');
             step.done = true;
         }

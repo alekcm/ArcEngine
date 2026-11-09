@@ -212,8 +212,7 @@ class PlaceSteps {
             if (!rec) continue;
             const alive = state.units.find(u => u.id === id);
             if (alive) {
-                alive.routed = false;
-                alive.routedRound = 0;
+                R.restoreUnit(state, alive);
             } else if (rec.destroyed) {
                 R.addUnit(state, seat, rec.def, combat.system, combat.pos);
             }
@@ -229,8 +228,7 @@ class PlaceSteps {
         const sysId = answer.system;
         if (!sysId) return null;
         for (const u of state.units.filter(x => x.seat === seat && x.routed && x.system === sysId)) {
-            u.routed = false;
-            u.routedRound = 0;
+            R.restoreUnit(state, u);
         }
         R.log(state, seat, p.name + ': все деморализованные отряды системы восстановлены.');
         step.done = true;
@@ -264,7 +262,7 @@ class PlaceSteps {
             p.supply.units[def.id]--;
             if (u.unit) p.supply.units[u.unit] = (p.supply.units[u.unit] || 0) + 1;
             u.unit = def.id;
-            u.routed = false;
+            R.restoreUnit(state, u);
             R.log(state, seat, state.players[seat].name + ' заменяет отряд на «' + def.name + '».');
         }
         return null;

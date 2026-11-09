@@ -348,6 +348,29 @@ class CombatRules {
         return { used, routed, destroyed, alive: Math.max(0, used - routed - destroyed) };
     }
 
+    /**
+     * «If a unit suffers damage and is not destroyed, that unit is routed.»
+     * One place marks a unit as routed — and remembers the round of the combat
+     * it fell in, which the cards that last «в этом раунде» read.
+     * @param {any} state @param {any} unit @param {number} [round] of the combat
+     */
+    routeUnit(state, unit, round) {
+        if (!unit) return false;
+        unit.routed = true;
+        const r = round !== undefined && round !== null
+            ? round : (state.combat ? state.combat.round : 0);
+        unit.routedRound = r || 0;
+        return true;
+    }
+
+    /** «…восстановить отряд»: a unit stands up again — outside any round. */
+    restoreUnit(state, unit) {
+        if (!unit) return false;
+        unit.routed = false;
+        unit.routedRound = 0;
+        return true;
+    }
+
     canTakeDamage(state, c, side) {
         const items = this.pieces(state, c, side);
         if (c.ownRoutedDamage && c.ownRoutedDamage[side] === c.round) return items;
@@ -947,8 +970,7 @@ class CombatRules {
                     });
                     if (!keep) {
                         this.noteFallen(state, unit, false);
-                        unit.routed = true;
-                        unit.routedRound = c.round;
+                        this.routeUnit(state, unit, c.round);
                         this.noteResurrect(state, unit, false);
                     }
                     left = 0;
@@ -1046,8 +1068,7 @@ class CombatRules {
         c.resurrectPlan = [];
         const alive = state.units.find(u => u.id === pending.id);
         if (alive) {
-            alive.routed = false;
-            alive.routedRound = 0;
+            this.restoreUnit(state, alive);
         } else if (pending.destroyed) {
             const p = state.players[pending.seat];
             if ((p.supply.units[pending.def] || 0) > 0) p.supply.units[pending.def] -= 1;
@@ -1321,7 +1342,7 @@ class CombatRules {
         const t = targets[0];
         // One movement of a piece: the trace and the area are written once.
         this.engine.board(state).moveUnit(unit, t, { seat: unit.seat });
-        unit.routed = true;
+        this.routeUnit(state, unit);
         this.markRetreat(state, unit.seat);
         this.engine.trimArea(state, unit.seat, t.system, t.pos);
         this.engine.log(state, unit.seat, state.players[unit.seat].name
@@ -1540,7 +1561,7 @@ class CombatRules {
         }
         for (const u of units) {
             if (target) this.engine.board(state).moveUnit(u, target, { seat });
-            u.routed = true;
+            this.routeUnit(state, u);
             this.markRetreat(state, seat);
         }
         // No area to retreat to: the unit is destroyed (the rules, "Retreats").

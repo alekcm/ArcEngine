@@ -97,7 +97,9 @@ class RefreshRules {
             }
         }
         // 3. rally the routed units
-        for (const u of state.units) u.routed = false;
+        // The rally of the round: every unit stands up again — through the
+        // same restore the cards use, so the round it fell in is cleared too.
+        for (const u of state.units) this.engine.restoreUnit(state, u);
         // 4. the event cards and the warp storms
         state.turn = state.firstPlayer;
         state.eventsLeft = state.players.length;

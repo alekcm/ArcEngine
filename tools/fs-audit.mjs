@@ -979,8 +979,32 @@ rule('refresh-2', '«All players simultaneously rally each of his routed units»
     const st = empty();
     const u = guard(st, 0, st.systems[0].id, worldOf(st, st.systems[0].id));
     u.routed = true;
+    u.routedRound = 2;
     FS_RULES.startRefresh(st);
     eq(u.routed, false, 'отряд снова в строю');
+    // The rally is the restore the cards use: the round the unit fell in goes
+    // with the mark, so the cards that last «в этом раунде боя» do not count a
+    // standing unit («Фаланга судного дня»).
+    eq(u.routedRound, 0, 'круг деморализации забыт');
+});
+
+rule('combat-11b', '«If a unit suffers damage and is not destroyed, that unit is routed.» — the mark and the round of the combat are one fact', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const u = guard(st, 0, sys.id, worldOf(st, sys.id));
+    // A card «в этом раунде боя» reads the round the unit was routed in: the
+    // mark and the round are written by one call, or a forgotten line changes
+    // what the card counts.
+    st.combat = { round: 3 };
+    FS_RULES.routeUnit(st, u);
+    eq(u.routed, true, 'отряд деморализован');
+    eq(u.routedRound, 3, 'круг, в котором отряд деморализован, записан');
+    FS_RULES.restoreUnit(st, u);
+    eq(u.routed, false, 'отряд снова в строю');
+    eq(u.routedRound, 0, 'круг вместе с пометкой снят');
+    st.combat = null;
+    FS_RULES.routeUnit(st, u);
+    eq(u.routedRound, 0, 'вне боя круг нулевой');
 });
 
 rule('refresh-3', '«Each Warp Storm can move only once during each Refresh Phase.»', () => {
@@ -2713,6 +2737,23 @@ rule('card-d1', '«A player can choose not to resolve one of his abilities» (Co
     if (!yes.pending || yes.pending.question.kind !== 'ability') return 'движок не спросил о способности';
     FS_RULES.apply(yes, 0, { type: 'effect', answer: { yes: true } });
     eq(yes.combat.dice.attacker.length, before + 1, 'согласие: кубик получен');
+});
+
+rule('card-d3', '«ваш противник должен выбрать и деморализовать 1 свой отряд» (04-combat-cards.md, «Ратлинг стрелок») — пометка карты знает круг боя', () => {
+    const st = cardBattle('Ратлинг стрелок');
+    const target = st.units.find(u => u.seat === 1);
+    const round = st.combat.round;
+    // The foe answers through the questions of the card: the ability, its
+    // avoidance, and the unit it routes.
+    for (let i = 0; i < 8 && st.pending; i++) {
+        const q = st.pending.question || {};
+        if (q.kind === 'ability') FS_RULES.apply(st, st.pending.answerSeat, { type: 'effect', answer: { yes: true } });
+        else if (q.kind === 'yesno') FS_RULES.apply(st, st.pending.answerSeat, { type: 'effect', answer: { yes: false } });
+        else if (q.kind === 'units') FS_RULES.apply(st, st.pending.answerSeat, { type: 'effect', answer: { units: [target.id] } });
+        else break;
+    }
+    eq(target.routed, true, 'выбранный противником отряд деморализован');
+    eq(target.routedRound, round, 'круг, в котором отряд деморализован, записан');
 });
 
 rule('card-d2', '«unless that ability uses the word must» — обязательную способность пропустить нельзя', () => {
