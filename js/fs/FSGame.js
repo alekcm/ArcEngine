@@ -1927,7 +1927,17 @@ class FSGame {
             case 'damage-attacker':
             case 'damage-defender': {
                 const whose = c.step === 'damage-attacker' ? 'attacker' : 'defender';
-                if (whose !== side) { ctx.text = 'Урон распределяет ' + nameOf(whose) + '.'; return; }
+                // «Во время шага нанесения повреждений Вы назначаете урон
+                // отрядам и бастионам противника» («Величие роя»): the step is
+                // played by the owner of the card, not by the one who suffers.
+                const assignSeat = c.assignDamage ? c.assignDamage.seat
+                    : (whose === 'attacker' ? c.attacker : c.defender);
+                if (assignSeat !== me) {
+                    const who2 = assignSeat === c.attacker ? 'attacker' : 'defender';
+                    ctx.text = 'Урон распределяет ' + nameOf(who2) + '.';
+                    return;
+                }
+                void whose; void side;
                 const damage = FS_RULES.combatDamageFor(s, side);
                 // The fighters on the board take the damage; the mouse picks them.
                 this.mode = 'damage';

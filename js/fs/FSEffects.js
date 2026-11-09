@@ -694,6 +694,33 @@ const FS_EFFECTS = {
         if (/который\s+(?:он|она|они|владелец)\s+не\s+может\s+потрат[а-яёa-z]*/i.test(s)) {
             return [{ op: 'note', text: s, manual: 'foe-fork' }];
         }
+        // «за каждого недеморализованного Воина или Корабля-Улья потратьте
+        // 1 кубик, чтобы получить 1 `att. cube`, 1 `morale cube` либо 1 `def.
+        // cube`» («Выводок воинов», другая редакция): the payment and the gain
+        // are counted by the units, and the либо below would tear the
+        // enumeration of the three cubes apart — so the sentence is read here.
+        const mPerSpend = /^за кажд[а-яёa-z]*\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+([^.;]{2,70}?)\s+потрат[а-яёa-z]*\s+(?:(\d+)|один|1)\s+куб[а-яёa-z]*,?\s*чтобы\s+получ[а-яёa-z]*\s+([\s\S]+)$/i.exec(s);
+        if (mPerSpend) {
+            const gains = [];
+            const reGain = /(\d+|один|одно)?\s*`([^`]+cube)`/g;
+            let g;
+            while ((g = reGain.exec(mPerSpend[3]))) gains.push({ n: num(g[1]), kind: this.icon(g[2]) });
+            if (gains.length >= 2) {
+                const faction = this.factionOf(ctx);
+                const names = this.unitNames(mPerSpend[1], faction);
+                const filter = names.length ? { types: names } : (unitFilter(mPerSpend[1]) || typeFilter(mPerSpend[1]));
+                return [
+                    {
+                        op: 'spendDie', n: num(mPerSpend[2]), kind: 'any', per: 'unit',
+                        filter: filter, inBattle: true, pick: true, who: 'me',
+                    },
+                    {
+                        op: 'choice', per: 'unit', filter: filter, inBattle: true, text: mPerSpend[3].trim(),
+                        options: gains.map(x => ({ op: 'gainDie', n: x.n, kind: x.kind, who: 'me' })),
+                    },
+                ];
+            }
+        }
         // «Ваш противник выполняет 3 раза: либо деморализует отряд, либо теряет
         // 1 `any cube` на свой выбор» («Подавляющее присутствие»): the opponent
         // makes the same choice N times and the engine asks him every time. The
@@ -1562,7 +1589,14 @@ const FS_EFFECTS = {
                 const kinds = Array.isArray(step.kinds) && step.kinds.length ? step.kinds : [step.kind];
                 const match = d => d !== null && d !== undefined && (kinds.includes('any') || kinds.includes(d));
                 const options = combat.dice[s2].map((d, i) => i).filter(i => match(combat.dice[s2][i]));
+                // «за каждого недеморализованного Воина или Корабля-Улья
+                // потратьте 1 кубик» («Выводок воинов», другая редакция): one
+                // cube for every unit the card counts.
+                const want0 = step.per ? this.count(R, state, seat, step, ctx) : step.n;
                 if (!options.length) {
+                    // «Потратьте любое количество `morale cube`» («Величие роя»):
+                    // zero is a legal answer, so the card goes on.
+                    if (step.any) return null;
                     // «Потратьте … чтобы …» — a payment that cannot be made
                     // buys nothing: the rest of the ability does not happen.
                     R.log(state, seat, state.players[seat].name + ' нечем оплатить: «'
@@ -1580,7 +1614,7 @@ const FS_EFFECTS = {
                 return {
                     question: {
                         kind: 'dice', who: this.diceAsker(combat, side, step), diceSide: s2,
-                        op: 'spendDie', n: Math.min(step.n, options.length), options,
+                        op: 'spendDie', n: Math.max(1, Math.min(want0, options.length)), options,
                         kind2: step.kind, kinds,
                         // «Потратьте любое количество `morale cube`»: the count
                         // is free, so fewer dice than offered may be chosen.
@@ -2546,6 +2580,12 @@ const FS_EFFECTS = {
             }
             case 'trigger': {
                 // The scheme waits: it is used when its moment comes.
+                return null;
+            }
+            case 'assignDamage': {
+                if (!inCombat) return null;
+                combat.assignDamage = { seat: seat, side: side };
+                R.log(state, seat, p.name + ' сам назначает урон отрядам и бастионам противника.');
                 return null;
             }
             case 'foeAllow': {
@@ -3526,7 +3566,7 @@ const FS_EFFECTS = {
                 // — the count belongs to the branch that was chosen.
                 if (step.per) {
                     const total = this.count(R, state, seat,
-                        { n: 1, per: step.per, perKind: step.perKind, max: step.max, filter: step.filter }, ctx);
+                        { n: 1, per: step.per, perKind: step.perKind, max: step.max, filter: step.filter, inBattle: step.inBattle }, ctx);
                     // «Если у вас больше недеморализованных отрядов…» — a count
                     // of zero pays nothing at all.
                     if (total <= 0) return null;
@@ -4277,21 +4317,6 @@ function combatArea(state, systemId, pos) {
 // The rules of the sentences. The first that matches wins.
 /** @type {{re: RegExp, build: (m: RegExpExecArray, ctx: any, s: string) => any, noWhen?: boolean}[]} */
 const RULES = [
-    // «получите 1 `att. token` за каждый недеморализованный отряд Гаунтов и
-    // Пожирателей» («Выводок термаганов»): the count is the player's own units
-    // of the kinds the card names, in the contested area.
-    {
-        re: /получ[а-яёa-z]*\s+(\d+|один|одно)?\s*`([^`]+token)`\s+за кажд[а-яёa-z]*\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+(?:отряд[а-яёa-z]*\s+)?([^.;]{2,70})/i,
-        build: (m, ctx) => {
-            const faction = FS_EFFECTS.factionOf(ctx);
-            const names = FS_EFFECTS.unitNames(m[3], faction);
-            const filter = names.length ? { types: names } : (unitFilter(m[3]) || typeFilter(m[3]));
-            return {
-                op: 'gainToken', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]),
-                per: 'unit', filter: filter, inBattle: true, who: 'me',
-            };
-        },
-    },
     // «отнимите от их числа число недеморализованных отрядов противника и
     // получите 1 `att. token` или 1 `def. token` за каждую оставшуюся единицу»
     // («Синаптический контроль»): only the units above the opponent's count pay.
@@ -4304,6 +4329,13 @@ const RULES = [
                 { op: 'gainToken', n: num(m[3]), kind: FS_EFFECTS.icon(m[4]), who: 'me' },
             ],
         }),
+    },
+    // «Во время шага нанесения повреждений Вы назначаете урон отрядам и
+    // бастионам противника» («Величие роя»): the damage the opponent suffers is
+    // placed by the owner of the card, not by him.
+    {
+        re: /во время шага нанесения (?:повреждений|урона)[^.]*?(?:вы|владелец)[^.]*?назначает[а-яёa-z]*\s+урон[^.]*?противник[а-яёa-z]*/i,
+        build: () => ({ op: 'assignDamage', who: 'me' }),
     },
     // «если противник позволяет, то получите 2 `def. token`» («Крылатый ужас»):
     // the opponent is asked first and his answer picks the branch. The branch of
@@ -4664,7 +4696,11 @@ const RULES = [
     },
     // "get 1 `att. token` for every unrouted Guardsman or Cruiser, maximum 3"
     {
-        re: /(?:получ[а-яёa-z]*|взять|возьм[а-яёa-z]*|достаньте)\s+(\d+)?\s*`([^`]+)`[^.`]{0,90}?за кажд[а-яёa-z]+\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+([^,.]{2,70}?)(?:,\s*максимум\s+(\d+))?\s*[.!]?\s*$/i,
+        // The tail may end in a comma — the branch of a «либо» keeps it
+        // («получите 1 `att. token` за каждый недеморализованный отряд Гаунтов
+        // и Пожирателей,» — «Выводок термаганов»), and the cap is written either
+        // as «максимум 3» or as «но не более 3» («Снисхождение ангела»).
+        re: /(?:получ[а-яёa-z]*|взять|возьм[а-яёa-z]*|достаньте)\s+(\d+)?\s*`([^`]+)`[^.`]{0,90}?за кажд[а-яёa-z]+\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+(?:отряд[а-яёa-z]*\s+)?([^,.]{2,70}?)(?:,?\s*(?:максимум|но не более)\s+(\d+))?,?\s*[.!]?\s*$/i,
         build: m => {
             const kind = FS_EFFECTS.iconKind(m[2]);
             if (kind !== 'token' && kind !== 'cube') return null;
@@ -4672,6 +4708,8 @@ const RULES = [
             return {
                 op: kind === 'token' ? 'gainToken' : 'gainDie',
                 n: num(m[1]), kind: FS_EFFECTS.icon(m[2]), per: 'unit',
+                // A combat card counts the units of the contested area.
+                inBattle: true,
                 filter, max: m[4] ? Number(m[4]) : null, text: m[0],
             };
         },
@@ -5830,6 +5868,9 @@ function unitFilter(text) {
     // the words name the owner and the piece, not a unit of the faction list —
     // such a filter would match nothing at all, so there is no filter.
     const generic = /^(?:ваш[а-яё]*|сво[а-яё]*|любы[а-яё]*|эт[а-яё]*|один|одного|одну|одной|1)\s+(?:отряд[а-яё]*|юнит[а-яё]*|модел[а-яё]*|боев[а-яё]*|недеморализованн[а-яё]*)$/i;
-    const real = names.filter(s => !generic.test(s.trim()));
+    // «за каждый ваш недеморализованный отряд» («Снисхождение ангела») counts
+    // every unit: the word alone is not a name either.
+    const piece = /^(?:отряд|юнит|модел)[а-яё]*$/i;
+    const real = names.filter(s => !generic.test(s.trim()) && !piece.test(s.trim()));
     return real.length ? { types: real } : null;
 }

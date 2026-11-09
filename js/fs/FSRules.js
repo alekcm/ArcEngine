@@ -3323,7 +3323,22 @@ const FS_RULES = {
         switch (cmd.action) {
             case 'reinforce': return this.combatReinforce(state, seat, side, cmd);
             case 'playCard': return this.combatPlayCard(state, seat, side, cmd);
-            case 'damage': return this.combatDamage(state, seat, side, cmd);
+            case 'damage': {
+                // «Во время шага нанесения повреждений Вы назначаете урон
+                // отрядам и бастионам противника» («Величие роя»): the damage of
+                // the other side is placed by the owner of the card.
+                const a = c.assignDamage;
+                const foeSide = side === 'attacker' ? 'defender' : 'attacker';
+                const foeStep = foeSide === 'attacker' ? 'damage-attacker' : 'damage-defender';
+                const myStep = side === 'attacker' ? 'damage-attacker' : 'damage-defender';
+                if (a && c.step === foeStep && a.seat === seat) {
+                    return this.combatDamage(state, seat, foeSide, cmd);
+                }
+                if (a && c.step === myStep && a.seat !== seat) {
+                    return { ok: false, error: 'Урон назначает владелец карты.' };
+                }
+                return this.combatDamage(state, seat, side, cmd);
+            }
             case 'token': return this.combatToken(state, seat, side, cmd);
             case 'die': return this.combatDie(state, seat, side, cmd);
             case 'reroll': return this.combatReroll(state, seat, side, cmd);

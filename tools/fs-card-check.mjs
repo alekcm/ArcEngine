@@ -1657,6 +1657,29 @@ check('Величие роя', 'за каждый потраченный куб 
     return eq(count(st, 'attacker', 'att'), 3, 'исходный куб атаки и два полученных');
 });
 
+check('Величие роя', 'урон отрядам и бастионам противника назначает владелец карты', () => {
+    const st = tyrBattle({
+        card: 'Величие роя', units: { 'био-титаны': 1 }, dice: ['att', 'att', 'att', 'att', 'att'],
+        foeUnits: { 'гвардейцы': 2 }, foeDice: [],
+    });
+    refuseReinforce(st);
+    play(st, 0, 0);
+    // The card of the other side is resolved as well: the step of the damage
+    // begins only when both cards are open.
+    answerAll(st, null, 1);
+    eq(st.combat.step, 'damage-defender', 'бой дошёл до урона противнику');
+    ok(!!st.combat.assignDamage && st.combat.assignDamage.seat === 0, 'карта не дала права назначать урон');
+    // The one who suffers may not place the damage himself any more.
+    const refused = FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: [] });
+    ok(!refused.ok, 'противнику позволено назначать урон самому');
+    const beforeFoe = foeUnits(st).length;
+    const victim = foeUnits(st)[0];
+    const r = FS_RULES.apply(st, 0, { type: 'combat', action: 'damage', targets: [victim.id] });
+    ok(r.ok, 'владелец карты не смог назначить урон: ' + r.error);
+    ok((r.applied || []).some(a => a.destroyed || a.bastion), 'назначенный урон ничего не задел');
+    return eq(foeUnits(st).length < beforeFoe, true, 'отряд противника пал от назначенного урона');
+});
+
 check('Величие роя', 'способность отряда восстанавливает все деморализованные отряды', () => {
     // The requisite of the box is the unrouted Био-титан: only the Гаунты fall.
     const st = tyrBattle({ card: 'Величие роя', units: { 'био-титаны': 1, 'гаунты': 2 }, routed: [1, 2] });
@@ -1851,6 +1874,42 @@ check('Выводок воинов', 'способность отряда пер
     ok(!!asked, 'значения кубиков не спросили');
     return eq([count(st, 'attacker', 'att'), count(st, 'attacker', 'morale'), count(st, 'attacker', 'def')],
         [0, 2, 1], 'кубики атаки перебросились в мораль, оборона не тронута');
+});
+
+// --- Выводок воинов (другая редакция) ---------------------------------------
+// «Потратьте либо 1 `att. cube`, либо 1 `morale cube`, чтобы получить 3
+//  `def. token`.»
+// «*Воин/Корабль Улья:* за каждого недеморализованного Воина или Корабля-Улья
+//  потратьте 1 кубик, чтобы получить 1 `att. cube`, 1 `morale cube` либо
+//  1 `def. cube`.»
+check('Выводок воинов (другая редакция)', 'кубик атаки или морали даёт три жетона обороны', () => {
+    const st = tyrBattle({ card: 'Выводок воинов (другая редакция)', units: { 'воины': 1 }, dice: ['att', 'morale'] });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => (q.kind === 'dice' ? { dice: (q.options || []).slice(0, 1) } : firstOption(s, q)));
+    eq(dice(st, 'attacker').length, 1, 'один кубик потрачен');
+    return eq(tokens(st, 'attacker').def, 3, 'три жетона обороны');
+});
+
+check('Выводок воинов (другая редакция)', 'по кубику за каждого Воина: трата и начисление', () => {
+    const st = tyrBattle({
+        card: 'Выводок воинов (другая редакция)', units: { 'воины': 2 },
+        dice: ['morale', 'morale', 'morale', 'morale'],
+    });
+    refuseReinforce(st);
+    // The first question is the payment of the general ability (one cube), the
+    // second is the payment of the unit ability (one cube per Воин).
+    let asked = 0;
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'dice') { asked++; return { dice: (q.options || []).slice(0, asked === 1 ? 1 : 2) }; }
+        if (q.kind === 'choice') return { choice: 0 };
+        return firstOption(s, q);
+    });
+    eq(asked, 2, 'два вопроса о кубиках: общая способность и способность отряда');
+    eq(tokens(st, 'attacker').def, 3, 'три жетона обороны за кубик общей способности');
+    // Four cubes of morale in: one pays the general ability, two pay for the two
+    // Воина, and two cubes of the chosen value come back.
+    return eq([count(st, 'attacker', 'morale'), count(st, 'attacker', 'att')], [1, 2],
+        'три кубика потрачены, два кубика атаки получены');
 });
 
 // --- Рой потрошителей (способность отряда) ----------------------------------
