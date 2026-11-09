@@ -38,8 +38,8 @@ class DeployRules {
             limit += this.engine.capacity(state, systemId, area.pos) * Math.max(1, factories);
         }
         // The order may lower the limit or add to it.
-        if (order && order.deployLimitBonus) limit += order.deployLimitBonus;
-        if (order && order.extraFactories) limit += order.extraFactories;
+        const limits = DeployLimits.of(order);
+        if (limits) limit += limits.limitBonus + limits.extraFactories;
         return Math.max(0, limit);
     }
 
@@ -50,9 +50,9 @@ class DeployRules {
      * @param {any} state @param {number} seat @param {string} systemId @param {string} pos
      */
     deployWorlds(state, seat, systemId, pos) {
-        const order = this.engine.orderOf(state, seat);
-        const asFactories = !!(order && order.citiesAsFactories);
-        const bastions = !!(order && order.bastionsAsFactories);
+        const limits = DeployLimits.of(this.engine.orderOf(state, seat));
+        const asFactories = !!limits && limits.cities;
+        const bastions = !!limits && limits.bastions;
         return this.engine.structuresAt(state, systemId, pos).filter(s => s.seat === seat
             && (s.type === 'factory' || (asFactories && s.type === 'city') || (bastions && s.type === 'bastion')));
     }
@@ -64,8 +64,8 @@ class DeployRules {
      * @param {any} state @param {number} seat
      */
     deployTreatsAsFactories(state, seat) {
-        const order = this.engine.orderOf(state, seat);
-        return !!(order && (order.citiesAsFactories || order.bastionsAsFactories));
+        const limits = DeployLimits.of(this.engine.orderOf(state, seat));
+        return !!limits && limits.treatsAsFactories;
     }
 
     /**
@@ -275,8 +275,9 @@ class DeployRules {
         // factory of the system keeps its whole list.
         const realFactory = this.engine.structuresAt(state, cmd.system, cmd.pos)
             .some(st => st.seat === seat && st.type === 'factory');
-        if (order.factoryOnly && !realFactory && !FS_EFFECTS.sameName(def.name, order.factoryOnly)) {
-            return { ok: false, error: 'Этим приказом можно производить только ' + order.factoryOnly + '.' };
+        const limits = DeployLimits.of(order);
+        if (limits.factoryOnly && !realFactory && !FS_EFFECTS.sameName(def.name, limits.factoryOnly)) {
+            return { ok: false, error: 'Этим приказом можно производить только ' + limits.factoryOnly + '.' };
         }
         // «развертывание в 1 области» («Департаменто муниторум»).
         if (!scope.allows(cmd.pos)) {
@@ -286,7 +287,7 @@ class DeployRules {
         if (!place.ok) return place;
         // «Они должны быть развернуты в мире, который их произвёл»
         // (the guard ability checks the placement right after the unit is chosen — above)
-        if (order.deployInFactoryWorld) {
+        if (limits.inFactoryWorld) {
             if (scope.factory) {
                 // ground handled above; ships may stand in the void
             } else {

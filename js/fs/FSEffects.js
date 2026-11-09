@@ -893,7 +893,7 @@ const FS_EFFECTS = {
         // «2 Гвардейца могут быть куплены за 1 жетон запасов»
         order.supplyDeal = { n: 2, unit: 'Гвардейца' };
         // «Они должны быть развернуты в мире, который их произвёл»
-        order.deployInFactoryWorld = true;
+        DeployLimits.of(order).setInFactoryWorld();
         // «минимум 2 одного типа» — the first purchase locks the type.
         scope.unlock();
         // The ability is not over: the factory is still producing.

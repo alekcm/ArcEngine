@@ -239,13 +239,12 @@ class Board {
         if (!area) return 0;
         let cap = area.world ? (area.world.capacity || FS_RULES_CONFIG.AREA_CAP) : FS_RULES_CONFIG.AREA_CAP;
         const order = this.state.order;
-        if (order && order.capacityBonus) {
+        const limits = DeployLimits.of(order);
+        if (limits && limits.capacityBonus) {
             const city = this.structuresAt(systemId, pos).some(s => s.type === 'city' && s.seat === order.seat);
-            const only = order.capacityBonusOnly;
-            const fits = !only || !def || FS_CATALOG.sameName(def.name, only);
-            if (city && fits) {
-                cap += order.capacityBonus;
-                if (order.capacityMax) cap = Math.min(cap, order.capacityMax);
+            if (city && limits.capacityFits(def)) {
+                cap += limits.capacityBonus;
+                if (limits.capacityMax) cap = Math.min(cap, limits.capacityMax);
             }
         }
         return Math.min(cap, FS_RULES_CONFIG.AREA_MAX_UNITS);

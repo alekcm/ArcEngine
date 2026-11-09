@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -495,6 +495,33 @@ rule('dep-0c', '«… deploy into one area …» — фабрику, замок 
     eq(scope.areaLimit, 1, 'предел областей — один');
     eq(DeployScope.of(scope.order), scope, 'у приказа один DeployScope');
     eq(DeployScope.of(null), null, 'без приказа пределов нет');
+});
+
+rule('dep-0d', '«… the deploy limit … » — предел, лимиты и вместимость приказа держит один DeployLimits', () => {
+    const limits = DeployLimits.of({ seat: 0, order: 'deploy' });
+    // «предел больше на 2» и «ещё одна фабрика» складываются.
+    limits.addLimitBonus(2);
+    limits.addExtraFactories(1);
+    eq(limits.limitBonus, 2, 'бонус предела накоплен');
+    eq(limits.extraFactories, 1, 'лишняя фабрика накоплена');
+    // «все свои города считаются фабриками … производят только Гвардейцев».
+    eq(limits.treatsAsFactories, false, 'пока фабрик нет');
+    limits.setCitiesAsFactories('Гвардеец');
+    eq(limits.cities, true, 'города считаются фабриками');
+    eq(limits.treatsAsFactories, true, 'разрешение есть');
+    eq(limits.factoryOnly, 'Гвардеец', 'назван единственный отряд');
+    limits.setBastionsAsFactories();
+    eq(limits.bastions, true, 'бастионы тоже');
+    // «вместимость мира с городом больше на 2, но не выше 5, только Гвардейцам».
+    limits.addCapacityBonus(2, 5, 'Гвардеец');
+    eq(limits.capacityBonus, 2, 'бонус вместимости');
+    eq(limits.capacityMax, 5, 'потолок назван');
+    eq(limits.capacityFits({ name: 'Гвардеец' }), true, 'Гвардеец получает бонус');
+    eq(limits.capacityFits({ name: 'Огрин' }), false, 'другой отряд — нет');
+    limits.setInFactoryWorld();
+    eq(limits.inFactoryWorld, true, 'отряды идут в мир фабрики');
+    eq(DeployLimits.of(limits.order), limits, 'у приказа один DeployLimits');
+    eq(DeployLimits.of(null), null, 'без приказа лимитов нет');
 });
 
 rule('dep-1', '«If the active player has a factory in the active system, he may purchase units»', () => {

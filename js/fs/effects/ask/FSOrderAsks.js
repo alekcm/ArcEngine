@@ -19,7 +19,8 @@ class OrderAsks {
 
     static extraFactory(effects, f) {
         const { state, step } = f;
-        if (state.order) state.order.extraFactories = (state.order.extraFactories || 0) + (step.n || 0);
+        const limits = DeployLimits.of(state.order);
+        if (limits) limits.addExtraFactories(step.n || 0);
         return null;
     }
 
@@ -86,16 +87,15 @@ class OrderAsks {
 
     static citiesAsFactories(effects, f) {
         const { state, step } = f;
-        if (state.order) {
-            state.order.citiesAsFactories = true;
-            if (step.only) state.order.factoryOnly = step.only;
-        }
+        const limits = DeployLimits.of(state.order);
+        if (limits) limits.setCitiesAsFactories(step.only);
         return null;
     }
 
     static bastionsAsFactories(effects, f) {
         const { state } = f;
-        if (state.order) state.order.bastionsAsFactories = true;
+        const limits = DeployLimits.of(state.order);
+        if (limits) limits.setBastionsAsFactories();
         return null;
     }
 
@@ -181,13 +181,10 @@ class OrderAsks {
 
     static capacityBonus(effects, f) {
         const { state, step } = f;
-        if (state.order) {
-            state.order.capacityBonus = (state.order.capacityBonus || 0) + (step.n || 0);
-            if (step.max) state.order.capacityMax = step.max;
-            // «Дополнительная вместимость распространяется только на
-            // Гвардейцев» — the bonus counts for them alone.
-            if (step.only) state.order.capacityBonusOnly = step.only;
-        }
+        // «Дополнительная вместимость распространяется только на Гвардейцев» —
+        // the bonus counts for them alone.
+        const limits = DeployLimits.of(state.order);
+        if (limits) limits.addCapacityBonus(step.n || 0, step.max, step.only);
         return null;
     }
 
@@ -222,7 +219,8 @@ class OrderAsks {
 
     static deployInFactoryWorld(effects, f) {
         const { state } = f;
-        if (state.order) state.order.deployInFactoryWorld = true;
+        const limits = DeployLimits.of(state.order);
+        if (limits) limits.setInFactoryWorld();
         return null;
     }
 
@@ -234,7 +232,8 @@ class OrderAsks {
 
     static deployLimit(effects, f) {
         const { state, step } = f;
-        if (state.order) state.order.deployLimitBonus = (state.order.deployLimitBonus || 0) + (step.n || 0);
+        const limits = DeployLimits.of(state.order);
+        if (limits) limits.addLimitBonus(step.n || 0);
         return null;
     }
 
