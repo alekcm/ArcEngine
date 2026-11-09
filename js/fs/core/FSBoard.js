@@ -169,6 +169,41 @@ class Board {
         return out;
     }
 
+    // --- movement -------------------------------------------------------------
+
+    /**
+     * Put a piece into an area. Every way a unit changes its area goes through
+     * here — a march, a retreat, a teleport, a unit a card brings into the
+     * battle — so a list of moves (`state.moves`) and the troops over the
+     * capacity of the new area are never forgotten on one path and remembered
+     * on another.
+     * @param {any} piece a unit (or a structure) of the state
+     * @param {any} dest { system, pos }
+     * @param {any} [opts] { seat, note: false }
+     * @returns {{ from: any, to: any }} where it stood and where it stands
+     */
+    moveUnit(piece, dest, opts) {
+        if (!piece || !dest) return null;
+        const o = opts || {};
+        const from = { system: piece.system, pos: piece.area !== undefined ? piece.area : piece.pos };
+        const to = {
+            system: dest.system !== undefined ? dest.system : from.system,
+            pos: dest.pos !== undefined ? dest.pos : (dest.area !== undefined ? dest.area : from.pos),
+        };
+        if (o.note !== false) {
+            if (!this.state.moves) this.state.moves = [];
+            this.state.moves.push({ seat: o.seat !== undefined ? o.seat : piece.seat, from, to });
+        }
+        piece.system = to.system;
+        piece.area = to.pos;
+        return { from, to };
+    }
+
+    /** Put a piece into an area without remembering the move (setup, undo). */
+    placeUnit(piece, dest) {
+        return this.moveUnit(piece, dest, { note: false });
+    }
+
     // --- capacity -------------------------------------------------------------
 
     /**

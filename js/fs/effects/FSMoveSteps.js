@@ -36,11 +36,7 @@ class MoveSteps {
             if (!areas.length) return null;
             return { question: { kind: 'areas', who: seat, op: 'moveUnits', options: areas, text: 'Куда переместить отряды?' } };
         }
-        for (const u of list) {
-            R.noteMove(state, seat, u, area);
-            u.system = area.system;
-            u.area = area.pos;
-        }
+        for (const u of list) R.board(state).moveUnit(u, area, { seat });
         R.log(state, seat, state.players[seat].name + ' перемещает отряды.');
         return null;
     }
@@ -58,8 +54,7 @@ class MoveSteps {
             if (!areas.length) return null;
             return { question: { kind: 'areas', who: seat, op: 'moveStructure', options: areas, text: 'Куда передвинуть фабрику?' } };
         }
-        s.system = area.system;
-        s.area = area.pos;
+        R.board(state).moveUnit(s, area, { seat });
         R.log(state, seat, state.players[seat].name + ' перемещает фабрику.');
         return null;
     }
@@ -74,9 +69,7 @@ class MoveSteps {
             if (!areas.length) return null;
             return { question: { kind: 'areas', who: seat, op: 'moveUnit', options: areas, text: 'Куда переместить отряд?' } };
         }
-        R.noteMove(state, seat, u, area);
-        u.system = area.system;
-        u.area = area.pos;
+        R.board(state).moveUnit(u, area, { seat });
         return null;
     }
 
@@ -130,9 +123,7 @@ class MoveSteps {
                 step.done = true;
                 return null;
             }
-            R.noteMove(state, u.seat, u, answer.area);
-            u.system = answer.area.system;
-            u.area = answer.area.pos;
+            R.board(state).moveUnit(u, answer.area, { seat: u.seat });
             if (typeof R.trimArea === 'function') R.trimArea(state, u.seat, u.system, u.area);
         }
         u.routed = true;

@@ -355,16 +355,6 @@ class CombatRules {
         return ready.length ? ready : items;
     }
 
-    noteMove(state, seat, unit, dest) {
-        if (!unit) return;
-        if (!state.moves) state.moves = [];
-        state.moves.push({
-            seat,
-            from: { system: unit.system, pos: unit.area },
-            to: { system: dest.system !== undefined ? dest.system : unit.system, pos: dest.pos !== undefined ? dest.pos : unit.area },
-        });
-    }
-
     attackerOrigins(state, systemId, pos, seat) {
         const out = [];
         const push = ref => {
@@ -1329,9 +1319,8 @@ class CombatRules {
         if (!targets.length) return false;
         plan.used = true;
         const t = targets[0];
-        this.noteMove(state, unit.seat, unit, t);
-        unit.system = t.system;
-        unit.area = t.pos;
+        // One movement of a piece: the trace and the area are written once.
+        this.engine.board(state).moveUnit(unit, t, { seat: unit.seat });
         unit.routed = true;
         this.markRetreat(state, unit.seat);
         this.engine.trimArea(state, unit.seat, t.system, t.pos);
@@ -1550,7 +1539,7 @@ class CombatRules {
             return { ok: false, error: 'Выберите, куда отступить.' };
         }
         for (const u of units) {
-            if (target) { u.system = target.system; u.area = target.pos; }
+            if (target) this.engine.board(state).moveUnit(u, target, { seat });
             u.routed = true;
             this.markRetreat(state, seat);
         }

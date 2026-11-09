@@ -196,8 +196,8 @@ class AdvanceRules {
             const from = unit.system;
             const fromArea = unit.area;
             const def = this.engine.unitOf(state, unit);
-            unit.system = m.system;
-            unit.area = m.pos;
+            // A copy of the state: the plan is measured, nothing is recorded.
+            this.engine.board(state).placeUnit(unit, m);
             plan.push({ id: unit.id, from, fromArea, type: def ? def.type : 'ground', system: m.system, pos: m.pos });
         }
         // «перемещение из 1 области» («Департаменто муниторум»).
@@ -256,12 +256,12 @@ class AdvanceRules {
         // done on a copy, before anything is changed in the game.
         const before = new Set(this.contestedAreas(state).map(a => a.system + ':' + a.pos));
         const tempUnits = state.units.map(u => ({ ...u }));
+        // The same movement, on the copy the check is measured against.
+        const tempState = { ...state, units: tempUnits };
         for (const m of plan) {
             const unit = tempUnits.find(u => u.id === m.id);
-            unit.system = m.system;
-            unit.area = m.pos;
+            this.engine.board(tempState).placeUnit(unit, m);
         }
-        const tempState = { ...state, units: tempUnits };
         const fresh = this.contestedAreas(tempState).filter(a => !before.has(a.system + ':' + a.pos));
         if (fresh.length > 1) return { ok: false, error: 'Спорной может стать только одна область.' };
         if (fresh.length === 1) {
@@ -279,10 +279,9 @@ class AdvanceRules {
         }
         for (const m of plan) {
             const unit = state.units.find(u => u.id === m.id);
-            // The trace of the march: a combat judges the retreats by it.
-            this.engine.noteMove(state, seat, unit, m);
-            unit.system = m.system;
-            unit.area = m.pos;
+            // The step of the march: the trace of it (a combat judges the
+            // retreats by it) and the new area are one movement of the board.
+            this.engine.board(state).moveUnit(unit, m, { seat });
         }
         // «Занято — захвачено»: мир, куда вошли наземные отряды и где нет
         // бойцов противника (ни отрядов, ни бастионов), считается захваченным:
@@ -377,8 +376,7 @@ class AdvanceRules {
         for (const m of last.slice().reverse()) {
             const unit = state.units.find(u => u.id === m.id);
             if (!unit) continue;
-            unit.system = m.fromSystem;
-            unit.area = m.fromArea;
+            this.engine.board(state).placeUnit(unit, { system: m.fromSystem, pos: m.fromArea });
             // The structures taken during this march go back to their former
             // owner (a control token ran out: they were destroyed instead).
             for (const cap of m.captured || []) {

@@ -381,6 +381,29 @@ try {
     fail(e.message);
 }
 
+// --- a piece changes its area: one movement ---------------------------------
+section('перенос фигуры: одно движение');
+try {
+    const offenders = [];
+    const owners = new Set(['js/fs/core/FSBoard.js', 'js/fs/FSData.js']);
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // `unit.system = …; unit.area = …` is the movement of a piece. The board
+        // writes it (and the list of moves with it): a rule or a card asks.
+        const names = /\b(u|unit|s|piece|st|w)\.system\s*=\s*(?!=)[^;\n]+;[^\n]*?\b\1\.(?:area|pos)\s*=/g;
+        let m;
+        while ((m = names.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('фигуру переносит только доска');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- materiel: one account --------------------------------------------------
 section('материя: одно место учёта');
 try {

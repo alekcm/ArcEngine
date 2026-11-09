@@ -161,9 +161,7 @@ class DiceSteps {
         const def = R.unitOf(state, u);
         if (!def) return null;
         const n = def.combat || 0;
-        R.noteMove(state, seat, u, { system: combat.system, pos: combat.pos });
-        u.system = combat.system;
-        u.area = combat.pos;
+        R.board(state).moveUnit(u, { system: combat.system, pos: combat.pos }, { seat });
         if (typeof R.trimArea === 'function') R.trimArea(state, seat, u.system, u.area);
         const room = Math.max(0, R.DICE_MAX - combat.dice[side].filter(Boolean).length);
         const got = Math.min(n, room);

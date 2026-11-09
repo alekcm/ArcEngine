@@ -180,9 +180,7 @@ class PlaceSteps {
             }
             return { question: { kind: 'areas', who: seat, op: 'teleport', options: areas, text: 'Куда перенести отряд?' } };
         }
-        R.noteMove(state, seat, u, answer.area);
-        u.system = answer.area.system;
-        u.area = answer.area.pos;
+        R.board(state).moveUnit(u, answer.area, { seat });
         R.log(state, seat, state.players[seat].name + ' переносит отряд: «' + (R.unitOf(state, u) || {}).name + '».');
         step.done = true;
         return null;
