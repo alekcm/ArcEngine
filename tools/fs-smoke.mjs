@@ -220,6 +220,29 @@ try {
     fail(e.message);
 }
 
+// --- one door to the printed data -------------------------------------------
+// FS_DATA is the generated file; every other script reads it through the
+// catalogue or through the card decks. A new lookup written straight on FS_DATA
+// is how a faction colour, a card text or a limit starts to differ between the
+// map, the panel and the rules — so it fails here.
+section('данные только через каталог');
+try {
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js')
+        && !f.startsWith('libs/') && f !== 'js/fs/FSData.js')) {
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        for (const m of text.matchAll(/FS_DATA\.(\w+)/g)) {
+            // The two catalogues are built FROM the data file — that is their job.
+            if (/FSCatalog|FSCards/.test(file)) continue;
+            offenders.push(file + ': FS_DATA.' + m[1]);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('ни один скрипт, кроме каталогов, не читает FS_DATA напрямую');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the subject layer answers the questions the rules ask -------------------
 section('предметный слой');
 try {

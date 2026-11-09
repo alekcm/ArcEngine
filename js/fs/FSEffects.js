@@ -356,9 +356,9 @@ const FS_EFFECTS = {
         if (!s || !ctx || ctx.faction !== 'космодесант-хаоса') return null;
         const id = 'космодесант-хаоса';
         const norm = t => String(t || '').replace(/\s+/g, ' ').trim();
-        const combat = name => FS_DATA.combat.find(c => c.faction === id && c.name === name);
-        const order = name => FS_DATA.orders.find(c => c.faction === id && c.name === name);
-        const event = name => FS_DATA.events.find(c => c.faction === id && c.name === name);
+        const combat = name => FS_CATALOG.card('combat', id, name);
+        const order = name => FS_CATALOG.card('orders', id, name);
+        const event = name => FS_CATALOG.card('events', id, name);
         const cg = name => { const c = combat(name); return c ? norm(c.general) : ''; };
         const cu = name => { const c = combat(name); return c ? norm(c.unit) : ''; };
         const ot = name => { const c = order(name); return c ? norm(c.text) : ''; };
@@ -383,7 +383,7 @@ const FS_EFFECTS = {
         const iconoclast = 'Эсминцы класса «Иконоборец»';
 
         // 02-factions.md: the second step of the Dominate order.
-        const faction = FS_DATA.factions.find(f => f.id === id);
+        const faction = FS_CATALOG.faction(id);
         put(norm(faction && faction.ability ? faction.ability.text : ''), [
             mk('moveUnits', { n: 1, pick: true, ofSystem: 'active', filter: { contains: ['культист'] },
                 dest: 'friendlyOrUncontrolledWorldAdjacent', who: 'me' }, ab),
@@ -3041,7 +3041,7 @@ const FS_EFFECTS = {
                 for (let i = 0; i < (step.n || 1); i++) {
                     const name = R.drawEventCard(state, seat);
                     if (!name) break;
-                    const card = FS_DATA.events.find(e => e.name === name);
+                    const card = FS_CATALOG.cardNamed('events', name);
                     R.log(state, seat, state.players[seat].name + ' активирует карту события «' + name + '».');
                     if (card) steps.push(...this.parse(card.text || '', { kind: 'event', faction: p.faction }));
                 }
@@ -3613,11 +3613,11 @@ const FS_EFFECTS = {
                 } };
             }
             case 'swapCombatPair': {
-                const card = FS_DATA.combat.find(c => c.faction === p.faction && c.name === step.name);
+                const card = FS_CATALOG.card('combat', p.faction, step.name);
                 const kl = card ? (card.kl || 0) : 0;
                 const inDeck = n => (p.decks.combat || []).filter(x => x === n).length;
                 const options = (p.decks.upgradeCombat || []).filter(n => {
-                    const up = FS_DATA.combat.find(c => c.faction === p.faction && c.upgrade && c.name === n);
+                    const up = FS_CATALOG.upgradeCombatCards(p.faction).find(c => c.name === n);
                     return up && (up.kl || 0) <= kl && inDeck(n) < 2;
                 });
                 if (!options.length) return null;
@@ -3689,11 +3689,11 @@ const FS_EFFECTS = {
                 const sysId = state.chaosLastSystem;
                 const cap = this.stormCapFor(R, state, sysId);
                 const owned = new Set((p.upgrades || []).map(u => u.name));
-                const options = FS_DATA.combat.filter(c => c.faction === p.faction && c.upgrade
-                    && (c.kl || 0) <= cap && !(p.decks.combat || []).includes(c.name))
+                const options = FS_CATALOG.upgradeCombatCards(p.faction)
+                    .filter(c => (c.kl || 0) <= cap && !(p.decks.combat || []).includes(c.name))
                     .map(c => 'combat:' + c.name)
-                    .concat(FS_DATA.orders.filter(c => c.faction === p.faction
-                        && (c.kl || 0) <= cap && !owned.has(c.name))
+                    .concat(FS_CATALOG.orderCards(p.faction)
+                        .filter(c => (c.kl || 0) <= cap && !owned.has(c.name))
                         .map(c => 'order:' + c.name));
                 if (!options.length) return null;
                 step.cap = cap;
@@ -3840,7 +3840,7 @@ const FS_EFFECTS = {
                 const deck = p.decks.combat;
                 if (!deck.length) return null;
                 const name = deck.shift();
-                const card = FS_DATA.combat.find(x => x.faction === p.faction && x.name === name) || null;
+                const card = FS_CATALOG.card('combat', p.faction, name);
                 combat.cards[side].played.push({ name, card, side, round: combat.round, valuesOnly: true });
                 R.log(state, seat, p.name + ' достаёт верхнюю карту колоды: «' + name + '» — только её боевые значения.');
                 step.done = true;
@@ -4256,7 +4256,7 @@ const FS_EFFECTS = {
                 // The other cards go back to the deck.
                 for (const other of hand) if (other !== name) p.decks.event.push(other);
                 p.eventHand = [];
-                const card = FS_DATA.events.find(e => e.faction === p.faction && e.name === name);
+                const card = FS_CATALOG.card('events', p.faction, name);
                 if (!card) return null;
                 R.log(state, seat, state.players[seat].name + ' разыграл карту события «' + name + '».');
                 if (card.type === 'scheme') {
@@ -4639,7 +4639,7 @@ const FS_EFFECTS = {
                 if (!card) return null;
                 const off = this.upgradeDiscount(R, state, seat, step);
                 if (step.kind === 'combat') {
-                    const c = FS_DATA.combat.find(x => x.faction === p.faction && x.name === card);
+                    const c = FS_CATALOG.card('combat', p.faction, card);
                     if (!c) return null;
                     // Event cards do not add a command-level gate: the discount
                     // and the printed text are the whole restriction here.
@@ -4666,7 +4666,7 @@ const FS_EFFECTS = {
                         + '» на боевое улучшение «' + c.name + '».');
                     return null;
                 }
-                const c = FS_DATA.orders.find(x => x.faction === p.faction && x.name === card);
+                const c = FS_CATALOG.card('orders', p.faction, card);
                 if (!c) return null;
                 // The discount of the card covers the upgrades of the orders
                 // too: «Купите одну карту улучшения приказа, уменьшив её
@@ -4713,7 +4713,7 @@ const FS_EFFECTS = {
                 const i = hand.indexOf(name);
                 if (i < 0) return null;
                 hand.splice(i, 1);
-                const card = FS_DATA.combat.find(x => x.faction === p.faction && x.name === name);
+                const card = FS_CATALOG.card('combat', p.faction, name);
                 if (step.staged) {
                     combat.staged = combat.staged || { attacker: null, defender: null };
                     combat.staged[side] = { name, card, seat };
@@ -4776,8 +4776,8 @@ const FS_EFFECTS = {
                 const cap = this.stormCapFor(R, state, state.chaosLastSystem);
                 const p2 = state.players[seat];
                 if (kind === 'combat') {
-                    const card = FS_DATA.combat.find(c => c.faction === p2.faction
-                        && c.upgrade && c.name === name && (c.kl || 0) <= cap);
+                    const card = FS_CATALOG.upgradeCombatCards(p2.faction)
+                        .find(c => c.name === name && (c.kl || 0) <= cap);
                     if (!card) return null;
                     const deck = FS_CARDS.combatDeck(R, state, seat);
                     const remove = answer.remove || answer.replace || answer.deckCard;
@@ -4797,8 +4797,8 @@ const FS_EFFECTS = {
                     step.done = true;
                     return null;
                 }
-                const card = FS_DATA.orders.find(c => c.faction === p2.faction
-                    && c.name === name && (c.kl || 0) <= cap);
+                const card = FS_CATALOG.card('orders', p2.faction, name);
+                if (card && (card.kl || 0) > cap) return null;
                 if (!card || (p2.upgrades || []).some(u => u.name === name)) return null;
                 p2.upgrades.push({ name, used: false, order: card.order });
                 const pile = p2.decks.upgradeOrder;
@@ -4820,7 +4820,7 @@ const FS_EFFECTS = {
                 state.chaosNoStormMove = true;
                 for (const other of hand) if (other !== name) p.decks.event.push(other);
                 p.eventHand = [];
-                const card = FS_DATA.events.find(e => e.faction === p.faction && e.name === name);
+                const card = FS_CATALOG.card('events', p.faction, name);
                 if (!card) return null;
                 if (state.event) state.event.card = card;
                 const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p.faction });
@@ -4891,7 +4891,7 @@ const FS_EFFECTS = {
                 for (let i = 0; i < (step.n || 1); i++) {
                     const name = R.drawEventCard(state, seat);
                     if (!name) break;
-                    const card = FS_DATA.events.find(e => e.name === name);
+                    const card = FS_CATALOG.cardNamed('events', name);
                     R.log(state, seat, state.players[seat].name + ' активирует карту события «' + name + '».');
                     if (card) steps.push(...FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p.faction }));
                 }
@@ -5327,9 +5327,9 @@ const FS_EFFECTS = {
             }
             case 'swapCombatPair': {
                 const name = answer.card;
-                const card = FS_DATA.combat.find(c => c.faction === p.faction && c.name === step.name);
+                const card = FS_CATALOG.card('combat', p.faction, step.name);
                 const pile = p.decks.upgradeCombat || [];
-                const up = FS_DATA.combat.find(c => c.faction === p.faction && c.upgrade && c.name === name);
+                const up = FS_CATALOG.upgradeCombatCards(p.faction).find(c => c.name === name);
                 if (!up || !card || (up.kl || 0) > (card.kl || 0) || !pile.includes(name)) return null;
                 let removed = 0;
                 p.decks.combat = (p.decks.combat || []).filter(n => {

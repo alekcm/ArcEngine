@@ -144,6 +144,15 @@ class FactionCatalog {
         return this.cards(kind).find(c => c.faction === factionId && c.name === name) || null;
     }
 
+    /**
+     * A card by its printed name, without a faction: the event decks are shared,
+     * so an event is looked up by the name alone. The first card of the kind with
+     * that name wins — the data has one of each.
+     */
+    cardNamed(kind, name) {
+        return this.cards(kind).find(c => c.name === name) || null;
+    }
+
     /** @param {string} factionId */
     baseCombatCards(factionId) {
         return this.cards('combat').filter(c => c.faction === factionId && !c.upgrade);
