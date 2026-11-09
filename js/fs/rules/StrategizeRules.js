@@ -8,10 +8,8 @@ class StrategizeRules {
     }
 
     cmdBuyUpgrade(state, seat, cmd) {
-        const order = state.order;
-        if (!order || order.order !== 'strategize' || order.seat !== seat) {
-            return { ok: false, error: 'Сейчас нельзя покупать улучшения.' };
-        }
+        const order = this.engine.orderOf(state, seat, 'strategize');
+        if (!order) return { ok: false, error: 'Сейчас нельзя покупать улучшения.' };
         const p = state.players[seat];
         if (!this.engine.hasUnitsOrStructures(state, seat, order.system)) {
             return { ok: false, error: 'В активной системе нет ваших отрядов и построек.' };
@@ -76,10 +74,8 @@ class StrategizeRules {
     }
 
     cmdRefundUpgrade(state, seat, cmd) {
-        const order = state.order;
-        if (!order || order.order !== 'strategize' || order.seat !== seat) {
-            return { ok: false, error: 'Отменить можно только улучшения приказа стратегии.' };
-        }
+        const order = this.engine.orderOf(state, seat, 'strategize');
+        if (!order) return { ok: false, error: 'Отменить можно только улучшения приказа стратегии.' };
         const p = state.players[seat];
         if (cmd.kind === 'combat') {
             const buy = order.combatBuy;
@@ -120,8 +116,8 @@ class StrategizeRules {
     }
 
     cmdFinishStrategize(state, seat) {
-        const order = state.order;
-        if (!order || order.order !== 'strategize' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        const order = this.engine.orderOf(state, seat, 'strategize');
+        if (!order) return { ok: false, error: 'Нечего заканчивать.' };
         // «Затем разыграйте ограниченное Развертывание …, Продвижение … или
         // Доминирование … в активной системе» («Департаменто муниторум»): the
         // order turns into the second, limited one instead of ending.

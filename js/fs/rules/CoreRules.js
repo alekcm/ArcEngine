@@ -50,6 +50,19 @@ class CoreRules {
         return PlayerEntity.of(state, seat);
     }
 
+    /**
+     * The order that is being resolved, if it is the order of `seat` and of the
+     * named kind. Null otherwise. Every command of an order starts with the same
+     * three questions («есть ли приказ, того ли он вида, вашего ли он игрока»);
+     * they are asked here, once.
+     */
+    orderOf(state, seat, kind) {
+        const order = state.order;
+        if (!order || order.seat !== seat) return null;
+        if (kind && order.order !== kind) return null;
+        return order;
+    }
+
     faction(state, seat) {
         const p = state.players[seat];
         return FS_CATALOG.factionOfPlayer(p);

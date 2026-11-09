@@ -237,10 +237,8 @@ class DeployRules {
     }
 
     cmdBuyStructure(state, seat, cmd) {
-        const order = state.order;
-        if (!order || order.order !== 'deploy' || order.seat !== seat) {
-            return { ok: false, error: 'Сейчас нельзя покупать постройки.' };
-        }
+        const order = this.engine.orderOf(state, seat, 'deploy');
+        if (!order) return { ok: false, error: 'Сейчас нельзя покупать постройки.' };
         // The structure is bought after the units — the card of the Orks
         // ("Строй быстрее!") allows the other way round.
         if (this.deployStep(order) !== 'structures' && !order.structureFirst) {
@@ -309,8 +307,8 @@ class DeployRules {
     }
 
     cmdDeployStructures(state, seat) {
-        const order = state.order;
-        if (!order || order.order !== 'deploy' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        const order = this.engine.orderOf(state, seat, 'deploy');
+        if (!order) return { ok: false, error: 'Нечего заканчивать.' };
         if (this.deployStep(order) === 'structures') return { ok: true };
         order.phase = 'structures';
         return { ok: true };
@@ -337,8 +335,8 @@ class DeployRules {
     }
 
     cmdFinishDeploy(state, seat) {
-        const order = state.order;
-        if (!order || order.order !== 'deploy' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        const order = this.engine.orderOf(state, seat, 'deploy');
+        if (!order) return { ok: false, error: 'Нечего заканчивать.' };
         return this.payAndFinish(state, seat, order);
     }
 

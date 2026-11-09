@@ -34,10 +34,8 @@ class DominateRules {
     }
 
     cmdTakeProsperity(state, seat, cmd) {
-        const order = state.order;
-        if (!order || order.order !== 'dominate' || order.seat !== seat) {
-            return { ok: false, error: 'Сейчас не приказ доминирования.' };
-        }
+        const order = this.engine.orderOf(state, seat, 'dominate');
+        if (!order) return { ok: false, error: 'Сейчас не приказ доминирования.' };
         if (!order.prosperity) return { ok: false, error: 'Нет жетонов процветания.' };
         const asset = cmd.asset;
         if (!['forge', 'cache', 'reinforcement'].includes(asset)) return { ok: false, error: 'Неизвестный ресурс.' };
@@ -66,8 +64,8 @@ class DominateRules {
     }
 
     cmdFinishDominate(state, seat, cmd = {}) {
-        const order = state.order;
-        if (!order || order.order !== 'dominate' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        const order = this.engine.orderOf(state, seat, 'dominate');
+        if (!order) return { ok: false, error: 'Нечего заканчивать.' };
         // The ability of the faction: the text is the rule.
         const faction = this.engine.faction(state, seat);
         const text = faction && faction.ability ? faction.ability.text : '';

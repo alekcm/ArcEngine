@@ -341,8 +341,8 @@ class AdvanceRules {
     }
 
     cmdUndoMove(state, seat) {
-        const order = state.order;
-        if (!order || order.order !== 'advance' || order.seat !== seat) return { ok: false, error: 'Нечего отменять.' };
+        const order = this.engine.orderOf(state, seat, 'advance');
+        if (!order) return { ok: false, error: 'Нечего отменять.' };
         // The last march may be taken back while the movement runs — and also
         // right after the combat has started: nothing has happened in the battle
         // yet (no reinforcements, no cards, no dice).
@@ -701,8 +701,8 @@ class AdvanceRules {
     }
 
     cmdFinishAdvance(state, seat) {
-        const order = state.order;
-        if (!order || order.order !== 'advance' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        const order = this.engine.orderOf(state, seat, 'advance');
+        if (!order) return { ok: false, error: 'Нечего заканчивать.' };
         if (order.preAdvance) {
             this.finishPreAdvance(state, seat);
             return { ok: true };
