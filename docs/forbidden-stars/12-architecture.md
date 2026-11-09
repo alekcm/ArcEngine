@@ -94,6 +94,7 @@
 | Где приказ может развернуть отряды | `core/FSDeployScope.js` (`DeployScope.of(order)`) | не читать `order.guardFactory`/`unitsLocked` в правиле или панели — это ловит `fs-smoke` |
 | Предел развёртывания и вместимость мира под картой | `core/FSDeployLimits.js` (`DeployLimits.of(order)`) | не читать `order.capacityBonus`/`deployLimitBonus` в правиле или панели — это ловит `fs-smoke` |
 | Что приказ уже купил | `core/FSPurchases.js` (`Purchases.of(order)`) | не читать и не дописывать `order.purchases` в правиле или панели — это ловит `fs-smoke` |
+| Что карта приказа разрешает пройти | `core/FSOrderMove.js` (`OrderMove.of(order)`) | не читать `order.passVoid`/`ways`/`preAdvance` в правиле или на доске — это ловит `fs-smoke` |
 | Что приказ даёт своему бою | `core/FSOrderFight.js` (`OrderFight.of(order)`) | не читать `order.klBonus`/`prepReroll`/`tempMateriel` в правиле или карте — это ловит `fs-smoke` |
 | Текст карты → шаги игры | `FSEffects.js` (таблица `RULES`) | текст карты — это правило карты, отдельного кода «на карту» нет |
 | Что шаг спросит у игрока | `js/fs/effects/ask/FS*Asks.js` (реестр `ASK_EXECUTORS`) | не добавлять ветку в `switch` — его больше нет |
@@ -123,7 +124,7 @@
 
 ```
 node tools/check.mjs          # типы (tsc по JSDoc) + сверка правил + дым-тест
-node tools/fs-audit.mjs       # 150 проверок: каждая цитирует Rules Reference
+node tools/fs-audit.mjs       # 151 проверка: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # 82 проверки: карты одной фракции против их текстов
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках
@@ -136,11 +137,11 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 шагов карт (73 «дела» и 155 «вопроса» — каждый объявлен и каждый — функция), а ещё один —
 сам предметный слой: стороны боя и верх стопки приказов.
 
-Двадцать разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
+Двадцать один раздел дыма стоит на страже «одно понятие — одно место»; каждый проверен подделкой
 (вставленные `assets.forge++`, `cards[side].hand.splice`, `p.materiel -= 1`, ручной счёт
 пяти отрядов, `structuresAt(...).length`, `state.order = null`, `u.routed = true`,
 `order.bought++`, чтение `state.trim` мимо очереди, `storm.edge = …` мимо поля штормов и
-`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` и `order.purchases` мимо `Purchases`
+`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` `order.purchases` мимо `Purchases` и `order.moveAreaLimit` мимо `OrderMove`
 дают провал с именем файла и строкой):
 
 * жетоны: только `PlayerEntity` пишет в `assets`;
@@ -187,6 +188,9 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
   (`core/FSDeployLimits.js`): надбавка к пределу, лишние фабрики, «города и бастионы
   считаются фабриками», единственный отряд городов, «отряды идут в мир фабрики» и
   надбавка к вместимости мира с городом.
+* что карта разрешает пройти — один объект `OrderMove` (`core/FSOrderMove.js`): одна
+  область начала марша, пустоты и варп-штормы, соседняя система, из которой пришли
+  наземные отряды и корабли, дополнительный приказ и «Быстрый ответ».
 * что приказ уже купил — один объект `Purchases` (`core/FSPurchases.js`): список
   покупок, их цена, счёт отрядов и построек, пара сделки; отмена покупки убирает
   запись, и предел развёртывания сам считает по списку.

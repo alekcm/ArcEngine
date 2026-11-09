@@ -1649,7 +1649,7 @@ const FS_EFFECTS = {
         // A Quick Response whose system was refused (or whose question had no
         // systems) never became a limited advance: the event phase goes on.
         if (c.kind === 'event' && state.quickResponsePending
-            && !(state.order && state.order.fromEvent)
+            && !(state.order && OrderMove.of(state.order).fromEvent)
             && typeof R.nextEventPlayer === 'function') {
             state.quickResponsePending = false;
             delete state.quickResponseSnapshot;

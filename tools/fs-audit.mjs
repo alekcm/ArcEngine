@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1795,6 +1795,40 @@ rule('mov-1', '«The active player can exceed each area’s unit capacity while 
     // Four is still fine: the fifth may join during the movement.
     st.units = st.units.filter(u => u.id !== st.units.filter(x => x.system === sys.id)[0].id);
     eq(FS_RULES.moveAllowed(st, 0, sixth, { system: sys.id, pos: voidPos }).ok, true, 'пятый отряд встаёт');
+});
+
+rule('mov-1a', '«… may move through one uncontrolled void …» — что карта разрешает пройти, держит один OrderMove', () => {
+    const move = OrderMove.of({ seat: 0, order: 'advance' });
+    // «перемещение из 1 области»: the plan may start from one area only.
+    eq(move.areaLimit, 0, 'предела областей нет');
+    eq(move.withinAreas(3), true, 'без карты — сколько угодно областей');
+    move.setAreaLimit(1);
+    eq(move.withinAreas(1), true, 'одна область разрешена');
+    eq(move.withinAreas(2), false, 'две области запрещены');
+    // «провести до 2 отрядов через одну никем не контролируемую пустую область».
+    move.setPassVoid(2);
+    eq(move.passVoid, 2, 'две пустоты можно пройти');
+    // Storms: the ships and the ground units pass by different cards.
+    eq(move.crossesStorm({ type: 'ship' }), false, 'корабли стоят перед штормом');
+    move.setShipsThroughStorms();
+    eq(move.crossesStorm({ type: 'ship' }), true, 'корабли проходят');
+    eq(move.crossesStorm({ type: 'ground' }), false, 'наземные — ещё нет');
+    move.setUnitsThroughStorms();
+    eq(move.crossesStorm({ type: 'ground' }), true, 'наземные тоже проходят');
+    // The ground units come from one neighbouring system only.
+    eq(move.wayAllows('ground', 4), true, 'первый сосед принят');
+    move.setWay('ground', 4);
+    eq(move.wayAllows('ground', 4), true, 'тот же сосед принят');
+    eq(move.wayAllows('ground', 5), false, 'другой сосед запрещён');
+    // The extra advance and «Быстрый ответ» are the same order with a narrower march.
+    const pre = OrderMove.of({ seat: 0, order: 'advance' });
+    pre.setPreAdvance();
+    eq(pre.preAdvance, true, 'дополнительный приказ');
+    pre.setQuickResponse().setFromEvent();
+    eq(pre.quickResponse, true, 'ограниченный приказ события');
+    eq(pre.fromEvent, true, 'ход вернётся событию');
+    eq(OrderMove.of(pre.order), pre, 'у приказа один OrderMove');
+    eq(OrderMove.of(null), null, 'без приказа путей нет');
 });
 
 rule('mov-1b', '«… can never end the movement with more than five units in a single area» — у доски один ответ на «есть ли место»', () => {

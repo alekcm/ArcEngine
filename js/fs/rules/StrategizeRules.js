@@ -146,7 +146,7 @@ class StrategizeRules {
             if (Purchases.of(order)) Purchases.of(order).clear();
             const purchases = UpgradeOrder.of(order);
             if (purchases) purchases.reset();
-            if (kind === 'advance') order.moveAreaLimit = 1;
+            if (kind === 'advance') OrderMove.of(order).setAreaLimit(1);
             if (kind === 'deploy') DeployScope.of(order).setAreaLimit(1);
             const res = this.engine.resolveOrder(state, seat, kind, order.system);
             if (res && res.ok === false) return res;

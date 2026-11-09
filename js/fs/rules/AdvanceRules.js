@@ -24,7 +24,8 @@ class AdvanceRules {
         // «Мобилизированные охотники»: the extra advance uses one KL0/1 unit
         // that was ALREADY in the active system; that same unit then sits out
         // the main advance.
-        if (order.preAdvance) {
+        const move = OrderMove.of(order);
+        if (move.preAdvance) {
             units = units.filter(u => {
                 if (u.system !== order.system) return false;
                 const d = this.engine.unitOf(state, u);
@@ -34,7 +35,7 @@ class AdvanceRules {
         if (march.excludedUnit) units = units.filter(u => u.id !== march.excludedUnit);
         // «Быстрый ответ»: only the units that are ALREADY in the chosen
         // system may take part in the limited advance.
-        if (order.quickResponse) units = units.filter(u => u.system === order.system);
+        if (move.quickResponse) units = units.filter(u => u.system === order.system);
         // The frozen routes decide: a unit without a road does not count.
         if (march.route) return units.filter(u => march.hasRoad(u.id));
         return units;
@@ -49,7 +50,7 @@ class AdvanceRules {
         if (march && march.excludedUnit === unit.id) {
             return { ok: false, error: 'Этот отряд уже участвовал в дополнительном приказе продвижения.' };
         }
-        if (order && order.preAdvance) {
+        if (order && OrderMove.of(order).preAdvance) {
             if (unit.system !== order.system) {
                 return { ok: false, error: 'Дополнительный приказ использует отряд из активной системы.' };
             }
@@ -59,7 +60,7 @@ class AdvanceRules {
         }
         // «Быстрый ответ»: only the units of the chosen system march, and only
         // into friendly or uncontrolled areas.
-        if (order && order.quickResponse) {
+        if (order && OrderMove.of(order).quickResponse) {
             if (unit.system !== order.system) {
                 return { ok: false, error: 'Ограниченное продвижение — только отряды этой системы.' };
             }
@@ -90,8 +91,7 @@ class AdvanceRules {
         // A warp storm on the edge blocks the way — unless the order says that
         // the ships may pass through the storms.
         if (from !== target.system && this.engine.stormOn(state, from, target.system)
-            && !(state.order.unitsThroughStorms
-                || (def.type === 'ship' && state.order.shipsThroughStorms))) {
+            && !OrderMove.of(order).crossesStorm(def)) {
             return { ok: false, error: 'Варп-шторм преграждает путь.' };
         }
         // The movement may go over the capacity of an area, but never above five
@@ -107,7 +107,7 @@ class AdvanceRules {
         // have a legal movement path»).
         if (def.type === 'ground') {
             if (!this.engine.pathExists(state, seat, unit.system, unit.area, target.system, target.pos,
-                { storms: !!(order && order.unitsThroughStorms) })) {
+                { storms: !!(order && OrderMove.of(order).unitsThroughStorms) })) {
                 return { ok: false, error: 'Нет законного пути через свои миры до этого мира.' };
             }
         }
@@ -175,7 +175,7 @@ class AdvanceRules {
         }
         // «Мобилизированные охотники»: ONE unit for the whole extra advance,
         // not one ship and then one ground unit.
-        if (order.preAdvance && moves.length + march.moved.length > 1) {
+        if (OrderMove.of(order).preAdvance && moves.length + march.moved.length > 1) {
             return { ok: false, error: 'Дополнительный приказ использует только 1 отряд.' };
         }
         // «… если хотя бы один из этих отрядов — Гвардеец» («Адептус Астрономика»).
@@ -204,11 +204,10 @@ class AdvanceRules {
             plan.push({ id: unit.id, from, fromArea, type: def ? def.type : 'ground', system: m.system, pos: m.pos });
         }
         // «перемещение из 1 области» («Департаменто муниторум»).
-        if (order.moveAreaLimit) {
-            const src = new Set(plan.map(m => m.from + ':' + m.fromArea));
-            if (src.size > order.moveAreaLimit) {
-                return { ok: false, error: 'Перемещение ограничено ' + order.moveAreaLimit + ' областью.' };
-            }
+        const move = OrderMove.of(order);
+        const src = new Set(plan.map(m => m.from + ':' + m.fromArea));
+        if (!move.withinAreas(src.size)) {
+            return { ok: false, error: 'Перемещение ограничено ' + move.areaLimit + ' областью.' };
         }
         // No area may end the movement with more than five of the player's units.
         // A plan entry names its target; a unit that stays put names its own
@@ -233,7 +232,6 @@ class AdvanceRules {
         // rule holds for the whole order, not only for one command.
         const ground = plan.filter(m => m.type === 'ground' && m.from !== order.system);
         const ships = plan.filter(m => m.type === 'ship' && m.from !== order.system);
-        const ways = order.ways = order.ways || { ground: null, ship: null };
         const froms = new Set();
         for (const m of ground) froms.add(m.from);
         for (const m of ships) froms.add(m.from);
@@ -242,16 +240,16 @@ class AdvanceRules {
         }
         if (froms.size === 1) {
             const way = [...froms][0];
-            if (ground.length && ways.ground && ways.ground !== way) {
+            if (ground.length && !move.wayAllows('ground', way)) {
                 return { ok: false, error: 'Наземные отряды уже пришли из другой системы.' };
             }
-            if (ships.length && ways.ship && ways.ship !== way) {
+            if (ships.length && !move.wayAllows('ship', way)) {
                 return { ok: false, error: 'Корабли уже пришли из другой системы.' };
             }
-            if (ground.length && ways.ship && ways.ship !== way) {
+            if (ground.length && !move.wayAllows('ship', way)) {
                 return { ok: false, error: 'Корабли пришли из другой системы: наземные отряды не могут прийти из этой.' };
             }
-            if (ships.length && ways.ground && ways.ground !== way) {
+            if (ships.length && !move.wayAllows('ground', way)) {
                 return { ok: false, error: 'Наземные отряды пришли из другой системы: корабли не могут прийти из этой.' };
             }
         }
@@ -276,8 +274,8 @@ class AdvanceRules {
         // The ways of this command are remembered for the rest of the order.
         if (froms.size === 1) {
             const way = [...froms][0];
-            if (ground.length) ways.ground = way;
-            if (ships.length) ways.ship = way;
+            if (ground.length) move.setWay('ground', way);
+            if (ships.length) move.setWay('ship', way);
         }
         for (const m of plan) {
             const unit = state.units.find(u => u.id === m.id);
@@ -316,7 +314,7 @@ class AdvanceRules {
         }
         // "Крестный ход": the passage through an uncontrolled world is paid for by
         // the unit, not by the area; the ordinary path is tried first.
-        if (order.uncontrolled) {
+        if (march.uncontrolledLimit) {
             for (const m of plan) {
                 if (!this.engine.pathExists(state, seat, m.from, m.fromArea, m.system, m.pos, { uncontrolled: false })) {
                     march.useUncontrolled();
@@ -326,7 +324,7 @@ class AdvanceRules {
         }
         // The units that marched this time do not march again in the same order.
         march.addMoved(plan.map(m => m.id));
-        if (order.preAdvance && plan.length) march.setPreAdvanceUnit(plan[0].id);
+        if (move.preAdvance && plan.length) march.setPreAdvanceUnit(plan[0].id);
         // The step is remembered: the player may take it back with Esc. Each step
         // knows whose march it was, so the roll-back can return to the step of the
         // order it belongs to (ships or ground units).
@@ -442,7 +440,7 @@ class AdvanceRules {
         }
         // «Мобилизированные охотники»: the extra advance is over; the main
         // advance of the same order resumes with its own movement still frozen.
-        if (order.preAdvance) {
+        if (OrderMove.of(order).preAdvance) {
             PhasePlan.of(order).set('done');
             this.engine.finishOrder(state, seat);
             return { ok: true };
@@ -712,7 +710,7 @@ class AdvanceRules {
     cmdFinishAdvance(state, seat) {
         const order = this.engine.orderOf(state, seat, 'advance');
         if (!order) return { ok: false, error: 'Нечего заканчивать.' };
-        if (order.preAdvance) {
+        if (OrderMove.of(order).preAdvance) {
             this.finishPreAdvance(state, seat);
             return { ok: true };
         }
@@ -727,10 +725,11 @@ class AdvanceRules {
         state.moves = [];
         /** @type {any} */
         const pre = {
-            seat, order: 'advance', system: main.system, phase: 'move',
-            preAdvance: true, maxKl: 1, combatRounds: 1,
+            seat, order: 'advance', system: main.system, maxKl: 1, combatRounds: 1,
         };
         state.order = pre;
+        PhasePlan.of(pre).set('move');
+        OrderMove.of(pre).setPreAdvance();
         const march = MarchPlan.of(pre);
         march.reset().setStep('ships').setMoveLimit(1).setRoute(this.advanceRoutes(state, seat, 'ship'));
         this.engine.log(state, seat, state.players[seat].name
@@ -756,11 +755,12 @@ class AdvanceRules {
         state.moves = [];
         /** @type {any} */
         const order = {
-            seat, order: 'advance', system: systemId, phase: 'move',
-            quickResponse: true, fromEvent: true,
+            seat, order: 'advance', system: systemId,
         };
         state.phase = 'operations';
         state.order = order;
+        PhasePlan.of(order).set('move');
+        OrderMove.of(order).setQuickResponse().setFromEvent();
         MarchPlan.of(order).reset();
         MarchPlan.of(order).setRoute(this.advanceRoutes(state, seat, 'ship'));
         this.engine.log(state, seat, state.players[seat].name

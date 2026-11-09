@@ -230,7 +230,7 @@ class RefreshRules {
         // «Быстрый ответ» starts a limited advance from this event: the event
         // phase waits until that order is finished. finishOrder() will call
         // nextEventPlayer() with the restored event-phase snapshot.
-        if (!(state.order && state.order.fromEvent) && !state.quickResponsePending) {
+        if (!(state.order && OrderMove.of(state.order).fromEvent) && !state.quickResponsePending) {
             this.nextEventPlayer(state);
         }
         return { ok: true };

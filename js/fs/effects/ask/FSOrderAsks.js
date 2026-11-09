@@ -154,7 +154,8 @@ class OrderAsks {
 
     static passVoid(effects, f) {
         const { state, step } = f;
-        if (state.order) state.order.passVoid = step.n || 0;
+        const move = OrderMove.of(state.order);
+        if (move) move.setPassVoid(step.n || 0);
         return null;
     }
 
@@ -219,7 +220,8 @@ class OrderAsks {
 
     static shipsThroughStorms(effects, f) {
         const { state } = f;
-        if (state.order) state.order.shipsThroughStorms = true;
+        const move = OrderMove.of(state.order);
+        if (move) move.setShipsThroughStorms();
         return null;
     }
 
@@ -260,7 +262,8 @@ class OrderAsks {
 
     static unitsThroughStorms(effects, f) {
         const { state, seat } = f;
-        if (state.order && state.order.seat === seat) state.order.unitsThroughStorms = true;
+        const move = OrderMove.of(state.order);
+        if (move && state.order.seat === seat) move.setUnitsThroughStorms();
         return null;
     }
 

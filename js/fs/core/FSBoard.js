@@ -332,7 +332,8 @@ class Board {
                     && !this.structuresAt(next.system, next.pos).length;
                 if (control !== 'friendly' && !byMarch) {
                     // Some orders let the units pass through empty voids.
-                    if (!order || !order.passVoid || !area || area.world || voids >= order.passVoid
+                    const pass = order ? OrderMove.of(order).passVoid : 0;
+                    if (!pass || !area || area.world || voids >= pass
                         || this.unitsAt(next.system, next.pos).length
                         || this.structuresAt(next.system, next.pos).length) continue;
                     voids++;

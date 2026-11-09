@@ -198,7 +198,7 @@ class OperationsRules {
         }
         // «Быстрый ответ»: the limited advance was born from a tactic event of
         // the refresh phase. Its end returns the game to that event phase.
-        if (state.order && state.order.fromEvent) {
+        if (state.order && OrderMove.of(state.order).fromEvent) {
             const snap = state.quickResponseSnapshot;
             for (const p of state.players) this.engine.trimPlayer(state, p.seat);
             this.closeOrder(state);
