@@ -3192,7 +3192,7 @@ class FSGame {
         if (this.mode === 'placeUnit') {
             if (!target) return;
             const ord = s.order;
-            if (ord && ord.phase === 'guardDeploy' && ord.guardFactory) {
+            if (ord && PhasePlan.of(ord).is('guardDeploy') && ord.guardFactory) {
                 const isShip = this.pending && this.pending.def && this.pending.def.type === 'ship';
                 const inFactoryWorld = target.system === ord.guardFactory.system && target.pos === ord.guardFactory.pos;
                 if (isShip) {

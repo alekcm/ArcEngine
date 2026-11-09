@@ -556,7 +556,13 @@ try {
         const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
         // `order.phase` is a small machine: its steps are compared by name in
         // one place, never with a literal in a rule or in the panel.
-        const re = /\b(?:state\.order|s\.order|order)\.phase\b/g;
+        // `state.phase` is the phase of the round and `view.phase` its copy in
+        // the panel — they are this guard's own `state.phase`/`view.phase`
+        // strings, which the regex reads as `state.phase` with a prefix. The
+        // step of an order is the only other `phase` that is written and read.
+        // `s.phase` is the phase of the round too (`s` is the state there), so
+        // only the names an order goes by are looked for.
+        const re = /\.order\.phase\b|(?:^|[^.\w])order\.phase\b|\b(?:ord|main|pre)\.phase\b/gm;
         let m;
         while ((m = re.exec(text))) {
             const line = text.slice(0, m.index).split('\n').length;
