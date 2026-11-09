@@ -1012,6 +1012,9 @@ const FS_RULES = {
         if (i >= 0) state.units.splice(i, 1);
         const p = state.players[unit.seat];
         p.supply.units[unit.unit] = (p.supply.units[unit.unit] || 0) + 1;
+        // «получите по 1 материалу за каждый уничтоженный отряд» («Рой
+        // потрошителей»): the step of the damage counts its own losses.
+        if (state.combat) state.combat.destroyedNow = (state.combat.destroyedNow || 0) + 1;
     },
 
     destroyStructure(state, s) {
@@ -3227,6 +3230,7 @@ const FS_RULES = {
             attackerFrom: origins,
             viaAdvance,
             round: 1,
+            roundUnits: null,
             step: 'reinforce-attacker',
             dice: { attacker: roll(attacker), defender: roll(defender) },
             tokens: { attacker: { att: 0, def: 0 }, defender: { att: 0, def: 0 } },
@@ -3255,6 +3259,9 @@ const FS_RULES = {
             combat.cards[seat === attacker ? 'attacker' : 'defender'].hand = hand;
         }
         state.combat = combat;
+        // The roster of the first round: the cards that pay for the losses of a
+        // round read it («Выводок термаганов»).
+        combat.roundUnits = this.rosterOfRound(state, combat);
         this.log(state, attacker, 'Бой в системе ' + this.system(state, systemId).tile + ': '
             + state.players[attacker].name + ' против ' + state.players[defender].name + '.');
         // The schemes of the start of the combat; a scheme of «the start of a
@@ -3606,6 +3613,7 @@ const FS_RULES = {
             }
         }
         // Both cards are open: the damage of the round comes next.
+        c.destroyedNow = 0;
         c.step = 'damage-attacker';
         this.advanceCombatSteps(state);
         return c.step;
@@ -3750,13 +3758,18 @@ const FS_RULES = {
         const me = this.combatValues(state, side);
         const them = this.combatValues(state, other);
         let damage = Math.max(0, them.att - me.def);
-        // The card may add the damage to one side or to both.
+        // The card may add the damage to one side or to both. The damage the
+        // card adds to the opponent is paid only when he really is hurt: «если
+        // противник получил урон, он получает ещё 3 урона» («Секущие когти»),
+        // «если ваш противник будет распределять какой-либо урон…» — a blow the
+        // shields stopped stays stopped.
+        const extraFoe = damage > 0 ? (c.extraDamageFoe || 0) : 0;
         if (c.extraDamageFoeSide) {
             // The extra damage belongs to the side other than the owner's.
-            if (c.extraDamageFoeSide === side) damage += (c.extraDamageFoe || 0);
+            if (c.extraDamageFoeSide === side) damage += extraFoe;
             damage += (c.extraDamageBoth || 0);
         } else if (side === 'attacker') {
-            damage += (c.extraDamageFoe || 0) + (c.extraDamageBoth || 0);
+            damage += extraFoe + (c.extraDamageBoth || 0);
         } else {
             damage += (c.extraDamage || 0) + (c.extraDamageBoth || 0);
         }
@@ -3973,6 +3986,7 @@ const FS_RULES = {
         if (!c) return;
         if (c.repeatDamage && !c.damageRepeated) {
             c.damageRepeated = true;
+            c.destroyedNow = 0;
             c.damageHook = {};
             c.damage = { attacker: 0, defender: 0 };
             c.applied = {};
@@ -4091,7 +4105,10 @@ const FS_RULES = {
         d.done = true;
         const foeSeat = d.seat === c.attacker ? c.defender : c.attacker;
         const targets = state.units.filter(u => u.seat === foeSeat && u.system === c.system && u.area === c.pos);
-        if (!targets.length) return false;
+        // «получите по 1 материалу за каждый уничтоженный отряд» («Рой
+        // потрошителей») needs no piece of the opponent to aim at.
+        const needsTarget = (d.steps || []).some(x => x && x.op !== 'gainMateriel');
+        if (needsTarget && !targets.length) return false;
         c.step = 'effect';
         c.nextStep = 'round-end';
         this.runEffects(state, d.seat, d.steps, {
@@ -4155,6 +4172,32 @@ const FS_RULES = {
         }
         c.round++;
         if (c.round > (c.maxRounds || 3)) { this.finishCombat(state); return; }
+        // «получите 2 `att. token` в следующем раунде боя» («Крылатый ужас»):
+        // the tokens the card promised come from the supply now. «За каждого
+        // вашего уничтоженного или деморализованного в этом раунде юнита
+        // получите 1 `def. token`» («Выводок термаганов») counts the losses of
+        // the round that has just ended: one token for each of them.
+        const lostOf = seat => {
+            const snap = (c.roundUnits || {})[seat] || [];
+            let n = 0;
+            for (const s of snap) {
+                const now = state.units.find(u => u.id === s.id);
+                if (!now) n++;
+                else if (!s.routed && now.routed) n++;
+            }
+            return n;
+        };
+        const later = (c.laterTokens || []).filter(x => x.round === c.round);
+        c.laterTokens = (c.laterTokens || []).filter(x => x.round !== c.round);
+        for (const one of later) {
+            const seat = one.side === 'attacker' ? c.attacker : c.defender;
+            const n = one.per === 'lostRound' ? (one.n || 1) * lostOf(seat) : (one.n || 1);
+            if (n <= 0) continue;
+            c.tokens[one.side][one.kind] = (c.tokens[one.side][one.kind] || 0) + n;
+            this.log(state, seat, state.players[seat].name + ' получает ' + n
+                + ' жетон(ов) ' + (one.kind === 'att' ? 'атаки' : 'обороны') + '.');
+        }
+        c.roundUnits = this.rosterOfRound(state, c);
         c.staged = { attacker: null, defender: null };
         for (const side of ['attacker', 'defender']) c.cards[side].chosen = null;
         // The effects that belonged to the previous round are over.
@@ -4168,6 +4211,14 @@ const FS_RULES = {
         // The schemes of the start of the round.
         this.maybeScheme(state, c.attacker, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
         c.damage = { attacker: 0, defender: 0 };
+    },
+
+    // The units of both sides as the round began: a card may pay for the units
+    // this round destroyed or demoralised («Выводок термаганов»).
+    rosterOfRound(state, c) {
+        const one = seat => state.units.filter(u => u.seat === seat)
+            .map(u => ({ id: u.id, routed: !!u.routed }));
+        return { attacker: one(c.attacker), defender: one(c.defender) };
     },
 
     // The printed morale the units and the bastions of a side bring into the

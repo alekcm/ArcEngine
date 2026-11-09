@@ -143,6 +143,15 @@ const FS_EFFECTS = {
         let prev = null;
         let prevCond = null;
         for (const sentence of this.sentences(text)) {
+            // «если противник позволяет, то получите 2 `def. token`. Если нет,
+            // то получите 2 `att. token` в следующем раунде боя.» («Крылатый
+            // ужас»): the second sentence is the branch of his refusal.
+            const mElse = /^если нет,?\s*(?:то\s+)?/i.exec(sentence);
+            if (mElse && prev && prev.op === 'foeAllow') {
+                const inner = this.parse(sentence.slice(mElse[0].length).trim().replace(/\.+$/, '') + '.', ctx || {});
+                prev.no = (prev.no || []).concat(inner);
+                continue;
+            }
             // «Если вы это сделаете, то …» — the effect of the scheme the card
             // said it is waiting for: the steps join the trigger, not the card.
             const mThen = /^если вы это сдела[а-яёa-z]*,?\s*(?:то\s+)?/i.exec(sentence);
@@ -277,6 +286,17 @@ const FS_EFFECTS = {
             // the step keeps it, the player may refuse the whole ability.
             for (const one of parsed) if (one && !one.ability) one.ability = sentence;
             steps.push(...parsed);
+            // «… чтобы получить 2 `def. token` в этом и следующем раундах»
+            // («Выводок воинов»): the tokens of this round survive its end, so
+            // the next round is played with them as well.
+            if (/в\s+этом\s+и\s+следующем\s+раунд/i.test(sentence)) {
+                for (const one of parsed) {
+                    if (one && one.op === 'gainToken' && (one.kind === 'att' || one.kind === 'def')
+                        && !parsed.some(x => x && x.op === 'keepTokens' && x.kind === one.kind)) {
+                        steps.push({ op: 'keepTokens', kind: one.kind, ability: sentence });
+                    }
+                }
+            }
             prev = parsed[parsed.length - 1];
         }
         return steps;
@@ -2528,6 +2548,37 @@ const FS_EFFECTS = {
                 // The scheme waits: it is used when its moment comes.
                 return null;
             }
+            case 'foeAllow': {
+                // «если противник позволяет» — the opponent says yes or no, and
+                // the branch of his answer is performed by the card.
+                const asker = foe !== null ? foe : seat;
+                return {
+                    question: {
+                        kind: 'yesno', who: asker, op: 'foeAllow',
+                        text: 'Позволить: «' + String(step.text || '').slice(0, 70) + '»?',
+                    },
+                };
+            }
+            case 'gainTokensLater': {
+                if (!inCombat) return null;
+                const kind = step.kind === 'att' ? 'att' : 'def';
+                combat.laterTokens = (combat.laterTokens || []).concat([
+                    { side: side, kind: kind, n: step.n || 1, round: combat.round + 1 },
+                ]);
+                R.log(state, seat, p.name + ' получит ' + (step.n || 1) + ' жетон(ов) '
+                    + (kind === 'att' ? 'атаки' : 'обороны') + ' в следующем раунде боя.');
+                return null;
+            }
+            case 'gainMateriel': {
+                const n = this.count(R, state, seat, step, ctx);
+                if (n <= 0) {
+                    R.log(state, seat, p.name + ' не получает материи: уничтоженных отрядов нет.');
+                    return null;
+                }
+                p.materiel += n;
+                R.log(state, seat, p.name + ' получает ' + n + ' материи.');
+                return null;
+            }
             case 'choice': {
                 // «Ваш противник выполняет 3 раза: либо …, либо …» («Подавляющее
                 // присутствие»): the alternatives belong to the opponent, so he
@@ -3461,6 +3512,12 @@ const FS_EFFECTS = {
                 if (factory) return this.startGuardDeploy(R, state, seat, factory);
                 return null;
             }
+            case 'foeAllow': {
+                // The branch of his answer takes the place of the question.
+                const list = (answer.no ? step.no : step.yes) || [];
+                if (!list.length) return null;
+                return { replace: JSON.parse(JSON.stringify(list)) };
+            }
             case 'choice': {
                 const i = Number(answer.choice);
                 const option = step.options && step.options[i];
@@ -3470,6 +3527,9 @@ const FS_EFFECTS = {
                 if (step.per) {
                     const total = this.count(R, state, seat,
                         { n: 1, per: step.per, perKind: step.perKind, max: step.max, filter: step.filter }, ctx);
+                    // «Если у вас больше недеморализованных отрядов…» — a count
+                    // of zero pays nothing at all.
+                    if (total <= 0) return null;
                     if (total > 1) option.n = (option.n || 1) * total;
                 }
                 const q = this.step(R, state, seat, option, ctx);
@@ -3653,6 +3713,26 @@ const FS_EFFECTS = {
             } else {
                 n = step.n || 1;
             }
+            return Math.max(0, n);
+        }
+        if (step.per === 'excessUnits') {
+            // «отнимите от их числа число недеморализованных отрядов противника»
+            // («Синаптический контроль»): only the surplus is paid out.
+            const combat = state.combat;
+            if (!combat) return 0;
+            const here = u => u.system === combat.system && u.area === combat.pos;
+            const mine = state.units.filter(u => u.seat === seat && !u.routed && here(u)).length;
+            const his = state.units.filter(u => u.seat !== seat && !u.routed && here(u)).length;
+            n = (step.n || 1) * Math.max(0, mine - his);
+            if (step.max) n = Math.min(n, step.max);
+            return Math.max(0, n);
+        }
+        if (step.per === 'destroyedStep') {
+            // «за каждый уничтоженный отряд» в конце шага нанесения повреждений
+            // («Рой потрошителей»): the units that fell in this very step.
+            const combat = state.combat;
+            n = (step.n || 1) * ((combat && combat.destroyedNow) || 0);
+            if (step.max) n = Math.min(n, step.max);
             return Math.max(0, n);
         }
         if (step.per === 'spent') {
@@ -4197,6 +4277,68 @@ function combatArea(state, systemId, pos) {
 // The rules of the sentences. The first that matches wins.
 /** @type {{re: RegExp, build: (m: RegExpExecArray, ctx: any, s: string) => any, noWhen?: boolean}[]} */
 const RULES = [
+    // «получите 1 `att. token` за каждый недеморализованный отряд Гаунтов и
+    // Пожирателей» («Выводок термаганов»): the count is the player's own units
+    // of the kinds the card names, in the contested area.
+    {
+        re: /получ[а-яёa-z]*\s+(\d+|один|одно)?\s*`([^`]+token)`\s+за кажд[а-яёa-z]*\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+(?:отряд[а-яёa-z]*\s+)?([^.;]{2,70})/i,
+        build: (m, ctx) => {
+            const faction = FS_EFFECTS.factionOf(ctx);
+            const names = FS_EFFECTS.unitNames(m[3], faction);
+            const filter = names.length ? { types: names } : (unitFilter(m[3]) || typeFilter(m[3]));
+            return {
+                op: 'gainToken', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]),
+                per: 'unit', filter: filter, inBattle: true, who: 'me',
+            };
+        },
+    },
+    // «отнимите от их числа число недеморализованных отрядов противника и
+    // получите 1 `att. token` или 1 `def. token` за каждую оставшуюся единицу»
+    // («Синаптический контроль»): only the units above the opponent's count pay.
+    {
+        re: /отнимите от их числа число недеморализованных отрядов противника и получ[а-яёa-z]*\s+(\d+|один|одно)?\s*`([^`]+token)`\s+или\s+(\d+|один|одно)?\s*`([^`]+token)`\s+за каждую оставшуюся единицу/i,
+        build: m => ({
+            op: 'choice', text: m[0], per: 'excessUnits',
+            options: [
+                { op: 'gainToken', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]), who: 'me' },
+                { op: 'gainToken', n: num(m[3]), kind: FS_EFFECTS.icon(m[4]), who: 'me' },
+            ],
+        }),
+    },
+    // «если противник позволяет, то получите 2 `def. token`» («Крылатый ужас»):
+    // the opponent is asked first and his answer picks the branch. The branch of
+    // the refusal is the sentence «Если нет, то …» that follows it.
+    {
+        re: /^если (?:противник|он|ваш противник) позволя[а-яёa-z]*,?\s*(?:то\s+)?([\s\S]+)$/i,
+        build: (m, ctx) => {
+            const yes = FS_EFFECTS.parseSentence(String(m[1]).trim().replace(/\.+$/, '') + '.', ctx || {});
+            if (!yes.length) return null;
+            return [{ op: 'foeAllow', yes, no: [], text: String(m[1]).trim() }];
+        },
+    },
+    // «получите 2 `att. token` в следующем раунде боя» («Крылатый ужас»): the
+    // tokens are taken from the supply when the next execution round begins.
+    {
+        re: /получ[а-яёa-z]*\s+(\d+|два|две|один|одно)?\s*`([^`]+token)`\s+в следующем раунде/i,
+        // «За каждого вашего уничтоженного или деморализованного в этом раунде
+        // юнита получите 1 `def. token` в следующем раунде боя» («Выводок
+        // термаганов»): one token per lost unit of the round, not one token.
+        build: (m, ctx, s) => {
+            const step = { op: 'gainTokensLater', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]) };
+            if (/за кажд[а-яёa-z]*\s+(?:ваш[а-яёa-z]*\s+)?(?:уничтоженн|деморализован)/i.test(s || '')) step.per = 'lostRound';
+            return step;
+        },
+    },
+    // «в конце шага нанесения повреждений получите по 1 материалу за каждый
+    // уничтоженный отряд, максимум 2» («Рой потрошителей»): the materiel comes
+    // when the damage step is over, and only for the units that really fell.
+    {
+        re: /в конце шага нанесения (?:повреждений|урона)[^.]*?получ[а-яёa-z]*\s+(?:по\s+)?(\d+)?\s*(?:материал|материи)[^.]*?за каждый(?:ого)?\s+уничтоженн[а-яёa-z]*\s+(?:отряд|юнит)[а-яёa-z]*(?:,?\s*максимум\s+(\d+))?/i,
+        build: m => ({
+            op: 'deferDamage',
+            steps: [{ op: 'gainMateriel', n: num(m[1]), per: 'destroyedStep', max: m[2] ? Number(m[2]) : null, who: 'me' }],
+        }),
+    },
     // «противник теряет 1 `att. cube`, 1 `def. cube` или 1 `morale cube` — в
     // зависимости от того, чего больше всего» («Аколыты-гибриды»): the kind is
     // counted, not chosen — and the cube the owner gains is the same one.
@@ -4358,15 +4500,15 @@ const RULES = [
             return { op: 'rerollDie', n: all ? 99 : num(m[2]), kind: FS_EFFECTS.icon(m[3]), all, pick: true };
         },
     },
-    // "reroll up to 2 of your dice" / "reroll 1 of your dice"
-    {
-        re: /переброс[а-яёa-z]*\s+(?:до\s+)?(всех|все|(\d+))?\s*(?:ваш[а-яёa-z]*|свои|своих)\s+куб[а-яёa-z]*/i,
-        build: m => ({ op: 'rerollDie', n: /все/.test(m[1] || '') ? 99 : num(m[2]), kind: 'any', all: /все/.test(m[1] || ''), pick: true }),
-    },
     // "reroll all the dice of one value"
     {
         re: /переброс[а-яёa-z]*\s+все[а-яёa-z]*\s+(?:ваш[а-яёa-z]*|свои)\s+кубик[а-яёa-z]*\s+одного(?:\s+конкретного)?\s+(?:значения|типа)/i,
         build: () => ({ op: 'rerollValue' }),
+    },
+    // "reroll up to 2 of your dice" / "reroll 1 of your dice"
+    {
+        re: /переброс[а-яёa-z]*\s+(?:до\s+)?(всех|все|(\d+))?\s*(?:ваш[а-яёa-z]*|свои|своих)\s+куб[а-яёa-z]*/i,
+        build: m => ({ op: 'rerollDie', n: /все/.test(m[1] || '') ? 99 : num(m[2]), kind: 'any', all: /все/.test(m[1] || ''), pick: true }),
     },
     // "for every unrouted warrior or cruiser flip 1 of your dice to any side"
     // — the flip is counted per unit («Триархи преторианцы»).

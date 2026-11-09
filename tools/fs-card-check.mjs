@@ -1706,6 +1706,32 @@ check('Секущие когти', 'жетоны атаки и обороны з
     return eq([tokens(st, 'attacker').att, tokens(st, 'attacker').def], [3, 2], 'жетоны атаки и обороны');
 });
 
+check('Секущие когти', 'противник получает ещё 3 урона, если урон был', () => {
+    // The offence of the attacker is 3, the defence of the foe 2: one point of
+    // damage becomes four.
+    const st = tyrBattle({
+        card: 'Секущие когти', units: { 'карнифексы': 1 }, dice: ['att', 'att', 'att'],
+        foeUnits: { 'гвардейцы': 2 }, foeDice: ['def', 'def'],
+    });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : firstOption(s, q)));
+    const base = Math.max(0, FS_RULES.combatValues(st, 'attacker').att - FS_RULES.combatValues(st, 'defender').def);
+    ok(base > 0, 'без карты урон был бы нулевым');
+    return eq(FS_RULES.combatDamageFor(st, 'defender'), base + 3, 'урон противника: ' + base + ' + 3');
+});
+
+check('Секущие когти', 'удар, который щиты отбили, дополнительного урона не даёт', () => {
+    const st = tyrBattle({
+        card: 'Секущие когти', units: { 'карнифексы': 1 }, dice: ['att'],
+        foeUnits: { 'гвардейцы': 2 }, foeDice: ['def', 'def', 'def', 'def', 'def', 'def'],
+    });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : firstOption(s, q)));
+    const base = FS_RULES.combatValues(st, 'attacker').att - FS_RULES.combatValues(st, 'defender').def;
+    ok(base <= 0, 'ожидание: атака не пробивает оборону, а не ' + base);
+    return eq(FS_RULES.combatDamageFor(st, 'defender'), 0, 'урона нет вовсе');
+});
+
 // --- Рой потрошителей -------------------------------------------------------
 // «Получите 2 `att. token`.»
 // «*Гаунт/Пожиратель:* в конце шага нанесения повреждений получите по 1
@@ -1748,6 +1774,199 @@ check('Подавляющее присутствие', 'противник тр�
     });
     ok(asked >= 3, 'противник не выбирал три раза: вопросов ' + asked);
     return eq(foeUnits(st).filter(u => u.routed).length, 3, 'три отряда противника деморализованы');
+});
+
+// --- Крылатый ужас ----------------------------------------------------------
+// «Уничтожьте 1 из Ваших недеморализованных отрядов, чтобы получить 3
+//  `att. token`.»
+// «*Воин/Пожиратель:* если противник позволяет, то получите 2 `def. token`.
+//  Если нет, то получите 2 `att. token` в следующем раунде боя.»
+check('Крылатый ужас', 'противник позволяет — два жетона обороны сразу', () => {
+    const st = tyrBattle({ card: 'Крылатый ужас', units: { 'воины': 1, 'гаунты': 1 } });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 1) };
+        if (q.kind === 'yesno') return {};
+        return firstOption(s, q);
+    });
+    eq(tokens(st, 'attacker').att, 3, 'три жетона атаки за отряд');
+    return eq(tokens(st, 'attacker').def, 2, 'два жетона обороны с позволения противника');
+});
+
+check('Крылатый ужас', 'противник не позволяет — два жетона атаки в следующем раунде', () => {
+    const st = tyrBattle({
+        card: 'Крылатый ужас', units: { 'воины': 1, 'гаунты': 1 }, roundEnd: true,
+    });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 1) };
+        if (q.kind === 'yesno') return { no: true };
+        return firstOption(s, q);
+    });
+    eq(tokens(st, 'attacker').def, 0, 'жетонов обороны нет');
+    nextRound(st);
+    return eq(tokens(st, 'attacker').att, 2, 'жетоны атаки пришли в следующем раунде');
+});
+
+// --- Крылатый ужас (другая редакция) ----------------------------------------
+// «*Воин/Пожиратель:* Ваш противник деморализует один отряд; он может избежать
+//  этого, если потратит 1 `morale cube`.»
+check('Крылатый ужас (другая редакция)', 'противник деморализует отряд, если не заплатит', () => {
+    const st = tyrBattle({ card: 'Крылатый ужас (другая редакция)', units: { 'воины': 1 }, foeUnits: { 'гвардейцы': 2 } });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 1) };
+        if (q.kind === 'yesno') return { dice: [] };
+        return firstOption(s, q);
+    });
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'один отряд противника деморализован');
+});
+
+// --- Выводок воинов ---------------------------------------------------------
+// «Уничтожьте 1 вашего недеморализованного юнита, чтобы получить 2
+//  `def. token` в этом и следующем раундах.»
+// «*Воин/Корабль Улья:* перебросьте все ваши кубики одного конкретного
+//  значения.»
+check('Выводок воинов', 'жетоны обороны остаются и в следующем раунде', () => {
+    const st = tyrBattle({ card: 'Выводок воинов', units: { 'воины': 1, 'гаунты': 1 }, roundEnd: true });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : firstOption(s, q)));
+    eq(tokens(st, 'attacker').def, 2, 'два жетона обороны в этом раунде');
+    nextRound(st);
+    return eq(tokens(st, 'attacker').def, 2, 'жетоны обороны остались на следующий раунд');
+});
+
+check('Выводок воинов', 'способность отряда перебрасывает кубики одного значения', () => {
+    const st = tyrBattle({ card: 'Выводок воинов', units: { 'воины': 1 }, dice: ['att', 'att', 'def'] });
+    const roll = FS_RULES.rollDice;
+    FS_RULES.rollDice = () => ['morale'];
+    refuseReinforce(st);
+    let asked = null;
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 1) };
+        if (q.kind === 'face') { asked = q; return { face: 'att' }; }
+        return firstOption(s, q);
+    });
+    FS_RULES.rollDice = roll;
+    ok(!!asked, 'значения кубиков не спросили');
+    return eq([count(st, 'attacker', 'att'), count(st, 'attacker', 'morale'), count(st, 'attacker', 'def')],
+        [0, 2, 1], 'кубики атаки перебросились в мораль, оборона не тронута');
+});
+
+// --- Рой потрошителей (способность отряда) ----------------------------------
+check('Рой потрошителей', 'материя за отряды, уничтоженные в шаге урона', () => {
+    const st = tyrBattle({
+        card: 'Рой потрошителей', units: { 'гаунты': 2 }, foeUnits: { 'гвардейцы': 2 },
+        dice: ['att', 'att', 'att', 'att', 'att'], foeDice: [],
+    });
+    refuseReinforce(st);
+    const before = st.players[0].materiel;
+    play(st, 0, 0);
+    // The attacker assigns the damage of the round: the units of the foe fall.
+    const killed = [];
+    for (let i = 0; i < 4 && st.combat && st.combat.step === 'damage-attacker'; i++) {
+        const victim = foeUnits(st).filter(u => !u.routed && killed.indexOf(u.id) < 0)[0];
+        if (!victim) break;
+        killed.push(victim.id);
+        const r = FS_RULES.apply(st, 0, { type: 'combat', action: 'damage', targets: killed.slice() });
+        ok(r.ok, 'урон не назначен: ' + r.error);
+    }
+    answerAll(st, null, 0);
+    return eq(st.players[0].materiel - before, Math.min(2, killed.length),
+        'по 1 материи за уничтоженный отряд, максимум 2 (уничтожено ' + killed.length + ')');
+});
+
+// --- Выводок термаганов -----------------------------------------------------
+// «Либо получите 1 `att. token` за каждый недеморализованный отряд Гаунтов и
+//  Пожирателей, либо разместите 1 бесплатный жетон подкрепления в эту область.
+//  За каждого вашего уничтоженного или деморализованного в этом раунде юнита
+//  получите 1 `def. token` в следующем раунде боя.»
+check('Выводок термаганов', 'по жетону атаки за каждый отряд Гаунтов и Пожирателей', () => {
+    const st = tyrBattle({ card: 'Выводок термаганов', units: { 'гаунты': 3 } });
+    refuseReinforce(st);
+    play(st, 0, 0, branch(0));
+    return eq(tokens(st, 'attacker').att, 3, 'три жетона атаки за три Гаунта');
+});
+
+check('Выводок термаганов', 'вторая ветка — жетон подкрепления в область боя', () => {
+    const st = tyrBattle({ card: 'Выводок термаганов', units: { 'гаунты': 3 } });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => (q.kind === 'choice' ? { choice: 1 } : firstOption(s, q)));
+    const c = st.combat;
+    return eq(st.combat.reinforce.attacker, 1, 'жетон подкреплений в области боя');
+});
+
+check('Выводок термаганов', 'жетоны обороны следующего раунда за потерянных юнитов', () => {
+    const st = tyrBattle({
+        card: 'Выводок термаганов', units: { 'гаунты': 2 }, foeUnits: { 'гвардейцы': 2 },
+        dice: ['att', 'att', 'att', 'att', 'att', 'att'], foeDice: [], roundEnd: true,
+    });
+    refuseReinforce(st);
+    play(st, 0, 0, branch(0));
+    // The attacker deals the damage of the round: one Гаунт of his own is not
+    // touched, the units of the foe fall — the card counts only his own losses,
+    // so one Гаунт is demoralised by the check itself.
+    const victim = myUnits(st)[0];
+    victim.routed = true;
+    for (let i = 0; i < 3 && st.combat && st.combat.step === 'damage-attacker'; i++) {
+        const target = foeUnits(st).filter(u => !u.routed)[0];
+        if (!target) break;
+        const r = FS_RULES.apply(st, 0, { type: 'combat', action: 'damage', targets: [target.id] });
+        ok(r.ok, 'урон не назначен: ' + r.error);
+    }
+    answerAll(st, null, 0);
+    nextRound(st);
+    return eq(tokens(st, 'attacker').def, 1, 'один жетон обороны за одного потерянного юнита');
+});
+
+// --- Выводок термаганов (другая редакция) -----------------------------------
+// «Уничтожьте 1 недеморализованного Гаунта или Пожирателя, чтобы получить 4
+//  `def. token`.» / «*Гаунт/Пожиратель:* получите 1 `att. token` за каждого
+//  недеморализованного Гаунта или Пожирателя.»
+check('Выводок термаганов (другая редакция)', 'четыре жетона обороны за Гаунта', () => {
+    const st = tyrBattle({ card: 'Выводок термаганов (другая редакция)', units: { 'гаунты': 2 } });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : firstOption(s, q)));
+    eq(tyrUnits(st, 0)['Гаунты'] || 0, 1, 'Гаунт уничтожен');
+    return eq(tokens(st, 'attacker').def, 4, 'четыре жетона обороны');
+});
+
+check('Выводок термаганов (другая редакция)', 'по жетону атаки за каждого Гаунта', () => {
+    const st = tyrBattle({ card: 'Выводок термаганов (другая редакция)', units: { 'гаунты': 3 } });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : firstOption(s, q)));
+    return eq(tokens(st, 'attacker').att, 2, 'два жетона атаки за двух оставшихся Гаунтов');
+});
+
+// --- Синаптический контроль -------------------------------------------------
+// «Получите 1 `any cube`. Разместите 1 бесплатный жетон подкрепления в этой
+//  области.»
+// «*Воин/Корабль Улья:* восстановите 1 свой деморализованный отряд. Если у вас
+//  больше недеморализованных отрядов, отнимите от их числа число
+//  недеморализованных отрядов противника и получите 1 `att. token` или
+//  1 `def. token` за каждую оставшуюся единицу.»
+check('Синаптический контроль', 'кубик любого значения и жетон подкрепления', () => {
+    const st = tyrBattle({ card: 'Синаптический контроль', units: { 'воины': 1 }, dice: [] });
+    refuseReinforce(st);
+    play(st, 0, 0);
+    eq(dice(st, 'attacker').length, 1, 'кубик получен');
+    return eq(st.combat.reinforce.attacker, 1, 'жетон подкреплений в области боя');
+});
+
+check('Синаптический контроль', 'отряд восстановлен, жетоны за превосходство в отрядах', () => {
+    const st = tyrBattle({
+        card: 'Синаптический контроль', units: { 'воины': 1, 'гаунты': 2 },
+        foeUnits: { 'гвардейцы': 1 }, routed: [1],
+    });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 1) };
+        if (q.kind === 'choice') return { choice: 0 };
+        return firstOption(s, q);
+    });
+    eq(myUnits(st).filter(u => u.routed).length, 0, 'отряд восстановлен');
+    // Three unrouted units against one: the surplus of two pays two tokens.
+    return eq(tokens(st, 'attacker').att, 2, 'два жетона атаки за превосходство в два отряда');
 });
 
 // ============================================================================
