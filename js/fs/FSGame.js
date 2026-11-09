@@ -1516,7 +1516,8 @@ class FSGame {
         const mkRow = (c, kind) => {
             const cost = costOf(c);
             const owned = kind === 'order' ? ownedOrder.has(c.name) : (deckCounts[c.name] || 0) >= 2;
-            const bought = kind === 'order' ? !!(order && order.orderUpgrade) : !!(order && order.combatUpgrade);
+            const purchases = UpgradeOrder.of(order);
+        const bought = kind === 'order' ? !!(purchases && purchases.orderCard) : !!(purchases && purchases.combat);
             let locked = null;
             let reason = '';
             if (owned) { locked = true; reason = 'Уже у вас'; }
@@ -1566,10 +1567,11 @@ class FSGame {
         } : null;
         // The status line above says exactly what to do next — buy order.
         // The buttons of the bottom-left corner — always finishable.
-        const combatBought = !!(order && order.combatUpgrade);
-        const orderBought = !!(order && order.orderUpgrade);
-        const combatName = combatBought && order.combatBuy ? order.combatBuy.card : null;
-        const orderName = orderBought ? (order.orderUpgradeName || null) : null;
+        const boughtNow = UpgradeOrder.of(order);
+        const combatBought = !!(boughtNow && boughtNow.combat);
+        const orderBought = !!(boughtNow && boughtNow.orderCard);
+        const combatName = combatBought && boughtNow.combatBuy ? boughtNow.combatBuy.card : null;
+        const orderName = orderBought ? boughtNow.orderName : null;
         const selUsable = !!selRow && !selRow.locked && !noUnits;
         ctx.leftActions = [
             {
@@ -1615,9 +1617,10 @@ class FSGame {
         const s = this.state;
         if (!s || !s.order || s.order.order !== 'strategize' || s.order.seat !== s.seat) return;
         const p = s.players[s.seat];
+        const bought = UpgradeOrder.of(s.order);
         if (kind === 'combat') {
-            if (s.order.combatUpgrade) {
-                const card = s.order.combatBuy ? s.order.combatBuy.card : null;
+            if (bought && bought.combat) {
+                const card = bought.combatBuy ? bought.combatBuy.card : null;
                 if (card) this.net.cmd({ type: 'refundUpgrade', kind: 'combat', card });
                 this.upgradeSel = null;
                 this.pairPick = null;
@@ -1636,8 +1639,8 @@ class FSGame {
             return;
         }
         if (kind === 'order') {
-            if (s.order.orderUpgrade) {
-                const card = s.order.orderUpgradeName || null;
+            if (bought && bought.orderCard) {
+                const card = bought.orderName;
                 if (card) this.net.cmd({ type: 'refundUpgrade', kind: 'order', card });
                 this.upgradeSel = null;
                 this.refresh();

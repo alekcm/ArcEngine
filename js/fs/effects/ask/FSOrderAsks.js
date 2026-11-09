@@ -201,7 +201,8 @@ class OrderAsks {
 
     static upgradeLimit(effects, f) {
         const { state, step } = f;
-        if (state.order) state.order.upgradeLimit = step.n || 1;
+        const upgrades = UpgradeOrder.of(state.order);
+        if (upgrades) upgrades.setLimit(step.n || 1);
         return null;
     }
 

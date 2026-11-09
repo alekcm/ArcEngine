@@ -500,6 +500,29 @@ try {
     fail(e.message);
 }
 
+// --- the purchases of a strategize order: one object ------------------------
+section('покупки улучшений: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSUpgrades.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The bought cards and their receipts (for the refund) are one object:
+        // a rule or the panel asks UpgradeOrder, it does not read the fields.
+        const re = /\b(?:state\.order|s\.order|order)\.(?:upgradesBought|upgradeLimit|combatUpgrade|combatBuy|orderUpgrade|orderUpgradeName|orderBuy)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('купленные улучшения пишет только UpgradeOrder');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the step of an order: one object ---------------------------------------
 section('шаг приказа: один объект');
 try {

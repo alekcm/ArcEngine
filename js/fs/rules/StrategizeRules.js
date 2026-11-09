@@ -14,13 +14,14 @@ class StrategizeRules {
         if (!this.engine.hasUnitsOrStructures(state, seat, order.system)) {
             return { ok: false, error: 'В активной системе нет ваших отрядов и построек.' };
         }
+        const upgrades = UpgradeOrder.of(order);
         // The order may allow only one upgrade.
-        if (order.upgradeLimit && (order.upgradesBought || 0) >= order.upgradeLimit) {
-            return { ok: false, error: 'Можно купить только ' + order.upgradeLimit + ' улучшение(я).' };
+        if (upgrades.full) {
+            return { ok: false, error: 'Можно купить только ' + upgrades.limit + ' улучшение(я).' };
         }
         const kind = cmd.kind;       // 'combat' | 'order'
         if (kind === 'combat') {
-            if (order.combatUpgrade) return { ok: false, error: 'Боевое улучшение уже куплено.' };
+            if (upgrades.combat) return { ok: false, error: 'Боевое улучшение уже куплено.' };
             const card = FS_CATALOG.card('combat', p.faction, cmd.card);
             if (!card) return { ok: false, error: 'Нет такой карты.' };
             if (card.kl > this.engine.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
@@ -62,15 +63,13 @@ class StrategizeRules {
                 return { ok: false, error: 'Пару карт заменить не удалось.' };
             }
             this.engine.player(state, seat).payMateriel(cost);
-            order.upgradesBought = (order.upgradesBought || 0) + 1;
-            order.combatUpgrade = true;
             // Kept for the refund: the pair that left the deck, the card that came in.
-            order.combatBuy = { card: card.name, removed: [wanted, wanted], price: cost };
+            upgrades.buyCombat(card.name, wanted, cost);
             this.engine.log(state, seat, p.name + ' заменяет пару «' + wanted + '» на «' + card.name + '».');
             return { ok: true };
         }
         if (kind === 'order') {
-            if (order.orderUpgrade) return { ok: false, error: 'Улучшение приказа уже куплено.' };
+            if (upgrades.orderCard) return { ok: false, error: 'Улучшение приказа уже куплено.' };
             const card = FS_CATALOG.card('orders', p.faction, cmd.card);
             if (!card) return { ok: false, error: 'Нет такой карты.' };
             if (card.kl > this.engine.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
@@ -83,13 +82,10 @@ class StrategizeRules {
             const pile = p.decks && Array.isArray(p.decks.upgradeOrder) ? p.decks.upgradeOrder : null;
             if (pile && !pile.includes(card.name)) return { ok: false, error: 'Этой карты нет в колоде улучшений.' };
             this.engine.player(state, seat).payMateriel(cost);
-            order.upgradesBought = (order.upgradesBought || 0) + 1;
             p.upgrades.push({ name: card.name, used: false, order: card.order });
             if (pile) pile.splice(pile.indexOf(card.name), 1);
-            order.orderUpgrade = true;
             // Kept for the refund.
-            order.orderUpgradeName = card.name;
-            order.orderBuy = { name: card.name, price: cost };
+            upgrades.buyOrder(card.name, cost);
             this.engine.log(state, seat, p.name + ' купил улучшение приказа «' + card.name + '».');
             return { ok: true };
         }
@@ -100,8 +96,9 @@ class StrategizeRules {
         const order = this.engine.orderOf(state, seat, 'strategize');
         if (!order) return { ok: false, error: 'Отменить можно только улучшения приказа стратегии.' };
         const p = state.players[seat];
+        const upgrades = UpgradeOrder.of(order);
         if (cmd.kind === 'combat') {
-            const buy = order.combatBuy;
+            const buy = upgrades.combatBuy;
             if (!buy || buy.card !== cmd.card) return { ok: false, error: 'Это улучшение сейчас не куплено.' };
             const deck = FS_CARDS.combatDeck(this.engine, state, seat);
             if (!deck.replacePair(buy.card, buy.removed[0])) {
@@ -110,14 +107,12 @@ class StrategizeRules {
             const card = FS_CATALOG.card('combat', p.faction, buy.card);
             const fallback = card ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0;
             this.engine.player(state, seat).gainMateriel(buy.price != null ? buy.price : fallback);
-            order.combatUpgrade = false;
-            order.combatBuy = null;
-            order.upgradesBought = Math.max(0, (order.upgradesBought || 0) - 1);
+            upgrades.refundCombat();
             this.engine.log(state, seat, p.name + ' отменил покупку боевого улучшения «' + buy.card + '».');
             return { ok: true };
         }
         if (cmd.kind === 'order') {
-            const name = order.orderUpgradeName;
+            const name = upgrades.orderName;
             if (!name || name !== cmd.card) return { ok: false, error: 'Улучшение сейчас не куплено.' };
             const idx = (p.upgrades || []).findIndex(u => u.name === name);
             if (idx < 0) return { ok: false, error: 'Улучшение уже куда-то пропало — отмена невозможна.' };
@@ -126,12 +121,10 @@ class StrategizeRules {
             p.upgrades.splice(idx, 1);
             const pile = p.decks && Array.isArray(p.decks.upgradeOrder) ? p.decks.upgradeOrder : null;
             if (pile && !pile.includes(name)) pile.push(name);
-            this.engine.player(state, seat).gainMateriel(order.orderBuy && order.orderBuy.price != null
-                ? order.orderBuy.price : fallback);
-            order.orderUpgrade = false;
-            order.orderUpgradeName = null;
-            order.orderBuy = null;
-            order.upgradesBought = Math.max(0, (order.upgradesBought || 0) - 1);
+            const receipt = upgrades.orderBuy;
+            this.engine.player(state, seat).gainMateriel(receipt && receipt.price != null
+                ? receipt.price : fallback);
+            upgrades.refundOrder();
             this.engine.log(state, seat, p.name + ' отменил покупку улучшения приказа «' + name + '».');
             return { ok: true };
         }
@@ -151,7 +144,8 @@ class StrategizeRules {
             order.order = kind;
             PhasePlan.of(order).set(null);
             order.purchases = [];
-            order.upgradesBought = 0;
+            const purchases = UpgradeOrder.of(order);
+            if (purchases) purchases.reset();
             if (kind === 'advance') order.moveAreaLimit = 1;
             if (kind === 'deploy') { order.deployAreaLimit = 1; order.deployAreas = []; }
             const res = this.engine.resolveOrder(state, seat, kind, order.system);

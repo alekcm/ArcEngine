@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -629,6 +629,38 @@ rule('str-2', '«A player may purchase up to one combat upgrade and up to one or
     eq(a.ok, true, 'первое улучшение приказа');
     const b = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: orders[1] ? orders[1].name : orders[0].name });
     eq(b.ok, false, 'второе улучшение приказа за один приказ');
+});
+
+rule('str-2b', '«A player may purchase up to one combat upgrade and up to one order upgrade» — покупки приказа стратегии живут в одном UpgradeOrder', () => {
+    const purchases = UpgradeOrder.of({ seat: 0, order: 'strategize' });
+    // The order allows one upgrade of its own: the limit is read, not counted by hand.
+    purchases.setLimit(2);
+    eq(purchases.full, false, 'предел ещё не выбран');
+    purchases.buyCombat('Плазменный залп', 'Болтер', 3);
+    eq(purchases.bought, 1, 'боевое улучшение посчитано');
+    eq(purchases.combat, true, 'боевое улучшение куплено');
+    eq(purchases.combatBuy.removed, ['Болтер', 'Болтер'], 'пара карт запомнена для отмены');
+    eq(purchases.combatBuy.price, 3, 'цена запомнена');
+    purchases.buyOrder('Удар с орбиты', 4);
+    eq(purchases.full, true, 'предел выбран');
+    eq(purchases.orderName, 'Удар с орбиты', 'улучшение приказа названо');
+    // The receipt of each purchase is what the refund gives back.
+    const order = purchases.refundOrder();
+    eq(order.name, 'Удар с орбиты', 'отмена знает карту');
+    eq(order.price, 4, 'отмена знает цену');
+    eq(purchases.orderCard, false, 'улучшение приказа отменено');
+    eq(purchases.bought, 1, 'счётчик вернулся');
+    const combat = purchases.refundCombat();
+    eq(combat.card, 'Плазменный залп', 'отмена боевого знает карту');
+    eq(purchases.bought, 0, 'счётчик покупок пуст');
+    eq(purchases.full, false, 'место снова есть');
+    // A new order starts with no purchases and no receipts.
+    purchases.buyOrder('Удар с орбиты', 4);
+    purchases.reset();
+    eq(purchases.bought, 0, 'новый приказ без покупок');
+    eq(purchases.orderName, null, 'и без чека');
+    eq(UpgradeOrder.of(purchases.order), purchases, 'у приказа один UpgradeOrder');
+    eq(UpgradeOrder.of(null), null, 'без приказа покупок нет');
 });
 
 rule('str-3', '«The active player takes the order token from the game board and places it on top of his event deck»', () => {
