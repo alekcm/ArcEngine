@@ -88,6 +88,7 @@
 | Где стоит варп-шторм | `FSWarpStorms.js` (`WarpStormField.create/write`) | не писать `storm.edge`/`a`/`b` в правиле или карте — это ловит `fs-smoke` |
 | Удар с орбиты: бонус, оплата карт, цена построек, первый отряд | `core/FSStrike.js` (`StrikePlan.of(order)`) | не писать `order.strike*` в правиле, шаге карты или панели — это ловит `fs-smoke` |
 | Шаг марша, его дороги, отменённые ходы, спорная область | `core/FSMarch.js` (`MarchPlan.of(order)`) | не писать `order.moved`/`route`/`steps` в правиле, бое или панели — это ловит `fs-smoke` |
+| Шаг приказа (`move`, `combat`, `strike`, …) | `core/FSPhase.js` (`PhasePlan.of(order)`) | не сравнивать `order.phase` со строкой в правиле или панели — это ловит `fs-smoke` |
 | Текст карты → шаги игры | `FSEffects.js` (таблица `RULES`) | текст карты — это правило карты, отдельного кода «на карту» нет |
 | Что шаг спросит у игрока | `js/fs/effects/ask/FS*Asks.js` (реестр `ASK_EXECUTORS`) | не добавлять ветку в `switch` — его больше нет |
 | Что шаг сделает с ответом | `js/fs/effects/FS*Steps.js` (реестр `STEP_EXECUTORS`) | не писать действие шага в панели |
@@ -116,7 +117,7 @@
 
 ```
 node tools/check.mjs          # типы (tsc по JSDoc) + сверка правил + дым-тест
-node tools/fs-audit.mjs       # 143 проверки: каждая цитирует Rules Reference
+node tools/fs-audit.mjs       # 144 проверки: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # 82 проверки: карты одной фракции против их текстов
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках
@@ -129,12 +130,12 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 шагов карт (73 «дела» и 155 «вопроса» — каждый объявлен и каждый — функция), а ещё один —
 сам предметный слой: стороны боя и верх стопки приказов.
 
-Тринадцать разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
+Четырнадцать разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
 (вставленные `assets.forge++`, `cards[side].hand.splice`, `p.materiel -= 1`, ручной счёт
 пяти отрядов, `structuresAt(...).length`, `state.order = null`, `u.routed = true`,
 `order.bought++`, чтение `state.trim` мимо очереди, `storm.edge = …` мимо поля штормов и
-`order.strikeBonus = …` мимо `StrikePlan` и `order.moved = []` мимо `MarchPlan` дают провал
-с именем файла и строкой):
+`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan`
+дают провал с именем файла и строкой):
 
 * жетоны: только `PlayerEntity` пишет в `assets`;
 * материя: только `PlayerEntity` начисляет и списывает её (`payMateriel`/`gainMateriel`,
@@ -164,6 +165,9 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 * марш наступления: шаг движения, дороги шага, шедшие отряды, стопка отменённых ходов,
   спорная область и предел числа ходов — один объект `MarchPlan` (`core/FSMarch.js`);
   правило продвижения, бой и панель спрашивают его.
+* шаг приказа (`units`, `structures`, `move`, `combat`, `strike`, `strike-first`,
+  `strike-damage`, `guardDeploy`, `done`) — один объект `PhasePlan` (`core/FSPhase.js`);
+  названия шагов стоят там же константами, правила и панель сравнивают через `is()`.
 
 ## Шаги карт: две ступени и рамка
 

@@ -50,7 +50,7 @@ class CombatRules {
             state.combat = null;
             if (state.testBattle) { this.engine.closeOrder(state); return null; }
             const order = state.order;
-            if (order) order.phase = 'done';
+            if (order) PhasePlan.of(order).set('done');
             this.engine.finishOrder(state, attacker);
             return null;
         }

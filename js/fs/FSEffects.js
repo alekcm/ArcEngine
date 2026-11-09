@@ -885,7 +885,7 @@ const FS_EFFECTS = {
         const order = state.order;
         if (!order) return null;
         const p = state.players[seat];
-        order.phase = 'guardDeploy';
+        PhasePlan.of(order).set('guardDeploy');
         order.guardFactory = { system: factory.system, pos: factory.pos };
         // «Купите минимум 2 отряда одного типа по цене на 1 меньше обычного»
         order.discount = (order.discount || 0) + 1;

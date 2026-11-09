@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -659,6 +659,34 @@ rule('dom-1', '«When a player resolves a Dominate Order, he gains the assets th
     const before = icon ? (st.players[0].assets[icon] || 0) : 0;
     eq(FS_RULES.apply(st, 0, { type: 'resolveOrder', system: active.id }).ok, true, 'доминирование');
     if (icon) eq(st.players[0].assets[icon], before + 1, 'жетон ресурса за иконку мира');
+});
+
+rule('phase-1', '«… the steps of an order …» — шаги приказа называет один объект PhasePlan', () => {
+    // A deployment walks units → structures → done; an advance walks
+    // move → combat; a strike walks strike → strike-first → strike-damage.
+    const order = { seat: 0, order: 'deploy' };
+    const phase = PhasePlan.of(order);
+    phase.set(PhasePlan.UNITS);
+    eq(phase.is(PhasePlan.UNITS), true, 'развертывание начинается с отрядов');
+    eq(phase.is(PhasePlan.STRUCTURES), false, 'и ещё не дошло до построек');
+    phase.set(PhasePlan.STRUCTURES);
+    eq(phase.name, PhasePlan.STRUCTURES, 'шаг построек');
+    phase.set(PhasePlan.DONE);
+    eq(phase.is(PhasePlan.UNITS, PhasePlan.STRUCTURES), false, 'законченный приказ — не тот и не этот');
+    eq(phase.is(PhasePlan.DONE), true, 'законченный приказ — done');
+    // A nested order starts without a step and gets it from resolveOrder.
+    phase.clear();
+    eq(phase.name, null, 'вложенный приказ без шага');
+    // A strike keeps its own names.
+    const strikeOrder = { seat: 1, order: 'advance' };
+    const sp = PhasePlan.of(strikeOrder);
+    sp.set(PhasePlan.STRIKE);
+    eq(sp.is(PhasePlan.STRIKE), true, 'удар начат');
+    sp.set(PhasePlan.STRIKE_FIRST);
+    eq(sp.is(PhasePlan.STRIKE), false, 'на шаге первого отряда удар уже не «strike»');
+    // One object per order, and no order — no object.
+    eq(PhasePlan.of(order), phase, 'у приказа один PhasePlan');
+    eq(PhasePlan.of(null), null, 'без приказа шага нет');
 });
 
 rule('dom-2', '«A player cannot have more than three of each asset token.»', () => {

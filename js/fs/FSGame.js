@@ -386,7 +386,7 @@ class FSGame {
         }
         const ctx = { title: '', text: '', status: this.status || '', warn: this.warn || '', actions: [], mode: this.mode, setupCellSelected: false };
         // A new order (or a new step of it) — the pending action is dropped.
-        const orderKey = s.order ? s.order.order + ':' + s.order.phase : '';
+        const orderKey = s.order ? s.order.order + ':' + PhasePlan.of(s.order).name : '';
         if (this.orderKey !== orderKey) {
             this.orderKey = orderKey;
             this.mode = 'idle';
@@ -472,7 +472,7 @@ class FSGame {
         // its whole interface is the combat below.
         if (s.order && s.order.seat === me && s.testMode !== 'battle') {
             if (s.order.order === 'advance') this.panelAdvance(s, ctx);
-            if (s.order.phase === 'guardDeploy') this.panelGuardDeploy(s, ctx);
+            if (PhasePlan.of(s.order).is('guardDeploy')) this.panelGuardDeploy(s, ctx);
             else if (s.order.order === 'deploy') this.panelDeploy(s, ctx);
             else if (s.order.order === 'strategize') this.panelStrategize(s, ctx);
             else if (s.order.order === 'dominate') this.panelDominate(s, ctx);
@@ -487,7 +487,7 @@ class FSGame {
                 // An orbital upgrade is played during the strike of an advance,
                 // any other one during the order printed on the card.
                 const right = !kind || (s.order && s.order.seat === me
-                    && (kind === 'orbital' ? s.order.phase === 'strike' : s.order.order === kind));
+                    && (kind === 'orbital' ? PhasePlan.of(s.order).is('strike') : s.order.order === kind));
                 if (!right) continue;
                 ctx.actions.push({
                     label: 'Применить улучшение: ' + u.name,
@@ -746,7 +746,7 @@ class FSGame {
             if (!s) return;
             // Отмена работает и в начале боя: пока в нём ничего не сделано.
             const mine = s.order && s.order.seat === s.seat && s.order.order === 'advance'
-                && (s.order.phase === 'move' || s.order.phase === 'combat');
+                && (PhasePlan.of(s.order).is('move') || PhasePlan.of(s.order).is('combat'));
             if (mine && MarchPlan.of(s.order).steps.length) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -948,7 +948,7 @@ class FSGame {
         const me = s.seat;
         const order = s.order;
         const sys = Board.of(s).system(order.system);
-        if (order.phase === 'move') {
+        if (PhasePlan.of(order).is('move')) {
             // The board itself is the tool of the movement: every click picks or marches.
             // A new order starts a new march: the flow and the group are empty again.
             const march = MarchPlan.of(order);
@@ -1023,14 +1023,14 @@ class FSGame {
                     onClick: () => this.net.cmd({ type: 'undoMove' }),
                 });
             }
-        } else if (order.phase === 'combat') {
+        } else if (PhasePlan.of(order).is('combat')) {
             // Бой начался, но ничего в нём ещё не сделано: ход можно вернуть.
             ctx.actions.push({
                 kind: 'chip', icon: 'ui.close', label: 'Вернуть последний ход',
                 hint: 'пока в бою не потрачено ни одного кубика',
                 onClick: () => this.net.cmd({ type: 'undoMove' }),
             });
-        } else if (order.phase === 'strike') {
+        } else if (PhasePlan.of(order).is('strike')) {
             ctx.title = 'Орбитальный удар';
             this.mode = 'strike';
             // The engine names the pairs of a void and a world: the ships shoot from one
@@ -1441,7 +1441,7 @@ class FSGame {
         const list = [];
         // «Массовое Производство»: the ring is over the factory world; a ship
         // goes out into the void of the same system instead.
-        if (order.phase === 'guardDeploy' && order.guardFactory) {
+        if (PhasePlan.of(order).is('guardDeploy') && order.guardFactory) {
             const gsys = Board.of(s).system(order.guardFactory.system);
             if (!gsys) { FSView.highlight(this.view, []); return; }
             const rings = [];
@@ -3051,7 +3051,7 @@ class FSGame {
             return;
         }
         // The orbital strike: the target is picked on the board itself.
-        if (this.mode === 'strike' && s.order && s.order.phase === 'strike' && meta.fs === 'area' && target) {
+        if (this.mode === 'strike' && s.order && PhasePlan.of(s.order).is('strike') && meta.fs === 'area' && target) {
             const t = (this.strikeTargets || []).find(x => x.system === target.system && x.pos === target.pos);
             if (!t) { this.status = 'Удар идёт по вражескому миру в радиусе пустоты.'; this.refresh(); return; }
             this.mode = 'idle';

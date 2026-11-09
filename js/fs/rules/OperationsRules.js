@@ -131,7 +131,7 @@ class OperationsRules {
     resolveOrder(state, seat, order, systemId) {
         const p = state.players[seat];
         if (order === 'advance') {
-            state.order.phase = 'move';
+            PhasePlan.of(state.order).set('move');
             // The movement has two steps: the ships first, then the ground units
             // (the rules, "Advance Order"). The roads of each step are frozen when
             // the step begins: a march never opens a longer road for the next unit.
@@ -143,7 +143,7 @@ class OperationsRules {
         if (order === 'deploy') {
             // Two steps: the units first, then the one structure. The materiel is
             // paid at the end of the order (cmdFinishDeploy).
-            state.order.phase = 'units';
+            PhasePlan.of(state.order).set('units');
             state.order.purchases = [];
             // The card of the Orks lets the structure come before the units.
             if ((p.upgrades || []).some(u => /Строй быстрее/i.test(u.name || ''))) state.order.structureFirst = true;
@@ -151,14 +151,14 @@ class OperationsRules {
             return { ok: true };
         }
         if (order === 'strategize') {
-            state.order.phase = 'strategize';
+            PhasePlan.of(state.order).set('strategize');
             return { ok: true };
         }
         if (order === 'dominate') {
             // The order stays open: the player takes the prosperity tokens and
             // applies the ability of the faction.
             this.engine.dominate(state, seat, systemId);
-            state.order.phase = 'dominate';
+            PhasePlan.of(state.order).set('dominate');
             const faction = this.engine.faction(state, seat);
             state.order.ability = faction && faction.ability
                 ? faction.ability.name + ': ' + faction.ability.text : '';
@@ -274,7 +274,7 @@ class OperationsRules {
             // every other one to the order printed on it (the rules, «Order
             // Upgrade Cards»: the icon of the order is on the card).
             if (kind === 'orbital') {
-                if (state.order.phase !== 'strike') {
+                if (!PhasePlan.of(state.order).is('strike')) {
                     return { ok: false, error: 'Это улучшение применяется во время орбитального удара.' };
                 }
             } else if (state.order.order !== kind) {

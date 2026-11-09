@@ -350,7 +350,7 @@ class AdvanceRules {
         // The last march may be taken back while the movement runs — and also
         // right after the combat has started: nothing has happened in the battle
         // yet (no reinforcements, no cards, no dice).
-        if (order.phase === 'combat') {
+        if (PhasePlan.of(order).is('combat')) {
             const c = state.combat;
             const fresh = c && c.round === 1 && c.step === 'reinforce-attacker'
                 && !c.reinforce.attacker && !c.reinforce.defender
@@ -367,10 +367,10 @@ class AdvanceRules {
                 player.combatDeck.shuffle();
             }
             state.combat = null;
-            order.phase = 'move';
+            PhasePlan.of(order).set('move');
             MarchPlan.of(order).setStep('ground');
         }
-        if (order.phase !== 'move') return { ok: false, error: 'Движение уже закончено.' };
+        if (!PhasePlan.of(order).is('move')) return { ok: false, error: 'Движение уже закончено.' };
         const march = MarchPlan.of(order);
         const last = march.popStep();
         if (!last) return { ok: false, error: 'Отменять нечего.' };
@@ -396,7 +396,7 @@ class AdvanceRules {
         if (area) march.clearContested(area);
         if (kind === 'ship') {
             march.setStep('ships').setRoute(this.advanceRoutes(state, seat, 'ship'));
-        } else if (order.phase === 'move') {
+        } else if (PhasePlan.of(order).is('move')) {
             march.setStep('ground');
         }
         return { ok: true, undone: last.length, step: kind === 'ship' ? 'ships' : 'ground' };
@@ -411,7 +411,7 @@ class AdvanceRules {
         const order = state.order;
         if (!order || order.order !== 'advance') return { ok: false, error: 'Это не приказ наступления.' };
         if (order.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
-        if (order.phase === 'move' && MarchPlan.of(order).step !== 'ground') {
+        if (PhasePlan.of(order).is('move') && MarchPlan.of(order).step !== 'ground') {
             const march = MarchPlan.of(order);
             march.setStep('ground');
             // The roads of the ground units are measured now — after the ships
@@ -436,25 +436,25 @@ class AdvanceRules {
             const their = state.units.find(u => u.seat !== seat && u.system === area.system && u.area === area.pos);
             const bastion = state.structures.find(s => s.seat !== seat && s.system === area.system && s.area === area.pos && s.type === 'bastion');
             const defender = their ? their.seat : bastion ? bastion.seat : seat;
-            order.phase = 'combat';
+            PhasePlan.of(order).set('combat');
             this.engine.startCombat(state, seat, defender, area.system, area.pos);
             return { ok: true };
         }
         // «Мобилизированные охотники»: the extra advance is over; the main
         // advance of the same order resumes with its own movement still frozen.
         if (order.preAdvance) {
-            order.phase = 'done';
+            PhasePlan.of(order).set('done');
             this.engine.finishOrder(state, seat);
             return { ok: true };
         }
         // No combat. An orbital strike is offered only when it has a target: an
         // enemy world under the friendly ships of the system.
         if (!this.orbitalStrikeTargets(state, seat).length) {
-            order.phase = 'done';
+            PhasePlan.of(order).set('done');
             this.engine.finishOrder(state, seat);
             return { ok: true };
         }
-        order.phase = 'strike';
+        PhasePlan.of(order).set('strike');
         return { ok: true };
     }
 
@@ -495,7 +495,7 @@ class AdvanceRules {
         const order = state.order;
         const strike = StrikePlan.of(order);
         if (strike) strike.reset();
-        if (!order || order.phase !== 'strike') return { ok: false, error: 'Сейчас нельзя наносить орбитальный удар.' };
+        if (!order || !PhasePlan.of(order).is('strike')) return { ok: false, error: 'Сейчас нельзя наносить орбитальный удар.' };
         // The schemes of the strike are used before the strike.
         if (!strike.hookUsed()) {
             if (this.engine.maybeScheme(state, seat, 'strike', { kind: 'order', ctx: null })) return { ok: true, pending: true };
@@ -581,7 +581,7 @@ class AdvanceRules {
                 maxKl: strike.firstKl,
             });
             strike.setPlanned(planned);
-            order.phase = 'strike-first';
+            PhasePlan.of(order).set('strike-first');
             this.engine.runEffects(state, seat, paySteps, { kind: 'order', ctx: null });
             return { ok: true, pending: true, hits };
         }
@@ -596,10 +596,10 @@ class AdvanceRules {
                 left: hits, hits, attacker: seat,
                 first: order ? StrikePlan.of(order).first : null,
             };
-            order.phase = 'strike-damage';
+            PhasePlan.of(order).set('strike-damage');
             return { ok: true, pending: true, hits };
         }
-        if (order) order.phase = 'done';
+        if (order) PhasePlan.of(order).set('done');
         this.engine.finishOrder(state, seat);
         return { ok: true, hits };
     }
@@ -631,7 +631,7 @@ class AdvanceRules {
             && planned.defender >= 0 && strike.firstWanted && !strike.first;
         if (wantsFirst && !strike.firstAsked) {
             strike.askFirst(true);
-            order.phase = 'strike-first';
+            PhasePlan.of(order).set('strike-first');
             this.engine.runEffects(state, seat, [{
                 op: 'strikeFirstPick',
                 maxKl: strike.firstKl,
@@ -693,7 +693,7 @@ class AdvanceRules {
             if (ids.length) {
                 state.strike = null;
                 order.chaosRouteDamaged = false;
-                order.phase = 'done';
+                PhasePlan.of(order).set('done');
                 StrikePlan.of(order).finishAfterQuestion(true);
                 this.engine.runEffects(state, st.attacker, [{
                     op: 'strikeRouteDamaged', attacker: st.attacker, options: ids,
@@ -703,7 +703,7 @@ class AdvanceRules {
         }
         state.strike = null;
         if (order) {
-            order.phase = 'done';
+            PhasePlan.of(order).set('done');
             this.engine.finishOrder(state, st ? st.attacker : (order.seat));
         }
         return { ok: true };

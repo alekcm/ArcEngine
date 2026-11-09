@@ -500,6 +500,29 @@ try {
     fail(e.message);
 }
 
+// --- the step of an order: one object ---------------------------------------
+section('шаг приказа: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSPhase.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // `order.phase` is a small machine: its steps are compared by name in
+        // one place, never with a literal in a rule or in the panel.
+        const re = /\b(?:state\.order|s\.order|order)\.phase\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('шаг приказа спрашивают у PhasePlan');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the march of an advance: one object ------------------------------------
 section('марш наступления: один объект');
 try {

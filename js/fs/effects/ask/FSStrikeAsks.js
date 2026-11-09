@@ -9,7 +9,7 @@ class StrikeAsks {
 
     static strikeBonus(effects, f) {
         const { R, state, seat, step } = f;
-        if (state.order && state.order.phase === 'strike' && state.order.seat === seat) {
+        if (state.order && PhasePlan.of(state.order).is('strike') && state.order.seat === seat) {
             StrikePlan.of(state.order).addBonus(step.n || 0);
             R.log(state, seat, state.players[seat].name + ' добавляет ' + (step.n || 0) + ' к урону удара.');
             return null;

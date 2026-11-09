@@ -24,7 +24,7 @@ class DeployRules {
         const order = this.engine.orderOf(state, seat);
         // «Массовое Производство»: the ability is ONE factory working — the
         // capacity of its own world, doubled factories do not count.
-        if (order && order.phase === 'guardDeploy' && order.guardFactory) {
+        if (order && PhasePlan.of(order).is('guardDeploy') && order.guardFactory) {
             return Math.max(0, this.engine.capacity(state, order.guardFactory.system, order.guardFactory.pos));
         }
         let limit = 0;
@@ -134,7 +134,7 @@ class DeployRules {
     }
 
     deployStep(order) {
-        return order && order.phase === 'structures' ? 'structures' : 'units';
+        return order && PhasePlan.of(order).is('structures') ? 'structures' : 'units';
     }
 
     spentOf(order) {
@@ -207,7 +207,7 @@ class DeployRules {
 
     cmdBuyUnit(state, seat, cmd) {
         const order = state.order;
-        const isGuard = !!order && order.phase === 'guardDeploy' && order.guardFactory;
+        const isGuard = !!order && PhasePlan.of(order).is('guardDeploy') && order.guardFactory;
         if (!order || (order.order !== 'deploy' && !isGuard) || order.seat !== seat) {
             return { ok: false, error: 'Сейчас нельзя покупать отряды.' };
         }
@@ -367,7 +367,7 @@ class DeployRules {
 
     cmdUndoPurchase(state, seat, cmd) {
         const order = state.order;
-        const isGuard = !!order && order.phase === 'guardDeploy';
+        const isGuard = !!order && PhasePlan.of(order).is('guardDeploy');
         if (!order || (order.order !== 'deploy' && !isGuard) || order.seat !== seat) return { ok: false, error: 'Нечего отменять.' };
         const list = order.purchases || [];
         const p = state.players[seat];
@@ -399,7 +399,7 @@ class DeployRules {
         const order = this.engine.orderOf(state, seat, 'deploy');
         if (!order) return { ok: false, error: 'Нечего заканчивать.' };
         if (this.deployStep(order) === 'structures') return { ok: true };
-        order.phase = 'structures';
+        PhasePlan.of(order).set('structures');
         return { ok: true };
     }
 
@@ -418,7 +418,7 @@ class DeployRules {
             if (!entry.cost) continue;
             this.engine.log(state, seat, p.name + ' платит ' + entry.cost + ' материи за «' + entry.name + '».');
         }
-        order.phase = 'done';
+        PhasePlan.of(order).set('done');
         this.engine.finishOrder(state, seat);
         return { ok: true, paid: total };
     }
@@ -431,7 +431,7 @@ class DeployRules {
 
     cmdFinishGuardDeploy(state, seat) {
         const order = state.order;
-        if (!order || order.phase !== 'guardDeploy' || order.seat !== seat) {
+        if (!order || !PhasePlan.of(order).is('guardDeploy') || order.seat !== seat) {
             return { ok: false, error: 'Сейчас нельзя закончить производство.' };
         }
         const bought = (order.purchases || []).filter(x => x.kind === 'unit');

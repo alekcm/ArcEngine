@@ -29,7 +29,7 @@ class DominateRules {
             this.engine.log(state, seat, p.name + ' получил ресурсы: ' + gained.join(', ') + '.');
         }
         // The faction ability is resolved by the player (it is a card-like text).
-        state.order.phase = 'dominate';
+        PhasePlan.of(state.order).set('dominate');
         state.order.ability = this.engine.faction(state, seat).ability;
     }
 
