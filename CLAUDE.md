@@ -37,7 +37,7 @@ node tools/fs-server.mjs  # Forbidden Stars: сервер локальной с�
 run.bat                  # игра: dev-сервер + браузер, порт 8080 (или следующий свободный)
 editor.bat               # редактор: http://localhost:8090/_utils/editor/
 build.bat                # dist/arcengine-<GAME_VERSION>.zip
-check.bat                # типы (tsc по JSDoc) + сверка правил; агенту — node tools/check.mjs [--types|--rules]
+check.bat                # типы (tsc по JSDoc) + сверка правил + дым; node tools/check.mjs [--types|--rules|--smoke]
 ```
 
 Git: что не едет в репозиторий — `.gitignore` (`.claude/`, бэкапы редактора, `build/`, `dist/`);
@@ -56,8 +56,8 @@ Git: что не едет в репозиторий — `.gitignore` (`.claude/`
 1. **Ноль зависимостей.** Ни npm, ни CDN, ни сборки, ни внешних ресурсов. TypeScript для
    проверки берёт `npx` (кэш npm), в проект он не ставится.
 2. **Порядок скриптов значим.** `Constants.js` — первый, `main.js` — последний. Новый скрипт —
-   файл в `js/`, `<script src="js/…">` в `index.html` и строка в `CODE_FILES`
-   (`tools/asset-scan.mjs`), иначе не попадёт в архив.
+   файл в `js/` и `<script src="js/…">` в `index.html`: список файлов для архива и для
+   сервера/проверок (`CODE_FILES`) читается из `index.html`, второй список не ведётся.
 3. **Все числа — в `Constants.js`, литералами.** Редактор патчит только
    `const ИМЯ = <число>;`. Код читает константу через `typeof ИМЯ !== 'undefined'` с
    дефолтом: в игре это лексический `const`, в редакторе — свойство `window`.
@@ -126,12 +126,22 @@ js/               код игры — классические скрипты:
                   runs() разбирает текст карты («*курсив*», «**жирный**», «`att. cube`») в отрезки,
                   cardFace() рисует лицо карты целиком — текст и кубы на самой карте
     FSData.js     данные, сгенерированы tools/fs-import.mjs из docs/forbidden-stars/*.md (не править руками)
-    FSRules.js    правила над состоянием: фазы, приказы, бой, штормы, победа; view(state, seat) — состояние для игрока;
-                  тестовые режимы лобби: newReadyGame (готовая карта 1×1), newBattleTest + rematchBattle;
-                  приказы кладутся по одному по кругу (state.turn двигает nextPlanner), в любую систему;
-                  марш: advanceRoutes замораживает цели в начале приказа, order.moved не даёт сходить дважды;
-                  бой: advanceCombatSteps сам пропускает пустую руку и нулевой урон, карту пропустить нельзя;
-                  damagePreview/damageCandidates — раздача урона без изменения состояния (для панели)
+    core/         предметный слой, один на всех (без DOM и без Babylon):
+      FSRulesConfig.js  числа игры: раскладка доски, предел области, жетоны приказов, коробка построек
+      FSCatalog.js      печатные данные в одном месте: фракции, отряды, постройки, тайлы, карты,
+                        цвета и палитры, предел ресурсов (тираниды — 4 подкрепления), sameName
+      FSGeometry.js     геометрия тайла: поворот четверти, стороны, смежные области, какие половинки
+                        граней сходятся (единственное место этой арифметики для правил, вида и панели)
+      FSBoard.js        Board.of(state): системы, области, отряды, контроль, вместимость, соседи,
+                        путь по своим мирам и штормы; только читает состояние
+      FSPlayers.js      PlayerEntity.of(state, seat): ресурсы и их предел, материя, командный
+                        уровень, доход, жетоны приказов, запас моделей и постройки
+    rules/        правила по ответственности, по классу на файл: CoreRules (общий слой), SetupRules,
+                  PlanningRules, OperationsRules, AdvanceRules, DeployRules, StrategizeRules,
+                  DominateRules, RefreshRules, StormsRules, CombatRules. Класс — служба правил:
+                  своего состояния не держит, первым аргументом получает state, соседей зовёт
+                  через this.engine (фасад). FSRules.js — только сборка: FS_RULES.apply(state, seat, cmd),
+                  view(state, seat) и константы; новая норма — в службе её фазы, не в фасаде
     FSNet.js      клиент: WebSocket до сервера (команды туда, состояние оттуда); test(mode) — тестовый режим
     FSView.js     доска в 3D: тайлы систем, миры-диски (отряды стоят на них), отряды, постройки,
                   цели, варп-штормы; стрелка марша, кольца выбора, призрак и таблички над доской;
@@ -154,7 +164,9 @@ libs/             babylon.js (9.26 UMD), babylonjs.loaders.min.js (glTF-загр
 assets/           ground_texture_{g,d,s}.jpg — трава, песок, снег; models/*.fbx, *.glb — модели объектов
                   (character.glb — персонаж с клипами idle/run, генерируется tools/make-character.mjs);
                   sounds/*.wav, *.mp3 — звуки (step.wav генерируется tools/make-sounds.mjs)
-tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs (типы + сверка правил),
+tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs (типы + сверка + дым),
+                  fs-engine.mjs (список скриптов движка из index.html: один для сервера и проверок),
+                  fs-smoke.mjs (все скрипты грузятся, раунд играется командами),
                   fs-audit.mjs (сверка движка Forbidden Stars с текстом правил),
                   make-character.mjs, make-sounds.mjs, export-unity.mjs (перенос в Unity),
                   fs-import.mjs (импорт данных Forbidden Stars из docs/), fs-server.mjs (сервер игры в локальной сети)
@@ -177,7 +189,7 @@ claude/           для Claude Code, едет пользователям (в б
 ## Как начать игру на наборе
 
 1. Логика — в `js/Game.js` (пример в наборе: `constructor(app)` и `update(dt)`, зовётся из цикла
-   `main.js` до рендера); большая игра — новые файлы: `<script>` до `main.js` + строка в `CODE_FILES`.
+   `main.js` до рендера); большая игра — новые файлы: `<script>` до `main.js` в `index.html`.
 2. Статичные объекты локации — вкладка Objects редактора (`Objects.js`), в коде —
    `app.location.objects` (`{ def, mesh }`). Свои объекты: `BABYLON.MeshBuilder`/меши или
    `Model3D.load` + `Model3D.build` в `app.location.view.scene` -> `World3D.addObject` ->

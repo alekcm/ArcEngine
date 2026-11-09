@@ -472,8 +472,7 @@ const FSView = {
         const tex = new BABYLON.DynamicTexture('fs-faction-' + factionId, { width: S, height: S }, view.scene, true);
         tex.hasAlpha = true;
         const ctx = /** @type {any} */ (tex.getContext());
-        const f = FS_DATA.factions.find(x => x.id === factionId);
-        const color = (f && f.color) || '#8899aa';
+        const color = FS_CATALOG.factionColor(factionId);
         const c = S / 2;
         ctx.clearRect(0, 0, S, S);
         ctx.fillStyle = 'rgba(16,13,20,.92)';
@@ -481,7 +480,8 @@ const FSView = {
         ctx.fillStyle = color;
         ctx.beginPath(); ctx.arc(c, c, c - 14, 0, Math.PI * 2); ctx.fill();
         // The initials of the faction over the field of its colour.
-        const words = ((f && (f.full || f.name)) || '?').split(/\s+/).filter(Boolean);
+        const faction = FS_CATALOG.faction(factionId);
+        const words = ((faction && (faction.full || faction.name)) || '?').split(/\s+/).filter(Boolean);
         const letters = words.slice(0, 2).map(w => w[0].toUpperCase()).join('');
         ctx.fillStyle = 'rgba(18,14,20,.92)';
         ctx.font = 'bold ' + (letters.length > 1 ? 54 : 66) + 'px system-ui, sans-serif';

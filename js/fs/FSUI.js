@@ -593,7 +593,7 @@ const FSUI = {
         for (const n of names) counts.set(n, (counts.get(n) || 0) + 1);
         const rows = [];
         for (const [name, count] of counts) {
-            rows.push({ name, count, def: (FS_DATA.combat || []).find(c => c.faction === p.faction && c.name === name) || null });
+            rows.push({ name, count, def: FS_CATALOG.card('combat', p.faction, name) });
         }
         rows.sort((a, b) => (((a.def && a.def.kl) || 0) - ((b.def && b.def.kl) || 0))
             || (((a.def && a.def.cost) || 0) - ((b.def && b.def.cost) || 0))
@@ -659,7 +659,7 @@ const FSUI = {
         const p = state.players[seat];
         const hasRules = typeof FS_RULES !== 'undefined';
         const faction = (hasRules && FS_RULES.faction) ? FS_RULES.faction(state, seat)
-            : FS_DATA.factions.find(f => f.id === p.faction);
+            : FS_CATALOG.faction(p.faction);
         if (!faction) { this.drawerMounted = false; return null; }
         const color = p.color || faction.color || '#d8b873';
         const supplyUnits = (p.supply && p.supply.units) || {};
@@ -797,8 +797,8 @@ const FSUI = {
         const byKlCost = (a, b) => (a.kl || 0) - (b.kl || 0) || (a.cost || 0) - (b.cost || 0) || String(a.name).localeCompare(String(b.name), 'ru');
         /** @type {Array<[string, any[], boolean]>} */
         const groups = [
-            ['Улучшения приказа', (FS_DATA.orders || []).filter(c => c.faction === p.faction).sort(byKlCost), false],
-            ['Боевые улучшения', (FS_DATA.combat || []).filter(c => c.faction === p.faction && c.upgrade).sort(byKlCost), true],
+            ['Улучшения приказа', FS_CATALOG.orderCards(p.faction).sort(byKlCost), false],
+            ['Боевые улучшения', FS_CATALOG.upgradeCombatCards(p.faction).sort(byKlCost), true],
         ];
         for (const [title, cards, isCombat] of groups) {
             if (!cards.length) continue;
@@ -1012,8 +1012,7 @@ const FSUI = {
         if (p && Array.isArray(p.decksCombatKnown)) return p.decksCombatKnown;
         if (!own) return [];
         const f = p && p.faction;
-        const starter = (typeof FS_DATA !== 'undefined' && FS_DATA.combat ? FS_DATA.combat : [])
-            .filter(c => c.faction === f && !c.upgrade);
+        const starter = FS_CATALOG.baseCombatCards(f);
         const out = [];
         for (const c of starter) { out.push(c.name); out.push(c.name); }
         return out;

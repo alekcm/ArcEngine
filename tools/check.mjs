@@ -1,9 +1,10 @@
 // ============================================================================
 //  ArcEngine — code check: types (tsc) and the rules audit
 // ----------------------------------------------------------------------------
-//  node tools/check.mjs            types and the rules audit
+//  node tools/check.mjs            types, the rules audit and the smoke test
 //  node tools/check.mjs --types    types only
 //  node tools/check.mjs --rules    the rules audit only
+//  node tools/check.mjs --smoke    the smoke test only
 //
 //  Types: TypeScript checks the JS via JSDoc — tsconfig.json (game) and
 //  _utils/editor/tsconfig.json (editor). TypeScript is not a project dependency:
@@ -28,9 +29,10 @@ const STEPS = [
   { flag: '--types', title: 'типы игры', run: () => spawnSync(TSC + ' -p tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--types', title: 'типы редактора', run: () => spawnSync(TSC + ' -p _utils/editor/tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--rules', title: 'правила', run: () => spawnSync(process.execPath, ['tools/fs-audit.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
+  { flag: '--smoke', title: 'дым', run: () => spawnSync(process.execPath, ['tools/fs-smoke.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
 ];
 
-const only = ['--types', '--rules'].filter(f => process.argv.includes(f));
+const only = ['--types', '--rules', '--smoke'].filter(f => process.argv.includes(f));
 const failed = [];
 console.log('\n' + C.cyn + C.b + '  ArcEngine' + C.r + ' ' + C.dim + '— проверка' + C.r);
 for (const step of STEPS) {

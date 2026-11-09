@@ -5670,17 +5670,12 @@ const FS_EFFECTS = {
 
     // The friendly worlds of the active system: the destination of the units.
     friendlyAreas(R, state, seat) {
-        const out = [];
+        // The friendly worlds of the ACTIVE system: the cards that say «in the
+        // active system». The list itself is the board's (R.friendlyWorlds).
         const active = state.order ? state.order.system : null;
-        for (const sys of state.systems) {
-            if (active && sys.id !== active) continue;
-            for (const area of sys.areas) {
-                if (!area.world) continue;
-                if (R.control(state, seat, sys.id, area.pos) !== 'friendly') continue;
-                out.push({ system: sys.id, pos: area.pos });
-            }
-        }
-        return out;
+        return Board.of(state).friendlyWorlds(seat)
+            .filter(a => !active || a.system === active)
+            .map(a => ({ system: a.system, pos: a.pos }));
     },
 
 
@@ -5711,9 +5706,7 @@ const FS_EFFECTS = {
     // The tile keeps the areas of a system: worlds and voids. A world is a
     // world; anything else is a void.
     areaWorld(state, systemId, pos) {
-        const sys = state.systems.find(x => x.id === systemId);
-        const area = sys && sys.areas.find(a => a.pos === pos);
-        return area ? !!area.world : false;
+        return !!Board.of(state).area(systemId, pos)?.world;
     },
 
     // Who stands in the area, from the point of view of one player: 'friendly'
@@ -5979,15 +5972,7 @@ const FS_EFFECTS = {
 
     // The friendly worlds of the player.
     friendlyWorlds(R, state, seat) {
-        const out = [];
-        for (const sys of state.systems) {
-            for (const area of sys.areas) {
-                if (!area.world) continue;
-                if (R.control(state, seat, sys.id, area.pos) !== 'friendly') continue;
-                out.push({ system: sys.id, pos: area.pos });
-            }
-        }
-        return out;
+        return Board.of(state).friendlyWorlds(seat).map(a => ({ system: a.system, pos: a.pos }));
     },
 
     // The moment of the scheme: when the card may be discarded.

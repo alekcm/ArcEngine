@@ -12,5 +12,5 @@
     "useUnknownInCatchVariables": false,
     "skipLibCheck": true
   },
-  "include": ["js/*.js", "js/fs/*.js", "js/fs/core/*.js", "globals.d.ts", "libs/*.d.ts"]
+  "include": ["js/*.js", "js/fs/*.js", "js/fs/core/*.js", "js/fs/rules/*.js", "globals.d.ts", "libs/*.d.ts"]
 }

@@ -1,0 +1,393 @@
+// FSRulesDeploy.js — the deploy order: the units, the one structure, the
+// deferred payments and the capacity trim after the order.
+
+class DeployRules {
+    /** @param {any} engine the rules facade (FSRules.js) */
+    constructor(engine) {
+        this.engine = engine;
+    }
+
+    deployLimit(state, seat, systemId) {
+        const sys = this.engine.system(state, systemId);
+        const order = state.order;
+        // «Массовое Производство»: the ability is ONE factory working — the
+        // capacity of its own world, doubled factories do not count.
+        if (order && order.seat === seat && order.phase === 'guardDeploy' && order.guardFactory) {
+            return Math.max(0, this.engine.capacity(state, order.guardFactory.system, order.guardFactory.pos));
+        }
+        // While the order runs, the cities may be treated as factories.
+        const asFactories = !!(order && order.seat === seat && order.citiesAsFactories);
+        const bastions = !!(order && order.seat === seat && order.bastionsAsFactories);
+        let limit = 0;
+        for (const area of sys.areas) {
+            if (this.engine.control(state, seat, systemId, area.pos) !== 'friendly') continue;
+            const structures = this.engine.structuresAt(state, systemId, area.pos).filter(s => s.seat === seat);
+            const factory = structures.some(s => s.type === 'factory');
+            const city = structures.some(s => s.type === 'city');
+            const bastion = structures.some(s => s.type === 'bastion');
+            if (!factory && !(asFactories && city) && !(bastions && bastion)) continue;
+            // Two factories on one world double the capacity of that world for the
+            // deploy limit (the rules, "Factories").
+            const factories = structures.filter(s => s.type === 'factory').length;
+            limit += this.engine.capacity(state, systemId, area.pos) * Math.max(1, factories);
+        }
+        // The order may lower the limit or give an extra factory.
+        if (order && order.seat === seat && order.deployLimitBonus) limit += order.deployLimitBonus;
+        if (order && order.seat === seat && order.extraFactories) limit += order.extraFactories;
+        return Math.max(0, limit);
+    }
+
+    hasFactory(state, seat, systemId) {
+        const sys = this.engine.system(state, systemId);
+        return sys.areas.some(a => this.engine.structuresAt(state, systemId, a.pos).some(s => s.seat === seat && s.type === 'factory'));
+    }
+
+    canPlaceUnit(state, seat, systemId, pos, def) {
+        const sys = this.engine.system(state, systemId);
+        const area = this.engine.area(sys, pos);
+        if (!area) return { ok: false, error: 'Нет такой области.' };
+        // The ships stand in the voids, the ground units on the worlds.
+        if (def.type === 'ship' && area.world) return { ok: false, error: 'Корабль может стоять только в пустоте.' };
+        if (def.type === 'ground' && !area.world) return { ok: false, error: 'Наземный отряд не может стоять в пустоте.' };
+        // The capacity of an area is checked after the order, not at placement:
+        // the deploy may exceed capacity (01-rules-reference.md), the destroy
+        // happens in the trim window once the order resolves.
+        // Only the friendly and the uncontrolled areas.
+        const theirs = state.units.some(u => u.system === systemId && u.area === pos && u.seat !== seat)
+            || state.structures.some(st => st.seat !== seat && st.system === systemId && st.area === pos);
+        if (theirs) return { ok: false, error: 'Нельзя развёртывать в чужую область.' };
+        return { ok: true };
+    }
+
+    canPlaceStructure(state, seat, systemId, pos) {
+        const sys = this.engine.system(state, systemId);
+        const area = this.engine.area(sys, pos);
+        if (!area || !area.world) return { ok: false, error: 'Постройка ставится только на мир.' };
+        if (this.engine.control(state, seat, systemId, pos) !== 'friendly') return { ok: false, error: 'Мир должен быть вашим.' };
+        if (this.engine.structuresAt(state, systemId, pos).length) return { ok: false, error: 'На мире уже есть постройка.' };
+        return { ok: true };
+    }
+
+    deployStep(order) {
+        return order && order.phase === 'structures' ? 'structures' : 'units';
+    }
+
+    spentOf(order) {
+        return (order.purchases || []).reduce((sum, x) => sum + (x.cost || 0), 0);
+    }
+
+    cmdBuyUnit(state, seat, cmd) {
+        const order = state.order;
+        const isGuard = !!order && order.phase === 'guardDeploy' && order.guardFactory;
+        if (!order || (order.order !== 'deploy' && !isGuard) || order.seat !== seat) {
+            return { ok: false, error: 'Сейчас нельзя покупать отряды.' };
+        }
+        // The units are bought only in the first step of the order.
+        if (!isGuard && this.deployStep(order) !== 'units') return { ok: false, error: 'Отряды покупаются до постройки.' };
+        // The units are bought only in the active system and only with a factory in it —
+        // the ability produces only into the chosen factory's world.
+        if (cmd.system !== order.system) return { ok: false, error: 'Отряды покупаются в активной системе.' };
+        const def = this.engine.unitDef(state, seat, cmd.unit);
+        if (!def) return { ok: false, error: 'Нет такого отряда.' };
+        // «Союзники Гуэ'веса»: ONE KL0 unit for 1 materiel, in a friendly or
+        // uncontrolled area of the active system. The card is its own
+        // permission: no factory and no deploy limit are needed for it.
+        const ctrl0 = this.engine.control(state, seat, cmd.system, cmd.pos);
+        const cheap = !!order.cheapUnitOnly && !order.cheapUnitUsed
+            && (def.kl || 0) === 0
+            && (ctrl0 === 'friendly' || ctrl0 === 'none');
+        if (!cheap) {
+            if (!isGuard && !this.hasFactory(state, seat, order.system)) return { ok: false, error: 'В активной системе нет фабрики.' };
+            const limit = this.deployLimit(state, seat, order.system);
+            if ((order.bought || 0) >= limit) return { ok: false, error: 'Предел развёртывания исчерпан.' };
+        }
+        // «Массовое Производство» производит только наземные отряды в мир фабрики — космос это другой мир.
+        if (isGuard && def.type === 'ship') {
+            return { ok: false, error: '«Массовое Производство» производит только наземные отряды в мир фабрики.' };
+        }
+        // «Купите минимум 2 отряда одного типа» — the type is locked by the first
+        // purchase; the wrong kind is refused before anything else is checked.
+        if (isGuard && order.unitsLocked && def.id !== order.unitsLocked) {
+            const locked = this.engine.unitDef(state, seat, order.unitsLocked);
+            return { ok: false, error: 'Способность производит только один тип отрядов: «' + (locked ? locked.name : order.unitsLocked) + '».' };
+        }
+        const p = state.players[seat];
+        // The ability: the produced units stand in the producing world.
+        if (isGuard) {
+            if (cmd.system !== order.guardFactory.system || cmd.pos !== order.guardFactory.pos) {
+                return { ok: false, error: 'Отряд ставится в мир, который его производит.' };
+            }
+        }
+        // The order may sell two Guardsmen for one supply token: the second one
+        // of the pair costs one cache token instead of materiel.
+        const deal = !!(order.supplyDeal
+            && FS_EFFECTS.sameName(def.name, order.supplyDeal.unit || 'Гвардец'));
+        // «2 Гвардейца МОГУТ быть куплены за 1 жетон запасов» (способность
+        // Имперской гвардии): the pair is a permission — without a cache token
+        // the second Guardsman is paid for as usual.
+        const pairMate = deal && ((order.dealBought || 0) % 2 === 1) && (p.assets.cache || 0) > 0;
+        if ((p.supply.units[def.id] || 0) <= 0) return { ok: false, error: 'Такого отряда больше нет в запасе.' };
+        // A forge token lowers the command level restriction of one unit by one.
+        const forgeKl = !!cmd.forgeKl;
+        if (forgeKl && (p.assets.forge || 0) < 1) return { ok: false, error: 'Нужен жетон кузницы, чтобы снизить уровень командования.' };
+        if (def.kl - (forgeKl ? 1 : 0) > this.engine.commandLevel(state, seat)) {
+            return { ok: false, error: 'Не хватает уровня командования.' };
+        }
+        // The order may allow only one kind of unit — but only in the worlds
+        // that are factories by the word of the card («все свои города … как
+        // фабрики, на которых могут производиться только Гвардейцы»): a real
+        // factory of the system keeps its whole list.
+        const realFactory = this.engine.structuresAt(state, cmd.system, cmd.pos)
+            .some(st => st.seat === seat && st.type === 'factory');
+        if (order.factoryOnly && !realFactory && !FS_EFFECTS.sameName(def.name, order.factoryOnly)) {
+            return { ok: false, error: 'Этим приказом можно производить только ' + order.factoryOnly + '.' };
+        }
+        // «развертывание в 1 области» («Департаменто муниторум»).
+        if (order.deployAreaLimit) {
+            const used = order.deployAreas || [];
+            if (used.length >= order.deployAreaLimit && !used.includes(cmd.pos)) {
+                return { ok: false, error: 'Развертывание ограничено ' + order.deployAreaLimit + ' областью.' };
+            }
+        }
+        const place = this.canPlaceUnit(state, seat, cmd.system, cmd.pos, def);
+        if (!place.ok) return place;
+        // «Они должны быть развернуты в мире, который их произвёл»
+        // (the guard ability checks the placement right after the unit is chosen — above)
+        if (order.deployInFactoryWorld) {
+            if (order.guardFactory) {
+                // ground handled above; ships may stand in the void
+            } else {
+                const factory = this.engine.structuresAt(state, cmd.system, cmd.pos).some(st => st.seat === seat && st.type === 'factory');
+                if (!factory) return { ok: false, error: 'Отряд ставится в мир с вашей фабрикой.' };
+            }
+        }
+        let cost = cheap ? 1 : def.cost;
+        let cache = cheap ? false : (!!cmd.cache && !pairMate);
+        if (cheap) {
+            // «потратить 1 материал, чтобы разместить 1 отряд»: the price is
+            // exactly one materiel, and the permission is spent by this buy.
+            order.cheapUnitUsed = true;
+            order.cheapUnit = 0;
+        } else {
+            // The order may make the units cheaper.
+            if (order.discount) cost = Math.max(0, cost - order.discount);
+            // «уменьшить общую цену всех покупок (включая здания) на 1»
+            // («Главный по машинам»): the discount covers every purchase.
+            if (order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
+            // One cache token lowers the cost of one unit by two materiel. The
+            // pair of the faction deal is paid by a cache token in full.
+            if (pairMate) {
+                if ((p.assets.cache || 0) < 1) return { ok: false, error: 'Для «2 Гвардейца за 1 жетон запасов» нужен жетон тайника.' };
+                cost = 0;
+                cache = true;
+            }
+            if (cache && !pairMate && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
+            if (cache && !pairMate) cost = Math.max(0, cost - 2);
+            // The order may sell a unit of command level 0 for 1 materiel.
+            if (order.cheapUnit && def.kl === 0) cost = Math.min(cost, order.cheapUnit);
+            // The card of the player may make the purchase cheaper.
+            if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
+        }
+        if (def.forge && (p.assets.forge || 0) < (forgeKl ? 1 : 0) + 1) return { ok: false, error: 'Нужен жетон кузницы.' };
+        if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
+        // The tokens are paid at once, the materiel — at the end of the order.
+        if (def.forge) p.assets.forge--;
+        if (forgeKl) p.assets.forge--;
+        if (cache) p.assets.cache--;
+        p.supply.units[def.id]--;
+        if (deal) order.dealBought = (order.dealBought || 0) + 1;
+        const unit = this.engine.addUnit(state, seat, def.id, cmd.system, cmd.pos);
+        if (order.deployAreaLimit) {
+            order.deployAreas = order.deployAreas || [];
+            if (!order.deployAreas.includes(cmd.pos)) order.deployAreas.push(cmd.pos);
+        }
+        if (isGuard && !order.unitsLocked) order.unitsLocked = def.id;
+        this.engine.log(state, seat, p.name + ' купил отряд «' + def.name + '».');
+        order.bought = (order.bought || 0) + 1;
+        order.purchases = order.purchases || [];
+        order.purchases.push({
+            kind: 'unit', id: unit.id, def: def.id, name: def.name, cost,
+            forge: !!def.forge, forgeKl, cache,
+        });
+        return { ok: true };
+    }
+
+    cmdBuyStructure(state, seat, cmd) {
+        const order = state.order;
+        if (!order || order.order !== 'deploy' || order.seat !== seat) {
+            return { ok: false, error: 'Сейчас нельзя покупать постройки.' };
+        }
+        // The structure is bought after the units — the card of the Orks
+        // ("Строй быстрее!") allows the other way round.
+        if (this.deployStep(order) !== 'structures' && !order.structureFirst) {
+            return { ok: false, error: 'Сначала отряды: постройка покупается в конце приказа.' };
+        }
+        if (order.structureBought) return { ok: false, error: 'За один приказ можно построить только одну постройку.' };
+        // cmd.type is the command itself — the kind of the structure is cmd.structure.
+        const type = cmd.structure || (cmd.kind && cmd.kind !== 'buyStructure' ? cmd.kind : '');
+        if (!['city', 'factory', 'bastion'].includes(type)) return { ok: false, error: 'Неизвестная постройка.' };
+        // The structure stands in the active system.
+        if (cmd.system !== order.system) return { ok: false, error: 'Постройка ставится в активной системе.' };
+        const p = state.players[seat];
+        const can = this.engine.canTakeStructure(state, seat, type);
+        if (!can.ok) return can;
+        const stats = this.engine.structureStats(type);
+        // The order may give a structure for free.
+        const free = !!(order.freeStructure && order.freeStructureKind === type);
+        // One cache token lowers the cost of one structure by two materiel.
+        const cache = !!cmd.cache;
+        if (cache && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
+        let cost = free ? 0 : Math.max(0, stats.cost - (cache ? 2 : 0));
+        // «уменьшить общую цену всех покупок (включая здания) на 1» («Главный по
+        // машинам»): the building is a purchase of the order like any other.
+        if (!free && order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
+        if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
+        const place = this.canPlaceStructure(state, seat, cmd.system, cmd.pos);
+        if (!place.ok) return place;
+        if (cache) p.assets.cache--;
+        const structure = this.engine.addStructure(state, seat, type, cmd.system, cmd.pos);
+        this.engine.log(state, seat, p.name + ' построил: ' + this.engine.structureName(type) + '.');
+        order.structureBought = true;
+        order.purchases = order.purchases || [];
+        order.purchases.push({ kind: 'structure', id: structure.id, type, name: this.engine.structureName(type), cost, cache });
+        return { ok: true };
+    }
+
+    cmdUndoPurchase(state, seat, cmd) {
+        const order = state.order;
+        const isGuard = !!order && order.phase === 'guardDeploy';
+        if (!order || (order.order !== 'deploy' && !isGuard) || order.seat !== seat) return { ok: false, error: 'Нечего отменять.' };
+        const list = order.purchases || [];
+        const p = state.players[seat];
+        let entry = null;
+        if (cmd && cmd.unit) entry = list.find(x => x.kind === 'unit' && x.id === cmd.unit);
+        else if (cmd && cmd.structure) entry = list.find(x => x.kind === 'structure' && x.id === cmd.structure);
+        else entry = list[list.length - 1] || null;
+        if (!entry) return { ok: false, error: 'В этом приказе ещё ничего не куплено.' };
+        if (entry.kind === 'unit') {
+            const unit = state.units.find(u => u.id === entry.id);
+            if (!unit) return { ok: false, error: 'Этого отряда уже нет на доске.' };
+            this.engine.destroyUnit(state, unit);
+            if (entry.forge) p.assets.forge++;
+            if (entry.forgeKl) p.assets.forge++;
+            order.bought = Math.max(0, (order.bought || 0) - 1);
+            if (order.supplyDeal && FS_EFFECTS.sameName(entry.name, order.supplyDeal.unit || 'Гвардец')) {
+                order.dealBought = Math.max(0, (order.dealBought || 0) - 1);
+            }
+        } else {
+            const structure = state.structures.find(x => x.id === entry.id);
+            if (!structure) return { ok: false, error: 'Этой постройки уже нет на доске.' };
+            this.engine.destroyStructure(state, structure);
+            order.structureBought = false;
+        }
+        if (entry.cache) p.assets.cache++;
+        order.purchases = list.filter(x => x !== entry);
+        // «одного типа» — the lock follows what is on the board.
+        if (isGuard && !(order.purchases || []).length) order.unitsLocked = null;
+        this.engine.log(state, seat, p.name + ' отменил покупку: ' + entry.name + '.');
+        return { ok: true, refunded: entry.cost };
+    }
+
+    cmdDeployStructures(state, seat) {
+        const order = state.order;
+        if (!order || order.order !== 'deploy' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        if (this.deployStep(order) === 'structures') return { ok: true };
+        order.phase = 'structures';
+        return { ok: true };
+    }
+
+    cmdFinishDeploy(state, seat) {
+        const order = state.order;
+        if (!order || order.order !== 'deploy' || order.seat !== seat) return { ok: false, error: 'Нечего заканчивать.' };
+        const p = state.players[seat];
+        const total = this.spentOf(order);
+        if (total > p.materiel) return { ok: false, error: 'Не хватает материи.' };
+        p.materiel -= total;
+        for (const entry of order.purchases || []) {
+            if (!entry.cost) continue;
+            this.engine.log(state, seat, p.name + ' платит ' + entry.cost + ' материи за «' + entry.name + '».');
+        }
+        order.phase = 'done';
+        this.engine.finishOrder(state, seat);
+        return { ok: true, paid: total };
+    }
+
+    cmdFinishGuardDeploy(state, seat) {
+        const order = state.order;
+        if (!order || order.phase !== 'guardDeploy' || order.seat !== seat) {
+            return { ok: false, error: 'Сейчас нельзя закончить производство.' };
+        }
+        const p = state.players[seat];
+        const bought = (order.purchases || []).filter(x => x.kind === 'unit');
+        // «Купите минимум 2 отряда одного типа» — the type is locked already;
+        // the count is checked here, on the way out.
+        if (bought.length && bought.length < 2) {
+            return { ok: false, error: 'Минимум 2 отряда одного типа (сейчас ' + bought.length + ').' };
+        }
+        if (new Set(bought.map(x => x.def)).size > 1) {
+            return { ok: false, error: 'Отряды одного типа.' };
+        }
+        const total = this.spentOf(order);
+        if (total > p.materiel) return { ok: false, error: 'Не хватает материи.' };
+        p.materiel -= total;
+        for (const entry of order.purchases || []) {
+            if (!entry.cost) continue;
+            this.engine.log(state, seat, p.name + ' платит ' + entry.cost + ' материи за «' + entry.name + '».');
+        }
+        order.phase = 'done';
+        this.engine.finishOrder(state, seat);
+        return { ok: true, paid: total };
+    }
+
+    trimArea(state, seat, systemId, pos) {
+        // The capacity of the world for the units that stand in it: the bonus of
+        // an order may belong to one kind of unit only.
+        let cap = this.engine.capacity(state, systemId, pos);
+        for (const u of this.engine.unitsAt(state, systemId, pos)) {
+            if (u.seat !== seat) continue;
+            cap = Math.max(cap, this.engine.capacity(state, systemId, pos, this.engine.unitOf(state, u)));
+        }
+        const mine = this.engine.unitsAt(state, systemId, pos).filter(u => u.seat === seat);
+        if (mine.length <= cap) return;
+        // «После выполнения этого приказа можете отступить любым числом
+        // Гвардейцев, превышающим вместимость этого мира» («Адептус Астрономика»):
+        // those units leave by a retreat, not by the supply: the engine does not
+        // take them away, it names them in the log.
+        const order = state.order;
+        const named = order && order.retreatExcessUnits ? order.retreatExcessUnits : null;
+        if (named) {
+            const over = mine.filter(u => {
+                const def = this.engine.unitOf(state, u);
+                return def && FS_EFFECTS.sameName(def.name, named);
+            });
+            if (over.length) {
+                this.engine.log(state, seat, state.players[seat].name + ': ' + over.length
+                    + ' отряд(ов) «' + named + '» сверх вместимости могут отступить.');
+                return;
+            }
+        }
+        state.trim = (state.trim || []).filter(t => !(t.seat === seat && t.system === systemId && t.pos === pos));
+        state.trim.push({ seat, system: systemId, pos, cap, count: mine.length });
+    }
+
+    trimPlayer(state, seat) {
+        for (const sys of state.systems) {
+            for (const area of sys.areas) this.trimArea(state, seat, sys.id, area.pos);
+        }
+    }
+
+    cmdTrimUnit(state, seat, cmd) {
+        const list = state.trim || [];
+        const entry = list.find(t => t.seat === seat && (cmd.system === undefined || (t.system === cmd.system && t.pos === cmd.pos)));
+        if (!entry) return { ok: false, error: 'Сейчас ничего не надо убирать.' };
+        const unit = state.units.find(u => u.id === cmd.unit && u.seat === seat && u.system === entry.system && u.area === entry.pos);
+        if (!unit) return { ok: false, error: 'Этот отряд стоит не в переполненной области.' };
+        this.engine.destroyUnit(state, unit);
+        this.engine.log(state, seat, state.players[seat].name + ' отводит отряд сверх вместимости области.');
+        const left = this.engine.unitsAt(state, entry.system, entry.pos).filter(u => u.seat === seat).length;
+        if (left <= this.engine.capacity(state, entry.system, entry.pos)) state.trim = list.filter(t => t !== entry);
+        if (!state.trim || !state.trim.length) state.trim = null;
+        return { ok: true, left: Math.max(0, left - this.engine.capacity(state, entry.system, entry.pos)) };
+    }
+
+}

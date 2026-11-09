@@ -10,7 +10,7 @@
 //   net.test({ mode: 'map' | 'battle', … }) — a test party of the lobby
 //
 // The room code and the player name come from the link:
-//   http://<host>:8080/?room=ABCD&name=Аня
+//   <host>:8080/?room=ABCD&name=Аня
 // so the host only has to send the link to the friends.
 
 /** @satisfies {Record<string, any>} */

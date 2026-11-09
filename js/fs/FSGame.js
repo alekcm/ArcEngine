@@ -235,7 +235,7 @@ class FSGame {
     // map (the game after the construction) and the battlefield.
 
     battleFaction() {
-        return FS_DATA.factions.find(f => f.id === this.faction) || FS_DATA.factions[0];
+        return FS_CATALOG.faction(this.faction) || FS_CATALOG.factions[0];
     }
 
     // The troops that may enter this kind of battle: the ground ones stand on a
@@ -245,7 +245,7 @@ class FSGame {
     }
 
     battleCards() {
-        return FS_DATA.combat.filter(c => c.faction === this.battleFaction().id && !c.upgrade);
+        return FS_CATALOG.baseCombatCards(this.battleFaction().id);
     }
 
     // A fresh choice: the first troops of the kind and the whole base deck.
@@ -274,7 +274,7 @@ class FSGame {
             total: units.reduce((n, u) => n + u.count, 0),
             cards,
             deck: cards.filter(c => c.selected).length * 2,
-            foe: FS_DATA.factions.find(f => f.id !== this.battleFaction().id),
+            foe: FS_CATALOG.factions.find(f => f.id !== this.battleFaction().id),
         };
     }
 
@@ -482,7 +482,7 @@ class FSGame {
             for (const u of (s.players[me].upgrades || []).filter(x => !x.used)) {
                 // An order upgrade belongs to one order: it is offered only
                 // while that order is being resolved.
-                const c = FS_DATA.orders.find(x => x.faction === s.players[me].faction && x.name === u.name);
+                const c = FS_CATALOG.card('orders', s.players[me].faction, u.name);
                 const kind = u.order || (c && c.order);
                 // An orbital upgrade is played during the strike of an advance,
                 // any other one during the order printed on the card.
@@ -541,7 +541,7 @@ class FSGame {
         if (setup.stage === 'forces') {
             const sys = s.systems.find(x => x.id === setup.currentSystem);
             const initial = s.players[s.seat].initialForces;
-            const faction = FS_DATA.factions.find(f => f.id === s.players[s.seat].faction);
+            const faction = FS_CATALOG.faction(s.players[s.seat].faction);
             ctx.text = 'Система ' + (sys ? sys.tile : '') + ': выберите фигуру и щёлкните по сектору.';
             ctx.status = this.status || (this.mode === 'setupUnit' || this.mode === 'setupStructure'
                 ? 'Щёлкните по подсвеченному сектору.' : 'Фигуры можно ставить подряд.');
@@ -610,7 +610,7 @@ class FSGame {
             ctx.status = this.status || '';
             ctx.handTitle = 'Жетоны целей соперников';
             ctx.hand = (setup.objectiveOptions || []).map(option => {
-                const faction = FS_DATA.factions.find(f => f.id === option.faction);
+                const faction = FS_CATALOG.faction(option.faction);
                 return {
                     icon: 'mark.objective',
                     count: 1,
@@ -632,10 +632,13 @@ class FSGame {
             ctx.text = 'Щёлкните по системе на карте, затем по стороне.';
             ctx.status = this.status || (sys ? 'Система ' + sys.tile + ': выберите сторону.' : 'Щёлкните по системе.');
             if (sys) {
-                for (const [side, name] of [['N', 'сверху'], ['E', 'справа'], ['S', 'снизу'], ['W', 'слева']]) {
-                    const other = FS_RULES.across(s, sys.id, side);
-                    const legal = (setup.stormEdges || []).some(e => (e.system === sys.id && e.side === side) || (other && e.system === other && FS_RULES.across(s, other, e.side) === sys.id));
-                    if (legal) ctx.actions.push({ kind: 'pick', icon: 'ui.storm', label: name, onClick: () => this.net.cmd({ type: 'setupStorm', system: sys.id, side }) });
+                // The legal sides come from the rules (setupStormSides): the
+                // panel does not re-derive them from the storm edges itself.
+                for (const side of FS_RULES.setupStormSides(s, sys.id)) {
+                    ctx.actions.push({
+                        kind: 'pick', icon: 'ui.storm', label: TileGeometry.sideName(side),
+                        onClick: () => this.net.cmd({ type: 'setupStorm', system: sys.id, side }),
+                    });
                 }
             }
             return;
@@ -650,7 +653,7 @@ class FSGame {
         hand.forEach(id => {
             const active = selected && selected.handTile === id;
             const face = active ? selected.tile : id;
-            const raw = FS_DATA.tiles.find(t => t.id === face);
+            const raw = FS_CATALOG.tile(face);
             const tile = raw && active ? Object.assign({}, raw, {
                 areas: FS_RULES.createSystemFromTile({ systems: [] }, raw, s.seat, 0, 0, selected.rotation).areas,
             }) : raw;
@@ -679,7 +682,7 @@ class FSGame {
             FSView.clearSetupPreview(this.view);
             return;
         }
-        const tile = FS_DATA.tiles.find(t => t.id === this.pending.tile);
+        const tile = FS_CATALOG.tile(this.pending.tile);
         FSView.showSetupPreview(this.app, this.view, this.state, tile, this.pending.cell, this.pending.rotation);
     }
 
@@ -770,7 +773,7 @@ class FSGame {
         if (!sys) return;
         let areas = [];
         if (this.mode === 'setupUnit') {
-            const faction = FS_DATA.factions.find(f => f.id === s.players[s.seat].faction);
+            const faction = FS_CATALOG.faction(s.players[s.seat].faction);
             const def = faction && faction.units.find(u => u.id === this.pending.unit);
             if (def) areas = sys.areas.filter(a => (def.type === 'ground') === !!a.world && FS_RULES.unitsAt(s, sys.id, a.pos).length < FS_RULES.capacity(s, sys.id, a.pos));
         } else if (this.mode === 'setupStructure') {
@@ -1207,7 +1210,7 @@ class FSGame {
         ctx.status = this.status || ('Материя: ' + p.materiel
             + (spent ? ' · в приказе: ' + spent : '')
             + (step === 'units' ? ' · лимит развёртывания: ' + limit : ''));
-        const faction = FS_DATA.factions.find(f => f.id === p.faction);
+        const faction = FS_CATALOG.faction(p.faction);
         const supply = (p.supply && p.supply.units) || {};
         ctx.tokens = [];
         for (const def of (faction ? faction.units : [])) {
@@ -1316,7 +1319,7 @@ class FSGame {
         const limit = FS_RULES.deployLimit(s, me, order.system);
         const spent = FS_RULES.spentOf(order);
         const purchases = order.purchases || [];
-        const faction = FS_DATA.factions.find(f => f.id === p.faction);
+        const faction = FS_CATALOG.faction(p.faction);
         const supply = (p.supply && p.supply.units) || {};
         const locked = order.unitsLocked;
         const lockedDef = locked && faction ? faction.units.find(u => u.id === locked) : null;
@@ -1475,7 +1478,7 @@ class FSGame {
         for (const n of deckNames) {
             if (deckSeen.has(n)) continue;
             deckSeen.add(n);
-            const def = FS_DATA.combat.find(c => c.faction === p.faction && c.name === n);
+            const def = FS_CATALOG.card('combat', p.faction, n);
             const text = def ? [def.general, def.unit].filter(Boolean).join('\n') : '';
             this.hand.push({
                 name: n,
@@ -1493,8 +1496,8 @@ class FSGame {
         // Every upgrade card of the faction — buyable and locked, none hidden.
         // Command level from top to bottom, then the price, then the name.
         const byKl = (a, b) => (a.kl || 0) - (b.kl || 0) || (a.cost || 0) - (b.cost || 0) || String(a.name).localeCompare(String(b.name), 'ru');
-        const combatUp = FS_DATA.combat.filter(c => c.faction === p.faction && c.upgrade).sort(byKl);
-        const orderUp = FS_DATA.orders.filter(c => c.faction === p.faction).sort(byKl);
+        const combatUp = FS_CATALOG.upgradeCombatCards(p.faction).sort(byKl);
+        const orderUp = FS_CATALOG.orderCards(p.faction).sort(byKl);
         const ownedOrder = new Set((p.upgrades || []).map(u => u.name));
         const mkRow = (c, kind) => {
             const cost = costOf(c);
@@ -1694,7 +1697,7 @@ class FSGame {
                 // Жетона развития на колоде нет: верхняя карта открывается ТОЛЬКО
                 // для движения шторма — она не разыгрывается и возвращается в колоду.
                 const topName = ev.top;
-                const topData = FS_DATA.events.find(e => e.faction === p.faction && e.name === topName);
+                const topData = FS_CATALOG.card('events', p.faction, topName);
                 ctx.text = 'Жетона развития на колоде событий нет. Верхняя карта колоды вскрывается для движения шторма: её эффект не разыгрывается, шторм обязан сдвинуться по её стрелкам.';
                 ctx.status = 'Вскрыта карта: «' + (topName || '—') + '» — передвиньте шторм по её стрелкам.';
                 const full = topName ? FS_CARDS.detail(topName, p.faction, 'event') : {};
@@ -1756,7 +1759,7 @@ class FSGame {
             }));
             return;
         }
-        const data = FS_DATA.events.find(e => e.faction === p.faction && e.name === ev.chosen);
+        const data = FS_CATALOG.card('events', p.faction, ev.chosen);
         const full = FS_CARDS.detail(ev.chosen, p.faction, 'event');
         const eventModalItem = () => Object.assign({}, full, {
             kind: data && data.type === 'scheme' ? 'СОБЫТИЕ · ПЛАН' : 'СОБЫТИЕ · ТАКТИКА',
@@ -2064,7 +2067,7 @@ class FSGame {
         const hand = (c.cards[side].hand || []);
         const faction = s.players[s.seat] ? s.players[s.seat].faction : '';
         this.hand = hand.map((name, index) => {
-            const data = FS_DATA.combat.find(x => x.faction === faction && x.name === name);
+            const data = FS_CATALOG.card('combat', faction, name);
             const text = data ? [data.general, data.unit].filter(Boolean).join('\n') : '';
             return {
                 index, name,
@@ -2413,7 +2416,7 @@ class FSGame {
                 return;
             }
             case 'types': {
-                const faction = FS_DATA.factions.find(f => f.id === (s.players[me] ? s.players[me].faction : ''));
+                const faction = FS_CATALOG.faction(s.players[me] ? s.players[me].faction : '');
                 for (const id of q.options) {
                     const def = faction ? faction.units.find(u => u.id === id) : null;
                     ctx.actions.push({
@@ -2638,7 +2641,7 @@ class FSGame {
             if (!sys) return null;
             const area = sys.areas.find(a => a.pos === this.pending.pos);
             const disc = FSView.discAt(this.app, sys, this.pending.pos, metrics);
-            const faction = FS_DATA.factions.find(f => f.id === this.pending.faction);
+            const faction = FS_CATALOG.faction(this.pending.faction);
             return {
                 world: { x: disc.x, y: disc.y + 26, z: disc.z },
                 view: {
@@ -3164,7 +3167,7 @@ class FSGame {
                 // The token that is about to be placed glows on the world until the plaque confirms it.
                 if (this.app && this.view && this.view.scene) {
                     const disc = FSView.discAt(this.app, system, target.pos, this.view.metrics);
-                    const faction = FS_DATA.factions.find(f => f.id === this.pending.faction);
+                    const faction = FS_CATALOG.faction(this.pending.faction);
                     FSView.showGhost(this.app, this.view, disc, faction ? faction.color : '#d8b873');
                 }
             }
