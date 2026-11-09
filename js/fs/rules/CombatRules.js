@@ -82,6 +82,9 @@ class CombatRules {
             damage: { attacker: 0, defender: 0 },
             winner: null,
         };
+        // The battle is on the table before the deal: the hand of a player is the
+        // hand of THIS battle.
+        state.combat = combat;
         // Five combat cards for both players.
         for (const seat of [attacker, defender]) {
             const p = state.players[seat];
@@ -92,18 +95,16 @@ class CombatRules {
                 for (const name of cards) deck.add(name, 2);
                 deck.shuffle();
             }
-            const hand = [];
             // The order may give more cards for the combat.
             const myOrder = this.engine.orderOf(state, seat);
             const extra = (myOrder && myOrder.extraCombatCards) || 0;
             // A short deck (a battle test with a few chosen cards) deals what it has.
-            for (let i = 0; i < 5 + extra; i++) {
+            const hand = this.engine.player(state, seat).combatHand;
+            for (let i = 0; i < FS_RULES_CONFIG.COMBAT_HAND + extra; i++) {
                 const card = deck.draw();
-                if (card) hand.push(card);
+                if (card) hand.put(card);
             }
-            combat.cards[CombatSides.sideOf(combat, seat)].hand = hand;
         }
-        state.combat = combat;
         // «… получить 1 `morale cube` в начале боя, вызванного этим приказом»
         // («Прикосновение варпа»): the advance belongs to the owner of the plan.
         if (state.order && state.order.chaosCombatMorale
@@ -525,15 +526,15 @@ class CombatRules {
 
     combatPlayCard(state, seat, side, cmd) {
         const c = state.combat;
-        const hand = c.cards[side];
+        const hand = this.engine.player(state, seat).combatHand;
         const index = Number(cmd.index);
-        if (!(index >= 0 && index < hand.hand.length)) return { ok: false, error: 'Нет такой карты.' };
         // The card is taken out of the hand and laid face down on the table.
-        const name = hand.hand.splice(index, 1)[0];
+        const name = hand.takeAt(index);
+        if (!name) return { ok: false, error: 'Нет такой карты.' };
         const card = FS_CATALOG.card('combat', state.players[seat].faction, name);
         c.staged = c.staged || { attacker: null, defender: null };
         c.staged[side] = { name, card, seat };
-        hand.chosen = { name, card };
+        hand.setChosen(name);
         this.engine.log(state, seat, state.players[seat].name + ' выбирает боевую карту и кладёт её закрытой.');
         // «The attacker and defender simultaneously choose one combat card from
         // their hands and place it facedown in front of them. The attacker
@@ -543,7 +544,8 @@ class CombatRules {
         // other player is still choosing, and his own card play would overwrite
         // the questions the first card is still asking.
         const otherSide = CombatSides.foe(side);
-        const otherDone = !!c.staged[otherSide] || !(c.cards[otherSide].hand || []).length;
+        const otherDone = !!c.staged[otherSide]
+            || !this.engine.player(state, CombatSides.seatOf(c, otherSide)).combatHand.size();
         if (otherDone) c.step = 'reveal';
         else c.step = side === 'attacker' ? 'choose-defender' : 'choose-attacker';
         this.advanceCombatSteps(state);
@@ -560,9 +562,8 @@ class CombatRules {
             const staged = c.staged[side];
             if (staged) {
                 c.staged[side] = null;
-                const hand = c.cards[side];
-                hand.chosen = null;
-                hand.played.push({ name: staged.name, card: staged.card, side, round: c.round });
+                this.engine.player(state, staged.seat).combatHand.setChosen(null);
+                c.cards[side].played.push({ name: staged.name, card: staged.card, side, round: c.round });
                 this.engine.log(state, staged.seat, state.players[staged.seat].name
                     + ' вскрывает боевую карту «' + staged.name + '».');
                 const steps = this.engine.cardSteps(state, staged.seat, staged.card);
@@ -616,8 +617,11 @@ class CombatRules {
                     }
                 }
             }
-            if (c.step === 'choose-attacker' && !(c.cards.attacker.hand || []).length) c.step = 'choose-defender';
-            if (c.step === 'choose-defender' && !(c.cards.defender.hand || []).length) {
+            // A side with an empty hand has nothing to lay down: the choice
+            // belongs to the other side — the hand says so, not the record.
+            const handSize = s2 => this.engine.player(state, CombatSides.seatOf(c, s2)).combatHand.size();
+            if (c.step === 'choose-attacker' && !handSize('attacker')) c.step = 'choose-defender';
+            if (c.step === 'choose-defender' && !handSize('defender')) {
                 c.step = c.staged && c.staged.attacker ? 'reveal' : 'damage-attacker';
             }
             if (c.step === 'reveal') { this.combatReveal(state); if (!state.combat) return null; }
@@ -1250,7 +1254,8 @@ class CombatRules {
         }
         c.roundUnits = this.rosterOfRound(state, c);
         c.staged = { attacker: null, defender: null };
-        for (const side of ['attacker', 'defender']) c.cards[side].chosen = null;
+        c.cards.attacker.chosen = null;
+        c.cards.defender.chosen = null;
         // The effects that belonged to the previous round are over.
         if (c.destroyRoutedFoe && c.destroyRoutedFoe.round !== c.round) c.destroyRoutedFoe = null;
         c.resurrectPlan = (c.resurrectPlan || []).filter(x => x.round === c.round);
@@ -1464,13 +1469,13 @@ class CombatRules {
             // never turned over (the combat ended in between) is returned too.
             const deck = this.engine.player(state, p.seat).combatDeck;
             for (const card of c.cards[side].played) deck.add(card.name);
-            for (const name of (c.cards[side].hand || [])) deck.add(name);
+            const hand = this.engine.player(state, p.seat).combatHand;
+            hand.returnAll();
             const staged = c.staged && c.staged[side];
             if (staged && !c.cards[side].played.some(x => x.name === staged.name)) {
                 deck.add(staged.name);
             }
             c.cards[side].played = [];
-            c.cards[side].hand = [];
             deck.shuffle();
             // The reinforcement tokens of the combat go back to the supply here, at
             // the clean-up of the combat.

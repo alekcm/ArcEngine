@@ -437,7 +437,7 @@ class PlaceAsks {
         const card = FS_CATALOG.card('combat', p.faction, step.name);
         const kl = card ? (card.kl || 0) : 0;
         const inDeck = n => R.player(state, seat).combatDeck.count(n);
-        const options = (p.decks.upgradeCombat || []).filter(n => {
+        const options = R.player(state, seat).combatDeck.upgradePile().filter(n => {
             const up = FS_CATALOG.upgradeCombatCards(p.faction).find(c => c.name === n);
             return up && (up.kl || 0) <= kl && inDeck(n) < 2;
         });

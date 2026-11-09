@@ -240,11 +240,15 @@ class CoreRules {
         const copy = JSON.parse(JSON.stringify(state));
         FS_WARP_STORMS.normalize(copy);
         for (const p of copy.players) {
-            p.decks.combat = p.decks.combat.length;
-            p.decks.event = p.decks.event.length;
-            p.decks.upgradeCombat = p.decks.upgradeCombat.length;
-            p.decks.upgradeOrder = p.decks.upgradeOrder.length;
-            p.decks = { combat: p.decks.combat, event: p.decks.event, upgradeCombat: p.decks.upgradeCombat, upgradeOrder: p.decks.upgradeOrder };
+            // Only the count leaves the server: the deck itself is known to all
+            // players through decksCombatKnown below, and the rest is the pile
+            // of a player. One loop, one shape.
+            p.decks = {
+                combat: (p.decks.combat || []).length,
+                event: (p.decks.event || []).length,
+                upgradeCombat: (p.decks.upgradeCombat || []).length,
+                upgradeOrder: (p.decks.upgradeOrder || []).length,
+            };
             p.objectivePool = p.objectivePool.length;
             p.supply = {
                 units: p.supply.units,
@@ -256,8 +260,11 @@ class CoreRules {
         if (copy.combat) {
             for (const side of ['attacker', 'defender']) {
                 const combatSeat = copy.combat[side];
-                if (combatSeat !== seat) copy.combat.cards[side].hand = [];
-                copy.combat.cards[side].chosen = null;
+                // The hand of the copy: hidden from the other players, and the
+                // card that lies face down is closed for everybody.
+                const hand = FS_CARDS.combatHand(this.engine, copy, combatSeat);
+                if (combatSeat !== seat) hand.hide();
+                hand.setChosen(null);
             }
             const staged = copy.combat.staged || {};
             copy.combat.chosen = {

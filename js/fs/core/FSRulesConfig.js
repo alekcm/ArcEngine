@@ -13,6 +13,7 @@ const FS_RULES_CONFIG = {
     TILE: 100,             // px of one system tile
     MATERIEL_MAX: 14,      // the materiel dial stops at 14
     DICE_MAX: 8,           // no more than eight dice in a combat
+    COMBAT_HAND: 5,        // the cards a battle deals to each side
     ORDER_TOKENS: 4,       // four order tokens per round
     ROUNDS: 8,             // the game ends after the eighth round
     ORDER_SUPPLY: 2,       // two tokens of every kind in the hand of a player

@@ -47,10 +47,8 @@ class PlaySteps {
         const { R, state, seat, step, answer, p, combat, inCombat, side } = f;
         const name = answer.card;
         if (!name || !inCombat) return null;
-        const hand = combat.cards[side].hand;
-        const i = hand.indexOf(name);
-        if (i < 0) return null;
-        hand.splice(i, 1);
+        const hand = R.player(state, seat).combatHand;
+        if (hand.take(name) === null) return null;
         const card = FS_CATALOG.card('combat', p.faction, name);
         if (step.staged) {
             combat.staged = combat.staged || { attacker: null, defender: null };
@@ -74,7 +72,7 @@ class PlaySteps {
         // («Тактический гений»): the card comes to the hand and is played
         // in this round like any other card of it.
         deck.splice(i, 1);
-        combat.cards[side].hand.push(name);
+        R.player(state, seat).combatHand.put(name);
         R.log(state, seat, p.name + ' берёт из колоды карту «' + name + '».');
         step.done = true;
         return null;
@@ -149,16 +147,12 @@ class PlaySteps {
 
     static discardHand(effects, f) {
         const { R, state, seat, answer, p, combat, side } = f;
-        const hand = combat ? combat.cards[side].hand : null;
+        const hand = combat ? R.player(state, seat).combatHand : null;
         if (!hand) return null;
         const names = answer.cards && answer.cards.length ? answer.cards
             : (answer.card ? [answer.card] : []);
-        const deck = R.player(state, seat).combatDeck;
         for (const name of names) {
-            const at = hand.indexOf(name);
-            if (at < 0) continue;
-            hand.splice(at, 1);
-            deck.add(name);
+            if (!hand.discard(name)) continue;
             R.log(state, seat, state.players[seat].name + ' сбрасывает боевую карту «' + name + '».');
         }
         return null;
@@ -166,21 +160,18 @@ class PlaySteps {
 
     static drawCombatCards(effects, f) {
         const { R, state, seat, step, answer, p, combat, side } = f;
-        const hand = combat ? combat.cards[side].hand : null;
+        const hand = combat ? R.player(state, seat).combatHand : null;
         if (!hand) return null;
         const names = answer.cards && answer.cards.length ? answer.cards
             : (answer.card ? [answer.card] : []);
         for (const name of names) {
-            const at = hand.indexOf(name);
-            if (at < 0) continue;
-            hand.splice(at, 1);
-            R.player(state, seat).combatDeck.add(name);
+            if (!hand.discard(name)) continue;
             if (step.discardLeft !== undefined) step.discardLeft -= 1;
             R.log(state, seat, state.players[seat].name + ' сбрасывает боевую карту «' + name + '».');
             break;
         }
-        if (step.discardLeft > 0 && hand.length) {
-            return { question: { kind: 'cards', who: seat, op: 'discardHand', n: 1, options: hand.slice(), text: 'Какую карту сбросить (осталось ' + step.discardLeft + ')?' } };
+        if (step.discardLeft > 0 && hand.size()) {
+            return { question: { kind: 'cards', who: seat, op: 'discardHand', n: 1, options: hand.cards().slice(), text: 'Какую карту сбросить (осталось ' + step.discardLeft + ')?' } };
         }
         step.discardLeft = 0;
         return null;

@@ -298,6 +298,38 @@ try {
     fail(e.message);
 }
 
+// --- the combat deck and the combat hand: one account ------------------------
+section('боевая колода и рука: одно место учёта');
+try {
+    const owners = new Set(['js/fs/FSCards.js', 'js/fs/core/FSPlayers.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The deck and the hand of a battle are objects of FSCards.js: a rule,
+        // a card or the panel asks them instead of splicing the arrays itself.
+        const rules = [
+            // decks.combat = [cards] — a deck built by hand. The number the view
+            // sends to the panel (decks.combat = 10) is not a deck.
+            [/\bdecks\.combat\s*=\s*(?!=)(?![\d\s;,)])|\bdecks\.combat\.(?:push|splice|shift|unshift|pop)\b/, 'decks.combat'],
+            [/\bdecks\.upgradeCombat\s*=\s*(?!=)(?![\d\s;,)])|\bdecks\.upgradeCombat\.(?:push|splice|shift|unshift|pop)\b/, 'decks.upgradeCombat'],
+            [/\bcards\s*\[[^\]]+\]\s*\.\s*(?:hand|chosen)\s*(=(?!=)|\.(?:push|splice|shift|unshift|pop)\b)/g, 'cards[side].hand'],
+        ];
+        for (const [re, what] of rules) {
+            const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+            let m;
+            while ((m = g.exec(text))) {
+                if (owners.has(file)) continue;
+                const line = text.slice(0, m.index).split('\n').length;
+                offenders.push(file + ':' + line + ' — ' + what);
+            }
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 5).join('; '));
+    ok('ни один скрипт, кроме FSCards.js, не правит колоду и руку боя напрямую');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the subject layer answers the questions the rules ask -------------------
 section('предметный слой');
 try {

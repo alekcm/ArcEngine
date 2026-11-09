@@ -84,11 +84,14 @@ class SetupRules {
             state.players[seat].startChoice = st.choice || 0;
             // The combat deck: five cards, two copies of every card.
             const base = FS_CATALOG.baseCombatCards(faction.id).map(c => c.name);
-            state.players[seat].decks.combat = this.engine.shuffle(state, base.concat(base));
+            const deck = this.engine.player(state, seat).combatDeck;
+            for (const name of base) deck.add(name, 2);
+            deck.shuffle();
             // The cards the player may buy: the upgrade cards of his faction
             // lie in their own piles next to the board («Combat Cards And
             // Combat Upgrade Cards», «Order Upgrade Cards»).
-            state.players[seat].decks.upgradeCombat = FS_CATALOG.upgradeCombatCards(faction.id).map(c => c.name);
+            this.engine.player(state, seat).combatDeck.resetPile(
+                FS_CATALOG.upgradeCombatCards(faction.id).map(c => c.name));
             state.players[seat].decks.upgradeOrder = FS_CATALOG.orderCards(faction.id).map(c => c.name);
         });
 
@@ -169,7 +172,9 @@ class SetupRules {
         // Two copies of every card — and enough cards to deal the hand of a combat.
         let deck = cards.concat(cards);
         while (deck.length < 10) deck = deck.concat(cards);
-        p.decks.combat = this.engine.shuffle(state, deck);
+        const combatDeck = this.engine.player(state, seat).combatDeck;
+        combatDeck.reset(deck);
+        combatDeck.shuffle();
         return cards;
     }
 

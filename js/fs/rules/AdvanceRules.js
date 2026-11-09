@@ -358,9 +358,9 @@ class AdvanceRules {
                 const combatSeat = c[side];
                 // The hand goes back on top of the deck: the same account of
                 // the deck the purchase and the clean-up use.
-                const deck = this.engine.player(state, combatSeat).combatDeck;
-                for (const name of c.cards[side].hand) deck.add(name);
-                deck.shuffle();
+                const player = this.engine.player(state, combatSeat);
+                player.combatHand.returnAll(true);
+                player.combatDeck.shuffle();
             }
             state.combat = null;
             order.phase = 'move';

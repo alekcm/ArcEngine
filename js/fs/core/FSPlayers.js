@@ -172,6 +172,11 @@ class PlayerEntity {
         return FS_CARDS.combatDeck(FS_RULES, this.state, this.seat);
     }
 
+    /** The hand of this player in the battle that is running, as one object. */
+    get combatHand() {
+        return FS_CARDS.combatHand(FS_RULES, this.state, this.seat);
+    }
+
     // --- materiel and command -------------------------------------------------
 
     get materiel() {

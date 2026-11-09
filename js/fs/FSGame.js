@@ -1856,7 +1856,7 @@ class FSGame {
                 // combatDamageFor(side) is the damage the side SUFFERS; the
                 // damage it deals to the opponent is the opponent's value.
                 deals: FS_RULES.combatDamageFor(s, CombatSides.foe(id)),
-                hand: (c.cards[id].hand || []).length,
+                hand: FS_CARDS.combatHand(FS_RULES, s, c[id]).size(),
                 closed: !!(c.chosen && c.chosen[id]),
                 // «Если вы — атакующий, подсмотрите карту оппонента»
                 // («Скитарии-инфильтраторы»): the card of the other side this
@@ -2069,7 +2069,7 @@ class FSGame {
     fillHand(s, side, mine) {
         const c = s.combat;
         if (!c) { this.hand = []; return; }
-        const hand = (c.cards[side].hand || []);
+        const hand = FS_CARDS.combatHand(FS_RULES, s, c[side]).cards();
         const faction = s.players[s.seat] ? s.players[s.seat].faction : '';
         this.hand = hand.map((name, index) => {
             const data = FS_CATALOG.card('combat', faction, name);

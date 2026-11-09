@@ -8,10 +8,10 @@ class CardAsks {
     static ops = ['playCard', 'playAnyCard', 'playEvent', 'playTopCard', 'drawCombatCards', 'discardCard', 'discardFoeCard', 'discardFoeTop', 'discardFoeStaged', 'peekFoeCard', 'repeatCard', 'activateEvents', 'drawEvents', 'chooseEventAbility', 'lookEvents', 'sequence', 'choice', 'chooseFoe', 'chooseWorld', 'chooseSystem', 'foeAllow', 'require', 'note', 'scheme', 'trigger', 'preAdvance', 'limitedOrder', 'guardDeploy', 'once', 'icons'];
 
     static playCard(effects, f) {
-        const { seat, combat, inCombat, side } = f;
-        const hand = inCombat ? combat.cards[side].hand : [];
-        if (!hand.length) return null;
-        return { question: { kind: 'cards', who: seat, op: 'playCard', options: hand.slice(), text: 'Какую карту разыграть?' } };
+        const { R, state, seat, inCombat } = f;
+        const hand = inCombat ? R.player(state, seat).combatHand : null;
+        if (!hand || !hand.size()) return null;
+        return { question: { kind: 'cards', who: seat, op: 'playCard', options: hand.cards().slice(), text: 'Какую карту разыграть?' } };
     }
 
     static playAnyCard(effects, f) {
@@ -50,34 +50,37 @@ class CardAsks {
     }
 
     static drawCombatCards(effects, f) {
-        const { R, state, seat, step, combat, inCombat, side, p } = f;
+        const { R, state, seat, step, inCombat, p } = f;
         if (!inCombat) return null;
-        const hand = combat.cards[side].hand;
+        const hand = R.player(state, seat).combatHand;
         const deck = R.player(state, seat).combatDeck;
         let drawn = 0;
         for (let i = 0; i < (step.n || 1); i++) {
             const name = deck.draw();
             if (!name) break;
-            hand.push(name);
+            hand.put(name);
             drawn++;
         }
         if (!drawn) return null;
         R.log(state, seat, p.name + ' берёт дополнительные боевые карты: ' + drawn + '.');
         step.done = true;
-        const drop = Math.min(step.discard || drawn, hand.length);
+        const drop = Math.min(step.discard || drawn, hand.size());
         if (!drop) return null;
         step.discardLeft = drop;
-        return { question: { kind: 'cards', who: seat, op: 'discardHand', n: 1, options: hand.slice(), text: 'Какую карту сбросить (осталось ' + drop + ')?' } };
+        return { question: { kind: 'cards', who: seat, op: 'discardHand', n: 1, options: hand.cards().slice(), text: 'Какую карту сбросить (осталось ' + drop + ')?' } };
     }
 
     static discardCard(effects, f) {
         const { R, state, seat, combat, inCombat, side, target } = f;
         if (!inCombat) return null;
         const s2 = target === seat ? side : (CombatSides.foe(side));
-        const hand = combat.cards[s2].hand;
-        if (!hand.length) return null;
-        const i = Math.floor(R.rand(state) * hand.length);
-        const name = hand.splice(i, 1)[0];
+        const hand = R.player(state, CombatSides.seatOf(combat, s2)).combatHand;
+        if (!hand.size()) return null;
+        // «… должен сбросить с руки 1 случайную боевую карту»: the card is random
+        // because the printed text says so, not because the engine is shy of
+        // asking. A card of the player's own choice is asked, never rolled.
+        const name = hand.takeAt(Math.floor(R.rand(state) * hand.size()));
+        hand.deck.add(name);
         R.log(state, CombatSides.seatOf(combat, s2), 'Сброшена боевая карта «' + name + '».');
         return null;
     }
@@ -111,8 +114,8 @@ class CardAsks {
         const staged = combat.staged && combat.staged[foeSide];
         if (!staged) return null;
         combat.staged[foeSide] = null;
-        combat.cards[foeSide].chosen = null;
         const foeSeat = effects.seatOf(combat, foeSide);
+        R.player(state, foeSeat).combatHand.setChosen(null);
         R.player(state, foeSeat).combatDeck.add(staged.name);
         R.log(state, seat, p.name + ': карта противника «' + staged.name + '» сброшена.');
         step.done = true;
