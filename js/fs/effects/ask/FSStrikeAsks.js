@@ -126,14 +126,14 @@ class StrikeAsks {
         if (!inCombat) return null;
         const foeSeat = foe;
         const list = state.units.filter(u => {
-            if (u.seat !== foeSeat || u.system !== combat.system || u.area !== combat.pos) return false;
+            if (u.seat !== foeSeat || !BattleField.of(combat).holds(u)) return false;
             if (step.anyFoe) return !u.routed;
             const def = R.unitOf(state, u);
             return !!def && [2, 3].includes(def.kl || 0);
         }).map(u => u.id);
         for (const st of state.structures) {
             if (st.seat !== foeSeat || st.type !== 'bastion') continue;
-            if (st.system !== combat.system || st.area !== combat.pos) continue;
+            if (!BattleField.of(combat).holds(st)) continue;
             list.push(st.id);
         }
         if (!list.length) return null;

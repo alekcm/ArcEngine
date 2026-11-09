@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -729,6 +729,47 @@ rule('order-1', '«… this order …» — командный уровень, �
     eq(fight.unspentTemp(7), 0, 'считать больше нечего');
     eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
     eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
+
+rule('combat-0i', '«разместить жетон подкрепления в эту область» + «отступить в соседнюю область» — где идёт бой знает BattleField', () => {
+    const combat = { attacker: 0, defender: 1, system: 's1', pos: 'A1' };
+    const field = BattleField.of(combat);
+    eq(BattleField.of(combat), field, 'у боя одно место');
+    eq(BattleField.of(null), null, 'без боя места нет');
+    eq(field.system, 's1', 'система боя');
+    eq(field.pos, 'A1', 'область боя');
+    eq(field.area, { system: 's1', pos: 'A1' }, 'адрес боя одной записью');
+    // One place, asked once: the system and the area together.
+    eq(field.is('s1', 'A1'), true, 'это место боя');
+    eq(field.is('s1', 'A2'), false, 'соседняя область — не эта');
+    eq(field.is('s2', 'A1'), false, 'другая система — не эта');
+    // A unit, a structure and a bastion stand in the same place.
+    const state = {
+        units: [
+            { id: 'u1', seat: 0, system: 's1', area: 'A1' },
+            { id: 'u2', seat: 1, system: 's1', area: 'A1', routed: true },
+            { id: 'u3', seat: 0, system: 's1', area: 'A2' },
+            { id: 'u4', seat: 0, system: 's2', area: 'A1' },
+        ],
+        structures: [
+            { id: 'b1', seat: 0, system: 's1', area: 'A1', type: 'bastion' },
+            { id: 'c1', seat: 0, system: 's1', area: 'A1', type: 'city' },
+        ],
+    };
+    eq(field.holds(state.units[0]), true, 'отряд в области боя');
+    eq(field.holds(state.units[2]), false, 'отряд в соседней области');
+    eq(field.holds(state.units[3]), false, 'отряд в другой системе');
+    eq(field.holds(null), false, 'пустое место — не место боя');
+    eq(field.units(state, 0).map(u => u.id).join(','), 'u1', 'свои отряды в области боя');
+    eq(field.units(state, 1).map(u => u.id).join(','), 'u2', 'чужие отряды в области боя');
+    eq(field.unitsHere(state).length, 2, 'все отряды области боя');
+    eq(field.routed(state, 1).map(u => u.id).join(','), 'u2', 'деморализованные в области боя');
+    eq(field.routed(state, 0).length, 0, 'у своих деморализованных нет');
+    eq(field.bastions(state, 0).map(s => s.id).join(','), 'b1', 'только бастион, не город');
+    // The address is written once, when the battle begins.
+    field.set('s3', 'B2');
+    eq(field.is('s3', 'B2'), true, 'место боя записано');
+    eq(combat.system, 's3', 'адрес живёт в поле боя');
 });
 
 rule('combat-0h', '«ваш противник не сможет разыгрывать жетоны подкрепления» + «деморализованные отряды уничтожаются» — запреты боя держит CombatBans', () => {

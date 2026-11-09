@@ -45,7 +45,7 @@ class DiceAsks {
         if (step.inBattle && combat && step.per === 'unit') {
             // "in the reinforce step" — the units of this battle, not the board.
             const here = state.units.filter(u => u.seat === seat && !u.routed
-                && u.system === combat.system && u.area === combat.pos
+                && BattleField.of(combat).holds(u)
                 && effects.unitFits(R.unitOf(state, u), step.filter));
             n = (step.n || 1) * (here.length
                 + (step.filter ? 0 : R.tokenUnits(state, side).alive));
@@ -281,7 +281,8 @@ class DiceAsks {
     static moveUnitToCombatForDice(effects, f) {
         const { R, state, seat, combat, inCombat } = f;
         if (!inCombat) return null;
-        const around = (R.areasAround ? R.areasAround(state, combat.system, combat.pos) : []) || [];
+        const field = BattleField.of(combat);
+        const around = (R.areasAround ? R.areasAround(state, field.system, field.pos) : []) || [];
         const ids = new Set(around.map(a => a.system + ':' + a.pos));
         /** @type {any[]} */
         const list = state.units.filter(u => u.seat === seat && !u.routed

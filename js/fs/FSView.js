@@ -1593,14 +1593,15 @@ const FSView = {
         view.unitChips = view.unitChips || [];
         view.unitChips.length = 0;
         if (!c) { view.combatSeen.clear(); view.flights.clear(); this.drawUnitChips(app, view, state); return; }
-        const sys = Board.of(state).system(c.system);
+        const field = BattleField.of(c);
+        const sys = Board.of(state).system(field.system);
         if (!sys) return;
-        const area = sys.areas.find(a => a.pos === c.pos);
+        const area = sys.areas.find(a => a.pos === field.pos);
         if (!area) return;
         const C = this.COMBAT;
         const tile = this.tilePos(app, sys, view.metrics);
-        const ap = this.areaPos(app, sys, c.pos, view.metrics);
-        const disc = area.world ? this.discAt(app, sys, c.pos, view.metrics) : null;
+        const ap = this.areaPos(app, sys, field.pos, view.metrics);
+        const disc = area.world ? this.discAt(app, sys, field.pos, view.metrics) : null;
         // The contested sector: its centre and the ground of the battle. On a
         // world the middle of the sector is the planet itself — the pieces on
         // it stand higher, exactly as the miniatures do.
@@ -1614,7 +1615,7 @@ const FSView = {
             // side's fighters: the dice and the cubes of a side lie on its own
             // side of the battlefield, next to its miniatures — never across.
             const ups = state.units
-                .filter(u => u.system === c.system && u.area === c.pos && u.seat === side.seat)
+                .filter(u => field.holds(u) && u.seat === side.seat)
                 .map(u => view.unitPositions && view.unitPositions.get(u.id))
                 .filter(Boolean);
             let dir = { x: 0, z: sign };
@@ -1668,7 +1669,7 @@ const FSView = {
                 const node = new BABYLON.TransformNode('fs-die-' + side.id + '-' + i, view.scene);
                 node.position.set(rest.x, rest.y, rest.z);
                 node.rotation.y = (i * 1.7) % (Math.PI / 2);
-                node.metadata = { fs: 'die', system: c.system, pos: c.pos, side: side.id, face, index: i };
+                node.metadata = { fs: 'die', system: field.system, pos: field.pos, side: side.id, face, index: i };
                 const cube = BABYLON.MeshBuilder.CreateBox('fs-die-body-' + side.id + '-' + i, { size: C.die }, view.scene);
                 cube.parent = node;
                 cube.material = view.material('die-body-' + (face || 'blank'), fsDieColor(face));
@@ -1717,7 +1718,7 @@ const FSView = {
                 const pt = rowPos(disc ? base - 13 : Math.max(6, base - 16 - row * 10.5), (inRow - (nRow - 1) / 2) * 12.5);
                 const node = new BABYLON.TransformNode('fs-ctok-' + side.id + '-' + i, view.scene);
                 node.position.set(pt.x, groundY(pt.x, pt.z) + 1.4, pt.z);
-                node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id };
+                node.metadata = { fs: 'token', system: field.system, pos: field.pos, side: side.id };
                 // The one-round attack/defence tokens are tokens, not cubes:
                 // flat discs with the bolter/shield blazon, exactly like the
                 // reinforcement tokens.
@@ -1792,7 +1793,7 @@ const FSView = {
                 node.position.set(pt.x, groundY(pt.x, pt.z) + 1.4, pt.z);
                 // The id is what the damage command names; the white miniature
                 // on the board is therefore pickable like any other unit.
-                node.metadata = { fs: 'token', system: c.system, pos: c.pos, side: side.id,
+                node.metadata = { fs: 'token', system: field.system, pos: field.pos, side: side.id,
                     reinforce: true, index: i, reinforceId: 'reinforce-' + side.id + '-' + i };
                 const isRouted = flipped.indexOf(i) >= 0;
                 if (reinModel) {
@@ -1853,9 +1854,10 @@ const FSView = {
         const c = state.combat;
         if (!c) return;
         const items = [];
+        const field = BattleField.of(c);
         const seatSide = seat => (CombatSides.sideOf(c, seat));
         for (const u of state.units) {
-            if (u.system !== c.system || u.area !== c.pos) continue;
+            if (!field.holds(u)) continue;
             const def = FS_RULES.unitOf(state, u);
             if (!def) continue;
             const p = view.unitPositions && view.unitPositions.get(u.id);

@@ -1921,9 +1921,9 @@ const FS_EFFECTS = {
         const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
         if (cond.unitLess) {
             if (!inCombat) return false;
-            const here = u => u.system === combat.system && u.area === combat.pos;
-            const mine = state.units.filter(u => u.seat === seat && !u.routed && here(u)).length;
-            const theirs = state.units.filter(u => u.seat !== seat && !u.routed && here(u)).length;
+            const field = BattleField.of(combat);
+            const mine = field.units(state, seat).filter(u => !u.routed).length;
+            const theirs = field.unitsHere(state).filter(u => u.seat !== seat && !u.routed).length;
             return mine < theirs;
         }
         if (cond.noRetreat) {
@@ -1955,7 +1955,7 @@ const FS_EFFECTS = {
             const n = cond.foeRouted;
             const foeSide = inCombat ? (seat === combat.attacker ? combat.defender : combat.attacker) : null;
             const list = inCombat
-                ? state.units.filter(u => u.routed && u.seat === foeSide && u.system === combat.system && u.area === combat.pos)
+                ? BattleField.of(combat).routed(state, foeSide)
                 : state.units.filter(u => u.routed && u.seat !== seat);
             return list.length >= n;
         }
@@ -1965,9 +1965,9 @@ const FS_EFFECTS = {
             // filter, not the absence of one.
             const kl = cond.kl === null || cond.kl === undefined ? null : cond.kl;
             const fit = u => kl === null || (R.unitOf(state, u) && (R.unitOf(state, u).kl || 0) === kl);
-            const here = u => u.system === combat.system && u.area === combat.pos;
-            const mine = state.units.filter(u => u.seat === seat && !u.routed && here(u) && fit(u)).length;
-            const theirs = state.units.filter(u => u.seat !== seat && !u.routed && here(u) && fit(u)).length;
+            const field = BattleField.of(combat);
+            const mine = field.units(state, seat).filter(u => !u.routed && fit(u)).length;
+            const theirs = field.unitsHere(state).filter(u => u.seat !== seat && !u.routed && fit(u)).length;
             return mine > theirs;
         }
         return true;
@@ -2177,9 +2177,9 @@ const FS_EFFECTS = {
             // («Синаптический контроль»): only the surplus is paid out.
             const combat = state.combat;
             if (!combat) return 0;
-            const here = u => u.system === combat.system && u.area === combat.pos;
-            const mine = state.units.filter(u => u.seat === seat && !u.routed && here(u)).length;
-            const his = state.units.filter(u => u.seat !== seat && !u.routed && here(u)).length;
+            const field = BattleField.of(combat);
+            const mine = field.units(state, seat).filter(u => !u.routed).length;
+            const his = field.unitsHere(state).filter(u => u.seat !== seat && !u.routed).length;
             n = (step.n || 1) * Math.max(0, mine - his);
             if (step.max) n = Math.min(n, step.max);
             return Math.max(0, n);
@@ -2227,8 +2227,9 @@ const FS_EFFECTS = {
         if (step.per === 'unit') {
             const combat = state.combat;
             const inBattle = !!(ctx && ctx.kind === 'combat' && combat && step.inBattle);
+            const field = inBattle ? BattleField.of(combat) : null;
             const units = state.units.filter(u => u.seat === seat && !u.routed
-                && (!inBattle || (u.system === combat.system && u.area === combat.pos)));
+                && (!field || field.holds(u)));
             const matching = step.filter
                 ? units.filter(u => this.unitFits(R.unitOf(state, u), step.filter))
                 : units;
@@ -2327,8 +2328,9 @@ const FS_EFFECTS = {
             // «Уничтожьте одного недеморализованного Пожирателя в этой системе»
             // («Дождь из спор»): the card names the system of the battle, so the
             // units of its other areas count too.
-            units = state.units.filter(u => u.seat === seat && u.system === combat.system
-                && (step.systemWide || u.area === combat.pos));
+            const field = BattleField.of(combat);
+            units = state.units.filter(u => u.seat === seat && u.system === field.system
+                && (step.systemWide || u.area === field.pos));
         } else {
             units = state.units.filter(u => u.seat === seat);
         }
@@ -2583,7 +2585,7 @@ const FS_EFFECTS = {
                     // A friendly void of the active system.
                     case 'combatWorld': {
                         const combat = state.combat;
-                        ok = world && combat && sys.id === combat.system && area.pos === combat.pos;
+                        ok = world && combat && BattleField.of(combat).is(sys.id, area.pos);
                         break;
                     }
                     case 'friendlyVoidActive':
@@ -2816,8 +2818,8 @@ const FS_EFFECTS = {
 
 // The area of the combat (the reinforcement goes there).
 function combatArea(state, systemId, pos) {
-    const c = state.combat;
-    return !!(c && c.system === systemId && c.pos === pos);
+    const field = BattleField.of(state.combat);
+    return !!field && field.is(systemId, pos);
 }
 
 // The rules of the sentences. The first that matches wins.

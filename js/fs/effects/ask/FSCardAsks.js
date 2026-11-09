@@ -169,7 +169,7 @@ class CardAsks {
         if (step.box === 'unit') {
             const reqs = card.reqs || [];
             const standing = state.units.filter(u => u.seat === seat && !u.routed
-                && u.system === combat.system && u.area === combat.pos);
+                && BattleField.of(combat).holds(u));
             const there = standing.some(u => {
                 const def = R.unitOf(state, u);
                 return !!def && reqs.some(r => effects.sameName(def.name, r));

@@ -315,7 +315,7 @@ class OperationsRules {
             const reqs = card.reqs || [];
             // «A unit used to meet this requisite must be unrouted.»
             const there = combat && state.units.some(u => {
-                if (u.seat !== seat || u.routed || u.system !== combat.system || u.area !== combat.pos) return false;
+                if (u.seat !== seat || u.routed || !BattleField.of(combat).holds(u)) return false;
                 const def = this.engine.unitOf(state, u);
                 return def && reqs.some(r => FS_EFFECTS.sameName(def.name, r));
             });
@@ -324,7 +324,7 @@ class OperationsRules {
                 // («*Титан «Гончая»:* … *Линкор:* …»): only the paragraphs whose
                 // unit stands in the battle are read.
                 const present = state.units.filter(u => u.seat === seat && !u.routed
-                    && u.system === combat.system && u.area === combat.pos)
+                    && BattleField.of(combat).holds(u))
                     .map(u => (this.engine.unitOf(state, u) || {}).name).filter(Boolean);
                 steps.push(...FS_EFFECTS.parse(card.unit, { kind: 'combat', faction, reqs, present }));
             }

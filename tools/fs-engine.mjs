@@ -44,7 +44,7 @@ export function engineFiles() {
 const ENGINE_GLOBALS = ['FS_DATA', 'FS_CATALOG', 'FS_RULES_CONFIG', 'FS_WARP_STORMS',
     'FACE_KINDS', 'FACE_NAMES', 'fsFaceName',
     'FS_CARDS', 'FS_EFFECTS', 'FS_RULES', 'Board', 'PlayerEntity', 'TrimQueue', 'StrikePlan', 'MarchPlan', 'PhasePlan', 'UpgradeOrder', 'OrderDeal', 'DeployScope', 'DeployLimits', 'OrderFight', 'Purchases', 'OrderMove', 'OrderTally', 'OrderContext', 'CombatTurn', 'CombatTokens', 'CombatCards', 'CombatDamage', 'CombatPlans', 'CombatCubes', 'CombatBans', 'CombatHooks',
-    'TileGeometry', 'CombatSides', 'StepContext', 'STEP_EXECUTORS', 'ASK_EXECUTORS'];
+    'TileGeometry', 'CombatSides', 'BattleField', 'StepContext', 'STEP_EXECUTORS', 'ASK_EXECUTORS'];
 
 /**
  * One context with the engine in it.

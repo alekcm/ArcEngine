@@ -225,7 +225,8 @@ class PlaceSteps {
             if (alive) {
                 R.restoreUnit(state, alive);
             } else if (rec.destroyed) {
-                R.addUnit(state, seat, rec.def, combat.system, combat.pos);
+                const field = BattleField.of(combat);
+                R.addUnit(state, seat, rec.def, field.system, field.pos);
             }
             R.log(state, seat, p.name + ': отряд возвращён в спорную область.');
         }

@@ -165,7 +165,7 @@ class DiceSteps {
         const def = R.unitOf(state, u);
         if (!def) return null;
         const n = def.combat || 0;
-        R.board(state).moveUnit(u, { system: combat.system, pos: combat.pos }, { seat });
+        R.board(state).moveUnit(u, BattleField.of(combat).area, { seat });
         if (typeof R.trimArea === 'function') R.trimArea(state, seat, u.system, u.area);
         const got = Math.min(n, CombatTurn.of(combat).room(side));
         CombatTurn.of(combat).addMany(side, R.rollDice(state, got));

@@ -412,7 +412,7 @@ class FSGame {
         if (s.pending) this.questionMarkersActive = true;
         // A new reinforcement step is a fresh count: the counter starts at 0.
         const turn0 = CombatTurn.of(s.combat);
-        const reinforceKey = turn0 ? s.combat.system + ':' + turn0.round + ':' + turn0.step : null;
+        const reinforceKey = turn0 ? BattleField.of(s.combat).system + ':' + turn0.round + ':' + turn0.step : null;
         if (this.reinforceStep !== reinforceKey) {
             this.reinforceStep = reinforceKey;
             this.reinforcePick = 0;
@@ -1912,7 +1912,7 @@ class FSGame {
                 if (max <= 0) {
                     // The step needs no decision: no tokens are ever offered
                     // and the fight simply goes on. It is not even shown.
-                    const key = c.system + ':' + turn.round + ':' + turn.step;
+                    const key = BattleField.of(c).system + ':' + turn.round + ':' + turn.step;
                     ctx.text = have > 0 ? 'Подкреплению не за что устоять: в бою нет ваших отрядов.' : 'У вас нет жетонов подкрепления.';
                     if (this.autoReinforced !== key) {
                         this.autoReinforced = key;
@@ -3112,7 +3112,8 @@ class FSGame {
             const c = s.combat;
             const suffer = CombatTurn.of(c).side;
             const ownerSeat = CombatSides.seatOf(c, suffer);
-            const here = x => x && x.system === c.system && x.area === c.pos && x.seat === ownerSeat;
+            const field = BattleField.of(c);
+            const here = x => !!x && field.holds(x) && x.seat === ownerSeat;
             let id = null;
             if (meta.fs === 'unit') {
                 const u = s.units.find(x => x.id === meta.unit);
@@ -3120,7 +3121,7 @@ class FSGame {
             } else if (meta.fs === 'structure') {
                 const st = s.structures.find(x => x.id === meta.structure);
                 if (here(st) && st.type === 'bastion') id = meta.structure;
-            } else if (meta.side === suffer && meta.system === c.system && meta.pos === c.pos
+            } else if (meta.side === suffer && BattleField.of(c).is(meta.system, meta.pos)
                 && typeof meta.reinforceId === 'string'
                 && FS_RULES.reinforceTokenIndex(s, suffer, meta.reinforceId) >= 0) {
                 id = meta.reinforceId;

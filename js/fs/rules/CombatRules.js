@@ -226,8 +226,9 @@ class CombatRules {
 
     pieces(state, c, side) {
         const seat = CombatSides.seatOf(c, side);
-        const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
-        const bastions = state.structures.filter(s => s.seat === seat && s.system === c.system && s.area === c.pos && s.type === 'bastion');
+        const field = BattleField.of(c);
+        const units = field.units(state, seat);
+        const bastions = field.bastions(state, seat);
         const t = this.tokenUnits(state, side);
         const flipped = this.reinforceFlipped(state, side);
         const dead = this.reinforceDestroyed(state, side);
@@ -263,7 +264,8 @@ class CombatRules {
         const c = state.combat;
         if (!c) return null;
         const seat = CombatSides.seatOf(c, side);
-        const area = this.engine.area(this.engine.system(state, c.system), c.pos);
+        const field = BattleField.of(c);
+        const area = this.engine.area(this.engine.system(state, field.system), field.pos);
         return this.reinforceUnitDef(state.players[seat].faction, area && area.world ? 'ground' : 'ship');
     }
 
@@ -368,7 +370,8 @@ class CombatRules {
         const c = state.combat;
         if (!c) return 0;
         const seat = CombatSides.seatOf(c, side);
-        const area = this.engine.area(this.engine.system(state, c.system), c.pos);
+        const field = BattleField.of(c);
+        const area = this.engine.area(this.engine.system(state, field.system), field.pos);
         const type = area && area.world ? 'ground' : 'ship';
         const def = this.reinforceUnitDef(state.players[seat].faction, type);
         return this.tokenUnits(state, side).alive * (def ? def.morale : 0);
@@ -376,7 +379,7 @@ class CombatRules {
 
     maxReinforce(state, seat, side) {
         const c = state.combat;
-        const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
+        const units = BattleField.of(c).units(state, seat);
         return Math.min(units.length, this.engine.player(state, seat).assetCount('reinforcement'));
     }
 
@@ -645,7 +648,8 @@ class CombatRules {
         // The printed morale of the unrouted units, the bastions and the
         // reinforcement tokens is the bulk of the combat morale (the rules,
         // "Morale"); only the icons on the cards and the dice add to it.
-        morale += this.moraleFromPieces(state, c.system, c.pos, seat);
+        const field = BattleField.of(c);
+        morale += this.moraleFromPieces(state, field.system, field.pos, seat);
         morale += this.tokenMorale(state, side);
         return { att, def, morale };
     }
@@ -656,7 +660,8 @@ class CombatRules {
         const tokens = CombatCubes.of(c).values(side);
         const icons = CombatCards.of(c).icons(side);
         const seat = CombatSides.seatOf(c, side);
-        const unitsMorale = this.moraleFromPieces(state, c.system, c.pos, seat)
+        const field = BattleField.of(c);
+        const unitsMorale = this.moraleFromPieces(state, field.system, field.pos, seat)
             + this.tokenMorale(state, side);
         const parts = {
             att: { dice: 0, tokens: tokens.att || 0, cards: 0, units: 0, total: 0 },
@@ -739,8 +744,9 @@ class CombatRules {
         const owner = CombatSides.seatOf(c, side);
         const actor = seat === undefined ? owner : seat;
         const out = [];
+        const field = BattleField.of(c);
         for (const u of state.units) {
-            if (u.seat !== owner || u.system !== c.system || u.area !== c.pos) continue;
+            if (u.seat !== owner || !field.holds(u)) continue;
             const def = this.engine.unitOf(state, u);
             if (!def) continue;
             out.push({ id: u.id, name: def.name, health: def.health, morale: def.morale,
@@ -748,7 +754,7 @@ class CombatRules {
         }
         // Only a bastion has a health value: a city or a factory takes no damage.
         for (const s of state.structures) {
-            if (s.seat !== owner || s.system !== c.system || s.area !== c.pos || s.type !== 'bastion') continue;
+            if (s.seat !== owner || !field.holds(s) || s.type !== 'bastion') continue;
             const st = this.engine.structureStats('bastion');
             out.push({ id: s.id, name: st.name || 'bastion', health: st.health, morale: st.morale || 0,
                 routed: false, type: 'structure', kind: 'structure' });
@@ -1030,9 +1036,8 @@ class CombatRules {
         const foeSeat = CombatSides.seatOf(c, foeSide);
         // «если в этом раунде боя отряд противника становится деморализованным» —
         // the units that were routed in this round.
-        const units = state.units.filter(u => u.seat === foeSeat
-            && u.system === c.system && u.area === c.pos && u.routed
-            && (u.routedRound === undefined || u.routedRound === turn.round));
+        const units = BattleField.of(c).routed(state, foeSeat)
+            .filter(u => u.routedRound === undefined || u.routedRound === turn.round);
         d.done = true;
         if (!units.length) return false;
         const avoid = d.avoid || { kind: 'def', n: 1 };
@@ -1052,7 +1057,7 @@ class CombatRules {
         const d = CombatPlans.of(c).takeDeferred();
         if (!d) return false;
         const foeSeat = d.seat === c.attacker ? c.defender : c.attacker;
-        const targets = state.units.filter(u => u.seat === foeSeat && u.system === c.system && u.area === c.pos);
+        const targets = BattleField.of(c).units(state, foeSeat);
         // «получите по 1 материалу за каждый уничтоженный отряд» («Рой
         // потрошителей») needs no piece of the opponent to aim at.
         const needsTarget = (d.steps || []).some(x => x && x.op !== 'gainMateriel');
@@ -1128,11 +1133,10 @@ class CombatRules {
         CombatDamage.of(c).clear();
         // The card may destroy the units that became routed.
         if (CombatBans.of(c).destroysRouted) {
-            for (const u of state.units.slice()) {
-                if (u.routed && u.system === c.system && u.area === c.pos) {
-                    this.engine.log(state, c.attacker, 'Деморализованный отряд уничтожен.');
-                    this.engine.destroyUnit(state, u);
-                }
+            const field = BattleField.of(c);
+            for (const u of field.routed(state, c.attacker).concat(field.routed(state, c.defender))) {
+                this.engine.log(state, c.attacker, 'Деморализованный отряд уничтожен.');
+                this.engine.destroyUnit(state, u);
             }
             // A flipped reinforcement token is a routed unit too.
             for (const side of ['attacker', 'defender']) {
@@ -1352,12 +1356,13 @@ class CombatRules {
         this.engine.log(state, winner, 'Бой ' + (wiped ? 'закончен' : 'выигран') + ': мораль '
             + (attackerWins ? attMorale : defMorale) + ' против ' + (attackerWins ? defMorale : attMorale) + '.');
         // Only the attacker takes the structures of the world (the rules).
-        if (attackerWins) this.captureStructures(state, c.system, c.pos, c.attacker, c.defender);
+        const field = BattleField.of(c);
+        if (attackerWins) this.captureStructures(state, field.system, field.pos, c.attacker, c.defender);
         c.loser = loser;
         CombatTurn.of(c).setStep('retreat');
         // A player whose troops all died has nothing to retreat: the combat ends
         // without asking where the dead should go.
-        const noTroops = !state.units.some(u => u.seat === loser && u.system === c.system && u.area === c.pos);
+        const noTroops = !BattleField.of(c).units(state, loser).length;
         // The schemes of the end of the combat.
         this.engine.maybeScheme(state, winner, 'combat-end', { kind: 'combat', ctx: { side: CombatSides.sideOf(c, winner) } });
         // The combat cards go back into the deck, the reinforcement tokens too.
@@ -1392,7 +1397,7 @@ class CombatRules {
         const c = state.combat;
         if (!c) return [];
         const side = CombatSides.sideOf(c, seat);
-        const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
+        const units = BattleField.of(c).units(state, seat);
         if (!units.length) return [];
         const defs = units.map(u => this.engine.unitOf(state, u)).filter(Boolean);
         const ground = defs.length ? defs[0].type === 'ground' : true;
@@ -1402,14 +1407,15 @@ class CombatRules {
         // Order, they must move to an area that at least one unit moved from to
         // start the combat.» Otherwise the general retreat rules apply.
         const free = side === 'attacker' && c.viaAdvance;
-        const systems = [c.system].concat(this.engine.neighbors(state, c.system));
+        const field = BattleField.of(c);
+        const systems = [field.system].concat(this.engine.neighbors(state, field.system));
         const out = [];
         for (const sid of systems) {
             const sys = this.engine.system(state, sid);
             if (!sys) continue;
             for (const area of sys.areas) {
                 if (!!area.world !== ground) continue;
-                if (sid === c.system && area.pos === c.pos) continue;
+                if (field.is(sid, area.pos)) continue;
                 const where = this.engine.areaState(state, seat, sid, area.pos);
                 if (where === 'contested' || where === 'enemy') continue;
                 if (side === 'defender') {
@@ -1427,7 +1433,7 @@ class CombatRules {
                     if (!came.some(x => x.system === sid && x.pos === area.pos)) continue;
                 }
                 // A ground unit walks a legal path to the area it retreats to.
-                if (ground && !this.engine.pathExists(state, seat, c.system, c.pos, sid, area.pos)) continue;
+                if (ground && !this.engine.pathExists(state, seat, field.system, field.pos, sid, area.pos)) continue;
                 out.push({ system: sid, pos: area.pos, state: where });
             }
         }
@@ -1442,7 +1448,7 @@ class CombatRules {
     combatRetreat(state, seat, side, cmd) {
         const c = state.combat;
         if (c.loser !== seat) return { ok: false, error: 'Отступает проигравший.' };
-        const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
+        const units = BattleField.of(c).units(state, seat);
         const targets = this.retreatTargets(state, seat);
         let target = null;
         if (cmd && cmd.target) {

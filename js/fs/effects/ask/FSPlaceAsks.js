@@ -106,7 +106,7 @@ class PlaceAsks {
         }
         // «… в спорной области» — the area of the battle is the only one.
         if (step.here && combat) {
-            effects.placeReinforcementAt(R, state, seat, step, { system: combat.system, pos: combat.pos }, side, ctx);
+            effects.placeReinforcementAt(R, state, seat, step, BattleField.of(combat).area, side, ctx);
             return null;
         }
         const areas = effects.areasFor(R, state, seat, 'reinforcement');
@@ -185,7 +185,7 @@ class PlaceAsks {
         // «Командный уровень этого отряда не может превышать числа
         // отрядов культистов в этой системе» («Объединённый Хаос»).
         if (step.maxKlFromCultists) {
-            const sysId = combat ? combat.system : (state.order ? OrderContext.of(state.order).system : null);
+            const sysId = combat ? BattleField.of(combat).system : (state.order ? OrderContext.of(state.order).system : null);
             const cap = state.units.filter(u => u.seat === seat && u.system === sysId
                 && /культист/i.test((R.unitOf(state, u) || {}).name || '')).length;
             units = units.filter(u => {
@@ -226,7 +226,7 @@ class PlaceAsks {
         // unrouted units of the contested area.
         if (step.maxKlFromMine) {
             const mine = state.units.filter(u => u.seat === seat && !u.routed
-                && (!combat || (u.system === combat.system && u.area === combat.pos)));
+                && (!combat || BattleField.of(combat).holds(u)));
             let best = -1;
             for (const u of mine) {
                 const d = R.unitOf(state, u);
@@ -298,7 +298,7 @@ class PlaceAsks {
         // owner: any unit of the contested area qualifies, and the owner
         // of the card picks it (the rules, «Combat Card Resolution»).
         if (step.who === 'any' && combat) {
-            let any = state.units.filter(u => u.system === combat.system && u.area === combat.pos && !u.routed);
+            let any = BattleField.of(combat).unitsHere(state).filter(u => !u.routed);
             if (step.maxKl !== undefined) {
                 any = any.filter(u => {
                     const def = R.unitOf(state, u);
