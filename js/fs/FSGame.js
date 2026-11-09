@@ -1231,7 +1231,8 @@ class FSGame {
         if (step === 'units' && mayBuild && (order.bought || 0) < limit) {
             for (const def of faction.units) {
                 const n = supply[def.id] || 0;
-                const cost = Math.max(0, def.cost - (opts.cache ? 2 : 0));
+                // The price the rules will charge: the panel never counts it itself.
+                const cost = FS_RULES.unitPrice(s, me, def, { cache: opts.cache });
                 const kl = def.kl - (opts.forgeKl ? 1 : 0);
                 const blocked = !n || p.materiel - spent < cost || kl > cl || (def.forge && !(p.assets.forge || 0));
                 ctx.actions.push({
@@ -1270,7 +1271,7 @@ class FSGame {
             for (const type of ['city', 'factory', 'bastion']) {
                 const can = FS_RULES.canTakeStructure(s, me, type);
                 const free = order.freeStructure && order.freeStructureKind === type;
-                const price = free ? 0 : Math.max(0, FS_RULES.structureStats(type).cost - (opts.cache ? 2 : 0));
+                const price = free ? 0 : FS_RULES.structurePrice(s, me, type, { cache: opts.cache });
                 const blocked = !can.ok || order.structureBought || (p.materiel - spent < price && !free);
                 ctx.actions.push({
                     kind: 'pick', icon: 'mark.city', label: FS_RULES.structureName(type),
@@ -1363,7 +1364,8 @@ class FSGame {
                 if (def.type === 'ship') continue;
                 const n = supply[def.id] || 0;
                 const pairSecond = dealNextFree(def);
-                const cost = pairSecond ? 0 : Math.max(0, def.cost - 1 - (opts.cache ? 2 : 0));
+                // The price the rules will charge: the panel never counts it itself.
+                const cost = FS_RULES.unitPrice(s, me, def, { cache: opts.cache, pairMate: pairSecond });
                 const kl = def.kl - (opts.forgeKl ? 1 : 0);
                 const blockedByLock = !!locked && def.id !== locked;
                 const blocked = blockedByLock || !n || p.materiel - spent < cost || kl > cl || (def.forge && !(p.assets.forge || 0));

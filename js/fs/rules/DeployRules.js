@@ -76,6 +76,42 @@ class DeployRules {
         return (order.purchases || []).reduce((sum, x) => sum + (x.cost || 0), 0);
     }
 
+    /**
+     * What one unit costs this order: the printed price less the discounts of the
+     * order and of the player's cards, or one materiel when a card sells the unit
+     * for that («потратить 1 материал, чтобы разместить 1 отряд»). The panel shows
+     * the same number the purchase will charge — the reasons of a discount live
+     * here, not in the panel.
+     * opts: { cache } — a cache token pays two less; { pairMate } — the pair of
+     * the faction deal is paid by a cache token in full; { cheap } — the card.
+     */
+    unitPrice(state, seat, def, opts) {
+        const order = state.order || {};
+        const p = state.players[seat] || {};
+        const o = opts || {};
+        if (o.cheap) return 1;
+        let cost = def.cost || 0;
+        if (order.discount) cost = Math.max(0, cost - order.discount);
+        // «уменьшить общую цену всех покупок (включая здания) на 1».
+        if (order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
+        if (o.pairMate) return 0;
+        if (o.cache) cost = Math.max(0, cost - 2);
+        // The order may sell a unit of command level 0 for 1 materiel.
+        if (order.cheapUnit && def.kl === 0) cost = Math.min(cost, order.cheapUnit);
+        if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
+        return cost;
+    }
+
+    /** What one structure costs this order: the printed price less a cache token and the discounts. */
+    structurePrice(state, seat, type, opts) {
+        const order = state.order || {};
+        const o = opts || {};
+        const stats = this.engine.structureStats(type);
+        let cost = Math.max(0, (stats.cost || 0) - (o.cache ? 2 : 0));
+        if (order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
+        return cost;
+    }
+
     cmdBuyUnit(state, seat, cmd) {
         const order = state.order;
         const isGuard = !!order && order.phase === 'guardDeploy' && order.guardFactory;
@@ -161,7 +197,6 @@ class DeployRules {
                 if (!factory) return { ok: false, error: 'Отряд ставится в мир с вашей фабрикой.' };
             }
         }
-        let cost = cheap ? 1 : def.cost;
         let cache = cheap ? false : (!!cmd.cache && !pairMate);
         if (cheap) {
             // «потратить 1 материал, чтобы разместить 1 отряд»: the price is
@@ -169,25 +204,14 @@ class DeployRules {
             order.cheapUnitUsed = true;
             order.cheapUnit = 0;
         } else {
-            // The order may make the units cheaper.
-            if (order.discount) cost = Math.max(0, cost - order.discount);
-            // «уменьшить общую цену всех покупок (включая здания) на 1»
-            // («Главный по машинам»): the discount covers every purchase.
-            if (order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
-            // One cache token lowers the cost of one unit by two materiel. The
-            // pair of the faction deal is paid by a cache token in full.
+            // The pair of the faction deal is paid by a cache token in full.
             if (pairMate) {
                 if ((p.assets.cache || 0) < 1) return { ok: false, error: 'Для «2 Гвардейца за 1 жетон запасов» нужен жетон тайника.' };
-                cost = 0;
                 cache = true;
             }
             if (cache && !pairMate && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
-            if (cache && !pairMate) cost = Math.max(0, cost - 2);
-            // The order may sell a unit of command level 0 for 1 materiel.
-            if (order.cheapUnit && def.kl === 0) cost = Math.min(cost, order.cheapUnit);
-            // The card of the player may make the purchase cheaper.
-            if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
         }
+        const cost = this.unitPrice(state, seat, def, { cache, pairMate, cheap });
         if (def.forge && (p.assets.forge || 0) < (forgeKl ? 1 : 0) + 1) return { ok: false, error: 'Нужен жетон кузницы.' };
         if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
         // The tokens are paid at once, the materiel — at the end of the order.
@@ -231,16 +255,12 @@ class DeployRules {
         const p = state.players[seat];
         const can = this.engine.canTakeStructure(state, seat, type);
         if (!can.ok) return can;
-        const stats = this.engine.structureStats(type);
         // The order may give a structure for free.
         const free = !!(order.freeStructure && order.freeStructureKind === type);
         // One cache token lowers the cost of one structure by two materiel.
         const cache = !!cmd.cache;
         if (cache && (p.assets.cache || 0) < 1) return { ok: false, error: 'Нет жетона тайника.' };
-        let cost = free ? 0 : Math.max(0, stats.cost - (cache ? 2 : 0));
-        // «уменьшить общую цену всех покупок (включая здания) на 1» («Главный по
-        // машинам»): the building is a purchase of the order like any other.
-        if (!free && order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
+        const cost = free ? 0 : this.structurePrice(state, seat, type, { cache });
         if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
         const place = this.canPlaceStructure(state, seat, cmd.system, cmd.pos);
         if (!place.ok) return place;
