@@ -548,6 +548,29 @@ try {
     fail(e.message);
 }
 
+// --- how a battle ended: one object ------------------------------------------
+section('итог боя: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSCombatOutcome.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // «кто выиграл и кто отступает» — победившая сторона, проигравший seat
+        // и мораль решения спрашиваются у одного объекта CombatOutcome.
+        const re = /\b(?:state\.combat|s\.combat|combat|c|cbt)\.(?:winner|loser|morale)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('итог боя спрашивают у CombatOutcome');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- where a battle stands: one object ----------------------------------------
 section('место боя: один объект');
 try {

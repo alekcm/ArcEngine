@@ -98,6 +98,7 @@
 | Что приказ добыл, кому должен и что обещал бою | `core/FSOrderTally.js` (`OrderTally.of(order)`) | не читать `order.prosperity`/`gained`/`combatReinforce` в правиле или панели — это ловит `fs-smoke` |
 | Чей приказ, какой и в какой системе | `core/FSOrderContext.js` (`OrderContext.of(order)`) | не сравнивать `order.seat`/`order.order` и не читать `order.system` руками — это ловит `fs-smoke` |
 | Паузы боя: схемы, в которые он ждёт, и шаг, который вернётся | `core/FSCombatHooks.js` (`CombatHooks.of(combat)`) | не читать `combat.damageHook`/`criticalHook`/`damageResume`/`prepQueued` в правиле или эффекте — это ловит `fs-smoke` |
+| Итог боя: победившая сторона, проигравший seat и мораль решения | `core/FSCombatOutcome.js` (`CombatOutcome.of(combat)`) | не читать `combat.winner`/`loser`/`morale` в правиле или панели — это ловит `fs-smoke` |
 | Где идёт бой: система, область и «кто здесь стоит» | `core/FSBattleField.js` (`BattleField.of(combat)`) | не сравнивать `combat.system`/`combat.pos` с отрядом руками — это ловит `fs-smoke` |
 | Запреты боя: подкрепление, кубики атаки и деморализованные | `core/FSCombatBans.js` (`CombatBans.of(combat)`) | не читать `combat.noReinforce`/`ignoreFoeAtt`/`destroyRouted` в правиле или эффекте — это ловит `fs-smoke` |
 | Жетоны карт в бою: `att.`/`def.` каждой стороны и их сброс в конце раунда | `core/FSCombatCubes.js` (`CombatCubes.of(combat)`) | не читать `combat.tokens` в правиле, карте или панели — это ловит `fs-smoke` |
@@ -135,7 +136,7 @@
 
 ```
 node tools/check.mjs          # типы (tsc по JSDoc) + сверка правил + дым-тест
-node tools/fs-audit.mjs       # 162 проверок: каждая цитирует Rules Reference
+node tools/fs-audit.mjs       # 163 проверок: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # 82 проверки: карты одной фракции против их текстов
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках
@@ -148,11 +149,11 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 шагов карт (73 «дела» и 155 «вопроса» — каждый объявлен и каждый — функция), а ещё один —
 сам предметный слой: стороны боя и верх стопки приказов.
 
-Тридцать два раздела дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
+Тридцать три раздела дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
 (вставленные `assets.forge++`, `cards[side].hand.splice`, `p.materiel -= 1`, ручной счёт
 пяти отрядов, `structuresAt(...).length`, `state.order = null`, `u.routed = true`,
 `order.bought++`, чтение `state.trim` мимо очереди, `storm.edge = …` мимо поля штормов и
-`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` `order.purchases` мимо `Purchases` `order.moveAreaLimit` мимо `OrderMove` `order.prosperity` мимо `OrderTally`, `order.seat`/`order.system` мимо `OrderContext` `combat.reinforcePending` мимо `CombatTokens` и `combat.step`/`combat.dice` мимо `CombatTurn` `combat.staged` мимо `CombatCards` `combat.healthBonus`/`combat.noRoute` мимо `CombatDamage` и `combat.damageResume` мимо `CombatHooks` и `combat.endRoundPlans`/`laterTokens` мимо `CombatPlans` `combat.tokens` мимо `CombatCubes` и `combat.noReinforce`/`ignoreFoeAtt` мимо `CombatBans` и `combat.system`/`combat.pos` мимо `BattleField`
+`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` `order.purchases` мимо `Purchases` `order.moveAreaLimit` мимо `OrderMove` `order.prosperity` мимо `OrderTally`, `order.seat`/`order.system` мимо `OrderContext` `combat.reinforcePending` мимо `CombatTokens` и `combat.step`/`combat.dice` мимо `CombatTurn` `combat.staged` мимо `CombatCards` `combat.healthBonus`/`combat.noRoute` мимо `CombatDamage` и `combat.damageResume` мимо `CombatHooks` и `combat.endRoundPlans`/`laterTokens` мимо `CombatPlans` `combat.tokens` мимо `CombatCubes` и `combat.noReinforce`/`ignoreFoeAtt` мимо `CombatBans` `combat.system`/`combat.pos` мимо `BattleField` и `combat.winner`/`loser` мимо `CombatOutcome`
 дают провал с именем файла и строкой):
 
 * жетоны: только `PlayerEntity` пишет в `assets`;
@@ -207,6 +208,10 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
   добыча доминирования, жетоны процветания, текст способности фракции, «приказ
   кончается со способностью», карты хаоса (колода и кубики морали) и обещанный
   бесплатный жетон подкрепления, который бой забирает один раз.
+* итог боя — один объект `CombatOutcome` (`core/FSCombatOutcome.js`): решение
+  боя (`decide(winner, morale)`), его сторона и seat (`winner`, `winnerSeat`),
+  проигравший, который отступает (`loserSeat`, `lostBy`), и мораль, которой решено
+  (`morale`); отменённый бой (`clear`) не оставляет ни победителя, ни проигравшего.
 * место боя — один объект `BattleField` (`core/FSBattleField.js`): система и
   область боя (`system`, `pos`, `area`, `set`, `is`) и один вопрос «кто здесь
   стоит» — `holds` для отряда, постройки и бастиона, `units`/`unitsHere`/`routed`

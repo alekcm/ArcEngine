@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -729,6 +729,39 @@ rule('order-1', '«… this order …» — командный уровень, �
     eq(fight.unspentTemp(7), 0, 'считать больше нечего');
     eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
     eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
+
+rule('combat-0j', '«определите победителя» + «проигравший отступает» — итог боя держит CombatOutcome', () => {
+    const combat = { attacker: 0, defender: 1, system: 's1', pos: 'A1' };
+    const outcome = CombatOutcome.of(combat);
+    eq(CombatOutcome.of(combat), outcome, 'у боя один итог');
+    eq(CombatOutcome.of(null), null, 'без боя итога нет');
+    // The battle goes on: nobody won and nobody retreats.
+    eq(outcome.decided, false, 'бой ещё не решён');
+    eq(outcome.winner, null, 'победителя нет');
+    eq(outcome.winnerSeat, null, 'seat победителя неизвестен');
+    eq(outcome.loserSeat, null, 'проигравшего нет');
+    eq(outcome.lostBy(1), false, 'никто не проиграл');
+    // The attacker wins on morale: the defender leaves.
+    outcome.decide('attacker', { attacker: 5, defender: 3 });
+    eq(outcome.decided, true, 'бой решён');
+    eq(outcome.winner, 'attacker', 'победил атакующий');
+    eq(outcome.winnerSeat, 0, 'seat победителя');
+    eq(outcome.loserSeat, 1, 'отступает защитник');
+    eq(outcome.lostBy(1), true, 'защитник проиграл');
+    eq(outcome.lostBy(0), false, 'атакующий не проиграл');
+    eq(outcome.morale, { attacker: 5, defender: 3 }, 'мораль решения');
+    // A tie goes to the defender: the same rule, other side.
+    const second = { attacker: 0, defender: 1 };
+    const other = CombatOutcome.of(second).decide('defender', { attacker: 2, defender: 2 });
+    eq(other.winner, 'defender', 'победил защитник');
+    eq(other.loserSeat, 0, 'отступает атакующий');
+    eq(other.morale.attacker, 2, 'мораль атакующего записана');
+    // A battle that was cancelled leaves no outcome behind.
+    outcome.clear();
+    eq(outcome.decided, false, 'отменённый бой не решён');
+    eq(outcome.loserSeat, null, 'и не оставляет проигравшего');
+    eq(outcome.morale, null, 'и морали решения');
 });
 
 rule('combat-0i', '«разместить жетон подкрепления в эту область» + «отступить в соседнюю область» — где идёт бой знает BattleField', () => {

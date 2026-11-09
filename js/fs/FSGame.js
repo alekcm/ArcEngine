@@ -2033,7 +2033,7 @@ class FSGame {
                 return;
             }
             case 'retreat': {
-                if (c.loser !== me) { ctx.text = 'Проигравший отступает.'; return; }
+                if (!CombatOutcome.of(c).lostBy(me)) { ctx.text = 'Проигравший отступает.'; return; }
                 // The areas the rules allow are named by the engine; the player picks
                 // one on the board or in the list.
                 this.mode = 'retreat';

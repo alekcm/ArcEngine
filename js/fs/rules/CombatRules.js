@@ -1349,16 +1349,15 @@ class CombatRules {
         } else {
             attackerWins = attMorale > defMorale;
         }
-        c.winner = attackerWins ? 'attacker' : 'defender';
-        c.morale = { attacker: attMorale, defender: defMorale };
-        const loser = attackerWins ? c.defender : c.attacker;
-        const winner = attackerWins ? c.attacker : c.defender;
+        const outcome = CombatOutcome.of(c).decide(attackerWins ? 'attacker' : 'defender',
+            { attacker: attMorale, defender: defMorale });
+        const loser = outcome.loserSeat;
+        const winner = outcome.winnerSeat;
         this.engine.log(state, winner, 'Бой ' + (wiped ? 'закончен' : 'выигран') + ': мораль '
             + (attackerWins ? attMorale : defMorale) + ' против ' + (attackerWins ? defMorale : attMorale) + '.');
         // Only the attacker takes the structures of the world (the rules).
         const field = BattleField.of(c);
         if (attackerWins) this.captureStructures(state, field.system, field.pos, c.attacker, c.defender);
-        c.loser = loser;
         CombatTurn.of(c).setStep('retreat');
         // A player whose troops all died has nothing to retreat: the combat ends
         // without asking where the dead should go.
@@ -1447,7 +1446,7 @@ class CombatRules {
 
     combatRetreat(state, seat, side, cmd) {
         const c = state.combat;
-        if (c.loser !== seat) return { ok: false, error: 'Отступает проигравший.' };
+        if (!CombatOutcome.of(c).lostBy(seat)) return { ok: false, error: 'Отступает проигравший.' };
         const units = BattleField.of(c).units(state, seat);
         const targets = this.retreatTargets(state, seat);
         let target = null;
