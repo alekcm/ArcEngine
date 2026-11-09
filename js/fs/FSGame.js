@@ -2329,11 +2329,10 @@ class FSGame {
             }
             case 'assets':
             case 'assetType': {
-                const names = { forge: 'кузница', cache: 'тайник', reinforcement: 'подкрепление' };
                 for (const kind of q.options) {
                     ctx.actions.push({
                         kind: 'pick',
-                        label: 'Жетон: ' + (names[kind] || kind),
+                        label: 'Жетон: ' + FS_RULES.assetName(kind),
                         onClick: () => send({ asset: kind }),
                     });
                 }
