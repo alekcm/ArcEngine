@@ -15,10 +15,8 @@ class TokenAsks {
         // раунда» («Притворное отступление»): the check belongs to the
         // END of the round, so the tokens arrive in the next one.
         if (step.cond && step.cond.noRetreat) {
-            combat.endRoundNoRetreat = combat.endRoundNoRetreat || [];
-            combat.endRoundNoRetreat.push({
+            CombatPlans.of(combat).addNoRetreatPlan({
                 seat, side, kind: step.kind || 'att', n,
-                round: CombatTurn.of(combat).round, fired: false,
             });
             R.log(state, seat, p.name + ': жетоны ждут конца раунда без отступления.');
             return null;
@@ -55,15 +53,9 @@ class TokenAsks {
         // combat» — the side that played the card keeps the tokens of
         // the kind the card names («Шустрое судно» keeps `def. token`,
         // «Гнев машины» keeps `att. token`).
-        if (combat) {
-            combat.keepTokens = combat.keepTokens || {};
-            const keep = combat.keepTokens[side] || {};
-            keep[step.kind === 'att' ? 'att' : 'def'] = true;
-            // The card keeps the tokens of the round it was played in —
-            // the next round discards them as usual.
-            keep.round = CombatTurn.of(combat).round;
-            combat.keepTokens[side] = keep;
-        }
+        // The card keeps the tokens of the round it was played in — the next
+        // round discards them as usual.
+        if (combat) CombatPlans.of(combat).keepTokens(side, step.kind);
         return null;
     }
 
@@ -81,9 +73,7 @@ class TokenAsks {
         const { R, state, seat, step, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
         const kind = step.kind === 'att' ? 'att' : 'def';
-        combat.laterTokens = (combat.laterTokens || []).concat([
-            { side: side, kind: kind, n: step.n || 1, round: CombatTurn.of(combat).round + 1 },
-        ]);
+        CombatPlans.of(combat).addLaterToken({ side, kind, n: step.n || 1 });
         R.log(state, seat, p.name + ' получит ' + (step.n || 1) + ' жетон(ов) '
             + (kind === 'att' ? 'атаки' : 'обороны') + ' в следующем раунде боя.');
         return null;

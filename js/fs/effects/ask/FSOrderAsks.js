@@ -284,12 +284,7 @@ class OrderAsks {
     static restoreFallen(effects, f) {
         const { R, state, seat, step, combat, inCombat, p } = f;
         if (!inCombat) return null;
-        combat.restoreFallen = combat.restoreFallen || [];
-        combat.restoreFallen.push({
-            seat, round: CombatTurn.of(combat).round,
-            maxKl: step.maxKl === undefined ? 0 : step.maxKl,
-            asked: false, done: false,
-        });
+        CombatPlans.of(combat).addRestoreFallen(seat, step.maxKl === undefined ? 0 : step.maxKl);
         R.log(state, seat, p.name + ': «Уклонение» ждёт конца шага урона.');
         return null;
     }
@@ -299,7 +294,7 @@ class OrderAsks {
         if (!inCombat) return null;
         // The card stays in play until a unit of the command level falls:
         // the combat asks about it after the damage step.
-        CombatTurn.of(combat).putEntry('resurrectPlan', { seat, maxKl: step.maxKl === undefined ? 1 : step.maxKl });
+        CombatPlans.of(combat).addResurrectPlan(seat, step.maxKl === undefined ? 1 : step.maxKl);
         step.done = true;
         return null;
     }

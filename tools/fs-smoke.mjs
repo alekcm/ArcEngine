@@ -524,6 +524,30 @@ try {
 }
 
 // --- the moments a battle waits for: one object ------------------------------
+// --- what the cards promised to a battle: one object -------------------------
+section('обещания карт бою: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSCombatPlans.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The plans a card leaves for the end of the damage step or of the round,
+        // the tokens promised to the next round and the facts of the round are
+        // one object: CombatPlans.
+        const re = /\b(?:state\.combat|s\.combat|combat|c|cbt)\.(?:resurrectPlan|resurrectCandidates|resurrectAsked|restoreFallen|endRoundPlans|endRoundNoRetreat|noDamageRetreat|laterTokens|deferDamage|destroyRoutedFoe|keepTokens|fallenThisStep|roundUnits|retreated|destroyedNow)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('обещания карт бою спрашивают у CombatPlans');
+} catch (e) {
+    fail(e.message);
+}
+
 section('паузы боя: один объект');
 try {
     const owners = new Set(['js/fs/core/FSCombatHooks.js', 'js/fs/FSData.js']);

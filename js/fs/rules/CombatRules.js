@@ -69,7 +69,6 @@ class CombatRules {
             defender,
             attackerFrom: origins,
             viaAdvance,
-            roundUnits: null,
             round: 1,
             step: 'reinforce-attacker',
             dice: { attacker: roll(attacker), defender: roll(defender) },
@@ -129,7 +128,7 @@ class CombatRules {
         }
         // The roster of the first round: the cards that pay for the losses of a
         // round read it («Выводок термаганов»).
-        combat.roundUnits = this.rosterOfRound(state, combat);
+        CombatPlans.of(combat).roster = this.rosterOfRound(state, combat);
         // «Разыграв этот приказ … вы можете разместить 1 бесплатный жетон
         // подкрепления в спорной области в начале шага призыва подкреплений»
         // («Бесчисленные»): the token the order promised stands in the area of
@@ -292,7 +291,7 @@ class CombatRules {
         if (!tokens || !tokens.destroy(side, index)) return false;
         // «за каждый уничтоженный отряд» counts a token as a unit too.
         const c = state.combat;
-        if (loss) c.destroyedNow = (c.destroyedNow || 0) + 1;
+        if (loss) CombatPlans.of(c).addDestroyed(1);
         return true;
     }
 
@@ -558,7 +557,7 @@ class CombatRules {
             }
         }
         // Both cards are open: the damage of the round comes next.
-        c.destroyedNow = 0;
+        CombatPlans.of(c).resetDestroyed();
         turn.setStep('damage-attacker');
         this.advanceCombatSteps(state);
         return turn.step;
@@ -939,7 +938,7 @@ class CombatRules {
         const rules = CombatDamage.of(c);
         if (rules.repeats && !rules.repeated) {
             rules.repeatOnce();
-            c.destroyedNow = 0;
+            CombatPlans.of(c).resetDestroyed();
             CombatHooks.of(c).forget('damageHook').forgetEnd();
             c.damage = { attacker: 0, defender: 0 };
             CombatCards.of(c).clearApplied();
@@ -985,9 +984,7 @@ class CombatRules {
         if (!def) return;
         const kl = stepR && stepR.maxKl !== undefined ? stepR.maxKl : 1;
         if ((def.kl || 0) > kl) return;
-        c.resurrectCandidates = c.resurrectCandidates || [];
-        if (c.resurrectCandidates.some(x => x.id === unit.id)) return;
-        c.resurrectCandidates.push({
+        CombatPlans.of(c).noteCandidate({
             unit: unit.unit, def: def.id, id: unit.id, seat: unit.seat,
             system: unit.system, pos: unit.area, destroyed,
         });
@@ -995,10 +992,10 @@ class CombatRules {
 
     applyResurrect(state) {
         const c = state.combat;
-        const pending = c && (c.resurrectCandidates || [])[0];
+        const plans = CombatPlans.of(c);
+        const pending = plans ? plans.candidate : null;
         if (!pending) return;
-        c.resurrectCandidates = [];
-        c.resurrectPlan = [];
+        plans.clearResurrect();
         const alive = state.units.find(u => u.id === pending.id);
         if (alive) {
             this.restoreUnit(state, alive);
@@ -1012,13 +1009,14 @@ class CombatRules {
 
     schemeResurrect(state) {
         const c = state.combat;
-        if (!c || !(c.resurrectCandidates || []).length) return false;
-        const candidate = c.resurrectCandidates[0];
-        if (c.resurrectAsked === candidate.seat) return false;
+        const plans = CombatPlans.of(c);
+        if (!plans || !plans.candidates.length) return false;
+        const candidate = plans.candidate;
+        if (plans.askedSeat === candidate.seat) return false;
         const scheme = this.engine.schemesOf(state, candidate.seat)
             .find(x => (x.steps || []).some(y => y.op === 'resurrect'));
-        if (!scheme) { c.resurrectCandidates = []; return false; }
-        c.resurrectAsked = candidate.seat;
+        if (!scheme) { plans.candidates = []; return false; }
+        plans.askSeat(candidate.seat);
         CombatTurn.of(c).holdEffect('round-end');
         const side = CombatSides.sideOf(c, candidate.seat);
         this.engine.runEffects(state, candidate.seat, [{ op: 'resurrectOffer' }], { kind: 'combat', ctx: { side } });
@@ -1028,9 +1026,10 @@ class CombatRules {
     destroyRoutedFoe(state) {
         const c = state.combat;
         const turn = CombatTurn.of(c);
-        const d = c && c.destroyRoutedFoe;
+        const plans = CombatPlans.of(c);
+        const d = plans.routedFoe;
         if (!d || d.done) return false;
-        if (!turn.inRound(d)) { c.destroyRoutedFoe = null; return false; }
+        if (!turn.inRound(d)) { plans.clearRoutedFoe(); return false; }
         const foeSide = d.seat === c.attacker ? 'defender' : 'attacker';
         const foeSeat = CombatSides.seatOf(c, foeSide);
         // «если в этом раунде боя отряд противника становится деморализованным» —
@@ -1054,9 +1053,8 @@ class CombatRules {
 
     deferredDamage(state) {
         const c = state.combat;
-        const d = c && c.deferDamage;
-        if (!d || d.done) return false;
-        d.done = true;
+        const d = CombatPlans.of(c).takeDeferred();
+        if (!d) return false;
         const foeSeat = d.seat === c.attacker ? c.defender : c.attacker;
         const targets = state.units.filter(u => u.seat === foeSeat && u.system === c.system && u.area === c.pos);
         // «получите по 1 материалу за каждый уничтоженный отряд» («Рой
@@ -1077,23 +1075,21 @@ class CombatRules {
         // («Притворное отступление»): the answer is known only now, and the
         // combat tokens of this round are about to be discarded — the reward
         // belongs to the next round.
-        const noRet = turn.ofRound(c.endRoundNoRetreat).find(x => !x.fired);
+        const plans = CombatPlans.of(c);
+        const noRet = plans.noRetreatPlan(turn.round);
         if (noRet) {
             noRet.fired = true;
-            const clean = !c.retreated || c.retreated[noRet.seat] !== turn.round;
-            if (clean) {
-                c.laterTokens = c.laterTokens || [];
-                c.laterTokens.push({ side: noRet.side, kind: noRet.kind, n: noRet.n, round: turn.round + 1 });
+            if (!plans.retreatedThisRound(noRet.seat, turn.round)) {
+                plans.addLaterToken({ side: noRet.side, kind: noRet.kind, n: noRet.n });
                 this.engine.log(state, noRet.seat, state.players[noRet.seat].name
                     + ' не отступал: ' + noRet.n + ' жетон(ов) в следующем раунде.');
             }
         }
         // «Если ваши отряды или бастионы не получат урона в конце этого раунда,
         // ваш противник отступает одним из своих отрядов» («Фаланга монолита»).
-        c.noDamageRetreat = (c.noDamageRetreat || []).filter(x => turn.inRound(x) || !x.fired);
-        const pendingRetreat = turn.ofRound(c.noDamageRetreat).filter(x => !x.fired);
-        if (pendingRetreat.length) {
-            const entry = pendingRetreat[0];
+        const pendingRetreat = plans.noDamagePlan(turn.round);
+        if (pendingRetreat) {
+            const entry = pendingRetreat;
             entry.fired = true;
             const side = CombatSides.sideOf(c, entry.seat);
             // «если ваши отряды или бастионы не получат урона в конце этого
@@ -1108,7 +1104,7 @@ class CombatRules {
         // «В конце этого раунда … переместить 1 из ваших отрядов из соседней
         // области в эту» («Кауйон»): the move happens before the tokens of the
         // round are discarded, and the dice it gives stay for the damage step.
-        const endPlan = turn.ofRound(c.endRoundPlans).find(x => !x.fired);
+        const endPlan = plans.endPlan(turn.round);
         if (endPlan) {
             endPlan.fired = true;
             turn.holdEffect('round-end');
@@ -1123,19 +1119,13 @@ class CombatRules {
         // round: only the dice and the cards are counted again. A card may keep
         // the tokens of the kind it names for the round it was played in
         // («Шустрое судно» — `def. token`, «Гнев машины» — `att. token`).
-        const keptOf = s => {
-            const k = (c.keepTokens || {})[s];
-            return k && turn.inRound(k) ? k : null;
-        };
-        const keepSide = (s, kind) => {
-            const k = keptOf(s);
-            return k && k[kind] ? ((c.tokens[s] && c.tokens[s][kind]) || 0) : 0;
-        };
+        const keepSide = (s, kind) => (plans.keeps(s, kind, turn.round)
+            ? ((c.tokens[s] && c.tokens[s][kind]) || 0) : 0);
         c.tokens = {
             attacker: { att: keepSide('attacker', 'att'), def: keepSide('attacker', 'def') },
             defender: { att: keepSide('defender', 'att'), def: keepSide('defender', 'def') },
         };
-        c.keepTokens = null;
+        plans.clearKeeps();
         // The effects printed «during this round of combat» end here: the
         // health bonus, the routing ban and the chosen first target must not
         // leak into the next execution round.
@@ -1169,7 +1159,7 @@ class CombatRules {
         // получите 1 `def. token`» («Выводок термаганов») counts the losses of
         // the round that has just ended: one token for each of them.
         const lostOf = seat => {
-            const snap = (c.roundUnits || {})[seat] || [];
+            const snap = plans.rosterOf(seat);
             let n = 0;
             for (const s of snap) {
                 const now = state.units.find(u => u.id === s.id);
@@ -1178,9 +1168,7 @@ class CombatRules {
             }
             return n;
         };
-        const later = turn.ofRound(c.laterTokens);
-        c.laterTokens = (c.laterTokens || []).filter(x => !turn.inRound(x));
-        for (const one of later) {
+        for (const one of plans.takeLaterTokens(turn.round)) {
             const seat = CombatSides.seatOf(c, one.side);
             const n = one.per === 'lostRound' ? (one.n || 1) * lostOf(seat) : (one.n || 1);
             if (n <= 0) continue;
@@ -1188,23 +1176,15 @@ class CombatRules {
             this.engine.log(state, seat, state.players[seat].name + ' получает ' + n
                 + ' жетон(ов) ' + (one.kind === 'att' ? 'атаки' : 'обороны') + '.');
         }
-        c.roundUnits = this.rosterOfRound(state, c);
+        plans.roster = this.rosterOfRound(state, c);
         CombatCards.of(c).clearStaged();
         for (const side of ['attacker', 'defender']) {
             CombatCards.of(c).setChosen(side, null);
             this.engine.player(state, CombatSides.seatOf(c, side)).combatHand.setChosen(null);
         }
         // The effects that belonged to the previous round are over.
-        if (c.destroyRoutedFoe && !turn.inRound(c.destroyRoutedFoe)) c.destroyRoutedFoe = null;
-        c.resurrectPlan = turn.ofRound(c.resurrectPlan);
-        c.restoreFallen = turn.ofRound(c.restoreFallen).filter(x => !x.done);
-        c.endRoundPlans = turn.ofRound(c.endRoundPlans);
-        c.endRoundNoRetreat = turn.ofRound(c.endRoundNoRetreat);
-        c.fallenThisStep = [];
+        plans.expire(turn.round);
         CombatHooks.of(c).reset();
-        c.resurrectCandidates = [];
-        c.resurrectAsked = null;
-        c.noDamageRetreat = turn.ofRound(c.noDamageRetreat);
         turn.setStep('choose-attacker');
         this.advanceCombatSteps(state);
         // The schemes of the start of the round.
@@ -1238,9 +1218,7 @@ class CombatRules {
         if (!c || unit.routed) return;
         const def = this.engine.unitOf(state, unit);
         if (!def) return;
-        c.fallenThisStep = c.fallenThisStep || [];
-        if (c.fallenThisStep.some(x => x.id === unit.id)) return;
-        c.fallenThisStep.push({
+        CombatPlans.of(c).noteFallen({
             id: unit.id, def: def.id, seat: unit.seat,
             system: unit.system, pos: unit.area,
             destroyed: !!destroyed, kl: def.kl || 0,
@@ -1275,18 +1253,16 @@ class CombatRules {
     markRetreat(state, seat) {
         const c = state.combat;
         if (!c) return;
-        c.retreated = c.retreated || {};
-        c.retreated[seat] = CombatTurn.of(c).round;
+        CombatPlans.of(c).markRetreat(seat);
     }
 
     offerFallenRestore(state) {
         const c = state.combat;
         if (!c) return false;
-        const plans = CombatTurn.of(c).ofRound(c.restoreFallen).filter(x => !x.asked && !x.done);
-        if (!plans.length) return false;
-        const plan = plans[0];
-        const candidates = (c.fallenThisStep || [])
-            .filter(x => x.seat === plan.seat && (x.kl || 0) <= plan.maxKl);
+        const promises = CombatPlans.of(c);
+        const plan = promises.restorePlan(CombatTurn.of(c).round);
+        if (!plan) return false;
+        const candidates = promises.fallen(plan.seat).filter(x => (x.kl || 0) <= plan.maxKl);
         if (!candidates.length) return false;
         plan.asked = true;
         plan.candidates = candidates.slice();

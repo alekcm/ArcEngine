@@ -89,8 +89,8 @@ class MoveSteps {
         for (const one of (Array.isArray(step.then) ? step.then : [])) {
             if (one && one.per === 'routed') one.n = routed.length;
         }
-        if (inCombat && combat && combat.destroyRoutedFoe && routed.some(u => u.seat !== seat)) {
-            combat.destroyRoutedFoe.touched = true;
+        if (inCombat && combat && routed.some(u => u.seat !== seat)) {
+            CombatPlans.of(combat).touchRoutedFoe();
         }
         return null;
     }

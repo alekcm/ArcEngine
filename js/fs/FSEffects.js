@@ -1928,7 +1928,7 @@ const FS_EFFECTS = {
         }
         if (cond.noRetreat) {
             if (!inCombat) return true;
-            return !combat.retreated || combat.retreated[seat] !== CombatTurn.of(combat).round;
+            return !CombatPlans.of(combat).retreatedThisRound(seat, CombatTurn.of(combat).round);
         }
         if (cond.side) {
             if (!inCombat) return false;
@@ -2188,7 +2188,7 @@ const FS_EFFECTS = {
             // «за каждый уничтоженный отряд» в конце шага нанесения повреждений
             // («Рой потрошителей»): the units that fell in this very step.
             const combat = state.combat;
-            n = (step.n || 1) * ((combat && combat.destroyedNow) || 0);
+            n = (step.n || 1) * (combat ? CombatPlans.of(combat).destroyedNow : 0);
             if (step.max) n = Math.min(n, step.max);
             return Math.max(0, n);
         }

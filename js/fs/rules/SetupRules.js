@@ -624,7 +624,7 @@ class SetupRules {
         p.supply.units[unit.unit] = (p.supply.units[unit.unit] || 0) + 1;
         // «получите по 1 материалу за каждый уничтоженный отряд» («Рой
         // потрошителей»): the step of the damage counts its own losses.
-        if (state.combat) state.combat.destroyedNow = (state.combat.destroyedNow || 0) + 1;
+        if (state.combat) CombatPlans.of(state.combat).addDestroyed(1);
     }
 
     destroyStructure(state, s) {

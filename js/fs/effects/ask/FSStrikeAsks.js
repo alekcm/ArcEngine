@@ -193,7 +193,7 @@ class StrikeAsks {
     static deferDamage(effects, f) {
         const { R, state, seat, step, combat, inCombat, p } = f;
         if (!inCombat) return null;
-        combat.deferDamage = { seat, round: CombatTurn.of(combat).round, steps: step.steps || [] };
+        CombatPlans.of(combat).setDeferred({ seat, steps: step.steps || [] });
         step.done = true;
         R.log(state, seat, p.name + ': эффект карты сработает в конце шага повреждений.');
         return null;
@@ -202,7 +202,7 @@ class StrikeAsks {
     static noDamageRetreat(effects, f) {
         const { seat, step, combat, inCombat } = f;
         if (!inCombat) return null;
-        CombatTurn.of(combat).putEntry('noDamageRetreat', { seat, steps: step.steps || [] });
+        CombatPlans.of(combat).addNoDamagePlan({ seat, steps: step.steps || [] });
         step.done = true;
         return null;
     }
@@ -250,10 +250,10 @@ class StrikeAsks {
     static destroyRoutedFoe(effects, f) {
         const { R, state, seat, step, combat, inCombat, p } = f;
         if (!inCombat) return null;
-        combat.destroyRoutedFoe = {
-            seat, round: CombatTurn.of(combat).round,
+        CombatPlans.of(combat).setRoutedFoe({
+            seat,
             avoid: step.avoid || { kind: 'def', n: 1 },
-        };
+        });
         R.log(state, seat, p.name + ': деморализованные отряды противника будут уничтожены до конца раунда.');
         step.done = true;
         return null;
@@ -262,7 +262,7 @@ class StrikeAsks {
     static endRoundReinforce(effects, f) {
         const { R, state, seat, combat, inCombat, p } = f;
         if (!inCombat) return null;
-        CombatTurn.of(combat).putEntry('endRoundPlans', { seat, fired: false });
+        CombatPlans.of(combat).addEndPlan({ seat });
         R.log(state, seat, p.name + ': «Кауйон» ждёт конца раунда.');
         return null;
     }

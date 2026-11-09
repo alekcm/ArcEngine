@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks } = ctx;
+    CombatDamage, CombatHooks, CombatPlans } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -729,6 +729,85 @@ rule('order-1', '«… this order …» — командный уровень, �
     eq(fight.unspentTemp(7), 0, 'считать больше нечего');
     eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
     eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
+
+rule('combat-0f', '«в конце шага нанесения повреждений …» + «получите 2 `att. token` в следующем раунде боя» — обещания карт бою держит CombatPlans', () => {
+    const combat = { attacker: 0, defender: 1, round: 2 };
+    const plans = CombatPlans.of(combat);
+    eq(CombatPlans.of(combat), plans, 'у боя один набор обещаний');
+    eq(CombatPlans.of(null), null, 'без боя обещаний нет');
+    // «Уклонение»: the plan waits for the end of the damage step of its round.
+    plans.addRestoreFallen(0, 0);
+    eq(plans.restorePlan(2).seat, 0, 'план этого раунда');
+    eq(plans.restorePlan(3), null, 'в следующем раунде его нет');
+    plans.restorePlan(2).asked = true;
+    eq(plans.restorePlan(2), null, 'спрошенный план не спрашивают снова');
+    // «Сфера воскрешения»: the fallen are noted once and asked about once.
+    eq(plans.noteCandidate({ id: 'u1', seat: 0 }), true, 'падение записано');
+    eq(plans.noteCandidate({ id: 'u1', seat: 0 }), false, 'второй раз не записано');
+    eq(plans.candidate.id, 'u1', 'первый кандидат — тот, о ком спросят');
+    eq(plans.askedSeat, null, 'о схеме ещё не спрашивали');
+    plans.askSeat(0);
+    eq(plans.askedSeat, 0, 'о схеме спросили один раз');
+    plans.clearResurrect();
+    eq(plans.candidate, null, 'кандидаты израсходованы');
+    eq(plans.resurrectPlans.length, 0, 'и планы сняты');
+    // The plans of the end of the round: each fires once.
+    plans.addEndPlan({ seat: 1 });
+    eq(plans.endPlan(2).seat, 1, 'план конца раунда');
+    plans.endPlan(2).fired = true;
+    eq(plans.endPlan(2), null, 'сработавший план не повторяется');
+    plans.addNoRetreatPlan({ seat: 0, side: 'attacker', kind: 'att', n: 2 });
+    eq(plans.noRetreatPlan(2).n, 2, 'обещание за раунд без отступления');
+    plans.addNoDamagePlan({ seat: 1, steps: [] });
+    eq(plans.noDamagePlan(2).seat, 1, 'обещание за раунд без урона');
+    // The facts of the round judge the promises.
+    eq(plans.retreatedThisRound(0, 2), false, 'никто не отступал');
+    plans.markRetreat(0, 2);
+    eq(plans.retreatedThisRound(0, 2), true, 'отряд отступил в этом раунде');
+    eq(plans.retreatedThisRound(0, 3), false, 'в другом раунде — нет');
+    eq(plans.retreatedThisRound(1, 2), false, 'другая сторона не отступала');
+    // The tokens promised to the next round arrive there, once.
+    plans.addLaterToken({ side: 'attacker', kind: 'att', n: 2 });
+    eq(plans.takeLaterTokens(2).length, 0, 'в этом раунде жетонов ещё нет');
+    eq(plans.takeLaterTokens(3).length, 1, 'в следующем раунде жетон пришёл');
+    eq(plans.takeLaterTokens(3).length, 0, 'второй раз он не приходит');
+    // «не сбрасывать жетоны в конце этого раунда» — по раунду карты.
+    plans.keepTokens('defender', 'def');
+    eq(plans.keeps('defender', 'def', 2), true, 'защитник оставляет жетоны обороны');
+    eq(plans.keeps('defender', 'att', 2), false, 'жетоны атаки сбрасываются');
+    eq(plans.keeps('defender', 'def', 3), false, 'в следующем раунде — нет');
+    eq(plans.keeps('attacker', 'def', 2), false, 'другая сторона — нет');
+    plans.clearKeeps();
+    eq(plans.keeps('defender', 'def', 2), false, 'обещание снято');
+    // The effect deferred to the end of the damage step is taken once.
+    plans.setDeferred({ seat: 0, steps: [] });
+    eq(plans.deferred.seat, 0, 'эффект отложен');
+    eq(plans.takeDeferred().seat, 0, 'эффект забран');
+    eq(plans.takeDeferred(), null, 'второй раз его нет');
+    // «деморализованные уничтожаются»: the promise is armed by a routed foe.
+    plans.setRoutedFoe({ seat: 0, avoid: { kind: 'def', n: 1 } });
+    eq(plans.routedFoe.touched, undefined, 'обещание ещё не сработало');
+    plans.touchRoutedFoe();
+    eq(plans.routedFoe.touched, true, 'деморализованный отряд включил обещание');
+    plans.clearRoutedFoe();
+    eq(plans.routedFoe, null, 'обещание снято');
+    // Who fell in this step, who stood at its start, how many died.
+    eq(plans.noteFallen({ id: 'u2', seat: 1, kl: 0 }), true, 'падение этого шага записано');
+    eq(plans.noteFallen({ id: 'u2', seat: 1, kl: 0 }), false, 'второй раз — нет');
+    eq(plans.fallen(1).length, 1, 'падение одной стороны');
+    eq(plans.fallen(0).length, 0, 'падения другой стороны нет');
+    plans.roster = { attacker: [{ id: 'u3', routed: false }], defender: [] };
+    eq(plans.rosterOf(0)[0].id, 'u3', 'состав раунда записан');
+    eq(plans.addDestroyed(2), 2, 'уничтожено два');
+    eq(plans.destroyedNow, 2, 'счёт уничтоженных');
+    plans.resetDestroyed();
+    eq(plans.destroyedNow, 0, 'счёт шага начинается с нуля');
+    // The end of the round lets only the promises of the round that begins.
+    plans.addEndPlan({ seat: 0 });
+    plans.expire(3);
+    eq(combat.endRoundPlans.length, 0, 'обещания прошлого раунда сняты');
+    eq(plans.fallen().length, 0, 'падения шага забыты');
 });
 
 rule('combat-0e', '«Сбросить карту: «Критический удар»?» — моменты, в которые бой ждёт схему, ведёт CombatHooks', () => {
