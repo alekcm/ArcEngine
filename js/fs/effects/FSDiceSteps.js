@@ -186,7 +186,7 @@ class DiceSteps {
         const gain = missing => {
             const n2 = (step.per || 2) * Math.max(0, missing);
             if (n2 > 0) {
-                combat.tokens[side].att = (combat.tokens[side].att || 0) + n2;
+                CombatCubes.of(combat).add(side, 'att', n2);
                 R.log(state, seat, p.name + ' получает ' + n2 + ' `att. token` '
                     + 'за неоплаченные кубики противника.');
             }

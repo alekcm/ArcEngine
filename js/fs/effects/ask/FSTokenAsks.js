@@ -32,7 +32,7 @@ class TokenAsks {
             }
         }
         const s2 = side;
-        combat.tokens[s2][step.kind] += n;
+        CombatCubes.of(combat).add(s2, step.kind, n);
         R.log(state, seat, state.players[seat].name + ' получает ' + n + ' ' + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны') + '.');
         return null;
     }
@@ -42,7 +42,7 @@ class TokenAsks {
         const n = effects.count(R, state, seat, step, ctx);
         if (!inCombat) return null;
         const s2 = target === seat ? side : (CombatSides.foe(side));
-        combat.tokens[s2][step.kind] = Math.max(0, combat.tokens[s2][step.kind] - n);
+        CombatCubes.of(combat).take(s2, step.kind, n);
         R.log(state, target, state.players[target].name + ' теряет ' + n + ' ' + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны') + '.');
         return null;
     }

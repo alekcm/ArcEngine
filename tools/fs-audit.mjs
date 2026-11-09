@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -729,6 +729,47 @@ rule('order-1', '«… this order …» — командный уровень, �
     eq(fight.unspentTemp(7), 0, 'считать больше нечего');
     eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
     eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
+
+rule('combat-0g', '«получите 2 `att. token`» + «потеряйте 1 `def. token`» — жетоны карт и урон раунда считают CombatCubes и CombatDamage', () => {
+    const combat = { attacker: 0, defender: 1, round: 1 };
+    const cubes = CombatCubes.of(combat);
+    eq(CombatCubes.of(combat), cubes, 'у боя один счётчик жетонов');
+    eq(CombatCubes.of(null), null, 'без боя жетонов нет');
+    // The cubes the cards give: «получите 2 `att. token`».
+    eq(cubes.add('attacker', 'att', 2), 2, 'два жетона атаки');
+    eq(cubes.get('attacker', 'att'), 2, 'жетоны атаки на столе');
+    eq(cubes.get('attacker', 'def'), 0, 'жетонов обороны нет');
+    eq(cubes.add('attacker', 'def', 1), 1, 'жетон обороны');
+    // The cubes a card takes away: «потеряйте 1 `def. token`».
+    eq(cubes.take('attacker', 'def', 1), 0, 'жетон обороны потерян');
+    eq(cubes.take('attacker', 'def', 3), 0, 'ниже нуля счёт не идёт');
+    eq(cubes.add('defender', 'def', 1), 1, 'у защитника свой счёт');
+    // A side that is not in the battle and a battle without cubes.
+    eq(cubes.get(null, 'att'), 0, 'без стороны жетонов нет');
+    eq(CombatCubes.of({}).get('defender', 'def'), 0, 'пустой бой — ноль жетонов');
+    // The panel and the board ask for both counts at once.
+    cubes.add('defender', 'att', 3);
+    eq(cubes.values('defender').att, 3, 'значения защитника');
+    eq(cubes.values('defender').def, 1, 'и его жетоны обороны');
+    eq(cubes.values('nobody'), { att: 0, def: 0 }, 'у чужой стороны оба нуля');
+    eq(cubes.both().attacker.att, 2, 'оба счёта одной записью');
+    // The end of the round: the cubes go away, the kind a card kept stays.
+    cubes.reset({ defender: { def: 1 } });
+    eq(cubes.get('attacker', 'att'), 0, 'жетоны атакующего сброшены');
+    eq(cubes.get('defender', 'att'), 0, 'и жетоны атаки защитника');
+    eq(cubes.get('defender', 'def'), 1, 'а обещанный жетон обороны остался');
+    eq(cubes.reset().get('defender', 'def'), 0, 'ничего не оставлено — ничего нет');
+    // The damage of the round: zero until the step hurts, and reset with the round.
+    const rules = CombatDamage.of(combat);
+    eq(rules.dealt('attacker'), 0, 'урона ещё нет');
+    eq(rules.clean, true, 'раунд начался без урона');
+    eq(rules.setDealt('attacker', 3), 3, 'урон атакующего записан');
+    eq(rules.dealt('attacker'), 3, 'урон шага');
+    eq(rules.clean, false, 'раунд уже ранил');
+    rules.resetDamage();
+    eq(rules.dealt('attacker'), 0, 'урон нового раунда с нуля');
+    eq(rules.clean, true, 'и раунд снова чист');
 });
 
 rule('combat-0f', '«в конце шага нанесения повреждений …» + «получите 2 `att. token` в следующем раунде боя» — обещания карт бою держит CombatPlans', () => {

@@ -235,6 +235,30 @@ class CombatDamage {
         return all.filter(x => !x || x.round === undefined || x.round === round);
     }
 
+    // --- the damage of the round ---------------------------------------------
+
+    /** The damage a side was dealt in this round (`combat.damage`). */
+    dealt(side) {
+        return (this.combat.damage && this.combat.damage[side]) || 0;
+    }
+
+    setDealt(side, n) {
+        if (!this.combat.damage) this.combat.damage = { attacker: 0, defender: 0 };
+        this.combat.damage[side] = n || 0;
+        return this.combat.damage[side];
+    }
+
+    /** No side was dealt damage in this round: the battle has not begun to hurt. */
+    get clean() {
+        return this.dealt('attacker') === 0 && this.dealt('defender') === 0;
+    }
+
+    /** The damage of the round starts over: the next round hurts anew. */
+    resetDamage() {
+        this.combat.damage = { attacker: 0, defender: 0 };
+        return this;
+    }
+
     // --- the end of the round ------------------------------------------------
 
     /**

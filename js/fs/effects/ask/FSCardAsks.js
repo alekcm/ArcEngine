@@ -401,8 +401,9 @@ class CardAsks {
             const s2 = step.who === 'foe' ? (CombatSides.foe(side)) : side;
             if (!s2) continue;
             if (ic.kind === 'token') {
-                if (step.who === 'foe') combat.tokens[s2][ic.icon] = Math.max(0, combat.tokens[s2][ic.icon] - 1);
-                else combat.tokens[s2][ic.icon] += 1;
+                const cubes = CombatCubes.of(combat);
+                if (step.who === 'foe') cubes.take(s2, ic.icon, 1);
+                else cubes.add(s2, ic.icon, 1);
             } else if (ic.kind === 'cube') {
                 const turn = CombatTurn.of(combat);
                 if (step.who === 'foe') turn.take(s2, turn.lastOf(s2));

@@ -355,7 +355,7 @@ class AdvanceRules {
                 && !CombatTokens.of(c).any
                 && !CombatCards.of(c).played('attacker').length
                 && !CombatCards.of(c).played('defender').length
-                && c.damage.attacker === 0 && c.damage.defender === 0;
+                && CombatDamage.of(c).clean;
             if (!fresh) return { ok: false, error: 'Бой уже начался: отменить движение нельзя.' };
             // The hands go back to the decks and the battle is cancelled.
             for (const side of ['attacker', 'defender']) {

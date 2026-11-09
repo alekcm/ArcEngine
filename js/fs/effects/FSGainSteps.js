@@ -99,7 +99,7 @@ class GainSteps {
         const side = CombatSides.sideOf(combat, seat);
         const n = step.pickedValue;
         if (n > 0) {
-            combat.tokens[side][step.kind] += n;
+            CombatCubes.of(combat).add(side, step.kind, n);
             R.log(state, seat, state.players[seat].name + ' получает ' + n + ' '
                 + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны')
                 + ' по боевому значению выбранного отряда.');

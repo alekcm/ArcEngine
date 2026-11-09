@@ -548,6 +548,30 @@ try {
     fail(e.message);
 }
 
+// --- the cubes of a battle: one object --------------------------------------
+section('жетоны карт бою: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSCombatCubes.js', 'js/fs/core/FSCombatDamage.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The `att.`/`def.` tokens the cards give and take and the damage the
+        // round dealt are two counts of the battle, and each has one object:
+        // CombatCubes and CombatDamage.
+        const re = /\b(?:state\.combat|s\.combat|combat|c|cbt)\.(?:tokens|damage)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('жетоны и урон карт спрашивают у CombatCubes и CombatDamage');
+} catch (e) {
+    fail(e.message);
+}
+
 section('паузы боя: один объект');
 try {
     const owners = new Set(['js/fs/core/FSCombatHooks.js', 'js/fs/FSData.js']);

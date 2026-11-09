@@ -2286,9 +2286,7 @@ const FS_EFFECTS = {
         if (!combat) return 0;
         const side = CombatSides.sideOf(combat, seat);
         let n = CombatTurn.of(combat).count(side, kind);
-        const tokens = combat.tokens[side] || {};
-        if (kind === 'att') n += tokens.att || 0;
-        if (kind === 'def') n += tokens.def || 0;
+        if (kind === 'att' || kind === 'def') n += CombatCubes.of(combat).get(side, kind);
         return n;
     },
 

@@ -1706,7 +1706,7 @@ const FSView = {
             });
             // The cubes of the side: the attack and defence tokens of its cards
             // and the reinforcement tokens it spent — on the ground in front.
-            const tokens = (c.tokens && c.tokens[side.id]) || { att: 0, def: 0 };
+            const tokens = CombatCubes.of(c).values(side.id);
             const cubes = [];
             for (let i = 0; i < (tokens.att || 0); i++) cubes.push('cube.att');
             for (let i = 0; i < (tokens.def || 0); i++) cubes.push('cube.def');

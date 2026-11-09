@@ -1866,7 +1866,7 @@ class FSGame {
                 color: p.color || FSView.factionColor(p.faction),
                 faction: p.faction,
                 dice: turn.dice(id).slice(),
-                tokens: { att: c.tokens[id].att || 0, def: c.tokens[id].def || 0 },
+                tokens: CombatCubes.of(c).values(id),
                 reinforce: CombatTokens.of(c).used(id),
                 cards: played,
                 values,

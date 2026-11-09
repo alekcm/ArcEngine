@@ -455,14 +455,14 @@ class CombatRules {
         const target = cmd.target === 'foe' ? foe : side;
         const count = Math.max(0, Number(cmd.count) || 0);
         const kind = cmd.tokenType === 'def' ? 'def' : 'att';
+        const cubes = CombatCubes.of(c);
         if (target === foe && count > 0) {
-            const t = c.tokens[foe];
-            const take = Math.min(count, kind === 'att' ? t.att : t.def);
-            if (kind === 'att') t.att -= take; else t.def -= take;
+            // The foe gives away no more cubes than it has.
+            const take = Math.min(count, cubes.get(foe, kind));
+            cubes.take(foe, kind, take);
             return { ok: true, count: take };
         }
-        const t = c.tokens[target];
-        if (kind === 'att') t.att += count; else t.def += count;
+        cubes.add(target, kind, count);
         return { ok: true, count };
     }
 
@@ -603,12 +603,12 @@ class CombatRules {
             }
             if (turn.is('reveal')) { this.combatReveal(state); if (!state.combat) return null; }
             if (turn.is('damage-attacker') && this.combatDamageFor(state, 'attacker') <= 0) {
-                c.damage.attacker = 0;
+                CombatDamage.of(c).setDealt('attacker', 0);
                 CombatCards.of(c).setApplied('attacker', []);
                 turn.setStep('damage-defender');
             }
             if (turn.is('damage-defender') && this.combatDamageFor(state, 'defender') <= 0) {
-                c.damage.defender = 0;
+                CombatDamage.of(c).setDealt('defender', 0);
                 CombatCards.of(c).setApplied('defender', []);
                 this.endDamageStep(state);
                 if (!state.combat) return null;
@@ -633,7 +633,7 @@ class CombatRules {
         let dice = CombatTurn.of(c).live(side);
         // The card may make the attack dice of the enemy useless.
         if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
-        const tokens = c.tokens[side];
+        const tokens = CombatCubes.of(c).values(side);
         const icons = CombatCards.of(c).icons(side);
         const seat = CombatSides.seatOf(c, side);
         let att = 0, def = 0, morale = 0;
@@ -657,7 +657,7 @@ class CombatRules {
         const c = state.combat;
         let dice = CombatTurn.of(c).live(side);
         if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
-        const tokens = c.tokens[side];
+        const tokens = CombatCubes.of(c).values(side);
         const icons = CombatCards.of(c).icons(side);
         const seat = CombatSides.seatOf(c, side);
         const unitsMorale = this.moraleFromPieces(state, c.system, c.pos, seat)
@@ -786,7 +786,7 @@ class CombatRules {
         const turn = CombatTurn.of(c);
         const cards = CombatCards.of(c);
         if (damage <= 0) {
-            c.damage[side] = 0;
+            CombatDamage.of(c).setDealt(side, 0);
             cards.setApplied(side, []);
             if (side === 'attacker') { turn.setStep('damage-defender'); this.advanceCombatSteps(state); }
             else { this.endDamageStep(state); this.advanceCombatSteps(state); }
@@ -810,8 +810,8 @@ class CombatRules {
         for (const id of (cmd.targets || [])) {
             if (!able.has(id)) return { ok: false, error: 'Этот отряд не может получить урон.' };
         }
-        c.damage[side] = damage;
         const rules = CombatDamage.of(c);
+        rules.setDealt(side, damage);
         // The card may make the damage go one point at a time.
         const oneByOne = rules.oneByOne(side);
         const targets = cmd.targets || [];
@@ -940,7 +940,7 @@ class CombatRules {
             rules.repeatOnce();
             CombatPlans.of(c).resetDestroyed();
             CombatHooks.of(c).forget('damageHook').forgetEnd();
-            c.damage = { attacker: 0, defender: 0 };
+            rules.resetDamage();
             CombatCards.of(c).clearApplied();
             CombatTurn.of(c).setStep('damage-attacker');
             this.engine.log(state, -1, 'Шаг нанесения повреждений повторяется.');
@@ -1094,7 +1094,7 @@ class CombatRules {
             const side = CombatSides.sideOf(c, entry.seat);
             // «если ваши отряды или бастионы не получат урона в конце этого
             // раунда»: the damage the card's owner placed on his own pieces.
-            const damage = (c.damage && c.damage[side]) || 0;
+            const damage = CombatDamage.of(c).dealt(side);
             if (damage === 0) {
                 turn.holdEffect('round-end');
                 this.engine.runEffects(state, entry.seat, entry.steps, { kind: 'combat', ctx: { side } });
@@ -1119,12 +1119,12 @@ class CombatRules {
         // round: only the dice and the cards are counted again. A card may keep
         // the tokens of the kind it names for the round it was played in
         // («Шустрое судно» — `def. token`, «Гнев машины» — `att. token`).
-        const keepSide = (s, kind) => (plans.keeps(s, kind, turn.round)
-            ? ((c.tokens[s] && c.tokens[s][kind]) || 0) : 0);
-        c.tokens = {
-            attacker: { att: keepSide('attacker', 'att'), def: keepSide('attacker', 'def') },
-            defender: { att: keepSide('defender', 'att'), def: keepSide('defender', 'def') },
-        };
+        const cubes = CombatCubes.of(c);
+        const keepSide = side => ({
+            att: plans.keeps(side, 'att', turn.round) ? cubes.get(side, 'att') : 0,
+            def: plans.keeps(side, 'def', turn.round) ? cubes.get(side, 'def') : 0,
+        });
+        cubes.reset({ attacker: keepSide('attacker'), defender: keepSide('defender') });
         plans.clearKeeps();
         // The effects printed «during this round of combat» end here: the
         // health bonus, the routing ban and the chosen first target must not
@@ -1172,7 +1172,7 @@ class CombatRules {
             const seat = CombatSides.seatOf(c, one.side);
             const n = one.per === 'lostRound' ? (one.n || 1) * lostOf(seat) : (one.n || 1);
             if (n <= 0) continue;
-            c.tokens[one.side][one.kind] = (c.tokens[one.side][one.kind] || 0) + n;
+            CombatCubes.of(c).add(one.side, one.kind, n);
             this.engine.log(state, seat, state.players[seat].name + ' получает ' + n
                 + ' жетон(ов) ' + (one.kind === 'att' ? 'атаки' : 'обороны') + '.');
         }
@@ -1189,7 +1189,7 @@ class CombatRules {
         this.advanceCombatSteps(state);
         // The schemes of the start of the round.
         this.engine.maybeScheme(state, c.attacker, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
-        c.damage = { attacker: 0, defender: 0 };
+        CombatDamage.of(c).resetDamage();
     }
 
     rosterOfRound(state, c) {
@@ -1206,7 +1206,7 @@ class CombatRules {
             const side = one.side;
             const kind = one.kind || 'att';
             const n = one.n || 1;
-            c.tokens[side][kind] = Math.max(0, (c.tokens[side][kind] || 0) - n);
+            CombatCubes.of(c).take(side, kind, n);
             const seat = CombatSides.seatOf(c, side);
             this.engine.log(state, seat, state.players[seat].name + ' теряет ' + n
                 + ' жетон(ов) атаки в начале шага повреждений.');
