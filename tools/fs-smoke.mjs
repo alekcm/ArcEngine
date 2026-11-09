@@ -548,6 +548,29 @@ try {
     fail(e.message);
 }
 
+// --- how the attacker came: one object ---------------------------------------
+section('приход в бой: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSCombatApproach.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // «если отряды пришли не по приказу «Наступление», они отступают туда,
+        // откуда пришли»: откуда и как — один вопрос CombatApproach.
+        const re = /\b(?:state\.combat|s\.combat|combat|c|cbt)\.(?:attackerFrom|viaAdvance)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('приход в бой спрашивают у CombatApproach');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- how a battle ended: one object ------------------------------------------
 section('итог боя: один объект');
 try {

@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -762,6 +762,33 @@ rule('combat-0j', '«определите победителя» + «проиг�
     eq(outcome.decided, false, 'отменённый бой не решён');
     eq(outcome.loserSeat, null, 'и не оставляет проигравшего');
     eq(outcome.morale, null, 'и морали решения');
+});
+
+rule('combat-0k', '«если отряды не пришли по приказу «Наступление», они отступают туда, откуда пришли» — приход в бой держит CombatApproach', () => {
+    const combat = { attacker: 0, defender: 1, system: 's1', pos: 'A1' };
+    const approach = CombatApproach.of(combat);
+    eq(CombatApproach.of(combat), approach, 'у боя один приход');
+    eq(CombatApproach.of(null), null, 'без боя прихода нет');
+    // A battle that has just begun knows nothing of the way the units came.
+    eq(approach.from, [], 'откуда пришли — пока пусто');
+    eq(approach.viaAdvance, false, 'приказа «Наступление» не было');
+    eq(approach.freeToReturn(), false, 'отступать куда угодно нельзя');
+    // The units came from one area of the system: they may go back there.
+    approach.set([{ system: 's1', pos: 'A2' }, { system: 's2', pos: 'B1' }], false);
+    eq(approach.from.length, 2, 'две области прихода');
+    eq(approach.fromSystem('s1'), true, 'пришли из системы боя');
+    eq(approach.fromSystem('s3'), false, 'из соседней системы не приходили');
+    eq(approach.fromArea('s1', 'A2'), true, 'пришли из этой области');
+    eq(approach.fromArea('s1', 'A3'), false, 'из другой области — нет');
+    eq(approach.fromArea('s2', 'B1'), true, 'и из области соседней системы');
+    eq(approach.freeToReturn(), false, 'без «Наступления» отступают туда, откуда пришли');
+    // «Наступление»: the units may retreat anywhere.
+    approach.set([{ system: 's1', pos: 'A2' }], true);
+    eq(approach.viaAdvance, true, 'приказ «Наступление» был');
+    eq(approach.freeToReturn(), true, 'отступать можно куда угодно');
+    // The record keeps only the address; nothing of the battle leaks into it.
+    eq(approach.from[0], { system: 's1', pos: 'A2' }, 'адрес прихода');
+    eq(approach.set(null, false).from.length, 0, 'пустой приход — пустой список');
 });
 
 rule('combat-0i', '«разместить жетон подкрепления в эту область» + «отступить в соседнюю область» — где идёт бой знает BattleField', () => {

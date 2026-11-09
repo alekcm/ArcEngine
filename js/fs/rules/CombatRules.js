@@ -67,8 +67,6 @@ class CombatRules {
             pos,
             attacker,
             defender,
-            attackerFrom: origins,
-            viaAdvance,
             round: 1,
             step: 'reinforce-attacker',
             dice: { attacker: roll(attacker), defender: roll(defender) },
@@ -83,8 +81,9 @@ class CombatRules {
             winner: null,
         };
         // The battle is on the table before the deal: the hand of a player is the
-        // hand of THIS battle.
+        // hand of THIS battle. Where the attacker came from is kept with it.
         state.combat = combat;
+        CombatApproach.of(combat).set(origins, viaAdvance);
         const turn = CombatTurn.of(combat);
         // Five combat cards for both players.
         for (const seat of [attacker, defender]) {
@@ -1400,12 +1399,11 @@ class CombatRules {
         if (!units.length) return [];
         const defs = units.map(u => this.engine.unitOf(state, u)).filter(Boolean);
         const ground = defs.length ? defs[0].type === 'ground' : true;
-        // The areas the attacking units moved from to start the combat.
-        const came = c.attackerFrom || [];
         // «If the units did not move into the contested area via an Advance
         // Order, they must move to an area that at least one unit moved from to
         // start the combat.» Otherwise the general retreat rules apply.
-        const free = side === 'attacker' && c.viaAdvance;
+        const came = CombatApproach.of(c);
+        const free = side === 'attacker' && came.freeToReturn();
         const field = BattleField.of(c);
         const systems = [field.system].concat(this.engine.neighbors(state, field.system));
         const out = [];
@@ -1424,12 +1422,12 @@ class CombatRules {
                     // the defender's units cannot retreat to that system.
                     // Defending units cannot retreat to an area from which
                     // attacking units moved from.»
-                    if (came.some(x => x.system === sid)) continue;
-                    if (came.some(x => x.system === sid && x.pos === area.pos)) continue;
+                    if (came.fromSystem(sid)) continue;
+                    if (came.fromArea(sid, area.pos)) continue;
                 } else if (!free) {
                     // Not an Advance: back to an area a unit moved from. Without
                     // such an area the units cannot retreat and are destroyed.
-                    if (!came.some(x => x.system === sid && x.pos === area.pos)) continue;
+                    if (!came.fromArea(sid, area.pos)) continue;
                 }
                 // A ground unit walks a legal path to the area it retreats to.
                 if (ground && !this.engine.pathExists(state, seat, field.system, field.pos, sid, area.pos)) continue;
