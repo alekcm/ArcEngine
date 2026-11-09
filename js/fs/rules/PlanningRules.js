@@ -103,18 +103,15 @@ class PlanningRules {
         this.engine.log(state, -1, 'Фаза операций: приказы вскрываются по очереди.');
     }
 
+    /** The tokens of the seat that lie on top of their piles: only those resolve. */
     availableOrders(state, seat) {
         const out = [];
+        const board = this.engine.board(state);
         for (const sys of state.systems) {
-            for (let i = 0; i < sys.tokens.length; i++) {
-                const tok = sys.tokens[i];
-                if (tok.seat !== seat) continue;
-                const top = sys.tokens[sys.tokens.length - 1];
-                if (top !== tok) continue;      // only the top of a stack
-                out.push({ system: sys.id, index: i });
-            }
+            const top = board.topOrder(sys.id);
+            if (!top || top.seat !== seat) continue;
+            out.push({ system: sys.id, index: sys.tokens.length - 1 });
         }
         return out;
     }
-
 }

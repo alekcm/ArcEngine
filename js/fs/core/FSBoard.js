@@ -59,6 +59,21 @@ class Board {
         return TileGeometry.index(pos);
     }
 
+    /** The order tokens of one system, bottom to top. */
+    ordersIn(systemId) {
+        const sys = this.system(systemId);
+        return sys && sys.tokens ? sys.tokens : [];
+    }
+
+    /**
+     * The token on top of the pile of a system: only this one may resolve, and
+     * only its owner has the system for the turn. Null for an empty pile.
+     */
+    topOrder(systemId) {
+        const tokens = this.ordersIn(systemId);
+        return tokens.length ? tokens[tokens.length - 1] : null;
+    }
+
     /** @param {string} systemId @param {string} pos */
     unitsAt(systemId, pos) {
         return (this.state.units || []).filter(u => u.system === systemId && u.area === pos);

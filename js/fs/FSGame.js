@@ -900,8 +900,8 @@ class FSGame {
         ].concat(this.assetTokens(s, me));
         for (const o of FS_RULES.availableOrders(s, me)) {
             const sys = Board.of(s).system(o.system);
-            if (!sys) continue;
-            const tok = sys.tokens[sys.tokens.length - 1];
+            const tok = Board.of(s).topOrder(o.system);
+            if (!sys || !tok) continue;
             ctx.actions.push({
                 kind: 'pick', icon: FS_ORDER_ICONS[tok.order] || 'order.event', label: sys.tile,
                 hint: FS_RULES.orderName(tok.order),
@@ -2037,9 +2037,7 @@ class FSGame {
 
     // The token that is on top of the pile of a system: only this one resolves.
     topOrderOf(s, systemId) {
-        const sys = s && s.systems ? Board.of(s).system(systemId) : null;
-        if (!sys || !sys.tokens || !sys.tokens.length) return null;
-        return sys.tokens[sys.tokens.length - 1];
+        return s && s.systems ? Board.of(s).topOrder(systemId) : null;
     }
 
     // The card of the table may be played only in the step of the player.
@@ -2656,7 +2654,7 @@ class FSGame {
         }
         if (this.mode === 'order' && this.pending && this.pending.system) {
             const sys = Board.of(s).system(this.pending.system);
-            const tok = sys && sys.tokens[sys.tokens.length - 1];
+            const tok = Board.of(s).topOrder(this.pending.system);
             if (!sys || !tok) return null;
             const p = FSView.tilePos(this.app, sys, metrics);
             const y = this.app.location.terrain.heightAt(p.x, p.y);

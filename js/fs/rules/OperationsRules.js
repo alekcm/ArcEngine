@@ -1,6 +1,10 @@
 // FSRulesOperations.js — the operations phase: revealing the tokens, the turn
 // order, the end of an order and the bridge to the effect interpreter.
 
+// One wording for one refusal: the panel shows the text the rules return.
+const TRIM_FIRST = 'Сначала уберите отряды сверх вместимости области.';
+const trimRefusal = () => ({ ok: false, error: TRIM_FIRST });
+
 class OperationsRules {
     /** @param {any} engine the rules facade (FSRules.js) */
     constructor(engine) {
@@ -22,13 +26,16 @@ class OperationsRules {
         }
     }
 
+    /** A player whose area is over capacity may do nothing but trim it. */
+    trimBlocked(state, seat) {
+        return (state.trim || []).some(t => t.seat === seat);
+    }
+
     dispatch(state, seat, cmd) {
         const type = cmd && cmd.type;
         // A player who has troops above the capacity of an area chooses which of
         // them go back to the supply before he does anything else.
-        if (type !== 'trimUnit' && (state.trim || []).some(t => t.seat === seat)) {
-            return { ok: false, error: 'Сначала уберите отряды сверх вместимости области.' };
-        }
+        if (type !== 'trimUnit' && this.trimBlocked(state, seat)) return trimRefusal();
         switch (type) {
             case 'placeSystemTile': return this.engine.cmdPlaceSystemTile(state, seat, cmd);
             case 'setupUnit': return this.engine.cmdSetupForce(state, seat, cmd, 'unit');
@@ -72,9 +79,7 @@ class OperationsRules {
 
     cmdResolveOrder(state, seat, cmd) {
         if (state.phase !== 'operations') return { ok: false, error: 'Сейчас не фаза операций.' };
-        if ((state.trim || []).some(t => t.seat === seat)) {
-            return { ok: false, error: 'Сначала уберите отряды сверх вместимости области.' };
-        }
+        if (this.trimBlocked(state, seat)) return trimRefusal();
         if (state.turn !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
         // One order at a time: the previous one must be finished.
         if (state.order) return { ok: false, error: 'Сначала закончите текущий приказ.' };
@@ -95,7 +100,8 @@ class OperationsRules {
                 return { ok: true, pending: true };
             }
         }
-        const top = sys.tokens[sys.tokens.length - 1];
+        const top = this.engine.board(state).topOrder(sys.id);
+        if (!top) return { ok: false, error: 'В этой системе нет приказов.' };
         if (top.seat !== seat) return { ok: false, error: 'Это не ваш приказ.' };
         // The player may put the token on his event deck instead of resolving it.
         if (cmd.toEventDeck) {
@@ -232,12 +238,7 @@ class OperationsRules {
     }
 
     hasOrderToResolve(state, seat) {
-        for (const sys of state.systems) {
-            if (!sys.tokens.length) continue;
-            const top = sys.tokens[sys.tokens.length - 1];
-            if (top.seat === seat) return true;
-        }
-        return false;
+        return this.engine.availableOrders(state, seat).length > 0;
     }
 
     cmdUseUpgrade(state, seat, cmd) {
