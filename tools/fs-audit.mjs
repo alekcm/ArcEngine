@@ -519,6 +519,29 @@ rule('dep-4', '«A player can spend one cache token when purchasing a unit or st
     eq(fin.paid, 2, 'материя списана в конце приказа одним платежом');
 });
 
+rule('dep-4b', '«the price the panel shows is the price the purchase charges» — скидка приказа видна в цене покупки', () => {
+    const st = empty();
+    const active = st.systems[0];
+    const pos = worldOf(st, active.id);
+    FS_RULES.addStructure(st, 0, 'factory', active.id, pos);
+    guard(st, 0, active.id, pos);
+    const faction = FS_DATA.factions.find(f => f.id === st.players[0].faction);
+    const def = faction.units.find(u => u.id === 'гвардейцы') || faction.units[0];
+    st.order = { seat: 0, order: 'deploy', system: active.id, phase: 'units', purchases: [] };
+    st.players[0].materiel = 14;
+    st.players[0].supply.units[def.id] = 3;
+    eq(FS_RULES.unitPrice(st, 0, def), def.cost, 'без скидок цена печатная');
+    st.order.purchaseDiscount = 1;
+    eq(FS_RULES.unitPrice(st, 0, def), Math.max(0, def.cost - 1), 'скидка приказа видна в цене');
+    const before = FS_RULES.spentOf(st.order);
+    FS_RULES.apply(st, 0, { type: 'buyUnit', system: active.id, pos, unit: def.id });
+    eq(FS_RULES.spentOf(st.order) - before, FS_RULES.unitPrice(st, 0, def), 'покупка списала ту же цену');
+    // The cache token lowers the price by two in the same one place.
+    eq(FS_RULES.unitPrice(st, 0, def, { cache: true }), Math.max(0, def.cost - 1 - 2), 'тайник: −2');
+    // The structure price follows the same order discount.
+    eq(FS_RULES.structurePrice(st, 0, 'factory'), Math.max(0, FS_RULES.structureStats('factory').cost - 1), 'постройка со скидкой');
+});
+
 rule('dep-5', '«A player cannot purchase a unit … whose command level requirement exceeds his command level» + «may spend one forge token to reduce that unit\'s command level restriction by one»', () => {
     const st = empty();
     const active = st.systems[0];
