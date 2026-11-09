@@ -2358,7 +2358,7 @@ const FS_EFFECTS = {
                     const active = state.order ? state.order.system : null;
                     let count = 0;
                     if (active) {
-                        const sys = state.systems.find(x => x.id === active);
+                        const sys = Board.of(state).system(active);
                         for (const area of (sys ? sys.areas : [])) {
                             if (!area.world) continue;
                             if (this.areaStanding(state, seat, active, area.pos) !== 'friendly') count++;
@@ -4756,7 +4756,7 @@ const FS_EFFECTS = {
                 return this.gainWorldAssetsBody(R, state, seat, step, area);
             }
             case 'gainSystemMateriel': {
-                const sys = state.systems.find(x => x.id === answer.system);
+                const sys = Board.of(state).system(answer.system);
                 if (!sys) return null;
                 let sum = 0;
                 for (const a of sys.areas) {

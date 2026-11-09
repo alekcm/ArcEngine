@@ -539,7 +539,7 @@ class FSGame {
             }
         }
         if (setup.stage === 'forces') {
-            const sys = s.systems.find(x => x.id === setup.currentSystem);
+            const sys = Board.of(s).system(setup.currentSystem);
             const initial = s.players[s.seat].initialForces;
             const faction = FS_CATALOG.faction(s.players[s.seat].faction);
             ctx.text = 'Система ' + (sys ? sys.tile : '') + ': выберите фигуру и щёлкните по сектору.';
@@ -603,7 +603,7 @@ class FSGame {
             return;
         }
         if (setup.stage === 'objectives') {
-            const sys = s.systems.find(x => x.id === setup.currentSystem);
+            const sys = Board.of(s).system(setup.currentSystem);
             ctx.text = this.pending && this.pending.pos
                 ? 'Место выбрано: подтвердите постановку табличкой на доске.'
                 : 'Выберите жетон соперника, затем мир с меткой цели.';
@@ -628,7 +628,7 @@ class FSGame {
             return;
         }
         if (setup.stage === 'storms') {
-            const sys = this.pending && this.mode === 'setupStorm' && s.systems.find(x => x.id === this.pending.system);
+            const sys = this.pending && this.mode === 'setupStorm' && Board.of(s).system(this.pending.system);
             ctx.text = 'Щёлкните по системе на карте, затем по стороне.';
             ctx.status = this.status || (sys ? 'Система ' + sys.tile + ': выберите сторону.' : 'Щёлкните по системе.');
             if (sys) {
@@ -769,7 +769,7 @@ class FSGame {
     highlightSetupTargets() {
         const s = this.state, setup = s && s.setup;
         if (!setup || !setup.myTurn) return;
-        const sys = s.systems.find(x => x.id === (this.mode === 'setupStorm' ? this.pending.system : setup.currentSystem));
+        const sys = Board.of(s).system((this.mode === 'setupStorm' ? this.pending.system : setup.currentSystem));
         if (!sys) return;
         let areas = [];
         if (this.mode === 'setupUnit') {
@@ -899,7 +899,7 @@ class FSGame {
             { icon: 'order.strategize', label: 'Жетоны событий', count: s.players[me].eventTokens || 0 },
         ].concat(this.assetTokens(s, me));
         for (const o of FS_RULES.availableOrders(s, me)) {
-            const sys = s.systems.find(x => x.id === o.system);
+            const sys = Board.of(s).system(o.system);
             if (!sys) continue;
             const tok = sys.tokens[sys.tokens.length - 1];
             ctx.actions.push({
@@ -940,7 +940,7 @@ class FSGame {
         }
         const me = s.seat;
         const order = s.order;
-        const sys = s.systems.find(x => x.id === order.system);
+        const sys = Board.of(s).system(order.system);
         if (order.phase === 'move') {
             // The board itself is the tool of the movement: every click picks or marches.
             // A new order starts a new march: the flow and the group are empty again.
@@ -1033,7 +1033,7 @@ class FSGame {
             ctx.text = targets.length ? 'Щёлкните по миру, чтобы ударить с орбиты.' : 'Цели нет.';
             ctx.status = 'Корабли в пустоте бьют по соседнему миру.';
             for (const t of targets) {
-                const sys2 = s.systems.find(x => x.id === t.system);
+                const sys2 = Board.of(s).system(t.system);
                 const area = sys2 ? sys2.areas.find(a => a.pos === t.pos) : null;
                 ctx.actions.push({
                     kind: 'pick', icon: 'mark.damage',
@@ -1055,7 +1055,7 @@ class FSGame {
         if (!s || !this.view.metrics) return;
         const out = [];
         for (const it of list) {
-            const sys = s.systems.find(x => x.id === it.system);
+            const sys = Board.of(s).system(it.system);
             if (!sys) continue;
             const p = FSView.areaPos(this.app, sys, it.pos, this.view.metrics);
             out.push({ x: p.x, y: this.app.location.terrain.heightAt(p.x, p.y) + 14, z: p.y });
@@ -1074,7 +1074,7 @@ class FSGame {
         this.mode = 'trim';
         ctx.title = 'Сверх вместимости';
         ctx.text = 'Щёлкните по своему отряду на доске — он вернётся в запас.';
-        const sys = entry ? s.systems.find(x => x.id === entry.system) : null;
+        const sys = entry ? Board.of(s).system(entry.system) : null;
         const area = sys && entry ? sys.areas.find(a => a.pos === entry.pos) : null;
         const mine = entry ? s.units.filter(u => u.seat === me && u.system === entry.system && u.area === entry.pos) : [];
         ctx.status = entry
@@ -1143,7 +1143,7 @@ class FSGame {
         this.mode = 'strike-damage';
         ctx.title = 'Урон с орбиты';
         ctx.text = 'Щёлкните по своему отряду — он принимает удар.';
-        const sys = s.systems.find(x => x.id === st.system);
+        const sys = Board.of(s).system(st.system);
         const area = sys ? sys.areas.find(a => a.pos === st.pos) : null;
         const mine = s.units.filter(u => u.seat === me && u.system === st.system && u.area === st.pos);
         ctx.status = 'Ударов осталось: ' + st.left
@@ -1312,7 +1312,7 @@ class FSGame {
         const p = s.players[me];
         const order = s.order;
         const factory = order.guardFactory;
-        const sys = factory ? s.systems.find(x => x.id === factory.system) : null;
+        const sys = factory ? Board.of(s).system(factory.system) : null;
         const area = sys && factory ? sys.areas.find(a => a.pos === factory.pos) : null;
         const worldName = area && area.world ? area.world.name : 'мир-производитель';
         const limit = FS_RULES.deployLimit(s, me, order.system);
@@ -1421,13 +1421,13 @@ class FSGame {
         const s = this.state;
         const order = s.order;
         if (!order) return;
-        const sys = s.systems.find(x => x.id === order.system);
+        const sys = Board.of(s).system(order.system);
         if (!sys) return;
         const list = [];
         // «Массовое Производство»: the ring is over the factory world; a ship
         // goes out into the void of the same system instead.
         if (order.phase === 'guardDeploy' && order.guardFactory) {
-            const gsys = s.systems.find(x => x.id === order.guardFactory.system);
+            const gsys = Board.of(s).system(order.guardFactory.system);
             if (!gsys) { FSView.highlight(this.view, []); return; }
             const rings = [];
             if (def && def.type === 'ship') {
@@ -2015,7 +2015,7 @@ class FSGame {
                 ctx.status = areas.length ? 'Куда отойти — на карте.' : 'Отходить некуда: отряды гибнут.';
                 ctx.text = areas.length ? 'Отступление: щёлкните по области на доске.' : 'Области для отступления нет.';
                 for (const a of areas) {
-                    const sys2 = s.systems.find(x => x.id === a.system);
+                    const sys2 = Board.of(s).system(a.system);
                     ctx.actions.push({
                         kind: 'pick', icon: 'ui.retreat', label: (sys2 ? sys2.tile : a.system) + ' · ' + a.pos,
                         hint: 'Отступить сюда',
@@ -2037,7 +2037,7 @@ class FSGame {
 
     // The token that is on top of the pile of a system: only this one resolves.
     topOrderOf(s, systemId) {
-        const sys = s && s.systems ? s.systems.find(x => x.id === systemId) : null;
+        const sys = s && s.systems ? Board.of(s).system(systemId) : null;
         if (!sys || !sys.tokens || !sys.tokens.length) return null;
         return sys.tokens[sys.tokens.length - 1];
     }
@@ -2088,7 +2088,7 @@ class FSGame {
         const attacker = s.players[t.attacker != null ? t.attacker : 0];
         ctx.title = 'Тестовый бой окончен';
         ctx.text = (t.kind === 'space' ? 'Космический' : 'Наземный') + ' бой в системе '
-            + ((s.systems.find(x => x.id === t.system) || {}).tile || '?')
+            + ((Board.of(s).system(t.system) || {}).tile || '?')
             + ': ' + (attacker ? attacker.name : '—') + ' против ' + (foe ? foe.name : '—') + '.';
         ctx.status = s.log.length ? s.log[s.log.length - 1].text : '';
         ctx.actions.push({
@@ -2136,21 +2136,21 @@ class FSGame {
             for (const id of q.options || []) {
                 const st = (s.structures || []).find(x => x.id === id);
                 if (!st) continue;
-                const sys = s.systems.find(x => x.id === st.system);
+                const sys = Board.of(s).system(st.system);
                 if (!sys) continue;
                 const disc = FSView.discAt(this.app, sys, st.area, this.view.metrics);
                 hl.push({ x: disc.x, y: disc.y + 2, z: disc.z });
             }
         } else if (q.kind === 'areas') {
             for (const area of q.options || []) {
-                const sys = s.systems.find(x => x.id === area.system);
+                const sys = Board.of(s).system(area.system);
                 if (!sys) continue;
                 const disc = FSView.discAt(this.app, sys, area.pos, this.view.metrics);
                 hl.push({ x: disc.x, y: disc.y + 2, z: disc.z });
             }
         } else if (q.kind === 'systems') {
             for (const id of q.options || []) {
-                const sys = s.systems.find(x => x.id === id);
+                const sys = Board.of(s).system(id);
                 if (!sys) continue;
                 const p = FSView.tilePos(this.app, sys, this.view.metrics);
                 hl.push({ x: p.x, y: this.app.location.terrain.heightAt(p.x, p.y) + 8, z: p.y });
@@ -2392,7 +2392,7 @@ class FSGame {
             case 'areas': {
                 ctx.status = 'Щёлкните по сектору на доске — или по строке слева.';
                 for (const area of q.options) {
-                    const sys = s.systems.find(x => x.id === area.system);
+                    const sys = Board.of(s).system(area.system);
                     const world = sys && sys.areas.find(a => a.pos === area.pos);
                     ctx.actions.push({
                         kind: 'pick',
@@ -2405,7 +2405,7 @@ class FSGame {
             case 'systems': {
                 ctx.status = 'Щёлкните по системе на доске — или по строке слева.';
                 for (const id of q.options) {
-                    const sys = s.systems.find(x => x.id === id);
+                    const sys = Board.of(s).system(id);
                     ctx.actions.push({
                         kind: 'pick',
                         label: sys ? sys.tile : id,
@@ -2495,7 +2495,7 @@ class FSGame {
         const s = this.state;
         if (!s || !meta || !meta.system) return null;
         if (meta.pos) return { system: meta.system, pos: meta.pos };
-        const sys = s.systems.find(x => x.id === meta.system);
+        const sys = Board.of(s).system(meta.system);
         if (!sys) return null;
         if (!point || !sys.areas.length) return { system: sys.id, pos: null };
         // The sector whose centre is the nearest to the point under the pointer.
@@ -2571,7 +2571,7 @@ class FSGame {
     highlightMoves() {
         const s = this.state;
         if (!s || this.mode !== 'move' || !s.order || !this.selected) { return; }
-        const sys = s.systems.find(x => x.id === s.order.system);
+        const sys = Board.of(s).system(s.order.system);
         const units = this.selectedUnits();
         if (!sys || !units.length) { FSView.clearHighlights(this.view); return; }
         const list = [];
@@ -2598,7 +2598,7 @@ class FSGame {
     updateArrow() {
         const s = this.state, view = this.view;
         if (!s || this.mode !== 'move' || !this.selected || !this.selected.length || !this.hover) { FSView.hideArrow(view); return; }
-        const sys = s.systems.find(x => x.id === this.hover.system);
+        const sys = Board.of(s).system(this.hover.system);
         const from = this.selectionCentre();
         if (!sys || !from) { FSView.hideArrow(view); return; }
         let to;
@@ -2636,7 +2636,7 @@ class FSGame {
             };
         }
         if (this.mode === 'setupObjective' && this.pending && this.pending.pos) {
-            const sys = s.systems.find(x => x.id === (s.setup && s.setup.currentSystem));
+            const sys = Board.of(s).system((s.setup && s.setup.currentSystem));
             if (!sys) return null;
             const area = sys.areas.find(a => a.pos === this.pending.pos);
             const disc = FSView.discAt(this.app, sys, this.pending.pos, metrics);
@@ -2655,7 +2655,7 @@ class FSGame {
             };
         }
         if (this.mode === 'order' && this.pending && this.pending.system) {
-            const sys = s.systems.find(x => x.id === this.pending.system);
+            const sys = Board.of(s).system(this.pending.system);
             const tok = sys && sys.tokens[sys.tokens.length - 1];
             if (!sys || !tok) return null;
             const p = FSView.tilePos(this.app, sys, metrics);
@@ -3158,7 +3158,7 @@ class FSGame {
             if (this.mode === 'setupUnit') this.net.cmd({ type: 'setupUnit', unit: this.pending.unit, pos: target.pos });
             else if (this.mode === 'setupStructure') this.net.cmd({ type: 'setupStructure', structure: this.pending.structure, pos: target.pos });
             else if (this.mode === 'setupObjective') {
-                const system = s.systems.find(x => x.id === s.setup.currentSystem);
+                const system = Board.of(s).system(s.setup.currentSystem);
                 if (!system || system.id !== target.system) return;
                 const option = (s.setup.objectiveOptions || []).find(x => x.faction === this.pending.faction);
                 if (!option || !option.areas.includes(target.pos)) { this.status = 'Здесь места цели нет.'; this.refresh(); return; }

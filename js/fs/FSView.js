@@ -191,12 +191,14 @@ const FSView = {
         };
     },
 
-    // The world position of the centre of an area of a tile.
+    // The world position of the centre of an area of a tile. The layout of the
+    // four quadrants is the one of the rules (TileGeometry), only scaled: the
+    // printed face and the picking geometry must not drift apart.
     areaPos(app, sys, pos, metrics) {
         const p = this.tilePos(app, sys, metrics);
-        const d = this.TILE * this.AREA / 2;
-        const off = { TL: [-d, -d], TR: [d, -d], BL: [-d, d], BR: [d, d] }[pos] || [0, 0];
-        return { x: p.x + off[0], y: p.y + off[1] };
+        const c = TileGeometry.center(pos);
+        const size = this.TILE * this.AREA;
+        return { x: p.x + (c.x - 0.5) * size, y: p.y + (c.y - 0.5) * size };
     },
 
     // The tile of a system (drawn once).
@@ -393,11 +395,12 @@ const FSView = {
         rec.tex.update();
     },
 
-    // The metrics before the board is known — the middle of the location.
+    // The quadrant of an area on the 512 px face of a tile — the same quadrant
+    // the rules use (TileGeometry.rect), scaled to the texture.
     areaRect(pos) {
-        const S = 512, half = S / 2;
-        const r = { TL: { x: 0, y: 0 }, TR: { x: half, y: 0 }, BL: { x: 0, y: half }, BR: { x: half, y: half } }[pos];
-        return { x: r.x, y: r.y, w: half, h: half };
+        const S = 512;
+        const r = TileGeometry.rect(pos);
+        return { x: r.x * S, y: r.y * S, w: r.w * S, h: r.h * S };
     },
 
     // The face of an order token: the mark of the order drawn as a shape, not as a
