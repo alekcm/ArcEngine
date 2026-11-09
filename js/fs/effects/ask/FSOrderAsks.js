@@ -28,7 +28,7 @@ class OrderAsks {
         if (state.order) {
             // The discount may be counted: "1 for every cultist".
             const count = step.per && R.countFor ? R.countFor(state, seat, step.per) : 1;
-            state.order.discount = (state.order.discount || 0) + (step.n || 0) * count;
+            OrderDeal.of(state.order).addUnitDiscount((step.n || 0) * count);
         }
         return null;
     }
@@ -38,10 +38,12 @@ class OrderAsks {
         // «уменьшить общую цену всех покупок (включая здания) на 1»
         // («Главный по машинам»): the discount of the order covers the
         // units and the structures, not the units alone.
-        if (state.order) {
-            state.order.purchaseDiscount = (state.order.purchaseDiscount || 0) + (step.n || 0);
+        const deal = OrderDeal.of(state.order);
+        if (deal) {
+            const now = deal.discountAfter(step.n || 0);
+            deal.addPurchaseDiscount(step.n || 0);
             R.log(state, seat, state.players[seat].name + ': покупки приказа дешевле на '
-                + state.order.purchaseDiscount + '.');
+                + now + '.');
         }
         return null;
     }
@@ -165,16 +167,15 @@ class OrderAsks {
 
     static freeStructure(effects, f) {
         const { state, step } = f;
-        if (state.order) {
-            state.order.freeStructure = (state.order.freeStructure || 0) + (step.n || 0);
-            state.order.freeStructureKind = step.kind || 'bastion';
-        }
+        const deal = OrderDeal.of(state.order);
+        if (deal) deal.addFreeStructure(step.kind || 'bastion', step.n || 0);
         return null;
     }
 
     static structureFirst(effects, f) {
         const { state } = f;
-        if (state.order) state.order.structureFirst = true;
+        const deal = OrderDeal.of(state.order);
+        if (deal) deal.setStructureFirst();
         return null;
     }
 
@@ -192,10 +193,8 @@ class OrderAsks {
 
     static cheapUnit(effects, f) {
         const { state, step } = f;
-        if (state.order) {
-            state.order.cheapUnit = step.n || 1;
-            if (step.onlyActive) state.order.cheapUnitOnly = true;
-        }
+        const deal = OrderDeal.of(state.order);
+        if (deal) deal.setCheapUnit(step.n || 1, step.onlyActive);
         return null;
     }
 

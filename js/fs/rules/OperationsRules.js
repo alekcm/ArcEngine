@@ -146,7 +146,9 @@ class OperationsRules {
             PhasePlan.of(state.order).set('units');
             state.order.purchases = [];
             // The card of the Orks lets the structure come before the units.
-            if ((p.upgrades || []).some(u => /Строй быстрее/i.test(u.name || ''))) state.order.structureFirst = true;
+            if ((p.upgrades || []).some(u => /Строй быстрее/i.test(u.name || ''))) {
+                OrderDeal.of(state.order).setStructureFirst();
+            }
             this.engine.log(state, seat, p.name + ' может покупать отряды, а затем постройку.');
             return { ok: true };
         }

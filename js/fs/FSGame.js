@@ -1209,7 +1209,8 @@ class FSGame {
         const step = FS_RULES.deployStep(order);
         const limit = FS_RULES.deployLimit(s, me, order.system);
         const spent = FS_RULES.spentOf(order);
-        const canStructureFirst = !!order.structureFirst && step === 'units';
+        const deal = OrderDeal.of(order);
+        const canStructureFirst = deal.structureFirst && step === 'units';
         ctx.title = 'Развёртывание';
         ctx.text = step === 'units'
             ? 'Сначала отряды: ставьте сколько нужно, материя спишется в конце приказа.'
@@ -1278,7 +1279,7 @@ class FSGame {
         if (step === 'structures' || canStructureFirst) {
             for (const type of ['city', 'factory', 'bastion']) {
                 const can = FS_RULES.canTakeStructure(s, me, type);
-                const free = order.freeStructure && order.freeStructureKind === type;
+                const free = deal.isFree(type);
                 const price = free ? 0 : FS_RULES.structurePrice(s, me, type, { cache: opts.cache });
                 const blocked = !can.ok || FS_RULES.structureBought(order) || (p.materiel - spent < price && !free);
                 ctx.actions.push({

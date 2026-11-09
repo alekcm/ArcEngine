@@ -888,7 +888,7 @@ const FS_EFFECTS = {
         PhasePlan.of(order).set('guardDeploy');
         order.guardFactory = { system: factory.system, pos: factory.pos };
         // «Купите минимум 2 отряда одного типа по цене на 1 меньше обычного»
-        order.discount = (order.discount || 0) + 1;
+        OrderDeal.of(order).addUnitDiscount(1);
         // «2 Гвардейца могут быть куплены за 1 жетон запасов»
         order.supplyDeal = { n: 2, unit: 'Гвардейца' };
         // «Они должны быть развернуты в мире, который их произвёл»

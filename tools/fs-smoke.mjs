@@ -500,6 +500,29 @@ try {
     fail(e.message);
 }
 
+// --- the deal of an order: one object ---------------------------------------
+section('скидки и сделки приказа: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSDeal.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The discounts and the deals of an order are one object: the price of
+        // a unit and of a structure ask OrderDeal, they do not read the fields.
+        const re = /\b(?:state\.order|s\.order|order)\.(?:discount|purchaseDiscount|cheapUnit|cheapUnitOnly|cheapUnitUsed|freeStructure|freeStructureKind|structureFirst)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('скидки и сделки приказа спрашивают у OrderDeal');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the purchases of a strategize order: one object ------------------------
 section('покупки улучшений: один объект');
 try {

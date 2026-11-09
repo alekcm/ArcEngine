@@ -12,8 +12,8 @@ class PlaceSteps {
         const def = R.unitDef(state, seat, answer.type);
         if (!def) return null;
         const area = answer.area;
-        const off = step.discount && state.order
-            ? (state.order.discount || 0) + (state.order.purchaseDiscount || 0) : 0;
+        const deal = OrderDeal.of(state.order);
+        const off = step.discount && deal ? deal.placementDiscount : 0;
         const price = Math.max(0, (def.cost || 0) - off);
         if (!area) {
             // The place of the unit is the next question.

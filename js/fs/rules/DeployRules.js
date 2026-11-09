@@ -183,14 +183,15 @@ class DeployRules {
         const p = state.players[seat] || {};
         const o = opts || {};
         if (o.cheap) return 1;
+        const deal = OrderDeal.of(order);
         let cost = def.cost || 0;
-        if (order.discount) cost = Math.max(0, cost - order.discount);
+        if (deal.unitDiscount) cost = Math.max(0, cost - deal.unitDiscount);
         // «уменьшить общую цену всех покупок (включая здания) на 1».
-        if (order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
+        if (deal.purchaseDiscount) cost = Math.max(0, cost - deal.purchaseDiscount);
         if (o.pairMate) return 0;
         if (o.cache) cost = Math.max(0, cost - 2);
         // The order may sell a unit of command level 0 for 1 materiel.
-        if (order.cheapUnit && def.kl === 0) cost = Math.min(cost, order.cheapUnit);
+        if (deal.cheapPrice && def.kl === 0) cost = Math.min(cost, deal.cheapPrice);
         if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
         return cost;
     }
@@ -199,9 +200,10 @@ class DeployRules {
     structurePrice(state, seat, type, opts) {
         const order = state.order || {};
         const o = opts || {};
+        const deal = OrderDeal.of(order);
         const stats = this.engine.structureStats(type);
         let cost = Math.max(0, (stats.cost || 0) - (o.cache ? 2 : 0));
-        if (order.purchaseDiscount) cost = Math.max(0, cost - order.purchaseDiscount);
+        if (deal.purchaseDiscount) cost = Math.max(0, cost - deal.purchaseDiscount);
         return cost;
     }
 
@@ -222,7 +224,8 @@ class DeployRules {
         // uncontrolled area of the active system. The card is its own
         // permission: no factory and no deploy limit are needed for it.
         const ctrl0 = this.engine.control(state, seat, cmd.system, cmd.pos);
-        const cheap = !!order.cheapUnitOnly && !order.cheapUnitUsed
+        const deal = OrderDeal.of(order);
+        const cheap = deal.cheapOnlyActive && deal.cheapLeft
             && (def.kl || 0) === 0
             && (ctrl0 === 'friendly' || ctrl0 === 'none');
         if (!cheap) {
@@ -249,14 +252,14 @@ class DeployRules {
         }
         // The order may sell two Guardsmen for one supply token: the second one
         // of the pair costs one cache token instead of materiel.
-        const deal = !!(order.supplyDeal
+        const supplyDeal = !!(order.supplyDeal
             && FS_EFFECTS.sameName(def.name, order.supplyDeal.unit || 'Гвардец'));
         // «2 Гвардейца МОГУТ быть куплены за 1 жетон запасов» (способность
         // Имперской гвардии): the pair is a permission — without a cache token
         // the second Guardsman is paid for as usual.
         /** @type {any} */
         const buyer = this.engine.player(state, seat);
-        const pairMate = deal && this.dealBought(order) % 2 === 1 && buyer.assetCount('cache') > 0;
+        const pairMate = supplyDeal && this.dealBought(order) % 2 === 1 && buyer.assetCount('cache') > 0;
         if ((p.supply.units[def.id] || 0) <= 0) return { ok: false, error: 'Такого отряда больше нет в запасе.' };
         // A forge token lowers the command level restriction of one unit by one.
         const forgeKl = !!cmd.forgeKl;
@@ -296,8 +299,7 @@ class DeployRules {
         if (cheap) {
             // «потратить 1 материал, чтобы разместить 1 отряд»: the price is
             // exactly one materiel, and the permission is spent by this buy.
-            order.cheapUnitUsed = true;
-            order.cheapUnit = 0;
+            deal.spendCheap();
         } else {
             // The pair of the faction deal is paid by a cache token in full.
             if (pairMate) {
@@ -334,7 +336,7 @@ class DeployRules {
         if (!order) return { ok: false, error: 'Сейчас нельзя покупать постройки.' };
         // The structure is bought after the units — the card of the Orks
         // ("Строй быстрее!") allows the other way round.
-        if (this.deployStep(order) !== 'structures' && !order.structureFirst) {
+        if (this.deployStep(order) !== 'structures' && !OrderDeal.of(order).structureFirst) {
             return { ok: false, error: 'Сначала отряды: постройка покупается в конце приказа.' };
         }
         if (this.structureBought(order)) return { ok: false, error: 'За один приказ можно построить только одну постройку.' };
@@ -347,7 +349,7 @@ class DeployRules {
         const can = this.engine.canTakeStructure(state, seat, type);
         if (!can.ok) return can;
         // The order may give a structure for free.
-        const free = !!(order.freeStructure && order.freeStructureKind === type);
+        const free = OrderDeal.of(order).isFree(type);
         // One cache token lowers the cost of one structure by two materiel.
         const cache = !!cmd.cache;
         /** @type {any} */

@@ -32,8 +32,8 @@ class PlaceAsks {
             // «Ужасный ритуал» pays the price reduced by its cultists and
             // caps the KL by the card, not by the player's cities.
             const cl = R.commandLevel(state, seat);
-            const off = step.discount && state.order
-                ? (state.order.discount || 0) + (state.order.purchaseDiscount || 0) : 0;
+            const deal0 = OrderDeal.of(state.order);
+            const off = step.discount && deal0 ? deal0.placementDiscount : 0;
             const price = u => Math.max(0, (u.cost || 0) - off);
             free = free.filter(u => price(u) <= (p.materiel || 0)
                 && (step.bypassCommandLevel || (u.kl || 0) <= cl));

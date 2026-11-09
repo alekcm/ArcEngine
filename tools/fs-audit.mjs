@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -442,6 +442,35 @@ rule('adv-6', '«A warp storm blocks the way»', () => {
 //  Deploy order
 // ============================================================================
 head('Приказ развёртывания (Deploy Order)');
+
+rule('dep-0b', '«… the price of the purchases is reduced …» — скидки и сделки приказа считает один OrderDeal', () => {
+    const deal = OrderDeal.of({ seat: 0, order: 'deploy' });
+    // The card of the order lowers the unit price and the purchase price apart.
+    deal.addUnitDiscount(1).addUnitDiscount(1);
+    deal.addPurchaseDiscount(1);
+    eq(deal.unitDiscount, 2, 'скидка отряда накоплена');
+    eq(deal.purchaseDiscount, 1, 'скидка покупки накоплена');
+    eq(deal.placementDiscount, 3, 'карта, ставящая отряд сама, берёт обе');
+    // The free structure is one of a named type, and the purchase spends it.
+    deal.addFreeStructure('bastion', 1);
+    eq(deal.isFree('bastion'), true, 'бастион бесплатен');
+    eq(deal.isFree('city'), false, 'город — нет');
+    deal.spendFree();
+    eq(deal.isFree('bastion'), false, 'бесплатная постройка потрачена');
+    // The structure step may come first.
+    eq(deal.structureFirst, false, 'постройка не первая');
+    deal.setStructureFirst();
+    eq(deal.structureFirst, true, 'карта Орков ставит постройку первой');
+    // One KL0 unit for a named price — once.
+    deal.setCheapUnit(1, true);
+    eq(deal.cheapLeft, true, 'дешёвый отряд разрешён');
+    eq(deal.cheapOnlyActive, true, 'только в активной системе');
+    deal.spendCheap();
+    eq(deal.cheapLeft, false, 'разрешение потрачено');
+    eq(deal.cheapPrice, 0, 'следующий отряд платит полную цену');
+    eq(OrderDeal.of(deal.order), deal, 'у приказа одна сделка');
+    eq(OrderDeal.of(null), null, 'без приказа сделки нет');
+});
 
 rule('dep-1', '«If the active player has a factory in the active system, he may purchase units»', () => {
     const st = empty();
