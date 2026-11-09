@@ -478,6 +478,31 @@ rule('dep-2', '«The deploy limit is equal to the combined unit capacity from al
     eq(over.ok, false, 'покупка сверх предела');
 });
 
+rule('dep-2b', '«… you may treat all of his cities in the active system as factories» (Транслокационные крипты) — предел и покупка читают один список миров', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    FS_RULES.addStructure(st, 0, 'city', sys.id, pos);
+    st.order = { seat: 0, order: 'deploy', system: sys.id, phase: 'units', purchases: [] };
+    st.players[0].materiel = 14;
+    st.players[0].supply.units['гвардейцы'] = 9;
+    // Without the card the city is not a factory: neither the purchase nor the
+    // limit knows one.
+    eq(FS_RULES.hasFactory(st, 0, sys.id), false, 'город без карты — не фабрика');
+    eq(FS_RULES.deployLimit(st, 0, sys.id), 0, 'предела нет');
+    eq(FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys.id, pos }).ok, false,
+        'без фабрики отряд не купить');
+    // The card of the order says so: the same world is a factory for both.
+    st.order.citiesAsFactories = true;
+    eq(FS_RULES.deployTreatsAsFactories(st, 0), true, 'приказ считает города фабриками');
+    eq(FS_RULES.hasFactory(st, 0, sys.id), true, 'фабрика есть');
+    eq(FS_RULES.deployLimit(st, 0, sys.id), FS_RULES.capacity(st, sys.id, pos), 'предел — вместимость мира');
+    eq(FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys.id, pos }).ok, true,
+        'покупка видит ту же фабрику');
+    eq(FS_RULES.unitsBought(st.order), 1, 'покупка записана');
+});
+
 rule('dep-3', '«A player cannot purchase more than one structure while resolving a single Deploy Order.»', () => {
     const st = empty();
     const active = st.systems[0];
@@ -1544,6 +1569,22 @@ rule('mov-1', '«The active player can exceed each area’s unit capacity while 
     // Four is still fine: the fifth may join during the movement.
     st.units = st.units.filter(u => u.id !== st.units.filter(x => x.system === sys.id)[0].id);
     eq(FS_RULES.moveAllowed(st, 0, sixth, { system: sys.id, pos: voidPos }).ok, true, 'пятый отряд встаёт');
+});
+
+rule('mov-1b', '«… can never end the movement with more than five units in a single area» — у доски один ответ на «есть ли место»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    for (let i = 0; i < 4; i++) guard(st, 0, sys.id, pos);
+    // Four of mine: one more fits, the sixth does not.
+    eq(FS_RULES.hasRoom(st, sys.id, pos, 0, 1), true, 'пятый отряд встаёт');
+    guard(st, 0, sys.id, pos);
+    eq(FS_RULES.hasRoom(st, sys.id, pos, 0, 1), false, 'шестой не встаёт');
+    eq(FS_RULES.unitLimit(st, sys.id, pos, 0), 0, 'свободных мест нет');
+    // The limit is one player's: five of his own do not fill the area for another.
+    eq(FS_RULES.hasRoom(st, sys.id, pos, 1, 1), true, 'чужой отряд места не занимает');
+    eq(FS_RULES.capacity(st, sys.id, pos) < 5 || FS_RULES.hasRoom(st, sys.id, pos, 0, 1),
+        true, 'вместимость можно превысить, пластмассу — нет');
 });
 
 rule('mov-2', '«During an Advance Order, if a ship moved from an adjacent system to the active system, ground units cannot move into the active system from a different adjacent system.»', () => {

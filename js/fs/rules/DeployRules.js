@@ -7,8 +7,19 @@ class DeployRules {
         this.engine = engine;
     }
 
+    /**
+     * «A player's deploy limit is equal to the combined unit capacity from all
+     * friendly worlds in the active system that contain a factory.» The one
+     * number the rule, the purchase, the panel and the card all read.
+     *
+     * The order being resolved may change what counts as a factory (cities,
+     * bastions, the one factory of «Массовое Производство») and may add to the
+     * limit (the orders «Главный по машинам», «Миры призыва»).
+     * @param {any} state @param {number} seat @param {string} systemId
+     */
     deployLimit(state, seat, systemId) {
         const sys = this.engine.system(state, systemId);
+        if (!sys) return 0;
         // The cards of an order change the limit only while that order runs.
         const order = this.engine.orderOf(state, seat);
         // «Массовое Производство»: the ability is ONE factory working — the
@@ -16,31 +27,55 @@ class DeployRules {
         if (order && order.phase === 'guardDeploy' && order.guardFactory) {
             return Math.max(0, this.engine.capacity(state, order.guardFactory.system, order.guardFactory.pos));
         }
-        // While the order runs, the cities may be treated as factories.
-        const asFactories = !!(order && order.citiesAsFactories);
-        const bastions = !!(order && order.bastionsAsFactories);
         let limit = 0;
         for (const area of sys.areas) {
             if (this.engine.control(state, seat, systemId, area.pos) !== 'friendly') continue;
-            const structures = this.engine.structuresAt(state, systemId, area.pos).filter(s => s.seat === seat);
-            const factory = structures.some(s => s.type === 'factory');
-            const city = structures.some(s => s.type === 'city');
-            const bastion = structures.some(s => s.type === 'bastion');
-            if (!factory && !(asFactories && city) && !(bastions && bastion)) continue;
+            if (!this.deployWorlds(state, seat, systemId, area.pos).length) continue;
             // Two factories on one world double the capacity of that world for the
             // deploy limit (the rules, "Factories").
-            const factories = structures.filter(s => s.type === 'factory').length;
+            const factories = this.deployWorlds(state, seat, systemId, area.pos).filter(s => s.type === 'factory').length;
             limit += this.engine.capacity(state, systemId, area.pos) * Math.max(1, factories);
         }
-        // The order may lower the limit or give an extra factory.
+        // The order may lower the limit or add to it.
         if (order && order.deployLimitBonus) limit += order.deployLimitBonus;
         if (order && order.extraFactories) limit += order.extraFactories;
         return Math.max(0, limit);
     }
 
+    /**
+     * The structures of the player in one area that a Deploy Order may count as
+     * a factory: the real factories, and the cities and bastions while the card
+     * of the order says so. One place names them — the limit and the panel ask.
+     * @param {any} state @param {number} seat @param {string} systemId @param {string} pos
+     */
+    deployWorlds(state, seat, systemId, pos) {
+        const order = this.engine.orderOf(state, seat);
+        const asFactories = !!(order && order.citiesAsFactories);
+        const bastions = !!(order && order.bastionsAsFactories);
+        return this.engine.structuresAt(state, systemId, pos).filter(s => s.seat === seat
+            && (s.type === 'factory' || (asFactories && s.type === 'city') || (bastions && s.type === 'bastion')));
+    }
+
+    /**
+     * «… may treat all of his cities in the active system as factories»: the
+     * order says so to every reader of the deploy rule. A card that only lets
+     * the cities be BUILT on is not this permission.
+     * @param {any} state @param {number} seat
+     */
+    deployTreatsAsFactories(state, seat) {
+        const order = this.engine.orderOf(state, seat);
+        return !!(order && (order.citiesAsFactories || order.bastionsAsFactories));
+    }
+
+    /**
+     * May this player buy units at all this order? The same worlds the limit is
+     * counted from: a factory — or what the card of the order lets stand in for
+     * one. The purchase asks this, the panel asks this, the limit counts them.
+     */
     hasFactory(state, seat, systemId) {
         const sys = this.engine.system(state, systemId);
-        return sys.areas.some(a => this.engine.structuresAt(state, systemId, a.pos).some(s => s.seat === seat && s.type === 'factory'));
+        if (!sys) return false;
+        return sys.areas.some(a => this.deployWorlds(state, seat, systemId, a.pos).length > 0);
     }
 
     canPlaceUnit(state, seat, systemId, pos, def) {

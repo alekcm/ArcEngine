@@ -69,6 +69,7 @@
 | Можно ли поставить постройку на мир (и разрешение карты на вторую) | `rules/DeployRules.js` (`canPlaceStructure`) + `Board.hasStructure` | не считать `structuresAt(...).length` в правиле или карте |
 | Боевая колода и рука боя: добор, сброс, замена пары, возврат руки, скрытая рука противника | `js/fs/FSCards.js` (`FSCombatDeck`, `FSCombatHand`, `player.combatDeck`, `player.combatHand`) | не трогать `decks.combat` и `cards[side].hand` напрямую — это ловит `fs-smoke` |
 | Сколько карт берётся в бой и сколько отрядов стоит в области | `core/FSRulesConfig.js` (`COMBAT_HAND`, `AREA_MAX_UNITS`) + `Board.unitLimit/hasRoom` | не считать «пять» в правиле или в карте |
+| Предел развёртывания: какие миры считаются фабриками и сколько отрядов покупается | `rules/DeployRules.js` (`deployLimit`, `deployWorlds`, `hasFactory`) | не пересчитывать фабрики приказа в панели и карте — спрашивать `deployLimit` |
 | Настройка карты: тайлы, стартовые силы, цели, шторма | `rules/SetupRules.js` | — |
 | Планирование, четыре жетона по кругу | `rules/PlanningRules.js` | — |
 | Операции, очередь хода, конец приказа | `rules/OperationsRules.js` | — |
@@ -113,7 +114,7 @@
 
 ```
 node tools/check.mjs          # типы (tsc по JSDoc) + сверка правил + дым-тест
-node tools/fs-audit.mjs       # 139 проверок: каждая цитирует Rules Reference
+node tools/fs-audit.mjs       # 141 проверка: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # 82 проверки: карты одной фракции против их текстов
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках

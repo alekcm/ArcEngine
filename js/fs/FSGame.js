@@ -1238,6 +1238,9 @@ class FSGame {
                 // The price the rules will charge: the panel never counts it itself.
                 const cost = FS_RULES.unitPrice(s, me, def, { cache: opts.cache });
                 const kl = def.kl - (opts.forgeKl ? 1 : 0);
+                // The panel shows the price the purchase will charge and the
+                // reasons it may be refused — the five units of an area are
+                // asked at the place, not here: the player has not picked it yet.
                 const blocked = !n || p.materiel - spent < cost || kl > cl || (def.forge && !face.assetCount('forge'));
                 ctx.actions.push({
                     kind: 'pick', icon: def.type === 'ship' ? 'mark.ship' : 'mark.ground', label: def.name, count: n,
@@ -3196,6 +3199,15 @@ class FSGame {
                     this.refresh();
                     return;
                 }
+            }
+            // Пять отрядов одного игрока — стена, а не предупреждение: столько
+            // пластмассы стоит в области, и движок такую покупку отклонит
+            // («can never end the movement with more than five units»).
+            if (!FS_RULES.hasRoom(s, target.system, target.pos, s.seat, 1)) {
+                this.deployOverflow = null;
+                this.status = FS_RULES.unitLimitText();
+                this.refresh();
+                return;
             }
             // Покупка сверх вместимости сектора не запрещена — по правилам лишние
             // отряды погибают после приказа; но об этом надо предупредить до покупки:
