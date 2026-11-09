@@ -24,6 +24,21 @@ class RefreshRules {
         };
     }
 
+    /**
+     * The game is won: the objectives are collected. Both moments of the
+     * refresh phase (the first step and the end of the round) end the same way —
+     * only at the first step the log says why the tokens were collected.
+     */
+    declareWin(state, won, byObjectives) {
+        state.over = true;
+        state.winner = won.winner;
+        if (won.shared) state.shared = won.shared;
+        const why = byObjectives ? ': цели собраны' : '';
+        this.engine.log(state, -1, won.shared
+            ? 'Игра закончена вничью' + why + '.'
+            : 'Игра закончена. Побеждает ' + state.players[won.winner].name + why + '.');
+    }
+
     startRefresh(state) {
         state.phase = 'refresh';
         state.order = null;
@@ -49,12 +64,7 @@ class RefreshRules {
         // the event cards of this refresh never happen.
         const won = this.objectiveWinners(state);
         if (won) {
-            state.over = true;
-            state.winner = won.winner;
-            if (won.shared) state.shared = won.shared;
-            this.engine.log(state, -1, won.shared
-                ? 'Игра закончена вничью: цели собраны.'
-                : 'Игра закончена. Побеждает ' + state.players[won.winner].name + ': цели собраны.');
+            this.declareWin(state, won, true);
             return;
         }
         // 2. the materiel
@@ -235,12 +245,7 @@ class RefreshRules {
         // the first step of the refresh phase.
         const won = this.objectiveWinners(state);
         if (won) {
-            state.over = true;
-            state.winner = won.winner;
-            if (won.shared) state.shared = won.shared;
-            this.engine.log(state, -1, won.shared
-                ? 'Игра закончена вничью.'
-                : 'Игра закончена. Побеждает ' + state.players[won.winner].name + '.');
+            this.declareWin(state, won, false);
             return;
         }
         if (state.round > this.engine.ROUNDS) {
