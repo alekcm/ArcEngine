@@ -1325,7 +1325,8 @@ class FSGame {
         const me = s.seat;
         const p = s.players[me];
         const order = s.order;
-        const factory = order.guardFactory;
+        const scope = DeployScope.of(order);
+        const factory = scope.factory;
         const sys = factory ? Board.of(s).system(factory.system) : null;
         const area = sys && factory ? sys.areas.find(a => a.pos === factory.pos) : null;
         const worldName = area && area.world ? area.world.name : 'мир-производитель';
@@ -1334,7 +1335,7 @@ class FSGame {
         const purchases = order.purchases || [];
         const faction = FS_CATALOG.faction(p.faction);
         const supply = (p.supply && p.supply.units) || {};
-        const locked = order.unitsLocked;
+        const locked = scope.lockedType;
         const lockedDef = locked && faction ? faction.units.find(u => u.id === locked) : null;
         const lockedName = lockedDef ? lockedDef.name : locked;
         ctx.title = 'Массовое Производство';
@@ -1439,18 +1440,19 @@ class FSGame {
         if (!order) return;
         const sys = Board.of(s).system(order.system);
         if (!sys) return;
+        const scope = DeployScope.of(order);
         const list = [];
         // «Массовое Производство»: the ring is over the factory world; a ship
         // goes out into the void of the same system instead.
-        if (PhasePlan.of(order).is('guardDeploy') && order.guardFactory) {
-            const gsys = Board.of(s).system(order.guardFactory.system);
+        if (PhasePlan.of(order).is('guardDeploy') && scope.factory) {
+            const gsys = Board.of(s).system(scope.factory.system);
             if (!gsys) { FSView.highlight(this.view, []); return; }
             const rings = [];
             if (def && def.type === 'ship') {
                 FSView.highlight(this.view, []);
                 return;
             }
-            const garea = gsys.areas.find(a => a.pos === order.guardFactory.pos);
+            const garea = gsys.areas.find(a => a.pos === scope.factory.pos);
             if (garea) {
                 const p = FSView.areaPos(this.app, gsys, garea.pos, this.view.metrics);
                 const h = this.app.location.terrain.heightAt(p.x, p.y);
@@ -3192,9 +3194,10 @@ class FSGame {
         if (this.mode === 'placeUnit') {
             if (!target) return;
             const ord = s.order;
-            if (ord && PhasePlan.of(ord).is('guardDeploy') && ord.guardFactory) {
+            const scope0 = DeployScope.of(ord);
+            if (ord && PhasePlan.of(ord).is('guardDeploy') && scope0.factory) {
                 const isShip = this.pending && this.pending.def && this.pending.def.type === 'ship';
-                const inFactoryWorld = target.system === ord.guardFactory.system && target.pos === ord.guardFactory.pos;
+                const inFactoryWorld = scope0.inFactory(target.system, target.pos);
                 if (isShip) {
                     this.status = '«Массовое Производство» производит только наземные отряды в мир фабрики.';
                     this.refresh();

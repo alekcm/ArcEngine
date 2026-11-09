@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -470,6 +470,31 @@ rule('dep-0b', '«… the price of the purchases is reduced …» — скидк
     eq(deal.cheapPrice, 0, 'следующий отряд платит полную цену');
     eq(OrderDeal.of(deal.order), deal, 'у приказа одна сделка');
     eq(OrderDeal.of(null), null, 'без приказа сделки нет');
+});
+
+rule('dep-0c', '«… deploy into one area …» — фабрику, замок типа и одну область держит один DeployScope', () => {
+    const scope = DeployScope.of({ seat: 0, order: 'deploy' });
+    // «Массовое Производство»: one factory produces, and only into its own world.
+    scope.setFactory(3, 1);
+    eq(scope.inFactory(3, 1), true, 'мир фабрики — свой');
+    eq(scope.inFactory(3, 2), false, 'соседний мир — чужой');
+    eq(scope.factory.system, 3, 'фабрика запомнена');
+    // «минимум 2 отряда одного типа»: the first purchase locks the type.
+    eq(scope.lockedType, null, 'тип ещё не замок');
+    eq(scope.lockType('guard'), 'guard', 'первый отряд замкнул тип');
+    eq(scope.lockType('tank'), 'guard', 'второй уже не меняет тип');
+    scope.unlock();
+    eq(scope.lockedType, null, 'покупки отменены — тип свободен');
+    // «развертывание в 1 области»: the first placement names it.
+    eq(scope.allows(5), true, 'любая область до первой покупки');
+    scope.setAreaLimit(1);
+    eq(scope.allows(5), true, 'первая область разрешена');
+    scope.use(5);
+    eq(scope.allows(6), false, 'вторая область запрещена');
+    eq(scope.allows(5), true, 'та же область разрешена');
+    eq(scope.areaLimit, 1, 'предел областей — один');
+    eq(DeployScope.of(scope.order), scope, 'у приказа один DeployScope');
+    eq(DeployScope.of(null), null, 'без приказа пределов нет');
 });
 
 rule('dep-1', '«If the active player has a factory in the active system, he may purchase units»', () => {

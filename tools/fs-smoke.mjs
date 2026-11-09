@@ -500,6 +500,29 @@ try {
     fail(e.message);
 }
 
+// --- where an order may deploy: one object ----------------------------------
+section('пределы развёртывания приказа: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSDeployScope.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // The producing factory, the locked type and the one area of a limited
+        // deployment are one object: a rule and the panel ask DeployScope.
+        const re = /\b(?:state\.order|s\.order|order|ord)\.(?:guardFactory|unitsLocked|deployAreas|deployAreaLimit)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('пределы развёртывания спрашивают у DeployScope');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the deal of an order: one object ---------------------------------------
 section('скидки и сделки приказа: один объект');
 try {

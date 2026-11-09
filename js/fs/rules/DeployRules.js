@@ -24,8 +24,9 @@ class DeployRules {
         const order = this.engine.orderOf(state, seat);
         // «Массовое Производство»: the ability is ONE factory working — the
         // capacity of its own world, doubled factories do not count.
-        if (order && PhasePlan.of(order).is('guardDeploy') && order.guardFactory) {
-            return Math.max(0, this.engine.capacity(state, order.guardFactory.system, order.guardFactory.pos));
+        const scope = DeployScope.of(order);
+        if (order && PhasePlan.of(order).is('guardDeploy') && scope.factory) {
+            return Math.max(0, this.engine.capacity(state, scope.factory.system, scope.factory.pos));
         }
         let limit = 0;
         for (const area of sys.areas) {
@@ -209,7 +210,8 @@ class DeployRules {
 
     cmdBuyUnit(state, seat, cmd) {
         const order = state.order;
-        const isGuard = !!order && PhasePlan.of(order).is('guardDeploy') && order.guardFactory;
+        const scope = DeployScope.of(order);
+        const isGuard = !!order && PhasePlan.of(order).is('guardDeploy') && !!scope.factory;
         if (!order || (order.order !== 'deploy' && !isGuard) || order.seat !== seat) {
             return { ok: false, error: 'Сейчас нельзя покупать отряды.' };
         }
@@ -239,14 +241,14 @@ class DeployRules {
         }
         // «Купите минимум 2 отряда одного типа» — the type is locked by the first
         // purchase; the wrong kind is refused before anything else is checked.
-        if (isGuard && order.unitsLocked && def.id !== order.unitsLocked) {
-            const locked = this.engine.unitDef(state, seat, order.unitsLocked);
-            return { ok: false, error: 'Способность производит только один тип отрядов: «' + (locked ? locked.name : order.unitsLocked) + '».' };
+        if (isGuard && scope.lockedType && def.id !== scope.lockedType) {
+            const locked = this.engine.unitDef(state, seat, scope.lockedType);
+            return { ok: false, error: 'Способность производит только один тип отрядов: «' + (locked ? locked.name : scope.lockedType) + '».' };
         }
         const p = state.players[seat];
         // The ability: the produced units stand in the producing world.
         if (isGuard) {
-            if (cmd.system !== order.guardFactory.system || cmd.pos !== order.guardFactory.pos) {
+            if (!scope.inFactory(cmd.system, cmd.pos)) {
                 return { ok: false, error: 'Отряд ставится в мир, который его производит.' };
             }
         }
@@ -277,18 +279,15 @@ class DeployRules {
             return { ok: false, error: 'Этим приказом можно производить только ' + order.factoryOnly + '.' };
         }
         // «развертывание в 1 области» («Департаменто муниторум»).
-        if (order.deployAreaLimit) {
-            const used = order.deployAreas || [];
-            if (used.length >= order.deployAreaLimit && !used.includes(cmd.pos)) {
-                return { ok: false, error: 'Развертывание ограничено ' + order.deployAreaLimit + ' областью.' };
-            }
+        if (!scope.allows(cmd.pos)) {
+            return { ok: false, error: 'Развертывание ограничено ' + scope.areaLimit + ' областью.' };
         }
         const place = this.canPlaceUnit(state, seat, cmd.system, cmd.pos, def);
         if (!place.ok) return place;
         // «Они должны быть развернуты в мире, который их произвёл»
         // (the guard ability checks the placement right after the unit is chosen — above)
         if (order.deployInFactoryWorld) {
-            if (order.guardFactory) {
+            if (scope.factory) {
                 // ground handled above; ships may stand in the void
             } else {
                 const factory = this.engine.structuresAt(state, cmd.system, cmd.pos).some(st => st.seat === seat && st.type === 'factory');
@@ -317,11 +316,8 @@ class DeployRules {
         if (cache) buyer.payAsset('cache', 1);
         p.supply.units[def.id]--;
         const unit = this.engine.addUnit(state, seat, def.id, cmd.system, cmd.pos);
-        if (order.deployAreaLimit) {
-            order.deployAreas = order.deployAreas || [];
-            if (!order.deployAreas.includes(cmd.pos)) order.deployAreas.push(cmd.pos);
-        }
-        if (isGuard && !order.unitsLocked) order.unitsLocked = def.id;
+        scope.use(cmd.pos);
+        if (isGuard) scope.lockType(def.id);
         this.engine.log(state, seat, p.name + ' купил отряд «' + def.name + '».');
         order.purchases = order.purchases || [];
         order.purchases.push({
@@ -391,8 +387,9 @@ class DeployRules {
         }
         if (entry.cache) this.engine.player(state, seat).addAsset('cache', 1);
         order.purchases = list.filter(x => x !== entry);
+        const scope = DeployScope.of(order);
         // «одного типа» — the lock follows what is on the board.
-        if (isGuard && !(order.purchases || []).length) order.unitsLocked = null;
+        if (isGuard && !(order.purchases || []).length) scope.unlock();
         this.engine.log(state, seat, p.name + ' отменил покупку: ' + entry.name + '.');
         return { ok: true, refunded: entry.cost };
     }

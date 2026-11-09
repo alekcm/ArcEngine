@@ -886,7 +886,8 @@ const FS_EFFECTS = {
         if (!order) return null;
         const p = state.players[seat];
         PhasePlan.of(order).set('guardDeploy');
-        order.guardFactory = { system: factory.system, pos: factory.pos };
+        const scope = DeployScope.of(order);
+        scope.setFactory(factory.system, factory.pos);
         // «Купите минимум 2 отряда одного типа по цене на 1 меньше обычного»
         OrderDeal.of(order).addUnitDiscount(1);
         // «2 Гвардейца могут быть куплены за 1 жетон запасов»
@@ -894,7 +895,7 @@ const FS_EFFECTS = {
         // «Они должны быть развернуты в мире, который их произвёл»
         order.deployInFactoryWorld = true;
         // «минимум 2 одного типа» — the first purchase locks the type.
-        order.unitsLocked = null;
+        scope.unlock();
         // The ability is not over: the factory is still producing.
         order.finishAfterEffect = false;
         R.log(state, seat, p.name + ' отдаёт приказ развёртывания: фабрика выпускает отряды в свой мир.');

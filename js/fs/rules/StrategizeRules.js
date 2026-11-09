@@ -147,7 +147,7 @@ class StrategizeRules {
             const purchases = UpgradeOrder.of(order);
             if (purchases) purchases.reset();
             if (kind === 'advance') order.moveAreaLimit = 1;
-            if (kind === 'deploy') { order.deployAreaLimit = 1; order.deployAreas = []; }
+            if (kind === 'deploy') DeployScope.of(order).setAreaLimit(1);
             const res = this.engine.resolveOrder(state, seat, kind, order.system);
             if (res && res.ok === false) return res;
             this.engine.log(state, seat, state.players[seat].name + ' разыгрывает ограниченный приказ: '

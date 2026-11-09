@@ -91,6 +91,7 @@
 | Шаг приказа (`move`, `combat`, `strike`, …) | `core/FSPhase.js` (`PhasePlan.of(order)`) | не сравнивать `order.phase` со строкой в правиле или панели — это ловит `fs-smoke` |
 | Купленные улучшения «Стратегии» и их отмена | `core/FSUpgrades.js` (`UpgradeOrder.of(order)`) | не читать `order.upgrade*` в правиле или панели — это ловит `fs-smoke` |
 | Скидки и сделки приказа, цена покупки | `core/FSDeal.js` (`OrderDeal.of(order)`) | не читать `order.discount`/`cheapUnit` в правиле или панели — это ловит `fs-smoke` |
+| Где приказ может развернуть отряды | `core/FSDeployScope.js` (`DeployScope.of(order)`) | не читать `order.guardFactory`/`unitsLocked` в правиле или панели — это ловит `fs-smoke` |
 | Текст карты → шаги игры | `FSEffects.js` (таблица `RULES`) | текст карты — это правило карты, отдельного кода «на карту» нет |
 | Что шаг спросит у игрока | `js/fs/effects/ask/FS*Asks.js` (реестр `ASK_EXECUTORS`) | не добавлять ветку в `switch` — его больше нет |
 | Что шаг сделает с ответом | `js/fs/effects/FS*Steps.js` (реестр `STEP_EXECUTORS`) | не писать действие шага в панели |
@@ -119,7 +120,7 @@
 
 ```
 node tools/check.mjs          # типы (tsc по JSDoc) + сверка правил + дым-тест
-node tools/fs-audit.mjs       # 146 проверок: каждая цитирует Rules Reference
+node tools/fs-audit.mjs       # 147 проверок: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # 82 проверки: карты одной фракции против их текстов
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках
@@ -132,11 +133,11 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 шагов карт (73 «дела» и 155 «вопроса» — каждый объявлен и каждый — функция), а ещё один —
 сам предметный слой: стороны боя и верх стопки приказов.
 
-Шестнадцать разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
+Семнадцать разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
 (вставленные `assets.forge++`, `cards[side].hand.splice`, `p.materiel -= 1`, ручной счёт
 пяти отрядов, `structuresAt(...).length`, `state.order = null`, `u.routed = true`,
 `order.bought++`, чтение `state.trim` мимо очереди, `storm.edge = …` мимо поля штормов и
-`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal`
+`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope`
 дают провал с именем файла и строкой):
 
 * жетоны: только `PlayerEntity` пишет в `assets`;
@@ -176,6 +177,9 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 * скидки и сделки приказа — один объект `OrderDeal` (`core/FSDeal.js`): цена отряда
   и цена любой покупки, бесплатная постройка названного вида, «постройка первой» и
   единственный дешёвый отряд КЛ0; цену считают `unitPrice`/`structurePrice`.
+* пределы развёртывания — один объект `DeployScope` (`core/FSDeployScope.js`):
+  фабрика-производитель «Массового Производства», замок «одного типа» и одна
+  область ограниченного развёртывания; правило развёртывания и панель спрашивают его.
 
 ## Шаги карт: две ступени и рамка
 
