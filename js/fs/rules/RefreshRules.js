@@ -61,7 +61,7 @@ class RefreshRules {
         for (const p of state.players) {
             const income = this.engine.materielIncome(state, p.seat);
             if (income > 0) {
-                p.materiel = Math.min(this.engine.MATERIEL_MAX, p.materiel + income);
+                this.engine.player(state, p.seat).gainMateriel(income);
                 this.engine.log(state, p.seat, p.name + ' получил материи: ' + income + '.');
             }
         }

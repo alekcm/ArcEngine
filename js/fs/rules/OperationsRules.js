@@ -162,11 +162,10 @@ class OperationsRules {
         return { ok: false, error: 'Неизвестный приказ.' };
     }
 
+    /** The order tokens the seat has spent (placed, less the board and the event deck). */
     usedOrderTokens(state, seat) {
-        const p = state.players[seat];
-        const onBoard = state.systems.reduce((n, sys) => n
-            + (sys.tokens || []).filter(t => t.seat === seat).length, 0);
-        return Math.max(0, (p.placedTokens || 0) - onBoard - (p.eventTokens || 0));
+        if (!state.players[seat]) return 0;
+        return this.engine.player(state, seat).usedOrderTokens();
     }
 
     finishOrder(state, seat) {

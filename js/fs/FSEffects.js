@@ -2347,7 +2347,7 @@ const FS_EFFECTS = {
                         return null;
                     }
                 }
-                p.materiel = Math.min(R.MATERIEL_MAX, p.materiel + n);
+                R.player(state, seat).gainMateriel(n);
                 R.log(state, seat, state.players[seat].name + ' получает материю: ' + n + '.');
                 return null;
             }
@@ -4160,7 +4160,7 @@ const FS_EFFECTS = {
                 const n = Math.min(step.n || 1, p.assets[kind] || 0);
                 if (n <= 0) return null;
                 p.assets[kind] -= n;
-                p.materiel = Math.min(this.MATERIEL_MAX, p.materiel + n * (step.gain || 1));
+                R.player(state, seat).gainMateriel(n * (step.gain || 1));
                 R.log(state, seat, state.players[seat].name + ' меняет жетон ресурса на материю.');
                 return null;
             }
@@ -4764,7 +4764,7 @@ const FS_EFFECTS = {
                     if (R.control(state, seat, sys.id, a.pos) !== 'friendly') continue;
                     sum += a.world.materiel || 0;
                 }
-                p.materiel = Math.min(R.MATERIEL_MAX, p.materiel + sum);
+                R.player(state, seat).gainMateriel(sum);
                 R.log(state, seat, state.players[seat].name + ' получает материю: ' + sum + '.');
                 return null;
             }
@@ -5684,7 +5684,7 @@ const FS_EFFECTS = {
         const sys = R.system(state, area.system);
         const a = R.area(sys, area.pos);
         if (!a || !a.world) return null;
-        p.materiel = Math.min(R.MATERIEL_MAX, p.materiel + (a.world.materiel || 0));
+        R.player(state, seat).gainMateriel(a.world.materiel || 0);
         let prosperity = 0;
         for (const asset of a.world.assets || []) {
             if (asset === 'prosperity') { prosperity++; continue; }
