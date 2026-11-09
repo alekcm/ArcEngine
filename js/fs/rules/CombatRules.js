@@ -98,14 +98,14 @@ class CombatRules {
                 const card = p.decks.combat.shift();
                 if (card) hand.push(card);
             }
-            combat.cards[seat === attacker ? 'attacker' : 'defender'].hand = hand;
+            combat.cards[CombatSides.sideOf(combat, seat)].hand = hand;
         }
         state.combat = combat;
         // «… получить 1 `morale cube` в начале боя, вызванного этим приказом»
         // («Прикосновение варпа»): the advance belongs to the owner of the plan.
         if (state.order && state.order.chaosCombatMorale
             && (state.order.seat === attacker || state.order.seat === defender)) {
-            const side = state.order.seat === attacker ? 'attacker' : 'defender';
+            const side = CombatSides.sideOf(combat, state.order.seat);
             for (let i = 0; i < state.order.chaosCombatMorale; i++) {
                 if (combat.dice[side].filter(Boolean).length >= this.engine.DICE_MAX) break;
                 combat.dice[side].push('morale');
@@ -132,7 +132,7 @@ class CombatRules {
             this.engine.runEffects(state, attacker, [{
                 op: 'placeReinforcement', n: promised.n || 1, free: promised.free,
                 here: true, who: 'me', ability: 'Бесчисленные: жетон подкрепления в спорной области.',
-            }], { kind: 'combat', ctx: { side: attacker === combat.attacker ? 'attacker' : 'defender' } });
+            }], { kind: 'combat', ctx: { side: CombatSides.sideOf(combat, attacker) } });
         }
         this.engine.log(state, attacker, 'Бой в системе ' + this.engine.system(state, systemId).tile + ': '
             + state.players[attacker].name + ' против ' + state.players[defender].name + '.');
@@ -178,14 +178,14 @@ class CombatRules {
                 inBattle: !!prep.inBattle, who: 'me', ability: prep.ability,
             });
         }
-        this.engine.runEffects(state, seat, steps, { kind: 'combat', ctx: { side: seat === state.combat.attacker ? 'attacker' : 'defender' } });
+        this.engine.runEffects(state, seat, steps, { kind: 'combat', ctx: { side: CombatSides.sideOf(state.combat, seat) } });
         return true;
     }
 
     cmdCombat(state, seat, cmd) {
         const c = state.combat;
         if (!c) return { ok: false, error: 'Боя нет.' };
-        const side = seat === c.attacker ? 'attacker' : seat === c.defender ? 'defender' : null;
+        const side = CombatSides.sideOf(c, seat);
         if (!side) return { ok: false, error: 'Вы не участвуете в бою.' };
         switch (cmd.action) {
             case 'reinforce': return this.combatReinforce(state, seat, side, cmd);
@@ -195,7 +195,7 @@ class CombatRules {
                 // отрядам и бастионам противника» («Величие роя»): the damage of
                 // the other side is placed by the owner of the card.
                 const a = c.assignDamage;
-                const foeSide = side === 'attacker' ? 'defender' : 'attacker';
+                const foeSide = CombatSides.foe(side);
                 const foeStep = foeSide === 'attacker' ? 'damage-attacker' : 'damage-defender';
                 const myStep = side === 'attacker' ? 'damage-attacker' : 'damage-defender';
                 if (a && c.step === foeStep && a.seat === seat) {
@@ -216,7 +216,7 @@ class CombatRules {
     }
 
     pieces(state, c, side) {
-        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const seat = CombatSides.seatOf(c, side);
         const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
         const bastions = state.structures.filter(s => s.seat === seat && s.system === c.system && s.area === c.pos && s.type === 'bastion');
         const t = this.tokenUnits(state, side);
@@ -265,7 +265,7 @@ class CombatRules {
     reinforceTokenDef(state, side) {
         const c = state.combat;
         if (!c) return null;
-        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const seat = CombatSides.seatOf(c, side);
         const area = this.engine.area(this.engine.system(state, c.system), c.pos);
         return this.reinforceUnitDef(state.players[seat].faction, area && area.world ? 'ground' : 'ship');
     }
@@ -273,7 +273,7 @@ class CombatRules {
     reinforceTokenHealth(state, side, seat) {
         const c = state.combat;
         if (!c) return 1;
-        const owner = side === 'attacker' ? c.attacker : c.defender;
+        const owner = CombatSides.seatOf(c, side);
         const actor = seat === undefined ? owner : seat;
         const def = this.reinforceTokenDef(state, side);
         let health = def ? def.health : 1;
@@ -321,7 +321,7 @@ class CombatRules {
     reinforceNoRoute(state, side) {
         const c = state.combat;
         if (!c) return false;
-        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const seat = CombatSides.seatOf(c, side);
         return (c.noRoute || []).some(x => {
             const one = typeof x === 'number' ? { seat: x } : x;
             if (one.seat !== seat) return false;
@@ -388,7 +388,7 @@ class CombatRules {
     tokenMorale(state, side) {
         const c = state.combat;
         if (!c) return 0;
-        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const seat = CombatSides.seatOf(c, side);
         const area = this.engine.area(this.engine.system(state, c.system), c.pos);
         const type = area && area.world ? 'ground' : 'ship';
         const def = this.reinforceUnitDef(state.players[seat].faction, type);
@@ -405,7 +405,7 @@ class CombatRules {
         const c = state.combat;
         const count = Math.max(0, Number(cmd.count) || 0);
         // The card of the opponent may forbid the reinforcement.
-        const foe = side === 'attacker' ? 'defender' : 'attacker';
+        const foe = CombatSides.foe(side);
         const other = this.combatValues(state, foe);
         void other;
         // The card names the player who may not reinforce: without a name the
@@ -470,7 +470,7 @@ class CombatRules {
 
     combatToken(state, seat, side, cmd) {
         const c = state.combat;
-        const foe = side === 'attacker' ? 'defender' : 'attacker';
+        const foe = CombatSides.foe(side);
         const target = cmd.target === 'foe' ? foe : side;
         const count = Math.max(0, Number(cmd.count) || 0);
         const kind = cmd.tokenType === 'def' ? 'def' : 'att';
@@ -487,7 +487,7 @@ class CombatRules {
 
     combatDie(state, seat, side, cmd) {
         const c = state.combat;
-        const foe = side === 'attacker' ? 'defender' : 'attacker';
+        const foe = CombatSides.foe(side);
         const target = cmd.target === 'foe' ? foe : side;
         const count = Math.max(0, Number(cmd.count) || 0);
         const dice = c.dice[target];
@@ -537,7 +537,7 @@ class CombatRules {
         // them lie on the table: a card revealed too early resolves while the
         // other player is still choosing, and his own card play would overwrite
         // the questions the first card is still asking.
-        const otherSide = side === 'attacker' ? 'defender' : 'attacker';
+        const otherSide = CombatSides.foe(side);
         const otherDone = !!c.staged[otherSide] || !(c.cards[otherSide].hand || []).length;
         if (otherDone) c.step = 'reveal';
         else c.step = side === 'attacker' ? 'choose-defender' : 'choose-attacker';
@@ -599,8 +599,8 @@ class CombatRules {
             // «Вместо того, чтобы играть боевую карту из руки, вы можете сбросить
             // эту карту…» («Тактический гений»): the moment of the card play.
             if (c.step === 'choose-attacker' || c.step === 'choose-defender') {
-                const hs = c.step === 'choose-attacker' ? 'attacker' : 'defender';
-                const hseat = hs === 'attacker' ? c.attacker : c.defender;
+                const hs = CombatSides.sideFromStep(c.step);
+                const hseat = CombatSides.seatOf(c, hs);
                 c.playHook = c.playHook || {};
                 if (!c.playHook[hs]) {
                     c.playHook[hs] = true;
@@ -651,7 +651,7 @@ class CombatRules {
         if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
         const tokens = c.tokens[side];
         const played = c.cards[side].played;
-        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const seat = CombatSides.seatOf(c, side);
         let att = 0, def = 0, morale = 0;
         for (const d of dice) {
             if (d === 'att') att++;
@@ -680,7 +680,7 @@ class CombatRules {
         if (c.ignoreFoeAtt && side === 'defender') dice = dice.filter(d => d !== 'att');
         const tokens = c.tokens[side];
         const played = c.cards[side].played;
-        const seat = side === 'attacker' ? c.attacker : c.defender;
+        const seat = CombatSides.seatOf(c, side);
         const unitsMorale = this.moraleFromPieces(state, c.system, c.pos, seat)
             + this.tokenMorale(state, side);
         const parts = {
@@ -703,7 +703,7 @@ class CombatRules {
     combatDamageFor(state, side) {
         const c = state.combat;
         if (c) this.applyDamageStartTokens(state);
-        const other = side === 'attacker' ? 'defender' : 'attacker';
+        const other = CombatSides.foe(side);
         const me = this.combatValues(state, side);
         const them = this.combatValues(state, other);
         let damage = Math.max(0, them.att - me.def);
@@ -727,7 +727,7 @@ class CombatRules {
 
     damagePreview(state, side, targets, seat) {
         const c = state.combat;
-        const owner = side === 'attacker' ? c.attacker : c.defender;
+        const owner = CombatSides.seatOf(c, side);
         const actor = seat === undefined ? owner : seat;
         const damage = this.combatDamageFor(state, side);
         const oneByOne = !!(c.damageOneByOne && side === 'defender');
@@ -776,7 +776,7 @@ class CombatRules {
 
     damageCandidates(state, side, seat) {
         const c = state.combat;
-        const owner = side === 'attacker' ? c.attacker : c.defender;
+        const owner = CombatSides.seatOf(c, side);
         const actor = seat === undefined ? owner : seat;
         const out = [];
         for (const u of state.units) {
@@ -999,7 +999,7 @@ class CombatRules {
         const ends = [c.attacker, c.defender];
         while (c.damageEndHook.next < ends.length) {
             const seat = ends[c.damageEndHook.next++];
-            const side = seat === c.attacker ? 'attacker' : 'defender';
+            const side = CombatSides.sideOf(c, seat);
             if (this.engine.maybeScheme(state, seat, 'damage-end', { kind: 'combat', ctx: { side } })) {
                 c.damageEndResume = true;
                 return;
@@ -1068,7 +1068,7 @@ class CombatRules {
         c.resurrectAsked = candidate.seat;
         c.step = 'effect';
         c.nextStep = 'round-end';
-        const side = candidate.seat === c.attacker ? 'attacker' : 'defender';
+        const side = CombatSides.sideOf(c, candidate.seat);
         this.engine.runEffects(state, candidate.seat, [{ op: 'resurrectOffer' }], { kind: 'combat', ctx: { side } });
         return true;
     }
@@ -1079,7 +1079,7 @@ class CombatRules {
         if (!d || d.done) return false;
         if (d.round !== c.round) { c.destroyRoutedFoe = null; return false; }
         const foeSide = d.seat === c.attacker ? 'defender' : 'attacker';
-        const foeSeat = foeSide === 'attacker' ? c.attacker : c.defender;
+        const foeSeat = CombatSides.seatOf(c, foeSide);
         // «если в этом раунде боя отряд противника становится деморализованным» —
         // the units that were routed in this round.
         const units = state.units.filter(u => u.seat === foeSeat
@@ -1096,7 +1096,7 @@ class CombatRules {
         }));
         c.step = 'effect';
         c.nextStep = 'round-end';
-        this.engine.runEffects(state, d.seat, steps, { kind: 'combat', ctx: { side: d.seat === c.attacker ? 'attacker' : 'defender' } });
+        this.engine.runEffects(state, d.seat, steps, { kind: 'combat', ctx: { side: CombatSides.sideOf(c, d.seat) } });
         return true;
     }
 
@@ -1114,7 +1114,7 @@ class CombatRules {
         c.step = 'effect';
         c.nextStep = 'round-end';
         this.engine.runEffects(state, d.seat, d.steps, {
-            kind: 'combat', ctx: { side: d.seat === c.attacker ? 'attacker' : 'defender' },
+            kind: 'combat', ctx: { side: CombatSides.sideOf(c, d.seat) },
         });
         return true;
     }
@@ -1143,7 +1143,7 @@ class CombatRules {
         if (pendingRetreat.length) {
             const entry = pendingRetreat[0];
             entry.fired = true;
-            const side = entry.seat === c.attacker ? 'attacker' : 'defender';
+            const side = CombatSides.sideOf(c, entry.seat);
             // «если ваши отряды или бастионы не получат урона в конце этого
             // раунда»: the damage the card's owner placed on his own pieces.
             const damage = (c.damage && c.damage[side]) || 0;
@@ -1162,7 +1162,7 @@ class CombatRules {
             endPlan.fired = true;
             c.step = 'effect';
             c.nextStep = 'round-end';
-            const side = endPlan.seat === c.attacker ? 'attacker' : 'defender';
+            const side = CombatSides.sideOf(c, endPlan.seat);
             this.engine.runEffects(state, endPlan.seat, [{
                 op: 'moveUnitToCombatForDice', who: 'me',
                 ability: 'переместить 1 отряд из соседней области в эту и получить кубики по его боевой силе',
@@ -1236,7 +1236,7 @@ class CombatRules {
         const later = (c.laterTokens || []).filter(x => x.round === c.round);
         c.laterTokens = (c.laterTokens || []).filter(x => x.round !== c.round);
         for (const one of later) {
-            const seat = one.side === 'attacker' ? c.attacker : c.defender;
+            const seat = CombatSides.seatOf(c, one.side);
             const n = one.per === 'lostRound' ? (one.n || 1) * lostOf(seat) : (one.n || 1);
             if (n <= 0) continue;
             c.tokens[one.side][one.kind] = (c.tokens[one.side][one.kind] || 0) + n;
@@ -1283,7 +1283,7 @@ class CombatRules {
             const kind = one.kind || 'att';
             const n = one.n || 1;
             c.tokens[side][kind] = Math.max(0, (c.tokens[side][kind] || 0) - n);
-            const seat = side === 'attacker' ? c.attacker : c.defender;
+            const seat = CombatSides.seatOf(c, side);
             this.engine.log(state, seat, state.players[seat].name + ' теряет ' + n
                 + ' жетон(ов) атаки в начале шага повреждений.');
         }
@@ -1350,7 +1350,7 @@ class CombatRules {
         plan.candidates = candidates.slice();
         c.step = 'effect';
         c.nextStep = 'round-end';
-        const side = plan.seat === c.attacker ? 'attacker' : 'defender';
+        const side = CombatSides.sideOf(c, plan.seat);
         this.engine.runEffects(state, plan.seat, [{
             op: 'restoreFallenOffer', who: 'me',
             candidates: candidates.map(x => x.id), plan,
@@ -1447,10 +1447,10 @@ class CombatRules {
         // without asking where the dead should go.
         const noTroops = !state.units.some(u => u.seat === loser && u.system === c.system && u.area === c.pos);
         // The schemes of the end of the combat.
-        this.engine.maybeScheme(state, winner, 'combat-end', { kind: 'combat', ctx: { side: winner === c.attacker ? 'attacker' : 'defender' } });
+        this.engine.maybeScheme(state, winner, 'combat-end', { kind: 'combat', ctx: { side: CombatSides.sideOf(c, winner) } });
         // The combat cards go back into the deck, the reinforcement tokens too.
         for (const side of ['attacker', 'defender']) {
-            const seat = side === 'attacker' ? c.attacker : c.defender;
+            const seat = CombatSides.seatOf(c, side);
             const p = state.players[seat];
             // Both the cards that were played and the cards that stayed in the hand
             // go back into the deck: a combat deals five cards and returns five.
@@ -1477,7 +1477,7 @@ class CombatRules {
     retreatTargets(state, seat) {
         const c = state.combat;
         if (!c) return [];
-        const side = seat === c.attacker ? 'attacker' : 'defender';
+        const side = CombatSides.sideOf(c, seat);
         const units = state.units.filter(u => u.seat === seat && u.system === c.system && u.area === c.pos);
         if (!units.length) return [];
         const defs = units.map(u => this.engine.unitOf(state, u)).filter(Boolean);

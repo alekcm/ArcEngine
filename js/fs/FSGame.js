@@ -1821,13 +1821,13 @@ class FSGame {
     panelCombat(s, ctx) {
         const c = s.combat;
         const me = s.seat;
-        const side = me === c.attacker ? 'attacker' : me === c.defender ? 'defender' : null;
-        const other = side === 'attacker' ? 'defender' : 'attacker';
-        const nameOf = which => (s.players[which === 'attacker' ? c.attacker : c.defender] || {}).name || '?';
+        const side = CombatSides.sideOf(c, me);
+        const other = CombatSides.foe(side);
+        const nameOf = which => (s.players[CombatSides.seatOf(c, which)] || {}).name || '?';
         const names = [nameOf('attacker'), nameOf('defender')];
         ctx.title = 'Бой · раунд ' + c.round + ' из ' + (c.maxRounds || 3);
         const sideOf = (id) => {
-            const seat = id === 'attacker' ? c.attacker : c.defender;
+            const seat = CombatSides.seatOf(c, id);
             const p = s.players[seat] || {};
             const values = FS_RULES.combatValues(s, id);
             /** @type {{att: number, def: number, morale: number}} */
@@ -1847,7 +1847,7 @@ class FSGame {
                 takes: FS_RULES.combatDamageFor(s, id),
                 // combatDamageFor(side) is the damage the side SUFFERS; the
                 // damage it deals to the opponent is the opponent's value.
-                deals: FS_RULES.combatDamageFor(s, id === 'attacker' ? 'defender' : 'attacker'),
+                deals: FS_RULES.combatDamageFor(s, CombatSides.foe(id)),
                 hand: (c.cards[id].hand || []).length,
                 closed: !!(c.chosen && c.chosen[id]),
                 // «Если вы — атакующий, подсмотрите карту оппонента»
@@ -1878,7 +1878,7 @@ class FSGame {
         switch (c.step) {
             case 'reinforce-attacker':
             case 'reinforce-defender': {
-                const whose = c.step === 'reinforce-attacker' ? 'attacker' : 'defender';
+                const whose = CombatSides.sideFromStep(c.step);
                 if (whose !== side) { ctx.text = 'Подкрепления ставит ' + nameOf(whose) + '.'; return; }
                 const have = s.players[me] && s.players[me].assets ? (s.players[me].assets.reinforcement || 0) : 0;
                 const max = Math.min(have, FS_RULES.maxReinforce(s, me, side));
@@ -1922,7 +1922,7 @@ class FSGame {
             }
             case 'choose-attacker':
             case 'choose-defender': {
-                const whose = c.step === 'choose-attacker' ? 'attacker' : 'defender';
+                const whose = CombatSides.sideFromStep(c.step);
                 if (whose !== side) {
                     ctx.text = 'Карту выбирает ' + nameOf(whose) + '.';
                     return;
@@ -1933,14 +1933,14 @@ class FSGame {
             }
             case 'damage-attacker':
             case 'damage-defender': {
-                const whose = c.step === 'damage-attacker' ? 'attacker' : 'defender';
+                const whose = CombatSides.sideFromStep(c.step);
                 // «Во время шага нанесения повреждений Вы назначаете урон
                 // отрядам и бастионам противника» («Величие роя»): the step is
                 // played by the owner of the card, not by the one who suffers.
                 const assignSeat = c.assignDamage ? c.assignDamage.seat
-                    : (whose === 'attacker' ? c.attacker : c.defender);
+                    : (CombatSides.seatOf(c, whose));
                 if (assignSeat !== me) {
-                    const who2 = assignSeat === c.attacker ? 'attacker' : 'defender';
+                    const who2 = CombatSides.sideOf(c, assignSeat);
                     ctx.text = 'Урон распределяет ' + nameOf(who2) + '.';
                     return;
                 }
@@ -2254,7 +2254,7 @@ class FSGame {
             case 'dice':
             case 'diceFace': {
                 const combat = s.combat;
-                const dSide = q.diceSide || (combat && must === combat.attacker ? 'attacker' : 'defender');
+                const dSide = q.diceSide || (combat && CombatSides.sideOf(combat, must));
                 const dice = combat ? (combat.dice[dSide] || []) : [];
                 // The die of a dieFace question: the face is the second choice.
                 const picked = q.kind === 'diceFace' ? this.effectDie : null;
@@ -2298,7 +2298,7 @@ class FSGame {
             }
             case 'face': {
                 const combat = s.combat;
-                const dSide = q.diceSide || (combat && must === combat.attacker ? 'attacker' : 'defender');
+                const dSide = q.diceSide || (combat && CombatSides.sideOf(combat, must));
                 const dice = combat ? (combat.dice[dSide] || []).filter(Boolean) : [];
                 const faces = ['att', 'def', 'morale', 'blank'];
                 for (const face of faces) {
@@ -3057,7 +3057,7 @@ class FSGame {
             const q = s.pending.question;
             const cbt = s.combat;
             const mustSeat = s.pending.answerSeat === undefined ? s.pending.seat : s.pending.answerSeat;
-            const qSide = q.diceSide || (cbt ? (mustSeat === cbt.attacker ? 'attacker' : 'defender') : null);
+            const qSide = q.diceSide || (cbt ? (CombatSides.sideOf(cbt, mustSeat)) : null);
             const index = typeof meta.index === 'number' ? meta.index : -1;
             if (mustSeat === s.seat && index >= 0
                 && (!cbt || !meta.side || meta.side === qSide)
@@ -3083,8 +3083,8 @@ class FSGame {
             && (meta.fs === 'unit' || meta.fs === 'structure'
                 || (meta.fs === 'token' && meta.reinforce))) {
             const c = s.combat;
-            const suffer = c.step === 'damage-attacker' ? 'attacker' : 'defender';
-            const ownerSeat = suffer === 'attacker' ? c.attacker : c.defender;
+            const suffer = CombatSides.sideFromStep(c.step);
+            const ownerSeat = CombatSides.seatOf(c, suffer);
             const here = x => x && x.system === c.system && x.area === c.pos && x.seat === ownerSeat;
             let id = null;
             if (meta.fs === 'unit') {

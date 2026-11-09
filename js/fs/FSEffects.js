@@ -1769,7 +1769,7 @@ const FS_EFFECTS = {
             const paid = (answer.dice || []).length > 0;
             if (paid) {
                 const combat = state.combat;
-                const s2 = seat === combat.attacker ? 'attacker' : 'defender';
+                const s2 = CombatSides.sideOf(combat, seat);
                 for (const i of (answer.dice || [])) {
                     if (Number.isInteger(i) && combat.dice[s2][i] !== null
                         && combat.dice[s2][i] !== undefined) combat.dice[s2][i] = null;
@@ -1894,14 +1894,14 @@ const FS_EFFECTS = {
     // The player of the side of the combat.
     seatOf(combat, side) {
         if (!combat) return null;
-        return side === 'attacker' ? combat.attacker : combat.defender;
+        return CombatSides.seatOf(combat, side);
     },
 
     // Which side's dice a step points at: the resolving player's own by
     // default, the opponent's for an effect text that says so.
     diceSideOf(combat, side, step) {
         if (!combat) return side;
-        if (step && step.who === 'foe') return side === 'attacker' ? 'defender' : 'attacker';
+        if (step && step.who === 'foe') return CombatSides.foe(side);
         return side;
     },
 
@@ -1939,7 +1939,7 @@ const FS_EFFECTS = {
         }
         if (cond.cubeLess) {
             if (!inCombat) return false;
-            const s2 = seat === combat.attacker ? 'attacker' : 'defender';
+            const s2 = CombatSides.sideOf(combat, seat);
             const o2 = seat === combat.attacker ? 'defender' : 'attacker';
             const mine = (combat.dice[s2] || []).filter(Boolean).filter(d => d === cond.cubeLess).length;
             const theirs = (combat.dice[o2] || []).filter(Boolean).filter(d => d === cond.cubeLess).length;
@@ -1947,7 +1947,7 @@ const FS_EFFECTS = {
         }
         if (cond.cubeMore) {
             if (!inCombat) return false;
-            const s2 = seat === combat.attacker ? 'attacker' : 'defender';
+            const s2 = CombatSides.sideOf(combat, seat);
             const o2 = seat === combat.attacker ? 'defender' : 'attacker';
             const mine = (combat.dice[s2] || []).filter(Boolean).filter(d => d === cond.cubeMore).length;
             const theirs = (combat.dice[o2] || []).filter(Boolean).filter(d => d === cond.cubeMore).length;
@@ -2072,7 +2072,7 @@ const FS_EFFECTS = {
         const combat = state.combat;
         // The card of the combat may be played when the fight is already over.
         const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
-        const side = inCombat ? (seat === combat.attacker ? 'attacker' : 'defender') : null;
+        const side = inCombat ? (CombatSides.sideOf(combat, seat)) : null;
         const foe = inCombat ? (seat === combat.attacker ? combat.defender : combat.attacker) : null;
         const p = state.players[seat];
         // The player of the step: the card's player or his opponent — the other side
@@ -2115,7 +2115,7 @@ const FS_EFFECTS = {
             case 'loseToken': {
                 const n = this.count(R, state, seat, step, ctx);
                 if (!inCombat) return null;
-                const s2 = target === seat ? side : (side === 'attacker' ? 'defender' : 'attacker');
+                const s2 = target === seat ? side : (CombatSides.foe(side));
                 combat.tokens[s2][step.kind] = Math.max(0, combat.tokens[s2][step.kind] - n);
                 R.log(state, target, state.players[target].name + ' теряет ' + n + ' ' + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны') + '.');
                 return null;
@@ -2126,7 +2126,7 @@ const FS_EFFECTS = {
                 // одинаково, выбираете Вы. Затем получите … того же»
                 // («Аколыты-гибриды»).
                 if (!inCombat) return null;
-                const foe = side === 'attacker' ? 'defender' : 'attacker';
+                const foe = CombatSides.foe(side);
                 const kinds = step.kinds || ['att', 'def', 'morale'];
                 const live = d => d !== null && d !== undefined;
                 const counts = {};
@@ -2183,13 +2183,13 @@ const FS_EFFECTS = {
                 }
                 // The condition of the text: "if the opponent has a die of this kind".
                 if (step.onlyIfFoeHas) {
-                    const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                    const s2 = CombatSides.foe(side);
                     if (!(combat.dice[s2] || []).includes(step.onlyIfFoeHas)) return null;
                 }
                 // «… для того, чтобы получить 1 `any cube`» (the opponent's
                 // branch of «Соблазны Хаоса»): the die belongs to the OTHER side.
                 const dSide = step.who === 'foe'
-                    ? (side === 'attacker' ? 'defender' : 'attacker') : side;
+                    ? (CombatSides.foe(side)) : side;
                 // No more than DICE_MAX dice in a combat: a card that gives a
                 // die past the limit simply adds nothing.
                 const room = Math.max(0, R.DICE_MAX - combat.dice[dSide].filter(Boolean).length);
@@ -2205,7 +2205,7 @@ const FS_EFFECTS = {
             }
             case 'loseDie': {
                 if (!inCombat) return null;
-                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const s2 = CombatSides.foe(side);
                 const live = d => d !== null && d !== undefined;
                 const options = combat.dice[s2].map((d, i) => i)
                     .filter(i => live(combat.dice[s2][i])
@@ -2319,12 +2319,12 @@ const FS_EFFECTS = {
             }
             case 'discardCard': {
                 if (!inCombat) return null;
-                const s2 = target === seat ? side : (side === 'attacker' ? 'defender' : 'attacker');
+                const s2 = target === seat ? side : (CombatSides.foe(side));
                 const hand = combat.cards[s2].hand;
                 if (!hand.length) return null;
                 const i = Math.floor(R.rand(state) * hand.length);
                 const name = hand.splice(i, 1)[0];
-                R.log(state, s2 === 'attacker' ? combat.attacker : combat.defender, 'Сброшена боевая карта «' + name + '».');
+                R.log(state, CombatSides.seatOf(combat, s2), 'Сброшена боевая карта «' + name + '».');
                 return null;
             }
             case 'gainMateriel': {
@@ -3075,7 +3075,7 @@ const FS_EFFECTS = {
             }
             case 'loseDieIfMore': {
                 if (!inCombat) return null;
-                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const s2 = CombatSides.foe(side);
                 const mine = this.countCubes(R, state, seat, combat, 'morale');
                 const theirs = this.countCubes(R, state, this.seatOf(combat, s2), combat, 'morale');
                 if (theirs <= mine) return null;
@@ -3194,7 +3194,7 @@ const FS_EFFECTS = {
                     R.log(state, seat, 'Карта действует только на атакующего: подсмотреть карту нельзя.');
                     return null;
                 }
-                const foeSide = side === 'attacker' ? 'defender' : 'attacker';
+                const foeSide = CombatSides.foe(side);
                 const staged = combat.staged && combat.staged[foeSide];
                 const name = (staged && staged.name)
                     || (combat.cards[foeSide].chosen && combat.cards[foeSide].chosen.name)
@@ -3235,21 +3235,21 @@ const FS_EFFECTS = {
             }
             case 'stealDie': {
                 if (!inCombat) return null;
-                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const s2 = CombatSides.foe(side);
                 const options = combat.dice[s2].map((d, i) => i).filter(i => combat.dice[s2][i] !== null && combat.dice[s2][i] !== undefined);
                 if (!options.length) return null;
                 return { question: { kind: 'dice', who: this.seatOf(combat, s2), diceSide: s2, op: 'stealDie', options, text: 'Какой кубик сбросить?' } };
             }
             case 'convertFoeDice': {
                 if (!inCombat) return null;
-                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const s2 = CombatSides.foe(side);
                 const faces = [...new Set(combat.dice[s2])].filter(d => d !== null && d !== undefined);
                 if (!faces.length) return null;
                 return { question: { kind: 'face', who: this.seatOf(combat, s2), diceSide: s2, op: 'convertFoeDice', options: faces, n: step.n || 2, text: 'Какие кубики сконвертировать?' } };
             }
             case 'discardFoeCard': {
                 if (!inCombat) return null;
-                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const s2 = CombatSides.foe(side);
                 const played = (combat.cards[s2] && combat.cards[s2].played) || [];
                 const options = played.map(c2 => c2.card && c2.card.name).filter(Boolean);
                 if (!options.length) return null;
@@ -3257,7 +3257,7 @@ const FS_EFFECTS = {
             }
             case 'discardFoeTop': {
                 if (!inCombat) return null;
-                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const s2 = CombatSides.foe(side);
                 const seat2 = this.seatOf(combat, s2);
                 const deck = state.players[seat2].decks.combat;
                 if (!deck.length) return null;
@@ -3462,7 +3462,7 @@ const FS_EFFECTS = {
             // the opponent leaves the table before it can be revealed.
             case 'discardFoeStaged': {
                 if (!inCombat) return null;
-                const foeSide = side === 'attacker' ? 'defender' : 'attacker';
+                const foeSide = CombatSides.foe(side);
                 const staged = combat.staged && combat.staged[foeSide];
                 if (!staged) return null;
                 combat.staged[foeSide] = null;
@@ -3478,7 +3478,7 @@ const FS_EFFECTS = {
             // damage step, so it is not a token gain of the card's own round.
             case 'damageStartTokens': {
                 if (!inCombat) return null;
-                const foeSide = side === 'attacker' ? 'defender' : 'attacker';
+                const foeSide = CombatSides.foe(side);
                 combat.damageStartTokens = combat.damageStartTokens || [];
                 combat.damageStartTokens.push({
                     side: foeSide, kind: step.kind || 'att', n: step.n || 1, round: combat.round,
@@ -3514,7 +3514,7 @@ const FS_EFFECTS = {
             // printed editions («должен» / «может») are read here.
             case 'foeSpendOrPay': {
                 if (!inCombat || step.stage === 'dice') return null;
-                const foeSide = side === 'attacker' ? 'defender' : 'attacker';
+                const foeSide = CombatSides.foe(side);
                 const dice = combat.dice[foeSide] || [];
                 /** @type {any[]} */
                 const options = dice.map((d, i) => i).filter(i => dice[i] === step.kind);
@@ -3927,7 +3927,7 @@ const FS_EFFECTS = {
             // каждый отряд, который вы деморализовали» («Гибельные косы»).
             case 'loseReinforcement': {
                 if (!inCombat) return null;
-                const s2 = target === seat ? side : (side === 'attacker' ? 'defender' : 'attacker');
+                const s2 = target === seat ? side : (CombatSides.foe(side));
                 const n = step.n === undefined ? 1 : step.n;
                 R.loseReinforcementTokens(state, s2, n);
                 step.done = n > 0;
@@ -4003,7 +4003,7 @@ const FS_EFFECTS = {
                 // The icons of a phrase that the rules did not read: the tokens
                 // and the dice are taken as they are.
                 for (const ic of step.icons || []) {
-                    const s2 = step.who === 'foe' ? (side === 'attacker' ? 'defender' : 'attacker') : side;
+                    const s2 = step.who === 'foe' ? (CombatSides.foe(side)) : side;
                     if (!s2) continue;
                     if (ic.kind === 'token') {
                         if (step.who === 'foe') combat.tokens[s2][ic.icon] = Math.max(0, combat.tokens[s2][ic.icon] - 1);
@@ -4026,7 +4026,7 @@ const FS_EFFECTS = {
         const combat = state.combat;
         const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
         const owner = ctx && ctx.owner !== undefined ? ctx.owner : seat;
-        const side = inCombat ? (owner === combat.attacker ? 'attacker' : 'defender') : null;
+        const side = inCombat ? (CombatSides.sideOf(combat, owner)) : null;
         // The opponent of the effect: the other side of the combat, the foe that was
         // chosen by the card, or simply another player at the table.
         const other = ctx && ctx.foe !== undefined ? ctx.foe : null;
@@ -4040,7 +4040,7 @@ const FS_EFFECTS = {
         // cannot reach a die that is spent, of a wrong face, or on the wrong
         // side of the combat.
         const diceSide = s2 => (inCombat ? (step && step.who === 'foe' ? s2 : side) : side);
-        const diceTarget = () => diceSide(side === 'attacker' ? 'defender' : 'attacker');
+        const diceTarget = () => diceSide(CombatSides.foe(side));
         const diceAllowed = (face) => {
             if (!inCombat) return true;
             const kinds = Array.isArray(step && step.kinds) && step.kinds.length ? step.kinds : [step && step.kind];
@@ -4056,7 +4056,7 @@ const FS_EFFECTS = {
             case 'stealMostDie': {
                 if (answer.no) return null;
                 const kind = step.kind || answer.kind;
-                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const s2 = CombatSides.foe(side);
                 const at = (combat.dice[s2] || []).findIndex(d => d === kind);
                 if (at < 0) return null;
                 combat.dice[s2][at] = null;
@@ -4071,7 +4071,7 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'loseDie': {
-                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const s2 = CombatSides.foe(side);
                 for (const i of (answer.dice || []).slice().sort((a, b) => b - a)) {
                     if (liveIndex(s2, i)) combat.dice[s2][i] = null;
                 }
@@ -4191,7 +4191,7 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'stealDie': {
-                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const s2 = CombatSides.foe(side);
                 const dice = combat.dice[s2];
                 for (const i of (answer.dice || [])) {
                     if (i >= 0 && i < dice.length && dice[i] !== null && dice[i] !== undefined) {
@@ -4204,7 +4204,7 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'convertFoeDice': {
-                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const s2 = CombatSides.foe(side);
                 const dice = combat.dice[s2];
                 // «… сконвертировать до 2 его кубов определённого значения в
                 // любое другое значение по его выбору» («Превосходство машин»):
@@ -4239,7 +4239,7 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'discardFoeCard': {
-                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const s2 = CombatSides.foe(side);
                 const played = combat.cards[s2].played;
                 const name = answer.card;
                 const at = played.findIndex(c2 => c2.card && c2.card.name === name);
@@ -4427,7 +4427,7 @@ const FS_EFFECTS = {
                 step.done = !!u;
                 const combat = state.combat;
                 if (!u || !combat) return null;
-                const side = seat === combat.attacker ? 'attacker' : 'defender';
+                const side = CombatSides.sideOf(combat, seat);
                 const n = step.pickedValue;
                 if (n > 0) {
                     combat.tokens[side][step.kind] += n;
@@ -4614,7 +4614,7 @@ const FS_EFFECTS = {
             case 'damageFirst': {
                 const id = (answer.units || [])[0];
                 if (!id) return null;
-                const foeSide = side === 'attacker' ? 'defender' : 'attacker';
+                const foeSide = CombatSides.foe(side);
                 combat.damageFirst = combat.damageFirst || [];
                 combat.damageFirst.push({ side: foeSide, id, round: combat.round });
                 R.log(state, seat, 'Выбранный отряд противника получает урон первым.');
@@ -5185,7 +5185,7 @@ const FS_EFFECTS = {
             }
             case 'foeSpendOrPay': {
                 if (!inCombat) return null;
-                const foeSide = side === 'attacker' ? 'defender' : 'attacker';
+                const foeSide = CombatSides.foe(side);
                 const dice = combat.dice[foeSide] || [];
                 /** @type {any[]} */
                 const options = dice.map((d, i) => i).filter(i => dice[i] === step.kind);
@@ -5422,8 +5422,8 @@ const FS_EFFECTS = {
             // are paid out.
             const combat = state.combat;
             if (!combat) return 0;
-            const mine = seat === combat.attacker ? 'attacker' : 'defender';
-            const theirs = mine === 'attacker' ? 'defender' : 'attacker';
+            const mine = CombatSides.sideOf(combat, seat);
+            const theirs = CombatSides.foe(mine);
             const my = (combat.dice[mine] || []).filter(d => d === step.myKind).length;
             const his = (combat.dice[theirs] || []).filter(d => d === step.foeKind).length;
             n = (step.n || 1) * Math.max(0, my - his);
@@ -5433,7 +5433,7 @@ const FS_EFFECTS = {
         if (step.per === 'cube') {
             const combat = state.combat;
             if (combat) {
-                const s2 = seat === combat.attacker ? 'attacker' : 'defender';
+                const s2 = CombatSides.sideOf(combat, seat);
                 n = (step.n || 1) * (combat.dice[s2] || []).filter(d => d === (step.perKind || 'morale')).length;
                 if (step.max) n = Math.min(n, step.max);
             } else {
@@ -5511,7 +5511,7 @@ const FS_EFFECTS = {
                 : matching.length;
             n = (step.n || 1) * amount;
             if (inBattle && !step.filter) {
-                const side = seat === combat.attacker ? 'attacker' : 'defender';
+                const side = CombatSides.sideOf(combat, seat);
                 n += (step.n || 1) * R.tokenUnits(state, side).alive;
             }
             if (step.max) n = Math.min(n, step.max);
@@ -5523,7 +5523,7 @@ const FS_EFFECTS = {
     // payment: the affected player may pay the die.
     avoidQuestion(R, state, seat, step, combat, side) {
         if (!step.avoid || !combat) return null;
-        const s2 = seat === combat.attacker ? 'attacker' : 'defender';
+        const s2 = CombatSides.sideOf(combat, seat);
         const dice = combat.dice[s2] || [];
         const fit = dice.map((d, i) => i).filter(i => step.avoid.kind === 'any' || dice[i] === step.avoid.kind);
         if (!fit.length) return null;
@@ -5553,7 +5553,7 @@ const FS_EFFECTS = {
     // The number of the cubes of a kind on the table of the player.
     countCubes(R, state, seat, combat, kind) {
         if (!combat) return 0;
-        const side = seat === combat.attacker ? 'attacker' : 'defender';
+        const side = CombatSides.sideOf(combat, seat);
         const dice = combat.dice[side] || [];
         let n = dice.filter(d => d === kind).length;
         const tokens = combat.tokens[side] || {};

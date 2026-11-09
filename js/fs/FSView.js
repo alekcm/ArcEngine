@@ -1330,7 +1330,7 @@ const FSView = {
             const co = state.combat;
             if (co && co.system === sysId && co.pos === pos) {
                 for (const side of ['attacker', 'defender']) {
-                    const seat = side === 'attacker' ? co.attacker : co.defender;
+                    const seat = CombatSides.seatOf(co, side);
                     const foeSeat = side === 'attacker' ? co.defender : co.attacker;
                     const foes = placed.filter(q => q.seat === foeSeat);
                     if (!foes.length) continue;
@@ -1852,7 +1852,7 @@ const FSView = {
         const c = state.combat;
         if (!c) return;
         const items = [];
-        const seatSide = seat => (seat === c.attacker ? 'attacker' : 'defender');
+        const seatSide = seat => (CombatSides.sideOf(c, seat));
         for (const u of state.units) {
             if (u.system !== c.system || u.area !== c.pos) continue;
             const def = FS_RULES.unitOf(state, u);
@@ -1860,7 +1860,7 @@ const FSView = {
             const p = view.unitPositions && view.unitPositions.get(u.id);
             if (!p) continue;
             const side = seatSide(u.seat);
-            const sideSeat = side === 'attacker' ? c.attacker : c.defender;
+            const sideSeat = CombatSides.seatOf(c, side);
             let hp = def.health || 1;
             if (c.healthBonus && u.seat === sideSeat) hp += c.healthBonus;
             if (c.enemyHealth && u.seat !== sideSeat) hp = Math.min(hp, c.enemyHealth);
@@ -1873,7 +1873,7 @@ const FSView = {
             });
         }
         for (const slot of (view.reinforceAnchors || [])) {
-            const seat = slot.side === 'attacker' ? c.attacker : c.defender;
+            const seat = CombatSides.seatOf(c, slot.side);
             const def0 = typeof FS_RULES !== 'undefined'
                 ? FS_RULES.reinforceTokenDef(state, slot.side) : null;
             const hp = typeof FS_RULES !== 'undefined'
