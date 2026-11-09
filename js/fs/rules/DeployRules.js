@@ -213,14 +213,14 @@ class DeployRules {
         const order = state.order;
         const scope = DeployScope.of(order);
         const isGuard = !!order && PhasePlan.of(order).is('guardDeploy') && !!scope.factory;
-        if (!order || (order.order !== 'deploy' && !isGuard) || order.seat !== seat) {
+        if (!order || (!OrderContext.of(order).isKind('deploy') && !isGuard) || !OrderContext.of(order).isSeat(seat)) {
             return { ok: false, error: 'Сейчас нельзя покупать отряды.' };
         }
         // The units are bought only in the first step of the order.
         if (!isGuard && this.deployStep(order) !== 'units') return { ok: false, error: 'Отряды покупаются до постройки.' };
         // The units are bought only in the active system and only with a factory in it —
         // the ability produces only into the chosen factory's world.
-        if (cmd.system !== order.system) return { ok: false, error: 'Отряды покупаются в активной системе.' };
+        if (cmd.system !== OrderContext.of(order).system) return { ok: false, error: 'Отряды покупаются в активной системе.' };
         const def = this.engine.unitDef(state, seat, cmd.unit);
         if (!def) return { ok: false, error: 'Нет такого отряда.' };
         // «Союзники Гуэ'веса»: ONE KL0 unit for 1 materiel, in a friendly or
@@ -232,8 +232,8 @@ class DeployRules {
             && (def.kl || 0) === 0
             && (ctrl0 === 'friendly' || ctrl0 === 'none');
         if (!cheap) {
-            if (!isGuard && !this.hasFactory(state, seat, order.system)) return { ok: false, error: 'В активной системе нет фабрики.' };
-            const limit = this.deployLimit(state, seat, order.system);
+            if (!isGuard && !this.hasFactory(state, seat, OrderContext.of(order).system)) return { ok: false, error: 'В активной системе нет фабрики.' };
+            const limit = this.deployLimit(state, seat, OrderContext.of(order).system);
             if (this.unitsBought(order) >= limit) return { ok: false, error: 'Предел развёртывания исчерпан.' };
         }
         // «Массовое Производство» производит только наземные отряды в мир фабрики — космос это другой мир.
@@ -255,8 +255,7 @@ class DeployRules {
         }
         // The order may sell two Guardsmen for one supply token: the second one
         // of the pair costs one cache token instead of materiel.
-        const supplyDeal = !!(order.supplyDeal
-            && FS_EFFECTS.sameName(def.name, order.supplyDeal.unit || 'Гвардец'));
+        const supplyDeal = OrderDeal.of(order).isSupplyPair(def);
         // «2 Гвардейца МОГУТ быть куплены за 1 жетон запасов» (способность
         // Имперской гвардии): the pair is a permission — without a cache token
         // the second Guardsman is paid for as usual.
@@ -341,7 +340,7 @@ class DeployRules {
         const type = cmd.structure || (cmd.kind && cmd.kind !== 'buyStructure' ? cmd.kind : '');
         if (!['city', 'factory', 'bastion'].includes(type)) return { ok: false, error: 'Неизвестная постройка.' };
         // The structure stands in the active system.
-        if (cmd.system !== order.system) return { ok: false, error: 'Постройка ставится в активной системе.' };
+        if (cmd.system !== OrderContext.of(order).system) return { ok: false, error: 'Постройка ставится в активной системе.' };
         const p = state.players[seat];
         const can = this.engine.canTakeStructure(state, seat, type);
         if (!can.ok) return can;
@@ -366,7 +365,7 @@ class DeployRules {
     cmdUndoPurchase(state, seat, cmd) {
         const order = state.order;
         const isGuard = !!order && PhasePlan.of(order).is('guardDeploy');
-        if (!order || (order.order !== 'deploy' && !isGuard) || order.seat !== seat) return { ok: false, error: 'Нечего отменять.' };
+        if (!order || (!OrderContext.of(order).isKind('deploy') && !isGuard) || !OrderContext.of(order).isSeat(seat)) return { ok: false, error: 'Нечего отменять.' };
         const purchases = Purchases.of(order);
         const p = state.players[seat];
         const entry = purchases.find(cmd);
@@ -428,7 +427,7 @@ class DeployRules {
 
     cmdFinishGuardDeploy(state, seat) {
         const order = state.order;
-        if (!order || !PhasePlan.of(order).is('guardDeploy') || order.seat !== seat) {
+        if (!order || !PhasePlan.of(order).is('guardDeploy') || !OrderContext.of(order).isSeat(seat)) {
             return { ok: false, error: 'Сейчас нельзя закончить производство.' };
         }
         const bought = Purchases.of(order).units;

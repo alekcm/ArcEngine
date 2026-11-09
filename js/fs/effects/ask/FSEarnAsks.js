@@ -24,7 +24,7 @@ class EarnAsks {
         // «за каждый неконтролируемый или вражеский мир в активной системе» —
         // counted before any question is asked.
         if (step.nFromWorlds === 'enemyOrUncontrolled') {
-            const active = state.order ? state.order.system : null;
+            const active = state.order ? OrderContext.of(state.order).system : null;
             let count = 0;
             if (active) {
                 const sys = Board.of(state).system(active);
@@ -64,7 +64,7 @@ class EarnAsks {
             R.log(state, seat, 'Способность не может быть применена: не хватает материи.');
             const tally = OrderTally.of(state.order);
             if (tally && tally.finishesAfterEffect) tally.finishAfterEffect();
-            if (state.order && state.order.seat === seat) R.finishOrder(state, seat);
+            if (state.order && OrderContext.of(state.order).isSeat(seat)) R.finishOrder(state, seat);
             return { stop: true };
         }
         R.player(state, seat).payMateriel(n);

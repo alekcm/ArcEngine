@@ -112,7 +112,7 @@ class ChooseSteps {
     static limitedOrder(effects, f) {
         const { R, state, seat, step, p } = f;
         if (!state.order) return null;
-        state.order.nestedKind = step.kind;
+        OrderContext.of(state.order).setNestedKind(step.kind);
         R.log(state, seat, p.name + ' готовит ограниченный приказ: '
             + (step.text || step.kind) + '.');
         return null;

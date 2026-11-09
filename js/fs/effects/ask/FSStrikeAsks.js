@@ -9,7 +9,7 @@ class StrikeAsks {
 
     static strikeBonus(effects, f) {
         const { R, state, seat, step } = f;
-        if (state.order && PhasePlan.of(state.order).is('strike') && state.order.seat === seat) {
+        if (state.order && PhasePlan.of(state.order).is('strike') && OrderContext.of(state.order).isSeat(seat)) {
             StrikePlan.of(state.order).addBonus(step.n || 0);
             R.log(state, seat, state.players[seat].name + ' добавляет ' + (step.n || 0) + ' к урону удара.');
             return null;
@@ -37,7 +37,7 @@ class StrikeAsks {
         // «Изъяны плоти»: the upgrade is burned before the strike, the
         // cubes it pays with are the ones the strike rolls — the order
         // remembers the price and the world answers for it later.
-        if (state.order && state.order.seat === seat) {
+        if (state.order && OrderContext.of(state.order).isSeat(seat)) {
             StrikePlan.of(state.order).setTake({ n: step.n || 1, kind: step.kind || 'def' });
             R.log(state, seat, state.players[seat].name
                 + ': постройки мира удара будут взяты под контроль за '
@@ -51,7 +51,7 @@ class StrikeAsks {
         // «временно убавить здоровье всех юнитов в атакуемом мире на 1»
         // («Заряд радиации»): the strike that follows is deadlier — the
         // health of the units of the world is lower while it lasts.
-        if (state.order && state.order.seat === seat) {
+        if (state.order && OrderContext.of(state.order).isSeat(seat)) {
             const strike = StrikePlan.of(state.order).addHealthDown(step.n || 1);
             R.log(state, seat, state.players[seat].name
                 + ': здоровье отрядов в мире удара ниже на ' + strike.healthDown + '.');
@@ -185,7 +185,7 @@ class StrikeAsks {
 
     static combatStartMorale(effects, f) {
         const { state, seat, step } = f;
-        if (state.order && state.order.seat === seat) {
+        if (state.order && OrderContext.of(state.order).isSeat(seat)) {
             OrderTally.of(state.order).addChaosCombatMorale(step.n || 1);
         }
         return null;

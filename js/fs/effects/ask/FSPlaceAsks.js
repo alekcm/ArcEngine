@@ -100,7 +100,7 @@ class PlaceAsks {
         // спорной области в начале шага призыва подкреплений»
         // («Бесчисленные»): the order is resolved before its combat
         // exists, so the token of the card waits for the combat.
-        if (step.here && !combat && state.order && state.order.seat === seat) {
+        if (step.here && !combat && state.order && OrderContext.of(state.order).isSeat(seat)) {
             OrderTally.of(state.order).setPromisedReinforce(step.n || 1, step.free);
             return null;
         }
@@ -185,7 +185,7 @@ class PlaceAsks {
         // «Командный уровень этого отряда не может превышать числа
         // отрядов культистов в этой системе» («Объединённый Хаос»).
         if (step.maxKlFromCultists) {
-            const sysId = combat ? combat.system : (state.order ? state.order.system : null);
+            const sysId = combat ? combat.system : (state.order ? OrderContext.of(state.order).system : null);
             const cap = state.units.filter(u => u.seat === seat && u.system === sysId
                 && /культист/i.test((R.unitOf(state, u) || {}).name || '')).length;
             units = units.filter(u => {
@@ -209,7 +209,7 @@ class PlaceAsks {
 
     static moveStructure(effects, f) {
         const { state, seat, step } = f;
-        const active = state.order ? state.order.system : null;
+        const active = state.order ? OrderContext.of(state.order).system : null;
         const structures = state.structures.filter(s =>
             s.seat === seat && (!step.kind || s.type === step.kind)
             && (!step.ofSystem || !active || s.system === active));
@@ -273,7 +273,7 @@ class PlaceAsks {
 
     static replaceStructure(effects, f) {
         const { state, seat } = f;
-        const list = state.structures.filter(s => s.seat === seat && (!state.order || s.system === state.order.system));
+        const list = state.structures.filter(s => s.seat === seat && (!state.order || s.system === OrderContext.of(state.order).system));
         if (!list.length) return null;
         return { question: { kind: 'structures', who: seat, op: 'replaceStructure', options: list.map(s => s.id), text: 'Какую постройку заменить?' } };
     }
@@ -335,7 +335,7 @@ class PlaceAsks {
 
     static destroyForMateriel(effects, f) {
         const { R, state, seat, p } = f;
-        const active = state.order ? state.order.system : null;
+        const active = state.order ? OrderContext.of(state.order).system : null;
         if (!active) return null;
         const seen = new Map();
         for (const u of state.units) {
@@ -376,7 +376,7 @@ class PlaceAsks {
         const { R, state, seat, step, ctx, combat } = f;
         let units = effects.unitsOf(R, state, seat, combat, { routed: true });
         if (step.scope === 'activeAllOthersGround') {
-            const active = state.order ? state.order.system : null;
+            const active = state.order ? OrderContext.of(state.order).system : null;
             units = state.units.filter(u => {
                 if (u.seat !== seat || !u.routed) return false;
                 if (active && u.system === active) return true;

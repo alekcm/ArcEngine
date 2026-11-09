@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally } = ctx;
+const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -728,6 +728,34 @@ rule('order-1', '«… this order …» — командный уровень, �
     eq(fight.unspentTemp(7), 0, 'считать больше нечего');
     eq(OrderFight.of(fight.order), fight, 'у приказа одна помощь');
     eq(OrderFight.of(null), null, 'без приказа помощи нет');
+});
+
+rule('order-0', '«… the active player … the active system …» — чей приказ, какой и где, спрашивают у OrderContext', () => {
+    const context = OrderContext.of({ seat: 1, order: 'deploy', system: 4 });
+    eq(context.seat, 1, 'приказ первого игрока? нет — второго');
+    eq(context.kind, 'deploy', 'вид приказа');
+    eq(context.system, 4, 'активная система');
+    eq(context.isSeat(1), true, 'свой приказ');
+    eq(context.isSeat(0), false, 'чужой приказ');
+    eq(context.isKind('deploy'), true, 'развёртывание');
+    eq(context.isKind('advance'), false, 'не наступление');
+    // The three questions every command of an order starts with, in one line.
+    eq(context.mine(1, 'deploy'), true, 'свой и того вида');
+    eq(context.mine(1, 'advance'), false, 'свой, но другого вида');
+    eq(context.mine(0, 'deploy'), false, 'того вида, но чужой');
+    eq(context.mine(1), true, 'вид не назван — любой свой');
+    // «Департаменто муниторум»: the strategize order turns into the limited one.
+    const nested = OrderContext.of({ seat: 0, order: 'strategize', system: 2 });
+    eq(nested.nested, false, 'пока это обычный приказ');
+    nested.setNestedKind('advance');
+    eq(nested.nestedKind, 'advance', 'готовится ограниченное наступление');
+    eq(nested.turnInto(), 'advance', 'приказ стал наступлением');
+    eq(nested.kind, 'advance', 'вид сменился');
+    eq(nested.nested, true, 'это вложенный приказ');
+    eq(nested.nestedKind, null, 'ожидание израсходовано');
+    eq(nested.system, 2, 'система осталась активной');
+    eq(OrderContext.of(nested.order), nested, 'у приказа один контекст');
+    eq(OrderContext.of(null), null, 'без приказа контекста нет');
 });
 
 rule('str-1', '«The active player can purchase upgrades only if he has at least one unit or structure in the active system.»', () => {

@@ -86,6 +86,25 @@ class OrderDeal {
         return this;
     }
 
+    // --- «2 Гвардейца за 1 жетон запасов» ------------------------------------
+
+    /** The pair the ability sells: `{ n, unit }` — the unit names the pair. */
+    get supplyDeal() {
+        return this.order.supplyDeal || null;
+    }
+
+    setSupplyDeal(n, unit) {
+        this.order.supplyDeal = { n: n || 2, unit: unit || '' };
+        return this.order.supplyDeal;
+    }
+
+    /** Does this unit take part in the pair? */
+    isSupplyPair(def) {
+        const deal = this.supplyDeal;
+        if (!deal || !def) return false;
+        return FS_EFFECTS.sameName(def.name, deal.unit || 'Гвардец');
+    }
+
     // --- the structure of the order -------------------------------------------
 
     /** «постройка первой» — the card lets the structure come before the units. */

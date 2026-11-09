@@ -891,7 +891,7 @@ const FS_EFFECTS = {
         // «Купите минимум 2 отряда одного типа по цене на 1 меньше обычного»
         OrderDeal.of(order).addUnitDiscount(1);
         // «2 Гвардейца могут быть куплены за 1 жетон запасов»
-        order.supplyDeal = { n: 2, unit: 'Гвардейца' };
+        OrderDeal.of(order).setSupplyDeal(2, 'Гвардейца');
         // «Они должны быть развернуты в мире, который их произвёл»
         DeployLimits.of(order).setInFactoryWorld();
         // «минимум 2 одного типа» — the first purchase locks the type.
@@ -2411,7 +2411,7 @@ const FS_EFFECTS = {
     friendlyAreas(R, state, seat) {
         // The friendly worlds of the ACTIVE system: the cards that say «in the
         // active system». The list itself is the board's (R.friendlyWorlds).
-        const active = state.order ? state.order.system : null;
+        const active = state.order ? OrderContext.of(state.order).system : null;
         return Board.of(state).friendlyWorlds(seat)
             .filter(a => !active || a.system === active)
             .map(a => ({ system: a.system, pos: a.pos }));
@@ -2467,7 +2467,7 @@ const FS_EFFECTS = {
     // Is the system in the scope of the ability: the active system itself or a
     // system next to it? No order in flight — everything is in scope.
     inScope(R, state, systemId, ofSystem) {
-        const active = state.order ? state.order.system : null;
+        const active = state.order ? OrderContext.of(state.order).system : null;
         if (!ofSystem || !active) return true;
         if (ofSystem === 'active') return systemId === active;
         if (ofSystem === 'adjacent') return R.neighbors(state, active).includes(systemId);
@@ -2490,7 +2490,7 @@ const FS_EFFECTS = {
     // The destinations of the ability steps: the exact list of worlds and voids
     // printed on the faction sheet.
     areasForAbility(R, state, seat, dest) {
-        const active = state.order ? state.order.system : null;
+        const active = state.order ? OrderContext.of(state.order).system : null;
         const neighbors = active ? R.neighbors(state, active) : [];
         const out = [];
         for (const sys of state.systems) {
@@ -2693,7 +2693,7 @@ const FS_EFFECTS = {
     // structure («A player cannot build a structure on a world that already
     // contains a structure»).
     bastionAreasNearby(R, state, seat) {
-        const active = state.order ? state.order.system : null;
+        const active = state.order ? OrderContext.of(state.order).system : null;
         if (!active) return [];
         const systems = [active].concat(R.neighbors(state, active));
         const out = [];

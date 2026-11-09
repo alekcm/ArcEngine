@@ -11,7 +11,7 @@ class StrategizeRules {
         const order = this.engine.orderOf(state, seat, 'strategize');
         if (!order) return { ok: false, error: 'Сейчас нельзя покупать улучшения.' };
         const p = state.players[seat];
-        if (!this.engine.hasUnitsOrStructures(state, seat, order.system)) {
+        if (!this.engine.hasUnitsOrStructures(state, seat, OrderContext.of(order).system)) {
             return { ok: false, error: 'В активной системе нет ваших отрядов и построек.' };
         }
         const upgrades = UpgradeOrder.of(order);
@@ -137,18 +137,16 @@ class StrategizeRules {
         // «Затем разыграйте ограниченное Развертывание …, Продвижение … или
         // Доминирование … в активной системе» («Департаменто муниторум»): the
         // order turns into the second, limited one instead of ending.
-        if (order.nestedKind) {
-            const kind = order.nestedKind;
-            order.nestedKind = null;
-            order.nested = true;
-            order.order = kind;
+        const context = OrderContext.of(order);
+        if (context.nestedKind) {
+            const kind = context.turnInto();
             PhasePlan.of(order).set(null);
             if (Purchases.of(order)) Purchases.of(order).clear();
             const purchases = UpgradeOrder.of(order);
             if (purchases) purchases.reset();
             if (kind === 'advance') OrderMove.of(order).setAreaLimit(1);
             if (kind === 'deploy') DeployScope.of(order).setAreaLimit(1);
-            const res = this.engine.resolveOrder(state, seat, kind, order.system);
+            const res = this.engine.resolveOrder(state, seat, kind, context.system);
             if (res && res.ok === false) return res;
             this.engine.log(state, seat, state.players[seat].name + ' разыгрывает ограниченный приказ: '
                 + this.engine.orderName(kind) + '.');

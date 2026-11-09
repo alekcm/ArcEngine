@@ -287,7 +287,7 @@ class CardAsks {
 
     static require(effects, f) {
         const { R, state, seat, step, p } = f;
-        const active = state.order ? state.order.system : null;
+        const active = state.order ? OrderContext.of(state.order).system : null;
         let ok = true;
         if (step.what === 'materiel') {
             ok = (p.materiel || 0) >= (step.n || 1);
@@ -323,7 +323,7 @@ class CardAsks {
         if (step.what !== 'upgrade' && !step.orderOnly) {
             const tally = OrderTally.of(state.order);
             if (tally && tally.finishesAfterEffect) tally.finishAfterEffect();
-            if (state.order && state.order.seat === seat) R.finishOrder(state, seat);
+            if (state.order && OrderContext.of(state.order).isSeat(seat)) R.finishOrder(state, seat);
         }
         return { stop: true };
     }
@@ -353,7 +353,7 @@ class CardAsks {
 
     static preAdvance(effects, f) {
         const { state, seat } = f;
-        if (!state.order || state.order.order !== 'advance') return null;
+        if (!state.order || !OrderContext.of(state.order).isKind('advance')) return null;
         return { question: {
             kind: 'yesno', who: seat, op: 'preAdvance',
             text: 'Выполнить дополнительный приказ продвижения одним отрядом?',
@@ -363,7 +363,7 @@ class CardAsks {
     static limitedOrder(effects, f) {
         const { R, state, seat, step, p } = f;
         if (!state.order) return null;
-        state.order.nestedKind = step.kind;
+        OrderContext.of(state.order).setNestedKind(step.kind);
         R.log(state, seat, p.name + ' готовит ограниченный приказ: '
             + (step.text || step.kind) + '.');
         step.done = true;
@@ -372,7 +372,7 @@ class CardAsks {
 
     static guardDeploy(effects, f) {
         const { R, state, seat } = f;
-        const active = state.order ? state.order.system : null;
+        const active = state.order ? OrderContext.of(state.order).system : null;
         const factories = active
             ? state.structures.filter(st => st.seat === seat && st.type === 'factory' && st.system === active)
             : [];

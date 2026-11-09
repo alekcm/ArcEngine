@@ -96,6 +96,7 @@
 | Что приказ уже купил | `core/FSPurchases.js` (`Purchases.of(order)`) | не читать и не дописывать `order.purchases` в правиле или панели — это ловит `fs-smoke` |
 | Что карта приказа разрешает пройти | `core/FSOrderMove.js` (`OrderMove.of(order)`) | не читать `order.passVoid`/`ways`/`preAdvance` в правиле или на доске — это ловит `fs-smoke` |
 | Что приказ добыл, кому должен и что обещал бою | `core/FSOrderTally.js` (`OrderTally.of(order)`) | не читать `order.prosperity`/`gained`/`combatReinforce` в правиле или панели — это ловит `fs-smoke` |
+| Чей приказ, какой и в какой системе | `core/FSOrderContext.js` (`OrderContext.of(order)`) | не сравнивать `order.seat`/`order.order` и не читать `order.system` руками — это ловит `fs-smoke` |
 | Что приказ даёт своему бою | `core/FSOrderFight.js` (`OrderFight.of(order)`) | не читать `order.klBonus`/`prepReroll`/`tempMateriel` в правиле или карте — это ловит `fs-smoke` |
 | Текст карты → шаги игры | `FSEffects.js` (таблица `RULES`) | текст карты — это правило карты, отдельного кода «на карту» нет |
 | Что шаг спросит у игрока | `js/fs/effects/ask/FS*Asks.js` (реестр `ASK_EXECUTORS`) | не добавлять ветку в `switch` — его больше нет |
@@ -125,7 +126,7 @@
 
 ```
 node tools/check.mjs          # типы (tsc по JSDoc) + сверка правил + дым-тест
-node tools/fs-audit.mjs       # 152 проверки: каждая цитирует Rules Reference
+node tools/fs-audit.mjs       # 153 проверки: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # 82 проверки: карты одной фракции против их текстов
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках
@@ -138,11 +139,11 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 шагов карт (73 «дела» и 155 «вопроса» — каждый объявлен и каждый — функция), а ещё один —
 сам предметный слой: стороны боя и верх стопки приказов.
 
-Двадцать два раздела дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
+Двадцать три раздела дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
 (вставленные `assets.forge++`, `cards[side].hand.splice`, `p.materiel -= 1`, ручной счёт
 пяти отрядов, `structuresAt(...).length`, `state.order = null`, `u.routed = true`,
 `order.bought++`, чтение `state.trim` мимо очереди, `storm.edge = …` мимо поля штормов и
-`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` `order.purchases` мимо `Purchases` `order.moveAreaLimit` мимо `OrderMove` и `order.prosperity` мимо `OrderTally`
+`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` `order.purchases` мимо `Purchases` `order.moveAreaLimit` мимо `OrderMove` `order.prosperity` мимо `OrderTally` и `order.seat`/`order.system` мимо `OrderContext`
 дают провал с именем файла и строкой):
 
 * жетоны: только `PlayerEntity` пишет в `assets`;
@@ -189,6 +190,10 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
   (`core/FSDeployLimits.js`): надбавка к пределу, лишние фабрики, «города и бастионы
   считаются фабриками», единственный отряд городов, «отряды идут в мир фабрики» и
   надбавка к вместимости мира с городом.
+* чей это приказ, какой и где — один объект `OrderContext` (`core/FSOrderContext.js`):
+  игрок, вид приказа, активная система и вопрос `mine(seat, kind)`, с которого
+  начинается каждая команда приказа; там же вложенный приказ «Департаменто
+  муниторум» (`nestedKind`/`turnInto`).
 * что приказ добыл и что обещал — один объект `OrderTally` (`core/FSOrderTally.js`):
   добыча доминирования, жетоны процветания, текст способности фракции, «приказ
   кончается со способностью», карты хаоса (колода и кубики морали) и обещанный

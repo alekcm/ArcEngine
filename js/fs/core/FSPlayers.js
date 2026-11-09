@@ -204,7 +204,7 @@ class PlayerEntity {
     commandLevel() {
         const order = this.state.order;
         const fight = OrderFight.of(order);
-        const bonus = order && order.seat === this.seat && fight ? fight.klBonus : 0;
+        const bonus = order && OrderContext.of(order).isSeat(this.seat) && fight ? fight.klBonus : 0;
         return this.cities() + bonus;
     }
 

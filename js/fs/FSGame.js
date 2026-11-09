@@ -386,7 +386,7 @@ class FSGame {
         }
         const ctx = { title: '', text: '', status: this.status || '', warn: this.warn || '', actions: [], mode: this.mode, setupCellSelected: false };
         // A new order (or a new step of it) — the pending action is dropped.
-        const orderKey = s.order ? s.order.order + ':' + PhasePlan.of(s.order).name : '';
+        const orderKey = s.order ? OrderContext.of(s.order).kind + ':' + PhasePlan.of(s.order).name : '';
         if (this.orderKey !== orderKey) {
             this.orderKey = orderKey;
             this.mode = 'idle';
@@ -470,12 +470,12 @@ class FSGame {
         }
         // The order that is being resolved. A test battle has no order of its own:
         // its whole interface is the combat below.
-        if (s.order && s.order.seat === me && s.testMode !== 'battle') {
-            if (s.order.order === 'advance') this.panelAdvance(s, ctx);
+        if (s.order && OrderContext.of(s.order).isSeat(me) && s.testMode !== 'battle') {
+            if (OrderContext.of(s.order).isKind('advance')) this.panelAdvance(s, ctx);
             if (PhasePlan.of(s.order).is('guardDeploy')) this.panelGuardDeploy(s, ctx);
-            else if (s.order.order === 'deploy') this.panelDeploy(s, ctx);
-            else if (s.order.order === 'strategize') this.panelStrategize(s, ctx);
-            else if (s.order.order === 'dominate') this.panelDominate(s, ctx);
+            else if (OrderContext.of(s.order).isKind('deploy')) this.panelDeploy(s, ctx);
+            else if (OrderContext.of(s.order).isKind('strategize')) this.panelStrategize(s, ctx);
+            else if (OrderContext.of(s.order).isKind('dominate')) this.panelDominate(s, ctx);
         }
         // The upgrades of the player: once per round.
         if (s.phase === 'operations' && s.players[me]) {
@@ -486,8 +486,8 @@ class FSGame {
                 const kind = u.order || (c && c.order);
                 // An orbital upgrade is played during the strike of an advance,
                 // any other one during the order printed on the card.
-                const right = !kind || (s.order && s.order.seat === me
-                    && (kind === 'orbital' ? PhasePlan.of(s.order).is('strike') : s.order.order === kind));
+                const right = !kind || (s.order && OrderContext.of(s.order).isSeat(me)
+                    && (kind === 'orbital' ? PhasePlan.of(s.order).is('strike') : OrderContext.of(s.order).isKind(kind)));
                 if (!right) continue;
                 ctx.actions.push({
                     label: 'Применить улучшение: ' + u.name,
@@ -745,7 +745,7 @@ class FSGame {
             const s = this.state;
             if (!s) return;
             // Отмена работает и в начале боя: пока в нём ничего не сделано.
-            const mine = s.order && s.order.seat === s.seat && s.order.order === 'advance'
+            const mine = s.order && OrderContext.of(s.order).isSeat(s.seat) && OrderContext.of(s.order).isKind('advance')
                 && (PhasePlan.of(s.order).is('move') || PhasePlan.of(s.order).is('combat'));
             if (mine && MarchPlan.of(s.order).steps.length) {
                 e.preventDefault();
@@ -947,12 +947,13 @@ class FSGame {
         }
         const me = s.seat;
         const order = s.order;
-        const sys = Board.of(s).system(order.system);
+        const sys = Board.of(s).system(OrderContext.of(order).system);
         if (PhasePlan.of(order).is('move')) {
             // The board itself is the tool of the movement: every click picks or marches.
             // A new order starts a new march: the flow and the group are empty again.
             const march = MarchPlan.of(order);
-            const mark = order.seat + ':' + order.system + ':' + march.moved.length;
+            const context = OrderContext.of(order);
+            const mark = context.seat + ':' + context.system + ':' + march.moved.length;
             if (this.moveFor !== mark && !march.moved.length) {
                 this.moveFor = mark;
                 this.moveKind = null;
@@ -1207,7 +1208,7 @@ class FSGame {
         const p = s.players[me];
         const order = s.order;
         const step = FS_RULES.deployStep(order);
-        const limit = FS_RULES.deployLimit(s, me, order.system);
+        const limit = FS_RULES.deployLimit(s, me, OrderContext.of(order).system);
         const spent = FS_RULES.spentOf(order);
         const deal = OrderDeal.of(order);
         const canStructureFirst = deal.structureFirst && step === 'units';
@@ -1233,7 +1234,7 @@ class FSGame {
         if (!canCache) opts.cache = false;
         if (!canForge) opts.forgeKl = false;
         const cl = FS_RULES.commandLevel(s, me);
-        const mayBuild = faction && FS_RULES.hasFactory(s, me, order.system);
+        const mayBuild = faction && FS_RULES.hasFactory(s, me, OrderContext.of(order).system);
         if (step === 'units' && mayBuild && FS_RULES.unitsBought(order) < limit) {
             for (const def of faction.units) {
                 const n = supply[def.id] || 0;
@@ -1330,7 +1331,7 @@ class FSGame {
         const sys = factory ? Board.of(s).system(factory.system) : null;
         const area = sys && factory ? sys.areas.find(a => a.pos === factory.pos) : null;
         const worldName = area && area.world ? area.world.name : 'мир-производитель';
-        const limit = FS_RULES.deployLimit(s, me, order.system);
+        const limit = FS_RULES.deployLimit(s, me, OrderContext.of(order).system);
         const spent = FS_RULES.spentOf(order);
         const purchases = Purchases.of(order).list;
         const faction = FS_CATALOG.faction(p.faction);
@@ -1364,9 +1365,10 @@ class FSGame {
         const cl = FS_RULES.commandLevel(s, me);
         // The pair deal: after the first Guardsman, every second one costs one
         // supply token instead of materiel — the price below already shows 0.
-        const dealUnit = (order.supplyDeal && order.supplyDeal.unit) || 'Гвардейца';
+        const deal = OrderDeal.of(order);
+        const dealUnit = (deal.supplyDeal && deal.supplyDeal.unit) || 'Гвардейца';
         const dealName = dealUnit.toLowerCase().replace(/а/g, '');
-        const isDealUnit = def => order.supplyDeal && String(def.name).toLowerCase().indexOf(dealName) >= 0;
+        const isDealUnit = def => deal.isSupplyPair(def);
         const dealNextFree = def => isDealUnit(def) && FS_RULES.dealBought(order) % 2 === 1;
         if (FS_RULES.unitsBought(order) < limit) {
             // «Массовое Производство» производит только наземные отряды и только
@@ -1438,7 +1440,7 @@ class FSGame {
         const s = this.state;
         const order = s.order;
         if (!order) return;
-        const sys = Board.of(s).system(order.system);
+        const sys = Board.of(s).system(OrderContext.of(order).system);
         if (!sys) return;
         const scope = DeployScope.of(order);
         const list = [];
@@ -1482,7 +1484,7 @@ class FSGame {
         ctx.text = 'Купите одно боевое улучшение и одно улучшение приказа.';
         const level = FS_RULES.commandLevel(s, me);
         const costOf = c => Math.max(0, c.cost - (p.cardDiscount || 0));
-        const noUnits = !order || !FS_RULES.hasUnitsOrStructures(s, me, order.system);
+        const noUnits = !order || !FS_RULES.hasUnitsOrStructures(s, me, OrderContext.of(order).system);
         // The combat deck, card for card, in the same component as the hand of the
         // battle; the discard for a combat upgrade is two cards of the same name.
         const deckNames = FSUI.combatDeckKnown(p, true);
@@ -1618,7 +1620,7 @@ class FSGame {
     // Confirm or refund the purchase the player chose.
     confirmUpgrade(kind) {
         const s = this.state;
-        if (!s || !s.order || s.order.order !== 'strategize' || s.order.seat !== s.seat) return;
+        if (!s || !s.order || !OrderContext.of(s.order).isKind('strategize') || !OrderContext.of(s.order).isSeat(s.seat)) return;
         const p = s.players[s.seat];
         const bought = UpgradeOrder.of(s.order);
         if (kind === 'combat') {
@@ -2590,7 +2592,7 @@ class FSGame {
     highlightMoves() {
         const s = this.state;
         if (!s || this.mode !== 'move' || !s.order || !this.selected) { return; }
-        const sys = Board.of(s).system(s.order.system);
+        const sys = Board.of(s).system(OrderContext.of(s.order).system);
         const units = this.selectedUnits();
         if (!sys || !units.length) { FSView.clearHighlights(this.view); return; }
         const list = [];

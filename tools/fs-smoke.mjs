@@ -500,6 +500,29 @@ try {
     fail(e.message);
 }
 
+// --- what an order is: one object -------------------------------------------
+section('кто и какой приказ: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSOrderContext.js', 'js/fs/core/FSDeal.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Whose order it is, of what kind and where it happens is one question
+        // (OrderContext); so is the pair of «Массового Производства» (OrderDeal).
+        const re = /\b(?:state\.order|s\.order|order)\.(?:system|seat|order|nestedKind|nested|supplyDeal)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('кто и какой приказ, спрашивают у OrderContext');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- what an order gained and promised: one object --------------------------
 section('итог приказа: один объект');
 try {

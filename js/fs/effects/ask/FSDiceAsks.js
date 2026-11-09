@@ -54,7 +54,7 @@ class DiceAsks {
             // «Во время этого орбитального удара получите 1 `any cube`»
             // («Набег жнецов»): the cube of the strike is rolled, and only
             // its `att` face adds a hit to the strike.
-            if (state.order && PhasePlan.of(state.order).is('strike') && state.order.seat === seat) {
+            if (state.order && PhasePlan.of(state.order).is('strike') && OrderContext.of(state.order).isSeat(seat)) {
                 let bonus = 0;
                 const faces = [];
                 for (let i = 0; i < n; i++) {
@@ -189,7 +189,7 @@ class DiceAsks {
             // «Вы можете перевернуть 1 из своих `morale cube` на `att.
             // cube`» во время орбитального удара («Маскированная
             // бомбардировка»): the cube of the strike is a hit.
-            if (state.order && PhasePlan.of(state.order).is('strike') && state.order.seat === seat) {
+            if (state.order && PhasePlan.of(state.order).is('strike') && OrderContext.of(state.order).isSeat(seat)) {
                 StrikePlan.of(state.order).addBonus(step.n || 1);
                 R.log(state, seat, state.players[seat].name + ' обращает кубик удара в атаку.');
             }

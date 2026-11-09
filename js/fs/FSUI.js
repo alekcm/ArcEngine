@@ -268,8 +268,8 @@ const FSUI = {
         // A fight is its own screen: the rails of the board stand aside while the
         // battle in the contested sector is played.
         root.classList.toggle('is-battle', !!(state && state.combat));
-        root.classList.toggle('is-deploy', !!(state && state.order && state.order.order === 'deploy'));
-        root.classList.toggle('is-strategize', !!(state && state.order && state.order.order === 'strategize'));
+        root.classList.toggle('is-deploy', !!(state && state.order && OrderContext.of(state.order).isKind('deploy')));
+        root.classList.toggle('is-strategize', !!(state && state.order && OrderContext.of(state.order).isKind('strategize')));
         root.classList.toggle('is-planning', !!(state && state.phase === 'planning'));
         root.classList.toggle('is-placing-tile', !!(state && state.phase === 'setup' && ctx.mode === 'placeTile'));
         if (this.currentLobby) { this.renderModernLobby(); return; }

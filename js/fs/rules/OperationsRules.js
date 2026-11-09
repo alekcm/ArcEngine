@@ -268,7 +268,7 @@ class OperationsRules {
         const card0 = FS_CATALOG.card('orders', p.faction, up.name);
         const kind = up.order || (card0 && card0.order) || null;
         if (kind) {
-            if (!state.order || state.order.seat !== seat) {
+            if (!state.order || !OrderContext.of(state.order).isSeat(seat)) {
                 return { ok: false, error: 'Это улучшение применяется во время приказа.' };
             }
             // An orbital upgrade belongs to the orbital strike of an advance,
@@ -278,7 +278,7 @@ class OperationsRules {
                 if (!PhasePlan.of(state.order).is('strike')) {
                     return { ok: false, error: 'Это улучшение применяется во время орбитального удара.' };
                 }
-            } else if (state.order.order !== kind) {
+            } else if (!OrderContext.of(state.order).isKind(kind)) {
                 return { ok: false, error: 'Это улучшение применяется во время приказа «' + this.engine.orderName(kind) + '».' };
             }
         }
@@ -376,7 +376,7 @@ class OperationsRules {
         }
         // «Прикосновение варпа» names the advance order in its trigger.
         if (trigger === 'order' && state.order) {
-            schemes = schemes.filter(s => !s.orderType || s.orderType === state.order.order);
+            schemes = schemes.filter(s => !s.orderType || s.orderType === OrderContext.of(state.order).kind);
         }
         if (!schemes.length) return false;
         const c = ctx || {};

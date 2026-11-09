@@ -65,10 +65,9 @@ class CoreRules {
      * they are asked here, once.
      */
     orderOf(state, seat, kind) {
-        const order = state.order;
-        if (!order || order.seat !== seat) return null;
-        if (kind && order.order !== kind) return null;
-        return order;
+        const context = OrderContext.of(state.order);
+        if (!context || !context.mine(seat, kind)) return null;
+        return context.order;
     }
 
     faction(state, seat) {
@@ -154,7 +153,7 @@ class CoreRules {
                 this.structuresAt(state, sys.id, a.pos).some(s => s.seat === seat && s.type === 'city')).length, 0);
         }
         if (kind === 'cultist') {
-            const sys = state.order ? state.order.system : null;
+            const sys = OrderContext.of(state.order) ? OrderContext.of(state.order).system : null;
             return state.units.filter(u => u.seat === seat && (!sys || u.system === sys)
                 && /культист/i.test((this.unitOf(state, u) || {}).name || '')).length;
         }

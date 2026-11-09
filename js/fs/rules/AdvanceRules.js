@@ -9,8 +9,8 @@ class AdvanceRules {
 
     movableUnits(state, seat) {
         const order = state.order;
-        if (!order || order.order !== 'advance') return [];
-        const sys = order.system;
+        if (!order || !OrderContext.of(order).isKind('advance')) return [];
+        const sys = OrderContext.of(order).system;
         const from = new Set([sys].concat(this.engine.neighbors(state, sys)));
         const march = MarchPlan.of(order);
         const step = march.step;
@@ -27,7 +27,7 @@ class AdvanceRules {
         const move = OrderMove.of(order);
         if (move.preAdvance) {
             units = units.filter(u => {
-                if (u.system !== order.system) return false;
+                if (u.system !== OrderContext.of(order).system) return false;
                 const d = this.engine.unitOf(state, u);
                 return !!d && (d.kl || 0) <= 1;
             });
@@ -35,7 +35,7 @@ class AdvanceRules {
         if (march.excludedUnit) units = units.filter(u => u.id !== march.excludedUnit);
         // «Быстрый ответ»: only the units that are ALREADY in the chosen
         // system may take part in the limited advance.
-        if (move.quickResponse) units = units.filter(u => u.system === order.system);
+        if (move.quickResponse) units = units.filter(u => u.system === OrderContext.of(order).system);
         // The frozen routes decide: a unit without a road does not count.
         if (march.route) return units.filter(u => march.hasRoad(u.id));
         return units;
@@ -51,7 +51,7 @@ class AdvanceRules {
             return { ok: false, error: 'Этот отряд уже участвовал в дополнительном приказе продвижения.' };
         }
         if (order && OrderMove.of(order).preAdvance) {
-            if (unit.system !== order.system) {
+            if (unit.system !== OrderContext.of(order).system) {
                 return { ok: false, error: 'Дополнительный приказ использует отряд из активной системы.' };
             }
             if ((def.kl || 0) > 1) {
@@ -61,7 +61,7 @@ class AdvanceRules {
         // «Быстрый ответ»: only the units of the chosen system march, and only
         // into friendly or uncontrolled areas.
         if (order && OrderMove.of(order).quickResponse) {
-            if (unit.system !== order.system) {
+            if (unit.system !== OrderContext.of(order).system) {
                 return { ok: false, error: 'Ограниченное продвижение — только отряды этой системы.' };
             }
             const ctrl = this.engine.control(state, seat, target.system, target.pos);
@@ -80,13 +80,13 @@ class AdvanceRules {
         const area = this.engine.area(sys, target.pos);
         if (!area) return { ok: false, error: 'Нет такой области.' };
         // The destination must be in the active system.
-        if (target.system !== order.system) return { ok: false, error: 'Отряд может двигаться только в активную систему.' };
+        if (target.system !== OrderContext.of(order).system) return { ok: false, error: 'Отряд может двигаться только в активную систему.' };
         // Ships stay in the voids, ground units stand on the worlds.
         if (def.type === 'ship' && area.world) return { ok: false, error: 'Корабль может стоять только в пустоте.' };
         if (def.type === 'ground' && !area.world) return { ok: false, error: 'Наземный отряд не может стоять в пустоте.' };
         // The unit may come from the active system or from one adjacent system.
         const from = unit.system;
-        const adjacent = from === order.system || this.engine.neighbors(state, order.system).includes(from);
+        const adjacent = from === OrderContext.of(order).system || this.engine.neighbors(state, OrderContext.of(order).system).includes(from);
         if (!adjacent) return { ok: false, error: 'Отряд слишком далеко.' };
         // A warp storm on the edge blocks the way — unless the order says that
         // the ships may pass through the storms.
@@ -116,7 +116,7 @@ class AdvanceRules {
 
     canMove(state, seat, unit, target) {
         const order = state.order;
-        if (!order || order.order !== 'advance') return { ok: false, error: 'Это не приказ наступления.' };
+        if (!order || !OrderContext.of(order).isKind('advance')) return { ok: false, error: 'Это не приказ наступления.' };
         if (unit.seat !== seat) return { ok: false, error: 'Это не ваш отряд.' };
         if (unit.routed) return { ok: false, error: 'Деморализованный отряд не двигается.' };
         // The step of the movement: the ships first, then the ground units.
@@ -151,11 +151,11 @@ class AdvanceRules {
             if (!def) continue;
             if (kind && def.type !== kind) continue;
             const from = unit.system;
-            if (!(from === order.system || this.engine.neighbors(state, order.system).includes(from))) continue;
+            if (!(from === OrderContext.of(order).system || this.engine.neighbors(state, OrderContext.of(order).system).includes(from))) continue;
             const list = [];
-            for (const area of this.engine.system(state, order.system).areas) {
-                if (this.moveAllowed(state, seat, unit, { system: order.system, pos: area.pos }).ok) {
-                    list.push({ system: order.system, pos: area.pos });
+            for (const area of this.engine.system(state, OrderContext.of(order).system).areas) {
+                if (this.moveAllowed(state, seat, unit, { system: OrderContext.of(order).system, pos: area.pos }).ok) {
+                    list.push({ system: OrderContext.of(order).system, pos: area.pos });
                 }
             }
             if (list.length) out[unit.id] = list;
@@ -165,8 +165,8 @@ class AdvanceRules {
 
     cmdMoveUnits(state, seat, cmd) {
         const order = state.order;
-        if (!order || order.order !== 'advance') return { ok: false, error: 'Это не приказ наступления.' };
-        if (order.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        if (!order || !OrderContext.of(order).isKind('advance')) return { ok: false, error: 'Это не приказ наступления.' };
+        if (!OrderContext.of(order).isSeat(seat)) return { ok: false, error: 'Сейчас ход другого игрока.' };
         const march = MarchPlan.of(order);
         const moves = cmd.moves || [];
         // The order may limit the number of the units that move.
@@ -230,8 +230,8 @@ class AdvanceRules {
         // The ground units may come into the active system from one neighbour only,
         // and a ship that came from a neighbour closes the way for the others. The
         // rule holds for the whole order, not only for one command.
-        const ground = plan.filter(m => m.type === 'ground' && m.from !== order.system);
-        const ships = plan.filter(m => m.type === 'ship' && m.from !== order.system);
+        const ground = plan.filter(m => m.type === 'ground' && m.from !== OrderContext.of(order).system);
+        const ships = plan.filter(m => m.type === 'ship' && m.from !== OrderContext.of(order).system);
         const froms = new Set();
         for (const m of ground) froms.add(m.from);
         for (const m of ships) froms.add(m.from);
@@ -407,8 +407,8 @@ class AdvanceRules {
     cmdEndAdvance(state, seat, cmd) {
         if (state.strike) return { ok: false, error: 'Сначала распределите урон орбитального удара.' };
         const order = state.order;
-        if (!order || order.order !== 'advance') return { ok: false, error: 'Это не приказ наступления.' };
-        if (order.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        if (!order || !OrderContext.of(order).isKind('advance')) return { ok: false, error: 'Это не приказ наступления.' };
+        if (!OrderContext.of(order).isSeat(seat)) return { ok: false, error: 'Сейчас ход другого игрока.' };
         if (PhasePlan.of(order).is('move') && MarchPlan.of(order).step !== 'ground') {
             const march = MarchPlan.of(order);
             march.setStep('ground');
@@ -459,31 +459,31 @@ class AdvanceRules {
     orbitalStrikeTargets(state, seat) {
         const order = state.order;
         if (!order) return [];
-        const sys = this.engine.system(state, order.system);
+        const sys = this.engine.system(state, OrderContext.of(order).system);
         if (!sys) return [];
         const out = [];
         for (const from of sys.areas) {
             if (from.world) continue;
             const ships = state.units.filter(u => {
-                if (u.seat !== seat || u.system !== order.system || u.area !== from.pos || u.routed) return false;
+                if (u.seat !== seat || u.system !== OrderContext.of(order).system || u.area !== from.pos || u.routed) return false;
                 const def = this.engine.unitOf(state, u);
                 return !!def && def.type === 'ship';
             });
             if (!ships.length) continue;
             // The world must stand next to the void the ships shoot from.
-            const near = this.engine.areasAround(state, order.system, from.pos)
-                .filter(a => a.system === order.system);
+            const near = this.engine.areasAround(state, OrderContext.of(order).system, from.pos)
+                .filter(a => a.system === OrderContext.of(order).system);
             for (const area of sys.areas) {
                 if (!area.world) continue;
                 if (!near.some(a => a.pos === area.pos)) continue;
                 // Only an enemy world is a target: it holds the troops or the
                 // buildings of another player, and none of ours.
-                if (this.engine.areaState(state, seat, order.system, area.pos) !== 'enemy') continue;
+                if (this.engine.areaState(state, seat, OrderContext.of(order).system, area.pos) !== 'enemy') continue;
                 // A bastion shields the world — unless the card that grants the
                 // strike ignores it («Ужасный удар», «Полное разрушение», ...).
                 if (!StrikePlan.of(order).ignoresBastion
-                    && this.engine.structuresAt(state, order.system, area.pos).some(st => st.type === 'bastion')) continue;
-                out.push({ system: order.system, pos: area.pos, from: from.pos, ships: ships.map(u => u.id) });
+                    && this.engine.structuresAt(state, OrderContext.of(order).system, area.pos).some(st => st.type === 'bastion')) continue;
+                out.push({ system: OrderContext.of(order).system, pos: area.pos, from: from.pos, ships: ships.map(u => u.id) });
             }
         }
         return out;
@@ -659,13 +659,13 @@ class AdvanceRules {
         let health = def ? def.health : 1;
         // «Во время этого орбитального удара здоровье отрядов вашего противника
         // уменьшается до 3» («Вирусные бомбы»).
-        const cap = state.order && state.order.seat === st.attacker
+        const cap = state.order && OrderContext.of(state.order).isSeat(st.attacker)
             ? StrikePlan.of(state.order).enemyHealth : null;
         if (cap) health = Math.min(health, cap);
         // «временно убавить здоровье всех юнитов в атакуемом мире на 1» («Заряд
         // радиации»): the health of every unit of the world is lower while the
         // strike lasts — «можно опустить здоровье до 0 и убить мгновенно».
-        const down = state.order && state.order.seat === st.attacker
+        const down = state.order && OrderContext.of(state.order).isSeat(st.attacker)
             ? StrikePlan.of(state.order).healthDown : 0;
         if (down) health = Math.max(0, health - down);
         if (st.left >= health) {
@@ -690,7 +690,7 @@ class AdvanceRules {
             const ids = [...new Set(st.damaged)].filter(id => state.units.some(u => u.id === id));
             if (ids.length) {
                 state.strike = null;
-                order.chaosRouteDamaged = false;
+                StrikePlan.of(order).clearRoutes();
                 PhasePlan.of(order).set('done');
                 StrikePlan.of(order).finishAfterQuestion(true);
                 this.engine.runEffects(state, st.attacker, [{
@@ -702,7 +702,7 @@ class AdvanceRules {
         state.strike = null;
         if (order) {
             PhasePlan.of(order).set('done');
-            this.engine.finishOrder(state, st ? st.attacker : (order.seat));
+            this.engine.finishOrder(state, st ? st.attacker : OrderContext.of(order).seat);
         }
         return { ok: true };
     }

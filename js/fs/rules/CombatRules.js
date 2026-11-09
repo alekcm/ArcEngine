@@ -61,7 +61,7 @@ class CombatRules {
         // Where the attacking units came from: the retreats are judged by it,
         // and only the movement of this order counts.
         const origins = this.attackerOrigins(state, systemId, pos, attacker);
-        const viaAdvance = !!(state.order && state.order.order === 'advance' && origins.length);
+        const viaAdvance = !!(state.order && OrderContext.of(state.order).isKind('advance') && origins.length);
         const combat = {
             system: systemId,
             pos,
@@ -109,20 +109,21 @@ class CombatRules {
         // («Прикосновение варпа»): the advance belongs to the owner of the plan.
         const tally0 = OrderTally.of(state.order);
         if (tally0 && tally0.chaosCombatMorale
-            && (state.order.seat === attacker || state.order.seat === defender)) {
-            const side = CombatSides.sideOf(combat, state.order.seat);
+            && (OrderContext.of(state.order).isSeat(attacker) || OrderContext.of(state.order).isSeat(defender))) {
+            const side = CombatSides.sideOf(combat, OrderContext.of(state.order).seat);
             const dice = tally0.takeChaosCombatMorale();
             for (let i = 0; i < dice; i++) {
                 if (combat.dice[side].filter(Boolean).length >= this.engine.DICE_MAX) break;
                 combat.dice[side].push('morale');
             }
-            this.engine.log(state, state.order.seat, state.players[state.order.seat].name
+            const owner = OrderContext.of(state.order).seat;
+            this.engine.log(state, owner, state.players[owner].name
                 + ' получает кубик морали в начале боя.');
         }
         // «Если происходит бой, разыграйте только ОДИН раунд» («Мобилизированные
         // охотники»): the limit belongs to the combat this order starts.
         const fight = OrderFight.of(state.order);
-        if (fight && fight.combatRounds && state.order.seat === attacker) {
+        if (fight && fight.combatRounds && OrderContext.of(state.order).isSeat(attacker)) {
             combat.maxRounds = fight.combatRounds;
         }
         // The roster of the first round: the cards that pay for the losses of a
@@ -133,7 +134,7 @@ class CombatRules {
         // («Бесчисленные»): the token the order promised stands in the area of
         // the combat its order has just started.
         const tally = OrderTally.of(state.order);
-        const promised = state.order && state.order.seat === attacker && tally ? tally.promisedReinforce : null;
+        const promised = state.order && OrderContext.of(state.order).isSeat(attacker) && tally ? tally.promisedReinforce : null;
         if (promised) {
             tally.takePromisedReinforce();
             this.engine.runEffects(state, attacker, [{
@@ -160,7 +161,7 @@ class CombatRules {
 
     prepEffects(state, seat) {
         const order = state.order;
-        if (!order || order.seat !== seat || !state.combat) return false;
+        if (!order || !OrderContext.of(order).isSeat(seat) || !state.combat) return false;
         const fight = OrderFight.of(order);
         const prep = fight.prepReroll;
         const draw = fight.prepDrawCards;

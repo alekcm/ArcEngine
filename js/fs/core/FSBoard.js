@@ -241,7 +241,7 @@ class Board {
         const order = this.state.order;
         const limits = DeployLimits.of(order);
         if (limits && limits.capacityBonus) {
-            const city = this.structuresAt(systemId, pos).some(s => s.type === 'city' && s.seat === order.seat);
+            const city = this.structuresAt(systemId, pos).some(s => s.type === 'city' && s.seat === OrderContext.of(order).seat);
             if (city && limits.capacityFits(def)) {
                 cap += limits.capacityBonus;
                 if (limits.capacityMax) cap = Math.min(cap, limits.capacityMax);

@@ -56,7 +56,7 @@ class OrderAsks {
         // юнита в оспариваемой области» («Сервочерепа-стражи»): the
         // combat asks for the reroll once the hands are dealt.
         const fight = OrderFight.of(state.order);
-        if (fight && state.order.seat === seat) fight.setPrepReroll(step);
+        if (fight && OrderContext.of(state.order).isSeat(seat)) fight.setPrepReroll(step);
         return null;
     }
 
@@ -77,7 +77,7 @@ class OrderAsks {
         if (combat) combat.enemyHealth = step.n || 3;
         // «Во время этого орбитального удара здоровье отрядов вашего
         // противника уменьшается до 3» («Вирусные бомбы»).
-        else if (state.order && state.order.seat === seat) StrikePlan.of(state.order).setEnemyHealth(step.n || 3);
+        else if (state.order && OrderContext.of(state.order).isSeat(seat)) StrikePlan.of(state.order).setEnemyHealth(step.n || 3);
         return null;
     }
 
@@ -207,7 +207,8 @@ class OrderAsks {
 
     static supplyDeal(effects, f) {
         const { state, step } = f;
-        if (state.order) state.order.supplyDeal = { n: step.n || 2, unit: step.unit || '' };
+        const deal = OrderDeal.of(state.order);
+        if (deal) deal.setSupplyDeal(step.n || 2, step.unit || '');
         return null;
     }
 
@@ -254,7 +255,7 @@ class OrderAsks {
 
     static strategizeDeckBonus(effects, f) {
         const { state, seat, step } = f;
-        if (state.order && state.order.seat === seat) {
+        if (state.order && OrderContext.of(state.order).isSeat(seat)) {
             OrderTally.of(state.order).addChaosDeckBonus(step.n || 1);
         }
         return null;
@@ -263,7 +264,7 @@ class OrderAsks {
     static unitsThroughStorms(effects, f) {
         const { state, seat } = f;
         const move = OrderMove.of(state.order);
-        if (move && state.order.seat === seat) move.setUnitsThroughStorms();
+        if (move && OrderContext.of(state.order).isSeat(seat)) move.setUnitsThroughStorms();
         return null;
     }
 

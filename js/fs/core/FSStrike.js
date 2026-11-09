@@ -234,6 +234,12 @@ class StrikePlan {
         return !!this.order.chaosRouteDamaged;
     }
 
+    /** The tail of the card is being resolved: the flag is spent. */
+    clearRoutes() {
+        this.order.chaosRouteDamaged = false;
+        return this;
+    }
+
     /** The last question of the strike was asked: the order may end. */
     finishAfterQuestion(on) {
         this.order.chaosStrikeFinish = !!on;
