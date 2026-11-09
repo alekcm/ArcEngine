@@ -2068,6 +2068,13 @@ function fire(st, dice) {
     return t;
 }
 
+/** Fix the dice for a whole check — including the cube a card gains before the strike. */
+function withFixedDice(faces, body) {
+    const roll = FS_RULES.rollDice;
+    FS_RULES.rollDice = (s, n) => (n === 1 ? [faces[0]] : faces.slice());
+    try { return body(); } finally { FS_RULES.rollDice = roll; }
+}
+
 // --- Бесчисленные -----------------------------------------------------------
 // «Разыграв этот приказ в системе, в которой у вас есть недеморализованный
 //  корабль, вы можете разместить 1 бесплатный жетон подкрепления в спорной
@@ -2094,14 +2101,14 @@ check('Бесчисленные', 'жетон подкрепления ждёт 
 //  каждый корабль. За каждый потраченный вами `att. cube` купите один отряд с
 //  командным уровнем 2 или меньше и разместите его в этом мире.»
 check('Мицетические споры', 'бастионы не спасают мир от удара', () => {
-    const st = tyrStrike({ upgrades: ['Мицетические споры'], foeStructures: ['bastion'] });
+    const st = tyrStrike({ upgrades: ['Мицетические споры', 'Камери размножения'], foeStructures: ['bastion'] });
     const res = burn(st, 'Мицетические споры');
     ok(res.ok, 'карта не сгорела: ' + res.error);
     return eq(!!st.order.ignoreBastion, true, 'приказ игнорирует бастионы');
 });
 
 check('Мицетические споры', 'три кубика удара покупают три отряда в мир удара', () => {
-    const st = tyrStrike({ upgrades: ['Мицетические споры'], materiel: 12 });
+    const st = tyrStrike({ upgrades: ['Мицетические споры', 'Камери размножения'], materiel: 12 });
     burn(st, 'Мицетические споры');
     const t = fire(st, ['att', 'att', 'att', 'def']);
     // Two ships: the ceiling is 2 × 2 = 4 cubes, the roll gives 3.
@@ -2122,7 +2129,7 @@ check('Мицетические споры', 'три кубика удара п�
 });
 
 check('Мицетические споры', 'отказ от траты не покупает ничего', () => {
-    const st = tyrStrike({ upgrades: ['Мицетические споры'], materiel: 12 });
+    const st = tyrStrike({ upgrades: ['Мицетические споры', 'Камери размножения'], materiel: 12 });
     burn(st, 'Мицетические споры');
     const t = fire(st, ['att', 'att', 'att', 'def']);
     answerAll(st, (s, qq) => (qq.kind === 'choice' ? { choice: 0 } : firstOption(s, qq)));
@@ -2131,6 +2138,32 @@ check('Мицетические споры', 'отказ от траты не п
     // The strike destroyed the enemy factory and paid for it: the materiel of
     // the player did not go down.
     return ok(st.players[0].materiel >= 12, 'материя на отряды не тратилась');
+});
+
+// «Требуются «Камери размножения»»: the quoted name is another order upgrade
+// of the same faction. Without it the whole card is forbidden, not just its
+// last sentence, so none of the abilities of the strike is announced.
+check('Мицетические споры', 'без карты «Камери размножения» способность не применяется', () => {
+    const st = tyrStrike({ upgrades: ['Мицетические споры'] });
+    const res = burn(st, 'Мицетические споры');
+    eq(res.ok, true, 'карта разыграна');
+    eq((st.order.strikePays || []).length, 0, 'оплата кубиков не заявлена');
+    eq(!!st.order.ignoreBastion, false, 'бастионы по-прежнему защищают мир');
+    const order = st.order;
+    const t = fire(st, ['att', 'att', 'def']);
+    ok(!!t, 'удар нанесён');
+    return eq(!!order.strikePlanned, false, 'вопроса о трате кубиков нет');
+});
+
+check('Мицетические споры', 'купленная карта «Камери размножения» открывает способность', () => {
+    const st = tyrStrike({ upgrades: ['Мицетические споры', 'Камери размножения'] });
+    const res = burn(st, 'Мицетические споры');
+    ok(res.ok, 'карта не сгорела: ' + res.error);
+    const pays = st.order.strikePays || [];
+    eq(pays.length, 1, 'одна оплата кубиков');
+    eq(!!st.order.ignoreBastion, true, 'бастионы не защищают мир');
+    return eq(pays[0].reward && pays[0].reward.units && pays[0].reward.units.maxKl, 2,
+        'награда карты — отряды КЛ 2 или меньше');
 });
 
 // --- Разведка генокрадов ----------------------------------------------------
@@ -2152,7 +2185,102 @@ check('Разведка генокрадов', 'два кубика удара �
     return eq(st.players[0].assets.reinforcement, before + 2, 'два жетона подкрепления за два кубика');
 });
 
-// --- Камеры культивирования -------------------------------------------------
+// «A player can use multiple order upgrades during the same orbital strike»
+// (01-rules-reference.md, Orbital Strike): both Tyranid strike cards may be
+// burned on one strike. Each keeps its own payment and reward, and one cube
+// cannot be spent twice.
+check('Улучшения приказов', 'две карты удара: два вопроса по очереди и обе награды', () => {
+    // Five attack cubes rolled plus the any cube of «Разведки генокрадов».
+    const faces = ['att', 'att', 'att', 'att', 'att', 'def'];
+    return withFixedDice(faces, () => {
+        const st = tyrStrike({
+            upgrades: ['Мицетические споры', 'Камери размножения', 'Разведка генокрадов'],
+            materiel: 20,
+        });
+        burn(st, 'Мицетические споры');
+        burn(st, 'Разведка генокрадов');
+        eq((st.order.strikePays || []).length, 2, 'обе карты заявили свою оплату');
+        const t = fire(st, faces);
+        const planned = st.order.strikePlanned;
+        ok(!!planned, 'удар ждёт оплаты');
+        const before = st.players[0].assets.reinforcement;
+        const asked = [];
+        answerAll(st, (s, q) => {
+            if (q.op === 'strikePayPick') {
+                asked.push([q.index, q.options.length - 1]);
+                return { choice: 2 };
+            }
+            if (q.kind === 'types') return { type: q.options[0] };
+            if (q.kind === 'areas') return { area: q.options[0] };
+            return firstOption(s, q);
+        });
+        eq(asked.length, 2, 'спрошено ровно два платежа');
+        eq(asked[0], [0, 4], 'первый платёж: 2 за каждый из двух кораблей');
+        eq(asked[1], [1, 2], 'второй платёж: 2 из оставшихся кубиков');
+        eq(planned.paid, [2, 2], 'обе траты записаны по порядку');
+        eq(st.players[0].assets.reinforcement, before + 2, 'жетон подкрепления за второй платёж');
+        const bought = st.units.filter(u => u.seat === 0 && u.system === t.system && u.area === t.pos);
+        return eq(bought.length, 2, 'отряды за первый платёж стоят в мире удара');
+    });
+});
+
+check('Улучшения приказов', 'порядок карт сохраняет их награды', () => {
+    const faces = ['att', 'att', 'att', 'att', 'att', 'def'];
+    return withFixedDice(faces, () => {
+        const st = tyrStrike({
+            upgrades: ['Мицетические споры', 'Камери размножения', 'Разведка генокрадов'],
+            materiel: 20,
+        });
+        // The other order: the tokens card was burned first this time.
+        burn(st, 'Разведка генокрадов');
+        burn(st, 'Мицетические споры');
+        const t = fire(st, faces);
+        const before = st.players[0].assets.reinforcement;
+        const asked = [];
+        answerAll(st, (s, q) => {
+            if (q.op === 'strikePayPick') {
+                asked.push([q.index, q.options.length - 1]);
+                return { choice: 2 };
+            }
+            if (q.kind === 'types') return { type: q.options[0] };
+            if (q.kind === 'areas') return { area: q.options[0] };
+            return firstOption(s, q);
+        });
+        eq(asked, [[0, 2], [1, 4]], 'сначала плоский предел 2, затем 2 за корабль');
+        eq(st.players[0].assets.reinforcement, before + 2, 'первая карта дала жетоны');
+        const bought = st.units.filter(u => u.seat === 0 && u.system === t.system && u.area === t.pos);
+        return eq(bought.length, 2, 'вторая карта дала отряды');
+    });
+});
+
+check('Улучшения приказов', 'потраченный кубик нельзя потратить второй картой', () => {
+    // One attack cube rolled + the any cube of the card = two cubes in total.
+    const faces = ['att', 'def', 'def'];
+    return withFixedDice(faces, () => {
+        const st = tyrStrike({
+            upgrades: ['Мицетические споры', 'Камери размножения', 'Разведка генокрадов'],
+            materiel: 20,
+        });
+        burn(st, 'Мицетические споры');
+        burn(st, 'Разведка генокрадов');
+        fire(st, faces);
+        const before = st.players[0].assets.reinforcement;
+        const asked = [];
+        answerAll(st, (s, q) => {
+            if (q.op === 'strikePayPick') {
+                asked.push([q.index, q.options.length - 1]);
+                return { choice: 2 };
+            }
+            if (q.kind === 'types') return { type: q.options[0] };
+            if (q.kind === 'areas') return { area: q.options[0] };
+            return firstOption(s, q);
+        });
+        eq(asked, [[0, 2]], 'второй карте нечего тратить и вопрос не задаётся');
+        return eq(st.players[0].assets.reinforcement, before, 'жетонов за неоплаченный платёж нет');
+    });
+});
+
+// --- Камери размножения -------------------------------------------------
 // «После того, как вы выполните этот приказ, можете приобрести до 2 отрядов за
 //  каждый недеморализованный Корабль Улей в активной системе и разместить их на
 //  любых дружественных или никем не контролируемых мирах в активной системе.»
@@ -2161,18 +2289,18 @@ function cultivate(ships) {
     const st = orderState('deploy', {
         faction: TYR, ships: ships ? { 'корабли-ульи': ships } : {},
         units: { 'гаунты': 1 }, materiel: 20, structures: ['factory'],
-        upgrades: ['Камеры культивирования'],
+        upgrades: ['Камери размножения'],
     });
     const sys = st.systems[0];
     const pos = worldOf(st, sys.id);
     const bought = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гаунты', system: sys.id, pos });
     ok(bought.ok, 'отряд приказа не куплен: ' + bought.error);
-    const res = burn(st, 'Камеры культивирования');
+    const res = burn(st, 'Камери размножения');
     ok(res.ok, 'карта не сгорела: ' + res.error);
     return st;
 }
 
-check('Камеры культивирования', 'два Корабля Улья дают право на четыре отряда', () => {
+check('Камери размножения', 'два Корабля Улья дают право на четыре отряда', () => {
     const st = cultivate(2);
     const q = pending(st);
     ok(!!q, 'вопроса о покупке нет');
@@ -2192,14 +2320,14 @@ check('Камеры культивирования', 'два Корабля Ул
     return ok(st.players[0].materiel < 20, 'материя за отряды потрачена');
 });
 
-check('Камеры культивирования', 'один Корабль Улей даёт право на два отряда', () => {
+check('Камери размножения', 'один Корабль Улей даёт право на два отряда', () => {
     const st = cultivate(1);
     const q = pending(st);
     ok(!!q, 'вопроса о покупке нет');
     return eq(q.n, 2, 'два отряда за один Корабль Улей');
 });
 
-check('Камеры культивирования', 'без Корабля Улья покупать нечего', () => {
+check('Камери размножения', 'без Корабля Улья покупать нечего', () => {
     const st = cultivate(0);
     return eq(!!st.pending, false, 'вопроса о покупке нет');
 });
@@ -2456,6 +2584,30 @@ check('Пожиратели Миров', 'предел жетонов ресур
     eq(FS_EFFECTS.assetCap(st.players[0], 'cache'), 4, 'предел тайника тоже четыре');
     const guard = players('имперская-гвардия', TYR)[0];
     return eq(FS_EFFECTS.assetCap({ faction: guard.faction }, 'forge'), 3, 'у прочих фракций предел три');
+});
+
+// «Набег жнецов» (Некроны): the choice of the unit that takes damage first is
+// independent of the payments of a strike. Removing the old guard must not
+// lose this question — it is asked before the damage is suffered.
+head('Улучшения приказов', 'некроны');
+check('Набег жнецов', 'выбранный отряд КЛ 0 получает урон первым', () => {
+    const faces = ['att', 'def', 'def'];
+    return withFixedDice(faces, () => {
+        const st = strikeState({
+            faction: 'некроны', foeFaction: 'имперская-гвардия',
+            ships: { 'крейсеры-жнец': 2 }, holdUnit: 'воины',
+            foeUnits: { 'гвардейцы': 2 }, upgrades: ['Набег жнецов'],
+        });
+        const res = burn(st, 'Набег жнецов');
+        ok(res.ok, 'карта не сгорела: ' + res.error);
+        fire(st, faces);
+        const q = pending(st);
+        ok(!!q, 'вопрос о первом уроне не задан');
+        eq([q.kind, q.op], ['units', 'strikeFirstPick'], 'спрашивается отряд, который получит урон первым');
+        const id = (q.options || [])[0];
+        answerAll(st, (s2, qq) => (qq.op === 'strikeFirstPick' ? { units: [id] } : firstOption(s2, qq)));
+        return eq(st.order && st.order.strikeFirst, id, 'выбор записан в приказе удара');
+    });
 });
 
 // ============================================================================

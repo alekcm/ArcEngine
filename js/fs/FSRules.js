@@ -1912,38 +1912,50 @@ const FS_RULES = {
                 || state.structures.some(s => s.seat === p.seat && s.system === target.system && s.area === target.pos)));
         const victims = state.units.filter(u => u.system === target.system && u.area === target.pos && u.seat !== seat);
         // «Во время выполнения этого орбитального удара вы можете потратить до
-        // 2 `att. cube` за каждый корабль. За каждый потраченный вами `att.
-        // cube` купите один отряд … и разместите его в этом мире» («Мицетические
-        // споры»): the cubes paid are the ones the strike has rolled, so the
-        // ceiling is the smaller of the two counts.
-        const pay = order.strikePay;
-        if (pay && !order.strikePayAsked && !order.strikeFirstWanted) {
+        // 2 `att. cube` за каждый корабль …» («Мицетические споры») and «… чтобы
+        // получить 1 жетон подкрепления за каждый потраченный `att. cube`»
+        // («Разведка генокрадов»): BOTH cards may be used on the same strike
+        // (01-rules-reference.md, Orbital Strike), so every card keeps its own
+        // payment and reward. The questions are asked in the order the cards
+        // were used, against one common pool of the cubes of this strike.
+        const pays = order.strikePays || (order.strikePay ? [order.strikePay] : []);
+        /** @type {any} */
+        let planned = null;
+        const paySteps = [];
+        if (pays.length && !order.strikePayAsked) {
             order.strikePayAsked = true;
             // The cubes that may be paid: the ones the strike has rolled and the
             // ones a card has given («Разведка генокрадов»).
-            const pool = dice.concat(order.strikeDice || []);
-            const cap = Math.min(pool.filter(d => d === (pay.kind || 'att')).length,
-                (pay.n || 1) * (pay.per === 'ship' ? ships.length : 1));
-            if (cap > 0) {
-                order.strikePlanned = {
-                    system: target.system, pos: target.pos, hits, defender,
-                    victims: victims.map(u => u.id), cap: cap,
-                };
-                order.phase = 'strike-first';
-                this.runEffects(state, seat, [{ op: 'strikePayPick', cap: cap }], { kind: 'order', ctx: null });
-                return { ok: true, pending: true, hits };
+            const payPlan = {
+                system: target.system, pos: target.pos, hits, defender,
+                victims: victims.map(u => u.id), cap: 0,
+                ships: ships.length, pool: dice.concat(order.strikeDice || []),
+                pays: pays.slice(), paid: [],
+            };
+            const caps = payPlan.pays.map(pay2 => FS_EFFECTS.strikePayCap(payPlan, pay2));
+            payPlan.cap = Math.max(0, ...caps);
+            if (payPlan.cap > 0) {
+                planned = payPlan;
+                for (let i = 0; i < payPlan.pays.length; i++) paySteps.push({ op: 'strikePayPick', index: i });
             }
         }
         // «Вы можете выбрать 1 отряд с командным уровнем 0 в этом мире. Этот
         // отряд получит урон первым во время этого орбитального удара»
-        // («Набег жнецов»): the choice of the card comes first.
-        if (hits > 0 && victims.length && defender >= 0 && order.strikeFirstWanted && !order.strikeFirst) {
-            order.strikePlanned = {
+        // («Набег жнецов»): the choice is independent of the payments. A player
+        // has one faction, so the two cards never meet in practice, but both
+        // are choices made BEFORE the damage is suffered and both are asked.
+        const wantsFirst = hits > 0 && victims.length && defender >= 0
+            && order.strikeFirstWanted && !order.strikeFirst;
+        if (paySteps.length || wantsFirst) {
+            if (!planned) planned = {
                 system: target.system, pos: target.pos, hits, defender,
-                victims: victims.map(u => u.id),
+                victims: victims.map(u => u.id), cap: 0,
+                ships: ships.length, pool: [], pays: [], paid: [],
             };
+            if (wantsFirst) paySteps.push({ op: 'strikeFirstPick', maxKl: order.strikeFirstKl || 0 });
+            order.strikePlanned = planned;
             order.phase = 'strike-first';
-            this.runEffects(state, seat, [{ op: 'strikeFirstPick', maxKl: order.strikeFirstKl || 0 }], { kind: 'order', ctx: null });
+            this.runEffects(state, seat, paySteps, { kind: 'order', ctx: null });
             return { ok: true, pending: true, hits };
         }
         return this.finishStrike(state, seat, target, hits, victims, defender);
