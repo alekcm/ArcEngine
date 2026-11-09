@@ -3561,8 +3561,17 @@ const FS_RULES = {
         c.staged[side] = { name, card, seat };
         hand.chosen = { name, card };
         this.log(state, seat, state.players[seat].name + ' выбирает боевую карту и кладёт её закрытой.');
-        if (side === 'attacker') c.step = 'choose-defender';
-        else c.step = 'reveal';
+        // «The attacker and defender simultaneously choose one combat card from
+        // their hands and place it facedown in front of them. The attacker
+        // reveals and resolves his combat card. Then, the defender reveals and
+        // resolves his combat card.» Neither card is turned over before both of
+        // them lie on the table: a card revealed too early resolves while the
+        // other player is still choosing, and his own card play would overwrite
+        // the questions the first card is still asking.
+        const otherSide = side === 'attacker' ? 'defender' : 'attacker';
+        const otherDone = !!c.staged[otherSide] || !(c.cards[otherSide].hand || []).length;
+        if (otherDone) c.step = 'reveal';
+        else c.step = side === 'attacker' ? 'choose-defender' : 'choose-attacker';
         this.advanceCombatSteps(state);
         return { ok: true, card: card || null, staged: true };
     },

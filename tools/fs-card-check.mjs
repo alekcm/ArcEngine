@@ -50,10 +50,18 @@ const ONLY = argOf('only');
 let done = 0;
 const failed = [];
 let group = '';
+// The sections of a faction: a run checks the cards of one faction, the sections
+// of the others are skipped.
+let groupFaction = null;
 
-function head(text) { group = text; console.log('\n' + C.b + '  ' + text + C.r); }
+function head(text, ofFaction) {
+    group = text;
+    groupFaction = ofFaction || null;
+    if (!groupFaction || groupFaction === FACTION) console.log('\n' + C.b + '  ' + text + C.r);
+}
 
 function check(card, what, fn) {
+    if (groupFaction && groupFaction !== FACTION) return;
     if (ONLY && !(card + ' ' + what).toLowerCase().includes(ONLY.toLowerCase())) return;
     done++;
     const id = group + ' · ' + card;
@@ -230,6 +238,10 @@ function firstOption(st, q) {
         case 'dice': return { dice: (q.options || []).slice(0, Math.max(1, q.n || 1)) };
         case 'face': return { face: first };
         case 'diceFace': return { face: first, dice: (q.options || [])[0] };
+        case 'types': return { type: first };
+        case 'areas': return { area: first };
+        case 'cards': return { card: first };
+        case 'structures': return { structure: first };
         default: return { choice: 0 };
     }
 }
@@ -258,7 +270,7 @@ console.log(C.b + '\nForbidden Stars: карты фракции «' + (faction ?
 console.log(C.dim + 'сверка с docs/forbidden-stars: 02 (планшет), 04 (боевые), 05 (приказы), 06 (события)' + C.r);
 
 // ---------------------------------------------------------------------------
-head('Боевая колода');
+head('Боевая колода', MECH);
 
 // --- 1. Почитание духа машины ----------------------------------------------
 // «Повторите основную способность карты, разыгранной в предыдущем раунде боя.»
@@ -853,7 +865,7 @@ check('Гнев машины', 'жетоны обороны карта не со
 // ============================================================================
 //  Карты улучшений приказов (docs/forbidden-stars/05-order-upgrades.md)
 // ============================================================================
-head('Карты улучшений приказов');
+head('Карты улучшений приказов', MECH);
 
 /** The world area of a system (its first area when the system has no world). */
 function worldOf(st, systemId) {
@@ -1191,7 +1203,7 @@ check('Изъяны плоти', 'в мире с вражескими отряд
 // ============================================================================
 //  Особенность фракции (docs/forbidden-stars/02-factions.md)
 // ============================================================================
-head('Особенность фракции');
+head('Особенность фракции', MECH);
 
 check('Юркая промышленность', 'приказ доминирования двигает фабрику активной системы', () => {
     const st = orderState('dominate', { units: { 'скитарии': 1 }, structures: ['factory'] });
@@ -1230,7 +1242,7 @@ check('Юркая промышленность', 'приказ доминиро�
 // ============================================================================
 //  Карты событий (docs/forbidden-stars/06-events.md)
 // ============================================================================
-head('Карты событий');
+head('Карты событий', MECH);
 
 /**
  * A state of the refresh phase with the chosen event card of the tested faction:
@@ -1474,6 +1486,268 @@ check('Некромеханика', 'берутся две верхних кар
     const log = st.log.slice(-6).map(l => l.text).join(' | ');
     ok(log.includes('активирует карту события'), 'карты событий не активированы: ' + log);
     return eq(deck.every(n => !st.players[0].decks.event.includes(n)), true, 'обе карты взяты из колоды');
+});
+
+// ============================================================================
+//  04-combat-cards.md — Тираниды: 5 базовых карт и 13 улучшений
+// ============================================================================
+const TYR = 'тираниды';
+head('Боевая колода', TYR);
+
+/** A battle of the Tyranids: the units the card needs are in the area. */
+const tyrBattle = o => battle(Object.assign({
+    faction: TYR, foeFaction: 'имперская-гвардия',
+    units: { 'гаунты': 2, 'воины': 1 }, foeUnits: { 'гвардейцы': 2, 'титаны': 1 },
+}, o));
+
+/** The units of a seat, by the name of their card. */
+const tyrUnits = (st, seat) => {
+    const out = {};
+    for (const u of st.units.filter(u => u.seat === seat)) {
+        const name = (FS_RULES.unitOf(st, u) || {}).name || '?';
+        out[name] = (out[name] || 0) + 1;
+    }
+    return out;
+};
+
+// --- Тиран улья -------------------------------------------------------------
+// «Разыграйте 1 боевую карту с руки. Не применяйте её способности, но получите
+//  её боевые значения до конца всего боя.»
+// «*Воин/Корабль Улья:* восстановите 1 вашего юнита. Удалите 1 `morale cube`,
+//  чтобы получить либо 1 `att. cube`, либо 1 `def. cube`.»
+check('Тиран улья', 'вторая карта с руки даёт свои значения, но не способности', () => {
+    const st = tyrBattle({
+        card: 'Тиран улья', hand: ['Тиран улья', 'Выводок хормагаунов'],
+        units: { 'воины': 2 }, dice: ['att'],
+    });
+    refuseReinforce(st);
+    // The ability of the unit box is refused: only the card of the hand matters.
+    play(st, 0, 0, (s, q) => (q.kind === 'cards' ? { card: 'Выводок хормагаунов' } : firstOption(s, q)));
+    // «Выводок хормагаунов» gives 1 def. token by its general ability — the card
+    // says its abilities are NOT applied.
+    eq(tokens(st, 'attacker').def, 0, 'способности второй карты не применяются');
+    // Its combat values are added for the whole battle: both cards carry 1 att.
+    const cards = FS_RULES.combatValuesParts(st, 'attacker').att.cards;
+    return eq(cards, 2, 'значения обеих карт (Тиран улья + Выводок хормагаунов)');
+});
+
+check('Тиран улья', 'способность отряда: восстановление и кубик за мораль', () => {
+    const st = tyrBattle({ card: 'Тиран улья', units: { 'воины': 2 }, routed: [0], dice: ['morale', 'att'] });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 1) };
+        if (q.kind === 'dice') return { dice: (q.options || []).slice(0, 1) };
+        if (q.kind === 'choice') return { choice: 0 };
+        return firstOption(s, q);
+    });
+    eq(myUnits(st).filter(u => u.routed).length, 0, 'отряд восстановлен');
+    return eq([count(st, 'attacker', 'morale'), count(st, 'attacker', 'att')], [0, 2],
+        'куб морали потрачен, куб атаки получен');
+});
+
+// --- Аколыты-гибриды --------------------------------------------------------
+// «противник теряет 1 `att. cube`, 1 `def. cube` или 1 `morale cube` — в
+//  зависимости от того, чего больше всего. Если одинаково, выбираете Вы. Затем
+//  получите 1 `att. cube`, 1 `def. cube` или 1 `morale cube`, в зависимости от
+//  того, чего лишился противник.»
+check('Аколыты-гибриды', 'противник теряет тот кубик, которого у него больше, и вы получаете такой же', () => {
+    const st = tyrBattle({
+        card: 'Аколыты-гибриды', units: { 'гаунты': 2 }, dice: ['att'],
+        foeDice: ['def', 'def', 'def', 'morale'],
+    });
+    refuseReinforce(st);
+    play(st, 0, 0);
+    eq(count(st, 'defender', 'def'), 2, 'противник потерял куб обороны (их было больше всего)');
+    return eq(count(st, 'attacker', 'def'), 1, 'вы получили куб обороны');
+});
+
+check('Аколыты-гибриды', 'пороовну — выбираете вы', () => {
+    const st = tyrBattle({
+        card: 'Аколыты-гибриды', units: { 'гаунты': 2 }, dice: ['att'],
+        foeDice: ['def', 'def', 'morale', 'morale'],
+    });
+    refuseReinforce(st);
+    let asked = null;
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'choice' || q.kind === 'dice') { asked = q; return { choice: 1, dice: (q.options || []).slice(0, 1) }; }
+        return firstOption(s, q);
+    });
+    ok(!!asked, 'выбора нет, хотя кубиков поровну');
+    return eq(count(st, 'attacker', 'att') + count(st, 'attacker', 'def') + count(st, 'attacker', 'morale'), 2,
+        'ваш исходный куб и один полученный');
+});
+
+// --- Роящие организмы -------------------------------------------------------
+// «Если Вы атакуете, получите 2 `def. token`. Если Вы защищаетесь, либо
+//  разместите 1 бесплатный жетон подкрепления в эту область, либо уничтожьте
+//  2 недеморализованных Гаунта, чтобы разместить 1 бесплатный бастион в этом
+//  мире, если там ещё нет построек.»
+check('Роящие организмы', 'в атаке — 2 жетона обороны', () => {
+    const st = tyrBattle({ card: 'Роящие организмы', units: { 'гаунты': 2 } });
+    refuseReinforce(st);
+    play(st, 0, 0);
+    return eq(tokens(st, 'attacker').def, 2, 'жетонов обороны');
+});
+
+check('Роящие организмы', 'в обороне — жетон подкрепления либо бастион за 2 Гаунта', () => {
+    // The Tyranids defend: the card is played by the second player.
+    const st = battle({
+        faction: 'имперская-гвардия', foeFaction: TYR,
+        units: { 'гвардейцы': 2 }, foeUnits: { 'гаунты': 3 },
+        card: 'Ложись!', foeCard: 'Роящие организмы',
+    });
+    const c = st.combat;
+    refuseReinforce(st);
+    let asked = null;
+    play(st, 1, 0, (s, q) => {
+        if (q.kind === 'choice') { asked = q; return { choice: 1 }; }
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 2) };
+        return firstOption(s, q);
+    });
+    ok(!!asked && (asked.options || []).length === 2, 'выбора из двух способностей нет');
+    const bastion = st.structures.find(s => s.seat === 1 && s.type === 'bastion'
+        && s.system === c.system && s.area === c.pos);
+    ok(!!bastion, 'бастион не размещён');
+    return eq(tyrUnits(st, 1)['Гаунты'] || 0, 1, 'два Гаунта уничтожены');
+});
+
+// --- Дождь из спор ----------------------------------------------------------
+// «Уничтожьте одного недеморализованного Пожирателя в этой системе, чтобы
+//  разместить одного бесплатного Воина в этот мир, и затем получить 2 `any cube`.»
+check('Дождь из спор', 'Пожиратель уничтожен, Воин размещён, 2 кубика получены', () => {
+    const st = tyrBattle({ card: 'Дождь из спор', units: { 'гаунты': 1 } });
+    // The Пожиратели of the card stand in the void of the same system.
+    const sys = FS_RULES.system(st, st.combat.system);
+    const voidPos = (sys.areas.find(a => !a.world) || sys.areas[0]).pos;
+    FS_RULES.addUnit(st, 0, 'пожиратели', sys.id, voidPos);
+    FS_RULES.addUnit(st, 0, 'пожиратели', sys.id, voidPos);
+    refuseReinforce(st);
+    const before = dice(st, 'attacker').length;
+    play(st, 0, 0, (s, q) => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : firstOption(s, q)));
+    eq(tyrUnits(st, 0)['Пожиратели'] || 0, 1, 'один Пожиратель уничтожен');
+    eq(tyrUnits(st, 0)['Воины'] || 0, 1, 'Воин размещён');
+    return eq(dice(st, 'attacker').length - before, 2, 'два кубика получены');
+});
+
+// --- Выводок хормагаунов ----------------------------------------------------
+// «Получите 1 `def. token`.»
+// «*Гаунт/Пожиратель:* уничтожьте 1 недеморализованного Гаунта или Пожирателя,
+//  чтобы получить 3 `att. token`.»
+check('Выводок хормагаунов', 'жетон обороны и 3 жетона атаки за Гаунта', () => {
+    const st = tyrBattle({ card: 'Выводок хормагаунов', units: { 'гаунты': 2 } });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : firstOption(s, q)));
+    eq(tyrUnits(st, 0)['Гаунты'] || 0, 1, 'Гаунт уничтожен');
+    return eq([tokens(st, 'attacker').def, tokens(st, 'attacker').att], [1, 3], 'жетонов обороны и атаки');
+});
+
+// --- Величие роя ------------------------------------------------------------
+// «Потратьте любое количество `morale cube`. За каждый потраченный `morale
+//  cube` Вы получаете либо 1 `att. cube`, либо 1 `def. cube`.»
+// «*Биомитан/Корабль Улья:* восстановите все свои деморализованные отряды.»
+check('Величие роя', 'за каждый потраченный куб морали — кубик выбранного значения', () => {
+    const st = tyrBattle({ card: 'Величие роя', dice: ['morale', 'morale', 'att'] });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'dice') return { dice: (q.options || []).slice(0, 2) };
+        if (q.kind === 'choice') return { choice: 0 };
+        return firstOption(s, q);
+    });
+    eq(count(st, 'attacker', 'morale'), 0, 'кубы морали потрачены');
+    return eq(count(st, 'attacker', 'att'), 3, 'исходный куб атаки и два полученных');
+});
+
+check('Величие роя', 'способность отряда восстанавливает все деморализованные отряды', () => {
+    // The requisite of the box is the unrouted Био-титан: only the Гаунты fall.
+    const st = tyrBattle({ card: 'Величие роя', units: { 'био-титаны': 1, 'гаунты': 2 }, routed: [1, 2] });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => (q.kind === 'units' ? { units: (q.options || []).slice(0, 2) } : firstOption(s, q)));
+    return eq(myUnits(st).filter(u => u.routed).length, 0, 'деморализованных отрядов не осталось');
+});
+
+// --- Крушащие клешни --------------------------------------------------------
+// «Уничтожьте 1 из Ваших недеморализованных отрядов, чтобы получить 3
+//  `att. token`.»
+// «*Карнифекс/Корабль Улья:* потратьте либо 1 `att. cube`, либо 1 `morale cube`,
+//  чтобы Ваш противник потерял 2 `def. cube`.»
+check('Крушащие клешни', 'свой отряд уничтожен, три жетона атаки получены', () => {
+    const st = tyrBattle({ card: 'Крушащие клешни', units: { 'гаунты': 2 } });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : firstOption(s, q)));
+    eq(tyrUnits(st, 0)['Гаунты'] || 0, 1, 'один Гаунт уничтожен');
+    return eq(tokens(st, 'attacker').att, 3, 'жетонов атаки');
+});
+
+check('Крушащие клешни', 'кубик атаки потрачен, противник лишился двух кубов обороны', () => {
+    const st = tyrBattle({
+        card: 'Крушащие клешни', units: { 'карнифексы': 1 },
+        dice: ['att', 'morale'], foeDice: ['def', 'def', 'def'],
+    });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'dice') return { dice: (q.options || []).slice(0, 1) };
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 1) };
+        return firstOption(s, q);
+    });
+    eq(count(st, 'attacker', 'att') + count(st, 'attacker', 'morale'), 1, 'один кубик потрачен');
+    return eq(count(st, 'defender', 'def'), 1, 'у противника остался один куб обороны');
+});
+
+// --- Секущие когти ----------------------------------------------------------
+// «Во время шага нанесения повреждений, если противник получил урон, он
+//  получает ещё 3 урона.»
+// «*Карнифекс/Корабль Улья:* уничтожьте 1 недеморализованный Карнифекс или
+//  Корабль-Улей, чтобы получить 3 `att. token` и 2 `def. token`.»
+check('Секущие когти', 'жетоны атаки и обороны за уничтоженный Карнифекс', () => {
+    const st = tyrBattle({ card: 'Секущие когти', units: { 'карнифексы': 1, 'гаунты': 1 } });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : firstOption(s, q)));
+    eq(tyrUnits(st, 0)['Карнифексы'] || 0, 0, 'Карнифекс уничтожен');
+    return eq([tokens(st, 'attacker').att, tokens(st, 'attacker').def], [3, 2], 'жетоны атаки и обороны');
+});
+
+// --- Рой потрошителей -------------------------------------------------------
+// «Получите 2 `att. token`.»
+// «*Гаунт/Пожиратель:* в конце шага нанесения повреждений получите по 1
+//  материалу за каждый уничтоженный отряд, максимум 2.»
+check('Рой потрошителей', 'два жетона атаки', () => {
+    const st = tyrBattle({ card: 'Рой потрошителей' });
+    refuseReinforce(st);
+    play(st, 0, 0);
+    return eq(tokens(st, 'attacker').att, 2, 'жетонов атаки');
+});
+
+// --- Подавляющее присутствие ------------------------------------------------
+// «Уничтожьте 1 Ваш недеморализованный отряд, чтобы получить 3 `att. token`
+//  либо 3 `def. token`.»
+// «*Биомитан/Корабль Улья:* Ваш противник выполняет 3 раза: либо деморализует
+//  отряд, либо теряет 1 `any cube` на свой выбор.»
+check('Подавляющее присутствие', 'отряд уничтожен, три жетона выбранного типа', () => {
+    const st = tyrBattle({ card: 'Подавляющее присутствие', units: { 'гаунты': 2 } });
+    refuseReinforce(st);
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 1) };
+        if (q.kind === 'choice') return { choice: 1 };
+        return firstOption(s, q);
+    });
+    eq(tyrUnits(st, 0)['Гаунты'] || 0, 1, 'один Гаунт уничтожен');
+    return eq([tokens(st, 'attacker').att, tokens(st, 'attacker').def], [0, 3], 'три жетона обороны');
+});
+
+check('Подавляющее присутствие', 'противник трижды выбирает: отряд или кубик', () => {
+    const st = tyrBattle({
+        card: 'Подавляющее присутствие', units: { 'био-титаны': 1, 'гаунты': 1 },
+        foeUnits: { 'гвардейцы': 3 }, foeDice: ['def'],
+    });
+    refuseReinforce(st);
+    let asked = 0;
+    play(st, 0, 0, (s, q) => {
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 1) };
+        if (q.kind === 'choice') { asked++; return { choice: 0 }; }
+        return firstOption(s, q);
+    });
+    ok(asked >= 3, 'противник не выбирал три раза: вопросов ' + asked);
+    return eq(foeUnits(st).filter(u => u.routed).length, 3, 'три отряда противника деморализованы');
 });
 
 // ============================================================================

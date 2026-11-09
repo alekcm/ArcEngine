@@ -225,7 +225,7 @@ const FS_EFFECTS = {
                 const parsed = this.parse(perCube.rest.replace(/\.+$/, '') + '.', ctx || {});
                 for (const one of parsed) {
                     if (!one) continue;
-                    one.per = 'cube';
+                    one.per = perCube.per || 'cube';
                     one.perKind = perCube.perKind;
                 }
                 if (!parsed.length) {
@@ -507,9 +507,17 @@ const FS_EFFECTS = {
     },
 
     peelPerCube(sentence) {
-        const m = /^за каждый имеющийся у вас\s+`([^`]+cube)`([^]*)$/i.exec(sentence.replace(/^\s+/, ''));
-        if (!m) return null;
-        return { perKind: this.icon(m[1]), rest: m[2].replace(/^[\s,:]+/, '') };
+        const s = String(sentence || '').replace(/^\s+/, '');
+        const m = /^за каждый имеющийся у вас\s+`([^`]+cube)`([^]*)$/i.exec(s);
+        if (m) return { per: 'cube', perKind: this.icon(m[1]), rest: m[2].replace(/^[\s,:]+/, '') };
+        // «За каждый потраченный `morale cube` Вы получаете либо 1 `att. cube`,
+        // либо 1 `def. cube`» («Величие роя»), «За каждый `morale cube`,
+        // который вы потратили, получите …» («Прорвать фронт»): the count is
+        // the payment the sentence before has just made.
+        const sp = /^за кажд[а-яёa-z]*\s+(?:потраченн[а-яёa-z]*|израсходованн[а-яёa-z]*)\s+`([^`]+cube)`([^]*)$/i.exec(s)
+            || /^за кажд[а-яёa-z]*\s+`([^`]+cube)`,?\s+котор[а-яёa-z]*\s+вы\s+потрат[а-яёa-z]*,?([^]*)$/i.exec(s);
+        if (sp) return { per: 'spent', perKind: this.icon(sp[1]), rest: sp[2].replace(/^[\s,:]+/, '') };
+        return null;
     },
 
     // «За каждый ... получите 1 `att. token` либо 1 `def. token`» — the
@@ -563,6 +571,10 @@ const FS_EFFECTS = {
         const units = this.unitNames(clean, faction);
         const filter = units.length ? { types: units } : (unitFilter(clean) || typeFilter(clean));
         const steps = [{ op: 'destroy', n: num(m[1]), who: 'me', pick: true, filter, text: 'уничтожьте: ' + clean }];
+        // «Уничтожьте одного недеморализованного Пожирателя в этой системе»
+        // («Дождь из спор»): the victim may stand in any area of the system of
+        // the battle, not only in the contested one.
+        if (/\sв этой системе/i.test(what)) steps[0].systemWide = true;
         return steps.concat(pieces);
     },
 
@@ -662,6 +674,40 @@ const FS_EFFECTS = {
         if (/который\s+(?:он|она|они|владелец)\s+не\s+может\s+потрат[а-яёa-z]*/i.test(s)) {
             return [{ op: 'note', text: s, manual: 'foe-fork' }];
         }
+        // «Ваш противник выполняет 3 раза: либо деморализует отряд, либо теряет
+        // 1 `any cube` на свой выбор» («Подавляющее присутствие»): the opponent
+        // makes the same choice N times and the engine asks him every time. The
+        // либо below would read the sentence as ONE choice of three, so it is
+        // taken apart here first.
+        const mTimes = /^(?:ваш\s+)?противник\s+выполняет\s+(\d+|два|три)\s+раза?\s*:\s*(?:либо\s+)?([\s\S]+?)\s*,?\s+либо\s+([\s\S]+)$/i.exec(s);
+        if (mTimes) {
+            const branch = text => {
+                const t = String(text || '').trim().replace(/[.,;\s]+$/, '');
+                if (/деморализ[а-яёa-z]*\s+(?:отряд|юнит|корабл)/i.test(t)) {
+                    return [{ op: 'route', n: 1, pick: true, who: 'foe' }];
+                }
+                const lose = /теряет\s+(\d+|один|одно|одну)?\s*`([^`]+cube)`/i.exec(t);
+                if (lose) {
+                    return [{ op: 'loseDie', n: num(lose[1]), kind: this.icon(lose[2]), pick: true, who: 'foe' }];
+                }
+                const inner = this.parseSentence(t + '.', ctx);
+                for (const one of inner) if (one && one.who === 'me') one.who = 'foe';
+                return inner;
+            };
+            const a = branch(mTimes[2]);
+            const b = branch(mTimes[3]);
+            if (a.length && b.length) {
+                const times = /два/.test(mTimes[1]) ? 2 : (/три/.test(mTimes[1]) ? 3 : (Number(mTimes[1]) || 1));
+                const pick = () => ({
+                    op: 'choice', who: 'foe', text: s,
+                    options: [a.length === 1 ? a[0] : { op: 'sequence', steps: a },
+                              b.length === 1 ? b[0] : { op: 'sequence', steps: b }],
+                });
+                const out = [];
+                for (let i = 0; i < times; i++) out.push(JSON.parse(JSON.stringify(pick())));
+                return out;
+            }
+        }
         // «если вы атакуете, то ваш противник не может получать `def. token` …» —
         // a restriction on the FOE the engine cannot enforce: a note, never a grant.
         if (/(?:противник[а-яёa-z]*|он(?![а-яёa-z]))[^.;]{0,80}?не\s+(?:может|сможет)\s+(?:получа|разыгрыв|разыгра)/i.test(s)
@@ -724,9 +770,16 @@ const FS_EFFECTS = {
             // the branches are complete sentences: nothing to reattach.
             const headText = s.slice(0, splitAt).trim();
             const tail = (headText.match(/([а-яёa-z]+)\s*,?\s*$/i) || [null, ''])[1] || '';
-            const needsHead = /(?:ть|сте|ете|ите|йте)$/i.test(tail);
+            // «… в эту область, либо …» — a noun that happens to end in «-ть»
+            // («область», «мощность») is not an open verb: the branches of such
+            // a sentence are complete and the head is not repeated.
+            const needsHead = /(?:ть|сте|ете|ите|йте)$/i.test(tail) && !/(?:ость|сть)$/i.test(tail);
             if (needsHead) {
-                either = either.map((part, i) => (i === 0 ? part : headText + ' ' + part));
+                // The head is the shared prefix of every branch («За каждый
+                // потраченный `morale cube` Вы получаете либо …»), so it is not
+                // an alternative on its own: it is glued to the branches and
+                // disappears from the list («Величие роя»).
+                either = either.slice(1).map(part => headText + ' ' + part);
             }
         }
         if (either.length >= 2) {
@@ -751,9 +804,16 @@ const FS_EFFECTS = {
                 // A branch that is itself a choice opens into the choice of the
                 // sentence: the card offers its alternatives as one list.
                 if (steps.length === 1 && steps[0] && steps[0].op === 'choice') steps = steps[0].options || [];
-                for (const step of steps) {
-                    if (step && !step.ability) step.ability = branch;
-                    options.push(step);
+                for (const step of steps) if (step && !step.ability) step.ability = branch;
+                // A branch that pays for its own effect is one alternative:
+                // «уничтожьте 2 Гаунта, чтобы разместить бастион» («Роящие
+                // организмы») is the price and its reward together. A branch
+                // that only lists effects («заменить 1 Скитария на 1 Катафрона,
+                // 1 Катафрона на 1 Онагра», «Мехаморфоз») stays a list of them.
+                if (steps.length > 1 && /(?:чтобы|для того, чтобы)\s/i.test(branch)) {
+                    options.push({ op: 'sequence', steps, ability: branch });
+                } else {
+                    for (const step of steps) options.push(step);
                 }
             }
             if (options.length > 1) {
@@ -1051,7 +1111,11 @@ const FS_EFFECTS = {
             }
             return this.next(R, state, pending);
         }
-        const res = this.apply(R, state, seat, step, merged, ctx);
+        // The effect belongs to the owner of the card even when the question was
+        // asked of the opponent («Ваш противник выполняет 3 раза: либо
+        // деморализует отряд, либо теряет 1 `any cube`», «Подавляющее
+        // присутствие»): the answerer only answers, «me» stays the owner.
+        const res = this.apply(R, state, pending.seat, step, merged, ctx);
         if (res && res.replace) {
             // The step has other steps of its own: they take its place in the
             // list. The steps that follow the choice are NOT lost — the branch
@@ -1280,6 +1344,24 @@ const FS_EFFECTS = {
         return steps.length >= 2 ? steps : null;
     },
 
+    // The worlds where the structure of the step may stand. A card that names
+    // its world («в этом мире») is not bound to the Deploy Order rule that a
+    // structure is bought onto a friendly world: «A structure can only be
+    // placed on a world. A player cannot build a structure on a world that
+    // already contains a structure unless an ability specifically allows it.»
+    structureAreas(R, state, seat, step) {
+        const raw = step && step.dest
+            ? this.areasForAbility(R, state, seat, step.dest)
+            : this.areasFor(R, state, seat, 'structure');
+        return (raw || []).filter(a => {
+            // «если там ещё нет построек» — no structure of anybody stands there.
+            if (step && step.noStructures) {
+                return !(R.structuresAt(state, a.system, a.pos) || []).length;
+            }
+            return !R.canPlaceStructure || R.canPlaceStructure(state, seat, a.system, a.pos).ok;
+        });
+    },
+
     abilityQuestion(step, ctx) {
         if (!step || !step.ability || step.op === 'note') return null;
         if (this.abilityIsMust(step.ability)) return null;
@@ -1336,6 +1418,36 @@ const FS_EFFECTS = {
                 combat.tokens[s2][step.kind] = Math.max(0, combat.tokens[s2][step.kind] - n);
                 R.log(state, target, state.players[target].name + ' теряет ' + n + ' ' + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны') + '.');
                 return null;
+            }
+            case 'stealMostDie': {
+                // «противник теряет 1 `att. cube`, 1 `def. cube` или 1 `morale
+                // cube` — в зависимости от того, чего больше всего. Если
+                // одинаково, выбираете Вы. Затем получите … того же»
+                // («Аколыты-гибриды»).
+                if (!inCombat) return null;
+                const foe = side === 'attacker' ? 'defender' : 'attacker';
+                const kinds = step.kinds || ['att', 'def', 'morale'];
+                const live = d => d !== null && d !== undefined;
+                const counts = {};
+                for (const k of kinds) counts[k] = (combat.dice[foe] || []).filter(d => d === k).length;
+                const have = kinds.filter(k => counts[k] > 0);
+                if (!have.length) return null;
+                if (!step.kind) {
+                    const max = Math.max.apply(null, have.map(k => counts[k]));
+                    const top = have.filter(k => counts[k] === max);
+                    if (top.length > 1) {
+                        // «Если одинаково, выбираете Вы».
+                        return {
+                            question: {
+                                kind: 'choice', who: seat, op: 'stealMostDie',
+                                options: top.map(k => ({ op: 'stealMostDie', kind: k, kinds: kinds, gain: step.gain, text: this.kindName(k) })),
+                                text: 'Какой кубик отнять у противника?',
+                            },
+                        };
+                    }
+                    step.kind = top[0];
+                }
+                return { question: { kind: 'yesno', who: seat, op: 'stealMostDie', kind2: step.kind, text: 'Отнять у противника ' + this.kindName(step.kind) + '?' } };
             }
             case 'gainDie': {
                 let n = this.count(R, state, seat, step, ctx);
@@ -1445,7 +1557,17 @@ const FS_EFFECTS = {
                     R.log(state, seat, state.players[seat].name + ' тратит кубики.');
                     return null;
                 }
-                return { question: { kind: 'dice', who: this.diceAsker(combat, side, step), diceSide: s2, op: 'spendDie', n: Math.min(step.n, options.length), options, kind2: step.kind, kinds, text: 'Какие кубики потратить?' } };
+                return {
+                    question: {
+                        kind: 'dice', who: this.diceAsker(combat, side, step), diceSide: s2,
+                        op: 'spendDie', n: Math.min(step.n, options.length), options,
+                        kind2: step.kind, kinds,
+                        // «Потратьте любое количество `morale cube`»: the count
+                        // is free, so fewer dice than offered may be chosen.
+                        any: !!step.any,
+                        text: step.any ? 'Какие кубики потратить? (любое количество)' : 'Какие кубики потратить?',
+                    },
+                };
             }
             case 'flipDie': {
                 if (!inCombat) {
@@ -1761,9 +1883,9 @@ const FS_EFFECTS = {
                     R.log(state, seat, p.name + ' не может построить постройку.');
                     return null;
                 }
-                const areas = this.areasFor(R, state, seat, 'structure');
+                const areas = this.structureAreas(R, state, seat, step);
                 if (!areas.length) {
-                    R.log(state, seat, p.name + ' некуда ставить постройку: нет дружественного мира без построек.');
+                    R.log(state, seat, p.name + ' некуда ставить постройку: нет мира, где её можно поставить.');
                     return null;
                 }
                 return { question: { kind: 'areas', who: seat, op: 'placeStructure', kind2: step.kind, options: areas, text: 'Где построить?' } };
@@ -2407,7 +2529,11 @@ const FS_EFFECTS = {
                 return null;
             }
             case 'choice': {
-                return { question: { kind: 'choice', who: seat, op: 'choice', options: step.options, text: step.text } };
+                // «Ваш противник выполняет 3 раза: либо …, либо …» («Подавляющее
+                // присутствие»): the alternatives belong to the opponent, so he
+                // is the one who is asked.
+                const asker = step.who === 'foe' && foe !== null ? foe : seat;
+                return { question: { kind: 'choice', who: asker, op: 'choice', options: step.options, text: step.text } };
             }
             // «Затем разыграйте ограниченное …» («Департаменто муниторум»): the
             // strategize order turns into the limited one when it is finished.
@@ -2647,6 +2773,23 @@ const FS_EFFECTS = {
                 && dice[i] !== null && dice[i] !== undefined && diceAllowed(dice[i]);
         };
         switch (step.op) {
+            case 'stealMostDie': {
+                if (answer.no) return null;
+                const kind = step.kind || answer.kind;
+                const s2 = side === 'attacker' ? 'defender' : 'attacker';
+                const at = (combat.dice[s2] || []).findIndex(d => d === kind);
+                if (at < 0) return null;
+                combat.dice[s2][at] = null;
+                R.log(state, seat, state.players[seat].name + ': противник теряет ' + this.kindName(kind) + '.');
+                if (step.gain !== false) {
+                    const room = Math.max(0, R.DICE_MAX - combat.dice[side].filter(Boolean).length);
+                    if (room > 0) {
+                        combat.dice[side].push(kind);
+                        R.log(state, seat, state.players[seat].name + ' получает ' + this.kindName(kind) + '.');
+                    }
+                }
+                return null;
+            }
             case 'loseDie': {
                 const s2 = side === 'attacker' ? 'defender' : 'attacker';
                 for (const i of (answer.dice || []).slice().sort((a, b) => b - a)) {
@@ -2663,9 +2806,16 @@ const FS_EFFECTS = {
             }
             case 'spendDie': {
                 const s2 = diceTarget();
+                const kinds = Array.isArray(step.kinds) && step.kinds.length ? step.kinds : [step.kind];
+                let spent = 0;
                 for (const i of (answer.dice || [])) {
-                    if (liveIndex(s2, i)) combat.dice[s2][i] = null;
+                    if (liveIndex(s2, i)) { combat.dice[s2][i] = null; spent++; }
                 }
+                // «За каждый потраченный `morale cube` Вы получаете …»
+                // («Величие роя»): the gain of the card is counted by the cubes
+                // this very payment took, not by the cubes that are left.
+                step.spentCount = spent;
+                combat.lastSpend = { kinds: kinds, n: spent };
                 return null;
             }
             case 'flipDie': {
@@ -2830,7 +2980,7 @@ const FS_EFFECTS = {
                 const def = names.length ? faction.units.find(u => this.sameName(u.name, names[0])) : null;
                 if (!def) return null;
                 const p = state.players[seat];
-                // «…либо заплатить 1 жетон кузни и заменить 1 Онагр на 1 Титана»
+    // «…либо заплатить 1 жетон кузни и заменить 1 Онагр на 1 Титана»
                 // («Мехаморфоз»): the alternative that names a price pays it
                 // before the model is exchanged.
                 if (step.pay && step.pay.kind) {
@@ -3058,8 +3208,15 @@ const FS_EFFECTS = {
                 let placed = 0;
                 for (let i = 0; i < want; i++) {
                     if ((p.supply.units[def.id] || 0) <= 0) break;
-                    if (R.unitsAt(state, area.system, area.pos).length
-                        >= R.capacity(state, area.system, area.pos, def)) break;
+                    // «Players can voluntarily exceed the unit capacity of an
+                    // area when moving units, retreating, placing units, or
+                    // deploying units» — and the capacity counts the units of
+                    // one player, not of both. The printed skulls are therefore
+                    // no wall here: only the plastic of the area (five units)
+                    // stops the placement, and the trim follows in finishOrder.
+                    const mine = state.units.filter(u => u.seat === seat
+                        && u.system === area.system && u.area === area.pos).length;
+                    if (mine >= R.AREA_MAX_UNITS) break;
                     // «купить 1 отряд» — the ability buys at the printed price.
                     if (step.buy) {
                         if ((p.materiel || 0) < def.cost) {
@@ -3091,12 +3248,9 @@ const FS_EFFECTS = {
                     step.kind = t;
                     // «…разместить её на дружественном мире в активной системе»
                     // («Боевая кузня»): the card may name the worlds itself.
-                    const areas = (step.dest
-                        ? this.areasForAbility(R, state, seat, step.dest)
-                        : this.areasFor(R, state, seat, 'structure'))
-                        .filter(a => !R.canPlaceStructure || R.canPlaceStructure(state, seat, a.system, a.pos).ok);
+                    const areas = this.structureAreas(R, state, seat, step);
                     if (!areas.length) {
-                        R.log(state, seat, p.name + ' некуда ставить постройку: нет дружественного мира без построек.');
+                        R.log(state, seat, p.name + ' некуда ставить постройку: нет мира, где её можно поставить.');
                         return null;
                     }
                     return { question: { kind: 'areas', who: seat, op: 'placeStructure', kind2: t, options: areas, text: 'Где построить?' } };
@@ -3501,6 +3655,16 @@ const FS_EFFECTS = {
             }
             return Math.max(0, n);
         }
+        if (step.per === 'spent') {
+            // The cubes the payment of the same ability has just taken.
+            const combat = state.combat;
+            const spent = combat && combat.lastSpend;
+            const fits = !!spent && (!step.perKind
+                || (spent.kinds || []).indexOf(step.perKind) >= 0);
+            n = (step.n || 1) * (fits ? (spent.n || 0) : 0);
+            if (step.max) n = Math.min(n, step.max);
+            return Math.max(0, n);
+        }
         if (step.per === 'pair' && Array.isArray(step.pairs)) {
             // «за каждую пару недеморализованных Гвардейцев и Огринов либо
             // Крейсеров и Линкоров» — the smaller side of every pair counts.
@@ -3597,7 +3761,11 @@ const FS_EFFECTS = {
     unitsOf(R, state, seat, combat, step) {
         let units;
         if (combat) {
-            units = state.units.filter(u => u.seat === seat && u.system === combat.system && u.area === combat.pos);
+            // «Уничтожьте одного недеморализованного Пожирателя в этой системе»
+            // («Дождь из спор»): the card names the system of the battle, so the
+            // units of its other areas count too.
+            units = state.units.filter(u => u.seat === seat && u.system === combat.system
+                && (step.systemWide || u.area === combat.pos));
         } else {
             units = state.units.filter(u => u.seat === seat);
         }
@@ -4029,6 +4197,13 @@ function combatArea(state, systemId, pos) {
 // The rules of the sentences. The first that matches wins.
 /** @type {{re: RegExp, build: (m: RegExpExecArray, ctx: any, s: string) => any, noWhen?: boolean}[]} */
 const RULES = [
+    // «противник теряет 1 `att. cube`, 1 `def. cube` или 1 `morale cube` — в
+    // зависимости от того, чего больше всего» («Аколыты-гибриды»): the kind is
+    // counted, not chosen — and the cube the owner gains is the same one.
+    {
+        re: /теряет 1 `att\. cube`, 1 `def\. cube` или 1 `morale cube` — в зависимости от того, чего больше всего/i,
+        build: () => ({ op: 'stealMostDie', n: 1, kinds: ['att', 'def', 'morale'], gain: true, who: 'foe' }),
+    },
     // "You may discard this card <when>, to <the effect>." — the scheme waits
     // for its moment.
     {
@@ -4268,17 +4443,21 @@ const RULES = [
                 if (FS_EFFECTS.iconKind(mm[1]) !== 'cube') continue;
                 spots.push({ end: mm.index + mm[0].length, start: mm.index, kind: FS_EFFECTS.icon(mm[1]) });
             }
-            const all = /все|любое количество/i.test(m[0] || '');
-            const n = all ? 99 : num(m[2]);
+            // «Потратьте всех …» spends every cube of the kind; «Потратьте
+            // любое количество …» («Величие роя») leaves the count to the
+            // player — up to all of them, and zero is a legal answer.
+            const all = /(?:^|[^а-яёa-z])все[х]?([^а-яёa-z]|$)/i.test(m[0] || '');
+            const any = /любое количество/i.test(m[0] || '');
+            const n = all || any ? 99 : num(m[2]);
             const union = spots.length > 1
                 && spots.every((q, i) => i === 0 || /или|либо/i.test(src.slice(spots[i - 1].end, q.start)));
             if (union) {
                 const kinds = spots.map(q => q.kind);
-                return [{ op: 'spendDie', n, kind: kinds[0], kinds, all, pick: true, who: 'me' }]
+                return [{ op: 'spendDie', n, kind: kinds[0], kinds, all, any, pick: true, who: 'me' }]
                     .concat(/** @type {any[]} */ (gainStep(s)))
                     .concat(/** @type {any[]} */ (foeLoseSteps(s)));
             }
-            const steps = spots.map(q => ({ op: 'spendDie', n, kind: q.kind, all, pick: true, who: 'me' }));
+            const steps = spots.map(q => ({ op: 'spendDie', n, kind: q.kind, all, any, pick: true, who: 'me' }));
             if (!steps.length) return null;
             // The «…чтобы получить 2 `att. token`» half of the same sentence is
             // its own step: the tokens a payment buys are given to the payer.
@@ -4555,20 +4734,31 @@ const RULES = [
         build: (m, ctx, s) => {
             const what = (m[2] || '').trim();
             const n = num(m[1]) || 1;
+            // «в этом мире», «в этот мир», «в эту область» — the world of the
+            // battle itself, whoever holds it at the moment.
+            const here = /в этот мир|в этом мире|этого мира|эту область|эти области|спорную область|спорной области/i.test(s || '');
             if (/подкреплен/.test(what)) {
                 return { op: 'placeReinforcement', n, pick: true,
                          free: /бесплатн/.test(String(s || '') + ' ' + what),
                          // «в спорной области» — the area of the battle is fixed.
                          here: /в спорной области|в этой области боя/i.test(String(s || '')) };
             }
-            if (/бастион/.test(what)) return { op: 'placeStructure', kind: 'bastion', n: 1, free: true, pick: true };
-            if (/город/.test(what)) return { op: 'placeStructure', kind: 'city', n: 1, free: true, pick: true };
-            if (/фабрик/.test(what)) return { op: 'placeStructure', kind: 'factory', n: 1, free: true, pick: true };
+            if (/бастион|город|фабрик/.test(what)) {
+                const kind = /бастион/.test(what) ? 'bastion' : (/город/.test(what) ? 'city' : 'factory');
+                const step = { op: 'placeStructure', kind: kind, n: 1, free: true, pick: true };
+                // «разместить 1 бесплатный бастион в этом мире, если там ещё нет
+                // построек» («Роящие организмы»): the world of the battle is the
+                // only one, and the words after it are a condition on that world
+                // — not a search for some other world without structures.
+                if (here) step.dest = 'combatWorld';
+                if (/если\s+там\s+(?:ещё\s+)?нет\s+построек/i.test(s || '')) step.noStructures = true;
+                return step;
+            }
             const faction = FS_EFFECTS.factionOf(ctx);
             const names = FS_EFFECTS.unitNames(what, faction);
             if (names.length) {
                 const step = { op: 'placeUnit', n, what: names[0], pick: true, free: true };
-                if (/в этот мир|в этом мире|этого мира|эту область|эти области|спорную область|спорной области/i.test(s || '')) step.dest = 'combatWorld';
+                if (here) step.dest = 'combatWorld';
                 return step;
             }
             return null;
@@ -5493,5 +5683,11 @@ function unitFilter(text) {
         // A preposition that came with the words of the text is not a name.
         .map(s => s.replace(/^(?:в|во|с|со|из|на|от|к)\s+/i, '').replace(/\s+(?:в|во|с|со|из|на|от|к)$/i, '').trim())
         .filter(s => s.length >= 3);
-    return names.length ? { types: names } : null;
+    // «Уничтожьте 1 из Ваших недеморализованных отрядов» («Крушащие клешни»),
+    // «Уничтожьте 1 Ваш недеморализованный отряд» («Подавляющее присутствие»):
+    // the words name the owner and the piece, not a unit of the faction list —
+    // such a filter would match nothing at all, so there is no filter.
+    const generic = /^(?:ваш[а-яё]*|сво[а-яё]*|любы[а-яё]*|эт[а-яё]*|один|одного|одну|одной|1)\s+(?:отряд[а-яё]*|юнит[а-яё]*|модел[а-яё]*|боев[а-яё]*|недеморализованн[а-яё]*)$/i;
+    const real = names.filter(s => !generic.test(s.trim()));
+    return real.length ? { types: real } : null;
 }
