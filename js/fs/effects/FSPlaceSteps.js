@@ -117,12 +117,23 @@ class PlaceSteps {
         if (!area || !def) return null;
         let n = Math.min(step.n || 1, p.supply.units[def.id] || 0);
         if (!n) return null;
+        let placed = 0;
         while (n > 0) {
+            // The plastic of the area is the same wall as everywhere else: five
+            // units of one player. The capacity is asked after the order, not
+            // here («Players can voluntarily exceed the unit capacity … when
+            // placing units»).
+            if (!R.hasRoom(state, area.system, area.pos, seat, 1)) break;
             p.supply.units[def.id]--;
             R.addUnit(state, seat, def.id, area.system, area.pos);
+            placed++;
             n--;
         }
-        R.log(state, seat, state.players[seat].name + ' размещает «' + def.name + '» бесплатно.');
+        if (!placed) {
+            R.log(state, seat, p.name + ': в области уже пять отрядов, размещать больше некуда.');
+            return null;
+        }
+        R.log(state, seat, state.players[seat].name + ' размещает «' + def.name + '» бесплатно: ' + placed + '.');
         return null;
     }
 

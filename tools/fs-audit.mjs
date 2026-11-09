@@ -2455,6 +2455,70 @@ rule('storm-8', 'A Warp Storm is stored on the border BETWEEN two system tiles, 
     return eq(pos.y, 260, 'шторм лежит на общей линии тайлов');
 });
 
+// A scheme of the storm: «Молящийся тёмным богам» is the only card that reacts
+// to another player's Warp Storm movement.
+function stormSchemeState() {
+    const st = empty(5);
+    st.players[1].faction = 'космодесант-хаоса';
+    st.storms = [];
+    st.phase = 'refresh';
+    st.eventsLeft = 2;
+    const a = st.systems.find(x => x.row === 1 && x.col === 0);
+    const b = st.systems.find(x => x.row === 1 && x.col === 1);
+    if (!a || !b) return null;
+    const storm = FS_WARP_STORMS.create(st, 'sx', { system: a.id, side: 'E' });
+    st.storms = [storm];
+    st.event = { seat: 0, drawn: ['К'], chosen: 'К', card: { name: 'К', storm: ['N'], type: 'tactic' } };
+    const card = FS_DATA.events.find(c => /Молящийся тёмным богам/i.test(c.name));
+    const trig = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: card.faction })
+        .find(s => s.op === 'trigger');
+    st.players[1].schemes = [{ name: card.name, text: card.text, trigger: trig.trigger,
+        steps: trig.steps, note: !!trig.note, defer: !!trig.defer }];
+    return { st, storm };
+}
+
+rule('storm-10', '«Когда другой игрок перемещает варп-шторм, вы можете сбросить эту карту … отменить это перемещение» (Молящийся тёмным богам)', () => {
+    const one = stormSchemeState();
+    if (!one) return 'карта без двух соседних систем';
+    const { st, storm } = one;
+    const before = FS_WARP_STORMS.keyOf(storm);
+    const moved = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 'sx', dir: 'N' });
+    eq(moved.pending, true, 'ход шторма спросил реакцию');
+    eq(st.pending.question.kind, 'scheme', 'спросили именно план');
+    eq(st.pending.answerSeat, 1, 'спрашивают другого игрока');
+    eq(FS_WARP_STORMS.keyOf(storm), before, 'до ответа шторм не сдвинулся');
+    // The card is discarded; the storm goes in a direction of the reaction.
+    FS_RULES.apply(st, 1, { type: 'effect', answer: { choice: 0 } });
+    eq((st.players[1].schemes || []).length, 0, 'карта сброшена');
+    eq(st.pending.question.kind, 'choice', 'спросили направление');
+    FS_RULES.apply(st, st.pending.answerSeat, { type: 'effect', answer: { choice: 0 } });
+    eq(FS_WARP_STORMS.keyOf(storm) !== before, true, 'шторм сдвинулся по реакции');
+    eq(storm.moved, true, 'шторм помечен как сдвинутый');
+    eq(!!st.stormReaction, false, 'реакция закрыта');
+    return eq(!!st.pending, false, 'вопросов больше нет');
+});
+
+rule('storm-11', '«… вы можете сбросить эту карту» — отказ от реакции не отменяет чужое перемещение', () => {
+    const one = stormSchemeState();
+    if (!one) return 'карта без двух соседних систем';
+    const { st, storm } = one;
+    const before = FS_WARP_STORMS.keyOf(storm);
+    const wanted = FS_WARP_STORMS.target(st, storm, 'N');
+    FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 'sx', dir: 'N' });
+    // A refusal carries no choice at all; the plan stays in play.
+    const no = FS_RULES.apply(st, 1, { type: 'effect', answer: {} });
+    eq(no.done, true, 'отказ принят');
+    eq((st.players[1].schemes || []).length, 1, 'план остался в игре');
+    // The original movement happens once the reaction is refused — and it is
+    // the movement of the card, not the direction of the reaction.
+    eq(!!st.pending, false, 'реакция не осталась висеть вопросом');
+    eq(storm.moved, true, 'исходное перемещение выполнено');
+    eq(FS_WARP_STORMS.keyOf(storm) !== before, true, 'шторм сдвинулся по карте');
+    // The card's own direction is N: the storm stands on that very border.
+    eq(FS_WARP_STORMS.keyOf(storm), wanted.key, 'шторм ушёл туда, куда звала карта');
+    return eq(!!st.stormReaction, false, 'реакция снята');
+});
+
 rule('storm-9', 'Movement is a shift relative to the CURRENT storm edge', () => {
     const st = empty();
     const a = st.systems.find(x => x.row === 1 && x.col === 0);

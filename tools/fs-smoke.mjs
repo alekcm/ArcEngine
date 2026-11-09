@@ -477,6 +477,29 @@ try {
     fail(e.message);
 }
 
+// --- a warp storm stands on one edge ------------------------------------------
+section('варп-шторм: одна запись границы');
+try {
+    const owners = new Set(['js/fs/FSWarpStorms.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // A storm is a record of one border of the grid: `edge`, `a`, `b`, `tiles`
+        // come from the field together, and a rule or a card asks it to move.
+        const re = /\bstorm\.(?:edge|a|b|tiles)\s*=(?!=)/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('границу шторма пишет только поле штормов');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- materiel: one account --------------------------------------------------
 section('материя: одно место учёта');
 try {
