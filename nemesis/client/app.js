@@ -869,7 +869,23 @@ function renderPlayers() {
         if (p.passed && v.phase === 'player') tags.push('<span class="tag">пас</span>');
         for (const w of p.wounds) tags.push('<span class="tag red" title="' + esc(woundName(w)) + '">травма: ' + esc(woundName(w)) + '</span>');
         if (v.enemySet === 'chytrids' && p.chySpore) tags.push('<span class="tag green">🟢 спора</span>');
-        if (v.enemySet === 'voidseeders') tags.push('<span class="tag purple" title="С уровня 3 безумие нельзя снизить ниже 3 обычными способами; увеличение выше 5 смертельно">🧠 безумие ' + p.madness + '/5</span>');
+        if (v.enemySet === 'voidseeders') {
+            const typeNames = {
+                lurker: 'Луркер',
+                whisperer: 'Шепчущий',
+                creeper: 'Ползучий',
+                despoiler: 'Гнетущий',
+                lair: 'Логово'
+            };
+            let type = '';
+            if (Number.isInteger(p.madness) && p.madness >= 1 && p.madness <= 5) {
+                const weak = v.voidAnalyzed && v.voidAnalyzed.madness && v.voidWeaknesses && v.voidWeaknesses.includes('blurredVisions');
+                const lvlType = [null, 'lurker', 'whisperer', 'whisperer', 'creeper', 'despoiler'][p.madness];
+                type = (p.madness === 2 && weak) ? 'lurker' : lvlType;
+            }
+            const typeLabel = type ? ' · ' + (typeNames[type] || type) : '';
+            tags.push('<span class="tag purple" title="С уровня 3 безумие нельзя снизить ниже 3 обычными способами; увеличение выше 5 смертельно">🧠 безумие ' + p.madness + '/5' + typeLabel + '</span>');
+        }
         if (p.larva) tags.push('<span class="tag purple">личинка</span>');
         if (p.armor) tags.push('<span class="tag itag" title="' + esc(itemTitle(p.armor)) + '">' + itemArtHtml(p.armor) + '🛡 ' + esc(itemLabel(p.armor)) + (p.armor.item === 'probeArm' ? ' · жетонов свободно ' + (p.armor.charge ?? ITEMS.probeArm.markers) : '') + '</span>');
         if (p.tissue) tags.push('<span class="tag yellow">🧫 ткань ×' + p.tissue + '</span>');
@@ -1992,7 +2008,23 @@ function openSheet(quiet, targetPlayerId) {
     if (me.signal) chips.push('<span class="tag green">сигнал отправлен</span>');
     if (me.larva) chips.push('<span class="tag purple">личинка</span>');
     if (v.enemySet === 'chytrids' && me.chySpore) chips.push('<span class="tag green">🟢 спора: повторное заражение смертельно</span>');
-    if (v.enemySet === 'voidseeders') chips.push('<span class="tag purple">🧠 безумие: ' + me.madness + ' / 5</span>');
+    if (v.enemySet === 'voidseeders') {
+        const typeNames = {
+            lurker: 'Луркер',
+            whisperer: 'Шепчущий',
+            creeper: 'Ползучий',
+            despoiler: 'Гнетущий',
+            lair: 'Логово'
+        };
+        let type = '';
+        if (Number.isInteger(me.madness) && me.madness >= 1 && me.madness <= 5) {
+            const weak = v.voidAnalyzed && v.voidAnalyzed.madness && v.voidWeaknesses && v.voidWeaknesses.includes('blurredVisions');
+            const lvlType = [null, 'lurker', 'whisperer', 'whisperer', 'creeper', 'despoiler'][me.madness];
+            type = (me.madness === 2 && weak) ? 'lurker' : lvlType;
+        }
+        const typeLabel = type ? ' · ' + (typeNames[type] || type) : '';
+        chips.push('<span class="tag purple">🧠 безумие: ' + me.madness + ' / 5' + typeLabel + '</span>');
+    }
     if (v.enemySet === 'carnomorphs') chips.push('<span class="tag purple">🧬 фишек мутации: ' + (me.mutationMarkers || 0) + ' / 4</span>');
     if (me.laika) chips.push('<span class="tag yellow">🐕 Лайка: ' + (me.laika === 'board' ? 'рядом' : esc(roomLabel(me.laika))) + '</span>');
     if (me.canFire === false) chips.push('<span class="tag red">нельзя стрелять</span>');
