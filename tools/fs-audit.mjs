@@ -1014,6 +1014,33 @@ rule('combat-0i', '«разместить жетон подкрепления в
     eq(combat.system, 's3', 'адрес живёт в поле боя');
 });
 
+rule('combat-1b', '«The attacker and defender simultaneously choose one combat card … place it facedown» — карта уходит из руки и ложится закрытой', () => {
+    // `combatPlayCard` не имел прямого доказательства: мутация «карта не
+    // разыгрывается» вешала прогон (см. combat-12), но ни одна проверка не
+    // смотрела на саму руку и стол.
+    const st = empty(7);
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    for (let i = 0; i < 2; i++) { unit(st, 0, 'гвардейцы', sys.id, pos); unit(st, 1, 'бойзы', sys.id, pos); }
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    st.phase = 'operations';
+    st.turn = 0;
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    eq(!!st.combat, true, 'бой начался');
+    const hand = FS_RULES.player(st, st.combat.attacker).combatHand;
+    const before = hand.size();
+    const name = hand.cards()[0];
+    eq(before > 0, true, 'в руке есть карты (' + before + ')');
+    const res = FS_RULES.apply(st, st.combat.attacker, { type: 'combat', action: 'playCard', index: 0 });
+    eq(res.ok, true, 'карта разыграна: ' + (res.error || ''));
+    eq(hand.size(), before - 1, 'карта ушла из руки');
+    const laid = CombatCards.of(st.combat).staged('attacker');
+    eq(!!laid, true, 'карта лежит закрытой на столе');
+    eq(laid ? laid.name : null, name, 'на стол легла именно карта из руки');
+    // Стол тот же: до вскрытия в руке противника карта ещё не разыграна.
+    eq(CombatCards.of(st.combat).played('attacker').length, 0, 'на столе карта ещё закрыта');
+});
+
 rule('combat-1a', '«A player may spend reinforcement tokens during the reinforcement step» + «Ваш противник не сможет разыгрывать жетоны подкрепления во время всего боя»', () => {
     // `combatReinforce` — единственный путь, которым жетон подкрепления попадает
     // в бой. Ни одна проверка его не вызывала: аудит падал исключением, а
