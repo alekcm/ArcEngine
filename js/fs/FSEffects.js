@@ -832,6 +832,22 @@ const FS_EFFECTS = {
                 prevCond = null;
                 continue;
             }
+            // «Получите 3 `def. token`. Ваш противник может избежать этого
+            // эффекта, если потеряет 1 куб на свой выбор. Если он это сделал,
+            // то получите 1 `morale cube`» («Геройское самосожжение»): the last
+            // sentence happens only when the opponent PAID, so it waits for the
+            // question of the payment instead of standing as a step of its own.
+            if (/^если\s+он\s+это\s+сделал/i.test(sentence) && prev && prev.avoid) {
+                const paid = this.parse(this.stripAvoidHead(sentence), ctx || {});
+                // The half belongs to the ability that was already permitted:
+                // the permission of the card is asked once, not once per
+                // sentence of it.
+                for (const one of paid) {
+                    if (!one.ability) one.ability = prev.ability || sentence;
+                }
+                prev.avoidPaid = paid;
+                continue;
+            }
             // «Ваш противник может отступить 1 своим юнитом. Если не отступит —
             // потеряет либо 1 `morale cube`, либо 1 `def. cube`» («Добейте
             // выживших»): the second sentence is what happens on the refusal,
@@ -856,7 +872,19 @@ const FS_EFFECTS = {
             const avoid = this.avoidOf(sentence);
             if (avoid && prev) {
                 // "He may avoid this by spending 1 `any cube`." — the sentence
-                // belongs to the step before it.
+                // belongs to the step before it. The one who MAY pay is named by
+                // the sentence: «ваш противник может избежать …» is paid by the
+                // opponent, «вы можете избежать» — by the owner of the card. A
+                // payment of the opponent must not be offered to the owner.
+                const by = /(?:ваш\s+)?(?:противник|оппонент)[^.,]{0,40}?избеж/i.test(sentence)
+                    ? 'foe'
+                    : (/^\s*вы\s+(?:можете|может)?\s*избеж/i.test(sentence) ? 'me' : null);
+                // «Он может избежать этого, если потратит 1 `any cube`»: the
+                // pronoun points back at the one the step was done to — his
+                // own unit («Ратлинг стрелок»), so HE pays. A step that does
+                // not touch the opponent pays nothing for him.
+                if (by) avoid.by = by;
+                else if (prev.who === 'foe') avoid.by = 'foe';
                 prev.avoid = avoid;
                 continue;
             }
@@ -1352,6 +1380,14 @@ const FS_EFFECTS = {
                 (m, pre, num, _n, kind) => wrap(kind.toLowerCase())(m, pre, num))
             .replace(/(^|[^`\w])((\d+)\s*)?morale\s*cube(?!`)/gi,
                 (m, pre, num) => wrap('morale')(m, pre, num));
+    },
+
+    // «Если он это сделал, то получите 1 `morale cube`»: the head names the
+    // payment, the tail is the effect.
+    stripAvoidHead(sentence) {
+        return String(sentence || '')
+            .replace(/^\s*если\s+(?:он|она|они|противник[а-яёa-z]*)\s+это\s+сделал[а-яёa-z]*[^,.;]*,?\s*(?:то\s+)?/i, '')
+            .trim();
     },
 
     // «Если не отступит — потеряет 1 `morale cube`»: the head names the
@@ -1939,6 +1975,24 @@ const FS_EFFECTS = {
                     if (turn.has(s2, i)) turn.take(s2, i);
                 }
                 R.log(state, seat, state.players[seat].name + ' тратит кубик и избегает эффекта.');
+                // «Если он это сделал, то получите 1 `morale cube`»: the half of
+                // the card that follows the payment.
+                if (step && Array.isArray(step.avoidPaid) && step.avoidPaid.length) {
+                    step.avoidAsked = true;
+                    // The rest of the card is in the record, and the step that
+                    // goes on is the one after the paid one: the half of the card
+                    // is spliced in its place, the remainder is not lost.
+                    // The half follows the payment itself: the permission of
+                    // the card was given once, and it is not asked again for
+                    // the sentence the payment bought.
+                    for (const one of step.avoidPaid) one.noAbilityQuestion = true;
+                    const list = pending.steps;
+                    const at = pending.index;
+                    const after = list.slice(at + 1);
+                    list.splice(at + 1, after.length, ...step.avoidPaid.slice(), ...after);
+                    Question.of(state).close();
+                    return this.run(R, state, pending.seat, list, pending.ctx || {}, at + 1);
+                }
             } else {
                 // The effect happens: the question of the step itself.
                 if (step && step.op === 'avoidDestroy') {

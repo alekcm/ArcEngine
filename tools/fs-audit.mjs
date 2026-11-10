@@ -1265,6 +1265,40 @@ rule('ask-0a', 'таблица вопросов не содержит заглу
     eq(missing.join(', ') || '—', '—', 'у каждого имени в ops есть метод');
 });
 
+rule('avoid-0a', '«Ваш противник может избежать этого эффекта, если потратит 1 `def. cube`» — платит противник, а не владелец карты', () => {
+    // The text names WHO pays; the engine used to ask the owner of the card
+    // (the default of the avoid step), so the opponent's payment was paid by
+    // the player who played the card.
+    const st = cardBattle('Всегда в движении', 'темные-эльдары');
+    let guard = 0;
+    while (st.pending && st.pending.question.kind === 'ability' && guard++ < 4) {
+        FS_RULES.apply(st, st.pending.question.who, { type: 'effect', answer: { yes: true } });
+    }
+    const q = st.pending && st.pending.question;
+    eq(q && q.op, 'avoid', 'вопрос об избегании задан');
+    eq(q.who, 1, 'его задают противнику');
+    FS_RULES.apply(st, q.who, { type: 'effect', answer: { dice: [] } });
+    eq(st.combat.tokens.attacker.att, 2, 'не заплатил — два жетона атаки владельцу карты');
+});
+
+rule('avoid-0b', '«Если он это сделал, то получите 1 `morale cube`» — половина карты только за оплату', () => {
+    for (const pay of [true, false]) {
+        const st = cardBattle('Геройское самосожжение', 'сестры-битвы');
+        let guard = 0;
+        while (st.pending && st.pending.question.kind === 'ability' && guard++ < 4) {
+            FS_RULES.apply(st, st.pending.question.who, { type: 'effect', answer: { yes: true } });
+        }
+        const q = st.pending && st.pending.question;
+        eq(q && q.op, 'avoid', 'вопрос об избегании');
+        eq(q.who, 1, 'платит противник');
+        const dice = pay ? (q.options || []).slice(0, 1) : [];
+        FS_RULES.apply(st, q.who, { type: 'effect', answer: { dice } });
+        const morale = st.combat.dice.attacker.filter(x => x === 'morale').length;
+        eq(st.combat.tokens.attacker.def, pay ? 0 : 3, pay ? 'заплатил — жетонов нет' : 'не заплатил — три жетона');
+        if (pay) eq(morale, 1, 'заплатил — один кубик морали');
+    }
+});
+
 rule('foe-fork-0b', '«Если противник не потратит 1 `morale cube`, получите 3 `def. token`» — вопрос идёт противнику, и при оплате токенов НЕ дают', () => {
     const card = ctx.FS_DATA.combat.find(c => c.faction === 'эльдары' && /Волновой змей/.test(c.name));
     const steps = ctx.FS_EFFECTS.parse(card.general, { kind: 'combat', faction: card.faction });
