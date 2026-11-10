@@ -66,6 +66,9 @@ function stickyOps(steps, depth) {
     return out;
 }
 
+// Cells of the tables that say «here is nothing».
+const PLACEHOLDERS = new Set(['—', '–', '-', '— (колонка пустая)', '— (только способность отряда)']);
+
 const groups = new Map();
 const misses = [];
 const notes = [];
@@ -104,6 +107,10 @@ for (const card of allTexts()) {
     for (const sentence of sentences) {
         total++;
         g.total++;
+        // The placeholder of an empty column («— (только способность
+        // отряда)») is not a sentence of the rules: the card has no general
+        // text at all, its ability is the other column.
+        if (PLACEHOLDERS.has(String(sentence).trim())) { noted++; g.noted++; continue; }
         const one = EFFECTS.parse(sentence, { kind: card.kind, faction: card.faction });
         const ops = stickyOps(one);
         // A stub may be a BRANCH of the sentence («Либо купите …, либо
