@@ -34,7 +34,7 @@ const load = (file, name) => vm.runInContext(
 for (const file of ['js/fs/FSView.js', 'js/fs/FSGame.js']) {
     if (fs.existsSync(path.join(ROOT, file))) load(file, file.split('/').pop().replace(/\.js$/, ''));
 }
-const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens } = ctx;
+const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans } = ctx;
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m' };
@@ -2644,6 +2644,57 @@ check('Пожиратели Миров', 'предел жетонов ресур
 // «Набег жнецов» (Некроны): the choice of the unit that takes damage first is
 // independent of the payments of a strike. Removing the old guard must not
 // lose this question — it is asked before the damage is suffered.
+head('Боевая колода', 'некроны');
+check('Фаланга судного дня', 'противник теряет 1 def, а деморализованный в этом раунде враг уничтожается', () => {
+    const st = battle({
+        faction: 'некроны', foeFaction: 'имперская-гвардия',
+        units: { 'монолиты': 1 }, foeUnits: { 'гвардейцы': 2 },
+        card: 'Фаланга судного дня', roundEnd: true,
+    });
+    const c = st.combat;
+    c.dice.attacker = ['def', 'att'];
+    c.dice.defender = ['def', 'att'];
+    play(st, 0, 0, null);
+    // «Ваш противник теряет 1 `def. cube`»: кубик уходит у противника.
+    eq(count(st, 'defender', 'def'), 0, 'кубик защиты противника потерян');
+    eq(count(st, 'defender', 'att'), 1, 'кубики атаки противника не тронуты');
+    // «деморализованный в этом раунде отряд противника уничтожается».
+    const foe = foeUnits(st)[0];
+    foe.routed = true;
+    CombatPlans.of(c).touchRoutedFoe();
+    for (let i = 0; i < 30 && c && c.round === 1; i++) {
+        if (st.pending) { answerAll(st, null, undefined); continue; }
+        const step = c.step;
+        if (step === 'damage-attacker' || step === 'damage-defender') {
+            const seat = step === 'damage-attacker' ? c.attacker : c.defender;
+            FS_RULES.apply(st, seat, { type: 'combat', action: 'damage', targets: [] });
+            continue;
+        }
+        if (step === 'round-end') { FS_RULES.endCombatRound(st); break; }
+        if (step === 'choose-attacker' || step === 'choose-defender') {
+            const side = step === 'choose-attacker' ? 'attacker' : 'defender';
+            const seat = side === 'attacker' ? c.attacker : c.defender;
+            if (!(c.cards[side].hand || []).length) { FS_RULES.advanceCombatSteps(st); continue; }
+            FS_RULES.apply(st, seat, { type: 'combat', action: 'playCard', index: 0 });
+            continue;
+        }
+        FS_RULES.advanceCombatSteps(st);
+    }
+    return eq(st.units.some(u => u.id === foe.id), false, 'деморализованный отряд уничтожен в конце раунда');
+});
+check('Рой каноптепов', 'бесплатный жетон подкрепления ставится в эту область и не тратит запас', () => {
+    const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Рой каноптепов' });
+    const before = st.players[0].assets.reinforcement;
+    play(st, 0, 0, (s2, q) => {
+        if (q.kind === 'areas') return { area: q.options[0] };
+        return firstOption(s2, q);
+    });
+    eq(CombatTokens.of(st.combat).units('attacker').used, 1, 'жетон лёг на стол боя');
+    eq(st.players[0].assets.reinforcement, before, 'запас игрока не тронут: жетон бесплатный');
+    const tok = CombatTokens.of(st.combat).units('attacker');
+    return eq([tok.alive, tok.routed], [1, 0], 'жетон в бою целый и недеморализованный');
+});
+
 head('Улучшения приказов', 'некроны');
 check('Набег жнецов', 'выбранный отряд КЛ 0 получает урон первым', () => {
     const faces = ['att', 'def', 'def'];
@@ -2749,6 +2800,40 @@ check('Гибельные косы', 'план: деморализовать д�
     ok(!(st.players[0].schemes || []).some(x => x.name === 'Гибельные косы'), 'израсходованный план сброшен');
     return eq(lost.alive, 0, 'на столе не осталось живых жетонов');
 });
+check('Гибельные косы', 'план: деморализовать до 2 своих — противник теряет жетон подкрепления за каждый', () => {
+    const st = eventState('Гибельные косы', { faction: 'некроны' });
+    const sys = st.systems[0];
+    const w = worldOf(st, sys.id);
+    ok(playEvent(st).ok, 'событие не разыграно');
+    // Карта типа «план» остаётся в игровой зоне, а не уходит в колоду.
+    const plan = (st.players[0].schemes || []).find(x => x.name === 'Гибельные косы');
+    ok(!!plan, 'карта не стала планом');
+    eq(plan.trigger, 'round', 'план ждёт начала раунда боя');
+    // Бой: план предлагается уже на старте.
+    st.units = [];
+    for (let i = 0; i < 2; i++) FS_RULES.addUnit(st, 0, 'воины', sys.id, w);
+    for (let i = 0; i < 2; i++) FS_RULES.addUnit(st, 1, 'гвардейцы', sys.id, w);
+    st.phase = 'operations';
+    st.turn = 0;
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos: w, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    ok(!!st.combat, 'бой не начался');
+    // Жетоны кладёт на стол их владелец: карта уничтожает жетоны в области боя.
+    st.players[1].assets.reinforcement = 2;
+    FS_RULES.apply(st, 1, { type: 'combat', action: 'reinforce', count: 2 });
+    const q = pending(st);
+    ok(!!q && q.kind === 'scheme', 'план не предложен в начале раунда');
+    answerAll(st, (s2, qq) => {
+        if (qq.kind === 'scheme') return { choice: 0 };
+        if (qq.op === 'route') return { units: (qq.options || []).slice(0, 2) };
+        return firstOption(s2, qq);
+    });
+    eq(st.units.filter(u => u.seat === 0 && u.routed).length, 2, 'деморализованы оба названных отряда');
+    eq(ctxLosses(st).destroyed, 2, 'противник потерял два жетона подкрепления');
+    ok(!(st.players[0].schemes || []).some(x => x.name === 'Гибельные косы'), 'израсходованный план сброшен');
+    return eq(ctxLosses(st).alive, 0, 'на столе не осталось живых жетонов');
+});
+
 check('Миры-гробницы', 'доп. бастион покупается только после покупки приказом', () => {
     const st = necronDeploy();
     const early = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: 'Миры-гробницы' });
