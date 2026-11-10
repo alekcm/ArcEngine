@@ -80,7 +80,7 @@ class OperationsRules {
     cmdResolveOrder(state, seat, cmd) {
         if (!GamePhase.of(state).is(GamePhase.OPERATIONS)) return { ok: false, error: 'Сейчас не фаза операций.' };
         if (this.trimBlocked(state, seat)) return trimRefusal();
-        if (state.turn !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        if (!GamePhase.of(state).isTurn(seat)) return { ok: false, error: 'Сейчас ход другого игрока.' };
         // One order at a time: the previous one must be finished.
         if (state.order) return { ok: false, error: 'Сначала закончите текущий приказ.' };
         // «вместо раскрытия приказа во время фазы действий» (01-rules-
@@ -224,11 +224,12 @@ class OperationsRules {
     }
 
     nextTurn(state) {
+        const game = GamePhase.of(state);
         const count = state.players.length;
-        let turn = state.turn;
+        let turn = game.turn;
         for (let i = 0; i < count; i++) {
-            turn = (turn + 1) % count;
-            if (this.hasOrderToResolve(state, turn)) { state.turn = turn; return; }
+            turn = GamePhase.next(turn || 0, count);
+            if (this.hasOrderToResolve(state, turn)) { game.turn = turn; return; }
             // «Если вы вынуждены пропустить ход во время фазы операций, можете
             // сбросить эту карту…» («Некромеханика»): the player whose tokens
             // lie under the tokens of the others plays the card of the turn he

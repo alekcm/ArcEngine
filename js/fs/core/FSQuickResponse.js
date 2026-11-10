@@ -49,7 +49,7 @@ class QuickResponse {
         if (!this.state.quickResponseSnapshot) {
             this.state.quickResponseSnapshot = {
                 phase: this.state.phase,
-                turn: this.state.turn,
+                turn: GamePhase.of(this.state).turn,
                 event: this.state.event,
                 eventsLeft: EventRound.of(this.state).snapshot,
             };
@@ -74,7 +74,7 @@ class QuickResponse {
         const snap = this.snapshot;
         if (!snap) return null;
         this.state.phase = snap.phase;
-        this.state.turn = snap.turn;
+        GamePhase.of(this.state).turn = snap.turn;
         this.state.event = snap.event;
         EventRound.of(this.state).restore(snap.eventsLeft);
         this.forget();

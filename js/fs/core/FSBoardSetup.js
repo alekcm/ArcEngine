@@ -11,7 +11,7 @@
 // looking at `setup.stage !== 'tile'`.
 //
 // One question now: `BoardSetup.of(state)` — `stage`, `turn` (the seat whose
-// hand is played, whoever sits at `state.turn`), `currentSystem`, and the little
+// hand is played, whoever holds the turn of the phase), `currentSystem`, and the
 // machine of the hand: `placeTile`, `takeForce`, `nextPlayer`, `nextStorm`.
 // The record stays in `state.setup` with its fields, so the view of a seat, the
 // panel and the tests read it as they did.

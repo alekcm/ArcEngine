@@ -193,7 +193,7 @@ class SetupRules {
         const wanted = a => (kind === 'space' ? !a.world : !!a.world);
         const area = sys.areas.find(wanted) || sys.areas[0];
         GamePhase.of(state).start(GamePhase.OPERATIONS);
-        state.turn = attacker;
+        GamePhase.of(state).turn = attacker;
         // The troops of the two sides, the host first.
         const roster = [];
         const place = (seat, units) => {
@@ -223,7 +223,7 @@ class SetupRules {
             reinforcement: 2,
         });
         GamePhase.of(state).start(GamePhase.OPERATIONS);
-        state.turn = attacker;
+        GamePhase.of(state).turn = attacker;
         state.order = { seat: attacker, order: 'advance', system: sys.id, pos: area.pos, phase: 'combat' };
         this.engine.log(state, -1, (kind === 'space' ? 'Космический' : 'Наземный')
             + ' бой: ' + state.players[attacker].name + ' против ' + state.players[defender].name + '.');
@@ -255,7 +255,7 @@ class SetupRules {
         }
         state.combat = null;
         GamePhase.of(state).start(GamePhase.OPERATIONS);
-        state.turn = battle.attacker;
+        GamePhase.of(state).turn = battle.attacker;
         state.order = { seat: battle.attacker, order: 'advance', system: test.system, pos: test.pos, phase: 'combat' };
         this.engine.log(state, -1, 'Тот же бой начинается снова.');
         this.engine.startCombat(state, battle.attacker, battle.defender, test.system, test.pos);
@@ -535,7 +535,7 @@ class SetupRules {
         this.takeStartChoiceLeft(state);
         BoardSetup.of(state).finish();
         GamePhase.of(state).start(GamePhase.PLANNING);
-        state.turn = GamePhase.of(state).firstPlayer;
+        GamePhase.of(state).turn = GamePhase.of(state).firstPlayer;
         this.engine.log(state, -1, 'Игра началась: раунд 1, фаза планирования.');
     }
 

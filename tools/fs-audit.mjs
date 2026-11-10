@@ -1200,6 +1200,18 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(game.isActive(0), true, 'и это он действует');
     state.setup = null;
     eq(game.active, null, 'без сборки действующего нет');
+    // The turn of the phase is its own field: in the setup it differs from
+    // whose hand is played.
+    const turnOf = { phase: 'operations', turn: 1, players: [{}, {}, {}] };
+    const game2 = GamePhase.of(turnOf);
+    eq(game2.turn, 1, 'ход фазы у seat 1');
+    eq(game2.isTurn(1), true, 'он действует');
+    eq(game2.isTurn(2), false, 'seat 2 ждёт');
+    game2.nextTurn();
+    eq(game2.turn, 2, 'ход ушёл дальше');
+    game2.turn = 0;
+    eq(turnOf.turn, 0, 'ход записан в состояние');
+    eq(GamePhase.of({ players: [{}, {}] }).nextTurn(), 0, 'без хода круг начинается с первого');
     // The circle of the players: the turn passes to the next seat.
     eq(GamePhase.next(1, 2), 0, 'ход по кругу');
     eq(GamePhase.next(0, 2), 1, 'и снова');

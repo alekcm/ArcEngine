@@ -144,13 +144,29 @@ class GamePhase {
         return this.active !== null && this.active === seat;
     }
 
-    /** The turn passes to a seat; the setup keeps its own order. */
+    /**
+     * The turn passes to a seat; the setup keeps its own order. This is the
+     * field of the phase, not the acting seat — in the setup they differ.
+     */
     set turn(seat) {
         this.state.turn = seat === undefined ? null : seat;
     }
 
     get turn() {
         return this.state.turn === undefined ? null : this.state.turn;
+    }
+
+    /** Does this seat hold the turn of the phase? */
+    isTurn(seat) {
+        return this.turn !== null && this.turn === seat;
+    }
+
+    /** The turn goes to the next seat round the table (from the first one if none). */
+    nextTurn() {
+        const count = this.count;
+        if (!count) return this.turn;
+        this.state.turn = this.turn === null ? 0 : GamePhase.next(this.turn, count);
+        return this.state.turn;
     }
 
     /** The next seat in the circle of the given number of players. */

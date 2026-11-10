@@ -38,7 +38,7 @@ class PlanningRules {
 
     cmdPlaceOrder(state, seat, cmd) {
         if (!GamePhase.of(state).is(GamePhase.PLANNING)) return { ok: false, error: 'Сейчас не фаза планирования.' };
-        if (seat !== state.turn) return { ok: false, error: 'Сейчас очередь другого игрока.' };
+        if (!GamePhase.of(state).isTurn(seat)) return { ok: false, error: 'Сейчас очередь другого игрока.' };
         const p = state.players[seat];
         if (this.engine.player(state, seat).ordersLeft() <= 0) return { ok: false, error: 'Все приказы уже выложены.' };
         const sys = this.engine.system(state, cmd.system);
@@ -68,7 +68,7 @@ class PlanningRules {
         this.engine.log(state, seat, p.name + ' выложил приказ «' + this.orderName(cmd.order) + '» в систему ' + sys.tile + '.');
         // The players lay their tokens one at a time, in a circle.
         this.checkPlanningDone(state);
-        if (GamePhase.of(state).is(GamePhase.PLANNING)) state.turn = this.nextPlanner(state, seat);
+        if (GamePhase.of(state).is(GamePhase.PLANNING)) GamePhase.of(state).turn = this.nextPlanner(state, seat);
         return { ok: true };
     }
 
@@ -97,9 +97,9 @@ class PlanningRules {
         GamePhase.of(state).start(GamePhase.OPERATIONS);
         // The operations start with the first player who really has an order on
         // top of a stack — the tokens of the players lie in one stack.
-        state.turn = this.engine.firstWithOrder(state);
+        GamePhase.of(state).turn = this.engine.firstWithOrder(state);
         // The schemes of the start of the operations phase.
-        this.engine.maybeScheme(state, state.turn, 'operations', { kind: 'order', ctx: null });
+        this.engine.maybeScheme(state, GamePhase.of(state).turn, 'operations', { kind: 'order', ctx: null });
         this.engine.log(state, -1, 'Фаза операций: приказы вскрываются по очереди.');
     }
 

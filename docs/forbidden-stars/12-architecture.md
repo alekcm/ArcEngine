@@ -89,7 +89,7 @@
 | Удар с орбиты: бонус, оплата карт, цена построек, первый отряд | `core/FSStrike.js` (`StrikePlan.of(order)`) | не писать `order.strike*` в правиле, шаге карты или панели — это ловит `fs-smoke` |
 | Шаг марша, его дороги, отменённые ходы, спорная область | `core/FSMarch.js` (`MarchPlan.of(order)`) | не писать `order.moved`/`route`/`steps` в правиле, бое или панели — это ловит `fs-smoke` |
 | Шаг приказа (`move`, `combat`, `strike`, …) | `core/FSPhase.js` (`PhasePlan.of(order)`) | не сравнивать `order.phase` со строкой в правиле или панели — это ловит `fs-smoke` |
-| Фаза раунда, чей ход, круг игроков и номер раунда | `core/FSGamePhase.js` (`GamePhase.of(state)`) | не читать `state.phase`/`state.firstPlayer`/`state.round` в правиле, доске или панели — это ловит `fs-smoke` |
+| Фаза раунда, чей ход, круг игроков и номер раунда | `core/FSGamePhase.js` (`GamePhase.of(state)`) | не читать `state.phase`/`state.turn`/`state.firstPlayer`/`state.round` в правиле, доске или панели — это ловит `fs-smoke` |
 | Вопрос шага: кто отвечает, где прерван эффект, чем ответить | `core/FSQuestion.js` (`Question.of(state)`) | не писать и не читать `state.pending` в правиле, эффекте или панели — это ловит `fs-smoke` |
 | Сборка карты: этап, чья рука играет, тайлы и штормы | `core/FSBoardSetup.js` (`BoardSetup.of(state)`) | не читать `state.setup` в правиле, доске или панели — это ловит `fs-smoke` |
 | Журнал игры: запись шага, хвост для панели, предел в двести строк | `core/FSGameLog.js` (`GameLog.of(state)`) | не читать и не резать `state.log` в правиле, доске или панели — это ловит `fs-smoke` |
@@ -204,7 +204,9 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
   раунда константами (`SETUP`/`PLANNING`/`OPERATIONS`/`REFRESH`), их подписи для
   панели (`label`), вопрос `is(...)`, начало фазы (`start`), действующий игрок
   (`active`, `isActive` — в сборке карты это её собственный ход, иначе ход фазы),
-  номер раунда (`round`, `startRound`) и круг игроков: первый игрок
+  номер раунда (`round`, `startRound`), ход фазы (`turn`, `isTurn`,
+  `nextTurn` — поле фазы, а не действующий игрок: в сборке карты они разны) и
+  круг игроков: первый игрок
   (`firstPlayer`, `isFirst`, `passFirst`), порядок от него (`circle`) и тот, кто
   открывает планирование, если первый выбыл (`opener`).
 * сборка карты — один объект `BoardSetup` (`core/FSBoardSetup.js`): этапы

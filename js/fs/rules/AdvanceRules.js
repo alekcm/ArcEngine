@@ -748,7 +748,7 @@ class AdvanceRules {
         quick.start();
         // The limited order belongs to the player of the event even though the
         // event-phase turn had already passed to the next player.
-        state.turn = seat;
+        GamePhase.of(state).turn = seat;
         MarchTrail.of(state).reset();
         /** @type {any} */
         const order = {

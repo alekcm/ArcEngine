@@ -558,9 +558,9 @@ try {
         if (owners.has(file)) continue;
         const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
         // Фаза раунда, чей ход, круг игроков и номер раунда — один объект
-        // GamePhase: строки фаз и поля state.phase/state.firstPlayer/state.round
-        // не читают руками ни правила, ни доска, ни панель.
-        const re = /\bstate\.(?:phase|firstPlayer|round)\b/g;
+        // GamePhase: строки фаз и поля state.phase/state.turn/state.firstPlayer/
+        // state.round не читают руками ни правила, ни доска, ни панель.
+        const re = /\bstate\.(?:phase|firstPlayer|round|turn)\b/g;
         let m;
         while ((m = re.exec(text))) {
             const line = text.slice(0, m.index).split('\n').length;

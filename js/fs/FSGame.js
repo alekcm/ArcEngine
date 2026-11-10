@@ -821,8 +821,8 @@ class FSGame {
         ctx.title = 'Планирование';
         // The tokens go one at a time, in a circle: while it is not your turn the
         // panel only says whose turn it is.
-        if (s.turn !== me) {
-            const who = s.players[s.turn] ? s.players[s.turn].name : '—';
+        if (!GamePhase.of(s).isTurn(me)) {
+            const who = s.players[GamePhase.of(s).turn] ? s.players[GamePhase.of(s).turn].name : '—';
             ctx.text = 'Жетон приказа выкладывает ' + who + '.';
             ctx.status = 'Осталось приказов у вас: ' + left + '.';
             ctx.tokens = [
@@ -887,8 +887,8 @@ class FSGame {
     panelOperations(s, ctx) {
         const me = s.seat;
         ctx.title = 'Операции';
-        if (s.turn !== me) {
-            const who = s.players[s.turn] ? s.players[s.turn].name : '—';
+        if (!GamePhase.of(s).isTurn(me)) {
+            const who = s.players[GamePhase.of(s).turn] ? s.players[GamePhase.of(s).turn].name : '—';
             ctx.text = 'Ход игрока ' + who + '.';
             ctx.status = '';
             return;
@@ -3145,7 +3145,7 @@ class FSGame {
             // and the hex under it are the same thing: the top token is the one that
             // resolves, so the click always takes the top one.
             const top = meta.system ? this.topOrderOf(s, meta.system) : null;
-            if (top && top.seat === s.seat && s.phase === 'operations' && s.turn === s.seat && !s.order) {
+            if (top && top.seat === s.seat && GamePhase.of(s).is(GamePhase.OPERATIONS) && GamePhase.of(s).isTurn(s.seat) && !s.order) {
                 this.mode = 'order';
                 this.pending = { system: meta.system };
                 this.refresh();

@@ -102,7 +102,7 @@ class RefreshRules {
         // same restore the cards use, so the round it fell in is cleared too.
         for (const u of state.units) this.engine.restoreUnit(state, u);
         // 4. the event cards and the warp storms
-        state.turn = GamePhase.of(state).firstPlayer;
+        GamePhase.of(state).turn = GamePhase.of(state).firstPlayer;
         EventRound.of(state).begin();
         StormPhase.of(state).clearReaction();
         OrderScheme.of(state).reset();
@@ -122,7 +122,7 @@ class RefreshRules {
             this.endRound(state);
             return;
         }
-        const seat = state.turn;
+        const seat = GamePhase.of(state).turn;
         const p = state.players[seat];
         const drawn = [];
         for (let i = 0; i < p.eventTokens; i++) drawn.push(this.drawEventCard(state, seat));
@@ -134,7 +134,7 @@ class RefreshRules {
             phase.revealTop(this.drawEventCard(state, seat));
         }
         // The next player plays the next event.
-        state.turn = (state.turn + 1) % state.players.length;
+        GamePhase.of(state).nextTurn();
     }
 
     drawEventCard(state, seat) {
@@ -286,9 +286,9 @@ class RefreshRules {
         GamePhase.of(state).start(GamePhase.PLANNING);
         // The first player may be out of the game: the planning starts with the
         // first player who still has tokens in hand.
-        state.turn = GamePhase.of(state).opener(this.engine.nextPlanner);
+        GamePhase.of(state).turn = GamePhase.of(state).opener(this.engine.nextPlanner);
         // The schemes of the start of the planning phase.
-        this.engine.maybeScheme(state, state.turn, 'planning', { kind: 'event', ctx: null });
+        this.engine.maybeScheme(state, GamePhase.of(state).turn, 'planning', { kind: 'event', ctx: null });
         this.engine.log(state, -1, 'Раунд ' + GamePhase.of(state).round + ': фаза планирования.');
     }
 
