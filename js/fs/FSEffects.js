@@ -47,6 +47,33 @@ const FS_EFFECTS = {
         return 'other';
     },
 
+    // Who pays for avoiding an effect. The card names him with a word («ваш
+    // противник может избежать …») or with a pronoun that points back at the one
+    // the step was done to («… вынудить вашего противника … Он может избежать»).
+    // The step carries the payer in one field, `avoid.by`, and every reading of
+    // a card — the rules of the parser and the exact reading of the Chaos and
+    // Tau cards — passes through here, so the payment is never offered to the
+    // wrong player.
+    avoidPayers(list) {
+        const steps = [].concat(list || []);
+        const walk = one => {
+            if (!one || typeof one !== 'object') return;
+            if (one.avoid && !one.avoid.by) {
+                const text = String(one.ability || one.text || '');
+                if (/(?:ваш\s+)?(?:противник|оппонент)|вынудить/i.test(text)) one.avoid.by = 'foe';
+                else if (one.who === 'foe' || one.chooser === 'foe') one.avoid.by = 'foe';
+            }
+            for (const key of ['options', 'then', 'steps']) {
+                if (Array.isArray(one[key])) one[key].forEach(walk);
+            }
+            if (one.yes || one.no) {
+                [].concat(one.yes || [], one.no || []).forEach(walk);
+            }
+        };
+        steps.forEach(walk);
+        return steps;
+    },
+
     // The sentences of the text: the parts that are read one by one.
     sentences(text) {
         if (!text) return [];
@@ -653,11 +680,11 @@ const FS_EFFECTS = {
         // The Chaos cards are keyed by their printed text as well: a broad rule
         // of another faction must not claim one of their sentences.
         const chaos = this.chaosCard(text, ctx || {});
-        if (chaos) return chaos;
+        if (chaos) return this.avoidPayers(chaos);
         // The Tau cards have their own exact reading: no wide rule of another
         // faction may turn one of their sentences into a parked note.
         const tau = this.tauCard(text, ctx || {});
-        if (tau) return tau;
+        if (tau) return this.avoidPayers(tau);
         // The paragraphs with their own requisites: only the one whose unit is
         // in the battle is read (the requisites of the card are checked before).
         const paras = this.paragraphs(text, ctx);
@@ -680,7 +707,7 @@ const FS_EFFECTS = {
             }
             return out;
         }
-        const built = this.parseText(text, ctx);
+        const built = this.avoidPayers(this.parseText(text, ctx));
         // «Требуются «Камери размножения»» («Мицетические споры»): the name in
         // quotes is ANOTHER order upgrade the player must have bought, just
         // like «Нужно быть главным по машинам» («Святой трубопровод»). The
@@ -884,7 +911,19 @@ const FS_EFFECTS = {
                 // own unit («Ратлинг стрелок»), so HE pays. A step that does
                 // not touch the opponent pays nothing for him.
                 if (by) avoid.by = by;
-                else if (prev.who === 'foe') avoid.by = 'foe';
+                else if (prev.who === 'foe' || prev.chooser === 'foe' || prev.targetIsFoe) avoid.by = 'foe';
+                else {
+                    // A pronoun («Он может избежать этого…») points back at the
+                    // one the step was done to: the step that takes something
+                    // from the opponent is paid for by him, even when the card
+                    // named him in the words «вынудить вашего противника».
+                    const own = String(prev.ability || prev.text || '');
+                    if (/(?:ваш\s+)?(?:противник|оппонент)|вынудить/i.test(own)) avoid.by = 'foe';
+                    // «Уничтожьте его, если противник не потратит…» is the same
+                    // fork written in one sentence: the avoid of such a step is
+                    // already the opponent's own (the fork above reads it).
+                    else if (prev.op === 'destroyFoeUnlessPays') avoid.by = 'foe';
+                }
                 prev.avoid = avoid;
                 continue;
             }

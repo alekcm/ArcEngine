@@ -1265,6 +1265,29 @@ rule('ask-0a', 'таблица вопросов не содержит заглу
     eq(missing.join(', ') || '—', '—', 'у каждого имени в ops есть метод');
 });
 
+rule('avoid-0c', 'у каждого «может избежать» назван плательщик: чужая карта не платит за противника', () => {
+    // «Он может избежать этого эффекта, если потратит 1 `def. cube`» — the
+    // pronoun points back at the one the step was done to. A step without a
+    // payer is offered to the owner of the card (the default of the question),
+    // so every avoid of the deck must name somebody.
+    const silent = [];
+    const fields = [['combat', FS_DATA.combat, 'general'], ['combat', FS_DATA.combat, 'unit'],
+        ['event', FS_DATA.events, 'text'], ['order', FS_DATA.orders, 'text']];
+    for (const [kind, pool, field] of fields) {
+        for (const card of pool) {
+            if (!card[field]) continue;
+            const list = FS_EFFECTS.parse(card[field], { kind, faction: card.faction });
+            const walk = one => {
+                if (!one || typeof one !== 'object') return;
+                if (one.avoid && !one.avoid.by) silent.push(card.name + ': ' + one.op);
+                for (const key of ['options', 'then', 'steps']) if (Array.isArray(one[key])) one[key].forEach(walk);
+            };
+            [].concat(list).forEach(walk);
+        }
+    }
+    eq(silent.join(', ') || '—', '—', 'ни одна карта не платит за противника молча');
+});
+
 rule('avoid-0a', '«Ваш противник может избежать этого эффекта, если потратит 1 `def. cube`» — платит противник, а не владелец карты', () => {
     // The text names WHO pays; the engine used to ask the owner of the card
     // (the default of the avoid step), so the opponent's payment was paid by
