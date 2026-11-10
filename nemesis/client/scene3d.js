@@ -4229,8 +4229,11 @@ export class Scene3D {
         this.selectable = new Set(selectableRooms || []);
         // room-token flip: triggered by fresh 'explore' fx entries (not on reconnect)
         const fx = view.fx || [];
-        if (this.fxSeen == null) this.fxSeen = fx.length ? fx[fx.length - 1].n : 0;
-        else for (const f of fx) if (f.n > this.fxSeen) { this.fxSeen = f.n; if (f.type === 'explore' && this.roomNodes[f.room] && !this.roomNodes[f.room].shell) this.roomNodes[f.room].flip = { phase: 1, t0: this.t }; }
+        if (this.fxSeen == null) this.fxSeen = fx.length ? (fx[fx.length - 1].seq ?? fx[fx.length - 1].n) : 0;
+        else for (const f of fx) {
+            const seq = f.seq ?? f.n;
+            if (seq > this.fxSeen) { this.fxSeen = seq; if (f.type === 'explore' && this.roomNodes[f.room] && !this.roomNodes[f.room].shell) this.roomNodes[f.room].flip = { phase: 1, t0: this.t }; }
+        }
         // every room builds in its own id space: floors and walls under 'room:<id>', the shell and
         // the things that come and go (pods, objects) under their own names, so an edit cannot slip
         // from a floor tile onto a pod that happens to have the same number

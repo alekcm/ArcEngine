@@ -263,10 +263,25 @@ export function drawLimit(p) {
 // ---------------------------------------------------------------------------------------------
 // Cards
 // ---------------------------------------------------------------------------------------------
+/** Sequence number of the retained tail, including old saves lacking the counter. */
+export function fxSequenceEnd(state) {
+    const effects = state.fx || [];
+    if (Number.isSafeInteger(state.fxSeq) && state.fxSeq >= effects.length) return state.fxSeq;
+    // Legacy `n` is unreliable for count-bearing events. Extrapolate from the latest
+    // reliable event (or use the tail length if all of them contain only counts).
+    let end = effects.length;
+    effects.forEach((f, i) => {
+        const id = f.seq ?? (['draw', 'contam', 'damage'].includes(f.type) ? null : f.n);
+        if (Number.isSafeInteger(id) && id > 0) end = Math.max(end, id + effects.length - i - 1);
+    });
+    return end;
+}
+
 /** Visual effects feed for the clients (card moves etc.). Only the last few are kept. */
 export function fx(state, obj) {
-    state.fxSeq = (state.fxSeq || 0) + 1;
-    (state.fx = state.fx || []).push(Object.assign({ n: state.fxSeq }, obj));
+    state.fxSeq = fxSequenceEnd(state) + 1;
+    // n is also a payload (drawn cards, contamination or damage); never use it as the event id.
+    (state.fx = state.fx || []).push(Object.assign({ n: state.fxSeq }, obj, { seq: state.fxSeq }));
     if (state.fx.length > 256) state.fx.splice(0, state.fx.length - 256);
 }
 export function drawCards(state, p, n, silent) {

@@ -3,7 +3,7 @@ import { bagTokenCounts } from './bag-tokens.mjs';
 // The server sends only views to clients; the full state never leaves the host process.
 
 import { buildMenu } from './engine/turn.mjs';
-import { handSlots } from './engine/core.mjs';
+import { handSlots, fxSequenceEnd } from './engine/core.mjs';
 import { CHARACTERS, FIELD_DATA, ITEMS } from './data/cards.mjs';
 
 const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'lastCombatAction', 'fx', 'version', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'turnSeq', 'ship', 'roomState',
@@ -18,6 +18,11 @@ const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'lastCombatAction', 'fx', 'version'
 export function viewFor(state, viewer, logFrom = 0) {
     const v = {};
     for (const k of PUBLIC_KEYS) v[k] = state[k];
+    // Older saves stored draw/contamination/damage counts in `n`, overwriting their event id.
+    // The retained feed is a consecutive tail of fxSeq, so reconstruct ids even for those saves.
+    const effects = state.fx || [];
+    const fxEnd = fxSequenceEnd(state);
+    v.fx = effects.map((f, i) => ({ ...f, seq: fxEnd - effects.length + i + 1 }));
     v.bagCount = state.bag.length;
     v.bagKnown = bagTokenCounts(state.bag);
     v.decks = {

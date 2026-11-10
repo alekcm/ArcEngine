@@ -1,8 +1,8 @@
 import { bagTokenType, bagTokenLabel, bagTokenIcon } from '/shared/bag-tokens.mjs';
 // fx.js — "physical table" feel: deck piles on screen and flying-card animations.
 //
-// The engine records card movements in view.fx ({n, type, ...}); every client replays the
-// entries it has not seen yet:
+// The engine records card movements in view.fx ({seq, type, ...}); every client replays the
+// entries it has not seen yet (seq is the event id; n can be a quantity):
 //   draw    — cards fly from the player's deck pile to their hand (or to their panel for others)
 //   discard — a card flies from the hand to the player's discard pile
 //   remove  — a card flies from the hand and burns out (removed from the game)
@@ -24,7 +24,7 @@ export class TableFX {
         this.lastSeen = null; this.queue = []; this.busy = false; this.playing = null;
         // `paused` lets the table hold a card that arrived together with a die roll: the queue is
         // fed from every state, but nothing starts playing until the die has been read.
-        this.paused = false;
+        this.paused = false; this.epoch = 0; this.effects = new Set();
     }
 
     /** Redraw the deck piles (counts) and replay new fx entries. */
@@ -38,13 +38,23 @@ export class TableFX {
             '<div class="pile' + (n === 0 ? ' empty' : '') + '" data-pile="' + k + '" title="' + esc(label) + ': ' + n + ' — нажмите, чтобы посмотреть"><div class="pback" style="--pc:' + (DECK_COLORS[k === 'owndisc' ? 'own' : k] || '#345') + '">' +
             (k === 'owndisc' ? '<span class="pdisc">⤵</span>' : k === 'bag' ? '<span class="pdisc">🎒</span>' : '') + '<span class="pcount">' + n + '</span></div><div class="plabel">' + esc(label) + '</div></div>').join('');
         const fx = view.fx || [];
-        if (this.lastSeen === null) { this.lastSeen = fx.length ? fx[fx.length - 1].n : 0; return; }   // nothing to replay on (re)connect
-        for (const f of fx) if (f.n > this.lastSeen) { this.lastSeen = f.n; this.queue.push(Object.assign({ me, view }, f)); }
+        if (this.lastSeen === null) { this.lastSeen = fx.length ? (fx[fx.length - 1].seq ?? fx[fx.length - 1].n) : 0; return; }   // nothing to replay on (re)connect
+        for (const f of fx) {
+            const seq = f.seq ?? f.n;
+            if (seq > this.lastSeen) { this.lastSeen = seq; this.queue.push(Object.assign({ me, view }, f)); }
+        }
         this.pump();
     }
 
     /** Discard stale effects on reconnect, undo or loading a snapshot. */
-    reset() { this.lastSeen = null; this.queue = []; }
+    reset() {
+        this.epoch++; this.lastSeen = null; this.queue = []; this.busy = false; this.playing = null;
+        this.skipNext = null; this.cardOrigin = null;
+        for (const el of this.effects) el.remove();
+        this.effects.clear();
+    }
+    track(el) { this.effects.add(el); return el; }
+    removeEffect(el) { this.effects.delete(el); el.remove(); }
 
     /** True while the table is showing a token pull or an attack card: the next question waits. */
     get holding() { return this.busy && (this.playing === 'bag' || this.playing === 'attack'); }
@@ -56,8 +66,9 @@ export class TableFX {
 
     pump() {
         if (this.busy || this.paused || !this.queue.length) return;
-        const f = this.queue.shift(); this.busy = true; this.playing = f.type;
+        const f = this.queue.shift(), epoch = this.epoch; this.busy = true; this.playing = f.type;
         const done = () => {
+            if (epoch !== this.epoch) return;
             this.busy = false; this.playing = null; this.pump();
             // the table has finished its beat: a question held back by `holding` may appear now
             if (!this.busy && !this.queue.length && this.onIdle) this.onIdle();
@@ -74,7 +85,7 @@ export class TableFX {
 
     /** Create a flying card element; `face` is inner HTML for the front (null = back only). */
     makeCard(color, face, w = 86, h = 118) {
-        const el = document.createElement('div');
+        const el = this.track(document.createElement('div'));
         el.className = 'flycard' + (face ? ' faced' : '');
         el.style.setProperty('--pc', color); el.style.width = w + 'px'; el.style.height = h + 'px';
         el.innerHTML = '<div class="fc-inner"><div class="fc-back"></div><div class="fc-front">' + (face || '') + '</div></div>';
@@ -89,13 +100,16 @@ export class TableFX {
             { transform: 'translate(' + (Bm.x - el.offsetWidth / 2) + 'px,' + (Bm.y - el.offsetHeight / 2) + 'px) rotate(' + (opts.rotB || 0) + 'deg) scale(' + (opts.scaleB || 1) + ')', opacity: opts.fadeOut ? 0 : 1 },
         ];
         if (opts.arc) kf.splice(1, 0, { transform: 'translate(' + ((A.x + Bm.x) / 2 - el.offsetWidth / 2) + 'px,' + ((A.y + Bm.y) / 2 - el.offsetHeight / 2 - opts.arc) + 'px) rotate(' + (((opts.rotA || 0) + (opts.rotB || 0)) / 2) + 'deg) scale(' + (((opts.scaleA || 1) + (opts.scaleB || 1)) / 2 * 1.15) + ')', opacity: 1, offset: 0.5 });
+        const epoch = this.epoch;
         const anim = el.animate(kf, { duration: ms, easing: opts.easing || 'cubic-bezier(.25,.8,.3,1)', fill: 'forwards' });
-        anim.onfinish = () => { if (cb) cb(); };
+        anim.onfinish = () => { if (epoch === this.epoch && cb) cb(); };
         return anim;
     }
     flip(el, ms = 350) { el.classList.add('flipped'); return new Promise(r => setTimeout(r, ms)); }
 
     play(f, done) {
+        const epoch = this.epoch, active = () => epoch === this.epoch;
+        const later = (fn, ms) => setTimeout(() => { if (active()) fn(); }, ms);
         const v = f.view, isMe = f.player === f.me;
         const pname = f.player != null && v.players[f.player] ? v.players[f.player].name : '';
         switch (f.type) {
@@ -110,7 +124,7 @@ export class TableFX {
                     // old version shrank to a grey rectangle on the way and looked like a placeholder.
                     const el = this.makeCard(DECK_COLORS.own, null, 128, 176);
                     const start = from ? { left: from.left + 6, top: from.top + 6, width: from.width, height: from.height } : to;
-                    setTimeout(() => this.fly(el, start, isMe ? { left: to.left + i * 40, top: to.top, width: 128, height: 176 } : to, 470, { rotA: -14, rotB: 0, arc: 30, scaleA: 1, scaleB: isMe ? 1 : 0.45, fadeOut: !isMe }, () => { el.remove(); if (i === n - 1) done(); }), i * 110);
+                    later(() => this.fly(el, start, isMe ? { left: to.left + i * 40, top: to.top, width: 128, height: 176 } : to, 470, { rotA: -14, rotB: 0, arc: 30, scaleA: 1, scaleB: isMe ? 1 : 0.45, fadeOut: !isMe }, () => { this.removeEffect(el); if (i === n - 1) done(); }), i * 110);
                 }
                 if (!n) done();
                 break;
@@ -132,7 +146,7 @@ export class TableFX {
                     const el = this.makeCard(DECK_COLORS.own, '<b>' + esc(d.name) + '</b>', 128, 176);
                     el.classList.add('flipped');
                     Snd.play('card');
-                    this.fly(el, from, to || from, 380, { rotA: -8, rotB: 22, scaleB: 0.55, fadeOut: !isMe }, () => { el.remove(); done(); });
+                    this.fly(el, from, to || from, 380, { rotA: -8, rotB: 22, scaleB: 0.55, fadeOut: !isMe }, () => { this.removeEffect(el); done(); });
                     break;
                 }
                 const mid = this.centerRect(art ? 220 : 170, art ? 330 : 236);
@@ -141,16 +155,17 @@ export class TableFX {
                 Snd.play('card');
                 this.fly(el, from, mid, 420, { rotA: -6, rotB: 0, scaleA: 0.6, scaleB: 1, arc: 30 }, async () => {
                     await new Promise(r => setTimeout(r, isItem ? 1300 : 1100));
+                    if (!active()) return;
                     const to = isMe && !isItem ? this.pileRect('owndisc') : this.playerRect(f.player);
                     if (!isItem) this.skipNext = f.card;   // the engine's following discard/remove fx for this card is folded into this flight
-                    this.fly(el, mid, to || mid, 420, { rotB: 20, scaleB: 0.45, fadeOut: isItem || !isMe }, () => { el.remove(); done(); });
+                    this.fly(el, mid, to || mid, 420, { rotB: 20, scaleB: 0.45, fadeOut: isItem || !isMe }, () => { this.removeEffect(el); done(); });
                 });
                 break;
             }
             case 'discard': case 'remove': {
                 if (this.skipNext === f.card) {
                     this.skipNext = null;
-                    if (f.type === 'remove') { const el = this.makeCard(DECK_COLORS.own, '<b>' + esc(describeCard(f.card).name) + '</b>', 100, 140); el.classList.add('flipped'); this.fly(el, this.centerRect(100, 140), this.centerRect(100, 140), 10, {}, () => { el.classList.add('burn'); Snd.play('burn'); setTimeout(() => { el.remove(); done(); }, 700); }); }
+                    if (f.type === 'remove') { const el = this.makeCard(DECK_COLORS.own, '<b>' + esc(describeCard(f.card).name) + '</b>', 100, 140); el.classList.add('flipped'); this.fly(el, this.centerRect(100, 140), this.centerRect(100, 140), 10, {}, () => { el.classList.add('burn'); Snd.play('burn'); later(() => { this.removeEffect(el); done(); }, 700); }); }
                     else done();
                     break;
                 }
@@ -163,8 +178,8 @@ export class TableFX {
                 const burn = f.type === 'remove';
                 Snd.play(burn ? 'burn' : 'card');
                 this.fly(el, from, burn ? this.centerRect(100, 140) : (to || from), burn ? 500 : 520, { rotB: burn ? 0 : 25, arc: 60, scaleB: burn ? 1.1 : 0.55, fadeOut: !isMe && !burn }, () => {
-                    if (burn) { el.classList.add('burn'); setTimeout(() => { el.remove(); done(); }, 700); }
-                    else { el.remove(); done(); }
+                    if (burn) { el.classList.add('burn'); later(() => { this.removeEffect(el); done(); }, 700); }
+                    else { this.removeEffect(el); done(); }
                 });
                 break;
             }
@@ -176,7 +191,7 @@ export class TableFX {
                     const el = this.makeCard(DECK_COLORS.contam, '<b>☣ Заражение</b>');
                     el.classList.add('flipped');
                     const from = { left: innerWidth / 2 - 43, top: -140, width: 86, height: 118 };
-                    setTimeout(() => this.fly(el, from, to || from, 650, { rotA: -30, rotB: 15, scaleB: 0.55, easing: 'cubic-bezier(.5,0,.8,.6)' }, () => { el.remove(); if (i === n - 1) done(); }), i * 150);
+                    later(() => this.fly(el, from, to || from, 650, { rotA: -30, rotB: 15, scaleB: 0.55, easing: 'cubic-bezier(.5,0,.8,.6)' }, () => { this.removeEffect(el); if (i === n - 1) done(); }), i * 150);
                 }
                 break;
             }
@@ -188,7 +203,7 @@ export class TableFX {
                 const from = this.pileRect(f.deck);
                 const to = isMe ? this.handRect() : this.centerRect(100, 140);
                 const el = this.makeCard(DECK_COLORS[f.deck], null);
-                this.fly(el, from || to, to, 650, { rotA: 8, rotB: -4, arc: 90, scaleA: 0.9, scaleB: 1.05, fadeOut: true }, () => { el.remove(); done(); });
+                this.fly(el, from || to, to, 650, { rotA: 8, rotB: -4, arc: 90, scaleA: 0.9, scaleB: 1.05, fadeOut: true }, () => { this.removeEffect(el); done(); });
                 break;
             }
             case 'event': case 'attack': case 'queen': case 'panic': {
@@ -213,10 +228,12 @@ export class TableFX {
                 Snd.play('card');
                 this.fly(el, from || mid, mid, 550, { rotA: -10, rotB: 0, scaleA: 0.5, scaleB: 1, arc: 30 }, async () => {
                     Snd.play('flip'); await this.flip(el);
+                    if (!active()) return;
                     // The attack card is the one thing on the table that explains the hit: it stays
                     // four seconds. An event card stays longer, a queen card longer still.
                     await new Promise(r => setTimeout(r, k === 'attack' ? 4000 : 3200));
-                    this.fly(el, mid, from || mid, 450, { rotB: 20, scaleB: 0.4, fadeOut: true }, () => { el.remove(); done(); });
+                    if (!active()) return;
+                    this.fly(el, mid, from || mid, 450, { rotB: 20, scaleB: 0.4, fadeOut: true }, () => { this.removeEffect(el); done(); });
                 });
                 break;
             }
@@ -225,13 +242,13 @@ export class TableFX {
                 Snd.play('bag');
                 const name = bagTokenLabel(f.token);
                 const tokenType = bagTokenType(f.token);
-                const el = document.createElement('div');
+                const el = this.track(document.createElement('div'));
                 el.className = 'bagfx';
                 el.innerHTML = '<div class="bag-pouch">🎒<small>мешок · ' + (f.left ?? '') + '</small></div><div class="bag-token tok-' + esc(tokenType) + '"><div class="bt-inner"><div class="bt-back">?</div><div class="bt-front"><b>' + esc(bagTokenIcon(f.token)) + '</b><span>' + esc(name) + '</span></div></div></div>';
                 this.layer.appendChild(el);
-                setTimeout(() => { el.classList.add('pulled'); }, 450);
-                setTimeout(() => { el.classList.add('shown'); Snd.play('flip'); if (tokenType !== 'blank') Snd.play('roar', 150); }, 1000);
-                setTimeout(() => { el.classList.add('gone'); setTimeout(() => { el.remove(); done(); }, 350); }, 2500);
+                later(() => { el.classList.add('pulled'); }, 450);
+                later(() => { el.classList.add('shown'); Snd.play('flip'); if (tokenType !== 'blank') Snd.play('roar', 150); }, 1000);
+                later(() => { el.classList.add('gone'); later(() => { this.removeEffect(el); done(); }, 350); }, 2500);
                 break;
             }
             case 'spawn': { if (!this.lastRoar || Date.now() - this.lastRoar > 1500) { Snd.play('roar'); this.lastRoar = Date.now(); } done(); break; }
@@ -242,16 +259,16 @@ export class TableFX {
                 done(); break;
             }
             case 'lockdown': {
-                const el = document.createElement('div');
+                const el = this.track(document.createElement('div'));
                 el.className = 'lockdown-alert';
                 el.setAttribute('role', 'alert');
                 el.textContent = '⚠ БЛОКИРОВКА — карта компьютерных действий';
                 document.body.appendChild(el);
-                setTimeout(() => el.remove(), 3500);
-                setTimeout(done, 3500);
+                later(() => this.removeEffect(el), 3500);
+                later(done, 3500);
                 break;
             }
-            case 'siren': { Snd.play('siren'); this.banner('⚠ САМОУНИЧТОЖЕНИЕ ЗАПУЩЕНО', 'red', 2600); setTimeout(done, 600); break; }
+            case 'siren': { Snd.play('siren'); this.banner('⚠ САМОУНИЧТОЖЕНИЕ ЗАПУЩЕНО', 'red', 2600); later(done, 600); break; }
             case 'sdBeep': { Snd.play('beep'); this.banner('⏱ Самоуничтожение: ' + f.count + '/6', f.count >= 4 ? 'red' : 'blue', 1500); done(); break; }
             case 'explore': { Snd.play('tile'); done(); break; }
             default: done();
@@ -260,12 +277,12 @@ export class TableFX {
 
     /** Full-screen coloured vignette flash (damage = red, contamination = green). */
     vignette(color) {
-        const el = document.createElement('div'); el.className = 'vignette ' + color; this.layer.appendChild(el);
-        setTimeout(() => el.remove(), 900);
+        const el = this.track(document.createElement('div')); el.className = 'vignette ' + color; this.layer.appendChild(el);
+        setTimeout(() => this.removeEffect(el), 900);
     }
     /** Short centred banner text. */
     banner(text, color, ms) {
-        const el = document.createElement('div'); el.className = 'fxbanner ' + color; el.textContent = text; this.layer.appendChild(el);
-        setTimeout(() => { el.classList.add('gone'); setTimeout(() => el.remove(), 400); }, ms);
+        const el = this.track(document.createElement('div')); el.className = 'fxbanner ' + color; el.textContent = text; this.layer.appendChild(el);
+        setTimeout(() => { el.classList.add('gone'); setTimeout(() => this.removeEffect(el), 400); }, ms);
     }
 }

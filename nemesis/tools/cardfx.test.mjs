@@ -71,3 +71,92 @@ test('CFX-04 the item fly-out is skipped only when the draw is quiet', () => {
     const item = src.slice(src.indexOf("case 'item': {"), src.indexOf("case 'event': case 'attack': case 'queen':"));
     assert.ok(/this\.makeCard\(DECK_COLORS\[f\.deck\], null\)/.test(item), 'an ordinary item still flies out of its deck');
 });
+
+// Exercise the actual client queue with public views, including legacy snapshots whose `n` was
+// overwritten by a card/damage count. A full state is the same path used by undo and reconnect.
+test('CFX-05 undo and legacy saves do not replay the card history after a count event', async () => {
+    const { fx } = await import('../shared/engine/core.mjs');
+    const { viewFor } = await import('../shared/view.mjs');
+    const clientSrc = src.replace(/^import .*;\s*$/gm, '').replace('export class TableFX', 'class TableFX');
+    const TableFX = new Function('esc', clientSrc + '\nreturn TableFX;')(x => x);
+    const clients = [0, 1].map(() => {
+        const c = new TableFX({ innerHTML: '' }, {}, () => null, {});
+        c.played = []; c.play = (f, done) => { c.played.push([f.seq, f.type, f.n]); done(); };
+        return c;
+    });
+    const s = fresh(); s.fxSeq = 0;
+    for (let i = 0; i < 300; i++) fx(s, { type: 'play', card: 'soldier.search' });
+    fx(s, { type: 'draw', player: 0, n: 2 });
+    // Old stored games have no seq. The last `n` is the count, not the 301st event.
+    s.fx.forEach(f => delete f.seq);
+    const snapshot = JSON.stringify(s);
+    const withoutCounter = JSON.parse(snapshot); delete withoutCounter.fxSeq;
+    assert.equal(viewFor(withoutCounter, 0).fx.at(-1).seq, 301, 'older saves without a counter recover the tail');
+    fx(withoutCounter, { type: 'draw', n: 3, player: 0 });
+    assert.equal(viewFor(withoutCounter, 0).fx.at(-1).seq, 302, 'the recovered counter advances');
+    for (let i = 0; i < clients.length; i++) {
+        const v = viewFor(s, i);
+        assert.equal(v.fx.length, 256);
+        assert.equal(v.fx[0].seq, 46);
+        assert.equal(v.fx.at(-1).seq, 301);
+        assert.equal(v.fx.at(-1).n, 2);
+        clients[i].update(v, i); // full state on reconnect/load
+        clients[i].update(v, i);
+        assert.deepEqual(clients[i].played, []);
+    }
+    fx(s, { type: 'play', card: 'soldier.search' });
+    fx(s, { type: 'contam', player: 0, n: 1 });
+    fx(s, { type: 'damage', player: 0, n: 3 });
+    for (let i = 0; i < clients.length; i++) {
+        clients[i].update(viewFor(s, i), i);
+        clients[i].update(viewFor(s, i), i);
+        assert.deepEqual(clients[i].played, [[302, 'play', 302], [303, 'contam', 1], [304, 'damage', 3]]);
+    }
+    const restored = JSON.parse(snapshot);
+    for (let i = 0; i < clients.length; i++) {
+        clients[i].reset(); clients[i].update(viewFor(restored, i), i);
+        clients[i].update(viewFor(restored, i), i);
+        assert.equal(clients[i].played.length, 3, 'undo is a baseline, not new effects');
+    }
+    fx(restored, { type: 'draw', player: 0, n: 4 });
+    fx(restored, { type: 'play', card: 'soldier.search' });
+    for (let i = 0; i < clients.length; i++) {
+        clients[i].update(viewFor(restored, i), i);
+        clients[i].update(viewFor(restored, i), i);
+        assert.deepEqual(clients[i].played.slice(3), [[302, 'draw', 4], [303, 'play', 303]], 'new timeline plays exactly once');
+    }
+});
+
+test('CFX-06 reset cancels the current effect and stale callbacks cannot interfere with the new timeline', async () => {
+    const timers = [], nodes = [];
+    const document = {
+        createElement: () => {
+            const el = { style: { setProperty() {} }, classList: { add() {} }, offsetWidth: 100, offsetHeight: 140,
+                remove() { this.removed = true; }, animate() { const anim = {}; this.anim = anim; return anim; } };
+            nodes.push(el); return el;
+        },
+        querySelector: () => null, body: { appendChild() {} },
+    };
+    const clientSrc = src.replace(/^import .*;\s*$/gm, '').replace('export class TableFX', 'class TableFX');
+    const TableFX = new Function('document', 'setTimeout', 'esc', 'describeCard', 'cardArt', 'Snd', 'innerWidth', 'innerHeight',
+        clientSrc + '\nreturn TableFX;')(document, fn => timers.push(fn), x => x,
+        () => ({ name: 'card' }), () => null, { play() {} }, 800, 600);
+    const c = new TableFX({ innerHTML: '' }, { appendChild() {} }, () => null, {});
+    const view = { players: [], decks: {}, bagCount: 0, fx: [] };
+    c.update(view, 0);
+    c.update({ ...view, fx: [{ seq: 1, n: 1, type: 'play', player: 0, card: 'one' }] }, 0);
+    const old = nodes[0], oldFinish = old.anim.onfinish;
+    assert.equal(c.busy, true);
+    oldFinish(); // the old card has already reached the centre and is waiting to fly away
+    c.reset(); c.update(view, 0);
+    assert.equal(old.removed, true);
+    assert.equal(c.busy, false);
+    c.update({ ...view, fx: [{ seq: 1, n: 1, type: 'play', player: 0, card: 'two' }] }, 0);
+    assert.equal(c.busy, true);
+    oldFinish(); // the old animation may still call onfinish after being removed
+    while (timers.length) timers.shift()();
+    await Promise.resolve();
+    assert.equal(c.busy, true, 'old completion cannot finish the new effect');
+    assert.equal(c.skipNext, null);
+    assert.equal(nodes.length, 2);
+});

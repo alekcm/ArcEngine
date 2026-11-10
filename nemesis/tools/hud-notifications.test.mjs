@@ -83,7 +83,7 @@ test('automatic Lockdown resolution retains a public event for every viewer', ()
     OPS['computer.done'](s, { player: 0, then: { op: 'noop' } });
     assert.notEqual(s.computerCard, 'lockdown');
     assert.equal(s.fx.filter(f => f.type === 'lockdown').length, 1);
-    for (const viewer of [0, 1, null]) assert.deepEqual(viewFor(s, viewer).fx.filter(f => f.type === 'lockdown'), [{ n: 1, type: 'lockdown' }]);
+    for (const viewer of [0, 1, null]) assert.deepEqual(viewFor(s, viewer).fx.filter(f => f.type === 'lockdown'), [{ n: 1, type: 'lockdown', seq: 1 }]);
 });
 
 test('both clients show a new event once, and restored states establish a fresh baseline', () => {
