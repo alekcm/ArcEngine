@@ -1605,6 +1605,48 @@ rule('foe-fork-0a', '«Если противник не потратит 1 `mora
     eq(fork['then'][0].n, 3, 'три жетона');
 });
 
+rule('abil-2', '«… вы можете выполнить приказ развертывания, используя 1 фабрику в активной системе … только в тот самый мир фабрики» — «Массовое Производство» гвардии', () => {
+    // Способность фракции вставляет второй приказ внутрь доминирования. Её шаг
+    // `guardDeploy` не исполнялся ни одной проверкой: abil-1 только разбирала
+    // текст и отвечала на вопросы, а этот шаг идёт без вопроса.
+    const players = () => [{ faction: 'имперская-гвардия', name: 'P0', id: 'p0' }, { faction: 'орки', name: 'P1', id: 'p1' }];
+    const board = () => {
+        const st = FS_RULES.newReadyGame({ seed: 7, players: players() });
+        st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+        for (const s of st.systems) s.tokens = [];
+        st.phase = 'operations'; st.turn = 0;
+        const sys = st.systems[0];
+        const world = worldOf(st, sys.id);
+        FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, world);
+        st.players[0].materiel = 14;
+        st.players[0].supply.units['гвардейцы'] = 9;
+        st.players[0].supply.units['огрины'] = 2;
+        st.order = { seat: 0, order: 'dominate', system: sys.id, pos: world, phase: 'dominate' };
+        return { st, sys: sys.id, world };
+    };
+    // Без фабрики в активной системе способность не запускается вовсе.
+    const noFactory = board();
+    FS_RULES.runEffects(noFactory.st, 0, [{ op: 'guardDeploy' }], { kind: 'ability', ctx: null });
+    eq(noFactory.st.order.phase, 'dominate', 'без фабрики приказ доминирования не подменяется');
+    // С фабрикой — второй приказ развёртывания.
+    const { st, sys, world } = board();
+    FS_RULES.addStructure(st, 0, 'factory', sys, world);
+    FS_RULES.runEffects(st, 0, [{ op: 'guardDeploy' }], { kind: 'ability', ctx: null });
+    eq(PhasePlan.of(st.order).is('guardDeploy'), true, 'идёт производство фабрики');
+    eq(JSON.stringify(DeployScope.of(st.order).factory), JSON.stringify({ system: sys, pos: world }),
+        'фабрика запомнена: отряды идут в её мир');
+    const first = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys, pos: world });
+    eq(first.ok, true, 'Гвардеец куплен: ' + (first.error || ''));
+    // «минимум 2 отряда одного типа»: второй тип запрещён.
+    refused(FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'огрины', system: sys, pos: world }),
+        /только один тип отрядов/, 'второй тип в том же производстве');
+    // «только наземные отряды»: корабль не производится.
+    const v = voidOf(st, sys);
+    FS_RULES.addUnit(st, 0, 'крейсеры', sys, v);
+    refused(FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'крейсеры', system: sys, pos: v }),
+        /только наземные отряды/, 'корабль этой способностью не покупается');
+});
+
 rule('scheme-0c', '«деморализован или уничтожен — сбросить эту карту, чтобы …» — шаги выложенного плана исполняются на его моменте', () => {
     // Карта-план живёт в игре свёрнутой: её шаги выполняются не при разборе
     // текста, а когда наступает её момент. Проверка разбирала текст и не
@@ -4007,7 +4049,10 @@ function answerFirst(st) {
 // функциям эффектов), и сломанная ветка «иначе» проходила аудит.
 function answersFor(q) {
     const opts = q.options || [];
-    const make = v => {
+    // Номер варианта — то, что панель и присылает (`{choice: i}`); вариант
+    // бывает объектом-шагом, и `choice: 0` на все случаи оставлял каждую
+    // вторую ветку «либо … либо …» неисполненной.
+    const make = (v, index) => {
         const answer = {};
         const value = v && typeof v === 'object' ? (v.id !== undefined ? v.id : v) : v;
         if (q.kind === 'units') answer.units = [value];
@@ -4022,29 +4067,37 @@ function answersFor(q) {
         else if (q.kind === 'foes') answer.foe = value;
         else if (q.kind === 'cards') answer.card = value;
         else if (q.kind === 'yesno') answer.yes = true;
-        else answer.choice = typeof v === 'number' ? v : 0;
+        else answer.choice = index;
         return answer;
     };
     if (q.kind === 'yesno') return [{ yes: true }, { yes: false }];
-    const out = opts.slice(0, 3).map(make);
+    const out = opts.slice(0, 3).map((o, i) => make(o, i));
     return out.length ? out : [{ choice: 0 }];
 }
 
 // Обход ответов карты: первый вариант продолжается на этом же состоянии, все
 // остальные — на копиях, поэтому проверяются ВСЕ ветки, а не только первая.
 // Ошибка любой ветки останавливает разбор и возвращается вызывающему.
-function exploreAnswers(st, budget = 80) {
-    const stack = [st];
+function exploreAnswers(st, budget = 80, opts) {
+    // Каждая ветка вопроса отвечается СВОИМ ответом: клон, снятый для
+    // «второго варианта», раньше снова отвечал первым и плодил новые клоны,
+    // так что всё после «либо … либо …» оставалось непроверенным.
+    const hint = (opts && opts.choice) || 0;
+    const stack = [[st, null]];
     let n = 0;
     while (stack.length && n < budget) {
-        const cur = stack.pop();
-        while (cur.pending && n < budget) {
+        let pair = stack.pop();
+        const cur = pair[0];
+        let answer = pair[1];
+        while (n < budget && cur.pending) {
             n++;
             const q = cur.pending.question || {};
             const seat = cur.pending.answerSeat !== undefined ? cur.pending.answerSeat : cur.pending.seat;
             const answers = answersFor(q);
-            for (let i = 1; i < answers.length; i++) stack.push(structuredClone(cur));
-            const res = FS_RULES.apply(cur, seat, { type: 'effect', answer: answers[0] });
+            const pick = answer || answers[hint < answers.length ? hint : 0];
+            answer = null;
+            for (let i = 1; i < answers.length; i++) stack.push([structuredClone(cur), answers[i]]);
+            const res = FS_RULES.apply(cur, seat, { type: 'effect', answer: pick });
             if (res && res.ok === false) return res.error;
         }
     }
@@ -4191,6 +4244,39 @@ rule('abil-1', '«Resolve Faction Ability: The active player may resolve the spe
         st.pending = null;
     }
     eq(broken, [], 'все 12 способностей разыгрываются');
+});
+
+rule('cards-2b', '«уменьшить общую цену всех покупок (включая здания) на 1» — скидка приказа опускает цену отряда и постройки', () => {
+    // «Главный по машинам»: прогон текста без утверждения о цене проходит и
+    // на сломанной скидке — проверяем, что покупка действительно дешевле.
+    const card = (FS_DATA.orders || []).find(c => /Главный по машинам/.test(c.name));
+    eq(!!card, true, 'карта «Главный по машинам» есть');
+    const price = (choice) => {
+        const st = empty(9);
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        guard(st, 0, sys.id, pos);
+        FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+        st.players[0].materiel = 10;
+        st.order = { seat: 0, order: 'deploy', system: sys.id, pos, phase: 'deploy', moved: [], steps: [] };
+        FS_RULES.runEffects(st, 0, FS_EFFECTS.parse(card.text, { kind: 'order', faction: card.faction }),
+            { kind: 'order', ctx: null });
+        const why = exploreAnswers(st, 4, { choice });
+        if (why) throw new Error(why);
+        const def = ctx.FS_CATALOG.unit(st.players[0].faction, 'гвардейцы')
+            || ctx.FS_CATALOG.unit(st.players[0].faction, 'воины');
+        return {
+            unit: FS_RULES.unitPrice(st, 0, def, {}),
+            structure: FS_RULES.structurePrice(st, 0, 'factory', {}),
+            discount: st.order.purchaseDiscount || 0,
+        };
+    };
+    const plain = price(0);
+    const cheap = price(1);
+    eq(plain.discount, 0, 'первый вариант — лимит закупки, а не скидка');
+    eq(cheap.discount, 1, 'второй вариант — скидка всех покупок');
+    eq(cheap.unit, Math.max(0, plain.unit - 1), 'отряд дешевле на 1 (' + plain.unit + ' → ' + cheap.unit + ')');
+    eq(cheap.structure, Math.max(0, plain.structure - 1), 'постройка дешевле на 1 (' + plain.structure + ' → ' + cheap.structure + ')');
 });
 
 rule('cards-3', '«The player must have at least one of the specified units in the combat» — у каждой карты, называющей отряд, движок знает этот отряд', () => {
