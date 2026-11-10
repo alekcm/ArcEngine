@@ -1241,6 +1241,30 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
 });
 
+rule('ask-0a', 'таблица вопросов не содержит заглушек: у каждого шага есть настоящая ветка вопроса', () => {
+    // The defect this rule exists for: an op was registered in the ask table
+    // with a body of `return null`, so the engine asked nothing and went on —
+    // the opponent was never asked for his cube, the step looked performed.
+    const dir = path.join(ROOT, 'js', 'fs', 'effects', 'ask');
+    const stubs = [];
+    for (const file of fs.readdirSync(dir)) {
+        if (!file.endsWith('.js')) continue;
+        const text = fs.readFileSync(path.join(dir, file), 'utf8');
+        const re = /static\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{\s*(?:return\s+null;?)?\s*\}/g;
+        let m;
+        while ((m = re.exec(text))) stubs.push(file + ':' + m[1]);
+    }
+    // One deliberate no-op is allowed: `nothing` is a step of a sentence the
+    // previous step already did («Затем получите такой же жетон»). The list can
+    // only shrink — a new empty branch fails here.
+    const known = ['FSEarnAsks.js:nothing'];
+    const unexpected = stubs.filter(x => !known.includes(x));
+    eq(unexpected.join(', ') || '—', '—', 'у каждого шага настоящая ветка вопроса');
+    // And every registered op really has a branch (the tables are filled from ops).
+    const missing = [...ASK_NAMES].filter(op => typeof ctx.ASK_EXECUTORS.get(op) !== 'function');
+    eq(missing.join(', ') || '—', '—', 'у каждого имени в ops есть метод');
+});
+
 rule('foe-fork-0b', '«Если противник не потратит 1 `morale cube`, получите 3 `def. token`» — вопрос идёт противнику, и при оплате токенов НЕ дают', () => {
     const card = ctx.FS_DATA.combat.find(c => c.faction === 'эльдары' && /Волновой змей/.test(c.name));
     const steps = ctx.FS_EFFECTS.parse(card.general, { kind: 'combat', faction: card.faction });
