@@ -104,8 +104,7 @@ class RefreshRules {
         state.turn = state.firstPlayer;
         state.eventsLeft = state.players.length;
         StormPhase.of(state).clearReaction();
-        delete state.operationSchemeOffered;
-        delete state.operationSchemeAccepted;
+        OrderScheme.of(state).reset();
         StormPhase.of(state).allowIcons();
         this.engine.log(state, -1, 'Фаза обновления: события и варп-штормы.');
         this.nextEventPlayer(state);

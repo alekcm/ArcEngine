@@ -91,10 +91,10 @@ class OperationsRules {
         if (!sys.tokens.length) return { ok: false, error: 'В этой системе нет приказов.' };
         // A refusal belongs to THIS attempted reveal: the same player may use
         // the still-in-play plan instead of his next order later in the round.
-        const offerKey = state.round + ':' + state.turn + ':' + seat + ':'
-            + sys.id + ':' + sys.tokens.length;
-        if (state.operationSchemeOffered !== offerKey) {
-            state.operationSchemeOffered = offerKey;
+        const offerKey = OrderScheme.key(state, seat, sys.id, sys.tokens.length);
+        const scheme = OrderScheme.of(state);
+        if (!scheme.asked(offerKey)) {
+            scheme.offer(offerKey);
             if (this.maybeScheme(state, seat, 'operations',
                 { kind: 'event', ctx: { operationScheme: true } }, { instead: true })) {
                 return { ok: true, pending: true };

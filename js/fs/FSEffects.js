@@ -1655,9 +1655,10 @@ const FS_EFFECTS = {
         // reference.md, «instead of revealing an order»): no token is revealed
         // or discarded, and the next player takes his turn. A refusal of the
         // scheme leaves the current player's turn untouched.
-        if (c.ctx && c.ctx.operationScheme && state.operationSchemeAccepted
+        const orderScheme = OrderScheme.of(state);
+        if (c.ctx && c.ctx.operationScheme && orderScheme.accepted
             && !state.pending) {
-            delete state.operationSchemeAccepted;
+            orderScheme.clearAccepted();
             if (typeof R.nextTurn === 'function') R.nextTurn(state);
         }
         return { ok: true, done: true };
@@ -1713,13 +1714,14 @@ const FS_EFFECTS = {
             R.log(state, pending.seat, p.name + ' сбрасывает план «' + scheme.name + '».');
             const list = scheme.steps || [];
             const kind = (pending.ctx && pending.ctx.kind) || 'event';
-            if (cctx0 && cctx0.operationScheme) state.operationSchemeAccepted = true;
+            const orderScheme = OrderScheme.of(state);
+            if (cctx0 && cctx0.operationScheme) orderScheme.accept();
             state.pending = null;
             if (!list.length) {
                 // A scheme whose effect is only its printed text still takes
                 // the turn when it replaces the reveal of an order.
-                if (cctx0 && cctx0.operationScheme && state.operationSchemeAccepted) {
-                    delete state.operationSchemeAccepted;
+                if (cctx0 && cctx0.operationScheme && orderScheme.accepted) {
+                    orderScheme.clearAccepted();
                     if (typeof R.nextTurn === 'function') R.nextTurn(state);
                 }
                 return { ok: true, done: true };

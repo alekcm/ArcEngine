@@ -548,6 +548,29 @@ try {
     fail(e.message);
 }
 
+// --- «вместо раскрытия приказа»: one object ----------------------------------
+section('план вместо приказа: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSOrderScheme.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // План, занявший место раскрытия приказа: предложение (один раз на
+        // попытку) и согласие спрашивают у OrderScheme.
+        const re = /\bstate\.(?:operationSchemeOffered|operationSchemeAccepted)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('план вместо приказа спрашивают у OrderScheme');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the storm of an event: one object ---------------------------------------
 section('шторм события: один объект');
 try {

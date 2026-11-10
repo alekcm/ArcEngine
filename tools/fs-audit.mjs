@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1164,6 +1164,32 @@ rule('combat-0c', '«discards the combat cards he used during the combat by shuf
     cards.clear('attacker');
     eq(cards.names('attacker').length, 0, 'стол очищен');
     eq(cards.chosen('attacker'), null, 'отметка карты снята');
+});
+
+rule('event-0d', '«вместо раскрытия приказа во время фазы действий» — план, занявший ход, держит OrderScheme', () => {
+    const state = { round: 2, turn: 1 };
+    const scheme = OrderScheme.of(state);
+    eq(OrderScheme.of(state), scheme, 'у игры один план приказа');
+    eq(OrderScheme.of(null), null, 'без состояния плана нет');
+    // Every attempted reveal has its own key: a refusal is not offered twice.
+    const key = OrderScheme.key(state, 0, 's3', 2);
+    eq(key, '2:1:0:s3:2', 'ключ попытки раскрытия');
+    eq(scheme.asked(key), false, 'план ещё не предлагали');
+    scheme.offer(key);
+    eq(scheme.asked(key), true, 'план предложен этой попытке');
+    eq(scheme.asked(OrderScheme.key(state, 0, 's3', 1)), false, 'другая попытка — свой ответ');
+    eq(scheme.asked(null), false, 'без ключа ничего не предлагали');
+    // «Отрава Нургла» takes the place of the reveal: the turn is his.
+    eq(scheme.accepted, false, 'план ещё не занял ход');
+    scheme.accept();
+    eq(scheme.accepted, true, 'план занял место раскрытия');
+    scheme.clearAccepted();
+    eq(scheme.accepted, false, 'ход плана отдан');
+    // A new round offers every plan anew.
+    scheme.accept();
+    scheme.reset();
+    eq(scheme.accepted, false, 'новый раунд снимает согласие');
+    eq(scheme.asked(key), false, 'и предлагает план снова');
 });
 
 rule('event-0c', '«The active player chooses one Warp Storm on the game board and moves it» + «движение варп-шторма по вновь раскрытой карте не производится» — шторм события держит StormPhase', () => {
