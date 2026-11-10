@@ -128,7 +128,7 @@ class SetupRules {
             const center = { row: 0, col: 0 };
             state.setup = {
                 hands,
-                stage: 'tile',
+                stage: BoardSetup.TILES,
                 currentSystem: null,
                 placedBySeat: Array(count).fill(0),
                 placedTotal: 0,
@@ -297,7 +297,7 @@ class SetupRules {
     }
 
     setupLegalCells(state) {
-        if (!state.setup) return [];
+        if (!BoardSetup.of(state).active) return [];
         if (!state.systems.length) return [{ row: 0, col: 0 }];
         const occupied = new Set(state.systems.map(s => s.row + ':' + s.col));
         const candidates = new Map();
@@ -317,11 +317,11 @@ class SetupRules {
     }
 
     cmdPlaceSystemTile(state, seat, cmd) {
-        const setup = state.setup;
-        if (!GamePhase.of(state).is(GamePhase.SETUP) || !setup) return { ok: false, error: 'Сейчас не этап сборки карты.' };
-        if (setup.turn !== seat) return { ok: false, error: 'Сейчас очередь другого игрока выкладывать тайл.' };
-        if (setup.stage !== 'tile') return { ok: false, error: 'Сначала завершите текущий этап размещения.' };
-        const hand = setup.hands[seat] || [];
+        const board = BoardSetup.of(state);
+        if (!GamePhase.of(state).is(GamePhase.SETUP) || !board.active) return { ok: false, error: 'Сейчас не этап сборки карты.' };
+        if (board.turn !== seat) return { ok: false, error: 'Сейчас очередь другого игрока выкладывать тайл.' };
+        if (!board.is(BoardSetup.TILES)) return { ok: false, error: 'Сначала завершите текущий этап размещения.' };
+        const hand = board.hand(seat);
         const tileIndex = hand.findIndex(id => this.engine.tileFaces(id).some(t => t.id === cmd.tile));
         if (tileIndex < 0) return { ok: false, error: 'Этого системного тайла нет у вас в руке.' };
         const cell = { row: Number(cmd.row), col: Number(cmd.col) };
@@ -335,26 +335,22 @@ class SetupRules {
         if (!this.setupForcesFit(state, seat, tile, tileIndex)) return { ok: false, error: 'На этой стороне и оставшихся тайлах не поместятся начальные силы. Выберите другую сторону или тайл.' };
         const sys = this.createSystemFromTile(state, tile, seat, cell.row, cell.col, rotation);
         state.systems.push(sys);
-        hand.splice(tileIndex, 1);
-        setup.placedBySeat[seat]++;
-        setup.placedTotal++;
-        setup.currentSystem = sys.id;
-        setup.stage = 'forces';
+        board.placeTile(seat, sys.id, tileIndex);
         this.engine.log(state, seat, state.players[seat].name + ' разместил систему ' + tile.id + '.');
         return { ok: true };
     }
 
     setupGuard(state, seat, stage) {
-        const setup = state.setup;
-        if (!GamePhase.of(state).is(GamePhase.SETUP) || !setup || setup.stage !== stage) return { ok: false, error: 'Сейчас это действие недоступно.' };
-        if (setup.turn !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        const board = BoardSetup.of(state);
+        if (!GamePhase.of(state).is(GamePhase.SETUP) || !board.is(stage)) return { ok: false, error: 'Сейчас это действие недоступно.' };
+        if (board.turn !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
         return null;
     }
 
     cmdSetupForce(state, seat, cmd, kind) {
         const error = this.setupGuard(state, seat, 'forces');
         if (error) return error;
-        const sys = this.engine.system(state, state.setup.currentSystem);
+        const sys = this.engine.system(state, BoardSetup.of(state).currentSystem);
         const area = this.engine.area(sys, cmd.pos);
         if (!area) return { ok: false, error: 'Выберите область только что размещённой системы.' };
         const initial = state.players[seat].initialForces;
@@ -381,7 +377,7 @@ class SetupRules {
         const error = this.setupGuard(state, seat, 'forces');
         if (error) return error;
         const items = cmd.kind === 'unit' ? state.units : cmd.kind === 'structure' ? state.structures : null;
-        const item = items && items.find(x => x.id === cmd.id && x.seat === seat && x.system === state.setup.currentSystem);
+        const item = items && items.find(x => x.id === cmd.id && x.seat === seat && x.system === BoardSetup.of(state).currentSystem);
         if (!item) return { ok: false, error: 'Можно убрать только свою начальную фигуру с текущего тайла.' };
         items.splice(items.indexOf(item), 1);
         const pool = state.players[seat].initialForces[cmd.kind === 'unit' ? 'units' : 'structures'];
@@ -392,7 +388,7 @@ class SetupRules {
 
     setupForcesFit(state, seat, chosenTile = null, chosenIndex = -1) {
         const initial = state.players[seat].initialForces;
-        const future = state.setup.hands[seat].filter((_, i) => i !== chosenIndex).map(id => this.engine.tileFaces(id));
+        const future = BoardSetup.of(state).hand(seat).filter((_, i) => i !== chosenIndex).map(id => this.engine.tileFaces(id));
         if (chosenTile) future.push([chosenTile]);
         let needGround = 0, needShips = 0;
         for (const [id, n] of Object.entries(initial.units)) {
@@ -421,16 +417,16 @@ class SetupRules {
         const error = this.setupGuard(state, seat, 'forces');
         if (error) return error;
         if (!this.setupForcesFit(state, seat)) return { ok: false, error: 'Оставшиеся начальные силы не поместятся на следующих тайлах. Разместите больше фигур здесь или уберите и переставьте их.' };
-        state.setup.stage = 'objectives';
+        BoardSetup.of(state).setStage(BoardSetup.OBJECTIVES);
         if (!this.setupObjectiveOptions(state).length) this.advanceSetupTurn(state);
         return { ok: true };
     }
 
     setupObjectiveOptions(state) {
-        const setup = state.setup;
-        if (!setup || setup.stage !== 'objectives') return [];
-        const sys = this.engine.system(state, setup.currentSystem);
-        const pool = state.players[setup.turn].objectivePool;
+        const board = BoardSetup.of(state);
+        if (!board.is(BoardSetup.OBJECTIVES)) return [];
+        const sys = this.engine.system(state, board.currentSystem);
+        const pool = state.players[board.turn].objectivePool;
         const used = new Set(state.objectives.filter(o => o.system === sys.id).map(o => o.faction));
         const occupied = new Set(state.objectives.filter(o => o.system === sys.id).map(o => o.area));
         const areas = sys.areas.filter(a => a.world && a.world.objective && !occupied.has(a.pos)).map(a => a.pos);
@@ -448,31 +444,20 @@ class SetupRules {
         if (!option) return { ok: false, error: 'Выберите допустимый жетон и свободное место цели на текущем тайле.' };
         const pool = state.players[seat].objectivePool;
         pool.splice(pool.indexOf(cmd.faction), 1);
-        state.objectives.push({ id: this.engine.uid(state, 'obj'), faction: cmd.faction, system: state.setup.currentSystem, area: cmd.pos });
+        state.objectives.push({ id: this.engine.uid(state, 'obj'), faction: cmd.faction, system: BoardSetup.of(state).currentSystem, area: cmd.pos });
         if (!this.setupObjectiveOptions(state).length) this.advanceSetupTurn(state);
         return { ok: true };
     }
 
     advanceSetupTurn(state) {
-        const setup = state.setup;
-        if (setup.placedTotal >= setup.totalTiles) {
-            setup.stage = 'storms';
-            setup.currentSystem = null;
-            setup.stormsPlaced = 0;
+        const board = BoardSetup.of(state);
+        if (board.tilesDone) {
+            board.setStage(BoardSetup.STORMS).setCurrentSystem(null);
+            if (board.record) board.record.stormsPlaced = 0;
             this.engine.log(state, -1, 'Расстановка варп-штормов: начиная с последнего игрока против часовой стрелки.');
             return;
         }
-        for (let step = 1; step <= setup.turnOrder.length; step++) {
-            const index = (setup.turnIndex + step) % setup.turnOrder.length;
-            const next = setup.turnOrder[index];
-            if (setup.hands[next].length) {
-                setup.turnIndex = index;
-                setup.turn = next;
-                setup.stage = 'tile';
-                setup.currentSystem = null;
-                return;
-            }
-        }
+        board.nextPlayer();
     }
 
     setupStormEdges(state) {
@@ -507,14 +492,9 @@ class SetupRules {
         const storm = FS_WARP_STORMS.create(state, this.engine.uid(state, 'storm'), edge);
         if (!storm) return { ok: false, error: 'Эту границу нельзя занять.' };
         state.storms.push(storm);
-        const setup = state.setup;
-        setup.stormsPlaced++;
+        const board = BoardSetup.of(state);
         this.engine.log(state, seat, state.players[seat].name + ' разместил варп-шторм в системе ' + sys.tile + '.');
-        if (setup.stormsPlaced === state.players.length) this.finishBoardSetup(state, false);
-        else {
-            setup.turnIndex = (setup.turnIndex - 1 + setup.turnOrder.length) % setup.turnOrder.length;
-            setup.turn = setup.turnOrder[setup.turnIndex];
-        }
+        if (board.nextStorm() === null) this.finishBoardSetup(state, false);
         return { ok: true };
     }
 
@@ -553,7 +533,7 @@ class SetupRules {
             if (storm) state.storms.push(storm);
         }
         this.takeStartChoiceLeft(state);
-        state.setup = null;
+        BoardSetup.of(state).finish();
         GamePhase.of(state).start(GamePhase.PLANNING);
         state.turn = state.firstPlayer;
         this.engine.log(state, -1, 'Игра началась: раунд 1, фаза планирования.');

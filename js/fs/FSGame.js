@@ -520,9 +520,10 @@ class FSGame {
     // floats above the chosen cell.
 
     panelSetup(s, ctx) {
-        const setup = s.setup || {};
-        const turnPlayer = s.players[setup.turn];
-        ctx.title = setup.stage === 'storms' ? 'Варп-штормы' : 'Сборка карты';
+        const board = BoardSetup.of(s);
+        const setup = board.record || {};
+        const turnPlayer = s.players[board.turn];
+        ctx.title = board.is(BoardSetup.STORMS) ? 'Варп-штормы' : 'Сборка карты';
         if (!setup.myTurn) {
             ctx.text = 'Ход игрока ' + (turnPlayer ? turnPlayer.name : '—') + '.';
             ctx.status = this.status || 'Ждём.';
@@ -540,8 +541,8 @@ class FSGame {
                 });
             }
         }
-        if (setup.stage === 'forces') {
-            const sys = Board.of(s).system(setup.currentSystem);
+        if (board.is(BoardSetup.FORCES)) {
+            const sys = Board.of(s).system(board.currentSystem);
             const initial = s.players[s.seat].initialForces;
             const faction = FS_CATALOG.faction(s.players[s.seat].faction);
             ctx.text = 'Система ' + (sys ? sys.tile : '') + ': выберите фигуру и щёлкните по сектору.';
@@ -604,8 +605,8 @@ class FSGame {
             ctx.actions.push({ kind: 'primary', label: 'Завершить размещение сил', icon: 'ui.check', onClick: () => this.net.cmd({ type: 'finishSetupForces' }) });
             return;
         }
-        if (setup.stage === 'objectives') {
-            const sys = Board.of(s).system(setup.currentSystem);
+        if (board.is(BoardSetup.OBJECTIVES)) {
+            const sys = Board.of(s).system(board.currentSystem);
             ctx.text = this.pending && this.pending.pos
                 ? 'Место выбрано: подтвердите постановку табличкой на доске.'
                 : 'Выберите жетон соперника, затем мир с меткой цели.';
@@ -629,7 +630,7 @@ class FSGame {
             void sys;
             return;
         }
-        if (setup.stage === 'storms') {
+        if (board.is(BoardSetup.STORMS)) {
             const sys = this.pending && this.mode === 'setupStorm' && Board.of(s).system(this.pending.system);
             ctx.text = 'Щёлкните по системе на карте, затем по стороне.';
             ctx.status = this.status || (sys ? 'Система ' + sys.tile + ': выберите сторону.' : 'Щёлкните по системе.');
@@ -704,7 +705,8 @@ class FSGame {
 
     confirmSetupTile() {
         const s = this.state, p = this.pending;
-        if (this.setupSubmitting || this.mode !== 'placeTile' || !p || !p.cell || !s || !s.setup || !s.setup.myTurn || s.setup.stage !== 'tile') return;
+        const board = s ? BoardSetup.of(s) : null;
+        if (this.setupSubmitting || this.mode !== 'placeTile' || !p || !p.cell || !board || !board.record.myTurn || !board.is(BoardSetup.TILES)) return;
         this.setupSubmitting = true;
         const sent = this.net.cmd({ type: 'placeSystemTile', tile: p.tile, rotation: p.rotation, row: p.cell.row, col: p.cell.col });
         if (sent === false) { this.setupSubmitting = false; this.status = 'Нет связи с сервером.'; }
@@ -726,7 +728,7 @@ class FSGame {
         window.addEventListener('keydown', e => {
             const target = /** @type {HTMLElement | null} */ (e.target);
             if (target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable)) return;
-            if (e.ctrlKey || e.metaKey || e.altKey || this.mode !== 'placeTile' || !this.pending || !this.state || !this.state.setup || !this.state.setup.myTurn) return;
+            if (e.ctrlKey || e.metaKey || e.altKey || this.mode !== 'placeTile' || !this.pending || !this.state || !(BoardSetup.of(this.state).record || {}).myTurn) return;
             const action = { KeyQ: 'left', KeyE: 'right', KeyF: 'flip' }[e.code];
             if (!action) return;
             e.preventDefault(); e.stopImmediatePropagation();
@@ -769,9 +771,9 @@ class FSGame {
     }
 
     highlightSetupTargets() {
-        const s = this.state, setup = s && s.setup;
+        const s = this.state, board = s ? BoardSetup.of(s) : null, setup = board && board.record;
         if (!setup || !setup.myTurn) return;
-        const sys = Board.of(s).system((this.mode === 'setupStorm' ? this.pending.system : setup.currentSystem));
+        const sys = Board.of(s).system((this.mode === 'setupStorm' ? this.pending.system : board.currentSystem));
         if (!sys) return;
         let areas = [];
         if (this.mode === 'setupUnit') {
@@ -791,7 +793,7 @@ class FSGame {
     }
 
     highlightSetupCells() {
-        const setup = this.state && this.state.setup;
+        const setup = this.state ? (BoardSetup.of(this.state).record || {}) : null;
         if (!setup || !this.view.metrics) return;
         const cells = setup.legalCells || [];
         const list = cells.map(cell => {
@@ -2661,7 +2663,7 @@ class FSGame {
             };
         }
         if (this.mode === 'setupObjective' && this.pending && this.pending.pos) {
-            const sys = Board.of(s).system((s.setup && s.setup.currentSystem));
+            const sys = Board.of(s).system(BoardSetup.of(s).currentSystem);
             if (!sys) return null;
             const area = sys.areas.find(a => a.pos === this.pending.pos);
             const disc = FSView.discAt(this.app, sys, this.pending.pos, metrics);
@@ -2734,7 +2736,7 @@ class FSGame {
 
     confirmSetupObjective() {
         const s = this.state, p = this.pending;
-        if (!s || !s.setup || !s.setup.myTurn || this.mode !== 'setupObjective' || !p || !p.pos) return;
+        if (!s || !BoardSetup.of(s).record.myTurn || this.mode !== 'setupObjective' || !p || !p.pos) return;
         const sent = this.net.cmd({ type: 'setupObjective', faction: p.faction, pos: p.pos });
         this.pending = { faction: p.faction, pos: null };
         FSView.clearGhost(this.view);
@@ -3095,7 +3097,7 @@ class FSGame {
             }
         }
         // The board assembly: the storm is placed on a system.
-        if (s.phase === 'setup' && s.setup && s.setup.myTurn && s.setup.stage === 'storms' && meta.system) {
+        if (s.phase === 'setup' && BoardSetup.of(s).record.myTurn && BoardSetup.of(s).is(BoardSetup.STORMS) && meta.system) {
             this.status = ''; this.mode = 'setupStorm'; this.pending = { system: meta.system };
             this.highlightSetupTargets(); this.refresh(); return;
         }
@@ -3153,8 +3155,9 @@ class FSGame {
             return;
         }
         if (this.mode === 'placeTile') {
-            if (s.phase !== 'setup' || !s.setup || !s.setup.myTurn || meta.fs !== 'setupCell') return;
-            if (this.setupSubmitting || !(s.setup.legalCells || []).some(c => c.row === meta.row && c.col === meta.col)) return;
+            const board = BoardSetup.of(s);
+            if (s.phase !== 'setup' || !board.record.myTurn || meta.fs !== 'setupCell') return;
+            if (this.setupSubmitting || !(board.record.legalCells || []).some(c => c.row === meta.row && c.col === meta.col)) return;
             this.pending.cell = { row: meta.row, col: meta.col };
             this.status = '';
             this.updateSetupPreview();
@@ -3180,13 +3183,13 @@ class FSGame {
             return;                            // the plaque and the buttons decide
         }
         // The island of the board assembly: the forces and the objectives.
-        if (s.phase === 'setup' && s.setup && s.setup.myTurn && target && target.pos) {
+        if (s.phase === 'setup' && BoardSetup.of(s).record.myTurn && target && target.pos) {
             if (this.mode === 'setupUnit') this.net.cmd({ type: 'setupUnit', unit: this.pending.unit, pos: target.pos });
             else if (this.mode === 'setupStructure') this.net.cmd({ type: 'setupStructure', structure: this.pending.structure, pos: target.pos });
             else if (this.mode === 'setupObjective') {
-                const system = Board.of(s).system(s.setup.currentSystem);
+                const system = Board.of(s).system(BoardSetup.of(s).currentSystem);
                 if (!system || system.id !== target.system) return;
-                const option = (s.setup.objectiveOptions || []).find(x => x.faction === this.pending.faction);
+                const option = (BoardSetup.of(s).record.objectiveOptions || []).find(x => x.faction === this.pending.faction);
                 if (!option || !option.areas.includes(target.pos)) { this.status = 'Здесь места цели нет.'; this.refresh(); return; }
                 this.pending.pos = target.pos;
                 // The token that is about to be placed glows on the world until the plaque confirms it.

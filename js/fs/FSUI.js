@@ -249,7 +249,8 @@ const FSUI = {
             return;
         }
         this.deferredRender = null;
-        const stageKey = state && state.setup ? [state.setup.stage, state.setup.turn, state.setup.currentSystem, ctx.mode, ctx.setupCellSelected].join(':') : '';
+        const board = state ? BoardSetup.of(state) : null;
+        const stageKey = board && board.active ? [board.stage, board.turn, board.currentSystem, ctx.mode, ctx.setupCellSelected].join(':') : '';
         const previousActions = root.querySelector ? root.querySelector('.fs-actions') : null;
         const scrollTop = this.actionStage === stageKey && previousActions ? previousActions.scrollTop : 0;
         this.actionStage = stageKey;
@@ -363,8 +364,9 @@ const FSUI = {
         const rail = this.el('div', 'fs-left-rail');
         let playersCard = this.el('section', 'fs-card');
         const ph = this.el('div', 'fs-card-head');
-        const boardProgress = game.is(GamePhase.SETUP) && state.setup
-            ? 'КАРТА · ' + state.setup.placedTotal + '/' + state.setup.totalTiles
+        const gal = BoardSetup.of(state);
+        const boardProgress = game.is(GamePhase.SETUP) && gal.active
+            ? 'КАРТА · ' + gal.placedTotal + '/' + gal.totalTiles
             : 'ИГРОКИ · ' + state.players.length;
         ph.append(this.el('span', 'fs-eyebrow', 'Участники'), this.el('span', 'fs-round-chip', boardProgress)); playersCard.append(ph);
         const list = this.el('div', 'fs-player-list');

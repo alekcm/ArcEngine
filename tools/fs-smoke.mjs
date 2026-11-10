@@ -572,6 +572,32 @@ try {
     fail(e.message);
 }
 
+// --- the building of the board: one object -----------------------------------
+section('сборка карты: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSBoardSetup.js', 'js/fs/rules/SetupRules.js',
+        'js/fs/core/FSGamePhase.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Этап сборки карты, чья рука играет и где ставятся силы — один объект
+        // BoardSetup: поле state.setup не читают руками ни правила, ни доска,
+        // ни панель. (В RuleSet сборки оно остаётся записью — это вид на доску
+        // для одного места.)
+        const re = /\bstate\.setup\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('этап сборки карты спрашивают у BoardSetup');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the question of a step: one object --------------------------------------
 section('вопрос шага: один объект');
 try {

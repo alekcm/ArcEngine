@@ -22,7 +22,8 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
+    BoardSetup } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1202,6 +1203,68 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(GamePhase.next(1, 2), 0, 'ход по кругу');
     eq(GamePhase.next(0, 2), 1, 'и снова');
     eq(GamePhase.next(0, 0), 0, 'без игроков ход не меняется');
+});
+
+rule('board-0a', '«the players build the galaxy together» — сборку карты держит BoardSetup', () => {
+    const state = {
+        setup: null, turn: 0, players: [{}, {}, {}],
+        systems: [], objectives: [], storms: [],
+    };
+    const board = BoardSetup.of(state);
+    eq(BoardSetup.of(state), board, 'у игры одна сборка');
+    eq(BoardSetup.of(null), null, 'без состояния сборки нет');
+    // The map is already built: there is nothing to place.
+    eq(board.active, false, 'сборки нет');
+    eq(board.stage, null, 'и этапа нет');
+    eq(board.turn, null, 'и строить некому');
+    eq(board.hand(0).length, 0, 'и руки нет');
+    // The stages of the build, in the order they are played.
+    state.setup = {
+        hands: [['t1', 't2'], ['t3', 't4'], []], stage: 'tile', currentSystem: null,
+        placedBySeat: [0, 0, 0], placedTotal: 0, totalTiles: 4,
+        turnOrder: [0, 1, 2], turnIndex: 0, turn: 0,
+    };
+    eq(board.active, true, 'карта собирается');
+    eq(board.is(BoardSetup.TILES), true, 'сначала тайлы');
+    eq(board.is(BoardSetup.FORCES, BoardSetup.STORMS), false, 'не силы и не штормы');
+    eq(board.turn, 0, 'первый выкладывает seat 0');
+    eq(board.isTurn(0), true, 'и это его ход');
+    eq(board.isTurn(1), false, 'seat 1 ждёт');
+    eq(board.totalTiles, 4, 'тайлов четыре');
+    // A tile leaves the hand and the forces are placed on the new system.
+    const tile = board.placeTile(0, 's1', 0);
+    eq(tile, 't1', 'из руки ушёл t1');
+    eq(board.hand(0).join(','), 't2', 'в руке остался t2');
+    eq(board.placedTotal, 1, 'один тайл на карте');
+    eq(board.currentSystem, 's1', 'силы ставятся в новую систему');
+    eq(board.stage, 'forces', 'сначала силы');
+    // The turn passes to the next hand that still has a tile.
+    eq(board.nextPlayer(), 1, 'дальше seat 1');
+    eq(board.turn, 1, 'и это его ход');
+    eq(board.stage, 'tile', 'снова тайлы');
+    eq(board.currentSystem, null, 'прежняя система отпущена');
+    // seat 2 has no tiles: the hand is skipped.
+    board.placeTile(1, 's2', 1);
+    board.nextPlayer();
+    eq(board.turn, 0, 'пустая рука пропущена');
+    state.setup.hands = [[], [], []];
+    board.record.placedTotal = 4;
+    eq(board.tilesDone, true, 'все тайлы выложены');
+    eq(board.nextPlayer(), null, 'играть больше некому');
+    eq(board.stage, 'storms', 'дальше варп-штормы');
+    // The storms go «в обратном порядке хода»: the first one is placed by the
+    // player who laid the last tile (seat 0), the next one by the player before
+    // him in the build order.
+    eq(board.turn, 0, 'последний тайл выложил seat 0');
+    eq(board.nextStorm(), 2, 'следующий шторм — предыдущий по порядку');
+    eq(board.nextStorm(), 1, 'и ещё на шаг назад');
+    eq(board.stormsPlaced, 2, 'два шторма на карте');
+    eq(board.nextStorm(), null, 'каждому по одному');
+    // The build is over: the record leaves the state.
+    board.setCurrentSystem(null).setStage(BoardSetup.TILES);
+    board.finish();
+    eq(state.setup, null, 'сборка закончена');
+    eq(board.active, false, 'записи больше нет');
 });
 
 rule('ask-0a', '«a step needs a choice: the player is asked» — остановленный вопрос шага держит Question', () => {
