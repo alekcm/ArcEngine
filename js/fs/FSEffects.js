@@ -2694,16 +2694,6 @@ const FS_EFFECTS = {
         return out;
     },
 
-    // The friendly worlds of the active system: the destination of the units.
-    friendlyAreas(R, state, seat) {
-        // The friendly worlds of the ACTIVE system: the cards that say «in the
-        // active system». The list itself is the board's (R.friendlyWorlds).
-        const active = state.order ? OrderContext.of(state.order).system : null;
-        return Board.of(state).friendlyWorlds(seat)
-            .filter(a => !active || a.system === active)
-            .map(a => ({ system: a.system, pos: a.pos }));
-    },
-
 
     // «Получите ценные ресурсы и материалы этого мира» — the shared body of the
     // step: the materials, the tokens, and the question of the prosperity token.

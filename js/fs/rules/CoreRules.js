@@ -173,10 +173,6 @@ class CoreRules {
         return this.board(state).warSeatsAt(systemId, pos);
     }
 
-    friendlyAreas(state, seat) {
-        return this.board(state).friendlyAreas(seat);
-    }
-
     commandLevel(state, seat) {
         const p = this.player(state, seat);
         return p ? p.commandLevel() : 0;
@@ -208,10 +204,6 @@ class CoreRules {
 
     areasAround(state, systemId, pos) {
         return this.board(state).areasAround(systemId, pos);
-    }
-
-    areasTouch(state, sysA, posA, sysB, posB) {
-        return this.board(state).areasTouch(sysA, posA, sysB, posB);
     }
 
     rotateArea(pos, turns) {

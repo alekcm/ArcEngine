@@ -147,16 +147,6 @@ class Board {
             || this.structuresIn(systemId).some(s => s.seat === seat);
     }
 
-    /** Every area the seat holds alone. */
-    friendlyAreas(seat) {
-        const out = [];
-        for (const sys of this.systems) {
-            for (const area of sys.areas) {
-                if (this.control(seat, sys.id, area.pos) === 'friendly') out.push({ system: sys.id, pos: area.pos });
-            }
-        }
-        return out;
-    }
 
     /** Every area where at least two seats can fight. */
     contestedAreas() {

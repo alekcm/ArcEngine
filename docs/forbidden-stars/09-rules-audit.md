@@ -294,9 +294,11 @@ node tools/check.mjs               типы (tsc) + сверка правил �
 
 ### 5.4. Что этим проходом не покрыто
 
-- **Мёртвые тонкие обёртки** `areasTouch`, `across`, `friendlyAreas` (`CoreRules`): вызовов
-  вне `CoreRules`/`FSBoard`/`FSGeometry` нет. Проверять нечего, но и удалять их — отдельное
-  решение по архитектуре.
+- **Мёртвые копии одного понятия** (закрыт позже): `CoreRules.friendlyAreas`,
+  `CoreRules.areasTouch`, `Board.friendlyAreas` и `Effects.friendlyAreas` не имели ни одного
+  вызова. `friendlyAreas` существовала в четырёх местах, живым был один
+  (`Effects.friendlyAreasAny`). Удалены все четыре мёртвых метода; `CoreRules.across`
+  оставлен — им пользуется проверка карты «Сквозь варп».
 - **`pathExists`, `areasAround`, `rollDice`** (закрыт позже): мутация роняла аудит
   исключением, и это выглядело как «доказательства нет». Причина — мутировалась тонкая
   обёртка `CoreRules`, а логика живёт в `FSBoard.pathExists`, `FSBoard.areasAround` и
