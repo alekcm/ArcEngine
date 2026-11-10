@@ -1014,6 +1014,43 @@ rule('combat-0i', '«разместить жетон подкрепления в
     eq(combat.system, 's3', 'адрес живёт в поле боя');
 });
 
+rule('combat-1a', '«A player may spend reinforcement tokens during the reinforcement step» + «Ваш противник не сможет разыгрывать жетоны подкрепления во время всего боя»', () => {
+    // `combatReinforce` — единственный путь, которым жетон подкрепления попадает
+    // в бой. Ни одна проверка его не вызывала: аудит падал исключением, а
+    // «жетоны не тратятся / лимит не держится» проходило молча.
+    const fight = () => {
+        const st = empty(7);
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        for (let i = 0; i < 2; i++) { unit(st, 0, 'гвардейцы', sys.id, pos); unit(st, 1, 'бойзы', sys.id, pos); }
+        st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+        st.phase = 'operations';
+        st.turn = 0;
+        FS_RULES.apply(st, 0, { type: 'endAdvance' });
+        st.players[0].assets.reinforcement = 2;
+        st.players[1].assets.reinforcement = 2;
+        return st;
+    };
+    const st = fight();
+    eq(!!st.combat, true, 'бой начался');
+    eq(CombatTurn.of(st.combat).step, 'reinforce-attacker', 'первым подкрепляется атакующий');
+    const held = st.players[0].assets.reinforcement;
+    const res = FS_RULES.apply(st, 0, { type: 'combat', action: 'reinforce', count: 1 });
+    eq(res.ok, true, 'жетон подкрепления разыгран: ' + (res.error || ''));
+    eq(st.players[0].assets.reinforcement, held - 1, 'потраченный жетон ушёл из запаса');
+    eq(CombatTokens.of(st.combat).used('attacker'), 1, 'жетон лёг на стол боя');
+    // Больше жетонов, чем позволяет лимит, не разыграть.
+    // Лимит: не больше, чем отрядов на столе и жетонов в запасе (2 и 2).
+    const over = FS_RULES.apply(st, st.combat.attacker, { type: 'combat', action: 'reinforce', count: 3 });
+    refused(over, /Не больше 1 жетон/, 'за лимитом подкрепления');
+    // «во время всего боя»: запрет карты отказывает в подкреплении.
+    const banned = fight();
+    CombatBans.of(banned.combat).forbidReinforce(0);
+    const no = FS_RULES.apply(banned, 0, { type: 'combat', action: 'reinforce', count: 1 });
+    refused(no, /не может размещать жетоны подкрепления/, 'запрет подкрепления из карты');
+    eq(banned.players[0].assets.reinforcement, 2, 'при запрете жетон не потрачен');
+});
+
 rule('combat-0m', '«В этом раунде игнорируйте все вражеские `att. cube`» (04-combat-cards.md, «Кара Божья», Сестры Битвы) — бой, а не только запрет', () => {
     // `combatValues` читает запрет из `CombatBans`, но сама боевая арифметика
     // не держалась ничем: снятие запрета в бою проходило молча (юнит-проверка
