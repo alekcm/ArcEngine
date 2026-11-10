@@ -279,7 +279,7 @@ const FSUI = {
         header.append(this.el('span', 'fs-brand', 'FORBIDDEN STARS'), this.el('i', 'fs-divider'));
         const phaseLabel = game.label;
         header.append(this.el('span', 'fs-phase', state ? (game.is(GamePhase.SETUP)
-            ? phaseLabel : 'Раунд ' + state.round + ' · ' + phaseLabel) : phaseLabel));
+            ? phaseLabel : 'Раунд ' + GamePhase.of(state).round + ' · ' + phaseLabel) : phaseLabel));
         const activeSeat = game.active;
         if (state && state.players[activeSeat]) {
             // The active player: clicking the pill opens his faction dossier on the right.
@@ -1598,13 +1598,13 @@ const FSUI = {
         const phaseName = GamePhase.of(state).label.toLowerCase();
         const activeSeat = GamePhase.of(state).active;
         const who = state.players[activeSeat] ? state.players[activeSeat].name : '';
-        this.set('fsPhase', 'Раунд ' + state.round + ' · ' + phaseName
+        this.set('fsPhase', 'Раунд ' + GamePhase.of(state).round + ' · ' + phaseName
             + (GamePhase.of(state).is(GamePhase.REFRESH) ? '' : ' · ход: ' + who));
         const lines = state.players.map(p => {
             const marks = [];
             if (p.eliminated) marks.push('выбыл');
             if (p.seat === state.seat) marks.push('вы');
-            if (state.firstPlayer === p.seat) marks.push('первый');
+            if (GamePhase.of(state).isFirst(p.seat)) marks.push('первый');
             return p.name + ' [' + this.factionName(p.faction) + '] — материя ' + p.materiel
                 + ', целей ' + p.objectives + (marks.length ? ' (' + marks.join(', ') + ')' : '');
         });

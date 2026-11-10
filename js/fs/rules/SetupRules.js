@@ -114,7 +114,7 @@ class SetupRules {
         const cells = [];
         rows.forEach((n, r) => { for (let c = 0; c < n; c++) cells.push({ row: r, col: c }); });
         const seatOrder = [];
-        for (let i = 0; i < count; i++) seatOrder.push((state.firstPlayer + i) % count);
+        for (const seat of GamePhase.of(state).circle()) seatOrder.push(seat);
         for (const p of state.players) {
             p.objectivePool = [];
             for (const opponent of state.players) {
@@ -535,7 +535,7 @@ class SetupRules {
         this.takeStartChoiceLeft(state);
         BoardSetup.of(state).finish();
         GamePhase.of(state).start(GamePhase.PLANNING);
-        state.turn = state.firstPlayer;
+        state.turn = GamePhase.of(state).firstPlayer;
         this.engine.log(state, -1, 'Игра началась: раунд 1, фаза планирования.');
     }
 

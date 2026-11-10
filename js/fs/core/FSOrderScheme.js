@@ -33,7 +33,8 @@ class OrderScheme {
     /** The key of an attempted reveal: a refusal belongs to this attempt. */
     static key(state, seat, systemId, count) {
         if (!state) return null;
-        return state.round + ':' + state.turn + ':' + seat + ':' + systemId + ':' + count;
+        const game = GamePhase.of(state);
+        return game.round + ':' + game.turn + ':' + seat + ':' + systemId + ':' + count;
     }
 
     /** Was the «instead of an order» plan already offered for this attempt? */

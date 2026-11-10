@@ -557,9 +557,10 @@ try {
     for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
         if (owners.has(file)) continue;
         const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
-        // Фаза раунда и чей ход — один объект GamePhase: строки фаз и поле
-        // state.phase не читают руками ни правила, ни доска, ни панель.
-        const re = /\bstate\.phase\b/g;
+        // Фаза раунда, чей ход, круг игроков и номер раунда — один объект
+        // GamePhase: строки фаз и поля state.phase/state.firstPlayer/state.round
+        // не читают руками ни правила, ни доска, ни панель.
+        const re = /\bstate\.(?:phase|firstPlayer|round)\b/g;
         let m;
         while ((m = re.exec(text))) {
             const line = text.slice(0, m.index).split('\n').length;
@@ -567,7 +568,7 @@ try {
         }
     }
     if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
-    ok('фазу игры спрашивают у GamePhase');
+    ok('фазу игры, круг и раунд спрашивают у GamePhase');
 } catch (e) {
     fail(e.message);
 }

@@ -72,6 +72,62 @@ class GamePhase {
         return this.state.round;
     }
 
+    /** How many players sit at the table. */
+    get count() {
+        return (this.state.players || []).length;
+    }
+
+    /** The round the game is in. */
+    startRound(round) {
+        this.state.round = round;
+        return this;
+    }
+
+    // --- the circle of the players --------------------------------------------
+
+    /**
+     * «The first player token passes to the next player»: the seat that opens
+     * the round. It is not the turn of the phase — an eliminated first player
+     * still holds the token — but it is where every circle starts.
+     */
+    get firstPlayer() {
+        return this.state.firstPlayer === undefined ? null : this.state.firstPlayer;
+    }
+
+    /** Is this seat the first player of the round? */
+    isFirst(seat) {
+        return this.firstPlayer !== null && this.firstPlayer === seat;
+    }
+
+    /** The token passes: the round is opened by the next seat. */
+    passFirst() {
+        if (this.firstPlayer === null) return null;
+        this.state.firstPlayer = GamePhase.next(this.firstPlayer, this.count);
+        return this.state.firstPlayer;
+    }
+
+    /** The seats from the first player round the table («в порядке хода»). */
+    circle() {
+        const count = this.count;
+        if (this.firstPlayer === null || !count) return [];
+        return Array.from({ length: count }, (_, i) => (this.firstPlayer + i) % count);
+    }
+
+    /**
+     * The seat that opens the round: the first player — or, if he is out of the
+     * game, the player before him in the circle who still plans.
+     */
+    opener(nextPlanner) {
+        const first = this.firstPlayer;
+        if (first === null) return null;
+        const player = (this.state.players || [])[first];
+        if (!player || !player.eliminated) return first;
+        if (!nextPlanner) return first;
+        const count = this.count;
+        const before = (first - 1 + count) % count;
+        return nextPlanner(this.state, before);
+    }
+
     // --- whose turn it is -----------------------------------------------------
 
     /** The seat that acts now: the setup builds the board in its own order. */

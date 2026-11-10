@@ -1203,6 +1203,29 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(GamePhase.next(1, 2), 0, 'ход по кругу');
     eq(GamePhase.next(0, 2), 1, 'и снова');
     eq(GamePhase.next(0, 0), 0, 'без игроков ход не меняется');
+    // The first player token: it opens every round and passes in the refresh phase.
+    const table = { phase: 'planning', turn: 0, round: 1, firstPlayer: 2, players: [{}, {}, {}] };
+    const play = GamePhase.of(table);
+    eq(play.count, 3, 'трое за столом');
+    eq(play.firstPlayer, 2, 'первым играет seat 2');
+    eq(play.isFirst(2), true, 'это первый игрок');
+    eq(play.isFirst(0), false, 'а не seat 0');
+    eq(play.circle().join(','), '2,0,1', 'круг идёт от первого игрока');
+    // «The first player token passes to the next player».
+    eq(play.passFirst(), 0, 'токен уходит следующему');
+    eq(play.firstPlayer, 0, 'и круг начинается с него');
+    // The round is the number of the marker, not the turn.
+    play.startRound(play.round + 1);
+    eq(table.round, 2, 'раунд закончился — следующий');
+    eq(play.round, 2, 'номер раунда');
+    // An eliminated first player still holds the token: planning starts with
+    // the player before him who still has tokens.
+    const gone = { phase: 'refresh', round: 4, firstPlayer: 1, players: [{}, { eliminated: true }, {}] };
+    const others = GamePhase.of(gone);
+    eq(others.firstPlayer, 1, 'выбывший первый держит токен');
+    eq(others.opener((st, seat) => seat), 0, 'планирование начнёт игрок перед ним');
+    eq(others.opener((st, seat) => 2), 2, 'или тот, кого назовёт nextPlanner');
+    eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
 });
 
 rule('board-0a', '«the players build the galaxy together» — сборку карты держит BoardSetup', () => {

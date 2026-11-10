@@ -240,12 +240,11 @@ class OperationsRules {
     }
 
     firstWithOrder(state) {
-        const n = state.players.length;
-        for (let i = 0; i < n; i++) {
-            const seat = (state.firstPlayer + i) % n;
+        const game = GamePhase.of(state);
+        for (const seat of game.circle()) {
             if (this.hasOrderToResolve(state, seat)) return seat;
         }
-        return state.firstPlayer;
+        return game.firstPlayer;
     }
 
     hasOrderToResolve(state, seat) {

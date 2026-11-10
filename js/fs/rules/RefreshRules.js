@@ -101,7 +101,7 @@ class RefreshRules {
         // same restore the cards use, so the round it fell in is cleared too.
         for (const u of state.units) this.engine.restoreUnit(state, u);
         // 4. the event cards and the warp storms
-        state.turn = state.firstPlayer;
+        state.turn = GamePhase.of(state).firstPlayer;
         state.eventsLeft = state.players.length;
         StormPhase.of(state).clearReaction();
         OrderScheme.of(state).reset();
@@ -236,8 +236,8 @@ class RefreshRules {
 
     endRound(state) {
         // The end of the round: the first player token passes, the marker moves.
-        state.firstPlayer = (state.firstPlayer + 1) % state.players.length;
-        state.round++;
+        GamePhase.of(state).passFirst();
+        GamePhase.of(state).startRound(GamePhase.of(state).round + 1);
         for (const p of state.players) {
             p.placedTokens = 0;
             p.placedOf = {};
@@ -269,7 +269,7 @@ class RefreshRules {
             this.declareWin(state, won, false);
             return;
         }
-        if (state.round > this.engine.ROUNDS) {
+        if (GamePhase.of(state).round > this.engine.ROUNDS) {
             state.over = true;
             // The tie-breaks of the rules: objectives, friendly worlds, units, and
             // only then a shared victory.
@@ -287,12 +287,10 @@ class RefreshRules {
         GamePhase.of(state).start(GamePhase.PLANNING);
         // The first player may be out of the game: the planning starts with the
         // first player who still has tokens in hand.
-        state.turn = state.players[state.firstPlayer] && state.players[state.firstPlayer].eliminated
-            ? this.engine.nextPlanner(state, state.firstPlayer - 1 < 0 ? state.players.length - 1 : state.firstPlayer - 1)
-            : state.firstPlayer;
+        state.turn = GamePhase.of(state).opener(this.engine.nextPlanner);
         // The schemes of the start of the planning phase.
         this.engine.maybeScheme(state, state.turn, 'planning', { kind: 'event', ctx: null });
-        this.engine.log(state, -1, 'Раунд ' + state.round + ': фаза планирования.');
+        this.engine.log(state, -1, 'Раунд ' + GamePhase.of(state).round + ': фаза планирования.');
     }
 
 }
