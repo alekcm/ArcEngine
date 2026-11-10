@@ -1610,7 +1610,7 @@ const FSUI = {
         });
         this.set('fsPlayers', lines.join('\n'));
         // The log.
-        const log = state.log.slice(-8).map(l => (l.seat >= 0 ? state.players[l.seat] ? state.players[l.seat].name + ': ' : '' : '') + l.text);
+        const log = GameLog.of(state).lines(8, seat => (state.players[seat] ? state.players[seat].name : ''));
         this.set('fsLog', log.join('\n'));
         // The side panel.
         this.set('fsSideTitle', ctx.title || '');

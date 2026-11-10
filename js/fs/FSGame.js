@@ -2118,7 +2118,7 @@ class FSGame {
         ctx.text = (t.kind === 'space' ? 'Космический' : 'Наземный') + ' бой в системе '
             + ((Board.of(s).system(t.system) || {}).tile || '?')
             + ': ' + (attacker ? attacker.name : '—') + ' против ' + (foe ? foe.name : '—') + '.';
-        ctx.status = s.log.length ? s.log[s.log.length - 1].text : '';
+        ctx.status = GameLog.of(s).text;
         ctx.actions.push({
             kind: 'primary', icon: 'ui.redo', label: 'Ещё бой',
             onClick: () => this.net.cmd({ type: 'rematchBattle' }),

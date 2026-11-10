@@ -38,8 +38,7 @@ class CoreRules {
     }
 
     log(state, seat, text) {
-        state.log.push({ seat, text });
-        if (state.log.length > 200) state.log.shift();
+        GameLog.of(state).add(seat, text);
     }
 
     board(state) {

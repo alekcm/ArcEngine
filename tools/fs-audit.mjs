@@ -23,7 +23,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
-    BoardSetup } = ctx;
+    BoardSetup, GameLog } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1226,6 +1226,35 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(others.opener((st, seat) => seat), 0, 'планирование начнёт игрок перед ним');
     eq(others.opener((st, seat) => 2), 2, 'или тот, кого назовёт nextPlanner');
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
+});
+
+rule('log-0a', '«the game is played in rounds; every step is written down» — журнал игры держит GameLog', () => {
+    const state = { log: [] };
+    const log = GameLog.of(state);
+    eq(GameLog.of(state), log, 'у игры одна хроника');
+    eq(GameLog.of(null), null, 'без состояния журнала нет');
+    // A command says what it did, the game itself says what phase began.
+    log.add(1, 'Тираниды разместили систему s2.');
+    log.note('Раунд 2: фаза планирования.');
+    eq(log.length, 2, 'в журнале две записи');
+    eq(state.log[0].seat, 1, 'у записи есть говоривший');
+    eq(state.log[1].seat, GameLog.GAME, 'игру говорит не игрок');
+    eq(log.text, 'Раунд 2: фаза планирования.', 'последняя запись — статус');
+    eq(log.last(1).length, 1, 'панель берёт хвост');
+    eq(log.last(0).length, 0, 'пустой хвост — пусто');
+    eq(log.last(9).length, 2, 'хвост не длиннее журнала');
+    // The panel glues the name of the speaker to the line.
+    const nameOf = seat => (seat === 1 ? 'Тираниды' : '');
+    eq(log.line(state.log[0], nameOf), 'Тираниды: Тираниды разместили систему s2.', 'строка с именем');
+    eq(log.line(state.log[1], nameOf), 'Раунд 2: фаза планирования.', 'игру не подписывают');
+    eq(log.lines(2, nameOf).length, 2, 'две строки для панели');
+    // The window of the chronicle: the oldest entries fall out.
+    for (let i = 0; i < GameLog.LIMIT + 10; i++) log.add(0, 'шаг ' + i);
+    eq(log.length, GameLog.LIMIT, 'журнал помнит двести записей');
+    eq(log.text, 'шаг ' + (GameLog.LIMIT + 9), 'и кончается последней');
+    log.clear();
+    eq(log.length, 0, 'хроника начинается с нуля');
+    eq(log.text, '', 'и статус пуст');
 });
 
 rule('board-0a', '«the players build the galaxy together» — сборку карты держит BoardSetup', () => {
