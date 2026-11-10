@@ -1605,6 +1605,66 @@ rule('foe-fork-0a', '«Если противник не потратит 1 `mora
     eq(fork['then'][0].n, 3, 'три жетона');
 });
 
+rule('scheme-0c', '«деморализован или уничтожен — сбросить эту карту, чтобы …» — шаги выложенного плана исполняются на его моменте', () => {
+    // Карта-план живёт в игре свёрнутой: её шаги выполняются не при разборе
+    // текста, а когда наступает её момент. Проверка разбирала текст и не
+    // выкладывала план, поэтому НИ ОДИН шаг плана не исполнялся: `resurrect`,
+    // `klBonus`, `strikeBonus`, `unitsThroughStorms` и другие числились
+    // объявленными, но непроверенными.
+    const broken = [];
+    let ran = 0;
+    for (const card of (FS_DATA.events || [])) {
+        if (card.type !== 'scheme') continue;
+        const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: card.faction });
+        const trig = steps.find(x => x.op === 'trigger');
+        if (!trig || !(trig.steps || []).length) continue;
+        let done = false;
+        let last = null;
+        for (const phase of ['move', 'strike', 'combat', 'refresh', 'planning']) {
+            const st = empty(9);
+            const sys = st.systems[0];
+            const pos = worldOf(st, sys.id);
+            const v = voidOf(st, sys.id);
+            st.players[0].faction = card.faction;
+            const f = ctx.FS_CATALOG.faction(card.faction);
+            const g = (f.units.find(u => u.type === 'ground') || f.units[0]).id;
+            const sh = (f.units.find(u => u.type === 'ship') || f.units[0]).id;
+            st.units.push({ id: 'p0', seat: 0, faction: card.faction, def: g, system: sys.id, area: pos, routed: true });
+            st.units.push({ id: 'p2', seat: 0, faction: card.faction, def: sh, system: sys.id, area: v, routed: false });
+            st.units.push({ id: 'p1', seat: 1, faction: 'орки', def: 'бойзы', system: sys.id, area: pos, routed: false });
+            st.units.push({ id: 'p3', seat: 1, faction: 'орки', def: 'атакующие-корабли-класса-натиск', system: sys.id, area: v, routed: false });
+            FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+            FS_RULES.addStructure(st, 0, 'city', sys.id, pos);
+            FS_RULES.addStructure(st, 1, 'bastion', sys.id, pos);
+            for (const p of st.players) {
+                p.assets.forge = 2; p.assets.cache = 2; p.assets.reinforcement = 2;
+            }
+            if (phase === 'refresh') st.phase = 'refresh';
+            if (phase === 'planning') st.phase = 'planning';
+            if (phase === 'move') st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+            if (phase === 'strike') st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'strike' };
+            if (phase === 'combat') {
+                st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+                FS_RULES.apply(st, 0, { type: 'endAdvance' });
+                if (!st.combat) continue;
+            }
+            try {
+                // Ровно то, что делает движок, когда игрок сбрасывает план.
+                FS_RULES.runEffects(st, 0, trig.steps, { kind: 'event', ctx: null });
+                const why = exploreAnswers(st);
+                if (why) { last = phase + ': ' + why; continue; }
+                ran++;
+                done = true;
+                break;
+            } catch (e) {
+                last = phase + ': ' + e.message;
+            }
+        }
+        if (!done) broken.push(card.faction + ' / ' + card.name + ': ' + last);
+    }
+    eq(broken.slice(0, 3), [], 'планы со шагами исполняются (' + broken.length + ' нет; сыграно ' + ran + ')');
+});
+
 rule('scheme-0b', '«… выполнить приказ продвижения в любой системе, содержащей не менее 2-х ваших отрядов» (Вперёд!)', () => {
     const card = ctx.FS_DATA.events.find(c => c.name === 'Вперёд!');
     const trig = ctx.FS_EFFECTS.parse(card.text, { kind: 'event', faction: card.faction }).find(s => s.op === 'trigger');
@@ -3941,13 +4001,76 @@ function answerFirst(st) {
     return FS_RULES.apply(st, seat, { type: 'effect', answer });
 }
 
+// Все ответы на вопрос, которые движок умеет прочитать. Карта, у которой
+// вопрос имеет два исхода, проверяется по обоим: обход «первым вариантом»
+// оставлял половину её шагов невыполненной ни разу (см. `fs-coverage` по
+// функциям эффектов), и сломанная ветка «иначе» проходила аудит.
+function answersFor(q) {
+    const opts = q.options || [];
+    const make = v => {
+        const answer = {};
+        const value = v && typeof v === 'object' ? (v.id !== undefined ? v.id : v) : v;
+        if (q.kind === 'units') answer.units = [value];
+        else if (q.kind === 'dice' || q.kind === 'diceFace') answer.dice = [0];
+        else if (q.kind === 'face') answer.face = 'att';
+        else if (q.kind === 'assets' || q.kind === 'assetType') answer.asset = value || 'forge';
+        else if (q.kind === 'types') answer.type = value;
+        else if (q.kind === 'structures') answer.structure = value;
+        else if (q.kind === 'structureTypes') answer.type = value;
+        else if (q.kind === 'areas') answer.area = v && v.system ? { system: v.system, pos: v.pos } : undefined;
+        else if (q.kind === 'systems') answer.system = value;
+        else if (q.kind === 'foes') answer.foe = value;
+        else if (q.kind === 'cards') answer.card = value;
+        else if (q.kind === 'yesno') answer.yes = true;
+        else answer.choice = typeof v === 'number' ? v : 0;
+        return answer;
+    };
+    if (q.kind === 'yesno') return [{ yes: true }, { yes: false }];
+    const out = opts.slice(0, 3).map(make);
+    return out.length ? out : [{ choice: 0 }];
+}
+
+// Обход ответов карты: первый вариант продолжается на этом же состоянии, все
+// остальные — на копиях, поэтому проверяются ВСЕ ветки, а не только первая.
+// Ошибка любой ветки останавливает разбор и возвращается вызывающему.
+function exploreAnswers(st, budget = 80) {
+    const stack = [st];
+    let n = 0;
+    while (stack.length && n < budget) {
+        const cur = stack.pop();
+        while (cur.pending && n < budget) {
+            n++;
+            const q = cur.pending.question || {};
+            const seat = cur.pending.answerSeat !== undefined ? cur.pending.answerSeat : cur.pending.seat;
+            const answers = answersFor(q);
+            for (let i = 1; i < answers.length; i++) stack.push(structuredClone(cur));
+            const res = FS_RULES.apply(cur, seat, { type: 'effect', answer: answers[0] });
+            if (res && res.ok === false) return res.error;
+        }
+    }
+    return null;
+}
+
 // A board with a real combat on it: the texts of the combat cards need it.
-function battleFor(seed) {
+function battleFor(seed, named, seat) {
     const st = empty(seed);
     const sys = st.systems[0];
     const pos = worldOf(st, sys.id);
     for (let i = 0; i < 2; i++) guard(st, 0, sys.id, pos);
     for (let i = 0; i < 2; i++) olk(st, 1, sys.id, pos);
+    // «The player must have at least one of the specified units in the combat»:
+    // отряд, названный картой, ставится на поле — иначе её половинка не звучит.
+    if (named) {
+        const who = seat === undefined ? 0 : seat;
+        const def = ctx.FS_CATALOG.unit(st.players[who].faction, named);
+        if (def) {
+            const where = def.type === 'ship' ? voidOf(st, sys.id) : pos;
+            st.units.push({
+                id: 'named' + who, seat: who, faction: st.players[who].faction, def: def.id,
+                system: sys.id, area: where, routed: false,
+            });
+        }
+    }
     st.players[0].assets.reinforcement = 2;
     st.players[1].assets.reinforcement = 2;
     advance(st, 0, sys.id, pos);
@@ -3957,18 +4080,26 @@ function battleFor(seed) {
 }
 
 rule('cards-1', '«If the rules text on a card … contradicts information from the Rules Reference, the rules on the card … takes precedence» — текст каждой боевой карты разыгрывается движком', () => {
+    // Боевая карта — две половины: общая и та, что действует, когда в бою есть
+    // названный ею отряд. Вторая половина не разыгрывалась ни разу, пока
+    // проверка не ставила на поле этот отряд: половина карт была не проверена.
     const broken = [];
+    let checked = 0;
     for (const card of FS_DATA.combat) {
+        const unitCard = !!(card.unit && card.unit.trim().length > 2 && card.reqs && card.reqs.length);
         for (const seat of [0, 1]) {
-            const st = battleFor(7);
+            // Отряд из требования карты ставится её владельцу.
+            const st = battleFor(7, unitCard ? card.reqs[0] : null, seat);
             try {
                 const steps = FS_RULES.cardSteps(st, seat, card);
-                FS_RULES.runEffects(st, seat, steps, { kind: 'combat', owner: seat, reqs: card.reqs || [] });
-                let n = 0;
-                while (st.pending && n < 25) {
-                    n++;
-                    const res = answerFirst(st);
-                    if (res && res.ok === false) throw new Error(res.error);
+                for (const steps1 of [steps, unitCard
+                    ? FS_EFFECTS.parse(card.unit, { kind: 'combat', faction: card.faction, reqs: card.reqs || [] })
+                    : []]) {
+                    checked++;
+                    FS_RULES.runEffects(st, seat, steps1, { kind: 'combat', owner: seat, reqs: card.reqs || [] });
+                    // Обе ветки каждого вопроса, а не только первая.
+                    const why = exploreAnswers(st);
+                    if (why) throw new Error(why);
                 }
             } catch (e) {
                 broken.push(card.faction + ' / ' + card.name + ' (место ' + seat + '): ' + e.message);
@@ -3976,7 +4107,8 @@ rule('cards-1', '«If the rules text on a card … contradicts information from 
             st.pending = null;
         }
     }
-    eq(broken.slice(0, 3), [], 'карты без ошибок (' + broken.length + ' из ' + FS_DATA.combat.length + ')');
+    eq(broken.slice(0, 3), [],
+        'карты без ошибок (' + broken.length + '; разыграно половин: ' + checked + ' на ' + FS_DATA.combat.length + ' карт)');
 });
 
 rule('cards-2', '«When a player resolves an event card …» — текст каждой карты события и каждого улучшения приказа разыгрывается', () => {
@@ -3990,29 +4122,46 @@ rule('cards-2', '«When a player resolves an event card …» — текст к�
             const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: card.faction });
             eq(steps.length > 0, true, 'у карты есть шаги');
             FS_RULES.runEffects(st, 0, steps, { kind: 'event', ctx: null });
-            let n = 0;
-            while (st.pending && n < 25) { n++; answerFirst(st); }
+            const why = exploreAnswers(st);
+            if (why) throw new Error(why);
         } catch (e) {
             broken.push(card.faction + ' / ' + card.name + ': ' + e.message);
         }
         st.pending = null;
     }
+    // Карта приказа разыгрывается в СВОЁМ приказе и на своём шаге: шаг удара
+    // орбиты не исполнялся ни разу, пока все карты гонялись в «Стратегии».
+    const places = {
+        advance: ['move', 'strike'], deploy: ['deploy'], strategize: ['strategize'], dominate: ['dominate'],
+    };
     for (const card of (FS_DATA.orders || [])) {
-        const st = empty(9);
-        const sys = st.systems[0];
-        const pos = worldOf(st, sys.id);
-        guard(st, 0, sys.id, pos);
-        st.order = { seat: 0, order: 'strategize', system: sys.id, phase: 'strategize' };
-        try {
-            const steps = FS_EFFECTS.parse(card.text || '', { kind: 'order', faction: card.faction });
-            eq(steps.length > 0, true, 'у карты есть шаги');
-            FS_RULES.runEffects(st, 0, steps, { kind: 'order', ctx: null });
-            let n = 0;
-            while (st.pending && n < 25) { n++; answerFirst(st); }
-        } catch (e) {
-            broken.push(card.faction + ' / ' + card.name + ': ' + e.message);
+        const phases = places[card.order] || ['resolve'];
+        for (const phase of phases) {
+            const st = empty(9);
+            const sys = st.systems[0];
+            const pos = worldOf(st, sys.id);
+            guard(st, 0, sys.id, pos);
+            // Богатая доска: постройки, жетоны, отряды обеих сторон — половина
+            // шагов карт без неё просто не находит, к чему примениться.
+            unit(st, 0, 'крейсеры', sys.id, voidOf(st, sys.id));
+            olk(st, 1, sys.id, pos);
+            FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+            st.players[0].assets.forge = 2;
+            st.players[0].assets.cache = 2;
+            st.players[0].assets.reinforcement = 2;
+            st.players[1].assets.forge = 2;
+            st.order = { seat: 0, order: card.order || 'strategize', system: sys.id, pos, phase, moved: [], steps: [] };
+            try {
+                const steps = FS_EFFECTS.parse(card.text || '', { kind: 'order', faction: card.faction });
+                eq(steps.length > 0, true, 'у карты есть шаги');
+                FS_RULES.runEffects(st, 0, steps, { kind: 'order', ctx: null });
+                const why = exploreAnswers(st);
+                if (why) throw new Error(why);
+            } catch (e) {
+                broken.push(card.faction + ' / ' + card.name + ' (' + phase + '): ' + e.message);
+            }
+            st.pending = null;
         }
-        st.pending = null;
     }
     eq(broken.slice(0, 3), [], 'карты без ошибок (' + broken.length + ')');
 });
@@ -4034,8 +4183,8 @@ rule('abil-1', '«Resolve Faction Ability: The active player may resolve the spe
             st.order.ability = faction.ability;
             eq(!!st.order.ability, true, 'способность показана игроку');
             FS_RULES.runEffects(st, 0, steps, { kind: 'ability', ctx: null });
-            let n = 0;
-            while (st.pending && n < 25) { n++; answerFirst(st); }
+            const why = exploreAnswers(st);
+            if (why) throw new Error(why);
         } catch (e) {
             broken.push(faction.id + ': ' + e.message);
         }
