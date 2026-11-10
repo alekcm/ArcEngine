@@ -305,6 +305,64 @@ rule('setup-2', '«He cannot exceed an area’s unit capacity» — при сб�
 // ============================================================================
 head('Планирование (Planning Phase)');
 
+rule('prep-1', '«After drawing cards during the preparation step of a combat … reroll 1 die for each unit in the contested area» (Сервочерепа-стражи)', () => {
+    // `prepEffects` — единственный путь, которым обещание подготовки приказа
+    // доходит до боя. Вопрос откладывается до этапа кубиков, поэтому проверка
+    // идёт целым боем, а не одним вызовом.
+    const rerollWith = (withCard) => {
+        const st = empty(7);
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        unit(st, 0, 'гвардейцы', sys.id, pos);
+        unit(st, 0, 'гвардейцы', sys.id, pos);
+        unit(st, 1, 'бойзы', sys.id, pos);
+        unit(st, 1, 'бойзы', sys.id, pos);
+        st.players[0].faction = 'адептус-механикус';
+        const card = FS_DATA.orders.find(c => /Сервочерепа/.test(c.name));
+        eq(!!card, true, 'карта «Сервочерепа-стражи» есть');
+        if (withCard) st.players[0].upgrades = [{ name: card.name, used: false, order: card.order }];
+        st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+        st.phase = 'operations';
+        st.turn = 0;
+        if (withCard) {
+            const u = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: card.name });
+            eq(u.ok, true, 'карта разыграна: ' + (u.error || ''));
+            eq(!!OrderFight.of(st.order).prepReroll, true, 'приказ запомнил обещание переброса');
+        }
+        FS_RULES.apply(st, 0, { type: 'endAdvance' });
+        eq(!!st.combat, true, 'бой начался');
+        let sawReroll = 0;
+        for (let i = 0; i < 40 && st.combat; i++) {
+            if (st.pending) {
+                const q = st.pending.question || {};
+                // Боевые карты тоже перебрасывают по одному: признак карты —
+                // «за каждого юнита», то есть сразу два кубика.
+                if (q.op === 'rerollDie') sawReroll = Math.max(sawReroll, q.n || 0);
+                FS_RULES.apply(st, st.pending.seat, { type: 'effect', answer: { choice: 0 } });
+                continue;
+            }
+            const co = st.combat;
+            if (/^reinforce/.test(co.step)) {
+                FS_RULES.apply(st, co.step === 'reinforce-attacker' ? co.attacker : co.defender,
+                    { type: 'combat', action: 'reinforce', count: 0 });
+            } else if (/^choose/.test(co.step)) {
+                const side = co.step === 'choose-attacker' ? 'attacker' : 'defender';
+                const seat = side === 'attacker' ? co.attacker : co.defender;
+                if (!(co.cards[side].hand || []).length) { FS_RULES.advanceCombatSteps(st); continue; }
+                FS_RULES.apply(st, seat, { type: 'combat', action: 'playCard', index: 0 });
+            } else if (/^damage/.test(co.step)) {
+                const side = co.step === 'damage-attacker' ? 'attacker' : 'defender';
+                const seat = side === 'attacker' ? co.attacker : co.defender;
+                FS_RULES.apply(st, seat, { type: 'combat', action: 'damage', targets: FS_RULES.damageCandidates(st, side).map(x => x.id) });
+            } else if (co.step === 'retreat') break;
+            else FS_RULES.advanceCombatSteps(st);
+        }
+        return sawReroll;
+    };
+    eq(rerollWith(true), 2, 'с картой перебрасываются оба кубика (за каждого юнита)');
+    eq(rerollWith(false), 1, 'без карты бой перебрасывает не больше одного');
+});
+
 rule('count-1', '«for each friendly world with a bastion / your city / your cultist …» — подсчёт «за каждый» считает один раз для всех карт', () => {
     // `countFor` — общий счётчик шести карт («Церемония перед боем», «Путь
     // воина», «Ужасный ритуал», «Убийственное представление», «Рассечение
