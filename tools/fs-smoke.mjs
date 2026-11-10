@@ -548,6 +548,29 @@ try {
     fail(e.message);
 }
 
+// --- «Быстрый ответ»: one object ---------------------------------------------
+section('быстрый ответ: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSQuickResponse.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Фаза событий, приостановленная ради ограниченного продвижения: снимок
+        // и ожидание спрашивают у QuickResponse.
+        const re = /\bstate\.(?:quickResponsePending|quickResponseSnapshot)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('«Быстрый ответ» спрашивают у QuickResponse');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the event of the refresh phase: one object -------------------------------
 section('событие фазы: один объект');
 try {

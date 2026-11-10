@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1164,6 +1164,48 @@ rule('combat-0c', '«discards the combat cards he used during the combat by shuf
     cards.clear('attacker');
     eq(cards.names('attacker').length, 0, 'стол очищен');
     eq(cards.chosen('attacker'), null, 'отметка карты снята');
+});
+
+rule('event-0b', '«Быстрый ответ»: «the event phase is suspended» + «the limited order belongs to the player of the event» — снимок и ожидание держит QuickResponse', () => {
+    const state = { phase: 'refresh', turn: 1, event: { seat: 0 }, eventsLeft: 2 };
+    const quick = QuickResponse.of(state);
+    eq(QuickResponse.of(state), quick, 'у игры один быстрый ответ');
+    eq(QuickResponse.of(null), null, 'без состояния ответа нет');
+    // Nothing is suspended until the event asks for its system.
+    eq(quick.pending, false, 'фаза не ждёт');
+    eq(quick.snapshot, null, 'снимка нет');
+    eq(quick.resume(), null, 'возвращаться некуда');
+    // The event names its system: the phase is suspended and waits.
+    quick.suspend().wait();
+    eq(quick.pending, true, 'фаза ждёт выбора системы');
+    eq(quick.snapshot.phase, 'refresh', 'снимок помнит фазу');
+    eq(quick.snapshot.turn, 1, 'и ход фазы');
+    eq(quick.snapshot.eventsLeft, 2, 'и сколько событий осталось');
+    // The system is chosen: the limited advance is born, the phase waits no more.
+    quick.start();
+    eq(quick.pending, false, 'ожидание снято');
+    eq(quick.snapshot.turn, 1, 'снимок остался до конца приказа');
+    // The game left the event phase meanwhile: the snapshot is taken again
+    // unchanged — a second one would draw an extra event card.
+    state.phase = 'operations';
+    state.turn = 0;
+    quick.suspend();
+    eq(quick.snapshot.phase, 'refresh', 'второй снимок не сделан');
+    eq(quick.snapshot.turn, 1, 'и ход не переписан');
+    // The advance is over: the event phase comes back exactly where it was.
+    eq(quick.resume().phase, 'refresh', 'фаза возвращена');
+    eq(state.phase, 'refresh', 'состояние вернулось в фазу событий');
+    eq(state.turn, 1, 'и ход фазы');
+    eq(state.eventsLeft, 2, 'и счётчик событий');
+    eq(quick.snapshot, null, 'снимок израсходован');
+    eq(quick.pending, false, 'и ожидания нет');
+    // A refusal forgets the snapshot without returning anywhere.
+    quick.suspend().wait();
+    eq(quick.pending, true, 'ждали систему');
+    quick.forget();
+    eq(quick.pending, false, 'отказ снял ожидание');
+    eq(quick.snapshot, null, 'и снимок');
+    eq(state.phase, 'refresh', 'фаза при этом не менялась');
 });
 
 rule('event-0a', '«The active player chooses one Warp Storm on the game board and moves it» + «A player can choose not to resolve the ability on his chosen event card» — событие фазы держит EventPhase', () => {

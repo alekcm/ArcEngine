@@ -744,13 +744,9 @@ class AdvanceRules {
         // cmdResolveEvent() took this snapshot BEFORE the event phase could
         // advance to the next player. Reuse it: a second `nextEventPlayer`
         // would draw and discard an extra event card.
-        if (!state.quickResponseSnapshot) {
-            state.quickResponseSnapshot = {
-                phase: state.phase, turn: state.turn,
-                event: state.event, eventsLeft: state.eventsLeft,
-            };
-        }
-        state.quickResponsePending = false;
+        const quick = QuickResponse.of(state);
+        quick.suspend();
+        quick.start();
         // The limited order belongs to the player of the event even though the
         // event-phase turn had already passed to the next player.
         state.turn = seat;

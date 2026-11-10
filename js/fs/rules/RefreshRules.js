@@ -219,11 +219,8 @@ class RefreshRules {
             // wait until THEN — a premature nextEventPlayer() would already
             // draw the next player's card and corrupt the snapshot.
             if (steps.some(step => step && step.op === 'chooseSystem' && step.quickResponse)) {
-                state.quickResponsePending = true;
-                state.quickResponseSnapshot = {
-                    phase: state.phase, turn: state.turn,
-                    event: state.event, eventsLeft: state.eventsLeft,
-                };
+                const quick = QuickResponse.of(state);
+                quick.suspend().wait();
             }
             if (steps.length) {
                 this.engine.runEffects(state, seat, steps, { kind: 'event', ctx: null });
@@ -232,7 +229,7 @@ class RefreshRules {
         // «Быстрый ответ» starts a limited advance from this event: the event
         // phase waits until that order is finished. finishOrder() will call
         // nextEventPlayer() with the restored event-phase snapshot.
-        if (!(state.order && OrderMove.of(state.order).fromEvent) && !state.quickResponsePending) {
+        if (!(state.order && OrderMove.of(state.order).fromEvent) && !QuickResponse.of(state).pending) {
             this.nextEventPlayer(state);
         }
         return { ok: true };

@@ -198,16 +198,12 @@ class OperationsRules {
         // «Быстрый ответ»: the limited advance was born from a tactic event of
         // the refresh phase. Its end returns the game to that event phase.
         if (state.order && OrderMove.of(state.order).fromEvent) {
-            const snap = state.quickResponseSnapshot;
+            const quick = QuickResponse.of(state);
+            const waiting = quick.snapshot;
             for (const p of state.players) this.engine.trimPlayer(state, p.seat);
             this.closeOrder(state);
-            if (snap) {
-                state.phase = snap.phase;
-                state.turn = snap.turn;
-                state.event = snap.event;
-                state.eventsLeft = snap.eventsLeft;
-                delete state.quickResponseSnapshot;
-                delete state.quickResponsePending;
+            if (waiting) {
+                quick.resume();
                 // The next player's event card is drawn only now: the limited
                 // advance itself is not part of the refresh phase.
                 this.engine.nextEventPlayer(state);

@@ -1645,11 +1645,10 @@ const FS_EFFECTS = {
         }
         // A Quick Response whose system was refused (or whose question had no
         // systems) never became a limited advance: the event phase goes on.
-        if (c.kind === 'event' && state.quickResponsePending
+        if (c.kind === 'event' && QuickResponse.of(state).pending
             && !(state.order && OrderMove.of(state.order).fromEvent)
             && typeof R.nextEventPlayer === 'function') {
-            state.quickResponsePending = false;
-            delete state.quickResponseSnapshot;
+            QuickResponse.of(state).forget();
             R.nextEventPlayer(state);
         }
         // «Отрава Нургла» takes the place of revealing an order (01-rules-
