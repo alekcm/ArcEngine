@@ -158,7 +158,7 @@ class SetupRules {
 
     newReadyGame(opts) {
         const state = this.newGame(Object.assign({}, opts, { interactiveSetup: false }));
-        state.testMode = 'map';
+        BattleTest.of(state).setMode(BattleTest.MAP);
         this.engine.log(state, -1, 'Тестовая партия: карта собрана автоматически, ход сразу за планированием.');
         return state;
     }
@@ -216,16 +216,15 @@ class SetupRules {
         const attCards = this.buildTestDeck(state, attacker, o.cards);
         const defCards = this.buildTestDeck(state, defender, o.foeCards);
         for (const seat of [attacker, defender]) this.engine.player(state, seat).setAsset('reinforcement', 2);
-        state.testBattle = {
+        BattleTest.of(state).begin({
             kind, attacker, defender, system: sys.id, pos: area.pos,
             roster,
             decks: { attacker: attCards, defender: defCards },
             reinforcement: 2,
-        };
+        });
         GamePhase.of(state).start(GamePhase.OPERATIONS);
         state.turn = attacker;
         state.order = { seat: attacker, order: 'advance', system: sys.id, pos: area.pos, phase: 'combat' };
-        state.testMode = 'battle';
         this.engine.log(state, -1, (kind === 'space' ? 'Космический' : 'Наземный')
             + ' бой: ' + state.players[attacker].name + ' против ' + state.players[defender].name + '.');
         this.engine.startCombat(state, attacker, defender, sys.id, area.pos);
@@ -241,24 +240,25 @@ class SetupRules {
     }
 
     cmdRematchBattle(state, seat) {
-        const test = state.testBattle;
-        if (!test) return { ok: false, error: 'Сейчас не тестовый бой.' };
+        const test = BattleTest.of(state);
+        if (!test.replayable) return { ok: false, error: 'Сейчас не тестовый бой.' };
         if (state.combat) return { ok: false, error: 'Бой ещё идёт.' };
         const p = state.players[seat];
-        if (!p || (seat !== test.attacker && seat !== test.defender)) return { ok: false, error: 'Вы не участник боя.' };
-        state.units = state.units.filter(u => !(u.system === test.system && u.area === test.pos && (u.seat === test.attacker || u.seat === test.defender)));
+        if (!p || !test.participant(seat)) return { ok: false, error: 'Вы не участник боя.' };
+        const battle = test.battle;
+        state.units = state.units.filter(u => !(u.system === test.system && u.area === test.pos
+            && test.participant(u.seat)));
         for (const entry of test.roster) this.addUnit(state, entry.seat, entry.unit, test.system, test.pos);
         for (const side of ['attacker', 'defender']) {
-            const s = test[side];
-            this.buildTestDeck(state, s, test.decks[side]);
-            this.engine.player(state, s).setAsset('reinforcement', test.reinforcement);
+            this.buildTestDeck(state, battle[side], test.decks(side));
+            this.engine.player(state, battle[side]).setAsset('reinforcement', test.reinforcement);
         }
         state.combat = null;
         GamePhase.of(state).start(GamePhase.OPERATIONS);
-        state.turn = test.attacker;
-        state.order = { seat: test.attacker, order: 'advance', system: test.system, pos: test.pos, phase: 'combat' };
+        state.turn = battle.attacker;
+        state.order = { seat: battle.attacker, order: 'advance', system: test.system, pos: test.pos, phase: 'combat' };
         this.engine.log(state, -1, 'Тот же бой начинается снова.');
-        this.engine.startCombat(state, test.attacker, test.defender, test.system, test.pos);
+        this.engine.startCombat(state, battle.attacker, battle.defender, test.system, test.pos);
         return { ok: true };
     }
 

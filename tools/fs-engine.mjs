@@ -43,7 +43,7 @@ export function engineFiles() {
 /** The names a tool may need after loading: every global the scripts define. */
 const ENGINE_GLOBALS = ['FS_DATA', 'FS_CATALOG', 'FS_RULES_CONFIG', 'FS_WARP_STORMS',
     'FACE_KINDS', 'FACE_NAMES', 'fsFaceName',
-    'FS_CARDS', 'FS_EFFECTS', 'FS_RULES', 'Board', 'PlayerEntity', 'TrimQueue', 'StrikePlan', 'MarchPlan', 'PhasePlan', 'EventPhase', 'QuickResponse', 'StormPhase', 'OrderScheme', 'Question', 'GamePhase', 'BoardSetup', 'GameLog', 'GameOutcome', 'MarchTrail', 'EventRound', 'StrikeDamage', 'UpgradeOrder', 'OrderDeal', 'DeployScope', 'DeployLimits', 'OrderFight', 'Purchases', 'OrderMove', 'OrderTally', 'OrderContext', 'CombatTurn', 'CombatTokens', 'CombatCards', 'CombatDamage', 'CombatPlans', 'CombatOutcome', 'CombatApproach', 'CombatCubes', 'CombatBans', 'CombatHooks',
+    'FS_CARDS', 'FS_EFFECTS', 'FS_RULES', 'Board', 'PlayerEntity', 'TrimQueue', 'StrikePlan', 'MarchPlan', 'PhasePlan', 'EventPhase', 'QuickResponse', 'StormPhase', 'OrderScheme', 'Question', 'GamePhase', 'BoardSetup', 'GameLog', 'GameOutcome', 'MarchTrail', 'EventRound', 'StrikeDamage', 'BattleTest', 'UpgradeOrder', 'OrderDeal', 'DeployScope', 'DeployLimits', 'OrderFight', 'Purchases', 'OrderMove', 'OrderTally', 'OrderContext', 'CombatTurn', 'CombatTokens', 'CombatCards', 'CombatDamage', 'CombatPlans', 'CombatOutcome', 'CombatApproach', 'CombatCubes', 'CombatBans', 'CombatHooks',
     'TileGeometry', 'CombatSides', 'BattleField', 'StepContext', 'STEP_EXECUTORS', 'ASK_EXECUTORS'];
 
 /**

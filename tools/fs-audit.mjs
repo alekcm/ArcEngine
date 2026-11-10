@@ -23,7 +23,8 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
-    BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound, StrikeDamage } = ctx;
+    BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound, StrikeDamage,
+    BattleTest } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1226,6 +1227,46 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(others.opener((st, seat) => seat), 0, 'планирование начнёт игрок перед ним');
     eq(others.opener((st, seat) => 2), 2, 'или тот, кого назовёт nextPlanner');
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
+});
+
+rule('test-0a', '«a battle may be tried without a campaign» — тестовый бой держит BattleTest', () => {
+    const state = { players: [{}, {}] };
+    const test = BattleTest.of(state);
+    eq(BattleTest.of(state), test, 'у партии один тест');
+    eq(BattleTest.of(null), null, 'без состояния теста нет');
+    // An ordinary game has no test table at all.
+    eq(test.mode, null, 'это не тест');
+    eq(test.active, false, 'и не тестовый бой');
+    eq(test.replayable, false, 'повторять нечего');
+    eq(test.side(0), null, 'seat 0 не участник');
+    eq(test.roster.length, 0, 'и ростера нет');
+    // A ready map: the board is built, the game is ordinary otherwise.
+    test.setMode(BattleTest.MAP);
+    eq(BattleTest.MAP, 'map', 'готовая карта');
+    eq(test.mode, 'map', 'вид теста');
+    eq(test.active, false, 'это не бой');
+    // A battle of chosen troops.
+    test.begin({
+        kind: 'space', attacker: 0, defender: 1, system: 'sys3', pos: 'SE',
+        roster: [{ seat: 0, unit: 'raider' }, { seat: 1, unit: 'escort' }],
+        decks: { attacker: ['Залп'], defender: ['Щит'] },
+        reinforcement: 2,
+    });
+    eq(test.active, true, 'идёт тестовый бой');
+    eq(test.replayable, true, 'и его можно повторить');
+    eq(test.system, 'sys3', 'бой в системе sys3');
+    eq(test.pos, 'SE', 'в области SE');
+    eq(test.side(0), 'attacker', 'seat 0 нападает');
+    eq(test.side(1), 'defender', 'seat 1 защищается');
+    eq(test.side(2), null, 'seat 2 не участвует');
+    eq(test.participant(1), true, 'seat 1 участник');
+    eq(test.participant(2), false, 'а seat 2 нет');
+    eq(test.roster.length, 2, 'два отряда на поле');
+    eq(test.decks('attacker').join(','), 'Залп', 'колода нападающего');
+    eq(test.decks('defender').join(','), 'Щит', 'колода защитника');
+    eq(test.decks('other').length, 0, 'у третьей стороны колоды нет');
+    eq(test.reinforcement, 2, 'два жетона подкрепления');
+    eq(state.testMode, 'battle', 'вид теста записан в состояние');
 });
 
 rule('strike-0a', '«the defender chooses which of his units take the hits» — урон с орбиты держит StrikeDamage', () => {

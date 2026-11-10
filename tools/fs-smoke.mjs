@@ -596,6 +596,29 @@ try {
     fail(e.message);
 }
 
+// --- a test battle: one object ------------------------------------------------
+section('тестовый бой: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSBattleTest.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Тестовая партия и тестовый бой — один объект BattleTest: поля
+        // state.testMode/state.testBattle не читают руками ни правила, ни панель.
+        const re = /\b(?:state|s)\.test(?:Mode|Battle)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('тестовый бой спрашивают у BattleTest');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the damage of an orbital strike: one object ------------------------------
 section('урон с орбиты: один объект');
 try {

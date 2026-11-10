@@ -454,9 +454,9 @@ class FSGame {
             ctx.title = 'Игра окончена';
             ctx.text = GameOutcome.of(s).headline(seat => (s.players[seat] ? s.players[seat].name : '—'));
             ctx.status = '';
-        } else if (s.testMode === 'battle' && !s.combat) {
+        } else if (BattleTest.of(s).active && !s.combat) {
             this.panelTestBattle(s, ctx);
-        } else if (s.testMode === 'battle') {
+        } else if (BattleTest.of(s).active) {
             // The fight is on: the combat panel below is the whole interface.
         } else if (s.phase === 'setup') {
             this.panelSetup(s, ctx);
@@ -469,7 +469,7 @@ class FSGame {
         }
         // The order that is being resolved. A test battle has no order of its own:
         // its whole interface is the combat below.
-        if (s.order && OrderContext.of(s.order).isSeat(me) && s.testMode !== 'battle') {
+        if (s.order && OrderContext.of(s.order).isSeat(me) && !BattleTest.of(s).active) {
             if (OrderContext.of(s.order).isKind('advance')) this.panelAdvance(s, ctx);
             if (PhasePlan.of(s.order).is('guardDeploy')) this.panelGuardDeploy(s, ctx);
             else if (OrderContext.of(s.order).isKind('deploy')) this.panelDeploy(s, ctx);
@@ -2109,7 +2109,8 @@ class FSGame {
 
     // The end of a test battle: the field is free for the next one.
     panelTestBattle(s, ctx) {
-        const t = s.testBattle || {};
+        const test = BattleTest.of(s);
+        const t = test.battle || {};
         const foe = s.players[t.defender != null ? t.defender : 1];
         const attacker = s.players[t.attacker != null ? t.attacker : 0];
         ctx.title = 'Тестовый бой окончен';

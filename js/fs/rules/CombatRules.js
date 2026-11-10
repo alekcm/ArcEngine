@@ -48,7 +48,7 @@ class CombatRules {
             this.engine.log(state, attacker, 'Защищать область некому: ' + state.players[attacker].name + ' побеждает сразу.');
             this.captureStructures(state, systemId, pos, attacker, defender);
             state.combat = null;
-            if (state.testBattle) { this.engine.closeOrder(state); return null; }
+            if (BattleTest.of(state).replayable) { this.engine.closeOrder(state); return null; }
             const order = state.order;
             if (order) PhasePlan.of(order).set('done');
             this.engine.finishOrder(state, attacker);
@@ -1475,7 +1475,7 @@ class CombatRules {
         this.engine.log(state, seat, state.players[seat].name + ' отступает.');
         state.combat = null;
         // A test battle stays on the field: the player may start it again.
-        if (state.testBattle) {
+        if (BattleTest.of(state).replayable) {
             this.engine.closeOrder(state);
             return { ok: true };
         }
