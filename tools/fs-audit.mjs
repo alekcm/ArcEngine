@@ -1299,7 +1299,7 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
 });
 
-rule('ask-0a', 'таблица вопросов не содержит заглушек: у каждого шага есть настоящая ветка вопроса', () => {
+rule('ask-0b', 'таблица вопросов не содержит заглушек: у каждого шага есть настоящая ветка вопроса', () => {
     // The defect this rule exists for: an op was registered in the ask table
     // with a body of `return null`, so the engine asked nothing and went on —
     // the opponent was never asked for his cube, the step looked performed.
@@ -3749,7 +3749,7 @@ rule('rein-1', '«The maximum number of reinforcement tokens a player can use du
     refused(used, /Не больше 2 жетонов/, 'три жетона при двух отрядах нельзя');
 });
 
-rule('rein-2', '«Reinforcement tokens do not contribute dice to a combat»', () => {
+rule('rein-3', '«Reinforcement tokens do not contribute dice to a combat»', () => {
     const st = groundBattle({ reinforce: 2 });
     const before = c(st).dice.attacker.length;
     const res = FS_RULES.apply(st, 0, { type: 'combat', action: 'reinforce', count: 2 });
@@ -4724,7 +4724,7 @@ rule('storm-9', 'Movement is a shift relative to the CURRENT storm edge', () => 
     return eq(storm.moved, true, 'шторм помечен как сдвинутый');
 });
 
-rule('event-2', '«Then, he shuffles all event cards back into his event deck, excluding the “Scheme” event card if it is in play.»', () => {
+rule('event-3', '«Then, he shuffles all event cards back into his event deck, excluding the “Scheme” event card if it is in play.»', () => {
     const st = empty();
     st.phase = 'refresh';
     st.eventsLeft = 2;
@@ -4812,7 +4812,7 @@ rule('ret-4', '«If attacking units moved from an adjacent system, the defender�
         'в систему, откуда пришёл враг, не отступают (пустот там: ' + voids.length + ')');
 });
 
-rule('rein-1', '«Each of these tokens is treated as one of his command level zero units, either a ground unit or ship as appropriate for the combat.» — мораль жетона', () => {
+rule('rein-2', '«Each of these tokens is treated as one of his command level zero units, either a ground unit or ship as appropriate for the combat.» — мораль жетона', () => {
     const st = battleOf('сестры-битвы', 'орки');
     const cl0 = FS_RULES.reinforceUnitDef(st.players[0].faction, 'ground');
     if (!cl0) return 'у фракции нет отряда нулевого уровня';
@@ -4823,7 +4823,7 @@ rule('rein-1', '«Each of these tokens is treated as one of his command level ze
     eq(after - before, 2 * cl0.morale, 'два жетона дают мораль двух отрядов нулевого уровня');
 });
 
-rule('rein-2', '«Reinforcement tokens in combat are treated like plastic units for all rules and game effects» — здоровье жетона', () => {
+rule('rein-4', '«Reinforcement tokens in combat are treated like plastic units for all rules and game effects» — здоровье жетона', () => {
     const st = battleOf('некроны', 'орки');
     const cl0 = FS_RULES.reinforceUnitDef(st.players[0].faction, 'ground');
     if (!cl0) return 'у фракции нет отряда нулевого уровня';
