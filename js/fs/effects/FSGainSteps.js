@@ -5,7 +5,14 @@
 // приходит параметром effects, а общая рамка шага — объектом f (FSStepContext).
 
 class GainSteps {
-    static ops = ['gainAsset', 'exchangeMateriel', 'exchangeAsset', 'loseAsset', 'gainWorldAssets', 'gainSystemMateriel', 'gainByUnit'];
+    static ops = ['nothing', 'gainAsset', 'takeFoeAsset', 'exchangeMateriel', 'exchangeAsset', 'loseAsset', 'gainWorldAssets', 'gainSystemMateriel', 'gainByUnit'];
+
+    // «Затем получите такой же жетон» — the text is performed by the step that
+    // came before it (`takeFoeAsset` gives the copy); this step marks the
+    // sentence as read, so it is not a stub and the player still sees it.
+    static nothing() {
+        return null;
+    }
 
     static gainAsset(effects, f) {
         const { R, state, seat, step, answer, ctx, p } = f;
@@ -52,6 +59,23 @@ class GainSteps {
         if (!kind || !p2) return null;
         R.player(state, p2.seat).takeAsset(kind, step.n || 1);
         R.log(state, p2.seat, p2.name + ' теряет жетон: ' + kind + '.');
+        return null;
+    }
+
+    // «… выбрать и сбросить 1 жетон ценных ресурсов противника. Затем
+    // получите такой же жетон» («Воруй!»): the token the opponent lost is the
+    // token the player gains — one place counts both.
+    static takeFoeAsset(effects, f) {
+        const { R, state, seat, step, answer, ctx } = f;
+        const foe = state.players[1 - seat] ? 1 - seat : null;
+        if (foe === null) return null;
+        const foePlayer = R.player(state, foe);
+        const kind = answer.asset || answer.assetType;
+        if (!kind || foePlayer.assetCount(kind) <= 0) return null;
+        foePlayer.takeAsset(kind, 1);
+        R.player(state, seat).addAsset(kind, 1);
+        step.done = true;
+        R.log(state, seat, state.players[seat].name + ' забирает у противника жетон: ' + kind + '.');
         return null;
     }
 

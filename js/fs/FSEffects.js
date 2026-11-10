@@ -3192,6 +3192,31 @@ const RULES = [
         re: /переверн[а-яёa-z]*\s+любое количество\s*`([^`]+)`\s*на\s*`([^`]+)`/i,
         build: m => ({ op: 'flipDie', n: 99, kind: FS_EFFECTS.icon(m[1]), to: FS_EFFECTS.icon(m[2]), all: true, pick: true }),
     },
+    // «Затем получите такой же жетон» — the second half of the steal: the
+    // step of `takeFoeAsset` already gives the copy, so the sentence adds
+    // nothing and must not stay a stub (the player sees the text either way).
+    {
+        re: /^затем\s+получите\s+такой\s+же\s+жетон/i,
+        build: () => ({ op: 'nothing', text: '' }),
+    },
+    // «выбрать и сбросить 1 жетон ценных ресурсов противника» («Воруй!»):
+    // the token leaves the opponent's pool and arrives in the player's own.
+    {
+        re: /сбросить\s+1\s+жетон[а-яёa-z]*\s+(?:ценных\s+)?ресурс[а-яёa-z]*\s+противник[а-яёa-z]*/i,
+        build: () => ({ op: 'takeFoeAsset', n: 1, who: 'me' }),
+    },
+    // «Во время выполнения этого удара, вы можете потратить 1 `morale cube`
+    // для того, чтобы выбрать и сбросить 1 жетон ценных ресурсов противника.
+    // Затем получите такой же жетон» («Воруй!»): the price AND the reward are
+    // one sentence — the general «потратьте …, чтобы …» would keep only the
+    // price, because the stake is a token of the player, not a die.
+    {
+        re: /потрат[а-яёa-z]*\s+(\d+|один)?\s*`([^`]+cube)`[\s\S]*?сбросить\s+1\s+жетон[а-яёa-z]*\s+(?:ценных\s+)?ресурс[а-яёa-z]*\s+противник[а-яёa-z]*/i,
+        build: m => [
+            { op: 'spendDie', n: num(m[1]), kind: FS_EFFECTS.icon(m[2]), all: false, pick: true, who: 'me' },
+            { op: 'takeFoeAsset', n: 1, who: 'me' },
+        ],
+    },
     // «Потратьте 1 `morale cube`, чтобы взять 1 ваш отряд и разместить его в
     // дружественном мире, содержащем постройку, либо взять 1 из ваших отрядов с
     // командным уровнем 0 или 1 из мира, содержащего постройку, и поместить его

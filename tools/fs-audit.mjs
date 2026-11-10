@@ -1241,6 +1241,23 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
 });
 
+rule('raid-0a', '«… выбрать и сбросить 1 жетон ценных ресурсов противника. Затем получите такой же жетон» (Воруй!)', () => {
+    const card = ctx.FS_DATA.orders.find(c => c.name === 'Воруй!');
+    eq(!!card, true, 'карта есть');
+    const steps = ctx.FS_EFFECTS.parse(card.text, { kind: 'order', faction: card.faction });
+    eq(steps.map(s => s.op).includes('takeFoeAsset'), true, 'кража — шаг движка');
+    eq(steps.every(s => s.op !== 'note'), true, 'заглушек нет');
+    const st = FS_RULES.newGame({ seed: 9, players: [
+        { name: 'Д', faction: 'темные-эльдары' }, { name: 'О', faction: 'орки' }], interactiveSetup: false });
+    st.players[1].assets.cache = 2;
+    FS_RULES.runEffects(st, 0, [{ op: 'takeFoeAsset', n: 1, who: 'me' }], { kind: 'order' });
+    eq(st.pending.question.kind, 'assetType', 'спросили, какой жетон забрать');
+    eq(st.pending.question.options.join(','), 'cache,reinforcement', 'предложены только жетоны противника');
+    FS_RULES.apply(st, 0, { type: 'effect', answer: { asset: 'cache' } });
+    eq(st.players[1].assets.cache, 1, 'у противника жетон ушёл');
+    eq(st.players[0].assets.cache, 1, 'у игрока такой же появился');
+});
+
 rule('radical-0a', '«Либо купите 1 постройку, уменьшив её стоимость на 1, либо уничтожьте 1 постройку в дружественном мире…» (Радикалы и пуритане)', () => {
     const card = [...ctx.FS_DATA.events, ...ctx.FS_DATA.orders].find(c => c.name === 'Радикалы и пуритане');
     eq(!!card, true, 'карта есть');

@@ -5,7 +5,11 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class EarnAsks {
-    static ops = ['gainMateriel', 'gainAsset', 'payMateriel', 'loseAsset', 'gainWorldAssets', 'gainSystemMateriel', 'exchangeMateriel', 'exchangeAsset', 'gainByUnit', 'spendTempMateriel', 'dropTempMateriel'];
+    static ops = ['nothing', 'gainMateriel', 'gainAsset', 'takeFoeAsset', 'payMateriel', 'loseAsset', 'gainWorldAssets', 'gainSystemMateriel', 'exchangeMateriel', 'exchangeAsset', 'gainByUnit', 'spendTempMateriel', 'dropTempMateriel'];
+
+    static nothing() {
+        return null;
+    }
 
     static gainMateriel(effects, f) {
         const { R, state, seat, step, ctx, p } = f;
@@ -17,6 +21,22 @@ class EarnAsks {
         R.player(state, seat).gainMateriel(n);
         R.log(state, seat, p.name + ' получает ' + n + ' материи.');
         return null;
+    }
+
+    // «Какой жетон противника забрать?» («Воруй!»): the question offers only
+    // the kinds the opponent really has.
+    static takeFoeAsset(effects, f) {
+        const { R, state, seat } = f;
+        const foe = state.players[1 - seat] ? 1 - seat : null;
+        if (foe === null) return null;
+        const foePlayer = R.player(state, foe);
+        const have = ['forge', 'cache', 'reinforcement'].filter(k => foePlayer.assetCount(k) > 0);
+        if (!have.length) {
+            R.log(state, seat, state.players[seat].name + ': у противника нет жетонов ресурсов.');
+            return null;
+        }
+        return { question: { kind: 'assetType', who: seat, op: 'takeFoeAsset', n: 1,
+            options: have, text: 'Какой жетон противника забрать?' } };
     }
 
     static gainAsset(effects, f) {
