@@ -596,6 +596,29 @@ try {
     fail(e.message);
 }
 
+// --- the dice and the ids of a game: one object -------------------------------
+section('броски и идентификаторы: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSChance.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Генератор партии и счётчик идентификаторов — один объект Chance:
+        // числа state.rng/state.uid не трогают руками ни правила, ни доска.
+        const re = /\bstate\.(?:rng|uid)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('броски и идентификаторы спрашивают у Chance');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- a test battle: one object ------------------------------------------------
 section('тестовый бой: один объект');
 try {

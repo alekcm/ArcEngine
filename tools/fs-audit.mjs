@@ -24,7 +24,7 @@ const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
     BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound, StrikeDamage,
-    BattleTest } = ctx;
+    BattleTest, Chance } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1227,6 +1227,41 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(others.opener((st, seat) => seat), 0, 'планирование начнёт игрок перед ним');
     eq(others.opener((st, seat) => 2), 2, 'или тот, кого назовёт nextPlanner');
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
+});
+
+rule('chance-0a', '«the same seed gives the same game» — броски и идентификаторы держит Chance', () => {
+    const state = { rng: 42, uid: 0 };
+    const chance = Chance.of(state);
+    eq(Chance.of(state), chance, 'у партии один генератор');
+    eq(Chance.of(null), null, 'без состояния броска нет');
+    eq(chance.seed, 42, 'зерно партии');
+    eq(chance.lastId, 0, 'идентификаторов ещё нет');
+    // The generator walks by one step and its numbers are of the dice.
+    const first = chance.float();
+    eq(first >= 0 && first < 1, true, 'дробь в [0, 1)');
+    eq(state.rng === 42, false, 'зерно сдвинулось');
+    const again = Chance.of({ rng: 42 }).float();
+    eq(again, first, 'одно зерно — один бросок');
+    // A whole number below n.
+    const n = chance.below(3);
+    eq(Number.isInteger(n) && n >= 0 && n < 3, true, 'число меньше трёх');
+    // The shuffle keeps the list and does not touch the deck.
+    const deck = ['а', 'б', 'в', 'г', 'д'];
+    const mixed = chance.shuffle(deck);
+    eq(deck.join(','), 'а,б,в,г,д', 'колода не тронута');
+    eq(mixed.slice().sort().join(','), 'а,б,в,г,д', 'и ничего не потеряно');
+    // Picking from a list, and from an empty one.
+    eq(deck.includes(chance.pick(deck)), true, 'берётся элемент списка');
+    eq(chance.pick([]), null, 'из пустого списка — ничего');
+    // The dice of a combat: only three facings.
+    const dice = chance.roll(8);
+    eq(dice.length, 8, 'восемь кубиков');
+    eq(dice.every(f => Chance.FACES.includes(f)), true, 'только три известных грани');
+    eq(Chance.FACES.join(','), 'att,def,morale', 'атака, защита, боевой дух');
+    // The ids of the game.
+    eq(chance.id('unit'), 'unit1', 'первый отряд');
+    eq(chance.id('obj'), 'obj2', 'и второй объект');
+    eq(chance.lastId, 2, 'счётчик идентификаторов');
 });
 
 rule('test-0a', '«a battle may be tried without a campaign» — тестовый бой держит BattleTest', () => {

@@ -11,30 +11,21 @@ class CoreRules {
         this.engine = engine;
     }
 
+    // The dice and the ids are one object (Chance): the rules only ask it.
     rng(state) {
-        state.rng = (state.rng + 0x6D2B79F5) | 0;
-        let t = state.rng;
-        t = Math.imul(t ^ (t >>> 15), t | 1);
-        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        return Chance.of(state).float();
     }
 
     rand(state, n) {
-        return Math.floor(this.rng(state) * n);
+        return Chance.of(state).below(n);
     }
 
     shuffle(state, arr) {
-        const a = arr.slice();
-        for (let i = a.length - 1; i > 0; i--) {
-            const j = this.rand(state, i + 1);
-            const t = a[i]; a[i] = a[j]; a[j] = t;
-        }
-        return a;
+        return Chance.of(state).shuffle(arr);
     }
 
     uid(state, prefix) {
-        state.uid = (state.uid || 0) + 1;
-        return prefix + state.uid;
+        return Chance.of(state).id(prefix);
     }
 
     log(state, seat, text) {
@@ -268,11 +259,7 @@ class CoreRules {
     }
 
     rollDice(state, n) {
-        const out = [];
-        for (let i = 0; i < n; i++) {
-            out.push(['att', 'def', 'morale'][this.rand(state, 3)]);
-        }
-        return out;
+        return Chance.of(state).roll(n);
     }
 
     view(state, seat) {
