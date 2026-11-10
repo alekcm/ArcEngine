@@ -2682,6 +2682,59 @@ check('Фаланга судного дня', 'противник теряет 1
     }
     return eq(st.units.some(u => u.id === foe.id), false, 'деморализованный отряд уничтожен в конце раунда');
 });
+/** A world of the system besides the given ones — the one left without a structure. */
+function emptyWorldOf(sys, ...skip) {
+    const a = (sys.areas || []).find(x => x.world && skip.indexOf(x.pos) < 0);
+    return a ? a.pos : null;
+}
+
+check('Предвидение криптека', 'перенос отряда за morale cube — в дружественный мир с постройкой', () => {
+    const st = battle({
+        faction: 'некроны', foeFaction: 'имперская-гвардия',
+        units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2 },
+        card: 'Предвидение криптека',
+    });
+    const c = st.combat;
+    c.dice.attacker = ['morale', 'morale'];
+    // Карта называет мир с постройкой: мир без постройки не предлагается.
+    const sys = st.systems.find(s => s.id === c.system);
+    const home = sys.areas.find(a => a.world && a.pos !== c.pos) || sys.areas.find(a => a.world);
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, home.pos);
+    const moraleBefore = count(st, 'attacker', 'morale');
+    // Второй отряд стоит в мире без постройки: он «наш», но мир с постройкой —
+    // единственное место, куда карта его переносит.
+    const plain = emptyWorldOf(sys, c.pos, home.pos);
+    if (plain) FS_RULES.addUnit(st, 0, 'воины', sys.id, plain);
+    if (plain) eq(st.units.some(u => u.seat === 0 && u.area === plain), true,
+        'в мире без постройки стоит наш отряд');
+    let asked = null;
+    play(st, 0, 0, (s2, q) => {
+        if (q.kind === 'dice') return { dice: [0] };
+        // Выбирается отряд, стоящий в мире БЕЗ постройки.
+        if (q.kind === 'units') {
+            const pick = (q.options || []).find(id => {
+                const u = st.units.find(x => x.id === id);
+                return u && u.area === plain;
+            });
+            return { units: [pick || (q.options || [])[0]] };
+        }
+        if (q.kind === 'areas') { asked = q.options || []; return { area: q.options[0] }; }
+        return firstOption(s2, q);
+    });
+    eq(count(st, 'attacker', 'morale'), moraleBefore - 1, 'один morale cube потрачен');
+    ok(!!asked, 'вопрос «куда» не задан');
+    eq(asked.every(a => a.system === sys.id && a.pos === home.pos), true,
+        'предложен только мир с нашей постройкой');
+    // Мир с отрядом, но БЕЗ постройки: мир наш, а карта называет только мир с
+    // постройкой — второй отряд должен быть предложен лишь в мире с фабрикой.
+    if (plain) {
+        eq(asked.some(a => a.pos === plain), false,
+            'мир без постройки не предложен, хотя отряд стоит в нём');
+    }
+    return eq(st.units.filter(u => u.seat === 0 && u.system === sys.id && u.area === home.pos).length, 1,
+        'отряд перенесён в этот мир');
+});
+
 check('Вечное завоевание', 'восстановление отряда + по кубику атаки за каждый morale cube, если в бою нужный отряд', () => {
     const st = battle({
         faction: 'некроны', foeFaction: 'имперская-гвардия',
