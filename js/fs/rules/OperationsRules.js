@@ -296,7 +296,7 @@ class OperationsRules {
 
     cmdNextPhase(state, seat) {
         if (!GamePhase.of(state).is(GamePhase.REFRESH)) return { ok: false, error: 'Сейчас не фаза обновления.' };
-        if (state.eventsLeft > 0) return { ok: false, error: 'Сначала разыграйте события.' };
+        if (EventRound.of(state).pending) return { ok: false, error: 'Сначала разыграйте события.' };
         this.engine.endRound(state);
         return { ok: true };
     }

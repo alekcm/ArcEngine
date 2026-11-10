@@ -596,6 +596,30 @@ try {
     fail(e.message);
 }
 
+// --- the event cards of a round: one object ----------------------------------
+section('события раунда: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSEventRound.js', 'js/fs/rules/SetupRules.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Сколько карт событий ещё не разыграно — один объект EventRound:
+        // число state.eventsLeft не считают руками ни правила, ни снимок
+        // «Быстрого ответа».
+        const re = /\bstate\.eventsLeft\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('события раунда считает EventRound');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- where the troops of an order came from: one object ----------------------
 section('след ходов: один объект');
 try {

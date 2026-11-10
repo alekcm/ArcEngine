@@ -51,7 +51,7 @@ class QuickResponse {
                 phase: this.state.phase,
                 turn: this.state.turn,
                 event: this.state.event,
-                eventsLeft: this.state.eventsLeft,
+                eventsLeft: EventRound.of(this.state).snapshot,
             };
         }
         return this;
@@ -76,7 +76,7 @@ class QuickResponse {
         this.state.phase = snap.phase;
         this.state.turn = snap.turn;
         this.state.event = snap.event;
-        this.state.eventsLeft = snap.eventsLeft;
+        EventRound.of(this.state).restore(snap.eventsLeft);
         this.forget();
         return snap;
     }

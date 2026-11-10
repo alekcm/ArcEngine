@@ -23,7 +23,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
-    BoardSetup, GameLog, GameOutcome, MarchTrail } = ctx;
+    BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1226,6 +1226,42 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(others.opener((st, seat) => seat), 0, 'планирование начнёт игрок перед ним');
     eq(others.opener((st, seat) => 2), 2, 'или тот, кого назовёт nextPlanner');
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
+});
+
+rule('events-0a', '«in the refresh phase every player resolves one event card» — события раунда держит EventRound', () => {
+    const state = { players: [{}, {}, {}] };
+    const round = EventRound.of(state);
+    eq(EventRound.of(state), round, 'у раунда один счёт событий');
+    eq(EventRound.of(null), null, 'без состояния счёта нет');
+    // No event of the round is waiting yet.
+    eq(round.left, 0, 'событий нет');
+    eq(round.pending, false, 'и ждать нечего');
+    // The event step begins: one card for every player.
+    round.begin();
+    eq(round.left, 3, 'трое игроков — три карты');
+    eq(round.pending, true, 'карты ждут');
+    eq(state.eventsLeft, 3, 'счёт записан в состояние');
+    eq(round.snapshot, 3, 'и попадает в снимок');
+    // A card was played.
+    round.played();
+    eq(round.left, 2, 'одна карта разыграна');
+    round.played();
+    round.played();
+    eq(round.left, 0, 'события кончились');
+    eq(round.pending, false, 'и фаза событий окончена');
+    // The count never goes below zero.
+    round.played();
+    eq(round.left, 0, 'в минус не уходит');
+    // A suspended event step comes back with the count it had.
+    round.begin(4);
+    const saved = round.snapshot;
+    round.restore(1);
+    eq(round.left, 1, 'снимок вернул счёт');
+    round.restore(saved);
+    eq(round.left, 4, 'и прежний тоже');
+    // «Быстрый ответ» may rebuild the count from nothing.
+    EventRound.of({}).begin(2);
+    eq(EventRound.of({ players: [] }).left, 0, 'без игроков событий нет');
 });
 
 rule('trail-0a', '«retreat: each unit goes back to the area it came from» — след ходов приказа держит MarchTrail', () => {

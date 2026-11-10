@@ -103,7 +103,7 @@ class RefreshRules {
         for (const u of state.units) this.engine.restoreUnit(state, u);
         // 4. the event cards and the warp storms
         state.turn = GamePhase.of(state).firstPlayer;
-        state.eventsLeft = state.players.length;
+        EventRound.of(state).begin();
         StormPhase.of(state).clearReaction();
         OrderScheme.of(state).reset();
         StormPhase.of(state).allowIcons();
@@ -115,7 +115,7 @@ class RefreshRules {
         // The suppression belongs to the one event whose three cards were
         // revealed, not to the next player's event.
         StormPhase.of(state).allowIcons();
-        if (state.eventsLeft <= 0) {
+        if (!EventRound.of(state).pending) {
             // The end of the event phase: the capacity of every area is checked
             // again, and every player chooses his own excess troops.
             for (const p of state.players) this.engine.trimPlayer(state, p.seat);
@@ -210,7 +210,7 @@ class RefreshRules {
         }
         if (card) this.engine.log(state, seat, p.name + ' разыграл(а) карту «' + card.name + '».');
         phase.end();
-        state.eventsLeft--;
+        EventRound.of(state).played();
         // The text of the card is the rule: the engine performs it.
         if (card && card.type !== 'scheme') {
             const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: state.players[seat].faction });
