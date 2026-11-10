@@ -13,10 +13,11 @@ class StormsRules {
 
     cmdMoveStorm(state, seat, cmd) {
         if (state.phase !== 'refresh') return { ok: false, error: 'Сейчас не фаза обновления.' };
-        if (!state.event || state.event.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        const phase = EventPhase.of(state);
+        if (!phase.isSeat(seat)) return { ok: false, error: 'Сейчас ход другого игрока.' };
         // The event moves exactly one Warp Storm ("The active player chooses one
         // Warp Storm on the game board and moves it").
-        if (state.event.stormMoved === true) return { ok: false, error: 'Шторм в эту фазу уже сдвигался.' };
+        if (phase.stormMoved) return { ok: false, error: 'Шторм в эту фазу уже сдвигался.' };
         // «движение варп-шторма по вновь раскрытой карте не производится»
         // («Инкарнация Тзинча»): the three cards are looked at, but their storm
         // icons are not a second movement of this event.
@@ -32,7 +33,7 @@ class StormsRules {
         // free edge and the limit of one move per storm are all checked here.
         const options = this.stormOptions(state, seat);
         if (!options.some(o => o.storm === storm.id && o.dir === dir)) {
-            const card = state.event.card || state.event.top;
+            const card = phase.card || this.eventCard(state, phase);
             const allowed = card && card.storm && card.storm[0] !== 'any' ? card.storm : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
             if (!allowed.includes(dir)) return { ok: false, error: 'Карта не разрешает такое направление.' };
             if (storm.moved === true) return { ok: false, error: 'Этот шторм уже двигался в этой фазе.' };
@@ -57,7 +58,7 @@ class StormsRules {
         FS_WARP_STORMS.write(state, storm, target);
         storm.moved = true;
         // The card is not resolved before its storm has moved (the rules).
-        state.event.stormMoved = true;
+        EventPhase.of(state).markStormMoved();
         this.engine.log(state, seat, state.players[seat].name + ' сдвинул варп-шторм.');
         return { ok: true };
     }
@@ -72,7 +73,7 @@ class StormsRules {
         if (!target) return { ok: false };
         FS_WARP_STORMS.write(state, storm, target);
         storm.moved = true;
-        if (state.event) state.event.stormMoved = true;
+        EventPhase.of(state).markStormMoved();
         if (dir) {
             this.engine.log(state, info.mover, 'Перемещение варп-шторма отменено; он уходит в направлении ' + dir + '.');
         }
@@ -97,15 +98,22 @@ class StormsRules {
         return FS_WARP_STORMS.keyOfRef(state, ref);
     }
 
+    /** The card of the event as the catalogue knows it: chosen, or opened by name. */
+    eventCard(state, phase) {
+        const event = phase || EventPhase.of(state);
+        if (event.card) return event.card;
+        const name = event.top;
+        if (!name) return null;
+        const seat = event.seat;
+        const p = seat === null ? null : state.players[seat];
+        return FS_CATALOG.cards('events')
+            .find(e => e.name === name && (!p || e.faction === p.faction)) || null;
+    }
+
     stormOptions(state, seat) {
-        const event = state.event || {};
-        // The revealed top card (the no-tokens path) must restrict the storm the
-        // same way a chosen card does — its directions are looked up by name.
-        let card = event.card || null;
-        if (!card && event.top) {
-            const p = state.players[seat];
-            card = FS_CATALOG.cards('events').find(e => e.name === event.top && (!p || e.faction === p.faction)) || null;
-        }
+        // The revealed top card (the no-tokens path) restricts the storm the same
+        // way a chosen card does — both are known by the same question.
+        const card = this.eventCard(state);
         // "Any" is any of the eight directions of the compass; a card that
         // prints an arrow allows only the directions it shows.
         const all = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];

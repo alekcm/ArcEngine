@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1164,6 +1164,55 @@ rule('combat-0c', '«discards the combat cards he used during the combat by shuf
     cards.clear('attacker');
     eq(cards.names('attacker').length, 0, 'стол очищен');
     eq(cards.chosen('attacker'), null, 'отметка карты снята');
+});
+
+rule('event-0a', '«The active player chooses one Warp Storm on the game board and moves it» + «A player can choose not to resolve the ability on his chosen event card» — событие фазы держит EventPhase', () => {
+    const state = { players: [{}, {}], event: null };
+    const phase = EventPhase.of(state);
+    eq(EventPhase.of(state), phase, 'у фазы одно событие');
+    eq(EventPhase.of(null), null, 'без состояния события нет');
+    // No event is being played: nothing to ask.
+    eq(phase.current, false, 'события нет');
+    eq(phase.seat, null, 'игрока нет');
+    eq(phase.drawn, [], 'карт на руке нет');
+    eq(phase.chosen, null, 'карта не выбрана');
+    eq(phase.top, null, 'верхней карты нет');
+    eq(phase.card, null, 'играть нечего');
+    eq(phase.stormMoved, false, 'шторм не двигался');
+    eq(phase.isSeat(0), false, 'ход не этого игрока');
+    // The cards are drawn: the player chooses one of them.
+    phase.begin(1, ['А', 'Б', 'В']);
+    eq(phase.current, true, 'событие началось');
+    eq(phase.seat, 1, 'его играет seat 1');
+    eq(phase.isSeat(1), true, 'ход seat 1');
+    eq(phase.isSeat(0), false, 'ход не seat 0');
+    eq(phase.drawn.length, 3, 'три карты на руке');
+    eq(phase.chosen, null, 'выбор ещё не сделан');
+    phase.choose('Б');
+    eq(phase.chosen, 'Б', 'карта выбрана');
+    phase.setCard({ name: 'Б' });
+    eq(phase.card.name, 'Б', 'карта события известна');
+    eq(phase.cardName, 'Б', 'имя карты события');
+    // The card opened for the storm alone: no hand, only its name.
+    const lonely = { players: [{}, {}], event: null };
+    const second = EventPhase.of(lonely);
+    second.begin(0, []);
+    second.revealTop('В');
+    eq(second.drawn.length, 0, 'карт на руке нет');
+    eq(second.top, 'В', 'верхняя карта открыта');
+    eq(second.card, null, 'в игре карты нет');
+    eq(second.cardName, 'В', 'но имя её известно');
+    // The storm moves by the icon of the card — once per event.
+    eq(second.stormMoved, false, 'шторм ещё не двигался');
+    second.markStormMoved();
+    eq(second.stormMoved, true, 'шторм сдвинут');
+    eq(lonely.event.stormMoved, true, 'и это записано в событии');
+    // The event ends: the field is empty again.
+    second.end();
+    eq(second.current, false, 'событие закончилось');
+    eq(lonely.event, null, 'поле события пусто');
+    second.markStormMoved();
+    eq(second.stormMoved, false, 'без события шторм не отмечается');
 });
 
 rule('combat-0l', '«the attacker reveals and resolves his combat card» — сторона и место стороны переводит CombatSides, а не тернарник в каждом файле', () => {

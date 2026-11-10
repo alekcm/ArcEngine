@@ -548,6 +548,29 @@ try {
     fail(e.message);
 }
 
+// --- the event of the refresh phase: one object -------------------------------
+section('событие фазы: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSEventPhase.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(file.startsWith('/') ? file : path.join(ROOT, file), 'utf8');
+        // Событие фазы обновления — выбор карты, открытая карта и сдвинутый
+        // шторм: его поля не читают руками ни правила, ни эффекты.
+        const re = /\bstate\.event\.(?:seat|drawn|chosen|top|card|stormMoved)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('событие фазы спрашивают у EventPhase');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- who plays which side: one object ----------------------------------------
 section('стороны боя: один объект');
 try {

@@ -106,7 +106,7 @@ class PlaySteps {
         p.eventHand = [];
         const card = FS_CATALOG.card('events', p.faction, name);
         if (!card) return null;
-        if (state.event) state.event.card = card;
+        EventPhase.of(state).setCard(card);
         const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p.faction });
         if (card.type === 'scheme') {
             const trig = steps.find(x => x && x.op === 'trigger');

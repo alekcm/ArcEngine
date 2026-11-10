@@ -126,12 +126,12 @@ class RefreshRules {
         const p = state.players[seat];
         const drawn = [];
         for (let i = 0; i < p.eventTokens; i++) drawn.push(this.drawEventCard(state, seat));
-        state.event = { seat, drawn, chosen: null };
+        const phase = EventPhase.of(state);
+        phase.begin(seat, drawn);
         p.eventTokens = 0;
         if (!drawn.length) {
             // No token on the deck: the top card is revealed for the storm only.
-            const top = this.drawEventCard(state, seat);
-            state.event.top = top;
+            phase.revealTop(this.drawEventCard(state, seat));
         }
         // The next player plays the next event.
         state.turn = (state.turn + 1) % state.players.length;
@@ -149,28 +149,30 @@ class RefreshRules {
 
     cmdDrawEvent(state, seat, cmd) {
         if (state.phase !== 'refresh') return { ok: false, error: 'Сейчас не фаза обновления.' };
-        if (!state.event || state.event.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
-        if (state.event.chosen) return { ok: false, error: 'Карта уже выбрана.' };
+        const phase = EventPhase.of(state);
+        if (!phase.isSeat(seat)) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        if (phase.chosen) return { ok: false, error: 'Карта уже выбрана.' };
         const name = cmd.card;
-        if (!state.event.drawn.includes(name)) return { ok: false, error: 'Такой карты нет на руке.' };
-        state.event.chosen = name;
+        if (!phase.drawn.includes(name)) return { ok: false, error: 'Такой карты нет на руке.' };
+        phase.choose(name);
         const card = FS_CATALOG.card('events', state.players[seat].faction, name);
-        state.event.card = card;
+        phase.setCard(card);
         this.engine.log(state, seat, state.players[seat].name + ' выбрал карту события «' + name + '».');
         return { ok: true };
     }
 
     cmdResolveEvent(state, seat, cmd) {
         if (state.phase !== 'refresh') return { ok: false, error: 'Сейчас не фаза обновления.' };
-        if (!state.event || state.event.seat !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        const phase = EventPhase.of(state);
+        if (!phase.isSeat(seat)) return { ok: false, error: 'Сейчас ход другого игрока.' };
         // The storm movement of the card is not a choice — only its ability is.
         // «A player can choose not to resolve the ability on his chosen event
         // card, but must resolve the card's Warp Storm movement icon.»
         const canMove = !state.chaosNoStormMove && this.engine.stormOptions(state, seat).length;
-        if (canMove && !state.event.stormMoved) {
+        if (canMove && !phase.stormMoved) {
             return { ok: false, error: 'Сначала сдвиньте варп-шторм по иконке карты.' };
         }
-        const card = state.event.card;
+        const card = phase.card;
         // Without a card in the hand there is nothing to play: the player only
         // moves the storm and the refresh goes on.
         if (card && card.type === 'scheme') {
@@ -201,13 +203,13 @@ class RefreshRules {
         // 'Scheme' event card if it is in play").
         const p = state.players[seat];
         const inPlay = card && card.type === 'scheme' ? card.name : null;
-        for (const name of (state.event.drawn || [])) if (name !== inPlay) p.decks.event.push(name);
-        if (!(state.event.drawn || []).length && state.event.top) {
+        for (const name of phase.drawn) if (name !== inPlay) p.decks.event.push(name);
+        if (!phase.drawn.length && phase.top) {
             // The card that was opened for the storm only goes back to the deck.
-            p.decks.event.push(state.event.top);
+            p.decks.event.push(phase.top);
         }
         if (card) this.engine.log(state, seat, p.name + ' разыграл(а) карту «' + card.name + '».');
-        state.event = null;
+        phase.end();
         state.eventsLeft--;
         // The text of the card is the rule: the engine performs it.
         if (card && card.type !== 'scheme') {
