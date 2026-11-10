@@ -1241,6 +1241,78 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
 });
 
+rule('foe-fork-0b', '«Если противник не потратит 1 `morale cube`, получите 3 `def. token`» — вопрос идёт противнику, и при оплате токенов НЕ дают', () => {
+    const card = ctx.FS_DATA.combat.find(c => c.faction === 'эльдары' && /Волновой змей/.test(c.name));
+    const steps = ctx.FS_EFFECTS.parse(card.general, { kind: 'combat', faction: card.faction });
+    // The second half of the card is asked about as a separate ability: the fork
+    // is offered, and the opponent answers it.
+    for (const pay of [true, false]) {
+        const st = cardBattle('Волновой змей', 'эльдары');
+        let guard = 0;
+        while (st.pending && guard++ < 6) {
+            const q = st.pending.question;
+            if (q.op === 'foePayFork') break;
+            FS_RULES.apply(st, q.who, { type: 'effect', answer: { yes: true } });
+        }
+        eq(!!(st.pending && st.pending.question.op === 'foePayFork'), true,
+            'движок спрашивает противника о платеже (не молчит)');
+        eq(st.pending.question.kind, 'dice', 'платят кубиками');
+        const dice = st.pending.question.options.slice(0, 1);
+        FS_RULES.apply(st, st.pending.question.who, { type: 'effect', answer: { dice: pay ? dice : [] } });
+        eq(st.combat.tokens.attacker.def, pay ? 0 : 3,
+            pay ? 'заплатил — второй половины карты нет' : 'не заплатил — три жетона обороны');
+    }
+    eq(steps.length, 2, 'карта читается двумя шагами');
+});
+
+rule('foe-fork-0c', '«Ваш противник может отступить 1 своим юнитом» — решает он: отказ даёт то, что написано дальше', () => {
+    for (const yes of [true, false]) {
+        const st = cardBattle('Добейте выживших', 'темные-эльдары');
+        let guard = 0;
+        while (st.pending && guard++ < 6) {
+            const q = st.pending.question;
+            if (q.op === 'foeRetreatOffer') break;
+            FS_RULES.apply(st, q.who, { type: 'effect', answer: { yes: true } });
+        }
+        eq(!!(st.pending && st.pending.question.op === 'foeRetreatOffer'), true, 'вопрос об отступлении задан противнику');
+        eq(st.pending.question.who, 1, 'и спрашивают именно его');
+        const before = st.units.filter(u => u.seat === 1).length;
+        FS_RULES.apply(st, 1, { type: 'effect', answer: { yes } });
+        // The refusal is followed by the punishment of the card; the retreat asks
+        // for the unit and then for the area.
+        eq(st.units.filter(u => u.seat === 1).length, before, 'никто не гибнет от самого вопроса');
+        if (yes) eq(!!(st.pending && st.pending.question.kind === 'units'), true, 'отступает его отряд');
+    }
+});
+
+rule('foe-fork-0d', '«Уничтожьте его, если противник не потратит количество кубиков, равное командному уровню этого отряда» — цена считается по жертве', () => {
+    for (const pay of [true, false]) {
+        const st = cardBattle('Сокрушающий гаргант', 'орки');
+        // The price is the command level of the victim: a unit of level 1 stands
+        // in the battle, so the price is not zero.
+        const foeFaction = 'имперская-гвардия';
+        const elite = FS_DATA.factions.find(f => f.id === foeFaction).units.find(u => u.kl === 1 && u.type === 'ground');
+        const sysId = st.systems[0].id;
+        unit(st, 1, elite.id, sysId, worldOf(st, sysId));
+        // The text of the card is the ability of a unit («Гаргант/Килл
+        // круизер»): the engine plays it for the unit itself, so the steps run
+        // without the permission of the owner.
+        const card = FS_DATA.combat.find(x => x.faction === 'орки' && /Сокрушающий гаргант/.test(x.name));
+        const steps = FS_EFFECTS.parse(card.unit, { kind: 'combat', faction: card.faction });
+        FS_EFFECTS.run(FS_RULES, st, 0, steps, { kind: 'combat' });
+        eq(!!(st.pending && st.pending.question.kind === 'units'), true, 'жертву выбирает владелец карты');
+        const kl1 = st.pending.question.options.find(id => (FS_RULES.unitOf(st, st.units.find(u => u.id === id)).kl || 0) === 1);
+        const victim = kl1 || st.pending.question.options[0];
+        FS_RULES.apply(st, 0, { type: 'effect', answer: { units: [victim] } });
+        eq(!!(st.pending && st.pending.question.kind === 'dice'), true, 'цена — кубики владельца жертвы');
+        const price = st.pending.question.n;
+        eq(price, (FS_RULES.unitOf(st, st.units.find(u => u.id === victim)).kl || 0), 'цена равна командному уровню жертвы');
+        const dice = st.pending.question.options.slice(0, price);
+        FS_RULES.apply(st, st.pending.question.who, { type: 'effect', answer: { dice: pay ? dice : [] } });
+        eq(!!st.units.find(u => u.id === victim), pay, pay ? 'заплатил — отряд цел' : 'не заплатил — отряд уничтожен');
+    }
+});
+
 rule('foe-fork-0a', '«Если противник не потратит 1 `morale cube`, получите 3 `def. token`» — вопрос задают противнику, а не игроку', () => {
     const card = ctx.FS_DATA.combat.find(c => c.faction === 'эльдары' && /Волновой змей/.test(c.name));
     const steps = ctx.FS_EFFECTS.parse(card.general, { kind: 'combat', faction: card.faction });

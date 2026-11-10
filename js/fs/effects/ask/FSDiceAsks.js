@@ -137,18 +137,65 @@ class DiceAsks {
         return q;
     }
 
-    // The fork of the opponent's payment and his own retreat: the step asks
-    // nothing in advance — the executor reads the answer itself.
-    static foePayFork() {
-        return null;
+    // «Если противник не потратит 1 `morale cube`, получите 3 `def. token`»:
+    // the question goes to HIS seat, and the first stage is marked here — the
+    // executor acts only on the answer.
+    static foePayFork(effects, f) {
+        const { step, combat, inCombat, side } = f;
+        if (!inCombat || step.stage) return null;
+        const foeSide = CombatSides.foe(side);
+        const foeSeat = CombatSides.seatOf(combat, foeSide);
+        if (foeSeat === null || foeSeat === undefined) return null;
+        const kinds = Array.isArray(step.kinds) && step.kinds.length ? step.kinds : ['any'];
+        const options = CombatTurn.of(combat)
+            .slots(foeSide, d => kinds.includes('any') || kinds.includes(d));
+        const need = step.n || 1;
+        if (!options.length) {
+            // Nothing to pay with: the second half of the card happens at once.
+            return step.then && step.then.length ? { replace: step.then.slice() } : null;
+        }
+        step.stage = 'dice';
+        step.options = options;
+        return { question: {
+            kind: 'dice', who: foeSeat, diceSide: foeSide, op: 'foePayFork',
+            n: Math.min(need, options.length), options, any: true,
+            text: 'Потратить ' + need + ' кубик(а) или принять эффект?',
+        } };
     }
 
-    static foeRetreatOffer() {
-        return null;
+    // «Ваш противник может отступить 1 своим юнитом»: his own yes-or-no, and his
+    // own choice of the unit. The passage on the refusal waits for the answer.
+    static foeRetreatOffer(effects, f) {
+        const { R, state, step, combat, inCombat, side } = f;
+        if (!inCombat || step.stage) return null;
+        const foeSide = CombatSides.foe(side);
+        const foeSeat = CombatSides.seatOf(combat, foeSide);
+        if (foeSeat === null || foeSeat === undefined) return null;
+        const units = effects.unitsOf(R, state, foeSeat, combat, {});
+        if (!units.length) return null;
+        step.stage = 'asked';
+        return { question: {
+            kind: 'yesno', who: foeSeat, op: 'foeRetreatOffer',
+            text: 'Отступить одним своим отрядом?',
+        } };
     }
 
-    static destroyFoeUnlessPays() {
-        return null;
+    // «Уничтожьте его, если противник не потратит количество кубиков, равное
+    // командному уровню этого отряда»: the victim is chosen first, the price
+    // follows from it, and the cubes are asked of the owner of the victim.
+    static destroyFoeUnlessPays(effects, f) {
+        const { R, state, seat, step, combat, inCombat, side } = f;
+        if (!inCombat || step.stage) return null;
+        const foeSide = CombatSides.foe(side);
+        const foeSeat = CombatSides.seatOf(combat, foeSide);
+        if (foeSeat === null || foeSeat === undefined) return null;
+        const units = effects.unitsOf(R, state, foeSeat, combat, {});
+        if (!units.length) return null;
+        step.stage = 'victim';
+        return { question: {
+            kind: 'units', who: seat, op: 'destroyFoeUnlessPays',
+            n: 1, options: units.map(u => u.id), text: 'Какой отряд противника уничтожить?',
+        } };
     }
 
     static spendDie(effects, f) {

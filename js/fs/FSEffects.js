@@ -832,6 +832,18 @@ const FS_EFFECTS = {
                 prevCond = null;
                 continue;
             }
+            // «Ваш противник может отступить 1 своим юнитом. Если не отступит —
+            // потеряет либо 1 `morale cube`, либо 1 `def. cube`» («Добейте
+            // выживших»): the second sentence is what happens on the refusal,
+            // not a step of its own.
+            if (/^если\s+не\s+отступ/i.test(sentence) && prev && prev.op === 'foeRetreatOffer') {
+                const punishment = this.parse(this.stripForkHead(sentence), ctx || {});
+                if (punishment.length) {
+                    prev.then = punishment;
+                    for (const one of punishment) if (!one.ability) one.ability = sentence;
+                    continue;
+                }
+            }
             prevCond = null;
             const dieEnum = this.dieEnum(sentence, ctx || {});
             if (dieEnum) {
@@ -1257,12 +1269,29 @@ const FS_EFFECTS = {
     // (or the punishment) of his refusal, and nothing else. The engine asks the
     // opponent himself; his payment cancels the second part.
     foeFork(sentence, ctx) {
-        const s = String(sentence || '').trim();
+        // The card may name the cubes without backticks («если не потратит 1 att.
+        // cube или 1 morale cube»): the price is read in the same words.
+        const s = this.bareIcons(String(sentence || '').trim());
         if (!s) return null;
         const foe = /противник|оппонент|владелец/i.test(s);
         if (!foe) return null;
-        // The price: «не потратит 3 `morale cube`», «должен потратить 1 `att. cube`».
-        const pay = /(?:не\s+потрат[а-яёa-z]*|должен\s+потрат[а-яёa-z]*|потратит)\s+(\d+|один|одно|одну)?\s*((?:`[^`]+`\s*(?:или|,|и)?\s*)+)/i.exec(s);
+        // A retreat with a price («… должен отступить 1 своим юнитом, если не
+        // потратит 1 `att. cube` или 1 `morale cube`», «Наслаждение пытками»)
+        // is read by the fork of the payment below: the price is the price of
+        // keeping the unit, and the retreat is what follows a refusal.
+        if (/отступ/i.test(s) && !/не\s+потрат|потратит|должен\s+потрат|заплат/i.test(s)
+            && /(?:если\s+не\s+отступ|должен\s+отступ)/i.test(s)) {
+            const tail = s.slice(s.search(/если\s+не\s+отступ/i));
+            const body = this.parseSentence(tail.replace(/^если\s+не\s+отступит[^—–-]*(?:—|-)?/i, '').trim(), ctx || {});
+            return [{
+                op: 'retreat', who: 'foe', pick: true, n: 1, offered: true,
+                then: body.length ? body : undefined, text: s,
+            }];
+        }
+        // The price: «не потратит 3 `morale cube`», «должен потратить 1 `att. cube`»,
+        // and the enumeration that numbers every kind («1 `att. cube` или 1
+        // `morale cube`») — the numbers between the kinds are the same price.
+        const pay = /(?:не\s+потрат[а-яёa-z]*|должен\s+потрат[а-яёa-z]*|потратит)\s+(\d+|один|одно|одну)?\s*((?:(?:\d+|один|одно|одну)?\s*`[^`]+`\s*(?:или|,|и)?\s*)+)/i.exec(s);
         if (pay) {
             const n = String(pay[1] || '1');
             const kinds = [];
@@ -1284,6 +1313,13 @@ const FS_EFFECTS = {
                     // punishment may stand inside the fork itself.
                     const rout = /(?:он|противник[а-яёa-z]*)\s+(?:должен|обязан)[^.;]{0,40}?деморализ[а-яёa-z]*\s+(\d+)?/i.exec(s);
                     if (rout) body = [{ op: 'route', n: Number(rout[1]) || 1, pick: true, who: 'foe' }];
+                    // «Ваш противник должен отступить 1 своим юнитом, если не
+                    // потратит 1 `att. cube` или 1 `morale cube`» («Наслаждение
+                    // пытками»): the punishment of the refusal is the RETREAT,
+                    // and the reading is the fork, not a free retreat.
+                    if (!body.length && /отступ/i.test(s)) {
+                        body = [{ op: 'retreat', n: 1, pick: true, who: 'foe' }];
+                    }
                 }
                 if (!body.length) return null;
                 // The punishing half is performed for the FOE («who: 'foe'»)
@@ -1294,9 +1330,10 @@ const FS_EFFECTS = {
                 }];
             }
         }
-        // «Ваш противник может отступить 1 своим юнитом» / «Ваш противник
-        // должен отступить 1 своим юнитом, если не потратит …»: a retreat the
-        // opponent chooses himself.
+        // «Ваш противник может отступить 1 своим юнитом» («Добейте выживших»,
+        // «„Роккит вагон“»): a retreat the opponent chooses himself. A retreat
+        // with a price was taken by the fork above — the price of keeping the
+        // unit is not a condition of the retreat.
         const ret = /(?:ваш\s+)?(?:противник|оппонент)[^.;]{0,40}?(?:может|должен|обязан)?\s*отступ[а-яёa-z]*\s+(?:(\d+|один|одно)\s+)?(?:своим\s+|своей\s+)?([а-яёa-z]+)?/i.exec(s);
         if (ret && /отступ/i.test(s)) {
             return [{
@@ -1304,6 +1341,25 @@ const FS_EFFECTS = {
             }];
         }
         return null;
+    },
+
+    // «1 att. cube» without backticks -> «1 `att. cube`»: one spelling of a
+    // cube for the whole reader. The text inside backticks is left alone.
+    bareIcons(text) {
+        const wrap = kind => (m, pre, num) => pre + (num || '') + '`' + kind + ' cube`';
+        return String(text || '')
+            .replace(/(^|[^`\w])((\d+)\s*)?(att|def)\.?\s*cube(?!`)/gi,
+                (m, pre, num, _n, kind) => wrap(kind.toLowerCase())(m, pre, num))
+            .replace(/(^|[^`\w])((\d+)\s*)?morale\s*cube(?!`)/gi,
+                (m, pre, num) => wrap('morale')(m, pre, num));
+    },
+
+    // «Если не отступит — потеряет 1 `morale cube`»: the head names the
+    // refusal, the tail is the effect.
+    stripForkHead(sentence) {
+        return String(sentence || '')
+            .replace(/^\s*если\s+(?:он\s+|она\s+|они\s+)?не\s+отступ[а-яёa-z]*[^—–-]*(?:—|-)\s*/i, '')
+            .trim();
     },
 
     // One sentence -> the steps.

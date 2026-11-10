@@ -176,55 +176,39 @@ class DiceSteps {
     }
 
     // «Если противник не потратит 1 `morale cube`, получите 3 `def. token`»:
-    // the opponent pays or the card's second half happens. The faces he may
-    // pay with are the ones the card names (any of them), and the rest of the
-    // fork is performed only when he pays less than the price.
+    // the question to the opponent is asked by DiceAsks; this branch acts on
+    // his answer — pays what he picked, and the second half of the card
+    // happens only when he pays less than the price.
     static foePayFork(effects, f) {
-        const { R, state, seat, step, answer, p, combat, inCombat, side } = f;
-        if (!inCombat || !combat) return null;
+        const { R, state, step, answer, combat, side } = f;
         const foeSide = CombatSides.foe(side);
         const foeSeat = CombatSides.seatOf(combat, foeSide);
-        if (foeSeat === null || foeSeat === undefined) return null;
-        const kinds = Array.isArray(step.kinds) && step.kinds.length ? step.kinds : ['any'];
-        const turn = CombatTurn.of(combat);
-        const dice = turn.dice(foeSide);
-        // The faces the card names, or any face when it names none («равное
-        // командному уровню» — the count matters, not the colour).
-        const fit = dice.map((face, i) => ({ face, i }))
-            .filter(one => kinds.includes('any') || kinds.includes(one.face))
-            .map(one => one.i);
         const need = step.n || 1;
-        /** @param {number} missing */
-        const refuse = (missing) => {
-            if (missing <= 0 || !Array.isArray(step.then) || !step.then.length) return null;
-            return { replace: step.then.slice() };
-        };
-        if (!fit.length) {
-            // Nothing to pay with: the second half happens at once.
-            return refuse(need) || (step.done = true, null);
-        }
-        if (!step.stage) {
-            step.stage = 'dice';
-            return { question: {
-                kind: 'dice', who: foeSeat, diceSide: foeSide, op: 'foePayFork',
-                n: Math.min(need, fit.length), options: fit, any: true,
-                text: 'Потратить кубики или принять эффект?',
-            } };
-        }
-        const picked = (answer.dice || []).filter(i => fit.includes(i)).slice(0, need);
+        const fit = Array.isArray(step.options) ? step.options : [];
+        const turn = CombatTurn.of(combat);
+        const picked = (answer.dice || []).filter(i => fit.includes(i) && turn.has(foeSide, i)).slice(0, need);
         for (const i of picked) turn.take(foeSide, i);
         if (picked.length) {
             R.log(state, foeSeat, state.players[foeSeat].name + ' платит '
                 + picked.length + ' кубик(а) и отменяет эффект.');
         }
         const left = need - picked.length;
-        if (left <= 0) { step.done = true; return null; }
-        return refuse(left) || (step.done = true, null);
+        if (left <= 0) {
+            // Paid in full: the second half of the card does not happen, and the
+            // steps of the refusal must not be spliced in after the step.
+            step.then = [];
+            step.done = true;
+            return null;
+        }
+        step.done = true;
+        return Array.isArray(step.then) && step.then.length
+            ? { replace: step.then.slice() }
+            : null;
     }
 
     // «Уничтожьте его, если противник не потратит количество кубиков, равное
     // командному уровню этого отряда» («Сокрушающий гаргант»): the victim is
-    // destroyed unless its owner pays the cubes.
+    // chosen by the owner of the card, and its owner pays the cubes for it.
     static destroyFoeUnlessPays(effects, f) {
         const { R, state, seat, step, answer, combat, inCombat, side } = f;
         if (!inCombat || !combat) return null;
@@ -232,37 +216,33 @@ class DiceSteps {
         const foeSeat = CombatSides.seatOf(combat, foeSide);
         if (foeSeat === null || foeSeat === undefined) return null;
         const turn = CombatTurn.of(combat);
-        const dice = turn.dice(foeSide);
-        const need = step.n || 1;
-        const fit = dice.map((d, i) => i);
-        if (!step.victim) {
-            const units = effects.unitsOf(R, state, foeSeat, combat, {});
-            if (!units.length) { step.done = true; return null; }
-            step.stage = 'victim';
-            return { question: { kind: 'units', who: seat, op: 'destroyFoeUnlessPays',
-                n: 1, options: units.map(u => u.id), text: 'Какой отряд противника уничтожить?' } };
-        }
-        if (!step.stage) {
-            // The price of the owner of the victim: the command level.
-            const victim = state.units.find(u => u.id === step.victim);
-            const def = victim ? R.unitOf(state, victim) : null;
-            const price = step.perKl && def ? (def.kl || 0) : need;
+        if (step.stage === 'victim') {
+            const victim = (answer.units || []).map(id => state.units.find(u => u.id === id)).filter(Boolean)[0];
+            step.stage = 'dice';
+            if (!victim) { step.done = true; return null; }
+            step.victim = victim.id;
+            const def = R.unitOf(state, victim);
+            const price = step.perKl && def ? (def.kl || 0) : (step.n || 1);
+            const options = turn.slots(foeSide, () => true);
             step.price = price;
-            if (!price || !fit.length) {
+            if (!price || !options.length) {
                 R.destroyUnit(state, victim);
                 R.log(state, seat, state.players[seat].name + ' уничтожает отряд: платить нечем.');
                 step.done = true;
                 return null;
             }
-            step.stage = 'dice';
-            return { question: { kind: 'dice', who: foeSeat, diceSide: foeSide, op: 'destroyFoeUnlessPays',
-                n: Math.min(price, fit.length), options: fit, any: true,
-                text: 'Потратить ' + price + ' кубик(а) или потерять отряд?' } };
+            step.options = options;
+            return { question: {
+                kind: 'dice', who: foeSeat, diceSide: foeSide, op: 'destroyFoeUnlessPays',
+                n: Math.min(price, options.length), options, any: true,
+                text: 'Потратить ' + price + ' кубик(а) или потерять отряд?',
+            } };
         }
-        const picked = (answer.dice || []).filter(i => fit.includes(i)).slice(0, step.price || need);
+        const fit = Array.isArray(step.options) ? step.options : [];
+        const picked = (answer.dice || []).filter(i => fit.includes(i) && turn.has(foeSide, i)).slice(0, step.price || 1);
         for (const i of picked) turn.take(foeSide, i);
         const victim = state.units.find(u => u.id === step.victim);
-        if (victim && picked.length < (step.price || need)) {
+        if (victim && picked.length < (step.price || 1)) {
             R.destroyUnit(state, victim);
             R.log(state, seat, state.players[seat].name + ' уничтожает отряд противника.');
         } else if (victim) {
@@ -272,25 +252,14 @@ class DiceSteps {
         return null;
     }
 
-    // «Ваш противник может отступить 1 своим юнитом»: the choice is the
-    // opponent's own, and the engine asks him.
+    // «Ваш противник может отступить 1 своим юнитом»: the question is his
+    // (DiceAsks). A refusal runs the passage the card names.
     static foeRetreatOffer(effects, f) {
-        const { R, state, seat, step, answer, p, combat, inCombat, side } = f;
-        if (!inCombat || !combat) return null;
-        const foeSide = CombatSides.foe(side);
-        const foeSeat = CombatSides.seatOf(combat, foeSide);
-        if (foeSeat === null || foeSeat === undefined) return null;
-        if (!step.stage) {
-            const units = effects.unitsOf(R, state, foeSeat, combat, {});
-            if (!units.length) { step.done = true; return null; }
-            step.stage = 'no';
-            return { question: { kind: 'yesno', who: foeSeat, op: 'foeRetreatOffer',
-                text: 'Отступить одним своим отрядом?' } };
-        }
+        const { step, answer } = f;
         if (answer.no) { step.done = true; return null; }
-        const units = effects.unitsOf(R, state, foeSeat, combat, {});
-        if (!units.length) { step.done = true; return null; }
-        return { replace: [{ op: 'retreat', n: 1, pick: true, who: 'foe' }] };
+        step.done = true;
+        const n = step.n || 1;
+        return { replace: [{ op: 'retreat', n, pick: true, who: 'foe' }] };
     }
 
     static foeSpendOrPay(effects, f) {
