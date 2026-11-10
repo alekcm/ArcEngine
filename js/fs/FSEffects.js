@@ -4127,20 +4127,10 @@ const RULES = [
             return options.length >= 2 ? { op: 'choice', options, text: s } : null;
         },
     },
-    // "you may perform the deploy order using one factory"
-    {
-        re: /выполнить приказ развертывания, используя (\d+) фабрик/i,
-        build: m => ({ op: 'extraFactory', n: Number(m[1]) }),
-    },
     // "buy the units one materiel cheaper"
     {
         re: /по цене на (\d+) меньше обычного/i,
         build: m => ({ op: 'orderDiscount', n: Number(m[1]) }),
-    },
-    // "the number of the asset tokens you may have grows to 4"
-    {
-        re: /количество жетонов ресурсов[^.]*увеличивается до (\d+)/i,
-        build: m => ({ op: 'assetLimit', n: Number(m[1]) }),
     },
     // "move 1 of your units to a neighbouring friendly area"
     {
@@ -4797,16 +4787,6 @@ const RULES = [
     {
         re: /рассматривать все свои города[^.]*как фабрики, на которых могут производиться только ([^.,;]+)/i,
         build: m => ({ op: 'citiesAsFactories', only: m[1] }),
-    },
-    // "2 Guardsmen may be bought for 1 supply token."
-    {
-        re: /(\d+)\s+([А-ЯЁ][а-яёa-z]+) могут быть куплены за 1 жетон/i,
-        build: m => ({ op: 'supplyDeal', n: Number(m[1]), unit: m[2] }),
-    },
-    // "They must be deployed in the world that produced them."
-    {
-        re: /должны быть развернуты в мире, который их произв[её]л/i,
-        build: () => ({ op: 'deployInFactoryWorld' }),
     },
     // "Draw 4 event cards and play the effect of one of them."
     {

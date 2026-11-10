@@ -1637,9 +1637,30 @@ rule('abil-2', '«… вы можете выполнить приказ разв
         'фабрика запомнена: отряды идут в её мир');
     const first = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys, pos: world });
     eq(first.ok, true, 'Гвардеец куплен: ' + (first.error || ''));
+    // «по цене на 1 меньше обычного»: цена покупки, а не только отсутствие ошибки.
+    const guardDef = ctx.FS_CATALOG.unit('имперская-гвардия', 'гвардейцы');
+    const bought = Purchases.of(st.order).units[0];
+    eq(bought && bought.cost, (guardDef.cost || 0) - 1,
+        'Гвардеец на 1 дешевле напечатанного (' + guardDef.cost + ' → ' + (bought && bought.cost) + ')');
+    // «2 Гвардейца могут быть куплены за 1 жетон запасов»: второй из пары
+    // стоит жетон тайника, а не материю.
+    st.players[0].assets.cache = 1;
+    const second = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys, pos: world });
+    eq(second.ok, true, 'второй Гвардеец куплен: ' + (second.error || ''));
+    const pair = Purchases.of(st.order).units;
+    eq(pair.length, 2, 'в паре два отряда');
+    eq(pair[1].cost, 0, 'второй Гвардеец пары не стоит материи');
+    eq(st.players[0].assets.cache, 0, 'и пара оплачена жетоном запасов');
     // «минимум 2 отряда одного типа»: второй тип запрещён.
     refused(FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'огрины', system: sys, pos: world }),
         /только один тип отрядов/, 'второй тип в том же производстве');
+    // «должны быть развернуты в мире, который их произвёл»: другой мир — отказ.
+    const otherWorld = st.systems.find(x => x.id !== sys && x.areas.some(a => a.world));
+    if (otherWorld) {
+        refused(FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: otherWorld.id,
+            pos: otherWorld.areas.find(a => a.world).pos }), /активной системе|мир, который|мир фабрики|развёртыван/i,
+            'отряд не покупается в чужой мир');
+    }
     // «только наземные отряды»: корабль не производится.
     const v = voidOf(st, sys);
     FS_RULES.addUnit(st, 0, 'крейсеры', sys, v);
@@ -4094,9 +4115,14 @@ function exploreAnswers(st, budget = 80, opts) {
             const q = cur.pending.question || {};
             const seat = cur.pending.answerSeat !== undefined ? cur.pending.answerSeat : cur.pending.seat;
             const answers = answersFor(q);
-            const pick = answer || answers[hint < answers.length ? hint : 0];
+            // Ветку, за которой пришёл клон, больше не разворачиваем: иначе тот
+            // же вопрос снова снимает клоны, а стек растёт бесконечно.
+            const expanding = answer === null;
+            const pick = expanding ? answers[hint < answers.length ? hint : 0] : answer;
             answer = null;
-            for (let i = 1; i < answers.length; i++) stack.push([structuredClone(cur), answers[i]]);
+            if (expanding) {
+                for (let i = 1; i < answers.length; i++) stack.push([structuredClone(cur), answers[i]]);
+            }
             const res = FS_RULES.apply(cur, seat, { type: 'effect', answer: pick });
             if (res && res.ok === false) return res.error;
         }
@@ -4419,6 +4445,12 @@ rule('cards-6', 'Каждое предложение текста карт по�
     for (const c of FS_DATA.orders) texts.push({ kind: 'order', faction: c.faction, name: c.name, text: c.text });
     for (const f of FS_DATA.factions) if (f.ability) texts.push({ kind: 'ability', faction: f.id, name: f.name, text: f.ability.text });
     for (const card of texts) {
+        // Способность фракции, названная в таблице `abilitySteps`, разбирает
+        // таблица, а не парсер предложения: у неё и проверка своя (abil-1,
+        // abil-2). Парсер к её тексту не применяется вовсе — держать для неё
+        // правила, которых никто не достигает, значило бы обещать чтение,
+        // которого нет.
+        if (card.kind === 'ability' && FS_EFFECTS.abilitySteps(card.faction)) continue;
         for (const sentence of FS_EFFECTS.sentences(card.text || '')) {
             const steps = FS_EFFECTS.parseSentence(sentence, { kind: card.kind, faction: card.faction });
             const ops = steps.map(x => x.op);
