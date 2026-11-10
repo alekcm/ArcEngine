@@ -3035,8 +3035,15 @@ const RULES = [
         build: (m, ctx, s) => {
             const trigger = FS_EFFECTS.triggerOf(s);
             // The effect of the card: the part after "to".
+            // The plan that IS the discard: «Вместо размещения жетона приказа
+            // … вы можете сбросить эту карту» («Видения Комморры») — the
+            // sentence ends on the card, and the effect is the replacement it
+            // names, read from the whole sentence.
             const at = s.search(/сбросить эту карту/i);
             let tail = s.slice(at + 'сбросить эту карту'.length);
+            if (!/[а-яёa-z]{3}/i.test(tail) && /вместо\s+размещения\s+жетона\s+приказа/i.test(s)) {
+                return { op: 'trigger', trigger, steps: [{ op: 'extraOrderTokens', n: 1 }], text: s, note: false, defer: false };
+            }
             const by = tail.search(/чтобы\s+/i);
             if (by >= 0) {
                 tail = tail.slice(by + 'чтобы'.length);
@@ -3220,6 +3227,13 @@ const RULES = [
     {
         re: /переверн[а-яёa-z]*\s+любое количество\s*`([^`]+)`\s*на\s*`([^`]+)`/i,
         build: m => ({ op: 'flipDie', n: 99, kind: FS_EFFECTS.icon(m[1]), to: FS_EFFECTS.icon(m[2]), all: true, pick: true }),
+    },
+    // «Вместо размещения жетона приказа во время Фазы Планирования вы можете
+    // сбросить эту карту» («Видения Комморры»): the plan IS the extra order
+    // token of that phase — the card names no other effect.
+    {
+        re: /вместо\s+размещения\s+жетона\s+приказа\s+во\s+время\s+Фазы\s+Планирования/i,
+        build: () => ({ op: 'extraOrderTokens', n: 1 }),
     },
     // «взять 1 Сестру Ренентилю или 1 Сестру Битвы из любого мира и разместить
     // её в любом дружественном мире» («Свершившийся факт»): the model moves

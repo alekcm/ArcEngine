@@ -1264,7 +1264,7 @@ rule('scheme-0a', 'Событие-план: у каждой карты-план�
     }
     // The plans the engine cannot perform yet are named one by one: the list
     // may only shrink, and every card in it is a known TODO, not a surprise.
-    const known = ['Экстерминатус', 'Вперёд!', 'Варбосс', 'Обход', 'Видения Комморры',
+    const known = ['Экстерминатус', 'Вперёд!', 'Варбосс', 'Обход',
         'Несокрушимая вера', 'Псионическая война', 'Триумфальный отход'];
     const extra = silent.filter(n => !known.includes(n));
     eq(extra.join(', '), '', 'новых карт-планов без действия нет');
