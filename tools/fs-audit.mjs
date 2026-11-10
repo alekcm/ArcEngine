@@ -3376,6 +3376,33 @@ rule('cap-1', '«he must destroy units of his choice in that area» — отря
     eq(st.units.filter(u => u.seat === 0).length, cap + 1, 'отряд убран');
 });
 
+rule('cap-1b', '«his excess troops are back in the supply» — область выходит из очереди только когда влезает', () => {
+    // `TrimQueue.settle` — выход из очереди. Проверялось только «запись
+    // исчезла»: «исчезла после ПЕРВОГО отряда, хотя область ещё переполнена»
+    // проходило молча.
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    const cap = FS_RULES.capacity(st, sys.id, pos);
+    for (let i = 0; i < cap + 2; i++) guard(st, 0, sys.id, pos);
+    st.order = { seat: 0, order: 'deploy', system: sys.id, phase: 'deploy' };
+    FS_RULES.apply(st, 0, { type: 'finishDeploy' });
+    eq(FS_RULES.trimQueue(st).entries().length, 1, 'область в очереди');
+    eq(FS_RULES.trimQueue(st).forSeat(0).length, 1, 'и она принадлежит игроку');
+    eq(FS_RULES.trimQueue(st).forSeat(1).length, 0, 'у другого игрока очередь пуста');
+    eq(FS_RULES.trimQueue(st).entryOf(0).pos, pos, 'entryOf называет эту область');
+    const pick = () => st.units.find(u => u.seat === 0).id;
+    FS_RULES.apply(st, 0, { type: 'trimUnit', system: sys.id, pos, unit: pick() });
+    // Один отряд убран, но в области ещё лишний: запись остаётся.
+    eq(FS_RULES.trimQueue(st).entries().length, 1, 'лишний ещё есть — область в очереди');
+    eq(FS_RULES.trimQueue(st).blocked(0), true, 'игрок всё ещё обязан убирать');
+    FS_RULES.apply(st, 0, { type: 'trimUnit', system: sys.id, pos, unit: pick() });
+    eq(FS_RULES.trimQueue(st).entries().length, 0, 'область влезла — очередь пуста');
+    eq(FS_RULES.trimQueue(st).blocked(0), false, 'игрок свободен');
+    eq(st.units.filter(u => u.seat === 0).length, cap, 'отрядов ровно по вместимости');
+    eq(st.trim, null, 'поле очереди очищено, а не оставлено пустым списком');
+});
+
 rule('cap-2', '«After resolving an order … players must destroy any of their units that are in excess of an area’s unit capacity» — лишнее убирает только сам игрок', () => {
     const st = empty();
     const sys = st.systems[0];

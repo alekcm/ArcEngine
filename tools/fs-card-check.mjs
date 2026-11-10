@@ -2735,6 +2735,32 @@ check('Предвидение криптека', 'перенос отряда з
         'отряд перенесён в этот мир');
 });
 
+check('Воля повелителя', 'восстановить деморализованный отряд и перебросить до 2 кубиков', () => {
+    const st = battle({
+        faction: 'некроны', foeFaction: 'имперская-гвардия',
+        units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2 },
+        card: 'Воля повелителя',
+    });
+    st.combat.dice.attacker = ['morale', 'att', 'att'];
+    routeMine(st, 0);
+    eq(myUnits(st).filter(u => u.routed).length, 1, 'один свой отряд деморализован');
+    let rerollAsked = null;
+    play(st, 0, 0, (s2, q) => {
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 1) };
+        if (q.kind === 'dice') {
+            rerollAsked = q;
+            // «до 2» — ответить на три кубика нельзя: лишний отбрасывается.
+            return { dice: (q.options || []).slice(0, 3) };
+        }
+        return firstOption(s2, q);
+    });
+    eq(myUnits(st).filter(u => u.routed).length, 0, 'деморализованный отряд восстановлен');
+    ok(!!rerollAsked, 'вопрос о перебросе не задан');
+    eq(rerollAsked.n, 2, 'вопрос называет предел — два кубика');
+    eq((rerollAsked.options || []).length <= 3, true, 'предложены кубики стола');
+    return eq(dice(st, 'attacker').length, 3, 'кубиков на столе столько же');
+});
+
 check('Вечное завоевание', 'восстановление отряда + по кубику атаки за каждый morale cube, если в бою нужный отряд', () => {
     const st = battle({
         faction: 'некроны', foeFaction: 'имперская-гвардия',
