@@ -37,13 +37,13 @@ export function htmlFiles() {
 /** The classic scripts of the rules engine, in the order index.html loads them. */
 export function engineFiles() {
     return htmlFiles().filter(f => f.startsWith('js/fs/') && f.endsWith('.js')
-        && !/FSNet|FSView|FSUI|FSGame|FSIcons/.test(f));
+        && !/FSNet\.js|FSView\.js|FSUI\.js|FSGame\.js|FSIcons\.js/.test(f));
 }
 
 /** The names a tool may need after loading: every global the scripts define. */
 const ENGINE_GLOBALS = ['FS_DATA', 'FS_CATALOG', 'FS_RULES_CONFIG', 'FS_WARP_STORMS',
     'FACE_KINDS', 'FACE_NAMES', 'fsFaceName',
-    'FS_CARDS', 'FS_EFFECTS', 'FS_RULES', 'Board', 'PlayerEntity', 'TrimQueue', 'StrikePlan', 'MarchPlan', 'PhasePlan', 'EventPhase', 'QuickResponse', 'StormPhase', 'OrderScheme', 'Question', 'UpgradeOrder', 'OrderDeal', 'DeployScope', 'DeployLimits', 'OrderFight', 'Purchases', 'OrderMove', 'OrderTally', 'OrderContext', 'CombatTurn', 'CombatTokens', 'CombatCards', 'CombatDamage', 'CombatPlans', 'CombatOutcome', 'CombatApproach', 'CombatCubes', 'CombatBans', 'CombatHooks',
+    'FS_CARDS', 'FS_EFFECTS', 'FS_RULES', 'Board', 'PlayerEntity', 'TrimQueue', 'StrikePlan', 'MarchPlan', 'PhasePlan', 'EventPhase', 'QuickResponse', 'StormPhase', 'OrderScheme', 'Question', 'GamePhase', 'UpgradeOrder', 'OrderDeal', 'DeployScope', 'DeployLimits', 'OrderFight', 'Purchases', 'OrderMove', 'OrderTally', 'OrderContext', 'CombatTurn', 'CombatTokens', 'CombatCards', 'CombatDamage', 'CombatPlans', 'CombatOutcome', 'CombatApproach', 'CombatCubes', 'CombatBans', 'CombatHooks',
     'TileGeometry', 'CombatSides', 'BattleField', 'StepContext', 'STEP_EXECUTORS', 'ASK_EXECUTORS'];
 
 /**

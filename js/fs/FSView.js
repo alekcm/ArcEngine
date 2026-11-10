@@ -791,7 +791,7 @@ const FSView = {
 
     // Empty, tactile slots for the live board-composition phase.
     updateSetupSlots(app, view, state) {
-        const setup = state.phase === 'setup' ? state.setup : null;
+        const setup = GamePhase.of(state).is(GamePhase.SETUP) ? state.setup : null;
         const active = setup && setup.myTurn;
         const occupied = new Set(state.systems.map(s => s.row + ':' + s.col));
         const legal = new Set((setup && setup.legalCells || []).map(c => c.row + ':' + c.col));
@@ -1207,7 +1207,9 @@ const FSView = {
             x: sys.col * this.TILE,
             y: sys.row * this.TILE,
         });
-        const pts = (state.phase === 'setup' && state.setup ? state.systems.concat(state.setup.legalCells || []) : state.systems).map(raw);
+        const game = GamePhase.of(state);
+        const pts = (game.is(GamePhase.SETUP) && state.setup
+            ? state.systems.concat(state.setup.legalCells || []) : state.systems).map(raw);
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         for (const p of pts) {
             minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x + this.TILE);

@@ -755,7 +755,7 @@ class AdvanceRules {
         const order = {
             seat, order: 'advance', system: systemId,
         };
-        state.phase = 'operations';
+        GamePhase.of(state).start(GamePhase.OPERATIONS);
         state.order = order;
         PhasePlan.of(order).set('move');
         OrderMove.of(order).setQuickResponse().setFromEvent();

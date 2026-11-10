@@ -192,7 +192,7 @@ class SetupRules {
         const sys = state.systems[Math.floor(state.systems.length / 2)] || state.systems[0];
         const wanted = a => (kind === 'space' ? !a.world : !!a.world);
         const area = sys.areas.find(wanted) || sys.areas[0];
-        state.phase = 'operations';
+        GamePhase.of(state).start(GamePhase.OPERATIONS);
         state.turn = attacker;
         // The troops of the two sides, the host first.
         const roster = [];
@@ -222,7 +222,7 @@ class SetupRules {
             decks: { attacker: attCards, defender: defCards },
             reinforcement: 2,
         };
-        state.phase = 'operations';
+        GamePhase.of(state).start(GamePhase.OPERATIONS);
         state.turn = attacker;
         state.order = { seat: attacker, order: 'advance', system: sys.id, pos: area.pos, phase: 'combat' };
         state.testMode = 'battle';
@@ -254,7 +254,7 @@ class SetupRules {
             this.engine.player(state, s).setAsset('reinforcement', test.reinforcement);
         }
         state.combat = null;
-        state.phase = 'operations';
+        GamePhase.of(state).start(GamePhase.OPERATIONS);
         state.turn = test.attacker;
         state.order = { seat: test.attacker, order: 'advance', system: test.system, pos: test.pos, phase: 'combat' };
         this.engine.log(state, -1, 'Тот же бой начинается снова.');
@@ -318,7 +318,7 @@ class SetupRules {
 
     cmdPlaceSystemTile(state, seat, cmd) {
         const setup = state.setup;
-        if (state.phase !== 'setup' || !setup) return { ok: false, error: 'Сейчас не этап сборки карты.' };
+        if (!GamePhase.of(state).is(GamePhase.SETUP) || !setup) return { ok: false, error: 'Сейчас не этап сборки карты.' };
         if (setup.turn !== seat) return { ok: false, error: 'Сейчас очередь другого игрока выкладывать тайл.' };
         if (setup.stage !== 'tile') return { ok: false, error: 'Сначала завершите текущий этап размещения.' };
         const hand = setup.hands[seat] || [];
@@ -346,7 +346,7 @@ class SetupRules {
 
     setupGuard(state, seat, stage) {
         const setup = state.setup;
-        if (state.phase !== 'setup' || !setup || setup.stage !== stage) return { ok: false, error: 'Сейчас это действие недоступно.' };
+        if (!GamePhase.of(state).is(GamePhase.SETUP) || !setup || setup.stage !== stage) return { ok: false, error: 'Сейчас это действие недоступно.' };
         if (setup.turn !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
         return null;
     }
@@ -554,7 +554,7 @@ class SetupRules {
         }
         this.takeStartChoiceLeft(state);
         state.setup = null;
-        state.phase = 'planning';
+        GamePhase.of(state).start(GamePhase.PLANNING);
         state.turn = state.firstPlayer;
         this.engine.log(state, -1, 'Игра началась: раунд 1, фаза планирования.');
     }

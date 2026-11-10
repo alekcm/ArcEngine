@@ -548,6 +548,30 @@ try {
     fail(e.message);
 }
 
+// --- the phase of a game and the turn: one object ----------------------------
+section('фаза игры: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSGamePhase.js', 'js/fs/rules/SetupRules.js',
+        'js/fs/core/FSQuickResponse.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Фаза раунда и чей ход — один объект GamePhase: строки фаз и поле
+        // state.phase не читают руками ни правила, ни доска, ни панель.
+        const re = /\bstate\.phase\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('фазу игры спрашивают у GamePhase');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the question of a step: one object --------------------------------------
 section('вопрос шага: один объект');
 try {

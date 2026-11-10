@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1164,6 +1164,44 @@ rule('combat-0c', '«discards the combat cards he used during the combat by shuf
     cards.clear('attacker');
     eq(cards.names('attacker').length, 0, 'стол очищен');
     eq(cards.chosen('attacker'), null, 'отметка карты снята');
+});
+
+rule('phase-0a', '«Each round consists of four phases» + «The active player…» — фазу раунда и чей ход держит GamePhase', () => {
+    const state = { phase: 'planning', turn: 1, round: 3, players: [{}, {}], setup: null };
+    const game = GamePhase.of(state);
+    eq(GamePhase.of(state), game, 'у игры одна фаза');
+    eq(GamePhase.of(null), null, 'без состояния фазы нет');
+    // The four phases of a round, in the order they are played.
+    eq(GamePhase.SETUP, 'setup', 'сборка карты');
+    eq(GamePhase.PLANNING, 'planning', 'планирование');
+    eq(GamePhase.OPERATIONS, 'operations', 'операции');
+    eq(GamePhase.REFRESH, 'refresh', 'обновление');
+    eq(game.name, 'planning', 'фаза игры');
+    eq(game.is(GamePhase.PLANNING), true, 'это планирование');
+    eq(game.is(GamePhase.OPERATIONS, GamePhase.REFRESH), false, 'не операции и не обновление');
+    eq(game.round, 3, 'раунд игры');
+    // The names the panel prints.
+    eq(game.label, 'Планирование', 'подпись фазы');
+    game.start(GamePhase.OPERATIONS);
+    eq(state.phase, 'operations', 'фаза записана в состояние');
+    eq(game.label, 'Операции', 'и подпись другая');
+    eq(GamePhase.of({ phase: 'refresh' }).label, 'Обновление', 'обновление');
+    eq(GamePhase.of({ phase: 'setup' }).label, 'Сборка карты', 'сборка карты');
+    eq(GamePhase.of({}).label, 'Галактическая война', 'без фазы — игра ещё не идёт');
+    // Whose turn it is: the phase's player — or the board builder.
+    eq(game.active, 1, 'ход seat 1');
+    eq(game.isActive(1), true, 'seat 1 действует');
+    eq(game.isActive(0), false, 'seat 0 ждёт');
+    state.setup = { turn: 0 };
+    game.start(GamePhase.SETUP);
+    eq(game.active, 0, 'карту собирает свой игрок');
+    eq(game.isActive(0), true, 'и это он действует');
+    state.setup = null;
+    eq(game.active, null, 'без сборки действующего нет');
+    // The circle of the players: the turn passes to the next seat.
+    eq(GamePhase.next(1, 2), 0, 'ход по кругу');
+    eq(GamePhase.next(0, 2), 1, 'и снова');
+    eq(GamePhase.next(0, 0), 0, 'без игроков ход не меняется');
 });
 
 rule('ask-0a', '«a step needs a choice: the player is asked» — остановленный вопрос шага держит Question', () => {

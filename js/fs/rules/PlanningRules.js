@@ -10,7 +10,7 @@ class PlanningRules {
     canPlaceOrder(state, seat, systemId) {
         const sys = this.engine.system(state, systemId);
         if (!sys) return false;
-        if (state.phase !== 'planning') return false;
+        if (!GamePhase.of(state).is(GamePhase.PLANNING)) return false;
         const p = state.players[seat];
         if (!p) return false;
         if (this.engine.player(state, seat).ordersLeft() <= 0) return false;
@@ -37,7 +37,7 @@ class PlanningRules {
     }
 
     cmdPlaceOrder(state, seat, cmd) {
-        if (state.phase !== 'planning') return { ok: false, error: 'Сейчас не фаза планирования.' };
+        if (!GamePhase.of(state).is(GamePhase.PLANNING)) return { ok: false, error: 'Сейчас не фаза планирования.' };
         if (seat !== state.turn) return { ok: false, error: 'Сейчас очередь другого игрока.' };
         const p = state.players[seat];
         if (this.engine.player(state, seat).ordersLeft() <= 0) return { ok: false, error: 'Все приказы уже выложены.' };
@@ -68,7 +68,7 @@ class PlanningRules {
         this.engine.log(state, seat, p.name + ' выложил приказ «' + this.orderName(cmd.order) + '» в систему ' + sys.tile + '.');
         // The players lay their tokens one at a time, in a circle.
         this.checkPlanningDone(state);
-        if (state.phase === 'planning') state.turn = this.nextPlanner(state, seat);
+        if (GamePhase.of(state).is(GamePhase.PLANNING)) state.turn = this.nextPlanner(state, seat);
         return { ok: true };
     }
 
@@ -94,7 +94,7 @@ class PlanningRules {
         const done = state.players.every(p => p.eliminated
             || this.engine.player(state, p.seat).ordersLeft() <= 0);
         if (!done) return;
-        state.phase = 'operations';
+        GamePhase.of(state).start(GamePhase.OPERATIONS);
         // The operations start with the first player who really has an order on
         // top of a stack — the tokens of the players lie in one stack.
         state.turn = this.engine.firstWithOrder(state);

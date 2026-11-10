@@ -270,14 +270,16 @@ const FSUI = {
         root.classList.toggle('is-battle', !!(state && state.combat));
         root.classList.toggle('is-deploy', !!(state && state.order && OrderContext.of(state.order).isKind('deploy')));
         root.classList.toggle('is-strategize', !!(state && state.order && OrderContext.of(state.order).isKind('strategize')));
-        root.classList.toggle('is-planning', !!(state && state.phase === 'planning'));
-        root.classList.toggle('is-placing-tile', !!(state && state.phase === 'setup' && ctx.mode === 'placeTile'));
+        const game = GamePhase.of(state);
+        root.classList.toggle('is-planning', game.is(GamePhase.PLANNING));
+        root.classList.toggle('is-placing-tile', game.is(GamePhase.SETUP) && ctx.mode === 'placeTile');
         if (this.currentLobby) { this.renderModernLobby(); return; }
         const header = this.el('div', 'fs-topbar');
         header.append(this.el('span', 'fs-brand', 'FORBIDDEN STARS'), this.el('i', 'fs-divider'));
-        const phaseLabel = state && state.phase === 'setup' ? 'Сборка карты' : ({planning:'Планирование',operations:'Операции',refresh:'Обновление'}[(state || {}).phase] || (state && state.phase) || 'Галактическая война');
-        header.append(this.el('span', 'fs-phase', state ? (state.phase === 'setup' ? phaseLabel : 'Раунд ' + state.round + ' · ' + phaseLabel) : phaseLabel));
-        const activeSeat = state && state.phase === 'setup' && state.setup ? state.setup.turn : state && state.turn;
+        const phaseLabel = game.label;
+        header.append(this.el('span', 'fs-phase', state ? (game.is(GamePhase.SETUP)
+            ? phaseLabel : 'Раунд ' + state.round + ' · ' + phaseLabel) : phaseLabel));
+        const activeSeat = game.active;
         if (state && state.players[activeSeat]) {
             // The active player: clicking the pill opens his faction dossier on the right.
             const pill = this.el('button', 'fs-room-pill', 'ХОД · ' + state.players[activeSeat].name);
@@ -361,7 +363,9 @@ const FSUI = {
         const rail = this.el('div', 'fs-left-rail');
         let playersCard = this.el('section', 'fs-card');
         const ph = this.el('div', 'fs-card-head');
-        const boardProgress = state.phase === 'setup' && state.setup ? 'КАРТА · ' + state.setup.placedTotal + '/' + state.setup.totalTiles : 'ИГРОКИ · ' + state.players.length;
+        const boardProgress = game.is(GamePhase.SETUP) && state.setup
+            ? 'КАРТА · ' + state.setup.placedTotal + '/' + state.setup.totalTiles
+            : 'ИГРОКИ · ' + state.players.length;
         ph.append(this.el('span', 'fs-eyebrow', 'Участники'), this.el('span', 'fs-round-chip', boardProgress)); playersCard.append(ph);
         const list = this.el('div', 'fs-player-list');
         state.players.forEach(p => {
@@ -1589,12 +1593,11 @@ const FSUI = {
         this.clearAdded();
         const me = state.players[state.seat];
         // The top panel: the phase, the round and the players.
-        const phaseName = {
-            setup: 'сборка карты', planning: 'планирование', operations: 'операции', refresh: 'обновление',
-        }[state.phase] || state.phase;
-        const activeSeat = state.phase === 'setup' && state.setup ? state.setup.turn : state.turn;
+        const phaseName = GamePhase.of(state).label.toLowerCase();
+        const activeSeat = GamePhase.of(state).active;
         const who = state.players[activeSeat] ? state.players[activeSeat].name : '';
-        this.set('fsPhase', 'Раунд ' + state.round + ' · ' + phaseName + (state.phase === 'refresh' ? '' : ' · ход: ' + who));
+        this.set('fsPhase', 'Раунд ' + state.round + ' · ' + phaseName
+            + (GamePhase.of(state).is(GamePhase.REFRESH) ? '' : ' · ход: ' + who));
         const lines = state.players.map(p => {
             const marks = [];
             if (p.eliminated) marks.push('выбыл');

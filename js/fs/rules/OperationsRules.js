@@ -78,7 +78,7 @@ class OperationsRules {
     }
 
     cmdResolveOrder(state, seat, cmd) {
-        if (state.phase !== 'operations') return { ok: false, error: 'Сейчас не фаза операций.' };
+        if (!GamePhase.of(state).is(GamePhase.OPERATIONS)) return { ok: false, error: 'Сейчас не фаза операций.' };
         if (this.trimBlocked(state, seat)) return trimRefusal();
         if (state.turn !== seat) return { ok: false, error: 'Сейчас ход другого игрока.' };
         // One order at a time: the previous one must be finished.
@@ -296,7 +296,7 @@ class OperationsRules {
     }
 
     cmdNextPhase(state, seat) {
-        if (state.phase !== 'refresh') return { ok: false, error: 'Сейчас не фаза обновления.' };
+        if (!GamePhase.of(state).is(GamePhase.REFRESH)) return { ok: false, error: 'Сейчас не фаза обновления.' };
         if (state.eventsLeft > 0) return { ok: false, error: 'Сначала разыграйте события.' };
         this.engine.endRound(state);
         return { ok: true };

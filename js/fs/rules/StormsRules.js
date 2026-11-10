@@ -12,7 +12,7 @@ class StormsRules {
     }
 
     cmdMoveStorm(state, seat, cmd) {
-        if (state.phase !== 'refresh') return { ok: false, error: 'Сейчас не фаза обновления.' };
+        if (!GamePhase.of(state).is(GamePhase.REFRESH)) return { ok: false, error: 'Сейчас не фаза обновления.' };
         const phase = EventPhase.of(state);
         if (!phase.isSeat(seat)) return { ok: false, error: 'Сейчас ход другого игрока.' };
         // The event moves exactly one Warp Storm ("The active player chooses one

@@ -61,7 +61,7 @@ class RefreshRules {
     }
 
     startRefresh(state) {
-        state.phase = 'refresh';
+        GamePhase.of(state).start(GamePhase.REFRESH);
         this.engine.closeOrder(state);
         // A new round wipes the marks of the storms: every strip is bright again.
         for (const st of state.storms) st.moved = false;
@@ -147,7 +147,7 @@ class RefreshRules {
     }
 
     cmdDrawEvent(state, seat, cmd) {
-        if (state.phase !== 'refresh') return { ok: false, error: 'Сейчас не фаза обновления.' };
+        if (!GamePhase.of(state).is(GamePhase.REFRESH)) return { ok: false, error: 'Сейчас не фаза обновления.' };
         const phase = EventPhase.of(state);
         if (!phase.isSeat(seat)) return { ok: false, error: 'Сейчас ход другого игрока.' };
         if (phase.chosen) return { ok: false, error: 'Карта уже выбрана.' };
@@ -161,7 +161,7 @@ class RefreshRules {
     }
 
     cmdResolveEvent(state, seat, cmd) {
-        if (state.phase !== 'refresh') return { ok: false, error: 'Сейчас не фаза обновления.' };
+        if (!GamePhase.of(state).is(GamePhase.REFRESH)) return { ok: false, error: 'Сейчас не фаза обновления.' };
         const phase = EventPhase.of(state);
         if (!phase.isSeat(seat)) return { ok: false, error: 'Сейчас ход другого игрока.' };
         // The storm movement of the card is not a choice — only its ability is.
@@ -284,7 +284,7 @@ class RefreshRules {
             this.engine.log(state, -1, 'Раунд ' + this.engine.ROUNDS + ' закончен. Побеждает ' + best.name + '.');
             return;
         }
-        state.phase = 'planning';
+        GamePhase.of(state).start(GamePhase.PLANNING);
         // The first player may be out of the game: the planning starts with the
         // first player who still has tokens in hand.
         state.turn = state.players[state.firstPlayer] && state.players[state.firstPlayer].eliminated
