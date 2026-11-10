@@ -4876,15 +4876,23 @@ export class Scene3D {
 
     updateCharacters(view) {
         const S = this.scene;
-        const perRoom = {};
+        const perRoom = {}, seen = new Set();
+        const disposeCharacter = n => {
+            for (const mesh of n.ch.root.getChildMeshes()) this.shadows.removeShadowCaster(mesh);
+            if (n.dog) {
+                for (const mesh of n.dog.root.getChildMeshes()) this.shadows.removeShadowCaster(mesh);
+                n.dog.root.dispose();
+            }
+            if (n.label && n.label.material) n.label.material.dispose(false, true);
+            n.ch.root.dispose();
+        };
         for (const p of view.players) {
             if (!p.charId) continue;   // character draft still in progress
+            seen.add(String(p.id));
             const parts = characterParts(p.charId, p.parts), partsKey = JSON.stringify(parts);
             let n = this.chars[p.id];
             if (n && (n.charId !== p.charId || n.partsKey !== partsKey)) {
-                for (const mesh of n.ch.root.getChildMeshes()) this.shadows.removeShadowCaster(mesh);
-                if (n.label && n.label.material) n.label.material.dispose(false, true); // its name texture is not shared
-                n.ch.root.dispose(); delete this.chars[p.id]; n = null;
+                disposeCharacter(n); delete this.chars[p.id]; n = null;
             }
             if (!n) {
                 const ch = buildCharacter(S, p.charId, p.colors || {}, parts);
@@ -4898,11 +4906,22 @@ export class Scene3D {
                 n.grab = grab;
                 this.chars[p.id] = n;
                 for (const m of ch.root.getChildMeshes()) this.shadows.addShadowCaster(m);
+                if (ch.dogRoot) {
+                    // On the board Laika is a separate figure, not a child of the Hunter.
+                    ch.dogRoot.parent = null;
+                    ch.dogRoot.scaling.setAll(0.66);
+                    n.dog = { root: ch.dogRoot, placed: false, room: null, route: null };
+                }
             }
             const ck = JSON.stringify(p.colors || {});
             if (n.colorsKey !== ck) { n.ch.setColors(p.colors || {}); n.colorsKey = ck; }
             const visible = (p.status === 'active' || p.status === 'hibernating') && !p.pod;
             n.ch.root.setEnabled(visible);
+            if (n.dog) {
+                const dogVisible = visible && p.status === 'active' && !!p.laika && (p.laika === 'board' || !!this.roomNodes[p.laika]);
+                n.dog.root.setEnabled(dogVisible);
+                if (!dogVisible) { n.dog.placed = false; n.dog.route = null; }
+            }
             if (!visible) continue;
             const k = perRoom[p.room] = (perRoom[p.room] || 0) + 1;
             const roomPos = this.roomNodes[p.room].root.position;
@@ -4922,6 +4941,10 @@ export class Scene3D {
             const current = view.current === p.id && view.phase === 'player';
             this.setLabel(n.label, p.name + (p.passed ? ' (пас)' : ''), p.charName, current ? '#ffb347' : '#ffffff');
             n.ch.root.scaling.setAll(p.status === 'hibernating' ? 0.001 : 0.66);
+            if (n.dog && n.dog.root.isEnabled()) this.updateLaika(n, p);
+        }
+        for (const id of Object.keys(this.chars)) if (!seen.has(id)) {
+            disposeCharacter(this.chars[id]); delete this.chars[id];
         }
         // shot animation (everyone sees it): triggered once per new lastShot
         if (this.lastShotSeen === null) this.lastShotSeen = view.lastShot ? view.lastShot.n : 0;   // ignore shots already in the state on (re)connect
@@ -4956,6 +4979,26 @@ export class Scene3D {
                 intrNode.faceY = Math.atan2(di.x, di.z);
             }
         }
+    }
+
+    // The rules store "board" for the Hunter's sheet, otherwise a room id. Recall can
+    // happen from any distance, so a non-adjacent recall is placed instead of crossing walls.
+    updateLaika(n, player) {
+        const dog = n.dog, room = player.laika === 'board' ? player.room : player.laika;
+        dog.withHunter = player.laika === 'board';
+        const target = dog.withHunter
+            ? n.target.add(new (B().Vector3)(0.8, 0, 0.25))
+            : this.slotPos(this.roomNodes[room].root.position, 0, 'char').add(new (B().Vector3)(0.8, 0, 0.25));
+        target.y = FLOOR_Y;
+        dog.target = target;
+        if (!dog.placed) {
+            dog.root.position.copyFrom(target); dog.root.rotation.y = n.faceY;
+            dog.placed = true;
+        } else if (dog.room !== room) {
+            dog.route = this.routeTo(dog.room, room);
+            if (!dog.route) dog.root.position.copyFrom(target);
+        }
+        dog.room = room;
     }
 
     animateDoorLamps(time = this.t) {
@@ -5039,7 +5082,31 @@ export class Scene3D {
                 else { pos.x += d.x / dist * stepLen; pos.z += d.z / dist * stepLen; }
                 n.ch.root.rotation.y = Math.atan2(d.x, d.z);          // face the running direction
             } else if (n.faceY != null) n.ch.root.rotation.y += (n.faceY - n.ch.root.rotation.y) * Math.min(1, dt * 6);
-            if (n.ch.animate) n.ch.animate(t, moving);
+            let dogMoving = false;
+            const dog = n.dog;
+            if (dog && dog.root.isEnabled() && dog.placed) {
+                // Once both figures reach the room, follow the Hunter's actual position, including
+                // drag/pose changes, rather than remaining rigidly attached to his rotation.
+                if (dog.withHunter && !(dog.route && dog.route.length) && !(n.route && n.route.length)) {
+                    dog.target.x = pos.x + 0.8; dog.target.z = pos.z + 0.25;
+                }
+                const dp = dog.root.position;
+                let dogGoal = dog.target;
+                while (dog.route && dog.route.length) {
+                    const wp = dog.route[0];
+                    if (Math.hypot(wp.x - dp.x, wp.z - dp.z) <= Math.max(0.25, stepLen)) { dog.route.shift(); continue; }
+                    dogGoal = wp; break;
+                }
+                const dx = dogGoal.x - dp.x, dz = dogGoal.z - dp.z, distance = Math.hypot(dx, dz);
+                dogMoving = distance > 0.05;
+                if (dogMoving) {
+                    const step = Math.min(stepLen, distance);
+                    dp.x += dx / distance * step; dp.z += dz / distance * step;
+                    dog.root.rotation.y = Math.atan2(dx, dz);
+                }
+                dp.y = FLOOR_Y;
+            }
+            if (n.ch.animate) n.ch.animate(t, moving, dogMoving);
             // picked-up figure floats above the table while dragged, then settles back down
             const lifting = !!this.drag && this.drag.pid === Number(pidKey);
             if (lifting) n.route = null;                                  // the hand carries it straight

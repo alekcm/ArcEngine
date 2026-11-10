@@ -1498,3 +1498,83 @@ test('DLC scene: original user model replaces its fallback without losing pickin
     v.intruders={};scene.updateIntruders(v,INTRUDER_NAMES);assert.ok(loaded.isDisposed());
     delete sandbox.fetch;
 });
+
+test('SCN: Laika is an independent board figure following her public room and movement', () => {
+    const game = createGame({ seed: 'laika-scene', mode: 'original', draft: false, players: [{ name: 'Hunter', charId: 'bounty' }] });
+    const hunter = game.players[0];
+    hunter.room = '011'; hunter.laika = 'board';
+    const v = viewFor(game, hunter.id);
+    // The scene already has the same ship geometry. Update just the figures so other scene tests
+    // do not need to rebuild all of the tiles.
+    scene.updateCharacters(v);
+    let n = scene.chars[hunter.id], dog = n.dog;
+    assert.ok(dog && dog.root.parent === null && dog.root.isEnabled());
+    assert.equal(dog.room, hunter.room);
+    assert.equal(dog.root.position.y, FLOOR_Y);
+    const leg = dog.root.getDescendants().find(x => x.name === 'dog_leg0');
+    const start = dog.root.position.clone();
+
+    // A move to a separate room runs through its corridor while the Hunter stays put.
+    hunter.laika = '014';
+    const distantView = viewFor(game, hunter.id);
+    assert.equal(distantView.players[0].laika, '014');
+    scene.updateCharacters(distantView);
+    assert.equal(dog.room, '014');
+    assert.ok(dog.route && dog.route.length, 'route follows the corridor');
+    scene.t = 0.1; scene.animate();
+    assert.ok(dog.root.position.subtract(start).length() > 0);
+    assert.ok(Math.abs(leg.rotation.x) > 0.1, 'dog legs move even with a stationary Hunter');
+    for (let i = 0; i < 400 && (dog.route?.length || dog.root.position.subtract(dog.target).length() > 0.06); i++) {
+        scene.t += 0.016; scene.animate();
+    }
+    assert.ok(dog.root.position.subtract(dog.target).length() < 0.06, 'arrives in her own room');
+    const away = dog.root.position.clone();
+    n.ch.root.rotation.y += 1;
+    scene.t += 0.016; scene.animate();
+    assert.ok(dog.root.position.subtract(away).length() < 0.06, 'Hunter rotation does not drag Laika');
+    assert.equal(leg.rotation.x, 0, 'idle dog does not run when the Hunter moves');
+
+    // Moving the Hunter to another room must not move or animate the dog left behind.
+    hunter.room = '015'; scene.updateCharacters(viewFor(game, hunter.id));
+    scene.t += 0.016; scene.animate();
+    assert.ok(n.route?.length, 'Hunter is running through his own corridor');
+    assert.ok(dog.root.position.subtract(away).length() < 0.06);
+    assert.equal(leg.rotation.x, 0, 'the dog does not run with a remote Hunter');
+    for (let i = 0; i < 400 && (n.route?.length || n.ch.root.position.subtract(n.target).length() > 0.06); i++) {
+        scene.t += 0.016; scene.animate();
+    }
+    // Return the Hunter to 011 before testing a long-distance recall.
+    hunter.room = '011'; scene.updateCharacters(viewFor(game, hunter.id));
+    for (let i = 0; i < 400 && (n.route?.length || n.ch.root.position.subtract(n.target).length() > 0.06); i++) {
+        scene.t += 0.016; scene.animate();
+    }
+
+    // Recall from a non-adjacent room is instantaneous, not a straight run through the hull.
+    hunter.laika = '001'; scene.updateCharacters(viewFor(game, hunter.id));
+    hunter.laika = 'board'; scene.updateCharacters(viewFor(game, hunter.id));
+    assert.equal(dog.room, '011');
+    assert.ok(!dog.route && dog.root.position.subtract(dog.target).length() < 0.01);
+    hunter.room = '015'; scene.updateCharacters(viewFor(game, hunter.id));
+    assert.ok(dog.route?.length, 'when together, Laika follows through the corridor');
+    for (let i = 0; i < 400 && (dog.route?.length || n.route?.length || dog.root.position.subtract(dog.target).length() > 0.06); i++) {
+        scene.t += 0.016; scene.animate();
+    }
+    assert.equal(dog.room, '015');
+    assert.ok(dog.root.position.subtract(dog.target).length() < 0.06);
+
+    // Appearance rebuilds dispose the detached old model and retain its colors and location.
+    const old = dog.root;
+    hunter.parts = { dog: 'packs' }; hunter.colors = { dog: '#ad8554' };
+    scene.updateCharacters(viewFor(game, hunter.id));
+    n = scene.chars[hunter.id]; dog = n.dog;
+    assert.ok(old.isDisposed());
+    assert.equal(dog.room, '015');
+    assert.ok(n.ch.zones.dog.every(m => m.material.diffuseColor.toHexString().toLowerCase() === '#ad8554'));
+    hunter.laika = null; scene.updateCharacters(viewFor(game, hunter.id));
+    assert.equal(dog.root.isEnabled(), false, 'dead Laika is not rendered');
+    hunter.laika = 'board'; hunter.status = 'hibernating'; scene.updateCharacters(viewFor(game, hunter.id));
+    assert.equal(dog.root.isEnabled(), false, 'Laika is not left behind in hibernation');
+    const removed = dog.root;
+    scene.updateCharacters({ ...viewFor(game, hunter.id), players: [] });
+    assert.ok(removed.isDisposed(), 'detached figure is disposed when its owner disappears');
+});
