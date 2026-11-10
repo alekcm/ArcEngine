@@ -1564,14 +1564,23 @@ const FS_EFFECTS = {
         const question1 = Question.of(state);
         const pending = question1.record;
         const list = pending ? pending.steps : steps;
-        const c = Object.assign({}, ctx || {}, { owner: seat });
+        let c = Object.assign({}, ctx || {}, { owner: seat });
         // «…равные ЕГО стоимости»: the defs of the units an earlier step of the
-        // same effect has destroyed, so the next step can count them.
-        if (!Array.isArray(c.destroyedDefs)) {
+        // same effect has destroyed, so the next step can count them. The list
+        // belongs to the effect, not to a step of it: when the engine resumes
+        // after a question it gets the context back (it was kept in `Question`),
+        // and gathering the list again there would count the same kill twice.
+        if (Array.isArray(ctx && ctx.destroyedDefs)) {
+            // The resumed effect: the context already carries its dead.
+        } else if (pending) {
+            // The first pass over a question: the steps that ran before it have
+            // left their dead in the list itself.
             c.destroyedDefs = [];
             for (const one of list) {
                 if (one && Array.isArray(one.destroyedDefs)) c.destroyedDefs.push(...one.destroyedDefs);
             }
+        } else {
+            c.destroyedDefs = [];
         }
         let index = startIndex !== undefined ? startIndex : (pending ? pending.index : 0);
         while (index < list.length) {

@@ -1368,6 +1368,9 @@ rule('trophy-0a', '«Получите материалы, равные его м
     // The whole effect on a live game: the unit that dies sets both numbers.
     const state = rules.newGame({ seed: 3, interactiveSetup: false, players: [
         { name: 'Д', faction: 'темные-эльдары' }, { name: 'И', faction: 'инквизиция' }] });
+    // The materiel dial stops at 14: the test starts low enough to see the
+    // whole gain (a full dial would hide a wrong number).
+    state.players[0].materiel = 2;
     const sys = state.systems[0];
     const area = sys.areas.find(a => a.world);
     const unitId = 'гаснущие-солнца';
