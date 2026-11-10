@@ -1257,7 +1257,10 @@ rule('ask-0a', 'таблица вопросов не содержит заглу
     // One deliberate no-op is allowed: `nothing` is a step of a sentence the
     // previous step already did («Затем получите такой же жетон»). The list can
     // only shrink — a new empty branch fails here.
-    const known = ['FSEarnAsks.js:nothing'];
+    // The two deliberate no-ops whose work the *executor* does at once (the step
+    // carries no choice at all): «Затем получите такой же жетон» and «все кубики
+    // удара — атака» («Экстерминатус»). The list can only shrink.
+    const known = ['FSEarnAsks.js:nothing', 'FSEarnAsks.js:strikeAllAtt'];
     const unexpected = stubs.filter(x => !known.includes(x));
     eq(unexpected.join(', ') || '—', '—', 'у каждого шага настоящая ветка вопроса');
     // And every registered op really has a branch (the tables are filled from ops).
@@ -1297,6 +1300,45 @@ rule('play-0b', 'события и приказы доигрываются до 
         }
     }
     eq(broken.join('; ') || '—', '—', 'ни одно событие и ни один приказ не застряли');
+});
+
+rule('plan-0b', '«Экстерминатус»: сброс карты переворачивает все кубики удара на атаку', () => {
+    const card = FS_DATA.events.find(c => /Экстерминатус/.test(c.name));
+    const steps = FS_EFFECTS.parse(card.text, { kind: 'event', faction: card.faction });
+    const trig = steps.find(x => x.op === 'trigger');
+    eq(trig.trigger, 'strike', 'момент — орбитальный удар');
+    eq(trig.steps[0].op, 'strikeAllAtt', 'это не заглушка');
+    // The strike itself: the same ships and the same roll, with the card and
+    // without it. Every cube of the roll is an attack when the card is used.
+    const build = allAtt => {
+        const st = FS_RULES.newGame({ seed: 3, interactiveSetup: false,
+            players: [{ faction: 'инквизиция', name: 'A' }, { faction: 'орки', name: 'B' }] });
+        st.units = [];
+        const sys = st.systems[0];
+        const v = sys.areas.find(a => !a.world);
+        const w = sys.areas.find(a => a.world);
+        const ship = FS_DATA.factions.find(f => f.id === 'инквизиция').units.find(u => u.type === 'ship');
+        const grunt = FS_DATA.factions.find(f => f.id === 'орки').units.find(u => u.type === 'ground');
+        unit(st, 0, ship.id, sys.id, v.pos);
+        unit(st, 1, grunt.id, sys.id, w.pos);
+        st.phase = 'operations'; st.turn = 0;
+        st.order = { seat: 0, order: 'advance', system: sys.id, phase: 'strike' };
+        if (allAtt) FS_EFFECTS.run(FS_RULES, st, 0, trig.steps, { kind: 'order' });
+        // The roll is forced for this one strike, and the dice of the whole
+        // audit are restored right after it: a rule must not leak into the
+        // rules that run after it.
+        const roll = FS_RULES.rollDice;
+        FS_RULES.rollDice = (s2, n) => Array.from({ length: n }, () => 'def');
+        try {
+            FS_RULES.apply(st, 0, { type: 'orbitalStrike', system: sys.id, pos: w.pos, from: v.pos });
+        } finally {
+            FS_RULES.rollDice = roll;
+        }
+        const log = st.log.map(x => x.text || x).find(t => /орбитальный удар/.test(t)) || '';
+        return Number((/\d+/.exec(String(log)) || [0])[0]);
+    };
+    eq(build(false), 0, 'без карты кубики обороны не бьют');
+    eq(build(true), 2, 'с картой все кубики бьют');
 });
 
 rule('plan-0a', '«Триумфальный отход»: сброс карты собирает маркер цели в дружественном мире активной системы', () => {
@@ -1548,7 +1590,7 @@ rule('scheme-0a', 'Событие-план: у каждой карты-план�
     }
     // The plans the engine cannot perform yet are named one by one: the list
     // may only shrink, and every card in it is a known TODO, not a surprise.
-    const known = ['Экстерминатус', 'Варбосс', 'Обход',
+    const known = ['Варбосс', 'Обход',
         'Несокрушимая вера', 'Псионическая война'];
     const extra = silent.filter(n => !known.includes(n));
     eq(extra.join(', '), '', 'новых карт-планов без действия нет');

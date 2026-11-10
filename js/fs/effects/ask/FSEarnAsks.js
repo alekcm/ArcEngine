@@ -5,9 +5,23 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class EarnAsks {
-    static ops = ['nothing', 'gainMateriel', 'gainAsset', 'takeFoeAsset', 'payMateriel', 'loseAsset', 'gainWorldAssets', 'gainSystemMateriel', 'exchangeMateriel', 'exchangeAsset', 'gainByUnit', 'spendTempMateriel', 'dropTempMateriel', 'collectObjective'];
+    static ops = ['nothing', 'gainMateriel', 'gainAsset', 'takeFoeAsset', 'payMateriel', 'loseAsset', 'gainWorldAssets', 'gainSystemMateriel', 'exchangeMateriel', 'exchangeAsset', 'gainByUnit', 'spendTempMateriel', 'dropTempMateriel', 'collectObjective', 'strikeAllAtt'];
 
     static nothing() {
+        return null;
+    }
+
+    // «…перевернуть все ваши кубики, которые вы бросали, на `att. cube`»
+    // («Экстерминатус»): nothing to choose, so the work is done here — a step
+    // whose branch asks no question is never handed to its executor.
+    static strikeAllAtt(effects, f) {
+        const { R, state, seat, step } = f;
+        if (!state.order || !OrderContext.of(state.order).isSeat(seat)) return null;
+        if (!StrikePlan.of(state.order).allAtt) {
+            StrikePlan.of(state.order).setAllAtt(true);
+            R.log(state, seat, state.players[seat].name + ': все кубики удара будут атакой.');
+        }
+        step.done = true;
         return null;
     }
 

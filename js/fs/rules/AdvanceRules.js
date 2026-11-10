@@ -515,7 +515,12 @@ class AdvanceRules {
             const def = this.engine.unitOf(state, u);
             return n + (def ? def.combat : 0);
         }, 0);
-        const dice = this.engine.rollDice(state, Math.min(offence, this.engine.DICE_MAX));
+        let dice = this.engine.rollDice(state, Math.min(offence, this.engine.DICE_MAX));
+        // «…перевернуть все ваши кубики, которые вы бросали, на `att. cube`»
+        // («Экстерминатус»): the card is used before the strike, and every cube
+        // of the roll becomes a hit. The faces stay in the roll: the cards that
+        // pay with `def. cube` have nothing to pay with after this one.
+        if (strike.spendAllAtt()) dice = dice.map(() => 'att');
         // The cube of «Набега жнецов» adds its own hit to the strike.
         const bonus = strike.spendBonus();
         const hits = dice.filter(d => d === 'att').length + bonus;

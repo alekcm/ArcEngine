@@ -120,6 +120,16 @@ class StrikePlan {
         return this.order.strikeReward || null;
     }
 
+    /** «…перевернуть все ваши кубики, которые вы бросали, на `att. cube`» («Экстерминатус»). */
+    setAllAtt(on) {
+        this.order.strikeAllAtt = on !== false;
+        return this;
+    }
+
+    get allAtt() {
+        return !!this.order.strikeAllAtt;
+    }
+
     /** The cubes a card has added to the pool of this strike. */
     addDice(faces) {
         this.order.strikeDice = (this.order.strikeDice || []).concat(faces || []);
@@ -254,6 +264,13 @@ class StrikePlan {
     reset() {
         this.order.strikeFirstAsked = false;
         return this;
+    }
+
+    /** «Экстерминатус» is used by ONE strike: the roll takes the word. */
+    spendAllAtt() {
+        const on = this.allAtt;
+        this.order.strikeAllAtt = false;
+        return on;
     }
 }
 

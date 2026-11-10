@@ -3487,6 +3487,12 @@ const RULES = [
         re: /уничтожить\s+(?:1|одну)\s+постройку\s+в\s+этом\s+мире/i,
         build: () => ({ op: 'destroyStructureHere', n: 1, who: 'me' }),
     },
+    // «…перевернуть все ваши кубики, которые вы бросали, на `att. cube`»
+    // («Экстерминатус»): every cube of the strike that is being rolled.
+    {
+        re: /перевернуть\s+все\s+ваши\s+кубики[^.]*?на\s+`?att\.?\s*cube`?/i,
+        build: () => ({ op: 'strikeAllAtt', who: 'me' }),
+    },
     // «…собрать маркер цели Инквизиции в дружественном мире в активной
     // системе» («Триумфальный отход»): the token of the named faction.
     {
