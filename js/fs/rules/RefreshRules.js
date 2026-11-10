@@ -61,6 +61,26 @@ class RefreshRules {
             : 'Игра закончена. Побеждает ' + nameOf(outcome.winner) + (why ? ': ' + why : '') + '.');
     }
 
+    // «…чтобы собрать маркер цели … в дружественном мире» («Триумфальный
+    // отход»): the token leaves the board and lies on the sheet of its owner.
+    // The refresh phase collects the tokens of the worlds a player controls —
+    // a card that collects them earlier does the very same thing, so the rule
+    // lives here, once, and the card only names the token.
+    collectObjective(state, objectiveId, seat) {
+        const at = (state.objectives || []).findIndex(o => o.id === objectiveId);
+        if (at < 0) return false;
+        const obj = state.objectives[at];
+        const p = state.players[seat];
+        if (!p) return false;
+        state.objectives.splice(at, 1);
+        p.objectives = (p.objectives || 0) + 1;
+        const sys = this.engine.system(state, obj.system);
+        const area = sys ? this.engine.area(sys, obj.area) : null;
+        this.engine.log(state, seat, p.name + ' собирает маркер цели'
+            + (area && area.world ? ' с мира ' + area.world.name : '') + '.');
+        return true;
+    }
+
     startRefresh(state) {
         GamePhase.of(state).start(GamePhase.REFRESH);
         this.engine.closeOrder(state);

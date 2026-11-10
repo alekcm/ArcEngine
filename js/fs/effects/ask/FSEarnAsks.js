@@ -5,10 +5,34 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class EarnAsks {
-    static ops = ['nothing', 'gainMateriel', 'gainAsset', 'takeFoeAsset', 'payMateriel', 'loseAsset', 'gainWorldAssets', 'gainSystemMateriel', 'exchangeMateriel', 'exchangeAsset', 'gainByUnit', 'spendTempMateriel', 'dropTempMateriel'];
+    static ops = ['nothing', 'gainMateriel', 'gainAsset', 'takeFoeAsset', 'payMateriel', 'loseAsset', 'gainWorldAssets', 'gainSystemMateriel', 'exchangeMateriel', 'exchangeAsset', 'gainByUnit', 'spendTempMateriel', 'dropTempMateriel', 'collectObjective'];
 
     static nothing() {
         return null;
+    }
+
+    // «собрать маркер цели Инквизиции в дружественном мире в активной системе»:
+    // the tokens of that faction that stand in the friendly worlds of the
+    // active system; without one there is nothing to collect.
+    static collectObjective(effects, f) {
+        const { R, state, seat, step } = f;
+        const active = state.order ? OrderContext.of(state.order).system : null;
+        const list = (state.objectives || []).filter(o => {
+            if (step.faction && o.faction !== step.faction) return false;
+            if (active && o.system !== active) return false;
+            return R.control(state, seat, o.system, o.area) === 'friendly';
+        });
+        if (!list.length) return null;
+        if (list.length === 1) {
+            // A step without a question is performed HERE: `run` moves on to the
+            // next step without calling the executor of a step that asks nothing.
+            step.objective = list[0].id;
+            step.done = true;
+            R.collectObjective(state, step.objective, seat);
+            return null;
+        }
+        return { question: { kind: 'structures', who: seat, op: 'collectObjective',
+            options: list.map(o => o.id), text: 'Какой маркер цели собрать?' } };
     }
 
     static gainMateriel(effects, f) {

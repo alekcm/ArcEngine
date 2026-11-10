@@ -5,12 +5,25 @@
 // приходит параметром effects, а общая рамка шага — объектом f (FSStepContext).
 
 class GainSteps {
-    static ops = ['nothing', 'gainAsset', 'takeFoeAsset', 'exchangeMateriel', 'exchangeAsset', 'loseAsset', 'gainWorldAssets', 'gainSystemMateriel', 'gainByUnit'];
+    static ops = ['nothing', 'gainAsset', 'takeFoeAsset', 'exchangeMateriel', 'exchangeAsset', 'loseAsset', 'gainWorldAssets', 'gainSystemMateriel', 'gainByUnit', 'collectObjective'];
 
     // «Затем получите такой же жетон» — the text is performed by the step that
     // came before it (`takeFoeAsset` gives the copy); this step marks the
     // sentence as read, so it is not a stub and the player still sees it.
     static nothing() {
+        return null;
+    }
+
+    // «…собрать маркер цели Инквизиции в дружественном мире в активной системе»
+    // («Триумфальный отход»): the token of the asked faction lies in a world the
+    // player controls. The token is taken by the rules (R.collectObjective), the
+    // step only says which one.
+    static collectObjective(effects, f) {
+        const { R, state, seat, step, answer } = f;
+        const id = answer.objective || step.objective;
+        if (!id) return null;
+        R.collectObjective(state, id, seat);
+        step.done = true;
         return null;
     }
 

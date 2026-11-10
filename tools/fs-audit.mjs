@@ -1299,6 +1299,28 @@ rule('play-0b', 'события и приказы доигрываются до 
     eq(broken.join('; ') || '—', '—', 'ни одно событие и ни один приказ не застряли');
 });
 
+rule('plan-0a', '«Триумфальный отход»: сброс карты собирает маркер цели в дружественном мире активной системы', () => {
+    const card = FS_DATA.events.find(c => /Триумфальный отход/.test(c.name));
+    const steps = FS_EFFECTS.parse(card.text, { kind: 'event', faction: card.faction });
+    const trig = steps.find(x => x.op === 'trigger');
+    eq(!!trig && !!trig.steps.length, true, 'у плана есть тело');
+    eq(trig.steps[0].op, 'collectObjective', 'это сбор маркера цели, а не заглушка');
+    eq(trig.steps[0].faction, 'инквизиция', 'маркер именно Инквизиции');
+    // The token of the friendly world is collected, the token of the enemy
+    // world stays: the rule of the token is the refresh phase's own.
+    const st = FS_RULES.newGame({ seed: 5, interactiveSetup: false,
+        players: [{ faction: 'инквизиция' }, { faction: 'орки' }] });
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    st.objectives.push({ id: 'obj-a', faction: 'инквизиция', system: sys.id, area: pos });
+    st.objectives.push({ id: 'obj-b', faction: 'инквизиция', system: st.systems[3].id, area: worldOf(st, st.systems[3].id) });
+    st.order = { seat: 0, order: 'advance', system: sys.id, phase: 'resolve' };
+    FS_EFFECTS.run(FS_RULES, st, 0, trig.steps, { kind: 'event' });
+    eq(st.players[0].objectives, 1, 'свой маркер собран');
+    eq(st.objectives.some(o => o.id === 'obj-a'), false, 'он ушёл с доски');
+    eq(st.objectives.some(o => o.id === 'obj-b'), true, 'чужой мир не тронут');
+});
+
 rule('play-0a', 'каждая боевая карта доигрывается до конца: движок отвечает на её вопросы без ошибок', () => {
     // A card that asks a question is answered the way the panel answers it: the
     // first option, every die it names. The engine must not refuse an answer it
@@ -1527,7 +1549,7 @@ rule('scheme-0a', 'Событие-план: у каждой карты-план�
     // The plans the engine cannot perform yet are named one by one: the list
     // may only shrink, and every card in it is a known TODO, not a surprise.
     const known = ['Экстерминатус', 'Варбосс', 'Обход',
-        'Несокрушимая вера', 'Псионическая война', 'Триумфальный отход'];
+        'Несокрушимая вера', 'Псионическая война'];
     const extra = silent.filter(n => !known.includes(n));
     eq(extra.join(', '), '', 'новых карт-планов без действия нет');
     return eq(silent.length <= known.length, true, 'карты без действия перечислены (' + silent.length + ')');

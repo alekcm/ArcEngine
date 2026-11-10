@@ -3487,6 +3487,22 @@ const RULES = [
         re: /уничтожить\s+(?:1|одну)\s+постройку\s+в\s+этом\s+мире/i,
         build: () => ({ op: 'destroyStructureHere', n: 1, who: 'me' }),
     },
+    // «…собрать маркер цели Инквизиции в дружественном мире в активной
+    // системе» («Триумфальный отход»): the token of the named faction.
+    {
+        re: /собрать\s+маркер\s+цели\s+([А-ЯЁ][а-яёa-z]+)/i,
+        build: (m) => {
+            // The card names the faction in a case of the sentence («цели
+            // Инквизиции»): the id of the faction is found by the same name
+            // matcher the units use, not by the letters as they are.
+            // The data is read through the catalogue (the smoke test keeps
+            // FS_DATA out of the engine's own files).
+            const word = m[1];
+            const fits = FS_CATALOG.factions.find(x => FS_EFFECTS.sameName(x.id, word)
+                || FS_EFFECTS.sameName(x.name || '', word));
+            return { op: 'collectObjective', faction: fits ? fits.id : word.toLowerCase(), who: 'me' };
+        },
+    },
     // «Затем получите такой же жетон» — the second half of the steal: the
     // step of `takeFoeAsset` already gives the copy, so the sentence adds
     // nothing and must not stay a stub (the player sees the text either way).
