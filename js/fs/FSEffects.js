@@ -3228,6 +3228,12 @@ const RULES = [
         re: /переверн[а-яёa-z]*\s+любое количество\s*`([^`]+)`\s*на\s*`([^`]+)`/i,
         build: m => ({ op: 'flipDie', n: 99, kind: FS_EFFECTS.icon(m[1]), to: FS_EFFECTS.icon(m[2]), all: true, pick: true }),
     },
+    // «… выполнить приказ продвижения в любой системе, содержащей не менее
+    // 2-х ваших отрядов» («Вперёд!»).
+    {
+        re: /выполнить\s+приказ\s+продвижения\s+в\s+любой\s+системе,\s+содержащей\s+не\s+менее\s+(\d+)/i,
+        build: m => ({ op: 'advanceFromPlan', minUnits: Number(m[1]) || 2, who: 'me' }),
+    },
     // «Вместо размещения жетона приказа во время Фазы Планирования вы можете
     // сбросить эту карту» («Видения Комморры»): the plan IS the extra order
     // token of that phase — the card names no other effect.

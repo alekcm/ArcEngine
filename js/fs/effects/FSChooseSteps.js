@@ -5,7 +5,7 @@
 // приходит параметром effects, а общая рамка шага — объектом f (FSStepContext).
 
 class ChooseSteps {
-    static ops = ['choice', 'chooseSystem', 'chooseFoe', 'chooseWorld', 'foeAllow', 'lookEvents', 'sequence', 'restore', 'damageFirst', 'limitedOrder', 'stormReaction', 'strikeRouteDamaged', 'strikeFirstPick', 'strikeDestroyOne', 'guardDeploy', 'preAdvance'];
+    static ops = ['advanceFromPlan', 'choice', 'chooseSystem', 'chooseFoe', 'chooseWorld', 'foeAllow', 'lookEvents', 'sequence', 'restore', 'damageFirst', 'limitedOrder', 'stormReaction', 'strikeRouteDamaged', 'strikeFirstPick', 'strikeDestroyOne', 'guardDeploy', 'preAdvance'];
 
     static choice(effects, f) {
         const { R, state, seat, step, answer, ctx } = f;
@@ -115,6 +115,23 @@ class ChooseSteps {
         R.log(state, seat, p.name + ' готовит ограниченный приказ: '
             + (step.text || step.kind) + '.');
         return null;
+    }
+
+    // «Вместо раскрытия приказа во время фазы действий вы можете сбросить эту
+    // карту для того, чтобы выполнить приказ продвижения в любой системе,
+    // содержащей не менее 2-х ваших отрядов» («Вперёд!»): the plan replaces the
+    // reveal — the order begins, and the plan does NOT take the turn with it.
+    static advanceFromPlan(effects, f) {
+        const { R, state, seat, answer, p } = f;
+        const id = answer.system || (answer.choice !== undefined && typeof answer.choice === 'string' ? answer.choice : null);
+        const sys = state.systems.find(x => x.id === id);
+        if (!sys) return null;
+        OrderScheme.of(state).clearAccepted();
+        if (typeof R.startQuickResponse === 'function') {
+            R.startQuickResponse(state, seat, sys.id);
+        }
+        R.log(state, seat, p.name + ' выполняет «Вперёд!»: приказ продвижения в системе.');
+        return { replace: [] };
     }
 
     static stormReaction(effects, f) {

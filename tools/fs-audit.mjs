@@ -1241,6 +1241,26 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
 });
 
+rule('scheme-0b', '«… выполнить приказ продвижения в любой системе, содержащей не менее 2-х ваших отрядов» (Вперёд!)', () => {
+    const card = ctx.FS_DATA.events.find(c => c.name === 'Вперёд!');
+    const trig = ctx.FS_EFFECTS.parse(card.text, { kind: 'event', faction: card.faction }).find(s => s.op === 'trigger');
+    eq(!!trig && trig.note, false, 'у плана есть действие');
+    eq(trig.steps.map(s => s.op).join(','), 'advanceFromPlan', 'это продвижение из плана');
+    const st = FS_RULES.newGame({ seed: 13, players: [
+        { name: 'О', faction: 'орки' }, { name: 'И', faction: 'инквизиция' }], interactiveSetup: false });
+    const bySys = new Map();
+    for (const u of st.units.filter(u => u.seat === 0)) bySys.set(u.system, (bySys.get(u.system) || 0) + 1);
+    const one = [...bySys.entries()].find(([, n]) => n >= 2);
+    eq(!!one, true, 'есть система с двумя отрядами');
+    FS_RULES.runEffects(st, 0, trig.steps, { kind: 'event' });
+    eq(st.pending.question.kind, 'systems', 'спросили систему');
+    eq(st.pending.question.options.includes(one[0]), true, 'система с двумя отрядами предложена');
+    FS_RULES.apply(st, 0, { type: 'effect', answer: { system: one[0] } });
+    eq(st.order && st.order.order, 'advance', 'начался приказ продвижения');
+    eq(st.order.fromEvent, true, 'и он вернёт игру в фазу событий');
+    return eq(st.order.system, one[0], 'в выбранной системе');
+});
+
 rule('scheme-0a', 'Событие-план: у каждой карты-плана в движке есть хотя бы одно действие, ни одна не остаётся только заглушкой', () => {
     // A plan whose whole text is `scheme` + `trigger` + `note` does nothing at
     // all when the player discards it: the class of «Пожиратель миров», where
@@ -1264,7 +1284,7 @@ rule('scheme-0a', 'Событие-план: у каждой карты-план�
     }
     // The plans the engine cannot perform yet are named one by one: the list
     // may only shrink, and every card in it is a known TODO, not a surprise.
-    const known = ['Экстерминатус', 'Вперёд!', 'Варбосс', 'Обход',
+    const known = ['Экстерминатус', 'Варбосс', 'Обход',
         'Несокрушимая вера', 'Псионическая война', 'Триумфальный отход'];
     const extra = silent.filter(n => !known.includes(n));
     eq(extra.join(', '), '', 'новых карт-планов без действия нет');

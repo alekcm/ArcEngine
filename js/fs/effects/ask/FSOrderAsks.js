@@ -5,7 +5,7 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class OrderAsks {
-    static ops = ['klBonus', 'extraFactory', 'orderDiscount', 'purchaseDiscount', 'prepReroll', 'assetLimit', 'healthBonus', 'enemyHealth', 'citiesAsFactories', 'bastionsAsFactories', 'extraOrderTokens', 'extraCombatCards', 'moveLimit', 'mustInclude', 'retreatExcess', 'uncontrolledMarch', 'passVoid', 'freeStructure', 'structureFirst', 'capacityBonus', 'cheapUnit', 'upgradeLimit', 'costDiscount', 'supplyDeal', 'deployInFactoryWorld', 'shipsThroughStorms', 'deployLimit', 'orderKl', 'putOrderTokensOnDeck', 'strategizeDeckBonus', 'unitsThroughStorms', 'restoreRetreated', 'restoreFallen', 'resurrect', 'stormReaction', 'noRoute'];
+    static ops = ['advanceFromPlan', 'klBonus', 'extraFactory', 'orderDiscount', 'purchaseDiscount', 'prepReroll', 'assetLimit', 'healthBonus', 'enemyHealth', 'citiesAsFactories', 'bastionsAsFactories', 'extraOrderTokens', 'extraCombatCards', 'moveLimit', 'mustInclude', 'retreatExcess', 'uncontrolledMarch', 'passVoid', 'freeStructure', 'structureFirst', 'capacityBonus', 'cheapUnit', 'upgradeLimit', 'costDiscount', 'supplyDeal', 'deployInFactoryWorld', 'shipsThroughStorms', 'deployLimit', 'orderKl', 'putOrderTokensOnDeck', 'strategizeDeckBonus', 'unitsThroughStorms', 'restoreRetreated', 'restoreFallen', 'resurrect', 'stormReaction', 'noRoute'];
 
     static klBonus(effects, f) {
         const { R, state, seat, step, ctx, p } = f;
@@ -93,6 +93,24 @@ class OrderAsks {
         const limits = DeployLimits.of(state.order);
         if (limits) limits.setBastionsAsFactories();
         return null;
+    }
+
+    // «… в любой системе, содержащей не менее 2-х ваших отрядов» («Вперёд!»).
+    static advanceFromPlan(effects, f) {
+        const { R, state, seat, step } = f;
+        const need = step.minUnits === undefined ? 2 : step.minUnits;
+        const seen = new Map();
+        for (const u of state.units) {
+            if (u.seat !== seat) continue;
+            seen.set(u.system, (seen.get(u.system) || 0) + 1);
+        }
+        const options = [...seen.entries()].filter(([, n]) => n >= need).map(([id]) => id);
+        if (!options.length) {
+            R.log(state, seat, state.players[seat].name + ': нет системы с ' + need + ' отрядами для «Вперёд!».');
+            return null;
+        }
+        return { question: { kind: 'systems', who: seat, op: 'advanceFromPlan', options,
+            text: 'В какой системе выполнить продвижение?' } };
     }
 
     static extraOrderTokens(effects, f) {
