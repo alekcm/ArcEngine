@@ -34,7 +34,7 @@ const load = (file, name) => vm.runInContext(
 for (const file of ['js/fs/FSView.js', 'js/fs/FSGame.js']) {
     if (fs.existsSync(path.join(ROOT, file))) load(file, file.split('/').pop().replace(/\.js$/, ''));
 }
-const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase } = ctx;
+const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens } = ctx;
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m' };
@@ -51,6 +51,11 @@ let group = '';
 // The sections of a faction: a run checks the cards of one faction, the sections
 // of the others are skipped.
 let groupFaction = null;
+
+/** The reinforcement tokens of the foe of the combat: used, routed, destroyed. */
+function ctxLosses(st) {
+    return CombatTokens.of(st.combat).units('defender');
+}
 
 /** A necron order of the given kind, with one upgrade card ready to play. */
 function necronOrder(kind, card) {
@@ -2706,6 +2711,43 @@ check('Врата вечности', 'отряд КЛ 0–1 идёт из мир
         : firstOption(s2, qq)));
     eq(u.area, withMono, 'отряд встал в мир с Монолитом');
     return eq(u.system, sys.id, 'и остался в активной системе');
+});
+check('Гибельные косы', 'план: деморализовать до 2 своих — противник теряет жетон подкрепления за каждый', () => {
+    const st = eventState('Гибельные косы', { faction: 'некроны' });
+    const sys = st.systems[0];
+    const w = worldOf(st, sys.id);
+    ok(playEvent(st).ok, 'событие не разыграно');
+    // Карта с типом «план» остаётся в игровой зоне.
+    const plan = (st.players[0].schemes || []).find(x => x.name === 'Гибельные косы');
+    ok(!!plan, 'карта не стала планом');
+    eq(plan.trigger, 'round', 'план ждёт начала раунда боя');
+    // Бой: план предлагается уже на старте.
+    st.units = [];
+    for (let i = 0; i < 2; i++) FS_RULES.addUnit(st, 0, 'воины', sys.id, w);
+    for (let i = 0; i < 2; i++) FS_RULES.addUnit(st, 1, 'гвардейцы', sys.id, w);
+    st.phase = 'operations';
+    st.turn = 0;
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos: w, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    ok(!!st.combat, 'бой не начался');
+    // Жетоны кладутся на стол боя их владельцем: карта уничтожает жетоны в
+    // области, а не в запасе.
+    st.players[1].assets.reinforcement = 2;
+    FS_RULES.apply(st, 1, { type: 'combat', action: 'reinforce', count: 2 });
+    const q = pending(st);
+    ok(!!q && q.kind === 'scheme', 'план не предложен в начале раунда');
+    answerAll(st, (s2, qq) => {
+        if (qq.kind === 'scheme') return { choice: 0 };
+        if (qq.op === 'route') return { units: (qq.options || []).slice(0, 2) };
+        return firstOption(s2, qq);
+    });
+    const routed = st.units.filter(u => u.seat === 0 && u.routed);
+    eq(routed.length, 2, 'деморализованы оба названных отряда');
+    // «противник уничтожит 1 жетон подкрепления за каждый отряд».
+    const lost = ctxLosses(st);
+    eq(lost.destroyed, 2, 'противник потерял два жетона подкрепления');
+    ok(!(st.players[0].schemes || []).some(x => x.name === 'Гибельные косы'), 'израсходованный план сброшен');
+    return eq(lost.alive, 0, 'на столе не осталось живых жетонов');
 });
 check('Миры-гробницы', 'доп. бастион покупается только после покупки приказом', () => {
     const st = necronDeploy();
