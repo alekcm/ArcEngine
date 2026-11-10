@@ -24,7 +24,7 @@ const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
     BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound, StrikeDamage,
-    BattleTest, Chance } = ctx;
+    BattleTest, Chance, PreAdvance } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1239,6 +1239,33 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(others.opener((st, seat) => seat), 0, 'планирование начнёт игрок перед ним');
     eq(others.opener((st, seat) => 2), 2, 'или тот, кого назовёт nextPlanner');
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
+});
+
+rule('pre-0a', '«resolve an advance order with one unit, then go back» — дополнительное продвижение держит PreAdvance', () => {
+    const main = { seat: 0, order: 'advance', system: 's1' };
+    const state = { order: main };
+    const pre = PreAdvance.of(state);
+    eq(PreAdvance.of(state), pre, 'у партии одно отложенное продвижение');
+    eq(PreAdvance.of(null), null, 'без состояния продвижения нет');
+    // No order waits while the main one is being resolved.
+    eq(pre.suspended, false, 'приказ не отложен');
+    eq(pre.held, null, 'и держать нечего');
+    // «Мобилизированные охотники»: the main order goes away for the extra one.
+    pre.suspend(main);
+    state.order = { seat: 0, order: 'advance', system: 's2', maxKl: 1 };
+    eq(pre.suspended, true, 'основной приказ ждёт');
+    eq(pre.held, main, 'и это тот самый приказ');
+    eq(state.preAdvanceMain, main, 'он записан в состояние');
+    // The extra advance is over: the main one comes back, once.
+    eq(pre.resume(), main, 'основной приказ возвращается');
+    eq(pre.suspended, false, 'и больше не ждёт');
+    eq(pre.resume(), null, 'второй раз возвращать нечего');
+    // The main order remembers that it was here.
+    eq(pre.wasDone(main), false, 'дополнительного продвижения ещё не было');
+    pre.done(main);
+    eq(pre.wasDone(main), true, 'теперь было');
+    eq(main.preAdvanceDone, true, 'и это видно в приказе');
+    eq(pre.wasDone(null), false, 'у пустого приказа отметки нет');
 });
 
 rule('chance-0a', '«the same seed gives the same game» — броски и идентификаторы держит Chance', () => {

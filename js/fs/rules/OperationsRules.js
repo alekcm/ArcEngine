@@ -192,7 +192,7 @@ class OperationsRules {
     finishOrder(state, seat) {
         // «Мобилизированные охотники»: the extra advance (and a combat it may
         // start) ends here, but the MAIN advance of the same order goes on.
-        if (state.preAdvanceMain) {
+        if (PreAdvance.of(state).suspended) {
             this.engine.finishPreAdvance(state, seat);
             return;
         }

@@ -596,6 +596,29 @@ try {
     fail(e.message);
 }
 
+// --- the extra advance in the middle of an order: one object -----------------
+section('дополнительное продвижение: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSPreAdvance.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Основной приказ, отложенный на время дополнительного продвижения, —
+        // один объект PreAdvance: поле state.preAdvanceMain не трогают руками.
+        const re = /\bstate\.preAdvanceMain\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('отложенный приказ спрашивают у PreAdvance');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the dice and the ids of a game: one object -------------------------------
 section('броски и идентификаторы: один объект');
 try {

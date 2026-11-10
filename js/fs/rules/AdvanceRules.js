@@ -722,7 +722,7 @@ class AdvanceRules {
     startPreAdvance(state, seat) {
         const main = state.order;
         if (!main || main.order !== 'advance') return;
-        state.preAdvanceMain = main;
+        PreAdvance.of(state).suspend(main);
         MarchTrail.of(state).reset();
         /** @type {any} */
         const pre = {
@@ -766,11 +766,10 @@ class AdvanceRules {
 
     finishPreAdvance(state, seat) {
         const pre = state.order;
-        const main = state.preAdvanceMain;
-        delete state.preAdvanceMain;
+        const main = PreAdvance.of(state).resume();
         if (main) {
             MarchPlan.of(main).exclude(pre ? MarchPlan.of(pre).preAdvanceUnit : null);
-            main.preAdvanceDone = true;
+            PreAdvance.of(state).done(main);
             state.order = main;
             this.engine.log(state, seat, state.players[seat].name
                 + ' возвращается к основному приказу продвижения.');
