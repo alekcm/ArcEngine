@@ -2682,6 +2682,26 @@ check('Фаланга судного дня', 'противник теряет 1
     }
     return eq(st.units.some(u => u.id === foe.id), false, 'деморализованный отряд уничтожен в конце раунда');
 });
+check('Вечное завоевание', 'восстановление отряда + по кубику атаки за каждый morale cube, если в бою нужный отряд', () => {
+    const st = battle({
+        faction: 'некроны', foeFaction: 'имперская-гвардия',
+        units: { 'воины': 2, 'монолиты': 1 }, foeUnits: { 'гвардейцы': 2 },
+        card: 'Вечное завоевание',
+    });
+    const c = st.combat;
+    c.dice.attacker = ['morale', 'morale', 'morale', 'att'];
+    routeMine(st, 0);
+    eq(myUnits(st).filter(u => u.routed).length, 1, 'один свой отряд деморализован');
+    const attBefore = count(st, 'attacker', 'att');
+    play(st, 0, 0, (s2, q) => {
+        if (q.kind === 'units') return { units: (q.options || []).slice(0, 1) };
+        return firstOption(s2, q);
+    });
+    eq(myUnits(st).filter(u => u.routed).length, 0, 'деморализованный отряд восстановлен');
+    // Три `morale cube` на столе — три кубика атаки.
+    return eq(count(st, 'attacker', 'att'), attBefore + 3, 'по кубику атаки за каждый morale cube');
+});
+
 check('Рой каноптепов', 'бесплатный жетон подкрепления ставится в эту область и не тратит запас', () => {
     const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Рой каноптепов' });
     const before = st.players[0].assets.reinforcement;
