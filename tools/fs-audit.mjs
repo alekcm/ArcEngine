@@ -3376,6 +3376,31 @@ rule('cap-1', '«he must destroy units of his choice in that area» — отря
     eq(st.units.filter(u => u.seat === 0).length, cap + 1, 'отряд убран');
 });
 
+rule('struct-1b', '«Bastion: combat 2, health 3, morale 2» (07-tokens.md) — характеристики построек в одном месте', () => {
+    // Таблица характеристик построек — фундамент: цена покупки, бой и прочность
+    // бастиона, имя на панели. Ни одна проверка не смотрела на неё целиком:
+    // подмена `structureName` на «просто тип» проходила молча.
+    const stats = type => FS_RULES.structureStats(type);
+    // Цены (07-tokens.md): город 3, фабрика 2, бастион 2.
+    eq(stats('city').cost, 3, 'город — 3 материи');
+    eq(stats('factory').cost, 2, 'фабрика — 2 материи');
+    eq(stats('bastion').cost, 2, 'бастион — 2 материи');
+    // Бастион считается отрядом: бой 2, прочность 3, мораль 2.
+    eq([stats('bastion').combat, stats('bastion').health, stats('bastion').morale], [2, 3, 2],
+        'бастион: бой 2, прочность 3, мораль 2');
+    // «Бастион не может отступать и деморализоваться» — у него нет отступления,
+    // зато есть боевой дух; город и фабрика в бою не участвуют.
+    eq([stats('city').combat, stats('factory').combat], [0, 0], 'город и фабрика не бьют');
+    // Имена: у каждой постройки есть человеческое имя, и оно не совпадает с
+    // машинным ключом (иначе панель покажет «bastion»).
+    for (const type of ['bastion', 'city', 'factory']) {
+        const name = FS_RULES.structureName(type);
+        eq(!!name && name !== type, true, 'имя постройки ' + type + ': ' + name);
+    }
+    // Неизвестный вид не ломает панель: движок отдаёт фабрику, а имя — сам вид.
+    eq(FS_RULES.structureStats('нет-такой').cost, stats('factory').cost, 'неизвестная постройка — как фабрика');
+});
+
 rule('asset-3', '«A player cannot have more than three asset tokens of the same kind» — учёт жетонов игрока в одном месте', () => {
     // PlayerEntity держит все жетоны: материалы, кузню, тайники, подкрепление.
     // Шесть его методов не ловила ни одна проверка: «предел не применяется»,
