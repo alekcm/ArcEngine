@@ -3376,6 +3376,46 @@ rule('cap-1', '«he must destroy units of his choice in that area» — отря
     eq(st.units.filter(u => u.seat === 0).length, cap + 1, 'отряд убран');
 });
 
+rule('asset-3', '«A player cannot have more than three asset tokens of the same kind» — учёт жетонов игрока в одном месте', () => {
+    // PlayerEntity держит все жетоны: материалы, кузню, тайники, подкрепление.
+    // Шесть его методов не ловила ни одна проверка: «предел не применяется»,
+    // «списание уводит в минус», «жетон любого вида не тратится» проходили.
+    const st = empty();
+    const p = FS_RULES.player(st, 0);
+    eq(!!p, true, 'игрок есть');
+    const kind = 'cache';
+    const limit = p.assetLimit(kind);
+    eq(limit, 3, 'предел жетонов одного вида');
+    // Набор: сверх предела не кладётся.
+    p.setAsset(kind, 0);
+    eq(p.addAsset(kind, 2), 2, 'положили два жетона');
+    eq(p.addAsset(kind, 5), 1, 'третий взялся, остальные потеряны');
+    eq(p.assetCount(kind), limit, 'больше предела не бывает');
+    eq(p.hasRoomFor(kind), false, 'места нет');
+    eq(p.freeAssetKinds([kind]).length, 0, 'вид не в списке свободных');
+    // Нехватка: платёж не проходит и ничего не тратит.
+    eq(p.payAsset(kind, limit + 1), false, 'заплатить больше, чем есть, нельзя');
+    eq(p.assetCount(kind), limit, 'и ничего не списалось');
+    eq(p.payAsset(kind, 1), true, 'по силам — платится');
+    eq(p.assetCount(kind), limit - 1, 'ровно один списан');
+    // Взять можно только то, что есть: ниже нуля не уходит.
+    eq(p.takeAsset(kind, 5), limit - 1, 'взяли всё, что было');
+    eq(p.assetCount(kind), 0, 'и в минус не ушли');
+    // «Жетон любого вида»: тратится первый доступный.
+    p.setAsset('forge', 0);
+    p.setAsset('reinforcement', 2);
+    eq(p.payAnyAsset(['forge', 'reinforcement']), 'reinforcement', 'взят тот вид, что есть');
+    eq(p.assetCount('reinforcement'), 1, 'и списан именно он');
+    eq(p.payAnyAsset(['forge']), null, 'пустой вид не отдаёт ничего');
+    // `setAsset` ставит точное число (сборка доски и проверки), но не минус.
+    p.setAsset(kind, -2);
+    eq(p.assetCount(kind), 0, 'отрицательное число жетонов не ставится');
+    p.setAsset(kind, 2);
+    eq(p.assetCount(kind), 2, 'точное число ставится как есть');
+    // Название жетона для панели — тоже отсюда.
+    eq(p.assetName('forge'), FS_RULES.assetName('forge'), 'имя жетона одно на движок и панель');
+});
+
 rule('geo-1', '«A tile may be rotated» — поворот тайла переносит миры и границы, а не только подпись', () => {
     // Геометрия тайла (TileGeometry) держит соседство, границы и поворот, и не
     // проверялась ни одним правилом: «поворот ничего не делает» проходило.
