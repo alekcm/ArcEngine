@@ -1265,6 +1265,84 @@ rule('ask-0a', 'таблица вопросов не содержит заглу
     eq(missing.join(', ') || '—', '—', 'у каждого имени в ops есть метод');
 });
 
+rule('play-0b', 'события и приказы доигрываются до конца: каждый вопрос получает ответ движка', () => {
+    const answerFor = q => {
+        const o = (q && q.options) || [];
+        if (q && q.kind === 'dice') return { dice: o.slice(0, q.n || 1) };
+        return { units: o.slice(0, 1), cards: o.slice(0, 1), area: o[0], system: o[0],
+            asset: o[0], choice: 0, type: o[0], structures: o.slice(0, 1), yes: true };
+    };
+    const broken = [];
+    const decks = [[FS_DATA.events, 'event', 'text'], [FS_DATA.orders, 'order', 'text']];
+    for (const [pool, kind, field] of decks) {
+        for (const card of pool) {
+            if (!card[field]) continue;
+            const st = FS_RULES.newGame({ seed: 7, interactiveSetup: false,
+                players: [{ faction: card.faction || 'орки' }, { faction: 'инквизиция' }] });
+            st.phase = 'operations'; st.turn = 0;
+            try {
+                const steps = FS_EFFECTS.parse(card[field], { kind, faction: card.faction });
+                FS_EFFECTS.run(FS_RULES, st, 0, steps, { kind });
+                let guard = 0;
+                while (st.pending && guard++ < 30) {
+                    const q = st.pending.question;
+                    const r = FS_RULES.apply(st, q.who === undefined ? st.pending.seat : q.who,
+                        { type: 'effect', answer: answerFor(q) });
+                    if (!r.ok) { broken.push(card.name + ': ' + q.kind + '/' + q.op + ' → ' + r.error); break; }
+                }
+                if (guard >= 30) broken.push(card.name + ': зациклился на ' + (st.pending && st.pending.question.kind));
+            } catch (e) {
+                broken.push(card.name + ': ' + e.message);
+            }
+        }
+    }
+    eq(broken.join('; ') || '—', '—', 'ни одно событие и ни один приказ не застряли');
+});
+
+rule('play-0a', 'каждая боевая карта доигрывается до конца: движок отвечает на её вопросы без ошибок', () => {
+    // A card that asks a question is answered the way the panel answers it: the
+    // first option, every die it names. The engine must not refuse an answer it
+    // has just asked for — that is how a step that asks nothing (or asks the
+    // wrong seat) shows up on the real table.
+    const answerFor = q => {
+        const o = (q && q.options) || [];
+        if (q && q.kind === 'dice') return { dice: o.slice(0, q.n || 1) };
+        return { units: o.slice(0, 1), cards: o.slice(0, 1), area: o[0], system: o[0],
+            asset: o[0], choice: 0, type: o[0], structures: o.slice(0, 1), yes: true };
+    };
+    const broken = [];
+    for (const card of FS_DATA.combat) {
+        if (!card.faction) continue;
+        const foe = card.faction === 'орки' ? 'имперская-гвардия' : 'орки';
+        const cl0 = id => FS_DATA.factions.find(f => f.id === id).units.find(u => u.kl === 0 && u.type === 'ground').id;
+        const st = FS_RULES.newReadyGame({ seed: 11, players: [{ faction: card.faction, name: 'A' }, { faction: foe, name: 'B' }] });
+        st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+        for (const sys of st.systems) sys.tokens = [];
+        st.phase = 'operations'; st.turn = 0; st.order = null;
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        for (let i = 0; i < 2; i++) unit(st, 0, cl0(card.faction), sys.id, pos);
+        for (let i = 0; i < 2; i++) unit(st, 1, cl0(foe), sys.id, pos);
+        advance(st, 0, sys.id, pos);
+        const start = FS_RULES.apply(st, 0, { type: 'endAdvance' });
+        if (!start.ok) { broken.push(card.name + ': бой не начался'); continue; }
+        st.combat.cards.attacker.hand = [card.name];
+        st.combat.cards.defender.hand = [];
+        st.combat.step = 'choose-attacker';
+        FS_RULES.apply(st, 0, { type: 'combat', action: 'playCard', index: 0 });
+        FS_RULES.advanceCombatSteps(st);
+        let guard = 0;
+        while (st.pending && guard++ < 25) {
+            const q = st.pending.question;
+            const r = FS_RULES.apply(st, q.who === undefined ? st.pending.seat : q.who,
+                { type: 'effect', answer: answerFor(q) });
+            if (!r.ok) { broken.push(card.name + ': ' + q.kind + '/' + q.op + ' → ' + r.error); break; }
+        }
+        if (guard >= 25) broken.push(card.name + ': зациклился на ' + (st.pending && st.pending.question.kind));
+    }
+    eq(broken.join('; ') || '—', '—', 'ни одна боевая карта не застряла на своём же вопросе');
+});
+
 rule('avoid-0c', 'у каждого «может избежать» назван плательщик: чужая карта не платит за противника', () => {
     // «Он может избежать этого эффекта, если потратит 1 `def. cube`» — the
     // pronoun points back at the one the step was done to. A step without a
