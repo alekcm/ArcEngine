@@ -3200,7 +3200,10 @@ rule('combat-12', '«Any damage that exceeds a unit\'s or bastion\'s health valu
     // Теперь избыток настоящий: два Гвардейца (здоровье 1) под уроном 3.
     const st = groundBattle({ seed: 11 });
     eq(!!st.combat, true, 'бой начался');
-    while (st.combat && ctx.CombatTurn.of(st.combat).step !== 'damage-attacker') {
+    // Без счётчика поломка «карта боя не разыгрывается» вешала весь аудит
+    // навсегда вместо провала этой проверки: шаг урона не наступал никогда.
+    let guard = 0;
+    while (st.combat && ctx.CombatTurn.of(st.combat).step !== 'damage-attacker' && guard++ < 200) {
         const step = ctx.CombatTurn.of(st.combat).step;
         if (step === 'reinforce-attacker') FS_RULES.apply(st, 0, { type: 'combat', action: 'reinforce', count: 0 });
         else if (step === 'reinforce-defender') FS_RULES.apply(st, 1, { type: 'combat', action: 'reinforce', count: 0 });
