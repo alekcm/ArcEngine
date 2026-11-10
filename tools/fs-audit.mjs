@@ -305,6 +305,39 @@ rule('setup-2', '«He cannot exceed an area’s unit capacity» — при сб�
 // ============================================================================
 head('Планирование (Planning Phase)');
 
+rule('ops-1', '«The active player resolves one of his order tokens … then the next player …» — конец приказа передаёт ход, а последний приказ кончает фазу', () => {
+    // Переход хода не проверял никто: «ход не меняется» и «приказ закончился»
+    // проходили одинаково, потому что ни одна проверка не смотрела на очередь.
+    const st = empty(7);
+    for (const sys of st.systems) sys.tokens = [];
+    const a = st.systems[0], b = st.systems[1] || st.systems[0];
+    guard(st, 0, a.id, worldOf(st, a.id));
+    guard(st, 1, b.id, worldOf(st, b.id));
+    a.tokens = [{ seat: 0, order: 'advance', faceUp: false }];
+    b.tokens = [{ seat: 1, order: 'deploy', faceUp: false }];
+    st.phase = 'operations';
+    st.turn = 0;
+    // Ход игрока 0: приказ раскрывается.
+    eq(FS_RULES.hasOrderToResolve(st, 0), true, 'у seat 0 есть приказ');
+    eq(FS_RULES.hasOrderToResolve(st, 1), true, 'у seat 1 есть приказ');
+    const res = FS_RULES.apply(st, 0, { type: 'resolveOrder', system: a.id });
+    eq(res.ok, true, 'приказ раскрыт: ' + (res.error || ''));
+    eq(FS_RULES.hasOrderToResolve(st, 0), false, 'приказ seat 0 израсходован');
+    eq(GamePhase.of(st).turn, 0, 'пока приказ идёт, ход остаётся у него');
+    // Ход переходит, когда приказ ЗАКОНЧЕН, а не когда раскрыт.
+    const done = FS_RULES.apply(st, 0, { type: 'finishAdvance' });
+    eq(done.ok, true, 'наступление закончено: ' + (done.error || ''));
+    eq(GamePhase.of(st).turn, 1, 'ход перешёл к seat 1');
+    // Последний приказ: после него наступает фаза обновления.
+    st.order = null;
+    st.pending = null;
+    const last = FS_RULES.apply(st, 1, { type: 'resolveOrder', system: b.id });
+    eq(last.ok, true, 'второй приказ раскрыт: ' + (last.error || ''));
+    FS_RULES.apply(st, 1, { type: 'finishDeploy' });
+    eq(FS_RULES.hasOrderToResolve(st, 0), false, 'приказов не осталось');
+    eq(FS_RULES.hasOrderToResolve(st, 1), false, 'ни у кого');
+});
+
 rule('plan-1', '«A player must place his order token in either a system containing one of his units or structures, or a system adjacent to a system containing one of his units or structures.»', () => {
     const st = game();
     const mine = st.systems.filter(s => FS_RULES.hasUnitsOrStructures(st, 0, s.id));
@@ -3162,13 +3195,35 @@ rule('cap-3', '«This is only checked after resolving an order and at the end of
 });
 
 rule('refresh-1', '«Each player increases his materiel dial by … friendly worlds» + «cannot have more than 14 materiel»', () => {
+    // Доход = сумма значений материи на ВСЕХ своих мирах (правило Refresh Phase).
+    // Раньше проверялся только потолок 14: сама формула дохода не держалась
+    // ничем, и её снятие проходило молча.
     const st = empty();
-    const sys = st.systems[0];
-    const pos = worldOf(st, sys.id);
-    guard(st, 0, sys.id, pos);
-    st.players[0].materiel = 14;
+    const mine = [];
+    for (const sys of st.systems) {
+        const w = sys.areas.find(a => a.world && (a.world.materiel || 0) > 0);
+        if (w) { guard(st, 0, sys.id, w.pos); mine.push(w.world.materiel); }
+        if (mine.length >= 2) break;
+    }
+    eq(mine.length >= 1, true, 'на карте есть мир с материей');
+    const income = mine.reduce((a, b) => a + b, 0);
+    st.players[0].materiel = 0;
     FS_RULES.startRefresh(st);
-    eq(st.players[0].materiel, 14, 'потолок материи');
+    eq(st.players[0].materiel, Math.min(income, 14), 'доход равен сумме материи дружественных миров (' + income + ')');
+    // Потолок 14 — тоже правило, и он проверяется отдельно.
+    const cap = empty();
+    guard(cap, 0, cap.systems[0].id, worldOf(cap, cap.systems[0].id));
+    cap.players[0].materiel = 14;
+    FS_RULES.startRefresh(cap);
+    eq(cap.players[0].materiel, 14, 'потолок материи');
+    // Чужой мир дохода не даёт.
+    const foe = empty();
+    const sys2 = foe.systems[0];
+    const w2 = sys2.areas.find(a => a.world);
+    FS_RULES.addUnit(foe, 1, 'бойзы', sys2.id, w2.pos);
+    foe.players[0].materiel = 0;
+    FS_RULES.startRefresh(foe);
+    eq(foe.players[0].materiel, 0, 'материя чужого мира не достаётся');
 });
 
 rule('refresh-2', '«All players simultaneously rally each of his routed units»', () => {
