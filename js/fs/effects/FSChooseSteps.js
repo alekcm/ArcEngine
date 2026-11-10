@@ -39,7 +39,7 @@ class ChooseSteps {
         // «Выберите систему» («Пожиратель миров»): the steps that follow
         // read the choice. «Быстрый ответ» starts a limited advance in
         // the chosen system right after the choice.
-        if (answer.system) state.chosenSystem = answer.system;
+        if (answer.system) Choice.of(state).choose(answer.system);
         if (step.quickResponse && answer.system && typeof R.startQuickResponse === 'function') {
             R.startQuickResponse(state, seat, answer.system);
         }

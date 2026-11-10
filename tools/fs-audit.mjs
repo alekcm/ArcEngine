@@ -24,7 +24,7 @@ const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
     BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound, StrikeDamage,
-    BattleTest, Chance, PreAdvance } = ctx;
+    BattleTest, Chance, PreAdvance, Choice } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1239,6 +1239,40 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(others.opener((st, seat) => seat), 0, 'планирование начнёт игрок перед ним');
     eq(others.opener((st, seat) => 2), 2, 'или тот, кого назовёт nextPlanner');
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
+});
+
+rule('choose-0a', '«Получите материалы со всех дружественных миров этой системы» — выбор системы держит Choice', () => {
+    const state = { chosenSystem: null };
+    const choice = Choice.of(state);
+    eq(Choice.of(state), choice, 'у эффекта один выбор');
+    eq(Choice.of(null), null, 'без состояния выбора нет');
+    // Nothing is chosen yet: the effect that needs a system pays nothing.
+    eq(choice.has, false, 'система не выбрана');
+    eq(choice.system, null, 'и назвать нечего');
+    choice.choose('sys1');
+    eq(choice.has, true, 'система выбрана');
+    eq(choice.system, 'sys1', 'и это sys1');
+    eq(state.chosenSystem, 'sys1', 'выбор записан в состояние');
+    // The card «Пожиратель миров»: the materiel of every friendly world of
+    // the chosen system — not one token for the whole sentence.
+    const rules = /** @type {any} */ (ctx.FS_RULES);
+    const game = rules.newGame({ seed: 7, interactiveSetup: false, players: [
+        { name: 'Т', faction: 'тираниды' }, { name: 'И', faction: 'инквизиция' }] });
+    const sys = game.systems.find(x => x.areas.filter(a => a.world
+        && rules.control(game, 0, x.id, a.pos) === 'friendly').length > 1) || game.systems[0];
+    const friendly = sys.areas.filter(a => a.world && rules.control(game, 0, sys.id, a.pos) === 'friendly');
+    const sum = friendly.reduce((n, a) => n + (a.world.materiel || 0), 0);
+    Choice.of(game).choose(sys.id);
+    const before = game.players[0].materiel;
+    const effects = /** @type {any} */ (ctx.FS_EFFECTS);
+    effects.run(rules, game, 0,
+        [{ op: 'gainMateriel', nFromWorlds: 'chosenSystem', who: 'me' }], { kind: 'event' });
+    eq(game.players[0].materiel - before, sum, 'материя всех дружественных миров системы');
+    eq(sum > 1, true, 'и это больше одного жетона');
+    // The choice is spent by the effect that asked.
+    choice.clear();
+    eq(choice.has, false, 'выбор израсходован');
+    eq(state.chosenSystem, undefined, 'и поле снято');
 });
 
 rule('pre-0a', '«resolve an advance order with one unit, then go back» — дополнительное продвижение держит PreAdvance', () => {

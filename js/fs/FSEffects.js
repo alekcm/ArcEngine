@@ -1585,6 +1585,9 @@ const FS_EFFECTS = {
             index++;
         }
         Question.of(state).close();
+        // The system a «Выберите систему» step named belongs to that effect:
+        // the next effect must choose its own (the card may be played twice).
+        if (c.kind !== 'combat' || !state.combat) Choice.of(state).clear();
         // The combat goes on with the step that waited for the effect. The step
         // machine then passes the steps that have nothing to do (a closed card of
         // the other side, a damage of zero).
@@ -2147,6 +2150,20 @@ const FS_EFFECTS = {
 
     count(R, state, seat, step, ctx) {
         let n = step.n || 1;
+        if (step.nFromWorlds === 'chosenSystem') {
+            // «Получите материалы со всех дружественных миров этой системы»
+            // («Пожиратель миров»): the sum of the materiel of the worlds the
+            // player controls in the system he has just chosen.
+            const sys = Board.of(state).system(Choice.of(state).system);
+            if (!sys) return 0;
+            let sum = 0;
+            for (const area of sys.areas) {
+                if (!area.world) continue;
+                if (R.control(state, seat, sys.id, area.pos) !== 'friendly') continue;
+                sum += area.world.materiel || 0;
+            }
+            return Math.max(0, sum);
+        }
         if (step.per === 'excess') {
             // «за каждый ваш `def. cube`, по счёту превышающий количество
             // вражеских `att. cube`, получите 1 `att. token` (вплоть до 4)»
