@@ -596,6 +596,29 @@ try {
     fail(e.message);
 }
 
+// --- where the troops of an order came from: one object ----------------------
+section('след ходов: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSMarchTrail.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Откуда пришли отряды приказа (для отступления) — один объект
+        // MarchTrail: список state.moves пишет только доска через него.
+        const re = /\bstate\.moves\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('след ходов приказа спрашивают у MarchTrail');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the end of a game: one object -------------------------------------------
 section('итог партии: один объект');
 try {

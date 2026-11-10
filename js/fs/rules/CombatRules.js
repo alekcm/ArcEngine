@@ -357,11 +357,7 @@ class CombatRules {
                 push({ system: m.fromSystem, pos: m.fromArea });
             }
         }
-        for (const m of (state.moves || [])) {
-            if (m.seat !== seat) continue;
-            if (m.to.system !== systemId || m.to.pos !== pos) continue;
-            push(m.from);
-        }
+        for (const from of MarchTrail.of(state).cameFrom(seat, systemId, pos)) push(from);
         return out;
     }
 

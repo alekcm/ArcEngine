@@ -118,7 +118,7 @@ class OperationsRules {
         // Every order starts with a clean sheet: the retreats of a combat look
         // for the areas the attacking units came from, and those are recorded
         // only while this order is being resolved.
-        state.moves = [];
+        MarchTrail.of(state).reset();
         state.order = { seat, order: top.order, system: sys.id, phase: 'resolve' };
         this.engine.log(state, seat, p.name + ' раскрыл приказ «' + this.engine.orderName(top.order) + '» в системе ' + sys.tile + '.');
         const res = this.resolveOrder(state, seat, top.order, sys.id);

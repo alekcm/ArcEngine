@@ -23,7 +23,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
-    BoardSetup, GameLog, GameOutcome } = ctx;
+    BoardSetup, GameLog, GameOutcome, MarchTrail } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1226,6 +1226,38 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(others.opener((st, seat) => seat), 0, 'планирование начнёт игрок перед ним');
     eq(others.opener((st, seat) => 2), 2, 'или тот, кого назовёт nextPlanner');
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
+});
+
+rule('trail-0a', '«retreat: each unit goes back to the area it came from» — след ходов приказа держит MarchTrail', () => {
+    const state = {};
+    const trail = MarchTrail.of(state);
+    eq(MarchTrail.of(state), trail, 'у приказа один след');
+    eq(MarchTrail.of(null), null, 'без состояния следа нет');
+    // A new order starts with a clean sheet.
+    eq(trail.length, 0, 'след пуст');
+    trail.record(1, { system: 's1', pos: 'NW' }, { system: 's2', pos: 'SE' });
+    trail.record(1, { system: 's2', pos: 'SE' }, { system: 's3', pos: 'N' });
+    trail.record(0, { system: 's1', pos: 'E' }, { system: 's3', pos: 'N' });
+    eq(trail.length, 3, 'три перехода');
+    eq(state.moves.length, 3, 'они записаны в состояние');
+    eq(state.moves[0].from.pos, 'NW', 'откуда ушёл');
+    eq(state.moves[0].to.pos, 'SE', 'куда пришёл');
+    // The combat asks who walked into the area and where from.
+    eq(trail.walkedInto(1, 's3', 'N'), true, 'seat 1 вошёл в область');
+    eq(trail.walkedInto(1, 's1', 'NW'), false, 'а туда не входил');
+    eq(trail.walkedInto(0, 's3', 'N'), true, 'seat 0 тоже');
+    const from = trail.cameFrom(1, 's3', 'N');
+    eq(from.length, 1, 'seat 1 пришёл из одной области');
+    eq(from[0].system + ':' + from[0].pos, 's2:SE', 'и она известна');
+    eq(trail.cameFrom(0, 's2', 'SE').length, 0, 'seat 0 туда не приходил');
+    // The same area twice is one origin, not two.
+    trail.record(1, { system: 's2', pos: 'SE' }, { system: 's3', pos: 'N' });
+    eq(trail.cameFrom(1, 's3', 'N').length, 1, 'повторный приход не дублирует');
+    eq(trail.leftTo(1, 's1', 'NW').length, 1, 'куда ушёл отряд');
+    // The next order wipes the trail.
+    trail.reset();
+    eq(trail.length, 0, 'новый приказ — новый след');
+    eq(state.moves.length, 0, 'и состояние чисто');
 });
 
 rule('over-0a', '«The game ends…» — конец партии и её победителя держит GameOutcome', () => {

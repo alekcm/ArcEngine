@@ -724,7 +724,7 @@ class AdvanceRules {
         const main = state.order;
         if (!main || main.order !== 'advance') return;
         state.preAdvanceMain = main;
-        state.moves = [];
+        MarchTrail.of(state).reset();
         /** @type {any} */
         const pre = {
             seat, order: 'advance', system: main.system, maxKl: 1, combatRounds: 1,
@@ -750,7 +750,7 @@ class AdvanceRules {
         // The limited order belongs to the player of the event even though the
         // event-phase turn had already passed to the next player.
         state.turn = seat;
-        state.moves = [];
+        MarchTrail.of(state).reset();
         /** @type {any} */
         const order = {
             seat, order: 'advance', system: systemId,

@@ -174,7 +174,7 @@ class Board {
     /**
      * Put a piece into an area. Every way a unit changes its area goes through
      * here — a march, a retreat, a teleport, a unit a card brings into the
-     * battle — so a list of moves (`state.moves`) and the troops over the
+     * battle — so the trail of the order (`MarchTrail`) and the troops over the
      * capacity of the new area are never forgotten on one path and remembered
      * on another.
      * @param {any} piece a unit (or a structure) of the state
@@ -191,8 +191,7 @@ class Board {
             pos: dest.pos !== undefined ? dest.pos : (dest.area !== undefined ? dest.area : from.pos),
         };
         if (o.note !== false) {
-            if (!this.state.moves) this.state.moves = [];
-            this.state.moves.push({ seat: o.seat !== undefined ? o.seat : piece.seat, from, to });
+            MarchTrail.of(this.state).record(o.seat !== undefined ? o.seat : piece.seat, from, to);
         }
         piece.system = to.system;
         piece.area = to.pos;
