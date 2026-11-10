@@ -34,34 +34,70 @@ class CombatDamage {
 
     // --- the health of the pieces --------------------------------------------
 
-    /** «+1 к здоровью ваших отрядов»: the bonus the side of the owner gets. */
+    /**
+     * «значение здоровья всех ВАШИХ отрядов повышается на 1»: the bonus belongs
+     * to the seat whose card printed it, not to whoever deals the damage. The
+     * old shape («raised when the owner of the piece is the one who deals the
+     * damage») gave the bonus to the OPPONENT's units whenever the player who
+     * played the card was not the one assigning the damage.
+     */
+    healthBonusFor(seat) {
+        const entries = this.combat.healthBonus;
+        if (!Array.isArray(entries)) return 0;
+        return entries.reduce((sum, x) => sum + (x.seat === seat ? (x.n || 0) : 0), 0);
+    }
+
+    /** The printed bonus of any seat — for the panels that show the battle. */
     get healthBonus() {
-        return this.combat.healthBonus || 0;
+        const entries = this.combat.healthBonus;
+        if (!Array.isArray(entries)) return 0;
+        return entries.reduce((sum, x) => sum + (x.n || 0), 0);
     }
 
-    addHealthBonus(n) {
-        this.combat.healthBonus = this.healthBonus + (Number(n) || 0);
-        return this.combat.healthBonus;
-    }
-
-    /** «здоровье отрядов противника уменьшается до 3»: the ceiling of the enemy. */
-    get enemyHealth() {
-        return this.combat.enemyHealth || 0;
-    }
-
-    set enemyHealth(n) {
-        this.combat.enemyHealth = n || null;
+    /** @param {number} seat the seat whose card raises the health of its units */
+    addHealthBonus(seat, n) {
+        const entries = Array.isArray(this.combat.healthBonus) ? this.combat.healthBonus : [];
+        entries.push({ seat, n: Number(n) || 0 });
+        this.combat.healthBonus = entries;
+        return this.healthBonusFor(seat);
     }
 
     /**
-     * The health of a piece as this round of cards shapes it: the bonus of its
-     * own side raised, the ceiling of the enemy lowered. `actor` is the seat that
-     * deals the damage, `owner` the seat of the piece.
+     * «здоровье отрядов противника уменьшается до 3»: the ceiling of the enemy of
+     * the seat whose card printed it — again, not of whoever deals the damage.
      */
-    health(owner, actor, base) {
+    enemyCeilingFor(seat) {
+        const entries = this.combat.enemyHealth;
+        if (!Array.isArray(entries)) return 0;
+        return entries.reduce((low, x) => (x.seat === seat ? Math.min(low || x.n, x.n) : low), 0);
+    }
+
+    /** The printed ceiling of any seat — for the panels that show the battle. */
+    get enemyHealth() {
+        const entries = this.combat.enemyHealth;
+        if (!Array.isArray(entries)) return 0;
+        return entries.reduce((low, x) => Math.min(low || x.n, x.n), 0);
+    }
+
+    /** @param {number} seat the seat whose card lowers the health of the enemy */
+    setEnemyHealth(seat, n) {
+        const entries = Array.isArray(this.combat.enemyHealth) ? this.combat.enemyHealth : [];
+        entries.push({ seat, n: n || 3 });
+        this.combat.enemyHealth = entries;
+        return this.enemyCeilingFor(seat);
+    }
+
+    /**
+     * The health of a piece as the cards of the round shape it. `owner` is the
+     * seat of the piece; the bonus of that seat's card raises it, the ceiling of
+     * the OTHER seat's card lowers it. No `actor`: whose hand deals the damage
+     * has nothing to do with whose card raised the health.
+     */
+    health(owner, base) {
         let health = Number(base) || 0;
-        if (this.healthBonus && owner === actor) health += this.healthBonus;
-        if (this.enemyHealth && owner !== actor) health = Math.min(health, this.enemyHealth);
+        health += this.healthBonusFor(owner);
+        const ceiling = this.enemyCeilingFor(1 - owner);
+        if (ceiling) health = Math.min(health, ceiling);
         return Math.max(1, health);
     }
 

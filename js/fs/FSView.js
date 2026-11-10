@@ -1883,7 +1883,7 @@ const FSView = {
             const def0 = typeof FS_RULES !== 'undefined'
                 ? FS_RULES.reinforceTokenDef(state, slot.side) : null;
             const hp = typeof FS_RULES !== 'undefined'
-                ? FS_RULES.reinforceTokenHealth(state, slot.side, seat) : (def0 ? def0.health : 1);
+                ? FS_RULES.reinforceTokenHealth(state, slot.side) : (def0 ? def0.health : 1);
             items.push({
                 key: 'rein:' + slot.side + ':' + slot.index + ':' + hp + ':' + (slot.routed ? 1 : 0),
                 x: slot.x, y: slot.y + 1, z: slot.z,

@@ -268,13 +268,13 @@ class CombatRules {
         return this.reinforceUnitDef(state.players[seat].faction, area && area.world ? 'ground' : 'ship');
     }
 
-    reinforceTokenHealth(state, side, seat) {
+    reinforceTokenHealth(state, side) {
         const c = state.combat;
         if (!c) return 1;
         const owner = CombatSides.seatOf(c, side);
-        const actor = seat === undefined ? owner : seat;
         const def = this.reinforceTokenDef(state, side);
-        return CombatDamage.of(c).health(owner, actor, def ? def.health : 1);
+        // The health of a piece is shaped by the cards of its own side only.
+        return CombatDamage.of(c).health(owner, def ? def.health : 1);
     }
 
     reinforceTokenIndex(state, side, id) {
@@ -689,10 +689,54 @@ class CombatRules {
         return CombatDamage.of(c).extra(side, damage);
     }
 
-    damagePreview(state, side, targets, seat) {
+    /**
+     * «ваши отряды с командным уровнем N или ниже не могут быть деморализованы»:
+     * is the routing of this unit forbidden in this round? The damage step and
+     * the preview both ask here, so the promise cannot part with the rule.
+     */
+    forbidsRouteFor(state, unit, def) {
         const c = state.combat;
+        if (!c) return false;
+        const turn = CombatTurn.of(c);
+        return CombatDamage.of(c).forbidsRoute(unit.seat, def ? def.kl || 0 : 0, turn ? turn.round : 0);
+    }
+
+    /**
+     * «если бы отряд был уничтожен, вместо этого он отступает»: the card of the
+     * round saves a unit only when there is a place it can really go. A card
+     * without a way out does not save the unit — and the preview must say so too.
+     * The targets are computed twice with the same answer: the damage step asks
+     * this question and `retreatInsteadOfDestroy` asks it again.
+     */
+    retreatAvailable(state, unit) {
+        return !!this.retreatTarget(state, unit);
+    }
+
+    /**
+     * The place the unit retreats to instead of dying, or null: one answer for
+     * the preview and for the damage step, so their promises cannot part.
+     */
+    retreatTarget(state, unit) {
+        const c = state.combat;
+        if (!c || !unit) return null;
+        const plan = CombatDamage.of(c).retreatPlan(unit.seat, CombatTurn.of(c).round);
+        if (!plan) return null;
+        const def = this.engine.unitOf(state, unit);
+        if (!def) return null;
+        const ground = def.type === 'ground';
+        const to = (this.retreatTargets(state, unit.seat) || []).find(t => {
+            const sys = this.engine.system(state, t.system);
+            const a = sys ? this.engine.area(sys, t.pos) : null;
+            return !!a && !!a.world === ground;
+        });
+        return to || null;
+    }
+
+    damagePreview(state, side, targets) {
+        const c = state.combat;
+        // `side` is the side whose pieces suffer the damage: their health is
+        // shaped by the cards printed for that side, no matter who picked them.
         const owner = CombatSides.seatOf(c, side);
-        const actor = seat === undefined ? owner : seat;
         const damage = this.combatDamageFor(state, side);
         const oneByOne = CombatDamage.of(c).oneByOne(side);
         const rows = [];
@@ -705,7 +749,7 @@ class CombatRules {
                 // flipped the token here, before the damage was even sent.
                 if (this.reinforceTokenIndex(state, side, id) < 0) continue;
                 const def0 = this.reinforceTokenDef(state, side);
-                const health = this.reinforceTokenHealth(state, side, actor);
+                const health = this.reinforceTokenHealth(state, side);
                 const take = oneByOne ? 1 : Math.min(left, health);
                 const destroyed = oneByOne ? health <= 1 : left >= health;
                 const routed = !destroyed && !this.reinforceNoRoute(state, side);
@@ -717,11 +761,19 @@ class CombatRules {
             const unit = state.units.find(u => u.id === id);
             if (unit) {
                 const def = this.engine.unitOf(state, unit);
-                const health = CombatDamage.of(c).health(unit.seat, actor, def ? def.health : 1);
+                const health = CombatDamage.of(c).health(unit.seat, def ? def.health : 1);
                 const take = oneByOne ? 1 : Math.min(left, health);
                 const destroyed = oneByOne ? health <= 1 : left >= health;
                 left -= take;
-                rows.push({ id: unit.id, name: def ? def.name : unit.id, health, take, destroyed, routed: destroyed ? !!unit.routed : !destroyed });
+                // The preview must promise what the damage will really do: a card
+                // may keep the unit standing («не может быть деморализован») or
+                // take it off the field before the destruction («отступите
+                // вместо уничтожения»). The damage step reads the same two rules.
+                const keep = this.forbidsRouteFor(state, unit, def);
+                const retreat = destroyed && this.retreatAvailable(state, unit);
+                rows.push({ id: unit.id, name: def ? def.name : unit.id, health, take,
+                    destroyed: destroyed && !retreat, routed: destroyed ? (!retreat && !!unit.routed) : !keep,
+                    retreat });
                 continue;
             }
             const bastion = state.structures.find(st => st.id === id);
@@ -736,18 +788,20 @@ class CombatRules {
         return { damage, placed: damage - left, left: Math.max(0, left), rows, oneByOne };
     }
 
-    damageCandidates(state, side, seat) {
+    damageCandidates(state, side) {
         const c = state.combat;
         const owner = CombatSides.seatOf(c, side);
-        const actor = seat === undefined ? owner : seat;
+        const rules = CombatDamage.of(c);
         const out = [];
         const field = BattleField.of(c);
         for (const u of state.units) {
             if (u.seat !== owner || !field.holds(u)) continue;
             const def = this.engine.unitOf(state, u);
             if (!def) continue;
-            out.push({ id: u.id, name: def.name, health: def.health, morale: def.morale,
-                routed: !!u.routed, type: def.type, kind: 'unit' });
+            // The panel must show the health the damage step will really use,
+            // cards of the round included — not the printed value.
+            out.push({ id: u.id, name: def.name, health: rules ? rules.health(u.seat, def.health) : def.health,
+                morale: def.morale, routed: !!u.routed, type: def.type, kind: 'unit' });
         }
         // Only a bastion has a health value: a city or a factory takes no damage.
         for (const s of state.structures) {
@@ -762,7 +816,7 @@ class CombatRules {
         // one is flipped to its routed side.
         const t = this.tokenUnits(state, side);
         const def0 = this.reinforceTokenDef(state, side);
-        const health0 = this.reinforceTokenHealth(state, side, actor);
+        const health0 = this.reinforceTokenHealth(state, side);
         const flipped = this.reinforceFlipped(state, side);
         const dead = this.reinforceDestroyed(state, side);
         for (let i = 0; i < t.used; i++) {
@@ -840,7 +894,7 @@ class CombatRules {
             if (typeof id === 'string' && id.startsWith('reinforce-')) {
                 const index = this.reinforceTokenIndex(state, side, id);
                 if (index < 0) { dropExcess(id); continue; }
-                const health = this.reinforceTokenHealth(state, side, seat);
+                const health = this.reinforceTokenHealth(state, side);
                 if (oneByOne) {
                     // «распределять урон … по 1 единице за раз»: one point on
                     // this token, the rest goes on to the next chosen piece.
@@ -872,34 +926,31 @@ class CombatRules {
             if (unit) {
                 const def = this.engine.unitOf(state, unit);
                 // The card may raise the health of the units or lower it.
-                const health = rules.health(unit.seat, seat, def ? def.health : 1);
-                if (this.retreatInsteadOfDestroy(state, unit)) {
-                    left -= health;
-                    applied.push({ unit: unit.id, retreated: true });
-                } else if (left >= health && !oneByOne) {
-                    left -= health;
-                    applied.push({ unit: unit.id, destroyed: true });
-                    this.noteResurrect(state, unit, true);
-                    this.noteFallen(state, unit, true);
-                    this.engine.destroyUnit(state, unit);
+                const health = rules.health(unit.seat, def ? def.health : 1);
+                // «во время этого раунда боя, когда 1 из ваших отрядов должен
+                // быть уничтожен, вместо этого он отступает»: the card saves a
+                // unit from DESTRUCTION only. The old order asked it before the
+                // damage was weighed, so a single point of damage walked the
+                // unit out of the battle.
+                const lethal = oneByOne ? health <= 1 : left >= health;
+                const to = lethal ? this.retreatTarget(state, unit) : null;
+                if (lethal) {
+                    left -= oneByOne ? 1 : health;
+                    if (to && this.retreatInsteadOfDestroy(state, unit, to)) {
+                        applied.push({ unit: unit.id, retreated: true });
+                    } else {
+                        applied.push({ unit: unit.id, destroyed: true });
+                        this.noteResurrect(state, unit, true);
+                        this.noteFallen(state, unit, true);
+                        this.engine.destroyUnit(state, unit);
+                    }
                 } else if (oneByOne) {
                     // The damage goes one point at a time.
                     left -= 1;
-                    if (health <= 1) {
-                        if (this.retreatInsteadOfDestroy(state, unit)) {
-                            applied.push({ unit: unit.id, retreated: true });
-                        } else {
-                            applied.push({ unit: unit.id, destroyed: true });
-                            this.noteResurrect(state, unit, true);
-                            this.noteFallen(state, unit, true);
-                            this.engine.destroyUnit(state, unit);
-                        }
-                    } else {
-                        applied.push({ unit: unit.id, destroyed: false });
-                    }
+                    applied.push({ unit: unit.id, destroyed: false });
                 } else {
                     // The card may keep the unit from being routed.
-                    const keep = rules.forbidsRoute(unit.seat, def ? def.kl || 0 : 0, turn.round);
+                    const keep = this.forbidsRouteFor(state, unit, def);
                     if (!keep) {
                         this.noteFallen(state, unit, false);
                         this.routeUnit(state, unit, turn.round);
@@ -1227,21 +1278,13 @@ class CombatRules {
         });
     }
 
-    retreatInsteadOfDestroy(state, unit) {
+    retreatInsteadOfDestroy(state, unit, to) {
         const c = state.combat;
         const plan = c && CombatDamage.of(c).retreatPlan(unit.seat, CombatTurn.of(c).round);
         if (!plan) return false;
-        const def = this.engine.unitOf(state, unit);
-        if (!def) return false;
-        const ground = def.type === 'ground';
-        const targets = (this.retreatTargets(state, unit.seat) || []).filter(t => {
-            const sys = this.engine.system(state, t.system);
-            const a = sys ? this.engine.area(sys, t.pos) : null;
-            return !!a && !!a.world === ground;
-        });
-        if (!targets.length) return false;
+        const t = to || this.retreatTarget(state, unit);
+        if (!t) return false;
         plan.used = true;
-        const t = targets[0];
         // One movement of a piece: the trace and the area are written once.
         this.engine.board(state).moveUnit(unit, t, { seat: unit.seat });
         this.routeUnit(state, unit);

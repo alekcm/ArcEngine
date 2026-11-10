@@ -1983,8 +1983,8 @@ class FSGame {
                 const damage = FS_RULES.combatDamageFor(s, whose);
                 // The fighters on the board take the damage; the mouse picks them.
                 this.mode = 'damage';
-                const preview = FS_RULES.damagePreview(s, whose, this.damageTargets, me);
-                const rows = FS_RULES.damageCandidates(s, whose, me).map(x => {
+                const preview = FS_RULES.damagePreview(s, whose, this.damageTargets);
+                const rows = FS_RULES.damageCandidates(s, whose).map(x => {
                     const row = preview.rows.find(r => r.id === x.id);
                     return {
                         id: x.id, name: x.name, health: x.health, morale: x.morale,

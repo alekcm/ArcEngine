@@ -67,14 +67,14 @@ class OrderAsks {
     }
 
     static healthBonus(effects, f) {
-        const { step, combat } = f;
-        if (combat) CombatDamage.of(combat).addHealthBonus(step.n || 0);
+        const { seat, step, combat } = f;
+        if (combat) CombatDamage.of(combat).addHealthBonus(seat, step.n || 0);
         return null;
     }
 
     static enemyHealth(effects, f) {
         const { state, seat, step, combat } = f;
-        if (combat) CombatDamage.of(combat).enemyHealth = step.n || 3;
+        if (combat) CombatDamage.of(combat).setEnemyHealth(seat, step.n || 3);
         // «Во время этого орбитального удара здоровье отрядов вашего
         // противника уменьшается до 3» («Вирусные бомбы»).
         else if (state.order && OrderContext.of(state.order).isSeat(seat)) StrikePlan.of(state.order).setEnemyHealth(step.n || 3);

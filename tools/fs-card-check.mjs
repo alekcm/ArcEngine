@@ -34,7 +34,7 @@ const load = (file, name) => vm.runInContext(
 for (const file of ['js/fs/FSView.js', 'js/fs/FSGame.js']) {
     if (fs.existsSync(path.join(ROOT, file))) load(file, file.split('/').pop().replace(/\.js$/, ''));
 }
-const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans } = ctx;
+const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage } = ctx;
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m' };
@@ -3120,9 +3120,12 @@ check('Превосходство', '2 `att. token`, за два `morale cube` �
     eq(tokens(st, 'attacker').att, 2, 'жетонов атаки');
     eq(count(st, 'attacker', 'morale'), 0, 'потраченной морали');
     eq(count(st, 'attacker', 'att'), 3, 'кубиков атаки');
-    eq(st.combat.enemyHealth, 3, 'предел здоровья врага');
+    // Предел читаем правилом, а не полем хранения: здоровье отряда противника
+    // (печатное 5) должно упасть до 3 — и вернуться после раунда.
+    const rules = CombatDamage.of(st.combat);
+    eq(rules.health(1, 5), 3, 'предел здоровья врага');
     FS_RULES.endCombatRound(st);
-    return eq(st.combat.enemyHealth, null, 'эффект только одного раунда');
+    return eq(CombatDamage.of(st.combat).health(1, 5), 5, 'эффект только одного раунда');
 });
 
 check('Перегруппировка', 'за каждые 2 потраченных кубика восстанавливается отряд, реквизит даёт 2 кубика', () => withFixedDice(['att'], () => {
@@ -3334,17 +3337,20 @@ check('Уклонение', '1 `any cube`; деморализованный от
 
 check('Конец раунда боя', 'здоровье, запрет деморализации и выбранная цель не протекают в следующий раунд', () => {
     const st = tauBattle({ dice: Array(8).fill('att'), foeDice: Array(8).fill('att'), roundEnd: true });
-    st.combat.healthBonus = 2;
-    st.combat.enemyHealth = 3;
-    st.combat.noRoute = [{ seat: 0, round: 1 }];
-    st.combat.damageFirst = [{ side: 'defender', id: 'old-target', round: 1 }];
-    st.combat.retreatInstead = { seat: 0, round: 1, used: false };
-    st.combat.ignoreExcess = { side: 'defender', id: 'old-target', round: 1 };
+    // Ставим эффекты раунда тем самым органом, которым их ставит карта, — иначе
+    // проверка закрепляла бы внутреннюю форму хранения, а не правило.
+    const c = CombatDamage.of(st.combat);
+    c.addHealthBonus(0, 2);
+    c.setEnemyHealth(0, 3);
+    c.setNoRoute(0, 0, 1);
+    c.addFirst('defender', 'old-target', 1);
+    c.setRetreatPlan(0, 1);
+    c.setExcess('defender', 'old-target', 1);
     FS_RULES.endCombatRound(st);
     eq(st.combat.round, 2, 'номер нового раунда');
-    return eq([st.combat.healthBonus, st.combat.enemyHealth, st.combat.noRoute,
-        st.combat.damageFirst, st.combat.retreatInstead, st.combat.ignoreExcess],
-        [null, null, null, null, null, null], 'эффекты одного раунда сброшены');
+    return eq([c.healthBonus, c.enemyHealth, c.noRoute,
+        st.combat.damageFirst, c.retreatPlan(0, 1), st.combat.ignoreExcess],
+        [0, 0, null, null, null, null], 'эффекты одного раунда сброшены');
 });
 
 head('Особенность фракции', TAU);
@@ -3610,10 +3616,13 @@ check('Быстрый ответ', 'отказ от выбора системы 
     st.turn = 1;
     const res = playEvent(st);
     ok(res.ok, 'карта не сыграна: ' + res.error);
-    eq(st.quickResponsePending, true, 'фаза событий ждёт выбора системы');
+    // «Ждёт ли событие» спрашиваем у правила, а не у поля: движок хранит это
+    // флагом и вправе его удалять — проверка обязана держать правило.
+    const qr = ctx.QuickResponse.of(st);
+    eq(qr.pending, true, 'фаза событий ждёт выбора системы');
     effectAnswer(st, { no: true }, 6);
-    eq(st.quickResponsePending, false, 'ожидание снято');
-    eq(st.quickResponseSnapshot, undefined, 'снимок удалён');
+    eq(qr.pending, false, 'ожидание снято');
+    eq(qr.snapshot, null, 'снимок удалён');
     eq(st.order, null, 'ограниченный приказ не начался');
     eq(st.phase, 'refresh', 'фаза событий продолжена');
     eq(st.event && st.event.seat, 1, 'событие следующего игрока наступило');

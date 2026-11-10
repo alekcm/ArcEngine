@@ -1371,13 +1371,21 @@ rule('combat-0d', '«Any damage that exceeds a unit…health value must be appli
     const damage = CombatDamage.of(combat);
     eq(CombatDamage.of(combat), damage, 'у боя одно правило урона');
     eq(CombatDamage.of(null), null, 'без боя урона нет');
-    // The health of a piece: the bonus of its own side, the ceiling of the enemy.
-    damage.addHealthBonus(1);
+    // The health of a piece: «значение здоровья всех ВАШИХ отрядов повышается
+    // на 1» belongs to the seat whose card printed it; «здоровье отрядов
+    // ПРОТИВНИКА уменьшается до 3» lowers the units of the OTHER seat. Whoever
+    // assigns the damage has nothing to do with either.
+    damage.addHealthBonus(0, 1);
     eq(damage.healthBonus, 1, 'здоровье своих поднято');
-    damage.enemyHealth = 3;
-    eq(damage.health(0, 0, 2), 3, 'свой отряд получает надбавку');
-    eq(damage.health(1, 0, 5), 3, 'чужой отряд упирается в предел');
-    eq(damage.health(1, 1, 5), 6, 'свой отряд получает надбавку, а не предел врага');
+    eq(damage.health(0, 2), 3, 'отряд автора карты получает надбавку');
+    eq(damage.health(1, 2), 2, 'чужой отряд надбавки не получает');
+    damage.setEnemyHealth(0, 3);
+    eq(damage.health(0, 2), 3, 'свой отряд надбавку получает, а предел врага — нет');
+    eq(damage.health(1, 5), 3, 'чужой отряд упирается в предел');
+    damage.clear();
+    damage.addHealthBonus(1, 1);
+    eq(damage.health(0, 2), 2, 'карта защитника не поднимает здоровье атакующего');
+    eq(damage.health(1, 2), 3, 'карта защитника поднимает здоровье защитника');
     // The extra damage: the foe of a card is the side of its owner.
     damage.addExtra('both', 2, 0);
     eq(damage.extra('attacker', 4), 6, 'урон обеим сторонам');
@@ -3264,6 +3272,105 @@ rule('combat-13', '«After a combat is resolved, all reinforcement tokens that w
     FS_RULES.endCombatRound(st);
     if (st.combat) eq(st.players[0].assets.reinforcement, left - 2, 'жетоны не вернулись в первом раунде');
     return true;
+});
+
+rule('damage-1', "«A unit that suffers damage and is not destroyed is routed» — предпросмотр урона обещает ровно то, что сделает шаг урона", () => {
+    // Игрок выбирает, КОМУ достанется урон, по предпросмотру: он рисуется на
+    // каждый клик ещё до отправки. Предпросмотр читал только число очков и не
+    // спрашивал карту раунда, поэтому обещал деморализацию там, где карта её
+    // запрещает, и уничтожение там, где карта отводит отряд с поля.
+    const setup = (rules) => {
+        const st = empty(11);
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        const other = sys.areas.filter(a => a.world && a.pos !== pos)[0].pos;
+        FS_RULES.addUnit(st, 0, 'культисты', sys.id, pos);   // здоровье 2
+        FS_RULES.addUnit(st, 1, 'бойзы', sys.id, pos);       // здоровье 2
+        st.phase = 'operations';
+        st.turn = 0;
+        st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+        FS_RULES.apply(st, 0, { type: 'endAdvance' });
+        const c = st.combat;
+        c.dice = { attacker: ['att'], defender: [] };        // ровно 1 урон по защитнику
+        c.cards = { attacker: { hand: [], played: [] }, defender: { hand: [], played: [] } };
+        ctx.CombatTurn.of(c).setStep('damage-defender');
+        if (rules) rules(st, sys, pos, other);
+        return st;
+    };
+    // Обещание строки против того, что вышло на самом деле.
+    const promised = (label, rules, damage) => {
+        const st = setup(rules);
+        if (damage) st.combat.dice = { attacker: ['att', 'att'], defender: [] };
+        const ids = st.units.filter(u => u.seat === 1).map(u => u.id);
+        const id = ids[0];
+        const prev = FS_RULES.damagePreview(st, 'defender', ids, 0);
+        const row = prev.rows.find(r => r.id === id);
+        const applied = FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: ids });
+        eq(applied.ok, true, label + ': урон принят');
+        const unit = st.units.find(u => u.id === id);
+        eq(row.destroyed, !unit, label + ': «уничтожен» в предпросмотре совпадает с полем');
+        if (row.destroyed) eq(unit, undefined, label + ': предпросмотр обещал уничтожение — отряда нет');
+        else eq(!!(unit && unit.routed), row.routed, label + ': «деморализован» совпадает с полем');
+        return row;
+    };
+    // 1. Без карт: урон меньше здоровья — деморализован, не уничтожен.
+    const plain = promised('без карт', null);
+    eq(plain.destroyed, false, 'без карт отряд не уничтожен');
+    eq(plain.routed, true, 'без карт отряд деморализован');
+    // 2. «ваши отряды с командным уровнем 2 или ниже не могут быть деморализованы»:
+    //    карта снимает то, что предпросмотр без неё обещал.
+    const keep = promised('запрет деморализации', st => {
+        ctx.CombatDamage.of(st.combat).setNoRoute(1, 2, ctx.CombatTurn.of(st.combat).round);
+    });
+    eq(keep.routed, false, 'карта держит отряд стоящим — и предпросмотр это знает');
+    // 3. «+1 к здоровью»: два урона убивают отряд со здоровьем 2, но отряд со
+    //    здоровьем 3 выживает — и предпросмотр обязан обещать не смерть.
+    //    Карта принадлежит защитнику: поднимает здоровье ЕГО отрядов.
+    const tough = promised('+1 к здоровью', st => {
+        ctx.CombatDamage.of(st.combat).addHealthBonus(1, 1);
+    }, true);
+    eq(tough.destroyed, false, 'увеличенное здоровье спасает отряд от гибели');
+    // 4. «здоровье отрядов противника уменьшается до 1»: одного урона хватает
+    //    на уничтожение — и предпросмотр обещает именно его.
+    const weak = promised('здоровье врага 1', st => {
+        // карта защитника: предел ставится отрядам ПРОТИВНИКА
+        ctx.CombatDamage.of(st.combat).setEnemyHealth(1, 1);
+    }, true);
+    eq(weak.destroyed, true, 'сниженное здоровье — предпросмотр обещает уничтожение');
+    // 5. «отступите вместо уничтожения»: места для отступления нет — отряд
+    //    погибает, и предпросмотр не обещает спасения.
+    const nowhere = promised('отступление, места нет', st => {
+        ctx.CombatDamage.of(st.combat).setRetreatPlan(1, ctx.CombatTurn.of(st.combat).round);
+        for (const sid of [st.systems[0].id].concat(FS_RULES.neighbors(st, st.systems[0].id))) {
+            const s2 = st.systems.find(x => x.id === sid);
+            if (!s2) continue;
+            for (const a of s2.areas) {
+                if (a.world && !(sid === st.systems[0].id && a.pos === st.combat.pos)) {
+                    FS_RULES.addUnit(st, 0, 'культисты', sid, a.pos);
+                }
+            }
+        }
+    }, true);
+    eq(nowhere.destroyed, true, 'без пути отступления карта не спасает — и предпросмотр это знает');
+    // 5b. «когда 1 из ваших отрядов ДОЛЖЕН БЫТЬ УНИЧТОЖЕН, вместо этого он
+    //     отступает»: карта спасает только от гибели. Несмертельный урон её не
+    //     касается — отряд остаётся в области боя и лишь деморализуется.
+    const wounded = promised('отступление, урон не смертелен', st => {
+        const sys = st.systems[0];
+        const other = sys.areas.filter(a => a.world && a.pos !== st.combat.pos)[0].pos;
+        FS_RULES.addStructure(st, 1, 'factory', sys.id, other);
+        ctx.CombatDamage.of(st.combat).setRetreatPlan(1, ctx.CombatTurn.of(st.combat).round);
+    });
+    eq(wounded.destroyed, false, 'карта не убивает отряд несмертельным уроном');
+    eq(wounded.routed, true, 'от неё отряд лишь деморализуется — и с поля не уходит');
+    // 6. Та же карта, но отступать есть куда: отряд остаётся жив и уходит.
+    const saved = promised('отступление, место есть', st => {
+        const sys = st.systems[0];
+        const other = sys.areas.filter(a => a.world && a.pos !== st.combat.pos)[0].pos;
+        FS_RULES.addStructure(st, 1, 'factory', sys.id, other);
+        ctx.CombatDamage.of(st.combat).setRetreatPlan(1, ctx.CombatTurn.of(st.combat).round);
+    }, true);
+    eq(saved.destroyed, false, 'есть куда отступить — предпросмотр обещает спасение');
 });
 
 rule('combat-14', '«During a combat, each player draws five cards from his combat deck» + «discards the combat cards he used … by shuffling them back into his combat deck»', () => {
