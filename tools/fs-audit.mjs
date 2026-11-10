@@ -3139,6 +3139,37 @@ rule('win-1', '«When a player has collected a number of his objective tokens eq
     eq(st.over, true, 'игра закончена при двух целях у двух игроков');
 });
 
+rule('cap-4', '«Вместимость дружественных миров, содержащих город, увеличена на 2, максимум до 4. Дополнительная вместимость распространяется только на Гвардейцев.» — «Принудительная вербовка»', () => {
+    // Мир с городом: карта поднимает его вместимость на 2 (не выше 4) и только
+    // для Гвардейцев. Раньше этот бонус не проверял никто: обе половины правила
+    // можно было выключить, и аудит оставался зелёным.
+    const find = () => {
+        for (const sys of game().systems) {
+            const w = sys.areas.find(a => a.world && (a.world.capacity || 3) < 4);
+            if (w) return { sys: sys.id, pos: w.pos, cap: w.world.capacity || 3 };
+        }
+        return null;
+    };
+    const spot = find();
+    if (!spot) return 'нет мира с вместимостью ниже четырёх';
+    const st = empty();
+    const sys = st.systems.find(x => x.id === spot.sys);
+    const guardDef = FS_DATA.factions.find(f => f.id === st.players[0].faction).units.find(u => u.id === 'гвардейцы');
+    const other = FS_DATA.factions.find(f => f.id === st.players[0].faction).units.find(u => u.id === 'огрины');
+    FS_RULES.addStructure(st, 0, 'city', sys.id, spot.pos);
+    st.order = { seat: 0, order: 'deploy', system: sys.id, phase: 'deploy' };
+    const before = FS_RULES.capacity(st, sys.id, spot.pos, guardDef);
+    eq(before, Math.min(spot.cap, 4), 'без карты — вместимость мира');
+    // Карта игрока лежит у него в купленных улучшениях.
+    const card = ctx.FS_CATALOG.cards('orders').find(c => c.faction === st.players[0].faction && /вербовк/i.test(c.name));
+    if (!card) return 'у фракции нет «Принудительной вербовки»';
+    st.players[0].upgrades = [{ name: card.name, used: false, order: card.order }];
+    const used = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: card.name });
+    eq(used.ok, true, 'карта применена: ' + (used.error || ''));
+    eq(FS_RULES.capacity(st, sys.id, spot.pos, guardDef), Math.min(spot.cap + 2, 4), 'Гвардейцам +2, но не выше 4');
+    eq(FS_RULES.capacity(st, sys.id, spot.pos, other), before, 'другим отрядам бонуса нет');
+});
+
 rule('win-2', '«When a player is eliminated, this does not reduce the number of objective tokens needed to win the game.»', () => {
     const st = empty();
     st.players[0].objectives = 2;
