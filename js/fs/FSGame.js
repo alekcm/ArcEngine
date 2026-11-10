@@ -442,8 +442,8 @@ class FSGame {
             return;
         }
         // The damage of an orbital strike: the defender picks the units.
-        if (s.strike) {
-            if (s.strike.seat === me) this.panelStrikeDamage(s, ctx);
+        if (StrikeDamage.of(s).pending) {
+            if (StrikeDamage.of(s).waiting(me)) this.panelStrikeDamage(s, ctx);
             else { ctx.title = 'Орбитальный удар'; ctx.text = 'Защитник распределяет урон.'; }
             ctx.mode = this.mode;
             this.refreshPlaque();
@@ -502,7 +502,7 @@ class FSGame {
         const trimQueue = FS_RULES.trimQueue(s);
         if (this.mode === 'trim' && !trimQueue.blocked(me)) this.mode = 'idle';
         if (!trimQueue.blocked(me)) this.trimPick = [];
-        if (this.mode === 'strike-damage' && !s.strike) this.mode = 'idle';
+        if (this.mode === 'strike-damage' && !StrikeDamage.of(s).pending) this.mode = 'idle';
         if (s.combat) this.panelCombat(s, ctx);
         ctx.battleHand = this.hand || [];
         if (!s.combat) ctx.battle = null;
@@ -1149,13 +1149,13 @@ class FSGame {
     // own models that take them: the choice is made on the board, in the struck area.
     panelStrikeDamage(s, ctx) {
         const me = s.seat;
-        const st = s.strike;
+        const st = StrikeDamage.of(s);
         this.mode = 'strike-damage';
         ctx.title = 'Урон с орбиты';
         ctx.text = 'Щёлкните по своему отряду — он принимает удар.';
         const sys = Board.of(s).system(st.system);
         const area = sys ? sys.areas.find(a => a.pos === st.pos) : null;
-        const mine = s.units.filter(u => u.seat === me && u.system === st.system && u.area === st.pos);
+        const mine = s.units.filter(u => u.seat === me && st.aimedAt(u.system, u.area));
         ctx.status = 'Ударов осталось: ' + st.left
             + (area && area.world ? ' · ' + area.world.name : '');
         this.ringAreas([{ system: st.system, pos: st.pos }]);
@@ -2863,15 +2863,15 @@ class FSGame {
     // The click on a model that takes the damage of the orbital strike.
     clickStrikeDamage(meta) {
         const s = this.state;
-        const st = s && s.strike;
-        if (!st) return;
+        const st = s ? StrikeDamage.of(s) : null;
+        if (!st || !st.pending) return;
         if (!meta || meta.fs !== 'unit') {
             this.status = 'Щёлкните по отряду, который принимает удар.';
             this.refresh();
             return;
         }
         const unit = s.units.find(u => u.id === meta.unit);
-        if (!unit || unit.seat !== s.seat || unit.system !== st.system || unit.area !== st.pos) {
+        if (!unit || unit.seat !== s.seat || !st.aimedAt(unit.system, unit.area)) {
             this.status = 'Удар принимают только свои отряды в этом мире.';
             this.refresh();
             return;

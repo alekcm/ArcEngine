@@ -23,7 +23,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
-    BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound } = ctx;
+    BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound, StrikeDamage } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1226,6 +1226,44 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(others.opener((st, seat) => seat), 0, 'планирование начнёт игрок перед ним');
     eq(others.opener((st, seat) => 2), 2, 'или тот, кого назовёт nextPlanner');
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
+});
+
+rule('strike-0a', '«the defender chooses which of his units take the hits» — урон с орбиты держит StrikeDamage', () => {
+    const state = {};
+    const damage = StrikeDamage.of(state);
+    eq(StrikeDamage.of(state), damage, 'у удара один объект');
+    eq(StrikeDamage.of(null), null, 'без состояния удара нет');
+    // No strike waits: the game goes on.
+    eq(damage.pending, false, 'удара нет');
+    eq(damage.waiting(1), false, 'и принимать нечего');
+    eq(damage.left, 0, 'ударов нет');
+    eq(damage.spent, true, 'и урон потрачен');
+    // The order fired: the hits wait for the defender of the world.
+    damage.begin({ seat: 1, system: 's2', pos: 'SE', hits: 3, attacker: 0, first: 'u7' });
+    eq(damage.pending, true, 'удар ждёт защитника');
+    eq(damage.waiting(1), true, 'защитник принимает урон');
+    eq(damage.waiting(0), false, 'атакующий не принимает');
+    eq(damage.attacker, 0, 'удар нанёс seat 0');
+    eq(damage.left, 3, 'три удара');
+    eq(damage.hits, 3, 'из трёх');
+    eq(damage.untouched, true, 'ни одного не принято');
+    eq(damage.first, 'u7', 'первым получает выбранный отряд');
+    eq(damage.aimedAt('s2', 'SE'), true, 'удар падает в эту область');
+    eq(damage.aimedAt('s2', 'NW'), false, 'и не в соседнюю');
+    // «Набег жнецов»: the chosen unit takes the damage first.
+    damage.take('u7', 2);
+    eq(damage.left, 1, 'два удара приняты');
+    eq(damage.untouched, false, 'первый удар позади');
+    eq(damage.damaged.join(','), 'u7', 'и записан');
+    eq(damage.spent, false, 'но урон ещё не кончился');
+    damage.take('u8', 1);
+    eq(damage.spent, true, 'урон потрачен');
+    eq(state.strike.left, 0, 'и это видно в состоянии');
+    // The record leaves the state when the strike ends.
+    const ended = damage.end();
+    eq(ended.attacker, 0, 'запись возвращается на выходе');
+    eq(state.strike, null, 'и состояние чисто');
+    eq(damage.pending, false, 'удара больше нет');
 });
 
 rule('events-0a', '«in the refresh phase every player resolves one event card» — события раунда держит EventRound', () => {

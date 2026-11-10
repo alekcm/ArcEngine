@@ -596,6 +596,29 @@ try {
     fail(e.message);
 }
 
+// --- the damage of an orbital strike: one object ------------------------------
+section('урон с орбиты: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSStrikeDamage.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Ожидающий урон орбитального удара — один объект StrikeDamage: поле
+        // state.strike не читают руками ни правила, ни панель.
+        const re = /\bstate\.strike\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('урон с орбиты спрашивают у StrikeDamage');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the event cards of a round: one object ----------------------------------
 section('события раунда: один объект');
 try {

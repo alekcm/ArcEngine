@@ -407,7 +407,7 @@ class AdvanceRules {
     }
 
     cmdEndAdvance(state, seat, cmd) {
-        if (state.strike) return { ok: false, error: 'Сначала распределите урон орбитального удара.' };
+        if (StrikeDamage.of(state).pending) return { ok: false, error: 'Сначала распределите урон орбитального удара.' };
         const order = state.order;
         if (!order || !OrderContext.of(order).isKind('advance')) return { ok: false, error: 'Это не приказ наступления.' };
         if (!OrderContext.of(order).isSeat(seat)) return { ok: false, error: 'Сейчас ход другого игрока.' };
@@ -591,11 +591,11 @@ class AdvanceRules {
     finishStrike(state, seat, target, hits, victims, defender) {
         const order = state.order;
         if (hits > 0 && victims.length && defender >= 0) {
-            state.strike = {
+            StrikeDamage.of(state).begin({
                 seat: defender, system: target.system, pos: target.pos,
-                left: hits, hits, attacker: seat,
+                hits, attacker: seat,
                 first: order ? StrikePlan.of(order).first : null,
-            };
+            });
             PhasePlan.of(order).set('strike-damage');
             return { ok: true, pending: true, hits };
         }
@@ -645,66 +645,65 @@ class AdvanceRules {
     }
 
     cmdStrikeDamage(state, seat, cmd) {
-        const st = state.strike;
-        if (!st) return { ok: false, error: 'Сейчас нет орбитального удара.' };
-        if (st.seat !== seat) return { ok: false, error: 'Урон распределяет защитник.' };
-        const unit = state.units.find(u => u.id === cmd.unit && u.seat === seat && u.system === st.system && u.area === st.pos);
+        const damage = StrikeDamage.of(state);
+        if (!damage.pending) return { ok: false, error: 'Сейчас нет орбитального удара.' };
+        if (!damage.waiting(seat)) return { ok: false, error: 'Урон распределяет защитник.' };
+        const unit = state.units.find(u => u.id === cmd.unit && u.seat === seat
+            && damage.aimedAt(u.system, u.area));
         if (!unit) return { ok: false, error: 'Нет такого отряда.' };
         // The unit of «Набега жнецов» receives the damage before the others.
-        if (st.first && st.left === st.hits && unit.id !== st.first) {
-            const first = state.units.find(u => u.id === st.first);
+        if (damage.first && damage.untouched && unit.id !== damage.first) {
+            const first = state.units.find(u => u.id === damage.first);
             if (first) return { ok: false, error: 'Сначала урон получает выбранный отряд.' };
         }
-        st.damaged = st.damaged || [];
-        st.damaged.push(unit.id);
         const def = this.engine.unitOf(state, unit);
         let health = def ? def.health : 1;
         // «Во время этого орбитального удара здоровье отрядов вашего противника
         // уменьшается до 3» («Вирусные бомбы»).
-        const cap = state.order && OrderContext.of(state.order).isSeat(st.attacker)
+        const cap = state.order && OrderContext.of(state.order).isSeat(damage.attacker)
             ? StrikePlan.of(state.order).enemyHealth : null;
         if (cap) health = Math.min(health, cap);
         // «временно убавить здоровье всех юнитов в атакуемом мире на 1» («Заряд
         // радиации»): the health of every unit of the world is lower while the
         // strike lasts — «можно опустить здоровье до 0 и убить мгновенно».
-        const down = state.order && OrderContext.of(state.order).isSeat(st.attacker)
+        const down = state.order && OrderContext.of(state.order).isSeat(damage.attacker)
             ? StrikePlan.of(state.order).healthDown : 0;
         if (down) health = Math.max(0, health - down);
-        if (st.left >= health) {
-            st.left -= health;
+        if (damage.left >= health) {
+            damage.take(unit.id, health);
             this.engine.destroyUnit(state, unit);
             this.engine.log(state, seat, state.players[seat].name + ' теряет отряд под ударом с орбиты.');
         } else {
             // Not enough damage: it is ignored, the unit is not routed.
-            st.left = 0;
+            damage.take(unit.id, damage.left);
         }
-        const left = state.units.filter(u => u.seat === seat && u.system === st.system && u.area === st.pos).length;
-        if (st.left <= 0 || !left) this.endStrike(state);
+        const left = state.units.filter(u => u.seat === seat && damage.aimedAt(u.system, u.area)).length;
+        if (damage.spent || !left) this.endStrike(state);
         return { ok: true };
     }
 
     endStrike(state) {
-        const st = state.strike;
+        const damage = StrikeDamage.of(state);
         const order = state.order;
         // «Страх с небес»: after the damage, one surviving unit that was hit is
         // routed. The order ends when that last question is answered.
-        if (order && StrikePlan.of(order).routesAfterDamage && st && (st.damaged || []).length) {
-            const ids = [...new Set(st.damaged)].filter(id => state.units.some(u => u.id === id));
-            if (ids.length) {
-                state.strike = null;
-                StrikePlan.of(order).clearRoutes();
-                PhasePlan.of(order).set('done');
-                StrikePlan.of(order).finishAfterQuestion(true);
-                this.engine.runEffects(state, st.attacker, [{
-                    op: 'strikeRouteDamaged', attacker: st.attacker, options: ids,
-                }], { kind: 'order', ctx: null });
-                return { ok: true, pending: true };
-            }
+        const hit = [...new Set(damage.damaged)].filter(id => state.units.some(u => u.id === id));
+        if (order && StrikePlan.of(order).routesAfterDamage && hit.length) {
+            const attacker = damage.attacker;
+            damage.end();
+            StrikePlan.of(order).clearRoutes();
+            PhasePlan.of(order).set('done');
+            StrikePlan.of(order).finishAfterQuestion(true);
+            this.engine.runEffects(state, attacker, [{
+                op: 'strikeRouteDamaged', attacker, options: hit,
+            }], { kind: 'order', ctx: null });
+            return { ok: true, pending: true };
         }
-        state.strike = null;
+        const attacker = damage.attacker;
+        damage.end();
         if (order) {
             PhasePlan.of(order).set('done');
-            this.engine.finishOrder(state, st ? st.attacker : OrderContext.of(order).seat);
+            this.engine.finishOrder(state, attacker === null ? OrderContext.of(order).seat : attacker);
         }
         return { ok: true };
     }
