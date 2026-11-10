@@ -3511,13 +3511,16 @@ rule('strike-2b', '«An orbital strike …» — удар одного прик�
 });
 
 rule('strike-3', '«Each unit that suffers damage during an orbital strike that is not destroyed does not become routed.»', () => {
-    const st = empty();
-    // A void with a world next to it, and a tough defender on that world.
+    // Раньше защитником был отряд со здоровьем 4, а удар 2 урона: отряд
+    // Погибал? — нет, но проверка шла по «alive ? routed : false», то есть
+    // уничтоженный отряд давал false и правило «не деморализуется» не звучало
+    // никогда. Теперь урон меньше здоровья: отряд обязан ВЫЖИТЬ и остаться
+    // недеморализованным.
     let found = null;
-    for (const sys of st.systems) {
+    for (const sys of empty().systems) {
         for (const v of sys.areas) {
             if (v.world) continue;
-            const near = FS_RULES.areasAround(st, sys.id, v.pos)
+            const near = FS_RULES.areasAround(empty(), sys.id, v.pos)
                 .filter(a => a.system === sys.id)
                 .map(a => FS_RULES.area(sys, a.pos))
                 .filter(a => a && a.world);
@@ -3526,17 +3529,32 @@ rule('strike-3', '«Each unit that suffers damage during an orbital strike that 
         if (found) break;
     }
     if (!found) return 'в наборе нет тайла с пустотой у мира';
-    for (let i = 0; i < 3; i++) unit(st, 0, 'линкоры', found.sys.id, found.v.pos);
-    const foe = unit(st, 1, 'огрины', found.sys.id, found.world.pos);   // health 4
-    st.order = { seat: 0, order: 'advance', system: found.sys.id, pos: found.world.pos, phase: 'strike' };
-    const res = FS_RULES.apply(st, 0, { type: 'orbitalStrike', system: found.sys.id, pos: found.world.pos });
-    if (!res.ok) return 'удар не прошёл: ' + res.error;
-    // The defender answers the strike: the damage that does not kill is ignored.
+    const st = empty();
+    const sys = st.systems.find(x => x.id === found.sys.id);
+    const v = sys.areas.find(a => a.pos === found.v.pos);
+    const world = FS_RULES.area(sys, found.world.pos);
+    // Удар с трёх линкоров: 3 кубика. Защитник — отряд со здоровьем больше 3,
+    // чтобы попадание не убивало («рыцари-немезиды» гвардии недоступны, берём
+    // самый стойкий наземный отряд обороняющегося).
+    for (let i = 0; i < 3; i++) unit(st, 0, 'линкоры', sys.id, v.pos);
+    const foeSeat = 1;
+    const tough = FS_DATA.factions.find(f => f.id === st.players[foeSeat].faction).units
+        .filter(u => u.type === 'ground')
+        .sort((a, b) => (b.health || 0) - (a.health || 0))[0];
+    eq(!!tough, true, 'у защитника есть наземный отряд');
+    const foe = unit(st, foeSeat, tough.id, sys.id, world.pos);
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos: world.pos, phase: 'strike' };
+    const res = FS_RULES.apply(st, 0, { type: 'orbitalStrike', system: sys.id, pos: world.pos });
+    eq(res.ok, true, 'удар прошёл: ' + (res.error || ''));
+    const hits = (st.strike && st.strike.hits) || (res && res.hits) || 0;
+    eq(hits < (tough.health || 1), true, 'урона меньше здоровья отряда (' + hits + ' < ' + (tough.health || 1) + ')');
+    // Защитник назначает весь урон в этот отряд.
     for (let i = 0; i < 8 && st.strike; i++) {
         FS_RULES.apply(st, st.strike.seat, { type: 'strikeDamage', unit: foe.id });
     }
     const alive = st.units.find(u => u.id === foe.id);
-    eq(alive ? alive.routed : false, false, 'урон без уничтожения не деморализует');
+    eq(!!alive, true, 'отряд выжил под ударом');
+    eq(alive ? !!alive.routed : true, false, 'и урон без уничтожения его не деморализовал');
 });
 
 // ============================================================================
