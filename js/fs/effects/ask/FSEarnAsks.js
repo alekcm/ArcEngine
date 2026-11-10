@@ -47,7 +47,9 @@ class EarnAsks {
         // «… за каждый потраченный `att. cube`» — the payment sets the
         // count, and a payment of nothing buys nothing. The limit of the
         // faction is applied by the one counter, PlayerEntity.addAsset.
-        const got = step.per ? effects.count(R, state, seat, step, ctx) : (step.n || 1);
+        const got = (step.per || step.fromDestroyed)
+            ? effects.count(R, state, seat, step, ctx)
+            : (step.n || 1);
         if (got <= 0) {
             R.log(state, seat, p.name + ' ничего не заплатил — жетон не получен.');
             return null;

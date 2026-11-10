@@ -706,6 +706,20 @@ const FS_EFFECTS = {
         let prev = null;
         let prevCond = null;
         for (const sentence of this.sentences(text)) {
+            // «В начале раунда битвы вы можете сбросить эту карту. Уничтожьте 1
+            // ваш отряд …, чтобы переместить …» («Праздник кровопролития»):
+            // the sentence after a trigger without a body IS its effect. Read
+            // alone, the body would happen at once and for free, and the
+            // trigger would stay a stub.
+            if (prev && prev.op === 'trigger' && !(prev.steps && prev.steps.length)
+                && !/^(?:это|не|он|она|они|таким образом)/i.test(sentence)) {
+                const body = this.parse(sentence, ctx || {});
+                if (body.length && body.every(one => one && one.op !== 'scheme' && one.op !== 'trigger')) {
+                    prev.steps = body;
+                    prev.note = false;
+                    continue;
+                }
+            }
             // «если противник позволяет, то получите 2 `def. token`. Если нет,
             // то получите 2 `att. token` в следующем раунде боя.» («Крылатый
             // ужас»): the second sentence is the branch of his refusal.
@@ -1158,6 +1172,16 @@ const FS_EFFECTS = {
         const faction = this.factionOf(ctx);
         const units = this.unitNames(clean, faction);
         const filter = units.length ? { types: units } : (unitFilter(clean) || typeFilter(clean));
+        // The level of the victim («с командным уровнем 1–2») keeps its own
+        // step: the card names a range, not a name.
+        const lvl = /с командным уровнем\s+(\d+)(?:\s*[–-]\s*(\d+))?/i.exec(String(what || ''));
+        if (lvl) {
+            const a = Number(lvl[1]);
+            const b = lvl[2] !== undefined ? Number(lvl[2]) : a;
+            const step = { op: 'destroy', n: num(m[1]) || 1, who: 'me', pick: true, noText: true,
+                maxKl: Math.max(a, b), minKl: Math.min(a, b) };
+            return [step].concat(pieces);
+        }
         const steps = [{ op: 'destroy', n: num(m[1]), who: 'me', pick: true, filter, text: 'уничтожьте: ' + clean }];
         // «Уничтожьте одного недеморализованного Пожирателя в этой системе»
         // («Дождь из спор»): the victim may stand in any area of the system of
@@ -1356,6 +1380,16 @@ const FS_EFFECTS = {
             && /временно\s+получ[а-яёa-z]*\s+материал[а-яёa-z]*/i.test(s)) {
             return [{ op: 'destroyForMateriel', ofSystem: 'active', who: 'me' }];
         }
+        // «… постройку в дружественном мире, чтобы получить материалы, равные
+        // её материальной стоимости, увеличенной на 1» («Радикалы и
+        // пуритане»): the engine destroys a building and pays its price.
+        if (/уничтож[а-яёa-z]*[^.;]{0,140}?постройк[а-яёa-z]*/i.test(s)
+            && !/(?:^|\s)либо\s/i.test(s)
+            && /дружественн[а-яёa-z]*\s+мир/i.test(s)
+            && /(?:получ[а-яёa-z]*|равн[а-яёa-z]*)\s+(?:материал|её\s+материальной)/i.test(s)) {
+            const plus = /(?:увеличенн[а-яёa-z]*|больше)\s+на\s+(\d+)/i.exec(s);
+            return [{ op: 'destroyStructureForMateriel', bonus: plus ? Number(plus[1]) : 0, who: 'me' }];
+        }
         if (/уничтож[а-яёa-z]*[^.;]{0,140}?постройк[а-яёa-z]*/i.test(s)
             && !/сброс[а-яёa-z]*\s+эт[ау]\s+карт[ау]/i.test(s)
             && !/(?:^|\s)либо\s/i.test(s)) {
@@ -1528,6 +1562,14 @@ const FS_EFFECTS = {
         const pending = question1.record;
         const list = pending ? pending.steps : steps;
         const c = Object.assign({}, ctx || {}, { owner: seat });
+        // «…равные ЕГО стоимости»: the defs of the units an earlier step of the
+        // same effect has destroyed, so the next step can count them.
+        if (!Array.isArray(c.destroyedDefs)) {
+            c.destroyedDefs = [];
+            for (const one of list) {
+                if (one && Array.isArray(one.destroyedDefs)) c.destroyedDefs.push(...one.destroyedDefs);
+            }
+        }
         let index = startIndex !== undefined ? startIndex : (pending ? pending.index : 0);
         while (index < list.length) {
             const step = list[index];
@@ -1580,6 +1622,9 @@ const FS_EFFECTS = {
                 list.splice(index, 1, ...(res.replace || []));
                 continue;
             }
+            // The destroyed units of this very effect join the frame: the next
+            // step («равные его стоимости») counts them.
+            if (Array.isArray(step.destroyedDefs)) c.destroyedDefs.push(...step.destroyedDefs);
             this.spreadCount(list, index, step);
             this.thenSteps(list, index, step);
             index++;
@@ -1849,7 +1894,14 @@ const FS_EFFECTS = {
     // The chain goes on with the next step.
     next(R, state, pending, replace) {
         const list = replace || pending.steps;
-        const saved = { seat: pending.seat, kind: pending.kind, steps: list, index: replace ? 0 : pending.index + 1, ctx: pending.ctx, choice: null };
+        // «…равные ЕГО стоимости»: what this effect has already destroyed travels
+        // with it — the pause of a question must not forget the dead.
+        const ctx = pending.ctx || {};
+        if (!Array.isArray(ctx.destroyedDefs)) ctx.destroyedDefs = [];
+        for (const one of list) {
+            if (one && Array.isArray(one.destroyedDefs)) ctx.destroyedDefs.push(...one.destroyedDefs);
+        }
+        const saved = { seat: pending.seat, kind: pending.kind, steps: list, index: replace ? 0 : pending.index + 1, ctx, choice: null };
         Question.of(state).close();
         return this.run(R, state, saved.seat, list, saved.ctx, saved.index);
     },
@@ -2148,8 +2200,27 @@ const FS_EFFECTS = {
         return n;
     },
 
+    // The price of a structure the card itself buys: «купите 1 постройку,
+    // уменьшив её стоимость на 1» («Радикалы и пуритане»). The step and the
+    // question that offers the structures both ask here — one place, so the
+    // price shown is the price paid.
+    structureCost(R, step, type) {
+        const base = (R.structureStats(type) || {}).cost || 0;
+        const off = step && step.discount !== undefined && step.discount !== false
+            ? (Number(step.discount) || 0) : 0;
+        return Math.max(0, base - off);
+    },
+
     count(R, state, seat, step, ctx) {
         let n = step.n || 1;
+        if (step.fromDestroyed) {
+            // «Получите материалы, равные его материальной стоимости» («Жуткие
+            // трофеи»): the unit this effect has just destroyed sets the number.
+            const defs = (ctx && ctx.destroyedDefs) || [];
+            let sum = 0;
+            for (const def of defs) sum += def[step.fromDestroyed] || 0;
+            return Math.max(0, sum + (step.bonus || 0));
+        }
         if (step.nFromWorlds === 'chosenSystem') {
             // «Получите материалы со всех дружественных миров этой системы»
             // («Пожиратель миров»): the sum of the materiel of the worlds the
@@ -2471,6 +2542,14 @@ const FS_EFFECTS = {
         return 'uncontrolled';
     },
 
+    // Do the two systems touch: the neighbours of one include the other. One
+    // place for every «соседняя» of the cards.
+    systemsTouch(R, state, a, b) {
+        if (!a || !b) return false;
+        if (a === b) return true;
+        return R.neighbors(state, a).includes(b);
+    },
+
     // Is the system in the scope of the ability: the active system itself or a
     // system next to it? No order in flight — everything is in scope.
     inScope(R, state, systemId, ofSystem) {
@@ -2498,6 +2577,24 @@ const FS_EFFECTS = {
     // printed on the faction sheet.
     areasForAbility(R, state, seat, dest) {
         const active = state.order ? OrderContext.of(state.order).system : null;
+        // «переместить любое количество отрядов в соседнюю область»
+        // («Праздник кровопролития»): the neighbour of the area the units leave
+        // from — the source is known to the question that asks about it.
+        if (dest === 'adjacentArea' || (dest && dest.from)) {
+            const from = dest && dest.from ? dest.from : null;
+            if (!from) return [];
+            const sys = R.system(state, from.system);
+            if (!sys) return [];
+            const out = [];
+            for (const other of state.systems) {
+                if (!this.systemsTouch(R, state, sys.id, other.id)) continue;
+                for (const area of other.areas) {
+                    if (area.pos === from.pos && other.id === from.system) continue;
+                    out.push({ system: other.id, pos: area.pos });
+                }
+            }
+            return out;
+        }
         const neighbors = active ? R.neighbors(state, active) : [];
         const out = [];
         for (const sys of state.systems) {
@@ -3357,6 +3454,16 @@ const RULES = [
             dest: 'friendlyOrUncontrolledVoidActive', who: 'me',
         }),
     },
+    // «Получите материалы, равные его материальной стоимости, и жетоны
+    // подкрепления в количестве, равном его значению боевого духа» («Жуткие
+    // трофеи»): the unit this effect has just destroyed sets BOTH numbers.
+    {
+        re: /получ[а-яёa-z]*\s+материал[а-яёa-z]*,\s+равн[а-яёa-z]*\s+его\s+материальной\s+стоимости/i,
+        build: () => ([
+            { op: 'gainMateriel', fromDestroyed: 'cost', who: 'me' },
+            { op: 'gainAsset', kind: 'reinforcement', fromDestroyed: 'morale', who: 'me' },
+        ]),
+    },
     // «Получите материалы со всех дружественных миров этой системы»
     // («Пожиратель миров»).
     {
@@ -3397,6 +3504,25 @@ const RULES = [
     {
         re: /уничтожит (\d+)?\s*жетон[а-яёa-z]*\s+подкрепления[^.]*?за каждый отряд, который вы деморализовали/i,
         build: m => ({ op: 'loseReinforcement', n: num(m[1]), who: 'foe', per: 'routed' }),
+    },
+    // «Уничтожьте 1 ваш отряд с командным уровнем 1–2» («Праздник
+    // кровопролития»): the level is the filter of the victim, the owner is the
+    // player himself.
+    {
+        noWhen: true,
+        re: /уничтож[а-яёa-z]*\s+(?:(\d+)\s+)?(?:одного|одну|1)?\s*(?:ваш[а-яёa-z]*|сво[а-яёa-z]*)\s+(?:юнит[а-яёa-z]*|отряд[а-яёa-z]*)\s+с командным уровнем\s+(\d+)(?:\s*[–-]\s*(\d+))?/i,
+        build: m => {
+            const a = Number(m[2]);
+            const b = m[3] !== undefined ? Number(m[3]) : a;
+            return { op: 'destroy', n: num(m[1]) || 1, pick: true, who: 'me', noText: true,
+                     maxKl: Math.max(a, b), minKl: Math.min(a, b) };
+        },
+    },
+    // «переместить любое количество отрядов в соседнюю область» («Праздник
+    // кровопролития»): any number of the player's units, one area aside.
+    {
+        re: /перемест[а-яёa-z]*\s+(?:любое\s+количество\s+)?отряд[а-яёa-z]*\s+в\s+соседн[а-яёa-z]*\s+област[а-яёa-z]*/i,
+        build: () => ({ op: 'moveUnits', n: 0, all: true, pick: true, dest: 'adjacentArea', who: 'me' }),
     },
     // «Уничтожьте 1 отряд противника с командным уровнем 0 или 1 в этом мире»
     // («Ракета Death Strike»): the level is the filter of the target.
@@ -3596,6 +3722,13 @@ const RULES = [
     {
         re: /^нужно быть ([а-яёa-z ]{3,40})\.?$/i,
         build: m => ({ op: 'require', what: 'upgrade', name: m[1].trim() }),
+    },
+    // «купите 1 постройку, уменьшив её стоимость на 1» («Радикалы и
+    // пуритане»): the discount is the price of the building, not a free one.
+    {
+        re: /куп[а-яёa-z]*\s+1\s+постройку[^.;]*?уменьш[а-яёa-z]*\s+е[её]\s+стоимость\s+на\s+(\d+)/i,
+        build: m => ({ op: 'placeStructure', kind: 'any', n: 1, buy: true, pick: true,
+            discount: Number(m[1]) || 1, who: 'me' }),
     },
     // "buy 1 structure and place it"
     {

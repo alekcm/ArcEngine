@@ -5,7 +5,7 @@
 // приходит параметром effects, а общая рамка шага — объектом f (FSStepContext).
 
 class DestroySteps {
-    static ops = ['destroyUnit', 'destroy', 'destroyForMateriel', 'destroyDamagedFoe', 'avoidDestroy', 'sabotage', 'replaceStructure', 'replaceStructureType'];
+    static ops = ['destroyUnit', 'destroy', 'destroyForMateriel', 'destroyStructureForMateriel', 'destroyDamagedFoe', 'avoidDestroy', 'sabotage', 'replaceStructure', 'replaceStructureType'];
 
     static destroyUnit(effects, f) {
         const { R, state, seat, answer, units } = f;
@@ -28,6 +28,9 @@ class DestroySteps {
         }
         for (const u of dead) R.destroyUnit(state, u);
         step.done = dead.length > 0;
+        // «…материалы, равные ЕГО стоимости»: the steps after this one may need
+        // the very unit that died — its value and its health, in the defs.
+        step.destroyedDefs = dead.map(u => R.unitOf(state, u)).filter(Boolean);
         // «… чтобы противник потерял 2 кубика за каждого уничтоженного
         // Гвардейца» — the next steps count what this one destroyed.
         step.destroyedCount = dead.length;
@@ -118,6 +121,23 @@ class DestroySteps {
         if (u) R.destroyUnit(state, u);
         R.destroyStructure(state, st);
         R.log(state, seat, p.name + ': «Саботаж» уничтожает отряд и вражескую постройку.');
+        step.done = true;
+        return null;
+    }
+
+    // «Уничтожьте 1 постройку в дружественном мире, чтобы получить материалы,
+    // равные её материальной стоимости, увеличенной на 1» («Радикалы и
+    // пуритане»): the price is paid by the building, the reward is its cost.
+    static destroyStructureForMateriel(effects, f) {
+        const { R, state, seat, step, answer } = f;
+        const st = state.structures.find(x => x.id === answer.structure && x.seat === seat);
+        if (!st) return null;
+        const cost = (R.structureStats(st.type) || {}).cost || 0;
+        R.destroyStructure(state, st);
+        const n = cost + (step.bonus || 0);
+        if (n > 0) R.player(state, seat).gainMateriel(n);
+        R.log(state, seat, state.players[seat].name + ' уничтожает постройку и получает '
+            + n + ' материал(а).');
         step.done = true;
         return null;
     }

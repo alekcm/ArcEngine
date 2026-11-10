@@ -32,7 +32,17 @@ class MoveSteps {
         if (!list.length) return null;
         const area = answer.area;
         if (!area) {
-            const areas = effects.areasForAbility(R, state, seat, step.dest);
+            // «в соседнюю область» — the neighbour of the area they stand in.
+            const dest = step.dest === 'adjacentArea'
+                ? { from: { system: list[0].system, pos: list[0].area } } : step.dest;
+            let areas = effects.areasForAbility(R, state, seat, dest);
+            // A ground unit stands in a world, a ship in a void: the card lets
+            // the player move any number of them, and each needs its own place.
+            if (step.dest === 'adjacentArea') {
+                const defs = list.map(u => R.unitOf(state, u)).filter(Boolean);
+                if (defs.some(d => d.type === 'ground')) areas = areas.filter(a => effects.areaWorld(state, a.system, a.pos));
+                if (defs.some(d => d.type !== 'ground')) areas = areas.filter(a => !effects.areaWorld(state, a.system, a.pos));
+            }
             if (!areas.length) return null;
             return { question: { kind: 'areas', who: seat, op: 'moveUnits', options: areas, text: 'Куда переместить отряды?' } };
         }

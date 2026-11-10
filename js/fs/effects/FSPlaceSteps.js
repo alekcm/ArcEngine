@@ -82,8 +82,8 @@ class PlaceSteps {
         if (answer.type !== undefined && !answer.area) {
             const t = answer.type;
             if (['factory', 'city', 'bastion'].indexOf(t) < 0) return { ok: false, error: 'Такой постройки нет.' };
-            const stats = R.structureStats(t);
-            if (!step.free && p.materiel < stats.cost) return { ok: false, error: 'Не хватает материи.' };
+            const price = effects.structureCost(R, step, t);
+            if (!step.free && p.materiel < price) return { ok: false, error: 'Не хватает материи.' };
             const can = R.canTakeStructure(state, seat, t);
             if (!can.ok) return { ok: false, error: can.error };
             step.kind = t;
@@ -98,13 +98,13 @@ class PlaceSteps {
         }
         const area = answer.area;
         if (!area) return null;
-        const stats = R.structureStats(step.kind);
+        const price = effects.structureCost(R, step, step.kind);
         // The plastic of the structures is shared and counted on the board.
         const can = R.canTakeStructure(state, seat, step.kind);
         if (!can.ok) return { ok: false, error: can.error };
-        if (!step.free && p.materiel < stats.cost) return { ok: false, error: 'Не хватает материи.' };
+        if (!step.free && p.materiel < price) return { ok: false, error: 'Не хватает материи.' };
         // The structure may be free, but it always comes from the reserve.
-        if (!step.free) R.player(state, seat).payMateriel(stats.cost);
+        if (!step.free) R.player(state, seat).payMateriel(price);
         R.addStructure(state, seat, step.kind, area.system, area.pos);
         R.log(state, seat, state.players[seat].name + ' строит: ' + R.structureName(step.kind) + '.');
         return null;

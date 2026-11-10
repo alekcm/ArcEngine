@@ -5,7 +5,7 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class PlaceAsks {
-    static ops = ['placeUnit', 'placeStructure', 'placeFree', 'placeReinforcement', 'placeOrderAny', 'teleport', 'retreat', 'retreatInstead', 'evacuate', 'moveUnits', 'moveUnit', 'moveStructure', 'route', 'replaceUnit', 'replaceStructure', 'replaceStructureType', 'destroyUnit', 'destroy', 'sabotage', 'destroyForMateriel', 'avoidDestroy', 'restore', 'restoreOneSystem', 'resurrectOffer', 'restoreFallenOffer', 'swapCombatCards', 'swapCombatPair', 'destroyDamagedFoe'];
+    static ops = ['placeUnit', 'placeStructure', 'placeFree', 'placeReinforcement', 'placeOrderAny', 'teleport', 'retreat', 'retreatInstead', 'evacuate', 'moveUnits', 'moveUnit', 'moveStructure', 'route', 'replaceUnit', 'replaceStructure', 'replaceStructureType', 'destroyUnit', 'destroy', 'sabotage', 'destroyForMateriel', 'destroyStructureForMateriel', 'avoidDestroy', 'restore', 'restoreOneSystem', 'resurrectOffer', 'restoreFallenOffer', 'swapCombatCards', 'swapCombatPair', 'destroyDamagedFoe'];
 
     static placeUnit(effects, f) {
         const { R, state, seat, step, ctx, p } = f;
@@ -54,7 +54,7 @@ class PlaceAsks {
         // structures he can afford and actually take from the box are
         // offered; an empty offer ends the ability honestly in the log.
         const offer = ['factory', 'city', 'bastion'].filter(t => {
-            if (!step.free && p.materiel < R.structureStats(t).cost) return false;
+            if (!step.free && p.materiel < effects.structureCost(R, step, t)) return false;
             const can = R.canTakeStructure(state, seat, t);
             return can && can.ok;
         });
@@ -176,7 +176,10 @@ class PlaceAsks {
         }
         const units = effects.unitsOf(R, state, seat, combat, step);
         if (!units.length) return null;
-        return { question: { kind: 'units', who: seat, op: 'moveUnits', n: Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: step.questionText || 'Какие отряды переместить?' } };
+        // «переместить любое количество отрядов в соседнюю область»: the
+        // player chooses them all himself.
+        const all = step.n === 0 || step.all;
+        return { question: { kind: 'units', who: seat, op: 'moveUnits', n: all ? units.length : Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: step.questionText || (all ? 'Какие отряды переместить? (любое количество)' : 'Какие отряды переместить?') } };
     }
 
     static moveUnit(effects, f) {
@@ -352,6 +355,26 @@ class PlaceAsks {
             return null;
         }
         return { question: { kind: 'areas', who: seat, op: 'destroyForMateriel', options: areas, text: 'В каком мире уничтожить отряды и постройки?' } };
+    }
+
+    // «… постройку в дружественном мире»: the buildings to choose from are the
+    // owner's own, and the world must be theirs — the question shows no
+    // building the card does not allow.
+    static destroyStructureForMateriel(effects, f) {
+        const { R, state, seat, p } = f;
+        const friendly = new Set(Board.of(state).friendlyWorlds(seat)
+            .map(w => w.system + '|' + w.pos));
+        const list = state.structures
+            .filter(s2 => s2.seat === seat && friendly.has(s2.system + '|' + s2.area))
+            .map(s2 => s2.id);
+        if (!list.length) {
+            if (p) R.log(state, seat, p.name + ': в дружественных мирах нет построек.');
+            return null;
+        }
+        return { question: {
+            kind: 'structures', who: seat, op: 'destroyStructureForMateriel', n: 1,
+            options: list, text: 'Какую постройку уничтожить за материалы?',
+        } };
     }
 
     static avoidDestroy(effects, f) {

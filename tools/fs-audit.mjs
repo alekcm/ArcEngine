@@ -1241,6 +1241,83 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
 });
 
+rule('radical-0a', '«Либо купите 1 постройку, уменьшив её стоимость на 1, либо уничтожьте 1 постройку в дружественном мире…» (Радикалы и пуритане)', () => {
+    const card = [...ctx.FS_DATA.events, ...ctx.FS_DATA.orders].find(c => c.name === 'Радикалы и пуритане');
+    eq(!!card, true, 'карта есть');
+    const steps = ctx.FS_EFFECTS.parse(card.text, { kind: 'event', faction: card.faction });
+    eq(steps.length, 1, 'одна развилка');
+    eq(steps[0].op, 'choice', 'это выбор из двух');
+    eq(steps[0].options.map(o => o.op).join(','), 'placeStructure,destroyStructureForMateriel',
+        'обе опции — действия движка, ни одной заглушки');
+    eq(steps[0].options[0].discount, 1, 'первая опция дешевле на 1');
+    eq(steps[0].options[1].bonus, 1, 'вторая опция даёт стоимость +1');
+    // The engine, not the player, does both: the structure leaves the board
+    // and the materiel arrives.
+    const st = FS_RULES.newGame({ seed: 5, players: [
+        { name: 'И', faction: 'инквизиция' }, { name: 'О', faction: 'орки' }], interactiveSetup: false });
+    const world = FS_RULES.board(st).friendlyWorlds(0)[0];
+    eq(!!world, true, 'у инквизиции есть дружественный мир');
+    FS_RULES.addStructure(st, 0, 'city', world.system, world.pos);
+    const city = st.structures.find(x => x.seat === 0 && x.type === 'city');
+    const price = FS_RULES.structureStats('city').cost;
+    const before = st.players[0].materiel;
+    FS_RULES.runEffects(st, 0, steps, { kind: 'event', ctx: null });
+    eq(st.pending.question.kind, 'choice', 'спросили, какую из двух');
+    FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: 1 } });
+    eq(st.pending.question.kind, 'structures', 'спросили, какую постройку уничтожить');
+    eq(st.pending.question.options.join(','), city.id, 'предложена только своя постройка в дружественном мире');
+    FS_RULES.apply(st, 0, { type: 'effect', answer: { structure: city.id } });
+    eq(st.structures.some(x => x.id === city.id), false, 'постройка уничтожена');
+    eq(st.players[0].materiel - before, price + 1, 'материя равна стоимости постройки + 1');
+    // The first option: the discount is the price paid, not a free build.
+    const st2 = FS_RULES.newGame({ seed: 5, players: [
+        { name: 'И', faction: 'инквизиция' }, { name: 'О', faction: 'орки' }], interactiveSetup: false });
+    st2.players[0].materiel = price;
+    const before2 = st2.players[0].materiel;
+    FS_RULES.runEffects(st2, 0, steps, { kind: 'event', ctx: null });
+    FS_RULES.apply(st2, 0, { type: 'effect', answer: { choice: 0 } });
+    FS_RULES.apply(st2, 0, { type: 'effect', answer: { type: 'city' } });
+    const area = st2.pending.question.options[0];
+    FS_RULES.apply(st2, 0, { type: 'effect', answer: { area } });
+    eq(!!area, true, 'было куда строить');
+    eq(before2 - st2.players[0].materiel, price - 1, 'город оплачен со скидкой 1');
+    eq(st2.structures.some(x => x.seat === 0 && x.type === 'city'), true, 'город стоит на доске');
+});
+
+rule('trophy-0a', '«Получите материалы, равные его материальной стоимости, и жетоны подкрепления…» — «Жуткие трофеи» платит за уничтоженный отряд', () => {
+    const rules = /** @type {any} */ (ctx.FS_RULES);
+    const effects = /** @type {any} */ (ctx.FS_EFFECTS);
+    const cards = ctx.FS_CATALOG.eventCards('темные-эльдары');
+    const card = cards.find(c => /трофеи/i.test(c.name));
+    eq(!!card, true, 'карта «Жуткие трофеи» есть');
+    // The text is read as two steps, and neither takes a flat one.
+    const steps = effects.parse(card.text, { kind: 'event', faction: 'темные-эльдары' });
+    eq(steps[0].op, 'destroy', 'сначала уничтожьте отряд');
+    const gain = steps.find(x => x.op === 'gainMateriel');
+    eq(gain.fromDestroyed, 'cost', 'материя — по стоимости уничтоженного');
+    eq(gain.n, undefined, 'а не одно зерно');
+    eq(steps.some(x => x.op === 'gainAsset' && x.kind === 'reinforcement' && x.fromDestroyed === 'morale'), true,
+        'и подкрепление — по боевому духу');
+    // The whole effect on a live game: the unit that dies sets both numbers.
+    const state = rules.newGame({ seed: 3, interactiveSetup: false, players: [
+        { name: 'Д', faction: 'темные-эльдары' }, { name: 'И', faction: 'инквизиция' }] });
+    const sys = state.systems[0];
+    const area = sys.areas.find(a => a.world);
+    const unitId = 'гаснущие-солнца';
+    rules.addUnit(state, 0, unitId, sys.id, area.pos);
+    const unit = state.units.find(u => u.seat === 0 && u.unit === unitId);
+    const def = rules.unitOf(state, unit);
+    const before = state.players[0].materiel;
+    effects.run(rules, state, 0, steps, { kind: 'event' });
+    effects.answer(rules, state, 0, { answer: { units: [unit.id] } });
+    eq(state.units.some(u => u.id === unit.id), false, 'отряд погиб');
+    eq(state.players[0].materiel - before, def.cost, 'материя равна стоимости отряда');
+    eq(def.cost > 1, true, 'и это не один жетон');
+    // The tokens follow the morale — up to the limit of the faction.
+    const want = Math.min(def.morale, rules.player(state, 0).assetLimit('reinforcement'));
+    eq(rules.player(state, 0).assetCount('reinforcement'), want, 'подкрепление по боевому духу (в пределе фракции)');
+});
+
 rule('seat-0a', '«every player sees the game through his own eyes» — место игрока держит Seat', () => {
     const view = { players: [{ name: 'А' }, { name: 'Б' }, { name: 'В' }] };
     const seat = Seat.of(view);

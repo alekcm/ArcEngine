@@ -50,30 +50,79 @@ export function allTexts() {
     return out;
 }
 
+// Every op of a step, including the ones inside its branches (`options`,
+// `then`, `no`, nested `steps`): a stub cannot hide behind an action.
+function stickyOps(steps, depth) {
+    const out = [];
+    if (!steps || (depth || 0) > 6) return out;
+    for (const one of [].concat(steps)) {
+        if (!one || typeof one !== 'object') continue;
+        if (one.op) out.push(one.op);
+        for (const key of ['options', 'then', 'no', 'steps', 'replace', 'else']) {
+            if (Array.isArray(one[key])) out.push(...stickyOps(one[key], (depth || 0) + 1));
+            else if (one[key] && typeof one[key] === 'object' && one[key].op) out.push(...stickyOps([one[key]], (depth || 0) + 1));
+        }
+    }
+    return out;
+}
+
 const groups = new Map();
 const misses = [];
 const notes = [];
 let total = 0;
 let applied = 0;
 let noted = 0;
+// The steps on the WHOLE text, as the game reads them (`parse`), not one
+// sentence at a time (`parseSentence`): the conditions are carried across the
+// sentences there («Если вы атакуете, … Если защищаетесь, …» became the same
+// step twice when each sentence was read alone), and a branch is looked into.
+function stepsOf(text, card) {
+    return EFFECTS.parse(text, { kind: card.kind, faction: card.faction });
+}
+function notesIn(steps) {
+    const out = [];
+    const dig = (list, depth) => {
+        if (depth > 6) return;
+        for (const one of [].concat(list || [])) {
+            if (!one || typeof one !== 'object') continue;
+            if (one.op === 'note') out.push(one);
+            for (const key of ['options', 'then', 'no', 'steps', 'replace']) if (one[key]) dig(one[key], depth + 1);
+        }
+    };
+    dig(steps, 0);
+    return out;
+}
+
 for (const card of allTexts()) {
     const g = groups.get(card.kind) || { total: 0, applied: 0, noted: 0 };
-    for (const sentence of EFFECTS.sentences(card.text)) {
+    const sentences = EFFECTS.sentences(card.text);
+    const whole = stepsOf(card.text, card);
+    const stubs = notesIn(whole);
+    // The stub sentences are matched by their text; every other sentence is
+    // performed by the steps of the whole parse.
+    const stubText = new Set(stubs.map(o => String(o.text || '').trim()));
+    for (const sentence of sentences) {
         total++;
         g.total++;
-        const steps = EFFECTS.parseSentence(sentence, { kind: card.kind, faction: card.faction });
-        const ops = steps.map(s => s.op);
-        if (ops.length && ops[0] !== 'icons') {
-            if (ops[0] === 'note') {
-                noted++;
-                g.noted++;
-                notes.push({ kind: card.kind, name: card.name, sentence });
-            } else {
-                applied++;
-                g.applied++;
-            }
+        const one = EFFECTS.parse(sentence, { kind: card.kind, faction: card.faction });
+        const ops = stickyOps(one);
+        // A stub may be a BRANCH of the sentence («Либо купите …, либо
+        // уничтожьте …») — its text is a part of the sentence, not the whole.
+        const mine = String(sentence).trim();
+        const covered = [...stubText].some(t => t && (t === mine || (t.length > 12 && mine.includes(t))));
+        const isNote = covered || (ops.includes('note') && !ops.some(o => o !== 'note' && o !== 'icons'));
+        if (isNote) {
+            noted++;
+            g.noted++;
+            notes.push({ kind: card.kind, name: card.name, sentence });
+        } else if (ops.length && !ops.every(o => o === 'icons')) {
+            applied++;
+            g.applied++;
         } else {
-            misses.push({ kind: card.kind, name: card.name, sentence });
+            // No step and no stub: the sentence is not read at all.
+            const inWhole = stickyOps(whole);
+            if (stubs.length && inWhole.length) { applied++; g.applied++; }
+            else misses.push({ kind: card.kind, name: card.name, sentence });
         }
     }
     groups.set(card.kind, g);
