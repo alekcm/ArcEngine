@@ -5527,6 +5527,60 @@ rule('deck-3', '«When a player purchases a combat upgrade card, he chooses and 
     refused(late, /Нет вопроса/, 'ответить после конца приказа нечем');
 });
 
+rule('strike-5', '«Вы можете потратить 2 `def. cube`, чтобы взять под контроль постройки этого мира, если в нём нет вражеских юнитов и бастионов.» (05-order-upgrades.md, «Изъяны плоти»)', () => {
+    // `takeStructuresOf` — единственный захват построек, и удар платит за него
+    // кубиками защиты. Ни одна проверка не вела удар с этой ценой: подмена
+    // «забрать» на «ничего не делать» проходила молча.
+    const upg = FS_DATA.orders.find(c => /Изъяны плоти/.test(c.name));
+    eq(!!upg, true, 'карта «Изъяны плоти» есть');
+    eq(FS_EFFECTS.parse(upg.text, { kind: 'order', faction: upg.faction }).some(x => x.op === 'strikeTakeStructures'),
+        true, 'карта обещает захват построек за 2 куб. обороны');
+    const strikeOn = (dice, priced) => {
+        const st = empty(7);
+        let found = null;
+        for (const sys of st.systems) {
+            for (const v of sys.areas) {
+                if (v.world) continue;
+                const near = FS_RULES.areasAround(st, sys.id, v.pos)
+                    .filter(a => a.system === sys.id)
+                    .map(a => FS_RULES.area(sys, a.pos))
+                    .filter(a => a && a.world);
+                if (near.length) { found = { sys, v, world: near[0] }; break; }
+            }
+            if (found) break;
+        }
+        if (!found) return null;
+        const sys = st.systems.find(x => x.id === found.sys.id);
+        unit(st, 0, 'линкоры', sys.id, found.v.pos);
+        FS_RULES.addStructure(st, 1, 'factory', sys.id, found.world.pos);
+        st.order = { seat: 0, order: 'advance', system: sys.id, pos: found.world.pos, phase: 'strike' };
+        if (priced) StrikePlan.of(st.order).setTake({ n: 2, kind: 'def' });
+        // The roll is the only random part of the strike: the check fixes it.
+        const real = FS_RULES.rollDice;
+        FS_RULES.rollDice = () => dice.slice();
+        try {
+            const res = FS_RULES.apply(st, 0, { type: 'orbitalStrike', system: sys.id, pos: found.world.pos });
+            if (!res.ok) throw new Error('удар не прошёл: ' + res.error);
+        } finally {
+            FS_RULES.rollDice = real;
+        }
+        return st.structures.find(x => x.type === 'factory').seat;
+    };
+    eq(strikeOn(['def', 'def', 'att'], true), 0, 'заплачено два куб. обороны — постройки переходят');
+    eq(strikeOn(['def', 'att', 'att'], true), 1, 'одного куб. обороны мало — постройки остаются');
+    eq(strikeOn(['def', 'def', 'att'], false), 1, 'без карты постройки не забирают даже при двух куб. обороны');
+    // В мире с вражеским отрядом или бастионом брать нечего — даже заплатив.
+    const guarded = empty(7);
+    const gw = worldOf(guarded, guarded.systems[0].id);
+    FS_RULES.addStructure(guarded, 1, 'factory', guarded.systems[0].id, gw);
+    unit(guarded, 1, 'бойзы', guarded.systems[0].id, gw);
+    eq(FS_RULES.takeStructuresOf(guarded, 0, guarded.systems[0].id, gw), false, 'с вражеским отрядом постройку не забрать');
+    const bast = empty(7);
+    const bw = worldOf(bast, bast.systems[0].id);
+    FS_RULES.addStructure(bast, 1, 'bastion', bast.systems[0].id, bw);
+    eq(FS_RULES.takeStructuresOf(bast, 0, bast.systems[0].id, bw), false, 'с бастионом постройку не забрать');
+});
+
 rule('strike-4', '«Бастионы противника не могут предотвратить этот орбитальный удар.» (05-order-upgrades.md, «Ужасный удар»)', () => {
     const st = empty();
     let found = null;
