@@ -217,8 +217,14 @@ class StrikeAsks {
     }
 
     static ignoreFoeAtt(effects, f) {
-        const { combat } = f;
-        if (combat) CombatBans.of(combat).ignoreFoeAttack();
+        // «В этом раунде игнорируйте все вражеские `att. cube`» («Кара Божья»):
+        // the card silences the dice of the OTHER side — the foe of the player
+        // who played it, and only for the round it was played in.
+        const { combat, side, step } = f;
+        // «ваш противник» из текста — сторона, названная шагом (`who: 'foe'`),
+        // а не «защитник» по умолчанию: эту же карту можно разыграть в атаке.
+        const foe = step && step.who === 'me' ? side : (side ? (side === 'attacker' ? 'defender' : 'attacker') : null);
+        if (combat) CombatBans.of(combat).ignoreFoeAttack(foe);
         return null;
     }
 

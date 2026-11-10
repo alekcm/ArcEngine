@@ -10,8 +10,10 @@
 // routed units was a lone flag read once at the end of the round.
 //
 // One question now: `CombatBans.of(combat).forbidsReinforce(seat, side)`. The
-// bans live until the battle ends — none of them is cleaned at the end of a
-// round — so the object has no `clear`: it dies with the battle.
+// bans of the reinforcement live until the battle ends — that one is cleaned by
+// nothing. The ban of the attack dice is different: its card says «в этом
+// раунде игнорируйте все вражеские `att. cube`» — it names the OTHER side of
+// whoever played it, and it dies with the round it was played in.
 
 class CombatBans {
     /** @param {any} combat the battle (the flags live on it) */
@@ -54,15 +56,34 @@ class CombatBans {
 
     // --- «кубики атаки противника не считаются» -------------------------------
 
-    /** The attack dice of the defender stay on the table but count for nothing. */
-    ignoreFoeAttack() {
-        this.combat.ignoreFoeAtt = true;
+    /**
+     * The attack dice of `side` stay on the table but count for nothing until the
+     * end of the current round of this battle.
+     *
+     * «В этом раунде игнорируйте все вражеские `att. cube`» names the foe of the
+     * player who played the card, not «the defender»: the same card played by an
+     * attacker silences the defence of its owner. The round it was played in is
+     * remembered, so the ban is over before the next one.
+     */
+    ignoreFoeAttack(side) {
+        this.combat.ignoreFoeAtt = !side || side === 'defender' ? 'defender' : 'attacker';
+        this.combat.ignoreFoeAttRound = this.roundOfBattle;
         return this;
     }
 
-    /** Are the attack dice of this side useless? Only the defender suffers. */
+    /** Are the attack dice of this side useless? Only in the round of the card. */
     ignoresFoeAttack(side) {
-        return !!this.combat.ignoreFoeAtt && side === 'defender';
+        if (!this.combat.ignoreFoeAtt) return false;
+        if (this.combat.ignoreFoeAtt !== side) return false;
+        const round = this.combat.ignoreFoeAttRound;
+        // A ban without a round is the ban of the battle itself.
+        if (round === undefined || round === null) return true;
+        return round === this.roundOfBattle;
+    }
+
+    /** The round of the battle — «ход боя: один объект», so it is asked here. */
+    get roundOfBattle() {
+        return CombatTurn.of(this.combat).round;
     }
 
     /** The dice of a side as the battle counts them. */

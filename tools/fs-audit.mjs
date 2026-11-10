@@ -1014,6 +1014,77 @@ rule('combat-0i', '«разместить жетон подкрепления в
     eq(combat.system, 's3', 'адрес живёт в поле боя');
 });
 
+rule('combat-0m', '«В этом раунде игнорируйте все вражеские `att. cube`» (04-combat-cards.md, «Кара Божья», Сестры Битвы) — бой, а не только запрет', () => {
+    // `combatValues` читает запрет из `CombatBans`, но сама боевая арифметика
+    // не держалась ничем: снятие запрета в бою проходило молча (юнит-проверка
+    // `combat-0h` смотрела только `CombatBans`).
+    const st = empty(7);
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    for (let i = 0; i < 2; i++) { unit(st, 0, 'гвардейцы', sys.id, pos); unit(st, 1, 'бойзы', sys.id, pos); }
+    st.players[0].faction = 'сестры-битвы';
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    st.phase = 'operations';
+    st.turn = 0;
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    eq(!!st.combat, true, 'бой начался');
+    const card = FS_DATA.combat.find(c => /Кара Божья/.test(c.name));
+    eq(!!card, true, 'карта «Кара Божья» есть');
+    const steps = FS_EFFECTS.parse(card.unit, { kind: 'combat', faction: card.faction, reqs: card.reqs });
+    eq(steps.some(x => x.op === 'ignoreFoeAtt'), true, 'карта обещает игнорировать кубики атаки врага');
+    // Есть ли у атакующего кубики атаки вовсе: без них проверять нечего.
+    const before = FS_RULES.combatValues(st, 'attacker');
+    eq(before.att > 0, true, 'у атакующего есть кубики атаки (' + before.att + ')');
+    // Собственные кубики игравшего карту не трогаются — иначе запрет
+    // превращается в «обе стороны без атак». Он добавляет себе `att. token`
+    // за мораль, поэтому свои кубики считаются, если их не стало МЕНЬШЕ.
+    const ownBefore = FS_RULES.combatValues(st, 'defender').att;
+    FS_RULES.runEffects(st, 1, steps, { kind: 'combat', ctx: { side: 'defender' } });
+    const after = FS_RULES.combatValues(st, 'attacker');
+    eq(after.att, 0, 'кубики атаки атакующего больше не считаются');
+    eq(FS_RULES.combatValues(st, 'defender').att >= ownBefore, true,
+        'карта не тронула свои кубики атаки (' + ownBefore + ' → ' + FS_RULES.combatValues(st, 'defender').att + ')');
+    // Чужая сторона не задета: у защитника свои кубики на месте.
+    const mine = FS_RULES.combatValues(st, 'defender');
+    eq(mine.def >= 0, true, 'кубики защиты защитника считаются');
+    eq(FS_RULES.combatValues(st, 'defender').att > 0, true, 'карта не гасит собственные кубики игравшего');
+    // «в этом раунде»: в следующем раунде боя кубики снова считаются.
+    st.combat.round = (st.combat.round || 1) + 1;
+    eq(FS_RULES.combatValues(st, 'attacker').att, before.att, 'в следующем раунде запрет кончился');
+    // «вражеские» — не «защитника»: та же карта в атаке гасит кубики обороны.
+    const atk = empty(7);
+    const asys = atk.systems[0];
+    const apos = worldOf(atk, asys.id);
+    for (let i = 0; i < 2; i++) { unit(atk, 0, 'гвардейцы', asys.id, apos); unit(atk, 1, 'бойзы', asys.id, apos); }
+    atk.players[0].faction = 'сестры-битвы';
+    atk.order = { seat: 0, order: 'advance', system: asys.id, pos: apos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    atk.phase = 'operations';
+    atk.turn = 0;
+    FS_RULES.apply(atk, 0, { type: 'endAdvance' });
+    // Карта гасит именно `att. cube` — и у чужой стороны, а не только у защитника.
+    // Кубики выкладываются на стол явно: бросают их карты боя, а в проверке
+    // нужен предсказуемый стол.
+    CombatTurn.of(atk.combat).dice('attacker').push('att');
+    CombatTurn.of(atk.combat).dice('defender').push('att', 'att');
+    const foeBefore = FS_RULES.combatValues(atk, 'defender');
+    eq(foeBefore.att > 0, true, 'у защитника есть кубики атаки (' + foeBefore.att + ')');
+    FS_RULES.runEffects(atk, 0, steps, { kind: 'combat', ctx: { side: 'attacker' } });
+    const foeAfter = FS_RULES.combatValues(atk, 'defender');
+    eq(foeAfter.att, 0, 'карта гасит кубики атаки врага и в атаке (' + foeBefore.att + ' → ' + foeAfter.att + ')');
+    eq(FS_RULES.combatValues(atk, 'attacker').att > 0, true, 'свои кубики атаки играются');
+    // И тот же бой без карты — кубики считаются.
+    const plain = empty(7);
+    const psys = plain.systems[0];
+    const ppos = worldOf(plain, psys.id);
+    for (let i = 0; i < 2; i++) { unit(plain, 0, 'гвардейцы', psys.id, ppos); unit(plain, 1, 'бойзы', psys.id, ppos); }
+    plain.players[0].faction = 'сестры-битвы';
+    plain.order = { seat: 0, order: 'advance', system: psys.id, pos: ppos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    plain.phase = 'operations';
+    plain.turn = 0;
+    FS_RULES.apply(plain, 0, { type: 'endAdvance' });
+    eq(FS_RULES.combatValues(plain, 'attacker').att, before.att, 'без карты кубики атаки считаются как раньше');
+});
+
 rule('combat-0h', '«ваш противник не сможет разыгрывать жетоны подкрепления» + «деморализованные отряды уничтожаются» — запреты боя держит CombatBans', () => {
     const combat = { attacker: 0, defender: 1 };
     const bans = CombatBans.of(combat);
