@@ -5216,6 +5216,19 @@ rule('up-1', '«Order Upgrade Cards … Each card is played during the order pri
     st.order.phase = 'strike';
     const good = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: card.name });
     eq(good.ok, true, 'во время орбитального удара карта применяется');
+    // И общее правило, а не только орбитальная ветка: карта развёртывания в
+    // чужом приказе не играется. Мутация «приказ не сверяется» проходила мимо
+    // проверки, потому что орбитальная ветка живёт отдельно.
+    const deployCard = FS_DATA.orders.find(c2 => c2.faction === st.players[0].faction && c2.order === 'deploy');
+    eq(!!deployCard, true, 'у фракции есть улучшение развёртывания');
+    const own = {
+        ...st,
+        order: { seat: 0, order: 'strategize', system: st.systems[0].id, phase: 'buy' },
+        players: st.players.map((p, i) => (i ? p : { ...p, upgrades: [{ name: deployCard.name, used: false, order: 'deploy' }] })),
+    };
+    refused(FS_RULES.apply(own, 0, { type: 'useUpgrade', card: deployCard.name }),
+        /во время приказа «Развёртывание»|во время приказа/, 'улучшение развёртывания в приказе стратегии');
+    eq(own.players[0].upgrades[0].used, false, 'и карта не сгорела');
 });
 
 rule('up-2', '«your command level increases by 1 while this order is executed» (Сила воли) — командный уровень растёт на время приказа', () => {
