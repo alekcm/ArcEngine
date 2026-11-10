@@ -548,6 +548,29 @@ try {
     fail(e.message);
 }
 
+// --- the question of a step: one object --------------------------------------
+section('вопрос шага: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSQuestion.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Остановленный вопрос шага (кто отвечает, где продолжать) — один объект
+        // Question: поле state.pending не пишут и не читают руками.
+        const re = /\bstate\.pending\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('вопрос шага спрашивают у Question');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- «вместо раскрытия приказа»: one object ----------------------------------
 section('план вместо приказа: один объект');
 try {

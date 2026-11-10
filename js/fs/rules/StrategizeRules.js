@@ -43,10 +43,9 @@ class StrategizeRules {
             const wanted = cmd.remove;
             if (!wanted) {
                 // The question of the order is the SAME object the cards and the
-                // panel use in state.pending: one shape, one reader.
-                state.pending = {
-                    seat, answerSeat: seat, kind: 'order',
-                    steps: [], index: 0,
+                // panel use in `Question`: one shape, one reader.
+                Question.of(state).ask({
+                    seat, kind: 'order',
                     question: {
                         kind: 'cards', op: 'buyUpgradeReplace', kind2: 'combat', card: card.name,
                         options: pairs, text: 'Какую пару карт боевой колоды заменить?',
@@ -54,7 +53,7 @@ class StrategizeRules {
                     // The remembered half of the purchase: nothing is paid and
                     // nothing leaves the deck until the pair is named.
                     ctx: { buyUpgrade: { type: 'buyUpgrade', kind: 'combat', card: card.name } },
-                };
+                });
                 return { ok: true, pending: true };
             }
             if (!pairs.includes(wanted)) return { ok: false, error: 'Такой пары в колоде нет.' };

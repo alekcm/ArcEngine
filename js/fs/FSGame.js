@@ -404,8 +404,8 @@ class FSGame {
         // A NEW question from the server is a new choice: the picks of the old
         // one do not carry over. A local refresh triggered by our own clicks
         // keeps the same question object, so the accumulated picks survive.
-        if (s.pending && this.pendingQuestionRef !== s.pending.question) {
-            this.pendingQuestionRef = s.pending.question;
+        if (Question.of(s).waiting && this.pendingQuestionRef !== Question.of(s).question) {
+            this.pendingQuestionRef = Question.of(s).question;
             this.effectPick = [];
             this.effectDie = null;
         }

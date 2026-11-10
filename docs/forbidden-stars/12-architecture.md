@@ -89,6 +89,7 @@
 | Удар с орбиты: бонус, оплата карт, цена построек, первый отряд | `core/FSStrike.js` (`StrikePlan.of(order)`) | не писать `order.strike*` в правиле, шаге карты или панели — это ловит `fs-smoke` |
 | Шаг марша, его дороги, отменённые ходы, спорная область | `core/FSMarch.js` (`MarchPlan.of(order)`) | не писать `order.moved`/`route`/`steps` в правиле, бое или панели — это ловит `fs-smoke` |
 | Шаг приказа (`move`, `combat`, `strike`, …) | `core/FSPhase.js` (`PhasePlan.of(order)`) | не сравнивать `order.phase` со строкой в правиле или панели — это ловит `fs-smoke` |
+| Вопрос шага: кто отвечает, где прерван эффект, чем ответить | `core/FSQuestion.js` (`Question.of(state)`) | не писать и не читать `state.pending` в правиле, эффекте или панели — это ловит `fs-smoke` |
 | «Вместо раскрытия приказа»: предложение плана и занятый им ход | `core/FSOrderScheme.js` (`OrderScheme.of(state)`) | не читать `state.operationSchemeOffered`/`operationSchemeAccepted` в правиле или эффекте — это ловит `fs-smoke` |
 | Шторм события: ответ «Молящегося», подавление иконок, система последней потери | `core/FSStormPhase.js` (`StormPhase.of(state)`) | не читать `state.stormReaction`/`chaosNoStormMove`/`chaosLastSystem` в правиле или карте — это ловит `fs-smoke` |
 | «Быстрый ответ»: приостановленная фаза событий и её снимок | `core/FSQuickResponse.js` (`QuickResponse.of(state)`) | не читать `state.quickResponsePending`/`quickResponseSnapshot` в правиле или эффекте — это ловит `fs-smoke` |
@@ -142,7 +143,7 @@
 
 ```
 node tools/check.mjs          # типы (tsc по JSDoc) + сверка правил + дым-тест
-node tools/fs-audit.mjs       # 169 проверок: каждая цитирует Rules Reference
+node tools/fs-audit.mjs       # 170 проверок: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # 82 проверки: карты одной фракции против их текстов
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках
@@ -155,11 +156,11 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 шагов карт (73 «дела» и 155 «вопроса» — каждый объявлен и каждый — функция), а ещё один —
 сам предметный слой: стороны боя и верх стопки приказов.
 
-Тридцать девять разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
+Сорок разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
 (вставленные `assets.forge++`, `cards[side].hand.splice`, `p.materiel -= 1`, ручной счёт
 пяти отрядов, `structuresAt(...).length`, `state.order = null`, `u.routed = true`,
 `order.bought++`, чтение `state.trim` мимо очереди, `storm.edge = …` мимо поля штормов и
-`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` `order.purchases` мимо `Purchases` `order.moveAreaLimit` мимо `OrderMove` `order.prosperity` мимо `OrderTally`, `order.seat`/`order.system` мимо `OrderContext` `combat.reinforcePending` мимо `CombatTokens` и `combat.step`/`combat.dice` мимо `CombatTurn` `combat.staged` мимо `CombatCards` `combat.healthBonus`/`combat.noRoute` мимо `CombatDamage` и `combat.damageResume` мимо `CombatHooks` и `combat.endRoundPlans`/`laterTokens` мимо `CombatPlans` `combat.tokens` мимо `CombatCubes` и `combat.noReinforce`/`ignoreFoeAtt` мимо `CombatBans` `combat.system`/`combat.pos` мимо `BattleField` `combat.winner`/`loser` мимо `CombatOutcome` `combat.attackerFrom`/`viaAdvance` мимо `CombatApproach` `combat.attacker`/`combat.defender` мимо `CombatSides` `state.event.seat`/`drawn`/`chosen` мимо `EventPhase` `state.quickResponsePending`/`Snapshot` мимо `QuickResponse` `state.stormReaction`/`chaosNoStormMove` мимо `StormPhase` и `state.operationScheme*` мимо `OrderScheme`
+`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` `order.purchases` мимо `Purchases` `order.moveAreaLimit` мимо `OrderMove` `order.prosperity` мимо `OrderTally`, `order.seat`/`order.system` мимо `OrderContext` `combat.reinforcePending` мимо `CombatTokens` и `combat.step`/`combat.dice` мимо `CombatTurn` `combat.staged` мимо `CombatCards` `combat.healthBonus`/`combat.noRoute` мимо `CombatDamage` и `combat.damageResume` мимо `CombatHooks` и `combat.endRoundPlans`/`laterTokens` мимо `CombatPlans` `combat.tokens` мимо `CombatCubes` и `combat.noReinforce`/`ignoreFoeAtt` мимо `CombatBans` `combat.system`/`combat.pos` мимо `BattleField` `combat.winner`/`loser` мимо `CombatOutcome` `combat.attackerFrom`/`viaAdvance` мимо `CombatApproach` `combat.attacker`/`combat.defender` мимо `CombatSides` `state.event.seat`/`drawn`/`chosen` мимо `EventPhase` `state.quickResponsePending`/`Snapshot` мимо `QuickResponse` `state.stormReaction`/`chaosNoStormMove` мимо `StormPhase` `state.operationScheme*` мимо `OrderScheme` и `state.pending` мимо `Question`
 дают провал с именем файла и строкой):
 
 * жетоны: только `PlayerEntity` пишет в `assets`;
@@ -190,6 +191,12 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 * марш наступления: шаг движения, дороги шага, шедшие отряды, стопка отменённых ходов,
   спорная область и предел числа ходов — один объект `MarchPlan` (`core/FSMarch.js`);
   правило продвижения, бой и панель спрашивают его.
+* вопрос шага — один объект `Question` (`core/FSQuestion.js`): остановленный
+  эффект (`ask` — кто спрашивает, какой список шагов прерван и на каком шаге,
+  каким вопросом и в каком контексте), кому отвечать (`seat`, `answerSeat`,
+  `answers`), сам вопрос (`question`), прерванный список (`steps`, `index`,
+  `ctx`) и продолжение (`close`); запись остаётся в `state.pending` той же формы,
+  чтобы сейв, тест и сеть читали её как раньше.
 * «вместо раскрытия приказа» — один объект `OrderScheme` (`core/FSOrderScheme.js`):
   ключ попытки раскрытия (`key`), предложение плана ровно один раз на неё
   (`offer`/`asked`) и согласие, которым план занял ход вместо приказа

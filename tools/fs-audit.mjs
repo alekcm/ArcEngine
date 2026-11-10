@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1164,6 +1164,49 @@ rule('combat-0c', '«discards the combat cards he used during the combat by shuf
     cards.clear('attacker');
     eq(cards.names('attacker').length, 0, 'стол очищен');
     eq(cards.chosen('attacker'), null, 'отметка карты снята');
+});
+
+rule('ask-0a', '«a step needs a choice: the player is asked» — остановленный вопрос шага держит Question', () => {
+    const state = { pending: null };
+    const asked = Question.of(state);
+    eq(Question.of(state), asked, 'у игры один вопрос');
+    eq(Question.of(null), null, 'без состояния вопроса нет');
+    // Nothing is asked: the run goes on.
+    eq(asked.waiting, false, 'вопроса нет');
+    eq(asked.record, null, 'и записи нет');
+    eq(asked.question, null, 'и вопроса нет');
+    eq(asked.seat, null, 'и отвечающего нет');
+    eq(asked.answerSeat, null, 'и место ответа пусто');
+    eq(asked.answers(0), false, 'никто не отвечает');
+    eq(asked.steps, [], 'шагов нет');
+    eq(asked.index, 0, 'индекс с нуля');
+    eq(asked.ctx, null, 'и контекста нет');
+    // A step asks: the record says who answers, which list is interrupted and where.
+    const list = [{ op: 'a' }, { op: 'b' }];
+    asked.ask({ seat: 1, kind: 'combat', steps: list, index: 1,
+        question: { kind: 'units', who: 1 }, ctx: { kind: 'combat' } });
+    eq(asked.waiting, true, 'игра ждёт ответа');
+    eq(asked.seat, 1, 'вопрос принадлежит seat 1');
+    eq(asked.answerSeat, 1, 'и отвечает он же');
+    eq(asked.answers(1), true, 'seat 1 может ответить');
+    eq(asked.answers(0), false, 'seat 0 — нет');
+    eq(asked.question.kind, 'units', 'вопрос на руках');
+    eq(asked.steps.length, 2, 'прерванный список шагов');
+    eq(asked.index, 1, 'и шаг, на котором он прерван');
+    eq(asked.ctx.kind, 'combat', 'контекст эффекта');
+    // A card may ask the opponent: the answer belongs to him.
+    asked.ask({ seat: 0, answerSeat: 1, question: { kind: 'choice', who: 1 } });
+    eq(asked.answerSeat, 1, 'спрашивают seat 1');
+    eq(asked.answers(0), false, 'владелец эффекта не отвечает');
+    eq(asked.answers(1), true, 'отвечает противник');
+    eq(state.pending.kind, 'card', 'вид эффекта по умолчанию — карта');
+    // The second half of a two-part question is carried along.
+    asked.ask({ seat: 0, question: { kind: 'areas' }, stash: { unit: 'u1' } });
+    eq(state.pending.stash.unit, 'u1', 'половина вопроса помнится');
+    // The answer is in: the run goes on.
+    asked.close();
+    eq(asked.waiting, false, 'вопроса больше нет');
+    eq(state.pending, null, 'и запись снята');
 });
 
 rule('event-0d', '«вместо раскрытия приказа во время фазы действий» — план, занявший ход, держит OrderScheme', () => {

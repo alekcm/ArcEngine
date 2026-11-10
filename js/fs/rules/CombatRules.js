@@ -146,7 +146,7 @@ class CombatRules {
         // The schemes of the start of the combat; a scheme of «the start of a
         // round of combat» has its round 1 here as well as every next one.
         this.engine.maybeScheme(state, attacker, 'combat-start', { kind: 'combat', ctx: { side: 'attacker' } });
-        if (!state.pending) {
+        if (!Question.of(state).waiting) {
             this.engine.maybeScheme(state, attacker, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
         } else if (this.engine.schemesOf(state, attacker).some(x => x.trigger === 'round' && !x.defer)) {
             // Both questions at once are impossible: the round one waits for the
@@ -165,7 +165,7 @@ class CombatRules {
         const prep = fight.prepReroll;
         const draw = fight.prepDrawCards;
         if (!prep && !draw) return false;
-        if (state.pending) {
+        if (Question.of(state).waiting) {
             // The scheme of the start of the combat is answered first; the
             // abilities of the order are asked as soon as the answer is in.
             CombatHooks.of(state.combat).prepQueued = true;
@@ -1300,14 +1300,14 @@ class CombatRules {
             hooks.ask('criticalHook', side);
             hooks.damageResume = { seat, side, cmd: { targets: targets.slice() } };
             CombatTurn.of(c).holdEffect('effect');
-            state.pending = {
-                seat: p.seat, answerSeat: p.seat, kind: 'scheme', steps: [], index: 0,
+            Question.of(state).ask({
+                seat: p.seat, kind: 'scheme',
                 question: {
                     kind: 'scheme', who: p.seat, options: schemes.map(x => x.name),
                     text: 'Сбросить карту: ' + schemes.map(x => '«' + x.name + '»').join(', ') + '?',
                 },
                 ctx: { kind: 'combat', ctx: { side, damageTargets }, schemes },
-            };
+            });
             return true;
         }
         return false;

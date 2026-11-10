@@ -10,7 +10,7 @@
 //   run()   — the steps are performed by the rules engine (FSRules).
 //
 // The steps are plain data: {op, ...}. The engine performs them and asks the
-// player when a step needs a choice: the question waits in state.pending.
+// player when a step needs a choice: the question waits in `Question`.
 
 /** @satisfies {Record<string, any>} */
 const FS_EFFECTS = {
@@ -1522,9 +1522,10 @@ const FS_EFFECTS = {
     // ======================================================================
 
     // The steps are performed one by one. A step that needs a choice asks the
-    // player: the question waits in state.pending.
+    // player: the question waits in `Question`.
     run(R, state, seat, steps, ctx, startIndex) {
-        const pending = state.pending;
+        const question1 = Question.of(state);
+        const pending = question1.record;
         const list = pending ? pending.steps : steps;
         const c = Object.assign({}, ctx || {}, { owner: seat });
         let index = startIndex !== undefined ? startIndex : (pending ? pending.index : 0);
@@ -1547,11 +1548,11 @@ const FS_EFFECTS = {
                     // optional ability.
                     const group = step.ability;
                     for (const one of list) if (one && one.ability === group) one.asked = true;
-                    state.pending = {
+                    Question.of(state).ask({
                         seat, answerSeat: c.owner === undefined ? seat : c.owner,
                         kind: c.kind || 'card', steps: list, index,
                         question: ask.question, ctx: c,
-                    };
+                    });
                     return { ok: true, pending: true };
                 }
             }
@@ -1562,15 +1563,15 @@ const FS_EFFECTS = {
                 continue;
             }
             if (res && res.question) {
-                state.pending = {
+                Question.of(state).ask({
                     seat, answerSeat: res.question.who === undefined ? seat : res.question.who,
                     kind: c.kind || 'card', steps: list, index,
                     question: res.question, ctx: c,
-                };
+                });
                 return { ok: true, pending: true };
             }
             if (res && res.stop) {
-                state.pending = null;
+                Question.of(state).close();
                 return { ok: true, done: true };
             }
             if (res && res.replace) {
@@ -1583,7 +1584,7 @@ const FS_EFFECTS = {
             this.thenSteps(list, index, step);
             index++;
         }
-        state.pending = null;
+        Question.of(state).close();
         // The combat goes on with the step that waited for the effect. The step
         // machine then passes the steps that have nothing to do (a closed card of
         // the other side, a damage of zero).
@@ -1598,14 +1599,14 @@ const FS_EFFECTS = {
             && typeof R.resumeDamage === 'function') {
             R.resumeDamage(state);
         }
-        if (c.kind === 'combat' && hooks && hooks.endResume && !state.pending) {
+        if (c.kind === 'combat' && hooks && hooks.endResume && !Question.of(state).waiting) {
             hooks.takeEndResume();
             if (typeof R.endDamageStep === 'function') R.endDamageStep(state);
         }
         // «Страх с небес» routes one damaged unit after the strike: the order
         // finishes only when that last question has been answered.
         if (c.kind === 'order' && state.order && StrikePlan.of(state.order).finishesAfterQuestion
-            && !state.pending) {
+            && !Question.of(state).waiting) {
             StrikePlan.of(state.order).finishAfterQuestion(false);
             R.finishOrder(state, seat);
         }
@@ -1625,7 +1626,7 @@ const FS_EFFECTS = {
         // The upgrade of the preparation step waited for the scheme of the start
         // of the combat («Сервочерепа-стражи»): its question is asked now.
         if (c.kind === 'combat' && hooks && hooks.prepQueued
-            && typeof R.prepEffects === 'function' && !state.pending) {
+            && typeof R.prepEffects === 'function' && !Question.of(state).waiting) {
             hooks.takePrepQueued();
             R.prepEffects(state, CombatSides.seatOf(state.combat, 'attacker'));
         }
@@ -1633,7 +1634,7 @@ const FS_EFFECTS = {
         // of the start of the combat: it is asked now.
         if (c.kind === 'combat' && hooks && hooks.roundQueued) {
             hooks.takeRoundQueued();
-            if (typeof R.maybeScheme === 'function' && !state.pending) {
+            if (typeof R.maybeScheme === 'function' && !Question.of(state).waiting) {
                 R.maybeScheme(state, CombatSides.seatOf(state.combat, 'attacker'), 'round', { kind: 'combat', ctx: { side: 'attacker' } });
             }
         }
@@ -1657,7 +1658,7 @@ const FS_EFFECTS = {
         // scheme leaves the current player's turn untouched.
         const orderScheme = OrderScheme.of(state);
         if (c.ctx && c.ctx.operationScheme && orderScheme.accepted
-            && !state.pending) {
+            && !Question.of(state).waiting) {
             orderScheme.clearAccepted();
             if (typeof R.nextTurn === 'function') R.nextTurn(state);
         }
@@ -1666,10 +1667,10 @@ const FS_EFFECTS = {
 
     // The answer of the player to the question.
     answer(R, state, seat, cmd) {
-        const pending = state.pending;
+        const asked = Question.of(state);
+        const pending = asked.record;
         if (!pending) return { ok: false, error: 'Нет вопроса.' };
-        const must = pending.answerSeat === undefined ? pending.seat : pending.answerSeat;
-        if (must !== seat) return { ok: false, error: 'Сейчас не ваш ход.' };
+        if (!asked.answers(seat)) return { ok: false, error: 'Сейчас не ваш ход.' };
         const question = pending.question;
         const answer = cmd.answer || {};
         // A step that asks twice keeps the choice already made on the question
@@ -1716,7 +1717,7 @@ const FS_EFFECTS = {
             const kind = (pending.ctx && pending.ctx.kind) || 'event';
             const orderScheme = OrderScheme.of(state);
             if (cctx0 && cctx0.operationScheme) orderScheme.accept();
-            state.pending = null;
+            Question.of(state).close();
             if (!list.length) {
                 // A scheme whose effect is only its printed text still takes
                 // the turn when it replaces the reveal of an order.
@@ -1739,7 +1740,7 @@ const FS_EFFECTS = {
                 const group = step.ability;
                 let i = pending.index + 1;
                 while (i < pending.steps.length && pending.steps[i] && pending.steps[i].ability === group) i++;
-                state.pending = null;
+                Question.of(state).close();
                 return this.run(R, state, pending.seat, pending.steps, pending.ctx || {}, i);
             }
             const q = this.step(R, state, owner, step, ctx);
@@ -1750,7 +1751,7 @@ const FS_EFFECTS = {
                 const group = step.ability;
                 let i = pending.index + 1;
                 while (i < pending.steps.length && pending.steps[i] && pending.steps[i].ability === group) i++;
-                state.pending = null;
+                Question.of(state).close();
                 return this.run(R, state, pending.seat, pending.steps, pending.ctx || {}, i);
             }
             if (q && q.question && !this.emptyQuestion(q.question)) {
@@ -1799,7 +1800,7 @@ const FS_EFFECTS = {
             const list = pending.steps;
             const at = pending.index;
             list.splice(at, 1, ...(res.replace || []));
-            state.pending = null;
+            Question.of(state).close();
             return this.run(R, state, pending.seat, list, pending.ctx, at);
         }
         if (res && res.question && this.emptyQuestion(res.question)) {
@@ -1846,7 +1847,7 @@ const FS_EFFECTS = {
     next(R, state, pending, replace) {
         const list = replace || pending.steps;
         const saved = { seat: pending.seat, kind: pending.kind, steps: list, index: replace ? 0 : pending.index + 1, ctx: pending.ctx, choice: null };
-        state.pending = null;
+        Question.of(state).close();
         return this.run(R, state, saved.seat, list, saved.ctx, saved.index);
     },
 

@@ -178,7 +178,8 @@ class OperationsRules {
         // The question of an order (the pair a purchase replaces) holds the
         // half-done command; the question of an effect belongs to a card, not
         // to the order, and stays.
-        if (state.pending && state.pending.ctx && state.pending.ctx.buyUpgrade) state.pending = null;
+        const half = Question.of(state).ctx;
+        if (half && half.buyUpgrade) Question.of(state).close();
         return true;
     }
 
@@ -232,7 +233,7 @@ class OperationsRules {
             // сбросить эту карту…» («Некромеханика»): the player whose tokens
             // lie under the tokens of the others plays the card of the turn he
             // has to skip.
-            if (!state.pending) this.maybeScheme(state, turn, 'skip', { kind: 'event', ctx: null });
+            if (!Question.of(state).waiting) this.maybeScheme(state, turn, 'skip', { kind: 'event', ctx: null });
         }
         // Nobody has an order left — the refresh phase begins.
         this.engine.startRefresh(state);
@@ -337,11 +338,10 @@ class OperationsRules {
         // An order that stopped to ask (the pair of the combat deck a purchase
         // replaces) remembers the half-done command; the answer finishes it.
         // The question of an effect is the same shape, so the panel and the
-        // tests read both the same way — state.pending.question.
-        const pending = state.pending;
+        // tests read both the same way — the question of `Question`.
+        const pending = Question.of(state).record;
         if (pending && pending.ctx && pending.ctx.buyUpgrade) {
-            const must = pending.answerSeat === undefined ? pending.seat : pending.answerSeat;
-            if (must !== seat) return { ok: false, error: 'Сейчас не ваш ход.' };
+            if (!Question.of(state).answers(seat)) return { ok: false, error: 'Сейчас не ваш ход.' };
             const half = pending.ctx.buyUpgrade;
             const answer = cmd.answer || {};
             const name = answer.remove || answer.card || answer.choice || answer.value;
@@ -349,7 +349,7 @@ class OperationsRules {
             // bad answer keeps it open instead of swallowing the command.
             const res = this.engine.cmdBuyUpgrade(state, seat,
                 Object.assign({}, half, { remove: name }));
-            if (res && res.ok) state.pending = null;
+            if (res && res.ok) Question.of(state).close();
             return res;
         }
         return FS_EFFECTS.answer(this.engine, state, seat, cmd);
@@ -378,8 +378,8 @@ class OperationsRules {
         const c = ctx || {};
         // The card whose text the engine did not read: the player sees the text.
         const manual = schemes.find(s => s.note);
-        state.pending = {
-            seat, answerSeat: seat, kind: 'scheme', steps: [], index: 0,
+        Question.of(state).ask({
+            seat, kind: 'scheme',
             question: {
                 kind: 'scheme', who: seat, options: schemes.map(s => s.name),
                 text: manual
@@ -387,7 +387,7 @@ class OperationsRules {
                     : 'Сбросить карту: ' + schemes.map(s => '«' + s.name + '»').join(', ') + '?',
             },
             ctx: { kind: c.kind || 'event', ctx: c.ctx || null, schemes },
-        };
+        });
         return true;
     }
 
