@@ -548,6 +548,30 @@ try {
     fail(e.message);
 }
 
+// --- who plays which side: one object ----------------------------------------
+section('стороны боя: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSCombatSides.js', 'js/fs/core/FSCombatBans.js',
+        'js/fs/core/FSCombatApproach.js', 'js/fs/core/FSBattleField.js', 'js/fs/FSData.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // «сторона места и место стороны» — перевод seat ↔ сторона живёт в
+        // CombatSides: `c.attacker`/`c.defender` не читают руками.
+        const re = /\b(?:state\.combat|s\.combat|combat|c|cbt)\.(?:attacker|defender)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('стороны боя спрашивают у CombatSides');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- how the attacker came: one object ---------------------------------------
 section('приход в бой: один объект');
 try {

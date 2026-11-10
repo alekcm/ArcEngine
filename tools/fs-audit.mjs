@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1164,6 +1164,34 @@ rule('combat-0c', '«discards the combat cards he used during the combat by shuf
     cards.clear('attacker');
     eq(cards.names('attacker').length, 0, 'стол очищен');
     eq(cards.chosen('attacker'), null, 'отметка карты снята');
+});
+
+rule('combat-0l', '«the attacker reveals and resolves his combat card» — сторона и место стороны переводит CombatSides, а не тернарник в каждом файле', () => {
+    const combat = { attacker: 0, defender: 1 };
+    // The side of a seat and the seat of a side: both directions, one object.
+    eq(CombatSides.sideOf(combat, 0), 'attacker', 'seat 0 — атакующий');
+    eq(CombatSides.sideOf(combat, 1), 'defender', 'seat 1 — защитник');
+    eq(CombatSides.sideOf(combat, 2), null, 'посторонний не сторона');
+    eq(CombatSides.sideOf(null, 0), null, 'без боя стороны нет');
+    eq(CombatSides.seatOf(combat, 'attacker'), 0, 'у атакующего seat 0');
+    eq(CombatSides.seatOf(combat, 'defender'), 1, 'у защитника seat 1');
+    eq(CombatSides.seatOf(null, 'attacker'), null, 'без боя seat неизвестен');
+    eq(CombatSides.foe('attacker'), 'defender', 'противник атакующего — защитник');
+    eq(CombatSides.foe('defender'), 'attacker', 'противник защитника — атакующий');
+    eq(CombatSides.foeSeat(combat, 0), 1, 'противник seat 0 — seat 1');
+    eq(CombatSides.foeSeat(combat, 1), 0, 'противник seat 1 — seat 0');
+    eq(CombatSides.isSide('attacker'), true, 'сторона боя');
+    eq(CombatSides.isSide('defender'), true, 'и другая сторона');
+    eq(CombatSides.isSide('seat'), false, 'seat — не сторона');
+    // The step names its side; the damage step is spelled once.
+    eq(CombatSides.damageStep('attacker'), 'damage-attacker', 'шаг урона атакующего');
+    eq(CombatSides.damageStep('defender'), 'damage-defender', 'шаг урона защитника');
+    eq(CombatSides.sideFromStep('damage-defender'), 'defender', 'сторона шага урона');
+    // A battle where the defender sits below the attacker: the same names.
+    const swapped = { attacker: 1, defender: 0 };
+    eq(CombatSides.sideOf(swapped, 1), 'attacker', 'атакующий по имени, а не по номеру');
+    eq(CombatSides.seatOf(swapped, 'defender'), 0, 'защитник — seat 0');
+    eq(CombatSides.foeSeat(swapped, 1), 0, 'противник атакующего — seat 0');
 });
 
 rule('combat-0b', '«the attacker reveals and resolves his combat card. Then, the defender reveals and resolves his» — раунд, шаг и кубики боя ведёт CombatTurn', () => {

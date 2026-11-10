@@ -78,7 +78,8 @@ class CombatDamage {
         if (who === 'both') this.combat.extraDamageBoth = (this.combat.extraDamageBoth || 0) + amount;
         else if (who === 'foe') {
             this.combat.extraDamageFoe = (this.combat.extraDamageFoe || 0) + amount;
-            this.combat.extraDamageFoeSide = seat === this.combat.attacker ? 'defender' : 'attacker';
+            // The side of the foe is the mirror of the side of the owner.
+            this.combat.extraDamageFoeSide = CombatSides.foe(CombatSides.sideOf(this.combat, seat));
         } else this.combat.extraDamage = (this.combat.extraDamage || 0) + amount;
         return this;
     }

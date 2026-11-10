@@ -47,7 +47,7 @@ class StepContext {
         this.other = other;
         this.target = step.who === 'foe'
             ? (inCombat
-                ? (owner === combat.attacker ? combat.defender : combat.attacker)
+                ? CombatSides.foeSeat(combat, owner)
                 : (other !== null ? other : (state.players.find(x => x.seat !== owner) || {}).seat))
             : owner;
         this.units = ids => (this.answer.units || ids || [])

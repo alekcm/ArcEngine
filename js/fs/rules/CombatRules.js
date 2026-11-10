@@ -575,10 +575,12 @@ class CombatRules {
         for (let i = 0; i < 12; i++) {
             const before = turn.step;
             // The reinforcement is asked only from the player who has the tokens.
-            if (turn.is('reinforce-attacker') && this.maxReinforce(state, c.attacker, 'attacker') <= 0) {
+            if (turn.is('reinforce-attacker')
+                && this.maxReinforce(state, CombatSides.seatOf(c, 'attacker'), 'attacker') <= 0) {
                 turn.setStep('reinforce-defender');
             }
-            if (turn.is('reinforce-defender') && this.maxReinforce(state, c.defender, 'defender') <= 0) {
+            if (turn.is('reinforce-defender')
+                && this.maxReinforce(state, CombatSides.seatOf(c, 'defender'), 'defender') <= 0) {
                 turn.setStep('choose-attacker');
             }
             // «Вместо того, чтобы играть боевую карту из руки, вы можете сбросить
@@ -950,7 +952,7 @@ class CombatRules {
         // «в конце шага нанесения повреждений … деморализовать 1 отряд
         // противника» («Совращённый Хаосом»): both combatants may hold a plan.
         const hooks = CombatHooks.of(c);
-        const ends = [c.attacker, c.defender];
+        const ends = [CombatSides.seatOf(c, 'attacker'), CombatSides.seatOf(c, 'defender')];
         for (let at = hooks.endNext(); at < ends.length; at = hooks.endNext()) {
             const seat = ends[hooks.endStep()];
             const side = CombatSides.sideOf(c, seat);
@@ -1031,7 +1033,7 @@ class CombatRules {
         const d = plans.routedFoe;
         if (!d || d.done) return false;
         if (!turn.inRound(d)) { plans.clearRoutedFoe(); return false; }
-        const foeSide = d.seat === c.attacker ? 'defender' : 'attacker';
+        const foeSide = CombatSides.foe(CombatSides.sideOf(c, d.seat));
         const foeSeat = CombatSides.seatOf(c, foeSide);
         // «если в этом раунде боя отряд противника становится деморализованным» —
         // the units that were routed in this round.
@@ -1055,7 +1057,7 @@ class CombatRules {
         const c = state.combat;
         const d = CombatPlans.of(c).takeDeferred();
         if (!d) return false;
-        const foeSeat = d.seat === c.attacker ? c.defender : c.attacker;
+        const foeSeat = CombatSides.foeSeat(c, d.seat);
         const targets = BattleField.of(c).units(state, foeSeat);
         // «получите по 1 материалу за каждый уничтоженный отряд» («Рой
         // потрошителей») needs no piece of the opponent to aim at.
@@ -1133,8 +1135,10 @@ class CombatRules {
         // The card may destroy the units that became routed.
         if (CombatBans.of(c).destroysRouted) {
             const field = BattleField.of(c);
-            for (const u of field.routed(state, c.attacker).concat(field.routed(state, c.defender))) {
-                this.engine.log(state, c.attacker, 'Деморализованный отряд уничтожен.');
+            const attackerSeat = CombatSides.seatOf(c, 'attacker');
+            for (const u of field.routed(state, attackerSeat)
+                .concat(field.routed(state, CombatSides.seatOf(c, 'defender')))) {
+                this.engine.log(state, attackerSeat, 'Деморализованный отряд уничтожен.');
                 this.engine.destroyUnit(state, u);
             }
             // A flipped reinforcement token is a routed unit too.
@@ -1187,14 +1191,17 @@ class CombatRules {
         turn.setStep('choose-attacker');
         this.advanceCombatSteps(state);
         // The schemes of the start of the round.
-        this.engine.maybeScheme(state, c.attacker, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
+        this.engine.maybeScheme(state, CombatSides.seatOf(c, 'attacker'), 'round',
+            { kind: 'combat', ctx: { side: 'attacker' } });
         CombatDamage.of(c).resetDamage();
     }
 
     rosterOfRound(state, c) {
         const one = seat => state.units.filter(u => u.seat === seat)
             .map(u => ({ id: u.id, routed: !!u.routed }));
-        return { attacker: one(c.attacker), defender: one(c.defender) };
+        const attacker = CombatSides.seatOf(c, 'attacker');
+        const defender = CombatSides.seatOf(c, 'defender');
+        return { attacker: one(attacker), defender: one(defender) };
     }
 
     applyDamageStartTokens(state) {
@@ -1356,7 +1363,10 @@ class CombatRules {
             + (attackerWins ? attMorale : defMorale) + ' против ' + (attackerWins ? defMorale : attMorale) + '.');
         // Only the attacker takes the structures of the world (the rules).
         const field = BattleField.of(c);
-        if (attackerWins) this.captureStructures(state, field.system, field.pos, c.attacker, c.defender);
+        if (attackerWins) {
+            this.captureStructures(state, field.system, field.pos,
+                CombatSides.seatOf(c, 'attacker'), CombatSides.seatOf(c, 'defender'));
+        }
         CombatTurn.of(c).setStep('retreat');
         // A player whose troops all died has nothing to retreat: the combat ends
         // without asking where the dead should go.

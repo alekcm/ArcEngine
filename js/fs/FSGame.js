@@ -2070,7 +2070,7 @@ class FSGame {
     canPlayCard(s) {
         const c = s && s.combat;
         if (!c) return false;
-        const mine = s.seat === c.attacker ? 'attacker' : s.seat === c.defender ? 'defender' : null;
+        const mine = CombatSides.sideOf(c, s.seat);
         if (!mine) return false;
         // The card is played in the choosing step of its own side.
         const turn = CombatTurn.of(c);

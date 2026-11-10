@@ -1609,7 +1609,8 @@ const FSView = {
         const tileTop = app.location.terrain.heightAt(tile.x, tile.y) + 6.5;
         const groundY = (x, z) => tileTop + (disc && Math.hypot(x - disc.x, z - disc.z) < this.PLANET_D / 2 ? this.PLANET_H : 0);
         const d = this.TILE * this.AREA / 2;
-        for (const side of [{ id: 'attacker', seat: c.attacker }, { id: 'defender', seat: c.defender }]) {
+        for (const side of [{ id: 'attacker', seat: CombatSides.seatOf(c, 'attacker') },
+            { id: 'defender', seat: CombatSides.seatOf(c, 'defender') }]) {
             const sign = side.id === 'attacker' ? 1 : -1;
             // The direction from the centre of the sector to the centroid of the
             // side's fighters: the dice and the cubes of a side lie on its own

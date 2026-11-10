@@ -1627,14 +1627,14 @@ const FS_EFFECTS = {
         if (c.kind === 'combat' && hooks && hooks.prepQueued
             && typeof R.prepEffects === 'function' && !state.pending) {
             hooks.takePrepQueued();
-            R.prepEffects(state, state.combat.attacker);
+            R.prepEffects(state, CombatSides.seatOf(state.combat, 'attacker'));
         }
         // The scheme of «the start of a round of combat» waited for the question
         // of the start of the combat: it is asked now.
         if (c.kind === 'combat' && hooks && hooks.roundQueued) {
             hooks.takeRoundQueued();
             if (typeof R.maybeScheme === 'function' && !state.pending) {
-                R.maybeScheme(state, state.combat.attacker, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
+                R.maybeScheme(state, CombatSides.seatOf(state.combat, 'attacker'), 'round', { kind: 'combat', ctx: { side: 'attacker' } });
             }
         }
         // The orbital strike waited for the choice of «Набега жнецов»: the strike
@@ -1932,13 +1932,13 @@ const FS_EFFECTS = {
         }
         if (cond.side) {
             if (!inCombat) return false;
-            const mine = seat === combat.attacker ? 'attack' : 'defense';
+            const mine = CombatSides.sideOf(combat, seat) === 'attacker' ? 'attack' : 'defense';
             return mine === cond.side;
         }
         if (cond.cubeLess) {
             if (!inCombat) return false;
             const s2 = CombatSides.sideOf(combat, seat);
-            const o2 = seat === combat.attacker ? 'defender' : 'attacker';
+            const o2 = CombatSides.foe(CombatSides.sideOf(combat, seat));
             const mine = CombatTurn.of(combat).count(s2, cond.cubeLess);
             const theirs = CombatTurn.of(combat).count(o2, cond.cubeLess);
             return mine < theirs;
@@ -1946,14 +1946,14 @@ const FS_EFFECTS = {
         if (cond.cubeMore) {
             if (!inCombat) return false;
             const s2 = CombatSides.sideOf(combat, seat);
-            const o2 = seat === combat.attacker ? 'defender' : 'attacker';
+            const o2 = CombatSides.foe(CombatSides.sideOf(combat, seat));
             const mine = CombatTurn.of(combat).count(s2, cond.cubeMore);
             const theirs = CombatTurn.of(combat).count(o2, cond.cubeMore);
             return mine > theirs;
         }
         if (cond.foeRouted) {
             const n = cond.foeRouted;
-            const foeSide = inCombat ? (seat === combat.attacker ? combat.defender : combat.attacker) : null;
+            const foeSide = inCombat ? CombatSides.foeSeat(combat, seat) : null;
             const list = inCombat
                 ? BattleField.of(combat).routed(state, foeSide)
                 : state.units.filter(u => u.routed && u.seat !== seat);
