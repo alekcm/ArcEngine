@@ -1715,7 +1715,7 @@ rule('play-0a', 'каждая боевая карта доигрывается �
         if (!start.ok) { broken.push(card.name + ': бой не начался'); continue; }
         st.combat.cards.attacker.hand = [card.name];
         st.combat.cards.defender.hand = [];
-        st.combat.step = 'choose-attacker';
+        CombatTurn.of(st.combat).setStep('choose-attacker');
         FS_RULES.apply(st, 0, { type: 'combat', action: 'playCard', index: 0 });
         FS_RULES.advanceCombatSteps(st);
         let guard = 0;
@@ -3188,7 +3188,7 @@ rule('combat-9b', '«If players\' morale totals are tied, the defender wins the 
     const st = groundBattle({ att: 1, def: 2 });
     const c0 = st.combat;
     // Both sides the same morale: one guard (2) against two boyz (1 + 1).
-    c0.dice = { attacker: [], defender: [] };
+    c0.dice = { attacker: [], defender: [] };   // расклад кубиков боя (поле самого боя)
     c0.cards = { attacker: { hand: [], played: [] }, defender: { hand: [], played: [] } };
     FS_RULES.finishCombat(st);
     eq(st.combat && st.combat.morale.attacker, st.combat && st.combat.morale.defender, 'мораль сторон');
@@ -6066,9 +6066,11 @@ rule('strike-4', '«Бастионы противника не могут пре
 rule('combat-d1', '«repeat the damage step during this round of combat» (04-combat-cards.md, «Бронекулак»)', () => {
     const st = groundBattle({ att: 2, def: 2 });
     const round = st.combat.round;
-    st.combat.repeatDamage = true;
+    // «повторите шаг нанесения урона»: эффект карты ставит повтор тем же
+    // органом, которым его читает шаг, — проверка не держит поле хранения.
+    CombatDamage.of(st.combat).setRepeat();
+    eq(CombatDamage.of(st.combat).repeats, true, 'повтор шага заказан картой');
     FS_RULES.endDamageStep(st);
-    eq(st.combat && st.combat.damageRepeated, true, 'шаг урона помечен повторным');
     eq(st.combat && st.combat.step, 'damage-attacker', 'шаг урона пошёл сначала');
     FS_RULES.endDamageStep(st);
     eq(st.combat ? st.combat.round : round + 1, round + 1, 'второй раз тот же раунд не повторяется');
@@ -6080,7 +6082,7 @@ rule('combat-d2', '«do not discard your def. tokens at the end of this round of
     st.combat.tokens.defender.def = 2;
     // The card names the kind of the tokens it keeps and the round it was played
     // in: «Гнев машины» keeps the attack tokens the same way.
-    st.combat.keepTokens = { defender: { def: true, round: st.combat.round } };
+    CombatPlans.of(st.combat).keepTokens('defender', 'def', st.combat.round);
     FS_RULES.endCombatRound(st);
     if (!st.combat) return 'бой кончился раньше времени';
     eq(st.combat.tokens.defender.def, 2, 'жетоны защиты остались у владельца карты');

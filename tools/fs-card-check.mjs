@@ -34,7 +34,7 @@ const load = (file, name) => vm.runInContext(
 for (const file of ['js/fs/FSView.js', 'js/fs/FSGame.js']) {
     if (fs.existsSync(path.join(ROOT, file))) load(file, file.split('/').pop().replace(/\.js$/, ''));
 }
-const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage } = ctx;
+const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage, CombatTurn } = ctx;
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m' };
@@ -3266,7 +3266,7 @@ check('Огонь и продвижение', 'перебрасываются в
     tauPlay(st);
     eq(count(st, 'attacker', 'att'), 0, 'кубиков атаки после переброса');
     eq(count(st, 'attacker', 'def'), 3, 'кубиков обороны после переброса');
-    ok(st.combat.retreatInstead && st.combat.retreatInstead.seat === 0, 'разрешение на отступление');
+    ok(!!CombatDamage.of(st.combat).retreatPlan(0, CombatTurn.of(st.combat).round), 'разрешение на отступление');
     st.combat.viaAdvance = true;
     st.combat.dice.attacker = ['def'];
     st.combat.dice.defender = Array(8).fill('att');
@@ -4318,8 +4318,8 @@ check('Совращённый Хаосом', 'движок предлагает 
     const st = chaosBattle({});
     refuseReinforce(st);
     schemeInPlay(st, 'Совращённый Хаосом', CHAOS);
-    st.combat.step = 'damage-defender';
-    st.combat.damage = { attacker: 0, defender: 0 };
+    // Шаг боя ставим органом шага, а не полем: движок вправе менять форму.
+    CombatTurn.of(st.combat).setStep('damage-defender');
     st.combat.dice.attacker = ['def'];
     st.combat.dice.defender = ['def'];
     FS_RULES.endDamageStep(st);
