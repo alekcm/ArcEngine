@@ -1924,6 +1924,12 @@ const FS_EFFECTS = {
             && question.kind2 !== undefined) {
             merged.type = question.kind2;
         }
+        // «восстановите 1 отряд», «выберите 2 отряда»: the question names how
+        // many, and the answer cannot bring more. Without this the limit of `n`
+        // was decoration — every step took as many units as the answer listed.
+        if (question.kind === 'units' && question.n != null && Array.isArray(merged.units)) {
+            merged.units = merged.units.slice(0, Math.max(0, Number(question.n) || 0));
+        }
         // A staged question (the world a stack of units comes from, the factory of
         // the nested deploy) may be answered with the generic «area»: the value is
         // remembered under the name the step reads.

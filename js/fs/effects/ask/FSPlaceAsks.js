@@ -433,6 +433,10 @@ class PlaceAsks {
             units = state.units.filter(u => {
                 if (u.seat !== seat || !u.routed) return false;
                 if (active && u.system === active) return true;
+                // «всю пехоту во всех других системах»: the engine knows two
+                // kinds of units, ground and ships — «пехота» is the ground
+                // ones (10-necron-audit.md: a ship of another system stays
+                // routed).
                 const def = R.unitOf(state, u);
                 return !!def && def.type === 'ground';
             });

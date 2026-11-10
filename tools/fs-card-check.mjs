@@ -52,6 +52,54 @@ let group = '';
 // of the others are skipped.
 let groupFaction = null;
 
+/** A necron order of the given kind, with one upgrade card ready to play. */
+function necronOrder(kind, card) {
+    const st = FS_RULES.newReadyGame({
+        seed: 5,
+        players: players('некроны', 'имперская-гвардия'),
+    });
+    st.units = [];
+    st.structures = [];
+    st.objectives = [];
+    st.storms = [];
+    for (const sys of st.systems) sys.tokens = [];
+    st.phase = 'operations';
+    st.turn = 0;
+    st.order = null;
+    const sys = st.systems[0];
+    st.players[0].materiel = 20;
+    st.players[0].upgrades = [{ name: card, used: false, order: kind }];
+    sys.tokens.push({ seat: 0, order: kind, faceUp: false });
+    const res = FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys.id });
+    if (!res || res.ok === false) throw new Error('приказ не раскрыт: ' + (res && res.error));
+    return st;
+}
+
+function necronDeploy() {
+    const st = FS_RULES.newReadyGame({
+        seed: 5,
+        players: players('некроны', 'имперская-гвардия'),
+    });
+    st.units = [];
+    st.structures = [];
+    st.objectives = [];
+    st.storms = [];
+    for (const sys of st.systems) sys.tokens = [];
+    st.phase = 'operations';
+    st.turn = 0;
+    st.order = null;
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    FS_RULES.addUnit(st, 0, 'воины', sys.id, pos);
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+    st.players[0].materiel = 20;
+    st.players[0].upgrades = [{ name: 'Миры-гробницы', used: false, order: 'deploy' }];
+    sys.tokens.push({ seat: 0, order: 'deploy', faceUp: false });
+    const res = FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys.id });
+    if (!res || res.ok === false) throw new Error('приказ «Развёртывание» не раскрыт: ' + (res && res.error));
+    return st;
+}
+
 function head(text, ofFaction) {
     group = text;
     groupFaction = ofFaction || null;
@@ -2612,6 +2660,79 @@ check('Набег жнецов', 'выбранный отряд КЛ 0 полу�
     });
 });
 
+
+check('Протоколы реанимации', 'при раскрытии восстанавливает всех своих в активной системе и пехоту в остальных', () => {
+    const st = necronOrder('strategize', 'Протоколы реанимации');
+    const sys = st.systems[0];
+    const far = st.systems[2] || st.systems[1];
+    const w = worldOf(st, sys.id);
+    const fw = worldOf(st, far.id);
+    const here = FS_RULES.addUnit(st, 0, 'воины', sys.id, w); here.routed = true;
+    const there = FS_RULES.addUnit(st, 0, 'воины', far.id, fw); there.routed = true;
+    // Корабль чужой системы не восстанавливается: карта называет пехоту, а
+    // движок знает наземные отряды и корабли.
+    const ship = FS_RULES.addUnit(st, 0, 'крейсеры-жнец', far.id, voidOf(st, far.id)); ship.routed = true;
+    const used = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: 'Протоколы реанимации' });
+    ok(used.ok, 'карта не разыграна: ' + used.error);
+    const q = pending(st);
+    ok(!!q && q.op === 'restore', 'вопрос о восстановлении не задан');
+    const offered = q.options || [];
+    ok(offered.includes(here.id) && offered.includes(there.id), 'предложены отряды активной и дальней системы');
+    ok(!offered.includes(ship.id), 'корабль в чужой системе не предлагается');
+    answerAll(st, (s2, qq) => (qq.op === 'restore' ? { units: qq.options.slice() } : firstOption(s2, qq)));
+    return eq([here.routed, there.routed, ship.routed], [false, false, true],
+        'пехота восстановлена, корабль остался деморализованным');
+});
+check('Врата вечности', 'отряд КЛ 0–1 идёт из мира с постройкой в мир активной системы с недеморализованным Монолитом', () => {
+    const st = necronOrder('advance', 'Врата вечности');
+    const sys = st.systems[0];
+    const worlds = sys.areas.filter(a => a.world).map(a => a.pos);
+    ok(worlds.length >= 2, 'в активной системе два мира');
+    const [withMono, withFactory] = worlds;
+    FS_RULES.addUnit(st, 0, 'монолиты', sys.id, withMono);
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, withFactory);
+    const u = FS_RULES.addUnit(st, 0, 'воины', sys.id, withFactory);
+    // КЛ 3 из мира с постройкой не годится: карта называет КЛ 0 или 1.
+    const big = FS_RULES.addUnit(st, 0, 'ктан', sys.id, withFactory);
+    const used = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: 'Врата вечности' });
+    ok(used.ok, 'карта не разыграна: ' + used.error);
+    const q = pending(st);
+    ok(!!q, 'вопрос об отряде не задан');
+    const offered = q.options || [];
+    ok(offered.includes(u.id), 'отряд КЛ 0 предложен');
+    ok(!offered.includes(big.id), 'отряд КЛ 3 не предложен');
+    answerAll(st, (s2, qq) => (qq.op === 'moveUnit'
+        ? (qq.kind === 'units' ? { units: [u.id] } : firstOption(s2, qq))
+        : firstOption(s2, qq)));
+    eq(u.area, withMono, 'отряд встал в мир с Монолитом');
+    return eq(u.system, sys.id, 'и остался в активной системе');
+});
+check('Миры-гробницы', 'доп. бастион покупается только после покупки приказом', () => {
+    const st = necronDeploy();
+    const early = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: 'Миры-гробницы' });
+    return !early.ok && /Сначала купите/.test(early.error || '')
+        ? true
+        : 'без покупки карта сгорела: ' + JSON.stringify(early);
+});
+check('Миры-гробницы', 'бастион ставится в дружественный или нейтральный мир активной или соседней системы', () => {
+    const st = necronDeploy();
+    const sys = st.systems[0];
+    FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'воины', system: sys.id, pos: worldOf(st, sys.id) });
+    const used = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: 'Миры-гробницы' });
+    ok(used.ok, 'карта не разыграна: ' + used.error);
+    const q = pending(st);
+    ok(!!q && q.op === 'buyBastionNearby', 'вопрос о мире бастиона не задан');
+    const near = new Set([sys.id, ...FS_RULES.neighbors(st, sys.id)]);
+    eq((q.options || []).filter(a => !near.has(a.system)).length, 0,
+        'предложены только миры активной и соседних систем');
+    const before = st.players[0].materiel;
+    const target = q.options[0];
+    answerAll(st);
+    const bas = st.structures.filter(x => x.seat === 0 && x.type === 'bastion');
+    eq(bas.length, 1, 'бастион поставлен');
+    eq(bas[0].system, target.system, 'именно в выбранный мир');
+    return eq(st.players[0].materiel, before - 2, 'бастион оплачен (2 материи)');
+});
 
 // ============================================================================
 //  02 / 04 / 05 / 06 — Империя Тау: способность, 14 боевых карт, 5 приказов,
