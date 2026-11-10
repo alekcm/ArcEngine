@@ -21,7 +21,7 @@ class StormsRules {
         // «движение варп-шторма по вновь раскрытой карте не производится»
         // («Инкарнация Тзинча»): the three cards are looked at, but their storm
         // icons are not a second movement of this event.
-        if (state.chaosNoStormMove) {
+        if (!StormPhase.of(state).iconsMove) {
             return { ok: false, error: 'Движение варп-шторма по новой карте не производится.' };
         }
         const storm = state.storms.find(s => s.id === cmd.storm);
@@ -42,17 +42,18 @@ class StormsRules {
         const target = this.stormTarget(state, storm, dir);
         // «Молящийся тёмным богам»: another player may cancel THIS movement
         // and send the same storm in any of the eight legal directions instead.
-        if (!state.stormReaction) {
+        const storms = StormPhase.of(state);
+        if (!storms.reacting) {
             const info = { storm: storm.id, dir, mover: seat, target };
             for (const other of state.players) {
                 if (other.seat === seat) continue;
                 if (!this.engine.schemesOf(state, other.seat).some(s => s.trigger === 'storm' && !s.defer)) continue;
-                state.stormReaction = info;
+                storms.offer(info);
                 if (this.engine.maybeScheme(state, other.seat, 'storm',
                     { kind: 'event', ctx: { stormReaction: info } })) {
                     return { ok: true, pending: true };
                 }
-                delete state.stormReaction;
+                storms.clearReaction();
             }
         }
         FS_WARP_STORMS.write(state, storm, target);
@@ -64,7 +65,7 @@ class StormsRules {
     }
 
     finishStormReaction(state, info, dir) {
-        delete state.stormReaction;
+        StormPhase.of(state).clearReaction();
         if (!info) return { ok: false };
         const storm = state.storms.find(s => s.id === info.storm);
         if (!storm || storm.moved === true) return { ok: false };

@@ -548,6 +548,29 @@ try {
     fail(e.message);
 }
 
+// --- the storm of an event: one object ---------------------------------------
+section('шторм события: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSStormPhase.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Сдвиг шторма по карте события, ответ «Молящегося» и подавление иконок
+        // — один объект StormPhase: поля не читают руками.
+        const re = /\bstate\.(?:stormReaction|chaosNoStormMove|chaosLastSystem)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('шторм события спрашивают у StormPhase');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- «Быстрый ответ»: one object ---------------------------------------------
 section('быстрый ответ: один объект');
 try {

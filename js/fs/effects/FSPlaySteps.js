@@ -101,7 +101,7 @@ class PlaySteps {
         // The two other cards are discarded. No icon on a newly revealed
         // card moves a Warp Storm: the storm icon of THIS tactic was the
         // only one to resolve (06-events.md, «Инкарнация Тзинча»).
-        state.chaosNoStormMove = true;
+        StormPhase.of(state).suppressIcons();
         for (const other of hand) if (other !== name) p.decks.event.push(other);
         p.eventHand = [];
         const card = FS_CATALOG.card('events', p.faction, name);

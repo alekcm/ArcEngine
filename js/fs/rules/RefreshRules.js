@@ -103,10 +103,10 @@ class RefreshRules {
         // 4. the event cards and the warp storms
         state.turn = state.firstPlayer;
         state.eventsLeft = state.players.length;
-        delete state.stormReaction;
+        StormPhase.of(state).clearReaction();
         delete state.operationSchemeOffered;
         delete state.operationSchemeAccepted;
-        delete state.chaosNoStormMove;
+        StormPhase.of(state).allowIcons();
         this.engine.log(state, -1, 'Фаза обновления: события и варп-штормы.');
         this.nextEventPlayer(state);
     }
@@ -114,7 +114,7 @@ class RefreshRules {
     nextEventPlayer(state) {
         // The suppression belongs to the one event whose three cards were
         // revealed, not to the next player's event.
-        delete state.chaosNoStormMove;
+        StormPhase.of(state).allowIcons();
         if (state.eventsLeft <= 0) {
             // The end of the event phase: the capacity of every area is checked
             // again, and every player chooses his own excess troops.
@@ -168,7 +168,7 @@ class RefreshRules {
         // The storm movement of the card is not a choice — only its ability is.
         // «A player can choose not to resolve the ability on his chosen event
         // card, but must resolve the card's Warp Storm movement icon.»
-        const canMove = !state.chaosNoStormMove && this.engine.stormOptions(state, seat).length;
+        const canMove = StormPhase.of(state).iconsMove && this.engine.stormOptions(state, seat).length;
         if (canMove && !phase.stormMoved) {
             return { ok: false, error: 'Сначала сдвиньте варп-шторм по иконке карты.' };
         }

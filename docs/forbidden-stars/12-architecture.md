@@ -89,6 +89,7 @@
 | Удар с орбиты: бонус, оплата карт, цена построек, первый отряд | `core/FSStrike.js` (`StrikePlan.of(order)`) | не писать `order.strike*` в правиле, шаге карты или панели — это ловит `fs-smoke` |
 | Шаг марша, его дороги, отменённые ходы, спорная область | `core/FSMarch.js` (`MarchPlan.of(order)`) | не писать `order.moved`/`route`/`steps` в правиле, бое или панели — это ловит `fs-smoke` |
 | Шаг приказа (`move`, `combat`, `strike`, …) | `core/FSPhase.js` (`PhasePlan.of(order)`) | не сравнивать `order.phase` со строкой в правиле или панели — это ловит `fs-smoke` |
+| Шторм события: ответ «Молящегося», подавление иконок, система последней потери | `core/FSStormPhase.js` (`StormPhase.of(state)`) | не читать `state.stormReaction`/`chaosNoStormMove`/`chaosLastSystem` в правиле или карте — это ловит `fs-smoke` |
 | «Быстрый ответ»: приостановленная фаза событий и её снимок | `core/FSQuickResponse.js` (`QuickResponse.of(state)`) | не читать `state.quickResponsePending`/`quickResponseSnapshot` в правиле или эффекте — это ловит `fs-smoke` |
 | Событие фазы обновления: рука, выбранная карта, открытая карта, сдвинутый шторм | `core/FSEventPhase.js` (`EventPhase.of(state)`) | не читать `state.event.seat`/`drawn`/`chosen`/`top`/`card`/`stormMoved` в правиле или эффекте — это ловит `fs-smoke` |
 | Купленные улучшения «Стратегии» и их отмена | `core/FSUpgrades.js` (`UpgradeOrder.of(order)`) | не читать `order.upgrade*` в правиле или панели — это ловит `fs-smoke` |
@@ -140,7 +141,7 @@
 
 ```
 node tools/check.mjs          # типы (tsc по JSDoc) + сверка правил + дым-тест
-node tools/fs-audit.mjs       # 167 проверок: каждая цитирует Rules Reference
+node tools/fs-audit.mjs       # 168 проверок: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # 82 проверки: карты одной фракции против их текстов
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках
@@ -153,11 +154,11 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 шагов карт (73 «дела» и 155 «вопроса» — каждый объявлен и каждый — функция), а ещё один —
 сам предметный слой: стороны боя и верх стопки приказов.
 
-Тридцать семь разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
+Тридцать восемь разделов дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
 (вставленные `assets.forge++`, `cards[side].hand.splice`, `p.materiel -= 1`, ручной счёт
 пяти отрядов, `structuresAt(...).length`, `state.order = null`, `u.routed = true`,
 `order.bought++`, чтение `state.trim` мимо очереди, `storm.edge = …` мимо поля штормов и
-`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` `order.purchases` мимо `Purchases` `order.moveAreaLimit` мимо `OrderMove` `order.prosperity` мимо `OrderTally`, `order.seat`/`order.system` мимо `OrderContext` `combat.reinforcePending` мимо `CombatTokens` и `combat.step`/`combat.dice` мимо `CombatTurn` `combat.staged` мимо `CombatCards` `combat.healthBonus`/`combat.noRoute` мимо `CombatDamage` и `combat.damageResume` мимо `CombatHooks` и `combat.endRoundPlans`/`laterTokens` мимо `CombatPlans` `combat.tokens` мимо `CombatCubes` и `combat.noReinforce`/`ignoreFoeAtt` мимо `CombatBans` `combat.system`/`combat.pos` мимо `BattleField` `combat.winner`/`loser` мимо `CombatOutcome` `combat.attackerFrom`/`viaAdvance` мимо `CombatApproach` `combat.attacker`/`combat.defender` мимо `CombatSides` `state.event.seat`/`drawn`/`chosen` мимо `EventPhase` и `state.quickResponsePending`/`Snapshot` мимо `QuickResponse`
+`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` `order.purchases` мимо `Purchases` `order.moveAreaLimit` мимо `OrderMove` `order.prosperity` мимо `OrderTally`, `order.seat`/`order.system` мимо `OrderContext` `combat.reinforcePending` мимо `CombatTokens` и `combat.step`/`combat.dice` мимо `CombatTurn` `combat.staged` мимо `CombatCards` `combat.healthBonus`/`combat.noRoute` мимо `CombatDamage` и `combat.damageResume` мимо `CombatHooks` и `combat.endRoundPlans`/`laterTokens` мимо `CombatPlans` `combat.tokens` мимо `CombatCubes` и `combat.noReinforce`/`ignoreFoeAtt` мимо `CombatBans` `combat.system`/`combat.pos` мимо `BattleField` `combat.winner`/`loser` мимо `CombatOutcome` `combat.attackerFrom`/`viaAdvance` мимо `CombatApproach` `combat.attacker`/`combat.defender` мимо `CombatSides` `state.event.seat`/`drawn`/`chosen` мимо `EventPhase` `state.quickResponsePending`/`Snapshot` мимо `QuickResponse` и `state.stormReaction`/`chaosNoStormMove` мимо `StormPhase`
 дают провал с именем файла и строкой):
 
 * жетоны: только `PlayerEntity` пишет в `assets`;
@@ -188,6 +189,11 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 * марш наступления: шаг движения, дороги шага, шедшие отряды, стопка отменённых ходов,
   спорная область и предел числа ходов — один объект `MarchPlan` (`core/FSMarch.js`);
   правило продвижения, бой и панель спрашивают его.
+* шторм события — один объект `StormPhase` (`core/FSStormPhase.js`): движение,
+  которое может отменить другой игрок (`offer`, `reaction`, `reacting`,
+  `clearReaction`), подавление иконок трёх раскрытых карт (`iconsMove`,
+  `suppressIcons`, `allowIcons`) и система последнего уничтоженного отряда, по
+  которой карта считает предел командования (`lastSystem`, `markLastSystem`).
 * «Быстрый ответ» — один объект `QuickResponse` (`core/FSQuickResponse.js`): фаза
   событий приостановлена (`suspend`, `wait`, `pending`), её снимок
   (`phase`/`turn`/`event`/`eventsLeft`) возвращается один раз (`resume`) или

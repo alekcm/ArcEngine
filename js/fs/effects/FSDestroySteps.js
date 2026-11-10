@@ -23,7 +23,7 @@ class DestroySteps {
         // «Задетый варпом» counts the storms on the borders of the
         // system the destroyed cultist stood in.
         if (step.recordSystem && dead.length) {
-            state.chaosLastSystem = dead[0].system;
+            StormPhase.of(state).markLastSystem(dead[0].system);
             step.destroyedSystem = dead[0].system;
         }
         for (const u of dead) R.destroyUnit(state, u);

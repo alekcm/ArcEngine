@@ -22,7 +22,7 @@ class BuyAsks {
 
     static buyAnyUpgrade(effects, f) {
         const { R, state, seat, step, combat, p } = f;
-        const sysId = state.chaosLastSystem;
+        const sysId = StormPhase.of(state).lastSystem;
         const cap = effects.stormCapFor(R, state, sysId);
         const owned = new Set((p.upgrades || []).map(u => u.name));
         const options = FS_CATALOG.upgradeCombatCards(p.faction)

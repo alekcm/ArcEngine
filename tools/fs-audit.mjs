@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
-    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse } = ctx;
+    CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1164,6 +1164,36 @@ rule('combat-0c', '«discards the combat cards he used during the combat by shuf
     cards.clear('attacker');
     eq(cards.names('attacker').length, 0, 'стол очищен');
     eq(cards.chosen('attacker'), null, 'отметка карты снята');
+});
+
+rule('event-0c', '«The active player chooses one Warp Storm on the game board and moves it» + «движение варп-шторма по вновь раскрытой карте не производится» — шторм события держит StormPhase', () => {
+    const state = { storms: [], players: [] };
+    const phase = StormPhase.of(state);
+    eq(StormPhase.of(state), phase, 'у игры один шторм события');
+    eq(StormPhase.of(null), null, 'без состояния шторма нет');
+    // An empty game: nobody reacts and nothing is suppressed.
+    eq(phase.reacting, false, 'ответа никто не ждёт');
+    eq(phase.reaction, null, 'и ответа нет');
+    eq(phase.iconsMove, true, 'иконки карт двигают шторм');
+    eq(phase.lastSystem, null, 'последней системы нет');
+    // «Молящийся тёмным богам»: the movement waits for another player.
+    const info = { storm: 's1', dir: 'N', mover: 0, target: {} };
+    phase.offer(info);
+    eq(phase.reacting, true, 'движение ждёт ответа');
+    eq(phase.reaction.mover, 0, 'его предлагает seat 0');
+    phase.clearReaction();
+    eq(phase.reacting, false, 'ответа больше не ждут');
+    eq(phase.reaction, null, 'и записи нет');
+    // «Инкарнация Тзинча»: the icons of the three revealed cards do not move.
+    phase.suppressIcons();
+    eq(phase.iconsMove, false, 'иконки карт шторм не двигают');
+    phase.allowIcons();
+    eq(phase.iconsMove, true, 'следующее событие двигает снова');
+    // The capacity of the card is counted in the system of the last loss.
+    phase.markLastSystem('s7');
+    eq(phase.lastSystem, 's7', 'система последнего уничтоженного отряда');
+    phase.markLastSystem();
+    eq(phase.lastSystem, null, 'и её можно забыть');
 });
 
 rule('event-0b', '«Быстрый ответ»: «the event phase is suspended» + «the limited order belongs to the player of the event» — снимок и ожидание держит QuickResponse', () => {

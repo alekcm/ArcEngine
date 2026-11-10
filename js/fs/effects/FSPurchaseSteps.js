@@ -62,7 +62,7 @@ class PurchaseSteps {
         const at = raw.indexOf(':');
         const kind = at < 0 ? 'combat' : raw.slice(0, at);
         const name = at < 0 ? raw : raw.slice(at + 1);
-        const cap = effects.stormCapFor(R, state, state.chaosLastSystem);
+        const cap = effects.stormCapFor(R, state, StormPhase.of(state).lastSystem);
         const p2 = state.players[seat];
         if (kind === 'combat') {
             const card = FS_CATALOG.upgradeCombatCards(p2.faction)
