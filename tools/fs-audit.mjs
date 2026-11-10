@@ -2965,19 +2965,34 @@ rule('combat-11', '«If a unit suffers damage and is not destroyed, that unit is
 });
 
 rule('combat-12', '«Any damage that exceeds a unit\'s or bastion\'s health value must be applied to one of his other units or bastions.»', () => {
-    const st = empty();
-    const sys = st.systems[0];
-    const pos = worldOf(st, sys.id);
-    const a = guard(st, 0, sys.id, pos);      // health 1
-    const b = guard(st, 0, sys.id, pos);
-    olk(st, 1, sys.id, pos);
-    advance(st, 0, sys.id, pos);
-    FS_RULES.apply(st, 0, { type: 'endAdvance' });
-    const res = FS_RULES.combatDamage(st, 0, 'attacker', { targets: [a.id, b.id] });
-    if (!res.ok) return 'урон не принят: ' + res.error;
-    const dead = st.units.filter(u => u.id === a.id || u.id === b.id).length;
-    if (res.damage >= 2 && dead !== 0) return 'избыток урона не перешёл на второй отряд';
-    return true;
+    // Раньше проверка звала урон у стороны, у которой урона не было (3 против
+    // 4 щитов = 0), и утверждала «нет избытка» при damage 0 — то есть ничего.
+    // Теперь избыток настоящий: два Гвардейца (здоровье 1) под уроном 3.
+    const st = groundBattle({ seed: 11 });
+    eq(!!st.combat, true, 'бой начался');
+    while (st.combat && ctx.CombatTurn.of(st.combat).step !== 'damage-attacker') {
+        const step = ctx.CombatTurn.of(st.combat).step;
+        if (step === 'reinforce-attacker') FS_RULES.apply(st, 0, { type: 'combat', action: 'reinforce', count: 0 });
+        else if (step === 'reinforce-defender') FS_RULES.apply(st, 1, { type: 'combat', action: 'reinforce', count: 0 });
+        else if (step === 'choose-attacker') FS_RULES.apply(st, 0, { type: 'combat', action: 'playCard', index: 0 });
+        else if (step === 'choose-defender') FS_RULES.apply(st, 1, { type: 'combat', action: 'playCard', index: 0 });
+        else if (st.pending) FS_RULES.apply(st, st.pending.answerSeat !== undefined ? st.pending.answerSeat : st.pending.seat,
+            { type: 'effect', answer: {} });
+        else { FS_RULES.advanceCombatSteps(st); continue; }
+        if (!st.combat) break;
+    }
+    eq(!!st.combat && ctx.CombatTurn.of(st.combat).step, 'damage-attacker', 'дошли до шага урона по атакующему');
+    const mine = st.units.filter(u => u.seat === 0);
+    eq(mine.length >= 2, true, 'в бою не меньше двух отрядов атакующего');
+    const health = id => (ctx.FS_CATALOG.unit(st.players[0].faction, id) || {}).health || 1;
+    const damage = FS_RULES.combatDamageFor(st, 'attacker');
+    eq(damage > health(mine[0].unit || mine[0].def), true,
+        'урона больше, чем здоровье одного отряда (' + damage + ' против ' + health(mine[0].unit || mine[0].def) + ')');
+    const res = FS_RULES.apply(st, 0, { type: 'combat', action: 'damage', targets: mine.map(u => u.id) });
+    eq(res.ok, true, 'урон принят: ' + (res.error || ''));
+    eq(res.damage, damage, 'урон шага — тот, что посчитан');
+    eq(res.applied.length >= 2, true, 'избыток ушёл на второй отряд, а не пропал (' + res.applied.length + ' целей)');
+    eq(res.applied.every(x => x.destroyed), true, 'оба отряда погибли от 3 урона при здоровье 1');
 });
 
 rule('combat-13', '«After a combat is resolved, all reinforcement tokens that were used during the combat are returned to the supply.»', () => {
@@ -3242,24 +3257,44 @@ rule('event-2', '«Scheme event cards remain in play» — план остаёт
 rule('refresh-4', '«During the Refresh Phase, each player draws one card for each order token that is on top of his event deck»', () => {
     const st = empty();
     st.players[0].eventTokens = 2;
-    const before = st.players[0].decks.event.length;
     FS_RULES.startRefresh(st);
     st.players[0].eventTokens = 0;
     const drawn = (st.event && st.event.seat === 0) ? st.event.drawn.length : -1;
     eq(drawn, 2, 'взято карт событий');
-    if (before < 2) return true;
-    return true;
+    // «…one card for each order token»: два жетона — две карты с колоды, а не
+    // одна и та же дважды.
+    eq(st.event.drawn.length, 2, 'в вопросе фазы событий две разные карты');
+    eq(new Set(st.event.drawn).size, 2, '...и они не повторяются');
+    eq(st.players[0].eventTokens, 0, 'жетоны израсходованы');
+    eq(Array.isArray(st.event.drawn) && st.event.drawn.every(x => typeof x === 'string' && x), true, 'обе карты названы');
 });
 
 rule('win-1', '«When a player has collected a number of his objective tokens equal to or exceeding the number of players, the game ends»', () => {
-    const st = empty();
-    st.firstPlayer = 0;
-    st.players[0].objectives = 2;     // two players in the game
-    st.round = 1;
-    st.phase = 'refresh';
-    st.eventsLeft = 0;
-    FS_RULES.endRound(st);
-    eq(st.over, true, 'игра закончена при двух целях у двух игроков');
+    const play = count => {
+        const st = empty();
+        st.firstPlayer = 0;
+        // У каждого игрока дружественный мир: иначе конец раунда выкидывает
+        // обоих по «нет миров», и проверка порога проходила бы мимо.
+        for (const seat of [0, 1]) {
+            const sys = st.systems[seat];
+            guard(st, seat, sys.id, worldOf(st, sys.id));
+        }
+        st.players[0].objectives = count;
+        st.round = 1;
+        st.phase = 'refresh';
+        st.eventsLeft = 0;
+        FS_RULES.endRound(st);
+        return st;
+    };
+    // «equal to» — граница: двух целей при двух игроках достаточно…
+    eq(play(2).over, true, 'игра закончена при двух целях у двух игроков');
+    eq(play(2).winner, 0, 'победил собравший цели');
+    // …а одной — нет. Порог «>» вместо «>=» проходил мимо всех проверок.
+    eq(play(1).over, false, 'одной цели при двух игроках мало');
+    // «or exceeding»: больше порога — тоже победа.
+    const more = play(3);
+    eq(more.over, true, 'трёх целей при двух игроках достаточно');
+    eq(more.winner, 0, 'и здесь победил собравший');
 });
 
 rule('cap-4', '«Вместимость дружественных миров, содержащих город, увеличена на 2, максимум до 4. Дополнительная вместимость распространяется только на Гвардейцев.» — «Принудительная вербовка»', () => {
@@ -3294,15 +3329,33 @@ rule('cap-4', '«Вместимость дружественных миров, �
 });
 
 rule('win-2', '«When a player is eliminated, this does not reduce the number of objective tokens needed to win the game.»', () => {
-    const st = empty();
-    st.players[0].objectives = 2;
-    st.players[1].eliminated = true;
-    st.firstPlayer = 0;
-    st.round = 1;
-    st.phase = 'refresh';
-    st.eventsLeft = 0;
-    FS_RULES.endRound(st);
-    eq(st.over, true, 'порог победы не уменьшился');
+    const play = count => {
+        const st = empty();
+        for (const seat of [0, 1]) guard(st, seat, st.systems[seat].id, worldOf(st, st.systems[seat].id));
+        st.players[0].objectives = count;
+        st.players[1].eliminated = true;    // в игре остался один живой
+        st.firstPlayer = 0;
+        st.round = 1;
+        st.phase = 'refresh';
+        st.eventsLeft = 0;
+        FS_RULES.endRound(st);
+        return st;
+    };
+    // Порог считается по игрокам, которые СЕЛИ за стол, а не по живым.
+    const board = count => {
+        const st = empty();
+        for (const seat of [0, 1]) guard(st, seat, st.systems[seat].id, worldOf(st, st.systems[seat].id));
+        st.players[0].objectives = count;
+        st.players[1].eliminated = true;
+        return st;
+    };
+    eq(FS_RULES.objectiveWinners(board(1)), null, 'одной цели после выбывания всё ещё мало');
+    const won = FS_RULES.objectiveWinners(board(2));
+    eq(!!won && won.winner, 0, 'двух целей хватает: порог не упал до одного');
+    // И на живой доске это победа именно по целям.
+    const two = play(2);
+    eq(two.over, true, 'игра закончена');
+    eq(two.winner, 0, 'победил собравший цели');
 });
 
 // ============================================================================
