@@ -24,7 +24,7 @@ const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
     BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound, StrikeDamage,
-    BattleTest, Chance, PreAdvance, Choice, Seat } = ctx;
+    BattleTest, Chance, PreAdvance, Choice, Seat, TileGeometry } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -3374,6 +3374,77 @@ rule('cap-1', '«he must destroy units of his choice in that area» — отря
     const extra = st.units.filter(u => u.seat === 0)[0];
     eq(FS_RULES.apply(st, 0, { type: 'trimUnit', system: sys.id, pos, unit: extra.id }).ok, true, 'игрок убирает отряд');
     eq(st.units.filter(u => u.seat === 0).length, cap + 1, 'отряд убран');
+});
+
+rule('geo-1', '«A tile may be rotated» — поворот тайла переносит миры и границы, а не только подпись', () => {
+    // Геометрия тайла (TileGeometry) держит соседство, границы и поворот, и не
+    // проверялась ни одним правилом: «поворот ничего не делает» проходило.
+    const st = game();
+    const tile = FS_DATA.tiles.find(t => t.areas.some(a => a.world));
+    eq(!!tile, true, 'есть тайл с миром');
+    // Поворот на 90° переставляет область, но не теряет её.
+    const four = [];
+    for (const a of tile.areas) {
+        const seen = new Set();
+        for (let t = 0; t < 4; t++) seen.add(FS_RULES.rotateArea(a.pos, t));
+        eq(seen.size, 4, 'четыре поворота — четыре разные области для ' + a.pos);
+        eq(FS_RULES.rotateArea(a.pos, 4), a.pos, 'четыре поворота возвращают на место');
+        four.push(a.pos);
+    }
+    // Собранная система с поворотом: мир остаётся миром, и его область
+    // называется уже по повёрнутой сетке.
+    const sys0 = FS_RULES.createSystemFromTile({ systems: [] }, tile, 0, 0, 0, 0);
+    const sys1 = FS_RULES.createSystemFromTile({ systems: [] }, tile, 0, 0, 0, 1);
+    const worlds0 = sys0.areas.filter(a => a.world).map(a => a.pos).sort();
+    const worlds1 = sys1.areas.filter(a => a.world).map(a => a.pos).sort();
+    eq(sys1.areas.length, sys0.areas.length, 'число областей не изменилось');
+    eq(worlds1.length, worlds0.length, 'число миров не изменилось');
+    eq(worlds0.join(',') !== worlds1.join(',') || worlds0.length === 4, true,
+        'поворот переставил миры (' + worlds0.join(',') + ' → ' + worlds1.join(',') + ')');
+    // Соседство клеток и сторона: две рядом стоящие плитки делят ровно одну сторону.
+    const a = { row: 1, col: 1 }, b = { row: 1, col: 2 }, c = { row: 3, col: 3 };
+    eq(FS_RULES.setupAdjacent(a, b), true, 'соседние клетки делят сторону');
+    eq(FS_RULES.setupAdjacent(a, c), false, 'дальние клетки — нет');
+    eq(FS_RULES.sideBetween(st, sys0.id, sys0.id), null, 'у системы нет стороны к самой себе');
+});
+
+rule('geo-1b', '«Areas of two tiles meet only across the gold border» — что именно сходится на каждой стороне', () => {
+    // Правило границы: на севере области TL/TR соединяются с BL/BR соседа, на
+    // востоке — TR/BR с TL/BL, и так по кругу. «Сквозь границу всё соседствует»
+    // проходило: в бою и марше появлялись связи, которых на тайле нет.
+    const at = { N: [['TL', 'BL'], ['TR', 'BR']], E: [['TR', 'TL'], ['BR', 'BL']],
+        S: [['BL', 'TL'], ['BR', 'TR']], W: [['TL', 'TR'], ['BL', 'BR']] };
+    for (const side of ['N', 'E', 'S', 'W']) {
+        for (let i = 0; i < 4; i++) {
+            for (let j = 0; j < 4; j++) {
+                const a = ['TL', 'TR', 'BL', 'BR'][i];
+                const b = ['TL', 'TR', 'BL', 'BR'][j];
+                const want = at[side].some(p => p[0] === a && p[1] === b);
+                eq(TileGeometry.areasTouch(side, a, b), want,
+                    'сторона ' + side + ': ' + a + '—' + b);
+            }
+        }
+    }
+});
+
+rule('geo-2', '«Areas touch across the gold border» — граница между плитками решает, где идёт бой', () => {
+    // `areasAround` соединяет области своего тайла и области за золотой
+    // границей; без этого марш, удар и бой видят не тот сосед.
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    const own = FS_RULES.areasAround(st, sys.id, pos).filter(a => a.system === sys.id);
+    eq(own.length, 2, 'у области своего тайла два соседа по змейке (' + own.length + ')');
+    const far = FS_RULES.areasAround(st, sys.id, pos).filter(a => a.system !== sys.id);
+    // За границей — только системы, которые вообще стоят рядом.
+    const near = new Set(FS_RULES.neighbors(st, sys.id));
+    eq(far.every(a => near.has(a.system)), true, 'соседи за границей — только соседние системы');
+    // Области за границей отвечают друг другу: соседство симметрично.
+    if (far.length) {
+        const back = FS_RULES.areasAround(st, far[0].system, far[0].pos)
+            .some(a => a.system === sys.id && a.pos === pos);
+        eq(back, true, 'соседство областей симметрично');
+    }
 });
 
 rule('cap-1b', '«his excess troops are back in the supply» — область выходит из очереди только когда влезает', () => {
