@@ -305,6 +305,37 @@ rule('setup-2', '«He cannot exceed an area’s unit capacity» — при сб�
 // ============================================================================
 head('Планирование (Planning Phase)');
 
+rule('count-1', '«for each friendly world with a bastion / your city / your cultist …» — подсчёт «за каждый» считает один раз для всех карт', () => {
+    // `countFor` — общий счётчик шести карт («Церемония перед боем», «Путь
+    // воина», «Ужасный ритуал», «Убийственное представление», «Рассечение
+    // тьмы», «Догма Министорума»). Ни одна проверка его не держала: снятие
+    // любого вида проходило молча.
+    const st = empty(7);
+    const [s1, s2, s3] = st.systems;
+    const w1 = worldOf(st, s1.id), w2 = worldOf(st, s2.id);
+    guard(st, 0, s1.id, w1);
+    FS_RULES.addStructure(st, 0, 'bastion', s1.id, w1);
+    FS_RULES.addStructure(st, 0, 'city', s1.id, w1);
+    // Второй мир — с городом, но БЕЗ отряда: город считается, а бастион в
+    // мире без контроля — нет.
+    FS_RULES.addStructure(st, 0, 'city', s2.id, w2);
+    eq(FS_RULES.countFor(st, 0, 'friendlyBastion'), 1, 'один свой бастион');
+    eq(FS_RULES.countFor(st, 0, 'yourCity'), 2, 'два своих города');
+    // Культисты считаются в активной системе приказа.
+    st.order = { seat: 0, order: 'advance', system: s1.id, phase: 'move' };
+    for (let i = 0; i < 3; i++) unit(st, 0, 'гвардейцы', s1.id, w1);
+    eq(FS_RULES.countFor(st, 0, 'cultist'), 0, 'культистов нет');
+    // Жетоны подкрепления — из запаса игрока.
+    st.players[0].assets.reinforcement = 2;
+    eq(FS_RULES.countFor(st, 0, 'reinforcement'), 2, 'два жетона подкрепления');
+    // Смешанная система — где есть и свои, и чужие отряды.
+    olk(st, 1, s2.id, w2);
+    unit(st, 0, 'гвардейцы', s2.id, w2);
+    eq(FS_RULES.countFor(st, 0, 'mixedSystem'), 1, 'одна смешанная система');
+    eq(FS_RULES.countFor(st, 0, 'noFoeSystem') >= 1, true, 'есть система без врага');
+    eq(FS_RULES.countFor(st, 0, 'нетТакого'), 0, 'неизвестный вид — ноль');
+});
+
 rule('ops-1', '«The active player resolves one of his order tokens … then the next player …» — конец приказа передаёт ход, а последний приказ кончает фазу', () => {
     // Переход хода не проверял никто: «ход не меняется» и «приказ закончился»
     // проходили одинаково, потому что ни одна проверка не смотрела на очередь.
@@ -3439,8 +3470,32 @@ rule('win-3', '«If no player has won the game by the end of the eighth game rou
     st2.round = FS_RULES.ROUNDS;
     st2.players[0].objectives = 1;
     st2.players[1].objectives = 1;
+    // Подделка «число миров всегда 0» проходила: миры должны РАЗЛИЧАТЬСЯ.
+    eq(FS_RULES.rank(st2, st2.players[0]).worlds > FS_RULES.rank(st2, st2.players[1]).worlds, true,
+        'у seat 0 больше миров (' + FS_RULES.rank(st2, st2.players[0]).worlds + ' против '
+        + FS_RULES.rank(st2, st2.players[1]).worlds + ')');
     FS_RULES.endRound(st2);
     eq(st2.winner, 0, 'при равных целях побеждают миры');
+    // И третья ступень: равные цели и миры — решают отряды.
+    const st3 = empty();
+    const a3 = st3.systems[0], b3 = st3.systems[2] || st3.systems[1];
+    guard(st3, 0, a3.id, worldOf(st3, a3.id));
+    guard(st3, 0, a3.id, worldOf(st3, a3.id));
+    olk(st3, 1, b3.id, worldOf(st3, b3.id));
+    st3.round = FS_RULES.ROUNDS;
+    st3.players[0].objectives = 1;
+    st3.players[1].objectives = 1;
+    const r0 = FS_RULES.rank(st3, st3.players[0]), r1 = FS_RULES.rank(st3, st3.players[1]);
+    eq(r0.worlds === r1.worlds, true, 'миров поровну (' + r0.worlds + ')');
+    eq(r0.units > r1.units, true, 'но отрядов у seat 0 больше (' + r0.units + ' против ' + r1.units + ')');
+    eq(FS_RULES.byRank(r0, r1) < 0, true, 'при равных мирах решают отряды');
+    // И это решает партию: у обоих по одной цели и по миру.
+    st3.round = FS_RULES.ROUNDS;
+    st3.players[0].objectives = 1;
+    st3.players[1].objectives = 1;
+    FS_RULES.endRound(st3);
+    eq(st3.over, true, 'партия кончилась');
+    eq(st3.winner, 0, 'победил тот, у кого больше отрядов');
 });
 
 // ============================================================================
