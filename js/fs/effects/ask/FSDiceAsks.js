@@ -5,7 +5,7 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class DiceAsks {
-    static ops = ['stealMostDie', 'gainDie', 'loseDie', 'rerollDie', 'spendDie', 'flipDie', 'rerollValue', 'stealDie', 'convertFoeDice', 'setDie', 'loseDieIfMore', 'rerollAll', 'moveUnitToCombatForDice'];
+    static ops = ['foePayFork', 'foeRetreatOffer', 'destroyFoeUnlessPays', 'stealMostDie', 'gainDie', 'loseDie', 'rerollDie', 'spendDie', 'flipDie', 'rerollValue', 'stealDie', 'convertFoeDice', 'setDie', 'loseDieIfMore', 'rerollAll', 'moveUnitToCombatForDice'];
 
     static stealMostDie(effects, f) {
         const { seat, step, combat, inCombat, side } = f;
@@ -135,6 +135,20 @@ class DiceAsks {
         // «вы обязаны перебросить 2 `def. cube` и/или `morale cube`» —
         // fewer dice than asked for is all that can be done.
         return q;
+    }
+
+    // The fork of the opponent's payment and his own retreat: the step asks
+    // nothing in advance — the executor reads the answer itself.
+    static foePayFork() {
+        return null;
+    }
+
+    static foeRetreatOffer() {
+        return null;
+    }
+
+    static destroyFoeUnlessPays() {
+        return null;
     }
 
     static spendDie(effects, f) {

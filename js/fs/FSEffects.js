@@ -1252,6 +1252,60 @@ const FS_EFFECTS = {
         return list;
     },
 
+    // «Если противник не потратит 1 `morale cube`, получите 3 `def. token`»:
+    // the fork of the opponent's payment — the card names the price, the gain
+    // (or the punishment) of his refusal, and nothing else. The engine asks the
+    // opponent himself; his payment cancels the second part.
+    foeFork(sentence, ctx) {
+        const s = String(sentence || '').trim();
+        if (!s) return null;
+        const foe = /противник|оппонент|владелец/i.test(s);
+        if (!foe) return null;
+        // The price: «не потратит 3 `morale cube`», «должен потратить 1 `att. cube`».
+        const pay = /(?:не\s+потрат[а-яёa-z]*|должен\s+потрат[а-яёa-z]*|потратит)\s+(\d+|один|одно|одну)?\s*((?:`[^`]+`\s*(?:или|,|и)?\s*)+)/i.exec(s);
+        if (pay) {
+            const n = String(pay[1] || '1');
+            const kinds = [];
+            const re = /`([^`]+)`/g;
+            let m;
+            while ((m = re.exec(pay[2]))) kinds.push(this.icon(m[1]));
+            if (kinds.length) {
+                // The rest of the sentence is the effect of the refusal: «то он
+                // должен выбрать и деморализовать 1 свой отряд» / «получите 3
+                // `def. token`».
+                const tail = s.slice(pay.index + pay[0].length)
+                    .replace(/^[\s,)]*(?:то\s+)?/i, '')
+                    .replace(/^[\s,]+/, '')
+                    .trim();
+                let body = [];
+                if (tail) body = this.parseSentence(tail.replace(/\.+$/, '') + '.', ctx || {});
+                if (!body.length) {
+                    // «… он должен выбрать и деморализовать 1 свой отряд»: the
+                    // punishment may stand inside the fork itself.
+                    const rout = /(?:он|противник[а-яёa-z]*)\s+(?:должен|обязан)[^.;]{0,40}?деморализ[а-яёa-z]*\s+(\d+)?/i.exec(s);
+                    if (rout) body = [{ op: 'route', n: Number(rout[1]) || 1, pick: true, who: 'foe' }];
+                }
+                if (!body.length) return null;
+                // The punishing half is performed for the FOE («who: 'foe'»)
+                // where the card says so.
+                return [{
+                    op: 'foePayFork', n: Number(n) || 1, kinds, who: 'foe',
+                    then: body, text: s,
+                }];
+            }
+        }
+        // «Ваш противник может отступить 1 своим юнитом» / «Ваш противник
+        // должен отступить 1 своим юнитом, если не потратит …»: a retreat the
+        // opponent chooses himself.
+        const ret = /(?:ваш\s+)?(?:противник|оппонент)[^.;]{0,40}?(?:может|должен|обязан)?\s*отступ[а-яёa-z]*\s+(?:(\d+|один|одно)\s+)?(?:своим\s+|своей\s+)?([а-яёa-z]+)?/i.exec(s);
+        if (ret && /отступ/i.test(s)) {
+            return [{
+                op: 'foeRetreatOffer', n: Number(ret[1]) || 1, who: 'foe', text: s,
+            }];
+        }
+        return null;
+    },
+
     // One sentence -> the steps.
     parseSentence(sentence, ctx) {
         const s = sentence.trim();
@@ -1275,14 +1329,8 @@ const FS_EFFECTS = {
                 avoid: { n: num(mUnless[3]), kind: this.icon(mUnless[4]), by: 'foe' },
             }];
         }
-        // «… противник должен потратить 3 N / … не потратит 1 …, то … деморализовать
-        // 1 свой отряд / … если противник не потратит …» — the payment fork of
-        // the OPPONENT: the engine cannot ask the other player, so the card is
-        // resolved by hand together (no cube is spent, no unit routed by us).
-        if (/противник[а-яёa-z]*[^.;]{0,90}?(?:не\s+потрат[а-яёa-z]*|должен\s+потрат[а-яёa-z]*|может\s+избежать|может\s+отступить|должен\s+отступить|не\s+позволит|станет\s+уничтожен|должен\s+выбрать\s+и\s+деморализ)/i.test(s)
-            || /(?:если\s+)?(?:владелец|противник[а-яёa-z]*)\s+не\s+потрат[а-яёa-z]*/i.test(s)) {
-            return [{ op: 'note', text: s, manual: 'foe-fork' }];
-        }
+        const foeFork = this.foeFork(s, ctx || {});
+        if (foeFork) return foeFork;
         if (/который\s+(?:он|она|они|владелец)\s+не\s+может\s+потрат[а-яёa-z]*/i.test(s)) {
             return [{ op: 'note', text: s, manual: 'foe-fork' }];
         }
@@ -3627,6 +3675,13 @@ const RULES = [
     {
         re: /уничтожит (\d+)?\s*жетон[а-яёa-z]*\s+подкрепления[^.]*?за каждый отряд, который вы деморализовали/i,
         build: m => ({ op: 'loseReinforcement', n: num(m[1]), who: 'foe', per: 'routed' }),
+    },
+    // «Уничтожьте его, если противник не потратит количество кубиков, равное
+    // командному уровню этого отряда» («Сокрушающий гаргант»): the price is
+    // the level of the victim — counted by the engine, not a flat number.
+    {
+        re: /уничтожьте\s+его,?\s*если\s+(?:ваш\s+)?противник\s+не\s+потратит\s+количество\s+кубиков,?\s*равное\s+командному\s+уровню/i,
+        build: () => ({ op: 'destroyFoeUnlessPays', perKl: true, who: 'foe' }),
     },
     // «Уничтожьте 1 ваш отряд с командным уровнем 1–2» («Праздник
     // кровопролития»): the level is the filter of the victim, the owner is the

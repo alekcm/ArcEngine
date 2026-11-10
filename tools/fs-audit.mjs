@@ -1241,6 +1241,17 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
 });
 
+rule('foe-fork-0a', '«Если противник не потратит 1 `morale cube`, получите 3 `def. token`» — вопрос задают противнику, а не игроку', () => {
+    const card = ctx.FS_DATA.combat.find(c => c.faction === 'эльдары' && /Волновой змей/.test(c.name));
+    const steps = ctx.FS_EFFECTS.parse(card.general, { kind: 'combat', faction: card.faction });
+    eq(steps.map(s => s.op).join(','), 'gainDie,foePayFork', 'платёж противника — шаг движка, не заглушка');
+    const fork = steps[1];
+    eq(fork.n, 1, 'цена — один кубик');
+    eq(fork.kinds.join(','), 'morale', 'именно morale');
+    eq(Array.isArray(fork['then']) && fork['then'][0].op, 'gainToken', 'при отказе — жетоны игроку');
+    eq(fork['then'][0].n, 3, 'три жетона');
+});
+
 rule('scheme-0b', '«… выполнить приказ продвижения в любой системе, содержащей не менее 2-х ваших отрядов» (Вперёд!)', () => {
     const card = ctx.FS_DATA.events.find(c => c.name === 'Вперёд!');
     const trig = ctx.FS_EFFECTS.parse(card.text, { kind: 'event', faction: card.faction }).find(s => s.op === 'trigger');
