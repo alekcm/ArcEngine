@@ -5581,6 +5581,56 @@ rule('strike-5', '«Вы можете потратить 2 `def. cube`, чтоб
     eq(FS_RULES.takeStructuresOf(bast, 0, bast.systems[0].id, bw), false, 'с бастионом постройку не забрать');
 });
 
+rule('strike-6', '«If the orbital strike does not damage any units … the order ends» — удар без жертв заканчивает приказ, удар по отрядам — нет', () => {
+    // `finishStrike` — развилка конца удара: с жертвами он передаёт урон
+    // защитнику, без жертв заканчивает приказ. Проверялся только первый путь.
+    const strikeOnce = (withUnit) => {
+        const st = empty(7);
+        let found = null;
+        for (const sys of st.systems) {
+            for (const v of sys.areas) {
+                if (v.world) continue;
+                const near = FS_RULES.areasAround(st, sys.id, v.pos)
+                    .filter(a => a.system === sys.id)
+                    .map(a => FS_RULES.area(sys, a.pos))
+                    .filter(a => a && a.world);
+                if (near.length) { found = { sys, v, world: near[0] }; break; }
+            }
+            if (found) break;
+        }
+        if (!found) return null;
+        const sys = st.systems.find(x => x.id === found.sys.id);
+        for (let i = 0; i < 3; i++) unit(st, 0, 'линкоры', sys.id, found.v.pos);
+        // Цель удара — только чужой мир. Без отрядов защитника там должна быть
+        // хоть одна его постройка, иначе мир не цель.
+        if (withUnit) unit(st, 1, 'бойзы', sys.id, found.world.pos);
+        else FS_RULES.addStructure(st, 1, 'factory', sys.id, found.world.pos);
+        st.order = { seat: 0, order: 'advance', system: sys.id, pos: found.world.pos, phase: 'strike' };
+        const real = FS_RULES.rollDice;
+        FS_RULES.rollDice = () => ['att', 'att', 'att'];
+        try {
+            const res = FS_RULES.apply(st, 0, { type: 'orbitalStrike', system: sys.id, pos: found.world.pos });
+            if (!res.ok) throw new Error('удар не прошёл: ' + res.error);
+        } finally {
+            FS_RULES.rollDice = real;
+        }
+        return {
+            st, order: st.order, pending: !!StrikeDamage.of(st).pending,
+            phase: st.order && PhasePlan.of(st.order).name,
+            turn: GamePhase.of(st).turn,
+        };
+    };
+    const emptyWorld = strikeOnce(false);
+    if (!emptyWorld) return 'на наборе нет тайла с пустотой у мира';
+    eq(emptyWorld.pending, false, 'урон некому наносить — распределения нет');
+    eq(emptyWorld.phase === 'strike-damage', false, 'и шаг распределения не открыт');
+    eq(emptyWorld.order, null, 'приказ закончен');
+    eq(emptyWorld.turn, 1, 'ход перешёл к следующему игроку');
+    const withFoe = strikeOnce(true);
+    eq(withFoe.pending, true, 'по отрядам урон распределяет защитник');
+    eq(withFoe.phase, 'strike-damage', 'шаг удара — распределение урона');
+});
+
 rule('strike-4', '«Бастионы противника не могут предотвратить этот орбитальный удар.» (05-order-upgrades.md, «Ужасный удар»)', () => {
     const st = empty();
     let found = null;
