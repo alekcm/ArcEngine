@@ -57,6 +57,20 @@ function rule(id, text, fn) {
     }
 }
 
+// Отказ с ПРИЧИНОЙ. «Команда отказала» само по себе ничего не доказывает:
+// посторонний запрет (чужая фаза, нет фабрики, сейчас шаг наземных войск)
+// делает такую проверку зелёной и при полностью сломанном правиле. Поэтому
+// проверка требует и отказа, и того, что отказ называет именно эту норму.
+const refused = (res, pattern, what) => {
+    if (!res || res.ok !== false) {
+        throw new Error(`${what}: ждали отказ, получили ${JSON.stringify(res && res.ok)}`);
+    }
+    if (!pattern.test(res.error || '')) {
+        throw new Error(`${what}: причина «${res.error}» — не ${pattern}`);
+    }
+    return true;
+};
+
 const eq = (actual, expected, what) => {
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
         throw new Error(`${what}: ждали ${JSON.stringify(expected)}, получили ${JSON.stringify(actual)}`);
@@ -301,7 +315,7 @@ rule('plan-1', '«A player must place his order token in either a system contain
     st.phase = 'planning';
     st.turn = 0;
     const bad = FS_RULES.apply(st, 0, { type: 'placeOrder', system: far.id, order: 'advance' });
-    eq(bad.ok, false, 'приказ в систему без своих войск и без соседства');
+    refused(bad, /своими отрядами или постройками/, 'приказ в систему без своих войск и без соседства');
     const good = FS_RULES.apply(st, 0, { type: 'placeOrder', system: [...near][0], order: 'advance' });
     eq(good.ok, true, 'приказ в соседнюю систему');
 });
@@ -317,7 +331,7 @@ rule('plan-2', '«Each player must place four order tokens during each Planning 
     eq(FS_RULES.apply(st, 0, { type: 'placeOrder', system: sys[1].id, order: 'advance' }).ok, true, 'второй наступательный');
     st.turn = 0;
     const third = FS_RULES.apply(st, 0, { type: 'placeOrder', system: sys[0].id, order: 'advance' });
-    eq(third.ok, false, 'третий жетон того же приказа');
+    refused(third, /Жетоны этого приказа кончились/, 'третий жетон того же приказа');
     eq(st.players[0].placedTokens, 2, 'выложено жетонов');
 });
 
@@ -328,7 +342,7 @@ rule('plan-3', '«Players cannot resolve or look at any order that is below anot
     st.phase = 'operations';
     st.turn = 0;
     const bad = FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys.id });
-    eq(bad.ok, false, 'вскрыть чужой верхний жетон');
+    refused(bad, /не ваш приказ/, 'вскрыть чужой верхний жетон');
     st.turn = 1;
     const good = FS_RULES.apply(st, 1, { type: 'resolveOrder', system: sys.id });
     eq(good.ok, true, 'вскрыть свой верхний жетон');
@@ -340,7 +354,7 @@ rule('plan-4', '«The active player must choose one of his order tokens that is 
     st.turn = 0;
     st.systems[0].tokens = [{ seat: 1, order: 'advance', faceUp: false }];
     const bad = FS_RULES.apply(st, 0, { type: 'resolveOrder', system: st.systems[0].id });
-    eq(bad.ok, false, 'чужой приказ');
+    refused(bad, /не ваш приказ/, 'чужой приказ');
 });
 
 // ============================================================================
@@ -355,23 +369,56 @@ rule('adv-1', '«The destination must be in the active system.» — отряд 
     advance(st, 0, active.id, worldOf(st, active.id));
     const g = guard(st, 0, other, worldOf(st, other));
     const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: g.id, system: other, pos: voidOf(st, other) }] });
-    eq(res.ok, false, 'движение в неактивную систему');
+    refused(res, /только в активную систему/, 'движение в неактивную систему');
 });
 
 rule('adv-2', '«Ground units cannot move into the active system from more than one adjacent system.»', () => {
+    // Два соседа, у каждого мир, связанный с ОДНИМ И ТЕМ ЖЕ миром активной
+    // системы: иначе марш запрещает не правило о двух системах, а отсутствие
+    // дороги (так тест раньше проходил при выключенном правиле).
+    const find = () => {
+        for (const act of game().systems) {
+            const out = [];
+            for (const nb of FS_RULES.neighbors(game(), act.id)) {
+                for (const w of act.areas.filter(a => a.world)) {
+                    for (const v of FS_RULES.system(game(), nb).areas.filter(a => a.world)) {
+                        if (FS_RULES.areasAround(game(), act.id, w.pos).some(x => x.system === nb && x.pos === v.pos)
+                            && !out.some(o => o.nb === nb)) {
+                            out.push({ nb, from: v.pos, to: w.pos });
+                        }
+                    }
+                }
+            }
+            const pair = out.slice(0, 2);
+            if (pair.length === 2) return { active: act.id, pair };
+        }
+        return null;
+    };
+    const found = find();
+    if (!found) return 'нет системы с двумя соседями, связанными с её миром';
+    const { active, pair } = found;
     const st = empty();
-    const active = st.systems[0];
-    const near = FS_RULES.neighbors(st, active.id).slice(0, 2);
-    if (near.length < 2) return 'у системы мало соседей';
-    advance(st, 0, active.id, worldOf(st, active.id));
-    const a = guard(st, 0, near[0], worldOf(st, near[0]));
-    const b = guard(st, 0, near[1], worldOf(st, near[1]));
-    const res = FS_RULES.apply(st, 0, {
+    const dest = pair[0].to;
+    const a = guard(st, 0, pair[0].nb, pair[0].from);
+    const b = guard(st, 0, pair[1].nb, pair[1].from);
+    advance(st, 0, active, dest);
+    const one = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: a.id, system: active, pos: dest }] });
+    eq(one.ok, true, 'первый отряд пришёл из своей системы');
+    const second = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: b.id, system: active, pos: dest }] });
+    eq(second.ok, false, 'второй отряд из ДРУГОЙ соседней системы');
+    eq(/одной соседней системы|из другой системы/.test(second.error || ''), true,
+        'отказ называет правило о двух системах, а не дорогу: ' + second.error);
+    // И оба одним приказом — тот же запрет.
+    const st2 = empty();
+    const a2 = guard(st2, 0, pair[0].nb, pair[0].from);
+    const b2 = guard(st2, 0, pair[1].nb, pair[1].from);
+    advance(st2, 0, active, dest);
+    const both = FS_RULES.apply(st2, 0, {
         type: 'moveUnits',
-        moves: [{ unit: a.id, system: active.id, pos: worldOf(st, active.id) },
-            { unit: b.id, system: active.id, pos: worldOf(st, active.id) }],
+        moves: [{ unit: a2.id, system: active, pos: dest }, { unit: b2.id, system: active, pos: dest }],
     });
-    eq(res.ok, false, 'войска из двух соседних систем');
+    eq(both.ok, false, 'оба сразу — тот же отказ');
+    eq(/одной соседней системы/.test(both.error || ''), true, 'и та же причина: ' + both.error);
 });
 
 rule('adv-3', '«Only one area can become contested during a single Advance Order.»', () => {
@@ -433,12 +480,23 @@ rule('adv-6', '«A warp storm blocks the way»', () => {
     const st = empty();
     const active = st.systems[0];
     const near = FS_RULES.neighbors(st, active.id)[0];
+    // Шторм стоит на общей грани двух систем — именно её и должен закрыть.
     const side = FS_RULES.sideBetween(st, near, active.id);
     st.storms = [{ id: 'st1', system: near, side, moved: false }];
-    advance(st, 0, active.id, worldOf(st, active.id));
+    if (!FS_RULES.stormOn(st, near, active.id)) return 'шторм не встал на грань ' + near + '–' + active.id;
+    // Первый шаг движения — корабли: наземные здесь не ходят вовсе, и отказ
+    // «сейчас ход наземных» ничего не говорит о шторме.
+    advance(st, 0, active.id, voidOf(st, active.id), 'ships');
     const ship = unit(st, 0, 'крейсеры', near, voidOf(st, near));
     const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: ship.id, system: active.id, pos: voidOf(st, active.id) }] });
     eq(res.ok, false, 'корабль сквозь шторм');
+    eq(/шторм/i.test(res.error || ''), true, 'отказ называет шторм, а не шаг движения: ' + res.error);
+    // Та же дорога без шторма открыта: иначе отказ давал бы что-то другое.
+    const open = empty();
+    advance(open, 0, active.id, voidOf(open, active.id), 'ships');
+    const free = unit(open, 0, 'крейсеры', near, voidOf(open, near));
+    eq(FS_RULES.apply(open, 0, { type: 'moveUnits', moves: [{ unit: free.id, system: active.id, pos: voidOf(open, active.id) }] }).ok,
+        true, 'без шторма тот же корабль проходит');
 });
 
 // ============================================================================
@@ -556,7 +614,7 @@ rule('dep-1', '«If the active player has a factory in the active system, he may
     st.order = { seat: 0, order: 'deploy', system: active.id, phase: 'deploy' };
     st.players[0].materiel = 10;
     const noFactory = FS_RULES.apply(st, 0, { type: 'buyUnit', system: active.id, pos, unit: 'гвардейцы' });
-    eq(noFactory.ok, false, 'покупка без фабрики');
+    refused(noFactory, /нет фабрики/, 'покупка без фабрики');
     FS_RULES.addStructure(st, 0, 'factory', active.id, pos);
     guard(st, 0, active.id, pos);       // a friendly world for the factory
     st.players[0].supply.units['гвардейцы'] = 3;
@@ -580,7 +638,7 @@ rule('dep-2', '«The deploy limit is equal to the combined unit capacity from al
         eq(r.ok, true, 'покупка ' + (i + 1));
     }
     const over = FS_RULES.apply(st, 0, { type: 'buyUnit', system: active.id, pos, unit: 'гвардейцы' });
-    eq(over.ok, false, 'покупка сверх предела');
+    refused(over, /Предел развёртывания исчерпан/, 'покупка сверх предела');
 });
 
 rule('dep-2b', '«… you may treat all of his cities in the active system as factories» (Транслокационные крипты) — предел и покупка читают один список миров', () => {
@@ -617,7 +675,7 @@ rule('dep-3', '«A player cannot purchase more than one structure while resolvin
     st.players[0].materiel = 14;
     // Шаг отрядов: постройка здесь запрещена (кроме карты орков).
     const early = FS_RULES.apply(st, 0, { type: 'buyStructure', system: active.id, pos, structure: 'factory' });
-    eq(early.ok, false, 'постройка до отрядов');
+    refused(early, /Сначала отряды/, 'постройка до отрядов');
     FS_RULES.apply(st, 0, { type: 'deployStructures' });
     const first = FS_RULES.apply(st, 0, { type: 'buyStructure', system: active.id, pos, structure: 'factory' });
     eq(first.ok, true, 'первая постройка');
@@ -625,7 +683,7 @@ rule('dep-3', '«A player cannot purchase more than one structure while resolvin
     if (other) {
         FS_RULES.addUnit(st, 0, 'гвардейцы', active.id, other.pos);
         const second = FS_RULES.apply(st, 0, { type: 'buyStructure', system: active.id, pos: other.pos, structure: 'city' });
-        eq(second.ok, false, 'вторая постройка за приказ');
+        refused(second, /только одну постройку/, 'вторая постройка за приказ');
     }
 });
 
@@ -689,7 +747,7 @@ rule('dep-5', '«A player cannot purchase a unit … whose command level require
     st.players[0].assets.forge = 1;
     eq(FS_RULES.commandLevel(st, 0), 0, 'уровень командования без города');
     const bad = FS_RULES.apply(st, 0, { type: 'buyUnit', system: active.id, pos, unit: 'огрины' });
-    eq(bad.ok, false, 'КЛ выше командного уровня');
+    refused(bad, /уровня командования/, 'КЛ выше командного уровня');
     const ok = FS_RULES.apply(st, 0, { type: 'buyUnit', system: active.id, pos, unit: 'огрины', forgeKl: true });
     eq(ok.ok, true, 'кузница снижает КЛ на один');
     eq(st.players[0].assets.forge, 0, 'кузница потрачена');
@@ -2473,7 +2531,7 @@ rule('str-2', '«A player may purchase up to one combat upgrade and up to one or
     const a = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: orders[0].name });
     eq(a.ok, true, 'первое улучшение приказа');
     const b = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: orders[1] ? orders[1].name : orders[0].name });
-    eq(b.ok, false, 'второе улучшение приказа за один приказ');
+    refused(b, /уже куплено|только 1 улучшение/, 'второе улучшение приказа за один приказ');
 });
 
 rule('str-2b', '«A player may purchase up to one combat upgrade and up to one order upgrade» — покупки приказа стратегии живут в одном UpgradeOrder', () => {
@@ -2637,7 +2695,7 @@ rule('combat-2', '«Each player can have a maximum of eight dice during each com
     FS_RULES.apply(st, 0, { type: 'endAdvance' });
     eq(c(st).dice.attacker.length, 8, 'не больше восьми кубиков');
     const gain = FS_RULES.apply(st, 0, { type: 'combat', action: 'die', count: 1 });
-    eq(gain.ok, false, 'девятый кубик');
+    refused(gain, /восьми кубиков/, 'девятый кубик');
 });
 
 rule('combat-3', '«Routed units do not contribute combat dice at the start of combat or orbital strikes. Routed units do not add their morale.»', () => {
@@ -2817,7 +2875,7 @@ rule('combat-14', '«During a combat, each player draws five cards from his comb
 rule('combat-15', '«Players cannot… skip» — боевую карту нельзя пропустить', () => {
     const st = groundBattle();
     const res = FS_RULES.apply(st, 0, { type: 'combat', action: 'skipCard' });
-    eq(res.ok, false, 'пропуск карты');
+    refused(res, /нельзя пропустить/, 'пропуск карты');
 });
 
 // ============================================================================
@@ -3297,8 +3355,12 @@ rule('cmd-2', '«A player cannot purchase a unit or an upgrade whose command lev
     const high = faction.units.filter(u => u.kl === 1)[0]
         || faction.units.slice().sort((a, b) => b.kl - a.kl)[0];
     st.players[0].supply.units[high.id] = 2;
+    // Фабрика есть: иначе отказ пришёл бы от неё, а не от уровня командования.
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
     const res = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: high.id, system: sys.id, pos });
     eq(res.ok, false, 'отряд выше уровня не купить');
+    eq(/уровня командования/.test(res.error || ''), true,
+        'отказ называет уровень, а не фабрику или запас: ' + res.error);
     // The city raises the level: now the same unit is bought on another world
     // of the same system, next to the factory that gives the deploy limit.
     FS_RULES.addStructure(st, 0, 'city', sys.id, pos);
@@ -3315,9 +3377,9 @@ rule('struct-1', '«A world cannot contain more than one structure unless a card
     const pos = worldOf(st, sys.id);
     guard(st, 0, sys.id, pos);
     FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
-    eq(FS_RULES.canPlaceStructure(st, 0, sys.id, pos).ok, false, 'вторая постройка на мире запрещена');
+    refused(FS_RULES.canPlaceStructure(st, 0, sys.id, pos), /уже есть постройка/, 'вторая постройка на мире запрещена');
     const free = st.systems.find(x => x.id !== sys.id);
-    eq(FS_RULES.canPlaceStructure(st, 0, free.id, worldOf(st, free.id)).ok, false, 'на чужом мире нельзя');
+    refused(FS_RULES.canPlaceStructure(st, 0, free.id, worldOf(st, free.id)), /Мир должен быть вашим/, 'на чужом мире нельзя');
     // «…unless a card or faction ability specifically states otherwise»: the
     // permission is an argument of the same question, not a second rule. The
     // Eldar card «Певцы психокости» builds on his own world of another kind.
@@ -3326,7 +3388,7 @@ rule('struct-1', '«A world cannot contain more than one structure unless a card
     eq(FS_RULES.canPlaceStructure(st, 0, sys.id, pos, { allowOccupied: 'otherType', kind: 'factory' }).ok,
         false, 'постройка того же типа не встаёт даже с картой');
     const foes = FS_RULES.canPlaceStructure(st, 1, sys.id, pos, { allowOccupied: 'otherType', kind: 'city' });
-    eq(foes.ok, false, 'чужая постройка не разрешает свою');
+    refused(foes, /Мир должен быть вашим|одна ваша постройка/, 'чужая постройка не разрешает свою');
 });
 
 rule('struct-2', '«Structures do not count toward a world’s unit capacity.»', () => {
@@ -3651,7 +3713,7 @@ rule('mov-2', '«During an Advance Order, if a ship moved from an adjacent syste
     // Второй шаг — наземные войска; дороги считаются заново.
     FS_RULES.apply(st, 0, { type: 'endAdvance' });
     const second = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: guardUnit.id, system: sys.id, pos: worldOf(st, sys.id) }] });
-    eq(second.ok, false, 'войска из другой соседней системы уже не приходят');
+    refused(second, /из другой системы|одной соседней системы/, 'войска из другой соседней системы уже не приходят');
 });
 
 rule('mov-3', '«Routed units do not contribute combat dice … A routed unit can retreat; however, it cannot move or be placed in a different area by an order or card effect.»', () => {
@@ -3678,7 +3740,7 @@ rule('rein-1', '«The maximum number of reinforcement tokens a player can use du
     FS_RULES.apply(st, 0, { type: 'endAdvance' });
     eq(FS_RULES.maxReinforce(st, 0, 'attacker'), 2, 'два отряда — не больше двух жетонов');
     const used = FS_RULES.apply(st, 0, { type: 'combat', action: 'reinforce', count: 3 });
-    eq(used.ok, false, 'три жетона при двух отрядах нельзя');
+    refused(used, /Не больше 2 жетонов/, 'три жетона при двух отрядах нельзя');
 });
 
 rule('rein-2', '«Reinforcement tokens do not contribute dice to a combat»', () => {
@@ -3738,12 +3800,19 @@ rule('forge-1', '«A player cannot spend forge tokens to reduce the command leve
     st.players[0].assets.forge = 2;
     st.order = { seat: 0, order: 'strategize', system: sys.id, phase: 'strategize' };
     const faction = FS_DATA.factions.find(f => f.id === st.players[0].faction);
-    const high = (FS_DATA.orders || []).filter(c => c.faction === faction.id).sort((a, b) => b.kl - a.kl)[0];
-    if (!high) return 'у фракции нет улучшений приказов';
-    const res = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: high.name, forgeKl: true });
-    if (high.kl === 0) return 'у карты нет требования уровня';
-    eq(res.ok, false, 'кузница не снижает уровень улучшения');
+    const cl = FS_RULES.commandLevel(st, 0);
+    // Карта ровно на уровень выше: без кузницы она недоступна, и весь вопрос в
+    // том, снимет ли кузница этот уровень. Раньше тест брал самую дорогую карту
+    // и был зелёным от отказа по уровню — даже если бы кузница работала.
+    const high = FS_DATA.orders.filter(c => c.faction === faction.id && c.kl === cl + 1)[0];
+    if (!high) return 'у фракции нет улучшения приказа ровно на уровень выше';
+    const withForge = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: high.name, forgeKl: true });
+    refused(withForge, /уровня командования/, 'кузница не снижает уровень улучшения');
     eq(st.players[0].assets.forge, 2, 'кузница не потрачена');
+    eq((st.players[0].upgrades || []).length, 0, 'улучшение не куплено');
+    // Тот же отказ и без кузницы: дело в уровне карты, а не в жетоне.
+    const without = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: high.name });
+    refused(without, /уровня командования/, 'без кузницы тот же отказ');
 });
 
 // ============================================================================
@@ -3782,7 +3851,7 @@ rule('comp-2', '«Players are limited to purchasing the number of units and stru
     st.players[0].supply.units['гвардейцы'] = 0;
     st.order = { seat: 0, order: 'deploy', system: sys.id, phase: 'deploy' };
     const res = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys.id, pos });
-    eq(res.ok, false, 'отряда нет в запасе — не купить');
+    refused(res, /больше нет в запасе/, 'отряда нет в запасе — не купить');
 });
 
 rule('spend-1', '«To purchase a unit or structure, a player must pay the materiel cost»', () => {
@@ -4171,29 +4240,29 @@ const sameCards = (rows, engine, what, map) => {
 head('Движение и развёртывание: шаги приказа');
 
 rule('step-1', '«1. Move Ships … 2. Move Ground Units … 3. Resolve Combat» — двумя шагами движения, а не одним', () => {
+    // Система с двумя пустотами: иначе первый шаг некуда проверить (в тайле
+    // 16A пустота одна, и ход корабля в ту же пустоту — не ход). Второй шаг
+    // открывает только `endAdvance`: порядок шагов держит движок, а не тест.
     const st = empty();
-    const sys = st.systems[0];
+    const sys = st.systems.find(s => s.areas.filter(a => !a.world).length >= 2) || st.systems[0];
+    const voids = sys.areas.filter(a => !a.world).map(a => a.pos);
+    if (voids.length < 2) return 'нет системы с двумя пустотами';
     const w1 = worldOf(st, sys.id);
-    const v = voidOf(st, sys.id);
     const g = guard(st, 0, sys.id, w1);
-    const ship = unit(st, 0, 'крейсеры', sys.id, v);
+    const ship = unit(st, 0, 'крейсеры', sys.id, voids[0]);
     advance(st, 0, sys.id, w1, 'ships');
     st.order.route = FS_RULES.advanceRoutes(st, 0, 'ship');
-    // Первый шаг: пехота не идёт.
-    const early = FS_RULES.canMove(st, 0, g, { system: sys.id, pos: w1 });
-    eq(early.ok, false, 'пехота ждёт шага наземных войск');
-    // Корабль идёт.
-    const otherVoid = FS_RULES.system(st, sys.id).areas.find(a => !a.world && a.pos !== v);
-    if (otherVoid) {
-        const moved = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: ship.id, system: sys.id, pos: otherVoid.pos }] });
-        eq(moved.ok, true, 'корабль идёт первым шагом');
-    }
+    // Первый шаг: пехота не идёт, корабль идёт.
+    refused(FS_RULES.canMove(st, 0, g, { system: sys.id, pos: w1 }), /Сначала двигаются корабли/,
+        'пехота ждёт шага наземных войск');
+    const moved = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: ship.id, system: sys.id, pos: voids[1] }] });
+    eq(moved.ok, true, 'корабль идёт первым шагом');
     // Второй шаг: теперь корабли стоят.
     const next = FS_RULES.apply(st, 0, { type: 'endAdvance' });
     eq(next.ok, true, 'шаг наземных войск открыт');
     eq(next.step, 'ground', 'второй шаг — наземные войска');
-    const late = FS_RULES.canMove(st, 0, ship, { system: sys.id, pos: v });
-    eq(late.ok, false, 'корабль уже отлетал');
+    refused(FS_RULES.canMove(st, 0, ship, { system: sys.id, pos: voids[0] }), /Корабли уже отлетали/,
+        'корабль уже отлетал');
 });
 
 rule('step-2', '«all legal paths are determined before moving any ground units» — дороги наземных войск считаются после шага кораблей', () => {
@@ -4491,14 +4560,27 @@ rule('storm-5', '«A Warp Storm cannot move onto a border occupied by another Wa
         { id: 's0', system: at(1, 1).id, side: 'N', moved: false },
         { id: 's1', system: at(0, 1).id, side: 'N', moved: false },
     ];
-    st.event = { seat: 0, drawn: [], card: { name: 'x', storm: ['N'], type: 'tactic' } };
+    // Карта разрешает все восемь направлений: иначе «на север нельзя» означало
+    // бы «карта не пускает», а правило о двух штормах на одной грани молчало бы.
+    st.event = { seat: 0, drawn: [], card: { name: 'x', storm: ['any'], type: 'tactic' } };
     const ways = FS_RULES.stormOptions(st, 0).filter(o => o.storm === 's0');
     eq(ways.some(o => o.dir === 'N'), false, 'на север идти нельзя: грань занята');
+    eq(ways.length > 0, true, 'другие ходы шторма остались');
+    // Грань на север действительно существует — её держит второй шторм.
     const other = FS_RULES.stormTarget(st, st.storms[0], 'N');
-    if (other) {
-        const res = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 's0', dir: 'N' });
-        eq(res.ok, false, 'ход на занятую грань отклонён');
-    }
+    if (!other) return 'на север от шторма нет грани';
+    st.phase = 'refresh';
+    const res = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 's0', dir: 'N' });
+    eq(res.ok, false, 'ход на занятую грань отклонён');
+    eq(/не может туда пойти/.test(res.error || ''), true,
+        'отказ о занятой грани, а не о фазе или карте: ' + res.error);
+    // Туда же, но без второго шторма, тот же ход проходит.
+    const free = empty();
+    free.storms = [{ id: 's0', system: at(1, 1).id, side: 'N', moved: false }];
+    free.event = { seat: 0, drawn: [], card: { name: 'x', storm: ['any'], type: 'tactic' } };
+    free.phase = 'refresh';
+    eq(FS_RULES.apply(free, 0, { type: 'moveStorm', storm: 's0', dir: 'N' }).ok, true,
+        'без второго шторма грань свободна');
 });
 
 rule('storm-6', '«A player must move a Warp Storm if he can.» —Ability card text: «A player can choose not to resolve the ability on his chosen event card, but must resolve the card’s Warp Storm movement icon.»', () => {
@@ -4747,7 +4829,7 @@ rule('up-1', '«Order Upgrade Cards … Each card is played during the order pri
     st.players[0].upgrades = [{ name: card.name, used: false, order: card.order }];
     st.order = { seat: 0, order: 'deploy', system: st.systems[0].id, phase: 'resolve' };
     const bad = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: card.name });
-    eq(bad.ok, false, 'во время развёртывания орбитальную карту применить нельзя');
+    refused(bad, /во время орбитального удара/, 'во время развёртывания орбитальную карту применить нельзя');
     eq(st.players[0].upgrades[0].used, false, 'карта не сгорела зря');
     // Its own moment: the strike of the order.
     st.order.phase = 'strike';
@@ -4880,7 +4962,7 @@ rule('deck-3', '«When a player purchases a combat upgrade card, he chooses and 
     eq(st.order, null, 'приказа больше нет');
     eq(!!st.pending, false, 'вопрос приказа закрылся вместе с ним');
     const late = FS_RULES.apply(st, 0, { type: 'effect', answer: { remove: 'x' } });
-    eq(late.ok, false, 'ответить после конца приказа нечем');
+    refused(late, /Нет вопроса/, 'ответить после конца приказа нечем');
 });
 
 rule('strike-4', '«Бастионы противника не могут предотвратить этот орбитальный удар.» (05-order-upgrades.md, «Ужасный удар»)', () => {
