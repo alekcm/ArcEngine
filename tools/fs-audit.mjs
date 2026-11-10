@@ -2827,31 +2827,41 @@ head('Отступление (Retreats)');
 
 rule('ret-1', '«Defending units cannot retreat to an area from which attacking units moved from.»', () => {
     const st = empty();
-    // A world and a world of two neighbouring systems that share a border.
+    // A fight inside ONE system: the attacker walked from one of its worlds to
+    // another. The rule names an area, not a system — the rest of the active
+    // system stays open for the defender, the area the attacker came from does
+    // not. (Only a system, and only an ADJACENT one, is closed by `ret-4`.)
+    const sys = st.systems[0];
+    const worlds = sys.areas.filter(a => a.world).map(a => a.pos);
     let pair = null;
-    for (const sys of st.systems) {
-        for (const w of sys.areas) {
-            if (!w.world) continue;
-            for (const around of FS_RULES.areasAround(st, sys.id, w.pos)) {
-                if (around.system === sys.id) continue;
-                const other = FS_RULES.area(FS_RULES.system(st, around.system), around.pos);
-                if (other && other.world) { pair = { from: sys.id, fromPos: w.pos, to: around.system, toPos: around.pos }; break; }
+    for (const from of worlds) {
+        for (const to of worlds) {
+            if (from === to) continue;
+            if (FS_RULES.areasAround(st, sys.id, from).some(a => a.system === sys.id && a.pos === to)) {
+                pair = { from, to };
+                break;
             }
-            if (pair) break;
         }
         if (pair) break;
     }
-    if (!pair) return 'нет двух соседних миров на карте';
-    const att = guard(st, 0, pair.from, pair.fromPos);
-    olk(st, 1, pair.to, pair.toPos);
-    advance(st, 0, pair.to, pair.toPos);
-    const moved = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: att.id, system: pair.to, pos: pair.toPos }] });
+    if (!pair) return 'нет двух соседних миров в одной системе';
+    const att = guard(st, 0, sys.id, pair.from);
+    olk(st, 1, sys.id, pair.to);
+    advance(st, 0, sys.id, pair.to);
+    const moved = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: att.id, system: sys.id, pos: pair.to }] });
     if (!moved.ok) return 'марш не прошёл: ' + moved.error;
     FS_RULES.apply(st, 0, { type: 'endAdvance' });
     if (!st.combat) return 'бой не начался';
     const targets = FS_RULES.retreatTargets(st, 1);
-    eq(targets.some(t => t.system === pair.from && t.pos === pair.fromPos), false,
+    eq(targets.some(t => t.system === sys.id && t.pos === pair.from), false,
         'отступление в область, откуда пришёл враг');
+    // The other world of the same system is a legal retreat: the rule closed one
+    // area, not the whole active system.
+    const other = worlds.find(p => p !== pair.from && p !== pair.to);
+    if (other) {
+        eq(targets.some(t => t.system === sys.id && t.pos === other), true,
+            'свой мир в активной системе остаётся открыт (' + other + ')');
+    }
 });
 
 rule('ret-2', '«If there is no area for a unit to retreat to, that unit is destroyed.»', () => {

@@ -1424,11 +1424,13 @@ class CombatRules {
                 if (side === 'defender') {
                     // «The area the retreating units move to must either be in
                     // the active system or in a system adjacent to the active
-                    // system. If attacking units moved from an adjacent system,
+                    // system. If attacking units moved from an ADJACENT system,
                     // the defender's units cannot retreat to that system.
                     // Defending units cannot retreat to an area from which
-                    // attacking units moved from.»
-                    if (came.fromSystem(sid)) continue;
+                    // attacking units moved from.» The ban of a system names an
+                    // adjacent one: the active system stays open, but the very
+                    // area the attackers came from does not.
+                    if (sid !== field.system && came.fromSystem(sid)) continue;
                     if (came.fromArea(sid, area.pos)) continue;
                 } else if (!free) {
                     // Not an Advance: back to an area a unit moved from. Without
