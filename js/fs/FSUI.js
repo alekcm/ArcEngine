@@ -183,7 +183,8 @@ const FSUI = {
     renderOrdersPop(state) {
         const pop = this.el('section', 'fs-orders-pop');
         const head = this.el('div', 'fs-orders-head');
-        head.append(this.el('span', 'fs-eyebrow', 'Жетоны приказов · ' + (state.players[state.seat] ? state.players[state.seat].name : '')));
+        const who = Seat.of(state).player;
+        head.append(this.el('span', 'fs-eyebrow', 'Жетоны приказов · ' + (who ? who.name : '')));
         const close = this.el('button', 'fs-pop-close');
         close.type = 'button';
         close.title = 'Закрыть';
@@ -191,7 +192,7 @@ const FSUI = {
         close.addEventListener('click', () => { this.panelState().orders = false; this.update(state, this.lastCtx); });
         head.append(close);
         pop.append(head);
-        const me = state.seat;
+        const me = Seat.of(state).me;
         const p = state.players[me] || {};
         const kinds = Object.keys(FS_RULES_CONFIG.ORDER_NAMES)
             .map(order => [order, this.orderLabel(order)]);
@@ -371,7 +372,7 @@ const FSUI = {
         ph.append(this.el('span', 'fs-eyebrow', 'Участники'), this.el('span', 'fs-round-chip', boardProgress)); playersCard.append(ph);
         const list = this.el('div', 'fs-player-list');
         state.players.forEach(p => {
-            const row = this.el('div', 'fs-player' + (p.seat === state.seat ? ' is-me' : '') + ' is-clickable');
+            const row = this.el('div', 'fs-player' + (Seat.of(state).isMe(p.seat) ? ' is-me' : '') + ' is-clickable');
             row.title = 'Информация о фракции';
             row.tabIndex = 0;
             row.setAttribute('role', 'button');
@@ -381,7 +382,7 @@ const FSUI = {
             });
             row.style.setProperty('--player-color', p.color || this.factionColor(p.faction));
             row.append(this.el('i', 'fs-player-dot'));
-            const name = this.el('div', 'fs-player-name', p.name); name.append(this.el('span', 'fs-player-faction', this.factionName(p.faction) + (p.seat === state.seat ? ' · вы' : '')));
+            const name = this.el('div', 'fs-player-name', p.name); name.append(this.el('span', 'fs-player-faction', this.factionName(p.faction) + (Seat.of(state).isMe(p.seat) ? ' · вы' : '')));
             row.append(name);
             // How much materiel this player takes at the end of the round: the
             // income of the worlds he controls (the same count the refresh step uses).
@@ -682,7 +683,7 @@ const FSUI = {
         head.append(this.el('span', 'fs-drawer-crest', (faction.name || '·').slice(0, 1)));
         const titles = this.el('div', 'fs-drawer-titles');
         titles.append(this.el('div', 'fs-drawer-faction', faction.name || ''));
-        const sub = [faction.full, p.name + (seat === state.seat ? ' · вы' : '') + (p.eliminated ? ' · выбыл' : '')].filter(Boolean).join(' · ');
+        const sub = [faction.full, p.name + (Seat.of(state).isMe(seat) ? ' · вы' : '') + (p.eliminated ? ' · выбыл' : '')].filter(Boolean).join(' · ');
         titles.append(this.el('div', 'fs-drawer-sub', sub));
         head.append(titles);
         const close = this.el('button', 'fs-drawer-close'); close.type = 'button'; close.title = 'Закрыть';
@@ -762,7 +763,7 @@ const FSUI = {
         const materiel = p.materiel || 0;
         const upgradesHave = new Set((p.upgrades || []).map(u => u.name));
         const combatHave = {};
-        for (const n of this.combatDeckKnown(p, seat === state.seat)) combatHave[n] = (combatHave[n] || 0) + 1;
+        for (const n of this.combatDeckKnown(p, Seat.of(state).isMe(seat))) combatHave[n] = (combatHave[n] || 0) + 1;
         const mkStatic = (card, isCombat) => {
             const kl = card.kl != null ? card.kl : 0;
             const cost = card.cost != null ? card.cost : 0;
@@ -1593,7 +1594,7 @@ const FSUI = {
         this.currentLobby = null;
         this.renderModern(state, ctx);
         this.clearAdded();
-        const me = state.players[state.seat];
+        const me = Seat.of(state).player;
         // The top panel: the phase, the round and the players.
         const phaseName = GamePhase.of(state).label.toLowerCase();
         const activeSeat = GamePhase.of(state).active;
@@ -1603,7 +1604,7 @@ const FSUI = {
         const lines = state.players.map(p => {
             const marks = [];
             if (p.eliminated) marks.push('выбыл');
-            if (p.seat === state.seat) marks.push('вы');
+            if (Seat.of(state).isMe(p.seat)) marks.push('вы');
             if (GamePhase.of(state).isFirst(p.seat)) marks.push('первый');
             return p.name + ' [' + this.factionName(p.faction) + '] — материя ' + p.materiel
                 + ', целей ' + p.objectives + (marks.length ? ' (' + marks.join(', ') + ')' : '');

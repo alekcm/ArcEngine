@@ -326,14 +326,15 @@ class FSGame {
         // In a solo test the chair changes with every step of the combat or with
         // every order token: the action of the previous seat must not leak into
         // the next one.
-        if (this.lastSeat !== view.seat) {
+        const seatOfView = Seat.of(view).me;
+        if (this.lastSeat !== seatOfView) {
             if (this.lastSeat !== undefined) {
                 this.mode = 'idle';
                 this.pending = null;
                 this.damageTargets = [];
                 FSView.clearHighlights(this.view);
             }
-            this.lastSeat = view.seat;
+            this.lastSeat = seatOfView;
         }
         // A test party is played by one person: the server sends the view of the
         // seat whose turn it is, and the interface says so.
@@ -355,7 +356,7 @@ class FSGame {
         }
         this.status = '';
         if (view.phase === 'setup' && view.setup && this.pending && view.setup.myTurn) {
-            const initial = view.players[view.seat].initialForces;
+            const initial = view.players[seatOfView].initialForces;
             const exhausted = (this.mode === 'setupUnit' && !(initial.units[this.pending.unit] > 0))
                 || (this.mode === 'setupStructure' && !(initial.structures[this.pending.structure] > 0));
             if (exhausted) { this.mode = 'idle'; this.pending = null; FSView.clearHighlights(this.view); }
@@ -375,7 +376,7 @@ class FSGame {
             FSUI.set('fsStatus', this.status || 'Соединение с сервером…');
             return;
         }
-        const me = s.seat;
+        const me = Seat.of(s).me;
         // The camera belongs to the player — it never moves, not even for the battle.
         this.hand = [];
         // The question of the last effect is closed: the rings it lit go out.
@@ -518,6 +519,7 @@ class FSGame {
     // floats above the chosen cell.
 
     panelSetup(s, ctx) {
+        const me = Seat.of(s).me;
         const board = BoardSetup.of(s);
         const setup = board.record || {};
         const turnPlayer = s.players[board.turn];
@@ -529,7 +531,7 @@ class FSGame {
         }
         // The starting assets of the player's own choice (the Inquisition
         // begins with two tokens of any kind).
-        const left = s.players[s.seat].startChoice || 0;
+        const left = s.players[me].startChoice || 0;
         if (left) {
             ctx.status = 'Выберите стартовые ресурсы: осталось ' + left + '.';
             for (const asset of ['forge', 'cache', 'reinforcement']) {
@@ -541,8 +543,8 @@ class FSGame {
         }
         if (board.is(BoardSetup.FORCES)) {
             const sys = Board.of(s).system(board.currentSystem);
-            const initial = s.players[s.seat].initialForces;
-            const faction = FS_CATALOG.faction(s.players[s.seat].faction);
+            const initial = s.players[me].initialForces;
+            const faction = FS_CATALOG.faction(s.players[me].faction);
             ctx.text = 'Система ' + (sys ? sys.tile : '') + ': выберите фигуру и щёлкните по сектору.';
             ctx.status = this.status || (this.mode === 'setupUnit' || this.mode === 'setupStructure'
                 ? 'Щёлкните по подсвеченному сектору.' : 'Фигуры можно ставить подряд.');
@@ -587,14 +589,14 @@ class FSGame {
                 });
             }
             // What already stands on this tile can be taken back with one click.
-            for (const unit of s.units.filter(u => u.system === (sys && sys.id) && u.seat === s.seat)) {
+            for (const unit of s.units.filter(u => u.system === (sys && sys.id) && u.seat === me)) {
                 const def = faction && faction.units.find(u => u.id === unit.unit);
                 ctx.actions.push({
                     kind: 'chip', icon: 'ui.undo', label: 'Убрать ' + (def ? def.name : unit.unit),
                     onClick: () => this.net.cmd({ type: 'removeSetupForce', kind: 'unit', id: unit.id }),
                 });
             }
-            for (const st of s.structures.filter(x => x.system === (sys && sys.id) && x.seat === s.seat)) {
+            for (const st of s.structures.filter(x => x.system === (sys && sys.id) && x.seat === me)) {
                 ctx.actions.push({
                     kind: 'chip', icon: 'ui.undo', label: 'Убрать ' + structureNames[st.type],
                     onClick: () => this.net.cmd({ type: 'removeSetupForce', kind: 'structure', id: st.id }),
@@ -656,7 +658,7 @@ class FSGame {
             const face = active ? selected.tile : id;
             const raw = FS_CATALOG.tile(face);
             const tile = raw && active ? Object.assign({}, raw, {
-                areas: FS_RULES.createSystemFromTile({ systems: [] }, raw, s.seat, 0, 0, selected.rotation).areas,
+                areas: FS_RULES.createSystemFromTile({ systems: [] }, raw, me, 0, 0, selected.rotation).areas,
             }) : raw;
             ctx.actions.push({
                 tile, selected: !!active,
@@ -744,9 +746,10 @@ class FSGame {
             if (target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable)) return;
             if (e.key !== 'Escape' && e.code !== 'Escape') return;
             const s = this.state;
+            const me = Seat.of(s).me;
             if (!s) return;
             // Отмена работает и в начале боя: пока в нём ничего не сделано.
-            const mine = s.order && OrderContext.of(s.order).isSeat(s.seat) && OrderContext.of(s.order).isKind('advance')
+            const mine = s.order && OrderContext.of(s.order).isSeat(me) && OrderContext.of(s.order).isKind('advance')
                 && (PhasePlan.of(s.order).is('move') || PhasePlan.of(s.order).is('combat'));
             if (mine && MarchPlan.of(s.order).steps.length) {
                 e.preventDefault();
@@ -770,18 +773,19 @@ class FSGame {
 
     highlightSetupTargets() {
         const s = this.state, board = s ? BoardSetup.of(s) : null, setup = board && board.record;
+        const me = Seat.of(s).me;
         if (!setup || !setup.myTurn) return;
         const sys = Board.of(s).system((this.mode === 'setupStorm' ? this.pending.system : board.currentSystem));
         if (!sys) return;
         let areas = [];
         if (this.mode === 'setupUnit') {
-            const faction = FS_CATALOG.faction(s.players[s.seat].faction);
+            const faction = FS_CATALOG.faction(s.players[me].faction);
             const def = faction && faction.units.find(u => u.id === this.pending.unit);
             if (def) areas = sys.areas.filter(a => (def.type === 'ground') === !!a.world && FS_RULES.unitsAt(s, sys.id, a.pos).length < FS_RULES.capacity(s, sys.id, a.pos));
         } else if (this.mode === 'setupStructure') {
             // «A world cannot contain more than one structure» — the rule of the
             // structure answers, the panel does not count.
-            areas = sys.areas.filter(a => a.world && FS_RULES.canPlaceStructure(s, s.seat, sys.id, a.pos).ok);
+            areas = sys.areas.filter(a => a.world && FS_RULES.canPlaceStructure(s, me, sys.id, a.pos).ok);
         } else if (this.mode === 'setupObjective') {
             const option = (setup.objectiveOptions || []).find(x => x.faction === this.pending.faction);
             areas = sys.areas.filter(a => option && option.areas.includes(a.pos));
@@ -815,7 +819,7 @@ class FSGame {
 
     // --- the planning phase ---------------------------------------------------
     panelPlanning(s, ctx) {
-        const me = s.seat;
+        const me = Seat.of(s).me;
         const p = s.players[me];
         const left = FS_RULES.ordersLeft(s, me);
         ctx.title = 'Планирование';
@@ -872,10 +876,11 @@ class FSGame {
     // The systems where the order token may be placed.
     highlightOrders() {
         const s = this.state;
+        const me = Seat.of(s).me;
         if (!s) return;
         const list = [];
         for (const sys of s.systems) {
-            if (!FS_RULES.canPlaceOrder(s, s.seat, sys.id)) continue;
+            if (!FS_RULES.canPlaceOrder(s, me, sys.id)) continue;
             const p = FSView.tilePos(this.app, sys, this.view.metrics);
             const h = this.app.location.terrain.heightAt(p.x, p.y);
             list.push({ x: p.x, y: h + 16, z: p.y });
@@ -885,7 +890,7 @@ class FSGame {
 
     // --- the operations phase -------------------------------------------------
     panelOperations(s, ctx) {
-        const me = s.seat;
+        const me = Seat.of(s).me;
         ctx.title = 'Операции';
         if (!GamePhase.of(s).isTurn(me)) {
             const who = s.players[GamePhase.of(s).turn] ? s.players[GamePhase.of(s).turn].name : '—';
@@ -946,7 +951,7 @@ class FSGame {
                 },
             });
         }
-        const me = s.seat;
+        const me = Seat.of(s).me;
         const order = s.order;
         const sys = Board.of(s).system(OrderContext.of(order).system);
         if (PhasePlan.of(order).is('move')) {
@@ -1079,7 +1084,7 @@ class FSGame {
     // which models go back to the supply. The choice is made on the board — the
     // over-full area is ringed and a click on a model sends it away.
     panelTrim(s, ctx) {
-        const me = s.seat;
+        const me = Seat.of(s).me;
         const entry = FS_RULES.trimQueue(s).entryOf(me);
         this.mode = 'trim';
         ctx.title = 'Сверх вместимости';
@@ -1148,7 +1153,7 @@ class FSGame {
     // The hits of the strike are counted by the engine but the defender chooses his
     // own models that take them: the choice is made on the board, in the struck area.
     panelStrikeDamage(s, ctx) {
-        const me = s.seat;
+        const me = Seat.of(s).me;
         const st = StrikeDamage.of(s);
         this.mode = 'strike-damage';
         ctx.title = 'Урон с орбиты';
@@ -1205,7 +1210,7 @@ class FSGame {
             });
             return;
         }
-        const me = s.seat;
+        const me = Seat.of(s).me;
         const p = s.players[me];
         const order = s.order;
         const step = FS_RULES.deployStep(order);
@@ -1324,7 +1329,7 @@ class FSGame {
     // a minimum of two units of the same type, price minus one, into the
     // factory's own world. Two Guardsmen go for one supply token.
     panelGuardDeploy(s, ctx) {
-        const me = s.seat;
+        const me = Seat.of(s).me;
         const p = s.players[me];
         const order = s.order;
         const scope = DeployScope.of(order);
@@ -1439,6 +1444,7 @@ class FSGame {
     // The areas of the active system where the piece may be placed.
     highlightPlace(def) {
         const s = this.state;
+        const me = Seat.of(s).me;
         const order = s.order;
         if (!order) return;
         const sys = Board.of(s).system(OrderContext.of(order).system);
@@ -1467,8 +1473,8 @@ class FSGame {
         for (const area of sys.areas) {
             // Only the places where the piece may stand.
             const ok = def
-                ? FS_RULES.canPlaceUnit(s, s.seat, sys.id, area.pos, def).ok
-                : FS_RULES.canPlaceStructure(s, s.seat, sys.id, area.pos).ok;
+                ? FS_RULES.canPlaceUnit(s, me, sys.id, area.pos, def).ok
+                : FS_RULES.canPlaceStructure(s, me, sys.id, area.pos).ok;
             if (!ok) continue;
             const p = FSView.areaPos(this.app, sys, area.pos, this.view.metrics);
             const h = this.app.location.terrain.heightAt(p.x, p.y);
@@ -1478,7 +1484,7 @@ class FSGame {
     }
 
     panelStrategize(s, ctx) {
-        const me = s.seat;
+        const me = Seat.of(s).me;
         const p = s.players[me];
         const order = s.order;
         ctx.title = 'Стратегия · улучшения';
@@ -1621,8 +1627,9 @@ class FSGame {
     // Confirm or refund the purchase the player chose.
     confirmUpgrade(kind) {
         const s = this.state;
-        if (!s || !s.order || !OrderContext.of(s.order).isKind('strategize') || !OrderContext.of(s.order).isSeat(s.seat)) return;
-        const p = s.players[s.seat];
+        const me = Seat.of(s).me;
+        if (!s || !s.order || !OrderContext.of(s.order).isKind('strategize') || !OrderContext.of(s.order).isSeat(me)) return;
+        const p = s.players[me];
         const bought = UpgradeOrder.of(s.order);
         if (kind === 'combat') {
             if (bought && bought.combat) {
@@ -1697,7 +1704,7 @@ class FSGame {
 
     // --- the refresh phase ----------------------------------------------------
     panelRefresh(s, ctx) {
-        const me = s.seat;
+        const me = Seat.of(s).me;
         const ev = s.event;
         const p = s.players[me];
         ctx.title = 'Обновление';
@@ -1845,7 +1852,7 @@ class FSGame {
     // now; the cards of the hand are the bar at the bottom of the screen.
     panelCombat(s, ctx) {
         const c = s.combat;
-        const me = s.seat;
+        const me = Seat.of(s).me;
         const side = CombatSides.sideOf(c, me);
         const other = CombatSides.foe(side);
         const nameOf = which => (s.players[CombatSides.seatOf(c, which)] || {}).name || '?';
@@ -2068,9 +2075,10 @@ class FSGame {
 
     // The card of the table may be played only in the step of the player.
     canPlayCard(s) {
+        const me = Seat.of(s).me;
         const c = s && s.combat;
         if (!c) return false;
-        const mine = CombatSides.sideOf(c, s.seat);
+        const mine = CombatSides.sideOf(c, me);
         if (!mine) return false;
         // The card is played in the choosing step of its own side.
         const turn = CombatTurn.of(c);
@@ -2087,10 +2095,11 @@ class FSGame {
 
     // The hand at the bottom of the screen: the combat cards, each with its icons.
     fillHand(s, side, mine) {
+        const me = Seat.of(s).me;
         const c = s.combat;
         if (!c) { this.hand = []; return; }
         const hand = FS_CARDS.combatHand(FS_RULES, s, c[side]).cards();
-        const faction = s.players[s.seat] ? s.players[s.seat].faction : '';
+        const faction = s.players[me] ? s.players[me].faction : '';
         this.hand = hand.map((name, index) => {
             const data = FS_CATALOG.card('combat', faction, name);
             const text = data ? [data.general, data.unit].filter(Boolean).join('\n') : '';
@@ -2132,7 +2141,7 @@ class FSGame {
     // of the combat — the same system and the neighbouring ones.
     retreatAreas(s, c) {
         void c;
-        return FS_RULES.retreatTargets(s, s.seat);
+        return FS_RULES.retreatTargets(s, Seat.of(s).me);
     }
 
     // The units / structures / sectors a pending effect can touch are lit on
@@ -2190,11 +2199,12 @@ class FSGame {
     // areas and systems are all picked with the mouse; the panel list is a fallback.
     questionClick(meta) {
         const s = this.state;
+        const me = Seat.of(s).me;
         const pending = s.pending;
         const q = pending && pending.question;
         if (!q) return false;
         const seat = pending.answerSeat === undefined ? pending.seat : pending.answerSeat;
-        if (seat !== s.seat) return false;      // ждём не нас
+        if (seat !== me) return false;      // ждём не нас
         const send = answer => {
             this.net.cmd({ type: 'effect', answer });
             this.effectPick = [];
@@ -2239,7 +2249,7 @@ class FSGame {
     panelQuestion(s, ctx) {
         const pending = s.pending;
         const q = pending.question || {};
-        const me = s.seat;
+        const me = Seat.of(s).me;
         ctx.title = 'Эффект карты';
         ctx.status = '';
         const must = pending.answerSeat === undefined ? pending.seat : pending.answerSeat;
@@ -2552,7 +2562,8 @@ class FSGame {
 
     me() {
         const s = this.state;
-        return s ? s.players[s.seat] : null;
+        const me = Seat.of(s).me;
+        return s ? s.players[me] : null;
     }
 
     myColor() {
@@ -2596,13 +2607,14 @@ class FSGame {
     // Every sector the picked group could march into gets a ring.
     highlightMoves() {
         const s = this.state;
+        const me = Seat.of(s).me;
         if (!s || this.mode !== 'move' || !s.order || !this.selected) { return; }
         const sys = Board.of(s).system(OrderContext.of(s.order).system);
         const units = this.selectedUnits();
         if (!sys || !units.length) { FSView.clearHighlights(this.view); return; }
         const list = [];
         for (const area of sys.areas) {
-            const ok = units.some(u => FS_RULES.canMove(s, s.seat, u, { system: sys.id, pos: area.pos }).ok);
+            const ok = units.some(u => FS_RULES.canMove(s, me, u, { system: sys.id, pos: area.pos }).ok);
             if (!ok) continue;
             const disc = FSView.discAt(this.app, sys, area.pos, this.view.metrics);
             list.push({ x: disc.x, y: disc.y + 2, z: disc.z });
@@ -2635,7 +2647,7 @@ class FSGame {
             const p = FSView.tilePos(this.app, sys, this.view.metrics);
             to = { x: p.x, z: p.y };
         }
-        const ok = this.selectedUnits().some(unit => FS_RULES.canMove(s, s.seat, unit, { system: sys.id, pos: this.hover.pos }).ok);
+        const ok = this.selectedUnits().some(unit => FS_RULES.canMove(s, Seat.of(s).me, unit, { system: sys.id, pos: this.hover.pos }).ok);
         FSView.showArrow(this.app, view, from, to, ok);
     }
 
@@ -2789,6 +2801,7 @@ class FSGame {
     // closes what was picked.
     onRightClick(px, py) {
         const s = this.state;
+        const me = Seat.of(s).me;
         if (!s) return;
         const scene = this.view.scene;
         const pick = scene.pick(px == null ? scene.pointerX : px, py == null ? scene.pointerY : py, m => this.pickable(m));
@@ -2796,7 +2809,7 @@ class FSGame {
         // Развёртывание: правый клик по купленной фигуре возвращает её, пока
         // приказ не закончен (материя ещё не списана).
         const o = s.order;
-        if (o && o.order === 'deploy' && o.seat === s.seat
+        if (o && o.order === 'deploy' && o.seat === me
             && (this.mode === 'placeUnit' || this.mode === 'placeStructure' || this.mode === 'idle')) {
             if (meta && meta.fs === 'unit') { this.net.cmd({ type: 'undoPurchase', unit: meta.unit }); return; }
             if (meta && meta.fs === 'structure') { this.net.cmd({ type: 'undoPurchase', structure: meta.structure }); return; }
@@ -2834,7 +2847,8 @@ class FSGame {
     // the supply, and the ring of the area follows what is left.
     clickTrim(meta) {
         const s = this.state;
-        const entry = s ? FS_RULES.trimQueue(s).entryOf(s.seat) : null;
+        const me = Seat.of(s).me;
+        const entry = s ? FS_RULES.trimQueue(s).entryOf(me) : null;
         if (!entry) return;
         if (!meta || meta.fs !== 'unit') {
             this.status = 'Щёлкните по отряду в переполненной области.';
@@ -2842,7 +2856,7 @@ class FSGame {
             return;
         }
         const unit = s.units.find(u => u.id === meta.unit);
-        if (!unit || unit.seat !== s.seat) {
+        if (!unit || unit.seat !== me) {
             this.status = 'Свои отряды уходят в запас: чужой отряд не выбрать.';
             this.refresh();
             return;
@@ -2864,6 +2878,7 @@ class FSGame {
     // The click on a model that takes the damage of the orbital strike.
     clickStrikeDamage(meta) {
         const s = this.state;
+        const me = Seat.of(s).me;
         const st = s ? StrikeDamage.of(s) : null;
         if (!st || !st.pending) return;
         if (!meta || meta.fs !== 'unit') {
@@ -2872,7 +2887,7 @@ class FSGame {
             return;
         }
         const unit = s.units.find(u => u.id === meta.unit);
-        if (!unit || unit.seat !== s.seat || !st.aimedAt(unit.system, unit.area)) {
+        if (!unit || unit.seat !== me || !st.aimedAt(unit.system, unit.area)) {
             this.status = 'Удар принимают только свои отряды в этом мире.';
             this.refresh();
             return;
@@ -2884,11 +2899,12 @@ class FSGame {
     // The click on a piece of the movement: pick the unit or march the group.
     clickMove(meta, target) {
         const s = this.state;
+        const me = Seat.of(s).me;
         if (!s || !target) return;
         if (meta.fs === 'unit') {
             const unit = s.units.find(u => u.id === meta.unit);
-            if (unit && unit.seat === s.seat) {
-                const movable = FS_RULES.movableUnits(s, s.seat).some(u => u.id === unit.id);
+            if (unit && unit.seat === me) {
+                const movable = FS_RULES.movableUnits(s, me).some(u => u.id === unit.id);
                 if (!movable) {
                     this.status = 'Этот отряд уже не может двигаться.';
                     this.refresh();
@@ -2922,7 +2938,7 @@ class FSGame {
                     this.refresh();
                     return;
                 }
-                const free = FS_RULES.movableUnits(s, s.seat).filter(u =>
+                const free = FS_RULES.movableUnits(s, me).filter(u =>
                     u.id !== unit.id && place(u) === place(unit)
                     && (FS_RULES.unitOf(s, u) || {}).type === (def ? def.type : null)
                     && this.selected.indexOf(u.id) < 0);
@@ -2944,7 +2960,7 @@ class FSGame {
             return;
         }
         if (!target.pos) { this.status = 'Выберите сектор, а не систему целиком.'; this.refresh(); return; }
-        const units = this.selectedUnits().filter(u => FS_RULES.canMove(s, s.seat, u, { system: target.system, pos: target.pos }).ok);
+        const units = this.selectedUnits().filter(u => FS_RULES.canMove(s, me, u, { system: target.system, pos: target.pos }).ok);
         if (!units.length) { this.status = 'Эти отряды туда не пройдут.'; this.refresh(); return; }
         const left = this.selected.length - units.length;
         this.status = left > 0 ? 'Идут ' + units.length + ' из ' + this.selected.length + ' отрядов.' : '';
@@ -2952,7 +2968,7 @@ class FSGame {
         // после приказа лишние отряды погибают — и выбирает их игрок. Об этом
         // надо предупредить до того, как он закончит движение.
         const cap = FS_RULES.capacity(s, target.system, target.pos);
-        const already = FS_RULES.unitsAt(s, target.system, target.pos).filter(u => u.seat === s.seat).length;
+        const already = FS_RULES.unitsAt(s, target.system, target.pos).filter(u => u.seat === me).length;
         const over = already + units.length > cap;
         if (over) {
             // Первый клик в переполненную область только предупреждает: марш
@@ -2990,12 +3006,13 @@ class FSGame {
         this.view.stormPending = null;
         this.view.stormGhosts = [];
         const view = this.state;
-        if (view && view.phase === 'refresh' && view.event && view.event.seat === view.seat && !view.event.stormMoved) {
+        const viewSeat = view ? Seat.of(view).me : null;
+        if (view && view.phase === 'refresh' && view.event && view.event.seat === viewSeat && !view.event.stormMoved) {
             const pid = this.mode === 'storm' && this.pending ? this.pending.storm : null;
             if (pid) {
                 const storm = (view.storms || []).find(x => x.id === pid);
                 this.view.stormPending = pid;
-                this.view.stormGhosts = FS_RULES.stormOptions(view, view.seat)
+                this.view.stormGhosts = FS_RULES.stormOptions(view, viewSeat)
                     .filter(o => o.storm === pid)
                     .map(o => {
                         const t = storm ? FS_RULES.stormTarget(view, storm, o.dir) : null;
@@ -3012,8 +3029,9 @@ class FSGame {
     // of the refresh: the panel does not move storms any more.
     stormClick(meta) {
         const s = this.state;
+        const me = Seat.of(s).me;
         if (!s) return;
-        const seat = s.seat;
+        const seat = me;
         const stage = s.phase === 'refresh' && s.event && s.event.seat === seat && !s.event.stormMoved;
         if (!stage) return;                       // outside the storm step the marker is inert
         if (meta.fs === 'storm-ghost') {
@@ -3049,6 +3067,7 @@ class FSGame {
 
     onClick(px, py) {
         const s = this.state;
+        const me = Seat.of(s).me;
         if (!s) return;
         const scene = this.view.scene;
         const pick = scene.pick(px == null ? scene.pointerX : px, py == null ? scene.pointerY : py, m => this.pickable(m));
@@ -3087,7 +3106,7 @@ class FSGame {
             const mustSeat = s.pending.answerSeat === undefined ? s.pending.seat : s.pending.answerSeat;
             const qSide = q.diceSide || (cbt ? (CombatSides.sideOf(cbt, mustSeat)) : null);
             const index = typeof meta.index === 'number' ? meta.index : -1;
-            if (mustSeat === s.seat && index >= 0
+            if (mustSeat === me && index >= 0
                 && (!cbt || !meta.side || meta.side === qSide)
                 && (q.options || []).indexOf(index) >= 0) {
                 if (q.kind === 'diceFace') { this.effectDie = index; this.refresh(); return; }
@@ -3145,7 +3164,7 @@ class FSGame {
             // and the hex under it are the same thing: the top token is the one that
             // resolves, so the click always takes the top one.
             const top = meta.system ? this.topOrderOf(s, meta.system) : null;
-            if (top && top.seat === s.seat && GamePhase.of(s).is(GamePhase.OPERATIONS) && GamePhase.of(s).isTurn(s.seat) && !s.order) {
+            if (top && top.seat === me && GamePhase.of(s).is(GamePhase.OPERATIONS) && GamePhase.of(s).isTurn(me) && !s.order) {
                 this.mode = 'order';
                 this.pending = { system: meta.system };
                 this.refresh();
@@ -3166,7 +3185,7 @@ class FSGame {
         if (this.mode === 'placeOrder') {
             // A unit or a structure also means its system.
             if (!target) return;
-            if (!FS_RULES.canPlaceOrder(s, s.seat, target.system)) {
+            if (!FS_RULES.canPlaceOrder(s, me, target.system)) {
                 this.status = 'Приказ кладётся только в систему со своими отрядами или постройками '
                     + 'либо в соседнюю с такой системой. Кольца показывают, куда можно.';
                 this.refresh();
@@ -3221,7 +3240,7 @@ class FSGame {
             // Пять отрядов одного игрока — стена, а не предупреждение: столько
             // пластмассы стоит в области, и движок такую покупку отклонит
             // («can never end the movement with more than five units»).
-            if (!FS_RULES.hasRoom(s, target.system, target.pos, s.seat, 1)) {
+            if (!FS_RULES.hasRoom(s, target.system, target.pos, me, 1)) {
                 this.deployOverflow = null;
                 this.status = FS_RULES.unitLimitText();
                 this.refresh();
@@ -3268,7 +3287,7 @@ class FSGame {
         }
         if (this.mode === 'strike') {
             if (!target) return;
-            const t = FS_RULES.orbitalStrikeTargets(s, s.seat)
+            const t = FS_RULES.orbitalStrikeTargets(s, me)
                 .find(x => x.system === target.system && x.pos === target.pos);
             if (!t) { this.status = 'По этому миру бить нельзя.'; this.refresh(); return; }
             this.net.cmd({ type: 'orbitalStrike', system: t.system, pos: t.pos, from: t.from });

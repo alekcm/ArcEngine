@@ -827,7 +827,7 @@ const FSView = {
     showSetupPreview(app, view, state, tile, cell, rotation) {
         this.clearSetupPreview(view);
         if (!tile || !cell) return;
-        const sys = FS_RULES.createSystemFromTile({ systems: [] }, tile, state.seat, cell.row, cell.col, rotation);
+        const sys = FS_RULES.createSystemFromTile({ systems: [] }, tile, Seat.of(state).me, cell.row, cell.col, rotation);
         sys.id = 'fs-preview';
         const ghost = Object.assign({}, view, { preview: true, tiles: new Map(), planets: new Map() });
         const rec = this.ensureTile(app, ghost, sys);

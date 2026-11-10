@@ -596,6 +596,30 @@ try {
     fail(e.message);
 }
 
+// --- the seat whose eyes see the state: one object ---------------------------
+section('место игрока: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSSeat.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Чьё это место (какой игрок смотрит на это состояние) — один объект
+        // Seat: поле state.seat не сравнивают с номером места руками ни панель,
+        // ни доска, ни правила вида.
+        const re = /\bstate\.seat\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('место игрока спрашивают у Seat');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the system an effect has chosen: one object ------------------------------
 section('выбранная система: один объект');
 try {

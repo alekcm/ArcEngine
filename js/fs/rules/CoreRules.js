@@ -310,7 +310,7 @@ class CoreRules {
             const src = state.players[i];
             if (src && src.decks) copy.players[i].decksCombatKnown = (src.decks.combat || []).slice().sort();
         }
-        copy.seat = seat;
+        Seat.of(copy).stateOf(seat);
         return copy;
     }
 

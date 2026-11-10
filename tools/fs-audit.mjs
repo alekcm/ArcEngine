@@ -24,7 +24,7 @@ const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
     BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound, StrikeDamage,
-    BattleTest, Chance, PreAdvance, Choice } = ctx;
+    BattleTest, Chance, PreAdvance, Choice, Seat } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1239,6 +1239,31 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(others.opener((st, seat) => seat), 0, 'планирование начнёт игрок перед ним');
     eq(others.opener((st, seat) => 2), 2, 'или тот, кого назовёт nextPlanner');
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
+});
+
+rule('seat-0a', '«every player sees the game through his own eyes» — место игрока держит Seat', () => {
+    const view = { players: [{ name: 'А' }, { name: 'Б' }, { name: 'В' }] };
+    const seat = Seat.of(view);
+    eq(Seat.of(view), seat, 'у вида одно место');
+    eq(Seat.of(null), null, 'без состояния места нет');
+    // The state of the server is seen by nobody.
+    eq(seat.me, null, 'места нет');
+    eq(seat.any, false, 'и смотреть некому');
+    eq(seat.player, null, 'игрока нет');
+    eq(seat.isMe(0), false, 'никто не «я»');
+    // A view is cut for one chair.
+    seat.stateOf(1);
+    eq(view.seat, 1, 'место записано в вид');
+    eq(seat.me, 1, 'это seat 1');
+    eq(seat.any, true, 'и место есть');
+    eq(seat.isMe(1), true, 'seat 1 — это я');
+    eq(seat.isMe(0), false, 'seat 0 — не я');
+    eq(seat.isOther(0), true, 'seat 0 — чужое место');
+    eq(seat.isOther(1), false, 'своё местом чужим не бывает');
+    eq(seat.player.name, 'Б', 'игрок этого места');
+    // The whole state — the one the server keeps — has no seat at all.
+    eq(Seat.of({ players: [] }).me, null, 'у состояния сервера места нет');
+    eq(Seat.of({ players: [], seat: 0 }).isMe(0), true, 'а у вида — есть');
 });
 
 rule('choose-0a', '«Получите материалы со всех дружественных миров этой системы» — выбор системы держит Choice', () => {
