@@ -12,7 +12,7 @@ class OperationsRules {
     }
 
     apply(state, seat, cmd) {
-        if (state.over) return { ok: false, error: 'Игра закончена.' };
+        if (GameOutcome.of(state).over) return { ok: false, error: 'Игра закончена.' };
         const p = state.players[seat];
         if (!p) return { ok: false, error: 'Нет такого игрока.' };
         // Older saves named a storm by one tile and a side. Bring them to the

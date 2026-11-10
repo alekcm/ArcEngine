@@ -23,7 +23,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 const ctx = createEngineContext();
 const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
-    BoardSetup, GameLog } = ctx;
+    BoardSetup, GameLog, GameOutcome } = ctx;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -1226,6 +1226,52 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(others.opener((st, seat) => seat), 0, 'планирование начнёт игрок перед ним');
     eq(others.opener((st, seat) => 2), 2, 'или тот, кого назовёт nextPlanner');
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
+});
+
+rule('over-0a', '«The game ends…» — конец партии и её победителя держит GameOutcome', () => {
+    const state = { players: [{}, {}, {}] };
+    const outcome = GameOutcome.of(state);
+    eq(GameOutcome.of(state), outcome, 'у партии один итог');
+    eq(GameOutcome.of(null), null, 'без состояния итога нет');
+    // The game goes on: nobody won and nothing is printed.
+    eq(outcome.over, false, 'партия идёт');
+    eq(outcome.winner, null, 'победителя нет');
+    eq(outcome.tied, false, 'и победа не делится');
+    eq(outcome.victors().length, 0, 'победителей нет');
+    eq(outcome.headline(), '', 'и объявления нет');
+    // «A player collects the objectives he needs»: he wins alone.
+    outcome.declare({ winner: 2 });
+    eq(outcome.over, true, 'партия окончена');
+    eq(outcome.winner, 2, 'победил seat 2');
+    eq(outcome.isWinner(2), true, 'это он');
+    eq(outcome.isWinner(0), false, 'а не seat 0');
+    eq(outcome.tied, false, 'победа не делится');
+    eq(outcome.shares(2), true, 'seat 2 берёт победу');
+    eq(outcome.victors().join(','), '2', 'победитель один');
+    eq(outcome.headline(seat => 'И' + seat), 'Побеждает: И2', 'объявление панели');
+    eq(outcome.note(), 'Игра закончена. Побеждает: 2.', 'строка журнала');
+    eq(outcome.note('цели собраны'), 'Игра закончена. Побеждает: 2: цели собраны.', 'и с причиной');
+    // «…or the victory is shared»: the tie-breaks leave two leaders.
+    const tie = { players: [{}, {}, {}, {}] };
+    const other = GameOutcome.of(tie).byRound(1, [1, 3]);
+    eq(other.tied, true, 'победа делится');
+    eq(other.winner, 1, 'первый из победителей');
+    eq(other.shared.join(','), '1,3', 'делят seat 1 и seat 3');
+    eq(other.shares(3), true, 'seat 3 в доле');
+    eq(other.shares(2), false, 'seat 2 нет');
+    eq(other.victors().join(','), '1,3', 'победители по порядку');
+    eq(other.headline(seat => 'И' + seat), 'Победа делится: И1 и И3', 'объявление о дележе');
+    eq(other.note(), 'Игра закончена вничью.', 'строка о ничьей');
+    // «…or only one player is left»: nobody wins when the last one is out too.
+    const alone = { players: [{}, {}] };
+    const last = GameOutcome.of(alone).byElimination(1);
+    eq(last.winner, 1, 'оставшийся побеждает');
+    const none = GameOutcome.of({ players: [{}, {}] }).byElimination(null);
+    eq(none.winner, null, 'без игроков победителя нет');
+    eq(none.headline(), 'Побеждает: —', 'и это видно');
+    // A shared victory left over from an earlier end does not survive a new one.
+    const again = GameOutcome.of(tie).declare({ winner: 0 });
+    eq(again.shared.length, 0, 'старый дележ снят');
 });
 
 rule('log-0a', '«the game is played in rounds; every step is written down» — журнал игры держит GameLog', () => {

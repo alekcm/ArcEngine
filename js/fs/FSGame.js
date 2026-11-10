@@ -450,11 +450,9 @@ class FSGame {
             FSUI.update(s, ctx);
             return;
         }
-        if (s.over) {
+        if (GameOutcome.of(s).over) {
             ctx.title = 'Игра окончена';
-            ctx.text = s.shared && s.shared.length > 1
-                ? 'Победа делится: ' + s.shared.map(seat => s.players[seat].name).join(' и ')
-                : 'Побеждает: ' + (s.winner != null ? s.players[s.winner].name : '—');
+            ctx.text = GameOutcome.of(s).headline(seat => (s.players[seat] ? s.players[seat].name : '—'));
             ctx.status = '';
         } else if (s.testMode === 'battle' && !s.combat) {
             this.panelTestBattle(s, ctx);

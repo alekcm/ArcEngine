@@ -416,7 +416,7 @@ const FSUI = {
         // player owns (counted, zeros included), the choice of the moment and a
         // single button to go on. Everything else happens on the board itself.
         const panel = this.el('section', 'fs-main-panel' + (ctx.panelClass ? ' ' + ctx.panelClass : ''));
-        const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', state.over ? 'Итоги сражения' : 'Текущий этап'));
+        const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', GameOutcome.of(state).over ? 'Итоги сражения' : 'Текущий этап'));
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
         if (ctx.richText) head.append(this.richText(ctx.richText, 'fs-panel-rich'));
         else if (ctx.text) head.append(this.el('p', '', ctx.text));
@@ -494,7 +494,7 @@ const FSUI = {
             button.addEventListener('click', () => a.onClick && a.onClick());
             actions.append(button);
         }
-        if (!items.length && state.over) actions.append(this.el('div', 'fs-empty', 'Партия завершена.'));
+        if (!items.length && GameOutcome.of(state).over) actions.append(this.el('div', 'fs-empty', 'Партия завершена.'));
         panel.append(actions);
         for (const a of primaries) {
             const button = this.el('button', 'fs-primary'); button.type = 'button';

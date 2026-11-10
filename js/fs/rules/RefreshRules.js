@@ -51,13 +51,14 @@ class RefreshRules {
      * only at the first step the log says why the tokens were collected.
      */
     declareWin(state, won, byObjectives) {
-        state.over = true;
-        state.winner = won.winner;
-        if (won.shared) state.shared = won.shared;
-        const why = byObjectives ? ': цели собраны' : '';
-        this.engine.log(state, -1, won.shared
-            ? 'Игра закончена вничью' + why + '.'
-            : 'Игра закончена. Побеждает ' + state.players[won.winner].name + why + '.');
+        // The outcome of the game is one object: it writes the three fields and
+        // says the same sentence the rules say.
+        const outcome = GameOutcome.of(state).declare(won);
+        const why = byObjectives ? 'цели собраны' : '';
+        const nameOf = seat => (state.players[seat] ? state.players[seat].name : '—');
+        this.engine.log(state, -1, outcome.tied
+            ? 'Игра закончена вничью' + (why ? ': ' + why : '') + '.'
+            : 'Игра закончена. Побеждает ' + nameOf(outcome.winner) + (why ? ': ' + why : '') + '.');
     }
 
     startRefresh(state) {
@@ -256,9 +257,9 @@ class RefreshRules {
         }
         const alive = state.players.filter(p => !p.eliminated);
         if (alive.length <= 1) {
-            state.over = true;
-            state.winner = alive.length ? alive[0].seat : null;
-            this.engine.log(state, -1, 'Игра закончена. Побеждает ' + (state.winner != null ? state.players[state.winner].name : '—') + '.');
+            const outcome = GameOutcome.of(state).byElimination(alive.length ? alive[0].seat : null);
+            const name = outcome.winner === null ? '—' : state.players[outcome.winner].name;
+            this.engine.log(state, -1, 'Игра закончена. Побеждает ' + name + '.');
             return;
         }
         // The victory conditions: the objectives needed do not shrink when a
@@ -270,13 +271,11 @@ class RefreshRules {
             return;
         }
         if (GamePhase.of(state).round > this.engine.ROUNDS) {
-            state.over = true;
             // The tie-breaks of the rules: objectives, friendly worlds, units, and
             // only then a shared victory.
             const { best, shared } = this.standings(state, alive);
-            state.winner = best.seat;
+            GameOutcome.of(state).byRound(best.seat, shared.map(p => p.seat));
             if (shared.length > 1) {
-                state.shared = shared.map(p => p.seat);
                 this.engine.log(state, -1, 'Раунд ' + this.engine.ROUNDS + ' закончен. Победа делится между '
                     + shared.map(p => p.name).join(' и ') + '.');
                 return;

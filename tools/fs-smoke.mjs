@@ -596,6 +596,30 @@ try {
     fail(e.message);
 }
 
+// --- the end of a game: one object -------------------------------------------
+section('итог партии: один объект');
+try {
+    const owners = new Set(['js/fs/core/FSGameOutcome.js']);
+    const offenders = [];
+    for (const file of htmlFiles().filter(f => f.endsWith('.js') && !f.startsWith('libs/'))) {
+        if (owners.has(file)) continue;
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        // Конец партии и её победитель — один объект GameOutcome: поля
+        // state.over/state.winner/state.shared не читают руками ни правила, ни
+        // панель.
+        const re = /\bstate\.(?:over|winner|shared)\b/g;
+        let m;
+        while ((m = re.exec(text))) {
+            const line = text.slice(0, m.index).split('\n').length;
+            offenders.push(file + ':' + line);
+        }
+    }
+    if (offenders.length) throw new Error(offenders.slice(0, 4).join('; '));
+    ok('итог партии спрашивают у GameOutcome');
+} catch (e) {
+    fail(e.message);
+}
+
 // --- the building of the board: one object -----------------------------------
 section('сборка карты: один объект');
 try {

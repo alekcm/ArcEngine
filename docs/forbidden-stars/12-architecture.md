@@ -93,6 +93,7 @@
 | Вопрос шага: кто отвечает, где прерван эффект, чем ответить | `core/FSQuestion.js` (`Question.of(state)`) | не писать и не читать `state.pending` в правиле, эффекте или панели — это ловит `fs-smoke` |
 | Сборка карты: этап, чья рука играет, тайлы и штормы | `core/FSBoardSetup.js` (`BoardSetup.of(state)`) | не читать `state.setup` в правиле, доске или панели — это ловит `fs-smoke` |
 | Журнал игры: запись шага, хвост для панели, предел в двести строк | `core/FSGameLog.js` (`GameLog.of(state)`) | не читать и не резать `state.log` в правиле, доске или панели — это ловит `fs-smoke` |
+| Конец партии: победитель, дележ победы, объявление | `core/FSGameOutcome.js` (`GameOutcome.of(state)`) | не читать `state.over`/`state.winner`/`state.shared` в правиле или панели — это ловит `fs-smoke` |
 | «Вместо раскрытия приказа»: предложение плана и занятый им ход | `core/FSOrderScheme.js` (`OrderScheme.of(state)`) | не читать `state.operationSchemeOffered`/`operationSchemeAccepted` в правиле или эффекте — это ловит `fs-smoke` |
 | Шторм события: ответ «Молящегося», подавление иконок, система последней потери | `core/FSStormPhase.js` (`StormPhase.of(state)`) | не читать `state.stormReaction`/`chaosNoStormMove`/`chaosLastSystem` в правиле или карте — это ловит `fs-smoke` |
 | «Быстрый ответ»: приостановленная фаза событий и её снимок | `core/FSQuickResponse.js` (`QuickResponse.of(state)`) | не читать `state.quickResponsePending`/`quickResponseSnapshot` в правиле или эффекте — это ловит `fs-smoke` |
@@ -146,7 +147,7 @@
 
 ```
 node tools/check.mjs          # типы (tsc по JSDoc) + сверка правил + дым-тест
-node tools/fs-audit.mjs       # 173 проверок: каждая цитирует Rules Reference
+node tools/fs-audit.mjs       # 174 проверок: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # 82 проверки: карты одной фракции против их текстов
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках
@@ -159,11 +160,11 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
 шагов карт (73 «дела» и 155 «вопроса» — каждый объявлен и каждый — функция), а ещё один —
 сам предметный слой: стороны боя и верх стопки приказов.
 
-Сорок три раздела дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
+Сорок четыре раздела дыма стоят на страже «одно понятие — одно место»; каждый проверен подделкой
 (вставленные `assets.forge++`, `cards[side].hand.splice`, `p.materiel -= 1`, ручной счёт
 пяти отрядов, `structuresAt(...).length`, `state.order = null`, `u.routed = true`,
 `order.bought++`, чтение `state.trim` мимо очереди, `storm.edge = …` мимо поля штормов и
-`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` `order.purchases` мимо `Purchases` `order.moveAreaLimit` мимо `OrderMove` `order.prosperity` мимо `OrderTally`, `order.seat`/`order.system` мимо `OrderContext` `combat.reinforcePending` мимо `CombatTokens` и `combat.step`/`combat.dice` мимо `CombatTurn` `combat.staged` мимо `CombatCards` `combat.healthBonus`/`combat.noRoute` мимо `CombatDamage` и `combat.damageResume` мимо `CombatHooks` и `combat.endRoundPlans`/`laterTokens` мимо `CombatPlans` `combat.tokens` мимо `CombatCubes` и `combat.noReinforce`/`ignoreFoeAtt` мимо `CombatBans` `combat.system`/`combat.pos` мимо `BattleField` `combat.winner`/`loser` мимо `CombatOutcome` `combat.attackerFrom`/`viaAdvance` мимо `CombatApproach` `combat.attacker`/`combat.defender` мимо `CombatSides` `state.event.seat`/`drawn`/`chosen` мимо `EventPhase` `state.quickResponsePending`/`Snapshot` мимо `QuickResponse` `state.stormReaction`/`chaosNoStormMove` мимо `StormPhase` `state.operationScheme*` мимо `OrderScheme` `state.pending` мимо `Question` и `state.phase` мимо `GamePhase` и `state.setup` мимо `BoardSetup` и `state.log` мимо `GameLog`
+`order.strikeBonus = …` мимо `StrikePlan` `order.moved = []` мимо `MarchPlan` и `order.phase === 'move'` мимо `PhasePlan` `order.upgradesBought++` мимо `UpgradeOrder` и `order.discount` мимо `OrderDeal` и `order.unitsLocked` мимо `DeployScope` и `order.capacityBonus` мимо `DeployLimits` `order.klBonus` мимо `OrderFight` `order.purchases` мимо `Purchases` `order.moveAreaLimit` мимо `OrderMove` `order.prosperity` мимо `OrderTally`, `order.seat`/`order.system` мимо `OrderContext` `combat.reinforcePending` мимо `CombatTokens` и `combat.step`/`combat.dice` мимо `CombatTurn` `combat.staged` мимо `CombatCards` `combat.healthBonus`/`combat.noRoute` мимо `CombatDamage` и `combat.damageResume` мимо `CombatHooks` и `combat.endRoundPlans`/`laterTokens` мимо `CombatPlans` `combat.tokens` мимо `CombatCubes` и `combat.noReinforce`/`ignoreFoeAtt` мимо `CombatBans` `combat.system`/`combat.pos` мимо `BattleField` `combat.winner`/`loser` мимо `CombatOutcome` `combat.attackerFrom`/`viaAdvance` мимо `CombatApproach` `combat.attacker`/`combat.defender` мимо `CombatSides` `state.event.seat`/`drawn`/`chosen` мимо `EventPhase` `state.quickResponsePending`/`Snapshot` мимо `QuickResponse` `state.stormReaction`/`chaosNoStormMove` мимо `StormPhase` `state.operationScheme*` мимо `OrderScheme` `state.pending` мимо `Question` и `state.phase` мимо `GamePhase` и `state.setup` мимо `BoardSetup` и `state.log` мимо `GameLog` и `state.over` мимо `GameOutcome`
 дают провал с именем файла и строкой):
 
 * жетоны: только `PlayerEntity` пишет в `assets`;
@@ -207,6 +208,11 @@ node tools/fs-smoke.mjs       # все скрипты грузятся, раун
   ход сборки: тайл из руки на карту (`placeTile`), очередь игроков с
   непустыми руками (`nextPlayer`) и варп-штормы «в обратном порядке хода»
   (`nextStorm`); запись остаётся в `state.setup` той же формы.
+* итог партии — один объект `GameOutcome` (`core/FSGameOutcome.js`): конец
+  партии (`over`, `end`), победитель (`winner`, `isWinner`), дележ победы
+  (`shared`, `tied`, `shares`, `victors`) и два пути к концу — по целям
+  (`declare`) и по последнему выжившему (`byElimination`); объявление для
+  панели (`headline`) и строка журнала (`note`) читают те же поля.
 * журнал игры — один объект `GameLog` (`core/FSGameLog.js`): запись шага
   (`add`), слово самой игры (`note`, место `GAME`), хвост для панели и статуса
   (`last`, `text`, `lines` с именем говорившего) и предел в двести записей
