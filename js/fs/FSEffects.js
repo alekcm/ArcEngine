@@ -1390,7 +1390,10 @@ const FS_EFFECTS = {
             const plus = /(?:увеличенн[а-яёa-z]*|больше)\s+на\s+(\d+)/i.exec(s);
             return [{ op: 'destroyStructureForMateriel', bonus: plus ? Number(plus[1]) : 0, who: 'me' }];
         }
+        // «…уничтожить 1 постройку в этом мире» («Сокруши это!») is a step of
+        // its own further below, not a stub.
         if (/уничтож[а-яёa-z]*[^.;]{0,140}?постройк[а-яёa-z]*/i.test(s)
+            && !/в\s+этом\s+мире/i.test(s)
             && !/сброс[а-яёa-z]*\s+эт[ау]\s+карт[ау]/i.test(s)
             && !/(?:^|\s)либо\s/i.test(s)) {
             return [{ op: 'note', text: s, manual: 'destroy-structure' }];
@@ -2542,6 +2545,19 @@ const FS_EFFECTS = {
         return 'uncontrolled';
     },
 
+    // Every friendly area of the board — the destination «в одну любую
+    // дружественную область» («Предвидение»).
+    friendlyAreasAny(R, state, seat) {
+        const out = [];
+        for (const sys of state.systems) {
+            for (const area of sys.areas) {
+                if (R.control(state, seat, sys.id, area.pos) !== 'friendly') continue;
+                out.push({ system: sys.id, pos: area.pos });
+            }
+        }
+        return out;
+    },
+
     // Do the two systems touch: the neighbours of one include the other. One
     // place for every «соседняя» of the cards.
     systemsTouch(R, state, a, b) {
@@ -2781,6 +2797,14 @@ const FS_EFFECTS = {
                 return def && (def.kl || 0) <= step.maxKl;
             });
         }
+        // «взять 1 Сестру Ренентилю или 1 Сестру Битвы из любого мира»
+        // («Свершившийся факт»): the card names the models themselves.
+        if (step.names && step.names.length) {
+            units = units.filter(u => {
+                const def = R.unitOf(state, u);
+                return !!def && step.names.some(n => FS_EFFECTS.sameName(def.name, n));
+            });
+        }
         return units;
     },
 
@@ -2789,6 +2813,8 @@ const FS_EFFECTS = {
     // contested area of the combat («поместить его в этот мир»).
     teleportTargets(R, state, seat, step) {
         if (step.to === 'combatWorld') return this.areasForAbility(R, state, seat, 'combatWorld');
+        // «разместить её в любом дружественном мире» («Свершившийся факт»).
+        if (step.to === 'friendlyWorldsAny') return this.areasForAbility(R, state, seat, 'friendlyWorldsAny');
         return this.areasForAbility(R, state, seat, 'friendlyWorldWithStructure');
     },
 
@@ -2867,6 +2893,9 @@ const FS_EFFECTS = {
             const names = [];
             for (const u of faction.units) {
                 if (this.sameName(u.name, text) || this.sameName(u.name, last)) names.push(u.name);
+                // «Сестру Ренентилю» — the card writes the last word in the
+                // wrong gender; the plural stem still names the model.
+                else if (this.sameName(u.name.split(/\s+/).pop(), last)) names.push(u.name);
             }
             return names;
         };
@@ -3191,6 +3220,46 @@ const RULES = [
     {
         re: /переверн[а-яёa-z]*\s+любое количество\s*`([^`]+)`\s*на\s*`([^`]+)`/i,
         build: m => ({ op: 'flipDie', n: 99, kind: FS_EFFECTS.icon(m[1]), to: FS_EFFECTS.icon(m[2]), all: true, pick: true }),
+    },
+    // «взять 1 Сестру Ренентилю или 1 Сестру Битвы из любого мира и разместить
+    // её в любом дружественном мире» («Свершившийся факт»): the model moves
+    // whole, from the world it stands in to any friendly world.
+    {
+        re: /взять\s+1\s+Сестру\s+(Ренентилю|Битвы|Ренентили)(?:\s+или\s+1\s+Сестру\s+(Ренентилю|Битвы|Ренентили))?\s+из\s+любого\s+мира\s+и\s+разместить\s+е[её]\s+в\s+любом\s+дружественном\s+мире/i,
+        build: (m, ctx) => {
+            // The card names the models in an oblique case: the catalogue name
+            // is what the filter needs («Сестру Ренентилю» → «Сестры
+            // ренетентии»).
+            const faction = FS_EFFECTS.factionOf(ctx);
+            const names = [];
+            for (const one of [m[1], m[2]]) {
+                if (!one) continue;
+                names.push(...FS_EFFECTS.unitNames('Сестр' + (one === 'Битвы' ? 'ы' : 'у') + ' ' + one, faction));
+            }
+            if (!names.length) for (const one of [m[1], m[2]]) if (one) names.push(one);
+            return { op: 'teleport', n: 1, pick: true, from: 'any', to: 'friendlyWorldsAny',
+                unitType: 'ground', names, who: 'me' };
+        },
+    },
+    // «переместить все ваши отряды из этого боя в одну любую дружественную
+    // область» («Предвидение»): the whole force leaves the fight.
+    {
+        re: /перемест[а-яёa-z]*\s+все\s+ваш[а-яёa-z]*\s+отряд[а-яёa-z]*\s+из\s+этого\s+боя\s+в\s+одну\s+любую\s+дружественную\s+область/i,
+        build: () => ({ op: 'evacuate', unitsFromCombat: true, who: 'me' }),
+    },
+    // «Когда отряд противника становится деморализованным во время боя, вы
+    // можете сбросить эту карту для того, чтобы уничтожить этот отряд»
+    // («Добить их!»): the routed unit of the fight is destroyed by the engine.
+    {
+        re: /уничтожить\s+этот\s+отряд/i,
+        build: () => ({ op: 'destroyDamagedFoe', who: 'me', routed: true }),
+    },
+    // «… в конце шага нанесения повреждений, для того, чтобы уничтожить 1
+    // постройку в этом мире» («Сокруши это!»): a building of the contested
+    // world of the fight.
+    {
+        re: /уничтожить\s+(?:1|одну)\s+постройку\s+в\s+этом\s+мире/i,
+        build: () => ({ op: 'destroyStructureHere', n: 1, who: 'me' }),
     },
     // «Затем получите такой же жетон» — the second half of the steal: the
     // step of `takeFoeAsset` already gives the copy, so the sentence adds

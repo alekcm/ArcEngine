@@ -5,7 +5,7 @@
 // приходит параметром effects, а общая рамка шага — объектом f (FSStepContext).
 
 class DestroySteps {
-    static ops = ['destroyUnit', 'destroy', 'destroyForMateriel', 'destroyStructureForMateriel', 'destroyDamagedFoe', 'avoidDestroy', 'sabotage', 'replaceStructure', 'replaceStructureType'];
+    static ops = ['destroyUnit', 'destroy', 'destroyForMateriel', 'destroyStructureForMateriel', 'destroyStructureHere', 'destroyDamagedFoe', 'avoidDestroy', 'sabotage', 'replaceStructure', 'replaceStructureType'];
 
     static destroyUnit(effects, f) {
         const { R, state, seat, answer, units } = f;
@@ -78,7 +78,7 @@ class DestroySteps {
         const u = units(answer.units)[0];
         if (!u || u.seat === seat) return null;
         R.destroyUnit(state, u);
-        R.log(state, seat, p.name + ': «Критический удар» уничтожает отряд, получивший урон.');
+        R.log(state, seat, p.name + ': уничтожен отряд противника, ставший добычей.');
         step.done = true;
         return null;
     }
@@ -121,6 +121,20 @@ class DestroySteps {
         if (u) R.destroyUnit(state, u);
         R.destroyStructure(state, st);
         R.log(state, seat, p.name + ': «Саботаж» уничтожает отряд и вражескую постройку.');
+        step.done = true;
+        return null;
+    }
+
+    // «уничтожить 1 постройку в этом мире» («Сокруши это!»): the building stands
+    // in the world of the fight, and the card does not ask who owns it — the
+    // player picks it (his own building may be the only one there).
+    static destroyStructureHere(effects, f) {
+        const { R, state, seat, answer, step } = f;
+        const st = state.structures.find(x => x.id === answer.structure
+            && x.system === step.system && x.area === step.pos);
+        if (!st) return null;
+        R.destroyStructure(state, st);
+        R.log(state, seat, state.players[seat].name + ' уничтожает постройку в этом мире.');
         step.done = true;
         return null;
     }

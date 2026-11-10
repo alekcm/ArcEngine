@@ -254,6 +254,9 @@ class FactionCatalog {
         const words = s => s.split(/\s+/).filter(Boolean);
         const wx = words(x);
         const wy = words(y);
+        // The LAST word decides when both names are phrases: «Сестры
+        // ренетентии» и «Сестры битвы» начинаются с одного слова, но это
+        // разные отряды («Виды Комморры»).
         const last = wx[wx.length - 1];
         const last2 = wy[wy.length - 1];
         if (last && last2 && this.stem(last) === this.stem(last2)) return true;

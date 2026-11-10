@@ -1241,6 +1241,36 @@ rule('phase-0a', '«Each round consists of four phases» + «The active player�
     eq(GamePhase.of({}).firstPlayer, null, 'без состояния первого игрока нет');
 });
 
+rule('scheme-0a', 'Событие-план: у каждой карты-плана в движке есть хотя бы одно действие, ни одна не остаётся только заглушкой', () => {
+    // A plan whose whole text is `scheme` + `trigger` + `note` does nothing at
+    // all when the player discards it: the class of «Пожиратель миров», where
+    // the text promises and the engine is silent.
+    const dig = (list, out, d) => {
+        if (d > 6) return out;
+        for (const one of [].concat(list || [])) {
+            if (!one) continue;
+            if (one.op) out.push(one.op);
+            for (const key of ['options', 'then', 'no', 'steps', 'replace']) if (one[key]) dig(one[key], out, d + 1);
+        }
+        return out;
+    };
+    /** @type {string[]} */
+    const silent = [];
+    for (const c of ctx.FS_DATA.events) {
+        if (!c.text || c.type !== 'scheme') continue;
+        const ops = dig(ctx.FS_EFFECTS.parse(c.text, { kind: 'event', faction: c.faction }), [], 0)
+            .filter(o => o !== 'note' && o !== 'icons' && o !== 'nothing' && o !== 'scheme' && o !== 'trigger');
+        if (!ops.length) silent.push(c.name);
+    }
+    // The plans the engine cannot perform yet are named one by one: the list
+    // may only shrink, and every card in it is a known TODO, not a surprise.
+    const known = ['Экстерминатус', 'Вперёд!', 'Варбосс', 'Обход', 'Видения Комморры',
+        'Несокрушимая вера', 'Псионическая война', 'Триумфальный отход'];
+    const extra = silent.filter(n => !known.includes(n));
+    eq(extra.join(', '), '', 'новых карт-планов без действия нет');
+    return eq(silent.length <= known.length, true, 'карты без действия перечислены (' + silent.length + ')');
+});
+
 rule('raid-0a', '«… выбрать и сбросить 1 жетон ценных ресурсов противника. Затем получите такой же жетон» (Воруй!)', () => {
     const card = ctx.FS_DATA.orders.find(c => c.name === 'Воруй!');
     eq(!!card, true, 'карта есть');

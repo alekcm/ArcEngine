@@ -153,7 +153,26 @@ class MoveSteps {
     }
 
     static evacuate(effects, f) {
-        const { R, state, seat, step, answer, p } = f;
+        const { R, state, seat, step, answer, p, units } = f;
+        // «переместить все ваши отряды из этого боя в одну любую дружественную
+        // область» («Предвидение»): every unit leaves together.
+        if (step.unitsFromCombat) {
+            const chosen = units(answer.units);
+            const area = answer.area;
+            if (!area) {
+                const list = effects.friendlyAreasAny(R, state, seat);
+                if (!list.length) {
+                    R.log(state, seat, p.name + ': нет дружественной области, куда уйти.');
+                    return null;
+                }
+                return { question: { kind: 'areas', who: seat, op: 'evacuate', n: 1,
+                    options: list, text: 'В какую дружественную область уйти?' } };
+            }
+            for (const u of chosen) R.board(state).moveUnit(u, area, { seat });
+            R.log(state, seat, p.name + ' выводит отряды из боя в другую область.');
+            step.done = true;
+            return null;
+        }
         if (step.stage !== 'type' && step.stage !== 'area') {
             const st = state.structures.find(x => x.id === answer.structure && x.seat === seat);
             if (!st) return null;

@@ -5,7 +5,7 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class PlaceAsks {
-    static ops = ['placeUnit', 'placeStructure', 'placeFree', 'placeReinforcement', 'placeOrderAny', 'teleport', 'retreat', 'retreatInstead', 'evacuate', 'moveUnits', 'moveUnit', 'moveStructure', 'route', 'replaceUnit', 'replaceStructure', 'replaceStructureType', 'destroyUnit', 'destroy', 'sabotage', 'destroyForMateriel', 'destroyStructureForMateriel', 'avoidDestroy', 'restore', 'restoreOneSystem', 'resurrectOffer', 'restoreFallenOffer', 'swapCombatCards', 'swapCombatPair', 'destroyDamagedFoe'];
+    static ops = ['placeUnit', 'placeStructure', 'placeFree', 'placeReinforcement', 'placeOrderAny', 'teleport', 'retreat', 'retreatInstead', 'evacuate', 'moveUnits', 'moveUnit', 'moveStructure', 'route', 'replaceUnit', 'replaceStructure', 'replaceStructureType', 'destroyUnit', 'destroy', 'sabotage', 'destroyForMateriel', 'destroyStructureForMateriel', 'destroyStructureHere', 'avoidDestroy', 'restore', 'restoreOneSystem', 'resurrectOffer', 'restoreFallenOffer', 'swapCombatCards', 'swapCombatPair', 'destroyDamagedFoe'];
 
     static placeUnit(effects, f) {
         const { R, state, seat, step, ctx, p } = f;
@@ -157,7 +157,16 @@ class PlaceAsks {
     }
 
     static evacuate(effects, f) {
-        const { state, seat } = f;
+        const { state, seat, step, combat } = f;
+        // «переместить все ваши отряды из этого боя в одну любую дружественную
+        // область» («Предвидение»): the units of the fight come first.
+        if (step.unitsFromCombat) {
+            const field = combat ? BattleField.of(combat) : null;
+            const units = state.units.filter(u => u.seat === seat && (!field || field.holds(u)));
+            if (!units.length) return null;
+            return { question: { kind: 'units', who: seat, op: 'evacuate', n: units.length,
+                options: units.map(u => u.id), text: 'Все ваши отряды покидают бой — подтвердить?' } };
+        }
         /** @type {any[]} */
         const list = state.structures.filter(x => x.seat === seat).map(x => x.id);
         if (!list.length) return null;
@@ -357,6 +366,27 @@ class PlaceAsks {
         return { question: { kind: 'areas', who: seat, op: 'destroyForMateriel', options: areas, text: 'В каком мире уничтожить отряды и постройки?' } };
     }
 
+    // «уничтожить 1 постройку в этом мире» («Сокруши это!»): every building of
+    // the contested world — the card names no owner.
+    static destroyStructureHere(effects, f) {
+        const { R, state, seat, step, combat } = f;
+        const field = combat ? BattleField.of(combat) : null;
+        const sys = field ? field.system : (state.order ? OrderContext.of(state.order).system : null);
+        const pos = field ? field.pos : null;
+        if (!sys) return null;
+        step.system = sys;
+        step.pos = pos;
+        const list = state.structures
+            .filter(s2 => s2.system === sys && (!pos || s2.area === pos))
+            .map(s2 => s2.id);
+        if (!list.length) {
+            R.log(state, seat, state.players[seat].name + ': в этом мире нет построек.');
+            return null;
+        }
+        return { question: { kind: 'structures', who: seat, op: 'destroyStructureHere', n: 1,
+            options: list, text: 'Какую постройку уничтожить?' } };
+    }
+
     // «… постройку в дружественном мире»: the buildings to choose from are the
     // owner's own, and the world must be theirs — the question shows no
     // building the card does not allow.
@@ -472,13 +502,22 @@ class PlaceAsks {
     }
 
     static destroyDamagedFoe(effects, f) {
-        const { state, seat, ctx } = f;
+        const { state, seat, step, ctx, combat } = f;
         const ids = (ctx && ctx.ctx && ctx.ctx.damageTargets) || [];
         /** @type {any[]} */
-        const list = ids.filter(id => {
+        let list = ids.filter(id => {
             const u = state.units.find(x => x.id === id);
             return !!u && u.seat !== seat;
         });
+        // «Когда отряд противника становится деморализованным … уничтожить этот
+        // отряд» («Добить их!»): the card reacts to the unit that was just
+        // routed, not to the ones that took damage.
+        if (!list.length && step.routed) {
+            const field = combat ? BattleField.of(combat) : null;
+            list = state.units
+                .filter(u => u.seat !== seat && u.routed && (!field || field.holds(u)))
+                .map(u => u.id);
+        }
         if (!list.length) return null;
         return { question: {
             kind: 'units', who: seat, op: 'destroyDamagedFoe', n: 1,
