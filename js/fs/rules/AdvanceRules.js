@@ -222,10 +222,9 @@ class AdvanceRules {
         for (const [key, n] of totals) {
             // `n` is the total that would END the movement here — it is
             // counted against the cap (five), not against the room left: the
-            // room is measured before the move, while the marching units
-            // still stand in it. The total against the room refused a legal
-            // march out of a full area («four stay, one marches» counted the
-            // marching unit twice and read six).
+            // room is measured before the move. Against the room, a march out
+            // of a stack of four was refused (three remain, the room was one)
+            // and so was joining four (five would end, the room was one).
             const [systemId, pos] = key.split(':');
             if (n - this.engine.unitLimit(state, systemId, pos) > 0) {
                 return { ok: false, error: this.engine.unitLimitText() };

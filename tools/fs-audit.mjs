@@ -746,6 +746,18 @@ rule('adv-7', '«… can never end the movement with more than five units in a s
         const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: u.id, system: sys.id, pos: worlds[1] }] });
         eq(res.ok, true, 'Гвардеец уходит из четырёх в свой мир: ' + (res.error || ''));
     }
+    // Входящий к четырём стоящим: итог ровно пять — ход законен.
+    {
+        const found = twoVoids();
+        if (!found) return 'на карте нет системы с двумя пустотами';
+        const { st, sys } = found;
+        const [a, b] = sys.areas.filter(x => !x.world).map(x => x.pos);
+        for (let i = 0; i < 4; i++) unit(st, 0, 'крейсеры', sys.id, b);
+        const incomer = unit(st, 0, 'крейсеры', sys.id, a);
+        advance(st, 0, sys.id, b, 'ships');
+        const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: incomer.id, system: sys.id, pos: b }] });
+        eq(res.ok, true, 'пятый корабль входит к четырём стоящим: ' + (res.error || ''));
+    }
     // А предел держится: план, который закончил бы шесть в одной области, отвергнут.
     {
         const found = twoVoids();
@@ -3680,6 +3692,29 @@ rule('cap-1', '«he must destroy units of his choice in that area» — отря
     const extra = st.units.filter(u => u.seat === 0)[0];
     eq(FS_RULES.apply(st, 0, { type: 'trimUnit', system: sys.id, pos, unit: extra.id }).ok, true, 'игрок убирает отряд');
     eq(st.units.filter(u => u.seat === 0).length, cap + 1, 'отряд убран');
+});
+
+rule('cap-1c', '«A player can move up to five ships to a void … he must destroy any units that are in excess of three» — пустота после приказа держит три', () => {
+    const st = empty();
+    const sys = st.systems.find(s => s.areas.filter(a => !a.world).length >= 2);
+    if (!sys) return 'на карте нет системы с двумя пустотами';
+    const [a, b] = sys.areas.filter(x => !x.world).map(x => x.pos);
+    for (let i = 0; i < 4; i++) unit(st, 0, 'крейсеры', sys.id, b);
+    const fifth = unit(st, 0, 'крейсеры', sys.id, a);
+    advance(st, 0, sys.id, b, 'ships');
+    const moved = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: fifth.id, system: sys.id, pos: b }] });
+    eq(moved.ok, true, 'пятый корабль входит в пустоту: ' + (moved.error || ''));
+    eq(FS_RULES.apply(st, 0, { type: 'finishAdvance' }).ok, true, 'приказ завершён');
+    const entries = FS_RULES.trimQueue(st).entries();
+    eq(entries.length, 1, 'пустота просит убрать лишнее');
+    eq(entries[0].cap, 3, 'вместимость пустоты — три');
+    for (const u of st.units.filter(u => u.seat === 0).slice(0, 2)) {
+        eq(FS_RULES.apply(st, 0, { type: 'trimUnit', system: sys.id, pos: b, unit: u.id }).ok,
+            true, 'игрок убирает лишний корабль');
+    }
+    eq(st.units.filter(u => u.seat === 0).length, 3, 'осталось три корабля');
+    eq(FS_RULES.trimQueue(st).entries().length, 0, 'очередь пуста');
+    return true;
 });
 
 rule('struct-1b', '«Bastion: combat 2, health 3, morale 2» (07-tokens.md) — характеристики построек в одном месте', () => {

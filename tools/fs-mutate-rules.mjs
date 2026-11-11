@@ -719,6 +719,13 @@ const TABLE = [
         new: '            if (n - this.engine.unitLimit(state, systemId, pos, seat) > 0) {',
         why: '«… can never end the movement with more than five units in a single area» — итог хода меряют местом до хода',
     },
+    {
+        check: 'cap-1c',
+        file: 'js/fs/core/FSBoard.js',
+        old: '        let cap = area.world ? (area.world.capacity || FS_RULES_CONFIG.AREA_CAP) : FS_RULES_CONFIG.AREA_CAP;',
+        new: '        let cap = FS_RULES_CONFIG.AREA_MAX_UNITS;',
+        why: '«he must destroy any units that are in excess of three (the void’s unit capacity)» — пустота держит пять',
+    },
 ];
 
 const args = process.argv.slice(2);
