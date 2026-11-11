@@ -1210,7 +1210,7 @@ const FS_EFFECTS = {
         if (k1 !== 'token' || k2 !== 'token') return null;
         const filter = unitFilter(m[1]) || typeFilter(m[1]);
         const max = m[6] ? Number(m[6]) : null;
-        const distinctLevel = /разн[а-яёa-z]*\s+(?:командн[а-яёa-z]*\s+)?уровн/i.test(s);
+        const distinctLevel = /разн[а-яёa-z]*\s+командн[а-яёa-z]*\s+уровн/i.test(s);
         const t = { op: 'gainToken', per: 'unit', distinctLevel, filter, max, who: 'me' };
         return [{
             op: 'choice', text: s,
@@ -3372,7 +3372,7 @@ const RULES = [
             const kind = FS_EFFECTS.icon(m[2]);
             if (!['att', 'def', 'morale', 'any'].includes(kind)) return null;
             const filter = unitFilter(m[3]) || typeFilter(m[3]);
-            const distinctLevel = /разн[а-яёa-z]*\s+(?:командн[а-яёa-z]*\s+)?уровн/i.test(m[0]);
+            const distinctLevel = /разн[а-яёa-z]*\s+командн[а-яёa-z]*\s+уровн/i.test(m[0]);
             return { op: 'rerollDie', n: num(m[1]), kind, who: 'foe', pick: true,
                      per: 'unit', inBattle: true, distinctLevel, filter, text: m[0] };
         },
@@ -3700,11 +3700,15 @@ const RULES = [
             const kind = FS_EFFECTS.iconKind(m[2]);
             if (kind !== 'token' && kind !== 'cube') return null;
             const filter = unitFilter(m[3]) || typeFilter(m[3]);
+            // «за каждый ваш недеморализованный отряд РАЗНОГО командного уровня»
+            // («Молот Императора», «Боевое содружество»): one for each level, not
+            // one for each unit — three Guardsmen of level 0 are one level.
+            const distinctLevel = /разн[а-яёa-z]*\s+командн[а-яёa-z]*\s+уровн/i.test(m[0]);
             return {
                 op: kind === 'token' ? 'gainToken' : 'gainDie',
                 n: num(m[1]), kind: FS_EFFECTS.icon(m[2]), per: 'unit',
                 // A combat card counts the units of the contested area.
-                inBattle: true,
+                inBattle: true, distinctLevel,
                 filter, max: m[4] ? Number(m[4]) : null, text: m[0],
             };
         },
