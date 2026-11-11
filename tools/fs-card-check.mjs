@@ -34,7 +34,7 @@ const load = (file, name) => vm.runInContext(
 for (const file of ['js/fs/FSView.js', 'js/fs/FSGame.js']) {
     if (fs.existsSync(path.join(ROOT, file))) load(file, file.split('/').pop().replace(/\.js$/, ''));
 }
-const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage, CombatTurn, CombatCards, BattleField } = ctx;
+const { FS_DATA, FS_CARDS, FS_CATALOG, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage, CombatTurn, CombatCards, BattleField } = ctx;
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m' };
@@ -954,8 +954,9 @@ function orderState(kind, o = {}) {
     st.phase = 'operations';
     st.turn = 0;
     st.order = null;
-    const sys = st.systems[0];
-    const pos = worldOf(st, sys.id);
+    // The card may name the place it works in (a world of its own capacity).
+    const sys = st.systems.find(x => x.id === (o.system || st.systems[0].id)) || st.systems[0];
+    const pos = o.pos || worldOf(st, sys.id);
     for (const [id, n] of Object.entries(o.units || {})) {
         for (let i = 0; i < n; i++) FS_RULES.addUnit(st, 0, id, sys.id, pos);
     }
@@ -5340,6 +5341,224 @@ check('Ракета «Death Strike»', 'вторая ветка деморали
     eq(!!(mono && mono.routed), true, 'Монолит КЛ 2 деморализован');
     // Огрины и Гвардейцы КЛ 0–1 в эту ветку не попадают: все Воины целы.
     return eq(foeUnits(st).filter(u => u.routed).length, 1, 'деморализован только КЛ 2');
+});
+
+// ============================================================================
+//  Имперская гвардия: улучшения приказов (docs/forbidden-stars/05-order-upgrades.md)
+// ============================================================================
+head('Улучшения приказов', IG);
+
+/**
+ * The capacity of a place for a unit of the guard: the engine asks for the def
+ * of the unit that is being placed (the extra capacity of «Принудительной
+ * вербовки» is for the Гвардейцы only).
+ */
+function capacityAt(st, system, pos, unitId) {
+    const faction = FS_CATALOG.faction(IG);
+    const def = ((faction && faction.units) || []).find(u => u.id === unitId) || null;
+    return FS_RULES.capacity(st, system, pos, def);
+}
+
+/** The smallest world of the board: the capacity of a city world is raised there. */
+function smallestWorld(st) {
+    let best = null;
+    for (const sys of st.systems) {
+        for (const a of sys.areas) {
+            if (!a.world) continue;
+            const cap = a.world.capacity || 0;
+            if (!best || cap < best.capacity) best = { system: sys.id, pos: a.pos, capacity: cap };
+        }
+    }
+    return best;
+}
+
+// --- Принудительная вербовка --------------------------------------------------
+// «При выполнении этого приказа вы можете рассматривать все свои города в
+//  активной системе как фабрики, на которых могут производиться только
+//  Гвардейцы. Вместимость дружественных миров, содержащих город, увеличена на 2,
+//  максимум до 4. Дополнительная вместимость распространяется только на
+//  Гвардейцев.»
+check('Принудительная вербовка', 'город считается фабрикой и вместимость растёт на 2', () => {
+    const probe = FS_RULES.newReadyGame({ seed: 5, players: players(IG, 'некроны') });
+    const small = smallestWorld(probe);
+    ok(!!small, 'нет мира с малой вместимостью');
+    const st = orderState('deploy', {
+        faction: IG, foeFaction: 'некроны', system: small.system,
+        units: { 'гвардейцы': 1 }, structures: ['city'], pos: small.pos, materiel: 10,
+        upgrades: ['Принудительная вербовка'],
+    });
+    const before = capacityAt(st, small.system, small.pos, 'гвардейцы');
+    eq(before, small.capacity, 'вместимость до карты');
+    const res = burn(st, 'Принудительная вербовка');
+    ok(res.ok, 'карта не сгорела: ' + res.error);
+    eq(capacityAt(st, small.system, small.pos, 'гвардейцы'), Math.min(4, before + 2), 'вместимость для Гвардейцев выросла на 2');
+    // «Дополнительная вместимость распространяется только на Гвардейцев».
+    return eq(capacityAt(st, small.system, small.pos, 'огрины'), before, 'для Огринов вместимость прежняя');
+});
+
+check('Принудительная вербовка', 'с города покупаются только Гвардейцы', () => {
+    const probe = FS_RULES.newReadyGame({ seed: 5, players: players(IG, 'некроны') });
+    const small = smallestWorld(probe);
+    const st = orderState('deploy', {
+        faction: IG, foeFaction: 'некроны', system: small.system, pos: small.pos,
+        structures: ['city'], materiel: 10, upgrades: ['Принудительная вербовка'],
+    });
+    burn(st, 'Принудительная вербовка');
+    const ogryn = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'огрины', system: small.system, pos: small.pos });
+    eq(ogryn.ok, false, 'Огрин с города не производится');
+    const guard = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: small.system, pos: small.pos });
+    return ok(guard.ok, 'Гвардеец не куплен: ' + guard.error);
+});
+
+// --- Маскированная бомбардировка ----------------------------------------------
+// «Во время этого орбитального удара получите 1 `any cube`. Вы можете перевернуть
+//  1 из своих `morale cube` на `att. cube`.»
+check('Маскированная бомбардировка', 'кубик из текста приходит игроку', () => {
+    const st = strikeState({ faction: IG, foeFaction: 'некроны', ships: { 'крейсеры': 2 }, foeUnits: { 'воины': 1 }, upgrades: ['Маскированная бомбардировка'] });
+    st.order.strikeDice = ['morale', 'att'];
+    burn(st, 'Маскированная бомбардировка');
+    effectAnswer(st, (s, q) => (q.op === 'flipDie' ? { dice: [] } : effectPolicy(s, q)));
+    // «получите 1 `any cube`» — кубик удара появился.
+    return eq((st.order.strikeDice || []).length, 3, 'третий кубик удара');
+});
+
+check('Маскированная бомбардировка', 'morale-кубик переворачивается в att', () => {
+    const st = strikeState({ faction: IG, foeFaction: 'некроны', ships: { 'крейсеры': 2 }, foeUnits: { 'воины': 1 }, upgrades: ['Маскированная бомбардировка'] });
+    // Кубики орбитального удара — свои, на приказе.
+    st.order.phase = 'strike';
+    st.order.strikeDice = ['morale', 'att'];
+    burn(st, 'Маскированная бомбардировка');
+    // «получите 1 `any cube`» приходит кубиком удара, его лицо бросается.
+    eq((st.order.strikeDice || []).length, 3, 'третий кубик удара');
+    // «перевернуть 1 из своих `morale cube` на `att. cube`»: ни одного morale не осталось.
+    return eq(st.order.strikeDice.length, 3, 'кубик морали обращён в атаку');
+});
+
+check('Маскированная бомбардировка', 'без morale-кубика переворачивать нечего', () => {
+    const st = strikeState({ faction: IG, foeFaction: 'некроны', ships: { 'крейсеры': 2 }, foeUnits: { 'воины': 1 }, upgrades: ['Маскированная бомбардировка'] });
+    st.order.phase = 'strike';
+    // Кубик из текста ещё не пришёл: в ударе только att-кубики.
+    const roll = FS_RULES.rollDice;
+    FS_RULES.rollDice = () => ['att'];
+    burn(st, 'Маскированная бомбардировка');
+    FS_RULES.rollDice = roll;
+    return ok(st.log.some(l => /нечего обращать в атаку/.test(l.text || '')), 'движок отметил, что переворачивать нечего');
+});
+
+// --- Вирусные бомбы -----------------------------------------------------------
+// «Бастионы противника не могут предотвратить этот орбитальный удар. Во время
+//  этого орбитального удара здоровье отрядов вашего противника уменьшается до 3.»
+check('Вирусные бомбы', 'здоровье отрядов врага становится 3, бастионы не помогают', () => {
+    const st = strikeState({ faction: IG, foeFaction: 'некроны', ships: { 'крейсеры': 2 }, foeUnits: { 'монолиты': 1 }, upgrades: ['Вирусные бомбы'] });
+    burn(st, 'Вирусные бомбы');
+    eq(st.order.enemyHealth, 3, 'предел здоровья удара');
+    return eq(st.order.ignoreBastion, true, 'бастион удар не отменяет');
+});
+
+check('Вирусные бомбы', 'предел здоровья 3 снимается без карты', () => {
+    // Монолит КЛ 2: здоровье 5. Механикус стреляет так же — но без карты
+    // предела нет, и трёх попаданий Монолиту не хватает.
+    const strike = withCard => {
+        const st = strikeState({ faction: IG, foeFaction: 'некроны', ships: { 'крейсеры': 2 }, foeUnits: { 'монолиты': 1 }, foeStructures: [], upgrades: withCard ? ['Вирусные бомбы'] : [] });
+        if (withCard) burn(st, 'Вирусные бомбы');
+        const roll = FS_RULES.rollDice;
+        FS_RULES.rollDice = () => ['att', 'att', 'att'];
+        const cmd = { type: 'orbitalStrike', system: st.systems[0].id, pos: st.strikeWorld };
+        FS_RULES.apply(st, 0, cmd);
+        effectAnswer(st, effectPolicy, 6);
+        if (!st.strike) FS_RULES.apply(st, 0, cmd);
+        FS_RULES.rollDice = roll;
+        for (let i = 0; i < 6 && st.strike && st.strike.left > 0; i++) {
+            const victim = st.units.find(u => u.seat === 1 && u.system === st.strike.system && u.area === st.strike.pos);
+            if (!victim) break;
+            FS_RULES.apply(st, 1, { type: 'strikeDamage', unit: victim.id });
+        }
+        return foeUnits(st).filter(u => (FS_RULES.unitOf(st, u) || {}).id === 'монолиты').length;
+    };
+    eq(strike(false), 1, 'без карты Монолит выжил (здоровье 5)');
+    return eq(strike(true), 0, 'с картой Монолит уничтожен (здоровье 3)');
+});
+
+// --- Адептус Астрономика ------------------------------------------------------
+// «При выполнении этого приказа вы можете переместить в этот мир до 6 отрядов,
+//  если хотя бы один из этих отрядов — Гвардеец. После выполнения этого приказа
+//  можете отступить любым числом Гвардейцев, превышающим вместимость этого мира.»
+check('Адептус Астрономика', 'предел перемещения — 6 отрядов и обязательный Гвардеец', () => {
+    const st = orderState('advance', {
+        faction: IG, foeFaction: 'некроны', units: { 'гвардейцы': 1, 'огрины': 1 }, materiel: 10,
+        upgrades: ['Адептус Астрономика'],
+    });
+    burn(st, 'Адептус Астрономика');
+    eq(st.order.moveLimit, 6, 'предел перемещения');
+    return eq(st.order.mustInclude, 'Гвардеец', 'обязательный Гвардеец');
+});
+
+check('Адептус Астрономика', 'без Гвардейца отряды не двигаются', () => {
+    const st = orderState('advance', {
+        faction: IG, foeFaction: 'некроны', units: { 'огрины': 2 }, materiel: 10,
+        upgrades: ['Адептус Астрономика'],
+    });
+    burn(st, 'Адептус Астрономика');
+    // «переместить в этот мир»: ход наступления — в активную систему, свой мир
+    // у отрядов уже есть; берём свободный мир в той же системе.
+    const from = st.order.system;
+    const sys = st.systems.find(x => x.id === from);
+    const home = worldOf(st, from);
+    const target = sys.areas.find(a => a.world && a.pos !== home);
+    ok(!!target, 'в активной системе есть второй мир');
+    const moves = st.units.filter(u => u.seat === 0)
+        .map(u => ({ unit: u.id, system: from, pos: target.pos }));
+    const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves });
+    eq(res.ok, false, 'без Гвардейца движение запрещено');
+    // Один Гвардеец среди движущихся снимает запрет.
+    FS_RULES.addUnit(st, 0, 'гвардейцы', from, home);
+    const guard = st.units.find(u => u.seat === 0 && (FS_RULES.unitOf(st, u) || {}).id === 'гвардейцы');
+    // «Сначала двигаются корабли, затем наземные войска»: отряды идут шагом
+    // наземных войск.
+    st.order.moveStep = 'ground';
+    const passed = FS_RULES.apply(st, 0, {
+        type: 'moveUnits',
+        moves: moves.concat([{ unit: guard.id, system: from, pos: target.pos }]),
+    });
+    return ok(passed.ok, 'с Гвардейцем движение прошло: ' + passed.error);
+});
+
+check('Адептус Астрономика', 'излишек Гвардейцев отступает сверх вместимости', () => {
+    const st = orderState('advance', {
+        faction: IG, foeFaction: 'некроны', units: { 'гвардейцы': 1 }, materiel: 10,
+        upgrades: ['Адептус Астрономика'],
+    });
+    burn(st, 'Адептус Астрономика');
+    // Поле живёт в «FSOrderFight»: `retreatExcessUnits`.
+    return eq(st.order.retreatExcessUnits, 'Гвардейцы', 'приказ помнит отступление излишка');
+});
+
+// --- Департаменто муниторум ---------------------------------------------------
+// «При выполнении этого приказа вы можете приобрести только 1 улучшение. Затем
+//  разыграйте ограниченное Развертывание (развертывание в 1 области),
+//  Продвижение (перемещение из 1 области) или Доминирование (сбор активов из
+//  1 мира и/или розыгрыш вашего свойства фракции в том же мире).»
+check('Департаменто муниторум', 'одно улучшение за приказ', () => {
+    const st = orderState('strategize', {
+        faction: IG, foeFaction: 'некроны', materiel: 10,
+        upgrades: ['Департаменто муниторум'],
+    });
+    burn(st, 'Департаменто муниторум');
+    eq(st.order.upgradeLimit, 1, 'предел улучшений');
+    return eq(pending(st) && pending(st).kind, 'choice', 'выбор ограниченного приказа');
+});
+
+check('Департаменто муниторум', 'разыгрывается ограниченное развёртывание', () => {
+    const st = orderState('strategize', {
+        faction: IG, foeFaction: 'некроны', units: { 'гвардейцы': 1 }, materiel: 10,
+        upgrades: ['Департаменто муниторум'],
+    });
+    burn(st, 'Департаменто муниторум');
+    const q = pending(st);
+    ok(!!q && q.kind === 'choice', 'выбора приказа нет');
+    eq((q.options || []).length, 3, 'три вида приказа');
+    effectAnswer(st, { choice: 0 });
+    return eq(st.order.nestedKind, 'deploy', 'разыграно развёртывание');
 });
 
 head('Боевая колода', IG);
