@@ -7,6 +7,22 @@ class StrategizeRules {
         this.engine = engine;
     }
 
+    /**
+     * What one upgrade card costs this player: the printed price less the
+     * discount of the cards («снизить стоимость улучшений на 1»). ONE formula
+     * for the purchase, the refund and the strategy panel — the panel used to
+     * subtract the discount on its own, so a change of the rule would have
+     * reached the cards but not the price on the screen.
+     * @param {any} state @param {number} seat @param {any} card
+     */
+    cardPrice(state, seat, card) {
+        const p = state.players[seat] || {};
+        if (!card) return 0;
+        // A basic card that was returned to the upgrade pile costs zero.
+        if (card.upgrade === false) return 0;
+        return Math.max(0, (card.cost || 0) - (p.cardDiscount || 0));
+    }
+
     cmdBuyUpgrade(state, seat, cmd) {
         const order = this.engine.orderOf(state, seat, 'strategize');
         if (!order) return { ok: false, error: 'Сейчас нельзя покупать улучшения.' };
@@ -26,7 +42,7 @@ class StrategizeRules {
             if (!card) return { ok: false, error: 'Нет такой карты.' };
             if (card.kl > this.engine.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
             // A basic card that was returned to the upgrade pile costs zero.
-            const cost = card.upgrade ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0;
+            const cost = this.cardPrice(state, seat, card);
             if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
             const deck = FS_CARDS.combatDeck(this.engine, state, seat);
             if (deck.count(card.name) >= 2) return { ok: false, error: 'Эта карта улучшения уже есть у вас в колоде.' };
@@ -72,7 +88,7 @@ class StrategizeRules {
             const card = FS_CATALOG.card('orders', p.faction, cmd.card);
             if (!card) return { ok: false, error: 'Нет такой карты.' };
             if (card.kl > this.engine.commandLevel(state, seat)) return { ok: false, error: 'Не хватает уровня командования.' };
-            const cost = Math.max(0, card.cost - (p.cardDiscount || 0));
+            const cost = this.cardPrice(state, seat, card);
             if (p.materiel < cost) return { ok: false, error: 'Не хватает материи.' };
             // One copy of each order upgrade per player: already-owned cards are not offered twice.
             if ((p.upgrades || []).some(u => u.name === card.name)) {
@@ -104,7 +120,7 @@ class StrategizeRules {
                 return { ok: false, error: 'В колоде нет купленных копий — отмена невозможна.' };
             }
             const card = FS_CATALOG.card('combat', p.faction, buy.card);
-            const fallback = card ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0;
+            const fallback = this.cardPrice(state, seat, card);
             this.engine.player(state, seat).gainMateriel(buy.price != null ? buy.price : fallback);
             upgrades.refundCombat();
             this.engine.log(state, seat, p.name + ' отменил покупку боевого улучшения «' + buy.card + '».');
@@ -116,7 +132,7 @@ class StrategizeRules {
             const idx = (p.upgrades || []).findIndex(u => u.name === name);
             if (idx < 0) return { ok: false, error: 'Улучшение уже куда-то пропало — отмена невозможна.' };
             const card = FS_CATALOG.card('orders', p.faction, name);
-            const fallback = card ? Math.max(0, card.cost - (p.cardDiscount || 0)) : 0;
+            const fallback = this.cardPrice(state, seat, card);
             p.upgrades.splice(idx, 1);
             const pile = p.decks && Array.isArray(p.decks.upgradeOrder) ? p.decks.upgradeOrder : null;
             if (pile && !pile.includes(name)) pile.push(name);

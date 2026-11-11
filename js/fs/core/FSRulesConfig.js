@@ -24,6 +24,10 @@ const FS_RULES_CONFIG = {
     // "three of each" rule — that number was invented by the engine.
     STRUCTURE_POOL: { city: 15, factory: 10, bastion: 10 },
     STRUCTURE_TOKENS: 9,
+    // A cache token pays two materiel of one purchase («потратить жетон запасов»):
+    // one number for the units and for the structures, read by the purchase and by
+    // the panel that shows the price.
+    CACHE_VALUE: 2,
     // The four orders as the log and the panels name them. One spelling for the
     // rules («выложил приказ «наступление»») and the panel («Наступление»).
     ORDER_NAMES: {

@@ -1490,7 +1490,9 @@ class FSGame {
         ctx.title = 'Стратегия · улучшения';
         ctx.text = 'Купите одно боевое улучшение и одно улучшение приказа.';
         const level = FS_RULES.commandLevel(s, me);
-        const costOf = c => Math.max(0, c.cost - (p.cardDiscount || 0));
+        // The price of a card is the rule's, not the panel's: one discount
+        // formula for the purchase, the refund and this screen.
+        const costOf = c => FS_RULES.cardPrice(s, me, c);
         const noUnits = !order || !FS_RULES.hasUnitsOrStructures(s, me, OrderContext.of(order).system);
         // The combat deck, card for card, in the same component as the hand of the
         // battle; the discard for a combat upgrade is two cards of the same name.

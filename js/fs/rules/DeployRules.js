@@ -191,7 +191,7 @@ class DeployRules {
         // «уменьшить общую цену всех покупок (включая здания) на 1».
         if (deal.purchaseDiscount) cost = Math.max(0, cost - deal.purchaseDiscount);
         if (o.pairMate) return 0;
-        if (o.cache) cost = Math.max(0, cost - 2);
+        if (o.cache) cost = Math.max(0, cost - FS_RULES_CONFIG.CACHE_VALUE);
         // The order may sell a unit of command level 0 for 1 materiel.
         if (deal.cheapPrice && def.kl === 0) cost = Math.min(cost, deal.cheapPrice);
         if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
@@ -204,7 +204,7 @@ class DeployRules {
         const o = opts || {};
         const deal = OrderDeal.of(order);
         const stats = this.engine.structureStats(type);
-        let cost = Math.max(0, (stats.cost || 0) - (o.cache ? 2 : 0));
+        let cost = Math.max(0, (stats.cost || 0) - (o.cache ? FS_RULES_CONFIG.CACHE_VALUE : 0));
         if (deal.purchaseDiscount) cost = Math.max(0, cost - deal.purchaseDiscount);
         return cost;
     }
