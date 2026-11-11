@@ -2910,6 +2910,93 @@ check('Фаланга монолита', 'урон в конце раунда р
 });
 
 // --- Планы некронов ---------------------------------------------------------
+check('Пробуждение мира-гробницы', 'покупка постройки в дружественном мире', () => {
+    // Некроны населяют мир своим отрядом: постройка ставится только на
+    // контролируемый мир. Материя 12 хватает на фабрику (2).
+    const st = eventState('Пробуждение мира-гробницы', { faction: 'некроны', units: { 'воины': 1 }, materiel: 12 });
+    const res = playEvent(st);
+    ok(res.ok, 'событие не разыграно: ' + res.error);
+    for (let i = 0; i < 6 && st.pending; i++) {
+        const q = st.pending.question;
+        const answer = q.kind === 'structureTypes' ? { type: 'factory' }
+            : q.kind === 'areas' ? { area: (q.options || [])[0] } : { choice: 0 };
+        FS_RULES.apply(st, st.pending.seat === undefined ? 0 : st.pending.seat, { type: 'effect', answer });
+    }
+    eq(st.structures.filter(x => x.seat === 0 && x.type === 'factory').length, 1, 'фабрика построена');
+    return eq(st.players[0].materiel, 10, 'заплачено 2 материи');
+});
+
+check('Гнев дракона пустоты', 'сброс плана в начале раунда даёт по 3 урона обоим', () => {
+    // План спрашивается в начале раунда боя: отказ оставляет бой как есть,
+    // сброс добавляет по 3 урона каждой стороне в шаге повреждений.
+    const play = use => {
+        const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', units: { 'воины': 2 }, foeUnits: { 'огрины': 2 }, dice: ['att', 'att'], foeDice: ['att', 'att'], noFoeCard: true });
+        schemeInPlay(st, 'Гнев дракона пустоты', 'некроны');
+        const c = st.combat;
+        const inCombat = side => (st.combat ? BattleField.of(st.combat).units(st, side).length : 0);
+        const before = { mine: inCombat(c.attacker), foe: inCombat(c.defender) };
+        for (let i = 0; i < 40 && st.combat; i++) {
+            if (st.pending) {
+                const q = st.pending.question;
+                const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
+                FS_RULES.apply(st, seat, { type: 'effect', answer: q.kind === 'scheme' ? { choice: use ? 0 : 1 } : (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : { choice: 0 }) });
+                continue;
+            }
+            const step = CombatTurn.of(st.combat).step;
+            if (step === 'retreat') break;
+            if (step === 'reinforce-attacker' || step === 'reinforce-defender') {
+                FS_RULES.apply(st, step === 'reinforce-attacker' ? 0 : 1, { type: 'combat', action: 'reinforce', count: 0 });
+            } else if (step === 'choose-attacker') {
+                FS_RULES.apply(st, 0, { type: 'combat', action: 'playCard', index: 0 });
+            } else if (step === 'choose-defender') {
+                FS_RULES.apply(st, 1, { type: 'combat', action: 'playCard', index: 0 });
+            } else if (step === 'damage-attacker') {
+                FS_RULES.apply(st, 0, { type: 'combat', action: 'damage', targets: FS_RULES.damageCandidates(st, 'attacker').map(x => x.id) });
+            } else if (step === 'damage-defender') {
+                FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: FS_RULES.damageCandidates(st, 'defender').map(x => x.id) });
+            } else FS_RULES.advanceCombatSteps(st);
+        }
+        return { st, before, after: { mine: inCombat(c.attacker), foe: inCombat(c.defender) } };
+    };
+    const no = play(false);
+    eq(no.after.mine, no.before.mine, 'отказ: мой отряд цел');
+    eq(no.after.foe, no.before.foe, 'отказ: враг цел');
+    const yes = play(true);
+    return eq([yes.after.mine < yes.before.mine, yes.after.foe < yes.before.foe], [true, true],
+        'сброс: обе стороны теряют по отряду от дополнительного урона');
+});
+check('Безжалостное наступление', 'сброс плана даёт обоим по дополнительному шагу повреждений', () => {
+    const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', units: { 'воины': 2 }, foeUnits: { 'огрины': 2 }, dice: ['att', 'att'], foeDice: ['att', 'att'], noFoeCard: true });
+    schemeInPlay(st, 'Безжалостное наступление', 'некроны');
+    let used = false;
+    let repeated = false;
+    for (let i = 0; i < 40 && st.combat; i++) {
+        if (st.pending) {
+            const q = st.pending.question;
+            const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
+            if (q.kind === 'scheme' && !used) used = true;
+            FS_RULES.apply(st, seat, { type: 'effect', answer: q.kind === 'scheme' ? { choice: 0 } : (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : { choice: 0 }) });
+            continue;
+        }
+        const step = CombatTurn.of(st.combat).step;
+        if (st.combat.damageRepeated) repeated = true;
+        if (step === 'retreat') break;
+        if (step === 'reinforce-attacker' || step === 'reinforce-defender') {
+            FS_RULES.apply(st, step === 'reinforce-attacker' ? 0 : 1, { type: 'combat', action: 'reinforce', count: 0 });
+        } else if (step === 'choose-attacker') {
+            FS_RULES.apply(st, 0, { type: 'combat', action: 'playCard', index: 0 });
+        } else if (step === 'choose-defender') {
+            FS_RULES.apply(st, 1, { type: 'combat', action: 'playCard', index: 0 });
+        } else if (step === 'damage-attacker') {
+            FS_RULES.apply(st, 0, { type: 'combat', action: 'damage', targets: FS_RULES.damageCandidates(st, 'attacker').map(x => x.id) });
+        } else if (step === 'damage-defender') {
+            FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: FS_RULES.damageCandidates(st, 'defender').map(x => x.id) });
+        } else FS_RULES.advanceCombatSteps(st);
+    }
+    eq(used, true, 'план предложен у шага повреждений');
+    return eq(repeated, true, 'шаг повреждений выполнен повторно');
+});
+
 check('Хрономантия', 'в начале раунда боя: 2 карты из колоды и столько же сбросить', () => {
     const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', units: { 'воины': 2 }, foeUnits: { 'огрины': 2 }, dice: [], noFoeCard: true });
     const hand = () => FS_CARDS.combatHand(FS_RULES, st, 0).size();
