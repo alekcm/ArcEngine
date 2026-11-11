@@ -34,7 +34,7 @@ const load = (file, name) => vm.runInContext(
 for (const file of ['js/fs/FSView.js', 'js/fs/FSGame.js']) {
     if (fs.existsSync(path.join(ROOT, file))) load(file, file.split('/').pop().replace(/\.js$/, ''));
 }
-const { FS_DATA, FS_CARDS, FS_CATALOG, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage, CombatTurn, CombatCards, BattleField } = ctx;
+const { FS_DATA, FS_CARDS, FS_CATALOG, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage, CombatTurn, CombatCards, BattleField, DeployScope, OrderMove } = ctx;
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m' };
@@ -5194,6 +5194,44 @@ check('Смена военного производства', 'материя и
     return ok(st.players[0].assets.forge + st.players[0].assets.cache > 0, 'ресурсы мира не пришли');
 });
 
+// «Выберите дружественный мир» — выбор обязан дойти до шага, который берёт
+// ресурсы. Города и фабрики стоят на ДВУХ разных мирах, и выбран не первый:
+// иначе «дошло» и «не дошло» дают один и тот же ответ.
+check('Смена военного производства', 'ресурсы берутся с ВЫБРАННОГО мира, а не с первого', () => {
+    const st = guardEvent('Смена военного производства', { units: { 'гвардейцы': 1 }, materiel: 0 });
+    const sys = st.systems.find(x => x.id === st.sys);
+    // У мира своя ПЕЧАТНАЯ материя и свои печатные жетоны: город и фабрика на
+    // них не влияют. Берём два дружественных мира с РАЗНЫМИ печатными
+    // ресурсами (у одного кузня, у другого кеш) и выбираем не первый.
+    const withForge = sys.areas.filter(a => a.world && (a.world.assets || []).includes('forge'))[0];
+    const withCache = sys.areas.filter(a => a.world && (a.world.assets || []).includes('cache'))[0];
+    ok(!!withForge && !!withCache, 'в системе нет двух миров с разными печатными ресурсами');
+    ok(withCache.pos !== withForge.pos, 'миры совпали');
+    FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, withCache.pos);
+    st.players[0].materiel = 0;
+    st.players[0].assets.forge = 0;
+    st.players[0].assets.cache = 0;
+    playEvent(st);
+    const q = pending(st);
+    ok(!!q && q.kind === 'areas', 'выбора мира нет');
+    const target = (q.options || []).find(o => o.pos === withCache.pos);
+    ok(!!target, 'мир с кешем не предложен');
+    // Мир выбирается ОДИН раз: если движок спросит второй раз, ответ на второй
+    // вопрос — другой мир, и тогда видно, что выбор первого потерялся.
+    let asked = 0;
+    const other = (q.options || []).find(o => o.pos === withForge.pos);
+    effectAnswer(st, (s2, q2) => {
+        if (q2.kind !== 'areas') return firstOption(s2, q2);
+        asked++;
+        return { area: asked === 1 ? target : other };
+    });
+    eq(asked, 1, 'мир спрошен один раз, а не дважды');
+    eq(st.players[0].assets.cache, 1, 'пришёл жетон ВЫБРАННОГО мира');
+    eq(st.players[0].assets.forge, 0, 'жетон другого мира не пришёл');
+    return eq(st.players[0].materiel, withCache.world.materiel || 0,
+        'материя — печатная материя выбранного мира (' + (withCache.world.materiel || 0) + ')');
+});
+
 // --- Имперская десятина -------------------------------------------------------
 // «Либо разместите 2 бесплатных Гвардейца в одном дружественном мире, содержащем
 //  фабрику, либо разместите 1 бесплатного Гвардейца в любом дружественном мире.»
@@ -5317,6 +5355,10 @@ check('Зов астропатов', 'атакующему план не пре�
 check('Тактический гений', 'вместо карты из руки берётся карта из колоды', () => {
     const st = battle({ faction: IG, foeFaction: 'некроны', units: { 'огрины': 2 }, foeUnits: { 'воины': 2 }, dice: ['att'], foeDice: ['att'], foeCard: 'Ложись!' });
     st.combat.cards.attacker.hand = ['Ложись!', 'За Императора!', 'Огневая поддержка'];
+    // Колода боя — только те карты, которых нет на руке: иначе «пришла в руку»
+    // выполнялось бы и без карты (эта карта уже лежит в руке).
+    const deck = st.players[0].decks.combat;
+    deck.splice(0, deck.length, 'Железная дисциплина', 'Ратлинг стрелок');
     guardScheme(st, 'Тактический гений', 0);
     const played = st.combat.cards.attacker.played.map(p => p.name || p);
     const q0 = (() => {
@@ -5355,6 +5397,9 @@ check('Тактический гений', 'вместо карты из рук�
     ok(options.length > 0, 'в колоде нет карт');
     // «кроме карты, которая уже была разыграна»: сыгранная карта не предлагается.
     eq(options.some(n => played.includes(n)), false, 'разыгранная карта не в списке');
+    // «из своей боевой колоды»: карта уходит из колоды и приходит в руку —
+    // обе половины, иначе карта лежала бы в двух местах сразу.
+    eq(deck.includes(options[0]), false, 'карта ушла из колоды');
     eq(st.combat.cards.attacker.hand.includes(options[0]), true, 'карта пришла в руку');
     return eq((st.players[0].schemes || []).length, 0, 'план сброшен');
 });
@@ -5558,11 +5603,18 @@ check('Маскированная бомбардировка', 'morale-куби�
     // Кубики орбитального удара — свои, на приказе.
     st.order.phase = 'strike';
     st.order.strikeDice = ['morale', 'att'];
+    const roll = FS_RULES.rollDice;
+    // Третий кубик (подарок карты) бросается отдельно: пусть он будет def, чтобы
+    // «мор» не мог исчезнуть случайно.
+    FS_RULES.rollDice = (s2, n) => (n === 1 ? ['def'] : ['morale', 'att']);
     burn(st, 'Маскированная бомбардировка');
+    FS_RULES.rollDice = roll;
     // «получите 1 `any cube`» приходит кубиком удара, его лицо бросается.
     eq((st.order.strikeDice || []).length, 3, 'третий кубик удара');
-    // «перевернуть 1 из своих `morale cube` на `att. cube`»: ни одного morale не осталось.
-    return eq(st.order.strikeDice.length, 3, 'кубик морали обращён в атаку');
+    // «перевернуть 1 из своих `morale cube` на `att. cube`»: morale не осталось,
+    // а att стало на один больше — переворот, а не выбрасывание кубика.
+    eq(st.order.strikeDice.filter(d => d === 'morale').length, 0, 'ни одного morale не осталось');
+    return eq(st.order.strikeDice.filter(d => d === 'att').length, 2, 'morale стал att');
 });
 
 check('Маскированная бомбардировка', 'без morale-кубика переворачивать нечего', () => {
@@ -5703,7 +5755,38 @@ check('Департаменто муниторум', 'разыгрывается
     ok(!!q && q.kind === 'choice', 'выбора приказа нет');
     eq((q.options || []).length, 3, 'три вида приказа');
     effectAnswer(st, { choice: 0 });
-    return eq(st.order.nestedKind, 'deploy', 'разыграно развёртывание');
+    eq(st.order.nestedKind, 'deploy', 'выбор запомнен');
+    // «Затем разыграйте ограниченное Развертывание» — это не запись выбора, а
+    // ВТОРОЙ приказ: стратагема заканчивается, и вместо неё идёт развёртывание
+    // в 1 области. Проверка доводит приказ до конца и смотрит на движок.
+    const fin = FS_RULES.apply(st, 0, { type: 'finishStrategize' });
+    ok(fin.ok, 'стратагема не закончилась: ' + fin.error);
+    eq(fin.nested, true, 'приказ не превратился в ограниченный');
+    eq([st.order.order, st.order.nested], ['deploy', true], 'идёт ограниченное развёртывание');
+    eq([st.order.system, st.order.pos], [st.sys || st.order.system, st.order.pos], 'в активной системе');
+    // «развертывание в 1 области»: предел области выставлен самим приказом.
+    return eq(DeployScope.of(st.order).areaLimit, 1, 'предел развёртывания — одна область');
+});
+
+check('Департаменто муниторум', 'ограниченное продвижение и доминирование тоже начинаются', () => {
+    // Три ветки текста, три разных приказа: каждую доводим до движка.
+    const play = choice => {
+        const st = orderState('strategize', {
+            faction: IG, foeFaction: 'некроны', units: { 'гвардейцы': 1 }, materiel: 10,
+            upgrades: ['Департаменто муниторум'],
+        });
+        burn(st, 'Департаменто муниторум');
+        effectAnswer(st, (s, q) => (q.kind === 'choice' ? { choice } : firstOption(s, q)));
+        const fin = FS_RULES.apply(st, 0, { type: 'finishStrategize' });
+        return { st, fin };
+    };
+    const adv = play(1);
+    ok(adv.fin.ok, 'продвижение не началось: ' + adv.fin.error);
+    eq([adv.st.order.order, adv.st.order.nested], ['advance', true], 'идёт ограниченное продвижение');
+    eq(OrderMove.of(adv.st.order).areaLimit, 1, 'перемещение из одной области');
+    const dom = play(2);
+    ok(dom.fin.ok, 'доминирование не началось: ' + dom.fin.error);
+    return eq([dom.st.order.order, dom.st.order.nested], ['dominate', true], 'идёт ограниченное доминирование');
 });
 
 head('Боевая колода', IG);
