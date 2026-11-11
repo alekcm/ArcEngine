@@ -320,9 +320,14 @@ class DeployRules {
         scope.use(cmd.pos);
         if (isGuard) scope.lockType(def.id);
         this.engine.log(state, seat, p.name + ' купил отряд «' + def.name + '».');
+        // `deal` here is the FLAG of the faction pair — not the OrderDeal
+        // object: в объект вложен сам приказ, и запись покупки попадала в него
+        // же. Состояние перестаёт быть сериализуемым, и сервер падал на
+        // JSON.stringify («Converting circular structure to JSON») при первой
+        // же покупке пары, а с ней — на любой команде, включая «закончить».
         Purchases.of(order).add({
             kind: 'unit', id: unit.id, def: def.id, name: def.name, cost,
-            forge: !!def.forge, forgeKl, cache, deal,
+            forge: !!def.forge, forgeKl, cache, deal: !!supplyDeal,
         });
         return { ok: true };
     }

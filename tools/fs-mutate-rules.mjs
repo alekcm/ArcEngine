@@ -692,6 +692,20 @@ const TABLE = [
         why: '«If the rules text on a card … takes precedence» — текст карты не разыгрывается',
     },
     {
+        check: 'save-1',
+        file: 'js/fs/rules/DeployRules.js',
+        old: 'forge: !!def.forge, forgeKl, cache, deal: !!supplyDeal,',
+        new: 'forge: !!def.forge, forgeKl, cache, deal: OrderDeal.of(order),',
+        why: 'в запись покупки снова попадает объект-вид: состояние перестаёт быть сериализуемым',
+    },
+    {
+        check: 'save-1b',
+        file: 'js/fs/rules/DeployRules.js',
+        old: 'forge: !!def.forge, forgeKl, cache, deal: !!supplyDeal,',
+        new: 'forge: !!def.forge, forgeKl, cache, deal: !!supplyDeal, buyer,',
+        why: 'в покупку кладут ссылку на живого игрока: круг через состояние',
+    },
+    {
         check: 'geo-1c',
         file: 'js/fs/core/FSGeometry.js',
         old: '        return { cx: r.x + r.w / 2, cy: r.y + r.h / 2, size: r.w };',

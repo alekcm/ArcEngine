@@ -1372,15 +1372,10 @@ class FSGame {
             + (spent ? ' · в приказе: ' + spent : '')
             + ' · куплено: ' + purchases.length + ' из ' + limit
             + (lockedName ? ' · тип: ' + lockedName : ''));
+        // Полосы «Ваши жетоны» здесь нет: сколько отрядов осталось, написано на
+        // самих войсках («9× Гвардейцы») прямо под этой строкой — два счёта
+        // одного и того же только мешали читать панель.
         ctx.tokens = [];
-        // «Массовое Производство» даёт только наземные отряды — в полосе запасов корабли не показываем.
-        for (const def of (faction ? faction.units : [])) {
-            if (def.type === 'ship') continue;
-            ctx.tokens.push({
-                icon: def.type === 'ship' ? 'mark.ship' : 'mark.ground',
-                label: def.name, count: supply[def.id] || 0, hint: 'В запасе · цена ' + def.cost,
-            });
-        }
         // The two ways of paying less — the same as in the deploy order.
         const opts = this.deployOpts = this.deployOpts || { cache: false, forgeKl: false };
         const face = PlayerEntity.of(s, me);
@@ -2783,19 +2778,32 @@ class FSGame {
         const canvas = this.app.location.view.world.canvas;
         if (!canvas) return;
         const rectOf = () => (canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { left: 0, top: 0 });
+        /** @type {any} */
         let down = null;
+        // The right button cancels a pending choice — but only on a CLICK. A held
+        // right button turns the camera, and the cancel fired on the press, before
+        // it was clear whether a drag was starting: the player lost the choice
+        // merely by starting to turn the view. So the press only remembers the
+        // point, and the cancel comes on the release that did not travel.
+        /** @type {any} */
+        let right = null;
         canvas.addEventListener('pointerdown', e => {
             if (e.button === 2) {
-                // The right button takes a piece out of the group (and closes a
-                // pending choice).
-                const rect = rectOf();
-                this.onRightClick(e.clientX - rect.left, e.clientY - rect.top);
+                right = { x: e.clientX, y: e.clientY, id: e.pointerId };
                 return;
             }
             if (e.button === 0) down = { x: e.clientX, y: e.clientY, id: e.pointerId };
         });
         if (canvas.addEventListener) canvas.addEventListener('contextmenu', e => { if (e.preventDefault) e.preventDefault(); });
         canvas.addEventListener('pointerup', e => {
+            if (right && right.id === e.pointerId) {
+                const travelled = Math.hypot(e.clientX - right.x, e.clientY - right.y);
+                right = null;
+                if (travelled > 6) return;     // a drag — the camera, not a cancel
+                const r = rectOf();
+                this.onRightClick(e.clientX - r.left, e.clientY - r.top);
+                return;
+            }
             if (!down || down.id !== e.pointerId) return;
             const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
             down = null;
@@ -2816,7 +2824,7 @@ class FSGame {
             this.hover = null;
             FSView.hideArrow(this.view);
         });
-        canvas.addEventListener('pointercancel', () => { down = null; });
+        canvas.addEventListener('pointercancel', () => { down = null; right = null; });
     }
 
     // The right button: a piece leaves the group of the march, everything else

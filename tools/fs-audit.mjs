@@ -7788,6 +7788,73 @@ rule('convert-1b', '«…the player picks up one die with the indicated icon, an
     eq(turn.count('defender', 'def') + turn.count('defender', 'morale'), 3, 'значки новые, а не потерянные');
 });
 
+rule('save-1', '«…любая команда сервера пересылает состояние» — состояние остаётся сериализуемым после покупок приказа', () => {
+    // Сервер копирует состояние через JSON.stringify перед каждой командой
+    // (tools/fs-server.mjs: pre = JSON.parse(JSON.stringify(room.state))) и
+    // пересылает его клиентам. Запись покупки держала в поле `deal` объект
+    // OrderDeal — а в нём сам приказ, в приказе список покупок, и в списке та
+    // же запись: круг. Первая же покупка пары делала состояние непересылаемым,
+    // и клиент видел «Converting circular structure to JSON» на любой команде,
+    // включая «закончить производство».
+    const st = FS_RULES.newReadyGame({ seed: 7, players: [
+        { faction: 'имперская-гвардия', name: 'P0', id: 'p0' },
+        { faction: 'орки', name: 'P1', id: 'p1' }] });
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const sys of st.systems) sys.tokens = [];
+    st.phase = 'operations'; st.turn = 0;
+    const sys = st.systems[0].id;
+    const world = st.systems[0].areas.find(a => a.world).pos;
+    FS_RULES.addUnit(st, 0, 'гвардейцы', sys, world);
+    FS_RULES.addStructure(st, 0, 'factory', sys, world);
+    st.players[0].materiel = 14;
+    st.players[0].supply.units['гвардейцы'] = 9;
+    st.players[0].assets.cache = 2;
+    st.order = { seat: 0, order: 'dominate', system: sys, pos: world, phase: 'dominate' };
+    FS_RULES.runEffects(st, 0, [{ op: 'guardDeploy' }], { kind: 'ability', ctx: null });
+    // Пара Гвардейцев — тот самый случай из жалобы.
+    const first = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys, pos: world });
+    eq(first.ok, true, 'первый Гвардеец куплен: ' + (first.error || ''));
+    const second = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys, pos: world });
+    eq(second.ok, true, 'второй Гвардеец куплен: ' + (second.error || ''));
+    let text = '';
+    try { text = JSON.stringify(st); } catch (e) { throw new Error('состояние не сериализуется: ' + e.message); }
+    eq(text.indexOf('Converting') < 0, true, 'состояние ушло на сервер и клиентам');
+    // Поле `deal` у покупки — флаг «отряд из пары», а не объект-вид. Оба
+    // Гвардейца помечены: пару считает `dealBought` по чётности, и платит
+    // жетоном запасов именно второй (это проверяет abil-2).
+    const bought = Purchases.of(st.order).units;
+    eq(bought.map(x => typeof x.deal).join(','), 'boolean,boolean',
+        'признак пары — значение, а не объект: ' + bought.map(x => typeof x.deal).join(','));
+    eq(typeof OrderDeal.of(st.order).unitDiscount, 'number', 'приказ остаётся живым объектом-видом');
+});
+
+rule('save-1b', 'покупка отряда не кладёт в состояние объекты-виды — только значения', () => {
+    // Тот же круг можно внести любой ссылкой на объект-вид (OrderDeal,
+    // Purchases, DeployScope...): проверка смотрит на сами записи, а не только
+    // на JSON.stringify, чтобы ошибка называла покупку, а не «circular».
+    const st = FS_RULES.newReadyGame({ seed: 11, players: [
+        { faction: 'имперская-гвардия', name: 'P0', id: 'p0' },
+        { faction: 'орки', name: 'P1', id: 'p1' }] });
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const sys of st.systems) sys.tokens = [];
+    st.phase = 'operations'; st.turn = 0;
+    const sys = st.systems[0].id;
+    const world = st.systems[0].areas.find(a => a.world).pos;
+    FS_RULES.addUnit(st, 0, 'гвардейцы', sys, world);
+    FS_RULES.addStructure(st, 0, 'factory', sys, world);
+    st.players[0].materiel = 14;
+    st.players[0].supply.units['гвардейцы'] = 9;
+    st.order = { seat: 0, order: 'dominate', system: sys, pos: world, phase: 'dominate' };
+    FS_RULES.runEffects(st, 0, [{ op: 'guardDeploy' }], { kind: 'ability', ctx: null });
+    FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys, pos: world });
+    for (const entry of Purchases.of(st.order).list) {
+        for (const [key, value] of Object.entries(entry)) {
+            if (value !== null && typeof value === 'object') throw new Error('в покупке поле «' + key + '» — объект, а не значение');
+        }
+    }
+    return true;
+});
+
 // ============================================================================
 //  The report
 // ============================================================================

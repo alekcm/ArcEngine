@@ -410,6 +410,140 @@ screen('cam-7', 'компас показывает, где север, посл�
 });
 
 // ============================================================================
+head('Панель приказа: что в ней напечатано');
+
+/** Узлы дерева с классом (по классу целиком, не по подстроке). */
+function nodesWithClass(root, cls) {
+    const out = [];
+    (function walk(n) {
+        if (!n) return;
+        if (String(n.className || '').split(/\s+/).includes(cls)) out.push(n);
+        for (const c of n.children || []) walk(c);
+    })(root);
+    return out;
+}
+
+/**
+ * Партия, доведённая до панели «Массовое Производство»: у меня фабрика в
+ * активной системе, приказ развёртывания уже превращён способностью в
+ * производство. Панель при этом строит сам клиент, поэтому проверка говорит
+ * ровно то, что видел игрок.
+ */
+function guardDeployGame() {
+    const st = party('guard');
+    const me = 0;
+    const sys = st.systems.find(x => (x.areas || []).some(a => a.world)).id;
+    const world = st.systems.find(x => x.id === sys).areas.find(a => a.world).pos;
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const x of st.systems) x.tokens = [];
+    FS_RULES.addUnit(st, me, 'гвардейцы', sys, world);
+    FS_RULES.addStructure(st, me, 'factory', sys, world);
+    st.players[me].materiel = 14;
+    st.players[me].supply.units['гвардейцы'] = 9;
+    st.phase = 'operations'; st.turn = me;
+    st.seat = me;                       // клиент получает состояние со своим местом
+    st.order = { seat: me, order: 'deploy', system: sys, pos: world, phase: 'deploy' };
+    FS_RULES.runEffects(st, me, [{ op: 'guardDeploy' }], { kind: 'ability', ctx: null });
+    return st;
+}
+
+screen('panel-4', 'в панели «Массовое Производство» нет полосы «Ваши жетоны»', () => {
+    // Жалоба игрока: в панели производства два счёта одного и того же —
+    // полоса «Ваши жетоны» и число на самих войсках прямо под ней.
+    const st = guardDeployGame();
+    const ctxPanel = Object.assign({}, SCREEN_CTX, { actions: [], tokens: null });
+    FSUI.update(st, ctxPanel);
+    // Панель строит сам клиент: берём её токены оттуда, а не из контекста.
+    const game = vm.runInContext('FSGame', ctx);
+    const probe = Object.create(game.prototype);
+    probe.state = st;
+    probe.view = null; probe.mode = 'idle'; probe.status = ''; probe.warn = '';
+    const gc = { title: '', text: '', status: '', warn: '', actions: [], mode: 'idle', setupCellSelected: false };
+    probe.panelGuardDeploy(st, gc);
+    if (gc.title !== 'Массовое Производство') return 'собран не тот экран: ' + gc.title;
+    if (gc.tokens && gc.tokens.length) return 'полоса «Ваши жетоны» вернулась: ' + JSON.stringify(gc.tokens).slice(0, 90);
+    return true;
+});
+
+screen('panel-5', 'счёт отрядов остался на самих войсках', () => {
+    // Убирая полосу, нельзя потерять сам счёт — он живёт в подписи войск.
+    const st = guardDeployGame();
+    const game = vm.runInContext('FSGame', ctx);
+    const probe = Object.create(game.prototype);
+    probe.state = st; probe.view = null; probe.mode = 'idle'; probe.status = ''; probe.warn = '';
+    probe.deployOpts = { cache: false, forgeKl: false };
+    const gc = { title: '', text: '', status: '', warn: '', actions: [], mode: 'idle', setupCellSelected: false };
+    probe.panelGuardDeploy(st, gc);
+    const units = gc.actions.filter(a => a.kind === 'pick' && typeof a.count === 'number');
+    if (!units.length) return 'в панели нет войск со счётом';
+    const guards = units.find(a => /Гвардейц/.test(a.label));
+    if (!guards) return 'в панели нет Гвардейцев: ' + units.map(a => a.label).join(', ');
+    if (guards.count !== 9) return 'на Гвардейцах счёт ' + guards.count + ', а в запасе 9';
+    return true;
+});
+
+// ============================================================================
+head('Правая кнопка: отмена по щелчку, а не по зажатию');
+
+/**
+ * Клиент игры, подключённый к canvas-заглушке: обработчики запоминаются,
+ * чтобы их можно было позвать так же, как зовёт браузер.
+ */
+function pointerGame() {
+    const game = Object.create(FS_GAME.prototype);
+    const handlers = {};
+    const canvas = {
+        addEventListener: (name, fn) => { (handlers[name] = handlers[name] || []).push(fn); },
+        getBoundingClientRect: () => ({ left: 0, top: 0, width: 1400, height: 900 }),
+    };
+    game.app = { location: { view: { world: { canvas } } }, camera: null };
+    game.calls = [];
+    game.onRightClick = (x, y) => game.calls.push(['right', x, y]);
+    game.onClick = (x, y) => game.calls.push(['click', x, y]);
+    game.onHover = nothing;
+    game.bindPointer();
+    const fire = (name, e) => { for (const fn of handlers[name] || []) fn(e); };
+    return { game, fire };
+}
+
+screen('right-1', 'зажатие ПКМ с протяжкой камеру поворачивает, но действие не отменяет', () => {
+    // Жалоба: отмена срабатывала на pointerdown — то есть в тот миг, когда
+    // игрок только собирался крутить камеру зажатой правой кнопкой.
+    const { game, fire } = pointerGame();
+    fire('pointerdown', { button: 2, clientX: 400, clientY: 400, pointerId: 1 });
+    if (game.calls.length) return 'отмена сработала на нажатии: ' + JSON.stringify(game.calls);
+    fire('pointermove', { clientX: 520, clientY: 430, pointerId: 1 });
+    fire('pointerup', { button: 2, clientX: 520, clientY: 430, pointerId: 1 });
+    if (game.calls.length) return 'протяжка ПКМ всё равно отменила действие: ' + JSON.stringify(game.calls);
+    return true;
+});
+
+screen('right-2', 'одиночный щелчок ПКМ по-прежнему отменяет', () => {
+    const { game, fire } = pointerGame();
+    fire('pointerdown', { button: 2, clientX: 400, clientY: 400, pointerId: 1 });
+    fire('pointerup', { button: 2, clientX: 401, clientY: 400, pointerId: 1 });
+    if (game.calls.length !== 1 || game.calls[0][0] !== 'right') {
+        return 'щелчок ПКМ не отменил: ' + JSON.stringify(game.calls);
+    }
+    if (game.calls[0][1] !== 401 || game.calls[0][2] !== 400) return 'щелчок попал не туда: ' + JSON.stringify(game.calls[0]);
+    return true;
+});
+
+screen('right-3', 'правая кнопка не мешает обычному щелчку левой', () => {
+    // Два независимых жеста: правое нажатие не должно сбить левое.
+    const { game, fire } = pointerGame();
+    fire('pointerdown', { button: 0, clientX: 300, clientY: 300, pointerId: 2 });
+    fire('pointerup', { button: 0, clientX: 300, clientY: 300, pointerId: 2 });
+    if (game.calls.length !== 1 || game.calls[0][0] !== 'click') return 'левый щелчок потерялся: ' + JSON.stringify(game.calls);
+    // Протяжка левой — камера, не выбор.
+    game.calls.length = 0;
+    fire('pointerdown', { button: 0, clientX: 300, clientY: 300, pointerId: 3 });
+    fire('pointerup', { button: 0, clientX: 500, clientY: 300, pointerId: 3 });
+    if (game.calls.length) return 'протяжка левой кнопкой сработала как щелчок';
+    return true;
+});
+
+// ============================================================================
 head('Правый низ: одна плашка на весь экран');
 
 /**

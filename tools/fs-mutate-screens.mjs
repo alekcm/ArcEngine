@@ -127,6 +127,39 @@ const TABLE = [
         new: '        const deg = cam.azimuth * 180 / Math.PI - 90;',
         why: 'компас врёт в другую сторону: знак угла перепутан',
     },
+    // --- панель приказа и правая кнопка --------------------------------
+    {
+        check: 'panel-4',
+        file: 'js/fs/FSGame.js',
+        old: '        // одного и того же только мешали читать панель.\n        ctx.tokens = [];',
+        new: "        // одного и того же только мешали читать панель.\n        ctx.tokens = (faction ? faction.units : []).filter(d => d.type !== 'ship')\n            .map(d => ({ icon: 'mark.ground', label: d.name, count: supply[d.id] || 0 }));",
+        why: 'полоса «Ваши жетоны» вернулась в панель производства',
+    },
+    {
+        check: 'panel-5',
+        file: 'js/fs/FSGame.js',
+        // Тот же счёт есть и в обычном развёртывании: мутация адресуется
+        // подсказкой производства, иначе якорь не один.
+        // Якорь тянется до конца подсказки: тот же счёт есть и в обычном
+        // развёртывании, и без хвоста строка встречается дважды.
+        old: "label: def.name, count: n,\n                    hint: cost + ' материи · КЛ ' + Math.max(0, kl) + ' · бой ' + def.combat\n                        + (def.forge",
+        new: "label: def.name,\n                    hint: cost + ' материи · КЛ ' + Math.max(0, kl) + ' · бой ' + def.combat\n                        + (def.forge",
+        why: 'счёт отрядов снят с самих войск: теперь его нет нигде',
+    },
+    {
+        check: 'right-1',
+        file: 'js/fs/FSGame.js',
+        old: '                right = { x: e.clientX, y: e.clientY, id: e.pointerId };',
+        new: "                right = { x: e.clientX, y: e.clientY, id: e.pointerId };\n                this.onRightClick(e.clientX, e.clientY);",
+        why: 'отмена снова срабатывает на нажатии ПКМ, до протяжки',
+    },
+    {
+        check: 'right-1',
+        file: 'js/fs/FSGame.js',
+        old: '                if (travelled > 6) return;     // a drag — the camera, not a cancel',
+        new: '                void travelled;                 // a drag — the camera, not a cancel',
+        why: 'протяжка ПКМ снова считается щелчком и отменяет действие',
+    },
     // --- правый низ: один размер ----------------------------------------
     {
         check: 'layout-1',
