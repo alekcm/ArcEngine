@@ -34,7 +34,7 @@ const load = (file, name) => vm.runInContext(
 for (const file of ['js/fs/FSView.js', 'js/fs/FSGame.js']) {
     if (fs.existsSync(path.join(ROOT, file))) load(file, file.split('/').pop().replace(/\.js$/, ''));
 }
-const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage, CombatTurn } = ctx;
+const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage, CombatTurn, CombatCards } = ctx;
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m' };
@@ -2792,6 +2792,30 @@ check('Рой каноптепов', 'бесплатный жетон подкр
     eq(st.players[0].assets.reinforcement, before, 'запас игрока не тронут: жетон бесплатный');
     const tok = CombatTokens.of(st.combat).units('attacker');
     return eq([tok.alive, tok.routed], [1, 0], 'жетон в бою целый и недеморализованный');
+});
+
+check('Воин фланги', 'с Воином в бою карта даёт 1 кубик боевого духа; без него способность не звучит', () => {
+    // Способность единицы читается только при реквизите: у некронов базовый
+    // отряд называется «Воины», у корабля — «Крейсеры Жнец».
+    const withUnit = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Воин фланги', units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: [] });
+    play(withUnit, 0, 0);
+    eq(count(withUnit, 'attacker', 'morale'), 1, 'с Воином — один кубик боевого духа');
+    eq(count(withUnit, 'attacker', 'att'), 0, 'и ни одного кубика атаки');
+    // Без отряда-реквизита способность молчит.
+    const without = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Воин фланги', units: { 'бессмертные': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: [] });
+    play(without, 0, 0);
+    return eq(count(without, 'attacker', 'morale'), 0, 'без Воина кубика нет');
+});
+
+check('Атакующие протоколы', '2 `att.` на карте и 1 кубик боевого духа от Воина', () => {
+    const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Атакующие протоколы', units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: [] });
+    play(st, 0, 0);
+    // Иконки карты дают 2 атаки, способность — 1 `morale cube`; считает их
+    // боевой счёт, а не жетоны на столе.
+    const icons = CombatCards.of(st.combat).icons('attacker');
+    eq(icons.att, 2, 'две иконки атаки с карты');
+    eq(FS_RULES.combatValues(st, 'attacker').att, 2, 'и они в боевом счёте');
+    return eq(count(st, 'attacker', 'morale'), 1, 'и кубик боевого духа от Воина');
 });
 
 head('Улучшения приказов', 'некроны');
