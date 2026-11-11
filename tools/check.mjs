@@ -1,11 +1,12 @@
 // ============================================================================
 //  ArcEngine — code check: types (tsc) and the rules audit
 // ----------------------------------------------------------------------------
-//  node tools/check.mjs            types, the rules audit, the smoke test, the screens
+//  node tools/check.mjs            types, the rules audit, the smoke test, the screens, the walk
 //  node tools/check.mjs --types    types only
 //  node tools/check.mjs --rules    the rules audit only
 //  node tools/check.mjs --smoke    the smoke test only
 //  node tools/check.mjs --screens  the screens only (fs-screens.mjs)
+//  node tools/check.mjs --walk     the walk only (fs-walk.mjs): a party through the client's eyes
 //
 //  Types: TypeScript checks the JS via JSDoc — tsconfig.json (game) and
 //  _utils/editor/tsconfig.json (editor). TypeScript is not a project dependency:
@@ -36,9 +37,10 @@ const STEPS = [
   { flag: '--rules', title: 'единственность правил', run: () => spawnSync(process.execPath, ['tools/fs-single-source.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
   { flag: '--smoke', title: 'дым', run: () => spawnSync(process.execPath, ['tools/fs-smoke.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
   { flag: '--screens', title: 'экраны', run: () => spawnSync(process.execPath, ['tools/fs-screens.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
+  { flag: '--walk', title: 'проход', run: () => spawnSync(process.execPath, ['tools/fs-walk.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
 ];
 
-const only = ['--types', '--rules', '--smoke', '--screens'].filter(f => process.argv.includes(f));
+const only = ['--types', '--rules', '--smoke', '--screens', '--walk'].filter(f => process.argv.includes(f));
 const failed = [];
 console.log('\n' + C.cyn + C.b + '  ArcEngine' + C.r + ' ' + C.dim + '— проверка' + C.r);
 for (const step of STEPS) {
