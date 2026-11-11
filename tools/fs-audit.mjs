@@ -6088,6 +6088,137 @@ rule('cards-6', 'Каждое предложение текста карт по�
 const MD = file => fs.readFileSync(path.join(ROOT, 'docs/forbidden-stars', file), 'utf8').split('\n');
 const cellsOf = l => l.split('|').slice(1, -1).map(s => s.trim());
 const plain = s => (s || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+
+rule('event-4', '«There are two types of event cards: tactics and schemes.» — «Tactic event cards are resolved immediately and then shuffled back into the player’s event deck.» — «Scheme event cards remain in play.»', () => {
+    const mk = () => {
+        const st = FS_RULES.newReadyGame({ seed: 7, players: [
+            { faction: 'имперская-гвардия', name: 'A', id: 'p0' },
+            { faction: 'некроны', name: 'B', id: 'p1' },
+        ] });
+        st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+        for (const x of st.systems) x.tokens = [];
+        st.phase = 'refresh'; st.turn = 0; st.eventsLeft = 2; st.order = null;
+        return st;
+    };
+    const deck = FS_DATA.events.filter(e => e.faction === 'имперская-гвардия').map(e => e.name);
+    eq(deck.length, 8, 'в колоде событий гвардии восемь карт');
+    const resolve = (name) => {
+        const card = FS_DATA.events.find(e => e.name === name);
+        const st = mk();
+        // Колода — вся, кроме разыгрываемой карты: она и есть вытянутая.
+        st.players[0].decks.event = deck.filter(n => n !== name);
+        st.event = { seat: 0, drawn: [name], chosen: name, card };
+        const res = FS_RULES.apply(st, 0, { type: 'resolveEvent' });
+        return { st, card, res };
+    };
+    const types = new Set(FS_DATA.events.filter(e => e.faction === 'имперская-гвардия').map(e => e.type));
+    eq([...types].sort().join(','), 'scheme,tactic', 'у карт ровно два типа: тактика и план');
+    const tactic = deck.map(n => FS_DATA.events.find(e => e.name === n)).find(e => e.type === 'tactic');
+    const scheme = deck.map(n => FS_DATA.events.find(e => e.name === n)).find(e => e.type === 'scheme');
+    if (!tactic || !scheme) return 'у гвардии нет одного из двух типов карт';
+    // Тактика: разыграна сейчас и вернулась в колоду.
+    const t = resolve(tactic.name);
+    eq(t.res.ok, true, 'тактика разыграна');
+    eq(t.st.players[0].decks.event.filter(n => n === tactic.name).length, 1, 'тактика вернулась в колоду');
+    eq((t.st.players[0].schemes || []).length, 0, 'в игровой зоне её нет');
+    // План: остаётся в игре и в колоду не возвращается.
+    const s = resolve(scheme.name);
+    eq(s.res.ok, true, 'план разыгран');
+    eq(s.st.players[0].decks.event.filter(n => n === scheme.name).length, 0, 'план в колоду не вернулся');
+    eq((s.st.players[0].schemes || []).some(x => x.name === scheme.name), true, 'план остался в игре');
+});
+
+rule('abil-3', '«Во время выполнения приказа доминирования вы можете забрать любое количество ваших отрядов из одного мира и разместить их в любом дружественном мире активной системы, который содержит постройку.» (02-factions.md, «Тёмный Портал» некронов)', () => {
+    const st = FS_RULES.newReadyGame({ seed: 9, players: [
+        { faction: 'некроны', name: 'A', id: 'p0' },
+        { faction: 'имперская-гвардия', name: 'B', id: 'p1' },
+    ] });
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const x of st.systems) x.tokens = [];
+    st.phase = 'operations'; st.turn = 0; st.order = null;
+    const sys = st.systems[0];
+    const worlds = sys.areas.filter(a => a.world);
+    // Мир с фабрикой, мир без постройки и мир с чужим отрядом — в одной системе.
+    const withFactory = worlds[0].pos;
+    const bare = worlds[1].pos;
+    FS_RULES.addUnit(st, 0, 'воины', sys.id, bare);
+    FS_RULES.addUnit(st, 0, 'воины', sys.id, bare);
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, withFactory);
+    const other = st.systems.find(x => x.id !== sys.id && x.areas.some(a => a.world));
+    FS_RULES.addUnit(st, 0, 'воины', other.id, worldOf(st, other.id));
+    st.order = { seat: 0, order: 'dominate', system: sys.id, phase: 'dominate' };
+    const ability = FS_DATA.factions.find(f => f.id === 'некроны').ability;
+    eq(/Тёмный Портал/.test(ability.name), true, 'способность — «Тёмный Портал»');
+    R_APPLY_ABILITY();
+    function R_APPLY_ABILITY() {
+        FS_RULES.runEffects(st, 0, FS_EFFECTS.abilityFor({ id: 'некроны', ability }), { kind: 'ability', ctx: null });
+    }
+    const answer = () => (st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat);
+    // «из одного мира»: движок сначала спрашивает, с какого мира забрать.
+    eq(!!st.pending, true, 'способность спросила игрока');
+    const q1 = st.pending.question;
+    eq(q1.kind, 'areas', 'первый вопрос — с какого мира');
+    eq(q1.options.length, 2, 'по одному варианту на каждый мир со своими отрядами');
+    eq(new Set(q1.options.map(o => o.system + '|' + o.pos)).size, 2, 'миры перечислены без повторов');
+    eq(q1.options.some(o => o.system === sys.id && o.pos === bare), true, 'мир активной системы в списке');
+    FS_RULES.apply(st, answer(), { type: 'effect', answer: { source: { system: sys.id, pos: bare } } });
+    const q2 = st.pending.question;
+    eq(q2.kind, 'units', 'второй вопрос — какие отряды');
+    eq(q2.options.length, 2, '«любое количество» — оба отряда этого мира');
+    eq(/любое количество/.test(q2.text || ''), true, 'вопрос прямо говорит «любое количество»');
+    FS_RULES.apply(st, answer(), { type: 'effect', answer: { units: q2.options.slice() } });
+    // «в любом дружественном мире активной системы, который содержит постройку»
+    const q3 = st.pending.question;
+    eq(q3.kind, 'areas', 'третий вопрос — куда');
+    eq(q3.options.map(o => o.pos), [withFactory], 'только мир с постройкой в активной системе');
+    FS_RULES.apply(st, answer(), { type: 'effect', answer: { area: { system: sys.id, pos: withFactory } } });
+    const moved = st.units.filter(u => u.system === sys.id && u.area === withFactory && u.seat === 0);
+    eq(moved.length, 2, 'оба отряда переехали в мир с постройкой');
+    eq(st.units.filter(u => u.seat === 0 && u.system === other.id).length, 1, 'отряд из другой системы остался на месте');
+});
+
+rule('sheet-1', 'Планшет фракции (02-factions.md): каждый отряд двух фракций — КЛ, цена, бой, прочность, мораль, вид, старт и максимум — строкой из документа', () => {
+    // Документ — первоисточник цифр планшета: сверяем движок с таблицей.
+    const TYPE = { 'наземный': 'ground', 'корабль': 'ship' };
+    const lines = MD('02-factions.md');
+    const rows = [];
+    let cur = null;
+    for (const line of lines) {
+        const h = /^## (.+?) — /.exec(line);
+        if (h) { cur = h[1].trim(); continue; }
+        const cells = cellsOf(line);
+        // «| Отряд | КЛ | Стоимость | Бой | Прочн. | Мор. | Тип | Нач. | Макс. |»
+        if (cells.length !== 9 || !cur || !cells[0] || /^Отряд$/.test(cells[0]) || /^-+$/.test(cells[0])) continue;
+        rows.push({ faction: cur, cells });
+    }
+    const WANT = ['Имперская гвардия', 'Некроны'];
+    const mine = rows.filter(r => WANT.includes(r.faction));
+    eq(mine.length, 12, 'в документе шесть отрядов Имперской гвардии и шесть некронов');
+    const num = s => (/^—$/.test(s) ? 0 : Number(String(s).replace(/[^\d]/g, '')) || 0);
+    for (const r of mine) {
+        const sheet = FS_DATA.factions.find(f => f.name === r.faction || f.id === r.faction.toLowerCase());
+        if (!sheet) return 'в движке нет фракции «' + r.faction + '»';
+        const unit = sheet.units.find(u => u.name === r.cells[0]);
+        if (!unit) return 'в движке нет отряда «' + r.cells[0] + '» у фракции «' + r.faction + '»';
+        eq(unit.kl, num(r.cells[1]), 'КЛ ' + unit.name);
+        eq(unit.cost, num(r.cells[2]), 'цена ' + unit.name);
+        eq(unit.forge, /⚙/.test(r.cells[2]), 'кузница ' + unit.name);
+        eq(unit.combat, num(r.cells[3]), 'бой ' + unit.name);
+        eq(unit.health, num(r.cells[4]), 'прочность ' + unit.name);
+        eq(unit.morale, num(r.cells[5]), 'мораль ' + unit.name);
+        eq(unit.type, TYPE[r.cells[6]], 'вид ' + unit.name);
+        eq(unit.start || 0, num(r.cells[7]), 'начальные силы ' + unit.name);
+        eq(unit.max, num(r.cells[8]), 'максимум ' + unit.name);
+    }
+    // «Всего на старте»: суммарный старт совпадает с документом.
+    const totals = { 'Имперская гвардия': 6, 'Некроны': 4 };
+    for (const [name, want] of Object.entries(totals)) {
+        const sheet = FS_DATA.factions.find(f => f.name === name);
+        const sum = sheet.units.reduce((s, u) => s + (u.start || 0), 0);
+        eq(sum, want, 'всего отрядов на старте: ' + name);
+    }
+});
+
 // в таблицах бывают пометки вычитки поверх текста карты: «— на карте напечатана
 // только эта строка», «— (коричневой плашки нет)». Это не текст карты.
 const stripNote = s => plain(s)
