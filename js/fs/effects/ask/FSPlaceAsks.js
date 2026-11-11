@@ -318,14 +318,20 @@ class PlaceAsks {
                 });
             }
             if (step.filter) any = any.filter(u => effects.unitFits(R.unitOf(state, u), step.filter));
-            if (!any.length) return null;
+            // «… за каждого уничтоженного»: nothing to destroy is a count of
+            // zero, not «the base number anyway» (the step never runs, so the
+            // count would keep the number of the card's text).
+            if (!any.length) { step.destroyedCount = 0; return null; }
             // «Уничтожьте 1 отряд … за каждый потраченный `morale cube`»
             // («Смерть и отчаяние»): the payment sets the number.
             const want = step.per ? effects.count(R, state, seat, step, ctx) : (step.n || 1);
             return { question: { kind: 'units', who: seat, op: 'destroy', n: Math.min(want, any.length), options: any.map(u => u.id), text: 'Какие отряды уничтожить?' } };
         }
         const units = effects.unitsOf(R, state, target, combat, step);
-        if (!units.length) return null;
+        // The same for a destroy that the card makes optional («уничтожьте до
+        // 2 Гвардейцев, чтобы …»): no such unit — nothing is destroyed, and
+        // the reward that follows counts zero.
+        if (!units.length) { step.destroyedCount = 0; return null; }
         const avoid = step.avoidAsked ? null : effects.avoidQuestion(R, state, target, step, combat, side);
         if (avoid) {
             step.avoidAsked = true;

@@ -311,18 +311,15 @@ class OperationsRules {
             const combat = state.combat;
             const reqs = card.reqs || [];
             // «A unit used to meet this requisite must be unrouted.»
-            const there = combat && state.units.some(u => {
-                if (u.seat !== seat || u.routed || !BattleField.of(combat).holds(u)) return false;
-                const def = this.engine.unitOf(state, u);
-                return def && reqs.some(r => FS_EFFECTS.sameName(def.name, r));
-            });
+            const present = combat ? state.units.filter(u => u.seat === seat && !u.routed
+                && BattleField.of(combat).holds(u))
+                .map(u => (this.engine.unitOf(state, u) || {}).name).filter(Boolean) : [];
+            // The paragraphs of the text may name their own requisites
+            // («*Титан «Гончая»:* … *Линкор:* …»): a unit of such a paragraph
+            // meets the requisite just as the one of the card's own line does,
+            // and only the paragraphs whose unit stands in the battle are read.
+            const there = FS_EFFECTS.meetsRequisite(card, present, { kind: 'combat', faction });
             if (there) {
-                // The paragraphs of the text may name their own requisites
-                // («*Титан «Гончая»:* … *Линкор:* …»): only the paragraphs whose
-                // unit stands in the battle are read.
-                const present = state.units.filter(u => u.seat === seat && !u.routed
-                    && BattleField.of(combat).holds(u))
-                    .map(u => (this.engine.unitOf(state, u) || {}).name).filter(Boolean);
                 steps.push(...FS_EFFECTS.parse(card.unit, { kind: 'combat', faction, reqs, present }));
             }
         }

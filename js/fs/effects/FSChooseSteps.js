@@ -23,6 +23,10 @@ class ChooseSteps {
             if (total > 1) option.n = (option.n || 1) * total;
         }
         const q = effects.step(R, state, seat, option, ctx);
+        // The branch may do all its work at once (there is nothing to destroy,
+        // so no question is asked): the count of what it did belongs to its
+        // «чтобы»-steps, just as it does when the branch had to be answered.
+        if (!q && Array.isArray(option.then)) effects.spreadCount(option.then, -1, option);
         // The branch of the choice may add steps of its own — the ability
         // of the card it repeats («Жизнеотсос»): they join the chain
         // after the choice, not inside it.

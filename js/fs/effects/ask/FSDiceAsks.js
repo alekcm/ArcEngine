@@ -113,6 +113,8 @@ class DiceAsks {
         const options = turn.slots(s2, d => step.kind === 'any' || d === step.kind);
         if (!options.length) return null;
         const n = Math.min(step.n, options.length);
+        // «за каждого уничтоженного Гвардейца» — nobody died, nobody loses dice.
+        if (n <= 0) return null;
         // The dice of one kind are alike and a loss of all that is possible is
         // not a choice either: the engine takes them itself, without a question.
         if (step.kind !== 'any' || n >= options.length) {
@@ -143,6 +145,7 @@ class DiceAsks {
             return null;
         }
         const want = effects.count(R, state, seat, step, ctx);
+        if (want <= 0) return null;
         const q = { question: { kind: 'dice', who: effects.diceAsker(combat, side, step), diceSide: s2, op: 'rerollDie', n: Math.min(want, options.length), options, kind2: step.kind, kinds, text: 'Какие кубики перебросить?' } };
         // «вы обязаны перебросить 2 `def. cube` и/или `morale cube`» —
         // fewer dice than asked for is all that can be done.

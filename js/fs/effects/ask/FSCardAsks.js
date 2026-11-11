@@ -170,10 +170,8 @@ class CardAsks {
             const reqs = card.reqs || [];
             const standing = state.units.filter(u => u.seat === seat && !u.routed
                 && BattleField.of(combat).holds(u));
-            const there = standing.some(u => {
-                const def = R.unitOf(state, u);
-                return !!def && reqs.some(r => effects.sameName(def.name, r));
-            });
+            const there = effects.meetsRequisite(card,
+                standing.map(u => (R.unitOf(state, u) || {}).name).filter(Boolean), ctx2);
             if (!there) {
                 R.log(state, seat, 'Отряда для способности карты «' + card.name + '» в бою нет.');
                 return null;

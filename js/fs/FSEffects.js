@@ -138,6 +138,19 @@ const FS_EFFECTS = {
         return out;
     },
 
+    // «A unit used to meet this requisite must be unrouted»: the card names the
+    // units of its own line (`reqs`), but a paragraph of its text may name a
+    // unit of its own («*Титан «Гончая»:* … *Линкор:* …»), and that unit meets
+    // the requisite as well. `present` is the list of the names of the
+    // player's standing units of the battle.
+    meetsRequisite(card, present, ctx) {
+        const names = (card && card.reqs) || [];
+        const paras = this.paragraphs((card && card.unit) || '', ctx || {});
+        for (const para of paras) if (para.names) names.push(...para.names);
+        if (!names.length) return true;
+        return (present || []).some(got => names.some(want => this.sameName(got, want)));
+    },
+
     // The Tau cards are transcribed from the faction sheet and the three card
     // sheets in docs/forbidden-stars (02, 04, 05, 06). Their sentences are read
     // as one ability each: a wide rule of another faction must never claim a
