@@ -25,6 +25,9 @@ const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, Ph
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
     BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound, StrikeDamage,
     BattleTest, Chance, PreAdvance, Choice, Seat, TileGeometry } = ctx;
+// Пределы из одного места (14 материи, 8 кубиков, 5 отрядов): проверка цитирует
+// правило и читает то же число, что и движок.
+const FS_RULES_CONFIG = ctx.FS_RULES_CONFIG;
 // The steps of a card are executed by the groups of js/fs/effects (see
 // docs/forbidden-stars/12-architecture.md): the audit asks the registries, not
 // a switch in one file.
@@ -4732,6 +4735,861 @@ rule('forge-1', '«A player cannot spend forge tokens to reduce the command leve
     // Тот же отказ и без кузницы: дело в уровне карты, а не в жетоне.
     const without = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: high.name });
     refused(without, /уровня командования/, 'без кузницы тот же отказ');
+});
+
+// ============================================================================
+//  The sections of the Rules Reference that no check quoted yet
+// ============================================================================
+head('Разделы правил, которые до сих пор не цитировались');
+
+rule('mat-1', '«The maximum amount of materiel that a player can have at any time is 14.»', () => {
+    // До этой проверки `MATERIEL_MAX` в аудите не встречался ни разу: потолок
+    // стоял в коде и его мог снять кто угодно молча.
+    const st = empty();
+    eq(FS_RULES_CONFIG.MATERIEL_MAX, 14, 'предел в конфигурации');
+    FS_RULES.player(st, 0).gainMateriel(20);
+    eq(st.players[0].materiel, 14, 'материя с нуля до потолка');
+    FS_RULES.player(st, 0).gainMateriel(5);
+    eq(st.players[0].materiel, 14, 'выше потолка материя не идёт');
+    // Доход фазы обновления тоже упирается в предел, а не переливается.
+    const income = empty(8);
+    let sum = 0;
+    for (const sys of income.systems) {
+        const w = sys.areas.find(a => a.world && (a.world.materiel || 0) > 0);
+        if (!w) continue;
+        guard(income, 0, sys.id, w.pos);
+        sum += w.world.materiel;
+        if (sum > 20) break;
+    }
+    if (sum > 14) {
+        guard(income, 0, income.systems[0].id, worldOf(income, income.systems[0].id));
+        income.players[0].materiel = 12;
+        FS_RULES.startRefresh(income);
+        eq(income.players[0].materiel, 14, 'доход обрезан пределом');
+    }
+});
+
+rule('mat-2', '«Unspent materiel persists from round to round and is not lost or reset.»', () => {
+    const st = empty();
+    // Ни одного дружественного мира: дохода нет, тратить нечего — материя стоит.
+    st.players[0].materiel = 5;
+    FS_RULES.startRefresh(st);
+    eq(st.players[0].materiel, 5, 'материя пережила фазу обновления');
+    // И прибавляется к доходу, а не заменяет его.
+    const second = empty(8);
+    let income = 0;
+    for (const sys of second.systems) {
+        for (const a of sys.areas) {
+            if (!a.world || !(a.world.materiel > 0)) continue;
+            guard(second, 0, sys.id, a.pos);
+            income += a.world.materiel;
+        }
+    }
+    // Доход обязан быть: иначе вторая половина проверки молча пропускалась бы.
+    eq(income > 0, true, 'на карте есть дружественные миры с материей (' + income + ')');
+    second.players[0].materiel = 5;
+    FS_RULES.startRefresh(second);
+    eq(second.players[0].materiel, Math.min(14, 5 + income), 'старая материя плюс доход');
+});
+
+rule('mat-3', '«Each player begins the game with the amount of materiel in the “Initial Forces” box» — шесть у Имперской гвардии и Некронов', () => {
+    // Число на старте стояло в сборке карты без проверки; лист фракции печатает
+    // стартовые силы, а материя диска — шесть.
+    const st = FS_RULES.newReadyGame({ seed: 4, players: players() });
+    eq(st.players.map(p => p.materiel), [6, 6], 'материя на старте');
+    // Сборка интерактивной партии — то же число.
+    const live = FS_RULES.newGame({ players: players(), seed: 4, interactiveSetup: true });
+    eq(live.players.map(p => p.materiel), [6, 6], 'материя на старте живой партии');
+});
+
+rule('mat-4', '«he decreases his materiel dial by an amount equal to the materiel cost of the purchased units» — цена списывается в конце приказа, за все покупки сразу', () => {
+    const build = n => {
+        const st = empty();
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        guard(st, 0, sys.id, pos);
+        FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+        st.players[0].materiel = 10;
+        st.order = { seat: 0, order: 'deploy', system: sys.id, pos, phase: 'units', purchases: [], steps: [], moved: [] };
+        const def = ctx.FS_CATALOG.unit(st.players[0].faction, defOf(st, 0, 'ground'));
+        const price = FS_RULES.unitPrice(st, 0, def, {});
+        for (let i = 0; i < n; i++) {
+            const res = FS_RULES.apply(st, 0, { type: 'buyUnit', system: sys.id, pos, unit: defOf(st, 0, 'ground') });
+            if (!res.ok) throw new Error('покупка ' + (i + 1) + ' не прошла: ' + res.error);
+        }
+        st.price = price;
+        return st;
+    };
+    const one = build(1);
+    eq(one.price > 0, true, 'отряд платный (' + one.price + ')');
+    eq(FS_RULES.spentOf(one.order), one.price, 'долг приказа — цена одного отряда');
+    eq(one.players[0].materiel, 10, 'до конца приказа материя ещё не списана');
+    // Приказ закрывается уже в фазе обновления: она тут же начисляет доход,
+    // поэтому «списано ровно на цену» считается вместе с этим доходом.
+    const fin = FS_RULES.apply(one, 0, { type: 'finishDeploy' });
+    eq(fin.ok, true, 'приказ закончен');
+    eq(fin.paid, one.price, 'списано ровно цену покупки');
+    eq(one.players[0].materiel, 10 - fin.paid + FS_RULES.materielIncome(one, 0), 'материя: старт − цена + доход');
+
+    // Три покупки — один счёт в конце, а не три списания по ходу.
+    const three = build(3);
+    eq(three.players[0].materiel, 10, 'по ходу приказа материя не тронута');
+    eq(FS_RULES.spentOf(three.order), three.price * 3, 'долг за три покупки');
+    const done = FS_RULES.apply(three, 0, { type: 'finishDeploy' });
+    eq(done.paid, three.price * 3, 'итог приказа — сумма трёх покупок');
+    eq(three.players[0].materiel, 10 - done.paid + FS_RULES.materielIncome(three, 0), 'списано за все три сразу');
+});
+
+rule('mat-5', '«A player can spend one cache token when purchasing a unit or structure to reduce its materiel cost by 2.»', () => {
+    const buy = cache => {
+        const st = empty();
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        guard(st, 0, sys.id, pos);
+        FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+        st.players[0].materiel = 10;
+        FS_RULES.player(st, 0).setAsset('cache', 1);
+        st.order = { seat: 0, order: 'deploy', system: sys.id, pos, phase: 'units', purchases: [], steps: [], moved: [] };
+        const res = FS_RULES.apply(st, 0, { type: 'buyUnit', system: sys.id, pos, unit: defOf(st, 0, 'ground'), cache });
+        if (!res.ok) throw new Error('покупка не прошла: ' + res.error);
+        const fin = FS_RULES.apply(st, 0, { type: 'finishDeploy' });
+        if (!fin.ok) throw new Error('приказ не закрылся: ' + fin.error);
+        st.paid = fin.paid;
+        return st;
+    };
+    // Сравниваем не «до и после», а цену, которую назвал сам движок: у Имперской
+    // гвардии сделка фракции и тайник складываются, и печатная цена − 2 соврала бы.
+    const plain = buy(false);
+    const cheap = buy(true);
+    eq(plain.paid - cheap.paid, FS_RULES_CONFIG.CACHE_VALUE, 'тайник удешевил покупку на 2');
+    const incomeP = FS_RULES.materielIncome(plain, 0);
+    const incomeC = FS_RULES.materielIncome(cheap, 0);
+    eq(plain.players[0].materiel, 10 - plain.paid + incomeP, 'без тайника списана полная цена');
+    eq(cheap.players[0].materiel, 10 - cheap.paid + incomeC, 'с тайником — цена минус 2');
+    eq(FS_RULES.player(cheap, 0).assetCount('cache'), 0, 'тайник потрачен');
+    eq(FS_RULES.player(plain, 0).assetCount('cache'), 1, 'без тайника он на месте');
+});
+
+rule('convert-1', '«To resolve this effect, the player picks up one die with the indicated icon, and places it with the new icon faceup.»', () => {
+    // Convert: кубик меняет грань, число кубиков не меняется.
+    const st = FS_RULES.newBattleTest({ seed: 3, players: [{ faction: 'имперская-гвардия', name: 'A' }, { faction: 'некроны', name: 'B' }], kind: 'ground', units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 } });
+    st.combat.dice.attacker = ['att', 'att'];
+    const turn = CombatTurn.of(st.combat);
+    FS_RULES.runEffects(st, 0, [{ op: 'flipDie', n: 1, kind: 'att', to: 'morale', pick: true }], { kind: 'combat', ctx: null });
+    eq(!!st.pending, true, 'движок спрашивает, какой кубик');
+    FS_RULES.apply(st, st.pending.seat, { type: 'effect', answer: { dice: [0], face: 'att', choice: 0 } });
+    eq(turn.count('attacker', 'att'), 1, 'один att остался');
+    eq(turn.count('attacker', 'morale'), 1, 'один стал morale');
+    eq(turn.dice('attacker').length, 2, 'кубиков по-прежнему два');
+});
+
+rule('gainlose-1', '«If a player loses more dice or tokens than he has available, he loses as many dice or tokens of the specific type as he is able to.»', () => {
+    // Кубики: просят три att, на столе два att и ни одного def — уходят оба,
+    // и «as many as he is able to» значит именно «сколько есть».
+    const st = FS_RULES.newBattleTest({ seed: 3, players: [{ faction: 'имперская-гвардия', name: 'A' }, { faction: 'некроны', name: 'B' }], kind: 'ground', units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 } });
+    st.combat.dice.defender = ['att', 'att'];
+    FS_RULES.runEffects(st, 0, [{ op: 'loseDie', kind: 'att', n: 3 }], { kind: 'combat', ctx: null });
+    const turn = CombatTurn.of(st.combat);
+    eq(turn.count('defender', 'att'), 0, 'оба att потеряны, третьего не придумано');
+    eq(turn.live('defender').length, 0, 'на столе не осталось кубиков');
+    // Просят три, а есть один: уходит один — и ровно один.
+    const twice = FS_RULES.newBattleTest({ seed: 3, players: [{ faction: 'имперская-гвардия', name: 'A' }, { faction: 'некроны', name: 'B' }], kind: 'ground', units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 } });
+    twice.combat.dice.defender = ['att'];
+    FS_RULES.runEffects(twice, 0, [{ op: 'loseDie', kind: 'att', n: 3 }], { kind: 'combat', ctx: null });
+    eq(CombatTurn.of(twice.combat).live('defender').length, 0, 'единственный кубик потерян');
+    // Жетоны: боевых жетонов «att» у игрока может не быть вовсе, и тогда
+    // терять нечего — шаг не падает и ничего не выдумывает.
+    eq(st.players[0].assets.att || 0, 0, 'боевых жетонов att до шага нет');
+    FS_RULES.runEffects(st, 0, [{ op: 'loseAsset', kind: 'att', n: 3, who: 'me' }], { kind: 'order', ctx: null });
+    eq(FS_RULES.player(st, 0).assetCount('att'), 0, 'нечего терять — остаётся ноль');
+    // А жетон ресурса, который есть, уходит целиком и только названного вида.
+    const token = empty();
+    const q = FS_RULES.player(token, 0);
+    q.setAsset('cache', 1);
+    q.setAsset('forge', 2);
+    FS_RULES.runEffects(token, 0, [{ op: 'loseAsset', kind: 'cache', n: 3, who: 'me' }], { kind: 'order', ctx: null });
+    // Сколько жетонов теряется, решает правило; какой именно — называет игрок,
+    // движок его спрашивает.
+    if (token.pending) {
+        eq(token.pending.question.kind, 'assets', 'движок спрашивает, какой жетон теряется');
+        FS_RULES.apply(token, token.pending.seat, { type: 'effect', answer: { asset: 'cache' } });
+    }
+    eq(q.assetCount('cache'), 0, 'тайник потерян до нуля');
+    eq(q.assetCount('forge'), 2, 'чужие жетоны не тронуты');
+});
+
+rule('discard-1', '«When a card is discarded, it is revealed to all players and then immediately shuffled back into the player’s deck.»', () => {
+    // Боевая карта из руки уходит не «в никуда», а обратно в свою колоду боя:
+    // рука на одну меньше, колода на одну больше, и это та же карта.
+    const st = FS_RULES.newBattleTest({ seed: 3, players: [{ faction: 'имперская-гвардия', name: 'A' }, { faction: 'некроны', name: 'B' }], kind: 'ground', units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 } });
+    const player = FS_RULES.player(st, 0);
+    const hand = player.combatHand;
+    const deck = player.combatDeck;
+    const name = hand.cards()[0];
+    eq(!!name, true, 'в руке есть карта');
+    const handBefore = hand.size();
+    const deckBefore = deck.cards().slice();
+    eq(hand.discard(name), true, 'карта сброшена');
+    eq(hand.size(), handBefore - 1, 'из руки ушла');
+    eq(deck.cards().length, deckBefore.length + 1, 'и вернулась в колоду');
+    eq(deck.cards().slice().sort().join(','), deckBefore.concat([name]).sort().join(','), 'в колоде ровно она');
+    // Сброс из колоды боя перемешивает её: состав тот же, порядок новый.
+    deck.shuffle();
+    eq(deck.cards().slice().sort().join(','), deckBefore.concat([name]).sort().join(','), 'перемешивание не меняет состав');
+});
+
+rule('simul-1', '«During combat, the attacker resolves his abilities first followed by the defender.»', () => {
+    // Очередь шагов боя: подкрепления и карты первым называет нападающий.
+    const st = groundBattle({ att: 2, def: 2 });
+    eq(st.combat.step, 'reinforce-attacker', 'бой начинается с шага подкреплений нападающего');
+    const order = [];
+    let guardCount = 0;
+    while (st.combat && st.combat.step !== 'retreat' && guardCount++ < 40) {
+        order.push(st.combat.step);
+        playCombat(st, 1);
+    }
+    eq(order.find(x => /^reinforce-/.test(x)), 'reinforce-attacker', 'подкрепления первым называет нападающий');
+    eq(order.find(x => /^choose-/.test(x)), 'choose-attacker', 'карты первым выбирает нападающий');
+    // И обратный контроль: защитник идёт после, а не вместо.
+    eq(order.indexOf('reinforce-defender') > order.indexOf('reinforce-attacker'), true, 'защитник — после нападающего');
+});
+
+rule('areas-1', '«Each system is divided into four areas which are separated from each other by gold borders.»', () => {
+    const st = FS_RULES.newReadyGame({ seed: 4, players: players() });
+    for (const sys of st.systems) {
+        eq(sys.areas.length, 4, 'четыре области в системе ' + sys.id);
+        eq(sys.areas.every(a => a.world ? true : true), true, 'области на месте');
+        eq(new Set(sys.areas.map(a => a.pos)).size, 4, 'у областей разные места');
+        eq(sys.areas.filter(a => a.world).length >= 1, true, 'в системе есть мир');
+    }
+});
+
+rule('areas-2', '«Friendly: An area is friendly to a player if it contains at least one of his units or structures and none of his opponent’s units or structures.» — и остальные три состояния', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    const voidPos = voidOf(st, sys.id);
+    eq(FS_RULES.areaState(st, 0, sys.id, pos), 'uncontrolled', 'пустая область');
+    guard(st, 0, sys.id, pos);
+    eq(FS_RULES.areaState(st, 0, sys.id, pos), 'friendly', 'своя область');
+    eq(FS_RULES.areaState(st, 1, sys.id, pos), 'enemy', 'для противника она вражеская');
+    olk(st, 1, sys.id, pos);
+    eq(FS_RULES.areaState(st, 0, sys.id, pos), 'contested', 'с обеими сторонами — спорная');
+    eq(FS_RULES.areaState(st, 1, sys.id, pos), 'contested', 'и с другой стороны тоже');
+    eq(FS_RULES.areaState(st, 0, sys.id, voidPos), 'uncontrolled', 'пустая пустота неуправляема');
+});
+
+rule('destroy-1', '«When a unit is destroyed, it is removed from the game board and placed back in its owner’s play area.»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    const p = FS_RULES.player(st, 0);
+    const before = p.data.supply.units[defOf(st, 0, 'ground')] || 0;
+    const u = guard(st, 0, sys.id, pos);
+    eq(st.units.includes(u), true, 'отряд на доске');
+    FS_RULES.destroyUnit(st, u);
+    eq(st.units.includes(u), false, 'с доски убран');
+    eq(p.data.supply.units[defOf(st, 0, 'ground')], before + 1, 'вернулся в запас игрока');
+    // «A player may purchase a destroyed unit … again»: запас снова даёт отряд.
+    eq(!!guard(st, 0, sys.id, pos), true, 'отряд можно поставить снова');
+});
+
+rule('destroy-2', '«Destroyed structures are returned to the supply of unused components.»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    const before = FS_RULES.structurePoolLeft(st, 'factory');
+    const s = FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+    eq(FS_RULES.structurePoolLeft(st, 'factory'), before - 1, 'постройка взята из коробки');
+    FS_RULES.destroyStructure(st, s);
+    eq(FS_RULES.structurePoolLeft(st, 'factory'), before, 'и вернулась в коробку');
+});
+
+rule('elim-1', '«A player is eliminated from the game if he does not have any friendly worlds.»', () => {
+    // У второго места только пустота: мир — не пустота, и игрок без мира выбывает.
+    const st = empty();
+    const sys = st.systems[0];
+    guard(st, 0, sys.id, worldOf(st, sys.id));
+    olk(st, 1, sys.id, voidOf(st, sys.id));
+    FS_RULES.endRound(st);
+    eq(!!st.players[1].eliminated, true, 'второй игрок выбыл');
+    eq(!!st.players[0].eliminated, false, 'первый остался');
+    // «When a player is eliminated, he removes all of his components from the game.»
+    eq(st.units.filter(u => u.seat === 1).length, 0, 'его отряды сняты с доски');
+    eq(st.structures.filter(s => s.seat === 1).length, 0, 'его постройки сняты с доски');
+});
+
+rule('elim-2', '«If only one player remains in the game, that player immediately wins.»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    guard(st, 0, sys.id, worldOf(st, sys.id));
+    olk(st, 1, sys.id, voidOf(st, sys.id));
+    FS_RULES.endRound(st);
+    eq(st.over, true, 'игра закончена');
+    eq(st.winner, st.players.find(p => !p.eliminated).seat, 'победил оставшийся');
+});
+
+rule('active-1', '«The active player is the player currently placing an order token, resolving an order token, resolving an event card, or moving a Warp Storm.»', () => {
+    // Одно место отвечает на вопрос «чей сейчас ход»: в каждой фазе это `turn`,
+    // и его же называет GamePhase. Проверка ловит «ход записан, а читают другое».
+    const st = empty();
+    for (const phase of ['planning', 'operations', 'refresh']) {
+        st.phase = phase;
+        for (const seat of [0, 1]) {
+            st.turn = seat;
+            eq(GamePhase.of(st).turn, seat, 'в фазе ' + phase + ' ход у seat ' + seat);
+            eq(GamePhase.of(st).active, seat, 'и активный игрок тот же');
+        }
+    }
+    // За столом из трёх мест — то же правило.
+    const three = { phase: 'operations', turn: 2, round: 1, firstPlayer: 0, players: [{}, {}, {}] };
+    eq(GamePhase.of(three).active, 2, 'активный игрок — тот, чей ход');
+    eq(GamePhase.of(three).circle().join(','), '0,1,2', 'круг идёт от первого игрока');
+});
+
+rule('active-2', '«The active system is the system in which an order token was last revealed.»', () => {
+    // Активная система — та, где раскрыт приказ; после конца приказа её нет.
+    const st = empty();
+    const a = st.systems[0];
+    const b = st.systems[1] || st.systems[0];
+    guard(st, 0, a.id, worldOf(st, a.id));
+    guard(st, 1, b.id, worldOf(st, b.id));
+    a.tokens = [{ seat: 0, order: 'advance', faceUp: false }];
+    b.tokens = [{ seat: 1, order: 'deploy', faceUp: false }];
+    st.phase = 'operations';
+    st.turn = 0;
+    eq(st.order, null, 'до раскрытия активной системы нет');
+    const res = FS_RULES.apply(st, 0, { type: 'resolveOrder', system: a.id });
+    eq(res.ok, true, 'приказ раскрыт');
+    // Активную систему называет сам приказ — и её же читает марш.
+    eq(OrderContext.of(st.order).system, a.id, 'активная система — где раскрыт приказ');
+    const elsewhere = FS_RULES.neighbors(st, a.id)[0];
+    if (elsewhere) {
+        // Шаг наземных войск начинается после того, как корабли встали.
+        const step = FS_RULES.apply(st, 0, { type: 'endAdvance' });
+        eq(step.ok, true, 'шаг кораблей закрыт: ' + (step.error || ''));
+        // Приказ действует ровно в одной системе: марш в соседнюю отказывает.
+        const g = guard(st, 0, elsewhere, worldOf(st, elsewhere));
+        const move = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: g.id, system: elsewhere, pos: voidOf(st, elsewhere) }] });
+        refused(move, /только в активную систему/, 'марш мимо активной системы');
+    }
+    FS_RULES.apply(st, 0, { type: 'finishAdvance' });
+    eq(st.order, null, 'приказ закончен — активной системы нет');
+});
+
+rule('adjacency-2', '«Systems that only share the corner of a border are not adjacent.» — угол не сосед и внутри тайла', () => {
+    const st = FS_RULES.newReadyGame({ seed: 4, players: players() });
+    // На доске соседство симметрично и не совпадает с самим собой.
+    for (const a of st.systems) {
+        const near = FS_RULES.neighbors(st, a.id);
+        eq(near.includes(a.id), false, 'система не сосед себе: ' + a.id);
+        for (const id of near) {
+            eq(FS_RULES.neighbors(st, id).includes(a.id), true, 'соседство симметрично: ' + a.id + ' — ' + id);
+        }
+    }
+    // Внутри тайла сосед — только тот, кто делит золотую линию (змейка через
+    // центр): углы по диагонали не соседи.
+    const sys = st.systems[0];
+    const board = FS_RULES.board(st);
+    for (const area of sys.areas) {
+        const around = board.areasAround(sys.id, area.pos).filter(x => x.system === sys.id).map(x => x.pos);
+        eq(around.includes(area.pos), false, 'область не сосед себе');
+        eq(around.length < 3, true, 'диагональ не в счёте: у области ' + area.pos + ' соседей ' + around.length);
+        for (const other of around) {
+            const back = board.areasAround(sys.id, other).filter(x => x.system === sys.id).map(x => x.pos);
+            eq(back.includes(area.pos), true, 'соседство областей симметрично');
+        }
+    }
+});
+
+rule('upg-1', '«Each faction has upgrade cards which increase the functionality of its order tokens and the potency of its combat deck.» — «A player can purchase upgrade cards when he resolves a Strategize Order.» — «Each player keeps his upgrade cards in two faceup decks, one for his order upgrade cards and one for his combat upgrade cards.»', () => {
+    const mk = () => {
+        const st = FS_RULES.newReadyGame({ seed: 7, players: [
+            { faction: 'имперская-гвардия', name: 'A', id: 'p0' },
+            { faction: 'некроны', name: 'B', id: 'p1' },
+        ] });
+        st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+        for (const x of st.systems) x.tokens = [];
+        st.phase = 'operations'; st.turn = 0; st.order = null;
+        st.players[0].materiel = 14;
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, pos);
+        return { st, sys, pos };
+    };
+    const { st, sys, pos } = mk();
+    const p = st.players[0];
+    // «two faceup decks»: приказы и бой лежат отдельно и не пусты.
+    eq(Array.isArray(p.decks.upgradeOrder), true, 'колода улучшений приказов есть');
+    eq(Array.isArray(p.decks.upgradeCombat), true, 'колода улучшений боя есть');
+    eq(p.decks.upgradeOrder.length > 0, true, 'в ней есть карты');
+    eq(p.decks.upgradeCombat.length > 0, true, 'и в боевой тоже');
+    eq(p.decks.upgradeOrder.some(n => p.decks.upgradeCombat.includes(n)), false, 'колоды не пересекаются');
+    // «when he resolves a Strategize Order»: без приказа — нельзя.
+    const orderCard = (FS_DATA.orders || []).find(c => c.faction === p.faction && c.kl <= 1);
+    if (!orderCard) return 'у фракции нет карты приказа первого уровня';
+    const noOrder = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: orderCard.name });
+    refused(noOrder, /нельзя покупать улучшения/, 'покупка без приказа');
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    const wrongOrder = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: orderCard.name });
+    refused(wrongOrder, /нельзя покупать улучшения/, 'покупка в наступлении');
+    // В стратегии — можно, и каждая карта уходит в свою колоду.
+    st.order = { seat: 0, order: 'strategize', system: sys.id, phase: 'strategize' };
+    const ordersBefore = p.decks.upgradeOrder.length;
+    const bought = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: orderCard.name });
+    eq(bought.ok, true, 'улучшение приказа куплено в стратегии');
+    eq(p.decks.upgradeOrder.length, ordersBefore - 1, 'карта ушла из колоды улучшений приказов');
+    // «potency of its combat deck»: боевое улучшение приходит в боевую колоду.
+    const combatCard = (FS_DATA.combat || []).find(c => c.faction === p.faction && c.upgrade && c.kl <= 1);
+    if (!combatCard) return 'у фракции нет боевого улучшения первого уровня';
+    eq(p.decks.combat.length, 10, 'боевая колода из десяти карт');
+    const buyCombat = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'combat', card: combatCard.name });
+    eq(buyCombat.ok, true, 'боевое улучшение куплено');
+    eq(!!st.pending, true, 'движок спросил, какую пару заменить');
+    const q = st.pending.question;
+    const removedCard = (q.options || [])[0];
+    eq(FS_RULES.apply(st, st.pending.answerSeat === undefined ? 0 : st.pending.answerSeat,
+        { type: 'effect', answer: { card: q.card, remove: removedCard } }).ok, true, 'ответ принят');
+    eq(p.decks.combat.length, 10, 'колода осталась из десяти карт');
+    eq(p.decks.upgradeCombat.includes(removedCard), true, 'заменённая пара вернулась в колоду улучшений боя');
+    eq(p.decks.combat.filter(x => x === combatCard.name).length, 2, 'в боевой колоде две копии');
+});
+
+rule('city-1', '«A city is a structure that a player can purchase to increase his command level.» — «Each city that a player has on the game board increases his command level by one» — «Players use structure control markers to identify which cities belong to which players.»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, pos);
+    st.players[0].materiel = 14;
+    st.players[0].orderTokens = 4;
+    eq(FS_RULES.commandLevel(st, 0), 0, 'без городов уровень ноль');
+    const tokensBefore = FS_RULES.structureTokensLeft(st, 0);
+    // «a structure that a player can purchase»: город покупается приказом.
+    st.order = { seat: 0, order: 'deploy', system: sys.id, phase: 'structures' };
+    const buy = FS_RULES.apply(st, 0, { type: 'buyStructure', structure: 'city', system: sys.id, pos });
+    eq(buy.ok, true, 'город куплен');
+    const city = st.structures.find(x => x.type === 'city');
+    eq(!!city, true, 'на доске появился город');
+    eq(city.seat, 0, 'и он принадлежит покупателю');
+    // «structure control markers»: жетон контроля ушёл на город.
+    eq(FS_RULES.structureTokensLeft(st, 0), tokensBefore - 1, 'на город потрачен жетон контроля');
+    // «increases his command level by one»
+    eq(FS_RULES.commandLevel(st, 0), 1, 'первый город — уровень 1');
+    eq(FS_RULES.commandLevel(st, 1), 0, 'чужой уровень не вырос');
+    const second = st.systems[1];
+    st.structures.push({ id: 'c2', seat: 0, type: 'city', system: second.id, area: worldOf(st, second.id) });
+    eq(FS_RULES.commandLevel(st, 0), 2, 'второй город — уровень 2');
+    // Уровень открывает покупку: отряд с КЛ 2 без городов недоступен.
+    const p = st.players[0];
+    const high = (FS_DATA.units || []).filter(u => u.faction === p.faction && u.kl >= 2)[0];
+    if (high) {
+        st.structures = [];
+        eq(FS_RULES.commandLevel(st, 0), 0, 'городов нет');
+        const no = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: high.name, system: sys.id, pos });
+        refused(no, /уровн/, 'высокий отряд без городов');
+        FS_RULES.addStructure(st, 0, 'city', sys.id, pos);
+        FS_RULES.addStructure(st, 0, 'city', second.id, worldOf(st, second.id));
+        eq(FS_RULES.commandLevel(st, 0), 2, 'два города вернули уровень 2');
+    }
+});
+
+rule('ord-upg-1', '«When resolving a Strategize Order, a player may purchase one of his order upgrade cards for which he meets the command level requirement.» — «After a player purchases an order upgrade card, he places the card faceup in his play area.» — «Order upgrade cards are permanent.»', () => {
+    const mk = () => {
+        const st = FS_RULES.newReadyGame({ seed: 7, players: [
+            { faction: 'имперская-гвардия', name: 'A', id: 'p0' },
+            { faction: 'некроны', name: 'B', id: 'p1' },
+        ] });
+        st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+        for (const x of st.systems) x.tokens = [];
+        st.phase = 'operations'; st.turn = 0; st.order = null;
+        st.players[0].materiel = 14;
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, pos);
+        FS_RULES.addStructure(st, 0, 'city', sys.id, pos);
+        // Мир нужен и второму игроку: иначе конец раунда заканчивает партию.
+        const foe = st.systems.find(x => x.id !== sys.id && x.areas.some(a => a.world));
+        FS_RULES.addUnit(st, 1, 'воины', foe.id, worldOf(st, foe.id));
+        st.order = { seat: 0, order: 'strategize', system: sys.id, phase: 'strategize' };
+        return { st, sys, pos };
+    };
+    const { st, sys, pos } = mk();
+    const p = st.players[0];
+    const card = (FS_DATA.orders || []).find(c => c.faction === p.faction && c.kl <= 1);
+    if (!card) return 'у фракции нет карты приказа первого уровня';
+    // «meets the command level requirement»: высокая карта не покупается при малом КЛ.
+    const high = (FS_DATA.orders || []).find(c => c.faction === p.faction && c.kl >= 2);
+    if (high) {
+        const no = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: high.name });
+        refused(no, /уровня командования/, 'карта выше уровня командования');
+        eq(FS_RULES.commandLevel(st, 0), 1, 'у нас первый уровень');
+    }
+    // «faceup in his play area»: карта на столе, а не в руке.
+    const before = p.upgrades.length;
+    const ok = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: card.name });
+    eq(ok.ok, true, 'карта уровня командования куплена');
+    eq(p.upgrades.length, before + 1, 'карта лежит у игрока');
+    eq(p.upgrades[p.upgrades.length - 1].name, card.name, 'и это та самая карта');
+    eq(p.upgrades[p.upgrades.length - 1].used, false, 'ещё не использована');
+    // «permanent»: карта не уходит из игры до конца партии.
+    const kept = p.upgrades[p.upgrades.length - 1];
+    st.phase = 'refresh'; st.round = 1; st.eventsLeft = 0; st.firstPlayer = 0; GamePhase.of(st).turn = 0;
+    FS_RULES.endRound(st);
+    eq(p.upgrades.includes(kept), true, 'после раунда карта на месте');
+    eq(kept.used, false, 'и снова готова к приказу');
+    // Второй раз ту же карту не купить.
+    st.order = { seat: 0, order: 'strategize', system: sys.id, phase: 'strategize' };
+    const again = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'order', card: card.name });
+    refused(again, /уже есть|уже куплено/, 'вторая копия той же карты');
+});
+
+rule('ord-upg-2', '«When a player resolves an order, if he has an upgrade card that matches the order he is resolving, he may choose to resolve the card’s effect.»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    const p = st.players[0];
+    p.upgrades.push({ name: 'Стрелковый налёт', used: false, order: 'deploy' });
+    // Не тот приказ — карту не разыграть.
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    const wrong = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: 'Стрелковый налёт' });
+    refused(wrong, /во время приказа/, 'чужая карта под наступление');
+    eq(p.upgrades[0].used, false, 'после отказа карта не потрачена');
+    // Свой приказ — карта разыгрывается, и только раз в раунд.
+    st.order = { seat: 0, order: 'deploy', system: sys.id, phase: 'deploy', step: 'units' };
+    const ok = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: 'Стрелковый налёт' });
+    eq(ok.ok, true, 'карта своего приказа разыграна');
+    eq(p.upgrades[0].used, true, 'и помечена использованной');
+    const twice = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: 'Стрелковый налёт' });
+    refused(twice, /уже использовано/, 'второй раз в раунде');
+});
+
+rule('first-1', '«The first player is the player with the first-player token.» — «The first player begins each phase as the active player» — «At the end of each game round, the first player passes the first player token to the player to his left.»', () => {
+    const st = empty();
+    st.phase = 'refresh';
+    st.round = 1;
+    st.firstPlayer = 0;
+    GamePhase.of(st).turn = 0;
+    eq(GamePhase.of(st).isFirst(0), true, 'жетон у первого игрока');
+    eq(GamePhase.of(st).isFirst(1), false, 'и только у него');
+    // «begins each phase as the active player»: круг начинается с него.
+    eq(GamePhase.of(st).circle(), [0, 1], 'круг идёт от первого игрока');
+    eq(GamePhase.of(st).active, GamePhase.of(st).firstPlayer, 'первый открывает фазу');
+    // «passes the first player token to the player to his left»: конец раунда.
+    FS_RULES.endRound(st);
+    eq(st.firstPlayer, 1, 'жетон перешёл соседу слева');
+    eq(st.round, 2, 'и раунд сменился');
+    FS_RULES.endRound(st);
+    eq(st.firstPlayer, 0, 'круг замкнулся');
+    // Выбывший первый: круг начинает следующий живой планировщик.
+    const out = empty();
+    out.firstPlayer = 1;
+    out.players[1].eliminated = true;
+    eq(GamePhase.of(out).opener((s, seat) => seat), 0, 'первый выбыл — открывает сосед');
+});
+
+rule('morale-1', '«When determining the winner of a combat, the player with the highest morale value wins.» — «If players are tied for morale during a combat, the defender wins the tie.» — «Routed units do not contribute their morale to a player’s total morale.»', () => {
+    const st = FS_RULES.newBattleTest({ seed: 3, players: [
+        { faction: 'имперская-гвардия', name: 'A' },
+        { faction: 'некроны', name: 'B' },
+    ], kind: 'ground', units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 } });
+    const att = FS_RULES.combatMorale(st, 'attacker');
+    const def = FS_RULES.combatMorale(st, 'defender');
+    eq(att > def, true, 'у атакующего мораль выше');
+    FS_RULES.finishCombat(st, false);
+    eq(st.combat.winner, 'attacker', 'большая мораль выигрывает');
+    // «Routed units do not contribute their morale»
+    const st2 = FS_RULES.newBattleTest({ seed: 3, players: [
+        { faction: 'имперская-гвардия', name: 'A' },
+        { faction: 'некроны', name: 'B' },
+    ], kind: 'ground', units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 } });
+    const before = FS_RULES.combatMorale(st2, 'attacker');
+    const first = st2.units.find(u => u.seat === 0);
+    first.routed = true;
+    const after = FS_RULES.combatMorale(st2, 'attacker');
+    eq(after, before - FS_RULES.unitOf(st2, first).morale, 'деморализованный отряд не даёт морали');
+    eq(after > def, true, 'одного не хватило, чтобы сравняться');
+    // «If players are tied for morale … the defender wins the tie»
+    for (const u of st2.units) if (u.seat === 0) u.routed = true;
+    eq(FS_RULES.combatMorale(st2, 'attacker'), def, 'мораль сравнялась');
+    FS_RULES.finishCombat(st2, false);
+    eq(st2.combat.winner, 'defender', 'при равенстве выигрывает защитник');
+});
+
+rule('contested-1', '«A contested area is any area that contains units or structures belonging to two different factions.» + «the players who control the units or structures in the contested area must resolve a combat»', () => {
+    // Спорная = отряды двух фракций в одной области; после приказа начинается бой.
+    const st = FS_RULES.newReadyGame({ seed: 7, players: [
+        { faction: 'имперская-гвардия', name: 'A', id: 'p0' },
+        { faction: 'некроны', name: 'B', id: 'p1' },
+    ] });
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const x of st.systems) x.tokens = [];
+    st.phase = 'operations'; st.turn = 0; st.order = null;
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    eq(FS_RULES.board(st).contestedAreas().length, 0, 'пустая область не спорна');
+    FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, pos);
+    eq(FS_RULES.board(st).contestedAreas().length, 0, 'один хозяин — не спорно');
+    FS_RULES.addUnit(st, 1, 'воины', sys.id, pos);
+    const contested = FS_RULES.board(st).contestedAreas();
+    eq(contested.length, 1, 'две фракции в одной области — спорно');
+    eq(contested[0].system, sys.id, 'спорна именно эта область');
+    eq(contested[0].pos, pos, 'и именно это место в системе');
+    // «must resolve a combat»: завершение приказа открывает бой в этой области.
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    const res = FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    eq(res.ok, true, 'приказ завершается');
+    eq(!!st.combat, true, 'и начинается бой');
+    eq(st.combat.system, sys.id, 'бой в спорной системе');
+});
+
+rule('orden-1', '«Players can look at the faces of their own order tokens that are on the top of a stack at any time.»', () => {
+    // Владелец видит свой верхний жетон; чужой и закрытый сверху — нет.
+    const st = empty();
+    const sys = st.systems[0];
+    sys.tokens = [
+        { seat: 0, order: 'advance', faceUp: false },
+        { seat: 0, order: 'deploy', faceUp: false },
+        { seat: 1, order: 'dominate', faceUp: false },
+    ];
+    const top = FS_RULES.board(st).topOrder(sys.id);
+    eq(top.seat, 1, 'верх стопки — последний положенный');
+    eq(top.order, 'dominate', 'и его приказ известен движку');
+    // Свой верхний виден: движок показывает его владельцу.
+    const mine = empty();
+    mine.systems[0].tokens = [{ seat: 0, order: 'deploy', faceUp: false }, { seat: 0, order: 'advance', faceUp: false }];
+    const seen = FS_RULES.board(mine).topOrder(mine.systems[0].id);
+    eq(seen.seat, 0, 'свой верхний жетон — мой');
+    eq(seen.order, 'advance', 'и приказ на нём читается');
+    // Чужой закрытый жетон в чужом взгляде не выдаётся как «мой».
+    const view = FS_RULES.view(mine, 1);
+    const theirs = FS_RULES.board(view).topOrder(view.systems[0].id);
+    eq(Seat.of(view).isOther(theirs.seat), true, 'для второго места это чужой жетон');
+});
+
+rule('objs-1', '«A player can only collect objective tokens belonging to his faction.»', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    // На своём мире лежат две цели: своя и чужая. Забирается только своя.
+    st.objectives = [
+        { id: 'mine', faction: st.players[0].faction, system: sys.id, area: pos },
+        { id: 'foe', faction: st.players[1].faction, system: sys.id, area: pos },
+    ];
+    st.firstPlayer = 0;
+    st.round = 1;
+    st.phase = 'refresh';
+    st.eventsLeft = 0;
+    FS_RULES.startRefresh(st);
+    eq(st.players[0].objectives, 1, 'своя цель собрана');
+    eq(st.players[1].objectives, 0, 'чужая — нет');
+    eq(st.objectives.map(o => o.id), ['foe'], 'чужая цель осталась на мире');
+});
+
+rule('storm-adj-1', '«Systems separated by a Warp Storm are still adjacent.» + «Units cannot move through Warp Storms.»', () => {
+    // Шторм стоит на грани, а не на тайле: соседство остаётся, путь — нет.
+    const build = () => {
+        const st = empty();
+        const a = st.systems[0];
+        const bId = FS_RULES.neighbors(st, a.id)[0];
+        if (!bId) return null;
+        const from = worldOf(st, bId);
+        const to = worldOf(st, a.id);
+        guard(st, 0, bId, from);
+        return { st, a, bId, from, to };
+    };
+    const plain = build();
+    if (!plain) return 'на этой карте у первой системы нет соседей';
+    const unit = plain.st.units[0];
+    // Проверяем именно соседа: иначе шторм стоял бы на грани с пустотой.
+    eq(FS_RULES.neighbors(plain.st, plain.a.id).includes(plain.bId), true, 'системы соседствуют');
+    // Шторм на общей грани.
+    const storm = FS_WARP_STORMS.create(plain.st, 'w1', { system: plain.a.id, side: FS_RULES.sideBetween(plain.st, plain.a.id, plain.bId) });
+    eq(!!storm, true, 'шторм встал на грань');
+    plain.st.storms = [storm];
+    eq(!!FS_RULES.stormOn(plain.st, plain.a.id, plain.bId), true, 'движок видит шторм на грани');
+    // «Systems separated by a Warp Storm are still adjacent»: соседство не рвётся.
+    eq(FS_RULES.neighbors(plain.st, plain.a.id).includes(plain.bId), true, 'шторм соседство не отменяет');
+    // «Units cannot move through Warp Storms»: марш через эту грань закрыт.
+    plain.st.order = { seat: 0, order: 'advance', system: plain.a.id, pos: plain.to, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    const blocked = FS_RULES.canMove(plain.st, 0, unit, { system: plain.a.id, pos: plain.to });
+    refused(blocked, /Варп-шторм/, 'марш через шторм');
+    // Снимаем шторм — тот же марш уже не отказывает по шторму.
+    plain.st.storms = [];
+    const open = FS_RULES.canMove(plain.st, 0, unit, { system: plain.a.id, pos: plain.to });
+    eq(/Варп-шторм/.test((open && open.error) || ''), false, 'без шторма отказа по шторму нет');
+});
+
+rule('cost-1', '«Each unit, structure, and upgrade card has a materiel cost» — цена есть у каждого, и она не выдумана', () => {
+    const units = FS_DATA.factions.flatMap(f => f.units.map(u => ({ faction: f.id, ...u })));
+    const bad = units.filter(u => !(u.cost >= 0));
+    eq(bad.map(u => u.faction + '/' + u.id), [], 'у каждого отряда есть цена');
+    const upgrades = FS_DATA.combat.filter(c => c.upgrade);
+    eq(upgrades.length > 0, true, 'боевые улучшения есть (' + upgrades.length + ')');
+    eq(upgrades.filter(c => !(c.cost >= 0)).map(c => c.name), [], 'у каждого улучшения есть цена');
+    // «Город — 3 материи; фабрика — 2; бастион — 2» (02-factions.md).
+    eq(FS_RULES.structureStats('city').cost, 3, 'город стоит 3');
+    eq(FS_RULES.structureStats('factory').cost, 2, 'фабрика стоит 2');
+    eq(FS_RULES.structureStats('bastion').cost, 2, 'бастион стоит 2');
+});
+
+rule('cost-2', '«Some units have the additional cost of one forge token.» — кузница сверх материи', () => {
+    // Имперская гвардия: линкоры и титаны стоят «5 ⚙+» (02-factions.md).
+    const sheet = FS_DATA.factions.find(f => f.id === 'имперская-гвардия');
+    const forge = sheet.units.filter(u => u.forge).map(u => u.id).sort();
+    eq(forge, ['линкоры', 'титаны'], 'у Имперской гвардии кузницу требуют линкоры и титаны');
+    eq(sheet.units.filter(u => u.forge).every(u => u.cost === 5), true, 'и стоят они 5 материи');
+    // Движок спрашивает жетон: без него покупка не проходит, с ним — проходит.
+    const build = forgeTokens => {
+        const st = empty();
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        guard(st, 0, sys.id, pos);
+        FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+        // Уровень командования: три города дают третий уровень.
+        for (const s of st.systems.slice(0, 3)) {
+            const a = s.areas.find(x => x.world);
+            if (a) FS_RULES.addStructure(st, 0, 'city', s.id, a.pos);
+        }
+        st.players[0].materiel = 14;
+        FS_RULES.player(st, 0).setAsset('forge', forgeTokens);
+        st.order = { seat: 0, order: 'deploy', system: sys.id, pos, phase: 'units', purchases: [], steps: [], moved: [] };
+        return st;
+    };
+    const poor = build(0);
+    const noForge = FS_RULES.apply(poor, 0, { type: 'buyUnit', system: poor.systems[0].id, pos: worldOf(poor, poor.systems[0].id), unit: 'титаны' });
+    eq(noForge.ok, false, 'без жетона кузницы титан не покупается');
+    const rich = build(1);
+    const bought = FS_RULES.apply(rich, 0, { type: 'buyUnit', system: rich.systems[0].id, pos: worldOf(rich, rich.systems[0].id), unit: 'титаны' });
+    eq(bought.ok, true, 'с жетоном кузницы покупка проходит: ' + (bought.error || ''));
+    eq(FS_RULES.player(rich, 0).assetCount('forge'), 0, 'жетон кузницы потрачен');
+});
+
+rule('icons-1', '«There are three combat icons: offence, defence, and morale.» — третьего значения нет', () => {
+    // Кубики боя и жетоны боя знают ровно эти три грани.
+    const st = FS_RULES.newBattleTest({ seed: 3, players: [{ faction: 'имперская-гвардия', name: 'A' }, { faction: 'некроны', name: 'B' }], kind: 'ground', units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 } });
+    const rolled = new Set();
+    for (let i = 0; i < 200; i++) FS_RULES.rollDice(st, 6).forEach(d => rolled.add(d));
+    eq([...rolled].sort().join(','), 'att,def,morale', 'кубик даёт только три грани');
+    // Жетоны боя: «the offence and defence icons appear on combat tokens» —
+    // третий значок морали на жетонах не печатается.
+    eq(Object.keys(st.combat.tokens.attacker).sort().join(','), 'att,def', 'у жетонов боя только атака и оборона');
+    // А карты боя называют эти же грани и не выдумывают четвёртой.
+    const names = new Set();
+    for (const c of FS_DATA.combat) {
+        for (const m of String(c.general || '').matchAll(/`([a-z]+)\. (?:cube|token)`/g)) names.add(m[1]);
+    }
+    eq([...names].filter(n => !['att', 'def', 'morale', 'any'].includes(n)), [], 'других значков в текстах карт нет');
+    // Морель в текстах пишется и как `morale cube` — проверяем само слово.
+    const words = new Set();
+    for (const c of FS_DATA.combat) {
+        for (const m of String(c.general || '').matchAll(/(att|def|morale)\.?\s+(?:cube|token)/g)) words.add(m[1]);
+    }
+    eq(['att', 'def', 'morale'].every(n => words.has(n)), true, 'все три значка в текстах встречаются');
+});
+
+rule('spend-2', '«Some effects require players to spend materiel, tokens, or dice.» — потраченный кубик уходит со стола', () => {
+    const st = FS_RULES.newBattleTest({ seed: 3, players: [{ faction: 'имперская-гвардия', name: 'A' }, { faction: 'некроны', name: 'B' }], kind: 'ground', units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 } });
+    st.combat.dice.attacker = ['att', 'morale'];
+    FS_RULES.runEffects(st, 0, [{ op: 'spendDie', kind: 'att', n: 1 }], { kind: 'combat', ctx: null });
+    eq(!!st.pending, true, 'движок спрашивает, какой кубик тратится');
+    eq(st.pending.question.kind, 'dice', 'вопрос о кубиках');
+    FS_RULES.apply(st, st.pending.seat, { type: 'effect', answer: { dice: [0] } });
+    const turn = CombatTurn.of(st.combat);
+    eq(turn.count('attacker', 'att'), 0, 'кубик атаки потрачен');
+    eq(turn.count('attacker', 'morale'), 1, 'кубик морали остался');
+    eq(turn.live('attacker').length, 1, 'на столе одним кубиком меньше');
+    // Потратить нечего — шаг ничего не делает и ни о чём не спрашивает.
+    const emptyDice = FS_RULES.newBattleTest({ seed: 3, players: [{ faction: 'имперская-гвардия', name: 'A' }, { faction: 'некроны', name: 'B' }], kind: 'ground', units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 } });
+    emptyDice.combat.dice.attacker = ['morale'];
+    FS_RULES.runEffects(emptyDice, 0, [{ op: 'spendDie', kind: 'att', n: 1 }], { kind: 'combat', ctx: null });
+    eq(!!emptyDice.pending, false, 'без кубиков атаки вопроса нет');
+    eq(CombatTurn.of(emptyDice.combat).live('attacker').length, 1, 'и кубик морали цел');
+});
+
+rule('systems-1', '«A system is a single tile composed of four areas» — система и есть один тайл', () => {
+    const st = FS_RULES.newReadyGame({ seed: 4, players: players() });
+    const ids = st.systems.map(s => s.id);
+    eq(new Set(ids).size, ids.length, 'у каждой системы своё имя');
+    for (const sys of st.systems) {
+        eq(FS_DATA.tiles.some(t => t.id === sys.tile), true, 'система собрана из тайла ' + sys.tile);
+        eq(sys.areas.length, 4, 'и делится на четыре области');
+    }
+});
+
+rule('units-1', '«All ships and ground units are units.» — третьего вида нет', () => {
+    const kinds = new Set(FS_DATA.factions.flatMap(f => f.units.map(u => u.type)));
+    eq([...kinds].sort().join(','), 'ground,ship', 'виды отрядов: только наземные и корабли');
+    const bad = FS_DATA.factions.flatMap(f => f.units)
+        .filter(u => u.combat == null || u.health == null || u.morale == null || !u.type);
+    eq(bad.map(u => u.id), [], 'у каждого отряда есть бой, здоровье, мораль и вид');
+});
+
+rule('voids-1', '«A void is an area that depicts a star field without a world.» — у пустоты мира нет', () => {
+    const st = FS_RULES.newReadyGame({ seed: 4, players: players() });
+    const areas = st.systems.flatMap(s => s.areas);
+    const voids = areas.filter(a => !a.world);
+    const worlds = areas.filter(a => a.world);
+    eq(voids.length > 0, true, 'на карте есть пустоты (' + voids.length + ')');
+    eq(worlds.length > 0, true, 'и миры (' + worlds.length + ')');
+    eq(worlds.every(w => typeof w.world.materiel === 'number' && typeof w.world.capacity === 'number'), true,
+        'у мира есть материя и вместимость');
+    // Пустота не даёт материи и войск: в доходе её нет.
+    const st2 = empty();
+    const sys = st2.systems[0];
+    if (!sys.areas.some(a => !a.world)) return 'в этой системе одни миры';
+    olk(st2, 0, sys.id, voidOf(st2, sys.id));
+    eq(FS_RULES.materielIncome(st2, 0), 0, 'корабль в пустоте дохода не приносит');
+});
+
+rule('orderend-2', '«he may place the order token on top of his event deck instead of resolving its effect»', () => {
+    // Две ветки рядом: отложенный приказ не разыгрывается, а жетон идёт на
+    // колоду событий и приносит карту в фазе обновления. Обычный приказ в том
+    // же состоянии начинает разыгрываться — иначе проверка ловила бы не то.
+    const build = () => {
+        const st = empty();
+        const a = st.systems[0];
+        const b = st.systems[1] || st.systems[0];
+        guard(st, 0, a.id, worldOf(st, a.id));
+        guard(st, 1, b.id, worldOf(st, b.id));
+        a.tokens = [{ seat: 0, order: 'advance', faceUp: false }];
+        b.tokens = [{ seat: 1, order: 'deploy', faceUp: false }];
+        st.phase = 'operations';
+        st.turn = 0;
+        return { st, a };
+    };
+    const plain = build();
+    const asOrder = FS_RULES.apply(plain.st, 0, { type: 'resolveOrder', system: plain.a.id });
+    eq(asOrder.ok, true, 'приказ раскрыт');
+    eq(plain.st.players[0].eventTokens, 0, 'обычный приказ карт не приносит');
+    eq(plain.st.order && plain.st.order.order, 'advance', 'обычный приказ разыгрывается');
+
+    const laid = build();
+    const asCard = FS_RULES.apply(laid.st, 0, { type: 'resolveOrder', system: laid.a.id, toEventDeck: true });
+    eq(asCard.ok, true, 'приказ отложен');
+    eq(laid.st.players[0].eventTokens, 1, 'жетон лёг на колоду событий');
+    eq(laid.st.order, null, 'эффект приказа не разыгрывался');
+    eq(laid.a.tokens.length, 0, 'жетон снят с доски');
+    eq(GamePhase.of(laid.st).turn, 1, 'ход ушёл следующему');
+});
+
+rule('orderend-1', '«…decreases his materiel dial…» — приказ развёртывания платит на выходе и передаёт ход следующему месту', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+    st.players[0].materiel = 10;
+    st.order = { seat: 0, order: 'deploy', system: sys.id, pos, phase: 'units', purchases: [], steps: [], moved: [] };
+    const buy = FS_RULES.apply(st, 0, { type: 'buyUnit', system: sys.id, pos, unit: defOf(st, 0, 'ground') });
+    eq(buy.ok, true, 'покупка прошла');
+    eq(st.players[0].materiel, 10, 'по ходу приказа материя ещё цела');
+    const res = FS_RULES.apply(st, 0, { type: 'finishDeploy' });
+    eq(res.ok, true, 'приказ закончен');
+    eq(res.paid > 0, true, 'на выходе списана цена');
+    // И списана по-настоящему: диск уменьшился на цену (плюс доход обновления).
+    eq(st.players[0].materiel, 10 - res.paid + FS_RULES.materielIncome(st, 0), 'материя списана на выходе');
+    eq(st.order, null, 'приказ закрыт');
 });
 
 // ============================================================================

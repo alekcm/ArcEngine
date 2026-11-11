@@ -265,9 +265,12 @@ class RefreshRules {
             for (const u of p.upgrades) u.used = false;
         }
         for (const s of state.storms) s.moved = false;
-        // The players without a friendly world are out of the game.
+        // The players without a friendly world are out of the game. A world,
+        // not just an area: «a player is eliminated if he does not have any
+        // friendly worlds» — a lone ship in a void holds no world, and the
+        // player who holds only voids is still out.
         for (const p of state.players) {
-            const has = state.systems.some(sys => sys.areas.some(a => this.engine.control(state, p.seat, sys.id, a.pos) === 'friendly'));
+            const has = this.engine.friendlyWorlds(state, p.seat) > 0;
             if (!has && !p.eliminated) {
                 p.eliminated = true;
                 this.engine.log(state, p.seat, p.name + ' выбывает: у него не осталось миров.');
