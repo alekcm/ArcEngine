@@ -486,6 +486,34 @@ const TABLE = [
         new: '            /*мутация: отряд не деморализуется*/',
         why: '«деморализовать один вражеский отряд с командным уровнем 0 или 1»',
     },
+    {
+        card: 'Атакующие протоколы', faction: NEC,
+        file: 'js/fs/effects/ask/FSDiceAsks.js',
+        old: '            turn.add(dSide, step.kind === \'any\' ? R.rollDice(state, 1)[0] : step.kind);',
+        new: '            /*мутация: кубик не добавляется*/\n            turn.add(dSide, \'att\');',
+        why: '«2 `att.` на карте и 1 кубик боевого духа от Воина»',
+    },
+    {
+        card: 'Транслокационные крипты', faction: NEC,
+        file: 'js/fs/effects/ask/FSOrderAsks.js',
+        old: '        if (limits) limits.setCitiesAsFactories(step.only);',
+        new: '        /*мутация: города не считаются фабриками*/',
+        why: '«рассматривать все ваши города в активной системе как фабрики»',
+    },
+    {
+        card: 'Архивы мира-гробницы', faction: NEC,
+        file: 'js/fs/effects/ask/FSBuyAsks.js',
+        old: '        return { question: { kind: \'cards\', who: seat, op: \'buyUpgrade\', kind2: kind, options: list, discount, text: \'Какое улучшение купить?\' } };',
+        new: '        return null;',
+        why: '«Приобретите 1 боевое улучшение» — выбор карты',
+    },
+    {
+        card: 'Пробуждение мира-гробницы', faction: NEC,
+        file: 'js/fs/effects/ask/FSPlaceAsks.js',
+        old: '            if (!step.free && p.materiel < effects.structureCost(R, step, t)) return false;',
+        new: '            if (false) return false;',
+        why: '«Купите 1 постройку» — цена берётся из материи',
+    },
     // --- общий страж подготовки --------------------------------------------
     {
         // `addUnit` refusing a foreign id is what uncovered the fixtures of

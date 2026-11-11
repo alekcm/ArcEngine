@@ -2947,7 +2947,20 @@ check('Пробуждение мира-гробницы', 'покупка пос
         FS_RULES.apply(st, st.pending.seat === undefined ? 0 : st.pending.seat, { type: 'effect', answer });
     }
     eq(st.structures.filter(x => x.seat === 0 && x.type === 'factory').length, 1, 'фабрика построена');
-    return eq(st.players[0].materiel, 10, 'заплачено 2 материи');
+    eq(st.players[0].materiel, 10, 'заплачено 2 материи');
+    // Без материи покупки нет: цена — не формальность.
+    const poor = eventState('Пробуждение мира-гробницы', { faction: 'некроны', units: { 'воины': 1 }, materiel: 0 });
+    ok(playEvent(poor).ok, 'событие не разыграно');
+    let offered = 0;
+    for (let i = 0; i < 6 && poor.pending; i++) {
+        const q = poor.pending.question;
+        if (q.kind === 'structureTypes' || (q.kind === 'choice' && /фабрик|город|бастион/i.test(String(q.text)))) offered++;
+        const answer = q.kind === 'structureTypes' ? { type: 'factory' }
+            : q.kind === 'areas' ? { area: (q.options || [])[0] } : { choice: 0 };
+        FS_RULES.apply(poor, poor.pending.seat === undefined ? 0 : poor.pending.seat, { type: 'effect', answer });
+    }
+    eq(offered, 0, 'без материи постройка не предлагается');
+    return eq(poor.structures.filter(x => x.seat === 0).length, 0, 'и на поле её нет');
 });
 
 check('Гнев дракона пустоты', 'сброс плана в начале раунда даёт по 3 урона обоим', () => {
