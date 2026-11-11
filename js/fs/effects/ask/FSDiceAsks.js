@@ -47,7 +47,19 @@ class DiceAsks {
             const here = state.units.filter(u => u.seat === seat && !u.routed
                 && BattleField.of(combat).holds(u)
                 && effects.unitFits(R.unitOf(state, u), step.filter));
-            n = (step.n || 1) * (here.length
+            // «за каждый ваш недеморализованный отряд РАЗНОГО командного уровня»
+            // («Железная дисциплина», «Поддержка титана»): the count is the
+            // number of levels, not of the units — the token half of the same
+            // cards is counted by `count`, and both must agree.
+            let amount = here.length;
+            if (step.distinctLevel) {
+                const levels = new Set(here.map(u => {
+                    const def = R.unitOf(state, u);
+                    return def ? (def.kl || 0) : 0;
+                }));
+                amount = levels.size;
+            }
+            n = (step.n || 1) * (amount
                 + (step.filter ? 0 : R.tokenUnits(state, side).alive));
         }
         if (!inCombat) {
