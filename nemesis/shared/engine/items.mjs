@@ -1,5 +1,5 @@
 import { removeChySpore, killChytrid } from './chytrids.mjs';
-import { isAdultEquivalent, hasAttackTarget } from './core.mjs';
+import { isAdultEquivalent, hasAttackTarget, taserTargets } from './core.mjs';
 import { killCarnomorph, removeCarnomorphMutation } from './carnomorphs.mjs';
 import { killVoid } from './voidseeders.mjs';
 // items.mjs — item actions, searching, the support deck.
@@ -184,10 +184,11 @@ OPS['item.use'] = (state, step) => {
             return;
         }
         case 'taser': {
+            const targets = taserTargets(state, p);
+            const opts = targets.intruders.map(i => ({ id: 'i:' + i.uid, label: 'Отогнать: ' + intruderLabel(state, i) }));
+            for (const o of targets.players) opts.push({ id: 'p:' + o.id, label: pname(o) + ' сбрасывает все карты' });
+            if (!opts.length) { log(state, 'Для шокера нет цели в комнате.', 'minor'); next(state, back); return; }
             consume();
-            const opts = intrudersIn(state, p.room).map(i => ({ id: 'i:' + i.uid, label: 'Отогнать: ' + intruderLabel(state, i) }));
-            for (const o of state.players) if (o.status === 'active' && o.hand.length) opts.push({ id: 'p:' + o.id, label: pname(o) + ' сбрасывает все карты' });
-            if (!opts.length) { next(state, back); return; }
             choose('Шокер', opts, 'item.taser');
             return;
         }
@@ -391,9 +392,15 @@ OPS['item.energy'] = (state, step) => {
 OPS['item.toggleDoor'] = (state, step) => { const c = state.ship.corridors[step.answer]; c.door = c.door === 'closed' ? 'open' : 'closed'; log(state, 'Дверь ' + c.id + ': ' + (c.door === 'closed' ? 'закрыта' : 'открыта') + '.', 'event'); next(state, step.then); };
 OPS['item.hatch'] = (state, step) => { const pod = state.pods.find(x => x.num === Number(step.answer)); pod.locked = !pod.locked; log(state, 'Капсула №' + pod.num + ' ' + (pod.locked ? 'заблокирована' : 'разблокирована') + '.', 'event'); next(state, step.then); };
 OPS['item.taser'] = (state, step) => {
-    const [kind, id] = step.answer.split(':');
-    if (kind === 'i') { const it = state.intruders[id]; if (it) repelIntruder(state, it); }
-    else { const o = player(state, Number(id)); for (const c of [...o.hand]) discardCard(state, o, c); log(state, pname(o) + ' сбрасывает все карты (шокер).', 'bad'); }
+    const [kind, id] = String(step.answer || '').split(':');
+    const targets = taserTargets(state, player(state, step.player));
+    if (kind === 'i') {
+        const it = targets.intruders.find(i => i.uid === id);
+        if (it) repelIntruder(state, it);
+    } else if (kind === 'p') {
+        const o = targets.players.find(p => String(p.id) === id);
+        if (o) { for (const c of [...o.hand]) discardCard(state, o, c); log(state, pname(o) + ' сбрасывает все карты (шокер).', 'bad'); }
+    }
     next(state, step.then);
 };
 OPS['item.logCodes'] = (state, step) => {

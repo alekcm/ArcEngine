@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { createGame } from '../shared/engine/setup.mjs';
 import { inCombat, spawnIntruder } from '../shared/engine/core.mjs';
-import { CHYTRID_ATTACK_CARDS, CHYTRID_GERMINATOR_ORDER, CHYTRID_TOKEN_VALUES, CHYTRID_WEAKNESSES } from '../shared/data/chytrids.mjs';
+import { CHYTRID_ATTACK_CARDS, CHYTRID_EVENT_CARDS, CHYTRID_GERMINATOR_ORDER, CHYTRID_TOKEN_VALUES, CHYTRID_WEAKNESSES } from '../shared/data/chytrids.mjs';
 import { initChytrids, placeChySpore, clearChySpore, placeGerminator, placeMycelium, growGerminator, growSupplyGerminator,
     damageGerminator, giveChySpore, removeChySpore, spawnChytrid, returnStinkhornToQueen, killChytrid, revealChyWeakness } from '../shared/engine/chytrids.mjs';
 import { viewFor } from '../shared/view.mjs';
@@ -20,6 +21,22 @@ test('Chytrids have 20 physical attacks, 6 weaknesses, 15 numbered tokens plus b
     const s = fresh(); assert.equal(s.bag.length, 15);
     for (const [type, values] of Object.entries(CHYTRID_TOKEN_VALUES)) assert.deepEqual(s.bag.filter(t => t.type === type).map(t => t.value).sort(), [...values].sort());
     assert.equal(new Set(s.bag.filter(t => t.id).map(t => t.id)).size, 14);
+});
+
+test('Chytrid cards with the same name share art, and different names do not', async () => {
+    const src = fs.readFileSync(new URL('../client/cards.js', import.meta.url), 'utf8')
+        .replace("'/shared/data/cards.mjs'", JSON.stringify(new URL('../shared/data/cards.mjs', import.meta.url).href));
+    const { attackArt, eventArt } = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
+    for (const [cards, lookup] of [[CHYTRID_ATTACK_CARDS, attackArt], [CHYTRID_EVENT_CARDS, eventArt]]) {
+        const byName = new Map();
+        for (const card of cards) {
+            const art = lookup(card.id);
+            assert.ok(fs.existsSync(new URL('../client/' + art, import.meta.url)), art);
+            if (byName.has(card.name)) assert.equal(art, byName.get(card.name));
+            else byName.set(card.name, art);
+        }
+        assert.equal(new Set(byName.values()).size, byName.size);
+    }
 });
 
 test('two spores become the leftmost physical growth without creating combat', () => {
@@ -138,7 +155,7 @@ import { OPS, infectLarva } from '../shared/engine/core.mjs';
 import { dealHits } from '../shared/engine/combat.mjs';
 import { infectionProcedure, eclosionProcedure } from '../shared/engine/actions.mjs';
 import { analyzeAdaptation, resolveAirlocks } from '../shared/engine/rooms.mjs';
-import { CHYTRID_EVENT_CARDS, CHYTRID_ATTACK_BY_ID } from '../shared/data/chytrids.mjs';
+import { CHYTRID_ATTACK_BY_ID } from '../shared/data/chytrids.mjs';
 
 test('exploration numbers are seeded, secret, fixed, and spore transmission respects doors', () => {
     const s = fresh('exploration'), same = fresh('exploration');

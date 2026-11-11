@@ -147,6 +147,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
 
     const selectedParts = characterParts(charId, parts);
     const updates = []; // optional flexible connections updated after the animation rig
+    const dogUpdates = [];
+    let dogRoot = null;
     if (charId === 'convict') {
         // His wrists are restrained: a smaller arm swing keeps the chain in front of the legs.
         let arms;
@@ -1142,8 +1144,8 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
             if (sp.psychParts) floatPsychDrones(drones, updates);
         }
         if (sp.husky) { // Laika remains a complete, animated companion for every choice
-            const d = new (B().TransformNode)('dog', S); d.parent = R; d.position.set(0.78 * W, 0, 0.2); d.rotation.y = -0.2;
-            part('dog', sp.bountyParts.dog, () => bountyDog(sp.bountyParts.dog, roleContext, d));
+            const d = dogRoot = new (B().TransformNode)('dog', S); d.parent = R; d.position.set(0.78 * W, 0, 0.2); d.rotation.y = -0.2;
+            part('dog', sp.bountyParts.dog, () => bountyDog(sp.bountyParts.dog, { ...roleContext, updates: dogUpdates }, d));
         }
         if (sp.dog) { const d = new (B().TransformNode)('dog', S); d.parent = R; d.position.set(0.72 * W, 0, 0.2); Z(sp.dog, bx(0.26, 0.3, 0.7, d, 0, 0.45, 0)); Z(sp.dog, bx(0.22, 0.22, 0.28, d, 0, 0.72, 0.4)); Z(sp.dog, bx(0.1, 0.14, 0.2, d, 0, 0.66, 0.58)); for (const s of [-1, 1]) Z(sp.dog, bx(0.06, 0.12, 0.05, d, s * 0.07, 0.88, 0.36)); for (const [x, z] of [[-0.08, 0.25], [0.08, 0.25], [-0.08, -0.25], [0.08, -0.25]]) Z(sp.dog, bx(0.08, 0.3, 0.08, d, x, 0.15, z)); Z(sp.dog, bx(0.05, 0.05, 0.3, d, 0, 0.6, -0.45, [-0.6, 0, 0])); F(FIXED.strap, bx(0.3, 0.08, 0.12, d, 0, 0.6, 0.2)); Z(LZ, bx(0.04, 0.04, 0.02, d, 0.05, 0.6, 0.27)); F(FIXED.rubber, bx(0.06, 0.04, 0.04, d, 0, 0.66, 0.69)); }
         if (sp.robot) {   // the CEO's bodyguard, with independently animated whole limbs
@@ -1590,10 +1592,12 @@ export function buildCharacter(scene, charId, colors = {}, parts = {}) {
     const anim = autoRig(S, root, { seated: !!(SPECS[charId] && SPECS[charId].wheelchair), slingLeft: charId === 'survivor' });
     // scale to ~1.8 units tall (built at ~2.8)
     root.scaling.setAll(0.66);
+    const animateDog = (t, moving) => { for (const update of dogUpdates) update(t, moving); };
     const updateConnections = (t, moving) => { for (const update of updates) update(t, moving); };
-    updateConnections(0, false);
-    const animate = updates.length ? (t, moving) => { anim.animate(t, moving); updateConnections(t, moving); } : anim.animate;
-    return { root, zones, setColors, animate, shoot: anim.shoot };
+    updateConnections(0, false); animateDog(0, false);
+    // The workshop keeps the dog attached; the game scene can animate her independently.
+    const animate = (t, moving, dogMoving = moving) => { anim.animate(t, moving); updateConnections(t, moving); animateDog(t, dogMoving); };
+    return { root, zones, setColors, animate, dogRoot, shoot: anim.shoot };
 }
 
 /**

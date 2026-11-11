@@ -61,6 +61,8 @@ OPS['move.ifAlive'] = (state, step) => {
 OPS['move.go'] = (state, step) => {
     const p = player(state, step.player);
     const from = p.room;
+    // checkLaika recalls her after the Hunter arrives, before the noise decision.
+    const laikaOnArrival = state.players.some(o => o.status === 'active' && !o.pod && o.laika === step.dest);
     const exit = state.ship.rooms[from].exits.find(e => e.to === step.dest);
     const door = exit ? state.ship.corridors[exit.corridor] : null;
     p.room = step.dest;
@@ -72,7 +74,7 @@ OPS['move.go'] = (state, step) => {
         const c = player(state, step.companion);
         if (c && c.status === 'active' && c.room === from) { c.room = step.dest; log(state, pname(c) + ' идёт вместе.', 'action'); }
     }
-    const after = { op: 'move.afterExplore', player: p.id, from, careful: step.careful, noNoise: step.noNoise, then: step.then, enteredVia: from };
+    const after = { op: 'move.afterExplore', player: p.id, from, careful: step.careful, noNoise: step.noNoise, laikaOnArrival, then: step.then, enteredVia: from };
     if (!room(state, step.dest).explored) next(state, { op: 'explore', player: p.id, room: step.dest, from, ignoreToken: step.ignoreToken }, after);
     else next(state, after);
 };
@@ -122,7 +124,7 @@ OPS['move.afterExplore'] = (state, step) => {
         next(state, then);
         return;
     }
-    if (state.players.some(o => o.laika === p.room)) { log(state, '🐕 В комнате Лайка — бросок шума не делается.', 'minor'); next(state, then); return; }
+    if (step.laikaOnArrival || state.players.some(o => o.status === 'active' && !o.pod && o.laika === p.room)) { log(state, '🐕 В комнате Лайка — бросок шума не делается.', 'minor'); next(state, then); return; }
     if (step.careful) {
         // Every corridor of this room is a legal choice — including the ones that already carry a
         // noise token. Walking into a token is exactly how a careful move into a noisy part of the
@@ -376,10 +378,11 @@ export function countAvailable(state, type) {
 OPS['move.direct'] = (state, step) => {
     const p = player(state, step.player);
     const from = p.room;
+    const laikaOnArrival = state.players.some(o => o.status === 'active' && !o.pod && o.laika === step.dest);
     p.room = step.dest; p.movedThisRound = true;
     log(state, pname(p) + ' перемещается: ' + roomName(state, from) + ' → ' + roomName(state, step.dest) + '.', 'action');
     resolveFollows(state);
-    const after = { op: 'move.afterExplore', player: p.id, from, noNoise: step.noNoise, then: step.then };
+    const after = { op: 'move.afterExplore', player: p.id, from, noNoise: step.noNoise, laikaOnArrival, then: step.then };
     if (!room(state, step.dest).explored) next(state, { op: 'explore', player: p.id, room: step.dest, from: null }, after);
     else next(state, after);
 };

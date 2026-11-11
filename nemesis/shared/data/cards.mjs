@@ -130,7 +130,7 @@ export const ITEMS = {
     evacKey:     { deck: 'red', count: 1, name: 'Ключ эвакуации', oneUse: true, noCombat: true, use: 'evacKey',
                    text: 'В эвакуационном отсеке: заблокируйте или разблокируйте 1 капсулу этой секции.' },
     taser:       { deck: 'red', count: 3, name: 'Военный шокер', oneUse: true, kind: 'heavy', use: 'taser',
-                   text: 'Отгоните 1 чужого из комнаты ИЛИ персонаж по вашему выбору сбрасывает все карты.' },
+                   text: 'Отгоните 1 чужого из комнаты ИЛИ персонаж в вашей комнате по вашему выбору сбрасывает все карты.' },
     logCodes:    { deck: 'red', count: 1, name: 'Коды личных журналов', oneUse: true, noCombat: true, use: 'logCodes',
                    text: 'Только в комнате с компьютером без поломки: посмотрите цели одного персонажа.' },
     detonator:   { deck: 'red', count: 2, name: 'Дистанционный детонатор', oneUse: true, kind: 'heavy', noCombat: true, use: 'detonator',

@@ -128,6 +128,10 @@ function onMessage(m) {
                 app.logEntries = [];
                 // A reconnect, undo or restored game is a new baseline, not new table events.
                 if (tableFx) tableFx.reset();
+                if (scene) {
+                    const effects = m.view.fx || [], last = effects[effects.length - 1];
+                    scene.fxSeen = last ? (last.seq ?? last.n) : 0;
+                }
             }
             app.logEntries.push(...m.view.log);
             app.view = m.view; app.undoDepth = m.undoDepth; app.history = m.history; app.canUndo = !!m.canUndo;

@@ -392,9 +392,75 @@ test('hopelessness keeps the existing hand private and removes only a newly draw
     assert.deepEqual(new Set(p.discard), new Set(['contam#88', 'soldier.shoot#0']));
 });
 
-test('bandages still inflicts light injury and sabotage omits the missing item counter', () => {
-    const s = fresh(), p = s.players[0]; inSetup(s); p.madness = 2; const hp = p.health;
-    panic(s, 'voidPanic11'); assert.equal(p.health, hp - 1);
+test('tearing bandages applies damage before awarding at most one fitting serious wound', () => {
+    const cases = [
+        // Wounds, health before the damage, and whether a new wound fits afterward.
+        [[], 9, false], [[], 8, true], [[], 3, true],
+        [['eyes'], 6, false], [['eyes'], 5, true], [['eyes'], 2, true],
+        [['eyes', 'guts'], 3, false], [['eyes', 'guts'], 2, true],
+    ];
+    for (const id of ['voidPanic11', 'voidPanic12']) {
+        const card = VOID_PANIC_CARDS.find(c => c.id === id);
+        assert.match(card.text, /3\/6\/9/);
+        for (const [wounds, health, fits] of cases) {
+            const s = fresh(), p = s.players[0]; inSetup(s);
+            p.madness = 2; p.health = health; p.wounds = wounds.slice(); p.armor = null;
+            s.woundDeck = ['leg', 'body']; s.woundDiscard = [];
+            panic(s, id);
+            assert.equal(p.health, health - 1, `${id}: ${wounds.length} wounds, ${health} HP`);
+            assert.equal(p.status, 'active');
+            assert.deepEqual(p.wounds, fits ? [...wounds, 'leg'] : wounds, `${id}: ${wounds.length} wounds, ${health} HP`);
+            assert.deepEqual(s.woundDeck, fits ? ['body'] : ['leg', 'body']);
+        }
+    }
+});
+
+test('tearing bandages does not grant a wound after lethal damage or below the panic threshold', () => {
+    for (const id of ['voidPanic11', 'voidPanic12']) {
+        for (const wounds of [[], ['eyes', 'guts', 'body']]) {
+            const s = fresh(), p = s.players[0]; inSetup(s);
+            p.madness = 2; p.health = 1; p.wounds = wounds.slice(); p.armor = null;
+            s.woundDeck = ['leg'];
+            panic(s, id);
+            assert.equal(p.status, 'dead');
+            assert.deepEqual(p.wounds, wounds);
+            assert.deepEqual(s.woundDeck, ['leg']);
+        }
+        const s = fresh(), p = s.players[0]; inSetup(s);
+        p.madness = 1; p.health = 8; p.wounds = [];
+        panic(s, id);
+        assert.equal(p.health, 8);
+        assert.deepEqual(p.wounds, []);
+        assert.equal(p.madness, 2);
+    }
+});
+
+test('tearing bandages resolves wound consequences before its continuation', () => {
+    const s = fresh(), p = s.players[0]; inSetup(s);
+    p.madness = 2; p.health = 8; p.wounds = []; p.armor = null;
+    s.woundDeck = ['arm'];
+    OPS['void.panicApply'](s, { player: p.id, card: 'voidPanic11', then: { op: 'noop' } });
+    assert.deepEqual(p.wounds, ['arm']);
+    assert.deepEqual(s.queue.map(step => step.op), ['wound.armCheck', 'noop']);
+});
+
+test('tearing bandages can still be interrupted before damage and trauma', () => {
+    const s = fresh(), p = s.players[0], q = s.players[1]; inSetup(s);
+    p.madness = 2; p.health = 8; p.wounds = []; p.armor = null;
+    q.room = p.room; q.hand = ['scout.interruption#0'];
+    s.woundDeck = ['leg'];
+    panic(s, 'voidPanic11');
+    assert.equal(s.prompt.player, q.id);
+    assert.equal(s.prompt.reaction, true);
+    assert.equal(answer(s, q.id, s.prompt.id, 'yes'), true);
+    assert.equal(p.health, 8);
+    assert.deepEqual(p.wounds, []);
+    assert.deepEqual(s.woundDeck, ['leg']);
+    assert.equal(p.madness, 2);
+});
+
+test('sabotage omits the missing item counter', () => {
+    const s = fresh(), p = s.players[0]; inSetup(s); p.madness = 2;
     panic(s, 'voidPanic13'); assert.equal(p.madness, 2); assert.match(s.log.at(-1).text, /Счётчик предметов/);
 });
 

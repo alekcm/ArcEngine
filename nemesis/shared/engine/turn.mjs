@@ -1,4 +1,4 @@
-import { isAdultEquivalent, hasAttackTarget } from './core.mjs';
+import { isAdultEquivalent, hasAttackTarget, taserTargets } from './core.mjs';
 // turn.mjs — Player Phase: turns, the main action prompt and dispatch to the action procedures.
 
 import { OPS, ask, next, later, log, player, pname, removeCardFromGame, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
@@ -224,7 +224,13 @@ export function itemRequirement(state, p, it) {
         }
         case 'secControl': return Object.keys(state.ship.rooms).some(r => intrudersIn(state, r).length && tileOf(state, r) && ROOM_TILES[tileOf(state, r)].items.includes('red')) ? '' : 'Нет комнаты с военным снаряжением и чужими';
         case 'repelAdult': case 'reagent': return '';
-        case 'taser': return '';
+        case 'taser': {
+            const targets = taserTargets(state, p);
+            // Using the item costs one card (two with a Hand wound); a lone user
+            // must still have a card to discard if they choose themselves as target.
+            const cost = 1 + (p.wounds.includes('hand') ? 1 : 0);
+            return targets.intruders.length || targets.players.some(o => o.id !== p.id || o.hand.length > cost) ? '' : 'Нет цели в комнате';
+        }
         case 'medkit': case 'woundOrHeal2': return '';
         case 'removeContam1': case 'sampleJar': return p.hand.some(isContam) ? '' : 'Нет заражений в руке';
         case 'wrench': return rs.malfunction || rs.fire ? '' : 'Нет поломки или огня';

@@ -65,11 +65,20 @@ export function itemArtHtml(inst) {
     const d = ITEMS[inst.item];
     return '<i class="ithumb" style="background-image:url(' + art + ')"></i><span class="ipop"><span class="ipart" style="background-image:url(' + art + ')"></span><b>' + esc(d.name) + '</b><span>' + esc(d.text || '') + '</span></span>';
 }
+// Chytrid cards with the same name/effect share one illustration, even if their values differ.
+const CHY_EVENT_ART_ALIAS = { chyEvent5: 'chyEvent4', chyEvent15: 'chyEvent14' };
+const CHY_ATTACK_ART_ALIAS = {
+    chyAttack2: 'chyAttack1',
+    chyAttack7: 'chyAttack3', chyAttack8: 'chyAttack3', chyAttack9: 'chyAttack3', chyAttack13: 'chyAttack3',
+    chyAttack5: 'chyAttack4', chyAttack6: 'chyAttack4',
+    chyAttack11: 'chyAttack10', chyAttack16: 'chyAttack12', chyAttack15: 'chyAttack14',
+    chyAttack18: 'chyAttack17', chyAttack20: 'chyAttack19',
+};
 /** Event cards with illustrations in client/art/events/<eventId>.jpg. */
 const ART_EVENTS = ['breakingIn', 'bulkheadsOpen', 'damage', 'damagingFire', 'eggProtection', 'podEjection', 'fireWave', 'flammable', 'generatorOverheats', 'hatching',
     'leavingShell', 'lifeSupport', 'lurking', 'malfunction', 'onTheHunt', 'protectAndServe', 'scentOfPrey', 'shortCircuit', 'systemFailure', 'queenAwakens'];
 export function eventArt(id) {
-    if (/^chyEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/event/' + id + '.jpg';
+    if (/^chyEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/event/' + (CHY_EVENT_ART_ALIAS[id] || id) + '.jpg';
     if (/^voidEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/voidseeders/event/' + id + '.jpg';
     if (/^carnoEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/event/' + id + '.jpg';
     return ART_EVENTS.includes(id) ? 'art/events/' + id + '.jpg' : null;
@@ -77,7 +86,7 @@ export function eventArt(id) {
 /** Attack cards share one illustration per name: claws1..3 -> claws, fury1/2 -> fury, scratch1..4 -> scratch, tail1/2 -> tail. */
 const ART_ATTACK = ['bite', 'bloodSense', 'claws', 'fury', 'infecting', 'miss', 'scratch', 'tail'];
 export function attackArt(id) {
-    if (/^chyAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/attack/' + id + '.jpg';
+    if (/^chyAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/attack/' + (CHY_ATTACK_ART_ALIAS[id] || id) + '.jpg';
     if (/^voidAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/voidseeders/attack/' + id + '.jpg';
     if (/^carnoAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/attack/' + id + '.jpg';
     const k = String(id).replace(/\d+$/, ''); return ART_ATTACK.includes(k) ? 'art/attack/' + k + '.jpg' : null;

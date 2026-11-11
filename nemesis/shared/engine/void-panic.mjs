@@ -3,7 +3,7 @@ import { shuffle } from '../rng.mjs';
 import { VOID_PANIC_BY_ID, VOID_EVENT_BY_ID } from '../data/voidseeders.mjs';
 import { ITEMS, dropLocked } from '../data/cards.mjs';
 import { OPS, ask, next, log, player, pname, room, tileOf, playersInRoom, turnOrder, intrudersIn, isContam,
-    discardCard, drawCards, removeCardFromGame, cardDef, fx, loseHealth, gainWound, killPlayer, placeFire, placeMalfunction, handSlots, dropHeavy } from './core.mjs';
+    discardCard, drawCards, removeCardFromGame, cardDef, fx, loseHealth, gainWound, healthSections, killPlayer, placeFire, placeMalfunction, handSlots, dropHeavy } from './core.mjs';
 import { alterMadness } from './voidseeders.mjs';
 
 const supported = new Set(['apathy', 'rage', 'hallucinations', 'bloodlust', 'pyromania', 'defeatism', 'selfHarm', 'heartAttack', 'destruction', 'hopelessness', 'madness', 'bandages', 'sabotage', 'blindFlee']);
@@ -56,7 +56,19 @@ OPS['void.panicApply'] = (state, step) => {
         }
         case 'rage': placeMalfunction(state, p.room, 'паника'); break;
         case 'pyromania': placeFire(state, p.room, 'паника'); break;
-        case 'bandages': loseHealth(state, p, 1, 'паника: разрывая повязки'); break; // Redux has no bandaged wounds
+        case 'bandages': {
+            loseHealth(state, p, 1, 'паника: разрывая повязки');
+            // The next wound may cover a section only after the marker has passed it.
+            // Apply at most one wound even if several sections are already uncovered.
+            const wounds = p.wounds.length;
+            if (p.status === 'active' && wounds < 3 && p.health <= healthSections()[wounds + 1][0]) {
+                // Wound effects may queue mandatory choices; resolve them before continuing.
+                if (!state.shipDestroyed) next(state, then);
+                gainWound(state, p, 1);
+                return;
+            }
+            break;
+        }
         case 'sabotage': log(state, 'Счётчик предметов отсутствует в Redux: эффект паники пропущен.', 'minor'); break;
         case 'hopelessness': {
             const n = p.hand.length; drawCards(state, p, 3, true);
