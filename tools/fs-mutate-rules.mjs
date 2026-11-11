@@ -170,6 +170,20 @@ const TABLE = [
         why: '«Tactic event cards … are then shuffled back into the player’s event deck»',
     },
     {
+        check: 'sheet-2',
+        file: 'js/fs/FSData.js',
+        old: '    "factory": 1,\n    "city": 0,\n    "bastion": 1,\n    "forge": 0,\n    "cache": 0,\n    "reinforcement": 1,\n    "prosperity": 0,\n    "choice": 0\n   },\n   "ability": {\n    "name": "Тёмный Портал",',
+        new: '    "factory": 1,\n    "city": 0,\n    "bastion": 0,\n    "forge": 0,\n    "cache": 0,\n    "reinforcement": 1,\n    "prosperity": 0,\n    "choice": 0\n   },\n   "ability": {\n    "name": "Тёмный Портал",',
+        why: '«Всего на старте: … 1 фабрика, 1 бастион» у некронов',
+    },
+    {
+        check: 'sheet-2',
+        file: 'js/fs/FSData.js',
+        old: '    "reinforcement": 0,\n    "prosperity": 0,\n    "choice": 0\n   },\n   "ability": {\n    "name": "Массовое Производство",',
+        new: '    "reinforcement": 1,\n    "prosperity": 0,\n    "choice": 0\n   },\n   "ability": {\n    "name": "Массовое Производство",',
+        why: '«Прочее на старте: 1 фабрика» у гвардии — жетона подкрепления нет',
+    },
+    {
         check: 'abil-3',
         file: 'js/fs/FSEffects.js',
         old: "                    case 'friendlyWorldWithStructureActive':\n                        ok = world && sys.id === active && mine\n                            && R.hasStructure(state, sys.id, area.pos);",

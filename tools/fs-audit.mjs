@@ -6128,6 +6128,32 @@ rule('event-4', '«There are two types of event cards: tactics and schemes.» �
     eq((s.st.players[0].schemes || []).some(x => x.name === scheme.name), true, 'план остался в игре');
 });
 
+rule('sheet-2', '«Прочее на старте: 1 фабрика. Всего на старте: 3 гвардейца, 2 огрина, 1 крейсер, 1 фабрика.» / «Всего на старте: 3 воина, 1 крейсер Жнец, 1 жетон подкрепления, 1 фабрика, 1 бастион.» (02-factions.md)', () => {
+    const build = (faction) => {
+        const st = FS_RULES.newReadyGame({ seed: 7, players: [
+            { faction, name: 'A', id: 'p0' },
+            { faction: 'имперская-гвардия', name: 'B', id: 'p1' },
+        ] });
+        return st;
+    };
+    const count = (st, list, key) => {
+        const out = {};
+        for (const x of list.filter(y => y.seat === 0)) out[x[key]] = (out[x[key]] || 0) + 1;
+        // Порядок ключей — не правило: сравниваем отсортированную запись.
+        return Object.keys(out).sort().map(k => k + '×' + out[k]).join(', ');
+    };
+    const guard = build('имперская-гвардия');
+    eq(count(guard, guard.units, 'unit'), 'гвардейцы×3, крейсеры×1, огрины×2', 'силы гвардии на старте');
+    eq(count(guard, guard.structures, 'type'), 'factory×1', 'постройки гвардии на старте');
+    eq(guard.players[0].assets.reinforcement, 0, 'у гвардии нет жетона подкрепления на старте');
+    const necron = build('некроны');
+    eq(count(necron, necron.units, 'unit'), 'воины×3, крейсеры-жнец×1', 'силы некронов на старте');
+    eq(count(necron, necron.structures, 'type'), 'bastion×1, factory×1', 'постройки некронов на старте');
+    eq(necron.players[0].assets.reinforcement, 1, 'у некронов один жетон подкрепления');
+    eq(guard.players[0].materiel, 6, 'материя на старте у обоих');
+    eq(necron.players[0].materiel, 6, 'материя на старте у некронов');
+});
+
 rule('abil-3', '«Во время выполнения приказа доминирования вы можете забрать любое количество ваших отрядов из одного мира и разместить их в любом дружественном мире активной системы, который содержит постройку.» (02-factions.md, «Тёмный Портал» некронов)', () => {
     const st = FS_RULES.newReadyGame({ seed: 9, players: [
         { faction: 'некроны', name: 'A', id: 'p0' },
