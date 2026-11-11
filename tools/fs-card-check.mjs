@@ -3203,6 +3203,43 @@ check('Атакующие протоколы', '2 `att.` на карте и 1 к
 });
 
 head('Улучшения приказов', 'некроны');
+
+// --- Транслокационные крипты --------------------------------------------------
+// «Во время выполнения этого приказа вы можете рассматривать все ваши города в
+//  активной системе как фабрики. Один раз за раунд.»
+check('Транслокационные крипты', 'город в активной системе работает как фабрика', () => {
+    const deploy = withCard => {
+        const st = FS_RULES.newReadyGame({ seed: 5, players: players('некроны', 'имперская-гвардия') });
+        st.units = [];
+        st.structures = [];
+        st.objectives = [];
+        st.storms = [];
+        for (const sys of st.systems) sys.tokens = [];
+        st.phase = 'operations';
+        st.turn = 0;
+        st.order = null;
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        // Воин на столе: приказ развёртывания не заканчивается сам.
+        FS_RULES.addUnit(st, 0, 'воины', sys.id, pos);
+        st.structures.push({ id: 'city0', seat: 0, type: 'city', system: sys.id, area: pos });
+        st.players[0].materiel = 20;
+        st.players[0].upgrades = withCard ? [{ name: 'Транслокационные крипты', used: false, order: 'deploy' }] : [];
+        sys.tokens.push({ seat: 0, order: 'deploy', faceUp: false });
+        FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys.id });
+        if (withCard) {
+            const res = FS_RULES.apply(st, 0, { type: 'useUpgrade', card: 'Транслокационные крипты' });
+            ok(res.ok, 'карта не сгорела: ' + res.error);
+            eq(st.order.citiesAsFactories, true, 'приказ помнит города-фабрики');
+        }
+        // Бессмертные КЛ 1: покупаются только с фабрики.
+        return FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'бессмертные', system: sys.id, pos });
+    };
+    eq(deploy(false).ok, false, 'без карты город фабрикой не считается');
+    return ok(deploy(true).ok, 'с картой Бессмертные куплены в мире с городом');
+});
+
+
 check('Набег жнецов', 'выбранный отряд КЛ 0 получает урон первым', () => {
     const faces = ['att', 'def', 'def'];
     return withFixedDice(faces, () => {
