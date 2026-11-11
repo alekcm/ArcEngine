@@ -2806,10 +2806,14 @@ function playThrough(st, policy) {
     // Урон и конец раунда сбрасывают жетоны раунда, поэтому проверка остаётся
     // до первого из них (иначе она читала бы уже убранный стол).
     const round0 = st.combat ? st.combat.round : 0;
+    // Вопросы, которые карта задала по дороге: проверка отличает «способность
+    // прозвучала» от «движок молча довёл бой».
+    st.qs = [];
     for (let i = 0; i < 20 && st.combat; i++) {
         if (st.combat.round !== round0) return st;
         if (st.pending) {
             const q = st.pending.question;
+            st.qs.push(q.kind + ':' + q.op);
             const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
             const answer = policy ? policy(q) : null;
             FS_RULES.apply(st, seat, { type: 'effect', answer: answer || { choice: 0 } });
@@ -2903,6 +2907,46 @@ check('Фаланга монолита', 'урон в конце раунда р
     // единицы требует Монолита в бою, поэтому в раскладе именно они).
     return eq(myUnits(calm.st).filter(u => u.routed).length + myUnits(hurt.st).filter(u => u.routed).length, 0,
         'свои отряды не деморализованы');
+});
+
+check('Осколок обманщика', 'верхняя карта колоды отдаёт только свои боевые значения', () => {
+    // Колоду нельзя задать заранее: берём ту, что лежит сверху, и сверяем
+    // прирост значений с её иконками — текстовая способность карты при этом
+    // не звучит (лишних вопросов нет).
+    const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Осколок обманщика', units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: [], noFoeCard: true });
+    // Колода боя — через правила, а не через поле игрока (его там нет).
+    const deck = () => FS_CARDS.combatDeck(FS_RULES, st, 0);
+    const top = deck().cards()[0];
+    const topIcons = (FS_DATA.combat.find(x => x.name === top) || {}).icons || {};
+    const before = FS_RULES.combatValuesParts(st, 'attacker');
+    const deckSize = deck().size();
+    const drawn = playThrough(st);
+    eq(drawn.qs.filter(q => q === 'ability:ability').length >= 1, true, 'способность карты прозвучала');
+    eq(deck().size(), deckSize - 1, 'верхняя карта колоды снята');
+    const after = FS_RULES.combatValuesParts(st, 'attacker');
+    // В счёт идут обе вскрытые карты: сам «Осколок» и снятая с колоды.
+    const ownIcons = (FS_DATA.combat.find(x => x.name === 'Осколок обманщика') || {}).icons || {};
+    for (const k of ['att', 'def', 'morale']) {
+        eq(after[k].total - before[k].total, (topIcons[k] || 0) + (ownIcons[k] || 0),
+            'значение ' + k + ' выросло на иконки «Осколка» и «' + top + '»');
+    }
+    return eq(st.log.some(l => /только её боевые значения/.test(String(l && l.text || l))), true, 'карта не разыграна, только значения');
+});
+
+check('Осколок несущего ночь', '3 `att. token` и уничтожение юнита 0-го КЛ', () => {
+    const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Осколок несущего ночь', units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2, 'огрины': 1 }, dice: [], noFoeCard: true });
+    // «Уничтожьте 1 юнита 0-го командного уровня» — любой отряд на поле,
+    // владелец карты выбирает. Отряд 1-го уровня в выборе не участвует.
+    // «Уничтожьте 1 юнита 0-го командного уровня» — любого на поле, включая
+    // свои: игрок целится во врага.
+    const foes = new Set(st.units.filter(u => u.seat === 1).map(u => u.id));
+    const k0 = st.units.filter(u => foes.has(u.id) && (FS_RULES.unitOf(st, u) || {}).kl === 0).map(u => u.id);
+    playThrough(st, q => (q.kind === 'units'
+        ? { units: (q.options || []).filter(id => foes.has(id)).slice(0, 1) } : null));
+    eq(tokens(st, 'attacker').att, 3, 'получены 3 `att. token`');
+    eq(st.qs.includes('units:destroy'), true, 'карта выбирает, что уничтожить');
+    eq(st.units.filter(u => k0.includes(u.id)).length, k0.length - 1, 'уничтожен отряд противника 0-го командного уровня');
+    return eq(st.units.some(u => (FS_RULES.unitOf(st, u) || {}).name === 'Огрины'), true, 'отряд 1-го КЛ на месте');
 });
 
 check('Лич гвардия', 'деморализован свой → деморализует противник; 2 `def.` только при уже деморализованном враге', () => {
