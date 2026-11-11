@@ -2909,6 +2909,81 @@ check('Фаланга монолита', 'урон в конце раунда р
         'свои отряды не деморализованы');
 });
 
+// --- Планы некронов ---------------------------------------------------------
+check('Хрономантия', 'в начале раунда боя: 2 карты из колоды и столько же сбросить', () => {
+    const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', units: { 'воины': 2 }, foeUnits: { 'огрины': 2 }, dice: [], noFoeCard: true });
+    const hand = () => FS_CARDS.combatHand(FS_RULES, st, 0).size();
+    const before = hand();
+    // План кладётся до начала боя: его вопрос задаёт сам бой.
+    schemeInPlay(st, 'Хрономантия', 'некроны');
+    const started = FS_RULES.maybeScheme(st, 0, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
+    eq(started, true, 'план предложен в начале раунда');
+    eq(st.pending.question.kind, 'scheme', 'вопрос о сбросе карты');
+    FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: 0 } });
+    // Взяли две и тут же сбросили две: рука вернулась к прежнему размеру.
+    for (let i = 0; i < 4 && st.pending; i++) {
+        const q = st.pending.question;
+        eq(q.kind, 'cards', 'сброс карты с руки');
+        FS_RULES.apply(st, st.pending.seat, { type: 'effect', answer: { cards: (q.options || []).slice(0, 1) } });
+    }
+    eq(hand(), before, 'рука та же: взяли 2 и сбросили 2');
+    return eq((st.players[0].schemes || []).some(x => x.name === 'Хрономантия'), false, 'план сброшен');
+});
+check('Смертоукасатели', 'в начале раунда: деморализовать вражеский отряд КЛ 0–1', () => {
+    const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2, 'огрины': 1 }, dice: [], noFoeCard: true });
+    schemeInPlay(st, 'Смертоукасатели', 'некроны');
+    const started = FS_RULES.maybeScheme(st, 0, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
+    eq(started, true, 'план предложен в начале раунда');
+    FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: 0 } });
+    const q = st.pending.question;
+    eq(q.kind, 'units', 'выбор вражеского отряда');
+    // Огрины первого уровня тоже годятся, гвардейцы нулевого — тем более;
+    // отрядов выше первого в раскладе нет, поэтому проверяем размер выбора.
+    eq((q.options || []).length, 3, 'в выборе все три отряда КЛ 0–1');
+    FS_RULES.apply(st, st.pending.seat, { type: 'effect', answer: { units: (q.options || []).slice(0, 1) } });
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'один вражеский отряд деморализован');
+});
+check('Сфера воскрешения', 'после этапа урона возвращает деморализованный отряд недеморализованным', () => {
+    const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', units: { 'воины': 2 }, foeUnits: { 'огрины': 2 }, dice: [], foeDice: ['att', 'att', 'att'], noFoeCard: true });
+    schemeInPlay(st, 'Сфера воскрешения', 'некроны');
+    let offered = false;
+    let back = 0;
+    let alive = 0;
+    for (let i = 0; i < 40 && st.combat; i++) {
+        if (st.pending) {
+            const q = st.pending.question;
+            const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
+            if (q.op === 'resurrectOffer') {
+                offered = true;
+                FS_RULES.apply(st, seat, { type: 'effect', answer: { choice: 0 } });
+                // Смотрим сразу после возврата: следующий раунд может снова
+                // ранить отряд, и проверка читала бы уже другое состояние.
+                back = myUnits(st).filter(u => !u.routed).length;
+                alive = myUnits(st).length;
+                break;
+            }
+            FS_RULES.apply(st, seat, { type: 'effect', answer: q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : { choice: 0 } });
+            continue;
+        }
+        const step = CombatTurn.of(st.combat).step;
+        if (step === 'retreat') break;
+        if (step === 'reinforce-attacker' || step === 'reinforce-defender') {
+            FS_RULES.apply(st, step === 'reinforce-attacker' ? 0 : 1, { type: 'combat', action: 'reinforce', count: 0 });
+        } else if (step === 'choose-attacker') {
+            FS_RULES.apply(st, 0, { type: 'combat', action: 'playCard', index: 0 });
+        } else if (step === 'choose-defender') {
+            FS_RULES.apply(st, 1, { type: 'combat', action: 'playCard', index: 0 });
+        } else if (step === 'damage-attacker') {
+            FS_RULES.apply(st, 0, { type: 'combat', action: 'damage', targets: FS_RULES.damageCandidates(st, 'attacker').map(x => x.id) });
+        } else if (step === 'damage-defender') {
+            FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: FS_RULES.damageCandidates(st, 'defender').map(x => x.id) });
+        } else FS_RULES.advanceCombatSteps(st);
+    }
+    eq(offered, true, 'план предложен после этапа урона');
+    eq(alive, 2, 'отряд не потерян');
+    return eq(back, 2, 'и вернулся недеморализованным');
+});
+
 check('Осколок обманщика', 'верхняя карта колоды отдаёт только свои боевые значения', () => {
     // Колоду нельзя задать заранее: берём ту, что лежит сверху, и сверяем
     // прирост значений с её иконками — текстовая способность карты при этом
