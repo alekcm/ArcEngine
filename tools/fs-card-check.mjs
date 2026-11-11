@@ -2794,6 +2794,75 @@ check('Рой каноптепов', 'бесплатный жетон подкр
     return eq([tok.alive, tok.routed], [1, 0], 'жетон в бою целый и недеморализованный');
 });
 
+/**
+ * The card of the battle is turned over through the real steps of the combat:
+ * the reinforcements are refused, both cards are played, the abilities are
+ * answered with `policy`, and the walk stops when the damage of the round comes.
+ * A check that only "plays the card" never reaches the reveal, where the
+ * ability of a card is read.
+ */
+function playThrough(st, policy) {
+    for (let i = 0; i < 20 && st.combat; i++) {
+        if (st.pending) {
+            const q = st.pending.question;
+            const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
+            const answer = policy ? policy(q) : null;
+            FS_RULES.apply(st, seat, { type: 'effect', answer: answer || { choice: 0 } });
+            continue;
+        }
+        const step = CombatTurn.of(st.combat).step;
+        if (step === 'reinforce-attacker' || step === 'reinforce-defender') {
+            FS_RULES.apply(st, step === 'reinforce-attacker' ? 0 : 1, { type: 'combat', action: 'reinforce', count: 0 });
+        } else if (step === 'choose-attacker') {
+            FS_RULES.apply(st, 0, { type: 'combat', action: 'playCard', index: 0 });
+        } else if (step === 'choose-defender') {
+            FS_RULES.apply(st, 1, { type: 'combat', action: 'playCard', index: 0 });
+        } else if (step === 'damage-attacker') {
+            // Способности разрешены, урон ещё не роздан: дальше проверка не идёт
+            // (урон сбрасывает жетоны раунда).
+            return st;
+        } else if (step === 'damage-defender') {
+            const ids = FS_RULES.damageCandidates(st, 'defender').map(x => x.id);
+            FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: ids });
+        } else {
+            FS_RULES.advanceCombatSteps(st);
+        }
+    }
+    return st;
+}
+
+check('Свежеватели', '«если у противника есть morale cube» — свой кубик получаю, чужой теряется', () => {
+    // Общая способность даёт 2 `att. token`, способность единицы забирает
+    // кубик боевого духа — но только когда он у противника ЕСТЬ.
+    const withDie = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Свежеватели', units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: [], foeDice: ['morale', 'att'] });
+    playThrough(withDie);
+    eq(count(withDie, 'attacker', 'morale'), 1, 'свой кубик боевого духа получен');
+    eq(count(withDie, 'defender', 'morale'), 0, 'чужой кубик боевого духа потерян');
+    eq(tokens(withDie, 'attacker').att, 2, 'два жетона атаки с общей способности');
+    // Без кубика у противника условие не выполнено: способность молчит.
+    const without = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Свежеватели', units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: [], foeDice: ['att'] });
+    playThrough(without);
+    return eq(count(without, 'attacker', 'morale'), 0, 'без кубика у противника ничего не берётся');
+});
+
+check('Триархи преторианцы', 'выбор «восстановить отряд ИЛИ бесплатный жетон подкрепления»', () => {
+    // Первая ветка: деморализованный отряд встаёт, жетон не тратится.
+    const restore = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Триархи преторианцы', units: { 'воины': 1, 'бессмертные': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: [] });
+    const mine = myUnits(restore);
+    mine[1].routed = true;
+    const asset = restore.players[0].assets.reinforcement;
+    playThrough(restore, q => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : (q.kind === 'choice' ? { choice: 0 } : null)));
+    eq(mine[1].routed, false, 'выбранный отряд восстановлен');
+    eq(restore.players[0].assets.reinforcement, asset, 'ветка восстановления не тратит жетонов');
+    // Вторая ветка: жетон подкрепления ставится на стол боя бесплатно.
+    const place = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Триархи преторианцы', units: { 'воины': 1, 'бессмертные': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: [] });
+    myUnits(place)[1].routed = true;
+    const asset2 = place.players[0].assets.reinforcement;
+    playThrough(place, q => (q.kind === 'choice' ? { choice: 1 } : (q.kind === 'areas' ? { area: q.options[0] } : null)));
+    eq(place.players[0].assets.reinforcement, asset2, 'бесплатный жетон не взят из запаса');
+    return eq(CombatTokens.of(place.combat).units('attacker').used >= 1, true, 'жетон лёг на стол боя');
+});
+
 check('Воин фланги', 'с Воином в бою карта даёт 1 кубик боевого духа; без него способность не звучит', () => {
     // Способность единицы читается только при реквизите: у некронов базовый
     // отряд называется «Воины», у корабля — «Крейсеры Жнец».
