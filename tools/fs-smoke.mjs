@@ -1600,6 +1600,51 @@ try {
     fail(e.message);
 }
 
+// --- the screens the player sees --------------------------------------------
+// The rules can be perfect and the game still unplayable: a lobby that throws
+// while drawing leaves the player on an empty scene with no menu at all. That
+// is exactly what happened — FSUI.lobby() calls renderModern(null), and
+// renderModern asked GamePhase.of(null) for .is(). This check draws both
+// screens (the lobby without a state, the panel with a real party) and fails
+// on any exception.
+section('экраны: лобби без состояния и панель с партией');
+// Клиент и панель уже загружены выше — тем же порядком, что и в index.html.
+// Сцена проверки — только DOM: экраны рисуются поверх настоящих правил.
+const nothing = () => undefined;
+try {
+    const el = () => ({
+        className: '', id: '', textContent: '', style: { setProperty: nothing, removeProperty: nothing },
+        classList: { add: nothing, remove: nothing, toggle: nothing, contains: () => false },
+        append: nothing, appendChild: nothing, replaceChildren: nothing, remove: nothing, setAttribute: nothing,
+        getAttribute: () => null, addEventListener: nothing, removeEventListener: nothing, focus: nothing, blur: nothing,
+        getContext: () => null, getBoundingClientRect: () => ({ width: 0, height: 0, left: 0, top: 0 }),
+        querySelector: () => null, querySelectorAll: () => [],
+    });
+    ctx.document.createElement = el;
+    ctx.document.body = el();
+    ctx.innerWidth = 1400;
+    ctx.innerHeight = 900;
+    ctx.UI = { root: null, get: () => null, def: () => ({}), init: nothing, add: nothing, set: nothing, removeAll: nothing, text: nothing, show: nothing };
+    const FSUI = vm.runInContext('FSUI', ctx);
+    FSUI.modernRoot = el();
+    // 1. Лобби — ровно так, как его рисует клиент сразу после подключения: без состояния.
+    //    Раньше здесь падало («GamePhase.of(null) → .is»), и игрок видел пустую сцену без меню.
+    FSUI.lobby({
+        code: 'ABCD', name: 'Проба', faction: '', palette: null, players: [],
+        factions: [{ id: 'некроны', name: 'Некроны', color: '#3f7d4e' }], link: 'http://localhost/?room=ABCD',
+        modes: [{ id: 'game', icon: 'ui.menu', title: 'Обычная игра', text: '…' }], mode: 'game',
+        status: '', battle: { kind: 'ground', units: {}, cards: [], total: 0, deck: 0 },
+        onMode: nothing, onBattle: nothing, onStart: nothing, onPalette: nothing,
+    }, nothing, nothing);
+    ok('лобби без состояния рисуется');
+    // 2. Панель — на настоящей партии, собранной движком.
+    const st = R.newReadyGame({ seed: 'screens', players: seedPlayers() });
+    FSUI.update(st, { mode: 'idle', title: '', text: '', status: '' });
+    ok('панель с партией рисуется (фаза ' + st.phase + ')');
+} catch (e) {
+    fail('экран: ' + (e && e.message ? e.message : e));
+}
+
 console.log('\n' + (failed
     ? C.red + C.b + '  Дым не прошёл: ' + failed + ' проверок.' + C.r
     : C.grn + C.b + '  Дым прошёл: игра грузится и раунд играется.' + C.r) + '\n');

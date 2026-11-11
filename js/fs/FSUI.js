@@ -272,16 +272,19 @@ const FSUI = {
         root.classList.toggle('is-battle', !!(state && state.combat));
         root.classList.toggle('is-deploy', !!(state && state.order && OrderContext.of(state.order).isKind('deploy')));
         root.classList.toggle('is-strategize', !!(state && state.order && OrderContext.of(state.order).isKind('strategize')));
+        // Без состояния (лобби, ожидание сервера) фазы ещё нет: GamePhase.of(null)
+        // отдаёт null, и спрашивать у неё .is() нельзя — иначе падала вся отрисовка
+        // лобби и на экране оставалась только пустая сцена.
         const game = GamePhase.of(state);
-        root.classList.toggle('is-planning', game.is(GamePhase.PLANNING));
-        root.classList.toggle('is-placing-tile', game.is(GamePhase.SETUP) && ctx.mode === 'placeTile');
+        root.classList.toggle('is-planning', !!game && game.is(GamePhase.PLANNING));
+        root.classList.toggle('is-placing-tile', !!game && game.is(GamePhase.SETUP) && ctx.mode === 'placeTile');
         if (this.currentLobby) { this.renderModernLobby(); return; }
         const header = this.el('div', 'fs-topbar');
         header.append(this.el('span', 'fs-brand', 'FORBIDDEN STARS'), this.el('i', 'fs-divider'));
-        const phaseLabel = game.label;
-        header.append(this.el('span', 'fs-phase', state ? (game.is(GamePhase.SETUP)
-            ? phaseLabel : 'Раунд ' + GamePhase.of(state).round + ' · ' + phaseLabel) : phaseLabel));
-        const activeSeat = game.active;
+        const phaseLabel = game ? game.label : 'Галактическая война';
+        header.append(this.el('span', 'fs-phase', game ? (game.is(GamePhase.SETUP)
+            ? phaseLabel : 'Раунд ' + game.round + ' · ' + phaseLabel) : phaseLabel));
+        const activeSeat = game ? game.active : 0;
         if (state && state.players[activeSeat]) {
             // The active player: clicking the pill opens his faction dossier on the right.
             const pill = this.el('button', 'fs-room-pill', 'ХОД · ' + state.players[activeSeat].name);
