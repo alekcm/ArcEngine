@@ -450,6 +450,42 @@ const TABLE = [
         new: '                    return !!def;',
         why: '«Уничтожьте 1 юнита 0-го командного уровня»',
     },
+    // --- приказы и события некронов ----------------------------------------
+    {
+        card: 'Миры-гробницы', faction: NEC,
+        file: 'js/fs/effects/FSPurchaseSteps.js',
+        old: "        R.addStructure(state, buyer.seat, 'bastion', area.system, area.pos);",
+        new: '        /*мутация: бастион не ставится на поле*/',
+        why: '«купить 1 бастион и разместить его в дружественном или нейтральном мире»',
+    },
+    {
+        card: 'Врата вечности', faction: NEC,
+        file: 'js/fs/effects/FSMoveSteps.js',
+        old: "        R.board(state).moveUnit(u, area, { seat });\n        return null;\n    }\n\n    static route(effects, f) {",
+        new: "        /*мутация: отряд остаётся на месте*/\n        return null;\n    }\n\n    static route(effects, f) {",
+        why: '«взять … отряд … и поместить его в любой мир … с Монолитом»',
+    },
+    {
+        card: 'Безжалостное наступление', faction: NEC,
+        file: 'js/fs/effects/ask/FSStrikeAsks.js',
+        old: '        if (combat) CombatDamage.of(combat).setRepeat();',
+        new: '        /*мутация: дополнительного шага повреждений нет*/',
+        why: '«выполнить 1 дополнительный шаг нанесения повреждений»',
+    },
+    {
+        card: 'Хрономантия', faction: NEC,
+        file: 'js/fs/effects/ask/FSCardAsks.js',
+        old: '            hand.put(name);\n            drawn++;',
+        new: '            /*мутация: карта не попадает в руку*/\n            drawn++;',
+        why: '«взять 2 дополнительные боевые карты из колоды»',
+    },
+    {
+        card: 'Смертоукасатели', faction: NEC,
+        file: 'js/fs/effects/FSMoveSteps.js',
+        old: '            R.routeUnit(state, u, inCombat && combat ? CombatTurn.of(combat).round : null);',
+        new: '            /*мутация: отряд не деморализуется*/',
+        why: '«деморализовать один вражеский отряд с командным уровнем 0 или 1»',
+    },
     // --- общий страж подготовки --------------------------------------------
     {
         // `addUnit` refusing a foreign id is what uncovered the fixtures of

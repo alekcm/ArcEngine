@@ -3111,18 +3111,27 @@ check('Хрономантия', 'в начале раунда боя: 2 карт
     const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', units: { 'воины': 2 }, foeUnits: { 'огрины': 2 }, dice: [], noFoeCard: true });
     const hand = () => FS_CARDS.combatHand(FS_RULES, st, 0).size();
     const before = hand();
+    // Верх колоды до розыгрыша: карты обязаны прийти ИМЕННО оттуда и лечь в руку.
+    const top2 = FS_CARDS.combatDeck(FS_RULES, st, 0).cards().slice(0, 2);
+    eq(top2.length, 2, 'в боевой колоде есть две карты');
     // План кладётся до начала боя: его вопрос задаёт сам бой.
     schemeInPlay(st, 'Хрономантия', 'некроны');
     const started = FS_RULES.maybeScheme(st, 0, 'round', { kind: 'combat', ctx: { side: 'attacker' } });
     eq(started, true, 'план предложен в начале раунда');
     eq(st.pending.question.kind, 'scheme', 'вопрос о сбросе карты');
     FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: 0 } });
-    // Взяли две и тут же сбросили две: рука вернулась к прежнему размеру.
+    // Взяли две и тут же сбросили две — но сбросить можно только то, что взяли:
+    // рука выросла на две карты, и это ровно верх колоды.
+    const dropped = [];
     for (let i = 0; i < 4 && st.pending; i++) {
         const q = st.pending.question;
         eq(q.kind, 'cards', 'сброс карты с руки');
-        FS_RULES.apply(st, st.pending.seat, { type: 'effect', answer: { cards: (q.options || []).slice(0, 1) } });
+        const card = (q.options || [])[0];
+        dropped.push(card);
+        FS_RULES.apply(st, st.pending.seat, { type: 'effect', answer: { cards: [card] } });
     }
+    eq(dropped.length, 2, 'сброшены две карты');
+    eq(dropped.slice().sort().join('|'), top2.slice().sort().join('|'), 'сброшены именно взятые с верха колоды');
     eq(hand(), before, 'рука та же: взяли 2 и сбросили 2');
     return eq((st.players[0].schemes || []).some(x => x.name === 'Хрономантия'), false, 'план сброшен');
 });
