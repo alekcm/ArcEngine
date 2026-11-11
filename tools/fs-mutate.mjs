@@ -421,6 +421,35 @@ const TABLE = [
         new: '                    const fits = true;',
         why: '«*Огрин/Крейсер:*» — абзац читается только при своём отряде',
     },
+    // --- некроны: восстановление, деморализация, уничтожение ----------------
+    {
+        card: 'Воля повелителя', faction: NEC,
+        file: 'js/fs/effects/FSChooseSteps.js',
+        old: '            R.restoreUnit(state, u);\n            R.log(state, u.seat, state.players[u.seat].name + \': отряд восстановлен.\');',
+        new: "            /*мутация: отряд остаётся деморализованным*/",
+        why: '«Восстановите 1 свой деморализованный отряд»',
+    },
+    {
+        card: 'Вечное завоевание', faction: NEC,
+        file: 'js/fs/FSEffects.js',
+        old: "                n = (step.n || 1) * CombatTurn.of(combat).count(s2, step.perKind || 'morale');",
+        new: '                n = step.n || 1;',
+        why: '«за каждый имеющийся у вас `morale cube` получите 1 `att. cube`»',
+    },
+    {
+        card: 'Лич гвардия', faction: NEC,
+        file: 'js/fs/effects/FSMoveSteps.js',
+        old: '            R.routeUnit(state, u, inCombat && combat ? CombatTurn.of(combat).round : null);',
+        new: '            /*мутация: отряд не деморализуется*/',
+        why: '«Деморализуйте 1 ваш отряд» — обмен деморализациями',
+    },
+    {
+        card: 'Осколок несущего ночь', faction: NEC,
+        file: 'js/fs/effects/ask/FSPlaceAsks.js',
+        old: '                    return def && (def.kl || 0) <= step.maxKl;',
+        new: '                    return !!def;',
+        why: '«Уничтожьте 1 юнита 0-го командного уровня»',
+    },
     // --- общий страж подготовки --------------------------------------------
     {
         // `addUnit` refusing a foreign id is what uncovered the fixtures of

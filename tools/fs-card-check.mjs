@@ -3213,8 +3213,16 @@ check('Осколок несущего ночь', '3 `att. token` и уничт�
     // свои: игрок целится во врага.
     const foes = new Set(st.units.filter(u => u.seat === 1).map(u => u.id));
     const k0 = st.units.filter(u => foes.has(u.id) && (FS_RULES.unitOf(st, u) || {}).kl === 0).map(u => u.id);
-    playThrough(st, q => (q.kind === 'units'
-        ? { units: (q.options || []).filter(id => foes.has(id)).slice(0, 1) } : null));
+    // Сам выбор обязан исключать отряды выше названного уровня: не только
+    // «первый попавшийся» 0-го КЛ, но и отсутствие 1-го КЛ в списке.
+    let options = null;
+    playThrough(st, q => {
+        if (q.kind !== 'units') return null;
+        options = q.options || [];
+        return { units: options.filter(id => foes.has(id)).slice(0, 1) };
+    });
+    ok(Array.isArray(options), 'выбора цели не было');
+    return eq(options.some(id => (FS_RULES.unitOf(st, st.units.find(u => u.id === id)) || {}).kl > 0), false, 'отряды выше 0-го КЛ в выборе отсутствуют');
     eq(tokens(st, 'attacker').att, 3, 'получены 3 `att. token`');
     eq(st.qs.includes('units:destroy'), true, 'карта выбирает, что уничтожить');
     eq(st.units.filter(u => k0.includes(u.id)).length, k0.length - 1, 'уничтожен отряд противника 0-го командного уровня');
