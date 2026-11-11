@@ -4020,11 +4020,13 @@ rule('refresh-3', '«Each Warp Storm can move only once during each Refresh Phas
     st.storms = [{ id: 'st1', system: a.id, side, moved: false }];
     st.phase = 'refresh';
     st.event = { seat: 0, drawn: [], chosen: null, card: null, top: 'x' };
-    // the top card of the deck: any direction is allowed
-    const dir = side === 'N' || side === 'S' ? 'E' : 'N';
-    const first = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 'st1', dir });
+    // the top card of the deck: any direction is allowed — the check takes the
+    // first legal one, whatever the geometry of the board calls it.
+    const ways = FS_RULES.stormOptions(st, 0).filter(o => o.storm === 'st1');
+    if (!ways.length) return 'шторму некуда пойти';
+    const first = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 'st1', dir: ways[0].dir });
     if (!first.ok) return 'шторм не двинулся: ' + first.error;
-    const second = FS_RULES.apply(st, 1, { type: 'moveStorm', storm: 'st1', dir: dir === 'E' ? 'W' : 'S' });
+    const second = FS_RULES.apply(st, 1, { type: 'moveStorm', storm: 'st1', dir: ways[0].dir });
     eq(second.ok, false, 'второе движение того же шторма в той же фазе');
 });
 
@@ -6768,40 +6770,48 @@ rule('storm-1', '«The active player chooses one Warp Storm on the game board an
         'северная грань уходит на северную грань системы выше');
 });
 
-rule('storm-2', '«Each Warp Storm movement icon indicates two possible directions» — два шага вдоль края не сбрасывают вторую координату', () => {
+rule('storm-2', '«Each Warp Storm movement icon indicates two possible directions» — шаг вдоль края скользит, не поворачивая', () => {
     const st = wideEmpty();
     const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
-    if (!at(1, 0) || !at(1, 2)) return 'карта без трёх систем в ряду';
+    if (!at(1, 0) || !at(1, 1) || !at(1, 2)) return 'карта без трёх систем в ряду';
+    // Прямая стрелка двигает шторм относительно него самого: восток с
+    // горизонтальной грани — сдвиг вдоль неё, а не поворот на бок тайла.
     const storm = { id: 's0', system: at(1, 0).id, side: 'N', moved: false };
     const one = FS_RULES.stormTarget(st, storm, 'E');
     if (!one) return 'первый шаг на восток не вышел';
-    eq(FS_RULES.edgeKey(st, one), FS_RULES.edgeKey(st, { system: at(1, 1).id, side: 'W' }),
-        'шаг на восток с северной грани');
+    eq(FS_RULES.edgeKey(st, one), FS_RULES.edgeKey(st, { system: at(1, 1).id, side: 'N' }),
+        'шаг на восток с северной грани — северная грань соседа');
     const two = FS_RULES.stormTarget(st, one, 'E');
     if (!two) return 'второй шаг на восток не вышел';
-    eq(FS_RULES.edgeKey(st, two), FS_RULES.edgeKey(st, { system: at(1, 2).id, side: 'W' }),
+    eq(FS_RULES.edgeKey(st, two), FS_RULES.edgeKey(st, { system: at(1, 2).id, side: 'N' }),
         'второй шаг на восток — грань через одну систему, а не та же');
     // «…two possible directions»: у иконки их две, и они разные. Шаг на запад
-    // возвращает шторм туда, откуда он пришёл, а шаг на север — на другую грань.
+    // возвращает шторм туда, откуда он пришёл.
     const west = FS_RULES.stormTarget(st, one, 'W');
-    eq(!!west, true, 'вторая сторона иконки тоже ведёт');
-    eq(FS_RULES.edgeKey(st, west) !== FS_RULES.edgeKey(st, two), true,
+    if (!west) return 'шаг на запад не вышел';
+    eq(FS_RULES.edgeKey(st, west), FS_RULES.edgeKey(st, storm),
+        'запад возвращает шторм на исходную грань');
+    eq(FS_RULES.edgeKey(st, one) !== FS_RULES.edgeKey(st, storm), true,
         'восток и запад — разные грани, а не одна и та же');
 });
 
-rule('storm-3', '«the two directions shown on the Warp Storm icon» — диагональные стрелки (SE, NW) двигают шторм', () => {
+rule('storm-3', '«the two directions shown on the Warp Storm icon» — диагональ S-кривой (SE, NW) поворачивает шторм вокруг конца', () => {
     const st = wideEmpty();
     const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
-    if (!at(0, 1) || !at(1, 1) || !at(2, 2)) return 'карта без систем для диагонали';
+    if (!at(0, 1) || !at(1, 1) || !at(1, 2) || !at(0, 2)) return 'карта без систем для диагонали';
     const storm = { id: 's0', system: at(1, 1).id, side: 'N', moved: false };
+    // SE: свободный восточный конец качается на юг вокруг западной опоры —
+    // шторм встаёт на западную грань восточного соседа, а не прыгает по
+    // диагонали через угол.
     const se = FS_RULES.stormTarget(st, storm, 'SE');
     if (!se) return 'SE не двигает шторм';
-    eq(FS_RULES.edgeKey(st, se), FS_RULES.edgeKey(st, { system: at(2, 2).id, side: 'W' }),
-        'SE ведёт на грань системы вниз и вправо');
+    eq(FS_RULES.edgeKey(st, se), FS_RULES.edgeKey(st, { system: at(1, 1).id, side: 'W' }),
+        'SE встаёт на грань у своей западной опоры');
+    // NW: свободный западный конец качается на север вокруг восточной опоры.
     const nw = FS_RULES.stormTarget(st, storm, 'NW');
     if (!nw) return 'NW не двигает шторм';
-    eq(FS_RULES.edgeKey(st, nw), FS_RULES.edgeKey(st, { system: at(0, 1).id, side: 'W' }),
-        'NW ведёт на грань системы вверх и влево');
+    eq(FS_RULES.edgeKey(st, nw), FS_RULES.edgeKey(st, { system: at(0, 2).id, side: 'W' }),
+        'NW встаёт на грань у своей восточной опоры');
     eq(FS_RULES.edgeKey(st, se) === FS_RULES.edgeKey(st, storm), false, 'SE не оставляет шторм на месте');
     eq(FS_RULES.edgeKey(st, nw) === FS_RULES.edgeKey(st, storm), false, 'NW не оставляет шторм на месте');
 });
@@ -6976,6 +6986,105 @@ rule('storm-9', 'Movement is a shift relative to the CURRENT storm edge', () => 
     eq(FS_WARP_STORMS.keyOf(storm), target.key, 'шторм пришёл на целевую границу');
     eq(FS_WARP_STORMS.keyOf(storm) !== before, true, 'сдвиг не оставил шторм на месте');
     return eq(storm.moved, true, 'шторм помечен как сдвинутый');
+});
+
+// The grid corners of an edge: a pivot shares exactly one of them.
+function edgeCorners(edge) {
+    if (!edge) return [];
+    return edge.kind === 'H'
+        ? [edge.row + ',' + edge.col, edge.row + ',' + (edge.col + 1)]
+        : [edge.row + ',' + edge.col, (edge.row + 1) + ',' + edge.col];
+}
+
+rule('storm-12', '«moves it in one of the two directions shown on the Warp Storm icon» — прямые стрелки скользят, шторм держит положение', () => {
+    const st = wideEmpty();
+    const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
+    if (!at(0, 0) || !at(1, 0) || !at(1, 1) || !at(1, 2) || !at(2, 1)) return 'карта без систем для скольжения';
+    // Горизонтальный шторм: «Ракета Death Strike» (W/E) двигает его вдоль него
+    // самого — он остаётся горизонтальным.
+    const h = { id: 'sh', system: at(1, 1).id, side: 'N', moved: false };
+    for (const [dir, sys, side] of [['E', at(1, 2), 'N'], ['W', at(1, 0), 'N'],
+        ['N', at(0, 1), 'N'], ['S', at(2, 1), 'N']]) {
+        const t = FS_RULES.stormTarget(st, h, dir);
+        if (!t) return dir + ' с горизонтальной грани не вышел';
+        eq(FS_RULES.edgeKey(st, t), FS_RULES.edgeKey(st, { system: sys.id, side }),
+            dir + ' скользит на соседнюю грань');
+        eq(FS_RULES.stormEdge(st, t).kind, 'H', dir + ' не поворачивает шторм');
+    }
+    // Вертикальный шторм читают повёрнутым горизонтально: N/S скользят вдоль
+    // него самого — для карты это вверх и вниз.
+    const v = { id: 'sv', system: at(1, 0).id, side: 'E', moved: false };
+    for (const [dir, sys, side] of [['N', at(0, 0), 'E'], ['S', at(2, 0), 'E'],
+        ['E', at(1, 1), 'E'], ['W', at(1, 0), 'W']]) {
+        const t = FS_RULES.stormTarget(st, v, dir);
+        if (!t) return dir + ' с вертикальной грани не вышел';
+        eq(FS_RULES.edgeKey(st, t), FS_RULES.edgeKey(st, { system: sys.id, side }),
+            dir + ' скользит на соседнюю грань');
+        eq(FS_RULES.stormEdge(st, t).kind, 'V', dir + ' не поворачивает шторм');
+    }
+    return true;
+});
+
+rule('storm-13', '«the two directions shown on the Warp Storm icon» — S-кривая NE/SW («Сфера воскрешения»): свободный конец качается в названную сторону', () => {
+    const st = wideEmpty();
+    const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
+    if (!at(0, 1) || !at(1, 0) || !at(1, 1) || !at(1, 2) || !at(2, 1)) return 'карта без систем для разворота';
+    // NE: свободный восточный конец — на север, опора западная.
+    // SW: свободный западный конец — на юг, опора восточная.
+    const legs = [
+        [{ system: at(1, 1).id, side: 'N' }, 'NE', { system: at(0, 1).id, side: 'W' }, 'горизонталь: NE'],
+        [{ system: at(1, 1).id, side: 'N' }, 'SW', { system: at(1, 2).id, side: 'W' }, 'горизонталь: SW'],
+        [{ system: at(1, 0).id, side: 'E' }, 'NE', { system: at(1, 0).id, side: 'N' }, 'вертикаль: NE'],
+        [{ system: at(1, 0).id, side: 'E' }, 'SW', { system: at(2, 1).id, side: 'N' }, 'вертикаль: SW'],
+    ];
+    for (const [from, dir, want, name] of legs) {
+        const storm = Object.assign({ id: 's', moved: false }, from);
+        const t = FS_RULES.stormTarget(st, storm, dir);
+        if (!t) return name + ' не вышел';
+        eq(FS_RULES.edgeKey(st, t), FS_RULES.edgeKey(st, want), name + ' — грань у своей опоры');
+        const shared = edgeCorners(FS_RULES.stormEdge(st, t))
+            .filter(k => edgeCorners(FS_RULES.stormEdge(st, storm)).includes(k));
+        eq(shared.length, 1, name + ' — разворот вокруг конца, а не прыжок');
+    }
+    return true;
+});
+
+rule('storm-14', '«the two directions shown on the Warp Storm icon» — S-кривая NW/SE («Гнев дракона пустоты», Некроны/КП1.jpg): разворот вокруг дальней опоры', () => {
+    const st = wideEmpty();
+    const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
+    if (!at(0, 2) || !at(1, 0) || !at(1, 1) || !at(2, 0)) return 'карта без систем для разворота';
+    // NW: свободный западный конец — на север, опора восточная.
+    // SE: свободный восточный конец — на юг, опора западная.
+    const legs = [
+        [{ system: at(1, 1).id, side: 'N' }, 'NW', { system: at(0, 2).id, side: 'W' }, 'горизонталь: NW'],
+        [{ system: at(1, 1).id, side: 'N' }, 'SE', { system: at(1, 1).id, side: 'W' }, 'горизонталь: SE'],
+        [{ system: at(1, 0).id, side: 'E' }, 'NW', { system: at(2, 0).id, side: 'N' }, 'вертикаль: NW'],
+        [{ system: at(1, 0).id, side: 'E' }, 'SE', { system: at(1, 1).id, side: 'N' }, 'вертикаль: SE'],
+    ];
+    for (const [from, dir, want, name] of legs) {
+        const storm = Object.assign({ id: 's', moved: false }, from);
+        const t = FS_RULES.stormTarget(st, storm, dir);
+        if (!t) return name + ' не вышел';
+        eq(FS_RULES.edgeKey(st, t), FS_RULES.edgeKey(st, want), name + ' — грань у своей опоры');
+        const shared = edgeCorners(FS_RULES.stormEdge(st, t))
+            .filter(k => edgeCorners(FS_RULES.stormEdge(st, storm)).includes(k));
+        eq(shared.length, 1, name + ' — разворот вокруг конца, а не прыжок');
+    }
+    // Настоящая карта ведёт настоящий шторм: «Гнев дракона пустоты» даёт ровно
+    // свои два разворота, и ход по ним проходит приказом.
+    const card = FS_DATA.events.find(e => e.name === 'Гнев дракона пустоты' && e.faction === 'некроны');
+    if (!card) return 'нет карты «Гнев дракона пустоты»';
+    st.storms = [Object.assign({ id: 'sx', moved: false }, { system: at(1, 1).id, side: 'N' })];
+    st.phase = 'refresh';
+    st.eventsLeft = 2;
+    st.event = { seat: 0, drawn: [card.name], chosen: card.name, card };
+    const ways = FS_RULES.stormOptions(st, 0).filter(o => o.storm === 'sx');
+    eq(ways.map(o => o.dir).sort().join(','), 'NW,SE', 'карта даёт оба разворота');
+    const moved = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 'sx', dir: 'NW' });
+    eq(moved.ok, true, 'разворот приказом проходит: ' + (moved.error || ''));
+    eq(FS_RULES.edgeKey(st, st.storms[0]), FS_RULES.edgeKey(st, { system: at(0, 2).id, side: 'W' }),
+        'приказ поставил шторм на грань разворота');
+    return true;
 });
 
 rule('event-3', '«Then, he shuffles all event cards back into his event deck, excluding the “Scheme” event card if it is in play.»', () => {

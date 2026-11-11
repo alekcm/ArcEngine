@@ -133,6 +133,18 @@ const FSUI = {
         return node;
     },
 
+    // The storm icon of an event card, as printed: a diagonal pair shares one
+    // S-curve (not two straight arrows), «any» is the eight heads at once.
+    stormIcons(storm) {
+        const dirs = (storm || []).map(d => String(d));
+        if (dirs.length === 1 && dirs[0] === 'any') return [{ icon: 'ui.storm-any', label: 'любая' }];
+        if (dirs.length === 2 && dirs[0].length === 2 && dirs[1].length === 2) {
+            const key = dirs.slice().sort().join('-').toLowerCase();
+            return [{ icon: 'ui.storm-' + key, label: dirs.join('/') }];
+        }
+        return dirs.map(d => ({ icon: 'ui.storm-' + d.toLowerCase(), label: d }));
+    },
+
     // The text of a card, with its real italics, its real bold and its cubes drawn as
     // cubes: no asterisks, no underscores and no words for a symbol.
     richText(text, cls) {
@@ -1067,9 +1079,9 @@ const FSUI = {
             if (d.storm && d.storm.length) {
                 const storm = this.el('div', 'fs-card-choice-storm');
                 storm.append(this.el('span', '', 'Сдвиг шторма: '));
-                for (const dir of d.storm) {
-                    storm.append(this.iconEl('ui.storm-' + String(dir).toLowerCase(), 'fs-card-choice-ico'));
-                    storm.append(this.el('span', '', String(dir)));
+                for (const badge of this.stormIcons(d.storm)) {
+                    storm.append(this.iconEl(badge.icon, 'fs-card-choice-ico'));
+                    storm.append(this.el('span', '', badge.label));
                 }
                 card.append(storm);
             }
@@ -1182,7 +1194,7 @@ const FSUI = {
         if (item.storm && item.storm.length) {
             const row = this.el('div', 'fs-card-preview-storm');
             row.append(this.el('span', 'fs-card-preview-storm-label', 'Сдвиг шторма'));
-            for (const dir of item.storm) row.append(this.iconEl('ui.storm-' + String(dir).toLowerCase(), 'fs-card-preview-storm-ico'));
+            for (const badge of this.stormIcons(item.storm)) row.append(this.iconEl(badge.icon, 'fs-card-preview-storm-ico'));
             wrap.append(row);
         }
         if (item.icons) {

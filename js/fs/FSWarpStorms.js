@@ -3,9 +3,10 @@
 // A storm never belongs to one tile. It lies on one grid edge: H(row,col) is
 // the horizontal border above tile (row,col), V(row,col) is the vertical border
 // left of it. An outer border has one neighbouring tile and null on the other
-// side. Movement is always a shift from THAT edge, never a new position
-// computed from the tile a client happened to click. The board view asks this
-// same object for the world coordinates, so the token is drawn between tiles.
+// side. Movement is always a shift from THAT edge, read in the storm's own
+// frame — never a new position computed from the tile a client happened to
+// click. The board view asks this same object for the world coordinates, so the
+// token is drawn between tiles.
 
 /** One canonical edge of the system grid. */
 class WarpStormEdge {
@@ -13,6 +14,7 @@ class WarpStormEdge {
 
     /** @param {'H'|'V'} kind @param {number} row @param {number} col */
     constructor(kind, row, col) {
+        /** @type {'H'|'V'} */
         this.kind = kind === 'V' ? 'V' : 'H';
         this.row = Number(row);
         this.col = Number(col);
@@ -67,31 +69,38 @@ class WarpStormEdge {
     }
 
     /**
-     * A new edge relative to the storm's CURRENT edge. A straight move slides
-     * along the grid or turns around a corner; a diagonal does both. No tile
-     * centre is involved in this calculation.
+     * A new edge relative to the storm's CURRENT edge, read in the storm's own
+     * frame: the card arrows are followed with the storm lying horizontal. A
+     * straight arrow slides the storm one edge over and it keeps its lie; a
+     * diagonal of the printed S-curve pivots it 90 degrees around one of its
+     * ends. No tile centre is involved in this calculation.
      * @param {string} dir
      */
     shift(dir) {
         const d = String(dir || '').toUpperCase();
         if (!WarpStormEdge.DIRECTIONS.includes(d)) return null;
         const r = this.row, c = this.col;
+        // Straight arrows: one edge over, the storm keeps its lie.
+        if (d === 'N') return new WarpStormEdge(this.kind, r - 1, c);
+        if (d === 'S') return new WarpStormEdge(this.kind, r + 1, c);
+        if (d === 'E') return new WarpStormEdge(this.kind, r, c + 1);
+        if (d === 'W') return new WarpStormEdge(this.kind, r, c - 1);
+        // The S-curve: the second letter names the swinging (free) end in the
+        // storm's frame, the first the side it swings to; the other end is the
+        // pivot. (The arrowhead of the printed S lands in the named corner: on
+        // «Гнев дракона пустоты» the NW head sits top-left, above the free
+        // west end that swings north around the east pivot.) A vertical storm
+        // is read horizontalized, its north end as its west end; the printed
+        // pairs are opposites, so the two ways of horizontalizing name the
+        // same two edges.
         if (this.kind === 'H') {
-            if (d === 'N') return new WarpStormEdge('H', r - 1, c);
-            if (d === 'S') return new WarpStormEdge('H', r + 1, c);
-            if (d === 'E') return new WarpStormEdge('V', r, c + 1);
-            if (d === 'W') return new WarpStormEdge('V', r, c);
-            const dr = d[0] === 'N' ? -1 : 1;
-            const dc = d[1] === 'E' ? 1 : 0;
-            return new WarpStormEdge('V', r + dr, c + dc);
+            const pc = d[1] === 'E' ? c : c + 1;
+            const pr = d[0] === 'N' ? r - 1 : r;
+            return new WarpStormEdge('V', pr, pc);
         }
-        if (d === 'E') return new WarpStormEdge('V', r, c + 1);
-        if (d === 'W') return new WarpStormEdge('V', r, c - 1);
-        if (d === 'N') return new WarpStormEdge('H', r, c);
-        if (d === 'S') return new WarpStormEdge('H', r + 1, c);
-        const dr = d[0] === 'S' ? 1 : 0;
-        const dc = d[1] === 'E' ? 1 : -1;
-        return new WarpStormEdge('H', r + dr, c + dc);
+        const pr = d[1] === 'E' ? r : r + 1;
+        const pc = d[0] === 'N' ? c - 1 : c;
+        return new WarpStormEdge('H', pr, pc);
     }
 
     /** A serialisable reference: the edge is primary, the tile side is an alias. */

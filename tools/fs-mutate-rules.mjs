@@ -726,6 +726,20 @@ const TABLE = [
         new: '        let cap = FS_RULES_CONFIG.AREA_MAX_UNITS;',
         why: '«he must destroy any units that are in excess of three (the void’s unit capacity)» — пустота держит пять',
     },
+    {
+        check: 'storm-12',
+        file: 'js/fs/FSWarpStorms.js',
+        old: "        if (d === 'E') return new WarpStormEdge(this.kind, r, c + 1);",
+        new: "        if (d === 'E') return new WarpStormEdge('V', r, c + 1);",
+        why: '«moves it in one of the two directions shown on the Warp Storm icon» — шаг вдоль края снова поворачивает шторм на бок тайла',
+    },
+    {
+        check: 'storm-14',
+        file: 'js/fs/FSWarpStorms.js',
+        old: "            const pc = d[1] === 'E' ? c : c + 1;",
+        new: "            const pc = d[1] === 'E' ? c + 1 : c;",
+        why: '«the two directions shown on the Warp Storm icon» — опора и свободный конец перепутаны: S-кривые зеркалятся',
+    },
 ];
 
 const args = process.argv.slice(2);
