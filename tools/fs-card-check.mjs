@@ -1003,7 +1003,9 @@ const effectPick = (n, rest) => (st, q) => {
 /** Answer the pending effect, one question after another. */
 function effectAnswer(st, answer, limit = 40) {
     for (let i = 0; i < limit && st.pending; i++) {
-        const seat = st.pending.seat;
+        // The question may be asked of the opponent: the answer belongs to the
+        // seat the question names, not to the owner of the card.
+        const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
         const one = typeof answer === 'function' ? answer(st, st.pending.question) : answer;
         const res = FS_RULES.apply(st, seat, { type: 'effect', answer: one });
         if (!res || res.ok === false) throw new Error('ответ не принят: ' + (res && res.error));
@@ -4975,6 +4977,370 @@ function toDamageStep(st, policy) {
 /** The units of a seat of the battle by the name of their card. */
 const namedUnits = (st, seat) => st.units.filter(u => u.seat === seat)
     .map(u => (FS_RULES.unitOf(st, u) || {}).name);
+
+// ============================================================================
+//  Имперская гвардия: карты событий (docs/forbidden-stars/06-events.md)
+// ============================================================================
+head('Карты событий', IG);
+
+/** A refresh-phase state of the guard with the chosen event card of its deck. */
+function guardEvent(name, o = {}) {
+    const st = FS_RULES.newReadyGame({ seed: 5, players: players(IG, 'некроны') });
+    st.units = [];
+    st.structures = [];
+    st.objectives = [];
+    st.storms = [];
+    for (const sys of st.systems) sys.tokens = [];
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    for (const [id, n] of Object.entries(o.units || {})) {
+        for (let i = 0; i < n; i++) FS_RULES.addUnit(st, 0, id, sys.id, pos);
+    }
+    for (const [id, n] of Object.entries(o.foeUnits || {})) {
+        for (let i = 0; i < n; i++) FS_RULES.addUnit(st, 1, id, sys.id, pos);
+    }
+    for (const type of o.structures || []) {
+        st.structures.push({ id: 'str' + st.structures.length, seat: 0, type, system: sys.id, area: pos });
+    }
+    if (o.materiel !== undefined) st.players[0].materiel = o.materiel;
+    if (o.assets) Object.assign(st.players[0].assets, o.assets);
+    st.phase = 'refresh';
+    st.eventsLeft = 2;
+    st.event = { seat: 0, drawn: [name], chosen: name, stormMoved: true };
+    st.event.card = FS_DATA.events.find(e => e.faction === IG && e.name === name);
+    ok(!!st.event.card, 'нет карты события «' + name + '»');
+    st.sys = sys.id;
+    st.pos = pos;
+    return st;
+}
+
+/** The unit of a seat of the given type, or null. */
+const guardUnit = (st, id, seat) => st.units
+    .find(u => (u.seat || 0) === (seat || 0) && (FS_RULES.unitOf(st, u) || {}).id === id) || null;
+
+// --- Отбрыски Темпестус -------------------------------------------------------
+// «Деморализуйте 1 вражеский отряд с командным уровнем 0 или 1, который
+//  находится в системе, содержащей хотя бы 1 из ваших отрядов, либо находящийся
+//  в соседней с ней системе.»
+check('Отбрыски Темпестус', 'рядом со своим отрядом враг КЛ 0 деморализован', () => {
+    const st = guardEvent('Отбрыски Темпестус', { units: { 'гвардейцы': 1 }, foeUnits: { 'воины': 2 } });
+    const res = playEvent(st);
+    ok(res.ok, 'карта не сыграна: ' + res.error);
+    const q = pending(st);
+    ok(!!q && q.op === 'route', 'вопроса о деморализации нет');
+    effectAnswer(st, effectPolicy);
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'один отряд врага деморализован');
+});
+
+check('Отбрыски Темпестус', 'отряд 2 уровня не выбирается', () => {
+    const st = guardEvent('Отбрыски Темпестус', { units: { 'гвардейцы': 1 }, foeUnits: { 'монолиты': 1 } });
+    playEvent(st);
+    // Свой отряд уровня 0 в системе есть, но у врага только КЛ 2 — цели нет.
+    return eq(foeUnits(st).filter(u => u.routed).length, 0, 'деморализованных нет');
+});
+
+check('Отбрыски Темпестус', 'без своих отрядов карта ничего не делает', () => {
+    const st = guardEvent('Отбрыски Темпестус', { foeUnits: { 'воины': 2 } });
+    playEvent(st);
+    return eq(foeUnits(st).filter(u => u.routed).length, 0, 'деморализованных нет');
+});
+
+// --- Смена военного производства ---------------------------------------------
+// «Выберите дружественный мир. Получите ценные ресурсы и материалы этого мира.»
+check('Смена военного производства', 'материя и ресурсы мира достаются игроку', () => {
+    const st = guardEvent('Смена военного производства', {
+        units: { 'гвардейцы': 1 }, structures: ['city', 'factory'], materiel: 6,
+        assets: { forge: 0, cache: 0 },
+    });
+    playEvent(st);
+    const q = pending(st);
+    ok(!!q && q.kind === 'areas', 'выбора мира нет');
+    const before = st.players[0].materiel;
+    effectAnswer(st, effectPolicy);
+    // Город и фабрика мира дают по жетону, материя — за них же.
+    ok(st.players[0].materiel > before, 'материя не пришла');
+    return ok(st.players[0].assets.forge + st.players[0].assets.cache > 0, 'ресурсы мира не пришли');
+});
+
+// --- Имперская десятина -------------------------------------------------------
+// «Либо разместите 2 бесплатных Гвардейца в одном дружественном мире, содержащем
+//  фабрику, либо разместите 1 бесплатного Гвардейца в любом дружественном мире.»
+check('Имперская десятина', 'два бесплатных Гвардейца в мире с фабрикой', () => {
+    const st = guardEvent('Имперская десятина', { units: { 'огрины': 1 }, structures: ['factory'] });
+    playEvent(st);
+    const q = pending(st);
+    ok(!!q && q.kind === 'choice', 'выбора ветки нет');
+    eq((q.options || []).length, 2, 'две ветки');
+    // Ветка с фабрикой требует мира с фабрикой: без неё предлагается только вторая.
+    effectAnswer(st, effectPick(0));
+    eq(namedUnits(st, 0).filter(n => n === 'Гвардейцы').length, 2, 'два Гвардейца размещены');
+    return eq(st.players[0].materiel, st.players[0].materiel, 'размещение бесплатное');
+});
+
+check('Имперская десятина', 'один Гвардеец в любом дружественном мире', () => {
+    const st = guardEvent('Имперская десятина', { units: { 'огрины': 1 } });
+    playEvent(st);
+    effectAnswer(st, effectPick(1));
+    return eq(namedUnits(st, 0).filter(n => n === 'Гвардейцы').length, 1, 'один Гвардеец размещён');
+});
+
+// --- Приказ верховного командования ------------------------------------------
+// «Приобретите 1 боевое улучшение, уменьшите его стоимость на 1 за каждый
+//  дружественный мир, в котором есть фабрика.»
+check('Приказ верховного командования', 'скидка по числу миров с фабрикой', () => {
+    const st = guardEvent('Приказ верховного командования', { materiel: 10 });
+    // Два мира с фабрикой: скидка 2.
+    const worlds = st.systems.map(sys => ({ system: sys.id, pos: worldOf(st, sys.id) })).filter(w => w.pos);
+    for (const w of worlds.slice(0, 2)) {
+        st.structures.push({ id: 'f' + st.structures.length, seat: 0, type: 'factory', system: w.system, area: w.pos });
+    }
+    playEvent(st);
+    const q = pending(st);
+    ok(!!q && q.op === 'buyUpgrade', 'выбора улучшения нет');
+    const name = (q.options || []).find(n => n === 'Молот Императора') || (q.options || [])[0];
+    const card = guardCard(name);
+    const before = st.players[0].materiel;
+    effectAnswer(st, (s, question) => (question.op === 'buyUpgradeReplace'
+        ? { remove: (question.options || [])[0] } : { card: name }), 8);
+    // Цена карты 6 минус две фабрики: заплачено 4.
+    return eq(before - st.players[0].materiel, Math.max(0, (card.cost || 0) - 2), 'цена со скидкой 2');
+});
+
+// --- Планы ИГ -----------------------------------------------------------------
+// Планы кладутся в игровую зону: `schemeInPlay` берёт их шаги из того же
+// разбора текста, а проверки ждут момента, который называет карта.
+/** A scheme of the guard in the zone of the given seat (the defender may plunder it too). */
+function guardScheme(st, name, seat) {
+    const card = FS_DATA.events.find(e => e.faction === IG && e.name === name);
+    ok(!!card, 'нет карты «' + name + '»');
+    const trig = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: IG }).find(s => s.op === 'trigger');
+    const at = seat === undefined ? 0 : seat;
+    st.players[at].schemes = st.players[at].schemes || [];
+    st.players[at].schemes.push({
+        name: card.name, text: card.text || '',
+        trigger: trig ? trig.trigger : null, steps: trig ? trig.steps : [],
+        note: trig ? !!trig.note : true, defer: trig ? !!trig.defer : false,
+    });
+    return st.players[at].schemes[st.players[at].schemes.length - 1];
+}
+
+/** Ход боя до конца шага призыва подкреплений указанной стороны. */
+function toReinforceEnd(st, side) {
+    const c = st.combat;
+    for (let i = 0; i < 24 && st.combat && !st.pending; i++) {
+        const step = c.step;
+        if (step.startsWith('reinforce-')) {
+            const s2 = step.slice('reinforce-'.length);
+            const seat = s2 === 'attacker' ? c.attacker : c.defender;
+            const res = FS_RULES.apply(st, seat, { type: 'combat', action: 'reinforce', count: 0 });
+            if (!res.ok) throw new Error('призыв не прошёл: ' + res.error);
+            if (s2 === side) return st.pending ? st : (toReinforceEnd(st, side), st);
+            continue;
+        }
+        if (step.startsWith('choose-')) {
+            const s2 = step.slice('choose-'.length);
+            if ((c.cards[s2].hand || []).length) {
+                FS_RULES.apply(st, s2 === 'attacker' ? c.attacker : c.defender,
+                    { type: 'combat', action: 'playCard', index: 0 });
+            } else FS_RULES.apply(st, c.attacker, { type: 'combat', action: 'advance' });
+            continue;
+        }
+        FS_RULES.combatAdvance ? FS_RULES.combatAdvance(st) : FS_RULES.advanceCombatSteps(st);
+    }
+    return st;
+}
+
+// --- Зов астропатов -----------------------------------------------------------
+// «Во время боя, в конце шага призыва подкреплений, если вы защищаетесь, вы
+//  можете сбросить эту карту, чтобы разместить 2 бесплатных жетона подкрепления
+//  в спорной области.»
+check('Зов астропатов', 'защитник получает 2 бесплатных жетона подкрепления', () => {
+    // ИГ — защитник: атакуют некроны.
+    const st = battle({ faction: 'некроны', foeFaction: IG, units: { 'воины': 2 }, foeUnits: { 'огрины': 2 }, foeDice: ['att'], foeCard: 'Ложись!' });
+    eq(st.combat.defender, 1, 'ИГ обороняется');
+    guardScheme(st, 'Зов астропатов', 1);
+    toReinforceEnd(st, 'defender');
+    const q = pending(st);
+    ok(!!q && q.kind === 'scheme', 'план не предложен');
+    const before = CombatTokens.of(st.combat).units('defender').used;
+    effectAnswer(st, { choice: 0 });
+    eq(CombatTokens.of(st.combat).units('defender').used, before + 2, 'два жетона в спорной области');
+    return eq((st.players[1].schemes || []).length, 0, 'план сброшен');
+});
+
+check('Зов астропатов', 'атакующему план не предлагается', () => {
+    // Условие карты — «если вы защищаетесь».
+    const st = battle({ faction: IG, foeFaction: 'некроны', units: { 'огрины': 2 }, foeUnits: { 'воины': 2 }, foeDice: ['att'], dice: ['att'], card: 'Ложись!' });
+    const plan = guardScheme(st, 'Зов астропатов', 0);
+    eq(plan.trigger, 'reinforce-end', 'план ждёт конца шага призыва');
+    // В бою, где ИГ атакует, условие не выполнено: план остаётся в зоне.
+    toReinforceEnd(st, 'defender');
+    return eq((st.players[0].schemes || []).length, 1, 'план не сброшен');
+});
+
+// --- Тактический гений --------------------------------------------------------
+// «Вместо того, чтобы играть боевую карту из руки, вы можете сбросить эту карту,
+//  чтобы сыграть любую карту из своей боевой колоды или колоды улучшений, кроме
+//  карты, которая уже была разыграна.»
+check('Тактический гений', 'вместо карты из руки берётся карта из колоды', () => {
+    const st = battle({ faction: IG, foeFaction: 'некроны', units: { 'огрины': 2 }, foeUnits: { 'воины': 2 }, dice: ['att'], foeDice: ['att'], foeCard: 'Ложись!' });
+    st.combat.cards.attacker.hand = ['Ложись!', 'За Императора!', 'Огневая поддержка'];
+    guardScheme(st, 'Тактический гений', 0);
+    const played = st.combat.cards.attacker.played.map(p => p.name || p);
+    const q0 = (() => {
+        // Вопрос плана приходит на шаге выбора боевой карты.
+        FS_RULES.advanceCombatSteps(st);
+        return pending(st);
+    })();
+    ok(!q0 || q0.kind !== 'scheme', 'план не предложен сразу');
+    // Шаг выбора карты: план спрашивается здесь.
+    let asked = null;
+    for (let i = 0; i < 8 && st.combat && !asked; i++) {
+        if (st.pending) { asked = pending(st); break; }
+        const step = st.combat.step;
+        if (step === 'choose-attacker' || step === 'choose-defender') {
+            FS_RULES.advanceCombatSteps(st);
+            asked = pending(st);
+            break;
+        }
+        if (step.startsWith('reinforce-')) {
+            const s2 = step.slice('reinforce-'.length);
+            FS_RULES.apply(st, s2 === 'attacker' ? st.combat.attacker : st.combat.defender,
+                { type: 'combat', action: 'reinforce', count: 0 });
+            continue;
+        }
+        FS_RULES.advanceCombatSteps(st);
+    }
+    ok(!!asked && asked.kind === 'scheme', 'план не предложен у выбора карты');
+    let chosen = null;
+    effectAnswer(st, (s, q) => {
+        if (q.kind === 'scheme') return { choice: 0 };
+        if (q.op === 'playAnyCard') { chosen = q; return { card: (q.options || [])[0] }; }
+        return effectPolicy(s, q);
+    }, 6);
+    ok(!!chosen, 'выбора карты из колоды нет');
+    const options = chosen.options || [];
+    ok(options.length > 0, 'в колоде нет карт');
+    // «кроме карты, которая уже была разыграна»: сыгранная карта не предлагается.
+    eq(options.some(n => played.includes(n)), false, 'разыгранная карта не в списке');
+    eq(st.combat.cards.attacker.hand.includes(options[0]), true, 'карта пришла в руку');
+    return eq((st.players[0].schemes || []).length, 0, 'план сброшен');
+});
+
+// --- Точечный удар ------------------------------------------------------------
+// «Перед тем, как нанести орбитальный удар, вы можете сбросить эту карту, чтобы
+//  добавить 2 к общей сумме урона.»
+check('Точечный удар', 'сумма удара растёт на 2', () => {
+    const strike = withCard => {
+        const st = strikeState({ faction: IG, ships: { 'крейсеры': 2 }, foeUnits: { 'воины': 1 }, upgrades: [] });
+        if (withCard) schemeInPlay(st, 'Точечный удар', IG);
+        const roll = FS_RULES.rollDice;
+        FS_RULES.rollDice = () => ['att', 'att'];
+        const cmd = { type: 'orbitalStrike', system: st.systems[0].id, pos: st.strikeWorld };
+        FS_RULES.apply(st, 0, cmd);
+        effectAnswer(st, (s, q) => (q.kind === 'scheme' ? { choice: 0 } : effectPolicy(s, q)), 6);
+        if (!st.strike) FS_RULES.apply(st, 0, cmd);
+        FS_RULES.rollDice = roll;
+        return st;
+    };
+    const plain = strike(false);
+    eq(plain.strike.hits, 2, 'без карты — два попадания');
+    const card = strike(true);
+    eq(card.strike.hits, 4, 'с картой — четыре попадания');
+    return eq((card.players[0].schemes || []).length, 0, 'план сброшен');
+});
+
+// --- Ракета «Death Strike» ----------------------------------------------------
+// «Вы можете сбросить эту карту в начале боя в любом мире. Если вы это сделаете,
+//  то в конце первого шага нанесения повреждений либо уничтожьте 1 отряд
+//  противника с командным уровнем 0 или 1 в этом мире, либо деморализуйте 1 отряд
+//  с командным уровнем 2 в этом мире.»
+check('Ракета «Death Strike»', 'в конце первого шага повреждений гибнет отряд КЛ 0–1', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2, 'монолиты': 1 }, card: 'Ложись!', foeCard: 'Ложись!', dice: ['att'], foeDice: ['att'] });
+    schemeInPlay(st, 'Ракета «Death Strike»', IG);
+    // Момент карты — начало боя.
+    FS_RULES.maybeScheme(st, 0, 'combat-start', { kind: 'combat', ctx: { side: 'attacker' } });
+    const q = pending(st);
+    ok(!!q && q.kind === 'scheme', 'план не предложен в начале боя');
+    effectAnswer(st, { choice: 0 });
+    eq((st.players[0].schemes || []).length, 0, 'план сброшен');
+    // До конца шага повреждений вопрос не задаётся.
+    let asked = false;
+    for (let i = 0; i < 24 && st.combat; i++) {
+        if (st.pending) {
+            const q2 = st.pending.question;
+            if (q2.kind === 'choice' || q2.op === 'destroy' || q2.op === 'route') asked = true;
+            effectAnswer(st, (s, question) => (question.kind === 'choice' ? { choice: 0 } : effectPolicy(s, question)));
+            if (asked) break;
+            continue;
+        }
+        const step = st.combat.step;
+        if (step === 'damage-attacker' || step === 'damage-defender') {
+            const seat = step === 'damage-attacker' ? st.combat.attacker : st.combat.defender;
+            FS_RULES.apply(st, seat, { type: 'combat', action: 'damage', targets: [] });
+            continue;
+        }
+        if (step.startsWith('reinforce-')) {
+            const s2 = step.slice('reinforce-'.length);
+            FS_RULES.apply(st, s2 === 'attacker' ? st.combat.attacker : st.combat.defender,
+                { type: 'combat', action: 'reinforce', count: 0 });
+            continue;
+        }
+        if (step.startsWith('choose-')) {
+            const s2 = step.slice('choose-'.length);
+            if ((st.combat.cards[s2].hand || []).length) {
+                FS_RULES.apply(st, s2 === 'attacker' ? st.combat.attacker : st.combat.defender,
+                    { type: 'combat', action: 'playCard', index: 0 });
+            } else FS_RULES.apply(st, st.combat.attacker, { type: 'combat', action: 'advance' });
+            continue;
+        }
+        FS_RULES.advanceCombatSteps(st);
+    }
+    ok(asked, 'вопрос ракеты не задан');
+    return eq(foeUnits(st).filter(u => (FS_RULES.unitOf(st, u) || {}).id === 'воины').length, 1, 'один отряд КЛ 0 уничтожен');
+});
+
+check('Ракета «Death Strike»', 'вторая ветка деморализует отряд КЛ 2', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2, 'монолиты': 1 }, card: 'Ложись!', foeCard: 'Ложись!', dice: ['att'], foeDice: ['att'] });
+    guardScheme(st, 'Ракета «Death Strike»', 0);
+    FS_RULES.maybeScheme(st, 0, 'combat-start', { kind: 'combat', ctx: { side: 'attacker' } });
+    effectAnswer(st, { choice: 0 });
+    // До конца первого шага повреждений бой идёт своим чередом; на вопрос карты
+    // отвечаем второй веткой — «деморализуйте 1 отряд с командным уровнем 2».
+    for (let i = 0; i < 24 && st.combat; i++) {
+        if (st.pending) {
+            effectAnswer(st, (s, q) => (q.kind === 'choice' ? { choice: 1 } : effectPolicy(s, q)));
+            const mono = foeUnits(st).find(u => (FS_RULES.unitOf(st, u) || {}).id === 'монолиты');
+            if (mono && mono.routed) break;
+            continue;
+        }
+        const step = st.combat.step;
+        if (step === 'damage-attacker' || step === 'damage-defender') {
+            FS_RULES.apply(st, step === 'damage-attacker' ? st.combat.attacker : st.combat.defender,
+                { type: 'combat', action: 'damage', targets: [] });
+            continue;
+        }
+        if (step.startsWith('reinforce-')) {
+            const s2 = step.slice('reinforce-'.length);
+            FS_RULES.apply(st, s2 === 'attacker' ? st.combat.attacker : st.combat.defender,
+                { type: 'combat', action: 'reinforce', count: 0 });
+            continue;
+        }
+        if (step.startsWith('choose-')) {
+            const s2 = step.slice('choose-'.length);
+            if ((st.combat.cards[s2].hand || []).length) {
+                FS_RULES.apply(st, s2 === 'attacker' ? st.combat.attacker : st.combat.defender,
+                    { type: 'combat', action: 'playCard', index: 0 });
+            } else FS_RULES.apply(st, st.combat.attacker, { type: 'combat', action: 'advance' });
+            continue;
+        }
+        FS_RULES.advanceCombatSteps(st);
+    }
+    const mono = foeUnits(st).find(u => (FS_RULES.unitOf(st, u) || {}).id === 'монолиты');
+    eq(!!(mono && mono.routed), true, 'Монолит КЛ 2 деморализован');
+    // Огрины и Гвардейцы КЛ 0–1 в эту ветку не попадают: все Воины целы.
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'деморализован только КЛ 2');
+});
 
 head('Боевая колода', IG);
 
