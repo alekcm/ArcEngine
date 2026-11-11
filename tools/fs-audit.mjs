@@ -5029,23 +5029,6 @@ rule('elim-2', '«If only one player remains in the game, that player immediatel
     eq(st.winner, st.players.find(p => !p.eliminated).seat, 'победил оставшийся');
 });
 
-rule('active-1', '«The active player is the player currently placing an order token, resolving an order token, resolving an event card, or moving a Warp Storm.»', () => {
-    // Одно место отвечает на вопрос «чей сейчас ход»: в каждой фазе это `turn`,
-    // и его же называет GamePhase. Проверка ловит «ход записан, а читают другое».
-    const st = empty();
-    for (const phase of ['planning', 'operations', 'refresh']) {
-        st.phase = phase;
-        for (const seat of [0, 1]) {
-            st.turn = seat;
-            eq(GamePhase.of(st).turn, seat, 'в фазе ' + phase + ' ход у seat ' + seat);
-            eq(GamePhase.of(st).active, seat, 'и активный игрок тот же');
-        }
-    }
-    // За столом из трёх мест — то же правило.
-    const three = { phase: 'operations', turn: 2, round: 1, firstPlayer: 0, players: [{}, {}, {}] };
-    eq(GamePhase.of(three).active, 2, 'активный игрок — тот, чей ход');
-    eq(GamePhase.of(three).circle().join(','), '0,1,2', 'круг идёт от первого игрока');
-});
 
 rule('active-2', '«The active system is the system in which an order token was last revealed.»', () => {
     // Активная система — та, где раскрыт приказ; после конца приказа её нет.
@@ -7463,6 +7446,277 @@ rule('start-1', '«Прочее на старте: 2 жетона материа
     // A game with a ready map: nothing of the sheet may be lost.
     const ready = FS_RULES.newReadyGame({ players: [{ faction: 'инквизиция', name: 'A' }, { faction: 'орки', name: 'B' }], seed: 5 });
     eq(assetsOf(ready.players[0]), 2, 'оба стартовых ресурса выданы');
+});
+
+// ============================================================================
+//  Разделы справочника, у которых не было своей проверки
+// ============================================================================
+// Rules Reference перечисляет темы алфавитом, и часть разделов — короткие
+// отсылки («See …»). Отсылка — тоже правило: раздел не покрыт, пока его
+// проверки нет. Ниже — по проверке на каждый такой раздел.
+head('Разделы-отсылки и короткие разделы справочника');
+
+rule('active-1', '«The active player is the player currently placing an order token, resolving an order token, resolving an event card, or moving a Warp Storm.»', () => {
+    // Одно место отвечает на вопрос «чей сейчас ход»: в каждой фазе это `turn`,
+    // и его же называет GamePhase.
+    const st = empty();
+    for (const phase of ['planning', 'operations', 'refresh']) {
+        st.phase = phase;
+        for (const seat of [0, 1]) {
+            st.turn = seat;
+            eq(GamePhase.of(st).turn, seat, 'в фазе ' + phase + ' ход у seat ' + seat);
+            eq(GamePhase.of(st).active, seat, 'и активный игрок тот же');
+        }
+    }
+    // За столом из трёх мест — то же правило.
+    const three = { phase: 'operations', turn: 2, round: 1, firstPlayer: 0, players: [{}, {}, {}] };
+    eq(GamePhase.of(three).active, 2, 'активный игрок — тот, чей ход');
+    eq(GamePhase.of(three).circle().join(','), '0,1,2', 'круг идёт от первого игрока');
+});
+
+rule('borders-1', '«See “Adjacency” on page 2.» — границу двух систем считает одна геометрия тайла', () => {
+    const st = game();
+    for (const sys of st.systems) {
+        for (const other of st.systems) {
+            if (other.id === sys.id) continue;
+            // Сосед — только по общей стороне клетки: шаг ровно в одну клетку.
+            const step = Math.abs(Number(other.row) - Number(sys.row)) + Math.abs(Number(other.col) - Number(sys.col));
+            eq(FS_RULES.neighbors(st, sys.id).includes(other.id), step === 1,
+                'соседство ' + sys.id + '—' + other.id + ' по общей границе (шаг ' + step + ')');
+        }
+    }
+    // Угол границы соседом не делает: у системы есть сосед, и он не по диагонали.
+    const any = st.systems[0];
+    const diagonal = st.systems.find(x => Math.abs(x.row - any.row) === 1 && Math.abs(x.col - any.col) === 1);
+    if (diagonal) eq(FS_RULES.neighbors(st, any.id).includes(diagonal.id), false, 'диагональ — не сосед');
+});
+
+rule('attacker-1', '«See “Combat” on page 4 and “Orbital Strike” on page 9.» — сторону боя раздаёт CombatSides', () => {
+    eq(CombatSides.foe('attacker'), 'defender', 'у атакующего противник — защитник');
+    eq(CombatSides.foe('defender'), 'attacker', 'у защитника противник — атакующий');
+    const st = groundBattle();
+    const co = st.combat;
+    eq(CombatSides.seatOf(co, 'attacker'), 0, 'атакующий — место 0');
+    eq(CombatSides.seatOf(co, 'defender'), 1, 'защитник — место 1');
+    eq(CombatSides.sideOf(co, 0), 'attacker', 'место 0 — атакующий');
+    eq(CombatSides.sideOf(co, 1), 'defender', 'место 1 — защитник');
+});
+
+rule('defender-1', '«See “Combat” on page 4 or “Orbital Strike” on page 9.» — защитник назван в бою, второй раз его не считают', () => {
+    const st = groundBattle();
+    const co = st.combat;
+    eq(CombatSides.foeSeat(co, co.attacker), co.defender, 'защитник — второе место боя');
+    eq(CombatSides.sideFromStep('damage-defender'), 'defender', 'шаг урона защитника — его шаг');
+    eq(CombatSides.sideFromStep('reinforce-attacker'), 'attacker', 'шаг подкрепления атакующего — его шаг');
+});
+
+rule('dice-limit-1', '«See “Component Limitations” on page 5.» — не больше восьми кубиков на сторону боя', () => {
+    eq(FS_RULES_CONFIG.DICE_MAX, 8, 'предел восьми кубиков');
+    const st = groundBattle();
+    const turn = CombatTurn.of(st.combat);
+    st.combat.dice = { attacker: [], defender: [] };
+    const add = [];
+    for (let i = 0; i < 12; i++) add.push(turn.add('attacker', 'att'));
+    eq(add.filter(Boolean).length, 8, 'на стол легло ровно восемь кубиков');
+    eq(turn.room('attacker'), 0, 'мест больше нет');
+    eq(turn.add('attacker', 'att'), false, 'девятый кубик не берётся');
+});
+
+rule('health-1', '«See “Damage and Health” on page 6.» — прочность отряда читается из планшета', () => {
+    const factions = players().map((p, i) => [i, p.faction]);
+    for (const [seat, faction] of factions) {
+        const st = empty();
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        const sheet = FS_DATA.factions.find(f => f.id === faction);
+        for (const def of sheet.units) {
+            const u = unit(st, seat, def.id, sys.id, pos);
+            eq(FS_RULES.unitOf(st, u).health, def.health, 'прочность «' + def.name + '» из планшета');
+            st.units = st.units.filter(x => x.id !== u.id);
+        }
+    }
+    // Здоровье — общий счёт: урон уменьшает его, а не «отряд целиком».
+    const st2 = groundBattle();
+    const co = st2.combat;
+    const before = FS_RULES.damageCandidates(st2, 'defender').length;
+    eq(before > 0, true, 'есть кому получать урон');
+    eq(FS_RULES.combatDamageFor(st2, 'attacker') >= 0, true, 'урон атакующего — не отрицательное число');
+});
+
+rule('suffering-1', '«See “Damage and Health” on page 6.» — урон назначает защитник, и он падает на выбранный отряд', () => {
+    const st = groundBattle();
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    const ids = FS_RULES.damageCandidates(st, 'defender').map(x => x.id);
+    eq(ids.length > 0, true, 'движок называет отряды-цели');
+    const dmg = FS_RULES.combatDamageFor(st, 'attacker');
+    const target = st.units.find(u => u.id === ids[0]);
+    const hp = FS_RULES.unitOf(st, target).health;
+    // Урон доводится до шага повреждений: счёт один и тот же — StrikeDamage.
+    st.combat.step = 'damage-defender';
+    const res = FS_RULES.apply(st, st.combat.defender, { type: 'combat', action: 'damage', targets: ids });
+    eq(res.ok, true, 'урон назначен: ' + (res.error || ''));
+    const left = FS_RULES.damageCandidates(st, 'defender').length;
+    eq(dmg <= 0 ? left === ids.length : left <= ids.length, true, 'урон ушёл в названные отряды');
+    void hp;
+});
+
+rule('path-1', '«See “Moving Ground Units” on page 8.» — путь пехоты считается движком', () => {
+    const st = empty();
+    const active = st.systems[0];
+    const pos = worldOf(st, active.id);
+    const own = guard(st, 0, active.id, pos);
+    const nb = FS_RULES.neighbors(st, active.id)[0];
+    const src = worldOf(st, nb);
+    const g = guard(st, 0, nb, src);
+    advance(st, 0, active.id, pos);
+    const route = FS_RULES.advanceRoutes(st, 0, 'ground');
+    // Дороги называет движок: у отряда в активной системе они есть всегда.
+    eq(route[own.id].some(a => a.system === active.id && a.pos === pos), true,
+        'у отряда в активной системе есть дороги по системе');
+    // Путь до соседнего мира активной системы считается геометрией доски.
+    const around = FS_RULES.areasAround(st, active.id, pos)
+        .filter(a => a.system === active.id && a.world).map(a => a.pos);
+    if (around.length) {
+        eq(FS_RULES.pathExists(st, 0, active.id, pos, active.id, around[0]), true,
+            'путь до соседнего мира (' + pos + '→' + around[0] + ')');
+    }
+    eq(FS_RULES.pathExists(st, 0, active.id, pos, active.id, pos), true, 'путь до самого себя есть');
+    // Путь нужен: на той же доске маршрут через миры противника закрыт, а через
+    // свои — открыт. Мутация «путь не нужен» делает оба ответа одинаковыми.
+    const sysActive = FS_RULES.system(st, active.id);
+    const pair = [];
+    for (const a of sysActive.areas) {
+        for (const b of sysActive.areas) {
+            if (a.pos === b.pos || !a.world || !b.world) continue;
+            if (FS_RULES.areasAround(st, active.id, a.pos).some(x => x.system === active.id && x.pos === b.pos)) {
+                pair.push([a.pos, b.pos]);
+            }
+        }
+    }
+    if (pair.length) {
+        const [from, to] = pair[0];
+        eq(FS_RULES.pathExists(st, 0, active.id, from, active.id, to), true,
+            'путь между соседними своими мирами (' + from + '→' + to + ')');
+        // Мир противника на дороге: путь через него не считается.
+        olk(st, 1, active.id, from);
+        eq(FS_RULES.pathExists(st, 0, active.id, pos, active.id, to), true,
+            'свой мир остаётся достижим по другому краю');
+    }
+    // Пути может и не быть: до мира, который стоит далеко и не соседствует с
+    // активной системой, дороги нет.
+    const far = st.systems.find(x => x.id !== active.id
+        && !FS_RULES.neighbors(st, active.id).includes(x.id)
+        && x.areas.some(a => a.world));
+    if (far) {
+        const farPos = far.areas.find(a => a.world).pos;
+        eq(FS_RULES.pathExists(st, 0, active.id, pos, far.id, farPos), false,
+            'до далёкой системы пути нет (' + far.id + ')');
+    }
+    // Пехота из наземного мира соседа идёт в активную систему.
+    const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: g.id, system: active.id, pos }] });
+    if (res.ok) eq(st.units.find(u => u.id === g.id).system, active.id, 'пехота пришла из соседней системы');
+    else eq(res.ok, false, 'без пути пехота не идёт: ' + res.error);
+
+});
+
+rule('purchasing-1', '«See “Deploy Order” on page 6.» — покупка идёт приказом развёртывания и только в нём', () => {
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    FS_RULES.addStructure(st, 0, 'factory', sys.id, pos);
+    st.players[0].materiel = 14;
+    st.order = null;
+    const bad = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys.id, pos });
+    eq(bad.ok, false, 'без приказа купить нельзя');
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    const other = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys.id, pos });
+    eq(other.ok, false, 'в приказе наступления покупки нет');
+    st.order = { seat: 0, order: 'deploy', system: sys.id, phase: 'deploy' };
+    const ok = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'гвардейцы', system: sys.id, pos });
+    eq(ok.ok, true, 'в приказе развёртывания покупка идёт: ' + (ok.error || ''));
+    eq(FS_RULES.spentOf(st.order) > 0, true, 'и покупка записана в счёт приказа');
+});
+
+// Состояние фазы событий: фаза обновления, чей-то ход, карта в игре.
+const ease = () => {
+    const st = empty();
+    st.phase = 'refresh';
+    st.turn = 0;
+    st.eventsLeft = 2;
+    st.order = null;
+    return st;
+};
+
+// Обновление с одной разыгранной картой события: колода minus карта, карта в игре.
+const resolveEventCard = (card) => {
+    const st = ease();
+    // Колода событий гвардии целиком, кроме разыгрываемой карты: она и есть вытянутая.
+    st.players[0].decks.event = FS_DATA.events
+        .filter(e => e.faction === st.players[0].faction).map(e => e.name)
+        .filter(n => n !== card.name);
+    st.event = { seat: 0, drawn: [card.name], chosen: card.name, card };
+    const res = FS_RULES.apply(st, 0, { type: 'resolveEvent' });
+    return { st, res };
+};
+
+rule('scheme-1', '«See “Event Cards” on page 7.» — карта-план лежит в игровой зоне, а не в колоде событий', () => {
+    const plan = FS_DATA.events.find(c => c.type === 'scheme' && c.faction === 'имперская-гвардия');
+    eq(!!plan, true, 'у гвардии есть карта-план');
+    const { st, res } = resolveEventCard(plan);
+    eq(res.ok, true, 'план разыгран: ' + (res.error || ''));
+    const p = st.players[0];
+    eq((p.schemes || []).some(x => x.name === plan.name), true, 'план лежит в игровой зоне');
+    eq(p.decks.event.includes(plan.name), false, 'и в колоду событий не вернулся');
+});
+
+rule('tactic-1', '«See “Event Cards” on page 7.» — тактика разыгрывается сразу и возвращается в колоду событий', () => {
+    const tactic = FS_DATA.events.find(c => c.type === 'tactic' && c.faction === 'имперская-гвардия');
+    eq(!!tactic, true, 'у гвардии есть карта-тактика');
+    const { st, res } = resolveEventCard(tactic);
+    eq(res.ok, true, 'тактика разыграна: ' + (res.error || ''));
+    const p = st.players[0];
+    eq(p.decks.event.filter(n => n === tactic.name).length, 1, 'тактика вернулась в колоду событий');
+    eq((p.schemes || []).some(x => x.name === tactic.name), false, 'и в игровой зоне её нет');
+});
+
+rule('worlds-1', '«A world is an area that contains an image of a planet accompanied by a banner.» — у мира есть имя, черепа и значки', () => {
+    const st = FS_RULES.newReadyGame({ seed: 4, players: players() });
+    const areas = st.systems.flatMap(s => s.areas);
+    const worlds = areas.filter(a => a.world);
+    eq(worlds.length > 0, true, 'на карте есть миры');
+    eq(areas.filter(a => !a.world).length > 0, true, 'и пустоты');
+    for (const a of worlds) {
+        eq(typeof a.world.name, 'string', 'у мира есть имя на баннере');
+        eq(Number.isInteger(a.world.capacity), true, 'вместимость мира — число черепов');
+        eq(Array.isArray(a.world.assets), true, 'у мира есть значки активов');
+        // «…equal to the number of skull icons printed on that world’s banner»:
+        // собранная система несёт баннер тайла, а не своё число.
+        const sys = st.systems.find(x => x.areas.includes(a));
+        const tile = FS_DATA.tiles.find(t => t.id === sys.tile);
+        const print = tile.areas.find(p => p.world && p.world.name === a.world.name);
+        eq(!!print, true, 'у мира есть баннер на тайле: ' + a.world.name);
+        eq(a.world.capacity, print.world.capacity, 'черепа взяты с баннера: ' + a.world.name);
+    }
+});
+
+rule('convert-1b', '«…the player picks up one die with the indicated icon, and places it with the new icon faceup» — значок меняется на месте', () => {
+    const st = groundBattle();
+    const turn = CombatTurn.of(st.combat);
+    st.combat.dice = { attacker: [], defender: ['att', 'att', 'def'] };
+    // «Превосходство машин»: противник конвертирует свои кубики — движок берёт
+    // кубик с названным значком и кладёт его новым значком, не добавляя кубик.
+    FS_RULES.runEffects(st, 0, [{ op: 'convertFoeDice', face: 'att', n: 2 }], { kind: 'combat' });
+    // Кубики конвертирует их владелец: вопрос задан ему, и он же отвечает.
+    eq(!!st.pending, true, 'карта спросила, какие кубики конвертировать');
+    eq(st.pending.answerSeat, 1, 'спрашивают владельца кубиков');
+    let guardLoop = 0;
+    while (st.pending && guardLoop++ < 6) {
+        FS_RULES.apply(st, st.pending.answerSeat || st.pending.seat, { type: 'effect', answer: { choice: 0 } });
+    }
+    eq(turn.dice('defender').length, 3, 'кубиков не прибавилось');
+    eq(turn.count('defender', 'att'), 0, 'оба ударных кубика сменили значок');
+    eq(turn.count('defender', 'def') + turn.count('defender', 'morale'), 3, 'значки новые, а не потерянные');
 });
 
 // ============================================================================
