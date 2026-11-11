@@ -147,6 +147,13 @@ const TABLE = [
         new: '/*мутация: отряд возвращается из воздуха, запас не тратится*/',
         why: '«вернуть этого юнита» — модель приходит из запаса',
     },
+    {
+        card: 'Сфера воскрешения', faction: NEC,
+        file: 'js/fs/rules/CombatRules.js',
+        old: 'const kl = stepR && stepR.maxKl !== undefined ? stepR.maxKl : 1;',
+        new: 'const kl = 99;',
+        why: '«отряд с командным уровнем 0 или 1» — предел плана',
+    },
     // --- бой: значения и мораль -------------------------------------------
     {
         // The write side of the extra damage (`addExtra`) and the read side

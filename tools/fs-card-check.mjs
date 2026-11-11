@@ -3041,6 +3041,40 @@ check('Сфера воскрешения', 'уничтоженный отряд 
         'модель пришла ИЗ ЗАПАСА: было ' + supplyBefore + ', стало ' + supplyAfter);
 });
 
+check('Сфера воскрешения', 'КЛ 2 не возвращается: предел плана — печатный КЛ 0–1', () => {
+    // Монолит (КЛ 2) уничтожается в бою — и плана не задевает: текст называет
+    // «отряд с командным уровнем 0 или 1». Тот же прогон с воинами (КЛ 0)
+    // обязан предложить план, иначе проверка ничего не доказывает.
+    const offered = (unitId, n) => {
+        const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', units: { [unitId]: n }, foeUnits: { 'огрины': 2 }, dice: [], foeDice: Array(8).fill('att'), noFoeCard: true });
+        schemeInPlay(st, 'Сфера воскрешения', 'некроны');
+        let seen = false;
+        for (let i = 0; i < 40 && st.combat; i++) {
+            if (st.pending) {
+                const q = st.pending.question;
+                if (q.op === 'resurrectOffer') seen = true;
+                const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
+                FS_RULES.apply(st, seat, { type: 'effect', answer: q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : { choice: 0 } });
+                continue;
+            }
+            const step = CombatTurn.of(st.combat).step;
+            if (step === 'retreat') break;
+            if (step === 'reinforce-attacker' || step === 'reinforce-defender') {
+                FS_RULES.apply(st, step === 'reinforce-attacker' ? 0 : 1, { type: 'combat', action: 'reinforce', count: 0 });
+            } else if (step === 'choose-attacker' || step === 'choose-defender') {
+                FS_RULES.advanceCombatSteps(st);
+            } else if (step === 'damage-attacker' || step === 'damage-defender') {
+                const side = step === 'damage-attacker' ? 'attacker' : 'defender';
+                FS_RULES.apply(st, side === 'attacker' ? st.combat.attacker : st.combat.defender,
+                    { type: 'combat', action: 'damage', targets: FS_RULES.damageCandidates(st, side).map(x => x.id) });
+            } else FS_RULES.advanceCombatSteps(st);
+        }
+        return seen;
+    };
+    eq(offered('воины', 2), true, 'воин КЛ 0 возвращается планом');
+    return eq(offered('монолиты', 2), false, 'Монолит КЛ 2 планом не возвращается');
+});
+
 check('Безжалостное наступление', 'сброс плана даёт обоим по дополнительному шагу повреждений', () => {
     const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', units: { 'воины': 2 }, foeUnits: { 'огрины': 2 }, dice: ['att', 'att'], foeDice: ['att', 'att'], noFoeCard: true });
     schemeInPlay(st, 'Безжалостное наступление', 'некроны');
