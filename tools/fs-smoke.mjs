@@ -94,7 +94,9 @@ const must = (st, seat, cmd, what) => {
 
 // --- a whole round, for any number of players --------------------------------
 // The same rules must serve a duel and a full table: the map, the factions and
-// the number of players change, the code path does not.
+// the number of players change, the code path does not. Imperial Guard and
+// Necrons are checked as a DUEL of their own: these two factions are the ones
+// the card audit covers card by card, so the whole round must run on them too.
 section('раунд: планирование → операции → обновление (2 и 4 игрока)');
 const FACTION_POOL = ['имперская-гвардия', 'орки', 'некроны', 'эльдары'];
 const seatsOf = n => Array.from({ length: n }, (_, i) => ({
@@ -170,6 +172,19 @@ for (const count of [2, 4]) {
         ok(count + ' игрока: ' + playRound(seatsOf(count), 11));
     } catch (e) {
         fail(count + ' игрока: ' + e.message);
+    }
+}
+
+// The duel of the two audited factions, on several seeds: the same whole round.
+for (const seed of [11, 12, 13]) {
+    try {
+        const players = [
+            { faction: 'имперская-гвардия', name: 'P0', id: 'p0' },
+            { faction: 'некроны', name: 'P1', id: 'p1' },
+        ];
+        ok('ИГ против некронов, seed ' + seed + ': ' + playRound(players, seed));
+    } catch (e) {
+        fail('ИГ против некронов, seed ' + seed + ': ' + e.message);
     }
 }
 
