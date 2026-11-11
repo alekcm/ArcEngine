@@ -277,6 +277,42 @@ const TABLE = [
         new: "            /*мутация: отряд остаётся деморализованным*/",
         why: '«восстановите 1 свой деморализованный отряд»',
     },
+    // --- оставшиеся боевые карты ИГ: реквизиты и жетоны --------------------
+    {
+        card: 'Молот Императора', faction: IG,
+        file: 'js/fs/FSEffects.js',
+        old: '                if (para.names && present && present.length) {',
+        new: '                if (false) {',
+        why: 'абзацы под реквизитом («*Титан «Гончая»:*», «*Линкор:*») читаются только при своём отряде',
+    },
+    {
+        card: 'Огринские ударные войска', faction: IG,
+        file: 'js/fs/FSEffects.js',
+        old: '            if (this.sameName(def.name, t)) return true;',
+        new: '            /*мутация: реквизит по имени отряда не срабатывает*/',
+        why: '«*Огрин/Крейсер:*» — способность по названному отряду',
+    },
+    {
+        card: 'Адептус Астрономика', faction: IG,
+        file: 'js/fs/effects/ask/FSOrderAsks.js',
+        old: '        if (march) march.setMoveLimit(step.n || 0);',
+        new: '        /*мутация: предел перемещения не ставится*/',
+        why: '«переместить в этот мир до 6 отрядов»',
+    },
+    {
+        card: 'Адептус Астрономика', faction: IG,
+        file: 'js/fs/effects/ask/FSOrderAsks.js',
+        old: "        if (march) march.setMustInclude(step.what);",
+        new: '        /*мутация: обязательный Гвардеец не требуется*/',
+        why: '«если хотя бы один из этих отрядов — Гвардеец»',
+    },
+    {
+        card: 'Адептус Астрономика', faction: IG,
+        file: 'js/fs/effects/ask/FSOrderAsks.js',
+        old: '            OrderFight.of(state.order).setRetreatExcess(names[0]);',
+        new: '            /*мутация: излишек не отступает*/',
+        why: '«отступить любым числом Гвардейцев, превышающим вместимость»',
+    },
     // --- общий страж подготовки --------------------------------------------
     {
         // `addUnit` refusing a foreign id is what uncovered the fixtures of
