@@ -1401,8 +1401,15 @@ const FS_EFFECTS = {
         // «„Роккит вагон“»): a retreat the opponent chooses himself. A retreat
         // with a price was taken by the fork above — the price of keeping the
         // unit is not a condition of the retreat.
+        //
+        // «Если ваши отряды или бастионы не получат урона в конце этого
+        // раунда, ваш противник выбирает и отступает одним из своих отрядов»
+        // («Фаланга монолита») looks alike but is NOT this retreat: it waits for
+        // the end of the round and happens only if no damage came. Read here, it
+        // would retreat at once and the waiting rule below would never fire.
+        const delayed = /в конце этого раунда/i.test(s);
         const ret = /(?:ваш\s+)?(?:противник|оппонент)[^.;]{0,40}?(?:может|должен|обязан)?\s*отступ[а-яёa-z]*\s+(?:(\d+|один|одно)\s+)?(?:своим\s+|своей\s+)?([а-яёa-z]+)?/i.exec(s);
-        if (ret && /отступ/i.test(s)) {
+        if (ret && /отступ/i.test(s) && !delayed) {
             return [{
                 op: 'foeRetreatOffer', n: Number(ret[1]) || 1, who: 'foe', text: s,
             }];

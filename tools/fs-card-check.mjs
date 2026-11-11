@@ -34,7 +34,7 @@ const load = (file, name) => vm.runInContext(
 for (const file of ['js/fs/FSView.js', 'js/fs/FSGame.js']) {
     if (fs.existsSync(path.join(ROOT, file))) load(file, file.split('/').pop().replace(/\.js$/, ''));
 }
-const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage, CombatTurn, CombatCards } = ctx;
+const { FS_DATA, FS_CARDS, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage, CombatTurn, CombatCards, BattleField } = ctx;
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m' };
@@ -2848,6 +2848,61 @@ check('Свежеватели', '«если у противника есть mor
     const without = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Свежеватели', units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: [], foeDice: ['att'] });
     playThrough(without);
     return eq(count(without, 'attacker', 'morale'), 0, 'без кубика у противника ничего не берётся');
+});
+
+check('Фаланга монолита', 'урон в конце раунда решает, отступит ли противник; отряды не деморализуются', () => {
+    // Общая способность ждёт конца раунда: если по нашим отрядам и бастионам
+    // урона не пришло, противник отступает одним отрядом. Способность единицы
+    // («Монолит/Корабль-Гробница») держит свои отряды от деморализации в этом
+    // раунде.
+    // Один раунд: доводим до розыгрыша урона по защитнику — вместе с ним
+    // движок закрывает раунд и разрешает отложенное правило карты.
+    const runRound = foeDice => {
+        const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Фаланга монолита', units: { 'монолиты': 2 }, foeUnits: { 'огрины': 2 }, dice: [], foeDice, noFoeCard: true });
+        const inCombat = () => (st.combat ? BattleField.of(st.combat).units(st, st.combat.defender).length : null);
+        const round0 = st.combat.round;
+        let before = null;
+        for (let i = 0; i < 40 && st.combat; i++) {
+            // Раунд закрылся вместе с ударом: отложенное правило карты уже
+            // разрешено, дальше идёт новый раунд с чистым столом.
+            if (st.combat.round !== round0) return { st, before };
+            if (st.pending) {
+                const q = st.pending.question;
+                const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
+                const answer = q.kind === 'units' ? { units: (q.options || []).slice(0, 1) }
+                    : q.kind === 'areas' ? { area: (q.options || [])[0] }
+                        : q.kind === 'dice' ? { dice: (q.options || []).slice(0, 1) } : { choice: 0 };
+                FS_RULES.apply(st, seat, { type: 'effect', answer });
+                continue;
+            }
+            const step = CombatTurn.of(st.combat).step;
+            if (step === 'reinforce-attacker' || step === 'reinforce-defender') {
+                FS_RULES.apply(st, step === 'reinforce-attacker' ? 0 : 1, { type: 'combat', action: 'reinforce', count: 0 });
+            } else if (step === 'choose-attacker') {
+                FS_RULES.apply(st, 0, { type: 'combat', action: 'playCard', index: 0 });
+            } else if (step === 'choose-defender') {
+                FS_RULES.apply(st, 1, { type: 'combat', action: 'playCard', index: 0 });
+            } else if (step === 'damage-attacker' || step === 'damage-defender') {
+                const side = step === 'damage-attacker' ? 'attacker' : 'defender';
+                before = inCombat();
+                FS_RULES.apply(st, side === 'attacker' ? 0 : 1, {
+                    type: 'combat', action: 'damage', targets: FS_RULES.damageCandidates(st, side).map(x => x.id),
+                });
+            } else FS_RULES.advanceCombatSteps(st);
+        }
+        return { st, before };
+    };
+    // По моим отрядам урона нет: в конце раунда у противника одним отрядом меньше.
+    const calm = runRound([]);
+    eq(calm.before, 2, 'в раунде у противника два отряда');
+    eq(BattleField.of(calm.st.combat).units(calm.st, calm.st.combat.defender).length, 1, 'без урона по нашим отрядам противник отступил');
+    // По моим отрядам урон пришёл: способность молчит.
+    const hurt = runRound(['att', 'att', 'att']);
+    eq(BattleField.of(hurt.st.combat).units(hurt.st, hurt.st.combat.defender).length, 2, 'после урона противник не отступает');
+    // Деморализации своих отрядов в этом раунде не случается (способность
+    // единицы требует Монолита в бою, поэтому в раскладе именно они).
+    return eq(myUnits(calm.st).filter(u => u.routed).length + myUnits(hurt.st).filter(u => u.routed).length, 0,
+        'свои отряды не деморализованы');
 });
 
 check('Лич гвардия', 'деморализован свой → деморализует противник; 2 `def.` только при уже деморализованном враге', () => {
