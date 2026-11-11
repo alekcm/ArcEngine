@@ -213,12 +213,6 @@ class CombatCards {
         return this;
     }
 
-    /** The seat that may see a card of this side, or null. */
-    seenBy(side, seat) {
-        const one = (this.combat.peek && this.combat.peek[seat]) || null;
-        if (!one || one.side !== side) return null;
-        return one;
-    }
 }
 
 /** One set of cards per battle, like one turn per battle. */

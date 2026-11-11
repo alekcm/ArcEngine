@@ -2317,6 +2317,31 @@ rule('chance-0a', '«the same seed gives the same game» — броски и и�
     eq(chance.lastId, 2, 'счётчик идентификаторов');
 });
 
+rule('chance-0b', '«the dice of a battle» — бросок меньше n остаётся в границах, а не «любое число»', () => {
+    // below() (и обёртки правил rng/rand, которыми берут случайную карту из
+    // руки) не проверялись: мутация «below возвращает n» проходила — а это
+    // выход за список и взятие карты, которой нет.
+    const st = empty();
+    const chance = Chance.of(st);
+    for (let i = 0; i < 200; i++) {
+        const n = chance.below(3);
+        if (!(Number.isInteger(n) && n >= 0 && n < 3)) return 'below(3) выдал ' + n;
+        const f = chance.float();
+        if (!(f >= 0 && f < 1)) return 'float() выдал ' + f;
+    }
+    eq(Chance.of(st).below(0), 0, 'меньше нуля — ноль');
+    // Обёртки правил идут в тот же генератор.
+    eq(typeof FS_RULES.rng(st), 'number', 'правила спрашивают дробь у того же генератора');
+    const r = FS_RULES.rand(st, 2);
+    eq(Number.isInteger(r) && r >= 0 && r < 2, true, 'rand(2) в границах');
+    // Случайная карта руки: индекс всегда существует.
+    for (let i = 0; i < 50; i++) {
+        const hand = ['а', 'б', 'в'];
+        const idx = chance.below(hand.length);
+        eq(idx >= 0 && idx < hand.length, true, 'карта из руки существует (индекс ' + idx + ')');
+    }
+});
+
 rule('test-0a', '«a battle may be tried without a campaign» — тестовый бой держит BattleTest', () => {
     const state = { players: [{}, {}] };
     const test = BattleTest.of(state);
