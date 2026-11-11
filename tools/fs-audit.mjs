@@ -457,6 +457,62 @@ rule('plan-2', '«Each player must place four order tokens during each Planning 
     eq(st.players[0].placedTokens, 2, 'выложено жетонов');
 });
 
+rule('plan-2b', '«Players place order tokens until each player places four orders» — ровно четыре приказа, не больше, и фаза кончается сама', () => {
+    // Лимит приказов звучал в панели (ordersLeft) и в двух отказах выкладки, но
+    // сама выкладка «пока каждый не выложит четыре» не проверялась ничем:
+    // «пятый приказ принят» и «фаза не кончается» проходили.
+    // Доска настоящая: у каждого игрока есть отряды, иначе приказ класть некуда.
+    const st = game();
+    st.phase = 'planning';
+    st.turn = 0;
+    for (const p of st.players) { p.placedTokens = 0; p.placedOf = {}; }
+    const kinds = ['advance', 'deploy', 'strategize', 'dominate'];
+    const errors = [];
+    const place = (seat, n) => {
+        // Кладём в систему, куда этот игрок вправе положить приказ.
+        st.turn = seat;
+        const sys = st.systems.find(s => FS_RULES.canPlaceOrder(st, seat, s.id));
+        if (!sys) return { ok: false, error: 'некуда класть' };
+        for (const kind of kinds) {
+            const r = FS_RULES.apply(st, seat, { type: 'placeOrder', system: sys.id, order: kind });
+            if (r.ok) return { ok: true };
+            errors.push(r.error);
+            if (!/кончились/.test(r.error || '')) return { ok: false, error: r.error };
+        }
+        return { ok: false, error: 'все виды кончились' };
+    };
+    for (const seat of [0, 1]) {
+        eq(FS_RULES.ordersLeft(st, seat), 4, 'в начале раунда у игрока ' + seat + ' четыре приказа');
+        let placed = 0;
+        while (FS_RULES.ordersLeft(st, seat) > 0) {
+            st.turn = seat;    // выкладка идёт по очереди, проверяем каждого отдельно
+            const r = place(seat, placed++);
+            eq(!!r.ok, true, 'приказ ' + (placed) + ' игрока ' + seat + ': ' + (r.error || errors.slice(-4).join(' / ')));
+            if (!r.ok) break;
+        }
+        eq(placed, 4, 'игрок ' + seat + ' выложил ровно четыре приказа');
+        eq(FS_RULES.ordersLeft(st, seat), 0, 'приказов у игрока ' + seat + ' не осталось');
+        // Пятый приказ отклоняется ИМЕННО потому, что приказы кончились, — пока
+        // фаза планирования ещё идёт (второй игрок не выложил свои). Отказ по
+        // чужой причине («сейчас не ваша фаза») эту проверку не засчитывает.
+        if (seat === 0) {
+            eq(st.phase, 'planning', 'пока второй игрок не выложил приказы, фаза идёт');
+            // Панель уже гасит приказы сверх лимита (canPlaceOrder), поэтому
+            // отказ самой выкладки проверяем прямой командой: пятый жетон не
+            // должен лечь на поле даже в обход панели.
+            const sys = st.systems.find(x => FS_RULES.hasUnitsOrStructures(st, 0, x.id));
+            const before = st.systems.reduce((n, x) => n + x.tokens.length, 0);
+            st.turn = 0;
+            refused(FS_RULES.apply(st, 0, { type: 'placeOrder', system: sys.id, order: 'advance' }),
+                /уже выложены/, 'пятый приказ отклонён потому, что приказы кончились');
+            eq(st.systems.reduce((n, x) => n + x.tokens.length, 0), before, 'пятый жетон не лёг на поле');
+        }
+    }
+    eq(st.phase, 'operations', 'когда выложили все — фаза операций');
+    const onBoard = st.systems.reduce((n, s) => n + s.tokens.length, 0);
+    eq(onBoard, 8, 'на поле восемь жетонов приказов');
+});
+
 rule('plan-3', '«Players cannot resolve or look at any order that is below another order token in a stack.»', () => {
     const st = game();
     const sys = st.systems[0];
