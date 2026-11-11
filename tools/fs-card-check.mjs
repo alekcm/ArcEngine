@@ -2802,28 +2802,33 @@ check('Рой каноптепов', 'бесплатный жетон подкр
  * ability of a card is read.
  */
 function playThrough(st, policy) {
+    // Розыгрыш одного раунда: способности карты разрешены, урон ещё не роздан.
+    // Урон и конец раунда сбрасывают жетоны раунда, поэтому проверка остаётся
+    // до первого из них (иначе она читала бы уже убранный стол).
+    const round0 = st.combat ? st.combat.round : 0;
     for (let i = 0; i < 20 && st.combat; i++) {
+        if (st.combat.round !== round0) return st;
         if (st.pending) {
             const q = st.pending.question;
             const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
             const answer = policy ? policy(q) : null;
             FS_RULES.apply(st, seat, { type: 'effect', answer: answer || { choice: 0 } });
+            // Последний ответ может сразу перевести бой в уход; жетоны раунда
+            // при этом уже убраны, так что дальше идти незачем.
+            if (st.combat && (CombatTurn.of(st.combat).step === 'retreat' || st.combat.round !== round0)) return st;
             continue;
         }
         const step = CombatTurn.of(st.combat).step;
+        // Конец раунда убирает жетоны раунда: проверка читает стол ДО него.
+        if (step === 'round-end') return st;
         if (step === 'reinforce-attacker' || step === 'reinforce-defender') {
             FS_RULES.apply(st, step === 'reinforce-attacker' ? 0 : 1, { type: 'combat', action: 'reinforce', count: 0 });
         } else if (step === 'choose-attacker') {
             FS_RULES.apply(st, 0, { type: 'combat', action: 'playCard', index: 0 });
         } else if (step === 'choose-defender') {
             FS_RULES.apply(st, 1, { type: 'combat', action: 'playCard', index: 0 });
-        } else if (step === 'damage-attacker') {
-            // Способности разрешены, урон ещё не роздан: дальше проверка не идёт
-            // (урон сбрасывает жетоны раунда).
+        } else if (step === 'damage-attacker' || step === 'damage-defender' || step === 'retreat') {
             return st;
-        } else if (step === 'damage-defender') {
-            const ids = FS_RULES.damageCandidates(st, 'defender').map(x => x.id);
-            FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: ids });
         } else {
             FS_RULES.advanceCombatSteps(st);
         }
@@ -2843,6 +2848,48 @@ check('Свежеватели', '«если у противника есть mor
     const without = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Свежеватели', units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: [], foeDice: ['att'] });
     playThrough(without);
     return eq(count(without, 'attacker', 'morale'), 0, 'без кубика у противника ничего не берётся');
+});
+
+check('Лич гвардия', 'деморализован свой → деморализует противник; 2 `def.` только при уже деморализованном враге', () => {
+    // Общая способность: обмен деморализациями. Способность единицы: два
+    // жетона обороны, но лишь если у противника УЖЕ есть деморализованный
+    // отряд (условие проверяется, а не подразумевается).
+    const mine = { 'бессмертные': 2 };
+    // По кубику атаки с каждой стороны и без карты защиты: стол боя
+    // (жетоны раунда) жив до розыгрыша урона. Лишние кубики в раскладе
+    // уводят бой дальше, к уходу и очистке стола.
+    const setup2 = o => battle(Object.assign({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Лич гвардия', units: mine, foeUnits: { 'гвардейцы': 2 }, dice: ['att'], foeDice: ['att'], noFoeCard: true }, o));
+    const st = setup2({});
+    playThrough(st, q => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : null));
+    eq(myUnits(st).filter(u => u.routed).length, 1, 'один свой отряд деморализован');
+    eq(foeUnits(st).filter(u => u.routed).length, 1, 'и противник деморализует свой — обмен');
+    eq(tokens(st, 'attacker').def, 2, 'деморализованный враг есть — способность единицы даёт 2 `def. token`');
+    // Способность единицы не звучит без деморализованного отряда противника:
+    // свой отряд деморализовать отказываемся, враг остаётся целым.
+    const st2 = setup2({});
+    playThrough(st2, q => (q.kind === 'units' ? { units: [] } : { choice: 1 }));
+    eq(myUnits(st2).filter(u => u.routed).length, 0, 'от обмена отказались — свой отряд цел');
+    eq(foeUnits(st2).filter(u => u.routed).length, 0, 'и враг цел');
+    return eq(tokens(st2, 'attacker').def, 0, 'без деморализованного врага 2 `def.` не выдают');
+});
+
+check('Разрушители', '«потратьте 1 `def.` или 1 `morale cube`, чтобы получить 2 `att. token`»', () => {
+    // Платят кубиком боевого духа или обороны, получают жетоны атаки; без
+    // подходящего кубика платить нечем.
+    const paid = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Разрушители', units: { 'бессмертные': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: ['def', 'att'] });
+    playThrough(paid, q => (q.kind === 'dice' ? { dice: (q.options || []).slice(0, 1) } : null));
+    eq(count(paid, 'attacker', 'def'), 0, 'кубик обороны потрачен');
+    eq(tokens(paid, 'attacker').att, 2, 'и получены 2 `att. token`');
+    // Кубик боевого духа тоже годится.
+    const viaMorale = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Разрушители', units: { 'бессмертные': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: ['morale'] });
+    playThrough(viaMorale, q => (q.kind === 'dice' ? { dice: (q.options || []).slice(0, 1) } : null));
+    eq(count(viaMorale, 'attacker', 'morale'), 0, 'кубик боевого духа потрачен');
+    eq(tokens(viaMorale, 'attacker').att, 2, 'и жетоны получены');
+    // Только кубик атаки: платить нечем, жетонов нет.
+    const noPay = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Разрушители', units: { 'бессмертные': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: ['att'] });
+    playThrough(noPay, q => (q.kind === 'dice' ? { dice: (q.options || []).slice(0, 1) } : null));
+    eq(tokens(noPay, 'attacker').att, 0, 'без подходящего кубика жетонов нет');
+    return eq(count(noPay, 'attacker', 'att'), 1, 'и кубик атаки на месте');
 });
 
 check('Триархи преторианцы', 'выбор «восстановить отряд ИЛИ бесплатный жетон подкрепления»', () => {
