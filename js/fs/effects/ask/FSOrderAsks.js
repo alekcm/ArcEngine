@@ -68,7 +68,9 @@ class OrderAsks {
 
     static healthBonus(effects, f) {
         const { seat, step, combat } = f;
-        if (combat) CombatDamage.of(combat).addHealthBonus(seat, step.n || 0);
+        // «во время этой битвы» — the bonus lives to the end of the combat, not
+        // to the end of the round the card was played in («Серебряная броня»).
+        if (combat) CombatDamage.of(combat).addHealthBonus(seat, step.n || 0, !!step.combat);
         return null;
     }
 

@@ -42,23 +42,40 @@ class CombatDamage {
      * played the card was not the one assigning the damage.
      */
     healthBonusFor(seat) {
-        const entries = this.combat.healthBonus;
-        if (!Array.isArray(entries)) return 0;
-        return entries.reduce((sum, x) => sum + (x.seat === seat ? (x.n || 0) : 0), 0);
+        // The bonus of the round and the bonus of the whole battle are both
+        // the health of the seat's units.
+        const lists = [this.combat.healthBonus, this.combat.healthBonusCombat];
+        let sum = 0;
+        for (const entries of lists) {
+            if (!Array.isArray(entries)) continue;
+            sum += entries.reduce((acc, x) => acc + (x.seat === seat ? (x.n || 0) : 0), 0);
+        }
+        return sum;
     }
 
     /** The printed bonus of any seat — for the panels that show the battle. */
     get healthBonus() {
-        const entries = this.combat.healthBonus;
-        if (!Array.isArray(entries)) return 0;
-        return entries.reduce((sum, x) => sum + (x.n || 0), 0);
+        const lists = [this.combat.healthBonus, this.combat.healthBonusCombat];
+        let sum = 0;
+        for (const entries of lists) {
+            if (!Array.isArray(entries)) continue;
+            sum += entries.reduce((acc, x) => acc + (x.n || 0), 0);
+        }
+        return sum;
     }
 
-    /** @param {number} seat the seat whose card raises the health of its units */
-    addHealthBonus(seat, n) {
-        const entries = Array.isArray(this.combat.healthBonus) ? this.combat.healthBonus : [];
+    // `wholeCombat` marks the bonus of «во время этой битвы» («Серебряная
+    // броня») instead of «в этом раунде»: it goes into another list that the
+    // end of the round does not clear — only the end of the battle does.
+    /** @param {number} seat the seat whose card raises the health of its units
+     *  @param {number} n the bonus
+     *  @param {boolean} [wholeCombat] bonus for the whole battle */
+
+    addHealthBonus(seat, n, wholeCombat) {
+        const key = wholeCombat ? 'healthBonusCombat' : 'healthBonus';
+        const entries = Array.isArray(this.combat[key]) ? this.combat[key] : [];
         entries.push({ seat, n: Number(n) || 0 });
-        this.combat.healthBonus = entries;
+        this.combat[key] = entries;
         return this.healthBonusFor(seat);
     }
 

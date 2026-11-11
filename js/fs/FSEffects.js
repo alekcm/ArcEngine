@@ -4293,7 +4293,10 @@ const RULES = [
     // "the health of all your units grows by 1 during this combat"
     {
         re: /значение здоровья всех ваших отрядов повышается на (\d+)/i,
-        build: m => ({ op: 'healthBonus', n: Number(m[1]) }),
+        // «во время этой битвы» is not «в этом раунде»: the bonus of that wording
+        // must survive the end of the execution round («Серебряная броня»).
+        build: (m, ctx, s) => ({ op: 'healthBonus', n: Number(m[1]),
+            combat: /во время (?:этой )?битвы/i.test(String(s || '')) }),
     },
     // "the health of the opponent's units drops to 3 this round"
     {
