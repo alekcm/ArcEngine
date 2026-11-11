@@ -101,6 +101,18 @@ class TileGeometry {
         return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
     }
 
+    /**
+     * Where an area lies on the tile, in 0..1 of the tile: the centre and the
+     * size of the quadrant. The ONE place that says «в этой четверти тайла».
+     * Both the view and any other client that places something in an area take
+     * it from here — a second copy of this arithmetic is how the drawn tiles
+     * and the pieces standing on them drift apart.
+     */
+    static square(pos) {
+        const r = TileGeometry.rect(pos);
+        return { cx: r.x + r.w / 2, cy: r.y + r.h / 2, size: r.w };
+    }
+
     /** A short human name of a side, as the panel shows it. */
     static sideName(side) {
         return ({ N: 'сверху', E: 'справа', S: 'снизу', W: 'слева' })[side] || side;

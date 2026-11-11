@@ -691,6 +691,13 @@ const TABLE = [
         new: '        const steps = FS_EFFECTS.parse(\'\', { kind: \'combat\', faction });',
         why: '«If the rules text on a card … takes precedence» — текст карты не разыгрывается',
     },
+    {
+        check: 'geo-1c',
+        file: 'js/fs/core/FSGeometry.js',
+        old: '        return { cx: r.x + r.w / 2, cy: r.y + r.h / 2, size: r.w };',
+        new: '        return { cx: r.x + r.w / 4, cy: r.y + r.h / 4, size: r.w / 2 };',
+        why: '«Each area takes one quarter of the tile» — миры съезжают к центру и наезжают друг на друга',
+    },
 ];
 
 const args = process.argv.slice(2);

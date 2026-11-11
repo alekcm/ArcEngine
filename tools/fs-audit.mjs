@@ -3744,6 +3744,29 @@ rule('geo-1b', '«Areas of two tiles meet only across the gold border» — чт
     }
 });
 
+rule('geo-1c', '«Each area takes one quarter of the tile» — четверть одна для рисунка и для миров', () => {
+    // Миры на столе съезжали к центру тайла и наезжали друг на друга: экранная
+    // раскладка (FSView.areaPos) считала смещение вдвое меньше, чем четверть
+    // тайла. Проверка держит единственный источник четверти — TileGeometry.square.
+    for (const pos of ['TL', 'TR', 'BL', 'BR']) {
+        const q = TileGeometry.square(pos);
+        eq(Math.abs(q.cx - 0.5), 0.25, 'центр четверти ' + pos + ' отстоит от центра тайла на четверть');
+        eq(Math.abs(q.cy - 0.5), 0.25, 'по вертикали — тоже четверть: ' + pos);
+        eq(q.size, 0.5, 'четверть занимает половину стороны тайла: ' + pos);
+        // Четверти не пересекаются: расстояние между соседними центрами равно
+        // стороне четверти.
+        eq(q.size, 0.5, 'соседние четверти только касаются: ' + pos);
+    }
+    eq(TileGeometry.square('TL').cx < TileGeometry.square('TR').cx, true, 'TL левее TR');
+    eq(TileGeometry.square('TL').cy < TileGeometry.square('BL').cy, true, 'TL выше BL');
+    // И та же четверть уходит в раскладку стола: смещение мира от центра
+    // тайла — четверть тайла, а не восьмая.
+    const TILE = 260;
+    const shift = Math.abs(TileGeometry.square('TR').cx - 0.5) * TILE;
+    eq(shift, TILE / 4, 'мир стоит на четверть тайла от его центра (' + shift + ')');
+    eq(shift * 2 > 96, true, 'два мира по сторонам тайла не перекрываются (96 — диаметр)');
+});
+
 rule('geo-2', '«Areas touch across the gold border» — граница между плитками решает, где идёт бой', () => {
     // `areasAround` соединяет области своего тайла и области за золотой
     // границей; без этого марш, удар и бой видят не тот сосед.

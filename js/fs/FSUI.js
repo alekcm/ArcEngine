@@ -401,11 +401,14 @@ const FSUI = {
             row.append(stats);
             // Счётчик жетонов один на всю игру: панель только спрашивает его.
             const face = PlayerEntity.of(state, p.seat);
+            // Три значка ресурсов: кузница, тайник, подкрепление. Значение
+            // считается сразу, а не замыканием — иначе в панели печаталась
+            // строка «kind => (face ? face.assetCount(kind) : 0)».
             const count = kind => (face ? face.assetCount(kind) : 0);
             const resourceLine = this.el('div', 'fs-player-assets');
-            [['asset.forge', count('forge'), 'Кузницы'], ['asset.cache', count('cache'), 'Запасы'], ['order.event', count('reinforcement'), 'Подкрепления']].forEach(([icon, count2, title]) => {
+            [['asset.forge', count('forge'), 'Кузницы'], ['asset.cache', count('cache'), 'Запасы'], ['order.event', count('reinforcement'), 'Подкрепления']].forEach(([icon, amount, title]) => {
                 const chip = this.el('span', 'fs-asset-chip');
-                chip.append(this.iconEl(icon), this.el('b', '', String(count || 0)));
+                chip.append(this.iconEl(icon), this.el('b', '', String(amount || 0)));
                 chip.title = title;
                 resourceLine.append(chip);
             });

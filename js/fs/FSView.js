@@ -194,11 +194,15 @@ const FSView = {
     // The world position of the centre of an area of a tile. The layout of the
     // four quadrants is the one of the rules (TileGeometry), only scaled: the
     // printed face and the picking geometry must not drift apart.
+    //
+    // The quadrant comes from TileGeometry.square: the same quarter of the tile
+    // the printed art uses, so a world and the frame drawn under it never drift
+    // apart. `AREA` is how much of that quarter the sector really takes.
     areaPos(app, sys, pos, metrics) {
         const p = this.tilePos(app, sys, metrics);
-        const c = TileGeometry.center(pos);
+        const q = TileGeometry.square(pos);
         const size = this.TILE * this.AREA;
-        return { x: p.x + (c.x - 0.5) * size, y: p.y + (c.y - 0.5) * size };
+        return { x: p.x + (q.cx - 0.5) * this.TILE, y: p.y + (q.cy - 0.5) * this.TILE };
     },
 
     // The tile of a system (drawn once).
@@ -1612,7 +1616,10 @@ const FSView = {
         const ax = ap.x, az = ap.y;
         const tileTop = app.location.terrain.heightAt(tile.x, tile.y) + 6.5;
         const groundY = (x, z) => tileTop + (disc && Math.hypot(x - disc.x, z - disc.z) < this.PLANET_D / 2 ? this.PLANET_H : 0);
-        const d = this.TILE * this.AREA / 2;
+        // Половина стороны области: ровно то же расстояние, на котором стоят
+        // миры (areaPos). Раньше здесь было вдвое меньше, и кубики боя жались к
+        // центру области.
+        const d = this.TILE * this.AREA;
         for (const side of [{ id: 'attacker', seat: CombatSides.seatOf(c, 'attacker') },
             { id: 'defender', seat: CombatSides.seatOf(c, 'defender') }]) {
             const sign = side.id === 'attacker' ? 1 : -1;
