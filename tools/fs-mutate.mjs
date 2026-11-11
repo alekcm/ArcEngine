@@ -392,6 +392,35 @@ const TABLE = [
         new: '        /*мутация: жетон подкрепления не попадает на стол*/',
         why: '«разместите 1 бесплатный жетон подкрепления в этой области»',
     },
+    // --- оставшиеся карты ИГ ------------------------------------------------
+    {
+        card: 'Огневая поддержка', faction: IG,
+        file: 'js/fs/effects/FSDiceSteps.js',
+        old: '        for (const i of (answer.dice || [])) {\n            if (liveIndex(s2, i)) turn.put(s2, i, R.rollDice(state, 1)[0]);',
+        new: '        for (const i of []) {\n            if (liveIndex(s2, i)) turn.put(s2, i, R.rollDice(state, 1)[0]);',
+        why: '«перебросьте 1 `def. cube`» — грань кубика меняется',
+    },
+    {
+        card: 'Часовой разведчик', faction: IG,
+        file: 'js/fs/FSEffects.js',
+        old: "            const mine = field.units(state, seat).filter(u => !u.routed && fit(u)).length;",
+        new: "            const mine = 99;",
+        why: '«если у вас больше недеморализованных отрядов, чем у противника»',
+    },
+    {
+        card: 'Боевое содружество', faction: IG,
+        file: 'js/fs/FSEffects.js',
+        old: '        if (filter.type) return def.type === filter.type;',
+        new: '        if (filter.type) return true;',
+        why: '«наземный отряд» и «корабль» — разные половины карты',
+    },
+    {
+        card: 'Быкогрин здоровья', faction: IG,
+        file: 'js/fs/FSEffects.js',
+        old: '                    const fits = para.names.some(n => present.some(pres => this.sameName(pres, n)));',
+        new: '                    const fits = true;',
+        why: '«*Огрин/Крейсер:*» — абзац читается только при своём отряде',
+    },
     // --- общий страж подготовки --------------------------------------------
     {
         // `addUnit` refusing a foreign id is what uncovered the fixtures of

@@ -5991,7 +5991,19 @@ check('Огневая поддержка', 'Гвардеец перебрасы�
     let reroll = null;
     play(st, 0, 0, (s, q) => { if (q.kind === 'dice') reroll = q; return null; });
     ok(!!reroll, 'вопрос о перебросе не задан');
-    return eq(reroll.kind2, 'def', 'перебрасывается кубик защиты');
+    eq(reroll.kind2, 'def', 'перебрасывается кубик защиты');
+    // Переброс обязан менять грань: вопрос без нового броска — не переброс.
+    const again = guardBattle({ units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 }, card: 'Огневая поддержка', dice: ['def', 'att'], foeDice: ['att'] });
+    const roll = FS_RULES.rollDice;
+    FS_RULES.rollDice = () => ['morale'];
+    let at = null;
+    play(again, 0, 0, (s, q) => {
+        if (q.kind === 'dice') { at = (q.options || [])[0]; return { dice: [at] }; }
+        return null;
+    });
+    FS_RULES.rollDice = roll;
+    ok(at !== null, 'вопрос о перебросе не задан');
+    return eq(dice(again, 'attacker')[at], 'morale', 'кубик лёг новой гранью');
 });
 
 // --- Подавляющий огонь виверн ------------------------------------------------
@@ -6063,7 +6075,14 @@ check('Часовой разведчик', 'при перевесе отрядо
     answerAll(st, null, undefined);
     ok(!!avoid, 'вопроса о плате нет');
     eq(avoid.kind2, 'morale', 'плата — кубик морали');
-    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'враг деморализован');
+    eq(foeUnits(st).filter(u => u.routed).length, 1, 'враг деморализован');
+    // Условие карты — перевес в отрядах: при перевесе противника деморализации
+    // не предлагается вовсе.
+    const weaker = guardBattle({ units: { 'гвардейцы': 1 }, foeUnits: { 'воины': 2 }, card: 'Часовой разведчик', dice: ['att'], foeDice: ['att', 'morale'] });
+    let offered = false;
+    play(weaker, 0, 0, (s, q) => { if (q.op === 'avoid') offered = true; return null; });
+    answerAll(weaker, null, undefined);
+    return eq(offered, false, 'при перевесе противника карта молчит');
 });
 
 check('Часовой разведчик', 'Огрин атакующего получает 2 кубика на выбор', () => {
