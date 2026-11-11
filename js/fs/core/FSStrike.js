@@ -140,6 +140,16 @@ class StrikePlan {
         return this.order.strikeDice || [];
     }
 
+    /**
+     * «Перевернуть 1 из своих `morale cube` на `att. cube`» («Маскированная
+     * бомбардировка»): the face of a cube of the strike changes before the roll
+     * — the cube itself stays, only its side is turned.
+     */
+    setDice(faces) {
+        this.order.strikeDice = (faces || []).slice();
+        return this;
+    }
+
     /** How many cubes of the pool this payment took. */
     setPaid(n) {
         this.order.strikePaid = n;

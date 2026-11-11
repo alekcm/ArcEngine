@@ -260,9 +260,21 @@ class DiceAsks {
         if (!inCombat) {
             // «Вы можете перевернуть 1 из своих `morale cube` на `att.
             // cube`» во время орбитального удара («Маскированная
-            // бомбардировка»): the cube of the strike is a hit.
+            // бомбардировка»): the cube of the strike is a hit. The turn is
+            // paid by a cube of the named kind — a strike without one has
+            // nothing to turn, and the sentence gives nothing.
             if (state.order && PhasePlan.of(state.order).is('strike') && OrderContext.of(state.order).isSeat(seat)) {
-                StrikePlan.of(state.order).addBonus(step.n || 1);
+                const plan = StrikePlan.of(state.order);
+                const kind = step.kind === 'any' ? null : step.kind;
+                const at = plan.dice.findIndex(f => !kind || f === kind);
+                if (at < 0) {
+                    R.log(state, seat, state.players[seat].name + ': нечего обращать в атаку — в ударе нет кубика «'
+                        + fsFaceName(kind || 'any') + '».');
+                    return null;
+                }
+                const faces = plan.dice.slice();
+                faces[at] = step.to || 'att';
+                plan.setDice(faces);
                 R.log(state, seat, state.players[seat].name + ' обращает кубик удара в атаку.');
             }
             return null;
