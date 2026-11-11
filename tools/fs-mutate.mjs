@@ -163,6 +163,16 @@ const TABLE = [
         new: 'const kl = 99;',
         why: '«отряд с командным уровнем 0 или 1» — предел плана',
     },
+    // --- общий страж подготовки --------------------------------------------
+    {
+        // `addUnit` refusing a foreign id is what uncovered the fixtures of
+        // another faction; without a check the guard itself is dead weight.
+        card: 'Подготовка боя', faction: IG,
+        file: 'js/fs/rules/SetupRules.js',
+        old: 'if (!FS_CATALOG.unit(faction, unitId)) {',
+        new: 'if (false) {',
+        why: 'движок отказывает отряду чужой фракции',
+    },
     // --- бой: значения и мораль -------------------------------------------
     {
         // The write side of the extra damage (`addExtra`) and the read side
