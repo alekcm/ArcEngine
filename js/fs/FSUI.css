@@ -567,3 +567,8 @@ button.fs-room-pill:hover{border-color:#d8b87366;color:#efe6c8;background:#d8b87
 .fs-card-choice-text{font-size:10px;line-height:1.5;color:#d5dad4;white-space:pre-line}
 .fs-card-choice-pick{margin-top:7px;font:700 9px/1 ui-sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#93e3ac}
 .fs-shell.is-mobile .fs-card-choices-list{max-height:34vh}
+
+/* Компас в верхней плашке: поворот камеры правой кнопкой, «север» на экране
+   больше не всегда вверху — стрелка показывает, где он. */
+.fs-compass{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid rgba(214,177,104,.35);border-radius:999px;font:10px/1.4 ui-monospace,monospace;letter-spacing:.08em;color:#d8c9a4;background:rgba(10,16,22,.55)}
+.fs-compass-needle{display:inline-block;width:9px;height:9px;background:linear-gradient(180deg,#e8d7a8 0 50%,#6b7480 50% 100%);clip-path:polygon(50% 0,100% 100%,0 100%);transform-origin:50% 50%}

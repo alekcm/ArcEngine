@@ -16,14 +16,17 @@
 //       no limits, wider zoom range.
 //
 // Input (DOM, no engine): WASD and arrows — flight: W/S along the view (looking
-// down — descending), A/D — strafe; RMB — look around: the camera stays in place,
-// the target swings around it (while following an object — orbit around it).
-// With the azimuth locked (the game: north is always up) RMB pans the board
-// instead — the same as LMB, which the game also gives to the camera; wheel —
-// zoom to cursor; middle button — pan "following the pointer" (the ground point
-// stays under the cursor); one finger — pan, two fingers — pinch (zoom and pan by
-// the midpoint); R — home position (home). Keys are not intercepted while focus
-// is in an input field.
+// down — descending), A/D — strafe; LMB drag (leftDragPan) — pan the board;
+// RMB — look around: the camera stays in place, the target swings around it
+// (while following an object — orbit around it). The game does NOT lock the
+// azimuth, so RMB always turns the camera; a client that needs the screen fixed
+// to the world (a map editor, a compass view) may lock it — then RMB falls back
+// to the pan, so the right button never goes dead; wheel — zoom to cursor;
+// middle button — pan "following the pointer" (the ground point stays under the
+// cursor); one finger — pan, two fingers — pinch (zoom and pan by the midpoint);
+// R — home position (home). Keys are not intercepted while focus is in an input
+// field, and Q/E are not the camera's keys at all: the game keeps them for
+// turning a tile during the assembly of the board.
 //
 // Q/E are NOT the camera's keys: the camera does not raise or lower itself. The
 // game keeps Q/E for its own commands (turning a tile during the assembly of the
@@ -315,14 +318,26 @@ class CameraController {
     lockAzimuth(on) { this.azimuthLocked = on !== false; }
 
     _look(dAzimuth, dPitch) {
+        // ГЛАЗ СТОИТ НА МЕСТЕ: поворот — это поворот, а не переезд. Раньше здесь
+        // точка взгляда переставлялась из старого глаза, и камера не крутилась,
+        // а уезжала вбок почти на дистанцию обзора.
         const e = this._eye();
         if (!this.azimuthLocked) this.azimuth += dAzimuth;
         this.pitch = this._clampPitch(this.pitch + dPitch);
+        // Точка взгляда — на луче из неподвижного глаза: опускаем его на цель.
         const d = this.distance(), cp = Math.cos(this.pitch);
-        this._setTarget3(
-            e.x + Math.cos(this.azimuth) * cp * d,
-            e.y + Math.sin(this.azimuth) * cp * d,
-            e.h - Math.sin(this.pitch) * d);
+        const tx = e.x + Math.cos(this.azimuth) * cp * d;
+        const ty = e.y + Math.sin(this.azimuth) * cp * d;
+        const th = e.h - Math.sin(this.pitch) * d;
+        // setTarget3 пересчитывает lift от земли — цель идёт как есть.
+        this.target.x = tx;
+        this.target.y = ty;
+        this._clampTarget();
+        const ground = this._groundH(this.target.x, this.target.y);
+        this.lift = this._clampLift(th - ground);
+        this.target.h = ground + this.lift;
+        this.followObj = null;
+        this._zoomAnchor = null;
     }
 
     // --- Input ----------------------------------------------------------------------

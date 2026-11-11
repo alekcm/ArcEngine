@@ -63,20 +63,34 @@ const TABLE = [
         new: "        header.append(this.el('span', 'fs-brand', ''), this.el('i', 'fs-divider'));",
         why: 'верхняя плашка партии пустая — не видно, что игра началась',
     },
-    // --- камера: правая кнопка и клавиши --------------------------------
+    // --- камера: поворот правой кнопкой и клавиши ----------------------
     {
         check: 'cam-1',
         file: 'js/CameraControl.js',
-        old: "        else if (e.button === 2 && this.azimuthLocked) mode = 'pan';\n",
-        new: '',
-        why: 'правая кнопка при запертом азимуте не делает ничего: карту не поводить',
+        old: '        if (!this.azimuthLocked) this.azimuth += dAzimuth;',
+        new: '        void dAzimuth;',
+        why: 'поворот по горизонтали не применяется: камера не крутится правой кнопкой',
+    },
+    {
+        check: 'cam-1b',
+        file: 'js/CameraControl.js',
+        old: "        else if (e.button === 2 && this.azimuthLocked) mode = 'pan';\n        else if (e.button === 2 && (this.free || this.c.orbit > 0)) mode = this.followObj ? 'orbit' : 'look';",
+        new: "        else if (e.button === 2) mode = 'pan';",
+        why: 'правая кнопка только панорамирует: камеру не повернуть никогда',
     },
     {
         check: 'cam-2',
         file: 'js/CameraControl.js',
-        old: "        else if (e.button === 2 && this.azimuthLocked) mode = 'pan';",
-        new: "        else if (e.button === 2 && this.azimuthLocked) mode = 'orbit';",
-        why: 'правая кнопка крутит камеру вместо панорамы: карта не едет, запертый азимут нарушен',
+        old: '        this.pitch = this._clampPitch(this.pitch + dPitch);',
+        new: '        this.pitch = this.pitch;',
+        why: 'наклон камеры не применяется',
+    },
+    {
+        check: 'cam-2b',
+        file: 'js/CameraControl.js',
+        old: '        const tx = e.x + Math.cos(this.azimuth) * cp * d;\n        const ty = e.y + Math.sin(this.azimuth) * cp * d;',
+        new: '        const tx = e.x;\n        const ty = e.y;',
+        why: 'вид не поворачивается: точка взгляда остаётся в глазу, камера «переезжает»',
     },
     {
         check: 'cam-3',
@@ -97,7 +111,21 @@ const TABLE = [
         file: 'js/fs/FSGame.js',
         old: "            const action = { KeyQ: 'left', KeyE: 'right', KeyF: 'flip' }[e.code];",
         new: "            const action = { KeyF: 'flip' }[e.code];",
-        why: 'сборка карты потеряла поворот тайла: Q/E у камеры отобрали, а игре не отдали',
+        why: 'сборка карты потеряла поворот тайла',
+    },
+    {
+        check: 'cam-6',
+        file: 'js/fs/FSGame.js',
+        old: '        cam.azimuth = -Math.PI / 2;                       // north up',
+        new: '        cam.azimuth = -Math.PI / 2; cam.lockAzimuth(true); // north up',
+        why: 'игра запирает азимут при настройке камеры',
+    },
+    {
+        check: 'cam-7',
+        file: 'js/fs/FSGame.js',
+        old: '        const deg = -cam.azimuth * 180 / Math.PI - 90;',
+        new: '        const deg = cam.azimuth * 180 / Math.PI - 90;',
+        why: 'компас врёт в другую сторону: знак угла перепутан',
     },
     // --- стол: четверть тайла ------------------------------------------------
     {

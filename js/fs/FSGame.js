@@ -111,6 +111,19 @@ class FSGame {
         }
     }
 
+    /**
+     * Компас на верхней плашке: где север карты, в градусах по часовой от «вверх».
+     * Азимут камеры — куда она смотрит (по умолчанию −90° — на север); север
+     * отстоит от взгляда на четверть оборота против часовой. Приводим к ±180°,
+     * чтобы стрелка не делала лишний оборот.
+     */
+    compassAngle() {
+        const cam = this.app && this.app.camera;
+        if (!cam || typeof cam.azimuth !== 'number') return null;
+        const deg = -cam.azimuth * 180 / Math.PI - 90;
+        return ((deg % 360) + 540) % 360 - 180;
+    }
+
     // --- the camera: the board from above -------------------------------------
     setupCamera() {
         const cam = this.app.camera;
@@ -120,12 +133,11 @@ class FSGame {
         cam.zoom = FS_CAMERA_ZOOM;
         cam.zoomTarget = FS_CAMERA_ZOOM;
         cam.lookAt(this.app.location.width / 2, this.app.location.height / 2);
-        // Стороны света (штормы) привязаны к миру: азимут не крутим —
-        // «север» на экране всегда вверху, стрелки на картах совпадают с полем.
-        // Карту при этом водят правой кнопкой: CameraControl при запертом
-        // азимуте переводит ПКМ в панораму. Q/E камере не принадлежат — они
-        // нужны приказу на сборку карты (поворот тайла).
-        if (cam.lockAzimuth) cam.lockAzimuth(true);
+        // Азимут НЕ запираем: камеру крутят правой кнопкой (ЛКМ — панорама,
+        // ПКМ — поворот), как в остальных 3D-сценах. Стороны света на карте
+        // от этого не страдают: штормы и приказы подписаны словами
+        // («сверху», «справа»), а не «север/юг», и поворот тайла при сборке
+        // карты тоже привязан к самому тайлу, а не к экрану.
     }
 
     // --- the connection --------------------------------------------------------
@@ -388,7 +400,11 @@ class FSGame {
             FSView.showSelection(this.app, this.view, []);
             FSView.clearHighlights(this.view);
         }
-        const ctx = { title: '', text: '', status: this.status || '', warn: this.warn || '', actions: [], mode: this.mode, setupCellSelected: false };
+        const ctx = { title: '', text: '', status: this.status || '', warn: this.warn || '', actions: [], mode: this.mode, setupCellSelected: false,
+            // Компас: на сколько градусов повёрнут север карты на экране. Угол
+            // камеры считается от востока и растёт против часовой, а на экране
+            // ноль — «вверх», поэтому север — это −azimuth − 90°.
+            compass: this.compassAngle() };
         // A new order (or a new step of it) — the pending action is dropped.
         const orderKey = s.order ? OrderContext.of(s.order).kind + ':' + PhasePlan.of(s.order).name : '';
         if (this.orderKey !== orderKey) {

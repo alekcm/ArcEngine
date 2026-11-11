@@ -90,6 +90,8 @@ Object.assign(ctx, {
     navigator: { userAgent: 'screens', clipboard: null },
     requestAnimationFrame: () => 0,
     performance: { now: () => 0 },
+    // Константы вида из js/Constants.js: клиент читает их как обычные имена.
+    FS_TILE_PX: 260, FS_CAMERA_ZOOM: 0.62, FS_CAMERA_PITCH_DEG: 62,
     setInterval: nothing, clearInterval: nothing,
     // Babylon нужен камере только чтобы положить позицию и точку взгляда:
     // настоящий вектор заменяем тем же, что и всё остальное, — заглушкой.
@@ -264,30 +266,35 @@ function cameraOnBoard() {
 const press = (button, x, y, pointerId) => ({ button, clientX: x, clientY: y, pointerId: pointerId || 1, pointerType: 'mouse', preventDefault: nothing });
 const moveTo = (x, y, pointerId) => ({ clientX: x, clientY: y, pointerId: pointerId || 1, pointerType: 'mouse', preventDefault: nothing });
 
-screen('cam-1', 'правая кнопка при запертом азимуте везёт карту вправо-влево', () => {
-    // Игра запирает азимут (север всегда вверху). До этой проверки ПКМ в этом
-    // режиме не делала НИЧЕГО: панораму не включали, а поворот запрещён.
+screen('cam-1', 'правая кнопка поворачивает камеру: глаз на месте, вид меняется', () => {
+    // В игре ПКМ должна КРУТИТЬ камеру: это первое, чего ждёшь от 3D-сцены.
+    // Запертый азимут отбирал поворот и оставлял только панораму.
     const cam = cameraOnBoard();
-    cam.lockAzimuth(true);
-    const x0 = cam.target.x;
+    const az0 = cam.azimuth, e0 = cam._eye();
     cam._onDown(press(2, 400, 400));
     cam._onMove(moveTo(700, 400));
     cam._onUp({ pointerId: 1 });
-    if (Math.abs(cam.target.x - x0) < 1) return 'карта не сдвинулась правой кнопкой (x ' + cam.target.x + ' → ' + x0 + ')';
-    if (cam.azimuthLocked !== true) return 'азимут разлочился: север перестал быть вверху';
-    if (cam._pointers.size) return 'кнопка не отпущена — камера продолжит ехать';
+    if (Math.abs(cam.azimuth - az0) < 0.05) return 'камера не повернулась: азимут остался ' + az0.toFixed(3);
+    // Поворот — это поворот: ГЛАЗ остаётся на месте, вокруг него ходит вид.
+    // (Точка взгляда при этом законно уезжает — она и есть «куда смотрим».)
+    const e1 = cam._eye();
+    const drift = Math.hypot(e1.x - e0.x, e1.y - e0.y, e1.h - e0.h);
+    if (drift > 1) return 'вместо поворота камера переехала на ' + drift.toFixed(1) + ' px';
+    if (Math.abs(cam.target.x - e0.x) < 1 && Math.abs(cam.target.y - e0.y) < 1) return 'вид не изменился: цель осталась прежней';
+    if (cam._pointers.size) return 'кнопка не отпущена — камера продолжит крутиться';
     return true;
 });
 
-screen('cam-2', 'правая кнопка везёт карту и по вертикали, и не крутит её', () => {
+screen('cam-2', 'правая кнопка меняет наклон, не трогая поворот', () => {
     const cam = cameraOnBoard();
-    cam.lockAzimuth(true);
-    const az = cam.azimuth, y0 = cam.target.y;
+    const az0 = cam.azimuth, pitch0 = cam.pitch, e0 = cam._eye();
     cam._onDown(press(2, 400, 400));
-    cam._onMove(moveTo(400, 650));
+    cam._onMove(moveTo(400, 120));           // по вертикали — наклон
     cam._onUp({ pointerId: 1 });
-    if (Math.abs(cam.target.y - y0) < 1) return 'карта не сдвинулась по вертикали';
-    if (Math.abs(cam.azimuth - az) > 1e-9) return 'азимут изменился, а он заперт';
+    if (Math.abs(cam.pitch - pitch0) < 0.02) return 'наклон не изменился';
+    if (Math.abs(cam.azimuth - az0) > 1e-9) return 'движение по вертикали повернуло камеру по горизонтали';
+    const e1 = cam._eye();
+    if (Math.hypot(e1.x - e0.x, e1.y - e0.y, e1.h - e0.h) > 1) return 'камера переехала вместо наклона';
     return true;
 });
 
@@ -363,6 +370,43 @@ screen('cam-5', 'сборка карты поворачивает тайл по 
         ctx.window = oldWindow;
         BOARD_SETUP.of = savedOf;
     }
+});
+
+screen('cam-6', 'игра не запирает азимут: поворот камеры доступен всегда', () => {
+    // Замок азимута («север всегда вверху») и был причиной того, что ПКМ не
+    // крутила камеру. Проверяем сам setupCamera игры, а не намерение.
+    const game = Object.create(FS_GAME.prototype);
+    const cam = cameraOnBoard();
+    game.app = { camera: cam, location: { width: 1400, height: 900 } };
+    game.setupCamera.call(game);
+    if (cam.azimuthLocked) return 'камера заперта: правой кнопкой не повернуть';
+    const az0 = cam.azimuth;
+    cam._onDown(press(2, 400, 400));
+    cam._onMove(moveTo(700, 400));
+    cam._onUp({ pointerId: 1 });
+    if (Math.abs(cam.azimuth - az0) < 0.05) return 'камера не повернулась после setupCamera';
+    return true;
+});
+
+screen('cam-7', 'компас показывает, где север, после поворота камеры', () => {
+    // Раз камеру теперь крутят, «где север» больше не очевидно: на верхней
+    // плашке стоит компас. Север вверху — 0°, камера на восток — север слева.
+    const game = Object.create(FS_GAME.prototype);
+    const cam = cameraOnBoard();
+    game.app = { camera: cam, location: { width: 1400, height: 900 } };
+    game.setupCamera.call(game);
+    const up = game.compassAngle();
+    if (Math.abs(up - 0) > 0.001) return 'при взгляде «север вверху» компас показывает ' + up;
+    cam.azimuth = 0;                        // камера смотрит на восток
+    const east = game.compassAngle();
+    if (Math.abs(east - (-90)) > 0.001) return 'камера на восток, а компас показывает ' + east + ' (ждали −90)';
+    cam.azimuth = 90 * Math.PI / 180;       // камера смотрит на юг — север за спиной
+    const south = game.compassAngle();
+    if (Math.abs(Math.abs(south) - 180) > 0.001) return 'камера на юг, а компас показывает ' + south + ' (ждали ±180)';
+    cam.azimuth = 180 * Math.PI / 180;      // камера смотрит на запад — север справа
+    const west = game.compassAngle();
+    if (Math.abs(west - 90) > 0.001) return 'камера на запад, а компас показывает ' + west + ' (ждали 90)';
+    return true;
 });
 
 // ============================================================================

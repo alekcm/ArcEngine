@@ -295,6 +295,17 @@ const FSUI = {
         }
         // A test party: one person plays both seats, the interface says which one is his now.
         if (state && state.solo) header.append(this.el('span', 'fs-room-pill is-solo', 'ТЕСТ · вы за обоих'));
+        // Компас: камеру теперь крутят правой кнопкой, и «где север» больше не
+        // очевидно. Стрелка показывает север карты в экранных координатах —
+        // по ней сторону шторма на карте события можно проверить глазами.
+        if (state && ctx.compass != null) {
+            const dial = this.el('span', 'fs-compass');
+            dial.title = 'Север карты';
+            const needle = this.el('i', 'fs-compass-needle');
+            needle.style.transform = 'rotate(' + Number(ctx.compass).toFixed(1) + 'deg)';
+            dial.append(needle, this.el('span', '', 'С'));
+            header.append(dial);
+        }
         // The plaque with the round counter folds away: only the toggle stays.
         const topbarBtn = this.el('button', 'fs-topbar-toggle' + (this.panelState().topbar ? '' : ' is-off'));
         topbarBtn.type = 'button';
@@ -353,7 +364,7 @@ const FSUI = {
         if (state && this.panelState().orders) root.append(this.renderOrdersPop(state));
         if (this.helpOpen) {
             const pop = this.el('div', 'fs-help-pop'); pop.append(this.el('h3', '', 'Как играть мышью'));
-            pop.append(this.el('p', '', 'Левая кнопка с протяжкой — камера, правая кнопка — та же панорама (север всегда вверху), колесо — масштаб, Q/E — поднять и опустить камеру, клик — выбор.'));
+            pop.append(this.el('p', '', 'Левая кнопка с протяжкой — сдвинуть карту, правая кнопка — повернуть камеру, колесо — масштаб, клик — выбор.'));
             pop.append(this.el('p', '', 'Наступление: клик по своим отрядам на доске берёт их в группу, кольца показывают, куда можно идти, стрелка показывает маршрут. Клик по сектору отправляет группу, клик по отряду убирает его из группы.'));
             pop.append(this.el('p', '', 'Операции: клик по своему жетону приказа вскрывает его прямо на доске.'));
             pop.append(this.el('p', '', 'Сборка карты: выберите систему справа, клик по месту — предпросмотр, Q/E — поворот, F — другая сторона. Подтверждение — на табличке над системой.'));
