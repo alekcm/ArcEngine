@@ -1,0 +1,179 @@
+//  fs-mutate.mjs — the mutation table of the card checks
+//
+//  node tools/fs-mutate.mjs                 run every mutation of both factions
+//  node tools/fs-mutate.mjs --faction=IG    one faction
+//  node tools/fs-mutate.mjs --list          print the table, change nothing
+//
+//  A check that passes proves nothing on its own: the rule behind it may be
+//  switched off. So every entry of this table breaks ONE line of the engine and
+//  then plays the cards of the faction — the check that owns the rule must go
+//  red. A mutation that survives is a check held up by something else, and it
+//  is listed at the end.
+//
+//  The rule of the table: keep it semantic. `damageFirst.push` is a rule of
+//  «Бронетанковый клин», `return null` inside a formatter is not — a mutation
+//  that no card can notice teaches nothing.
+
+import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
+
+const IG = 'имперская-гвардия';
+const NEC = 'некроны';
+
+/**
+ * `old` must occur exactly once in `file`: a mutation with two anchors would
+ * change a line nobody can find again.
+ */
+const TABLE = [
+    // --- боевая колода: урон и здоровье ------------------------------------
+    {
+        card: 'Бронетанковый клин', faction: IG,
+        file: 'js/fs/core/FSCombatDamage.js',
+        old: 'this.combat.damageFirst.push({ side, id, round });',
+        new: '/*мутация: выбранный отряд не попадает в очередь первого урона*/',
+        why: '«Леман Русс выбирает отряд 2–3 уровня, он получает урон первым»',
+    },
+    {
+        card: 'Вирусные бомбы', faction: IG,
+        file: 'js/fs/core/FSStrike.js',
+        old: 'return !!this.order.ignoreBastion;',
+        new: 'return false;',
+        why: '«Бастионы противника не могут предотвратить этот орбитальный удар»',
+    },
+    {
+        card: 'Вирусные бомбы', faction: IG,
+        file: 'js/fs/rules/AdvanceRules.js',
+        old: 'if (!StrikePlan.of(order).ignoresBastion',
+        new: 'if (StrikePlan.of(order).ignoresBastion',
+        why: 'мир под бастионом становится целью удара только с картой',
+    },
+    {
+        card: 'Гнев дракона пустоты', faction: NEC,
+        file: 'js/fs/effects/ask/FSStrikeAsks.js',
+        old: 'CombatDamage.of(combat).addExtra(step.who, step.n || 0, seat);',
+        new: '/*мутация: дополнительный урон не начисляется*/',
+        why: '«вы и ваш противник получает 3 дополнительных урона»',
+    },
+    {
+        card: 'Гнев дракона пустоты', faction: NEC,
+        file: 'js/fs/FSEffects.js',
+        old: "build: m => ({ op: 'extraDamage', n: Number(m[1]), who: 'both' }),",
+        new: 'build: (m, c, s) => ({ op: \'note\', text: s }),',
+        why: 'предложение «вы и ваш противник…» разбирается в урон, а не в пояснение',
+    },
+    // --- удар: порядок урона и возврат отрядов ------------------------------
+    {
+        card: 'Набег жнецов', faction: NEC,
+        file: 'js/fs/core/FSStrike.js',
+        old: 'return this.order.strikeFirst || null;',
+        new: 'return null;',
+        why: '«Этот отряд получит урон первым во время этого орбитального удара»',
+    },
+    {
+        card: 'Набег жнецов', faction: NEC,
+        file: 'js/fs/rules/AdvanceRules.js',
+        old: 'if (damage.first && damage.untouched && unit.id !== damage.first) {',
+        new: 'if (false) {',
+        why: 'другому отряду удар не отдают, пока выбранный цел',
+    },
+    {
+        card: 'Сфера воскрешения', faction: NEC,
+        file: 'js/fs/rules/CombatRules.js',
+        old: 'if ((p.supply.units[pending.def] || 0) > 0) p.supply.units[pending.def] -= 1;',
+        new: '/*мутация: отряд возвращается из воздуха, запас не тратится*/',
+        why: '«вернуть этого юнита» — модель приходит из запаса',
+    },
+    // --- бой: значения и мораль -------------------------------------------
+    {
+        // The write side of the extra damage (`addExtra`) and the read side
+        // (`extra`) are two different lines: a card may be parsed and recorded
+        // and still never reach the damage of the step.
+        card: 'Гнев дракона пустоты', faction: NEC,
+        file: 'js/fs/core/FSCombatDamage.js',
+        old: "if (side === 'attacker') return damage + extraFoe + (c.extraDamageBoth || 0);",
+        new: "if (side === 'attacker') return damage + extraFoe;",
+        why: 'записанный картой урон обязан дойти до шага урона',
+    },
+    {
+        card: 'Протоколы реанимации', faction: NEC,
+        file: 'js/fs/rules/CombatRules.js',
+        old: 'restoreUnit(state, unit) {\n        if (!unit) return false;\n        unit.routed = false;',
+        new: 'restoreUnit(state, unit) {\n        if (!unit) return false;\n        unit.routed = true;',
+        why: '«восстановите всех ваших юнитов» — восстановление снимает деморализацию',
+    },
+];
+
+const args = process.argv.slice(2);
+const argOf = name => {
+    const hit = args.find(a => a.startsWith('--' + name + '='));
+    return hit ? hit.slice(name.length + 3) : null;
+};
+const FACTION = argOf('faction');
+const LIST = args.includes('--list');
+const paint = (on, code, text) => (on ? code + text + '\x1b[0m' : text);
+
+const rows = FACTION ? TABLE.filter(m => m.faction === FACTION) : TABLE;
+if (LIST) {
+    for (const m of rows) console.log([m.faction, m.card, m.file, m.why].join(' | '));
+    process.exit(0);
+}
+
+/** The check run of one faction, as a count of red lines and the failing names. */
+function run(faction) {
+    let out = '';
+    try {
+        out = execFileSync('node', ['tools/fs-card-check.mjs', '--faction=' + faction],
+            { encoding: 'utf8', timeout: 600000 });
+    } catch (e) {
+        out = (e.stdout || '') + (e.stderr || '');
+    }
+    const plain = out.replace(/\x1b\[[0-9;]*m/g, '');
+    const failed = plain.split('\n').filter(l => /^  FAIL/.test(l))
+        .map(l => l.replace(/^  FAIL\s*/, ''));
+    return { failed, passed: /Все проверки прошли/.test(plain) };
+}
+
+console.log('\x1b[1m  Мутационная таблица карт: сломанная строка обязана покраснеть\x1b[0m');
+
+const survivors = [];
+let killed = 0;
+for (const m of rows) {
+    const original = fs.readFileSync(m.file, 'utf8');
+    const at = original.split(m.old).length - 1;
+    if (at !== 1) {
+        console.log('  ' + paint(true, '\x1b[31m', 'якорь') + '  ' + m.card
+            + ' — строка встречается ' + at + ' раз(а), нужно ровно одну');
+        survivors.push({ ...m, why2: 'якорь' });
+        continue;
+    }
+    fs.writeFileSync(m.file, original.replace(m.old, m.new));
+    let res;
+    try {
+        res = run(m.faction);
+    } finally {
+        fs.writeFileSync(m.file, original);
+    }
+    if (res.failed.length) {
+        killed++;
+        console.log('  ' + paint(true, '\x1b[32m', 'ловит') + '  ' + m.card
+            + ' — ' + res.failed.length + ' проверк(и) красные: ' + res.failed[0].slice(0, 90));
+    } else {
+        console.log('  ' + paint(true, '\x1b[31m', 'выжила') + ' ' + m.card + ' — ' + m.why);
+        survivors.push(m);
+    }
+}
+
+// The unmutated run must be green, otherwise a "killed" row proves nothing.
+for (const faction of [...new Set(rows.map(m => m.faction))]) {
+    const res = run(faction);
+    console.log('  ' + (res.passed ? paint(true, '\x1b[32m', 'зелено') : paint(true, '\x1b[31m', 'красно'))
+        + ' ' + faction + ' без мутаций');
+    if (!res.passed) survivors.push({ card: faction, why: 'чистый прогон красный' });
+}
+
+console.log('\n  Мутаций: ' + rows.length + ', поймано: ' + killed
+    + ', выжило: ' + survivors.length);
+if (survivors.length) {
+    for (const s of survivors) console.log('    — ' + s.card + ' (' + s.faction + '): ' + s.why);
+    process.exit(1);
+}

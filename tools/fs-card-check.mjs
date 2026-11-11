@@ -2989,6 +2989,58 @@ check('Гнев дракона пустоты', 'сброс плана в нач
     return eq([yes.after.mine < yes.before.mine, yes.after.foe < yes.before.foe], [true, true],
         'сброс: обе стороны теряют по отряду от дополнительного урона');
 });
+// «Когда 1 из ваших отрядов с командным уровнем 0 или 1 деморализован или
+//  уничтожен, вы можете сбросить эту карту, чтобы вернуть этого юнита
+//  недеморализованным обратно после этапа получения урона.»
+check('Сфера воскрешения', 'уничтоженный отряд возвращается из ЗАПАСА, запас не растёт', () => {
+    // Воин (здоровье 3) уничтожается целиком: в запасе остаётся 1 модель из 2,
+    // и именно она возвращается на стол. Возврат «из воздуха» оставил бы запас
+    // нетронутым — модель стояла бы и на столе, и в запасе.
+    const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', units: { 'воины': 2 }, foeUnits: { 'огрины': 2 }, dice: [], foeDice: ['att', 'att', 'att'], noFoeCard: true });
+    schemeInPlay(st, 'Сфера воскрешения', 'некроны');
+    const supply = () => st.players[0].supply.units['воины'] || 0;
+    let offered = false, onTable = null, supplyAfter = null, left = null;
+    let onTableBefore = null, supplyBefore = null;
+    for (let i = 0; i < 40 && st.combat; i++) {
+        if (st.pending) {
+            const q = st.pending.question;
+            const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
+            const answer = q.op === 'resurrectOffer' ? { choice: 0 }
+                : (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : { choice: 0 });
+            if (q.op === 'resurrectOffer') {
+                offered = true;
+                onTableBefore = myUnits(st).length;
+                supplyBefore = supply();
+            }
+            const res = FS_RULES.apply(st, seat, { type: 'effect', answer });
+            ok(res.ok, 'ответ не принят: ' + res.error);
+            if (q.op === 'resurrectOffer') {
+                // Смотрим сразу после возврата: следующий раунд снова ранит отряд.
+                onTable = myUnits(st).length;
+                supplyAfter = supply();
+                left = myUnits(st).filter(u => !u.routed).length;
+            }
+            continue;
+        }
+        const step = CombatTurn.of(st.combat).step;
+        if (step === 'retreat') break;
+        if (step === 'reinforce-attacker' || step === 'reinforce-defender') {
+            FS_RULES.apply(st, step === 'reinforce-attacker' ? 0 : 1, { type: 'combat', action: 'reinforce', count: 0 });
+        } else if (step === 'choose-attacker' || step === 'choose-defender') {
+            FS_RULES.advanceCombatSteps(st);
+        } else if (step === 'damage-attacker' || step === 'damage-defender') {
+            const side = step === 'damage-attacker' ? 'attacker' : 'defender';
+            FS_RULES.apply(st, side === 'attacker' ? st.combat.attacker : st.combat.defender,
+                { type: 'combat', action: 'damage', targets: FS_RULES.damageCandidates(st, side).map(x => x.id) });
+        } else FS_RULES.advanceCombatSteps(st);
+    }
+    eq(offered, true, 'план предложен после этапа урона');
+    eq(onTable, onTableBefore + 1, 'на столе появился ещё один воин');
+    eq(left, onTable, 'вернувшийся отряд недеморализован');
+    return eq(supplyAfter, supplyBefore - 1,
+        'модель пришла ИЗ ЗАПАСА: было ' + supplyBefore + ', стало ' + supplyAfter);
+});
+
 check('Безжалостное наступление', 'сброс плана даёт обоим по дополнительному шагу повреждений', () => {
     const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', units: { 'воины': 2 }, foeUnits: { 'огрины': 2 }, dice: ['att', 'att'], foeDice: ['att', 'att'], noFoeCard: true });
     schemeInPlay(st, 'Безжалостное наступление', 'некроны');
@@ -3271,9 +3323,32 @@ check('Набег жнецов', 'выбранный отряд КЛ 0 полу�
         const q = pending(st);
         ok(!!q, 'вопрос о первом уроне не задан');
         eq([q.kind, q.op], ['units', 'strikeFirstPick'], 'спрашивается отряд, который получит урон первым');
-        const id = (q.options || [])[0];
+        const options = q.options || [];
+        ok(options.length === 2, 'на выбор даны оба отряда КЛ 0: ' + options.length);
+        // Берём НЕ первый отряд: тогда «первый» нельзя получить случайно.
+        const id = options[options.length - 1];
         answerAll(st, (s2, qq) => (qq.op === 'strikeFirstPick' ? { units: [id] } : firstOption(s2, qq)));
-        return eq(st.order && st.order.strikeFirst, id, 'выбор записан в приказе удара');
+        eq(st.order && st.order.strikeFirst, id, 'выбор записан в приказе удара');
+        ok(!!st.strike, 'удар не начался после выбора: ' + JSON.stringify(st.order && st.order.phase));
+        eq(st.strike && st.strike.first, id, 'урон начинается с выбранного отряда');
+        // Второй отряд — не выбранный: его удар обязан отклонить.
+        const other = options.find(o => o !== id);
+        const wrong = FS_RULES.apply(st, 1, { type: 'strikeDamage', unit: other });
+        eq(wrong.ok, false, 'урон нельзя отдать другому отряду: ' + wrong.error);
+        // Первый урон — выбранному: гвардеец (здоровье 1) гибнет, второй цел.
+        const hit = FS_RULES.apply(st, 1, { type: 'strikeDamage', unit: id });
+        ok(hit.ok, 'урон не назначен: ' + hit.error);
+        eq(st.units.filter(u => u.seat === 1 && q.options.includes(u.id)).length, 1,
+            'первым погиб именно выбранный отряд');
+        eq(st.units.some(u => u.id === other), true, 'второй отряд пережил первый урон');
+        // Удар был на 2: после первого попадания остаётся одно, и следующий
+        // урон обязан уйти второму отряду — он и гибнет.
+        if (st.strike && st.strike.left > 0) {
+            const second = FS_RULES.apply(st, 1, { type: 'strikeDamage', unit: other });
+            ok(second.ok, 'второй урон не принят: ' + second.error);
+            eq(st.units.some(u => u.id === other), false, 'удар добил второго гвардейца');
+        }
+        return eq(st.strike ? st.strike.left : 0, 0, 'попадания удара израсходованы');
     });
 });
 
@@ -5508,7 +5583,21 @@ check('Вирусные бомбы', 'здоровье отрядов врага
     const st = strikeState({ faction: IG, foeFaction: 'некроны', ships: { 'крейсеры': 2 }, foeUnits: { 'монолиты': 1 }, upgrades: ['Вирусные бомбы'] });
     burn(st, 'Вирусные бомбы');
     eq(st.order.enemyHealth, 3, 'предел здоровья удара');
-    return eq(st.order.ignoreBastion, true, 'бастион удар не отменяет');
+    eq(st.order.ignoreBastion, true, 'бастион удар не отменяет');
+    // «Бастион не может предотвратить удар» — это не флажок, а мир, по
+    // которому удар РАЗРЕШЁН. Проверяем на бастионе в мире удара.
+    const shoots = withCard => {
+        const st2 = strikeState({
+            faction: IG, foeFaction: 'некроны', ships: { 'крейсеры': 2 },
+            foeUnits: { 'монолиты': 1 }, foeStructures: ['bastion'],
+            upgrades: withCard ? ['Вирусные бомбы'] : [],
+        });
+        if (withCard) burn(st2, 'Вирусные бомбы');
+        const targets = FS_RULES.orbitalStrikeTargets(st2, 0).filter(t => t.pos === st2.strikeWorld);
+        return targets.length;
+    };
+    eq(shoots(false), 0, 'бастион закрывает мир от удара без карты');
+    return eq(shoots(true), 1, 'карта открывает мир под бастионом для удара');
 });
 
 check('Вирусные бомбы', 'предел здоровья 3 снимается без карты', () => {
