@@ -232,7 +232,11 @@ function answerAll(st, policy, owner, limit = 80) {
         if (owner !== undefined && st.pending.seat !== owner) break;
         const q = st.pending.question || {};
         const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
-        const answer = policy ? policy(st, q, trace) : firstOption(st, q);
+        // The policy answers the questions it is about; the rest go by the
+        // default answer — `null` from the policy is «no opinion», not «answer
+        // nothing» (an empty answer to «кого деморализовать?» would be a refusal
+        // the card does not allow).
+        const answer = (policy && policy(st, q, trace)) || firstOption(st, q);
         trace.push({ kind: q.kind, op: q.op, seat, text: q.text || '', options: q.options, answer });
         const res = FS_RULES.apply(st, seat, { type: 'effect', answer });
         if (!res.ok) throw new Error('ответ не принят: ' + res.error);
@@ -4929,6 +4933,264 @@ check('Архивы мира-гробницы', 'спрашивает, каку�
 });
 
 // --- инквизиция -------------------------------------------------------------
+// ============================================================================
+//  Имперская гвардия: боевая колода (docs/forbidden-stars/04-combat-cards.md)
+// ============================================================================
+const IG = 'имперская-гвардия';
+
+/** The battle of the guard: a state of its own units against the necrons. */
+const guardBattle = o => battle(Object.assign({ faction: IG, foeFaction: 'некроны' }, o));
+
+/** The card of the guard deck by its name. */
+const guardCard = name => FS_DATA.combat.find(c => c.faction === IG && c.name === name);
+
+/**
+ * The combat is driven to the step of the damage of the first side, its
+ * questions answered by the policy: the moment «в начале шага нанесения
+ * повреждений» of the cards is exactly there.
+ */
+function toDamageStep(st, policy) {
+    const c = st.combat;
+    for (let i = 0; i < 40 && st.combat; i++) {
+        if (st.pending) { answerAll(st, policy, undefined); continue; }
+        const step = c.step;
+        if (step === 'damage-attacker' || step === 'damage-defender') return step;
+        if (step === 'reinforce-attacker' || step === 'reinforce-defender') {
+            const seat = step === 'reinforce-attacker' ? c.attacker : c.defender;
+            FS_RULES.apply(st, seat, { type: 'combat', action: 'reinforce', count: 0 });
+            continue;
+        }
+        if (step === 'choose-attacker' || step === 'choose-defender') {
+            const side = step === 'choose-attacker' ? 'attacker' : 'defender';
+            const seat = side === 'attacker' ? c.attacker : c.defender;
+            if (!(c.cards[side].hand || []).length) { FS_RULES.advanceCombatSteps(st); continue; }
+            FS_RULES.apply(st, seat, { type: 'combat', action: 'playCard', index: 0 });
+            continue;
+        }
+        FS_RULES.advanceCombatSteps(st);
+    }
+    return st.combat ? st.combat.step : null;
+}
+
+/** The units of a seat of the battle by the name of their card. */
+const namedUnits = (st, seat) => st.units.filter(u => u.seat === seat)
+    .map(u => (FS_RULES.unitOf(st, u) || {}).name);
+
+head('Боевая колода', IG);
+
+// --- Ратлинг стрелок ---------------------------------------------------------
+// «В начале шага нанесения повреждений ваш противник теряет 2 `att. token`.»
+// «*Гвардеец/Крейсер:* ваш противник должен выбрать и деморализовать 1 свой
+//  отряд. Он может избежать этого, если потратит 1 `any cube`.»
+check('Ратлинг стрелок', 'к началу шага повреждений противник теряет 2 att-жетона', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 }, card: 'Ратлинг стрелок', dice: ['att'], foeDice: ['att', 'att'] });
+    const c = st.combat;
+    c.tokens.defender = { att: 2, def: 0, morale: 0 };
+    // «В начале шага…» — потеря ждёт своего шага, а не приходит вместе с картой.
+    play(st, 0, 0, (s, q) => (q.op === 'avoid' ? { dice: [] } : null));
+    eq(c.tokens.defender.att, 2, 'при вскрытии карты жетоны ещё на месте');
+    toDamageStep(st);
+    return eq(c.tokens.defender.att, 0, 'в начале шага повреждений жетоны потеряны');
+});
+
+check('Ратлинг стрелок', 'Гвардеец заставляет врага деморализовать отряд или потратить кубик', () => {
+    const free = guardBattle({ units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 }, card: 'Ратлинг стрелок', dice: ['att'], foeDice: ['att'] });
+    let asked = null;
+    play(free, 0, 0, (s, q) => { if (q.op === 'avoid') { asked = q; return {}; } return null; });
+    // Вопрос о том, кого деморализовать, задан противнику: его ответы идут
+    // отдельно, владельцу карты они не принадлежат.
+    answerAll(free, null, undefined);
+    ok(!!asked, 'вопрос о плате не задан');
+    eq(asked.who, 1, 'платит противник');
+    eq(foeUnits(free).filter(u => u.routed).length, 1, 'отряд противника деморализован');
+    // «Он может избежать этого, если потратит 1 `any cube`»: заплатил — отряд цел.
+    const paid = guardBattle({ units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 }, card: 'Ратлинг стрелок', dice: ['att'], foeDice: ['att'] });
+    play(paid, 0, 0, (s, q) => (q.op === 'avoid' ? { dice: [(q.options || [])[0]] } : null));
+    eq(foeUnits(paid).filter(u => u.routed).length, 0, 'заплативший противник сохранил отряд');
+    return eq(count(paid, 'defender', 'att'), 0, 'потраченный кубик ушёл со стола');
+});
+
+check('Ратлинг стрелок', 'способность единицы не срабатывает без Гвардейца или Крейсера в бою', () => {
+    const st = guardBattle({ units: { 'огрины': 1 }, foeUnits: { 'воины': 2 }, card: 'Ратлинг стрелок', dice: ['att'], foeDice: ['att'] });
+    play(st, 0, 0, null);
+    return eq(foeUnits(st).filter(u => u.routed).length, 0, 'огрин не даёт способности');
+});
+
+// --- Железная дисциплина -----------------------------------------------------
+// «Получите 1 `any cube` за каждый ваш недеморализованный отряд с разным
+//  командным уровнем.» «*Гвардеец/Крейсер:* восстановите 1 свой
+//  деморализованный отряд.»
+check('Железная дисциплина', 'кубик за каждый разный командный уровень, а не за отряд', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 2, 'огрины': 1 }, foeUnits: { 'воины': 2 }, card: 'Железная дисциплина', dice: ['def'], foeDice: ['att'] });
+    const before = dice(st, 'attacker').length;
+    play(st, 0, 0, null);
+    // Два уровня (Гвардейцы КЛ 0 и Огрины КЛ 1) — два кубика, хотя отрядов три.
+    return eq(dice(st, 'attacker').length, before + 2, 'два кубика за два уровня');
+});
+
+check('Железная дисциплина', 'один командный уровень даёт один кубик', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 3 }, foeUnits: { 'воины': 2 }, card: 'Железная дисциплина', dice: ['def'], foeDice: ['att'] });
+    const before = dice(st, 'attacker').length;
+    play(st, 0, 0, null);
+    return eq(dice(st, 'attacker').length, before + 1, 'три Гвардейца одного уровня — один кубик');
+});
+
+check('Железная дисциплина', 'Гвардеец восстанавливает свой деморализованный отряд', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 2, 'огрины': 1 }, foeUnits: { 'воины': 2 }, card: 'Железная дисциплина', dice: ['def'], foeDice: ['att'] });
+    routeMine(st, 0);
+    eq(myUnits(st).filter(u => u.routed).length, 1, 'один свой отряд деморализован');
+    play(st, 0, 0, null);
+    return eq(myUnits(st).filter(u => u.routed).length, 0, 'отряд восстановлен');
+});
+
+// --- Ложись! -----------------------------------------------------------------
+// «Получите 1 `any cube`.» «*Гвардеец/Крейсер:* получите 1 `def. token` за
+//  каждого недеморализованного Гвардейца или Крейсера, максимум 3.»
+check('Ложись!', 'кубик и def-жетоны за Гвардейцев с пределом 3', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 4, 'огрины': 1 }, foeUnits: { 'воины': 2 }, card: 'Ложись!', dice: ['att'], foeDice: ['att'] });
+    const before = dice(st, 'attacker').length;
+    play(st, 0, 0, null);
+    eq(dice(st, 'attacker').length, before + 1, 'один любой кубик');
+    // Гвардейцев четыре, но «максимум 3»; огрин в список не входит.
+    return eq(tokens(st, 'attacker').def, 3, 'три жетона защиты, не больше');
+});
+
+check('Ложись!', 'деморализованный Гвардеец жетона не приносит', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 }, card: 'Ложись!', dice: ['att'], foeDice: ['att'] });
+    routeMine(st, 0);
+    play(st, 0, 0, null);
+    return eq(tokens(st, 'attacker').def, 1, 'один недеморализованный Гвардеец — один жетон');
+});
+
+// --- За Императора! ----------------------------------------------------------
+// «Перебросьте 1 `any cube`.» «*Гвардеец/Крейсер:* получите 1 `att. token` за
+//  каждого недеморализованного Гвардейца или Крейсера, максимум 3.»
+check('За Императора!', 'переброс кубика и att-жетоны с пределом 3', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 4 }, foeUnits: { 'воины': 2 }, card: 'За Императора!', dice: ['att', 'def'], foeDice: ['att'] });
+    let reroll = null;
+    play(st, 0, 0, (s, q) => { if (q.kind === 'dice') reroll = q; return null; });
+    ok(!!reroll, 'вопрос о перебросе не задан');
+    eq(reroll.n, 1, 'перебрасывается один кубик');
+    return eq(tokens(st, 'attacker').att, 3, 'три жетона атаки, не больше');
+});
+
+// --- Огневая поддержка -------------------------------------------------------
+// «В этом раунде боя, в начале шага нанесения повреждений, ваш противник
+//  теряет 2 `def. token`.» «*Гвардеец/Крейсер:* перебросьте 1 `def. cube`.»
+check('Огневая поддержка', '2 def-жетона противник теряет в начале шага повреждений', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 }, card: 'Огневая поддержка', dice: ['def'], foeDice: ['att'] });
+    st.combat.tokens.defender = { att: 0, def: 2, morale: 0 };
+    play(st, 0, 0, null);
+    eq(st.combat.tokens.defender.def, 2, 'при вскрытии карты жетоны на месте');
+    toDamageStep(st);
+    return eq(st.combat.tokens.defender.def, 0, 'в начале шага повреждений жетоны потеряны');
+});
+
+check('Огневая поддержка', 'Гвардеец перебрасывает def-кубик', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 2 }, foeUnits: { 'воины': 2 }, card: 'Огневая поддержка', dice: ['def', 'att'], foeDice: ['att'] });
+    let reroll = null;
+    play(st, 0, 0, (s, q) => { if (q.kind === 'dice') reroll = q; return null; });
+    ok(!!reroll, 'вопрос о перебросе не задан');
+    return eq(reroll.kind2, 'def', 'перебрасывается кубик защиты');
+});
+
+// --- Подавляющий огонь виверн ------------------------------------------------
+// «Если у вас больше недеморализованных отрядов с командным уровнем 0, чем у
+//  противника, ваш противник выбирает и деморализует 1 свой отряд.»
+// «*Леман Русс/Линкор:* ваш противник выбирает и уничтожает 1 свой
+//  деморализованный отряд с командным уровнем 0 или 1.»
+check('Подавляющий огонь виверн', 'при перевесе отрядов КЛ 0 враг деморализует отряд', () => {
+    const more = guardBattle({ units: { 'гвардейцы': 3 }, foeUnits: { 'воины': 2 }, card: 'Подавляющий огонь виверн', dice: ['att'], foeDice: ['att'] });
+    play(more, 0, 0, null);
+    eq(foeUnits(more).filter(u => u.routed).length, 1, 'враг деморализован');
+    // Перевеса нет — нет и деморализации.
+    const less = guardBattle({ units: { 'гвардейцы': 1 }, foeUnits: { 'воины': 3 }, card: 'Подавляющий огонь виверн', dice: ['att'], foeDice: ['att'] });
+    play(less, 0, 0, null);
+    return eq(foeUnits(less).filter(u => u.routed).length, 0, 'без перевеса отрядов КЛ 0 ничего');
+});
+
+check('Подавляющий огонь виверн', 'Леман Русс уничтожает деморализованный отряд КЛ 0–1', () => {
+    const st = guardBattle({ units: { 'танки-леман-русс': 1 }, foeUnits: { 'воины': 2, 'огрины': 1 }, card: 'Подавляющий огонь виверн', dice: ['att'], foeDice: ['att'] });
+    // Деморализован Гвардеец? Нет: у врага Гвардейцев нет — берём отряд КЛ 0.
+    routeFoe(st, 0);
+    const before = foeUnits(st).length;
+    play(st, 0, 0, (s, q) => (q.kind === 'units' ? { units: (q.options || []).slice(0, 1) } : null));
+    eq(foeUnits(st).length, before - 1, 'один деморализованный отряд уничтожен');
+    // Огрин (КЛ 1) в списке выбора тоже есть, Монолит (КЛ 2) — нет.
+    const st2 = guardBattle({ units: { 'танки-леман-русс': 1 }, foeUnits: { 'воины': 2, 'монолиты': 1 }, card: 'Подавляющий огонь виверн', dice: ['att'], foeDice: ['att'] });
+    routeFoe(st2, 0);
+    routeFoe(st2, 1);
+    let seen = null;
+    play(st2, 0, 0, (s, q) => { if (q.kind === 'units') { seen = q.options || []; return { units: [] }; } return null; });
+    ok(!!seen, 'вопроса о цели нет');
+    return eq(seen.length, 2, 'предложены воины и монолит? нет — только деморализованные 0–1');
+});
+
+// --- Поддержка титана --------------------------------------------------------
+// «Ваш противник обязан перебросить 1 `att. cube` за каждый ваш
+//  недеморализованный отряд с разным командным уровнем.»
+// «*Титан «Гончая»/Линкор:* во время шага нанесения урона ваши отряды с
+//  командным уровнем 2 или ниже не могут быть деморализованы.»
+check('Поддержка титана', 'враг перебрасывает кубики за каждый разный уровень', () => {
+    const st = guardBattle({ units: { 'титаны': 1, 'гвардейцы': 2 }, foeUnits: { 'воины': 2 }, card: 'Поддержка титана', dice: ['att'], foeDice: ['att', 'att', 'def'] });
+    let q = null;
+    play(st, 0, 0, (s, ask) => { if (ask.kind === 'dice') q = ask; return null; });
+    ok(!!q, 'вопрос о перебросе не задан');
+    // Титаны КЛ 3 и Гвардейцы КЛ 0 — два разных уровня.
+    eq(q.n, 2, 'два кубика за два уровня');
+    return eq(q.who, 1, 'перебрасывает противник');
+});
+
+check('Поддержка титана', 'свои отряды КЛ 2 и ниже не деморализуются, титан — может', () => {
+    const st = guardBattle({ units: { 'титаны': 1, 'гвардейцы': 1, 'огрины': 1 }, foeUnits: { 'воины': 2 }, card: 'Поддержка титана', dice: ['att'], foeDice: ['att'] });
+    play(st, 0, 0, null);
+    const rules = CombatDamage.of(st.combat);
+    eq(rules.forbidsRoute(0, 0, 1), true, 'Гвардеец КЛ 0 не деморализуется');
+    eq(rules.forbidsRoute(0, 2, 1), true, 'КЛ 2 тоже');
+    return eq(rules.forbidsRoute(0, 3, 1), false, 'титан КЛ 3 — может');
+});
+
+// --- Часовой разведчик -------------------------------------------------------
+// «Если у вас больше недеморализованных отрядов, чем у противника, ваш
+//  противник выбирает и деморализует 1 свой отряд; он может избежать этого,
+//  если потратит 1 `morale cube`.»
+// «*Огрин/Крейсер:* если вы атакуете, посмотрите выложенную лицом вниз боевую
+//  карту противника. Получите 2 `att. cube` или 2 `def. cube`.»
+check('Часовой разведчик', 'при перевесе отрядов враг деморализует отряд за morale cube', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 2, 'огрины': 1 }, foeUnits: { 'воины': 2 }, card: 'Часовой разведчик', dice: ['att'], foeDice: ['att', 'morale'] });
+    let avoid = null;
+    play(st, 0, 0, (s, q) => { if (q.op === 'avoid') { avoid = q; return {}; } return null; });
+    answerAll(st, null, undefined);
+    ok(!!avoid, 'вопроса о плате нет');
+    eq(avoid.kind2, 'morale', 'плата — кубик морали');
+    return eq(foeUnits(st).filter(u => u.routed).length, 1, 'враг деморализован');
+});
+
+check('Часовой разведчик', 'Огрин атакующего получает 2 кубика на выбор', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 2, 'огрины': 1 }, foeUnits: { 'воины': 2 }, card: 'Часовой разведчик', dice: ['att'], foeDice: ['def'] });
+    const before = dice(st, 'attacker').length;
+    let choice = null;
+    play(st, 0, 0, (s, q) => { if (q.kind === 'choice') { choice = q; return { choice: 0 }; } return null; });
+    ok(!!choice, 'выбора кубиков нет');
+    eq((choice.options || []).length, 2, 'атака или защита');
+    return eq(dice(st, 'attacker').length, before + 2, 'два кубика получены');
+});
+
+check('Часовой разведчик', 'защитник второго предложения не получает', () => {
+    const st = guardBattle({ units: { 'гвардейцы': 2, 'огрины': 1 }, foeUnits: { 'воины': 2 }, card: 'Часовой разведчик', dice: ['att'], foeDice: ['def'] });
+    // Атакующий — некроны: защитник ИГ эту карту не получает.
+    const text = guardCard('Часовой разведчик').unit.split(':').slice(1).join(':').trim();
+    const steps = FS_EFFECTS.parse(text, { kind: 'combat', faction: IG });
+    const give = steps.filter(s => s.op === 'choice');
+    eq(give.length, 1, 'выбор кубиков в разборе есть');
+    eq(give[0].cond && give[0].cond.side, 'attack', 'и он под условием «если вы атакуете»');
+    // В бою, где ИГ защищается, условие не выполнено — кубиков нет.
+    const def = guardBattle({ units: { 'огрины': 1 }, foeUnits: { 'воины': 2 }, card: 'Ложись!', dice: ['att'], foeDice: ['def'] });
+    const before = dice(def, 'defender').length;
+    FS_RULES.runEffects(def, 1, steps, { kind: 'combat', ctx: { side: 'defender' } });
+    return eq(dice(def, 'defender').length, before, 'защитнику кубики не достались');
+});
+
 head('Боевая колода', 'инквизиция');
 check('Серебряная броня', 'надбавка «на 1 здоровье во время этой битвы» живёт до конца боя, а не раунда', () => {
     // Общая способность — выбор кубика или двух жетонов; способность единицы

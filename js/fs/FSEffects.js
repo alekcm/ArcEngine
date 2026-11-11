@@ -732,7 +732,11 @@ const FS_EFFECTS = {
         const steps = [];
         let prev = null;
         let prevCond = null;
-        for (const sentence of this.sentences(text)) {
+        for (const raw of this.sentences(text)) {
+            // «* если вы атакуете, посмотрите …» — the star of the italic marks
+            // the paragraph of a unit ability; the sentence itself starts with
+            // the words of the condition.
+            const sentence = String(raw).replace(/^\s*\*\s*/, '');
             // «В начале раунда битвы вы можете сбросить эту карту. Уничтожьте 1
             // ваш отряд …, чтобы переместить …» («Праздник кровопролития»):
             // the sentence after a trigger without a body IS its effect. Read
@@ -4458,7 +4462,9 @@ const RULES = [
     // «Если вы — атакующий, подсмотрите карту оппонента» («Скитарии-
     // инфильтраторы»): the card the opponent laid for this round is shown.
     {
-        re: /^(?:если вы атакуете,?\s+(?:то\s+)?)?(?:посмотрите выложенную лицом вниз|подсмотрите)\s+(?:в игровую зону )?боевую карту противника\.?$/i,
+        // The transcription of the unit half of a card keeps the asterisk and
+        // the space of the italic («* если вы атакуете, посмотрите …»).
+        re: /^\s*\*?\s*(?:если вы атакуете,?\s+(?:то\s+)?)?(?:посмотрите выложенную лицом вниз|подсмотрите)\s+(?:в игровую зону )?боевую карту противника\.?$/i,
         build: () => ({ op: 'peekFoeCard' }),
     },
     {
