@@ -63,6 +63,15 @@ const TABLE = [
     },
     // --- шаги карт: выбор и его последствия --------------------------------
     {
+        // «Один раз за раунд» is not a caption: the card is spent, and the
+        // second play of the same card in the same round has to be refused.
+        card: 'Департаменто муниторум', faction: IG,
+        file: 'js/fs/rules/OperationsRules.js',
+        old: 'up.used = true;',
+        new: '/*мутация: карта не сгорает — играется сколько угодно раз*/',
+        why: '«Один раз за раунд»',
+    },
+    {
         card: 'Департаменто муниторум', faction: IG,
         file: 'js/fs/effects/ask/FSCardAsks.js',
         old: 'OrderContext.of(state.order).setNestedKind(step.kind);',
