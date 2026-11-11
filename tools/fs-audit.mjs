@@ -5908,6 +5908,104 @@ rule('prop-1', '«If he gains a prosperity asset (represented by a white eagle),
     eq(assetsOf(st.players[0]), before + 1, 'за жетон процветания взят ресурс');
 });
 
+rule('storm-2b', '«два варп-шторма»: у каждого шторма есть край на сетке и своё имя ребра', () => {
+    // stormEdge стоял только внутри сравнений «сам с собой» в проверках карт:
+    // мутация «край не находится» делала обе стороны null и проходила.
+    const st = game();
+    eq(st.storms.length, 2, 'в игре два варп-шторма');
+    const seen = new Set();
+    for (const storm of st.storms) {
+        const edge = FS_RULES.stormEdge(st, storm);
+        eq(!!edge, true, 'у шторма ' + storm.id + ' есть край');
+        eq(typeof edge.kind, 'string', 'край шторма ' + storm.id + ' с видом');
+        eq(typeof edge.row, 'number', 'край шторма ' + storm.id + ' с рядом');
+        const key = FS_RULES.gridKey(edge);
+        eq(typeof key, 'string', 'имя ребра шторма ' + storm.id);
+        eq(key, edge.kind + ':' + edge.row + ':' + edge.col, 'имя ребра собрано из его места');
+        seen.add(key);
+        // Обратный переход: от найденного края снова к тому же шторму.
+        const back = FS_RULES.edgeRef(st, edge);
+        eq(!!back, true, 'край шторма ' + storm.id + ' ведёт обратно к шторму');
+        eq(FS_RULES.gridKey(back), key, 'и это тот же край');
+    }
+    eq(seen.size, 2, 'штормы стоят на разных рёбрах');
+    // Не край — не шторм: чужое место края не находит.
+    eq(FS_RULES.stormEdge(st, { kind: 'нет', row: -99, col: -99 }), null, 'несуществующий край не выдаёт шторм');
+});
+
+rule('prop-2', '«…he gains one asset token of his choice» — выбор ресурса за жетон процветания, предел трёх и пустая касса', () => {
+    // Выбор ресурса (cmdTakeProsperity) не держало ничто: мутация «всегда
+    // нечего брать» проходила — проверка prop-1 берёт ресурс автоматически в
+    // другом месте и обходит его.
+    const build = (prosperity) => {
+        const st = empty();
+        const sys = st.systems[0];
+        const pos = worldOf(st, sys.id);
+        guard(st, 0, sys.id, pos);
+        st.phase = 'operations';
+        st.turn = 0;
+        st.order = { seat: 0, order: 'dominate', system: sys.id, phase: 'dominate', prosperity };
+        return st;
+    };
+    const tally = st => OrderTally.of(st.order);
+    let st = build(2);
+    const p = FS_RULES.player(st, 0);
+    for (const kind of ['forge', 'cache']) {
+        eq(p.assetCount(kind), 0, 'до выбора ' + kind + ' нет');
+        eq(FS_RULES.apply(st, 0, { type: 'takeProsperity', asset: kind }).ok, true, 'взят ресурс ' + kind);
+        eq(p.assetCount(kind), 1, 'ровно один жетон ' + kind);
+        eq(tally(st).prosperity, kind === 'forge' ? 1 : 0, 'жетон процветания потрачен');
+    }
+    // Кончились жетоны процветания — брать нечего и причина именно эта.
+    refused(FS_RULES.apply(st, 0, { type: 'takeProsperity', asset: 'cache' }),
+        /Нет жетонов процветания/, 'третий ресурс без жетона процветания');
+    // Предел трёх жетонов одного вида не обходится.
+    st = build(2);
+    FS_RULES.player(st, 0).setAsset('cache', 3);
+    refused(FS_RULES.apply(st, 0, { type: 'takeProsperity', asset: 'cache' }),
+        /уже 3 таких жетонов/, 'четвёртый жетон одного вида');
+    eq(FS_RULES.player(st, 0).assetCount('cache'), 3, 'и предел не превышен');
+});
+
+rule('buy-1', '«Discard one pair of combat cards … add two copies of the upgrade» — отмена покупки возвращает и материю, и карты', () => {
+    // cmdRefundUpgrade не держало ничто: мутация «отмена всегда ничего не
+    // делает» проходила. Проверяем полный круг: купил → отменил → как было.
+    const st = empty();
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    guard(st, 0, sys.id, pos);
+    st.phase = 'operations';
+    st.turn = 0;
+    st.order = { seat: 0, order: 'strategize', system: sys.id, phase: 'buy' };
+    const p = st.players[0];
+    const card = FS_DATA.combat.find(c => c.faction === p.faction && c.upgrade && c.kl === 0);
+    if (!card) return 'у фракции нет боевого улучшения нулевого уровня';
+    p.materiel = 9;
+    const materiel0 = p.materiel;
+    const deck0 = p.decks.combat.slice();
+    eq(FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'combat', card: card.name }).ok, true, 'покупка принята');
+    // Вопрос «какую пару заменить» — ответ в том виде, в каком его шлёт панель.
+    eq(!!st.pending, true, 'движок спросил, какую пару карт заменить');
+    const q = st.pending.question;
+    const seat = st.pending.answerSeat === undefined ? st.pending.seat : st.pending.answerSeat;
+    const removed = (q.options || [])[0];
+    eq(FS_RULES.apply(st, seat, { type: 'effect', answer: { card: q.card, remove: removed } }).ok, true, 'ответ на вопрос принят');
+    eq(p.materiel, materiel0 - card.cost, 'материя списана по цене карты');
+    eq(p.decks.combat.filter(x => x === card.name).length, 2, 'в колоде две копии улучшения');
+    eq(p.decks.combat.filter(x => x === removed).length, 0, 'заменённая пара ушла из колоды');
+    eq(p.decks.combat.length, deck0.length, 'размер колоды не изменился');
+    eq(!!UpgradeOrder.of(st.order).combatBuy, true, 'покупка записана в приказе');
+    // Отмена: материя вернулась, карты вернулись, покупки больше нет.
+    eq(FS_RULES.apply(st, 0, { type: 'refundUpgrade', kind: 'combat', card: card.name }).ok, true, 'отмена принята');
+    eq(p.materiel, materiel0, 'материя вернулась сполна');
+    eq(p.decks.combat.filter(x => x === card.name).length, 0, 'копий улучшения в колоде нет');
+    eq(p.decks.combat.filter(x => x === removed).length, 2, 'заменённая пара вернулась');
+    eq(UpgradeOrder.of(st.order).combatBuy, null, 'покупки в приказе нет');
+    // Отменять больше нечего — и причина именно эта.
+    refused(FS_RULES.apply(st, 0, { type: 'refundUpgrade', kind: 'combat', card: card.name }),
+        /не куплено/, 'повторная отмена');
+});
+
 rule('deck-1', '«Clean Up: … he discards the combat cards he used during the combat by shuffling them back into his combat deck.»', () => {
     let shuffled = 0;
     for (let seed = 1; seed <= 12; seed++) {
