@@ -1601,81 +1601,12 @@ try {
 }
 
 // --- the screens the player sees --------------------------------------------
-// The rules can be perfect and the game still unplayable: a lobby that throws
-// while drawing leaves the player on an empty scene with no menu at all. That
-// is exactly what happened — FSUI.lobby() calls renderModern(null), and
-// renderModern asked GamePhase.of(null) for .is(). This check draws both
-// screens (the lobby without a state, the panel with a real party) and fails
-// on any exception.
-section('экраны: лобби без состояния и панель с партией');
-// Клиент и панель уже загружены выше — тем же порядком, что и в index.html.
-// Сцена проверки — только DOM: экраны рисуются поверх настоящих правил.
-const nothing = () => undefined;
-try {
-    // Узел заглушки — настоящее дерево: панель строит экран через append и
-    // replaceChildren, и проверке нужно уметь прочитать, что в нём оказалось.
-    const el = (tag) => {
-        const node = {
-            tagName: String(tag || 'div').toUpperCase(), children: [], className: '', id: '', textContent: '',
-            style: { setProperty: nothing, removeProperty: nothing },
-            classList: { add: nothing, remove: nothing, toggle: nothing, contains: () => false },
-            append(...xs) { for (const x of xs) this.children.push(x); },
-            appendChild(x) { this.children.push(x); return x; },
-            replaceChildren(...xs) { this.children = xs; },
-            remove: nothing, setAttribute: nothing, getAttribute: () => null,
-            addEventListener: nothing, removeEventListener: nothing, focus: nothing, blur: nothing,
-            getContext: () => null, getBoundingClientRect: () => ({ width: 0, height: 0, left: 0, top: 0 }),
-            querySelector: () => null, querySelectorAll: () => [],
-        };
-        return node;
-    };
-    ctx.document.createElement = el;
-    ctx.document.body = el();
-    ctx.innerWidth = 1400;
-    ctx.innerHeight = 900;
-    ctx.UI = { root: null, get: () => null, def: () => ({}), init: nothing, add: nothing, set: nothing, removeAll: nothing, text: nothing, show: nothing };
-    const FSUI = vm.runInContext('FSUI', ctx);
-    FSUI.modernRoot = el();
-    // 1. Лобби — ровно так, как его рисует клиент сразу после подключения: без состояния.
-    //    Раньше здесь падало («GamePhase.of(null) → .is»), и игрок видел пустую сцену без меню.
-    FSUI.lobby({
-        code: 'ABCD', name: 'Проба', faction: '', palette: null, players: [],
-        factions: [{ id: 'некроны', name: 'Некроны', color: '#3f7d4e' }], link: 'http://localhost/?room=ABCD',
-        modes: [{ id: 'game', icon: 'ui.menu', title: 'Обычная игра', text: '…' }], mode: 'game',
-        status: '', battle: { kind: 'ground', units: {}, cards: [], total: 0, deck: 0 },
-        onMode: nothing, onBattle: nothing, onStart: nothing, onPalette: nothing,
-    }, nothing, nothing);
-    ok('лобби без состояния рисуется');
-    // 2. Панель — на настоящей партии, собранной движком.
-    const st = R.newReadyGame({ seed: 'screens', players: seedPlayers() });
-    FSUI.update(st, { mode: 'idle', title: '', text: '', status: '' });
-    ok('панель с партией рисуется (фаза ' + st.phase + ')');
-    // 3. Панель участников: в строке ресурсов — ЧИСЛА, а не исходник замыкания.
-    //    Было «kind => (face ? face.assetCount(kind) : 0)» на экране: замыкание
-    //    передавали в текст вместо сосчитанного значения.
-    st.players[0].assets = { forge: 1, cache: 2, reinforcement: 0 };
-    FSUI.update(st, { mode: 'idle', title: '', text: '', status: '' });
-    const texts = [];
-    const seen = [];
-    (function walk(n) {
-        if (seen.length < 40) seen.push(n && n.className);
-        const t = String((n && n.textContent) || '').trim();
-        if (t) texts.push(t);
-        for (const c of (n && n.children) || []) walk(c);
-    })(FSUI.modernRoot);
-    const leaked = texts.filter(t => /=>|assetCount|face \?/.test(t));
-    if (leaked.length) throw new Error('в панели участников исходник замыкания: ' + leaked[0]);
-    const shown = texts.filter(t => /^[0-9]+$/.test(t));
-    const need = ['1', '2', '0'];
-    const missing = need.filter(n => {
-        // Числа жетонов считаются по игроку: ищем их хотя бы по разу.
-        return !shown.includes(n);
-    });
-    if (missing.length) throw new Error('в панели нет чисел жетонов: ' + missing.join(', ') + ' (видно: ' + shown.slice(0, 12).join(',') + '; классы: ' + seen.join('|') + ')');
-    ok('панель участников печатает числа жетонов, а не замыкание');
-} catch (e) {
-    fail('экран: ' + (e && e.message ? e.message : e));
-}
+// Экраны проверяются отдельным инструментом: tools/fs-screens.mjs (8 проверок)
+// и его мутационная таблица tools/fs-mutate-screens.mjs (8 мутаций). Здесь же
+// проверяется стык: клиент зовёт у правил и каталога только то, что существует.
+// Первая редакция экранных проверок жила прямо тут — и не ловила ни съехавшую
+// карту, ни исходник замыкания в панели, потому что читать нужно было САМ
+// нарисованный экран, а не факт «отрисовка не бросила исключение».
 
 console.log('\n' + (failed
     ? C.red + C.b + '  Дым не прошёл: ' + failed + ' проверок.' + C.r
