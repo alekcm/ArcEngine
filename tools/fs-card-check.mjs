@@ -3281,6 +3281,20 @@ check('Триархи преторианцы', 'выбор «восстанов�
     return eq(CombatTokens.of(place.combat).units('attacker').used >= 1, true, 'жетон лёг на стол боя');
 });
 
+check('Триархи преторианцы', 'кубик переворачивается на выбранную грань', () => {
+    // Третья половина карты: «переверните 1 ваш кубик на любую грань». Вопрос
+    // есть — но проверять надо ГРАНЬ, а не факт вопроса.
+    const st = battle({ faction: 'некроны', foeFaction: 'имперская-гвардия', card: 'Триархи преторианцы', units: { 'воины': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: ['att', 'def'] });
+    let asked = null;
+    play(st, 0, 0, (s2, q) => {
+        if (q.kind === 'diceFace') { asked = q; return { dice: [(q.options || [])[0]], face: 'morale' }; }
+        if (q.kind === 'choice') return { choice: 0 };
+        return null;
+    });
+    ok(!!asked, 'вопроса о грани нет');
+    eq(dice(st, 'attacker')[asked.options[0]], 'morale', 'кубик лёг выбранной гранью');
+});
+
 check('Воин фланги', 'с Воином в бою карта даёт 1 кубик боевого духа; без него способность не звучит', () => {
     // Способность единицы читается только при реквизите: у некронов базовый
     // отряд называется «Воины», у корабля — «Крейсеры Жнец».
@@ -5947,9 +5961,16 @@ check('Ложись!', 'деморализованный Гвардеец жет
 check('За Императора!', 'переброс кубика и att-жетоны с пределом 3', () => {
     const st = guardBattle({ units: { 'гвардейцы': 4 }, foeUnits: { 'воины': 2 }, card: 'За Императора!', dice: ['att', 'def'], foeDice: ['att'] });
     let reroll = null;
-    play(st, 0, 0, (s, q) => { if (q.kind === 'dice') reroll = q; return null; });
+    let chosen = null;
+    // Переброс — не только вопрос: кубик обязан СМЕНИТЬСЯ. Иначе «Перебросьте
+    // 1 `any cube`» не исполняется, а вопрос задан.
+    const roll = FS_RULES.rollDice;
+    FS_RULES.rollDice = () => ['morale'];
+    play(st, 0, 0, (s, q) => { if (q.kind === 'dice') { reroll = q; chosen = (q.options || [])[0]; return { dice: [chosen] }; } return null; });
+    FS_RULES.rollDice = roll;
     ok(!!reroll, 'вопрос о перебросе не задан');
     eq(reroll.n, 1, 'перебрасывается один кубик');
+    eq(dice(st, 'attacker')[chosen], 'morale', 'выбранный кубик переброшен');
     return eq(tokens(st, 'attacker').att, 3, 'три жетона атаки, не больше');
 });
 
