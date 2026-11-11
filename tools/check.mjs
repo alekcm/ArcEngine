@@ -11,6 +11,9 @@
 //  npx takes it from the npm cache (the first run downloads it). Babylon types —
 //  libs/babylon.d.ts, own declarations — globals.d.ts. None of this goes into the archive.
 //
+//  Single source: tools/fs-single-source.mjs — у каждого правила одна реализация
+//  (цена покупки, ценность жетона запасов); копия формулы валит проверку.
+//
 //  Rules audit: tools/fs-audit.mjs — every check quotes a line of the Rules
 //  Reference (docs/forbidden-stars/01-rules-reference.md), builds the state of
 //  exactly that case and looks at what the engine does. There are no unit tests
@@ -29,6 +32,7 @@ const STEPS = [
   { flag: '--types', title: 'типы игры', run: () => spawnSync(TSC + ' -p tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--types', title: 'типы редактора', run: () => spawnSync(TSC + ' -p _utils/editor/tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--rules', title: 'правила', run: () => spawnSync(process.execPath, ['tools/fs-audit.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
+  { flag: '--rules', title: 'единственность правил', run: () => spawnSync(process.execPath, ['tools/fs-single-source.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
   { flag: '--smoke', title: 'дым', run: () => spawnSync(process.execPath, ['tools/fs-smoke.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
 ];
 

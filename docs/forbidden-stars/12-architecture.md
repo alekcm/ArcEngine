@@ -158,6 +158,7 @@ node tools/check.mjs          # типы (tsc по JSDoc) + сверка пра�
 node tools/fs-audit.mjs       # 223 проверки: каждая цитирует Rules Reference
 node tools/fs-card-check.mjs  # карты одной фракции против их текстов (--faction=…; сейчас 65 ИГ, 29 некронов, 61 тираниды, 82 механикус, 59 хаос, 44 тау, 1 инквизиция)
 node tools/fs-coverage.mjs    # сколько предложений карт движок превращает в шаги
+node tools/fs-single-source.mjs  # у каждого правила одна реализация (цена покупки, жетон запасов)
 node tools/fs-smoke.mjs       # все скрипты грузятся, раунд играется на 2 и 4 игроках
 ```
 
