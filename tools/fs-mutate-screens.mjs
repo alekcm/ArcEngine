@@ -63,6 +63,42 @@ const TABLE = [
         new: "        header.append(this.el('span', 'fs-brand', ''), this.el('i', 'fs-divider'));",
         why: 'верхняя плашка партии пустая — не видно, что игра началась',
     },
+    // --- камера: правая кнопка и клавиши --------------------------------
+    {
+        check: 'cam-1',
+        file: 'js/CameraControl.js',
+        old: "        else if (e.button === 2 && this.azimuthLocked) mode = 'pan';\n",
+        new: '',
+        why: 'правая кнопка при запертом азимуте не делает ничего: карту не поводить',
+    },
+    {
+        check: 'cam-2',
+        file: 'js/CameraControl.js',
+        old: "        else if (e.button === 2 && this.azimuthLocked) mode = 'pan';",
+        new: "        else if (e.button === 2 && this.azimuthLocked) mode = 'orbit';",
+        why: 'правая кнопка крутит камеру вместо панорамы: карта не едет, запертый азимут нарушен',
+    },
+    {
+        check: 'cam-3',
+        file: 'js/CameraControl.js',
+        old: "    KeyA: [0, -1, 0], ArrowLeft: [0, -1, 0], KeyD: [0, 1, 0], ArrowRight: [0, 1, 0]\n};",
+        new: "    KeyA: [0, -1, 0], ArrowLeft: [0, -1, 0], KeyD: [0, 1, 0], ArrowRight: [0, 1, 0],\n    KeyQ: [0, 0, -1], KeyE: [0, 0, 1]\n};",
+        why: 'старое поведение вернулось: Q/E снова двигают камеру',
+    },
+    {
+        check: 'cam-4',
+        file: 'js/CameraControl.js',
+        old: '        if (CameraController.FLY_KEYS[e.code]) {',
+        new: "        if (e.code === 'KeyQ' || e.code === 'KeyE') { e.preventDefault(); return; }\n        if (CameraController.FLY_KEYS[e.code]) {",
+        why: 'камера перехватывает Q/E: игра не получает поворот тайла',
+    },
+    {
+        check: 'cam-5',
+        file: 'js/fs/FSGame.js',
+        old: "            const action = { KeyQ: 'left', KeyE: 'right', KeyF: 'flip' }[e.code];",
+        new: "            const action = { KeyF: 'flip' }[e.code];",
+        why: 'сборка карты потеряла поворот тайла: Q/E у камеры отобрали, а игре не отдали',
+    },
     // --- стол: четверть тайла ------------------------------------------------
     {
         check: 'table-1',

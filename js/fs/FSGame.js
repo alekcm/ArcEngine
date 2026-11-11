@@ -122,6 +122,9 @@ class FSGame {
         cam.lookAt(this.app.location.width / 2, this.app.location.height / 2);
         // Стороны света (штормы) привязаны к миру: азимут не крутим —
         // «север» на экране всегда вверху, стрелки на картах совпадают с полем.
+        // Карту при этом водят правой кнопкой: CameraControl при запертом
+        // азимуте переводит ПКМ в панораму. Q/E камере не принадлежат — они
+        // нужны приказу на сборку карты (поворот тайла).
         if (cam.lockAzimuth) cam.lockAzimuth(true);
     }
 
@@ -731,6 +734,7 @@ class FSGame {
             if (e.ctrlKey || e.metaKey || e.altKey || this.mode !== 'placeTile' || !this.pending || !this.state || !(BoardSetup.of(this.state).record || {}).myTurn) return;
             const action = { KeyQ: 'left', KeyE: 'right', KeyF: 'flip' }[e.code];
             if (!action) return;
+            // Q/E здесь — поворот тайла; камера эти клавиши не слушает вовсе.
             e.preventDefault(); e.stopImmediatePropagation();
             if (this.app.camera && this.app.camera._keys) this.app.camera._keys.delete(e.code);
             if (!e.repeat) this.transformSetupTile(action);

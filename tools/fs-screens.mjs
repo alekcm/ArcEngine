@@ -13,6 +13,10 @@
 //      половину стороны области), а в панели участников печатался исходник
 //      замыкания вместо чисел жетонов.
 //
+//  * ПКМ в игре не водила карту (запертый азимут выключал и поворот, и панораму),
+//    а Q/E, принадлежа камере, мешали игре: они же поворачивают тайл и играют
+//    карты боя.
+//
 //  Ни одну из этих поломок не ловила ни одна проверка правил. Здесь то же,
 //  что fs-audit делает для правил: каждая проверка строит ровно тот случай и
 //  смотрит, что получилось на экране. Мутации — в fs-mutate-screens.mjs.
@@ -76,20 +80,29 @@ Object.assign(ctx, {
         body: el('body'), documentElement: el('html'), createElement: el,
         getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener: nothing,
     }),
-    window: ctx,
+    // window — сам контекст, но клавиши камера слушает на нём: без этих двух
+    // методов attach() падает, и «работает ли ПКМ» проверить нечем.
+    window: null,
     innerWidth: 1400,
     innerHeight: 900,
     IS_MOBILE: false,
     localStorage: { getItem: () => null, setItem: nothing, removeItem: nothing },
     navigator: { userAgent: 'screens', clipboard: null },
     requestAnimationFrame: () => 0,
+    performance: { now: () => 0 },
     setInterval: nothing, clearInterval: nothing,
+    // Babylon нужен камере только чтобы положить позицию и точку взгляда:
+    // настоящий вектор заменяем тем же, что и всё остальное, — заглушкой.
+    BABYLON: { Vector3: function (x, y, z) { this.x = x; this.y = y; this.z = z; } },
 });
+ctx.addEventListener = nothing;
+ctx.removeEventListener = nothing;
+ctx.window = ctx;
 ctx.UI = { root: null, get: () => null, def: () => ({}), init: nothing, add: nothing, set: nothing, removeAll: nothing, text: nothing, show: nothing };
 ctx.Store = { get: () => '', set: nothing, del: nothing };
 
 // Клиент и панель — те же файлы и тот же порядок, что в index.html.
-for (const file of ['js/fs/FSIcons.js', 'js/fs/FSView.js', 'js/fs/FSUI.js', 'js/fs/FSGame.js']) {
+for (const file of ['js/CameraControl.js', 'js/fs/FSIcons.js', 'js/fs/FSView.js', 'js/fs/FSUI.js', 'js/fs/FSGame.js']) {
     try {
         vm.runInContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), ctx, { filename: file });
     } catch (e) {
@@ -101,6 +114,9 @@ const FSUI = vm.runInContext('FSUI', ctx);
 const FS_RULES = vm.runInContext('FS_RULES', ctx);
 const FS_VIEW = vm.runInContext('FSView', ctx);
 const TILE_GEOMETRY = vm.runInContext('TileGeometry', ctx);
+const CAMERA = vm.runInContext('CameraController', ctx);
+const FS_GAME = vm.runInContext('FSGame', ctx);
+const BOARD_SETUP = vm.runInContext('BoardSetup', ctx);
 FSUI.modernRoot = el();
 
 const SEAT_PLAYERS = [
@@ -221,6 +237,132 @@ screen('panel-3', 'панель партии рисуется на настоя�
     if (!texts.some(t => /FORBIDDEN STARS/.test(t))) return 'нет верхней плашки игры';
     if (!texts.some(t => /Раунд 1/.test(t))) return 'нет номера раунда';
     return true;
+});
+
+// ============================================================================
+head('Камера: правая кнопка и высота');
+
+/**
+ * Камера на заглушке вида. Babylon нужен только в _syncCamera — его
+ * подменяем, всё остальное (углы, пределы, ввод) настоящее.
+ */
+function cameraOnBoard() {
+    const scene = {
+        camera: { position: { set: nothing }, setTarget: nothing, fov: 0 },
+        world: { canvas: { clientWidth: 1400, clientHeight: 900 } },
+        engine: { getAspectRatio: () => 16 / 9 },
+        refreshMatrices: nothing,
+        pointerToGround: (px, py) => ({ x: px, y: py }),
+        fitShadowFrustum: nothing,
+    };
+    const cam = new CAMERA(scene, { bounds: { w: 520, h: 780 } });
+    cam.attach({ addEventListener: nothing, removeEventListener: nothing, style: {}, getBoundingClientRect: () => ({ left: 0, top: 0 }) });
+    return cam;
+}
+
+/** Нажатие кнопки мыши по доске: e.button 0 — левая, 2 — правая. */
+const press = (button, x, y, pointerId) => ({ button, clientX: x, clientY: y, pointerId: pointerId || 1, pointerType: 'mouse', preventDefault: nothing });
+const moveTo = (x, y, pointerId) => ({ clientX: x, clientY: y, pointerId: pointerId || 1, pointerType: 'mouse', preventDefault: nothing });
+
+screen('cam-1', 'правая кнопка при запертом азимуте везёт карту вправо-влево', () => {
+    // Игра запирает азимут (север всегда вверху). До этой проверки ПКМ в этом
+    // режиме не делала НИЧЕГО: панораму не включали, а поворот запрещён.
+    const cam = cameraOnBoard();
+    cam.lockAzimuth(true);
+    const x0 = cam.target.x;
+    cam._onDown(press(2, 400, 400));
+    cam._onMove(moveTo(700, 400));
+    cam._onUp({ pointerId: 1 });
+    if (Math.abs(cam.target.x - x0) < 1) return 'карта не сдвинулась правой кнопкой (x ' + cam.target.x + ' → ' + x0 + ')';
+    if (cam.azimuthLocked !== true) return 'азимут разлочился: север перестал быть вверху';
+    if (cam._pointers.size) return 'кнопка не отпущена — камера продолжит ехать';
+    return true;
+});
+
+screen('cam-2', 'правая кнопка везёт карту и по вертикали, и не крутит её', () => {
+    const cam = cameraOnBoard();
+    cam.lockAzimuth(true);
+    const az = cam.azimuth, y0 = cam.target.y;
+    cam._onDown(press(2, 400, 400));
+    cam._onMove(moveTo(400, 650));
+    cam._onUp({ pointerId: 1 });
+    if (Math.abs(cam.target.y - y0) < 1) return 'карта не сдвинулась по вертикали';
+    if (Math.abs(cam.azimuth - az) > 1e-9) return 'азимут изменился, а он заперт';
+    return true;
+});
+
+screen('cam-3', 'Q/E не двигают камеру: эти клавиши не её', () => {
+    // Раньше Q/E были полётом камеры («вниз/вверх» вдоль мировой вертикали):
+    // при взгляде сверху полёт уводил камеру вперёд, а не поднимал её. Теперь
+    // Q/E камере не принадлежат — их забирает игра (поворот тайла).
+    const cam = cameraOnBoard();
+    // Высота камеры — это lift и target.h: старое «поднятие/опускание» двигало
+    // именно их (полёт вдоль мировой вертикали), а не наклон.
+    const before = { pitch: cam.pitch, x: cam.target.x, y: cam.target.y, h: cam.target.h, lift: cam.lift };
+    // Каждая клавиша проверяется ОТДЕЛЬНО: Q и E двигали камеру в разные
+    // стороны, и пара «вниз, потом вверх» возвращала её на место — проверка
+    // на паре проходила бы при полностью рабочем старом поведении.
+    for (const code of ['KeyQ', 'KeyE']) {
+        cam._onKey({ code, preventDefault: nothing }, true);
+        for (let i = 0; i < 20; i++) cam.update(1 / 60);
+        cam._onKey({ code, preventDefault: nothing }, false);
+        if (cam.pitch !== before.pitch) return code + ' изменила наклон камеры: ' + before.pitch.toFixed(3) + ' → ' + cam.pitch.toFixed(3);
+        if (cam.target.x !== before.x || cam.target.y !== before.y) return code + ' сдвинула камеру по карте';
+        if (cam.target.h !== before.h || cam.lift !== before.lift) {
+            return code + ' изменила высоту камеры: lift ' + before.lift.toFixed(3) + ' → ' + cam.lift.toFixed(3);
+        }
+        if (cam._keys.size) return code + ' попала в набор клавиш полёта';
+    }
+    return true;
+});
+
+screen('cam-4', 'Q/E не перехватываются камерой: игра получает их целиком', () => {
+    // Если камера зовёт preventDefault на Q/E, приказ «повернуть тайл» может не
+    // сработать: клавишу уже съел кто-то другой.
+    const cam = cameraOnBoard();
+    const taken = [];
+    for (const code of ['KeyQ', 'KeyE']) {
+        cam._onKey({ code, preventDefault: () => taken.push(code) }, true);
+        cam._onKey({ code, preventDefault: () => taken.push(code) }, false);
+    }
+    if (taken.length) return 'камера перехватила ' + taken.join(', ');
+    return true;
+});
+
+screen('cam-5', 'сборка карты поворачивает тайл по Q/E', () => {
+    // Проверка на стык: клавиши у камеры отобраны, значит поворот тайла обязан
+    // работать в игре. Смотрим сам обработчик FSGame (он на window, в захвате).
+    const listeners = [];
+    const fakeWindow = { addEventListener: (type, fn) => listeners.push({ type, fn }) };
+    const game = Object.create(FS_GAME.prototype);
+    game.app = { camera: cameraOnBoard() };
+    game.mode = 'placeTile';
+    game.pending = { tile: '1A' };
+    const setup = {
+        record: { myTurn: true },
+    };
+    game.state = { systems: [], setup: { stage: 'tiles' }, players: [] };
+    const turns = [];
+    game.transformSetupTile = action => turns.push(action);
+    // BoardSetup.of(state) спрашиваем у настоящего движка: подсовываем запись
+    // ровно такую, какую он отдаёт на сборке карты.
+    const savedOf = BOARD_SETUP.of;
+    BOARD_SETUP.of = () => setup;
+    // Обработчик вешается на window — на время проверки это заглушка.
+    const oldWindow = ctx.window;
+    ctx.window = fakeWindow;
+    try {
+        game.bindSetupKeys.call(game);
+        const handler = listeners.find(l => l.type === 'keydown');
+        if (!handler) return 'обработчик клавиш сборки не повешен';
+        handler.fn({ code: 'KeyQ', target: null, preventDefault: nothing, stopImmediatePropagation: nothing, repeat: false });
+        handler.fn({ code: 'KeyE', target: null, preventDefault: nothing, stopImmediatePropagation: nothing, repeat: false });
+        if (turns.join(',') !== 'left,right') return 'поворот тайла не сработал: ' + (turns.join(',') || 'ничего');
+        return true;
+    } finally {
+        ctx.window = oldWindow;
+        BOARD_SETUP.of = savedOf;
+    }
 });
 
 // ============================================================================

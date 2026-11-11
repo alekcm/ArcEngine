@@ -16,12 +16,19 @@
 //       no limits, wider zoom range.
 //
 // Input (DOM, no engine): WASD and arrows — flight: W/S along the view (looking
-// down — descending), A/D — strafe, Q/E — down/up along the world vertical; RMB —
-// look around: the camera stays in place, the target swings around it (while
-// following an object — orbit around it); wheel — zoom to cursor; middle button —
-// pan "following the pointer" (the ground point stays under the cursor); one
-// finger — pan, two fingers — pinch (zoom and pan by the midpoint); R — home
-// position (home). Keys are not intercepted while focus is in an input field.
+// down — descending), A/D — strafe; RMB — look around: the camera stays in place,
+// the target swings around it (while following an object — orbit around it).
+// With the azimuth locked (the game: north is always up) RMB pans the board
+// instead — the same as LMB, which the game also gives to the camera; wheel —
+// zoom to cursor; middle button — pan "following the pointer" (the ground point
+// stays under the cursor); one finger — pan, two fingers — pinch (zoom and pan by
+// the midpoint); R — home position (home). Keys are not intercepted while focus
+// is in an input field.
+//
+// Q/E are NOT the camera's keys: the camera does not raise or lower itself. The
+// game keeps Q/E for its own commands (turning a tile during the assembly of the
+// board), and a camera key that also quietly moved the view made those presses
+// unreliable.
 //
 // Frame: update(dt) from the owner's loop BEFORE World3D.renderFrame().
 // follow(obj) — following an object {x, y} (read every frame) with the lerp
@@ -47,7 +54,7 @@ class CameraController {
         this.leftDragPan = false;      // game opt-in: left-drag pans the board; a stationary click remains game input
         this.viewVersion = 0;          // grows with every camera move (re-project overlays)
         this._lastCam = null;
-        this._pointers = new Map();    // pointerId -> { x, y, mode: 'pan' | 'orbit' | 'look' | 'touch', anchor }
+        this._pointers = new Map();    // pointerId -> { x, y, mode: 'pan' | 'orbit' | 'look' | 'yaw' | 'touch', anchor }
         this._pinch = null;
         this._keys = new Set();
         this._zoomAnchor = null;       // zoom to cursor: { px, py, x, y, h } — ground point under the cursor
@@ -367,6 +374,7 @@ class CameraController {
 
     isDragging() { return this._pointers.size > 0; }
 
+
     _local(e) {
         const r = this._canvas.getBoundingClientRect();
         return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -402,6 +410,10 @@ class CameraController {
         let mode = null;
         if (e.pointerType === 'touch') mode = 'touch';
         else if (e.button === 1 || (e.button === 0 && this.leftDragPan) || (e.button === 0 && this.free && e.shiftKey)) mode = 'pan';
+        // ПКМ: поворот камеры, а при запертом азимуте — панорама. В игре азимут
+        // заперт (стороны света и штормы совпадают с полем), но водить карту
+        // правой кнопкой игрок должен: иначе ПКМ просто ничего не делала.
+        else if (e.button === 2 && this.azimuthLocked) mode = 'pan';
         else if (e.button === 2 && (this.free || this.c.orbit > 0)) mode = this.followObj ? 'orbit' : 'look';
         else if (e.button === 0 && this.free) mode = 'orbit';
         if (!mode) return;
@@ -423,7 +435,7 @@ class CameraController {
         if (!rec) return;
         const p = this._local(e);
         const k = this.c.orbitDegPerPx * Math.PI / 180;
-        if (rec.mode === 'look') {
+        if (rec.mode === 'look' || rec.mode === 'yaw') {
             this._look((p.x - rec.x) * k, (p.y - rec.y) * k);
         } else if (rec.mode === 'orbit') {
             // Orbit without limits does not go under the target: the pitch floor is higher than
@@ -585,8 +597,7 @@ class CameraController {
 // Flight keys: key code -> [forward along the view, right, up along the world vertical].
 CameraController.FLY_KEYS = {
     KeyW: [1, 0, 0], ArrowUp: [1, 0, 0], KeyS: [-1, 0, 0], ArrowDown: [-1, 0, 0],
-    KeyA: [0, -1, 0], ArrowLeft: [0, -1, 0], KeyD: [0, 1, 0], ArrowRight: [0, 1, 0],
-    KeyQ: [0, 0, -1], KeyE: [0, 0, 1]
+    KeyA: [0, -1, 0], ArrowLeft: [0, -1, 0], KeyD: [0, 1, 0], ArrowRight: [0, 1, 0]
 };
 
 CameraController.EYE_MIN = 8;    // px: the camera no lower than this above the ground under it — zoomed all the way in it presses into the table
