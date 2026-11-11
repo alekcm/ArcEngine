@@ -313,6 +313,49 @@ const TABLE = [
         new: '            /*мутация: излишек не отступает*/',
         why: '«отступить любым числом Гвардейцев, превышающим вместимость»',
     },
+    // --- события ИГ --------------------------------------------------------
+    {
+        card: 'Отбрыски Темпестус', faction: IG,
+        file: 'js/fs/effects/FSMoveSteps.js',
+        old: '            R.routeUnit(state, u, inCombat && combat ? CombatTurn.of(combat).round : null);',
+        new: '            /*мутация: отряд не деморализуется*/',
+        why: '«деморализуйте 1 вражеский отряд КЛ 0 или 1»',
+    },
+    {
+        card: 'Точечный удар', faction: IG,
+        file: 'js/fs/effects/ask/FSStrikeAsks.js',
+        old: "            StrikePlan.of(state.order).addBonus(step.n || 0);",
+        new: '            /*мутация: удар не усиливается*/',
+        why: '«добавить 2 к общей сумме урона»',
+    },
+    {
+        card: 'Ракета «Death Strike»', faction: IG,
+        file: 'js/fs/effects/ask/FSStrikeAsks.js',
+        old: '        CombatPlans.of(combat).setDeferred({ seat, steps: step.steps || [] });',
+        new: '        /*мутация: эффект срабатывает сразу, а не после шага повреждений*/',
+        why: '«в конце первого шага нанесения повреждений»',
+    },
+    {
+        card: 'Зов астропатов', faction: IG,
+        file: 'js/fs/effects/ask/FSPlaceAsks.js',
+        old: '            effects.placeReinforcementAt(R, state, seat, step, BattleField.of(combat).area, side, ctx);',
+        new: '            /*мутация: жетон подкрепления не размещается*/',
+        why: '«разместить 2 бесплатных жетона подкрепления в спорной области»',
+    },
+    {
+        card: 'Приказ верховного командования', faction: IG,
+        file: 'js/fs/FSEffects.js',
+        old: "                if (R.structuresAt(state, sys.id, a.pos).some(st => st.seat === seat && st.type === 'factory')) n += 1;",
+        new: '                /*мутация: фабрики не дают скидки*/',
+        why: '«уменьшите его стоимость на 1 за каждый мир с фабрикой»',
+    },
+    {
+        card: 'Имперская десятина', faction: IG,
+        file: 'js/fs/effects/ask/FSPlaceAsks.js',
+        old: "        return { question: { kind: 'areas', who: seat, op: 'placeFree', n: count, kind2: types[0].id, options: areas, text: 'Где разместить отряды?' } };",
+        new: '        return null;',
+        why: '«разместите 2 бесплатных Гвардейца» — вопрос о мире',
+    },
     // --- общий страж подготовки --------------------------------------------
     {
         // `addUnit` refusing a foreign id is what uncovered the fixtures of
