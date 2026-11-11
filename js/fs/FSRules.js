@@ -27,8 +27,23 @@ const FS_RULE_SERVICES = [
     CombatRules,
 ];
 
-/** @type {Record<string, any>} */
-const FS_RULES = Object.assign({}, FS_RULES_CONFIG);
+/**
+ * The engine. The constants of the game are not copied into it: every name of
+ * the config is a live accessor, so a rule that reads `FS_RULES_CONFIG.CACHE_VALUE`
+ * and a caller that writes `FS_RULES.CACHE_VALUE` see the SAME number. A copy
+ * (`Object.assign({}, …)`) made the two drift apart: a change through the engine
+ * reached the caller and never the rule.
+ * @type {Record<string, any>}
+ */
+const FS_RULES = {};
+for (const key of Object.keys(FS_RULES_CONFIG)) {
+    Object.defineProperty(FS_RULES, key, {
+        enumerable: true,
+        configurable: true,
+        get: () => FS_RULES_CONFIG[key],
+        set: value => { FS_RULES_CONFIG[key] = value; },
+    });
+}
 
 // Every service becomes a set of methods of the engine. The service gets the
 // engine as its collaborator, so a rule of one phase may use a rule of another

@@ -105,6 +105,12 @@ function necronDeploy() {
     return st;
 }
 
+/** The zero-level ground unit of the seat's faction (the name from the catalog). */
+function groundUnitOf(st, seat) {
+    const units = FS_CATALOG.faction(st.players[seat].faction).units.filter(u => u.type !== 'ship');
+    return (units.find(u => u.kl === 0) || units[0] || {}).id;
+}
+
 function head(text, ofFaction) {
     group = text;
     groupFaction = ofFaction || null;
@@ -1188,6 +1194,14 @@ function strikeState(o = {}) {
     st.turn = 0;
     st.order = null;
     const sys = st.systems[0];
+    const foe = (o.foeUnits || {}).constructor === Object && Object.keys(o.foeUnits || {}).length
+        ? Object.keys(o.foeUnits)[0] : null;
+    if (foe) {
+        // Отряды противника называет ПРОВЕРКА; если назван отряд чужой фракции,
+        // это ошибка проверки, а не повод молча играть им.
+        const own = FS_CATALOG.unit(st.players[1].faction, foe);
+        if (!own) throw new Error('у фракции «' + st.players[1].faction + '» нет отряда «' + foe + '» — назовите foeFaction');
+    }
     const voidArea = sys.areas.find(a => !a.world);
     const world = FS_RULES.areasAround(st, sys.id, voidArea.pos)
         .map(a => FS_RULES.area(sys, a.pos)).filter(a => a && a.world)[0];
@@ -1204,8 +1218,11 @@ function strikeState(o = {}) {
         for (let i = 0; i < n; i++) FS_RULES.addUnit(st, 0, id, sys.id, voidArea.pos);
     }
     // A unit of the tested player stands elsewhere: the order is his to resolve.
+    // It is HIS faction's zero-level unit — «скитарии» of the Mechanicus do not
+    // exist in the Guard, and the engine now refuses a unit of another faction.
     const other = sys.areas.find(a => a.world && a.pos !== world.pos);
-    FS_RULES.addUnit(st, 0, o.holdUnit || 'скитарии', sys.id, other.pos);
+    const hold = o.holdUnit || groundUnitOf(st, 0);
+    FS_RULES.addUnit(st, 0, hold, sys.id, other.pos);
     st.players[0].upgrades = (o.upgrades || ['Изъяны плоти']).map(name => ({ name, used: false }));
     if (o.materiel !== undefined) st.players[0].materiel = o.materiel;
     if (o.assets) Object.assign(st.players[0].assets, o.assets);
@@ -4138,9 +4155,11 @@ check('Критический удар', 'план уничтожает имен
 // ============================================================================
 const CHAOS = 'космодесант-хаоса';
 const CHAOS_FOE = 'имперская-гвардия';
+// Предел области — 5 отрядов (AREA_MAX_UNITS). Набор держится НИЖЕ предела:
+// иначе шаг «разместить отряд» упирается в пластик, и проверка молчит не о том,
+// что проверяет. Титан КЛ 3 нужен «Объединённому Хаосу» — он и есть четвёртый.
 const CHAOS_GROUND = {
-    'культисты': 2, 'космодесант-хаоса': 1, 'хелбруты': 1,
-    'титаны-хаоса-класса-налётчик': 1,
+    'культисты': 2, 'космодесант-хаоса': 1, 'титаны-хаоса-класса-налетчик': 1,
 };
 const CHAOS_SHIPS = {
     'эсминцы-класса-иконоборец': 1,
@@ -4452,7 +4471,7 @@ check('Объединённый Хаос', 'КЛ перемещённого от
     const st = chaosBattle({ card: 'Объединённый Хаос' });
     const sys = FS_RULES.system(st, st.combat.system);
     const other = sys.areas.find(a => a.world && a.pos !== st.combat.pos);
-    const titan = FS_RULES.addUnit(st, 0, 'титаны-хаоса-класса-налётчик', sys.id, other.pos);
+    const titan = FS_RULES.addUnit(st, 0, 'титаны-хаоса-класса-налетчик', sys.id, other.pos);
     let options = null;
     chaosRun(st, 'unit', (s, q) => {
         if (q.op === 'moveUnit' && !options) options = (q.options || []).slice();
@@ -5270,7 +5289,7 @@ check('Тактический гений', 'вместо карты из рук�
 //  добавить 2 к общей сумме урона.»
 check('Точечный удар', 'сумма удара растёт на 2', () => {
     const strike = withCard => {
-        const st = strikeState({ faction: IG, ships: { 'крейсеры': 2 }, foeUnits: { 'воины': 1 }, upgrades: [] });
+        const st = strikeState({ faction: IG, foeFaction: 'некроны', ships: { 'крейсеры': 2 }, foeUnits: { 'воины': 1 }, upgrades: [] });
         if (withCard) schemeInPlay(st, 'Точечный удар', IG);
         const roll = FS_RULES.rollDice;
         FS_RULES.rollDice = () => ['att', 'att'];

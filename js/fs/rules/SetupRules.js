@@ -577,11 +577,22 @@ class SetupRules {
         return pick;
     }
 
+    /**
+     * Put a unit of this seat's faction on the board. A unit the faction does
+     * not have is refused: an id of another faction (or of no faction at all)
+     * made a unit whose stats nobody could read — the damage step then saw no
+     * health and the card checks of one faction quietly played the units of
+     * another.
+     */
     addUnit(state, seat, unitId, systemId, pos) {
+        const faction = state.players[seat].faction;
+        if (!FS_CATALOG.unit(faction, unitId)) {
+            throw new Error('у фракции «' + faction + '» нет отряда «' + unitId + '»');
+        }
         const unit = {
             id: this.engine.uid(state, 'u'),
             seat,
-            faction: state.players[seat].faction,
+            faction,
             unit: unitId,
             system: systemId,
             area: pos,

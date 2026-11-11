@@ -82,6 +82,15 @@ const eq = (actual, expected, what) => {
 const FACTIONS = ['имперская-гвардия', 'орки'];
 const players = () => FACTIONS.map((faction, i) => ({ faction, name: 'P' + i, id: 'p' + i }));
 
+// A unit of the seat's OWN faction, whatever the faction is: the audit plays
+// every faction. A hard-coded id («гвардейцы» for the orks) used to pass
+// silently, because `addUnit` did not look at the faction at all.
+const defOf = (st, seat, want) => {
+    const id = st.players[seat].faction;
+    const units = ctx.FS_CATALOG.faction(id).units.filter(u => (want === 'ship' ? u.type === 'ship' : u.type !== 'ship'));
+    return (units.find(u => u.kl === 0) || units[0] || {}).id;
+};
+
 // A ready game: the board is assembled by the engine itself.
 function game(seed = 7) {
     const st = FS_RULES.newReadyGame({ seed, players: players() });
@@ -103,8 +112,10 @@ function empty(seed = 7) {
 }
 
 const unit = (st, seat, unitId, system, pos) => FS_RULES.addUnit(st, seat, unitId, system, pos);
-const guard = (st, seat, system, pos) => unit(st, seat, 'гвардейцы', system, pos);
-const olk = (st, seat, system, pos) => unit(st, seat, 'бойзы', system, pos);
+// The zero-level ground unit of the seat's faction («гвардейцы» for the Guard,
+// «бойзы» for the orks). The name is read from the catalog, not written in.
+const guard = (st, seat, system, pos) => unit(st, seat, defOf(st, seat, 'ground'), system, pos);
+const olk = (st, seat, system, pos) => unit(st, seat, defOf(st, seat, 'ground'), system, pos);
 
 // A world and a void of a system: any tile has both.
 function worldOf(st, systemId) {
@@ -3361,12 +3372,28 @@ rule('damage-1', "«A unit that suffers damage and is not destroyed is routed» 
     // спрашивал карту раунда, поэтому обещал деморализацию там, где карта её
     // запрещает, и уничтожение там, где карта отводит отряд с поля.
     const setup = (rules) => {
-        const st = empty(11);
+        // Обе стороны называются ЯВНО: у игры по умолчанию свои фракции, и отряд
+        // защитника уходил бы чужой («нет отряда бойзы у имперской-гвардии»).
+        const st = FS_RULES.newReadyGame({
+            seed: 11,
+            players: [{ faction: 'имперская-гвардия', name: 'P0', id: 'p0' },
+                      { faction: 'орки', name: 'P1', id: 'p1' }],
+        });
+        st.units = [];
+        st.structures = [];
+        st.objectives = [];
+        st.storms = [];
+        for (const s2 of st.systems) s2.tokens = [];
+        st.phase = 'operations';
+        st.turn = 0;
+        st.order = null;
         const sys = st.systems[0];
         const pos = worldOf(st, sys.id);
         const other = sys.areas.filter(a => a.world && a.pos !== pos)[0].pos;
-        FS_RULES.addUnit(st, 0, 'культисты', sys.id, pos);   // здоровье 2
-        FS_RULES.addUnit(st, 1, 'бойзы', sys.id, pos);       // здоровье 2
+        // Отряд нулевого уровня СВОЕЙ фракции: у культистов здоровье 2, но они
+        // есть только у Хаоса, а аудит играет всеми.
+        FS_RULES.addUnit(st, 0, defOf(st, 0, 'ground'), sys.id, pos);
+        FS_RULES.addUnit(st, 1, defOf(st, 1, 'ground'), sys.id, pos);  // здоровье 2
         st.phase = 'operations';
         st.turn = 0;
         st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
@@ -3427,7 +3454,11 @@ rule('damage-1', "«A unit that suffers damage and is not destroyed is routed» 
             if (!s2) continue;
             for (const a of s2.areas) {
                 if (a.world && !(sid === st.systems[0].id && a.pos === st.combat.pos)) {
-                    FS_RULES.addUnit(st, 0, 'культисты', sid, a.pos);
+                    // Отступает игрок 1: путь ему закрывают отряды игрока 0 — его
+                    // собственной фракции (раньше здесь стояли культисты Хаоса,
+                    // которых у Гвардии нет: проходило только потому, что
+                    // `addUnit` не смотрел на фракцию).
+                    FS_RULES.addUnit(st, 0, defOf(st, 0, 'ground'), sid, a.pos);
                 }
             }
         }
