@@ -356,6 +356,42 @@ const TABLE = [
         new: '        return null;',
         why: '«разместите 2 бесплатных Гвардейца» — вопрос о мире',
     },
+    // --- боевые карты некронов ---------------------------------------------
+    {
+        card: 'Воин фланги', faction: NEC,
+        file: 'js/fs/effects/ask/FSDiceAsks.js',
+        old: '            turn.add(dSide, step.kind === \'any\' ? R.rollDice(state, 1)[0] : step.kind);',
+        new: '            /*мутация: кубик не добавляется*/\n            turn.add(dSide, \'att\');',
+        why: '«получите 1 `morale cube`»',
+    },
+    {
+        card: 'Свежеватели', faction: NEC,
+        file: 'js/fs/effects/ask/FSDiceAsks.js',
+        old: '            if (!(CombatTurn.of(combat).indexOf(s2, step.onlyIfFoeHas) >= 0)) return null;',
+        new: '            /*мутация: условие «у противника есть кубик» не проверяется*/',
+        why: '«если у вашего противника есть `morale cube`»',
+    },
+    {
+        card: 'Разрушители', faction: NEC,
+        file: 'js/fs/effects/ask/FSDiceAsks.js',
+        old: '            return step.pick ? { stop: true } : null;',
+        new: '            return null;',
+        why: '«Заплатите кубиком `def.` или `morale` — получите 2 `att. token`»: плата открывает вторую половину',
+    },
+    {
+        card: 'Фаланга судного дня', faction: NEC,
+        file: 'js/fs/effects/ask/FSStrikeAsks.js',
+        old: '        CombatPlans.of(combat).setRoutedFoe({\n            seat,\n            avoid: step.avoid || { kind: \'def\', n: 1 },\n        });',
+        new: '        /*мутация: деморализованный враг не уничтожается*/',
+        why: '«деморализованный в этом раунде отряд противника уничтожается»',
+    },
+    {
+        card: 'Рой каноптепов', faction: NEC,
+        file: 'js/fs/FSEffects.js',
+        old: '        CombatTokens.of(combat).add(side, n, step.free);',
+        new: '        /*мутация: жетон подкрепления не попадает на стол*/',
+        why: '«разместите 1 бесплатный жетон подкрепления в этой области»',
+    },
     // --- общий страж подготовки --------------------------------------------
     {
         // `addUnit` refusing a foreign id is what uncovered the fixtures of
