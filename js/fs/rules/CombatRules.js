@@ -1259,10 +1259,24 @@ class CombatRules {
             const side = one.side;
             const kind = one.kind || 'att';
             const n = one.n || 1;
-            CombatCubes.of(c).take(side, kind, n);
             const seat = CombatSides.seatOf(c, side);
+            // «… противник теряет 3 `att. token` ИЛИ 3 `def. cube`»
+            // («Механизированная боевая группа»): the cubes of the battle go
+            // first, the tokens of the supply after them.
+            if (one.what === 'die') {
+                let left = n;
+                for (let i = 0; i < left; i++) {
+                    const at = turn.indexOf(side, kind);
+                    if (at < 0) break;
+                    turn.take(side, at);
+                }
+                this.engine.log(state, seat, state.players[seat].name + ' теряет ' + n
+                    + ' кубик(ов) в начале шага повреждений.');
+                continue;
+            }
+            CombatCubes.of(c).take(side, kind, n);
             this.engine.log(state, seat, state.players[seat].name + ' теряет ' + n
-                + ' жетон(ов) атаки в начале шага повреждений.');
+                + ' жетон(ов) в начале шага повреждений.');
         }
     }
 

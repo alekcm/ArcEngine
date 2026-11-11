@@ -168,11 +168,30 @@ class StrikeAsks {
         const { R, state, seat, step, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
         const foeSide = CombatSides.foe(side);
+        // «за каждую пару недеморализованных Гвардейцев и Огринов либо Крейсеров
+        // и Линкоров» («Механизированная боевая группа»): the number is the
+        // pairs of the two listed kinds, and the count is made when the card is
+        // played — the units may already be gone at the damage step.
+        let n = step.n || 1;
+        if (step.per === 'pair' && Array.isArray(step.pairs)) {
+            let pairs = 0;
+            for (const [a, b] of step.pairs) {
+                const countOf = filter => state.units.filter(u => {
+                    if (u.seat !== seat || u.routed) return false;
+                    if (!BattleField.of(combat).holds(u)) return false;
+                    return effects.unitFits(R.unitOf(state, u), filter);
+                }).length;
+                pairs += Math.min(countOf(a), countOf(b));
+            }
+            n = (step.n || 1) * pairs;
+            if (!n) return null;
+        }
         CombatDamage.of(combat).addStartTokens({
-            side: foeSide, kind: step.kind || 'att', n: step.n || 1, round: CombatTurn.of(combat).round,
+            side: foeSide, kind: step.kind || 'att', what: step.what || 'token', n,
+            round: CombatTurn.of(combat).round,
         });
-        R.log(state, seat, p.name + ': в начале шага повреждений противник теряет '
-            + (step.n || 1) + ' жетон(ов) атаки.');
+        R.log(state, seat, p.name + ': в начале шага повреждений противник теряет ' + n
+            + (step.what === 'die' ? ' кубик(ов).' : ' жетон(ов).'));
         return null;
     }
 

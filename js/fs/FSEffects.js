@@ -4916,11 +4916,24 @@ function foeLoseSteps(sentence) {
             });
         }
     }
+    // «В этом раунде боя, В НАЧАЛЕ ШАГА НАНЕСЕНИЯ ПОВРЕЖДЕНИЙ, ваш противник
+    // теряет 2 `att. token`» («Ратлинг стрелок», «Огневая поддержка»,
+    // «Механизированная боевая группа»): the loss has its own moment, and the
+    // tokens or the cubes stay until it — the cards are played before the
+    // damage is counted, so a loss taken at once would be a different card.
+    const atDamageStep = /в начале шага нанесения (?:повреждений|урона)/i.test(String(sentence || ''));
     const loss = [];
     for (const ic of icons) {
         const kind = FS_EFFECTS.iconKind(ic);
-        if (kind === 'token') loss.push({ op: 'loseToken', n, kind: FS_EFFECTS.icon(ic), who: 'foe' });
-        else if (kind === 'cube') loss.push({ op: 'loseDie', n, kind: FS_EFFECTS.icon(ic), pick: true, who: 'foe' });
+        if (kind === 'token') {
+            loss.push(atDamageStep
+                ? { op: 'damageStartTokens', n, kind: FS_EFFECTS.icon(ic), who: 'foe' }
+                : { op: 'loseToken', n, kind: FS_EFFECTS.icon(ic), who: 'foe' });
+        } else if (kind === 'cube') {
+            loss.push(atDamageStep
+                ? { op: 'damageStartTokens', what: 'die', n, kind: FS_EFFECTS.icon(ic), who: 'foe' }
+                : { op: 'loseDie', n, kind: FS_EFFECTS.icon(ic), pick: true, who: 'foe' });
+        }
     }
     // «Ваш противник теряет 3 `att. token` или 3 `def. cube`» — the opponent
     // loses one of the two, and the resolving player chooses which.
