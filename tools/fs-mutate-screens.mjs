@@ -127,6 +127,49 @@ const TABLE = [
         new: '        const deg = cam.azimuth * 180 / Math.PI - 90;',
         why: 'компас врёт в другую сторону: знак угла перепутан',
     },
+    // --- правый низ: один размер ----------------------------------------
+    {
+        check: 'layout-1',
+        file: 'js/fs/FSUI.css',
+        old: '--fs-panel-w:min(356px,calc(100vw - 36px));--fs-panel-h:69vh;',
+        new: '--fs-panel-w:min(534px,calc(100vw - 36px));--fs-panel-h:69vh;',
+        why: 'ширина панели снова как у широкой доработки: 534px вместо 356px',
+    },
+    {
+        check: 'layout-1b',
+        file: 'js/fs/FSUI.css',
+        old: '.fs-main-panel{position:absolute;top:auto;right:0;bottom:0;height:var(--fs-panel-h);max-height:var(--fs-panel-h);width:var(--fs-panel-w);',
+        new: '.fs-main-panel{position:absolute;top:auto;right:0;bottom:0;height:69vh;max-height:69vh;width:min(534px,calc(100vw - 36px));',
+        why: 'панель снова задаёт себе размер сама, в обход переменных',
+    },
+    {
+        check: 'layout-2',
+        file: 'js/fs/FSUI.css',
+        old: '.fs-shell.is-battle .fs-main-panel{width:var(--fs-panel-w)}',
+        new: '.fs-shell.is-battle .fs-main-panel{width:min(330px,calc(100vw - 36px))}',
+        why: 'бой снова сужает панель',
+    },
+    {
+        check: 'layout-2b',
+        file: 'js/fs/FSUI.css',
+        old: '@media(max-width:700px){.fs-shell:not(.is-mobile) .fs-left-rail{width:300px}',
+        new: '@media(max-width:700px){.fs-shell.is-planning .fs-main-panel{width:min(420px,calc(100vw - 36px))}.fs-shell:not(.is-mobile) .fs-left-rail{width:300px}',
+        why: 'этап планирования снова меняет ширину панели',
+    },
+    {
+        check: 'layout-3',
+        file: 'js/fs/FSUI.js',
+        old: '        const battle = this.renderBattle(ctx.battle);\n        if (battle) panel.append(battle);',
+        new: '        const battle = this.renderBattle(ctx.battle);\n        if (battle) root.append(battle);',
+        why: 'счёт боя снова отдельной плашкой в том же углу',
+    },
+    {
+        check: 'layout-3b',
+        file: 'js/fs/FSUI.css',
+        old: '.fs-battle-panel{position:static;flex:1 1 auto;min-height:0;',
+        new: '.fs-battle-panel{position:absolute;left:10px;bottom:10px;height:33vh;flex:1 1 auto;min-height:0;',
+        why: 'у счёта боя снова своё место и свой размер',
+    },
     // --- стол: четверть тайла ------------------------------------------------
     {
         check: 'table-1',

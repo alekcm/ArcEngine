@@ -433,6 +433,9 @@ const FSUI = {
         // The right panel does one thing at a time: what is going on, the tokens the
         // player owns (counted, zeros included), the choice of the moment and a
         // single button to go on. Everything else happens on the board itself.
+        // Одна плашка на весь правый низ. Рядом с ней в тот же угол не встаёт
+        // ничего: панель боя живёт внутри (renderBattle идёт в panel), иначе
+        // угол переставал быть одним и тем же местом от этапа к этапу.
         const panel = this.el('section', 'fs-main-panel' + (ctx.panelClass ? ' ' + ctx.panelClass : ''));
         const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', GameOutcome.of(state).over ? 'Итоги сражения' : 'Текущий этап'));
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
@@ -446,8 +449,9 @@ const FSUI = {
         // The score of the battle is NOT here: it is its own panel at the top
         // left of the screen, so the damage choice always fits.
         this.renderState = state; this.renderCtx = ctx;
+        // Счёт боя — ВНУТРИ правой панели, не отдельной плашкой в том же углу.
         const battle = this.renderBattle(ctx.battle);
-        if (battle) root.append(battle);
+        if (battle) panel.append(battle);
         // When the battle panel is hidden, a small tab at the bottom-left brings it back.
         if (ctx.battle && this.panelState().battlePanel === 'hidden') {
             const rb = this.el('button', 'fs-battle-restore'); rb.type = 'button';
@@ -866,20 +870,14 @@ const FSUI = {
         if (!battle) return null;
         const ps = this.panelState();
         const mode = ps.battlePanel || 'third';
-        const card = this.el('section', 'fs-battle fs-battle-panel'
-            + (mode === 'full' ? ' is-full' : '') + (mode === 'hidden' ? ' is-hidden' : ''));
+        const card = this.el('section', 'fs-battle fs-battle-panel' + (mode === 'hidden' ? ' is-hidden' : ''));
         const head = this.el('div', 'fs-battle-head');
         head.append(this.el('span', 'fs-eyebrow', 'Бой'));
         head.append(this.el('span', 'fs-battle-round', 'раунд ' + battle.round + '/' + battle.maxRounds));
-        // Expand the panel bigger / hide it back.
+        // Счёт боя не имеет своего размера: он живёт внутри правой плашки и
+        // занимает остаток её высоты. Кнопки «развернуть» больше нет — она
+        // меняла размер правого низа от этапа к этапу. Осталась одна: скрыть.
         const ctls = this.el('span', 'fs-battle-ctls');
-        const expand = this.el('button', 'fs-battle-ctl'); expand.type = 'button';
-        expand.title = mode === 'full' ? 'Свернуть панель боя' : 'Развернуть панель боя';
-        expand.append(this.iconEl('ui.full'));
-        expand.addEventListener('click', () => {
-            this.panelState().battlePanel = mode === 'full' ? 'third' : 'full';
-            this.update(this.renderState, this.renderCtx);
-        });
         const hide = this.el('button', 'fs-battle-ctl'); hide.type = 'button';
         hide.title = 'Скрыть панель боя';
         hide.append(this.iconEl('ui.close'));
@@ -887,7 +885,7 @@ const FSUI = {
             this.panelState().battlePanel = 'hidden';
             this.update(this.renderState, this.renderCtx);
         });
-        ctls.append(expand, hide);
+        ctls.append(hide);
         head.append(ctls);
         card.append(head);
         // Left is me, right is the enemy — not top and bottom.

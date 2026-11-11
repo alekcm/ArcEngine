@@ -410,6 +410,82 @@ screen('cam-7', 'компас показывает, где север, посл�
 });
 
 // ============================================================================
+head('Правый низ: одна плашка на весь экран');
+
+/**
+ * Читает CSS игры и отдаёт список правил: [селектор, тело].
+ * Размер панели — про CSS, а не про дерево: узел в заглушке не имеет
+ * computed style, и «стало шире» без чтения стилей не поймать.
+ */
+function cssRules(file) {
+    const text = fs.readFileSync(path.join(ROOT, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const rules = [];
+    for (const m of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) rules.push([m[1].trim(), m[2]]);
+    return rules;
+}
+
+/** Фиксированный размер правого низа: и ширина, и высота — в переменных оболочки. */
+const PANEL_W = 'min(356px,calc(100vw - 36px))';
+const PANEL_H = '69vh';
+
+screen('layout-1', 'у правой нижней плашки ровно один размер на весь экран', () => {
+    // Жалоба игрока: на планировании панель узкая (как «Участники»), а с
+    // реализацией жетонов — шире. Причина не в одной строке: размер задавали
+    // четыре правила (.fs-main-panel, .is-battle, @media и .is-planning), и
+    // каждое тянуло в свою сторону. Теперь размер — две переменные.
+    const shell = cssRules('js/fs/FSUI.css').find(([sel]) => sel === '.fs-shell');
+    if (!shell) return 'в CSS нет .fs-shell';
+    if (!shell[1].includes('--fs-panel-w:' + PANEL_W)) return 'нет --fs-panel-w:' + PANEL_W;
+    if (!shell[1].includes('--fs-panel-h:' + PANEL_H)) return 'нет --fs-panel-h:' + PANEL_H;
+    const panel = cssRules('js/fs/FSUI.css').find(([sel]) => sel === '.fs-main-panel');
+    if (!panel) return 'в CSS нет .fs-main-panel';
+    if (!/width:var\(--fs-panel-w\)/.test(panel[1])) return 'ширина панели не берётся из --fs-panel-w';
+    if (!/height:var\(--fs-panel-h\)/.test(panel[1])) return 'высота панели не берётся из --fs-panel-h';
+    return true;
+});
+
+screen('layout-2', 'ни один этап, приказ или бой не меняет размер правого низа', () => {
+    // Ищем ровно ту поломку, которую увидел игрок: правило, которое переписывает
+    // width/height/max-height у САМОЙ плашки — по состоянию (.is-planning,
+    // .is-battle, .is-deploy...), по медиазапросу или у вложенной карты боя.
+    // Разрешено одно: var(--fs-panel-w) / var(--fs-panel-h) и auto.
+    const targets = /^\.(fs-main-panel|fs-orders-pop|fs-battle-panel)(\.[\w-]+)?$/;
+    const decl = /(?:^|;)\s*((?:max-)?(?:width|height))\s*:\s*([^;]+)/g;
+    const allowed = /^(var\(--fs-panel-[wh]\)|auto|100%|none|0)$/;
+    const parts = sel => { const xs = sel.replace(/\s*[>+~]\s*/g, ' ').split(/\s+/); return xs[xs.length - 1]; };
+    const bad = [];
+    for (const [sel, body] of cssRules('js/fs/FSUI.css')) {
+        // Вложенные потомки (.fs-main-panel .fs-action) — про текст и иконки, не про плашку.
+        if (!targets.test(parts(sel))) continue;
+        // Мобильная ветка — другая раскладка (нижний лист во всю ширину), её не трогаем.
+        if (/\.is-mobile/.test(sel)) continue;
+        for (const m of body.matchAll(decl)) {
+            const value = m[2].trim();
+            if (allowed.test(value)) continue;
+            bad.push(sel + ' { ' + m[1] + ':' + value + ' }');
+        }
+    }
+    if (bad.length) return 'размер правого низа меняют: ' + bad.slice(0, 3).join(' | ');
+    return true;
+});
+
+screen('layout-3', 'счёт боя живёт внутри правой плашки, а не отдельной плашкой в углу', () => {
+    // Отдельная плашка в том же углу — второй размер и второе место. Счёт боя
+    // поэтому идёт внутрь панели, и CSS у него без position:absolute.
+    const src = fs.readFileSync(path.join(ROOT, 'js/fs/FSUI.js'), 'utf8');
+    if (!/const battle = this\.renderBattle\(ctx\.battle\);\s*\n\s*if \(battle\) panel\.append\(battle\);/.test(src)) {
+        return 'счёт боя снова добавляется в оболочку, а не в правую панель';
+    }
+    const rule = cssRules('js/fs/FSUI.css').find(([sel]) => sel === '.fs-battle-panel');
+    if (!rule) return 'в CSS нет .fs-battle-panel';
+    if (/position:absolute/.test(rule[1])) return 'счёт боя снова абсолютно позиционирован';
+    if (/(?:^|[;{])\s*(?:width|height|max-height)\s*:(?!\s*auto)/.test(rule[1].replace('max-height:none', ''))) {
+        return 'у счёта боя снова свой размер: ' + rule[1].slice(0, 80);
+    }
+    return true;
+});
+
+// ============================================================================
 head('Стол: где на тайле стоят миры');
 
 screen('table-1', 'четверть тайла одна для рисунка и для миров', () => {
