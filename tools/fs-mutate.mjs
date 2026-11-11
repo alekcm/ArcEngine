@@ -514,6 +514,20 @@ const TABLE = [
         new: '            if (false) return false;',
         why: '«Купите 1 постройку» — цена берётся из материи',
     },
+    {
+        card: 'Бронетанковый клин', faction: IG,
+        file: 'js/fs/effects/ask/FSStrikeAsks.js',
+        old: '            return !!def && [2, 3].includes(def.kl || 0);',
+        new: '            return !!def;',
+        why: '«выберите один из бастионов или отрядов противника 2 или 3 командного уровня»',
+    },
+    {
+        card: 'Принудительная вербовка', faction: IG,
+        file: 'js/fs/effects/ask/FSOrderAsks.js',
+        old: '        if (limits) limits.addCapacityBonus(step.n || 0, step.max, step.only);',
+        new: '        /*мутация: дополнительной вместимости нет*/',
+        why: '«дополнительная вместимость распространяется только на Гвардейцев»',
+    },
     // --- общий страж подготовки --------------------------------------------
     {
         // `addUnit` refusing a foreign id is what uncovered the fixtures of

@@ -6331,12 +6331,23 @@ check('Бронетанковый клин', 'уничтожать некого 
 });
 
 check('Бронетанковый клин', 'Леман Русс выбирает отряд 2–3 уровня, он получает урон первым', () => {
-    const st = guardBattle({ units: { 'танки-леман-русс': 1, 'гвардейцы': 2 }, foeUnits: { 'монолиты': 2 }, card: 'Бронетанковый клин', dice: ['att'], foeDice: ['att', 'def', 'def', 'def', 'def'] });
-    play(st, 0, 0, (s, q) => (q.kind === 'choice' ? { choice: 0 } : null));
+    // В бою у врага есть и отряд КЛ 0: он в выбор «2 или 3 уровня» не попадает.
+    const st = guardBattle({ units: { 'танки-леман-русс': 1, 'гвардейцы': 2 }, foeUnits: { 'монолиты': 2, 'воины': 1 }, card: 'Бронетанковый клин', dice: ['att'], foeDice: ['att', 'def', 'def', 'def', 'def'] });
+    let offered = null;
+    play(st, 0, 0, (s, q) => {
+        if (q.op === 'damageFirst') offered = (q.options || []).slice();
+        return q.kind === 'choice' ? { choice: 0 } : null;
+    });
     const first = st.combat.damageFirst || [];
     eq(first.length, 1, 'цель первого урона выбрана');
     const def = FS_RULES.unitOf(st, stateUnit(st, first[0].id));
-    return eq((def || {}).kl, 2, 'выбран отряд 2 уровня — единственный в бою');
+    eq((def || {}).kl, 2, 'выбран отряд 2 уровня — единственный в бою');
+    // В выборе только отряды 2–3 уровня: КЛ 0 и 1 туда не попадают.
+    ok(Array.isArray(offered), 'вопроса о цели не было');
+    return eq(offered.every(id => {
+        const d = FS_RULES.unitOf(st, st.units.find(u => u.id === id));
+        return d && [2, 3].includes(d.kl || 0);
+    }), true, 'предложены только отряды 2–3 уровня');
 });
 
 check('Бронетанковый клин', 'без Лемана и Линкора отряда-абзаца нет', () => {
