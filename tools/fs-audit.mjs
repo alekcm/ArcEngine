@@ -6089,6 +6089,47 @@ const MD = file => fs.readFileSync(path.join(ROOT, 'docs/forbidden-stars', file)
 const cellsOf = l => l.split('|').slice(1, -1).map(s => s.trim());
 const plain = s => (s || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
 
+rule('dom-4', '«Затем разыграйте ограниченное Развертывание (развертывание в 1 области), Продвижение (перемещение из 1 области) или Доминирование (сбор активов из 1 мира …)» (05-order-upgrades.md, «Департаменто муниторум»)', () => {
+    // Сбор активов ровно одного мира: игрок называет мир, второго не бывает.
+    const st = FS_RULES.newReadyGame({ seed: 7, players: [
+        { faction: 'имперская-гвардия', name: 'A', id: 'p0' },
+        { faction: 'некроны', name: 'B', id: 'p1' },
+    ] });
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const x of st.systems) x.tokens = [];
+    st.phase = 'operations'; st.turn = 0; st.order = null;
+    const sys = st.systems.find(s => s.areas.filter(a => a.world && a.world.assets.some(x => x !== 'prosperity')).length >= 2);
+    if (!sys) return 'нет системы с двумя мирами-иконками';
+    const worlds = sys.areas.filter(a => a.world && a.world.assets.some(x => x !== 'prosperity'));
+    for (const a of worlds) FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, a.pos);
+    const card = FS_DATA.orders.find(c => c.name === 'Департаменто муниторум');
+    if (!card) return 'нет карты «Департаменто муниторум»';
+    st.order = { seat: 0, order: 'strategize', system: sys.id, phase: 'strategize' };
+    FS_RULES.runEffects(st, 0, FS_EFFECTS.parse(card.text, { kind: 'order', faction: card.faction }), { kind: 'order', ctx: null });
+    eq(!!st.pending, true, 'карта спросила, какой приказ разыграть');
+    const kinds = st.pending.question.options.map(o => o.kind);
+    eq(kinds, ['deploy', 'advance', 'dominate'], 'три вида ограниченного приказа');
+    eq(FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: kinds.indexOf('dominate') } }).ok, true, 'выбрано доминирование');
+    eq(OrderContext.of(st.order).nestedKind, 'dominate', 'приказ станет доминированием');
+    eq(FS_RULES.apply(st, 0, { type: 'finishStrategize' }).ok, true, 'стратегия перешла во вложенный приказ');
+    // «сбор активов из 1 мира»: мир называет игрок, и он ровно один.
+    eq(!!st.pending, true, 'спросили, с какого мира собирать');
+    const q = st.pending.question;
+    eq(q.kind, 'areas', 'вопрос о мире');
+    eq(q.options.length, 2, 'на выбор оба мира с иконками');
+    const assetsBefore = Object.assign({}, st.players[0].assets);
+    eq(FS_RULES.apply(st, 0, { type: 'effect', answer: { area: q.options[0] } }).ok, true, 'мир назван');
+    const chosen = q.options[0];
+    const goods = FS_RULES.system(st, chosen.system).areas.find(a => a.pos === chosen.pos).world.assets
+        .filter(x => x !== 'prosperity');
+    for (const kind of goods) eq(st.players[0].assets[kind], (assetsBefore[kind] || 0) + 1, 'актив выбранного мира: ' + kind);
+    // Второй мир не заплатил: его иконок у игрока нет.
+    const other = worlds.find(a => a.pos !== chosen.pos);
+    const otherGoods = other.world.assets.filter(x => x !== 'prosperity' && !goods.includes(x));
+    for (const kind of otherGoods) eq(st.players[0].assets[kind], assetsBefore[kind] || 0, 'второй мир не собран: ' + kind);
+    eq(!!st.pending, false, 'вопрос закрыт');
+});
+
 rule('event-4', '«There are two types of event cards: tactics and schemes.» — «Tactic event cards are resolved immediately and then shuffled back into the player’s event deck.» — «Scheme event cards remain in play.»', () => {
     const mk = () => {
         const st = FS_RULES.newReadyGame({ seed: 7, players: [

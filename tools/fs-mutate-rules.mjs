@@ -156,6 +156,13 @@ const TABLE = [
         why: '«The destination must be in the active system» — марш мимо активной системы',
     },
     {
+        check: 'dom-4',
+        file: 'js/fs/rules/DominateRules.js',
+        old: '        if (OrderContext.of(state.order).nested) {',
+        new: '        if (false) {',
+        why: '«Доминирование (сбор активов из 1 мира …)» — ограниченный приказ собирает один мир',
+    },
+    {
         check: 'event-4',
         file: 'js/fs/rules/RefreshRules.js',
         old: "        const inPlay = card && card.type === 'scheme' ? card.name : null;",

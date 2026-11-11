@@ -337,6 +337,18 @@ class OperationsRules {
         // The question of an effect is the same shape, so the panel and the
         // tests read both the same way — the question of `Question`.
         const pending = Question.of(state).record;
+        // «Доминирование (сбор активов из 1 мира)» («Департаменто муниторум»):
+        // the nested order stopped to ask which world pays. The answer names it
+        // and the question belongs to that order alone.
+        if (pending && pending.ctx && pending.ctx.dominateWorld) {
+            if (!Question.of(state).answers(seat)) return { ok: false, error: 'Сейчас не ваш ход.' };
+            const area = (cmd.answer || {}).area || (cmd.answer || {}).world || null;
+            if (!area || !area.pos) return { ok: false, error: 'Укажите мир.' };
+            const gained = this.engine.gatherWorld(state, seat, area);
+            if (!gained) return { ok: false, error: 'Это не мир активной системы.' };
+            Question.of(state).close();
+            return { ok: true };
+        }
         if (pending && pending.ctx && pending.ctx.buyUpgrade) {
             if (!Question.of(state).answers(seat)) return { ok: false, error: 'Сейчас не ваш ход.' };
             const half = pending.ctx.buyUpgrade;
