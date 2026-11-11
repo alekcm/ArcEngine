@@ -1823,8 +1823,11 @@ const FS_EFFECTS = {
             // The destroyed units of this very effect join the frame: the next
             // step («равные его стоимости») counts them.
             if (Array.isArray(step.destroyedDefs)) c.destroyedDefs.push(...step.destroyedDefs);
-            this.spreadCount(list, index, step);
+            // The steps of «чтобы» join the list first: the count of what the
+            // step has just done belongs to them («за каждого уничтоженного
+            // Гвардейца»), and a step that is not in the list yet cannot take it.
             this.thenSteps(list, index, step);
+            this.spreadCount(list, index, step);
             index++;
         }
         Question.of(state).close();
@@ -2011,9 +2014,20 @@ const FS_EFFECTS = {
             }
             // The step ran from here, not from the chain: the steps it added
             // (the repeated ability of a card, «Почитание духа машины») are
-            // spliced in before the chain goes on.
+            // spliced in before the chain goes on. What it has just destroyed
+            // travels with them («за каждого уничтоженного Гвардейца» —
+            // «Бронетанковый клин»): the permission was answered before the
+            // step was run, so the count is spread here, not in the main loop.
+            // The branch of a choice keeps its «чтобы»-steps on the choice
+            // itself (`static choice` moves them there), so the list they join
+            // is the one of the choice, while the count is the branch's own.
+            const host = (pending.steps[pending.index] && pending.steps[pending.index] !== step)
+                ? pending.steps[pending.index] : step;
+            // The «чтобы» of a branch is joined to the CHOICE, and the choice is
+            // done only when its branch is — the card's own text is its branch.
+            if (host !== step) host.done = true;
+            this.thenSteps(pending.steps, pending.index, host);
             this.spreadCount(pending.steps, pending.index, step);
-            this.thenSteps(pending.steps, pending.index, step);
             return this.next(R, state, pending);
         }
         // The payment that avoids the effect.
@@ -2088,9 +2102,16 @@ const FS_EFFECTS = {
             pending.stash = merged;
             return this.retarget(pending, res.question);
         }
-        // The step is done — the rest of the steps go on.
+        // The step is done — the rest of the steps go on. The steps of «чтобы»
+        // join the list first («за каждого уничтоженного Гвардейца»), and only
+        // then the count of what the step has done is written into them. A
+        // branch of a choice keeps them on the choice itself (`static choice`),
+        // so the list they join is the one of the choice.
+        const host = (pending.steps[pending.index] && pending.steps[pending.index] !== step)
+            ? pending.steps[pending.index] : step;
+        if (host !== step) host.done = true;
+        this.thenSteps(pending.steps, pending.index, host);
         this.spreadCount(pending.steps, pending.index, step);
-        this.thenSteps(pending.steps, pending.index, step);
         return this.next(R, state, pending);
     },
 
@@ -2131,6 +2152,25 @@ const FS_EFFECTS = {
     // «… 1 жетон подкрепления … за каждый отряд, который вы деморализовали» —
     // the count of the previous step is written into the next step that asks
     // for it («за каждый» = per: 'routed').
+    // «за каждого уничтоженного Гвардейца»: the count of a step is written into
+    // the step that asks for it — possibly deep inside the branch of a choice
+    // («Бронетанковый клин»: the choice, its branch, the «чтобы» of the branch).
+    countHosts(list, from) {
+        const out = [];
+        for (let i = from; i < list.length; i++) {
+            const one = list[i];
+            if (!one) continue;
+            if (one.op === 'trigger' || one.op === 'scheme') break;
+            out.push(one);
+            for (const opt of (one.options || [])) {
+                out.push(opt);
+                for (const t of (opt.then || [])) out.push(t);
+            }
+            for (const t of (one.then || [])) out.push(t);
+        }
+        return out;
+    },
+
     spreadCount(list, index, step) {
         if (!step) return;
         if (step.routedCount !== undefined) {
@@ -2143,15 +2183,10 @@ const FS_EFFECTS = {
         }
         // «за каждого уничтоженного Гвардейца» — the price follows the count.
         if (step.destroyedCount !== undefined) {
-            for (let i = index + 1; i < list.length; i++) {
-                const one = list[i];
-                if (!one) continue;
-                if (one.per === 'destroyed') {
-                    const base = one.perN === undefined ? (one.perN = one.n || 1) : one.perN;
-                    one.n = base * step.destroyedCount;
-                    continue;
-                }
-                if (one.op === 'trigger' || one.op === 'scheme') return;
+            for (const one of this.countHosts(list, index + 1)) {
+                if (one.per !== 'destroyed') continue;
+                const base = one.perN === undefined ? (one.perN = one.n || 1) : one.perN;
+                one.n = base * step.destroyedCount;
             }
         }
     },
