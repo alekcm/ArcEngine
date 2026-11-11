@@ -887,14 +887,18 @@ const FS_EFFECTS = {
                     continue;
                 }
             }
+            // The condition of the sentence before reaches this one, once:
+            // «Если вы атакуете, посмотрите … . Получите 2 `att. cube` или
+            // 2 `def. cube`» («Часовой разведчик»).
+            const carried = prevCond;
             prevCond = null;
             const dieEnum = this.dieEnum(sentence, ctx || {});
             if (dieEnum) {
+                if (carried) for (const one of dieEnum) one.cond = Object.assign(one.cond || {}, carried);
                 steps.push(...dieEnum);
                 prev = dieEnum[dieEnum.length - 1];
                 continue;
             }
-            prevCond = null;
             const parsed = this.parseSentence(sentence, ctx || {});
             const avoid = this.avoidOf(sentence);
             if (avoid && prev) {
@@ -940,6 +944,11 @@ const FS_EFFECTS = {
             // «Each paragraph is a separate ability.» The transcription gives
             // the text sentence by sentence, so a sentence is one ability:
             // the step keeps it, the player may refuse the whole ability.
+            // The condition of the sentence before holds for this one too until
+            // the next condition: «Если вы атакуете, посмотрите … карту
+            // противника. Получите 2 `att. cube` или 2 `def. cube`» («Часовой
+            // разведчик») — the cubes are given only to the attacker.
+            if (carried) for (const one of parsed) one.cond = Object.assign(one.cond || {}, carried);
             for (const one of parsed) if (one && !one.ability) one.ability = sentence;
             steps.push(...parsed);
             // «… чтобы получить 2 `def. token` в этом и следующем раундах»
