@@ -1251,19 +1251,12 @@ const FS_EFFECTS = {
     // судно»), «удалите 1 `def. cube`, чтобы получить 2 `att. token`»
     // («Геройское самосожжение») — the cube is the price of the effect that
     // follows «чтобы». The payment comes first: a step that cannot be paid
-    // stops the sentence, so the reward is not given for free. «Потратьте 1
-    // `morale cube` для того, чтобы вынудить противника деморализовать 1 его
-    // отряд» («Воющие баньши») is the same price of an effect: the player pays
-    // a cube of his own, so both verbs open the same rule.
+    // stops the sentence, so the reward is not given for free.
     removeToReward(s, ctx) {
-        const m = /^(?:вы\s+можете\s+)?(?:удал|потрат)[а-яёa-z]*\s+(\d+|один|одно|одну)?\s*`([^`]+cube)`,?\s*(?:чтобы|для того, чтобы)\s+([\s\S]+)$/i.exec(String(s || '').trim());
+        const m = /^(?:вы\s+можете\s+)?удал[а-яёa-z]*\s+(\d+|один|одно|одну)?\s*`([^`]+cube)`,?\s*(?:чтобы|для того, чтобы)\s+([\s\S]+)$/i.exec(String(s || '').trim());
         if (!m) return null;
         const body = String(m[3] || '').trim();
         const rest = this.parseSentence(body, ctx || {});
-        // A reward this rule cannot read is left to the rule that can («…чтобы
-        // взять 1 ваш отряд и разместить его в дружественном мире» of
-        // «Предвидение криптека»): the price alone is not the sentence.
-        if (!rest.length) return null;
         const spend = { op: 'spendDie', n: num(m[1]), kind: this.icon(m[2]), all: false, pick: true, who: 'me' };
         return [spend].concat(rest);
     },
