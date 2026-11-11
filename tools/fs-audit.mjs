@@ -712,6 +712,60 @@ rule('adv-6', '«A warp storm blocks the way»', () => {
         true, 'без шторма тот же корабль проходит');
 });
 
+rule('adv-7', '«… can never end the movement with more than five units in a single area» — итог хода считается против предела, а не против места', () => {
+    // План марша сравнивал итог области (после хода) с местом ДО хода, где
+    // уходящие отряды ещё стоят: выход одного корабля из четырёх читался как
+    // шесть и отвергался текстом про пять отрядов. Та же жалоба — пехотой.
+    const twoVoids = () => {
+        const st = empty();
+        const sys = st.systems.find(s => s.areas.filter(a => !a.world).length >= 2);
+        return sys ? { st, sys } : null;
+    };
+    // Корабли: один из четырёх уходит в пустую пустоту.
+    {
+        const found = twoVoids();
+        if (!found) return 'на карте нет системы с двумя пустотами';
+        const { st, sys } = found;
+        const [a, b] = sys.areas.filter(x => !x.world).map(x => x.pos);
+        const movers = [];
+        for (let i = 0; i < 4; i++) movers.push(unit(st, 0, 'крейсеры', sys.id, a));
+        advance(st, 0, sys.id, b, 'ships');
+        const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: movers[0].id, system: sys.id, pos: b }] });
+        eq(res.ok, true, 'корабль уходит из четырёх в пустую пустоту: ' + (res.error || ''));
+    }
+    // Пехота: один из четырёх уходит в другой свой мир.
+    {
+        const st = empty();
+        const sys = st.systems[0];
+        const worlds = sys.areas.filter(x => x.world).map(x => x.pos);
+        if (worlds.length < 2) return 'в первой системе меньше двух миров';
+        for (let i = 0; i < 4; i++) guard(st, 0, sys.id, worlds[0]);
+        guard(st, 0, sys.id, worlds[1]);
+        advance(st, 0, sys.id, worlds[1]);
+        const u = st.units.find(x => x.seat === 0 && x.area === worlds[0]);
+        const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [{ unit: u.id, system: sys.id, pos: worlds[1] }] });
+        eq(res.ok, true, 'Гвардеец уходит из четырёх в свой мир: ' + (res.error || ''));
+    }
+    // А предел держится: план, который закончил бы шесть в одной области, отвергнут.
+    {
+        const found = twoVoids();
+        if (!found) return 'на карте нет системы с двумя пустотами';
+        const { st, sys } = found;
+        const [a, b] = sys.areas.filter(x => !x.world).map(x => x.pos);
+        for (let i = 0; i < 4; i++) unit(st, 0, 'крейсеры', sys.id, b);
+        const m1 = unit(st, 0, 'крейсеры', sys.id, a);
+        const m2 = unit(st, 0, 'крейсеры', sys.id, a);
+        advance(st, 0, sys.id, b, 'ships');
+        const res = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [
+            { unit: m1.id, system: sys.id, pos: b },
+            { unit: m2.id, system: sys.id, pos: b },
+        ] });
+        eq(res.ok, false, 'план итогом шесть в одну пустоту');
+        eq(res.error, FS_RULES.unitLimitText(), 'отказ называет предел пяти');
+    }
+    return true;
+});
+
 // ============================================================================
 //  Deploy order
 // ============================================================================

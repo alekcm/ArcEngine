@@ -712,6 +712,13 @@ const TABLE = [
         new: '        return { cx: r.x + r.w / 4, cy: r.y + r.h / 4, size: r.w / 2 };',
         why: '«Each area takes one quarter of the tile» — миры съезжают к центру и наезжают друг на друга',
     },
+    {
+        check: 'adv-7',
+        file: 'js/fs/rules/AdvanceRules.js',
+        old: '            if (n - this.engine.unitLimit(state, systemId, pos) > 0) {',
+        new: '            if (n - this.engine.unitLimit(state, systemId, pos, seat) > 0) {',
+        why: '«… can never end the movement with more than five units in a single area» — итог хода меряют местом до хода',
+    },
 ];
 
 const args = process.argv.slice(2);
