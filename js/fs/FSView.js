@@ -1867,16 +1867,15 @@ const FSView = {
         if (!c) return;
         const items = [];
         const field = BattleField.of(c);
-        const seatSide = seat => (CombatSides.sideOf(c, seat));
         for (const u of state.units) {
             if (!field.holds(u)) continue;
             const def = FS_RULES.unitOf(state, u);
             if (!def) continue;
             const p = view.unitPositions && view.unitPositions.get(u.id);
             if (!p) continue;
-            const side = seatSide(u.seat);
-            const sideSeat = CombatSides.seatOf(c, side);
-            const hp = CombatDamage.of(c).health(u.seat, sideSeat, def.health || 1);
+            // The base is the rulebook health of THIS piece — never the seat:
+            // a seat number (0/1) as the base printed every chip as one heart.
+            const hp = CombatDamage.of(c).health(u.seat, def.health || 1);
             items.push({
                 key: u.id + ':' + hp + ':' + (u.routed ? 1 : 0) + ':' + (def.morale || 0),
                 x: p.x, y: p.y + 1, z: p.z,

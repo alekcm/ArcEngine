@@ -225,6 +225,14 @@ const TABLE = [
         new: '    PLANET_D: 260,         // world px: the diameter of the round face of a world',
         why: 'мир больше своего тайла и свисает на соседние',
     },
+    // --- плашки боя ----------------------------------------------------------
+    {
+        check: 'combat-chip-1',
+        file: 'js/fs/FSView.js',
+        old: '            const hp = CombatDamage.of(c).health(u.seat, def.health || 1);',
+        new: '            const hp = CombatDamage.of(c).health(u.seat, CombatSides.seatOf(c, CombatSides.sideOf(c, u.seat)), def.health || 1);',
+        why: 'в базу здоровья попадает номер места: каждая плашка показывает одно сердце',
+    },
 ];
 
 const args = process.argv.slice(2);

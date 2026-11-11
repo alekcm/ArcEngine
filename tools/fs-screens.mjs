@@ -677,6 +677,55 @@ screen('table-3', 'мир не выходит за пределы своей ч�
     return true;
 });
 
+head('Бой: плашки здоровья под миньками');
+
+screen('combat-chip-1', 'плашка бойца показывает здоровье из правил, а не номер места', () => {
+    // Был случай: воин некронов (здоровье 3) входил в бой с подкреплением, а
+    // плашка под минькой показывала 1 сердце. Подсказка урона при этом писала
+    // верные 3 — врала только плашка: в базу здоровья попадал номер места.
+    const st = party('chips');
+    st.units = [];
+    st.structures = [];
+    st.objectives = [];
+    st.storms = [];
+    for (const s of st.systems) s.tokens = [];
+    st.phase = 'operations';
+    st.turn = 0;
+    st.order = null;
+    const sys = st.systems[0];
+    const pos = (sys.areas.find(a => a.world) || sys.areas[0]).pos;
+    const guard = FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, pos);
+    const warrior = FS_RULES.addUnit(st, 1, 'воины', sys.id, pos);
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    const started = FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    if (!started.ok) return 'бой не начался: ' + started.error;
+    if (!st.combat) return 'боя нет после приказа';
+    st.combat.reinforce = { attacker: 0, defender: 1 };
+    const view = {
+        unitPositions: new Map([[guard.id, { x: 0, y: 0, z: 0 }], [warrior.id, { x: 1, y: 0, z: 0 }]]),
+        reinforceAnchors: [{ side: 'defender', index: 0, x: 2, y: 0, z: 0, routed: false }],
+        unitChips: [],
+        unitChipNodes: [],
+    };
+    FS_VIEW.drawUnitChips(null, view, st);
+    const chip = prefix => (view.unitChips || []).find(c => (c.key || '').startsWith(prefix));
+    const w = chip(warrior.id + ':');
+    if (!w) return 'у воина нет плашки';
+    if (w.hp !== 3) return 'воин: на плашке ' + w.hp + ', в правилах 3';
+    if (w.morale !== 0) return 'воин: плашка показывает мораль ' + w.morale + ' вместо 0';
+    const g = chip(guard.id + ':');
+    if (!g) return 'у гвардейца нет плашки';
+    if (g.hp !== 1) return 'гвардеец: на плашке ' + g.hp + ', в правилах 1';
+    if (g.morale !== 2) return 'гвардеец: плашка показывает мораль ' + g.morale + ' вместо 2';
+    // Жетон подкрепления — отряд КЛ0 фракции по правилам: у некронов это тоже
+    // воин, и его 3 сердца на плашке — верные, а не перепутанные с воином.
+    const r = chip('rein:defender:');
+    if (!r) return 'у подкрепления нет плашки';
+    if (r.hp !== 3) return 'подкрепление: на плашке ' + r.hp + ', в правилах 3';
+    if (r.morale !== 0) return 'подкрепление: плашка показывает мораль ' + r.morale + ' вместо 0';
+    return true;
+});
+
 // ============================================================================
 console.log('\n' + (failed.length
     ? C.red + C.b + '  Экраны: ' + failed.length + ' провалов из ' + done + '.' + C.r
