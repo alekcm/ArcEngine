@@ -574,3 +574,19 @@ test('P2P-tunnel URL is published as a copyable lobby address and clears when tu
     const cleared = await publish(''); assert.equal(cleared.status, 204);
     await waitFor(client, m => m?.t === 'lobby' && m.tunnelUrl === '', 'lobby tunnel URL cleared');
 });
+
+test('P2P signaling stores SDP behind a short-lived random room code', async (t) => {
+    const { child, port } = await startServer(pickPort());
+    t.after(() => { try { child.kill(); } catch { /* gone */ } });
+    const post = data => fetch(`http://127.0.0.1:${port}/api/p2p`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    const created = await post({ part: 'offer', sdp: 'offer sdp' });
+    assert.equal(created.status, 201);
+    const { room } = await created.json(); assert.match(room, /^[a-f0-9]{24}$/);
+    const offer = await fetch(`http://127.0.0.1:${port}/api/p2p?room=${room}&part=offer`);
+    assert.equal((await offer.json()).sdp, 'offer sdp');
+    const pending = await fetch(`http://127.0.0.1:${port}/api/p2p?room=${room}&part=answer`);
+    assert.equal(pending.status, 204);
+    const saved = await post({ part: 'answer', room, sdp: 'answer sdp' }); assert.equal(saved.status, 204);
+    const answer = await fetch(`http://127.0.0.1:${port}/api/p2p?room=${room}&part=answer`);
+    assert.equal((await answer.json()).sdp, 'answer sdp');
+});

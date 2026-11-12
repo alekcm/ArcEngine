@@ -33,6 +33,7 @@ const argPort = process.argv.find(a => /^--port=\d+$/.test(a));
 const PORT_BASE = argPort ? Number(argPort.split('=')[1]) : 8090;
 const STRICT_PORT = process.argv.includes('--strict-port');
 let TUNNEL_URL = '';
+const P2P_SIGNAL = new Map();
 const MAX_PLAYERS = 5;
 const UNDO_LIMIT = 300;
 
@@ -104,6 +105,42 @@ function serveStatic(req, res) {
         }
         res.writeHead(405, { Allow: 'GET, POST' }); res.end();
         return;
+    }
+    if (p === '/api/p2p') {
+        res.setHeader('Cache-Control', 'no-store');
+        const q = new URL(req.url, 'http://x').searchParams;
+        const room = q.get('room') || '';
+        const part = q.get('part') || '';
+        const now = Date.now();
+        for (const [key, value] of P2P_SIGNAL) if (now - value.created > 10 * 60_000) P2P_SIGNAL.delete(key);
+        if (req.method === 'GET') {
+            const signal = P2P_SIGNAL.get(room);
+            if (!/^[a-f0-9]{24}$/.test(room) || !signal || !['offer', 'answer'].includes(part)) { res.writeHead(404); res.end(); return; }
+            const sdp = signal[part];
+            if (!sdp) { res.writeHead(204); res.end(); return; }
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ sdp })); return;
+        }
+        if (req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; if (body.length > 128 * 1024) req.destroy(); });
+            req.on('end', () => {
+                try {
+                    const data = JSON.parse(body || '{}');
+                    if (typeof data.sdp !== 'string' || data.sdp.length > 100_000) throw new Error('bad SDP');
+                    if (data.part === 'offer') {
+                        const code = crypto.randomBytes(12).toString('hex');
+                        P2P_SIGNAL.set(code, { offer: data.sdp, answer: '', created: Date.now() });
+                        res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ room: code })); return;
+                    }
+                    const signal = P2P_SIGNAL.get(data.room);
+                    if (data.part !== 'answer' || !signal) { res.writeHead(404); res.end(); return; }
+                    signal.answer = data.sdp;
+                    res.writeHead(204); res.end();
+                } catch { res.writeHead(400); res.end('Invalid P2P signaling payload'); }
+            });
+            return;
+        }
+        res.writeHead(405, { Allow: 'GET, POST' }); res.end(); return;
     }
     // Save files contain every player's hidden state. Download them over the host-only WebSocket.
     if (p.startsWith('/api/save/download')) { res.writeHead(403); res.end('Forbidden'); return; }

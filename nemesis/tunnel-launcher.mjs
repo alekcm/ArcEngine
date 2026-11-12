@@ -23,9 +23,11 @@ function publish(url) {
 
 // Force HTTP/2 over TCP: QUIC/UDP is commonly blocked by VPNs and firewalls, which can
 // leave a Quick Tunnel URL allocated at Cloudflare but unable to reach this origin.
-const child = spawn(executable, ['tunnel', '--no-autoupdate', '--protocol', 'http2', '--url', `http://127.0.0.1:${port}`],
+const child = spawn(executable, ['tunnel', '--no-autoupdate', '--ha-connections', '4', '--protocol', 'http2', '--url', `http://127.0.0.1:${port}`],
     { stdio: ['inherit', 'pipe', 'pipe'], windowsHide: false });
 let published = '';
+let pendingUrl = '';
+let tunnelReady = false;
 let lineBuffers = ['', ''];
 function relay(stream, index, target) {
     stream.on('data', chunk => {
@@ -33,9 +35,13 @@ function relay(stream, index, target) {
         target.write(text);
         lineBuffers[index] = (lineBuffers[index] + text).slice(-4096);
         const match = lineBuffers[index].match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
-        if (!match || match[0] === published) return;
-        published = match[0];
-        console.log('\n\x1b[96mСсылка для подключения из интернета: ' + published + '\x1b[0m\n');
+        if (match) pendingUrl = match[0];
+        if (/Registered tunnel connection/.test(lineBuffers[index])) tunnelReady = true;
+        // Cloudflare prints the URL before an edge connection is registered. Do not expose an
+        // invite while it would immediately produce a 502/520 page.
+        if (!tunnelReady || !pendingUrl || pendingUrl === published) return;
+        published = pendingUrl;
+        console.log('\n\x1b[96mТуннель подключён. Ссылка для игры: ' + published + '\x1b[0m\n');
         publish(published).then(ok => {
             if (!ok) console.error('Не удалось передать ссылку в лобби. Откройте её из вывода выше вручную.');
         });

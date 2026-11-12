@@ -639,14 +639,34 @@ const copyP2PText = async id => {
     catch { el.focus(); el.select(); document.execCommand('copy'); }
     notice('Текст приглашения скопирован.', 'good');
 };
+async function waitForP2PAnswer(room) {
+    for (let i = 0; i < 180; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+            const r = await fetch(`/api/p2p?room=${encodeURIComponent(room)}&part=answer`, { cache: 'no-store' });
+            if (r.ok) {
+                const { sdp } = await r.json();
+                await p2p.applyAnswer(JSON.stringify({ type: 'answer', sdp }));
+                setP2PStatus('Ответ получен; устанавливаем прямое P2P-соединение…');
+                return;
+            }
+            if (r.status !== 204) throw new Error('Комната сигналинга закрыта или истекла.');
+        } catch (err) { setP2PStatus(err.message || String(err)); return; }
+    }
+    setP2PStatus('Время ожидания ответа истекло. Создайте новое приглашение.');
+}
 if ($('p2pCreateOffer')) $('p2pCreateOffer').onclick = async () => {
     try {
         const offer = await p2p.createOffer();
         $('p2pLocalOffer').value = offer;
+        const stored = await fetch('/api/p2p', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ part: 'offer', sdp: JSON.parse(offer).sdp }) });
+        if (!stored.ok) throw new Error('Не удалось создать комнату сигналинга на сервере.');
+        const { room } = await stored.json();
         const base = $('tunnelJoinLink')?.value || location.origin;
-        const encoded = btoa(unescape(encodeURIComponent(offer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        $('p2pInviteLink').value = `${base.replace(/\/$/, '')}/client/?p2p=guest#offer=${encoded}`;
-        if (!$('tunnelJoinLink')?.value) setP2PStatus('Приглашение создано, но ссылка доступна только в локальной сети. Для друга через интернет сначала запустите nemesis_p2p.bat.');
+        $('p2pInviteLink').value = `${base.replace(/\/$/, '')}/client/?p2p=guest&room=${room}`;
+        if (!$('tunnelJoinLink')?.value) setP2PStatus('Ссылка создана для локальной сети. Для друга через интернет сначала запустите nemesis_p2p.bat.');
+        else setP2PStatus('Короткая ссылка готова. Ожидаем автоматический ответ друга…');
+        void waitForP2PAnswer(room);
     } catch (err) { setP2PStatus(err.message || String(err)); }
 };
 if ($('p2pApplyAnswer')) $('p2pApplyAnswer').onclick = async () => {
@@ -661,13 +681,25 @@ if ($('p2pCopyOffer')) $('p2pCopyOffer').onclick = () => copyP2PText('p2pLocalOf
 if ($('p2pCopyInviteLink')) $('p2pCopyInviteLink').onclick = () => copyP2PText('p2pInviteLink');
 // An invite URL carries the SDP offer in its fragment (never sent to the HTTP server).
 if (p2pRole === 'guest') {
-    try {
+    const room = new URLSearchParams(location.search).get('room');
+    if (room) setTimeout(async () => {
+        try {
+            const r = await fetch(`/api/p2p?room=${encodeURIComponent(room)}&part=offer`, { cache: 'no-store' });
+            if (!r.ok) throw new Error('Приглашение не найдено или уже истекло.');
+            const { sdp } = await r.json();
+            const answer = await p2p.createAnswer(JSON.stringify({ type: 'offer', sdp }));
+            const stored = await fetch('/api/p2p', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ part: 'answer', room, sdp: JSON.parse(answer).sdp }) });
+            if (!stored.ok) throw new Error('Не удалось отправить ответ ведущему.');
+            $('p2pLocalAnswer').value = answer;
+            setP2PStatus('Ответ отправлен автоматически. Ожидаем прямое соединение…');
+        } catch (err) { setP2PStatus(err.message || String(err)); }
+    }, 0);
+    else try {
         const encoded = new URLSearchParams(location.hash.slice(1)).get('offer');
         if (encoded) {
             const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
             const offer = decodeURIComponent(escape(atob(normalized + '='.repeat((4 - normalized.length % 4) % 4))));
             $('p2pRemoteOffer').value = offer;
-            // net.connect() runs at the end of this module; defer until it has created p2p.
             setTimeout(() => $('p2pCreateAnswer').click(), 0);
         }
     } catch (err) { setP2PStatus('Не удалось прочитать приглашение из ссылки: ' + (err.message || err)); }
