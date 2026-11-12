@@ -68,7 +68,9 @@ export class NemesisP2P {
         if (this.pc.iceGatheringState === 'complete') return;
         this.setStatus('Собираем ICE-кандидаты STUN; подождите…');
         await new Promise((resolve, reject) => {
-            const timer = setTimeout(() => { cleanup(); reject(new Error('ICE gathering timed out')); }, 25000);
+            // Some VPNs/STUN endpoints never signal gathering complete. Use the candidates
+            // collected so far rather than leaving the invite flow stuck indefinitely.
+            const timer = setTimeout(() => { cleanup(); resolve(); }, 8000);
             const check = () => { if (this.pc.iceGatheringState === 'complete') { cleanup(); resolve(); } };
             const cleanup = () => { clearTimeout(timer); this.pc.removeEventListener('icegatheringstatechange', check); };
             this.pc.addEventListener('icegatheringstatechange', check); check();

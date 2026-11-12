@@ -42,7 +42,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-start "" "http://127.0.0.1:%PORT%/client/"
+start "" "http://127.0.0.1:%PORT%/client/?p2p=host"
 echo.
 echo Starting the temporary internet tunnel.
 echo Wait for a URL ending in .trycloudflare.com and send that URL to your friend.

@@ -71,6 +71,8 @@
                         <button id="p2pCreateOffer" class="btn">Создать приглашение</button>
                         <label for="p2pLocalOffer">Твоё приглашение</label><textarea id="p2pLocalOffer" readonly rows="4"></textarea>
                         <button id="p2pCopyOffer" class="btn small">Скопировать приглашение</button>
+                        <label for="p2pInviteLink">Ссылка-приглашение другу</label><input id="p2pInviteLink" type="text" readonly placeholder="Создайте приглашение выше">
+                        <button id="p2pCopyInviteLink" class="btn small">Скопировать ссылку</button>
                         <label for="p2pRemoteAnswer">Ответ друга</label><textarea id="p2pRemoteAnswer" rows="4" placeholder="Вставь сюда ответ друга"></textarea>
                         <button id="p2pApplyAnswer" class="btn primary">Принять ответ</button>
                     </div>
@@ -81,7 +83,7 @@
                         <label for="p2pLocalAnswer">Твой ответ</label><textarea id="p2pLocalAnswer" readonly rows="4"></textarea>
                         <button id="p2pCopyAnswer" class="btn small">Скопировать ответ</button>
                     </div>
-                    <small class="hint">Сигналинг вручную, игровой трафик — напрямую между браузерами. Ведущий и гость должны открыть совместимые копии игры локально. Некоторые VPN блокируют WebRTC/UDP; для них нужен ретранслятор.</small>
+                    <small class="hint">Игру другу раздаёт ссылка-туннель в браузере — локальная копия не нужна. После обмена приглашением игровой трафик идёт напрямую между браузерами. Некоторые VPN блокируют WebRTC/UDP; для них нужен ретранслятор.</small>
                 </section>
                 <div class="lobby-buttons">
                     <button id="readyBtn" class="btn">Готов</button>

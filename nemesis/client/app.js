@@ -640,8 +640,14 @@ const copyP2PText = async id => {
     notice('Текст приглашения скопирован.', 'good');
 };
 if ($('p2pCreateOffer')) $('p2pCreateOffer').onclick = async () => {
-    try { $('p2pLocalOffer').value = await p2p.createOffer(); }
-    catch (err) { setP2PStatus(err.message || String(err)); }
+    try {
+        const offer = await p2p.createOffer();
+        $('p2pLocalOffer').value = offer;
+        const base = $('tunnelJoinLink')?.value || location.origin;
+        const encoded = btoa(unescape(encodeURIComponent(offer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        $('p2pInviteLink').value = `${base.replace(/\/$/, '')}/client/?p2p=guest#offer=${encoded}`;
+        if (!$('tunnelJoinLink')?.value) setP2PStatus('Приглашение создано, но ссылка доступна только в локальной сети. Для друга через интернет сначала запустите nemesis_p2p.bat.');
+    } catch (err) { setP2PStatus(err.message || String(err)); }
 };
 if ($('p2pApplyAnswer')) $('p2pApplyAnswer').onclick = async () => {
     try { await p2p.applyAnswer($('p2pRemoteAnswer').value.trim()); }
@@ -652,6 +658,20 @@ if ($('p2pCreateAnswer')) $('p2pCreateAnswer').onclick = async () => {
     catch (err) { setP2PStatus(err.message || String(err)); }
 };
 if ($('p2pCopyOffer')) $('p2pCopyOffer').onclick = () => copyP2PText('p2pLocalOffer');
+if ($('p2pCopyInviteLink')) $('p2pCopyInviteLink').onclick = () => copyP2PText('p2pInviteLink');
+// An invite URL carries the SDP offer in its fragment (never sent to the HTTP server).
+if (p2pRole === 'guest') {
+    try {
+        const encoded = new URLSearchParams(location.hash.slice(1)).get('offer');
+        if (encoded) {
+            const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
+            const offer = decodeURIComponent(escape(atob(normalized + '='.repeat((4 - normalized.length % 4) % 4))));
+            $('p2pRemoteOffer').value = offer;
+            // net.connect() runs at the end of this module; defer until it has created p2p.
+            setTimeout(() => $('p2pCreateAnswer').click(), 0);
+        }
+    } catch (err) { setP2PStatus('Не удалось прочитать приглашение из ссылки: ' + (err.message || err)); }
+}
 if ($('p2pCopyAnswer')) $('p2pCopyAnswer').onclick = () => copyP2PText('p2pLocalAnswer');
 $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else $('endOverlay').classList.add('hidden'); };
 
