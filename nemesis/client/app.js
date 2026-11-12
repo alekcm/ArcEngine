@@ -362,6 +362,26 @@ function renderLobby() {
     if ($('alienModeSelect')) $('alienModeSelect').disabled = !app.host || L.settings.enemySet !== 'redux';
     if ($('noiseDieSelect')) $('noiseDieSelect').disabled = !app.host;
     $('lanAddr').textContent = L.addresses.length ? L.addresses.map(a => 'http://' + a + ':' + L.port).join('   ') : location.origin;
+    const directInput = $('directJoinLink');
+    if (directInput) {
+        const saved = localStorage.getItem('nemesis.directJoinLink');
+        if (!directInput.dataset.initialized) {
+            const localHost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+            const initialBase = !localHost ? location.origin : (L.addresses.length ? `http://${L.addresses[0]}:${L.port}` : location.origin);
+            directInput.value = saved || `${initialBase.replace(/\/$/, '')}/client/`;
+            directInput.dataset.initialized = '1';
+            directInput.onchange = () => localStorage.setItem('nemesis.directJoinLink', directInput.value.trim());
+        }
+        const copyDirect = $('copyDirectJoin');
+        if (copyDirect) copyDirect.onclick = async () => {
+            const value = directInput.value.trim();
+            if (!value) return;
+            localStorage.setItem('nemesis.directJoinLink', value);
+            try { await navigator.clipboard.writeText(value); }
+            catch { directInput.focus(); directInput.select(); document.execCommand('copy'); }
+            notice('Прямая ссылка скопирована.', 'good');
+        };
+    }
     const tunnelRow = $('tunnelJoinRow'), tunnelInput = $('tunnelJoinLink'), tunnelCopy = $('copyTunnelJoin');
     if (tunnelRow && tunnelInput) {
         const tunnelUrl = typeof L.tunnelUrl === 'string' ? L.tunnelUrl : '';
