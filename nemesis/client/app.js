@@ -362,24 +362,29 @@ function renderLobby() {
     if ($('alienModeSelect')) $('alienModeSelect').disabled = !app.host || L.settings.enemySet !== 'redux';
     if ($('noiseDieSelect')) $('noiseDieSelect').disabled = !app.host;
     $('lanAddr').textContent = L.addresses.length ? L.addresses.map(a => 'http://' + a + ':' + L.port).join('   ') : location.origin;
-    const directInput = $('directJoinLink');
-    if (directInput) {
-        const saved = localStorage.getItem('nemesis.directJoinLink');
-        if (!directInput.dataset.initialized) {
-            const localHost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
-            const initialBase = !localHost ? location.origin : (L.addresses.length ? `http://${L.addresses[0]}:${L.port}` : location.origin);
-            directInput.value = saved || `${initialBase.replace(/\/$/, '')}/client/`;
-            directInput.dataset.initialized = '1';
-            directInput.onchange = () => localStorage.setItem('nemesis.directJoinLink', directInput.value.trim());
-        }
-        const copyDirect = $('copyDirectJoin');
-        if (copyDirect) copyDirect.onclick = async () => {
+    const directInput = $('directJoinLink'), directCopy = $('copyDirectJoin'), directHint = $('directJoinHint');
+    if (directInput && directCopy && !directInput.dataset.lookupStarted) {
+        directInput.dataset.lookupStarted = '1';
+        fetch('https://api.ipify.org?format=json', { cache: 'no-store' }).then(r => {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(({ ip }) => {
+            if (typeof ip !== 'string' || !/^[0-9a-fA-F:.]+$/.test(ip)) throw new Error('Неверный IP');
+            const host = ip.includes(':') ? `[${ip}]` : ip;
+            directInput.value = `http://${host}:${L.port}/client/`;
+            directCopy.disabled = false;
+            if (directHint) directHint.textContent = `Внешний IP: ${ip}. Нужен проброс TCP-порта ${L.port} на этот компьютер; если это IP VPN или CGNAT, входящие соединения могут быть запрещены.`;
+        }).catch(err => {
+            directInput.placeholder = 'Не удалось определить внешний IP';
+            if (directHint) directHint.textContent = 'Не удалось определить внешний IP (' + (err.message || err) + '). Перезагрузите страницу и попробуйте снова.';
+            directInput.dataset.lookupStarted = '';
+        });
+        directCopy.onclick = async () => {
             const value = directInput.value.trim();
             if (!value) return;
-            localStorage.setItem('nemesis.directJoinLink', value);
             try { await navigator.clipboard.writeText(value); }
             catch { directInput.focus(); directInput.select(); document.execCommand('copy'); }
-            notice('Прямая ссылка скопирована.', 'good');
+            notice('Ссылка на внешний IP скопирована.', 'good');
         };
     }
     const tunnelRow = $('tunnelJoinRow'), tunnelInput = $('tunnelJoinLink'), tunnelCopy = $('copyTunnelJoin');

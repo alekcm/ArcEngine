@@ -62,7 +62,7 @@
                         </select></div>
                 </div>
                 <div class="row"><label>Адреса в локальной сети</label><div id="lanAddr" class="lan-addr">—</div></div>
-                <div class="row tunnel-join" id="directJoinRow"><label for="directJoinLink">Ссылка по IP (без туннеля)</label><div class="tunnel-join-controls"><input id="directJoinLink" type="text" aria-label="Прямая ссылка для подключения по IP"><button id="copyDirectJoin" class="btn small" type="button">Копировать</button></div><div class="hint">В локальной сети ссылка уже готова. Для интернета замени IP на внешний и пробрось TCP-порт игры на этот компьютер.</div></div>
+                <div class="row tunnel-join" id="directJoinRow"><label for="directJoinLink">Ссылка на ваш внешний IP</label><div class="tunnel-join-controls"><input id="directJoinLink" type="text" readonly placeholder="Определяем внешний IP…" aria-label="Ссылка для подключения из интернета"><button id="copyDirectJoin" class="btn small" type="button" disabled>Копировать</button></div><div class="hint" id="directJoinHint">Определяем внешний IP. Для подключения из интернета пробросьте TCP-порт игры на этот компьютер.</div></div>
                 <div class="row tunnel-join hidden" id="tunnelJoinRow"><label for="tunnelJoinLink">Ссылка другу через VPN</label><div class="tunnel-join-controls"><input id="tunnelJoinLink" type="text" readonly aria-label="Ссылка для подключения к игре"><button id="copyTunnelJoin" class="btn small">Копировать</button></div><div class="hint">Показывается, когда запущен nemesis_p2p.bat. Скопируйте ссылку и отправьте другу.</div></div>
                 <section id="p2pPanel" class="p2p-panel hidden">
                     <h3>Прямое P2P-соединение</h3>
