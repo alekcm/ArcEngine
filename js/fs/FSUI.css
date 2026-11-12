@@ -100,11 +100,14 @@
 .fs-mode-text{display:grid;gap:3px;min-width:0}
 .fs-mode-title{font-size:11px;font-weight:650;color:#f3ead4}
 .fs-mode-note{font-size:9px;line-height:1.3;color:#9faaa8}
-/* Счёт боя — карта ВНУТРИ правой панели (.fs-main-panel), не отдельная плашка:
-   она занимает остаток высоты панели и не имеет своего размера. Раньше она
-   стояла абсолютно в левом нижнем углу своим размером и умела разворачиваться
-   на 84vh — от этого «правый низ» и менялся от этапа к этапу. */
-.fs-battle-panel{position:static;flex:1 1 auto;min-height:0;width:auto;height:auto;max-height:none;overflow:auto;margin:0;padding:12px;z-index:auto;pointer-events:auto;scrollbar-width:thin}
+/* Battle numbers are independent of the right-hand action panel. */
+.fs-battle-panel{position:absolute;left:10px;bottom:10px;width:var(--fs-score-w,420px);max-width:calc(100vw - 20px);max-height:calc(100vh - 70px);overflow:auto;overscroll-behavior:contain;margin:0;padding:12px;z-index:5;pointer-events:auto;scrollbar-width:thin}
+/* Four morale sources must fit alongside the total in each side's column. */
+.fs-battle-panel .fs-battle-line{font-size:11px;padding:4px 4px;gap:4px;flex-wrap:wrap}
+.fs-battle-panel .fs-battle-line-icon{width:14px;height:14px}
+.fs-battle-panel .fs-battle-line-sum{gap:1px;min-width:max-content}
+.fs-battle-panel .fs-battle-part .fs-ico-svg{width:12px;height:12px}
+.fs-battle-panel .fs-battle-line-total{font-size:13px}
 .fs-battle-panel.is-hidden{display:none}.fs-battle{margin-top:0;padding:0;border:0;background:linear-gradient(150deg,rgba(23,33,41,.94),rgba(8,13,19,.92))}
 .fs-battle-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
 .fs-battle-kinds{display:flex;gap:5px}
@@ -226,14 +229,22 @@
 .fs-battle-target-state{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#c9a1ff}
 .fs-battle-target-state.is-faint{opacity:.6}
 /* The hand of the battle: the cards themselves, at the bottom of the screen. */
-.fs-battle-hand{position:absolute;left:50%;bottom:0;transform:translateX(-50%);display:flex;justify-content:center;gap:10px;max-width:min(1240px,calc(100vw - 360px));padding:10px 14px 0;border-radius:16px 16px 0 0;background:#0a0f14d8;border:1px solid #d8b87344;box-shadow:0 18px 44px #0000008c;backdrop-filter:blur(12px);pointer-events:auto;z-index:5;overflow:visible}
+.fs-battle-hand{--fs-hand-scale:.62;--fs-hand-margin:-67px;position:absolute;left:50%;bottom:0;transform:translateX(-50%);display:flex;justify-content:center;gap:10px;width:max-content;max-width:calc(100vw - 20px);padding:10px 14px 0;border-radius:16px 16px 0 0;background:#0a0f14d8;border:1px solid #d8b87344;box-shadow:0 18px 44px #0000008c;backdrop-filter:blur(12px);pointer-events:auto;z-index:5;overflow:visible}
+/* Let a zoomed card cover corner buttons, but not an open dossier or modal. */
+.fs-battle-hand:has(.fs-battle-card:hover:not(:disabled)){z-index:10}
 .fs-battle-cards{display:flex;gap:6px;align-items:flex-end;height:152px}
-.fs-battle-card{position:relative;width:176px;min-height:238px;display:flex;flex-direction:column;gap:6px;padding:11px 12px;border:1px solid #ffffff22;border-radius:12px;background:linear-gradient(160deg,#211a26,#131017);cursor:pointer;transition:transform .16s,border-color .16s,box-shadow .16s;text-align:left;transform-origin:50% 100%;transform:scale(.62);margin-right:-62px}
+/* The margin makes the layout slot match the scaled width. In the hand, long
+   card texts must not grow up over the score; they open on hover instead. */
+.fs-battle-card{position:relative;width:176px;flex:0 0 176px;min-height:238px;max-height:238px;display:flex;flex-direction:column;gap:6px;padding:11px 12px;border:1px solid #ffffff22;border-radius:12px;background:linear-gradient(160deg,#211a26,#131017);cursor:pointer;transition:transform .16s,border-color .16s,box-shadow .16s;text-align:left;transform-origin:0 100%;transform:scale(var(--fs-hand-scale));margin-right:var(--fs-hand-margin)}
 .fs-battle-card:hover{transform:translateY(-12px) scale(1.45);border-color:#f0d79a;box-shadow:0 22px 48px #000000cc;z-index:6}
+/* Fit the enlarged card vertically; a very long text scrolls inside it. */
+.fs-battle-card:hover:not(:disabled){--fs-preview-max-height:calc(68vh - 12px);min-height:min(238px,var(--fs-preview-max-height));max-height:var(--fs-preview-max-height)}
+.fs-battle-card:hover:not(:disabled) .fs-battle-card-text{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 /* Alt alone does not grow the hand — only the card under the mouse grows more. */
 .fs-battle-hand.is-alt .fs-battle-card:hover{transform:translateY(-24px) scale(2.2);z-index:7}
+.fs-battle-hand.is-alt .fs-battle-card:hover:not(:disabled){--fs-preview-max-height:calc(45vh - 12px)}
 .fs-battle-card:disabled{opacity:.45;cursor:default}
-.fs-battle-card:disabled:hover{transform:scale(.62)}
+.fs-battle-card:disabled:hover{transform:scale(var(--fs-hand-scale))}
 .fs-battle-card-top{display:flex;justify-content:space-between;gap:4px}
 .fs-battle-card-name{font-size:13px;font-weight:700;line-height:1.25;color:#f0e6d0}
 .fs-battle-card .fs-card-icons{display:flex;flex-wrap:wrap;gap:5px;font-size:12px;color:#cfc6b4;margin-top:auto}
@@ -288,12 +299,18 @@
 .fs-battle-card.is-playable{border-color:#d8b87355}
 
 /* --- the battle is its own screen ----------------------------------------- */
-.fs-shell.is-battle .fs-left-rail{display:none}
-.fs-shell.is-battle .fs-main-panel{width:var(--fs-panel-w)}
+.fs-shell.is-battle{--fs-score-w:420px}
+.fs-shell.is-battle .fs-left-rail{display:flex;max-height:calc(31vh - 63px)}
+.fs-shell.is-battle .fs-left-rail>.fs-card:first-child{overflow:auto;scrollbar-width:thin}
+.fs-shell.is-battle .fs-card-head{padding:8px 14px 6px}
+.fs-shell.is-battle .fs-player-list{padding:3px 9px 5px;gap:2px}
+.fs-shell.is-battle .fs-player{padding:4px 6px;row-gap:2px}
+.fs-shell.is-battle .fs-main-panel{width:var(--fs-panel-w);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.fs-shell.is-battle .fs-main-panel .fs-reinforce{flex:0 1 auto;min-height:0;overflow-y:auto;scrollbar-width:thin}
+.fs-shell.is-battle .fs-main-panel>.fs-actions:empty{display:none}
+.fs-shell.is-battle .fs-main-panel>.fs-primary{flex-shrink:0}
 .fs-shell.is-battle .fs-map-hint{display:none}
 .fs-shell.is-battle .fs-panel-heading h2{font-size:20px}
-/* The hand of cards lies lower while the hint bar is hidden. */
-.fs-shell.is-battle:not(.is-mobile) .fs-battle-hand{bottom:0}
 
 /* The cards a side has already played in this fight: small cube chips. */
 .fs-battle-played{grid-column:1/3;display:flex;flex-wrap:wrap;gap:4px}
@@ -323,7 +340,142 @@
 .fs-battle-target{display:flex;align-items:center;gap:6px}
 .fs-battle-target-health{font:700 11px/1 ui-monospace,monospace;color:#f0b8a4}
 .fs-palette-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 4px;padding:10px 12px;border:1px solid #ffffff16;border-radius:10px;background:#ffffff08}.fs-palette-title{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:700}.fs-palette-field{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--muted);cursor:pointer}.fs-palette-field input{width:30px;height:24px;padding:0;border:1px solid #ffffff2e;border-radius:6px;background:#070c10;cursor:pointer}.fs-pal-swatches{display:inline-flex;gap:3px;margin-left:2px}.fs-pal-swatches i{width:9px;height:9px;border-radius:3px;border:1px solid #ffffff30;display:block}
-.fs-battle-deal{grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-top:2px;padding:3px 7px;border-radius:7px;background:#b4463818;font-size:10px;color:#e8c9b8}.fs-battle-deal-icon{width:14px;height:14px;color:#e07a5f}.fs-battle-deal b{font:700 12px/1 ui-monospace,monospace;color:#ffd9c9;margin-left:auto}.fs-battle.fs-battle-panel{margin-top:0}.fs-shell.is-mobile .fs-battle-panel{width:auto;height:auto;max-height:none}.fs-battle-deal-take{color:#9fb3a8;font-weight:400;margin-left:8px}.fs-topbar-toggle{width:24px;height:24px;flex:none;display:grid;place-items:center;border:1px solid #ffffff22;border-radius:7px;background:#ffffff0a;color:#cbd3dc;cursor:pointer}.fs-topbar-toggle:hover{background:#ffffff1c}.fs-topbar-toggle .fs-ico{width:13px;height:13px;transition:transform .18s}.fs-topbar-toggle.is-off .fs-ico{transform:rotate(180deg)}.fs-shell.is-topbar-off .fs-topbar{padding:5px 8px;gap:8px}.fs-shell.is-topbar-off .fs-topbar>*:not(.fs-topbar-toggle){display:none}.fs-battle-sides{display:flex;gap:8px;align-items:stretch}.fs-battle-side{flex:1;min-width:0}.fs-battle-ctls{display:inline-flex;gap:5px}.fs-battle-ctl{width:24px;height:24px;display:grid;place-items:center;border:1px solid #ffffff22;border-radius:7px;background:#ffffff0a;color:#cbd3dc;cursor:pointer}.fs-battle-ctl:hover{background:#ffffff1c}.fs-battle-ctl .fs-ico{width:13px;height:13px}.fs-battle-restore{position:absolute;left:10px;bottom:10px;width:38px;height:38px;display:grid;place-items:center;border:1px solid var(--line);border-radius:10px;background:var(--glass);color:var(--gold-hi);cursor:pointer;pointer-events:auto;z-index:6}.fs-battle-restore .fs-ico{width:18px;height:18px}.fs-battle-card:last-child{margin-right:0}.fs-shell.is-battle:not(.is-mobile) .fs-battle-hand{left:20px;right:calc(var(--fs-panel-w) + 20px);transform:none;max-width:none}.fs-shell.is-mobile.is-battle .fs-battle-hand{bottom:31vh}
+.fs-battle-deal{grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-top:2px;padding:3px 7px;border-radius:7px;background:#b4463818;font-size:10px;color:#e8c9b8}.fs-battle-deal-icon{width:14px;height:14px;color:#e07a5f}.fs-battle-deal b{font:700 12px/1 ui-monospace,monospace;color:#ffd9c9;margin-left:auto}.fs-battle.fs-battle-panel{margin-top:0}.fs-battle-deal-take{color:#9fb3a8;font-weight:400;margin-left:8px}.fs-topbar-toggle{width:24px;height:24px;flex:none;display:grid;place-items:center;border:1px solid #ffffff22;border-radius:7px;background:#ffffff0a;color:#cbd3dc;cursor:pointer}.fs-topbar-toggle:hover{background:#ffffff1c}.fs-topbar-toggle .fs-ico{width:13px;height:13px;transition:transform .18s}.fs-topbar-toggle.is-off .fs-ico{transform:rotate(180deg)}.fs-shell.is-topbar-off .fs-topbar{padding:5px 8px;gap:8px}.fs-shell.is-topbar-off .fs-topbar>*:not(.fs-topbar-toggle){display:none}.fs-battle-sides{display:flex;gap:8px;align-items:stretch}.fs-battle-side{flex:1;min-width:0}.fs-battle-ctls{display:inline-flex;gap:5px}.fs-battle-ctl{width:24px;height:24px;display:grid;place-items:center;border:1px solid #ffffff22;border-radius:7px;background:#ffffff0a;color:#cbd3dc;cursor:pointer}.fs-battle-ctl:hover{background:#ffffff1c}.fs-battle-ctl .fs-ico{width:13px;height:13px}.fs-battle-restore{position:absolute;left:10px;bottom:10px;width:38px;height:38px;display:grid;place-items:center;border:1px solid var(--line);border-radius:10px;background:var(--glass);color:var(--gold-hi);cursor:pointer;pointer-events:auto;z-index:6}.fs-battle-restore .fs-ico{width:18px;height:18px}.fs-shell.is-battle:not(.is-mobile) .fs-battle-hand{left:calc((100% + var(--fs-score-w) + 10px - var(--fs-panel-w)) / 2);right:auto;transform:translateX(-50%)}.fs-shell.is-mobile.is-battle .fs-battle-hand{--fs-hand-scale:.46;--fs-hand-margin:-95px;left:calc((100% - min(330px,42vw)) / 2);right:auto;bottom:0;transform:translateX(-50%);overflow:visible;justify-content:center}
+/* Leave space between the players at the top and the action panel at the bottom.
+   On smaller screens both panels scroll rather than covering each other. */
+.fs-shell.is-mobile.is-battle{--fs-hand-space:142px;--fs-hand-cards-height:120px}
+.fs-shell.is-mobile.is-battle .fs-battle-hand .fs-battle-cards{height:var(--fs-hand-cards-height)}
+.fs-shell.is-mobile.is-battle .fs-left-rail{top:55px;right:0;left:auto;bottom:auto;width:min(300px,calc(100vw - 20px));max-height:calc(48vh - 63px);flex-direction:column}
+.fs-shell.is-mobile.is-battle .fs-player-list{display:grid;overflow:visible}
+.fs-shell.is-mobile.is-battle .fs-player{min-width:0}
+.fs-shell.is-mobile.is-battle .fs-main-panel{top:auto;right:0;bottom:0;left:auto;width:min(330px,42vw);height:52vh;max-height:52vh}
+.fs-shell.is-mobile.is-battle .fs-main-panel .fs-panel-heading{padding:8px 12px}
+.fs-shell.is-mobile.is-battle .fs-main-panel .fs-panel-heading .fs-eyebrow{font-size:10px}
+.fs-shell.is-mobile.is-battle .fs-main-panel .fs-panel-heading h2{font-size:18px;margin:2px 0 4px}
+.fs-shell.is-mobile.is-battle .fs-main-panel .fs-panel-heading p{font-size:12px;line-height:1.3}
+.fs-shell.is-mobile.is-battle .fs-main-panel .fs-reinforce{min-height:112px;margin:8px 10px 0;padding:8px;gap:5px}
+/* Scroll the whole action panel, not an actions list that can collapse to a
+   few pixels on a short screen. Its choices must remain big enough to tap. */
+.fs-shell.is-mobile.is-battle .fs-main-panel>.fs-actions{display:flex;flex:0 0 auto;overflow:visible}
+.fs-shell.is-mobile.is-battle .fs-pick-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.fs-shell.is-mobile.is-battle .fs-pick-grid:has(> .fs-pick:only-child){grid-template-columns:minmax(0,1fr)}
+.fs-shell.is-mobile.is-battle .fs-main-panel>.fs-primary{position:static;font-size:14px;padding:9px;margin:6px 10px 10px}
+/* Clamp the preview of every card to the sides of a small screen. */
+.fs-shell.is-mobile.is-battle .fs-battle-card{
+    --fs-slot:calc(176px + var(--fs-hand-margin));
+    --fs-row:calc(var(--fs-hand-count) * var(--fs-slot) + (var(--fs-hand-count) - 1) * 6px);
+    --fs-hand-center:calc((100vw - min(330px,42vw)) / 2);
+    --fs-card-x:calc(var(--fs-hand-center) - var(--fs-row) / 2 + var(--fs-card-index) * (var(--fs-slot) + 6px));
+    --fs-preview-scale:1.45;
+    --fs-preview-shift:clamp(calc(10px - var(--fs-card-x)),0px,calc(100vw - 10px - var(--fs-card-x) - 176px * var(--fs-preview-scale)));
+}
+.fs-shell.is-mobile.is-battle .fs-battle-card:hover:not(:disabled){transform:translateX(var(--fs-preview-shift)) translateY(-12px) scale(var(--fs-preview-scale))}
+.fs-shell.is-mobile.is-battle .fs-battle-hand.is-alt .fs-battle-card:hover:not(:disabled){--fs-preview-scale:2.2;transform:translateX(var(--fs-preview-shift)) translateY(-24px) scale(var(--fs-preview-scale))}
+.fs-shell.is-mobile.is-battle .fs-battle-panel{width:min(var(--fs-score-w),calc(100vw - min(330px,42vw) - 20px))}
+.fs-shell.is-mobile.is-battle:has(.fs-battle-hand) .fs-battle-panel,
+.fs-shell.is-mobile.is-battle:has(.fs-battle-hand) .fs-battle-restore{bottom:var(--fs-hand-space)}
+.fs-shell.is-mobile.is-battle:has(.fs-battle-hand) .fs-battle-panel{max-height:calc(100vh - var(--fs-hand-space) - 70px)}
+
+/* Five cards fit between the two corners on a wide screen. On narrower screens
+   the score sits just above the hand rather than covering cards or actions. */
+@media(max-width:1450px){
+    .fs-shell.is-battle:not(.is-mobile) .fs-battle-hand{--fs-hand-scale:.58;--fs-hand-margin:-74px}
+}
+@media(max-width:1350px){
+    .fs-shell.is-battle:not(.is-mobile):has(.fs-battle-hand) .fs-battle-panel,
+    .fs-shell.is-battle:not(.is-mobile):has(.fs-battle-hand) .fs-battle-restore{bottom:174px}
+    .fs-shell.is-battle:not(.is-mobile):has(.fs-battle-hand) .fs-battle-panel{max-height:calc(100vh - 244px)}
+    .fs-shell.is-battle:not(.is-mobile) .fs-battle-hand{left:calc((100% - var(--fs-panel-w)) / 2)}
+}
+@media(max-width:1000px){
+    .fs-shell.is-battle:not(.is-mobile) .fs-battle-hand{--fs-hand-scale:.50;--fs-hand-margin:-88px}
+}
+@media(max-width:760px){
+    .fs-shell.is-mobile.is-battle{--fs-hand-space:127px;--fs-hand-cards-height:105px}
+    .fs-shell.is-mobile.is-battle .fs-battle-hand{--fs-hand-scale:.40;--fs-hand-margin:-106px}
+}
+@media(max-width:680px){
+    .fs-shell.is-mobile.is-battle{--fs-hand-space:117px;--fs-hand-cards-height:95px}
+    .fs-shell.is-mobile.is-battle .fs-battle-hand{--fs-hand-scale:.36;--fs-hand-margin:-113px}
+}
+@media(max-width:700px) and (orientation:landscape){
+    /* In a short landscape window the score reaches the roster vertically. */
+    .fs-shell.is-mobile.is-battle .fs-left-rail{width:min(280px,50vw)}
+    .fs-shell.is-mobile.is-battle .fs-battle-panel{width:min(var(--fs-score-w),calc(100vw - min(330px,42vw) - 20px),calc(100vw - min(280px,50vw) - 20px))}
+}
+@media(max-width:680px) and (orientation:landscape){
+    .fs-shell.is-mobile.is-battle .fs-battle-sides{flex-direction:column}
+}
+@media(max-width:620px) and (orientation:landscape){
+    .fs-shell.is-mobile.is-battle{--fs-hand-space:102px;--fs-hand-cards-height:80px}
+    .fs-shell.is-mobile.is-battle .fs-battle-hand{--fs-hand-scale:.30;--fs-hand-margin:-123px}
+}
+@media(max-width:550px) and (orientation:landscape){
+    .fs-shell.is-mobile.is-battle{--fs-hand-space:92px;--fs-hand-cards-height:70px}
+    .fs-shell.is-mobile.is-battle .fs-battle-hand{--fs-hand-scale:.25;--fs-hand-margin:-132px}
+}
+@media(max-width:620px) and (orientation:portrait){
+    .fs-shell.is-mobile.is-battle .fs-left-rail{max-height:min(150px,20vh)}
+    .fs-shell.is-mobile.is-battle .fs-main-panel{top:calc(63px + min(150px,20vh));bottom:calc(var(--fs-hand-space) + 28vh + 6px);width:min(356px,calc(100vw - 20px));height:auto;max-height:none}
+    .fs-shell.is-mobile.is-battle:not(:has(.fs-battle-hand)) .fs-main-panel{bottom:calc(16px + 28vh)}
+    .fs-shell.is-mobile.is-battle .fs-battle-hand{left:50%}
+    .fs-shell.is-mobile.is-battle .fs-battle-panel{width:var(--fs-score-w);max-height:28vh}
+    .fs-shell.is-mobile.is-battle:has(.fs-battle-hand) .fs-battle-panel{max-height:28vh}
+    .fs-shell.is-mobile.is-battle .fs-battle-side{padding:6px 4px}
+    .fs-shell.is-mobile.is-battle .fs-battle-line{font-size:11px;padding:3px 4px;gap:4px}
+    .fs-shell.is-mobile.is-battle .fs-battle-line-icon{width:14px;height:14px}
+    .fs-shell.is-mobile.is-battle .fs-battle-line-sum{gap:1px}
+    .fs-shell.is-mobile.is-battle .fs-battle-part .fs-ico-svg{width:12px;height:12px}
+    .fs-shell.is-mobile.is-battle .fs-battle-line-total{font-size:12px}
+    .fs-shell.is-mobile.is-battle .fs-battle-card{--fs-hand-center:50vw}
+}
+/* The Alt preview stays larger than the hover preview while fitting a phone. */
+@media(max-width:406px){
+    .fs-shell.is-mobile.is-battle .fs-battle-hand.is-alt .fs-battle-card:hover:not(:disabled){--fs-preview-scale:1.8;--fs-preview-max-height:calc(55vh - 12px)}
+}
+@media(max-width:340px){
+    .fs-shell.is-mobile.is-battle .fs-battle-hand.is-alt .fs-battle-card:hover:not(:disabled){--fs-preview-scale:1.7;--fs-preview-max-height:calc(58vh - 12px)}
+}
+@media(max-width:380px) and (orientation:portrait){
+    .fs-shell.is-mobile.is-battle{--fs-hand-space:102px;--fs-hand-cards-height:80px}
+    .fs-shell.is-mobile.is-battle .fs-battle-hand{--fs-hand-scale:.30;--fs-hand-margin:-123px}
+    .fs-shell.is-mobile.is-battle:has(.fs-battle-hand) .fs-main-panel{bottom:calc(var(--fs-hand-space) + 26vh + 6px)}
+    .fs-shell.is-mobile.is-battle .fs-battle-panel,
+    .fs-shell.is-mobile.is-battle:has(.fs-battle-hand) .fs-battle-panel{max-height:26vh}
+    .fs-shell.is-mobile.is-battle .fs-main-panel .fs-panel-heading{padding:5px 10px}
+    .fs-shell.is-mobile.is-battle .fs-main-panel .fs-panel-heading h2{font-size:16px;margin:2px 0}
+    .fs-shell.is-mobile.is-battle .fs-main-panel .fs-panel-heading p{font-size:11px;line-height:1.2;max-height:2.4em;overflow-y:auto}
+    .fs-shell.is-mobile.is-battle .fs-main-panel .fs-reinforce{min-height:66px;margin:4px 10px 0;padding:5px;gap:2px}
+    .fs-shell.is-mobile.is-battle .fs-main-panel>.fs-primary{font-size:13px;padding:6px;margin:3px 10px 8px}
+}
+@media(max-width:350px) and (orientation:portrait){
+    .fs-shell.is-mobile.is-battle .fs-battle-sides{flex-direction:column}
+}
+
+/* Some effects temporarily add two cards to a hand of five. Scale their slots,
+   not the hover preview, so the extra cards remain reachable without covering
+   the score or the action panel. */
+.fs-shell.is-battle:not(.is-mobile) .fs-battle-hand.has-extra{--fs-hand-scale:.40;--fs-hand-margin:-106px}
+@media(min-width:1600px){
+    .fs-shell.is-battle:not(.is-mobile) .fs-battle-hand.has-extra{--fs-hand-scale:.58;--fs-hand-margin:-74px}
+}
+@media(max-width:1040px){
+    .fs-shell.is-battle:not(.is-mobile) .fs-battle-hand.has-extra{--fs-hand-scale:.34;--fs-hand-margin:-116px}
+}
+.fs-shell.is-mobile.is-battle .fs-battle-hand.has-extra{--fs-hand-scale:.25;--fs-hand-margin:-132px}
+@media(max-width:620px) and (orientation:landscape){
+    .fs-shell.is-mobile.is-battle .fs-battle-hand.has-extra{--fs-hand-scale:.20;--fs-hand-margin:-141px}
+}
+@media(max-width:550px) and (orientation:landscape){
+    .fs-shell.is-mobile.is-battle .fs-battle-hand.has-extra{--fs-hand-scale:.17;--fs-hand-margin:-146px}
+}
+@media(max-width:380px) and (orientation:portrait){
+    .fs-shell.is-mobile.is-battle .fs-battle-hand.has-extra{--fs-hand-scale:.22;--fs-hand-margin:-137px}
+}
+@media(max-width:340px) and (orientation:portrait){
+    .fs-shell.is-mobile.is-battle .fs-battle-hand.has-extra{--fs-hand-scale:.19;--fs-hand-margin:-143px}
+}
+
 /* The income stat of the participants panel: how much materiel the player takes at the end of the round. */
 .fs-player-stats .fs-stat-income,.fs-player-stats .fs-stat-income b{color:#a8d08a}
 
@@ -337,6 +489,8 @@ button.fs-room-pill:hover{border-color:#d8b87366;color:#efe6c8;background:#d8b87
 
 /* The slide-out dossier of a faction: right edge, full height, above the main panel. */
 .fs-faction-drawer{position:absolute;top:0;left:0;right:auto;bottom:0;width:min(360px,96vw);z-index:7;pointer-events:auto;display:flex;flex-direction:column;overflow:hidden;background:linear-gradient(168deg,rgba(18,26,33,.97),rgba(9,13,18,.97));border-right:1px solid rgba(221,197,140,.3);box-shadow:28px 0 70px #000b;backdrop-filter:blur(16px)}
+/* On a narrow battle screen the corner controls must not cover the close button. */
+.fs-shell.is-battle .fs-faction-drawer{z-index:11}
 @keyframes fs-drawer-in{from{transform:translateX(-103%)}to{transform:none}}
 .fs-faction-drawer.is-entering{animation:fs-drawer-in .28s cubic-bezier(.2,.7,.25,1)}
 .fs-drawer-head{display:flex;align-items:center;gap:11px;padding:16px 16px 13px;border-bottom:1px solid #ffffff14;background:radial-gradient(ellipse at 100% 0,color-mix(in srgb,var(--faction-color,#d8b873) 17%,transparent),transparent 72%)}
@@ -371,10 +525,6 @@ button.fs-room-pill:hover{border-color:#d8b87366;color:#efe6c8;background:#d8b87
 .fs-drawer-total b{color:var(--gold-hi)}
 @media(max-width:700px){.fs-shell:not(.is-mobile) .fs-faction-drawer{width:min(330px,94vw)}}
 
-/* During a battle the plate stays above the battle panel, never over it. */
-.fs-shell.is-battle .fs-topbar{bottom:calc(10px + 33vh + 8px)}
-
-.fs-shell.is-mobile.is-battle .fs-topbar{bottom:calc(8px + 30vh + 8px)}
 
 /* ---------------------------------------------------------------------------
    The strategize order: the full upgrade lists, the preview card slightly to
@@ -553,11 +703,10 @@ button.fs-room-pill:hover{border-color:#d8b87366;color:#efe6c8;background:#d8b87
 .fs-battle-peek{grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-top:2px;padding:3px 7px;border-radius:7px;background:#e3b23c1f;border:1px dashed #e3b23c55;font-size:10px;color:#e8d5a8}.fs-battle-peek-icon{width:14px;height:14px;color:#e3b23c}.fs-battle-peek-name{font:700 11px/1.2 ui-monospace,monospace;color:#fff2d0;margin-left:auto}
 
 
-/* The panel has ONE size for the whole game — the width of «Участники» and the
-   69vh of the planning screen. No phase, order or battle may resize it: the
-   size lives in --fs-panel-w / --fs-panel-h and nowhere else. A check in
-   tools/fs-screens.mjs (layout-1..layout-3) fails the build if any rule
-   starts resizing a right-bottom panel again. */
+/* On desktop the action panel keeps the same width and height in every phase;
+   its size lives in --fs-panel-w / --fs-panel-h. The screen checks
+   (layout-1..layout-2) guard that invariant. Mobile battle has its own
+   compact layout, and the battle score lives in the opposite corner. */
 
 /* Every card a question offers is printed in full, not reduced to a name. */
 .fs-card-choices{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;margin:10px 13px 0;border:1px solid #d8b87344;border-radius:11px;background:#080e14cc;overflow:hidden}

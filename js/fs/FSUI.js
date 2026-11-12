@@ -286,9 +286,9 @@ const FSUI = {
             root.appendChild(chips);
         }
         root.classList.toggle('is-no-state', !state);
-        // A fight is its own screen: the rails of the board stand aside while the
-        // battle in the contested sector is played.
-        root.classList.toggle('is-battle', !!(state && state.combat));
+        // Battle has its own score and hand; participants remain available.
+        const inBattle = !!(state && state.combat);
+        root.classList.toggle('is-battle', inBattle);
         root.classList.toggle('is-deploy', !!(state && state.order && OrderContext.of(state.order).isKind('deploy')));
         root.classList.toggle('is-strategize', !!(state && state.order && OrderContext.of(state.order).isKind('strategize')));
         // Без состояния (лобби, ожидание сервера) фазы ещё нет: GamePhase.of(null)
@@ -298,46 +298,49 @@ const FSUI = {
         root.classList.toggle('is-planning', !!game && game.is(GamePhase.PLANNING));
         root.classList.toggle('is-placing-tile', !!game && game.is(GamePhase.SETUP) && ctx.mode === 'placeTile');
         if (this.currentLobby) { this.renderModernLobby(); return; }
-        const header = this.el('div', 'fs-topbar');
-        header.append(this.el('span', 'fs-brand', 'FORBIDDEN STARS'), this.el('i', 'fs-divider'));
-        const phaseLabel = game ? game.label : 'Галактическая война';
-        header.append(this.el('span', 'fs-phase', game ? (game.is(GamePhase.SETUP)
-            ? phaseLabel : 'Раунд ' + game.round + ' · ' + phaseLabel) : phaseLabel));
-        const activeSeat = game ? game.active : 0;
-        if (state && state.players[activeSeat]) {
-            // The active player: clicking the pill opens his faction dossier on the right.
-            const pill = this.el('button', 'fs-room-pill', 'ХОД · ' + state.players[activeSeat].name);
-            pill.type = 'button';
-            pill.title = 'Информация о фракции';
-            pill.addEventListener('click', () => this.toggleFactionDrawer(activeSeat));
-            header.append(pill);
+        // The campaign plaque has no battle toggle: remove it entirely until the fight ends.
+        if (!inBattle) {
+            const header = this.el('div', 'fs-topbar');
+            header.append(this.el('span', 'fs-brand', 'FORBIDDEN STARS'), this.el('i', 'fs-divider'));
+            const phaseLabel = game ? game.label : 'Галактическая война';
+            header.append(this.el('span', 'fs-phase', game ? (game.is(GamePhase.SETUP)
+                ? phaseLabel : 'Раунд ' + game.round + ' · ' + phaseLabel) : phaseLabel));
+            const activeSeat = game ? game.active : 0;
+            if (state && state.players[activeSeat]) {
+                // The active player: clicking the pill opens his faction dossier on the right.
+                const pill = this.el('button', 'fs-room-pill', 'ХОД · ' + state.players[activeSeat].name);
+                pill.type = 'button';
+                pill.title = 'Информация о фракции';
+                pill.addEventListener('click', () => this.toggleFactionDrawer(activeSeat));
+                header.append(pill);
+            }
+            // A test party: one person plays both seats, the interface says which one is his now.
+            if (state && state.solo) header.append(this.el('span', 'fs-room-pill is-solo', 'ТЕСТ · вы за обоих'));
+            // Компас: камеру теперь крутят правой кнопкой, и «где север» больше не
+            // очевидно. Стрелка показывает север карты в экранных координатах —
+            // по ней сторону шторма на карте события можно проверить глазами.
+            if (state && ctx.compass != null) {
+                const dial = this.el('span', 'fs-compass');
+                dial.title = 'Север карты';
+                const needle = this.el('i', 'fs-compass-needle');
+                needle.style.transform = 'rotate(' + Number(ctx.compass).toFixed(1) + 'deg)';
+                dial.append(needle, this.el('span', '', 'С'));
+                header.append(dial);
+            }
+            // The plaque with the round counter folds away: only the toggle stays.
+            const topbarBtn = this.el('button', 'fs-topbar-toggle' + (this.panelState().topbar ? '' : ' is-off'));
+            topbarBtn.type = 'button';
+            topbarBtn.title = this.panelState().topbar ? 'Скрыть плашку' : 'Показать плашку';
+            topbarBtn.append(this.iconEl('ui.up'));
+            topbarBtn.addEventListener('click', () => {
+                const ps = this.panelState();
+                ps.topbar = !ps.topbar;
+                this.update(state, ctx);
+            });
+            header.append(topbarBtn);
+            root.append(header);
         }
-        // A test party: one person plays both seats, the interface says which one is his now.
-        if (state && state.solo) header.append(this.el('span', 'fs-room-pill is-solo', 'ТЕСТ · вы за обоих'));
-        // Компас: камеру теперь крутят правой кнопкой, и «где север» больше не
-        // очевидно. Стрелка показывает север карты в экранных координатах —
-        // по ней сторону шторма на карте события можно проверить глазами.
-        if (state && ctx.compass != null) {
-            const dial = this.el('span', 'fs-compass');
-            dial.title = 'Север карты';
-            const needle = this.el('i', 'fs-compass-needle');
-            needle.style.transform = 'rotate(' + Number(ctx.compass).toFixed(1) + 'deg)';
-            dial.append(needle, this.el('span', '', 'С'));
-            header.append(dial);
-        }
-        // The plaque with the round counter folds away: only the toggle stays.
-        const topbarBtn = this.el('button', 'fs-topbar-toggle' + (this.panelState().topbar ? '' : ' is-off'));
-        topbarBtn.type = 'button';
-        topbarBtn.title = this.panelState().topbar ? 'Скрыть плашку' : 'Показать плашку';
-        topbarBtn.append(this.iconEl('ui.up'));
-        topbarBtn.addEventListener('click', () => {
-            const ps = this.panelState();
-            ps.topbar = !ps.topbar;
-            this.update(state, ctx);
-        });
-        header.append(topbarBtn);
         root.classList.toggle('is-topbar-off', !this.panelState().topbar);
-        root.append(header);
 
         // Every button and pill of the board lives in the top-right corner:
         // undo on the left, the rail switches in the middle, the fullscreen in
@@ -449,12 +452,8 @@ const FSUI = {
         if (this.panelState().players) rail.append(playersCard); else playersCard = null;
         root.append(rail);
 
-        // The right panel does one thing at a time: what is going on, the tokens the
-        // player owns (counted, zeros included), the choice of the moment and a
-        // single button to go on. Everything else happens on the board itself.
-        // Одна плашка на весь правый низ. Рядом с ней в тот же угол не встаёт
-        // ничего: панель боя живёт внутри (renderBattle идёт в panel), иначе
-        // угол переставал быть одним и тем же местом от этапа к этапу.
+        // The right panel holds the current action; battle numbers have their own
+        // panel in the opposite corner, leaving the choices here unobstructed.
         const panel = this.el('section', 'fs-main-panel' + (ctx.panelClass ? ' ' + ctx.panelClass : ''));
         const head = this.el('div', 'fs-panel-heading'); head.append(this.el('div', 'fs-eyebrow', GameOutcome.of(state).over ? 'Итоги сражения' : 'Текущий этап'));
         head.append(this.el('h2', '', ctx.title || 'Галактическая кампания'));
@@ -463,14 +462,10 @@ const FSUI = {
         panel.append(head);
         if (ctx.status) panel.append(this.el('div', 'fs-status', ctx.status));
         if (ctx.counter) panel.append(this.renderCounter(ctx.counter));
-        // No system is written in this panel: what a sector is made of is shown by
-        // the plaque over the board itself. The panel belongs to the action.
-        // The score of the battle is NOT here: it is its own panel at the top
-        // left of the screen, so the damage choice always fits.
+        // No system is written in this panel: its plaque is on the board itself.
         this.renderState = state; this.renderCtx = ctx;
-        // Счёт боя — ВНУТРИ правой панели, не отдельной плашкой в том же углу.
         const battle = this.renderBattle(ctx.battle);
-        if (battle) panel.append(battle);
+        if (battle) root.append(battle);
         // When the battle panel is hidden, a small tab at the bottom-left brings it back.
         if (ctx.battle && this.panelState().battlePanel === 'hidden') {
             const rb = this.el('button', 'fs-battle-restore'); rb.type = 'button';
@@ -893,9 +888,8 @@ const FSUI = {
         const head = this.el('div', 'fs-battle-head');
         head.append(this.el('span', 'fs-eyebrow', 'Бой'));
         head.append(this.el('span', 'fs-battle-round', 'раунд ' + battle.round + '/' + battle.maxRounds));
-        // Счёт боя не имеет своего размера: он живёт внутри правой плашки и
-        // занимает остаток её высоты. Кнопки «развернуть» больше нет — она
-        // меняла размер правого низа от этапа к этапу. Осталась одна: скрыть.
+        // The score has its own corner and can be hidden without hiding the
+        // action panel. A small tab restores it in the same place.
         const ctls = this.el('span', 'fs-battle-ctls');
         const hide = this.el('button', 'fs-battle-ctl'); hide.type = 'button';
         hide.title = 'Скрыть панель боя';
@@ -1009,10 +1003,15 @@ const FSUI = {
     // for the cubes. A click plays the card; a card is never skipped.
     renderBattleHand(hand) {
         if (!hand || !hand.length) return null;
-        const bar = this.el('section', 'fs-battle-hand' + (this.altZoom ? ' is-alt' : ''));
+        // A card effect can temporarily draw two extra cards; leave all of them reachable.
+        const bar = this.el('section', 'fs-battle-hand' + (this.altZoom ? ' is-alt' : '') + (hand.length > 5 ? ' has-extra' : ''));
+        // The narrow-screen hover preview uses each card's position in the row.
+        bar.style.setProperty('--fs-hand-count', String(hand.length));
         const cards = this.el('div', 'fs-battle-cards');
-        for (const item of hand) {
+        for (let i = 0; i < hand.length; i++) {
+            const item = hand[i];
             const card = this.el('button', 'fs-battle-card' + (item.playable ? ' is-playable' : ' is-closed'));
+            card.style.setProperty('--fs-card-index', String(i));
             card.type = 'button';
             if (item.count > 1) card.append(this.el('span', 'fs-battle-card-count', '×' + item.count));
             const top = this.el('div', 'fs-battle-card-top');

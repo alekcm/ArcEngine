@@ -721,11 +721,10 @@ screen('layout-1', 'у правой нижней плашки ровно оди�
 });
 
 screen('layout-2', 'ни один этап, приказ или бой не меняет размер правого низа', () => {
-    // Ищем ровно ту поломку, которую увидел игрок: правило, которое переписывает
-    // width/height/max-height у САМОЙ плашки — по состоянию (.is-planning,
-    // .is-battle, .is-deploy...), по медиазапросу или у вложенной карты боя.
-    // Разрешено одно: var(--fs-panel-w) / var(--fs-panel-h) и auto.
-    const targets = /^\.(fs-main-panel|fs-orders-pop|fs-battle-panel)(\.[\w-]+)?$/;
+    // Guard the right action panel against phase-dependent width/height.
+    // The separate battle score in the opposite corner has its own size.
+    // The panel may use its shared size variables and intrinsic values only.
+    const targets = /^\.(fs-main-panel|fs-orders-pop)(\.[\w-]+)?$/;
     const decl = /(?:^|;)\s*((?:max-)?(?:width|height))\s*:\s*([^;]+)/g;
     const allowed = /^(var\(--fs-panel-[wh]\)|auto|100%|none|0)$/;
     const parts = sel => { const xs = sel.replace(/\s*[>+~]\s*/g, ' ').split(/\s+/); return xs[xs.length - 1]; };
@@ -745,20 +744,158 @@ screen('layout-2', 'ни один этап, приказ или бой не ме
     return true;
 });
 
-screen('layout-3', 'счёт боя живёт внутри правой плашки, а не отдельной плашкой в углу', () => {
-    // Отдельная плашка в том же углу — второй размер и второе место. Счёт боя
-    // поэтому идёт внутрь панели, и CSS у него без position:absolute.
-    const src = fs.readFileSync(path.join(ROOT, 'js/fs/FSUI.js'), 'utf8');
-    if (!/const battle = this\.renderBattle\(ctx\.battle\);\s*\n\s*if \(battle\) panel\.append\(battle\);/.test(src)) {
-        return 'счёт боя снова добавляется в оболочку, а не в правую панель';
-    }
-    const rule = cssRules('js/fs/FSUI.css').find(([sel]) => sel === '.fs-battle-panel');
-    if (!rule) return 'в CSS нет .fs-battle-panel';
-    if (/position:absolute/.test(rule[1])) return 'счёт боя снова абсолютно позиционирован';
-    if (/(?:^|[;{])\s*(?:width|height|max-height)\s*:(?!\s*auto)/.test(rule[1].replace('max-height:none', ''))) {
-        return 'у счёта боя снова свой размер: ' + rule[1].slice(0, 80);
-    }
-    return true;
+function battleLayoutContext() {
+    const part = (dice, tokens, cards, units) => ({ dice, tokens, cards, units, total: dice + tokens + cards + units });
+    const sides = [
+        { side: 'attacker', name: 'Алекс', mine: true, color: '#aa8844',
+            parts: { att: part(2, 1, 3, 0), def: part(1, 0, 2, 0), morale: part(0, 1, 0, 4) },
+            values: { att: 6, def: 3, morale: 5 }, deals: 4, takes: 2 },
+        { side: 'defender', name: 'Противник', color: '#448866',
+            parts: { att: part(3, 1, 0, 0), def: part(2, 0, 0, 0), morale: part(0, 0, 1, 2) },
+            values: { att: 4, def: 2, morale: 3 }, deals: 2, takes: 4, peeked: { name: 'Подсмотренная карта' } },
+    ];
+    return Object.assign({}, SCREEN_CTX, {
+        battle: { round: 1, maxRounds: 3, sides, damage: { total: 2, left: 1, rows: [{ name: 'Боец', health: 3, take: 1 }] } },
+        battleHand: Array.from({ length: 5 }, (_, i) => ({ name: 'Карта ' + (i + 1), text: 'Текст', playable: true })),
+    });
+}
+
+screen('layout-3', 'счёт боя со всеми числами вынесен из правой панели в левый низ', () => {
+    return withAltUI(({ root }) => {
+        const { st } = chipBattle('layout-score');
+        FSUI.renderModern(st, battleLayoutContext());
+        const score = root.querySelector('.fs-battle-panel');
+        const panel = root.querySelector('.fs-main-panel');
+        if (!score || !root.children.includes(score) || panel.querySelector('.fs-battle-panel')) return 'счёт боя не отдельная панель рядом с правой';
+        const texts = textsOf(score).join('|');
+        for (const t of ['Алекс', 'Противник', 'сопернику', 'получит 2', 'получит 4', 'Подсмотренная карта', 'осталось 1', 'Боец']) {
+            if (!texts.includes(t)) return 'в перенесённом счёте нет «' + t + '»: ' + texts;
+        }
+        const lines = [];
+        (function walk(n) { if (n.classList && n.classList.contains('fs-battle-line')) lines.push(n); for (const c of n.children || []) walk(c); })(score);
+        if (lines.length !== 6) return 'строк атаки, защиты и морали: ' + lines.length + ', ожидали шесть';
+        const expected = [['2', '+', '1', '+', '3', '6'], ['1', '+', '0', '+', '2', '3'], ['0', '+', '1', '+', '0', '+', '4', '5']];
+        for (let i = 0; i < expected.length; i++) {
+            if (textsOf(lines[i]).join('|') !== expected[i].join('|')) return 'исчезли слагаемые или сумма в строке ' + (i + 1) + ': ' + textsOf(lines[i]).join('|');
+        }
+        const rule = cssRules('js/fs/FSUI.css').find(([sel]) => sel === '.fs-battle-panel');
+        if (!rule || !/position\s*:\s*absolute/.test(rule[1]) || !/left\s*:\s*10px/.test(rule[1]) || !/bottom\s*:\s*10px/.test(rule[1])) {
+            return 'панель счёта не закреплена в левом нижнем углу';
+        }
+        const hide = score.querySelector('.fs-battle-ctl');
+        hide.click();
+        const hidden = root.querySelector('.fs-battle-panel'), restore = root.querySelector('.fs-battle-restore');
+        if (!hidden || !hidden.classList.contains('is-hidden') || !restore) return 'нельзя скрыть счёт и вернуть его кнопкой';
+        restore.click();
+        if (root.querySelector('.fs-battle-panel').classList.contains('is-hidden') || root.querySelector('.fs-battle-restore')) return 'кнопка возврата не открыла счёт';
+        return true;
+    });
+});
+
+screen('layout-4', 'во время боя плашки раунда нет вовсе, после боя она возвращается с прежним состоянием', () => {
+    return withAltUI(({ root }) => {
+        const normal = party('layout-header');
+        const { st } = chipBattle('layout-header-combat');
+        FSUI.renderModern(normal, SCREEN_CTX);
+        if (!root.querySelector('.fs-topbar')) return 'до боя пропала плашка партии';
+        root.querySelector('.fs-topbar-toggle').click();
+        if (FSUI.panelState().topbar) return 'плашка не свернулась до боя';
+        FSUI.renderModern(st, battleLayoutContext());
+        if (root.querySelector('.fs-topbar') || root.querySelector('.fs-topbar-toggle')) return 'в бою плашка или её кнопка осталась';
+        FSUI.renderModern(normal, SCREEN_CTX);
+        if (!root.querySelector('.fs-topbar') || !root.classList.contains('is-topbar-off')) return 'после боя не восстановлена свёрнутая плашка';
+        root.querySelector('.fs-topbar-toggle').click();
+        if (root.classList.contains('is-topbar-off')) return 'после боя плашку не раскрыть';
+        return true;
+    });
+});
+
+screen('layout-5', 'участники видны в бою справа сверху, их можно скрыть и вернуть', () => {
+    return withAltUI(({ root }) => {
+        const { st } = chipBattle('layout-players');
+        FSUI.renderModern(st, battleLayoutContext());
+        let rail = root.querySelector('.fs-left-rail');
+        if (!rail || !rail.querySelector('.fs-card') || !textsOf(rail).includes('Участники')) return 'карточка участников не нарисована в бою';
+        for (const p of st.players) if (!textsOf(rail).includes(p.name)) return 'нет участника ' + p.name;
+        const styles = cssRules('js/fs/FSUI.css');
+        const base = styles.find(([sel]) => sel === '.fs-shell.is-battle .fs-left-rail');
+        const mobile = styles.find(([sel]) => sel === '.fs-shell.is-mobile.is-battle .fs-left-rail');
+        if (!base || !/display\s*:\s*flex/.test(base[1]) || !mobile || !/top\s*:\s*55px/.test(mobile[1]) || !/right\s*:\s*0/.test(mobile[1])) {
+            return 'в CSS участники скрыты либо не стоят в верхнем правом углу';
+        }
+        const landscapeRail = styles.find(([sel, body]) => sel === '.fs-shell.is-mobile.is-battle .fs-left-rail' && /width\s*:\s*min\(280px,50vw\)/.test(body));
+        const landscapeScore = styles.find(([sel, body]) => sel === '.fs-shell.is-mobile.is-battle .fs-battle-panel' && body.includes('calc(100vw - min(280px,50vw) - 20px)'));
+        if (!landscapeRail || !landscapeScore) return 'на низком широком экране счёт перекрывает участников';
+        const drawer = styles.find(([sel]) => sel === '.fs-shell.is-battle .fs-faction-drawer');
+        if (!drawer || !/z-index\s*:\s*11/.test(drawer[1])) return 'угловые кнопки перекрывают закрытие досье';
+        root.querySelector('.fs-panel-switch').click();
+        rail = root.querySelector('.fs-left-rail');
+        if (rail.querySelector('.fs-card')) return 'переключатель не скрыл участников';
+        root.querySelector('.fs-panel-switch').click();
+        if (!root.querySelector('.fs-left-rail').querySelector('.fs-card')) return 'переключатель не вернул участников';
+        return true;
+    });
+});
+
+screen('layout-6', 'подложка руки следует ширине карт, а не растягивается на экран', () => {
+    return withAltUI(({ root }) => {
+        const { st } = chipBattle('layout-hand');
+        const ctxPanel = battleLayoutContext();
+        for (const count of [5, 1, 3, 7]) {
+            const cards = battleLayoutContext().battleHand;
+            ctxPanel.battleHand = (count > 5 ? cards.concat(cards.slice(0, count - 5)) : cards.slice(0, count));
+            FSUI.renderModern(st, ctxPanel);
+            const hand = root.querySelector('.fs-battle-hand');
+            if (!hand || hand.querySelector('.fs-battle-cards').children.length !== count) return 'потерялись карты руки: ' + count;
+            if (hand.classList.contains('has-extra') !== (count > 5)) return 'дополнительные карты не получили свою компактную раскладку';
+            if (hand.style['--fs-hand-count'] !== String(count)) return 'потеряно число карт для позиционирования превью';
+            if (hand.querySelector('.fs-battle-cards').children.some((card, i) => card.style['--fs-card-index'] !== String(i))) return 'у карт нет индекса для позиционирования превью';
+        }
+        const styles = cssRules('js/fs/FSUI.css');
+        const base = styles.find(([sel]) => sel === '.fs-battle-hand');
+        const card = styles.find(([sel]) => sel === '.fs-battle-card');
+        const desktop = styles.find(([sel]) => sel === '.fs-shell.is-battle:not(.is-mobile) .fs-battle-hand');
+        const mobile = styles.find(([sel]) => sel === '.fs-shell.is-mobile.is-battle .fs-battle-hand');
+        if (!base || !/width\s*:\s*max-content/.test(base[1])) return 'ширина подложки не следует содержимому';
+        if (!card || !/margin-right\s*:\s*var\(--fs-hand-margin\)/.test(card[1]) || !/transform-origin\s*:\s*0 100%/.test(card[1])) return 'место каждой карты не соответствует её видимой ширине';
+        const longPreview = styles.find(([sel]) => sel === '.fs-battle-card:hover:not(:disabled)');
+        const previewText = styles.find(([sel]) => sel === '.fs-battle-card:hover:not(:disabled) .fs-battle-card-text');
+        const previewLayer = styles.find(([sel]) => sel === '.fs-battle-hand:has(.fs-battle-card:hover:not(:disabled))');
+        if (!/max-height\s*:\s*238px/.test(card[1]) || !longPreview || !/max-height\s*:\s*var\(--fs-preview-max-height\)/.test(longPreview[1]) || !previewText || !/overflow-y\s*:\s*auto/.test(previewText[1])) return 'длинный текст карты накрывает счёт или недоступен в превью';
+        if (!previewLayer || !/z-index\s*:\s*10/.test(previewLayer[1])) return 'угловые кнопки закрывают превью карты';
+        if (!desktop || !/right\s*:\s*auto/.test(desktop[1]) || !mobile || !/right\s*:\s*auto/.test(mobile[1])) return 'подложка снова растянута между двумя краями';
+        if (!styles.some(([sel]) => sel.includes('.fs-battle-hand.has-extra'))) return 'нет стилей для дополнительных карт';
+        const preview = styles.find(([sel]) => sel === '.fs-shell.is-mobile.is-battle .fs-battle-card');
+        if (!preview || !/--fs-preview-shift\s*:\s*clamp\(/.test(preview[1]) || !/var\(--fs-card-index\)/.test(preview[1])) return 'превью крайних карт выходит за экран';
+        return true;
+    });
+});
+
+screen('layout-7', 'на узком экране выбор целей и кнопки боя доступны при прокрутке панели', () => {
+    return withAltUI(({ root }) => {
+        const { st } = chipBattle('layout-mobile-actions');
+        let picked = 0;
+        const ctxPanel = battleLayoutContext();
+        ctxPanel.actions = [
+            { kind: 'pick', label: 'Первый боец', onClick: () => { picked++; } },
+            { kind: 'pick', label: 'Второй боец', onClick: () => { picked++; } },
+            { kind: 'primary', label: 'Принять урон', onClick: () => { picked++; } },
+        ];
+        FSUI.renderModern(st, ctxPanel);
+        const panel = root.querySelector('.fs-main-panel'), grid = panel.querySelector('.fs-pick-grid');
+        if (!grid || grid.children.length !== 2) return 'цели повреждений потерялись';
+        grid.children[0].click();
+        panel.querySelector('.fs-primary').click();
+        if (picked !== 2) return 'цель или подтверждение не отвечают на нажатие';
+        const styles = cssRules('js/fs/FSUI.css');
+        const scroll = styles.find(([sel]) => sel === '.fs-shell.is-battle .fs-main-panel');
+        const actions = styles.find(([sel]) => sel === '.fs-shell.is-mobile.is-battle .fs-main-panel>.fs-actions');
+        const cols = styles.find(([sel]) => sel === '.fs-shell.is-mobile.is-battle .fs-pick-grid');
+        if (!scroll || !/overflow-y\s*:\s*auto/.test(scroll[1])) return 'панель действий не прокручивается';
+        if (!actions || !/display\s*:\s*flex/.test(actions[1]) || !/flex\s*:\s*0 0 auto/.test(actions[1]) || !/overflow\s*:\s*visible/.test(actions[1])) return 'список целей схлопывается внутри мобильной панели';
+        if (!cols || !/grid-template-columns\s*:\s*repeat\(2,/.test(cols[1])) return 'цели слишком узкие для нажатия';
+        return true;
+    });
 });
 
 // ============================================================================
@@ -1188,7 +1325,7 @@ function withAltUI(check) {
     const saved = {
         root: FSUI.modernRoot, chips: FSUI.chipsEl, alt: FSUI.altZoom, keys: FSUI.altKeys,
         lobby: FSUI.currentLobby, pressed: FSUI.pressedPointer, deferred: FSUI.deferredRender,
-        actionStage: FSUI.actionStage, renderState: FSUI.renderState, renderCtx: FSUI.renderCtx,
+        actionStage: FSUI.actionStage, renderState: FSUI.renderState, renderCtx: FSUI.renderCtx, lastCtx: FSUI.lastCtx, added: FSUI.added,
         panels: FSUI.panels, factionSeat: FSUI.factionSeat, drawerMounted: FSUI.drawerMounted, helpOpen: FSUI.helpOpen,
         plaqueEl: FSUI.plaqueEl, plaqueInfo: FSUI.plaqueInfo,
         body: ctx.document.body, create: ctx.document.createElement, docAdd: ctx.document.addEventListener,
@@ -1206,6 +1343,12 @@ function withAltUI(check) {
     };
     const node = tag => {
         const n = el(tag);
+        n.style.setProperty = (name, value) => { n.style[name] = String(value); };
+        n.style.removeProperty = name => { delete n.style[name]; };
+        const events = new Map();
+        n.addEventListener = listen(events);
+        n.removeEventListener = unlisten(events);
+        n.click = () => { if (!n.disabled) for (const fn of events.get('click') || []) fn({ target: n, preventDefault: nothing }); };
         const classes = () => new Set(String(n.className).split(/\s+/).filter(Boolean));
         const write = set => { n.className = Array.from(set).join(' '); };
         n.classList = {
@@ -1258,6 +1401,7 @@ function withAltUI(check) {
         FSUI.modernRoot = saved.root; FSUI.chipsEl = saved.chips; FSUI.altZoom = saved.alt; FSUI.altKeys = saved.keys;
         FSUI.currentLobby = saved.lobby; FSUI.pressedPointer = saved.pressed; FSUI.deferredRender = saved.deferred;
         FSUI.actionStage = saved.actionStage; FSUI.renderState = saved.renderState; FSUI.renderCtx = saved.renderCtx;
+        FSUI.lastCtx = saved.lastCtx; FSUI.added = saved.added;
         FSUI.panels = saved.panels; FSUI.factionSeat = saved.factionSeat; FSUI.drawerMounted = saved.drawerMounted;
         FSUI.helpOpen = saved.helpOpen; FSUI.plaqueEl = saved.plaqueEl; FSUI.plaqueInfo = saved.plaqueInfo;
         ctx.document.body = saved.body; ctx.document.createElement = saved.create;
