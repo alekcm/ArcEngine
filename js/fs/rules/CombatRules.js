@@ -549,7 +549,9 @@ class CombatRules {
                     this.engine.runEffects(state, staged.seat, steps, { kind: 'combat', ctx: { side }, optional: true });
                     return turn.step;
                 }
-                return turn.step;
+                // A card with no applicable ability still counts as revealed:
+                // continue to the other card or to damage without another action.
+                continue;
             }
         }
         // Both cards are open: the damage of the round comes next.

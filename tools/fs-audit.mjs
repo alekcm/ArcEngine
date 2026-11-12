@@ -3359,6 +3359,81 @@ rule('combat-8', '«Played combat cards … stay in play until the end of combat
     eq(after.def, before.def, 'оборона карты');
 });
 
+rule('combat-reveal-1', '«the attacker reveals and resolves his combat card. Then, the defender reveals and resolves his» — карта без доступной способности не останавливает бой', () => {
+    const make = (attacker, defender, attUnit, defUnit, attCard, defCard) => {
+        const st = FS_RULES.newBattleTest({
+            seed: 3, players: [{ faction: attacker, name: 'A' }, { faction: defender, name: 'B' }],
+            kind: 'ground', units: { [attUnit]: 2 }, foeUnits: { [defUnit]: 2 },
+        });
+        st.combat.cards.attacker.hand = attCard ? [attCard] : [];
+        st.combat.cards.defender.hand = defCard ? [defCard] : [];
+        // Both sides will have damage to assign, so the next round cannot start
+        // automatically before the card order and icons have been checked.
+        st.combat.dice.attacker = Array(8).fill('att');
+        st.combat.dice.defender = Array(8).fill('att');
+        eq(FS_RULES.apply(st, 0, { type: 'combat', action: 'reinforce', count: 0 }).ok, true, 'нападающий без подкрепления');
+        eq(FS_RULES.apply(st, 1, { type: 'combat', action: 'reinforce', count: 0 }).ok, true, 'защитник без подкрепления');
+        return st;
+    };
+    const play = (st, seat) => eq(FS_RULES.apply(st, seat, { type: 'combat', action: 'playCard', index: 0 }).ok, true, 'выбор карты игрока ' + seat);
+    const skipEffects = (st, seat) => {
+        let count = 0;
+        while (st.pending && count++ < 8) {
+            eq(st.pending.seat, seat, 'способность решает владелец');
+            eq(st.pending.question.kind, 'ability', 'доступная способность предложена');
+            eq(FS_RULES.apply(st, seat, { type: 'effect', answer: { choice: 'no' } }).ok, true, 'пропуск способности');
+        }
+        eq(!!st.pending, false, 'вопросы закончились');
+    };
+    const done = (st, attName, defName) => {
+        eq(st.combat.step, 'damage-attacker', 'после вскрытия начинается распределение урона');
+        const cards = CombatCards.of(st.combat);
+        eq(cards.names('attacker'), attName ? [attName] : [], 'карта нападающего открыта ровно один раз');
+        eq(cards.names('defender'), defName ? [defName] : [], 'карта защитника открыта ровно один раз');
+        eq(cards.anyStaged, false, 'закрытых карт не осталось');
+        const revealed = st.log.filter(e => e.text.includes(' вскрывает боевую карту ')).map(e => e.seat);
+        const order = [];
+        if (attName) order.push(0);
+        if (defName) order.push(1);
+        eq(revealed, order, 'карты вскрыты в порядке сторон');
+    };
+    const noEffect = 'Атакующие протоколы';
+    const ability = 'Ложись!';
+    // The attacker finishes an effect, then the defender's card has no
+    // applicable ability (there are Immortals, but no Warriors in combat).
+    const last = make('имперская-гвардия', 'некроны', 'гвардейцы', 'бессмертные', ability, noEffect);
+    eq(FS_RULES.cardSteps(last, 1, ctx.FS_CATALOG.card('combat', 'некроны', noEffect)).length, 0, 'условие карты защитника не выполнено');
+    play(last, 0); play(last, 1);
+    eq(last.pending && last.pending.seat, 0, 'сначала способность нападающего');
+    eq(CombatCards.of(last.combat).staged('defender').name, noEffect, 'защитник ещё не вскрыл карту');
+    skipEffects(last, 0);
+    done(last, ability, noEffect);
+    eq(CombatCards.of(last.combat).icons('defender').att, 2, 'иконки карты без способности учитываются');
+    // If the attacker has no ability, reveal the defender immediately and
+    // wait for that player's decision before moving to damage.
+    const first = make('некроны', 'имперская-гвардия', 'бессмертные', 'гвардейцы', noEffect, ability);
+    play(first, 0); play(first, 1);
+    eq(first.pending && first.pending.seat, 1, 'после пустой карты предложена способность защитника');
+    skipEffects(first, 1);
+    done(first, noEffect, ability);
+    // Neither card has a valid ability, including the one-card cases when the
+    // other side's hand is empty: nothing needs another player action.
+    const other = 'Аколыты-гибриды';
+    for (const [attName, defName] of [[noEffect, other], [noEffect, null], [null, other]]) {
+        const st = make('некроны', 'тираниды', 'бессмертные', 'карнифексы', attName, defName);
+        for (const [seat, name] of [[0, attName], [1, defName]]) {
+            if (!name) continue;
+            const card = ctx.FS_CATALOG.card('combat', st.players[seat].faction, name);
+            eq(!!card, true, 'существующая карта ' + name);
+            eq(FS_RULES.cardSteps(st, seat, card).length, 0, 'нет подходящего отряда для карты ' + name);
+        }
+        if (attName) play(st, 0);
+        if (defName) play(st, 1);
+        eq(!!st.pending, false, 'способности без подходящих отрядов не спрашивают');
+        done(st, attName, defName);
+    }
+});
+
 rule('combat-9', '«Players resolve three execution rounds» — бой идёт не больше трёх раундов', () => {
     const st = empty();
     const sys = st.systems[0];

@@ -99,6 +99,13 @@ const TABLE = [
     },
     // --- очередь боя -------------------------------------------------------
     {
+        check: 'combat-reveal-1',
+        file: 'js/fs/rules/CombatRules.js',
+        old: '                // A card with no applicable ability still counts as revealed:\n                // continue to the other card or to damage without another action.\n                continue;',
+        new: '                return turn.step;',
+        why: 'вскрытие карты без доступной способности снова оставляет бой без следующего шага',
+    },
+    {
         check: 'simul-1',
         file: 'js/fs/rules/CombatRules.js',
         old: "        if (side === 'attacker') turn.setStep('reinforce-defender');\n        else { turn.setStep('choose-attacker'); this.advanceCombatSteps(state); }",
