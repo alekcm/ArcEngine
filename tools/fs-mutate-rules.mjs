@@ -515,6 +515,13 @@ const TABLE = [
         why: '«If a unit suffers damage and is not destroyed, that unit is routed» — круг деморализации не записан',
     },
     {
+        check: 'damage-2',
+        file: 'js/fs/rules/CombatRules.js',
+        old: '                    left -= 1;\n                    const keep = this.forbidsRouteFor(state, unit, def);\n                    if (!keep) {\n                        this.noteFallen(state, unit, false);\n                        this.routeUnit(state, unit, turn.round);\n                        this.noteResurrect(state, unit, false);\n                    }',
+        new: '                    left -= 1;',
+        why: '«вынудите противника распределять урон по 1 единице за раз» — единица не деморализует',
+    },
+    {
         check: 'combat-14',
         file: 'js/fs/rules/CombatRules.js',
         old: '            hand.returnAll();',

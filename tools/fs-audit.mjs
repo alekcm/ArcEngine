@@ -3584,6 +3584,48 @@ rule('damage-1', "«A unit that suffers damage and is not destroyed is routed» 
     eq(saved.destroyed, false, 'есть куда отступить — предпросмотр обещает спасение');
 });
 
+rule('damage-2', '«вынудите вашего противника распределять урон своим войскам по 1 единице за раз» («Святая троица») — несмертельная единица всё равно деморализует', () => {
+    // Ветка «по единице» клала урон мимо общей: отряд получал 1, выживал — и
+    // оставался стоять, хотя предпросмотр обещал деморализацию, а правило
+    // («If a unit suffers damage and is not destroyed, that unit is routed»)
+    // исключений для единиц не делает.
+    const st = FS_RULES.newReadyGame({
+        seed: 11,
+        players: [{ faction: 'имперская-гвардия', name: 'P0', id: 'p0' },
+                  { faction: 'орки', name: 'P1', id: 'p1' }],
+    });
+    st.units = [];
+    st.structures = [];
+    st.objectives = [];
+    st.storms = [];
+    for (const s2 of st.systems) s2.tokens = [];
+    st.phase = 'operations';
+    st.turn = 0;
+    st.order = null;
+    const sys = st.systems[0];
+    const pos = worldOf(st, sys.id);
+    FS_RULES.addUnit(st, 0, defOf(st, 0, 'ground'), sys.id, pos);
+    FS_RULES.addUnit(st, 1, defOf(st, 1, 'ground'), sys.id, pos);  // здоровье 2
+    FS_RULES.addUnit(st, 1, defOf(st, 1, 'ground'), sys.id, pos);  // здоровье 2
+    st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    const c = st.combat;
+    c.dice = { attacker: ['att', 'att'], defender: [] };   // 2 урона по защитнику
+    c.cards = { attacker: { hand: [], played: [] }, defender: { hand: [], played: [] } };
+    ctx.CombatTurn.of(c).setStep('damage-defender');
+    ctx.CombatDamage.of(c).setOneByOne();
+    const ids = st.units.filter(u => u.seat === 1).map(u => u.id);
+    const prev = FS_RULES.damagePreview(st, 'defender', ids);
+    for (const row of prev.rows) eq(row.routed, true, 'предпросмотр обещает деморализацию единицы');
+    const res = FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: ids });
+    eq(res.ok, true, 'урон принят: ' + (res.error || ''));
+    for (const id of ids) {
+        const u = st.units.find(x => x.id === id);
+        eq(!!u, true, 'единица не убивает отряд со здоровьем 2');
+        eq(!!(u && u.routed), true, 'несмертельная единица деморализует');
+    }
+});
+
 rule('combat-14', '«During a combat, each player draws five cards from his combat deck» + «discards the combat cards he used … by shuffling them back into his combat deck»', () => {
     const st = groundBattle();
     eq(c(st).cards.attacker.hand.length, 5, 'пять карт в руке');

@@ -945,8 +945,18 @@ class CombatRules {
                         this.engine.destroyUnit(state, unit);
                     }
                 } else if (oneByOne) {
-                    // The damage goes one point at a time.
+                    // The damage goes one point at a time — but one point is
+                    // still damage: a unit that suffers it and lives is routed
+                    // (01, «Suffering Damage»), no exception for single hits.
+                    // The old code left the unit standing, against the preview
+                    // that promised the routing («Святая троица»).
                     left -= 1;
+                    const keep = this.forbidsRouteFor(state, unit, def);
+                    if (!keep) {
+                        this.noteFallen(state, unit, false);
+                        this.routeUnit(state, unit, turn.round);
+                        this.noteResurrect(state, unit, false);
+                    }
                     applied.push({ unit: unit.id, destroyed: false });
                 } else {
                     // The card may keep the unit from being routed.
