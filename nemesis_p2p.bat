@@ -50,7 +50,7 @@ echo They can open it from their VPN; the game server stays on this computer.
 echo Keep this window open for the whole game. Closing it ends the tunnel.
 echo IMPORTANT: Anyone who has the link can try to join. Share it only with trusted people.
 echo.
-"%CLOUDFLARED%" tunnel --no-autoupdate --url "http://127.0.0.1:%PORT%"
+node "%~dp0nemesis\tunnel-launcher.mjs" "%CLOUDFLARED%" "%PORT%"
 echo.
 echo The tunnel has stopped. The local Nemesis server is still running in its own window.
 pause

@@ -61,7 +61,8 @@
                             <option value="safe" selected>Стандартный d10: без встреч (когти — Опасность, ✕ — Тишина)</option>
                         </select></div>
                 </div>
-                <div class="row"><label>Адрес для друзей</label><div id="lanAddr" class="lan-addr">—</div></div>
+                <div class="row"><label>Адреса в локальной сети</label><div id="lanAddr" class="lan-addr">—</div></div>
+                <div class="row tunnel-join hidden" id="tunnelJoinRow"><label for="tunnelJoinLink">Ссылка другу через VPN</label><div class="tunnel-join-controls"><input id="tunnelJoinLink" type="text" readonly aria-label="Ссылка для подключения к игре"><button id="copyTunnelJoin" class="btn small">Копировать</button></div><div class="hint">Показывается, когда запущен nemesis_p2p.bat. Скопируйте ссылку и отправьте другу.</div></div>
                 <div class="lobby-buttons">
                     <button id="readyBtn" class="btn">Готов</button>
                     <button id="startBtn" class="btn primary" disabled>Начать игру</button>

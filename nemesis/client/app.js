@@ -348,6 +348,18 @@ function renderLobby() {
     if ($('alienModeSelect')) $('alienModeSelect').disabled = !app.host || L.settings.enemySet !== 'redux';
     if ($('noiseDieSelect')) $('noiseDieSelect').disabled = !app.host;
     $('lanAddr').textContent = L.addresses.length ? L.addresses.map(a => 'http://' + a + ':' + L.port).join('   ') : location.origin;
+    const tunnelRow = $('tunnelJoinRow'), tunnelInput = $('tunnelJoinLink'), tunnelCopy = $('copyTunnelJoin');
+    if (tunnelRow && tunnelInput) {
+        const tunnelUrl = typeof L.tunnelUrl === 'string' ? L.tunnelUrl : '';
+        tunnelRow.classList.toggle('hidden', !tunnelUrl);
+        tunnelInput.value = tunnelUrl;
+        if (tunnelCopy) tunnelCopy.onclick = async () => {
+            if (!tunnelInput.value) return;
+            try { await navigator.clipboard.writeText(tunnelInput.value); }
+            catch { tunnelInput.focus(); tunnelInput.select(); document.execCommand('copy'); }
+            notice('Ссылка для подключения скопирована.', 'good');
+        };
+    }
     $('readyBtn').textContent = app.ready ? 'Не готов' : 'Готов';
     $('readyBtn').disabled = app.spectator;
     const online = L.seats.filter(s => s.online);

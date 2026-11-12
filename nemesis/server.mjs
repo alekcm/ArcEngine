@@ -32,6 +32,7 @@ if (!fs.existsSync(SAVES_DIR)) {
 const argPort = process.argv.find(a => /^--port=\d+$/.test(a));
 const PORT_BASE = argPort ? Number(argPort.split('=')[1]) : 8090;
 const STRICT_PORT = process.argv.includes('--strict-port');
+let TUNNEL_URL = '';
 const MAX_PLAYERS = 5;
 const UNDO_LIMIT = 300;
 
@@ -78,6 +79,32 @@ function cleanSaveName(n) { return String(n || '').replace(/[^\p{L}\p{N} _\-\.]/
 
 function serveStatic(req, res) {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (p === '/api/tunnel') {
+        res.setHeader('Cache-Control', 'no-store');
+        if (req.method === 'GET') {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ url: TUNNEL_URL }));
+            return;
+        }
+        if (req.method === 'POST') {
+            const ip = req.socket.remoteAddress || '';
+            if (!(ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1')) { res.writeHead(403); res.end(); return; }
+            let body = '';
+            req.on('data', chunk => { body += chunk; if (body.length > 2048) req.destroy(); });
+            req.on('end', () => {
+                try {
+                    const value = JSON.parse(body || '{}').url;
+                    if (value !== '' && (typeof value !== 'string' || !/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/i.test(value))) throw new Error('invalid URL');
+                    TUNNEL_URL = value;
+                    res.writeHead(204); res.end();
+                    broadcastLobby();
+                } catch { res.writeHead(400); res.end('Invalid tunnel URL'); }
+            });
+            return;
+        }
+        res.writeHead(405, { Allow: 'GET, POST' }); res.end();
+        return;
+    }
     // Save files contain every player's hidden state. Download them over the host-only WebSocket.
     if (p.startsWith('/api/save/download')) { res.writeHead(403); res.end('Forbidden'); return; }
     if (p === '/' || p === '/index.html') { res.writeHead(302, { Location: '/client/' }); res.end(); return; }
@@ -201,7 +228,7 @@ function lobbyMsg() {
         seats: game.seats.map((s, i) => ({ id: i, name: s.name, charId: s.charId, colors: s.colors,
             parts: characterParts(s.charId, s.appearances[s.charId]), ready: s.ready, online: !!s.socket, host: s === hostSeat() })),
         characters: Object.fromEntries(Object.entries(CHARACTERS).map(([k, c]) => [k, { name: c.name, color: c.color, health: c.health, zones: c.zones }])),
-        addresses: lanAddresses(), port: PORT };
+        addresses: lanAddresses(), port: PORT, tunnelUrl: TUNNEL_URL };
 }
 function broadcastLobby() { for (const c of clients) c.send(lobbyMsg()); }
 

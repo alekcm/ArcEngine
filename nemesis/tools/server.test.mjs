@@ -557,3 +557,20 @@ test('isolated server: each enabled DLC starts, hides private state, saves, load
         } finally {host.close();guest.close();child.kill();}
     }
 });
+
+test('P2P-tunnel URL is published as a copyable lobby address and clears when tunnel stops', async (t) => {
+    const { child, port } = await startServer(pickPort());
+    t.after(() => { try { child.kill(); } catch { /* gone */ } });
+    const client = await wsClient(port); t.after(() => client.close());
+    client.send({ t: 'join', token: null, name: 'Ведущий' });
+    await waitFor(client, m => m?.t === 'lobby' && m.seats.length === 1, 'initial lobby');
+    assert.match(CLIENT_HTML, /id="tunnelJoinLink"/);
+    assert.match(CLIENT_SRC, /navigator\.clipboard\.writeText\(tunnelInput\.value\)/);
+    const url = 'https://safe-session-123.trycloudflare.com';
+    const publish = value => fetch(`http://127.0.0.1:${port}/api/tunnel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: value }) });
+    const updated = await publish(url); assert.equal(updated.status, 204);
+    const lobby = await waitFor(client, m => m?.t === 'lobby' && m.tunnelUrl === url, 'lobby tunnel URL');
+    assert.equal(lobby.tunnelUrl, url);
+    const cleared = await publish(''); assert.equal(cleared.status, 204);
+    await waitFor(client, m => m?.t === 'lobby' && m.tunnelUrl === '', 'lobby tunnel URL cleared');
+});

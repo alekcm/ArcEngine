@@ -139,6 +139,11 @@ h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
 .seat .st { color: var(--dim); font-size: 12px; }
 .seat.off { opacity: 0.5; }
 .lan-addr { font-family: monospace; color: var(--green); }
+.tunnel-join { padding: 10px; border: 1px solid rgba(80, 210, 180, .55); border-radius: 8px; background: rgba(24, 82, 76, .22); }
+.tunnel-join label { color: #82e4ca !important; }
+.tunnel-join-controls { display: flex; gap: 8px; align-items: stretch; }
+.tunnel-join-controls input { min-width: 0; flex: 1; padding: 9px 10px; color: #d8fff4; background: #0b171b; border: 1px solid #38665d; border-radius: 5px; font: 13px ui-monospace, SFMono-Regular, Consolas, monospace; user-select: all; }
+.tunnel-join .hint { margin: 2px 0 0; }
 .lobby-buttons { display: flex; gap: 10px; margin-top: 10px; }
 .hint { color: var(--dim); font-size: 12px; }
 
