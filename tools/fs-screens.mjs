@@ -1169,6 +1169,224 @@ function chipScene(opts, check) {
 const chipItem = (key, x, y, z) => ({ key, x, y, z, hp: 3, morale: 2, label: key, routed: false });
 const closePx = (a, b) => Number.isFinite(a) && Math.abs(a - b) < 0.15;
 
+head('Модели деморализованных отрядов');
+
+screen('unit-model-1', 'своя модель и окраска лежат на поверхности, выбираются и встают обратно', () => {
+    return chipScene({}, ({ B, scene, view }) => {
+        const app = view.app;
+        Object.assign(app.location, { width: 800, height: 600, terrain: { heightAt: () => 11 } });
+        // Проверяем настоящий update и загрузчик моделей; отключаем лишь саму
+        // доску и кубики, не относящиеся к выбору и положению фигурок.
+        const names = ['ensureTile', 'drawTile', 'updateSetupSlots', 'updatePlanets', 'clearMarkers',
+            'addMarker', 'drawCombat', 'factionModel', 'factionModelMaterial', 'iconTexture'];
+        const saved = Object.fromEntries(names.map(name => [name, FS_VIEW[name]]));
+        const importMesh = B.ImportMeshAsync;
+        const jobs = [];
+        let ready = 0;
+        try {
+            FS_VIEW.ensureTile = () => ({ drawn: null });
+            FS_VIEW.drawTile = FS_VIEW.updateSetupSlots = FS_VIEW.updatePlanets = nothing;
+            FS_VIEW.clearMarkers = v => {
+                for (const marker of v.markers) marker.mesh.dispose(false, false);
+                v.markers = []; v.animated = []; v.unitPositions = new Map();
+            };
+            FS_VIEW.addMarker = (v, mesh) => { v.markers.push({ mesh }); return mesh; };
+            FS_VIEW.drawCombat = (a, v, s) => { v.reinforceAnchors = []; FS_VIEW.drawUnitChips(a, v, s); };
+            FS_VIEW.factionModelMaterial = (v, faction, color) => v.material('test-' + faction, color || '#777777');
+            // Управляем моментом завершения импорта, как при медленной сети.
+            // Реальный factionModel нормализует и кэширует полученные меши.
+            B.ImportMeshAsync = (file, target, options) => ({ then(resolve) {
+                const job = { file, target, options, resolve };
+                jobs.push(job);
+                return { catch() { return job; } };
+            } });
+            view.onModelReady = () => { ready++; };
+            const rootOf = unit => (view.markers.find(m => m.mesh.metadata && m.mesh.metadata.unit === unit.id) || {}).mesh;
+            const partsOf = root => root.getChildMeshes(false).filter(m => m.getTotalVertices() > 0);
+            const near = (a, b) => Number.isFinite(a) && Math.abs(a - b) < 0.002;
+            const bounds = root => root.getHierarchyBoundingVectors(true);
+            const grounded = (unit, root) => {
+                const p = view.unitPositions.get(unit.id), b = bounds(root);
+                return p && near((b.min.x + b.max.x) / 2, p.x) && near(b.min.y, p.y)
+                    && near((b.min.z + b.max.z) / 2, p.z);
+            };
+            const size = root => { const b = bounds(root); return b.max.subtract(b.min); };
+            for (const kind of ['ground', 'ship']) {
+                const { st } = chipBattle('unit-model-' + kind);
+                const combat = st.combat;
+                st.units = []; st.combat = null;
+                const sys = st.systems.find(s => s.areas.some(a => kind === 'ground' ? !!a.world : !a.world));
+                const area = sys.areas.find(a => kind === 'ground' ? !!a.world : !a.world);
+                combat.system = sys.id; combat.pos = area.pos;
+                st.players[0].palette = { primary: '#224466', secondary1: '#aa8855', secondary2: '#5588aa' };
+                const ownId = kind === 'ground' ? 'гвардейцы' : 'крейсеры';
+                const otherId = kind === 'ground' ? 'огрины' : 'линкоры';
+                const enemyId = kind === 'ground' ? 'воины' : 'крейсеры-жнец';
+                const own = FS_RULES.addUnit(st, 0, ownId, sys.id, area.pos);
+                const other = FS_RULES.addUnit(st, 0, otherId, sys.id, area.pos);
+                const enemy = FS_RULES.addUnit(st, 1, enemyId, sys.id, area.pos);
+                for (const u of [own, other, enemy]) u.routed = true;
+                view.modelCache.clear(); view.modelLoads.clear(); jobs.length = 0; ready = 0;
+                FS_VIEW.update(app, view, st);
+                const files = [own, other, enemy].map(u => FS_VIEW.FACTION_UNIT_MODELS[u.faction][u.unit][1]);
+                if (jobs.length !== files.length || files.some(file => !jobs.some(job => job.file === file))) {
+                    return kind + ': деморализованные отряды не запросили свои OBJ';
+                }
+                if (view.modelLoads.size !== 3) return kind + ': запросы не ждут окончания загрузки';
+                for (const u of [own, other, enemy]) {
+                    const root = rootOf(u);
+                    if (!root || root.name !== 'fs-u' + u.id || !near(root.rotation.z, Math.PI / 2)) {
+                        return kind + ': пока OBJ грузится, нет лежащей запасной фигурки ' + u.unit;
+                    }
+                }
+                const twin = FS_RULES.addUnit(st, 0, ownId, sys.id, area.pos);
+                FS_VIEW.update(app, view, st);
+                if (jobs.length !== 3) return kind + ': одинаковые отряды повторно запросили модель';
+                const fallbackParts = root => root.getTotalVertices && root.getTotalVertices() > 0 ? [root] : partsOf(root);
+                const checkFallback = () => {
+                    const fall = rootOf(own), stand = rootOf(twin);
+                    if (!fall || !stand || fall.name !== 'fs-u' + own.id || stand.name !== 'fs-u' + twin.id) return 'нет запасных фигурок';
+                    const fp = fallbackParts(fall), sp = fallbackParts(stand);
+                    if (fp.length !== sp.length || fp.some((p, i) => p.material !== sp[i].material
+                        || p.getTotalVertices() !== sp[i].getTotalVertices() || p.getTotalIndices() !== sp[i].getTotalIndices())) {
+                        return 'обычный и лежащий отряды различаются не только наклоном';
+                    }
+                    for (const u of [own, twin]) if (!near(bounds(rootOf(u)).min.y, view.unitPositions.get(u.id).y)) return 'запасная фигурка провалилась под поверхность';
+                    const fs = size(fall), ss = size(stand);
+                    return !near(fs.x, ss.y) || !near(fs.y, ss.x) || !near(fs.z, ss.z) ? 'запасная фигурка не лежит на боку' : null;
+                };
+                const pendingError = checkFallback();
+                if (pendingError) return kind + ': во время загрузки ' + pendingError;
+                // Меши намеренно с несоосными и по-разному смещёнными началами.
+                // Если повернуть их без нормализации, фигурка улетит или уйдёт
+                // под поверхность; несколько частей проверяют общую границу.
+                const shapes = [
+                    { p: [60, -34, 28], size: [8, 22, 12] },
+                    { p: [-75, 46, -24], size: [30, 12, 18] },
+                    { p: [17, 91, 50], size: [14, 27, 9] },
+                ];
+                for (const job of jobs) {
+                    const shape = shapes[files.indexOf(job.file)];
+                    const [x, y, z] = shape.p, [w, h, d] = shape.size;
+                    const body = B.MeshBuilder.CreateBox('body-' + job.file, { width: w, height: h, depth: d }, scene);
+                    body.position.set(x, y, z);
+                    const detail = B.MeshBuilder.CreateBox('detail-' + job.file, { width: w / 4, height: h / 4, depth: d / 4 }, scene);
+                    detail.position.set(x + w / 3, y + h / 2, z);
+                    job.resolve({ meshes: [body, detail] });
+                }
+                if (view.modelLoads.size || ready !== 3) return kind + ': завершение импорта не обновляет модели';
+                FS_VIEW.update(app, view, st);
+                if (jobs.length !== 3) return kind + ': одинаковые отряды повторно загрузили модель';
+                for (const u of [own, other, enemy, twin]) {
+                    const root = rootOf(u);
+                    if (!root || root.name !== 'fs-unit-model-' + u.id) return kind + ': вместо OBJ нарисован заменитель ' + u.unit;
+                    if (!grounded(u, root)) return kind + ': модель ' + u.unit + ' смещена или провалилась под поверхность';
+                    if (!near(root.rotation.z, u.routed ? Math.PI / 2 : 0)) return kind + ': неверный наклон ' + u.unit;
+                    const parts = partsOf(root);
+                    if (parts.length !== 2 || parts.some(p => !p.isPickable || p.metadata.unit !== u.id
+                        || p.metadata.system !== sys.id || p.metadata.pos !== area.pos)) return kind + ': модель ' + u.unit + ' нельзя выбрать';
+                    const target = parts[0]; target.computeWorldMatrix(true);
+                    const c = target.getBoundingInfo().boundingBox.centerWorld;
+                    const hit = scene.pickWithRay(new B.Ray(new B.Vector3(c.x, c.y + 100, c.z), new B.Vector3(0, -1, 0)), mesh => mesh === target);
+                    if (!hit || !hit.hit || hit.pickedMesh.metadata.unit !== u.id) return kind + ': луч выбора не попал в ' + u.unit;
+                }
+                const fallen = rootOf(own), upright = rootOf(twin), fp = partsOf(fallen), up = partsOf(upright);
+                if (fp.some((p, i) => p.geometry !== up[i].geometry || p.material !== up[i].material)) {
+                    return kind + ': деморализованный отряд потерял геометрию или цвета обычного';
+                }
+                if (partsOf(rootOf(other))[0].geometry === fp[0].geometry || partsOf(rootOf(enemy))[0].geometry === fp[0].geometry) {
+                    return kind + ': разные типы или фракции получили одну модель';
+                }
+                const f = size(fallen), u = size(upright);
+                if (!near(f.x, u.y) || !near(f.y, u.x) || !near(f.z, u.z)) return kind + ': модель не лежит на боку';
+                // В кэше null означает, что OBJ не загрузился. И после такой
+                // ошибки обычная и лежащая запасные фигурки остаются одинаковыми.
+                const key = own.faction + ':' + kind + ':' + own.unit + ':' + FS_VIEW.paletteKey(st.players[0].palette);
+                const cachedModel = view.modelCache.get(key);
+                view.modelCache.set(key, null);
+                FS_VIEW.update(app, view, st);
+                const failedError = checkFallback();
+                if (failedError) return kind + ': после ошибки загрузки ' + failedError;
+                view.modelCache.set(key, cachedModel);
+                FS_VIEW.update(app, view, st);
+                // В бою плашка должна принадлежать настоящей повёрнутой модели,
+                // а не старому заменителю; после восстановления модель встаёт.
+                st.combat = combat;
+                FS_VIEW.update(app, view, st);
+                for (const unit of [own, other, enemy]) {
+                    const root = rootOf(unit), chip = view.unitChips.find(c => c.key.startsWith(unit.id + ':'));
+                    if (!root || !grounded(unit, root) || !near(root.rotation.z, Math.PI / 2)) return kind + ': в бою модель сбилась с места';
+                    if (!chip || chip.root !== root || !chip.routed || chip.morale !== 0) return kind + ': плашка не следует за деморализованным отрядом';
+                }
+                // Подкрепление тоже представлено фигуркой юнита. Проверяем
+                // настоящий drawCombat: белые обычная и лежащая модели должны
+                // использовать общую геометрию и оставаться на поверхности.
+                const cached = FS_VIEW.factionModel(view, own.faction, kind, own.unit, st.players[0].palette);
+                combat.dice = { attacker: [], defender: [] };
+                combat.reinforce = { attacker: 2, defender: 0 };
+                combat.reinforceFlipped = { attacker: [1], defender: [] };
+                FS_VIEW.factionModel = () => cached;
+                try { saved.drawCombat.call(FS_VIEW, app, view, st); }
+                finally { FS_VIEW.factionModel = saved.factionModel; }
+                const reinRoot = i => (view.markers.find(m => m.mesh.metadata && m.mesh.metadata.reinforceId === 'reinforce-attacker-' + i) || {}).mesh;
+                for (const i of [0, 1]) {
+                    const root = reinRoot(i), anchor = view.reinforceAnchors.find(a => a.side === 'attacker' && a.index === i);
+                    if (!root || !anchor || !near(root.rotation.z, i ? Math.PI / 2 : 0)) return kind + ': подкрепление не перевернулось';
+                    const b = bounds(root), parts = partsOf(root);
+                    if (!near((b.min.x + b.max.x) / 2, anchor.x) || !near(b.min.y, anchor.y)
+                        || !near((b.min.z + b.max.z) / 2, anchor.z)) return kind + ': подкрепление смещено или провалилось';
+                    if (parts.length !== 2 || parts.some(p => !p.isPickable || p.metadata.reinforceId !== 'reinforce-attacker-' + i)) {
+                        return kind + ': подкрепление нельзя выбрать';
+                    }
+                    const chip = view.unitChips.find(c => c.key.startsWith('rein:attacker:' + i + ':'));
+                    if (!chip || chip.root !== root || chip.routed !== !!i) return kind + ': плашка потеряла подкрепление';
+                }
+                const standingRein = partsOf(reinRoot(0)), fallenRein = partsOf(reinRoot(1));
+                if (fallenRein.some((p, i) => p.geometry !== standingRein[i].geometry || p.material !== standingRein[i].material)) {
+                    return kind + ': подкрепления получили разные модели или окраску';
+                }
+                // То же условие действует для временного диска, если модель
+                // подкрепления ещё загружается или не смогла загрузиться.
+                FS_VIEW.update(app, view, st);
+                const icons = [];
+                FS_VIEW.factionModel = () => null;
+                FS_VIEW.iconTexture = (v, icon, color) => { icons.push({ icon, color }); return null; };
+                try { saved.drawCombat.call(FS_VIEW, app, view, st); }
+                finally { FS_VIEW.factionModel = saved.factionModel; FS_VIEW.iconTexture = saved.iconTexture; }
+                for (const i of [0, 1]) {
+                    const root = reinRoot(i), anchor = view.reinforceAnchors.find(a => a.side === 'attacker' && a.index === i);
+                    if (!root || !anchor || !near(root.rotation.z, i ? Math.PI / 2 : 0)
+                        || !near(bounds(root).min.y, anchor.y)) return kind + ': запасное подкрепление провалилось или не повернулось';
+                    if (partsOf(root).some(p => !p.isPickable || p.metadata.reinforceId !== 'reinforce-attacker-' + i)) {
+                        return kind + ': запасное подкрепление нельзя выбрать';
+                    }
+                }
+                const uprightFallback = partsOf(reinRoot(0)), fallenFallback = partsOf(reinRoot(1));
+                if (uprightFallback.length !== fallenFallback.length || fallenFallback.some((p, i) =>
+                    p.getTotalVertices() !== uprightFallback[i].getTotalVertices()
+                    || !p.material.diffuseColor.equals(uprightFallback[i].material.diffuseColor)
+                    || !p.material.emissiveColor.equals(uprightFallback[i].material.emissiveColor)
+                    || p.material.alpha !== uprightFallback[i].material.alpha)
+                    || icons.some(icon => icon.color !== icons[0].color)) return kind + ': запасные подкрепления отличаются не только наклоном';
+                own.routed = false;
+                FS_VIEW.update(app, view, st);
+                const restored = rootOf(own), restoredChip = view.unitChips.find(c => c.key.startsWith(own.id + ':'));
+                if (!restored || !near(restored.rotation.z, 0) || partsOf(restored)[0].geometry !== partsOf(rootOf(twin))[0].geometry
+                    || !restoredChip || restoredChip.routed) return kind + ': восстановленный отряд не вернулся к обычной модели';
+                st.combat = null;
+                FS_VIEW.update(app, view, st);
+                if (!grounded(own, rootOf(own))) return kind + ': восстановленный отряд стоит не на поверхности';
+            }
+            return true;
+        } finally {
+            B.ImportMeshAsync = importMesh;
+            Object.assign(FS_VIEW, saved);
+        }
+    });
+});
+
+head('Бой: проекция плашек');
+
 screen('combat-chip-2', 'плашки стоят под своими бойцами при любом масштабе и размере холста', () => {
     const cases = [
         { renderWidth: 600, renderHeight: 450 },     // 0.75 render-pixels на CSS-пиксель

@@ -1169,7 +1169,7 @@ const FSView = {
             root.scaling.setAll(scale);
             root.position.set(-(min.x + max.x) * .5 * scale, -min.y * scale, -(min.z + max.z) * .5 * scale);
             root.setEnabled(false);
-            const model = { root, parts, materials, partMats: parts.map(m => materials.indexOf(m.material)) };
+            const model = { root, parts, materials, partMats: parts.map(m => materials.indexOf(m.material)), size: size.scale(scale) };
             view.modelCache.set(key, model);
             view.modelLoads.delete(key);
             if (view.onModelReady) view.onModelReady();
@@ -1184,20 +1184,30 @@ const FSView = {
         return null;
     },
 
+    placeFactionModel(holder, model, pos, scale, routed) {
+        const k = scale || 1;
+        holder.position.set(pos.x + model.root.position.x * k, pos.y + model.root.position.y * k, pos.z + model.root.position.z * k);
+        holder.scaling.copyFrom(model.root.scaling);
+        holder.scaling.scaleInPlace(k);
+        if (routed) {
+            holder.rotation.z = Math.PI / 2;
+            // The OBJ's origin is arbitrary. Rotate its normalization offset as
+            // well, then centre the sideways bounds and rest them on the table.
+            holder.position.x = pos.x + (-model.root.position.y + model.size.y / 2) * k;
+            holder.position.y = pos.y + (model.root.position.x + model.size.x / 2) * k;
+        }
+    },
+
     addFactionUnit(view, unit, pos, offset, color, unitType, scale, palette) {
         // unit.unit is the type id ('гвардейцы'), unit.id is just the uid —
         // the per-unit model table is keyed by the type id. The owner's army
         // palette decides which color each part of the miniature gets.
         const model = this.factionModel(view, unit.faction, unitType, unit.unit, palette);
         if (!model) return null;
-        const k = scale || 1;
-        const metadata = { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area };
         // No extra base disc or rim under the miniature: the model itself has
         // its own stand, and a black circle around it only gets in the way.
         const holder = new BABYLON.TransformNode('fs-unit-model-' + unit.id, view.scene);
-        holder.position.set(pos.x + offset.x + model.root.position.x * k, pos.y + model.root.position.y * k, pos.z + offset.y + model.root.position.z * k);
-        holder.scaling.copyFrom(model.root.scaling);
-        holder.scaling.scaleInPlace(k);
+        this.placeFactionModel(holder, model, { x: pos.x + offset.x, y: pos.y, z: pos.z + offset.y }, scale, unit.routed);
         holder.metadata = { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area };
         for (let i = 0; i < model.parts.length; i++) {
             const source = model.parts[i];
@@ -1297,17 +1307,20 @@ const FSView = {
                 if (view.unitPositions) view.unitPositions.set(u.id, { x: base.x + off.x, y: base.y, z: base.z + off.y });
                 placed.push({ root: null, x: base.x + off.x, z: base.z + off.y, seat: u.seat, routed: !!u.routed });
                 const slot = placed[placed.length - 1];
-                if (def && !u.routed && this.addFactionUnit(view, u, base, off, color, def.type, onWorld, owner && owner.palette)) { slot.root = view.markers[view.markers.length - 1].mesh; return; }
-                // Until a faction OBJ loads (or for ships), use sculpted silhouettes rather than
+                const model = def && this.addFactionUnit(view, u, base, off, color, def.type, onWorld, owner && owner.palette);
+                if (model) { slot.root = model; return; }
+                // Until a faction OBJ loads (or if it fails), use sculpted silhouettes rather than
                 // identical flat counters: ships read as long hulls, ground units as raised pieces.
                 const ship = def && def.type === 'ship';
                 const unitMeta = { fs: 'unit', unit: u.id, system: sysId, pos };
-                const unitMaterial = view.material('unit' + u.seat, color, u.routed ? { alpha: 0.55 } : { emissive: true });
+                const unitMaterial = view.material('unit' + u.seat, color, { emissive: true });
                 if (ship) {
                     // Distinct fallback silhouette: a tapered hull, broad swept wings and a lit cockpit.
                     const craft = new BABYLON.TransformNode('fs-u' + u.id, view.scene);
                     slot.root = craft;
-                    craft.position.set(base.x + off.x, base.y + 8, base.z + off.y);
+                    // The hull is 30 long and 8 wide: after tipping it up,
+                    // its half-length, not its half-width, rests above the board.
+                    craft.position.set(base.x + off.x, base.y + (u.routed ? 15 : 4), base.z + off.y);
                     craft.metadata = unitMeta;
                     const hull = BABYLON.MeshBuilder.CreateCylinder('fs-ship-hull-' + u.id,
                         { height: 30, diameterTop: 2.5, diameterBottom: 8, tessellation: 8 }, view.scene);
@@ -1331,7 +1344,8 @@ const FSView = {
                 } else {
                     const mesh = BABYLON.MeshBuilder.CreateCylinder('fs-u' + u.id,
                         { diameterTop: 16, diameterBottom: 24, height: 18, tessellation: 8 }, view.scene);
-                    mesh.position.set(base.x + off.x, base.y + 3, base.z + off.y);
+                    // The fallback is 18 high and 24 wide at its base.
+                    mesh.position.set(base.x + off.x, base.y + (u.routed ? 12 : 9), base.z + off.y);
                     slot.root = mesh;
                     mesh.material = unitMaterial;
                     if (u.routed) mesh.rotation.z = Math.PI / 2;
@@ -1818,9 +1832,7 @@ const FSView = {
                     // The CL0 miniature, every part plain white; a routed token
                     // lies flipped on its side, inert.
                     const k = area.world ? this.ON_WORLD : 1;
-                    node.position.set(pt.x + reinModel.root.position.x * k, groundY(pt.x, pt.z) + reinModel.root.position.y * k, pt.z + reinModel.root.position.z * k);
-                    node.scaling.copyFrom(reinModel.root.scaling);
-                    node.scaling.scaleInPlace(k);
+                    this.placeFactionModel(node, reinModel, { x: pt.x, y: groundY(pt.x, pt.z), z: pt.z }, k, isRouted);
                     for (let p = 0; p < reinModel.parts.length; p++) {
                         const clone = reinModel.parts[p].clone('fs-rein-part-' + side.id + '-' + i + '-' + p, node, false);
                         if (!clone) continue;
@@ -1829,29 +1841,29 @@ const FSView = {
                         clone.metadata = node.metadata;
                         clone.setEnabled(true);
                     }
-                    if (isRouted) node.rotation.z = Math.PI / 2;
-                    view.reinforceAnchors.push({ side: side.id, index: i, routed: isRouted, x: node.position.x, y: node.position.y, z: node.position.z });
+                    view.reinforceAnchors.push({ side: side.id, index: i, routed: isRouted, x: pt.x, y: groundY(pt.x, pt.z), z: pt.z });
                 } else {
                     const tokenDisc = BABYLON.MeshBuilder.CreateCylinder('fs-rein-body-' + side.id + '-' + i,
                         { diameter: 10, height: 2.8, tessellation: 24 }, view.scene);
                     tokenDisc.parent = node;
-                    tokenDisc.material = view.material('rein-' + side.id + '-' + i + (isRouted ? '-r' : ''),
-                        isRouted ? '#6b6257' : '#e8e2d2', { emissive: !isRouted });
+                    tokenDisc.material = view.material('rein-' + side.id + '-' + i, '#e8e2d2', { emissive: true });
                     const face = BABYLON.MeshBuilder.CreateDisc('fs-rein-face-' + side.id + '-' + i,
                         { radius: 4.4, tessellation: 24 }, view.scene);
                     face.parent = node;
                     face.rotation.x = Math.PI / 2;
                     face.position.y = 1.45;
-                    const fmat = view.material('rein-face-' + side.id + '-' + i + (isRouted ? '-r' : ''), '#f4ecd9');
-                    fmat.diffuseTexture = this.iconTexture(view, 'order.event', isRouted ? '#8a8175' : '#3a3428');
+                    const fmat = view.material('rein-face-' + side.id + '-' + i, '#f4ecd9');
+                    fmat.diffuseTexture = this.iconTexture(view, 'order.event', '#3a3428');
                     fmat.opacityTexture = fmat.diffuseTexture;
                     fmat.useAlphaFromDiffuseTexture = true;
                     fmat.backFaceCulling = false;
                     face.material = fmat;
-                    if (isRouted) node.rotation.z = Math.PI / 2;
-                    tokenDisc.isPickable = true;
-                    tokenDisc.metadata = node.metadata;
-                    view.reinforceAnchors.push({ side: side.id, index: i, routed: isRouted, x: node.position.x, y: node.position.y, z: node.position.z });
+                    if (isRouted) {
+                        node.rotation.z = Math.PI / 2;
+                        node.position.y = groundY(pt.x, pt.z) + 5; // half the disc's diameter
+                    }
+                    for (const part of [tokenDisc, face]) { part.isPickable = true; part.metadata = node.metadata; }
+                    view.reinforceAnchors.push({ side: side.id, index: i, routed: isRouted, x: pt.x, y: groundY(pt.x, pt.z), z: pt.z });
                 }
                 this.addMarker(view, node, 'prop');
             }
