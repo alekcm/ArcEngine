@@ -77,9 +77,13 @@ const FSUI = {
         chips.id = 'fs-unit-chips';
         this.chipsEl = chips;
         root.appendChild(chips);
-        // Alt held: the battle hand zooms in even more (the hovered card most of all).
+        // Both Alt keys show the unit chips and keep the existing card zoom.
+        // Track each key separately so releasing one does not hide the chips
+        // while the other is still held (AltRight may report AltGraph).
+        const isAlt = e => e.key === 'Alt' || e.key === 'AltGraph' || e.code === 'AltLeft' || e.code === 'AltRight';
+        const clearAlt = () => { this.altKeys.clear(); this.setAltZoom(false); };
         window.addEventListener('keydown', e => {
-            if (e.key === 'Alt') { e.preventDefault(); this.setAltZoom(true); return; }
+            if (isAlt(e)) { e.preventDefault(); this.altKeys.add(e.code || e.key); this.setAltZoom(true); return; }
             if (e.key === 'Escape' && !e.defaultPrevented && this.factionSeat != null) {
                 this.factionSeat = null;
                 this.drawerMounted = false;
@@ -87,12 +91,13 @@ const FSUI = {
             }
         });
         window.addEventListener('keyup', e => {
-            if (e.key === 'Alt') this.setAltZoom(false);
+            if (isAlt(e)) { this.altKeys.delete(e.code || e.key); this.setAltZoom(this.altKeys.size > 0); }
         });
         window.addEventListener('blur', () => {
-            this.setAltZoom(false);
+            clearAlt();
             if (this.pressedPointer != null) release({ pointerId: this.pressedPointer });
         });
+        document.addEventListener('visibilitychange', () => { if (document.hidden) clearAlt(); });
         window.addEventListener('resize', () => {
             if (this.modernRoot) this.modernRoot.classList.toggle('is-mobile', window.innerWidth < 850 || IS_MOBILE);
         });
@@ -106,14 +111,16 @@ const FSUI = {
         return node;
     },
 
-    // Alt is held or not: the class is toggled on the hand that is already on
-    // the screen, and remembered for the next render.
+    // Alt is held or not: show the chips and zoom the hovered card. The shell
+    // keeps the class through a rebuild, and a new hand reads altZoom below.
     altZoom: false,
+    altKeys: new Set(),
     setAltZoom(on) {
         if (this.altZoom === !!on) return;
         this.altZoom = !!on;
-        const bar = this.modernRoot && this.modernRoot.querySelector
-            ? this.modernRoot.querySelector('.fs-battle-hand') : null;
+        const root = this.modernRoot;
+        if (root && root.classList) root.classList.toggle('is-alt', this.altZoom);
+        const bar = root && root.querySelector ? root.querySelector('.fs-battle-hand') : null;
         if (bar && bar.classList) bar.classList.toggle('is-alt', this.altZoom);
     },
 

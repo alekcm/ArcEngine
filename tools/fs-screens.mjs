@@ -1043,6 +1043,156 @@ screen('combat-chip-6', 'плашка под видимой фигуркой, в
     });
 });
 
+// Drive the real FSUI.mount handlers; unlike the basic stub, this DOM tracks
+// classes and the element tree so a full shell rebuild can be checked too.
+function withAltUI(check) {
+    const saved = {
+        root: FSUI.modernRoot, chips: FSUI.chipsEl, alt: FSUI.altZoom, keys: FSUI.altKeys,
+        lobby: FSUI.currentLobby, pressed: FSUI.pressedPointer, deferred: FSUI.deferredRender,
+        actionStage: FSUI.actionStage, renderState: FSUI.renderState, renderCtx: FSUI.renderCtx,
+        panels: FSUI.panels, factionSeat: FSUI.factionSeat, drawerMounted: FSUI.drawerMounted, helpOpen: FSUI.helpOpen,
+        plaqueEl: FSUI.plaqueEl, plaqueInfo: FSUI.plaqueInfo,
+        body: ctx.document.body, create: ctx.document.createElement, docAdd: ctx.document.addEventListener,
+        hidden: ctx.document.hidden, windowAdd: ctx.addEventListener,
+    };
+    const winEvents = new Map(), docEvents = new Map();
+    const listen = events => (type, fn) => {
+        if (!events.has(type)) events.set(type, []);
+        events.get(type).push(fn);
+    };
+    const node = tag => {
+        const n = el(tag);
+        const classes = () => new Set(String(n.className).split(/\s+/).filter(Boolean));
+        const write = set => { n.className = Array.from(set).join(' '); };
+        n.classList = {
+            contains: name => classes().has(name),
+            add: (...names) => { const set = classes(); names.forEach(name => set.add(name)); write(set); },
+            remove: (...names) => { const set = classes(); names.forEach(name => set.delete(name)); write(set); },
+            toggle: (name, force) => {
+                const set = classes(), on = force === undefined ? !set.has(name) : !!force;
+                if (on) set.add(name); else set.delete(name);
+                write(set); return on;
+            },
+        };
+        n.querySelector = selector => {
+            if (!/^\.[\w-]+$/.test(selector)) return null;
+            const name = selector.slice(1);
+            const find = parent => {
+                for (const child of parent.children || []) {
+                    if (child.classList && child.classList.contains(name)) return child;
+                    const nested = find(child);
+                    if (nested) return nested;
+                }
+                return null;
+            };
+            return find(n);
+        };
+        return n;
+    };
+    const fire = (events, type, data) => {
+        const event = Object.assign({ key: '', code: '', defaultPrevented: false,
+            preventDefault() { this.defaultPrevented = true; } }, data || {});
+        for (const fn of events.get(type) || []) fn(event);
+        return event;
+    };
+    try {
+        ctx.document.body = node('body');
+        ctx.document.createElement = node;
+        ctx.document.addEventListener = listen(docEvents);
+        ctx.document.hidden = false;
+        ctx.addEventListener = listen(winEvents);
+        FSUI.modernRoot = null; FSUI.chipsEl = null; FSUI.altZoom = false; FSUI.altKeys = new Set();
+        FSUI.currentLobby = null; FSUI.pressedPointer = null; FSUI.deferredRender = null;
+        FSUI.renderState = null; FSUI.renderCtx = null; FSUI.panels = null;
+        FSUI.factionSeat = null; FSUI.helpOpen = false; FSUI.plaqueEl = null; FSUI.plaqueInfo = null;
+        const root = FSUI.mount();
+        return check({ root, node, fireWindow: (type, data) => fire(winEvents, type, data),
+            fireDocument: (type, data) => fire(docEvents, type, data) });
+    } finally {
+        FSUI.modernRoot = saved.root; FSUI.chipsEl = saved.chips; FSUI.altZoom = saved.alt; FSUI.altKeys = saved.keys;
+        FSUI.currentLobby = saved.lobby; FSUI.pressedPointer = saved.pressed; FSUI.deferredRender = saved.deferred;
+        FSUI.actionStage = saved.actionStage; FSUI.renderState = saved.renderState; FSUI.renderCtx = saved.renderCtx;
+        FSUI.panels = saved.panels; FSUI.factionSeat = saved.factionSeat; FSUI.drawerMounted = saved.drawerMounted;
+        FSUI.helpOpen = saved.helpOpen; FSUI.plaqueEl = saved.plaqueEl; FSUI.plaqueInfo = saved.plaqueInfo;
+        ctx.document.body = saved.body; ctx.document.createElement = saved.create;
+        ctx.document.addEventListener = saved.docAdd; ctx.document.hidden = saved.hidden; ctx.addEventListener = saved.windowAdd;
+    }
+}
+
+screen('combat-chip-7', 'плашки видны только пока зажат Alt; увеличение карты по Alt сохранено', () => {
+    const css = fs.readFileSync(path.join(ROOT, 'js/fs/FSUI.css'), 'utf8');
+    const base = css.match(/\.fs-unit-chips\{([^}]*)\}/);
+    const held = css.match(/\.fs-shell\.is-alt\s+\.fs-unit-chips\{([^}]*)\}/);
+    if (!base || !/visibility\s*:\s*hidden/.test(base[1])) return 'без Alt слой плашек не скрыт';
+    if (!held || !/visibility\s*:\s*visible/.test(held[1])) return 'зажатый Alt не показывает слой плашек';
+    return withAltUI(({ root, node, fireWindow }) => {
+        const hand = node('div'); hand.className = 'fs-battle-hand'; root.appendChild(hand);
+        if (root.classList.contains('is-alt')) return 'плашки открыты до нажатия Alt';
+        fireWindow('keydown', { key: 'Shift', code: 'ShiftLeft' });
+        if (root.classList.contains('is-alt')) return 'плашки открылись от Shift';
+        const down = fireWindow('keydown', { key: 'Alt', code: 'AltLeft' });
+        if (!down.defaultPrevented) return 'Alt открывает меню браузера';
+        if (!root.classList.contains('is-alt')) return 'зажатый Alt не открыл плашки';
+        if (!hand.classList.contains('is-alt')) return 'старое увеличение карты по Alt перестало работать';
+        fireWindow('keyup', { key: 'Shift', code: 'ShiftLeft' });
+        if (!root.classList.contains('is-alt')) return 'отпускание другой клавиши скрыло плашки';
+        fireWindow('keyup', { key: 'Alt', code: 'AltLeft' });
+        if (root.classList.contains('is-alt') || hand.classList.contains('is-alt')) return 'после отпускания Alt состояние не сброшено';
+        return true;
+    });
+});
+
+screen('combat-chip-8', 'оба Alt работают независимо, включая правый AltGraph и автоповтор', () => {
+    return withAltUI(({ root, fireWindow }) => {
+        fireWindow('keydown', { key: 'Alt', code: 'AltLeft' });
+        fireWindow('keydown', { key: 'Alt', code: 'AltLeft', repeat: true });
+        fireWindow('keydown', { key: 'AltGraph', code: 'AltRight' });
+        fireWindow('keyup', { key: 'Alt', code: 'AltLeft' });
+        if (!root.classList.contains('is-alt')) return 'левый Alt отпущен, но правый ещё зажат';
+        fireWindow('keyup', { key: 'AltGraph', code: 'AltRight' });
+        if (root.classList.contains('is-alt')) return 'после отпускания обеих клавиш плашки остались';
+        fireWindow('keydown', { key: 'AltGraph', code: 'AltRight' });
+        if (!root.classList.contains('is-alt')) return 'правый Alt не показал плашки';
+        fireWindow('keyup', { key: 'AltGraph', code: 'AltRight' });
+        if (root.classList.contains('is-alt')) return 'правый Alt отпущен, но плашки остались';
+        return true;
+    });
+});
+
+screen('combat-chip-9', 'перерисовка боя сохраняет Alt, потеря фокуса и скрытая вкладка сбрасывают его', () => {
+    return withAltUI(({ root, fireWindow, fireDocument }) => {
+        const { st } = chipBattle('chips-alt');
+        const battle = Object.assign({}, SCREEN_CTX, { battleHand: [{ name: 'Карта', text: 'Текст', playable: true }] });
+        FSUI.renderModern(st, battle);
+        const oldChips = FSUI.chipsEl;
+        fireWindow('keydown', { key: 'Alt', code: 'AltLeft' });
+        FSUI.renderModern(st, battle);
+        const hand = root.querySelector('.fs-battle-hand');
+        if (!root.classList.contains('is-alt') || !root.contains(oldChips) || FSUI.chipsEl !== oldChips) {
+            return 'перерисовка боя скрыла или удалила слой при зажатом Alt';
+        }
+        if (!hand || !hand.classList.contains('is-alt')) return 'после перерисовки потерялось увеличение карты по Alt';
+        fireWindow('blur');
+        if (root.classList.contains('is-alt') || hand.classList.contains('is-alt')) return 'после потери фокуса Alt застрял';
+        fireWindow('keydown', { key: 'Alt', code: 'AltRight' });
+        fireWindow('keyup', { key: 'Alt', code: 'AltRight' });
+        if (root.classList.contains('is-alt')) return 'после blur старая нажатая клавиша осталась в наборе';
+        fireWindow('keydown', { key: 'Alt', code: 'AltLeft' });
+        fireDocument('visibilitychange');
+        if (!root.classList.contains('is-alt')) return 'видимая вкладка сбросила зажатый Alt';
+        ctx.document.hidden = true;
+        fireDocument('visibilitychange');
+        if (root.classList.contains('is-alt')) return 'на скрытой вкладке плашки не сброшены';
+        ctx.document.hidden = false;
+        fireDocument('visibilitychange');
+        if (root.classList.contains('is-alt')) return 'при возврате на вкладку плашки открылись сами';
+        fireWindow('keydown', { key: 'Alt', code: 'AltRight' });
+        fireWindow('keyup', { key: 'Alt', code: 'AltRight' });
+        if (root.classList.contains('is-alt')) return 'после скрытия вкладки старая клавиша осталась в наборе';
+        return true;
+    });
+});
+
 // ============================================================================
 console.log('\n' + (failed.length
     ? C.red + C.b + '  Экраны: ' + failed.length + ' провалов из ' + done + '.' + C.r
