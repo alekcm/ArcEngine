@@ -748,11 +748,11 @@ function battleLayoutContext() {
     const part = (dice, tokens, cards, units) => ({ dice, tokens, cards, units, total: dice + tokens + cards + units });
     const sides = [
         { side: 'attacker', name: 'Алекс', mine: true, color: '#aa8844',
-            parts: { att: part(2, 1, 3, 0), def: part(1, 0, 2, 0), morale: part(0, 1, 0, 4) },
-            values: { att: 6, def: 3, morale: 5 }, deals: 4, takes: 2 },
+            parts: { att: part(2, 1, 3, 0), def: part(1, 0, 2, 0), morale: part(2, 0, 1, 4) },
+            values: { att: 6, def: 3, morale: 7 }, deals: 4, takes: 2 },
         { side: 'defender', name: 'Противник', color: '#448866',
-            parts: { att: part(3, 1, 0, 0), def: part(2, 0, 0, 0), morale: part(0, 0, 1, 2) },
-            values: { att: 4, def: 2, morale: 3 }, deals: 2, takes: 4, peeked: { name: 'Подсмотренная карта' } },
+            parts: { att: part(3, 1, 0, 0), def: part(2, 0, 0, 0), morale: part(1, 0, 1, 2) },
+            values: { att: 4, def: 2, morale: 4 }, deals: 2, takes: 4, peeked: { name: 'Подсмотренная карта' } },
     ];
     return Object.assign({}, SCREEN_CTX, {
         battle: { round: 1, maxRounds: 3, sides, damage: { total: 2, left: 1, rows: [{ name: 'Боец', health: 3, take: 1 }] } },
@@ -774,9 +774,16 @@ screen('layout-3', 'счёт боя со всеми числами вынесе�
         const lines = [];
         (function walk(n) { if (n.classList && n.classList.contains('fs-battle-line')) lines.push(n); for (const c of n.children || []) walk(c); })(score);
         if (lines.length !== 6) return 'строк атаки, защиты и морали: ' + lines.length + ', ожидали шесть';
-        const expected = [['2', '+', '1', '+', '3', '6'], ['1', '+', '0', '+', '2', '3'], ['0', '+', '1', '+', '0', '+', '4', '5']];
+        const expected = [
+            ['2', '+', '1', '+', '3', '6'], ['1', '+', '0', '+', '2', '3'], ['2', '+', '1', '+', '4', '7'],
+            ['3', '+', '1', '+', '0', '4'], ['2', '+', '0', '+', '0', '2'], ['1', '+', '1', '+', '2', '4'],
+        ];
         for (let i = 0; i < expected.length; i++) {
-            if (textsOf(lines[i]).join('|') !== expected[i].join('|')) return 'исчезли слагаемые или сумма в строке ' + (i + 1) + ': ' + textsOf(lines[i]).join('|');
+            if (textsOf(lines[i]).join('|') !== expected[i].join('|')) return 'неверные слагаемые или сумма в строке ' + (i + 1) + ': ' + textsOf(lines[i]).join('|');
+            const sum = lines[i].querySelector('.fs-battle-line-sum');
+            const titles = sum.children.filter(x => x.classList.contains('fs-battle-part')).map(x => x.title);
+            const sources = i % 3 === 2 ? ['С кубиков', 'С карт', 'С отрядов и бастионов'] : ['С кубиков', 'С жетонов', 'С карт'];
+            if (titles.join('|') !== sources.join('|')) return 'неверные источники в строке ' + (i + 1) + ': ' + titles.join('|');
         }
         const rule = cssRules('js/fs/FSUI.css').find(([sel]) => sel === '.fs-battle-panel');
         if (!rule || !/position\s*:\s*absolute/.test(rule[1]) || !/left\s*:\s*10px/.test(rule[1]) || !/bottom\s*:\s*10px/.test(rule[1])) {

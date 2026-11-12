@@ -912,10 +912,9 @@ const FSUI = {
             who.append(this.el('span', 'fs-battle-name', side.name));
             who.append(this.el('span', 'fs-battle-role', side.side === 'attacker' ? 'атакует' : 'держит'));
             row.append(who);
-            // Three lines of the score, as in the rules: attack, defence,
-            // morale — every line is a sum of where the value comes from:
-            // the dice, the tokens, the cards and (only for morale) the
-            // printed morale of the unrouted units and bastions.
+            // Attack and defence come from dice, tokens and cards. Morale has
+            // no tokens: it comes from dice, cards, and the printed morale of
+            // unrouted units, reinforcements and bastions.
             const lines = this.el('div', 'fs-battle-lines');
             const parts = side.parts || {};
             for (const kind of ['att', 'def', 'morale']) {
@@ -928,11 +927,9 @@ const FSUI = {
                     s.title = title;
                     return s;
                 };
-                const cells = [
-                    part('die.' + kind, p.dice, 'С кубиков'),
-                    part('token.' + kind, p.tokens, 'С жетонов'),
-                    part('ui.card', p.cards, 'С карт'),
-                ];
+                const cells = [part('die.' + kind, p.dice, 'С кубиков')];
+                if (kind !== 'morale') cells.push(part('token.' + kind, p.tokens, 'С жетонов'));
+                cells.push(part('ui.card', p.cards, 'С карт'));
                 if (kind === 'morale') cells.push(part('mark.ground', p.units || 0, 'С отрядов и бастионов'));
                 cells.forEach((cell, i) => {
                     if (i) sum.append(this.el('span', 'fs-battle-plus', '+'));

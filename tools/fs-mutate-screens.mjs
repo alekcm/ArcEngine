@@ -309,6 +309,20 @@ const TABLE = [
         why: 'пропало сколько урона получит и нанесёт сторона',
     },
     {
+        check: 'layout-3',
+        file: 'js/fs/FSUI.js',
+        old: "                if (kind !== 'morale') cells.push(part('token.' + kind, p.tokens, 'С жетонов'));",
+        new: "                cells.push(part('token.' + kind, p.tokens, 'С жетонов'));",
+        why: 'в строке морали снова появились несуществующие жетоны',
+    },
+    {
+        check: 'layout-3',
+        file: 'js/fs/FSUI.js',
+        old: "                if (kind !== 'morale') cells.push(part('token.' + kind, p.tokens, 'С жетонов'));",
+        new: "                if (false) cells.push(part('token.' + kind, p.tokens, 'С жетонов'));",
+        why: 'жетоны атаки и защиты пропали вместе с жетонами морали',
+    },
+    {
         check: 'layout-4',
         file: 'js/fs/FSUI.js',
         old: '        if (!inBattle) {\n            const header = this.el(\'div\', \'fs-topbar\');',
