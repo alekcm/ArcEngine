@@ -70,10 +70,8 @@ class WarpStormEdge {
 
     /**
      * A new edge relative to the storm's CURRENT edge, read in the storm's own
-     * frame: the card arrows are followed with the storm lying horizontal. N/S
-     * always land on a horizontal edge: a lying storm slides one edge over, a
-     * standing one turns around its end and lies across its own cell. W/E keep
-     * the lie (unchecked against the printed cards — do not touch unasked). A
+     * frame: the card arrows are followed with the storm lying horizontal. A
+     * straight arrow slides the storm one edge over and it keeps its lie; a
      * diagonal of the printed S-curve pivots it 90 degrees around one of its
      * ends. No tile centre is involved in this calculation.
      * @param {string} dir
@@ -82,20 +80,11 @@ class WarpStormEdge {
         const d = String(dir || '').toUpperCase();
         if (!WarpStormEdge.DIRECTIONS.includes(d)) return null;
         const r = this.row, c = this.col;
-        // Straight arrows N/S land on a horizontal edge: the lying storm
-        // slides over, the standing one turns and lies across. W/E keep the
-        // lie — that half is unchecked against the cards, do not touch unasked.
-        if (this.kind === 'H') {
-            if (d === 'N') return new WarpStormEdge('H', r - 1, c);
-            if (d === 'S') return new WarpStormEdge('H', r + 1, c);
-            if (d === 'E') return new WarpStormEdge('H', r, c + 1);
-            if (d === 'W') return new WarpStormEdge('H', r, c - 1);
-        } else {
-            if (d === 'N') return new WarpStormEdge('H', r, c);
-            if (d === 'S') return new WarpStormEdge('H', r + 1, c);
-            if (d === 'E') return new WarpStormEdge('V', r, c + 1);
-            if (d === 'W') return new WarpStormEdge('V', r, c - 1);
-        }
+        // Straight arrows: one edge over, the storm keeps its lie.
+        if (d === 'N') return new WarpStormEdge(this.kind, r - 1, c);
+        if (d === 'S') return new WarpStormEdge(this.kind, r + 1, c);
+        if (d === 'E') return new WarpStormEdge(this.kind, r, c + 1);
+        if (d === 'W') return new WarpStormEdge(this.kind, r, c - 1);
         // The S-curve: the second letter names the pivot end in the storm's
         // frame, the first the side the free end swings to. Each printed arrow
         // stands on its pivot and hooks into the turn: on «Гнев дракона

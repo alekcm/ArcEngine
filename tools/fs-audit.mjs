@@ -7038,7 +7038,7 @@ function edgeCorners(edge) {
         : [edge.row + ',' + edge.col, (edge.row + 1) + ',' + edge.col];
 }
 
-rule('storm-12', '«moves it in one of the two directions shown on the Warp Storm icon» — N/S ведут на горизонтальную грань, W/E держат положение', () => {
+rule('storm-12', '«moves it in one of the two directions shown on the Warp Storm icon» — прямые стрелки скользят, шторм держит положение', () => {
     const st = wideEmpty();
     const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
     if (!at(0, 0) || !at(1, 0) || !at(1, 1) || !at(1, 2) || !at(2, 1)) return 'карта без систем для скольжения';
@@ -7053,17 +7053,16 @@ rule('storm-12', '«moves it in one of the two directions shown on the Warp Stor
             dir + ' скользит на соседнюю грань');
         eq(FS_RULES.stormEdge(st, t).kind, 'H', dir + ' не поворачивает шторм');
     }
-    // Вертикальный шторм по N/S ложится поперёк: север — на верхнюю грань
-    // своей клетки, юг — на нижнюю. Скольжение вдоль себя было выдумкой.
-    // W/E положение держат (против карт не сверено — см. storm-15).
+    // Вертикальный шторм читают повёрнутым горизонтально: N/S скользят вдоль
+    // него самого — для карты это вверх и вниз.
     const v = { id: 'sv', system: at(1, 0).id, side: 'E', moved: false };
-    for (const [dir, sys, side, kind] of [['N', at(1, 1), 'N', 'H'], ['S', at(2, 1), 'N', 'H'],
-        ['E', at(1, 1), 'E', 'V'], ['W', at(1, 0), 'W', 'V']]) {
+    for (const [dir, sys, side] of [['N', at(0, 0), 'E'], ['S', at(2, 0), 'E'],
+        ['E', at(1, 1), 'E'], ['W', at(1, 0), 'W']]) {
         const t = FS_RULES.stormTarget(st, v, dir);
         if (!t) return dir + ' с вертикальной грани не вышел';
         eq(FS_RULES.edgeKey(st, t), FS_RULES.edgeKey(st, { system: sys.id, side }),
-            dir + ' ведёт на свою грань');
-        eq(FS_RULES.stormEdge(st, t).kind, kind, dir + ' — положение ' + kind);
+            dir + ' скользит на соседнюю грань');
+        eq(FS_RULES.stormEdge(st, t).kind, 'V', dir + ' не поворачивает шторм');
     }
     return true;
 });
@@ -7131,37 +7130,6 @@ rule('storm-14', '«the two directions shown on the Warp Storm icon» — S-кр
     eq(moved.ok, true, 'разворот приказом проходит: ' + (moved.error || ''));
     eq(FS_RULES.edgeKey(st, st.storms[0]), FS_RULES.edgeKey(st, { system: at(0, 1).id, side: 'W' }),
         'приказ поставил шторм на грань разворота');
-    return true;
-});
-
-rule('storm-15', '«the two directions shown on the Warp Storm icon» — сдвиг вверх-вниз ведёт на горизонтальную грань: стоячий шторм ложится поперёк', () => {
-    // Прямой сдвиг не всегда скользит: N/S ведут на горизонтальную грань.
-    // Лежачий шторм скользит (как на рисунке: с верхнего края — на внутреннюю
-    // границу), а стоячий поворачивается вокруг конца и ложится поперёк своей
-    // клетки — в той же колонке, без прыжка. Скольжение стоячего вдоль себя
-    // было выдумкой движка: карта вверх-вниз на вертикаль так не ходит.
-    const st = wideEmpty();
-    const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
-    if (!at(1, 0) || !at(1, 1) || !at(2, 1)) return 'карта без систем для сдвига';
-    const legs = [
-        [{ system: at(1, 0).id, side: 'E' }, 'N', { system: at(1, 1).id, side: 'N' }, 'стоячий на север: ложится наверх'],
-        [{ system: at(1, 0).id, side: 'E' }, 'S', { system: at(2, 1).id, side: 'N' }, 'стоячий на юг: ложится вниз'],
-        [{ system: at(1, 1).id, side: 'N' }, 'S', { system: at(2, 1).id, side: 'N' }, 'лежачий на юг: скользит вниз'],
-    ];
-    for (const [from, dir, want, name] of legs) {
-        const storm = Object.assign({ id: 's', moved: false }, from);
-        const t = FS_RULES.stormTarget(st, storm, dir);
-        if (!t) return name + ' не вышел';
-        eq(FS_RULES.edgeKey(st, t), FS_RULES.edgeKey(st, want), name);
-        eq(FS_RULES.edgeKey(st, t)[0], 'H', name + ' — грань горизонтальная');
-        // Поворот делит с исходной гранью угол опоры; скольжение — параллельный
-        // перенос в соседний ряд, общих углов у него нет.
-        if (FS_RULES.stormEdge(st, storm).kind === 'V') {
-            const shared = edgeCorners(FS_RULES.stormEdge(st, t))
-                .filter(k => edgeCorners(FS_RULES.stormEdge(st, storm)).includes(k));
-            eq(shared.length, 1, name + ' — поворот вокруг конца, а не прыжок');
-        }
-    }
     return true;
 });
 

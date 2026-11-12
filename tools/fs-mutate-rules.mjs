@@ -736,16 +736,9 @@ const TABLE = [
     {
         check: 'storm-12',
         file: 'js/fs/FSWarpStorms.js',
-        old: "            if (d === 'E') return new WarpStormEdge('H', r, c + 1);",
-        new: "            if (d === 'E') return new WarpStormEdge('V', r, c + 1);",
+        old: "        if (d === 'E') return new WarpStormEdge(this.kind, r, c + 1);",
+        new: "        if (d === 'E') return new WarpStormEdge('V', r, c + 1);",
         why: '«moves it in one of the two directions shown on the Warp Storm icon» — шаг вдоль края снова поворачивает шторм на бок тайла',
-    },
-    {
-        check: 'storm-15',
-        file: 'js/fs/FSWarpStorms.js',
-        old: "            if (d === 'N') return new WarpStormEdge('H', r, c);",
-        new: "            if (d === 'N') return new WarpStormEdge('V', r - 1, c);",
-        why: '«the two directions shown on the Warp Storm icon» — стоячий шторм снова скользит вдоль себя вместо поворота поперёк',
     },
     {
         check: 'storm-14',
