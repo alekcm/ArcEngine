@@ -373,7 +373,7 @@ function renderLobby() {
             const host = ip.includes(':') ? `[${ip}]` : ip;
             directInput.value = `http://${host}:${L.port}/client/`;
             directCopy.disabled = false;
-            if (directHint) directHint.textContent = `Внешний IP: ${ip}. Нужен проброс TCP-порта ${L.port} на этот компьютер; если это IP VPN или CGNAT, входящие соединения могут быть запрещены.`;
+            if (directHint) directHint.textContent = `Внешний IP: ${ip}. Нужен проброс TCP-порта ${L.port} на этот компьютер. Проверяй ссылку с телефона через мобильную сеть: роутер может не поддерживать проверку своего внешнего IP из домашней сети (NAT loopback).`;
         }).catch(err => {
             directInput.placeholder = 'Не удалось определить внешний IP';
             if (directHint) directHint.textContent = 'Не удалось определить внешний IP (' + (err.message || err) + '). Перезагрузите страницу и попробуйте снова.';
