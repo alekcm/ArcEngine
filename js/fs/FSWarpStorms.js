@@ -85,20 +85,20 @@ class WarpStormEdge {
         if (d === 'S') return new WarpStormEdge(this.kind, r + 1, c);
         if (d === 'E') return new WarpStormEdge(this.kind, r, c + 1);
         if (d === 'W') return new WarpStormEdge(this.kind, r, c - 1);
-        // The S-curve: the second letter names the pivot end in the storm's
-        // frame, the first the side the free end swings to. Each printed arrow
-        // stands on its pivot and hooks into the turn: on «Гнев дракона
-        // пустоты» the NW arrow rises from the west pivot and hooks left, the
-        // storm turning CCW around it, the free east end swinging north. A
-        // vertical storm is read horizontalized, its north end as its west
-        // end; the printed pairs are opposites, so the two ways of
-        // horizontalizing name the same two edges.
+        // The S-curve: the second letter names the swinging (free) end in the
+        // storm's frame, the first the side it swings to; the other end is the
+        // pivot. (The arrowhead of the printed S lands in the named corner: on
+        // «Гнев дракона пустоты» the NW head sits top-left, above the free
+        // west end that swings north around the east pivot.) A vertical storm
+        // is read horizontalized, its north end as its west end; the printed
+        // pairs are opposites, so the two ways of horizontalizing name the
+        // same two edges.
         if (this.kind === 'H') {
-            const pc = d[1] === 'E' ? c + 1 : c;
+            const pc = d[1] === 'E' ? c : c + 1;
             const pr = d[0] === 'N' ? r - 1 : r;
             return new WarpStormEdge('V', pr, pc);
         }
-        const pr = d[1] === 'E' ? r + 1 : r;
+        const pr = d[1] === 'E' ? r : r + 1;
         const pc = d[0] === 'N' ? c - 1 : c;
         return new WarpStormEdge('H', pr, pc);
     }
