@@ -137,7 +137,7 @@ OPS['game.carnomorphFinal'] = (state, step) => {
             next(state, { op: 'game.carnomorphDraw', player: p.id, then: after }); return;
         }
         ask(state, { kind: 'choice', secret: true, player: p.id, title: 'Финальная проверка: выберите карту мутации',
-            options: offered.map(id => ({ id, label: CARNOMORPH_MUTATIONS[id].name, desc: 'Заражён: ' + CARNOMORPH_MUTATIONS[id].infected + ' Не заражён: ' + CARNOMORPH_MUTATIONS[id].clean })) },
+            options: offered.map(id => ({ id, label: CARNOMORPH_MUTATIONS[id].name, art: 'carnomorph/mutation/' + id, desc: 'Заражён: ' + CARNOMORPH_MUTATIONS[id].infected + ' Не заражён: ' + CARNOMORPH_MUTATIONS[id].clean })) },
             { op: 'game.carnomorphPick', player: p.id, offered, then: after });
         return;
     }

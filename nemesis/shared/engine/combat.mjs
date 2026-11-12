@@ -9,7 +9,7 @@ import { repelIntruder, moveOneToward, hyperAttackStep } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
 import { ATTACK_CARDS, ITEMS, dropLocked, hasOpenQuest, connectedTo, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
 import { CARNOMORPH_ATTACK_CARDS } from '../data/carnomorphs.mjs';
-import { carnomorphAttackEffects, spawnCarnomorph, killCarnomorph, hasCarnomorphAdaptation, carnPowerCheck } from './carnomorphs.mjs';
+import { carnomorphAttackEffects, spawnCarnomorph, killCarnomorph, hasCarnomorphAdaptation, carnPowerCheck, carnDiceCheck } from './carnomorphs.mjs';
 import { shuffle } from '../rng.mjs';
 import { voidPowerCheck, voidAttackEffects, spawnVoid, killVoid, hasVoidWeakness } from './voidseeders.mjs';
 import { VOID_ATTACK_CARDS } from '../data/voidseeders.mjs';
@@ -787,21 +787,23 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
     // The Convict's Pipe: a Melee Attack contaminates only on the faces the card names.
     if (opts.contamFaces && opts.contamFaces.includes(natural)) gainContamination(state, p, 1);
     if (wd.plusOn5 && r === 5) { hits++; it.hits++; log(state, 'BF-пушка: «5» — дополнительное ранение.', 'combat'); }
-    // In the expansion the die still supports Redux weapon effects, but its kill check is
-    // replaced by the printed Carnomorph attack-card toughness check.
+    // Carnomorphs use a separate two-die toughness check below; the ordinary kill-roll is ignored.
     if (state.enemySet === 'carnomorphs') {
-        it.hits -= hits; // carnPowerCheck adds the injuries and draws exactly one card.
-        if (natural === 'crit' && hasCarnomorphAdaptation(state, 'agility')) {
-            log(state, '🧬 Проворность: критическая грань — промах, урон не нанесён.', 'combat');
-            if (opts.retaliate && state.intruders[it.uid]) next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'retaliation' });
-            return false;
-        }
+        it.hits -= hits; // The two-die toughness check adds the injuries back exactly once.
         if (opts.weapon && opts.weapon.item === 'flamethrower' && hasCarnomorphAdaptation(state, 'fireResistance')) {
             log(state, '🧬 Сопротивление огню: огнемёт не наносит карноморфу урон.', 'combat');
             if (opts.retaliate && state.intruders[it.uid]) next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'retaliation' });
             return false;
         }
-        const result = carnPowerCheck(state, it, hits);
+        const carnoRoll1 = natural;
+        const carnoRoll2 = roll(state, die);
+        log(state, '🎲 Карноморф: два кубика атаки — ' + fmtRoll(carnoRoll1) + ' и ' + fmtRoll(carnoRoll2) + '.', 'combat');
+        if (carnoRoll1 === 'crit' && carnoRoll2 === 'crit' && hasCarnomorphAdaptation(state, 'agility')) {
+            log(state, '🧬 Проворность: двойной крит — промах, урон не нанесён.', 'combat');
+            if (opts.retaliate && state.intruders[it.uid]) next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'retaliation' });
+            return false;
+        }
+        const result = carnDiceCheck(state, it, hits, [carnoRoll1, carnoRoll2]);
         if (result && result.result === 'killed') { onKill(state, p, opts); return true; }
         if (opts.retaliate && state.intruders[it.uid]) next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'retaliation' });
         return false;
@@ -835,7 +837,7 @@ OPS['shoot.rerollAns'] = (state, step) => {
 };
 export function applyHitsNoRoll(state, it, n) {
     if (state.enemySet === 'voidseeders') { const result = voidPowerCheck(state, it, n); return !!result && result.result === 'killed'; }
-    if (state.enemySet === 'carnomorphs') { const result = carnPowerCheck(state, it, n); return !!result && result.result === 'killed'; }
+    if (state.enemySet === 'carnomorphs') { const result = carnDiceCheck(state, it, n, [roll(state, COMBAT_DIE), roll(state, COMBAT_DIE)]); return !!result && result.result === 'killed'; }
     if (it.type === 'larva') { removeIntruder(state, it.uid, false); log(state, 'Личинка погибает.', 'good'); return; }
     if (it.type === 'queen') { state.queenHits += n; log(state, 'Королева получает ' + n + ' ранений (всего ' + state.queenHits + ').', 'combat'); if (state.queenHits >= 6) next(state, { op: 'queen.card', player: null }); return; }
     it.hits += n;

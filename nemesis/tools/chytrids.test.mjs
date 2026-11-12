@@ -25,7 +25,8 @@ test('Chytrids have 20 physical attacks, 6 weaknesses, 15 numbered tokens plus b
 
 test('Chytrid cards with the same name share art, and different names do not', async () => {
     const src = fs.readFileSync(new URL('../client/cards.js', import.meta.url), 'utf8')
-        .replace("'/shared/data/cards.mjs'", JSON.stringify(new URL('../shared/data/cards.mjs', import.meta.url).href));
+        .replace("'/shared/data/cards.mjs'", JSON.stringify(new URL('../shared/data/cards.mjs', import.meta.url).href))
+        .replace("'/shared/ship.mjs'", JSON.stringify(new URL('../shared/ship.mjs', import.meta.url).href));
     const { attackArt, eventArt } = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
     for (const [cards, lookup] of [[CHYTRID_ATTACK_CARDS, attackArt], [CHYTRID_EVENT_CARDS, eventArt]]) {
         const byName = new Map();

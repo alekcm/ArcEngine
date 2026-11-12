@@ -170,7 +170,7 @@ function upgrade(req, sock) {
 const game = {
     phase: 'lobby',                   // 'lobby' | 'playing'
     seats: [],                        // [{token, name, charId, colors, appearances, ready, socket|null}]
-    settings: { enemySet: 'redux', mode: 'original', seed: '', draft: false, adaptations: '3', noiseVariant: false, alienMode: 'evolutions' }, poses: {},
+    settings: { enemySet: 'redux', mode: 'original', seed: '', draft: false, adaptations: '3', noiseVariant: true, alienMode: 'weaknesses' }, poses: {},
     state: null,
     undo: [],                         // [{json, label}]
     history: [],                      // labels of accepted actions (for the undo list)

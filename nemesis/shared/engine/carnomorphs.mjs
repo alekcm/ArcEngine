@@ -234,7 +234,7 @@ export function resolveCarnomorphEncounter(state, step) {
     state.carnomorphSupply.push(token);
     const it = spawnCarnomorph(state, type, step.room);
     if (!it) { noiseAround(state, step.room); return; }
-    if (state.bagLast) state.bagLast.effect = 'Появляется ' + INTRUDER_NAMES[type] + ', значение жетона ' + token.value + '.';
+    if (state.bagLast) state.bagLast.effect = 'Появляется ' + INTRUDER_NAMES[type] + ' (значение жетона ' + token.value + '); жетон уходит в запас. Если в руке меньше ' + token.value + ' карт (с учётом адаптации Ускорение), чужой сразу атакует.';
     const continuation = { ...step, op: 'carnomorph.encounterSurprise', intruder: it.uid };
     const holder = playersInRoom(state, step.room).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
     if (holder && !step.noPredict) {
@@ -258,6 +258,8 @@ OPS['carnomorph.encounterSurprise'] = (state, step) => {
 /** Resolve the expansion's bag-development token, returning queued actions in execution order. */
 export function developCarnomorphBag(state, token) {
     if (!token) return [];
+    const label = token === 'blank' ? 'Пустой жетон развития' : (token.type === 'redMetagorger' ? 'Красный жетон глодателя' : token.type === 'blueMetagorger' ? 'Синий жетон глодателя' : token.type === 'shambler' ? 'Жетон падальщика' : token.type === 'breeder' ? 'Жетон свежевателя' : 'Жетон мясника') + ' ' + token.value;
+    if (state.bagLast) state.bagLast.effect = label + ': ' + ({ blank: 'убрать падальщиков из пустых комнат, добавить глодателя в мешок и бросить кубик шума за каждого персонажа без чужих в комнате.', redMetagorger: 'положить жетон обратно в мешок и выставить глодателей во всех подходящих комнатах (с глодателем, объектом, тяжёлым предметом или гнездом).', blueMetagorger: 'вернуть жетон в запас, добавить глодателя в мешок и бросить кубик шума за каждого персонажа без чужих в комнате.', butcher: 'вернуть жетон в запас; мясник появляется у первого игрока и начинается встреча.', shambler: 'вернуть жетон в мешок и бросить кубик шума за каждого персонажа без чужих в комнате.', breeder: 'вернуть жетон в мешок и бросить кубик шума за каждого персонажа без чужих в комнате.' })[token === 'blank' ? 'blank' : token.type];
     if (token === 'blank') {
         for (const it of Object.values(state.intruders)) {
             if (it.type !== 'shambler' || playersInRoom(state, it.room).length) continue;
@@ -392,3 +394,17 @@ OPS['carnomorph.phaseFire'] = (state) => {
         }
     }
 };
+
+/** Carnomorph damage check using two combat-die results instead of revealing an attack card. */
+export function carnDiceCheck(state, it, hits, rolls) {
+    if (!it || !state.intruders[it.uid]) return null;
+    const crits = rolls.filter(x => x === 'crit').length;
+    const score = crits === 2 ? Infinity : rolls.reduce((n, x) => n + (x === 'crit' ? 1 : x), 0);
+    it.hits += hits;
+    const required = LIMIT[it.type] + (hasCarnomorphAdaptation(state, 'regeneration') ? 1 : 0);
+    const verdict = crits === 2 || it.hits + score >= required ? 'убит' : 'выжил';
+    const description = 'Проверка карноморфа: два кубика ' + rolls.map(x => x === 'crit' ? 'КРИТ' : x).join(' + ') + ' = ' + (crits === 2 ? 'двойной КРИТ' : score) + '; ранений ' + it.hits + ', стойкость ' + required + ' → ' + verdict + '.';
+    log(state, description, 'combat');
+    if (verdict === 'убит') { killCarnomorph(state, it); return { result: 'killed' }; }
+    return { result: 'survived' };
+}

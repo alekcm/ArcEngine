@@ -388,7 +388,7 @@ test('SRV-09: драфт сохраняет выбранный образ тол
         client.send({ t: 'join', token: null, name: 'Автор' });
         await waitFor(client, m => m?.t === 'lobby' && m.seats.length === 1, 'joined');
         client.send({ t: 'lobby', charId: 'xeno', parts: chosen, colors: { coat: '#12abcd' },
-            settings: { mode: 'original', seed: 'workshop-draft-7', draft: true } });
+            settings: { mode: 'original', seed: 'workshop-draft-7', draft: true, alienMode: 'evolutions', noiseVariant: false } });
         await waitFor(client, m => m?.t === 'lobby' && m.seats[0].charId === 'xeno' && m.settings.draft, 'draft settings');
         client.send({ t: 'start' });
         const draft = await waitFor(client, m => m?.t === 'state' && m.view?.phase === 'draft' && m.view.prompt?.options, 'draft prompt');

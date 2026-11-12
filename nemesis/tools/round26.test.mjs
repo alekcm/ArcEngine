@@ -27,13 +27,13 @@ test('R26-01: a click on my own room opens a one-item list named after the room 
     assert.match(app, /onComputer: onComputerClick, onPlayer: onPlayerClick/, 'the scene forwards figure clicks');
     assert.match(body, /if \(id === me\.room\)/, 'my own room has its own branch');
     assert.match(body, /openWorldPop\(roomLabel\(id\), def \? def\.name/, 'the list is the room and its tile');
-    assert.match(body, /label: 'Действие комнаты:', sub: def \? def\.action/, 'one item, named after the action, with what it does');
+    assert.match(body, /label: 'Действие комнаты:', sub: def \? roomActionText\(tile, v\.enemySet\)/, 'one item, named after the DLC-aware action description');
     assert.match(body, /do: \(\) => act\(\{ action: 'room' \}\)/, 'and the press is what acts');
     // Out of turn the same list opens, its single button explaining why it cannot be pressed.
     assert.match(body, /reason: a \? a\.reason : 'Не ваш ход'/, 'a list, not a silent nothing');
     // The description comes from the same tile lookup the hover card uses, so they cannot drift.
     assert.match(app, /function roomTileOf\(v, id\)/, 'one lookup for the room tile');
-    assert.match(bodyOf(app, 'onRoomHover'), /const tile = rs\.tile \|\|/, 'the hover card keeps its own fallback');
+    assert.match(bodyOf(app, 'onRoomHover'), /roomActionText\(tile, v\.enemySet\)/, 'the hover card uses the same DLC-aware action text');
 });
 
 test('R26-02: a click on another figure offers the one action that touches another character', () => {

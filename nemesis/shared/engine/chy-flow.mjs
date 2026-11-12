@@ -30,7 +30,7 @@ OPS['chy.encounter'] = (state, step) => {
     }
     const it = spawnChytrid(state, token.type, step.room);
     if (!it) return;
-    if (state.bagLast) state.bagLast.effect = 'Появляется ' + INTRUDER_NAMES[it.type] + ', значение жетона ' + token.value + '.';
+    if (state.bagLast) state.bagLast.effect = 'Появляется ' + INTRUDER_NAMES[it.type] + ' (значение жетона ' + token.value + '); жетон уходит в запас. Если в руке меньше ' + token.value + ' карт (с учётом слабости/эффектов хитридов), чужой сразу атакует.';
     const then = { ...step, op: 'chy.encounterSurprise', intruder: it.uid };
     const holder = playersInRoom(state, step.room).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
     if (holder && !step.noPredict) {

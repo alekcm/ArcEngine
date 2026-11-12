@@ -12,7 +12,7 @@ import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import { itemDeckBadge, knowledgeTrack, larvaBadge } from './status-display.mjs';
 import * as Snd from './sound.js';
-import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, panicArt, queenArt, itemArt } from './cards.js';
+import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, itemDescription, roomActionText, objectiveArt, woundName, woundShort, eventArt, attackArt, panicArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip, tileKeyedEdits } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, WEAKNESSES, FEATS, objectiveTextOf,
     EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
@@ -201,14 +201,14 @@ function addChatCard(from, card) {
 function hoveredCardDesc() {
     const h = app.hoverCard; if (!h || !app.view) return null;
     if (h.kind === 'card') {
-        const d = describeCard(h.id);
+        const d = describeCard(h.id, app.view.enemySet);
         return { name: d.name, text: d.text || '', art: cardArt(h.id) || '',
             tag: d.contam ? 'заражение' : d.field ? 'полевые данные' : 'карта действия' };
     }
     const me = app.view.players.find(p => p.id === app.me); if (!me) return null;
     const inst = (me.items || []).find(i => i.uid === h.uid) || (me.armor && me.armor.uid === h.uid ? me.armor : null);
     const d = inst && ITEMS[inst.item]; if (!d) return null;
-    return { name: d.name, text: d.text || '', art: itemArt(inst.item) || '', tag: 'предмет' };
+    return { name: d.name, text: itemDescription(inst, app.view.enemySet), art: itemArt(inst.item) || '', tag: 'предмет' };
 }
 function showCardToTable(card) {
     const me = app.view && app.view.players.find(p => p.id === app.me);
@@ -341,11 +341,11 @@ function renderLobby() {
     $('modeSelect').value = L.settings.mode; $('draftSelect').value = L.settings.draft === false ? '0' : '1'; if (document.activeElement !== $('seedInput')) $('seedInput').value = L.settings.seed || '';
     if ($('enemySetSelect')) { $('enemySetSelect').value = L.settings.enemySet || 'redux'; $('enemySetSelect').disabled = !app.host; }
     if ($('adaptSelect')) $('adaptSelect').value = L.settings.adaptations !== undefined ? String(L.settings.adaptations) : '3';
-    if ($('alienModeSelect')) $('alienModeSelect').value = L.settings.alienMode === 'weaknesses' ? 'weaknesses' : 'evolutions';
-    if ($('noiseDieSelect')) $('noiseDieSelect').value = L.settings.noiseVariant ? 'safe' : 'standard';
+    if ($('alienModeSelect')) $('alienModeSelect').value = L.settings.alienMode === 'evolutions' ? 'evolutions' : 'weaknesses';
+    if ($('noiseDieSelect')) $('noiseDieSelect').value = L.settings.noiseVariant === false ? 'standard' : 'safe';
     $('modeSelect').disabled = !app.host; $('seedInput').disabled = !app.host;
-    if ($('adaptSelect')) $('adaptSelect').disabled = !app.host || L.settings.alienMode === 'weaknesses';
-    if ($('alienModeSelect')) $('alienModeSelect').disabled = !app.host;
+    if ($('adaptSelect')) $('adaptSelect').disabled = !app.host || L.settings.alienMode === 'weaknesses' || L.settings.enemySet !== 'redux';
+    if ($('alienModeSelect')) $('alienModeSelect').disabled = !app.host || L.settings.enemySet !== 'redux';
     if ($('noiseDieSelect')) $('noiseDieSelect').disabled = !app.host;
     $('lanAddr').textContent = L.addresses.length ? L.addresses.map(a => 'http://' + a + ':' + L.port).join('   ') : location.origin;
     $('readyBtn').textContent = app.ready ? 'Не готов' : 'Готов';
@@ -592,15 +592,15 @@ const sendSettings = () => net.send({ t: 'lobby', settings: {
     seed: $('seedInput').value,
     draft: $('draftSelect').value === '1',
     adaptations: $('adaptSelect') ? $('adaptSelect').value : '3',
-    alienMode: $('alienModeSelect') ? $('alienModeSelect').value : 'evolutions',
+    alienMode: $('alienModeSelect') ? $('alienModeSelect').value : 'weaknesses',
     noiseVariant: $('noiseDieSelect') ? $('noiseDieSelect').value === 'safe' : false,
 } });
-if ($('enemySetSelect')) $('enemySetSelect').onchange = sendSettings;
+if ($('enemySetSelect')) $('enemySetSelect').onchange = () => { const dlc = $('enemySetSelect').value !== 'redux'; if ($('alienModeSelect')) $('alienModeSelect').disabled = !app.host || dlc; if ($('adaptSelect')) $('adaptSelect').disabled = !app.host || dlc || $('alienModeSelect')?.value === 'weaknesses'; sendSettings(); };
 $('modeSelect').onchange = sendSettings;
 $('seedInput').onchange = sendSettings;
 $('draftSelect').onchange = sendSettings;
 if ($('adaptSelect')) $('adaptSelect').onchange = sendSettings;
-if ($('alienModeSelect')) $('alienModeSelect').onchange = sendSettings;
+if ($('alienModeSelect')) $('alienModeSelect').onchange = () => { if ($('adaptSelect')) $('adaptSelect').disabled = !app.host || $('alienModeSelect').value === 'weaknesses' || $('enemySetSelect')?.value !== 'redux'; sendSettings(); };
 if ($('noiseDieSelect')) $('noiseDieSelect').onchange = sendSettings;
 $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else $('endOverlay').classList.add('hidden'); };
 
@@ -851,7 +851,7 @@ function showHudPop(tag) {
         const art = itemArt(me.armor.item);
         armor = true;
         html = (art ? '<span class="ipart" style="background-image:url(' + art + ')"></span>' : '') +
-            '<b>🛡 ' + esc(itemLabel(me.armor)) + '</b><span>' + esc(itemTitle(me.armor)) + '</span>';
+            '<b>🛡 ' + esc(itemLabel(me.armor)) + '</b><span>' + esc(itemTitle(me.armor, v.enemySet)) + '</span>';
     } else return;
     el.innerHTML = html;
     el.classList.remove('hidden'); el.classList.toggle('armor', armor); el.classList.add('show');
@@ -891,7 +891,7 @@ function renderPlayers() {
             tags.push('<span class="tag purple" title="С уровня 3 безумие нельзя снизить ниже 3 обычными способами; увеличение выше 5 смертельно">🧠 безумие ' + p.madness + '/5' + typeLabel + '</span>');
         }
         if (p.larva) tags.push('<span class="tag purple">личинка</span>');
-        if (p.armor) tags.push('<span class="tag itag" title="' + esc(itemTitle(p.armor)) + '">' + itemArtHtml(p.armor) + '🛡 ' + esc(itemLabel(p.armor)) + (p.armor.item === 'probeArm' ? ' · жетонов свободно ' + (p.armor.charge ?? ITEMS.probeArm.markers) : '') + '</span>');
+        if (p.armor) tags.push('<span class="tag itag" title="' + esc(itemTitle(p.armor, v.enemySet)) + '">' + itemArtHtml(p.armor, v.enemySet) + '🛡 ' + esc(itemLabel(p.armor)) + (p.armor.item === 'probeArm' ? ' · жетонов свободно ' + (p.armor.charge ?? ITEMS.probeArm.markers) : '') + '</span>');
         if (p.tissue) tags.push('<span class="tag yellow">🧫 ткань ×' + p.tissue + '</span>');
         if (p.laika) tags.push('<span class="tag yellow">🐕 Лайка: ' + (p.laika === 'board' ? 'рядом' : 'в ' + esc(roomLabel(p.laika))) + '</span>');
         if (p.signal) tags.push('<span class="tag green">сигнал</span>');
@@ -902,7 +902,7 @@ function renderPlayers() {
         tags.push('<span class="tag" title="Карт в руке / колоде / сбросе (всего заражений)">🂠 ' + p.handCount + ' / ' + p.deckCount + ' / ' + p.discardCount + (cCount ? ' ☣ Заражений: ' + cCount : '') + '</span>');
         const items = p.items.map(i => {
             const isHeavy = ITEMS[i.item].kind === 'heavy' && !(i.item === 'cuffs' && (i.flipped || (i.charge ?? ITEMS.cuffs.markers) <= 0));
-            return '<span class="itag" title="' + esc(itemTitle(i)) + '">' + itemArtHtml(i) + (ITEMS[i.item].weapon ? '🔫' : isHeavy ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>';
+            return '<span class="itag" title="' + esc(itemTitle(i, v.enemySet)) + '">' + itemArtHtml(i, v.enemySet) + (ITEMS[i.item].weapon ? '🔫' : isHeavy ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>';
         }).join('')
             + p.heavy.map(h => '<span>🧳 ' + ({ corpse: 'труп', charCorpse: 'труп персонажа', carcass: 'туша', egg: 'яйцо' })[h.type] + '</span>').join('')
             // p. 14: another character's light items are hidden; show only how many there are.
@@ -1073,7 +1073,7 @@ function renderPrompt() {
                 '<button class="opt" data-act="' + a.id + '" ' + (a.enabled ? '' : 'disabled') + '><span>' + esc(a.label) + (a.cost ? ' <small>(' + a.cost + ' 🂠)</small>' : '') + '</span>' + (a.reason ? '<span class="why">' + esc(a.reason) + '</span>' : '') + '</button>').join('') + '</div></div>';
             html += '<div><h5>Предметы</h5><div class="opts">' + (pr.items.length ? pr.items.map(i => {
                 const pp = v.players[pr.player]; const inst = pp.items.find(x => x.uid === i.uid) || (pp.armor && pp.armor.uid === i.uid ? pp.armor : null);
-                return '<button class="opt" data-item="' + i.uid + '" ' + (i.enabled ? '' : 'disabled') + ' title="' + esc(inst ? itemTitle(inst) : '') + '">' + (inst ? itemArtHtml(inst) : '') + '<span>' + esc(inst ? itemLabel(inst) : i.uid) + (i.cost ? ' <small>(' + i.cost + ' 🂠)</small>' : ' <small>(бесплатно)</small>') + '</span>' + (i.reason ? '<span class="why">' + esc(i.reason) + '</span>' : '') + '</button>';
+                return '<button class="opt" data-item="' + i.uid + '" ' + (i.enabled ? '' : 'disabled') + ' title="' + esc(inst ? itemTitle(inst, v.enemySet) : '') + '">' + (inst ? itemArtHtml(inst, v.enemySet) : '') + '<span>' + esc(inst ? itemLabel(inst) : i.uid) + (i.cost ? ' <small>(' + i.cost + ' 🂠)</small>' : ' <small>(бесплатно)</small>') + '</span>' + (i.reason ? '<span class="why">' + esc(i.reason) + '</span>' : '') + '</button>';
             }).join('') : '<div class="hint">Нет используемых предметов</div>') + '<div class="hint" style="margin-top:6px">Карты действий — внизу: нажмите на карту, чтобы разыграть.</div></div></div></div>';
             break;
         }
@@ -1249,7 +1249,7 @@ function renderPilePopups(v) {
     const disc = document.querySelector('.pile[data-pile="owndisc"]');
     if (disc && me.discard) {
         const pop = document.createElement('div'); pop.className = 'ppop';
-        pop.innerHTML = '<h5>Мой сброс · ' + me.discard.length + '</h5>' + (me.discard.length ? me.discard.map(c => { const d = describeCard(c); return '<div class="' + (d.contam ? 'contam' : '') + '">' + esc(d.name) + '</div>'; }).join('') : '<div>пусто</div>');
+        pop.innerHTML = '<h5>Мой сброс · ' + me.discard.length + '</h5>' + (me.discard.length ? me.discard.map(c => { const d = describeCard(c, v.enemySet); return '<div class="' + (d.contam ? 'contam' : '') + '">' + esc(d.name) + '</div>'; }).join('') : '<div>пусто</div>');
         disc.appendChild(pop);
     }
     const own = document.querySelector('.pile[data-pile="own"]');
@@ -1276,7 +1276,7 @@ function renderHand() {
     const pr = v.prompt; const mine = pr && !pr.waiting && pr.player === app.me;
     const menu = mine && pr.kind === 'turn' ? Object.fromEntries(pr.cards.map(c => [c.id, c])) : null;
     const picking = mine && pr.kind === 'cards' ? new Set(pr.cards) : null;
-    el.innerHTML = me.hand.map(c => cardHtml(c, menu ? menu[c] : picking ? { enabled: picking.has(c), reason: picking.has(c) ? '' : 'Нельзя выбрать' } : null, app.selectedCards.has(c))).join('');
+    el.innerHTML = me.hand.map(c => cardHtml(c, menu ? menu[c] : picking ? { enabled: picking.has(c), reason: picking.has(c) ? '' : 'Нельзя выбрать' } : null, app.selectedCards.has(c), v.enemySet)).join('');
     const cards = [...el.querySelectorAll('.card')], mid = (cards.length - 1) / 2;
     cards.forEach((cel, i) => { const k = i - mid; cel.style.setProperty('--fan', (k * 4) + 'deg'); cel.style.setProperty('--lift', (Math.abs(k) * 6) + 'px'); });
     for (const cel of el.querySelectorAll('.card')) cel.onclick = () => {
@@ -1306,7 +1306,7 @@ function onRoomHover(id, x, y) {
     const me = v.players.find(p => p.id === app.me);
     const tile = rs.tile || (r.kind === 'cockpit' ? 'cockpit' : r.kind === 'hibernatorium' ? 'hibernatorium' : r.kind === 'engine' ? 'engine' : null);
     let html = '<b>' + esc(roomLabel(id)) + '</b>';
-    if (tile) html += '<div>' + esc(ROOM_TILES[tile].action) + '</div><div class="dim">Предметы: ' + (ROOM_TILES[tile].items.map(c => ({ green: '🟢', red: '🔴', yellow: '🟡' })[c]).join('') || '—') + (ROOM_TILES[tile].computer ? ' · 💻 компьютер' : '') + '</div>';
+    if (tile) html += '<div>' + esc(roomActionText(tile, v.enemySet)) + '</div><div class="dim">Предметы: ' + (ROOM_TILES[tile].items.map(c => ({ green: '🟢', red: '🔴', yellow: '🟡' })[c]).join('') || '—') + (ROOM_TILES[tile].computer ? ' · 💻 компьютер' : '') + '</div>';
     else if (me && me.knownTiles && me.knownTiles[id]) html += '<div class="dim">Вам известно: ' + esc(ROOM_TILES[me.knownTiles[id]].name) + '</div>';
     else html += '<div class="dim">??? — не разведана</div>';
     const flags = [];
@@ -1393,7 +1393,7 @@ function onRoomClick(id) {
         const tile = roomTileOf(v, id), def = tile ? ROOM_TILES[tile] : null;
         const a = menuActionOf(menu, 'room');
         openWorldPop(roomLabel(id), def ? def.name : 'Комната ещё не исследована', [{
-            label: 'Действие комнаты:', sub: def ? def.action : 'Сначала разведайте комнату',
+            label: 'Действие комнаты:', sub: def ? roomActionText(tile, v.enemySet) : 'Сначала разведайте комнату',
             disabled: !a || !a.enabled, reason: a ? a.reason : 'Не ваш ход',
             do: () => act({ action: 'room' }),
         }], scene.screenOf('room', id));
@@ -2006,7 +2006,7 @@ function openSheet(quiet, targetPlayerId) {
         ? ((me.objectives || []).map(o => '<div class="sheet-goal" style="background-image:url(' + objectiveArt(o.kind) + ')"><b>🎯 ' + esc(OBJECTIVES[o.kind][o.id].name) + ' · ' + (o.kind === 'corporate' ? 'корпоративная' : 'личная') + '</b><span>' + esc(objectiveTextOf(OBJECTIVES[o.kind][o.id], v.players, v.enemySet)) + '</span></div>').join('') || '<div class="empty">Цель ещё не выбрана — выберите бесплатным действием.</div>')
         : '<div class="empty">🔒 Карты целей скрыты.</div>';
     const hand = isMine
-        ? ((me.hand || []).map(c => cardHtml(c, null, false)).join('') || '<div class="deck-empty">Пусто</div>')
+        ? ((me.hand || []).map(c => cardHtml(c, null, false, v.enemySet)).join('') || '<div class="deck-empty">Пусто</div>')
         : '<div class="empty">🔒 Карты в руке скрыты (' + (me.handCount ?? 0) + ' шт.).</div>';
     const chips = [];
     if (me.signal) chips.push('<span class="tag green">сигнал отправлен</span>');
@@ -2115,7 +2115,7 @@ function deckList(kind, v, me) {
     }
     if (kind === 'owndisc') {
         if (!me) return { note: 'Вы наблюдатель.', cards: [] };
-        for (const c of (me.discard || [])) { const d = describeCard(c); list.push({ name: d.name, text: d.text, tag: d.contam ? 'заражение' : '' }); }
+        for (const c of (me.discard || [])) { const d = describeCard(c, v.enemySet); list.push({ name: d.name, text: d.text, tag: d.contam ? 'заражение' : '' }); }
         return { note: 'Карты в вашем сбросе (' + list.length + ').', cards: list };
     }
     if (kind === 'event') for (const id of (piles.event || [])) { const e = EVENT_BY_ID[id]; if (e) list.push({ name: e.name, text: e.id.startsWith('chyEvent') ? chytridEventText(e) : e.move && e.move.types ? carnomorphEventText(e) : e.text, tag: 'событие', art: eventArt(e.id) }); }
