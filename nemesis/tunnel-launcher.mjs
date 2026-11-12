@@ -21,7 +21,9 @@ function publish(url) {
     });
 }
 
-const child = spawn(executable, ['tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${port}`],
+// Force HTTP/2 over TCP: QUIC/UDP is commonly blocked by VPNs and firewalls, which can
+// leave a Quick Tunnel URL allocated at Cloudflare but unable to reach this origin.
+const child = spawn(executable, ['tunnel', '--no-autoupdate', '--protocol', 'http2', '--url', `http://127.0.0.1:${port}`],
     { stdio: ['inherit', 'pipe', 'pipe'], windowsHide: false });
 let published = '';
 let lineBuffers = ['', ''];
