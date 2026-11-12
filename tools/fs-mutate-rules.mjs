@@ -747,6 +747,13 @@ const TABLE = [
         new: "            const pc = d[1] === 'E' ? c + 1 : c;",
         why: '«the two directions shown on the Warp Storm icon» — S-кривая зеркалится обратно: шторм уходит не на ту грань',
     },
+    {
+        check: 'storm-13',
+        file: 'js/fs/FSWarpStorms.js',
+        old: "        const pc = d[0] === 'N' ? c : c - 1;",
+        new: "        const pc = d[0] === 'N' ? c - 1 : c;",
+        why: '«the two directions shown on the Warp Storm icon» — вертикаль зеркалится: та же карта крутит шторм против себя',
+    },
 ];
 
 const args = process.argv.slice(2);

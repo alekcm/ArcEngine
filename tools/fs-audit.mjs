@@ -7070,14 +7070,16 @@ rule('storm-12', '«moves it in one of the two directions shown on the Warp Stor
 rule('storm-13', '«the two directions shown on the Warp Storm icon» — S-кривая NE/SW («Сфера воскрешения»): свободный конец качается в названную сторону', () => {
     const st = wideEmpty();
     const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
-    if (!at(0, 1) || !at(1, 0) || !at(1, 1) || !at(1, 2) || !at(2, 1)) return 'карта без систем для разворота';
+    if (!at(0, 1) || !at(1, 0) || !at(1, 1) || !at(1, 2) || !at(2, 0) || !at(2, 1)) return 'карта без систем для разворота';
     // NE: свободный восточный конец — на север, опора западная.
     // SW: свободный западный конец — на юг, опора восточная.
+    // Вертикаль поворачивается в ту же сторону, что горизонталь: одна карта —
+    // один поворот, а не зеркало от положения шторма.
     const legs = [
         [{ system: at(1, 1).id, side: 'N' }, 'NE', { system: at(0, 1).id, side: 'W' }, 'горизонталь: NE'],
         [{ system: at(1, 1).id, side: 'N' }, 'SW', { system: at(1, 2).id, side: 'W' }, 'горизонталь: SW'],
-        [{ system: at(1, 0).id, side: 'E' }, 'NE', { system: at(1, 0).id, side: 'N' }, 'вертикаль: NE'],
-        [{ system: at(1, 0).id, side: 'E' }, 'SW', { system: at(2, 1).id, side: 'N' }, 'вертикаль: SW'],
+        [{ system: at(1, 0).id, side: 'E' }, 'NE', { system: at(1, 1).id, side: 'N' }, 'вертикаль: NE'],
+        [{ system: at(1, 0).id, side: 'E' }, 'SW', { system: at(2, 0).id, side: 'N' }, 'вертикаль: SW'],
     ];
     for (const [from, dir, want, name] of legs) {
         const storm = Object.assign({ id: 's', moved: false }, from);
@@ -7094,14 +7096,16 @@ rule('storm-13', '«the two directions shown on the Warp Storm icon» — S-кр
 rule('storm-14', '«the two directions shown on the Warp Storm icon» — S-кривая NW/SE («Гнев дракона пустоты», Некроны/КП1.jpg): разворот вокруг дальней опоры', () => {
     const st = wideEmpty();
     const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
-    if (!at(0, 2) || !at(1, 0) || !at(1, 1) || !at(2, 0)) return 'карта без систем для разворота';
+    if (!at(0, 2) || !at(1, 0) || !at(1, 1) || !at(2, 0) || !at(2, 1)) return 'карта без систем для разворота';
     // NW: свободный западный конец — на север, опора восточная.
     // SE: свободный восточный конец — на юг, опора западная.
+    // Вертикаль поворачивается в ту же сторону, что горизонталь: одна карта —
+    // один поворот, а не зеркало от положения шторма.
     const legs = [
         [{ system: at(1, 1).id, side: 'N' }, 'NW', { system: at(0, 2).id, side: 'W' }, 'горизонталь: NW'],
         [{ system: at(1, 1).id, side: 'N' }, 'SE', { system: at(1, 1).id, side: 'W' }, 'горизонталь: SE'],
-        [{ system: at(1, 0).id, side: 'E' }, 'NW', { system: at(2, 0).id, side: 'N' }, 'вертикаль: NW'],
-        [{ system: at(1, 0).id, side: 'E' }, 'SE', { system: at(1, 1).id, side: 'N' }, 'вертикаль: SE'],
+        [{ system: at(1, 0).id, side: 'E' }, 'NW', { system: at(2, 1).id, side: 'N' }, 'вертикаль: NW'],
+        [{ system: at(1, 0).id, side: 'E' }, 'SE', { system: at(1, 0).id, side: 'N' }, 'вертикаль: SE'],
     ];
     for (const [from, dir, want, name] of legs) {
         const storm = Object.assign({ id: 's', moved: false }, from);

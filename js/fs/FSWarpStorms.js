@@ -90,16 +90,17 @@ class WarpStormEdge {
         // pivot. (The arrowhead of the printed S lands in the named corner: on
         // «Гнев дракона пустоты» the NW head sits top-left, above the free
         // west end that swings north around the east pivot.) A vertical storm
-        // is read horizontalized, its north end as its west end; the printed
-        // pairs are opposites, so the two ways of horizontalizing name the
-        // same two edges.
+        // is read horizontalized, its north end as its west end — and it turns
+        // the SAME way the horizontal one does: one card, one turn, never a
+        // mirror of the storm's lie. (The old mapping read the column
+        // backwards, so NE/SW turned a vertical storm against its own print.)
         if (this.kind === 'H') {
             const pc = d[1] === 'E' ? c : c + 1;
             const pr = d[0] === 'N' ? r - 1 : r;
             return new WarpStormEdge('V', pr, pc);
         }
         const pr = d[1] === 'E' ? r : r + 1;
-        const pc = d[0] === 'N' ? c - 1 : c;
+        const pc = d[0] === 'N' ? c : c - 1;
         return new WarpStormEdge('H', pr, pc);
     }
 
