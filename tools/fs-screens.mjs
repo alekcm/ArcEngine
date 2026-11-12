@@ -722,10 +722,10 @@ screen('setup-ui-2', 'выбор стороны сохраняет клетку 
     return true;
 });
 
-screen('setup-ui-3', 'в каждом секторе точные числа и значки, но нет индикации цели', () => {
+screen('setup-ui-3', 'у миров точные числа и значки, в пустоте нет вместимости и не показаны цели', () => {
     const catalog = vm.runInContext('FS_CATALOG', ctx);
     const glyphs = { forge: ['asset.forge', 'Кузница'], cache: ['asset.cache', 'Запасы'], reinforcement: ['order.event', 'Подкрепление'], prosperity: ['asset.prosperity', 'Процветание'] };
-    let objectives = 0, doubles = 0;
+    let objectives = 0, doubles = 0, voids = 0, worlds = 0;
     for (const tile of catalog.tiles) {
         const preview = FSUI.tilePreview(tile);
         const sectors = nodesWithClass(preview, 'fs-tile-sector');
@@ -737,10 +737,14 @@ screen('setup-ui-3', 'в каждом секторе точные числа и 
             const stats = nodesWithClass(sector, 'fs-tile-stat');
             const icons = nodesWithClass(sector, 'fs-ico');
             if (icons.some(n => n.getAttribute('data-icon') === 'mark.objective')) return tile.id + ': цель видна значком';
-            if (world && world.objective) objectives++;
+            if (world) { worlds++; if (world.objective) objectives++; }
+            else {
+                voids++;
+                if (icons.some(n => n.getAttribute('data-icon') === 'mark.skull') || textsOf(sector).some(t => /\d/.test(t))) return tile.id + ': вместимость показана в пустоте';
+            }
             const wanted = world
                 ? [['asset.materiel', 'Материя', world.materiel || 0], ['mark.skull', 'Вместимость', world.capacity]]
-                : [['mark.skull', 'Вместимость', FS_RULES.AREA_CAP]];
+                : [];
             if (stats.length !== wanted.length) return tile.id + ': неверное число характеристик в ' + area.pos;
             for (let j = 0; j < wanted.length; j++) {
                 const icon = nodesWithClass(stats[j], 'fs-tile-stat-icon')[0];
@@ -761,7 +765,7 @@ screen('setup-ui-3', 'в каждом секторе точные числа и 
             if (!world && !textsOf(sector).includes('Пустота')) return tile.id + ': потеряна пустота';
         }
     }
-    if (!objectives || !doubles) return 'проверка не встретила места цели или повторные ресурсы';
+    if (!objectives || !doubles || !voids || !worlds) return 'проверка не встретила миры, пустоту, места цели или повторные ресурсы';
     return true;
 });
 

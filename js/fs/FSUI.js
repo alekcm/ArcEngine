@@ -1407,9 +1407,7 @@ const FSUI = {
                 const icon = this.iconEl('mark.void', 'fs-tile-void-icon');
                 icon.setAttribute('aria-hidden', 'true');
                 name.append(icon, this.el('span', '', 'Пустота'));
-                const stats = this.el('span', 'fs-tile-stats');
-                stats.append(stat('mark.skull', 'Вместимость', FS_RULES.AREA_CAP));
-                sector.append(name, stats);
+                sector.append(name);
             }
             grid.append(sector);
         }

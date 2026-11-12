@@ -144,6 +144,20 @@ const TABLE = [
     {
         check: 'setup-ui-3',
         file: 'js/fs/FSUI.js',
+        old: '                sector.append(name);',
+        new: "                const stats = this.el('span', 'fs-tile-stats');\n                stats.append(stat('mark.skull', 'Вместимость', FS_RULES.AREA_CAP));\n                sector.append(name, stats);",
+        why: 'вместимость снова нарисована в пустоте',
+    },
+    {
+        check: 'setup-ui-3',
+        file: 'js/fs/FSUI.js',
+        old: '                sector.append(name);',
+        new: "                sector.append(name, this.iconEl('mark.skull'), this.el('span', '', '3'));",
+        why: 'череп и число вернулись в пустоту без контейнера характеристики',
+    },
+    {
+        check: 'setup-ui-3',
+        file: 'js/fs/FSUI.js',
         old: "            forge: ['asset.forge', 'Кузница'], cache: ['asset.cache', 'Запасы'],",
         new: "            forge: ['asset.cache', 'Кузница'], cache: ['asset.cache', 'Запасы'],",
         why: 'кузница показана значком запасов',
