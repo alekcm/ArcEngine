@@ -334,6 +334,7 @@ class FSGame {
         this.setupSubmitting = false;
         if (this.setupKey !== setupKey) {
             FSView.clearSetupPreview(this.view);
+            FSView.clearGhost(this.view);
             this.mode = 'idle'; this.pending = null;
             FSView.clearHighlights(this.view);
             this.setupKey = setupKey;
@@ -376,8 +377,28 @@ class FSGame {
             const exhausted = (this.mode === 'setupUnit' && !(initial.units[this.pending.unit] > 0))
                 || (this.mode === 'setupStructure' && !(initial.structures[this.pending.structure] > 0));
             if (exhausted) { this.mode = 'idle'; this.pending = null; FSView.clearHighlights(this.view); }
+            if (this.mode === 'placeTile') {
+                const inHand = (view.setup.hand || []).some(id => id === this.pending.handTile
+                    && FS_RULES.tileFaces(id).some(face => face.id === this.pending.tile));
+                if (!inHand) {
+                    this.mode = 'idle'; this.pending = null;
+                    FSView.clearSetupPreview(this.view); FSView.clearHighlights(this.view);
+                } else if (this.pending.cell && !(view.setup.legalCells || []).some(c => c.row === this.pending.cell.row && c.col === this.pending.cell.col)) {
+                    this.pending.cell = null; FSView.clearSetupPreview(this.view);
+                }
+            }
+            if (this.mode === 'setupObjective') {
+                const option = (view.setup.objectiveOptions || []).find(o => o.faction === this.pending.faction);
+                if (!option) {
+                    this.mode = 'idle'; this.pending = null;
+                    FSView.clearHighlights(this.view); FSView.clearGhost(this.view);
+                } else if (this.pending.pos && !option.areas.includes(this.pending.pos)) {
+                    this.pending.pos = null; FSView.clearGhost(this.view);
+                }
+            }
         }
-        if (view.phase === 'setup' && this.mode.startsWith('setup')) this.highlightSetupTargets();
+        if (view.phase === 'setup' && this.mode === 'placeTile') this.highlightSetupCells();
+        else if (view.phase === 'setup' && this.mode.startsWith('setup')) this.highlightSetupTargets();
         // The picked pieces may have moved or died — the rings follow the survivors.
         this.selected = this.selected.filter(id => view.units.some(u => u.id === id));
         if (this.mode !== 'move') this.clearSelection();
@@ -631,6 +652,7 @@ class FSGame {
                     onClick: () => {
                         this.status = ''; this.mode = 'setupObjective';
                         this.pending = { faction: option.faction, pos: null };
+                        FSView.clearGhost(this.view);
                         this.highlightSetupTargets(); this.refresh();
                     },
                 };
@@ -729,9 +751,17 @@ class FSGame {
 
     cancelSetupTile() {
         if (this.setupSubmitting) return;
+        this.cancelChoice();
+    }
+
+    // A local cancel also removes the uncommitted board pieces and rings.
+    cancelChoice() {
+        if (this.mode === 'placeTile' || this.mode.startsWith('setup')) {
+            FSView.clearSetupPreview(this.view);
+            FSView.clearGhost(this.view);
+            FSView.clearHighlights(this.view);
+        }
         this.mode = 'idle'; this.pending = null; this.status = '';
-        FSView.clearSetupPreview(this.view);
-        FSView.clearHighlights(this.view);
         this.refresh();
     }
 
@@ -776,12 +806,7 @@ class FSGame {
                 this.refresh();
                 return;
             }
-            if (this.mode !== 'idle') {
-                this.mode = 'idle';
-                this.pending = null;
-                this.status = '';
-                this.refresh();
-            }
+            if (this.mode !== 'idle') this.cancelChoice();
         }, true);
     }
 
@@ -2859,12 +2884,7 @@ class FSGame {
             this.refresh();
             return;
         }
-        if (this.mode !== 'idle') {
-            this.mode = 'idle';
-            this.pending = null;
-            this.status = '';
-            this.refresh();
-        }
+        if (this.mode !== 'idle') this.cancelChoice();
     }
 
     // The click on a model that is over the capacity of its area: it goes back to

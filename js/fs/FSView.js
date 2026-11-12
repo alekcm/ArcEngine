@@ -211,6 +211,36 @@ const FSView = {
         return { x: p.x + (q.cx - 0.5) * this.TILE, y: p.y + (q.cy - 0.5) * this.TILE };
     },
 
+    // A system id can be reused after an undo, including for another tile or cell.
+    tilePlacementKey(sys) {
+        return JSON.stringify([sys.tile, sys.row, sys.col, sys.rotation || 0, sys.owner]);
+    },
+
+    // Remove the physical tile and its worlds, but keep the shared world materials.
+    removeTile(view, id) {
+        const rec = view.tiles.get(id);
+        if (!rec) return;
+        const locationView = view.app.location.view;
+        for (const mesh of [rec.base, rec.top, ...rec.decorations]) World3D.removeObject(locationView, mesh);
+        rec.mat.dispose(false, false);
+        rec.tex.dispose();
+        view.tiles.delete(id);
+        for (const [key, planet] of view.planets) {
+            if (!key.startsWith(id + ':')) continue;
+            for (const mesh of [planet.mesh, planet.clouds, planet.atmosphere, planet.rim]) if (mesh) World3D.removeObject(locationView, mesh);
+            view.planets.delete(key);
+        }
+    },
+
+    // A server snapshot may remove a tile or reuse its id with a new placement.
+    syncTiles(view, state) {
+        const systems = new Map(state.systems.map(sys => [sys.id, sys]));
+        for (const [id, rec] of view.tiles) {
+            const sys = systems.get(id);
+            if (!sys || rec.placement !== this.tilePlacementKey(sys)) this.removeTile(view, id);
+        }
+    },
+
     // The tile of a system (drawn once).
     ensureTile(app, view, sys) {
         if (view.tiles.has(sys.id)) return view.tiles.get(sys.id);
@@ -264,7 +294,7 @@ const FSView = {
             decorations.push(bolt);
         }
 
-        const rec = { base, top, tex, mat, decorations, drawn: '' };
+        const rec = { base, top, tex, mat, decorations, placement: this.tilePlacementKey(sys), drawn: '' };
         view.tiles.set(sys.id, rec);
         return rec;
     },
@@ -852,11 +882,7 @@ const FSView = {
     clearSetupPreview(view) {
         const preview = view && view.setupPreview;
         if (!preview) return;
-        const locationView = view.app.location.view;
-        for (const mesh of [preview.rec.base, preview.rec.top, ...preview.rec.decorations]) World3D.removeObject(locationView, mesh);
-        for (const planet of preview.ghost.planets.values()) for (const mesh of [planet.mesh, planet.clouds, planet.atmosphere, planet.rim]) if (mesh) World3D.removeObject(locationView, mesh);
-        preview.rec.mat.dispose(false, false);
-        preview.rec.tex.dispose();
+        this.removeTile(preview.ghost, preview.sys.id);
         view.setupPreview = null;
     },
 
@@ -1252,6 +1278,8 @@ const FSView = {
     // The whole board from the state.
     update(app, view, state) {
         this.measure(app, view, state);
+        // Reconcile before enabling slots: a rolled-back tile must not cover one.
+        this.syncTiles(view, state);
         // The tiles.
         for (const sys of state.systems) {
             const rec = this.ensureTile(app, view, sys);
@@ -2256,7 +2284,7 @@ const FSView = {
         const ring = BABYLON.MeshBuilder.CreateTorus('fs-ghost-ring', { diameter: 30, thickness: 1.6, tessellation: 28 }, scene);
         ring.parent = root; ring.material = gem; ring.isPickable = false;
         for (const mesh of [disc, ring]) World3D.addObject(app.location.view, mesh, 'prop', { castShadow: false, ink: false, outline: false });
-        view.ghost = { root, disc, ring };
+        view.ghost = { root, disc, ring, mat: gem };
         return root;
     },
 
@@ -2265,6 +2293,8 @@ const FSView = {
         if (!ghost) return;
         World3D.removeObject(view.app.location.view, ghost.disc);
         World3D.removeObject(view.app.location.view, ghost.ring);
+        ghost.root.dispose();
+        ghost.mat.dispose(false, false);
         view.ghost = null;
     },
 

@@ -1226,7 +1226,7 @@ screen('storm-ghost-1', '«Смертоукасатели»: обе отмече
                 } },
             };
             const app = { location: { terrain: { heightAt: () => 0 } } };
-            const view = { scene: {}, metrics: { originX: 0, originY: 0 }, stormPending: 'sx',
+            const view = { scene: {}, tiles: new Map(), metrics: { originX: 0, originY: 0 }, stormPending: 'sx',
                 stormGhosts: ghosts, material: () => ({}) };
             FS_VIEW.update(app, view, st);
         } finally {
@@ -1402,6 +1402,440 @@ function chipScene(opts, check) {
         ctx.document.getElementById = oldGet;
     }
 }
+
+// Run the real board update and picking against Babylon's NullEngine. Only
+// texture painting is replaced: the tile, planet and slot meshes stay real.
+function setupUndoScene(check) {
+    return chipScene({}, ({ B, scene, view }) => {
+        const app = view.app;
+        Object.assign(app.location, { width: 800, height: 600, terrain: { heightAt: () => 0 } });
+        const originalTexture = B.DynamicTexture;
+        const saved = { drawTile: FS_VIEW.drawTile, planetMaterial: FS_VIEW.planetMaterial, drawCombat: FS_VIEW.drawCombat };
+        try {
+            B.DynamicTexture = class extends B.Texture {
+                constructor(name, size, scene) { super(null, scene); this.name = name; }
+                getContext() { return {}; }
+                update() {}
+            };
+            FS_VIEW.drawTile = (v, sys, rec) => { rec.lastFace = sys.tile; rec.lastRotation = sys.rotation; };
+            FS_VIEW.planetMaterial = (v, name) => {
+                if (!v.planetMaterials.has(name)) {
+                    const mat = part => new B.StandardMaterial('test-world:' + name + ':' + part, scene);
+                    v.planetMaterials.set(name, { surface: mat('surface'), clouds: mat('clouds'), rim: mat('rim'), glow: mat('glow') });
+                }
+                return v.planetMaterials.get(name);
+            };
+            FS_VIEW.drawCombat = nothing;
+            const display = (state, seat) => FS_VIEW.update(app, view, FS_RULES.view(state, seat));
+            const hit = cell => {
+                const pos = FS_VIEW.tilePos(app, cell, view.metrics);
+                const ray = new B.Ray(new B.Vector3(pos.x, 500, pos.y), new B.Vector3(0, -1, 0));
+                for (const mesh of scene.meshes) mesh.computeWorldMatrix(true);
+                const pick = scene.pickWithRay(ray, mesh => mesh.isPickable && mesh.isEnabled());
+                return pick && pick.pickedMesh && pick.pickedMesh.metadata;
+            };
+            const checkWorlds = sys => {
+                for (const area of sys.areas) {
+                    const key = sys.id + ':' + area.pos, planet = view.planets.get(key);
+                    if (!area.world) {
+                        if (planet && planet.mesh.isEnabled()) return key + ': лишняя планета в пустоте';
+                        continue;
+                    }
+                    if (!planet || !planet.mesh.isEnabled()) return key + ': нет планеты';
+                    if (planet.mesh.metadata.world !== area.world.name || planet.mesh.material.name !== 'test-world:' + area.world.name + ':surface') return key + ': осталась поверхность прежнего мира';
+                    const pos = FS_VIEW.discAt(app, sys, area.pos, view.metrics);
+                    if (Math.abs(planet.mesh.position.x - pos.x) > .01 || Math.abs(planet.mesh.position.z - pos.z) > .01) return key + ': планета не на своей клетке';
+                }
+                return null;
+            };
+            return check({ scene, view, display, hit, checkWorlds });
+        } finally {
+            B.DynamicTexture = originalTexture;
+            Object.assign(FS_VIEW, saved);
+        }
+    });
+}
+
+head('Отмена при сборке карты');
+
+screen('setup-undo-1', 'отменённый тайл не перекрывает клетку, другую сторону можно поставить снова', () => {
+    return setupUndoScene(({ scene, view, display, hit, checkWorlds }) => {
+        const live = FS_RULES.newGame({ seed: 42, players: SEAT_PLAYERS, interactiveSetup: true });
+        const seat = live.setup.turn, cell = FS_RULES.setupLegalCells(live)[0];
+        const [a, b] = FS_RULES.tileFaces(live.setup.hands[seat][0]);
+        const before = JSON.parse(JSON.stringify(live));
+        display(live, seat);
+        if (!hit(cell) || hit(cell).fs !== 'setupCell') return 'первую клетку нельзя выбрать';
+        const first = FS_RULES.apply(live, seat, { type: 'placeSystemTile', tile: a.id, row: cell.row, col: cell.col });
+        if (!first.ok) return 'тайл не поставлен: ' + first.error;
+        display(live, seat);
+        const old = view.tiles.get('sys1'), worlds = [...view.planets.values()];
+        if (!old || !worlds.length) return 'исходный тайл или его миры не нарисованы';
+        display(before, seat);
+        const picked = hit(cell);
+        if (!picked || picked.fs !== 'setupCell') return 'после отмены клетку закрывает прежний тайл: ' + JSON.stringify(picked);
+        if (view.tiles.has('sys1') || [old.base, old.top, ...old.decorations].some(mesh => !mesh.isDisposed())) return 'снятый тайл остался в сцене';
+        if (worlds.some(planet => [planet.mesh, planet.clouds, planet.atmosphere, planet.rim].some(mesh => !mesh.isDisposed()))) return 'миры снятого тайла остались в сцене';
+        if (scene.materials.includes(old.mat) || scene.textures.includes(old.tex)) return 'материал или текстура снятого тайла остались в сцене';
+        const second = FS_RULES.apply(before, seat, { type: 'placeSystemTile', tile: b.id, rotation: 1, row: cell.row, col: cell.col });
+        if (!second.ok) return 'после отмены нельзя поставить другую сторону: ' + second.error;
+        display(before, seat);
+        const current = view.tiles.get('sys1');
+        if (!current || current === old || current.lastFace !== b.id || current.lastRotation !== 1) return 'повторно поставлена прежняя сторона или потерян поворот';
+        return checkWorlds(before.systems[0]) || true;
+    });
+});
+
+screen('setup-undo-2', 'после отката тот же id системы может обозначать другую клетку и сторону', () => {
+    return setupUndoScene(({ view, display, hit, checkWorlds }) => {
+        const live = FS_RULES.newGame({ seed: 42, players: SEAT_PLAYERS, interactiveSetup: true });
+        const firstSeat = live.setup.turn;
+        const first = FS_RULES.apply(live, firstSeat, { type: 'placeSystemTile', tile: live.setup.hands[firstSeat][0], row: 0, col: 0 });
+        if (!first.ok) return 'первый тайл не поставлен: ' + first.error;
+        const finish = FS_RULES.apply(live, firstSeat, { type: 'finishSetupForces' });
+        if (!finish.ok) return 'этап сил не завершился: ' + finish.error;
+        if (live.setup.stage === 'objectives') {
+            const option = FS_RULES.setupObjectiveOptions(live)[0];
+            if (!option) return 'нет жетона цели';
+            const objective = FS_RULES.apply(live, firstSeat, { type: 'setupObjective', faction: option.faction, pos: option.areas[0] });
+            if (!objective.ok) return 'цель не поставлена: ' + objective.error;
+        }
+        if (live.setup.stage !== 'tile' || live.setup.turn === firstSeat) return 'очередь не перешла второму игроку';
+        const seat = live.setup.turn, cells = FS_RULES.setupLegalCells(live), [a, b] = FS_RULES.tileFaces(live.setup.hands[seat][0]);
+        if (cells.length < 2) return 'нечего проверить: нет второй клетки';
+        const before = JSON.parse(JSON.stringify(live));
+        const placed = FS_RULES.apply(live, seat, { type: 'placeSystemTile', tile: a.id, row: cells[0].row, col: cells[0].col });
+        if (!placed.ok) return 'второй тайл не поставлен: ' + placed.error;
+        // A reconnect may skip the intermediate empty snapshot entirely. Each
+        // placement component must be sufficient to invalidate the old mesh.
+        const cases = [
+            { label: 'другая клетка', tile: a.id, rotation: 0, cell: cells[1] },
+            { label: 'другая сторона', tile: b.id, rotation: 0, cell: cells[0] },
+            { label: 'другой поворот', tile: a.id, rotation: 2, cell: cells[0] },
+            { label: 'всё сразу', tile: b.id, rotation: 2, cell: cells[1] },
+        ];
+        for (const item of cases) {
+            const alternative = JSON.parse(JSON.stringify(before));
+            const replaced = FS_RULES.apply(alternative, seat, { type: 'placeSystemTile', tile: item.tile, rotation: item.rotation, row: item.cell.row, col: item.cell.col });
+            if (!replaced.ok) return item.label + ': тайл не поставлен: ' + replaced.error;
+            display(live, seat);
+            const stable = view.tiles.get('sys1'), old = view.tiles.get('sys2');
+            if (!stable || !old) return item.label + ': не нарисованы обе системы';
+            display(alternative, seat);
+            const current = view.tiles.get('sys2'), expected = alternative.systems.find(sys => sys.id === 'sys2');
+            if (view.tiles.get('sys1') !== stable) return item.label + ': неизменённая система пересоздана';
+            if (!current || current === old || !old.top.isDisposed()) return item.label + ': повторно использован старый тайл sys2';
+            if (current.lastFace !== item.tile || current.lastRotation !== item.rotation) return item.label + ': старая сторона или поворот сохранились';
+            const position = FS_VIEW.tilePos(view.app, expected, view.metrics);
+            if (Math.abs(current.top.position.x - position.x) > .01 || Math.abs(current.top.position.z - position.y) > .01) return item.label + ': новый тайл остался на прежней клетке';
+            if (item.cell !== cells[0]) {
+                const oldHit = hit(cells[0]);
+                if (oldHit && oldHit.system === 'sys2') return item.label + ': старый тайл по-прежнему перехватывает клики';
+            }
+            const problem = checkWorlds(expected);
+            if (problem) return item.label + ': ' + problem;
+            display(alternative, seat);
+            if (view.tiles.get('sys2') !== current) return item.label + ': неизменённый тайл пересоздаётся при каждом обновлении';
+        }
+        return true;
+    });
+});
+
+screen('setup-undo-3', 'отмена этапа целей убирает неподтверждённый жетон и выбор', () => {
+    return setupUndoScene(({ scene, view }) => {
+        const live = FS_RULES.newGame({ seed: 42, players: SEAT_PLAYERS, interactiveSetup: true });
+        const seat = live.setup.turn;
+        const placed = FS_RULES.apply(live, seat, { type: 'placeSystemTile', tile: live.setup.hands[seat][0], row: 0, col: 0 });
+        if (!placed.ok) return 'тайл не поставлен: ' + placed.error;
+        const before = JSON.parse(JSON.stringify(live));
+        const finish = FS_RULES.apply(live, seat, { type: 'finishSetupForces' });
+        if (!finish.ok || live.setup.stage !== 'objectives') return 'этап целей не начался';
+        const option = FS_RULES.setupObjectiveOptions(live)[0];
+        FS_VIEW.showGhost(view.app, view, { x: 400, y: 0, z: 300 }, '#ffffff');
+        const ghost = view.ghost, oldUpdate = FS_VIEW.update, oldShow = FSUI.show;
+        const game = Object.create(FS_GAME.prototype);
+        Object.assign(game, {
+            app: view.app, view, state: FS_RULES.view(live, seat),
+            setupKey: ['objectives', seat, live.setup.currentSystem].join(':'),
+            lastSeat: seat, lastPhase: 'setup', lastRound: live.round,
+            mode: 'setupObjective', pending: { faction: option.faction, pos: option.areas[0] }, selected: [],
+            updateStormGhosts: nothing, clearSelection: nothing, refresh: nothing,
+        });
+        try {
+            FS_VIEW.update = nothing; FSUI.show = nothing;
+            game.onState(FS_RULES.view(before, seat));
+        } finally {
+            FS_VIEW.update = oldUpdate; FSUI.show = oldShow;
+        }
+        if (game.mode !== 'idle' || game.pending) return 'выбор цели пережил отмену этапа';
+        if (view.ghost || !ghost.disc.isDisposed() || !ghost.ring.isDisposed()) return 'призрак отменённой цели остался на доске';
+        if (!ghost.root.isDisposed() || scene.materials.includes(ghost.mat)) return 'объект или материал призрака остался в сцене';
+        return true;
+    });
+});
+
+screen('setup-undo-4', 'откат жетона цели перепроверяет незавершённый выбор в партии на четверых', () => {
+    return setupUndoScene(({ view }) => {
+        const players = SEAT_PLAYERS.concat({ faction: 'орки', name: 'Третий', id: 'p2' }, { faction: 'эльдары', name: 'Четвёртый', id: 'p3' });
+        for (const [pool, remainsLegal] of [
+            [['некроны', 'некроны', 'орки', 'эльдары'], false],
+            [['некроны', 'некроны', 'орки', 'орки', 'эльдары', 'эльдары'], true],
+        ]) {
+            const live = FS_RULES.newGame({ seed: 42, players, interactiveSetup: true });
+            const seat = live.setup.turn;
+            const placed = FS_RULES.apply(live, seat, { type: 'placeSystemTile', tile: live.setup.hands[seat][0], row: 0, col: 0 });
+            if (!placed.ok) return 'тайл не поставлен: ' + placed.error;
+            const finish = FS_RULES.apply(live, seat, { type: 'finishSetupForces' });
+            if (!finish.ok || live.setup.stage !== 'objectives') return 'этап целей не начался';
+            live.players[seat].objectivePool = pool.slice();
+            const before = JSON.parse(JSON.stringify(live));
+            const option = FS_RULES.setupObjectiveOptions(live).find(o => o.faction === 'некроны');
+            const first = FS_RULES.apply(live, seat, { type: 'setupObjective', faction: option.faction, pos: option.areas[0] });
+            const next = FS_RULES.setupObjectiveOptions(live).find(o => o.faction === 'орки');
+            if (!first.ok || !next || live.setup.stage !== 'objectives') return 'не подготовлен выбор второго жетона';
+            FS_VIEW.showGhost(view.app, view, { x: 400, y: 0, z: 300 }, '#ffffff');
+            const ghost = view.ghost, oldUpdate = FS_VIEW.update, oldShow = FSUI.show;
+            const game = Object.create(FS_GAME.prototype);
+            Object.assign(game, {
+                app: view.app, view, state: FS_RULES.view(live, seat),
+                setupKey: ['objectives', seat, live.setup.currentSystem].join(':'),
+                lastSeat: seat, lastPhase: 'setup', lastRound: live.round,
+                mode: 'setupObjective', pending: { faction: 'орки', pos: next.areas[0] }, selected: [],
+                updateStormGhosts: nothing, clearSelection: nothing, highlightSetupTargets: nothing, refresh: nothing,
+            });
+            try {
+                FS_VIEW.update = nothing; FSUI.show = nothing;
+                game.onState(FS_RULES.view(before, seat));
+            } finally {
+                FS_VIEW.update = oldUpdate; FSUI.show = oldShow;
+            }
+            if (remainsLegal) {
+                if (game.mode !== 'setupObjective' || game.pending?.faction !== 'орки' || view.ghost !== ghost) return 'допустимый выбор зря сброшен';
+                // The faction can still be legal while its selected world is no
+                // longer free in a newer snapshot.
+                game.pending.pos = option.areas[0];
+                try {
+                    FS_VIEW.update = nothing; FSUI.show = nothing;
+                    game.onState(FS_RULES.view(live, seat));
+                } finally {
+                    FS_VIEW.update = oldUpdate; FSUI.show = oldShow;
+                }
+                if (game.mode !== 'setupObjective' || game.pending?.faction !== 'орки' || game.pending.pos !== null || view.ghost) return 'занятый мир не снят с выбора';
+            } else {
+                if (game.mode !== 'idle' || game.pending || view.ghost || !ghost.disc.isDisposed()) return 'недопустимый жетон остался выбран после отмены';
+                const panel = { title: '', text: '', status: '', actions: [] };
+                game.panelSetup(game.state, panel);
+                if (!panel.hand || panel.hand.length !== 1 || !/Некроны/.test(panel.hand[0].label)) return 'панель не предлагает допустимый жетон';
+            }
+        }
+        return true;
+    });
+});
+
+screen('setup-undo-5', 'предпросмотр не перехватывает клики и полностью очищается при смене стороны', () => {
+    return setupUndoScene(({ scene, view, display, hit }) => {
+        const live = FS_RULES.newGame({ seed: 42, players: SEAT_PLAYERS, interactiveSetup: true });
+        const seat = live.setup.turn, cell = FS_RULES.setupLegalCells(live)[0];
+        const faces = FS_RULES.tileFaces(live.setup.hands[seat][0]);
+        const state = FS_RULES.view(live, seat);
+        display(live, seat);
+        const meshCount = scene.meshes.length;
+        let warmMaterials = 0, warmTextures = 0;
+        for (let i = 0; i < 6; i++) {
+            FS_VIEW.showSetupPreview(view.app, view, state, faces[i % 2], cell, i % 4);
+            const preview = view.setupPreview, worlds = [...preview.ghost.planets.values()];
+            if (!hit(cell) || hit(cell).fs !== 'setupCell') return 'предпросмотр закрывает выбор клетки';
+            FS_VIEW.clearSetupPreview(view);
+            if (view.setupPreview || [preview.rec.base, preview.rec.top, ...preview.rec.decorations].some(mesh => !mesh.isDisposed())) return 'предпросмотр тайла не удалён';
+            if (worlds.some(planet => [planet.mesh, planet.clouds, planet.atmosphere, planet.rim].some(mesh => !mesh.isDisposed()))) return 'миры предпросмотра остались в сцене';
+            if (scene.materials.includes(preview.rec.mat) || scene.textures.includes(preview.rec.tex) || scene.meshes.length !== meshCount) return 'ресурсы предпросмотра накапливаются';
+            if (i === 1) { warmMaterials = scene.materials.length; warmTextures = scene.textures.length; }
+            if (i > 1 && (scene.materials.length !== warmMaterials || scene.textures.length !== warmTextures)) return 'повторные смены стороны накапливают ресурсы';
+        }
+        return true;
+    });
+});
+
+screen('setup-undo-6', 'кнопка, ПКМ и Escape снимают предпросмотр тайла и подсветку', () => {
+    return setupUndoScene(({ scene, view, display, hit }) => {
+        const live = FS_RULES.newGame({ seed: 42, players: SEAT_PLAYERS, interactiveSetup: true });
+        const seat = live.setup.turn, cell = FS_RULES.setupLegalCells(live)[0];
+        const state = FS_RULES.view(live, seat), face = FS_RULES.tileFaces(state.setup.hand[0])[0];
+        display(live, seat);
+        const game = Object.create(FS_GAME.prototype);
+        Object.assign(game, { app: view.app, view, state, status: '', refresh: nothing });
+        const oldAdd = ctx.addEventListener, oldPick = scene.pick;
+        let escape;
+        try {
+            ctx.addEventListener = (type, handler) => { if (type === 'keydown') escape = handler; };
+            game.bindUndoKey();
+            scene.pick = () => ({ hit: false });
+            for (const action of ['кнопка', 'ПКМ', 'Escape']) {
+                game.mode = 'placeTile'; game.pending = { handTile: state.setup.hand[0], tile: face.id, rotation: 0, cell };
+                FS_VIEW.showSetupPreview(view.app, view, state, face, cell, 0);
+                const preview = view.setupPreview;
+                FS_VIEW.highlight(view, [{ x: 400, y: 10, z: 300 }]);
+                if (action === 'кнопка') game.plaqueInfo(state).view.actions.find(a => a.label === 'Отмена').onClick();
+                else if (action === 'ПКМ') game.onRightClick(0, 0);
+                else escape({ key: 'Escape', code: 'Escape', target: null });
+                if (game.mode !== 'idle' || game.pending) return action + ': выбор остался';
+                if (view.setupPreview || !preview.rec.top.isDisposed()) return action + ': предпросмотр остался на доске';
+                if (view.highlights.some(ring => ring.isEnabled())) return action + ': подсветка осталась на доске';
+                if (!hit(cell) || hit(cell).fs !== 'setupCell') return action + ': клетка больше не доступна';
+            }
+        } finally {
+            ctx.addEventListener = oldAdd; scene.pick = oldPick;
+        }
+        return true;
+    });
+});
+
+screen('setup-undo-7', 'отмена и смена жетона цели удаляют его неподтверждённый призрак', () => {
+    return setupUndoScene(({ scene, view }) => {
+        const players = SEAT_PLAYERS.concat({ faction: 'орки', name: 'Третий', id: 'p2' }, { faction: 'эльдары', name: 'Четвёртый', id: 'p3' });
+        const live = FS_RULES.newGame({ seed: 42, players, interactiveSetup: true });
+        const seat = live.setup.turn;
+        const placed = FS_RULES.apply(live, seat, { type: 'placeSystemTile', tile: live.setup.hands[seat][0], row: 0, col: 0 });
+        const finish = FS_RULES.apply(live, seat, { type: 'finishSetupForces' });
+        if (!placed.ok || !finish.ok || live.setup.stage !== 'objectives') return 'этап целей не начался';
+        const state = FS_RULES.view(live, seat), options = state.setup.objectiveOptions;
+        if (options.length < 2) return 'не подготовлен выбор между двумя жетонами';
+        const game = Object.create(FS_GAME.prototype);
+        Object.assign(game, { app: view.app, view, state, status: '', refresh: nothing, highlightSetupTargets: nothing });
+        const oldAdd = ctx.addEventListener, oldPick = scene.pick;
+        let escape;
+        try {
+            ctx.addEventListener = (type, handler) => { if (type === 'keydown') escape = handler; };
+            game.bindUndoKey();
+            scene.pick = () => ({ hit: false });
+            for (const action of ['кнопка', 'ПКМ', 'Escape', 'тот же жетон', 'другой жетон']) {
+                game.mode = 'setupObjective'; game.pending = { faction: options[0].faction, pos: options[0].areas[0] };
+                FS_VIEW.showGhost(view.app, view, { x: 400, y: 0, z: 300 }, '#ffffff');
+                const ghost = view.ghost;
+                FS_VIEW.highlight(view, [{ x: 400, y: 10, z: 300 }]);
+                if (action === 'кнопка') game.plaqueInfo(state).view.actions.find(a => a.label === 'Отмена').onClick();
+                else if (action === 'ПКМ') game.onRightClick(0, 0);
+                else if (action === 'Escape') escape({ key: 'Escape', code: 'Escape', target: null });
+                else {
+                    const panel = { title: '', text: '', status: '', actions: [] };
+                    game.panelSetup(state, panel);
+                    panel.hand[action === 'другой жетон' ? 1 : 0].onClick();
+                }
+                if (view.ghost || !ghost.root.isDisposed() || scene.materials.includes(ghost.mat)) return action + ': призрак остался на доске';
+                if (action === 'ПКМ' || action === 'Escape') {
+                    if (game.mode !== 'idle' || game.pending) return action + ': выбор остался';
+                    if (view.highlights.some(ring => ring.isEnabled())) return action + ': подсветка осталась на доске';
+                } else {
+                    const expected = action === 'другой жетон' ? options[1].faction : options[0].faction;
+                    if (game.mode !== 'setupObjective' || game.pending?.faction !== expected || game.pending.pos) return action + ': неверный выбор жетона';
+                }
+            }
+        } finally {
+            ctx.addEventListener = oldAdd; scene.pick = oldPick;
+        }
+        return true;
+    });
+});
+
+screen('setup-undo-8', 'после пропущенных снимков перепроверяется выбранная клетка и рука', () => {
+    return setupUndoScene(({ scene, view, display, hit }) => {
+        const copy = value => JSON.parse(JSON.stringify(value));
+        const live = FS_RULES.newGame({ seed: 42, players: SEAT_PLAYERS, interactiveSetup: true });
+        const advance = (state, cell) => {
+            const seat = state.setup.turn;
+            const placed = FS_RULES.apply(state, seat, { type: 'placeSystemTile', tile: state.setup.hands[seat][0], row: cell.row, col: cell.col });
+            if (!placed.ok) throw new Error('не удалось поставить тайл: ' + placed.error);
+            // Place as many real starting forces as needed to finish this tile.
+            for (let attempts = 0; state.setup.stage === 'forces' && attempts < 20; attempts++) {
+                const finish = FS_RULES.apply(state, seat, { type: 'finishSetupForces' });
+                if (finish.ok) break;
+                const sys = state.systems.find(s => s.id === state.setup.currentSystem), initial = state.players[seat].initialForces;
+                let placedForce = false;
+                for (const [id, count] of Object.entries(initial.units)) {
+                    if (!count) continue;
+                    const def = FS_RULES.unitDef(state, seat, id);
+                    for (const area of sys.areas) {
+                        if ((def.type === 'ground') !== !!area.world || FS_RULES.unitsAt(state, sys.id, area.pos).length >= FS_RULES.capacity(state, sys.id, area.pos)) continue;
+                        if (FS_RULES.apply(state, seat, { type: 'setupUnit', unit: id, pos: area.pos }).ok) { placedForce = true; break; }
+                    }
+                    if (placedForce) break;
+                }
+                if (!placedForce) for (const [id, count] of Object.entries(initial.structures)) {
+                    if (!count) continue;
+                    for (const area of sys.areas) {
+                        if (FS_RULES.apply(state, seat, { type: 'setupStructure', structure: id, pos: area.pos }).ok) { placedForce = true; break; }
+                    }
+                    if (placedForce) break;
+                }
+                if (!placedForce) throw new Error('не удалось разместить начальные силы');
+            }
+            if (state.setup.stage === 'forces') throw new Error('силы не завершены');
+            while (state.setup.stage === 'objectives' && state.setup.turn === seat) {
+                const option = FS_RULES.setupObjectiveOptions(state)[0];
+                const result = FS_RULES.apply(state, seat, { type: 'setupObjective', faction: option.faction, pos: option.areas[0] });
+                if (!result.ok) throw new Error('не удалось поставить цель: ' + result.error);
+            }
+        };
+        advance(live, { row: 0, col: 0 });
+        advance(live, FS_RULES.setupLegalCells(live)[0]);
+        const choices = FS_RULES.setupLegalCells(live), original = copy(live), alternative = copy(live);
+        advance(original, choices[0]); advance(alternative, choices[1]);
+        const seat = original.setup.turn, oldState = FS_RULES.view(original, seat), newState = FS_RULES.view(alternative, seat);
+        if (oldState.setup.stage !== 'tile' || newState.setup.stage !== 'tile' || !newState.setup.myTurn) return 'не подготовлены два снимка одного хода';
+        const isCell = (a, b) => a.row === b.row && a.col === b.col;
+        const common = oldState.setup.legalCells.find(c => newState.setup.legalCells.some(x => isCell(c, x)));
+        const lost = oldState.setup.legalCells.find(c => !newState.setup.legalCells.some(x => isCell(c, x)));
+        const fresh = newState.setup.legalCells.find(c => !oldState.setup.legalCells.some(x => isCell(c, x)));
+        if (!common || !lost || !fresh) return 'не подготовлены изменившиеся клетки';
+        const handTile = oldState.setup.hand[0], face = FS_RULES.tileFaces(handTile)[0], sent = [];
+        const game = Object.create(FS_GAME.prototype);
+        Object.assign(game, { app: view.app, view, state: oldState, setupKey: ['tile', seat, null].join(':'),
+            lastSeat: seat, lastPhase: 'setup', lastRound: oldState.round, selected: [], status: '',
+            updateStormGhosts: nothing, clearSelection: nothing, refresh: nothing,
+            net: { cmd: cmd => { sent.push(cmd); return true; } } });
+        const oldShow = FSUI.show, oldUnit = FS_VIEW.addFactionUnit, oldStructure = FS_VIEW.structureModel, oldPick = scene.pick;
+        try {
+            FSUI.show = nothing; FS_VIEW.addFactionUnit = nothing; FS_VIEW.structureModel = nothing;
+            const choose = cell => {
+                display(original, seat); game.state = oldState;
+                game.mode = 'placeTile'; game.pending = { handTile, tile: face.id, rotation: 1, cell };
+                FS_VIEW.showSetupPreview(view.app, view, oldState, face, cell, 1);
+                game.highlightSetupCells();
+                return view.setupPreview;
+            };
+            const ringsMatch = () => {
+                const actual = view.highlights.filter(r => r.isEnabled()).map(r => r.position.x + ':' + r.position.z).sort();
+                const expected = newState.setup.legalCells.map(c => { const p = FS_VIEW.tilePos(view.app, c, view.metrics); return p.x + ':' + p.y; }).sort();
+                return JSON.stringify(actual) === JSON.stringify(expected);
+            };
+            let preview = choose(common);
+            game.onState(newState);
+            if (game.mode !== 'placeTile' || !isCell(game.pending.cell, common) || view.setupPreview !== preview) return 'допустимая клетка или тайл зря сброшены';
+            if (!ringsMatch()) return 'подсветка не обновилась после пропущенных снимков';
+            preview = choose(lost);
+            game.onState(newState);
+            if (game.mode !== 'placeTile' || game.pending?.tile !== face.id || game.pending.rotation !== 1 || game.pending.cell !== null) return 'недопустимая клетка не снята или потерян тайл';
+            if (view.setupPreview || !preview.rec.top.isDisposed() || !ringsMatch()) return 'прежний предпросмотр или подсветка остались';
+            const picked = hit(fresh);
+            if (!picked || picked.fs !== 'setupCell') return 'новую допустимую клетку нельзя выбрать';
+            scene.pick = () => ({ hit: true, pickedMesh: { metadata: picked } });
+            game.onClick(0, 0);
+            if (!game.pending.cell || !isCell(game.pending.cell, fresh) || !view.setupPreview) return 'повторный выбор клетки не работает';
+            game.confirmSetupTile();
+            if (sent.length !== 1 || sent[0].tile !== face.id || sent[0].rotation !== 1 || !isCell(sent[0], fresh)) return 'подтверждение отправляет неверную постановку';
+            const replay = FS_RULES.apply(copy(alternative), seat, sent[0]);
+            if (!replay.ok) return 'сервер отклонил новую постановку: ' + replay.error;
+            preview = choose(common);
+            const withoutTile = copy(newState);
+            withoutTile.setup.hand = withoutTile.setup.hand.filter(id => id !== handTile);
+            game.onState(withoutTile);
+            if (game.mode !== 'idle' || game.pending || view.setupPreview || !preview.rec.top.isDisposed()) return 'выбор тайла, которого больше нет в руке, остался';
+        } finally {
+            FSUI.show = oldShow; FS_VIEW.addFactionUnit = oldUnit; FS_VIEW.structureModel = oldStructure; scene.pick = oldPick;
+        }
+        return true;
+    });
+});
 
 const chipItem = (key, x, y, z) => ({ key, x, y, z, hp: 3, morale: 2, label: key, routed: false });
 const closePx = (a, b) => Number.isFinite(a) && Math.abs(a - b) < 0.15;
