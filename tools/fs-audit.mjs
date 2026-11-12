@@ -7010,10 +7010,12 @@ rule('storm-11', '«… вы можете сбросить эту карту» �
 });
 
 rule('storm-9', 'Movement is a shift relative to the CURRENT storm edge', () => {
-    const st = empty();
+    // Три системы в ряду: и исходная, и целевая грань между двумя тайлами.
+    const st = wideEmpty();
     const a = st.systems.find(x => x.row === 1 && x.col === 0);
     const b = st.systems.find(x => x.row === 1 && x.col === 1);
-    if (!a || !b) return 'карта без двух соседних систем';
+    const c = st.systems.find(x => x.row === 1 && x.col === 2);
+    if (!a || !b || !c) return 'карта без трёх соседних систем';
     const storm = FS_WARP_STORMS.create(st, 'sx', { system: a.id, side: 'E' });
     st.storms = [storm];
     st.phase = 'refresh';
@@ -7053,11 +7055,12 @@ rule('storm-12', '«moves it in one of the two directions shown on the Warp Stor
             dir + ' скользит на соседнюю грань');
         eq(FS_RULES.stormEdge(st, t).kind, 'H', dir + ' не поворачивает шторм');
     }
-    // Вертикальный шторм читают повёрнутым горизонтально: N/S скользят вдоль
-    // него самого — для карты это вверх и вниз.
+    // В рамке стоячего шторма N/S сдвигают его на параллельные грани по
+    // бокам (как на рисунке), W/E — вдоль него. Западный конец лежачего
+    // шторма — северный конец стоячего, как в уже проверенных S-кривых.
     const v = { id: 'sv', system: at(1, 0).id, side: 'E', moved: false };
-    for (const [dir, sys, side] of [['N', at(0, 0), 'E'], ['S', at(2, 0), 'E'],
-        ['E', at(1, 1), 'E'], ['W', at(1, 0), 'W']]) {
+    for (const [dir, sys, side] of [['N', at(1, 1), 'E'], ['S', at(1, 0), 'W'],
+        ['E', at(2, 0), 'E'], ['W', at(0, 0), 'E']]) {
         const t = FS_RULES.stormTarget(st, v, dir);
         if (!t) return dir + ' с вертикальной грани не вышел';
         eq(FS_RULES.edgeKey(st, t), FS_RULES.edgeKey(st, { system: sys.id, side }),
@@ -7130,6 +7133,91 @@ rule('storm-14', '«the two directions shown on the Warp Storm icon» — S-кр
     eq(moved.ok, true, 'разворот приказом проходит: ' + (moved.error || ''));
     eq(FS_RULES.edgeKey(st, st.storms[0]), FS_RULES.edgeKey(st, { system: at(0, 1).id, side: 'W' }),
         'приказ поставил шторм на грань разворота');
+    return true;
+});
+
+rule('storm-15', '«the two directions shown on the Warp Storm icon» — «Смертоукасатели»: стоячий шторм сдвигается на параллельную грань слева или справа', () => {
+    const card = FS_DATA.events.find(e => e.faction === 'некроны' && e.name === 'Смертоукасатели');
+    if (!card) return 'нет карты «Смертоукасатели»';
+    eq(card.storm.slice().sort().join(','), 'N,S', 'у карты обе прямые стрелки');
+    const scene = edge => {
+        const st = FS_RULES.newReadyGame({ seed: 7, players: [
+            { faction: 'некроны', name: 'P0' }, { faction: 'имперская-гвардия', name: 'P1' },
+        ] });
+        st.phase = 'refresh';
+        st.eventsLeft = 2;
+        st.event = { seat: 0, drawn: [card.name], chosen: card.name, card };
+        st.storms = [FS_WARP_STORMS.create(st, 'sx', edge)];
+        return st;
+    };
+    const ways = st => FS_RULES.stormOptions(st, 0).filter(o => o.storm === 'sx');
+    const keys = st => ways(st).map(o => o.target.key).sort();
+    const start = { kind: 'V', row: 0, col: 1 };
+    // Как на рисунке: выбранная общая граница двух верхних систем, а красные
+    // отметки — внешняя левая и внешняя правая границы тех же систем. У рисунка
+    // нет подписей N/S, поэтому проверяем обе грани, не назначая их стрелкам.
+    for (const destination of ['V:0:0', 'V:0:2']) {
+        const st = scene(start);
+        eq(keys(st), ['V:0:0', 'V:0:2'], 'предложены ровно две отмеченные вертикальные грани');
+        const option = ways(st).find(o => o.target.key === destination);
+        if (!option) return 'нет варианта на ' + destination;
+        eq(option.target.edge.kind, 'V', 'шторм остаётся вертикальным');
+        const moved = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 'sx', dir: option.dir });
+        eq(moved.ok, true, 'команда на ' + destination + ': ' + (moved.error || ''));
+        eq(FS_WARP_STORMS.keyOf(st.storms[0]), destination, 'шторм встал на выбранную грань');
+        eq(st.storms[0].moved, true, 'шторм помечен сдвинутым');
+        eq(!!st.event.stormMoved, true, 'событие получило отметку движения');
+    }
+    // С внешнего края назад на доску можно, за край — нельзя.
+    eq(keys(scene({ kind: 'V', row: 0, col: 0 })), ['V:0:1'], 'с левого края доступен только сосед справа');
+    eq(keys(scene({ kind: 'V', row: 0, col: 2 })), ['V:0:1'], 'с правого края доступен только сосед слева');
+    // Занятая боковая грань закрыта именно занятостью, а не картой или фазой.
+    const st = scene(start);
+    const blocked = ways(st).find(o => o.target.key === 'V:0:0');
+    st.storms.push(FS_WARP_STORMS.create(st, 'other', { kind: 'V', row: 0, col: 0 }));
+    eq(keys(st), ['V:0:2'], 'занятая левая грань не предложена');
+    const refusal = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 'sx', dir: blocked.dir });
+    eq(refusal.ok, false, 'команда на занятую грань отклонена');
+    eq(/не может туда/.test(refusal.error || ''), true, 'причина — занятая грань: ' + refusal.error);
+    st.storms.pop();
+    eq(FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 'sx', dir: blocked.dir }).ok, true,
+        'после освобождения грань доступна');
+
+    // Поворот прямых относительно стоячего шторма не должен склеить N/S и
+    // W/E: карта с любыми стрелками по-прежнему предлагает восемь разных граней.
+    const any = scene({ kind: 'V', row: 1, col: 1 });
+    const theosophy = FS_DATA.events.find(e => e.name === 'Теософия' && e.storm[0] === 'any');
+    if (!theosophy) return 'нет карты «Теософия»';
+    any.event.card = theosophy;
+    eq(keys(any), ['H:1:0', 'H:1:1', 'H:2:0', 'H:2:1', 'V:0:1', 'V:1:0', 'V:1:2', 'V:2:1'],
+        'все восемь направлений ведут на разные грани');
+
+    // Все вертикальные грани маленькой, большой и неровной карты. Ожидаемые
+    // соседние грани вычисляются из координат систем, НЕ через shift/target:
+    // иначе прежняя ошибка могла подтверждать сама себя.
+    const small = scene(start);
+    const large = wideEmpty();
+    large.phase = 'refresh';
+    large.event = { seat: 0, drawn: [card.name], chosen: card.name, card };
+    const jagged = scene(start);
+    jagged.systems = jagged.systems.filter(s => (s.row === 0 && s.col <= 1)
+        || (s.row === 1 && s.col === 1) || (s.row === 2 && s.col === 1));
+    for (const s of jagged.systems) { s.row--; s.col--; }
+    for (const board of [small, large, jagged]) {
+        const borders = new Set();
+        for (const sys of board.systems) {
+            borders.add(sys.row + ',' + sys.col);
+            borders.add(sys.row + ',' + (sys.col + 1));
+        }
+        const exists = (row, col) => board.systems.some(s => s.row === row && (s.col === col - 1 || s.col === col));
+        for (const border of borders) {
+            const [row, col] = border.split(',').map(Number);
+            board.storms = [FS_WARP_STORMS.create(board, 'sx', { kind: 'V', row, col })];
+            const expected = [col - 1, col + 1].filter(c => exists(row, c))
+                .map(c => 'V:' + row + ':' + c).sort();
+            eq(keys(board), expected, 'боковые грани от V:' + row + ':' + col);
+        }
+    }
     return true;
 });
 

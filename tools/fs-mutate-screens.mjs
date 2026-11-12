@@ -225,6 +225,42 @@ const TABLE = [
         new: '    PLANET_D: 260,         // world px: the diameter of the round face of a world',
         why: 'мир больше своего тайла и свисает на соседние',
     },
+    // --- сдвиг шторма: призрак, его геометрия и клик -------------------------
+    {
+        check: 'storm-ghost-1',
+        file: 'js/fs/FSGame.js',
+        old: '                this.view.stormGhosts = FS_RULES.stormOptions(view, viewSeat)',
+        new: '                this.view.stormGhosts = []',
+        why: 'кликом выбрали шторм, но направления на доске не показаны',
+    },
+    {
+        check: 'storm-ghost-1',
+        file: 'js/fs/FSWarpStorms.js',
+        old: '            : { x: ox + (this.col - 0.5) * T, y: oy + this.row * T, horizontal: false };',
+        new: '            : { x: ox + this.col * T, y: oy + this.row * T, horizontal: false };',
+        why: 'вертикальная полоса сдвинута с грани на середину тайла',
+    },
+    {
+        check: 'storm-ghost-1',
+        file: 'js/fs/FSView.js',
+        old: '                width: horizontal ? this.TILE - 20 : 6,\n                depth: horizontal ? 6 : this.TILE - 20,\n                height: 5,',
+        new: '                width: horizontal ? 6 : this.TILE - 20,\n                depth: horizontal ? this.TILE - 20 : 6,\n                height: 5,',
+        why: 'призрачная полоса нарисована поперёк отмеченной грани',
+    },
+    {
+        check: 'storm-ghost-1',
+        file: 'js/fs/FSView.js',
+        old: "            root.metadata = { fs: 'storm-ghost', storm: ghost.storm, dir: ghost.dir,",
+        new: "            root.metadata = { fs: 'storm-ghost', storm: ghost.storm, dir: 'N',",
+        why: 'у обеих нарисованных полос одно направление клика',
+    },
+    {
+        check: 'storm-ghost-1',
+        file: 'js/fs/FSGame.js',
+        old: "            this.net.cmd({ type: 'moveStorm', storm: this.pending.storm, dir });",
+        new: "            this.net.cmd({ type: 'moveStorm', storm: this.pending.storm, dir: 'N' });",
+        why: 'клик по полосе отправляет другую стрелку вместо выбранной',
+    },
     // --- плашки боя ----------------------------------------------------------
     {
         check: 'combat-chip-1',

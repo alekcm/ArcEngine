@@ -677,6 +677,104 @@ screen('table-3', 'мир не выходит за пределы своей ч�
     return true;
 });
 
+head('Варп-шторм: выбор отмеченной грани');
+
+screen('storm-ghost-1', '«Смертоукасатели»: обе отмеченные грани показаны и каждая принимает клик', () => {
+    const field = ctx.FS_WARP_STORMS;
+    const card = ctx.FS_DATA.events.find(e => e.faction === 'некроны' && e.name === 'Смертоукасатели');
+    if (!card) return 'нет карты «Смертоукасатели»';
+    // Запускаем настоящее FSView.update: вместо Babylon — узлы с координатами
+    // и размерами, остальное рисование выключено, чтобы проверить сами полосы.
+    const draw = (st, ghosts) => {
+        const names = ['measure', 'ensureTile', 'drawTile', 'updateSetupSlots', 'updatePlanets', 'clearMarkers', 'drawCombat', 'addMarker'];
+        const saved = Object.fromEntries(names.map(name => [name, FS_VIEW[name]]));
+        const oldBabylon = ctx.BABYLON;
+        const boxes = [];
+        const point = () => ({ x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } });
+        try {
+            for (const name of names) FS_VIEW[name] = nothing;
+            FS_VIEW.ensureTile = () => ({ drawn: null });
+            ctx.BABYLON = {
+                TransformNode: function (name) { this.name = name; this.position = point(); },
+                MeshBuilder: { CreateBox: (name, size) => {
+                    const box = { name, size, position: point() };
+                    boxes.push(box);
+                    return box;
+                } },
+            };
+            const app = { location: { terrain: { heightAt: () => 0 } } };
+            const view = { scene: {}, metrics: { originX: 0, originY: 0 }, stormPending: 'sx',
+                stormGhosts: ghosts, material: () => ({}) };
+            FS_VIEW.update(app, view, st);
+        } finally {
+            Object.assign(FS_VIEW, saved);
+            ctx.BABYLON = oldBabylon;
+        }
+        return boxes.filter(box => box.metadata && box.metadata.fs === 'storm-ghost');
+    };
+    const examples = [
+        // Стоячий между двумя верхними тайлами: отметки слева и справа от него.
+        { edge: { kind: 'V', row: 0, col: 1 }, targets: [
+            { key: 'V:0:0', x: -130, y: 0, horizontal: false },
+            { key: 'V:0:2', x: 390, y: 0, horizontal: false },
+        ] },
+        // Контроль: лежачий между двумя тайлами по-прежнему идёт вверх/вниз.
+        { edge: { kind: 'H', row: 1, col: 0 }, targets: [
+            { key: 'H:0:0', x: 0, y: -130, horizontal: true },
+            { key: 'H:2:0', x: 0, y: 390, horizontal: true },
+        ] },
+    ];
+    for (const example of examples) {
+        for (const destination of example.targets) {
+            // Отдельное состояние на каждый клик: событие двигает шторм один раз.
+            const st = party('storm-ghost');
+            st.seat = 1; // некроны, как на карте
+            st.phase = 'refresh';
+            st.eventsLeft = 2;
+            st.event = { seat: 1, drawn: [card.name], chosen: card.name, card };
+            st.storms = [field.create(st, 'sx', example.edge)];
+            st.units = []; st.structures = []; st.objectives = [];
+            for (const sys of st.systems) sys.tokens = [];
+            const game = Object.create(FS_GAME.prototype);
+            let sent = null, result = null;
+            Object.assign(game, {
+                state: st, view: {}, app: null, mode: 'idle', pending: null,
+                refresh: nothing,
+                net: { cmd: cmd => { sent = cmd; result = FS_RULES.apply(st, 1, cmd); } },
+            });
+            game.stormClick({ fs: 'storm', storm: 'sx' });
+            const ghosts = game.view.stormGhosts || [];
+            const actual = ghosts.map(g => g.key).sort().join(',');
+            const wanted = example.targets.map(t => t.key).sort().join(',');
+            if (actual !== wanted) return 'для ' + field.keyOf(example.edge) + ' ждали ' + wanted + ', получили ' + actual;
+            const ghost = ghosts.find(g => g.key === destination.key);
+            const pos = field.position(st, ghost, { originX: 0, originY: 0 }, 260);
+            if (!pos || pos.x !== destination.x || pos.y !== destination.y || pos.horizontal !== destination.horizontal) {
+                return 'призрак ' + destination.key + ' рассчитан не на отмеченной грани: ' + JSON.stringify(pos);
+            }
+            const rendered = draw(st, ghosts);
+            if (rendered.length !== example.targets.length) return 'нарисовано призраков: ' + rendered.length;
+            const marker = rendered.find(box => box.metadata.key === destination.key);
+            if (!marker || !marker.isPickable) return 'нет кликабельной полосы на ' + destination.key;
+            if (marker.parent.position.x !== destination.x || marker.parent.position.z !== destination.y) {
+                return 'полоса ' + destination.key + ' нарисована не на отмеченной грани';
+            }
+            const width = destination.horizontal ? FS_VIEW.TILE - 20 : 6;
+            const depth = destination.horizontal ? 6 : FS_VIEW.TILE - 20;
+            if (marker.size.width !== width || marker.size.depth !== depth) return 'полоса ' + destination.key + ' повёрнута неправильно';
+            if (marker.metadata.dir !== ghost.dir || marker.metadata.storm !== 'sx') return 'полоса потеряла направление или шторм';
+            // Клик по метаданным настоящей нарисованной полосы должен поставить
+            // шторм именно на неё, а не на другую грань.
+            game.stormClick(marker.metadata);
+            if (!sent || sent.type !== 'moveStorm' || sent.dir !== ghost.dir) return 'клик по ' + destination.key + ' не отправил его направление';
+            if (!result || !result.ok) return 'клик по ' + destination.key + ' отклонён: ' + (result && result.error);
+            if (field.keyOf(st.storms[0]) !== destination.key) return 'шторм после клика стоит не на ' + destination.key;
+            if (!st.event.stormMoved) return 'событие не заметило движение';
+        }
+    }
+    return true;
+});
+
 head('Бой: плашки здоровья под миньками');
 
 screen('combat-chip-1', 'плашка бойца показывает здоровье из правил, а не номер места', () => {

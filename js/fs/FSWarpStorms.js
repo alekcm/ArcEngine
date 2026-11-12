@@ -80,7 +80,16 @@ class WarpStormEdge {
         const d = String(dir || '').toUpperCase();
         if (!WarpStormEdge.DIRECTIONS.includes(d)) return null;
         const r = this.row, c = this.col;
-        // Straight arrows: one edge over, the storm keeps its lie.
+        // Straight arrows: slide one edge, keeping the storm's lie. Read the
+        // card in the same storm-relative frame as the diagonals below: the
+        // west end of a horizontal storm becomes the north end of a vertical
+        // one. Thus N/S move a vertical storm sideways, and E/W along it.
+        if (this.kind === 'V') {
+            if (d === 'N') return new WarpStormEdge('V', r, c + 1);
+            if (d === 'S') return new WarpStormEdge('V', r, c - 1);
+            if (d === 'E') return new WarpStormEdge('V', r + 1, c);
+            if (d === 'W') return new WarpStormEdge('V', r - 1, c);
+        }
         if (d === 'N') return new WarpStormEdge(this.kind, r - 1, c);
         if (d === 'S') return new WarpStormEdge(this.kind, r + 1, c);
         if (d === 'E') return new WarpStormEdge(this.kind, r, c + 1);
