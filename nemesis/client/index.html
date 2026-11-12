@@ -63,6 +63,26 @@
                 </div>
                 <div class="row"><label>Адреса в локальной сети</label><div id="lanAddr" class="lan-addr">—</div></div>
                 <div class="row tunnel-join hidden" id="tunnelJoinRow"><label for="tunnelJoinLink">Ссылка другу через VPN</label><div class="tunnel-join-controls"><input id="tunnelJoinLink" type="text" readonly aria-label="Ссылка для подключения к игре"><button id="copyTunnelJoin" class="btn small">Копировать</button></div><div class="hint">Показывается, когда запущен nemesis_p2p.bat. Скопируйте ссылку и отправьте другу.</div></div>
+                <section id="p2pPanel" class="p2p-panel hidden">
+                    <h3>Прямое P2P-соединение</h3>
+                    <p id="p2pStatus" class="hint">Ожидание подключения…</p>
+                    <div id="p2pHostControls" class="hidden">
+                        <p>Создай приглашение и отправь текст другу любым способом. Когда он пришлёт ответ, вставь его сюда.</p>
+                        <button id="p2pCreateOffer" class="btn">Создать приглашение</button>
+                        <label for="p2pLocalOffer">Твоё приглашение</label><textarea id="p2pLocalOffer" readonly rows="4"></textarea>
+                        <button id="p2pCopyOffer" class="btn small">Скопировать приглашение</button>
+                        <label for="p2pRemoteAnswer">Ответ друга</label><textarea id="p2pRemoteAnswer" rows="4" placeholder="Вставь сюда ответ друга"></textarea>
+                        <button id="p2pApplyAnswer" class="btn primary">Принять ответ</button>
+                    </div>
+                    <div id="p2pGuestControls" class="hidden">
+                        <p>Вставь приглашение ведущего. После генерации ответа отправь его ведущему.</p>
+                        <label for="p2pRemoteOffer">Приглашение ведущего</label><textarea id="p2pRemoteOffer" rows="4" placeholder="Вставь приглашение сюда"></textarea>
+                        <button id="p2pCreateAnswer" class="btn primary">Принять приглашение и создать ответ</button>
+                        <label for="p2pLocalAnswer">Твой ответ</label><textarea id="p2pLocalAnswer" readonly rows="4"></textarea>
+                        <button id="p2pCopyAnswer" class="btn small">Скопировать ответ</button>
+                    </div>
+                    <small class="hint">Сигналинг вручную, игровой трафик — напрямую между браузерами. Ведущий и гость должны открыть совместимые копии игры локально. Некоторые VPN блокируют WebRTC/UDP; для них нужен ретранслятор.</small>
+                </section>
                 <div class="lobby-buttons">
                     <button id="readyBtn" class="btn">Готов</button>
                     <button id="startBtn" class="btn primary" disabled>Начать игру</button>

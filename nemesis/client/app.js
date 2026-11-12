@@ -12,6 +12,7 @@ import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import { itemDeckBadge, knowledgeTrack, larvaBadge } from './status-display.mjs';
 import * as Snd from './sound.js';
+import { NemesisP2P } from './p2p.mjs';
 import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, itemDescription, roomActionText, objectiveArt, woundName, woundShort, eventArt, attackArt, panicArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip, tileKeyedEdits } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, WEAKNESSES, FEATS, objectiveTextOf,
@@ -73,9 +74,22 @@ BOARD_EDITS = tileKeyedEdits(rawBoardEdits);
 // Network
 // ---------------------------------------------------------------------------------------------
 let ws = null, wsTimer = null;
+const p2pRole = new URLSearchParams(location.search).get('p2p');
+let p2p = null;
+function setP2PStatus(text) { const el = $('p2pStatus'); if (el) el.textContent = text; }
 const net = {
-    send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); },
+    send(obj) {
+        if (p2pRole === 'guest') { if (p2p) p2p.send(obj); return; }
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+    },
     connect() {
+        if (p2pRole === 'guest') {
+            p2p = new NemesisP2P({ role: 'guest', onMessage, onStatus: setP2PStatus });
+            $('p2pPanel')?.classList.remove('hidden'); $('p2pGuestControls')?.classList.remove('hidden');
+            setP2PStatus('Готово. Вставьте приглашение ведущего и нажмите «Принять приглашение».');
+            return;
+        }
+        if (p2pRole === 'host' && !p2p) p2p = new NemesisP2P({ role: 'host', onMessage, onStatus: setP2PStatus });
         const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
         ws = new WebSocket(proto + location.host + '/ws');
         ws.onopen = () => { net.send({ t: 'join', token: localStorage.getItem('nemesis.token'), name: localStorage.getItem('nemesis.name') || '' }); };
@@ -360,6 +374,11 @@ function renderLobby() {
             notice('Ссылка для подключения скопирована.', 'good');
         };
     }
+    if ($('p2pPanel')) {
+        $('p2pPanel').classList.toggle('hidden', p2pRole !== 'host' && p2pRole !== 'guest');
+        $('p2pHostControls')?.classList.toggle('hidden', p2pRole !== 'host');
+        $('p2pGuestControls')?.classList.toggle('hidden', p2pRole !== 'guest');
+    }
     $('readyBtn').textContent = app.ready ? 'Не готов' : 'Готов';
     $('readyBtn').disabled = app.spectator;
     const online = L.seats.filter(s => s.online);
@@ -614,6 +633,26 @@ $('draftSelect').onchange = sendSettings;
 if ($('adaptSelect')) $('adaptSelect').onchange = sendSettings;
 if ($('alienModeSelect')) $('alienModeSelect').onchange = () => { if ($('adaptSelect')) $('adaptSelect').disabled = !app.host || $('alienModeSelect').value === 'weaknesses' || $('enemySetSelect')?.value !== 'redux'; sendSettings(); };
 if ($('noiseDieSelect')) $('noiseDieSelect').onchange = sendSettings;
+const copyP2PText = async id => {
+    const el = $(id); if (!el || !el.value) return;
+    try { await navigator.clipboard.writeText(el.value); }
+    catch { el.focus(); el.select(); document.execCommand('copy'); }
+    notice('Текст приглашения скопирован.', 'good');
+};
+if ($('p2pCreateOffer')) $('p2pCreateOffer').onclick = async () => {
+    try { $('p2pLocalOffer').value = await p2p.createOffer(); }
+    catch (err) { setP2PStatus(err.message || String(err)); }
+};
+if ($('p2pApplyAnswer')) $('p2pApplyAnswer').onclick = async () => {
+    try { await p2p.applyAnswer($('p2pRemoteAnswer').value.trim()); }
+    catch (err) { setP2PStatus(err.message || String(err)); }
+};
+if ($('p2pCreateAnswer')) $('p2pCreateAnswer').onclick = async () => {
+    try { $('p2pLocalAnswer').value = await p2p.createAnswer($('p2pRemoteOffer').value.trim()); }
+    catch (err) { setP2PStatus(err.message || String(err)); }
+};
+if ($('p2pCopyOffer')) $('p2pCopyOffer').onclick = () => copyP2PText('p2pLocalOffer');
+if ($('p2pCopyAnswer')) $('p2pCopyAnswer').onclick = () => copyP2PText('p2pLocalAnswer');
 $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else $('endOverlay').classList.add('hidden'); };
 
 // ---------------------------------------------------------------------------------------------
