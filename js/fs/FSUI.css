@@ -7,9 +7,25 @@
 /* System-tile choices: the grid mirrors the four sectors on the board. */
 .fs-tile-choice{display:block;width:100%;padding:8px;text-align:left;border:1px solid #ffffff1c;border-radius:10px;background:linear-gradient(135deg,#172733,#0b141e);color:inherit;cursor:pointer}.fs-tile-choice:hover,.fs-tile-choice.is-selected{border-color:#e3c780;background:linear-gradient(135deg,#253840,#111c25)}.fs-tile-choice.is-selected{box-shadow:inset 0 0 0 1px #e3c780}.fs-tile-preview-title{margin:0 0 6px;color:#f0d79a;font-weight:700;font-size:11px}.fs-tile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;border:1px solid #ae915c;border-radius:5px;overflow:hidden;background:#88764c}.fs-tile-sector{min-width:0;min-height:72px;padding:5px;display:flex;align-items:flex-start;gap:5px;background:radial-gradient(circle at 70% 20%,#293f50,#101923 75%)}.fs-tile-sector.is-void{flex-direction:column;justify-content:center;color:#8dabb8;background:radial-gradient(circle at 35% 30%,#1b3042,#0b1420 75%)}.fs-tile-planet{display:grid;place-items:center;flex:none;width:18px;height:18px;border-radius:50%;color:#a4d4d0;background:radial-gradient(circle at 30% 25%,#a5cfc0,#357b81 50%,#142f44);font-size:7px;box-shadow:0 0 9px #71b4b755}.fs-tile-world-info{display:grid;gap:2px;min-width:0}.fs-tile-world-info strong{overflow-wrap:anywhere;font-size:10px;line-height:1.15;color:#f3e9d1}.fs-tile-stats,.fs-tile-assets,.fs-tile-void{font-size:9px;line-height:1.25}.fs-tile-stats{color:#bdd0cb}.fs-tile-assets{color:#dfc688}.fs-shell.is-mobile .fs-actions:has(.fs-tile-choice){display:grid;grid-template-columns:1fr}
 
-/* During tile preview leave the centre of a phone screen clear for the board. */
-.fs-shell.is-mobile.is-placing-tile .fs-main-panel{bottom:10px;max-height:min(36vh,300px)}
-.fs-shell.is-mobile.is-placing-tile .fs-left-rail,.fs-shell.is-mobile.is-placing-tile .fs-map-hint{display:none}
+/* Keep the board's centre clickable, but leave room for both selectable faces. */
+.fs-shell.is-mobile.is-setup-tiles .fs-main-panel{bottom:10px;height:min(44vh,350px);max-height:min(44vh,350px)}
+.fs-shell.is-mobile.is-setup-tiles .fs-left-rail,.fs-shell.is-mobile.is-setup-tiles .fs-map-hint,.fs-shell.is-mobile.is-setup-tiles .fs-topbar{display:none}
+.fs-shell.is-mobile.is-setup-tiles .fs-main-panel .fs-panel-heading{padding:7px 12px 5px}
+.fs-shell.is-mobile.is-setup-tiles .fs-main-panel .fs-panel-heading .fs-eyebrow{display:none}
+.fs-shell.is-mobile.is-setup-tiles .fs-main-panel .fs-panel-heading h2{font-size:19px;margin:2px 0}
+.fs-shell.is-mobile.is-setup-tiles .fs-main-panel .fs-panel-heading p{font-size:12px;line-height:1.25;max-height:2.5em}
+.fs-shell.is-mobile.is-setup-tiles .fs-main-panel .fs-status{font-size:12px;min-height:0;margin:5px 10px 0;padding:5px 8px}
+.fs-shell.is-mobile.is-setup-tiles .fs-main-panel .fs-actions{flex:1 1 auto;min-height:0;padding:6px 10px}
+.fs-shell.is-mobile.is-setup-tiles .fs-main-panel .fs-secondary{font-size:12px;margin:3px 10px 6px;padding:5px 10px}
+.fs-shell.is-mobile.is-setup-tiles .fs-tile-sector{min-height:58px}
+.fs-shell.is-mobile.is-setup-tiles .fs-plaque{width:min(360px,calc(100vw - 16px));max-width:calc(100vw - 16px);gap:4px;padding:6px 7px;white-space:normal;transform:translate(-50%,-100%)}
+.fs-shell.is-mobile.is-setup-tiles .fs-plaque-text{flex:1;overflow-wrap:anywhere}
+.fs-shell.is-mobile.is-setup-tiles .fs-plaque-title{font-size:11px}
+.fs-shell.is-mobile.is-setup-tiles .fs-plaque-hint{line-height:1.15}
+.fs-shell.is-mobile.is-setup-tiles .fs-plaque-btn{flex:none;font-size:11px;padding:6px;white-space:nowrap}
+@media (orientation:landscape) and (max-height:550px){
+    .fs-shell.is-mobile.is-setup-tiles .fs-main-panel{left:auto;right:10px;width:min(356px,45vw);height:calc(100vh - 65px);max-height:calc(100vh - 65px)}
+}
 
 /* ---------------------------------------------------------------------------
    The compact panel: one job at a time. The tokens the player owns are counted
@@ -62,7 +78,23 @@
 .fs-primary-icon{font-size:13px}
 .fs-secondary{align-self:center;margin:0 13px 14px;padding:6px 10px;border:1px solid #ffffff18;border-radius:99px;background:transparent;color:#a9b4b3;font-size:10px;cursor:pointer}
 .fs-secondary:hover{color:#f0d79a;border-color:#d8b87377}
-.fs-tile-list{display:grid;gap:7px}
+/* A physical tile is one row: both faces are independent, full-size buttons. */
+.fs-tile-list{display:grid;gap:10px;min-width:0;width:100%}
+.fs-tile-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;gap:7px;min-width:0}
+.fs-tile-choice{min-width:0;padding:5px}
+.fs-tile-choice:focus-visible{outline:2px solid #f0d79a;outline-offset:2px}
+.fs-tile-preview-title{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:2px 4px;line-height:1.15}
+.fs-tile-home{font-size:9px;color:#c8bda1;font-weight:600}
+.fs-tile-sector{flex-direction:column;gap:3px;padding:4px;min-height:70px}
+.fs-tile-sector.is-void{justify-content:flex-start}
+.fs-tile-world-info{width:100%;gap:3px}
+.fs-tile-world-info strong{font-size:10px;line-height:1.15}
+.fs-tile-stats,.fs-tile-assets{display:flex;align-items:center;flex-wrap:wrap;gap:2px 4px}
+.fs-tile-stat{display:inline-flex;align-items:center;gap:2px;line-height:1;color:#e8e3d4;font-size:10px}
+.fs-tile-stat b{font-weight:700}
+.fs-tile-stat-icon.fs-ico-svg,.fs-tile-asset-icon.fs-ico-svg{width:13px;height:13px}
+.fs-tile-void{display:inline-flex;align-items:center;gap:2px}
+.fs-tile-void-icon.fs-ico-svg{width:12px;height:12px}
 
 /* The plaques that hang over the board: confirmation where the player looks. */
 .fs-plaque{position:absolute;z-index:6;display:flex;align-items:center;gap:8px;padding:8px 9px 8px 12px;border:1px solid #e3c78099;border-radius:12px;background:linear-gradient(140deg,rgba(20,29,37,.97),rgba(9,14,20,.96));box-shadow:0 18px 44px #000a,0 0 0 1px #00000055;transform:translate(-50%,-100%);pointer-events:auto;backdrop-filter:blur(10px);white-space:nowrap;animation:fs-plaque-in .16s ease-out}

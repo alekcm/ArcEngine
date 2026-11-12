@@ -270,7 +270,10 @@ const FSUI = {
         }
         this.deferredRender = null;
         const board = state ? BoardSetup.of(state) : null;
-        const stageKey = board && board.active ? [board.stage, board.turn, board.currentSystem, ctx.mode, ctx.setupCellSelected].join(':') : '';
+        // Selecting a face changes the interaction mode, not the hand: do not
+        // jump back to the top when the player chose a lower row.
+        const stageMode = board && board.is(BoardSetup.TILES) ? 'tile' : ctx.mode;
+        const stageKey = board && board.active ? [board.stage, board.turn, board.currentSystem, stageMode, ctx.setupCellSelected].join(':') : '';
         const previousActions = root.querySelector ? root.querySelector('.fs-actions') : null;
         const scrollTop = this.actionStage === stageKey && previousActions ? previousActions.scrollTop : 0;
         this.actionStage = stageKey;
@@ -296,7 +299,7 @@ const FSUI = {
         // лобби и на экране оставалась только пустая сцена.
         const game = GamePhase.of(state);
         root.classList.toggle('is-planning', !!game && game.is(GamePhase.PLANNING));
-        root.classList.toggle('is-placing-tile', !!game && game.is(GamePhase.SETUP) && ctx.mode === 'placeTile');
+        root.classList.toggle('is-setup-tiles', !!(game && game.is(GamePhase.SETUP) && board && board.is(BoardSetup.TILES)));
         if (this.currentLobby) { this.renderModernLobby(); return; }
         // The campaign plaque has no battle toggle: remove it entirely until the fight ends.
         if (!inBattle) {
@@ -389,7 +392,7 @@ const FSUI = {
             pop.append(this.el('p', '', 'Левая кнопка с протяжкой — сдвинуть карту, правая кнопка — повернуть камеру, колесо — масштаб, клик — выбор.'));
             pop.append(this.el('p', '', 'Наступление: клик по своим отрядам на доске берёт их в группу, кольца показывают, куда можно идти, стрелка показывает маршрут. Клик по сектору отправляет группу, клик по отряду убирает его из группы.'));
             pop.append(this.el('p', '', 'Операции: клик по своему жетону приказа вскрывает его прямо на доске.'));
-            pop.append(this.el('p', '', 'Сборка карты: выберите систему справа, клик по месту — предпросмотр, Q/E — поворот, F — другая сторона. Подтверждение — на табличке над системой.'));
+            pop.append(this.el('p', '', 'Сборка карты: выберите сторону системы справа, клик по месту — предпросмотр, Q/E — поворот, F — быстро сменить сторону. Подтверждение — на табличке над системой.'));
             pop.append(this.el('p', '', 'В панели справа — только то, что нужно сейчас: сколько у вас жетонов каждого вида (включая нули) и одна кнопка «дальше».'));
             root.append(pop);
         }
@@ -497,12 +500,19 @@ const FSUI = {
         const secondaries = items.filter(a => a.kind === 'secondary');
         if (tiles.length) {
             const grid = this.el('div', 'fs-tile-list');
+            let row = null, physical = null;
             for (const a of tiles) {
+                const group = a.handTile || String(a.tile.id).replace(/[AB]$/, '');
+                if (!row || group !== physical) {
+                    physical = group;
+                    row = this.el('div', 'fs-tile-row');
+                    grid.append(row);
+                }
                 const button = this.el('button', 'fs-tile-choice' + (a.selected ? ' is-selected' : '')); button.type = 'button';
                 button.setAttribute('aria-pressed', a.selected ? 'true' : 'false');
                 button.append(this.tilePreview(a.tile));
                 button.addEventListener('click', () => a.onClick && a.onClick());
-                grid.append(button);
+                row.append(button);
             }
             actions.append(grid);
         }
@@ -1350,25 +1360,56 @@ const FSUI = {
     // A readable miniature of the four sectors, in the same orientation as the board.
     tilePreview(tile) {
         const wrap = this.el('div', 'fs-tile-preview');
-        const title = this.el('div', 'fs-tile-preview-title', 'Система ' + tile.id + (tile.home ? ' · родная система' : ''));
+        const title = this.el('div', 'fs-tile-preview-title');
+        title.append(this.el('span', '', 'Система ' + tile.id));
+        if (tile.home) title.append(this.el('span', 'fs-tile-home', 'Родная'));
         wrap.append(title);
         const grid = this.el('div', 'fs-tile-grid');
-        const names = { forge: 'Кузница', cache: 'Запасы', reinforcement: 'Подкрепление', prosperity: 'Процветание' };
+        // The same symbols as on the planets and in the player inventory.
+        const assets = {
+            forge: ['asset.forge', 'Кузница'], cache: ['asset.cache', 'Запасы'],
+            reinforcement: ['order.event', 'Подкрепление'], prosperity: ['asset.prosperity', 'Процветание'],
+        };
+        const symbol = (name, cls, label) => {
+            const icon = this.iconEl(name, cls);
+            icon.title = label;
+            icon.setAttribute('role', 'img');
+            icon.setAttribute('aria-label', label);
+            return icon;
+        };
+        const stat = (name, label, value) => {
+            const chip = this.el('span', 'fs-tile-stat');
+            chip.title = label + ': ' + value;
+            chip.append(symbol(name, 'fs-tile-stat-icon', label), this.el('b', '', String(value)));
+            return chip;
+        };
         for (const pos of ['TL', 'TR', 'BL', 'BR']) {
             const area = tile.areas.find(a => a.pos === pos);
             const world = area && area.world;
             const sector = this.el('div', 'fs-tile-sector' + (world ? ' is-world' : ' is-void'));
             if (world) {
-                sector.append(this.iconEl('mark.world', 'fs-tile-planet'));
                 const info = this.el('div', 'fs-tile-world-info');
                 info.append(this.el('strong', '', world.name));
-                info.append(this.el('span', 'fs-tile-stats', 'Материя ' + (world.materiel || 0) + ' · Вместимость ' + world.capacity));
-                const assets = (world.assets || []).map(a => names[a] || a);
-                if (world.objective) assets.push('Цель');
-                info.append(this.el('span', 'fs-tile-assets', assets.length ? assets.join(' · ') : 'Без ресурса'));
+                const stats = this.el('span', 'fs-tile-stats');
+                stats.append(stat('asset.materiel', 'Материя', world.materiel || 0), stat('mark.skull', 'Вместимость', world.capacity));
+                info.append(stats);
+                if (world.assets && world.assets.length) {
+                    const resources = this.el('span', 'fs-tile-assets');
+                    for (const asset of world.assets) {
+                        const [icon, label] = assets[asset] || ['?', asset];
+                        resources.append(symbol(icon, 'fs-tile-asset-icon', label));
+                    }
+                    info.append(resources);
+                }
                 sector.append(info);
             } else {
-                sector.append(this.iconEl('ui.storm', 'fs-tile-void-icon'), this.el('span', 'fs-tile-void', 'Пустота'), this.el('span', 'fs-tile-stats', 'Вместимость 3'));
+                const name = this.el('span', 'fs-tile-void');
+                const icon = this.iconEl('mark.void', 'fs-tile-void-icon');
+                icon.setAttribute('aria-hidden', 'true');
+                name.append(icon, this.el('span', '', 'Пустота'));
+                const stats = this.el('span', 'fs-tile-stats');
+                stats.append(stat('mark.skull', 'Вместимость', FS_RULES.AREA_CAP));
+                sector.append(name, stats);
             }
             grid.append(sector);
         }

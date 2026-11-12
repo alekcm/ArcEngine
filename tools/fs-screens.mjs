@@ -63,15 +63,20 @@ const nothing = () => undefined;
 function el(tag) {
     const node = {
         tagName: String(tag || 'div').toUpperCase(), children: [], className: '', id: '', textContent: '',
-        title: '', type: '', value: '', maxLength: 0, disabled: false, dataset: {}, style: { setProperty: nothing, removeProperty: nothing },
+        title: '', type: '', value: '', maxLength: 0, disabled: false, dataset: {}, attributes: {}, listeners: {},
+        style: { setProperty: nothing, removeProperty: nothing },
         classList: { add: nothing, remove: nothing, toggle: nothing, contains: () => false },
         append(...xs) { for (const x of xs) this.children.push(x); },
         appendChild(x) { this.children.push(x); return x; },
         contains(x) { return this.children.includes(x); },
         removeChild(x) { const i = this.children.indexOf(x); if (i >= 0) this.children.splice(i, 1); },
         replaceChildren(...xs) { this.children = xs; },
-        remove: nothing, setAttribute: nothing, getAttribute: () => null,
-        addEventListener: nothing, removeEventListener: nothing, focus: nothing, blur: nothing,
+        remove: nothing,
+        setAttribute(name, value) { this.attributes[name] = String(value); },
+        getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null; },
+        addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
+        removeEventListener: nothing, focus: nothing, blur: nothing,
+        click() { if (!this.disabled) for (const fn of this.listeners.click || []) fn({ target: this, preventDefault: nothing }); },
         getContext: () => null, getBoundingClientRect: () => ({ width: 0, height: 0, left: 0, top: 0 }),
         querySelector: () => null, querySelectorAll: () => [],
     };
@@ -622,6 +627,234 @@ screen('panel-5', 'счёт отрядов остался на самих вой
     if (!guards) return 'в панели нет Гвардейцев: ' + units.map(a => a.label).join(', ');
     if (guards.count !== 9) return 'на Гвардейцах счёт ' + guards.count + ', а в запасе 9';
     return true;
+});
+
+// ============================================================================
+head('Сборка карты: две стороны тайла, значки и начальные силы');
+
+/** Настоящая сборка и клиент на том виде, который получил бы игрок по сети. */
+function setupFixture() {
+    const live = FS_RULES.newGame({ seed: 42, players: SEAT_PLAYERS, interactiveSetup: true });
+    const seat = live.setup.turn;
+    const view = FS_RULES.view(live, seat);
+    const sent = [], previews = [];
+    const game = Object.create(FS_GAME.prototype);
+    Object.assign(game, {
+        state: view, view: {}, app: {}, mode: 'idle', pending: null, setupSubmitting: false, status: '', warn: '',
+        net: { cmd: cmd => { sent.push(JSON.parse(JSON.stringify(cmd))); return true; } },
+        highlightSetupCells: nothing, highlightSetupTargets: nothing, refresh: nothing,
+        updateSetupPreview: () => previews.push(JSON.parse(JSON.stringify(game.pending))),
+    });
+    const panel = () => {
+        const out = { title: '', text: '', status: '', warn: '', actions: [], mode: game.mode, setupCellSelected: false };
+        game.panelSetup(game.state, out);
+        return out;
+    };
+    return { live, seat, view, game, sent, previews, panel };
+}
+
+screen('setup-ui-1', 'обе стороны каждого физического тайла показаны рядом и каждая нажимается', () => {
+    const f = setupFixture(), p = f.panel();
+    FSUI.update(f.view, p);
+    const rows = nodesWithClass(FSUI.modernRoot, 'fs-tile-row');
+    if (rows.length !== f.view.setup.hand.length) return 'число рядов не равно числу тайлов в руке';
+    const css = fs.readFileSync(path.join(ROOT, 'js/fs/FSUI.css'), 'utf8');
+    const rowStyle = css.match(/\.fs-tile-row\{([^}]*)\}/);
+    if (!rowStyle || !/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/.test(rowStyle[1])) return 'две стороны не стоят в двух колонках';
+    for (let i = 0; i < rows.length; i++) {
+        const handTile = f.view.setup.hand[i];
+        const faces = FS_RULES.tileFaces(handTile);
+        if (faces.length !== 2 || rows[i].children.length !== 2) return handTile + ': ожидались две отдельные кнопки';
+        for (let j = 0; j < 2; j++) {
+            const button = rows[i].children[j];
+            if (button.tagName !== 'BUTTON' || !textsOf(button).includes('Система ' + faces[j].id)) return handTile + ': неверная сторона в кнопке ' + j;
+            if (button.getAttribute('aria-pressed') !== 'false') return faces[j].id + ': незапрошенная сторона выделена';
+            button.click();
+            if (f.game.pending.handTile !== handTile || f.game.pending.tile !== faces[j].id) return faces[j].id + ': клик выбрал другую сторону или тайл';
+        }
+    }
+    return true;
+});
+
+screen('setup-ui-2', 'выбор стороны сохраняет клетку и поворот, подтверждение отправляет её ровно раз', () => {
+    const f = setupFixture(), id = f.view.setup.hand[0];
+    const [a, b] = FS_RULES.tileFaces(id);
+    const clickFace = face => {
+        FSUI.update(f.view, f.panel());
+        const button = nodesWithClass(FSUI.modernRoot, 'fs-tile-choice').find(n => textsOf(n).includes('Система ' + face));
+        if (!button) throw new Error('нет кнопки ' + face);
+        button.click();
+    };
+    clickFace(b.id);
+    if (f.game.pending.tile !== b.id || f.game.pending.handTile !== id) return 'сторона B не выбрана';
+    const cell = f.view.setup.legalCells[0];
+    f.game.pending.cell = { row: cell.row, col: cell.col };
+    f.game.transformSetupTile('right');
+    let p = f.panel();
+    let chosen = p.actions.filter(x => x.tile && x.selected);
+    if (chosen.length !== 1 || chosen[0].tile.id !== b.id || f.game.pending.rotation !== 1) return 'не выделена повёрнутая сторона B';
+    const signature = areas => areas.map(area => area.pos + ':' + (area.world ? area.world.name : '-')).join('|');
+    const rotated = FS_RULES.createSystemFromTile({ systems: [] }, b, f.seat, 0, 0, 1);
+    if (signature(chosen[0].tile.areas) !== signature(rotated.areas)) return 'секторы выбранной стороны не повёрнуты вместе с доской';
+    clickFace(a.id);
+    if (f.game.pending.tile !== a.id || f.game.pending.rotation !== 1 || JSON.stringify(f.game.pending.cell) !== JSON.stringify(cell)) return 'переход на A потерял сторону, поворот или клетку';
+    const latest = f.previews[f.previews.length - 1];
+    if (!latest || latest.tile !== a.id || latest.rotation !== 1 || JSON.stringify(latest.cell) !== JSON.stringify(cell)) return 'предпросмотр не обновился на выбранную A';
+    f.game.transformSetupTile('flip');
+    if (f.game.pending.tile !== b.id || f.game.pending.rotation !== 1) return 'клавиша смены стороны перестала работать';
+    p = f.panel();
+    if (p.actions.filter(x => x.tile && x.selected).map(x => x.tile.id).join() !== b.id) return 'выделение не перешло на B';
+    const other = FS_RULES.tileFaces(f.view.setup.hand[1])[1].id;
+    clickFace(other);
+    if (f.game.pending.tile !== other || f.game.pending.rotation !== 0 || JSON.stringify(f.game.pending.cell) !== JSON.stringify(cell)) return 'другой тайл потерял клетку или унаследовал поворот';
+    clickFace(b.id);
+    f.game.transformSetupTile('right');
+    f.game.confirmSetupTile();
+    f.game.confirmSetupTile();
+    clickFace(a.id);
+    if (f.sent.length !== 1 || f.game.pending.tile !== b.id) return 'отправка повторилась или позволила сменить сторону до ответа';
+    const cmd = f.sent[0];
+    if (cmd.type !== 'placeSystemTile' || cmd.tile !== b.id || cmd.rotation !== 1 || cmd.row !== cell.row || cmd.col !== cell.col) return 'серверу отправлены неверные сторона, поворот или клетка';
+    const result = FS_RULES.apply(f.live, f.seat, cmd);
+    if (!result.ok) return 'сервер отклонил выбранную сторону: ' + result.error;
+    const sys = f.live.systems.find(s => s.id === f.live.setup.currentSystem);
+    if (!sys || sys.tile !== b.id || f.live.setup.hands[f.seat].includes(id)) return 'поставлена не B или физический тайл не ушёл из руки';
+    return true;
+});
+
+screen('setup-ui-3', 'в каждом секторе точные числа и значки, но нет индикации цели', () => {
+    const catalog = vm.runInContext('FS_CATALOG', ctx);
+    const glyphs = { forge: ['asset.forge', 'Кузница'], cache: ['asset.cache', 'Запасы'], reinforcement: ['order.event', 'Подкрепление'], prosperity: ['asset.prosperity', 'Процветание'] };
+    let objectives = 0, doubles = 0;
+    for (const tile of catalog.tiles) {
+        const preview = FSUI.tilePreview(tile);
+        const sectors = nodesWithClass(preview, 'fs-tile-sector');
+        if (sectors.length !== 4) return tile.id + ': должно быть четыре сектора';
+        if (textsOf(preview).some(t => /материя|вместимость|кузница|запасы|подкрепление|процветание|цель/i.test(t))) return tile.id + ': в превью осталась текстовая подпись характеристики, ресурса или цели';
+        for (let i = 0; i < 4; i++) {
+            const area = tile.areas.find(x => x.pos === ['TL', 'TR', 'BL', 'BR'][i]);
+            const world = area && area.world, sector = sectors[i];
+            const stats = nodesWithClass(sector, 'fs-tile-stat');
+            const icons = nodesWithClass(sector, 'fs-ico');
+            if (icons.some(n => n.getAttribute('data-icon') === 'mark.objective')) return tile.id + ': цель видна значком';
+            if (world && world.objective) objectives++;
+            const wanted = world
+                ? [['asset.materiel', 'Материя', world.materiel || 0], ['mark.skull', 'Вместимость', world.capacity]]
+                : [['mark.skull', 'Вместимость', FS_RULES.AREA_CAP]];
+            if (stats.length !== wanted.length) return tile.id + ': неверное число характеристик в ' + area.pos;
+            for (let j = 0; j < wanted.length; j++) {
+                const icon = nodesWithClass(stats[j], 'fs-tile-stat-icon')[0];
+                if (!icon || icon.getAttribute('data-icon') !== wanted[j][0] || icon.getAttribute('aria-label') !== wanted[j][1]
+                    || !textsOf(stats[j]).includes(String(wanted[j][2])) || !stats[j].title.includes(String(wanted[j][2]))) {
+                    return tile.id + ': неправильный значок, число или подсказка в ' + area.pos;
+                }
+            }
+            const resources = nodesWithClass(sector, 'fs-tile-asset-icon');
+            const assets = world ? world.assets || [] : [];
+            if (assets.length > 1) doubles++;
+            if (resources.length !== assets.length) return tile.id + ': потерян жетон ресурса в ' + area.pos;
+            for (let j = 0; j < assets.length; j++) {
+                const [icon, label] = glyphs[assets[j]];
+                if (resources[j].getAttribute('data-icon') !== icon || resources[j].getAttribute('aria-label') !== label || resources[j].title !== label) return tile.id + ': неверный ресурс ' + assets[j];
+            }
+            if (world && !textsOf(sector).includes(world.name)) return tile.id + ': потеряно название мира';
+            if (!world && !textsOf(sector).includes('Пустота')) return tile.id + ': потеряна пустота';
+        }
+    }
+    if (!objectives || !doubles) return 'проверка не встретила места цели или повторные ресурсы';
+    return true;
+});
+
+screen('setup-ui-4', 'начальные силы без дублирующего списка, этап целей сохраняет выбор и постановку', () => {
+    const f = setupFixture(), id = f.view.setup.hand[0], face = FS_RULES.tileFaces(id)[1];
+    const cell = f.view.setup.legalCells[0];
+    const placed = FS_RULES.apply(f.live, f.seat, { type: 'placeSystemTile', tile: face.id, row: cell.row, col: cell.col });
+    if (!placed.ok) return 'нельзя создать экран сил: ' + placed.error;
+    f.game.state = FS_RULES.view(f.live, f.seat);
+    let p = f.panel();
+    if (p.tokens && p.tokens.length) return 'список «Ваши жетоны» вернулся';
+    const initial = f.live.players[f.seat].initialForces;
+    const faction = vm.runInContext('FS_CATALOG', ctx).faction(f.live.players[f.seat].faction);
+    const expected = [];
+    for (const [id, n] of Object.entries(initial.units)) if (n) expected.push([faction.units.find(u => u.id === id).name, n]);
+    const structureNames = { factory: 'Фабрика', bastion: 'Бастион', city: 'Город' };
+    for (const [id, n] of Object.entries(initial.structures)) if (n) expected.push([structureNames[id], n]);
+    const picks = p.actions.filter(x => x.kind === 'pick');
+    if (picks.length !== expected.length || expected.some(([name, n]) => !picks.some(x => x.label === name && x.count === n))) return 'количество фигур исчезло с кнопок';
+    FSUI.update(f.game.state, p);
+    if (nodesWithClass(FSUI.modernRoot, 'fs-tokens').length) return 'полоса жетонов нарисована в DOM';
+    const counts = nodesWithClass(FSUI.modernRoot, 'fs-pick-count').map(x => x.textContent);
+    if (counts.length !== expected.length || expected.some(([, n]) => !counts.includes(n + '×'))) return 'счёт не нарисован на кнопках фигур';
+    if (!p.actions.some(x => x.kind === 'primary' && /Завершить размещение сил/.test(x.label))) return 'исчезло завершение размещения сил';
+    const done = FS_RULES.apply(f.live, f.seat, { type: 'finishSetupForces' });
+    if (!done.ok || f.live.setup.stage !== 'objectives') return 'не удалось перейти к настоящему этапу целей';
+    f.game.state = FS_RULES.view(f.live, f.seat);
+    p = f.panel();
+    if (!p.hand || !p.hand.length || !f.game.state.setup.objectiveOptions.length) return 'выбор жетона цели соперника пропал';
+    p.hand[0].onClick();
+    const option = f.game.state.setup.objectiveOptions.find(x => x.faction === f.game.pending.faction);
+    if (f.game.mode !== 'setupObjective' || !option || !option.areas.length) return 'клик по жетону цели не выбирает его';
+    f.game.pending.pos = option.areas[0];
+    f.game.confirmSetupObjective();
+    const cmd = f.sent.at(-1);
+    if (!cmd || cmd.type !== 'setupObjective' || cmd.faction !== option.faction || cmd.pos !== option.areas[0]) return 'подтверждение цели отправляет неверную команду';
+    const result = FS_RULES.apply(f.live, f.seat, cmd);
+    if (!result.ok || !f.live.objectives.some(x => x.faction === option.faction && x.area === option.areas[0])) return 'движок не поставил жетон цели';
+    return true;
+});
+
+screen('setup-ui-5', 'выбор нижнего тайла и поворот не сбрасывают прокрутку, новый этап начинает сверху', () => {
+    const f = setupFixture(), root = FSUI.modernRoot, query = root.querySelector;
+    root.querySelector = selector => selector[0] === '.' ? nodesWithClass(root, selector.slice(1))[0] || null : null;
+    try {
+        FSUI.update(f.view, f.panel());
+        nodesWithClass(root, 'fs-actions')[0].scrollTop = 177;
+        const rows = nodesWithClass(root, 'fs-tile-row');
+        rows[rows.length - 1].children[1].click();
+        FSUI.update(f.view, f.panel());
+        if (nodesWithClass(root, 'fs-actions')[0].scrollTop !== 177) return 'выбор нижнего тайла вернул список к началу';
+        f.game.transformSetupTile('right');
+        FSUI.update(f.view, f.panel());
+        if (nodesWithClass(root, 'fs-actions')[0].scrollTop !== 177) return 'поворот сбросил прокрутку';
+        const cell = f.view.setup.legalCells[0];
+        const result = FS_RULES.apply(f.live, f.seat, { type: 'placeSystemTile', tile: f.view.setup.hand[0], row: cell.row, col: cell.col });
+        if (!result.ok) return 'не удалось перейти к силам: ' + result.error;
+        f.game.state = FS_RULES.view(f.live, f.seat); f.game.mode = 'idle'; f.game.pending = null;
+        FSUI.update(f.game.state, f.panel());
+        if (nodesWithClass(root, 'fs-actions')[0].scrollTop !== 0) return 'новый этап унаследовал прокрутку старого';
+        return true;
+    } finally { root.querySelector = query; }
+});
+
+screen('setup-ui-6', 'компактная мобильная сборка доступна до выбора и не переносится на этап сил', () => {
+    // В node нет расчёта геометрии; реальные размеры и клики отдельно проверяют
+    // в браузере. Здесь фиксируем, что компактный режим включается уже в руке.
+    const f = setupFixture(), root = FSUI.modernRoot, original = root.classList, classes = new Set();
+    root.classList = {
+        add: name => classes.add(name), remove: name => classes.delete(name), contains: name => classes.has(name),
+        toggle: (name, on) => { if (on) classes.add(name); else classes.delete(name); },
+    };
+    try {
+        FSUI.update(f.view, f.panel());
+        if (!classes.has('is-setup-tiles')) return 'компактная панель не включилась до выбора стороны';
+        nodesWithClass(root, 'fs-tile-choice')[1].click();
+        FSUI.update(f.view, f.panel());
+        if (!classes.has('is-setup-tiles')) return 'компактная панель исчезла после выбора стороны';
+        const css = fs.readFileSync(path.join(ROOT, 'js/fs/FSUI.css'), 'utf8');
+        const portrait = css.match(/\.fs-shell\.is-mobile\.is-setup-tiles \.fs-main-panel\{([^}]*)\}/);
+        const landscape = css.match(/@media \(orientation:landscape\) and \(max-height:550px\)\{\s*\.fs-shell\.is-mobile\.is-setup-tiles \.fs-main-panel\{([^}]*)\}/);
+        const plaque = css.match(/\.fs-shell\.is-mobile\.is-setup-tiles \.fs-plaque\{([^}]*)\}/);
+        if (!portrait || !/(?:^|;)height:min\(44vh,350px\)/.test(portrait[1])) return 'нет компактной панели в портретной ориентации';
+        if (!landscape || !/width:min\(356px,45vw\)/.test(landscape[1])) return 'альбомная панель перекрывает центр доски';
+        if (!plaque || !/max-width:calc\(100vw - 16px\)/.test(plaque[1])) return 'подтверждение тайла не ограничено шириной экрана';
+        const cell = f.view.setup.legalCells[0];
+        const result = FS_RULES.apply(f.live, f.seat, { type: 'placeSystemTile', tile: f.view.setup.hand[0], row: cell.row, col: cell.col });
+        if (!result.ok) return 'не удалось перейти к силам: ' + result.error;
+        f.game.state = FS_RULES.view(f.live, f.seat); f.game.mode = 'idle'; f.game.pending = null;
+        FSUI.update(f.game.state, f.panel());
+        if (classes.has('is-setup-tiles')) return 'режим тайлов остался на этапе начальных сил';
+        return true;
+    } finally { root.classList = original; }
 });
 
 // ============================================================================

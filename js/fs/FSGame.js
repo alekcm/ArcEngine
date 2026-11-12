@@ -568,20 +568,8 @@ class FSGame {
             ctx.text = 'Система ' + (sys ? sys.tile : '') + ': выберите фигуру и щёлкните по сектору.';
             ctx.status = this.status || (this.mode === 'setupUnit' || this.mode === 'setupStructure'
                 ? 'Щёлкните по подсвеченному сектору.' : 'Фигуры можно ставить подряд.');
-            // The inventory of the initial forces: every piece, zeros included.
-            ctx.tokens = [];
-            for (const unit of (faction ? faction.units : [])) {
-                ctx.tokens.push({
-                    icon: unit.type === 'ship' ? 'mark.ship' : 'mark.ground',
-                    label: unit.name,
-                    count: initial.units[unit.id] || 0,
-                    hint: unit.type === 'ship' ? 'Встаёт в пустоту' : 'Встаёт на мир',
-                });
-            }
+            // The pick buttons already show the remaining count of each piece.
             const structureNames = { factory: 'Фабрика', bastion: 'Бастион', city: 'Город' };
-            for (const type of ['factory', 'bastion', 'city']) {
-                ctx.tokens.push({ icon: 'mark.city', label: structureNames[type], count: initial.structures[type] || 0, hint: 'Встаёт на мир' });
-            }
             for (const [id, count] of Object.entries(initial.units)) {
                 if (!count) continue;
                 const def = faction && faction.units.find(u => u.id === id);
@@ -671,29 +659,34 @@ class FSGame {
         const selected = this.mode === 'placeTile' && this.pending;
         ctx.text = selected
             ? (selected.cell ? 'Подтвердите постановку кнопкой над системой.' : 'Щёлкните по подсвеченному месту.')
-            : 'Выберите систему, затем место на карте.';
-        ctx.status = this.status || (selected ? 'Q/E — поворот · F — другая сторона' : 'Ваш ход.');
+            : 'Выберите сторону системы, затем место на карте.';
+        ctx.status = this.status || (selected ? 'Q/E — поворот · стороны справа' : 'Ваш ход.');
         hand.forEach(id => {
-            const active = selected && selected.handTile === id;
-            const face = active ? selected.tile : id;
-            const raw = FS_CATALOG.tile(face);
-            const tile = raw && active ? Object.assign({}, raw, {
-                areas: FS_RULES.createSystemFromTile({ systems: [] }, raw, me, 0, 0, selected.rotation).areas,
-            }) : raw;
-            ctx.actions.push({
-                tile, selected: !!active,
-                label: 'Система ' + face,
-                onClick: () => {
-                    if (this.setupSubmitting) return;
-                    const cell = selected ? selected.cell : null;
-                    this.mode = 'placeTile';
-                    this.pending = { handTile: id, tile: id, rotation: 0, cell };
-                    this.status = '';
-                    this.highlightSetupCells();
-                    this.updateSetupPreview();
-                    this.refresh();
-                },
-            });
+            // Both faces belong to one physical tile. They stay visible together,
+            // including when a face is selected or rotated on the board.
+            for (const face of FS_RULES.tileFaces(id)) {
+                const active = selected && selected.handTile === id && selected.tile === face.id;
+                const tile = active ? Object.assign({}, face, {
+                    areas: FS_RULES.createSystemFromTile({ systems: [] }, face, me, 0, 0, selected.rotation).areas,
+                }) : face;
+                ctx.actions.push({
+                    handTile: id, tile, selected: !!active,
+                    label: 'Система ' + face.id,
+                    onClick: () => {
+                        if (this.setupSubmitting) return;
+                        const cell = selected ? selected.cell : null;
+                        // Changing sides of the same tile keeps its orientation,
+                        // just like F; a different tile starts unrotated.
+                        const rotation = selected && selected.handTile === id ? selected.rotation : 0;
+                        this.mode = 'placeTile';
+                        this.pending = { handTile: id, tile: face.id, rotation, cell };
+                        this.status = '';
+                        this.highlightSetupCells();
+                        this.updateSetupPreview();
+                        this.refresh();
+                    },
+                });
+            }
         });
         if (selected && (selected.cell || selected.tile)) {
             ctx.actions.push({ kind: 'secondary', label: 'Снять выбор тайла', onClick: () => this.cancelSetupTile() });
