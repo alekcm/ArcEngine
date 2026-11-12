@@ -6842,18 +6842,18 @@ rule('storm-3', '«the two directions shown on the Warp Storm icon» — диа�
     const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
     if (!at(0, 1) || !at(1, 1) || !at(1, 2) || !at(0, 2)) return 'карта без систем для диагонали';
     const storm = { id: 's0', system: at(1, 1).id, side: 'N', moved: false };
-    // SE: свободный восточный конец качается на юг вокруг западной опоры —
-    // шторм встаёт на западную грань восточного соседа, а не прыгает по
+    // SE: опора восточная, свободный западный конец качается на юг —
+    // шторм встаёт стоймя вниз от своего правого конца, а не прыгает по
     // диагонали через угол.
     const se = FS_RULES.stormTarget(st, storm, 'SE');
     if (!se) return 'SE не двигает шторм';
-    eq(FS_RULES.edgeKey(st, se), FS_RULES.edgeKey(st, { system: at(1, 1).id, side: 'W' }),
-        'SE встаёт на грань у своей западной опоры');
-    // NW: свободный западный конец качается на север вокруг восточной опоры.
+    eq(FS_RULES.edgeKey(st, se), FS_RULES.edgeKey(st, { system: at(1, 2).id, side: 'W' }),
+        'SE встаёт стоймя вниз от правого конца');
+    // NW: опора западная, свободный восточный конец качается на север.
     const nw = FS_RULES.stormTarget(st, storm, 'NW');
     if (!nw) return 'NW не двигает шторм';
-    eq(FS_RULES.edgeKey(st, nw), FS_RULES.edgeKey(st, { system: at(0, 2).id, side: 'W' }),
-        'NW встаёт на грань у своей восточной опоры');
+    eq(FS_RULES.edgeKey(st, nw), FS_RULES.edgeKey(st, { system: at(0, 1).id, side: 'W' }),
+        'NW встаёт стоймя вверх от левого конца');
     eq(FS_RULES.edgeKey(st, se) === FS_RULES.edgeKey(st, storm), false, 'SE не оставляет шторм на месте');
     eq(FS_RULES.edgeKey(st, nw) === FS_RULES.edgeKey(st, storm), false, 'NW не оставляет шторм на месте');
 });
@@ -7071,15 +7071,15 @@ rule('storm-13', '«the two directions shown on the Warp Storm icon» — S-кр
     const st = wideEmpty();
     const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
     if (!at(0, 1) || !at(1, 0) || !at(1, 1) || !at(1, 2) || !at(2, 0) || !at(2, 1)) return 'карта без систем для разворота';
-    // NE: свободный восточный конец — на север, опора западная.
-    // SW: свободный западный конец — на юг, опора восточная.
+    // NE: опора восточная, свободный западный конец — на север.
+    // SW: опора западная, свободный восточный конец — на юг.
     // Вертикаль поворачивается в ту же сторону, что горизонталь: одна карта —
     // один поворот, а не зеркало от положения шторма.
     const legs = [
-        [{ system: at(1, 1).id, side: 'N' }, 'NE', { system: at(0, 1).id, side: 'W' }, 'горизонталь: NE'],
-        [{ system: at(1, 1).id, side: 'N' }, 'SW', { system: at(1, 2).id, side: 'W' }, 'горизонталь: SW'],
-        [{ system: at(1, 0).id, side: 'E' }, 'NE', { system: at(1, 1).id, side: 'N' }, 'вертикаль: NE'],
-        [{ system: at(1, 0).id, side: 'E' }, 'SW', { system: at(2, 0).id, side: 'N' }, 'вертикаль: SW'],
+        [{ system: at(1, 1).id, side: 'N' }, 'NE', { system: at(0, 2).id, side: 'W' }, 'горизонталь: NE'],
+        [{ system: at(1, 1).id, side: 'N' }, 'SW', { system: at(1, 1).id, side: 'W' }, 'горизонталь: SW'],
+        [{ system: at(1, 0).id, side: 'E' }, 'NE', { system: at(2, 1).id, side: 'N' }, 'вертикаль: NE'],
+        [{ system: at(1, 0).id, side: 'E' }, 'SW', { system: at(1, 0).id, side: 'N' }, 'вертикаль: SW'],
     ];
     for (const [from, dir, want, name] of legs) {
         const storm = Object.assign({ id: 's', moved: false }, from);
@@ -7097,15 +7097,15 @@ rule('storm-14', '«the two directions shown on the Warp Storm icon» — S-кр
     const st = wideEmpty();
     const at = (r, c) => st.systems.find(s => s.row === r && s.col === c);
     if (!at(0, 2) || !at(1, 0) || !at(1, 1) || !at(2, 0) || !at(2, 1)) return 'карта без систем для разворота';
-    // NW: свободный западный конец — на север, опора восточная.
-    // SE: свободный восточный конец — на юг, опора западная.
+    // NW: опора западная, свободный восточный конец — на север.
+    // SE: опора восточная, свободный западный конец — на юг.
     // Вертикаль поворачивается в ту же сторону, что горизонталь: одна карта —
     // один поворот, а не зеркало от положения шторма.
     const legs = [
-        [{ system: at(1, 1).id, side: 'N' }, 'NW', { system: at(0, 2).id, side: 'W' }, 'горизонталь: NW'],
-        [{ system: at(1, 1).id, side: 'N' }, 'SE', { system: at(1, 1).id, side: 'W' }, 'горизонталь: SE'],
-        [{ system: at(1, 0).id, side: 'E' }, 'NW', { system: at(2, 1).id, side: 'N' }, 'вертикаль: NW'],
-        [{ system: at(1, 0).id, side: 'E' }, 'SE', { system: at(1, 0).id, side: 'N' }, 'вертикаль: SE'],
+        [{ system: at(1, 1).id, side: 'N' }, 'NW', { system: at(0, 1).id, side: 'W' }, 'горизонталь: NW'],
+        [{ system: at(1, 1).id, side: 'N' }, 'SE', { system: at(1, 2).id, side: 'W' }, 'горизонталь: SE'],
+        [{ system: at(1, 0).id, side: 'E' }, 'NW', { system: at(1, 1).id, side: 'N' }, 'вертикаль: NW'],
+        [{ system: at(1, 0).id, side: 'E' }, 'SE', { system: at(2, 0).id, side: 'N' }, 'вертикаль: SE'],
     ];
     for (const [from, dir, want, name] of legs) {
         const storm = Object.assign({ id: 's', moved: false }, from);
@@ -7128,7 +7128,7 @@ rule('storm-14', '«the two directions shown on the Warp Storm icon» — S-кр
     eq(ways.map(o => o.dir).sort().join(','), 'NW,SE', 'карта даёт оба разворота');
     const moved = FS_RULES.apply(st, 0, { type: 'moveStorm', storm: 'sx', dir: 'NW' });
     eq(moved.ok, true, 'разворот приказом проходит: ' + (moved.error || ''));
-    eq(FS_RULES.edgeKey(st, st.storms[0]), FS_RULES.edgeKey(st, { system: at(0, 2).id, side: 'W' }),
+    eq(FS_RULES.edgeKey(st, st.storms[0]), FS_RULES.edgeKey(st, { system: at(0, 1).id, side: 'W' }),
         'приказ поставил шторм на грань разворота');
     return true;
 });

@@ -743,8 +743,8 @@ const TABLE = [
     {
         check: 'storm-14',
         file: 'js/fs/FSWarpStorms.js',
-        old: "            const pc = d[1] === 'E' ? c : c + 1;",
-        new: "            const pc = d[1] === 'E' ? c + 1 : c;",
+        old: "            const pc = d[1] === 'E' ? c + 1 : c;",
+        new: "            const pc = d[1] === 'E' ? c : c + 1;",
         why: '«the two directions shown on the Warp Storm icon» — S-кривая зеркалится обратно: шторм уходит не на ту грань',
     },
     {
