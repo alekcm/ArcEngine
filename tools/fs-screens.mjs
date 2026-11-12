@@ -265,6 +265,17 @@ function cameraOnBoard() {
     return cam;
 }
 
+function gameCamera() {
+    const cam = cameraOnBoard();
+    const game = Object.create(FS_GAME.prototype);
+    game.app = { camera: cam, location: { width: 520, height: 780 } };
+    game.setupCamera.call(game);
+    return cam;
+}
+
+const cameraPoint = cam => [cam.target.x, cam.target.y, cam.target.h];
+const cameraDistance = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
+
 /** Нажатие кнопки мыши по доске: e.button 0 — левая, 2 — правая. */
 const press = (button, x, y, pointerId) => ({ button, clientX: x, clientY: y, pointerId: pointerId || 1, pointerType: 'mouse', preventDefault: nothing });
 const moveTo = (x, y, pointerId) => ({ clientX: x, clientY: y, pointerId: pointerId || 1, pointerType: 'mouse', preventDefault: nothing });
@@ -409,6 +420,134 @@ screen('cam-7', 'компас показывает, где север, посл�
     cam.azimuth = 180 * Math.PI / 180;      // камера смотрит на запад — север справа
     const west = game.compassAngle();
     if (Math.abs(west - 90) > 0.001) return 'камера на запад, а компас показывает ' + west + ' (ждали 90)';
+    return true;
+});
+
+screen('cam-8', 'Alt показывает плашки, а каждая клавиша WASD продолжает двигать камеру', () => {
+    return withAltUI(({ root, fireWindow }) => {
+        const cam = gameCamera();
+        for (const alt of [
+            { code: 'AltLeft', key: 'Alt', mods: { altKey: true } },
+            { code: 'AltRight', key: 'Alt', mods: { altKey: true } },
+            { code: 'AltRight', key: 'AltGraph', mods: { altKey: true, ctrlKey: true, getModifierState: key => key === 'AltGraph' } },
+        ]) {
+            fireWindow('keydown', { code: alt.code, key: alt.key, ...alt.mods });
+            if (!root.classList.contains('is-alt')) return alt.key + ' не показал плашки';
+            for (const code of ['KeyW', 'KeyA', 'KeyS', 'KeyD']) {
+                cam.lookAt(260, 390);
+                const before = cameraPoint(cam);
+                const down = fireWindow('keydown', { code, ...alt.mods });
+                cam.update(0.05);
+                const after = cameraPoint(cam);
+                const dx = after[0] - before[0], dy = after[1] - before[1];
+                if (cameraDistance(before, after) < 0.01) return alt.key + ' + ' + code + ' не сдвигает камеру';
+                if ((code === 'KeyW' && dy >= 0) || (code === 'KeyS' && dy <= 0)
+                    || (code === 'KeyA' && dx >= 0) || (code === 'KeyD' && dx <= 0)) return code + ' двигает камеру не в ту сторону';
+                if (!down.defaultPrevented) return alt.key + ' + ' + code + ' не блокирует действие браузера';
+                if (!root.classList.contains('is-alt')) return 'при движении исчезли плашки';
+                fireWindow('keyup', { code, ...alt.mods });
+                if (cam._keys.size) return code + ' осталась зажатой после отпускания';
+                const stopped = cameraPoint(cam);
+                cam.update(0.05);
+                if (cameraDistance(stopped, cameraPoint(cam)) > 1e-6) return code + ' продолжает двигать камеру после отпускания';
+            }
+            fireWindow('keyup', { code: alt.code, key: alt.key });
+            if (root.classList.contains('is-alt')) return alt.key + ' отпущен, но плашки остались';
+        }
+        return true;
+    });
+});
+
+screen('cam-9', 'WASD не залипают при смене модификатора, фокуса или скрытии вкладки', () => {
+    return withAltUI(({ root, fireWindow, fireDocument }) => {
+        const cam = gameCamera();
+        fireWindow('keydown', { code: 'KeyW' });
+        fireWindow('keydown', { code: 'AltLeft', key: 'Alt', altKey: true });
+        fireWindow('keyup', { code: 'KeyW', altKey: true });
+        if (cam._keys.size || !root.classList.contains('is-alt')) return 'W отпущена при зажатом Alt, но камера не остановилась';
+        fireWindow('keyup', { code: 'AltLeft', key: 'Alt' });
+
+        fireWindow('keydown', { code: 'AltLeft', key: 'Alt', altKey: true });
+        fireWindow('keydown', { code: 'KeyW', altKey: true });
+        fireWindow('keyup', { code: 'AltLeft', key: 'Alt' });
+        const before = cameraPoint(cam);
+        cam.update(0.05);
+        if (root.classList.contains('is-alt') || cameraDistance(before, cameraPoint(cam)) < 0.01) {
+            return 'после отпускания Alt плашки должны исчезнуть, а зажатая W — продолжить движение';
+        }
+        fireWindow('keyup', { code: 'KeyW' });
+        if (cam._keys.size) return 'W застряла после отпускания Alt';
+
+        fireWindow('keydown', { code: 'AltLeft', key: 'Alt', altKey: true });
+        fireWindow('keydown', { code: 'KeyW', altKey: true });
+        fireWindow('keydown', { code: 'KeyD', altKey: true });
+        fireWindow('keyup', { code: 'KeyW', altKey: true });
+        if (!cam._keys.has('KeyD') || cam._keys.has('KeyW')) return 'отпускание W не оставило D в полёте';
+        fireWindow('keyup', { code: 'KeyD', altKey: true });
+        fireWindow('keyup', { code: 'AltLeft', key: 'Alt' });
+        if (cam._keys.size) return 'диагональное движение не остановилось';
+
+        for (const mods of [{ ctrlKey: true }, { metaKey: true }, { target: { tagName: 'INPUT' } }]) {
+            fireWindow('keydown', { code: 'KeyA' });
+            const up = fireWindow('keyup', { code: 'KeyA', ...mods });
+            if (cam._keys.size) return 'клавиша застряла после смены модификатора или фокуса';
+            if (up.defaultPrevented) return 'отпускание в поле ввода или с Ctrl/Meta перехвачено камерой';
+        }
+        fireWindow('keydown', { code: 'AltLeft', key: 'Alt', altKey: true });
+        fireWindow('keydown', { code: 'KeyD', altKey: true });
+        fireWindow('blur');
+        if (cam._keys.size || root.classList.contains('is-alt')) return 'потеря фокуса не сбросила камеру и плашки';
+
+        fireWindow('keydown', { code: 'AltLeft', key: 'Alt', altKey: true });
+        fireWindow('keydown', { code: 'KeyW', altKey: true });
+        fireDocument('visibilitychange');
+        if (!cam._keys.has('KeyW') || !root.classList.contains('is-alt')) return 'видимая вкладка сбросила движение';
+        ctx.document.hidden = true;
+        fireDocument('visibilitychange');
+        if (cam._keys.size || root.classList.contains('is-alt')) return 'скрытая вкладка не сбросила камеру и плашки';
+        ctx.document.hidden = false;
+        fireDocument('visibilitychange');
+        if (cam._keys.size || root.classList.contains('is-alt')) return 'при возврате на вкладку движение возобновилось само';
+        cam.detach();
+        cam._keys.add('KeyW');
+        ctx.document.hidden = true;
+        fireDocument('visibilitychange');
+        if (!cam._keys.has('KeyW')) return 'после detach остался слушатель скрытия вкладки';
+        cam._keys.clear();
+        return true;
+    });
+});
+
+screen('cam-10', 'Alt+WASD не отнимает текстовый ввод и другие сочетания клавиш', () => {
+    const unclaimed = (cam, code, props) => {
+        const e = Object.assign({ code, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } }, props);
+        cam._onKey(e, true);
+        return !e.defaultPrevented && !cam._keys.size;
+    };
+    // The editor and the sample game keep their original Alt shortcuts.
+    const plain = cameraOnBoard();
+    if (!unclaimed(plain, 'KeyW', { altKey: true })) return 'камера вне Forbidden Stars перехватила Alt+W';
+    const cam = gameCamera();
+    for (const props of [
+        { ctrlKey: true }, { metaKey: true }, { ctrlKey: true, altKey: true }, { metaKey: true, altKey: true },
+        { altKey: true, target: { tagName: 'INPUT' } },
+        { altKey: true, target: { tagName: 'TEXTAREA' } },
+        { altKey: true, target: { tagName: 'SELECT' } },
+        { altKey: true, target: { tagName: 'DIV', isContentEditable: true } },
+    ]) {
+        if (!unclaimed(cam, 'KeyW', props)) return 'камера перехватила системное сочетание или текстовый ввод';
+    }
+    for (const code of ['ArrowLeft', 'ArrowRight', 'KeyQ', 'KeyE']) {
+        if (!unclaimed(cam, code, { altKey: true })) return 'камера перехватила Alt+' + code;
+    }
+    let homes = 0;
+    cam.home = () => { homes++; };
+    if (!unclaimed(cam, 'KeyR', { altKey: true }) || homes) return 'Alt+R вернул камеру домой';
+    cam._onKey({ code: 'ArrowLeft', preventDefault: nothing }, true);
+    if (!cam._keys.has('ArrowLeft')) return 'стрелка без Alt перестала двигать камеру';
+    const up = { code: 'ArrowLeft', altKey: true, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+    cam._onKey(up, false);
+    if (cam._keys.size || up.defaultPrevented) return 'стрелка залипла или Alt+стрелка перехвачена';
     return true;
 });
 
@@ -1053,12 +1192,17 @@ function withAltUI(check) {
         panels: FSUI.panels, factionSeat: FSUI.factionSeat, drawerMounted: FSUI.drawerMounted, helpOpen: FSUI.helpOpen,
         plaqueEl: FSUI.plaqueEl, plaqueInfo: FSUI.plaqueInfo,
         body: ctx.document.body, create: ctx.document.createElement, docAdd: ctx.document.addEventListener,
-        hidden: ctx.document.hidden, windowAdd: ctx.addEventListener,
+        docRemove: ctx.document.removeEventListener, hidden: ctx.document.hidden,
+        windowAdd: ctx.addEventListener, windowRemove: ctx.removeEventListener,
     };
     const winEvents = new Map(), docEvents = new Map();
     const listen = events => (type, fn) => {
         if (!events.has(type)) events.set(type, []);
         events.get(type).push(fn);
+    };
+    const unlisten = events => (type, fn) => {
+        const list = events.get(type), i = list ? list.indexOf(fn) : -1;
+        if (i >= 0) list.splice(i, 1);
     };
     const node = tag => {
         const n = el(tag);
@@ -1099,8 +1243,10 @@ function withAltUI(check) {
         ctx.document.body = node('body');
         ctx.document.createElement = node;
         ctx.document.addEventListener = listen(docEvents);
+        ctx.document.removeEventListener = unlisten(docEvents);
         ctx.document.hidden = false;
         ctx.addEventListener = listen(winEvents);
+        ctx.removeEventListener = unlisten(winEvents);
         FSUI.modernRoot = null; FSUI.chipsEl = null; FSUI.altZoom = false; FSUI.altKeys = new Set();
         FSUI.currentLobby = null; FSUI.pressedPointer = null; FSUI.deferredRender = null;
         FSUI.renderState = null; FSUI.renderCtx = null; FSUI.panels = null;
@@ -1115,7 +1261,8 @@ function withAltUI(check) {
         FSUI.panels = saved.panels; FSUI.factionSeat = saved.factionSeat; FSUI.drawerMounted = saved.drawerMounted;
         FSUI.helpOpen = saved.helpOpen; FSUI.plaqueEl = saved.plaqueEl; FSUI.plaqueInfo = saved.plaqueInfo;
         ctx.document.body = saved.body; ctx.document.createElement = saved.create;
-        ctx.document.addEventListener = saved.docAdd; ctx.document.hidden = saved.hidden; ctx.addEventListener = saved.windowAdd;
+        ctx.document.addEventListener = saved.docAdd; ctx.document.removeEventListener = saved.docRemove;
+        ctx.document.hidden = saved.hidden; ctx.addEventListener = saved.windowAdd; ctx.removeEventListener = saved.windowRemove;
     }
 }
 

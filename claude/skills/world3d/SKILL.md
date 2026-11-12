@@ -238,7 +238,7 @@ camera descends). Pitch is the angle below the horizon: negative — looking up.
 | | game mode | free (`setFree(true)`, editor) |
 |---|---|---|
 | WASD, arrows | flight: W/S along the view (pitch included), A/D — strafe; speed `CAMERA_FLY_SPEED` screen px/s (÷ zoom over the world; the editor has a slider for it at the bottom right of the view) | same |
-| Q / E | down / up along the world vertical | same |
+| Q / E | not handled by the camera (the game uses them for tile rotation) | same |
 | RMB | look around if `CAMERA_ORBIT = 1`: the camera stays, the target swings around it (`_look`); while `follow` is active — orbit around the object | look around |
 | LMB | not taken (game input) | orbit around the target; Shift — pan |
 | middle, finger | pan "follows the pointer" | same |
@@ -247,9 +247,13 @@ camera descends). Pitch is the angle below the horizon: negative — looking up.
 
 `home()` (key R) — orientation and zoom from constants, target — the `follow` object or the
 center, on the ground (`lift = 0`; `lookAt(x, y)` drops `lift` too, `follow` decays it).
-`applyConstants()` re-reads constants (FOV — immediately). Keys (`e.code`: WASD, arrows, Q, E,
-R — `FLY_KEYS`) are not intercepted inside input fields. Flight (`_fly`) moves the target by a
-world vector normalized to the step, keeps absolute height (`_setTarget3` turns it into
+`applyConstants()` re-reads constants (FOV — immediately). Keys use `e.code`: WASD and arrows
+are `FLY_KEYS`, R goes home, and Q/E belong to the game. Keys are not intercepted inside input
+fields. `altWASD` is off by default; Forbidden Stars enables it so WASD still flies while Alt
+reveals unit chips. Alt+arrows and Ctrl/Meta shortcuts remain available (AltGraph may report
+Ctrl+Alt); releases clear flight keys even if focus or modifiers changed, and blur or a hidden
+page clears the whole set. Flight (`_fly`) moves the target by a world vector normalized to the
+step, keeps absolute height (`_setTarget3` turns it into
 `lift`) and holds the camera above the ground (`_floorEye` raises `lift`, the view direction
 stays). Pan keeps the ground point under the cursor by intersecting the plane at its height,
 in two passes. `groundFocus()` — the ground point at the frame center (`{ x, y, h, k }`): in

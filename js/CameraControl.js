@@ -26,7 +26,8 @@
 // cursor); one finger — pan, two fingers — pinch (zoom and pan by the midpoint);
 // R — home position (home). Keys are not intercepted while focus is in an input
 // field, and Q/E are not the camera's keys at all: the game keeps them for
-// turning a tile during the assembly of the board.
+// turning a tile during the assembly of the board. Games can opt into Alt+WASD
+// without taking Alt+arrows or the usual Ctrl/Meta shortcuts.
 //
 // Q/E are NOT the camera's keys: the camera does not raise or lower itself. The
 // game keeps Q/E for its own commands (turning a tile during the assembly of the
@@ -47,7 +48,7 @@ class CameraController {
         this.bounds = o.bounds || null;
         this.free = !!o.free;
         this.target = { x: 0, y: 0, h: 0 };
-        this.lift = 0;                 // px: target height above the ground (flight: W/S along the view, Q/E)
+        this.lift = 0;                 // px: target height above the ground (W/S fly along the view)
         this.azimuth = 0;
         this.pitch = 1;
         this.zoom = 1;
@@ -55,6 +56,7 @@ class CameraController {
         this.followObj = null;
         this.ignorePointer = null;     // (e) => true — the press is not for the camera (editor: gizmo under the cursor)
         this.leftDragPan = false;      // game opt-in: left-drag pans the board; a stationary click remains game input
+        this.altWASD = false;          // game opt-in: fly while Alt shows an overlay
         this.viewVersion = 0;          // grows with every camera move (re-project overlays)
         this._lastCam = null;
         this._pointers = new Map();    // pointerId -> { x, y, mode: 'pan' | 'orbit' | 'look' | 'yaw' | 'touch', anchor }
@@ -353,7 +355,8 @@ class CameraController {
             menu: (e) => e.preventDefault(),
             key: (e) => this._onKey(e, true),
             keyUp: (e) => this._onKey(e, false),
-            blur: () => this._keys.clear()
+            blur: () => this._keys.clear(),
+            visibility: () => { if (document.hidden) this._keys.clear(); }
         };
         canvas.addEventListener('pointerdown', b.down);
         canvas.addEventListener('pointermove', b.move);
@@ -364,6 +367,7 @@ class CameraController {
         window.addEventListener('keydown', b.key);
         window.addEventListener('keyup', b.keyUp);
         window.addEventListener('blur', b.blur);
+        if (typeof document !== 'undefined' && document.addEventListener) document.addEventListener('visibilitychange', b.visibility);
         canvas.style.touchAction = 'none';
     }
 
@@ -379,6 +383,7 @@ class CameraController {
             window.removeEventListener('keydown', b.key);
             window.removeEventListener('keyup', b.keyUp);
             window.removeEventListener('blur', b.blur);
+            if (typeof document !== 'undefined' && document.removeEventListener) document.removeEventListener('visibilitychange', b.visibility);
         }
         this._canvas = null;
         this._bound = null;
@@ -515,11 +520,17 @@ class CameraController {
     }
 
     _onKey(e, down) {
+        // A key can be released after a modifier or focus changes; never leave it flying.
+        if (!down) this._keys.delete(e.code);
         const t = e.target;
         if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
-        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        // Only the game opts into Alt+WASD; keep Alt+arrows and Ctrl/Meta shortcuts
+        // for the browser and editor. AltGraph can report Ctrl+Alt on Windows.
+        const altGraph = e.ctrlKey && typeof e.getModifierState === 'function' && e.getModifierState('AltGraph');
+        const altFlight = this.altWASD && e.altKey && !e.metaKey && (!e.ctrlKey || altGraph) && /^Key[WASD]$/.test(e.code);
+        if ((e.ctrlKey || e.metaKey || e.altKey) && !altFlight) return;
         if (CameraController.FLY_KEYS[e.code]) {
-            if (down) this._keys.add(e.code); else this._keys.delete(e.code);
+            if (down) this._keys.add(e.code);
             e.preventDefault();
             return;
         }

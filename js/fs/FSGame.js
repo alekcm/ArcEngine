@@ -129,6 +129,7 @@ class FSGame {
         const cam = this.app.camera;
         cam.azimuth = -Math.PI / 2;                       // north up
         cam.leftDragPan = true;                           // board drag is intuitive; a click still selects/acts
+        cam.altWASD = true;                               // keep flying while Alt reveals the unit chips
         cam.pitch = FS_CAMERA_PITCH_DEG * Math.PI / 180;
         cam.zoom = FS_CAMERA_ZOOM;
         cam.zoomTarget = FS_CAMERA_ZOOM;
