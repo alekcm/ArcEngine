@@ -31,6 +31,7 @@ if (!fs.existsSync(SAVES_DIR)) {
 }
 const argPort = process.argv.find(a => /^--port=\d+$/.test(a));
 const PORT_BASE = argPort ? Number(argPort.split('=')[1]) : 8090;
+const STRICT_PORT = process.argv.includes('--strict-port');
 const MAX_PLAYERS = 5;
 const UNDO_LIMIT = 300;
 
@@ -598,4 +599,4 @@ function listen(port, tries) {
         console.log('');
     });
 }
-listen(PORT_BASE, 20);
+listen(PORT_BASE, STRICT_PORT ? 0 : 20);
