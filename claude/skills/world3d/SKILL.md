@@ -46,8 +46,13 @@ Projections — only through `View3D`:
   intersection with the terrain (march + bisection), without — the plane `Y = h`;
   `null` — the ray goes into the sky. `createPickingRay` expects CSS px: it accounts for the
   render scale itself.
-- `projectToScreen(x, y, h)` -> `{x, y, visible, behind}` in CSS px.
-- Camera moved but no frame rendered yet — call `view.refreshMatrices()` first.
+- `projectToScreen(x, y, h)` -> `{x, y, visible, behind}` in canvas-local CSS px; convert
+  to the overlay's coordinates if the canvas and overlay have different rectangles. Do not
+  use `Vector3.Project` render pixels directly as CSS pixels (HiDPI and resize change the ratio).
+- Camera moved but no frame rendered yet — call `view.refreshMatrices()` first. For per-frame
+  overlays, Babylon's `onBeforeRenderObservable` is too early: the scene transform can still
+  belong to the previous camera frame. `onBeforeCameraRenderObservable` has the current camera
+  matrices and updates the DOM before the same frame is painted.
 
 ## World objects
 

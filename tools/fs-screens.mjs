@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
 import url from 'node:url';
+import { createRequire } from 'node:module';
 import { createEngineContext } from './fs-engine.mjs';
 
 export const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
@@ -62,10 +63,12 @@ const nothing = () => undefined;
 function el(tag) {
     const node = {
         tagName: String(tag || 'div').toUpperCase(), children: [], className: '', id: '', textContent: '',
-        title: '', type: '', value: '', maxLength: 0, disabled: false, style: { setProperty: nothing, removeProperty: nothing },
+        title: '', type: '', value: '', maxLength: 0, disabled: false, dataset: {}, style: { setProperty: nothing, removeProperty: nothing },
         classList: { add: nothing, remove: nothing, toggle: nothing, contains: () => false },
         append(...xs) { for (const x of xs) this.children.push(x); },
         appendChild(x) { this.children.push(x); return x; },
+        contains(x) { return this.children.includes(x); },
+        removeChild(x) { const i = this.children.indexOf(x); if (i >= 0) this.children.splice(i, 1); },
         replaceChildren(...xs) { this.children = xs; },
         remove: nothing, setAttribute: nothing, getAttribute: () => null,
         addEventListener: nothing, removeEventListener: nothing, focus: nothing, blur: nothing,
@@ -777,11 +780,8 @@ screen('storm-ghost-1', '«Смертоукасатели»: обе отмече
 
 head('Бой: плашки здоровья под миньками');
 
-screen('combat-chip-1', 'плашка бойца показывает здоровье из правил, а не номер места', () => {
-    // Был случай: воин некронов (здоровье 3) входил в бой с подкреплением, а
-    // плашка под минькой показывала 1 сердце. Подсказка урона при этом писала
-    // верные 3 — врала только плашка: в базу здоровья попадал номер места.
-    const st = party('chips');
+function chipBattle(seed) {
+    const st = party(seed || 'chips');
     st.units = [];
     st.structures = [];
     st.objectives = [];
@@ -796,9 +796,16 @@ screen('combat-chip-1', 'плашка бойца показывает здоро
     const warrior = FS_RULES.addUnit(st, 1, 'воины', sys.id, pos);
     st.order = { seat: 0, order: 'advance', system: sys.id, pos, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
     const started = FS_RULES.apply(st, 0, { type: 'endAdvance' });
-    if (!started.ok) return 'бой не начался: ' + started.error;
-    if (!st.combat) return 'боя нет после приказа';
+    if (!started.ok || !st.combat) throw new Error('бой не начался: ' + (started.error || 'нет боя'));
     st.combat.reinforce = { attacker: 0, defender: 1 };
+    return { st, guard, warrior };
+}
+
+screen('combat-chip-1', 'плашка бойца показывает здоровье из правил, а не номер места', () => {
+    // Был случай: воин некронов (здоровье 3) входил в бой с подкреплением, а
+    // плашка под минькой показывала 1 сердце. Подсказка урона при этом писала
+    // верные 3 — врала только плашка: в базу здоровья попадал номер места.
+    const { st, guard, warrior } = chipBattle();
     const view = {
         unitPositions: new Map([[guard.id, { x: 0, y: 0, z: 0 }], [warrior.id, { x: 1, y: 0, z: 0 }]]),
         reinforceAnchors: [{ side: 'defender', index: 0, x: 2, y: 0, z: 0, routed: false }],
@@ -822,6 +829,218 @@ screen('combat-chip-1', 'плашка бойца показывает здоро
     if (r.hp !== 3) return 'подкрепление: на плашке ' + r.hp + ', в правилах 3';
     if (r.morale !== 0) return 'подкрепление: плашка показывает мораль ' + r.morale + ' вместо 0';
     return true;
+});
+
+// Проверяем не самодельную проекцию: локальный Babylon рендерит кадры настоящей
+// камеры в NullEngine, а FSView.create подписывает тот же обработчик, что в игре.
+// DOM здесь — дерево-заглушка; положение на странице дополнительно проверяется
+// в настоящем браузере. В конструктор View3D не входим: нужны лишь его реальные
+// методы проекции и матрицы сцены, а не свет и текстуры.
+let realBabylon, realView3D;
+function chipScene(opts, check) {
+    const oldBabylon = ctx.BABYLON, oldGet = ctx.document.getElementById;
+    if (!realBabylon) realBabylon = createRequire(import.meta.url)(path.join(ROOT, 'libs/babylon.js'));
+    ctx.BABYLON = realBabylon;
+    if (!realView3D) {
+        vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/World3D.js'), 'utf8'), ctx, { filename: 'js/World3D.js' });
+        realView3D = vm.runInContext('View3D', ctx);
+    }
+    const B = realBabylon;
+    const cw = opts.cssWidth || 800, ch = opts.cssHeight || 600;
+    const canvasRect = { left: opts.canvasLeft || 0, top: opts.canvasTop || 0,
+        width: opts.rectWidth || cw, height: opts.rectHeight || ch };
+    const layerRect = { left: opts.layerLeft || 0, top: opts.layerTop || 0, width: cw, height: ch };
+    const canvas = { clientWidth: cw, clientHeight: ch, getBoundingClientRect: () => canvasRect };
+    const layer = el('div');
+    layer.getBoundingClientRect = () => layerRect;
+    ctx.document.getElementById = id => id === 'fs-unit-chips' ? layer : null;
+    const engine = new B.NullEngine({ renderWidth: opts.renderWidth || cw, renderHeight: opts.renderHeight || ch });
+    const scene = new B.Scene(engine);
+    scene.useRightHandedSystem = true;
+    const camera = new B.TargetCamera('screen-test-camera', new B.Vector3(180, 300, 400), scene);
+    camera.minZ = 1; camera.maxZ = 9000;
+    camera.setTarget(new B.Vector3(0, 0, 0));
+    if (opts.viewport) camera.viewport = new B.Viewport(...opts.viewport);
+    scene.activeCamera = camera;
+    const worldView = Object.assign(Object.create(realView3D.prototype), { world: { canvas }, engine, scene, camera });
+    const app = { location: { view: worldView } };
+    try {
+        const view = FS_VIEW.create(app);
+        // Independent reference: project with the actual current camera matrices
+        // straight into the canvas CSS viewport, not through View3D or chipTick.
+        const expected = item => {
+            const matrix = camera.getViewMatrix(true).multiply(camera.getProjectionMatrix(true));
+            const p = B.Vector3.Project(new B.Vector3(item.x, item.y, item.z), B.Matrix.Identity(), matrix,
+                camera.viewport.toGlobal(cw, ch));
+            return { x: canvasRect.left - layerRect.left + p.x * canvasRect.width / cw,
+                y: canvasRect.top - layerRect.top + p.y * canvasRect.height / ch, z: p.z };
+        };
+        return check({ B, engine, scene, camera, view, layer, expected });
+    } finally {
+        scene.dispose(); engine.dispose();
+        ctx.BABYLON = oldBabylon;
+        ctx.document.getElementById = oldGet;
+    }
+}
+
+const chipItem = (key, x, y, z) => ({ key, x, y, z, hp: 3, morale: 2, label: key, routed: false });
+const closePx = (a, b) => Number.isFinite(a) && Math.abs(a - b) < 0.15;
+
+screen('combat-chip-2', 'плашки стоят под своими бойцами при любом масштабе и размере холста', () => {
+    const cases = [
+        { renderWidth: 600, renderHeight: 450 },     // 0.75 render-pixels на CSS-пиксель
+        { renderWidth: 800, renderHeight: 600 },
+        { renderWidth: 1200, renderHeight: 900 },
+        { renderWidth: 1600, renderHeight: 1200 },
+        // Разные коэффициенты по осям, смещение и CSS-масштаб самого canvas.
+        { renderWidth: 1600, renderHeight: 900, canvasLeft: 43, canvasTop: 31,
+            layerLeft: 7, layerTop: 11, rectWidth: 920, rectHeight: 540, viewport: [0.08, 0.1, 0.84, 0.8] },
+    ];
+    for (const opts of cases) {
+        const fail = chipScene(opts, ({ scene, view, expected }) => {
+            view.unitChips = [chipItem('guard', -100, 4, -30), chipItem('warrior', 85, 12, 40),
+                chipItem('rein:defender:0', 30, 3, -80)];
+            scene.render(); scene.render(); // отдельная проверка ниже ловит первый кадр и движение камеры
+            for (let i = 0; i < view.unitChips.length; i++) {
+                const item = view.unitChips[i], node = view.unitChipNodes[i], p = expected(item);
+                if (!node || node.style.display !== 'flex') return item.key + ': плашка не видна';
+                const x = parseFloat(node.style.left), y = parseFloat(node.style.top);
+                if (!closePx(x, p.x) || !closePx(y, p.y + 4)) {
+                    return item.key + ': получили (' + x.toFixed(1) + ', ' + y.toFixed(1) + '), ожидали ('
+                        + p.x.toFixed(1) + ', ' + (p.y + 4).toFixed(1) + ')';
+                }
+            }
+            return null;
+        });
+        if (fail) return opts.renderWidth + '×' + opts.renderHeight + ': ' + fail;
+    }
+    return true;
+});
+
+screen('combat-chip-3', 'плашки совпадают с камерой уже на первом кадре и без запаздывания при движении', () => {
+    return chipScene({}, ({ B, scene, camera, view, expected }) => {
+        const item = chipItem('fighter', 100, 5, -35);
+        view.unitChips = [item];
+        scene.render();
+        const node = view.unitChipNodes[0], p0 = expected(item);
+        if (!node || node.style.display !== 'flex' || !closePx(parseFloat(node.style.left), p0.x)) {
+            return 'в первом кадре плашка не попала под бойца';
+        }
+        camera.position = new B.Vector3(-140, 170, 320);
+        camera.setTarget(new B.Vector3(30, 0, 20));
+        const p1 = expected(item);
+        if (Math.abs(p1.x - p0.x) < 15) return 'проверка не сдвинула проекцию достаточно далеко';
+        scene.render(); // ни одного дополнительного кадра
+        const x = parseFloat(node.style.left), y = parseFloat(node.style.top);
+        if (!closePx(x, p1.x) || !closePx(y, p1.y + 4)) {
+            return 'после движения камеры плашка (' + x.toFixed(1) + ', ' + y.toFixed(1)
+                + '), боец (' + p1.x.toFixed(1) + ', ' + (p1.y + 4).toFixed(1) + ')';
+        }
+        return true;
+    });
+});
+
+screen('combat-chip-4', 'плашка скрывается за камерой, обрезается у края и удаляется после боя', () => {
+    const css = fs.readFileSync(path.join(ROOT, 'js/fs/FSUI.css'), 'utf8');
+    const rule = css.match(/\.fs-unit-chips\{([^}]*)\}/);
+    if (!rule || !/overflow\s*:\s*hidden/.test(rule[1])) return 'слой не обрезает плашку за краем';
+    return chipScene({}, ({ scene, camera, view, layer, expected }) => {
+        // Точка за камерой и точка перед ней, но за боковым краем экрана.
+        const eye = camera.position;
+        view.unitChips = [chipItem('behind', eye.x * 2, eye.y * 2, eye.z * 2),
+            chipItem('edge', 4000, 0, -1800)];
+        const behind = expected(view.unitChips[0]), edge = expected(view.unitChips[1]);
+        if (behind.z >= 0 && behind.z <= 1) return 'проверка не поставила бойца за камеру';
+        if (!(edge.z >= 0 && edge.z <= 1) || (edge.x >= 0 && edge.x <= 800)) return 'проверка не поставила бойца за край';
+        scene.render(); scene.render();
+        if (view.unitChipNodes[0].style.display !== 'none') return 'боец за камерой оставил плашку на экране';
+        if (view.unitChipNodes[1].style.display !== 'flex') return 'плашка у края не может быть обрезана слоем';
+        view.unitChips = [];
+        scene.render();
+        if (view.unitChipNodes.length || layer.children.length) return 'после боя плашки не удалены';
+        return true;
+    });
+});
+
+screen('combat-chip-5', 'плашка начинается под опорной точкой, а не поднимается на фигурку', () => {
+    const css = fs.readFileSync(path.join(ROOT, 'js/fs/FSUI.css'), 'utf8');
+    const rule = css.match(/\.fs-unit-chip\{([^}]*)\}/);
+    if (!rule || !/transform\s*:\s*translate\(\s*-50%\s*,\s*0(?:px|%)?\s*\)/.test(rule[1])) {
+        return 'CSS поднимает плашку над опорной точкой, на саму фигурку';
+    }
+    return true;
+});
+
+screen('combat-chip-6', 'плашка под видимой фигуркой, включая повёрнутую модель и подкрепление', () => {
+    return chipScene({ renderWidth: 1200, renderHeight: 900 }, ({ B, scene, camera, view }) => {
+        const { st, guard, warrior } = chipBattle('chips-geometry');
+        // Геометрия моделей смещена относительно начала узла, как у OBJ в игре.
+        // У воина поворот, у подкрепления отдельный корень с metadata.reinforceId.
+        const make = (metadata, pos, local, angle) => {
+            const root = new B.TransformNode('model', scene);
+            root.metadata = metadata;
+            root.position.set(...pos);
+            root.rotation.y = angle;
+            const body = B.MeshBuilder.CreateBox('part', { width: 26, height: 30, depth: 18 }, scene);
+            body.parent = root;
+            body.position.set(...local);
+            return root;
+        };
+        // Пока OBJ загружается, вместо него может быть сам меш-цилиндр без дочерних узлов.
+        const fallback = B.MeshBuilder.CreateCylinder('fallback', { diameter: 20, height: 18 }, scene);
+        fallback.metadata = { fs: 'unit', unit: guard.id };
+        fallback.position.set(5, 8, -10);
+        const roots = new Map([
+            [guard.id, fallback],
+            [warrior.id, make({ fs: 'unit', unit: warrior.id }, [75, 4, 15], [-12, 15, 8], -0.9)],
+            ['reinforce-defender-0', make({ fs: 'token', reinforceId: 'reinforce-defender-0' }, [-65, 3, 20], [6, 15, -12], 0.5)],
+        ]);
+        view.markers = Array.from(roots.values(), mesh => ({ mesh }));
+        view.unitPositions = new Map([[guard.id, { x: 5, y: 2, z: -10 }], [warrior.id, { x: 75, y: 4, z: 15 }]]);
+        view.reinforceAnchors = [{ side: 'defender', index: 0, x: -65, y: 3, z: 20, routed: false }];
+        FS_VIEW.drawUnitChips(null, view, st);
+        const verify = () => {
+            const matrix = camera.getViewMatrix(true).multiply(camera.getProjectionMatrix(true));
+            const viewport = camera.viewport.toGlobal(800, 600);
+            const project = (x, y, z) => B.Vector3.Project(new B.Vector3(x, y, z), B.Matrix.Identity(), matrix, viewport);
+            for (let i = 0; i < view.unitChips.length; i++) {
+                const item = view.unitChips[i];
+                const key = item.key.startsWith('rein:') ? 'reinforce-defender-0' : item.key.split(':')[0];
+                const root = roots.get(key);
+                if (!root) return 'нет модели для ' + item.key;
+                const bounds = root.getHierarchyBoundingVectors(true), min = bounds.min, max = bounds.max;
+                const center = project((min.x + max.x) / 2, min.y, (min.z + max.z) / 2);
+                let bottom = -Infinity;
+                for (const x of [min.x, max.x]) for (const y of [min.y, max.y]) for (const z of [min.z, max.z]) {
+                    bottom = Math.max(bottom, project(x, y, z).y);
+                }
+                const node = view.unitChipNodes[i], x = parseFloat(node.style.left), y = parseFloat(node.style.top);
+                if (!closePx(x, center.x) || !closePx(y, bottom + 4)) {
+                    return key + ': плашка (' + x.toFixed(1) + ', ' + y.toFixed(1) + '), низ модели ('
+                        + center.x.toFixed(1) + ', ' + (bottom + 4).toFixed(1) + ')';
+                }
+            }
+            return null;
+        };
+        scene.render();
+        const first = verify();
+        if (first) return first;
+        // Не только камера: если фигурка сдвинулась или повернулась, плашка
+        // должна следовать за её геометрией, а не за старым местом на столе.
+        roots.get(warrior.id).position.x += 30;
+        roots.get(warrior.id).rotation.y += 0.8;
+        camera.position.x -= 80; camera.setTarget(new B.Vector3(0, 0, 0));
+        scene.render();
+        const moved = verify();
+        if (moved) return moved;
+        // Сама модель за камерой, хотя старая координата на столе впереди.
+        const eye = camera.position;
+        roots.get(warrior.id).position.set(eye.x * 2, eye.y * 2, eye.z * 2);
+        scene.render();
+        const index = view.unitChips.findIndex(item => item.key.startsWith(warrior.id + ':'));
+        if (index < 0 || view.unitChipNodes[index].style.display !== 'none') return 'плашка осталась на старом месте, когда модель ушла за камеру';
+        return true;
+    });
 });
 
 // ============================================================================

@@ -1207,20 +1207,21 @@ class View3D {
 
     // Map point (x, y and height) -> screen CSS pixels of the canvas.
     // visible — the point is inside the viewport and in front of the camera. Vector3.Project
-    // returns RENDER pixels — hence the division by _renderScale().
+    // returns RENDER pixels; width and height can have different ratios after resizing.
     projectToScreen(x, y2d, h) {
         const k = this._renderScale();
         const w = this.engine.getRenderWidth(), hh = this.engine.getRenderHeight();
+        const cssHeight = this.world.canvas.clientHeight || hh;
         const p = BABYLON.Vector3.Project(
             new BABYLON.Vector3(x, h || 0, y2d),
             BABYLON.Matrix.Identity(),
             this.scene.getTransformMatrix(),
             this.camera.viewport.toGlobal(w, hh));
-        const sx = p.x / k, sy = p.y / k;
-        const behind = p.z > 1 || p.z < 0;
+        const sx = p.x / k, sy = p.y * cssHeight / hh;
+        const behind = !(p.z >= 0 && p.z <= 1);
         return {
             x: sx, y: sy, behind: behind,
-            visible: !behind && sx >= 0 && sy >= 0 && sx <= w / k && sy <= hh / k
+            visible: !behind && sx >= 0 && sy >= 0 && sx <= w / k && sy <= cssHeight
         };
     }
 

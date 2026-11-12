@@ -132,8 +132,14 @@ const FSView = {
                 }
                 for (const item of view.animated) item.mesh.rotation[item.axis] += dt * item.speed;
                 this.tweenTick(view);
-                this.chipTick(view);
                 this.pulse(view);
+            });
+        }
+        // Babylon updates the camera matrices after onBeforeRender. Project the
+        // chips only once that camera is ready, in the same frame as the models.
+        if (view.scene.onBeforeCameraRenderObservable && view.scene.onBeforeCameraRenderObservable.add) {
+            view.scene.onBeforeCameraRenderObservable.add(camera => {
+                if (camera === app.location.view.camera) this.chipTick(view);
             });
         }
 
@@ -1867,6 +1873,16 @@ const FSView = {
         if (!c) return;
         const items = [];
         const field = BattleField.of(c);
+        // A model's imported origin can be away from its visible geometry,
+        // especially after turning to face the opponent. Keep the actual root
+        // so the chip follows the miniature, not that arbitrary origin.
+        const roots = new Map();
+        for (const marker of view.markers || []) {
+            const mesh = marker.mesh, meta = mesh && mesh.metadata;
+            if (!meta) continue;
+            if (meta.fs === 'unit' && meta.unit != null) roots.set(meta.unit, mesh);
+            if (meta.fs === 'token' && meta.reinforceId) roots.set(meta.reinforceId, mesh);
+        }
         for (const u of state.units) {
             if (!field.holds(u)) continue;
             const def = FS_RULES.unitOf(state, u);
@@ -1878,7 +1894,7 @@ const FSView = {
             const hp = CombatDamage.of(c).health(u.seat, def.health || 1);
             items.push({
                 key: u.id + ':' + hp + ':' + (u.routed ? 1 : 0) + ':' + (def.morale || 0),
-                x: p.x, y: p.y + 1, z: p.z,
+                x: p.x, y: p.y + 1, z: p.z, root: roots.get(u.id),
                 hp, morale: u.routed ? 0 : (def.morale || 0),
                 routed: !!u.routed,
                 label: def.name || 'Отряд',
@@ -1892,13 +1908,39 @@ const FSView = {
                 ? FS_RULES.reinforceTokenHealth(state, slot.side) : (def0 ? def0.health : 1);
             items.push({
                 key: 'rein:' + slot.side + ':' + slot.index + ':' + hp + ':' + (slot.routed ? 1 : 0),
-                x: slot.x, y: slot.y + 1, z: slot.z,
+                x: slot.x, y: slot.y + 1, z: slot.z, root: roots.get('reinforce-' + slot.side + '-' + slot.index),
                 hp, morale: slot.routed ? 0 : (def0 ? def0.morale || 0 : 0),
                 routed: !!slot.routed,
                 label: def0 ? def0.name : 'Подкрепление',
             });
         }
         view.unitChips = items;
+    },
+
+    // The chip belongs under the visible miniature, not under the origin of an
+    // imported OBJ or the middle of its base. Project its world-space bounds:
+    // centre the chip at the foot of the model and clear its lowest screen edge.
+    // If the mesh is unavailable (e.g. during a rebuild), use its board position.
+    chipAnchor(worldView, item) {
+        const fallback = worldView.projectToScreen(item.x, item.z, item.y);
+        const root = item.root;
+        if (!root || typeof root.getHierarchyBoundingVectors !== 'function' || (typeof root.isDisposed === 'function' && root.isDisposed())) return fallback;
+        try {
+            const bounds = root.getHierarchyBoundingVectors(true), min = bounds.min, max = bounds.max;
+            if (!min || !max || ![min.x, min.y, min.z, max.x, max.y, max.z].every(Number.isFinite)
+                || min.x > max.x || min.y > max.y || min.z > max.z) return fallback;
+            const center = worldView.projectToScreen((min.x + max.x) / 2, (min.z + max.z) / 2, min.y);
+            if (!center || center.behind) return center || fallback;
+            let bottom = -Infinity;
+            for (const x of [min.x, max.x]) for (const y of [min.y, max.y]) for (const z of [min.z, max.z]) {
+                const corner = worldView.projectToScreen(x, z, y);
+                if (corner && !corner.behind && Number.isFinite(corner.y)) bottom = Math.max(bottom, corner.y);
+            }
+            if (Number.isFinite(bottom)) center.y = bottom;
+            return center;
+        } catch (e) {
+            return fallback;
+        }
     },
 
     // One frame: every chip is folded to its miniature's screen place.
@@ -1916,19 +1958,22 @@ const FSView = {
                 nodes.push(chip);
             }
             if (!items.length) return;
-            const engine = view.scene.getEngine();
-            const cam = view.scene.activeCamera || view.scene.camera;
-            if (!cam || !cam.viewport || typeof cam.viewport.toGlobal !== 'function') return;
-            const viewport = cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());
-            const transform = view.scene.getTransformMatrix();
+            const worldView = view.app && view.app.location && view.app.location.view;
+            const canvas = worldView && worldView.world && worldView.world.canvas;
+            if (!worldView || !canvas || typeof worldView.projectToScreen !== 'function') return;
+            // View3D returns canvas-local CSS pixels, not render-buffer pixels.
+            // Translate those into the layer's coordinates, including any canvas
+            // offset or CSS scaling. Read both rectangles before changing styles.
+            const canvasRect = canvas.getBoundingClientRect(), layerRect = layer.getBoundingClientRect();
+            const scaleX = canvasRect.width / (canvas.clientWidth || canvasRect.width || 1);
+            const scaleY = canvasRect.height / (canvas.clientHeight || canvasRect.height || 1);
             for (let i = 0; i < items.length; i++) {
                 const it = items[i], chip = nodes[i];
-                const p = BABYLON.Vector3.Project(new BABYLON.Vector3(it.x, it.y, it.z),
-                    BABYLON.Matrix.IdentityReadOnly, transform, viewport);
-                if (!p || !(p.z >= 0 && p.z <= 1)) { chip.style.display = 'none'; continue; }
+                const p = this.chipAnchor(worldView, it);
+                if (!p || p.behind || !Number.isFinite(p.x) || !Number.isFinite(p.y)) { chip.style.display = 'none'; continue; }
                 chip.style.display = 'flex';
-                chip.style.left = p.x + 'px';
-                chip.style.top = (p.y - 4) + 'px';
+                chip.style.left = (canvasRect.left - layerRect.left + p.x * scaleX) + 'px';
+                chip.style.top = (canvasRect.top - layerRect.top + p.y * scaleY + 4) + 'px';
                 if (chip.dataset.key !== it.key) {
                     chip.dataset.key = it.key;
                     chip.className = 'fs-unit-chip' + (it.routed ? ' is-routed' : '');
