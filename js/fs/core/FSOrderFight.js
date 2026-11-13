@@ -82,6 +82,27 @@ class OrderFight {
         return this.order.combatRounds || 0;
     }
 
+    /**
+     * «Во время шага разрешения боя, начатого этим приказом, если вы
+     * победитель — противник выбирает и уничтожает 1 деморализованный отряд
+     * до отступления» («Страшный приговор»): a promise to the battle of the order.
+     */
+    get winnerDestroysRouted() {
+        return !!this.order.winnerDestroysRouted;
+    }
+
+    setWinnerDestroysRouted(on) {
+        this.order.winnerDestroysRouted = on !== false;
+        return this;
+    }
+
+    /** The promise is kept by one battle: the first the order resolves. */
+    takeWinnerDestroysRouted() {
+        const on = this.winnerDestroysRouted;
+        this.order.winnerDestroysRouted = false;
+        return on;
+    }
+
     // --- the battles already asked for ---------------------------------------
 
     /** The preparation is taken by the battle: it never repeats. */

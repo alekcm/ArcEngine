@@ -5,7 +5,7 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class StrikeAsks {
-    static ops = ['strikeBonus', 'strikeReward', 'strikeTakeStructures', 'offerCaptureStrike', 'captureStrike', 'strikeHealthDown', 'strikeFirst', 'strikeFirstPick', 'strikeDestroyOne', 'strikeRouteDamaged', 'assignDamage', 'protectCombatUnits', 'extraDamage', 'damageFirst', 'damageOwnRouted', 'damageOneByOne', 'repeatDamage', 'damageStartTokens', 'combatStartMorale', 'combatLength', 'deferDamage', 'noDamageRetreat', 'noReinforce', 'ignoreFoeAtt', 'ignoreBastion', 'ignoreExcess', 'destroyRouted', 'destroyRoutedFoe', 'endRoundReinforce'];
+    static ops = ['strikeBonus', 'strikeReward', 'strikeTakeStructures', 'offerCaptureStrike', 'captureStrike', 'strikeHealthDown', 'strikeFirst', 'strikeFirstPick', 'strikeDestroyOne', 'strikeRouteDamaged', 'assignDamage', 'protectCombatUnits', 'extraDamage', 'damageFirst', 'damageOwnRouted', 'damageOneByOne', 'repeatDamage', 'damageStartTokens', 'combatStartMorale', 'combatStartDice', 'routedMoraleHalf', 'strikeIfRolled', 'strikeIfMorale', 'strikeRetreatOffer', 'winnerDestroysRouted', 'combatLength', 'deferDamage', 'noDamageRetreat', 'noReinforce', 'ignoreFoeAtt', 'ignoreBastion', 'ignoreExcess', 'destroyRouted', 'destroyRoutedFoe', 'endRoundReinforce'];
 
     static strikeBonus(effects, f) {
         const { R, state, seat, step } = f;
@@ -25,12 +25,61 @@ class StrikeAsks {
                 : (step.destroyOne ? { destroyOne: true }
                     : (step.routeDamaged ? { routeDamaged: true }
                         : (step.moveShips ? { moveShips: true }
+                        : (step.moveShipActive ? { moveShipActive: true }
                             : (step.units
                                 ? { units: step.units }
-                                : { asset: step.asset, n: step.n || 1 }))));
+                                : { asset: step.asset, n: step.n || 1 })))));
             StrikePlan.of(state.order).setReward(reward);
         }
         return null;
+    }
+
+    // «Если вы выбросили хотя бы 2 `att. cube` во время выполнения этого
+    // орбитального удара, то получите 1 жетон подкрепления» («Охота за
+    // рабами»): the roll of the strike decides; the steps wait for it.
+    static strikeIfRolled(effects, f) {
+        const { R, state, seat, step, p } = f;
+        if (!state.order || !OrderContext.of(state.order).isSeat(seat)) return null;
+        StrikePlan.of(state.order).setRolledReward({
+            kind: step.kind || 'att', atLeast: step.atLeast || 1,
+            steps: (step.steps || []).map(one => Object.assign({ noAbilityQuestion: true }, one)),
+        });
+        R.log(state, seat, p.name + ': награда ждёт броска орбитального удара.');
+        return null;
+    }
+
+    // «Если суммарный боевой дух всех ваших кораблей, участвующих в этом
+    // орбитальном ударе, превышает суммарный боевой дух всех
+    // недеморализованных отрядов и бастионов на выбранном мире, то …» («Боевые
+    // гимны»): the target is chosen after the card is burned, so the steps
+    // wait for the roll, when the fleet and the world are both known.
+    static strikeIfMorale(effects, f) {
+        const { R, state, seat, step, p } = f;
+        if (!state.order || !OrderContext.of(state.order).isSeat(seat)) return null;
+        StrikePlan.of(state.order).setMoraleReward({
+            steps: (step.steps || []).map(one => Object.assign({ noAbilityQuestion: true }, one)),
+        });
+        R.log(state, seat, p.name + ': эффект ждёт орбитального удара и сравнения боевого духа.');
+        return null;
+    }
+
+    // «Затем вы можете потратить 1 `def. cube`, чтобы вынудить вашего
+    // противника отступить этим отрядом» («Боевые гимны»): a cube of the
+    // strike's own roll buys the retreat of the unit the card routed.
+    static strikeRetreatOffer(effects, f) {
+        const { R, state, seat, step, p } = f;
+        const plan = state.order && StrikePlan.of(state.order).planned;
+        const unit = plan && plan.routedUnit ? state.units.find(u => u.id === plan.routedUnit) : null;
+        if (!plan || !unit) return null;
+        const kind = step.kind || 'def';
+        if (!(plan.pool || []).includes(kind)) {
+            R.log(state, seat, p.name + ': в броске удара нет кубика «' + kind + '» — отступление не куплено.');
+            return null;
+        }
+        return { question: {
+            kind: 'yesno', who: seat, op: 'strikeRetreatOffer', options: [],
+            text: 'Потратить 1 `def. cube` удара, чтобы отряд противника отступил?',
+        } };
     }
 
     static strikeTakeStructures(effects, f) {
@@ -240,9 +289,47 @@ class StrikeAsks {
         return null;
     }
 
+    // «Если во время выполнения этого приказа вы начали битву в мире, то
+    // получите 1 `any cube` за каждую недеморализованную сестру Репентию в
+    // шаге вызова подкреплений» («Божественное избавление»): the order
+    // promises the dice; the battle that fits counts and rolls them when its
+    // reinforcement step is over.
+    static combatStartDice(effects, f) {
+        const { R, state, seat, step, p } = f;
+        if (!state.order || !OrderContext.of(state.order).isSeat(seat)) return null;
+        OrderTally.of(state.order).addCombatStartDice({
+            kind: step.kind || 'any', n: step.n || 1, per: step.per || null,
+            filter: step.filter || null, max: step.max || 0, worldOnly: !!step.worldOnly,
+        });
+        R.log(state, seat, p.name + ': кубики будут получены в битве этого приказа.');
+        return null;
+    }
+
+    // «… добавить половину значения боевого духа (с округлением вверх) ваших
+    // деморализованных отрядов к суммарному значению во время шага разрешения
+    // битвы» («Несокрушимая вера»): the resolution counts them from now on.
+    static routedMoraleHalf(effects, f) {
+        const { R, state, seat, combat, inCombat, p } = f;
+        if (!inCombat) return null;
+        CombatPlans.of(combat).setRoutedMoraleHalf(seat);
+        R.log(state, seat, p.name + ': деморализованные отряды добавят половину боевого духа при разрешении битвы.');
+        return null;
+    }
+
     static combatLength(effects, f) {
         const { step, combat } = f;
         if (combat) CombatTurn.of(combat).maxRounds = step.n || 1;
+        return null;
+    }
+
+    // «Во время шага разрешения боя, начатого этим приказом, если вы
+    // победитель — противник выбирает и уничтожает 1 деморализованный отряд
+    // до отступления» («Страшный приговор»): the order remembers, the battle pays.
+    static winnerDestroysRouted(effects, f) {
+        const { R, state, seat, p } = f;
+        if (!state.order || !OrderContext.of(state.order).isSeat(seat)) return null;
+        OrderFight.of(state.order).setWinnerDestroysRouted(true);
+        R.log(state, seat, p.name + ': победа в бою этого приказа будет стоить противнику деморализованного отряда.');
         return null;
     }
 
@@ -269,8 +356,11 @@ class StrikeAsks {
         const { seat, step, combat, foe } = f;
         // The Tyranid plan forbids tokens for the whole fight; Tau's plan is
         // limited to preparation. Old saved Tau steps retain the printed text.
-        const scope = step.scope === 'preparation' || /этапе подготовки/i.test(step.ability || '')
-            ? 'preparation' : 'battle';
+        // «не может размещать жетоны подкрепления в эту область … в текущем
+        // раунде битвы» («Фанатичное рвение»): the ban of one round only.
+        const scope = step.scope === 'round' ? 'round'
+            : (step.scope === 'preparation' || /этапе подготовки/i.test(step.ability || '')
+                ? 'preparation' : 'battle');
         if (combat) CombatBans.of(combat).forbidReinforce(step.who === 'foe' ? foe : seat, scope);
         return null;
     }
@@ -294,8 +384,16 @@ class StrikeAsks {
     }
 
     static ignoreExcess(effects, f) {
-        const { R, state, seat, combat, inCombat, side, p } = f;
+        const { R, state, seat, step, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
+        if (step.fallen) {
+            // «Игнорируйте весь урон, который превышает здоровье этого юнита»
+            // («Мученичество»): the unit is whichever of the owner's dies in
+            // the damage step — the damage left after its death is lost.
+            CombatDamage.of(combat).setExcess(side, 'fallen', CombatTurn.of(combat).round);
+            R.log(state, seat, p.name + ': урон сверх здоровья погибшего отряда теряется.');
+            return null;
+        }
         const chosen = CombatDamage.of(combat).lastFirst(CombatTurn.of(combat).round);
         if (!chosen) return null;
         CombatDamage.of(combat).setExcess(chosen.side, chosen.id, CombatTurn.of(combat).round);

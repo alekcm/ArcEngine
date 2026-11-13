@@ -41,8 +41,14 @@ class PlaySteps {
             CombatCards.of(combat).stage(side, { name, card, seat });
             R.log(state, seat, p.name + ' играет новую боевую карту «' + name + '».');
         } else {
-            CombatCards.of(combat).put(side, { name, card, valuesOnly: true });
+            // «получите её боевые значки до конца этого раунда битвы»
+            // («Бесспорная мудрость»): the icons are forgotten with the round;
+            // «до конца этой битвы» («Крылатый удар») is the usual card in play.
+            const entry = { name, card, valuesOnly: true };
+            if (step.thisRound) entry.untilRound = CombatTurn.of(combat).round;
+            CombatCards.of(combat).put(side, entry);
         }
+        step.done = true;
         return null;
     }
 
@@ -105,7 +111,7 @@ class PlaySteps {
     }
 
     static discardHand(effects, f) {
-        const { R, state, seat, answer, p, combat, side } = f;
+        const { R, state, seat, step, answer, combat } = f;
         const hand = combat ? R.player(state, seat).combatHand : null;
         if (!hand) return null;
         const names = answer.cards && answer.cards.length ? answer.cards
@@ -113,6 +119,11 @@ class PlaySteps {
         for (const name of names) {
             if (!hand.discard(name)) continue;
             R.log(state, seat, state.players[seat].name + ' сбрасывает боевую карту «' + name + '».');
+            // «Сбросьте карту, чтобы отступить 1 вашим юнитом»: the «чтобы»
+            // of the step follows a real discard.
+            step.done = true;
+            // «Если эта карта была сброшена …» («Святая троица»).
+            effects.cardDiscarded(R, state, seat, name, f.ctx);
         }
         return null;
     }
@@ -127,6 +138,7 @@ class PlaySteps {
             if (!hand.discard(name)) continue;
             if (step.discardLeft !== undefined) step.discardLeft -= 1;
             R.log(state, seat, state.players[seat].name + ' сбрасывает боевую карту «' + name + '».');
+            effects.cardDiscarded(R, state, seat, name, f.ctx);
             break;
         }
         if (step.discardLeft > 0 && hand.size()) {

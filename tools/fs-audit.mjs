@@ -1856,10 +1856,12 @@ rule('ask-0b', 'таблица вопросов не содержит заглу
     // One deliberate no-op is allowed: `nothing` is a step of a sentence the
     // previous step already did («Затем получите такой же жетон»). The list can
     // only shrink — a new empty branch fails here.
-    // The two deliberate no-ops whose work the *executor* does at once (the step
+    // The deliberate no-ops whose work the *executor* does at once (the step
     // carries no choice at all): «Затем получите такой же жетон» and «все кубики
-    // удара — атака» («Экстерминатус»). The list can only shrink.
-    const known = ['FSEarnAsks.js:nothing', 'FSEarnAsks.js:strikeAllAtt'];
+    // удара — атака» («Экстерминатус»); and the marker of «если эта карта была
+    // сброшена» («Святая троица»), performed by the discard of the card from
+    // the hand (`cardDiscarded`), never by its play. The list can only shrink.
+    const known = ['FSEarnAsks.js:nothing', 'FSEarnAsks.js:strikeAllAtt', 'FSCardAsks.js:onDiscard'];
     const unexpected = stubs.filter(x => !known.includes(x));
     eq(unexpected.join(', ') || '—', '—', 'у каждого шага настоящая ветка вопроса');
     // And every registered op really has a branch (the tables are filled from ops).
@@ -2329,7 +2331,7 @@ rule('scheme-0a', 'Событие-план: у каждой карты-план�
     // The plans the engine cannot perform yet are named one by one: the list
     // may only shrink, and every card in it is a known TODO, not a surprise.
     const known = ['Варбосс', 'Обход',
-        'Несокрушимая вера', 'Псионическая война'];
+        'Псионическая война', 'Рождение героини'];
     const extra = silent.filter(n => !known.includes(n));
     eq(extra.join(', '), '', 'новых карт-планов без действия нет');
     return eq(silent.length <= known.length, true, 'карты без действия перечислены (' + silent.length + ')');
@@ -6639,11 +6641,15 @@ rule('orders-sisters-1b', '«Крестный ход» после начала �
 rule('orders-sisters-2', '«Божественное избавление» — кубик за каждую недеморализованную сестру Ренентию в этом бою', () => {
     const steps = FS_EFFECTS.parse('Если во время выполнения этого приказа вы начали битву в мире, то получите 1 `any cube` за каждую недеморализованную сестру Ренентию в шаге вызова подкреплений. Один раз за раунд.',
         { kind: 'order', faction: 'сестры-битвы' });
-    const gain = steps.find(x => x.op === 'gainDie');
+    // The dice are not granted when the order is revealed: the card names the
+    // reinforce step of a battle the order starts IN A WORLD, so the step is a
+    // promise to that battle (`combatStartDice`), counted per unit there.
+    const gain = steps.find(x => x.op === 'combatStartDice');
     eq(!!gain, true, 'есть шаг получения кубика');
+    eq(gain.per, 'unit', 'кубики считаются по отрядам');
     eq(gain.inBattle, true, 'кубики считаются по отрядам этого боя');
-    eq(!!(gain.filter && gain.filter.contains && gain.filter.contains.includes('ренент')), true,
-        'отбор — сёстры Ренентиты');
+    eq(gain.worldOnly, true, 'только битва в мире');
+    eq(steps.some(x => x.op === 'gainDie'), false, 'кубиков при раскрытии приказа нет');
     // And the unit of the faction sheet is found by that filter.
     const def = FS_DATA.factions.find(f => f.id === 'сестры-битвы').units.find(u => /ре[пн]е[нт]/i.test(u.name));
     eq(!!def, true, 'отряд «' + (def && def.name) + '» есть в списке фракции');

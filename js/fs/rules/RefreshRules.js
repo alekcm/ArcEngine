@@ -223,6 +223,7 @@ class RefreshRules {
             note: trig ? !!trig.note : true, defer: trig ? !!trig.defer : false,
             orderType: trig ? trig.orderType || null : null,
             insteadOfOrder: trig ? !!trig.insteadOfOrder : false,
+            lastRound: trig ? !!trig.lastRound : false,
         });
         this.engine.log(state, seat, p.name + ' держит план «' + card.name + '».');
     }
@@ -325,6 +326,10 @@ class RefreshRules {
         for (const p of state.players) {
             p.placedTokens = 0;
             p.placedOf = {};
+            // «В этой Фазе Планирования вы положите 5 жетонов приказов»
+            // («Абсолютные полномочия»): the fifth token is of ONE round.
+            p.extraOrderTokens = 0;
+            p.planningPass = false;
             for (const u of p.upgrades) u.used = false;
         }
         for (const s of state.storms) s.moved = false;

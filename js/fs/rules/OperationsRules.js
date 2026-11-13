@@ -252,6 +252,13 @@ class OperationsRules {
                 return;
             }
         }
+        // «После выполнения Приказа Продвижения вы можете сбросить эту карту»
+        // («Триумфальный отход»): the window of the end of the order, offered
+        // once; the answer brings the end of the order back here.
+        if (order && !state.combat && OrderContext.of(order).isSeat(seat) && !order.endSchemeAsked) {
+            order.endSchemeAsked = true;
+            if (this.maybeScheme(state, seat, 'order-end', { kind: 'order', ctx: { resumeFinishOrder: seat } })) return;
+        }
         // A prosperity token that was never exchanged still gives one asset of
         // the player's choice: the engine picks one for him instead of losing
         // it («if he gains a prosperity asset, he gains one asset token of his
@@ -398,23 +405,42 @@ class OperationsRules {
         return { ok: true };
     }
 
-    cardSteps(state, seat, card) {
+    /**
+     * The names that meet the requisites of a combat card for this seat: the
+     * unrouted units of the contested area, a standing reinforcement token (the
+     * printed KL0 unit) and — for the Sisters' «Бастион» line — the player's own
+     * bastion in the area («Светоч веры», «Святая троица», «Лицеприятная кара»).
+     */
+    presentNames(state, seat) {
+        const combat = state.combat;
+        if (!combat) return [];
+        // «A unit used to meet this requisite must be unrouted.»
+        const field = BattleField.of(combat);
+        const present = state.units.filter(u => u.seat === seat && !u.routed && field.holds(u))
+            .map(u => (this.engine.unitOf(state, u) || {}).name).filter(Boolean);
+        // A standing reinforcement is the matching KL0 unit for card
+        // requisites too; routed, destroyed or moved tokens cannot fulfil it.
+        const side = CombatSides.sideOf(combat, seat);
+        const tokenDef = side && this.engine.reinforceTokenDef(state, side);
+        if (tokenDef && this.engine.tokenUnits(state, side).alive > 0) present.push(tokenDef.name);
+        // A bastion takes part in the battle like a unit (it rolls no dice,
+        // but it is hit and it counts for morale): it meets a «Бастион» line.
+        if (field.bastions(state, seat).length) present.push('Бастион');
+        return present;
+    }
+
+    cardSteps(state, seat, card, opts) {
         if (!card) return [];
         // The faction is needed by the text: a card may name a unit of the deck.
         const faction = (state.players[seat] || {}).faction;
-        const steps = FS_EFFECTS.parse(card.general || '', { kind: 'combat', faction });
+        // «ваш противник не может разыграть общие способности на следующей
+        // открытой боевой карте» («Ослепляющий залп»): the general half is
+        // left out, the unit half is read as usual.
+        const steps = opts && opts.noGeneral ? []
+            : FS_EFFECTS.parse(card.general || '', { kind: 'combat', faction });
         if (card.unit) {
-            const combat = state.combat;
             const reqs = card.reqs || [];
-            // «A unit used to meet this requisite must be unrouted.»
-            const present = combat ? state.units.filter(u => u.seat === seat && !u.routed
-                && BattleField.of(combat).holds(u))
-                .map(u => (this.engine.unitOf(state, u) || {}).name).filter(Boolean) : [];
-            // A standing reinforcement is the matching KL0 unit for card
-            // requisites too; routed, destroyed or moved tokens cannot fulfil it.
-            const side = combat && CombatSides.sideOf(combat, seat);
-            const tokenDef = side && this.engine.reinforceTokenDef(state, side);
-            if (tokenDef && this.engine.tokenUnits(state, side).alive > 0) present.push(tokenDef.name);
+            const present = this.presentNames(state, seat);
             // The paragraphs of the text may name their own requisites
             // («*Титан «Гончая»:* … *Линкор:* …»): a unit of such a paragraph
             // meets the requisite just as the one of the card's own line does,
@@ -490,8 +516,14 @@ class OperationsRules {
                 ? schemes.filter(s => s.insteadOfOrder)
                 : schemes.filter(s => !s.insteadOfOrder);
         }
+        // «В начале последнего раунда битвы вы можете сбросить эту карту»
+        // («Несокрушимая вера»): only the last round opens that window.
+        if (trigger === 'round') {
+            const last = !!(state.combat && CombatTurn.of(state.combat).lastRound);
+            schemes = schemes.filter(s => last || !(s.lastRound || /начал[а-яёa-z]*\s+последнего\s+раунда/i.test(s.text || '')));
+        }
         // «Прикосновение варпа» names the advance order in its trigger.
-        if (trigger === 'order' && state.order) {
+        if ((trigger === 'order' || trigger === 'order-end') && state.order) {
             schemes = schemes.filter(s => !s.orderType || s.orderType === OrderContext.of(state.order).kind);
         }
         // «Ракета Death Strike» can be discarded at the start of a combat in

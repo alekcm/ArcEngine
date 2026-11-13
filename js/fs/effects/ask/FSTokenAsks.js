@@ -5,7 +5,62 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class TokenAsks {
-    static ops = ['gainToken', 'loseToken', 'keepTokens', 'loseReinforcement', 'gainTokensLater', 'foeSpendOrPay', 'banCombatTokens'];
+    static ops = ['gainToken', 'loseToken', 'keepTokens', 'loseReinforcement', 'gainTokensLater', 'foeSpendOrPay', 'banCombatTokens', 'forbidRestore', 'banGeneral', 'randomCards', 'spendToken'];
+
+    // «потратьте 2 `att. token`, чтобы перевернуть …» («Френзоновые импланты»,
+    // «Щит псайкера»): the owner pays his own tokens; an unpaid price buys
+    // nothing — the «чтобы» (`then`) follows only the payment.
+    static spendToken(effects, f) {
+        const { R, state, seat, step, combat, inCombat, side, p } = f;
+        if (!inCombat) return null;
+        const kind = step.kind === 'att' ? 'att' : 'def';
+        const n = step.n || 1;
+        const cubes = CombatCubes.of(combat);
+        if (cubes.get(side, kind) < n) {
+            R.log(state, seat, p.name + ' нечем оплатить: нет ' + n + ' '
+                + (kind === 'att' ? 'жетонов атаки' : 'жетонов обороны') + '.');
+            return null;
+        }
+        cubes.take(side, kind, n);
+        R.log(state, seat, p.name + ' тратит ' + n + ' ' + (kind === 'att' ? 'жетонов атаки' : 'жетонов обороны') + '.');
+        step.done = true;
+        return null;
+    }
+
+    // «ваш противник не может … восстанавливать свои отряды в текущем раунде
+    // битвы» («Фанатичное рвение»): the ban names the other side and the round.
+    static forbidRestore(effects, f) {
+        const { R, state, seat, step, combat, inCombat, side, p } = f;
+        if (!inCombat) return null;
+        const banned = step.who === 'me' ? side : CombatSides.foe(side);
+        CombatBans.of(combat).forbidRestore(banned);
+        R.log(state, seat, p.name + ': ' + (banned === side ? 'свои' : 'вражеские')
+            + ' отряды нельзя восстанавливать в этом раунде.');
+        return null;
+    }
+
+    // «ваш противник не может разыграть общие способности на следующей
+    // открытой боевой карте» («Ослепляющий залп», «Руководство по вере»).
+    static banGeneral(effects, f) {
+        const { R, state, seat, step, combat, inCombat, side, p } = f;
+        if (!inCombat) return null;
+        const banned = step.who === 'me' ? side : CombatSides.foe(side);
+        CombatBans.of(combat).banGeneral(banned);
+        R.log(state, seat, p.name + ': следующая открытая карта противника теряет общие способности.');
+        return null;
+    }
+
+    // «В следующем раунде битвы каждый раз, когда ваш противник должен выбрать
+    // боевую карту, она выбирается случайным образом» («Познание агонии»).
+    static randomCards(effects, f) {
+        const { R, state, seat, step, combat, inCombat, side, p } = f;
+        if (!inCombat) return null;
+        const who = step.who === 'me' ? side : CombatSides.foe(side);
+        const round = CombatTurn.of(combat).round + (step.round === 'this' ? 0 : 1);
+        CombatBans.of(combat).randomCards(who, round);
+        R.log(state, seat, p.name + ': в следующем раунде противник играет случайные карты.');
+        return null;
+    }
 
     static banCombatTokens(effects, f) {
         const { R, state, combat, inCombat, side, step } = f;
@@ -38,13 +93,16 @@ class TokenAsks {
                 return ask;
             }
         }
-        const s2 = side;
+        // «ваш противник получает …»: the tokens of the OTHER side when the
+        // text names him (`who: 'foe'`); the owner's otherwise.
+        const s2 = f.target === seat ? side : CombatSides.foe(side);
+        const getter = f.target === seat ? seat : f.target;
         const cubes = CombatCubes.of(combat);
         const before = cubes.get(s2, step.kind);
         const gained = cubes.add(s2, step.kind, n) - before;
         R.log(state, seat, gained > 0
-            ? state.players[seat].name + ' получает ' + gained + ' ' + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны') + '.'
-            : state.players[seat].name + ' не получает жетоны боя.');
+            ? state.players[getter].name + ' получает ' + gained + ' ' + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны') + '.'
+            : state.players[getter].name + ' не получает жетоны боя.');
         return null;
     }
 
@@ -66,7 +124,8 @@ class TokenAsks {
         // «Гнев машины» keeps `att. token`).
         // The card keeps the tokens of the round it was played in — the next
         // round discards them as usual.
-        if (combat) CombatPlans.of(combat).keepTokens(side, step.kind);
+        if (combat) CombatPlans.of(combat).keepTokens(side, step.kind, undefined,
+            { ifFallenKl: step.ifFallenKl });
         return null;
     }
 

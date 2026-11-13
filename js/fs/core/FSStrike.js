@@ -120,6 +120,45 @@ class StrikePlan {
         return this.order.strikeReward || null;
     }
 
+    /**
+     * «Если вы выбросили хотя бы 2 `att. cube` во время выполнения этого
+     * орбитального удара, то получите 1 жетон подкрепления» («Охота за
+     * рабами»): a reward the roll itself decides — `{ kind, atLeast, steps }`.
+     */
+    setRolledReward(entry) {
+        this.order.strikeRolledReward = entry || null;
+        return entry;
+    }
+
+    takeRolledReward() {
+        const entry = this.order.strikeRolledReward || null;
+        this.order.strikeRolledReward = null;
+        return entry;
+    }
+
+    /**
+     * «Если суммарный боевой дух всех ваших кораблей, участвующих в этом
+     * орбитальном ударе, превышает суммарный боевой дух всех недеморализованных
+     * отрядов и бастионов на выбранном мире …» («Боевые гимны»): a reward the
+     * fleet and the world decide once the target is known — `{ steps }`.
+     */
+    setMoraleReward(entry) {
+        this.order.strikeMoraleReward = entry || null;
+        return entry;
+    }
+
+    takeMoraleReward() {
+        const entry = this.order.strikeMoraleReward || null;
+        this.order.strikeMoraleReward = null;
+        return entry;
+    }
+
+    /** The unit the strike's card routed: «отступить этим отрядом». */
+    noteRouted(id) {
+        if (this.order.strikePlanned) this.order.strikePlanned.routedUnit = id || null;
+        return this;
+    }
+
     /** «…перевернуть все ваши кубики, которые вы бросали, на `att. cube`» («Экстерминатус»). */
     setAllAtt(on) {
         this.order.strikeAllAtt = on !== false;

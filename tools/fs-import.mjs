@@ -420,6 +420,19 @@ function parseIcons(cell) {
 // The unit requisites of the brown ability box: "*Guardsman/Cruiser:* text".
 function parseRequisites(text) {
     const t = plain(text);
+    // «Разыграйте одну из способностей: *Сестра Битвы/Легкий Крейсер:* … — или —
+    // *Экзорцист/Гранд-Крейсер:* …» (Сёстры битвы): the lead-in is not a
+    // requisite — the units of ALL the alternatives are; the engine reads the
+    // alternative whose unit stands in the battle.
+    if (/^(?:разыграйте|выберите) одну из способностей:/i.test(t)) {
+        const out = [];
+        for (const m of String(text == null ? '' : text).matchAll(/\*([^*]{1,90}?):\*/g)) {
+            for (const one of m[1].split('/').map(s => s.trim()).filter(Boolean)) {
+                if (!out.includes(one)) out.push(one);
+            }
+        }
+        return out;
+    }
     const m = /^([^:*]{1,120}):/.exec(t);
     if (!m) return [];
     return m[1].split('/').map(s => s.trim()).filter(Boolean);

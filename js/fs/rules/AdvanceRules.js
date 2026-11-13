@@ -349,10 +349,18 @@ class AdvanceRules {
         const froms = new Set();
         for (const m of ground) froms.add(m.from);
         for (const m of ships) froms.add(m.from);
-        if (froms.size > 1) {
+        // «… из одной дополнительной соседней с ней системы» («Генератор
+        // теневого поля»): the order counts its neighbours, not its kinds.
+        if (move.extraWays) {
+            const all = new Set(move.waysUsed.concat([...froms]));
+            if (all.size > 1 + move.extraWays) {
+                return { ok: false, error: 'Отряды могут прийти в активную систему не более чем из '
+                    + (1 + move.extraWays) + ' соседних систем.' };
+            }
+        } else if (froms.size > 1) {
             return { ok: false, error: 'Наземные отряды могут прийти в активную систему только из одной соседней системы.' };
         }
-        if (froms.size === 1) {
+        if (froms.size === 1 && !move.extraWays) {
             const way = [...froms][0];
             if (ground.length && !move.wayAllows('ground', way)) {
                 return { ok: false, error: 'Наземные отряды уже пришли из другой системы.' };
@@ -386,7 +394,9 @@ class AdvanceRules {
             }
         }
         // The ways of this command are remembered for the rest of the order.
-        if (froms.size === 1) {
+        if (move.extraWays) {
+            move.noteWays([...froms]);
+        } else if (froms.size === 1) {
             const way = [...froms][0];
             if (ground.length) move.setWay('ground', way);
             if (ships.length) move.setWay('ship', way);
@@ -676,7 +686,7 @@ class AdvanceRules {
         const planned = {
             system: target.system, pos: target.pos, hits, defender,
             victims: victims.map(u => u.id), cap: 0,
-            ships: ships.length, pool: dice.concat(strike.dice),
+            ships: ships.length, shipIds: ships.map(u => u.id), pool: dice.concat(strike.dice),
             pays: strike.pays.slice(), paid: [], take, afterRollScheme: true,
         };
         strike.setPlanned(planned);
@@ -696,6 +706,30 @@ class AdvanceRules {
         const paySteps = [];
         this.engine.log(state, seat, state.players[seat].name
             + ' наносит орбитальный удар: ' + planned.hits + ' урона.');
+        // «Если вы выбросили хотя бы 2 `att. cube` во время выполнения этого
+        // орбитального удара …» («Охота за рабами»): the final pool decides.
+        const rolled = strike.takeRolledReward();
+        if (rolled) {
+            const got = (planned.pool || []).filter(d => d === rolled.kind).length;
+            if (got >= (rolled.atLeast || 1)) paySteps.push(...(rolled.steps || []));
+            else this.engine.log(state, seat, 'Выпало недостаточно кубиков «' + rolled.kind + '»: награда не получена.');
+        }
+        // «Если суммарный боевой дух всех ваших кораблей, участвующих в этом
+        // орбитальном ударе, превышает суммарный боевой дух всех
+        // недеморализованных отрядов и бастионов на выбранном мире …» («Боевые
+        // гимны»): the fleet of the strike against the pieces of the world.
+        const moral = strike.takeMoraleReward();
+        if (moral) {
+            const fleet = (planned.shipIds || []).map(id => state.units.find(u => u.id === id)).filter(Boolean)
+                .reduce((n, u) => { const d = this.engine.unitOf(state, u); return n + (d ? d.morale || 0 : 0); }, 0);
+            const world = planned.defender >= 0
+                ? this.engine.moraleFromPieces(state, planned.system, planned.pos, planned.defender) : 0;
+            if (fleet > world) paySteps.push(...(moral.steps || []));
+            else {
+                this.engine.log(state, seat, 'Боевой дух кораблей (' + fleet + ') не превышает боевой дух мира ('
+                    + world + '): эффект карты не сработал.');
+            }
+        }
         if (planned.pays.length && !strike.paysAsked) {
             strike.askPays(true);
             const caps = planned.pays.map(pay => FS_EFFECTS.strikePayCap(planned, pay));
@@ -716,7 +750,10 @@ class AdvanceRules {
         if (paySteps.length) {
             strike.setPlanned(planned);
             PhasePlan.of(order).set('strike-first');
-            this.engine.runEffects(state, seat, paySteps, { kind: 'order', ctx: null });
+            // «ваш противник» of a strike is the player of the world it hits.
+            const effCtx = planned.defender >= 0
+                ? { kind: 'order', ctx: null, foe: planned.defender } : { kind: 'order', ctx: null };
+            this.engine.runEffects(state, seat, paySteps, effCtx);
             return { ok: true, pending: true, hits: planned.hits };
         }
         strike.clearPlanned();

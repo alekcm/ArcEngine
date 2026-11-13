@@ -98,7 +98,16 @@ class PlanningRules {
             const seat = (from + i) % n;
             const p = state.players[seat];
             if (!p || p.eliminated) continue;
-            if (this.engine.player(state, seat).ordersLeft() > 0) return seat;
+            if (this.engine.player(state, seat).ordersLeft() <= 0) continue;
+            // «Вместо размещения жетона приказа … вы можете сбросить эту
+            // карту» («Видения Комморры»): the player lets his turn go by
+            // once; his tokens wait for the next time the circle reaches him.
+            if (p.planningPass) {
+                p.planningPass = false;
+                this.engine.log(state, seat, p.name + ' пропускает размещение жетона приказа.');
+                continue;
+            }
+            return seat;
         }
         return from;
     }

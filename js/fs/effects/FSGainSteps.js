@@ -94,7 +94,7 @@ class GainSteps {
 
     static gainWorldAssets(effects, f) {
         const { R, state, seat, step, answer, ctx, p } = f;
-        const area = answer.area || ctx.world;
+        const area = answer.area || (ctx && ctx.world) || step.world;
         // The second leg of the step: the token the player chose for the
         // world's prosperity icon.
         if (answer.asset) {

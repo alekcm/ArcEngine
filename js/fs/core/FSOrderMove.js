@@ -144,6 +144,30 @@ class OrderMove {
     }
 
     /**
+     * «… переместить отряды в активную систему из одной дополнительной
+     * соседней с ней системы» («Генератор теневого поля»): the order may draw
+     * its units from more neighbours than the one the rules allow.
+     */
+    get extraWays() {
+        return this.order.extraWays || 0;
+    }
+
+    addExtraWays(n) {
+        this.order.extraWays = this.extraWays + (n || 1);
+        return this;
+    }
+
+    /** The neighbours the units of such an order have already come from. */
+    get waysUsed() {
+        return this.order.waysUsed || [];
+    }
+
+    noteWays(list) {
+        this.order.waysUsed = [...new Set(this.waysUsed.concat(list || []))];
+        return this.waysUsed;
+    }
+
+    /**
      * «… from one adjacent system only»: a ground unit may come only from the
      * system the first ground unit came from, and one ship from a neighbour
      * closes that way for the ground units of another system.

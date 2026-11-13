@@ -98,7 +98,16 @@ class DiceAsks {
         const turn = CombatTurn.of(combat);
         const got = Math.min(n, turn.room(dSide));
         for (let i = 0; i < got; i++) {
-            turn.add(dSide, step.kind === 'any' ? R.rollDice(state, 1)[0] : step.kind);
+            if (step.kind === 'any') {
+                // A rolled die is written down for the halves that count
+                // «выброшенные во время применения общих способностей этой
+                // карты» («Благословленное наступление»).
+                const face = R.rollDice(state, 1)[0];
+                turn.add(dSide, face);
+                effects.noteRoll(combat, dSide, face);
+            } else {
+                turn.add(dSide, step.kind);
+            }
         }
         R.log(state, seat, (step.who === 'foe' ? 'Противник получает '
             : state.players[seat].name + ' получает ') + got + ' кубик(ов)'
@@ -108,25 +117,35 @@ class DiceAsks {
     }
 
     static loseDie(effects, f) {
-        const { R, state, seat, step, combat, inCombat, side } = f;
+        const { R, state, seat, step, ctx, combat, inCombat, side } = f;
         if (!inCombat) return null;
-        const s2 = CombatSides.foe(side);
+        // «затем вы теряете 3 ваших кубика» («Взгляд без глаз»): the loss of
+        // the owner's own dice when the text names them (`who: 'me'`).
+        const s2 = step.who === 'me' ? side : CombatSides.foe(side);
         const turn = CombatTurn.of(combat);
-        const options = turn.slots(s2, d => step.kind === 'any' || d === step.kind);
+        // «потерять 1 `att. cube` или 1 `morale cube`» («Стойкость духа»): the
+        // dice of any listed kind are offered, the loser picks among them.
+        const kinds = Array.isArray(step.kinds) && step.kinds.length ? step.kinds : [step.kind];
+        const anyKind = kinds.includes('any');
+        const options = turn.slots(s2, d => anyKind || kinds.includes(d));
         if (!options.length) return null;
-        const n = Math.min(step.n, options.length);
+        // «за каждый потраченный куб» («Божественное благословение»): the
+        // count of the loss follows what the card has just counted.
+        const want = step.per ? effects.count(R, state, seat, step, ctx) : step.n;
+        const n = Math.min(want, options.length);
         // «за каждого уничтоженного Гвардейца» — nobody died, nobody loses dice.
         if (n <= 0) return null;
         // The dice of one kind are alike and a loss of all that is possible is
         // not a choice either: the engine takes them itself, without a question.
-        if (step.kind !== 'any' || n >= options.length) {
+        if ((!anyKind && kinds.length === 1) || n >= options.length) {
             const gone = options.slice(0, n);
             for (const i of gone) turn.take(s2, i);
             R.log(state, seat, (s2 === side ? 'Вы теряете ' : 'Противник теряет ') + n
-                + ' кубик(ов)' + (step.kind !== 'any' ? ' ' + effects.kindName(step.kind) : '') + '.');
+                + ' кубик(ов)' + (!anyKind && kinds.length === 1 ? ' ' + effects.kindName(step.kind) : '') + '.');
             return null;
         }
-        return { question: { kind: 'dice', who: effects.seatOf(combat, s2), diceSide: s2, op: 'loseDie', n, options, kind2: step.kind, text: 'Какие кубики теряются?' } };
+        return { question: { kind: 'dice', who: effects.seatOf(combat, s2), diceSide: s2, op: 'loseDie', n, options,
+            kind2: anyKind || kinds.length > 1 ? 'any' : step.kind, kinds, text: 'Какие кубики теряются?' } };
     }
 
     static rerollDie(effects, f) {
@@ -142,7 +161,11 @@ class DiceAsks {
         if (!options.length) return null;
         if (step.all) {
             // All the dice of the kind are rerolled.
-            for (const i of options) turn.put(s2, i, R.rollDice(state, 1)[0]);
+            for (const i of options) {
+                const face = R.rollDice(state, 1)[0];
+                turn.put(s2, i, face);
+                effects.noteRoll(combat, s2, face);
+            }
             R.log(state, seat, state.players[seat].name + ' перебрасывает кубики.');
             return null;
         }
@@ -207,12 +230,19 @@ class DiceAsks {
         const foeSide = CombatSides.foe(side);
         const foeSeat = CombatSides.seatOf(combat, foeSide);
         if (foeSeat === null || foeSeat === undefined) return null;
-        const units = effects.unitsOf(R, state, foeSeat, combat, {});
+        // «вынудить вашего противника выбрать и деморализовать 1 свой отряд.
+        // Он может избежать этого эффекта, если потратит количество кубов,
+        // равное боевой мощи выбранного отряда» («Убийственная ловкость»):
+        // the same bargain over a rout, the victim named by its owner.
+        const routing = step.action === 'route';
+        const units = effects.unitsOf(R, state, foeSeat, combat, routing ? { includeReinforcements: false } : {});
         if (!units.length) return null;
         step.stage = 'victim';
+        const asker = step.chooser === 'foe' ? foeSeat : seat;
         return { question: {
-            kind: 'units', who: seat, op: 'destroyFoeUnlessPays',
-            n: 1, options: units.map(u => u.id), text: 'Какой отряд противника уничтожить?',
+            kind: 'units', who: asker, op: 'destroyFoeUnlessPays',
+            n: 1, options: units.map(u => u.id),
+            text: routing ? 'Какой отряд деморализовать?' : 'Какой отряд противника уничтожить?',
         } };
     }
 

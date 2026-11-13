@@ -5,7 +5,34 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class OrderAsks {
-    static ops = ['reorderOwnOrder', 'corsairStrike', 'emptyStrategize', 'occupiedStructure', 'advanceFromPlan', 'klBonus', 'extraFactory', 'orderDiscount', 'purchaseDiscount', 'prepReroll', 'assetLimit', 'healthBonus', 'enemyHealth', 'citiesAsFactories', 'bastionsAsFactories', 'extraOrderTokens', 'extraCombatCards', 'moveLimit', 'mustInclude', 'retreatExcess', 'uncontrolledMarch', 'passVoid', 'freeStructure', 'structureFirst', 'capacityBonus', 'cheapUnit', 'upgradeLimit', 'costDiscount', 'supplyDeal', 'deployInFactoryWorld', 'shipsThroughStorms', 'deployLimit', 'orderKl', 'putOrderTokensOnDeck', 'strategizeDeckBonus', 'unitsThroughStorms', 'restoreRetreated', 'restoreFallen', 'resurrect', 'stormReaction', 'noRoute'];
+    static ops = ['reorderOwnOrder', 'corsairStrike', 'emptyStrategize', 'occupiedStructure', 'advanceFromPlan', 'klBonus', 'extraFactory', 'orderDiscount', 'purchaseDiscount', 'prepReroll', 'assetLimit', 'healthBonus', 'enemyHealth', 'citiesAsFactories', 'bastionsAsFactories', 'extraOrderTokens', 'extraCombatCards', 'moveLimit', 'mustInclude', 'retreatExcess', 'uncontrolledMarch', 'passVoid', 'freeStructure', 'structureFirst', 'capacityBonus', 'cheapUnit', 'upgradeLimit', 'costDiscount', 'supplyDeal', 'deployInFactoryWorld', 'shipsThroughStorms', 'deployLimit', 'orderKl', 'putOrderTokensOnDeck', 'strategizeDeckBonus', 'unitsThroughStorms', 'restoreRetreated', 'restoreFallen', 'resurrect', 'stormReaction', 'noRoute', 'extraMoveWays', 'passPlanningTurn'];
+
+    // «Вместо размещения жетона приказа во время Фазы Планирования вы можете
+    // сбросить эту карту» («Видения Комморры»): one placement of the player is
+    // let go — now, when the turn is his, or when the circle reaches him.
+    static passPlanningTurn(effects, f) {
+        const { R, state, seat, p } = f;
+        const game = GamePhase.of(state);
+        if (!game.is(GamePhase.PLANNING)) return null;
+        if (game.isTurn(seat) && typeof R.nextPlanner === 'function') {
+            R.log(state, seat, p.name + ' пропускает размещение жетона приказа.');
+            game.turn = R.nextPlanner(state, seat);
+            return null;
+        }
+        p.planningPass = true;
+        R.log(state, seat, p.name + ' пропустит размещение жетона приказа, когда дойдёт его очередь.');
+        return null;
+    }
+
+    // «… вы можете переместить отряды в активную систему из одной
+    // дополнительной соседней с ней системы» («Генератор теневого поля»).
+    static extraMoveWays(effects, f) {
+        const { R, state, seat, step, p } = f;
+        if (!state.order || !OrderContext.of(state.order).isSeat(seat)) return null;
+        OrderMove.of(state.order).addExtraWays(step.n || 1);
+        R.log(state, seat, p.name + ': отряды могут прийти ещё из ' + (step.n || 1) + ' соседней системы.');
+        return null;
+    }
 
     static reorderOwnOrder(effects, f) {
         const { state, seat } = f;

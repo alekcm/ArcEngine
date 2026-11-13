@@ -287,6 +287,9 @@ class PlaceSteps {
             u.unit = def.id;
             R.restoreUnit(state, u);
             R.log(state, seat, state.players[seat].name + ' заменяет отряд на «' + def.name + '».');
+            // «замените … и получите 2 `any cube`» («Светоч веры»): the gain
+            // follows a replacement that was really made.
+            step.done = true;
         }
         return null;
     }

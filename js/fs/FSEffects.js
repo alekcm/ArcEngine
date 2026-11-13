@@ -119,7 +119,7 @@ const FS_EFFECTS = {
         while ((m = re.exec(src))) {
             const before = src.slice(last, m.index);
             if (before.trim()) out.push({ names: null, text: before });
-            const names = this.unitNames(m[1].replace(/\//g, ' или '), faction);
+            const names = this.requisiteNames(m[1], faction);
             out.push({ names: names.length ? names : null, text: '' });
             last = m.index + m[0].length;
             // The paragraph itself ends at the next marker.
@@ -136,6 +136,16 @@ const FS_EFFECTS = {
         const tail = src.slice(last);
         if (tail.trim()) out.push({ names: null, text: tail });
         return out;
+    },
+
+    // The names a requisite line stands for: the units of the faction it names
+    // («Сестра Битвы/Легкий Крейсер») and, on the Sisters' cards, the bastion
+    // («*Бастион:* получите 1 `def. token` за каждый ваш `morale cube`»): the
+    // player's bastion in the contested area meets that line (`presentNames`).
+    requisiteNames(what, faction) {
+        const names = this.unitNames(String(what || '').replace(/\//g, ' или '), faction);
+        if (/бастион/i.test(String(what || ''))) names.push('Бастион');
+        return names;
     },
 
     // «A unit used to meet this requisite must be unrouted»: the card names the
@@ -785,6 +795,667 @@ const FS_EFFECTS = {
         return T[s] || null;
     },
 
+    // The three fan decks — the Sisters of Battle, the Dark Eldar and the
+    // Inquisition — are transcribed from docs/forbidden-stars (02, 04, 05, 06)
+    // the way the Chaos deck is: the printed text is the key, the steps are the
+    // game. Their phrases have no generic reading: «Разыграйте одну из
+    // способностей: *Бастион:* … — или — …» is a choice whose branches are
+    // gated by the units of the battle (`reqNames`), «выброшенный вашим
+    // противником … этой картой» counts the faces this very card rolled
+    // (`per: 'rolled'`), «Если эта карта была сброшена» waits in the hand
+    // (`onDiscard`).
+    fanDeckReader(id, ctx, fill) {
+        if (!ctx || ctx.faction !== id) return null;
+        const norm = t => String(t || '').replace(/\s+/g, ' ').trim();
+        const combat = name => FS_CATALOG.card('combat', id, name);
+        const order = name => FS_CATALOG.card('orders', id, name);
+        const event = name => FS_CATALOG.card('events', id, name);
+        const cg = name => { const c = combat(name); return c ? norm(c.general) : ''; };
+        const cu = name => { const c = combat(name); return c ? norm(c.unit) : ''; };
+        const ot = name => { const c = order(name); return c ? norm(c.text) : ''; };
+        const et = name => { const c = event(name); return c ? norm(c.text) : ''; };
+        /** @param {string} op @param {any} extra @param {string} ability */
+        const mk = (op, extra, ability) => {
+            /** @type {any} */
+            const one = { op };
+            Object.assign(one, extra || {});
+            if (ability) one.ability = ability;
+            return one;
+        };
+        // A nested step is not a second optional ability of the same card: the
+        // permission was already taken for the sentence it belongs to.
+        const sub = (op, extra, ability) => mk(op,
+            Object.assign({ noAbilityQuestion: true }, extra || {}), ability);
+        /** @type {Record<string, any[]>} */
+        const T = {};
+        const put = (key, steps) => { if (key) T[key] = steps; };
+        fill({ T, put, mk, sub, cg, cu, ot, et, norm });
+        return T;
+    },
+
+    sistersCard(text, ctx) {
+        const s = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!s || !ctx || ctx.faction !== 'сестры-битвы') return null;
+        const ab = s;
+        const T = this.fanDeckReader('сестры-битвы', ctx, ({ put, mk, sub, cg, cu, ot, et }) => {
+            const SB = ['Сестра Битвы'];
+            const REP = ['Сестра Репентия'];
+            const LC = ['Легкий Крейсер'];
+            const EX = ['Экзорцист'];
+            const GC = ['Гранд-Крейсер'];
+            const BAST = ['Бастион'];
+            const repentia = { types: ['Сестра Репентия'] };
+
+            // --- 04: the combat deck ------------------------------------------
+            // «Разыграйте одну из способностей: Сестра Репентия: замените …
+            // — или — Бастион/Легкий Крейсер: получите …»: the branches carry
+            // their own requisite; only the branches whose unit stands in the
+            // battle are offered, a lone one is simply performed.
+            put(cg('Светоч веры'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('replaceUnit', { n: 1, pick: true, filter: repentia, to: 'Сестры Битвы',
+                        reqNames: REP, who: 'me',
+                        then: [sub('gainDie', { n: 2, kind: 'any', who: 'me' }, ab)] }, ab),
+                    sub('sequence', { reqNames: BAST.concat(LC), steps: [
+                        sub('gainDie', { n: 1, kind: 'morale', who: 'me' }, ab),
+                        sub('gainToken', { n: 2, kind: 'def', who: 'me' }, ab),
+                    ] }, ab),
+                ] }, ab),
+            ]);
+            put(cg('Продвижение вперёд'), [
+                mk('rerollDie', { n: 2, kind: 'any', who: 'foe', pick: true }, ab),
+            ]);
+            put(cu('Продвижение вперёд'), [
+                mk('gainToken', { n: 1, kind: 'def', per: 'rolled', rolledBy: 'foe', perKind: 'att', who: 'me' }, ab),
+            ]);
+            put(cg('Святая троица'), [
+                mk('onDiscard', { who: 'me', steps: [sub('gainToken', { n: 2, kind: 'att', who: 'me' }, ab)] }, ab),
+                mk('gainDie', { n: 2, kind: 'att', who: 'me' }, ab),
+            ]);
+            put(cu('Святая троица'), [
+                mk('gainToken', { n: 2, kind: 'att', who: 'me' }, ab),
+                mk('damageOneByOne', { who: 'foe' }, ab),
+            ]);
+            put(cg('Благословленное наступление'), [
+                mk('gainDie', { n: 2, kind: 'any', who: 'me' }, ab),
+                mk('rerollDie', { n: 1, kind: 'any', who: 'me', pick: true }, ab),
+            ]);
+            put(cu('Благословленное наступление'), [
+                mk('gainToken', { n: 1, kind: 'att', per: 'rolled', perKind: 'att', who: 'me' }, ab),
+                mk('gainToken', { n: 1, kind: 'def', per: 'rolled', perKind: 'def', who: 'me' }, ab),
+                mk('gainDie', { n: 1, kind: 'any', per: 'rolled', perKind: 'morale', who: 'me' }, ab),
+            ]);
+            // «— (основного текста нет)»: the general half is empty.
+            put(cg('Лицеприятная кара'), []);
+            put(cu('Лицеприятная кара'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('gainToken', { n: 1, kind: 'att', who: 'me' }, ab),
+                    sub('gainToken', { n: 1, kind: 'def', who: 'me' }, ab),
+                ] }, ab),
+                mk('playCard', { staged: true, pick: true, who: 'me' }, ab),
+            ]);
+            put(cg('Снисхождение ангела'), [
+                mk('gainToken', { n: 1, kind: 'def', per: 'unit', inBattle: true, max: 3, who: 'me' }, ab),
+            ]);
+            put(cu('Снисхождение ангела'), [
+                mk('deferDamage', { who: 'me', steps: [
+                    sub('destroy', { n: 1, pick: true, who: 'foe', routed: true, chooser: 'foe',
+                        avoid: { n: 1, kind: 'att' } }, ab),
+                ] }, ab),
+            ]);
+            put(cg('Мученичество'), [
+                mk('flipDie', { n: 2, kind: 'att', to: 'morale', any: true, multi: true, pick: true, who: 'me' }, ab),
+            ]);
+            put(cu('Мученичество'), [
+                mk('deferDamage', { who: 'me', steps: [
+                    sub('gainDie', { n: 1, kind: 'def', who: 'me', cond: { myFallen: true } }, ab),
+                ] }, ab),
+                mk('ignoreExcess', { fallen: true, who: 'me' }, ab),
+            ]);
+            put(cg('Стойкость духа'), [
+                mk('loseToken', { n: 2, kind: 'att', who: 'foe', cond: { side: 'defense' } }, ab),
+                mk('loseDie', { n: 1, kind: 'any', kinds: ['att', 'morale'], who: 'foe', pick: true }, ab),
+            ]);
+            put(cu('Стойкость духа'), [mk('gainDie', { n: 2, kind: 'any', who: 'me' }, ab)]);
+            put(cg('Фанатичное рвение'), [
+                mk('loseDie', { n: 1, kind: 'morale', who: 'foe', pick: true }, ab),
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('gainToken', { n: 1, kind: 'att', who: 'me' }, ab),
+                    sub('discardHand', { n: 1, who: 'me' }, ab),
+                ] }, ab),
+            ]);
+            put(cu('Фанатичное рвение'), [
+                mk('noReinforce', { who: 'foe', scope: 'round', cond: { side: 'attack' } }, ab),
+                mk('forbidRestore', { who: 'foe', cond: { side: 'attack' } }, ab),
+                mk('restore', { n: 1, pick: true, who: 'me', cond: { side: 'defense' } }, ab),
+            ]);
+            put(cg('Вера защитит нас'), [
+                mk('gainDie', { n: 1, kind: 'morale', who: 'me' }, ab),
+                mk('gainToken', { n: 1, kind: 'def', who: 'me' }, ab),
+            ]);
+            put(cu('Вера защитит нас'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('restore', { n: 1, pick: true, who: 'me', reqNames: SB.concat(LC) }, ab),
+                    sub('route', { n: 1, pick: true, who: 'foe', chooser: 'foe', reqNames: EX.concat(GC),
+                        cond: { cubeMore: 'morale' } }, ab),
+                ] }, ab),
+            ]);
+            put(cg('Разрушительный рефрен'), [
+                mk('gainToken', { n: 1, kind: 'att', per: 'foeUnit', who: 'me' }, ab),
+            ]);
+            put(cu('Разрушительный рефрен'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('gainToken', { n: 1, kind: 'def', per: 'cube', perKind: 'morale', who: 'me', reqNames: BAST }, ab),
+                    sub('gainDie', { n: 1, kind: 'any', who: 'me', reqNames: REP.concat(SB, LC) }, ab),
+                ] }, ab),
+            ]);
+            put(cg('Геройское самосожжение'), [
+                mk('gainToken', { n: 3, kind: 'def', who: 'me', avoid: { n: 1, kind: 'any', by: 'foe' },
+                    avoidPaid: [sub('gainDie', { n: 1, kind: 'morale', who: 'me' }, ab)] }, ab),
+            ]);
+            put(cu('Геройское самосожжение'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('spendDie', { n: 1, kind: 'def', pick: true, any: false, all: false, who: 'me', reqNames: SB.concat(LC),
+                        then: [sub('gainToken', { n: 2, kind: 'att', who: 'me' }, ab)] }, ab),
+                    sub('sequence', { reqNames: EX.concat(GC), steps: [
+                        sub('gainToken', { n: 3, kind: 'att', who: 'me' }, ab),
+                        sub('keepTokens', { kind: 'att', ifFallenKl: 2, who: 'me' }, ab),
+                    ] }, ab),
+                ] }, ab),
+            ]);
+            put(cg('Божественное благословение'), [
+                mk('spendDie', { n: 99, kind: 'any', kinds: ['def', 'morale'], pick: true, any: true, all: false, who: 'me' }, ab),
+                mk('loseDie', { n: 1, kind: 'att', per: 'spent', perKind: 'any', who: 'foe', pick: true }, ab),
+            ]);
+            put(cu('Божественное благословение'), [mk('gainDie', { n: 4, kind: 'any', who: 'me' }, ab)]);
+            put(cg('Кара Божья'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('gainDie', { n: 1, kind: 'morale', who: 'me' }, ab),
+                    sub('flipDie', { n: 2, kind: 'any', to: 'morale', any: true, multi: true, pick: true, who: 'me' }, ab),
+                ] }, ab),
+            ]);
+            put(cu('Кара Божья'), [
+                mk('gainToken', { n: 1, kind: 'att', per: 'cube', perKind: 'morale', who: 'me' }, ab),
+                mk('ignoreFoeAtt', { who: 'foe' }, ab),
+            ]);
+
+            // --- 05: the order upgrades ---------------------------------------
+            // «Если суммарный боевой дух всех ваших кораблей … превышает
+            // суммарный боевой дух всех недеморализованных отрядов и бастионов
+            // на выбранном мире, то вынудите вашего противника деморализовать 1
+            // отряд. Затем вы можете потратить 1 `def. cube`, чтобы вынудить
+            // вашего противника отступить этим отрядом»: the comparison and the
+            // payment both belong to the strike that follows the card.
+            put(ot('Боевые гимны'), [
+                mk('strikeIfMorale', { who: 'me', steps: [
+                    sub('route', { n: 1, pick: true, who: 'foe', chooser: 'foe', strikeWorld: true }, ab),
+                    sub('strikeRetreatOffer', { n: 1, kind: 'def', who: 'me' }, ab),
+                ] }, ab),
+                mk('once', {}, ab),
+            ]);
+            put(ot('Направить праведников'), [
+                mk('restoreOneSystem', { scope: 'activeOrAdjacent', who: 'me' }, ab),
+                mk('once', {}, ab),
+            ]);
+            put(ot('Божественное избавление'), [
+                mk('combatStartDice', { kind: 'any', per: 'unit', inBattle: true, filter: repentia,
+                    worldOnly: true, who: 'me' }, ab),
+                mk('once', {}, ab),
+            ]);
+
+            // --- 06: the events -----------------------------------------------
+            put(et('Размещение десантного собора'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('placeStructure', { kind: 'city', n: 1, free: true, noStructures: true, pick: true, who: 'me' }, ab),
+                    sub('sequence', { steps: [
+                        sub('payMateriel', { n: 3, who: 'me' }, ab),
+                        sub('placeStructure', { kind: 'city', n: 1, free: true, noStructures: true, pick: true, who: 'me' }, ab),
+                    ] }, ab),
+                ] }, ab),
+            ]);
+            // «Вместо раскрытия одного из ваших приказов в Фазу Действий вы
+            // можете сбросить эту карту, чтобы взять 1 Сестру Ренентилю или 1
+            // Сестру Битвы из любого мира и разместить её в любом дружественном
+            // мире»: the plan takes the place of an order reveal.
+            put(et('Свершившийся факт'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'operations', insteadOfOrder: true, who: 'me', note: false, defer: false, text: ab,
+                    steps: [sub('teleport', { n: 1, pick: true, from: 'any', to: 'friendlyWorldsAny', unitType: 'ground',
+                        names: ['Сестры ренетентии', 'Сестры битвы'], who: 'me' }, ab)],
+                }, ab),
+            ]);
+            // «… переместить 1 Сестру … во вражеский мир любой системы и начать
+            // битву. Эта битва длится 1 раунд. … считайте переместившийся отряд
+            // Живой Святой. Уничтожьте этот отряд после разрешения битвы»: a
+            // battle with a borrowed profile — the players perform it by hand.
+            put(et('Рождение героини'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'operations', insteadOfOrder: true, who: 'me', note: true, defer: false, text: ab,
+                    steps: [sub('note', { manual: 'рождение-героини', who: 'me' }, ab)],
+                }, ab),
+            ]);
+            put(et('Несгибаемая вера'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'round', who: 'me', note: false, defer: false, text: ab,
+                    steps: [sub('noRoute', { who: 'me' }, ab)],
+                }, ab),
+            ]);
+            put(et('Абсолютная покорность'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('placeUnit', { n: 1, what: 'Сестры Битвы', pick: true, free: true,
+                        dest: 'friendlyWorldWithOwnUnit', who: 'me' }, ab),
+                    sub('placeUnit', { n: 1, what: 'Сестра Репентия', pick: true, free: true,
+                        dest: 'friendlyWorldsAny', who: 'me' }, ab),
+                ] }, ab),
+            ]);
+            put(et('Несокрушимая вера'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'round', lastRound: true, who: 'me', note: false, defer: false, text: ab,
+                    steps: [sub('routedMoraleHalf', { who: 'me' }, ab)],
+                }, ab),
+            ]);
+            put(et('Вдохновляющий оратор'), [
+                mk('gainAsset', { n: 1, kind: 'reinforcement', per: 'friendlyWorldWithCity', who: 'me' }, ab),
+            ]);
+        });
+        return T ? (T[s] || null) : null;
+    },
+
+    darkEldarCard(text, ctx) {
+        const s = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!s || !ctx || ctx.faction !== 'темные-эльдары') return null;
+        const ab = s;
+        const T = this.fanDeckReader('темные-эльдары', ctx, ({ put, mk, sub, cg, cu, ot, et }) => {
+            const kabalite = { types: ['Кабалит Воин'] };
+            const cruiser = { types: ['Крейсер'] };
+
+            // --- 04: the combat deck ------------------------------------------
+            put(cg('Посланники Векта'), [
+                mk('gainDie', { n: 1, kind: 'def', who: 'me' }, ab),
+                mk('gainAsset', { n: 1, kind: 'reinforcement', who: 'me', cond: { shipInCombatSystem: true } }, ab),
+                mk('loseAsset', { n: 1, kind: 'reinforcement', who: 'foe', cond: { shipInCombatSystem: true } }, ab),
+            ]);
+            put(cu('Посланники Векта'), [
+                mk('placeReinforcement', { n: 1, pick: true, free: false, here: true, who: 'me' }, ab),
+            ]);
+            put(cu('Скрытное убийство'), [
+                mk('gainToken', { n: 1, kind: 'def', who: 'me' }, ab),
+                mk('rerollDie', { n: 1, kind: 'any', kinds: ['att', 'def', 'morale'], who: 'foe', picker: 'me', pick: true }, ab),
+            ]);
+            put(cg('Охота на слабых'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('gainDie', { n: 1, kind: 'att', who: 'me' }, ab),
+                    sub('spendDie', { n: 1, kind: 'any', pick: true, any: false, all: false, who: 'me',
+                        then: [sub('restore', { n: 1, pick: true, who: 'me' }, ab)] }, ab),
+                ] }, ab),
+            ]);
+            put(cg('Крылатый удар'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('gainToken', { n: 1, kind: 'att', who: 'me' }, ab),
+                    sub('drawCombatCards', { n: 1, discard: 0, who: 'me' }, ab),
+                ] }, ab),
+            ]);
+            put(cu('Крылатый удар'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('gainToken', { n: 2, kind: 'def', who: 'me' }, ab),
+                    sub('playCard', { values: true, pick: true, who: 'me' }, ab),
+                ] }, ab),
+            ]);
+            put(cu('Луизианское гостеприимство'), [
+                mk('foeRetreatOffer', { n: 1, who: 'foe', then: [
+                    sub('gainToken', { n: 1, kind: 'att', per: 'unit', inBattle: true,
+                        filter: { types: ['Крейсер', 'Кабалит Воин'] }, who: 'me' }, ab),
+                ] }, ab),
+                mk('discardHand', { n: 1, who: 'me', then: [sub('retreat', { n: 1, pick: true, who: 'me' }, ab)] }, ab),
+            ]);
+            put(cg('Упоение резней'), [
+                mk('banCombatTokens', { kind: 'att', who: 'foe', cond: { side: 'attack' } }, ab),
+                mk('gainDie', { n: 1, kind: 'def', who: 'me', cond: { side: 'defense' } }, ab),
+                mk('loseToken', { n: 2, kind: 'att', who: 'foe', cond: { side: 'defense' } }, ab),
+            ]);
+            put(cu('Упоение резней'), [
+                mk('spendDie', { n: 1, kind: 'morale', pick: true, any: false, all: false, who: 'me',
+                    then: [sub('placeReinforcement', { n: 1, pick: true, free: false, here: true, who: 'me' }, ab)] }, ab),
+            ]);
+            put(cu('Выстрелить и исчезнуть'), [
+                mk('foeRetreatOffer', { n: 1, who: 'foe' }, ab),
+                mk('moveUnits', { n: 1, pick: true, who: 'me', dest: 'adjacentFriendlyOrUncontrolled',
+                    then: [sub('choice', { text: ab, who: 'me', options: [
+                        sub('gainDie', { n: 1, kind: 'morale', who: 'me' }, ab),
+                        sub('gainToken', { n: 2, kind: 'att', who: 'me' }, ab),
+                    ] }, ab)] }, ab),
+            ]);
+            put(cu('Всегда в движении'), [
+                mk('spendDie', { n: 1, kind: 'any', kinds: ['att', 'def', 'morale'], pick: true, any: false, all: false, who: 'me',
+                    then: [sub('choice', { text: ab, who: 'me', options: [
+                        sub('sequence', { steps: [
+                            sub('gainDie', { n: 1, kind: 'att', who: 'me' }, ab),
+                            sub('gainToken', { n: 1, kind: 'def', who: 'me' }, ab),
+                        ] }, ab),
+                        sub('sequence', { steps: [
+                            sub('gainDie', { n: 1, kind: 'def', who: 'me' }, ab),
+                            sub('gainToken', { n: 1, kind: 'att', who: 'me' }, ab),
+                        ] }, ab),
+                    ] }, ab)] }, ab),
+            ]);
+            put(cg('Тактика рейдеров'), [
+                mk('gainToken', { n: 2, kind: 'att', who: 'me', cond: { side: 'attack' } }, ab),
+                mk('retreatInstead', { who: 'me', cond: { side: 'attack' } }, ab),
+                mk('gainToken', { n: 2, kind: 'def', who: 'me', cond: { side: 'defense' } }, ab),
+                mk('destroyRoutedFoe', { who: 'me', avoid: { n: 1, kind: 'morale' }, cond: { side: 'defense' } }, ab),
+            ]);
+            put(cg('Познание агонии'), [mk('randomCards', { who: 'foe' }, ab)]);
+            put(cg('Движимые ненавистью'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('gainToken', { n: 2, kind: 'att', who: 'me' }, ab),
+                    sub('gainToken', { n: 2, kind: 'def', who: 'me' }, ab),
+                    sub('spendDie', { n: 1, kind: 'any', pick: true, any: false, all: false, who: 'me', then: [
+                        sub('gainToken', { n: 2, kind: 'att', who: 'me' }, ab),
+                        sub('gainToken', { n: 2, kind: 'def', who: 'me' }, ab),
+                    ] }, ab),
+                ] }, ab),
+            ]);
+            put(cu('Коварная одержимость'), [
+                mk('gainToken', { n: 3, kind: 'att', who: 'me' }, ab),
+                mk('deferDamage', { who: 'me', steps: [
+                    sub('route', { n: 1, pick: true, who: 'foe', chooser: 'foe', cond: { foeNoDamage: true } }, ab),
+                ] }, ab),
+            ]);
+            // «Иначе» is the other half of the same comparison: the tokens are
+            // judged BEFORE the loss, or a foe one cube ahead would pay twice.
+            put(cu('Наслаждение пытками'), [
+                mk('gainToken', { n: 2, kind: 'att', who: 'me', cond: { not: { cubeLess: 'morale' } } }, ab),
+                mk('gainToken', { n: 1, kind: 'def', who: 'me', cond: { not: { cubeLess: 'morale' } } }, ab),
+                mk('loseDieIfMore', { n: 1, kind: 'morale', who: 'foe' }, ab),
+            ]);
+            put(cg('Добейте выживших'), [
+                mk('foeRetreatOffer', { n: 1, who: 'foe', then: [
+                    sub('loseDie', { n: 1, kind: 'any', kinds: ['morale', 'def'], who: 'foe', pick: true }, ab),
+                ] }, ab),
+            ]);
+            put(cu('Добейте выживших'), [
+                mk('foeAllow', { who: 'foe', text: 'выбрать и уничтожить одного из своих юнитов',
+                    yes: [sub('destroy', { n: 1, pick: true, who: 'foe', chooser: 'foe' }, ab)],
+                    no: [
+                        sub('gainToken', { n: 1, kind: 'att', who: 'me' }, ab),
+                        sub('gainToken', { n: 2, kind: 'def', who: 'me' }, ab),
+                    ] }, ab),
+            ]);
+
+            // --- 05: the order upgrades ---------------------------------------
+            put(ot('Воплощённая злоба'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('loseAsset', { n: 1, kind: 'reinforcement', who: 'me', then: [
+                        sub('placeUnit', { n: 1, what: 'Кабалит Воин', pick: true, free: true,
+                            dest: 'friendlyWorldsAny', who: 'me' }, ab),
+                    ] }, ab),
+                    sub('replaceUnit', { n: 1, pick: true, filter: kabalite, to: 'Ведьмы',
+                        ofSystem: 'active', who: 'me' }, ab),
+                ] }, ab),
+                mk('once', {}, ab),
+            ]);
+            put(ot('Генератор теневого поля'), [
+                mk('extraMoveWays', { n: 1, who: 'me' }, ab),
+                mk('once', {}, ab),
+            ]);
+            // «Если вы выбросили хотя бы 2 `att. cube` во время выполнения этого
+            // орбитального удара, то получите 1 жетон подкрепления».
+            put(ot('Охота за рабами'), [
+                mk('strikeIfRolled', { kind: 'att', atLeast: 2, who: 'me',
+                    steps: [sub('gainAsset', { n: 1, kind: 'reinforcement', who: 'me' }, ab)] }, ab),
+                mk('once', {}, ab),
+            ]);
+            // «Бастионы противника не могут предотвратить этот орбитальный удар.
+            // … вы можете потратить 1 `att. cube`, чтобы переместить 1 из ваших
+            // кораблей в активной системе в другую пустоту в активной системе».
+            put(ot('Затмевающий спуск'), [
+                mk('ignoreBastion', { who: 'me' }, ab),
+                mk('strikePay', { n: 1, kind: 'att', who: 'me' }, ab),
+                mk('strikeReward', { moveShipActive: true, who: 'me' }, ab),
+                mk('once', {}, ab),
+            ]);
+
+            // --- 06: the events -----------------------------------------------
+            put(et('Поддержка чёрного сердца'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('placeUnit', { n: 1, what: 'Крейсер', pick: true, free: true,
+                        dest: 'friendlyVoidAny', who: 'me' }, ab),
+                    sub('sequence', { steps: [
+                        sub('payMateriel', { n: 2, who: 'me' }, ab),
+                        sub('replaceUnit', { n: 1, pick: true, filter: cruiser, to: 'Гаснущие Солнца',
+                            pay: { kind: 'forge', n: 1 }, who: 'me' }, ab),
+                    ] }, ab),
+                ] }, ab),
+            ]);
+            put(et('Жуткие трофеи'), [
+                mk('destroy', { n: 1, pick: true, who: 'me', allBoard: true, areaType: 'world' }, ab),
+                mk('gainMateriel', { fromDestroyed: 'cost', who: 'me' }, ab),
+                mk('gainAsset', { kind: 'reinforcement', fromDestroyed: 'morale', who: 'me' }, ab),
+            ]);
+            // «В конце шага вызова подкреплений вы можете сбросить эту карту,
+            // чтобы вынудить вашего противника выбрать и деморализовать 1 свой
+            // отряд. Он может избежать этого эффекта, если потратит количество
+            // кубов, равное боевой мощи выбранного отряда».
+            put(et('Убийственная ловкость'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'reinforce-end', who: 'me', note: false, defer: false, text: ab,
+                    steps: [sub('destroyFoeUnlessPays', { action: 'route', chooser: 'foe', perCombat: true, who: 'foe' }, ab)],
+                }, ab),
+            ]);
+            put(et('Рейд из Паутины'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'operations', insteadOfOrder: true, who: 'me', note: false, defer: false, text: ab,
+                    steps: [sub('gainWorldAssets', { pick: true, uncontrolled: true, withProduction: true, who: 'me' }, ab)],
+                }, ab),
+            ]);
+            // «В начале раунда битвы вы можете сбросить эту карту. Уничтожьте 1
+            // ваш отряд с командным уровнем 1–2, чтобы переместить любое
+            // количество отрядов в соседнюю область»: the move follows the loss.
+            put(et('Праздник кровопролития'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'round', who: 'me', note: false, defer: false, text: ab,
+                    steps: [sub('destroy', { n: 1, pick: true, who: 'me', chooser: 'me', minKl: 1, maxKl: 2,
+                        then: [sub('moveUnits', { n: 0, all: true, pick: true, dest: 'adjacentArea', who: 'me' }, ab)] }, ab)],
+                }, ab),
+            ]);
+            // «Вместо размещения жетона приказа во время Фазы Планирования вы
+            // можете сбросить эту карту»: the player lets one placement go by
+            // and lays his last token after everyone else.
+            put(et('Видения Комморры'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'planning', who: 'me', note: false, defer: false, text: ab,
+                    steps: [sub('passPlanningTurn', { who: 'me' }, ab)],
+                }, ab),
+            ]);
+        });
+        return T ? (T[s] || null) : null;
+    },
+
+    inquisitionCard(text, ctx) {
+        const s = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!s || !ctx || ctx.faction !== 'инквизиция') return null;
+        const ab = s;
+        const T = this.fanDeckReader('инквизиция', ctx, ({ put, mk, sub, cg, cu, ot, et }) => {
+            const trooper = { types: ['Штурмовик'] };
+            const VALK = ['Валькирия'];
+            const BLACK = ['Чёрный Корабль'];
+
+            // --- 04: the combat deck ------------------------------------------
+            put(cg('Ослепляющий залп'), [
+                mk('banGeneral', { who: 'foe', cond: { side: 'attack' } }, ab),
+                mk('gainDie', { n: 1, kind: 'any', who: 'me', cond: { side: 'defense' } }, ab),
+            ]);
+            put(cu('Френзоновые импланты'), [
+                mk('spendToken', { n: 2, kind: 'att', who: 'me',
+                    then: [sub('flipDie', { n: 99, kind: 'morale', to: 'att', all: true, pick: true, who: 'me' }, ab)] }, ab),
+            ]);
+            put(cu('Щит псайкера'), [
+                mk('spendToken', { n: 2, kind: 'def', who: 'me',
+                    then: [sub('placeReinforcement', { n: 1, pick: true, free: true, here: true, who: 'me' }, ab)] }, ab),
+            ]);
+            put(cu('Теневая миссия'), [
+                mk('choice', { text: ab, who: 'foe', chooser: 'foe', cond: { cubeMore: 'morale' }, options: [
+                    sub('route', { n: 1, pick: true, who: 'foe', chooser: 'foe' }, ab),
+                    sub('loseDie', { n: 1, kind: 'any', who: 'foe', pick: true }, ab),
+                ] }, ab),
+            ]);
+            put(cu('Бесспорная мудрость'), [
+                mk('playCard', { values: true, thisRound: true, pick: true, who: 'me' }, ab),
+            ]);
+            put(cu('Непреклонные крестоносцы'), [
+                mk('restore', { n: 1, pick: true, who: 'me', cond: { side: 'defense' } }, ab),
+                mk('choice', { text: ab, who: 'foe', chooser: 'me', options: [
+                    sub('loseDie', { n: 1, kind: 'def', who: 'foe', pick: true }, ab),
+                    sub('loseToken', { n: 2, kind: 'att', who: 'foe' }, ab),
+                ] }, ab),
+            ]);
+            put(cg('Руководство по вере'), [
+                mk('banGeneral', { who: 'foe', cond: { side: 'attack' } }, ab),
+                mk('choice', { text: ab, who: 'me', cond: { side: 'defense' }, options: [
+                    sub('gainDie', { n: 1, kind: 'any', who: 'me' }, ab),
+                    sub('retreat', { n: 1, pick: true, who: 'me' }, ab),
+                ] }, ab),
+            ]);
+            put(cu('Беспощадная атака'), [
+                mk('restore', { n: 1, pick: true, who: 'me', cond: { side: 'attack' } }, ab),
+                mk('spendDie', { n: 1, kind: 'def', pick: true, any: false, all: false, who: 'me',
+                    then: [sub('gainToken', { n: 2, kind: 'att', who: 'me' }, ab)] }, ab),
+            ]);
+            put(cg('Одобренный псайкер'), [
+                mk('foeAllow', { who: 'foe', text: 'потратить 1 `att. cube`, чтобы получить 1 `att. token`',
+                    yes: [
+                        sub('spendDie', { n: 1, kind: 'att', pick: true, any: false, all: false, who: 'foe',
+                            then: [sub('gainToken', { n: 1, kind: 'att', who: 'foe' }, ab)] }, ab),
+                    ],
+                    no: [sub('loseDie', { n: 1, kind: 'def', who: 'foe', pick: true }, ab)] }, ab),
+            ]);
+            put(cu('Одобренный псайкер'), [
+                mk('rerollDie', { n: 2, kind: 'any', who: 'foe', pick: true }, ab),
+                mk('gainToken', { n: 1, kind: 'att', per: 'rolled', rolledBy: 'foe', perKind: 'att', who: 'me' }, ab),
+                mk('gainToken', { n: 1, kind: 'def', per: 'rolled', rolledBy: 'foe', perKind: 'att', who: 'me' }, ab),
+                mk('gainToken', { n: 1, kind: 'def', per: 'rolled', rolledBy: 'foe', perKind: 'def', who: 'me' }, ab),
+            ]);
+            put(cg('Защитный барьер'), [
+                mk('rerollDie', { n: 1, kind: 'any', kinds: ['att', 'morale'], who: 'me', pick: true,
+                    then: [sub('loseDie', { n: 1, kind: 'att', who: 'foe', pick: true }, ab)] }, ab),
+            ]);
+            put(cu('Защитный барьер'), [
+                mk('moveUnit', { n: 1, pick: true, who: 'me', allBoard: true, areaType: 'world', filter: trooper,
+                    dest: 'combatWorld', reqNames: VALK }, ab),
+                mk('moveUnit', { n: 1, pick: true, who: 'me', allBoard: true, areaType: 'world', filter: trooper,
+                    dest: 'friendlyOrUncontrolledWorldCombatSystem', reqNames: BLACK }, ab),
+            ]);
+            put(cg('Ракеты Хеллстрайк'), [
+                mk('rerollDie', { n: 1, kind: 'any', kinds: ['def', 'morale'], who: 'me', pick: true,
+                    then: [sub('loseDie', { n: 1, kind: 'def', who: 'foe', pick: true }, ab)] }, ab),
+            ]);
+            put(cu('Ракеты Хеллстрайк'), [
+                mk('destroy', { n: 1, pick: true, who: 'foe', routed: true, chooser: 'me' }, ab),
+            ]);
+            put(cu('Взгляд без глаз'), [
+                mk('loseDie', { n: 3, kind: 'any', who: 'foe', pick: true }, ab),
+                mk('loseDie', { n: 3, kind: 'any', who: 'me', pick: true }, ab),
+            ]);
+            put(cg('Передовая высадка'), [mk('damageFirst', { anyFoe: true, who: 'foe' }, ab)]);
+
+            // --- 05: the order upgrades ---------------------------------------
+            put(ot('Адептус Арбитрес'), [
+                mk('placeUnit', { n: 1, what: 'Штурмовик', pick: true, free: true,
+                    dest: 'friendlyWorldWithCityActive', who: 'me' }, ab),
+                mk('once', {}, ab),
+            ]);
+            // «Бастионы противника не могут предотвратить этот орбитальный удар.
+            // … потратить 1 `def. cube` — тогда противник обязан либо
+            // деморализовать 1 отряд, либо потратить 2 `def. cube`, чтобы
+            // отступить 1 отрядом»: the bargain with the defender is by hand.
+            put(ot('Ужасный удар'), [
+                mk('ignoreBastion', { who: 'me' }, ab),
+                mk('note', { manual: 'ужасный-удар', who: 'me', text: ab }, ab),
+                mk('once', {}, ab),
+            ]);
+            // «Во время выполнения орбитального удара получите 1 `any cube`;
+            // можете потратить 1 `morale cube`, чтобы получить ценный ресурс
+            // этого мира»: the cube joins the roll of the strike; the payment
+            // is one of the rolled cubes, its reward the tokens of the world.
+            put(ot('Неотвратимые раскопки'), [
+                mk('gainDie', { n: 1, kind: 'any', who: 'me' }, ab),
+                mk('strikePay', { n: 1, kind: 'morale', upTo: false, reward: { worldAsset: true }, who: 'me' }, ab),
+                mk('once', {}, ab),
+            ]);
+            // «Во время шага разрешения боя, начатого этим приказом, если вы
+            // победитель — противник выбирает и уничтожает 1 деморализованный
+            // отряд до отступления».
+            put(ot('Страшный приговор'), [
+                mk('winnerDestroysRouted', { who: 'me' }, ab),
+                mk('once', {}, ab),
+            ]);
+
+            // --- 06: the events -----------------------------------------------
+            // «В конце шага вызова подкреплений в битве вы можете сбросить эту
+            // карту, чтобы вынудить вашего противника либо выбрать и
+            // деморализовать 1 свой отряд, если вы атакуете, либо выбрать и
+            // отступить 1 своим отрядом, если вы защищаетесь».
+            put(et('Наёмные головорезы'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'reinforce-end', who: 'me', note: false, defer: false, text: ab,
+                    steps: [
+                        sub('route', { n: 1, pick: true, who: 'foe', chooser: 'foe', cond: { side: 'attack' } }, ab),
+                        sub('retreat', { n: 1, pick: true, who: 'foe', chooser: 'foe', cond: { side: 'defense' } }, ab),
+                    ],
+                }, ab),
+            ]);
+            // «Во время раскрытия приказа в Фазу Действий вы можете сбросить эту
+            // карту, чтобы выбрать и перевернуть улучшение приказа вашего
+            // противника, сделав его непригодным к использованию в этом раунде»:
+            // the players turn the card by hand.
+            put(et('Псионическая война'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'operations', who: 'me', note: true, defer: false, text: ab,
+                    steps: [sub('note', { manual: 'псионическая-война', who: 'me' }, ab)],
+                }, ab),
+            ]);
+            // «Вы можете сбросить эту карту перед тем, как положить свой первый
+            // жетон приказа в Фазу Планирования, чтобы положить дополнительный
+            // жетон приказа».
+            put(et('Абсолютные полномочия'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'planning', who: 'me', note: false, defer: false, text: ab,
+                    steps: [sub('extraOrderTokens', { n: 1, who: 'me' }, ab)],
+                }, ab),
+            ]);
+            // «После выполнения Приказа Продвижения вы можете сбросить эту карту,
+            // чтобы собрать маркер цели Инквизиции в дружественном мире в
+            // активной системе»: the advance names the window.
+            put(et('Триумфальный отход'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'order-end', orderType: 'advance', who: 'me', note: false, defer: false, text: ab,
+                    steps: [sub('collectObjective', { faction: 'инквизиция', who: 'me' }, ab)],
+                }, ab),
+            ]);
+            put(et('Элизианские войска'), [
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('placeUnit', { n: 1, what: 'Штурмовик', pick: true, free: true,
+                        dest: 'uncontrolledWorldSystemWithOwnShip', who: 'me' }, ab),
+                    sub('placeUnit', { n: 1, what: 'Штурмовик', pick: true, free: true,
+                        dest: 'friendlyWorldsAny', who: 'me' }, ab),
+                ] }, ab),
+            ]);
+        });
+        return T ? (T[s] || null) : null;
+    },
+
     // The text of a card -> the steps of the game.
     // ctx: {faction, kind: 'combat'|'event'|'order'|'ability'}
     parse(text, ctx) {
@@ -809,6 +1480,16 @@ const FS_EFFECTS = {
         // faction may turn one of their sentences into a parked note.
         const tau = this.tauCard(text, ctx || {});
         if (tau) return this.avoidPayers(tau);
+        // The Sisters of Battle, the Dark Eldar and the Inquisition: the
+        // printed texts of the three fan decks, read exactly — their «одну из
+        // способностей» lists, their «если эта карта была сброшена» and their
+        // dice «выброшенные … этой картой» have no generic reading.
+        const sisters = this.sistersCard(text, ctx || {});
+        if (sisters) return this.avoidPayers(sisters);
+        const dark = this.darkEldarCard(text, ctx || {});
+        if (dark) return this.avoidPayers(dark);
+        const inq = this.inquisitionCard(text, ctx || {});
+        if (inq) return this.avoidPayers(inq);
         // The paragraphs with their own requisites: only the one whose unit is
         // in the battle is read (the requisites of the card are checked before).
         const paras = this.paragraphs(text, ctx);
@@ -847,6 +1528,24 @@ const FS_EFFECTS = {
         const only = /дополнительная вместимость распространяется только на\s+([А-ЯЁа-яёa-z]+)/i.exec(String(text || ''));
         if (only) {
             for (const one of built) if (one && one.op === 'capacityBonus') one.only = only[1];
+        }
+        // «Купите 1 улучшение. Его стоимость уменьшается на 1 за каждый …»
+        // («Церемония перед боем», «Рассечение тьмы», «Догма Министорума»,
+        // «Убийственное представление»): the discount belongs to THIS purchase.
+        // Read apart, it was granted after the purchase and never expired.
+        for (let i = built.length - 1; i > 0; i--) {
+            const disc = built[i], buy = built[i - 1];
+            if (!disc || disc.op !== 'costDiscount' || !buy || buy.op !== 'buyUpgrade') continue;
+            buy.discount = disc.n || 1;
+            buy.per = disc.per || null;
+            if (disc.max) buy.maxDiscount = disc.max;
+            // «Вы можете тратить жетоны подкрепления, чтобы уменьшить его
+            // стоимость на 2 за каждый жетон»: the tokens are PAID, not counted.
+            if (/тратить\s+жетон/i.test(String(disc.ability || ''))) {
+                buy.payAssets = { kind: disc.per || 'reinforcement', each: disc.n || 1 };
+                delete buy.per;
+            }
+            built.splice(i, 1);
         }
         return built;
     },
@@ -2085,6 +2784,12 @@ const FS_EFFECTS = {
             R.nextEventPlayer(state);
         }
         if (c.ctx && c.ctx.resumeOperations) R.nextTurn(state, c.ctx.resumeOperations);
+        // The scheme of the end of an order («Триумфальный отход») answered:
+        // the order ends now, unless the scheme itself started a battle.
+        if (c.ctx && c.ctx.resumeFinishOrder !== undefined && state.order && !state.combat
+            && !Question.of(state).waiting && typeof R.finishOrder === 'function') {
+            R.finishOrder(state, c.ctx.resumeFinishOrder);
+        }
         if (c.ctx && c.ctx.resumePlanningSchemes !== undefined) R.offerPlanningSchemes(state, c.ctx.resumePlanningSchemes);
         if (c.ctx && c.ctx.resumeEndPlanningSchemes !== undefined) R.offerEndPlanningSchemes(state, c.ctx.resumeEndPlanningSchemes);
         // «Отрава Нургла» takes the place of revealing an order (01-rules-
@@ -2133,6 +2838,11 @@ const FS_EFFECTS = {
             }
             if ((question.kind === 'types' || question.kind === 'structureTypes') && !options.includes(answer.type)) {
                 return { ok: false, error: 'Этот тип выбрать нельзя.' };
+            }
+            // The kind of a resource token: one of the kinds the question named.
+            if (question.kind === 'assetType' || question.kind === 'assets') {
+                const kind = answer.asset || answer.assetType || (Array.isArray(answer.assets) ? answer.assets[0] : undefined);
+                if (!options.includes(kind)) return { ok: false, error: 'Этот жетон выбрать нельзя.' };
             }
             if (question.kind === 'units') {
                 const ids = Array.isArray(answer.units) ? answer.units : [];
@@ -2589,6 +3299,36 @@ const FS_EFFECTS = {
         return true;
     },
 
+    // A die of the battle was rolled by a card: the roll is written down for
+    // the «выброшенные во время применения общих способностей этой карты»
+    // halves («Продвижение вперёд», «Благословленное наступление»).
+    noteRoll(combat, side, face) {
+        if (!combat || !side) return;
+        CombatHooks.of(combat).recordRoll(side, face);
+    },
+
+    // «Если эта карта была сброшена, то получите 2 `att. token`» («Святая
+    // троица»): a combat card that leaves the hand without being played gives
+    // its owner what its first line promises — whether the owner dropped it
+    // himself («сбросьте 1 карту из вашей руки») or the opponent made him
+    // («должен сбросить с руки 1 случайную боевую карту»). The steps are
+    // performed at once for the owner of the hand; they ask nothing.
+    cardDiscarded(R, state, seat, name, ctx) {
+        const p = state.players[seat];
+        const card = p ? FS_CATALOG.card('combat', p.faction, name) : null;
+        if (!card || !card.general) return;
+        const steps = this.parse(card.general, { kind: 'combat', faction: p.faction });
+        if (!state.combat) return;
+        for (const one of steps) {
+            if (!one || one.op !== 'onDiscard') continue;
+            R.log(state, seat, p.name + ': карта «' + name + '» сброшена — срабатывает её первая строка.');
+            for (const inner of one.steps || []) {
+                const copy = JSON.parse(JSON.stringify(inner));
+                this.step(R, state, seat, copy, { kind: (ctx && ctx.kind) || 'combat', owner: seat });
+            }
+        }
+    },
+
     // An ongoing effect ends when its face-up source card is discarded.
     // The identifier lives on that specific entry and survives JSON/LAN saves.
     combatEffectSource(R, state, side) {
@@ -2625,11 +3365,45 @@ const FS_EFFECTS = {
     // «Если вы атакуете...» — the condition of the ability: false ⇒ the ability
     // is not offered at all (and in a non-optional context does not happen).
     condSatisfied(R, state, seat, step, ctx) {
+        const combat = state.combat;
+        // «*Валькирия:* … *Чёрный Корабль:* …», «Выберите одну из способностей:
+        // *Бастион:* … — или — *Сестра Битвы:* …»: a step of a requisite line
+        // happens only while one of its units (or the bastion) stands in the
+        // battle — judged when the step is reached, by the same names the card
+        // itself was admitted by.
+        if (step && Array.isArray(step.reqNames) && step.reqNames.length) {
+            if (!combat || typeof R.presentNames !== 'function') return false;
+            const present = R.presentNames(state, seat);
+            if (!present.some(got => step.reqNames.some(want => this.sameName(got, want)))) return false;
+        }
         const cond = step && step.cond;
         if (!cond) return true;
-        const combat = state.combat;
         if (cond.not) return !this.condSatisfied(R, state, seat, { cond: cond.not }, ctx);
         const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
+        if (cond.myFallen) {
+            // «когда 1 из ваших юнитов умирает на этапе нанесения урона в этом
+            // раунде» («Мученичество»): judged at the end of the damage step.
+            if (!inCombat) return false;
+            return CombatPlans.of(combat).fallen(seat).some(x => x.destroyed);
+        }
+        if (cond.foeNoDamage) {
+            // «если ваш противник не получил урона» («Коварная одержимость»):
+            // the damage of the step that has just ended.
+            if (!inCombat) return false;
+            const foeSide = CombatSides.foe(CombatSides.sideOf(combat, seat));
+            return CombatDamage.of(combat).dealt(foeSide) === 0;
+        }
+        if (cond.shipInCombatSystem) {
+            // «Если у вас есть хотя бы 1 недеморализованный корабль в активной
+            // системе» («Посланники Векта»): the system of the battle.
+            if (!inCombat) return false;
+            const sysId = BattleField.of(combat).system;
+            return state.units.some(u => {
+                if (u.seat !== seat || u.routed || u.system !== sysId) return false;
+                const def = R.unitOf(state, u);
+                return !!def && def.type === 'ship';
+            });
+        }
         if (cond.unitLess) {
             if (!inCombat) return false;
             // «меньше отрядов» does not exclude routed units. A live token,
@@ -2827,7 +3601,8 @@ const FS_EFFECTS = {
 
     abilityQuestion(step, ctx) {
         if (!step || !step.ability || step.op === 'note' || step.op === 'once'
-            || step.op === 'scheme' || step.op === 'trigger' || step.noAbilityQuestion) return null;
+            || step.op === 'scheme' || step.op === 'trigger' || step.op === 'onDiscard'
+            || step.noAbilityQuestion) return null;
         if (this.abilityIsMust(step.ability)) return null;
         const owner = ctx && ctx.owner !== undefined ? ctx.owner : null;
         return {
@@ -2844,7 +3619,7 @@ const FS_EFFECTS = {
         // The condition of the ability is checked before anything else — it is
         // the very first gate of the step. Everything else the questions need is
         // computed once in the frame (FSStepContext).
-        if (step && step.cond && !this.condSatisfied(R, state, seat, step, ctx)) return null;
+        if (step && (step.cond || step.reqNames) && !this.condSatisfied(R, state, seat, step, ctx)) return null;
         // The question of the step belongs to its group (js/fs/effects/ask/*):
         // the frame is built once and handed over. A step with no question
         // changes nothing.
@@ -2895,11 +3670,22 @@ const FS_EFFECTS = {
     // дружественный мир, в котором есть фабрика».
     upgradeDiscount(R, state, seat, step) {
         if (!step || !step.discount) return 0;
+        // «Вы можете тратить жетоны подкрепления, чтобы уменьшить его стоимость
+        // на 2 за каждый жетон» («Убийственное представление»): the tokens the
+        // player chose to spend set the discount; nothing before that choice.
+        if (step.payAssets) return (Number(step.spendAssets) || 0) * (Number(step.payAssets.each) || 1);
         // Discounts can count worlds with factories or the units the card
         // names instead of being a flat number.
         if (step.per === 'unit') {
             const one = Number(step.discount) || 1;
             return this.count(R, state, seat, Object.assign({}, step, { n: one }), null);
+        }
+        // «за каждый дружественный мир, где есть бастион», «за каждую систему,
+        // которая содержит как ваши отряды, так и отряды противника, но не
+        // более чем на 3»: the common count of the «for each» cards.
+        if (['friendlyBastion', 'mixedSystem', 'noFoeSystem', 'reinforcement', 'cultist'].includes(step.per) && R.countFor) {
+            const got = R.countFor(state, seat, step.per) * (Number(step.discount) || 1);
+            return step.maxDiscount ? Math.min(step.maxDiscount, got) : got;
         }
         if (step.per === 'yourCity') {
             const worlds = new Set((state.structures || [])
@@ -2937,6 +3723,10 @@ const FS_EFFECTS = {
     },
 
     count(R, state, seat, step, ctx) {
+        // «за каждого уничтоженного Гвардейца» («Бронетанковый клин»): the
+        // count was spread into `n` by the destroy step (`spreadCount`), and a
+        // spread of ZERO victims is zero — not the «one» of an unset number.
+        if (step.per === 'destroyed' && step.perN !== undefined) return Math.max(0, Number(step.n) || 0);
         let n = step.n || 1;
         // A fixed grant plus a bonus for each resource token held, without
         // spending those resources (Space Marine «Адептус Механикус»).
@@ -3001,6 +3791,45 @@ const FS_EFFECTS = {
             const his = field.unitsHere(state).filter(u => u.seat !== seat && !u.routed).length
                 + tokens.units(CombatSides.foe(side)).alive;
             n = (step.n || 1) * Math.max(0, mine - his);
+            if (step.max) n = Math.min(n, step.max);
+            return Math.max(0, n);
+        }
+        if (step.per === 'friendlyWorldWithCity') {
+            // «за каждый дружественный мир, который содержит город»
+            // («Вдохновляющий оратор»): the worlds of the player with a city.
+            let worlds = 0;
+            for (const sys of state.systems) {
+                for (const a of sys.areas) {
+                    if (!a.world || R.control(state, seat, sys.id, a.pos) !== 'friendly') continue;
+                    if (R.structuresAt(state, sys.id, a.pos).some(st => st.type === 'city')) worlds++;
+                }
+            }
+            n = (step.n || 1) * worlds;
+            if (step.max) n = Math.min(n, step.max);
+            return Math.max(0, n);
+        }
+        if (step.per === 'foeUnit') {
+            // «Получите 1 `att. token` за каждого вражеского юнита»
+            // («Разрушительный рефрен»): every enemy piece of the contested
+            // area, routed or not — a reinforcement token of his is a unit too.
+            const combat = state.combat;
+            if (!combat) return 0;
+            const field = BattleField.of(combat);
+            const foeSide = CombatSides.foe(CombatSides.sideOf(combat, seat));
+            const t = CombatTokens.of(combat).units(foeSide);
+            n = (step.n || 1) * (field.unitsHere(state).filter(u => u.seat !== seat).length + t.alive + t.routed);
+            if (step.max) n = Math.min(n, step.max);
+            return Math.max(0, n);
+        }
+        if (step.per === 'rolled') {
+            // «за каждый `att. cube`, выброшенный вашим противником в результате
+            // применения общей способности этой карты» («Продвижение вперёд»):
+            // the faces the dice of this card showed, on the named side.
+            const combat = state.combat;
+            if (!combat) return 0;
+            const mine = CombatSides.sideOf(combat, seat);
+            const rolledSide = step.rolledBy === 'foe' ? CombatSides.foe(mine) : mine;
+            n = (step.n || 1) * CombatHooks.of(combat).rolledOf(rolledSide, step.perKind || 'any');
             if (step.max) n = Math.min(n, step.max);
             return Math.max(0, n);
         }
@@ -3241,6 +4070,12 @@ const FS_EFFECTS = {
                 return !!def && names.some(n => this.sameName(def.name, n));
             });
         }
+        // «… на выбранном мире» («Боевые гимны»): the world the orbital strike
+        // is aimed at, and no other area of the active system.
+        if (step.strikeWorld) {
+            const w = state.order ? StrikePlan.of(state.order).world : null;
+            units = w ? units.filter(u => u.system === w.system && u.area === w.pos) : [];
+        }
         // The scope of the ability: the active system, the systems next to it,
         // worlds only, voids only, ships only, ground only, a command level cap.
         if (step.ofSystem) units = units.filter(u => this.inScope(R, state, u.system, step.ofSystem));
@@ -3266,6 +4101,34 @@ const FS_EFFECTS = {
             });
         }
         return units;
+    },
+
+    /**
+     * The areas a unit may retreat to outside a battle (an orbital strike,
+     * «Боевые гимны»): the rules of the defender's retreat — an area of the
+     * unit's kind in its system or a neighbouring one that is neither enemy
+     * nor contested, reached by a legal path; a friendly one when there is one.
+     */
+    retreatAreasOutside(R, state, unit) {
+        const def = R.unitOf(state, unit);
+        const ground = def ? def.type === 'ground' : true;
+        const systems = [unit.system].concat(R.neighbors(state, unit.system));
+        const out = [];
+        for (const sid of systems) {
+            const sys = R.system(state, sid);
+            if (!sys) continue;
+            for (const area of sys.areas) {
+                if (!!area.world !== ground) continue;
+                if (sid === unit.system && area.pos === unit.area) continue;
+                const where = R.areaState(state, unit.seat, sid, area.pos);
+                if (where === 'contested' || where === 'enemy') continue;
+                if (ground && typeof R.pathExists === 'function'
+                    && !R.pathExists(state, unit.seat, unit.system, unit.area, sid, area.pos)) continue;
+                out.push({ system: sid, pos: area.pos, state: where });
+            }
+        }
+        const friendly = out.filter(t => t.state === 'friendly');
+        return (friendly.length ? friendly : out).map(({ system, pos }) => ({ system, pos }));
     },
 
     // The areas where a piece may stand.
@@ -3302,7 +4165,9 @@ const FS_EFFECTS = {
         const sys = R.system(state, area.system);
         const a = R.area(sys, area.pos);
         if (!a || !a.world) return null;
-        R.player(state, seat).gainMateriel(a.world.materiel || 0);
+        // «получить ценный ресурс этого мира» («Неотвратимые раскопки»): the
+        // asset tokens alone, the materiel of the world stays where it is.
+        if (!step.assetsOnly) R.player(state, seat).gainMateriel(a.world.materiel || 0);
         let prosperity = 0;
         for (const asset of a.world.assets || []) {
             if (asset === 'prosperity') { prosperity++; continue; }
@@ -3310,7 +4175,11 @@ const FS_EFFECTS = {
             // считается в одном месте (PlayerEntity.addAsset), а не здесь.
             R.player(state, seat).addAsset(asset, 1);
         }
-        R.log(state, seat, p.name + ' берёт ресурсы мира ' + a.world.name + '.');
+        if (step.assetsOnly && !(a.world.assets || []).length) {
+            R.log(state, seat, p.name + ': у мира ' + a.world.name + ' нет ценных ресурсов.');
+            return null;
+        }
+        R.log(state, seat, p.name + ' берёт ' + (step.assetsOnly ? 'ценные ресурсы' : 'ресурсы') + ' мира ' + a.world.name + '.');
         if (prosperity) {
             // «ценные ресурсы» включают процветание: игрок решает, на какой жетон он похож.
             step.prosperity = prosperity;
@@ -3466,6 +4335,47 @@ const FS_EFFECTS = {
                 && step.n === 2 && /скитар/i.test(step.what || '')));
     },
 
+    // The price a branch of a choice opens with: the materiel and the asset
+    // tokens its first steps take («потратьте 2 материала и 1 жетон кузницы,
+    // чтобы …», «потратить 1 жетон подкрепления, чтобы …»). Null when the
+    // branch asks for nothing up front.
+    optionPrice(option) {
+        const steps = option && option.op === 'sequence' ? (option.steps || []) : [option];
+        // The price is a sum, not an account: nothing of a player is written here.
+        const price = { cost: 0, tokens: {} };
+        let any = false;
+        for (const step of steps) {
+            if (!step) break;
+            if (step.op === 'payMateriel' && (!step.who || step.who === 'me')) {
+                price.cost += step.n || 1;
+                any = true;
+                continue;
+            }
+            if (step.op === 'loseAsset' && step.kind && step.kind !== 'any' && (!step.who || step.who === 'me')) {
+                price.tokens[step.kind] = (price.tokens[step.kind] || 0) + (step.n || 1);
+                any = true;
+                continue;
+            }
+            // «бесплатно заменить 1 Крейсер … » paid with a token of the step.
+            if (step.pay && step.pay.kind) {
+                price.tokens[step.pay.kind] = (price.tokens[step.pay.kind] || 0) + (step.pay.n || 1);
+                any = true;
+            }
+            break;
+        }
+        return any ? price : null;
+    },
+
+    // Can the player pay what the branch opens with?
+    canPayOption(R, state, seat, option) {
+        const price = this.optionPrice(option);
+        if (!price) return true;
+        const p = state.players[seat];
+        if ((p.materiel || 0) < price.cost) return false;
+        const player = R.player(state, seat);
+        return Object.entries(price.tokens).every(([kind, n]) => player.assetCount(kind) >= n);
+    },
+
     // Used only for the alternatives of that card. The player must still be
     // offered the free branch when it can be performed without the paid one.
     canOfferPlacement(R, state, seat, step) {
@@ -3494,15 +4404,12 @@ const FS_EFFECTS = {
             if (!from) return [];
             const sys = R.system(state, from.system);
             if (!sys) return [];
-            const out = [];
-            for (const other of state.systems) {
-                if (!this.systemsTouch(R, state, sys.id, other.id)) continue;
-                for (const area of other.areas) {
-                    if (area.pos === from.pos && other.id === from.system) continue;
-                    out.push({ system: other.id, pos: area.pos });
-                }
-            }
-            return out;
+            // The areas that share a border with the one the units leave: the
+            // ones of its own tile and the ones across a gold border, a warp
+            // storm closing the latter.
+            return R.areasAround(state, from.system, from.pos)
+                .filter(a => a.system === from.system || !R.board(state).stormOn(from.system, a.system))
+                .map(a => ({ system: a.system, pos: a.pos }));
         }
         const neighbors = active ? R.neighbors(state, active) : [];
         const out = [];
@@ -3534,6 +4441,15 @@ const FS_EFFECTS = {
                     case 'friendlyOrUncontrolledOtherWorldCombatSystem': {
                         const c2 = state.combat;
                         ok = world && c2 && sys.id === c2.system && area.pos !== c2.pos
+                            && (standing === 'friendly' || standing === 'uncontrolled');
+                        break;
+                    }
+                    // «в дружественном или неконтролируемом мире в этой системе»
+                    // («Защитный барьер», the Black Ship): the worlds of the
+                    // system of the battle, the one of a space battle included.
+                    case 'friendlyOrUncontrolledWorldCombatSystem': {
+                        const c2 = state.combat;
+                        ok = world && c2 && sys.id === c2.system
                             && (standing === 'friendly' || standing === 'uncontrolled');
                         break;
                     }
@@ -3653,6 +4569,32 @@ const FS_EFFECTS = {
                     case 'worldActiveOrAdjacentNeutralOrFriendly':
                         ok = world && (sys.id === active || neighbors.includes(sys.id))
                             && (standing === 'friendly' || standing === 'uncontrolled');
+                        break;
+                    // «в дружественном мире, который содержит 1 дружественный
+                    // отряд» («Абсолютная покорность»): a friendly world where
+                    // a unit of the player already stands.
+                    case 'friendlyWorldWithOwnUnit':
+                        ok = world && mine && state.units.some(u => u.seat === seat
+                            && u.system === sys.id && u.area === area.pos);
+                        break;
+                    // «в неконтролируемом мире в системе, которая содержит хотя
+                    // бы 1 ваш корабль» («Элизианские войска»).
+                    case 'uncontrolledWorldSystemWithOwnShip': {
+                        const ship = state.units.some(u => u.seat === seat && u.system === sys.id
+                            && (R.unitOf(state, u) || {}).type === 'ship');
+                        ok = world && standing === 'uncontrolled' && ship;
+                        break;
+                    }
+                    // «в другую пустоту в активной системе» («Затмевающий
+                    // спуск»): any void of the active system, whoever holds it.
+                    case 'otherVoidActive':
+                        ok = !world && sys.id === active;
+                        break;
+                    // «в дружественном мире с городом в активной системе»
+                    // («Адептус Арбитрес»).
+                    case 'friendlyWorldWithCityActive':
+                        ok = world && sys.id === active && mine
+                            && R.structuresAt(state, sys.id, area.pos).some(st => st.type === 'city');
                         break;
                     default:
                         // The destination of an ordinary move: a friendly world of

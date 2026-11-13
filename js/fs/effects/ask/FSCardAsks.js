@@ -5,7 +5,25 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class CardAsks {
-    static ops = ['playCard', 'playAnyCard', 'playEvent', 'playTopCard', 'drawCombatCards', 'discardCard', 'discardFoeCard', 'discardFoeTop', 'discardFoeStaged', 'peekFoeCard', 'repeatCard', 'activateEvents', 'activateDrawnEvent', 'returnActivatedEvent', 'drawEvents', 'chooseEventAbility', 'lookEvents', 'sequence', 'choice', 'chooseFoe', 'chooseWorld', 'chooseSystem', 'foeAllow', 'require', 'note', 'scheme', 'trigger', 'preAdvance', 'limitedOrder', 'guardDeploy', 'once', 'icons'];
+    static ops = ['playCard', 'playAnyCard', 'playEvent', 'playTopCard', 'drawCombatCards', 'discardCard', 'discardFoeCard', 'discardFoeTop', 'discardFoeStaged', 'peekFoeCard', 'repeatCard', 'activateEvents', 'activateDrawnEvent', 'returnActivatedEvent', 'drawEvents', 'chooseEventAbility', 'lookEvents', 'sequence', 'choice', 'chooseFoe', 'chooseWorld', 'chooseSystem', 'foeAllow', 'require', 'note', 'scheme', 'trigger', 'preAdvance', 'limitedOrder', 'guardDeploy', 'once', 'icons', 'onDiscard', 'discardHand'];
+
+    // «сбросьте 1 карту из вашей руки» («Фанатичное рвение», «Луизианское
+    // гостеприимство»): the owner names the card; its «чтобы» follows the
+    // discard (`then`), nothing happens with an empty hand.
+    static discardHand(effects, f) {
+        const { R, state, seat, step, inCombat } = f;
+        const hand = inCombat ? R.player(state, seat).combatHand : null;
+        if (!hand || !hand.size()) return null;
+        return { question: { kind: 'cards', who: seat, op: 'discardHand', n: step.n || 1,
+            options: hand.cards().slice(), text: 'Какую карту сбросить?' } };
+    }
+
+    // «Если эта карта была сброшена, то получите 2 `att. token`» («Святая
+    // троица»): a card that is PLAYED was not discarded — the line is silent.
+    // The discard of the card from the hand performs it (cardDiscarded).
+    static onDiscard() {
+        return null;
+    }
 
     static playCard(effects, f) {
         const { R, state, seat, inCombat } = f;
@@ -82,7 +100,11 @@ class CardAsks {
         // asking. A card of the player's own choice is asked, never rolled.
         const name = hand.takeAt(R.rand(state, hand.size()));
         hand.deck.add(name);
-        R.log(state, CombatSides.seatOf(combat, s2), 'Сброшена боевая карта «' + name + '».');
+        const loser = CombatSides.seatOf(combat, s2);
+        R.log(state, loser, 'Сброшена боевая карта «' + name + '».');
+        // «Если эта карта была сброшена …» («Святая троица»): the owner of
+        // the hand is paid by the card he has just lost.
+        effects.cardDiscarded(R, state, loser, name, f.ctx);
         return null;
     }
 
@@ -247,7 +269,10 @@ class CardAsks {
     }
 
     static lookEvents(effects, f) {
-        const { seat, step, p } = f;
+        const { R, state, seat, step, p } = f;
+        // The deck is built when it is first touched: a look at its top cards
+        // touches it.
+        R.initializeEventDeck(state, seat);
         const names = p.decks.event.slice(0, step.n || 3);
         if (!names.length) return null;
         return { question: { kind: 'cards', who: seat, op: 'lookEvents', options: names, text: 'Какую карту оставить наверху?' } };
@@ -267,6 +292,28 @@ class CardAsks {
         if ((step.options || []).some(option => effects.fullSupplyPlacement(option))) {
             step.options = step.options.filter(option => effects.canOfferPlacement(R, state, seat, option));
             if (!step.options.length) return null;
+        }
+        // «Выберите одну из способностей: *Бастион:* … — или — *Сестра
+        // Репентия/…:* …» («Разрушительный рефрен»): a branch of a requisite
+        // line is offered only while one of its units stands in the battle;
+        // a lone remaining branch is simply performed.
+        if ((step.options || []).some(option => option && Array.isArray(option.reqNames))) {
+            step.options = step.options.filter(option => !option || !Array.isArray(option.reqNames)
+                || effects.condSatisfied(R, state, seat, { reqNames: option.reqNames }, f.ctx));
+            if (!step.options.length) return null;
+            if (step.options.length === 1) return { replace: [step.options[0]] };
+        }
+        // «либо потратить 1 жетон подкрепления, чтобы …, либо …» («Воплощённая
+        // злоба», «Поддержка чёрного сердца»): a branch that opens with a price
+        // the player cannot pay is not offered; a lone remaining branch is
+        // simply performed.
+        if ((step.who === undefined || step.who === 'me') && (step.options || []).some(option => effects.optionPrice(option))) {
+            const payable = step.options.filter(option => effects.canPayOption(R, state, seat, option));
+            if (payable.length !== step.options.length) {
+                step.options = payable;
+                if (!step.options.length) return null;
+                if (step.options.length === 1) return { replace: [step.options[0]] };
+            }
         }
         // «Ваш противник выполняет 3 раза: либо …, либо …» («Подавляющее
         // присутствие»): the alternatives belong to the opponent, so he

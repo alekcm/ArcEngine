@@ -10,6 +10,20 @@ class BuyAsks {
     static buyUpgrade(effects, f) {
         const { R, state, seat, step, p } = f;
         const kind = step.kind || 'combat';
+        // «Вы можете тратить жетоны подкрепления, чтобы уменьшить его стоимость
+        // на 2 за каждый жетон» («Убийственное представление»): the player
+        // names how many tokens he spends before he sees what he can afford.
+        if (step.payAssets && step.spendAssets === undefined) {
+            const have = R.player(state, seat).assetCount(step.payAssets.kind || 'reinforcement');
+            if (have > 0) {
+                const options = [];
+                for (let i = 0; i <= have; i++) options.push(String(i));
+                return { question: { kind: 'choice', who: seat, op: 'buyUpgrade', stage: 'spend', options,
+                    text: 'Сколько жетонов «' + (R.assetName ? R.assetName(step.payAssets.kind || 'reinforcement') : 'подкрепления')
+                        + '» потратить (скидка ' + (step.payAssets.each || 1) + ' за жетон)?' } };
+            }
+            step.spendAssets = 0;
+        }
         // An event still purchases a card: the ordinary command-level and
         // materiel restrictions apply unless its text says otherwise.
         const discount = effects.upgradeDiscount(R, state, seat, step);
@@ -96,7 +110,7 @@ class BuyAsks {
             // own reward, so they are a list, not one pair of fields.
             StrikePlan.of(state.order).addPay({
                 n: step.n || 1, kind: step.kind || 'att', per: step.per || null,
-                upTo: !!step.upTo, reward: null,
+                upTo: !!step.upTo, reward: step.reward || null,
             });
         }
         return null;

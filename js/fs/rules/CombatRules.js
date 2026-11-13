@@ -235,6 +235,18 @@ class CombatRules {
             this.engine.log(state, owner, state.players[owner].name
                 + ' получает кубик морали в начале боя.');
         }
+        // «Если во время выполнения этого приказа вы начали битву в мире, то
+        // получите 1 `any cube` за каждую недеморализованную сестру Репентию в
+        // шаге вызова подкреплений» («Божественное избавление»): the promise
+        // of the order goes to the battle that fits it — a battle in a void
+        // leaves it for a later one of the same order.
+        if (!combat.effectInitiated && tally0 && tally0.combatStartDice.length
+            && (OrderContext.of(state.order).isSeat(attacker) || OrderContext.of(state.order).isSeat(defender))) {
+            const area0 = this.engine.area(this.engine.system(state, field.system), field.pos);
+            const inWorld = !!(area0 && area0.world);
+            const list = tally0.takeCombatStartDice(e => !e.worldOnly || inWorld);
+            if (list.length) CombatPlans.of(combat).setStartDice({ seat: OrderContext.of(state.order).seat, list });
+        }
         // «Если происходит бой, разыграйте только ОДИН раунд» («Мобилизированные
         // охотники»): the limit belongs to the combat this order starts.
         const fight = OrderFight.of(state.order);
@@ -549,6 +561,36 @@ class CombatRules {
         return true;
     }
 
+    /**
+     * «Божественное избавление»: the dice the order promised to its battle,
+     * given once at the end of the reinforcement step. «1 `any cube`» is a
+     * rolled die; a named face is that face.
+     */
+    grantStartDice(state) {
+        const c = state.combat;
+        const plan = c && CombatPlans.of(c).takeStartDice();
+        if (!plan || !state.players[plan.seat]) return;
+        const side = CombatSides.sideOf(c, plan.seat);
+        if (!side) return;
+        const turn = CombatTurn.of(c);
+        let given = 0;
+        for (const e of plan.list || []) {
+            const n = e.per
+                ? FS_EFFECTS.count(this.engine, state, plan.seat,
+                    { n: e.n || 1, per: e.per, filter: e.filter || null, inBattle: true, max: e.max }, { kind: 'combat' })
+                : (e.n || 1);
+            for (let i = 0; i < n; i++) {
+                const face = !e.kind || e.kind === 'any' ? this.engine.rollDice(state, 1)[0] : e.kind;
+                if (!turn.add(side, face)) break;
+                given++;
+            }
+        }
+        if (given) {
+            this.engine.log(state, plan.seat, state.players[plan.seat].name
+                + ' получает кубики по улучшению приказа: ' + given + '.');
+        }
+    }
+
     finishReinforce(state, side) {
         const c = state.combat;
         if (!c) return;
@@ -639,7 +681,14 @@ class CombatRules {
     combatPlayCard(state, seat, side, cmd) {
         const c = state.combat;
         const hand = this.engine.player(state, seat).combatHand;
-        const index = Number(cmd.index);
+        let index = Number(cmd.index);
+        // «каждый раз, когда ваш противник должен выбрать боевую карту, она
+        // выбирается случайным образом» («Познание агонии»): the player still
+        // sends the command, the dice pick the card.
+        if (CombatBans.of(c).randomCardFor(side) && hand.size() > 0) {
+            index = this.engine.rand(state, hand.size());
+            this.engine.log(state, seat, state.players[seat].name + ': боевая карта выбирается случайно.');
+        }
         // The card is taken out of the hand and laid face down on the table.
         const name = hand.takeAt(index);
         if (!name) return { ok: false, error: 'Нет такой карты.' };
@@ -679,7 +728,18 @@ class CombatRules {
                 cards.put(side, { name: staged.name, card: staged.card, side }, turn.round);
                 this.engine.log(state, staged.seat, state.players[staged.seat].name
                     + ' вскрывает боевую карту «' + staged.name + '».');
-                const steps = this.engine.cardSteps(state, staged.seat, staged.card);
+                // The dice this card rolls are its own («выброшенные во время
+                // применения общих способностей этой карты»).
+                CombatHooks.of(c).resetRolls();
+                // «ваш противник не может разыграть общие способности на
+                // следующей открытой боевой карте» («Ослепляющий залп»): this
+                // card is read without its general half.
+                const noGeneral = CombatBans.of(c).takeGeneralBan(side);
+                if (noGeneral) {
+                    this.engine.log(state, staged.seat, state.players[staged.seat].name
+                        + ': общие способности этой карты не разыгрываются.');
+                }
+                const steps = this.engine.cardSteps(state, staged.seat, staged.card, { noGeneral });
                 if (steps.length) {
                     // The reveal waits for the effect of the card to be over.
                     turn.step = 'effect';
@@ -725,6 +785,9 @@ class CombatRules {
                 if (this.offerReinforceEnd(state, CombatSides.seatOf(c, 'defender'), 'defender')) return null;
                 turn.setStep('choose-attacker');
             }
+            // The dice an order promised «в шаге вызова подкреплений» arrive
+            // when that step is over, counted by the units that stand there then.
+            if (turn.choosing && CombatPlans.of(c).startDice) this.grantStartDice(state);
             // A round begins after reinforcement, before either card is chosen.
             // Both players may have a plan; the held step resumes after each
             // answer, including after a save or a network reconnect.
@@ -838,7 +901,29 @@ class CombatRules {
         const field = BattleField.of(c);
         morale += this.moraleFromPieces(state, field.system, field.pos, seat);
         morale += this.tokenMorale(state, side);
+        morale += this.routedMoraleHalf(state, side);
         return { att, def, morale };
+    }
+
+    /**
+     * «… добавить половину значения боевого духа (с округлением вверх) ваших
+     * деморализованных отрядов к суммарному значению во время шага разрешения
+     * битвы» («Несокрушимая вера»): the routed units of the area count in part.
+     */
+    routedMoraleHalf(state, side) {
+        const c = state.combat;
+        const seat = CombatSides.seatOf(c, side);
+        if (seat === null || seat === undefined || !CombatPlans.of(c).countsRoutedMoraleHalf(seat)) return 0;
+        const field = BattleField.of(c);
+        let routed = 0;
+        for (const u of this.engine.unitsAt(state, field.system, field.pos)) {
+            if (u.seat !== seat || !u.routed) continue;
+            const def = this.engine.unitOf(state, u);
+            if (def) routed += def.morale || 0;
+        }
+        const tokenDef = this.engine.reinforceTokenDef(state, side);
+        if (tokenDef) routed += this.tokenUnits(state, side).routed * (tokenDef.morale || 0);
+        return Math.ceil(routed / 2);
     }
 
     combatValuesParts(state, side) {
@@ -849,7 +934,7 @@ class CombatRules {
         const seat = CombatSides.seatOf(c, side);
         const field = BattleField.of(c);
         const unitsMorale = this.moraleFromPieces(state, field.system, field.pos, seat)
-            + this.tokenMorale(state, side);
+            + this.tokenMorale(state, side) + this.routedMoraleHalf(state, side);
         const parts = {
             att: { dice: 0, tokens: tokens.att || 0, cards: 0, units: 0, total: 0 },
             def: { dice: 0, tokens: tokens.def || 0, cards: 0, units: 0, total: 0 },
@@ -941,10 +1026,17 @@ class CombatRules {
             selected.unshift(first);
         }
         const excess = rules.excessOf(round);
-        const excessId = excess && first && excess.id === first ? first : null;
+        const excessId = excess && first && excess.id === first ? first
+            : (excess && excess.id === 'fallen' && excess.side === side ? 'fallen' : null);
         let left = damage, discarded = 0;
         const dropExcess = id => {
-            if (excessId && id === excessId) { discarded += left; left = 0; }
+            if (!excessId) return;
+            if (id === excessId) { discarded += left; left = 0; }
+            // «Мученичество»: the damage past the first fallen unit is lost.
+            const last = rows.length ? rows[rows.length - 1] : null;
+            if (excessId === 'fallen' && last && last.destroyed && !last.bastion && !last.retreat) {
+                discarded += left; left = 0;
+            }
         };
         for (const id of selected) {
             if (left <= 0) break;
@@ -1074,8 +1166,12 @@ class CombatRules {
             if (at > 0) { targets.splice(at, 1); targets.unshift(firstHit.id); }
         }
         // «Монт'ка» deliberately discards excess damage after the named target.
+        // «Игнорируйте весь урон, который превышает здоровье этого юнита»
+        // («Мученичество»): the unit is the first of the owner's to fall, and
+        // the rest of the damage of that step is lost with it.
         const keeping = rules.excessOf(turn.round);
-        const excessId = keeping && firstHit && keeping.id === firstHit.id ? keeping.id : null;
+        const excessId = keeping && firstHit && keeping.id === firstHit.id ? keeping.id
+            : (keeping && keeping.id === 'fallen' && keeping.side === side ? 'fallen' : null);
         const preview = this.damagePreview(state, side, targets);
         if (preview.left > 0 && targets.length < able.size) {
             return { ok: false, error: 'Сначала распределите оставшийся урон.' };
@@ -1103,7 +1199,14 @@ class CombatRules {
         const cards = CombatCards.of(c);
         const hooks = CombatHooks.of(c);
         let left = progress.left;
-        const dropExcess = id => { if (excessId && id === excessId) left = 0; };
+        const dropExcess = id => {
+            if (!excessId) return;
+            if (id === excessId) left = 0;
+            // «Игнорируйте весь урон, который превышает здоровье этого юнита»
+            // («Мученичество»): the piece that has just fallen takes the rest.
+            const last = applied.length ? applied[applied.length - 1] : null;
+            if (excessId === 'fallen' && last && last.destroyed && !last.bastion) left = 0;
+        };
         const offerHit = (index) => {
             progress.left = left;
             progress.index = index + 1;
@@ -1383,7 +1486,10 @@ class CombatRules {
             // «Рой потрошителей» needs no opponent to aim at. If another
             // effect has no legal target, still try the remaining promises.
             // A live reinforcement is also a possible unit target.
-            const needsTarget = (d.steps || []).some(x => x && x.op !== 'gainMateriel');
+            // «когда 1 из ваших юнитов умирает …, получите 1 `def. cube`»
+            // («Мученичество») is paid to the owner: it needs no enemy either.
+            const needsTarget = (d.steps || []).some(x => x
+                && !['gainMateriel', 'gainDie', 'gainToken'].includes(x.op));
             if (needsTarget && !targets.length && !hasToken) continue;
             CombatTurn.of(c).holdEffect('damage-end');
             // Effects can mutate their step list while running; keep a clean
@@ -1751,6 +1857,19 @@ class CombatRules {
         // A player whose troops all died has nothing to retreat: the combat ends
         // without asking where the dead should go.
         const noTroops = !BattleField.of(c).units(state, loser).length;
+        // «… если вы победитель — противник выбирает и уничтожает 1
+        // деморализованный отряд до отступления» («Страшный приговор»): the
+        // promise of the order that started this battle, kept by its winner.
+        const fight0 = !c.effectInitiated && state.order ? OrderFight.of(state.order) : null;
+        if (fight0 && fight0.winnerDestroysRouted) {
+            fight0.takeWinnerDestroysRouted();
+            if (OrderContext.of(state.order).isSeat(winner) && !wiped) {
+                this.engine.runEffects(state, winner, [{
+                    op: 'destroy', n: 1, pick: true, who: 'foe', routed: true, chooser: 'foe',
+                    noAbilityQuestion: true, ability: 'Страшный приговор',
+                }], { kind: 'combat', ctx: { side: CombatSides.sideOf(c, winner) } });
+            }
+        }
         // The schemes of the end of the combat.
         this.engine.maybeScheme(state, winner, 'combat-end', { kind: 'combat', ctx: { side: CombatSides.sideOf(c, winner) } });
         // The combat cards go back into the deck, the reinforcement tokens too.

@@ -49,8 +49,11 @@ class DiceSteps {
     }
 
     static loseDie(effects, f) {
-        const { answer, combat, side, liveIndex } = f;
-        const s2 = CombatSides.foe(side);
+        const { answer, combat, side, step, liveIndex } = f;
+        // «затем вы теряете 3 ваших кубика» («Взгляд без глаз»): the dice of
+        // the owner when the text names them — the same side the question
+        // offered.
+        const s2 = step && step.who === 'me' ? side : CombatSides.foe(side);
         const turn = CombatTurn.of(combat);
         for (const i of (answer.dice || []).slice().sort((a, b) => b - a)) {
             if (liveIndex(s2, i)) turn.take(s2, i);
@@ -63,7 +66,16 @@ class DiceSteps {
         const s2 = diceTarget();
         const turn = CombatTurn.of(combat);
         for (const i of (answer.dice || [])) {
-            if (liveIndex(s2, i)) turn.put(s2, i, R.rollDice(state, 1)[0]);
+            if (!liveIndex(s2, i)) continue;
+            const face = R.rollDice(state, 1)[0];
+            turn.put(s2, i, face);
+            // «за каждый `att. cube`, выброшенный вашим противником в
+            // результате применения общей способности этой карты»
+            // («Продвижение вперёд»): the faces of the reroll are remembered.
+            effects.noteRoll(combat, s2, face);
+            // «Перебросьте 1 `att. cube` …, чтобы вынудить вашего противника
+            // потерять 1 `att. cube`» («Защитный барьер»): the «чтобы» follows.
+            f.step.done = true;
         }
         return null;
     }
@@ -103,7 +115,10 @@ class DiceSteps {
         const face = answer.face || 'att';
         const turn = CombatTurn.of(combat);
         for (let i = 0; i < turn.dice(s2).length; i++) {
-            if (turn.dice(s2)[i] === face) turn.put(s2, i, R.rollDice(state, 1)[0]);
+            if (turn.dice(s2)[i] !== face) continue;
+            const rolled = R.rollDice(state, 1)[0];
+            turn.put(s2, i, rolled);
+            effects.noteRoll(combat, s2, rolled);
         }
         return null;
     }
@@ -244,12 +259,24 @@ class DiceSteps {
             if (!victim) { step.done = true; return null; }
             step.victim = victim.id;
             const def = R.unitOf(state, victim);
-            const price = step.perKl && def ? (def.kl || 0) : (step.n || 1);
+            // «количество кубов, равное боевой мощи выбранного отряда»
+            // («Убийственная ловкость»): the printed combat value of the victim.
+            const price = step.perKl && def ? (def.kl || 0)
+                : step.perCombat && def ? (def.combat || 0) : (step.n || 1);
             const options = turn.slots(foeSide, () => true);
             step.price = price;
+            const routing = step.action === 'route';
+            const strike = () => {
+                if (routing) {
+                    R.routeUnit(state, victim, CombatTurn.of(combat).round);
+                    R.log(state, seat, state.players[seat].name + ': отряд противника деморализован.');
+                } else {
+                    R.destroyUnit(state, victim);
+                    R.log(state, seat, state.players[seat].name + ' уничтожает отряд противника.');
+                }
+            };
             if (!price || !options.length) {
-                R.destroyUnit(state, victim);
-                R.log(state, seat, state.players[seat].name + ' уничтожает отряд: платить нечем.');
+                strike();
                 step.done = true;
                 return null;
             }
@@ -257,7 +284,7 @@ class DiceSteps {
             return { question: {
                 kind: 'dice', who: foeSeat, diceSide: foeSide, op: 'destroyFoeUnlessPays',
                 n: Math.min(price, options.length), options, any: true,
-                text: 'Потратить ' + price + ' кубик(а) или потерять отряд?',
+                text: 'Потратить ' + price + ' кубик(а) или ' + (routing ? 'деморализовать отряд?' : 'потерять отряд?'),
             } };
         }
         const fit = Array.isArray(step.options) ? step.options : [];
@@ -265,8 +292,13 @@ class DiceSteps {
         for (const i of picked) turn.take(foeSide, i);
         const victim = state.units.find(u => u.id === step.victim);
         if (victim && picked.length < (step.price || 1)) {
-            R.destroyUnit(state, victim);
-            R.log(state, seat, state.players[seat].name + ' уничтожает отряд противника.');
+            if (step.action === 'route') {
+                R.routeUnit(state, victim, CombatTurn.of(combat).round);
+                R.log(state, seat, state.players[seat].name + ': отряд противника деморализован.');
+            } else {
+                R.destroyUnit(state, victim);
+                R.log(state, seat, state.players[seat].name + ' уничтожает отряд противника.');
+            }
         } else if (victim) {
             R.log(state, foeSeat, state.players[foeSeat].name + ' платит и сохраняет отряд.');
         }
@@ -278,10 +310,15 @@ class DiceSteps {
     // (DiceAsks). A refusal runs the passage the card names.
     static foeRetreatOffer(effects, f) {
         const { step, answer } = f;
+        // The refusal: the step is done and the passage of «если не отступит»
+        // (`then`) follows it.
         if (answer.no) { step.done = true; return null; }
-        step.done = true;
+        // The retreat takes the place of the offer — the passage of the refusal
+        // goes with the offer and is not performed. «Отступить 1 своим
+        // юнитом» — the unit is his to choose, as is the area.
         const n = step.n || 1;
-        return { replace: [{ op: 'retreat', n, pick: true, who: 'foe' }] };
+        return { replace: [{ op: 'retreat', n, pick: true, who: 'foe', chooser: 'foe',
+            ability: step.ability || step.text, noAbilityQuestion: true }] };
     }
 
     static foeSpendOrPay(effects, f) {

@@ -86,8 +86,12 @@ class CombatCards {
     /** The icons a side holds on its open cards: «att», «def», «morale». */
     icons(side) {
         const out = { att: 0, def: 0, morale: 0 };
+        const round = CombatTurn.of(this.combat).round;
         for (const one of this.played(side)) {
             if (!one || !one.card || !one.card.icons) continue;
+            // «до конца этого раунда битвы» («Бесспорная мудрость»): the icons
+            // of such a card are over when its round is.
+            if (one.untilRound !== undefined && one.untilRound !== null && one.untilRound < round) continue;
             for (const kind of FACE_KINDS) {
                 if (kind === 'blank') continue;
                 out[kind] += one.card.icons[kind] || 0;

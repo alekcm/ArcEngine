@@ -485,7 +485,14 @@ class PlaceAsks {
     }
 
     static restore(effects, f) {
-        const { R, state, seat, step, ctx, combat, inCombat } = f;
+        const { R, state, seat, step, ctx, combat, inCombat, side, p } = f;
+        // «ваш противник не может … восстанавливать свои отряды в текущем
+        // раунде битвы» («Фанатичное рвение»): the ban of the round holds the
+        // card's own restore too.
+        if (inCombat && side && CombatBans.of(combat).forbidsRestore(side)) {
+            R.log(state, seat, p.name + ' не может восстанавливать отряды в этом раунде.');
+            return null;
+        }
         let units = effects.unitsOf(R, state, seat, combat, { routed: true, includeReinforcements: inCombat });
         if (step.scope === 'activeAllOthersGround') {
             const active = state.order ? OrderContext.of(state.order).system : null;
@@ -510,9 +517,17 @@ class PlaceAsks {
     }
 
     static restoreOneSystem(effects, f) {
-        const { state, seat } = f;
+        const { R, state, seat, step } = f;
         /** @type {any[]} */
-        const ids = [...new Set(state.units.filter(u => u.seat === seat && u.routed).map(u => u.system))];
+        let ids = [...new Set(state.units.filter(u => u.seat === seat && u.routed).map(u => u.system))];
+        // «в активной или одной соседней с ней системе» («Направить
+        // праведников»): the system of the order or one touching it.
+        if (step && step.scope === 'activeOrAdjacent') {
+            const active = state.order ? OrderContext.of(state.order).system : null;
+            if (active === null || active === undefined) return null;
+            const near = R.neighbors(state, active);
+            ids = ids.filter(id => id === active || near.includes(id));
+        }
         if (!ids.length) return null;
         return { question: {
             kind: 'systems', who: seat, op: 'restoreOneSystem', n: 1,

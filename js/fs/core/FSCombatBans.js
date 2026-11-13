@@ -43,9 +43,13 @@ class CombatBans {
                 : [];
         }
         const named = seat === undefined ? null : seat;
-        const duration = scope === 'preparation' ? 'preparation' : 'battle';
-        if (!this.combat.reinforceBans.some(b => b.seat === named && b.scope === duration)) {
-            this.combat.reinforceBans.push({ seat: named, scope: duration });
+        const duration = scope === 'preparation' || scope === 'round' ? scope : 'battle';
+        // «не может размещать жетоны подкрепления в эту область … в текущем
+        // раунде битвы» («Фанатичное рвение»): the ban of one execution round.
+        const round = duration === 'round' ? this.roundOfBattle : undefined;
+        if (!this.combat.reinforceBans.some(b => b.seat === named && b.scope === duration && b.round === round)) {
+            this.combat.reinforceBans.push(round === undefined ? { seat: named, scope: duration }
+                : { seat: named, scope: duration, round });
         }
         // Keep the old fields for save compatibility and readers of old states.
         this.combat.noReinforce = true;
@@ -68,8 +72,66 @@ class CombatBans {
         return bans.some(b => {
             const applies = b.seat == null ? side === 'defender' : b.seat === seat;
             if (!applies) return false;
+            if (b.scope === 'round') return b.round === this.roundOfBattle;
             return b.scope !== 'preparation' || preparing;
         });
+    }
+
+    // --- «не может … восстанавливать свои отряды в текущем раунде битвы» ------
+
+    /** The named side may not restore its routed units in this round. */
+    forbidRestore(side) {
+        if (!Array.isArray(this.combat.restoreBans)) this.combat.restoreBans = [];
+        const round = this.roundOfBattle;
+        if (!this.combat.restoreBans.some(b => b.side === side && b.round === round)) {
+            this.combat.restoreBans.push({ side, round });
+        }
+        return this;
+    }
+
+    forbidsRestore(side) {
+        return (this.combat.restoreBans || []).some(b => b.side === side && b.round === this.roundOfBattle);
+    }
+
+    // --- «не может разыграть общие способности на следующей открытой карте» ---
+
+    /**
+     * «Ослепляющий залп», «Руководство по вере»: the next combat card the
+     * named side turns over is read without its general abilities. The ban
+     * waits for that card and is spent by it.
+     */
+    banGeneral(side) {
+        if (!Array.isArray(this.combat.generalBans)) this.combat.generalBans = [];
+        if (!this.combat.generalBans.includes(side)) this.combat.generalBans.push(side);
+        return this;
+    }
+
+    /** Does this reveal lose its general abilities? The ban is used up by it. */
+    takeGeneralBan(side) {
+        const list = Array.isArray(this.combat.generalBans) ? this.combat.generalBans : [];
+        const at = list.indexOf(side);
+        if (at < 0) return false;
+        list.splice(at, 1);
+        return true;
+    }
+
+    // --- «боевая карта выбирается случайным образом» --------------------------
+
+    /**
+     * «В следующем раунде битвы каждый раз, когда ваш противник должен выбрать
+     * боевую карту, она выбирается случайным образом» («Познание агонии»):
+     * the choice of the named side in the named round is made by the dice.
+     */
+    randomCards(side, round) {
+        if (!Array.isArray(this.combat.randomCardRounds)) this.combat.randomCardRounds = [];
+        if (!this.combat.randomCardRounds.some(x => x.side === side && x.round === round)) {
+            this.combat.randomCardRounds.push({ side, round });
+        }
+        return this;
+    }
+
+    randomCardFor(side) {
+        return (this.combat.randomCardRounds || []).some(x => x.side === side && x.round === this.roundOfBattle);
     }
 
     /** «во время всего боя»: the ban is known while the battle lasts. */

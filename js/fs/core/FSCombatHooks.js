@@ -51,7 +51,9 @@ class CombatHooks {
     spentOf(kind) {
         const spent = this.lastSpend;
         if (!spent) return 0;
-        if (kind && (spent.kinds || []).indexOf(kind) < 0) return 0;
+        // «за каждый потраченный куб» («Божественное благословение»): a payment
+        // of any kind counts whole — `any` names no kind.
+        if (kind && kind !== 'any' && (spent.kinds || []).indexOf(kind) < 0) return 0;
         return spent.n || 0;
     }
 
@@ -59,6 +61,33 @@ class CombatHooks {
     spentPairs(n) {
         const pair = n || 2;
         return Math.floor(this.spentOf() / pair);
+    }
+
+    // --- what the dice of this card showed ----------------------------------
+
+    /**
+     * «получите 1 `def. token` за каждый `att. cube`, выброшенный вашим
+     * противником в результате применения общей способности этой карты»
+     * («Продвижение вперёд», «Благословленное наступление», «Одобренный
+     * псайкер»): every die rolled or rerolled while a card resolves is noted
+     * with its side and its face; the record starts over with the next card.
+     */
+    recordRoll(side, face) {
+        if (!Array.isArray(this.combat.rolled)) this.combat.rolled = [];
+        this.combat.rolled.push({ side, face });
+        return this;
+    }
+
+    /** The dice of a side that came up with a face during this card. */
+    rolledOf(side, face) {
+        return (this.combat.rolled || []).filter(x => x && x.side === side
+            && (!face || face === 'any' || x.face === face)).length;
+    }
+
+    /** A new card: its dice are its own. */
+    resetRolls() {
+        this.combat.rolled = [];
+        return this;
     }
 
     // --- the unit that retreated by the card of a player ----------------------

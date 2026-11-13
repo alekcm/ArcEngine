@@ -135,6 +135,15 @@ class EarnAsks {
     static loseAsset(effects, f) {
         const { R, state, step, target } = f;
         const face = R.player(state, target);
+        // «вынудите вашего противника сбросить 1 свой жетон подкрепления»
+        // («Посланники Векта»): the kind is named, nothing is asked.
+        if (step.kind && step.kind !== 'any') {
+            if (face.assetCount(step.kind) <= 0) return null;
+            face.takeAsset(step.kind, step.n || 1);
+            R.log(state, target, state.players[target].name + ' теряет жетон: ' + step.kind + '.');
+            step.done = true;
+            return null;
+        }
         const kinds = ['forge', 'cache', 'reinforcement'].filter(k => face.assetCount(k) > 0);
         if (!kinds.length) return null;
         return { question: { kind: 'assets', who: target, op: 'loseAsset', n: Math.min(step.n || 1, kinds.length), options: kinds, text: 'Какой жетон ресурса теряется?' } };
@@ -144,7 +153,16 @@ class EarnAsks {
         const { R, state, seat, step, ctx } = f;
         // «этого мира» — the world chosen by the previous step is the world.
         if (ctx && ctx.world) return effects.gainWorldAssetsBody(R, state, seat, step, ctx.world);
-        const worlds = effects.friendlyWorlds(R, state, seat);
+        // The world the step itself names: the world of an orbital strike.
+        if (step.world) return effects.gainWorldAssetsBody(R, state, seat, step, step.world);
+        // «выбрать неконтролируемый мир. Получите ценные ресурсы этого мира и
+        // материалы, равные производственному значению этого мира» («Рейд из
+        // Паутины»): the worlds nobody holds, instead of the player's own.
+        const worlds = step.uncontrolled
+            ? state.systems.flatMap(sys => sys.areas
+                .filter(a => a.world && effects.areaStanding(state, seat, sys.id, a.pos) === 'uncontrolled')
+                .map(a => ({ system: sys.id, pos: a.pos })))
+            : effects.friendlyWorlds(R, state, seat);
         if (!worlds.length) return null;
         return { question: { kind: 'areas', who: seat, op: 'gainWorldAssets', options: worlds, text: 'С какого мира взять ресурсы?' } };
     }

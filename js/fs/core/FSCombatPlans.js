@@ -254,11 +254,19 @@ class CombatPlans {
     // --- «не сбрасывать жетоны в конце этого раунда» --------------------------
 
     /** The side keeps the tokens of a kind for the round of the card. */
-    keepTokens(side, kind, round) {
+    keepTokens(side, kind, round, extra) {
         if (!this.combat.keepTokens) this.combat.keepTokens = {};
         const keep = this.combat.keepTokens[side] || {};
         keep[kind === 'att' ? 'att' : 'def'] = true;
         keep.round = round === undefined ? this.turn.round : round;
+        // «Если в этом раунде будет уничтожен ваш юнит с командным уровнем 2,
+        // сохраните все ваши `att. token`» («Геройское самосожжение»): the
+        // promise is judged by the fallen of the round when the round ends.
+        if (extra && extra.ifFallenKl !== undefined && extra.ifFallenKl !== null) {
+            keep.ifFallenKl = extra.ifFallenKl;
+        } else {
+            delete keep.ifFallenKl;
+        }
         this.combat.keepTokens[side] = keep;
         return keep;
     }
@@ -268,6 +276,10 @@ class CombatPlans {
         const k = (this.combat.keepTokens || {})[side];
         if (!k) return false;
         if (!this.inRound(k, round)) return false;
+        if (k.ifFallenKl !== undefined && k.ifFallenKl !== null) {
+            const seat = CombatSides.seatOf(this.combat, side);
+            if (!this.fallenInRound(seat).some(x => (x.kl || 0) === k.ifFallenKl)) return false;
+        }
         return !!k[kind === 'att' ? 'att' : 'def'];
     }
 
@@ -284,7 +296,22 @@ class CombatPlans {
         if (!this.combat.fallenThisStep) this.combat.fallenThisStep = [];
         if (this.combat.fallenThisStep.some(x => x.id === entry.id)) return false;
         this.combat.fallenThisStep.push(entry);
+        // The destroyed of the whole round outlive a repeated damage step:
+        // «Если в этом раунде будет уничтожен ваш юнит с командным уровнем 2»
+        // («Геройское самосожжение») is judged when the round ends.
+        if (entry.destroyed) {
+            if (!this.combat.fallenThisRound) this.combat.fallenThisRound = [];
+            if (!this.combat.fallenThisRound.some(x => x.id === entry.id)) {
+                this.combat.fallenThisRound.push({ id: entry.id, seat: entry.seat, kl: entry.kl || 0 });
+            }
+        }
         return true;
+    }
+
+    /** The units destroyed in this round of the battle; `seat` picks one player's. */
+    fallenInRound(seat) {
+        const all = this.combat.fallenThisRound || [];
+        return seat === undefined ? all : all.filter(x => x.seat === seat);
     }
 
     /** The units that fell in this step; `seat` picks those of one player. */
@@ -351,6 +378,41 @@ class CombatPlans {
 
     // --- the end of the round -------------------------------------------------
 
+    // --- «Божественное избавление»: the dice an order promised to its battle --
+
+    /** The dice a card of the order gives «в шаге вызова подкреплений»: `{ seat, list }`. */
+    get startDice() {
+        return this.combat.startDice || null;
+    }
+
+    setStartDice(entry) {
+        this.combat.startDice = entry || null;
+        return this;
+    }
+
+    /** The promise is kept once: it is taken when the reinforcement step ends. */
+    takeStartDice() {
+        const entry = this.startDice;
+        this.combat.startDice = null;
+        return entry;
+    }
+
+    // --- «Несокрушимая вера»: the morale of the routed units counts in part --
+
+    /** The seats whose routed units add half their morale to the resolution. */
+    get routedMoraleHalf() {
+        return this.combat.routedMoraleHalf || (this.combat.routedMoraleHalf = []);
+    }
+
+    setRoutedMoraleHalf(seat) {
+        if (!this.routedMoraleHalf.includes(seat)) this.routedMoraleHalf.push(seat);
+        return this;
+    }
+
+    countsRoutedMoraleHalf(seat) {
+        return this.routedMoraleHalf.includes(seat);
+    }
+
     /**
      * The promises of the round that is over go away, and the facts of the round
      * that begins are empty. `round` is the round the battle is in now.
@@ -365,6 +427,7 @@ class CombatPlans {
         this.combat.noDamageRetreat = this.ofRound(this.combat.noDamageRetreat, at);
         this.combat.deferDamage = this.ofRound(this.deferredEntries(), at);
         this.clearFallen();
+        this.combat.fallenThisRound = [];
         this.combat.resurrectCandidates = [];
         this.combat.resurrectAsked = null;
         return this;

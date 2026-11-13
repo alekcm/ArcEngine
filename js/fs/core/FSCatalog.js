@@ -242,11 +242,29 @@ class FactionCatalog {
         return w.slice(0, Math.min(4, w.length));
     }
 
+    /**
+     * The spellings of one model that differ between the faction sheet and the
+     * cards by more than a Russian ending: «Сестры ренетентии» (02) against
+     * «Сестра Репентия» / «Сестру Ренентию» (04, 06), «Вилькирии» (02) against
+     * «Валькирия» (04). The sheet keeps its printing; the comparison reads both
+     * sides through the same key.
+     * @type {[RegExp, string][]}
+     */
+    static get NAME_ALIASES() {
+        return [[/ренетент/g, 'репент'], [/ренент/g, 'репент'], [/вилькири/g, 'валькири']];
+    }
+
     /** Are two printed names the same unit/thing? Russian endings differ on the cards. */
     sameName(a, b) {
         // Quotes and punctuation differ between the card and the sheet:
-        // «Ктан» / «К'тана», «(Гвардейцы)» / «гвардейцы».
-        const clean = t => String(t || '').toLowerCase().replace(/['\u2019]/g, '').replace(/[^а-яёa-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        // «Ктан» / «К'тана», «(Гвардейцы)» / «гвардейцы»; so does the «ё»:
+        // «Лёгкие крейсеры Непокорный» (02) and «Легкий Крейсер» (04).
+        const clean = t => {
+            let s = String(t || '').toLowerCase().replace(/ё/g, 'е').replace(/['\u2019]/g, '')
+                .replace(/[^а-яa-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+            for (const [re, to] of FactionCatalog.NAME_ALIASES) s = s.replace(re, to);
+            return s;
+        };
         const x = clean(a);
         const y = clean(b);
         if (!x || !y) return false;
@@ -260,6 +278,19 @@ class FactionCatalog {
         const last = wx[wx.length - 1];
         const last2 = wy[wy.length - 1];
         if (last && last2 && this.stem(last) === this.stem(last2)) return true;
+        // Two phrases are compared word by word: «Легкий Крейсер» (04) is
+        // «Лёгкие крейсеры Непокорный» (02) and «Гранд-Крейсер» is «Гранд-
+        // крейсеры Месть», but «Сестры ренетентии» is not «Сестры битвы» and
+        // «Инквизиторские штурмовики» are not «Инквизиторские крейсеры» — the
+        // names glued together would share their first four letters.
+        if (wx.length > 1 && wy.length > 1) {
+            const m = Math.min(wx.length, wy.length);
+            for (let i = 0; i < m; i++) {
+                const n = Math.min(3, wx[i].length, wy[i].length);
+                if (wx[i].slice(0, n) !== wy[i].slice(0, n)) return false;
+            }
+            return true;
+        }
         // The whole name without the spaces: «Гвардейцы» and «Гвардеец».
         const sx = x.replace(/\s+/g, '');
         const sy = y.replace(/\s+/g, '');

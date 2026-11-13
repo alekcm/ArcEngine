@@ -112,11 +112,13 @@ class ChooseSteps {
         const name = answer.card;
         const deck = p.decks.event;
         if (!name || !deck.includes(name)) return null;
-        // The chosen card stays on top, the others go to the bottom.
-        const rest = deck.filter(x => x !== name);
-        const top = deck.filter(x => x === name);
-        p.decks.event = top.concat(rest);
-        R.log(state, seat, state.players[seat].name + ' смотрит карты событий.');
+        // «одну оставьте наверху, остальные две сбросьте» («Пси-мастерство»):
+        // the chosen card stays on top; a discarded event card is shuffled back
+        // into the deck at once (Rules Reference, Discarding Cards), so the
+        // other two are lost among the rest of the deck.
+        const rest = R.shuffle(state, deck.filter(x => x !== name));
+        p.decks.event = [name].concat(rest);
+        R.log(state, seat, state.players[seat].name + ' смотрит карты событий: «' + name + '» остаётся наверху.');
         return null;
     }
 

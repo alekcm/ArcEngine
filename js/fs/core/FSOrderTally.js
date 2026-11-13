@@ -135,6 +135,30 @@ class OrderTally {
         return n;
     }
 
+    /**
+     * «Если во время выполнения этого приказа вы начали битву в мире, то
+     * получите 1 `any cube` за каждую недеморализованную сестру Репентию в
+     * шаге вызова подкреплений» («Божественное избавление»): the dice the
+     * order promises to a battle it starts, counted when that step ends.
+     * An entry: `{ kind, n, per, filter, max, worldOnly }`.
+     */
+    get combatStartDice() {
+        return this.order.combatStartDice || [];
+    }
+
+    addCombatStartDice(entry) {
+        this.order.combatStartDice = this.combatStartDice.concat([entry]);
+        return this;
+    }
+
+    /** The promise goes to the battle that fits it; the others stay for a later one. */
+    takeCombatStartDice(fits) {
+        const list = this.combatStartDice;
+        const taken = list.filter(e => !fits || fits(e));
+        this.order.combatStartDice = list.filter(e => !taken.includes(e));
+        return taken;
+    }
+
     // --- the reinforcement the order promised to its battle -------------------
 
     /** «… вы можете разместить 1 бесплатный жетон подкрепления»: it waits for the battle. */

@@ -9,9 +9,24 @@ class PurchaseSteps {
 
     static buyUpgrade(effects, f) {
         const { R, state, seat, step, answer, p, combat } = f;
+        // The number of tokens to spend («Убийственное представление») is
+        // the first answer: the step asks again, now about the card.
+        if (step.payAssets && step.spendAssets === undefined) {
+            const have = R.player(state, seat).assetCount(step.payAssets.kind || 'reinforcement');
+            const n = Math.max(0, Math.min(have, Number(answer.choice) || 0));
+            step.spendAssets = n;
+            step.noAbilityQuestion = true;
+            return { replace: [step] };
+        }
         const card = answer.card;
         if (!card) return null;
         const off = effects.upgradeDiscount(R, state, seat, step);
+        // The tokens of the discount are paid with the card, not before it.
+        const payTokens = () => {
+            if (!step.payAssets || !step.spendAssets) return;
+            R.player(state, seat).payAsset(step.payAssets.kind || 'reinforcement', step.spendAssets);
+            R.log(state, seat, state.players[seat].name + ' тратит ' + step.spendAssets + ' жетон(а) на скидку.');
+        };
         if (step.kind === 'combat') {
             const c = FS_CATALOG.card('combat', p.faction, card);
             if (!c || (c.kl || 0) > R.commandLevel(state, seat)) return null;
@@ -34,6 +49,7 @@ class PurchaseSteps {
             const before = deck.size();
             if (!deck.replacePair(remove, c.name) || deck.size() !== before) return null;
             R.player(state, seat).payMateriel(price);
+            payTokens();
             R.log(state, seat, state.players[seat].name + ' заменяет пару «' + remove
                 + '» на боевое улучшение «' + c.name + '».');
             return null;
@@ -49,6 +65,7 @@ class PurchaseSteps {
         const pile = p.decks && Array.isArray(p.decks.upgradeOrder) ? p.decks.upgradeOrder : null;
         if (pile && !pile.includes(c.name)) return null;
         R.player(state, seat).payMateriel(price);
+        payTokens();
         p.upgrades.push({ name: c.name, used: false, order: c.order });
         if (pile && pile.includes(c.name)) pile.splice(pile.indexOf(c.name), 1);
         R.log(state, seat, state.players[seat].name + ' покупает улучшение приказа «' + c.name + '».');
@@ -172,6 +189,12 @@ class PurchaseSteps {
                 unitType: 'ship', ofSystem: 'active', dest: 'strikeNeighborVoid',
                 strict: true, who: 'me' }] };
         }
+        if (reward.moveShipActive) {
+            // «Затмевающий спуск»: one ship of the active system goes to
+            // another void of the same system — a new battle may follow.
+            return { replace: [{ op: 'moveUnits', n: 1, pick: true,
+                unitType: 'ship', ofSystem: 'active', dest: 'otherVoidActive', who: 'me' }] };
+        }
         if (reward.units) {
             // One question per kind of unit: the models of the chosen
             // kind are bought at the printed price and stand in the
@@ -206,6 +229,13 @@ class PurchaseSteps {
             const n = want * (reward.n || 1);
             R.player(state, owner).addAsset(reward.asset, n);
             R.log(state, owner, player.name + ' получает жетон(ы): ' + reward.asset + ' × ' + n + '.');
+        }
+        if (reward.worldAsset) {
+            // «можете потратить 1 `morale cube`, чтобы получить ценный ресурс
+            // этого мира» («Неотвратимые раскопки»): the asset tokens printed
+            // on the world of the strike, without its materiel.
+            return { replace: [{ op: 'gainWorldAssets', assetsOnly: true, noAbilityQuestion: true,
+                world: { system: plan.system, pos: plan.pos }, who: 'me' }] };
         }
         return null;
     }

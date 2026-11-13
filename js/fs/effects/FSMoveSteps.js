@@ -5,7 +5,7 @@
 // приходит параметром effects, а общая рамка шага — объектом f (FSStepContext).
 
 class MoveSteps {
-    static ops = ['warpGateMove', 'moveUnits', 'moveStructure', 'moveUnit', 'route', 'retreat', 'retreatInstead', 'evacuate', 'swapCombatCards', 'swapCombatPair'];
+    static ops = ['warpGateMove', 'moveUnits', 'moveStructure', 'moveUnit', 'route', 'retreat', 'retreatInstead', 'strikeRetreatOffer', 'evacuate', 'swapCombatCards', 'swapCombatPair'];
 
     static warpGateMove(effects, f) {
         const { R, state, seat, step, answer } = f;
@@ -124,12 +124,23 @@ class MoveSteps {
                 areas = areas.filter(a => list.every(u => R.pathExists(state, seat, u.system, u.area, a.system, a.pos,
                     { uncontrolled: false, storms: false })));
             }
+            // «в другую пустоту в активной системе» («Затмевающий спуск»):
+            // not the void the ship stands in.
+            if (step.dest === 'otherVoidActive') {
+                areas = areas.filter(a => !list.some(u => u.system === a.system && u.area === a.pos));
+            }
             // A ground unit stands in a world, a ship in a void: the card lets
             // the player move any number of them, and each needs its own place.
             if (step.dest === 'adjacentArea') {
                 const defs = list.map(u => R.unitOf(state, u)).filter(Boolean);
                 if (defs.some(d => d.type === 'ground')) areas = areas.filter(a => effects.areaWorld(state, a.system, a.pos));
                 if (defs.some(d => d.type !== 'ground')) areas = areas.filter(a => !effects.areaWorld(state, a.system, a.pos));
+            }
+            // «Это может привести к новой битве» («Праздник кровопролития»,
+            // «Затмевающий спуск»): the units may enter an area of ONE other
+            // player — a battle of two others is not theirs to join.
+            if (step.dest === 'adjacentArea' || step.dest === 'otherVoidActive') {
+                areas = areas.filter(a => [...R.board(state).warSeatsAt(a.system, a.pos)].filter(o => o !== seat).length <= 1);
             }
             // Keep the unit question open if this force has no legal target:
             // the player can choose fewer models rather than silently losing it.
@@ -151,6 +162,17 @@ class MoveSteps {
                 arrivals = list.map(u => ({ id: u.id, from: { system: u.system, pos: u.area } }));
                 f.combat.waveContested = { system: area.system, pos: area.pos };
             }
+        } else if (step.dest === 'adjacentArea' || step.dest === 'otherVoidActive') {
+            // «Это может привести к новой битве по завершении текущей»
+            // («Праздник кровопролития»), «… по завершении текущего
+            // орбитального удара» («Затмевающий спуск»): the area of another
+            // player is entered now, the battle for it waits for the end of
+            // the current one.
+            const enemies = [...R.board(state).warSeatsAt(area.system, area.pos)].filter(owner => owner !== seat);
+            if (enemies.length === 1) {
+                defender = enemies[0];
+                arrivals = list.map(u => ({ id: u.id, from: { system: u.system, pos: u.area } }));
+            }
         }
         for (const u of list) {
             if (step.dest === 'eldarWaveAdjacent' && u.tokenSide !== undefined) {
@@ -166,6 +188,8 @@ class MoveSteps {
         }
         if (defender !== null) R.queueEffectCombat(state, seat, defender, area, arrivals);
         R.log(state, seat, state.players[seat].name + ' перемещает отряды.');
+        // «Если вы это сделали, то получите …» («Выстрелить и исчезнуть»).
+        step.done = true;
         return null;
     }
 
@@ -204,6 +228,7 @@ class MoveSteps {
             return { question: { kind: 'areas', who: seat, op: 'moveUnit', options: areas, text: 'Куда переместить отряд?' } };
         }
         R.board(state).moveUnit(u, area, { seat });
+        step.done = true;
         return null;
     }
 
@@ -236,6 +261,10 @@ class MoveSteps {
         const count = routed.length + tokenTargets.length;
         step.done = count > 0;
         step.routedCount = count;
+        // «Затем вы можете потратить 1 `def. cube`, чтобы вынудить вашего
+        // противника отступить этим отрядом» («Боевые гимны»): the strike
+        // remembers the unit its card routed.
+        if (step.strikeWorld && state.order && routed.length) StrikePlan.of(state.order).noteRouted(routed[0].id);
         // «…за каждый отряд, который вы деморализовали» — the steps of
         // «Если вы это сделаете» count what this step did.
         for (const one of (Array.isArray(step.then) ? step.then : [])) {
@@ -281,6 +310,46 @@ class MoveSteps {
         if (step.record && combat) CombatHooks.of(combat).recordRetreat(u.id);
         if (typeof R.markRetreat === 'function') R.markRetreat(state, u.seat);
         R.log(state, u.seat, state.players[u.seat].name + ': отряд отступает.');
+        step.done = true;
+        return null;
+    }
+
+    /**
+     * «… потратить 1 `def. cube`, чтобы вынудить вашего противника отступить
+     * этим отрядом» («Боевые гимны»): the cube leaves the pool of the strike,
+     * the routed unit retreats by the rules of a retreat — to an area of its
+     * kind in the system or next to it that holds no enemy, chosen by its
+     * owner; without such an area it is destroyed.
+     */
+    static strikeRetreatOffer(effects, f) {
+        const { R, state, seat, step, answer, p } = f;
+        const plan = state.order && StrikePlan.of(state.order).planned;
+        const unit = plan && plan.routedUnit ? state.units.find(u => u.id === plan.routedUnit) : null;
+        if (!plan || !unit) return null;
+        if (step.stage !== 'area') {
+            if (answer.no) { step.done = true; return null; }
+            const kind = step.kind || 'def';
+            const at = (plan.pool || []).lastIndexOf(kind);
+            if (at < 0) return null;
+            plan.pool.splice(at, 1);
+            R.log(state, seat, p.name + ' тратит `def. cube` удара: отряд противника должен отступить.');
+            step.stage = 'area';
+            const targets = effects.retreatAreasOutside(R, state, unit);
+            if (!targets.length) {
+                R.log(state, unit.seat, state.players[unit.seat].name + ': отступать некуда, отряд гибнет.');
+                R.destroyUnit(state, unit);
+                step.done = true;
+                return null;
+            }
+            step.targets = targets;
+            return { question: { kind: 'areas', who: unit.seat, op: 'strikeRetreatOffer', options: targets, text: 'Куда отступить?' } };
+        }
+        const area = answer.area;
+        const fits = area && (step.targets || []).some(t => t.system === area.system && t.pos === area.pos);
+        if (!fits) return { ok: false, error: 'Выберите предложенную область.' };
+        R.board(state).moveUnit(unit, area, { seat: unit.seat });
+        if (typeof R.trimArea === 'function') R.trimArea(state, unit.seat, unit.system, unit.area);
+        R.log(state, unit.seat, state.players[unit.seat].name + ': отряд отступает.');
         step.done = true;
         return null;
     }
