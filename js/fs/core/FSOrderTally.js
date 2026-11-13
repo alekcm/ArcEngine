@@ -70,6 +70,26 @@ class OrderTally {
         return this;
     }
 
+    /** The Mechanicus factory moved by this order, for its follow-up upgrade. */
+    get movedFactory() {
+        return this.order.movedFactory || null;
+    }
+
+    setMovedFactory(structure) {
+        this.order.movedFactory = { id: structure.id, system: structure.system, pos: structure.area };
+        return this;
+    }
+
+    /** The optional faction ability cannot be repeated in the same order. */
+    get abilityResolved() {
+        return !!this.order.abilityResolved;
+    }
+
+    resolveAbility() {
+        this.order.abilityResolved = true;
+        return this;
+    }
+
     /** «The order is over when the effect of the ability is done». */
     get finishesAfterEffect() {
         return !!this.order.finishAfterEffect;

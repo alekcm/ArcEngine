@@ -207,10 +207,27 @@ class CombatHooks {
 
     // --- the start of the battle ---------------------------------------------
 
+    /** Serializable progress while both players answer plans before the deal. */
+    beginStartWindow() {
+        this.combat.startWindow = { next: 0, offered: null };
+        return this.combat.startWindow;
+    }
+
+    get startWindow() { return this.combat.startWindow || null; }
+    endStartWindow() { this.combat.startWindow = null; }
+    markStartUsed() { this.combat.startSchemeUsed = true; }
+    get startUsed() { return !!this.combat.startSchemeUsed; }
+
+    /** A player made a combat decision; an automatic empty step is not one. */
+    markDecision() { this.combat.playerDecision = true; }
+    get decisionMade() { return !!this.combat.playerDecision; }
+
     /** Nothing has been asked yet: the moments of a fresh battle. */
     reset() {
+        this.combat.roundHook = {};
         this.combat.playHook = {};
         this.combat.damageHook = {};
+        this.combat.damageStartHook = {};
         this.combat.criticalHook = {};
         this.combat.damageEndHook = null;
         this.combat.damageEndResume = false;

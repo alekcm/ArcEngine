@@ -34,9 +34,11 @@ class CombatTokens {
         const used = this.used(side);
         const flipped = this.flipped(side);
         const dead = this.destroyed(side);
-        const routed = flipped.filter(i => i < used && dead.indexOf(i) < 0).length;
+        const moved = this.moved(side);
+        const routed = flipped.filter(i => i < used && dead.indexOf(i) < 0 && moved.indexOf(i) < 0).length;
         const destroyed = dead.filter(i => i < used).length;
-        return { used, routed, destroyed, alive: Math.max(0, used - routed - destroyed) };
+        const elsewhere = moved.filter(i => i < used && dead.indexOf(i) < 0).length;
+        return { used, routed, destroyed, alive: Math.max(0, used - routed - destroyed - elsewhere) };
     }
 
     /** The number of tokens placed by this side. */
@@ -57,7 +59,7 @@ class CombatTokens {
         return this.used(side);
     }
 
-    /** «Бесплатные» жетоны этой стороны: они не возвращаются в запас. */
+    /** Free tokens placed from the common supply (not from the player's assets). */
     get free() {
         return this.combat.reinforceFree || { attacker: 0, defender: 0 };
     }
@@ -85,6 +87,26 @@ class CombatTokens {
             || (this.combat.reinforceDestroyed[side] = []);
     }
 
+    /** Slots moved out of the battle by an effect, not destroyed or refunded. */
+    moved(side) {
+        if (!this.combat.reinforceMoved) this.combat.reinforceMoved = { attacker: [], defender: [] };
+        return this.combat.reinforceMoved[side] || (this.combat.reinforceMoved[side] = []);
+    }
+
+    moveAway(side, index) {
+        if (!this.alive(side, index) || this.flipped(side).includes(index)) return false;
+        this.moved(side).push(index);
+        return true;
+    }
+
+    returnToBattle(side, index) {
+        const moved = this.moved(side);
+        const at = moved.indexOf(index);
+        if (at < 0) return false;
+        moved.splice(at, 1);
+        return true;
+    }
+
     /** The count of the flipped tokens, kept for the states that read it. */
     routed(side) {
         const all = this.combat.reinforceRouted;
@@ -97,10 +119,10 @@ class CombatTokens {
         return this.combat.reinforceRouted[side];
     }
 
-    /** Is this slot a token that may still be hit? */
+    /** Is this slot a token still in the contested area? */
     alive(side, index) {
         if (!Number.isInteger(index) || index < 0 || index >= this.used(side)) return false;
-        return this.destroyed(side).indexOf(index) < 0;
+        return this.destroyed(side).indexOf(index) < 0 && this.moved(side).indexOf(index) < 0;
     }
 
     /** «If a unit suffers damage and is not destroyed, that unit is routed.» */
@@ -110,7 +132,16 @@ class CombatTokens {
         if (flipped.indexOf(index) >= 0) return false;
         flipped.push(index);
         this.setRouted(side, flipped.length);
+        if (!this.combat.reinforceRoutedRounds) this.combat.reinforceRoutedRounds = {};
+        const rounds = this.combat.reinforceRoutedRounds[side] || (this.combat.reinforceRoutedRounds[side] = {});
+        rounds[index] = CombatTurn.of(this.combat).round;
         return true;
+    }
+
+    /** Older saves have no round record; retain their routed-token behaviour. */
+    routedInRound(side, index, round) {
+        const rounds = (this.combat.reinforceRoutedRounds || {})[side] || {};
+        return rounds[index] === undefined || rounds[index] === round;
     }
 
     /** The token leaves the table: a destroyed token is not routed any more. */
@@ -122,6 +153,18 @@ class CombatTokens {
         const flipped = this.flipped(side);
         const at = flipped.indexOf(index);
         if (at >= 0) flipped.splice(at, 1);
+        this.setRouted(side, flipped.length);
+        return true;
+    }
+
+    /** Return a fallen token to this battle, unrouted, without granting an asset. */
+    restoreFallen(side, index) {
+        if (!Number.isInteger(index) || index < 0 || index >= this.used(side) || this.moved(side).includes(index)) return false;
+        const dead = this.destroyed(side), flipped = this.flipped(side);
+        const deadAt = dead.indexOf(index), flippedAt = flipped.indexOf(index);
+        if (deadAt < 0 && flippedAt < 0) return false;
+        if (deadAt >= 0) dead.splice(deadAt, 1);
+        if (flippedAt >= 0) flipped.splice(flippedAt, 1);
         this.setRouted(side, flipped.length);
         return true;
     }

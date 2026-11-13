@@ -758,6 +758,21 @@ button.fs-room-pill:hover{border-color:#d8b87366;color:#efe6c8;background:#d8b87
 .fs-card-choice-pick{margin-top:7px;font:700 9px/1 ui-sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#93e3ac}
 .fs-shell.is-mobile .fs-card-choices-list{max-height:34vh}
 
+/* In a short landscape window the regular bottom sheet is hidden behind the
+   roster and the phase bar. Keep the capacity choice and its confirmation in
+   a compact, scrollable panel above them instead. */
+@media(max-height:500px) and (orientation:landscape){
+    .fs-shell.is-mobile .fs-main-panel.is-trim{top:8px;right:8px;bottom:8px;left:auto;width:min(310px,55vw);height:auto;max-height:none;z-index:8}
+    .fs-shell.is-mobile .fs-main-panel.is-trim .fs-panel-heading{padding:8px 10px 6px}
+    .fs-shell.is-mobile .fs-main-panel.is-trim .fs-panel-heading .fs-eyebrow{display:none}
+    .fs-shell.is-mobile .fs-main-panel.is-trim .fs-panel-heading h2{font-size:19px;margin:2px 0 4px}
+    .fs-shell.is-mobile .fs-main-panel.is-trim .fs-panel-heading p{font-size:12px;line-height:1.25;max-height:3.75em;overflow-y:auto}
+    .fs-shell.is-mobile .fs-main-panel.is-trim .fs-status{font-size:12px;min-height:0;margin:4px 10px 0;padding:5px 8px}
+    .fs-shell.is-mobile .fs-main-panel.is-trim .fs-actions{display:flex;gap:5px;padding:6px 10px;min-height:45px}
+    .fs-shell.is-mobile .fs-main-panel.is-trim .fs-chip{font-size:12px;padding:7px 9px}
+    .fs-shell.is-mobile .fs-main-panel.is-trim>.fs-primary{flex-shrink:0;margin:4px 10px 8px;padding:8px;font-size:13px}
+}
+
 /* Компас в верхней плашке: поворот камеры правой кнопкой, «север» на экране
    больше не всегда вверху — стрелка показывает, где он. */
 .fs-compass{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid rgba(214,177,104,.35);border-radius:999px;font:10px/1.4 ui-monospace,monospace;letter-spacing:.08em;color:#d8c9a4;background:rgba(10,16,22,.55)}

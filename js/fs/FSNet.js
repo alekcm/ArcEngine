@@ -90,7 +90,9 @@ const FSNet = {
                 try { msg = JSON.parse(ev.data); } catch { return; }
                 if (!msg || !msg.t) return;
                 if (msg.t === 'joined') {
-                    net.id = msg.id;
+                    // A refused guest gets an empty id; preserve the credential
+                    // so a later reconnect can still retry it.
+                    if (msg.id) net.id = msg.id;
                     net.room = msg.room;
                     net.emit('joined', msg);
                     return;

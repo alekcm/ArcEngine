@@ -12,6 +12,14 @@ class PlaceSteps {
         const def = R.unitDef(state, seat, answer.type);
         if (!def) return null;
         const area = answer.area;
+        // Recheck at both stages: a loaded or stale question must not charge
+        // for a pair when only part of it remains in the supply.
+        if (effects.fullSupplyPlacement(step)) {
+            const need = Math.max(1, step.left !== undefined ? step.left : (step.n || 1));
+            if ((p.supply.units[def.id] || 0) < need || !effects.canOfferPlacement(R, state, seat, step)) {
+                return { ok: false, error: 'Для платного размещения нужны все отряды, материалы и подходящий мир.' };
+            }
+        }
         const deal = OrderDeal.of(state.order);
         const off = step.discount && deal ? deal.placementDiscount : 0;
         const price = Math.max(0, (def.cost || 0) - off);
@@ -25,6 +33,9 @@ class PlaceSteps {
             if (step.dest === 'friendlyAreaActive' || step.dest === 'combatArea') {
                 const wantWorld = def.type !== 'ship';
                 areas = areas.filter(a => effects.areaWorld(state, a.system, a.pos) === wantWorld);
+            }
+            if (step.dest === 'movedFactoryWorld') {
+                areas = areas.filter(a => R.canPlaceUnit(state, seat, a.system, a.pos, def).ok);
             }
             // «в двух разных дружественных мирах» («Гнездо выводка»): the
             // worlds the card has already used are not offered again —
@@ -40,30 +51,36 @@ class PlaceSteps {
         const a = R.area(sys, area.pos);
         if (!a) return null;
         if ((p.supply.units[def.id] || 0) <= 0) return null;
-        // «разместить 2 бесплатных Скитария в мире с вашей фабрикой»
-        // («Багровая стража»): the card may name more than one model. The
-        // models stand in the chosen world while the supply and the
-        // capacity of the world last.
+        if (step.dest === 'movedFactoryWorld'
+            && (!effects.areasForAbility(R, state, seat, step.dest).some(x => x.system === area.system && x.pos === area.pos)
+                || !R.canPlaceUnit(state, seat, area.system, area.pos, def).ok)) return null;
+        // A card can name multiple free models. The printed area capacity is
+        // checked after the order or event phase, not during placement.
         const want = Math.max(1, step.left !== undefined ? step.left : (step.n || 1));
+        if (step.payMateriel) {
+            // Pay the fixed price only after the destination and the required
+            // supply have been checked. Other placements may still be partial.
+            const legal = effects.areasForAbility(R, state, seat, step.dest)
+                .some(x => x.system === area.system && x.pos === area.pos);
+            if (!legal || (p.materiel || 0) < step.payMateriel
+                || (p.supply.units[def.id] || 0) <= 0) return null;
+            R.player(state, seat).payMateriel(step.payMateriel);
+            R.log(state, seat, p.name + ' тратит ' + step.payMateriel + ' материи.');
+        }
         let placed = 0;
         for (let i = 0; i < want; i++) {
             if ((p.supply.units[def.id] || 0) <= 0) break;
-            // «Players can voluntarily exceed the unit capacity of an
-            // area when moving units, retreating, placing units, or
-            // deploying units» — and the capacity counts the units of
-            // one player, not of both. The printed skulls are therefore
-            // no wall here: only the plastic of the area (five units)
-            // stops the placement, and the trim follows in finishOrder.
-            // The plastic of the area is asked once, by the board.
-            if (!R.hasRoom(state, area.system, area.pos, seat, 1)) break;
             // «купить 1 отряд» — the ability buys at the printed price.
             if (step.buy) {
-                if ((p.materiel || 0) < price) {
-                    R.log(state, seat, state.players[seat].name + ' не хватает материи, чтобы купить «' + def.name + '».');
+                const forge = R.effectUnitForgeCost(state, seat, def, !!step.bypassCommandLevel);
+                if ((p.materiel || 0) < price || forge === null) {
+                    R.log(state, seat, state.players[seat].name + ' не может оплатить «' + def.name + '».');
                     break;
                 }
                 R.player(state, seat).payMateriel(price);
-                R.log(state, seat, state.players[seat].name + ' тратит ' + price + ' материи.');
+                if (forge) R.player(state, seat).payAsset('forge', forge);
+                R.log(state, seat, state.players[seat].name + ' тратит ' + price + ' материи'
+                    + (forge ? ' и жетонов кузни: ' + forge : '') + '.');
             }
             p.supply.units[def.id]--;
             R.addUnit(state, seat, def.id, area.system, area.pos);
@@ -98,13 +115,16 @@ class PlaceSteps {
         }
         const area = answer.area;
         if (!area) return null;
+        if (!effects.structureAreas(R, state, seat, step)
+            .some(a => a.system === area.system && a.pos === area.pos)) return null;
         const price = effects.structureCost(R, step, step.kind);
         // The plastic of the structures is shared and counted on the board.
         const can = R.canTakeStructure(state, seat, step.kind);
         if (!can.ok) return { ok: false, error: can.error };
-        if (!step.free && p.materiel < price) return { ok: false, error: 'Не хватает материи.' };
-        // The structure may be free, but it always comes from the reserve.
-        if (!step.free) R.player(state, seat).payMateriel(price);
+        const payment = (step.free ? 0 : price) + (step.materielPayment || 0);
+        if (p.materiel < payment) return { ok: false, error: 'Не хватает материи.' };
+        // A free structure can still have a separate printed activation price.
+        if (payment) R.player(state, seat).payMateriel(payment);
         R.addStructure(state, seat, step.kind, area.system, area.pos);
         R.log(state, seat, state.players[seat].name + ' строит: ' + R.structureName(step.kind) + '.');
         return null;
@@ -119,19 +139,10 @@ class PlaceSteps {
         if (!n) return null;
         let placed = 0;
         while (n > 0) {
-            // The plastic of the area is the same wall as everywhere else: five
-            // units of one player. The capacity is asked after the order, not
-            // here («Players can voluntarily exceed the unit capacity … when
-            // placing units»).
-            if (!R.hasRoom(state, area.system, area.pos, seat, 1)) break;
             p.supply.units[def.id]--;
             R.addUnit(state, seat, def.id, area.system, area.pos);
             placed++;
             n--;
-        }
-        if (!placed) {
-            R.log(state, seat, p.name + ': в области уже пять отрядов, размещать больше некуда.');
-            return null;
         }
         R.log(state, seat, state.players[seat].name + ' размещает «' + def.name + '» бесплатно: ' + placed + '.');
         return null;
@@ -147,35 +158,27 @@ class PlaceSteps {
     }
 
     static placeOrderAny(effects, f) {
-        const { R, state, seat, step, answer, p, units } = f;
-        // «взять 1 ваш приказ с вершины любой стопки и разместить его в
-        // смежной системе» («Научная экспедиция»).
-        const types = step.types || ['advance', 'deploy', 'strategize', 'dominate'];
-        const kind = answer.order || types[Number(answer.choice)];
-        if (!kind || R.orderLeft(state, seat, kind) <= 0) return null;
-        if (!answer.area) {
-            // «Не нарушая базовых правил размещения»: a system with the
-            // units or the structures of the player, or one next to it.
-            const list = state.systems.filter(sys => R.canPlaceOrder(state, seat, sys.id));
-            if (!list.length) {
-                R.log(state, seat, 'Приказ некуда положить: нет системы по правилам размещения.');
-                return null;
-            }
-            return {
-                question: {
-                    kind: 'areas', who: seat, op: 'placeOrderAny', kind2: kind,
-                    options: list.map(sys => ({ system: sys.id, pos: 0 })),
-                    text: 'В какую систему положить приказ?',
-                },
-            };
+        const { R, state, seat, step, answer } = f;
+        if (!step.source) {
+            const sources = R.orderMoveSources(state, seat);
+            if (!sources.includes(answer.system)) return null;
+            step.source = answer.system;
+            return { question: {
+                kind: 'systems', who: seat, op: 'placeOrderAny', stage: 'destination',
+                options: R.orderMoveTargets(state, seat, step.source),
+                text: 'В какую смежную систему переложить приказ?',
+            } };
         }
-        const sys = R.system(state, answer.area.system);
-        if (!sys) return null;
-        sys.tokens.push({ seat, order: kind, faceUp: false });
-        p.placedOf = p.placedOf || {};
-        p.placedOf[kind] = (p.placedOf[kind] || 0) + 1;
-        R.log(state, seat, state.players[seat].name + ' размещает приказ «'
-            + R.orderName(kind) + '» в системе ' + sys.tile + '.');
+        // Recheck the top and destination when the second answer arrives.
+        if (!R.orderMoveTargets(state, seat, step.source).includes(answer.system)) return null;
+        const from = R.system(state, step.source);
+        const target = R.system(state, answer.system);
+        const token = from.tokens.pop();
+        token.faceUp = false;
+        target.tokens.push(token);
+        // The moved token stays facedown, so the public log must not reveal it.
+        R.log(state, seat, state.players[seat].name + ' перекладывает закрытый приказ из системы '
+            + from.tile + ' в систему ' + target.tile + '.');
         return null;
     }
 
@@ -222,12 +225,18 @@ class PlaceSteps {
             const rec = records.find(x => x.id === id);
             if (!rec) continue;
             const alive = state.units.find(u => u.id === id);
-            if (alive) {
+            if (rec.tokenSide) {
+                if (!CombatTokens.of(combat).restoreFallen(rec.tokenSide, rec.tokenIndex)) continue;
+            } else if (alive) {
                 R.restoreUnit(state, alive);
             } else if (rec.destroyed) {
                 const field = BattleField.of(combat);
+                // The model returned to supply when destroyed. Putting it back
+                // on the board must take that same model out of the supply.
+                if ((p.supply.units[rec.def] || 0) <= 0) continue;
+                p.supply.units[rec.def]--;
                 R.addUnit(state, seat, rec.def, field.system, field.pos);
-            }
+            } else continue;
             R.log(state, seat, p.name + ': отряд возвращён в спорную область.');
         }
         if (step.plan) step.plan.done = true;
@@ -256,6 +265,8 @@ class PlaceSteps {
         const def = names.length ? faction.units.find(u => effects.sameName(u.name, names[0])) : null;
         if (!def) return null;
         const p = state.players[seat];
+        // Never spend a token for a replacement that cannot be made.
+        if ((p.supply.units[def.id] || 0) <= 0) return null;
         // «…либо заплатить 1 жетон кузни и заменить 1 Онагр на 1 Титана»
         // («Мехаморфоз»): the alternative that names a price pays it
         // before the model is exchanged.

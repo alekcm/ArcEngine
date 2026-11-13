@@ -71,8 +71,19 @@ class FSCombatDeck {
     }
 
     upgradePile() {
-        return Array.isArray(this.player.decks && this.player.decks.upgradeCombat)
-            ? this.player.decks.upgradeCombat : [];
+        const decks = this.player.decks;
+        if (!decks) return [];
+        if (!Array.isArray(decks.upgradeCombat)) {
+            // Older saves may lack the pile entirely. Reconstruct it only from
+            // a complete ten-card deck; an explicit empty pile stays empty and
+            // a combat with cards in hand must not invent extra copies.
+            if (!Array.isArray(decks.combat) || decks.combat.length !== 10) return [];
+            const owned = new Set(decks.combat);
+            decks.upgradeCombat = FS_CATALOG.baseCombatCards(this.player.faction)
+                .concat(FS_CATALOG.upgradeCombatCards(this.player.faction))
+                .map(card => card.name).filter(name => !owned.has(name));
+        }
+        return decks.upgradeCombat;
     }
 
     size() { return this.cards().length; }
@@ -129,11 +140,9 @@ class FSCombatDeck {
 
     /** The physical cards that can still be bought, including returned basics. */
     upgradeOptions() {
-        const pile = this.upgradePile();
-        if (pile.length) return pile.slice();
-        return FS_CATALOG.upgradeCombatCards(this.player.faction)
-            .filter(c => !this.cards().includes(c.name))
-            .map(c => c.name);
+        // An empty pile is still a real pile: do not invent cards when the last
+        // available pair has been taken or is otherwise out of the game.
+        return this.upgradePile().slice();
     }
 
     /**

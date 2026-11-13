@@ -5,7 +5,7 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class StrikeAsks {
-    static ops = ['strikeBonus', 'strikeReward', 'strikeTakeStructures', 'strikeHealthDown', 'strikeFirst', 'strikeFirstPick', 'strikeDestroyOne', 'strikeRouteDamaged', 'assignDamage', 'extraDamage', 'damageFirst', 'damageOwnRouted', 'damageOneByOne', 'repeatDamage', 'damageStartTokens', 'combatStartMorale', 'combatLength', 'deferDamage', 'noDamageRetreat', 'noReinforce', 'ignoreFoeAtt', 'ignoreBastion', 'ignoreExcess', 'destroyRouted', 'destroyRoutedFoe', 'endRoundReinforce'];
+    static ops = ['strikeBonus', 'strikeReward', 'strikeTakeStructures', 'offerCaptureStrike', 'captureStrike', 'strikeHealthDown', 'strikeFirst', 'strikeFirstPick', 'strikeDestroyOne', 'strikeRouteDamaged', 'assignDamage', 'protectCombatUnits', 'extraDamage', 'damageFirst', 'damageOwnRouted', 'damageOneByOne', 'repeatDamage', 'damageStartTokens', 'combatStartMorale', 'combatLength', 'deferDamage', 'noDamageRetreat', 'noReinforce', 'ignoreFoeAtt', 'ignoreBastion', 'ignoreExcess', 'destroyRouted', 'destroyRoutedFoe', 'endRoundReinforce'];
 
     static strikeBonus(effects, f) {
         const { R, state, seat, step } = f;
@@ -24,9 +24,10 @@ class StrikeAsks {
                 ? { first: true, maxKl: step.maxKl === undefined ? null : step.maxKl }
                 : (step.destroyOne ? { destroyOne: true }
                     : (step.routeDamaged ? { routeDamaged: true }
-                        : (step.units
-                            ? { units: step.units }
-                            : { asset: step.asset, n: step.n || 1 })));
+                        : (step.moveShips ? { moveShips: true }
+                            : (step.units
+                                ? { units: step.units }
+                                : { asset: step.asset, n: step.n || 1 }))));
             StrikePlan.of(state.order).setReward(reward);
         }
         return null;
@@ -43,6 +44,35 @@ class StrikeAsks {
                 + ': постройки мира удара будут взяты под контроль за '
                 + (step.n || 1) + ' куб. обороны.');
         }
+        return null;
+    }
+
+    static offerCaptureStrike(effects, f) {
+        const { R, state, seat, step } = f;
+        const plan = state.order && StrikePlan.of(state.order).planned;
+        const kind = step.kind || 'def';
+        const count = step.n || 2;
+        if (!plan || (plan.pool || []).filter(face => face === kind).length < count
+            || !R.canTakeStructuresOf(state, seat, step.system, step.pos)) return null;
+        return { replace: [{
+            op: 'choice', text: 'Потратить 2 кубика обороны и захватить постройки?', options: [
+                { op: 'captureStrike', system: step.system, pos: step.pos, n: count, kind,
+                    text: 'Потратить кубики и захватить постройки' },
+                { op: 'nothing', text: 'Не тратить кубики' },
+            ],
+        }] };
+    }
+
+    static captureStrike(effects, f) {
+        const { R, state, seat, step } = f;
+        const plan = state.order && StrikePlan.of(state.order).planned;
+        const pool = plan && plan.pool;
+        const kind = step.kind || 'def';
+        const count = step.n || 2;
+        if (!pool || pool.filter(face => face === kind).length < count) return null;
+        if (!R.takeStructuresOf(state, seat, step.system, step.pos)) return null;
+        for (let i = 0; i < count; i++) pool.splice(pool.indexOf(kind), 1);
+        R.log(state, seat, state.players[seat].name + ' тратит кубиков обороны: ' + count + '.');
         return null;
     }
 
@@ -103,6 +133,13 @@ class StrikeAsks {
             text: 'Какой получивший повреждения отряд деморализовать?' } };
     }
 
+    static protectCombatUnits(effects, f) {
+        const { R, state, combat, inCombat, side } = f;
+        if (inCombat) CombatDamage.of(combat).protectAllUnits(CombatTurn.of(combat).round,
+            effects.combatEffectSource(R, state, side));
+        return null;
+    }
+
     static assignDamage(effects, f) {
         const { R, state, seat, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
@@ -136,6 +173,20 @@ class StrikeAsks {
             if (!BattleField.of(combat).holds(st)) continue;
             list.push(st.id);
         }
+        // In combat an unrouted reinforcement token is a level-zero unit.
+        // It is eligible for «Монт'ка» just like a plastic unit, unless it has
+        // already been destroyed or moved out of the contested area.
+        if (step.anyFoe) {
+            const foeSide = CombatSides.sideOf(combat, foeSeat);
+            const tokens = CombatTokens.of(combat);
+            if (foeSide && tokens) {
+                for (let i = 0; i < tokens.used(foeSide); i++) {
+                    if (tokens.alive(foeSide, i) && !tokens.flipped(foeSide).includes(i)) {
+                        list.push('reinforce-' + foeSide + '-' + i);
+                    }
+                }
+            }
+        }
         if (!list.length) return null;
         return { question: { kind: 'units', who: seat, op: 'damageFirst', n: 1, options: list, text: 'Какой отряд или бастион противника получает урон первым?' } };
     }
@@ -153,8 +204,8 @@ class StrikeAsks {
     }
 
     static damageOneByOne(effects, f) {
-        const { combat } = f;
-        if (combat) CombatDamage.of(combat).setOneByOne();
+        const { combat, side } = f;
+        if (combat && side) CombatDamage.of(combat).setOneByOne(CombatSides.foe(side));
         return null;
     }
 
@@ -165,27 +216,13 @@ class StrikeAsks {
     }
 
     static damageStartTokens(effects, f) {
-        const { R, state, seat, step, combat, inCombat, side, p } = f;
+        const { R, state, seat, step, ctx, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
         const foeSide = CombatSides.foe(side);
-        // «за каждую пару недеморализованных Гвардейцев и Огринов либо Крейсеров
-        // и Линкоров» («Механизированная боевая группа»): the number is the
-        // pairs of the two listed kinds, and the count is made when the card is
-        // played — the units may already be gone at the damage step.
-        let n = step.n || 1;
-        if (step.per === 'pair' && Array.isArray(step.pairs)) {
-            let pairs = 0;
-            for (const [a, b] of step.pairs) {
-                const countOf = filter => state.units.filter(u => {
-                    if (u.seat !== seat || u.routed) return false;
-                    if (!BattleField.of(combat).holds(u)) return false;
-                    return effects.unitFits(R.unitOf(state, u), filter);
-                }).length;
-                pairs += Math.min(countOf(a), countOf(b));
-            }
-            n = (step.n || 1) * pairs;
-            if (!n) return null;
-        }
+        // The pair count belongs to the moment the card is played, not the
+        // later damage step. Use the shared combat count, including tokens.
+        const n = effects.count(R, state, seat, step, ctx);
+        if (step.per === 'pair' && n <= 0) return null;
         CombatDamage.of(combat).addStartTokens({
             side: foeSide, kind: step.kind || 'att', what: step.what || 'token', n,
             round: CombatTurn.of(combat).round,
@@ -212,7 +249,9 @@ class StrikeAsks {
     static deferDamage(effects, f) {
         const { R, state, seat, step, combat, inCombat, p } = f;
         if (!inCombat) return null;
-        CombatPlans.of(combat).setDeferred({ seat, steps: step.steps || [] });
+        // Preserve an absent flag in historical pending steps: the plan can
+        // recognise the old Ripper reward, while an explicit false stays once.
+        CombatPlans.of(combat).setDeferred({ seat, steps: step.steps || [], eachStep: step.eachStep });
         step.done = true;
         R.log(state, seat, p.name + ': эффект карты сработает в конце шага повреждений.');
         return null;
@@ -228,10 +267,11 @@ class StrikeAsks {
 
     static noReinforce(effects, f) {
         const { seat, step, combat, foe } = f;
-        // «Ваш противник не сможет использовать жетоны подкрепления во время
-        // всего боя» («Тень в варпе»): the ban follows the owner of the card,
-        // whoever plays the round.
-        if (combat) CombatBans.of(combat).forbidReinforce(step.who === 'foe' ? foe : seat);
+        // The Tyranid plan forbids tokens for the whole fight; Tau's plan is
+        // limited to preparation. Old saved Tau steps retain the printed text.
+        const scope = step.scope === 'preparation' || /этапе подготовки/i.test(step.ability || '')
+            ? 'preparation' : 'battle';
+        if (combat) CombatBans.of(combat).forbidReinforce(step.who === 'foe' ? foe : seat, scope);
         return null;
     }
 

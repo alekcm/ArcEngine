@@ -5,7 +5,7 @@
 // the ships pass, a storm the ground units pass, empty voids they may walk
 // through, the route of the extra advance and of «Быстрого ответа». The rules
 // kept that in plain fields of the order (`order.moveAreaLimit`,
-// `order.passVoid`, `order.unitsThroughStorms`, `order.shipsThroughStorms`,
+// `order.passVoid` with `passVoidUsed` and `passVoidAreas`, `order.unitsThroughStorms`, `order.shipsThroughStorms`,
 // `order.ways`, `order.preAdvance`, `order.quickResponse`, `order.fromEvent`)
 // and every reader picked what it needed.
 //
@@ -48,13 +48,54 @@ class OrderMove {
 
     // --- the storms and the empty voids --------------------------------------
 
-    /** «провести до N отрядов через одну никем не контролируемую пустую область». */
+    /**
+     * «Орочьи корабли»: «провести до N отрядов через одну никем не
+     * контролируемую пустую область» — the budget is N UNITS of the order,
+     * and the void is ONE area for all of them.
+     */
     get passVoid() {
         return this.order.passVoid || 0;
     }
 
+    get passVoidUsed() {
+        return this.order.passVoidUsed || 0;
+    }
+
+    /** The passages through the void left this order. */
+    get passVoidLeft() {
+        return Math.max(0, this.passVoid - this.passVoidUsed);
+    }
+
+    /** The card gives its budget: the passages are counted from zero again. */
     setPassVoid(n) {
         this.order.passVoid = n || 0;
+        this.order.passVoidUsed = 0;
+        this.order.passVoidAreas = null;
+        return this;
+    }
+
+    usePassVoid() {
+        this.order.passVoidUsed = this.passVoidUsed + 1;
+        return this.passVoidUsed;
+    }
+
+    returnPassVoid() {
+        this.order.passVoidUsed = Math.max(0, this.passVoidUsed - 1);
+        return this.passVoidUsed;
+    }
+
+    /**
+     * The one void of the card, as far as it is settled: the keys
+     * («system:pos») every paid passage could have walked through. Null
+     * before the first passage — any empty void is still possible.
+     * @returns {string[] | null}
+     */
+    get passVoidAreas() {
+        return this.order.passVoidAreas || null;
+    }
+
+    setPassVoidAreas(areas) {
+        this.order.passVoidAreas = areas && areas.length ? areas.slice() : (areas ? [] : null);
         return this;
     }
 

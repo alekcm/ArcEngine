@@ -1,8 +1,8 @@
 // FSQuickResponse.js — «Быстрый ответ», the event that suspends the refresh.
 //
-// The tactic event «Быстрый ответ» makes a limited advance of one ship in a
-// chosen system, and the event phase must wait for it: the game keeps a snapshot
-// of the phase (`phase`, `turn`, `event`, `eventsLeft`) in
+// The tactic event «Быстрый ответ» makes a limited advance in a chosen system.
+// The event or faction ability must wait for it: the game keeps a snapshot
+// of the phase and any interrupted order and effect continuation in
 // `state.quickResponseSnapshot` and a flag `state.quickResponsePending` for the
 // event whose system was never chosen. That is four places writing two fields —
 // the event rules, the advance, the end of an order and the tail of the effect
@@ -52,8 +52,15 @@ class QuickResponse {
                 turn: GamePhase.of(this.state).turn,
                 event: this.state.event,
                 eventsLeft: EventRound.of(this.state).snapshot,
+                order: this.state.order || null,
             };
         }
+        return this;
+    }
+
+    /** Hold the remaining effect steps until the limited order has finished. */
+    holdEffects(continuation) {
+        if (this.snapshot) this.snapshot.continuation = continuation;
         return this;
     }
 
@@ -77,6 +84,8 @@ class QuickResponse {
         GamePhase.of(this.state).turn = snap.turn;
         this.state.event = snap.event;
         EventRound.of(this.state).restore(snap.eventsLeft);
+        // Old refresh-only snapshots did not carry an order.
+        if (Object.prototype.hasOwnProperty.call(snap, 'order')) this.state.order = snap.order;
         this.forget();
         return snap;
     }

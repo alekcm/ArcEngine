@@ -8,10 +8,10 @@
 // three rules and the board, and «the trail of this order» was a sentence in a
 // comment.
 //
-// One question now: `MarchTrail.of(state)` — `record(seat, from, to)`,
-// `reset()`, and the two readings the rules need: `cameFrom(seat, system, pos)`
-// and `walkedInto(seat, system, pos)`. The list stays in `state.moves` with the
-// same shape `{ seat, from, to }`.
+// One question now: `MarchTrail.of(state)` — `record(seat, from, to, piece)`,
+// `reset()`, and the readings the rules need. New records identify the piece so
+// a combat can ignore moves by units that left before it began. Older saved
+// records `{ seat, from, to }` are still accepted.
 
 class MarchTrail {
     /** @param {any} state the game state (the list lives on it) */
@@ -41,15 +41,40 @@ class MarchTrail {
         return this.entries.length;
     }
 
-    /** A piece left one area for another. */
-    record(seat, from, to) {
+    /** A piece left one area for another. `piece` is optional for old callers. */
+    record(seat, from, to, piece = undefined) {
         if (!from || !to) return this;
-        this.entries.push({
+        this.entries.push(Object.assign({
             seat,
             from: { system: from.system, pos: from.pos },
             to: { system: to.system, pos: to.pos },
-        });
+        }, piece === undefined ? {} : { piece }));
         return this;
+    }
+
+    /** Remove one matching movement when its march is undone. */
+    unrecord(seat, from, to, piece = undefined) {
+        const entries = this.entries;
+        for (let i = entries.length - 1; i >= 0; i--) {
+            const m = entries[i];
+            if (piece !== undefined && m.piece !== undefined && m.piece !== piece) continue;
+            if (m.seat === seat && m.from.system === from.system && m.from.pos === from.pos
+                && m.to.system === to.system && m.to.pos === to.pos) {
+                entries.splice(i, 1);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The latest recorded move of a specific piece, if its identity was saved. */
+    lastOf(seat, piece) {
+        const entries = this.entries;
+        for (let i = entries.length - 1; i >= 0; i--) {
+            const m = entries[i];
+            if (m.seat === seat && m.piece !== undefined && m.piece === piece) return m;
+        }
+        return null;
     }
 
     /** A new order begins: every retreat looks at its own movements only. */
@@ -65,11 +90,19 @@ class MarchTrail {
     }
 
     /** The areas this seat left to stand where it stands now. */
-    cameFrom(seat, systemId, pos) {
+    cameFrom(seat, systemId, pos, participants = null) {
         const out = [];
         for (const m of this.entries) {
             if (m.seat !== seat) continue;
             if (m.to.system !== systemId || m.to.pos !== pos) continue;
+            if (participants && m.piece !== undefined) {
+                // Only the last move of a unit currently participating in the
+                // combat counts. A factory or a unit that has since left does
+                // not supply an origin for an unrelated attacker.
+                if (!participants.includes(m.piece) || this.lastOf(seat, m.piece) !== m) continue;
+            }
+            // An old anonymous trail cannot identify the piece. Preserve its
+            // former fallback instead of discarding its only origin.
             const from = m.from;
             if (!out.some(x => x.system === from.system && x.pos === from.pos)) {
                 out.push({ system: from.system, pos: from.pos });

@@ -97,6 +97,13 @@ class CombatPlans {
         return this;
     }
 
+    /** A refused sphere may be offered for a new loss in a later damage step. */
+    resetResurrectStep() {
+        this.combat.resurrectCandidates = [];
+        this.combat.resurrectAsked = null;
+        return this;
+    }
+
     // --- «Уклонение»: the fallen of the step come back at its end -------------
 
     addRestoreFallen(seat, maxKl) {
@@ -111,6 +118,17 @@ class CombatPlans {
     /** The first plan of this round that was not asked about yet. */
     restorePlan(round) {
         return this.ofRound(this.combat.restoreFallen, round).find(x => !x.asked && !x.done) || null;
+    }
+
+    /** A repeated damage step can have its own fallen and its own offer. */
+    resetFallenStep() {
+        this.clearFallen();
+        for (const plan of this.ofRound(this.combat.restoreFallen)) {
+            plan.asked = false;
+            plan.done = false;
+            delete plan.candidates;
+        }
+        return this;
     }
 
     // --- «в конце этого раунда …» ---------------------------------------------
@@ -165,22 +183,41 @@ class CombatPlans {
 
     // --- the effect that waits for the end of the damage step -----------------
 
-    /** «эффект карты сработает в конце шага повреждений». */
+    /** Effects waiting for the end of damage; old saves stored one object. */
+    deferredEntries() {
+        const saved = this.combat.deferDamage;
+        return Array.isArray(saved) ? saved : (saved ? [saved] : []);
+    }
+
     get deferred() {
-        return this.combat.deferDamage || null;
+        return this.deferredEntries()[0] || null;
     }
 
     setDeferred(entry) {
-        this.combat.deferDamage = Object.assign({ round: this.turn.round }, entry);
-        return this.combat.deferDamage;
+        const list = this.deferredEntries();
+        const one = Object.assign({ round: this.turn.round }, entry);
+        list.push(one);
+        this.combat.deferDamage = list;
+        return one;
     }
 
-    /** The effect is taken once: the caller runs it, the battle forgets it. */
+    /** Take each effect once per step, in the order in which it was created. */
     takeDeferred() {
-        const one = this.deferred;
-        if (!one || one.done) return null;
+        const one = this.deferredEntries().find(x => !x.done && this.inRound(x));
+        if (!one) return null;
         one.done = true;
         return one;
+    }
+
+    /** Only an effect printed for every damage step is armed for a repeat. */
+    resetDeferredStep() {
+        for (const one of this.deferredEntries()) {
+            // Older saved «Рой потрошителей» steps did not have the flag.
+            const eachStep = one.eachStep === true || (one.eachStep === undefined
+                && (one.steps || []).some(x => x.op === 'gainMateriel' && x.per === 'destroyedStep'));
+            if (eachStep && this.inRound(one)) one.done = false;
+        }
+        return this;
     }
 
     // --- «деморализованные отряды противника уничтожаются» --------------------
@@ -197,6 +234,15 @@ class CombatPlans {
     /** A unit of the opponent was routed: the promise of the card is armed. */
     touchRoutedFoe() {
         if (this.combat.destroyRoutedFoe) this.combat.destroyRoutedFoe.touched = true;
+        return this;
+    }
+
+    /** A new routing, including one in a repeated damage step, needs a decision. */
+    noteRoutedFoe(seat, id) {
+        const plan = this.routedFoe;
+        if (!plan || plan.seat === seat || !this.inRound(plan)) return this;
+        plan.done = false;
+        plan.handled = (plan.handled || []).filter(x => x !== id);
         return this;
     }
 
@@ -317,6 +363,7 @@ class CombatPlans {
         this.combat.endRoundPlans = this.ofRound(this.combat.endRoundPlans, at);
         this.combat.endRoundNoRetreat = this.ofRound(this.combat.endRoundNoRetreat, at);
         this.combat.noDamageRetreat = this.ofRound(this.combat.noDamageRetreat, at);
+        this.combat.deferDamage = this.ofRound(this.deferredEntries(), at);
         this.clearFallen();
         this.combat.resurrectCandidates = [];
         this.combat.resurrectAsked = null;

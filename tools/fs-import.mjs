@@ -526,16 +526,21 @@ function parseOrderCards(md) {
 // south-east. The legend of the same file fixes the pairs; a card without an
 // icon (Теософия) may go any of the eight ways.
 const STORM_ICONS = [
-    { re: /⬆\s*⬇\s*⬆/, pair: ['N', 'S'] },
-    { re: /⬅\s*➡\s*⬅/, pair: ['W', 'E'] },
-    { re: /⬆\s*↩/, pair: ['NE', 'SW'] },
-    { re: /⬇\s*⮕/, pair: ['NW', 'SE'] },
+    { re: /^⬆\s*⬇\s*⬆$/, pair: ['N', 'S'] },
+    { re: /^⬅\s*➡\s*⬅$/, pair: ['W', 'E'] },
+    { re: /^⬆\s*↩$/, pair: ['NE', 'SW'] },
+    { re: /^⬇\s*⮕$/, pair: ['NW', 'SE'] },
 ];
 
-function parseStorm(text) {
-    const s = String(text || '');
-    for (const icon of STORM_ICONS) if (icon.re.test(s)) return icon.pair.slice();
-    return ['any'];
+function parseStorm(text, faction, name) {
+    // An unknown, missing or ambiguous icon is a transcription error, not
+    // permission to move in any direction. Only Theosophy has that icon.
+    const icons = [...String(text || '').matchAll(/\(([^()]*)\)/g)].map(m => m[1].trim());
+    if (icons.length === 1) {
+        for (const icon of STORM_ICONS) if (icon.re.test(icons[0])) return icon.pair.slice();
+        if (icons[0] === 'в любую сторону' && faction === 'инквизиция' && name === 'Теософия') return ['any'];
+    }
+    throw new Error(`06-events.md: ${faction} · ${name}: иконка шторма не распознана или неоднозначна: ${JSON.stringify(icons)}`);
 }
 
 function parseEvents(md) {
@@ -560,7 +565,7 @@ function parseEvents(md) {
                 faction,
                 name: clean,
                 type,
-                storm: parseStorm(stormCell),
+                storm: parseStorm(stormCell, faction, clean),
                 // The notes of the transcription after the dash are not the
                 // text of the card.
                 text: rich(row[iText] || '').split(/\s+—\s+/)[0],

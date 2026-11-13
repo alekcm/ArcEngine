@@ -5,7 +5,28 @@
 // приходит параметром effects, а общая рамка шага — объектом f (FSStepContext).
 
 class DiceSteps {
-    static ops = ['stealMostDie', 'loseDie', 'rerollDie', 'spendDie', 'flipDie', 'rerollValue', 'stealDie', 'convertFoeDice', 'setDie', 'moveUnitToCombatForDice', 'foeSpendOrPay', 'foePayFork', 'foeRetreatOffer', 'destroyFoeUnlessPays'];
+    static ops = ['rerollStrikeDice', 'gainStrikeDie', 'stealMostDie', 'loseDie', 'rerollDie', 'spendDie', 'flipDie', 'rerollValue', 'stealDie', 'convertFoeDice', 'setDie', 'moveUnitToCombatForDice', 'foeSpendOrPay', 'foePayFork', 'foeRetreatOffer', 'destroyFoeUnlessPays'];
+
+    static rerollStrikeDice(effects, f) {
+        const plan = f.state.order && StrikePlan.of(f.state.order).planned;
+        if (!plan) return null;
+        for (const i of f.answer.dice || []) {
+            const old = plan.pool[i], face = f.R.rollDice(f.state, 1)[0];
+            plan.pool[i] = face;
+            plan.hits += (face === 'att' ? 1 : 0) - (old === 'att' ? 1 : 0);
+        }
+        return null;
+    }
+
+    static gainStrikeDie(effects, f) {
+        const plan = f.state.order && StrikePlan.of(f.state.order).planned;
+        if (!plan || plan.pool.length >= f.R.DICE_MAX) return null;
+        const face = ['att', 'def', 'morale'][Number(f.answer.choice)];
+        if (!face) return null;
+        plan.pool.push(face);
+        if (face === 'att') plan.hits++;
+        return null;
+    }
 
     static stealMostDie(effects, f) {
         const { R, state, seat, step, answer, combat, side } = f;
@@ -60,6 +81,7 @@ class DiceSteps {
         // («Величие роя»): the gain of the card is counted by the cubes
         // this very payment took, not by the cubes that are left.
         step.spentCount = spent;
+        step.done = spent > 0;
         CombatHooks.of(combat).recordSpend(kinds, spent);
         return null;
     }

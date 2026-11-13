@@ -35,7 +35,19 @@ class OperationsRules {
         const type = cmd && cmd.type;
         // A player who has troops above the capacity of an area chooses which of
         // them go back to the supply before he does anything else.
-        if (type !== 'trimUnit' && this.trimBlocked(state, seat)) return trimRefusal();
+        if (type !== 'trimUnit' && (this.trimBlocked(state, seat)
+            || state.orderTrimPending || state.eventTrimPending || state.quickResponseTrimPending
+            || state.effectCombatTrimOwner !== undefined)) return trimRefusal();
+        // A pending card or plan is part of the current turn. Neither player may
+        // place an order or advance a phase while its owner is making a choice.
+        const pending = Question.of(state).record;
+        // A combat-upgrade purchase has not happened until its replacement is
+        // chosen; ending Strategize is also a legitimate way to cancel it.
+        const cancelPurchase = type === 'finishStrategize' && pending && pending.seat === seat
+            && pending.ctx && pending.ctx.buyUpgrade;
+        if (type !== 'effect' && type !== 'trimUnit' && pending && !cancelPurchase) {
+            return { ok: false, error: 'Сначала ответьте на вопрос способности.' };
+        }
         switch (type) {
             case 'placeSystemTile': return this.engine.cmdPlaceSystemTile(state, seat, cmd);
             case 'setupUnit': return this.engine.cmdSetupForce(state, seat, cmd, 'unit');
@@ -89,6 +101,9 @@ class OperationsRules {
         const sys = this.engine.system(state, cmd.system);
         if (!sys) return { ok: false, error: 'Нет такой системы.' };
         if (!sys.tokens.length) return { ok: false, error: 'В этой системе нет приказов.' };
+        const top = this.engine.board(state).topOrder(sys.id);
+        if (!top) return { ok: false, error: 'В этой системе нет приказов.' };
+        if (top.seat !== seat) return { ok: false, error: 'Это не ваш приказ.' };
         // A refusal belongs to THIS attempted reveal: the same player may use
         // the still-in-play plan instead of his next order later in the round.
         const offerKey = OrderScheme.key(state, seat, sys.id, sys.tokens.length);
@@ -100,9 +115,6 @@ class OperationsRules {
                 return { ok: true, pending: true };
             }
         }
-        const top = this.engine.board(state).topOrder(sys.id);
-        if (!top) return { ok: false, error: 'В этой системе нет приказов.' };
-        if (top.seat !== seat) return { ok: false, error: 'Это не ваш приказ.' };
         // The player may put the token on his event deck instead of resolving it.
         if (cmd.toEventDeck) {
             sys.tokens.pop();
@@ -190,26 +202,55 @@ class OperationsRules {
     }
 
     finishOrder(state, seat) {
+        // A card may have made a different area contested during the battle.
+        // Its battle comes before the original order (or extra advance) ends.
+        if (!state.combat && (state.effectCombatQueue || []).length) {
+            if (this.engine.trimQueue(state).any()) {
+                state.effectCombatTrimOwner = seat;
+                return;
+            }
+            if (this.engine.beginEffectCombat(state)) return;
+        }
         // «Мобилизированные охотники»: the extra advance (and a combat it may
         // start) ends here, but the MAIN advance of the same order goes on.
         if (PreAdvance.of(state).suspended) {
             this.engine.finishPreAdvance(state, seat);
             return;
         }
-        // «Быстрый ответ»: the limited advance was born from a tactic event of
-        // the refresh phase. Its end returns the game to that event phase.
+        // «Быстрый ответ»: finish its limited order, including the capacity
+        // check, before resuming the event or the interrupted faction ability.
         if (state.order && OrderMove.of(state.order).fromEvent) {
-            const quick = QuickResponse.of(state);
-            const waiting = quick.snapshot;
+            const waiting = QuickResponse.of(state).snapshot;
             for (const p of state.players) this.engine.trimPlayer(state, p.seat);
             this.closeOrder(state);
-            if (waiting) {
-                quick.resume();
-                // The next player's event card is drawn only now: the limited
-                // advance itself is not part of the refresh phase.
-                this.engine.nextEventPlayer(state);
+            if (waiting && this.engine.trimQueue(state).any()) {
+                state.quickResponseTrimPending = true;
+            } else if (waiting) {
+                this.resumeQuickResponse(state, seat);
             }
             return;
+        }
+        // A completed battle normally ends an Advance. The Eldar upgrade is
+        // offered only here, before that order closes, and only if an orbital
+        // strike can actually be made in its active system.
+        const order = state.order;
+        const player = state.players[seat];
+        if (order && !state.combat && OrderContext.of(order).isKind('advance')
+            && OrderContext.of(order).isSeat(seat) && PhasePlan.of(order).is('combat')
+            && player && player.faction === 'эльдары'
+            && (player.upgrades || []).some(u => u.name === 'Рейд корсаров' && !u.used)) {
+            const ignoresBastion = (player.upgrades || []).some(up => {
+                if (up.used) return false;
+                const card = FS_CATALOG.card('orders', player.faction, up.name);
+                return card && card.order === 'orbital'
+                    && FS_EFFECTS.parse(card.text || '', { kind: 'order', faction: player.faction })
+                        .some(step => step.op === 'ignoreBastion');
+            });
+            if (this.engine.orbitalStrikeTargets(state, seat).length
+                || (ignoresBastion && this.engine.orbitalStrikeTargets(state, seat, { ignoreBastion: true }).length)) {
+                PhasePlan.of(order).set('corsair');
+                return;
+            }
         }
         // A prosperity token that was never exchanged still gives one asset of
         // the player's choice: the engine picks one for him instead of losing
@@ -220,23 +261,50 @@ class OperationsRules {
         // another player into an area as well.
         for (const p of state.players) this.engine.trimPlayer(state, p.seat);
         this.closeOrder(state);
-        this.nextTurn(state);
+        if (this.engine.trimQueue(state).any()) state.orderTrimPending = true;
+        else this.nextTurn(state);
     }
 
-    nextTurn(state) {
+    /** Resume the event or faction ability interrupted by a limited advance. */
+    resumeQuickResponse(state, seat) {
+        const snap = QuickResponse.of(state).resume();
+        if (!snap) return;
+        if (snap.continuation) {
+            const c = snap.continuation;
+            this.runEffects(state, c.seat, c.steps, c.ctx, c.index);
+        } else {
+            // Compatibility with old refresh-only snapshots.
+            this.engine.shuffleEventCards(state, seat);
+            this.engine.nextEventPlayer(state);
+        }
+    }
+
+    nextTurn(state, continuation = null) {
         const game = GamePhase.of(state);
         const count = state.players.length;
-        let turn = game.turn;
-        for (let i = 0; i < count; i++) {
-            turn = GamePhase.next(turn || 0, count);
-            if (this.hasOrderToResolve(state, turn)) { game.turn = turn; return; }
-            // «Если вы вынуждены пропустить ход во время фазы операций, можете
-            // сбросить эту карту…» («Некромеханика»): the player whose tokens
-            // lie under the tokens of the others plays the card of the turn he
-            // has to skip.
-            if (!Question.of(state).waiting) this.maybeScheme(state, turn, 'skip', { kind: 'event', ctx: null });
+        let turn = continuation ? continuation.from : game.turn;
+        let remaining = continuation ? continuation.remaining : count;
+        const opening = !!(continuation && continuation.opening);
+        // There is no further skipped turn once all stacks are empty.
+        if (!state.systems.some(s => (s.tokens || []).length)) {
+            this.engine.startRefresh(state);
+            return;
         }
-        // Nobody has an order left — the refresh phase begins.
+        while (remaining-- > 0) {
+            turn = GamePhase.next(turn === null ? 0 : turn, count);
+            const player = state.players[turn];
+            if (!player || player.eliminated) continue;
+            game.turn = turn;
+            if (this.hasOrderToResolve(state, turn)) {
+                if (opening) this.maybeScheme(state, turn, 'operations', { kind: 'order', ctx: null });
+                return;
+            }
+            // The skipped player's plan is resolved before another player acts.
+            // Store a plain continuation in the question, not a callback, so it
+            // survives saving or reconnecting between the questions of the plan.
+            const resumeOperations = { from: turn, remaining, opening };
+            if (this.maybeScheme(state, turn, 'skip', { kind: 'event', ctx: { resumeOperations } })) return;
+        }
         this.engine.startRefresh(state);
     }
 
@@ -250,6 +318,19 @@ class OperationsRules {
 
     hasOrderToResolve(state, seat) {
         return this.engine.availableOrders(state, seat).length > 0;
+    }
+
+    /** The pipeline is a follow-up to this order's factory move, not a deploy. */
+    pipelineReady(state, seat) {
+        const p = state.players[seat];
+        const order = state.order;
+        const tally = OrderTally.of(order);
+        const moved = tally && tally.movedFactory;
+        return !!(p && order && OrderContext.of(order).isSeat(seat)
+            && OrderContext.of(order).isKind('dominate') && tally.abilityResolved && moved
+            && p.upgrades.some(u => u.name === 'Главный по машинам')
+            && state.structures.some(s => s.id === moved.id && s.seat === seat && s.type === 'factory'
+                && s.system === moved.system && s.area === moved.pos));
     }
 
     cmdUseUpgrade(state, seat, cmd) {
@@ -285,12 +366,27 @@ class OperationsRules {
         if (/миры-гробницы/i.test(up.name) && state.order && Purchases.of(state.order).empty) {
             return { ok: false, error: 'Сначала купите отряд или постройку этим приказом.' };
         }
-        up.used = true;
-        this.engine.log(state, seat, p.name + ' применяет улучшение «' + up.name + '».');
+        if (up.name === 'Святой трубопровод' && !this.pipelineReady(state, seat)) {
+            return { ok: false, error: 'Нужны «Главный по машинам» и перемещённая этим приказом фабрика.' };
+        }
+        if (p.faction === 'эльдары' && up.name === 'Рейд корсаров'
+            && (!state.order || !PhasePlan.of(state.order).is('corsair') || state.combat)) {
+            return { ok: false, error: 'Рейд корсаров применяется после завершения битвы этого приказа.' };
+        }
+        if (Question.of(state).waiting) return { ok: false, error: 'Сначала ответьте на вопрос способности.' };
         // The text of the card is the rule: the engine performs it.
         const card = card0;
         const steps = FS_EFFECTS.parse((card && card.text) || '',
             { kind: 'order', faction: p.faction });
+        if (up.name === 'Святой трубопровод') {
+            const purchase = steps.find(s => s.op === 'placeUnit');
+            const offer = purchase && FS_EFFECTS.step(this.engine, state, seat, purchase, { kind: 'order', ctx: null });
+            if (!offer || !offer.question || !offer.question.options.length) {
+                return { ok: false, error: 'Нельзя купить и разместить отряд в мире этой фабрики.' };
+            }
+        }
+        up.used = true;
+        this.engine.log(state, seat, p.name + ' применяет улучшение «' + up.name + '».');
         if (steps.length) this.runEffects(state, seat, steps, { kind: 'order', ctx: null });
         return { ok: true, text: up.text || '' };
     }
@@ -314,6 +410,11 @@ class OperationsRules {
             const present = combat ? state.units.filter(u => u.seat === seat && !u.routed
                 && BattleField.of(combat).holds(u))
                 .map(u => (this.engine.unitOf(state, u) || {}).name).filter(Boolean) : [];
+            // A standing reinforcement is the matching KL0 unit for card
+            // requisites too; routed, destroyed or moved tokens cannot fulfil it.
+            const side = combat && CombatSides.sideOf(combat, seat);
+            const tokenDef = side && this.engine.reinforceTokenDef(state, side);
+            if (tokenDef && this.engine.tokenUnits(state, side).alive > 0) present.push(tokenDef.name);
             // The paragraphs of the text may name their own requisites
             // («*Титан «Гончая»:* … *Линкор:* …»): a unit of such a paragraph
             // meets the requisite just as the one of the card's own line does,
@@ -326,9 +427,9 @@ class OperationsRules {
         return steps;
     }
 
-    runEffects(state, seat, steps, ctx) {
-        if (!steps.length) return { ok: true, done: true };
-        return FS_EFFECTS.run(this.engine, state, seat, steps, ctx || {});
+    runEffects(state, seat, steps, ctx, startIndex) {
+        if (!steps.length && startIndex === undefined) return { ok: true, done: true };
+        return FS_EFFECTS.run(this.engine, state, seat, steps, ctx || {}, startIndex);
     }
 
     cmdEffect(state, seat, cmd) {
@@ -370,7 +471,17 @@ class OperationsRules {
     }
 
     maybeScheme(state, seat, trigger, ctx, opts) {
-        let schemes = this.schemesOf(state, seat).filter(s => s.trigger === trigger && !s.defer);
+        // Older saves recorded both start-of-damage plans and some round-start
+        // plans as `damage`. The printed timing, not a later effect that mentions
+        // damage, decides which window offers those stored plans.
+        const startDamage = s => s.trigger === 'damage'
+            && /в начал[а-яёa-z]*\s+шага\s+нанесения (?:урон|поврежд)/i.test(s.text || '');
+        const startRound = s => s.trigger === 'damage'
+            && /начал[а-яёa-z]*\s+раунда (?:боя|битвы)/i.test(s.text || '');
+        let schemes = this.schemesOf(state, seat).filter(s => !s.defer
+            && (trigger === 'damage-start' ? s.trigger === trigger || startDamage(s)
+                : trigger === 'round' ? s.trigger === trigger || startRound(s)
+                    : s.trigger === trigger && (trigger !== 'damage' || (!startDamage(s) && !startRound(s)))));
         // «Отрава Нургла» says «instead of revealing an order»: it is not one
         // of the schemes of the START of the operations phase, and lasts only
         // for the turn on which it was offered.
@@ -382,6 +493,15 @@ class OperationsRules {
         // «Прикосновение варпа» names the advance order in its trigger.
         if (trigger === 'order' && state.order) {
             schemes = schemes.filter(s => !s.orderType || s.orderType === OrderContext.of(state.order).kind);
+        }
+        // «Ракета Death Strike» can be discarded at the start of a combat in
+        // any WORLD, not in a void. Keep this check on the trigger so neither
+        // attacker nor defender is offered a plan they cannot actually use.
+        if (trigger === 'combat-start') {
+            const field = BattleField.of(state.combat);
+            const sys = field && this.engine.system(state, field.system);
+            const area = sys && this.engine.area(sys, field.pos);
+            schemes = schemes.filter(s => !/в начале боя в любом мире/i.test(s.text || '') || !!(area && area.world));
         }
         if (!schemes.length) return false;
         const c = ctx || {};

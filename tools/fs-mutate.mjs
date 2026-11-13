@@ -1,7 +1,7 @@
 //  fs-mutate.mjs — the mutation table of the card checks
 //
-//  node tools/fs-mutate.mjs                 run every mutation of both factions
-//  node tools/fs-mutate.mjs --faction=IG    one faction
+//  node tools/fs-mutate.mjs                 run every card mutation
+//  node tools/fs-mutate.mjs --faction=имперская-гвардия    one faction
 //  node tools/fs-mutate.mjs --list          print the table, change nothing
 //
 //  A check that passes proves nothing on its own: the rule behind it may be
@@ -19,12 +19,380 @@ import { execFileSync } from 'node:child_process';
 
 const IG = 'имперская-гвардия';
 const NEC = 'некроны';
+const MECH = 'адептус-механикус';
+const TAU = 'империя-тау';
+const TYR = 'тираниды';
+const CHAOS = 'космодесант-хаоса';
+const ELDAR = 'эльдары';
 
 /**
  * `old` must occur exactly once in `file`: a mutation with two anchors would
  * change a line nobody can find again.
  */
 const TABLE = [
+    {
+        card: 'Багровая стража', faction: MECH, file: 'js/fs/FSEffects.js',
+        old: "        return !!step && step.op === 'placeUnit' && (step.requireFullSupply",
+        new: "        return false && step.op === 'placeUnit' && (step.requireFullSupply",
+        why: 'платная ветка требует весь запас, а бесплатная остаётся доступной',
+    },
+    {
+        card: 'Багровая стража', faction: MECH, file: 'js/fs/effects/FSPlaceSteps.js',
+        old: '        if (effects.fullSupplyPlacement(step)) {\n            const need = Math.max(1, step.left !== undefined ? step.left : (step.n || 1));',
+        new: '        if (false) {\n            const need = Math.max(1, step.left !== undefined ? step.left : (step.n || 1));',
+        why: 'потеря второй модели во время выбора не списывает цену',
+    },
+    // --- «Волновой змей»: the move, the tokens and the follow-up battle -----
+    {
+        card: 'Волновой змей', faction: ELDAR, file: 'js/fs/FSEffects.js',
+        old: "                includeReinforcements: true, dest: 'eldarWaveAdjacent', strict: true, who: 'me' });",
+        new: "                includeReinforcements: false, dest: 'eldarWaveAdjacent', strict: true, who: 'me' });",
+        why: 'стоящий жетон подкрепления — отряд КЛ 0, он предлагается к перемещению',
+    },
+    {
+        card: 'Волновой змей', faction: ELDAR, file: 'js/fs/effects/FSMoveSteps.js',
+        old: '            const stays = u => !u.reinforcementCombat && u.tokenSide === undefined;',
+        new: '            const stays = u => true;',
+        why: 'уходящие при очистке жетоны не считаются в пределе пяти атакующих',
+    },
+    {
+        card: 'Волновой змей', faction: ELDAR, file: 'js/fs/effects/FSMoveSteps.js',
+        old: '            if (prior && (prior.system !== area.system || prior.pos !== area.pos)) return false;',
+        new: '            if (false) return false;',
+        why: 'все карты одного боя создают не больше одной новой спорной области',
+    },
+    {
+        card: 'Волновой змей', faction: ELDAR, file: 'js/fs/effects/FSMoveSteps.js',
+        old: '        if (defender !== null) R.queueEffectCombat(state, seat, defender, area, arrivals);',
+        new: '        /* mutation: no follow-up battle */',
+        why: 'после текущего боя начинается новый бой в занятой области',
+    },
+    {
+        card: 'Волновой змей', faction: ELDAR, file: 'js/fs/effects/FSMoveSteps.js',
+        old: '                CombatTokens.of(f.combat).moveAway(u.tokenSide, u.tokenIndex);',
+        new: '                /* mutation: the slot stays in the old combat */',
+        why: 'перемещённый жетон покидает старый бой',
+    },
+    // --- independent end-of-damage promises and repeated steps --------------
+    {
+        card: 'Ракета «Death Strike» и Рой', faction: IG, file: 'js/fs/core/FSCombatPlans.js',
+        old: '        list.push(one);\n        this.combat.deferDamage = list;',
+        new: '        list.length = 0; list.push(one);\n        this.combat.deferDamage = list;',
+        why: 'отложенный эффект не перезаписывает другой',
+    },
+    {
+        card: 'Рой потрошителей', faction: TYR, file: 'js/fs/rules/CombatRules.js',
+        old: 'resetDestroyed().resetFallenStep().resetResurrectStep().resetDeferredStep()',
+        new: 'resetDestroyed().resetFallenStep().resetResurrectStep()',
+        why: 'награда за уничтоженных срабатывает в каждом шаге',
+    },
+    {
+        card: 'Рой потрошителей', faction: TYR, file: 'js/fs/rules/CombatRules.js',
+        old: 'resetDestroyed().resetFallenStep().resetResurrectStep().resetDeferredStep()',
+        new: 'resetFallenStep().resetResurrectStep().resetDeferredStep()',
+        why: 'второй шаг не считает потери первого',
+    },
+    {
+        card: 'Уклонение', faction: TAU, file: 'js/fs/rules/CombatRules.js',
+        old: 'resetDestroyed().resetFallenStep().resetResurrectStep().resetDeferredStep()',
+        new: 'resetDestroyed().resetResurrectStep().resetDeferredStep()',
+        why: 'во втором шаге предлагаются новые павшие',
+    },
+    {
+        card: 'Уклонение', faction: TAU, file: 'js/fs/effects/FSPlaceSteps.js',
+        old: '                if (!CombatTokens.of(combat).restoreFallen(rec.tokenSide, rec.tokenIndex)) continue;',
+        new: '                continue; // mutation: never return a reinforcement',
+        why: 'жетон возвращается как жетон, а не как пластиковая модель',
+    },
+    {
+        card: 'Совращённый Хаосом', faction: CHAOS, file: 'js/fs/rules/CombatRules.js',
+        old: "            if (this.engine.maybeScheme(state, seat, 'damage-end', { kind: 'combat', ctx: { side } })) {",
+        new: "            if (rules.repeated && this.engine.maybeScheme(state, seat, 'damage-end', { kind: 'combat', ctx: { side } })) {",
+        why: 'первый конец урона не пропускается перед повтором',
+    },
+    {
+        card: 'Сфера воскрешения', faction: NEC, file: 'js/fs/rules/CombatRules.js',
+        old: 'resetDestroyed().resetFallenStep().resetResurrectStep().resetDeferredStep()',
+        new: 'resetDestroyed().resetFallenStep().resetDeferredStep()',
+        why: 'после отказа новый павший предлагается в повторном шаге',
+    },
+    {
+        card: 'Сфера воскрешения', faction: NEC, file: 'js/fs/rules/CombatRules.js',
+        old: '        if (sphere) plans.noteCandidate(Object.assign({}, entry));',
+        new: '        /* mutation: a reinforcement is not a sphere candidate */',
+        why: 'павшее подкрепление тоже отряд КЛ 0',
+    },
+    {
+        card: 'Сфера воскрешения', faction: NEC, file: 'js/fs/rules/CombatRules.js',
+        old: '            if (!CombatTokens.of(c).restoreFallen(pending.tokenSide, pending.tokenIndex)) return;',
+        new: '            return; // mutation: the token never comes back',
+        why: 'сфера возвращает исходный жетон',
+    },
+    {
+        card: 'Фаланга судного дня', faction: NEC, file: 'js/fs/core/FSCombatPlans.js',
+        old: '        plan.done = false;\n        plan.handled = (plan.handled || []).filter(x => x !== id);',
+        new: '        /* mutation: never re-arm the plan */',
+        why: 'второе падение в раунде требует своего решения',
+    },
+    {
+        card: 'Фаланга судного дня', faction: NEC, file: 'js/fs/rules/CombatRules.js',
+        old: '        d.handled = (d.handled || []).concat(units.map(u => u.id));',
+        new: '        d.handled = [];',
+        why: 'за уже спасённый отряд не требуют плату заново',
+    },
+    {
+        card: 'Фаланга судного дня', faction: NEC, file: 'js/fs/rules/CombatRules.js',
+        old: '        for (const index of tokens.flipped(foeSide)) {',
+        new: '        for (const index of []) {',
+        why: 'деморализованные жетоны тоже попадают под способность',
+    },
+    {
+        card: 'Фаланга судного дня', faction: NEC, file: 'js/fs/core/FSCombatTokens.js',
+        old: '        return rounds[index] === undefined || rounds[index] === round;',
+        new: '        return true;',
+        why: 'жетон, деморализованный в прошлом раунде, не становится новой жертвой',
+    },
+    {
+        card: 'Фаланга судного дня', faction: NEC, file: 'js/fs/FSEffects.js',
+        old: "                return { ok: false, error: 'Выберите предложенные кубики для оплаты.' };",
+        new: '                /* mutation: accept a forged payment */',
+        why: 'нельзя оплатить отсутствующим или повторённым кубиком',
+    },
+    {
+        card: 'Ракета «Death Strike»', faction: IG, file: 'js/fs/rules/CombatRules.js',
+        old: '            if (needsTarget && !targets.length && !hasToken) continue;',
+        new: '            if (needsTarget && !targets.length) continue;',
+        why: 'ракета не пропускает оставшееся подкрепление',
+    },
+    {
+        card: 'Ракета «Death Strike»', faction: IG, file: 'js/fs/FSEffects.js',
+        old: "            if (tokens.alive(side, i)) ids.push('reinforce-' + side + '-' + i);",
+        new: '            /* mutation: omit reinforcement targets */',
+        why: 'живой жетон предлагается как цель ракеты',
+    },
+    {
+        card: 'Ракета «Death Strike»', faction: IG, file: 'js/fs/FSEffects.js',
+        old: "        if (question.kind === 'units' && unitMode) {",
+        new: '        if (false) {',
+        why: 'ответ с чужим жетоном отклоняется',
+    },
+    // --- selection cardinality after a combat ability is accepted -----------
+    {
+        card: 'Огринские ударные войска', faction: IG, file: 'js/fs/FSEffects.js',
+        old: "            const exact = diceMode === true || question.op === 'strikePayPick';",
+        new: "            const exact = question.op === 'strikePayPick';",
+        why: 'обязательный переброс нельзя сократить до нуля или одного кубика',
+    },
+    {
+        card: 'Быкогрин здоровья', faction: IG, file: 'js/fs/effects/ask/FSDiceAsks.js',
+        old: "            op: 'rerollDie', n: Math.min(want, options.length), options, kind2: step.kind, kinds,",
+        new: "            op: 'rerollDie', n: want, options, kind2: step.kind, kinds,",
+        why: 'если подходящий кубик один, его всё равно надо перебросить',
+    },
+    {
+        card: 'Воля повелителя', faction: NEC, file: 'js/fs/FSEffects.js',
+        old: "        if (/(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\\s+(?:до\\s+\\d+|любое\\s+количество)/i.test(text)) return 'atMost';",
+        new: '        /* mutation: a printed up-to reroll requires the full amount */',
+        why: '«до двух» позволяет выбрать меньше двух',
+    },
+    {
+        card: 'Нечеловеческая сила', faction: CHAOS, file: 'js/fs/FSEffects.js',
+        old: 'if (!Array.isArray(ids) || (unitMode === true && ids.length !== limit)',
+        new: 'if (!Array.isArray(ids) || (false && ids.length !== limit)',
+        why: 'принятая жертва требует выбрать действительный отряд',
+    },
+    // --- Tau: staged event choices, unavailable targets and supply ----------
+    {
+        card: 'Саботаж', faction: TAU, file: 'js/fs/effects/ask/FSPlaceAsks.js',
+        old: 'u.seat === seat && !u.routed && targets.has(u.system)).map(u => u.id);',
+        new: 'u.seat === seat && !u.routed).map(u => u.id);',
+        why: 'жертву без вражеской постройки в системе нельзя предложить',
+    },
+    {
+        card: 'Саботаж', faction: TAU, file: 'js/fs/FSEffects.js',
+        old: "'replaceUnit', 'sabotage', 'evacuate'].includes(question.op)",
+        new: "'replaceUnit', 'evacuate'].includes(question.op)",
+        why: 'сервер проверяет оба последовательных выбора саботажа',
+    },
+    {
+        card: 'Эвакуация', faction: TAU, file: 'js/fs/FSEffects.js',
+        old: "'replaceUnit', 'sabotage', 'evacuate'].includes(question.op)",
+        new: "'replaceUnit', 'sabotage'].includes(question.op)",
+        why: 'сервер проверяет постройку, тип и место эвакуации',
+    },
+    {
+        card: 'Эвакуация', faction: TAU, file: 'js/fs/effects/FSMoveSteps.js',
+        old: "const types = ['factory', 'city', 'bastion'].filter(type => R.canTakeStructure(state, seat, type).ok);",
+        new: "const types = ['factory', 'city', 'bastion'];",
+        why: 'исчерпанный в коробке тип не предлагается',
+    },
+    {
+        card: 'Эвакуация', faction: TAU, file: 'js/fs/effects/FSMoveSteps.js',
+        old: "        if (!area || !legal.some(a => a.system === area.system && a.pos === area.pos)) {\n            return { ok: false, error: 'Этот мир выбрать нельзя.' };",
+        new: "        if (!area) {\n            return { ok: false, error: 'Этот мир выбрать нельзя.' };",
+        why: 'место повторно проверяется при устаревшем состоянии',
+    },
+    {
+        card: 'Саботаж', faction: TAU, file: 'js/fs/FSEffects.js',
+        old: '        if (res && res.ok === false) return res;',
+        new: '        /* mutation: a stale target silently closes the effect */',
+        why: 'ошибка исполнителя не закрывает ожидающий вопрос',
+    },
+    // --- Адептус Механикус: отдельные предложения, тайна карты и реальные приказы --
+    {
+        card: 'Благословение Бога-Машины', faction: MECH,
+        file: 'js/fs/FSEffects.js',
+        old: "            { op: 'gainAsset', n: 1, who: 'me', kind: 'cache' },\n            { op: 'gainAsset', n: 1, who: 'me', kind: 'forge' },",
+        new: "            { op: 'gainMateriel', n: 1, who: 'me' },\n            { op: 'gainAsset', n: 1, who: 'me', kind: 'forge' },",
+        why: 'жетон запасов — не единица на счётчике материи',
+    },
+    {
+        card: 'Благословение Бога-Машины', faction: MECH,
+        file: 'js/fs/FSEffects.js',
+        old: "            { op: 'gainAsset', n: 1, who: 'me', kind: 'cache' },\n            { op: 'gainAsset', n: 1, who: 'me', kind: 'forge' },",
+        new: "            { op: 'gainAsset', n: 1, who: 'me', kind: 'any' },\n            { op: 'gainAsset', n: 1, who: 'me', kind: 'forge' },",
+        why: 'уточнённый жетон материалов — существующий тайник, не произвольный ресурс',
+    },
+    {
+        card: 'Благословение Бога-Машины', faction: MECH,
+        file: 'js/fs/FSEffects.js',
+        old: "            { op: 'gainAsset', n: 1, who: 'me', kind: 'cache' },\n            { op: 'gainAsset', n: 1, who: 'me', kind: 'forge' },",
+        new: "            { op: 'gainAsset', n: 1, who: 'me', kind: 'cache' },",
+        why: 'кузница положена отдельно от запаса, даже когда запас на пределе',
+    },
+    {
+        card: 'Благословение Бога-Машины', faction: MECH,
+        file: 'js/fs/rules/DeployRules.js',
+        old: 'if (o.cache) cost = Math.max(0, cost - FS_RULES_CONFIG.CACHE_VALUE);',
+        new: 'if (o.cache) cost = Math.max(0, cost - 1);',
+        why: 'полученный жетон запасов уменьшает цену отряда на 2, а не на 1',
+    },
+    {
+        card: 'Благословение Бога-Машины', faction: MECH,
+        file: 'js/fs/rules/DeployRules.js',
+        old: 'const cost = Math.max(0, (stats.cost || 0) - (o.cache ? FS_RULES_CONFIG.CACHE_VALUE : 0));',
+        new: 'const cost = Math.max(0, (stats.cost || 0) - (o.cache ? 1 : 0));',
+        why: 'полученный жетон запасов уменьшает цену постройки на 2, а не на 1',
+    },
+    {
+        card: 'Скитарии-инфильтраторы', faction: MECH,
+        file: 'js/fs/FSEffects.js',
+        old: '        if (mechInfiltrators) return this.sentences(text).flatMap(sentence => this.parse(sentence, ctx));',
+        new: '        if (false) return this.sentences(text).flatMap(sentence => this.parse(sentence, ctx));',
+        why: 'выбор кубика защитника не зависит от условия подсматривания',
+    },
+    {
+        card: 'Скитарии-инфильтраторы', faction: MECH,
+        file: 'js/fs/effects/ask/FSCardAsks.js',
+        old: "        R.log(state, seat, state.players[seat].name + ' подсмотрел закрытую карту противника.');",
+        new: "        R.log(state, seat, state.players[seat].name + ' подсмотрел «' + name + '».');",
+        why: 'название закрытой карты не должно попадать в общий журнал',
+    },
+    {
+        card: 'Скитарии-инфильтраторы', faction: MECH,
+        file: 'js/fs/core/FSCombatCards.js',
+        old: '        const name = peek && (peek[seat] || peek.name);',
+        new: '        const name = peek && peek[seat];',
+        why: 'панель должна читать очищенное представление, которое сервер присылает игроку',
+    },
+    {
+        card: 'Скитарии-инфильтраторы', faction: MECH,
+        file: 'js/fs/rules/CombatRules.js',
+        old: '        CombatCards.of(c).clearStaged().clearPeek();',
+        new: '        CombatCards.of(c).clearStaged();',
+        why: 'подсмотренная карта прошлого раунда не выдаётся за новую',
+    },
+    {
+        card: 'Багровая стража', faction: MECH,
+        file: 'js/fs/FSEffects.js',
+        old: "                    case 'worldWithYourFactory':\n                        ok = world && R.structuresAt(state, sys.id, area.pos)",
+        new: "                    case 'worldWithYourFactory':\n                        ok = world && mine && R.structuresAt(state, sys.id, area.pos)",
+        why: 'текущая редакция требует вашу фабрику, но не говорит о контроле мира',
+    },
+    {
+        card: 'Мехаморфоз', faction: MECH,
+        file: 'js/fs/FSEffects.js',
+        old: "        else if (step.op !== 'replaceUnit' && !step.includeRouted) units = units.filter(u => !u.routed);",
+        new: '        else if (!step.includeRouted) units = units.filter(u => !u.routed);',
+        why: 'деморализованный отряд тоже может быть заменён',
+    },
+    {
+        card: 'Мехаморфоз', faction: MECH,
+        file: 'js/fs/effects/FSPlaceSteps.js',
+        old: '            u.unit = def.id;\n            R.restoreUnit(state, u);',
+        new: '            u.unit = def.id;',
+        why: 'новая свободная модель выходит недеморализованной',
+    },
+    {
+        card: 'Мехаморфоз', faction: MECH,
+        file: 'js/fs/effects/ask/FSPlaceAsks.js',
+        old: '        if (!def || (p.supply.units[def.id] || 0) <= 0) return null;',
+        new: '        if (!def) return null;',
+        why: 'замена недоступна, когда новой модели нет в запасе',
+    },
+    {
+        card: 'Мехаморфоз', faction: MECH,
+        file: 'js/fs/effects/FSPlaceSteps.js',
+        old: '        // Never spend a token for a replacement that cannot be made.\n        if ((p.supply.units[def.id] || 0) <= 0) return null;',
+        new: '        // Mutation: do not recheck the replacement model before paying.',
+        why: 'устаревший выбор без модели не должен списывать жетон',
+    },
+    {
+        card: 'Мехаморфоз', faction: MECH,
+        file: 'js/fs/FSEffects.js',
+        old: "['warpGateMove', 'moveStructure', 'placeUnit', 'placeFree', 'placeStructure', 'replaceUnit', 'sabotage', 'evacuate'].includes(question.op)",
+        new: "['warpGateMove', 'moveStructure', 'placeUnit', 'placeFree', 'placeStructure', 'sabotage', 'evacuate'].includes(question.op)",
+        why: 'ответ не может заменить отряд, которого не было в списке',
+    },
+    {
+        card: 'Сервочерепа-стражи', faction: MECH,
+        file: 'js/fs/FSEffects.js',
+        old: '            return (step.n || 1) * (units + markers);',
+        new: '            return (step.n || 1) * units;',
+        why: 'жетоны подкрепления в спорной области считаются отрядами',
+    },
+    {
+        card: 'Сервочерепа-стражи', faction: MECH,
+        file: 'js/fs/FSEffects.js',
+        old: '                return n + t.alive + t.routed;',
+        new: '                return n + t.alive + t.routed + t.destroyed;',
+        why: 'уничтоженные жетоны больше не находятся в спорной области',
+    },
+    {
+        card: 'Святой трубопровод', faction: MECH,
+        file: 'js/fs/rules/OperationsRules.js',
+        old: "            && p.upgrades.some(u => u.name === 'Главный по машинам')",
+        new: '            && true',
+        why: 'для трубопровода требуется улучшение «Главный по машинам»',
+    },
+    {
+        card: 'Святой трубопровод', faction: MECH,
+        file: 'js/fs/core/FSOrderTally.js',
+        old: '        this.order.movedFactory = { id: structure.id, system: structure.system, pos: structure.area };',
+        new: '        this.order.movedFactory = null;',
+        why: 'после движения сохраняется именно перемещённая фабрика',
+    },
+    {
+        card: 'Главный по машинам', faction: MECH,
+        file: 'js/fs/core/FSDeal.js',
+        old: '        return Math.max(0, (subtotal || 0) - this.purchaseDiscount);',
+        new: '        return Math.max(0, subtotal || 0);',
+        why: 'скидка один раз применяется к общей стоимости отрядов и построек',
+    },
+    {
+        card: 'Изъяны плоти', faction: MECH,
+        file: 'js/fs/rules/AdvanceRules.js',
+        old: "        return !enemies && list.length > 0 && !list.some(s => s.type === 'bastion');",
+        new: "        return list.length > 0 && !list.some(s => s.type === 'bastion');",
+        why: 'живой вражеский отряд запрещает захват при оплате до урона',
+    },
+    {
+        card: 'Заряд радиации', faction: MECH,
+        file: 'js/fs/rules/AdvanceRules.js',
+        old: '                if (health <= strike.healthDown) {',
+        new: '                if (false) {',
+        why: 'отряд с нулевым здоровьем погибает до броска орбитального удара',
+    },
     // --- боевая колода: урон и здоровье ------------------------------------
     {
         card: 'Бронетанковый клин', faction: IG,
@@ -43,8 +411,8 @@ const TABLE = [
     {
         card: 'Вирусные бомбы', faction: IG,
         file: 'js/fs/rules/AdvanceRules.js',
-        old: 'if (!StrikePlan.of(order).ignoresBastion',
-        new: 'if (StrikePlan.of(order).ignoresBastion',
+        old: 'if (!opts.ignoreBastion && !StrikePlan.of(order).ignoresBastion',
+        new: 'if (!opts.ignoreBastion && StrikePlan.of(order).ignoresBastion',
         why: 'мир под бастионом становится целью удара только с картой',
     },
     {
@@ -145,15 +513,15 @@ const TABLE = [
     {
         card: 'Набег жнецов', faction: NEC,
         file: 'js/fs/rules/AdvanceRules.js',
-        old: 'if (damage.first && damage.untouched && unit.id !== damage.first) {',
+        old: 'if (damage.first && damage.untouched && victim.id !== damage.first) {',
         new: 'if (false) {',
         why: 'другому отряду удар не отдают, пока выбранный цел',
     },
     {
         card: 'Сфера воскрешения', faction: NEC,
         file: 'js/fs/rules/CombatRules.js',
-        old: 'if ((p.supply.units[pending.def] || 0) > 0) p.supply.units[pending.def] -= 1;',
-        new: '/*мутация: отряд возвращается из воздуха, запас не тратится*/',
+        old: '            p.supply.units[pending.def] -= 1;',
+        new: '            /*мутация: отряд возвращается из воздуха, запас не тратится*/',
         why: '«вернуть этого юнита» — модель приходит из запаса',
     },
     {
@@ -167,8 +535,8 @@ const TABLE = [
     {
         card: 'Ложись!', faction: IG,
         file: 'js/fs/effects/ask/FSTokenAsks.js',
-        old: 'CombatCubes.of(combat).add(s2, step.kind, n);',
-        new: '/*мутация: жетоны боя не выдаются*/',
+        old: '        const gained = cubes.add(s2, step.kind, n) - before;',
+        new: '        const gained = 0; // mutation: no combat tokens',
         why: '«получите 1 `def. token` за каждого недеморализованного Гвардейца»',
     },
     {
@@ -181,7 +549,7 @@ const TABLE = [
     {
         card: 'Ложись!', faction: IG,
         file: 'js/fs/FSEffects.js',
-        old: 'n = (step.n || 1) * amount;',
+        old: 'n = (step.n || 1) * (byLevel ? levels.size : amount);',
         new: 'n = 1;',
         why: '«за КАЖДОГО Гвардейца или Крейсера» — счёт по отрядам',
     },
@@ -251,9 +619,9 @@ const TABLE = [
     },
     {
         card: 'Механизированная боевая группа', faction: IG,
-        file: 'js/fs/effects/ask/FSStrikeAsks.js',
-        old: '            n = (step.n || 1) * pairs;',
-        new: '            n = step.n || 1;',
+        file: 'js/fs/FSEffects.js',
+        old: '            for (const [a, b] of step.pairs) pairs += Math.min(n2(a), n2(b));\n            n = (step.n || 1) * pairs;',
+        new: '            for (const [a, b] of step.pairs) pairs += Math.min(n2(a), n2(b));\n            n = step.n || 1;',
         why: '«за каждую пару Гвардейцев и Огринов» — счёт по парам',
     },
     {
@@ -265,9 +633,9 @@ const TABLE = [
     },
     {
         card: 'Поддержка титана', faction: IG,
-        file: 'js/fs/effects/ask/FSDiceAsks.js',
-        old: '                amount = levels.size;',
-        new: '                amount = here.length;',
+        file: 'js/fs/FSEffects.js',
+        old: '            n = (step.n || 1) * (byLevel ? levels.size : amount);',
+        new: '            n = (step.n || 1) * amount;',
         why: '«за каждый отряд РАЗНОГО командного уровня»',
     },
     {
@@ -331,8 +699,8 @@ const TABLE = [
     {
         card: 'Ракета «Death Strike»', faction: IG,
         file: 'js/fs/effects/ask/FSStrikeAsks.js',
-        old: '        CombatPlans.of(combat).setDeferred({ seat, steps: step.steps || [] });',
-        new: '        /*мутация: эффект срабатывает сразу, а не после шага повреждений*/',
+        old: '        CombatPlans.of(combat).setDeferred({ seat, steps: step.steps || [], eachStep: step.eachStep });',
+        new: '        /*мутация: обещание конца шага не регистрируется*/',
         why: '«в конце первого шага нанесения повреждений»',
     },
     {
@@ -345,8 +713,8 @@ const TABLE = [
     {
         card: 'Приказ верховного командования', faction: IG,
         file: 'js/fs/FSEffects.js',
-        old: "                if (R.structuresAt(state, sys.id, a.pos).some(st => st.seat === seat && st.type === 'factory')) n += 1;",
-        new: '                /*мутация: фабрики не дают скидки*/',
+        old: "                if (R.structuresAt(state, sys.id, a.pos)\n                    .some(st => st.type === 'factory' && (!ownFactory || st.seat === seat))) n += 1;",
+        new: "                if (R.structuresAt(state, sys.id, a.pos)\n                    .some(st => st.type === 'factory' && (!ownFactory || st.seat === seat))) n += 0;",
         why: '«уменьшите его стоимость на 1 за каждый мир с фабрикой»',
     },
     {
@@ -388,7 +756,7 @@ const TABLE = [
     {
         card: 'Рой каноптепов', faction: NEC,
         file: 'js/fs/FSEffects.js',
-        old: '        CombatTokens.of(combat).add(side, n, step.free);',
+        old: '        CombatTokens.of(combat).add(tokenSide, n, step.free);',
         new: '        /*мутация: жетон подкрепления не попадает на стол*/',
         why: '«разместите 1 бесплатный жетон подкрепления в этой области»',
     },
@@ -403,7 +771,7 @@ const TABLE = [
     {
         card: 'Часовой разведчик', faction: IG,
         file: 'js/fs/FSEffects.js',
-        old: "            const mine = field.units(state, seat).filter(u => !u.routed && fit(u)).length;",
+        old: "            const mine = field.units(state, seat).filter(u => !u.routed && fit(u)).length\n                + (includeTokens ? tokens.units(side).alive : 0);",
         new: "            const mine = 99;",
         why: '«если у вас больше недеморализованных отрядов, чем у противника»',
     },
@@ -445,9 +813,9 @@ const TABLE = [
     },
     {
         card: 'Осколок несущего ночь', faction: NEC,
-        file: 'js/fs/effects/ask/FSPlaceAsks.js',
-        old: '                    return def && (def.kl || 0) <= step.maxKl;',
-        new: '                    return !!def;',
+        file: 'js/fs/FSEffects.js',
+        old: '                return d && (d.kl || 0) <= step.maxKl;',
+        new: '                return !!d;',
         why: '«Уничтожьте 1 юнита 0-го командного уровня»',
     },
     // --- приказы и события некронов ----------------------------------------

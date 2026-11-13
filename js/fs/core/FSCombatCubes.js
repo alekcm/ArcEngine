@@ -61,6 +61,7 @@ class CombatCubes {
     add(side, kind, n) {
         const one = this.cubes(side);
         const key = kind === 'def' ? 'def' : 'att';
+        if (Number(n) > 0 && CombatBans.of(this.combat).forbidsTokenGain(side, key)) return one[key];
         one[key] = Math.max(0, (one[key] || 0) + (Number(n) || 0));
         return one[key];
     }

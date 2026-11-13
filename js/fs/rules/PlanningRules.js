@@ -14,10 +14,29 @@ class PlanningRules {
         const p = state.players[seat];
         if (!p) return false;
         if (this.engine.player(state, seat).ordersLeft() <= 0) return false;
-        // The rule of the planning: the token goes into a system with the troops of
-        // the player or into a system next to one of his systems.
-        if (this.hasUnitsOrStructures(state, seat, sys.id)) return true;
-        return this.engine.neighbors(state, sys.id).some(id => this.hasUnitsOrStructures(state, seat, id));
+        return this.orderPlacementSystem(state, seat, sys.id);
+    }
+
+    /** The geographic rule also applies when an already-placed token is moved. */
+    orderPlacementSystem(state, seat, systemId) {
+        if (!state.players[seat] || !this.engine.system(state, systemId)) return false;
+        if (this.hasUnitsOrStructures(state, seat, systemId)) return true;
+        return this.engine.neighbors(state, systemId).some(id => this.hasUnitsOrStructures(state, seat, id));
+    }
+
+    /** Destinations for the top token of a stack, not a new token from the hand. */
+    orderMoveTargets(state, seat, sourceId) {
+        if (!GamePhase.of(state).is(GamePhase.PLANNING)) return [];
+        const source = this.engine.system(state, sourceId);
+        const top = source && this.engine.board(state).topOrder(sourceId);
+        if (!top || top.seat !== seat) return [];
+        return this.engine.neighbors(state, sourceId)
+            .filter(id => this.orderPlacementSystem(state, seat, id));
+    }
+
+    orderMoveSources(state, seat) {
+        return state.systems.filter(sys => this.orderMoveTargets(state, seat, sys.id).length)
+            .map(sys => sys.id);
     }
 
     hasUnitsOrStructures(state, seat, systemId) {
@@ -65,7 +84,8 @@ class PlanningRules {
         p.placedTokens = (p.placedTokens || 0) + 1;
         p.placedOf = p.placedOf || {};
         p.placedOf[cmd.order] = (p.placedOf[cmd.order] || 0) + 1;
-        this.engine.log(state, seat, p.name + ' выложил приказ «' + this.orderName(cmd.order) + '» в систему ' + sys.tile + '.');
+        // A facedown order's type is not public, including in the game log.
+        this.engine.log(state, seat, p.name + ' выложил закрытый приказ в систему ' + sys.tile + '.');
         // The players lay their tokens one at a time, in a circle.
         this.checkPlanningDone(state);
         if (GamePhase.of(state).is(GamePhase.PLANNING)) GamePhase.of(state).turn = this.nextPlanner(state, seat);
@@ -94,12 +114,25 @@ class PlanningRules {
         const done = state.players.every(p => p.eliminated
             || this.engine.player(state, p.seat).ordersLeft() <= 0);
         if (!done) return;
-        GamePhase.of(state).start(GamePhase.OPERATIONS);
-        // The operations start with the first player who really has an order on
-        // top of a stack — the tokens of the players lie in one stack.
-        GamePhase.of(state).turn = this.engine.firstWithOrder(state);
-        // The schemes of the start of the operations phase.
-        this.engine.maybeScheme(state, GamePhase.of(state).turn, 'operations', { kind: 'order', ctx: null });
+        this.offerEndPlanningSchemes(state, 0);
+    }
+
+    /** End-of-planning plans resolve in turn order before the first order opens. */
+    offerEndPlanningSchemes(state, index) {
+        const game = GamePhase.of(state);
+        const circle = game.circle();
+        for (let i = index || 0; i < circle.length; i++) {
+            const seat = circle[i];
+            if (state.players[seat].eliminated) continue;
+            if (this.engine.maybeScheme(state, seat, 'planning-end', {
+                kind: 'event', ctx: { resumeEndPlanningSchemes: i + 1 },
+            })) return;
+        }
+        game.start(GamePhase.OPERATIONS);
+        // Walk from the first player, including a forced skip before the first
+        // available order. A skipped player's scheme must resolve first.
+        const before = (game.firstPlayer - 1 + state.players.length) % state.players.length;
+        this.engine.nextTurn(state, { from: before, remaining: state.players.length, opening: true });
         this.engine.log(state, -1, 'Фаза операций: приказы вскрываются по очереди.');
     }
 

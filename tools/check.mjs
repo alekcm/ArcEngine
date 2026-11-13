@@ -1,10 +1,12 @@
 // ============================================================================
 //  ArcEngine — code check: types (tsc) and the rules audit
 // ----------------------------------------------------------------------------
-//  node tools/check.mjs            types, the rules audit, the smoke test, the screens, the walk
+//  node tools/check.mjs            types, rules, cards, smoke, LAN, screens, walk
 //  node tools/check.mjs --types    types only
 //  node tools/check.mjs --rules    the rules audit only
+//  node tools/check.mjs --cards    the covered faction card regressions
 //  node tools/check.mjs --smoke    the smoke test only
+//  node tools/check.mjs --lan      real-server identity and reconnect checks
 //  node tools/check.mjs --screens  the screens only (fs-screens.mjs)
 //  node tools/check.mjs --walk     the walk only (fs-walk.mjs): a party through the client's eyes
 //
@@ -30,17 +32,25 @@ const TSC = 'npx --yes -p typescript@7.0.2 tsc';
 
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m', cyn: '\x1b[36m' };
 
+// Only factions with behavioral card checks are listed. An empty selection is
+// an error in the card checker, so a typo cannot silently pass this gate.
+const CARD_FACTIONS = ['адептус-механикус', 'тираниды', 'эльдары', 'империя-тау', 'космодесант-хаоса',
+  'имперская-гвардия', 'некроны', 'инквизиция'];
 const STEPS = [
   { flag: '--types', title: 'типы игры', run: () => spawnSync(TSC + ' -p tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--types', title: 'типы редактора', run: () => spawnSync(TSC + ' -p _utils/editor/tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--rules', title: 'правила', run: () => spawnSync(process.execPath, ['tools/fs-audit.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
+  { flag: '--rules', title: 'значки импорта событий', run: () => spawnSync(process.execPath, ['tools/fs-import-check.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
   { flag: '--rules', title: 'единственность правил', run: () => spawnSync(process.execPath, ['tools/fs-single-source.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
+  ...CARD_FACTIONS.map(faction => ({ flag: '--cards', title: 'карты: ' + faction,
+    run: () => spawnSync(process.execPath, ['tools/fs-card-check.mjs', '--faction=' + faction], { cwd: ROOT, stdio: 'inherit' }) })),
   { flag: '--smoke', title: 'дым', run: () => spawnSync(process.execPath, ['tools/fs-smoke.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
+  { flag: '--lan', title: 'сеть', run: () => spawnSync(process.execPath, ['tools/fs-lan-check.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
   { flag: '--screens', title: 'экраны', run: () => spawnSync(process.execPath, ['tools/fs-screens.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
   { flag: '--walk', title: 'проход', run: () => spawnSync(process.execPath, ['tools/fs-walk.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
 ];
 
-const only = ['--types', '--rules', '--smoke', '--screens', '--walk'].filter(f => process.argv.includes(f));
+const only = ['--types', '--rules', '--cards', '--smoke', '--lan', '--screens', '--walk'].filter(f => process.argv.includes(f));
 const failed = [];
 console.log('\n' + C.cyn + C.b + '  ArcEngine' + C.r + ' ' + C.dim + '— проверка' + C.r);
 for (const step of STEPS) {

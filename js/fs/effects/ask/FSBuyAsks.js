@@ -8,14 +8,20 @@ class BuyAsks {
     static ops = ['buyUpgrade', 'buyAnyUpgrade', 'buyBastionNearby', 'strikePayPick', 'strikePay'];
 
     static buyUpgrade(effects, f) {
-        const { R, state, seat, step, combat } = f;
+        const { R, state, seat, step, p } = f;
         const kind = step.kind || 'combat';
-        // Only the physical cards still lying in the face-up upgrade
-        // pile can be bought; a basic card returned there costs zero.
+        // An event still purchases a card: the ordinary command-level and
+        // materiel restrictions apply unless its text says otherwise.
         const discount = effects.upgradeDiscount(R, state, seat, step);
-        const list = kind === 'combat'
+        const pile = kind === 'combat'
             ? FS_CARDS.combatDeck(R, state, seat).upgradeOptions()
             : FS_CARDS.orderUpgradeOptions(state, seat);
+        const list = pile.filter(name => {
+            const card = FS_CATALOG.card(kind === 'combat' ? 'combat' : 'orders', p.faction, name);
+            if (!card || (card.kl || 0) > R.commandLevel(state, seat)) return false;
+            const cost = kind === 'combat' && !card.upgrade ? 0 : (card.cost || 0);
+            return Math.max(0, cost - discount) <= (p.materiel || 0);
+        });
         if (!list.length) return null;
         return { question: { kind: 'cards', who: seat, op: 'buyUpgrade', kind2: kind, options: list, discount, text: 'Какое улучшение купить?' } };
     }
@@ -24,12 +30,14 @@ class BuyAsks {
         const { R, state, seat, step, combat, p } = f;
         const sysId = StormPhase.of(state).lastSystem;
         const cap = effects.stormCapFor(R, state, sysId);
-        const owned = new Set((p.upgrades || []).map(u => u.name));
+        const combatPile = new Set(R.player(state, seat).combatDeck.upgradeOptions());
+        const orderPile = new Set(FS_CARDS.orderUpgradeOptions(state, seat));
         const options = FS_CATALOG.upgradeCombatCards(p.faction)
-            .filter(c => (c.kl || 0) <= cap && !R.player(state, seat).combatDeck.cards().includes(c.name))
+            .filter(c => (c.kl || 0) <= cap && combatPile.has(c.name)
+                && !R.player(state, seat).combatDeck.cards().includes(c.name))
             .map(c => 'combat:' + c.name)
             .concat(FS_CATALOG.orderCards(p.faction)
-                .filter(c => (c.kl || 0) <= cap && !owned.has(c.name))
+                .filter(c => (c.kl || 0) <= cap && orderPile.has(c.name))
                 .map(c => 'order:' + c.name));
         if (!options.length) return null;
         step.cap = cap;
@@ -68,11 +76,11 @@ class BuyAsks {
         const pay = plan && (plan.pays || [])[step.index || 0];
         if (!plan || !pay) return null;
         const cap = effects.strikePayCap(plan, pay);
-        if (cap <= 0) return null;
-        const options = [];
-        for (let i = 0; i <= cap; i++) {
-            options.push(i + ' ' + (i === 1 ? 'кубик' : (i >= 2 && i <= 4 ? 'кубика' : 'кубиков')));
-        }
+        const required = (pay.n || 1) * (pay.per === 'ship' ? (plan.ships || 1) : 1);
+        if (cap <= 0 || (!pay.upTo && cap < required)) return null;
+        const amounts = pay.upTo ? Array.from({ length: cap + 1 }, (_, i) => i) : [0, required];
+        const options = amounts.map(i => i + ' '
+            + (i === 1 ? 'кубик' : (i >= 2 && i <= 4 ? 'кубика' : 'кубиков')));
         return { question: {
             kind: 'choice', who: seat, op: 'strikePayPick', index: step.index || 0,
             options: options, text: 'Сколько кубиков удара потратить?',
@@ -87,7 +95,8 @@ class BuyAsks {
             // Orbital Strike). Each card keeps its own payment and its
             // own reward, so they are a list, not one pair of fields.
             StrikePlan.of(state.order).addPay({
-                n: step.n || 1, kind: step.kind || 'att', per: step.per || null, reward: null,
+                n: step.n || 1, kind: step.kind || 'att', per: step.per || null,
+                upTo: !!step.upTo, reward: null,
             });
         }
         return null;

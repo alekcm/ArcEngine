@@ -144,11 +144,112 @@ const FS_EFFECTS = {
     // the requisite as well. `present` is the list of the names of the
     // player's standing units of the battle.
     meetsRequisite(card, present, ctx) {
-        const names = (card && card.reqs) || [];
+        const names = ((card && card.reqs) || []).slice();
         const paras = this.paragraphs((card && card.unit) || '', ctx || {});
         for (const para of paras) if (para.names) names.push(...para.names);
         if (!names.length) return true;
-        return (present || []).some(got => names.some(want => this.sameName(got, want)));
+        // «Титан» on the Eldar card abbreviates «Боевые титаны класса
+        // Варлок» (02/04); it is not the last word of the model's name.
+        const fits = (got, want) => this.sameName(got, want)
+            || (ctx && ctx.faction === 'эльдары' && /^титан$/i.test(String(want).trim())
+                && /(?:^|\s)титан[а-яё]*(?:\s|$)/i.test(String(got)));
+        return (present || []).some(got => names.some(want => fits(got, want)));
+    },
+
+    // The Eldar readings below are keyed by the approved text, not by a
+    // different printing. A payment and its consequence are one ability.
+    eldarCard(text, ctx) {
+        if (!ctx || ctx.kind !== 'combat' || ctx.faction !== 'эльдары') return null;
+        const s = String(text || '').replace(/^\s*\*[^*]+:\*\s*/, '').replace(/\s+/g, ' ').trim();
+        const spend = (then) => [{ op: 'spendDie', n: 1, kind: 'morale', pick: true,
+            strictDice: true, who: 'me', ability: s, then: [{ ...then, noAbilityQuestion: true }] }];
+        if (/^Переверните любое количество `morale cube` на `att\. cube`\.$/i.test(s))
+            return [{ op: 'flipDie', n: 99, kind: 'morale', to: 'att', pick: true,
+                any: true, multi: true, strictDice: true, who: 'me', ability: s }];
+        if (/^потратьте 1 `morale cube` для того, чтобы получить 2 `att\. token`\.$/i.test(s))
+            return spend({ op: 'gainToken', n: 2, kind: 'att', who: 'me' });
+        if (/^потратьте 1 `morale cube` для того, чтобы вынудить противника выбрать и деморализовать 1 его отряд\.$/i.test(s))
+            return spend({ op: 'route', n: 1, pick: true, who: 'foe', chooser: 'foe' });
+        if (/^если ваш противник не потратит 1 `morale cube`, то он должен выбрать и деморализовать 1 свой отряд\.$/i.test(s))
+            return [{ op: 'foePayFork', n: 1, kinds: ['morale'], who: 'foe', ability: s,
+                then: [{ op: 'route', n: 1, pick: true, who: 'foe', chooser: 'foe', noAbilityQuestion: true }] }];
+        if (/^потратьте 1 `morale cube` для того, чтобы восстановить 1 ваш отряд\.$/i.test(s))
+            return spend({ op: 'restore', n: 1, pick: true, who: 'me' });
+        if (/^потратьте 1 `morale cube` для того, чтобы переместить любое количество отрядов с командным уровнем 0 или 1 в соседнюю область\./i.test(s))
+            return spend({ op: 'moveUnits', n: 0, all: true, pick: true, maxKl: 1,
+                includeReinforcements: true, dest: 'eldarWaveAdjacent', strict: true, who: 'me' });
+        if (/^потратьте 1 `morale cube` для того, чтобы переместиться одним из своих отрядов/i.test(s))
+            return spend({ op: 'moveUnits', n: 1, pick: true, dest: 'adjacentFriendlyOrUncontrolled', who: 'me' });
+        if (/^Если вы атакуете, то ваш противник не может получать `def\. token` во время этого раунда боя\.$/i.test(s))
+            return [{ op: 'banCombatTokens', kind: 'def', who: 'foe', cond: { side: 'attack' }, ability: s }];
+        if (/^Получите 1 `morale cube`\. Если вы добровольно деморализуете 1 свой отряд/i.test(s)) {
+            const ab = this.sentences(s);
+            return [{ op: 'gainDie', n: 1, kind: 'morale', who: 'me', ability: ab[0] },
+                { op: 'route', n: 1, pick: true, who: 'me', strict: true, ability: ab[1],
+                  then: [{ op: 'protectCombatUnits', who: 'both', noAbilityQuestion: true }] }];
+        }
+        if (/^Получите 1 `any cube`\. Возьмите 1 боевую карту\.$/i.test(s)) {
+            const ab = this.sentences(s);
+            return [{ op: 'gainDie', n: 1, kind: 'any', who: 'me', ability: ab[0] },
+                { op: 'drawCombatCards', n: 1, discard: 0, ability: ab[1] }];
+        }
+        if (/^получите 4 `att\. token`, если противник не позволит вам выбрать и сбросить одну его открытую боевую карту\.$/i.test(s))
+            return [{ op: 'foeAllow', text: s, ability: s,
+                yes: [{ op: 'discardFoeCard', picker: 'me', noAbilityQuestion: true }],
+                no: [{ op: 'gainToken', n: 4, kind: 'att', who: 'me', noAbilityQuestion: true }] }];
+        return null;
+    },
+
+    // These upgrades modify the current order; they are not separate purchases.
+    eldarOrder(text, ctx) {
+        if (!ctx || ctx.kind !== 'order' || ctx.faction !== 'эльдары') return null;
+        const s = String(text || '').replace(/\s+/g, ' ').trim();
+        if (/^Вы можете выполнить этот приказ, даже если у вас нет отрядов в активной системе\./i.test(s))
+            return [{ op: 'emptyStrategize' }];
+        if (/^Во время выполнения этого приказа, при покупке постройки, вы можете разместить ее в дружественном мире, где уже есть 1 ваша постройка другого типа\./i.test(s))
+            return [{ op: 'occupiedStructure' }];
+        if (/^Получите 1 `any cube` во время выполнения этого орбитального удара\. Вы также можете потратить 1 `morale cube`/i.test(s))
+            return [{ op: 'gainDie', n: 1, kind: 'any', who: 'me' },
+                { op: 'strikePay', n: 1, kind: 'morale', who: 'me' },
+                { op: 'strikeReward', first: true, maxKl: null, who: 'me' }];
+        if (/^Бастионы противника не могут предотвратить этот орбитальный удар\. Во время этого удара вы можете потратить 2 `def\. cube`/i.test(s))
+            return [{ op: 'ignoreBastion', who: 'me' },
+                { op: 'strikePay', n: 2, kind: 'def', who: 'me' },
+                { op: 'strikeReward', moveShips: true, who: 'me' }];
+        if (/^При выполнении этого приказа, после того как закончится битва, вы можете нанести 1 орбитальный удар в активной системе\./i.test(s))
+            return [{ op: 'corsairStrike', who: 'me' }];
+        return null;
+    },
+
+    // The Eldar tactics whose second sentence is part of the price or
+    // placement condition, not an independent ability after the purchase.
+    eldarEvent(text, ctx) {
+        if (!ctx || ctx.kind !== 'event' || ctx.faction !== 'эльдары') return null;
+        const s = String(text || '').replace(/\s+/g, ' ').trim();
+        if (/посмотреть 1 ваш жетон приказов в любом месте стека\. Затем положите его либо поверх стека, либо под него\./i.test(s))
+            return [{ op: 'scheme', who: 'me' },
+                { op: 'trigger', trigger: 'planning-end', who: 'me', text: s,
+                    steps: [{ op: 'reorderOwnOrder', who: 'me' }] }];
+        if (/вместо раскрытия приказа во время фазы действий для того, чтобы переместить любые отряды из 1 области/i.test(s))
+            return [{ op: 'scheme', who: 'me' },
+                { op: 'trigger', trigger: 'operations', insteadOfOrder: true, who: 'me', text: s,
+                    steps: [{ op: 'warpGateMove', who: 'me' }] }];
+        if (/перебросить любые ваши кубики, а затем получить 1 `att\. cube`, 1 `def\. cube` или 1 `morale cube`/i.test(s))
+            return [{ op: 'scheme', who: 'me' },
+                { op: 'trigger', trigger: 'strike-rolled', who: 'me', text: s,
+                    steps: [{ op: 'rerollStrikeDice', who: 'me' }, { op: 'gainStrikeDie', who: 'me' }] }];
+        if (/^Либо бесплатно разместите 1 фрегат в любую никем не контролируемую пустую область/i.test(s))
+            return [{ op: 'choice', text: s, options: [
+                { op: 'placeFree', n: 1, what: 'Фрегаты класса «Хелебор»', dest: 'uncontrolledVoidAny', who: 'me' },
+                { op: 'moveUnit', n: 1, what: 'Фрегаты класса «Хелебор»', areaType: 'void',
+                    dest: 'uncontrolledOtherVoid', strict: true, who: 'me' },
+            ] }];
+        if (/^Купите 1 боевое улучшение\. Его стоимость в материалах уменьшается на 1 за каждый мир, где есть ваш город\.$/i.test(s))
+            return [{ op: 'buyUpgrade', kind: 'combat', pick: true, discount: 1, per: 'yourCity', who: 'me', ability: s }];
+        if (/^Заплатите 1 материал для того, чтобы взять из резерва 1 город и бесплатно разместить его/i.test(s))
+            return [{ op: 'placeStructure', kind: 'city', n: 1, free: true, materielPayment: 1,
+                noStructures: true, noOwnObjective: true, dest: 'friendlyOrUncontrolledWorldAny', who: 'me', ability: s }];
+        return null;
     },
 
     // The Tau cards are transcribed from the faction sheet and the three card
@@ -368,7 +469,7 @@ const FS_EFFECTS = {
                 mk('trigger', {
                     trigger: 'combat-start', who: 'me', note: false, defer: false,
                     text: 'Вы можете сбросить эту карту в начале боя.',
-                    steps: [mk('noReinforce', { who: 'foe' }, 'Ваш противник не сможет разыгрывать жетоны подкрепления на этапе подготовки битвы.')],
+                    steps: [mk('noReinforce', { who: 'foe', scope: 'preparation' }, 'Ваш противник не сможет разыгрывать жетоны подкрепления на этапе подготовки битвы.')],
                 }, 'Вы можете сбросить эту карту в начале боя.'),
             ];
         } else if (/^Разместите эту карту в своей игровой зоне/i.test(s) && /уничтожить тот отряд/i.test(s)) {
@@ -426,7 +527,7 @@ const FS_EFFECTS = {
         const faction = FS_CATALOG.faction(id);
         put(norm(faction && faction.ability ? faction.ability.text : ''), [
             mk('moveUnits', { n: 1, pick: true, ofSystem: 'active', filter: { contains: ['культист'] },
-                dest: 'friendlyOrUncontrolledWorldAdjacent', who: 'me' }, ab),
+                dest: 'friendlyOrUncontrolledWorldAdjacent', strict: true, who: 'me' }, ab),
         ]);
 
         // --- 04-combat-cards.md: the five base cards ------------------------
@@ -450,20 +551,17 @@ const FS_EFFECTS = {
                 cond: { cubeMore: 'morale' }, who: 'me' }, ab),
         ]);
         put(cg('Соблазны Хаоса'), [
-            mk('choice', { who: 'foe', text: ab, options: [
-                sub('sequence', { steps: [
+            mk('foeAllow', { who: 'foe', text: 'деморализовать 1 свой отряд, чтобы получить кубик',
+                yes: [
                     sub('route', { n: 1, pick: true, who: 'foe', chooser: 'foe' }, ab),
                     sub('gainDie', { n: 1, kind: 'any', who: 'foe' }, ab),
-                ] }, ab),
-                sub('sequence', { steps: [
-                    sub('choice', { who: 'me', text: ab, options: [
-                        sub('placeUnit', { n: 1, what: 'Культисты', pick: true, free: true,
-                            dest: 'combatArea', who: 'me' }, ab),
-                        sub('placeUnit', { n: 1, what: iconoclast, pick: true, free: true,
-                            dest: 'combatArea', who: 'me' }, ab),
-                    ] }, ab),
-                ] }, ab),
-            ] }, ab),
+                ],
+                // This second decision is explicitly optional, even after the
+                // owner has resolved the first half of the card.
+                no: [mk('placeUnit', { n: 1, what: 'Культисты или ' + iconoclast, pick: true,
+                    free: true, dest: 'combatArea', who: 'me' },
+                    'Вы можете бесплатно разместить в этой области 1 отряд культистов или 1 эсминец «Иконоборец».')],
+            }, ab),
         ]);
         put(cu('Соблазны Хаоса'), [
             mk('choice', { text: ab, who: 'me', options: [
@@ -690,6 +788,19 @@ const FS_EFFECTS = {
     // The text of a card -> the steps of the game.
     // ctx: {faction, kind: 'combat'|'event'|'order'|'ability'}
     parse(text, ctx) {
+        // «Скитарии-инфильтраторы» (04-combat-cards.md): the attacker-only
+        // peek and the die choice are separate sentences. The choice also works
+        // in defence. Parse them independently so the generic condition carry
+        // (used by other cards) cannot attach the first one's condition to both.
+        const mechInfiltrators = ctx && ctx.kind === 'combat' && ctx.faction === 'адептус-механикус'
+            && /^Если вы\s*[—-]\s*атакующий,\s*подсмотрите карту оппонента\.\s*Получите либо 1 `def\. cube`, либо 1 `att\. cube`\.$/i.test(String(text || '').trim());
+        if (mechInfiltrators) return this.sentences(text).flatMap(sentence => this.parse(sentence, ctx));
+        const eldarOrder = this.eldarOrder(text, ctx || {});
+        if (eldarOrder) return eldarOrder;
+        const eldarEvent = this.eldarEvent(text, ctx || {});
+        if (eldarEvent) return this.avoidPayers(eldarEvent);
+        const eldar = this.eldarCard(text, ctx || {});
+        if (eldar) return this.avoidPayers(eldar);
         // The Chaos cards are keyed by their printed text as well: a broad rule
         // of another faction must not claim one of their sentences.
         const chaos = this.chaosCard(text, ctx || {});
@@ -1030,7 +1141,7 @@ const FS_EFFECTS = {
         const T = {
             'адептус-механикус': [
                 { op: 'moveStructure', n: 1, kind: 'factory', ofSystem: 'active',
-                  dest: 'worldActiveOrAdjacentNeutralOrFriendly', pick: true,
+                  dest: 'worldActiveOrAdjacentNeutralOrFriendly', groundPath: true, pick: true,
                   ability: 'передвинуть 1 из ваших фабрик на нейтральный или дружественный мир в этой или соседней системе по правилам передвижения наземных юнитов' },
             ],
             'имперская-гвардия': [
@@ -1072,7 +1183,7 @@ const FS_EFFECTS = {
             ],
             'космодесант-хаоса': [
                 { op: 'moveUnits', n: 1, pick: true, ofSystem: 'active', filter: { contains: ['культист'] },
-                  dest: 'friendlyOrUncontrolledWorldAdjacent',
+                  dest: 'friendlyOrUncontrolledWorldAdjacent', strict: true,
                   ability: 'забрать 1 культиста из активной системы и переместить его в любой дружественный или никем не контролируемый мир в соседней системе' },
             ],
             'орки': [
@@ -1090,7 +1201,7 @@ const FS_EFFECTS = {
                   ] },
             ],
             'эльдары': [
-                { op: 'moveUnits', n: 1, pick: true, ofSystem: 'active', areaType: 'world', dest: 'friendlyWorldsAny',
+                { op: 'moveUnits', n: 1, pick: true, ofSystem: 'active', areaType: 'world', dest: 'friendlyWorldsAny', strict: true,
                   ability: 'забрать 1 отряд из любого мира в активной системе и переместить его в любой дружественный мир' },
             ],
             'некроны': [
@@ -1229,7 +1340,7 @@ const FS_EFFECTS = {
 
     // «За каждый ... получите 1 `att. token` либо 1 `def. token`» — the
     // either is inside the ability, not between abilities: one choice.
-    perUnitEither(s) {
+    perUnitEither(s, ctx) {
         const m = /^за кажд[а-яёa-z]*\s+(?:ваш[а-яёa-z]*\s+)?недеморализованн[а-яёa-z]*\s+([^.;:]{2,80}?)получ[а-яёa-z]*\s+(\d+)?\s*`([^`]+)`\s+(?:либо|или)\s+(\d+)?\s*`([^`]+)`(?:[^.;]*?максимум\s+(\d+))?/i.exec(String(s || ''));
         if (!m) return null;
         const k1 = this.iconKind(m[3]), k2 = this.iconKind(m[5]);
@@ -1237,7 +1348,8 @@ const FS_EFFECTS = {
         const filter = unitFilter(m[1]) || typeFilter(m[1]);
         const max = m[6] ? Number(m[6]) : null;
         const distinctLevel = /разн[а-яёa-z]*\s+командн[а-яёa-z]*\s+уровн/i.test(s);
-        const t = { op: 'gainToken', per: 'unit', distinctLevel, filter, max, who: 'me' };
+        const t = { op: 'gainToken', per: 'unit', inBattle: !!(ctx && ctx.kind === 'combat'),
+            distinctLevel, filter, max, who: 'me' };
         return [{
             op: 'choice', text: s,
             options: [Object.assign({ n: num(m[2]), kind: this.icon(m[3]) }, t),
@@ -1628,7 +1740,7 @@ const FS_EFFECTS = {
             if (inner.length) return this.withPer(inner, { per: 'pair', pairs });
         }
         // The «за каждый ... получите 1 X либо 1 Y» ability: one choice.
-        const perUnit = this.perUnitEither(s);
+        const perUnit = this.perUnitEither(s, ctx);
         if (perUnit) return perUnit;
         // "either ... or ..." — the player chooses. A sentence that starts with
         // «потратьте» pays for one effect: the rules read it as one piece.
@@ -1776,6 +1888,7 @@ const FS_EFFECTS = {
         const question1 = Question.of(state);
         const pending = question1.record;
         const list = pending ? pending.steps : steps;
+        const originalCombat = state.combat;
         let c = Object.assign({}, ctx || {}, { owner: seat });
         // «…равные ЕГО стоимости»: the defs of the units an earlier step of the
         // same effect has destroyed, so the next step can count them. The list
@@ -1838,7 +1951,12 @@ const FS_EFFECTS = {
             }
             if (res && res.stop) {
                 Question.of(state).close();
-                return { ok: true, done: true };
+                // An inability to resolve one activated event must not discard
+                // the second event drawn by «Некромеханика».
+                const boundary = list.findIndex((one, i) => i > index && one
+                    && (one.op === 'returnActivatedEvent' || one.op === 'activateDrawnEvent'));
+                if (boundary >= 0) { index = boundary; continue; }
+                break;
             }
             if (res && res.replace) {
                 // The step opens into steps of its own («Некромеханика» activates
@@ -1860,12 +1978,22 @@ const FS_EFFECTS = {
         // The system a «Выберите систему» step named belongs to that effect:
         // the next effect must choose its own (the card may be played twice).
         if (c.kind !== 'combat' || !state.combat) Choice.of(state).clear();
+        // A start-of-combat scheme was resolved or refused. Offer the other
+        // plans/sides before rolling and drawing; the progress survives JSON.
+        const startTurn = CombatTurn.of(state.combat);
+        if (c.kind === 'combat' && startTurn && startTurn.is('combat-start')
+            && !Question.of(state).waiting && typeof R.continueCombatStart === 'function') {
+            R.continueCombatStart(state);
+            if (Question.of(state).waiting) return { ok: true, pending: true };
+            if (state.combat !== originalCombat) return { ok: true, done: true };
+        }
         // The combat goes on with the step that waited for the effect. The step
         // machine then passes the steps that have nothing to do (a closed card of
         // the other side, a damage of zero).
         const turn = CombatTurn.of(state.combat);
         if (c.kind === 'combat' && turn && turn.release()) {
             if (typeof R.advanceCombatSteps === 'function') R.advanceCombatSteps(state);
+            if (state.combat !== originalCombat) return { ok: true, done: true };
         }
         // The moments a battle waits for: «Критический удар» resumes the step it
         // interrupted, «Совращённый Хаосом» runs the tail of the damage step again.
@@ -1873,10 +2001,17 @@ const FS_EFFECTS = {
         if (c.kind === 'combat' && hooks && hooks.damageResume
             && typeof R.resumeDamage === 'function') {
             R.resumeDamage(state);
+            if (Question.of(state).waiting) return { ok: true, pending: true };
+            if (state.combat !== originalCombat) return { ok: true, done: true };
         }
         if (c.kind === 'combat' && hooks && hooks.endResume && !Question.of(state).waiting) {
             hooks.takeEndResume();
             if (typeof R.endDamageStep === 'function') R.endDamageStep(state);
+            if (Question.of(state).waiting) return { ok: true, pending: true };
+            if (state.combat !== originalCombat) return { ok: true, done: true };
+            if (state.combat && typeof R.advanceCombatSteps === 'function') R.advanceCombatSteps(state);
+            if (Question.of(state).waiting) return { ok: true, pending: true };
+            if (state.combat !== originalCombat) return { ok: true, done: true };
         }
         // «Страх с небес» routes one damaged unit after the strike: the order
         // finishes only when that last question has been answered.
@@ -1885,11 +2020,13 @@ const FS_EFFECTS = {
             StrikePlan.of(state.order).finishAfterQuestion(false);
             R.finishOrder(state, seat);
         }
-        // The order of the ability is over when the effect is done.
+        // A moved factory leaves a window for the upgrade that explicitly
+        // follows that move. Other abilities still finish the order at once.
         const tally = OrderTally.of(state.order);
         if (c.kind === 'ability' && tally && tally.finishesAfterEffect) {
             tally.finishAfterEffect();
-            R.finishOrder(state, seat);
+            if (tally.movedFactory) tally.resolveAbility();
+            else R.finishOrder(state, seat);
         }
         // The reinforce step waited for the scheme of its end («Зов астропатов»):
         // the step is closed now.
@@ -1913,6 +2050,17 @@ const FS_EFFECTS = {
                 R.maybeScheme(state, CombatSides.seatOf(state.combat, 'attacker'), 'round', { kind: 'combat', ctx: { side: 'attacker' } });
             }
         }
+        // A combat-end scheme can outlive the last defeated unit. Its answer
+        // completes the old battle before any queued battle or order resumes.
+        if (c.kind === 'combat' && originalCombat && state.combat === originalCombat
+            && !Question.of(state).waiting && CombatTurn.of(originalCombat).is('retreat')) {
+            const loser = CombatOutcome.of(originalCombat).loserSeat;
+            const side = CombatSides.sideOf(originalCombat, loser);
+            if (side && !BattleField.of(originalCombat).units(state, loser).length) {
+                R.combatRetreat(state, loser, side, {});
+                return { ok: true, done: true };
+            }
+        }
         // The orbital strike waited for the choice of «Набега жнецов»: the strike
         // goes on with the chosen unit first.
         if (c.kind === 'order' && state.order && StrikePlan.of(state.order).planned
@@ -1921,12 +2069,24 @@ const FS_EFFECTS = {
         }
         // A Quick Response whose system was refused (or whose question had no
         // systems) never became a limited advance: the event phase goes on.
+        let quickAdvanced = false;
         if (c.kind === 'event' && QuickResponse.of(state).pending
             && !(state.order && OrderMove.of(state.order).fromEvent)
             && typeof R.nextEventPlayer === 'function') {
             QuickResponse.of(state).forget();
+            if (c.ctx && c.ctx.afterEvent) R.shuffleEventCards(state, seat);
+            R.nextEventPlayer(state);
+            quickAdvanced = true;
+        }
+        if (c.kind === 'event' && c.ctx && c.ctx.afterEvent && !quickAdvanced
+            && !Question.of(state).waiting && !QuickResponse.of(state).pending
+            && !(state.order && OrderMove.of(state.order).fromEvent)) {
+            R.shuffleEventCards(state, seat);
             R.nextEventPlayer(state);
         }
+        if (c.ctx && c.ctx.resumeOperations) R.nextTurn(state, c.ctx.resumeOperations);
+        if (c.ctx && c.ctx.resumePlanningSchemes !== undefined) R.offerPlanningSchemes(state, c.ctx.resumePlanningSchemes);
+        if (c.ctx && c.ctx.resumeEndPlanningSchemes !== undefined) R.offerEndPlanningSchemes(state, c.ctx.resumeEndPlanningSchemes);
         // «Отрава Нургла» takes the place of revealing an order (01-rules-
         // reference.md, «instead of revealing an order»): no token is revealed
         // or discarded, and the next player takes his turn. A refusal of the
@@ -1935,7 +2095,11 @@ const FS_EFFECTS = {
         if (c.ctx && c.ctx.operationScheme && orderScheme.accepted
             && !Question.of(state).waiting) {
             orderScheme.clearAccepted();
-            if (typeof R.nextTurn === 'function') R.nextTurn(state);
+            // A plan can move units instead of revealing an order. Capacity is
+            // settled before the next player, exactly as at an order's end.
+            for (const player of state.players) R.trimPlayer(state, player.seat);
+            if (R.trimQueue(state).any()) state.orderTrimPending = true;
+            else if (typeof R.nextTurn === 'function') R.nextTurn(state);
         }
         return { ok: true, done: true };
     },
@@ -1948,11 +2112,168 @@ const FS_EFFECTS = {
         if (!asked.answers(seat)) return { ok: false, error: 'Сейчас не ваш ход.' };
         const question = pending.question;
         const answer = cmd.answer || {};
+        // The board and panel offer only legal targets, but answers arrive over
+        // the network and must be checked against that same offer on the server.
+        if (['warpGateMove', 'moveStructure', 'placeUnit', 'placeFree', 'placeStructure', 'replaceUnit', 'sabotage', 'evacuate'].includes(question.op)
+            || (['moveUnit', 'moveUnits'].includes(question.op)
+                && (pending.choice || pending.steps[pending.index])
+                && ((pending.choice || pending.steps[pending.index]).strict
+                    || (pending.choice || pending.steps[pending.index]).dest === 'adjacentFriendlyOrUncontrolled'))) {
+            const options = question.options || [];
+            const structure = ['sabotage', 'evacuate'].includes(question.op)
+                ? answer.structure : (answer.structure || answer.id);
+            if (question.kind === 'structures' && !options.includes(structure)) {
+                return { ok: false, error: 'Эту постройку выбрать нельзя.' };
+            }
+            if (question.kind === 'areas') {
+                const area = answer[question.answerKey || 'area'];
+                if (!area || !options.some(a => a.system === area.system && a.pos === area.pos)) {
+                    return { ok: false, error: 'Этот мир выбрать нельзя.' };
+                }
+            }
+            if ((question.kind === 'types' || question.kind === 'structureTypes') && !options.includes(answer.type)) {
+                return { ok: false, error: 'Этот тип выбрать нельзя.' };
+            }
+            if (question.kind === 'units') {
+                const ids = Array.isArray(answer.units) ? answer.units : [];
+                const move = pending.choice || pending.steps[pending.index];
+                const optionalEmpty = question.op === 'warpGateMove'
+                    || (question.op === 'moveUnits' && move && move.all);
+                if ((!ids.length && !optionalEmpty) || ids.length > (question.n || 1)
+                    || new Set(ids).size !== ids.length || ids.some(id => !options.includes(id))) {
+                    return { ok: false, error: 'Эти отряды выбрать нельзя.' };
+                }
+            }
+        }
+        const unitMode = this.unitSelectionMode(pending);
+        if (question.kind === 'units' && unitMode) {
+            const ids = answer.units === undefined ? [] : answer.units;
+            const limit = question.n === undefined ? 1 : question.n;
+            if (!Array.isArray(ids) || (unitMode === true && ids.length !== limit)
+                || (unitMode !== true && ids.length > limit)
+                || new Set(ids).size !== ids.length || ids.some(id => !(question.options || []).includes(id))) {
+                return { ok: false, error: 'Выберите предложенные отряды.' };
+            }
+        }
+        if (question.op === 'route' && pending.steps[pending.index]
+            && pending.steps[pending.index].strict && question.kind === 'units') {
+            const ids = Array.isArray(answer.units) ? answer.units : [];
+            if (ids.length !== 1 || !(question.options || []).includes(ids[0]))
+                return { ok: false, error: 'Выберите один предложенный отряд.' };
+        }
+        if (question.op === 'avoid') {
+            const dice = answer.dice === undefined ? [] : answer.dice;
+            const turn = CombatTurn.of(state.combat);
+            const side = state.combat && CombatSides.sideOf(state.combat, seat);
+            const options = question.options || [];
+            if (!Array.isArray(dice) || (dice.length && dice.length !== (question.n || 1))
+                || new Set(dice).size !== dice.length || dice.some(i => !options.includes(i)
+                    || !turn || !turn.has(side, i)
+                    || (question.kind2 !== 'any' && turn.dice(side)[i] !== question.kind2))) {
+                return { ok: false, error: 'Выберите предложенные кубики для оплаты.' };
+            }
+        }
+        if (question.op === 'restoreFallenOffer' && question.kind === 'units') {
+            const ids = answer.units === undefined ? [] : answer.units;
+            if (!Array.isArray(ids) || ids.length > (question.n || 0)
+                || new Set(ids).size !== ids.length || ids.some(id => !(question.options || []).includes(id))) {
+                return { ok: false, error: 'Выберите предложенные отряды без повторений.' };
+            }
+        }
+        if (['placeOrderAny', 'advanceFromPlan'].includes(question.op) && question.kind === 'systems'
+            && !(question.options || []).includes(answer.system)) {
+            return { ok: false, error: 'Эту систему выбрать нельзя.' };
+        }
+        if (question.kind === 'scheme' || (question.kind === 'choice'
+            && ['choice', 'strikePayPick', 'reorderOwnOrder', 'gainStrikeDie'].includes(question.op))) {
+            const index = Number(answer.choice);
+            const refusedScheme = question.kind === 'scheme' && (answer.no === true
+                || answer.choice === undefined || answer.choice === null || answer.choice === '');
+            if (!refusedScheme && (answer.choice === undefined || answer.choice === null
+                || answer.choice === '' || !Number.isInteger(index)
+                || index < 0 || index >= (question.options || []).length)) {
+                return { ok: false, error: 'Выберите предложенный вариант.' };
+            }
+        }
+        if (question.kind === 'cards' && question.op === 'swapCombatCards') {
+            const cards = answer.cards === undefined ? (answer.card ? [answer.card] : []) : answer.cards;
+            if (!Array.isArray(cards) || cards.length > (question.n || 0)
+                || new Set(cards).size !== cards.length || cards.some(name => !(question.options || []).includes(name))) {
+                return { ok: false, error: 'Выберите предложенные пары без повторений.' };
+            }
+        }
+        if (question.kind === 'cards' && question.op === 'swapCombatPair'
+            && !(question.options || []).includes(answer.card)) {
+            return { ok: false, error: 'Эту пару выбрать нельзя.' };
+        }
+        if (question.kind === 'cards' && ['buyUpgrade', 'buyUpgradeReplace', 'buyAnyUpgrade', 'buyAnyUpgradeReplace'].includes(question.op)) {
+            const replacing = question.op === 'buyUpgradeReplace' || question.op === 'buyAnyUpgradeReplace';
+            const name = replacing ? (answer.remove || answer.card) : answer.card;
+            if (!(question.options || []).includes(name)) return { ok: false, error: 'Эту карту выбрать нельзя.' };
+        }
+        if (['strikeFirstPick', 'strikeDestroyOne', 'destroyDamagedFoe', 'damageFirst'].includes(question.op) && question.kind === 'units') {
+            const ids = Array.isArray(answer.units) ? answer.units : [];
+            if ((question.op !== 'strikeFirstPick' && ids.length !== 1)
+                || ids.length > 1 || ids.some(id => !(question.options || []).includes(id))) {
+                return { ok: false, error: 'Эту цель выбрать нельзя.' };
+            }
+        }
+        if (question.kind === 'dice' && question.strictDice) {
+            const dice = Array.isArray(answer.dice) ? answer.dice : [];
+            if (dice.length > question.n || new Set(dice).size !== dice.length
+                || dice.some(i => !(question.options || []).includes(i))) {
+                return { ok: false, error: 'Выберите предложенные кубики.' };
+            }
+        }
+        const diceMode = this.diceSelectionMode(pending);
+        if (question.kind === 'dice' && (diceMode || (question.required && question.op === 'strikePayPick'))) {
+            const selected = answer.dice === undefined ? [] : answer.dice;
+            const exact = diceMode === true || question.op === 'strikePayPick';
+            if (!Array.isArray(selected) || (exact && selected.length !== question.n)
+                || (!exact && selected.length > question.n) || new Set(selected).size !== selected.length
+                || selected.some(i => !(question.options || []).includes(i))) {
+                return { ok: false, error: 'Выберите нужное количество разных кубиков.' };
+            }
+        }
         // A step that asks twice keeps the choice already made on the question
         // object itself: the second question of the same step is answered with
         // both answers merged (the unit that is being moved, the place it goes).
         const stash = pending.stash || null;
-        const merged = stash ? Object.assign({}, stash, answer) : answer;
+        const merged = stash ? Object.assign({}, stash, answer) : Object.assign({}, answer);
+        // Do not accept a forged second-stage answer before it is offered and
+        // validated. In particular, arbitrary die indices must never skip the
+        // question that selects dice from an orbital strike's pool.
+        if (question.op === 'strikePayPick') {
+            if (question.kind === 'choice') delete merged.dice;
+            if (question.kind === 'dice' && stash) merged.choice = stash.choice;
+        }
+        if ((question.op === 'buyUpgrade' || question.op === 'buyAnyUpgrade') && question.kind === 'cards') {
+            delete merged.remove;
+            delete merged.replace;
+            delete merged.deckCard;
+        }
+        if ((question.op === 'placeUnit' && question.kind === 'types')
+            || (question.op === 'placeStructure' && question.kind === 'structureTypes')
+            || (question.op === 'moveStructure' && question.kind === 'structures')
+            || (['moveUnit', 'moveUnits'].includes(question.op) && question.kind === 'units')) delete merged.area;
+        const moving = pending.choice || pending.steps[pending.index];
+        if (['moveUnit', 'moveUnits'].includes(question.op) && moving && moving.strict) {
+            if (question.stage === 'source') { delete merged.units; delete merged.area; }
+            else if (question.kind === 'areas' && stash) {
+                // The destination response must not replace the previously
+                // validated models with other ids supplied by the client.
+                merged.units = stash.units;
+                if (stash.source) merged.source = stash.source;
+            } else if (question.kind === 'units' && stash && stash.source) {
+                merged.source = stash.source;
+            }
+        }
+        if (question.op === 'buyUpgradeReplace' || question.op === 'buyAnyUpgradeReplace') {
+            // The second answer selects a pair, not a different upgrade. Never
+            // trust a client-supplied card name over the first, validated choice.
+            merged.card = question.card;
+            merged.remove = answer.remove || answer.card;
+        }
         // The question may carry what was already chosen — the unit that is being
         // placed. The next question (the place) is answered without it, so the
         // choice is put back before the step reads the answer.
@@ -1980,7 +2301,8 @@ const FS_EFFECTS = {
         if (question.kind === 'scheme') {
             const idx = Number(answer.choice);
             const schemes = (pending.ctx && pending.ctx.schemes) || [];
-            const scheme = schemes[idx];
+            const refused = answer.no === true || answer.choice === undefined || answer.choice === null || answer.choice === '';
+            const scheme = refused ? null : schemes[idx];
             const cctx0 = (pending.ctx && pending.ctx.ctx) || null;
             if (!scheme) {
                 // «Молящийся тёмным богам»: when the reaction is refused the
@@ -1992,9 +2314,26 @@ const FS_EFFECTS = {
                 return this.next(R, state, pending);
             }
             const p = state.players[pending.seat];
-            p.schemes = (p.schemes || []).filter(s => s !== scheme);
+            // The question and the player's schemes become separate objects
+            // after JSON transport, so identity cannot identify the played card.
+            // Discard ONE copy, not every scheme with the same printed name.
+            const at = (p.schemes || []).findIndex(s => s.name === scheme.name);
+            if (at < 0) return { ok: false, error: 'Этот план больше не находится в игровой зоне.' };
+            p.schemes.splice(at, 1);
+            R.discardEventCard(state, pending.seat, scheme.name);
+            if (state.combat && pending.ctx && pending.ctx.kind === 'combat') {
+                CombatHooks.of(state.combat).markDecision();
+            }
             R.log(state, pending.seat, p.name + ' сбрасывает план «' + scheme.name + '».');
-            const list = scheme.steps || [];
+            let list = scheme.steps || [];
+            // Older saved copies of this Space Marine plan kept only its base
+            // two tokens. Preserve the saved plan and restore the printed forge
+            // bonus when it is actually accepted, including a saved question.
+            if (p.faction === 'космодесант' && scheme.name === 'Адептус Механикус'
+                && /за каждый ваш жетон кузницы/i.test(scheme.text || '')) {
+                list = list.map(one => one.op === 'gainToken' && one.kind === 'def' && !one.bonusPerAsset
+                    ? Object.assign({}, one, { bonusPerAsset: 'forge', bonusPerAssetN: 1 }) : one);
+            }
             const kind = (pending.ctx && pending.ctx.kind) || 'event';
             const orderScheme = OrderScheme.of(state);
             if (cctx0 && cctx0.operationScheme) orderScheme.accept();
@@ -2037,6 +2376,15 @@ const FS_EFFECTS = {
             }
             if (q && q.question && !this.emptyQuestion(q.question)) {
                 return this.retarget(pending, q.question);
+            }
+            if (q && q.replace) {
+                // A fork with no payment available resolves its refusal branch
+                // immediately. Permission must not swallow that replacement.
+                const list = pending.steps;
+                const at = pending.index;
+                list.splice(at, 1, ...q.replace);
+                Question.of(state).close();
+                return this.run(R, state, pending.seat, list, pending.ctx || {}, at);
             }
             // The step ran from here, not from the chain: the steps it added
             // (the repeated ability of a card, «Почитание духа машины») are
@@ -2103,6 +2451,9 @@ const FS_EFFECTS = {
         // деморализует отряд, либо теряет 1 `any cube`», «Подавляющее
         // присутствие»): the answerer only answers, «me» stays the owner.
         const res = this.apply(R, state, pending.seat, step, merged, ctx);
+        // A step may recheck a target or a price against the current state.
+        // Reject its error without closing the question or advancing the chain.
+        if (res && res.ok === false) return res;
         if (res && res.replace) {
             // The step has other steps of its own: they take its place in the
             // list. The steps that follow the choice are NOT lost — the branch
@@ -2138,6 +2489,15 @@ const FS_EFFECTS = {
         if (host !== step) host.done = true;
         this.thenSteps(pending.steps, pending.index, host);
         this.spreadCount(pending.steps, pending.index, step);
+        // Choosing the system of «Быстрый ответ» starts a real limited order.
+        // The tactic (including cards waiting to return to a deck) must not
+        // finish until that order and its capacity check have actually ended.
+        const quick = QuickResponse.of(state);
+        if (step && step.quickResponse && state.order && OrderMove.of(state.order).fromEvent && quick.snapshot) {
+            quick.holdEffects({ seat: pending.seat, steps: pending.steps, index: pending.index + 1, ctx: pending.ctx || {} });
+            Question.of(state).close();
+            return { ok: true, pending: true };
+        }
         return this.next(R, state, pending);
     },
 
@@ -2229,6 +2589,17 @@ const FS_EFFECTS = {
         return true;
     },
 
+    // An ongoing effect ends when its face-up source card is discarded.
+    // The identifier lives on that specific entry and survives JSON/LAN saves.
+    combatEffectSource(R, state, side) {
+        const c = state.combat;
+        const played = c && CombatCards.of(c).played(side);
+        const card = played && played[played.length - 1];
+        if (!card) return null;
+        if (!card.effectSourceId) card.effectSourceId = R.uid(state, 'card-effect');
+        return { side, id: card.effectSourceId };
+    },
+
     // The player of the side of the combat.
     seatOf(combat, side) {
         if (!combat) return null;
@@ -2261,9 +2632,13 @@ const FS_EFFECTS = {
         const inCombat = !!(ctx && ctx.kind === 'combat' && combat);
         if (cond.unitLess) {
             if (!inCombat) return false;
-            const field = BattleField.of(combat);
-            const mine = field.units(state, seat).filter(u => !u.routed).length;
-            const theirs = field.unitsHere(state).filter(u => u.seat !== seat && !u.routed).length;
+            // «меньше отрядов» does not exclude routed units. A live token,
+            // face up or flipped, is a unit too; destroyed/moved slots are not.
+            const field = BattleField.of(combat), side = CombatSides.sideOf(combat, seat);
+            const tokens = CombatTokens.of(combat);
+            const count = s => { const t = tokens.units(s); return t.alive + t.routed; };
+            const mine = field.units(state, seat).length + count(side);
+            const theirs = field.unitsHere(state).filter(u => u.seat !== seat).length + count(CombatSides.foe(side));
             return mine < theirs;
         }
         if (cond.noRetreat) {
@@ -2297,7 +2672,9 @@ const FS_EFFECTS = {
             const list = inCombat
                 ? BattleField.of(combat).routed(state, foeSide)
                 : state.units.filter(u => u.routed && u.seat !== seat);
-            return list.length >= n;
+            const tokenSide = inCombat ? CombatSides.sideOf(combat, foeSide) : null;
+            const tokens = tokenSide ? CombatTokens.of(combat).units(tokenSide).routed : 0;
+            return list.length + tokens >= n;
         }
         if (cond.unitMore) {
             if (!inCombat) return false;
@@ -2305,9 +2682,13 @@ const FS_EFFECTS = {
             // filter, not the absence of one.
             const kl = cond.kl === null || cond.kl === undefined ? null : cond.kl;
             const fit = u => kl === null || (R.unitOf(state, u) && (R.unitOf(state, u).kl || 0) === kl);
-            const field = BattleField.of(combat);
-            const mine = field.units(state, seat).filter(u => !u.routed && fit(u)).length;
-            const theirs = field.unitsHere(state).filter(u => u.seat !== seat && !u.routed && fit(u)).length;
+            const field = BattleField.of(combat), side = CombatSides.sideOf(combat, seat);
+            const tokens = CombatTokens.of(combat);
+            const includeTokens = kl === null || kl === 0;
+            const mine = field.units(state, seat).filter(u => !u.routed && fit(u)).length
+                + (includeTokens ? tokens.units(side).alive : 0);
+            const theirs = field.unitsHere(state).filter(u => u.seat !== seat && !u.routed && fit(u)).length
+                + (includeTokens ? tokens.units(CombatSides.foe(side)).alive : 0);
             return mine > theirs;
         }
         return true;
@@ -2386,6 +2767,8 @@ const FS_EFFECTS = {
                 ? this.areasForAbility(R, state, seat, step.dest)
                 : this.areasFor(R, state, seat, 'structure'));
         return (raw || []).filter(a => {
+            if (step && step.noOwnObjective && (state.objectives || []).some(o =>
+                o.faction === state.players[seat].faction && o.system === a.system && o.area === a.pos)) return false;
             // «если там ещё нет построек» — no structure of anybody stands there.
             if (step && step.noStructures) {
                 return !R.hasStructure(state, a.system, a.pos);
@@ -2394,6 +2777,52 @@ const FS_EFFECTS = {
                 || R.canPlaceStructure(state, seat, a.system, a.pos,
                     { allowOccupied: permission, kind: step && step.kind }).ok;
         });
+    },
+
+    // A combat ability may be declined before it starts, but once accepted an
+    // exact route/destroy/restore choice must actually be made. Keep genuine
+    // «up to N» and «any number» prices optional, including older parsers that
+    // stored the former as max:true rather than upTo:true.
+    unitStepSelectionMode(step) {
+        if (!step || step.all) return true;
+        if (step.upTo || step.any || step.max === true) return 'atMost';
+        if (/(?:деморализ[а-яёa-z]*|уничтож[а-яёa-z]*|восстанов[а-яёa-z]*)\s+до\s+\d+/i
+            .test(String(step.text || step.ability || ''))) return 'atMost';
+        return true;
+    },
+
+    // Old saves can already be waiting on a question made before strictUnits
+    // existed (or when it was always atMost). Derive the rule from the saved
+    // combat step as well, for both the server and the client panel.
+    unitSelectionMode(pending) {
+        const q = pending && pending.question;
+        if (!q || q.kind !== 'units') return q && q.strictUnits;
+        const step = pending.choice || ((pending.steps || [])[pending.index]);
+        if ((pending.kind === 'combat' || (pending.ctx && pending.ctx.kind === 'combat'))
+            && step && step.op === q.op && ['route', 'destroy', 'restore'].includes(q.op)) {
+            return this.unitStepSelectionMode(step);
+        }
+        return q.strictUnits;
+    },
+
+    // The same distinction for rerolls: accepting a combat ability means
+    // rerolling the named number, except when it really says «up to» or «any
+    // number». Older questions may have no usable required/multi flags, so the
+    // saved step is authoritative for both validation and the panel.
+    diceStepSelectionMode(step) {
+        if (step && (step.upTo || step.any || step.max === true)) return 'atMost';
+        const text = [step && step.text, step && step.ability].filter(Boolean).join(' ');
+        if (/(?:переброс[а-яёa-z]*|перебрас[а-яёa-z]*)\s+(?:до\s+\d+|любое\s+количество)/i.test(text)) return 'atMost';
+        return true;
+    },
+
+    diceSelectionMode(pending) {
+        const q = pending && pending.question;
+        if (!q || q.kind !== 'dice' || q.op !== 'rerollDie') return null;
+        const step = pending.choice || ((pending.steps || [])[pending.index]);
+        if ((pending.kind === 'combat' || (pending.ctx && pending.ctx.kind === 'combat'))
+            && step && step.op === q.op) return this.diceStepSelectionMode(step);
+        return q.required ? true : null;
     },
 
     abilityQuestion(step, ctx) {
@@ -2447,11 +2876,16 @@ const FS_EFFECTS = {
         const combat = state.combat;
         if (!combat || !area) return 0;
         const p = state.players[seat];
+        const tokenSide = side || CombatSides.sideOf(combat, seat);
+        if (!tokenSide || CombatBans.of(combat).forbidsReinforce(seat, tokenSide)) {
+            R.log(state, seat, p.name + ': подкрепление запрещено планом противника.');
+            return 0;
+        }
         const want = step.n || 1;
         const n = step.free ? want : Math.min(want, R.player(state, seat).assetCount('reinforcement'));
         if (!n) return 0;
         if (!step.free) R.player(state, seat).payAsset('reinforcement', n);
-        CombatTokens.of(combat).add(side, n, step.free);
+        CombatTokens.of(combat).add(tokenSide, n, step.free);
         R.log(state, seat, p.name + ' размещает ' + n + ' жетон(ов) подкрепления'
             + (step.free ? ' бесплатно.' : '.'));
         return n;
@@ -2461,26 +2895,34 @@ const FS_EFFECTS = {
     // дружественный мир, в котором есть фабрика».
     upgradeDiscount(R, state, seat, step) {
         if (!step || !step.discount) return 0;
-        // «уменьшив её стоимость … на 1 за каждый мир с вашей фабрикой» («Лингва
-        // Технис»): the discount is counted by the worlds with a factory of the
-        // player, not a flat number.
-        // «уменьшив его стоимость на 1 за каждый Корабль-Улей» («Разведывательные
-        // организмы»): the discount is counted by the units the card names.
+        // Discounts can count worlds with factories or the units the card
+        // names instead of being a flat number.
         if (step.per === 'unit') {
             const one = Number(step.discount) || 1;
             return this.count(R, state, seat, Object.assign({}, step, { n: one }), null);
         }
-        const byFactory = step.discount === 'factories' || step.per === 'yourFactory';
-        if (!byFactory) return Number(step.discount) || 0;
+        if (step.per === 'yourCity') {
+            const worlds = new Set((state.structures || [])
+                .filter(st => st.seat === seat && st.type === 'city'
+                    && this.areaWorld(state, st.system, st.area))
+                .map(st => st.system + ':' + st.area));
+            return worlds.size * (Number(step.discount) || 1);
+        }
+        const friendlyFactory = step.discount === 'factories';
+        const ownFactory = step.per === 'yourFactory';
+        if (!friendlyFactory && !ownFactory) return Number(step.discount) || 0;
         let n = 0;
         for (const sys of state.systems) {
             for (const a of sys.areas) {
                 if (!a.world) continue;
-                if (R.control(state, seat, sys.id, a.pos) !== 'friendly') continue;
-                if (R.structuresAt(state, sys.id, a.pos).some(st => st.seat === seat && st.type === 'factory')) n += 1;
+                // The Guard card counts a friendly world containing any factory;
+                // «Лингва Технис» counts a world with YOUR factory instead.
+                if (friendlyFactory && R.control(state, seat, sys.id, a.pos) !== 'friendly') continue;
+                if (R.structuresAt(state, sys.id, a.pos)
+                    .some(st => st.type === 'factory' && (!ownFactory || st.seat === seat))) n += 1;
             }
         }
-        return n;
+        return n * (ownFactory ? (Number(step.discount) || 1) : 1);
     },
 
     // The price of a structure the card itself buys: «купите 1 постройку,
@@ -2496,6 +2938,9 @@ const FS_EFFECTS = {
 
     count(R, state, seat, step, ctx) {
         let n = step.n || 1;
+        // A fixed grant plus a bonus for each resource token held, without
+        // spending those resources (Space Marine «Адептус Механикус»).
+        if (step.bonusPerAsset) n += (step.bonusPerAssetN || 1) * R.player(state, seat).assetCount(step.bonusPerAsset);
         if (step.fromDestroyed) {
             // «Получите материалы, равные его материальной стоимости» («Жуткие
             // трофеи»): the unit this effect has just destroyed sets the number.
@@ -2550,9 +2995,11 @@ const FS_EFFECTS = {
             // («Синаптический контроль»): only the surplus is paid out.
             const combat = state.combat;
             if (!combat) return 0;
-            const field = BattleField.of(combat);
-            const mine = field.units(state, seat).filter(u => !u.routed).length;
-            const his = field.unitsHere(state).filter(u => u.seat !== seat && !u.routed).length;
+            const field = BattleField.of(combat), side = CombatSides.sideOf(combat, seat);
+            const tokens = CombatTokens.of(combat);
+            const mine = field.units(state, seat).filter(u => !u.routed).length + tokens.units(side).alive;
+            const his = field.unitsHere(state).filter(u => u.seat !== seat && !u.routed).length
+                + tokens.units(CombatSides.foe(side)).alive;
             n = (step.n || 1) * Math.max(0, mine - his);
             if (step.max) n = Math.min(n, step.max);
             return Math.max(0, n);
@@ -2583,16 +3030,33 @@ const FS_EFFECTS = {
             return Math.max(0, n);
         }
         if (step.per === 'pair' && Array.isArray(step.pairs)) {
-            // «за каждую пару недеморализованных Гвардейцев и Огринов либо
-            // Крейсеров и Линкоров» — the smaller side of every pair counts.
-            const alive = u => !u.routed;
-            const n2 = filter => state.units.filter(u => u.seat === seat && alive(u)
-                && (!filter || this.unitFits(R.unitOf(state, u), filter))).length;
+            // In a combat, only the contested area counts; a standing token is
+            // the same named KL0 unit as its plastic equivalent. Outside combat
+            // retain the normal board-wide count for effects with another scope.
+            const inBattle = !!(ctx && ctx.kind === 'combat' && state.combat);
+            const field = inBattle ? BattleField.of(state.combat) : null;
+            const side = inBattle ? CombatSides.sideOf(state.combat, seat) : null;
+            const def = side ? R.reinforceTokenDef(state, side) : null;
+            const live = side ? R.tokenUnits(state, side).alive : 0;
+            const n2 = filter => state.units.filter(u => u.seat === seat && !u.routed
+                && (!field || field.holds(u)) && (!filter || this.unitFits(R.unitOf(state, u), filter))).length
+                + (def && (!filter || this.unitFits(def, filter)) ? live : 0);
             let pairs = 0;
             for (const [a, b] of step.pairs) pairs += Math.min(n2(a), n2(b));
             n = (step.n || 1) * pairs;
             if (step.max) n = Math.min(n, step.max);
             return Math.max(0, n);
+        }
+        if (step.per === 'contestedUnit') {
+            const combat = state.combat;
+            if (!combat) return 0;
+            const units = BattleField.of(combat).unitsHere(state).length;
+            // Reinforcements in the area are units too, including routed ones.
+            const markers = ['attacker', 'defender'].reduce((n, side) => {
+                const t = CombatTokens.of(combat).units(side);
+                return n + t.alive + t.routed;
+            }, 0);
+            return (step.n || 1) * (units + markers);
         }
         if (step.per === 'unit') {
             const combat = state.combat;
@@ -2603,19 +3067,24 @@ const FS_EFFECTS = {
             const matching = step.filter
                 ? units.filter(u => this.unitFits(R.unitOf(state, u), step.filter))
                 : units;
-            // "for every unit of a different command level" — one for each level.
+            // A matching reinforcement uses the same printed KL0 profile,
+            // including named-unit filters; distinct levels count level zero
+            // only once even when several tokens or models represent it.
             const byLevel = step.distinctLevel || (step.text && /разным командным уровнем/i.test(step.text));
-            const amount = byLevel
-                ? new Set(matching.map(u => {
-                    const def = R.unitOf(state, u);
-                    return def ? def.kl : 0;
-                })).size
-                : matching.length;
-            n = (step.n || 1) * amount;
-            if (inBattle && !step.filter) {
-                const side = CombatSides.sideOf(combat, seat);
-                n += (step.n || 1) * R.tokenUnits(state, side).alive;
+            const levels = new Set(matching.map(u => {
+                const def = R.unitOf(state, u);
+                return def ? def.kl : 0;
+            }));
+            let amount = matching.length;
+            if (inBattle) {
+                const side = CombatSides.sideOf(combat, seat), def = R.reinforceTokenDef(state, side);
+                const live = R.tokenUnits(state, side).alive;
+                if (def && (!step.filter || this.unitFits(def, step.filter)) && live) {
+                    amount += live;
+                    levels.add(def.kl || 0);
+                }
             }
+            n = (step.n || 1) * (byLevel ? levels.size : amount);
             if (step.max) n = Math.min(n, step.max);
         }
         return Math.max(0, n);
@@ -2626,9 +3095,11 @@ const FS_EFFECTS = {
     avoidQuestion(R, state, seat, step, combat, side) {
         if (!step.avoid || !combat) return null;
         const s2 = CombatSides.sideOf(combat, seat);
-        const dice = CombatTurn.of(combat).dice(s2);
-        const fit = dice.map((d, i) => i).filter(i => step.avoid.kind === 'any' || dice[i] === step.avoid.kind);
-        if (!fit.length) return null;
+        const turn = CombatTurn.of(combat);
+        const dice = turn.dice(s2);
+        const fit = dice.map((d, i) => i).filter(i => turn.has(s2, i)
+            && (step.avoid.kind === 'any' || dice[i] === step.avoid.kind));
+        if (fit.length < (step.avoid.n || 1)) return null;
         return {
             question: {
                 kind: 'yesno', who: seat, op: 'avoid', n: step.avoid.n, options: fit,
@@ -2688,6 +3159,43 @@ const FS_EFFECTS = {
         return !filter.types && !filter.contains;
     },
 
+    // The Death Strike branch is stored as ordinary data in old saves too.
+    // Its wording names any enemy CL 0–1 unit in this world, including a
+    // routed unit or a reinforcement token, not just an unrouted model.
+    combatWorldLowDestroy(step) {
+        return !!step && step.op === 'destroy' && step.who === 'foe'
+            && step.dest === 'combatWorld' && step.minKl === 0 && step.maxKl === 1;
+    },
+
+    combatWorldLowTargets(R, state, combat, seat) {
+        if (!combat) return [];
+        const ids = BattleField.of(combat).units(state, seat).filter(u => {
+            const def = R.unitOf(state, u);
+            return def && (def.kl || 0) <= 1;
+        }).map(u => u.id);
+        const side = CombatSides.sideOf(combat, seat);
+        const tokens = CombatTokens.of(combat);
+        if (side) for (let i = 0; i < tokens.used(side); i++) {
+            if (tokens.alive(side, i)) ids.push('reinforce-' + side + '-' + i);
+        }
+        return ids;
+    },
+
+    // Some cards give the opponent a choice to perform one specific action
+    // instead of granting a reward. Agreeing is meaningful only when that
+    // action has a legal target; otherwise use the refusal branch. `null`
+    // leaves other kinds of permission (e.g. discarding a card) untouched.
+    foeAllowHasTarget(R, state, seat, step, combat, inCombat) {
+        const yes = Array.isArray(step.yes) ? step.yes[0] : null;
+        if (!inCombat || !yes || yes.who !== 'foe' || !['route', 'destroy'].includes(yes.op)) return null;
+        const foe = CombatSides.foeSeat(combat, seat);
+        if (foe === null || foe === undefined) return false;
+        const candidates = Object.assign({}, yes, { includeReinforcements: true,
+            includeRouted: yes.op === 'destroy' && !yes.routed
+                && !/недеморализованн/i.test(String(yes.ability || yes.text || '')) });
+        return this.unitsOf(R, state, foe, combat, candidates).length > 0;
+    },
+
     unitsOf(R, state, seat, combat, step) {
         let units;
         if (step.allBoard) {
@@ -2704,8 +3212,26 @@ const FS_EFFECTS = {
         } else {
             units = state.units.filter(u => u.seat === seat);
         }
+        // Combat reinforcements are the side's printed KL0 unit for effects,
+        // although they have stable slots rather than entries in state.units.
+        // Only callers that can actually apply an effect to a token opt in.
+        if (combat && step.includeReinforcements) {
+            const side = CombatSides.sideOf(combat, seat);
+            const def = side && R.reinforceTokenDef(state, side);
+            if (side && def) {
+                const tokens = CombatTokens.of(combat), field = BattleField.of(combat);
+                for (let i = 0; i < tokens.used(side); i++) if (tokens.alive(side, i)) {
+                    units.push({ id: 'reinforce-' + side + '-' + i, seat,
+                        faction: state.players[seat].faction, unit: def.id,
+                        system: field.system, area: field.pos, routed: tokens.flipped(side).includes(i),
+                        tokenSide: side, tokenIndex: i });
+                }
+            }
+        }
         if (step.routed) units = units.filter(u => u.routed);
-        else units = units.filter(u => !u.routed);
+        else if (step.op !== 'replaceUnit' && !step.includeRouted) units = units.filter(u => !u.routed);
+        // Replacements may take routed units; the new model enters unrouted
+        // (Rules Reference, Free Units).
         if (step.filter) units = units.filter(u => this.unitFits(R.unitOf(state, u), step.filter));
         // The unit named by the card: «возьмите К'тана» — the very unit.
         if (step.what) {
@@ -2828,6 +3354,42 @@ const FS_EFFECTS = {
         return out;
     },
 
+    // The force that can actually move out of a battle. Routed units, including
+    // flipped reinforcement tokens, cannot be moved by a card effect.
+    combatEvacuees(R, state, seat, combat) {
+        if (!combat) return { units: [], tokens: [] };
+        const side = CombatSides.sideOf(combat, seat);
+        if (!side) return { units: [], tokens: [] };
+        const field = BattleField.of(combat);
+        const units = field.units(state, seat).filter(u => !u.routed);
+        const tokenState = CombatTokens.of(combat);
+        const flipped = tokenState.flipped(side);
+        const tokens = [];
+        if (R.reinforceTokenDef(state, side)) {
+            for (let i = 0; i < tokenState.used(side); i++) {
+                if (tokenState.alive(side, i) && !flipped.includes(i)) tokens.push(i);
+            }
+        }
+        return { units, tokens };
+    },
+
+    // «Предвидение» moves a ground force to a friendly world along a legal
+    // path, or ships to a friendly void without crossing a storm. The contested
+    // source itself and areas of the wrong type are never destinations.
+    combatEvacuationAreas(R, state, seat, combat) {
+        if (!combat) return [];
+        const field = BattleField.of(combat);
+        const source = field.area;
+        const ground = this.areaWorld(state, source.system, source.pos);
+        const reachableShips = ground ? null : this.warpGateDestinations(R, state, seat, source);
+        return this.friendlyAreasAny(R, state, seat).filter(a => {
+            if (field.is(a.system, a.pos) || this.areaWorld(state, a.system, a.pos) !== ground) return false;
+            if (ground) return R.pathExists(state, seat, source.system, source.pos, a.system, a.pos,
+                { uncontrolled: false, storms: false });
+            return reachableShips.some(t => t.system === a.system && t.pos === a.pos);
+        });
+    },
+
     // Do the two systems touch: the neighbours of one include the other. One
     // place for every «соседняя» of the cards.
     systemsTouch(R, state, a, b) {
@@ -2857,6 +3419,67 @@ const FS_EFFECTS = {
             if (!seen.has(key)) seen.set(key, { system: u.system, pos: u.area });
         }
         return [...seen.values()];
+    },
+
+    // The Warp Gate can choose distant systems, but a chain of Warp Storms
+    // still cannot be crossed. It does not impose an ordinary friendly path.
+    warpGateDestinations(R, state, seat, source) {
+        const reachable = new Set([source.system]);
+        const queue = [source.system];
+        while (queue.length) {
+            const from = queue.shift();
+            for (const next of R.neighbors(state, from)) {
+                if (reachable.has(next) || R.stormOn(state, from, next)) continue;
+                reachable.add(next); queue.push(next);
+            }
+        }
+        const world = this.areaWorld(state, source.system, source.pos);
+        const out = [];
+        for (const sys of state.systems) {
+            if (!reachable.has(sys.id)) continue;
+            for (const a of sys.areas) {
+                const standing = this.areaStanding(state, seat, sys.id, a.pos);
+                if (!!a.world !== world || (sys.id === source.system && a.pos === source.pos)) continue;
+                if (standing === 'friendly' || standing === 'uncontrolled') out.push({ system: sys.id, pos: a.pos });
+            }
+        }
+        return out;
+    },
+
+    // A moving factory follows ground movement, not the unrestricted placement
+    // rules: the path must be friendly and cannot cross a Warp Storm. A world
+    // already holding a structure cannot receive another without permission.
+    factoryDestinations(R, state, seat, structure, step) {
+        return this.areasForAbility(R, state, seat, step.dest)
+            .filter(a => (a.system !== structure.system || a.pos !== structure.area)
+                && !R.hasStructure(state, a.system, a.pos)
+                && R.pathExists(state, seat, structure.system, structure.area, a.system, a.pos,
+                    { uncontrolled: false, storms: false }));
+    },
+
+    // The paid Crimson Guard branch needs the complete named supply. The
+    // structural check also recognizes a pending branch saved before the flag
+    // was introduced; it does not change other partial free placements.
+    fullSupplyPlacement(step) {
+        return !!step && step.op === 'placeUnit' && (step.requireFullSupply
+            || (step.dest === 'worldWithYourFactory' && step.payMateriel === 2
+                && step.n === 2 && /скитар/i.test(step.what || '')));
+    },
+
+    // Used only for the alternatives of that card. The player must still be
+    // offered the free branch when it can be performed without the paid one.
+    canOfferPlacement(R, state, seat, step) {
+        if (!step || !['placeUnit', 'placeFree'].includes(step.op)) return true;
+        const p = state.players[seat];
+        const faction = R.faction(state, seat);
+        const names = this.unitNames(step.what, faction);
+        const needed = this.fullSupplyPlacement(step) ? Math.max(1, step.n || 1) : 1;
+        const available = (faction ? faction.units : []).some(u =>
+            (!names.length || names.some(n => this.sameName(u.name, n)))
+            && (!step.unitType || u.type === step.unitType)
+            && (p.supply.units[u.id] || 0) >= needed);
+        return available && (!step.payMateriel || (p.materiel || 0) >= step.payMateriel)
+            && this.areasForAbility(R, state, seat, step.dest).length > 0;
     },
 
     // The destinations of the ability steps: the exact list of worlds and voids
@@ -2890,6 +3513,18 @@ const FS_EFFECTS = {
                 const mine = R.control(state, seat, sys.id, area.pos) === 'friendly';
                 let ok = false;
                 switch (dest) {
+                    case 'strikeNeighborVoid':
+                        ok = !world && neighbors.includes(sys.id)
+                            && (standing === 'friendly' || standing === 'uncontrolled')
+                            && !R.stormOn(state, active, sys.id);
+                        break;
+                    case 'uncontrolledVoidAny':
+                    case 'uncontrolledOtherVoid':
+                        ok = !world && standing === 'uncontrolled';
+                        break;
+                    case 'friendlyOrUncontrolledWorldAny':
+                        ok = world && (standing === 'friendly' || standing === 'uncontrolled');
+                        break;
                     // Any friendly world, any system («в любой дружественный мир»).
                     case 'friendlyWorldsAny':
                         ok = world && mine;
@@ -2955,14 +3590,20 @@ const FS_EFFECTS = {
                         ok = world && mine && R.structuresAt(state, sys.id, area.pos)
                             .some(st => st.seat === seat && st.type === 'factory');
                         break;
-                    // The world with the factory of the order («в мире с этой
-                    // фабрикой» — «Святой трубопровод»): the Dominate order is
-                    // executed in the system of the factory, so the world is the
-                    // friendly one of the active system that holds it.
-                    case 'friendlyWorldWithFactoryActive':
-                        ok = world && mine && sys.id === active && R.structuresAt(state, sys.id, area.pos)
+                    // This wording names the owner's factory, not control of the world.
+                    case 'worldWithYourFactory':
+                        ok = world && R.structuresAt(state, sys.id, area.pos)
                             .some(st => st.seat === seat && st.type === 'factory');
                         break;
+                    // The very factory moved by the Dominate ability, including
+                    // a move into a neighbouring system («Святой трубопровод»).
+                    case 'movedFactoryWorld': {
+                        const moved = state.order && OrderTally.of(state.order).movedFactory;
+                        ok = !!(world && mine && moved && sys.id === moved.system && area.pos === moved.pos
+                            && R.structuresAt(state, sys.id, area.pos)
+                                .some(st => st.id === moved.id && st.seat === seat && st.type === 'factory'));
+                        break;
+                    }
                     // A friendly world with a structure on it, any system
                     // («разместить его в дружественном мире, содержащем постройку»).
                     case 'friendlyWorldWithStructure':
@@ -3124,13 +3765,19 @@ const FS_EFFECTS = {
         const s = String(text || '').toLowerCase();
         // The end of the reinforce step of the combat.
         if (/конц[а-яёa-z]*\s+шага\s+призыва\s+подкреплений/.test(s)) return 'reinforce-end';
-        // The damage of the combat.
+        // The timing of a plan comes before what its effect does: a plan used
+        // at the start of a round can itself grant an extra damage step
+        // («Безжалостное наступление»), without waiting for that later step.
+        if (/начал[а-яёa-z]*\s+раунда (?:боя|битвы)/.test(s)) return 'round';
+        // Start-of-damage plans are available to both players before either
+        // side assigns damage, even when there is no damage to assign. Reactive
+        // plans (when a particular unit is hurt) keep their separate trigger.
+        if (/в начал[а-яёa-z]*\s+шага\s+нанесения (?:урон|поврежд)/.test(s)) return 'damage-start';
         if (/шаг[а-яёa-z]*\s+нанесения (?:урон|поврежд)/.test(s)) return 'damage';
         if (/становится деморализован/.test(s)) return 'damage';
         if (/деморализован или уничтожен|уничтожен или деморализован/.test(s)) return 'damage';
         if (/получа[а-яёa-z]*\s+урон/.test(s)) return 'damage';
-        // The rounds and the combats.
-        if (/начал[а-яёa-z]*\s+раунда (?:боя|битвы)/.test(s)) return 'round';
+        // The combats.
         if (/начал[а-яёa-z]*\s+(?:боя|битвы)/.test(s)) return 'combat-start';
         if (/начн[а-яёa-z]*\s+(?:бо[йя]|битв)/.test(s)) return 'combat-start';
         if (/конц[а-яёa-z]*\s+(?:боя|битвы)/.test(s)) return 'combat-end';
@@ -3162,7 +3809,9 @@ const FS_EFFECTS = {
             const last = words.length ? words[words.length - 1] : text;
             const names = [];
             for (const u of faction.units) {
-                if (this.sameName(u.name, text) || this.sameName(u.name, last)) names.push(u.name);
+                if (faction.id === 'эльдары' && text.trim() === 'титан'
+                    && u.id === 'боевые-титаны-класса-варлок') names.push(u.name);
+                else if (this.sameName(u.name, text) || this.sameName(u.name, last)) names.push(u.name);
                 // «Сестру Ренентилю» — the card writes the last word in the
                 // wrong gender; the plural stem still names the model.
                 else if (this.sameName(u.name.split(/\s+/).pop(), last)) names.push(u.name);
@@ -3287,7 +3936,7 @@ const RULES = [
     {
         re: /в конце шага нанесения (?:повреждений|урона)[^.]*?получ[а-яёa-z]*\s+(?:по\s+)?(\d+)?\s*(?:материал|материи)[^.]*?за каждый(?:ого)?\s+уничтоженн[а-яёa-z]*\s+(?:отряд|юнит)[а-яёa-z]*(?:,?\s*максимум\s+(\d+))?/i,
         build: m => ({
-            op: 'deferDamage',
+            op: 'deferDamage', eachStep: true,
             steps: [{ op: 'gainMateriel', n: num(m[1]), per: 'destroyedStep', max: m[2] ? Number(m[2]) : null, who: 'me' }],
         }),
     },
@@ -3359,15 +4008,10 @@ const RULES = [
     {
         re: /потрат[а-яёa-z]*\s+(\d+|два|три|один)\s+материал[а-яёa-z]*,\s*чтобы\s+размест[а-яёa-z]*\s+(\d+|два|три|один)?\s*(?:бесплатн[а-яёa-z]+\s+)?([^,.;]{2,40}?)(?:\s+в мире с вашей фабрикой|\s+в мире, содержащем вашу фабрику)[.,;]?\s*$/i,
         build: (m, ctx) => ({
-            op: 'sequence',
-            steps: [
-                { op: 'payMateriel', n: num(m[1]) || 1, who: 'me' },
-                {
-                    op: 'placeUnit', n: num(m[2]) || 1, what: m[3], pick: true, free: true,
-                    dest: 'friendlyWorldWithFactory', who: 'me',
-                },
-            ],
-            text: m[0], who: 'me',
+            // The paid branch requires all of its named models in supply.
+            op: 'placeUnit', n: num(m[2]) || 1, what: m[3], pick: true, free: true,
+            payMateriel: num(m[1]) || 1, requireFullSupply: true,
+            dest: 'worldWithYourFactory', text: m[0], who: 'me',
         }),
     },
     // «купить фабрику и разместить её на дружественном мире в активной системе»
@@ -3644,7 +4288,7 @@ const RULES = [
             /** @type {any[]} */
             const steps = [{
                 op: 'strikePay', n: Number(m[1]), kind: FS_EFFECTS.icon(m[2]),
-                per: perShip ? 'ship' : null,
+                per: perShip ? 'ship' : null, upTo: true,
             }];
             if (mAsset) {
                 steps.push({
@@ -3801,6 +4445,16 @@ const RULES = [
             max: m[5] ? Number(m[5]) : null, who: 'me',
         }),
     },
+    // «получить 2 `def. token`, а также 1 дополнительный `def. token` за
+    // каждый ваш жетон кузницы» (Space Marine «Адептус Механикус»): both the
+    // base and the forge-dependent bonus belong to the same gain.
+    {
+        re: /^получ[а-яёa-z]*\s+(\d+)\s*`([^`]+token)`,\s*а также\s+(\d+)\s+дополнительн[а-яёa-z]*\s*`([^`]+token)`\s+за каждый ваш жетон кузницы\.?$/i,
+        build: m => FS_EFFECTS.icon(m[2]) === FS_EFFECTS.icon(m[4])
+            ? { op: 'gainToken', n: Number(m[1]), kind: FS_EFFECTS.icon(m[2]),
+                bonusPerAsset: 'forge', bonusPerAssetN: Number(m[3]), who: 'me' }
+            : null,
+    },
     // "get 1 `any cube`" / "get 2 `att. token`"
     {
         re: /(?:получ[а-яёa-z]*|взять|возьм[а-яёa-z]*|достаньте)\s+(\d+|два|одно)?\s*`([^`]+)`/i,
@@ -3880,17 +4534,16 @@ const RULES = [
         re: /получ[а-яёa-z]*\s+материал[а-яёa-z]*\s+со\s+всех\s+дружественных\s+миров\s+этой\s+системы/i,
         build: () => ({ op: 'gainMateriel', nFromWorlds: 'chosenSystem', who: 'me' }),
     },
-    // «Получите 1 жетон материалов и 1 жетон кузни» («Благословение
-    // Бога-Машины»): the sentence names two tokens, both of them are gained.
+    // 06-events.md: «Благословение Бога-Машины» gives a «жетон материалов»
+    // and a forge. The owner confirmed that the first is the existing cache
+    // token (07-tokens.md), which reduces a unit/structure purchase by 2
+    // materiel — not materiel on the dial or an arbitrary asset.
     {
-        re: /получ[а-яёa-z]*\s+(\d+|один|одно|два|две)?\s*жетон[а-яёa-z]*\s+материал[а-яёa-z]*\s+и\s+(\d+|один|одно|два|две)?\s*жетон[а-яёa-z]*\s+(кузн[а-яёa-z]*|тайник[а-яёa-z]*|подкреплен[а-яёa-z]*)/i,
-        build: m => ([
-            { op: 'gainMateriel', n: num(m[1]) || 1, who: 'me' },
-            {
-                op: 'gainAsset', n: num(m[2]) || 1, who: 'me',
-                kind: /кузн/.test(m[3]) ? 'forge' : /тайник/.test(m[3]) ? 'cache' : 'reinforcement',
-            },
-        ]),
+        re: /получ[а-яёa-z]*\s+1\s+жетон\s+материалов\s+и\s+1\s+жетон\s+кузни\.?$/i,
+        build: (m, ctx) => ctx && ctx.kind === 'event' && FS_EFFECTS.factionOf(ctx)?.id === 'адептус-механикус' ? [
+            { op: 'gainAsset', n: 1, who: 'me', kind: 'cache' },
+            { op: 'gainAsset', n: 1, who: 'me', kind: 'forge' },
+        ] : null,
     },
     // "get 2 materiel" / "get 1 materiel token"
     {
@@ -4117,14 +4770,11 @@ const RULES = [
     },
     // "buy 1 unit and place it in the world with this factory"
     {
-        re: /можете купить одного юнита и разместить его в мире с этой фабрикой/i,
+        re: /можете купить одного юнита и разместить его в мире с этой (?:фабрикой|факторией)/i,
         build: (m, ctx) => {
             const faction = FS_EFFECTS.factionOf(ctx);
             const names = faction ? faction.units.map(u => u.name) : [];
-            // «После перемещения своей фракции … в мире с этой фабрикой»
-            // («Святой трубопровод»): the unit stands in the world of the
-            // factory of the order, not in any world of the system.
-            return { op: 'placeUnit', n: 1, what: names, pick: true, buy: true, dest: 'friendlyWorldWithFactoryActive' };
+            return { op: 'placeUnit', n: 1, what: names, unitType: 'ground', pick: true, buy: true, dest: 'movedFactoryWorld' };
         },
     },
     // «Требуются «Камери размножения»» («Мицетические споры»): the quoted
@@ -4568,7 +5218,7 @@ const RULES = [
             const reroll = /перебросьте\s+(\d+|один)\s+кубик[а-яёa-z]*\s+за каждого юнита в оспариваемой области/i.exec(s);
             if (reroll) {
                 return {
-                    op: 'prepReroll', n: num(reroll[1]) || 1, per: 'unit', inBattle: true,
+                    op: 'prepReroll', n: num(reroll[1]) || 1, per: 'contestedUnit', inBattle: true,
                     kind: 'any', who: 'me', ability: s,
                 };
             }
@@ -5001,7 +5651,7 @@ function foeLoseSteps(sentence) {
     // «Ваш противник теряет 3 `att. token` или 3 `def. cube`» — the opponent
     // loses one of the two, and the resolving player chooses which.
     if (loss.length > 1 && /(или|либо)/i.test(m[1])) {
-        steps.push({ op: 'choice', options: loss, text: sentence });
+        steps.push({ op: 'choice', options: loss, text: sentence, chooser: 'me' });
         return steps;
     }
     return steps.concat(loss);

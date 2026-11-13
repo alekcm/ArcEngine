@@ -67,6 +67,7 @@ function el(tag) {
         style: { setProperty: nothing, removeProperty: nothing },
         classList: { add: nothing, remove: nothing, toggle: nothing, contains: () => false },
         append(...xs) { for (const x of xs) this.children.push(x); },
+        get childNodes() { return this.children; },
         appendChild(x) { this.children.push(x); return x; },
         contains(x) { return this.children.includes(x); },
         removeChild(x) { const i = this.children.indexOf(x); if (i >= 0) this.children.splice(i, 1); },
@@ -199,6 +200,134 @@ screen('lobby-2', 'после партии лобби не остаётся на
     if (!classes.some(c => /(^|\s)fs-topbar(\s|$)/.test(c))) return 'панель партии не нарисована (нет fs-topbar)';
     const texts = textsOf(FSUI.modernRoot);
     if (texts.some(t => /Стратегическая игра · 2–4 игрока/.test(t))) return 'текст лобби остался на экране';
+    return true;
+});
+
+screen('lan-identities-ui', 'переподключение, разные комнаты, безопасный перенос старого секрета и комната по умолчанию', () => {
+    const old = {
+        store: ctx.Store, net: ctx.FSNet, location: ctx.location, url: ctx.URL, params: ctx.URLSearchParams, history: ctx.history,
+        query: ctx.document.querySelector, create: FS_VIEW.create, ground: FS_VIEW.spaceGround, mount: FSUI.mount,
+        hand: FSUI.onHandPlay, undo: FSUI.onUndo,
+    };
+    const methods = ['setupCamera', 'bindPointer', 'bindSetupKeys', 'bindUndoKey', 'showLobby'];
+    const originals = methods.map(name => FS_GAME.prototype[name]);
+    const values = new Map(), connections = [];
+    let defaultRoom = '', failKey = '';
+    try {
+        ctx.Store = {
+            get: key => values.get(key) || null,
+            set: (key, value) => { if (key === failKey) return false; values.set(key, value); return true; },
+            remove: key => values.delete(key),
+        };
+        ctx.URL = URL;
+        ctx.URLSearchParams = URLSearchParams;
+        ctx.history = { replaceState: nothing };
+        ctx.document.querySelector = selector => selector === 'meta[name="fs-default-room"]'
+            ? { getAttribute: () => defaultRoom } : null;
+        ctx.FSNet = { connect: opts => {
+            const handlers = {};
+            const net = { on(name, fn) { handlers[name] = fn; return net; } };
+            connections.push({ opts, handlers });
+            return net;
+        } };
+        FS_VIEW.create = () => ({});
+        FS_VIEW.spaceGround = nothing;
+        FSUI.mount = nothing;
+        methods.forEach(name => { FS_GAME.prototype[name] = nothing; });
+        const open = room => {
+            const url = new URL('http://localhost/?name=Игрок');
+            if (room !== null) url.searchParams.set('room', room);
+            ctx.location = { search: url.search, href: url.href };
+            const game = new FS_GAME({ location: {}, camera: {} });
+            return { game, connection: connections[connections.length - 1] };
+        };
+        const joined = (entry, room, id) => entry.connection.handlers.joined({ room, id, seat: 0, factions: [] });
+        const alphaId = 'A'.repeat(32), betaId = 'B'.repeat(32);
+        const first = open(' alpha ');
+        if (first.connection.opts.room !== 'ALPHA') return 'код комнаты не приведён к виду сервера';
+        joined(first, 'ALPHA', alphaId);
+        const second = open('beta');
+        if (second.connection.opts.id) return 'в новую комнату передан секрет предыдущей';
+        joined(second, 'BETA', betaId);
+        const alpha = open(' ALpHa '), beta = open('BETA');
+        if (alpha.game.id !== alphaId || alpha.connection.opts.id !== alphaId) return 'после входа в BETA потеряно место ALPHA';
+        if (beta.game.id !== betaId || beta.connection.opts.id !== betaId) return 'для BETA выбран чужой секрет';
+        joined(alpha, 'ALPHA', '');
+        if (alpha.game.id !== alphaId || values.get('fs.id.ALPHA') !== alphaId) return 'отказ сервера стёр сохранённый секрет';
+
+        // Old servers issued public ids such as p1. They cannot be used as a
+        // credential in an unrelated room; hardened servers never issue them.
+        values.set('fs.id', 'p1');
+        if (open('GAMMA').connection.opts.id) return 'старый публичный id использован как секрет';
+        const legacy = 'L'.repeat(32), fresh = 'N'.repeat(32);
+        values.set('fs.id', legacy);
+        const other = open('GAMMA');
+        if (other.connection.opts.id !== legacy) return 'не предложен старый непредсказуемый секрет';
+        joined(other, 'GAMMA', fresh);
+        if (values.get('fs.id') !== legacy) return 'вход в другую комнату потерял старый секрет';
+        const refused = open('DELTA');
+        joined(refused, 'DELTA', '');
+        if (values.get('fs.id') !== legacy) return 'отказ при переносе потерял старый секрет';
+        const migrated = open('DELTA');
+        if (migrated.connection.opts.id !== legacy) return 'старый секрет не повторён после отказа';
+        joined(migrated, 'DELTA', legacy);
+        if (values.get('fs.id.DELTA') !== legacy || values.has('fs.id')) return 'подтверждённый секрет не привязан к комнате';
+        const unwritable = 'U'.repeat(32);
+        values.set('fs.id', unwritable);
+        failKey = 'fs.id.EPSILON';
+        const failedSave = open('EPSILON');
+        joined(failedSave, 'EPSILON', unwritable);
+        if (values.get('fs.id') !== unwritable) return 'старый секрет удалён при неудачном сохранении';
+        failKey = ''; values.delete('fs.id');
+
+        // The server supplies the default code in the page: it identifies the
+        // room before the first hello, even without a room query parameter.
+        defaultRoom = 'BETA';
+        const plain = open(null);
+        if (plain.connection.opts.room !== 'BETA' || plain.connection.opts.id !== betaId) return 'обычный адрес не вернул место комнаты по умолчанию';
+        defaultRoom = '__FS_DEFAULT_ROOM__';
+        const unresolved = open(null);
+        if (unresolved.connection.opts.room || unresolved.connection.opts.id) return 'незаполненная метка принята за код комнаты';
+        return true;
+    } finally {
+        ctx.Store = old.store; ctx.FSNet = old.net; ctx.location = old.location;
+        ctx.URL = old.url; ctx.URLSearchParams = old.params; ctx.history = old.history;
+        ctx.document.querySelector = old.query;
+        FS_VIEW.create = old.create; FS_VIEW.spaceGround = old.ground; FSUI.mount = old.mount;
+        FSUI.onHandPlay = old.hand; FSUI.onUndo = old.undo;
+        methods.forEach((name, i) => { FS_GAME.prototype[name] = originals[i]; });
+    }
+});
+
+screen('lan-retry-ui', 'сеть повторяет свой секрет после отказа и принимает новый после успешного входа', () => {
+    const sockets = [], timers = [];
+    class Socket {
+        static OPEN = 1;
+        constructor() { this.readyState = Socket.OPEN; this.sent = []; sockets.push(this); }
+        send(text) { this.sent.push(JSON.parse(text)); }
+        close() { if (this.onclose) this.onclose(); }
+    }
+    const sandbox = vm.createContext({
+        location: { protocol: 'http:', host: 'localhost:8080' },
+        WebSocket: Socket, setTimeout: fn => timers.push(fn),
+    });
+    const network = vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/fs/FSNet.js'), 'utf8') + '\nFSNet', sandbox);
+    const original = 'A'.repeat(32), replacement = 'B'.repeat(32);
+    const net = network.connect({ room: 'ALPHA', id: original, name: 'Игрок' });
+    const first = sockets[0];
+    first.onopen();
+    if (first.sent[0].id !== original) return 'первое соединение не отправило свой секрет';
+    first.onmessage({ data: JSON.stringify({ t: 'joined', id: '', room: 'ALPHA' }) });
+    if (net.id !== original) return 'отказ очистил секрет сетевого клиента';
+    first.onclose();
+    if (!timers.length) return 'после обрыва не назначено переподключение';
+    timers.shift()();
+    const retry = sockets[1];
+    retry.onopen();
+    if (retry.sent[0].id !== original) return 'переподключение потеряло секрет после отказа';
+    retry.onmessage({ data: JSON.stringify({ t: 'joined', id: replacement, room: 'ALPHA' }) });
+    if (net.id !== replacement) return 'успешный вход не обновил секрет';
+    net.stop();
     return true;
 });
 
@@ -1298,6 +1427,936 @@ screen('storm-ghost-1', '«Смертоукасатели»: обе отмече
     return true;
 });
 
+head('Переполнение и ожидающие способности');
+
+screen('trim-priority-1', 'оба места видят верную панель при одновременном вопросе и переполнении', () => {
+    // Use the actual refresh() branch: a card question must not hide the trim
+    // controls, and the other LAN seat must not see a button it cannot press.
+    const st = party('trim-priority');
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const s of st.systems) s.tokens = [];
+    st.phase = 'operations'; st.turn = 0; st.order = null;
+    const sys = st.systems[0], area = sys.areas.find(a => a.world);
+    const cap = FS_RULES.capacity(st, sys.id, area.pos);
+    for (let i = 0; i < cap + 1; i++) FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, area.pos);
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    FS_RULES.trimQueue(st).ask(0, sys.id, area.pos, cap, cap + 1);
+    st.orderTrimPending = true;
+    FS_RULES.runEffects(st, 1, [{ op: 'chooseSystem', who: 'me' }], { kind: 'event' });
+    if (!st.pending) return 'не создан ожидающий вопрос способности';
+    const clients = [0, 1].map(seat => {
+        const game = Object.create(FS_GAME.prototype);
+        Object.assign(game, {
+            state: FS_RULES.view(st, seat), view: { highlights: [], selection: [], selectionRings: [] },
+            app: { camera: { azimuth: 0 } }, mode: 'idle', pending: null, orderKey: '',
+            hand: [], trimPick: [], effectPick: [], effectDie: null, pendingQuestionRef: null,
+            questionMarkersActive: false, reinforceStep: null, status: '', warn: '',
+            ringAreas: nothing, refreshPlaque: nothing, updateQuestionMarkers: nothing,
+            net: { cmd: cmd => FS_RULES.apply(st, seat, cmd) },
+        });
+        return game;
+    });
+    const oldUpdate = FSUI.update;
+    let panel = null;
+    FSUI.update = (state, next) => { panel = next; };
+    try {
+        clients[0].refresh();
+        if (panel.title !== 'Сверх вместимости' || panel.panelClass !== 'is-trim') return 'вопрос скрыл панель переполнения';
+        const chip = panel.actions.find(a => a.kind === 'chip');
+        if (!chip) return 'нет кнопки выбора лишнего отряда';
+        chip.onClick();
+        if (clients[0].trimPick.length !== 1) return 'кнопка не отметила отряд';
+        const marked = clients[0].trimPick[0];
+        clients[0].clickTrim({ fs: 'unit', unit: marked });
+        if (clients[0].trimPick.length !== 0) return 'повторный клик по модели не снимает отметку';
+        chip.onClick();
+        const confirm = panel.actions.find(a => a.kind === 'primary');
+        if (!confirm) return 'нет подтверждения';
+        clients[1].refresh();
+        if (!/Ожидаем/.test(panel.text) || panel.actions.length) return 'второе место не ждёт переполнение';
+        if (FS_RULES.apply(st, 1, { type: 'effect', answer: { system: sys.id } }).ok) return 'второе место отвечает до удаления избытка';
+        confirm.onClick();
+        if (st.orderTrimPending || FS_RULES.trimQueue(st).any()) return 'очередь избытка не закрыта';
+        if (!st.pending || st.pending.seat !== 1) return 'ожидающий вопрос потерялся';
+        clients[1].state = FS_RULES.view(st, 1);
+        clients[1].refresh();
+        if (panel.title === 'Сверх вместимости') return 'после переполнения вопрос не появился';
+        if (!FS_RULES.apply(st, 1, { type: 'effect', answer: { system: sys.id } }).ok || st.pending) return 'вопрос после переполнения не разрешён';
+        return true;
+    } finally {
+        FSUI.update = oldUpdate;
+    }
+});
+
+screen('combat-pending-controls', 'вопрос плана не показывает и не исполняет прерванное распределение урона', () => {
+    const st = FS_RULES.newBattleTest({ seed: 5, players: [
+        { faction: 'эльдары', name: 'Эльдар', id: 'p0' },
+        { faction: 'имперская-гвардия', name: 'Гвардия', id: 'p1' },
+    ], units: { 'аспектные-воины': 2 }, foeUnits: { 'гвардейцы': 2 } });
+    const apply = (seat, cmd) => {
+        const result = FS_RULES.apply(st, seat, cmd);
+        if (!result.ok) throw new Error(result.error);
+    };
+    apply(0, { type: 'combat', action: 'reinforce', count: 1 });
+    apply(1, { type: 'combat', action: 'reinforce', count: 0 });
+    st.combat.step = 'damage-attacker';
+    st.combat.dice.attacker = [];
+    st.combat.dice.defender = ['att', 'att'];
+    FS_RULES.keepEventScheme(st, 0, ctx.FS_DATA.events.find(card => card.faction === 'эльдары' && card.name === 'Предвидение'));
+    FS_RULES.advanceCombatSteps(st);
+    if (st.pending?.question?.kind !== 'scheme') return 'не открылось окно «Предвидения»';
+    const game = Object.create(FS_GAME.prototype), sent = [];
+    const unit = st.units.find(u => u.seat === 0 && u.system === st.combat.system && u.area === st.combat.pos);
+    Object.assign(game, {
+        state: FS_RULES.view(st, 0),
+        view: { highlights: [], selection: [], selectionRings: [], scene: {
+            pick: () => ({ hit: true, pickedMesh: { metadata: { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area } }, pickedPoint: null }),
+        } },
+        app: { camera: { azimuth: 0 } }, mode: 'idle', pending: null, orderKey: '',
+        hand: [], damageTargets: [], effectPick: [], effectDie: null, pendingQuestionRef: null,
+        questionMarkersActive: false, reinforceStep: null, status: '', warn: '',
+        refreshPlaque: nothing, updateQuestionMarkers: nothing,
+        net: { cmd: cmd => { sent.push(cmd); return FS_RULES.apply(st, 0, cmd); } },
+    });
+    const oldUpdate = FSUI.update;
+    let panel = null;
+    FSUI.update = (state, next) => { panel = next; };
+    try {
+        game.refresh();
+        if (!panel.battle || !panel.actions.some(a => /Сбросить: Предвидение/.test(a.label))) return 'нет счёта боя или вопроса плана';
+        if (panel.actions.some(a => /Разложите урон|Принять урон|Аспектные воины/.test(a.label))) return 'кнопки прерванного урона мешают ответу';
+        if (game.mode === 'damage') return 'клик по полю всё ещё выбирает цель урона';
+        game.onClick(0, 0);
+        if (game.damageTargets.length || sent.some(cmd => cmd.type === 'combat')) return 'клик по модели выполняет прерванный бой';
+        const refuse = panel.actions.find(a => /Не сбрасывать план/.test(a.label));
+        if (!refuse) return 'нет отказа от плана';
+        refuse.onClick();
+        if (st.pending) return 'отказ не закрыл вопрос';
+        game.state = FS_RULES.view(st, 0);
+        // The stand-in DOM has no Babylon mesh builder; the real board clears
+        // these rings on the same refresh (covered by the browser check).
+        game.questionMarkersActive = false;
+        game.refresh();
+        if (game.mode !== 'damage' || !panel.actions.some(a => /Разложите урон|Принять урон/.test(a.label))) return 'после отказа урон не возобновился';
+        game.onClick(0, 0);
+        if (!game.damageTargets.includes(unit.id)) return 'после отказа модель нельзя выбрать';
+        return true;
+    } finally { FSUI.update = oldUpdate; }
+});
+
+screen('tau-critical-token', '«Критический удар»: раненый жетон можно выбрать списком и на доске, кольцо указывает его место', () => {
+    const setup = () => {
+        let st = FS_RULES.newBattleTest({ seed: 13, players: [
+            { faction: 'империя-тау', name: 'Тау', id: 'p0' },
+            { faction: 'некроны', name: 'Некроны', id: 'p1' },
+        ], units: { 'воины-огня': 2 }, foeUnits: { 'воины': 2 } });
+        const apply = (seat, cmd) => {
+            const res = FS_RULES.apply(st, seat, cmd);
+            if (!res.ok) throw new Error(res.error || 'команда отклонена');
+        };
+        apply(0, { type: 'combat', action: 'reinforce', count: 0 });
+        apply(1, { type: 'combat', action: 'reinforce', count: 1 });
+        FS_RULES.keepEventScheme(st, 0, ctx.FS_DATA.events.find(card => card.faction === 'империя-тау' && card.name === 'Критический удар'));
+        st.combat.step = 'damage-defender';
+        st.combat.dice.attacker = ['att']; st.combat.dice.defender = [];
+        const token = 'reinforce-defender-0';
+        apply(1, { type: 'combat', action: 'damage', targets: [token] });
+        if (st.pending?.question?.kind !== 'scheme') throw new Error('реакция не предложена после ранения');
+        st = JSON.parse(JSON.stringify(st));
+        apply(0, { type: 'effect', answer: { choice: 0 } });
+        if (JSON.stringify(st.pending?.question?.options) !== JSON.stringify([token])) throw new Error('жетон не предложен');
+        const sent = [], game = Object.assign(Object.create(FS_GAME.prototype), {
+            state: FS_RULES.view(st, 0), effectPick: [], effectDie: null, refresh: nothing,
+            view: { unitPositions: new Map(), reinforceAnchors: [{ side: 'defender', index: 0, x: 11, y: 12, z: 13 }] },
+            app: {}, net: { cmd: cmd => { sent.push(cmd); return FS_RULES.apply(st, 0, cmd); } },
+        });
+        return { st, token, sent, game };
+    };
+    {
+        const { st, token, sent, game } = setup();
+        const panel = { actions: [], title: '', text: '', status: '' };
+        game.panelQuestion(game.state, panel);
+        const option = panel.actions.find(a => /Подкрепление/.test(a.label));
+        if (!option) return 'нет жетона в списке допустимых целей';
+        option.onClick();
+        if (sent.length || !game.effectPick.includes(token)) return 'выбор в списке не отмечен';
+        const confirm = panel.actions.find(a => a.kind === 'primary');
+        if (!confirm) return 'нет подтверждения';
+        confirm.onClick();
+        if (sent[0]?.answer?.units?.[0] !== token || !st.combat.reinforceDestroyed.defender.includes(0)) return 'список не уничтожил жетон';
+    }
+    {
+        const { st, token, sent, game } = setup();
+        const oldShow = FS_VIEW.showSelection, oldHighlight = FS_VIEW.highlight;
+        let rings = null;
+        try {
+            FS_VIEW.showSelection = (app, view, list) => { rings = list; };
+            FS_VIEW.highlight = nothing;
+            game.updateQuestionMarkers();
+        } finally { FS_VIEW.showSelection = oldShow; FS_VIEW.highlight = oldHighlight; }
+        if (!rings || !rings.some(p => p.x === 11 && p.y === 12 && p.z === 13)) return 'жетон не отмечен на доске';
+        const field = st.combat;
+        game.questionClick({ fs: 'token', reinforce: true, reinforceId: token, side: 'attacker', system: field.system, pos: field.pos });
+        if (sent.length) return 'поддельная сторона жетона принята';
+        game.questionClick({ fs: 'token', reinforce: true, reinforceId: token, side: 'defender', system: field.system, pos: field.pos });
+        if (sent[0]?.answer?.units?.[0] !== token || !st.combat.reinforceDestroyed.defender.includes(0)) return 'клик по жетону не уничтожил его';
+    }
+    return true;
+});
+
+screen('chaos-route-tokens', '«все» выбирается целиком: жетон доступен на доске и в панели, раннее подтверждение недоступно', () => {
+    for (const chaos of [0, 1]) {
+        const foe = 1 - chaos, ownSide = chaos === 0 ? 'attacker' : 'defender', foeSide = foe === 0 ? 'attacker' : 'defender';
+        const factions = chaos === 0 ? ['космодесант-хаоса', 'имперская-гвардия'] : ['имперская-гвардия', 'космодесант-хаоса'];
+        let st = FS_RULES.newBattleTest({ seed: 25,
+            players: factions.map((faction, seat) => ({ faction, name: 'Игрок ' + seat, id: 'p' + seat })),
+            units: { [chaos === 0 ? 'культисты' : 'гвардейцы']: 2 },
+            foeUnits: { [chaos === 1 ? 'культисты' : 'гвардейцы']: 2 } });
+        st.players[foe].assets.reinforcement = 1;
+        for (const seat of [0, 1]) {
+            const r = FS_RULES.apply(st, seat, { type: 'combat', action: 'reinforce', count: seat === foe ? 1 : 0 });
+            if (!r.ok) throw new Error(r.error);
+        }
+        st.combat.dice[ownSide] = ['morale', 'morale']; st.combat.dice[foeSide] = ['att'];
+        const card = ctx.FS_DATA.combat.find(c => c.faction === 'космодесант-хаоса' && c.name === 'Хаос всепобеждающий');
+        const route = ctx.FS_EFFECTS.parse(card.general, { kind: 'combat', faction: 'космодесант-хаоса' }).find(s => s.op === 'route');
+        FS_RULES.runEffects(st, chaos, [route], { kind: 'combat', ctx: { side: ownSide } });
+        st = JSON.parse(JSON.stringify(st));
+        const q = st.pending?.question, token = 'reinforce-' + foeSide + '-0';
+        if (!q || q.op !== 'route' || !q.options.includes(token) || q.n !== 3) return 'нет вопроса на все две модели и жетон';
+        const sent = [], game = Object.assign(Object.create(FS_GAME.prototype), {
+            state: FS_RULES.view(st, chaos), effectPick: [], effectDie: null, refresh: nothing,
+            view: { unitPositions: new Map(), reinforceAnchors: [{ side: foeSide, index: 0, x: 1, y: 2, z: 3 }] },
+            app: {}, net: { cmd: cmd => { sent.push(cmd); const r = FS_RULES.apply(st, chaos, cmd); if (!r.ok) throw new Error(r.error); } },
+        });
+        const draw = () => { const panel = { actions: [], title: '', text: '', status: '' }; game.panelQuestion(game.state, panel); return panel; };
+        let panel = draw();
+        if (panel.actions.find(a => a.kind === 'primary')?.enabled !== false) return 'можно подтвердить пустой выбор';
+        if (!panel.actions.some(a => /Подкрепление/.test(a.label))) return 'подкрепления нет в списке';
+        const field = st.combat;
+        game.questionClick({ fs: 'token', reinforce: true, reinforceId: token, side: foeSide, system: field.system, pos: field.pos });
+        if (sent.length || !game.effectPick.includes(token)) return 'клик по жетону не отметил его';
+        panel = draw();
+        if (panel.actions.find(a => a.kind === 'primary')?.enabled !== false) return 'можно подтвердить частичный выбор';
+        for (const action of panel.actions.filter(a => a.kind === 'pick' && !/Подкрепление/.test(a.label))) action.onClick();
+        panel = draw();
+        const confirm = panel.actions.find(a => a.kind === 'primary');
+        if (!confirm || confirm.enabled !== true) return 'полный выбор нельзя подтвердить';
+        confirm.onClick();
+        if (sent.length !== 1 || sent[0].answer.units.length !== 3 || !st.combat.reinforceFlipped[foeSide].includes(0)) return 'полный выбор не применён';
+    }
+    return true;
+});
+
+screen('combat-reroll-count', 'обязательный и «до двух» переброс доступны целиком, в том числе в моделированных старых вопросах', () => {
+    for (const guard of [0, 1]) for (const upto of [false, true]) for (const legacy of [false, true])
+        for (const available of [1, 3]) for (const amount of (upto ? [0, 1, 2] : [Math.min(2, available)])) {
+        if (amount > Math.min(2, available)) continue;
+        const foe = 1 - guard, guardSide = guard === 0 ? 'attacker' : 'defender', foeSide = foe === 0 ? 'attacker' : 'defender';
+        const factions = guard === 0 ? ['имперская-гвардия', 'некроны'] : ['некроны', 'имперская-гвардия'];
+        let st = FS_RULES.newBattleTest({ seed: 29,
+            players: factions.map((faction, seat) => ({ faction, name: 'Игрок ' + seat, id: 'p' + seat })),
+            units: guard === 0 ? { 'гвардейцы': 1, 'огрины': 1 } : { 'воины': 2 },
+            foeUnits: guard === 1 ? { 'гвардейцы': 1, 'огрины': 1 } : { 'воины': 2 } });
+        for (const seat of [0, 1]) {
+            const res = FS_RULES.apply(st, seat, { type: 'combat', action: 'reinforce', count: 0 });
+            if (!res.ok) throw new Error(res.error);
+        }
+        st.combat.dice[foeSide] = Array(available).fill('att');
+        const card = ctx.FS_DATA.combat.find(c => c.faction === (upto ? 'некроны' : 'имперская-гвардия')
+            && c.name === (upto ? 'Воля повелителя' : 'Поддержка титана'));
+        const step = ctx.FS_EFFECTS.parse(card.general, { kind: 'combat', faction: card.faction }).find(s => s.op === 'rerollDie');
+        FS_RULES.runEffects(st, upto ? foe : guard, [step], { kind: 'combat', ctx: { side: upto ? foeSide : guardSide } });
+        st = JSON.parse(JSON.stringify(st));
+        const limit = Math.min(2, available);
+        if (st.pending?.answerSeat !== foe || st.pending.question.n !== limit) return 'нет вопроса на доступное число кубиков правильной стороне';
+        if (legacy) {
+            // Model inconsistent flags independently of the saved step: the
+            // step, not a stale UI hint, determines the legal cardinality.
+            st.pending.question.required = upto;
+            st.pending.question.any = !upto;
+            st.pending.question.multi = !upto;
+        }
+        const sent = [], game = Object.assign(Object.create(FS_GAME.prototype), {
+            state: FS_RULES.view(st, foe), effectPick: [], effectDie: null, refresh: nothing,
+            net: { cmd: cmd => { sent.push(cmd); const r = FS_RULES.apply(st, foe, cmd); if (!r.ok) throw new Error(r.error); } },
+        });
+        const draw = () => { const panel = { actions: [], title: '', text: '', status: '' }; game.panelQuestion(game.state, panel); return panel; };
+        let panel = draw(), confirm = panel.actions.find(a => a.kind === 'primary');
+        if (!upto && limit === 1) {
+            if (confirm) return 'точный выбор единственного кубика не требует отдельного подтверждения';
+            const pick = panel.actions.find(a => a.kind === 'pick');
+            if (!pick) return 'нет единственного кубика в списке';
+            pick.onClick();
+        } else {
+            if (!confirm || confirm.enabled !== upto) return 'неверная доступность пустого выбора';
+            for (let i = 0; i < amount; i++) {
+                const options = panel.actions.filter(a => a.kind === 'pick');
+                if (!options[i]) return 'нет нужного кубика в списке';
+                options[i].onClick();
+                if (sent.length) return 'клик по одному кубику преждевременно отправил вопрос';
+                panel = draw();
+                confirm = panel.actions.find(a => a.kind === 'primary');
+                if (!confirm || confirm.enabled !== (upto || i + 1 === limit)) return 'неверная доступность подтверждения';
+            }
+            confirm.onClick();
+        }
+        if (sent.length !== 1 || sent[0]?.answer?.dice?.length !== amount) return 'отправлено не выбранное число кубиков';
+    }
+    return true;
+});
+
+screen('chaos-foe-choice', 'противник действительно может согласиться или отказаться, не оплачивая кубик', () => {
+    for (const chaos of [0, 1]) for (const accept of [false, true]) {
+        const foe = 1 - chaos, side = chaos === 0 ? 'attacker' : 'defender';
+        const factions = chaos === 0 ? ['космодесант-хаоса', 'имперская-гвардия'] : ['имперская-гвардия', 'космодесант-хаоса'];
+        let st = FS_RULES.newBattleTest({ seed: 23,
+            players: factions.map((faction, seat) => ({ faction, name: 'Игрок ' + seat, id: 'p' + seat })),
+            units: { [chaos === 0 ? 'хелбруты' : 'гвардейцы']: 2 },
+            foeUnits: { [chaos === 1 ? 'хелбруты' : 'гвардейцы']: 2 } });
+        for (const seat of [0, 1]) {
+            const r = FS_RULES.apply(st, seat, { type: 'combat', action: 'reinforce', count: 0 });
+            if (!r.ok) throw new Error(r.error);
+        }
+        const card = ctx.FS_DATA.combat.find(c => c.faction === 'космодесант-хаоса' && c.name === 'Демоническая гибкость');
+        FS_RULES.runEffects(st, chaos, ctx.FS_EFFECTS.parse(card.unit, { kind: 'combat', faction: 'космодесант-хаоса' }),
+            { kind: 'combat', ctx: { side } });
+        if (st.pending?.question?.op !== 'foeAllow' || st.pending.answerSeat !== foe) return 'нет вопроса противнику';
+        st = JSON.parse(JSON.stringify(st));
+        const sent = [], game = Object.assign(Object.create(FS_GAME.prototype), {
+            state: FS_RULES.view(st, foe), effectPick: [], effectDie: null, refresh: nothing,
+            net: { cmd: cmd => { sent.push(cmd); const r = FS_RULES.apply(st, foe, cmd); if (!r.ok) throw new Error(r.error); } },
+        });
+        const panel = { actions: [], title: '', text: '', status: '' };
+        game.panelQuestion(game.state, panel);
+        if (panel.actions.some(a => /кубик/i.test(a.label) || a.icon === 'cube.morale')) return 'ответ требует выдуманную плату';
+        const choice = panel.actions.find(a => accept ? /^Да/i.test(a.label) : /^Нет/i.test(a.label));
+        if (!choice) return 'нет кнопки согласия или отказа';
+        choice.onClick();
+        if (JSON.stringify(sent[0]?.answer) !== JSON.stringify(accept ? { yes: true } : { no: true })) return 'кнопка отправила неверный ответ';
+        if (accept) {
+            if (st.pending?.question?.op !== 'destroy' || st.pending.answerSeat !== foe) return 'согласие не предложило свою жертву';
+            const id = st.pending.question.options[0];
+            const r = FS_RULES.apply(st, foe, { type: 'effect', answer: { units: [id] } });
+            if (!r.ok || st.units.some(u => u.id === id)) return 'согласившийся противник не уничтожил выбранный отряд';
+            if (st.combat.tokens[side].def !== 0) return 'за согласие неверно выданы жетоны';
+        } else if (st.combat.tokens[side].def !== 4 || st.pending) return 'отказ не дал Хаосу четыре жетона';
+    }
+    return true;
+});
+
+screen('chaos-foe-target', 'после согласия противник выбирает жетон; сохранённый вопрос тоже нельзя подтвердить пустым', () => {
+    for (const chaos of [0, 1]) for (const op of ['route', 'destroy']) for (const legacy of ['new', 'absent', 'atMost']) {
+        const foe = 1 - chaos, side = chaos === 0 ? 'attacker' : 'defender', foeSide = foe === 0 ? 'attacker' : 'defender';
+        const factions = chaos === 0 ? ['космодесант-хаоса', 'имперская-гвардия'] : ['имперская-гвардия', 'космодесант-хаоса'];
+        let st = FS_RULES.newBattleTest({ seed: 27,
+            players: factions.map((faction, seat) => ({ faction, name: 'Игрок ' + seat, id: 'p' + seat })),
+            units: { [chaos === 0 ? 'культисты' : 'гвардейцы']: 2 },
+            foeUnits: { [chaos === 1 ? 'культисты' : 'гвардейцы']: 2 } });
+        st.players[foe].assets.reinforcement = 1;
+        for (const seat of [0, 1]) {
+            const r = FS_RULES.apply(st, seat, { type: 'combat', action: 'reinforce', count: seat === foe ? 1 : 0 });
+            if (!r.ok) throw new Error(r.error);
+        }
+        const name = op === 'route' ? 'Нечистые намерения' : 'Демоническая гибкость';
+        const card = ctx.FS_DATA.combat.find(c => c.faction === 'космодесант-хаоса' && c.name === name);
+        FS_RULES.runEffects(st, chaos, ctx.FS_EFFECTS.parse(card.unit, { kind: 'combat', faction: 'космодесант-хаоса' }),
+            { kind: 'combat', ctx: { side } });
+        if (!FS_RULES.apply(st, foe, { type: 'effect', answer: { yes: true } }).ok) return 'нет согласия';
+        if (st.pending?.question?.op !== op || st.pending.answerSeat !== foe) return 'цель не предложена противнику';
+        st = JSON.parse(JSON.stringify(st));
+        if (legacy === 'absent') delete st.pending.question.strictUnits;
+        if (legacy === 'atMost') st.pending.question.strictUnits = 'atMost';
+        if (legacy !== 'new') delete st.pending.steps[st.pending.index].strict;
+        const token = 'reinforce-' + foeSide + '-0', sent = [];
+        const game = Object.assign(Object.create(FS_GAME.prototype), {
+            state: FS_RULES.view(st, foe), effectPick: [], effectDie: null, refresh: nothing,
+            net: { cmd: cmd => { sent.push(cmd); const r = FS_RULES.apply(st, foe, cmd); if (!r.ok) throw new Error(r.error); } },
+        });
+        const draw = () => { const panel = { actions: [], title: '', text: '', status: '' }; game.panelQuestion(game.state, panel); return panel; };
+        let panel = draw();
+        if (panel.actions.find(a => a.kind === 'primary')?.enabled !== false) return 'пустой выбор можно подтвердить';
+        const tokenPick = panel.actions.find(a => a.kind === 'pick' && /Подкрепление/.test(a.label));
+        if (!tokenPick) return 'жетон отсутствует в списке';
+        tokenPick.onClick();
+        panel = draw();
+        const confirm = panel.actions.find(a => a.kind === 'primary');
+        if (!confirm?.enabled) return 'выбранный жетон нельзя подтвердить';
+        confirm.onClick();
+        if (JSON.stringify(sent[0]?.answer) !== JSON.stringify({ units: [token] })) return 'отправлена не та цель';
+        const slots = ctx.CombatTokens.of(st.combat);
+        if (op === 'route' ? !slots.flipped(foeSide).includes(0) : slots.alive(foeSide, 0)) return 'выбранный жетон не изменён';
+    }
+    return true;
+});
+
+screen('necron-resurrect-choice', '«Сфера воскрешения»: кнопки согласия и отказа для модели и жетона без платы кубиком', () => {
+    for (const necron of [0, 1]) for (const accept of [false, true]) for (const piece of ['model', 'token'])
+        for (const lethal of [false, true]) {
+        if (piece === 'model' && lethal) continue;
+        const factions = necron === 0 ? ['некроны', 'космодесант'] : ['космодесант', 'некроны'];
+        let st = FS_RULES.newBattleTest({ seed: 17,
+            players: factions.map((faction, seat) => ({ faction, name: 'Игрок ' + seat, id: 'p' + seat })),
+            units: { [necron === 0 ? 'воины' : 'скауты']: 3 },
+            foeUnits: { [necron === 1 ? 'воины' : 'скауты']: 3 } });
+        const apply = (seat, cmd) => {
+            const res = FS_RULES.apply(st, seat, cmd);
+            if (!res.ok) throw new Error(res.error || 'команда отклонена');
+        };
+        FS_RULES.keepEventScheme(st, necron, ctx.FS_DATA.events.find(c => c.faction === 'некроны' && c.name === 'Сфера воскрешения'));
+        if (piece === 'token') st.players[necron].assets.reinforcement = 1;
+        for (const seat of [0, 1]) apply(seat, { type: 'combat', action: 'reinforce',
+            count: piece === 'token' && seat === necron ? 1 : 0 });
+        const side = necron === 0 ? 'attacker' : 'defender';
+        st.combat.step = 'damage-' + side;
+        st.combat.dice[side] = []; st.combat.dice[necron === 0 ? 'defender' : 'attacker'] = Array(lethal ? 3 : 1).fill('att');
+        const unit = st.units.find(u => u.seat === necron);
+        const target = piece === 'token' ? 'reinforce-' + side + '-0' : unit.id;
+        const supply = st.players[necron].supply.units['воины'], assets = st.players[necron].assets.reinforcement;
+        apply(necron, { type: 'combat', action: 'damage', targets: [target] });
+        if (st.pending?.question?.op !== 'resurrectOffer') return 'нет настоящего вопроса плана';
+        st = JSON.parse(JSON.stringify(st));
+        const sent = [], game = Object.assign(Object.create(FS_GAME.prototype), {
+            state: FS_RULES.view(st, necron), effectPick: [], effectDie: null, refresh: nothing,
+            net: { cmd: cmd => { sent.push(cmd); apply(necron, cmd); } },
+        });
+        const panel = { actions: [], title: '', text: '', status: '' };
+        game.panelQuestion(game.state, panel);
+        if (panel.actions.some(a => /кубик/i.test(a.label) || a.icon === 'cube.morale')) return 'панель требует несуществующую плату кубиком';
+        const choice = panel.actions.find(a => accept ? /сбросить план/i.test(a.label) && !/не сбросить/i.test(a.label)
+            : /не сбросить план/i.test(a.label));
+        if (!choice) return 'нет отдельной кнопки согласия или отказа';
+        choice.onClick();
+        if (sent.length !== 1 || JSON.stringify(sent[0].answer) !== JSON.stringify(accept ? { yes: true } : { no: true })) return 'отправлен неверный ответ';
+        if (st.players[necron].schemes.length !== (accept ? 0 : 1)) return 'план сброшен вопреки решению';
+        if (piece === 'model' && st.units.find(u => u.id === unit.id)?.routed !== !accept) return 'отряд не соответствует решению';
+        if (piece === 'token') {
+            const token = ctx.CombatTokens.of(st.combat);
+            if (token.alive(side, 0) !== (accept || !lethal) || token.flipped(side).includes(0) !== (!accept && !lethal))
+                return 'жетон не соответствует решению';
+            if (st.players[necron].supply.units['воины'] !== supply || st.players[necron].assets.reinforcement !== assets)
+                return 'для жетона создана модель или выдан ресурс';
+        }
+        if (st.pending) return 'бой не продолжился';
+    }
+    return true;
+});
+
+screen('tau-evasion-fallen', '«Уклонение»: уничтоженные модель и подкрепление видны в списке и возвращаются через панель', () => {
+    for (const accept of [false, true]) {
+        let st = FS_RULES.newBattleTest({ seed: 13, players: [
+            { faction: 'империя-тау', name: 'Тау', id: 'p0' },
+            { faction: 'некроны', name: 'Некроны', id: 'p1' },
+        ], units: { 'воины-огня': 3 }, foeUnits: { 'воины': 3 } });
+        const apply = (seat, cmd) => {
+            const res = FS_RULES.apply(st, seat, cmd);
+            if (!res.ok) throw new Error(res.error || 'команда отклонена');
+        };
+        apply(0, { type: 'combat', action: 'reinforce', count: 1 });
+        apply(1, { type: 'combat', action: 'reinforce', count: 0 });
+        ctx.CombatPlans.of(st.combat).addRestoreFallen(0, 0);
+        st.combat.step = 'damage-attacker';
+        st.combat.dice.attacker = []; st.combat.dice.defender = ['att', 'att'];
+        const unit = st.units.find(u => u.seat === 0), token = 'reinforce-attacker-0';
+        const supply = st.players[0].supply.units['воины-огня'];
+        apply(0, { type: 'combat', action: 'damage', targets: [unit.id, token] });
+        if (st.pending?.question?.op !== 'restoreFallenOffer') return 'нет настоящего вопроса после урона';
+        st = JSON.parse(JSON.stringify(st));
+        const sent = [], game = Object.assign(Object.create(FS_GAME.prototype), {
+            state: FS_RULES.view(st, 0), effectPick: [], effectDie: null, refresh: nothing,
+            net: { cmd: cmd => { sent.push(cmd); apply(0, cmd); } },
+        });
+        const render = () => {
+            const panel = { actions: [], title: '', text: '', status: '' };
+            game.panelQuestion(game.state, panel);
+            return panel;
+        };
+        let panel = render();
+        const choices = panel.actions.filter(a => a.kind === 'pick');
+        if (choices.length !== 2) return 'уничтоженные модель и жетон не показаны в списке: ' + choices.map(a => a.label).join(', ');
+        if (!choices.some(a => /Воин/i.test(a.label) && !/подкреплен/i.test(a.label))) return 'нет названия уничтоженной модели';
+        if (!choices.some(a => /подкреплен/i.test(a.label))) return 'нет названия уничтоженного подкрепления';
+        if (accept) for (const choice of choices) choice.onClick();
+        panel = render();
+        if (panel.actions.filter(a => a.kind === 'pick' && a.selected).length !== (accept ? 2 : 0)) return 'выбор не сохранился при перерисовке';
+        panel.actions.find(a => a.kind === 'primary').onClick();
+        if (sent.length !== 1 || JSON.stringify(sent[0].answer.units) !== JSON.stringify(accept ? [unit.id, token] : [])) return 'панель отправила другой ответ';
+        if (st.pending) return 'ответ не продолжил бой';
+        if (st.players[0].supply.units['воины-огня'] !== supply + (accept ? 0 : 1)) return 'запас модели после ответа неверен';
+        if (ctx.CombatTokens.of(st.combat).units('attacker').alive !== (accept ? 1 : 0)) return 'жетон не вернулся или вернулся при отказе';
+    }
+    return true;
+});
+
+screen('tau-reinforce-ban', 'запрещённая сторона видит причину и автоматически проходит свой шаг без жетонов', () => {
+    for (const side of ['attacker', 'defender']) {
+        const st = FS_RULES.newBattleTest({ seed: 19, players: [
+            { faction: 'империя-тау', name: 'Тау', id: 'p0' },
+            { faction: 'некроны', name: 'Некроны', id: 'p1' },
+        ], units: { 'воины-огня': 2 }, foeUnits: { 'воины': 2 } });
+        const seat = side === 'attacker' ? 0 : 1;
+        st.combat.step = 'reinforce-' + side;
+        ctx.CombatBans.of(st.combat).forbidReinforce(seat, 'preparation');
+        const sent = [], timers = [];
+        const game = Object.assign(Object.create(FS_GAME.prototype), { state: FS_RULES.view(st, seat),
+            mode: 'idle', hand: [], reinforcePick: 0, autoReinforced: null,
+            net: { cmd: cmd => { sent.push(cmd); return FS_RULES.apply(st, seat, cmd); } } });
+        const oldTimer = ctx.setTimeout;
+        try {
+            ctx.setTimeout = fn => { timers.push(fn); };
+            const panel = { actions: [], status: '' };
+            game.panelCombat(game.state, panel);
+            game.panelCombat(game.state, { actions: [], status: '' });
+            if (!/запрещ/i.test(panel.text)) return 'нет понятной причины запрета';
+            if (panel.counter || panel.actions.some(a => /Начать бой/.test(a.label))) return 'запрещённой стороне предлагаются жетоны';
+            if (timers.length !== 1) return 'автопропуск послан несколько раз';
+            timers[0]();
+            if (sent.length !== 1 || sent[0].count !== 0) return 'автопропуск не отправил ноль';
+            if (st.players[seat].assets.reinforcement !== 2) return 'автопропуск потратил жетоны';
+        } finally { ctx.setTimeout = oldTimer; }
+    }
+    return true;
+});
+
+screen('tau-montka-preview', "«Монт'ка»: экран требует первую цель и показывает потерянный избыток без лишних целей", () => {
+    const st = FS_RULES.newBattleTest({ seed: 17, players: [
+        { faction: 'империя-тау', name: 'Тау', id: 'p0' },
+        { faction: 'некроны', name: 'Некроны', id: 'p1' },
+    ], units: { 'воины-огня': 2 }, foeUnits: { 'воины': 2 } });
+    for (const seat of [0, 1]) {
+        const res = FS_RULES.apply(st, seat, { type: 'combat', action: 'reinforce', count: 0 });
+        if (!res.ok) throw new Error(res.error);
+    }
+    const c = st.combat, [first, other] = st.units.filter(u => u.seat === 1);
+    c.step = 'damage-defender'; c.dice.attacker = Array(6).fill('att'); c.dice.defender = [];
+    const rules = ctx.CombatDamage.of(c);
+    rules.addFirst('defender', first.id, c.round);
+    rules.setExcess('defender', first.id, c.round);
+    const sent = [];
+    const game = Object.assign(Object.create(FS_GAME.prototype), { state: FS_RULES.view(st, 1),
+        damageTargets: [other.id], mode: 'idle', hand: [], refresh: nothing,
+        net: { cmd: cmd => { sent.push(cmd); return FS_RULES.apply(st, 1, cmd); } } });
+    const render = () => { const panel = { actions: [], status: '' }; game.panelCombat(game.state, panel); return panel; };
+    let panel = render();
+    if (!/перв/i.test(panel.status)) return 'не объяснено, какую цель выбрать первой';
+    if (panel.actions.find(a => a.kind === 'primary')?.enabled !== false) return 'можно подтвердить без обязательной цели';
+    game.damageTargets.push(first.id);
+    panel = render();
+    const firstRow = panel.battle.damage.rows.find(row => row.id === first.id);
+    const otherRow = panel.battle.damage.rows.find(row => row.id === other.id);
+    if (!firstRow?.destroyed || otherRow?.take || otherRow?.destroyed) return 'предпросмотр обещает урон не той цели или двум целям';
+    if (panel.battle.damage.left !== 0 || panel.battle.damage.discarded !== 3) return 'избыток не показан потерянным';
+    if (!/потер/i.test(panel.status)) return 'потерянный избыток не объяснён';
+    const confirm = panel.actions.find(a => a.kind === 'primary');
+    if (!confirm?.enabled) return 'нельзя подтвердить после выбора обязательной цели';
+    confirm.onClick();
+    if (sent.length !== 1 || st.units.some(u => u.id === first.id) || !st.units.some(u => u.id === other.id))
+        return 'фактический результат расходится с экраном';
+    return true;
+});
+
+screen('tau-philosophy-multi', '«Философия войны»: на экране выбираются две пары или ни одной, затем каждая заменяется', () => {
+    const players = [
+        { faction: 'империя-тау', name: 'Тау', id: 'p0' },
+        { faction: 'имперская-гвардия', name: 'Гвардия', id: 'p1' },
+    ];
+    const setup = () => {
+        const st = FS_RULES.newReadyGame({ seed: 5, players });
+        st.units = []; st.structures = []; st.storms = [];
+        const sys = st.systems[0], pos = sys.areas.find(a => a.world).pos;
+        FS_RULES.addUnit(st, 0, 'воины-огня', sys.id, pos);
+        FS_RULES.addUnit(st, 1, 'гвардейцы', sys.id, pos);
+        st.phase = 'operations'; st.turn = 0;
+        st.order = { seat: 0, order: 'advance', system: sys.id, phase: 'combat' };
+        const names = ['Стелс-команды', 'Команды следопытов', 'Тактическое отступление', 'Охотничьи стаи круутов', 'Перекрестный огонь'];
+        st.players[0].decks.combat = names.flatMap(name => [name, name]);
+        st.players[0].decks.upgradeCombat = ["Монт'ка", 'Кауйон'];
+        FS_RULES.keepEventScheme(st, 0, ctx.FS_DATA.events.find(c => c.faction === 'империя-тау' && c.name === 'Философия войны'));
+        FS_RULES.startCombat(st, 0, 1, sys.id, pos);
+        const yes = FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: 0 } });
+        if (!yes.ok || st.pending?.question?.op !== 'swapCombatCards') throw new Error('нет выбора пар');
+        return st;
+    };
+    for (const empty of [false, true]) {
+        let st = setup(), sent = [];
+        const game = Object.assign(Object.create(FS_GAME.prototype), { effectPick: [], effectDie: null, refresh: nothing,
+            net: { cmd: cmd => { sent.push(cmd); const r = FS_RULES.apply(st, 0, cmd); if (!r.ok) throw new Error(r.error); } } });
+        const render = () => {
+            game.state = FS_RULES.view(st, 0);
+            const panel = { actions: [], title: '', text: '', status: '', mode: 'idle' };
+            game.panelQuestion(game.state, panel); FSUI.update(game.state, panel);
+            return panel;
+        };
+        let panel = render();
+        if (!empty) {
+            for (const name of ['Стелс-команды', 'Команды следопытов']) {
+                const button = nodesWithClass(FSUI.modernRoot, 'fs-card-choice').find(n => textsOf(n).includes(name));
+                if (!button) return 'нет карточки «' + name + '»';
+                button.click();
+                if (sent.length) return 'первый клик отправил ответ вместо множественного выбора';
+                panel = render();
+                const selected = nodesWithClass(FSUI.modernRoot, 'fs-card-choice').find(n => textsOf(n).includes(name));
+                if (selected.getAttribute('aria-pressed') !== 'true') return 'выбор пары не отмечен';
+            }
+        }
+        const count = empty ? 0 : 2;
+        const apply = nodesWithClass(FSUI.modernRoot, 'fs-primary').find(n => textsOf(n).some(t => t.includes('(' + count + '/')));
+        if (!apply) return 'нет кнопки подтверждения ' + count + ' пар';
+        apply.click();
+        if (JSON.stringify(sent[0]?.answer?.cards) !== JSON.stringify(empty ? [] : ['Стелс-команды', 'Команды следопытов']))
+            return 'кнопка отправила неверный список пар';
+        if (empty) {
+            if (st.pending || st.combat.cards.attacker.hand.length !== 5) return 'пустой выбор не продолжил раздачу';
+            continue;
+        }
+        st = JSON.parse(JSON.stringify(st));
+        for (const name of ["Монт'ка", 'Кауйон']) {
+            panel = render();
+            const button = nodesWithClass(FSUI.modernRoot, 'fs-card-choice').find(n => textsOf(n).includes(name));
+            if (!button) return 'нет замены «' + name + '»';
+            button.click();
+        }
+        const all = st.players[0].decks.combat.concat(st.combat.cards.attacker.hand);
+        if (st.pending || all.filter(n => n === "Монт'ка" || n === 'Кауйон').length !== 4) return 'две замены не завершены';
+    }
+    return true;
+});
+
+screen('combat-immediate-retreat', 'после победы без подготовки защитник видит выбор отступления и может его подтвердить', () => {
+    let st = party('immediate-retreat');
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const s of st.systems) s.tokens = [];
+    st.phase = 'operations'; st.turn = 0;
+    let pair = null;
+    for (const sys of st.systems) for (const area of sys.areas.filter(a => a.world)) {
+        const target = FS_RULES.areasAround(st, sys.id, area.pos).find(a => {
+            const other = FS_RULES.area(FS_RULES.system(st, a.system), a.pos);
+            return other && other.world;
+        });
+        if (target && !pair) pair = { sys, pos: area.pos, target };
+    }
+    if (!pair) return 'для проверки нужны два соседних мира';
+    const { sys, pos, target } = pair;
+    FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, pos);
+    const defender = FS_RULES.addUnit(st, 1, 'воины', sys.id, pos);
+    defender.routed = true;
+    FS_RULES.addUnit(st, 1, 'воины', target.system, target.pos);
+    FS_RULES.addStructure(st, 1, 'factory', sys.id, pos);
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    st.order = { seat: 0, order: 'advance', system: sys.id, phase: 'move', moveStep: 'ground', moved: [], steps: [] };
+    const started = FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    if (!started.ok || !st.combat || st.combat.step !== 'retreat') return 'отступление не началось';
+    st = JSON.parse(JSON.stringify(st));
+    const clients = [0, 1].map(seat => {
+        const game = Object.create(FS_GAME.prototype);
+        Object.assign(game, { state: FS_RULES.view(st, seat), hand: [], mode: 'idle',
+            net: { cmd: cmd => FS_RULES.apply(st, seat, cmd) } });
+        return game;
+    });
+    const waiting = { actions: [] };
+    clients[0].panelCombat(clients[0].state, waiting);
+    if (!/Проигравший отступает/.test(waiting.text) || waiting.actions.length) return 'победитель не ожидает защитника';
+    const retreat = { actions: [] };
+    clients[1].panelCombat(clients[1].state, retreat);
+    const pick = retreat.actions.find(a => a.kind === 'pick' && a.label.endsWith(' · ' + target.pos));
+    if (!pick || clients[1].mode !== 'retreat') return 'защитнику не предложен дружественный мир';
+    pick.onClick();
+    const unit = st.units.find(u => u.id === defender.id);
+    if (!unit || unit.system !== target.system || unit.area !== target.pos || !unit.routed) return 'кнопка не отвела отряд';
+    if (st.combat || st.order || st.turn !== 1) return 'бой или приказ не закончился после отступления';
+    return true;
+});
+
+screen('mech-blessing-ui', '«Благословение»: подтверждение события обновляет запасы и кузницы на панели', () => {
+    const players = [
+        { faction: 'адептус-механикус', name: 'Мех', id: 'p0' },
+        { faction: 'имперская-гвардия', name: 'Гвардия', id: 'p1' },
+    ];
+    let st = FS_RULES.newReadyGame({ seed: 5, players });
+    st.phase = 'refresh';
+    st.eventsLeft = 2;
+    st.players[0].materiel = 3;
+    Object.assign(st.players[0].assets, { forge: 0, cache: 1, reinforcement: 0 });
+    const name = 'Благословение Бога-Машины';
+    st.event = { seat: 0, drawn: [name], chosen: name, stormMoved: true,
+        card: ctx.FS_DATA.events.find(e => e.faction === 'адептус-механикус' && e.name === name) };
+    st = JSON.parse(JSON.stringify(st));
+    const game = Object.create(FS_GAME.prototype);
+    Object.assign(game, { state: FS_RULES.view(st, 0), pending: null, status: '', mode: 'idle', refresh: nothing,
+        net: { cmd: cmd => {
+            const result = FS_RULES.apply(st, 0, cmd);
+            if (!result.ok) throw new Error(result.error);
+        } } });
+    const panel = { actions: [], title: '', text: '', status: '', mode: 'idle' };
+    game.panelRefresh(game.state, panel);
+    FSUI.update(game.state, panel);
+    const play = nodesWithClass(FSUI.modernRoot, 'fs-primary').find(b => textsOf(b).includes('Разыграть событие'));
+    if (!play) return 'нет кнопки разыгрывания';
+    play.click();
+    const confirm = nodesWithClass(FSUI.modernRoot, 'fs-event-modal-confirm')[0];
+    if (!confirm || !textsOf(FSUI.eventOverlay).includes(name)) return 'нет подтверждения с нужной картой';
+    confirm.click();
+    if (st.pending || st.players[0].materiel !== 3) return 'событие не завершено или изменило материю';
+    FSUI.update(FS_RULES.view(st, 0), SCREEN_CTX);
+    const chips = nodesWithClass(FSUI.modernRoot, 'fs-asset-chip');
+    const own = chips.slice(0, 3);
+    for (const [title, count] of [['Кузницы', '1'], ['Запасы', '2'], ['Подкрепления', '0']]) {
+        const chip = own.find(c => c.title === title);
+        if (!chip || !textsOf(chip).includes(count)) return title + ' не показывает ' + count;
+    }
+    return true;
+});
+
+screen('infiltrator-choices-ui', 'кнопки разведки скитариев различают кубики и жетоны и применяют выбранное', () => {
+    const players = [
+        { faction: 'адептус-механикус', name: 'Мех', id: 'p0' },
+        { faction: 'имперская-гвардия', name: 'Гвардия', id: 'p1' },
+    ];
+    let st = FS_RULES.newBattleTest({ seed: 5, players,
+        units: { 'скитарии': 2 }, foeUnits: { 'гвардейцы': 2 } });
+    st.combat.cards.attacker.hand = ['Скитарии-инфильтраторы'];
+    st.combat.cards.defender.hand = ['Ложись!'];
+    st.combat.dice.attacker = [];
+    const apply = (seat, cmd) => {
+        const res = FS_RULES.apply(st, seat, cmd);
+        if (!res.ok) throw new Error('команда экрана отклонена: ' + res.error);
+    };
+    apply(0, { type: 'combat', action: 'reinforce', count: 0 });
+    apply(1, { type: 'combat', action: 'reinforce', count: 0 });
+    apply(0, { type: 'combat', action: 'playCard', index: 0 });
+    apply(1, { type: 'combat', action: 'playCard', index: 0 });
+    apply(0, { type: 'effect', answer: {} }); // look at the opponent's card
+    st = JSON.parse(JSON.stringify(st));
+    const game = Object.create(FS_GAME.prototype);
+    Object.assign(game, { effectPick: [], effectDie: null, refresh: nothing,
+        net: { cmd: cmd => apply(0, cmd) } });
+    const render = () => {
+        game.state = FS_RULES.view(st, 0);
+        const panel = { actions: [], title: '', text: '', status: '', mode: 'idle' };
+        game.panelQuestion(game.state, panel);
+        FSUI.update(game.state, panel);
+        return panel;
+    };
+    const pick = label => {
+        const button = nodesWithClass(FSUI.modernRoot, 'fs-pick').find(n => textsOf(n).includes(label));
+        if (!button) throw new Error('нет кнопки «' + label + '»');
+        button.click();
+    };
+    let panel = render();
+    if (JSON.stringify(panel.actions.map(a => a.label)) !== JSON.stringify(['1 кубик обороны', '1 кубик атаки'])) {
+        return 'основной выбор не различает кубики: ' + JSON.stringify(panel.actions.map(a => a.label));
+    }
+    pick('1 кубик атаки');
+    if (st.combat.dice.attacker.filter(x => x === 'att').length !== 1) return 'кнопка не добавила кубик атаки';
+    if (st.pending && st.pending.question.kind === 'ability') apply(0, { type: 'effect', answer: {} });
+    st = JSON.parse(JSON.stringify(st));
+    panel = render();
+    if (JSON.stringify(panel.actions.map(a => a.label)) !== JSON.stringify(['1 кубик морали', '2 жетона атаки', '2 жетона обороны'])) {
+        return 'выбор отряда не различает кубик и жетоны: ' + JSON.stringify(panel.actions.map(a => a.label));
+    }
+    pick('2 жетона обороны');
+    if (st.combat.tokens.attacker.def !== 2) return 'кнопка не добавила два жетона обороны';
+    return true;
+});
+
+screen('mechanicus-mixed-choices-ui', 'выбор восстановления, жетона и броска кубика виден разными кнопками', () => {
+    const players = [
+        { faction: 'адептус-механикус', name: 'Мех', id: 'p0' },
+        { faction: 'имперская-гвардия', name: 'Гвардия', id: 'p1' },
+    ];
+    for (const scenario of [
+        { card: 'Техножрецы', expected: ['Восстановите 1 деморализованный отряд', '1 жетон обороны', '1 жетон атаки'],
+            choice: '1 жетон обороны', tokens: ['def', 1] },
+        { card: 'Превосходство машин', expected: ['1 кубик с броском', '2 жетона атаки'],
+            choice: '2 жетона атаки', tokens: ['att', 2] },
+    ]) {
+        let st = FS_RULES.newBattleTest({ seed: 5, players,
+            units: { 'скитарии': 2, 'онагры': 1 }, foeUnits: { 'гвардейцы': 2 } });
+        st.combat.cards.attacker.hand = [scenario.card];
+        st.combat.cards.defender.hand = ['Ложись!'];
+        st.combat.dice.attacker = [];
+        st.units.find(u => u.seat === 0 && u.unit === 'скитарии').routed = true;
+        const apply = (seat, cmd) => {
+            const res = FS_RULES.apply(st, seat, cmd);
+            if (!res.ok) throw new Error(scenario.card + ': команда отклонена: ' + res.error);
+        };
+        apply(0, { type: 'combat', action: 'reinforce', count: 0 });
+        apply(1, { type: 'combat', action: 'reinforce', count: 0 });
+        apply(0, { type: 'combat', action: 'playCard', index: 0 });
+        apply(1, { type: 'combat', action: 'playCard', index: 0 });
+        if (st.pending && st.pending.question.kind === 'ability') apply(0, { type: 'effect', answer: {} });
+        st = JSON.parse(JSON.stringify(st));
+        const game = Object.create(FS_GAME.prototype);
+        Object.assign(game, { effectPick: [], effectDie: null, refresh: nothing,
+            net: { cmd: cmd => apply(0, cmd) }, state: FS_RULES.view(st, 0) });
+        const panel = { actions: [], title: '', text: '', status: '', mode: 'idle' };
+        game.panelQuestion(game.state, panel);
+        FSUI.update(game.state, panel);
+        const labels = panel.actions.map(a => a.label);
+        if (JSON.stringify(labels) !== JSON.stringify(scenario.expected)) return scenario.card + ': ' + JSON.stringify(labels);
+        const button = nodesWithClass(FSUI.modernRoot, 'fs-pick').find(n => textsOf(n).includes(scenario.choice));
+        if (!button) return scenario.card + ': нет кнопки «' + scenario.choice + '»';
+        button.click();
+        if (st.combat.tokens.attacker[scenario.tokens[0]] !== scenario.tokens[1]) return scenario.card + ': выбранный жетон не получен';
+    }
+    return true;
+});
+
+screen('strike-pay-ui', 'реальные улучшения одного удара проходят через кнопки панели и JSON', () => {
+    const players = [
+        { faction: 'тираниды', name: 'Рой', id: 'p0' },
+        { faction: 'имперская-гвардия', name: 'Защитник', id: 'p1' },
+    ];
+    let st = FS_RULES.newReadyGame({ seed: 5, players });
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const s of st.systems) s.tokens = [];
+    st.phase = 'operations'; st.turn = 0; st.order = null;
+    const sys = st.systems[0], space = sys.areas.find(a => !a.world);
+    const world = FS_RULES.areasAround(st, sys.id, space.pos)
+        .map(a => FS_RULES.area(FS_RULES.system(st, a.system), a.pos)).find(a => a && a.world);
+    if (!space || !world) return 'для проверки нужны пустота и соседний мир';
+    FS_RULES.addUnit(st, 0, 'корабли-ульи', sys.id, space.pos);
+    FS_RULES.addUnit(st, 0, 'корабли-ульи', sys.id, space.pos);
+    FS_RULES.addStructure(st, 1, 'factory', sys.id, world.pos);
+    st.players[0].materiel = 14;
+    st.players[0].assets.reinforcement = 0;
+    st.players[0].upgrades = ['Мицетические споры', 'Камери размножения', 'Разведка генокрадов']
+        .map(name => ({ name, used: false }));
+    sys.tokens.push({ seat: 0, order: 'advance', faceUp: false });
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    const roll = FS_RULES.rollDice;
+    FS_RULES.rollDice = (state, n) => Array(n).fill('att');
+    try {
+        const apply = cmd => {
+            const res = FS_RULES.apply(st, 0, cmd);
+            if (!res.ok) throw new Error('команда экрана отклонена: ' + res.error);
+        };
+        apply({ type: 'resolveOrder', system: sys.id });
+        st.order.phase = 'strike';
+        apply({ type: 'useUpgrade', card: 'Мицетические споры' });
+        apply({ type: 'useUpgrade', card: 'Разведка генокрадов' });
+        apply({ type: 'orbitalStrike', system: sys.id, pos: world.pos });
+        const game = Object.create(FS_GAME.prototype);
+        Object.assign(game, { effectPick: [], effectDie: null, refresh: nothing, net: { cmd: apply } });
+        const render = () => {
+            game.state = FS_RULES.view(st, 0);
+            const panel = { actions: [], title: '', text: '', status: '', mode: 'idle' };
+            game.panelQuestion(game.state, panel);
+            FSUI.update(game.state, panel);
+            return panel;
+        };
+        const button = label => {
+            let found = null;
+            (function visit(n) {
+                if (found || !n) return;
+                if (n.tagName === 'BUTTON' && textsOf(n).includes(label)) { found = n; return; }
+                for (const child of n.children || []) visit(child);
+            })(FSUI.modernRoot);
+            if (!found) throw new Error('на панели нет кнопки «' + label + '»');
+            found.click();
+        };
+        render();
+        button('2 кубика');
+        if (!st.pending || st.pending.question.kind !== 'types') return 'первая плата не открыла покупку';
+        st = JSON.parse(JSON.stringify(st));
+        render(); button('Гаунты');
+        if (!st.pending || st.pending.question.kind !== 'areas') return 'выбор модели не открыл мир';
+        st = JSON.parse(JSON.stringify(st));
+        const panel = render();
+        const destination = panel.actions.find(a => a.kind === 'pick');
+        if (!destination) return 'панель не предлагает мир удара';
+        button(destination.label);
+        if (!st.pending || st.pending.question.op !== 'strikePayPick' || st.pending.question.index !== 1) {
+            return 'после покупки не показана вторая плата';
+        }
+        if (st.order.strikePlanned.pool.length !== 5) return 'кубики первой платы не убраны из общего пула';
+        st = JSON.parse(JSON.stringify(st));
+        render(); button('2 кубика');
+        if (st.pending || st.players[0].assets.reinforcement !== 2 || st.players[0].materiel !== 10) {
+            return 'плата или награды после второго выбора неверны';
+        }
+        if (st.units.filter(u => u.seat === 0 && u.system === sys.id && u.area === world.pos).length !== 2) {
+            return 'на мире удара нет двух купленных отрядов';
+        }
+        return true;
+    } finally {
+        FS_RULES.rollDice = roll;
+    }
+});
+
+screen('strike-structure-ui', 'защитник выбирает бастион как цель эффекта; атакующий и поддельный ответ отклоняются', () => {
+    const players = [
+        { faction: 'космодесант-хаоса', name: 'Хаос', id: 'p0' },
+        { faction: 'имперская-гвардия', name: 'Гвардия', id: 'p1' },
+    ];
+    let st = FS_RULES.newReadyGame({ seed: 5, players });
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const s of st.systems) s.tokens = [];
+    st.phase = 'operations'; st.turn = 0; st.order = null;
+    const sys = st.systems[0], space = sys.areas.find(a => !a.world);
+    const world = space && FS_RULES.areasAround(st, sys.id, space.pos)
+        .filter(a => a.system === sys.id).map(a => FS_RULES.area(sys, a.pos)).find(a => a && a.world);
+    if (!space || !world) return 'для проверки нужны пустота и соседний мир';
+    FS_RULES.addUnit(st, 0, 'эсминцы-класса-иконоборец', sys.id, space.pos);
+    const victim = FS_RULES.addUnit(st, 1, 'гвардейцы', sys.id, world.pos);
+    const bastion = FS_RULES.addStructure(st, 1, 'bastion', sys.id, world.pos);
+    st.players[0].upgrades = [{ name: 'Полное разрушение', used: false }];
+    sys.tokens.push({ seat: 0, order: 'advance', faceUp: false });
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    const roll = FS_RULES.rollDice;
+    FS_RULES.rollDice = (state, n) => Array(n).fill('def');
+    try {
+        const apply = (seat, cmd) => {
+            const res = FS_RULES.apply(st, seat, cmd);
+            if (!res.ok) throw new Error('команда экрана отклонена: ' + res.error);
+        };
+        apply(0, { type: 'resolveOrder', system: sys.id });
+        st.order.phase = 'strike';
+        apply(0, { type: 'useUpgrade', card: 'Полное разрушение' });
+        apply(0, { type: 'orbitalStrike', system: sys.id, pos: world.pos });
+        apply(0, { type: 'effect', answer: { choice: 1 } });
+        if (!st.pending || st.pending.question.op !== 'strikeDestroyOne') return 'не задан вопрос защитнику';
+        if (FS_RULES.apply(st, 0, { type: 'effect', answer: { units: [bastion.id] } }).ok) return 'атакующий отвечает за защитника';
+        if (FS_RULES.apply(st, 1, { type: 'effect', answer: { units: ['чужая-цель'] } }).ok) return 'поддельная цель принята';
+        st = JSON.parse(JSON.stringify(st));
+        const game = seat => Object.assign(Object.create(FS_GAME.prototype), {
+            state: FS_RULES.view(st, seat), effectPick: [], effectDie: null, refresh: nothing,
+            net: { cmd: cmd => apply(seat, cmd) },
+        });
+        const attacker = game(0), defender = game(1);
+        const wait = { actions: [] };
+        attacker.panelQuestion(attacker.state, wait);
+        if (wait.actions.length || !/Ждём/.test(wait.status)) return 'атакующий не видит ожидание';
+        const render = () => {
+            defender.state = FS_RULES.view(st, 1);
+            const panel = { actions: [], title: '', text: '', status: '', mode: 'idle' };
+            defender.panelQuestion(defender.state, panel);
+            FSUI.update(defender.state, panel);
+            return panel;
+        };
+        const button = label => {
+            let found = null;
+            (function visit(n) {
+                if (found || !n) return;
+                if (n.tagName === 'BUTTON' && textsOf(n).includes(label)) { found = n; return; }
+                for (const child of n.children || []) visit(child);
+            })(FSUI.modernRoot);
+            if (!found) throw new Error('на панели нет кнопки «' + label + '»');
+            found.click();
+        };
+        const panel = render();
+        const pick = panel.actions.find(a => a.label === FS_RULES.structureName('bastion'));
+        if (!pick || !panel.actions.some(a => /Гвардейцы/i.test(a.label))) return 'панель не показывает обе допустимые цели';
+        button(pick.label);
+        render(); button('Применить (1/1)');
+        if (st.structures.some(s => s.id === bastion.id)) return 'бастион не уничтожен';
+        if (!st.units.some(u => u.id === victim.id)) return 'вместо бастиона уничтожен отряд';
+        return true;
+    } finally {
+        FS_RULES.rollDice = roll;
+    }
+});
+
 head('Бой: плашки здоровья под миньками');
 
 function chipBattle(seed) {
@@ -1841,6 +2900,28 @@ const chipItem = (key, x, y, z) => ({ key, x, y, z, hp: 3, morale: 2, label: key
 const closePx = (a, b) => Number.isFinite(a) && Math.abs(a - b) < 0.15;
 
 head('Модели деморализованных отрядов');
+
+screen('mech-models-ui', 'шесть моделей Механикус соответствуют файлу начальных сил', () => {
+    const folder = 'Warhammer/Адептус механикус/';
+    const source = fs.readFileSync(path.join(ROOT, folder, 'Начальные силы.txt'), 'utf8');
+    const listed = new Map();
+    for (const line of source.split(/\r?\n/)) {
+        const match = /^\d+\s+(.+?)\s+-\s+(.+\.obj)$/.exec(line.trim());
+        if (match) listed.set(match[1], match[2]);
+    }
+    const names = {
+        'скитарии': 'скитарии', 'крепкие-крейсеры': 'крейсеры', 'катафроны': 'катафоны',
+        'онагры': 'онагры', 'боевые-ковчеги': 'боевые ковчеги', 'тяжелые-титаны': 'титана',
+    };
+    const models = FS_VIEW.FACTION_UNIT_MODELS['адептус-механикус'];
+    if (listed.size !== 6 || !models || Object.keys(models).length !== 6) return 'ожидались шесть сопоставлений моделей';
+    for (const [unit, sourceName] of Object.entries(names)) {
+        const spec = models[unit], filename = listed.get(sourceName);
+        if (!spec || spec[0] !== folder || spec[1] !== filename) return 'не совпадает модель: ' + unit;
+        if (!fs.existsSync(path.join(ROOT, folder, filename))) return 'нет файла модели: ' + unit;
+    }
+    return true;
+});
 
 screen('unit-model-1', 'своя модель и окраска лежат на поверхности, выбираются и встают обратно', () => {
     return chipScene({}, ({ B, scene, view }) => {

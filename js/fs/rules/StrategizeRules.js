@@ -27,7 +27,8 @@ class StrategizeRules {
         const order = this.engine.orderOf(state, seat, 'strategize');
         if (!order) return { ok: false, error: 'Сейчас нельзя покупать улучшения.' };
         const p = state.players[seat];
-        if (!this.engine.hasUnitsOrStructures(state, seat, OrderContext.of(order).system)) {
+        if (!OrderDeal.of(order).emptyStrategize
+            && !this.engine.hasUnitsOrStructures(state, seat, OrderContext.of(order).system)) {
             return { ok: false, error: 'В активной системе нет ваших отрядов и построек.' };
         }
         const upgrades = UpgradeOrder.of(order);
@@ -47,7 +48,7 @@ class StrategizeRules {
             const deck = FS_CARDS.combatDeck(this.engine, state, seat);
             if (deck.count(card.name) >= 2) return { ok: false, error: 'Эта карта улучшения уже есть у вас в колоде.' };
             const pile = deck.upgradePile();
-            if (pile.length && !pile.includes(card.name)) return { ok: false, error: 'Этой карты нет в колоде улучшений.' };
+            if (!pile.includes(card.name)) return { ok: false, error: 'Этой карты нет в колоде улучшений.' };
             // Which pair leaves the deck is the player's choice and nobody
             // else's: the rule replaces two copies of one card, and both pairs
             // are equally legal. The engine used to pick the first legal pair

@@ -79,6 +79,15 @@ class DeployRules {
         return sys.areas.some(a => this.deployWorlds(state, seat, systemId, a.pos).length > 0);
     }
 
+    /** The printed forge cost and the optional token that lowers command level. */
+    effectUnitForgeCost(state, seat, def, bypassCommandLevel) {
+        const level = this.engine.commandLevel(state, seat);
+        const above = bypassCommandLevel ? 0 : Math.max(0, (def.kl || 0) - level);
+        if (above > 1) return null;
+        const cost = (def.forge ? 1 : 0) + above;
+        return this.engine.player(state, seat).assetCount('forge') >= cost ? cost : null;
+    }
+
     canPlaceUnit(state, seat, systemId, pos, def) {
         const sys = this.engine.system(state, systemId);
         const area = this.engine.area(sys, pos);
@@ -93,12 +102,8 @@ class DeployRules {
         const theirs = state.units.some(u => u.system === systemId && u.area === pos && u.seat !== seat)
             || state.structures.some(st => st.seat !== seat && st.system === systemId && st.area === pos);
         if (theirs) return { ok: false, error: 'Нельзя развёртывать в чужую область.' };
-        // «… can never end the movement with more than five units in a single
-        // area»: the capacity may be exceeded by a deploy, the plastic of the
-        // area may not. One question for every way a unit arrives.
-        if (!this.engine.hasRoom(state, systemId, pos, seat, 1)) {
-            return { ok: false, error: this.engine.unitLimitText() };
-        }
+        // The five-unit restriction applies to Advance movement, not Deploy
+        // or placement. Excess over the printed capacity is resolved afterwards.
         return { ok: true };
     }
 
@@ -140,7 +145,7 @@ class DeployRules {
 
     spentOf(order) {
         const purchases = Purchases.of(order);
-        return purchases ? purchases.spent : 0;
+        return purchases ? OrderDeal.of(order).totalAfterDiscount(purchases.spent) : 0;
     }
 
     /**
@@ -184,18 +189,15 @@ class DeployRules {
         const order = state.order || {};
         const p = state.players[seat] || {};
         const o = opts || {};
-        if (o.cheap) return 1;
         const deal = OrderDeal.of(order);
-        let cost = def.cost || 0;
-        if (deal.unitDiscount) cost = Math.max(0, cost - deal.unitDiscount);
-        // «уменьшить общую цену всех покупок (включая здания) на 1».
-        if (deal.purchaseDiscount) cost = Math.max(0, cost - deal.purchaseDiscount);
-        if (o.pairMate) return 0;
+        let cost = o.cheap ? 1 : (def.cost || 0);
+        if (!o.cheap && deal.unitDiscount) cost = Math.max(0, cost - deal.unitDiscount);
+        if (o.pairMate) cost = 0;
         if (o.cache) cost = Math.max(0, cost - FS_RULES_CONFIG.CACHE_VALUE);
         // The order may sell a unit of command level 0 for 1 materiel.
         if (deal.cheapPrice && def.kl === 0) cost = Math.min(cost, deal.cheapPrice);
         if (p.cardDiscount) cost = Math.max(0, cost - p.cardDiscount);
-        return cost;
+        return o.raw ? cost : deal.marginalPrice(cost);
     }
 
     /** What one structure costs this order: the printed price less a cache token and the discounts. */
@@ -204,9 +206,8 @@ class DeployRules {
         const o = opts || {};
         const deal = OrderDeal.of(order);
         const stats = this.engine.structureStats(type);
-        let cost = Math.max(0, (stats.cost || 0) - (o.cache ? FS_RULES_CONFIG.CACHE_VALUE : 0));
-        if (deal.purchaseDiscount) cost = Math.max(0, cost - deal.purchaseDiscount);
-        return cost;
+        const cost = Math.max(0, (stats.cost || 0) - (o.cache ? FS_RULES_CONFIG.CACHE_VALUE : 0));
+        return o.raw ? cost : deal.marginalPrice(cost);
     }
 
     cmdBuyUnit(state, seat, cmd) {
@@ -309,6 +310,7 @@ class DeployRules {
             if (cache && !pairMate && buyer.assetCount('cache') < 1) return { ok: false, error: 'Нет жетона тайника.' };
         }
         const cost = this.unitPrice(state, seat, def, { cache, pairMate, cheap });
+        const rawCost = this.unitPrice(state, seat, def, { cache, pairMate, cheap, raw: true });
         if (def.forge && buyer.assetCount('forge') < (forgeKl ? 1 : 0) + 1) return { ok: false, error: 'Нужен жетон кузницы.' };
         if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
         // The tokens are paid at once, the materiel — at the end of the order.
@@ -326,7 +328,7 @@ class DeployRules {
         // JSON.stringify («Converting circular structure to JSON») при первой
         // же покупке пары, а с ней — на любой команде, включая «закончить».
         Purchases.of(order).add({
-            kind: 'unit', id: unit.id, def: def.id, name: def.name, cost,
+            kind: 'unit', id: unit.id, def: def.id, name: def.name, cost: rawCost,
             forge: !!def.forge, forgeKl, cache, deal: !!supplyDeal,
         });
         return { ok: true };
@@ -357,13 +359,17 @@ class DeployRules {
         const builder = this.engine.player(state, seat);
         if (cache && builder.assetCount('cache') < 1) return { ok: false, error: 'Нет жетона тайника.' };
         const cost = free ? 0 : this.structurePrice(state, seat, type, { cache });
+        const rawCost = free ? 0 : this.structurePrice(state, seat, type, { cache, raw: true });
         if (this.spentOf(order) + cost > p.materiel) return { ok: false, error: 'Не хватает материи.' };
-        const place = this.canPlaceStructure(state, seat, cmd.system, cmd.pos);
+        const place = this.canPlaceStructure(state, seat, cmd.system, cmd.pos, {
+            allowOccupied: OrderDeal.of(order).occupiedStructure ? 'otherType' : false,
+            kind: type,
+        });
         if (!place.ok) return place;
         if (cache) builder.payAsset('cache', 1);
         const structure = this.engine.addStructure(state, seat, type, cmd.system, cmd.pos);
         this.engine.log(state, seat, p.name + ' построил: ' + this.engine.structureName(type) + '.');
-        Purchases.of(order).add({ kind: 'structure', id: structure.id, type, name: this.engine.structureName(type), cost, cache });
+        Purchases.of(order).add({ kind: 'structure', id: structure.id, type, name: this.engine.structureName(type), cost: rawCost, cache });
         return { ok: true };
     }
 
@@ -373,6 +379,7 @@ class DeployRules {
         if (!order || (!OrderContext.of(order).isKind('deploy') && !isGuard) || !OrderContext.of(order).isSeat(seat)) return { ok: false, error: 'Нечего отменять.' };
         const purchases = Purchases.of(order);
         const p = state.players[seat];
+        const before = this.spentOf(order);
         const entry = purchases.find(cmd);
         if (!entry) return { ok: false, error: 'В этом приказе ещё ничего не куплено.' };
         if (entry.kind === 'unit') {
@@ -392,7 +399,7 @@ class DeployRules {
         // «одного типа» — the lock follows what is on the board.
         if (isGuard && purchases.empty) scope.unlock();
         this.engine.log(state, seat, p.name + ' отменил покупку: ' + entry.name + '.');
-        return { ok: true, refunded: entry.cost };
+        return { ok: true, refunded: before - this.spentOf(order) };
     }
 
     cmdDeployStructures(state, seat) {
@@ -417,7 +424,10 @@ class DeployRules {
         const purchases = Purchases.of(order);
         for (const entry of purchases.list) {
             if (!entry.cost) continue;
-            this.engine.log(state, seat, p.name + ' платит ' + entry.cost + ' материи за «' + entry.name + '».');
+            this.engine.log(state, seat, 'Стоимость «' + entry.name + '»: ' + entry.cost + ' материи.');
+        }
+        if (purchases.spent !== total) {
+            this.engine.log(state, seat, p.name + ' платит ' + total + ' материи за покупки с общей скидкой.');
         }
         PhasePlan.of(order).set('done');
         this.engine.finishOrder(state, seat);
@@ -495,6 +505,20 @@ class DeployRules {
         const left = this.engine.unitsAt(state, entry.system, entry.pos).filter(u => u.seat === seat).length;
         const cap = this.engine.capacity(state, entry.system, entry.pos);
         queue.settle(seat, entry.system, entry.pos, left, cap);
+        if (state.effectCombatTrimOwner !== undefined && !queue.any()) {
+            const owner = state.effectCombatTrimOwner;
+            delete state.effectCombatTrimOwner;
+            this.engine.finishOrder(state, owner);
+        } else if (state.quickResponseTrimPending && !queue.any()) {
+            delete state.quickResponseTrimPending;
+            this.engine.resumeQuickResponse(state, seat);
+        } else if (state.orderTrimPending && !queue.any()) {
+            delete state.orderTrimPending;
+            this.engine.nextTurn(state);
+        } else if (state.eventTrimPending && !queue.any()) {
+            delete state.eventTrimPending;
+            this.engine.endRound(state);
+        }
         return { ok: true, left: Math.max(0, left - cap) };
     }
 

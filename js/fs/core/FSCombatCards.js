@@ -180,7 +180,10 @@ class CombatCards {
      * of the other side, so the side is not kept with it.
      */
     peeked(seat) {
-        const name = this.combat.peek && this.combat.peek[seat];
+        const peek = this.combat.peek;
+        // The authoritative state is indexed by seat; a network view contains
+        // only that viewer's peek, redacted to { name } by hideFrom().
+        const name = peek && (peek[seat] || peek.name);
         return name ? { name } : null;
     }
 
@@ -190,6 +193,12 @@ class CombatCards {
         if (!this.combat.peek) this.combat.peek = {};
         this.combat.peek[seat] = name || null;
         return this.combat.peek[seat];
+    }
+
+    /** A peek belongs to one round, not the next face-down card. */
+    clearPeek() {
+        this.combat.peek = {};
+        return this;
     }
 
     /**

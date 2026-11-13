@@ -99,14 +99,11 @@ class Board {
         return (this.state.structures || []).filter(s => s.system === systemId);
     }
 
-    /**
-     * The seats that can fight for an area: units and bastions. A factory or a
-     * city never holds the field on its own — it cannot open a battle.
-     */
+    /** Every faction with units or structures here can make the area contested. */
     warSeatsAt(systemId, pos) {
         const seats = new Set();
         for (const u of this.unitsAt(systemId, pos)) seats.add(u.seat);
-        for (const s of this.structuresAt(systemId, pos)) if (s.type === 'bastion') seats.add(s.seat);
+        for (const s of this.structuresAt(systemId, pos)) seats.add(s.seat);
         return seats;
     }
 
@@ -126,11 +123,7 @@ class Board {
         return theirs ? 'contested' : 'friendly';
     }
 
-    /**
-     * The state of an area as the rules name it: friendly, enemy, uncontrolled
-     * or contested. Contested is decided by the pieces that can fight, so a
-     * lone enemy factory does not make a battle.
-     */
+    /** The state of an area: friendly, enemy, uncontrolled or contested. */
     areaState(seat, systemId, pos) {
         if (this.warSeatsAt(systemId, pos).size > 1) return 'contested';
         const mine = this.unitsAt(systemId, pos).some(u => u.seat === seat)
@@ -148,7 +141,7 @@ class Board {
     }
 
 
-    /** Every area where at least two seats can fight. */
+    /** Every area containing pieces of at least two factions. */
     contestedAreas() {
         const out = [];
         for (const sys of this.systems) {
@@ -181,10 +174,23 @@ class Board {
             pos: dest.pos !== undefined ? dest.pos : (dest.area !== undefined ? dest.area : from.pos),
         };
         if (o.note !== false) {
-            MarchTrail.of(this.state).record(o.seat !== undefined ? o.seat : piece.seat, from, to);
+            MarchTrail.of(this.state).record(o.seat !== undefined ? o.seat : piece.seat, from, to, piece.id);
         }
         piece.system = to.system;
         piece.area = to.pos;
+        // A reinforcement token moved out of combat is represented as a board
+        // unit until cleanup. If another effect brings it back, its original
+        // token slot becomes the sole representation in the contested area.
+        const combat = this.state.combat;
+        const token = piece.reinforcementCombat;
+        if (combat && token && BattleField.of(combat).is(to.system, to.pos)) {
+            const tokens = CombatTokens.of(combat);
+            if (tokens.returnToBattle(token.side, token.index)) {
+                if (piece.routed) tokens.route(token.side, token.index);
+                const at = this.state.units.indexOf(piece);
+                if (at >= 0) this.state.units.splice(at, 1);
+            }
+        }
         return { from, to };
     }
 
@@ -196,12 +202,9 @@ class Board {
     // --- capacity -------------------------------------------------------------
 
     /**
-     * The plastic of an area: how many units of ONE player may stand there.
-     * «… can never end the movement with more than five units in a single
-     * area» — the same five for every way a unit arrives (a march, a retreat,
-     * a free placement of a card, a reinforcement). The printed skulls of a
-     * world are its capacity (see `capacity`), which a player may exceed — this
-     * is the hard limit he may not.
+     * How many more units of ONE player can finish an Advance movement here.
+     * The five-unit movement limit is distinct from the printed area capacity;
+     * it does not prohibit deploying or placing free units above five.
      * @param {string} systemId @param {string} pos @param {number} [seat] whose units
      */
     unitLimit(systemId, pos, seat) {
@@ -215,6 +218,21 @@ class Board {
     /** Is there room for `n` more units of `seat` in the area? */
     hasRoom(systemId, pos, seat, n) {
         return this.unitLimit(systemId, pos, seat) >= (n || 1);
+    }
+
+    /**
+     * The units of a player that will still stand here when the current combat
+     * is cleaned up: the temporary pieces of its reinforcement tokens go back
+     * to the supply before any battle that follows.
+     */
+    lastingUnitsAt(systemId, pos, seat) {
+        return this.unitsAt(systemId, pos).filter(u => u.seat === seat && !u.reinforcementCombat);
+    }
+
+    /** Will `n` more lasting units of `seat` fit under the five-unit limit once the combat is cleaned up? */
+    hasLastingRoom(systemId, pos, seat, n) {
+        if (!this.area(systemId, pos)) return false;
+        return FS_RULES_CONFIG.AREA_MAX_UNITS - this.lastingUnitsAt(systemId, pos, seat).length >= (n || 0);
     }
 
     /**
@@ -303,6 +321,12 @@ class Board {
         const plan = order ? MarchPlan.of(order) : null;
         const march = opts && opts.uncontrolled === false ? 0
             : (plan ? plan.uncontrolledLeft : 0);
+        // «Орочьи корабли»: ONE empty void is friendly for up to N units of
+        // the order. A path walks through at most one such void, and once a
+        // passage is paid only the voids consistent with it remain.
+        const move = order ? OrderMove.of(order) : null;
+        const pass = opts && opts.passVoid === false ? 0 : (move ? move.passVoidLeft : 0);
+        const voidOnly = opts && opts.voidOnly ? [opts.voidOnly] : (move ? move.passVoidAreas : null);
         /** @type {Map<string, number>} */
         const seen = new Map([[fromSystem + ':' + fromPos, 0]]);
         const queue = [{ system: fromSystem, pos: fromPos, voids: 0 }];
@@ -320,9 +344,9 @@ class Board {
                     && !this.unitsAt(next.system, next.pos).length
                     && !this.structuresAt(next.system, next.pos).length;
                 if (control !== 'friendly' && !byMarch) {
-                    // Some orders let the units pass through empty voids.
-                    const pass = order ? OrderMove.of(order).passVoid : 0;
-                    if (!pass || !area || area.world || voids >= pass
+                    // The one empty void the card opens — once per path.
+                    if (!pass || !area || area.world || voids >= 1
+                        || (voidOnly && !voidOnly.includes(key))
                         || this.unitsAt(next.system, next.pos).length
                         || this.structuresAt(next.system, next.pos).length) continue;
                     voids++;

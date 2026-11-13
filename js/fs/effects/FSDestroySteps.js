@@ -18,22 +18,52 @@ class DestroySteps {
     }
 
     static destroy(effects, f) {
-        const { R, state, step, answer, units } = f;
+        const { R, state, step, answer, units, combat, inCombat, target } = f;
+        if (combat && effects.combatWorldLowDestroy(step)) {
+            const id = (answer.units || [])[0];
+            if (!effects.combatWorldLowTargets(R, state, combat, target).includes(id)) {
+                return { ok: false, error: 'Цель больше не находится в мире боя.' };
+            }
+            const victim = state.units.find(u => u.id === id);
+            const def = victim ? R.unitOf(state, victim) : R.reinforceTokenDef(state, CombatSides.sideOf(combat, target));
+            if (victim) R.destroyUnit(state, victim);
+            else {
+                const side = CombatSides.sideOf(combat, target);
+                const index = CombatTokens.of(combat).indexOf(side, id);
+                if (index < 0 || !R.destroyReinforcementToken(state, side, index, true)) {
+                    return { ok: false, error: 'Подкрепление больше не находится в бою.' };
+                }
+            }
+            step.done = true;
+            step.destroyedDefs = def ? [def] : [];
+            step.destroyedCount = 1;
+            return null;
+        }
         const dead = units(answer.units);
+        const tokenTargets = [];
+        if (inCombat && combat) for (const id of answer.units || []) {
+            // Moved reinforcement tokens are already represented in state.units.
+            if (typeof id !== 'string' || !id.startsWith('reinforce-') || dead.some(u => u.id === id)) continue;
+            const tokens = CombatTokens.of(combat);
+            const side = ['attacker', 'defender'].find(s => tokens.indexOf(s, id) >= 0);
+            const index = side ? tokens.indexOf(side, id) : -1;
+            if (index < 0) return { ok: false, error: 'Подкрепление больше не находится в бою.' };
+            tokenTargets.push({ side, index, def: R.reinforceTokenDef(state, side) });
+        }
         // «Задетый варпом» counts the storms on the borders of the
         // system the destroyed cultist stood in.
-        if (step.recordSystem && dead.length) {
-            StormPhase.of(state).markLastSystem(dead[0].system);
-            step.destroyedSystem = dead[0].system;
+        const system = dead.length ? dead[0].system : (tokenTargets.length ? BattleField.of(combat).system : null);
+        if (step.recordSystem && system) {
+            StormPhase.of(state).markLastSystem(system);
+            step.destroyedSystem = system;
         }
+        const defs = dead.map(u => R.unitOf(state, u)).concat(tokenTargets.map(t => t.def)).filter(Boolean);
         for (const u of dead) R.destroyUnit(state, u);
-        step.done = dead.length > 0;
-        // «…материалы, равные ЕГО стоимости»: the steps after this one may need
-        // the very unit that died — its value and its health, in the defs.
-        step.destroyedDefs = dead.map(u => R.unitOf(state, u)).filter(Boolean);
-        // «… чтобы противник потерял 2 кубика за каждого уничтоженного
-        // Гвардейца» — the next steps count what this one destroyed.
-        step.destroyedCount = dead.length;
+        for (const t of tokenTargets) R.destroyReinforcementToken(state, t.side, t.index, true);
+        step.done = dead.length + tokenTargets.length > 0;
+        // The actual printed profile of each loss is used by subsequent steps.
+        step.destroyedDefs = defs;
+        step.destroyedCount = dead.length + tokenTargets.length;
         return null;
     }
 
@@ -73,22 +103,41 @@ class DestroySteps {
     }
 
     static destroyDamagedFoe(effects, f) {
-        const { R, state, seat, step, answer, p, units } = f;
+        const { R, state, seat, step, answer, p, combat, units } = f;
         if (answer.no) return null;
+        const id = (answer.units || [])[0];
         const u = units(answer.units)[0];
-        if (!u || u.seat === seat) return null;
-        R.destroyUnit(state, u);
+        if (u && u.seat !== seat) {
+            // A nonlethal hit may have already recorded this routed unit for a
+            // later restoration. If the plan destroys it, retain that fact.
+            const plans = combat && CombatPlans.of(combat);
+            if (plans) {
+                for (const record of plans.fallen(u.seat).concat(plans.candidates)) {
+                    if (record.id === u.id) record.destroyed = true;
+                }
+                R.noteFallen(state, u, true);
+                R.noteResurrect(state, u, true);
+            }
+            R.destroyUnit(state, u);
+        } else {
+            const foe = combat && CombatSides.foe(CombatSides.sideOf(combat, seat));
+            const index = foe ? CombatTokens.of(combat).indexOf(foe, id) : -1;
+            if (index < 0 || !R.destroyReinforcementToken(state, foe, index, true)) return null;
+        }
         R.log(state, seat, p.name + ': уничтожен отряд противника, ставший добычей.');
         step.done = true;
         return null;
     }
 
     static avoidDestroy(effects, f) {
-        const { R, state, step } = f;
+        const { R, state, step, combat } = f;
         const victim = state.units.find(u => u.id === step.unit);
         if (victim) {
             R.destroyUnit(state, victim);
             R.log(state, victim.seat, state.players[victim.seat].name + ': деморализованный отряд уничтожен.');
+        } else if (combat && step.tokenSide && R.destroyReinforcementToken(state, step.tokenSide, step.tokenIndex, true)) {
+            const owner = CombatSides.seatOf(combat, step.tokenSide);
+            R.log(state, owner, state.players[owner].name + ': деморализованное подкрепление уничтожено.');
         }
         step.done = true;
         return null;
@@ -116,9 +165,11 @@ class DestroySteps {
         }
         const st = state.structures.find(x => x.id === answer.structure
             && x.seat !== seat && x.system === step.unitSystem);
-        if (!st) return null;
-        const u = state.units.find(x => x.id === step.unitId);
-        if (u) R.destroyUnit(state, u);
+        const u = state.units.find(x => x.id === step.unitId && x.seat === seat
+            && !x.routed && x.system === step.unitSystem);
+        // Never destroy the building if the previously selected price is gone.
+        if (!st || !u) return { ok: false, error: 'Выбранные отряд или постройка больше недоступны.' };
+        R.destroyUnit(state, u);
         R.destroyStructure(state, st);
         R.log(state, seat, p.name + ': «Саботаж» уничтожает отряд и вражескую постройку.');
         step.done = true;

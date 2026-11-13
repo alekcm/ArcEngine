@@ -26,6 +26,112 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
  * tools/fs-screens.mjs (подстрока имени проверки или её текста).
  */
 const TABLE = [
+    // The saved combat step decides whether the reroll is exact or up-to,
+    // even when a modelled older question carries contradictory UI flags.
+    {
+        check: 'combat-reroll-count', file: 'js/fs/FSGame.js',
+        old: "                const any = diceMode === null ? !!q.any : diceMode === 'atMost';",
+        new: "                const any = diceMode === 'atMost' || q.any;",
+        why: 'устаревший признак не разрешает пустой обязательный переброс',
+    },
+    {
+        check: 'combat-reroll-count', file: 'js/fs/FSGame.js',
+        old: '                    enabled: any || this.effectPick.length === q.n,',
+        new: '                    enabled: true,',
+        why: 'подтверждение точного переброса недоступно до полного выбора',
+    },
+    {
+        check: 'necron-resurrect-choice', file: 'js/fs/FSGame.js',
+        old: "                if (q.op === 'resurrectOffer') {",
+        new: '                if (false) {',
+        why: 'сфера предлагает сбросить план или отказаться, не выдумывает плату кубиком',
+    },
+    {
+        check: 'tau-evasion-fallen', file: 'js/fs/FSGame.js',
+        old: '                    || s.structures.find(st => st.id === id) || this.questionToken(s, id) || this.questionFallen(s, id)).filter(Boolean);',
+        new: '                    || s.structures.find(st => st.id === id) || this.questionToken(s, id)).filter(Boolean);',
+        why: 'уничтоженные кандидаты Уклонения видны в списке',
+    },
+    // --- выборы карт: на разных кнопках действительно разные награды -------
+    {
+        check: 'mech-blessing-ui',
+        file: 'js/fs/FSGame.js',
+        old: "            ctx.status = this.status || 'Шторм сдвинут — событие можно разыгрывать.';\n            ctx.actions.push({\n                kind: 'primary', icon: 'ui.next',\n                label: 'Разыграть событие',\n                enabled: true,\n                onClick: confirmResolve,",
+        new: "            ctx.status = this.status || 'Шторм сдвинут — событие можно разыгрывать.';\n            ctx.actions.push({\n                kind: 'primary', icon: 'ui.next',\n                label: 'Разыграть событие',\n                enabled: true,\n                onClick: skipEvent,",
+        why: 'кнопка события не должна молча отказываться от его эффекта',
+    },
+    {
+        check: 'infiltrator-choices-ui',
+        file: 'js/fs/FSGame.js',
+        old: '                    if (gain) {',
+        new: '                    if (false) {',
+        why: 'обе кнопки снова показывают одно предложение вместо разных кубиков и жетонов',
+    },
+    {
+        check: 'mechanicus-mixed-choices-ui',
+        file: 'js/fs/FSGame.js',
+        old: "                    const randomDie = opt && opt.op === 'gainDie' && opt.kind === 'any';",
+        new: '                    const randomDie = false;',
+        why: 'пустой кубик для броска снова не отличается от жетонов в другой ветке',
+    },
+    // --- the same browser can rejoin more than one room ---------------------
+    {
+        check: 'lan-identities-ui',
+        file: 'js/fs/FSGame.js',
+        old: "        this.id = (this.room && Store.get('fs.id.' + this.room))\n            || (/^[A-Za-z0-9_-]{32}$/.test(legacy) ? legacy : '');",
+        new: "        this.id = /^[A-Za-z0-9_-]{32}$/.test(legacy) ? legacy : '';",
+        why: 'секрет своей комнаты не выбирается при повторном входе',
+    },
+    {
+        check: 'lan-identities-ui',
+        file: 'js/fs/FSGame.js',
+        old: "                const saved = room && Store.set('fs.id.' + room, msg.id);",
+        new: '                const saved = false;',
+        why: 'переподключение не сохраняет секрет под кодом комнаты',
+    },
+    {
+        check: 'lan-identities-ui',
+        file: 'js/fs/FSGame.js',
+        old: "            || (/^[A-Za-z0-9_-]{32}$/.test(legacy) ? legacy : '');",
+        new: '            || legacy;',
+        why: 'старый публичный id предлагается в качестве секрета другой комнаты',
+    },
+    {
+        check: 'lan-identities-ui',
+        file: 'js/fs/FSGame.js',
+        old: "                if (saved && Store.get('fs.id') === msg.id) Store.remove('fs.id');",
+        new: "                if (saved) Store.remove('fs.id');",
+        why: 'новое место в другой комнате стирает старый ещё не привязанный секрет',
+    },
+    {
+        check: 'lan-identities-ui',
+        file: 'js/fs/FSGame.js',
+        old: "        this.room = (params.get('room') || '').trim().toUpperCase() || defaultRoom;",
+        new: "        this.room = (params.get('room') || '').trim().toUpperCase();",
+        why: 'обычный адрес не может узнать сохранённый ключ комнаты по умолчанию',
+    },
+    {
+        check: 'lan-identities-ui',
+        file: 'js/fs/FSGame.js',
+        old: "        this.room = (params.get('room') || '').trim().toUpperCase() || defaultRoom;",
+        new: "        this.room = (params.get('room') || '').toUpperCase() || defaultRoom;",
+        why: 'пробелы в ссылке мешают найти ключ канонической комнаты',
+    },
+    {
+        check: 'lan-retry-ui',
+        file: 'js/fs/FSNet.js',
+        old: '                    if (msg.id) net.id = msg.id;',
+        new: '                    net.id = msg.id;',
+        why: 'отказ сервера стирает секрет перед следующим переподключением',
+    },
+    // --- the faction sheet identifies each miniature ------------------------
+    {
+        check: 'mech-models-ui',
+        file: 'js/fs/FSView.js',
+        old: '            "крепкие-крейсеры": ["Warhammer/Адептус механикус/", "3BE5D3DB99F0A3C584A3DA58B36C2CC406D931CE_AM_0.obj"],',
+        new: '            "крепкие-крейсеры": ["Warhammer/Адептус механикус/", "D431C9519F34BBE811FFCD0D2609BDA9735C741D_T0.obj"],',
+        why: 'крейсер не должен использовать модель скитария',
+    },
     // --- лобби ---------------------------------------------------------------
     {
         check: 'lobby-1',
@@ -869,15 +975,15 @@ const TABLE = [
     {
         check: 'unit-model-1',
         file: 'js/fs/FSView.js',
-        old: '                const model = def && this.addFactionUnit(view, u, base, off, color, def.type, onWorld, owner && owner.palette);',
-        new: '                const model = def && !u.routed && this.addFactionUnit(view, u, base, off, color, def.type, onWorld, owner && owner.palette);',
+        old: '                const model = def && this.addFactionUnit(view, u, base, off, color, def.type, onWorld, palette);',
+        new: '                const model = def && !u.routed && this.addFactionUnit(view, u, base, off, color, def.type, onWorld, palette);',
         why: 'деморализованные отряды снова обходят собственные модели и становятся одинаковыми',
     },
     {
         check: 'unit-model-1',
         file: 'js/fs/FSView.js',
-        old: "                const unitMaterial = view.material('unit' + u.seat, color, { emissive: true });",
-        new: "                const unitMaterial = view.material('unit' + u.seat, color, u.routed ? { alpha: 0.55 } : { emissive: true });",
+        old: "                const unitMaterial = view.material(reinforcement ? 'unit-reinforcement' : 'unit' + u.seat, color, { emissive: true });",
+        new: "                const unitMaterial = view.material(reinforcement ? 'unit-reinforcement' : 'unit' + u.seat, color, u.routed ? { alpha: 0.55 } : { emissive: true });",
         why: 'пока OBJ не загрузился, лежащая фигура отличается цветом от обычной',
     },
     {

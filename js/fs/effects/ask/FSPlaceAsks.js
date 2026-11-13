@@ -5,7 +5,7 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class PlaceAsks {
-    static ops = ['placeUnit', 'placeStructure', 'placeFree', 'placeReinforcement', 'placeOrderAny', 'teleport', 'retreat', 'retreatInstead', 'evacuate', 'moveUnits', 'moveUnit', 'moveStructure', 'route', 'replaceUnit', 'replaceStructure', 'replaceStructureType', 'destroyUnit', 'destroy', 'sabotage', 'destroyForMateriel', 'destroyStructureForMateriel', 'destroyStructureHere', 'avoidDestroy', 'restore', 'restoreOneSystem', 'resurrectOffer', 'restoreFallenOffer', 'swapCombatCards', 'swapCombatPair', 'destroyDamagedFoe'];
+    static ops = ['warpGateMove', 'placeUnit', 'placeStructure', 'placeFree', 'placeReinforcement', 'placeOrderAny', 'teleport', 'retreat', 'retreatInstead', 'evacuate', 'moveUnits', 'moveUnit', 'moveStructure', 'route', 'replaceUnit', 'replaceStructure', 'replaceStructureType', 'destroyUnit', 'destroy', 'sabotage', 'destroyForMateriel', 'destroyStructureForMateriel', 'destroyStructureHere', 'avoidDestroy', 'restore', 'restoreOneSystem', 'resurrectOffer', 'restoreFallenOffer', 'swapCombatCards', 'swapCombatPair', 'destroyDamagedFoe'];
 
     static placeUnit(effects, f) {
         const { R, state, seat, step, ctx, p } = f;
@@ -24,19 +24,42 @@ class PlaceAsks {
         // «разместить его в дружественном мире» — a ship has nowhere to
         // stand there, so the ability covers ground units («1 отряд»).
         if (step.unitType) types = types.filter(u => u.type === step.unitType);
+        // In combat only models of the appropriate domain can be placed in
+        // the contested area. Do not offer a ship on a world (or vice versa)
+        // and silently skip the agreed placement on the next question.
+        if (step.dest === 'combatArea' && state.combat) {
+            const area = BattleField.of(state.combat).area;
+            const world = effects.areaWorld(state, area.system, area.pos);
+            types = types.filter(u => (u.type !== 'ship') === world);
+        }
         // A free unit also comes from the supply: without a model there is
         // nothing to place (the rules, "Free Units").
         let free = types.filter(u => (p.supply.units[u.id] || 0) > 0);
+        if (step.payMateriel) {
+            // A fixed payment is offered only if it and a destination exist.
+            // The explicitly all-or-nothing branch needs every named model.
+            if ((p.materiel || 0) < step.payMateriel
+                || !effects.areasForAbility(R, state, seat, step.dest).length) return null;
+            if (effects.fullSupplyPlacement(step)) {
+                const need = Math.max(1, step.left !== undefined ? step.left : (step.n || 1));
+                free = free.filter(u => (p.supply.units[u.id] || 0) >= need);
+            }
+        }
         if (step.buy) {
             // «купить 1 отряд» — the price and the command level are paid.
             // «Ужасный ритуал» pays the price reduced by its cultists and
             // caps the KL by the card, not by the player's cities.
-            const cl = R.commandLevel(state, seat);
             const deal0 = OrderDeal.of(state.order);
             const off = step.discount && deal0 ? deal0.placementDiscount : 0;
             const price = u => Math.max(0, (u.cost || 0) - off);
             free = free.filter(u => price(u) <= (p.materiel || 0)
-                && (step.bypassCommandLevel || (u.kl || 0) <= cl));
+                && R.effectUnitForgeCost(state, seat, u, !!step.bypassCommandLevel) !== null);
+        }
+        // This upgrade has exactly one destination; don't offer a purchase if
+        // the moved factory's world is no longer a legal destination.
+        if (step.dest === 'movedFactoryWorld') {
+            const worlds = effects.areasForAbility(R, state, seat, step.dest);
+            free = free.filter(u => worlds.some(a => R.canPlaceUnit(state, seat, a.system, a.pos, u).ok));
         }
         // «… один отряд с командным уровнем 2 или меньше» («Мицетические
         // споры»): the card caps the command level below the player's own.
@@ -50,6 +73,7 @@ class PlaceAsks {
 
     static placeStructure(effects, f) {
         const { R, state, seat, step, p } = f;
+        if (step.materielPayment && (p.materiel || 0) < step.materielPayment) return null;
         // «Купите 1 постройку» — the player chooses which one: only the
         // structures he can afford and actually take from the box are
         // offered; an empty offer ends the ability honestly in the log.
@@ -115,22 +139,15 @@ class PlaceAsks {
     }
 
     static placeOrderAny(effects, f) {
-        const { R, state, seat, step } = f;
-        // «взять 1 ваш приказ с вершины любой стопки и разместить его в
-        // смежной системе» («Научная экспедиция»): the token comes from
-        // the pile of the player, the place follows the basic rules of
-        // the placement.
-        const types = ['advance', 'deploy', 'strategize', 'dominate']
-            .filter(t => R.orderLeft(state, seat, t) > 0);
-        if (!types.length) return null;
-        step.types = types;
-        return {
-            question: {
-                kind: 'choice', who: seat, op: 'placeOrderAny',
-                options: types.map(t => ({ text: R.orderName(t) })),
-                text: 'Какой приказ взять?',
-            },
-        };
+        const { R, state, seat } = f;
+        // «Научная экспедиция» moves the top token of an existing stack;
+        // it does not take an extra order from the player's hand.
+        const sources = R.orderMoveSources(state, seat);
+        if (!sources.length) return null;
+        return { question: {
+            kind: 'systems', who: seat, op: 'placeOrderAny', stage: 'source',
+            options: sources, text: 'С вершины какой стопки взять ваш приказ?',
+        } };
     }
 
     static teleport(effects, f) {
@@ -157,15 +174,15 @@ class PlaceAsks {
     }
 
     static evacuate(effects, f) {
-        const { state, seat, step, combat } = f;
-        // «переместить все ваши отряды из этого боя в одну любую дружественную
-        // область» («Предвидение»): the units of the fight come first.
+        const { R, state, seat, step, combat } = f;
+        // The card moves the whole eligible force, not a player-selected subset.
+        // There is just one decision: which friendly area receives the force.
         if (step.unitsFromCombat) {
-            const field = combat ? BattleField.of(combat) : null;
-            const units = state.units.filter(u => u.seat === seat && (!field || field.holds(u)));
-            if (!units.length) return null;
-            return { question: { kind: 'units', who: seat, op: 'evacuate', n: units.length,
-                options: units.map(u => u.id), text: 'Все ваши отряды покидают бой — подтвердить?' } };
+            const force = effects.combatEvacuees(R, state, seat, combat);
+            const areas = effects.combatEvacuationAreas(R, state, seat, combat);
+            if ((!force.units.length && !force.tokens.length) || !areas.length) return null;
+            return { question: { kind: 'areas', who: seat, op: 'evacuate', n: 1,
+                options: areas, text: 'В какую дружественную область вывести все отряды из боя?' } };
         }
         /** @type {any[]} */
         const list = state.structures.filter(x => x.seat === seat).map(x => x.id);
@@ -174,6 +191,22 @@ class PlaceAsks {
             kind: 'structures', who: seat, op: 'evacuate', n: 1,
             options: list, text: 'Какую свою постройку уничтожить?',
         } };
+    }
+
+    static warpGateMove(effects, f) {
+        const { state, seat } = f;
+        const seen = new Map();
+        for (const u of state.units) {
+            if (u.seat === seat && !u.routed) {
+                const area = { system: u.system, pos: u.area };
+                seen.set(u.system + '|' + u.area, area);
+            }
+        }
+        const options = [...seen.values()];
+        if (!options.length) return null;
+        return { question: { kind: 'areas', who: seat, op: 'warpGateMove',
+            stage: 'source', answerKey: 'source', options,
+            text: 'Из какой области переместить ваши отряды?' } };
     }
 
     static moveUnits(effects, f) {
@@ -220,18 +253,20 @@ class PlaceAsks {
     }
 
     static moveStructure(effects, f) {
-        const { state, seat, step } = f;
+        const { R, state, seat, step } = f;
         const active = state.order ? OrderContext.of(state.order).system : null;
         const structures = state.structures.filter(s =>
             s.seat === seat && (!step.kind || s.type === step.kind)
-            && (!step.ofSystem || !active || s.system === active));
+            && (!step.ofSystem || (active && s.system === active))
+            && (!step.groundPath || effects.factoryDestinations(R, state, seat, s, step).length));
         if (!structures.length) return null;
         return { question: { kind: 'structures', who: seat, op: 'moveStructure', options: structures.map(s => s.id), text: 'Что переместить?' } };
     }
 
     static route(effects, f) {
-        const { R, state, seat, step, combat, side, target } = f;
-        let units = effects.unitsOf(R, state, target, combat, step);
+        const { R, state, seat, step, combat, inCombat, side, target } = f;
+        let units = effects.unitsOf(R, state, target, combat,
+            Object.assign({}, step, { includeReinforcements: inCombat }));
         // «… командный уровень которого не превышает командный уровень
         // вашего сильнейшего недеморализованного юнита» («Жёсткий залп»):
         // the cap is the highest command level among the player's own
@@ -244,6 +279,7 @@ class PlaceAsks {
                 const d = R.unitOf(state, u);
                 if (d && (d.kl || 0) > best) best = d.kl || 0;
             }
+            if (inCombat && R.tokenUnits(state, CombatSides.sideOf(combat, seat)).alive) best = Math.max(best, 0);
             units = units.filter(u => {
                 const d = R.unitOf(state, u);
                 return !!d && (d.kl || 0) <= best;
@@ -273,11 +309,18 @@ class PlaceAsks {
             return avoid;
         }
         const want = step.all ? units.length : Math.min(step.n || 1, units.length);
-        return { question: { kind: 'units', who: asker0, op: 'route', n: want, options: units.map(u => u.id), text: 'Какие отряды деморализовать?' } };
+        return { question: { kind: 'units', who: asker0, op: 'route', n: want, options: units.map(u => u.id),
+            strictUnits: inCombat ? effects.unitStepSelectionMode(step) : undefined,
+            text: 'Какие отряды деморализовать?' } };
     }
 
     static replaceUnit(effects, f) {
-        const { R, state, seat, step, combat } = f;
+        const { R, state, seat, step, combat, p } = f;
+        const faction = R.faction(state, seat);
+        const names = effects.unitNames(step.to, faction);
+        const def = names.length && faction.units.find(u => effects.sameName(u.name, names[0]));
+        if (!def || (p.supply.units[def.id] || 0) <= 0) return null;
+        if (step.pay && R.player(state, seat).assetCount(step.pay.kind) < (step.pay.n || 1)) return null;
         const units = effects.unitsOf(R, state, seat, combat, step);
         if (!units.length) return null;
         return { question: { kind: 'units', who: seat, op: 'replaceUnit', n: Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: 'Какой отряд заменить?' } };
@@ -305,29 +348,32 @@ class PlaceAsks {
     }
 
     static destroy(effects, f) {
-        const { R, state, seat, step, ctx, combat, side, target } = f;
-        // «Уничтожьте 1 юнита 0-го командного уровня» — the card names no
-        // owner: any unit of the contested area qualifies, and the owner
-        // of the card picks it (the rules, «Combat Card Resolution»).
-        if (step.who === 'any' && combat) {
-            let any = BattleField.of(combat).unitsHere(state).filter(u => !u.routed);
-            if (step.maxKl !== undefined) {
-                any = any.filter(u => {
-                    const def = R.unitOf(state, u);
-                    return def && (def.kl || 0) <= step.maxKl;
-                });
-            }
-            if (step.filter) any = any.filter(u => effects.unitFits(R.unitOf(state, u), step.filter));
-            // «… за каждого уничтоженного»: nothing to destroy is a count of
-            // zero, not «the base number anyway» (the step never runs, so the
-            // count would keep the number of the card's text).
-            if (!any.length) { step.destroyedCount = 0; return null; }
-            // «Уничтожьте 1 отряд … за каждый потраченный `morale cube`»
-            // («Смерть и отчаяние»): the payment sets the number.
-            const want = step.per ? effects.count(R, state, seat, step, ctx) : (step.n || 1);
-            return { question: { kind: 'units', who: seat, op: 'destroy', n: Math.min(want, any.length), options: any.map(u => u.id), text: 'Какие отряды уничтожить?' } };
+        const { R, state, seat, step, ctx, combat, inCombat, side, target } = f;
+        if (combat && effects.combatWorldLowDestroy(step)) {
+            const options = effects.combatWorldLowTargets(R, state, combat, target);
+            if (!options.length) return null;
+            return { question: { kind: 'units', who: seat, op: 'destroy', n: 1,
+                options, strictUnits: true, text: 'Какой отряд противника уничтожить?' } };
         }
-        const units = effects.unitsOf(R, state, target, combat, step);
+        // Direct destruction is not damage assignment: unless the card says
+        // «недеморализованный», a routed model or token is also a legal target.
+        const candidates = Object.assign({}, step, {
+            includeReinforcements: inCombat,
+            includeRouted: !step.routed && !/недеморализованн/i.test(String(step.ability || step.text || '')),
+        });
+        // «Уничтожьте 1 юнита 0-го командного уровня» names no owner.
+        if (step.who === 'any' && combat) {
+            const any = [CombatSides.seatOf(combat, 'attacker'), CombatSides.seatOf(combat, 'defender')]
+                .flatMap(s => effects.unitsOf(R, state, s, combat, candidates));
+            if (!any.length) { step.destroyedCount = 0; return null; }
+            // «…за каждый потраченный кубик»: zero spent means no question.
+            const want = step.per ? effects.count(R, state, seat, step, ctx) : (step.n || 1);
+            if (want <= 0) { step.destroyedCount = 0; return null; }
+            return { question: { kind: 'units', who: seat, op: 'destroy', n: Math.min(want, any.length),
+                options: any.map(u => u.id), strictUnits: inCombat ? effects.unitStepSelectionMode(step) : undefined,
+                text: 'Какие отряды уничтожить?' } };
+        }
+        const units = effects.unitsOf(R, state, target, combat, candidates);
         // The same for a destroy that the card makes optional («уничтожьте до
         // 2 Гвардейцев, чтобы …»): no such unit — nothing is destroyed, and
         // the reward that follows counts zero.
@@ -337,13 +383,19 @@ class PlaceAsks {
             step.avoidAsked = true;
             return avoid;
         }
-        return { question: { kind: 'units', who: effects.askerOf(step, target, seat), op: 'destroy', n: Math.min(step.n || 1, units.length), options: units.map(u => u.id), text: 'Какие отряды уничтожить?' } };
+        const asker = effects.askerOf(step, target, seat);
+        return { question: { kind: 'units', who: asker, op: 'destroy',
+            n: Math.min(step.n || 1, units.length), options: units.map(u => u.id),
+            strictUnits: inCombat ? effects.unitStepSelectionMode(step) : undefined,
+            text: 'Какие отряды уничтожить?' } };
     }
 
     static sabotage(effects, f) {
         const { state, seat } = f;
+        // A sacrifice can only buy the effect in a system with a target.
+        const targets = new Set(state.structures.filter(s => s.seat !== seat).map(s => s.system));
         /** @type {any[]} */
-        const list = state.units.filter(u => u.seat === seat && !u.routed).map(u => u.id);
+        const list = state.units.filter(u => u.seat === seat && !u.routed && targets.has(u.system)).map(u => u.id);
         if (!list.length) return null;
         return { question: {
             kind: 'units', who: seat, op: 'sabotage', n: 1,
@@ -416,24 +468,25 @@ class PlaceAsks {
     static avoidDestroy(effects, f) {
         const { R, state, step, combat, side } = f;
         const victim = state.units.find(u => u.id === step.unit);
-        if (!victim) return null;
+        const tokens = combat && step.tokenSide ? CombatTokens.of(combat) : null;
+        const token = tokens && tokens.alive(step.tokenSide, step.tokenIndex)
+            && tokens.flipped(step.tokenSide).includes(step.tokenIndex);
+        if (!victim && !token) return null;
+        const owner = victim ? victim.seat : CombatSides.seatOf(combat, step.tokenSide);
         if (!step.avoidAsked) {
-            const avoid = effects.avoidQuestion(R, state, victim.seat, step, combat, side);
+            const avoid = effects.avoidQuestion(R, state, owner, step, combat, side);
             if (avoid) {
                 step.avoidAsked = true;
                 return avoid;
             }
         }
-        // Nothing to pay with: the unit is destroyed at once.
-        R.destroyUnit(state, victim);
-        R.log(state, victim.seat, state.players[victim.seat].name + ': деморализованный отряд уничтожен.');
-        step.done = true;
-        return null;
+        // Nothing to pay with: destroy the same model or reinforcement token.
+        return DestroySteps.avoidDestroy(effects, f);
     }
 
     static restore(effects, f) {
-        const { R, state, seat, step, ctx, combat } = f;
-        let units = effects.unitsOf(R, state, seat, combat, { routed: true });
+        const { R, state, seat, step, ctx, combat, inCombat } = f;
+        let units = effects.unitsOf(R, state, seat, combat, { routed: true, includeReinforcements: inCombat });
         if (step.scope === 'activeAllOthersGround') {
             const active = state.order ? OrderContext.of(state.order).system : null;
             units = state.units.filter(u => {
@@ -451,7 +504,9 @@ class PlaceAsks {
         const n = step.per ? Math.min(units.length, effects.count(R, state, seat, step, ctx))
             : (step.all ? units.length : Math.min(step.n || 1, units.length));
         if (!n) return null;
-        return { question: { kind: 'units', who: seat, op: 'restore', n, options: units.map(u => u.id), text: 'Какие отряды восстановить?' } };
+        return { question: { kind: 'units', who: seat, op: 'restore', n, options: units.map(u => u.id),
+            strictUnits: inCombat ? effects.unitStepSelectionMode(step) : undefined,
+            text: 'Какие отряды восстановить?' } };
     }
 
     static restoreOneSystem(effects, f) {
@@ -475,9 +530,12 @@ class PlaceAsks {
         const { seat, step } = f;
         const ids = step.candidates || [];
         if (!ids.length) return null;
+        // Destroyed pieces no longer exist on the board. Include their public
+        // descriptions so the player can still select them in the client list.
+        const fallen = ((step.plan && step.plan.candidates) || []).filter(x => ids.includes(x.id));
         return { question: {
             kind: 'units', who: seat, op: 'restoreFallenOffer', n: ids.length,
-            any: true, options: ids, text: 'Какие отряды вернуть в эту область?',
+            any: true, options: ids, fallen, text: 'Какие отряды вернуть в эту область?',
         } };
     }
 
@@ -501,7 +559,8 @@ class PlaceAsks {
         const kl = card ? (card.kl || 0) : 0;
         const inDeck = n => R.player(state, seat).combatDeck.count(n);
         const options = R.player(state, seat).combatDeck.upgradePile().filter(n => {
-            const up = FS_CATALOG.upgradeCombatCards(p.faction).find(c => c.name === n);
+            // Previously removed basic pairs also sit in the upgrade deck.
+            const up = FS_CATALOG.card('combat', p.faction, n);
             return up && (up.kl || 0) <= kl && inDeck(n) < 2;
         });
         if (!options.length) return null;
@@ -517,7 +576,9 @@ class PlaceAsks {
         /** @type {any[]} */
         let list = ids.filter(id => {
             const u = state.units.find(x => x.id === id);
-            return !!u && u.seat !== seat;
+            if (u) return u.seat !== seat;
+            const foe = combat && CombatSides.foe(CombatSides.sideOf(combat, seat));
+            return !!foe && CombatTokens.of(combat).indexOf(foe, id) >= 0;
         });
         // «Когда отряд противника становится деморализованным … уничтожить этот
         // отряд» («Добить их!»): the card reacts to the unit that was just

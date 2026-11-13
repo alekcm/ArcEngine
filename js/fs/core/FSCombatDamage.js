@@ -156,9 +156,10 @@ class CombatDamage {
 
     // --- how the damage goes -------------------------------------------------
 
-    /** «распределять урон по 1 единице за раз»: the card turns the mode on. */
-    setOneByOne() {
+    /** «распределять урон по 1 единице за раз»: the affected side is the opponent. */
+    setOneByOne(side) {
         this.combat.damageOneByOne = true;
+        this.combat.damageOneByOneSide = side || 'defender';
         return this;
     }
 
@@ -169,9 +170,9 @@ class CombatDamage {
         return this;
     }
 
-    /** «распределять урон по 1 единице за раз» — the defender's damage only. */
+    /** Older saves did not record a side; they used the defender. */
     oneByOne(side) {
-        return !!(this.combat.damageOneByOne && side === 'defender');
+        return !!(this.combat.damageOneByOne && side === (this.combat.damageOneByOneSide || 'defender'));
     }
 
     /** «шаг нанесения повреждений повторяется»: asked once, then twice never. */
@@ -307,6 +308,18 @@ class CombatDamage {
         return this.dealt('attacker') === 0 && this.dealt('defender') === 0;
     }
 
+    /** The card protects units on both sides, not bastions, in this round. */
+    protectAllUnits(round, source) {
+        if (!this.combat.unitProtection) this.combat.unitProtection = [];
+        this.combat.unitProtection.push({ round, source: source || null });
+        return this;
+    }
+    unitsProtected(round) {
+        return (this.combat.unitProtection || []).some(p => p.round === round
+            && (!p.source || CombatCards.of(this.combat).played(p.source.side)
+                .some(card => card.effectSourceId === p.source.id)));
+    }
+
     /** The damage of the round starts over: the next round hurts anew. */
     resetDamage() {
         this.combat.damage = { attacker: 0, defender: 0 };
@@ -333,6 +346,7 @@ class CombatDamage {
         c.extraDamageFoeSide = null;
         c.extraDamageBoth = null;
         c.damageOneByOne = null;
+        c.damageOneByOneSide = null;
         c.repeatDamage = false;
         c.damageRepeated = false;
         return this;

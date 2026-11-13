@@ -5,7 +5,39 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class OrderAsks {
-    static ops = ['advanceFromPlan', 'klBonus', 'extraFactory', 'orderDiscount', 'purchaseDiscount', 'prepReroll', 'assetLimit', 'healthBonus', 'enemyHealth', 'citiesAsFactories', 'bastionsAsFactories', 'extraOrderTokens', 'extraCombatCards', 'moveLimit', 'mustInclude', 'retreatExcess', 'uncontrolledMarch', 'passVoid', 'freeStructure', 'structureFirst', 'capacityBonus', 'cheapUnit', 'upgradeLimit', 'costDiscount', 'supplyDeal', 'deployInFactoryWorld', 'shipsThroughStorms', 'deployLimit', 'orderKl', 'putOrderTokensOnDeck', 'strategizeDeckBonus', 'unitsThroughStorms', 'restoreRetreated', 'restoreFallen', 'resurrect', 'stormReaction', 'noRoute'];
+    static ops = ['reorderOwnOrder', 'corsairStrike', 'emptyStrategize', 'occupiedStructure', 'advanceFromPlan', 'klBonus', 'extraFactory', 'orderDiscount', 'purchaseDiscount', 'prepReroll', 'assetLimit', 'healthBonus', 'enemyHealth', 'citiesAsFactories', 'bastionsAsFactories', 'extraOrderTokens', 'extraCombatCards', 'moveLimit', 'mustInclude', 'retreatExcess', 'uncontrolledMarch', 'passVoid', 'freeStructure', 'structureFirst', 'capacityBonus', 'cheapUnit', 'upgradeLimit', 'costDiscount', 'supplyDeal', 'deployInFactoryWorld', 'shipsThroughStorms', 'deployLimit', 'orderKl', 'putOrderTokensOnDeck', 'strategizeDeckBonus', 'unitsThroughStorms', 'restoreRetreated', 'restoreFallen', 'resurrect', 'stormReaction', 'noRoute'];
+
+    static reorderOwnOrder(effects, f) {
+        const { state, seat } = f;
+        const options = [];
+        for (const sys of state.systems) {
+            (sys.tokens || []).forEach((token, index) => {
+                if (token.seat === seat) options.push({ system: sys.id, index,
+                    text: 'Система ' + sys.tile + ' · позиция ' + (index + 1) + ' снизу' });
+            });
+        }
+        if (!options.length) return null;
+        return { question: { kind: 'choice', who: seat, op: 'reorderOwnOrder', options,
+            text: 'Какой ваш жетон в стеке посмотреть?' } };
+    }
+
+    static corsairStrike(effects, f) {
+        if (f.state.order && PhasePlan.of(f.state.order).is('corsair'))
+            PhasePlan.of(f.state.order).set('strike');
+        return null;
+    }
+
+    static emptyStrategize(effects, f) {
+        const deal = OrderDeal.of(f.state.order);
+        if (deal) deal.allowEmptyStrategize();
+        return null;
+    }
+
+    static occupiedStructure(effects, f) {
+        const deal = OrderDeal.of(f.state.order);
+        if (deal) deal.allowOccupiedStructure();
+        return null;
+    }
 
     static klBonus(effects, f) {
         const { R, state, seat, step, ctx, p } = f;
@@ -164,18 +196,26 @@ class OrderAsks {
     }
 
     static uncontrolledMarch(effects, f) {
-        const { state, step } = f;
+        const { R, state, seat, step } = f;
         // "treat the uncontrolled worlds as friendly for moving up to 2
         // of your units": the budget is spent per unit, not per area.
         const march = MarchPlan.of(state.order);
-        if (march) march.setUncontrolled(step.n || 0);
+        if (march) {
+            march.setUncontrolled(step.n || 0);
+            // The card may be played after the roads of the step were frozen:
+            // the legal paths of a simultaneous movement are drawn anew.
+            R.refreshAdvanceRoutes(state, seat);
+        }
         return null;
     }
 
     static passVoid(effects, f) {
-        const { state, step } = f;
+        const { R, state, seat, step } = f;
         const move = OrderMove.of(state.order);
-        if (move) move.setPassVoid(step.n || 0);
+        if (move) {
+            move.setPassVoid(step.n || 0);
+            R.refreshAdvanceRoutes(state, seat);
+        }
         return null;
     }
 
@@ -240,9 +280,12 @@ class OrderAsks {
     }
 
     static shipsThroughStorms(effects, f) {
-        const { state } = f;
+        const { R, state, seat } = f;
         const move = OrderMove.of(state.order);
-        if (move) move.setShipsThroughStorms();
+        if (move) {
+            move.setShipsThroughStorms();
+            R.refreshAdvanceRoutes(state, seat);
+        }
         return null;
     }
 
@@ -282,9 +325,12 @@ class OrderAsks {
     }
 
     static unitsThroughStorms(effects, f) {
-        const { state, seat } = f;
+        const { R, state, seat } = f;
         const move = OrderMove.of(state.order);
-        if (move && OrderContext.of(state.order).isSeat(seat)) move.setUnitsThroughStorms();
+        if (move && OrderContext.of(state.order).isSeat(seat)) {
+            move.setUnitsThroughStorms();
+            R.refreshAdvanceRoutes(state, seat);
+        }
         return null;
     }
 

@@ -91,9 +91,19 @@ class FSGame {
         };
 
         const params = new URLSearchParams(location.search);
-        this.room = (params.get('room') || '').toUpperCase();
+        // The LAN server supplies its default code in the page, so a plain URL
+        // can choose the right room-specific credential before the first hello.
+        const meta = document.querySelector('meta[name="fs-default-room"]');
+        const fallback = (meta && meta.getAttribute('content') || '').trim().toUpperCase();
+        const defaultRoom = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/.test(fallback) ? fallback : '';
+        this.room = (params.get('room') || '').trim().toUpperCase() || defaultRoom;
         this.name = params.get('name') || Store.get('fs.name') || '';
-        this.id = Store.get('fs.id') || '';
+        // An old unscoped id is usable only if it has the shape of a secret
+        // issued by the hardened server. Older public ids like p1 are unsafe to
+        // try in another room. A successful server match binds it to that room.
+        const legacy = Store.get('fs.id') || '';
+        this.id = (this.room && Store.get('fs.id.' + this.room))
+            || (/^[A-Za-z0-9_-]{32}$/.test(legacy) ? legacy : '');
 
         this.setupCamera();
         this.bindPointer();
@@ -149,7 +159,11 @@ class FSGame {
             // started) — keep the stored identity in that case.
             if (msg.id) {
                 this.id = msg.id;
-                Store.set('fs.id', msg.id);
+                const room = String(msg.room || '').trim().toUpperCase();
+                const saved = room && Store.set('fs.id.' + room, msg.id);
+                // Do not destroy an unbound legacy credential on refusal, on a
+                // new seat in another room, or when storage is unavailable.
+                if (saved && Store.get('fs.id') === msg.id) Store.remove('fs.id');
             }
             this.room = msg.room;
             this.lobby.started = !!msg.started;
@@ -422,7 +436,7 @@ class FSGame {
             FSView.showSelection(this.app, this.view, []);
             FSView.clearHighlights(this.view);
         }
-        const ctx = { title: '', text: '', status: this.status || '', warn: this.warn || '', actions: [], mode: this.mode, setupCellSelected: false,
+        const ctx = { title: '', text: '', status: this.status || '', warn: this.warn || '', actions: [], mode: this.mode, setupCellSelected: false, panelClass: '',
             // Компас: на сколько градусов повёрнут север карты на экране. Угол
             // камеры считается от востока и растёт против часовой, а на экране
             // ноль — «вверх», поэтому север — это −azimuth − 90°.
@@ -458,26 +472,43 @@ class FSGame {
         if (this.reinforceStep !== reinforceKey) {
             this.reinforceStep = reinforceKey;
             this.reinforcePick = 0;
+            // A legacy save can still need the client fallback for an empty
+            // reinforcement step. Re-entering that step after undo must be a
+            // fresh attempt, not the remembered auto-pass from the future.
+            this.autoReinforced = null;
         }
-        // The question of the effect of a card: the player chooses.
-        if (s.pending) {
-            // The combat HUD never goes away during the fight — not while a
-            // card effect is waiting for an answer either: the battle panel,
-            // the hand at the bottom and the battle statistics stay on
-            // screen, exactly as they are outside the question.
-            if (s.combat) this.panelCombat(s, ctx);
-            this.panelQuestion(s, ctx);
-            if (s.combat) { ctx.battleHand = this.hand || []; if (!ctx.battle) ctx.battle = null; }
-            this.updateQuestionMarkers();
+        // The server blocks this player's other commands until the excess is
+        // removed, even if a later effect is already waiting for an answer.
+        if (FS_RULES.trimQueue(s).blocked(me)) {
+            this.panelTrim(s, ctx);
             ctx.mode = this.mode;
             this.refreshPlaque();
             FSUI.update(s, ctx);
             return;
         }
-        // The troops over the capacity of an area: the player chooses which of them
-        // go back to the supply before anything else happens.
-        if (FS_RULES.trimQueue(s).blocked(me)) {
-            this.panelTrim(s, ctx);
+        if (s.orderTrimPending || s.eventTrimPending || s.quickResponseTrimPending
+            || s.effectCombatTrimOwner !== undefined) {
+            const entry = FS_RULES.trimQueue(s).entries()[0];
+            const player = entry && s.players[entry.seat];
+            ctx.panelClass = 'is-trim';
+            ctx.title = 'Сверх вместимости';
+            ctx.text = 'Ожидаем, пока ' + (player ? player.name : 'игрок') + ' выберет лишние отряды.';
+            this.mode = 'idle';
+            this.trimPick = [];
+            ctx.mode = this.mode;
+            this.refreshPlaque();
+            FSUI.update(s, ctx);
+            return;
+        }
+        // The question of the effect of a card: the player chooses.
+        if (s.pending) {
+            // Keep the combat HUD, but never expose the interrupted step's
+            // actions or board-click mode while an effect needs an answer.
+            this.mode = 'idle';
+            if (s.combat) this.panelCombat(s, ctx, { summaryOnly: true });
+            this.panelQuestion(s, ctx);
+            if (s.combat) { ctx.battleHand = this.hand || []; if (!ctx.battle) ctx.battle = null; }
+            this.updateQuestionMarkers();
             ctx.mode = this.mode;
             this.refreshPlaque();
             FSUI.update(s, ctx);
@@ -529,7 +560,8 @@ class FSGame {
                 // any other one during the order printed on the card.
                 const right = !kind || (s.order && OrderContext.of(s.order).isSeat(me)
                     && (kind === 'orbital' ? PhasePlan.of(s.order).is('strike') : OrderContext.of(s.order).isKind(kind)));
-                if (!right) continue;
+                if (!right || u.name === 'Рейд корсаров'
+                    || (u.name === 'Святой трубопровод' && !FS_RULES.pipelineReady(s, me))) continue;
                 ctx.actions.push({
                     label: 'Применить улучшение: ' + u.name,
                     onClick: () => this.net.cmd({ type: 'useUpgrade', card: u.name }),
@@ -794,6 +826,7 @@ class FSGame {
             if (!s) return;
             // Отмена работает и в начале боя: пока в нём ничего не сделано.
             const mine = s.order && OrderContext.of(s.order).isSeat(me) && OrderContext.of(s.order).isKind('advance')
+                && !(s.combat && s.combat.effectInitiated)
                 && (PhasePlan.of(s.order).is('move') || PhasePlan.of(s.order).is('combat'));
             if (mine && MarchPlan.of(s.order).steps.length) {
                 e.preventDefault();
@@ -1069,12 +1102,23 @@ class FSGame {
                     onClick: () => this.net.cmd({ type: 'undoMove' }),
                 });
             }
-        } else if (PhasePlan.of(order).is('combat')) {
+        } else if (PhasePlan.of(order).is('combat') && !(s.combat && s.combat.effectInitiated)) {
             // Бой начался, но ничего в нём ещё не сделано: ход можно вернуть.
             ctx.actions.push({
                 kind: 'chip', icon: 'ui.close', label: 'Вернуть последний ход',
                 hint: 'пока в бою не потрачено ни одного кубика',
                 onClick: () => this.net.cmd({ type: 'undoMove' }),
+            });
+        } else if (PhasePlan.of(order).is('corsair')) {
+            ctx.title = 'После боя';
+            ctx.text = 'Вы можете применить «Рейд корсаров» и нанести орбитальный удар в активной системе.';
+            ctx.actions.push({
+                kind: 'primary', label: 'Применить Рейд корсаров',
+                onClick: () => this.net.cmd({ type: 'useUpgrade', card: 'Рейд корсаров' }),
+            });
+            ctx.actions.push({
+                kind: 'secondary', label: 'Без удара — закончить приказ',
+                onClick: () => this.net.cmd({ type: 'finishAdvance' }),
             });
         } else if (PhasePlan.of(order).is('strike')) {
             ctx.title = 'Орбитальный удар';
@@ -1126,6 +1170,7 @@ class FSGame {
         const me = Seat.of(s).me;
         const entry = FS_RULES.trimQueue(s).entryOf(me);
         this.mode = 'trim';
+        ctx.panelClass = 'is-trim';
         ctx.title = 'Сверх вместимости';
         ctx.text = 'Щёлкните по своему отряду на доске — он вернётся в запас.';
         const sys = entry ? Board.of(s).system(entry.system) : null;
@@ -1139,7 +1184,7 @@ class FSGame {
         // The units that go back are picked first and confirmed after: the click
         // only marks them, nothing leaves the board until the player agrees.
         const excess = entry ? Math.max(0, mine.length - entry.cap) : 0;
-        this.trimPick = (this.trimPick || []).filter(id => mine.some(u => u.id === id));
+        this.trimPick = (this.trimPick || []).filter(id => mine.some(u => u.id === id)).slice(0, excess);
         ctx.text = this.trimPick.length
             ? 'Отмечено ' + this.trimPick.length + ' из ' + excess + '. Подтвердите — и они вернутся в запас.'
             : (excess > 0
@@ -1162,8 +1207,8 @@ class FSGame {
                 selected: picked > 0,
                 onClick: () => {
                     const free = list.find(u => !this.trimPick.includes(u.id));
-                    if (free) this.trimPick.push(free.id);
-                    else this.trimPick = this.trimPick.filter(id => !list.some(u => u.id === id));
+                    if (free && this.trimPick.length < excess) this.trimPick.push(free.id);
+                    else if (!free) this.trimPick = this.trimPick.filter(id => !list.some(u => u.id === id));
                     this.refresh();
                 },
             });
@@ -1196,15 +1241,19 @@ class FSGame {
         const st = StrikeDamage.of(s);
         this.mode = 'strike-damage';
         ctx.title = 'Урон с орбиты';
-        ctx.text = 'Щёлкните по своему отряду — он принимает удар.';
+        ctx.text = 'Щёлкните по своему отряду или бастиону — он принимает удар.';
         const sys = Board.of(s).system(st.system);
         const area = sys ? sys.areas.find(a => a.pos === st.pos) : null;
         const mine = s.units.filter(u => u.seat === me && st.aimedAt(u.system, u.area));
+        const bastions = s.structures.filter(x => x.seat === me && x.type === 'bastion' && st.aimedAt(x.system, x.area));
+        const first = st.untouched && mine.some(u => u.id === st.first) ? st.first : null;
         ctx.status = 'Ударов осталось: ' + st.left
             + (area && area.world ? ' · ' + area.world.name : '');
         this.ringAreas([{ system: st.system, pos: st.pos }]);
         const kinds = new Map();
         for (const u of mine) {
+            if (first && u.id !== first) continue;
+            if (!first && u.routed && (bastions.length || mine.some(x => !x.routed))) continue;
             const def = FS_RULES.unitOf(s, u);
             const name = def ? def.name : u.id;
             if (!kinds.has(name)) kinds.set(name, []);
@@ -1216,6 +1265,10 @@ class FSGame {
                 onClick: () => this.net.cmd({ type: 'strikeDamage', unit: list[list.length - 1].id }),
             });
         }
+        if (!first) for (const bastion of bastions) ctx.actions.push({
+            kind: 'chip', icon: 'mark.damage', label: 'Бастион', hint: 'принять удар',
+            onClick: () => this.net.cmd({ type: 'strikeDamage', structure: bastion.id }),
+        });
     }
 
     // --- the deploy order -----------------------------------------------------
@@ -1508,7 +1561,10 @@ class FSGame {
             // Only the places where the piece may stand.
             const ok = def
                 ? FS_RULES.canPlaceUnit(s, me, sys.id, area.pos, def).ok
-                : FS_RULES.canPlaceStructure(s, me, sys.id, area.pos).ok;
+                : FS_RULES.canPlaceStructure(s, me, sys.id, area.pos, {
+                    allowOccupied: OrderDeal.of(order).occupiedStructure ? 'otherType' : false,
+                    kind: this.pending && this.pending.structure,
+                }).ok;
             if (!ok) continue;
             const p = FSView.areaPos(this.app, sys, area.pos, this.view.metrics);
             const h = this.app.location.terrain.heightAt(p.x, p.y);
@@ -1527,7 +1583,8 @@ class FSGame {
         // The price of a card is the rule's, not the panel's: one discount
         // formula for the purchase, the refund and this screen.
         const costOf = c => FS_RULES.cardPrice(s, me, c);
-        const noUnits = !order || !FS_RULES.hasUnitsOrStructures(s, me, OrderContext.of(order).system);
+        const noUnits = !order || (!OrderDeal.of(order).emptyStrategize
+            && !FS_RULES.hasUnitsOrStructures(s, me, OrderContext.of(order).system));
         // The combat deck, card for card, in the same component as the hand of the
         // battle; the discard for a combat upgrade is two cards of the same name.
         const deckNames = FSUI.combatDeckKnown(p, true);
@@ -1728,14 +1785,19 @@ class FSGame {
                 });
             }
         }
-        ctx.actions.push({
-            label: 'Применить способность фракции',
-            onClick: () => this.net.cmd({ type: 'finishDominate' }),
-        });
-        ctx.actions.push({
-            label: 'Пропустить способность',
-            onClick: () => this.net.cmd({ type: 'finishDominate', skip: true }),
-        });
+        if (tally.abilityResolved) {
+            ctx.text = 'Фабрика перемещена. Можно применить подходящее улучшение приказа или закончить его.';
+            ctx.actions.push({ label: 'Завершить приказ', onClick: () => this.net.cmd({ type: 'finishDominate' }) });
+        } else {
+            ctx.actions.push({
+                label: 'Применить способность фракции',
+                onClick: () => this.net.cmd({ type: 'finishDominate' }),
+            });
+            ctx.actions.push({
+                label: 'Пропустить способность',
+                onClick: () => this.net.cmd({ type: 'finishDominate', skip: true }),
+            });
+        }
     }
 
     // --- the refresh phase ----------------------------------------------------
@@ -1833,6 +1895,7 @@ class FSGame {
             okLabel: 'Карта события',
         });
         const confirmResolve = () => FSUI.showEventConfirm(eventModalItem(), () => this.net.cmd({ type: 'resolveEvent' }));
+        const skipEvent = () => this.net.cmd({ type: 'resolveEvent', skip: true });
         ctx.text = full.text || '';
         ctx.previewCard = Object.assign({}, full, {
             kind: data && data.type === 'scheme' ? 'СОБЫТИЕ · ПЛАН' : 'СОБЫТИЕ · ТАКТИКА',
@@ -1853,6 +1916,7 @@ class FSGame {
                 enabled: true,
                 onClick: confirmResolve,
             });
+            ctx.actions.push({ kind: 'secondary', label: 'Не применять способность', onClick: skipEvent });
             return;
         }
         if (options.length) {
@@ -1877,6 +1941,7 @@ class FSGame {
                 enabled: true,
                 onClick: confirmResolve,
             });
+            ctx.actions.push({ kind: 'secondary', label: 'Не применять способность', onClick: skipEvent });
         }
     }
 
@@ -1886,7 +1951,7 @@ class FSGame {
     // miniatures stand where they are, the dice lie on the ground next to
     // them. This panel says only whose step it is and what can be pressed
     // now; the cards of the hand are the bar at the bottom of the screen.
-    panelCombat(s, ctx) {
+    panelCombat(s, ctx, opts = {}) {
         const c = s.combat;
         const me = Seat.of(s).me;
         const side = CombatSides.sideOf(c, me);
@@ -1941,6 +2006,12 @@ class FSGame {
             ctx.text = 'Вы смотрите этот бой.';
             return;
         }
+        // A card/plan question suspends the combat step for both players. The
+        // HUD and an inert hand remain visible, not damage/reinforce controls.
+        if (opts.summaryOnly) {
+            this.fillHand(s, side, false);
+            return;
+        }
         ctx.status = '';
         // The hand is always at the bottom of the screen during the fight; a
         // card is playable only in the step of its side.
@@ -1956,7 +2027,9 @@ class FSGame {
                     // The step needs no decision: no tokens are ever offered
                     // and the fight simply goes on. It is not even shown.
                     const key = BattleField.of(c).system + ':' + turn.round + ':' + turn.step;
-                    ctx.text = have > 0 ? 'Подкреплению не за что устоять: в бою нет ваших отрядов.' : 'У вас нет жетонов подкрепления.';
+                    ctx.text = CombatBans.of(c).forbidsReinforce(me, side)
+                        ? 'План противника запрещает подкрепления.'
+                        : have > 0 ? 'Подкреплению не за что устоять: в бою нет ваших отрядов.' : 'У вас нет жетонов подкрепления.';
                     if (this.autoReinforced !== key) {
                         this.autoReinforced = key;
                         const net = this.net;
@@ -2028,6 +2101,7 @@ class FSGame {
                         take: row ? row.take : 0,
                         destroyed: row ? row.destroyed : false,
                         demoralised: row ? !!row.routed && !row.destroyed : false,
+                        first: x.id === preview.first,
                         selected: this.damageTargets.indexOf(x.id) >= 0,
                     };
                 });
@@ -2035,35 +2109,42 @@ class FSGame {
                     total: damage,
                     left: preview.left,
                     placed: preview.placed,
+                    discarded: preview.discarded,
                     rows,
                 };
                 ctx.text = damage
                     ? 'Урон ' + damage + ': щёлкните по отрядам в области боя.'
                     : 'Щиты выдержали удар.';
-                ctx.status = damage ? 'Осталось распределить: ' + preview.left : '';
+                ctx.status = preview.needsFirst ? 'Выберите отряд или бастион, который должен получить урон первым.'
+                    : preview.discarded ? 'Избыток урона потерян: ' + preview.discarded + '.'
+                    : damage ? 'Осталось распределить: ' + preview.left : '';
                 for (const row of rows) {
                     ctx.actions.push({
                         kind: 'pick', icon: row.kind === 'structure' ? 'mark.bastion'
                             : row.type === 'ship' ? 'mark.ship' : 'mark.ground',
                         label: row.name, count: String(row.health),
-                        hint: row.destroyed ? 'Будет уничтожен'
-                            : row.routed ? 'Деморализован'
-                            : (row.demoralised ? 'Будет деморализован' : 'В строю'),
+                        hint: (row.first ? 'Получает урон первым · ' : '')
+                            + (row.destroyed ? 'Будет уничтожен'
+                                : row.routed ? 'Деморализован'
+                                : (row.demoralised ? 'Будет деморализован' : 'В строю')),
                         selected: row.selected,
                         onClick: () => this.toggleDamage(row.id),
                     });
                 }
                 {
-                    const allPicked = rows.length > 0 && rows.every(r => r.selected);
-                    const ready = preview.left === 0 || allPicked;
+                    // A card may prevent all units from taking damage; in that
+                    // case there are no targets and the step can still end.
+                    const allPicked = rows.every(r => r.selected);
+                    const ready = !preview.needsFirst && (preview.left === 0 || allPicked);
                     ctx.actions.push({
                         kind: 'primary', icon: 'mark.damage',
                         label: damage ? (ready ? 'Принять урон' : 'Разложите урон (осталось ' + preview.left + ')')
                             : 'Щиты выдержали — дальше',
                         enabled: ready,
                         onClick: () => {
-                            if (preview.left > 0 && !allPicked) {
-                                this.status = 'Осталось распределить ' + preview.left + ' урона.';
+                            if (!ready) {
+                                this.status = preview.needsFirst ? 'Выберите цель, которая получает урон первой.'
+                                    : 'Осталось распределить ' + preview.left + ' урона.';
                                 this.refresh();
                                 return;
                             }
@@ -2180,6 +2261,35 @@ class FSGame {
         return FS_RULES.retreatTargets(s, Seat.of(s).me);
     }
 
+    // Reinforcement slots are units too, but they live in combat rather than
+    // state.units. Resolve only live, canonical IDs on one of the two sides.
+    questionToken(s, id) {
+        const c = s && s.combat;
+        if (!c || typeof id !== 'string') return null;
+        for (const side of ['attacker', 'defender']) {
+            const index = FS_RULES.reinforceTokenIndex(s, side, id);
+            if (index >= 0 && id === 'reinforce-' + side + '-' + index) {
+                return { id, side, index, questionToken: true, def: FS_RULES.reinforceTokenDef(s, side) };
+            }
+        }
+        return null;
+    }
+
+    // A destroyed piece has no board model or live token, but «Уклонение»
+    // still offers it in the list. Older interrupted saves keep the same record
+    // inside the pending step instead of on the question.
+    questionFallen(s, id) {
+        const pending = s && s.pending, q = pending && pending.question;
+        if (!q || q.op !== 'restoreFallenOffer' || !(q.options || []).includes(id)) return null;
+        const step = (pending.steps || [])[pending.index] || {};
+        const rec = (q.fallen || (step.plan && step.plan.candidates) || []).find(x => x.id === id);
+        if (!rec || !rec.destroyed) return null;
+        return {
+            id, questionFallen: true, questionToken: !!rec.tokenSide, index: rec.tokenIndex,
+            def: FS_RULES.unitDef(s, rec.seat, rec.def),
+        };
+    }
+
     // The units / structures / sectors a pending effect can touch are lit on
     // the board: the player clicks the models themselves, not a list in the panel.
     updateQuestionMarkers() {
@@ -2193,12 +2303,22 @@ class FSGame {
         // Units: a ring under every one the effect may take.
         const rings = [];
         if (q.kind === 'units') {
+            const structures = [];
             for (const id of q.options || []) {
                 const pos = this.view.unitPositions && this.view.unitPositions.get(id);
                 if (pos) rings.push({ x: pos.x, y: pos.y, z: pos.z, color: '#7df0a1' });
+                const token = this.questionToken(s, id);
+                const anchor = token && (this.view.reinforceAnchors || []).find(a => a.side === token.side && a.index === token.index);
+                if (anchor) rings.push({ x: anchor.x, y: anchor.y, z: anchor.z, color: '#7df0a1' });
+                const st = (s.structures || []).find(x => x.id === id);
+                const sys = st && Board.of(s).system(st.system);
+                if (sys) {
+                    const disc = FSView.discAt(this.app, sys, st.area, this.view.metrics);
+                    structures.push({ x: disc.x, y: disc.y + 2, z: disc.z });
+                }
             }
             FSView.showSelection(this.app, this.view, rings);
-            FSView.clearHighlights(this.view);
+            FSView.highlight(this.view, structures);
             return;
         }
         FSView.showSelection(this.app, this.view, []);
@@ -2246,9 +2366,15 @@ class FSGame {
             this.effectPick = [];
             this.effectDie = null;
         };
-        if (q.kind === 'units' && meta.fs === 'unit') {
-            const id = meta.unit;
-            if (!(q.options || []).includes(id)) { this.status = 'Этот отряд не подходит.'; this.refresh(); return true; }
+        if (q.kind === 'units' && (meta.fs === 'unit' || meta.fs === 'structure' || (meta.fs === 'token' && meta.reinforce))) {
+            const id = meta.fs === 'structure' ? meta.structure : (meta.fs === 'token' ? meta.reinforceId : meta.unit);
+            if (meta.fs === 'token') {
+                const token = this.questionToken(s, id);
+                if (!token || token.side !== meta.side || !BattleField.of(s.combat).is(meta.system, meta.pos)) {
+                    this.status = 'Эта цель не подходит.'; this.refresh(); return true;
+                }
+            }
+            if (!(q.options || []).includes(id)) { this.status = 'Эта цель не подходит.'; this.refresh(); return true; }
             const n = q.n || 1;
             if (n <= 1) { send({ units: [id] }); return true; }
             const list = (this.effectPick = this.effectPick || []);
@@ -2295,7 +2421,7 @@ class FSGame {
             ctx.status = 'Решает ' + who + '. Ждём.';
             return;
         }
-        ctx.richText = q.text || 'Выберите.';
+        ctx.richText = q.privateText || q.text || 'Выберите.';
         const send = answer => {
             this.net.cmd({ type: 'effect', answer });
             this.effectPick = [];
@@ -2303,18 +2429,32 @@ class FSGame {
         };
         switch (q.kind) {
             case 'units': {
-                ctx.status = 'Щёлкните по отряду на доске — или по строке слева.';
-                const units = q.options.map(id => s.units.find(u => u.id === id)).filter(Boolean);
+                // Some effects offer structures or reinforcement slots as units.
+                const targets = q.options.map(id => s.units.find(u => u.id === id)
+                    || s.structures.find(st => st.id === id) || this.questionToken(s, id) || this.questionFallen(s, id)).filter(Boolean);
+                const hasStructure = targets.some(x => s.structures.some(st => st.id === x.id));
+                const required = FS_EFFECTS.unitSelectionMode(pending) === true;
+                ctx.status = required ? 'Выберите все требуемые отряды на доске или в списке.'
+                    : (q.op === 'restoreFallenOffer' ? 'Выберите отряды на доске или в списке; уничтоженные — в списке.'
+                        : (hasStructure ? 'Выберите отряд или постройку на доске или в списке.'
+                            : 'Щёлкните по отряду на доске — или по строке слева.'));
                 this.effectPick = this.effectPick || [];
-                for (const u of units) {
-                    const def = FS_RULES.unitOf(s, u);
+                for (const target of targets) {
+                    const structure = s.structures.find(st => st.id === target.id);
+                    const def = structure ? null : (target.questionToken || target.questionFallen ? target.def : FS_RULES.unitOf(s, target));
+                    const label = target.questionToken
+                        ? (target.questionFallen ? 'Уничтожено подкрепление: ' : 'Подкрепление: ')
+                            + (def ? def.name : 'отряд') + ' №' + (target.index + 1)
+                        : (target.questionFallen ? 'Уничтожен: ' + (def ? def.name : target.id)
+                            : (structure ? FS_RULES.structureName(structure.type) : (def ? def.name : target.id)));
                     ctx.actions.push({
-                        kind: 'pick', icon: 'mark.ground',
-                        label: def ? def.name : u.id,
-                        selected: this.effectPick.indexOf(u.id) >= 0,
+                        kind: 'pick', icon: structure ? 'mark.damage' : (def && def.type === 'ship' ? 'mark.ship' : 'mark.ground'),
+                        label,
+                        selected: this.effectPick.indexOf(target.id) >= 0,
                         onClick: () => {
-                            const i = this.effectPick.indexOf(u.id);
-                            if (i >= 0) this.effectPick.splice(i, 1); else this.effectPick.push(u.id);
+                            const i = this.effectPick.indexOf(target.id);
+                            if (i >= 0) this.effectPick.splice(i, 1);
+                            else if (this.effectPick.length < (q.n || 1)) this.effectPick.push(target.id);
                             this.refresh();
                         },
                     });
@@ -2322,6 +2462,7 @@ class FSGame {
                 ctx.actions.push({
                     kind: 'primary',
                     label: 'Применить (' + this.effectPick.length + '/' + q.n + ')',
+                    enabled: !required || this.effectPick.length === q.n,
                     onClick: () => send({ units: this.effectPick.slice(0, q.n) }),
                 });
                 return;
@@ -2330,7 +2471,8 @@ class FSGame {
             case 'diceFace': {
                 const combat = s.combat;
                 const dSide = q.diceSide || (combat && CombatSides.sideOf(combat, must));
-                const dice = combat ? CombatTurn.of(combat).dice(dSide) : [];
+                const strike = q.diceSource === 'strike' && s.order ? StrikePlan.of(s.order).planned : null;
+                const dice = strike ? (strike.pool || []) : (combat ? CombatTurn.of(combat).dice(dSide) : []);
                 // The die of a dieFace question: the face is the second choice.
                 const picked = q.kind === 'diceFace' ? this.effectDie : null;
                 if (picked !== null && picked !== undefined) {
@@ -2342,6 +2484,16 @@ class FSGame {
                     }
                     return;
                 }
+                const diceMode = FS_EFFECTS.diceSelectionMode(pending);
+                // A saved combat step is authoritative even if the question's
+                // older display hints contradict it; keep the generic hints for
+                // non-reroll questions that do not have a selection mode.
+                const required = diceMode === null ? !!q.required : diceMode === true;
+                const any = diceMode === null ? !!q.any : diceMode === 'atMost';
+                const multi = q.kind === 'dice' && (diceMode === null
+                    ? (q.multi || (q.op === 'rerollDie' && any) || (required && q.n > 1))
+                    : (any || (required && q.n > 1)));
+                this.effectPick = this.effectPick || [];
                 for (const i of q.options) {
                     const d = dice[i];
                     // The face of the die is its icon, drawn as the game draws it.
@@ -2349,9 +2501,17 @@ class FSGame {
                         kind: 'pick',
                         icon: { att: 'die.att', def: 'die.def', morale: 'die.morale' }[d] || 'die.blank',
                         label: 'Кубик ' + (i + 1),
+                        selected: multi && this.effectPick.includes(i),
                         onClick: () => {
                             if (q.kind === 'diceFace') {
                                 this.effectDie = i;
+                                this.refresh();
+                                return;
+                            }
+                            if (multi) {
+                                const at = this.effectPick.indexOf(i);
+                                if (at >= 0) this.effectPick.splice(at, 1);
+                                else if (this.effectPick.length < q.n) this.effectPick.push(i);
                                 this.refresh();
                                 return;
                             }
@@ -2359,6 +2519,13 @@ class FSGame {
                         },
                     });
                 }
+                if (multi) ctx.actions.push({
+                    kind: 'primary', label: (q.op === 'flipDie' ? 'Перевернуть'
+                        : (q.op === 'strikePayPick' ? 'Потратить' : 'Перебросить'))
+                        + ' (' + this.effectPick.length + '/' + q.n + ')',
+                    enabled: any || this.effectPick.length === q.n,
+                    onClick: () => send({ dice: this.effectPick.slice() }),
+                });
                 return;
             }
             case 'scheme': {
@@ -2369,6 +2536,7 @@ class FSGame {
                         onClick: () => send({ choice: q.options.indexOf(name) }),
                     });
                 }
+                ctx.actions.push({ kind: 'secondary', label: 'Не сбрасывать план', onClick: () => send({ no: true }) });
                 return;
             }
             case 'face': {
@@ -2440,6 +2608,10 @@ class FSGame {
                     ? '' : (q.op === 'playEvent' || q.op === 'chooseEventAbility'
                         || q.op === 'lookEvents' ? 'event' : (q.kind2 === 'order' ? 'order' : 'combat'));
                 const unique = [...new Set(q.options || [])];
+                // «Философия войны» may exchange any number of pairs, including
+                // zero. Select them together before choosing each replacement.
+                const multi = q.op === 'swapCombatCards';
+                this.effectPick = this.effectPick || [];
                 /** @type {any} */
                 const choices = unique.map(name => {
                     const opt = FS_CARDS.option(name, faction,
@@ -2448,16 +2620,28 @@ class FSGame {
                         name: opt.name,
                         detail: opt.detail,
                         hint: opt.hint,
-                        onClick: () => send(q.op === 'buyUpgradeReplace' || q.op === 'buyAnyUpgradeReplace'
-                            ? { card: q.card, remove: name }
-                            : { card: name }),
+                        selected: multi && this.effectPick.includes(name),
+                        onClick: () => {
+                            if (multi) {
+                                const index = this.effectPick.indexOf(name);
+                                if (index >= 0) this.effectPick.splice(index, 1);
+                                else this.effectPick.push(name);
+                                this.refresh();
+                            } else send(q.op === 'buyUpgradeReplace' || q.op === 'buyAnyUpgradeReplace'
+                                ? { card: q.card, remove: name }
+                                : { card: name });
+                        },
                     };
                 });
                 choices.title = q.text || 'Выберите карту';
                 ctx.cardChoices = choices;
                 // A compact fallback keeps tiny/headless DOM shells functional.
                 for (const c of choices) ctx.actions.push({
-                    kind: 'pick', label: c.name, hint: c.hint, onClick: c.onClick,
+                    kind: 'pick', label: c.name, hint: c.hint, selected: c.selected, onClick: c.onClick,
+                });
+                if (multi) ctx.actions.push({
+                    kind: 'primary', label: 'Заменить (' + this.effectPick.length + '/' + unique.length + ')',
+                    onClick: () => send({ cards: this.effectPick.slice() }),
                 });
                 return;
             }
@@ -2517,28 +2701,54 @@ class FSGame {
                 return;
             }
             case 'yesno': {
-                ctx.actions.push({
-                    kind: 'primary', icon: 'cube.morale',
-                    label: 'Да — потратить кубик',
-                    onClick: () => send({ dice: (q.options || []).slice(0, q.n || 1) }),
-                });
-                ctx.actions.push({
-                    kind: 'secondary',
-                    label: 'Нет — принять эффект',
-                    onClick: () => send({ dice: [] }),
-                });
+                if (q.op === 'resurrectOffer') {
+                    ctx.actions.push({ kind: 'primary', label: 'Сбросить план', onClick: () => send({ yes: true }) });
+                    ctx.actions.push({ kind: 'secondary', label: 'Не сбросить план', onClick: () => send({ no: true }) });
+                    return;
+                }
+                if (q.op === 'avoid') {
+                    ctx.actions.push({
+                        kind: 'primary', icon: 'cube.morale',
+                        label: 'Да — потратить кубик',
+                        onClick: () => send({ dice: (q.options || []).slice(0, q.n || 1) }),
+                    });
+                    ctx.actions.push({
+                        kind: 'secondary',
+                        label: 'Нет — принять эффект',
+                        onClick: () => send({ dice: [] }),
+                    });
+                } else {
+                    ctx.actions.push({ kind: 'primary', label: 'Да', onClick: () => send({ yes: true }) });
+                    ctx.actions.push({ kind: 'secondary', label: 'Нет', onClick: () => send({ no: true }) });
+                }
                 return;
             }
             case 'choice': {
+                const faces = { att: 'атаки', def: 'обороны', morale: 'морали' };
+                // The parser can give several gain options the *same* card
+                // sentence as their ability. Name each simple branch by its
+                // actual piece, including when another branch restores a unit.
                 for (let i = 0; i < q.options.length; i++) {
                     const opt = q.options[i];
-                    // The option is a step of the card; its own sentence is the label.
-                    const label = (opt && (opt.ability || opt.text))
+                    let label = typeof opt === 'string' ? opt : (opt && (opt.ability || opt.text))
                         ? String(opt.ability || opt.text).replace(/[,;:\s]+$/, '').slice(0, 90)
                         : ('Вариант ' + (i + 1));
+                    let icon = null;
+                    const randomDie = opt && opt.op === 'gainDie' && opt.kind === 'any';
+                    const gain = opt && (opt.op === 'gainDie' || opt.op === 'gainToken')
+                        && (faces[opt.kind] || randomDie) && !opt.per && !opt.cond && !opt.then && !opt.onlyIfFoeHas;
+                    if (gain) {
+                        const n = opt.n || 1;
+                        const one = n % 10 === 1 && n % 100 !== 11;
+                        const few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+                        const piece = opt.op === 'gainDie'
+                            ? (one ? 'кубик' : few ? 'кубика' : 'кубиков')
+                            : (one ? 'жетон' : few ? 'жетона' : 'жетонов');
+                        label = n + ' ' + piece + ' ' + (randomDie ? 'с броском' : faces[opt.kind]);
+                        icon = randomDie ? 'die.blank' : (opt.op === 'gainDie' ? 'die.' : 'token.') + opt.kind;
+                    }
                     ctx.actions.push({
-                        kind: 'pick',
-                        label,
+                        kind: 'pick', icon, label,
                         onClick: () => send({ choice: i }),
                     });
                 }
@@ -2914,8 +3124,11 @@ class FSGame {
         // The click marks the model: the removal itself waits for the confirmation.
         const picked = this.trimPick || (this.trimPick = []);
         const at = picked.indexOf(unit.id);
+        const count = s.units.filter(u => u.seat === me && u.system === entry.system && u.area === entry.pos).length;
+        const excess = Math.max(0, count - entry.cap);
         if (at >= 0) picked.splice(at, 1);
-        else picked.push(unit.id);
+        else if (picked.length < excess) picked.push(unit.id);
+        else this.status = 'Отмечено достаточно отрядов для этой области.';
         this.refresh();
     }
 
@@ -2925,19 +3138,18 @@ class FSGame {
         const me = Seat.of(s).me;
         const st = s ? StrikeDamage.of(s) : null;
         if (!st || !st.pending) return;
-        if (!meta || meta.fs !== 'unit') {
-            this.status = 'Щёлкните по отряду, который принимает удар.';
-            this.refresh();
-            return;
-        }
-        const unit = s.units.find(u => u.id === meta.unit);
-        if (!unit || unit.seat !== me || !st.aimedAt(unit.system, unit.area)) {
-            this.status = 'Удар принимают только свои отряды в этом мире.';
+        const unit = meta && meta.fs === 'unit' ? s.units.find(u => u.id === meta.unit) : null;
+        const bastion = meta && meta.fs === 'structure'
+            ? s.structures.find(x => x.id === meta.structure && x.type === 'bastion') : null;
+        const victim = unit || bastion;
+        if (!victim || victim.seat !== me || !st.aimedAt(victim.system, victim.area)) {
+            this.status = 'Удар принимают только свои отряды и бастион в этом мире.';
             this.refresh();
             return;
         }
         this.status = '';
-        this.net.cmd({ type: 'strikeDamage', unit: unit.id });
+        this.net.cmd(bastion ? { type: 'strikeDamage', structure: bastion.id }
+            : { type: 'strikeDamage', unit: unit.id });
     }
 
     // The click on a piece of the movement: pick the unit or march the group.
@@ -3154,10 +3366,21 @@ class FSGame {
                 && (!cbt || !meta.side || meta.side === qSide)
                 && (q.options || []).indexOf(index) >= 0) {
                 if (q.kind === 'diceFace') { this.effectDie = index; this.refresh(); return; }
+                if (q.multi || (q.required && q.n > 1)) {
+                    const picks = this.effectPick = this.effectPick || [];
+                    const at = picks.indexOf(index);
+                    if (at >= 0) picks.splice(at, 1);
+                    else if (picks.length < q.n) picks.push(index);
+                    this.refresh();
+                    return;
+                }
                 this.net.cmd({ type: 'effect', answer: { dice: [index] } });
                 return;
             }
         }
+        // A click not consumed by the question must not fall through to the
+        // suspended combat, order or setup (including on the waiting seat).
+        if (s.pending) return;
         // The board assembly: the storm is placed on a system.
         if (s.phase === 'setup' && BoardSetup.of(s).record.myTurn && BoardSetup.of(s).is(BoardSetup.STORMS) && meta.system) {
             this.status = ''; this.mode = 'setupStorm'; this.pending = { system: meta.system };
@@ -3281,20 +3504,13 @@ class FSGame {
                     return;
                 }
             }
-            // Пять отрядов одного игрока — стена, а не предупреждение: столько
-            // пластмассы стоит в области, и движок такую покупку отклонит
-            // («can never end the movement with more than five units»).
-            if (!FS_RULES.hasRoom(s, target.system, target.pos, me, 1)) {
-                this.deployOverflow = null;
-                this.status = FS_RULES.unitLimitText();
-                this.refresh();
-                return;
-            }
+            // A deployment may exceed the area's printed capacity. The
+            // five-unit movement limit does not apply to placing purchased units.
             // Покупка сверх вместимости сектора не запрещена — по правилам лишние
             // отряды погибают после приказа; но об этом надо предупредить до покупки:
             // первый клик только предупреждает, второй — ставит отряд.
             const cap = FS_RULES.capacity(s, target.system, target.pos);
-            const there = FS_RULES.unitsAt(s, target.system, target.pos).length;
+            const there = FS_RULES.unitsAt(s, target.system, target.pos).filter(u => u.seat === me).length;
             if (there + 1 > cap) {
                 const key = 'deploy:' + this.pending.unit + ':' + target.system + ':' + target.pos;
                 if (!this.deployOverflow || this.deployOverflow.key !== key) {

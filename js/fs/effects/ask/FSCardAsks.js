@@ -5,7 +5,7 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class CardAsks {
-    static ops = ['playCard', 'playAnyCard', 'playEvent', 'playTopCard', 'drawCombatCards', 'discardCard', 'discardFoeCard', 'discardFoeTop', 'discardFoeStaged', 'peekFoeCard', 'repeatCard', 'activateEvents', 'drawEvents', 'chooseEventAbility', 'lookEvents', 'sequence', 'choice', 'chooseFoe', 'chooseWorld', 'chooseSystem', 'foeAllow', 'require', 'note', 'scheme', 'trigger', 'preAdvance', 'limitedOrder', 'guardDeploy', 'once', 'icons'];
+    static ops = ['playCard', 'playAnyCard', 'playEvent', 'playTopCard', 'drawCombatCards', 'discardCard', 'discardFoeCard', 'discardFoeTop', 'discardFoeStaged', 'peekFoeCard', 'repeatCard', 'activateEvents', 'activateDrawnEvent', 'returnActivatedEvent', 'drawEvents', 'chooseEventAbility', 'lookEvents', 'sequence', 'choice', 'chooseFoe', 'chooseWorld', 'chooseSystem', 'foeAllow', 'require', 'note', 'scheme', 'trigger', 'preAdvance', 'limitedOrder', 'guardDeploy', 'once', 'icons'];
 
     static playCard(effects, f) {
         const { R, state, seat, inCombat } = f;
@@ -64,6 +64,7 @@ class CardAsks {
         if (!drawn) return null;
         R.log(state, seat, p.name + ' берёт дополнительные боевые карты: ' + drawn + '.');
         step.done = true;
+        if (step.discard === 0) return null;
         const drop = Math.min(step.discard || drawn, hand.size());
         if (!drop) return null;
         step.discardLeft = drop;
@@ -79,7 +80,7 @@ class CardAsks {
         // «… должен сбросить с руки 1 случайную боевую карту»: the card is random
         // because the printed text says so, not because the engine is shy of
         // asking. A card of the player's own choice is asked, never rolled.
-        const name = hand.takeAt(Math.floor(R.rand(state) * hand.size()));
+        const name = hand.takeAt(R.rand(state, hand.size()));
         hand.deck.add(name);
         R.log(state, CombatSides.seatOf(combat, s2), 'Сброшена боевая карта «' + name + '».');
         return null;
@@ -92,7 +93,7 @@ class CardAsks {
         const options = CombatCards.of(combat).played(s2)
             .map(c2 => c2.card && c2.card.name).filter(Boolean);
         if (!options.length) return null;
-        return { question: { kind: 'cards', who: effects.seatOf(combat, s2), op: 'discardFoeCard', options, text: 'Какую карту сбросить?' } };
+        return { question: { kind: 'cards', who: f.step.picker === 'me' ? f.seat : effects.seatOf(combat, s2), op: 'discardFoeCard', options, text: 'Какую карту сбросить?' } };
     }
 
     static discardFoeTop(effects, f) {
@@ -140,7 +141,9 @@ class CardAsks {
             return null;
         }
         CombatCards.of(combat).peek(foeSide, seat, name);
-        R.log(state, seat, state.players[seat].name + ' подсмотрел карту противника: «' + name + '».');
+        // The log is broadcast to every seat; only the peeking player's combat
+        // view may name a card that is still face down.
+        R.log(state, seat, state.players[seat].name + ' подсмотрел закрытую карту противника.');
         return null;
     }
 
@@ -190,26 +193,44 @@ class CardAsks {
     }
 
     static activateEvents(effects, f) {
-        const { R, state, seat, step, p } = f;
-        // «взять две верхних карты из колоды событий и активировать их
-        // способности» («Некромеханика»): both cards are taken from the
-        // top of the deck and both abilities happen, one after another.
-        const steps = [];
+        const { R, state, seat, step } = f;
+        // Both cards are drawn before either resolves; held cards cannot be
+        // drawn again if the deck must be reshuffled between the two draws.
+        const names = [];
         for (let i = 0; i < (step.n || 1); i++) {
             const name = R.drawEventCard(state, seat);
             if (!name) break;
-            const card = FS_CATALOG.cardNamed('events', name);
-            R.log(state, seat, state.players[seat].name + ' активирует карту события «' + name + '».');
-            if (card) steps.push(...effects.parse(card.text || '', { kind: 'event', faction: p.faction }));
+            names.push(name);
         }
         step.done = true;
-        return steps.length ? { replace: steps } : null;
+        return names.length ? { replace: names.map(name => ({ op: 'activateDrawnEvent', name })) } : null;
+    }
+
+    static activateDrawnEvent(effects, f) {
+        const { R, state, seat, step, p } = f;
+        const card = FS_CATALOG.card('events', p.faction, step.name);
+        if (!card) return null;
+        R.log(state, seat, p.name + ' активирует карту события «' + card.name + '».');
+        if (card.type === 'scheme') {
+            R.keepEventScheme(state, seat, card);
+            return null;
+        }
+        const steps = effects.parse(card.text || '', { kind: 'event', faction: p.faction });
+        return { replace: steps.concat([{ op: 'returnActivatedEvent', name: card.name }]) };
+    }
+
+    static returnActivatedEvent(effects, f) {
+        const { R, state, seat, step } = f;
+        R.returnActivatedEvent(state, seat, step.name);
+        return null;
     }
 
     static drawEvents(effects, f) {
         const { R, state, seat, step, p } = f;
+        p.eventHand = p.eventHand || [];
         for (let i = 0; i < (step.n || 1); i++) {
             const name = R.drawEventCard(state, seat);
+            if (!name) break;
             p.eventHand = p.eventHand || [];
             p.eventHand.push(name);
         }
@@ -239,11 +260,18 @@ class CardAsks {
     }
 
     static choice(effects, f) {
-        const { seat, step, foe } = f;
+        const { R, state, seat, step, foe } = f;
+        // «Багровая стража»: do not offer a paid pair without both models,
+        // or suppress the free single model when it is still available. Keep
+        // the filtered list on the step so its indices survive JSON transport.
+        if ((step.options || []).some(option => effects.fullSupplyPlacement(option))) {
+            step.options = step.options.filter(option => effects.canOfferPlacement(R, state, seat, option));
+            if (!step.options.length) return null;
+        }
         // «Ваш противник выполняет 3 раза: либо …, либо …» («Подавляющее
         // присутствие»): the alternatives belong to the opponent, so he
         // is the one who is asked.
-        const asker = step.who === 'foe' && foe !== null ? foe : seat;
+        const asker = step.chooser !== 'me' && step.who === 'foe' && foe !== null ? foe : seat;
         return { question: { kind: 'choice', who: asker, op: 'choice', options: step.options, text: step.text } };
     }
 
@@ -269,7 +297,12 @@ class CardAsks {
     }
 
     static foeAllow(effects, f) {
-        const { seat, step, foe } = f;
+        const { R, state, seat, step, combat, inCombat, foe } = f;
+        // An impossible agreement is equivalent to not doing the action; it
+        // cannot prevent the other branch without paying the promised cost.
+        if (effects.foeAllowHasTarget(R, state, seat, step, combat, inCombat) === false) {
+            return { replace: JSON.parse(JSON.stringify(step.no || [])) };
+        }
         // «если противник позволяет» — the opponent says yes or no, and
         // the branch of his answer is performed by the card.
         const asker = foe !== null ? foe : seat;

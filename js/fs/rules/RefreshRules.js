@@ -139,13 +139,24 @@ class RefreshRules {
             // The end of the event phase: the capacity of every area is checked
             // again, and every player chooses his own excess troops.
             for (const p of state.players) this.engine.trimPlayer(state, p.seat);
+            if (this.engine.trimQueue(state).any()) {
+                // Capacity is settled before the round advances or a new
+                // planning scheme can ask another question.
+                state.eventTrimPending = true;
+                return;
+            }
             this.endRound(state);
             return;
         }
         const seat = GamePhase.of(state).turn;
         const p = state.players[seat];
+        this.initializeEventDeck(state, seat);
+        if (!p.decks.event.length && (p.eventDiscard || []).length) this.shuffleEventCards(state, seat);
         const drawn = [];
-        for (let i = 0; i < p.eventTokens; i++) drawn.push(this.drawEventCard(state, seat));
+        for (let i = 0; i < p.eventTokens; i++) {
+            const name = this.drawEventCard(state, seat);
+            if (name) drawn.push(name);
+        }
         const phase = EventPhase.of(state);
         phase.begin(seat, drawn);
         p.eventTokens = 0;
@@ -157,14 +168,84 @@ class RefreshRules {
         GamePhase.of(state).nextTurn();
     }
 
-    drawEventCard(state, seat) {
+    /** Keep an event out of the deck while its effect is still resolving. */
+    holdEventCard(state, seat, name) {
         const p = state.players[seat];
+        if (!name || !p) return false;
+        this.initializeEventDeck(state, seat);
+        p.decks.event = p.decks.event.filter(n => n !== name);
+        const held = p.eventDiscard || (p.eventDiscard = []);
+        if (!held.includes(name)) held.push(name);
+        return true;
+    }
+
+    /** Discarded cards are immediately shuffled back (Rules Reference, Discarding Cards). */
+    discardEventCard(state, seat, name) {
+        const p = state.players[seat];
+        if (!name || !p || (p.schemes || []).some(s => s.name === name)) return false;
+        this.initializeEventDeck(state, seat);
+        p.eventDiscard = (p.eventDiscard || []).filter(n => n !== name);
+        if (!p.decks.event.includes(name)) p.decks.event.push(name);
+        p.decks.event = this.engine.shuffle(state, p.decks.event);
+        return true;
+    }
+
+    /** Return the event held during its effect, then shuffle at the end of refresh. */
+    shuffleEventCards(state, seat) {
+        this.initializeEventDeck(state, seat);
+        const p = state.players[seat];
+        const inPlay = new Set((p.schemes || []).map(s => s.name));
+        const cards = [...new Set(p.decks.event.concat(p.eventDiscard || []))]
+            .filter(name => !inPlay.has(name));
+        p.decks.event = this.engine.shuffle(state, cards);
+        p.eventDiscard = [];
+    }
+
+    /** A tactic activated outside the refresh returns after it resolves. */
+    returnActivatedEvent(state, seat, name) {
+        this.discardEventCard(state, seat, name);
+    }
+
+    /** Install a drawn scheme and discard the plans it replaces. */
+    keepEventScheme(state, seat, card) {
+        const p = state.players[seat];
+        const old = p.schemes || [];
+        const keep = /не больше 2/i.test(card.text || '') ? old.slice(0, 1) : [];
+        p.schemes = keep;
+        for (const scheme of old) if (!keep.includes(scheme)) this.discardEventCard(state, seat, scheme.name);
+        p.decks.event = p.decks.event.filter(name => name !== card.name);
+        p.eventDiscard = (p.eventDiscard || []).filter(name => name !== card.name);
+        const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p.faction });
+        const trig = steps.find(s => s.op === 'trigger');
+        p.schemes.push({
+            name: card.name, text: card.text || '',
+            trigger: trig ? trig.trigger : null, steps: trig ? trig.steps : [],
+            note: trig ? !!trig.note : true, defer: trig ? !!trig.defer : false,
+            orderType: trig ? trig.orderType || null : null,
+            insteadOfOrder: trig ? !!trig.insteadOfOrder : false,
+        });
+        this.engine.log(state, seat, p.name + ' держит план «' + card.name + '».');
+    }
+
+    initializeEventDeck(state, seat) {
+        const p = state.players[seat];
+        // Old saves started with an empty, lazily created event deck. Initialize
+        // those once; a genuinely exhausted deck must not invent cards.
+        if (p.eventDeckInitialized) return;
         if (!p.decks.event.length) {
-            // A new deck of the faction (the game does not run out of cards).
-            p.decks.event = this.engine.shuffle(state, FS_CATALOG.eventCards(p.faction).map(e => e.name));
+            const event = EventPhase.of(state);
+            const held = event.isSeat(seat) ? event.drawn.concat(event.top ? [event.top] : []) : [];
+            const unavailable = new Set((p.schemes || []).map(s => s.name)
+                .concat(p.eventDiscard || [], p.eventHand || [], held));
+            p.decks.event = this.engine.shuffle(state, FS_CATALOG.eventCards(p.faction)
+                .map(c => c.name).filter(name => !unavailable.has(name)));
         }
-        const name = p.decks.event.shift();
-        return name;
+        p.eventDeckInitialized = true;
+    }
+
+    drawEventCard(state, seat) {
+        this.initializeEventDeck(state, seat);
+        return state.players[seat].decks.event.shift() || null;
     }
 
     cmdDrawEvent(state, seat, cmd) {
@@ -177,6 +258,10 @@ class RefreshRules {
         phase.choose(name);
         const card = FS_CATALOG.card('events', state.players[seat].faction, name);
         phase.setCard(card);
+        // The other drawn cards are discarded during substep a, before the
+        // storm and before the chosen effect. Discarding shuffles immediately.
+        for (const other of phase.drawn) if (other !== name) this.discardEventCard(state, seat, other);
+        phase.record.othersDiscarded = true;
         this.engine.log(state, seat, state.players[seat].name + ' выбрал карту события «' + name + '».');
         return { ok: true };
     }
@@ -185,6 +270,7 @@ class RefreshRules {
         if (!GamePhase.of(state).is(GamePhase.REFRESH)) return { ok: false, error: 'Сейчас не фаза обновления.' };
         const phase = EventPhase.of(state);
         if (!phase.isSeat(seat)) return { ok: false, error: 'Сейчас ход другого игрока.' };
+        if (phase.drawn.length && !phase.chosen) return { ok: false, error: 'Сначала выберите карту события.' };
         // The storm movement of the card is not a choice — only its ability is.
         // «A player can choose not to resolve the ability on his chosen event
         // card, but must resolve the card's Warp Storm movement icon.»
@@ -193,46 +279,24 @@ class RefreshRules {
             return { ok: false, error: 'Сначала сдвиньте варп-шторм по иконке карты.' };
         }
         const card = phase.card;
-        // Without a card in the hand there is nothing to play: the player only
-        // moves the storm and the refresh goes on.
-        if (card && card.type === 'scheme') {
-            // «… чтобы осталось не больше 2» (Tau plans): one old plan may
-            // stay; the other factions discard every other plan.
-            const p0 = state.players[seat];
-            p0.schemes = /не больше 2/i.test(card.text || '')
-                ? (p0.schemes || []).slice(0, 1) : [];
-            const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p0.faction });
-            const trig = steps.find(s => s.op === 'trigger');
-            p0.schemes.push({
-                name: card.name,
-                text: card.text || '',
-                trigger: trig ? trig.trigger : null,
-                steps: trig ? trig.steps : [],
-                note: trig ? !!trig.note : true,
-                // A reaction card («когда … деморализован») is not offered at the
-                // start of the step: it waits for the moment it reacts to.
-                defer: trig ? !!trig.defer : false,
-                orderType: trig ? trig.orderType || null : null,
-                insteadOfOrder: trig ? !!trig.insteadOfOrder : false,
-            });
-            this.engine.log(state, seat, p0.name + ' держит план «' + card.name + '».');
+        // Older saves and test states can already have a chosen card without
+        // having passed cmdDrawEvent. Discard their unchosen cards here once.
+        if (!phase.record.othersDiscarded) {
+            for (const other of phase.drawn) if (other !== phase.chosen) this.discardEventCard(state, seat, other);
         }
-        // Every drawn card goes back into the deck — the ones that were not
-        // played at least: a scheme that stays in play is excluded (the rules:
-        // "he shuffles all event cards back into his event deck, excluding the
-        // 'Scheme' event card if it is in play").
-        const p = state.players[seat];
-        const inPlay = card && card.type === 'scheme' ? card.name : null;
-        for (const name of phase.drawn) if (name !== inPlay) p.decks.event.push(name);
+        if (card && card.type === 'scheme' && !cmd.skip) this.keepEventScheme(state, seat, card);
+        else if (card && !cmd.skip) this.holdEventCard(state, seat, card.name);
+        else if (card) this.discardEventCard(state, seat, card.name);
         if (!phase.drawn.length && phase.top) {
-            // The card that was opened for the storm only goes back to the deck.
-            p.decks.event.push(phase.top);
+            // The card opened for the storm alone is never played.
+            this.discardEventCard(state, seat, phase.top);
         }
+        const p = state.players[seat];
         if (card) this.engine.log(state, seat, p.name + ' разыграл(а) карту «' + card.name + '».');
         phase.end();
         EventRound.of(state).played();
         // The text of the card is the rule: the engine performs it.
-        if (card && card.type !== 'scheme') {
+        if (card && card.type !== 'scheme' && !cmd.skip) {
             const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: state.players[seat].faction });
             // «Быстрый ответ» asks for a system first: the limited advance is
             // born only when that question is answered. The event phase must
@@ -243,15 +307,14 @@ class RefreshRules {
                 quick.suspend().wait();
             }
             if (steps.length) {
-                this.engine.runEffects(state, seat, steps, { kind: 'event', ctx: null });
+                // The next player and the end of the round must wait for every
+                // question of this tactic, even across a network reconnect.
+                this.engine.runEffects(state, seat, steps, { kind: 'event', ctx: { afterEvent: true } });
+                return { ok: true };
             }
         }
-        // «Быстрый ответ» starts a limited advance from this event: the event
-        // phase waits until that order is finished. finishOrder() will call
-        // nextEventPlayer() with the restored event-phase snapshot.
-        if (!(state.order && OrderMove.of(state.order).fromEvent) && !QuickResponse.of(state).pending) {
-            this.nextEventPlayer(state);
-        }
+        this.shuffleEventCards(state, seat);
+        this.nextEventPlayer(state);
         return { ok: true };
     }
 
@@ -310,9 +373,19 @@ class RefreshRules {
         // The first player may be out of the game: the planning starts with the
         // first player who still has tokens in hand.
         GamePhase.of(state).turn = GamePhase.of(state).opener(this.engine.nextPlanner);
-        // The schemes of the start of the planning phase.
-        this.engine.maybeScheme(state, GamePhase.of(state).turn, 'planning', { kind: 'event', ctx: null });
         this.engine.log(state, -1, 'Раунд ' + GamePhase.of(state).round + ': фаза планирования.');
+        this.offerPlanningSchemes(state, 0);
+    }
+
+    offerPlanningSchemes(state, index) {
+        const circle = GamePhase.of(state).circle();
+        for (let i = index || 0; i < circle.length; i++) {
+            const seat = circle[i];
+            if (state.players[seat].eliminated) continue;
+            if (this.engine.maybeScheme(state, seat, 'planning', {
+                kind: 'event', ctx: { resumePlanningSchemes: i + 1 },
+            })) return;
+        }
     }
 
 }

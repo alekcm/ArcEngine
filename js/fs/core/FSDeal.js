@@ -27,6 +27,12 @@ class OrderDeal {
         return deal;
     }
 
+    // Permissions last only for this order and are serialised with it.
+    get emptyStrategize() { return !!this.order.emptyStrategize; }
+    allowEmptyStrategize() { this.order.emptyStrategize = true; return this; }
+    get occupiedStructure() { return !!this.order.occupiedStructure; }
+    allowOccupiedStructure() { this.order.occupiedStructure = true; return this; }
+
     // --- the discounts of a purchase -----------------------------------------
 
     /** «цена отряда дешевле на N» — the card of the order, per unit. */
@@ -54,9 +60,21 @@ class OrderDeal {
         return this.purchaseDiscount + (n || 0);
     }
 
-    /** The discount a step of a card applies to a unit it places itself. */
+    /** The order discount applies once to the entire receipt, not to each item. */
+    totalAfterDiscount(subtotal) {
+        return Math.max(0, (subtotal || 0) - this.purchaseDiscount);
+    }
+
+    /** The amount the next item adds to that receipt, for the panel and budget. */
+    marginalPrice(price) {
+        const purchases = Purchases.of(this.order);
+        const subtotal = purchases ? purchases.spent : 0;
+        return this.totalAfterDiscount(subtotal + price) - this.totalAfterDiscount(subtotal);
+    }
+
+    /** The per-unit discount used by an effect which buys its own unit. */
     get placementDiscount() {
-        return this.unitDiscount + this.purchaseDiscount;
+        return this.unitDiscount;
     }
 
     /** «1 КЛ0 за 1 материю» — the card names the price of one cheap unit. */

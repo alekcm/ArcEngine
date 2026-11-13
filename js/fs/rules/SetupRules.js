@@ -53,6 +53,7 @@ class SetupRules {
                 orderTokens: this.engine.ORDER_TOKENS,
                 eventTokens: 0,
                 decks: { combat: [], upgradeCombat: [], event: [], upgradeOrder: [] },
+                eventDiscard: [],
                 hand: [],
                 schemes: [],
                 upgrades: [],
@@ -93,6 +94,9 @@ class SetupRules {
             this.engine.player(state, seat).combatDeck.resetPile(
                 FS_CATALOG.upgradeCombatCards(faction.id).map(c => c.name));
             state.players[seat].decks.upgradeOrder = FS_CATALOG.orderCards(faction.id).map(c => c.name);
+            // The shuffled event deck is created on its first draw. The flag
+            // distinguishes an uncreated deck from one genuinely exhausted.
+            state.players[seat].eventDeckInitialized = false;
         });
 
         // --- the tiles: every player gets their home tile and two base tiles
@@ -612,7 +616,9 @@ class SetupRules {
         const i = state.units.indexOf(unit);
         if (i >= 0) state.units.splice(i, 1);
         const p = state.players[unit.seat];
-        p.supply.units[unit.unit] = (p.supply.units[unit.unit] || 0) + 1;
+        // A reinforcement moved outside its battle is a unit, but never a
+        // plastic model: destroying it must not create a miniature in supply.
+        if (!unit.reinforcementCombat) p.supply.units[unit.unit] = (p.supply.units[unit.unit] || 0) + 1;
         // «получите по 1 материалу за каждый уничтоженный отряд» («Рой
         // потрошителей»): the step of the damage counts its own losses.
         if (state.combat) CombatPlans.of(state.combat).addDestroyed(1);

@@ -12,35 +12,22 @@ class PlaySteps {
         const name = answer.card;
         const hand = p.eventHand || [];
         if (!name || !hand.includes(name)) return null;
-        // The other cards go back to the deck.
-        for (const other of hand) if (other !== name) p.decks.event.push(other);
+        // The other drawn cards are held until the chosen effect is finished;
+        // afterwards they return to the deck, but not while it is drawing cards.
+        const others = hand.filter(other => other !== name);
+        for (const other of others) R.holdEventCard(state, seat, other);
         p.eventHand = [];
         const card = FS_CATALOG.card('events', p.faction, name);
         if (!card) return null;
         R.log(state, seat, state.players[seat].name + ' разыграл карту события «' + name + '».');
+        const returns = others.map(other => ({ op: 'returnActivatedEvent', name: other }));
         if (card.type === 'scheme') {
-            const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p.faction });
-            const trig = steps.find(x => x && x.op === 'trigger');
-            const keep = /не больше 2/i.test(card.text || '')
-                ? (p.schemes || []).slice(0, 1) : [];
-            p.schemes = keep.concat([{
-                name: card.name, text: card.text || '',
-                trigger: trig ? trig.trigger : null,
-                steps: trig ? trig.steps : [],
-                note: trig ? !!trig.note : true, defer: trig ? !!trig.defer : false,
-                orderType: trig ? trig.orderType || null : null,
-                insteadOfOrder: trig ? !!trig.insteadOfOrder : false,
-            }]);
-            R.log(state, seat, p.name + ' держит план «' + card.name + '».');
-            step.done = true;
-            return null;
+            R.keepEventScheme(state, seat, card);
+            return { replace: returns };
         }
-        // A tactic card is resolved, not kept: it goes back to the
-        // event deck like every other drawn card. A scheme card stays
-        // in play and is handled above.
-        p.decks.event.push(name);
+        // A tactic returns only after its questions and effects have resolved.
         const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p.faction });
-        return { replace: steps };
+        return { replace: steps.concat([{ op: 'returnActivatedEvent', name }], returns) };
     }
 
     static playCard(effects, f) {
@@ -78,19 +65,7 @@ class PlaySteps {
     }
 
     static activateEvents(effects, f) {
-        const { R, state, seat, step, p } = f;
-        // «взять две верхних карты из колоды событий и активировать их
-        // способности» («Некромеханика»): both cards are taken from the
-        // top of the deck and both abilities happen, one after another.
-        const steps = [];
-        for (let i = 0; i < (step.n || 1); i++) {
-            const name = R.drawEventCard(state, seat);
-            if (!name) break;
-            const card = FS_CATALOG.cardNamed('events', name);
-            R.log(state, seat, state.players[seat].name + ' активирует карту события «' + name + '».');
-            if (card) steps.push(...FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p.faction }));
-        }
-        return steps.length ? { replace: steps } : null;
+        return CardAsks.activateEvents(effects, f);
     }
 
     static chooseEventAbility(effects, f) {
@@ -98,37 +73,22 @@ class PlaySteps {
         const name = answer.card;
         const hand = p.eventHand || [];
         if (!name || !hand.includes(name)) return null;
-        // The two other cards are discarded. No icon on a newly revealed
-        // card moves a Warp Storm: the storm icon of THIS tactic was the
-        // only one to resolve (06-events.md, «Инкарнация Тзинча»).
+        // Resolve the chosen ability, then discard the others as printed.
+        // No icon on a newly revealed card moves a second Warp Storm.
         StormPhase.of(state).suppressIcons();
-        for (const other of hand) if (other !== name) p.decks.event.push(other);
+        const others = hand.filter(other => other !== name);
+        for (const other of others) R.holdEventCard(state, seat, other);
         p.eventHand = [];
         const card = FS_CATALOG.card('events', p.faction, name);
         if (!card) return null;
         EventPhase.of(state).setCard(card);
         const steps = FS_EFFECTS.parse(card.text || '', { kind: 'event', faction: p.faction });
+        const returns = others.map(other => ({ op: 'returnActivatedEvent', name: other }));
         if (card.type === 'scheme') {
-            const trig = steps.find(x => x && x.op === 'trigger');
-            // A scheme replaces the other plans; Tau's «не больше 2»
-            // keeps one of them. Here the card is chosen from the deck,
-            // so its own text decides.
-            const keep = /не больше 2/i.test(card.text || '')
-                ? (p.schemes || []).slice(0, 1) : [];
-            p.schemes = keep.concat([{
-                name: card.name, text: card.text || '',
-                trigger: trig ? trig.trigger : null,
-                steps: trig ? trig.steps : [],
-                note: trig ? !!trig.note : true,
-                defer: trig ? !!trig.defer : false,
-                orderType: trig ? trig.orderType || null : null,
-                insteadOfOrder: trig ? !!trig.insteadOfOrder : false,
-            }]);
-            R.log(state, seat, p.name + ' держит план «' + card.name + '».');
-            return null;
+            R.keepEventScheme(state, seat, card);
+            return { replace: returns };
         }
-        p.decks.event.push(name);
-        return { replace: steps };
+        return { replace: steps.concat([{ op: 'returnActivatedEvent', name }], returns) };
     }
 
     static discardFoeCard(effects, f) {

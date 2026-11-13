@@ -111,7 +111,7 @@ class CoreRules {
         return this.board(state).capacity(systemId, pos, def);
     }
 
-    /** The plastic of an area: «no more than five units of one player». */
+    /** Remaining room under the five-unit Advance movement limit. */
     unitLimit(state, systemId, pos, seat) {
         return this.board(state).unitLimit(systemId, pos, seat);
     }
@@ -257,7 +257,24 @@ class CoreRules {
     view(state, seat) {
         const copy = JSON.parse(JSON.stringify(state));
         FS_WARP_STORMS.normalize(copy);
+        // Only a player's own top order may be inspected. Other facedown
+        // orders, even his own below the top, have no face in the LAN view.
+        for (const sys of copy.systems || []) {
+            const tokens = sys.tokens || [];
+            tokens.forEach((token, index) => {
+                if (!token.faceUp && !(token.seat === seat && index === tokens.length - 1)) delete token.order;
+            });
+        }
+        // Older saved logs included the hidden type when placing an order.
+        for (const entry of copy.log || []) {
+            if (typeof entry.text === 'string') entry.text = entry.text
+                .replace(/выложил приказ «[^»]+» в систему /, 'выложил закрытый приказ в систему ')
+                .replace(/перекладывает приказ «[^»]+» из системы /, 'перекладывает закрытый приказ из системы ');
+        }
         for (const p of copy.players) {
+            // Totals by kind are useful for one's own hand, but would disclose
+            // the other player's facedown orders.
+            if (p.seat !== seat) delete p.placedOf;
             // Only the count leaves the server: the deck itself is known to all
             // players through decksCombatKnown below, and the rest is the pile
             // of a player. One loop, one shape.
@@ -281,11 +298,15 @@ class CoreRules {
             // seat may see.
             CombatCards.of(copy.combat).hideFrom(seat);
         }
-        // The question of the effect: the cards of the hand of the opponent
-        // are not shown.
-        if (copy.pending && copy.pending.question && copy.pending.question.kind === 'cards') {
-            const owner = copy.pending.seat;
-            if (owner !== seat) copy.pending.question.options = [];
+        // A private explanation (for example the face seen by «Обход») only
+        // goes to the seat answering the question, not merely to the UI hidden
+        // by CSS. The authoritative pending question remains untouched.
+        if (copy.pending && copy.pending.question) {
+            const answerSeat = copy.pending.answerSeat === undefined ? copy.pending.seat : copy.pending.answerSeat;
+            if (answerSeat !== seat) delete copy.pending.question.privateText;
+            // Cards from another player's hand are likewise not sent as options.
+            if (copy.pending.question.kind === 'cards' && copy.pending.seat !== seat)
+                copy.pending.question.options = [];
         }
         if (copy.setup) {
             copy.setup.hand = (copy.setup.hands[seat] || []).slice();

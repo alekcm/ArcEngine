@@ -5,7 +5,14 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class TokenAsks {
-    static ops = ['gainToken', 'loseToken', 'keepTokens', 'loseReinforcement', 'gainTokensLater', 'foeSpendOrPay'];
+    static ops = ['gainToken', 'loseToken', 'keepTokens', 'loseReinforcement', 'gainTokensLater', 'foeSpendOrPay', 'banCombatTokens'];
+
+    static banCombatTokens(effects, f) {
+        const { R, state, combat, inCombat, side, step } = f;
+        if (inCombat) CombatBans.of(combat).forbidTokenGain(CombatSides.foe(side), step.kind,
+            effects.combatEffectSource(R, state, side));
+        return null;
+    }
 
     static gainToken(effects, f) {
         const { R, state, seat, step, ctx, combat, inCombat, side, foe, p } = f;
@@ -32,8 +39,12 @@ class TokenAsks {
             }
         }
         const s2 = side;
-        CombatCubes.of(combat).add(s2, step.kind, n);
-        R.log(state, seat, state.players[seat].name + ' получает ' + n + ' ' + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны') + '.');
+        const cubes = CombatCubes.of(combat);
+        const before = cubes.get(s2, step.kind);
+        const gained = cubes.add(s2, step.kind, n) - before;
+        R.log(state, seat, gained > 0
+            ? state.players[seat].name + ' получает ' + gained + ' ' + (step.kind === 'att' ? 'жетонов атаки' : 'жетонов обороны') + '.'
+            : state.players[seat].name + ' не получает жетоны боя.');
         return null;
     }
 

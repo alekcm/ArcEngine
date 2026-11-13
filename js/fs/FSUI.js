@@ -240,8 +240,9 @@ const FSUI = {
         if (!rows.length) list.append(this.el('div', 'fs-empty', 'На доске пока ничего.'));
         for (const row of rows) {
             const line = this.el('span', 'fs-orders-placed' + (row.faceUp ? ' is-open' : ''));
-            line.append(this.iconEl('order.' + row.order, 'fs-orders-placed-icon'));
-            line.title = row.tile + ' · ' + this.orderLabel(row.order) + (row.faceUp ? ' · открыт' : ' · закрыт');
+            line.append(this.iconEl(row.order ? 'order.' + row.order : 'order.event', 'fs-orders-placed-icon'));
+            line.title = row.tile + ' · ' + (row.order ? this.orderLabel(row.order) : 'приказ под другими жетонами')
+                + (row.faceUp ? ' · открыт' : ' · закрыт');
             list.append(line);
         }
         pop.append(list);
@@ -986,6 +987,7 @@ const FSUI = {
             line.append(this.el('b', '', String(battle.damage.total)));
             if (battle.damage.total) {
                 line.append(this.el('span', 'fs-battle-left' + (battle.damage.left ? ' is-open' : ''), 'осталось ' + battle.damage.left));
+                if (battle.damage.discarded) line.append(this.el('span', 'fs-battle-left', 'потеряно ' + battle.damage.discarded));
             }
             dmg.append(line);
             for (const row of battle.damage.rows || []) {
@@ -995,6 +997,7 @@ const FSUI = {
                     : row.type === 'ship' ? 'mark.ship' : 'mark.ground', 'fs-battle-target-icon'));
                 item.append(this.el('span', 'fs-battle-target-name', row.name));
                 item.append(this.el('span', 'fs-battle-target-health', String(row.health)));
+                if (row.first) item.append(this.el('span', 'fs-battle-target-state', 'первым'));
                 if (row.take) item.append(this.el('span', 'fs-battle-target-take', '−' + row.take));
                 if (row.destroyed) item.append(this.el('span', 'fs-battle-target-state', 'уничтожен'));
                 else if (row.demoralised) item.append(this.el('span', 'fs-battle-target-state', 'деморализован'));

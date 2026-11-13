@@ -1319,7 +1319,9 @@ const FSView = {
             const placed = [];
             list.forEach(u => {
                 const owner = state.players.find(p2 => p2.seat === u.seat);
-                const color = (owner && owner.color) || this.factionColor(owner ? owner.faction : '');
+                const reinforcement = !!u.reinforcementCombat;
+                const color = reinforcement ? '#f4f1e8' : ((owner && owner.color) || this.factionColor(owner ? owner.faction : ''));
+                const palette = reinforcement ? { primary: color, secondary1: color, secondary2: color } : (owner && owner.palette);
                 const def = FS_RULES.unitOf(state, u);
                 const isShip = !!(def && def.type === 'ship');
                 const p = this.areaPos(app, sys, pos, view.metrics);
@@ -1335,13 +1337,13 @@ const FSView = {
                 if (view.unitPositions) view.unitPositions.set(u.id, { x: base.x + off.x, y: base.y, z: base.z + off.y });
                 placed.push({ root: null, x: base.x + off.x, z: base.z + off.y, seat: u.seat, routed: !!u.routed });
                 const slot = placed[placed.length - 1];
-                const model = def && this.addFactionUnit(view, u, base, off, color, def.type, onWorld, owner && owner.palette);
+                const model = def && this.addFactionUnit(view, u, base, off, color, def.type, onWorld, palette);
                 if (model) { slot.root = model; return; }
                 // Until a faction OBJ loads (or if it fails), use sculpted silhouettes rather than
                 // identical flat counters: ships read as long hulls, ground units as raised pieces.
                 const ship = def && def.type === 'ship';
                 const unitMeta = { fs: 'unit', unit: u.id, system: sysId, pos };
-                const unitMaterial = view.material('unit' + u.seat, color, { emissive: true });
+                const unitMaterial = view.material(reinforcement ? 'unit-reinforcement' : 'unit' + u.seat, color, { emissive: true });
                 if (ship) {
                     // Distinct fallback silhouette: a tapered hull, broad swept wings and a lit cockpit.
                     const craft = new BABYLON.TransformNode('fs-u' + u.id, view.scene);
@@ -1359,7 +1361,7 @@ const FSView = {
                     const engine = BABYLON.MeshBuilder.CreateBox('fs-ship-engine-' + u.id,
                         { width: 7, depth: 4, height: 3 }, view.scene);
                     engine.parent = craft; engine.position.set(-10, 0, 0);
-                    engine.material = view.material('unit-engine-' + u.seat, color, { emissive: true });
+                    engine.material = view.material(reinforcement ? 'unit-engine-reinforcement' : 'unit-engine-' + u.seat, color, { emissive: true });
                     const cockpit = BABYLON.MeshBuilder.CreateSphere('fs-ship-cockpit-' + u.id,
                         { diameter: 4, segments: 8 }, view.scene);
                     cockpit.parent = craft; cockpit.position.set(4, 2, 0);
@@ -1805,11 +1807,11 @@ const FSView = {
             // A reinforcement token IS the faction's CL0 unit (the rules,
             // "Reinforcement Tokens"): its own miniature, painted fully white.
             // Until the OBJ loads (or if it fails) a flat white disc stands in.
-            const reinforce = Number(CombatTokens.of(c).used(side.id));
+            const tokenState = CombatTokens.of(c);
+            const reinforce = Number(tokenState.used(side.id));
             const flipped = typeof FS_RULES !== 'undefined' ? FS_RULES.reinforceFlipped(state, side.id) : [];
-            const destroyed = typeof FS_RULES !== 'undefined' ? FS_RULES.reinforceDestroyed(state, side.id) : [];
             const live = [];
-            for (let i = 0; i < reinforce; i++) if (destroyed.indexOf(i) < 0) live.push(i);
+            for (let i = 0; i < reinforce; i++) if (tokenState.alive(side.id, i)) live.push(i);
             const sidePlayer = state.players[side.seat] || {};
             const reinDef = typeof FS_RULES !== 'undefined'
                 ? FS_RULES.reinforceUnitDef(sidePlayer.faction, area.world ? 'ground' : 'ship') : null;

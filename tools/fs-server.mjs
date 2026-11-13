@@ -90,7 +90,7 @@ class Room {
     }
 
     add(name, faction, id, palette) {
-        let player = id ? this.players.find(p => p.id === id) : null;
+        let player = id ? this.players.find(p => !p.bot && p.id === id) : null;
         if (player) {
             player.name = name;
             if (faction) player.faction = faction;
@@ -98,7 +98,10 @@ class Room {
             return player;
         }
         player = {
-            id: id || ('p' + this.nextId++),
+            // The reconnect id is a secret, never a client-chosen or public id.
+            // A room list is visible to every player, including an opponent.
+            id: crypto.randomBytes(24).toString('base64url'),
+            publicId: 'p' + this.nextId++,
             name: name || ('Игрок ' + (this.players.length + 1)),
             faction: faction || '',
             palette: palette || null,
@@ -111,7 +114,10 @@ class Room {
 
     remove(player) {
         const i = this.players.indexOf(player);
-        if (i >= 0) this.players.splice(i, 1);
+        if (i < 0) return;
+        this.players.splice(i, 1);
+        // This is called only in the lobby, before seats become fixed.
+        this.players.forEach((p, seat) => { p.seat = seat; });
     }
 
     // The game starts when everybody has a faction.
@@ -164,41 +170,39 @@ function activeSeat(state) {
 }
 
 // The two seats of a test party: the host and the opponent he also plays.
-function testSeats(room, host) {
+function testSeats(host) {
     const hostFaction = host.faction || FS_DATA.factions[0].id;
     const foe = FS_DATA.factions.find(f => f.id !== hostFaction) || FS_DATA.factions[1];
-    // The host always sits first: the views and the seats of the room agree.
-    const i = room.players.indexOf(host);
-    if (i > 0) {
-        room.players.splice(i, 1);
-        room.players.unshift(host);
-    }
-    host.seat = 0;
-    let foePlayer = room.players.find(p => p.bot);
-    if (!foePlayer) {
-        foePlayer = { id: 'bot', name: 'Противник', faction: foe.id, seat: 1, ws: null, bot: true };
-        room.players[1] = foePlayer;
-    }
-    foePlayer.faction = foe.id;
-    foePlayer.seat = 1;
-    foePlayer.ws = null;
-    return [
-        { name: host.name, faction: hostFaction, palette: host.palette || null },
-        { name: foePlayer.name, faction: foe.id, palette: foePlayer.palette || null },
-    ];
+    // The opponent has a public lobby id, but no reconnect credential or socket.
+    // Prepare it without changing the room: construction of the test may fail.
+    const foePlayer = { id: null, publicId: 'bot', name: 'Противник', faction: foe.id, seat: 1, ws: null, bot: true };
+    return {
+        foePlayer,
+        players: [
+            { name: host.name, faction: hostFaction, palette: host.palette || null },
+            { name: foePlayer.name, faction: foe.id, palette: foePlayer.palette || null },
+        ],
+    };
 }
 
 // The two test modes of the lobby. 'map' opens the same 1×1 party with the board
 // already assembled; 'battle' puts the chosen troops and decks on one field.
 function startTest(room, host, msg) {
     if (room.started) return { ok: false, error: 'Партия уже идёт: обновите страницу, чтобы начать тест.' };
-    const players = testSeats(room, host);
+    // Validate before touching the room or inserting the test opponent. A solo
+    // party must not overwrite other players (including temporarily offline ones).
+    if (msg.mode !== 'map' && msg.mode !== 'battle') return { ok: false, error: 'Неизвестный режим теста.' };
+    if (room.players.length !== 1 || room.players[0] !== host) {
+        return { ok: false, error: 'Тест доступен одному игроку: откройте отдельную комнату через ?room=КОД.' };
+    }
+    const { players, foePlayer } = testSeats(host);
     const seed = (Date.now() % 100000) + 1;
+    let state;
     if (msg.mode === 'map') {
-        room.state = FS_RULES.newReadyGame({ seed, players });
-    } else if (msg.mode === 'battle') {
+        state = FS_RULES.newReadyGame({ seed, players });
+    } else {
         const battle = msg.battle || {};
-        room.state = FS_RULES.newBattleTest({
+        state = FS_RULES.newBattleTest({
             seed, players,
             kind: battle.kind === 'space' ? 'space' : 'ground',
             units: battle.units || {},
@@ -206,9 +210,11 @@ function startTest(room, host, msg) {
             cards: battle.cards || [],
             foeCards: battle.foeCards || [],
         });
-    } else {
-        return { ok: false, error: 'Неизвестный режим теста.' };
     }
+    // Commit the room only after the engine successfully constructed the game.
+    host.seat = 0;
+    room.players.push(foePlayer);
+    room.state = state;
     room.mode = msg.mode;
     room.solo = true;
     room.started = true;
@@ -390,14 +396,23 @@ function sendRoomInfo(room) {
         t: 'room',
         code: room.code,
         started: room.started,
-        players: room.players.map(p => ({ id: p.id, name: p.name, faction: p.faction, palette: p.palette || null, seat: p.seat })),
+        players: room.players.map(p => ({ id: p.publicId || 'bot', name: p.name, faction: p.faction, palette: p.palette || null, seat: p.seat })),
     });
 }
 
 function handle(ws, msg) {
     if (!msg || typeof msg !== 'object') return;
-    // FS_DEBUG=1 — what the server receives (for the diagnosis).
-    if (process.env.FS_DEBUG) console.log('  [fs] ' + msg.t + ' ' + JSON.stringify(msg).slice(0, 120));
+    // Never log a reconnect secret, even in diagnostic mode.
+    if (process.env.FS_DEBUG) {
+        const debug = msg.t === 'hello' ? { ...msg, id: msg.id ? '[private]' : '' } : msg;
+        console.log('  [fs] ' + msg.t + ' ' + JSON.stringify(debug).slice(0, 120));
+    }
+    // A newer connection may have rejoined this seat. Its predecessor must not
+    // issue commands or reclaim it over the superseded socket.
+    if (ws.player && ws.player.ws !== ws) {
+        ws.send({ t: 'err', msg: 'Это соединение заменено новым подключением.' });
+        return;
+    }
     if (msg.t === 'hello') {
         const code = String(msg.room || '').trim().toUpperCase();
         let room = code ? rooms.get(code) : defaultRoom;
@@ -408,13 +423,20 @@ function handle(ws, msg) {
         // A party that has already started cannot take a new player: the seats are
         // fixed. The player who was in the room rejoins by his id; anybody else is
         // told so honestly instead of being handed a seat that does not exist.
-        const known = msg.id ? room.players.find(p => p.id === String(msg.id)) : null;
+        // Accept only string credentials and use the same value for lookup and
+        // joining; coercing an array here could create a new seat in a live game.
+        const requestedId = typeof msg.id === 'string' ? msg.id : '';
+        const known = requestedId ? room.players.find(p => !p.bot && p.id === requestedId) : null;
+        if (ws.player && (ws.room !== room || ws.player !== known)) {
+            ws.send({ t: 'err', msg: 'Это соединение уже принадлежит игроку.' });
+            return;
+        }
         if (room.started && !known) {
             ws.send({ t: 'joined', id: '', room: room.code, seat: 0, palette: null, started: true, factions: FS_DATA.factions.map(f => ({ id: f.id, name: f.name, color: f.color })), invites: [] });
             ws.send({ t: 'err', msg: 'Игра в этой комнате уже идёт. Дождитесь конца партии.' });
             return;
         }
-        const player = room.add(msg.name, msg.faction, msg.id, cleanPalette(msg.palette));
+        const player = room.add(msg.name, msg.faction, requestedId, cleanPalette(msg.palette));
         player.ws = ws;
         ws.room = room;
         ws.player = player;
@@ -479,13 +501,17 @@ function handle(ws, msg) {
         return;
     }
     if (msg.t === 'leave') {
-        const room = ws.room;
-        if (!room) return;
-        // During a game the seats must not shift — the player stays in the room.
+        const room = ws.room, player = ws.player;
+        if (!room || !player) return;
+        // During a game the seat stays reserved for reconnect; in the lobby it
+        // is removed. In both cases this socket no longer has that authority.
         if (!room.started) {
-            room.remove(ws.player);
-            if (!room.players.length) rooms.delete(room.code);
+            room.remove(player);
+            if (!room.players.length && room !== defaultRoom) rooms.delete(room.code);
         }
+        player.ws = null;
+        ws.player = null;
+        ws.room = null;
         sendRoomInfo(room);
         return;
     }
@@ -517,10 +543,12 @@ const server = http.createServer(async (req, res) => {
     }
     if (st.isDirectory()) { res.writeHead(403); return res.end('No listing'); }
     const type = MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
-    // index.html gets the build stamp injected: which commit is being served.
+    // The page knows the default room before sending any reconnect secret.
+    // The code is public; player credentials are never included in the HTML.
     if (pathname === '/index.html') {
         let html = fs.readFileSync(filePath, 'utf8');
         html = html.split('__GIT_COMMIT__').join(GIT_COMMIT);
+        html = html.split('__FS_DEFAULT_ROOM__').join(defaultRoom.code);
         const body = Buffer.from(html, 'utf8');
         res.writeHead(200, {
             'Content-Type': type,
@@ -557,7 +585,9 @@ server.on('upgrade', (req, socket) => {
     ws.handler = msg => handle(ws, msg);
     ws.onClose = () => {
         const room = ws.room, player = ws.player;
-        if (!room || !player) return;
+        if (!room || !player || player.ws !== ws) return;
+        // An older socket can close after its replacement has already joined.
+        // It must not disconnect the new socket from broadcasts.
         player.ws = null;
         sendRoomInfo(room);
     };

@@ -128,6 +128,13 @@ class DominateRules {
     cmdFinishDominate(state, seat, cmd = {}) {
         const order = this.engine.orderOf(state, seat, 'dominate');
         if (!order) return { ok: false, error: 'Нечего заканчивать.' };
+        if (Question.of(state).waiting) return { ok: false, error: 'Сначала ответьте на вопрос способности.' };
+        // A moved factory has already used the ability. The player may play its
+        // follow-up upgrade before closing the order, but cannot move it again.
+        if (OrderTally.of(order).abilityResolved) {
+            this.engine.finishOrder(state, seat);
+            return { ok: true };
+        }
         // The ability of the faction: the text is the rule.
         const faction = this.engine.faction(state, seat);
         const text = faction && faction.ability ? faction.ability.text : '';

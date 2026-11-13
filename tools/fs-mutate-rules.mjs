@@ -32,6 +32,204 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
  * имени или текста проверки).
  */
 const TABLE = [
+    // The markdown audit must catch wrong directions even when the event's
+    // name, type and text still match the approved transcription.
+    {
+        check: 'cards-md-3', file: 'js/fs/FSData.js',
+        old: '   "name": "Багровая стража",\n   "type": "tactic",\n   "storm": [\n    "W",\n    "E"',
+        new: '   "name": "Багровая стража",\n   "type": "tactic",\n   "storm": [\n    "N",\n    "S"',
+        why: 'значок события сверяется со строкой и легендой 06',
+    },
+    {
+        check: 'cards-md-3', file: 'js/fs/FSData.js',
+        old: '   "name": "Теософия",\n   "type": "tactic",\n   "storm": [\n    "any"',
+        new: '   "name": "Теософия",\n   "type": "tactic",\n   "storm": [\n    "N",\n    "S"',
+        why: 'особая иконка Теософии не подменяется осевой парой',
+    },
+    // --- frozen roads of a movement step and «Крестный ход» -----------------
+    {
+        check: 'orders-sisters-1b', file: 'js/fs/effects/ask/FSOrderAsks.js',
+        old: "            march.setUncontrolled(step.n || 0);\n            // The card may be played after the roads of the step were frozen:\n            // the legal paths of a simultaneous movement are drawn anew.\n            R.refreshAdvanceRoutes(state, seat);",
+        new: "            march.setUncontrolled(step.n || 0);",
+        why: 'карта, сыгранная после заморозки дорог, перечерчивает дороги шага',
+    },
+    {
+        check: 'orders-sisters-1b', file: 'js/fs/rules/AdvanceRules.js',
+        old: '        if (passages.length > march.uncontrolledLeft) {',
+        new: '        if (passages.length > 99) {',
+        why: 'замороженные дороги не отменяют предел в два отряда',
+    },
+    {
+        check: 'step-2b', file: 'js/fs/rules/AdvanceRules.js',
+        old: "        if (now.ok && march.route) return { ok: false, error: 'Этому отряду некуда идти: в начале движения у него не было дороги.' };",
+        new: '        if (false) return { ok: false };',
+        why: 'отряд без дороги в начале шага не получает её от доски момента',
+    },
+    // --- «Орочьи корабли»: two units, one void, once per path ---------------
+    {
+        check: 'orders-orks-1', file: 'js/fs/rules/AdvanceRules.js',
+        old: '        if (voidPasses.length > move.passVoidLeft) {',
+        new: '        if (voidPasses.length > 99) {',
+        why: 'через пустоту проходят не больше двух отрядов приказа',
+    },
+    {
+        check: 'orders-orks-1', file: 'js/fs/effects/ask/FSOrderAsks.js',
+        old: "            move.setPassVoid(step.n || 0);\n            R.refreshAdvanceRoutes(state, seat);",
+        new: "            move.setPassVoid(step.n || 0);",
+        why: 'карта, сыгранная после заморозки дорог, перечерчивает дороги шага',
+    },
+    {
+        check: 'orders-orks-1', file: 'js/fs/rules/AdvanceRules.js',
+        old: '            if (m.usedVoid) OrderMove.of(order).returnPassVoid();',
+        new: '            /* mutation: the passage is not returned */',
+        why: 'отмена хода возвращает проход через пустоту',
+    },
+    {
+        check: 'orders-orks-2', file: 'js/fs/core/FSBoard.js',
+        old: '                    if (!pass || !area || area.world || voids >= 1',
+        new: '                    if (!pass || !area || area.world || voids >= pass',
+        why: 'путь идёт через одну пустоту, а не через столько, сколько отрядов',
+    },
+    {
+        check: 'orders-orks-2', file: 'js/fs/core/FSBoard.js',
+        old: '                        || (voidOnly && !voidOnly.includes(key))',
+        new: '                        || false',
+        why: 'после первого прохода дороги считаются только через ту же пустоту',
+    },
+    {
+        check: 'orders-orks-2', file: 'js/fs/rules/AdvanceRules.js',
+        old: "        if (voidPasses.length && !(voidAreas && voidAreas.length)) {",
+        new: "        if (false) {",
+        why: 'разные пустоты в одном приказе — отказ',
+    },
+    // --- ordered end-of-damage promises, including older saves -------------
+    {
+        check: 'combat-0f', file: 'js/fs/effects/ask/FSStrikeAsks.js',
+        old: 'setDeferred({ seat, steps: step.steps || [], eachStep: step.eachStep });',
+        new: 'setDeferred({ seat, steps: step.steps || [], eachStep: !!step.eachStep });',
+        why: 'старый ещё не зарегистрированный шаг Роя сохраняет отсутствие признака',
+    },
+    {
+        check: 'combat-0f', file: 'js/fs/core/FSCombatPlans.js',
+        old: '        const one = this.deferredEntries().find(x => !x.done && this.inRound(x));',
+        new: '        const one = this.deferredEntries().find(x => !x.done);',
+        why: 'обещание будущего раунда не выполняется раньше времени',
+    },
+    {
+        check: 'combat-0f', file: 'js/fs/rules/CombatRules.js',
+        old: '            if (needsTarget && !targets.length && !hasToken) continue;',
+        new: '            if (needsTarget && !targets.length && !hasToken) return false;',
+        why: 'недоступная цель не заглушает следующие обещания',
+    },
+    // --- damage-start event plans and saved Space Marine plans --------------
+    {
+        check: 'space-marine-damage-start', file: 'js/fs/FSEffects.js',
+        old: "bonusPerAsset: 'forge', bonusPerAssetN: Number(m[3]), who: 'me' }",
+        new: "who: 'me' }",
+        why: 'новый план «Адептус Механикус» добавляет жетоны за кузницы',
+    },
+    {
+        check: 'space-marine-damage-start', file: 'js/fs/FSEffects.js',
+        old: '        if (step.bonusPerAsset) n += (step.bonusPerAssetN || 1) * R.player(state, seat).assetCount(step.bonusPerAsset);',
+        new: '        /* mutation: ignore forge assets */',
+        why: 'бонус кузниц доходит до реального количества жетонов',
+    },
+    {
+        check: 'space-marine-damage-start', file: 'js/fs/FSEffects.js',
+        old: "                    ? Object.assign({}, one, { bonusPerAsset: 'forge', bonusPerAssetN: 1 }) : one);",
+        new: '                    ? one : one);',
+        why: 'старое сохранение с неполным шагом получает тот же бонус',
+    },
+    {
+        check: 'space-marine-damage-start', file: 'js/fs/rules/OperationsRules.js',
+        old: "            && (trigger === 'damage-start' ? s.trigger === trigger || startDamage(s)",
+        new: "            && (trigger === 'damage-start' ? s.trigger === trigger",
+        why: 'старый триггер начала урона по-прежнему предлагается',
+    },
+    {
+        check: 'space-marine-damage-start', file: 'js/fs/rules/CombatRules.js',
+        old: "                    if (this.engine.maybeScheme(state, owner, 'damage-start', { kind: 'combat', ctx: { side } })) {",
+        new: '                    if (false) {',
+        why: 'начало урона открывает окно планов до распределения',
+    },
+    {
+        check: 'space-marine-damage-repeat', file: 'js/fs/rules/CombatRules.js',
+        old: "            CombatHooks.of(c).forget('damageHook', 'damageStartHook', 'criticalHook').forgetEnd();",
+        new: "            CombatHooks.of(c).forget('damageHook', 'criticalHook').forgetEnd();",
+        why: 'отклонённый план предлагают в повторном шаге повреждений',
+    },
+    // --- starting forces and the Mechanicus home system ---------------------
+    {
+        check: 'sheet-1',
+        file: 'js/fs/FSData.js',
+        old: '     "id": "скитарии",\n     "name": "Скитарии",\n     "kl": 0,\n     "cost": 2,\n     "forge": false,\n     "combat": 2,',
+        new: '     "id": "скитарии",\n     "name": "Скитарии",\n     "kl": 0,\n     "cost": 2,\n     "forge": false,\n     "combat": 3,',
+        why: 'значение боя Скитариев сверяется с планшетом',
+    },
+    {
+        check: 'mech-setup-1',
+        file: 'js/fs/FSData.js',
+        old: '   "start": {\n    "factory": 2,\n    "city": 0,\n    "bastion": 0,\n    "forge": 1,',
+        new: '   "start": {\n    "factory": 1,\n    "city": 0,\n    "bastion": 0,\n    "forge": 1,',
+        why: 'партия начинается с двумя фабриками, а не одной',
+    },
+    {
+        check: 'mech-system-18',
+        file: 'js/fs/FSData.js',
+        old: '"name": "Sulymaan",\n      "materiel": 0,\n      "capacity": 4,',
+        new: '"name": "Sulymaan",\n      "materiel": 0,\n      "capacity": 3,',
+        why: 'оборотная сторона домашнего тайла сверена по вместимости мира',
+    },
+    {
+        check: 'mech-system-18',
+        file: 'js/fs/FSData.js',
+        old: '"name": "Runux 2",\n      "materiel": 0,\n      "capacity": 4,\n      "assets": [\n       "prosperity"\n      ],\n      "objective": true',
+        new: '"name": "Runux 2",\n      "materiel": 0,\n      "capacity": 4,\n      "assets": [\n       "prosperity"\n      ],\n      "objective": false',
+        why: 'на 18B оба нижних мира имеют места для жетонов целей',
+    },
+    {
+        check: 'mech-system-18',
+        file: 'js/fs/rules/SetupRules.js',
+        old: '                    objective: !!a.world.objective,',
+        new: '                    objective: true,',
+        why: 'при сборке карты бирки нельзя добавлять ко всем мирам',
+    },
+    // --- спорная область и источники отступления ----------------------------
+    {
+        check: 'adv-capture-1',
+        file: 'js/fs/core/FSBoard.js',
+        old: '        for (const s of this.structuresAt(systemId, pos)) seats.add(s.seat);',
+        new: '        /*мутация: вражеская постройка не создаёт спорную область*/',
+        why: 'фабрика без отрядов защищающегося становится спорной до захвата',
+    },
+    {
+        check: 'adv-capture-routed',
+        file: 'js/fs/rules/CombatRules.js',
+        old: '            if (routed) {\n                // The loser still retreats routed units',
+        new: '            if (false) {\n                // The loser still retreats routed units',
+        why: 'мгновенная победа не пропускает отступление деморализованного защитника',
+    },
+    {
+        check: 'ret-origins-destroyed',
+        file: 'js/fs/core/FSMarchTrail.js',
+        old: '                if (!participants.includes(m.piece) || this.lastOf(seat, m.piece) !== m) continue;',
+        new: '                if (this.lastOf(seat, m.piece) !== m) continue;',
+        why: 'источник уничтоженного до боя отряда не ограничивает бой',
+    },
+    {
+        check: 'ret-origins-route',
+        file: 'js/fs/core/FSMarchTrail.js',
+        old: '                if (!participants.includes(m.piece) || this.lastOf(seat, m.piece) !== m) continue;',
+        new: '                if (!participants.includes(m.piece)) continue;',
+        why: 'повторный вход одного отряда учитывает только последний источник',
+    },
+    {
+        check: 'ret-origins-undo-legacy',
+        file: 'js/fs/rules/AdvanceRules.js',
+        old: '            MarchTrail.of(state).unrecord(seat, from, to, m.id);',
+        new: '            /*мутация: отменённый марш оставляет ложный источник*/',
+        why: 'отмена марша удаляет только соответствующую запись пути',
+    },
     // --- материя: предел, накопление, старт, цена, тайник -------------------
     {
         check: 'mat-1',
@@ -108,8 +306,8 @@ const TABLE = [
     {
         check: 'simul-1',
         file: 'js/fs/rules/CombatRules.js',
-        old: "        if (side === 'attacker') turn.setStep('reinforce-defender');\n        else { turn.setStep('choose-attacker'); this.advanceCombatSteps(state); }",
-        new: "        if (side === 'attacker') turn.setStep('choose-attacker');\n        else { turn.setStep('reinforce-defender'); this.advanceCombatSteps(state); }",
+        old: "        turn.setStep(side === 'attacker' ? 'reinforce-defender' : 'choose-attacker');",
+        new: "        turn.setStep(side === 'attacker' ? 'choose-attacker' : 'reinforce-defender');",
         why: '«the attacker resolves his abilities first followed by the defender»',
     },
     // --- области, уничтожение, выбывание -----------------------------------
@@ -137,7 +335,7 @@ const TABLE = [
     {
         check: 'destroy-1',
         file: 'js/fs/rules/SetupRules.js',
-        old: '        p.supply.units[unit.unit] = (p.supply.units[unit.unit] || 0) + 1;',
+        old: '        if (!unit.reinforcementCombat) p.supply.units[unit.unit] = (p.supply.units[unit.unit] || 0) + 1;',
         new: '        /*мутация: уничтоженный отряд не вернулся в запас*/',
         why: '«…placed back in its owner’s play area»',
     },
@@ -172,15 +370,15 @@ const TABLE = [
     {
         check: 'event-4',
         file: 'js/fs/rules/RefreshRules.js',
-        old: "        const inPlay = card && card.type === 'scheme' ? card.name : null;",
-        new: '        const inPlay = null;',
+        old: '        p.decks.event = this.engine.shuffle(state, cards);',
+        new: '        p.decks.event = this.engine.shuffle(state, cards.concat([...inPlay]));',
         why: '«Scheme event cards remain in play.» — план не уходит в колоду',
     },
     {
         check: 'event-4',
         file: 'js/fs/rules/RefreshRules.js',
-        old: '        for (const name of phase.drawn) if (name !== inPlay) p.decks.event.push(name);',
-        new: '        for (const name of phase.drawn) if (false) p.decks.event.push(name);',
+        old: '        const cards = [...new Set(p.decks.event.concat(p.eventDiscard || []))]',
+        new: '        const cards = [...new Set(p.decks.event)]',
         why: '«Tactic event cards … are then shuffled back into the player’s event deck»',
     },
     {
@@ -439,15 +637,15 @@ const TABLE = [
     {
         check: 'scheme-1',
         file: 'js/fs/rules/RefreshRules.js',
-        old: "        if (card && card.type === 'scheme') {\n            // «… чтобы осталось не больше 2»",
-        new: "        if (card && false) {\n            // «… чтобы осталось не больше 2»",
+        old: "        if (card && card.type === 'scheme' && !cmd.skip) this.keepEventScheme(state, seat, card);",
+        new: '        if (false) this.keepEventScheme(state, seat, card);',
         why: '«Scheme event cards remain in play» — план не кладётся в игровую зону',
     },
     {
         check: 'tactic-1',
         file: 'js/fs/rules/RefreshRules.js',
-        old: "        if (card && card.type === 'scheme') {\n            // «… чтобы осталось не больше 2»",
-        new: "        if (card) {\n            // «… чтобы осталось не больше 2»",
+        old: "        if (card && card.type === 'scheme' && !cmd.skip) this.keepEventScheme(state, seat, card);",
+        new: '        if (card && !cmd.skip) this.keepEventScheme(state, seat, card);',
         why: '«Tactic event cards are resolved immediately» — тактика остаётся в игровой зоне',
     },
     {
@@ -574,14 +772,14 @@ const TABLE = [
     {
         check: 'plan-1',
         file: 'js/fs/rules/PlanningRules.js',
-        old: '        return this.engine.neighbors(state, sys.id).some(id => this.hasUnitsOrStructures(state, seat, id));',
+        old: '        return this.engine.neighbors(state, systemId).some(id => this.hasUnitsOrStructures(state, seat, id));',
         new: '        return true;',
         why: '«A player must place his order token in either a system containing one of his units or structures, or a system adjacent to …»',
     },
     {
         check: 'str-1',
         file: 'js/fs/rules/StrategizeRules.js',
-        old: "        if (!this.engine.hasUnitsOrStructures(state, seat, OrderContext.of(order).system)) {",
+        old: "        if (!OrderDeal.of(order).emptyStrategize\n            && !this.engine.hasUnitsOrStructures(state, seat, OrderContext.of(order).system)) {",
         new: '        if (false) {',
         why: '«The active player can purchase upgrades only if he has at least one unit or structure in the active system.»',
     },

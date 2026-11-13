@@ -5,7 +5,24 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class DiceAsks {
-    static ops = ['foePayFork', 'foeRetreatOffer', 'destroyFoeUnlessPays', 'stealMostDie', 'gainDie', 'loseDie', 'rerollDie', 'spendDie', 'flipDie', 'rerollValue', 'stealDie', 'convertFoeDice', 'setDie', 'loseDieIfMore', 'rerollAll', 'moveUnitToCombatForDice'];
+    static ops = ['rerollStrikeDice', 'gainStrikeDie', 'foePayFork', 'foeRetreatOffer', 'destroyFoeUnlessPays', 'stealMostDie', 'gainDie', 'loseDie', 'rerollDie', 'spendDie', 'flipDie', 'rerollValue', 'stealDie', 'convertFoeDice', 'setDie', 'loseDieIfMore', 'rerollAll', 'moveUnitToCombatForDice'];
+
+    static rerollStrikeDice(effects, f) {
+        const plan = f.state.order && StrikePlan.of(f.state.order).planned;
+        if (!plan || !plan.pool || !plan.pool.length) return null;
+        const options = plan.pool.map((die, i) => die == null ? -1 : i).filter(i => i >= 0);
+        return { question: { kind: 'dice', who: f.seat, op: 'rerollStrikeDice',
+            diceSource: 'strike', options, n: options.length, multi: true, any: true, strictDice: true,
+            text: 'Какие кубики орбитального удара перебросить? Можно не выбирать ни одного.' } };
+    }
+
+    static gainStrikeDie(effects, f) {
+        const plan = f.state.order && StrikePlan.of(f.state.order).planned;
+        if (!plan || plan.pool.length >= f.R.DICE_MAX) return null;
+        return { question: { kind: 'choice', who: f.seat, op: 'gainStrikeDie',
+            options: ['Кубик атаки', 'Кубик обороны', 'Кубик морали'],
+            text: 'Какой кубик получить для этого удара?' } };
+    }
 
     static stealMostDie(effects, f) {
         const { seat, step, combat, inCombat, side } = f;
@@ -41,27 +58,9 @@ class DiceAsks {
 
     static gainDie(effects, f) {
         const { R, state, seat, step, ctx, combat, inCombat, side, foe } = f;
-        let n = effects.count(R, state, seat, step, ctx);
-        if (step.inBattle && combat && step.per === 'unit') {
-            // "in the reinforce step" — the units of this battle, not the board.
-            const here = state.units.filter(u => u.seat === seat && !u.routed
-                && BattleField.of(combat).holds(u)
-                && effects.unitFits(R.unitOf(state, u), step.filter));
-            // «за каждый ваш недеморализованный отряд РАЗНОГО командного уровня»
-            // («Железная дисциплина», «Поддержка титана»): the count is the
-            // number of levels, not of the units — the token half of the same
-            // cards is counted by `count`, and both must agree.
-            let amount = here.length;
-            if (step.distinctLevel) {
-                const levels = new Set(here.map(u => {
-                    const def = R.unitOf(state, u);
-                    return def ? (def.kl || 0) : 0;
-                }));
-                amount = levels.size;
-            }
-            n = (step.n || 1) * (amount
-                + (step.filter ? 0 : R.tokenUnits(state, side).alive));
-        }
+        // `count` is shared with the other combat effects: it includes matching
+        // reinforcement tokens, deduplicates levels and respects battle scope.
+        const n = effects.count(R, state, seat, step, ctx);
         if (!inCombat) {
             // «Во время этого орбитального удара получите 1 `any cube`»
             // («Набег жнецов»): the cube of the strike is rolled, and only
@@ -69,16 +68,19 @@ class DiceAsks {
             if (state.order && PhasePlan.of(state.order).is('strike') && OrderContext.of(state.order).isSeat(seat)) {
                 let bonus = 0;
                 const faces = [];
-                for (let i = 0; i < n; i++) {
+                const strike = StrikePlan.of(state.order);
+                const room = Math.max(0, R.DICE_MAX - strike.dice.length);
+                for (let i = 0; i < Math.min(n, room); i++) {
                     const face = step.kind === 'any' ? R.rollDice(state, 1)[0] : step.kind;
                     if (face === 'att') bonus += 1;
                     faces.push(face);
                 }
                 // The cube the card gave is a cube of the player: the
                 // payment of «Разведка генокрадов» may spend it.
-                StrikePlan.of(state.order).addDice(faces).addBonus(bonus);
-                R.log(state, seat, state.players[seat].name + ' получает кубик для удара с орбиты'
+                strike.addDice(faces).addBonus(bonus);
+                if (faces.length) R.log(state, seat, state.players[seat].name + ' получает кубик для удара с орбиты'
                     + (bonus ? ': он выпал на атаку.' : ': он не выпал на атаку.'));
+                else R.log(state, seat, 'Больше восьми кубиков при орбитальном ударе быть не может.');
             }
             return null;
         }
@@ -146,10 +148,11 @@ class DiceAsks {
         }
         const want = effects.count(R, state, seat, step, ctx);
         if (want <= 0) return null;
-        const q = { question: { kind: 'dice', who: effects.diceAsker(combat, side, step), diceSide: s2, op: 'rerollDie', n: Math.min(want, options.length), options, kind2: step.kind, kinds, text: 'Какие кубики перебросить?' } };
-        // «вы обязаны перебросить 2 `def. cube` и/или `morale cube`» —
-        // fewer dice than asked for is all that can be done.
-        return q;
+        const required = effects.diceStepSelectionMode(step) === true;
+        return { question: { kind: 'dice', who: effects.diceAsker(combat, side, step), diceSide: s2,
+            op: 'rerollDie', n: Math.min(want, options.length), options, kind2: step.kind, kinds,
+            required, any: !required, multi: !required,
+            text: required ? 'Какие кубики перебросить?' : 'Какие кубики перебросить? Можно выбрать меньше или ни одного.' } };
     }
 
     // «Если противник не потратит 1 `morale cube`, получите 3 `def. token`»:
@@ -249,7 +252,7 @@ class DiceAsks {
             question: {
                 kind: 'dice', who: effects.diceAsker(combat, side, step), diceSide: s2,
                 op: 'spendDie', n: Math.max(1, Math.min(want0, options.length)), options,
-                kind2: step.kind, kinds,
+                kind2: step.kind, kinds, strictDice: !!step.strictDice,
                 // «Потратьте любое количество `morale cube`»: the count
                 // is free, so fewer dice than offered may be chosen.
                 any: !!step.any,
@@ -290,7 +293,10 @@ class DiceAsks {
             for (const i of options) turn.put(s2, i, step.to);
             return null;
         }
-        return { question: { kind: 'dice', who: effects.diceAsker(combat, side, step), diceSide: s2, op: 'flipDie', n: Math.min(step.n, options.length), options, kind2: step.kind, text: 'Какие кубики перевернуть на ' + fsFaceName(step.to) + '?' } };
+        return { question: { kind: 'dice', who: effects.diceAsker(combat, side, step), diceSide: s2,
+            op: 'flipDie', n: Math.min(step.n, options.length), options, kind2: step.kind,
+            any: !!step.any, multi: !!step.multi, strictDice: !!step.strictDice,
+            text: 'Какие кубики перевернуть на ' + fsFaceName(step.to) + '?' } };
     }
 
     static rerollValue(effects, f) {

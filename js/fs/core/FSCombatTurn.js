@@ -181,6 +181,13 @@ class CombatTurn {
         return this.combat.dice[side];
     }
 
+    /** Replace a side's initial roll while retaining the existing table array. */
+    setDice(side, faces) {
+        const dice = this.dice(side);
+        dice.splice(0, dice.length, ...(faces || []));
+        return this;
+    }
+
     /** The dice that are still rolled: the blank slots are not dice. */
     live(side) {
         return this.dice(side).filter(Boolean);

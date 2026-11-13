@@ -5,16 +5,47 @@
 // приходит параметром effects, а общая рамка шага — объектом f (FSStepContext).
 
 class ChooseSteps {
-    static ops = ['advanceFromPlan', 'choice', 'chooseSystem', 'chooseFoe', 'chooseWorld', 'foeAllow', 'lookEvents', 'sequence', 'restore', 'damageFirst', 'limitedOrder', 'stormReaction', 'strikeRouteDamaged', 'strikeFirstPick', 'strikeDestroyOne', 'guardDeploy', 'preAdvance'];
+    static ops = ['reorderOwnOrder', 'advanceFromPlan', 'choice', 'chooseSystem', 'chooseFoe', 'chooseWorld', 'foeAllow', 'lookEvents', 'sequence', 'restore', 'damageFirst', 'limitedOrder', 'stormReaction', 'strikeRouteDamaged', 'strikeFirstPick', 'strikeDestroyOne', 'guardDeploy', 'preAdvance'];
+
+    static reorderOwnOrder(effects, f) {
+        const { R, state, seat, step, answer } = f;
+        if (!step.selected) {
+            const offer = OrderAsks.reorderOwnOrder(effects, f);
+            const selected = offer && offer.question.options[Number(answer.choice)];
+            if (!selected) return null;
+            const sys = R.system(state, selected.system);
+            const token = sys && sys.tokens[selected.index];
+            if (!token || token.seat !== seat) return null;
+            step.selected = { system: sys.id, index: selected.index };
+            return { question: { kind: 'choice', who: seat, op: 'reorderOwnOrder',
+                options: ['Поверх стека', 'Под стек'], text: 'Куда положить выбранный приказ?',
+                privateText: 'Вы смотрите приказ «' + R.orderName(token.order) + '». Куда его положить?' } };
+        }
+        const sys = R.system(state, step.selected.system);
+        const token = sys && sys.tokens[step.selected.index];
+        if (!token || token.seat !== seat) return null;
+        sys.tokens.splice(step.selected.index, 1);
+        if (Number(answer.choice) === 0) sys.tokens.push(token);
+        else sys.tokens.unshift(token);
+        R.log(state, seat, state.players[seat].name + ' перекладывает свой приказ в стеке.');
+        step.done = true;
+        return null;
+    }
 
     static choice(effects, f) {
         const { R, state, seat, step, answer, ctx } = f;
         const i = Number(answer.choice);
         const option = step.options && step.options[i];
         if (!option) return null;
+        if (effects.fullSupplyPlacement(option) && !effects.canOfferPlacement(R, state, seat, option)) {
+            return { ok: false, error: 'Для платного размещения нужны все отряды, материалы и подходящий мир.' };
+        }
         // «за каждый имеющийся у вас `morale cube` получите 1 … либо 1 …»
         // — the count belongs to the branch that was chosen.
-        if (step.per) {
+        // Pair-scaled branches retain the pair rule themselves (the count is
+        // taken when the branch registers its damage-step effect). Scaling the
+        // choice as well would count the same pairs twice.
+        if (step.per && step.per !== 'pair') {
             const total = effects.count(R, state, seat,
                 { n: 1, per: step.per, perKind: step.perKind, max: step.max, filter: step.filter, inBattle: step.inBattle }, ctx);
             // «Если у вас больше недеморализованных отрядов…» — a count
@@ -65,11 +96,15 @@ class ChooseSteps {
     }
 
     static foeAllow(effects, f) {
-        const { step, answer } = f;
-        // The branch of his answer takes the place of the question.
-        const list = (answer.no ? step.no : step.yes) || [];
+        const { R, state, seat, step, answer, combat, inCombat } = f;
+        // Recheck old/saved questions too: an impossible action is not a valid
+        // acceptance. Once accepted, the opponent must actually select it.
+        const hasTarget = effects.foeAllowHasTarget(R, state, seat, step, combat, inCombat);
+        const refused = !!answer.no || hasTarget === false;
+        const list = JSON.parse(JSON.stringify((refused ? step.no : step.yes) || []));
         if (!list.length) return null;
-        return { replace: JSON.parse(JSON.stringify(list)) };
+        if (!refused && hasTarget === true) list[0].strict = true;
+        return { replace: list };
     }
 
     static lookEvents(effects, f) {
@@ -92,13 +127,29 @@ class ChooseSteps {
     }
 
     static restore(effects, f) {
-        const { R, state, step, answer, units } = f;
+        const { R, state, step, answer, units, combat, inCombat } = f;
         const back = units(answer.units);
+        const tokenTargets = [];
+        if (inCombat && combat) for (const id of answer.units || []) {
+            // Moved reinforcement tokens are already represented in state.units.
+            if (typeof id !== 'string' || !id.startsWith('reinforce-') || back.some(u => u.id === id)) continue;
+            const tokens = CombatTokens.of(combat);
+            const side = ['attacker', 'defender'].find(s => tokens.indexOf(s, id) >= 0);
+            const index = side ? tokens.indexOf(side, id) : -1;
+            if (index < 0 || !tokens.flipped(side).includes(index)) {
+                return { ok: false, error: 'Подкрепление больше нельзя восстановить.' };
+            }
+            tokenTargets.push({ side, index, seat: CombatSides.seatOf(combat, side) });
+        }
         for (const u of back) {
             R.restoreUnit(state, u);
             R.log(state, u.seat, state.players[u.seat].name + ': отряд восстановлен.');
         }
-        step.done = back.length > 0;
+        for (const t of tokenTargets) {
+            CombatTokens.of(combat).restoreFallen(t.side, t.index);
+            R.log(state, t.seat, state.players[t.seat].name + ': подкрепление восстановлено.');
+        }
+        step.done = back.length + tokenTargets.length > 0;
         return null;
     }
 
@@ -131,8 +182,8 @@ class ChooseSteps {
         const sys = state.systems.find(x => x.id === id);
         if (!sys) return null;
         OrderScheme.of(state).clearAccepted();
-        if (typeof R.startQuickResponse === 'function') {
-            R.startQuickResponse(state, seat, sys.id);
+        if (typeof R.startPlanAdvance === 'function') {
+            R.startPlanAdvance(state, seat, sys.id);
         }
         R.log(state, seat, p.name + ' выполняет «Вперёд!»: приказ продвижения в системе.');
         return { replace: [] };

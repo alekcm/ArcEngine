@@ -238,12 +238,24 @@ function renderFork(state, seat, label) {
     const s = view;
     const me = SEAT.of(s).me;
     try {
-        if (s.pending) {
-            if (s.combat) call('panelCombat');
+        // refresh() returns immediately for a trim, a waiting trim, a card
+        // question or strike damage; no order buttons may leak into that panel.
+        const paused = FS_RULES.trimQueue(s).blocked(me) || s.orderTrimPending
+            || s.eventTrimPending || s.quickResponseTrimPending || !!s.pending || STRIKE_DAMAGE.of(s).pending;
+        if (FS_RULES.trimQueue(s).blocked(me)) {
+            call('panelTrim');
+        } else if (s.orderTrimPending || s.eventTrimPending || s.quickResponseTrimPending) {
+            const entry = FS_RULES.trimQueue(s).entries()[0];
+            const player = entry && s.players[entry.seat];
+            ctxPanel.panelClass = 'is-trim';
+            ctxPanel.title = 'Сверх вместимости';
+            ctxPanel.text = 'Ожидаем, пока ' + (player ? player.name : 'игрок') + ' выберет лишние отряды.';
+        } else if (s.pending) {
+            // Match refresh(): only the HUD is live beneath a card question.
+            game.mode = 'idle';
+            if (s.combat) { covered.add('panelCombat'); game.panelCombat(view, ctxPanel, { summaryOnly: true }); }
             call('panelQuestion');
             if (s.combat) { ctxPanel.battleHand = game.hand || []; if (!ctxPanel.battle) ctxPanel.battle = null; }
-        } else if (FS_RULES.trimQueue(s).blocked(me)) {
-            call('panelTrim');
         } else if (STRIKE_DAMAGE.of(s).pending) {
             if (STRIKE_DAMAGE.of(s).waiting(me)) call('panelStrikeDamage');
             else { ctxPanel.title = 'Орбитальный удар'; ctxPanel.text = 'Защитник распределяет урон.'; }
@@ -264,29 +276,31 @@ function renderFork(state, seat, label) {
         } else if (s.phase === 'refresh') {
             call('panelRefresh');
         }
-        if (s.order && ORDER_CONTEXT.of(s.order).isSeat(me) && !BATTLE_TEST.of(s).active) {
-            if (ORDER_CONTEXT.of(s.order).isKind('advance')) call('panelAdvance');
-            if (PHASE_PLAN.of(s.order).is('guardDeploy')) call('panelGuardDeploy');
-            else if (ORDER_CONTEXT.of(s.order).isKind('deploy')) call('panelDeploy');
-            else if (ORDER_CONTEXT.of(s.order).isKind('strategize')) call('panelStrategize');
-            else if (ORDER_CONTEXT.of(s.order).isKind('dominate')) call('panelDominate');
-        }
-        if (s.phase === 'operations' && s.players[me]) {
-            for (const u of (s.players[me].upgrades || []).filter(x => !x.used)) {
-                const c = FS_CATALOG.card('orders', s.players[me].faction, u.name);
-                const kind = u.order || (c && c.order);
-                const right = !kind || (s.order && ORDER_CONTEXT.of(s.order).isSeat(me)
-                    && (kind === 'orbital' ? PHASE_PLAN.of(s.order).is('strike') : ORDER_CONTEXT.of(s.order).isKind(kind)));
-                if (!right) continue;
-                ctxPanel.actions.push({
-                    label: 'Применить улучшение: ' + u.name,
-                    onClick: () => game.net.cmd({ type: 'useUpgrade', card: u.name }),
-                });
+        if (!paused) {
+            if (s.order && ORDER_CONTEXT.of(s.order).isSeat(me) && !BATTLE_TEST.of(s).active) {
+                if (ORDER_CONTEXT.of(s.order).isKind('advance')) call('panelAdvance');
+                if (PHASE_PLAN.of(s.order).is('guardDeploy')) call('panelGuardDeploy');
+                else if (ORDER_CONTEXT.of(s.order).isKind('deploy')) call('panelDeploy');
+                else if (ORDER_CONTEXT.of(s.order).isKind('strategize')) call('panelStrategize');
+                else if (ORDER_CONTEXT.of(s.order).isKind('dominate')) call('panelDominate');
             }
+            if (s.phase === 'operations' && s.players[me]) {
+                for (const u of (s.players[me].upgrades || []).filter(x => !x.used)) {
+                    const c = FS_CATALOG.card('orders', s.players[me].faction, u.name);
+                    const kind = u.order || (c && c.order);
+                    const right = !kind || (s.order && ORDER_CONTEXT.of(s.order).isSeat(me)
+                        && (kind === 'orbital' ? PHASE_PLAN.of(s.order).is('strike') : ORDER_CONTEXT.of(s.order).isKind(kind)));
+                    if (!right || (u.name === 'Святой трубопровод' && !FS_RULES.pipelineReady(s, me))) continue;
+                    ctxPanel.actions.push({
+                        label: 'Применить улучшение: ' + u.name,
+                        onClick: () => game.net.cmd({ type: 'useUpgrade', card: u.name }),
+                    });
+                }
+            }
+            if (s.combat) call('panelCombat');
+            ctxPanel.battleHand = game.hand || [];
+            if (!s.combat) ctxPanel.battle = null;
         }
-        if (s.combat) call('panelCombat');
-        ctxPanel.battleHand = game.hand || [];
-        if (!s.combat) ctxPanel.battle = null;
         ctxPanel.mode = game.mode;
     } catch (e) {
         const inner = process.env.WALK_STACK && e && e.stack ? '\n       ' + C.dim + 'внутри: ' + e.stack.split('\n').slice(0, 5).join('\n       ') + C.r : '';
@@ -308,12 +322,13 @@ function renderFork(state, seat, label) {
 
 /** В этой фазе у этого места обязана быть хоть одна кнопка. */
 function needsButtons(state, seat) {
-    if (state.over || GAME_OUTCOME.of(state).over) return false;
+    if (FS_RULES.trimQueue(state).blocked(seat)) return true;
+    if (state.orderTrimPending || state.eventTrimPending || state.quickResponseTrimPending) return false;
     if (state.pending) {
         const must = state.pending.answerSeat === undefined ? state.pending.seat : state.pending.answerSeat;
         return must === seat;
     }
-    if (FS_RULES.trimQueue(state).blocked(seat)) return true;
+    if (state.over || GAME_OUTCOME.of(state).over) return false;
     if (STRIKE_DAMAGE.of(state).pending) return STRIKE_DAMAGE.of(state).waiting(seat);
     if (BATTLE_TEST.of(state).active) return !state.combat; // «Ещё бой»
     if (state.phase === 'setup') {
@@ -478,8 +493,6 @@ function setupStep(st) {
 }
 
 function nextCommand(st) {
-    if (st.over || GAME_OUTCOME.of(st).over) return null;
-    if (st.pending) return answerViaClient(st);
     const trim = FS_RULES.trimQueue(st);
     if (trim.any()) {
         const entry = trim.entries()[0];
@@ -487,6 +500,8 @@ function nextCommand(st) {
         if (unit) return { seat: entry.seat, cmd: { type: 'trimUnit', unit: unit.id } };
         return null;
     }
+    if (st.pending) return answerViaClient(st);
+    if (st.over || GAME_OUTCOME.of(st).over) return null;
     if (st.combat) return { combat: true };
     if (st.phase === 'setup' && BOARD_SETUP.of(st).active) return setupStep(st);
     if (st.phase === 'planning') {
@@ -731,6 +746,35 @@ check('переполнение: игрок убирает лишнее, вто�
     return true;
 });
 
+check('переполнение важнее одновременного вопроса способности', () => {
+    let st = FS_RULES.newReadyGame({ seed: 7, players: PARTIES[0].players });
+    st.units = []; st.structures = []; st.objectives = []; st.storms = [];
+    for (const s of st.systems) s.tokens = [];
+    st.phase = 'operations'; st.turn = 0; st.order = null;
+    const sys = st.systems[0], pos = groundOf(st, 0), cap = FS_RULES.capacity(st, sys.id, pos);
+    for (let i = 0; i <= cap; i++) FS_RULES.addUnit(st, 0, 'гвардейцы', sys.id, pos);
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    FS_RULES.trimQueue(st).ask(0, sys.id, pos, cap, cap + 1);
+    st.orderTrimPending = true;
+    FS_RULES.runEffects(st, 1, [{ op: 'chooseSystem', who: 'me' }], { kind: 'event' });
+    if (!st.pending) throw new Error('вопрос не создан');
+    st = JSON.parse(JSON.stringify(st));
+    const first = renderFork(st, 0, 'переполнение и вопрос');
+    const second = renderFork(st, 1, 'переполнение и вопрос');
+    if (first.title !== 'Сверх вместимости' || !pressables(first).length) throw new Error('владелец не видит удаление избытка');
+    if (second.title !== 'Сверх вместимости' || !/Ожидаем/.test(second.text) || pressables(second).length) {
+        throw new Error('второе место не видит только ожидание');
+    }
+    if (!needsButtons(st, 0) || needsButtons(st, 1)) throw new Error('неверный приоритет ожидающих кнопок');
+    const cmd = nextCommand(st);
+    if (!cmd || cmd.seat !== 0 || cmd.cmd.type !== 'trimUnit') throw new Error('автомат отвечает на вопрос до удаления');
+    const res = FS_RULES.apply(st, cmd.seat, cmd.cmd);
+    if (!res.ok) throw new Error('избыток не удалён: ' + res.error);
+    const question = renderFork(st, 1, 'после переполнения');
+    if (!st.pending || question.title !== 'Эффект карты' || !pressables(question).length) throw new Error('отложенный вопрос пропал');
+    return true;
+});
+
 check('удар с орбиты: защитник распределяет урон', () => {
     const st = FS_RULES.newGame({
         seed: 3, interactiveSetup: false,
@@ -798,11 +842,15 @@ check('каждая кнопка прохода нажимается без па
         // Та же развилка, что в renderFork, но кнопки нужны живьём.
         const me = SEAT.of(view).me;
         const call = (name) => game[name](view, ctxPanel);
-        if (view.pending) {
+        const paused = FS_RULES.trimQueue(view).blocked(me) || view.orderTrimPending
+            || view.eventTrimPending || view.quickResponseTrimPending || !!view.pending || STRIKE_DAMAGE.of(view).pending;
+        if (FS_RULES.trimQueue(view).blocked(me)) {
+            call('panelTrim');
+        } else if (view.orderTrimPending || view.eventTrimPending || view.quickResponseTrimPending) {
+            // The other player's waiting panel has no buttons.
+        } else if (view.pending) {
             if (view.combat) call('panelCombat');
             call('panelQuestion');
-        } else if (FS_RULES.trimQueue(view).blocked(me)) {
-            call('panelTrim');
         } else if (STRIKE_DAMAGE.of(view).pending) {
             if (STRIKE_DAMAGE.of(view).waiting(me)) call('panelStrikeDamage');
         } else if (GAME_OUTCOME.of(view).over) {
@@ -820,14 +868,16 @@ check('каждая кнопка прохода нажимается без па
         } else if (view.phase === 'refresh') {
             call('panelRefresh');
         }
-        if (view.order && ORDER_CONTEXT.of(view.order).isSeat(me) && !BATTLE_TEST.of(view).active) {
-            if (ORDER_CONTEXT.of(view.order).isKind('advance')) call('panelAdvance');
-            if (PHASE_PLAN.of(view.order).is('guardDeploy')) call('panelGuardDeploy');
-            else if (ORDER_CONTEXT.of(view.order).isKind('deploy')) call('panelDeploy');
-            else if (ORDER_CONTEXT.of(view.order).isKind('strategize')) call('panelStrategize');
-            else if (ORDER_CONTEXT.of(view.order).isKind('dominate')) call('panelDominate');
+        if (!paused) {
+            if (view.order && ORDER_CONTEXT.of(view.order).isSeat(me) && !BATTLE_TEST.of(view).active) {
+                if (ORDER_CONTEXT.of(view.order).isKind('advance')) call('panelAdvance');
+                if (PHASE_PLAN.of(view.order).is('guardDeploy')) call('panelGuardDeploy');
+                else if (ORDER_CONTEXT.of(view.order).isKind('deploy')) call('panelDeploy');
+                else if (ORDER_CONTEXT.of(view.order).isKind('strategize')) call('panelStrategize');
+                else if (ORDER_CONTEXT.of(view.order).isKind('dominate')) call('panelDominate');
+            }
+            if (view.combat) call('panelCombat');
         }
-        if (view.combat) call('panelCombat');
         // Жмутся все шесть списков: actions, leftActions («Закончить приказ»
         // стратегии — там), ряды карт, рука. Карты вопроса дублируют свои
         // обработчики в actions, поэтому жмутся один раз — через actions.

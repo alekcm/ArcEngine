@@ -14,13 +14,11 @@ class PurchaseSteps {
         const off = effects.upgradeDiscount(R, state, seat, step);
         if (step.kind === 'combat') {
             const c = FS_CATALOG.card('combat', p.faction, card);
-            if (!c) return null;
-            // Event cards do not add a command-level gate: the discount
-            // and the printed text are the whole restriction here.
+            if (!c || (c.kl || 0) > R.commandLevel(state, seat)) return null;
             const price = c.upgrade ? Math.max(0, (c.cost || 0) - off) : 0;
             if (p.materiel < price) return null;
             const deck = FS_CARDS.combatDeck(R, state, seat);
-            if (deck.count(c.name) >= 2) return null;
+            if (!deck.upgradePile().includes(c.name) || deck.count(c.name) >= 2) return null;
             const remove = answer.remove || answer.replace || answer.deckCard;
             // The player names the pair to replace. No card is added to
             // the deck and no materiel is spent before this answer.
@@ -41,7 +39,7 @@ class PurchaseSteps {
             return null;
         }
         const c = FS_CATALOG.card('orders', p.faction, card);
-        if (!c) return null;
+        if (!c || (c.kl || 0) > R.commandLevel(state, seat)) return null;
         // The discount of the card covers the upgrades of the orders
         // too: «Купите одну карту улучшения приказа, уменьшив её
         // стоимость …» («Лингва Технис»).
@@ -49,6 +47,7 @@ class PurchaseSteps {
         if (p.materiel < price) return null;
         if ((p.upgrades || []).some(u => u.name === c.name)) return null;
         const pile = p.decks && Array.isArray(p.decks.upgradeOrder) ? p.decks.upgradeOrder : null;
+        if (pile && !pile.includes(c.name)) return null;
         R.player(state, seat).payMateriel(price);
         p.upgrades.push({ name: c.name, used: false, order: c.order });
         if (pile && pile.includes(c.name)) pile.splice(pile.indexOf(c.name), 1);
@@ -69,6 +68,7 @@ class PurchaseSteps {
                 .find(c => c.name === name && (c.kl || 0) <= cap);
             if (!card) return null;
             const deck = FS_CARDS.combatDeck(R, state, seat);
+            if (!deck.upgradePile().includes(name) || deck.count(name) >= 2) return null;
             const remove = answer.remove || answer.replace || answer.deckCard;
             if (!remove) {
                 const pairs = deck.pairOptions();
@@ -89,8 +89,9 @@ class PurchaseSteps {
         const card = FS_CATALOG.card('orders', p2.faction, name);
         if (card && (card.kl || 0) > cap) return null;
         if (!card || (p2.upgrades || []).some(u => u.name === name)) return null;
-        p2.upgrades.push({ name, used: false, order: card.order });
         const pile = p2.decks.upgradeOrder;
+        if (Array.isArray(pile) && !pile.includes(name)) return null;
+        p2.upgrades.push({ name, used: false, order: card.order });
         if (Array.isArray(pile)) {
             const at2 = pile.indexOf(name);
             if (at2 >= 0) pile.splice(at2, 1);
@@ -124,19 +125,38 @@ class PurchaseSteps {
         if (!plan || !pay) return null;
         const cap = effects.strikePayCap(plan, pay);
         const i = Number(answer.choice);
-        const want = Math.max(0, Math.min(cap, Number.isFinite(i) ? i : 0));
+        const required = (pay.n || 1) * (pay.per === 'ship' ? (plan.ships || 1) : 1);
+        const want = pay.upTo ? Math.max(0, Math.min(cap, i || 0)) : (i === 1 && cap >= required ? required : 0);
         const owner = ctx && ctx.owner !== undefined ? ctx.owner : seat;
         const player = state.players[owner];
         if (want > 0) {
-            // The cubes are spent before any damage is suffered: they
-            // leave the common pool of this strike for good.
+            // A payment of any face is the player's choice: an attack die
+            // sacrifices damage, while a defence die may be needed by a later
+            // ability. Hold this question and the rolled pool across saves.
             const kind = pay.kind || 'att';
-            for (let k = 0; k < want; k++) {
-                const pool = plan.pool || [];
-                const at = kind === 'any'
-                    ? pool.findIndex(d => d !== null && d !== undefined)
-                    : pool.indexOf(kind);
-                if (at >= 0) pool.splice(at, 1);
+            const pool = plan.pool || [];
+            let indices;
+            if (kind === 'any') {
+                if (!Array.isArray(answer.dice)) {
+                    return { question: {
+                        kind: 'dice', who: owner, op: 'strikePayPick', diceSource: 'strike',
+                        n: want, required: true,
+                        options: pool.map((face, slot) => face == null ? -1 : slot).filter(slot => slot >= 0),
+                        text: 'Какие кубики удара потратить?',
+                    } };
+                }
+                indices = answer.dice.slice().sort((a, b) => b - a);
+            } else {
+                indices = [];
+                for (let slot = 0; slot < pool.length && indices.length < want; slot++) {
+                    if (pool[slot] === kind) indices.push(slot);
+                }
+                indices.reverse();
+            }
+            if (indices.length !== want) return null;
+            for (const at of indices) {
+                if (pool[at] === 'att') plan.hits = Math.max(0, plan.hits - 1);
+                pool.splice(at, 1);
             }
             plan.paid[index] = want;
             if (state.order) StrikePlan.of(state.order).setPaid(want);
@@ -145,6 +165,13 @@ class PurchaseSteps {
         }
         if (want <= 0) return null;
         const reward = pay.reward || {};
+        if (reward.moveShips) {
+            // «Обстрел»: the roll is already fixed. The player may move any
+            // of his ships from the active system before assigning the damage.
+            return { replace: [{ op: 'moveUnits', n: 0, all: true, pick: true,
+                unitType: 'ship', ofSystem: 'active', dest: 'strikeNeighborVoid',
+                strict: true, who: 'me' }] };
+        }
         if (reward.units) {
             // One question per kind of unit: the models of the chosen
             // kind are bought at the printed price and stand in the
