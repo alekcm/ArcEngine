@@ -1,20 +1,13 @@
 // FSBoardSetup.js — the building of the galaxy map, as one object.
 //
-// The interactive setup of the board walks three stages — тайлы, начальные силы,
-// цели, варп-штормы — and each player acts in his own order, not in the order of
-// the round. The rules kept that in a dozen fields of one record
-// (`state.setup.hands`, `stage`, `turnOrder`, `turnIndex`, `turn`,
-// `currentSystem`, `placedBySeat`, `placedTotal`, `totalTiles`, `stormsPlaced`,
-// `center`) and every reader picked what it needed: the rules compared
-// `setup.stage` with three literals, the panel asked `setup.myTurn` (a field the
-// view of a seat adds) and the board decided whether it may place a tile by
-// looking at `setup.stage !== 'tile'`.
+// The interactive setup walks the tile, initial-force, objective and storm
+// stages. Blitz adds its hidden requisition draft before tiles, then reveals and
+// resolves one requisition after each tile is placed. Each player acts in the
+// setup's own turn order, not the round's planning order.
 //
-// One question now: `BoardSetup.of(state)` — `stage`, `turn` (the seat whose
-// hand is played, whoever holds the turn of the phase), `currentSystem`, and the
-// machine of the hand: `placeTile`, `takeForce`, `nextPlayer`, `nextStorm`.
-// The record stays in `state.setup` with its fields, so the view of a seat, the
-// panel and the tests read it as they did.
+// One question now: `BoardSetup.of(state)` — the stage, the acting seat, the
+// current tile, and the hand machine. The record remains plain JSON in
+// `state.setup`, so views, the server and tests share the same state.
 
 class BoardSetup {
     /** @param {any} state the game state (the record lives on it) */
@@ -34,7 +27,11 @@ class BoardSetup {
     }
 
     /** The stages of the board, in the order they are played. */
+    static DRAFT_SUIT = 'draft-suit';
+    static DRAFT_CARD = 'draft-card';
     static TILES = 'tile';
+    static REQUISITION = 'requisition';
+    static REQUISITION_EFFECT = 'requisition-effect';
     static FORCES = 'forces';
     static OBJECTIVES = 'objectives';
     static STORMS = 'storms';

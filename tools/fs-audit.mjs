@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_CATALOG, FS_RULES, FS_BOT, FS_BOT_PERSONAS, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
+const { FS_DATA, FS_CATALOG, FS_REQUISITIONS, FS_RULES, FS_BOT, FS_BOT_PERSONAS, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
     BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound, StrikeDamage,
     BattleTest, Chance, PreAdvance, Choice, Seat, TileGeometry } = ctx;
@@ -4668,6 +4668,180 @@ rule('win-2', '«When a player is eliminated, this does not reduce the number of
 });
 
 // ============================================================================
+//  Blitz Requisition — the setup draft, reveal and card resolution
+// ============================================================================
+head('Блиц: драфт и реквизиции (Blitz Requisition)');
+
+function finishBlitzRequisitionDraft(state) {
+    let guardCount = 0;
+    while (state.setup && [BoardSetup.DRAFT_SUIT, BoardSetup.DRAFT_CARD].includes(state.setup.stage)) {
+        if (++guardCount > 100) throw new Error('драфт реквизиций не завершился');
+        const seat = state.setup.turn;
+        const cmd = state.setup.stage === BoardSetup.DRAFT_SUIT
+            ? { type: 'chooseRequisitionSuit', suit: state.setup.blitzDraft.availableSuits[0] }
+            : { type: 'chooseRequisitionCard', index: 0 };
+        const res = FS_RULES.apply(state, seat, cmd);
+        if (!res.ok) throw new Error('драфт отклонён: ' + res.error);
+    }
+    return state;
+}
+
+function placeFirstBlitzRequisitionTile(state, seat) {
+    const tileId = state.setup.hands[seat][0];
+    const tile = FS_CATALOG.tileFaces(tileId)[0];
+    const cell = FS_RULES.setupLegalCells(state)[0];
+    const res = FS_RULES.apply(state, seat, {
+        type: 'placeSystemTile', tile: tile.id, rotation: 0, row: cell.row, col: cell.col,
+    });
+    if (!res.ok) throw new Error('тайл не выложен: ' + res.error);
+    return state.setup.currentSystem;
+}
+
+rule('blitz-draft-1', '«Shuffle all Requisitions belonging to that suit (6) and deal one greater than the number of players … Choose 1 … pass clockwise … Do not reveal any Requisitions … during the draft» (docs/forbidden-stars/17-blitz-requisition.md).', () => {
+    const table = [
+        { faction: 'орки', name: 'A' },
+        { faction: 'эльдары', name: 'B' },
+        { faction: 'некроны', name: 'C' },
+    ];
+    const st = FS_RULES.newGame({ seed: 173, rounds: 5, players: table, interactiveSetup: true });
+    eq(st.variant, 'blitz', 'пять раундов выбирают вариант блиц');
+    eq(st.setup.stage, BoardSetup.DRAFT_SUIT, 'драфт проходит до выкладки тайла');
+    eq(FS_REQUISITIONS.suits.map(s => s.id), ['authority', 'reconnaissance', 'command'], 'три масти движка');
+    eq(FS_REQUISITIONS.suits.map(s => s.deck), [1, 2, 3], 'группы из «Колоды.txt» сопоставлены мастям 1→2→3');
+    for (let draftRound = 0; draftRound < 3; draftRound++) {
+        const suitChooser = st.setup.turn;
+        const suitId = st.setup.blitzDraft.availableSuits[0];
+        const pickedSuit = FS_REQUISITIONS.suit(suitId);
+        eq(FS_REQUISITIONS.cardsIn(suitId).length, 6, pickedSuit.name + ': шесть карт');
+        const chose = FS_RULES.apply(st, suitChooser, { type: 'chooseRequisitionSuit', suit: suitId });
+        eq(chose.ok, true, 'масть выбрана');
+        eq(st.setup.blitzDraft.cardHand.length, table.length + 1, 'раздано игроков + 1 карт');
+        eq(FS_RULES.view(st, suitChooser).setup.blitzDraft.cardHand.length, 4, 'выбирающий видит лицевые стороны');
+        eq(FS_RULES.view(st, (suitChooser + 1) % table.length).setup.blitzDraft.cardHand, [], 'чужая рука драфта скрыта');
+        for (let pick = 0; pick < table.length; pick++) {
+            const chooser = st.setup.turn;
+            const before = st.players[chooser].requisitions.length;
+            const res = FS_RULES.apply(st, chooser, { type: 'chooseRequisitionCard', index: 0 });
+            eq(res.ok, true, 'игрок ' + chooser + ' выбрал одну карту');
+            eq(st.players[chooser].requisitions.length, before + 1, 'карта осталась у выбравшего');
+            if (pick < table.length - 1) {
+                eq(st.setup.turn, (chooser + 1) % table.length, 'остаток передан по часовой стрелке');
+                eq(st.setup.blitzDraft.cardHand.length, table.length - pick, 'переданы только невыбранные карты');
+            }
+            if (pick === 0) {
+                const observer = FS_RULES.view(st, (chooser + 1) % table.length);
+                eq(observer.players[chooser].requisitions, [], 'выбранная реквизиция не раскрывается');
+                eq(observer.players[chooser].requisitionCount, before + 1, 'наблюдателю доступно только число закрытых карт');
+            }
+        }
+        eq(st.setup.blitzDraft.cardHand, [], 'последняя карта из раздачи возвращена в коробку');
+        if (draftRound < 2) {
+            eq(st.setup.stage, BoardSetup.DRAFT_SUIT, 'следующий раунд мастей');
+            eq(st.setup.turn, (suitChooser + 1) % table.length, 'следующую масть выбирает следующий игрок');
+        }
+    }
+    eq(st.setup.stage, BoardSetup.TILES, 'после трёх мастей начинается сборка карты');
+    eq(st.players.map(p => p.requisitions.length), [3, 3, 3], 'каждый игрок выбрал по одной карте каждой масти');
+    eq(new Set(st.setup.blitzDraft.selectedSuits).size, 3, 'каждая масть выбрана один раз');
+    st.players[0].eventHand = ['Скрытая карта'];
+    eq(FS_RULES.view(st, 0).players[0].eventHand, ['Скрытая карта'], 'владелец видит руку событий');
+    eq(Object.hasOwn(FS_RULES.view(st, 1).players[0], 'eventHand'), false, 'чужая рука событий не отправляется клиенту');
+    st.players[0].eventHand = [];
+    const seat = st.setup.turn;
+    placeFirstBlitzRequisitionTile(st, seat);
+    eq(st.setup.stage, BoardSetup.REQUISITION, 'каждый тайл открывает окно реквизиции');
+    st.players[seat].requisitions = ['supplies'];
+    const before = st.players[seat].materiel;
+    const resolved = FS_RULES.apply(st, seat, { type: 'selectRequisition', card: 'supplies' });
+    eq(resolved.ok, true, 'Supplies раскрыта и разрешена');
+    eq(st.players[seat].materiel, before + 4, 'Supplies даёт четыре материи');
+    eq(st.setup.stage, BoardSetup.FORCES, 'после реквизиции размещаются начальные силы');
+    eq(st.log.some(entry => /Supplies/.test(entry.text)), true, 'раскрытая карта записана в журнал');
+});
+
+rule('blitz-requisition-1', '«When players place a System Tile during Setup, they must also reveal and resolve a Requisition card. If a Requisition card cannot be resolved when it is revealed, it is discarded without effect.»', () => {
+    const st = FS_RULES.newGame({ seed: 194, rounds: 5, players: [
+        { faction: 'орки', name: 'A' }, { faction: 'эльдары', name: 'B' },
+    ], interactiveSetup: true });
+    finishBlitzRequisitionDraft(st);
+    const seat = st.setup.turn;
+    const systemId = placeFirstBlitzRequisitionTile(st, seat);
+    st.players[seat].requisitions = ['detachment'];
+    const selected = FS_RULES.apply(st, seat, { type: 'selectRequisition', card: 'detachment' });
+    eq(selected.ok, true, 'Detachment раскрыта');
+    eq(st.setup.stage, BoardSetup.REQUISITION_EFFECT, 'отряд требует выбрать мир');
+    const view = FS_RULES.view(st, seat);
+    const options = view.setup.requisitionOptions || [];
+    eq(options.length > 0, true, 'игроку показаны допустимые места');
+    const resolved = FS_RULES.apply(st, seat, { type: 'resolveRequisition', choice: 0 });
+    eq(resolved.ok, true, 'реквизиция разрешена');
+    const added = st.units.find(unit => unit.seat === seat && unit.system === systemId);
+    const def = added && FS_CATALOG.unit(st.players[seat].faction, added.unit);
+    eq(!!added, true, 'бесплатный отряд размещён');
+    eq(def && def.kl, 1, 'Detachment ставит отряд уровня командования 1');
+    eq(def && def.type, 'ground', 'Detachment ставит наземный отряд на мир');
+    eq(st.setup.stage, BoardSetup.FORCES, 'разрешение завершило окно реквизиции');
+});
+
+rule('blitz-prepare-1', '«Prepare — Choose 1 of your Event cards and place it on top of your Event Deck; Do not shuffle your Event Deck before drawing and resolving Event cards during the first round.»', () => {
+    const st = FS_RULES.newGame({ seed: 205, rounds: 5, players: [
+        { faction: 'орки', name: 'A' }, { faction: 'эльдары', name: 'B' },
+    ], interactiveSetup: true });
+    finishBlitzRequisitionDraft(st);
+    const seat = st.setup.turn;
+    placeFirstBlitzRequisitionTile(st, seat);
+    const event = FS_CATALOG.eventCards(st.players[seat].faction)[0].name;
+    st.players[seat].eventHand = [event];
+    st.players[seat].requisitions = ['prepare'];
+    FS_RULES.apply(st, seat, { type: 'selectRequisition', card: 'prepare' });
+    eq(st.setup.stage, BoardSetup.REQUISITION_EFFECT, 'Prepare просит выбрать карту события');
+    const view = FS_RULES.view(st, seat);
+    eq(view.setup.requisitionOptions[0].event, event, 'владелец видит собственную карту события');
+    const rng = st.rng;
+    const result = FS_RULES.apply(st, seat, { type: 'resolveRequisition', choice: 0 });
+    eq(result.ok, true, 'карта события помещена наверх колоды');
+    eq(st.players[seat].decks.event[0], event, 'выбранное событие лежит первым');
+    eq(st.players[seat].eventHand.length, 0, 'карта перешла из руки в колоду');
+    eq(st.players[seat].noEventShuffleRound, 1, 'перемешивание отключено на первый раунд');
+    eq(st.rng, rng, 'подготовка не перемешала колоду');
+    st.players[seat].decks.event = ['first'];
+    st.players[seat].eventDiscard = ['second'];
+    FS_RULES.shuffleEventCards(st, seat);
+    eq(st.players[seat].decks.event, ['first', 'second'], 'в первом раунде колода возвращается без перемешивания');
+    eq(st.rng, rng, 'возврат карт не потребил случайность');
+});
+
+rule('blitz-holdfields-1', '«Holdfields — For the duration of the first round, no player may target your friendly worlds with Orbital Strikes.»', () => {
+    const setup = FS_RULES.newGame({ seed: 216, rounds: 5, players: [
+        { faction: 'имперская-гвардия', name: 'A' }, { faction: 'орки', name: 'B' },
+    ], interactiveSetup: true });
+    finishBlitzRequisitionDraft(setup);
+    setup.setup.turn = 1;
+    setup.setup.turnIndex = 1;
+    placeFirstBlitzRequisitionTile(setup, 1);
+    setup.players[1].requisitions = ['holdfields'];
+    const card = FS_RULES.apply(setup, 1, { type: 'selectRequisition', card: 'holdfields' });
+    eq(card.ok, true, 'Holdfields разрешена при расстановке');
+    eq(setup.players[1].holdfieldsRound, 1, 'защита действует в первом раунде');
+
+    const st = empty(217);
+    const sys = st.systems[0];
+    const target = worldOf(st, sys.id);
+    const adjacentVoid = FS_RULES.areasAround(st, sys.id, target).find(a => a.system === sys.id
+        && FS_RULES.area(sys, a.pos) && !FS_RULES.area(sys, a.pos).world);
+    if (!adjacentVoid) throw new Error('у мира нет соседней пустоты');
+    guard(st, 1, sys.id, target);
+    unit(st, 0, defOf(st, 0, 'ship'), sys.id, adjacentVoid.pos);
+    st.players[1].holdfieldsRound = setup.players[1].holdfieldsRound;
+    st.round = 1;
+    advance(st, 0, sys.id, target);
+    st.order.phase = 'strike';
+    eq(FS_RULES.orbitalStrikeTargets(st, 0).some(t => t.pos === target), false, 'защищённый дружественный мир нельзя выбрать');
+    st.round = 2;
+    eq(FS_RULES.orbitalStrikeTargets(st, 0).some(t => t.pos === target), true, 'после первого раунда защита заканчивается');
+});
+
+// ============================================================================
 //  Orbital strike
 // ============================================================================
 head('Орбитальный удар (Orbital Strike)');
@@ -4677,7 +4851,7 @@ rule('rounds-1', 'Длина партии — число в состоянии (
     const classic = FS_RULES.newGame({ seed: 3, players: two });
     eq(classic.rounds, FS_RULES.ROUNDS, 'без выбора — восемь раундов');
     eq(GamePhase.of(classic).rounds, 8, 'GamePhase читает длину из состояния');
-    for (const bad of [0, -1, 13, 2.5, 'пять', null, undefined]) {
+    for (const bad of [0, -1, 6, 7, 13, 2.5, 'пять', null, undefined]) {
         eq(FS_RULES.newGame({ seed: 3, players: two, rounds: bad }).rounds, 8, 'непонятная длина ' + JSON.stringify(bad) + ' → по умолчанию');
     }
     const blitz = FS_RULES.newGame({ seed: 3, players: two, rounds: 5 });

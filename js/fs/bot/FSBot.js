@@ -27,7 +27,7 @@
 // `GamePhase.of(view).progress` / `roundsLeft` — a «блиц» of five rounds and
 // the classic eight are the same game to the bot.
 
-/* global FS_RULES, FS_CATALOG, FS_BOT_PERSONAS, FS_EFFECTS, FSBotBrain, PhasePlan, MarchPlan, OrderContext, OrderMove, OrderTally, OrderDeal, CombatTurn,
+/* global FS_RULES, FS_CATALOG, FS_REQUISITIONS, FS_BOT_PERSONAS, FS_EFFECTS, FSBotBrain, PhasePlan, MarchPlan, OrderContext, OrderMove, OrderTally, OrderDeal, CombatTurn,
    CombatSides, CombatHooks, CombatCards, CombatOutcome, BattleField, Question, StrikeDamage, GameOutcome, GamePhase, EventPhase,
    EventRound, BoardSetup, Purchases, DeployScope, UpgradeOrder, TileGeometry */
 
@@ -510,6 +510,71 @@ class FSBot {
 
     // --- the galaxy is built ---------------------------------------------------------
 
+    requisitionSuitScore(view, suit) {
+        const p = view.players[this.seat];
+        const available = suit.cards.map(id => FS_REQUISITIONS.card(id)).filter(Boolean);
+        const average = available.reduce((sum, card) => sum + this.requisitionCardScore(view, card), 0)
+            / Math.max(1, available.length);
+        return average + (suit.id === 'authority' && (p.materiel || 0) < 5 ? 1 : 0);
+    }
+
+    requisitionCardScore(view, card) {
+        const p = view.players[this.seat];
+        const assets = p.assets || {};
+        const room = kind => Math.max(0, this.R.player(view, this.seat).assetLimit(kind) - (assets[kind] || 0));
+        switch (card.effect) {
+            case 'materiel': return Math.max(0, 12 - (p.materiel || 0)) * 0.35;
+            case 'asset': return Math.min(card.amount || 1, room(card.asset)) * (card.asset === 'forge' ? 1.1 : 0.9);
+            case 'structure': return card.structure === 'city' ? 3.2 : card.structure === 'factory' ? 2.8 : 2.2;
+            case 'efficient': return 2.7;
+            case 'rout': return 1.4;
+            case 'swap': return 1.5;
+            case 'unit': return card.kl === 2 ? 2.7 : card.kl === 1 ? 2.1 : 1.6;
+            case 'unit-pair': return 3.2;
+            case 'combat-upgrade': return 2.4;
+            case 'holdfields': return 1.7;
+            case 'prepare': return (p.eventHand || []).length ? 2 : 0.4;
+            default: return 1;
+        }
+    }
+
+    requisitionOptionScore(view, card, option) {
+        const R = this.R;
+        if (option.kind === 'structure') {
+            const system = R.system(view, option.system);
+            const area = system && R.area(system, option.pos);
+            const world = area && area.world;
+            return (card && card.structure === 'city' ? 2.8 : card && card.structure === 'factory' ? 2.4 : 1.8)
+                + (world ? (world.materiel || 0) * 0.25 + (world.objective ? 0.5 : 0) : 0);
+        }
+        if (option.kind === 'unit') {
+            const def = R.unitDef(view, this.seat, option.unit);
+            return 1.5 + (def ? this.brain.unitValue(def) * 0.3 : 0);
+        }
+        if (option.kind === 'unit-pair') {
+            return 3 + (option.placements || []).reduce((sum, place) => {
+                const def = R.unitDef(view, this.seat, place.unit);
+                return sum + (def ? this.brain.unitValue(def) * 0.15 : 0);
+            }, 0);
+        }
+        if (option.kind === 'rout') {
+            return 1 + R.unitsAt(view, option.system, option.pos).filter(unit => unit.seat !== this.seat && !unit.routed)
+                .reduce((sum, unit) => sum + this.brain.unitValue(R.unitOf(view, unit)) * 0.25, 0);
+        }
+        if (option.kind === 'order-upgrade') {
+            const upgrade = FS_CATALOG.card('orders', view.players[this.seat].faction, option.card);
+            return 2 + (upgrade && upgrade.text ? this.brain.textWorth(upgrade.text) * 0.2 : 0);
+        }
+        if (option.kind === 'combat-upgrade') {
+            const upgrade = FS_CATALOG.card('combat', view.players[this.seat].faction, option.card);
+            const icons = upgrade && upgrade.icons || {};
+            return 2 + (icons.att || 0) + (icons.def || 0) + (icons.morale || 0) * 0.7;
+        }
+        if (option.kind === 'prepare') return 1.5;
+        if (option.kind === 'swap') return 1.2;
+        return 1;
+    }
+
     setup(view, rnd) {
         const R = this.R, seat = this.seat;
         const board = BoardSetup.of(view);
@@ -519,6 +584,44 @@ class FSBot {
         if ((me.startChoice || 0) > 0) {
             const kinds = ['forge', 'cache', 'reinforcement'].filter(k => R.player(view, seat).hasRoomFor(k));
             if (kinds.length) return { cmd: { type: 'startAsset', asset: this.assetAnswer(view, kinds, rnd) }, must: true, label: 'startAsset' };
+        }
+        if (stage === BoardSetup.DRAFT_SUIT) {
+            const draft = view.setup.blitzDraft || {};
+            const suits = (draft.availableSuits || []).map(id => FS_REQUISITIONS.suit(id)).filter(Boolean);
+            const candidates = suits.map(suit => ({ suit, score: this.requisitionSuitScore(view, suit) + rnd() * 0.25 }));
+            const pick = this.choose(rnd, candidates, 'requisitionSuit');
+            if (pick) return { cmd: { type: 'chooseRequisitionSuit', suit: pick.suit.id }, must: true, label: 'chooseRequisitionSuit' };
+            return null;
+        }
+        if (stage === BoardSetup.DRAFT_CARD) {
+            const draft = view.setup.blitzDraft || {};
+            const candidates = (draft.cardHand || []).map((id, index) => {
+                const card = FS_REQUISITIONS.card(id);
+                return card ? { card, index, score: this.requisitionCardScore(view, card) + rnd() * 0.25 } : null;
+            }).filter(Boolean);
+            const pick = this.choose(rnd, candidates, 'requisitionDraftCard');
+            if (pick) return { cmd: { type: 'chooseRequisitionCard', index: pick.index }, must: true, label: 'chooseRequisitionCard' };
+            return null;
+        }
+        if (stage === BoardSetup.REQUISITION) {
+            const cards = (me.requisitions || []).map(id => FS_REQUISITIONS.card(id)).filter(Boolean);
+            const candidates = cards.map(card => {
+                const options = R.requisitionOptions(view, seat, card.id);
+                const unavailable = options.length ? 0 : -10;
+                return { card, options, score: unavailable + this.requisitionCardScore(view, card) + options.length * 0.15 + rnd() * 0.25 };
+            });
+            const pick = this.choose(rnd, candidates, 'requisitionChoice');
+            if (pick) return { cmd: { type: 'selectRequisition', card: pick.card.id }, must: true, label: 'selectRequisition' };
+            return null;
+        }
+        if (stage === BoardSetup.REQUISITION_EFFECT) {
+            const pending = view.setup.pendingRequisition;
+            const card = pending && FS_REQUISITIONS.card(pending.card);
+            const options = view.setup.requisitionOptions || (card ? R.requisitionOptions(view, seat, card.id) : []);
+            const candidates = options.map((option, index) => ({ option, index, score: this.requisitionOptionScore(view, card, option) + rnd() * 0.25 }));
+            const pick = this.choose(rnd, candidates, 'requisitionEffect');
+            if (pick) return { cmd: { type: 'resolveRequisition', choice: pick.index }, must: true, label: 'resolveRequisition' };
+            return { cmd: { type: 'resolveRequisition', choice: 0 }, must: true, label: 'resolveRequisition' };
         }
         if (stage === BoardSetup.TILES) return this.setupTile(view, rnd);
         if (stage === BoardSetup.FORCES) return this.setupForces(view, rnd);

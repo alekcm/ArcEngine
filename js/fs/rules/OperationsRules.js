@@ -49,6 +49,10 @@ class OperationsRules {
             return { ok: false, error: 'Сначала ответьте на вопрос способности.' };
         }
         switch (type) {
+            case 'chooseRequisitionSuit': return this.engine.cmdChooseRequisitionSuit(state, seat, cmd);
+            case 'chooseRequisitionCard': return this.engine.cmdChooseRequisitionCard(state, seat, cmd);
+            case 'selectRequisition': return this.engine.cmdSelectRequisition(state, seat, cmd);
+            case 'resolveRequisition': return this.engine.cmdResolveRequisition(state, seat, cmd);
             case 'placeSystemTile': return this.engine.cmdPlaceSystemTile(state, seat, cmd);
             case 'setupUnit': return this.engine.cmdSetupForce(state, seat, cmd, 'unit');
             case 'setupStructure': return this.engine.cmdSetupForce(state, seat, cmd, 'structure');

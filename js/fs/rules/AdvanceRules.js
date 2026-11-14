@@ -603,6 +603,12 @@ class AdvanceRules {
                 // Only an enemy world is a target: it holds the troops or the
                 // buildings of another player, and none of ours.
                 if (this.engine.areaState(state, seat, OrderContext.of(order).system, area.pos) !== 'enemy') continue;
+                // Holdfields protects its owner's friendly worlds for round one,
+                // regardless of the attacker's order upgrades.
+                const heldByRequisition = GamePhase.of(state).round === 1 && (state.players || []).some(owner => owner.seat !== seat
+                    && owner.holdfieldsRound === 1
+                    && this.engine.areaState(state, owner.seat, OrderContext.of(order).system, area.pos) === 'friendly');
+                if (heldByRequisition) continue;
                 // A bastion shields the world — unless the card that grants the
                 // strike ignores it («Ужасный удар», «Полное разрушение», ...).
                 if (!opts.ignoreBastion && !StrikePlan.of(order).ignoresBastion

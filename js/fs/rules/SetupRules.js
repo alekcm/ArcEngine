@@ -13,13 +13,16 @@ class SetupRules {
     newGame(opts) {
         const players = opts.players || [];
         const count = players.length;
+        const requestedRounds = opts.rounds === undefined && opts.variant === 'blitz' ? 5 : opts.rounds;
+        const rounds = GamePhase.length(requestedRounds);
+        const variant = rounds === 5 ? 'blitz' : 'standard';
         const state = {
             rng: (opts.seed || 1) | 0,
             uid: 0,
             round: 1,
-            // The length of the party, chosen in the lobby (8 — the printed game,
-            // 5 — «блиц»). The end of the game and the bots read it from here.
-            rounds: GamePhase.length(opts.rounds),
+            // The lobby has exactly two formats: Standard (8) and Blitz (5).
+            rounds,
+            variant,
             phase: opts.interactiveSetup ? 'setup' : 'planning',
             firstPlayer: 0,
             turn: 0,
@@ -68,6 +71,7 @@ class SetupRules {
                 schemes: [],
                 upgrades: [],
                 upgradeCards: [],
+                requisitions: [],
                 placed: 0,
             });
             // The initial forces: the units of the sheet and the structures and
@@ -145,7 +149,7 @@ class SetupRules {
             const center = { row: 0, col: 0 };
             state.setup = {
                 hands,
-                stage: BoardSetup.TILES,
+                stage: variant === 'blitz' ? BoardSetup.DRAFT_SUIT : BoardSetup.TILES,
                 currentSystem: null,
                 placedBySeat: Array(count).fill(0),
                 placedTotal: 0,
@@ -155,7 +159,21 @@ class SetupRules {
                 turn: seatOrder[0],
                 center,
             };
-            this.engine.log(state, -1, 'Сборка галактической карты: игроки по очереди выкладывают системные тайлы.');
+            if (variant === 'blitz') {
+                state.setup.blitzDraft = {
+                    availableSuits: FS_REQUISITIONS.suits.map(suit => suit.id),
+                    selectedSuits: [],
+                    suitRound: 0,
+                    suitChooser: seatOrder[0],
+                    currentSuit: null,
+                    cardHand: [],
+                    cardPicks: 0,
+                    cardChooser: seatOrder[0],
+                };
+                this.engine.log(state, -1, 'Блиц: скрытый драфт реквизиций перед расстановкой системных тайлов.');
+            } else {
+                this.engine.log(state, -1, 'Сборка галактической карты: игроки по очереди выкладывают системные тайлы.');
+            }
         } else {
             let ti = 0;
             for (const cell of cells) {
@@ -361,6 +379,11 @@ class SetupRules {
         state.systems.push(sys);
         board.placeTile(seat, sys.id, tileIndex);
         this.engine.log(state, seat, state.players[seat].name + ' разместил систему ' + tile.id + '.');
+        // In Blitz each tile placement opens a public requisition choice before
+        // the owner places his initial forces on this system.
+        if (state.variant === 'blitz' && (state.players[seat].requisitions || []).length) {
+            board.setStage(BoardSetup.REQUISITION);
+        }
         return { ok: true };
     }
 
@@ -432,8 +455,14 @@ class SetupRules {
             return future[index].some(tile => {
                 let g = 0, s = 0, w = 0;
                 for (const area of tile.areas) {
-                    if (area.world) { g += Math.min(area.world.capacity || this.engine.AREA_CAP, this.engine.AREA_MAX_UNITS); w++; }
-                    else s += this.engine.AREA_CAP;
+                    if (area.world) {
+                        const capacity = area.world.capacity == null ? this.engine.AREA_CAP : area.world.capacity;
+                        g += Math.min(capacity, this.engine.AREA_MAX_UNITS);
+                        if (area.structureAvailable !== false) w++;
+                    } else {
+                        const capacity = area.capacity == null ? this.engine.AREA_CAP : area.capacity;
+                        s += Math.min(capacity, this.engine.AREA_MAX_UNITS);
+                    }
                 }
                 return fits(index + 1, ground + g, ships + s, worlds + w);
             });
@@ -563,6 +592,9 @@ class SetupRules {
 
     cmdStartAsset(state, seat, cmd) {
         const p = state.players[seat];
+        const board = BoardSetup.of(state);
+        if (GamePhase.of(state).is(GamePhase.SETUP) && board.active && board.turn !== seat)
+            return { ok: false, error: 'Сейчас ход другого игрока.' };
         if (!p.startChoice) return { ok: false, error: 'Нет стартовых ресурсов на выбор.' };
         const asset = cmd.asset;
         if (!['forge', 'cache', 'reinforcement'].includes(asset)) return { ok: false, error: 'Неизвестный ресурс.' };
