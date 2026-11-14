@@ -63,7 +63,27 @@ class CombatCubes {
         const key = kind === 'def' ? 'def' : 'att';
         if (Number(n) > 0 && CombatBans.of(this.combat).forbidsTokenGain(side, key)) return one[key];
         one[key] = Math.max(0, (one[key] || 0) + (Number(n) || 0));
+        // «каждый раз во время всего этого боя, когда противник получает `att.
+        // token` или `def. token`, вы также получаете столько же» («Рокобойз»):
+        // the gain of one side is the gain of the other, for the whole battle.
+        const other = side === 'attacker' ? 'defender' : 'attacker';
+        if (Number(n) > 0 && this.mirrors(other) && !this.mirroring) {
+            this.mirroring = true;
+            try { this.add(other, key, Number(n)); } finally { this.mirroring = false; }
+        }
         return one[key];
+    }
+
+    /** Does this side take a copy of every cube the other side gains? */
+    mirrors(side) {
+        return !!(this.combat.mirrorTokens && this.combat.mirrorTokens[side]);
+    }
+
+    /** From now on the side gains what the other side gains (the whole battle). */
+    setMirror(side) {
+        if (!this.combat.mirrorTokens) this.combat.mirrorTokens = {};
+        this.combat.mirrorTokens[side] = true;
+        return this;
     }
 
     /** Cubes are spent or taken by the foe: the count never goes below zero. */

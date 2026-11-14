@@ -25,6 +25,25 @@ class DeployScope {
         return scope;
     }
 
+    // --- the purchase that waits for a plan («Варбосс») -----------------------
+
+    /** The command of the purchase the plan interrupted, if any. */
+    get pendingBuy() {
+        return this.order.pendingBuy || null;
+    }
+
+    setPendingBuy(cmd) {
+        this.order.pendingBuy = cmd ? Object.assign({}, cmd) : null;
+        return this;
+    }
+
+    /** The purchase goes on: the command is read once. */
+    takePendingBuy() {
+        const cmd = this.pendingBuy;
+        delete this.order.pendingBuy;
+        return cmd;
+    }
+
     // --- the producing factory of «Массового Производства» --------------------
 
     /** The factory that produces: `{system, pos}`. */

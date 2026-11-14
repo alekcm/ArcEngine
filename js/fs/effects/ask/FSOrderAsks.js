@@ -5,7 +5,7 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class OrderAsks {
-    static ops = ['reorderOwnOrder', 'corsairStrike', 'emptyStrategize', 'occupiedStructure', 'advanceFromPlan', 'klBonus', 'extraFactory', 'orderDiscount', 'purchaseDiscount', 'prepReroll', 'assetLimit', 'healthBonus', 'enemyHealth', 'citiesAsFactories', 'bastionsAsFactories', 'extraOrderTokens', 'extraCombatCards', 'moveLimit', 'mustInclude', 'retreatExcess', 'uncontrolledMarch', 'passVoid', 'freeStructure', 'structureFirst', 'capacityBonus', 'cheapUnit', 'upgradeLimit', 'costDiscount', 'supplyDeal', 'deployInFactoryWorld', 'shipsThroughStorms', 'deployLimit', 'orderKl', 'putOrderTokensOnDeck', 'strategizeDeckBonus', 'unitsThroughStorms', 'restoreRetreated', 'restoreFallen', 'resurrect', 'stormReaction', 'noRoute', 'extraMoveWays', 'passPlanningTurn'];
+    static ops = ['reorderOwnOrder', 'corsairStrike', 'emptyStrategize', 'occupiedStructure', 'advanceFromPlan', 'klBonus', 'extraFactory', 'orderDiscount', 'purchaseDiscount', 'prepReroll', 'assetLimit', 'healthBonus', 'enemyHealth', 'citiesAsFactories', 'bastionsAsFactories', 'extraOrderTokens', 'extraCombatCards', 'moveLimit', 'mustInclude', 'retreatExcess', 'uncontrolledMarch', 'passVoid', 'freeStructure', 'structureFirst', 'capacityBonus', 'cheapUnit', 'upgradeLimit', 'costDiscount', 'supplyDeal', 'deployInFactoryWorld', 'shipsThroughStorms', 'deployLimit', 'orderKl', 'putOrderTokensOnDeck', 'strategizeDeckBonus', 'unitsThroughStorms', 'restoreRetreated', 'restoreFallen', 'resurrect', 'stormReaction', 'noRoute', 'extraMoveWays', 'passPlanningTurn', 'battleAsset', 'resolveAsOrder', 'unitDiscount'];
 
     // «Вместо размещения жетона приказа во время Фазы Планирования вы можете
     // сбросить эту карту» («Видения Комморры»): one placement of the player is
@@ -174,6 +174,41 @@ class OrderAsks {
             text: 'В какой системе выполнить продвижение?' } };
     }
 
+    // «Вы можете выполнить этот приказ, как если бы он был любым другим
+    // (развертывание, доминирование, продвижение) после того, как вы его
+    // раскрыли» («Зеленая волна»): the revealed strategize order turns into the
+    // order the player names — before anything was bought with it.
+    static resolveAsOrder(effects, f) {
+        const { R, state, seat, step, p } = f;
+        const order = state.order;
+        const context = OrderContext.of(order);
+        if (!context || !context.isSeat(seat) || !context.isKind('strategize')) return null;
+        const upgrades = UpgradeOrder.of(order);
+        if (upgrades && (upgrades.combat || upgrades.orderCard)) {
+            R.log(state, seat, p.name + ': улучшение уже куплено этим приказом — приказ остаётся планированием.');
+            return null;
+        }
+        const kinds = (step.kinds || ['deploy', 'dominate', 'advance']).slice();
+        if (!kinds.length) return null;
+        const options = kinds.map(k => (R.orderName ? R.orderName(k) : k) + ' (как этот приказ)');
+        return { question: { kind: 'choice', who: seat, op: 'resolveAsOrder', options, kinds,
+            text: 'Каким приказом выполнить этот приказ планирования?' } };
+    }
+
+    // «уменьшить его стоимость в материалах на 1 за каждый ваш жетон
+    // подкреплений» («Варбосс»): the discount of ONE purchase — the unit the
+    // player is buying when he discards the card (DeployRules.cmdBuyUnit offers
+    // the plan and goes on with the purchase after it).
+    static unitDiscount(effects, f) {
+        const { R, state, seat, step, p } = f;
+        if (!state.order) return null;
+        const count = step.per && R.countFor ? R.countFor(state, seat, step.per) : 1;
+        const n = (step.n || 0) * count;
+        OrderDeal.of(state.order).setNextUnitDiscount(n);
+        R.log(state, seat, p.name + ': следующий купленный отряд дешевле на ' + n + '.');
+        return null;
+    }
+
     static extraOrderTokens(effects, f) {
         const { R, state, seat, step, p } = f;
         p.extraOrderTokens = (p.extraOrderTokens || 0) + (step.n || 0);
@@ -316,10 +351,43 @@ class OrderAsks {
         return null;
     }
 
+    // «Получите 1 жетон подкреплений, если используете этот приказ для
+    // совершения битвы в системе, где у вас нет дружественных миров»
+    // («Крестовый поход»): the token belongs to the battle of the order. A
+    // battle already under way takes it now; otherwise the order remembers it
+    // for the battle it starts.
+    static battleAsset(effects, f) {
+        const { R, state, seat, step, p } = f;
+        if (!state.order || !OrderContext.of(state.order).isSeat(seat)) return null;
+        const reward = { kind: step.kind || 'reinforcement', n: step.n || 1, noFriendlyWorlds: !!step.noFriendlyWorlds };
+        const combat = state.combat;
+        const active = OrderContext.of(state.order).system;
+        if (combat && !combat.effectInitiated && CombatSides.seatOf(combat, 'attacker') === seat
+            && BattleField.of(combat).system === active && typeof R.grantBattleAsset === 'function') {
+            R.grantBattleAsset(state, seat, reward);
+            return null;
+        }
+        OrderTally.of(state.order).setBattleAsset(reward);
+        R.log(state, seat, p.name + ': жетон ждёт битвы этого приказа.');
+        return null;
+    }
+
     static deployLimit(effects, f) {
-        const { state, step } = f;
+        const { R, state, seat, step, p } = f;
         const limits = DeployLimits.of(state.order);
-        if (limits) limits.addLimitBonus(step.n || 0);
+        if (!limits) return null;
+        let n = step.n || 0;
+        // «Ваш лимит развертывания при этом уменьшается на 1 за каждый ваш
+        // бастион в активной системе» («Миры призыва»).
+        if (step.per === 'bastionActive') {
+            const active = OrderContext.of(state.order).system;
+            const bastions = (state.structures || []).filter(s => s.seat === seat
+                && s.type === 'bastion' && s.system === active).length;
+            n *= bastions;
+            if (bastions) R.log(state, seat, p.name + ': лимит развертывания ' + (n < 0 ? '' : '+') + n
+                + ' (бастионов в активной системе: ' + bastions + ').');
+        }
+        limits.addLimitBonus(n);
         return null;
     }
 

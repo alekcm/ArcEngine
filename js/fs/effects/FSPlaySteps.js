@@ -98,15 +98,28 @@ class PlaySteps {
     }
 
     static discardFoeCard(effects, f) {
-        const { R, state, seat, answer, combat, side } = f;
+        const { R, state, seat, step, answer, combat, side } = f;
         const s2 = CombatSides.foe(side);
         const played = CombatCards.of(combat).played(s2);
         const name = answer.card;
         const at = played.findIndex(c2 => c2.card && c2.card.name === name);
-        if (at < 0) return null;
+        if (at < 0) {
+            // The card the opponent laid for this round: it is turned over
+            // and discarded at once — its icons and abilities never count.
+            const staged = CombatCards.of(combat).staged(s2);
+            if (!staged || staged.name !== name) return null;
+            CombatCards.of(combat).unstage(s2);
+            const foeSeat = effects.seatOf(combat, s2);
+            R.player(state, foeSeat).combatHand.setChosen(null);
+            R.player(state, foeSeat).combatDeck.add(staged.name);
+            R.log(state, seat, state.players[seat].name + ': карта противника «' + name + '» сброшена, не вступив в игру.');
+            step.done = true;
+            return null;
+        }
         const card = played.splice(at, 1)[0];
         R.player(state, effects.seatOf(combat, s2)).combatDeck.add(card.card.name);
         R.log(state, seat, state.players[seat].name + ': карта противника «' + name + '» сброшена.');
+        step.done = true;
         return null;
     }
 

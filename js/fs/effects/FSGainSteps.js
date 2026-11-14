@@ -80,7 +80,8 @@ class GainSteps {
     // token the player gains — one place counts both.
     static takeFoeAsset(effects, f) {
         const { R, state, seat, step, answer, ctx } = f;
-        const foe = state.players[1 - seat] ? 1 - seat : null;
+        const foe = step.foe !== undefined && step.foe !== null && state.players[step.foe] ? step.foe
+            : (state.players[1 - seat] ? 1 - seat : null);
         if (foe === null) return null;
         const foePlayer = R.player(state, foe);
         const kind = answer.asset || answer.assetType;

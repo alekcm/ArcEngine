@@ -192,6 +192,8 @@ class DeployRules {
         const deal = OrderDeal.of(order);
         let cost = o.cheap ? 1 : (def.cost || 0);
         if (!o.cheap && deal.unitDiscount) cost = Math.max(0, cost - deal.unitDiscount);
+        // «Варбосс»: the discount of the one unit bought with the card.
+        if (!o.cheap && deal.nextUnitDiscount) cost = Math.max(0, cost - deal.nextUnitDiscount);
         if (o.pairMate) cost = 0;
         if (o.cache) cost = Math.max(0, cost - FS_RULES_CONFIG.CACHE_VALUE);
         // The order may sell a unit of command level 0 for 1 materiel.
@@ -296,6 +298,17 @@ class DeployRules {
                 if (!factory) return { ok: false, error: 'Отряд ставится в мир с вашей фабрикой.' };
             }
         }
+        // «Вы можете сбросить эту карту при покупке отряда» («Варбосс»): the
+        // purchase is checked, then the plan is offered; the purchase goes on
+        // when the question is answered (resumeBuyUnit).
+        if (!cmd.resumed && !cheap && !Question.of(state).waiting
+            && (p.schemes || []).some(sch => sch.trigger === 'buy-unit' && !sch.note)) {
+            scope.setPendingBuy(cmd);
+            if (this.engine.maybeScheme(state, seat, 'buy-unit', { kind: 'order', ctx: { buyUnit: true } })) {
+                return { ok: true, pending: true };
+            }
+            scope.takePendingBuy();
+        }
         let cache = cheap ? false : (!!cmd.cache && !pairMate);
         if (cheap) {
             // «потратить 1 материал, чтобы разместить 1 отряд»: the price is
@@ -320,6 +333,8 @@ class DeployRules {
         p.supply.units[def.id]--;
         const unit = this.engine.addUnit(state, seat, def.id, cmd.system, cmd.pos);
         scope.use(cmd.pos);
+        // The discount of «Варбосса» was for this unit alone.
+        if (!cheap && deal.nextUnitDiscount) deal.spendNextUnitDiscount();
         if (isGuard) scope.lockType(def.id);
         this.engine.log(state, seat, p.name + ' купил отряд «' + def.name + '».');
         // `deal` here is the FLAG of the faction pair — not the OrderDeal
@@ -332,6 +347,23 @@ class DeployRules {
             forge: !!def.forge, forgeKl, cache, deal: !!supplyDeal,
         });
         return { ok: true };
+    }
+
+    /**
+     * The plan offered at a purchase («Варбосс») is answered: the purchase the
+     * player started goes on — at the lower price if the card was discarded.
+     */
+    resumeBuyUnit(state, seat) {
+        const order = state.order;
+        const scope = DeployScope.of(order);
+        const cmd = scope && scope.takePendingBuy();
+        if (!cmd || !OrderContext.of(order).isSeat(seat)) return { ok: true };
+        const res = this.cmdBuyUnit(state, seat, Object.assign({}, cmd, { resumed: true }));
+        if (res && res.ok === false) {
+            this.engine.log(state, seat, 'Покупка отряда не состоялась: ' + (res.error || ''));
+            OrderDeal.of(order).spendNextUnitDiscount();
+        }
+        return res;
     }
 
     cmdBuyStructure(state, seat, cmd) {
@@ -370,6 +402,16 @@ class DeployRules {
         const structure = this.engine.addStructure(state, seat, type, cmd.system, cmd.pos);
         this.engine.log(state, seat, p.name + ' построил: ' + this.engine.structureName(type) + '.');
         Purchases.of(order).add({ kind: 'structure', id: structure.id, type, name: this.engine.structureName(type), cost: rawCost, cache });
+        // «Вы можете купить постройку до того, как будете покупать отряды …
+        // Один раз за раунд» («Строй быстрее!»): the structure bought before
+        // the units spends the card for the round.
+        if (this.deployStep(order) === 'units' && OrderDeal.of(order).structureFirst) {
+            const card = (p.upgrades || []).find(u => /Строй быстрее/i.test(u.name || '') && !u.used);
+            if (card) {
+                card.used = true;
+                this.engine.log(state, seat, p.name + ' применяет улучшение «' + card.name + '»: постройка куплена до отрядов.');
+            }
+        }
         return { ok: true };
     }
 

@@ -334,10 +334,19 @@ class PlaceAsks {
     }
 
     static replaceStructureType(effects, f) {
-        const { state, seat, step } = f;
+        const { R, state, seat, step, p } = f;
         const s = state.structures.find(x => x.id === step.structure);
         if (!s) return null;
-        return { question: { kind: 'structureTypes', who: seat, op: 'replaceStructureType', options: ['city', 'factory', 'bastion'], text: 'На что заменить постройку?' } };
+        // «заменить 1 постройку … на любую другую» («Направлять верующих»):
+        // another kind, and only one the box still holds. The control token
+        // of the replaced structure stays: no new token is needed.
+        const options = ['city', 'factory', 'bastion'].filter(t => t !== s.type
+            && (typeof R.structurePoolLeft !== 'function' || R.structurePoolLeft(state, t) > 0));
+        if (!options.length) {
+            R.log(state, seat, p.name + ' не может заменить постройку: других построек в запасе нет.');
+            return null;
+        }
+        return { question: { kind: 'structureTypes', who: seat, op: 'replaceStructureType', options, text: 'На что заменить постройку?' } };
     }
 
     static destroyUnit(effects, f) {

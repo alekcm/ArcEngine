@@ -408,9 +408,9 @@ TODO назван в правиле и может только сокращат�
 
 ```
 FS_EFFECTS.step   → StepContext + ASK_EXECUTORS  → js/fs/effects/ask/FS*Asks.js
-   «что шаг спросит у игрока» (155)
+   «что шаг спросит у игрока» (196)
 FS_EFFECTS.apply  → StepContext + STEP_EXECUTORS → js/fs/effects/FS*Steps.js
-   «что шаг сделает с ответом» (73)
+   «что шаг сделает с ответом» (88)
 ```
 
 * `StepContext` (`FSStepContext.js`) — рамка шага: игрок, бой, сторона, ответ, помощники для

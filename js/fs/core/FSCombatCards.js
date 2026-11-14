@@ -108,6 +108,25 @@ class CombatCards {
         return this;
     }
 
+    // --- the cards a side lost for this battle --------------------------------
+
+    /**
+     * «ваш противник сбрасывает верхнюю карту своей боевой колоды» («Мек
+     * бойз»): the card is out of the battle, not out of the game — it goes back
+     * into the deck of its owner with the other cards when the battle ends.
+     */
+    discard(side, name) {
+        const pile = this.pile(side);
+        if (!pile.discarded) pile.discarded = [];
+        if (name) pile.discarded.push(name);
+        return pile.discarded;
+    }
+
+    /** The names of the cards a side discarded in this battle. */
+    discarded(side) {
+        return this.pile(side).discarded || [];
+    }
+
     // --- what the damage of a step did ---------------------------------------
 
     /** The pieces a side's damage was applied to in this step. */

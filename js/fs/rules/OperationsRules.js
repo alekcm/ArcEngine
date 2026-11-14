@@ -158,7 +158,9 @@ class OperationsRules {
             PhasePlan.of(state.order).set('units');
             Purchases.of(state.order).clear();
             // The card of the Orks lets the structure come before the units.
-            if ((p.upgrades || []).some(u => /Строй быстрее/i.test(u.name || ''))) {
+            // «Один раз за раунд»: a card already spent this round is silent —
+            // it is exhausted by the purchase that uses it (cmdBuyStructure).
+            if ((p.upgrades || []).some(u => /Строй быстрее/i.test(u.name || '') && !u.used)) {
                 OrderDeal.of(state.order).setStructureFirst();
             }
             this.engine.log(state, seat, p.name + ' может покупать отряды, а затем постройку.');
@@ -379,6 +381,16 @@ class OperationsRules {
         if (p.faction === 'эльдары' && up.name === 'Рейд корсаров'
             && (!state.order || !PhasePlan.of(state.order).is('corsair') || state.combat)) {
             return { ok: false, error: 'Рейд корсаров применяется после завершения битвы этого приказа.' };
+        }
+        // «Вы можете выполнить этот приказ, как если бы он был любым другим …
+        // после того, как вы его раскрыли» («Зеленая волна»): once something
+        // was bought with the strategize order, it is a strategize order — the
+        // card is not spent on nothing.
+        if (p.faction === 'орки' && up.name === 'Зеленая волна' && state.order) {
+            const bought = UpgradeOrder.of(state.order);
+            if (bought && (bought.combat || bought.orderCard)) {
+                return { ok: false, error: 'Улучшение уже куплено этим приказом: приказ остаётся планированием.' };
+            }
         }
         if (Question.of(state).waiting) return { ok: false, error: 'Сначала ответьте на вопрос способности.' };
         // The text of the card is the rule: the engine performs it.

@@ -5,7 +5,7 @@
 // окружение — параметр effects и рамка шага f (FSStepContext).
 
 class TokenAsks {
-    static ops = ['gainToken', 'loseToken', 'keepTokens', 'loseReinforcement', 'gainTokensLater', 'foeSpendOrPay', 'banCombatTokens', 'forbidRestore', 'banGeneral', 'randomCards', 'spendToken'];
+    static ops = ['gainToken', 'loseToken', 'keepTokens', 'loseReinforcement', 'gainTokensLater', 'foeSpendOrPay', 'banCombatTokens', 'forbidRestore', 'banGeneral', 'randomCards', 'spendToken', 'mirrorTokens'];
 
     // «потратьте 2 `att. token`, чтобы перевернуть …» («Френзоновые импланты»,
     // «Щит псайкера»): the owner pays his own tokens; an unpaid price buys
@@ -59,6 +59,17 @@ class TokenAsks {
         const round = CombatTurn.of(combat).round + (step.round === 'this' ? 0 : 1);
         CombatBans.of(combat).randomCards(who, round);
         R.log(state, seat, p.name + ': в следующем раунде противник играет случайные карты.');
+        return null;
+    }
+
+    // «каждый раз во время всего этого боя, когда противник получает `att.
+    // token` или `def. token`, вы также получаете столько же» («Рокобойз»):
+    // the cubes of the battle copy every gain of the opponent from now on.
+    static mirrorTokens(effects, f) {
+        const { R, state, seat, combat, inCombat, side, p } = f;
+        if (!inCombat) return null;
+        CombatCubes.of(combat).setMirror(side);
+        R.log(state, seat, p.name + ': до конца боя получает столько же жетонов атаки и обороны, сколько получает противник.');
         return null;
     }
 

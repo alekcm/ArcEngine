@@ -45,6 +45,25 @@ class OrderDeal {
         return this;
     }
 
+    /**
+     * «уменьшить его стоимость в материалах на 1 за каждый ваш жетон
+     * подкреплений» («Варбосс»): the discount of the NEXT unit alone.
+     */
+    get nextUnitDiscount() {
+        return this.order.nextUnitDiscount || 0;
+    }
+
+    setNextUnitDiscount(n) {
+        this.order.nextUnitDiscount = Math.max(0, Number(n) || 0);
+        return this;
+    }
+
+    /** The unit is bought: the discount is used up. */
+    spendNextUnitDiscount() {
+        delete this.order.nextUnitDiscount;
+        return this;
+    }
+
     /** «общая цена покупок (включая здания) дешевле на N». */
     get purchaseDiscount() {
         return this.order.purchaseDiscount || 0;

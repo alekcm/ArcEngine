@@ -1456,6 +1456,241 @@ const FS_EFFECTS = {
         return T ? (T[s] || null) : null;
     },
 
+    // The Space Marines (docs/forbidden-stars/04–06): the cards of the base
+    // faction whose sentences the wide rules read wrongly or not at all. Keyed
+    // by the printed text, like the fan decks: a card that is not listed here
+    // is read by the wide rules as before.
+    spaceMarineCard(text, ctx) {
+        const s = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!s || !ctx || ctx.faction !== 'космодесант') return null;
+        const ab = s;
+        const T = this.fanDeckReader('космодесант', ctx, ({ put, mk, sub, cg, cu, ot, et }) => {
+            const INFANTRY = { types: ['Скаут', 'Космодесант'] };
+
+            // --- 04: the combat deck ------------------------------------------
+            // «если в этом раунде боя отряд противника становится
+            // деморализованным, то он уничтожится, если владелец не потратит 1
+            // `morale cube`»: the rule of «Фаланга судного дня» with a morale
+            // cube as the ransom.
+            put(cu('Засада'), [
+                mk('destroyRoutedFoe', { who: 'foe', pick: true, avoid: { kind: 'morale', n: 1 } }, ab),
+            ]);
+            // «Если вы атакуете, то посмотрите выложенную лицом вниз в игровую
+            // зону боевую карту противника. Получите либо 2 `att. token`, либо
+            // 2 `def. token`»: only the look depends on the side — the tokens
+            // are a sentence of their own and come to the defender as well.
+            put(cg('Разведка'), [
+                mk('peekFoeCard', { who: 'me', cond: { side: 'attack' } },
+                    'Если вы атакуете, то посмотрите выложенную лицом вниз в игровую зону боевую карту противника.'),
+                mk('choice', { who: 'me', text: 'Получите либо 2 `att. token`, либо 2 `def. token`.', options: [
+                    sub('gainToken', { n: 2, kind: 'att', who: 'me' }, ab),
+                    sub('gainToken', { n: 2, kind: 'def', who: 'me' }, ab),
+                ] }, 'Получите либо 2 `att. token`, либо 2 `def. token`.'),
+            ]);
+            // «потратьте 1 `morale cube` для того, чтобы отступить из боя одним
+            // вашим отрядом»: the retreat follows a real payment.
+            put(cu('Разведка'), [
+                mk('spendDie', { n: 1, kind: 'morale', pick: true, who: 'me',
+                    then: [sub('retreat', { n: 1, who: 'me', pick: true }, ab)] }, ab),
+            ]);
+            // «За каждый `morale cube` получите `att. token` или `def. token`»:
+            // one token per morale cube of the player, of the kind he picks.
+            put(cg('Скауты ветераны'), [
+                mk('choice', { text: ab, who: 'me', per: 'cube', perKind: 'morale', options: [
+                    sub('gainToken', { n: 1, kind: 'att', who: 'me' }, ab),
+                    sub('gainToken', { n: 1, kind: 'def', who: 'me' }, ab),
+                ] }, ab),
+            ]);
+            // «потратьте любое количество `morale cube`. Отступите 1 своим
+            // отрядом за каждый потраченный `morale cube`»: one retreat per cube.
+            put(cu('Скауты ветераны'), [
+                mk('spendDie', { n: 99, kind: 'morale', any: true, pick: true, who: 'me',
+                    then: [sub('retreat', { who: 'me', pick: true, per: 'spent', perKind: 'morale' }, ab)] }, ab),
+            ]);
+            // «восстановите все свои деморализованные отряды. Затем переверните
+            // любые кубики на `morale cube`»: the dice are the player's choice —
+            // «любые» names the ones he picks, not every die he has.
+            put(cu('Слава Императора'), [
+                mk('restore', { n: 1, all: true, pick: true, who: 'me' }, ab),
+                mk('flipDie', { n: 99, kind: 'any', to: 'morale', any: true, multi: true, pick: true, who: 'me' }, ab),
+            ]);
+            // «потратьте 1 `morale cube` для того, чтобы восстановить все свои
+            // отряды»: ONE cube, every routed unit.
+            put(cu('Не ведать страха'), [
+                mk('spendDie', { n: 1, kind: 'morale', pick: true, who: 'me',
+                    then: [sub('restore', { n: 1, all: true, pick: true, who: 'me' }, ab)] }, ab),
+            ]);
+            // «потратьте 1 `morale cube` для того, чтобы переместить 1 отряд
+            // скаутов или 1 отряд космодесанта из любого мира в этот»: a unit
+            // of another world joins the battle for a world.
+            put(cu('Десантный модуль'), [
+                mk('spendDie', { n: 1, kind: 'morale', pick: true, who: 'me',
+                    then: [sub('moveUnit', { n: 1, pick: true, who: 'me', allBoard: true, areaType: 'world',
+                        filter: INFANTRY, dest: 'combatWorld', outsideCombat: true }, ab)] }, ab),
+            ]);
+
+            // --- 05: the order upgrades ---------------------------------------
+            // «потратить 2 `def. cube` для того, чтобы бесплатно разместить 1
+            // отряд космодесанта в этом мире, из-за чего … может начаться новая
+            // битва»: the payment of the strike buys a free model in the world
+            // the strike is aimed at; the battle for it follows the strike.
+            put(ot('Десантный модуль'), [
+                mk('ignoreBastion', { who: 'me' }, ab),
+                mk('strikePay', { n: 2, kind: 'def', who: 'me' }, ab),
+                mk('strikeReward', { place: { what: 'Космодесант' }, who: 'me' }, ab),
+                mk('once', {}, ab),
+            ]);
+            // «Ваш лимит развертывания при этом уменьшается на 1 за каждый ваш
+            // бастион в активной системе».
+            put(ot('Миры призыва'), [
+                mk('bastionsAsFactories', { who: 'me' }, ab),
+                mk('deployLimit', { n: -1, per: 'bastionActive', who: 'me' }, ab),
+                mk('once', {}, ab),
+            ]);
+            // «Получите 1 жетон подкреплений, если используете этот приказ для
+            // совершения битвы в системе, где у вас нет дружественных миров»:
+            // the token waits for the battle of the order.
+            put(ot('Крестовый поход'), [
+                mk('battleAsset', { n: 1, kind: 'reinforcement', noFriendlyWorlds: true, who: 'me' }, ab),
+                mk('once', {}, ab),
+            ]);
+
+            // --- 06: the events -----------------------------------------------
+            put(et('Героическая атака'), [
+                mk('choice', { text: ab, who: 'me', placeable: true, options: [
+                    sub('placeUnit', { n: 1, what: 'Космодесант', pick: true, free: true,
+                        dest: 'friendlyWorldWithStructure', who: 'me' }, ab),
+                    sub('placeUnit', { n: 1, what: 'Скауты', pick: true, free: true,
+                        dest: 'friendlyWorldsAny', who: 'me' }, ab),
+                ] }, ab),
+            ]);
+            // «либо заплатите 2 материи, чтобы разместить бастион в дружественном
+            // мире, где ещё нет бастиона (игнорируя ограничение на количество
+            // построек)»: the second bastion of a world is the card's permission.
+            put(et('Защита Императора'), [
+                mk('choice', { text: ab, who: 'me', placeable: true, options: [
+                    sub('placeStructure', { kind: 'bastion', n: 1, free: true, noStructures: true, pick: true, who: 'me' }, ab),
+                    sub('placeStructure', { kind: 'bastion', n: 1, free: true, materielPayment: 2,
+                        noBastion: true, onOccupied: 'any', pick: true, who: 'me' }, ab),
+                ] }, ab),
+            ]);
+            // «Либо получите ценные ресурсы этого мира, либо получите материалы,
+            // равные производственному значению этого мира»: the tokens of the
+            // world OR its materiel, never both.
+            put(et('Работа праведных'), [
+                mk('chooseWorld', { pick: true, who: 'me' }, ab),
+                mk('choice', { text: ab, who: 'me', options: [
+                    sub('gainWorldAssets', { assetsOnly: true, pick: true, who: 'me' }, ab),
+                    sub('gainWorldAssets', { materielOnly: true, who: 'me' }, ab),
+                ] }, ab),
+            ]);
+            // «Вы можете сбросить эту карту в фазу действий, вместо раскрытия
+            // приказа, чтобы восстановить все ваши отряды в любой 1 системе».
+            put(et('Непоколебимость'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'operations', insteadOfOrder: true, who: 'me', note: false, defer: false, text: ab,
+                    steps: [sub('restoreOneSystem', { who: 'me' }, ab)],
+                }, ab),
+            ]);
+        });
+        return T ? (T[s] || null) : null;
+    },
+
+    orkCard(text, ctx) {
+        const s = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!s || !ctx || ctx.faction !== 'орки') return null;
+        // «— (зелёная плашка пустая)»: the printed green box of the card has
+        // no text — the dash of the transcription is not a rule to note.
+        if (/^—\s*\(зелёная плашка пустая\)$/i.test(s)) return [];
+        const ab = s;
+        const T = this.fanDeckReader('орки', ctx, ({ put, mk, sub, cu, ot, et }) => {
+            const NATISK = { types: ['Атакующие корабли класса «Натиск»'] };
+
+            // --- 04: the combat deck ------------------------------------------
+            // «ваш противник сбрасывает верхнюю карту своей боевой колоды. Вы
+            // получаете боевые значки с этой карты до конца этого раунда»: the
+            // card leaves his deck for this battle and its icons count for the
+            // Orks until the round is over.
+            put(cu('Мек бойз'), [
+                mk('discardFoeTop', { who: 'me', gainIcons: true, thisRound: true }, ab),
+            ]);
+            // «уничтожьте 1 корабль «Натиск» для того, чтобы вынудить противника
+            // выбрать и уничтожить один из его отрядов»: the price is the ship;
+            // the opponent names his own loss.
+            put(cu('Гретчины'), [
+                mk('destroy', { n: 1, who: 'me', pick: true, filter: NATISK,
+                    then: [sub('destroy', { n: 1, who: 'foe', pick: true, chooser: 'foe' }, ab)] }, ab),
+            ]);
+            // «каждый раз во время всего этого боя, когда противник получает
+            // `att. token` или `def. token`, вы также получаете столько же»:
+            // every gain of the opponent is mirrored for the rest of the battle.
+            put(cu('Рокобойз'), [
+                mk('mirrorTokens', { who: 'me' }, ab),
+            ]);
+
+            // --- 05: the order upgrades ----------------------------------------
+            // «Вы также можете потратить 1 кубик на ваш выбор для того, чтобы
+            // получить 1 материал и вынудить противника потерять 1 материал»:
+            // one rolled cube of the strike buys the exchange.
+            put(ot('Грабь!'), [
+                mk('gainDie', { n: 1, kind: 'any', who: 'me' },
+                    'Получите 1 `any cube` при выполнении этого орбитального удара.'),
+                mk('strikePay', { n: 1, kind: 'any', upTo: false, reward: { materiel: 1, foeLoses: 1 }, who: 'me' },
+                    'Вы также можете потратить 1 кубик на ваш выбор для того, чтобы получить 1 материал и вынудить противника потерять 1 материал.'),
+                mk('once', {}, 'Один раз за раунд.'),
+            ]);
+            // «Вы можете выполнить этот приказ, как если бы он был любым другим
+            // (развертывание, доминирование, продвижение) после того, как вы его
+            // раскрыли»: the revealed strategize order becomes the chosen one.
+            put(ot('Зеленая волна'), [
+                mk('resolveAsOrder', { kinds: ['deploy', 'dominate', 'advance'], who: 'me' }, ab),
+                mk('once', {}, 'Один раз за раунд.'),
+            ]);
+            // «Во время выполнения этого удара, вы можете потратить 1 `morale
+            // cube` для того, чтобы выбрать и сбросить 1 жетон ценных ресурсов
+            // противника. Затем получите такой же жетон»: a morale cube of the
+            // roll, and the token of the struck player changes hands.
+            put(ot('Воруй!'), [
+                mk('ignoreBastion', { who: 'me' }, 'Бастионы противника не могут предотвратить этот орбитальный удар.'),
+                mk('strikePay', { n: 1, kind: 'morale', upTo: false, reward: { stealAsset: true }, who: 'me' },
+                    'Во время выполнения этого удара, вы можете потратить 1 `morale cube` для того, чтобы выбрать и сбросить 1 жетон ценных ресурсов противника. Затем получите такой же жетон.'),
+                mk('once', {}, 'Один раз за раунд.'),
+            ]);
+
+            // --- 06: the events --------------------------------------------------
+            // «Заберите 1 ваш отряд из любого мира, а затем разместите его в
+            // любом никем не контролируемом мире».
+            put(et('Как мы сюда попадем?'), [
+                mk('moveUnit', { n: 1, pick: true, areaType: 'world', dest: 'uncontrolledWorldAny', who: 'me' }, ab),
+            ]);
+            // «Либо бесплатно разместите 2 отряда бойзов в дружественном мире,
+            // где есть отряд нобзов, либо бесплатно разместите 1 отряд бойзов в
+            // любом дружественном мире»: the first branch needs a world with
+            // Nobz — without one only the second is offered.
+            put(et('В бой!'), [
+                mk('choice', { text: ab, who: 'me', placeable: true, options: [
+                    sub('placeUnit', { n: 2, what: 'Бойзы', pick: true, free: true, who: 'me',
+                        dest: { kind: 'friendlyWorldWithUnit', unit: 'Нобзы' } },
+                    'бесплатно разместите 2 отряда бойзов в дружественном мире, где есть отряд нобзов'),
+                    sub('placeUnit', { n: 1, what: 'Бойзы', pick: true, free: true, who: 'me', dest: 'friendlyWorldsAny' },
+                        'бесплатно разместите 1 отряд бойзов в любом дружественном мире'),
+                ] }, ab),
+            ]);
+            // «Вы можете сбросить эту карту при покупке отряда для того, чтобы
+            // уменьшить его стоимость в материалах на 1 за каждый ваш жетон
+            // подкреплений»: the purchase itself offers the plan.
+            put(et('Варбосс'), [
+                mk('scheme', { who: 'me' }, ab),
+                mk('trigger', {
+                    trigger: 'buy-unit', who: 'me', note: false, defer: false, text: ab,
+                    steps: [sub('unitDiscount', { n: 1, per: 'reinforcement', who: 'me' }, ab)],
+                }, ab),
+            ]);
+        });
+        return T ? (T[s] || null) : null;
+    },
+
     // The text of a card -> the steps of the game.
     // ctx: {faction, kind: 'combat'|'event'|'order'|'ability'}
     parse(text, ctx) {
@@ -1490,6 +1725,15 @@ const FS_EFFECTS = {
         if (dark) return this.avoidPayers(dark);
         const inq = this.inquisitionCard(text, ctx || {});
         if (inq) return this.avoidPayers(inq);
+        // The Space Marines: the cards whose sentence the wide rules misread
+        // («уничтожится, если владелец не потратит 1 `morale cube`», «отступить
+        // из боя одним вашим отрядом», «за каждый ваш бастион»).
+        const marines = this.spaceMarineCard(text, ctx || {});
+        if (marines) return this.avoidPayers(marines);
+        // The Orks: the discarded card whose icons are borrowed, the ship paid
+        // for an enemy unit, the mirrored tokens, the payments of the strikes.
+        const orks = this.orkCard(text, ctx || {});
+        if (orks) return this.avoidPayers(orks);
         // The paragraphs with their own requisites: only the one whose unit is
         // in the battle is read (the requisites of the card are checked before).
         const paras = this.paragraphs(text, ctx);
@@ -2216,7 +2460,12 @@ const FS_EFFECTS = {
                     // «… он должен выбрать и деморализовать 1 свой отряд»: the
                     // punishment may stand inside the fork itself.
                     const rout = /(?:он|противник[а-яёa-z]*)\s+(?:должен|обязан)[^.;]{0,40}?деморализ[а-яёa-z]*\s+(\d+)?/i.exec(s);
-                    if (rout) body = [{ op: 'route', n: Number(rout[1]) || 1, pick: true, who: 'foe' }];
+                    if (rout) {
+                        body = [{ op: 'route', n: Number(rout[1]) || 1, pick: true, who: 'foe' }];
+                        // «должен выбрать и деморализовать 1 свой отряд»: the
+                        // victim is named by its owner.
+                        if (/выбрать\s+и\s+деморализ|выбирает\s+и\s+деморализ/i.test(s)) body[0].chooser = 'foe';
+                    }
                     // «Ваш противник должен отступить 1 своим юнитом, если не
                     // потратит 1 `att. cube` или 1 `morale cube`» («Наслаждение
                     // пытками»): the punishment of the refusal is the RETREAT,
@@ -2288,7 +2537,9 @@ const FS_EFFECTS = {
         // «Ваш противник должен выбрать и деморализовать 1 свой отряд» — the
         // foe chooses one of his own units and routs it («Ратлинг стрелок»).
         const mFoeRoute = /^(?:ваш\s+)?противник\s+должен\s+выбрать\s+и\s+деморализовать\s+(?:(\d+)\s+)?(?:один\s+)?сво[а-яёa-z]*\s+отряд[а-яёa-z]*(?:\s+с командным уровнем\s+(\d+))?/i.exec(s);
-        if (mFoeRoute) {
+        // «… деморализовать 1 свой отряд, если не потратит 1 `morale cube`»
+        // («Море зелёных»): the ransom makes it the fork of the payment below.
+        if (mFoeRoute && !/не\s+потрат/i.test(s)) {
             const step = { op: 'route', n: num(mFoeRoute[1]), who: 'foe', pick: true };
             if (mFoeRoute[2] !== undefined) step.maxKl = Number(mFoeRoute[2]);
             return [step];
@@ -2766,6 +3017,13 @@ const FS_EFFECTS = {
             && typeof R.resumeStrike === 'function') {
             R.resumeStrike(state, seat);
         }
+        // The purchase of a unit waited for the plan of «Варбосса»: it goes on,
+        // whether the card was discarded or not.
+        if (c.kind === 'order' && c.ctx && c.ctx.buyUnit && state.order
+            && DeployScope.of(state.order).pendingBuy && !Question.of(state).waiting
+            && typeof R.resumeBuyUnit === 'function') {
+            R.resumeBuyUnit(state, seat);
+        }
         // A Quick Response whose system was refused (or whose question had no
         // systems) never became a limited advance: the event phase goes on.
         let quickAdvanced = false;
@@ -3179,6 +3437,13 @@ const FS_EFFECTS = {
             return this.next(R, state, pending);
         }
         if (res && res.question) {
+            // The choice asks itself again — one more cube, one more choice
+            // («За каждый потраченный `morale cube` получите либо …, либо …»):
+            // the next answer is a choice as well, nothing is kept from this one.
+            if (res.question.again && res.question.op === 'choice') {
+                pending.stash = null;
+                return this.retarget(pending, res.question);
+            }
             // The branch of a choice that asks its own question: the answer goes
             // to the branch, not into the choice again.
             if (!pending.choice && pending.steps[pending.index] && pending.steps[pending.index].op === 'choice') {
@@ -3534,7 +3799,10 @@ const FS_EFFECTS = {
         // «…в дружественном мире, где уже есть 1 ваша постройка другого типа»
         // («Певцы психокости»): the card is the permission to build on an
         // occupied world — the rule is asked once, with that permission.
-        const permission = step && step.onOccupied === 'otherType' ? 'otherType' : null;
+        // «… (игнорируя ограничение на количество построек)» («Защита
+        // Императора»): any friendly world, however many structures it holds.
+        const permission = step && step.onOccupied === 'otherType' ? 'otherType'
+            : (step && step.onOccupied === 'any' ? 'any' : null);
         const raw = permission
             ? this.areasFor(R, state, seat, 'structureAny')
             : (step && step.dest
@@ -3547,6 +3815,9 @@ const FS_EFFECTS = {
             if (step && step.noStructures) {
                 return !R.hasStructure(state, a.system, a.pos);
             }
+            // «в дружественном мире, где ещё нет бастиона».
+            if (step && step.noBastion && (R.structuresAt(state, a.system, a.pos) || [])
+                .some(x => x.type === 'bastion')) return false;
             return !R.canPlaceStructure
                 || R.canPlaceStructure(state, seat, a.system, a.pos,
                     { allowOccupied: permission, kind: step && step.kind }).ok;
@@ -4076,6 +4347,13 @@ const FS_EFFECTS = {
             const w = state.order ? StrikePlan.of(state.order).world : null;
             units = w ? units.filter(u => u.system === w.system && u.area === w.pos) : [];
         }
+        // «переместить 1 отряд … из любого мира в этот» («Десантный модуль»):
+        // the units that already stand in the contested area are not «from
+        // another world».
+        if (step.outsideCombat && combat) {
+            const field = BattleField.of(combat);
+            units = units.filter(u => !field.holds(u));
+        }
         // The scope of the ability: the active system, the systems next to it,
         // worlds only, voids only, ships only, ground only, a command level cap.
         if (step.ofSystem) units = units.filter(u => this.inScope(R, state, u.system, step.ofSystem));
@@ -4165,6 +4443,14 @@ const FS_EFFECTS = {
         const sys = R.system(state, area.system);
         const a = R.area(sys, area.pos);
         if (!a || !a.world) return null;
+        // «получите материалы, равные производственному значению этого мира»
+        // («Работа праведных»): the materiel alone, the tokens stay on the world.
+        if (step.materielOnly) {
+            const got = a.world.materiel || 0;
+            R.player(state, seat).gainMateriel(got);
+            R.log(state, seat, p.name + ' берёт материалы мира ' + a.world.name + ': ' + got + '.');
+            return null;
+        }
         // «получить ценный ресурс этого мира» («Неотвратимые раскопки»): the
         // asset tokens alone, the materiel of the world stays where it is.
         if (!step.assetsOnly) R.player(state, seat).gainMateriel(a.world.materiel || 0);
@@ -4351,6 +4637,13 @@ const FS_EFFECTS = {
                 any = true;
                 continue;
             }
+            // «либо заплатите 2 материи, чтобы разместить бастион …» («Защита
+            // Императора»): the price is printed on the placement itself.
+            if (step.op === 'placeStructure' && step.materielPayment && (!step.who || step.who === 'me')) {
+                price.cost += step.materielPayment;
+                any = true;
+                break;
+            }
             if (step.op === 'loseAsset' && step.kind && step.kind !== 'any' && (!step.who || step.who === 'me')) {
                 price.tokens[step.kind] = (price.tokens[step.kind] || 0) + (step.n || 1);
                 any = true;
@@ -4392,9 +4685,31 @@ const FS_EFFECTS = {
             && this.areasForAbility(R, state, seat, step.dest).length > 0;
     },
 
+    // Can a branch of a «либо … либо» placement be performed at all? A unit
+    // needs a model in the supply and a world to stand in; a structure needs a
+    // piece in the supply, the price and a world the card allows.
+    canOfferBranch(R, state, seat, option) {
+        const step = Array.isArray(option) ? option[0] : option;
+        if (!step) return false;
+        if (step.op === 'placeUnit' || step.op === 'placeFree') return this.canOfferPlacement(R, state, seat, step);
+        if (step.op === 'placeStructure') {
+            const kind = step.kind;
+            if (!kind || kind === 'any') return true;
+            if (R.canTakeStructure && !R.canTakeStructure(state, seat, kind).ok) return false;
+            const price = step.materielPayment || (step.free ? 0 : 0);
+            if (price && (state.players[seat].materiel || 0) < price) return false;
+            return this.structureAreas(R, state, seat, step).length > 0;
+        }
+        return true;
+    },
+
     // The destinations of the ability steps: the exact list of worlds and voids
     // printed on the faction sheet.
-    areasForAbility(R, state, seat, dest) {
+    areasForAbility(R, state, seat, dest0) {
+        // «в дружественном мире, где есть отряд нобзов» («В бой!»): the
+        // destination names the unit that must already stand there.
+        const dest = dest0 && typeof dest0 === 'object' && dest0.kind ? dest0.kind : dest0;
+        const withUnit = dest0 && typeof dest0 === 'object' && dest0.unit ? dest0.unit : null;
         const active = state.order ? OrderContext.of(state.order).system : null;
         // «переместить любое количество отрядов в соседнюю область»
         // («Праздник кровопролития»): the neighbour of the area the units leave
@@ -4576,6 +4891,17 @@ const FS_EFFECTS = {
                     case 'friendlyWorldWithOwnUnit':
                         ok = world && mine && state.units.some(u => u.seat === seat
                             && u.system === sys.id && u.area === area.pos);
+                        break;
+                    // «в дружественном мире, где есть отряд нобзов» («В бой!»).
+                    case 'friendlyWorldWithUnit':
+                        ok = world && mine && state.units.some(u => u.seat === seat
+                            && u.system === sys.id && u.area === area.pos
+                            && (!withUnit || this.sameName((R.unitOf(state, u) || {}).name || '', withUnit)));
+                        break;
+                    // «в любом никем не контролируемом мире» («Как мы сюда
+                    // попадем?»): a world nobody holds, in any system.
+                    case 'uncontrolledWorldAny':
+                        ok = world && standing === 'uncontrolled';
                         break;
                     // «в неконтролируемом мире в системе, которая содержит хотя
                     // бы 1 ваш корабль» («Элизианские войска»).
@@ -4925,7 +5251,13 @@ const RULES = [
             // not for the moment the card is discarded.
             const late = /в конце первого шага нанесения (?:повреждений|урона)/i.test(s);
             const body = late && steps.length ? [{ op: 'deferDamage', steps }] : steps;
-            return { op: 'trigger', trigger, steps: body, text: s, note: !body.length, defer: reaction };
+            /** @type {any} */
+            const out = { op: 'trigger', trigger, steps: body, text: s, note: !body.length, defer: reaction };
+            // «Вместо раскрытия приказа во время фазы действий вы можете
+            // сбросить эту карту» («Вперёд!», «Восстание верных»): the plan is
+            // offered when the player would reveal an order, and takes its turn.
+            if (trigger === 'operations' && /вместо\s+раскрытия\s+приказа/i.test(s)) out.insteadOfOrder = true;
+            return out;
         },
     },
     // «…либо заплатить 1 жетон кузни и заменить 1 Онагр на 1 Титана»
@@ -5669,9 +6001,12 @@ const RULES = [
             const here = /в этот мир|в этом мире|этого мира|эту область|эти области|спорную область|спорной области/i.test(s || '');
             if (/подкреплен/.test(what)) {
                 return { op: 'placeReinforcement', n, pick: true,
-                         free: /бесплатн/.test(String(s || '') + ' ' + what),
-                         // «в спорной области» — the area of the battle is fixed.
-                         here: /в спорной области|в этой области боя/i.test(String(s || '')) };
+                         // «Бесплатно разместите 1 жетон подкреплений из резерва»
+                         // («Море зелёных»): the word may open the sentence.
+                         free: /бесплатн/i.test(String(s || '') + ' ' + what),
+                         // «в спорной области», «в эту область» («Море зелёных»,
+                         // «Пати вагон») — the area of the battle is fixed.
+                         here: /в спорной области|в этой области боя|в эту область/i.test(String(s || '')) };
             }
             if (/бастион|город|фабрик/.test(what)) {
                 const kind = /бастион/.test(what) ? 'bastion' : (/город/.test(what) ? 'city' : 'factory');

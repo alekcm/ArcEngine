@@ -68,6 +68,8 @@ class PlaceSteps {
             R.log(state, seat, p.name + ' тратит ' + step.payMateriel + ' материи.');
         }
         let placed = 0;
+        /** @type {any[]} */
+        const arrivals = [];
         for (let i = 0; i < want; i++) {
             if ((p.supply.units[def.id] || 0) <= 0) break;
             // «купить 1 отряд» — the ability buys at the printed price.
@@ -83,11 +85,22 @@ class PlaceSteps {
                     + (forge ? ' и жетонов кузни: ' + forge : '') + '.');
             }
             p.supply.units[def.id]--;
-            R.addUnit(state, seat, def.id, area.system, area.pos);
+            const unit = R.addUnit(state, seat, def.id, area.system, area.pos);
+            if (unit) arrivals.push({ id: unit.id, from: null });
             placed++;
         }
         if (!placed) return null;
         R.log(state, seat, state.players[seat].name + ' размещает «' + def.name + '»: ' + placed + '.');
+        // «… из-за чего, по окончании этого орбитального удара, может начаться
+        // новая битва» («Десантный модуль»): a model placed in the world of ONE
+        // other player makes it contested; the battle waits for the end of the
+        // strike. A model dropped from orbit came from nowhere: it has no area
+        // to retreat to.
+        if (step.mayBattle && typeof R.queueEffectCombat === 'function') {
+            const enemies = [...R.board(state).warSeatsAt(area.system, area.pos)].filter(o => o !== seat);
+            if (enemies.length === 1) R.queueEffectCombat(state, seat, enemies[0], area, arrivals);
+        }
+        step.done = true;
         return null;
     }
 

@@ -220,9 +220,15 @@ class DestroySteps {
         const s = state.structures.find(x => x.id === step.structure);
         const type = answer.type;
         if (!s || !type) return null;
-        if (!['city', 'factory', 'bastion'].includes(type)) return null;
+        if (!['city', 'factory', 'bastion'].includes(type) || type === s.type) return null;
+        if (typeof R.structurePoolLeft === 'function' && R.structurePoolLeft(state, type) <= 0) {
+            return { ok: false, error: 'Такие постройки закончились в коробке.' };
+        }
+        const was = s.type;
         s.type = type;
-        R.log(state, seat, state.players[seat].name + ' заменяет постройку.');
+        R.log(state, seat, state.players[seat].name + ' заменяет постройку: ' + R.structureName(was)
+            + ' → ' + R.structureName(type) + '.');
+        step.done = true;
         return null;
     }
 }

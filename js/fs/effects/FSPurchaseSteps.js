@@ -195,6 +195,15 @@ class PurchaseSteps {
             return { replace: [{ op: 'moveUnits', n: 1, pick: true,
                 unitType: 'ship', ofSystem: 'active', dest: 'otherVoidActive', who: 'me' }] };
         }
+        if (reward.place) {
+            // «Десантный модуль»: a free Space Marine stands in the world the
+            // strike is aimed at; the battle for that world — if the enemy
+            // survives the strike — follows the strike.
+            return { replace: [{
+                op: 'placeUnit', n: 1, what: reward.place.what, free: true, pick: true, who: 'me',
+                dest: 'orderWorld', mayBattle: true, noAbilityQuestion: true,
+            }] };
+        }
         if (reward.units) {
             // One question per kind of unit: the models of the chosen
             // kind are bought at the printed price and stand in the
@@ -236,6 +245,33 @@ class PurchaseSteps {
             // on the world of the strike, without its materiel.
             return { replace: [{ op: 'gainWorldAssets', assetsOnly: true, noAbilityQuestion: true,
                 world: { system: plan.system, pos: plan.pos }, who: 'me' }] };
+        }
+        // «потратить 1 кубик на ваш выбор для того, чтобы получить 1 материал и
+        // вынудить противника потерять 1 материал» («Грабь!»): the struck
+        // player is the opponent of the strike.
+        if (reward.materiel || reward.foeLoses) {
+            const gain = Number(reward.materiel) || 0;
+            if (gain) {
+                R.player(state, owner).gainMateriel(gain);
+                R.log(state, owner, player.name + ' получает материалы: ' + gain + '.');
+            }
+            const foe = plan.defender;
+            const lose = Number(reward.foeLoses) || 0;
+            if (lose && foe !== undefined && foe !== null && foe >= 0 && state.players[foe]) {
+                const had = R.player(state, foe).materiel;
+                const lost = Math.min(lose, had);
+                if (lost) R.player(state, foe).payMateriel(lost);
+                R.log(state, owner, state.players[foe].name + ' теряет материалы: ' + lost + '.');
+            }
+            return null;
+        }
+        // «потратить 1 `morale cube` для того, чтобы выбрать и сбросить 1 жетон
+        // ценных ресурсов противника. Затем получите такой же жетон» («Воруй!»):
+        // the token of the struck player changes hands.
+        if (reward.stealAsset) {
+            const foe = plan.defender;
+            if (foe === undefined || foe === null || foe < 0 || !state.players[foe]) return null;
+            return { replace: [{ op: 'takeFoeAsset', n: 1, who: 'me', foe, noAbilityQuestion: true }] };
         }
         return null;
     }

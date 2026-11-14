@@ -277,9 +277,18 @@ class MoveSteps {
     }
 
     static retreat(effects, f) {
-        const { R, state, step, answer, combat, inCombat, units } = f;
+        const { R, state, seat, step, answer, combat, inCombat, units, ctx } = f;
         const u = units(answer.units)[0];
         if (!u) return null;
+        // «Отступите 1 своим отрядом за каждый потраченный `morale cube`»
+        // («Скауты ветераны»): one retreat per cube, each with its own unit
+        // and its own area — the step repeats itself while retreats are left.
+        const left = (step.left === undefined
+            ? (step.per ? effects.count(R, state, seat, step, ctx) : (step.n || 1))
+            : step.left) - 1;
+        const again = () => (left > 0
+            ? { replace: [Object.assign({}, step, { left, done: false, noAbilityQuestion: true })] }
+            : null);
         // A retreat during a round of combat follows the retreat rules:
         // the unit leaves the contested area (and is routed). Without an
         // area to retreat to the unit is destroyed (the rules, «Retreats»).
@@ -301,7 +310,7 @@ class MoveSteps {
                 R.log(state, u.seat, state.players[u.seat].name + ': отступать некуда, отряд гибнет.');
                 R.destroyUnit(state, u);
                 step.done = true;
-                return null;
+                return again();
             }
             R.board(state).moveUnit(u, answer.area, { seat: u.seat });
             if (typeof R.trimArea === 'function') R.trimArea(state, u.seat, u.system, u.area);
@@ -311,7 +320,7 @@ class MoveSteps {
         if (typeof R.markRetreat === 'function') R.markRetreat(state, u.seat);
         R.log(state, u.seat, state.players[u.seat].name + ': отряд отступает.');
         step.done = true;
-        return null;
+        return again();
     }
 
     /**

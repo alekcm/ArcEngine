@@ -177,6 +177,30 @@ class OrderTally {
         this.order.combatReinforce = null;
         return promised;
     }
+
+    // --- the token the order promised to its battle ----------------------------
+
+    /**
+     * «Получите 1 жетон подкреплений, если используете этот приказ для
+     * совершения битвы в системе, где у вас нет дружественных миров»
+     * («Крестовый поход»): `{ kind, n, noFriendlyWorlds }`, paid when the
+     * battle of the order starts.
+     */
+    get battleAsset() {
+        return this.order.battleAsset || null;
+    }
+
+    setBattleAsset(reward) {
+        this.order.battleAsset = reward ? Object.assign({}, reward) : null;
+        return this.order.battleAsset;
+    }
+
+    /** The battle takes the token once. */
+    takeBattleAsset() {
+        const reward = this.battleAsset;
+        this.order.battleAsset = null;
+        return reward;
+    }
 }
 
 /** One tally per order, like one board per state. */

@@ -114,19 +114,42 @@ class CardAsks {
         const s2 = CombatSides.foe(side);
         const options = CombatCards.of(combat).played(s2)
             .map(c2 => c2.card && c2.card.name).filter(Boolean);
+        // The cards of a round are turned over together: the card the
+        // opponent laid for this round is face up too when the first card
+        // resolves («Прорвать фронт», «Дночерпатель») — it may be the one
+        // discarded, and then neither its icons nor its abilities count.
+        const staged = CombatCards.of(combat).staged(s2);
+        if (staged && staged.name && !options.includes(staged.name)) options.push(staged.name);
         if (!options.length) return null;
         return { question: { kind: 'cards', who: f.step.picker === 'me' ? f.seat : effects.seatOf(combat, s2), op: 'discardFoeCard', options, text: 'Какую карту сбросить?' } };
     }
 
     static discardFoeTop(effects, f) {
-        const { R, state, seat, combat, inCombat, side } = f;
+        const { R, state, seat, step, combat, inCombat, side, p } = f;
         if (!inCombat) return null;
         const s2 = CombatSides.foe(side);
         const seat2 = effects.seatOf(combat, s2);
         const deck = R.player(state, seat2).combatDeck;
         if (!deck.size()) return null;
-        R.log(state, seat, state.players[seat].name + ': противник сбрасывает верхнюю карту боевой колоды.');
-        deck.draw();
+        const name = deck.draw();
+        // The card is out of this battle only: it returns to the deck of its
+        // owner when the battle ends (the clean-up of the combat).
+        CombatCards.of(combat).discard(s2, name);
+        R.log(state, seat, p.name + ': противник сбрасывает верхнюю карту боевой колоды — «' + name + '».');
+        // «Вы получаете боевые значки с этой карты до конца этого раунда» («Мек
+        // бойз»): the icons of the discarded card count for the owner of the
+        // ability, its text does not — and only until the round is over.
+        if (step.gainIcons) {
+            const card = FS_CATALOG.card('combat', state.players[seat2].faction, name);
+            if (card) {
+                const entry = { name, card, valuesOnly: true, borrowed: true };
+                if (step.thisRound) entry.untilRound = CombatTurn.of(combat).round;
+                CombatCards.of(combat).put(side, entry, CombatTurn.of(combat).round);
+                const icons = card.icons || {};
+                R.log(state, seat, p.name + ' получает боевые значки карты «' + name + '» до конца раунда: атака '
+                    + (icons.att || 0) + ', оборона ' + (icons.def || 0) + ', боевой дух ' + (icons.morale || 0) + '.');
+            }
+        }
         return null;
     }
 
@@ -286,6 +309,14 @@ class CardAsks {
 
     static choice(effects, f) {
         const { R, state, seat, step, foe } = f;
+        // «За каждый `morale cube` получите `att. token` или `def. token`»
+        // («Скауты ветераны»): without a single cube there is nothing to
+        // choose the kind of — the question is not asked.
+        if (step.per && step.per !== 'pair') {
+            const total = effects.count(R, state, seat,
+                { n: 1, per: step.per, perKind: step.perKind, max: step.max, filter: step.filter, inBattle: step.inBattle }, f.ctx);
+            if (total <= 0) return null;
+        }
         // «Багровая стража»: do not offer a paid pair without both models,
         // or suppress the free single model when it is still available. Keep
         // the filtered list on the step so its indices survive JSON transport.
@@ -302,6 +333,22 @@ class CardAsks {
                 || effects.condSatisfied(R, state, seat, { reqNames: option.reqNames }, f.ctx));
             if (!step.options.length) return null;
             if (step.options.length === 1) return { replace: [step.options[0]] };
+        }
+        // «Либо бесплатно разместите 1 ваш отряд космодесанта в дружественном
+        // мире, где есть любая ваша постройка, либо … 1 отряд скаутов в любом
+        // дружественном мире» («Героическая атака», «Защита Императора»): a
+        // branch that has nowhere to stand — or nothing in the supply — is
+        // not offered; a lone remaining branch is simply performed.
+        if (step.placeable && (step.options || []).length) {
+            const possible = step.options.filter(option => effects.canOfferBranch(R, state, seat, option));
+            if (possible.length !== step.options.length) {
+                step.options = possible;
+                if (!step.options.length) {
+                    R.log(state, seat, state.players[seat].name + ': ни одну из ветвей карты выполнить нельзя.');
+                    return null;
+                }
+                if (step.options.length === 1) return { replace: [step.options[0]] };
+            }
         }
         // «либо потратить 1 жетон подкрепления, чтобы …, либо …» («Воплощённая
         // злоба», «Поддержка чёрного сердца»): a branch that opens with a price

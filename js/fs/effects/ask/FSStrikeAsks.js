@@ -26,9 +26,10 @@ class StrikeAsks {
                     : (step.routeDamaged ? { routeDamaged: true }
                         : (step.moveShips ? { moveShips: true }
                         : (step.moveShipActive ? { moveShipActive: true }
+                        : (step.place ? { place: step.place }
                             : (step.units
                                 ? { units: step.units }
-                                : { asset: step.asset, n: step.n || 1 })))));
+                                : { asset: step.asset, n: step.n || 1 }))))));
             StrikePlan.of(state.order).setReward(reward);
         }
         return null;

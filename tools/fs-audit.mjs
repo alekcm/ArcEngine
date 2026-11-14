@@ -2341,7 +2341,10 @@ rule('raid-0a', '«… выбрать и сбросить 1 жетон ценн�
     const card = ctx.FS_DATA.orders.find(c => c.name === 'Воруй!');
     eq(!!card, true, 'карта есть');
     const steps = ctx.FS_EFFECTS.parse(card.text, { kind: 'order', faction: card.faction });
-    eq(steps.map(s => s.op).includes('takeFoeAsset'), true, 'кража — шаг движка');
+    // «потратить 1 `morale cube` для того, чтобы …»: the theft is the reward of
+    // a cube of the strike (FSPurchaseSteps.strikePayPick → takeFoeAsset).
+    const pay = steps.find(s => s.op === 'strikePay');
+    eq(!!pay && pay.kind === 'morale' && !!(pay.reward && pay.reward.stealAsset), true, 'кража — награда за кубик боевого духа удара');
     eq(steps.every(s => s.op !== 'note'), true, 'заглушек нет');
     const st = FS_RULES.newGame({ seed: 9, players: [
         { name: 'Д', faction: 'темные-эльдары' }, { name: 'О', faction: 'орки' }], interactiveSetup: false });

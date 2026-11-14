@@ -50,7 +50,10 @@ class CombatRules {
         }
         for (const arrival of arrivals || []) {
             entry.arrivals = entry.arrivals.filter(a => a.id !== arrival.id);
-            entry.arrivals.push({ id: arrival.id, from: { system: arrival.from.system, pos: arrival.from.pos } });
+            // A model placed by a card («Десантный модуль») came from nowhere:
+            // it has no origin to retreat to.
+            entry.arrivals.push({ id: arrival.id,
+                from: arrival.from ? { system: arrival.from.system, pos: arrival.from.pos } : null });
         }
     }
 
@@ -66,6 +69,7 @@ class CombatRules {
             if (!arrivals.length || !defenders.has(entry.defender)) continue;
             const origins = [];
             for (const a of arrivals) {
+                if (!a.from) continue;
                 const last = MarchTrail.of(state).lastOf(entry.attacker, a.id);
                 if (last && (last.to.system !== entry.system || last.to.pos !== entry.pos
                     || last.from.system !== a.from.system || last.from.pos !== a.from.pos)) continue;
@@ -261,6 +265,12 @@ class CombatRules {
         // («Бесчисленные»): the token the order promised stands in the area of
         // the combat its order has just started.
         const tally = OrderTally.of(state.order);
+        // «Получите 1 жетон подкреплений, если используете этот приказ для
+        // совершения битвы в системе, где у вас нет дружественных миров»
+        // («Крестовый поход»): the token the order promised to its battle.
+        const battleAsset = !combat.effectInitiated && state.order && OrderContext.of(state.order).isSeat(attacker)
+            && tally ? tally.takeBattleAsset() : null;
+        if (battleAsset) this.grantBattleAsset(state, attacker, battleAsset);
         const promised = !combat.effectInitiated && state.order && OrderContext.of(state.order).isSeat(attacker)
             && tally ? tally.promisedReinforce : null;
         if (promised) {
@@ -276,6 +286,29 @@ class CombatRules {
         // it as part of the same action that started preparation.
         if (!combat.effectInitiated) this.prepEffects(state, attacker);
         if (!Question.of(state).waiting) this.advanceCombatSteps(state);
+    }
+
+    /**
+     * The token a card gives for the battle of an order («Крестовый поход»):
+     * paid to the attacker unless the card asks for a system without a
+     * friendly world of his and the system of the battle has one.
+     * @param {any} state @param {number} seat @param {{kind: string, n: number, noFriendlyWorlds?: boolean}} reward
+     */
+    grantBattleAsset(state, seat, reward) {
+        const combat = state.combat;
+        if (!combat || !reward) return false;
+        const sys = this.engine.system(state, BattleField.of(combat).system);
+        const friendly = !!sys && sys.areas.some(a => a.world
+            && this.engine.control(state, seat, sys.id, a.pos) === 'friendly');
+        const name = state.players[seat].name;
+        if (reward.noFriendlyWorlds && friendly) {
+            this.engine.log(state, seat, name + ': в системе битвы есть дружественный мир — жетон не получен.');
+            return false;
+        }
+        this.engine.player(state, seat).addAsset(reward.kind || 'reinforcement', reward.n || 1);
+        this.engine.log(state, seat, name + ' получает жетон(ы): ' + (reward.kind || 'reinforcement')
+            + ' × ' + (reward.n || 1) + ' за битву этого приказа.');
+        return true;
     }
 
     prepEffects(state, seat) {
@@ -1462,11 +1495,15 @@ class CombatRules {
         // another unit falls in the repeated step; a fresh routing re-arms it.
         d.handled = (d.handled || []).concat(units.map(u => u.id));
         const avoid = d.avoid || { kind: 'def', n: 1 };
+        // «… если владелец не потратит 1 `morale cube`» («Засада»): the ransom
+        // is the cube the card names.
+        const ransom = (avoid.n || 1) + ' `' + (avoid.kind === 'morale' ? 'morale cube'
+            : (avoid.kind === 'att' ? 'att. cube' : (avoid.kind === 'any' ? 'any cube' : 'def. cube'))) + '`';
         const steps = units.map(u => ({
             op: 'avoidDestroy',
             unit: u.id, tokenSide: u.tokenSide, tokenIndex: u.tokenIndex,
             avoid,
-            ability: 'деморализованный отряд уничтожается; можно избежать уничтожения за 1 `def. cube`',
+            ability: 'деморализованный отряд уничтожается; можно избежать уничтожения за ' + ransom,
         }));
         turn.holdEffect('damage-end');
         this.engine.runEffects(state, d.seat, steps, { kind: 'combat', ctx: { side: CombatSides.sideOf(c, d.seat) } });
@@ -1883,7 +1920,12 @@ class CombatRules {
             // never turned over (the combat ended in between) is returned too.
             const deck = this.engine.player(state, p.seat).combatDeck;
             const cards = CombatCards.of(c);
-            for (const card of cards.played(side)) deck.add(card.name);
+            // A card borrowed from the opponent's deck («Мек бойз») is his: it
+            // goes back with his discarded cards, not into this deck.
+            for (const card of cards.played(side)) if (!card.borrowed) deck.add(card.name);
+            // «сбрасывает верхнюю карту своей боевой колоды»: discarded for the
+            // battle, returned with the rest.
+            for (const name of cards.discarded(side)) deck.add(name);
             const hand = this.engine.player(state, p.seat).combatHand;
             hand.returnAll();
             // The card that was only chosen and never turned over goes back too.

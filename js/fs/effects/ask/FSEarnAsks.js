@@ -64,8 +64,11 @@ class EarnAsks {
     // «Какой жетон противника забрать?» («Воруй!»): the question offers only
     // the kinds the opponent really has.
     static takeFoeAsset(effects, f) {
-        const { R, state, seat } = f;
-        const foe = state.players[1 - seat] ? 1 - seat : null;
+        const { R, state, seat, step } = f;
+        // The strike names the struck player («Воруй!»); otherwise the only
+        // other player of the table.
+        const foe = step.foe !== undefined && step.foe !== null && state.players[step.foe] ? step.foe
+            : (state.players[1 - seat] ? 1 - seat : null);
         if (foe === null) return null;
         const foePlayer = R.player(state, foe);
         const have = ['forge', 'cache', 'reinforcement'].filter(k => foePlayer.assetCount(k) > 0);

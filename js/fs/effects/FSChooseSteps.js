@@ -5,7 +5,7 @@
 // приходит параметром effects, а общая рамка шага — объектом f (FSStepContext).
 
 class ChooseSteps {
-    static ops = ['reorderOwnOrder', 'advanceFromPlan', 'choice', 'chooseSystem', 'chooseFoe', 'chooseWorld', 'foeAllow', 'lookEvents', 'sequence', 'restore', 'damageFirst', 'limitedOrder', 'stormReaction', 'strikeRouteDamaged', 'strikeFirstPick', 'strikeDestroyOne', 'guardDeploy', 'preAdvance'];
+    static ops = ['reorderOwnOrder', 'advanceFromPlan', 'resolveAsOrder', 'choice', 'chooseSystem', 'chooseFoe', 'chooseWorld', 'foeAllow', 'lookEvents', 'sequence', 'restore', 'damageFirst', 'limitedOrder', 'stormReaction', 'strikeRouteDamaged', 'strikeFirstPick', 'strikeDestroyOne', 'guardDeploy', 'preAdvance'];
 
     static reorderOwnOrder(effects, f) {
         const { R, state, seat, step, answer } = f;
@@ -51,7 +51,21 @@ class ChooseSteps {
             // «Если у вас больше недеморализованных отрядов…» — a count
             // of zero pays nothing at all.
             if (total <= 0) return null;
-            if (total > 1) option.n = (option.n || 1) * total;
+            // «За каждый потраченный `morale cube` получите либо 1 `att. cube`,
+            // либо 1 `def. cube`» («Прорвать фронт», «Отметка Тзинча», «Скауты
+            // ветераны»): every cube has a choice of its own — the branch is
+            // performed once, and the same question is asked for the next cube.
+            // The count left is kept on the step: it survives JSON transport.
+            if (step.left === undefined) step.left = total;
+            step.left -= 1;
+            const one = effects.step(R, state, seat, option, ctx);
+            if (step.left > 0 && !one) {
+                const foe = f.foe;
+                const asker = step.chooser !== 'me' && step.who === 'foe' && foe !== null && foe !== undefined ? foe : seat;
+                return { question: { kind: 'choice', who: asker, op: 'choice', again: true, options: step.options,
+                    text: (step.text || '') + ' (ещё ' + step.left + ')' } };
+            }
+            return one;
         }
         const q = effects.step(R, state, seat, option, ctx);
         // The branch may do all its work at once (there is nothing to destroy,
@@ -189,6 +203,31 @@ class ChooseSteps {
         }
         R.log(state, seat, p.name + ' выполняет «Вперёд!»: приказ продвижения в системе.');
         return { replace: [] };
+    }
+
+    // «Зеленая волна»: the strategize order becomes the order the player named,
+    // in the same system, with a clean sheet of purchases.
+    static resolveAsOrder(effects, f) {
+        const { R, state, seat, step, answer, p } = f;
+        const order = state.order;
+        const context = OrderContext.of(order);
+        if (!context || !context.isSeat(seat) || !context.isKind('strategize')) return null;
+        const kinds = (f.question && f.question.kinds) || step.kinds || ['deploy', 'dominate', 'advance'];
+        const kind = kinds[Number(answer.choice)];
+        if (!kind) return null;
+        PhasePlan.of(order).set(null);
+        if (Purchases.of(order)) Purchases.of(order).clear();
+        const upgrades = UpgradeOrder.of(order);
+        if (upgrades) upgrades.reset();
+        context.setKind(kind);
+        const res = R.resolveOrder(state, seat, kind, context.system);
+        if (res && res.ok === false) {
+            R.log(state, seat, p.name + ': приказ не удалось выполнить как «' + R.orderName(kind) + '»: ' + (res.error || ''));
+            return null;
+        }
+        R.log(state, seat, p.name + ' выполняет приказ планирования как «' + R.orderName(kind) + '».');
+        step.done = true;
+        return null;
     }
 
     static stormReaction(effects, f) {

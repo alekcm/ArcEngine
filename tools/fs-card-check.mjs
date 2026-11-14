@@ -33,7 +33,7 @@ const load = (file, name) => vm.runInContext(
 for (const file of ['js/fs/FSView.js', 'js/fs/FSUI.js', 'js/fs/FSGame.js']) {
     if (fs.existsSync(path.join(ROOT, file))) load(file, file.split('/').pop().replace(/\.js$/, ''));
 }
-const { FS_DATA, FS_CARDS, FS_CATALOG, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage, CombatTurn, CombatCards, BattleField, DeployScope, OrderMove } = ctx;
+const { FS_DATA, FS_CARDS, FS_CATALOG, FS_RULES, FS_EFFECTS, FSGame, GamePhase, CombatTokens, CombatPlans, CombatDamage, CombatTurn, CombatCards, CombatCubes, CombatHooks, CombatOutcome, BattleField, DeployScope, OrderMove, OrderDeal, Purchases } = ctx;
 
 // --- the report -------------------------------------------------------------
 const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\x1b[32m' };
@@ -3355,6 +3355,42 @@ check('Восстание верных', 'бесплатный бастион в
     eq(built.length, 1, 'бастион построен');
     eq(st.players[0].materiel, 3, 'материя не потрачена');
     return eq(FS_RULES.control(st, 0, built[0].system, built[0].area), 'friendly', 'мир дружественный');
+});
+
+check('Восстание верных', 'план «вместо раскрытия приказа»: предложен при раскрытии, бастион поставлен, жетон приказа не тронут, ход переходит', () => {
+    let st = tyrEvent('Восстание верных', { units: { 'гаунты': 1 } });
+    const plan = st.players[0].schemes[0];
+    eq([plan.trigger, plan.insteadOfOrder], ['operations', true], 'план ждёт фазы действий вместо приказа');
+    for (const sys of st.systems) sys.tokens = [];
+    const sys0 = st.systems[0];
+    sys0.tokens.push({ seat: 0, order: 'advance', faceUp: false });
+    st.systems[2].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    st.phase = 'operations'; st.turn = 0; st.order = null; st.event = null; FS_RULES.trimQueue(st).clear();
+    st.players[0].placedTokens = 1; st.players[1].placedTokens = 1;
+    ok(FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys0.id }).ok, 'приказ предложен');
+    eq(pending(st).kind, 'scheme', 'план предложен вместо раскрытия');
+    st = JSON.parse(JSON.stringify(st));
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: 0 } }).ok, 'план принят после JSON');
+    answerAll(st, (s, q) => (q.kind === 'areas' ? { area: q.options[0] } : firstOption(s, q)));
+    eq(st.structures.filter(x => x.seat === 0 && x.type === 'bastion').length, 1, 'бастион поставлен');
+    eq([sys0.tokens.length, st.systems[0].tokens[0].faceUp], [1, false], 'жетон приказа не раскрыт и не сброшен');
+    eq([st.order, st.players[0].schemes.length], [null, 0], 'приказ не начат, план сброшен');
+    return eq([st.phase, st.turn], ['operations', 1], 'ход перешёл сопернику');
+});
+
+check('Восстание верных', 'в начале фазы действий план не предлагается; после отказа приказ раскрывается как обычно', () => {
+    const st = tyrEvent('Восстание верных', { units: { 'гаунты': 1 } });
+    for (const sys of st.systems) sys.tokens = [];
+    const sys0 = st.systems[0];
+    sys0.tokens.push({ seat: 0, order: 'advance', faceUp: false });
+    st.phase = 'operations'; st.turn = 0; st.order = null; st.event = null; FS_RULES.trimQueue(st).clear();
+    st.players[0].placedTokens = 1;
+    ok(!FS_RULES.maybeScheme(st, 0, 'operations', { kind: 'event', ctx: null }), 'в начале фазы план молчит');
+    ok(FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys0.id }).ok, 'приказ предложен');
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { no: true } }).ok, 'отказ принят');
+    eq(st.players[0].schemes.length, 1, 'план остался');
+    ok(FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys0.id }).ok, 'приказ раскрыт повторной командой');
+    return eq(st.order && st.order.order, 'advance', 'наступление началось');
 });
 
 // --- Тень в варпе -----------------------------------------------------------
@@ -10695,6 +10731,1417 @@ check('Триумфальный отход', 'после приказа прод
     eq(st.objectives.map(o => o.id), ['obj2'], 'взят маркер активной системы, маркер другой системы остался');
     eq(st.players[0].objectives, 1, 'маркер на планшете');
     ok(!st.players[0].schemes.length, 'план сброшен');
+});
+
+// ============================================================================
+//  Космодесант (02/04/05/06): боевые карты, приказы, события, особенность.
+//  Проверяются ветки движка, появившиеся в аудите фракции: отступление за
+//  потраченные кубики, уничтожение деморализованного отряда противника с
+//  откупом, перевод кубиков в мораль, размещение отряда наградой орбитального
+//  удара с последующим боем, замена постройки, бастионы как фабрики, жетон за
+//  битву в системе без дружественных миров, планы «вместо приказа» и «перед
+//  орбитальным ударом», покупка улучшения со скидкой за бастионы.
+// ============================================================================
+const SM = 'космодесант';
+const smBattle = (o = {}) => battle(Object.assign({ faction: SM, foeFaction: FOE,
+    units: { 'космодесант': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: ['att'], foeDice: ['def'] }, o));
+const smPlay = (st, policy, index) => play(st, 0, index || 0, policy);
+const smEvent = (name, o = {}) => eventState(name, Object.assign({ faction: SM, foeFaction: FOE }, o));
+const smOrder = (kind, o = {}) => orderState(kind, Object.assign({ faction: SM, foeFaction: FOE }, o));
+const smStrike = (o = {}) => strikeState(Object.assign({ faction: SM, foeFaction: FOE,
+    ships: { 'ударные-крейсера': 1 }, upgrades: [] }, o));
+/** The Marines defend: the Guard attacks with «Ложись!», the card of the check is in the hand of the defender. */
+const smDefends = (o = {}) => battle(Object.assign({ faction: FOE, foeFaction: SM,
+    units: { 'гвардейцы': 2 }, foeUnits: { 'космодесант': 2 },
+    card: 'Ложись!', dice: ['att'], foeDice: ['def'], roundEnd: true }, o));
+const smUnit = (st, id, seat) => st.units.find(u => u.seat === (seat || 0) && FS_RULES.unitOf(st, u).id === id) || null;
+const smCard = name => FS_DATA.combat.find(x => x.faction === SM && x.name === name);
+const smScheme = (st, name) => FS_RULES.keepEventScheme(st, 0, FS_DATA.events.find(c => c.faction === SM && c.name === name));
+/** The log of the state as plain strings. */
+const smLog = st => st.log.map(l => l.text || l);
+/**
+ * A way out of the battle world: a Strike Cruiser of the seat in a void of the
+ * system. The attacker came by an Advance order, so his retreat is not tied to
+ * the area he came from.
+ */
+const smWayOut = (st, seat) => {
+    const who = seat || 0;
+    const field = BattleField.of(st.combat);
+    const voidNear = FS_RULES.areasAround(st, field.system, field.pos)
+        .find(a => a.system === field.system && !FS_RULES.area(FS_RULES.system(st, a.system), a.pos).world);
+    ok(!!voidNear, 'рядом с миром боя есть пустота той же системы');
+    FS_RULES.addUnit(st, who, 'ударные-крейсера', voidNear.system, voidNear.pos);
+    if (who === st.combat.attacker) st.combat.viaAdvance = true;
+    const targets = FS_RULES.retreatTargets(st, who);
+    ok(targets.length > 0, 'через пустоту с крейсером есть куда отступить');
+    return targets[0];
+};
+/** The retreat of one unit: the policy names the unit and takes the first area. */
+const smRetreat = (unitId, rest) => (st, q, trace) => {
+    if (q.op === 'retreat' && q.kind === 'units') return { units: [unitId] };
+    if (q.op === 'retreat' && q.kind === 'areas') return { area: q.options[0] };
+    return rest ? rest(st, q, trace) : null;
+};
+/**
+ * The battle is driven to the start of the damage step: the reinforcements
+ * are refused, the cards are laid and turned over, their questions answered
+ * by the policy. Stops at a question the policy leaves (a plan).
+ */
+function smToDamage(st, policy) {
+    const c = st.combat;
+    for (let i = 0; i < 40 && st.combat; i++) {
+        if (st.pending) {
+            const q = pending(st);
+            if (q.kind === 'scheme') return 'scheme';
+            answerAll(st, policy, undefined, 1);
+            continue;
+        }
+        const step = c.step;
+        if (step === 'damage-attacker' || step === 'damage-defender') return step;
+        if (step === 'reinforce-attacker' || step === 'reinforce-defender') {
+            const seat = step === 'reinforce-attacker' ? c.attacker : c.defender;
+            FS_RULES.apply(st, seat, { type: 'combat', action: 'reinforce', count: 0 });
+            continue;
+        }
+        if (step === 'choose-attacker' || step === 'choose-defender') {
+            const side = step === 'choose-attacker' ? 'attacker' : 'defender';
+            const seat = side === 'attacker' ? c.attacker : c.defender;
+            if (!(c.cards[side].hand || []).length) { FS_RULES.advanceCombatSteps(st); continue; }
+            FS_RULES.apply(st, seat, { type: 'combat', action: 'playCard', index: 0 });
+            continue;
+        }
+        FS_RULES.advanceCombatSteps(st);
+    }
+    return st.combat ? st.combat.step : null;
+}
+/** The damage of the current step is assigned to the named units (or to the first candidate). */
+function smDeal(st, ids) {
+    const c = st.combat;
+    const side = c.step === 'damage-attacker' ? 'attacker' : 'defender';
+    const seat = ctx.CombatHooks.of(c).assignSeat(c[side]);
+    const targets = ids || FS_RULES.damageCandidates(st, side).map(x => x.id).slice(0, 1);
+    const r = FS_RULES.apply(st, seat, { type: 'combat', action: 'damage', targets });
+    ok(r.ok, 'урон не назначен: ' + r.error);
+    return r;
+}
+/**
+ * The orbital strike of the tested player with fixed dice. A plan offered
+ * before the roll («Экстерминатус») is answered by the policy, and the strike
+ * is ordered again — the plan takes the place of the first command.
+ */
+function smFire(st, dice, policy) {
+    const roll = FS_RULES.rollDice;
+    FS_RULES.rollDice = (s, n) => (n === 1 ? [dice[0]] : dice.slice());
+    try {
+        const targets = FS_RULES.orbitalStrikeTargets(st, 0);
+        const t = targets.find(x => x.pos === st.strikeWorld) || targets[0];
+        let res = FS_RULES.apply(st, 0, { type: 'orbitalStrike', system: t.system, pos: t.pos });
+        ok(res.ok, 'удар не нанесён: ' + res.error);
+        if (pending(st) && pending(st).kind === 'scheme') {
+            deAnswer(st, policy, 1);
+            if (!st.pending) {
+                res = FS_RULES.apply(st, 0, { type: 'orbitalStrike', system: t.system, pos: t.pos });
+                ok(res.ok, 'удар после плана не нанесён: ' + res.error);
+            }
+        }
+        if (st.pending) deAnswer(st, policy, 12);
+        return t;
+    } finally { FS_RULES.rollDice = roll; }
+}
+
+head('Разбор текстов', SM);
+check('Все карты', '14 боевых, 5 приказов, 8 событий и способность; ни один текст не остался пояснением', () => {
+    eq(FS_DATA.combat.filter(c => c.faction === SM).length, 14, 'боевых карт');
+    eq(FS_DATA.orders.filter(c => c.faction === SM).length, 5, 'улучшений приказов');
+    eq(FS_DATA.events.filter(c => c.faction === SM).length, 8, 'событий');
+    const f = FS_DATA.factions.find(x => x.id === SM);
+    const texts = [['ability', 'ability', FS_EFFECTS.abilityFor(f)]];
+    for (const c of FS_DATA.combat.filter(x => x.faction === SM)) {
+        texts.push(['combat:' + c.name + ':general', 'combat', c.general]);
+        if (c.unit) texts.push(['combat:' + c.name + ':unit', 'combat', c.unit]);
+    }
+    for (const c of FS_DATA.orders.filter(x => x.faction === SM)) texts.push(['order:' + c.name, 'order', c.text]);
+    for (const c of FS_DATA.events.filter(x => x.faction === SM)) texts.push(['event:' + c.name, 'event', c.text]);
+    const bad = [];
+    for (const [key, kind, raw] of texts) {
+        const steps = Array.isArray(raw) ? raw : FS_EFFECTS.parse(raw || '', { kind, faction: SM });
+        if (!steps.length) bad.push(key + ':пусто');
+        for (const s of steps) {
+            if (s && (s.op === 'note' || s.op === 'manual' || s.manual === true || s.note === true)) {
+                bad.push(key + ':' + (s.op || '?'));
+            }
+        }
+    }
+    return eq(bad, [], 'неразобранные тексты');
+});
+
+head('Боевая колода', SM);
+
+check('Вера в Императора', '1 `any cube`; отряд: либо восстановить 1 свой отряд, либо `morale cube`', () => {
+    let st = smBattle({ card: 'Вера в Императора', routed: [1] });
+    smPlay(st, branch(0));
+    eq(dice(st, 'attacker').length, 2, 'кубик получен');
+    eq(myUnits(st).filter(u => u.routed).length, 0, 'деморализованный Космодесантник восстановлен');
+    st = smBattle({ card: 'Вера в Императора', routed: [1] });
+    withFixedDice(['def'], () => smPlay(st, branch(1)));
+    eq(count(st, 'attacker', 'morale'), 1, 'кубик морали получен');
+    eq(myUnits(st).filter(u => u.routed).length, 1, 'отряд не восстановлен');
+    // The requisite of the line is an unrouted unit: two routed Marines have no ability.
+    st = smBattle({ card: 'Вера в Императора', routed: [0, 1] });
+    const trace = smPlay(st, branch(0));
+    eq(trace.filter(t => t.kind === 'choice').length, 0, 'без недеморализованного отряда ветка не предлагается');
+    return eq(myUnits(st).filter(u => u.routed).length, 2, 'оба отряда остались деморализованными');
+});
+
+check('Благословленная броня', '2 `def. token`; отряд: до 2 своих кубиков переворачиваются на `def. cube`', () => {
+    const st = smBattle({ card: 'Благословленная броня', units: { 'космодесант': 1 }, dice: ['att', 'morale', 'att'] });
+    const trace = smPlay(st, (s, q) => (q.op === 'flipDie' && q.kind === 'dice' ? { dice: [0, 1] } : null));
+    eq(tokens(st, 'attacker').def, 2, 'два жетона обороны');
+    const q = trace.find(t => t.op === 'flipDie');
+    eq([q.kind, q.options.length], ['dice', 3], 'предложены все три кубика');
+    return eq(dice(st, 'attacker'), ['def', 'def', 'att'], 'два кубика стали обороной');
+});
+
+check('Благословленная броня', 'переворот — право, не обязанность: пустой ответ оставляет кубики', () => {
+    const st = smBattle({ card: 'Благословленная броня', units: { 'космодесант': 1 }, dice: ['att', 'morale'] });
+    smPlay(st, (s, q) => (q.op === 'flipDie' && q.kind === 'dice' ? { dice: [] } : null));
+    return eq(dice(st, 'attacker'), ['att', 'morale'], 'кубики не тронуты');
+});
+
+check('Ярость Ультрамара', 'противник перебрасывает 1 `def. cube`, затем свой `def. cube` можно перебросить; отряд: противник теряет 2 `def. token`', () => {
+    const st = smBattle({ card: 'Ярость Ультрамара', units: { 'космодесант': 1 }, dice: ['def', 'att'], foeDice: ['def', 'def', 'att'] });
+    st.combat.tokens.defender.def = 3;
+    const trace = withFixedDice(['morale'], () => smPlay(st, branch(1)));
+    const rerolls = trace.filter(t => t.op === 'rerollDie');
+    eq(rerolls.map(t => t.seat), [1, 0], 'сначала перебрасывает противник, затем игрок');
+    eq(rerolls[0].options, [0, 1], 'противнику предложены только его кубики обороны');
+    eq(dice(st, 'defender'), ['morale', 'def', 'att'], 'противник перебросил один кубик обороны');
+    eq(dice(st, 'attacker'), ['morale', 'att'], 'свой кубик обороны перeброшен');
+    return eq(tokens(st, 'defender').def, 1, 'противник потерял два жетона обороны');
+});
+
+check('Ярость Ультрамара', 'отряд: по выбору игрока противник теряет 1 `def. cube`', () => {
+    const st = smBattle({ card: 'Ярость Ультрамара', units: { 'космодесант': 1 }, dice: ['att'], foeDice: ['def', 'def', 'att'] });
+    const trace = withFixedDice(['morale'], () => smPlay(st, branch(0)));
+    eq(trace.filter(t => t.op === 'rerollDie' && t.seat === 0).length, 0, 'без своего `def. cube` переброса не предложено');
+    return eq(dice(st, 'defender'), ['morale', 'att'], 'противник потерял один кубик обороны после переброса');
+});
+
+// The Guard answers with «Ложись!» (the filler of `roundEnd`): its `any cube`
+// is pinned to morale, its printed `def icon` is one shield. Two Scouts with
+// «Засада»: 1 `att. cube` + 2 `att. token` + 1 `att icon` = 4 against 2
+// shields — two damage to an Ogryn of 4 health rout him.
+const smAmbush = () => {
+    const st = smBattle({ card: 'Засада', units: { 'скауты': 2 }, foeUnits: { 'огрины': 1 },
+        dice: ['att'], foeDice: ['morale', 'def'], roundEnd: true });
+    eq(withFixedDice(['morale'], () => smToDamage(st, null)), 'damage-defender', 'шаг урона Огрина');
+    return st;
+};
+check('Засада', '2 `att. token`; отряд: деморализованный в этом раунде отряд противника гибнет, если владелец не платит `morale cube`', () => {
+    const st = smAmbush();
+    eq(tokens(st, 'attacker').att, 2, 'два жетона атаки');
+    eq(FS_RULES.combatDamageFor(st, 'defender'), 2, 'два урона Огрину');
+    smDeal(st, [foeUnits(st)[0].id]);
+    const q = pending(st);
+    eq([q.op, q.kind, answerSeat(st)], ['avoid', 'yesno', 1], 'владельцу предложено откупиться кубиком морали');
+    eq(q.options, [0, 2], 'предложены именно `morale cube`');
+    ok(FS_RULES.apply(st, 1, { type: 'effect', answer: { no: true } }).ok, 'отказ принят');
+    ok(smLog(st).some(l => /деморализованный отряд уничтожен/.test(l)), 'уничтожение записано в журнал');
+    return eq(foeUnits(st).length, 0, 'деморализованный Огрин уничтожен');
+});
+
+check('Засада', 'откуп `morale cube` оставляет отряд деморализованным', () => {
+    const st = smAmbush();
+    smDeal(st, [foeUnits(st)[0].id]);
+    eq(count(st, 'defender', 'morale'), 2, 'у противника два кубика морали');
+    ok(FS_RULES.apply(st, 1, { type: 'effect', answer: { dice: [0] } }).ok, 'откуп принят');
+    eq(count(st, 'defender', 'morale'), 1, 'кубик морали потрачен');
+    return eq(foeUnits(st).map(u => !!u.routed), [true], 'Огрин жив и деморализован');
+});
+
+check('Разведка', 'в атаке: закрытая карта противника подсмотрена, 2 `att. token` или 2 `def. token`', () => {
+    let st = smBattle({ card: 'Разведка', units: { 'скауты': 2 } });
+    smPlay(st, branch(0));
+    ok(smLog(st).some(l => /подсмотрел закрытую карту противника/.test(l)), 'карта противника подсмотрена');
+    eq(tokens(st, 'attacker').att, 2, 'два жетона атаки');
+    st = smBattle({ card: 'Разведка', units: { 'скауты': 2 } });
+    smPlay(st, branch(1));
+    return eq(tokens(st, 'attacker').def, 2, 'два жетона обороны');
+});
+
+check('Разведка', 'в защите: карта не подсматривается, жетоны — всё равно', () => {
+    const st = smDefends({ foeCard: 'Разведка', foeUnits: { 'скауты': 2 } });
+    const trace = play(st, 1, 0, branch(1));
+    ok(!smLog(st).some(l => /подсмотрел/.test(l)), 'в защите подсмотра нет');
+    eq(trace.filter(t => t.kind === 'choice' && t.seat === 1).length, 1, 'выбор жетонов предложен защитнику');
+    const me = st.players[1].name;
+    return ok(smLog(st).some(l => l === me + ' получает 2 жетонов обороны.'), 'жетоны получены и защитником');
+});
+
+check('Разведка', 'отряд: `morale cube` покупает отступление одним своим отрядом', () => {
+    const st = smBattle({ card: 'Разведка', units: { 'скауты': 2 }, dice: ['morale', 'att'] });
+    const near = smWayOut(st, 0);
+    const scout = myUnits(st)[0];
+    const trace = smPlay(st, smRetreat(scout.id, branch(0)));
+    eq(trace.filter(t => t.op === 'retreat').map(t => t.kind), ['units', 'areas'], 'выбраны отряд и область');
+    eq(count(st, 'attacker', 'morale'), 0, 'кубик морали потрачен');
+    const moved = stateUnit(st, scout.id);
+    eq([moved.system, moved.area, moved.routed], [near.system, near.pos, true], 'Скаут отступил и деморализован');
+    return eq(BattleField.of(st.combat).units(st, 0).length, 1, 'второй Скаут остался в бою');
+});
+
+check('Разведка', 'без `morale cube` отступление не предлагается', () => {
+    const st = smBattle({ card: 'Разведка', units: { 'скауты': 2 }, dice: ['att'] });
+    smWayOut(st, 0);
+    const trace = smPlay(st, branch(0));
+    eq(trace.filter(t => t.op === 'retreat').length, 0, 'вопроса об отступлении нет');
+    return eq(BattleField.of(st.combat).units(st, 0).length, 2, 'оба Скаута в бою');
+});
+
+check('Скауты ветераны', 'за каждый `morale cube` — `att. token` или `def. token`, выбор для каждого кубика свой', () => {
+    let st = smBattle({ card: 'Скауты ветераны', units: { 'скауты': 2 }, dice: ['morale', 'morale', 'att'] });
+    let n = 0;
+    const keep = (s, q) => (q.op === 'spendDie' ? { dice: [] } : null);
+    const trace = smPlay(st, (s, q) => (q.kind === 'choice' ? { choice: (n++) % 2 } : keep(s, q)));
+    eq(trace.filter(t => t.kind === 'choice').length, 2, 'два вопроса — по одному на кубик');
+    eq([tokens(st, 'attacker').att, tokens(st, 'attacker').def], [1, 1], 'жетон атаки и жетон обороны');
+    eq(count(st, 'attacker', 'morale'), 2, 'кубики морали не тратятся');
+    st = smBattle({ card: 'Скауты ветераны', units: { 'скауты': 2 }, dice: ['att'] });
+    const none = smPlay(st, branch(0, keep));
+    eq(none.filter(t => t.kind === 'choice').length, 0, 'без кубиков морали вопроса нет');
+    return eq([tokens(st, 'attacker').att, tokens(st, 'attacker').def], [0, 0], 'жетонов нет');
+});
+
+check('Скауты ветераны', 'отряд: за каждый потраченный `morale cube` отступает 1 свой отряд', () => {
+    const st = smBattle({ card: 'Скауты ветераны', units: { 'скауты': 3 }, dice: ['morale', 'morale', 'att'] });
+    const near = smWayOut(st, 0);
+    const [a, b] = myUnits(st);
+    let turn = 0;
+    const trace = smPlay(st, (s, q) => {
+        if (q.op === 'spendDie') return { dice: [0, 1] };
+        if (q.op === 'retreat' && q.kind === 'units') return { units: [(turn++ === 0 ? a : b).id] };
+        if (q.op === 'retreat' && q.kind === 'areas') return { area: q.options.find(x => x.system === near.system && x.pos === near.pos) || q.options[0] };
+        return null;
+    });
+    eq(trace.filter(t => t.op === 'retreat' && t.kind === 'units').length, 2, 'два отступления за два кубика');
+    eq(count(st, 'attacker', 'morale'), 0, 'оба кубика морали потрачены');
+    eq([stateUnit(st, a.id).routed, stateUnit(st, b.id).routed], [true, true], 'оба отступивших деморализованы');
+    return eq(BattleField.of(st.combat).units(st, 0).length, 1, 'третий Скаут остался в бою');
+});
+
+check('Слава Императора', '2 `any cube`; отряд: все свои деморализованные отряды восстановлены, любые кубики — в `morale cube`', () => {
+    const st = smBattle({ card: 'Слава Императора', units: { 'титаны-класса-варлорд': 1, 'космодесант': 2 },
+        dice: ['att', 'def', 'att'], routed: [1, 2] });
+    const trace = withFixedDice(['def', 'def'], () => smPlay(st, (s, q) => (q.op === 'flipDie' && q.kind === 'dice' ? { dice: [0, 1] } : null)));
+    eq(dice(st, 'attacker').length, 5, 'два кубика получены');
+    eq(myUnits(st).filter(u => u.routed).length, 0, 'оба деморализованных отряда восстановлены');
+    const q = trace.find(t => t.op === 'flipDie');
+    eq(q.options.length, 5, 'предложены все кубики, включая полученные');
+    return eq(dice(st, 'attacker').slice(0, 3), ['morale', 'morale', 'att'], 'выбранные кубики стали моралью');
+});
+
+check('Мощь Императора', 'отряд: любое число `att. cube` — по 2 `att. token` за каждый', () => {
+    const st = smBattle({ card: 'Мощь Императора', units: { 'титаны-класса-варлорд': 1 }, dice: ['att', 'att', 'def'] });
+    const trace = withFixedDice(['def', 'def'], () => smPlay(st, (s, q) => (q.op === 'spendDie' ? { dice: [0, 1] } : null)));
+    const q = trace.find(t => t.op === 'spendDie');
+    ok(!q.options.includes(2), 'кубик обороны потратить нельзя');
+    eq(tokens(st, 'attacker').att, 4, 'четыре жетона атаки за два кубика');
+    return eq(count(st, 'attacker', 'att'), 0, 'кубики атаки потрачены');
+});
+
+check('Держать строй', '2 `def. token`; в обороне восстанавливается 1 отряд; отряд: `def. cube` или `morale cube`', () => {
+    let st = smDefends({ foeCard: 'Держать строй', foeDice: ['att'] });
+    foeUnits(st)[1].routed = true;
+    play(st, 1, 0, branch(0));
+    const me = st.players[1].name;
+    ok(smLog(st).some(l => l === me + ' получает 2 жетонов обороны.'), 'два жетона обороны');
+    eq(foeUnits(st).filter(u => u.routed).length, 0, 'защитник восстановил отряд');
+    eq(count(st, 'defender', 'def'), 1, 'кубик обороны получен');
+    st = smBattle({ card: 'Держать строй', routed: [1] });
+    play(st, 0, 0, branch(1));
+    eq(myUnits(st).filter(u => u.routed).length, 1, 'в атаке восстановления нет');
+    return eq(count(st, 'attacker', 'morale'), 1, 'кубик морали получен');
+});
+
+check('Слава и смерть', '2 `att. token`; в атаке восстанавливается 1 отряд; отряд: противник теряет `def. cube` или `morale cube` по выбору игрока', () => {
+    let st = smBattle({ card: 'Слава и смерть', routed: [1], foeDice: ['def', 'morale'] });
+    smPlay(st, branch(1));
+    eq(tokens(st, 'attacker').att, 2, 'два жетона атаки');
+    eq(myUnits(st).filter(u => u.routed).length, 0, 'атакующий восстановил отряд');
+    eq(dice(st, 'defender'), ['def'], 'противник потерял кубик морали');
+    st = smDefends({ foeCard: 'Слава и смерть', dice: ['def', 'morale'], foeDice: ['att'] });
+    foeUnits(st)[1].routed = true;
+    withFixedDice(['att'], () => play(st, 1, 0, branch(0)));
+    eq(foeUnits(st).filter(u => u.routed).length, 1, 'в обороне восстановления нет');
+    return eq(dice(st, 'attacker'), ['morale', 'att'], 'противник потерял кубик обороны, кубик «Ложись!» остался');
+});
+
+/**
+ * The first round of the battle is played to its end: the damage of each step
+ * goes to the first candidate. Returns the sides whose damage was assigned.
+ */
+function smFirstRound(st) {
+    const dealt = [];
+    for (let i = 0; i < 40 && st.combat && st.combat.round === 1; i++) {
+        if (st.pending) { answerAll(st, null, undefined, 1); continue; }
+        const step = st.combat.step;
+        if (/^damage-/.test(step)) {
+            const side = step === 'damage-attacker' ? 'attacker' : 'defender';
+            const able = FS_RULES.damageCandidates(st, side).map(x => x.id);
+            if (!able.length || FS_RULES.combatDamageFor(st, side) <= 0) { FS_RULES.advanceCombatSteps(st); continue; }
+            dealt.push(side);
+            smDeal(st, able.slice(0, 1));
+            continue;
+        }
+        if (step === 'round-end') { FS_RULES.endCombatRound(st); continue; }
+        if (smToDamage(st, null) === null) break;
+    }
+    return dealt;
+}
+// One Marine (3 health) against an Ogryn with four `att. cube` and «Ложись!»
+// (its `any cube` pinned to morale): the hit is nonlethal with either card of
+// the Marine — «Не ведать страха» shields two, «Благословленная броня» three.
+const smFearless = card => smBattle({ card, units: { 'космодесант': 1 }, foeUnits: { 'огрины': 1 },
+    dice: [], foeDice: ['att', 'att', 'att', 'att'], roundEnd: true });
+check('Не ведать страха', 'в этом раунде свои отряды не становятся деморализованными от урона', () => {
+    const st = smFearless('Не ведать страха');
+    const dealt = withFixedDice(['morale'], () => smFirstRound(st));
+    eq(dealt, ['attacker'], 'урон Космодесантнику назначен');
+    eq(st.combat.round, 2, 'раунд окончен');
+    return eq(myUnits(st).map(u => !!u.routed), [false], 'Космодесантник не деморализован');
+});
+
+check('Не ведать страха', 'без карты тот же удар деморализует отряд', () => {
+    const st = smFearless('Благословленная броня');
+    const dealt = withFixedDice(['morale'], () => smFirstRound(st));
+    eq(dealt, ['attacker'], 'урон назначен Космодесантнику');
+    return eq(myUnits(st).map(u => !!u.routed), [true], 'Космодесантник деморализован');
+});
+
+check('Не ведать страха', 'отряд: `morale cube` восстанавливает все свои отряды', () => {
+    const st = smBattle({ card: 'Не ведать страха', units: { 'космодесант': 2, 'скауты': 1 }, dice: ['morale', 'att'], routed: [0, 2] });
+    smPlay(st);
+    eq(count(st, 'attacker', 'morale'), 0, 'кубик морали потрачен');
+    return eq(myUnits(st).filter(u => u.routed).length, 0, 'все отряды восстановлены');
+});
+
+check('Бронекулак', '1 `any cube`; отряд: шаг урона повторяется, урон наносят обе стороны', () => {
+    // Land Raider: 2 `att. cube` + 1 `any cube` (pinned to attack) + 2 `att icon`
+    // against the `def icon` of «Ложись!» — four damage: an Ogryn of 4 health
+    // falls in each step. The Ogryns: 1 `att. cube` + `any cube` (attack) against
+    // the `def icon` of the card — one damage to the Land Raider in each step.
+    const st = smBattle({ card: 'Бронекулак', units: { 'ленд-рейдеры': 1 }, foeUnits: { 'огрины': 2 },
+        dice: ['att', 'att'], foeDice: ['att'], roundEnd: true });
+    eq(withFixedDice(['att'], () => smToDamage(st, null)), 'damage-attacker', 'шаг урона');
+    eq(dice(st, 'attacker').length, 3, 'кубик получен');
+    const dealt = withFixedDice(['att'], () => smFirstRound(st));
+    ok(smLog(st).some(l => /Шаг нанесения повреждений повторяется/.test(l)), 'повтор шага объявлен');
+    eq(dealt, ['attacker', 'defender', 'attacker', 'defender'], 'обе стороны получают урон дважды');
+    eq(foeUnits(st).length, 0, 'за два шага уничтожены оба Огрина');
+    return eq(myUnits(st).map(u => !!u.routed), [true], 'Ленд Рейдер деморализован вторым ударом');
+});
+
+check('Десантный модуль', 'отряд: `morale cube` переносит Скаута или Космодесантника из любого мира в мир боя', () => {
+    const st = smBattle({ card: 'Десантный модуль', units: { 'космодесант': 1 }, dice: ['morale', 'att'] });
+    const far = st.systems.find(s => s.id !== st.combat.system && s.areas.some(a => a.world));
+    const scout = FS_RULES.addUnit(st, 0, 'скауты', far.id, worldOf(st, far.id));
+    FS_RULES.addUnit(st, 0, 'ленд-рейдеры', far.id, worldOf(st, far.id));
+    const trace = withFixedDice(['def'], () => smPlay(st));
+    const q = trace.find(t => t.op === 'moveUnit' && t.kind === 'units');
+    eq(q.options, [scout.id], 'предложен только Скаут — Ленд Рейдер не переносится');
+    const field = BattleField.of(st.combat);
+    const moved = stateUnit(st, scout.id);
+    eq([moved.system, moved.area], [field.system, field.pos], 'Скаут в мире боя');
+    eq(field.units(st, 0).length, 2, 'Скаут участвует в бою');
+    return eq(count(st, 'attacker', 'morale'), 0, 'кубик морали потрачен');
+});
+
+check('Прорвать фронт', 'до 3 `morale cube` — за каждый `att. cube` или `def. cube` на выбор; отряд: противник сбрасывает свою открытую карту', () => {
+    const st = smBattle({ card: 'Прорвать фронт', units: { 'ленд-рейдеры': 1 }, foeCard: 'За Императора!',
+        dice: ['morale', 'morale', 'morale', 'morale'], roundEnd: true });
+    let n = 0;
+    const trace = smPlay(st, (s, q) => {
+        if (q.op === 'spendDie') return { dice: [0, 1, 2] };
+        if (q.kind === 'choice') return { choice: (n++) % 2 };
+        return null;
+    });
+    eq(trace.find(t => t.op === 'spendDie').options.length, 4, 'предложены все кубики морали');
+    eq(trace.filter(t => t.kind === 'choice').length, 3, 'три выбора — по одному на потраченный кубик');
+    eq(dice(st, 'attacker'), ['morale', 'att', 'def', 'att'], 'один кубик морали остался, три новых — по выбору');
+    const discard = trace.find(t => t.op === 'discardFoeCard');
+    eq([discard.seat, discard.options], [1, ['За Императора!']], 'противник сам выбирает свою открытую карту');
+    ok(smLog(st).some(l => /«За Императора!» сброшена/.test(l)), 'карта противника сброшена');
+    return eq(tokens(st, 'defender').def, 0, 'сброшенная карта не сработала');
+});
+
+head('Улучшения приказов', SM);
+
+check('Десантный модуль', 'бастион не спасает от удара; 2 `def. cube` размещают Космодесантника в мире удара, затем бой', () => {
+    const st = smStrike({ upgrades: ['Десантный модуль'], foeStructures: ['bastion'], foeUnits: { 'гвардейцы': 2 } });
+    ok(burn(st, 'Десантный модуль').ok, 'карта сожжена');
+    eq(st.order.ignoreBastion, true, 'бастион противника не предотвращает удар');
+    const supply = st.players[0].supply.units['космодесант'];
+    smFire(st, ['def', 'def'], (s, q) => (q.op === 'strikePayPick' ? { choice: 1 } : null));
+    const landed = myUnits(st).find(u => FS_RULES.unitOf(st, u).id === 'космодесант');
+    ok(!!landed && landed.area === st.strikeWorld, 'Космодесантник стоит в мире удара');
+    eq(st.players[0].supply.units['космодесант'], supply - 1, 'взят из запаса');
+    eq(st.players[0].materiel, FS_RULES.newReadyGame({ seed: 5, players: players(SM, FOE) }).players[0].materiel, 'размещение бесплатно');
+    // The strike dealt no damage: the order is over and the battle for the world begins at once.
+    ok(!!st.combat, 'бой начался');
+    const field = BattleField.of(st.combat);
+    eq([field.system, field.pos, st.combat.attacker], [st.systems[0].id, st.strikeWorld, 0], 'бой в мире удара, атакует Космодесант');
+    eq(field.units(st, 0).map(u => u.id), [landed.id], 'в бою — высадившийся Космодесантник');
+    return eq(st.players[0].upgrades[0].used, true, 'улучшение потрачено');
+});
+
+check('Десантный модуль', 'без 2 `def. cube` размещения нет; отказ от оплаты оставляет кубики удару', () => {
+    let st = smStrike({ upgrades: ['Десантный модуль'], foeUnits: { 'гвардейцы': 1 } });
+    burn(st, 'Десантный модуль');
+    smFire(st, ['def', 'att'], null);
+    eq(myUnits(st).filter(u => FS_RULES.unitOf(st, u).id === 'космодесант').length, 0, 'один `def. cube` ничего не покупает');
+    st = smStrike({ upgrades: ['Десантный модуль'], foeUnits: { 'гвардейцы': 1 } });
+    burn(st, 'Десантный модуль');
+    smFire(st, ['def', 'def'], (s, q) => (q.op === 'strikePayPick' ? { choice: 0 } : null));
+    eq(myUnits(st).filter(u => FS_RULES.unitOf(st, u).id === 'космодесант').length, 0, 'отказ — Космодесантник не размещён');
+    return eq(!!st.combat, false, 'боя нет');
+});
+
+check('Огненный дождь', 'во время удара: +1 `any cube`, 1 `morale cube` переворачивается на `att. cube`', () => {
+    const st = smStrike({ upgrades: ['Огненный дождь'], foeUnits: { 'огрины': 1 } });
+    st.order.strikeDice = ['morale', 'att'];
+    const res = withFixedDice(['def'], () => burn(st, 'Огненный дождь'));
+    ok(res.ok, 'карта не сожжена: ' + res.error);
+    if (st.pending) deAnswer(st, null, 4);
+    eq(st.order.strikeDice, ['att', 'att', 'def'], 'кубик добавлен, мораль стала атакой');
+    return eq(st.players[0].upgrades[0].used, true, 'улучшение потрачено');
+});
+
+check('Направлять верующих', 'при раскрытии приказа 1 постройка системы заменяется на любую другую', () => {
+    const st = smOrder('strategize', { upgrades: ['Направлять верующих'], units: { 'скауты': 1 }, structures: ['city'] });
+    const bastions = FS_RULES.structurePoolLeft(st, 'bastion');
+    ok(burn(st, 'Направлять верующих').ok, 'карта сожжена');
+    let q = pending(st);
+    eq([q.op, q.kind, q.options], ['replaceStructure', 'structures', ['str0']], 'спрашивает постройку системы');
+    effectAnswer(st, { structure: 'str0' }, 1);
+    q = pending(st);
+    eq([q.op, q.kind], ['replaceStructureType', 'structureTypes'], 'затем — новый тип постройки');
+    ok(!q.options.includes('city'), 'тот же тип не предлагается');
+    effectAnswer(st, { type: 'bastion' });
+    eq(st.structures.map(s => s.type), ['bastion'], 'город стал бастионом');
+    eq(FS_RULES.structurePoolLeft(st, 'bastion'), bastions - 1, 'бастион взят из коробки');
+    return eq(FS_RULES.structurePoolLeft(st, 'city'), 15, 'город вернулся в коробку');
+});
+
+check('Направлять верующих', 'без построек в системе карта молчит; закончившийся тип не предлагается', () => {
+    let st = smOrder('strategize', { upgrades: ['Направлять верующих'], units: { 'скауты': 1 } });
+    ok(burn(st, 'Направлять верующих').ok, 'карта сожжена');
+    eq(st.pending, null, 'заменять нечего — вопроса нет');
+    st = smOrder('strategize', { upgrades: ['Направлять верующих'], units: { 'скауты': 1 }, structures: ['city'] });
+    // The box is empty of bastions: every bastion of the pool stands on the table.
+    const far = st.systems[2];
+    for (let i = FS_RULES.structurePoolLeft(st, 'bastion'); i > 0; i--) {
+        st.structures.push({ id: 'b' + i, seat: 1, type: 'bastion', system: far.id, area: worldOf(st, far.id) });
+    }
+    eq(FS_RULES.structurePoolLeft(st, 'bastion'), 0, 'бастионов в коробке нет');
+    burn(st, 'Направлять верующих');
+    effectAnswer(st, { structure: 'str0' }, 1);
+    return eq(pending(st).options, ['factory'], 'бастионов в коробке нет — остаётся фабрика');
+});
+
+check('Миры призыва', 'бастионы активной системы считаются фабриками, лимит развёртывания −1 за каждый', () => {
+    let st = smOrder('deploy', { upgrades: ['Миры призыва'], units: { 'скауты': 1 }, structures: ['bastion'] });
+    eq(FS_RULES.hasFactory(st, 0, st.systems[0].id), false, 'фабрики в системе нет');
+    const limit = FS_RULES.deployLimit(st, 0, st.systems[0].id);
+    ok(burn(st, 'Миры призыва').ok, 'карта сожжена');
+    eq(FS_RULES.hasFactory(st, 0, st.systems[0].id), true, 'бастион считается фабрикой');
+    eq(FS_RULES.deployLimit(st, 0, st.systems[0].id), Math.max(0, limit) + 4 - 1 - Math.max(0, limit), 'лимит мира за вычетом одного бастиона');
+    st = smOrder('deploy', { upgrades: ['Миры призыва'], units: { 'скауты': 1 }, structures: ['bastion', 'factory'],
+        before: (s, sys) => {
+            const other = sys.areas.find(a => a.world && a.pos !== worldOf(s, sys.id));
+            s.structures.push({ id: 'str9', seat: 0, type: 'bastion', system: sys.id, area: other.pos });
+        } });
+    const before = FS_RULES.deployLimit(st, 0, st.systems[0].id);
+    const other = st.structures.find(s => s.id === 'str9');
+    const otherCapacity = FS_RULES.capacity(st, other.system, other.area);
+    burn(st, 'Миры призыва');
+    ok(smLog(st).some(l => /лимит развертывания -2 \(бастионов в активной системе: 2\)/.test(l)), 'минус два записано в журнал');
+    return eq(FS_RULES.deployLimit(st, 0, st.systems[0].id), before + otherCapacity - 2,
+        'второй бастион тоже стал фабрикой своего мира, затем минус два');
+});
+
+check('Миры призыва', 'без бастионов лимит не меняется', () => {
+    const st = smOrder('deploy', { upgrades: ['Миры призыва'], units: { 'скауты': 1 }, structures: ['factory'] });
+    const before = FS_RULES.deployLimit(st, 0, st.systems[0].id);
+    burn(st, 'Миры призыва');
+    return eq(FS_RULES.deployLimit(st, 0, st.systems[0].id), before, 'лимит прежний');
+});
+
+check('Крестовый поход', 'жетон подкрепления за битву приказа в системе без дружественных миров', () => {
+    const st = smOrder('advance', { upgrades: ['Крестовый поход'], units: { 'космодесант': 2 }, foeUnits: { 'гвардейцы': 1 } });
+    ok(burn(st, 'Крестовый поход').ok, 'карта сожжена');
+    eq(st.players[0].assets.reinforcement, 0, 'жетон ждёт битвы');
+    const sys = st.systems[0];
+    FS_RULES.startCombat(st, 0, 1, sys.id, worldOf(st, sys.id));
+    eq(st.players[0].assets.reinforcement, 1, 'жетон получен с началом битвы');
+    return ok(smLog(st).some(l => /reinforcement × 1 за битву этого приказа/.test(l)), 'выдача записана в журнал');
+});
+
+check('Крестовый поход', 'в системе с дружественным миром жетона нет', () => {
+    const st = smOrder('advance', { upgrades: ['Крестовый поход'], units: { 'космодесант': 2 }, foeUnits: { 'гвардейцы': 1 } });
+    const sys = st.systems[0];
+    const other = sys.areas.find(a => a.world && a.pos !== worldOf(st, sys.id));
+    FS_RULES.addUnit(st, 0, 'скауты', sys.id, other.pos);
+    eq(FS_RULES.control(st, 0, sys.id, other.pos), 'friendly', 'второй мир системы дружественный');
+    burn(st, 'Крестовый поход');
+    FS_RULES.startCombat(st, 0, 1, sys.id, worldOf(st, sys.id));
+    eq(st.players[0].assets.reinforcement, 0, 'жетона нет');
+    return ok(smLog(st).some(l => /есть дружественный мир — жетон не получен/.test(l)), 'причина записана в журнал');
+});
+
+head('Карты событий', SM);
+
+check('Экстерминатус', 'план; перед орбитальным ударом все брошенные кубики становятся `att. cube`', () => {
+    let st = smEvent('Экстерминатус', { units: { 'скауты': 1 } });
+    ok(playEvent(st).ok, 'план взят');
+    eq(st.players[0].schemes.map(s => [s.name, s.trigger]), [['Экстерминатус', 'strike']], 'план ждёт орбитального удара');
+    st = smStrike({ foeUnits: { 'огрины': 1 } });
+    smScheme(st, 'Экстерминатус');
+    smFire(st, ['def', 'morale'], (s, q) => (q.kind === 'scheme' ? { choice: 0 } : null));
+    ok(smLog(st).some(l => /все кубики удара будут атакой/.test(l)), 'план объявлен');
+    ok(smLog(st).some(l => /орбитальный удар: 2 урона/.test(l)), 'оба кубика — атака: 2 урона');
+    eq(st.players[0].schemes.length, 0, 'план сброшен');
+    st = smStrike({ foeUnits: { 'огрины': 1 } });
+    smScheme(st, 'Экстерминатус');
+    smFire(st, ['def', 'morale'], (s, q) => (q.kind === 'scheme' ? { no: true } : null));
+    ok(smLog(st).some(l => /орбитальный удар: 0 урона/.test(l)), 'без плана те же кубики — 0 урона');
+    return eq(st.players[0].schemes.length, 1, 'после отказа план остаётся');
+});
+
+check('Героическая атака', 'Космодесантник — в дружественный мир со своей постройкой, Скаут — в любой дружественный мир', () => {
+    const twoWorlds = s => {
+        const far = s.systems.find(x => x.id !== s.sys);
+        FS_RULES.addUnit(s, 0, 'скауты', far.id, worldOf(s, far.id));
+        return far;
+    };
+    let st = smEvent('Героическая атака', { units: { 'скауты': 1 }, structures: ['city'] });
+    twoWorlds(st);
+    const materiel = st.players[0].materiel;
+    ok(playEvent(st).ok, 'карта сыграна');
+    let trace = [];
+    effectAnswer(st, (s, q) => { trace.push(q); return q.kind === 'choice' ? { choice: 0 } : effectPolicy(s, q); });
+    const marine = myUnits(st).find(u => FS_RULES.unitOf(st, u).id === 'космодесант');
+    ok(!!marine, 'Космодесантник размещён');
+    eq([marine.system, marine.area], [st.sys, st.pos], 'в единственном мире с постройкой');
+    eq(trace.filter(q => q.kind === 'areas').map(q => q.options), [[{ system: st.sys, pos: st.pos }]], 'предложен только мир с постройкой');
+    eq(st.players[0].materiel, materiel, 'бесплатно');
+    st = smEvent('Героическая атака', { units: { 'скауты': 1 }, structures: ['city'] });
+    const far = twoWorlds(st);
+    playEvent(st);
+    trace = [];
+    effectAnswer(st, (s, q) => {
+        trace.push(q);
+        if (q.kind === 'choice') return { choice: 1 };
+        if (q.kind === 'areas') return { area: q.options.find(a => a.system === far.id) };
+        return effectPolicy(s, q);
+    });
+    const areas = trace.find(q => q.kind === 'areas');
+    eq(areas.options.length, 2, 'Скауту предложены оба дружественных мира');
+    return eq(myUnits(st).filter(u => u.system === far.id).length, 2, 'Скаут размещён в дальнем мире');
+});
+
+check('Героическая атака', 'ветка без места или без отрядов не предлагается', () => {
+    let st = smEvent('Героическая атака', { units: { 'скауты': 1 } });
+    playEvent(st);
+    const trace = [];
+    effectAnswer(st, (s, q) => { trace.push(q); return effectPolicy(s, q); });
+    eq(trace.filter(q => q.kind === 'choice').length, 0, 'без построек выбора нет — остаётся ветка Скаута');
+    eq(myUnits(st).length, 2, 'Скаут размещён');
+    st = smEvent('Героическая атака', { units: { 'скауты': 1 } });
+    st.players[0].supply.units['скауты'] = 0;
+    playEvent(st);
+    eq(st.pending, null, 'вопросов нет');
+    eq(myUnits(st).length, 1, 'разместить нечего');
+    return ok(smLog(st).some(l => /ни одну из ветвей карты выполнить нельзя/.test(l)), 'карта объяснила отказ');
+});
+
+check('Чемпион Императора', 'план; в начале шага урона 1 свой деморализованный отряд восстанавливается', () => {
+    let st = smEvent('Чемпион Императора', { units: { 'космодесант': 1 } });
+    ok(playEvent(st).ok, 'план взят');
+    eq(st.players[0].schemes.map(s => s.trigger), ['damage-start'], 'план ждёт начала урона');
+    st = smBattle({ card: 'Засада', units: { 'космодесант': 2 }, foeUnits: { 'огрины': 1 }, dice: ['att'], foeDice: ['def'], roundEnd: true, noFoeCard: true });
+    myUnits(st)[0].routed = true;
+    smScheme(st, 'Чемпион Императора');
+    eq(smToDamage(st, null), 'scheme', 'план предложен в начале шага урона');
+    eq([st.pending.seat, pending(st).options], [0, ['Чемпион Императора']], 'предложен владельцу');
+    st = JSON.parse(JSON.stringify(st));
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: 0 } }).ok, 'план принят после JSON');
+    eq(pending(st).op, 'restore', 'выбор отряда');
+    effectAnswer(st, effectPolicy);
+    eq(myUnits(st).filter(u => u.routed).length, 0, 'отряд восстановлен');
+    eq(st.players[0].schemes.length, 0, 'план сброшен');
+    return ok(!!st.combat && /^damage-/.test(st.combat.step), 'шаг урона продолжается');
+});
+
+check('Чемпион Императора', 'отказ оставляет план и не задерживает урон', () => {
+    const st = smBattle({ card: 'Засада', units: { 'космодесант': 2 }, foeUnits: { 'огрины': 1 }, dice: ['att'], foeDice: ['def'], roundEnd: true, noFoeCard: true });
+    myUnits(st)[0].routed = true;
+    smScheme(st, 'Чемпион Императора');
+    smToDamage(st, null);
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { no: true } }).ok, 'отказ принят');
+    eq(myUnits(st).filter(u => u.routed).length, 1, 'отряд остался деморализованным');
+    eq(st.players[0].schemes.length, 1, 'план на месте');
+    return eq(st.pending, null, 'вопросов больше нет');
+});
+
+check('Защита Императора', 'бесплатный бастион в мире без построек — или за 2 материи в мире без бастиона сверх лимита', () => {
+    let st = smEvent('Защита Императора', { units: { 'скауты': 1 }, materiel: 5 });
+    ok(playEvent(st).ok, 'карта сыграна');
+    effectAnswer(st, effectPick(0));
+    eq(st.structures.map(s => s.type), ['bastion'], 'бастион построен');
+    eq(st.players[0].materiel, 5, 'бесплатно');
+    st = smEvent('Защита Императора', { units: { 'скауты': 1 }, structures: ['city', 'factory'], materiel: 5 });
+    playEvent(st);
+    effectAnswer(st, effectPick(1));
+    eq(st.structures.map(s => s.type), ['city', 'factory', 'bastion'], 'третья постройка в мире — лимит проигнорирован');
+    return eq(st.players[0].materiel, 3, 'две материи уплачены');
+});
+
+check('Защита Императора', 'в мире с бастионом или без двух материй ветки не предлагаются', () => {
+    let st = smEvent('Защита Императора', { units: { 'скауты': 1 }, structures: ['city', 'bastion'], materiel: 5 });
+    playEvent(st);
+    eq(st.structures.length, 2, 'ничего не построено');
+    ok(smLog(st).some(l => /ни одну из ветвей карты выполнить нельзя/.test(l)), 'карта объяснила отказ');
+    st = smEvent('Защита Императора', { units: { 'скауты': 1 }, structures: ['city'], materiel: 1 });
+    playEvent(st);
+    eq(st.structures.length, 1, 'материи на платную ветку нет, бесплатная — только в мире без построек');
+    return eq(st.players[0].materiel, 1, 'материя не тронута');
+});
+
+check('Церемония перед боем', 'покупается 1 улучшение приказа, цена меньше на число дружественных миров с бастионом', () => {
+    const st = smEvent('Церемония перед боем', { units: { 'скауты': 1 }, structures: ['bastion', 'city', 'city'], materiel: 1 });
+    const far = st.systems.find(x => x.id !== st.sys);
+    FS_RULES.addUnit(st, 0, 'скауты', far.id, worldOf(st, far.id));
+    st.structures.push({ id: 'strX', seat: 0, type: 'bastion', system: far.id, area: worldOf(st, far.id) });
+    eq(FS_RULES.countFor(st, 0, 'friendlyBastion'), 2, 'два дружественных мира с бастионом');
+    eq(FS_RULES.commandLevel(st, 0), 2, 'командный уровень 2 — два города');
+    ok(playEvent(st).ok, 'карта сыграна');
+    const q = pending(st);
+    eq([q.op, q.kind], ['buyUpgrade', 'cards'], 'предложена покупка');
+    ok(q.options.includes('Десантный модуль'), 'карта за 3 доступна при 1 материи со скидкой 2');
+    ok(!q.options.includes('Слава Императора'), 'карта 3 уровня недоступна при уровне 2');
+    effectAnswer(st, { card: 'Десантный модуль' });
+    eq(st.players[0].upgrades.map(u => u.name), ['Десантный модуль'], 'улучшение куплено');
+    return eq(st.players[0].materiel, 0, 'уплачена одна материя');
+});
+
+check('Церемония перед боем', 'без бастионов скидки нет', () => {
+    const st = smEvent('Церемония перед боем', { units: { 'скауты': 1 }, structures: ['city'], materiel: 1 });
+    playEvent(st);
+    const q = pending(st);
+    return eq(q && q.options, ['Огненный дождь'], 'при 1 материи без скидки доступна только карта за 1');
+});
+
+check('Работа праведных', 'дружественный мир: либо его ценные ресурсы, либо материя по производству', () => {
+    let st = smEvent('Работа праведных', { units: { 'скауты': 1 } });
+    const world = FS_RULES.area(FS_RULES.system(st, st.sys), st.pos).world;
+    eq(world.assets, ['reinforcement', 'reinforcement'], 'у мира проверки два жетона подкреплений');
+    const materiel = st.players[0].materiel;
+    ok(playEvent(st).ok, 'карта сыграна');
+    effectAnswer(st, effectPick(0));
+    eq(st.players[0].assets.reinforcement, 2, 'жетоны мира получены');
+    eq(st.players[0].materiel, materiel, 'материя не менялась');
+    // The second branch: a friendly world that produces materiel is chosen.
+    st = smEvent('Работа праведных', { units: { 'скауты': 1 } });
+    const rich = st.systems.map(s => ({ system: s.id, area: s.areas.find(a => a.world && a.world.materiel > 0) }))
+        .find(x => x.area && x.system !== st.sys);
+    ok(!!rich, 'есть мир с производством');
+    FS_RULES.addUnit(st, 0, 'скауты', rich.system, rich.area.pos);
+    playEvent(st);
+    const trace = [];
+    effectAnswer(st, (s, q) => {
+        trace.push(q);
+        if (q.kind === 'areas') return { area: q.options.find(a => a.system === rich.system) };
+        return effectPick(1)(s, q);
+    });
+    eq(trace.find(q => q.kind === 'areas').options.length, 2, 'предложены оба дружественных мира');
+    eq(st.players[0].assets.reinforcement, 0, 'жетонов нет');
+    return eq(st.players[0].materiel, materiel + rich.area.world.materiel, 'материя по производству выбранного мира');
+});
+
+check('Непоколебимость', 'план вместо раскрытия приказа восстанавливает все отряды одной системы, ход переходит', () => {
+    let st = smEvent('Непоколебимость', { units: { 'космодесант': 2 } });
+    ok(playEvent(st).ok, 'план взят');
+    const plan = st.players[0].schemes[0];
+    eq([plan.trigger, plan.insteadOfOrder], ['operations', true], 'план ждёт фазы действий вместо приказа');
+    for (const sys of st.systems) sys.tokens = [];
+    const sys0 = st.systems[0], sys1 = st.systems[1];
+    for (const u of myUnits(st)) u.routed = true;
+    const farScout = FS_RULES.addUnit(st, 0, 'скауты', sys1.id, worldOf(st, sys1.id));
+    farScout.routed = true;
+    sys0.tokens.push({ seat: 0, order: 'advance', faceUp: false });
+    sys1.tokens.push({ seat: 0, order: 'deploy', faceUp: false });
+    st.systems[2].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    st.phase = 'operations'; st.turn = 0; st.order = null; st.event = null; FS_RULES.trimQueue(st).clear();
+    st.players[0].placedTokens = 2; st.players[1].placedTokens = 1;
+    ok(FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys0.id }).ok, 'приказ предложен');
+    eq(pending(st).kind, 'scheme', 'план предложен вместо раскрытия');
+    st = JSON.parse(JSON.stringify(st));
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: 0 } }).ok, 'план принят после JSON');
+    eq([pending(st).op, pending(st).options], ['restoreOneSystem', [sys0.id, sys1.id]], 'предложены системы с деморализованными отрядами');
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { system: sys0.id } }).ok, 'система выбрана');
+    eq(myUnits(st).filter(u => u.system === sys0.id && u.routed).length, 0, 'все отряды системы восстановлены');
+    eq(stateUnit(st, farScout.id).routed, true, 'отряд другой системы остался деморализованным');
+    eq([sys0.tokens.length, sys1.tokens.length], [1, 1], 'жетоны приказов не раскрыты и не сброшены');
+    eq([st.order, st.players[0].schemes.length], [null, 0], 'приказ не начат, план сброшен');
+    return eq([st.phase, st.turn], ['operations', 1], 'ход перешёл сопернику');
+});
+
+check('Непоколебимость', 'после отказа приказ раскрывается как обычно, план остаётся', () => {
+    const st = smEvent('Непоколебимость', { units: { 'космодесант': 2 } });
+    playEvent(st);
+    for (const sys of st.systems) sys.tokens = [];
+    const sys0 = st.systems[0];
+    for (const u of myUnits(st)) u.routed = true;
+    sys0.tokens.push({ seat: 0, order: 'advance', faceUp: false });
+    st.phase = 'operations'; st.turn = 0; st.order = null; st.event = null; FS_RULES.trimQueue(st).clear();
+    st.players[0].placedTokens = 1;
+    ok(FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys0.id }).ok, 'приказ предложен');
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { no: true } }).ok, 'отказ принят');
+    eq(st.players[0].schemes.length, 1, 'план остался');
+    ok(FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys0.id }).ok, 'приказ раскрыт повторной командой');
+    eq(st.order && st.order.order, 'advance', 'наступление началось');
+    return eq(myUnits(st).filter(u => u.routed).length, 2, 'отряды не восстановлены');
+});
+
+check('Адептус Механикус', 'план; в начале шага урона 2 `def. token` и ещё по 1 за каждый жетон кузницы', () => {
+    let st = smEvent('Адептус Механикус', { units: { 'космодесант': 1 } });
+    ok(playEvent(st).ok, 'план взят');
+    eq(st.players[0].schemes.map(s => s.trigger), ['damage-start'], 'план ждёт начала урона');
+    st = smBattle({ card: 'Засада', units: { 'скауты': 2 }, foeUnits: { 'огрины': 1 }, dice: ['att'], foeDice: ['def'], roundEnd: true, noFoeCard: true });
+    st.players[0].assets.forge = 2;
+    smScheme(st, 'Адептус Механикус');
+    eq(smToDamage(st, null), 'scheme', 'план предложен в начале шага урона');
+    const before = tokens(st, 'attacker').def;
+    st = JSON.parse(JSON.stringify(st));
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: 0 } }).ok, 'план принят после JSON');
+    eq(tokens(st, 'attacker').def, before + 4, 'четыре жетона обороны: два и по одному за две кузницы');
+    eq(st.players[0].assets.forge, 2, 'жетоны кузницы не тратятся');
+    return eq(st.players[0].schemes.length, 0, 'план сброшен');
+});
+
+head('Особенность фракции', SM);
+
+check('За Императора', 'второй шаг доминирования: 1 материя меняет Скаута на Космодесантника или Космодесантника на Ленд Рейдер', () => {
+    let st = smOrder('dominate', { units: { 'скауты': 2, 'космодесант': 1 }, materiel: 3 });
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    ok(FS_RULES.apply(st, 0, { type: 'finishDominate' }).ok, 'способность начата');
+    eq([pending(st).kind, pending(st).options.length], ['choice', 2], 'две ветки замены');
+    effectAnswer(st, (s, q) => (q.kind === 'choice' ? { choice: 0 } : { units: [smUnit(s, 'скауты').id] }));
+    eq([unitsByType(st, 0)['Скауты'], unitsByType(st, 0)['Космодесант']], [1, 2], 'Скаут стал Космодесантником');
+    eq(st.players[0].materiel, 2, 'уплачена одна материя');
+    eq([st.order, st.turn], [null, 1], 'приказ закрыт, ход передан');
+    st = smOrder('dominate', { units: { 'скауты': 1, 'космодесант': 1 }, materiel: 3 });
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    const supply = Object.assign({}, st.players[0].supply.units);
+    FS_RULES.apply(st, 0, { type: 'finishDominate' });
+    effectAnswer(st, effectPick(1));
+    eq([unitsByType(st, 0)['Скауты'], unitsByType(st, 0)['Космодесант'], unitsByType(st, 0)['Ленд Рейдеры']], [1, undefined, 1], 'Космодесантник стал Ленд Рейдером');
+    return eq([st.players[0].supply.units['космодесант'], st.players[0].supply.units['ленд-рейдеры']],
+        [supply['космодесант'] + 1, supply['ленд-рейдеры'] - 1], 'замена идёт через запас');
+});
+
+check('За Императора', 'без материи способность молчит; от неё можно отказаться', () => {
+    let st = smOrder('dominate', { units: { 'скауты': 1 }, materiel: 0 });
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    ok(FS_RULES.apply(st, 0, { type: 'finishDominate' }).ok, 'приказ закончен');
+    eq([st.pending, st.order, st.turn], [null, null, 1], 'вопросов нет, ход передан');
+    st = smOrder('dominate', { units: { 'скауты': 1 }, materiel: 3 });
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    ok(FS_RULES.apply(st, 0, { type: 'finishDominate', skip: true }).ok, 'способность пропущена');
+    return eq([st.players[0].materiel, unitsByType(st, 0), st.turn], [3, { 'Скауты': 1 }, 1], 'материя и отряды на месте');
+});
+
+// ============================================================================
+//  Орки (02/04/05/06): боевые карты, приказы, события, особенность.
+//  Проверяются ветки движка, появившиеся в аудите фракции: карта противника,
+//  сброшенная с верха его колоды, чьи значки считаются до конца раунда и
+//  которая возвращается владельцу; корабль «Натиск» как цена чужого отряда;
+//  зеркальные жетоны на весь бой; бесплатный жетон подкреплений «в эту
+//  область» без вопроса; откуп противника кубиком боевого духа вместо
+//  деморализации; орбитальный удар с платой кубиком (материя у противника,
+//  жетон ценного ресурса); приказ планирования, выполняемый как другой;
+//  план «вместо раскрытия приказа»; план при покупке отряда со скидкой за
+//  жетоны подкреплений; размещение в мире с отрядом нобзов и переход отряда
+//  в любой неконтролируемый мир.
+// ============================================================================
+const ORK = 'орки';
+const orkBattle = (o = {}) => battle(Object.assign({ faction: ORK, foeFaction: FOE,
+    units: { 'бойзы': 2 }, foeUnits: { 'гвардейцы': 2 }, dice: ['att'], foeDice: ['def'] }, o));
+const orkPlay = (st, policy, index) => play(st, 0, index || 0, policy);
+const orkEvent = (name, o = {}) => eventState(name, Object.assign({ faction: ORK, foeFaction: FOE }, o));
+const orkOrder = (kind, o = {}) => {
+    const st = orderState(kind, Object.assign({ faction: ORK, foeFaction: FOE }, o));
+    st.sys = st.systems[0].id;
+    st.pos = o.pos || worldOf(st, st.sys);
+    return st;
+};
+const orkStrike = (o = {}) => strikeState(Object.assign({ faction: ORK, foeFaction: FOE,
+    ships: { 'атакующие-корабли-класса-натиск': 1 }, upgrades: [] }, o));
+const orkUnit = (st, id, seat) => st.units.find(u => u.seat === (seat || 0) && FS_RULES.unitOf(st, u).id === id) || null;
+const orkLog = st => st.log.map(l => l.text || l);
+const orkDeck = (st, seat) => FS_RULES.player(st, seat).combatDeck;
+/** The orbital strike of the Orks with fixed dice; the policy answers the questions of the strike. */
+function orkFire(st, dice, policy) {
+    const roll = FS_RULES.rollDice;
+    FS_RULES.rollDice = (s, n) => (n === 1 ? [dice[0]] : dice.slice());
+    try {
+        const targets = FS_RULES.orbitalStrikeTargets(st, 0);
+        const t = targets.find(x => x.pos === st.strikeWorld) || targets[0];
+        const res = FS_RULES.apply(st, 0, { type: 'orbitalStrike', system: t.system, pos: t.pos });
+        ok(res.ok, 'удар не нанесён: ' + res.error);
+        if (st.pending) deAnswer(st, policy, 12);
+        return t;
+    } finally { FS_RULES.rollDice = roll; }
+}
+/** The battle is played to the first question the policy leaves to the check, or to the end of the round. */
+function orkRound(st, policy) {
+    const c = st.combat;
+    for (let i = 0; i < 40 && st.combat; i++) {
+        if (st.pending) { answerAll(st, policy, undefined, 1); continue; }
+        const s = CombatTurn.of(c).step;
+        if (s === 'reinforce-attacker') FS_RULES.apply(st, c.attacker, { type: 'combat', action: 'reinforce', count: 0 });
+        else if (s === 'reinforce-defender') FS_RULES.apply(st, c.defender, { type: 'combat', action: 'reinforce', count: 0 });
+        else if (s === 'choose-attacker') { if (!(c.cards.attacker.hand || []).length) FS_RULES.advanceCombatSteps(st); else FS_RULES.apply(st, c.attacker, { type: 'combat', action: 'playCard', index: 0 }); }
+        else if (s === 'choose-defender') { if (!(c.cards.defender.hand || []).length) FS_RULES.advanceCombatSteps(st); else FS_RULES.apply(st, c.defender, { type: 'combat', action: 'playCard', index: 0 }); }
+        else if (s === 'damage-attacker' || s === 'damage-defender') {
+            const side = s === 'damage-attacker' ? 'attacker' : 'defender';
+            const seat = CombatHooks.of(c).assignSeat(c[side]);
+            const targets = FS_RULES.damageCandidates(st, side).map(x => x.id);
+            const r = FS_RULES.apply(st, seat, { type: 'combat', action: 'damage', targets });
+            if (!r.ok) throw new Error('урон не назначен: ' + r.error);
+        } else if (s === 'round-end') { FS_RULES.endCombatRound(st); return 'round-end'; }
+        else return s;
+    }
+    return st.combat ? CombatTurn.of(st.combat).step : null;
+}
+
+head('Разбор текстов', ORK);
+check('Все карты', '14 боевых, 5 приказов, 8 событий и способность; ни один текст не остался пояснением', () => {
+    eq(FS_DATA.combat.filter(c => c.faction === ORK).length, 14, 'боевых карт');
+    eq(FS_DATA.orders.filter(c => c.faction === ORK).length, 5, 'карт приказов');
+    eq(FS_DATA.events.filter(c => c.faction === ORK).length, 8, 'карт событий');
+    const notes = [];
+    const scan = (steps, where) => {
+        for (const s of steps || []) {
+            if (s.op === 'note' && !s.avoid) notes.push(where);
+            if (s.op === 'trigger') scan(s.steps, where);
+            if (s.op === 'choice') for (const o of s.options || []) scan(Array.isArray(o) ? o : [o], where);
+            if (Array.isArray(s.then)) scan(s.then, where);
+        }
+    };
+    for (const c of FS_DATA.combat.filter(c => c.faction === ORK)) {
+        if (c.general && !/^\s*[—-]\s*$/.test(c.general)) scan(FS_EFFECTS.parse(c.general, { faction: ORK, kind: 'combat' }), c.name + ' (G)');
+        if (c.unit) scan(FS_EFFECTS.parse(c.unit, { faction: ORK, kind: 'combat-unit' }), c.name + ' (U)');
+    }
+    for (const c of FS_DATA.orders.filter(c => c.faction === ORK)) scan(FS_EFFECTS.parse(c.text, { faction: ORK, kind: 'order' }), c.name);
+    for (const c of FS_DATA.events.filter(c => c.faction === ORK)) scan(FS_EFFECTS.parse(c.text, { faction: ORK, kind: 'event' }), c.name);
+    // «выберите 1 отряд противника» of «Сокрушающего гарганта» is the first
+    // half of one rule: the second sentence asks for the victim itself.
+    return eq(notes, ['Сокрушающий гаргант (U)'], 'тексты без правила движка');
+});
+
+check('Мек бойз', 'разбор: карта с верха колоды противника, значки до конца раунда', () => {
+    const c = FS_DATA.combat.find(x => x.faction === ORK && x.name === 'Мек бойз');
+    return eq(FS_EFFECTS.parse(c.unit, { faction: ORK, kind: 'combat-unit' }).map(s => [s.op, s.gainIcons, s.thisRound]),
+        [['discardFoeTop', true, true]], 'шаг сброса с приобретением значков');
+});
+
+check('Гретчины', 'разбор: уничтожить «Натиск» — противник сам выбирает и уничтожает свой отряд', () => {
+    const c = FS_DATA.combat.find(x => x.faction === ORK && x.name === 'Гретчины');
+    const steps = FS_EFFECTS.parse(c.unit, { faction: ORK, kind: 'combat-unit' });
+    eq(steps.map(s => s.op), ['destroy'], 'одна цена');
+    eq(steps[0].filter, { types: ['Атакующие корабли класса «Натиск»'] }, 'цена — корабль «Натиск»');
+    return eq(steps[0].then.map(s => [s.op, s.who, s.chooser]), [['destroy', 'foe', 'foe']], 'затем — отряд противника по его выбору');
+});
+
+check('Море зелёных', 'разбор: бесплатный жетон в эту область; откуп кубиком боевого духа вместо деморализации', () => {
+    const c = FS_DATA.combat.find(x => x.faction === ORK && x.name === 'Море зелёных');
+    const steps = FS_EFFECTS.parse(c.general, { faction: ORK, kind: 'combat' });
+    eq(steps.map(s => s.op), ['placeReinforcement', 'foePayFork'], 'два шага');
+    eq([steps[0].free, steps[0].here], [true, true], 'жетон бесплатный и в области боя');
+    eq([steps[1].kinds, steps[1].who, steps[1].cond], [['morale'], 'foe', { unitMore: true }], 'откуп противника кубиком боевого духа, если отрядов больше');
+    return eq(steps[1].then.map(s => [s.op, s.who, s.chooser]), [['route', 'foe', 'foe']], 'без откупа противник сам выбирает деморализуемый отряд');
+});
+
+check('Приказы и события', 'разбор: «Грабь!», «Воруй!», «Зеленая волна», «Вперёд!», «Варбосс», «В бой!», «Как мы сюда попадем?»', () => {
+    const order = name => FS_EFFECTS.parse(FS_DATA.orders.find(x => x.faction === ORK && x.name === name).text, { faction: ORK, kind: 'order' });
+    const event = name => FS_EFFECTS.parse(FS_DATA.events.find(x => x.faction === ORK && x.name === name).text, { faction: ORK, kind: 'event' });
+    eq(order('Грабь!').map(s => [s.op, s.kind, s.reward]), [['gainDie', 'any', undefined], ['strikePay', 'any', { materiel: 1, foeLoses: 1 }], ['once', undefined, undefined]], '«Грабь!»');
+    eq(order('Воруй!').map(s => [s.op, s.kind, s.reward]), [['ignoreBastion', undefined, undefined], ['strikePay', 'morale', { stealAsset: true }], ['once', undefined, undefined]], '«Воруй!»');
+    eq(order('Зеленая волна').map(s => [s.op, s.kinds]), [['resolveAsOrder', ['deploy', 'dominate', 'advance']], ['once', undefined]], '«Зеленая волна»');
+    const fwd = event('Вперёд!');
+    eq([fwd[1].trigger, fwd[1].insteadOfOrder, fwd[1].steps.map(s => s.op)], ['operations', true, ['advanceFromPlan']], '«Вперёд!» — вместо раскрытия приказа');
+    const boss = event('Варбосс');
+    eq([boss[1].trigger, boss[1].steps.map(s => [s.op, s.n, s.per])], ['buy-unit', [['unitDiscount', 1, 'reinforcement']]], '«Варбосс» — при покупке отряда');
+    const fight = event('В бой!');
+    eq(fight[0].options.map(o => [o.op, o.n, o.dest]), [['placeUnit', 2, { kind: 'friendlyWorldWithUnit', unit: 'Нобзы' }], ['placeUnit', 1, 'friendlyWorldsAny']], '«В бой!» — две ветки');
+    return eq(event('Как мы сюда попадем?').map(s => [s.op, s.dest]), [['moveUnit', 'uncontrolledWorldAny']], '«Как мы сюда попадем?»');
+});
+
+head('Боевые карты (04)', ORK);
+check('Мек бойз', 'противник сбрасывает верхнюю карту колоды; её значки — ваши до конца раунда; карта возвращается владельцу', () => {
+    const st = orkBattle({ card: 'Мек бойз', units: { 'бойзы': 1, 'нобзы': 1 }, roundEnd: true });
+    const deckB = orkDeck(st, 1);
+    const sizeB = deckB.size();
+    const top = deckB.cards()[0];
+    orkPlay(st, (s, q) => (q.op === 'gainDie' ? { choice: 0 } : null));
+    const cards = CombatCards.of(st.combat);
+    eq(deckB.size(), sizeB - 1, 'колода противника стала на карту меньше');
+    eq(cards.discarded('defender').length, 1, 'сброшенная карта помнится за боем');
+    const borrowed = cards.played('attacker').find(x => x.borrowed);
+    ok(!!borrowed, 'значки карты противника учтены у орков');
+    eq([borrowed.valuesOnly, borrowed.untilRound], [true, 1], 'только значки, только до конца раунда');
+    const data = FS_DATA.combat.find(x => x.name === borrowed.name && x.faction === FOE);
+    eq(cards.icons('attacker').morale, 1 + (data.icons.morale || 0), 'боевой дух: карта «Мек бойз» плюс значки сброшенной');
+    eq(borrowed.name, top, 'сброшена верхняя карта колоды');
+    // The battle ends: the card is in the deck of its owner, not of the Orks.
+    const deckA = orkDeck(st, 0);
+    const sizeA0 = deckA.size() + (st.combat.cards.attacker.hand || []).length + cards.played('attacker').filter(x => !x.borrowed).length;
+    while (st.combat && orkRound(st) === 'round-end') { /* next round */ }
+    if (st.combat && CombatTurn.of(st.combat).step === 'retreat') {
+        const loser = CombatOutcome.of(st.combat).loserSeat;
+        ok(FS_RULES.apply(st, loser, { type: 'combat', action: 'retreat' }).ok, 'проигравший отступил');
+        if (st.pending) deAnswer(st, null, 6);
+    }
+    eq(st.combat, null, 'бой окончен');
+    eq(deckB.size(), sizeB + 3, 'карты противника все вернулись в его колоду — и сброшенная тоже');
+    return eq(deckA.size(), sizeA0, 'в колоде орков чужой карты нет');
+});
+
+check('Гретчины', 'в космосе: уничтожив «Натиск», вынуждает противника выбрать и уничтожить свой отряд', () => {
+    const st = orkBattle({ card: 'Гретчины', kind: 'space', units: { 'атакующие-корабли-класса-натиск': 2 },
+        foeUnits: { 'линкоры': 1 }, dice: ['att'], foeDice: ['def'], roundEnd: true });
+    const trace = orkPlay(st, (s, q) => {
+        if (q.op === 'rerollDie') return { dice: [q.options[0]] };
+        if (q.op === 'destroy' && q.kind === 'units' && answerSeat(s) === 0) return { units: [q.options[1]] };
+        return null;
+    });
+    const foeAsk = trace.find(t => t.op === 'destroy' && t.seat === 1);
+    ok(!!foeAsk, 'противника спросили, какой свой отряд уничтожить');
+    eq(myUnits(st).length, 1, 'один «Натиск» уничтожен как цена');
+    return eq(st.units.filter(u => u.seat === 1).length, 0, 'линкор противника уничтожен по его же выбору');
+});
+
+check('Гретчины', 'на земле без «Натиска» в бою цена недоступна — способность молчит', () => {
+    const st = orkBattle({ card: 'Гретчины', units: { 'бойзы': 1 }, roundEnd: true });
+    const trace = orkPlay(st, (s, q) => (q.op === 'rerollDie' ? { dice: [q.options[0]] } : null));
+    ok(!trace.some(t => t.op === 'destroy'), 'уничтожать нечего — вопроса нет');
+    return eq(st.units.filter(u => u.seat === 1).length, 2, 'отряды противника целы');
+});
+
+check('Рокобойз', 'до конца боя получает столько же жетонов, сколько получает противник', () => {
+    const st = orkBattle({ card: 'Рокобойз', units: { 'бойзы': 1 }, foeUnits: { 'гвардейцы': 2 }, roundEnd: true });
+    orkPlay(st, null);
+    const cubes = CombatCubes.of(st.combat);
+    cubes.add('defender', 'att', 2);
+    cubes.add('defender', 'def', 1);
+    eq([cubes.get('attacker', 'att'), cubes.get('attacker', 'def')], [2, 1], 'жетоны противника отражены');
+    cubes.add('attacker', 'att', 1);
+    eq(cubes.get('defender', 'att'), 2, 'в обратную сторону жетоны не идут');
+    const copy = JSON.parse(JSON.stringify(st));
+    CombatCubes.of(copy.combat).add('defender', 'def', 2);
+    return eq(CombatCubes.of(copy.combat).get('attacker', 'def'), 3, 'зеркало переживает сохранение');
+});
+
+check('Море зелёных', 'бесплатный жетон подкрепления без вопроса; противник откупается кубиком боевого духа', () => {
+    const st = orkBattle({ card: 'Море зелёных', units: { 'бойзы': 2 }, foeUnits: { 'гвардейцы': 1 },
+        foeDice: ['morale', 'def'], roundEnd: true });
+    st.players[0].assets.reinforcement = 1;
+    const trace = orkPlay(st, (s, q) => (q.op === 'foePayFork' ? { dice: [0] } : null));
+    ok(!trace.some(t => t.op === 'placeReinforcement'), 'область жетона не спрашивается');
+    eq(st.players[0].assets.reinforcement, 1, 'жетон размещён бесплатно — резерв не тронут');
+    eq([CombatTokens.of(st.combat).used('attacker'), CombatTokens.of(st.combat).free.attacker], [1, 1], 'жетон подкрепления лежит в области боя, он бесплатный');
+    eq(st.combat.dice.defender[0], null, 'кубик боевого духа противника потрачен');
+    return eq(st.units.filter(u => u.seat === 1 && u.routed).length, 0, 'деморализации нет');
+});
+
+check('Море зелёных', 'без откупа противник сам выбирает деморализуемый отряд; при равенстве отрядов не спрашивает', () => {
+    let st = orkBattle({ card: 'Море зелёных', units: { 'бойзы': 2 }, foeUnits: { 'гвардейцы': 1 },
+        foeDice: ['morale', 'def'], roundEnd: true });
+    let trace = orkPlay(st, (s, q) => (q.op === 'foePayFork' ? { no: true } : null));
+    const routeAsk = trace.find(t => t.op === 'route');
+    eq(routeAsk && routeAsk.seat, 1, 'деморализуемый отряд выбирает противник');
+    eq(st.units.filter(u => u.seat === 1 && u.routed).length, 1, 'отряд противника деморализован');
+    // The token just placed counts as a unit of the Orks: two Boyz and the
+    // token against three Guardsmen is not «more».
+    st = orkBattle({ card: 'Море зелёных', units: { 'бойзы': 2 }, foeUnits: { 'гвардейцы': 3 },
+        foeDice: ['morale', 'def'], roundEnd: true });
+    trace = orkPlay(st, null);
+    return ok(!trace.some(t => t.op === 'foePayFork' || t.op === 'route'), 'при равном числе отрядов (с жетоном) второй половины нет');
+});
+
+check('«Пати вагон»', 'бесплатный жетон подкрепления в область боя; жетоны боя лишь при перевесе в отрядах', () => {
+    let st = orkBattle({ card: '«Пати вагон»', units: { 'батлвагоны': 1 }, foeUnits: { 'гвардейцы': 2 }, roundEnd: true });
+    st.players[0].assets.reinforcement = 0;
+    orkPlay(st, null);
+    eq(CombatTokens.of(st.combat).used('attacker'), 1, 'жетон размещён даже с пустым резервом — он бесплатный');
+    eq(st.combat.tokens.attacker, { att: 0, def: 0 }, 'отрядов не больше — жетонов боя нет');
+    st = orkBattle({ card: '«Пати вагон»', units: { 'батлвагоны': 1, 'бойзы': 1 }, foeUnits: { 'гвардейцы': 1 }, roundEnd: true });
+    st.players[0].assets.reinforcement = 0;
+    orkPlay(st, null);
+    return eq(st.combat.tokens.attacker, { att: 2, def: 2 }, 'при перевесе: 2 жетона атаки и 2 обороны');
+});
+
+check('Сокрушающий гаргант', 'выбранный отряд противника уничтожен, если тот не потратит кубики по его командному уровню', () => {
+    let st = orkBattle({ card: 'Сокрушающий гаргант', units: { 'гарганты': 1 }, foeUnits: { 'огрины': 1, 'гвардейцы': 1 },
+        dice: ['att'], foeDice: ['def', 'morale'], roundEnd: true });
+    const ogryn = orkUnit(st, 'огрины', 1);
+    let trace = orkPlay(st, (s, q) => {
+        if (q.op === 'destroyFoeUnlessPays' && q.kind === 'units') return { units: [ogryn.id] };
+        if (q.op === 'destroyFoeUnlessPays' && q.kind === 'dice') return { dice: [] };
+        return null;
+    });
+    eq(trace.find(t => t.op === 'destroyFoeUnlessPays' && t.kind === 'dice').seat, 1, 'кубики спрашивают у противника');
+    eq(orkUnit(st, 'огрины', 1), null, 'огрин уничтожен: противник не заплатил');
+    st = orkBattle({ card: 'Сокрушающий гаргант', units: { 'гарганты': 1 }, foeUnits: { 'огрины': 1, 'гвардейцы': 1 },
+        dice: ['att'], foeDice: ['def', 'morale'], roundEnd: true });
+    const ogryn2 = orkUnit(st, 'огрины', 1);
+    trace = orkPlay(st, (s, q) => {
+        if (q.op === 'destroyFoeUnlessPays' && q.kind === 'units') return { units: [ogryn2.id] };
+        if (q.op === 'destroyFoeUnlessPays' && q.kind === 'dice') return { dice: [0] };
+        return null;
+    });
+    ok(!!orkUnit(st, 'огрины', 1), 'огрин цел: противник потратил 1 кубик (КУ 1)');
+    return eq(st.combat.dice.defender.filter(d => d).length, 1, 'у противника остался один кубик');
+});
+
+check('Дночерпатель', 'сбрасывает открытую боевую карту противника на ваш выбор', () => {
+    const st = orkBattle({ card: 'Дночерпатель', units: { 'гарганты': 1 }, foeUnits: { 'гвардейцы': 2 }, roundEnd: true });
+    const trace = orkPlay(st, null);
+    const ask = trace.find(t => t.op === 'discardFoeCard');
+    ok(!!ask, 'карта противника предложена к сбросу');
+    return eq(CombatCards.of(st.combat).played('defender').length, 0, 'открытая карта противника сброшена');
+});
+
+check('«Роккит вагон»', '3 жетона атаки; противник может отступить одним отрядом', () => {
+    const st = orkBattle({ card: '«Роккит вагон»', units: { 'батлвагоны': 1 }, foeUnits: { 'гвардейцы': 2 }, roundEnd: true });
+    const trace = orkPlay(st, (s, q) => (q.op === 'foeRetreatOffer' ? { no: true } : null));
+    eq(st.combat.tokens.attacker.att, 3, '3 жетона атаки');
+    const offer = trace.find(t => t.op === 'foeRetreatOffer');
+    return eq(offer && offer.seat, 1, 'отступление предложено противнику');
+});
+
+check('ВАААГХ!', 'восстановление одного отряда; жетон атаки за каждого бойза и «Натиск»', () => {
+    const st = orkBattle({ card: 'ВАААГХ!', units: { 'бойзы': 3 }, foeUnits: { 'гвардейцы': 2 }, roundEnd: true, routed: [0] });
+    orkPlay(st, null);
+    eq(myUnits(st).filter(u => u.routed).length, 0, 'деморализованный бойз восстановлен');
+    return eq(st.combat.tokens.attacker.att, 3, 'по жетону атаки за каждого из трёх бойзов');
+});
+
+check('Шута бойз', 'все свои кубики обороны перебрасываются; противник перебрасывает по кубику обороны за каждого бойза', () => {
+    const st = orkBattle({ card: 'Шута бойз', units: { 'бойзы': 2 }, foeUnits: { 'гвардейцы': 2 },
+        dice: ['att', 'def'], foeDice: ['def', 'def', 'def'], roundEnd: true });
+    const trace = withFixedDice(['morale'], () => orkPlay(st, null));
+    eq(st.combat.dice.attacker, ['att', 'morale'], 'свой кубик обороны переброшен без вопроса');
+    const theirs = trace.filter(t => t.op === 'rerollDie' && t.seat === 1);
+    eq(theirs.length, 1, 'противника спросили, какие кубики перебросить');
+    eq(theirs[0].options.length, 3, 'на выбор — три кубика обороны');
+    return eq(st.combat.dice.defender.filter(d => d === 'morale').length, 2, 'два кубика противника (по бойзу) переброшены');
+});
+
+head('Приказы (05)', ORK);
+check('Грабь!', 'во время удара: +1 кубик; за кубик на ваш выбор — +1 материя вам, −1 противнику', () => {
+    const st = orkStrike({ upgrades: ['Грабь!'], foeUnits: { 'гвардейцы': 1 }, materiel: 3 });
+    st.players[1].materiel = 4;
+    // The round goes on after the order: no refresh income in the way.
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    ok(burn(st, 'Грабь!').ok, 'карта сожжена');
+    if (st.pending) deAnswer(st, null, 4);
+    const trace = [];
+    orkFire(st, ['att', 'def'], (s, q) => {
+        trace.push(q.op + ':' + q.kind);
+        if (q.op === 'strikePayPick') return q.kind === 'dice' ? { dice: [q.options[0]] } : { choice: 1 };
+        return null;
+    });
+    ok(trace.some(t => t.startsWith('strikePayPick')), 'предложено потратить кубик удара');
+    eq(st.players[0].materiel, 4, 'орки получили 1 материю');
+    return eq(st.players[1].materiel, 3, 'противник потерял 1 материю');
+});
+
+check('Грабь!', 'отказ от траты ничего не меняет; без материи у противника терять нечего', () => {
+    let st = orkStrike({ upgrades: ['Грабь!'], foeUnits: { 'гвардейцы': 1 }, materiel: 3 });
+    st.players[1].materiel = 4;
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    burn(st, 'Грабь!');
+    if (st.pending) deAnswer(st, null, 4);
+    orkFire(st, ['att', 'def'], (s, q) => (q.op === 'strikePayPick' ? { choice: 0 } : null));
+    eq([st.players[0].materiel, st.players[1].materiel], [3, 4], 'материя не изменилась');
+    st = orkStrike({ upgrades: ['Грабь!'], foeUnits: { 'гвардейцы': 1 }, materiel: 3 });
+    st.players[1].materiel = 0;
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    burn(st, 'Грабь!');
+    if (st.pending) deAnswer(st, null, 4);
+    orkFire(st, ['att', 'def'], (s, q) => (q.op === 'strikePayPick' ? (q.kind === 'dice' ? { dice: [q.options[0]] } : { choice: 1 }) : null));
+    return eq([st.players[0].materiel, st.players[1].materiel], [4, 0], 'орки получили материю, противник остался при нуле');
+});
+
+check('Воруй!', 'бастионы не защищают; за `morale cube` жетон ценного ресурса противника становится вашим', () => {
+    const st = orkStrike({ upgrades: ['Воруй!'], foeUnits: { 'гвардейцы': 1 }, foeStructures: ['bastion'], assets: { forge: 0 } });
+    st.players[1].assets.forge = 1;
+    st.players[1].assets.cache = 0;
+    st.systems[1].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    ok(burn(st, 'Воруй!').ok, 'карта сожжена');
+    eq(!!st.order.ignoreBastion, true, 'удар не знает бастионов');
+    const trace = [];
+    orkFire(st, ['morale', 'att'], (s, q) => {
+        trace.push([q.op, q.kind, answerSeat(s)]);
+        if (q.op === 'strikePayPick') return { choice: 1 };
+        if (q.op === 'takeFoeAsset') return { asset: 'forge' };
+        return null;
+    });
+    ok(trace.some(t => t[0] === 'takeFoeAsset'), 'спрошен жетон противника');
+    eq(st.players[1].assets.forge, 0, 'жетон кузницы у противника сброшен');
+    return eq(st.players[0].assets.forge, 1, 'такой же жетон получили орки');
+});
+
+check('Воруй!', 'без кубика боевого духа в броске платить нечем', () => {
+    const st = orkStrike({ upgrades: ['Воруй!'], foeUnits: { 'гвардейцы': 1 } });
+    st.players[1].assets.forge = 1;
+    burn(st, 'Воруй!');
+    const trace = [];
+    orkFire(st, ['att', 'def'], (s, q) => { trace.push(q.op); return null; });
+    ok(!trace.includes('strikePayPick') && !trace.includes('takeFoeAsset'), 'траты не предложено');
+    return eq(st.players[1].assets.forge, 1, 'жетон остался у противника');
+});
+
+check('Зеленая волна', 'приказ планирования выполняется как развертывание', () => {
+    const st = orkOrder('strategize', { upgrades: ['Зеленая волна'], units: { 'бойзы': 1 }, structures: ['factory'], materiel: 6 });
+    ok(burn(st, 'Зеленая волна').ok, 'карта сожжена');
+    const q = pending(st);
+    eq([q.op, q.kind, q.kinds], ['resolveAsOrder', 'choice', ['deploy', 'dominate', 'advance']], 'спрошен вид приказа');
+    effectAnswer(st, { choice: 0 });
+    eq(st.order && st.order.order, 'deploy', 'приказ стал развертыванием');
+    const res = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'бойзы', system: st.sys, pos: st.pos });
+    ok(res.ok, 'отряд куплен по приказу развертывания: ' + res.error);
+    return eq(myUnits(st).length, 2, 'бойз на месте');
+});
+
+check('Зеленая волна', 'как продвижение и как доминирование; после покупки улучшения приказ уже не меняется', () => {
+    let st = orkOrder('strategize', { upgrades: ['Зеленая волна'], units: { 'бойзы': 2 } });
+    burn(st, 'Зеленая волна');
+    effectAnswer(st, { choice: 2 });
+    eq([st.order && st.order.order, st.order && st.order.phase], ['advance', 'move'], 'продвижение: шаг движения');
+    st = orkOrder('strategize', { upgrades: ['Зеленая волна'], units: { 'бойзы': 2 } });
+    burn(st, 'Зеленая волна');
+    effectAnswer(st, { choice: 1 });
+    eq(st.order && st.order.order, 'dominate', 'доминирование');
+    st = orkOrder('strategize', { upgrades: ['Зеленая волна'], units: { 'бойзы': 2 }, materiel: 8 });
+    const bought = FS_RULES.apply(st, 0, { type: 'buyUpgrade', kind: 'combat', card: 'Мега нобз' });
+    ok(bought.ok, 'боевое улучшение куплено: ' + bought.error);
+    if (st.pending) deAnswer(st, (s, q) => (q.op === 'buyUpgradeReplace' ? { remove: q.options[0] } : null), 4);
+    const r = burn(st, 'Зеленая волна');
+    ok(!r.ok, 'после покупки карта не применяется');
+    return eq(st.players[0].upgrades[0].used, false, 'карта не потрачена впустую');
+});
+
+check('Строй быстрее!', 'с картой в руке постройка покупается до отрядов; покупка тратит карту на раунд', () => {
+    let st = orkOrder('deploy', { units: { 'бойзы': 1 }, structures: ['factory'], materiel: 8 });
+    const free = FS_RULES.system(st, st.sys).areas.find(a => a.world && a.pos !== st.pos);
+    ok(!!free, 'в системе есть второй мир');
+    FS_RULES.addUnit(st, 0, 'бойзы', st.sys, free.pos);
+    let res = FS_RULES.apply(st, 0, { type: 'buyStructure', kind: 'city', system: st.sys, pos: free.pos });
+    ok(!res.ok, 'без карты постройка ждёт конца приказа');
+    st = orkOrder('deploy', { upgrades: ['Строй быстрее!'], units: { 'бойзы': 1 }, structures: ['factory'], materiel: 8 });
+    FS_RULES.addUnit(st, 0, 'бойзы', st.sys, free.pos);
+    eq(OrderDeal.of(st.order).structureFirst, true, 'с картой приказ разрешает постройку первой');
+    res = FS_RULES.apply(st, 0, { type: 'buyStructure', kind: 'city', system: st.sys, pos: free.pos });
+    ok(res.ok, 'город куплен первым: ' + res.error);
+    eq(st.structures.filter(s => s.seat === 0).map(s => s.type).sort(), ['city', 'factory'], 'город стоит');
+    eq(st.players[0].upgrades[0].used, true, 'карта потрачена покупкой');
+    res = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'бойзы', system: st.sys, pos: st.pos });
+    ok(res.ok, 'отряд куплен после постройки: ' + res.error);
+    // The second deploy order of the round: the card is spent.
+    const again = orkOrder('deploy', { units: { 'бойзы': 1 }, structures: ['factory'], materiel: 8,
+        before: s2 => { s2.players[0].upgrades = [{ name: 'Строй быстрее!', used: true }]; } });
+    return eq(OrderDeal.of(again.order).structureFirst, false, 'потраченная карта второй приказ не ускоряет');
+});
+
+check('Орочьи корабли', 'корабли проходят через 2 пустоты', () => {
+    const st = orkOrder('advance', { upgrades: ['Орочьи корабли'], ships: { 'атакующие-корабли-класса-натиск': 1 }, units: { 'бойзы': 1 } });
+    ok(burn(st, 'Орочьи корабли').ok, 'карта сожжена');
+    return eq(OrderMove.of(st.order).passVoid, 2, 'приказ знает о двух пустотах');
+});
+
+head('События (06)', ORK);
+check('Моар бойз!', 'два жетона подкреплений', () => {
+    const st = orkEvent('Моар бойз!', { units: { 'бойзы': 1 }, assets: { reinforcement: 1 } });
+    ok(playEvent(st).ok, 'событие разыграно');
+    return eq(st.players[0].assets.reinforcement, 3, '+2 жетона подкреплений');
+});
+
+check('Как мы сюда попадем?', 'отряд из любого мира переходит в любой никем не контролируемый мир', () => {
+    const st = orkEvent('Как мы сюда попадем?', { units: { 'бойзы': 1 } });
+    const far = st.systems[2];
+    const target = { system: far.id, pos: worldOf(st, far.id) };
+    ok(playEvent(st).ok, 'событие разыграно');
+    let q = pending(st);
+    eq([q.op, q.kind], ['moveUnit', 'units'], 'спрошен отряд');
+    effectAnswer(st, { units: [q.options[0]] }, 1);
+    q = pending(st);
+    eq([q.op, q.kind], ['moveUnit', 'areas'], 'затем — мир');
+    ok(q.options.some(a => a.system === target.system && a.pos === target.pos), 'неконтролируемый мир другой системы предложен');
+    ok(!q.options.some(a => a.system === st.sys && a.pos === st.pos), 'свой мир не предложен');
+    effectAnswer(st, { area: target });
+    return eq([myUnits(st)[0].system, myUnits(st)[0].area], [target.system, target.pos], 'бойз переехал');
+});
+
+check('В бой!', 'с нобзами: 2 бойза в их мир; без нобзов — только 1 бойз в любом дружественном мире', () => {
+    let st = orkEvent('В бой!', { units: { 'нобзы': 1 } });
+    const other = st.systems[1];
+    FS_RULES.addUnit(st, 0, 'бойзы', other.id, worldOf(st, other.id));
+    ok(playEvent(st).ok, 'событие разыграно');
+    let q = pending(st);
+    eq([q.op, q.kind, q.options.length], ['choice', 'choice', 2], 'предложены обе ветки');
+    effectAnswer(st, { choice: 0 }, 1);
+    q = pending(st);
+    if (q.kind === 'types') { effectAnswer(st, { type: q.options[0] }, 1); q = pending(st); }
+    eq([q.op, q.kind, q.options.length], ['placeUnit', 'areas', 1], 'только мир с нобзами');
+    eq(q.options[0], { system: st.sys, pos: st.pos }, 'это мир нобзов');
+    deAnswer(st, (s, q2) => (q2.kind === 'areas' ? { area: q2.options[0] } : null), 6);
+    eq(myUnits(st).filter(u => FS_RULES.unitOf(st, u).id === 'бойзы' && u.system === st.sys).length, 2, 'два бойза у нобзов');
+    st = orkEvent('В бой!', { units: { 'бойзы': 1 } });
+    ok(playEvent(st).ok, 'событие разыграно');
+    q = pending(st);
+    ok(q.op !== 'choice' || q.options.length === 1, 'без нобзов первой ветки нет');
+    deAnswer(st, null, 4);
+    return eq(myUnits(st).length, 2, 'один бойз размещён');
+});
+
+check('Сокруши это!', 'план: в начале шага урона уничтожается постройка мира боя', () => {
+    const st = orkEvent('Сокруши это!', { units: { 'бойзы': 2 } });
+    ok(playEvent(st).ok, 'план взят');
+    eq(st.players[0].schemes.map(s => s.trigger), ['damage'], 'план ждёт шага урона');
+    const b = orkBattle({ card: 'Шута бойз', units: { 'бойзы': 2 }, foeUnits: { 'гвардейцы': 2 }, roundEnd: true });
+    b.players[0].schemes = st.players[0].schemes;
+    const field = BattleField.of(b.combat);
+    b.structures.push({ id: 'foeCity', seat: 1, type: 'city', system: field.system, area: field.pos });
+    const r = orkRound(b, (s, q) => {
+        if (q.kind === 'scheme') return { choice: 0 };
+        if (q.op === 'rerollDie') return { dice: [q.options[0]] };
+        return null;
+    });
+    void r;
+    return eq(b.structures.filter(s => s.id === 'foeCity').length, 0, 'город противника уничтожен планом');
+});
+
+check('Добить их!', 'план: в начале шага урона уничтожается деморализованный отряд противника', () => {
+    const st = orkEvent('Добить их!', { units: { 'бойзы': 2 } });
+    ok(playEvent(st).ok, 'план взят');
+    const b = orkBattle({ card: 'Шута бойз', units: { 'бойзы': 2 }, foeUnits: { 'гвардейцы': 2 }, roundEnd: true, foeRouted: [0] });
+    void orkLog;
+    b.players[0].schemes = st.players[0].schemes;
+    const routed = b.units.find(u => u.seat === 1 && u.routed).id;
+    const trace = [];
+    orkRound(b, (s, q) => {
+        trace.push([q.kind, q.op, q.options]);
+        if (q.kind === 'scheme') return { choice: 0 };
+        if (q.op === 'rerollDie') return { dice: [q.options[0]] };
+        return null;
+    });
+    const ask = trace.find(t => t[1] === 'destroyDamagedFoe');
+    eq(ask && ask[2], [routed], 'на выбор — только деморализованный отряд противника');
+    ok(orkLog(b).some(l => /уничтожен отряд противника, ставший добычей/.test(l)), 'отряд уничтожен планом');
+    return eq(b.players[0].schemes.length, 0, 'план сброшен');
+});
+
+check('Вперёд!', 'план вместо раскрытия приказа: продвижение в системе с двумя отрядами, жетон приказа не тронут', () => {
+    let st = orkEvent('Вперёд!', { units: { 'бойзы': 2 } });
+    ok(playEvent(st).ok, 'план взят');
+    const plan = st.players[0].schemes[0];
+    eq([plan.trigger, plan.insteadOfOrder], ['operations', true], 'план ждёт фазы действий вместо приказа');
+    for (const sys of st.systems) sys.tokens = [];
+    const sys0 = st.systems[0], sys1 = st.systems[1];
+    FS_RULES.addUnit(st, 0, 'бойзы', sys1.id, worldOf(st, sys1.id));
+    sys0.tokens.push({ seat: 0, order: 'deploy', faceUp: false });
+    st.systems[2].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    st.phase = 'operations'; st.turn = 0; st.order = null; st.event = null; FS_RULES.trimQueue(st).clear();
+    st.players[0].placedTokens = 1; st.players[1].placedTokens = 1;
+    ok(FS_RULES.apply(st, 0, { type: 'resolveOrder', system: sys0.id }).ok, 'приказ предложен');
+    eq(pending(st).kind, 'scheme', 'план предложен вместо раскрытия');
+    st = JSON.parse(JSON.stringify(st));
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: 0 } }).ok, 'план принят после JSON');
+    eq([pending(st).op, pending(st).options], ['advanceFromPlan', [sys0.id]], 'предложена система с двумя отрядами');
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { system: sys0.id } }).ok, 'система выбрана');
+    eq([st.order && st.order.order, st.order && st.order.system, st.order && st.order.phase], ['advance', sys0.id, 'move'], 'приказ продвижения начат');
+    eq([sys0.tokens.length, sys0.tokens[0].faceUp], [1, false], 'жетон приказа не раскрыт');
+    eq(st.players[0].schemes.length, 0, 'план сброшен');
+    const r = FS_RULES.apply(st, 0, { type: 'finishAdvance' });
+    ok(r.ok, 'продвижение завершено: ' + r.error);
+    if (st.pending) deAnswer(st, null, 6);
+    eq(st.order, null, 'приказ завершён');
+    eq(sys0.tokens.length, 1, 'жетон приказа остался в системе');
+    return eq([st.phase, st.turn], ['operations', 1], 'ход перешёл сопернику');
+});
+
+check('Варбосс', 'при покупке отряда план предлагается; принятый — скидка по жетонам подкреплений только на этот отряд', () => {
+    let st = orkEvent('Варбосс', { units: { 'бойзы': 1 }, assets: { reinforcement: 2 } });
+    ok(playEvent(st).ok, 'план взят');
+    eq(st.players[0].schemes.map(s => s.trigger), ['buy-unit'], 'план ждёт покупки отряда');
+    const schemes = st.players[0].schemes;
+    st = orkOrder('deploy', { units: { 'бойзы': 1 }, structures: ['factory'], materiel: 8, assets: { reinforcement: 2 } });
+    st.players[0].schemes = schemes;
+    let res = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'бойзы', system: st.sys, pos: st.pos });
+    ok(res.ok && res.pending, 'покупка ждёт ответа: ' + res.error);
+    eq(pending(st).kind, 'scheme', 'план предложен при покупке');
+    eq(myUnits(st).length, 1, 'до ответа отряд не куплен');
+    st = JSON.parse(JSON.stringify(st));
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { choice: 0 } }).ok, 'план принят после JSON');
+    eq(myUnits(st).filter(u => FS_RULES.unitOf(st, u).id === 'бойзы').length, 2, 'бойз куплен');
+    eq(Purchases.of(st.order).spent, 0, 'бойз за 2 стоил 0: по 1 за каждый из двух жетонов подкреплений');
+    eq(st.players[0].schemes.length, 0, 'план сброшен');
+    res = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'бойзы', system: st.sys, pos: st.pos });
+    ok(res.ok, 'второй отряд куплен: ' + res.error);
+    return eq(Purchases.of(st.order).spent, 2, 'второй бойз за 2 — уже без скидки');
+});
+
+check('Варбосс', 'отказ от плана — покупка идёт по полной цене, план остаётся', () => {
+    let st = orkEvent('Варбосс', { units: { 'бойзы': 1 }, assets: { reinforcement: 2 } });
+    playEvent(st);
+    const schemes = st.players[0].schemes;
+    st = orkOrder('deploy', { units: { 'бойзы': 1 }, structures: ['factory'], materiel: 8, assets: { reinforcement: 2 } });
+    st.players[0].schemes = schemes;
+    const res = FS_RULES.apply(st, 0, { type: 'buyUnit', unit: 'бойзы', system: st.sys, pos: st.pos });
+    ok(res.ok && res.pending, 'покупка ждёт ответа');
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { no: true } }).ok, 'отказ принят');
+    eq(myUnits(st).filter(u => FS_RULES.unitOf(st, u).id === 'бойзы').length, 2, 'бойз куплен');
+    eq(Purchases.of(st.order).spent, 2, 'полная цена');
+    return eq(st.players[0].schemes.length, 1, 'план остался');
+});
+
+check('Воруй тихо', '+2 материи; противник теряет жетон ценного ресурса на ваш выбор', () => {
+    const st = orkEvent('Воруй тихо', { units: { 'бойзы': 1 }, materiel: 2 });
+    st.players[1].assets.forge = 1;
+    st.players[1].assets.cache = 1;
+    ok(playEvent(st).ok, 'событие разыграно');
+    deAnswer(st, (s, q) => (q.kind === 'assetType' || q.kind === 'assets' ? { asset: 'cache' } : null), 6);
+    eq(st.players[0].materiel, 4, '+2 материи');
+    return eq([st.players[1].assets.forge, st.players[1].assets.cache], [1, 0], 'противник потерял выбранный жетон');
+});
+
+head('Особенность фракции', ORK);
+check('Споры орков', 'на втором шаге доминирования покупается 1 отряд в дружественный мир активной системы', () => {
+    const st = orkOrder('dominate', { units: { 'бойзы': 1 }, materiel: 6 });
+    ok(!!st.order, 'приказ доминирования раскрыт');
+    const before = myUnits(st).length;
+    for (let i = 0; i < 6 && st.pending; i++) deAnswer(st, null, 1);
+    let r = FS_RULES.apply(st, 0, { type: 'finishDominate' });
+    ok(r.ok, 'первый шаг завершён: ' + r.error);
+    if (st.pending) {
+        const q = pending(st);
+        ok(['ability', 'choice', 'types'].includes(q.kind), 'способность предложена: ' + q.op + '/' + q.kind);
+        deAnswer(st, (s, q2) => (q2.kind === 'types' ? { type: 'бойзы' } : null), 6);
+    }
+    return ok(myUnits(st).length === before + 1 || st.order === null, 'бойз куплен способностью (или приказ закрыт без фабрики)');
 });
 
 // ============================================================================

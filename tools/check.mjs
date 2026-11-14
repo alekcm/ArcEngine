@@ -35,7 +35,7 @@ const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\
 // Only factions with behavioral card checks are listed. An empty selection is
 // an error in the card checker, so a typo cannot silently pass this gate.
 const CARD_FACTIONS = ['адептус-механикус', 'тираниды', 'эльдары', 'империя-тау', 'космодесант-хаоса',
-  'имперская-гвардия', 'некроны', 'инквизиция', 'сестры-битвы', 'темные-эльдары'];
+  'имперская-гвардия', 'некроны', 'инквизиция', 'сестры-битвы', 'темные-эльдары', 'космодесант', 'орки'];
 const STEPS = [
   { flag: '--types', title: 'типы игры', run: () => spawnSync(TSC + ' -p tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
   { flag: '--types', title: 'типы редактора', run: () => spawnSync(TSC + ' -p _utils/editor/tsconfig.json', { cwd: ROOT, shell: true, stdio: 'inherit' }) },
