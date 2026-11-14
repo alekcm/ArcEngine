@@ -123,6 +123,7 @@ for (const file of ['js/CameraControl.js', 'js/fs/FSIcons.js', 'js/fs/FSView.js'
 }
 const FSUI = vm.runInContext('FSUI', ctx);
 const FS_RULES = vm.runInContext('FS_RULES', ctx);
+const FS_REQUISITIONS = vm.runInContext('FS_REQUISITIONS', ctx);
 const FS_VIEW = vm.runInContext('FSView', ctx);
 const TILE_GEOMETRY = vm.runInContext('TileGeometry', ctx);
 const CAMERA = vm.runInContext('CameraController', ctx);
@@ -253,8 +254,10 @@ screen('lobby-7', 'бот в лобби: фракционные личности
     });
     let texts = textsOf(FSUI.modernRoot);
     if (!texts.some(t => /Варбосс · Орки · бот/.test(t))) return 'бот не назван ботом в списке';
-    if (!texts.some(t => /Варбосс: WAAAGH! с первого плана/.test(t))) return 'нет подписи-намёка бота';
+    if (!texts.some(t => /Варбосс: ВАААГХ с первого хода/.test(t))) return 'нет понятной тактической подсказки бота';
     if (!texts.some(t => /^зелёный прилив · обычный$/.test(t))) return 'нет мелкой подписи характера и уровня';
+    const personaTag = nodesWithClass(FSUI.modernRoot, 'fs-bot-tag').find(n => /зелёный прилив/.test(n.textContent));
+    if (!personaTag || !/С первого хода набирает бойзов/.test(personaTag.title)) return 'подсказка личности не объясняет тактику простыми словами';
     let buttons = buttonsOf(FSUI.modernRoot);
     const addButton = list => list.find(b => textsOf(b).some(t => /Добавить бота/.test(t)));
     const add = addButton(buttons);
@@ -276,12 +279,13 @@ screen('lobby-7', 'бот в лобби: фракционные личности
     }
     if (!offered.includes('orks-mek') || offered.includes('turtle') || offered.includes('necrons-phalanx')) return 'меню характеров не отфильтровано по фракции: ' + offered.join(', ');
     if (!offered.includes('__fs_random_persona__') || !Array.from(menu[1].children || []).some(o => /Случайная личность/.test(o.textContent))) return 'в меню нет случайной личности';
-    // For a fixed faction, the random-persona shortcut still resolves to one of its own doctrines.
+    // The browser must send only the random marker; the server chooses the
+    // actual doctrine so neither the lobby nor a modified client reveals it.
     menu[1].value = '__fs_random_persona__';
     for (const fn of menu[1].listeners.change || []) fn({ target: menu[1] });
     const randomPersona = set[set.length - 1] && set[set.length - 1][1].persona;
-    if (!offered.includes(randomPersona) || randomPersona === '__fs_random_persona__') return 'случайный выбор личности не выбрал доктрину орков: ' + randomPersona;
-    if (menu[1].value === '__fs_random_persona__') return 'псевдо-значение случайной личности осталось выбранным';
+    if (randomPersona !== '__fs_random_persona__') return 'случайная личность была раскрыта клиентом: ' + randomPersona;
+    if (menu[1].value !== '__fs_random_persona__') return 'в меню не остался выбран маркер случайной личности';
     if (!Array.from(menu[0].children || []).some(o => o.value === '__fs_random_faction__' && /Случайная фракция/.test(o.textContent))) return 'в меню нет случайной фракции';
     menu[0].value = '__fs_random_faction__';
     for (const fn of menu[0].listeners.change || []) fn({ target: menu[0] });
@@ -298,7 +302,7 @@ screen('lobby-7', 'бот в лобби: фракционные личности
     // Once the server echoes a randomized faction, neither the faction nor its
     // random doctrine is exposed in the lobby; the character control is locked.
     const randomSeats = [LOBBY_SEATS[0], {
-        id: 'bot1', name: 'Варбосс', faction: 'орки', randomFaction: true, seat: 1,
+        id: 'bot1', name: 'Варбосс', faction: 'орки', randomFaction: true, randomPersona: true, seat: 1,
         ready: true, online: true, bot: true, persona: 'orks-waaagh', level: 'normal',
         line: FS_BOT_SCREENS.line('орки', 'orks-waaagh'),
     }];
@@ -309,13 +313,13 @@ screen('lobby-7', 'бот в лобби: фракционные личности
     });
     texts = textsOf(FSUI.modernRoot);
     if (!texts.some(t => /Бот · 🎲 случайная фракция · бот/.test(t))) return 'бот раскрывает выбранную фракцию вместо случайного статуса';
-    if (!texts.some(t => /Случайные фракция и характер скрыты до старта; характер выбирается автоматически/.test(t))) return 'в лобби не объяснён случайный выбор фракции и характера';
-    if (texts.some(t => /Варбосс|WAAAGH!|Зелёный прилив/i.test(t))) return 'имя, подсказка или доктрина случайного бота просочились в интерфейс';
+    if (!texts.some(t => /Случайные фракция и личность; личность останется тайной и в партии/.test(t))) return 'в лобби не объяснено сокрытие случайной личности';
+    if (texts.some(t => /Варбосс|ВАААГХ|Зелёный прилив/i.test(t))) return 'имя, подсказка или доктрина случайного бота просочились в интерфейс';
     const randomMenus = [];
     (function walk(n) { if (!n) return; if (n.tagName === 'SELECT' && /fs-bot-select/.test(n.className)) randomMenus.push(n); for (const c of n.children || []) walk(c); })(FSUI.modernRoot);
     if (randomMenus.length !== 3 || randomMenus[0].value !== '__fs_random_faction__') return 'случайная фракция не осталась выбранной в меню';
     if (!randomMenus[1].disabled || randomMenus[1].value !== '__fs_random_persona__' || randomMenus[1].children.length !== 1) return 'характер случайной фракции можно выбрать вручную';
-    if (randomMenus[0].title !== 'Фракция бота' || randomMenus[1].title !== 'При случайной фракции характер выбирается автоматически') return 'подсказка меню раскрывает или неверно описывает случайный выбор';
+    if (randomMenus[0].title !== 'Фракция бота' || randomMenus[1].title !== 'Фракция и личность выбираются сервером; личность останется тайной в партии.') return 'подсказка меню раскрывает или неверно описывает случайный выбор';
     // A guest also receives the masked room snapshot, but never the host controls.
     drawLobby({
         name: 'Гость', faction: 'некроны', me: 'p2', host: 'p1', isHost: false, ready: false, bots,
@@ -324,11 +328,33 @@ screen('lobby-7', 'бот в лобби: фракционные личности
     texts = textsOf(FSUI.modernRoot);
     buttons = buttonsOf(FSUI.modernRoot);
     if (!texts.some(t => /Бот · 🎲 случайная фракция · бот/.test(t))) return 'гость видит не скрытый выбор фракции';
-    if (!texts.some(t => /Случайные фракция и характер скрыты до старта; характер выбирается автоматически/.test(t))) return 'гость не получает нейтральную подсказку о боте';
+    if (!texts.some(t => /Случайные фракция и личность; личность останется тайной и в партии/.test(t))) return 'гость не получает нейтральную подсказку о боте';
     if (addButton(buttons) || buttons.some(b => /убрать/.test(b.textContent))) return 'гостю показаны кнопки хозяина';
     const guestSelects = [];
     (function walk(n) { if (!n) return; if (n.tagName === 'SELECT' && /fs-bot-select/.test(n.className)) guestSelects.push(n); for (const c of n.children || []) walk(c); })(FSUI.modernRoot);
     if (guestSelects.length) return 'гостю показаны меню бота';
+
+    // A known faction with a random persona keeps its faction public, but
+    // masks the selected doctrine, its name and its hint from the lobby.
+    const randomPersonaSeats = [LOBBY_SEATS[0], {
+        id: 'bot1', name: 'Варбосс', faction: 'орки', randomPersona: true, seat: 1,
+        ready: true, online: true, bot: true, persona: 'orks-mek', level: 'normal',
+        line: 'Варбосс: копит на гаргантов',
+    }];
+    drawLobby({
+        name: 'Хозяин', faction: 'эльдары', me: 'p1', host: 'p1', isHost: true, ready: false, bots,
+        start: { ok: true, msg: '' }, players: randomPersonaSeats, factions: LOBBY_FACTIONS,
+    });
+    texts = textsOf(FSUI.modernRoot);
+    if (!texts.some(t => /Варбосс · Орки · бот/.test(t))) return 'случайная личность скрыла известную фракцию';
+    if (texts.some(t => /копит на гаргантов/.test(t))) return 'подсказка случайной личности просочилась в лобби';
+    const randomTag = nodesWithClass(FSUI.modernRoot, 'fs-bot-tag').find(n => /случайная личность/.test(n.textContent));
+    if (!randomTag || randomTag.textContent !== 'случайная личность · обычный'
+        || /Большие игрушки|гаргант/i.test(randomTag.title)) return 'в лобби показано имя или описание случайной личности';
+    const personaMenus = [];
+    (function walk(n) { if (!n) return; if (n.tagName === 'SELECT' && /fs-bot-select/.test(n.className)) personaMenus.push(n); for (const c of n.children || []) walk(c); })(FSUI.modernRoot);
+    if (personaMenus.length !== 3 || personaMenus[1].value !== '__fs_random_persona__' || personaMenus[1].disabled) return 'случайная личность не отмечена в меню хозяина';
+
     // Four seats — no room for another bot.
     drawLobby({
         name: 'Хозяин', faction: 'эльдары', me: 'p1', host: 'p1', isHost: true, ready: false, bots,
@@ -1079,6 +1105,50 @@ function setupFixture() {
     };
     return { live, seat, view, game, sent, previews, panel };
 }
+
+function blitzDraftFixture() {
+    const live = FS_RULES.newGame({ seed: 173, rounds: 5, players: SEAT_PLAYERS, interactiveSetup: true });
+    const seat = live.setup.turn;
+    const suit = live.setup.blitzDraft.availableSuits[0];
+    const picked = FS_RULES.apply(live, seat, { type: 'chooseRequisitionSuit', suit });
+    if (!picked.ok) throw new Error('не удалось начать драфт реквизиций: ' + picked.error);
+    const view = FS_RULES.view(live, seat);
+    const sent = [];
+    const game = Object.create(FS_GAME.prototype);
+    Object.assign(game, {
+        state: view, mode: 'idle', status: '',
+        net: { cmd: cmd => { sent.push(JSON.parse(JSON.stringify(cmd))); return true; } },
+    });
+    const panel = () => {
+        const out = { title: '', text: '', status: '', warn: '', actions: [], mode: 'idle' };
+        game.panelSetup(game.state, out);
+        return out;
+    };
+    return { live, seat, view, game, sent, panel };
+}
+
+screen('blitz-draft-ui-1', 'карты стартового драфта видны целиком и выбор уходит на сервер', () => {
+    const f = blitzDraftFixture();
+    if (f.view.setup.stage !== BOARD_SETUP.DRAFT_CARD || !f.view.setup.myTurn) return 'игрок не получил этап выбора карты';
+    const panel = f.panel();
+    if (!panel.cardChoices || !Array.isArray(panel.cardChoices.choices)) return 'панель не получила карты драфта';
+    FSUI.update(f.view, panel);
+    const cards = nodesWithClass(FSUI.modernRoot, 'fs-card-choice');
+    const hand = f.view.setup.blitzDraft.cardHand;
+    if (cards.length !== hand.length || cards.length < 2) return 'показано ' + cards.length + ' карт вместо ' + hand.length;
+    for (let i = 0; i < hand.length; i++) {
+        const card = FS_REQUISITIONS.card(hand[i]);
+        const text = textsOf(cards[i]);
+        if (cards[i].tagName !== 'BUTTON') return 'карта ' + card.name + ' не нажимается';
+        if (!text.some(t => t === card.name) || !text.some(t => t === card.text)) return 'не показано полное описание карты ' + card.name;
+    }
+    const index = hand.length - 1;
+    cards[index].click();
+    if (JSON.stringify(f.sent) !== JSON.stringify([{ type: 'chooseRequisitionCard', index }])) return 'клик отправил неверную карту: ' + JSON.stringify(f.sent);
+    const result = FS_RULES.apply(f.live, f.seat, f.sent[0]);
+    if (!result.ok) return 'сервер не принял выбор карты: ' + result.error;
+    return true;
+});
 
 screen('setup-ui-1', 'обе стороны каждого физического тайла показаны рядом и каждая нажимается', () => {
     const f = setupFixture(), p = f.panel();

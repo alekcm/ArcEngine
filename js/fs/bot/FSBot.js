@@ -84,7 +84,7 @@ const FS_BOT = {
         return { persona, name: this.NAMES[factionId] || 'Бот', line: FS_BOT_PERSONAS.hint(factionId, persona) || 'играет как умеет' };
     },
 
-    /** The hint line of a bot: «Варбосс: WAAAGH! с первого плана». */
+    /** The tactical hint for an explicitly selected bot persona, if it is public. */
     line(factionId, persona) {
         const d = this.defaults(factionId);
         const id = persona && FS_BOT_PERSONAS.fits(persona, factionId) ? persona : d.persona;
