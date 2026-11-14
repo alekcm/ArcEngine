@@ -308,7 +308,7 @@ const FSUI = {
             header.append(this.el('span', 'fs-brand', 'FORBIDDEN STARS'), this.el('i', 'fs-divider'));
             const phaseLabel = game ? game.label : 'Галактическая война';
             header.append(this.el('span', 'fs-phase', game ? (game.is(GamePhase.SETUP)
-                ? phaseLabel : 'Раунд ' + game.round + ' · ' + phaseLabel) : phaseLabel));
+                ? phaseLabel : 'Раунд ' + game.round + ' из ' + game.rounds + ' · ' + phaseLabel) : phaseLabel));
             const activeSeat = game ? game.active : 0;
             if (state && state.players[activeSeat]) {
                 // The active player: clicking the pill opens his faction dossier on the right.
@@ -1572,11 +1572,48 @@ const FSUI = {
     // The start of the ordinary party: the host has «Начать игру» (grey until
     // everybody is ready — the reason is written under it), everybody else has
     // «Готов», which locks the faction and can be taken back.
+    // The length of the party: «8 — классика», «5 — блиц» and the rest of the
+    // choices. The host picks; the guests see the choice and the same words.
+    roundsLabel(n) {
+        const names = { 8: 'классика', 5: 'блиц' };
+        return names[n] ? n + ' — ' + names[n] : String(n);
+    },
+
+    roundsWord(n) {
+        const mod10 = n % 10, mod100 = n % 100;
+        if (mod10 === 1 && mod100 !== 11) return n + ' раунд';
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return n + ' раунда';
+        return n + ' раундов';
+    },
+
+    renderLobbyRounds(info) {
+        const row = this.el('div', 'fs-rounds-row');
+        const current = Number(info.rounds) || FS_RULES_CONFIG.ROUNDS;
+        row.append(this.el('span', 'fs-palette-title', 'Длина партии'));
+        if (info.isHost) {
+            const choices = (FS_RULES_CONFIG.ROUND_CHOICES || []).slice();
+            if (!choices.includes(current)) choices.push(current);
+            choices.sort((a, b) => a - b).forEach(n => {
+                const button = this.el('button', 'fs-rounds-choice' + (n === current ? ' is-selected' : ''));
+                button.type = 'button';
+                button.append(this.el('b', '', String(n)), this.el('span', '', n === 8 ? 'классика' : n === 5 ? 'блиц' : this.roundsWord(n).replace(/^\d+ /, '')));
+                button.title = 'Партия на ' + this.roundsWord(n);
+                button.addEventListener('click', () => info.onRounds && info.onRounds(n));
+                row.append(button);
+            });
+        } else {
+            row.append(this.el('span', 'fs-rounds-value', 'Партия на ' + this.roundsWord(current)
+                + (current === 8 ? ' (классика)' : current === 5 ? ' (блиц)' : '') + ' — выбирает хозяин комнаты'));
+        }
+        return row;
+    },
+
     renderLobbyStart(info) {
         const wrap = this.el('div', 'fs-lobby-go');
         const start = info.start || { ok: false, msg: '' };
         const hostSeat = (info.players || []).find(p => p.id === info.host);
         const hostName = hostSeat ? hostSeat.name : 'хозяин комнаты';
+        wrap.append(this.renderLobbyRounds(info));
         if (info.isHost) {
             const button = this.el('button', 'fs-start-test fs-start-game');
             button.type = 'button';
@@ -1751,7 +1788,7 @@ const FSUI = {
         const phaseName = GamePhase.of(state).label.toLowerCase();
         const activeSeat = GamePhase.of(state).active;
         const who = state.players[activeSeat] ? state.players[activeSeat].name : '';
-        this.set('fsPhase', 'Раунд ' + GamePhase.of(state).round + ' · ' + phaseName
+        this.set('fsPhase', 'Раунд ' + GamePhase.of(state).round + ' из ' + GamePhase.of(state).rounds + ' · ' + phaseName
             + (GamePhase.of(state).is(GamePhase.REFRESH) ? '' : ' · ход: ' + who));
         const lines = state.players.map(p => {
             const marks = [];

@@ -423,6 +423,17 @@ try {
         assert.equal(notReady.t, 'err', 'без «Готов» третьего партия не начинается');
         assert.match(notReady.msg, /готовность: Третий/i);
 
+        // The length of the party: eight by default, the host makes it a «блиц»
+        // of five; a guest may not, and a length the engine does not know is refused.
+        assert.equal(twins.rounds, 8, 'по умолчанию партия на восемь раундов');
+        guest.send({ t: 'options', rounds: 5 });
+        assert.match((await guest.take(t('err'), 'длину меняет гость')).msg, /хозяин/i);
+        host.send({ t: 'options', rounds: 40 });
+        assert.match((await host.take(t('err'), 'длина вне диапазона')).msg, /от 1 до 12/i);
+        host.send({ t: 'options', rounds: 5 });
+        const blitz = await roomOf(late, m => m.rounds === 5, 'все видят блиц на пять раундов');
+        assert.equal(blitz.players.length, 3, 'список комнаты тот же');
+
         // A fourth friend opens the link and closes the tab: his silent seat
         // would block the start — the host clears it. An online seat cannot be cleared.
         const ghost = await connect();
@@ -454,6 +465,7 @@ try {
         const views = await Promise.all([host, guest, late].map((client, seat) =>
             client.take(message => message.t === 'state' && message.view.seat === seat, 'состояние места ' + seat)));
         assert.deepEqual(views.map(m => m.view.players[m.view.seat].faction), ['эльдары', 'некроны', 'некроны'], 'партия идёт выбранными фракциями, двое — Некроны');
+        assert.ok(views.every(m => m.view.rounds === 5), 'партия началась на пять раундов, как выбрал хозяин');
         const colors = views[0].view.players.map(p => p.color);
         assert.equal(new Set(colors).size, 3, 'два игрока одной фракции получили разные цвета: ' + colors.join(', '));
         assert.equal(views[0].view.players[1].color, views[0].view.players[1].palette.primary, 'цвет игрока — его основная краска');
@@ -682,7 +694,7 @@ try {
 
     await delay(25);
     for (const join of joins) assert.ok(!server.output().includes(join.id), 'диагностический журнал не раскрывает секрет');
-    console.log('  LAN: закрытые id, отказ подмене места и бота, соло-тесты, лобби («Готов»/«Начать игру», смена фракции, уборка молчащего места), выход, три приватных состояния и переподключение — без ошибок.');
+    console.log('  LAN: закрытые id, отказ подмене места и бота, соло-тесты, лобби («Готов»/«Начать игру», смена фракции, одинаковые фракции, длина партии, уборка молчащего места), выход, три приватных состояния и переподключение — без ошибок.');
 } catch (error) {
     console.error('  LAN: FAIL — ' + (error && error.stack || error));
     process.exitCode = 1;

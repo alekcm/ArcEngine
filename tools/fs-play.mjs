@@ -5,7 +5,7 @@
 //                                              дуэли и один стол на четверых
 //  node tools/fs-play.mjs --faction=орки       только партии с этой фракцией
 //  node tools/fs-play.mjs --seed=7             один сид для всех партий
-//  node tools/fs-play.mjs --rounds=3           короче партии (по умолчанию 8)
+//  node tools/fs-play.mjs --rounds=3           длина партии по правилам (по умолчанию 8; зеркальные дуэли гейта — блиц на 5)
 //  node tools/fs-play.mjs --games=2            столько сидов на каждую пару
 //  node tools/fs-play.mjs --verbose            журнал каждой партии
 //  node tools/fs-play.mjs --vs=эльдары,орки --seed=11   одна конкретная партия
@@ -644,7 +644,11 @@ function playGame(players, seed, rounds, run) {
     const stats = newStats();
     const bot = new Bot(rnd, stats);
     const interactive = ((Number(seed) | 0) % 2) === 1;
-    let st = R.newGame({ seed: (Number(seed) | 0) || 1, players, interactiveSetup: interactive });
+    // The length is the real length of the party (state.rounds): the game ends
+    // by its own rule, and the loop below only guards against a party that
+    // would not end by itself.
+    let st = R.newGame({ seed: (Number(seed) | 0) || 1, rounds, players, interactiveSetup: interactive });
+    if (st.rounds !== rounds) throw new Error('newGame не принял длину партии ' + rounds + ': в состоянии ' + st.rounds);
     const refusals = {};
     const describe = (label, extra) => label + ' · раунд ' + st.round + ' · ' + st.phase + (st.order ? ' · ' + st.order.order + ':' + (st.order.phase || PhasePlan.of(st.order).phase || '') : '')
         + (st.combat ? ' · бой:' + CombatTurn.of(st.combat).step : '') + (extra ? ' · ' + extra : '');
@@ -677,7 +681,7 @@ function playGame(players, seed, rounds, run) {
     const MAX = 40000;
     while (steps++ < MAX) {
         if (st.over || GameOutcome.of(st).over) break;
-        if (st.round > rounds) break;
+        if (st.round > rounds + 1) fail('партия не кончилась после раунда ' + rounds, { round: st.round, rounds: st.rounds });
         // Застревание: одно и то же состояние много команд подряд.
         const hash = JSON.stringify([st.round, st.phase, st.turn, st.order, st.pending, st.combat && [st.combat.round, st.combat.step, st.combat.dice, st.combat.tokens], st.strike, st.trim, st.event, st.units.length, st.players.map(p => [p.materiel, p.assets])]);
         if (hash === lastHash) { if (++same > 60) fail('партия стоит на месте', { pending: st.pending, order: st.order, combat: st.combat && st.combat.step }); }
@@ -804,7 +808,7 @@ function schedule() {
         // Одна фракция у нескольких игроков: зеркальная дуэль и стол, где одну
         // расу играют двое, — жетоны целей и цвета различают игроков по местам.
         const mirror = turned[0];
-        games.push({ name: 'зеркало: ' + mirror + ' против ' + mirror, factions: [mirror, mirror], seed });
+        games.push({ name: 'зеркало (блиц на 5): ' + mirror + ' против ' + mirror, factions: [mirror, mirror], seed, rounds: 5 });
         const twins = [turned[1], turned[2], turned[1], turned[3]];
         games.push({ name: 'стол с двойником: ' + twins.join(', '), factions: twins, seed });
     });
@@ -824,7 +828,7 @@ for (const game of schedule()) {
     const players = game.factions.map((faction, i) => ({ faction, name: 'P' + i + ' ' + (FS_CATALOG.faction(faction) || {}).name, id: 'p' + i }));
     const tag = game.name + ', сид ' + game.seed;
     try {
-        const { st, stats, refusals, interactive } = playGameLogged(players, game.seed, ROUNDS);
+        const { st, stats, refusals, interactive } = playGameLogged(players, game.seed, game.rounds || ROUNDS);
         played++;
         for (const k of Object.keys(total)) total[k] += stats[k] || 0;
         for (const f of game.factions) {
@@ -832,8 +836,9 @@ for (const game of schedule()) {
             pf.games++; pf.battles += stats.battles; pf.cards += stats.cardsPlayed; pf.events += stats.events;
             pf.upgradesUsed += stats.upgradesUsed; pf.strikes += stats.strikes; pf.questions += stats.questions;
         }
-        const end = st.over || GameOutcome.of(st).over ? 'партия окончена' + (st.winner !== null && st.winner !== undefined ? ', победил ' + (st.players[st.winner] ? st.players[st.winner].name : st.winner) : '')
-            : 'сыграно раундов: ' + (st.round - 1);
+        if (!(st.over || GameOutcome.of(st).over)) throw new Error('партия не окончена: раунд ' + st.round + ' из ' + st.rounds);
+        const end = 'партия окончена' + (st.winner !== null && st.winner !== undefined ? ', победил ' + (st.players[st.winner] ? st.players[st.winner].name : st.winner) : '')
+            + (st.round > st.rounds ? ' после раунда ' + st.rounds : ' в раунде ' + st.round);
         console.log('  ' + C.grn + 'ok  ' + C.r + tag + C.dim + ' — ' + end + '; команд ' + stats.commands + ', боёв ' + stats.battles
             + ' (раундов боя ' + stats.combatRounds + ', карт ' + stats.cardsPlayed + '), ударов ' + stats.strikes + ', покупок ' + (stats.unitsBought + stats.structuresBought)
             + ', улучшений ' + (stats.combatUpgrades + stats.orderUpgrades) + '/' + stats.upgradesUsed + ', событий ' + stats.events + ', вопросов ' + stats.questions + C.r);

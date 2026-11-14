@@ -308,6 +308,7 @@ screen('lobby-5', 'клиент: список комнаты от сервера
         start() { return net.send({ t: 'start' }); },
         kick(id) { return net.send({ t: 'kick', id }); },
         palette(pal) { return net.send({ t: 'palette', palette: pal }); },
+        options(opts) { return net.send(Object.assign({ t: 'options' }, opts)); },
         undo: nothing, cmd: nothing,
     };
     const emit = (type, msg) => { for (const fn of handlers[type] || []) fn(msg); };
@@ -336,8 +337,21 @@ screen('lobby-5', 'клиент: список комнаты от сервера
         const start = buttons.find(b => textsOf(b).some(t => /^Начать игру$/.test(t)));
         if (!start) return 'хозяин не получил кнопку «Начать игру»';
         if (!start.disabled) return 'кнопка старта активна, хотя сервер сказал ждать';
+        // The length of the party: the host has the choices, the click goes to the
+        // server, and the list that comes back selects the chosen length.
+        const words = b => textsOf(b).join(' ');
+        const lengths = buttons.filter(b => /fs-rounds-choice/.test(b.className));
+        if (lengths.map(b => words(b).replace(/\D/g, '')).join() !== '4,5,6,7,8') return 'хозяину показаны не те длины партии: ' + lengths.map(words).join(' | ');
+        if (!lengths.find(b => /8/.test(words(b)) && /классика/.test(words(b)) && /is-selected/.test(b.className))) return 'по умолчанию не выбрана классика на 8';
+        lengths.find(b => /5/.test(words(b)) && /блиц/.test(words(b))).click();
+        const length = sent.find(m => m.t === 'options');
+        if (!length || length.rounds !== 5) return 'выбор блица не ушёл на сервер';
+        const blitzChosen = () => buttonsOf(FSUI.modernRoot).some(b => /fs-rounds-choice/.test(b.className) && /5/.test(words(b)) && /is-selected/.test(b.className));
+        if (blitzChosen()) return 'клиент выбрал длину сам, не дождавшись сервера';
+        emit('room', { code: 'ABCD', host: 'p1', rounds: 5, start: { ok: false, msg: 'Ждём выбор фракции: Третий.' }, players: seats });
+        if (!blitzChosen()) return 'список комнаты не выбрал блиц';
         // Everybody is ready: the button opens and the click goes to the server.
-        emit('room', { code: 'ABCD', host: 'p1', start: { ok: true, msg: '' }, players: seats });
+        emit('room', { code: 'ABCD', host: 'p1', rounds: 5, start: { ok: true, msg: '' }, players: seats });
         buttons = buttonsOf(FSUI.modernRoot);
         buttons.find(b => textsOf(b).some(t => /^Начать игру$/.test(t))).click();
         if (!sent.some(m => m.t === 'start')) return 'нажатие «Начать игру» не ушло на сервер';
@@ -348,10 +362,12 @@ screen('lobby-5', 'клиент: список комнаты от сервера
         if (!pick || pick.faction !== 'орки') return 'смена фракции не ушла на сервер';
         // The host leaves: the guest becomes the host, this seat is a guest with «Готов».
         emit('joined', { id: 'secret2', publicId: 'p2', room: 'ABCD', seat: 1, palette: null, started: false, factions, invites: [] });
-        emit('room', { code: 'ABCD', host: 'p1', start: { ok: false, msg: 'Ждём готовность: Гость.' },
+        emit('room', { code: 'ABCD', host: 'p1', rounds: 5, start: { ok: false, msg: 'Ждём готовность: Гость.' },
             players: seats.map(p => p.id === 'p2' ? Object.assign({}, p, { ready: false }) : p) });
         if (game.faction !== 'некроны' || game.ready !== false) return 'место гостя не синхронизировано: ' + game.faction + '/' + game.ready;
         buttons = buttonsOf(FSUI.modernRoot);
+        if (buttons.some(b => /fs-rounds-choice/.test(b.className))) return 'гостю показаны кнопки длины партии — выбирает хозяин';
+        if (!textsOf(FSUI.modernRoot).some(t => /Партия на 5 раундов \(блиц\)/.test(t))) return 'гость не видит выбранную длину партии';
         const ready = buttons.find(b => textsOf(b).some(t => /^Готов$/.test(t)));
         if (!ready) return 'гость не получил кнопку «Готов»';
         ready.click();

@@ -72,6 +72,38 @@ class GamePhase {
         return this.state.round;
     }
 
+    /**
+     * How long the party is: the number of rounds chosen in the lobby (eight in
+     * the printed game, five in a «блиц»). Everything that depends on the stage
+     * of the party — the end of the game, the panels, the bots — reads this
+     * number and never a literal round.
+     */
+    get rounds() {
+        return GamePhase.length(this.state.rounds);
+    }
+
+    /** A valid length of a party: an integer of ROUNDS_RANGE, else the default. */
+    static length(value) {
+        const [min, max] = FS_RULES_CONFIG.ROUNDS_RANGE;
+        const n = Number(value);
+        return Number.isInteger(n) && n >= min && n <= max ? n : FS_RULES_CONFIG.ROUNDS;
+    }
+
+    /** The rounds still to be played, the current one included (0 after the last). */
+    get roundsLeft() {
+        return Math.max(0, this.rounds - (this.round || 1) + 1);
+    }
+
+    /** How far the party has gone: 0 at the first round, close to 1 at the last. */
+    get progress() {
+        return Math.max(0, Math.min(1, ((this.round || 1) - 1) / this.rounds));
+    }
+
+    /** Is this the last round of the party? */
+    get isLastRound() {
+        return (this.round || 1) >= this.rounds;
+    }
+
     /** How many players sit at the table. */
     get count() {
         return (this.state.players || []).length;

@@ -88,6 +88,9 @@ class Room {
         // A test party is played by one person: both seats belong to him, so the
         // server sends the view of the seat that has to act right now.
         this.solo = false;
+        // The length of the party the host chose: eight rounds by default, five
+        // for a «блиц». It goes into newGame, and the state carries it from there.
+        this.rounds = FS_RULES.ROUNDS;
     }
 
     add(name, faction, id, palette) {
@@ -154,6 +157,7 @@ class Room {
         if (!status.ok) return status;
         this.state = FS_RULES.newGame({
             seed: (Date.now() % 100000) + 1,
+            rounds: this.rounds,
             players: this.players.map(p => ({ name: p.name, faction: p.faction, palette: p.palette })),
             interactiveSetup: true,
         });
@@ -427,6 +431,7 @@ function sendRoomInfo(room) {
         // server decides both, the client only shows them.
         host: host ? host.publicId : '',
         start: room.started ? { ok: false, msg: '' } : room.startStatus(),
+        rounds: room.rounds,
         players: room.players.map(p => ({
             id: p.publicId || 'bot', name: p.name, faction: p.faction, palette: p.palette || null, seat: p.seat,
             ready: !!p.ready, online: !!(p.ws && p.ws.open), bot: !!p.bot,
@@ -554,6 +559,22 @@ function handle(ws, msg) {
         if (!res.ok) { ws.send({ t: 'err', msg: res.msg }); sendRoomInfo(room); return; }
         sendRoomInfo(room);
         sendState(room);
+        return;
+    }
+    if (msg.t === 'options') {
+        // The settings of the party — for now the length. Only the host, only
+        // in the lobby; a value the engine does not know is refused, not rounded.
+        const room = ws.room, player = ws.player;
+        if (!room || !player) return;
+        if (room.started) { ws.send({ t: 'err', msg: 'Игра уже идёт.' }); return; }
+        if (room.host() !== player) { ws.send({ t: 'err', msg: 'Длину партии выбирает хозяин комнаты.' }); return; }
+        if (msg.rounds !== undefined) {
+            const n = Number(msg.rounds);
+            const [min, max] = FS_RULES.ROUNDS_RANGE;
+            if (!Number.isInteger(n) || n < min || n > max) { ws.send({ t: 'err', msg: 'Партия может длиться от ' + min + ' до ' + max + ' раундов.' }); return; }
+            room.rounds = n;
+        }
+        sendRoomInfo(room);
         return;
     }
     if (msg.t === 'kick') {

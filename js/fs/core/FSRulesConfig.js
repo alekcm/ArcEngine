@@ -15,7 +15,11 @@ const FS_RULES_CONFIG = {
     DICE_MAX: 8,           // no more than eight dice in a combat
     COMBAT_HAND: 5,        // the cards a battle deals to each side
     ORDER_TOKENS: 4,       // four order tokens per round
-    ROUNDS: 8,             // the game ends after the eighth round
+    ROUNDS: 8,             // the printed game ends after the eighth round — the default length
+    // The lengths the lobby offers: the classic eight and the shorter parties
+    // («блиц» — five). The engine itself accepts any length of ROUNDS_RANGE.
+    ROUND_CHOICES: [4, 5, 6, 7, 8],
+    ROUNDS_RANGE: [1, 12],
     ORDER_SUPPLY: 2,       // two tokens of every kind in the hand of a player
     AREA_CAP: 3,           // the unit capacity of a void
     AREA_MAX_UNITS: 5,     // no more than five units in one area

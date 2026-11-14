@@ -4540,6 +4540,41 @@ rule('win-2', '«When a player is eliminated, this does not reduce the number of
 // ============================================================================
 head('Орбитальный удар (Orbital Strike)');
 
+rule('rounds-1', 'Длина партии — число в состоянии (state.rounds), а не константа: лобби выбирает 8 (классика) или 5 (блиц); конец партии, доля сыгранного и остаток считаются от него.', () => {
+    const two = [{ faction: 'орки', name: 'A' }, { faction: 'эльдары', name: 'B' }];
+    const classic = FS_RULES.newGame({ seed: 3, players: two });
+    eq(classic.rounds, FS_RULES.ROUNDS, 'без выбора — восемь раундов');
+    eq(GamePhase.of(classic).rounds, 8, 'GamePhase читает длину из состояния');
+    for (const bad of [0, -1, 13, 2.5, 'пять', null, undefined]) {
+        eq(FS_RULES.newGame({ seed: 3, players: two, rounds: bad }).rounds, 8, 'непонятная длина ' + JSON.stringify(bad) + ' → по умолчанию');
+    }
+    const blitz = FS_RULES.newGame({ seed: 3, players: two, rounds: 5 });
+    eq(blitz.rounds, 5, 'блиц — пять раундов');
+    eq(FS_RULES.view(blitz, 0).rounds, 5, 'вид игрока знает длину партии');
+    // The stage of the party is a share, never a round number.
+    const stage = round => { blitz.round = round; const g = GamePhase.of(blitz); return [g.roundsLeft, Math.round(g.progress * 100) / 100, g.isLastRound]; };
+    eq(stage(1), [5, 0, false], 'первый раунд блица: впереди пять, сыграно 0');
+    eq(stage(4), [2, 0.6, false], 'четвёртый раунд блица: осталось два, сыграно 60 %');
+    eq(stage(5), [1, 0.8, true], 'пятый раунд блица — последний');
+    eq(stage(6), [0, 1, true], 'после последнего — ничего не осталось');
+    // The game ends after the chosen round, not after the eighth.
+    const st = empty();
+    st.rounds = 5;
+    const a = st.systems[0], b = st.systems[2] || st.systems[1];
+    guard(st, 0, a.id, worldOf(st, a.id));
+    olk(st, 1, b.id, worldOf(st, b.id));
+    st.players[0].objectives = 1;
+    st.players[1].objectives = 0;
+    st.round = 4;
+    FS_RULES.endRound(st);
+    eq(st.over, false, 'после четвёртого раунда блиц продолжается');
+    st.round = 5; st.phase = 'operations';
+    FS_RULES.endRound(st);
+    eq(st.over, true, 'после пятого раунда блиц окончен');
+    eq(st.winner, 0, 'побеждает тот, у кого больше целей');
+    eq(st.log.some(l => /Раунд 5 закончен/.test(l.text)), true, 'журнал называет последний раунд партии, а не восьмой');
+});
+
 rule('win-3', '«If no player has won the game by the end of the eighth game round … the player that has gathered the most objective tokens wins. If still tied, the player that has the most friendly worlds wins.»', () => {
     const st = empty();
     const a = st.systems[0], b = st.systems[2] || st.systems[1];

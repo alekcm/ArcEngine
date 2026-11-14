@@ -196,6 +196,7 @@ class FSGame {
             this.lobby.players = msg.players || [];
             this.lobby.host = msg.host || '';
             this.lobby.start = msg.start || { ok: false, msg: '' };
+            this.lobby.rounds = Number(msg.rounds) || this.lobby.rounds || FS_RULES_CONFIG.ROUNDS;
             // The server's record of this seat is the truth: after a page reload
             // the faction and the readiness come back from the list, and a
             // readiness dropped by the server (a changed faction) is reflected.
@@ -262,6 +263,7 @@ class FSGame {
             isHost,
             ready,
             start: this.lobby.start || { ok: false, msg: '' },
+            rounds: this.lobby.rounds || FS_RULES_CONFIG.ROUNDS,
             players: this.lobby.players,
             factions: this.lobby.factions,
             link: this.shareLink(),
@@ -287,6 +289,13 @@ class FSGame {
                 this.net.start();
             },
             onKick: id => { if (this.net) this.net.kick(id); },
+            // The length of the party: the host's choice goes to the server, the
+            // room list that comes back shows it to everybody.
+            onRounds: n => {
+                if (!this.net) return;
+                this.status = '';
+                this.net.options({ rounds: n });
+            },
             onPalette: pal => {
                 this.palette = pal;
                 if (this.net) this.net.palette(pal);

@@ -175,6 +175,14 @@
 .fs-lobby-error{margin-top:10px;padding:8px 11px;border:1px solid #a26e60;border-radius:9px;background:#281713ed;color:#ffd1bc;font-size:10px}
 /* «Готов» and «Начать игру»: the start of the ordinary party. */
 .fs-lobby-go{margin-top:4px}
+.fs-rounds-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:10px 12px;border:1px solid #ffffff16;border-radius:10px;background:#ffffff08}
+.fs-rounds-choice{display:inline-flex;align-items:baseline;gap:5px;padding:5px 10px;border:1px solid #ffffff22;border-radius:8px;background:#0b1216;color:#c9d2d0;font:inherit;font-size:10px;cursor:pointer}
+.fs-rounds-choice b{font-size:13px;color:#e8d9b0}
+.fs-rounds-choice span{color:#9faaa8;letter-spacing:.06em;text-transform:uppercase;font-size:8px}
+.fs-rounds-choice:hover{border-color:#ffffff55}
+.fs-rounds-choice.is-selected{border-color:var(--gold);background:#2a2414;color:#fff}
+.fs-rounds-choice.is-selected span{color:var(--gold)}
+.fs-rounds-value{font-size:10px;color:#c9d2d0}
 .fs-lobby-wait{margin-top:7px;text-align:center;font-size:10px;color:#9faaa8}
 .fs-start-test:disabled{opacity:.45;cursor:default}
 .fs-start-test:disabled:hover{transform:none;border-color:#e3c780aa;background:linear-gradient(120deg,#d8b87336,#d8b87314)}

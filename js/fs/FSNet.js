@@ -63,6 +63,10 @@ const FSNet = {
             kick(id) {
                 return net.send({ t: 'kick', id });
             },
+            // The settings of the party the host chooses in the lobby: { rounds }.
+            options(opts) {
+                return net.send(Object.assign({ t: 'options' }, opts || {}));
+            },
             // The army paint chosen in the lobby: { primary, secondary1, secondary2 }.
             palette(palette) {
                 net.palette = palette;

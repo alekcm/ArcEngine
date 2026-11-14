@@ -17,6 +17,9 @@ class SetupRules {
             rng: (opts.seed || 1) | 0,
             uid: 0,
             round: 1,
+            // The length of the party, chosen in the lobby (8 — the printed game,
+            // 5 — «блиц»). The end of the game and the bots read it from here.
+            rounds: GamePhase.length(opts.rounds),
             phase: opts.interactiveSetup ? 'setup' : 'planning',
             firstPlayer: 0,
             turn: 0,

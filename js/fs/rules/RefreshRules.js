@@ -361,17 +361,19 @@ class RefreshRules {
             this.declareWin(state, won, false);
             return;
         }
-        if (GamePhase.of(state).round > this.engine.ROUNDS) {
+        const length = GamePhase.of(state).rounds;
+        if (GamePhase.of(state).round > length) {
             // The tie-breaks of the rules: objectives, friendly worlds, units, and
-            // only then a shared victory.
+            // only then a shared victory. The last round is the one the lobby
+            // chose — eight in the printed game, fewer in a short party.
             const { best, shared } = this.standings(state, alive);
             GameOutcome.of(state).byRound(best.seat, shared.map(p => p.seat));
             if (shared.length > 1) {
-                this.engine.log(state, -1, 'Раунд ' + this.engine.ROUNDS + ' закончен. Победа делится между '
+                this.engine.log(state, -1, 'Раунд ' + length + ' закончен. Победа делится между '
                     + shared.map(p => p.name).join(' и ') + '.');
                 return;
             }
-            this.engine.log(state, -1, 'Раунд ' + this.engine.ROUNDS + ' закончен. Побеждает ' + best.name + '.');
+            this.engine.log(state, -1, 'Раунд ' + length + ' закончен. Побеждает ' + best.name + '.');
             return;
         }
         GamePhase.of(state).start(GamePhase.PLANNING);
