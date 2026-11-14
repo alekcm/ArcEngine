@@ -29,7 +29,7 @@
 
 /* global FS_RULES, FS_CATALOG, FS_BOT_PERSONAS, FSBotBrain, PhasePlan, MarchPlan, OrderContext, OrderMove, OrderTally, OrderDeal, CombatTurn,
    CombatSides, CombatHooks, CombatCards, CombatOutcome, BattleField, Question, StrikeDamage, GameOutcome, GamePhase, EventPhase,
-   EventRound, BoardSetup, Purchases, DeployScope, UpgradeOrder */
+   EventRound, BoardSetup, Purchases, DeployScope, UpgradeOrder, TileGeometry */
 
 const FS_BOT = {
     /** The levels: presets of the temperature and the top-p of one bot. */
@@ -521,9 +521,17 @@ class FSBot {
         if (stage === BoardSetup.FORCES) return this.setupForces(view, rnd);
         if (stage === BoardSetup.OBJECTIVES) return this.setupObjective(view, rnd);
         if (stage === BoardSetup.STORMS) {
+            const faction = view.players[seat].faction;
             const options = [];
             for (const sys of view.systems) for (const side of R.setupStormSides(view, sys.id)) {
-                options.push({ system: sys.id, side, score: this.borderWorth(view, sys.id, R.across(view, sys.id, side)) + rnd() * 0.5 });
+                const across = R.across(view, sys.id, side);
+                const other = across && R.system(view, across);
+                const tile = FS_CATALOG.tile(sys.tile);
+                const otherTile = other && FS_CATALOG.tile(other.tile);
+                const homeBorderToFoe = (tile && tile.home === faction && other && other.owner !== seat)
+                    || (otherTile && otherTile.home === faction && sys.owner !== seat);
+                const score = this.borderWorth(view, sys.id, across) + (homeBorderToFoe ? 1.5 : 0);
+                options.push({ system: sys.id, side, score: score + rnd() * 0.5 });
             }
             const o = this.choose(rnd, options, 'setupStorm');
             if (o) return { cmd: { type: 'setupStorm', system: o.system, side: o.side }, must: true, label: 'setupStorm' };
@@ -532,20 +540,85 @@ class FSBot {
         return null;
     }
 
-    /** The worth of a tile to the one who places it: income, assets, token spaces. */
+    /** The worth of one world to its builder: income, assets and objective space. */
+    setupWorldWorth(world) {
+        if (!world) return 0;
+        return (world.materiel || 0) * 1.5 + (world.assets || []).length * 1.2 + (world.objective ? 1 : 0);
+    }
+
+    /** The printed worth of a tile: income, assets and objective spaces. */
     tileWorth(tile) {
+        return (tile.areas || []).reduce((sum, area) => sum + this.setupWorldWorth(area.world), 0);
+    }
+
+    /**
+     * Value the world-to-world links made by a tile at this cell. A rich world
+     * on a gold edge to the player's home is especially useful: ground forces
+     * can move between those areas without having to cross a void.
+     */
+    setupEdgeWorth(view, tile, cell, rotation, seat, faction) {
+        const edges = [
+            { side: 'N', dr: -1, dc: 0 }, { side: 'E', dr: 0, dc: 1 },
+            { side: 'S', dr: 1, dc: 0 }, { side: 'W', dr: 0, dc: -1 },
+        ];
+        const areas = (tile.areas || []).map(a => ({ pos: this.R.rotateArea(a.pos, rotation), world: a.world }));
         let worth = 0;
-        for (const a of tile.areas || []) {
-            if (!a.world) continue;
-            worth += (a.world.materiel || 0) * 1.5 + (a.world.assets || []).length * 1.2 + (a.world.objective ? 1 : 0);
+        for (const edge of edges) {
+            const neighbor = view.systems.find(s => Number(s.row) === Number(cell.row) + edge.dr
+                && Number(s.col) === Number(cell.col) + edge.dc);
+            if (!neighbor) continue;
+            const neighborTile = FS_CATALOG.tile(neighbor.tile);
+            const neighborHome = neighborTile && neighborTile.home === faction;
+            const ownNeighbor = neighbor.owner === seat;
+            const candidateHome = tile.home === faction;
+            for (const area of areas) {
+                if (!area.world) continue;
+                for (const other of neighbor.areas || []) {
+                    if (!other.world || !TileGeometry.areasTouch(edge.side, area.pos, other.pos)) continue;
+                    const value = Math.min(4, this.setupWorldWorth(area.world));
+                    worth += 0.8 + value * 0.15; // a continuous world-to-world route
+                    if ((neighborHome && !candidateHome) || (candidateHome && ownNeighbor)) {
+                        worth += 2 + value * 0.5; // orient valuable worlds toward my home
+                    } else if (ownNeighbor) {
+                        worth += 0.8 + value * 0.2; // keep my own systems connected
+                    }
+                }
+            }
         }
         return worth;
     }
 
     /**
-     * The tile and the cell: the home goes first, the rich tiles next to the
-     * home, the poor ones away from it (and next to the others); the home
-     * itself as far from the other homes as the board allows.
+     * Capacity the face can contribute toward the starting forces. The rules
+     * reject faces that make the whole hand impossible; this bonus prefers
+     * those with useful room on this particular tile.
+     */
+    setupCapacityWorth(view, tile, seat) {
+        const R = this.R;
+        const initial = view.players[seat].initialForces || { units: {}, structures: {} };
+        let groundNeed = 0, shipNeed = 0;
+        for (const [id, n] of Object.entries(initial.units || {})) {
+            const def = R.unitDef(view, seat, id);
+            if (def && def.type === 'ship') shipNeed += n;
+            else groundNeed += n;
+        }
+        const structureNeed = Object.values(initial.structures || {}).reduce((sum, n) => sum + n, 0);
+        let groundRoom = 0, shipRoom = 0, worlds = 0;
+        for (const area of tile.areas || []) {
+            if (area.world) {
+                worlds++;
+                groundRoom += Math.min(area.world.capacity || R.AREA_CAP, R.AREA_MAX_UNITS);
+            } else shipRoom += R.AREA_CAP;
+        }
+        return Math.min(groundNeed, groundRoom) * 0.3 + Math.min(shipNeed, shipRoom) * 0.3
+            + Math.min(structureNeed, worlds) * 0.6;
+    }
+
+    /**
+     * The home goes first and far from other homes; rich systems are placed by
+     * my home, with their richest worlds facing it across a gold border. Poor
+     * systems are pushed outward. Every face and quarter-turn is scored, while
+     * the rule's force-fit check keeps the remaining hand deployable.
      */
     setupTile(view, rnd) {
         const R = this.R, seat = this.seat;
@@ -553,37 +626,50 @@ class FSBot {
         const cells = view.setup.legalCells && view.setup.legalCells.length ? view.setup.legalCells : R.setupLegalCells(view);
         const hand = view.setup.hand || board.hand(seat);
         if (!cells.length || !hand.length) return null;
-        const faction = view.players[seat].faction;
+        const me = view.players[seat];
+        const faction = me.faction;
         const mine = view.systems.filter(s => s.owner === seat);
         const theirs = view.systems.filter(s => s.owner !== seat && s.owner !== undefined && s.owner !== null);
-        const dist = (c, s) => Math.abs(c.row - s.row) + Math.abs(c.col - s.col);
+        const homeSystem = mine.find(s => {
+            const placed = FS_CATALOG.tile(s.tile);
+            return placed && placed.home === faction;
+        });
+        const dist = (c, s) => Math.abs(Number(c.row) - Number(s.row)) + Math.abs(Number(c.col) - Number(s.col));
         const near = (c, list) => (list.length ? Math.min(...list.map(s => dist(c, s))) : null);
         const candidates = [];
-        for (const id of hand) {
-            const tile = FS_CATALOG.tile(id);
-            if (!tile) continue;
-            const home = tile.home === faction;
-            const worth = this.tileWorth(tile);
-            for (const cell of cells) {
-                let score = 0;
-                const dm = near(cell, mine), dt = near(cell, theirs);
-                if (home) {
-                    score += 4;                                  // the home first: the forces land on it
-                    if (dt !== null) score += Math.min(4, dt) * 1.5; // far from the others
-                    if (dm !== null) score += dm === 1 ? 2 : 0;    // next to my own tiles
-                } else {
-                    // A rich tile close to the home; a poor one far from it and close to the others.
-                    const rich = worth >= 5;
-                    if (dm !== null) score += rich ? (dm === 1 ? 3 : -dm) : (dm === 1 ? -1 : 1);
-                    if (dt !== null) score += rich ? Math.min(3, dt) * 0.5 : (dt === 1 ? 2 : 0);
-                    if (!mine.length) score -= 2;                   // without a home the rich tile waits
+        for (let handIndex = 0; handIndex < hand.length; handIndex++) {
+            const faces = FS_CATALOG.tileFaces(hand[handIndex]);
+            for (const tile of faces) {
+                if (!tile || !R.setupForcesFit(view, seat, tile, handIndex, hand)) continue;
+                const home = tile.home === faction;
+                const rich = this.tileWorth(tile) >= 5;
+                const capacityWorth = this.setupCapacityWorth(view, tile, seat);
+                for (const cell of cells) for (let rotation = 0; rotation < 4; rotation++) {
+                    let score = capacityWorth;
+                    const dm = near(cell, mine), dt = near(cell, theirs);
+                    if (home) {
+                        score += 4;                                    // the home first: the forces land on it
+                        if (dt !== null) score += Math.min(4, dt) * 1.5; // far from the others
+                        if (dm !== null) score += dm === 1 ? 2 : 0;      // next to my own tiles
+                    } else {
+                        // A rich tile close to the home; a poor one far from it and close to the others.
+                        if (dm !== null) score += rich ? (dm === 1 ? 3 : -dm) : (dm === 1 ? -1 : 1);
+                        if (homeSystem) {
+                            const dh = dist(cell, homeSystem);
+                            score += rich ? (dh === 1 ? 2 : -dh * 0.5) : (dh === 1 ? -0.5 : Math.min(3, dh) * 0.2);
+                        }
+                        if (dt !== null) score += rich ? Math.min(3, dt) * 0.5 : (dt === 1 ? 2 : 0);
+                        if (!mine.length) score -= 2;                     // without a home the rich tile waits
+                    }
+                    score += this.setupEdgeWorth(view, tile, cell, rotation, seat, faction);
+                    candidates.push({ tile: tile.id, cell, rotation, score: score + rnd() * 0.3 });
                 }
-                candidates.push({ tile: id, cell, score: score + rnd() * 0.3 });
             }
         }
         const pick = this.choose(rnd, candidates, 'placeSystemTile');
         if (!pick) return null;
-        return { cmd: { type: 'placeSystemTile', tile: pick.tile, row: pick.cell.row, col: pick.cell.col }, must: true, label: 'placeSystemTile' };
+        return { cmd: { type: 'placeSystemTile', tile: pick.tile, rotation: pick.rotation,
+            row: pick.cell.row, col: pick.cell.col }, must: true, label: 'placeSystemTile' };
     }
 
     /** The initial forces: the ground units on the worlds with tokens and income, the ships in the void. */

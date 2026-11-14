@@ -410,9 +410,13 @@ class SetupRules {
         return { ok: true };
     }
 
-    setupForcesFit(state, seat, chosenTile = null, chosenIndex = -1) {
+    setupForcesFit(state, seat, chosenTile = null, chosenIndex = -1, handIds = null) {
         const initial = state.players[seat].initialForces;
-        const future = BoardSetup.of(state).hand(seat).filter((_, i) => i !== chosenIndex).map(id => this.engine.tileFaces(id));
+        // The bot sees the same physical hand under `view.setup.hand`, while
+        // the server state stores it as `setup.hands[seat]`. Accept that view
+        // explicitly so bot scoring uses the very same fit rule as the command.
+        const hand = Array.isArray(handIds) ? handIds : BoardSetup.of(state).hand(seat);
+        const future = hand.filter((_, i) => i !== chosenIndex).map(id => this.engine.tileFaces(id));
         if (chosenTile) future.push([chosenTile]);
         let needGround = 0, needShips = 0;
         for (const [id, n] of Object.entries(initial.units)) {
