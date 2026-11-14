@@ -476,7 +476,7 @@ function setupStep(st) {
     }
     if (stage === BOARD_SETUP.OBJECTIVES) {
         const opt = FS_RULES.setupObjectiveOptions(st)[0];
-        if (opt) return { seat, cmd: { type: 'setupObjective', faction: opt.faction, pos: opt.areas[0] } };
+        if (opt) return { seat, cmd: { type: 'setupObjective', seat: opt.seat, faction: opt.faction, pos: opt.areas[0] } };
         return null;
     }
     if (stage === BOARD_SETUP.STORMS) {

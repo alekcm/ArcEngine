@@ -3810,7 +3810,7 @@ const FS_EFFECTS = {
                 : this.areasFor(R, state, seat, 'structure'));
         return (raw || []).filter(a => {
             if (step && step.noOwnObjective && (state.objectives || []).some(o =>
-                o.faction === state.players[seat].faction && o.system === a.system && o.area === a.pos)) return false;
+                R.objectiveOwnerSeat(state, o) === seat && o.system === a.system && o.area === a.pos)) return false;
             // «если там ещё нет построек» — no structure of anybody stands there.
             if (step && step.noStructures) {
                 return !R.hasStructure(state, a.system, a.pos);

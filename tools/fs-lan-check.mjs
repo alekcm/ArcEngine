@@ -414,13 +414,10 @@ try {
         guest.send({ t: 'ready', ready: true });
         await roomOf(host, m => m.players.some(p => p.name === 'Гость' && p.ready), 'гость снова готов');
 
-        // The same faction twice is still refused (the engine keys objectives by faction).
+        // The same faction twice is allowed: the third takes the Necrons too.
         late.send({ t: 'faction', faction: 'некроны' });
-        const clash = await roomOf(host, m => m.players.filter(p => p.faction === 'некроны').length === 2, 'две одинаковые фракции');
-        assert.equal(clash.start.ok, false, 'одинаковые фракции закрывают старт');
-        assert.match(clash.start.msg, /одну фракцию/i);
-        late.send({ t: 'faction', faction: 'тираниды' });
-        await roomOf(host, m => m.players.some(p => p.name === 'Третий' && p.faction === 'тираниды'), 'третий выбрал');
+        const twins = await roomOf(host, m => m.players.filter(p => p.faction === 'некроны').length === 2, 'две одинаковые фракции');
+        assert.match(twins.start.msg, /готовность: Третий/i, 'одинаковые фракции не закрывают старт — ждём только готовность');
         host.send({ t: 'start' });
         const notReady = await host.take(message => message.t === 'err' || message.t === 'state', 'старт без готовности третьего');
         assert.equal(notReady.t, 'err', 'без «Готов» третьего партия не начинается');
@@ -456,7 +453,10 @@ try {
         host.send({ t: 'start' });
         const views = await Promise.all([host, guest, late].map((client, seat) =>
             client.take(message => message.t === 'state' && message.view.seat === seat, 'состояние места ' + seat)));
-        assert.deepEqual(views.map(m => m.view.players[m.view.seat].faction), ['эльдары', 'некроны', 'тираниды'], 'партия идёт выбранными фракциями');
+        assert.deepEqual(views.map(m => m.view.players[m.view.seat].faction), ['эльдары', 'некроны', 'некроны'], 'партия идёт выбранными фракциями, двое — Некроны');
+        const colors = views[0].view.players.map(p => p.color);
+        assert.equal(new Set(colors).size, 3, 'два игрока одной фракции получили разные цвета: ' + colors.join(', '));
+        assert.equal(views[0].view.players[1].color, views[0].view.players[1].palette.primary, 'цвет игрока — его основная краска');
         const begun = await roomOf(host, m => m.started, 'список начатой партии');
         assert.equal(begun.start.ok, false, 'в начатой партии кнопки старта нет');
         guest.send({ t: 'faction', faction: 'орки' });
@@ -511,7 +511,7 @@ try {
                 if (!cmd) cmd = { type: 'finishSetupForces' };
             } else if (setup.stage === 'objectives') {
                 const option = setup.objectiveOptions[0];
-                cmd = { type: 'setupObjective', faction: option.faction, pos: option.areas[0] };
+                cmd = { type: 'setupObjective', seat: option.seat, pos: option.areas[0] };
             } else if (setup.stage === 'storms') {
                 for (const sys of state.systems) {
                     const side = rules.setupStormSides(state, sys.id)[0];

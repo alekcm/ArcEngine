@@ -36,15 +36,22 @@ class SetupRules {
         };
 
         // --- the players
+        // Several players may take one faction. The second one without a paint
+        // of his own gets the faction colour turned around the hue circle, and
+        // the colour of a player is his primary paint — the flags, the order
+        // tokens and the panels tell the two apart.
+        const factionOf = (p, seat) => this.engine.factionById(p.faction) || FS_CATALOG.factions[seat];
+        const primaries = FS_CATALOG.autoPrimaries(players.map((p, seat) => ({ seat, faction: factionOf(p, seat).id, palette: p.palette })));
         players.forEach((p, seat) => {
-            const faction = this.engine.factionById(p.faction) || FS_CATALOG.factions[seat];
+            const faction = factionOf(p, seat);
+            const palette = this.engine.normalizePalette(p.palette, primaries.get(seat) || faction.color);
             state.players.push({
                 seat,
                 id: p.id || ('p' + seat),
                 name: p.name || faction.name,
                 faction: faction.id,
-                color: faction.color,
-                palette: this.engine.normalizePalette(p.palette, faction.color),
+                color: palette.primary,
+                palette,
                 materiel: 6,
                 assets: { forge: 0, cache: 0, reinforcement: 0, prosperity: 0 },
                 objectives: 0,
@@ -119,10 +126,13 @@ class SetupRules {
         rows.forEach((n, r) => { for (let c = 0; c < n; c++) cells.push({ row: r, col: c }); });
         const seatOrder = [];
         for (const seat of GamePhase.of(state).circle()) seatOrder.push(seat);
+        // «Each player gives two of his objective tokens to each other player»:
+        // the pool holds the SEATS of the owners — two players of one faction
+        // each hand out their own tokens.
         for (const p of state.players) {
             p.objectivePool = [];
             for (const opponent of state.players) {
-                if (opponent.seat !== p.seat) p.objectivePool.push(opponent.faction, opponent.faction);
+                if (opponent.seat !== p.seat) p.objectivePool.push(opponent.seat, opponent.seat);
             }
         }
 
@@ -293,11 +303,18 @@ class SetupRules {
         const owner = sys.owner, used = new Set();
         for (const area of sys.areas) {
             if (!area.world || !area.world.objective) continue;
-            const faction = this.pickObjectiveToken(state, owner, used);
-            if (!faction) continue;
-            used.add(faction);
-            state.objectives.push({ id: this.engine.uid(state, 'obj'), faction, system: sys.id, area: area.pos });
+            const tokenSeat = this.pickObjectiveToken(state, owner, used);
+            if (tokenSeat == null) continue;
+            used.add(tokenSeat);
+            state.objectives.push(this.objectiveToken(state, tokenSeat, sys.id, area.pos));
         }
+    }
+
+    // A token on the board: the owner's seat is the key, the faction is kept
+    // for the picture (two players of one faction have the same medallion and
+    // differ by the colour of the flag).
+    objectiveToken(state, ownerSeat, systemId, pos) {
+        return { id: this.engine.uid(state, 'obj'), seat: ownerSeat, faction: state.players[ownerSeat].faction, system: systemId, area: pos };
     }
 
     setupLegalCells(state) {
@@ -426,29 +443,50 @@ class SetupRules {
         return { ok: true };
     }
 
+    /**
+     * The tokens the current player may put on the current tile: one option per
+     * owner — `{ seat, faction, name, areas }`. «A player cannot place two
+     * tokens from the same faction on the same system tile» and «cannot place
+     * a token of one faction if he has more tokens of another» — both counted
+     * by the owner, so two players of one faction are two different owners.
+     */
     setupObjectiveOptions(state) {
         const board = BoardSetup.of(state);
         if (!board.is(BoardSetup.OBJECTIVES)) return [];
         const sys = this.engine.system(state, board.currentSystem);
         const pool = state.players[board.turn].objectivePool;
-        const used = new Set(state.objectives.filter(o => o.system === sys.id).map(o => o.faction));
-        const occupied = new Set(state.objectives.filter(o => o.system === sys.id).map(o => o.area));
+        const here = state.objectives.filter(o => o.system === sys.id);
+        const used = new Set(here.map(o => this.engine.objectiveOwnerSeat(state, o)));
+        const occupied = new Set(here.map(o => o.area));
         const areas = sys.areas.filter(a => a.world && a.world.objective && !occupied.has(a.pos)).map(a => a.pos);
         if (!areas.length || !pool.length) return [];
-        const counts = {};
-        for (const f of pool) counts[f] = (counts[f] || 0) + 1;
-        const max = Math.max(...Object.values(counts));
-        return Object.keys(counts).filter(f => counts[f] === max && !used.has(f)).map(faction => ({ faction, areas }));
+        const counts = new Map();
+        for (const owner of pool) counts.set(owner, (counts.get(owner) || 0) + 1);
+        const max = Math.max(...counts.values());
+        return [...counts.keys()].filter(owner => counts.get(owner) === max && !used.has(owner))
+            .sort((a, b) => a - b)
+            .map(owner => ({ seat: owner, faction: state.players[owner].faction, name: state.players[owner].name, areas }));
+    }
+
+    // The option a command names: by the owner's seat, or — for the older form
+    // of the command — by the faction, when that names exactly one owner.
+    setupObjectiveOptionFor(state, cmd) {
+        const options = this.setupObjectiveOptions(state);
+        if (Number.isInteger(cmd.seat)) return { option: options.find(x => x.seat === cmd.seat) || null };
+        const byFaction = options.filter(x => x.faction === cmd.faction);
+        if (byFaction.length > 1) return { option: null, error: 'Эту фракцию играют несколько игроков — укажите, чей это жетон.' };
+        return { option: byFaction[0] || null };
     }
 
     cmdSetupObjective(state, seat, cmd) {
         const error = this.setupGuard(state, seat, 'objectives');
         if (error) return error;
-        const option = this.setupObjectiveOptions(state).find(x => x.faction === cmd.faction && x.areas.includes(cmd.pos));
-        if (!option) return { ok: false, error: 'Выберите допустимый жетон и свободное место цели на текущем тайле.' };
+        const found = this.setupObjectiveOptionFor(state, cmd);
+        const option = found.option && found.option.areas.includes(cmd.pos) ? found.option : null;
+        if (!option) return { ok: false, error: found.error || 'Выберите допустимый жетон и свободное место цели на текущем тайле.' };
         const pool = state.players[seat].objectivePool;
-        pool.splice(pool.indexOf(cmd.faction), 1);
-        state.objectives.push({ id: this.engine.uid(state, 'obj'), faction: cmd.faction, system: BoardSetup.of(state).currentSystem, area: cmd.pos });
+        pool.splice(pool.indexOf(option.seat), 1);
+        state.objectives.push(this.objectiveToken(state, option.seat, BoardSetup.of(state).currentSystem, cmd.pos));
         if (!this.setupObjectiveOptions(state).length) this.advanceSetupTurn(state);
         return { ok: true };
     }
@@ -568,14 +606,16 @@ class SetupRules {
         }
     }
 
+    // The owner (seat) whose token the automatic composition puts next; null
+    // when nothing fits. `used` — the owners already present on this tile.
     pickObjectiveToken(state, seat, used) {
         const p = state.players[seat];
-        const counts = {};
-        for (const f of p.objectivePool) counts[f] = (counts[f] || 0) + 1;
-        const candidates = Object.keys(counts).filter(f => !used.has(f) && counts[f] > 0);
+        const counts = new Map();
+        for (const owner of p.objectivePool) counts.set(owner, (counts.get(owner) || 0) + 1);
+        const candidates = [...counts.keys()].filter(owner => !used.has(owner) && counts.get(owner) > 0);
         if (!candidates.length) return null;
-        // The faction with the most tokens first.
-        candidates.sort((a, b) => counts[b] - counts[a]);
+        // The owner with the most tokens first; the lower seat on a tie.
+        candidates.sort((a, b) => (counts.get(b) - counts.get(a)) || (a - b));
         const pick = candidates[0];
         p.objectivePool.splice(p.objectivePool.indexOf(pick), 1);
         return pick;

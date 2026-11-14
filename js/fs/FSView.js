@@ -1502,7 +1502,7 @@ const FSView = {
             // The flag of the objective stands ON the token — one piece, moved
             // and collected as one, painted with the colour of the player who
             // needs to take it. It stands where the token stands.
-            const owner = state.players.find(p2 => p2.faction === o.faction);
+            const owner = FS_RULES.objectiveOwner(state, o);
             const ownerColor = (owner && owner.color) || this.factionColor(o.faction) || '#e3b64f';
             const flag = new BABYLON.TransformNode('fs-objective-flag-' + o.id, view.scene);
             flag.parent = root;

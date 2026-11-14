@@ -243,7 +243,7 @@ class Bot {
         }
         if (stage === BoardSetup.OBJECTIVES) {
             const opt = pick(this.rnd, R.setupObjectiveOptions(st));
-            if (opt) return { seat, cmd: { type: 'setupObjective', faction: opt.faction, pos: pick(this.rnd, opt.areas) }, must: true };
+            if (opt) return { seat, cmd: { type: 'setupObjective', seat: opt.seat, faction: opt.faction, pos: pick(this.rnd, opt.areas) }, must: true };
             return null;
         }
         if (stage === BoardSetup.STORMS) {
@@ -801,6 +801,12 @@ function schedule() {
             if (new Set(four).size < 4) continue;
             games.push({ name: 'стол: ' + four.join(', '), factions: four, seed });
         }
+        // Одна фракция у нескольких игроков: зеркальная дуэль и стол, где одну
+        // расу играют двое, — жетоны целей и цвета различают игроков по местам.
+        const mirror = turned[0];
+        games.push({ name: 'зеркало: ' + mirror + ' против ' + mirror, factions: [mirror, mirror], seed });
+        const twins = [turned[1], turned[2], turned[1], turned[3]];
+        games.push({ name: 'стол с двойником: ' + twins.join(', '), factions: twins, seed });
     });
     const seen = new Set();
     const unique = games.filter(g => { const key = g.factions.join('+') + '|' + g.seed; if (seen.has(key)) return false; seen.add(key); return true; });

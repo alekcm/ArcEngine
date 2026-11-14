@@ -128,6 +128,7 @@ const TILE_GEOMETRY = vm.runInContext('TileGeometry', ctx);
 const CAMERA = vm.runInContext('CameraController', ctx);
 const FS_GAME = vm.runInContext('FSGame', ctx);
 const BOARD_SETUP = vm.runInContext('BoardSetup', ctx);
+const FS_CATALOG_SCREENS = vm.runInContext('FS_CATALOG', ctx);
 FSUI.modernRoot = el();
 
 const SEAT_PLAYERS = [
@@ -228,10 +229,33 @@ screen('lobby-3', 'хозяин видит «Начать игру» серой,
     if (!kick) return 'у хозяина нет кнопки «убрать» для молчащего места';
     kick.click();
     if (kicked.join() !== 'p3') return 'кнопка «убрать» не назвала место: ' + kicked.join();
-    // The host's own faction tile is selected, the guest's is taken.
+    // The guest's faction stays open to the host too — two players may play one
+    // faction; the tile names who has it already.
     const tiles = buttons.filter(b => /fs-faction\b/.test(b.className) && !/fs-faction-/.test(b.className));
-    const taken = tiles.find(b => textsOf(b).some(t => /Уже занята/.test(t)));
-    if (!taken || !taken.disabled) return 'занятая гостем фракция не закрыта для выбора';
+    const shared = tiles.find(b => textsOf(b).some(t => /Выбрана: Гость · можно тоже/.test(t)));
+    if (!shared) return 'плитка фракции гостя не говорит, кто её выбрал';
+    if (shared.disabled) return 'фракция гостя закрыта для выбора, а одинаковые фракции разрешены';
+    return true;
+});
+
+screen('lobby-6', 'двое выбрали одну фракцию: второй видит другие цвета и подсказку, список красит места по-разному', () => {
+    const seats = LOBBY_SEATS.map(p => Object.assign({}, p, { faction: 'некроны', ready: false }));
+    drawLobby({
+        name: 'Гость', faction: 'некроны', me: 'p2', host: 'p1', isHost: false, ready: false,
+        start: { ok: false, msg: 'Ждём готовность: Гость, Третий.' }, players: seats, factions: LOBBY_FACTIONS,
+    });
+    const texts = textsOf(FSUI.modernRoot);
+    if (!texts.some(t => /Та же фракция у Хозяин, Третий/.test(t))) return 'нет подсказки о совпадении фракции';
+    const expected = FSUI.palette(null, FS_CATALOG_SCREENS.autoPrimaries(seats).get(1));
+    if (expected.primary === FS_CATALOG_SCREENS.factionColor('некроны')) return 'второму игроку оставлен цвет фракции';
+    const inputs = [];
+    (function walk(n) { if (!n) return; if (n.tagName === 'INPUT' && n.type === 'color') inputs.push(n); for (const c of n.children || []) walk(c); })(FSUI.modernRoot);
+    if (inputs.length !== 3) return 'ожидались три поля раскраски, найдено ' + inputs.length;
+    if (inputs[0].value !== expected.primary) return 'основной цвет второго игрока ' + inputs[0].value + ' не совпадает с тем, что даст партия: ' + expected.primary;
+    // The game itself paints the seats the same way the lobby showed.
+    const live = FS_RULES.newGame({ seed: 5, players: seats.map(p => ({ faction: p.faction, name: p.name, palette: p.palette })) });
+    if (live.players[1].color !== expected.primary) return 'партия красит второе место иначе, чем обещало лобби: ' + live.players[1].color;
+    if (new Set(live.players.map(p => p.color)).size !== 3) return 'три игрока одной фракции не получили три разных цвета';
     return true;
 });
 
@@ -2794,9 +2818,10 @@ screen('setup-undo-3', 'отмена этапа целей убирает неп
 screen('setup-undo-4', 'откат жетона цели перепроверяет незавершённый выбор в партии на четверых', () => {
     return setupUndoScene(({ view }) => {
         const players = SEAT_PLAYERS.concat({ faction: 'орки', name: 'Третий', id: 'p2' }, { faction: 'эльдары', name: 'Четвёртый', id: 'p3' });
+        // The pool holds the owners' seats: 1 — некроны, 2 — орки, 3 — эльдары.
         for (const [pool, remainsLegal] of [
-            [['некроны', 'некроны', 'орки', 'эльдары'], false],
-            [['некроны', 'некроны', 'орки', 'орки', 'эльдары', 'эльдары'], true],
+            [[1, 1, 2, 3], false],
+            [[1, 1, 2, 2, 3, 3], true],
         ]) {
             const live = FS_RULES.newGame({ seed: 42, players, interactiveSetup: true });
             const seat = live.setup.turn;

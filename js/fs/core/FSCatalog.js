@@ -234,6 +234,80 @@ class FactionCatalog {
         return this.palette(null, this.factionColor(factionId));
     }
 
+    /** The colour turned around the hue circle by `deg` (saturation and lightness kept). */
+    hueShift(hex, deg) {
+        const n = parseInt(String(hex || '').replace('#', ''), 16);
+        if (!Number.isFinite(n)) return '#888888';
+        const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+        let h = 0, sat = 0;
+        if (max !== min) {
+            const d = max - min;
+            sat = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+            else if (max === g) h = (b - r) / d + 2;
+            else h = (r - g) / d + 4;
+            h /= 6;
+        }
+        // A grey has no hue to turn: give it one, so the second player differs.
+        if (sat < 0.12) sat = 0.45;
+        h = (((h + deg / 360) % 1) + 1) % 1;
+        const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat, p = 2 * l - q;
+        const ch = t => {
+            t = ((t % 1) + 1) % 1;
+            if (t < 1 / 6) return p + (q - p) * 6 * t;
+            if (t < 1 / 2) return q;
+            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+            return p;
+        };
+        const to = v => Math.max(0, Math.min(255, Math.round(v * 255)));
+        return '#' + ((to(ch(h + 1 / 3)) << 16) | (to(ch(h)) << 8) | to(ch(h - 1 / 3))).toString(16).padStart(6, '0');
+    }
+
+    /** How far apart two colours are (plain RGB distance, 0…441). */
+    colorDistance(a, b) {
+        const n = parseInt(String(a || '').replace('#', ''), 16), m = parseInt(String(b || '').replace('#', ''), 16);
+        if (!Number.isFinite(n) || !Number.isFinite(m)) return 0;
+        return Math.hypot(((n >> 16) & 255) - ((m >> 16) & 255), ((n >> 8) & 255) - ((m >> 8) & 255), (n & 255) - (m & 255));
+    }
+
+    /**
+     * The primary paint of every seat of a table — `Map seat → '#rrggbb'`.
+     * A player who chose his own colours keeps them; the first player of a
+     * faction gets the faction colour; every next player of the SAME faction
+     * gets that colour turned around the hue circle, the turn that stands
+     * farthest from the paints already given out. The lobby and newGame call
+     * the same function, so the player sees in the lobby the paint he will
+     * play with. `players` — anything with `seat`, `faction` and `palette`.
+     */
+    autoPrimaries(players) {
+        const hex = c => /^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c).toLowerCase() : null;
+        const list = (players || []).filter(p => p && p.faction).slice().sort((a, b) => Number(a.seat) - Number(b.seat));
+        const out = new Map();
+        for (const p of list) {
+            const chosen = p.palette && hex(p.palette.primary);
+            if (chosen) { out.set(p.seat, chosen); continue; }
+            const base = this.factionColor(p.faction);
+            const twin = list.some(q => q.faction === p.faction && Number(q.seat) < Number(p.seat));
+            if (!twin) { out.set(p.seat, base); continue; }
+            const taken = [...out.values()];
+            let best = base, bestDistance = -1;
+            for (const deg of [150, 210, 270, 90, 330, 30]) {
+                const candidate = this.hueShift(base, deg);
+                const distance = taken.length ? Math.min(...taken.map(t => this.colorDistance(candidate, t))) : 441;
+                if (distance > bestDistance) { bestDistance = distance; best = candidate; }
+            }
+            out.set(p.seat, best);
+        }
+        return out;
+    }
+
+    /** The paint of one seat of the table (see autoPrimaries) as a full palette. */
+    autoPalette(players, seat, factionId) {
+        const primaries = this.autoPrimaries(players);
+        return this.palette(null, primaries.get(seat) || this.factionColor(factionId));
+    }
+
     // --- names of the cards ---------------------------------------------------
 
     /** The first letters of a word: «бойзов», «бойзы» and «Бойзы» are one unit. */

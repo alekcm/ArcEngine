@@ -1456,10 +1456,14 @@ const FSUI = {
         // who is ready and who has dropped off the network.
         const isMe = p => info.me ? p.id === info.me : p.name === info.name;
         const offline = p => p.online === false && !p.bot;
+        // The paint of every seat as the game will show it: the second player
+        // of one faction gets another colour unless he painted his army himself.
+        const primaries = FS_CATALOG.autoPrimaries(info.players || []);
+        const me = (info.players || []).find(isMe) || null;
         const players = this.el('div', 'fs-lobby-players');
         (info.players || []).forEach(p => {
             const chip = this.el('div', 'fs-lobby-player' + (isMe(p) ? ' is-me' : '') + (offline(p) ? ' is-offline' : ''));
-            chip.style.setProperty('--player-color', this.factionColor(p.faction));
+            chip.style.setProperty('--player-color', primaries.get(p.seat) || this.factionColor(p.faction));
             const parts = [p.name, p.faction ? this.factionName(p.faction) : 'выбирает фракцию'];
             if (p.bot) parts.push('бот');
             else if (info.host && p.id === info.host) parts.push('хозяин');
@@ -1481,17 +1485,20 @@ const FSUI = {
         body.append(players);
         const grid = this.el('div', 'fs-faction-grid');
         (info.factions || []).forEach((f, i) => {
-            const taken = (info.players || []).some(p => p.faction === f.id && !isMe(p));
+            // A faction taken by somebody else stays open: several players may
+            // play one faction, the tile only says who else has it.
+            const others = (info.players || []).filter(p => p.faction === f.id && !isMe(p)).map(p => p.name);
             const mine = info.faction === f.id;
-            const button = this.el('button', 'fs-faction' + (mine ? ' is-selected' : ''));
+            const button = this.el('button', 'fs-faction' + (mine ? ' is-selected' : '') + (others.length ? ' is-shared' : ''));
             button.type = 'button'; button.style.setProperty('--faction-color', f.color || this.factionColor(f.id));
             const crest = this.el('span', 'fs-faction-crest', (f.name || '·').slice(0, 1));
             // A ready player has locked his choice; the grid says so instead of
             // silently ignoring the click.
-            const state = mine ? (info.ready ? 'Выбрана вами · готов' : 'Выбрана вами')
-                : taken ? 'Уже занята' : info.ready ? 'Сначала снимите готовность' : 'Нажмите, чтобы выбрать';
+            const state = mine ? (info.ready ? 'Выбрана вами · готов' : 'Выбрана вами') + (others.length ? ' · и ' + others.join(', ') : '')
+                : info.ready ? 'Сначала снимите готовность'
+                : others.length ? 'Выбрана: ' + others.join(', ') + ' · можно тоже' : 'Нажмите, чтобы выбрать';
             const copyName = this.el('span', 'fs-faction-name', f.name || f.id); copyName.append(this.el('span', 'fs-faction-state', state));
-            button.append(crest, copyName); button.disabled = (taken && !mine) || (!!info.ready && !mine);
+            button.append(crest, copyName); button.disabled = !!info.ready && !mine;
             if (button.disabled) button.style.opacity = '.4';
             button.addEventListener('click', () => info.onFaction && info.onFaction(f.id)); grid.append(button);
         });
@@ -1499,7 +1506,9 @@ const FSUI = {
         // The army paint: the player picks one primary and two secondary colors;
         // they are spread over different parts of every model of his army.
         if (info.faction) {
-            const cur = Object.assign(this.defaultPalette(info.faction), info.palette || {});
+            const twins = (info.players || []).filter(p => p.faction === info.faction && !isMe(p)).map(p => p.name);
+            const auto = me ? this.palette(null, primaries.get(me.seat) || this.factionColor(info.faction)) : this.defaultPalette(info.faction);
+            const cur = Object.assign(auto, info.palette || {});
             const row = this.el('div', 'fs-palette-row');
             row.append(this.el('span', 'fs-palette-title', 'Раскраска армии'));
             const fields = [
@@ -1520,6 +1529,10 @@ const FSUI = {
                 });
                 cell.append(input, this.el('span', '', label));
                 row.append(cell);
+            }
+            if (twins.length) {
+                row.title = 'Фракцию играет ещё ' + twins.join(', ') + ': армиям даны разные цвета, чтобы их различать на доске. Цвета можно поменять.';
+                row.append(this.el('span', 'fs-palette-note', 'Та же фракция у ' + twins.join(', ') + ' — вам даны другие цвета, чтобы армии различались на доске.'));
             }
             body.append(row);
         }
@@ -1718,6 +1731,10 @@ const FSUI = {
     // The default army paint of a faction: the faction color plus two shades.
     defaultPalette(factionId) {
         return FS_CATALOG.defaultPalette(factionId);
+    },
+
+    palette(pal, fallback) {
+        return FS_CATALOG.palette(pal, fallback);
     },
 
     // -----------------------------------------------------------------------

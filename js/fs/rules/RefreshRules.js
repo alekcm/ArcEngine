@@ -93,7 +93,7 @@ class RefreshRules {
         // faction's objective tokens that are on worlds he controls").
         const left = [];
         for (const obj of state.objectives) {
-            const p = state.players.find(x => x.faction === obj.faction);
+            const p = this.engine.objectiveOwner(state, obj);
             const mine = p && this.engine.control(state, p.seat, obj.system, obj.area) === 'friendly';
             if (!mine) { left.push(obj); continue; }
             p.objectives += 1;

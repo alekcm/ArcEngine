@@ -455,7 +455,7 @@ class FSGame {
                 }
             }
             if (this.mode === 'setupObjective') {
-                const option = (view.setup.objectiveOptions || []).find(o => o.faction === this.pending.faction);
+                const option = this.objectiveOption(view.setup.objectiveOptions, this.pending);
                 if (!option) {
                     this.mode = 'idle'; this.pending = null;
                     FSView.clearHighlights(this.view); FSView.clearGhost(this.view);
@@ -727,16 +727,15 @@ class FSGame {
             ctx.status = this.status || '';
             ctx.handTitle = 'Жетоны целей соперников';
             ctx.hand = (setup.objectiveOptions || []).map(option => {
-                const faction = FS_CATALOG.faction(option.faction);
                 return {
                     icon: 'mark.objective',
                     count: 1,
-                    label: faction ? faction.name : option.faction,
+                    label: this.objectiveLabel(option),
                     kind: 'жетон цели',
-                    selected: this.mode === 'setupObjective' && this.pending && this.pending.faction === option.faction,
+                    selected: this.mode === 'setupObjective' && this.pending && this.sameObjectiveOption(this.pending, option),
                     onClick: () => {
                         this.status = ''; this.mode = 'setupObjective';
-                        this.pending = { faction: option.faction, pos: null };
+                        this.pending = { seat: option.seat, faction: option.faction, pos: null };
                         FSView.clearGhost(this.view);
                         this.highlightSetupTargets(); this.refresh();
                     },
@@ -912,7 +911,7 @@ class FSGame {
             // structure answers, the panel does not count.
             areas = sys.areas.filter(a => a.world && FS_RULES.canPlaceStructure(s, me, sys.id, a.pos).ok);
         } else if (this.mode === 'setupObjective') {
-            const option = (setup.objectiveOptions || []).find(x => x.faction === this.pending.faction);
+            const option = this.objectiveOption(setup.objectiveOptions, this.pending);
             areas = sys.areas.filter(a => option && option.areas.includes(a.pos));
         }
         const list = this.mode === 'setupStorm' ? [FSView.tilePos(this.app, sys, this.view.metrics)] : areas.map(a => FSView.areaPos(this.app, sys, a.pos, this.view.metrics));
@@ -2977,11 +2976,11 @@ class FSGame {
             if (!sys) return null;
             const area = sys.areas.find(a => a.pos === this.pending.pos);
             const disc = FSView.discAt(this.app, sys, this.pending.pos, metrics);
-            const faction = FS_CATALOG.faction(this.pending.faction);
+            const option = this.objectiveOption(BoardSetup.of(s).record.objectiveOptions, this.pending) || this.pending;
             return {
                 world: { x: disc.x, y: disc.y + 26, z: disc.z },
                 view: {
-                    kicker: 'Жетон цели' + (faction ? ' · ' + faction.name : ''),
+                    kicker: 'Жетон цели · ' + this.objectiveLabel(option),
                     title: 'Поставить жетон цели',
                     hint: area && area.world ? area.world.name : '',
                     actions: [
@@ -3044,11 +3043,34 @@ class FSGame {
         this.refresh();
     }
 
+    // The option of the setup a pick names: by the owner's seat (two players
+    // may play one faction), by the faction for picks made before seats existed.
+    objectiveOption(options, pick) {
+        if (!pick) return null;
+        return (options || []).find(x => this.sameObjectiveOption(pick, x)) || null;
+    }
+
+    sameObjectiveOption(a, b) {
+        if (!a || !b) return false;
+        if (Number.isInteger(a.seat) && Number.isInteger(b.seat)) return a.seat === b.seat;
+        return a.faction === b.faction;
+    }
+
+    // «Орки» — or «Орки · Аня» when two players play the Orks.
+    objectiveLabel(option) {
+        const s = this.state;
+        const faction = FS_CATALOG.faction(option.faction);
+        const name = faction ? faction.name : option.faction;
+        const twins = s && Number.isInteger(option.seat) && s.players.filter(p => p.faction === option.faction).length > 1;
+        const owner = twins ? (s.players[option.seat] || {}).name || option.name : '';
+        return owner ? name + ' · ' + owner : name;
+    }
+
     confirmSetupObjective() {
         const s = this.state, p = this.pending;
         if (!s || !BoardSetup.of(s).record.myTurn || this.mode !== 'setupObjective' || !p || !p.pos) return;
-        const sent = this.net.cmd({ type: 'setupObjective', faction: p.faction, pos: p.pos });
-        this.pending = { faction: p.faction, pos: null };
+        const sent = this.net.cmd({ type: 'setupObjective', seat: p.seat, faction: p.faction, pos: p.pos });
+        this.pending = { seat: p.seat, faction: p.faction, pos: null };
         FSView.clearGhost(this.view);
         if (sent === false) this.status = 'Нет связи с сервером.';
         this.refresh();
@@ -3527,14 +3549,15 @@ class FSGame {
             else if (this.mode === 'setupObjective') {
                 const system = Board.of(s).system(BoardSetup.of(s).currentSystem);
                 if (!system || system.id !== target.system) return;
-                const option = (BoardSetup.of(s).record.objectiveOptions || []).find(x => x.faction === this.pending.faction);
+                const option = this.objectiveOption(BoardSetup.of(s).record.objectiveOptions, this.pending);
                 if (!option || !option.areas.includes(target.pos)) { this.status = 'Здесь места цели нет.'; this.refresh(); return; }
                 this.pending.pos = target.pos;
                 // The token that is about to be placed glows on the world until the plaque confirms it.
                 if (this.app && this.view && this.view.scene) {
                     const disc = FSView.discAt(this.app, system, target.pos, this.view.metrics);
+                    const owner = Number.isInteger(option.seat) ? s.players[option.seat] : null;
                     const faction = FS_CATALOG.faction(this.pending.faction);
-                    FSView.showGhost(this.app, this.view, disc, faction ? faction.color : '#d8b873');
+                    FSView.showGhost(this.app, this.view, disc, (owner && owner.color) || (faction ? faction.color : '#d8b873'));
                 }
             }
             this.refresh();

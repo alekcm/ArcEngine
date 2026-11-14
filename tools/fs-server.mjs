@@ -141,15 +141,8 @@ class Room {
         const host = this.host();
         const noFaction = this.players.filter(p => !p.faction);
         if (noFaction.length) return { ok: false, msg: 'Ждём выбор фракции: ' + noFaction.map(p => p.name).join(', ') + '.' };
-        const seen = new Map();
-        for (const p of this.players) {
-            const other = seen.get(p.faction);
-            if (other) {
-                const name = (FS_DATA.factions.find(f => f.id === p.faction) || {}).name || p.faction;
-                return { ok: false, msg: other.name + ' и ' + p.name + ' выбрали одну фракцию (' + name + ') — кому-то нужно сменить.' };
-            }
-            seen.set(p.faction, p);
-        }
+        // Two players may take one faction: the engine keeps the objective
+        // tokens by the owner's seat and paints the second army differently.
         const notReady = this.players.filter(p => p !== host && !p.ready);
         if (notReady.length) return { ok: false, msg: 'Ждём готовность: ' + notReady.map(p => p.name).join(', ') + '.' };
         return { ok: true, msg: '' };

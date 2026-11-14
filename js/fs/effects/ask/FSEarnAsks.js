@@ -27,12 +27,16 @@ class EarnAsks {
 
     // «собрать маркер цели Инквизиции в дружественном мире в активной системе»:
     // the tokens of that faction that stand in the friendly worlds of the
-    // active system; without one there is nothing to collect.
+    // active system; without one there is nothing to collect. The card names
+    // the player's own faction — with two players of that faction only his
+    // own tokens are meant (a token belongs to a seat, not to a faction).
     static collectObjective(effects, f) {
         const { R, state, seat, step } = f;
         const active = state.order ? OrderContext.of(state.order).system : null;
+        const own = state.players[seat] ? state.players[seat].faction : '';
         const list = (state.objectives || []).filter(o => {
             if (step.faction && o.faction !== step.faction) return false;
+            if (step.faction === own && R.objectiveOwnerSeat(state, o) !== seat) return false;
             if (active && o.system !== active) return false;
             return R.control(state, seat, o.system, o.area) === 'friendly';
         });

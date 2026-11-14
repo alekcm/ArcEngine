@@ -73,6 +73,24 @@ class CoreRules {
         return FS_CATALOG.palette(pal, fallback);
     }
 
+    /**
+     * The seat that owns an objective token. Tokens are keyed by the owner's
+     * seat, not by his faction: two players may well play the same faction,
+     * and each of them needs his own tokens. A token recorded with the
+     * faction only (older fixtures) belongs to the first player of that faction.
+     */
+    objectiveOwnerSeat(state, objective) {
+        if (!objective) return -1;
+        if (Number.isInteger(objective.seat) && state.players[objective.seat]) return objective.seat;
+        const p = state.players.find(x => x.faction === objective.faction);
+        return p ? p.seat : -1;
+    }
+
+    objectiveOwner(state, objective) {
+        const seat = this.objectiveOwnerSeat(state, objective);
+        return seat >= 0 ? state.players[seat] : null;
+    }
+
     unitDef(state, seat, unitId) {
         const p = state.players[seat];
         return p ? FS_CATALOG.unit(p.faction, unitId) : null;

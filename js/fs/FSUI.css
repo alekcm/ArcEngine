@@ -184,6 +184,8 @@
 .fs-lobby-player.is-offline{opacity:.6}
 .fs-kick{margin-left:2px;padding:2px 8px;border:1px solid #a26e60;border-radius:99px;background:#281713aa;color:#ffd1bc;font-size:9px;cursor:pointer}
 .fs-kick:hover{background:#3a1f19}
+.fs-faction.is-shared .fs-faction-state{color:#d8c8a0}
+.fs-palette-note{flex-basis:100%;font-size:9px;color:#9faaa8}
 
 /* The switches of the board furniture hide and come back from here; the order
    tokens open in their own window. The corner also holds «Отменить ход» —
