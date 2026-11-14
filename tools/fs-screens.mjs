@@ -276,17 +276,18 @@ screen('lobby-7', 'бот в лобби: фракционные личности
     }
     if (!offered.includes('orks-mek') || offered.includes('turtle') || offered.includes('necrons-phalanx')) return 'меню характеров не отфильтровано по фракции: ' + offered.join(', ');
     if (!offered.includes('__fs_random_persona__') || !Array.from(menu[1].children || []).some(o => /Случайная личность/.test(o.textContent))) return 'в меню нет случайной личности';
-    if (!Array.from(menu[0].children || []).some(o => o.value === '__fs_random_faction__' && /Случайная фракция/.test(o.textContent))) return 'в меню нет случайной фракции';
-    menu[0].value = '__fs_random_faction__';
-    for (const fn of menu[0].listeners.change || []) fn({ target: menu[0] });
-    const randomFaction = set[set.length - 1] && set[set.length - 1][1].faction;
-    if (!LOBBY_FACTIONS.some(f => f.id === randomFaction) || randomFaction === '__fs_random_faction__') return 'случайный выбор фракции отправил не фракцию: ' + randomFaction;
-    if (menu[0].value === '__fs_random_faction__') return 'псевдо-значение случайной фракции осталось выбранным';
+    // For a fixed faction, the random-persona shortcut still resolves to one of its own doctrines.
     menu[1].value = '__fs_random_persona__';
     for (const fn of menu[1].listeners.change || []) fn({ target: menu[1] });
     const randomPersona = set[set.length - 1] && set[set.length - 1][1].persona;
     if (!offered.includes(randomPersona) || randomPersona === '__fs_random_persona__') return 'случайный выбор личности не выбрал доктрину орков: ' + randomPersona;
     if (menu[1].value === '__fs_random_persona__') return 'псевдо-значение случайной личности осталось выбранным';
+    if (!Array.from(menu[0].children || []).some(o => o.value === '__fs_random_faction__' && /Случайная фракция/.test(o.textContent))) return 'в меню нет случайной фракции';
+    menu[0].value = '__fs_random_faction__';
+    for (const fn of menu[0].listeners.change || []) fn({ target: menu[0] });
+    const randomFaction = set[set.length - 1] && set[set.length - 1][1].faction;
+    if (randomFaction !== '__fs_random_faction__') return 'случайный выбор фракции должен остаться скрытым до начала игры: ' + randomFaction;
+    if (menu[0].value !== '__fs_random_faction__') return 'случайная фракция показала выбранную фракцию заранее';
     menu[2].value = 'veteran';
     for (const fn of menu[2].listeners.change || []) fn({ target: menu[2] });
     if (!set.some(x => x[0] === 'bot1' && x[1].level === 'veteran')) return 'смена уровня не ушла хозяину: ' + JSON.stringify(set);
@@ -294,14 +295,36 @@ screen('lobby-7', 'бот в лобби: фракционные личности
     if (!kick) return 'у хозяина нет «убрать» для бота';
     kick.click();
     if (kicked.join() !== 'bot1') return 'кнопка «убрать» не назвала бота: ' + kicked.join();
-    // A guest sees the hint and the small tag but no menu and no «+ Добавить бота».
+    // Once the server echoes a randomized faction, neither the faction nor its
+    // random doctrine is exposed in the lobby; the character control is locked.
+    const randomSeats = [LOBBY_SEATS[0], {
+        id: 'bot1', name: 'Варбосс', faction: 'орки', randomFaction: true, seat: 1,
+        ready: true, online: true, bot: true, persona: 'orks-waaagh', level: 'normal',
+        line: FS_BOT_SCREENS.line('орки', 'orks-waaagh'),
+    }];
+    drawLobby({
+        name: 'Хозяин', faction: 'эльдары', me: 'p1', host: 'p1', isHost: true, ready: false, bots,
+        start: { ok: true, msg: '' }, players: randomSeats, factions: LOBBY_FACTIONS,
+        onBot: (id, patch) => set.push([id, patch]),
+    });
+    texts = textsOf(FSUI.modernRoot);
+    if (!texts.some(t => /Бот · 🎲 случайная фракция · бот/.test(t))) return 'бот раскрывает выбранную фракцию вместо случайного статуса';
+    if (!texts.some(t => /Случайные фракция и характер скрыты до старта; характер выбирается автоматически/.test(t))) return 'в лобби не объяснён случайный выбор фракции и характера';
+    if (texts.some(t => /Варбосс|WAAAGH!|Зелёный прилив/i.test(t))) return 'имя, подсказка или доктрина случайного бота просочились в интерфейс';
+    const randomMenus = [];
+    (function walk(n) { if (!n) return; if (n.tagName === 'SELECT' && /fs-bot-select/.test(n.className)) randomMenus.push(n); for (const c of n.children || []) walk(c); })(FSUI.modernRoot);
+    if (randomMenus.length !== 3 || randomMenus[0].value !== '__fs_random_faction__') return 'случайная фракция не осталась выбранной в меню';
+    if (!randomMenus[1].disabled || randomMenus[1].value !== '__fs_random_persona__' || randomMenus[1].children.length !== 1) return 'характер случайной фракции можно выбрать вручную';
+    if (randomMenus[0].title !== 'Фракция бота' || randomMenus[1].title !== 'При случайной фракции характер выбирается автоматически') return 'подсказка меню раскрывает или неверно описывает случайный выбор';
+    // A guest also receives the masked room snapshot, but never the host controls.
     drawLobby({
         name: 'Гость', faction: 'некроны', me: 'p2', host: 'p1', isHost: false, ready: false, bots,
-        start: { ok: false, msg: '' }, players: seats.concat([LOBBY_SEATS[1]]), factions: LOBBY_FACTIONS,
+        start: { ok: false, msg: '' }, players: randomSeats.concat([LOBBY_SEATS[1]]), factions: LOBBY_FACTIONS,
     });
     texts = textsOf(FSUI.modernRoot);
     buttons = buttonsOf(FSUI.modernRoot);
-    if (!texts.some(t => /Варбосс: WAAAGH!/.test(t))) return 'гость не видит подписи бота';
+    if (!texts.some(t => /Бот · 🎲 случайная фракция · бот/.test(t))) return 'гость видит не скрытый выбор фракции';
+    if (!texts.some(t => /Случайные фракция и характер скрыты до старта; характер выбирается автоматически/.test(t))) return 'гость не получает нейтральную подсказку о боте';
     if (addButton(buttons) || buttons.some(b => /убрать/.test(b.textContent))) return 'гостю показаны кнопки хозяина';
     const guestSelects = [];
     (function walk(n) { if (!n) return; if (n.tagName === 'SELECT' && /fs-bot-select/.test(n.className)) guestSelects.push(n); for (const c of n.children || []) walk(c); })(FSUI.modernRoot);
