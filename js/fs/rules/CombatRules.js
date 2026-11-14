@@ -500,6 +500,12 @@ class CombatRules {
         return true;
     }
 
+    /**
+     * The pieces that may take the FIRST point of the damage. The rest of the
+     * assignment is judged piece by piece — see damagePreview: once the last
+     * unrouted unit and the last bastion have fallen, the damage that is left
+     * goes on to the routed units (01, «Damage And Health»).
+     */
     canTakeDamage(state, c, side) {
         const items = this.pieces(state, c, side);
         // «все отряды ... не могут получать повреждения»: reinforcement
@@ -1040,89 +1046,13 @@ class CombatRules {
         return to || null;
     }
 
-    damagePreview(state, side, targets) {
-        const c = state.combat;
-        const damage = this.combatDamageFor(state, side);
-        const rules = CombatDamage.of(c);
-        const round = CombatTurn.of(c).round;
-        const oneByOne = rules.oneByOne(side);
-        const allowed = new Set(this.canTakeDamage(state, c, side).map(x => x.id));
-        const marked = rules.firstOf(side, round);
-        // A previously chosen piece may have died or left before this step.
-        const first = marked && allowed.has(marked.id) ? marked.id : null;
-        const selected = (targets || []).slice();
-        const needsFirst = !!(damage > 0 && first && !selected.includes(first));
-        const rows = [];
-        if (needsFirst) return { damage, placed: 0, left: damage, discarded: 0, rows, oneByOne, first, needsFirst };
-        if (first && selected.includes(first)) {
-            selected.splice(selected.indexOf(first), 1);
-            selected.unshift(first);
-        }
-        const excess = rules.excessOf(round);
-        const excessId = excess && first && excess.id === first ? first
-            : (excess && excess.id === 'fallen' && excess.side === side ? 'fallen' : null);
-        let left = damage, discarded = 0;
-        const dropExcess = id => {
-            if (!excessId) return;
-            if (id === excessId) { discarded += left; left = 0; }
-            // «Мученичество»: the damage past the first fallen unit is lost.
-            const last = rows.length ? rows[rows.length - 1] : null;
-            if (excessId === 'fallen' && last && last.destroyed && !last.bastion && !last.retreat) {
-                discarded += left; left = 0;
-            }
-        };
-        for (const id of selected) {
-            if (left <= 0) break;
-            if (!allowed.has(id)) continue;
-            if (typeof id === 'string' && id.startsWith('reinforce-')) {
-                // A preview is drawn on EVERY click while the player picks the
-                // pieces. It must never change the battle: the old version
-                // flipped the token here, before the damage was even sent.
-                if (this.reinforceTokenIndex(state, side, id) < 0) continue;
-                const def0 = this.reinforceTokenDef(state, side);
-                const health = this.reinforceTokenHealth(state, side);
-                const take = oneByOne ? 1 : Math.min(left, health);
-                const destroyed = oneByOne ? health <= 1 : left >= health;
-                const routed = !destroyed && !this.reinforceNoRoute(state, side);
-                left -= take;
-                rows.push({ id, name: def0 ? def0.name : 'Подкрепление', health, take,
-                    destroyed, routed, token: true });
-                dropExcess(id);
-                continue;
-            }
-            const unit = state.units.find(u => u.id === id);
-            if (unit) {
-                const def = this.engine.unitOf(state, unit);
-                const health = CombatDamage.of(c).health(unit.seat, def ? def.health : 1);
-                const take = oneByOne ? 1 : Math.min(left, health);
-                const destroyed = oneByOne ? health <= 1 : left >= health;
-                left -= take;
-                // The preview must promise what the damage will really do: a card
-                // may keep the unit standing («не может быть деморализован») or
-                // take it off the field before the destruction («отступите
-                // вместо уничтожения»). The damage step reads the same two rules.
-                const keep = this.forbidsRouteFor(state, unit, def);
-                const retreat = destroyed && this.retreatAvailable(state, unit);
-                rows.push({ id: unit.id, name: def ? def.name : unit.id, health, take,
-                    destroyed: destroyed && !retreat, routed: destroyed ? (!retreat && !!unit.routed) : !keep,
-                    retreat });
-                dropExcess(id);
-                continue;
-            }
-            const bastion = state.structures.find(st => st.id === id);
-            if (bastion) {
-                const health = this.engine.structureStats(bastion.type).health;
-                const take = Math.min(left, health);
-                const destroyed = left >= health;
-                left -= take;
-                rows.push({ id: bastion.id, name: this.engine.structureStats(bastion.type).name || bastion.type, health, take, destroyed, bastion: true });
-                dropExcess(id);
-            }
-        }
-        return { damage, placed: damage - left - discarded, left: Math.max(0, left), discarded, rows, oneByOne, first, needsFirst };
-    }
-
-    damageCandidates(state, side) {
+    /**
+     * Every piece of the side that stands in the battle — the units, the
+     * bastions, the reinforcement tokens — with the health the damage step
+     * will really use. Nothing is filtered here: whether a piece may be hit
+     * depends on the order of the assignment (damagePreview).
+     */
+    damagePieces(state, side) {
         const c = state.combat;
         const owner = CombatSides.seatOf(c, side);
         const rules = CombatDamage.of(c);
@@ -1161,9 +1091,208 @@ class CombatRules {
                 routed: flipped.indexOf(i) >= 0, type: def0 ? def0.type : 'ground', kind: 'token',
             });
         }
-        // A routed unit can take damage only when the side has nothing else.
-        const allowed = new Set(this.canTakeDamage(state, c, side).map(x => x.id));
-        return out.filter(x => allowed.has(x.id));
+        return out;
+    }
+
+    /**
+     * The damage walked through the chosen pieces in their order. The legality
+     * of every pick is judged at its own moment: a bastion or an unrouted unit
+     * may always be chosen, a routed unit only when no unrouted unit and no
+     * bastion of the side is left in the battle — including the ones the
+     * earlier picks of this very assignment have just destroyed («Players
+     * repeat the process of suffering damage until either no more damage
+     * remains or no more units or bastions remain»). A pick that is not legal
+     * at its place is skipped, exactly as the damage step will skip it.
+     *
+     * `rows` are the pieces the damage reaches, `next` the pieces that may be
+     * chosen after them while damage is still left, `skipped` the chosen ids
+     * the assignment ignores.
+     */
+    damagePreview(state, side, targets) {
+        const c = state.combat;
+        const damage = this.combatDamageFor(state, side);
+        const rules = CombatDamage.of(c);
+        const round = CombatTurn.of(c).round;
+        const oneByOne = rules.oneByOne(side);
+        const pieces = this.damagePieces(state, side);
+        const alive = new Map(pieces.map(p => [p.id, Object.assign({}, p)]));
+        const protectedUnits = rules.unitsProtected(round);
+        const freeRouted = rules.ownRoutedAllowed(side, round);
+        const legal = p => {
+            if (!p) return false;
+            // «все отряды ... не могут получать повреждения»: only the bastions.
+            if (protectedUnits) return p.kind === 'structure';
+            if (p.kind === 'structure' || !p.routed || freeRouted) return true;
+            // «only if all of his units in the combat are routed and he does
+            // not have a bastion in the combat».
+            for (const q of alive.values()) {
+                if (q.id !== p.id && (q.kind === 'structure' || !q.routed)) return false;
+            }
+            return true;
+        };
+        const marked = rules.firstOf(side, round);
+        // A previously chosen piece may have died or left before this step —
+        // or be a routed unit that may not be hit while the others stand.
+        const first = marked && legal(alive.get(marked.id)) ? marked.id : null;
+        const selected = (targets || []).slice();
+        const needsFirst = !!(damage > 0 && first && !selected.includes(first));
+        const rows = [];
+        const skipped = [];
+        // The picks no order can make legal: a unit while the units are protected.
+        const refused = protectedUnits
+            ? (targets || []).filter(id => alive.has(id) && alive.get(id).kind !== 'structure') : [];
+        if (needsFirst) {
+            return { damage, placed: 0, left: damage, discarded: 0, rows, oneByOne, first, needsFirst,
+                next: [first], skipped, refused };
+        }
+        if (first && selected.includes(first)) {
+            selected.splice(selected.indexOf(first), 1);
+            selected.unshift(first);
+        }
+        const excess = rules.excessOf(round);
+        const excessId = excess && first && excess.id === first ? first
+            : (excess && excess.id === 'fallen' && excess.side === side ? 'fallen' : null);
+        let left = damage, discarded = 0;
+        const dropExcess = id => {
+            if (!excessId) return;
+            if (id === excessId) { discarded += left; left = 0; }
+            // «Мученичество»: the damage past the first fallen unit is lost.
+            const last = rows.length ? rows[rows.length - 1] : null;
+            if (excessId === 'fallen' && last && last.destroyed && !last.bastion && !last.retreat) {
+                discarded += left; left = 0;
+            }
+        };
+        // One pick of the list: the piece suffers the damage of the preview.
+        const hit = (id, piece) => {
+            if (typeof id === 'string' && id.startsWith('reinforce-')) {
+                // A preview is drawn on EVERY click while the player picks the
+                // pieces. It must never change the battle: the old version
+                // flipped the token here, before the damage was even sent.
+                if (this.reinforceTokenIndex(state, side, id) < 0) { skipped.push(id); return; }
+                const def0 = this.reinforceTokenDef(state, side);
+                const health = this.reinforceTokenHealth(state, side);
+                const take = oneByOne ? 1 : Math.min(left, health);
+                const destroyed = oneByOne ? health <= 1 : left >= health;
+                const routed = !destroyed && !this.reinforceNoRoute(state, side);
+                left -= take;
+                if (destroyed) alive.delete(id); else if (routed) piece.routed = true;
+                rows.push({ id, name: def0 ? def0.name : 'Подкрепление', health, take,
+                    destroyed, routed, token: true });
+                dropExcess(id);
+                return;
+            }
+            const unit = state.units.find(u => u.id === id);
+            if (unit) {
+                const def = this.engine.unitOf(state, unit);
+                const health = rules.health(unit.seat, def ? def.health : 1);
+                const take = oneByOne ? 1 : Math.min(left, health);
+                const destroyed = oneByOne ? health <= 1 : left >= health;
+                left -= take;
+                // The preview must promise what the damage will really do: a card
+                // may keep the unit standing («не может быть деморализован») or
+                // take it off the field before the destruction («отступите
+                // вместо уничтожения»). The damage step reads the same two rules.
+                const keep = this.forbidsRouteFor(state, unit, def);
+                const retreat = destroyed && this.retreatAvailable(state, unit);
+                if (destroyed) alive.delete(id); else if (!keep) piece.routed = true;
+                rows.push({ id: unit.id, name: def ? def.name : unit.id, health, take,
+                    destroyed: destroyed && !retreat, routed: destroyed ? (!retreat && !!unit.routed) : !keep,
+                    retreat });
+                dropExcess(id);
+                return;
+            }
+            const bastion = state.structures.find(st => st.id === id);
+            if (bastion) {
+                const health = this.engine.structureStats(bastion.type).health;
+                const take = Math.min(left, health);
+                const destroyed = left >= health;
+                left -= take;
+                if (destroyed) alive.delete(id);
+                rows.push({ id: bastion.id, name: this.engine.structureStats(bastion.type).name || bastion.type, health, take, destroyed, bastion: true });
+                dropExcess(id);
+            }
+        };
+        // A routed unit named before the last standing one is not refused: it
+        // waits its turn and takes the damage that is left when the others
+        // have fallen (legality only ever grows as pieces die — one deferral
+        // pass is exact). What never becomes legal is skipped.
+        const seen = new Set();
+        const deferred = [];
+        for (const id of selected) {
+            if (left <= 0) break;
+            if (seen.has(id)) continue;
+            seen.add(id);
+            const piece = alive.get(id);
+            if (!piece) { skipped.push(id); continue; }
+            if (!legal(piece)) { deferred.push(id); continue; }
+            hit(id, piece);
+        }
+        for (const id of deferred) {
+            const piece = alive.get(id);
+            if (left > 0 && legal(piece)) hit(id, piece);
+            else skipped.push(id);
+        }
+        left = Math.max(0, left);
+        // What may still be hit: the rest of the damage must go somewhere
+        // while a legal piece remains — the routed units included, once the
+        // others have fallen.
+        const next = [];
+        if (left > 0) {
+            for (const p of pieces) {
+                if (rows.some(r => r.id === p.id)) continue;
+                if (legal(alive.get(p.id))) next.push(p.id);
+            }
+        }
+        return { damage, placed: damage - left - discarded, left, discarded, rows, oneByOne, first, needsFirst, next, skipped, refused };
+    }
+
+    /**
+     * The pieces the damage of the step may reach, in a legal order: the legal
+     * part of the given selection first, then — as long as damage is left —
+     * the pieces that may be chosen after it, down to the routed units when
+     * nothing else stands. Without a selection the list begins with the
+     * pieces that may take the first point. Each piece carries `selected`
+     * (part of the given selection the damage reaches) and `pickable` (may be
+     * chosen now, given the selection).
+     */
+    damageCandidates(state, side, targets) {
+        const pieces = this.damagePieces(state, side);
+        const byId = new Map(pieces.map(p => [p.id, p]));
+        const chosen = this.damagePreview(state, side, Array.isArray(targets) ? targets : []);
+        const selected = new Set(chosen.rows.map(r => r.id));
+        const pickable = new Set(chosen.next);
+        // The chain of the damage: a greedy walk from a selection to the end
+        // of the damage or of the pieces. Every piece that becomes legal on the
+        // way is a candidate — the alternatives of each stage included. The
+        // walk from the empty selection keeps the list the same whatever the
+        // player has clicked so far; the walk from his selection adds what his
+        // own order reaches.
+        const walk = from => {
+            let preview = from;
+            let order = from.rows.map(r => r.id);
+            const reach = new Set(order);
+            for (let guard = 0; guard <= pieces.length && preview.left > 0 && preview.next.length; guard++) {
+                for (const id of preview.next) reach.add(id);
+                preview = this.damagePreview(state, side, order.concat(preview.next));
+                order = preview.rows.map(r => r.id);
+            }
+            return { order, reach };
+        };
+        const own = walk(chosen);
+        const any = targets && targets.length ? walk(this.damagePreview(state, side, [])) : own;
+        // The pieces legal for the first point are candidates even when the
+        // damage does not reach them (there may be no damage at all).
+        const firstPick = new Set(this.canTakeDamage(state, state.combat, side).map(x => x.id));
+        const out = [];
+        const put = id => {
+            const p = byId.get(id);
+            if (!p || out.some(x => x.id === id)) return;
+            out.push(Object.assign({}, p, { selected: selected.has(id), pickable: selected.has(id) || pickable.has(id) }));
+        };
+        for (const id of own.order) put(id);
+        for (const id of any.order) put(id);
+        for (const p of pieces) if (own.reach.has(p.id) || any.reach.has(p.id) || firstPick.has(p.id)) put(p.id);
+        return out;
     }
 
     combatDamage(state, seat, side, cmd) {
@@ -1182,21 +1311,27 @@ class CombatRules {
         // Validate before opening any reactive plan or changing hook state: an
         // invalid network command must neither spend a question nor skip damage.
         if (cmd.targets != null && !Array.isArray(cmd.targets)) return { ok: false, error: 'Укажите список целей урона.' };
-        const targets = (cmd.targets || []).slice();
-        const able = new Set(this.canTakeDamage(state, c, side).map(x => x.id));
+        let targets = (cmd.targets || []).slice();
+        const able = new Set(this.pieces(state, c, side).map(x => x.id));
         if (new Set(targets).size !== targets.length || targets.some(id => !able.has(id))) {
             return { ok: false, error: 'Этот отряд не может получить урон повторно или не участвует в бою.' };
         }
         const rules = CombatDamage.of(c);
+        // The damage walks the list in order; the preview judges every pick at
+        // its own moment and names what may still be hit afterwards.
+        const preview = this.damagePreview(state, side, targets);
+        // «все отряды ... не могут получать повреждения»: a unit named under
+        // that protection is refused, not quietly dropped.
+        if (preview.refused.length) {
+            return { ok: false, error: 'Этот отряд не может получить урон повторно или не участвует в бою.' };
+        }
         // «Этот отряд или бастион получает урон первым» («Бронетанковый клин»).
-        const marked = rules.firstOf(side, turn.round);
         // The marked piece may have been destroyed, routed, or moved away by
         // another effect before damage. An ineligible target cannot block play.
-        const firstHit = marked && able.has(marked.id) ? marked : null;
-        if (firstHit) {
-            const at = targets.indexOf(firstHit.id);
-            if (at < 0) return { ok: false, error: 'Урон сначала получает выбранный картой отряд или бастион.' };
-            if (at > 0) { targets.splice(at, 1); targets.unshift(firstHit.id); }
+        const marked = rules.firstOf(side, turn.round);
+        const firstHit = marked && preview.first === marked.id ? marked : null;
+        if (firstHit && !targets.includes(firstHit.id)) {
+            return { ok: false, error: 'Урон сначала получает выбранный картой отряд или бастион.' };
         }
         // «Монт'ка» deliberately discards excess damage after the named target.
         // «Игнорируйте весь урон, который превышает здоровье этого юнита»
@@ -1205,10 +1340,18 @@ class CombatRules {
         const keeping = rules.excessOf(turn.round);
         const excessId = keeping && firstHit && keeping.id === firstHit.id ? keeping.id
             : (keeping && keeping.id === 'fallen' && keeping.side === side ? 'fallen' : null);
-        const preview = this.damagePreview(state, side, targets);
-        if (preview.left > 0 && targets.length < able.size) {
-            return { ok: false, error: 'Сначала распределите оставшийся урон.' };
+        // The damage left must go on while a piece may still take it — the
+        // routed units too, once the unrouted ones and the bastions are gone.
+        if (preview.left > 0 && preview.next.length) {
+            const pieces = this.damagePieces(state, side);
+            const routedNext = preview.next.every(id => (pieces.find(p => p.id === id) || {}).routed);
+            return { ok: false, error: routedNext
+                ? 'Остаток урона (' + preview.left + ') получают деморализованные отряды — назначьте его.'
+                : 'Сначала распределите оставшийся урон.' };
         }
+        // Only the picks the damage reaches, in the order the preview promised:
+        // a routed unit named before the last standing one is skipped.
+        targets = preview.rows.map(r => r.id);
         // The schemes of the damage step are used before the damage.
         const hooks = CombatHooks.of(c);
         if (hooks.ask('damageHook', side)) {
@@ -1822,7 +1965,7 @@ class CombatRules {
             // In either case the already answered reaction must not be offered
             // again (including after refusal or after a fresh assignment).
             CombatHooks.of(c).ask('criticalHook', d.side);
-            const able = new Set(this.canTakeDamage(state, c, d.side).map(x => x.id));
+            const able = new Set(this.pieces(state, c, d.side).map(x => x.id));
             const targets = ((d.cmd && d.cmd.targets) || []).filter(id => able.has(id));
             CombatTurn.of(c).setStep(CombatSides.damageStep(d.side));
             this.combatDamage(state, d.seat, d.side, { targets });

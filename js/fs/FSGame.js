@@ -2160,7 +2160,10 @@ class FSGame {
                 // The fighters on the board take the damage; the mouse picks them.
                 this.mode = 'damage';
                 const preview = FS_RULES.damagePreview(s, whose, this.damageTargets);
-                const rows = FS_RULES.damageCandidates(s, whose).map(x => {
+                // The pieces the damage may reach, in a legal order — the routed
+                // ones too, once the standing ones and the bastions have fallen.
+                // Which of them may be clicked now depends on what is picked.
+                const rows = FS_RULES.damageCandidates(s, whose, this.damageTargets).map(x => {
                     const row = preview.rows.find(r => r.id === x.id);
                     return {
                         id: x.id, name: x.name, health: x.health, morale: x.morale,
@@ -2169,7 +2172,8 @@ class FSGame {
                         destroyed: row ? row.destroyed : false,
                         demoralised: row ? !!row.routed && !row.destroyed : false,
                         first: x.id === preview.first,
-                        selected: this.damageTargets.indexOf(x.id) >= 0,
+                        selected: !!row,
+                        pickable: !!x.pickable,
                     };
                 });
                 ctx.battle.damage = {
@@ -2182,8 +2186,13 @@ class FSGame {
                 ctx.text = damage
                     ? 'Урон ' + damage + ': щёлкните по отрядам в области боя.'
                     : 'Щиты выдержали удар.';
+                // The rest of the damage goes on to the routed units when nothing
+                // else stands: the status says so, the buttons open up.
+                const routedNext = preview.left > 0 && preview.next.length > 0
+                    && preview.next.every(id => rows.some(r => r.id === id && r.routed));
                 ctx.status = preview.needsFirst ? 'Выберите отряд или бастион, который должен получить урон первым.'
                     : preview.discarded ? 'Избыток урона потерян: ' + preview.discarded + '.'
+                    : routedNext ? 'Остаток урона (' + preview.left + ') получают деморализованные отряды.'
                     : damage ? 'Осталось распределить: ' + preview.left : '';
                 for (const row of rows) {
                     ctx.actions.push({
@@ -2192,17 +2201,21 @@ class FSGame {
                         label: row.name, count: String(row.health),
                         hint: (row.first ? 'Получает урон первым · ' : '')
                             + (row.destroyed ? 'Будет уничтожен'
-                                : row.routed ? 'Деморализован'
-                                : (row.demoralised ? 'Будет деморализован' : 'В строю')),
+                                : row.routed ? (row.selected || row.pickable || !preview.left ? 'Деморализован'
+                                    : 'Деморализован · получит урон, когда остальные падут')
+                                : (row.demoralised ? 'Будет деморализован' : 'В строю'))
+                            + (!row.selected && !row.pickable && !preview.left && damage ? ' · урон уже распределён' : ''),
                         selected: row.selected,
+                        enabled: row.selected || row.pickable,
                         onClick: () => this.toggleDamage(row.id),
                     });
                 }
                 {
                     // A card may prevent all units from taking damage; in that
-                    // case there are no targets and the step can still end.
-                    const allPicked = rows.every(r => r.selected);
-                    const ready = !preview.needsFirst && (preview.left === 0 || allPicked);
+                    // case there are no targets and the step can still end. The
+                    // routed units count too: while damage is left and a piece
+                    // may still take it, the step is not over.
+                    const ready = !preview.needsFirst && (preview.left === 0 || !preview.next.length);
                     ctx.actions.push({
                         kind: 'primary', icon: 'mark.damage',
                         label: damage ? (ready ? 'Принять урон' : 'Разложите урон (осталось ' + preview.left + ')')
@@ -2273,7 +2286,29 @@ class FSGame {
     toggleDamage(id) {
         const i = this.damageTargets.indexOf(id);
         if (i >= 0) this.damageTargets.splice(i, 1);
-        else this.damageTargets.push(id);
+        else {
+            const s = this.state;
+            const c = s && s.combat;
+            const whose = c && CombatTurn.of(c).is('damage-attacker') ? 'attacker'
+                : c && CombatTurn.of(c).is('damage-defender') ? 'defender' : null;
+            if (whose) {
+                // A routed unit takes damage only when no unrouted unit and no
+                // bastion is left: the click on it is refused with the reason,
+                // not swallowed in silence.
+                const preview = FS_RULES.damagePreview(s, whose, this.damageTargets);
+                if (preview.left > 0 && !preview.next.includes(id)) {
+                    const piece = FS_RULES.damagePieces(s, whose).find(p => p.id === id);
+                    this.status = piece && piece.routed
+                        ? 'Деморализованный отряд получает урон, только когда все остальные отряды и бастионы пали.'
+                        : preview.needsFirst ? 'Сначала выберите цель, которая получает урон первой.'
+                        : 'Этот отряд урон сейчас не получает.';
+                    this.refresh();
+                    return;
+                }
+            }
+            this.damageTargets.push(id);
+        }
+        this.status = '';
         this.refresh();
     }
 

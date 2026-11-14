@@ -3727,6 +3727,67 @@ rule('combat-12', '«Any damage that exceeds a unit\'s or bastion\'s health valu
     eq(res.applied.every(x => x.destroyed), true, 'оба отряда погибли от 3 урона при здоровье 1');
 });
 
+rule('combat-12b', '«A player can assign damage to routed units only if all of his units in the combat are routed and he does not have a bastion» + «repeat the process … until either no more damage remains or no more units or bastions remain»', () => {
+    // The battle of the report: three warriors of three health, two of them
+    // routed, five damage coming in. The standing one falls to three points;
+    // the two that are left must go on to a routed unit — the old engine
+    // offered no such target and refused to end the step: a dead end.
+    // Three Огрины (health 4) stand for the three warriors: a unit that
+    // survives two points of damage, as in the report.
+    const stack = seat => {
+        const st = groundBattle({ att: 1, def: 1 });
+        const first = st.units.find(u => u.seat === seat);
+        for (const u of st.units.filter(x => x.seat === seat)) FS_RULES.destroyUnit(st, u);
+        for (let i = 0; i < 3; i++) unit(st, seat, 'огрины', first.system, first.area);
+        return st;
+    };
+    const st = stack(0);
+    const mine = st.units.filter(u => u.seat === 0);
+    eq(mine.length, 3, 'у атакующего три отряда');
+    mine[1].routed = true; mine[2].routed = true;
+    const health = FS_RULES.unitOf(st, mine[0]).health;
+    eq(health > 2, true, 'отряд переживает два урона (здоровье ' + health + ')');
+    c(st).step = 'damage-attacker';
+    c(st).dice.attacker = []; c(st).dice.defender = Array(health + 2).fill('att');
+    eq(FS_RULES.combatDamageFor(st, 'attacker'), health + 2, 'урон на два больше здоровья отряда');
+    // Before any pick: only the standing unit may take the first point, but
+    // the routed ones are already named as the pieces the damage will reach.
+    const first = FS_RULES.damageCandidates(st, 'attacker');
+    eq(first.map(x => x.id), mine.map(u => u.id), 'цели: сначала строй, затем деморализованные');
+    eq(first.map(x => x.pickable), [true, false, false], 'первым выбирается только отряд в строю');
+    eq(FS_RULES.damagePreview(st, 'attacker', [mine[1].id]).rows.length, 0, 'деморализованный до падения строя урона не получает');
+    // After the standing unit: the rest goes on, the routed ones open up.
+    const then = FS_RULES.damagePreview(st, 'attacker', [mine[0].id]);
+    eq([then.left, then.next], [2, [mine[1].id, mine[2].id]], 'после гибели отряда остаток ждёт деморализованных');
+    eq(FS_RULES.damageCandidates(st, 'attacker', [mine[0].id]).map(x => x.pickable), [true, true, true], 'теперь можно выбрать деморализованного');
+    const before = JSON.stringify(st.units);
+    const partial = FS_RULES.apply(st, 0, { type: 'combat', action: 'damage', targets: [mine[0].id] });
+    eq(partial.ok, false, 'остаток урона нельзя потерять, пока есть отряды');
+    eq(/деморализованн/.test(partial.error || ''), true, 'ошибка объясняет, кто получает остаток: ' + partial.error);
+    eq(FS_RULES.apply(st, 0, { type: 'combat', action: 'damage', targets: [mine[1].id, mine[2].id] }).ok, false, 'одни деморализованные — не распределение');
+    eq(JSON.stringify(st.units), before, 'отказ ничего не меняет');
+    // The routed unit named first simply waits its turn.
+    const res = FS_RULES.apply(st, 0, { type: 'combat', action: 'damage', targets: [mine[1].id, mine[0].id] });
+    eq(res.ok, true, 'урон принят: ' + (res.error || ''));
+    eq(res.applied, [{ unit: mine[0].id, destroyed: true }, { unit: mine[1].id, destroyed: false }],
+        'отряд в строю погиб, деморализованный принял остаток');
+    eq(st.units.filter(u => u.seat === 0).map(u => u.id), [mine[1].id, mine[2].id], 'два деморализованных отряда живы: 2 урона меньше здоровья');
+    // Enough damage for everybody: the whole stack dies, routed or not.
+    const st2 = stack(0);
+    const all = st2.units.filter(u => u.seat === 0);
+    all[1].routed = true; all[2].routed = true;
+    c(st2).step = 'damage-attacker';
+    // The dice stop at eight: the rest of the damage comes from a card's bonus.
+    c(st2).dice.attacker = []; c(st2).dice.defender = Array(8).fill('att');
+    ctx.CombatDamage.of(c(st2)).addExtra('both', Math.max(0, health * 3 - 8), 1);
+    eq(FS_RULES.combatDamageFor(st2, 'attacker'), health * 3, 'урона ровно на три отряда');
+    const ids = FS_RULES.damageCandidates(st2, 'attacker').map(x => x.id);
+    eq(ids, all.map(u => u.id), 'на весь отряд — все три цели по порядку');
+    const wipe = FS_RULES.apply(st2, 0, { type: 'combat', action: 'damage', targets: ids });
+    eq(wipe.ok, true, 'полное распределение принято: ' + (wipe.error || ''));
+    eq(st2.units.filter(u => u.seat === 0).length, 0, 'урона на всех — все отряды уничтожены');
+});
+
 rule('combat-13', '«After a combat is resolved, all reinforcement tokens that were used during the combat are returned to the supply.»', () => {
     const st = groundBattle({ reinforce: 2 });
     eq(FS_RULES.maxReinforce(st, 0, 'attacker'), 2, 'предел подкреплений — число отрядов');

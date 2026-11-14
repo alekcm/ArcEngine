@@ -15400,7 +15400,14 @@ check('Предвидение', 'уничтоженный вне боя жето
     ok(CombatTokens.of(st.combat).alive('defender', 1), 'исходный слот снова на поле боя');
     eq(FS_RULES.pieces(st, st.combat, 'defender').filter(u => u.id === returning.id).length, 1, 'ровно одна боевая цель');
     st = JSON.parse(JSON.stringify(st));
-    ok(FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: [returning.id] }).ok, 'возвращённое подкрепление получает урон');
+    // The token falls first; the damage that is left goes on to the routed
+    // model — once nothing else stands, the routed units take it (01, «Damage
+    // And Health»), so the assignment names both.
+    const candidates = FS_RULES.damageCandidates(st, 'defender').map(x => x.id);
+    eq(candidates, [returning.id, routed], 'цели урона: жетон, затем деморализованный отряд');
+    const partial = FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: [returning.id] });
+    ok(!partial.ok && /деморализованн/.test(partial.error || ''), 'остаток урона нельзя потерять: ' + (partial.error || 'принято'));
+    ok(FS_RULES.apply(st, 1, { type: 'combat', action: 'damage', targets: [returning.id, routed] }).ok, 'возвращённое подкрепление получает урон');
     // If the routed model survives this execution round, finish the battle by the normal round resolver.
     for (let i = 0; i < 4 && st.combat && st.combat.step !== 'retreat'; i++) FS_RULES.endCombatRound(st);
     if (st.combat && st.combat.step === 'retreat') {
