@@ -9,7 +9,7 @@
 //  node tools/check.mjs --lan      real-server identity and reconnect checks
 //  node tools/check.mjs --screens  the screens only (fs-screens.mjs)
 //  node tools/check.mjs --walk     the walk only (fs-walk.mjs): a party through the client's eyes
-//  node tools/check.mjs --play     the bot parties only (fs-play.mjs): all 12 factions play whole games
+//  node tools/check.mjs --play     the bot parties only (fs-play.mjs, fs-bot-arena.mjs): all 12 factions play whole games, the levels are compared
 //
 //  Types: TypeScript checks the JS via JSDoc — tsconfig.json (game) and
 //  _utils/editor/tsconfig.json (editor). TypeScript is not a project dependency:
@@ -53,6 +53,10 @@ const STEPS = [
   // seeds: a hand-built map and a ready one). Battles, strikes, purchases,
   // upgrades, events and the questions of the cards all happen in one state.
   { flag: '--play', title: 'партии ботов', run: () => spawnSync(process.execPath, ['tools/fs-play.mjs', '--games=2'], { cwd: ROOT, stdio: 'inherit' }) },
+  // The arena of the bots: «Обычный» against «Новичок» over sixteen seeded
+  // parties (the seats alternate). The evaluation must beat the random choice —
+  // the gate fails when it wins fewer than half of the decided parties.
+  { flag: '--play', title: 'арена ботов', run: () => spawnSync(process.execPath, ['tools/fs-bot-arena.mjs', '--games=16', '--quiet', '--expect=0.5'], { cwd: ROOT, stdio: 'inherit' }) },
 ];
 
 const only = ['--types', '--rules', '--cards', '--smoke', '--lan', '--screens', '--walk', '--play'].filter(f => process.argv.includes(f));

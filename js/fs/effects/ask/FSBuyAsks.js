@@ -67,7 +67,10 @@ class BuyAsks {
             return null;
         }
         const cost = step.cost === undefined ? R.structureStats('bastion').cost : step.cost;
-        if ((p.materiel || 0) < cost) {
+        // The purchases of the order are paid when it ends: the bastion is
+        // bought out of what is left after them, or the order could not close.
+        const pending = order ? R.spentOf(order) : 0;
+        if ((p.materiel || 0) - pending < cost) {
             R.log(state, seat, p.name + ' не хватает материи на бастион.');
             return null;
         }

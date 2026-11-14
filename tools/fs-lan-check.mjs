@@ -587,11 +587,13 @@ try {
         const bot = withBot.players.find(p => p.bot);
         assert.equal(bot.faction, 'орки', 'бот взял названную фракцию');
         assert.equal(bot.name, 'Варбосс', 'бот назван по фракции');
-        assert.equal(bot.persona, 'aggressor', 'характер по умолчанию фракции');
+        assert.equal(bot.persona, 'orks-waaagh', 'характер по умолчанию фракции — её доктрина');
         assert.equal(bot.level, 'novice', 'уровень как попросили');
         assert.equal(bot.ready, true, 'бот всегда готов');
         assert.match(bot.line, /Варбосс: WAAAGH/, 'подпись-намёк в списке');
-        assert.ok(withBot.bots && withBot.bots.personas.length === 5 && withBot.bots.levels.length === 3, 'лобби знает характеры и уровни');
+        assert.ok(withBot.bots && withBot.bots.personas.length >= 12 && withBot.bots.levels.length === 3, 'лобби знает характеры и уровни');
+        assert.ok(withBot.bots.personas.some(x => x.id === 'orks-mek' && x.faction === 'орки') && withBot.bots.personas.some(x => x.id === 'turtle' && !x.faction),
+            'доктрина называет фракцию, архетип подходит всем');
         guest.send({ t: 'bot', id: bot.id, level: 'veteran' });
         assert.match((await guest.take(t('err'), 'бота настраивает гость')).msg, /хозяин/i);
         host.send({ t: 'bot', id: bot.id, faction: 'некроны', persona: 'turtle', level: 'veteran' });
@@ -600,6 +602,11 @@ try {
         assert.deepEqual([bot2.name, bot2.persona, bot2.level], ['Фаэрон', 'turtle', 'veteran'], 'новая фракция переименовала бота, характер и уровень — как задано');
         host.send({ t: 'bot', id: bot.id, persona: 'джедай' });
         assert.match((await host.take(t('err'), 'неизвестный характер')).msg, /характер/i);
+        host.send({ t: 'bot', id: bot.id, persona: 'orks-mek' });
+        assert.match((await host.take(t('err'), 'доктрина чужой фракции')).msg, /не подходит/i);
+        host.send({ t: 'bot', id: bot.id, persona: 'necrons-phalanx' });
+        const doctrine = await roomOf(host, m => m.players.some(p => p.bot && p.persona === 'necrons-phalanx'), 'доктрина своей фракции принята');
+        assert.match(doctrine.players.find(p => p.bot).line, /Фаэрон: /, 'подпись-намёк следует за характером');
         // The seats are four, bots included: one more bot fills the room, the
         // next is refused, and so is a new guest at the door.
         host.send({ t: 'addBot' });

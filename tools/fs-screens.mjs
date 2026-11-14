@@ -240,10 +240,10 @@ screen('lobby-3', 'хозяин видит «Начать игру» серой,
 });
 
 screen('lobby-7', 'бот в лобби: подпись-намёк и архетип мелко у всех, у хозяина — выбор фракции, характера и уровня, «+ Добавить бота» до четырёх мест, «убрать»', () => {
-    const bots = { personas: FS_BOT_SCREENS.PERSONAS.map(p => ({ id: p.id, name: p.name, text: p.text })), levels: FS_BOT_SCREENS.LEVELS.map(l => ({ id: l.id, name: l.name })) };
+    const bots = { personas: FS_BOT_SCREENS.PERSONAS.map(p => ({ id: p.id, name: p.name, text: p.text, faction: p.faction || null })), levels: FS_BOT_SCREENS.LEVELS.map(l => ({ id: l.id, name: l.name })) };
     const seats = [
         LOBBY_SEATS[0],
-        { id: 'bot1', name: 'Варбосс', faction: 'орки', seat: 1, ready: true, online: true, bot: true, persona: 'aggressor', level: 'normal', line: FS_BOT_SCREENS.line('орки', 'aggressor') },
+        { id: 'bot1', name: 'Варбосс', faction: 'орки', seat: 1, ready: true, online: true, bot: true, persona: 'orks-waaagh', level: 'normal', line: FS_BOT_SCREENS.line('орки', 'orks-waaagh') },
     ];
     const added = [], set = [], kicked = [];
     drawLobby({
@@ -254,7 +254,7 @@ screen('lobby-7', 'бот в лобби: подпись-намёк и архет
     let texts = textsOf(FSUI.modernRoot);
     if (!texts.some(t => /Варбосс · Орки · бот/.test(t))) return 'бот не назван ботом в списке';
     if (!texts.some(t => /Варбосс: WAAAGH! с первого плана/.test(t))) return 'нет подписи-намёка бота';
-    if (!texts.some(t => /^агрессор · обычный$/.test(t))) return 'нет мелкой подписи архетипа и уровня';
+    if (!texts.some(t => /^зелёный прилив · обычный$/.test(t))) return 'нет мелкой подписи характера и уровня';
     let buttons = buttonsOf(FSUI.modernRoot);
     const addButton = list => list.find(b => textsOf(b).some(t => /Добавить бота/.test(t)));
     const add = addButton(buttons);
@@ -265,7 +265,10 @@ screen('lobby-7', 'бот в лобби: подпись-намёк и архет
     (function walk(n) { if (!n) return; if (n.tagName === 'SELECT') selects.push(n); for (const c of n.children || []) walk(c); })(FSUI.modernRoot);
     const menu = selects.filter(s => /fs-bot-select/.test(s.className));
     if (menu.length !== 3) return 'у хозяина должно быть три меню бота (фракция, характер, уровень), найдено ' + menu.length;
-    if (menu[1].value !== 'aggressor' || menu[2].value !== 'normal') return 'меню не показывают текущий характер и уровень: ' + menu[1].value + ', ' + menu[2].value;
+    if (menu[1].value !== 'orks-waaagh' || menu[2].value !== 'normal') return 'меню не показывают текущий характер и уровень: ' + menu[1].value + ', ' + menu[2].value;
+    // The characters offered: the doctrines of the Orks and the archetypes, not the doctrines of the Necrons.
+    const offered = Array.from(menu[1].children || []).map(o => o.value);
+    if (!offered.includes('orks-mek') || !offered.includes('turtle') || offered.includes('necrons-phalanx')) return 'меню характеров не отфильтровано по фракции: ' + offered.join(', ');
     menu[2].value = 'veteran';
     for (const fn of menu[2].listeners.change || []) fn({ target: menu[2] });
     if (!set.length || set[0][0] !== 'bot1' || set[0][1].level !== 'veteran') return 'смена уровня не ушла хозяину: ' + JSON.stringify(set);

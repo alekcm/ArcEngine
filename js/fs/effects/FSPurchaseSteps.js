@@ -124,7 +124,10 @@ class PurchaseSteps {
         if (!area) return null;
         const cost = step.cost === undefined ? R.structureStats('bastion').cost : step.cost;
         const buyer = state.players[ctx && ctx.owner !== undefined ? ctx.owner : seat];
-        if ((buyer.materiel || 0) < cost) return null;
+        // The purchases of the order are paid when it ends: they are counted
+        // against the materiel first, or the order could not close.
+        const pending = state.order && OrderContext.of(state.order).isSeat(buyer.seat) ? R.spentOf(state.order) : 0;
+        if ((buyer.materiel || 0) - pending < cost) return null;
         const can = R.canTakeStructure(state, buyer.seat, 'bastion');
         if (!can.ok) return null;
         R.player(state, buyer.seat).payMateriel(cost);

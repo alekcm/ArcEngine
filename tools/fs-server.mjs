@@ -64,6 +64,7 @@ const FS_DATA = context.FS_DATA;
 const FS_RULES = context.FS_RULES;
 const FS_BOT = context.FS_BOT;
 const GameOutcome = context.GameOutcome;
+const GameLog = context.GameLog;
 
 // The tempo of the bots, in milliseconds: a human has to see what happened.
 // FS_BOT_DELAY=0 (the checks) makes the bots answer at once.
@@ -124,7 +125,7 @@ class Room {
             publicId: 'bot' + this.nextBot++,
             name: defaults.name,
             faction: factionId,
-            persona: FS_BOT.persona(opts.persona) ? opts.persona : defaults.persona,
+            persona: FS_BOT.persona(opts.persona) && FS_BOT.fits(opts.persona, factionId) ? opts.persona : defaults.persona,
             level: FS_BOT.level(opts.level).id,
             palette: null,
             seat: this.players.length,
@@ -150,6 +151,7 @@ class Room {
         }
         if (patch.persona !== undefined) {
             if (!FS_BOT.persona(patch.persona)) return 'Нет такого характера.';
+            if (!FS_BOT.fits(patch.persona, bot.faction)) return 'Этот характер не подходит фракции бота.';
             bot.persona = patch.persona;
         }
         if (patch.level !== undefined) {
@@ -323,6 +325,8 @@ function botApply(room, seat, step) {
         return;
     }
     room.botRefusals = 0;
+    // The line of the character goes to the log after the move it belongs to.
+    if (step.say) GameLog.of(state).add(seat, step.say);
     room.version++;
     sendState(room);
     driveBots(room);
@@ -603,8 +607,9 @@ function sendRoomInfo(room) {
             persona: p.bot ? p.persona : undefined, level: p.bot ? p.level : undefined,
             line: p.bot ? FS_BOT.line(p.faction, p.persona) : undefined,
         })),
-        // What the lobby offers for a bot: the characters and the levels.
-        bots: { personas: FS_BOT.PERSONAS.map(x => ({ id: x.id, name: x.name, text: x.text })), levels: FS_BOT.LEVELS.map(x => ({ id: x.id, name: x.name })) },
+        // What the lobby offers for a bot: the characters (a doctrine names its
+        // faction, an archetype fits everybody) and the levels.
+        bots: { personas: FS_BOT.PERSONAS.map(x => ({ id: x.id, name: x.name, text: x.text, faction: x.faction || null })), levels: FS_BOT.LEVELS.map(x => ({ id: x.id, name: x.name })) },
     });
 }
 

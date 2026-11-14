@@ -1615,7 +1615,9 @@ const FSUI = {
         };
         const bots = info.bots || {};
         menu.append(select('Фракция бота', (info.factions || []).map(f => ({ id: f.id, name: f.name })), p.faction, 'faction'));
-        if (bots.personas && bots.personas.length) menu.append(select('Характер бота', bots.personas, p.persona, 'persona'));
+        // The characters of this faction and the ones that fit everybody.
+        const personas = (bots.personas || []).filter(x => !x.faction || x.faction === p.faction);
+        if (personas.length) menu.append(select('Характер бота', personas, p.persona, 'persona'));
         if (bots.levels && bots.levels.length) menu.append(select('Сложность бота', bots.levels, p.level, 'level'));
         return menu;
     },
