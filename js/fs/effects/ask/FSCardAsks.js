@@ -279,7 +279,7 @@ class CardAsks {
             p.eventHand = p.eventHand || [];
             p.eventHand.push(name);
         }
-        R.log(state, seat, state.players[seat].name + ' берёт карты событий: ' + p.eventHand.join(', ') + '.');
+        R.log(state, seat, state.players[seat].name + ' берёт карты событий.');
         return null;
     }
 

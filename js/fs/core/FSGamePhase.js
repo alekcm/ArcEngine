@@ -82,11 +82,11 @@ class GamePhase {
         return GamePhase.length(this.state.rounds);
     }
 
-    /** A valid length of a party: an integer of ROUNDS_RANGE, else the default. */
+    /** A valid length is one of the two formats offered in the lobby. */
     static length(value) {
-        const [min, max] = FS_RULES_CONFIG.ROUNDS_RANGE;
         const n = Number(value);
-        return Number.isInteger(n) && n >= min && n <= max ? n : FS_RULES_CONFIG.ROUNDS;
+        return Number.isInteger(n) && FS_RULES_CONFIG.ROUND_CHOICES.includes(n)
+            ? n : FS_RULES_CONFIG.ROUNDS;
     }
 
     /** The rounds still to be played, the current one included (0 after the last). */

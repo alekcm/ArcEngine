@@ -329,6 +329,17 @@ class CoreRules {
             // Totals by kind are useful for one's own hand, but would disclose
             // the other player's facedown orders.
             if (p.seat !== seat) delete p.placedOf;
+            // Event cards and unrevealed Blitz requisitions are hands, not
+            // public state. Keep only their counts for observers; the owner
+            // still receives the exact cards needed to make a choice.
+            p.eventHand = Array.isArray(p.eventHand) ? p.eventHand : [];
+            p.eventHandCount = p.eventHand.length;
+            p.requisitions = Array.isArray(p.requisitions) ? p.requisitions : [];
+            p.requisitionCount = p.requisitions.length;
+            if (p.seat !== seat) {
+                delete p.eventHand;
+                p.requisitions = [];
+            }
             // Only the count leaves the server: the deck itself is known to all
             // players through decksCombatKnown below, and the rest is the pile
             // of a player. One loop, one shape.
@@ -363,19 +374,33 @@ class CoreRules {
                 copy.pending.question.options = [];
         }
         if (copy.setup) {
-            copy.setup.hand = (copy.setup.hands[seat] || []).slice();
+            copy.setup.hand = ((copy.setup.hands && copy.setup.hands[seat]) || copy.setup.hand || []).slice();
             delete copy.setup.hands;
-            copy.setup.legalCells = copy.setup.stage === 'tile' ? this.engine.setupLegalCells(copy) : [];
+            copy.setup.legalCells = copy.setup.stage === BoardSetup.TILES ? this.engine.setupLegalCells(copy) : [];
             copy.setup.objectiveOptions = [];
-            if (copy.setup.stage === 'objectives' && copy.setup.turn === seat) copy.setup.objectiveOptions = this.engine.setupObjectiveOptions(state);
-            copy.setup.stormEdges = copy.setup.stage === 'storms' ? this.engine.setupStormEdges(state) : [];
+            if (copy.setup.stage === BoardSetup.OBJECTIVES && copy.setup.turn === seat) copy.setup.objectiveOptions = this.engine.setupObjectiveOptions(state);
+            copy.setup.stormEdges = copy.setup.stage === BoardSetup.STORMS ? this.engine.setupStormEdges(state) : [];
+            copy.setup.requisitionOptions = [];
+            const pendingRequisition = copy.setup.pendingRequisition;
+            if (copy.setup.stage === BoardSetup.REQUISITION_EFFECT && pendingRequisition && pendingRequisition.seat === seat) {
+                copy.setup.requisitionOptions = this.engine.requisitionOptions(state, seat, pendingRequisition.card);
+            }
+            if (copy.setup.blitzDraft) {
+                const draft = copy.setup.blitzDraft;
+                draft.cardHandCount = (draft.cardHand || []).length;
+                if (draft.cardChooser !== seat) draft.cardHand = [];
+            }
             copy.setup.myTurn = copy.setup.turn === seat;
         }
         // The combat deck is not hidden information: every player sees every
         // deck's contents (sorted names only — the draw order stays on the server).
         for (let i = 0; i < copy.players.length; i++) {
             const src = state.players[i];
-            if (src && src.decks) copy.players[i].decksCombatKnown = (src.decks.combat || []).slice().sort();
+            if (src && src.decks) {
+                copy.players[i].decksCombatKnown = (src.decks.combat || []).slice().sort();
+                copy.players[i].decksUpgradeCombatKnown = (src.decks.upgradeCombat || []).slice().sort();
+                copy.players[i].decksUpgradeOrderKnown = (src.decks.upgradeOrder || []).slice().sort();
+            }
         }
         Seat.of(copy).stateOf(seat);
         return copy;

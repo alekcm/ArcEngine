@@ -16,6 +16,7 @@
 const FS_RULE_SERVICES = [
     CoreRules,
     SetupRules,
+    RequisitionRules,
     PlanningRules,
     OperationsRules,
     AdvanceRules,

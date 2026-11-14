@@ -819,8 +819,11 @@ function handle(ws, msg) {
         if (room.host() !== player) { ws.send({ t: 'err', msg: 'Длину партии выбирает хозяин комнаты.' }); return; }
         if (msg.rounds !== undefined) {
             const n = Number(msg.rounds);
-            const [min, max] = FS_RULES.ROUNDS_RANGE;
-            if (!Number.isInteger(n) || n < min || n > max) { ws.send({ t: 'err', msg: 'Партия может длиться от ' + min + ' до ' + max + ' раундов.' }); return; }
+            const choices = FS_RULES.ROUND_CHOICES;
+            if (!Number.isInteger(n) || !choices.includes(n)) {
+                ws.send({ t: 'err', msg: 'Доступны только 8 раундов (классика) или 5 (блиц).' });
+                return;
+            }
             room.rounds = n;
         }
         sendRoomInfo(room);

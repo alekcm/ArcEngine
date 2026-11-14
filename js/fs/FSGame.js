@@ -664,7 +664,9 @@ class FSGame {
         const board = BoardSetup.of(s);
         const setup = board.record || {};
         const turnPlayer = s.players[board.turn];
-        ctx.title = board.is(BoardSetup.STORMS) ? 'Варп-штормы' : 'Сборка карты';
+        ctx.title = board.is(BoardSetup.DRAFT_SUIT, BoardSetup.DRAFT_CARD) ? 'Драфт реквизиций'
+            : board.is(BoardSetup.REQUISITION, BoardSetup.REQUISITION_EFFECT) ? 'Реквизиция'
+                : board.is(BoardSetup.STORMS) ? 'Варп-штормы' : 'Сборка карты';
         if (!setup.myTurn) {
             ctx.text = 'Ход игрока ' + (turnPlayer ? turnPlayer.name : '—') + '.';
             ctx.status = this.status || 'Ждём.';
@@ -681,6 +683,74 @@ class FSGame {
                     onClick: () => this.net.cmd({ type: 'startAsset', asset }),
                 });
             }
+            return;
+        }
+        if (board.is(BoardSetup.DRAFT_SUIT)) {
+            const draft = setup.blitzDraft || {};
+            ctx.text = 'Первый игрок выбирает масть; затем все игроки по очереди берут по одной закрытой карте.';
+            ctx.status = this.status || 'Выберите ещё не использованную масть.';
+            for (const suitId of draft.availableSuits || []) {
+                const suit = FS_REQUISITIONS.suit(suitId);
+                if (!suit) continue;
+                ctx.actions.push({
+                    kind: 'pick', icon: 'ui.card', label: suit.name + ' · ' + suit.translation,
+                    hint: suit.description,
+                    onClick: () => this.net.cmd({ type: 'chooseRequisitionSuit', suit: suit.id }),
+                });
+            }
+            return;
+        }
+        if (board.is(BoardSetup.DRAFT_CARD)) {
+            const draft = setup.blitzDraft || {};
+            const suit = FS_REQUISITIONS.suit(draft.currentSuit);
+            const cards = (draft.cardHand || []).map((id, index) => ({ card: FS_REQUISITIONS.card(id), index }))
+                .filter(choice => choice.card);
+            ctx.text = 'Выберите одну карту масти ' + (suit ? suit.name : '')
+                + '. Остальные карты будут переданы следующему игроку.';
+            ctx.status = this.status || 'Карты видите только вы; выбранные реквизиции остаются закрытыми до выкладки тайла.';
+            ctx.cardChoices = {
+                title: (suit ? suit.name + ' · ' + suit.translation : 'Карты масти') + ' — выберите одну',
+                choices: cards.map(({ card, index }) => ({
+                    name: card.name,
+                    detail: { kind: 'Реквизиция · ' + (suit ? suit.translation : ''), name: card.name, text: card.text },
+                    onClick: () => this.net.cmd({ type: 'chooseRequisitionCard', index }),
+                })),
+            };
+            return;
+        }
+        if (board.is(BoardSetup.REQUISITION)) {
+            const cards = (s.players[me].requisitions || []).map(id => FS_REQUISITIONS.card(id)).filter(Boolean);
+            ctx.text = 'Откройте и разрешите одну из своих реквизиций до размещения начальных сил.';
+            ctx.status = this.status || 'Выбранная карта станет открытой для всех игроков.';
+            ctx.cardChoices = {
+                title: 'Ваши закрытые реквизиции',
+                choices: cards.map(card => ({
+                    name: card.name,
+                    detail: { kind: 'Реквизиция · ' + (FS_REQUISITIONS.suit(card.suit) || {}).translation, name: card.name, text: card.text },
+                    onClick: () => this.net.cmd({ type: 'selectRequisition', card: card.id }),
+                })),
+            };
+            return;
+        }
+        if (board.is(BoardSetup.REQUISITION_EFFECT)) {
+            const pending = setup.pendingRequisition;
+            const card = pending && FS_REQUISITIONS.card(pending.card);
+            const options = setup.requisitionOptions || [];
+            ctx.text = card ? 'Выберите способ разрешить открытую реквизицию «' + card.name + '».'
+                : 'Выберите доступный способ разрешить реквизицию.';
+            ctx.status = this.status || 'Если выполнить карту невозможно, она сбрасывается без эффекта.';
+            if (card) ctx.previewCard = { kind: 'Реквизиция', name: card.name, text: card.text, okLabel: 'Открыта' };
+            for (let choice = 0; choice < options.length; choice++) {
+                const option = options[choice];
+                ctx.actions.push({
+                    kind: 'pick', icon: option.kind === 'unit' || option.kind === 'unit-pair' ? 'mark.ground'
+                        : option.kind === 'structure' ? 'mark.city' : 'ui.card',
+                    label: option.label,
+                    hint: card ? card.text : '',
+                    onClick: () => this.net.cmd({ type: 'resolveRequisition', choice }),
+                });
+            }
+            return;
         }
         if (board.is(BoardSetup.FORCES)) {
             const sys = Board.of(s).system(board.currentSystem);

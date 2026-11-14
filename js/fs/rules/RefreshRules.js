@@ -186,7 +186,7 @@ class RefreshRules {
         this.initializeEventDeck(state, seat);
         p.eventDiscard = (p.eventDiscard || []).filter(n => n !== name);
         if (!p.decks.event.includes(name)) p.decks.event.push(name);
-        p.decks.event = this.engine.shuffle(state, p.decks.event);
+        if (p.noEventShuffleRound !== GamePhase.of(state).round) p.decks.event = this.engine.shuffle(state, p.decks.event);
         return true;
     }
 
@@ -197,7 +197,7 @@ class RefreshRules {
         const inPlay = new Set((p.schemes || []).map(s => s.name));
         const cards = [...new Set(p.decks.event.concat(p.eventDiscard || []))]
             .filter(name => !inPlay.has(name));
-        p.decks.event = this.engine.shuffle(state, cards);
+        p.decks.event = p.noEventShuffleRound === GamePhase.of(state).round ? cards : this.engine.shuffle(state, cards);
         p.eventDiscard = [];
     }
 
@@ -238,8 +238,8 @@ class RefreshRules {
             const held = event.isSeat(seat) ? event.drawn.concat(event.top ? [event.top] : []) : [];
             const unavailable = new Set((p.schemes || []).map(s => s.name)
                 .concat(p.eventDiscard || [], p.eventHand || [], held));
-            p.decks.event = this.engine.shuffle(state, FS_CATALOG.eventCards(p.faction)
-                .map(c => c.name).filter(name => !unavailable.has(name)));
+            const cards = FS_CATALOG.eventCards(p.faction).map(c => c.name).filter(name => !unavailable.has(name));
+            p.decks.event = p.noEventShuffleRound === GamePhase.of(state).round ? cards : this.engine.shuffle(state, cards);
         }
         p.eventDeckInitialized = true;
     }

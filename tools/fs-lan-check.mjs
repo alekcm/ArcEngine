@@ -431,8 +431,10 @@ try {
         assert.equal(twins.rounds, 8, 'по умолчанию партия на восемь раундов');
         guest.send({ t: 'options', rounds: 5 });
         assert.match((await guest.take(t('err'), 'длину меняет гость')).msg, /хозяин/i);
+        host.send({ t: 'options', rounds: 6 });
+        assert.match((await host.take(t('err'), 'неподдерживаемая длина партии')).msg, /только 8 раундов.*5 \(блиц\)/i);
         host.send({ t: 'options', rounds: 40 });
-        assert.match((await host.take(t('err'), 'длина вне диапазона')).msg, /от 1 до 12/i);
+        assert.match((await host.take(t('err'), 'длина вне диапазона')).msg, /только 8 раундов.*5 \(блиц\)/i);
         host.send({ t: 'options', rounds: 5 });
         const blitz = await roomOf(late, m => m.rounds === 5, 'все видят блиц на пять раундов');
         assert.equal(blitz.players.length, 3, 'список комнаты тот же');
@@ -651,7 +653,9 @@ try {
         const readyRoom = await roomOf(host, m => m.start.ok, 'хозяин и бот — можно начинать');
         assert.equal(readyRoom.players.length, 2, 'за столом человек и бот');
         host.send({ t: 'options', rounds: 4 });
-        await roomOf(host, m => m.rounds === 4, 'короткая партия с ботом');
+        assert.match((await host.take(t('err'), 'четыре раунда запрещены')).msg, /только 8 раундов.*5 \(блиц\)/i);
+        host.send({ t: 'options', rounds: 5 });
+        await roomOf(host, m => m.rounds === 5, 'блиц с ботом');
         host.send({ t: 'bot', id: bot.id, faction: '__fs_random_faction__' });
         const stillHidden = await roomOf(host, m => m.players.some(p => p.bot && p.randomFaction), 'рандом скрыт перед стартом');
         const hiddenBeforeStart = stillHidden.players.find(p => p.bot);
@@ -678,7 +682,7 @@ try {
         assert.ok(startedBot.name !== 'Бот' && withBot.bots.personas.some(x => x.id === startedBot.persona && x.faction === startedBot.faction), 'при старте выбран случайный характер этой фракции и показано имя');
         const first = await host.take(message => message.t === 'state' && message.view.seat === 0, 'партия с ботом началась');
         assert.equal(first.view.players[1].faction, startedBot.faction, 'бот играет раскрытой фракцией');
-        assert.equal(first.view.rounds, 4, 'длина партии дошла до состояния');
+        assert.equal(first.view.rounds, 5, 'длина блиц-партии дошла до состояния');
         // The bot builds its part of the galaxy by itself: the human only acts
         // at his own turns. Every state the human gets is his own view — the
         // bot's hand of tiles is never in it.
@@ -686,6 +690,16 @@ try {
         let view = first.view, botMoves = 0;
         const humanStep = (state) => {
             const setup = state.setup, seat = 0;
+            if (setup.stage === 'draft-suit') {
+                const suit = setup.blitzDraft && setup.blitzDraft.availableSuits[0];
+                return suit ? { type: 'chooseRequisitionSuit', suit } : null;
+            }
+            if (setup.stage === 'draft-card') return { type: 'chooseRequisitionCard', index: 0 };
+            if (setup.stage === 'requisition') {
+                const card = state.players[seat].requisitions && state.players[seat].requisitions[0];
+                return card ? { type: 'selectRequisition', card } : null;
+            }
+            if (setup.stage === 'requisition-effect') return { type: 'resolveRequisition', choice: 0 };
             if (setup.stage === 'tile') { const cell = setup.legalCells[0]; return { type: 'placeSystemTile', tile: setup.hand[0], row: cell.row, col: cell.col }; }
             if (setup.stage === 'forces') {
                 const initial = state.players[seat].initialForces;

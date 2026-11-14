@@ -441,7 +441,7 @@ screen('lobby-5', 'клиент: список комнаты от сервера
         // server, and the list that comes back selects the chosen length.
         const words = b => textsOf(b).join(' ');
         const lengths = buttons.filter(b => /fs-rounds-choice/.test(b.className));
-        if (lengths.map(b => words(b).replace(/\D/g, '')).join() !== '4,5,6,7,8') return 'хозяину показаны не те длины партии: ' + lengths.map(words).join(' | ');
+        if (lengths.map(b => words(b).replace(/\D/g, '')).join() !== '5,8') return 'хозяину показаны не те длины партии: ' + lengths.map(words).join(' | ');
         if (!lengths.find(b => /8/.test(words(b)) && /классика/.test(words(b)) && /is-selected/.test(b.className))) return 'по умолчанию не выбрана классика на 8';
         lengths.find(b => /5/.test(words(b)) && /блиц/.test(words(b))).click();
         const length = sent.find(m => m.t === 'options');

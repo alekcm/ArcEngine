@@ -1672,9 +1672,8 @@ const FSUI = {
         const current = Number(info.rounds) || FS_RULES_CONFIG.ROUNDS;
         row.append(this.el('span', 'fs-palette-title', 'Длина партии'));
         if (info.isHost) {
-            const choices = (FS_RULES_CONFIG.ROUND_CHOICES || []).slice();
-            if (!choices.includes(current)) choices.push(current);
-            choices.sort((a, b) => a - b).forEach(n => {
+            const choices = (FS_RULES_CONFIG.ROUND_CHOICES || []).slice().sort((a, b) => a - b);
+            choices.forEach(n => {
                 const button = this.el('button', 'fs-rounds-choice' + (n === current ? ' is-selected' : ''));
                 button.type = 'button';
                 button.append(this.el('b', '', String(n)), this.el('span', '', n === 8 ? 'классика' : n === 5 ? 'блиц' : this.roundsWord(n).replace(/^\d+ /, '')));
