@@ -408,9 +408,13 @@ class DiceAsks {
         const field = BattleField.of(combat);
         const around = (R.areasAround ? R.areasAround(state, field.system, field.pos) : []) || [];
         const ids = new Set(around.map(a => a.system + ':' + a.pos));
+        // The unit comes «в эту область»: a ground unit joins a fight on a
+        // world, a ship a fight in the void — the other kind has no place there.
+        const world = effects.areaWorld(state, field.system, field.pos);
         /** @type {any[]} */
         const list = state.units.filter(u => u.seat === seat && !u.routed
-            && ids.has(u.system + ':' + u.area)).map(u => u.id);
+            && ids.has(u.system + ':' + u.area)
+            && ((R.unitOf(state, u) || {}).type !== 'ship') === world).map(u => u.id);
         if (!list.length) return null;
         return { question: {
             kind: 'units', who: seat, op: 'moveUnitToCombatForDice', n: 1,

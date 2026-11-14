@@ -1,7 +1,7 @@
 // ============================================================================
 //  ArcEngine — code check: types (tsc) and the rules audit
 // ----------------------------------------------------------------------------
-//  node tools/check.mjs            types, rules, cards, smoke, LAN, screens, walk
+//  node tools/check.mjs            types, rules, cards, smoke, LAN, screens, walk, play
 //  node tools/check.mjs --types    types only
 //  node tools/check.mjs --rules    the rules audit only
 //  node tools/check.mjs --cards    the covered faction card regressions
@@ -9,6 +9,7 @@
 //  node tools/check.mjs --lan      real-server identity and reconnect checks
 //  node tools/check.mjs --screens  the screens only (fs-screens.mjs)
 //  node tools/check.mjs --walk     the walk only (fs-walk.mjs): a party through the client's eyes
+//  node tools/check.mjs --play     the bot parties only (fs-play.mjs): all 12 factions play whole games
 //
 //  Types: TypeScript checks the JS via JSDoc — tsconfig.json (game) and
 //  _utils/editor/tsconfig.json (editor). TypeScript is not a project dependency:
@@ -48,9 +49,13 @@ const STEPS = [
   { flag: '--lan', title: 'сеть', run: () => spawnSync(process.execPath, ['tools/fs-lan-check.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
   { flag: '--screens', title: 'экраны', run: () => spawnSync(process.execPath, ['tools/fs-screens.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
   { flag: '--walk', title: 'проход', run: () => spawnSync(process.execPath, ['tools/fs-walk.mjs'], { cwd: ROOT, stdio: 'inherit' }) },
+  // Every faction plays whole games against the others (random legal play, two
+  // seeds: a hand-built map and a ready one). Battles, strikes, purchases,
+  // upgrades, events and the questions of the cards all happen in one state.
+  { flag: '--play', title: 'партии ботов', run: () => spawnSync(process.execPath, ['tools/fs-play.mjs', '--games=2'], { cwd: ROOT, stdio: 'inherit' }) },
 ];
 
-const only = ['--types', '--rules', '--cards', '--smoke', '--lan', '--screens', '--walk'].filter(f => process.argv.includes(f));
+const only = ['--types', '--rules', '--cards', '--smoke', '--lan', '--screens', '--walk', '--play'].filter(f => process.argv.includes(f));
 const failed = [];
 console.log('\n' + C.cyn + C.b + '  ArcEngine' + C.r + ' ' + C.dim + '— проверка' + C.r);
 for (const step of STEPS) {

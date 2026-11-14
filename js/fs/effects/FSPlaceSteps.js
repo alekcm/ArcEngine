@@ -28,9 +28,10 @@ class PlaceSteps {
             let areas = step.dest
                 ? effects.areasForAbility(R, state, seat, step.dest)
                 : effects.areasFor(R, state, seat, def.type === 'ship' ? 'void' : 'world');
-            // «в дружественную область активной системы»: a ship still
-            // needs a void, a ground unit still needs a world.
-            if (step.dest === 'friendlyAreaActive' || step.dest === 'combatArea') {
+            // Whatever the card names («в дружественную область активной
+            // системы», «на … мирах в активной системе»): a ship still needs
+            // a void, a ground unit still needs a world.
+            if (step.dest) {
                 const wantWorld = def.type !== 'ship';
                 areas = areas.filter(a => effects.areaWorld(state, a.system, a.pos) === wantWorld);
             }

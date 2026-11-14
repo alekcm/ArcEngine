@@ -445,7 +445,13 @@ class CardAsks {
         // executing goes on without it.
         if (step.what !== 'upgrade' && !step.orderOnly) {
             const tally = OrderTally.of(state.order);
-            if (tally && tally.finishesAfterEffect) tally.finishAfterEffect();
+            // The order that promised to end after the ability ends in the
+            // runner, once the question of this effect is closed: ending it
+            // here would open the questions of the next turn (a skipped
+            // player's plan, the scheme of the end of the order) inside the
+            // effect, and the stop of the effect would close them — the game
+            // then stands on a turn nobody can take.
+            if (tally && tally.finishesAfterEffect) return { stop: true };
             if (state.order && OrderContext.of(state.order).isSeat(seat)) R.finishOrder(state, seat);
         }
         return { stop: true };

@@ -2327,6 +2327,36 @@ check('Некромеханика', 'два взятых плана послед
     }
 });
 
+// The faction ability of the other player fails its condition at the end of
+// his dominate order; his order ends, the turn passes, and the skipped player
+// is offered this plan. The question must survive the end of the failed effect.
+check('Некромеханика', 'пропуск хода после несработавшей способности противника: план предложен, ход не теряется', () => {
+    let st = eventState('Некромеханика', { faction: MECH, foeFaction: 'империя-тау', units: { 'скитарии': 1 } });
+    st.phase = 'operations'; st.event = null; st.turn = 1;
+    schemeInPlay(st, 'Некромеханика');
+    st.players[0].decks.event = [];
+    st.players[0].eventDeckInitialized = true;
+    // The Tau dominate in a system where they have nothing: the ability of
+    // the faction needs units or structures there and cannot be applied.
+    const empty = st.systems.find(s => s.id !== st.sys
+        && !st.units.some(u => u.system === s.id) && !st.structures.some(x => x.system === s.id));
+    ok(!!empty, 'нет пустой системы');
+    empty.tokens.push({ seat: 1, order: 'dominate', faceUp: false });
+    st.systems.find(s => s.id !== empty.id && s.id !== st.sys).tokens.push({ seat: 1, order: 'advance', faceUp: false });
+    ok(FS_RULES.apply(st, 1, { type: 'resolveOrder', system: empty.id }).ok, 'приказ доминирования не раскрыт');
+    st = JSON.parse(JSON.stringify(st));
+    const res = FS_RULES.apply(st, 1, { type: 'finishDominate' });
+    ok(res.ok, 'приказ не закончен: ' + res.error);
+    ok(st.log.some(l => /не может быть применена/.test(l.text)), 'способность должна была не сработать');
+    eq(st.order, null, 'приказ доминирования завершён');
+    const q = pending(st);
+    ok(!!q && q.kind === 'scheme', 'пропускающему игроку не предложен план');
+    eq([st.turn, st.pending.seat], [0, 0], 'ход у пропускающего игрока, вопрос — ему');
+    st = JSON.parse(JSON.stringify(st));
+    ok(FS_RULES.apply(st, 0, { type: 'effect', answer: { no: true } }).ok, 'отказ от плана не принят');
+    return eq([st.phase, st.turn, st.pending, !!st.order], ['operations', 1, null, false], 'ход перешёл к игроку с приказом');
+});
+
 // ============================================================================
 //  04-combat-cards.md — Тираниды: 5 базовых карт и 13 улучшений
 // ============================================================================
@@ -3247,6 +3277,22 @@ check('Камери размножения', 'один Корабль Улей �
 check('Камери размножения', 'без Корабля Улья покупать нечего', () => {
     const st = cultivate(0);
     return eq(!!st.pending, false, 'вопроса о покупке нет');
+});
+
+// «разместить их на … мирах» — a ship has nowhere to stand on a world: the
+// Devourers are not offered, and the ground units bought are offered worlds only.
+check('Камери размножения', 'корабли на мир не продаются: в списке только наземные отряды, в ответ — только миры', () => {
+    const st = cultivate(1);
+    const q = pending(st);
+    ok(!!q && q.kind === 'types', 'нет вопроса о типе отряда');
+    const ships = q.options.filter(id => (FS_RULES.unitDef(st, 0, id) || {}).type === 'ship');
+    eq(ships, [], 'корабль предложен для размещения на мире');
+    ok(q.options.includes('гаунты'), 'наземный отряд не предложен');
+    const res = FS_RULES.apply(st, 0, { type: 'effect', answer: { type: 'гаунты' } });
+    ok(res.ok, 'тип отряда не принят: ' + res.error);
+    const q2 = pending(st);
+    ok(!!q2 && q2.kind === 'areas', 'нет вопроса об области');
+    return ok(q2.options.every(a => !!FS_RULES.area(FS_RULES.system(st, a.system), a.pos).world), 'среди областей есть пустота');
 });
 
 // ============================================================================
@@ -5182,6 +5228,34 @@ check('Кауйон', 'в обороне отряд из соседней обл
     eq(u.system, st.combat.system, 'система перемещённого отряда');
     eq(u.area, st.combat.pos, 'область перемещённого отряда');
     return eq(dice(st, 'defender').length, 2, 'кубиков по боевой силе Воина Огня');
+}));
+
+// «переместить 1 из ваших отрядов … в эту»: the fight is on a world, so a
+// cruiser of the next void is not offered — only the ground unit beside it.
+check('Кауйон', 'в бой на мире из соседней области приходит только наземный отряд, корабль не предлагается', () => withFixedDice(['att', 'att'], () => {
+    const st = battle({
+        faction: TAU_FOE, foeFaction: TAU,
+        units: { 'гвардейцы': 2 }, foeUnits: { 'воины-огня': 2 },
+        hand: ['Ложись!'], foeHand: ['Кауйон'],
+        dice: Array(8).fill('att'), foeDice: Array(8).fill('att'), roundEnd: true,
+    });
+    tauPlay(st, undefined, 1);
+    const around = FS_RULES.areasAround(st, st.combat.system, st.combat.pos)
+        .map(a => ({ area: a, def: FS_RULES.area(FS_RULES.system(st, a.system), a.pos) }));
+    const world = around.find(x => x.def && x.def.world && !(x.area.system === st.combat.system && x.area.pos === st.combat.pos));
+    const voidArea = around.find(x => x.def && !x.def.world);
+    ok(!!world && !!voidArea, 'рядом есть и мир, и пустота');
+    const ground = FS_RULES.addUnit(st, 1, 'воины-огня', world.area.system, world.area.pos);
+    const ship = FS_RULES.addUnit(st, 1, 'крейсеры-защитник', voidArea.area.system, voidArea.area.pos);
+    st.combat.dice.defender = [];
+    FS_RULES.endCombatRound(st);
+    const q = pending(st);
+    ok(!!q && q.op === 'moveUnitToCombatForDice', 'вопроса о перемещении нет');
+    eq(q.options.includes(ship.id), false, 'корабль предложен в наземный бой');
+    eq(q.options.includes(ground.id), true, 'наземный отряд не предложен');
+    const bad = FS_RULES.apply(st, 1, { type: 'effect', answer: { units: [ship.id] } });
+    ok(!bad.ok || ship.system !== st.combat.system || ship.area !== st.combat.pos, 'корабль вошёл в наземный бой');
+    return eq(ship.area, voidArea.area.pos, 'корабль остался в пустоте');
 }));
 
 check('Во имя Высшего Блага', 'противник обязан перебросить все `att. cube`', () => withFixedDice(['def'], () => {
@@ -12563,6 +12637,24 @@ check('Боевые гимны', 'карта ждёт удара: сравнен
     eq(foeUnits(st).filter(u => u.area === st.strikeWorld).length, 1, 'на мире удара остался один отряд');
     eq(st.order.phase, 'strike-damage', 'удар продолжается нанесением урона');
     eq(ctx.StrikeDamage.of(st).hits, 1, 'урон удара — один att. cube, кубик обороны потрачен на отступление');
+});
+
+// The only unit of the world retreats by the card: there is nobody left to
+// take the hits, and the strike must not wait for the defender forever.
+check('Боевые гимны', 'если отступил последний отряд мира, удар заканчивается сам — урон пропадает', () => {
+    const st = sbStrike({ foeUnits: { 'гвардейцы': 1 } });
+    ok(burn(st, 'Боевые гимны').ok, 'карта сгорела');
+    const asked = sbStrikeRoll(st, ['def', 'att', 'def'], (s2, q) => {
+        if (q.op === 'route') return { units: [q.options[0]] };
+        if (q.op === 'strikeRetreatOffer' && q.kind === 'yesno') return {};
+        return null;
+    });
+    eq(asked.slice(0, 3), ['route@1', 'strikeRetreatOffer@0', 'strikeRetreatOffer@1'], 'деморализация, оплата, выбор области');
+    eq(foeUnits(st).filter(u => u.area === st.strikeWorld).length, 0, 'на мире удара никого не осталось');
+    eq(ctx.StrikeDamage.of(st).pending, false, 'удар не ждёт урона');
+    eq(st.order, null, 'приказ наступления завершён');
+    ok(st.log.some(l => /урон удара пропадает/.test(l.text || l)), 'в журнале сказано, что урон пропал');
+    return eq(FS_RULES.apply(st, 1, { type: 'strikeDamage', unit: 'none' }).error, 'Сейчас нет орбитального удара.', 'команды урона больше нет');
 });
 
 check('Боевые гимны', 'при равном или меньшем боевом духе флота эффекта нет', () => {

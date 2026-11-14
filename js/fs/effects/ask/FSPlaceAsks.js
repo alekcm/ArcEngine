@@ -31,6 +31,15 @@ class PlaceAsks {
             const area = BattleField.of(state.combat).area;
             const world = effects.areaWorld(state, area.system, area.pos);
             types = types.filter(u => (u.type !== 'ship') === world);
+        } else if (step.dest) {
+            // Any named destination: a ship is offered only if a void is
+            // among the places, a ground unit only if a world is («разместить
+            // их на … мирах в активной системе» — «Камери размножения» must
+            // not sell a Devourer that then stands on a world).
+            const places = effects.areasForAbility(R, state, seat, step.dest);
+            const hasWorld = places.some(a => effects.areaWorld(state, a.system, a.pos));
+            const hasVoid = places.some(a => !effects.areaWorld(state, a.system, a.pos));
+            types = types.filter(u => (u.type === 'ship' ? hasVoid : hasWorld));
         }
         // A free unit also comes from the supply: without a model there is
         // nothing to place (the rules, "Free Units").

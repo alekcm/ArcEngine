@@ -765,7 +765,15 @@ class AdvanceRules {
 
     finishStrike(state, seat, target, hits, victims, defender) {
         const order = state.order;
-        if (hits > 0 && victims.length && defender >= 0) {
+        // Only the pieces that still stand on the world take the hits: a card
+        // of the strike may have sent the last unit away before the damage
+        // («отряд противника должен отступить» — «Боевые гимны»), and a strike
+        // on an empty world has nothing to wait for — the hits are lost.
+        const standing = (victims || []).filter(v => v.system === target.system && v.area === target.pos);
+        if (hits > 0 && (victims || []).length && !standing.length) {
+            this.engine.log(state, seat, 'На мире не осталось целей: урон удара пропадает.');
+        }
+        if (hits > 0 && standing.length && defender >= 0) {
             StrikeDamage.of(state).begin({
                 seat: defender, system: target.system, pos: target.pos,
                 hits, attacker: seat,

@@ -201,8 +201,13 @@ class DiceSteps {
         if (!u) return null;
         const def = R.unitOf(state, u);
         if (!def) return null;
+        const field = BattleField.of(combat);
+        // A ship cannot land on a world, a ground unit cannot float in the void.
+        if ((def.type !== 'ship') !== effects.areaWorld(state, field.system, field.pos)) {
+            return { ok: false, error: 'Этот отряд не может войти в область боя.' };
+        }
         const n = def.combat || 0;
-        R.board(state).moveUnit(u, BattleField.of(combat).area, { seat });
+        R.board(state).moveUnit(u, field.area, { seat });
         if (typeof R.trimArea === 'function') R.trimArea(state, seat, u.system, u.area);
         const got = Math.min(n, CombatTurn.of(combat).room(side));
         CombatTurn.of(combat).addMany(side, R.rollDice(state, got));

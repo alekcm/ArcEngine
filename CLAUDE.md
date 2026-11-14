@@ -170,6 +170,7 @@ tools/            dev-server.mjs, build.mjs, asset-scan.mjs, zip.mjs, check.mjs 
                   fs-engine.mjs (список скриптов движка из index.html: один для сервера и проверок),
                   fs-smoke.mjs (все скрипты грузятся, раунд играется на 2 и 4 игроках, все имена клиента есть в правилах),
                   fs-audit.mjs (сверка движка Forbidden Stars с текстом правил),
+                  fs-play.mjs (партии ботов: все 12 фракций играют целиком — бои, удары, покупки, события; шаг --play),
                   make-character.mjs, make-sounds.mjs, export-unity.mjs (перенос в Unity),
                   fs-import.mjs (импорт данных Forbidden Stars из docs/), fs-server.mjs (сервер игры в локальной сети)
 docs/forbidden-stars/  транскрипция правил и карт Forbidden Stars — источник данных (не читать сканы)
