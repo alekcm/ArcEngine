@@ -607,8 +607,8 @@ function sendRoomInfo(room) {
             persona: p.bot ? p.persona : undefined, level: p.bot ? p.level : undefined,
             line: p.bot ? FS_BOT.line(p.faction, p.persona) : undefined,
         })),
-        // What the lobby offers for a bot: the characters (a doctrine names its
-        // faction, an archetype fits everybody) and the levels.
+        // What the lobby offers for a bot: faction-specific doctrines only,
+        // plus the difficulty levels. The client filters doctrines by faction.
         bots: { personas: FS_BOT.PERSONAS.map(x => ({ id: x.id, name: x.name, text: x.text, faction: x.faction || null })), levels: FS_BOT.LEVELS.map(x => ({ id: x.id, name: x.name })) },
     });
 }

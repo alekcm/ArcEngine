@@ -239,7 +239,7 @@ screen('lobby-3', 'хозяин видит «Начать игру» серой,
     return true;
 });
 
-screen('lobby-7', 'бот в лобби: подпись-намёк и архетип мелко у всех, у хозяина — выбор фракции, характера и уровня, «+ Добавить бота» до четырёх мест, «убрать»', () => {
+screen('lobby-7', 'бот в лобби: фракционные личности, случайный выбор фракции и личности, сложность и управление хозяина', () => {
     const bots = { personas: FS_BOT_SCREENS.PERSONAS.map(p => ({ id: p.id, name: p.name, text: p.text, faction: p.faction || null })), levels: FS_BOT_SCREENS.LEVELS.map(l => ({ id: l.id, name: l.name })) };
     const seats = [
         LOBBY_SEATS[0],
@@ -266,12 +266,30 @@ screen('lobby-7', 'бот в лобби: подпись-намёк и архет
     const menu = selects.filter(s => /fs-bot-select/.test(s.className));
     if (menu.length !== 3) return 'у хозяина должно быть три меню бота (фракция, характер, уровень), найдено ' + menu.length;
     if (menu[1].value !== 'orks-waaagh' || menu[2].value !== 'normal') return 'меню не показывают текущий характер и уровень: ' + menu[1].value + ', ' + menu[2].value;
-    // The characters offered: the doctrines of the Orks and the archetypes, not the doctrines of the Necrons.
+    // Only this faction's actual doctrines are offered. Generic options and
+    // doctrines of the other faction must not leak into the selector.
     const offered = Array.from(menu[1].children || []).map(o => o.value);
-    if (!offered.includes('orks-mek') || !offered.includes('turtle') || offered.includes('necrons-phalanx')) return 'меню характеров не отфильтровано по фракции: ' + offered.join(', ');
+    const actualPersonas = offered.filter(id => id !== '__fs_random_persona__');
+    const expectedPersonas = bots.personas.filter(p => p.faction === 'орки').map(p => p.id);
+    if (actualPersonas.length !== expectedPersonas.length || expectedPersonas.some(id => !actualPersonas.includes(id))) {
+        return 'меню должно показывать все и только доктрины орков: ' + actualPersonas.join(', ');
+    }
+    if (!offered.includes('orks-mek') || offered.includes('turtle') || offered.includes('necrons-phalanx')) return 'меню характеров не отфильтровано по фракции: ' + offered.join(', ');
+    if (!offered.includes('__fs_random_persona__') || !Array.from(menu[1].children || []).some(o => /Случайная личность/.test(o.textContent))) return 'в меню нет случайной личности';
+    if (!Array.from(menu[0].children || []).some(o => o.value === '__fs_random_faction__' && /Случайная фракция/.test(o.textContent))) return 'в меню нет случайной фракции';
+    menu[0].value = '__fs_random_faction__';
+    for (const fn of menu[0].listeners.change || []) fn({ target: menu[0] });
+    const randomFaction = set[set.length - 1] && set[set.length - 1][1].faction;
+    if (!LOBBY_FACTIONS.some(f => f.id === randomFaction) || randomFaction === '__fs_random_faction__') return 'случайный выбор фракции отправил не фракцию: ' + randomFaction;
+    if (menu[0].value === '__fs_random_faction__') return 'псевдо-значение случайной фракции осталось выбранным';
+    menu[1].value = '__fs_random_persona__';
+    for (const fn of menu[1].listeners.change || []) fn({ target: menu[1] });
+    const randomPersona = set[set.length - 1] && set[set.length - 1][1].persona;
+    if (!offered.includes(randomPersona) || randomPersona === '__fs_random_persona__') return 'случайный выбор личности не выбрал доктрину орков: ' + randomPersona;
+    if (menu[1].value === '__fs_random_persona__') return 'псевдо-значение случайной личности осталось выбранным';
     menu[2].value = 'veteran';
     for (const fn of menu[2].listeners.change || []) fn({ target: menu[2] });
-    if (!set.length || set[0][0] !== 'bot1' || set[0][1].level !== 'veteran') return 'смена уровня не ушла хозяину: ' + JSON.stringify(set);
+    if (!set.some(x => x[0] === 'bot1' && x[1].level === 'veteran')) return 'смена уровня не ушла хозяину: ' + JSON.stringify(set);
     const kick = buttons.find(b => /убрать/.test(b.textContent));
     if (!kick) return 'у хозяина нет «убрать» для бота';
     kick.click();

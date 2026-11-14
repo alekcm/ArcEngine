@@ -1596,11 +1596,11 @@ const FSUI = {
     // The start of the ordinary party: the host has «Начать игру» (grey until
     // everybody is ready — the reason is written under it), everybody else has
     // «Готов», which locks the faction and can be taken back.
-    // The menu of a bot for the host: the faction, the character, the level.
-    // Every change goes to the server; the list that comes back redraws it.
+    // The menu of a bot for the host: faction, faction-specific character and level.
+    // The random entries resolve to a real choice before the server is notified.
     renderBotMenu(p, info) {
         const menu = this.el('span', 'fs-bot-menu');
-        const select = (title, options, current, key) => {
+        const select = (title, options, current, key, randomChoice) => {
             const sel = this.el('select', 'fs-bot-select');
             sel.title = title;
             for (const o of options) {
@@ -1609,15 +1609,32 @@ const FSUI = {
                 if (o.id === current) opt.selected = true;
                 sel.append(opt);
             }
+            if (randomChoice) {
+                const opt = this.el('option', '', randomChoice.name);
+                opt.value = randomChoice.id;
+                sel.append(opt);
+            }
             if (current) sel.value = current;
-            sel.addEventListener('change', () => info.onBot && info.onBot(p.id, { [key]: sel.value }));
+            sel.addEventListener('change', () => {
+                let value = sel.value;
+                if (randomChoice && value === randomChoice.id) {
+                    if (!options.length) { sel.value = current || ''; return; }
+                    value = options[Math.floor(Math.random() * options.length)].id;
+                    sel.value = value;
+                }
+                if (info.onBot) info.onBot(p.id, { [key]: value });
+            });
             return sel;
         };
         const bots = info.bots || {};
-        menu.append(select('Фракция бота', (info.factions || []).map(f => ({ id: f.id, name: f.name })), p.faction, 'faction'));
-        // The characters of this faction and the ones that fit everybody.
-        const personas = (bots.personas || []).filter(x => !x.faction || x.faction === p.faction);
-        if (personas.length) menu.append(select('Характер бота', personas, p.persona, 'persona'));
+        const factions = (info.factions || []).map(f => ({ id: f.id, name: f.name }));
+        menu.append(select('Фракция бота', factions, p.faction, 'faction',
+            { id: '__fs_random_faction__', name: '🎲 Случайная фракция' }));
+        // Only this faction's doctrines are selectable; generic cross-faction
+        // archetypes are intentionally not part of the roster.
+        const personas = (bots.personas || []).filter(x => x.faction === p.faction);
+        if (personas.length) menu.append(select('Личность бота', personas, p.persona, 'persona',
+            { id: '__fs_random_persona__', name: '🎲 Случайная личность' }));
         if (bots.levels && bots.levels.length) menu.append(select('Сложность бота', bots.levels, p.level, 'level'));
         return menu;
     },

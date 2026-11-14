@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'
 // The list of engine files comes from index.html (tools/fs-engine.mjs): a new
 // core script is never missed by the audit or by the server.
 const ctx = createEngineContext();
-const { FS_DATA, FS_RULES, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
+const { FS_DATA, FS_CATALOG, FS_RULES, FS_BOT, FS_BOT_PERSONAS, FS_EFFECTS, FS_WARP_STORMS, StrikePlan, MarchPlan, PhasePlan, UpgradeOrder, OrderDeal, DeployScope, DeployLimits, OrderFight, Purchases, OrderMove, OrderTally, OrderContext, CombatTurn, CombatTokens, CombatCards,
     CombatDamage, CombatHooks, CombatPlans, CombatCubes, CombatBans, BattleField, CombatOutcome, CombatApproach, CombatSides, EventPhase, QuickResponse, StormPhase, OrderScheme, Question, GamePhase,
     BoardSetup, GameLog, GameOutcome, MarchTrail, EventRound, StrikeDamage,
     BattleTest, Chance, PreAdvance, Choice, Seat, TileGeometry } = ctx;
@@ -293,6 +293,77 @@ function cardBattle(cardName, faction = 'имперская-гвардия', see
 function assetsOf(p) {
     return (p.assets.forge || 0) + (p.assets.cache || 0) + (p.assets.reinforcement || 0);
 }
+
+// ============================================================================
+//  Боты: фракционные личности
+// ============================================================================
+head('Личности ботов');
+
+rule('bot-persona-roster', 'фракционные доктрины различаются по поведению и ссылаются только на реальные отряды и карты своей фракции', () => {
+    const roster = FS_BOT_PERSONAS.all();
+    const ids = roster.map(p => p.id);
+    eq(new Set(ids).size, ids.length, 'id личностей уникальны');
+    eq(roster.length > 0, true, 'ростер доктрин не пуст');
+    eq(FS_BOT.PERSONAS.length, roster.length, 'лобби публикует весь и только фракционный ростер');
+    eq(roster.every(p => p.faction && FS_DATA.factions.some(f => f.id === p.faction)), true, 'каждая личность привязана к существующей фракции');
+    eq(FS_BOT.persona('aggressor'), null, 'общего архетипа в ростере нет');
+    eq(FS_BOT.level().id, 'veteran', 'новый бот по умолчанию — Ветеран');
+    for (const faction of FS_DATA.factions) {
+        const own = FS_BOT_PERSONAS.for(faction.id);
+        eq(own.length > 0, true, faction.id + ': есть собственные доктрины');
+        eq(own.every(p => p.faction === faction.id && FS_BOT.fits(p.id, faction.id)), true, faction.id + ': доступны только свои доктрины');
+        eq(own.every(p => p.name && p.name.trim() && p.text && p.text.trim() && p.line && p.line.trim()), true, faction.id + ': каждая доктрина имеет имя, описание и подпись');
+        eq(new Set(own.map(p => p.name)).size, own.length, faction.id + ': имена доктрин различаются');
+        const strategies = own.map(p => JSON.stringify([p.weights, p.tempo, p.triggers, p.likes, p.build, p.horde, p.stack, p.cover, p.strikes]));
+        eq(new Set(strategies).size, own.length, faction.id + ': игровые профили доктрин различаются');
+        const otherFaction = FS_DATA.factions.find(f => f.id !== faction.id).id;
+        const probe = FS_RULES.newReadyGame({ seed: 17, players: [{ faction: faction.id }, { faction: otherFaction }] });
+        const probeView = FS_RULES.view(probe, 0);
+        const planEvaluations = own.map(persona => {
+            const bot = FS_BOT.create({ seat: 0, seed: 'bot-persona-roster', level: 'normal', persona: persona.id });
+            return JSON.stringify(bot.planCandidates(probeView).map(c => [c.kind, c.foe ?? null, c.target ?? null, Math.round(c.score * 1000) / 1000]));
+        });
+        eq(own.length === 1 || new Set(planEvaluations).size > 1, true, faction.id + ': на одинаковой игровой позиции профили меняют оценку плана');
+        for (let i = 0; i < own.length; i++) for (let j = i + 1; j < own.length; j++) {
+            const a = own[i], b = own[j];
+            const topUnit = p => Object.entries(p.likes.units).sort((x, y) => y[1] - x[1])[0]?.[0];
+            const overlapBelow = (left, right) => {
+                const leftSet = new Set(left), rightSet = new Set(right);
+                const intersection = [...leftSet].filter(name => rightSet.has(name)).length;
+                const union = new Set([...leftSet, ...rightSet]).size;
+                return intersection / Math.max(1, union) < 0.7;
+            };
+            const weightDistance = Object.keys(a.weights).reduce((sum, key) => sum + Math.abs(a.weights[key] - b.weights[key]), 0);
+            const changedFlags = ['horde', 'stack', 'cover', 'strikes'].some(key => !!a[key] !== !!b[key]);
+            const meaningfulDifferences = [
+                a.tempo !== b.tempo,
+                topUnit(a) !== topUnit(b),
+                JSON.stringify(a.build) !== JSON.stringify(b.build),
+                changedFlags,
+                weightDistance >= 0.8,
+                overlapBelow(a.likes.combat, b.likes.combat),
+                overlapBelow(a.likes.orders, b.likes.orders),
+            ].filter(Boolean).length;
+            if (meaningfulDifferences < 4) throw new Error(`${a.id} / ${b.id}: doctrines too similar (${meaningfulDifferences}/7 distinct behavior signals)`);
+        }
+        eq(own.some(p => FS_BOT.fits(p.id, otherFaction)), false, faction.id + ': личность не подходит другой фракции');
+        eq(FS_BOT_PERSONAS.defaultFor(faction.id), own[0].id, faction.id + ': фракционный характер по умолчанию');
+        const voice = FS_BOT_PERSONAS.LINES[faction.id];
+        const moments = ['plan', 'attack', 'grab', 'defend', 'build', 'grudge', 'leader', 'exposed', 'endgame', 'battle', 'capture'];
+        if (!voice || moments.some(kind => !Array.isArray(voice[kind]) || !voice[kind].length)) {
+            throw new Error(faction.id + ': не хватает собственных реплик для всех игровых моментов');
+        }
+        const combat = new Set(FS_CATALOG.baseCombatCards(faction.id).concat(FS_CATALOG.upgradeCombatCards(faction.id)).map(c => c.name));
+        const orders = new Set(FS_CATALOG.orderCards(faction.id).map(c => c.name));
+        for (const persona of own) {
+            for (const unit of Object.keys(persona.likes.units)) {
+                if (!faction.units.some(u => u.id === unit)) throw new Error(persona.id + ': нет отряда «' + unit + '»');
+            }
+            for (const card of persona.likes.combat) if (!combat.has(card)) throw new Error(persona.id + ': нет боевой карты «' + card + '»');
+            for (const card of persona.likes.orders) if (!orders.has(card)) throw new Error(persona.id + ': нет улучшения приказа «' + card + '»');
+        }
+    }
+});
 
 // ============================================================================
 //  Setup

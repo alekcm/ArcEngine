@@ -27,12 +27,15 @@
 // `GamePhase.of(view).progress` / `roundsLeft` — a «блиц» of five rounds and
 // the classic eight are the same game to the bot.
 
-/* global FS_RULES, FS_CATALOG, FS_BOT_PERSONAS, FSBotBrain, PhasePlan, MarchPlan, OrderContext, OrderMove, OrderTally, OrderDeal, CombatTurn,
+/* global FS_RULES, FS_CATALOG, FS_BOT_PERSONAS, FS_EFFECTS, FSBotBrain, PhasePlan, MarchPlan, OrderContext, OrderMove, OrderTally, OrderDeal, CombatTurn,
    CombatSides, CombatHooks, CombatCards, CombatOutcome, BattleField, Question, StrikeDamage, GameOutcome, GamePhase, EventPhase,
    EventRound, BoardSetup, Purchases, DeployScope, UpgradeOrder, TileGeometry */
 
 const FS_BOT = {
-    /** The levels: presets of the temperature and the top-p of one bot. */
+    /** The default difficulty for a newly added bot. */
+    DEFAULT_LEVEL: 'veteran',
+
+    /** The levels: presets of temperature, top-p and search depth for one bot. */
     LEVELS: [
         { id: 'novice', name: 'Новичок', temperature: 1.0, topP: 0.97, depth: 0 },
         { id: 'normal', name: 'Обычный', temperature: 0.45, topP: 0.9, depth: 1 },
@@ -46,7 +49,7 @@ const FS_BOT = {
         'космодесант': 'Магистр', 'тираниды': 'Разум улья', 'сестры-битвы': 'Канонисса', 'инквизиция': 'Инквизитор',
     },
 
-    /** Every character the lobby may name: the doctrines of the factions and the archetypes. */
+    /** Every faction-specific character the lobby may offer. */
     get PERSONAS() {
         return FS_BOT_PERSONAS.all().map(p => this.personaRecord(p));
     },
@@ -60,18 +63,19 @@ const FS_BOT = {
         return p ? this.personaRecord(p) : null;
     },
 
-    /** The characters a bot of this faction may play: its own doctrines first. */
+    /** The selectable characters of this faction; no generic characters are shared. */
     personasFor(factionId) {
         return FS_BOT_PERSONAS.for(factionId).map(p => this.personaRecord(p));
     },
 
-    /** Does this character fit a bot of this faction (its doctrine or an archetype)? */
+    /** Does this faction-specific character belong to the bot's faction? */
     fits(personaId, factionId) {
         return FS_BOT_PERSONAS.fits(personaId, factionId);
     },
 
     level(id) {
-        return this.LEVELS.find(l => l.id === id) || this.LEVELS[1];
+        return this.LEVELS.find(l => l.id === id)
+            || this.LEVELS.find(l => l.id === this.DEFAULT_LEVEL) || this.LEVELS[1];
     },
 
     /** What the lobby shows for a bot of this faction: the character, the name and the hint line. */
@@ -120,9 +124,8 @@ class FSBot {
      * @param {{seat:number, seed?:any, level?:string, persona?:string}} opts
      *   seat — the chair the bot plays; seed — the randomness of its decisions
      *   (the seed of the party and the seat together repeat a game exactly);
-     *   level — the preset of the roulette; persona — the character (a doctrine
-     *   of the faction or an archetype; one that does not fit the faction is
-     *   replaced by the default of the faction).
+     *   level — the preset of the roulette; persona — one of the faction's
+     *   exclusive doctrines (a mismatched choice falls back to that faction's default).
      */
     constructor(opts) {
         this.seat = opts.seat | 0;
@@ -1016,11 +1019,18 @@ class FSBot {
     }
 
     useUpgrade(view, rnd, kind) {
-        const strike = kind === 'advance' && PhasePlan.of(view.order).is('strike');
+        const R = this.R;
+        const phasePlan = PhasePlan.of(view.order);
+        const upgradeOrder = UpgradeOrder.of(view.order);
+        const strike = kind === 'advance' && phasePlan.is('strike');
         const wanted = kind === 'advance' ? (strike ? ['orbital'] : ['advance']) : [kind];
         const cards = this.unusedUpgrades(view).filter(u => u.card && wanted.includes(u.card.order))
             // «Миры-гробницы» come after a purchase of the order.
-            .filter(u => !/миры-гробницы/i.test(u.name) || !Purchases.of(view.order).empty);
+            .filter(u => !/миры-гробницы/i.test(u.name) || !Purchases.of(view.order).empty)
+            // These cards have narrower windows than their printed order icon.
+            .filter(u => u.name !== 'Рейд корсаров' || phasePlan.is('corsair'))
+            .filter(u => u.name !== 'Святой трубопровод' || R.pipelineReady(view, this.seat))
+            .filter(u => u.name !== 'Зеленая волна' || !(upgradeOrder.combat || upgradeOrder.orderCard));
         if (!cards.length) return null;
         // One attempt per step: a refusal of the rules is not a failure.
         const key = 'upgrade:' + GamePhase.of(view).round + ':' + kind + ':' + OrderContext.of(view.order).system;
@@ -1170,6 +1180,10 @@ class FSBot {
             }
             const seen = new Set();
             for (const group of groups) {
+                if (march.mustInclude && !group.some(u => {
+                    const def = R.unitOf(view, u);
+                    return !!def && FS_EFFECTS.sameName(def.name, march.mustInclude);
+                })) continue;
                 const key = group.map(u => u.id).sort().join(',');
                 if (seen.has(key)) continue;
                 seen.add(key);
@@ -1332,10 +1346,13 @@ class FSBot {
         const p = view.players[seat];
         const left = p.materiel - R.spentOf(order);
         const cl = R.commandLevel(view, seat);
-        const caches = R.player(view, seat).assetCount('cache');
+        const player = R.player(view, seat);
+        const caches = player.assetCount('cache');
+        const forge = player.assetCount('forge');
         const price = 0.45 + 0.25 * w.greed;
         const candidates = [{ score: 0.5 + (left < 4 ? 1 : 0) }];
-        const defs = R.faction(view, seat).units.filter(d => (p.supply.units[d.id] || 0) > 0 && (d.kl || 0) <= cl);
+        const defs = R.faction(view, seat).units.filter(d => (p.supply.units[d.id] || 0) > 0
+            && (d.kl || 0) <= cl && (!d.forge || forge > 0));
         for (const def of defs) {
             for (const cache of caches > 0 ? [false, true] : [false]) {
                 const cost = R.unitPrice(view, seat, def, { cache });
@@ -1421,9 +1438,13 @@ class FSBot {
             const p = view.players[seat];
             const left = p.materiel - R.spentOf(order);
             const cl = R.commandLevel(view, seat);
-            const defs = R.faction(view, seat).units.filter(d => d.type !== 'ship' && (p.supply.units[d.id] || 0) > 0 && (d.kl || 0) <= cl);
+            const scope = DeployScope.of(order);
+            const forge = R.player(view, seat).assetCount('forge');
+            const defs = R.faction(view, seat).units.filter(d => d.type !== 'ship'
+                && (p.supply.units[d.id] || 0) > 0 && (d.kl || 0) <= cl
+                && (!d.forge || forge > 0) && (!scope.lockedType || d.id === scope.lockedType));
             // «Массовое Производство»: the one factory produces into its own world.
-            const factory = DeployScope.of(order).factory;
+            const factory = scope.factory;
             const worlds = factory && factory.system === sys.id ? sys.areas.filter(a => a.pos === factory.pos) : sys.areas.filter(a => a.world);
             const candidates = [{ score: 1 }];
             for (const def of defs) {
