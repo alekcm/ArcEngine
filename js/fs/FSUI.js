@@ -1471,17 +1471,41 @@ const FSUI = {
             if (offline(p)) parts.push('не в сети');
             chip.append(this.el('i', 'fs-player-dot'), this.el('span', '', parts.join(' · ')));
             if (p.palette && p.palette.primary) { const sw = this.el('span', 'fs-pal-swatches'); for (const c of [p.palette.primary, p.palette.secondary1, p.palette.secondary2]) { const s = this.el('i'); s.style.background = c || '#888'; sw.append(s); } chip.append(sw); }
+            // A bot: the hint line of its character («Варбосс: WAAAGH! с первого
+            // плана»), and for the host — the faction, the character, the level.
+            if (p.bot) {
+                if (p.line) chip.append(this.el('span', 'fs-bot-line', p.line));
+                const persona = ((info.bots || {}).personas || []).find(x => x.id === p.persona);
+                const level = ((info.bots || {}).levels || []).find(x => x.id === p.level);
+                if (persona || level) {
+                    const tag = this.el('span', 'fs-bot-tag', [persona && persona.name.toLowerCase(), level && level.name.toLowerCase()].filter(Boolean).join(' · '));
+                    if (persona) tag.title = persona.name + ' — ' + persona.text;
+                    chip.append(tag);
+                }
+                if (info.isHost) chip.append(this.renderBotMenu(p, info));
+            }
             // The host clears a seat whose player closed the tab: otherwise the
-            // silent seat would keep the party from starting.
-            if (info.isHost && offline(p) && !isMe(p)) {
+            // silent seat would keep the party from starting. A bot is removed
+            // the same way.
+            if (info.isHost && (p.bot || offline(p)) && !isMe(p)) {
                 const kick = this.el('button', 'fs-kick', 'убрать');
                 kick.type = 'button';
-                kick.title = 'Убрать отключившегося игрока из комнаты';
+                kick.title = p.bot ? 'Убрать бота из комнаты' : 'Убрать отключившегося игрока из комнаты';
                 kick.addEventListener('click', () => info.onKick && info.onKick(p.id));
                 chip.append(kick);
             }
             players.append(chip);
         });
+        // «Добавить бота»: the host fills the empty seats with bots — one
+        // person may play a whole party against one to three of them.
+        if (info.isHost && info.mode === 'game' && (info.players || []).length < 4) {
+            const add = this.el('button', 'fs-add-bot');
+            add.type = 'button';
+            add.append(this.el('span', '', '+ Добавить бота'));
+            add.title = 'Бот займёт свободное место: фракция, характер и сложность настраиваются';
+            add.addEventListener('click', () => info.onAddBot && info.onAddBot());
+            players.append(add);
+        }
         body.append(players);
         const grid = this.el('div', 'fs-faction-grid');
         (info.factions || []).forEach((f, i) => {
@@ -1572,6 +1596,30 @@ const FSUI = {
     // The start of the ordinary party: the host has «Начать игру» (grey until
     // everybody is ready — the reason is written under it), everybody else has
     // «Готов», which locks the faction and can be taken back.
+    // The menu of a bot for the host: the faction, the character, the level.
+    // Every change goes to the server; the list that comes back redraws it.
+    renderBotMenu(p, info) {
+        const menu = this.el('span', 'fs-bot-menu');
+        const select = (title, options, current, key) => {
+            const sel = this.el('select', 'fs-bot-select');
+            sel.title = title;
+            for (const o of options) {
+                const opt = this.el('option', '', o.name);
+                opt.value = o.id;
+                if (o.id === current) opt.selected = true;
+                sel.append(opt);
+            }
+            if (current) sel.value = current;
+            sel.addEventListener('change', () => info.onBot && info.onBot(p.id, { [key]: sel.value }));
+            return sel;
+        };
+        const bots = info.bots || {};
+        menu.append(select('Фракция бота', (info.factions || []).map(f => ({ id: f.id, name: f.name })), p.faction, 'faction'));
+        if (bots.personas && bots.personas.length) menu.append(select('Характер бота', bots.personas, p.persona, 'persona'));
+        if (bots.levels && bots.levels.length) menu.append(select('Сложность бота', bots.levels, p.level, 'level'));
+        return menu;
+    },
+
     // The length of the party: «8 — классика», «5 — блиц» and the rest of the
     // choices. The host picks; the guests see the choice and the same words.
     roundsLabel(n) {

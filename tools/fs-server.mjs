@@ -62,6 +62,13 @@ const C = { r: '\x1b[0m', b: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', grn: '\
 const context = createEngineContext();
 const FS_DATA = context.FS_DATA;
 const FS_RULES = context.FS_RULES;
+const FS_BOT = context.FS_BOT;
+const GameOutcome = context.GameOutcome;
+
+// The tempo of the bots, in milliseconds: a human has to see what happened.
+// FS_BOT_DELAY=0 (the checks) makes the bots answer at once.
+const BOT_TEMPO = process.env.FS_BOT_DELAY === undefined ? 1 : Math.max(0, Number(process.env.FS_BOT_DELAY) || 0);
+const BOT_DELAYS = { setup: 250, placeOrder: 900, moveUnits: 500, playCard: 900, effect: 400, combat: 600, other: 350, botsOnly: 120 };
 
 // ---------------------------------------------------------------------------
 //  Rooms
@@ -91,6 +98,65 @@ class Room {
         // The length of the party the host chose: eight rounds by default, five
         // for a «блиц». It goes into newGame, and the state carries it from there.
         this.rounds = FS_RULES.ROUNDS;
+        // The bots of the party: seat → FSBot, created at the start. The test
+        // opponent of a solo party is not here — the human plays that seat.
+        /** @type {Map<number, any>} */
+        this.bots = new Map();
+        this.botTimer = null;
+        this.botRefusals = 0;
+        this.nextBot = 1;
+        // Grows with every change of the state: a bot's move planned for an
+        // older state is dropped instead of being applied to the new one.
+        this.version = 0;
+    }
+
+    // «Добавить бота»: a seat with a faction, a character and a level; the host
+    // may change all three or remove it. A bot is always ready.
+    addBot(opts) {
+        opts = opts || {};
+        const taken = new Set(this.players.map(p => p.faction).filter(Boolean));
+        const free = FS_DATA.factions.filter(f => !taken.has(f.id));
+        const factionId = opts.faction && FS_DATA.factions.some(f => f.id === opts.faction) ? opts.faction
+            : (free.length ? free[crypto.randomInt(free.length)] : FS_DATA.factions[crypto.randomInt(FS_DATA.factions.length)]).id;
+        const defaults = FS_BOT.defaults(factionId);
+        const bot = {
+            id: null,
+            publicId: 'bot' + this.nextBot++,
+            name: defaults.name,
+            faction: factionId,
+            persona: FS_BOT.persona(opts.persona) ? opts.persona : defaults.persona,
+            level: FS_BOT.level(opts.level).id,
+            palette: null,
+            seat: this.players.length,
+            ready: true,
+            ws: null,
+            bot: true,
+        };
+        this.players.push(bot);
+        return bot;
+    }
+
+    // The host changes a bot: the faction renames it, the character and the
+    // level are kept as given.
+    setBot(bot, patch) {
+        if (patch.faction !== undefined) {
+            if (!FS_DATA.factions.some(f => f.id === patch.faction)) return 'Нет такой фракции.';
+            if (bot.faction !== patch.faction) {
+                bot.faction = patch.faction;
+                const defaults = FS_BOT.defaults(patch.faction);
+                bot.name = defaults.name;
+                bot.persona = defaults.persona;
+            }
+        }
+        if (patch.persona !== undefined) {
+            if (!FS_BOT.persona(patch.persona)) return 'Нет такого характера.';
+            bot.persona = patch.persona;
+        }
+        if (patch.level !== undefined) {
+            if (!FS_BOT.LEVELS.some(l => l.id === patch.level)) return 'Нет такого уровня.';
+            bot.level = patch.level;
+        }
+        return '';
     }
 
     add(name, faction, id, palette) {
@@ -155,16 +221,135 @@ class Room {
     start() {
         const status = this.startStatus();
         if (!status.ok) return status;
+        const seed = (Date.now() % 100000) + 1;
         this.state = FS_RULES.newGame({
-            seed: (Date.now() % 100000) + 1,
+            seed,
             rounds: this.rounds,
             players: this.players.map(p => ({ name: p.name, faction: p.faction, palette: p.palette })),
             interactiveSetup: true,
         });
         this.started = true;
         this.undoStack = [];
+        this.version++;
+        // The bots of the party: the seed of the party and the seat repeat a
+        // bot's game exactly (node tools/fs-play.mjs --seed=… --vs=…).
+        this.bots = new Map();
+        for (const p of this.players) {
+            if (p.bot) this.bots.set(p.seat, FS_BOT.create({ seat: p.seat, seed, level: p.level, persona: p.persona }));
+        }
+        if (this.bots.size) console.log(C.dim + '  [бот] партия «' + this.code + '», сид ' + seed + ': '
+            + [...this.bots.keys()].map(seat => this.players[seat].name + ' (' + this.players[seat].faction + ', ' + this.players[seat].level + ')').join(', ') + C.r);
         return { ok: true, msg: '' };
     }
+}
+
+// ---------------------------------------------------------------------------
+//  The bots play: after every change of the state the server looks whose
+//  decision the game waits for; a bot's seat gets its move after a short pause
+//  (a human has to see what happened). The move is applied by the same
+//  FS_RULES.apply as a human's command, with the same checks.
+// ---------------------------------------------------------------------------
+function botDelay(room, step, state) {
+    if (!BOT_TEMPO) return 0;
+    // Bots among themselves wait for nobody: a war of two bots goes fast.
+    const humansIn = state.combat && [state.combat.attacker, state.combat.defender].some(seat => !room.bots.has(seat));
+    if (state.combat && !humansIn) return BOT_DELAYS.botsOnly * BOT_TEMPO;
+    const label = step && step.label || 'other';
+    const ms = state.phase === 'setup' ? BOT_DELAYS.setup
+        : BOT_DELAYS[label] !== undefined ? BOT_DELAYS[label]
+        : state.combat ? BOT_DELAYS.combat : BOT_DELAYS.other;
+    return ms * BOT_TEMPO;
+}
+
+function driveBots(room) {
+    if (!room.state || !room.bots.size || room.botTimer) return;
+    const state = room.state;
+    if (state.over || GameOutcome.of(state).over) return;
+    const seat = activeSeat(state);
+    const bot = room.bots.get(seat);
+    if (!bot) return;
+    const version = room.version;
+    let step = null;
+    try {
+        step = bot.next(FS_RULES.view(state, seat));
+    } catch (e) {
+        console.error(C.red + '  [бот] ' + room.players[seat].name + ' упал: ' + (e && e.stack || e) + C.r);
+        botFailure(room, seat, e);
+    }
+    if (!step) {
+        // Nothing to do at its own turn is a bug of the bot, not of the party:
+        // the mandatory ending commands of the phase are tried instead.
+        step = { tries: botFallbacks(state), label: 'fallback' };
+    }
+    room.botTimer = setTimeout(() => {
+        room.botTimer = null;
+        // A human changed the state (a command, «Отменить ход») while the bot
+        // was thinking: the move belongs to the old state — think again.
+        if (room.version !== version || room.state !== state) { driveBots(room); return; }
+        botApply(room, seat, step);
+    }, botDelay(room, step, state));
+}
+
+function botApply(room, seat, step) {
+    const state = room.state;
+    if (step.advance) {
+        FS_RULES.advanceCombatSteps(state);
+        room.version++;
+        sendState(room);
+        driveBots(room);
+        return;
+    }
+    const tries = step.tries || [step.cmd];
+    let ok = false, lastError = '';
+    for (const cmd of tries) {
+        let res;
+        try { res = FS_RULES.apply(state, seat, cmd); }
+        catch (e) { res = { ok: false, error: String(e && e.message || e) }; botFailure(room, seat, e, cmd); }
+        if (res && res.ok !== false) { ok = true; break; }
+        lastError = res && res.error || '';
+    }
+    if (!ok) {
+        room.botRefusals++;
+        if (process.env.FS_DEBUG) console.log('  [бот] отказ «' + step.label + '»: ' + lastError);
+        // The bot remembers what was refused and offers something else; the
+        // ending commands come last. A bot that is refused again and again
+        // leaves the party to the humans («Отменить ход» is theirs) and says so.
+        if (room.botRefusals > 40) {
+            console.error(C.red + '  [бот] ' + room.players[seat].name + ' не нашёл законного хода: ' + lastError + C.r);
+            botFailure(room, seat, new Error('нет законного хода: ' + lastError), tries[0]);
+            return;
+        }
+        room.botTimer = setTimeout(() => { room.botTimer = null; driveBots(room); }, 0);
+        return;
+    }
+    room.botRefusals = 0;
+    room.version++;
+    sendState(room);
+    driveBots(room);
+}
+
+// The commands that end the current step of the game: when the bot has no
+// move, the party still goes on.
+function botFallbacks(state) {
+    if (state.pending) return [{ type: 'effect', answer: { no: true } }, { type: 'effect', answer: {} }, { type: 'effect', answer: { yes: true } }, { type: 'effect', answer: { choice: 0 } }];
+    if (state.combat) return [{ type: 'combat', action: 'reinforce', count: 0 }, { type: 'combat', action: 'playCard', index: 0 }];
+    if (state.phase === 'operations' && state.order) {
+        return [{ type: 'finishAdvance' }, { type: 'endAdvance' }, { type: 'deployStructures' }, { type: 'finishDeploy' }, { type: 'finishGuardDeploy' },
+            { type: 'finishStrategize' }, { type: 'finishDominate' }];
+    }
+    if (state.phase === 'refresh') return [{ type: 'resolveEvent' }, { type: 'nextPhase' }];
+    if (state.phase === 'setup') return [{ type: 'finishSetupForces' }];
+    return [{ type: 'nextPhase' }];
+}
+
+// A failure of a bot is written next to the server, with the state: the party
+// is reproducible from it (seed, seat, the state before the move).
+function botFailure(room, seat, error, cmd) {
+    try {
+        const file = path.join(os.tmpdir(), 'fs-bot-failure-' + room.code + '-' + Date.now() + '.json');
+        fs.writeFileSync(file, JSON.stringify({ room: room.code, seat, cmd: cmd || null, error: String(error && error.stack || error), state: room.state }, null, 1));
+        console.error(C.red + '  [бот] состояние сохранено: ' + file + C.r);
+    } catch (e) { /* the diagnosis must not take the server down */ }
 }
 
 // The default room: everybody who opens the plain address the server prints
@@ -176,27 +361,7 @@ rooms.set(defaultRoom.code, defaultRoom);
 // The seat a solo player has to act for right now: the question of an effect,
 // the step of a combat, the placement of a tile or the ordinary turn.
 function activeSeat(state) {
-    if (!state) return 0;
-    // A seat that has troops above the capacity of an area owes the choice of
-    // what goes back to the supply before anything else can happen. In a solo
-    // party the view shows his chair (and the «сверх вместимости» panel with it)
-    // until the excess is chosen; the LAN seats keep their usual views.
-    for (const p of state.players) {
-        if (FS_RULES.trimQueue(state).blocked(p.seat)) return p.seat;
-    }
-    if (state.pending) {
-        return state.pending.answerSeat === undefined ? state.pending.seat : state.pending.answerSeat;
-    }
-    const c = state.combat;
-    if (c) {
-        if (c.step === 'retreat') return c.loser != null ? c.loser : c.defender;
-        const side = String(c.step).slice(String(c.step).indexOf('-') + 1);
-        return side === 'attacker' ? c.attacker : c.defender;
-    }
-    if (state.setup) return state.setup.turn;
-    // The refresh phase resolves the event of one player at a time.
-    if (state.phase === 'refresh' && state.event && state.event.seat != null) return state.event.seat;
-    return state.turn;
+    return FS_RULES.activeSeat(state);
 }
 
 // The two seats of a test party: the host and the opponent he also plays.
@@ -435,7 +600,11 @@ function sendRoomInfo(room) {
         players: room.players.map(p => ({
             id: p.publicId || 'bot', name: p.name, faction: p.faction, palette: p.palette || null, seat: p.seat,
             ready: !!p.ready, online: !!(p.ws && p.ws.open), bot: !!p.bot,
+            persona: p.bot ? p.persona : undefined, level: p.bot ? p.level : undefined,
+            line: p.bot ? FS_BOT.line(p.faction, p.persona) : undefined,
         })),
+        // What the lobby offers for a bot: the characters and the levels.
+        bots: { personas: FS_BOT.PERSONAS.map(x => ({ id: x.id, name: x.name, text: x.text })), levels: FS_BOT.LEVELS.map(x => ({ id: x.id, name: x.name })) },
     });
 }
 
@@ -477,9 +646,11 @@ function handle(ws, msg) {
         }
         // The party is for two to four: a fifth guest is told so at the door
         // instead of being given a seat that would only block the start.
-        if (!known && room.players.filter(p => !p.bot).length >= 4) {
+        if (!known && room.players.length >= 4) {
             ws.send({ t: 'joined', id: '', room: room.code, seat: 0, palette: null, started: false, factions: FS_DATA.factions.map(f => ({ id: f.id, name: f.name, color: f.color })), invites: [] });
-            ws.send({ t: 'err', msg: 'В комнате уже четыре игрока — это предел партии. Откройте другую комнату: ?room=КОД.' });
+            ws.send({ t: 'err', msg: room.players.some(p => p.bot)
+                ? 'В комнате уже четыре места заняты (есть боты) — хозяин может убрать бота. Или откройте другую комнату: ?room=КОД.'
+                : 'В комнате уже четыре игрока — это предел партии. Откройте другую комнату: ?room=КОД.' });
             return;
         }
         const player = room.add(msg.name, msg.faction, requestedId, cleanPalette(msg.palette));
@@ -504,7 +675,9 @@ function handle(ws, msg) {
         if (!res.ok) { ws.send({ t: 'err', msg: res.error || 'Нельзя.' }); return; }
         room.undoStack.push(pre);
         if (room.undoStack.length > 200) room.undoStack.shift();
+        room.version++;
         sendState(room);
+        driveBots(room);
         return;
     }
     if (msg.t === 'undo') {
@@ -513,8 +686,14 @@ function handle(ws, msg) {
         if (!room.state) { ws.send({ t: 'err', msg: 'Игра ещё не началась.' }); return; }
         const pre = room.undoStack.pop();
         if (!pre) { ws.send({ t: 'err', msg: 'Нечего отменять.' }); return; }
+        // The snapshots are taken before the commands of humans only: one step
+        // back lands before the last human move, and the bots replay their
+        // moves from there — the same moves for the same state.
         room.state = pre;
+        room.version++;
+        room.botRefusals = 0;
         sendState(room);
+        driveBots(room);
         return;
     }
     if (msg.t === 'test') {
@@ -522,6 +701,7 @@ function handle(ws, msg) {
         if (!room || !player) return;
         const res = startTest(room, player, msg);
         if (!res.ok) { ws.send({ t: 'err', msg: res.error }); return; }
+        room.version++;
         sendRoomInfo(room);
         sendState(room);
         return;
@@ -559,6 +739,30 @@ function handle(ws, msg) {
         if (!res.ok) { ws.send({ t: 'err', msg: res.msg }); sendRoomInfo(room); return; }
         sendRoomInfo(room);
         sendState(room);
+        driveBots(room);
+        return;
+    }
+    if (msg.t === 'addBot') {
+        const room = ws.room, player = ws.player;
+        if (!room || !player) return;
+        if (room.started) { ws.send({ t: 'err', msg: 'Игра уже идёт.' }); return; }
+        if (room.host() !== player) { ws.send({ t: 'err', msg: 'Добавить бота может только хозяин комнаты.' }); return; }
+        if (room.players.length >= 4) { ws.send({ t: 'err', msg: 'В партии не больше четырёх мест — все заняты.' }); return; }
+        room.addBot({ faction: msg.faction, persona: msg.persona, level: msg.level });
+        sendRoomInfo(room);
+        return;
+    }
+    if (msg.t === 'bot') {
+        // The host sets a bot: the faction, the character, the level.
+        const room = ws.room, player = ws.player;
+        if (!room || !player) return;
+        if (room.started) { ws.send({ t: 'err', msg: 'Игра уже идёт.' }); return; }
+        if (room.host() !== player) { ws.send({ t: 'err', msg: 'Настраивать ботов может только хозяин комнаты.' }); return; }
+        const bot = room.players.find(p => p.bot && p.publicId === msg.id);
+        if (!bot) { ws.send({ t: 'err', msg: 'Такого бота в комнате нет.' }); return; }
+        const error = room.setBot(bot, { faction: msg.faction, persona: msg.persona, level: msg.level });
+        if (error) { ws.send({ t: 'err', msg: error }); return; }
+        sendRoomInfo(room);
         return;
     }
     if (msg.t === 'options') {
@@ -585,9 +789,9 @@ function handle(ws, msg) {
         if (!room || !player) return;
         if (room.started) { ws.send({ t: 'err', msg: 'Игра уже идёт.' }); return; }
         if (room.host() !== player) { ws.send({ t: 'err', msg: 'Убрать игрока может только хозяин комнаты.' }); return; }
-        const target = room.players.find(p => !p.bot && p.publicId === msg.id);
+        const target = room.players.find(p => p.publicId === msg.id);
         if (!target) { ws.send({ t: 'err', msg: 'Такого игрока в комнате нет.' }); return; }
-        if (target.ws && target.ws.open) { ws.send({ t: 'err', msg: target.name + ' на связи — убрать можно только отключившегося.' }); return; }
+        if (!target.bot && target.ws && target.ws.open) { ws.send({ t: 'err', msg: target.name + ' на связи — убрать можно только отключившегося.' }); return; }
         room.remove(target);
         sendRoomInfo(room);
         return;

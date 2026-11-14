@@ -35,7 +35,7 @@ async function freePort() {
 
 async function startServer(port) {
     const child = spawn(process.execPath, ['tools/fs-server.mjs', '--no-open', '--port=' + port], {
-        cwd: ROOT, env: { ...process.env, FS_DEBUG: '1' }, stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: ROOT, env: { ...process.env, FS_DEBUG: '1', FS_BOT_DELAY: '0' }, stdio: ['pipe', 'pipe', 'pipe'],
     });
     let output = '';
     child.stdout.on('data', data => { output += data; });
@@ -567,6 +567,132 @@ try {
         for (const client of actors) await client.close();
     }
 
+    // A bot at the table: the host adds it, sets it up, starts a party with it
+    // alone, and the bot plays its turns by itself — the setup of the galaxy and
+    // the first orders — while the human's own view never shows the bot's hand.
+    {
+        const code = 'BOT' + crypto.randomBytes(4).toString('hex').toUpperCase();
+        const host = await connect(), guest = await connect();
+        host.send({ t: 'hello', room: code, name: 'Хозяин' });
+        const hostJoin = await host.take(t('joined'), 'хозяин комнаты с ботом');
+        guest.send({ t: 'hello', room: code, name: 'Гость' });
+        await guest.take(t('joined'), 'гость комнаты с ботом');
+        const roomOf = (client, pred, what) => client.take(message => message.t === 'room' && pred(message), what);
+        await roomOf(host, m => m.players.length === 2, 'двое в комнате');
+        // Only the host adds and sets bots.
+        guest.send({ t: 'addBot' });
+        assert.match((await guest.take(t('err'), 'бота добавляет гость')).msg, /хозяин/i);
+        host.send({ t: 'addBot', faction: 'орки', level: 'novice' });
+        const withBot = await roomOf(host, m => m.players.some(p => p.bot), 'бот в списке');
+        const bot = withBot.players.find(p => p.bot);
+        assert.equal(bot.faction, 'орки', 'бот взял названную фракцию');
+        assert.equal(bot.name, 'Варбосс', 'бот назван по фракции');
+        assert.equal(bot.persona, 'aggressor', 'характер по умолчанию фракции');
+        assert.equal(bot.level, 'novice', 'уровень как попросили');
+        assert.equal(bot.ready, true, 'бот всегда готов');
+        assert.match(bot.line, /Варбосс: WAAAGH/, 'подпись-намёк в списке');
+        assert.ok(withBot.bots && withBot.bots.personas.length === 5 && withBot.bots.levels.length === 3, 'лобби знает характеры и уровни');
+        guest.send({ t: 'bot', id: bot.id, level: 'veteran' });
+        assert.match((await guest.take(t('err'), 'бота настраивает гость')).msg, /хозяин/i);
+        host.send({ t: 'bot', id: bot.id, faction: 'некроны', persona: 'turtle', level: 'veteran' });
+        const reset = await roomOf(host, m => m.players.some(p => p.bot && p.faction === 'некроны'), 'бот перенастроен');
+        const bot2 = reset.players.find(p => p.bot);
+        assert.deepEqual([bot2.name, bot2.persona, bot2.level], ['Фаэрон', 'turtle', 'veteran'], 'новая фракция переименовала бота, характер и уровень — как задано');
+        host.send({ t: 'bot', id: bot.id, persona: 'джедай' });
+        assert.match((await host.take(t('err'), 'неизвестный характер')).msg, /характер/i);
+        // The seats are four, bots included: one more bot fills the room, the
+        // next is refused, and so is a new guest at the door.
+        host.send({ t: 'addBot' });
+        const full = await roomOf(host, m => m.players.length === 4, 'четыре места заняты');
+        host.send({ t: 'addBot' });
+        assert.match((await host.take(t('err'), 'пятый бот')).msg, /четырёх мест/i);
+        const fifth = await connect();
+        fifth.send({ t: 'hello', room: code, name: 'Пятый' });
+        assert.equal((await fifth.take(t('joined'), 'пятый при ботах')).id, '', 'пятому места нет');
+        assert.match((await fifth.take(t('err'), 'причина отказа при ботах')).msg, /бот/i);
+        await fifth.close();
+        // The host removes a bot and the guest; one human against one bot is a party.
+        for (const p of full.players.filter(p => p.bot && p.id !== bot.id)) host.send({ t: 'kick', id: p.id });
+        await roomOf(host, m => m.players.length === 3 && m.players.filter(p => p.bot).length === 1, 'лишний бот убран');
+        await guest.close();
+        const guestGone = await roomOf(host, m => m.players.some(p => p.name === 'Гость' && p.online === false), 'гость отключился');
+        host.send({ t: 'kick', id: guestGone.players.find(p => p.name === 'Гость').id });
+        await roomOf(host, m => m.players.length === 2 && !m.players.some(p => p.name === 'Гость'), 'гость убран');
+        host.send({ t: 'faction', faction: 'эльдары' });
+        const readyRoom = await roomOf(host, m => m.start.ok, 'хозяин и бот — можно начинать');
+        assert.equal(readyRoom.players.length, 2, 'за столом человек и бот');
+        host.send({ t: 'options', rounds: 4 });
+        await roomOf(host, m => m.rounds === 4, 'короткая партия с ботом');
+        host.send({ t: 'start' });
+        const first = await host.take(message => message.t === 'state' && message.view.seat === 0, 'партия с ботом началась');
+        assert.equal(first.view.players[1].faction, 'некроны', 'бот играет своей фракцией');
+        assert.equal(first.view.rounds, 4, 'длина партии дошла до состояния');
+        // The bot builds its part of the galaxy by itself: the human only acts
+        // at his own turns. Every state the human gets is his own view — the
+        // bot's hand of tiles is never in it.
+        const rules = createEngineContext().FS_RULES;
+        let view = first.view, botMoves = 0;
+        const humanStep = (state) => {
+            const setup = state.setup, seat = 0;
+            if (setup.stage === 'tile') { const cell = setup.legalCells[0]; return { type: 'placeSystemTile', tile: setup.hand[0], row: cell.row, col: cell.col }; }
+            if (setup.stage === 'forces') {
+                const initial = state.players[seat].initialForces;
+                const sys = state.systems.find(system => system.id === setup.currentSystem);
+                for (const id of Object.keys(initial.units).filter(id => initial.units[id] > 0)) {
+                    const def = rules.unitDef(state, seat, id);
+                    const area = sys.areas.find(a => !!a.world === (def.type !== 'ship') && rules.unitsAt(state, sys.id, a.pos).length < rules.capacity(state, sys.id, a.pos));
+                    if (area) return { type: 'setupUnit', unit: id, pos: area.pos };
+                }
+                for (const type of Object.keys(initial.structures).filter(id => initial.structures[id] > 0)) {
+                    const area = sys.areas.find(a => a.world && rules.canPlaceStructure(state, seat, sys.id, a.pos, { ignoreControl: true }).ok);
+                    if (area) return { type: 'setupStructure', structure: type, pos: area.pos };
+                }
+                return { type: 'finishSetupForces' };
+            }
+            if (setup.stage === 'objectives') { const option = setup.objectiveOptions[0]; return option ? { type: 'setupObjective', seat: option.seat, pos: option.areas[0] } : null; }
+            if (setup.stage === 'storms') {
+                for (const sys of state.systems) { const sides = rules.setupStormSides(state, sys.id); if (sides.length) return { type: 'setupStorm', system: sys.id, side: sides[0] }; }
+            }
+            return null;
+        };
+        // Every state the server sends is one move; the socket takes them in
+        // order, so the next «state» is always the next move, human's or bot's.
+        for (let i = 0; i < 300 && view.phase === 'setup'; i++) {
+            assert.equal(view.seat, 0, 'хозяину приходит только его вид');
+            assert.ok(!view.setup.hands, 'рук сборки других игроков в виде нет');
+            if (view.setup.turn === 0) {
+                const cmd = humanStep(view);
+                assert.ok(cmd, 'у человека есть ход в сборке: ' + view.setup.stage);
+                host.send({ t: 'cmd', cmd });
+                const next = await host.take(message => message.t === 'err' || message.t === 'state', 'ход человека в сборке: ' + cmd.type);
+                assert.equal(next.t, 'state', 'сервер принял ход человека: ' + (next.msg || ''));
+                view = next.view;
+            } else {
+                // The bot's turn: the next state comes from the bot's move alone.
+                view = (await host.take(t('state'), 'ход бота в сборке: ' + view.setup.stage)).view;
+                botMoves++;
+            }
+        }
+        assert.equal(view.phase, 'planning', 'сборка карты закончена вместе с ботом');
+        assert.ok(botMoves >= 6, 'бот сам собирал карту: ходов ' + botMoves);
+        // The planning: the human's order is a human command with a snapshot; the
+        // bot answers with its own order; «Отменить ход» goes back before the
+        // human's order, and the bot's order goes with it.
+        const planOf = state => state.systems.reduce((n, sys) => n + sys.tokens.length, 0);
+        while (view.turn !== 0 && view.phase === 'planning') view = (await host.take(t('state'), 'бот планирует первым')).view;
+        const mine = view.systems.find(sys => rules.canPlaceOrder(view, 0, sys.id));
+        const tokensBefore = planOf(view), undoBefore = view.undo;
+        host.send({ t: 'cmd', cmd: { type: 'placeOrder', system: mine.id, order: 'dominate' } });
+        view = (await host.take(message => message.t === 'state' && planOf(message.view) === tokensBefore + 1, 'приказ человека')).view;
+        assert.equal(view.undo, undoBefore + 1, 'снимок для отмены делается перед ходом человека');
+        view = (await host.take(message => message.t === 'state' && planOf(message.view) === tokensBefore + 2, 'ответный приказ бота')).view;
+        assert.equal(view.undo, undoBefore + 1, 'ход бота снимка не добавляет');
+        host.send({ t: 'undo' });
+        view = (await host.take(message => message.t === 'state' && planOf(message.view) === tokensBefore, 'отмена возвращает к состоянию до приказа человека')).view;
+        assert.equal(view.turn, 0, 'после отмены снова ход человека');
+        await host.close();
+    }
+
     // After a middle lobby seat leaves, a normal three-player game must bind
     // each remaining socket to the same seat as the authoritative game state.
     {
@@ -694,7 +820,7 @@ try {
 
     await delay(25);
     for (const join of joins) assert.ok(!server.output().includes(join.id), 'диагностический журнал не раскрывает секрет');
-    console.log('  LAN: закрытые id, отказ подмене места и бота, соло-тесты, лобби («Готов»/«Начать игру», смена фракции, одинаковые фракции, длина партии, уборка молчащего места), выход, три приватных состояния и переподключение — без ошибок.');
+    console.log('  LAN: закрытые id, отказ подмене места и бота, соло-тесты, лобби («Готов»/«Начать игру», смена фракции, одинаковые фракции, длина партии, уборка молчащего места), бот за столом (добавить, настроить, сборка и приказы ботом, отмена хода), выход, три приватных состояния и переподключение — без ошибок.');
 } catch (error) {
     console.error('  LAN: FAIL — ' + (error && error.stack || error));
     process.exitCode = 1;

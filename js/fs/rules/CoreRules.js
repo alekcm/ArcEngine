@@ -91,6 +91,42 @@ class CoreRules {
         return seat >= 0 ? state.players[seat] : null;
     }
 
+    /**
+     * The seat whose decision the game waits for right now: the excess of an
+     * area, the question of an effect, the hits of an orbital strike, the step
+     * of a combat, the placement of a tile, the event of the refresh or the
+     * ordinary turn. The server drives the bots by it, a solo party shows this
+     * chair, and the bot checks it before acting. Works on a view as well.
+     */
+    activeSeat(state) {
+        if (!state) return 0;
+        for (const p of state.players || []) {
+            if (this.trimQueue(state).blocked(p.seat)) return p.seat;
+        }
+        const question = Question.of(state);
+        if (question.waiting) return question.answerSeat;
+        const strike = StrikeDamage.of(state);
+        if (strike.pending && strike.seat !== null) return strike.seat;
+        const c = state.combat;
+        if (c) {
+            const turn = CombatTurn.of(c);
+            if (turn.is('retreat')) {
+                const loser = CombatOutcome.of(c).loserSeat;
+                return loser !== null ? loser : CombatSides.seatOf(c, 'defender');
+            }
+            const seat = CombatSides.seatOf(c, turn.side);
+            // A card may hand the assignment of the hits to the other player.
+            if (turn.damaging) return CombatHooks.of(c).assignSeat(seat);
+            return seat;
+        }
+        const phase = GamePhase.of(state);
+        const setup = BoardSetup.of(state);
+        if (setup.active) return setup.turn;
+        const event = EventPhase.of(state);
+        if (phase.is(GamePhase.REFRESH) && event.current && event.seat !== null) return event.seat;
+        return phase.turn;
+    }
+
     unitDef(state, seat, unitId) {
         const p = state.players[seat];
         return p ? FS_CATALOG.unit(p.faction, unitId) : null;

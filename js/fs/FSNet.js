@@ -67,6 +67,13 @@ const FSNet = {
             options(opts) {
                 return net.send(Object.assign({ t: 'options' }, opts || {}));
             },
+            // «Добавить бота» and the settings of a bot (the host only).
+            addBot(opts) {
+                return net.send(Object.assign({ t: 'addBot' }, opts || {}));
+            },
+            bot(id, patch) {
+                return net.send(Object.assign({ t: 'bot', id }, patch || {}));
+            },
             // The army paint chosen in the lobby: { primary, secondary1, secondary2 }.
             palette(palette) {
                 net.palette = palette;

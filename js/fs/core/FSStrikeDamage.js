@@ -46,6 +46,12 @@ class StrikeDamage {
         return !!strike && strike.seat === seat;
     }
 
+    /** The seat that takes the hits, or null when no strike waits. */
+    get seat() {
+        const strike = this.record;
+        return strike && strike.seat !== undefined ? strike.seat : null;
+    }
+
     /** The seat that fired the strike. */
     get attacker() {
         const strike = this.record;

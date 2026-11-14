@@ -129,6 +129,7 @@ const CAMERA = vm.runInContext('CameraController', ctx);
 const FS_GAME = vm.runInContext('FSGame', ctx);
 const BOARD_SETUP = vm.runInContext('BoardSetup', ctx);
 const FS_CATALOG_SCREENS = vm.runInContext('FS_CATALOG', ctx);
+const FS_BOT_SCREENS = vm.runInContext('FS_BOT', ctx);
 FSUI.modernRoot = el();
 
 const SEAT_PLAYERS = [
@@ -235,6 +236,61 @@ screen('lobby-3', 'хозяин видит «Начать игру» серой,
     const shared = tiles.find(b => textsOf(b).some(t => /Выбрана: Гость · можно тоже/.test(t)));
     if (!shared) return 'плитка фракции гостя не говорит, кто её выбрал';
     if (shared.disabled) return 'фракция гостя закрыта для выбора, а одинаковые фракции разрешены';
+    return true;
+});
+
+screen('lobby-7', 'бот в лобби: подпись-намёк и архетип мелко у всех, у хозяина — выбор фракции, характера и уровня, «+ Добавить бота» до четырёх мест, «убрать»', () => {
+    const bots = { personas: FS_BOT_SCREENS.PERSONAS.map(p => ({ id: p.id, name: p.name, text: p.text })), levels: FS_BOT_SCREENS.LEVELS.map(l => ({ id: l.id, name: l.name })) };
+    const seats = [
+        LOBBY_SEATS[0],
+        { id: 'bot1', name: 'Варбосс', faction: 'орки', seat: 1, ready: true, online: true, bot: true, persona: 'aggressor', level: 'normal', line: FS_BOT_SCREENS.line('орки', 'aggressor') },
+    ];
+    const added = [], set = [], kicked = [];
+    drawLobby({
+        name: 'Хозяин', faction: 'эльдары', me: 'p1', host: 'p1', isHost: true, ready: false, bots,
+        start: { ok: true, msg: '' }, players: seats, factions: LOBBY_FACTIONS,
+        onAddBot: () => added.push(1), onBot: (id, patch) => set.push([id, patch]), onKick: id => kicked.push(id),
+    });
+    let texts = textsOf(FSUI.modernRoot);
+    if (!texts.some(t => /Варбосс · Орки · бот/.test(t))) return 'бот не назван ботом в списке';
+    if (!texts.some(t => /Варбосс: WAAAGH! с первого плана/.test(t))) return 'нет подписи-намёка бота';
+    if (!texts.some(t => /^агрессор · обычный$/.test(t))) return 'нет мелкой подписи архетипа и уровня';
+    let buttons = buttonsOf(FSUI.modernRoot);
+    const addButton = list => list.find(b => textsOf(b).some(t => /Добавить бота/.test(t)));
+    const add = addButton(buttons);
+    if (!add) return 'у хозяина нет кнопки «+ Добавить бота»';
+    add.click();
+    if (added.length !== 1) return 'кнопка добавления бота не сработала';
+    const selects = [];
+    (function walk(n) { if (!n) return; if (n.tagName === 'SELECT') selects.push(n); for (const c of n.children || []) walk(c); })(FSUI.modernRoot);
+    const menu = selects.filter(s => /fs-bot-select/.test(s.className));
+    if (menu.length !== 3) return 'у хозяина должно быть три меню бота (фракция, характер, уровень), найдено ' + menu.length;
+    if (menu[1].value !== 'aggressor' || menu[2].value !== 'normal') return 'меню не показывают текущий характер и уровень: ' + menu[1].value + ', ' + menu[2].value;
+    menu[2].value = 'veteran';
+    for (const fn of menu[2].listeners.change || []) fn({ target: menu[2] });
+    if (!set.length || set[0][0] !== 'bot1' || set[0][1].level !== 'veteran') return 'смена уровня не ушла хозяину: ' + JSON.stringify(set);
+    const kick = buttons.find(b => /убрать/.test(b.textContent));
+    if (!kick) return 'у хозяина нет «убрать» для бота';
+    kick.click();
+    if (kicked.join() !== 'bot1') return 'кнопка «убрать» не назвала бота: ' + kicked.join();
+    // A guest sees the hint and the small tag but no menu and no «+ Добавить бота».
+    drawLobby({
+        name: 'Гость', faction: 'некроны', me: 'p2', host: 'p1', isHost: false, ready: false, bots,
+        start: { ok: false, msg: '' }, players: seats.concat([LOBBY_SEATS[1]]), factions: LOBBY_FACTIONS,
+    });
+    texts = textsOf(FSUI.modernRoot);
+    buttons = buttonsOf(FSUI.modernRoot);
+    if (!texts.some(t => /Варбосс: WAAAGH!/.test(t))) return 'гость не видит подписи бота';
+    if (addButton(buttons) || buttons.some(b => /убрать/.test(b.textContent))) return 'гостю показаны кнопки хозяина';
+    const guestSelects = [];
+    (function walk(n) { if (!n) return; if (n.tagName === 'SELECT' && /fs-bot-select/.test(n.className)) guestSelects.push(n); for (const c of n.children || []) walk(c); })(FSUI.modernRoot);
+    if (guestSelects.length) return 'гостю показаны меню бота';
+    // Four seats — no room for another bot.
+    drawLobby({
+        name: 'Хозяин', faction: 'эльдары', me: 'p1', host: 'p1', isHost: true, ready: false, bots,
+        start: { ok: true, msg: '' }, players: seats.concat([LOBBY_SEATS[1], LOBBY_SEATS[2]]), factions: LOBBY_FACTIONS,
+    });
+    if (addButton(buttonsOf(FSUI.modernRoot))) return 'при четырёх местах кнопка «+ Добавить бота» лишняя';
     return true;
 });
 
