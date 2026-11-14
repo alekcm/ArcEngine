@@ -7,6 +7,8 @@
 //  or external packages). A public lobby id must never authenticate another seat;
 //  the private reconnect id must still work, including when the old socket closes
 //  after its replacement has joined. The game engine remains authoritative.
+//  The lobby itself is checked too: nothing starts by itself — the guests press
+//  «Готов», the host presses «Начать игру», and a faction may be changed until then.
 // ============================================================================
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -152,6 +154,15 @@ class Client {
 }
 
 const t = kind => message => message.t === kind;
+// The ordinary start: the first client is the host (he only presses «Начать
+// игру»), everybody else chooses a faction and presses «Готов».
+const startParty = async (seats) => {
+    for (const [client, faction] of seats) client.send({ t: 'faction', faction });
+    for (const [client] of seats.slice(1)) client.send({ t: 'ready', ready: true });
+    const [host] = seats[0];
+    await host.take(message => message.t === 'room' && message.start && message.start.ok, 'лобби готово к старту');
+    host.send({ t: 'start' });
+};
 const clients = [];
 let server;
 try {
@@ -353,6 +364,108 @@ try {
         for (const client of [host, departed, third, restored]) await client.close();
     }
 
+    // The lobby of the ordinary party: three friends, two of whom have chosen —
+    // the party must wait for the third; «Готов» and «Начать игру» drive the
+    // start, the faction may be changed until then, and a seat that has gone
+    // silent can be cleared by the host.
+    {
+        const code = 'LOBBY' + crypto.randomBytes(4).toString('hex').toUpperCase();
+        const host = await connect(), guest = await connect(), late = await connect();
+        const joins = [];
+        for (const [client, name] of [[host, 'Хозяин'], [guest, 'Гость'], [late, 'Третий']]) {
+            client.send({ t: 'hello', room: code, name });
+            joins.push(await client.take(t('joined'), 'участник лобби'));
+        }
+        assert.ok(joins.every(join => /^p\d+$/.test(join.publicId)), 'joined называет публичный id места');
+        const roomOf = (client, pred, what) => client.take(message => message.t === 'room' && pred(message), what);
+        const full = await roomOf(late, m => m.players.length === 3, 'лобби из трёх');
+        assert.equal(full.host, joins[0].publicId, 'хозяин — первый вошедший');
+        assert.deepEqual(full.players.map(p => p.id), joins.map(join => join.publicId), 'публичные id списка совпадают с joined');
+        assert.ok(full.players.every(p => p.online === true && p.ready === false && p.bot === false), 'все на связи, никто не готов');
+        assert.equal(full.start.ok, false, 'без фракций старт закрыт');
+
+        // The classic failure: two of three have chosen — nothing may start.
+        host.send({ t: 'faction', faction: 'эльдары' });
+        guest.send({ t: 'faction', faction: 'орки' });
+        guest.send({ t: 'ready', ready: true });
+        const twoChosen = await roomOf(host, m => m.players.filter(p => p.faction).length === 2
+            && m.players.some(p => p.name === 'Гость' && p.ready), 'двое выбрали');
+        assert.equal(twoChosen.started, false, 'двое из трёх выбрали — партия не началась');
+        assert.equal(twoChosen.start.ok, false, 'кнопка старта закрыта, пока третий без фракции');
+        assert.match(twoChosen.start.msg, /Третий/, 'причина называет того, кого ждём');
+        host.send({ t: 'start' });
+        const early = await host.take(message => message.t === 'err' || message.t === 'state', 'преждевременный старт');
+        assert.equal(early.t, 'err', 'сервер не стартует без третьего');
+        assert.match(early.msg, /фракци/i, 'отказ объясняет, чего не хватает');
+
+        // Readiness needs a faction; a guest cannot start the party.
+        late.send({ t: 'ready', ready: true });
+        assert.match((await late.take(t('err'), 'готовность без фракции')).msg, /фракци/i);
+        late.send({ t: 'start' });
+        assert.match((await late.take(t('err'), 'старт не хозяином')).msg, /хозяин/i);
+
+        // The faction may be changed as long as the party has not started; a
+        // changed faction drops the readiness, an unknown one is refused.
+        guest.send({ t: 'faction', faction: 'некроны' });
+        const rechosen = await roomOf(host, m => m.players.some(p => p.name === 'Гость' && p.faction === 'некроны'), 'смена фракции');
+        assert.equal(rechosen.players.find(p => p.name === 'Гость').ready, false, 'смена фракции снимает готовность');
+        guest.send({ t: 'faction', faction: 'клингоны' });
+        assert.match((await guest.take(t('err'), 'неизвестная фракция')).msg, /нет такой/i);
+        guest.send({ t: 'ready', ready: true });
+        await roomOf(host, m => m.players.some(p => p.name === 'Гость' && p.ready), 'гость снова готов');
+
+        // The same faction twice is still refused (the engine keys objectives by faction).
+        late.send({ t: 'faction', faction: 'некроны' });
+        const clash = await roomOf(host, m => m.players.filter(p => p.faction === 'некроны').length === 2, 'две одинаковые фракции');
+        assert.equal(clash.start.ok, false, 'одинаковые фракции закрывают старт');
+        assert.match(clash.start.msg, /одну фракцию/i);
+        late.send({ t: 'faction', faction: 'тираниды' });
+        await roomOf(host, m => m.players.some(p => p.name === 'Третий' && p.faction === 'тираниды'), 'третий выбрал');
+        host.send({ t: 'start' });
+        const notReady = await host.take(message => message.t === 'err' || message.t === 'state', 'старт без готовности третьего');
+        assert.equal(notReady.t, 'err', 'без «Готов» третьего партия не начинается');
+        assert.match(notReady.msg, /готовность: Третий/i);
+
+        // A fourth friend opens the link and closes the tab: his silent seat
+        // would block the start — the host clears it. An online seat cannot be cleared.
+        const ghost = await connect();
+        ghost.send({ t: 'hello', room: code, name: 'Призрак' });
+        const ghostJoin = await ghost.take(t('joined'), 'четвёртый участник');
+        await roomOf(host, m => m.players.length === 4, 'лобби из четырёх');
+        host.send({ t: 'kick', id: ghostJoin.publicId });
+        assert.match((await host.take(t('err'), 'убрать игрока на связи')).msg, /на связи/i);
+        // A fifth friend is refused at the door: the party is for two to four.
+        const fifth = await connect();
+        fifth.send({ t: 'hello', room: code, name: 'Пятый' });
+        assert.equal((await fifth.take(t('joined'), 'пятый участник')).id, '', 'пятому место не выдаётся');
+        assert.match((await fifth.take(t('err'), 'причина отказа пятому')).msg, /четыре игрока/i);
+        await fifth.close();
+        await ghost.close();
+        const offline = await roomOf(host, m => m.players.some(p => p.name === 'Призрак' && p.online === false), 'сервер заметил отключение четвёртого');
+        assert.equal(offline.players.length, 4, 'пятый не занял место');
+        assert.match(offline.start.msg, /Призрак/, 'молчащее место названо причиной ожидания');
+        late.send({ t: 'kick', id: ghostJoin.publicId });
+        assert.match((await late.take(t('err'), 'убрать не хозяином')).msg, /хозяин/i);
+        host.send({ t: 'kick', id: ghostJoin.publicId });
+        await roomOf(host, m => m.players.length === 3 && !m.players.some(p => p.name === 'Призрак'), 'место убрано');
+
+        // Everybody ready — the host starts; every seat gets its own view.
+        late.send({ t: 'ready', ready: true });
+        const ready = await roomOf(host, m => m.start.ok, 'все готовы');
+        assert.equal(ready.players.filter(p => p.ready).length, 2, 'готовы оба гостя, хозяину кнопка «Готов» не нужна');
+        host.send({ t: 'start' });
+        const views = await Promise.all([host, guest, late].map((client, seat) =>
+            client.take(message => message.t === 'state' && message.view.seat === seat, 'состояние места ' + seat)));
+        assert.deepEqual(views.map(m => m.view.players[m.view.seat].faction), ['эльдары', 'некроны', 'тираниды'], 'партия идёт выбранными фракциями');
+        const begun = await roomOf(host, m => m.started, 'список начатой партии');
+        assert.equal(begun.start.ok, false, 'в начатой партии кнопки старта нет');
+        guest.send({ t: 'faction', faction: 'орки' });
+        assert.match((await guest.take(t('err'), 'смена фракции после старта')).msg, /уже идёт/i);
+        host.send({ t: 'start' });
+        assert.match((await host.take(t('err'), 'повторный старт')).msg, /уже идёт/i);
+        for (const client of [host, guest, late]) await client.close();
+    }
+
     // Exercise facedown order secrecy on the real server, not just on an
     // in-process projection. Complete setup using each participant's own view,
     // put two orders in one stack, then reconnect and undo the cover.
@@ -364,8 +477,7 @@ try {
             client.send({ t: 'hello', room: code, name: seat ? 'Сосед' : 'Эльдар' });
             joins.push(await client.take(t('joined'), 'участник проверки приказов'));
         }
-        actors[0].send({ t: 'faction', faction: 'эльдары' });
-        actors[1].send({ t: 'faction', faction: 'имперская-гвардия' });
+        await startParty([[actors[0], 'эльдары'], [actors[1], 'имперская-гвардия']]);
         let views = await Promise.all(actors.map((client, seat) =>
             client.take(message => message.t === 'state' && message.view.seat === seat, 'сборка карты для места ' + seat)));
         views = views.map(message => message.view);
@@ -461,9 +573,7 @@ try {
         const replacement = await connect();
         replacement.send({ t: 'hello', room: code, name: 'Новый' });
         assert.equal((await replacement.take(t('joined'), 'новый участник')).seat, 2);
-        for (const [client, faction] of [[first, 'адептус-механикус'], [last, 'имперская-гвардия'], [replacement, 'некроны']]) {
-            client.send({ t: 'faction', faction });
-        }
+        await startParty([[first, 'адептус-механикус'], [last, 'имперская-гвардия'], [replacement, 'некроны']]);
         const views = await Promise.all([first, last, replacement].map((client, seat) =>
             client.take(message => message.t === 'state' && message.view.seat === seat, 'место игры после выхода ' + seat)));
         assert.deepEqual(views.map(message => message.view.players[message.view.seat].name), ['Первый', 'Оставшийся', 'Новый']);
@@ -498,9 +608,7 @@ try {
     const publicId = lobby.players.find(player => player.seat === 0).id;
     assert.notEqual(publicId, joins[0].id, 'публичный id отличается от секрета');
 
-    for (const [client, faction] of [[a, 'адептус-механикус'], [b, 'имперская-гвардия'], [c, 'некроны']]) {
-        client.send({ t: 'faction', faction });
-    }
+    await startParty([[a, 'адептус-механикус'], [b, 'имперская-гвардия'], [c, 'некроны']]);
     const views = await Promise.all([a, b, c].map((client, seat) =>
         client.take(message => message.t === 'state' && message.view.seat === seat, 'состояние места ' + seat)));
     assert.ok(views.every(message => message.view.phase === 'setup'), 'началась настоящая сборка трёх игроков');
@@ -574,7 +682,7 @@ try {
 
     await delay(25);
     for (const join of joins) assert.ok(!server.output().includes(join.id), 'диагностический журнал не раскрывает секрет');
-    console.log('  LAN: закрытые id, отказ подмене места и бота, соло-тесты, выход, три приватных состояния и переподключение — без ошибок.');
+    console.log('  LAN: закрытые id, отказ подмене места и бота, соло-тесты, лобби («Готов»/«Начать игру», смена фракции, уборка молчащего места), выход, три приватных состояния и переподключение — без ошибок.');
 } catch (error) {
     console.error('  LAN: FAIL — ' + (error && error.stack || error));
     process.exitCode = 1;

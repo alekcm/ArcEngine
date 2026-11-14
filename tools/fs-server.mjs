@@ -12,7 +12,8 @@
 //  the plain address lands in the default room (the one printed at startup);
 //  anybody with a link ?room=CODE joins that room explicitly:
 //      http://<this computer>:8080/?room=ABCD
-//  The game starts when everybody has chosen a faction.
+//  Everybody chooses a faction and presses «Готов»; the host of the room (the
+//  first player who is online) starts the party with «Начать игру».
 // ============================================================================
 import http from 'node:http';
 import { execSync } from 'node:child_process';
@@ -106,10 +107,20 @@ class Room {
             faction: faction || '',
             palette: palette || null,
             seat: this.players.length,
+            // «Готов»: the player has locked his faction and waits for the start.
+            // The flag survives a reconnect — it belongs to the seat, not the socket.
+            ready: false,
             ws: null,
         };
         this.players.push(player);
         return player;
+    }
+
+    // The host of the room: the first player who is online. The role is not
+    // sticky — when the first player drops out of the lobby, the next one can
+    // start the party (or remove the offline seat), so nobody is ever locked out.
+    host() {
+        return this.players.find(p => !p.bot && p.ws && p.ws.open) || null;
     }
 
     remove(player) {
@@ -120,12 +131,34 @@ class Room {
         this.players.forEach((p, seat) => { p.seat = seat; });
     }
 
-    // The game starts when everybody has a faction.
-    tryStart() {
-        if (this.started || this.players.length < 2) return false;
-        if (this.players.some(p => !p.faction)) return false;
-        const factions = new Set(this.players.map(p => p.faction));
-        if (factions.size !== this.players.length) return false;
+    // Why the party cannot start yet — or { ok: true }. The host presses «Начать
+    // игру»; everybody else has to be ready. Nothing starts by itself: the
+    // third friend may still be opening the link while two have chosen.
+    startStatus() {
+        if (this.started) return { ok: false, msg: 'Игра уже идёт.' };
+        if (this.players.length < 2) return { ok: false, msg: 'Нужен хотя бы ещё один игрок — отправьте друзьям ссылку.' };
+        if (this.players.length > 4) return { ok: false, msg: 'В партии не больше четырёх игроков.' };
+        const host = this.host();
+        const noFaction = this.players.filter(p => !p.faction);
+        if (noFaction.length) return { ok: false, msg: 'Ждём выбор фракции: ' + noFaction.map(p => p.name).join(', ') + '.' };
+        const seen = new Map();
+        for (const p of this.players) {
+            const other = seen.get(p.faction);
+            if (other) {
+                const name = (FS_DATA.factions.find(f => f.id === p.faction) || {}).name || p.faction;
+                return { ok: false, msg: other.name + ' и ' + p.name + ' выбрали одну фракцию (' + name + ') — кому-то нужно сменить.' };
+            }
+            seen.set(p.faction, p);
+        }
+        const notReady = this.players.filter(p => p !== host && !p.ready);
+        if (notReady.length) return { ok: false, msg: 'Ждём готовность: ' + notReady.map(p => p.name).join(', ') + '.' };
+        return { ok: true, msg: '' };
+    }
+
+    // The party itself: the galaxy is built together (interactiveSetup).
+    start() {
+        const status = this.startStatus();
+        if (!status.ok) return status;
         this.state = FS_RULES.newGame({
             seed: (Date.now() % 100000) + 1,
             players: this.players.map(p => ({ name: p.name, faction: p.faction, palette: p.palette })),
@@ -133,7 +166,7 @@ class Room {
         });
         this.started = true;
         this.undoStack = [];
-        return true;
+        return { ok: true, msg: '' };
     }
 }
 
@@ -392,11 +425,19 @@ function cleanPalette(pal) {
 }
 
 function sendRoomInfo(room) {
+    const host = room.host();
     broadcast(room, {
         t: 'room',
         code: room.code,
         started: room.started,
-        players: room.players.map(p => ({ id: p.publicId || 'bot', name: p.name, faction: p.faction, palette: p.palette || null, seat: p.seat })),
+        // Who may press «Начать игру» and why the button is still grey — the
+        // server decides both, the client only shows them.
+        host: host ? host.publicId : '',
+        start: room.started ? { ok: false, msg: '' } : room.startStatus(),
+        players: room.players.map(p => ({
+            id: p.publicId || 'bot', name: p.name, faction: p.faction, palette: p.palette || null, seat: p.seat,
+            ready: !!p.ready, online: !!(p.ws && p.ws.open), bot: !!p.bot,
+        })),
     });
 }
 
@@ -436,11 +477,18 @@ function handle(ws, msg) {
             ws.send({ t: 'err', msg: 'Игра в этой комнате уже идёт. Дождитесь конца партии.' });
             return;
         }
+        // The party is for two to four: a fifth guest is told so at the door
+        // instead of being given a seat that would only block the start.
+        if (!known && room.players.filter(p => !p.bot).length >= 4) {
+            ws.send({ t: 'joined', id: '', room: room.code, seat: 0, palette: null, started: false, factions: FS_DATA.factions.map(f => ({ id: f.id, name: f.name, color: f.color })), invites: [] });
+            ws.send({ t: 'err', msg: 'В комнате уже четыре игрока — это предел партии. Откройте другую комнату: ?room=КОД.' });
+            return;
+        }
         const player = room.add(msg.name, msg.faction, requestedId, cleanPalette(msg.palette));
         player.ws = ws;
         ws.room = room;
         ws.player = player;
-        ws.send({ t: 'joined', id: player.id, room: room.code, seat: player.seat, palette: player.palette || null, started: room.started, factions: FS_DATA.factions.map(f => ({ id: f.id, name: f.name, color: f.color })), invites: roomInvites(room) });
+        ws.send({ t: 'joined', id: player.id, publicId: player.publicId, room: room.code, seat: player.seat, palette: player.palette || null, started: room.started, factions: FS_DATA.factions.map(f => ({ id: f.id, name: f.name, color: f.color })), invites: roomInvites(room) });
         sendRoomInfo(room);
         if (room.state) sendState(room);
         return;
@@ -484,12 +532,50 @@ function handle(ws, msg) {
         const room = ws.room, player = ws.player;
         if (!room || !player) return;
         if (room.started) { ws.send({ t: 'err', msg: 'Игра уже идёт.' }); return; }
-        player.faction = msg.faction;
+        // The choice may be changed any number of times before the start; an
+        // empty value takes the choice back. A changed faction drops the
+        // readiness — the others see that this player is choosing again.
+        const faction = typeof msg.faction === 'string' ? msg.faction : '';
+        if (faction && !FS_DATA.factions.some(f => f.id === faction)) { ws.send({ t: 'err', msg: 'Нет такой фракции.' }); return; }
+        if (player.faction !== faction) player.ready = false;
+        player.faction = faction;
         sendRoomInfo(room);
-        if (room.tryStart()) {
-            sendRoomInfo(room);
-            sendState(room);
-        }
+        return;
+    }
+    if (msg.t === 'ready') {
+        const room = ws.room, player = ws.player;
+        if (!room || !player) return;
+        if (room.started) { ws.send({ t: 'err', msg: 'Игра уже идёт.' }); return; }
+        const ready = msg.ready !== false;
+        if (ready && !player.faction) { ws.send({ t: 'err', msg: 'Сначала выберите фракцию.' }); return; }
+        player.ready = ready;
+        sendRoomInfo(room);
+        return;
+    }
+    if (msg.t === 'start') {
+        const room = ws.room, player = ws.player;
+        if (!room || !player) return;
+        if (room.started) { ws.send({ t: 'err', msg: 'Игра уже идёт.' }); return; }
+        if (room.host() !== player) { ws.send({ t: 'err', msg: 'Начать игру может только хозяин комнаты.' }); return; }
+        const res = room.start();
+        if (!res.ok) { ws.send({ t: 'err', msg: res.msg }); sendRoomInfo(room); return; }
+        sendRoomInfo(room);
+        sendState(room);
+        return;
+    }
+    if (msg.t === 'kick') {
+        // The host removes a seat whose player has gone (closed the tab without
+        // leaving): otherwise that silent seat would keep the party from starting.
+        // A player who is online is never removed — he can leave by himself.
+        const room = ws.room, player = ws.player;
+        if (!room || !player) return;
+        if (room.started) { ws.send({ t: 'err', msg: 'Игра уже идёт.' }); return; }
+        if (room.host() !== player) { ws.send({ t: 'err', msg: 'Убрать игрока может только хозяин комнаты.' }); return; }
+        const target = room.players.find(p => !p.bot && p.publicId === msg.id);
+        if (!target) { ws.send({ t: 'err', msg: 'Такого игрока в комнате нет.' }); return; }
+        if (target.ws && target.ws.open) { ws.send({ t: 'err', msg: target.name + ' на связи — убрать можно только отключившегося.' }); return; }
+        room.remove(target);
+        sendRoomInfo(room);
         return;
     }
     if (msg.t === 'palette') {
@@ -673,6 +759,10 @@ function listen(port, attempt = 0) {
     server.once('error', err => {
         if (err.code === 'EADDRINUSE' && attempt < 20) {
             console.log(`${C.dim}  порт ${port} занят, пробую ${port + 1}${C.r}`);
+            // The callback of the failed listen() stays registered as a
+            // 'listening' listener: without this the banner of the busy port
+            // was printed too, with a link that led nowhere.
+            server.removeAllListeners('listening');
             return listen(port + 1, attempt + 1);
         }
         console.error(`${C.red}Не удалось поднять сервер: ${err.message}${C.r}`);

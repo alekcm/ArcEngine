@@ -139,15 +139,38 @@ const party = seed => FS_RULES.newReadyGame({ seed: seed || 'screens', players: 
 const SCREEN_CTX = { mode: 'idle', title: '', text: '', status: '' };
 
 /** Экран лобби — ровно так, как его рисует клиент сразу после подключения. */
-function drawLobby() {
-    FSUI.lobby({
+function drawLobby(extra) {
+    FSUI.lobby(Object.assign({
         code: 'ABCD', name: 'Проба', faction: '', palette: null, players: [],
         factions: [{ id: 'некроны', name: 'Некроны', color: '#3f7d4e' }], link: 'http://localhost/?room=ABCD',
         modes: [{ id: 'game', icon: 'ui.menu', title: 'Обычная игра', text: '…' }], mode: 'game',
         status: '', battle: { kind: 'ground', units: {}, cards: [], total: 0, deck: 0 },
         onMode: nothing, onBattle: nothing, onStart: nothing, onPalette: nothing,
-    }, nothing, nothing);
+    }, extra || {}), (extra && extra.onFaction) || nothing, nothing);
 }
+
+/** Все кнопки дерева экрана. */
+function buttonsOf(root) {
+    const out = [];
+    (function walk(n) {
+        if (!n) return;
+        if (n.tagName === 'BUTTON') out.push(n);
+        for (const c of n.children || []) walk(c);
+    })(root);
+    return out;
+}
+
+/** Лобби обычной партии на троих: хозяин выбрал, гость готов, третий ещё без фракции. */
+const LOBBY_SEATS = [
+    { id: 'p1', name: 'Хозяин', faction: 'эльдары', seat: 0, ready: false, online: true, bot: false },
+    { id: 'p2', name: 'Гость', faction: 'некроны', seat: 1, ready: true, online: true, bot: false },
+    { id: 'p3', name: 'Третий', faction: '', seat: 2, ready: false, online: false, bot: false },
+];
+const LOBBY_FACTIONS = [
+    { id: 'эльдары', name: 'Эльдары', color: '#6fa8dc' },
+    { id: 'некроны', name: 'Некроны', color: '#3f7d4e' },
+    { id: 'орки', name: 'Орки', color: '#5b8c3a' },
+];
 
 /** Сколько узлов в дереве экрана. */
 function countNodes(root) {
@@ -182,6 +205,141 @@ screen('lobby-1', 'лобби рисуется без состояния — д�
     if (!texts.some(t => /Forbidden Stars/i.test(t))) throw new Error('в лобби нет заголовка игры');
     if (!texts.some(t => /Обычная игра/.test(t))) throw new Error('в лобби нет выбора режима');
     return true;
+});
+
+screen('lobby-3', 'хозяин видит «Начать игру» серой, пока не все готовы, и причину под ней; молчащее место можно убрать', () => {
+    const kicked = [];
+    drawLobby({
+        name: 'Хозяин', faction: 'эльдары', me: 'p1', host: 'p1', isHost: true, ready: false,
+        start: { ok: false, msg: 'Ждём выбор фракции: Третий.' }, players: LOBBY_SEATS, factions: LOBBY_FACTIONS,
+        onKick: id => kicked.push(id), onStartGame: () => { throw new Error('серая кнопка не должна срабатывать'); },
+    });
+    const buttons = buttonsOf(FSUI.modernRoot);
+    const start = buttons.find(b => textsOf(b).some(t => /^Начать игру$/.test(t)));
+    if (!start) return 'у хозяина нет кнопки «Начать игру»';
+    if (!start.disabled) return 'кнопка старта активна, хотя третий без фракции';
+    start.click();
+    const texts = textsOf(FSUI.modernRoot);
+    if (!texts.some(t => /Ждём выбор фракции: Третий/.test(t))) return 'под кнопкой нет причины ожидания';
+    if (buttons.some(b => textsOf(b).some(t => /^Готов/.test(t)))) return 'хозяину показана кнопка «Готов» — ему она не нужна';
+    if (!texts.some(t => /Гость · Некроны · готов/.test(t))) return 'готовность гостя не видна в списке';
+    if (!texts.some(t => /Третий · выбирает фракцию · не в сети/.test(t))) return 'отключившийся третий не помечен';
+    const kick = buttons.find(b => /убрать/.test(b.textContent));
+    if (!kick) return 'у хозяина нет кнопки «убрать» для молчащего места';
+    kick.click();
+    if (kicked.join() !== 'p3') return 'кнопка «убрать» не назвала место: ' + kicked.join();
+    // The host's own faction tile is selected, the guest's is taken.
+    const tiles = buttons.filter(b => /fs-faction\b/.test(b.className) && !/fs-faction-/.test(b.className));
+    const taken = tiles.find(b => textsOf(b).some(t => /Уже занята/.test(t)));
+    if (!taken || !taken.disabled) return 'занятая гостем фракция не закрыта для выбора';
+    return true;
+});
+
+screen('lobby-4', 'гость: «Готов» запирает фракцию, повторное нажатие снимает готовность; подсказка ждёт хозяина', () => {
+    const readies = [], picks = [];
+    drawLobby({
+        name: 'Гость', faction: 'некроны', me: 'p2', host: 'p1', isHost: false, ready: true,
+        start: { ok: true, msg: '' }, players: LOBBY_SEATS, factions: LOBBY_FACTIONS,
+        onReady: flag => readies.push(flag), onFaction: id => picks.push(id),
+    });
+    let buttons = buttonsOf(FSUI.modernRoot);
+    const ready = buttons.find(b => textsOf(b).some(t => /^Готов/.test(t)));
+    if (!ready) return 'у гостя нет кнопки «Готов»';
+    if (ready.disabled) return 'кнопка «Готов» серая, хотя фракция выбрана';
+    if (buttons.some(b => textsOf(b).some(t => /^Начать игру$/.test(t)))) return 'гостю показана кнопка «Начать игру»';
+    ready.click();
+    if (readies.join() !== 'false') return 'повторное нажатие не снимает готовность: ' + readies.join();
+    const tiles = buttons.filter(b => /fs-faction\b/.test(b.className) && !/fs-faction-/.test(b.className));
+    const other = tiles.find(b => textsOf(b).some(t => /Орки/.test(t)));
+    if (!other || !other.disabled) return 'готовый гость может сменить фракцию без снятия готовности';
+    other.click();
+    if (picks.length) return 'серая плитка фракции сработала';
+    if (!textsOf(FSUI.modernRoot).some(t => /ждём, когда Хозяин начнёт игру/.test(t))) return 'нет подсказки, что ждём хозяина';
+    // Not ready yet: the tiles are open, the button offers «Готов».
+    drawLobby({
+        name: 'Гость', faction: 'некроны', me: 'p2', host: 'p1', isHost: false, ready: false,
+        start: { ok: false, msg: 'Ждём готовность: Гость.' }, players: LOBBY_SEATS, factions: LOBBY_FACTIONS,
+        onReady: flag => readies.push(flag), onFaction: id => picks.push(id),
+    });
+    buttons = buttonsOf(FSUI.modernRoot);
+    const open = buttons.filter(b => /fs-faction\b/.test(b.className) && !/fs-faction-/.test(b.className)).find(b => textsOf(b).some(t => /Орки/.test(t)));
+    if (!open || open.disabled) return 'не готовый гость не может сменить фракцию';
+    open.click();
+    if (picks.join() !== 'орки') return 'смена фракции не дошла до клиента: ' + picks.join();
+    buttons.find(b => textsOf(b).some(t => /^Готов$/.test(t))).click();
+    if (readies.join() !== 'false,true') return 'кнопка «Готов» не отправила готовность: ' + readies.join();
+    return true;
+});
+
+screen('lobby-5', 'клиент: список комнаты от сервера возвращает фракцию и готовность места, хозяин получает «Начать игру», нажатия уходят на сервер', () => {
+    // The same FSGame as in the browser, with the network replaced by a recorder:
+    // what the server broadcasts must drive the lobby, not the client's memory.
+    const sent = [], handlers = {};
+    const net = {
+        connected: true,
+        on(type, fn) { (handlers[type] ||= []).push(fn); return net; },
+        send(msg) { sent.push(msg); return true; },
+        faction(faction) { return net.send({ t: 'faction', faction }); },
+        ready(flag) { return net.send({ t: 'ready', ready: flag !== false }); },
+        start() { return net.send({ t: 'start' }); },
+        kick(id) { return net.send({ t: 'kick', id }); },
+        palette(pal) { return net.send({ t: 'palette', palette: pal }); },
+        undo: nothing, cmd: nothing,
+    };
+    const emit = (type, msg) => { for (const fn of handlers[type] || []) fn(msg); };
+    const savedNet = ctx.FSNet;
+    ctx.FSNet = { connect: () => net };
+    const game = Object.create(FS_GAME.prototype);
+    Object.assign(game, {
+        room: 'ABCD', name: 'Хозяин', id: '', faction: '', ready: false, publicId: '', status: '', state: null,
+        lobby: { code: '', players: [], factions: [], started: false, host: '', start: { ok: false, msg: '' } },
+        invites: [], palette: null, testMode: 'game', battle: { kind: 'ground', units: {}, cards: [] },
+        refresh: nothing, onState: nothing,
+        // No page here: the invite link is the browser's business.
+        shareLink: () => 'http://localhost/?room=ABCD',
+    });
+    try {
+        game.connect();
+        const factions = LOBBY_FACTIONS.map(f => Object.assign({}, f));
+        emit('joined', { id: 'secret', publicId: 'p1', room: 'ABCD', seat: 0, palette: null, started: false, factions, invites: [] });
+        if (game.publicId !== 'p1') return 'клиент не запомнил публичный id места';
+        // The page was reloaded: the client has no faction, the server's list has it.
+        const seats = LOBBY_SEATS.map(p => Object.assign({}, p));
+        emit('room', { code: 'ABCD', host: 'p1', start: { ok: false, msg: 'Ждём выбор фракции: Третий.' }, players: seats });
+        if (game.faction !== 'эльдары') return 'фракция места не вернулась из списка комнаты: ' + game.faction;
+        if (game.lobby.host !== 'p1' || !game.lobbyMe() || game.lobbyMe().name !== 'Хозяин') return 'клиент не нашёл себя в списке';
+        let buttons = buttonsOf(FSUI.modernRoot);
+        const start = buttons.find(b => textsOf(b).some(t => /^Начать игру$/.test(t)));
+        if (!start) return 'хозяин не получил кнопку «Начать игру»';
+        if (!start.disabled) return 'кнопка старта активна, хотя сервер сказал ждать';
+        // Everybody is ready: the button opens and the click goes to the server.
+        emit('room', { code: 'ABCD', host: 'p1', start: { ok: true, msg: '' }, players: seats });
+        buttons = buttonsOf(FSUI.modernRoot);
+        buttons.find(b => textsOf(b).some(t => /^Начать игру$/.test(t))).click();
+        if (!sent.some(m => m.t === 'start')) return 'нажатие «Начать игру» не ушло на сервер';
+        // A change of the faction goes to the server; the client does not wait for itself.
+        buttons.filter(b => /fs-faction\b/.test(b.className) && !/fs-faction-/.test(b.className))
+            .find(b => textsOf(b).some(t => /Орки/.test(t))).click();
+        const pick = sent.find(m => m.t === 'faction');
+        if (!pick || pick.faction !== 'орки') return 'смена фракции не ушла на сервер';
+        // The host leaves: the guest becomes the host, this seat is a guest with «Готов».
+        emit('joined', { id: 'secret2', publicId: 'p2', room: 'ABCD', seat: 1, palette: null, started: false, factions, invites: [] });
+        emit('room', { code: 'ABCD', host: 'p1', start: { ok: false, msg: 'Ждём готовность: Гость.' },
+            players: seats.map(p => p.id === 'p2' ? Object.assign({}, p, { ready: false }) : p) });
+        if (game.faction !== 'некроны' || game.ready !== false) return 'место гостя не синхронизировано: ' + game.faction + '/' + game.ready;
+        buttons = buttonsOf(FSUI.modernRoot);
+        const ready = buttons.find(b => textsOf(b).some(t => /^Готов$/.test(t)));
+        if (!ready) return 'гость не получил кнопку «Готов»';
+        ready.click();
+        const flag = sent.find(m => m.t === 'ready');
+        if (!flag || flag.ready !== true) return 'нажатие «Готов» не ушло на сервер';
+        emit('room', { code: 'ABCD', host: 'p1', start: { ok: true, msg: '' }, players: seats });
+        if (game.ready !== true) return 'готовность не вернулась из списка комнаты';
+        if (!textsOf(FSUI.modernRoot).some(t => /Вы готовы — ждём остальных/.test(t))) return 'заголовок не говорит, что игрок готов';
+        return true;
+    } finally {
+        ctx.FSNet = savedNet;
+    }
 });
 
 screen('lobby-2', 'после партии лобби не остаётся на экране — уходит по первой же отрисовке', () => {

@@ -163,7 +163,9 @@ function clientFor(state) {
     game.plaque = null;
     game.name = '';
     game.faction = '';
-    game.lobby = { code: '', players: [], factions: [], started: false };
+    game.ready = false;
+    game.publicId = '';
+    game.lobby = { code: '', players: [], factions: [], started: false, host: '', start: { ok: false, msg: '' } };
     game.invites = [];
     game.palette = null;
     game.testMode = 'game';

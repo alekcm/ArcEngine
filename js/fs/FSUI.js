@@ -1445,22 +1445,53 @@ const FSUI = {
         });
         meta.append(copy); hero.append(meta); card.append(hero);
         const body = this.el('div', 'fs-lobby-body'); const top = this.el('div', 'fs-lobby-topline');
-        top.append(this.el('h3', '', info.faction ? 'Ваша фракция выбрана' : 'Выберите фракцию'));
+        top.append(this.el('h3', '', !info.faction ? 'Выберите фракцию'
+            : info.ready ? 'Вы готовы — ждём остальных' : 'Ваша фракция выбрана'));
         const nameField = this.el('label', 'fs-name-field', 'Имя игрока'); const input = this.el('input'); input.maxLength = 24; input.value = info.name || ''; input.placeholder = 'Например, Командор';
         input.addEventListener('change', () => info.onName && info.onName(input.value.trim()));
         input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
         nameField.append(input); top.append(nameField); body.append(top);
+        // The seats of the room. This seat is matched by its public id (two
+        // friends may well share a name); the role mark says who is the host,
+        // who is ready and who has dropped off the network.
+        const isMe = p => info.me ? p.id === info.me : p.name === info.name;
+        const offline = p => p.online === false && !p.bot;
         const players = this.el('div', 'fs-lobby-players');
-        (info.players || []).forEach(p => { const chip = this.el('div', 'fs-lobby-player'); chip.style.setProperty('--player-color', this.factionColor(p.faction)); chip.append(this.el('i', 'fs-player-dot'), this.el('span', '', p.name + (p.faction ? ' · ' + this.factionName(p.faction) : ' · выбирает фракцию'))); if (p.palette && p.palette.primary) { const sw = this.el('span', 'fs-pal-swatches'); for (const c of [p.palette.primary, p.palette.secondary1, p.palette.secondary2]) { const s = this.el('i'); s.style.background = c || '#888'; sw.append(s); } chip.append(sw); } players.append(chip); });
+        (info.players || []).forEach(p => {
+            const chip = this.el('div', 'fs-lobby-player' + (isMe(p) ? ' is-me' : '') + (offline(p) ? ' is-offline' : ''));
+            chip.style.setProperty('--player-color', this.factionColor(p.faction));
+            const parts = [p.name, p.faction ? this.factionName(p.faction) : 'выбирает фракцию'];
+            if (p.bot) parts.push('бот');
+            else if (info.host && p.id === info.host) parts.push('хозяин');
+            else if (p.faction) parts.push(p.ready ? 'готов' : 'не готов');
+            if (offline(p)) parts.push('не в сети');
+            chip.append(this.el('i', 'fs-player-dot'), this.el('span', '', parts.join(' · ')));
+            if (p.palette && p.palette.primary) { const sw = this.el('span', 'fs-pal-swatches'); for (const c of [p.palette.primary, p.palette.secondary1, p.palette.secondary2]) { const s = this.el('i'); s.style.background = c || '#888'; sw.append(s); } chip.append(sw); }
+            // The host clears a seat whose player closed the tab: otherwise the
+            // silent seat would keep the party from starting.
+            if (info.isHost && offline(p) && !isMe(p)) {
+                const kick = this.el('button', 'fs-kick', 'убрать');
+                kick.type = 'button';
+                kick.title = 'Убрать отключившегося игрока из комнаты';
+                kick.addEventListener('click', () => info.onKick && info.onKick(p.id));
+                chip.append(kick);
+            }
+            players.append(chip);
+        });
         body.append(players);
         const grid = this.el('div', 'fs-faction-grid');
         (info.factions || []).forEach((f, i) => {
-            const taken = (info.players || []).some(p => p.faction === f.id && p.name !== info.name);
-            const button = this.el('button', 'fs-faction' + (info.faction === f.id ? ' is-selected' : ''));
+            const taken = (info.players || []).some(p => p.faction === f.id && !isMe(p));
+            const mine = info.faction === f.id;
+            const button = this.el('button', 'fs-faction' + (mine ? ' is-selected' : ''));
             button.type = 'button'; button.style.setProperty('--faction-color', f.color || this.factionColor(f.id));
             const crest = this.el('span', 'fs-faction-crest', (f.name || '·').slice(0, 1));
-            const copyName = this.el('span', 'fs-faction-name', f.name || f.id); copyName.append(this.el('span', 'fs-faction-state', info.faction === f.id ? 'Выбрана вами' : (taken ? 'Уже занята' : 'Нажмите, чтобы выбрать')));
-            button.append(crest, copyName); button.disabled = taken && info.faction !== f.id;
+            // A ready player has locked his choice; the grid says so instead of
+            // silently ignoring the click.
+            const state = mine ? (info.ready ? 'Выбрана вами · готов' : 'Выбрана вами')
+                : taken ? 'Уже занята' : info.ready ? 'Сначала снимите готовность' : 'Нажмите, чтобы выбрать';
+            const copyName = this.el('span', 'fs-faction-name', f.name || f.id); copyName.append(this.el('span', 'fs-faction-state', state));
+            button.append(crest, copyName); button.disabled = (taken && !mine) || (!!info.ready && !mine);
             if (button.disabled) button.style.opacity = '.4';
             button.addEventListener('click', () => info.onFaction && info.onFaction(f.id)); grid.append(button);
         });
@@ -1506,6 +1537,7 @@ const FSUI = {
         });
         body.append(modes);
         if (info.mode === 'battle' && info.battle) body.append(this.renderBattleSetup(info.battle, info));
+        if (info.mode === 'game') body.append(this.renderLobbyStart(info));
         if (info.mode !== 'game') {
             const start = this.el('button', 'fs-start-test');
             start.type = 'button';
@@ -1518,10 +1550,40 @@ const FSUI = {
         }
         if (info.status) body.append(this.el('div', 'fs-lobby-error', info.status));
         const foot = this.el('div', 'fs-lobby-foot', info.mode === 'game'
-            ? 'Игра начнётся автоматически, когда все участники выберут разные фракции. Отправьте код комнаты друзьям.'
+            ? 'Каждый выбирает фракцию и нажимает «Готов»; хозяин комнаты (первый вошедший) запускает партию кнопкой «Начать игру». Фракцию можно менять, пока игра не началась. Отправьте код комнаты друзьям.'
             : 'Тест играется одним человеком: оба места за вами, интерфейс показывает, чей сейчас ход. Обновите страницу, чтобы вернуться к выбору режима.');
         body.append(foot);
         card.append(body); overlay.append(card); root.append(overlay);
+    },
+
+    // The start of the ordinary party: the host has «Начать игру» (grey until
+    // everybody is ready — the reason is written under it), everybody else has
+    // «Готов», which locks the faction and can be taken back.
+    renderLobbyStart(info) {
+        const wrap = this.el('div', 'fs-lobby-go');
+        const start = info.start || { ok: false, msg: '' };
+        const hostSeat = (info.players || []).find(p => p.id === info.host);
+        const hostName = hostSeat ? hostSeat.name : 'хозяин комнаты';
+        if (info.isHost) {
+            const button = this.el('button', 'fs-start-test fs-start-game');
+            button.type = 'button';
+            button.disabled = !start.ok;
+            button.append(this.iconEl('ui.menu', 'fs-start-icon'), this.el('span', '', 'Начать игру'));
+            button.addEventListener('click', () => info.onStartGame && info.onStartGame());
+            wrap.append(button);
+            wrap.append(this.el('div', 'fs-lobby-wait', start.ok ? 'Все готовы — можно начинать.' : (start.msg || '')));
+            return wrap;
+        }
+        const button = this.el('button', 'fs-start-test fs-ready' + (info.ready ? ' is-ready' : ''));
+        button.type = 'button';
+        button.disabled = !info.faction;
+        button.append(this.iconEl('ui.check', 'fs-start-icon'), this.el('span', '', info.ready ? 'Готов — нажмите, чтобы передумать' : 'Готов'));
+        button.addEventListener('click', () => info.onReady && info.onReady(!info.ready));
+        wrap.append(button);
+        wrap.append(this.el('div', 'fs-lobby-wait', !info.faction ? 'Выберите фракцию и нажмите «Готов».'
+            : !info.ready ? 'Нажмите «Готов», когда определитесь с фракцией.'
+            : start.ok ? 'Все готовы — ждём, когда ' + hostName + ' начнёт игру.' : (start.msg || '')));
+        return wrap;
     },
 
     // The battlefield of the test mode: the kind of the fight, the troops and
@@ -1627,7 +1689,8 @@ const FSUI = {
             + (info.faction ? ' (' + this.factionName(info.faction) + ')' : ' — выберите фракцию')
             + (info.link ? '\nСсылка для друзей: ' + info.link : ''));
         const lines = info.players.map((p, i) => (i + 1) + '. ' + p.name
-            + (p.faction ? ' — ' + this.factionName(p.faction) : ' — ждёт фракцию'));
+            + (p.faction ? ' — ' + this.factionName(p.faction) : ' — ждёт фракцию')
+            + (info.host && p.id === info.host ? ' (хозяин)' : p.ready ? ' (готов)' : ''));
         this.set('fsLobbyPlayers', lines.join('\n'));
         // The faction buttons.
         const list = info.factions || [];

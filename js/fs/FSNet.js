@@ -6,7 +6,10 @@
 //   FSNet.connect({ room, name, id }) -> net
 //   net.on('joined' | 'room' | 'state' | 'err', fn)
 //   net.cmd({ type: 'placeOrder', … })     — a command of the rules engine
-//   net.faction('некроны')                  — the choice of the faction
+//   net.faction('некроны')                  — the choice of the faction (may change until the start)
+//   net.ready(true | false)                 — «Готов»: the faction is locked, waiting for the start
+//   net.start()                             — «Начать игру»: the host starts the party
+//   net.kick(publicId)                      — the host removes a seat that went offline
 //   net.test({ mode: 'map' | 'battle', … }) — a test party of the lobby
 //
 // The room code and the player name come from the link:
@@ -30,6 +33,8 @@ const FSNet = {
             room: o.room || '',
             name: o.name || '',
             id: o.id || '',
+            // The public id of this seat (the room list names players by it).
+            publicId: '',
             on(type, fn) {
                 if (!handlers.has(type)) handlers.set(type, []);
                 handlers.get(type).push(fn);
@@ -48,6 +53,15 @@ const FSNet = {
             },
             faction(faction) {
                 return net.send({ t: 'faction', faction });
+            },
+            ready(ready) {
+                return net.send({ t: 'ready', ready: ready !== false });
+            },
+            start() {
+                return net.send({ t: 'start' });
+            },
+            kick(id) {
+                return net.send({ t: 'kick', id });
             },
             // The army paint chosen in the lobby: { primary, secondary1, secondary2 }.
             palette(palette) {
@@ -93,6 +107,7 @@ const FSNet = {
                     // A refused guest gets an empty id; preserve the credential
                     // so a later reconnect can still retry it.
                     if (msg.id) net.id = msg.id;
+                    if (msg.publicId) net.publicId = msg.publicId;
                     net.room = msg.room;
                     net.emit('joined', msg);
                     return;

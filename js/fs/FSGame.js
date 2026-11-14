@@ -72,7 +72,12 @@ class FSGame {
         this.plaque = null;
         this.name = '';
         this.faction = '';
-        this.lobby = { code: '', players: [], factions: [], started: false };
+        // «Готов» in the lobby: the faction is locked until the start (or until
+        // the player takes the readiness back). The server keeps the flag per seat.
+        this.ready = false;
+        // The public id of this seat: the room list is matched against it.
+        this.publicId = '';
+        this.lobby = { code: '', players: [], factions: [], started: false, host: '', start: { ok: false, msg: '' } };
         // The invite links reported by the server (one per LAN address); used
         // for the "for friends" link when this page was opened through localhost.
         this.invites = [];
@@ -166,6 +171,7 @@ class FSGame {
                 if (saved && Store.get('fs.id') === msg.id) Store.remove('fs.id');
             }
             this.room = msg.room;
+            if (msg.publicId) this.publicId = msg.publicId;
             this.lobby.started = !!msg.started;
             if (Array.isArray(msg.invites)) this.invites = msg.invites;
             if (!this.name) {
@@ -188,6 +194,19 @@ class FSGame {
         this.net.on('room', msg => {
             this.lobby.code = msg.code;
             this.lobby.players = msg.players || [];
+            this.lobby.host = msg.host || '';
+            this.lobby.start = msg.start || { ok: false, msg: '' };
+            // The server's record of this seat is the truth: after a page reload
+            // the faction and the readiness come back from the list, and a
+            // readiness dropped by the server (a changed faction) is reflected.
+            const me = this.lobbyMe();
+            if (me) {
+                if ((me.faction || '') !== this.faction) {
+                    this.faction = me.faction || '';
+                    this.resetBattle(this.battle.kind);
+                }
+                this.ready = !!me.ready;
+            }
             if (!this.state) this.showLobby();
         });
         this.net.on('state', msg => this.onState(msg.view));
@@ -221,13 +240,28 @@ class FSGame {
         return location.origin + '/?room=' + this.lobby.code;
     }
 
+    // This seat in the room list (null until the server has answered the hello).
+    lobbyMe() {
+        const players = this.lobby.players || [];
+        return (this.publicId && players.find(p => p.id === this.publicId)) || null;
+    }
+
     showLobby() {
         if (!this.battle.cards.length) this.resetBattle(this.battle.kind);
+        const isHost = !!this.publicId && this.lobby.host === this.publicId;
+        // The host needs no «Готов»: a guest who became the host (the first
+        // player dropped out) must not stay locked by his earlier readiness.
+        const ready = this.ready && !isHost;
         const info = {
             code: this.lobby.code,
             name: this.name,
             faction: this.faction,
             palette: this.palette,
+            me: this.publicId,
+            host: this.lobby.host,
+            isHost,
+            ready,
+            start: this.lobby.start || { ok: false, msg: '' },
             players: this.lobby.players,
             factions: this.lobby.factions,
             link: this.shareLink(),
@@ -238,13 +272,32 @@ class FSGame {
             onMode: id => { this.testMode = id; this.showLobby(); },
             onBattle: patch => { this.onBattle(patch); },
             onStart: () => this.startTest(),
+            // «Готов» / «Я ещё не готов»: the flag lives on the server; the list
+            // that comes back re-renders the lobby.
+            onReady: flag => {
+                if (!this.net) return;
+                if (flag && !this.faction) { this.status = 'Сначала выберите фракцию.'; this.showLobby(); return; }
+                this.status = '';
+                this.net.ready(!!flag);
+            },
+            // «Начать игру»: only the host has the button; the server checks again.
+            onStartGame: () => {
+                if (!this.net) return;
+                this.status = '';
+                this.net.start();
+            },
+            onKick: id => { if (this.net) this.net.kick(id); },
             onPalette: pal => {
                 this.palette = pal;
                 if (this.net) this.net.palette(pal);
             },
         };
         FSUI.lobby(info, id => {
+            // A ready player has locked his choice: take the readiness back first.
+            if (ready) { this.status = 'Вы уже готовы — снимите готовность, чтобы сменить фракцию.'; this.showLobby(); return; }
+            if (id === this.faction) return;
             this.faction = id;
+            this.status = '';
             // A new faction resets the paint to that faction's default shades.
             this.palette = null;
             if (this.net) this.net.palette(null);
@@ -260,7 +313,7 @@ class FSGame {
     }
 
     // --- the test modes -------------------------------------------------------
-    // The ordinary party starts by itself when every player has a faction. The
+    // The ordinary party is started by the host once everybody is ready. The
     // two test modes are opened by one person who plays both seats: the ready
     // map (the game after the construction) and the battlefield.
 
