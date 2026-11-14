@@ -1,0 +1,23 @@
+Колода 1:
+Supplies - Gain 4 Materiel
+Salvage - Gain 2 Forgehammer Token from the Supply
+Populous - Place 1 free City on a world in the Active System
+Fortified - Place 1 free Bastion on a world in the Active System
+Industrious - Place 1 free Factory on a world in the Active System
+Efficient - Purchase a free Command Level 0 upgrade and place any Order Token on top of your Event Deck
+
+Колода 2:
+Skirmish - Rout(задизморальте) all units in a single area in a hostile System adjacent to this System
+Astronomic Flux - After placing this System Tile, swap its position with any 1 adjacent System Tile
+Strike Force - Place 1 free Command Level 0 unit on an uncontrolled world in a hostile system
+Rescue - Place 1 free routed Command Level 2 unit on an unoccupied world in a hostile System
+Holdfields - For the duration of the first round, no player may target youy friendly worlds with Orbital Strikes
+Prepare - Choose 1 of your Event cards and place it on top of your Event Deck; Do not shuffle your Event Deck before drawing and resolving Event cards during the first round
+
+Колода 3:
+Recruits - Gain 3 Reinforcement Tokens from the supply
+Detachment - Place 1 free Command Level 1 unit on a world in the Active System
+Battalion - Place 2 free Command Level 0 units on a single world in the Active System
+Blockade - Place 2 free Command Level 0 units each in a different Void in the Active System
+Veterancy - Purchase a free Command Level 0 Combat Card
+Armada - Place 1 free Command Level 2 unit in a Void in the Active System

@@ -1,0 +1,47 @@
+Summary: Fast-play variant that heavily impacts Setup
+The arrival of the Herakon Cluster was neither a secret nor
+an unexpected phenomena. Eldar prophecy, astropath
+intuition, and the bidding of Dark Gods have all foretold of
+its arrival. For many decades have the forces arraigned
+before the system plotted their conquest, and now that
+warpstorms have parted there will be no resource left in
+reserve. Bring the full might of your people to bear and seize
+the Herakon Cluster in haste, for the hour is late and doom is
+nigh!
+During setup, after players have gathered their Initial Forces
+and have chosen their System Tiles but before any tile has
+been deployed players will draft Requisitions in the
+following manner, starting with the First Player:
+- Choose a suit from among those unchosen: Authority,
+Reconnaisance, or Command
+- Shuffle all Requisitions belonging to that suit (6) and deal
+one greater than the number of players to yourself,
+discarding the rest to the box [Example: in a 3-player game
+you would deal 4 Requisitions]
+- Choose 1 from among those Requisitions dealt to keep and
+pass the remaining Requisitions clockwise to the next player
+- Once all Requisitions of that suit have been chosen, discard
+the remaining unchosen Requisition to the box
+- The next player in turn Order [Example: the Second Player
+during the second round of drafting] will then repeat this
+process, beginning at the first step
+- Do not reveal any Requisitions, both those chosen by
+players and those discarded to the box, during the draft
+Once all Requisition suits have been drafted, proceed to
+setup as normal, with one exception
+- When players place a System Tile during Setup, they must
+also reveal and resolve a Requisition card. If a Requisition
+card cannot be resolved when it is revealed, it is discarded
+without effect
+Additionally, when playing with Requisitions, limit the
+maximum number of turns of the game from 8 to 5.
+Requisition cards will grant players additional Forces,
+resources, abilities, or other effects at the start of the game,
+often restricted or limited by the effects of the Requisition
+card. Requisition cards will drastically accelerate the pacing
+and stakes of the game.
+Requisition cards are not secret, but are treated as hidden
+information during the course of the draft and are
+incrementally revealed during setup. This is to allow players
+greater tactical flexibility in deploying certain Requisitions
+and a greater level of interactivity during setup.
