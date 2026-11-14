@@ -71,6 +71,7 @@ const GameLog = context.GameLog;
 const BOT_TEMPO = process.env.FS_BOT_DELAY === undefined ? 1 : Math.max(0, Number(process.env.FS_BOT_DELAY) || 0);
 const BOT_DELAYS = { setup: 250, placeOrder: 900, moveUnits: 500, playCard: 900, effect: 400, combat: 600, other: 350, botsOnly: 120 };
 const RANDOM_FACTION_ID = '__fs_random_faction__';
+const RANDOM_PERSONA_ID = '__fs_random_persona__';
 
 function randomFactionId(pool) {
     const factions = pool && pool.length ? pool : FS_DATA.factions;
@@ -132,6 +133,7 @@ class Room {
         const randomFaction = opts.faction === RANDOM_FACTION_ID || opts.randomFaction === true;
         const pool = randomFaction ? FS_DATA.factions : (free.length ? free : FS_DATA.factions);
         const factionId = !randomFaction && validFaction ? opts.faction : randomFactionId(pool);
+        const randomPersona = randomFaction || opts.persona === RANDOM_PERSONA_ID;
         const defaults = FS_BOT.defaults(factionId);
         const bot = {
             id: null,
@@ -139,7 +141,8 @@ class Room {
             name: randomFaction ? 'Бот' : defaults.name,
             faction: factionId,
             randomFaction,
-            persona: randomFaction ? randomPersonaId(factionId)
+            randomPersona,
+            persona: randomPersona ? null
                 : FS_BOT.persona(opts.persona) && FS_BOT.fits(opts.persona, factionId) ? opts.persona : defaults.persona,
             level: FS_BOT.level(opts.level).id,
             palette: null,
@@ -162,13 +165,15 @@ class Room {
             if (patch.faction === RANDOM_FACTION_ID) {
                 bot.faction = randomFactionId(FS_DATA.factions);
                 bot.randomFaction = true;
+                bot.randomPersona = true;
                 bot.name = 'Бот';
-                bot.persona = randomPersonaId(bot.faction);
+                bot.persona = null;
             } else {
                 if (!FS_DATA.factions.some(f => f.id === patch.faction)) return 'Нет такой фракции.';
                 if (bot.randomFaction || bot.faction !== patch.faction) {
                     bot.faction = patch.faction;
                     bot.randomFaction = false;
+                    bot.randomPersona = false;
                     const defaults = FS_BOT.defaults(patch.faction);
                     bot.name = defaults.name;
                     bot.persona = defaults.persona;
@@ -177,9 +182,15 @@ class Room {
         }
         if (patch.persona !== undefined) {
             if (bot.randomFaction) return 'При случайной фракции характер тоже выбирается случайно.';
-            if (!FS_BOT.persona(patch.persona)) return 'Нет такого характера.';
-            if (!FS_BOT.fits(patch.persona, bot.faction)) return 'Этот характер не подходит фракции бота.';
-            bot.persona = patch.persona;
+            if (patch.persona === RANDOM_PERSONA_ID) {
+                bot.randomPersona = true;
+                bot.persona = null;
+            } else {
+                if (!FS_BOT.persona(patch.persona)) return 'Нет такого характера.';
+                if (!FS_BOT.fits(patch.persona, bot.faction)) return 'Этот характер не подходит фракции бота.';
+                bot.randomPersona = false;
+                bot.persona = patch.persona;
+            }
         }
         if (patch.level !== undefined) {
             if (!FS_BOT.LEVELS.some(l => l.id === patch.level)) return 'Нет такого уровня.';
@@ -250,9 +261,9 @@ class Room {
     start() {
         const status = this.startStatus();
         if (!status.ok) return status;
-        // Random bot identities stay hidden while the room is open. Build the
-        // game with the faction's in-game name, then reveal it only after the
-        // engine has successfully created a valid party.
+        // Random factions stay masked while the room is open. A random persona
+        // is chosen by the server only when the game starts, and its identity
+        // remains private for the entire game.
         const seed = (Date.now() % 100000) + 1;
         const gamePlayers = this.players.map(p => ({
             name: p.bot && p.randomFaction ? FS_BOT.defaults(p.faction).name : p.name,
@@ -260,9 +271,14 @@ class Room {
             palette: p.palette,
         }));
         this.state = FS_RULES.newGame({ seed, rounds: this.rounds, players: gamePlayers, interactiveSetup: true });
-        for (const p of this.players) if (p.bot && p.randomFaction) {
-            p.name = FS_BOT.defaults(p.faction).name;
-            p.randomFaction = false;
+        for (const p of this.players) if (p.bot) {
+            if (p.randomFaction) {
+                p.name = FS_BOT.defaults(p.faction).name;
+                p.randomFaction = false;
+            }
+            if (p.randomPersona || !FS_BOT.fits(p.persona, p.faction)) {
+                p.persona = randomPersonaId(p.faction);
+            }
         }
         this.started = true;
         this.undoStack = [];
@@ -637,14 +653,17 @@ function sendRoomInfo(room) {
         rounds: room.rounds,
         players: room.players.map(p => {
             const concealRandomFaction = !!(p.bot && p.randomFaction && !room.started);
+            const concealRandomPersona = !!(p.bot && p.randomPersona);
+            const concealCharacter = concealRandomFaction || concealRandomPersona;
             return {
                 id: p.publicId || 'bot', name: concealRandomFaction ? 'Бот' : p.name,
                 faction: concealRandomFaction ? '' : p.faction, palette: p.palette || null, seat: p.seat,
                 ready: !!p.ready, online: !!(p.ws && p.ws.open), bot: !!p.bot,
                 randomFaction: concealRandomFaction || undefined,
-                persona: p.bot && !concealRandomFaction ? p.persona : undefined,
+                randomPersona: concealRandomPersona || undefined,
+                persona: p.bot && !concealCharacter ? p.persona : undefined,
                 level: p.bot ? p.level : undefined,
-                line: p.bot && !concealRandomFaction ? FS_BOT.line(p.faction, p.persona) : undefined,
+                line: p.bot && !concealCharacter ? FS_BOT.line(p.faction, p.persona) : undefined,
             };
         }),
         // What the lobby offers for a bot: faction-specific doctrines only,

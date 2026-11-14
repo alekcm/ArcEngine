@@ -596,7 +596,7 @@ try {
         assert.equal(bot.persona, 'orks-waaagh', 'характер по умолчанию фракции — её доктрина');
         assert.equal(bot.level, 'novice', 'уровень как попросили');
         assert.equal(bot.ready, true, 'бот всегда готов');
-        assert.match(bot.line, /Варбосс: WAAAGH/, 'подпись-намёк в списке');
+        assert.match(bot.line, /Варбосс: ВАААГХ с первого хода/, 'понятная тактическая подсказка в списке');
         const advertisedPersonaIds = withBot.bots && withBot.bots.personas.map(p => p.id).sort();
         const missingPersonaIds = BOT_PERSONA_IDS.filter(id => !advertisedPersonaIds || !advertisedPersonaIds.includes(id));
         const extraPersonaIds = (advertisedPersonaIds || []).filter(id => !BOT_PERSONA_IDS.includes(id));
@@ -606,12 +606,23 @@ try {
         assert.ok(withBot.bots.personas.some(x => x.id === 'orks-mek' && x.faction === 'орки')
             && withBot.bots.personas.every(x => !!x.faction) && !withBot.bots.personas.some(x => x.id === 'turtle'),
             'каждая публикуемая личность закреплена за своей фракцией; общих нет');
+        host.send({ t: 'bot', id: bot.id, persona: '__fs_random_persona__' });
+        const randomPersonaRoom = await roomOf(host, m => m.players.some(p => p.bot && p.randomPersona), 'случайная личность выбранной фракции');
+        const hiddenPersona = randomPersonaRoom.players.find(p => p.bot);
+        assert.deepEqual([hiddenPersona.name, hiddenPersona.faction, hiddenPersona.persona, hiddenPersona.line, hiddenPersona.randomPersona],
+            ['Варбосс', 'орки', undefined, undefined, true], 'случайная личность скрыта в лобби при известной фракции');
+        host.send({ t: 'bot', id: bot.id, persona: 'orks-mek' });
+        const fixedPersonaRoom = await roomOf(host, m => m.players.some(p => p.bot && p.persona === 'orks-mek'), 'личность задана явно');
+        const fixedPersonaBot = fixedPersonaRoom.players.find(p => p.bot);
+        assert.equal(fixedPersonaBot.randomPersona, undefined, 'явная личность снимает случайный флаг');
+        assert.match(fixedPersonaBot.line, /Варбосс: копит на гаргантов/, 'описание выбранной тактики понятно игроку');
         guest.send({ t: 'bot', id: bot.id, level: 'veteran' });
         assert.match((await guest.take(t('err'), 'бота настраивает гость')).msg, /хозяин/i);
         host.send({ t: 'bot', id: bot.id, faction: '__fs_random_faction__' });
         const randomized = await roomOf(host, m => m.players.some(p => p.bot && p.randomFaction), 'случайная фракция бота');
         const hiddenBot = randomized.players.find(p => p.bot);
-        assert.deepEqual([hiddenBot.name, hiddenBot.faction, hiddenBot.persona, hiddenBot.line], ['Бот', '', undefined, undefined], 'случайная фракция и характер не раскрываются в комнате');
+        assert.deepEqual([hiddenBot.name, hiddenBot.faction, hiddenBot.persona, hiddenBot.line, hiddenBot.randomPersona],
+            ['Бот', '', undefined, undefined, true], 'случайные фракция и личность не раскрываются в комнате');
         host.send({ t: 'bot', id: bot.id, persona: 'orks-mek' });
         assert.match((await host.take(t('err'), 'характер при случайной фракции')).msg, /случайно/i);
         host.send({ t: 'bot', id: bot.id, faction: 'некроны', persona: 'necrons-awakening', level: 'veteran' });
@@ -659,29 +670,33 @@ try {
         host.send({ t: 'bot', id: bot.id, faction: '__fs_random_faction__' });
         const stillHidden = await roomOf(host, m => m.players.some(p => p.bot && p.randomFaction), 'рандом скрыт перед стартом');
         const hiddenBeforeStart = stillHidden.players.find(p => p.bot);
-        assert.deepEqual([hiddenBeforeStart.name, hiddenBeforeStart.faction, hiddenBeforeStart.persona, hiddenBeforeStart.line],
-            ['Бот', '', undefined, undefined], 'до старта имя, фракция, личность и подсказка бота не раскрываются');
+        assert.deepEqual([hiddenBeforeStart.name, hiddenBeforeStart.faction, hiddenBeforeStart.persona, hiddenBeforeStart.line, hiddenBeforeStart.randomPersona],
+            ['Бот', '', undefined, undefined, true], 'до старта имя, фракция, личность и подсказка бота не раскрываются');
         host.send({ t: 'bot', id: bot.id, level: 'novice' });
         const updatedRoom = await roomOf(host, m => m.players.some(p => p.bot && p.randomFaction && p.level === 'novice'), 'случайный режим после обновления лобби');
         const updatedBot = updatedRoom.players.find(p => p.bot);
-        assert.deepEqual([updatedBot.name, updatedBot.faction, updatedBot.persona, updatedBot.line],
-            ['Бот', '', undefined, undefined], 'обновление сложности не раскрывает и не меняет случайный характер');
+        assert.deepEqual([updatedBot.name, updatedBot.faction, updatedBot.persona, updatedBot.line, updatedBot.randomPersona],
+            ['Бот', '', undefined, undefined, true], 'обновление сложности не раскрывает и не меняет случайную личность');
         const refreshedHost = await connect();
         refreshedHost.send({ t: 'hello', room: code, name: 'Хозяин', id: hostJoin.id });
         assert.equal((await refreshedHost.take(t('joined'), 'хозяин обновил страницу лобби')).id, hostJoin.id);
         const reloadedRoom = await roomOf(refreshedHost, m => m.players.some(p => p.bot && p.randomFaction), 'случайный режим после переподключения');
         const reloadedBot = reloadedRoom.players.find(p => p.bot);
-        assert.deepEqual([reloadedBot.name, reloadedBot.faction, reloadedBot.persona, reloadedBot.line, reloadedBot.level],
-            ['Бот', '', undefined, undefined, 'novice'], 'перезагрузка сохраняет случайный режим и не раскрывает его');
+        assert.deepEqual([reloadedBot.name, reloadedBot.faction, reloadedBot.persona, reloadedBot.line, reloadedBot.level, reloadedBot.randomPersona],
+            ['Бот', '', undefined, undefined, 'novice', true], 'перезагрузка сохраняет случайный режим и не раскрывает личность');
         await host.close();
         host = refreshedHost;
         host.send({ t: 'start' });
         const startedRoom = await roomOf(host, m => m.started, 'игра началась — теперь фракция раскрыта');
         const startedBot = startedRoom.players.find(p => p.bot);
         assert.ok(BOT_FACTION_IDS.includes(startedBot.faction) && !startedBot.randomFaction, 'при старте сервер выбрал действительную фракцию');
-        assert.ok(startedBot.name !== 'Бот' && withBot.bots.personas.some(x => x.id === startedBot.persona && x.faction === startedBot.faction), 'при старте выбран случайный характер этой фракции и показано имя');
+        assert.equal(startedBot.randomPersona, true, 'случайная личность остаётся помеченной как скрытая после старта');
+        assert.ok(startedBot.name !== 'Бот' && startedBot.persona === undefined && startedBot.line === undefined,
+            'после старта раскрывается только фракция, не имя личности и не подсказка');
         const first = await host.take(message => message.t === 'state' && message.view.seat === 0, 'партия с ботом началась');
         assert.equal(first.view.players[1].faction, startedBot.faction, 'бот играет раскрытой фракцией');
+        assert.equal(first.view.players[1].persona, undefined, 'состояние партии не содержит выбранную личность');
+        assert.equal(first.view.players[1].line, undefined, 'состояние партии не содержит подсказку личности');
         assert.equal(first.view.rounds, 5, 'длина блиц-партии дошла до состояния');
         // The bot builds its part of the galaxy by itself: the human only acts
         // at his own turns. Every state the human gets is his own view — the

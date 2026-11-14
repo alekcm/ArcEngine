@@ -1070,10 +1070,17 @@ const FSUI = {
     // A choice of cards prints EVERY card in full: the title, level and cost,
     // storm arrows, combat cubes, both printed text zones and the effect. A
     // list of names and a hover title are not information a player can use.
-    renderCardChoices(choices) {
-        if (!choices || !choices.length) return null;
+    renderCardChoices(input) {
+        // Setup panels package their cards as { title, choices }, while combat
+        // and event panels pass an array with an optional .title property.
+        // Normalize both shapes here so a private Blitz draft is not silently
+        // rendered as an empty panel.
+        const choices = Array.isArray(input) ? input
+            : (input && Array.isArray(input.choices) ? input.choices : []);
+        const title = input && input.title || choices.title;
+        if (!choices.length) return null;
         const wrap = this.el('section', 'fs-card-choices');
-        if (choices.title) wrap.append(this.el('div', 'fs-eyebrow', choices.title));
+        if (title) wrap.append(this.el('div', 'fs-eyebrow', title));
         const list = this.el('div', 'fs-card-choices-list');
         for (const choice of choices) {
             const d = choice.detail || {};
@@ -1454,9 +1461,13 @@ const FSUI = {
         // The seats of the room. This seat is matched by its public id (two
         // friends may well share a name); the role mark says who is the host,
         // who is ready and who has dropped off the network.
-        const lobbyPlayers = (info.players || []).map(p => p.randomFaction
-            ? Object.assign({}, p, { name: 'Бот', faction: '', persona: undefined, line: undefined, palette: null })
-            : p);
+        const lobbyPlayers = (info.players || []).map(p => {
+            if (p.randomFaction) return Object.assign({}, p, {
+                name: 'Бот', faction: '', persona: undefined, line: undefined, palette: null,
+            });
+            if (p.randomPersona) return Object.assign({}, p, { persona: undefined, line: undefined });
+            return p;
+        });
         const isMe = p => !p.bot && (info.me ? p.id === info.me : p.name === info.name);
         const offline = p => p.online === false && !p.bot;
         // The paint of every seat as the game will show it: the second player
@@ -1474,16 +1485,20 @@ const FSUI = {
             if (offline(p)) parts.push('не в сети');
             chip.append(this.el('i', 'fs-player-dot'), this.el('span', '', parts.join(' · ')));
             if (p.palette && p.palette.primary) { const sw = this.el('span', 'fs-pal-swatches'); for (const c of [p.palette.primary, p.palette.secondary1, p.palette.secondary2]) { const s = this.el('i'); s.style.background = c || '#888'; sw.append(s); } chip.append(sw); }
-            // A fixed-faction bot shows its doctrine hint and tags. A bot in
-            // random-faction mode stays masked, including its name and doctrine.
+            // A fixed, explicitly chosen persona shows its tactical hint. A
+            // random persona is masked in the lobby and stays masked in-game;
+            // random-faction bots also hide their name and faction until start.
             if (p.bot) {
-                if (p.randomFaction) chip.append(this.el('span', 'fs-bot-line', 'Случайные фракция и характер скрыты до старта; характер выбирается автоматически.'));
+                if (p.randomFaction) chip.append(this.el('span', 'fs-bot-line', 'Случайные фракция и личность; личность останется тайной и в партии.'));
+                else if (p.randomPersona) chip.append(this.el('span', 'fs-bot-line', 'Личность выбрана случайно и останется тайной; тактику покажут ходы.'));
                 else if (p.line) chip.append(this.el('span', 'fs-bot-line', p.line));
-                const persona = ((info.bots || {}).personas || []).find(x => x.id === p.persona);
+                const persona = p.randomPersona ? null : ((info.bots || {}).personas || []).find(x => x.id === p.persona);
                 const level = ((info.bots || {}).levels || []).find(x => x.id === p.level);
-                if (persona || level) {
-                    const tag = this.el('span', 'fs-bot-tag', [persona && persona.name.toLowerCase(), level && level.name.toLowerCase()].filter(Boolean).join(' · '));
+                const personaLabel = p.randomPersona ? 'случайная личность' : persona && persona.name.toLowerCase();
+                if (personaLabel || level) {
+                    const tag = this.el('span', 'fs-bot-tag', [personaLabel, level && level.name.toLowerCase()].filter(Boolean).join(' · '));
                     if (persona) tag.title = persona.name + ' — ' + persona.text;
+                    else if (p.randomPersona) tag.title = 'Личность бота не показывается ни в лобби, ни во время партии.';
                     chip.append(tag);
                 }
                 if (info.isHost) chip.append(this.renderBotMenu(p, info));
@@ -1601,7 +1616,8 @@ const FSUI = {
     // everybody is ready — the reason is written under it), everybody else has
     // «Готов», which locks the faction and can be taken back.
     // The menu of a bot for the host: faction, faction-specific character and level.
-    // A random faction remains concealed until the party starts; the server picks its character too.
+    // The server resolves a random persona at start and never reports its identity;
+    // a random faction is additionally concealed until the party starts.
     renderBotMenu(p, info) {
         const menu = this.el('span', 'fs-bot-menu');
         const select = (title, options, current, key, randomChoice) => {
@@ -1610,6 +1626,7 @@ const FSUI = {
             for (const o of options) {
                 const opt = this.el('option', '', o.name);
                 opt.value = o.id;
+                if (o.text) opt.title = o.text;
                 if (o.id === current) opt.selected = true;
                 sel.append(opt);
             }
@@ -1637,17 +1654,19 @@ const FSUI = {
             { id: '__fs_random_faction__', name: '🎲 Случайная фракция', resolve: false }));
         if (p.randomFaction) {
             const persona = this.el('select', 'fs-bot-select');
-            persona.title = 'При случайной фракции характер выбирается автоматически';
-            const option = this.el('option', '', '🎲 Случайная личность — автоматически');
+            persona.title = 'Фракция и личность выбираются сервером; личность останется тайной в партии.';
+            const option = this.el('option', '', '🎲 Случайная личность — скрыта в партии');
             option.value = '__fs_random_persona__'; option.selected = true;
             persona.append(option); persona.value = option.value; persona.disabled = true;
             menu.append(persona);
         } else {
-            // Only this faction's doctrines are selectable; generic cross-faction
-            // archetypes are intentionally not part of the roster.
+            // Only this faction's doctrines are selectable. The random choice
+            // is sent to the server without resolving it in the browser, so the
+            // selected persona is never exposed by the lobby UI.
             const personas = (bots.personas || []).filter(x => x.faction === p.faction);
-            if (personas.length) menu.append(select('Личность бота', personas, p.persona, 'persona',
-                { id: '__fs_random_persona__', name: '🎲 Случайная личность' }));
+            if (personas.length) menu.append(select('Личность бота — наведите на вариант, чтобы прочитать тактику', personas,
+                p.randomPersona ? '__fs_random_persona__' : p.persona, 'persona',
+                { id: '__fs_random_persona__', name: '🎲 Случайная личность', resolve: false }));
         }
         if (bots.levels && bots.levels.length) menu.append(select('Сложность бота', bots.levels, p.level, 'level'));
         return menu;
