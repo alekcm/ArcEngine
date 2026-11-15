@@ -355,6 +355,14 @@ class CoreRules {
                 structures: p.supply.structures,
             };
         }
+        // A player chooses one of the event cards he drew. Other players see the
+        // chosen card (and a card opened only for storm movement), never the
+        // unchosen cards in that player's draw. Keep only a count for the UI.
+        if (copy.event && copy.event.seat !== seat) {
+            copy.event.drawnCount = Array.isArray(copy.event.drawn) ? copy.event.drawn.length : 0;
+            delete copy.event.drawn;
+            if (!copy.event.chosen && !copy.event.top) delete copy.event.card;
+        }
         // The cards of the combat: only the player sees his own hand. The card that
         // was chosen stays closed — the other side only knows that it is there.
         if (copy.combat) {

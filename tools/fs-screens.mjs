@@ -385,6 +385,38 @@ screen('lobby-6', 'двое выбрали одну фракцию: второй
     return true;
 });
 
+screen('lobby-color-contrast', 'четыре игрока одной фракции получают перцептивно различимые цвета во всех фракциях', () => {
+    const lab = hex => {
+        const n = parseInt(String(hex || '').replace('#', ''), 16);
+        const linear = value => {
+            const v = value / 255;
+            return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+        };
+        const r = linear((n >> 16) & 255), g = linear((n >> 8) & 255), b = linear(n & 255);
+        const x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) / 0.95047;
+        const y = r * 0.2126729 + g * 0.7151522 + b * 0.072175;
+        const z = (r * 0.0193339 + g * 0.119192 + b * 0.9503041) / 1.08883;
+        const f = value => value > 216 / 24389 ? Math.cbrt(value) : (24389 / 27 * value + 16) / 116;
+        const fx = f(x), fy = f(y), fz = f(z);
+        return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+    };
+    const deltaE = (a, b) => {
+        const x = lab(a), y = lab(b);
+        return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+    };
+    for (const faction of FS_CATALOG_SCREENS.factions) {
+        const players = Array.from({ length: 4 }, (_, seat) => ({ seat, faction: faction.id }));
+        const colors = [...FS_CATALOG_SCREENS.autoPrimaries(players).values()];
+        if (colors.length !== 4 || new Set(colors).size !== 4) return faction.id + ': не выданы четыре отдельных цвета';
+        let min = Infinity;
+        for (let i = 0; i < colors.length; i++) for (let j = i + 1; j < colors.length; j++) {
+            min = Math.min(min, deltaE(colors[i], colors[j]));
+        }
+        if (min < 35) return faction.id + ': минимальная цветовая разница ΔE ' + min.toFixed(1) + ' < 35';
+    }
+    return true;
+});
+
 screen('lobby-4', 'гость: «Готов» запирает фракцию, повторное нажатие снимает готовность; подсказка ждёт хозяина', () => {
     const readies = [], picks = [];
     drawLobby({
@@ -1304,6 +1336,72 @@ screen('setup-ui-4', 'начальные силы без дублирующег�
     return true;
 });
 
+screen('setup-force-undo-1', 'размещённые начальные отряды и постройки можно вернуть в запас, но чужие фигуры — нельзя', () => {
+    const f = setupFixture(), handTile = f.view.setup.hand[0];
+    const face = FS_RULES.tileFaces(handTile)[1], cell = f.view.setup.legalCells[0];
+    const tileResult = FS_RULES.apply(f.live, f.seat, {
+        type: 'placeSystemTile', tile: face.id, row: cell.row, col: cell.col,
+    });
+    if (!tileResult.ok) return 'не удалось начать размещение сил: ' + tileResult.error;
+    const sys = f.live.systems.find(system => system.id === f.live.setup.currentSystem);
+    const player = f.live.players[f.seat], initial = player.initialForces;
+    const faction = FS_CATALOG_SCREENS.faction(player.faction);
+    const entry = Object.entries(initial.units).find(([, count]) => count > 0);
+    if (!entry) return 'у игрока нет начального отряда для проверки возврата';
+    const [unitId, before] = entry, def = faction.units.find(unit => unit.id === unitId);
+    const area = sys.areas.find(candidate => (def.type === 'ground') === !!candidate.world
+        && FS_RULES.unitsAt(f.live, sys.id, candidate.pos).length < FS_RULES.capacity(f.live, sys.id, candidate.pos));
+    if (!area) return 'на стартовом тайле нет свободной области для отряда';
+    const placed = FS_RULES.apply(f.live, f.seat, { type: 'setupUnit', unit: unitId, pos: area.pos });
+    if (!placed.ok) return 'сервер не разместил начальный отряд: ' + placed.error;
+    const placedUnit = f.live.units.find(unit => unit.seat === f.seat && unit.system === sys.id && unit.unit === unitId && unit.area === area.pos);
+    if (!placedUnit) return 'размещённый отряд не найден на текущем тайле';
+    const wrongSeat = (f.seat + 1) % f.live.players.length;
+    const denied = FS_RULES.apply(f.live, wrongSeat, { type: 'removeSetupForce', kind: 'unit', id: placedUnit.id });
+    if (denied.ok) return 'другой игрок смог снять фигуру';
+    if (!f.live.units.some(unit => unit.id === placedUnit.id)) return 'отказ сопернику всё равно снял фигуру';
+    if (f.live.players[f.seat].initialForces.units[unitId] !== before - 1) return 'отказ сопернику изменил запас начальных сил';
+    f.game.state = FS_RULES.view(f.live, f.seat);
+    const remove = f.panel().actions.find(action => action.kind === 'chip' && action.label === 'Убрать ' + def.name);
+    if (!remove) return 'в панели нет действия возврата уже размещённой фигуры';
+    remove.onClick();
+    const command = f.sent.at(-1);
+    if (!command || command.type !== 'removeSetupForce' || command.kind !== 'unit' || command.id !== placedUnit.id) return 'панель отправила не ту команду возврата';
+    const result = FS_RULES.apply(f.live, f.seat, command);
+    if (!result.ok) return 'сервер отклонил возврат с текущего тайла: ' + result.error;
+    if (f.live.units.some(unit => unit.id === placedUnit.id)) return 'отряд не снят с тайла';
+    if (f.live.players[f.seat].initialForces.units[unitId] !== before) return 'отряд не вернулся в запас начальных сил';
+
+    const structureEntry = Object.entries(initial.structures).find(([, count]) => count > 0);
+    if (structureEntry) {
+        const [structureType, structureBefore] = structureEntry;
+        const structureArea = sys.areas.find(candidate => candidate.world
+            && !f.live.structures.some(item => item.system === sys.id && item.area === candidate.pos));
+        if (!structureArea) return 'на стартовом тайле нет мира для начальной постройки';
+        const placedStructureResult = FS_RULES.apply(f.live, f.seat, {
+            type: 'setupStructure', structure: structureType, pos: structureArea.pos,
+        });
+        if (!placedStructureResult.ok) return 'не удалось разместить начальную постройку: ' + placedStructureResult.error;
+        const placedStructure = f.live.structures.find(item => item.seat === f.seat
+            && item.system === sys.id && item.type === structureType && item.area === structureArea.pos);
+        if (!placedStructure) return 'размещённая постройка не найдена на текущем тайле';
+        f.game.state = FS_RULES.view(f.live, f.seat);
+        const structureName = { factory: 'Фабрика', bastion: 'Бастион', city: 'Город' }[structureType] || structureType;
+        const removeStructure = f.panel().actions.find(action => action.kind === 'chip' && action.label === 'Убрать ' + structureName);
+        if (!removeStructure) return 'в панели нет действия возврата уже размещённой постройки';
+        removeStructure.onClick();
+        const structureCommand = f.sent.at(-1);
+        if (!structureCommand || structureCommand.type !== 'removeSetupForce' || structureCommand.kind !== 'structure'
+            || structureCommand.id !== placedStructure.id) return 'панель отправила не ту команду возврата постройки';
+        const structureResult = FS_RULES.apply(f.live, f.seat, structureCommand);
+        if (!structureResult.ok) return 'сервер отклонил возврат постройки: ' + structureResult.error;
+        if (f.live.structures.some(item => item.id === placedStructure.id)) return 'постройка не снята с тайла';
+        if (f.live.players[f.seat].initialForces.structures[structureType] !== structureBefore) return 'постройка не вернулась в запас начальных сил';
+    }
+
+    return true;
+});
+
 screen('setup-ui-5', 'выбор нижнего тайла и поворот не сбрасывают прокрутку, новый этап начинает сверху', () => {
     const f = setupFixture(), root = FSUI.modernRoot, query = root.querySelector;
     root.querySelector = selector => selector[0] === '.' ? nodesWithClass(root, selector.slice(1))[0] || null : null;
@@ -1483,10 +1581,20 @@ function battleLayoutContext() {
     const sides = [
         { side: 'attacker', name: 'Алекс', mine: true, color: '#aa8844',
             parts: { att: part(2, 1, 3, 0), def: part(1, 0, 2, 0), morale: part(2, 0, 1, 4) },
-            values: { att: 6, def: 3, morale: 7 }, deals: 4, takes: 2 },
+            values: { att: 6, def: 3, morale: 7 }, deals: 4, takes: 2,
+            cards: [
+                { name: 'Натиск', icons: { att: 1, def: 0, morale: 1 }, detail: {
+                    name: 'Натиск', kind: 'БОЕВАЯ КАРТА', icons: { att: 1, def: 0, morale: 1 },
+                    general: 'Получите один дополнительный кубик атаки.',
+                    unit: 'Если в бою есть воин, получите еще одну защиту.',
+                } },
+                { name: 'Тактическое отступление', icons: { att: 0, def: 2, morale: 0 } },
+            ], closed: true },
         { side: 'defender', name: 'Противник', color: '#448866',
             parts: { att: part(3, 1, 0, 0), def: part(2, 0, 0, 0), morale: part(1, 0, 1, 2) },
-            values: { att: 4, def: 2, morale: 4 }, deals: 2, takes: 4, peeked: { name: 'Подсмотренная карта' } },
+            values: { att: 4, def: 2, morale: 4 }, deals: 2, takes: 4,
+            cards: [{ name: 'Оборона позиции', icons: { att: 0, def: 1, morale: 0 } }],
+            peeked: { name: 'Подсмотренная карта' } },
     ];
     return Object.assign({}, SCREEN_CTX, {
         battle: { round: 1, maxRounds: 3, sides, damage: { total: 2, left: 1, rows: [{ name: 'Боец', health: 3, take: 1 }] } },
@@ -1529,6 +1637,199 @@ screen('layout-3', 'счёт боя со всеми числами вынесе�
         if (!hidden || !hidden.classList.contains('is-hidden') || !restore) return 'нельзя скрыть счёт и вернуть его кнопкой';
         restore.click();
         if (root.querySelector('.fs-battle-panel').classList.contains('is-hidden') || root.querySelector('.fs-battle-restore')) return 'кнопка возврата не открыла счёт';
+        return true;
+    });
+});
+
+screen('combat-played-1', 'счёт боя показывает открытые карты, раскрывает полный текст по нажатию и не называет закрытую', () => {
+    return withAltUI(({ root }) => {
+        const { st } = chipBattle('played-cards');
+        FSUI.renderModern(st, battleLayoutContext());
+        const score = root.querySelector('.fs-battle-panel');
+        const sides = nodesWithClass(score, 'fs-battle-side');
+        const mine = sides.find(side => side.classList.contains('is-mine'));
+        const foe = sides.find(side => !side.classList.contains('is-mine'));
+        if (!mine || !foe) return 'в счёте не нашлись обе стороны';
+        const mineCards = nodesWithClass(mine, 'fs-battle-played-card');
+        const foeCards = nodesWithClass(foe, 'fs-battle-played-card');
+        if (mineCards.length !== 2 || foeCards.length !== 1) return 'показано карт: у себя '
+            + mineCards.length + ', у противника ' + foeCards.length;
+        if (!textsOf(mineCards[0]).includes('Натиск') || !textsOf(mineCards[1]).includes('Тактическое отступление')
+            || !textsOf(foeCards[0]).includes('Оборона позиции')) return 'названия сыгранных карт не совпадают';
+        const icons = nodesWithClass(mineCards[0], 'fs-ico-svg').map(icon => icon.getAttribute('data-icon'));
+        if (!icons.includes('cube.att') || !icons.includes('cube.morale')) return 'у карты не показаны значки атаки и морали';
+        const closed = nodesWithClass(mine, 'fs-battle-chip').find(chip => chip.classList.contains('is-closed'));
+        if (!closed || !textsOf(closed).includes('карта закрыта')) return 'не показана закрытая карта';
+        if (textsOf(closed).some(text => /Натиск|Тактическое отступление/.test(text))) return 'название закрытой карты раскрыто';
+        mineCards[0].click();
+        const preview = root.querySelector('.fs-card-preview');
+        if (!preview) return 'нажатие на открытую карту не раскрыло её полное описание';
+        const previewText = textsOf(preview).join(' ');
+        if (!previewText.includes('Получите один дополнительный кубик атаки.')
+            || !previewText.includes('Если в бою есть воин, получите еще одну защиту.')) return 'в просмотре не показан полный текст обеих способностей карты';
+        if (!mineCards[0].getAttribute('aria-label').includes('Получите один дополнительный кубик атаки.')) return 'у карты нет доступного описания для средств чтения с экрана';
+
+        // Exercise the complete state → panel path too: open cards carry their
+        // catalogue text, while a staged face-down card remains only a marker.
+        const actual = FS_RULES.newBattleTest({ seed: 18, players: SEAT_PLAYERS,
+            units: { гвардейцы: 2 }, foeUnits: { воины: 2 } });
+        const printed = FS_CATALOG_SCREENS.baseCombatCards('некроны')[0];
+        const combatCards = vm.runInContext('CombatCards', ctx).of(actual.combat);
+        // Seat 1 is the opponent to this view: an open card must survive the
+        // server projection and remain readable in the rendered battle score.
+        combatCards.put('defender', { name: printed.name, card: printed, side: 'defender' }, 0);
+        combatCards.stage('attacker', { name: 'СЕКРЕТНАЯ КАРТА' });
+        const view = FS_RULES.view(actual, 0);
+        const game = Object.assign(Object.create(FS_GAME.prototype), { state: view, hand: [], mode: 'idle' });
+        const panel = { actions: [], status: '' };
+        game.panelCombat(view, panel, { summaryOnly: true });
+        const publicSide = panel.battle.sides.find(side => side.side === 'defender');
+        const closedSide = panel.battle.sides.find(side => side.side === 'attacker');
+        if (!publicSide?.cards[0]?.detail || publicSide.cards[0].detail.general !== printed.general
+            || publicSide.cards[0].detail.unit !== printed.unit) return 'FSGame не передал полное описание открытой карты противника';
+        if (!closedSide?.closed || closedSide.cards.some(card => card.name === 'СЕКРЕТНАЯ КАРТА')) return 'FSGame раскрыл название лежащей рубашкой вверх карты';
+        FSUI.hidePeek();
+        FSUI.renderModern(view, Object.assign({}, SCREEN_CTX, panel));
+        const renderedFoe = nodesWithClass(root.querySelector('.fs-battle-panel'), 'fs-battle-side')
+            .find(side => !side.classList.contains('is-mine'));
+        if (!renderedFoe) return 'в UI не нашлась сторона соперника';
+        const renderedCard = nodesWithClass(renderedFoe, 'fs-battle-played-card')
+            .find(card => textsOf(card).includes(printed.name));
+        if (!renderedCard) return 'открытая карта соперника не видна в счёте боя';
+        renderedCard.click();
+        const openedPreview = root.querySelector('.fs-card-preview');
+        const openedText = textsOf(openedPreview).join(' ');
+        const previewIcons = nodesWithClass(openedPreview, 'fs-rich-ico').map(icon => icon.getAttribute('data-icon'));
+        if (!openedPreview || !openedText.includes('Воин/Корабль-Жнец') || !openedText.includes('получите 1')
+            || !previewIcons.includes('cube.morale')) return 'клик по карте соперника не открыл полный текст и значок карты';
+        const renderedMine = nodesWithClass(root.querySelector('.fs-battle-panel'), 'fs-battle-side')
+            .find(side => side.classList.contains('is-mine'));
+        const closedMarker = nodesWithClass(renderedMine, 'fs-battle-chip').find(chip => chip.classList.contains('is-closed'));
+        if (!closedMarker || textsOf(closedMarker).includes('СЕКРЕТНАЯ КАРТА')) return 'UI раскрыл название карты, лежащей закрытой';
+        return true;
+    });
+});
+
+screen('orders-pop-1', 'окно приказов доступно из интерфейса, показывает все жетоны и не раскрывает чужие закрытые приказы', () => {
+    return withAltUI(({ root }) => {
+        const st = party('orders-popup');
+        if (st.systems.length < 3) return 'для проверки нужно три системы';
+        const [mine, hidden, open] = st.systems;
+        mine.tokens = [{ seat: 0, order: 'advance', faceUp: false }];
+        hidden.tokens = [{ seat: 1, order: 'deploy', faceUp: false }];
+        open.tokens = [{ seat: 1, order: 'strategize', faceUp: true }];
+        const view = FS_RULES.view(st, 0);
+        if (Object.hasOwn(view.systems.find(sys => sys.id === hidden.id).tokens[0], 'order')) return 'состояние соперника не скрыло закрытый приказ';
+        FSUI.renderModern(view, Object.assign({}, SCREEN_CTX, { actions: [] }));
+        let toggle = buttonsOf(root).find(button => button.title === 'Показать: Приказы');
+        if (!toggle) return 'в интерфейсе нет кнопки окна приказов';
+        toggle.click();
+        const pop = root.querySelector('.fs-orders-pop');
+        if (!pop) return 'кнопка не открыла окно приказов';
+        const rows = nodesWithClass(pop, 'fs-orders-row');
+        if (rows.length !== 3) return 'показано жетонов ' + rows.length + ' вместо трёх игроковских приказов';
+        const rowFor = sys => rows.find(row => textsOf(row).includes(sys.tile));
+        const mineRow = rowFor(mine), hiddenRow = rowFor(hidden), openRow = rowFor(open);
+        if (!mineRow || !textsOf(mineRow).join(' ').includes(FSUI.orderLabel('advance'))) return 'не показан известный собственный приказ';
+        if (!hiddenRow || !textsOf(hiddenRow).join(' ').includes('Закрытый приказ')) return 'чужой закрытый жетон не отмечен как закрытый';
+        if (textsOf(hiddenRow).join(' ').includes(FSUI.orderLabel('deploy'))) return 'тип чужого закрытого приказа раскрыт';
+        if (!openRow || !textsOf(openRow).join(' ').includes(FSUI.orderLabel('strategize'))) return 'не показан открытый приказ противника';
+        toggle = buttonsOf(root).find(button => button.title === 'Скрыть: Приказы');
+        if (!toggle) return 'кнопка окна не отражает открытое состояние';
+        toggle.click();
+        if (root.querySelector('.fs-orders-pop')) return 'окно приказов не скрывается повторным нажатием';
+        return true;
+    });
+});
+
+screen('drawer-events-1', 'лист фракции показывает весь набор событий, открытые планы и только свою закрытую руку', () => {
+    return withAltUI(({ root }) => {
+        const st = party('drawer-events');
+        const p = st.players[0], cards = FS_CATALOG_SCREENS.eventCards(p.faction);
+        const scheme = cards.find(card => card.type === 'scheme');
+        const held = cards.find(card => card.name !== (scheme && scheme.name));
+        if (!scheme || !held) return p.faction + ': не нашлись план и карта для руки';
+        p.schemes = [{ name: scheme.name, text: scheme.text }];
+        p.eventHand = [held.name];
+        p.decks.event = cards.filter(card => card.name !== held.name).map(card => card.name);
+        p.eventDeckInitialized = true;
+        const owner = FS_RULES.view(st, 0);
+        FSUI.renderModern(owner, Object.assign({}, SCREEN_CTX, { actions: [] }));
+        const playerRow = nodesWithClass(root, 'fs-player').find(row => textsOf(row).includes(p.name));
+        if (!playerRow) return 'игрока нет в панели участников';
+        playerRow.click();
+        let drawer = root.querySelector('.fs-faction-drawer');
+        if (!drawer) return 'клик по игроку не открыл лист фракции';
+        const eventsTab = buttonsOf(drawer).find(button => textsOf(button).includes('События'));
+        if (!eventsTab) return 'в листе фракции нет вкладки событий';
+        eventsTab.click();
+        drawer = root.querySelector('.fs-faction-drawer');
+        let rows = nodesWithClass(drawer, 'fs-event-row');
+        if (rows.length !== cards.length) return 'показано ' + rows.length + ' карт событий вместо ' + cards.length;
+        const byName = name => rows.find(row => textsOf(row).includes(name));
+        const schemeRow = byName(scheme.name), heldRow = byName(held.name);
+        if (!schemeRow || !schemeRow.classList.contains('is-in-play')) return 'план на планшете не отмечен как играющий';
+        if (!heldRow || !heldRow.classList.contains('is-in-hand')) return 'собственная карта на руке не отмечена';
+        heldRow.click();
+        const preview = root.querySelector('.fs-card-preview');
+        if (!preview || !nodesWithClass(preview, 'fs-card-preview-text').length) return 'нажатие не открыло полный текст события';
+        if (!textsOf(preview).includes(held.name)) return 'в просмотре не видно названия карты';
+
+        FSUI.hidePeek();
+        const observer = FS_RULES.view(st, 1);
+        if (Object.hasOwn(observer.players[0], 'eventHand')) return 'клиент соперника получил названия карт из руки';
+        FSUI.drawerMounted = false;
+        const observedDrawer = FSUI.renderFactionDrawer(observer);
+        if (!observedDrawer) return 'не удалось открыть досье фракции сопернику';
+        rows = nodesWithClass(observedDrawer, 'fs-event-row');
+        const observedHeld = rows.find(row => textsOf(row).includes(held.name));
+        const observedScheme = rows.find(row => textsOf(row).includes(scheme.name));
+        if (!observedHeld || observedHeld.classList.contains('is-in-hand')) return 'название закрытой руки помечено как известное сопернику';
+        if (!observedScheme || !observedScheme.classList.contains('is-in-play')) return 'публичный план скрыт от соперника';
+        if (!textsOf(observedDrawer).some(text => /скрытых карт на руке:\s*1/i.test(text))) return 'не показано только количество скрытых карт';
+        return true;
+    });
+});
+
+screen('event-panel-1', 'панель события соперника показывает выбранную карту целиком, но скрывает выбор до его раскрытия', () => {
+    return withAltUI(({ root }) => {
+        const st = party('enemy-event'), player = st.players[1];
+        const cards = FS_CATALOG_SCREENS.eventCards(player.faction);
+        if (cards.length < 2) return player.faction + ': недостаточно карт для проверки выбора';
+        const chosen = cards[0], hidden = cards.find(card => card.name !== chosen.name);
+        st.phase = 'refresh'; st.turn = 1;
+        st.event = { seat: 1, drawn: [chosen.name, hidden.name], chosen: chosen.name,
+            card: chosen, stormMoved: false };
+        let view = FS_RULES.view(st, 0);
+        if (Object.hasOwn(view.event, 'drawn') || JSON.stringify(view.event).includes(hidden.name)) return 'просмотр соперника раскрыл невыбранную карту';
+        const game = Object.assign(Object.create(FS_GAME.prototype), {
+            state: view, mode: 'idle', pending: null, status: '', hand: [],
+        });
+        const panel = () => ({ title: '', text: '', status: '', actions: [], mode: 'idle' });
+        let ctxPanel = panel();
+        game.panelRefresh(view, ctxPanel);
+        if (!ctxPanel.previewCard || ctxPanel.previewCard.name !== chosen.name || ctxPanel.previewCard.text !== chosen.text) return 'панель не передала полное лицо выбранной карты';
+        FSUI.renderModern(view, ctxPanel);
+        let preview = root.querySelector('.fs-card-preview');
+        if (!preview || !nodesWithClass(preview, 'fs-card-preview-text').length) return 'текст события не нарисован в интерфейсе';
+        if (!textsOf(root.querySelector('.fs-main-panel')).join(' ').includes(chosen.name)) return 'в панели не названо выбранное событие';
+
+        st.event = { seat: 1, drawn: [chosen.name, hidden.name], chosen: null,
+            card: FS_CATALOG_SCREENS.card('events', player.faction, hidden.name) };
+        view = FS_RULES.view(st, 0);
+        ctxPanel = panel();
+        game.state = view;
+        game.panelRefresh(view, ctxPanel);
+        if (ctxPanel.previewCard || !ctxPanel.text.includes('выберет карту события')) return 'до выбора показалась карта или пропало ожидание';
+        if (JSON.stringify(view.event).includes(chosen.name) || JSON.stringify(view.event).includes(hidden.name)) return 'рука события видна сопернику до выбора';
+        FSUI.renderModern(view, ctxPanel);
+        if (root.querySelector('.fs-card-preview')) return 'карта появилась в интерфейсе до выбора';
+
+        st.event = { seat: 1, drawn: [], chosen: null, top: hidden.name };
+        view = FS_RULES.view(st, 0);
+        ctxPanel = panel(); game.state = view;
+        game.panelRefresh(view, ctxPanel);
+        if (!ctxPanel.previewCard || !/НЕ РАЗЫГРЫВАЕТСЯ/.test(ctxPanel.previewCard.kind)) return 'карта, вскрытая для шторма, не помечена как неразыгрываемая';
         return true;
     });
 });
@@ -3672,9 +3973,9 @@ function withAltUI(check) {
         root: FSUI.modernRoot, chips: FSUI.chipsEl, alt: FSUI.altZoom, keys: FSUI.altKeys,
         lobby: FSUI.currentLobby, pressed: FSUI.pressedPointer, deferred: FSUI.deferredRender,
         actionStage: FSUI.actionStage, renderState: FSUI.renderState, renderCtx: FSUI.renderCtx, lastCtx: FSUI.lastCtx, added: FSUI.added,
-        panels: FSUI.panels, factionSeat: FSUI.factionSeat, drawerMounted: FSUI.drawerMounted, helpOpen: FSUI.helpOpen,
+        panels: FSUI.panels, factionSeat: FSUI.factionSeat, drawerTab: FSUI.drawerTab, drawerMounted: FSUI.drawerMounted, helpOpen: FSUI.helpOpen,
         plaqueEl: FSUI.plaqueEl, plaqueInfo: FSUI.plaqueInfo,
-        body: ctx.document.body, create: ctx.document.createElement, docAdd: ctx.document.addEventListener,
+        body: ctx.document.body, create: ctx.document.createElement, createText: ctx.document.createTextNode, docAdd: ctx.document.addEventListener,
         docRemove: ctx.document.removeEventListener, hidden: ctx.document.hidden,
         windowAdd: ctx.addEventListener, windowRemove: ctx.removeEventListener,
     };
@@ -3731,6 +4032,7 @@ function withAltUI(check) {
     try {
         ctx.document.body = node('body');
         ctx.document.createElement = node;
+        ctx.document.createTextNode = text => Object.assign(node('#text'), { textContent: String(text) });
         ctx.document.addEventListener = listen(docEvents);
         ctx.document.removeEventListener = unlisten(docEvents);
         ctx.document.hidden = false;
@@ -3739,7 +4041,7 @@ function withAltUI(check) {
         FSUI.modernRoot = null; FSUI.chipsEl = null; FSUI.altZoom = false; FSUI.altKeys = new Set();
         FSUI.currentLobby = null; FSUI.pressedPointer = null; FSUI.deferredRender = null;
         FSUI.renderState = null; FSUI.renderCtx = null; FSUI.panels = null;
-        FSUI.factionSeat = null; FSUI.helpOpen = false; FSUI.plaqueEl = null; FSUI.plaqueInfo = null;
+        FSUI.factionSeat = null; FSUI.drawerTab = 'faction'; FSUI.helpOpen = false; FSUI.plaqueEl = null; FSUI.plaqueInfo = null;
         const root = FSUI.mount();
         return check({ root, node, fireWindow: (type, data) => fire(winEvents, type, data),
             fireDocument: (type, data) => fire(docEvents, type, data) });
@@ -3748,9 +4050,9 @@ function withAltUI(check) {
         FSUI.currentLobby = saved.lobby; FSUI.pressedPointer = saved.pressed; FSUI.deferredRender = saved.deferred;
         FSUI.actionStage = saved.actionStage; FSUI.renderState = saved.renderState; FSUI.renderCtx = saved.renderCtx;
         FSUI.lastCtx = saved.lastCtx; FSUI.added = saved.added;
-        FSUI.panels = saved.panels; FSUI.factionSeat = saved.factionSeat; FSUI.drawerMounted = saved.drawerMounted;
+        FSUI.panels = saved.panels; FSUI.factionSeat = saved.factionSeat; FSUI.drawerTab = saved.drawerTab; FSUI.drawerMounted = saved.drawerMounted;
         FSUI.helpOpen = saved.helpOpen; FSUI.plaqueEl = saved.plaqueEl; FSUI.plaqueInfo = saved.plaqueInfo;
-        ctx.document.body = saved.body; ctx.document.createElement = saved.create;
+        ctx.document.body = saved.body; ctx.document.createElement = saved.create; ctx.document.createTextNode = saved.createText;
         ctx.document.addEventListener = saved.docAdd; ctx.document.removeEventListener = saved.docRemove;
         ctx.document.hidden = saved.hidden; ctx.addEventListener = saved.windowAdd; ctx.removeEventListener = saved.windowRemove;
     }
