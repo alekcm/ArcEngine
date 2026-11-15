@@ -1908,6 +1908,7 @@ const FSUI = {
             const opt = this.el('option', '', u.name + (u.shared ? ' (общая модель типа)' : ''));
             opt.value = u.id;
             if (u.id === t.unit) opt.selected = true;
+            selU.append(opt);
         }
         selU.value = t.unit || '';
         selU.addEventListener('change', () => t.onUnit && t.onUnit(selU.value));

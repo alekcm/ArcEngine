@@ -1245,6 +1245,15 @@ const FSView = {
                 if (model) {
                     const scl = (u.type === 'ship' ? 1 : this.ON_WORLD) * tune.scale;
                     this.placeFactionModel(holder, model, { x, y, z }, scl, false);
+                    // The cached original stays hidden; the stage gets its own clones.
+                    for (let pi = 0; pi < model.parts.length; pi++) {
+                        const source = model.parts[pi];
+                        const clone = source.clone('fs-stage-part-' + tag + '-' + u.id + '-' + pi, holder, false);
+                        if (!clone) continue;
+                        clone.material = model.materials[model.partMats[pi]] || model.materials[0];
+                        clone.isPickable = false;
+                        clone.setEnabled(true);
+                    }
                 } else {
                     // No OBJ yet (loading) or none at all: the board's fallback silhouette.
                     holder.position.set(x, y + 9, z);
@@ -1257,8 +1266,7 @@ const FSView = {
                 }
                 // The exact battle transform: the rows face the stage centre,
                 // so this is precisely the yaw a contested area would give.
-                const toward = tag === 'att' ? (cz - z) : (cz - z);
-                holder.rotation.y = Math.atan2(0, toward) + tune.yaw * Math.PI / 180;
+                holder.rotation.y = Math.atan2(0, cz - z) + tune.yaw * Math.PI / 180;
                 view.stageNodes.push(holder);
             });
         };
