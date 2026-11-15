@@ -879,3 +879,5 @@ button.fs-room-pill:hover{border-color:#d8b87366;color:#efe6c8;background:#d8b87
 .fs-tune-entry-vals{font-size:10px;color:var(--gold-hi);white-space:nowrap}
 .fs-tune-entry-x{width:18px;height:18px;border:none;border-radius:50%;background:#ffffff14;color:#d9c9a8;cursor:pointer;line-height:1;font-size:12px;padding:0}
 .fs-tune-entry-x:hover{background:#a26e60;color:#fff}
+.fs-tune-free{width:58px;flex:none;padding:4px 5px;border:1px solid #ffffff25;border-radius:6px;background:#070c10;color:#f0d79a;font-size:11px;text-align:right}
+.fs-tune-free:focus{border-color:#d8b87399;outline:none}

@@ -1921,7 +1921,9 @@ const FSUI = {
         }
         // The two sliders. A drag moves the stage live; the release re-renders
         // the panel (a rebuilt input under the pointer would swallow the drag).
-        const slider = (label, icon, min, max, step, value, fmt, apply) => {
+        // The size additionally takes a free number: a slider's rail would be
+        // too coarse for a Titan that should be ×8 of the guard next to it.
+        const slider = (label, icon, min, max, step, value, fmt, apply, free) => {
             const row = this.el('label', 'fs-tune-row');
             row.append(this.iconEl(icon, 'fs-tune-ico'));
             row.append(this.el('span', 'fs-tune-label', label));
@@ -1930,7 +1932,26 @@ const FSUI = {
             input.min = String(min);
             input.max = String(max);
             input.step = String(step);
-            input.value = String(value);
+            input.value = String(Math.min(max, Math.max(min, value)));
+            if (free) {
+                const num = this.el('input', 'fs-tune-free');
+                num.type = 'number';
+                num.min = String(free.min);
+                num.max = free.max != null ? String(free.max) : '';
+                num.step = String(step);
+                num.value = String(value);
+                input.addEventListener('input', () => { num.value = input.value; apply(Number(input.value), false); });
+                input.addEventListener('change', () => apply(Number(input.value), true));
+                num.addEventListener('change', () => {
+                    let v = Number(num.value);
+                    if (!Number.isFinite(v)) return;
+                    v = Math.max(free.min, free.max != null ? Math.min(free.max, v) : v);
+                    input.value = String(Math.min(max, Math.max(min, v)));
+                    apply(v, true);
+                });
+                row.append(input, num);
+                return row;
+            }
             const num = this.el('b', 'fs-tune-num', fmt(value));
             input.addEventListener('input', () => { num.textContent = fmt(Number(input.value)); apply(Number(input.value), false); });
             input.addEventListener('change', () => apply(Number(input.value), true));
@@ -1940,9 +1961,12 @@ const FSUI = {
         box.append(slider('Поворот передней стороны', 'ui.next', -180, 180, 5, t.yaw,
             v => (v > 0 ? '+' : '') + v + '°',
             (v, done) => (done ? t.onChange : t.onPreview) && (done ? t.onChange : t.onPreview)({ yaw: v })));
-        box.append(slider('Размер модели', 'ui.die', 0.4, 2.5, 0.05, t.scale,
-            v => '×' + (Math.round(v * 100) / 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, ''),
-            (v, done) => (done ? t.onChange : t.onPreview) && (done ? t.onChange : t.onPreview)({ scale: v })));
+        // Титан должен мочь в разы больше пехотинца рядом: ползунок до ×8 для
+        // глазомерной подгонки, свободное поле — для любой величины сверху.
+        box.append(slider('Размер модели', 'ui.die', 0.2, 8, 0.05, t.scale,
+            null,
+            (v, done) => (done ? t.onChange : t.onPreview) && (done ? t.onChange : t.onPreview)({ scale: v }),
+            { min: 0.05, max: 50 }));
         const ctls = this.el('div', 'fs-tune-ctls');
         const btn = (label, title, onClick, primary) => {
             const b = this.el('button', primary ? 'fs-tune-btn is-primary' : 'fs-tune-btn');
