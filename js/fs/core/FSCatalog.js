@@ -234,13 +234,13 @@ class FactionCatalog {
         return this.palette(null, this.factionColor(factionId));
     }
 
-    /** The colour turned around the hue circle by `deg` (saturation and lightness kept). */
-    hueShift(hex, deg) {
+    /** Turn a colour around the hue circle; optional saturation/lightness make neutral factions distinguishable. */
+    hueShift(hex, deg, saturation, lightness) {
         const n = parseInt(String(hex || '').replace('#', ''), 16);
         if (!Number.isFinite(n)) return '#888888';
         const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
-        const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
-        let h = 0, sat = 0;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b), l0 = (max + min) / 2;
+        let h = 0, sat = 0, l = l0;
         if (max !== min) {
             const d = max - min;
             sat = l > 0.5 ? d / (2 - max - min) : d / (max + min);
@@ -249,8 +249,11 @@ class FactionCatalog {
             else h = (r - g) / d + 4;
             h /= 6;
         }
-        // A grey has no hue to turn: give it one, so the second player differs.
+        // A grey has no hue to turn: give it one, so another seat can have a
+        // real colour. Explicit values let the palette search add contrast too.
         if (sat < 0.12) sat = 0.45;
+        if (saturation !== undefined && saturation !== null) sat = Math.max(0, Math.min(1, Number(saturation)));
+        if (lightness !== undefined && lightness !== null) l = Math.max(0, Math.min(1, Number(lightness)));
         h = (((h + deg / 360) % 1) + 1) % 1;
         const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat, p = 2 * l - q;
         const ch = t => {
@@ -264,21 +267,38 @@ class FactionCatalog {
         return '#' + ((to(ch(h + 1 / 3)) << 16) | (to(ch(h)) << 8) | to(ch(h - 1 / 3))).toString(16).padStart(6, '0');
     }
 
-    /** How far apart two colours are (plain RGB distance, 0…441). */
+    /** CIE Lab 1976 distance: unlike raw RGB it reflects visible colour separation. */
     colorDistance(a, b) {
-        const n = parseInt(String(a || '').replace('#', ''), 16), m = parseInt(String(b || '').replace('#', ''), 16);
-        if (!Number.isFinite(n) || !Number.isFinite(m)) return 0;
-        return Math.hypot(((n >> 16) & 255) - ((m >> 16) & 255), ((n >> 8) & 255) - ((m >> 8) & 255), (n & 255) - (m & 255));
+        const lab = hex => {
+            const n = parseInt(String(hex || '').replace('#', ''), 16);
+            if (!Number.isFinite(n)) return null;
+            const linear = value => {
+                const v = value / 255;
+                return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+            };
+            const r = linear((n >> 16) & 255), g = linear((n >> 8) & 255), blue = linear(n & 255);
+            const x = (r * 0.4124564 + g * 0.3575761 + blue * 0.1804375) / 0.95047;
+            const y = r * 0.2126729 + g * 0.7151522 + blue * 0.072175;
+            const z = (r * 0.0193339 + g * 0.119192 + blue * 0.9503041) / 1.08883;
+            const f = value => value > 216 / 24389
+                ? Math.cbrt(value) : (24389 / 27 * value + 16) / 116;
+            const fx = f(x), fy = f(y), fz = f(z);
+            return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+        };
+        const left = lab(a), right = lab(b);
+        if (!left || !right) return 0;
+        return Math.hypot(left[0] - right[0], left[1] - right[1], left[2] - right[2]);
     }
 
     /**
      * The primary paint of every seat of a table — `Map seat → '#rrggbb'`.
      * A player who chose his own colours keeps them; the first player of a
      * faction gets the faction colour; every next player of the SAME faction
-     * gets that colour turned around the hue circle, the turn that stands
-     * farthest from the paints already given out. The lobby and newGame call
-     * the same function, so the player sees in the lobby the paint he will
-     * play with. `players` — anything with `seat`, `faction` and `palette`.
+     * gets the candidate with the greatest minimum CIE Lab separation from the
+     * colours already used. The search varies hue, saturation and lightness, so
+     * pale/grey faction colours do not yield near-identical pastel twins. The
+     * lobby and newGame call the same function, so the player sees the paint
+     * they will use. `players` — anything with `seat`, `faction` and `palette`.
      */
     autoPrimaries(players) {
         const hex = c => /^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c).toLowerCase() : null;
@@ -291,10 +311,19 @@ class FactionCatalog {
             const twin = list.some(q => q.faction === p.faction && Number(q.seat) < Number(p.seat));
             if (!twin) { out.set(p.seat, base); continue; }
             const taken = [...out.values()];
+            const candidates = [];
+            for (const lightness of [0.38, 0.5, 0.62]) {
+                for (const saturation of [0.35, 0.5, 0.65]) {
+                    for (let deg = 0; deg < 360; deg += 30) {
+                        const candidate = this.hueShift(base, deg, saturation, lightness);
+                        if (!candidates.includes(candidate)) candidates.push(candidate);
+                    }
+                }
+            }
             let best = base, bestDistance = -1;
-            for (const deg of [150, 210, 270, 90, 330, 30]) {
-                const candidate = this.hueShift(base, deg);
-                const distance = taken.length ? Math.min(...taken.map(t => this.colorDistance(candidate, t))) : 441;
+            for (const candidate of candidates) {
+                if (taken.includes(candidate)) continue;
+                const distance = taken.length ? Math.min(...taken.map(t => this.colorDistance(candidate, t))) : 0;
                 if (distance > bestDistance) { bestDistance = distance; best = candidate; }
             }
             out.set(p.seat, best);

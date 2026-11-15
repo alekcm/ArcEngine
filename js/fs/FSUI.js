@@ -216,10 +216,22 @@ const FSUI = {
         const kinds = Object.keys(FS_RULES_CONFIG.ORDER_NAMES)
             .map(order => [order, this.orderLabel(order)]);
         const rows = [];
-        for (const sys of state.systems) {
-            for (const tok of sys.tokens) {
-                if (tok.seat !== me) continue;
-                rows.push({ tile: sys.tile, order: tok.order, faceUp: !!tok.faceUp });
+        for (const sys of state.systems || []) {
+            for (const tok of sys.tokens || []) {
+                const owner = (state.players || []).find(player => player.seat === tok.seat) || {};
+                const mine = tok.seat === me;
+                // A face-down order belongs to its owner and may be known to him,
+                // but another player must never learn its type from this panel.
+                const known = !!tok.order && (!!tok.faceUp || mine);
+                rows.push({
+                    tile: sys.tile || sys.id,
+                    seat: tok.seat,
+                    player: owner.name || ('Игрок ' + (Number(tok.seat) + 1)),
+                    color: owner.color || this.factionColor(owner.faction),
+                    order: known ? tok.order : null,
+                    faceUp: !!tok.faceUp,
+                    mine,
+                });
             }
         }
         // The hand of the player: one icon per order kind and the number of the
@@ -239,10 +251,24 @@ const FSUI = {
         const list = this.el('div', 'fs-orders-list');
         if (!rows.length) list.append(this.el('div', 'fs-empty', 'На доске пока ничего.'));
         for (const row of rows) {
-            const line = this.el('span', 'fs-orders-placed' + (row.faceUp ? ' is-open' : ''));
-            line.append(this.iconEl(row.order ? 'order.' + row.order : 'order.event', 'fs-orders-placed-icon'));
-            line.title = row.tile + ' · ' + (row.order ? this.orderLabel(row.order) : 'приказ под другими жетонами')
-                + (row.faceUp ? ' · открыт' : ' · закрыт');
+            const known = !!row.order;
+            const line = this.el('div', 'fs-orders-row'
+                + (row.faceUp ? ' is-open' : '')
+                + (known ? '' : ' is-hidden')
+                + (row.mine ? ' is-mine' : ''));
+            line.style.setProperty('--order-owner-color', row.color || '#a9b2b1');
+            const dot = this.el('i', 'fs-orders-owner-dot');
+            dot.setAttribute('aria-hidden', 'true');
+            line.append(dot);
+            line.append(this.el('span', 'fs-orders-owner', row.player + (row.mine ? ' · вы' : '')));
+            line.append(this.el('span', 'fs-orders-tile', row.tile));
+            line.append(this.iconEl(known ? 'order.' + row.order : 'ui.card', 'fs-orders-placed-icon'));
+            const label = known
+                ? (row.faceUp ? 'Открыт · ' : 'Ваш закрытый · ') + this.orderLabel(row.order)
+                : 'Закрытый приказ';
+            line.append(this.el('span', 'fs-orders-label', label));
+            line.title = row.tile + ' · ' + row.player + ' · ' + label;
+            line.setAttribute('aria-label', line.title);
             list.append(line);
         }
         pop.append(list);
@@ -371,12 +397,16 @@ const FSUI = {
 
         // The card of the left rail hides and comes back by this button.
         const switches = this.el('div', 'fs-panel-switches');
-        for (const [key, icon, title] of [['players', 'mark.ground', 'Участники']]) {
+        for (const [key, icon, title] of [
+            ['players', 'mark.ground', 'Участники'],
+            ['orders', 'order.strategize', 'Приказы'],
+        ]) {
             const on = this.panelState()[key];
             const button = this.el('button', 'fs-panel-switch' + (on ? ' is-on' : ''));
             button.append(this.iconEl(icon));
             button.type = 'button';
             button.title = (on ? 'Скрыть: ' : 'Показать: ') + title;
+            button.setAttribute('aria-label', button.title);
             button.addEventListener('click', () => {
                 const ps = this.panelState();
                 ps[key] = !ps[key];
@@ -682,6 +712,72 @@ const FSUI = {
         body.append(list);
     },
 
+    // The event tab is a faction's complete printed event set, not the hidden
+    // order of a shuffled deck. Public schemes and the owner's own held event
+    // cards are marked; an opponent's hand is represented only by its count.
+    renderEventsTab(body, state, seat, p) {
+        const mine = Seat.of(state).isMe(seat);
+        const cards = FS_CATALOG.eventCards(p.faction).slice().sort((a, b) =>
+            (a.type === b.type ? 0 : (a.type === 'scheme' ? -1 : 1))
+            || String(a.name).localeCompare(String(b.name), 'ru'));
+        const schemes = new Set((p.schemes || []).map(scheme => scheme && scheme.name).filter(Boolean));
+        const hand = new Set(mine && Array.isArray(p.eventHand) ? p.eventHand : []);
+        const eventPhase = typeof EventPhase !== 'undefined' ? EventPhase.of(state) : null;
+        const isCurrentEvent = !!(eventPhase && eventPhase.isSeat(seat));
+        const currentName = isCurrentEvent ? eventPhase.cardName : null;
+        const stormOnly = !!(isCurrentEvent && !eventPhase.chosen && !eventPhase.card && eventPhase.top);
+        const hiddenHand = Number(p.eventHandCount) || 0;
+        const ownHand = mine && Array.isArray(p.eventHand) ? p.eventHand.length : hiddenHand;
+
+        body.append(this.el('div', 'fs-drawer-eyebrow', 'Карты событий фракции'));
+        body.append(this.el('div', 'fs-drawer-note',
+            'Весь набор фракции · порядок колоды и названия чужих карт на руке скрыты.'));
+        if (!cards.length) {
+            body.append(this.el('div', 'fs-empty', 'В каталоге нет карт событий.'));
+            return;
+        }
+        const status = [];
+        status.push('карт: ' + cards.length);
+        if (schemes.size) status.push('планов в игре: ' + schemes.size);
+        if (mine) status.push('у вас на руке: ' + ownHand);
+        else if (hiddenHand) status.push('скрытых карт на руке: ' + hiddenHand);
+        body.append(this.el('div', 'fs-drawer-note', status.join(' · ')));
+
+        const list = this.el('div', 'fs-event-list');
+        for (const card of cards) {
+            const detail = FS_CARDS.detail(card.name, p.faction, 'event');
+            const inPlay = schemes.has(card.name);
+            const inHand = hand.has(card.name);
+            const isCurrent = currentName === card.name;
+            const label = isCurrent ? (stormOnly ? 'Вскрыта для шторма' : 'Сейчас играет')
+                : inPlay ? 'План в игре' : inHand ? 'На руке' : '';
+            const stateClass = isCurrent ? (stormOnly ? ' is-storm-top' : ' is-current')
+                : inPlay ? ' is-in-play' : inHand ? ' is-in-hand' : '';
+            const row = this.el('button', 'fs-event-row' + stateClass);
+            row.type = 'button';
+            row.dataset.eventState = isCurrent ? (stormOnly ? 'storm-top' : 'current')
+                : inPlay ? 'in-play' : inHand ? 'in-hand' : 'deck';
+            row.setAttribute('aria-label', [detail.kind, card.name, detail.text].filter(Boolean).join('. '));
+            const icon = this.el('span', 'fs-event-ico');
+            icon.append(this.iconEl('order.strategize'));
+            row.append(icon);
+            const main = this.el('span', 'fs-event-main');
+            main.append(this.el('span', 'fs-event-name', card.name));
+            main.append(this.el('span', 'fs-event-kind', card.type === 'scheme' ? 'ПЛАН' : 'ТАКТИКА'));
+            row.append(main);
+            if (label) row.append(this.el('span', 'fs-event-status', label));
+            row.title = detail.text || detail.kind;
+            this.bindPeek(row, Object.assign({}, detail, {
+                okLabel: label || 'Карта событий фракции',
+            }));
+            list.append(row);
+        }
+        body.append(list);
+        if (!mine && hiddenHand) {
+            body.append(this.el('div', 'fs-drawer-note', 'Состав чужой руки не показывается.'));
+        }
+    },
+
     // The peek descriptor of one card of a faction (combat or order upgrade).
     peekOf(card, isCombat) {
         const kl = card.kl != null ? card.kl : 0;
@@ -738,11 +834,11 @@ const FSUI = {
         head.append(close);
         drawer.append(head);
 
-        // The dossier has two tabs: the faction itself, and the battle deck
-        // that will actually be shuffled.
-        const activeTab = this.drawerTab === 'deck' ? 'deck' : 'faction';
+        // The dossier separates faction data, the current battle deck and the
+        // full faction event set. Event order and another player's hand stay hidden.
+        const activeTab = ['deck', 'events'].includes(this.drawerTab) ? this.drawerTab : 'faction';
         const tabs = this.el('div', 'fs-drawer-tabs');
-        for (const [id, label] of [['faction', 'Фракция'], ['deck', 'Текущая боевая колода']]) {
+        for (const [id, label] of [['faction', 'Фракция'], ['deck', 'Боевая колода'], ['events', 'События']]) {
             const b = this.el('button', 'fs-drawer-tab' + (id === activeTab ? ' is-active' : ''));
             b.type = 'button';
             b.textContent = label;
@@ -755,6 +851,11 @@ const FSUI = {
         const body = this.el('div', 'fs-drawer-body');
         if (activeTab === 'deck') {
             this.renderDeckTab(body, state, seat, p);
+            drawer.append(body);
+            return drawer;
+        }
+        if (activeTab === 'events') {
+            this.renderEventsTab(body, state, seat, p);
             drawer.append(body);
             return drawer;
         }
@@ -923,6 +1024,46 @@ const FSUI = {
             who.append(this.el('span', 'fs-battle-name', side.name));
             who.append(this.el('span', 'fs-battle-role', side.side === 'attacker' ? 'атакует' : 'держит'));
             row.append(who);
+            // Open cards stay visible through the battle score after they leave
+            // the hand. A face-down card is only a marker: its name is secret.
+            const playedCards = Array.isArray(side.cards) ? side.cards : [];
+            if (playedCards.length || side.closed) {
+                const playedRow = this.el('div', 'fs-battle-played');
+                for (const playedCard of playedCards) {
+                    if (!playedCard) continue;
+                    const name = String(playedCard.name || 'Боевая карта');
+                    const badge = this.el('button', 'fs-battle-played-card');
+                    badge.type = 'button';
+                    badge.append(this.el('span', 'fs-battle-played-name', name));
+                    const icons = this.el('span', 'fs-card-icons');
+                    const values = playedCard.icons || {};
+                    if (this.appendCubeIcons(icons, values)) badge.append(icons);
+                    const labels = { att: 'атака', def: 'оборона', morale: 'мораль' };
+                    const summary = ['att', 'def', 'morale']
+                        .filter(kind => Number(values[kind]) > 0)
+                        .map(kind => labels[kind] + ': ' + Number(values[kind]));
+                    const detail = playedCard.detail || {};
+                    const print = [detail.general, detail.unit, detail.text].filter(Boolean).join(' ');
+                    badge.title = [name].concat(summary, print ? [print] : []).join(' · ');
+                    badge.setAttribute('aria-label', 'Открыть полную информацию карты «' + name + '»'
+                        + (print ? '. ' + print : ''));
+                    this.bindPeek(badge, Object.assign({}, detail, {
+                        kind: playedCard.valuesOnly ? 'БОЕВАЯ КАРТА · ТОЛЬКО ЗНАЧКИ' : 'БОЕВАЯ КАРТА · ОТКРЫТА',
+                        name,
+                        icons: detail.icons || values,
+                        okLabel: playedCard.valuesOnly ? 'Применены только значки карты' : 'Карта открыта в этом бою',
+                    }));
+                    playedRow.append(badge);
+                }
+                if (side.closed) {
+                    const closed = this.el('span', 'fs-battle-chip is-closed');
+                    closed.title = 'Выбранная боевая карта лежит рубашкой вверх';
+                    closed.setAttribute('aria-label', closed.title);
+                    closed.append(this.iconEl('ui.card'), this.el('span', '', 'карта закрыта'));
+                    playedRow.append(closed);
+                }
+                if (playedRow.childNodes.length) row.append(playedRow);
+            }
             // Attack and defence come from dice, tokens and cards. Morale has
             // no tokens: it comes from dice, cards, and the printed morale of
             // unrouted units, reinforcements and bastions.

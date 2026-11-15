@@ -366,6 +366,45 @@ rule('bot-persona-roster', 'фракционные доктрины различ
 });
 
 // ============================================================================
+head('Боты: оценка перемещения варп-шторма');
+
+rule('bot-storm-target-score', 'бот считает ценность по реальным системам целевой грани шторма, а не по исходному ребру', () => {
+    const st = empty(7);
+    const from = st.systems.find(sys => sys.row === 1 && sys.col === 1);
+    const north = st.systems.find(sys => sys.row === 0 && sys.col === 1);
+    const south = st.systems.find(sys => sys.row === 2 && sys.col === 1);
+    if (!from || !north || !south) return 'нет трёх систем на вертикальном столбце поля';
+    const enemyWorlds = from.areas.filter(area => area.world).map(area => area.pos);
+    if (!enemyWorlds.length) return 'у исходной системы нет миров для вражеской армии';
+    for (let i = 0; i < 6; i++) unit(st, 1, defOf(st, 1, 'ground'), from.id, enemyWorlds[i % enemyWorlds.length]);
+    const safeWorld = south.areas.find(area => area.world);
+    if (!safeWorld) return 'у целевой южной системы нет мира';
+    FS_RULES.addStructure(st, 0, 'city', south.id, safeWorld.pos);
+    const storm = FS_WARP_STORMS.create(st, 's1', { system: from.id, side: 'N' });
+    if (!storm) return 'не создался исходный шторм';
+    st.storms = [storm];
+    st.phase = 'refresh'; st.turn = 0; st.eventsLeft = 1;
+    st.event = { seat: 0, drawn: [], chosen: 'probe', card: { name: 'probe', storm: ['N', 'S'] }, stormMoved: false };
+    const view = FS_RULES.view(st, 0);
+    const options = FS_RULES.stormOptions(view, 0);
+    const n = options.find(option => option.storm === 's1' && option.dir === 'N');
+    const s = options.find(option => option.storm === 's1' && option.dir === 'S');
+    if (!n || !s) return 'карта N/S не дала оба допустимых переноса';
+    eq(n.target.tiles, [null, north.id], 'северная цель — внешний край у северной системы');
+    eq(s.target.tiles, [from.id, south.id], 'южная цель — граница исходной и южной систем');
+    const bot = FS_BOT.create({ seat: 0, seed: 'storm-target-score', level: 'veteran' });
+    let trace = null;
+    bot.trace = (label, candidates, pick) => { trace = { label, candidates, pick }; };
+    const decision = bot.refresh(view, () => 0);
+    if (!trace || trace.label !== 'moveStorm') return 'бот не записал оценку допустимых ходов';
+    const northScore = trace.candidates.find(candidate => candidate.o.dir === 'N')?.score;
+    const southScore = trace.candidates.find(candidate => candidate.o.dir === 'S')?.score;
+    if (!(southScore > northScore)) return 'граница у вражеской армии и своего города не получила больший балл';
+    eq(decision && decision.cmd, { type: 'moveStorm', storm: 's1', dir: 'S' }, 'бот закрывает границу между врагом и городом');
+    return true;
+});
+
+// ============================================================================
 //  Setup
 // ============================================================================
 head('Сборка карты (Setup)');
@@ -406,6 +445,23 @@ rule('setup-2', '«He cannot exceed an area’s unit capacity» — при сб�
         ? (FS_DATA.factions.find(f => f.id === 'имперская-гвардия').units.find(u => u.id === 'гвардейцы').start || 0)
         : 0;
     eq(placedUnits, Math.min(cap, pool), 'сверх вместимости и сверх запаса силы не ставятся');
+});
+
+rule('setup-force-completion-1', 'к завершению последнего тайла все начальные силы должны быть расставлены', () => {
+    const st = FS_RULES.newGame({ seed: 31, players: players(), interactiveSetup: true });
+    const seat = st.setup.turn;
+    const board = BoardSetup.of(st);
+    board.setStage(BoardSetup.FORCES).setCurrentSystem('last-tile');
+    board.record.hands[seat] = [];
+    board.record.placedBySeat[seat] = 3;
+    board.record.placedTotal = board.record.totalTiles;
+    const remaining = Object.values(st.players[seat].initialForces.units).reduce((sum, n) => sum + n, 0)
+        + Object.values(st.players[seat].initialForces.structures).reduce((sum, n) => sum + n, 0);
+    if (!remaining) return 'у тестовой фракции нет начальных сил';
+    const result = FS_RULES.apply(st, seat, { type: 'finishSetupForces' });
+    refused(result, /Оставшиеся начальные силы/, 'нельзя закончить последнюю расстановку с силами в запасе');
+    eq(st.setup.stage, BoardSetup.FORCES, 'игра не перешла к целям');
+    return true;
 });
 
 // ============================================================================
@@ -1836,6 +1892,38 @@ rule('combat-0c', '«discards the combat cards he used during the combat by shuf
     cards.clear('attacker');
     eq(cards.names('attacker').length, 0, 'стол очищен');
     eq(cards.chosen('attacker'), null, 'отметка карты снята');
+});
+
+rule('event-view-privacy-1', 'карты события в выборе скрыты от соперников; выбранная карта и вскрытая для шторма открыты', () => {
+    const st = empty(83);
+    const faction = st.players[0].faction;
+    const cards = FS_CATALOG.eventCards(faction);
+    if (cards.length < 2) return faction + ': нужно не меньше двух карт события';
+    const chosen = cards[0], hidden = cards.find(card => card.name !== chosen.name);
+    st.event = { seat: 0, drawn: [chosen.name, hidden.name], chosen: null,
+        card: FS_CATALOG.card('events', faction, hidden.name) };
+    const owner = FS_RULES.view(st, 0);
+    const observer = FS_RULES.view(st, 1);
+    eq(owner.event.drawn, [chosen.name, hidden.name], 'игрок видит обе карты для выбора');
+    eq(Object.hasOwn(observer.event, 'drawn'), false, 'рука другого игрока не отправлена');
+    eq(Object.hasOwn(observer.event, 'card'), false, 'пока выбора нет, открытое лицо карты тоже скрыто');
+    eq(observer.event.drawnCount, 2, 'наблюдателю доступно только число вытянутых карт');
+    if (JSON.stringify(observer.event).includes(chosen.name) || JSON.stringify(observer.event).includes(hidden.name)) {
+        throw new Error('в событии соперника осталось имя закрытой карты');
+    }
+
+    st.event.chosen = chosen.name;
+    st.event.card = FS_CATALOG.card('events', faction, chosen.name);
+    const afterChoice = FS_RULES.view(st, 1);
+    eq(afterChoice.event.chosen, chosen.name, 'выбранное событие открыто всем');
+    eq(afterChoice.event.card.name, chosen.name, 'открыто лицо выбранной карты');
+    eq(Object.hasOwn(afterChoice.event, 'drawn'), false, 'название невыбранной карты остаётся скрытым после выбора');
+    if (JSON.stringify(afterChoice.event).includes(hidden.name)) throw new Error('раскрыто название невыбранной карты');
+
+    st.event = { seat: 0, drawn: [], chosen: null, top: hidden.name };
+    const stormCard = FS_RULES.view(st, 1);
+    eq(stormCard.event.top, hidden.name, 'карта, открытая только для шторма, видна всем');
+    return true;
 });
 
 rule('phase-0a', '«Each round consists of four phases» + «The active player…» — фазу раунда и чей ход держит GamePhase', () => {
@@ -8829,6 +8917,70 @@ rule('ret-5', '«The area … does not need to be adjacent» — атакующ�
         true, 'дальнее отступление после JSON принято');
     const ship = st.units.find(u => u.id === attacker.id);
     eq([ship.system, ship.area, ship.routed], [distant.id, far, true], 'корабль отступил и деморализован');
+});
+
+rule('ret-ground-distant-1', '«The area … does not need to be adjacent» + «Ground units must retreat along a legal path» — пехота отступает дальше через свои миры', () => {
+    let st = empty(12);
+    const active = st.systems[1];
+    const adjacent = FS_RULES.neighbors(st, active.id);
+    const areaKey = area => area.system + ':' + area.pos;
+    const worldNeighbors = area => FS_RULES.areasAround(st, area.system, area.pos)
+        .filter(next => FS_RULES.area(FS_RULES.system(st, next.system), next.pos)?.world);
+    let setup = null;
+    for (const area of active.areas.filter(one => one.world)) {
+        const start = { system: active.id, pos: area.pos };
+        const origin = worldNeighbors(start).find(next => next.system !== active.id);
+        if (!origin) continue;
+        const queue = [[start]], seen = new Set([areaKey(start)]);
+        while (queue.length && !setup) {
+            const path = queue.shift(), last = path[path.length - 1];
+            for (const next of worldNeighbors(last)) {
+                if (seen.has(areaKey(next))) continue;
+                seen.add(areaKey(next));
+                const route = path.concat([next]);
+                if (route.length >= 3 && next.system !== active.id && !adjacent.includes(next.system)) {
+                    setup = { start, origin, path: route };
+                    break;
+                }
+                queue.push(route);
+            }
+        }
+        if (setup) break;
+    }
+    if (!setup) return 'не найден маршрут наземных миров в систему дальше соседней';
+    // Every intermediate world is friendly, making this a real legal ground
+    // path; the last world is an open destination. The route is tested after
+    // the Advance battle, when its starting world itself is contested.
+    for (const area of setup.path.slice(1, -1)) guard(st, 0, area.system, area.pos);
+    const attacker = guard(st, 0, setup.origin.system, setup.origin.pos);
+    unit(st, 1, defOf(st, 1, 'ground'), setup.start.system, setup.start.pos);
+    st.systems[0].tokens.push({ seat: 1, order: 'deploy', faceUp: false });
+    advance(st, 0, active.id, setup.start.pos);
+    const moved = FS_RULES.apply(st, 0, { type: 'moveUnits', moves: [
+        { unit: attacker.id, system: active.id, pos: setup.start.pos },
+    ] });
+    eq(moved.ok, true, 'наземный отряд вошёл в бой из соседней системы: ' + moved.error);
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    FS_RULES.apply(st, 0, { type: 'endAdvance' });
+    if (!st.combat) return 'бой после продвижения не начался';
+    eq(st.combat.viaAdvance, true, 'отряд вошёл в бой приказом наступления');
+    const far = setup.path[setup.path.length - 1];
+    eq(adjacent.includes(far.system), false, 'цель действительно не в соседней системе');
+    eq(FS_RULES.pathExists(st, 0, active.id, setup.start.pos, far.system, far.pos), true,
+        'между боем и дальней целью есть законная цепочка дружественных миров');
+    const targets = FS_RULES.retreatTargets(st, 0);
+    eq(targets.some(target => target.system === far.system && target.pos === far.pos), true,
+        'движок предлагает дальнюю цель наземного отступления');
+    st.combat.dice.attacker = [];
+    st.combat.dice.defender = Array(8).fill('morale');
+    FS_RULES.finishCombat(st);
+    eq([st.combat.step, st.combat.loser], ['retreat', 0], 'атакующий наземный отряд проиграл');
+    st = JSON.parse(JSON.stringify(st));
+    const retreated = FS_RULES.apply(st, 0, { type: 'combat', action: 'retreat', target: far });
+    eq(retreated.ok, true, 'дальнее наземное отступление принято после JSON: ' + retreated.error);
+    const movedUnit = st.units.find(one => one.id === attacker.id);
+    eq([movedUnit.system, movedUnit.area, movedUnit.routed], [far.system, far.pos, true],
+        'наземный отряд прошёл по дружественным мирам и стал деморализованным');
 });
 
 rule('rein-2', '«Each of these tokens is treated as one of his command level zero units, either a ground unit or ship as appropriate for the combat.» — мораль жетона', () => {

@@ -1940,29 +1940,55 @@ class FSGame {
     // --- the refresh phase ----------------------------------------------------
     panelRefresh(s, ctx) {
         const me = Seat.of(s).me;
-        const ev = s.event;
+        const event = EventPhase.of(s);
         const p = s.players[me];
         ctx.title = 'Обновление';
-        if (!ev) { ctx.text = 'События сыграны.'; return; }
-        if (ev.seat !== me) {
-            const who = s.players[ev.seat] ? s.players[ev.seat].name : '—';
-            ctx.text = 'Событие играет ' + who + '.';
+        if (!event || !event.current) { ctx.text = 'События сыграны.'; return; }
+        if (!event.isSeat(me)) {
+            const player = s.players[event.seat] || {};
+            const who = player.name || '—';
+            const chosen = event.chosen || (event.card && event.card.name) || null;
+            const stormOnly = !chosen && !!event.top;
+            const publicName = chosen || event.top || null;
+            if (!publicName) {
+                // Another player's draw is private until he chooses a card.
+                ctx.text = 'Ожидаем, пока ' + who + ' выберет карту события. Названия карт на руке скрыты до выбора.';
+                ctx.status = 'Событие противника ещё не открыто.';
+                return;
+            }
+            const detail = FS_CARDS.detail(publicName, player.faction, 'event');
+            if (stormOnly) {
+                ctx.text = 'Игрок ' + who + ' вскрыл «' + publicName + '» только для движения варп-шторма; способность карты не разыгрывается.';
+                ctx.previewCard = Object.assign({}, detail, {
+                    kind: 'СОБЫТИЕ · ВСКРЫТО ДЛЯ ШТОРМА — НЕ РАЗЫГРЫВАЕТСЯ',
+                    okLabel: 'Открыта только для движения шторма',
+                });
+                ctx.status = event.stormMoved ? 'Шторм уже передвинут.' : 'Игрок ' + who + ' передвигает шторм по этой карте.';
+                return;
+            }
+            ctx.text = 'Игрок ' + who + ' выбрал карту события «' + publicName + '».';
+            ctx.previewCard = Object.assign({}, detail, {
+                kind: (detail.kind || 'СОБЫТИЕ') + ' · ИГРАЕТ ' + who,
+                okLabel: 'Открытое событие',
+            });
+            ctx.status = event.stormMoved ? 'Шторм передвинут; карта остаётся открытой.'
+                : 'Сейчас ' + who + ' передвигает варп-шторм и разрешает событие.';
             return;
         }
-        const card = ev.card || ev.top;
+        const card = event.card || event.top;
         // The hand of the moment: every drawn card with how many copies of it the
         // player holds — "2× Такая-то", the same shape as the token list.
-        if (!ev.chosen) {
+        if (!event.chosen) {
             ctx.text = 'Выберите карту события из руки.';
             ctx.status = 'Выберите карту, чей эффект вы разыграете:' + (this.status ? ' ' + this.status : '');
             ctx.tokens = [
-                { icon: 'order.strategize', label: 'Жетоны событий', count: (ev.drawn || []).length },
+                { icon: 'order.strategize', label: 'Жетоны событий', count: event.drawn.length },
                 { icon: 'asset.materiel', label: 'Материя', count: p.materiel },
             ];
-            if (!(ev.drawn || []).length) {
+            if (!event.drawn.length) {
                 // Жетона развития на колоде нет: верхняя карта открывается ТОЛЬКО
                 // для движения шторма — она не разыгрывается и возвращается в колоду.
-                const topName = ev.top;
+                const topName = event.top;
                 const topData = FS_CATALOG.card('events', p.faction, topName);
                 ctx.text = 'Жетона развития на колоде событий нет. Верхняя карта колоды вскрывается для движения шторма: её эффект не разыгрывается, шторм обязан сдвинуться по её стрелкам.';
                 ctx.status = 'Вскрыта карта: «' + (topName || '—') + '» — передвиньте шторм по её стрелкам.';
@@ -1984,7 +2010,7 @@ class FSGame {
                     hint: (topData && topData.text) || '',
                     onClick: () => FSUI.showEventConfirm(wide('Понятно'), () => this.refresh()),
                 }] : [];
-                const stormStepDone = !!ev.stormMoved;
+                const stormStepDone = event.stormMoved;
                 const canMove = FS_RULES.stormOptions(s, me).length > 0;
                 if (stormStepDone || !canMove) {
                     ctx.actions.push({
@@ -2002,7 +2028,7 @@ class FSGame {
                 return;
             }
             const counts = new Map();
-            for (const name of ev.drawn || []) counts.set(name, (counts.get(name) || 0) + 1);
+            for (const name of event.drawn) counts.set(name, (counts.get(name) || 0) + 1);
             ctx.handTitle = 'Карты в руке';
             // Choosing an event card is choosing its whole ability. The same
             // catalogue prints every candidate, not just its name, and the
@@ -2025,8 +2051,8 @@ class FSGame {
             }));
             return;
         }
-        const data = FS_CATALOG.card('events', p.faction, ev.chosen);
-        const full = FS_CARDS.detail(ev.chosen, p.faction, 'event');
+        const data = FS_CATALOG.card('events', p.faction, event.chosen);
+        const full = FS_CARDS.detail(event.chosen, p.faction, 'event');
         const eventModalItem = () => Object.assign({}, full, {
             kind: data && data.type === 'scheme' ? 'СОБЫТИЕ · ПЛАН' : 'СОБЫТИЕ · ТАКТИКА',
             okLabel: 'Карта события',
@@ -2040,7 +2066,7 @@ class FSGame {
         });
         // The storms move with the mouse on the board itself: no buttons here.
         const options = FS_RULES.stormOptions(s, me);
-        const stormStepDone = !!ev.stormMoved;
+        const stormStepDone = event.stormMoved;
         const sel = (this.mode === 'storm' && this.pending && this.pending.storm) ? this.pending.storm : null;
         if (sel && !options.some(o => o.storm === sel)) { this.pending = null; this.mode = 'idle'; }
         if (stormStepDone) {
@@ -2104,7 +2130,14 @@ class FSGame {
             const values = FS_RULES.combatValues(s, id);
             /** @type {{att: number, def: number, morale: number}} */
             const none = { att: 0, def: 0, morale: 0 };
-            const played = cards.played(id).map(x => ({ name: x.name, icons: (x.card && x.card.icons) || none }));
+            // Played cards are public. Keep their whole printed face in the
+            // battle score so the UI can reopen it after it leaves the hand.
+            const played = cards.played(id).map(x => ({
+                name: x.name,
+                icons: (x.card && x.card.icons) || none,
+                detail: FS_CARDS.detail(x.name, (x.card && x.card.faction) || p.faction, 'combat'),
+                valuesOnly: !!x.valuesOnly,
+            }));
             return {
                 side: id, seat,
                 name: p.name || '?',

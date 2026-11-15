@@ -340,9 +340,17 @@
 .fs-orders-chip{display:flex;align-items:center;justify-content:center;gap:4px;padding:6px 4px;border:1px solid #ffffff16;border-radius:8px;background:#ffffff08}
 .fs-orders-chip.is-empty{opacity:.32}
 .fs-orders-count{font:700 12px/1 ui-monospace,SFMono-Regular,monospace;color:#f2e3bd}
-.fs-orders-list{display:flex;flex-wrap:wrap;gap:5px;padding:0 12px 11px}
-.fs-orders-placed{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid #ffffff14;border-radius:6px;background:#ffffff06}
-.fs-orders-placed.is-open{border-color:#d8b87388;background:#d8b8731f}
+.fs-orders-list{display:flex;flex-direction:column;gap:5px;padding:8px 12px 12px;overflow:auto;border-top:1px solid #ffffff10;margin-top:6px}
+.fs-orders-row{display:grid;grid-template-columns:7px minmax(44px,.8fr) auto 15px minmax(0,1.4fr);align-items:center;gap:6px;width:100%;min-height:30px;padding:5px 7px;border:1px solid #ffffff12;border-radius:8px;background:#ffffff06;font-size:9px}
+.fs-orders-row.is-open{border-color:#d8b87355;background:#d8b87312}
+.fs-orders-row.is-hidden{color:#aeb8b6}
+.fs-orders-row.is-mine .fs-orders-owner{color:#e9dfc4}
+.fs-orders-owner-dot{width:7px;height:7px;border-radius:50%;background:var(--order-owner-color,#a9b2b1);box-shadow:0 0 8px color-mix(in srgb,var(--order-owner-color,#a9b2b1),transparent 35%)}
+.fs-orders-owner{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d3d8d1;font-size:8px}
+.fs-orders-tile{font:700 9px ui-monospace,monospace;color:#e9dfc4;letter-spacing:.02em}
+.fs-orders-placed-icon.fs-ico-svg{width:14px;height:14px;color:#d8b873}
+.fs-orders-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a9b2b1;font-size:8px}
+.fs-orders-row.is-open .fs-orders-label{color:#f0d79a}
 
 /* --- the hand of the battle: the cards themselves -------------------------- */
 .fs-battle-card.is-closed{opacity:.6}
@@ -373,7 +381,9 @@
 
 /* The cards a side has already played in this fight: small cube chips. */
 .fs-battle-played{grid-column:1/3;display:flex;flex-wrap:wrap;gap:4px}
-.fs-battle-played-card{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:99px;background:#ffffff10;border:1px solid #ffffff12;font-size:9px}
+.fs-battle-played-card{display:inline-flex;align-items:center;gap:3px;max-width:100%;min-width:0;padding:2px 6px;border-radius:99px;background:#ffffff10;border:1px solid #ffffff12;color:inherit;font-size:9px;text-align:left;cursor:pointer}
+.fs-battle-played-card:hover{border-color:#d8b87388;background:#d8b8731a}
+.fs-battle-played-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fs-battle-played-card .fs-ico-svg{width:11px;height:11px}
 .fs-battle-chip.is-closed{background:#8fb2e02e;color:#d3e4ff}
 
@@ -648,11 +658,23 @@ button.fs-room-pill:hover{border-color:#d8b87366;color:#efe6c8;background:#d8b87
 .fs-shell.is-mobile .fs-card-preview-text{max-height:120px}
 
 /* The dossier tabs and the hover print of its cards. */
-.fs-drawer-tabs{flex:none;display:flex;gap:6px;padding:10px 14px 0;border-bottom:1px solid #ffffff10}
-.fs-drawer-tab{flex:1;padding:9px 10px 10px;border:none;border-bottom:2px solid transparent;background:transparent;color:#a9b4b1;font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;cursor:pointer;transition:.15s}
+.fs-drawer-tabs{flex:none;display:flex;gap:3px;padding:10px 12px 0;border-bottom:1px solid #ffffff10}
+.fs-drawer-tab{flex:1;min-width:0;padding:9px 4px 10px;border:none;border-bottom:2px solid transparent;background:transparent;color:#a9b4b1;font-size:9px;letter-spacing:.055em;text-transform:uppercase;font-weight:700;cursor:pointer;transition:.15s;white-space:nowrap}
 .fs-drawer-tab:hover{color:#e6dfc9}
 .fs-drawer-tab.is-active{color:#f0d79a;border-bottom-color:#d8b873}
 .fs-drawer-note{margin:2px 0 8px;font-size:9.5px;line-height:1.5;color:#9aa5a1}
+.fs-event-list{display:grid;gap:5px;margin-top:8px}
+.fs-event-row{display:grid;grid-template-columns:27px minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;padding:8px;border:1px solid #ffffff12;border-radius:9px;background:#ffffff07;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background .15s,border-color .15s}
+.fs-event-row:hover{border-color:#d8b87366;background:#d8b87312}
+.fs-event-row.is-current,.fs-event-row.is-storm-top{border-color:#d8b87377;background:#d8b87316}
+.fs-event-row.is-in-play{border-color:#91c99d44;background:#91c99d0c}
+.fs-event-row.is-in-hand{border-color:#8fb2e044;background:#8fb2e00d}
+.fs-event-ico{width:27px;height:27px;display:grid;place-items:center;border-radius:7px;background:#d8b87312;color:#e7d29b}
+.fs-event-ico .fs-ico-svg{width:16px;height:16px}
+.fs-event-main{min-width:0;display:flex;flex-direction:column;gap:2px}
+.fs-event-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eee8d6;font-size:10px;font-weight:650}
+.fs-event-kind{color:#8f9b96;font-size:8px;letter-spacing:.12em}
+.fs-event-status{max-width:78px;color:#f0d79a;font-size:7px;line-height:1.25;letter-spacing:.06em;text-align:right;text-transform:uppercase}
 .fs-deck-count{font:700 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#f0d79a}
 .fs-drawer-eyebrow.is-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .fs-drawer-col{font-size:7px;letter-spacing:.12em;text-transform:uppercase;color:#8b958f;font-weight:700}
