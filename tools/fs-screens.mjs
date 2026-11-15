@@ -87,6 +87,7 @@ function el(tag) {
 Object.assign(ctx, {
     document: Object.assign(ctx.document || {}, {
         body: el('body'), documentElement: el('html'), createElement: el,
+        createTextNode: t => ({ text: String(t), children: [] }),
         getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener: nothing,
     }),
     // window — сам контекст, но клавиши камера слушает на нём: без этих двух
@@ -1158,6 +1159,74 @@ function blitzDraftFixture() {
     };
     return { live, seat, view, game, sent, panel };
 }
+
+screen('planning-drawer-1', 'щелчок по жетону приказа не открывает досье; вкладка «Закладки» открывается руками', () => {
+    const st = party('planning-drawer-1');
+    st.seat = 0;      // the view of the first player, as the server sends it
+    const SEAT = vm.runInContext('Seat', ctx);
+    const me = SEAT.of(st).me;
+    const game = Object.create(FS_GAME.prototype);
+    game.state = st; game.mode = 'idle'; game.pending = null; game.status = '';
+    // The fields a living client has from the constructor: refresh() reads
+    // them, and an undefined orderKey would read as a brand-new order.
+    game.orderKey = ''; game.damageTargets = []; game.selected = []; game.hand = [];
+    game.questionMarkersActive = false; game.pendingQuestionRef = null;
+    game.net = { cmd: nothing };
+    game.app = { location: { terrain: { heightAt: () => 0 } } };
+    game.view = { metrics: null, highlights: Array.from({ length: 24 }, () => ({ setEnabled: nothing, position: { set: nothing } })) };
+    const realTilePos = FS_VIEW.tilePos, realHighlight = FS_VIEW.highlight;
+    FS_VIEW.tilePos = () => ({ x: 0, y: 0 });
+    FS_VIEW.highlight = nothing;
+    FSUI.factionSeat = null; FSUI.extraTab = null; FSUI.drawerTab = 'faction';
+    try {
+        const pickCtx = { actions: [] };
+        game.panelPlanning(st, pickCtx);
+        const pick = (pickCtx.actions || []).find(a => a.kind === 'pick' && a.onClick);
+        if (!pick) return 'на панели планирования нет жетонов приказов';
+        pick.onClick();
+        if (game.mode !== 'placeOrder') return 'щелчок по жетону не включил режим выкладки приказа';
+        game.panelPlanning(st, { actions: [] });
+        if (FSUI.factionSeat !== null) return 'щелчок по жетону открыл досье фракции';
+        if (!(FSUI.extraTab && FSUI.extraTab.id === 'planning')) return 'закладка «Закладки» для висящего жетона не создана';
+        // Вручную: открыть досье и нажать «Закладки» — вкладка берёт передний план.
+        FSUI.toggleFactionDrawer(me);
+        FSUI.update(st, Object.assign({}, SCREEN_CTX));
+        const tab = buttonsOf(FSUI.modernRoot).find(b => b.textContent === 'Закладки');
+        if (!tab) return 'в досье нет кнопки «Закладки»';
+        tab.click();
+        const activeTab = buttonsOf(FSUI.modernRoot).find(b => (b.className || '').includes('fs-drawer-tab is-active'));
+        if (!activeTab || activeTab.textContent !== 'Закладки') return 'вкладка «Закладки» не становится активной';
+        if (!textsOf(FSUI.modernRoot).some(t => /Куда положить/.test(t))) return 'в досье нет списка законных систем';
+        return true;
+    } finally {
+        FS_VIEW.tilePos = realTilePos;
+        FS_VIEW.highlight = realHighlight;
+        FSUI.factionSeat = null; FSUI.extraTab = null; FSUI.drawerTab = 'faction';
+        FSUI.update(st, Object.assign({}, SCREEN_CTX));
+    }
+});
+
+screen('operations-order-display-1', 'чужой ход называет имя, приказ и систему того, кто разыгрывает', () => {
+    const st = party('operations-order-display-1');
+    st.phase = 'operations';
+    st.turn = 1;
+    st.order = { seat: 1, order: 'advance', system: st.systems[0].id, phase: 'resolve' };
+    const game = Object.create(FS_GAME.prototype);
+    game.state = st; game.mode = 'idle'; game.pending = null; game.status = '';
+    const ctx2 = { actions: [] };
+    game.panelOperations(st, ctx2);
+    if (!/Ход игрока Противник: Противник разыгрывает приказ «/.test(ctx2.text || '')) return 'текст ожидания не называет ни игрока, ни приказа: ' + ctx2.text;
+    if (!new RegExp('системе ' + st.systems[0].tile).test(ctx2.text)) return 'в тексте ожидания нет системы приказа';
+    // Свой ход со своим приказом остался прежним.
+    st.turn = 0;
+    game.panelOperations(st, { actions: [] });
+    // А без приказа — короткая форма.
+    st.order = null; st.turn = 1;
+    const ctx3 = { actions: [] };
+    game.panelOperations(st, ctx3);
+    if (!/Ход игрока Противник\.$/.test(ctx3.text || '')) return 'без приказа нужна короткая форма ожидания: ' + ctx3.text;
+    return true;
+});
 
 screen('blitz-draft-ui-1', 'карты стартового драфта видны целиком и выбор уходит на сервер', () => {
     const f = blitzDraftFixture();

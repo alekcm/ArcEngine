@@ -902,7 +902,9 @@ const FSUI = {
 
         // The dossier separates faction data, the current battle deck and the
         // full faction event set. Event order and another player's hand stay hidden.
-        const activeTab = ['faction', 'deck', 'events'].includes(this.drawerTab) ? this.drawerTab : 'faction';
+        const validTabs = ['faction', 'deck', 'events'];
+        if (this.extraTab) validTabs.push(this.extraTab.id);
+        const activeTab = validTabs.includes(this.drawerTab) ? this.drawerTab : 'faction';
         const tabs = this.el('div', 'fs-drawer-tabs');
         const me = Seat.of(state).me;
         // A custom tab the game leaves open while an interaction is pending:

@@ -802,13 +802,15 @@ class FSBot {
         const groundLeftList = Object.keys(initial.units)
             .filter(id => initial.units[id] > 0 && (R.unitDef(view, seat, id) || {}).type !== 'ship');
         const groundLeft = groundLeftList.reduce((n, id) => n + initial.units[id], 0);
-        // A world that bears an objective space never stands empty: every
-        // garrisoned world is a world the rivals cannot walk through, and the
-        // next tile of the hand reserves its guard before the home fills up.
-        const garrisonTilesAhead = (view.setup.hand || board.hand(seat))
-            .filter(id => FS_CATALOG.tileFaces(id).some(face => (face.areas || []).some(a => a.world && a.world.objective)))
-            .length;
-        const reserve = isHome && !last ? Math.min(garrisonTilesAhead, Math.max(0, groundLeft - 2)) : 0;
+        // The army is dealt by tile, not piled on the first one: the home
+        // keeps only its even share (rounded up, and at least a pair), every
+        // tile still in the hand gets a garrison world by world, and the last
+        // tile of the build collects all the rest — as the rules demand. A
+        // world a rival can simply walk through undefended is a world handed
+        // over with the tokens on it.
+        const handTiles = ((view.setup.hand || board.hand(seat)) || []).length;
+        const homeShare = Math.max(2, Math.ceil(groundLeft / (handTiles + 1)));
+        const reserve = isHome && !last ? Math.max(0, Math.min(groundLeft - homeShare, groundLeft - 2)) : 0;
         const placements = [];
         // A fallback placement of any left-over piece, for the bad day when
         // «завершить» is rejected by the force-fit rule: something must land.
@@ -846,7 +848,21 @@ class FSBot {
                     && !R.unitsAt(view, sys.id, a.pos).length
                     && R.unitsAt(view, sys.id, a.pos).length < R.capacity(view, sys.id, a.pos))
                 .sort((x, y) => worldScore(y) - worldScore(x));
-            const garrison = unguarded[0] || unguardedRich[0];
+            // Above the token worlds and the rich one the tile also takes its
+            // even share of the box: «на каком мире армии будет уже достаточно»
+            // is answered here — first enough to hold what matters, then enough
+            // that the share of THIS tile is met, and the rest moves on.
+            const mineHere = (view.units || []).filter(u => u.seat === seat && u.system === sys.id
+                && (R.unitDef(view, seat, u.unit) || {}).type !== 'ship').length;
+            const share = Math.max(1, Math.ceil(groundLeft / (handTiles + 1)));
+            let garrison = unguarded[0] || unguardedRich[0];
+            if (!garrison && mineHere < share) {
+                const free = sys.areas
+                    .filter(a => a.world && R.unitsAt(view, sys.id, a.pos).length < R.capacity(view, sys.id, a.pos))
+                    .map(a => ({ a, score: worldScore(a) - R.unitsAt(view, sys.id, a.pos).length }))
+                    .sort((x, y) => y.score - x.score);
+                garrison = free.length ? free[0].a : null;
+            }
             const unitId = groundLeftList[0];
             if (garrison && unitId) {
                 return { cmd: { type: 'setupUnit', unit: unitId, pos: garrison.pos }, must: true, label: 'setupUnit' };
@@ -855,7 +871,7 @@ class FSBot {
         }
         // The home and the last tile take the rest: structures first, then the
         // units — ground spread across the worlds, ships together in a void.
-        // On the home the garrison reserve for the tiles of the hand stays.
+        // On the home the share of the tiles still in the hand stays in the box.
         if (fallback.length && fallback[0].type === 'setupStructure') placements.push(fallback.shift());
         const unitId = Object.keys(initial.units).find(id => initial.units[id] > 0
             && ((R.unitDef(view, seat, id) || {}).type === 'ship' || groundLeft > reserve));

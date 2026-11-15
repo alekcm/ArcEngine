@@ -1243,7 +1243,11 @@ const FSView = {
                 yaw: i < Math.ceil(FS_CATALOG.factions.length / 2) ? Math.PI : 0,
             }))
             : [{ faction: factionId, z: cz + 110, yaw: Math.PI }, { faction: factionId, z: cz - 110, yaw: 0 }];
-        const spreadX = 64;
+        // The stride of a row follows the pit the units stand on: every
+        // miniature gets the piece of ground it would command in the game —
+        // the round face of a world for the ground units, the hex of the void
+        // for the ships — so a new size is weighed against the map itself.
+        const spreadX = 120;
         rows.forEach((row, ri) => {
             const faction = FS_CATALOG.faction(row.faction);
             if (!faction) return;
@@ -1251,6 +1255,16 @@ const FSView = {
             units.forEach((u, i) => {
                 const x = cx + (i - (units.length - 1) / 2) * spreadX;
                 const y = app.location.terrain.heightAt(x, row.z) + 6;
+                // The pit of the map under the unit: the Ø96 circle of a world
+                // or the hex of the void, quiet colours, never picked.
+                const pad = BABYLON.MeshBuilder.CreateCylinder('fs-stage-pad-' + ri + '-' + u.id,
+                    u.type === 'ship'
+                        ? { diameter: 118, height: 1, tessellation: 6 }
+                        : { diameter: this.PLANET_D, height: 1, tessellation: 32 }, view.scene);
+                pad.position.set(x, app.location.terrain.heightAt(x, row.z) + 1.5, row.z);
+                pad.material = view.material('stage-pad-' + u.type, u.type === 'ship' ? '#232b3d' : '#434b38');
+                pad.isPickable = false;
+                view.stageNodes.push(pad);
                 const tune = this.tuneFor(row.faction, u.type, u.id);
                 const model = this.factionModel(view, row.faction, u.type, u.id,
                     { primary: this.factionColor(row.faction) });
@@ -1687,19 +1701,25 @@ const FSView = {
             const p = this.areaPos(app, sys, o.area, view.metrics);
             const root = new BABYLON.TransformNode('fs-objective-' + o.id, view.scene);
             root.position.set(p.x + 40, h(p.x, p.y) + 6.5, p.y + 40);
-            const gold = view.material('objective-bronze', '#b88a43');
-            const gem = view.material('objective-' + o.faction, this.factionColor(o.faction), { emissive: true });
+            // The whole token wears the colour the PLAYER got at the table, as
+            // every other piece of his army does — a second same-faction army
+            // keeps no bronze of its twin: plinth and crest are the shades of
+            // its cloth colour, the medallion the cloth itself.
+            const owner = FS_RULES.objectiveOwner(state, o);
+            const ownerColor = (owner && owner.color) || this.factionColor(o.faction) || '#e3b64f';
+            const gold = view.material('objective-plinth-' + ownerColor, this.shade(ownerColor, -35));
+            const gem = view.material('objective-face-' + ownerColor, ownerColor, { emissive: true });
             const plinth = BABYLON.MeshBuilder.CreateCylinder('fs-objective-plinth-' + o.id, { diameter: 17, height: 3, tessellation: 12 }, view.scene);
             plinth.parent = root; plinth.position.y = 1.5; plinth.material = gold;
             const medallion = BABYLON.MeshBuilder.CreateCylinder('fs-objective-face-' + o.id, { diameter: 13, height: 1.5, tessellation: 12 }, view.scene);
             medallion.parent = root; medallion.position.y = 3.4; medallion.material = gem;
             const crest = BABYLON.MeshBuilder.CreatePolyhedron('fs-objective-crest-' + o.id, { type: 1, size: 4 }, view.scene);
-            crest.parent = root; crest.position.y = 5.3; crest.material = gold; crest.isPickable = false;
+            crest.parent = root; crest.position.y = 5.3;
+            crest.material = view.material('objective-crest-' + ownerColor, this.shade(ownerColor, 45));
+            crest.isPickable = false;
             // The flag of the objective stands ON the token — one piece, moved
             // and collected as one, painted with the colour of the player who
             // needs to take it. It stands where the token stands.
-            const owner = FS_RULES.objectiveOwner(state, o);
-            const ownerColor = (owner && owner.color) || this.factionColor(o.faction) || '#e3b64f';
             const flag = new BABYLON.TransformNode('fs-objective-flag-' + o.id, view.scene);
             flag.parent = root;
             flag.position.y = 8.2;

@@ -1353,7 +1353,8 @@ class FSGame {
                     if (!any) list.append(FSUI.el('div', 'fs-empty', 'Нет законной системы.'));
                     body.append(list);
                 });
-            if (FSUI.factionSeat !== me && FSUI.renderState) FSUI.toggleFactionDrawer(me);
+            // The tab is merely left open: a click on a token must never drag
+            // the dossier of the faction onto the screen by itself.
         }
         ctx.status = this.status || (left ? 'Осталось приказов: ' + left : 'Все приказы выложены.');
         ctx.tokens = [
@@ -1428,7 +1429,17 @@ class FSGame {
         ctx.title = 'Операции';
         if (!GamePhase.of(s).isTurn(me)) {
             const who = s.players[GamePhase.of(s).turn] ? s.players[GamePhase.of(s).turn].name : '—';
-            ctx.text = 'Ход игрока ' + who + '.';
+            // The order under way is public information the moment it turns
+            // face up: which of the bots or players is resolving WHAT, where.
+            const underWay = OrderContext.of(s.order);
+            if (s.order && Number.isInteger(underWay.seat)) {
+                const owner = s.players[underWay.seat] ? s.players[underWay.seat].name : who;
+                const sys = Board.of(s).system(underWay.system);
+                ctx.text = 'Ход игрока ' + who + ': ' + owner + ' разыгрывает приказ «'
+                    + FS_RULES.orderName(underWay.kind) + '»' + (sys ? ' в системе ' + sys.tile : '') + '.';
+            } else {
+                ctx.text = 'Ход игрока ' + who + '.';
+            }
             ctx.status = '';
             return;
         }
