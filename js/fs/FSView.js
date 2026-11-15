@@ -1282,7 +1282,10 @@ const FSView = {
 
     clearModelStage(view) {
         for (const node of view.stageNodes || []) {
-            try { node.dispose(false, true); } catch (e) { /* already gone */ }
+            // Never dispose materials or textures: the stage clones share the
+            // cached faction materials with the board — burning them kills
+            // every model of that faction until reload.
+            try { node.dispose(false, false); } catch (e) { /* already gone */ }
         }
         view.stageNodes = [];
     },
