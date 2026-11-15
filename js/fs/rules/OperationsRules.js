@@ -457,101 +457,13 @@ class OperationsRules {
         if (card.unit) {
             const reqs = card.reqs || [];
             const present = this.presentNames(state, seat);
-            const optsLazy = !!(opts && opts.lazy);
-            // By default the requisite is read eagerly: the unit half joins
-            // only while one of its units stands in the battle («A unit used
-            // to meet this requisite must be unrouted»), and the paragraphs
-            // with a marker of their own («*Титан «Гончая»:* … *Линкор:* …»)
-            // join only while their own unit stands. That is the right answer
-            // for the bot that weighs a card, for the audits that read it and
-            // for a review that repeats it.
-            if (!optsLazy) {
-                const there = FS_EFFECTS.meetsRequisite(card, present, { kind: 'combat', faction });
-                if (there) {
-                    steps.push(...FS_EFFECTS.parse(card.unit, { kind: 'combat', faction, reqs, present }));
-                }
-                return steps;
-            }
-            // LAZY (the real resolve of a card, «top to bottom»): the
-            // paragraphs of the unit half go in whole, and the standing of
-            // their units is judged when the paragraph is REACHED. «Вечное
-            // завоевание» rallies the routed warrior in its general half
-            // first, and the «*Воин/…:*» line then finds him standing. The
-            // reveal itself is remembered by the caller (`requisiteMet`):
-            // a card admitted by its unit keeps the half even if the
-            // general half spent that very unit.
-            const paras = FS_EFFECTS.paragraphs(card.unit, { kind: 'combat', faction });
-            const allNames = ((card.reqs) || []).slice();
-            for (const para of paras) if (para.names) allNames.push(...para.names);
-            // An exact reader of the faction («Защитный барьер» of the
-            // Inquisition) keys on the WHOLE text of the half and fans the
-            // markers out by itself, embedding their own gates into the
-            // steps. When it has answered, the paragraphs are not taken
-            // apart again: the gates are strict when their units are not on
-            // the line of the card, and the steps without a gate ride the
-            // gate of the card.
-            const wholeText = FS_EFFECTS.parse(card.unit, { kind: 'combat', faction });
-            if (wholeText.some(s => s && Array.isArray(s.reqNames) && s.reqNames.length)) {
-                for (const s of wholeText) {
-                    if (!s || s.op === 'note' || s.op === 'manual') { steps.push(s); continue; }
-                    if (Array.isArray(s.reqNames) && s.reqNames.length) {
-                        const onCard = s.reqNames.some(n => reqs.some(rq => FS_EFFECTS.sameName(n, rq)));
-                        if (!onCard) s.strictRequisite = true;
-                    } else {
-                        s.reqNames = allNames.slice();
-                    }
-                    steps.push(s);
-                }
-                return steps;
-            }
-            // The same «— или —» shape the parser itself notices: the markers
-            // list the alternatives of ONE choice, not separate paragraphs.
-            const lead = paras.length && !paras[0].names ? paras[0].text.trim() : '';
-            const eitherList = /—\s*или\s*—/i.test(String(card.unit || '')) && /:\s*$/.test(lead);
-            const addReqs = (part, names) => {
-                // Only the outer steps take the gate. The steps a step brings
-                // («чтобы…», the options of a choice, a `sequence`) run by
-                // the logic of the sentence they belong to, and their text
-                // already names the fitting unit («замените Сестру Репентию
-                // …») — a second gate would hide what the printed branch
-                // promises.
-                for (const s of part) if (s && !s.reqNames && names.length) s.reqNames = names.slice();
-                return part;
-            };
-            if (paras.some(x => x.names) && !eitherList) {
-                for (const para of paras) {
-                    // A paragraph with a marker of its own is gated by the
-                    // units of its marker alone — not by the words of the
-                    // card («*Линкор:* …» on «Молот Императора», whose line
-                    // asks for the Titan alone) and never by what the reveal
-                    // admitted: the marker IS the requisite (`strictRequisite`,
-                    // so a destroyed «*Сестра Репентия:*» silences her line).
-                    // The paragraph without a marker rides the gate of the
-                    // card: fixed at the reveal («requisiteMet»), renewed if
-                    // an earlier paragraph creates its units at its turn.
-                    const raw = para.names ? ('*' + para.namesRaw + ':* ' + para.text) : para.text;
-                    const whole = FS_EFFECTS.parse(raw, { kind: 'combat', faction });
-                    const part = whole.length || !para.names ? whole
-                        : FS_EFFECTS.parse(para.text, { kind: 'combat', faction });
-                    if (para.names && para.names.length) {
-                        // The marker that the line of the card itself already
-                        // names («*Воин/…:*» under «reqs: Воин, …») shares the
-                        // fate of the whole half: admitted at the reveal, it
-                        // is not lost even when the general half spends the
-                        // very unit. A marker the card itself never mentions
-                        // («*Линкор:* …» under «reqs: Титан …» on «Молот
-                        // Императора») stands by its own unit only.
-                        const onCard = para.names.some(n => reqs.some(rq => FS_EFFECTS.sameName(n, rq)));
-                        for (const s of addReqs(part, para.names)) {
-                            if (s && s.reqNames && !onCard) s.strictRequisite = true;
-                            steps.push(s);
-                        }
-                    } else {
-                        steps.push(...addReqs(part, allNames));
-                    }
-                }
-            } else {
-                steps.push(...addReqs(FS_EFFECTS.parse(card.unit, { kind: 'combat', faction }), allNames));
+            // The paragraphs of the text may name their own requisites
+            // («*Титан «Гончая»:* … *Линкор:* …»): a unit of such a paragraph
+            // meets the requisite just as the one of the card's own line does,
+            // and only the paragraphs whose unit stands in the battle are read.
+            const there = FS_EFFECTS.meetsRequisite(card, present, { kind: 'combat', faction });
+            if (there) {
+                steps.push(...FS_EFFECTS.parse(card.unit, { kind: 'combat', faction, reqs, present }));
             }
         }
         return steps;
