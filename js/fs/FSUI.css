@@ -852,3 +852,30 @@ button.fs-room-pill:hover{border-color:#d8b87366;color:#efe6c8;background:#d8b87
    больше не всегда вверху — стрелка показывает, где он. */
 .fs-compass{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid rgba(214,177,104,.35);border-radius:999px;font:10px/1.4 ui-monospace,monospace;letter-spacing:.08em;color:#d8c9a4;background:rgba(10,16,22,.55)}
 .fs-compass-needle{display:inline-block;width:9px;height:9px;background:linear-gradient(180deg,#e8d7a8 0 50%,#6b7480 50% 100%);clip-path:polygon(50% 0,100% 100%,0 100%);transform-origin:50% 50%}
+.fs-overlay.is-stage-mode{background:transparent;pointer-events:none;display:block;padding:0}
+.fs-lobby.is-tuner{position:absolute;top:10px;right:10px;bottom:10px;width:min(360px,calc(100vw - 20px));max-height:none;pointer-events:auto}
+.fs-lobby.is-tuner .fs-lobby-hero{padding:14px 16px 10px}
+.fs-lobby.is-tuner .fs-lobby-title{font-size:22px;margin:4px 0}
+.fs-lobby.is-tuner .fs-lobby-subtitle,.fs-lobby.is-tuner .fs-faction-grid,.fs-lobby.is-tuner .fs-lobby-players{display:none}
+.fs-tuner{display:flex;flex-direction:column;gap:10px;font-size:11px}
+.fs-tune-pickers{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.fs-tune-select{width:100%;color:var(--ink);padding:7px 8px;border:1px solid #ffffff25;border-radius:7px;background:#070c10;outline:none}
+.fs-tune-shared{padding:6px 9px;border-left:2px solid #d8b873;background:#d8b8730e;color:#e7d8b3;font-size:10px}
+.fs-tune-row{display:flex;align-items:center;gap:8px}
+.fs-tune-ico{width:18px;height:18px;color:var(--gold-hi);flex:none}
+.fs-tune-ico .fs-ico-svg{width:18px;height:18px}
+.fs-tune-label{width:120px;flex:none;font-size:10px;color:#c9cec6}
+.fs-tune-range{flex:1;accent-color:#d8b873}
+.fs-tune-num{min-width:52px;text-align:right;color:var(--gold-hi);font-size:11px}
+.fs-tune-ctls{display:flex;gap:6px;flex-wrap:wrap}
+.fs-tune-btn{flex:1;min-width:96px;padding:8px 6px;border:1px solid #ffffff24;border-radius:8px;background:#ffffff0d;color:inherit;font-size:10px;cursor:pointer}
+.fs-tune-btn:hover{background:#d8b87318;border-color:#d8b87388}
+.fs-tune-btn.is-primary{border-color:#d8b87388;background:#d8b87318;color:var(--gold-hi);font-weight:600}
+.fs-tune-note{padding:7px 10px;border:1px solid #d8b87355;border-radius:8px;background:#d8b87312;color:#eeddb0;font-size:10px;line-height:1.4}
+.fs-tune-source{color:#93a09d;font-size:9px;line-height:1.4;word-break:break-all}
+.fs-tune-list{display:flex;flex-direction:column;gap:3px;border-top:1px solid #ffffff14;padding-top:8px}
+.fs-tune-entry{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;background:#ffffff08}
+.fs-tune-entry-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
+.fs-tune-entry-vals{font-size:10px;color:var(--gold-hi);white-space:nowrap}
+.fs-tune-entry-x{width:18px;height:18px;border:none;border-radius:50%;background:#ffffff14;color:#d9c9a8;cursor:pointer;line-height:1;font-size:12px;padding:0}
+.fs-tune-entry-x:hover{background:#a26e60;color:#fff}

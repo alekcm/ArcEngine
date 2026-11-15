@@ -78,6 +78,7 @@ const FSView = {
             glow: null,
             modelCache: new Map(),
             modelLoads: new Map(),
+            stageNodes: [],       // the lobby tuner stage, outside any state
             modelMaterials: new Map(),
             onModelReady: null,
             built: false,
@@ -1121,6 +1122,163 @@ const FSView = {
         return null;
     },
 
+    // --- model tuning: the «front» and the size of every miniature -----------
+    //
+    // The OBJs ship in arbitrary poses and sizes: the normalisation makes the
+    // largest side the game size, but it cannot know which way the model
+    // FACES. The combat code turns every miniature so its +Z looks at the
+    // enemy — for a model whose gun pod is not +Z that looks wrong. This
+    // table is the manual correction, one entry per model («faction/id» for a
+    // unit that has its own OBJ, «faction/*ground» / «faction/*ship» for a
+    // shared by-type model): yaw in degrees (how much to turn the holder so
+    // the model's real front points where the code points +Z) and a scale
+    // multiplier on the normalised size. Three layers stack: the defaults of
+    // this table < js/fs/FSModelTuning.json (served by the local dev server,
+    // written by the lobby tuner) < the unsaved draft in localStorage.
+    MODEL_TUNING: {
+        // 'космодесант/боевые-баржи': { yaw: 90, scale: 1 },
+    },
+
+    /** The localStorage key of the tuner's unsaved draft. */
+    TUNE_STORE: 'fs.modelTuning',
+
+    /** The key a tuning entry is written under: the exact unit when it has its
+     * own OBJ, else the shared by-type model that will actually be loaded. */
+    tuningKey(faction, unitType, unitId) {
+        const byUnit = this.FACTION_UNIT_MODELS[faction] && unitId
+            ? this.FACTION_UNIT_MODELS[faction][unitId] : null;
+        return faction + '/' + (byUnit ? unitId : '*' + unitType);
+    },
+
+    /** The three layers of one key side by side (read-only views). */
+    tuneLayers(key) {
+        const local = (typeof Store !== 'undefined' && Store.getJSON)
+            ? (Store.getJSON(this.TUNE_STORE, {}) || {}) : {};
+        return {
+            code: this.MODEL_TUNING[key] || null,
+            file: (this.tuningFile || {})[key] || null,
+            local: local[key] || null,
+        };
+    },
+
+    /** The effective tune of one model: yaw in degrees and a scale multiplier.
+     * The by-type model merges under the exact-unit one so a shared default
+     * holds for every unit of a type until a unit overrides it. */
+    tuneFor(faction, unitType, unitId) {
+        const out = { yaw: 0, scale: 1 };
+        const localAll = (typeof Store !== 'undefined' && Store.getJSON)
+            ? (Store.getJSON(this.TUNE_STORE, {}) || {}) : {};
+        for (const key of [faction + '/*' + unitType, faction + '/' + unitId]) {
+            for (const one of [this.MODEL_TUNING[key], (this.tuningFile || {})[key], localAll[key]]) {
+                if (!one) continue;
+                if (Number.isFinite(one.yaw)) out.yaw = one.yaw;
+                if (Number.isFinite(one.scale) && one.scale > 0) out.scale = one.scale;
+            }
+        }
+        return out;
+    },
+
+    /** Every tuned key, merged: the content the file export carries. */
+    tuneAll() {
+        const local = (typeof Store !== 'undefined' && Store.getJSON)
+            ? (Store.getJSON(this.TUNE_STORE, {}) || {}) : {};
+        const out = {};
+        for (const src of [this.MODEL_TUNING, this.tuningFile || {}, local]) {
+            for (const [key, one] of Object.entries(src)) {
+                if (!one) continue;
+                const next = Object.assign({}, out[key]);
+                if (Number.isFinite(one.yaw)) next.yaw = one.yaw;
+                if (Number.isFinite(one.scale) && one.scale > 0) next.scale = one.scale;
+                if (Object.keys(next).length) out[key] = next;
+            }
+        }
+        return out;
+    },
+
+    /** The tuner's draft: an unsaved correction lives in localStorage, above
+     * the file and the code table, until it is saved to the server or exported. */
+    setTuneLocal(key, patch) {
+        if (typeof Store === 'undefined' || !Store.getJSON) return;
+        const all = Store.getJSON(this.TUNE_STORE, {}) || {};
+        if (patch === null) delete all[key];
+        else all[key] = Object.assign({}, all[key], patch);
+        if (!Object.keys(all).length) Store.remove(this.TUNE_STORE);
+        else Store.set(this.TUNE_STORE, JSON.stringify(all));
+    },
+
+    /** The tuning file the dev server writes: optional, absence is silence. */
+    fetchTuning() {
+        if (typeof fetch !== 'function') return Promise.resolve(null);
+        const done = data => {
+            this.tuningFile = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
+            return this.tuningFile;
+        };
+        this.tuningPromise = fetch('js/fs/FSModelTuning.json', { cache: 'no-store' })
+            .then(r => (r.ok ? r.json() : {})).then(done).catch(() => done(null));
+        return this.tuningPromise;
+    },
+
+    // --- the lobby tuner stage: two facing rows, like a battle ----------------
+
+    /**
+     * The stage of the lobby model tuner: every unit of the faction stands
+     * twice — one copy in the attacker's row, one in the defender's — so the
+     * rows face each other exactly the way the combat code turns them. A model
+     * whose front is off is seen immediately.
+     */
+    buildModelStage(app, view, factionId) {
+        this.clearModelStage(view);
+        if (!view.stageNodes) view.stageNodes = [];
+        const faction = FS_CATALOG.faction(factionId);
+        if (!faction || !app || !app.location) return;
+        const units = faction.units || [];
+        const cx = app.location.width / 2, cz = app.location.height / 2;
+        const spreadX = 64, gapZ = 110;
+        const placeRow = (z, tag) => {
+            units.forEach((u, i) => {
+                const x = cx + (i - (units.length - 1) / 2) * spreadX;
+                const y = app.location.terrain.heightAt(x, z) + 6;
+                const tune = this.tuneFor(factionId, u.type, u.id);
+                const model = this.factionModel(view, factionId, u.type, u.id,
+                    { primary: this.factionColor(factionId) });
+                const holder = new BABYLON.TransformNode('fs-stage-' + tag + '-' + u.id, view.scene);
+                if (model) {
+                    const scl = (u.type === 'ship' ? 1 : this.ON_WORLD) * tune.scale;
+                    this.placeFactionModel(holder, model, { x, y, z }, scl, false);
+                } else {
+                    // No OBJ yet (loading) or none at all: the board's fallback silhouette.
+                    holder.position.set(x, y + 9, z);
+                    const mesh = BABYLON.MeshBuilder.CreateCylinder('fs-stage-sh-' + tag + '-' + u.id,
+                        { diameterTop: 16, diameterBottom: 24, height: 18, tessellation: 8 }, view.scene);
+                    mesh.parent = holder;
+                    mesh.isPickable = false;
+                    mesh.material = view.material('stage-' + factionId, this.factionColor(factionId), { emissive: true });
+                    holder.scaling.setAll(tune.scale);
+                }
+                // The exact battle transform: the rows face the stage centre,
+                // so this is precisely the yaw a contested area would give.
+                const toward = tag === 'att' ? (cz - z) : (cz - z);
+                holder.rotation.y = Math.atan2(0, toward) + tune.yaw * Math.PI / 180;
+                view.stageNodes.push(holder);
+            });
+        };
+        placeRow(cz + gapZ, 'att');
+        placeRow(cz - gapZ, 'def');
+        // The contested area between the rows: a quiet line on the table.
+        const line = BABYLON.MeshBuilder.CreateBox('fs-stage-line',
+            { width: (units.length * spreadX) + 60, depth: 2, height: 1 }, view.scene);
+        line.position.set(cx, app.location.terrain.heightAt(cx, cz) + 5, cz);
+        line.material = view.material('stage-line', '#d8b873', { emissive: true });
+        view.stageNodes.push(line);
+    },
+
+    clearModelStage(view) {
+        for (const node of view.stageNodes || []) {
+            try { node.dispose(false, true); } catch (e) { /* already gone */ }
+        }
+        view.stageNodes = [];
+    },
+
     factionModel(view, faction, unitType, unitId, palette) {
         // The model of the unit itself, per the faction's smoly file; the old
         // per-type pair stays as the fallback. The army palette changes the
@@ -1233,7 +1391,12 @@ const FSView = {
         // No extra base disc or rim under the miniature: the model itself has
         // its own stand, and a black circle around it only gets in the way.
         const holder = new BABYLON.TransformNode('fs-unit-model-' + unit.id, view.scene);
-        this.placeFactionModel(holder, model, { x: pos.x + offset.x, y: pos.y, z: pos.z + offset.y }, scale, unit.routed);
+        // The manual tune of the model: the scale rides the normalised size,
+        // the base yaw stands the model on its corrected front even outside a
+        // battle (where the facing below rewrites the rotation outright).
+        const tune = this.tuneFor(unit.faction, unitType, unit.unit);
+        this.placeFactionModel(holder, model, { x: pos.x + offset.x, y: pos.y, z: pos.z + offset.y }, scale * tune.scale, unit.routed);
+        if (!unit.routed && tune.yaw) holder.rotation.y = tune.yaw * Math.PI / 180;
         holder.metadata = { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area };
         for (let i = 0; i < model.parts.length; i++) {
             const source = model.parts[i];
@@ -1335,7 +1498,9 @@ const FSView = {
                     base = { x: p.x, y: h(p.x, p.y) + 4 + this.MARKER_Y, z: p.y };
                 }
                 if (view.unitPositions) view.unitPositions.set(u.id, { x: base.x + off.x, y: base.y, z: base.z + off.y });
-                placed.push({ root: null, x: base.x + off.x, z: base.z + off.y, seat: u.seat, routed: !!u.routed });
+                const tune = this.tuneFor(owner ? owner.faction : '', def && def.type, u.unit);
+                placed.push({ root: null, x: base.x + off.x, z: base.z + off.y, seat: u.seat,
+                    routed: !!u.routed, yaw: tune.yaw * Math.PI / 180, scl: tune.scale });
                 const slot = placed[placed.length - 1];
                 const model = def && this.addFactionUnit(view, u, base, off, color, def.type, onWorld, palette);
                 if (model) { slot.root = model; return; }
@@ -1370,6 +1535,8 @@ const FSView = {
                         part.isPickable = true; part.metadata = unitMeta;
                     }
                     if (u.routed) craft.rotation.z = Math.PI / 2;
+                    else if (slot.yaw) craft.rotation.y = slot.yaw;
+                    craft.scaling.scaleInPlace(slot.scl);
                     this.addMarker(view, craft, 'actor');
                 } else {
                     const mesh = BABYLON.MeshBuilder.CreateCylinder('fs-u' + u.id,
@@ -1379,6 +1546,8 @@ const FSView = {
                     slot.root = mesh;
                     mesh.material = unitMaterial;
                     if (u.routed) mesh.rotation.z = Math.PI / 2;
+                    else if (slot.yaw) mesh.rotation.y = slot.yaw;
+                    mesh.scaling.scaleInPlace(slot.scl);
                     mesh.isPickable = true; mesh.metadata = unitMeta;
                     this.addMarker(view, mesh, 'actor');
                 }
@@ -1396,7 +1565,10 @@ const FSView = {
                     const fz = foes.reduce((a, q) => a + q.z, 0) / foes.length;
                     for (const q of placed) {
                         if (q.seat !== seat || q.routed || !q.root) continue;
-                        q.root.rotation.y = Math.atan2(fx - q.x, fz - q.z);
+                        // The manual correction of the model's front rides on
+                        // top of the facing turn: a wrong-side OBJ is fixed in
+                        // the lobby tuner, and the fix shows up exactly here.
+                        q.root.rotation.y = Math.atan2(fx - q.x, fz - q.z) + (q.yaw || 0);
                     }
                 }
             }

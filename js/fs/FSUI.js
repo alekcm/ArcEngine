@@ -1696,7 +1696,10 @@ const FSUI = {
     renderModernLobby() {
         const root = this.modernRoot, info = this.currentLobby;
         if (!root || !info) return;
-        const overlay = this.el('div', 'fs-overlay'); const card = this.el('section', 'fs-lobby');
+        const overlay = this.el('div', 'fs-overlay' + (info.mode === 'models' ? ' is-stage-mode' : ''));
+        // In the tuner the card docks to the edge: the 3D stage of facing
+        // rows stays visible and orbitable beside it.
+        const card = this.el('section', 'fs-lobby' + (info.mode === 'models' ? ' is-tuner' : ''));
         const hero = this.el('div', 'fs-lobby-hero');
         hero.append(this.el('div', 'fs-lobby-kicker', 'Стратегическая игра · 2–4 игрока'));
         hero.append(this.el('h1', 'fs-lobby-title', 'Forbidden Stars'));
@@ -1859,8 +1862,9 @@ const FSUI = {
         });
         body.append(modes);
         if (info.mode === 'battle' && info.battle) body.append(this.renderBattleSetup(info.battle, info));
+        if (info.mode === 'models' && info.tuning) body.append(this.renderModelTuner(info.tuning));
         if (info.mode === 'game') body.append(this.renderLobbyStart(info));
-        if (info.mode !== 'game') {
+        if (info.mode === 'map' || info.mode === 'battle') {
             const start = this.el('button', 'fs-start-test');
             start.type = 'button';
             start.append(this.iconEl(info.mode === 'battle' ? 'mark.damage' : 'ui.card', 'fs-start-icon'));
@@ -1873,9 +1877,107 @@ const FSUI = {
         if (info.status) body.append(this.el('div', 'fs-lobby-error', info.status));
         const foot = this.el('div', 'fs-lobby-foot', info.mode === 'game'
             ? 'Каждый выбирает фракцию и нажимает «Готов»; хозяин комнаты (первый вошедший) запускает партию кнопкой «Начать игру». Фракцию можно менять, пока игра не началась. Отправьте код комнаты друзьям.'
+            : info.mode === 'models'
+            ? 'На сцене за окном все отряды фракции стоят двумя рядами лицом к лицу, как в бою: верхний ряд смотрит «вниз», нижний — «вверх». Та сторона модели, что смотрит на противника, и есть передняя. Крутите модель, пока ряды не встанут правильно.'
             : 'Тест играется одним человеком: оба места за вами, интерфейс показывает, чей сейчас ход. Обновите страницу, чтобы вернуться к выбору режима.');
         body.append(foot);
         card.append(body); overlay.append(card); root.append(overlay);
+    },
+
+    // --- the model tuner (lobby mode «models») --------------------------------
+    //
+    // The correction desk of the miniatures: the 3D stage behind shows every
+    // unit of the picked faction twice, in two rows facing each other like a
+    // battle. Yaw marks which side is the front (what the combat code looks at
+    // the enemy with); the size multiplies the normalised model size.
+    renderModelTuner(t) {
+        const box = this.el('div', 'fs-tuner');
+        box.append(this.el('div', 'fs-eyebrow', 'Модели на сцене — передняя сторона и размер'));
+        const pickers = this.el('div', 'fs-tune-pickers');
+        const selF = this.el('select', 'fs-tune-select');
+        for (const f of t.factions || []) {
+            const opt = this.el('option', '', f.name);
+            opt.value = f.id;
+            if (f.id === t.faction) opt.selected = true;
+            selF.append(opt);
+        }
+        selF.value = t.faction || '';
+        selF.addEventListener('change', () => t.onFaction && t.onFaction(selF.value));
+        const selU = this.el('select', 'fs-tune-select');
+        for (const u of t.units || []) {
+            const opt = this.el('option', '', u.name + (u.shared ? ' (общая модель типа)' : ''));
+            opt.value = u.id;
+            if (u.id === t.unit) opt.selected = true;
+        }
+        selU.value = t.unit || '';
+        selU.addEventListener('change', () => t.onUnit && t.onUnit(selU.value));
+        pickers.append(selF, selU);
+        box.append(pickers);
+        if (t.shared) {
+            box.append(this.el('div', 'fs-tune-shared',
+                'У этого отряда нет своей модели — настройка меняет общую модель типа «'
+                + (t.key && t.key.endsWith('*ship') ? 'корабль' : 'наземный') + '» всей фракции.'));
+        }
+        // The two sliders. A drag moves the stage live; the release re-renders
+        // the panel (a rebuilt input under the pointer would swallow the drag).
+        const slider = (label, icon, min, max, step, value, fmt, apply) => {
+            const row = this.el('label', 'fs-tune-row');
+            row.append(this.iconEl(icon, 'fs-tune-ico'));
+            row.append(this.el('span', 'fs-tune-label', label));
+            const input = this.el('input', 'fs-tune-range');
+            input.type = 'range';
+            input.min = String(min);
+            input.max = String(max);
+            input.step = String(step);
+            input.value = String(value);
+            const num = this.el('b', 'fs-tune-num', fmt(value));
+            input.addEventListener('input', () => { num.textContent = fmt(Number(input.value)); apply(Number(input.value), false); });
+            input.addEventListener('change', () => apply(Number(input.value), true));
+            row.append(input, num);
+            return row;
+        };
+        box.append(slider('Поворот передней стороны', 'ui.next', -180, 180, 5, t.yaw,
+            v => (v > 0 ? '+' : '') + v + '°',
+            (v, done) => (done ? t.onChange : t.onPreview) && (done ? t.onChange : t.onPreview)({ yaw: v })));
+        box.append(slider('Размер модели', 'ui.die', 0.4, 2.5, 0.05, t.scale,
+            v => '×' + (Math.round(v * 100) / 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, ''),
+            (v, done) => (done ? t.onChange : t.onPreview) && (done ? t.onChange : t.onPreview)({ scale: v })));
+        const ctls = this.el('div', 'fs-tune-ctls');
+        const btn = (label, title, onClick, primary) => {
+            const b = this.el('button', primary ? 'fs-tune-btn is-primary' : 'fs-tune-btn');
+            b.type = 'button';
+            b.textContent = label;
+            b.title = title;
+            b.addEventListener('click', () => onClick && onClick());
+            return b;
+        };
+        ctls.append(
+            btn('Сбросить модель', 'Убрать черновик этой модели — вернутся значения файла и кода', () => t.onReset && t.onReset()),
+            btn('Скопировать JSON', 'Весь набор настроек в буфер обмена — для вставки в js/fs/FSModelTuning.json', () => t.onExport && t.onExport()),
+            btn('Сохранить в файл', 'Записать js/fs/FSModelTuning.json через локальный сервер игры', () => t.onSaveFile && t.onSaveFile(), true),
+        );
+        box.append(ctls);
+        if (t.note) box.append(this.el('div', 'fs-tune-note', t.note));
+        box.append(this.el('div', 'fs-tune-source', 'Источник значений этой модели: ' + (t.source || 'по умолчанию') + '. Ключ: ' + (t.key || '—') + '.'));
+        if ((t.entries || []).length) {
+            const list = this.el('div', 'fs-tune-list');
+            list.append(this.el('div', 'fs-eyebrow', 'Настроено вручную'));
+            for (const e of t.entries) {
+                const row = this.el('div', 'fs-tune-entry');
+                row.append(this.el('span', 'fs-tune-entry-name', e.label));
+                row.append(this.el('span', 'fs-tune-entry-vals',
+                    (e.yaw > 0 ? '+' : '') + e.yaw + '° · ×' + e.scale));
+                const x = this.el('button', 'fs-tune-entry-x');
+                x.type = 'button';
+                x.title = 'Убрать черновик браузера для этой записи';
+                x.textContent = '×';
+                x.addEventListener('click', () => t.onReset && t.onReset(e.key));
+                row.append(x);
+                list.append(row);
+            }
+            box.append(list);
+        }
+        return box;
     },
 
     // The start of the ordinary party: the host has «Начать игру» (grey until
