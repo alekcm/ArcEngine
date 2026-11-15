@@ -778,14 +778,23 @@ class CombatRules {
                     this.engine.log(state, staged.seat, state.players[staged.seat].name
                         + ': общие способности этой карты не разыгрываются.');
                 }
-                const steps = this.engine.cardSteps(state, staged.seat, staged.card, { noGeneral });
+                const steps = this.engine.cardSteps(state, staged.seat, staged.card, { noGeneral, lazy: true });
                 if (steps.length) {
                     // The reveal waits for the effect of the card to be over.
                     turn.step = 'effect';
                     turn.nextStep = 'reveal';
+                    // The card was admitted by the standing of its units AT
+                    // THIS MOMENT: should the general half spend the very
+                    // unit the unit half is gated on («уничтожьте 1 из ваших
+                    // недеморализованных отрядов»), the marker lines below
+                    // still resolve — their requisite was already met. New
+                    // units the general half CREATES («Вечное завоевание»
+                    // rallies) admit their paragraphs at their turn.
+                    const requisiteMet = this.engine.presentNames(state, staged.seat);
                     // «A player can choose not to resolve one of his abilities»:
                     // the owner of the card decides about each of them.
-                    this.engine.runEffects(state, staged.seat, steps, { kind: 'combat', ctx: { side }, optional: true });
+                    this.engine.runEffects(state, staged.seat, steps,
+                        { kind: 'combat', ctx: { side }, optional: true, requisiteMet });
                     return turn.step;
                 }
                 // A card with no applicable ability still counts as revealed:

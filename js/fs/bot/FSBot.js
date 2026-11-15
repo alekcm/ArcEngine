@@ -636,7 +636,14 @@ class FSBot {
                 const otherTile = other && FS_CATALOG.tile(other.tile);
                 const homeBorderToFoe = (tile && tile.home === faction && other && other.owner !== seat)
                     || (otherTile && otherTile.home === faction && sys.owner !== seat);
-                const score = this.borderWorth(view, sys.id, across) + (homeBorderToFoe ? 1.5 : 0);
+                // A storm in front of my home is worth nothing if it bars my
+                // own way to the fights that are coming: where objective
+                // tokens lie — mine to collect, theirs to dispute — my
+                // ground route must remain. So the home bonus goes only to a
+                // border that leads nowhere I shall ever want to go.
+                const tokensThere = other ? (view.objectives || []).filter(o => o.system === other.id).length : 0;
+                const score = this.borderWorth(view, sys.id, across)
+                    + (homeBorderToFoe && !tokensThere ? 1.5 : 0);
                 options.push({ system: sys.id, side, score: score + rnd() * 0.5 });
             }
             const o = this.choose(rnd, options, 'setupStorm');
@@ -792,14 +799,66 @@ class FSBot {
         const placed = (view.setup.placedBySeat || [])[seat] || 0;
         const last = placed >= 3;
         const worldScore = a => (a.world ? (a.world.objective ? 3 : 0) + (a.world.materiel || 0) + (a.world.assets || []).length * 0.5 : 0);
+        const groundLeftList = Object.keys(initial.units)
+            .filter(id => initial.units[id] > 0 && (R.unitDef(view, seat, id) || {}).type !== 'ship');
+        const groundLeft = groundLeftList.reduce((n, id) => n + initial.units[id], 0);
+        // A world that bears an objective space never stands empty: every
+        // garrisoned world is a world the rivals cannot walk through, and the
+        // next tile of the hand reserves its guard before the home fills up.
+        const garrisonTilesAhead = (view.setup.hand || board.hand(seat))
+            .filter(id => FS_CATALOG.tileFaces(id).some(face => (face.areas || []).some(a => a.world && a.world.objective)))
+            .length;
+        const reserve = isHome && !last ? Math.min(garrisonTilesAhead, Math.max(0, groundLeft - 2)) : 0;
         const placements = [];
+        // A fallback placement of any left-over piece, for the bad day when
+        // «завершить» is rejected by the force-fit rule: something must land.
+        const fallback = [];
         const structId = Object.keys(initial.structures).find(id => initial.structures[id] > 0);
         if (structId) {
             const areas = sys.areas.filter(a => a.world && R.canPlaceStructure(view, seat, sys.id, a.pos, { ignoreControl: true }).ok)
                 .map(a => ({ a, score: worldScore(a) + (structId === 'factory' ? (a.world.capacity || 0) : 0) + rnd() * 0.3 })).sort((x, y) => y.score - x.score);
-            if (areas.length) placements.push({ type: 'setupStructure', structure: structId, pos: areas[0].a.pos });
+            if (areas.length) fallback.push({ type: 'setupStructure', structure: structId, pos: areas[0].a.pos });
         }
-        const unitId = Object.keys(initial.units).find(id => initial.units[id] > 0);
+        const anyUnitId = Object.keys(initial.units).find(id => initial.units[id] > 0);
+        if (anyUnitId) {
+            const def = R.unitDef(view, seat, anyUnitId);
+            const ground = def.type !== 'ship';
+            const areas = sys.areas.filter(a => !!a.world === ground && R.unitsAt(view, sys.id, a.pos).length < R.capacity(view, sys.id, a.pos))
+                .map(a => {
+                    const here = R.unitsAt(view, sys.id, a.pos).length;
+                    const score = ground ? worldScore(a) - here * 2.5 : 1 + here * 0.5;
+                    return { a, score: score + rnd() * 0.3 };
+                }).sort((x, y) => y.score - x.score);
+            if (areas.length) fallback.push({ type: 'setupUnit', unit: anyUnitId, pos: areas[0].a.pos });
+        }
+        if (!isHome && !last) {
+            // The tiles between the home and the last one take only their
+            // garrison: one ground unit on every world that can host an
+            // objective token (then one on the richest world), and the forces
+            // move on. Dumping everything onto the starting tile left those
+            // worlds — and the tokens on them — to whoever passed by.
+            const unguarded = sys.areas
+                .filter(a => a.world && a.world.objective && !R.unitsAt(view, sys.id, a.pos).length
+                    && R.unitsAt(view, sys.id, a.pos).length < R.capacity(view, sys.id, a.pos))
+                .sort((x, y) => worldScore(y) - worldScore(x));
+            const unguardedRich = sys.areas
+                .filter(a => a.world && !a.world.objective && worldScore(a) >= 4
+                    && !R.unitsAt(view, sys.id, a.pos).length
+                    && R.unitsAt(view, sys.id, a.pos).length < R.capacity(view, sys.id, a.pos))
+                .sort((x, y) => worldScore(y) - worldScore(x));
+            const garrison = unguarded[0] || unguardedRich[0];
+            const unitId = groundLeftList[0];
+            if (garrison && unitId) {
+                return { cmd: { type: 'setupUnit', unit: unitId, pos: garrison.pos }, must: true, label: 'setupUnit' };
+            }
+            return { tries: [finish].concat(fallback), must: true, label: 'finishSetupForces' };
+        }
+        // The home and the last tile take the rest: structures first, then the
+        // units — ground spread across the worlds, ships together in a void.
+        // On the home the garrison reserve for the tiles of the hand stays.
+        if (fallback.length && fallback[0].type === 'setupStructure') placements.push(fallback.shift());
+        const unitId = Object.keys(initial.units).find(id => initial.units[id] > 0
+            && ((R.unitDef(view, seat, id) || {}).type === 'ship' || groundLeft > reserve));
         if (unitId) {
             const def = R.unitDef(view, seat, unitId);
             const ground = def.type !== 'ship';
@@ -813,13 +872,8 @@ class FSBot {
                 }).sort((x, y) => y.score - x.score);
             if (areas.length) placements.push({ type: 'setupUnit', unit: unitId, pos: areas[0].a.pos });
         }
-        // Everything lands on the home (and on the last tile, by the rules); on
-        // another tile the forces wait — unless the rules say they would not fit later.
-        if (isHome || last) {
-            if (placements.length) return { cmd: placements[0], must: true, label: placements[0].type };
-            return { cmd: finish, must: true, label: 'finishSetupForces' };
-        }
-        return { tries: [finish].concat(placements), must: true, label: 'finishSetupForces' };
+        if (placements.length) return { cmd: placements[0], must: true, label: placements[0].type };
+        return { tries: [finish].concat(fallback), must: true, label: 'finishSetupForces' };
     }
 
     /** Whose token goes where: the token of the farthest player, on the world I hold or the poorest one. */
@@ -851,10 +905,14 @@ class FSBot {
      * The worth of a storm on the border between two systems (one may be
      * absent at the edge of the board): good when it stands between an army of
      * another player and my worlds, bad when it cuts my own way to my targets.
+     * A storm that walls me off from the systems I must reach — my objective
+     * tokens above all — is a wall built against myself, and a storm inside my
+     * own net stops my armies from reinforcing each other; a storm across a
+     * rival's net does exactly that to HIM, which is what the storms are for.
      */
     borderWorth(view, aId, bId) {
         if (!aId || !bId) return -0.5;
-        const B = this.brain, seat = this.seat;
+        const R = this.R, B = this.brain, seat = this.seat;
         const pair = [[aId, bId], [bId, aId]];
         let worth = 0;
         for (const [from, to] of pair) {
@@ -867,6 +925,22 @@ class FSBot {
             const interest = this.interestAt(view, to);
             worth -= Math.min(6, myPower * 0.4) * Math.min(3, interest) * 0.35;
         }
+        // My tokens on the far side are collected by WALKING there: the storm
+        // that stands across that path is mine and works against me.
+        const myTokens = systemId => (view.objectives || []).filter(o => o.system === systemId
+            && R.objectiveOwnerSeat(view, o) === seat
+            && R.control(view, seat, o.system, o.area) !== 'friendly').length;
+        worth -= 2.5 * (myTokens(aId) + myTokens(bId));
+        const sysA = view.systems.find(s => s.id === aId), sysB = view.systems.find(s => s.id === bId);
+        // A border inside my own net breaks my reinforcement routes.
+        if (sysA && sysB && sysA.owner === seat && sysB.owner === seat) worth -= 2.5;
+        // A border across one rival's net keeps HIS armies apart.
+        if (sysA && sysB && sysA.owner !== seat && sysA.owner != null && sysA.owner === sysB.owner) worth += 2;
+        // A system that carries rivals' tokens will see marches over it: I
+        // want my way there open (a fight is coming) more than I want it shut.
+        const tokensFoe = systemId => (view.objectives || []).filter(o => o.system === systemId
+            && R.objectiveOwnerSeat(view, o) !== seat).length;
+        worth -= 0.6 * (tokensFoe(aId) + tokensFoe(bId));
         return worth;
     }
 

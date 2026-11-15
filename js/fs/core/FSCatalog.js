@@ -267,6 +267,38 @@ class FactionCatalog {
         return '#' + ((to(ch(h + 1 / 3)) << 16) | (to(ch(h)) << 8) | to(ch(h - 1 / 3))).toString(16).padStart(6, '0');
     }
 
+    /** The saturation of a colour, 0..1; greys score 0 and have no hue. */
+    saturation01(hex) {
+        const n = parseInt(String(hex || '').replace('#', ''), 16);
+        if (!Number.isFinite(n)) return 0;
+        const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+        if (max === min) return 0;
+        const d = max - min;
+        return l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    }
+
+    /** The hue of a colour in degrees of the HSL circle (0 for greys). */
+    hueDegrees(hex) {
+        const n = parseInt(String(hex || '').replace('#', ''), 16);
+        if (!Number.isFinite(n)) return 0;
+        const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        if (max === min) return 0;
+        const d = max - min;
+        let h;
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        return h * 60;
+    }
+
+    /** The shortest distance of two hues on the hue circle, in degrees. */
+    hueDistance(a, b) {
+        const d = Math.abs(this.hueDegrees(a) - this.hueDegrees(b)) % 360;
+        return d > 180 ? 360 - d : d;
+    }
+
     /** CIE Lab 1976 distance: unlike raw RGB it reflects visible colour separation. */
     colorDistance(a, b) {
         const lab = hex => {
@@ -293,12 +325,16 @@ class FactionCatalog {
     /**
      * The primary paint of every seat of a table — `Map seat → '#rrggbb'`.
      * A player who chose his own colours keeps them; the first player of a
-     * faction gets the faction colour; every next player of the SAME faction
-     * gets the candidate with the greatest minimum CIE Lab separation from the
-     * colours already used. The search varies hue, saturation and lightness, so
-     * pale/grey faction colours do not yield near-identical pastel twins. The
-     * lobby and newGame call the same function, so the player sees the paint
-     * they will use. `players` — anything with `seat`, `faction` and `palette`.
+     * faction gets the faction colour. Any NEXT paint of the same faction —
+     * and any faction colour that lands too close to a paint already taken
+     * (two blues: Эльдары/Космодесант; two violets among the Некроны twins) —
+     * is replaced by the candidate with the greatest minimum CIE Lab
+     * separation from the colours already used. To keep the human eye from
+     * confusing «the same violet, only paler» with a new colour, a candidate
+     * must ALSO sit far enough on the hue circle from every taken paint; the
+     * hue gate relaxes only while no candidate can pass it at all. The lobby
+     * and newGame call the same function, so the player sees the paint they
+     * will use. `players` — anything with `seat`, `faction` and `palette`.
      */
     autoPrimaries(players) {
         const hex = c => /^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c).toLowerCase() : null;
@@ -308,25 +344,43 @@ class FactionCatalog {
             const chosen = p.palette && hex(p.palette.primary);
             if (chosen) { out.set(p.seat, chosen); continue; }
             const base = this.factionColor(p.faction);
-            const twin = list.some(q => q.faction === p.faction && Number(q.seat) < Number(p.seat));
-            if (!twin) { out.set(p.seat, base); continue; }
             const taken = [...out.values()];
+            const baseClosest = taken.length ? Math.min(...taken.map(t => this.colorDistance(base, t))) : Infinity;
+            // «Dark forest green» next to «vivid green» differs in brightness
+            // but reads as THE SAME hue on a dim board: a saturated base whose
+            // hue a taken paint already owns is shifted too. Greys have no hue
+            // to clash with, so only their brightness is asked.
+            const wantedHue = this.saturation01(base) >= 0.15;
+            const sameHue = wantedHue && taken.some(t => this.saturation01(t) >= 0.12 && this.hueDistance(base, t) < 45);
+            if (!taken.length || (baseClosest >= 50 && !sameHue)) { out.set(p.seat, base); continue; }
             const candidates = [];
-            for (const lightness of [0.38, 0.5, 0.62]) {
-                for (const saturation of [0.35, 0.5, 0.65]) {
-                    for (let deg = 0; deg < 360; deg += 30) {
+            for (const lightness of [0.35, 0.45, 0.55, 0.65]) {
+                for (const saturation of [0.35, 0.5, 0.65, 0.8]) {
+                    for (let deg = 0; deg < 360; deg += 15) {
                         const candidate = this.hueShift(base, deg, saturation, lightness);
                         if (!candidates.includes(candidate)) candidates.push(candidate);
                     }
                 }
             }
-            let best = base, bestDistance = -1;
-            for (const candidate of candidates) {
-                if (taken.includes(candidate)) continue;
-                const distance = taken.length ? Math.min(...taken.map(t => this.colorDistance(candidate, t))) : 0;
-                if (distance > bestDistance) { bestDistance = distance; best = candidate; }
+            // The hue gate starts strict («not even a neighbouring hue») and
+            // yields only while nothing passes: the third sister of a faction
+            // still gets a colour nobody reads as her sisters' hue. The CIE Lab
+            // gate does the same for brightness-only differencing.
+            let best = null;
+            for (let hueGate = 60; hueGate >= 0 && best === null; hueGate -= 15) {
+                for (let labGate = 50; labGate >= 0 && best === null; labGate -= 10) {
+                    let gateBest = null, gateDistance = -1;
+                    for (const candidate of candidates) {
+                        if (taken.includes(candidate)) continue;
+                        if (hueGate && taken.some(t => this.hueDistance(candidate, t) < hueGate)) continue;
+                        const distance = Math.min(...taken.map(t => this.colorDistance(candidate, t)));
+                        if (distance < labGate) continue;
+                        if (distance > gateDistance) { gateDistance = distance; gateBest = candidate; }
+                    }
+                    best = gateBest;
+                }
             }
-            out.set(p.seat, best);
+            out.set(p.seat, best || base);
         }
         return out;
     }

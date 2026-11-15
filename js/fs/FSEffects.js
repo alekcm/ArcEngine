@@ -111,7 +111,10 @@ const FS_EFFECTS = {
     // simply dropped from the text.
     paragraphs(text, ctx) {
         const src = String(text || '');
-        const re = /\*([^*]{1,90}?):\*/g;
+        // The marker also tolerates the odd bits the printing slips between
+        // the italics and the colon — a faction icon «`?`» of the Chaos deck
+        // («*Космодесант хаоса/«Иконоборец»* `?`*:* …») or the likes.
+        const re = /\*([^*]{1,90}?)(?:\*\s+`[^`]*`)*\*?:\*/g;
         const out = [];
         let last = 0;
         let m;
@@ -120,11 +123,11 @@ const FS_EFFECTS = {
             const before = src.slice(last, m.index);
             if (before.trim()) out.push({ names: null, text: before });
             const names = this.requisiteNames(m[1], faction);
-            out.push({ names: names.length ? names : null, text: '' });
+            out.push({ names: names.length ? names : null, namesRaw: m[1], text: '' });
             last = m.index + m[0].length;
             // The paragraph itself ends at the next marker.
             const next = re.lastIndex;
-            const mNext = /\*([^*]{1,90}?):\*/g;
+            const mNext = /\*([^*]{1,90}?)(?:\*\s+`[^`]*`)*\*?:\*/g;
             mNext.lastIndex = next;
             const found = mNext.exec(src);
             const end = found ? found.index : src.length;
@@ -3320,6 +3323,20 @@ const FS_EFFECTS = {
         // The permission of the owner of the card: an ability he refuses does
         // not happen, and the rest of the card goes on.
         if (question.op === 'ability') {
+            // The permission was taken when the card was turned over; since
+            // then another ability may have changed who stands in the battle
+            // («Вечное завоевание» rallies the warrior of ITS OWN line first).
+            // The yes of the player is only good while the requisite still
+            // holds; should it have ceased, the whole sentence is over.
+            const gate = step.reqNames && step.reqNames.length
+                ? this.condSatisfied(R, state, owner, { reqNames: step.reqNames, strictRequisite: step.strictRequisite }, ctx) : true;
+            if (!gate) {
+                const group = step.ability;
+                let i = pending.index + 1;
+                while (i < pending.steps.length && pending.steps[i] && pending.steps[i].ability === group) i++;
+                Question.of(state).close();
+                return this.run(R, state, pending.seat, pending.steps, pending.ctx || {}, i);
+            }
             if (answer.no) {
                 R.log(state, owner, state.players[owner].name + ' отказывается от способности: «'
                     + String(step.ability || '').slice(0, 60) + '».');
@@ -3637,9 +3654,26 @@ const FS_EFFECTS = {
         // battle — judged when the step is reached, by the same names the card
         // itself was admitted by.
         if (step && Array.isArray(step.reqNames) && step.reqNames.length) {
-            if (!combat || typeof R.presentNames !== 'function') return false;
-            const present = R.presentNames(state, seat);
-            if (!present.some(got => step.reqNames.some(want => this.sameName(got, want)))) return false;
+            // The requisite of the half atop is fixed at the resolve, not
+            // before it: «Вечное завоевание» rallies the routed warrior
+            // first, and the «*Воин/…:*» line then finds him standing. But a
+            // card whose unit half was admitted at the reveal keeps it, even
+            // if the general half spent the very unit (the «уничтожьте 1 из
+            // ваших отрядов» of the general half reads the battle before the
+            // marker lines do).
+            // The gate of a marked paragraph is its own marker: it stands by
+            // itself and never yields to what the reveal admitted. The gate
+            // of the card yields only when the names IT asks for stood in the
+            // battle at the reveal («requisiteMet» is the snapshot of the
+            // units that were there when the card was turned over).
+            const met = ctx && ctx.requisiteMet;
+            const admittedAtReveal = !step.strictRequisite && Array.isArray(met)
+                && met.some(got => step.reqNames.some(want => this.sameName(got, want)));
+            if (!admittedAtReveal) {
+                if (!combat || typeof R.presentNames !== 'function') return false;
+                const present = R.presentNames(state, seat);
+                if (!present.some(got => step.reqNames.some(want => this.sameName(got, want)))) return false;
+            }
         }
         const cond = step && step.cond;
         if (!cond) return true;

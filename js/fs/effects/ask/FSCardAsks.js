@@ -329,8 +329,12 @@ class CardAsks {
         // line is offered only while one of its units stands in the battle;
         // a lone remaining branch is simply performed.
         if ((step.options || []).some(option => option && Array.isArray(option.reqNames))) {
+            // The requisite met at the reveal belongs to the WHOLE unit half,
+            // not to every branch of a choice of its general half: a branch
+            // is offered only while its own unit stands in the battle.
+            const ctxNoReveal = Object.assign({}, f.ctx || {}, { requisiteMet: false });
             step.options = step.options.filter(option => !option || !Array.isArray(option.reqNames)
-                || effects.condSatisfied(R, state, seat, { reqNames: option.reqNames }, f.ctx));
+                || effects.condSatisfied(R, state, seat, { reqNames: option.reqNames, strictRequisite: true }, ctxNoReveal));
             if (!step.options.length) return null;
             if (step.options.length === 1) return { replace: [step.options[0]] };
         }

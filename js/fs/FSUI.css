@@ -380,6 +380,32 @@
 .fs-shell.is-battle .fs-panel-heading h2{font-size:20px}
 
 /* The cards a side has already played in this fight: small cube chips. */
+.fs-planning-legal{display:flex;flex-direction:column;gap:4px}
+.fs-planning-legal-row{display:flex;align-items:baseline;gap:8px;padding:4px 8px;border-radius:6px;background:#ffffff08}
+.fs-planning-legal-tile{font-size:12px}
+.fs-planning-legal-why{font-size:10px;opacity:.7}
+.fs-event-hand-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.fs-event-hand-nav{display:inline-flex;align-items:center;gap:4px}
+.fs-event-hand-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid #ffffff22;border-radius:6px;background:#ffffff0a;color:inherit;cursor:pointer;padding:0}
+.fs-event-hand-btn:hover{border-color:#d8b87388;background:#d8b8731a}
+.fs-event-hand-btn .fs-ico-svg{width:12px;height:12px}
+.fs-event-hand-page{font-size:10px;opacity:.7;min-width:30px;text-align:center}
+button.fs-event-hand-card{width:100%;color:inherit;text-align:left;cursor:pointer;font:inherit}
+button.fs-event-hand-card:hover{border-color:#d8b87366}
+.fs-event-hand{display:flex;flex-direction:column;gap:6px;margin:8px 0 10px;padding:8px;border:1px solid #d8b87333;border-radius:8px;background:#d8b8730d}
+.fs-event-hand-card{display:flex;flex-direction:column;gap:3px;padding:6px 8px;border:1px solid transparent;border-radius:6px;background:#ffffff08}
+.fs-event-hand-top{display:flex;align-items:center;gap:6px}
+.fs-event-hand-name{font-size:12px}
+.fs-event-hand-text{font-size:10.5px;line-height:1.4;opacity:.88;white-space:pre-wrap}
+.fs-battle-eyebrow{font-size:9px;letter-spacing:.12em;text-transform:uppercase;opacity:.62;margin-bottom:5px}
+.fs-battle-cards{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #ffffff14}
+.fs-battle-card-row{display:flex;flex-direction:column;gap:2px;width:100%;padding:5px 8px;border:1px solid #ffffff14;border-left:3px solid var(--battle-color,#8899aa);border-radius:6px;background:#ffffff08;color:inherit;text-align:left;cursor:pointer;font-size:10px}
+.fs-battle-card-row:hover{border-color:#d8b87388;background:#d8b87314}
+.fs-battle-card-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.fs-battle-card-name{font-size:11px}
+.fs-battle-card-who{opacity:.6;font-size:9px}
+.fs-battle-card-round{margin-left:auto;opacity:.55;font-size:9px}
+.fs-battle-card-text{display:flex;flex-direction:column;gap:1px;opacity:.85;line-height:1.35;white-space:pre-wrap}
 .fs-battle-played{grid-column:1/3;display:flex;flex-wrap:wrap;gap:4px}
 .fs-battle-played-card{display:inline-flex;align-items:center;gap:3px;max-width:100%;min-width:0;padding:2px 6px;border-radius:99px;background:#ffffff10;border:1px solid #ffffff12;color:inherit;font-size:9px;text-align:left;cursor:pointer}
 .fs-battle-played-card:hover{border-color:#d8b87388;background:#d8b8731a}

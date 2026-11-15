@@ -422,6 +422,17 @@ class FSGame {
             this.setupKey = setupKey;
         }
         this.state = view;
+        // The dossier tab of the phase stays only where it was opened: a new
+        // phase or no pending interaction means the side window is gone, and
+        // the drawer comes back to the front tab of the faction. The sweep is
+        // silent: clearDrawerTab() refreshes, and onState has never rendered.
+        const sweptKeep = this._drawerTabKeep;
+        this._drawerTabKeep = null;
+        if (sweptKeep && sweptKeep(view)) this._drawerTabKeep = sweptKeep;
+        else if (FSUI.extraTab) {
+            FSUI.extraTab = null;
+            if (FSUI.drawerTab && !['faction', 'deck', 'events'].includes(FSUI.drawerTab)) FSUI.drawerTab = 'faction';
+        }
         // In a solo test the chair changes with every step of the combat or with
         // every order token: the action of the previous seat must not leak into
         // the next one.
@@ -787,15 +798,28 @@ class FSGame {
                     },
                 });
             }
-            // What already stands on this tile can be taken back with one click.
+            // What came out of the «Initial Forces» box on this step can be
+            // taken back with one click; a piece a card placed (a revealed
+            // requisition) is a finished step of its own — it only shows up as
+            // a note, never with an undo button (the card named its world).
             for (const unit of s.units.filter(u => u.system === (sys && sys.id) && u.seat === me)) {
                 const def = faction && faction.units.find(u => u.id === unit.unit);
+                if (!unit.setupPool) {
+                    ctx.actions.push({ kind: 'chip', icon: 'ui.check', label: (def ? def.name : unit.unit) + ' · поставлен картой',
+                        hint: 'Размещение карты — отдельный завершённый шаг, его нельзя отменить расстановкой сил.' });
+                    continue;
+                }
                 ctx.actions.push({
                     kind: 'chip', icon: 'ui.undo', label: 'Убрать ' + (def ? def.name : unit.unit),
                     onClick: () => this.net.cmd({ type: 'removeSetupForce', kind: 'unit', id: unit.id }),
                 });
             }
             for (const st of s.structures.filter(x => x.system === (sys && sys.id) && x.seat === me)) {
+                if (!st.setupPool) {
+                    ctx.actions.push({ kind: 'chip', icon: 'ui.check', label: structureNames[st.type] + ' · поставлена картой',
+                        hint: 'Размещение карты — отдельный завершённый шаг, его нельзя отменить расстановкой сил.' });
+                    continue;
+                }
                 ctx.actions.push({
                     kind: 'chip', icon: 'ui.undo', label: 'Убрать ' + structureNames[st.type],
                     onClick: () => this.net.cmd({ type: 'removeSetupForce', kind: 'structure', id: st.id }),
@@ -925,6 +949,7 @@ class FSGame {
 
     // A local cancel also removes the uncommitted board pieces and rings.
     cancelChoice() {
+        this.clearDrawerTab();
         if (this.mode === 'placeTile' || this.mode.startsWith('setup')) {
             FSView.clearSetupPreview(this.view);
             FSView.clearGhost(this.view);
@@ -932,6 +957,25 @@ class FSGame {
         }
         this.mode = 'idle'; this.pending = null; this.status = '';
         this.refresh();
+    }
+
+    // The dossier window a pending interaction leaves open. `keep` answers yes
+    // while the interaction is still wanted; `render` fills the tab body. When
+    // they are gone — the seat moved on, the phase changed, the choice was
+    // cancelled — the drawer comes back to the front tab of the faction.
+    openDrawerTab(id, label, keep, render) {
+        this._drawerTabKeep = keep;
+        FSUI.drawerTab = id;
+        FSUI.extraTab = { id, label, render };
+        FSUI.drawerMounted = false;
+    }
+
+    clearDrawerTab() {
+        this._drawerTabKeep = null;
+        if (FSUI.extraTab) {
+            FSUI.extraTab = null;
+            if (FSUI.drawerTab && !['faction', 'deck', 'events'].includes(FSUI.drawerTab)) FSUI.drawerTab = 'faction';
+        }
     }
 
     bindSetupKeys() {
@@ -1044,8 +1088,48 @@ class FSGame {
             return;
         }
         ctx.text = this.mode === 'placeOrder'
-            ? 'Щёлкните по системе с кольцом: приказ кладётся в свою систему или рядом со своей.'
+            ? 'Щёлкните по системе с кольцом: приказ кладётся в свою систему или рядом со своей. '
+                + 'Вкладка «Закладки» в досье фракции перечисляет системы с подсветкой.'
             : 'Выберите приказ и щёлкните по системе.';
+        // 《11》 While a token hangs in the hand, the dossier of own faction
+        // carries a tab that names where it may land: every legal system with
+        // the neighbours that made it legal, in the large type of the dossier
+        // instead of the small print of the panel. The tab opens the dossier;
+        // it is swept by onState when the phase or the pending pick moves on.
+        if (this.mode === 'placeOrder' && this.pending && this.pending.order && (!FSUI.extraTab || FSUI.extraTab.id !== 'planning')) {
+            const orderLabel = fsOrderName(this.pending.order, true);
+            this.openDrawerTab('planning', 'Закладки',
+                (st) => st.phase === 'planning' && GamePhase.of(st).isTurn(Seat.of(st).me)
+                    && this.mode === 'placeOrder' && this.pending && !!this.pending.order,
+                (body) => {
+                    const st = this.state;
+                    if (!st) return;
+                    body.append(FSUI.el('div', 'fs-drawer-eyebrow', 'Куда положить «' + orderLabel + '»'));
+                    body.append(FSUI.el('div', 'fs-drawer-note',
+                        'Жетон кладётся в систему со своими отрядами или постройками либо в соседнюю с такой системой. Все подсвечены на доске.'));
+                    const list = FSUI.el('div', 'fs-planning-legal');
+                    let any = false;
+                    for (const sys of st.systems) {
+                        if (!FS_RULES.canPlaceOrder(st, me, sys.id)) continue;
+                        any = true;
+                        const own = FS_RULES.hasUnitsOrStructures(st, me, sys.id);
+                        const sources = FS_RULES.neighbors(st, sys.id)
+                            .filter(id => FS_RULES.hasUnitsOrStructures(st, me, id))
+                            .map(id => { const s2 = FS_RULES.system(st, id); return s2 ? s2.tile : id; })
+                            .sort((a, b) => String(a).localeCompare(String(b), 'ru'));
+                        const row = FSUI.el('div', 'fs-planning-legal-row');
+                        row.append(FSUI.el('b', 'fs-planning-legal-tile', sys.tile || sys.id));
+                        row.append(FSUI.el('span', 'fs-planning-legal-why',
+                            own && sources.length ? 'Своя система; также рядом с ' + sources.join(', ')
+                                : own ? 'Ваша система'
+                                : 'Рядом с ' + sources.join(', ')));
+                        list.append(row);
+                    }
+                    if (!any) list.append(FSUI.el('div', 'fs-empty', 'Нет законной системы.'));
+                    body.append(list);
+                });
+            if (FSUI.factionSeat !== me && FSUI.renderState) FSUI.toggleFactionDrawer(me);
+        }
         ctx.status = this.status || (left ? 'Осталось приказов: ' + left : 'Все приказы выложены.');
         ctx.tokens = [
             { icon: 'asset.materiel', label: 'Материя', count: p.materiel },
@@ -1061,7 +1145,23 @@ class FSGame {
         const kinds = Object.keys(FS_RULES_CONFIG.ORDER_NAMES)
             .map(order => [order, fsOrderName(order, true), FS_ORDER_ICONS[order], hints[order] || '']);
         const supply = FS_RULES.ORDER_SUPPLY;
+        const pickedOrder = (this.mode === 'placeOrder' && this.pending) ? this.pending.order : null;
+        if (pickedOrder) {
+            // 《13》 An order already hangs in the hand: the other kinds CANNOT
+            // be picked until this one lands, so the list is not offered —
+            // its place is taken by one button that brings the list back.
+            const picked = kinds.find(k => k[0] === pickedOrder);
+            ctx.actions.push({
+                kind: 'secondary', icon: (picked && picked[2]) || 'ui.card',
+                label: 'Выбрать другой приказ — сейчас «' + (picked ? picked[1] : pickedOrder) + '»',
+                onClick: () => {
+                    this.cancelChoice();
+                    this.refresh();
+                },
+            });
+        }
         for (const [order, name, icon, hint] of kinds) {
+            if (pickedOrder) break;
             const left = FS_RULES.orderLeft(s, me, order);
             // Two tokens of every order: a spent kind stays in the list, only dimmed.
             ctx.actions.push({
@@ -1935,6 +2035,9 @@ class FSGame {
                 onClick: () => this.net.cmd({ type: 'finishDominate', skip: true }),
             });
         }
+        // 《16》 The domination swap of the special force — «Ход Императора»
+        // (За Императора) is finished only when the player confirms: the offer
+        // is a delayed question until then, the game does not run ahead of it.
     }
 
     // --- the refresh phase ----------------------------------------------------

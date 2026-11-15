@@ -407,7 +407,10 @@ class SetupRules {
             if ((def.type === 'ground') !== !!area.world) return { ok: false, error: 'Наземные отряды размещаются на мирах, корабли — в пустоте.' };
             if (this.engine.unitsAt(state, sys.id, area.pos).length >= this.engine.capacity(state, sys.id, area.pos)) return { ok: false, error: 'Вместимость области исчерпана.' };
             initial.units[cmd.unit]--;
-            this.addUnit(state, seat, cmd.unit, sys.id, area.pos);
+            const unit = this.addUnit(state, seat, cmd.unit, sys.id, area.pos);
+            // The piece came out of the «Initial Forces» box on this very step:
+            // only such a piece may be taken back by the undo of this step.
+            if (unit) unit.setupPool = true;
         } else {
             if (!['city', 'factory', 'bastion'].includes(cmd.structure) || !(initial.structures[cmd.structure] > 0)) return { ok: false, error: 'Такой начальной постройки больше нет.' };
             if (!area.world) return { ok: false, error: 'Постройка размещается на мире без постройки.' };
@@ -415,7 +418,8 @@ class SetupRules {
                 return { ok: false, error: 'Постройка размещается на мире без постройки.' };
             }
             initial.structures[cmd.structure]--;
-            this.addStructure(state, seat, cmd.structure, sys.id, area.pos);
+            const structure = this.addStructure(state, seat, cmd.structure, sys.id, area.pos);
+            if (structure) structure.setupPool = true;
         }
         return { ok: true };
     }
@@ -426,7 +430,17 @@ class SetupRules {
         const items = cmd.kind === 'unit' ? state.units : cmd.kind === 'structure' ? state.structures : null;
         const item = items && items.find(x => x.id === cmd.id && x.seat === seat && x.system === BoardSetup.of(state).currentSystem);
         if (!item) return { ok: false, error: 'Можно убрать только свою начальную фигуру с текущего тайла.' };
+        // The placement of a card (a requisition like «Мегаполис», an event)
+        // is a separate step that the placement of the starting forces cannot
+        // undo: the card already named the world its piece stands on, and the
+        // piece never comes out of the «Initial Forces» box. Without this ban
+        // the undo pulled the card's piece back into the box and let the player
+        // place it on another system — a free teleport the card never granted.
+        if (!item.setupPool) {
+            return { ok: false, error: 'Эту фигуру поставила карта: её расстановку отменить нельзя.' };
+        }
         items.splice(items.indexOf(item), 1);
+        if (item.setupPool !== undefined) delete item.setupPool;
         const pool = state.players[seat].initialForces[cmd.kind === 'unit' ? 'units' : 'structures'];
         const id = cmd.kind === 'unit' ? item.unit : item.type;
         pool[id] = (pool[id] || 0) + 1;
@@ -628,7 +642,8 @@ class SetupRules {
             for (const area of sys.areas) {
                 if ((def.type === 'ground') !== !!area.world) continue;
                 while (left > 0 && this.engine.unitsAt(state, sys.id, area.pos).length < this.engine.capacity(state, sys.id, area.pos)) {
-                    this.addUnit(state, seat, unitId, sys.id, area.pos); left--;
+                    const placed = this.addUnit(state, seat, unitId, sys.id, area.pos); left--;
+                    if (placed) placed.setupPool = true;
                 }
             }
             initial.units[unitId] = left;
@@ -639,7 +654,8 @@ class SetupRules {
                 if (!left) break;
                 if (!area.world) continue;
                 if (!this.engine.canPlaceStructure(state, seat, sys.id, area.pos, { ignoreControl: true }).ok) continue;
-                this.addStructure(state, seat, type, sys.id, area.pos); left--;
+                const placedS = this.addStructure(state, seat, type, sys.id, area.pos); left--;
+                if (placedS) placedS.setupPool = true;
             }
             initial.structures[type] = left;
         }

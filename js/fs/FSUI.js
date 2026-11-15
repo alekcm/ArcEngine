@@ -42,6 +42,15 @@ const FSUI = {
     helpOpen: false,
     factionSeat: null,      // the seat of the open faction dossier, or null
     drawerMounted: false,   // the slide-in animation plays once per opening
+    /** @type {string} the open dossier tab: 'faction' | 'deck' | 'events' or the phase's own */
+    drawerTab: 'faction',
+    /** @type {{id: string, label: string, render: (body: any) => void} | null} a tab the game leaves open while its interaction is pending */
+    extraTab: null,
+    drawerHandIndex: 0,     // the page of the «Рука событий» book in the dossier
+    /** @type {any} the last rendered state, so UI-side clicks can re-render */
+    renderState: null,
+    /** @type {any} the panel context of the last render */
+    renderCtx: null,
 
     // The full-screen game shell is deliberately separate from ArcEngine's sample HUD.
     mount() {
@@ -614,7 +623,9 @@ const FSUI = {
     // Open or close the faction dossier for a seat: one more click on the same
     // player closes it. The slide-in animation plays once per opening.
     toggleFactionDrawer(seat) {
-        this.factionSeat = this.factionSeat === seat ? null : seat;
+        const previous = this.factionSeat;
+        this.factionSeat = previous === seat ? null : seat;
+        if (this.factionSeat !== previous) this.drawerHandIndex = 0;
         if (this.factionSeat != null) this.drawerTab = 'faction';
         this.drawerMounted = false;
         if (this.renderState) this.update(this.renderState, this.renderCtx);
@@ -743,6 +754,61 @@ const FSUI = {
         else if (hiddenHand) status.push('скрытых карт на руке: ' + hiddenHand);
         body.append(this.el('div', 'fs-drawer-note', status.join(' · ')));
 
+        // The owner's own delayed cards in full print. The hand is a book of
+        // pages — one card per page, «страница за страницей»: the text of the
+        // held plan is read whole, the arrows flip through the deck in hand.
+        // The arrows of the evil star are deliberately NOT shown: where the
+        // storm will move is decided when the card is played, and the spoiler
+        // does not belong in the dossier.
+        if (mine && hand.size) {
+            const held = cards.filter(card => hand.has(card.name));
+            const page = Math.min(Math.max(0, this.drawerHandIndex || 0), held.length - 1);
+            this.drawerHandIndex = page;
+            const handBox = this.el('div', 'fs-event-hand');
+            const head = this.el('div', 'fs-event-hand-head');
+            head.append(this.el('div', 'fs-drawer-eyebrow', 'Рука событий — отложенный розыгрыш'));
+            if (held.length > 1) {
+                const nav = this.el('span', 'fs-event-hand-nav');
+                const flip = (dir) => {
+                    this.drawerHandIndex = (page + dir + held.length) % held.length;
+                    this.update(this.renderState, this.renderCtx);
+                };
+                const prev = this.el('button', 'fs-event-hand-btn'); prev.type = 'button';
+                prev.title = 'Предыдущая карта руки'; prev.setAttribute('aria-label', prev.title);
+                prev.append(this.iconEl('ui.back')); prev.addEventListener('click', () => flip(-1));
+                const next = this.el('button', 'fs-event-hand-btn'); next.type = 'button';
+                next.title = 'Следующая карта руки'; next.setAttribute('aria-label', next.title);
+                next.append(this.iconEl('ui.next')); next.addEventListener('click', () => flip(1));
+                nav.append(prev, this.el('span', 'fs-event-hand-page', (page + 1) + ' / ' + held.length), next);
+                head.append(nav);
+            }
+            handBox.append(head);
+            const card = held[page];
+            if (card) {
+                const detail = FS_CARDS.detail(card.name, p.faction, 'event');
+                const box = this.el('button', 'fs-event-hand-card');
+                box.type = 'button';
+                const top = this.el('div', 'fs-event-hand-top');
+                top.append(this.iconEl('order.strategize', 'fs-event-ico'));
+                top.append(this.el('b', 'fs-event-hand-name', card.name));
+                top.append(this.el('span', 'fs-event-kind', card.type === 'scheme' ? 'ПЛАН' : 'ТАКТИКА'));
+                box.append(top);
+                if (card.text || (detail && detail.text)) {
+                    box.append(this.el('div', 'fs-event-hand-text', card.text || detail.text));
+                }
+                this.bindPeek(box, Object.assign({}, detail, {
+                    okLabel: 'На руке — отложенный розыгрыш',
+                }));
+                box.addEventListener('keydown', (e) => {
+                    if (held.length < 2) return;
+                    if (e.key === 'ArrowLeft') { e.preventDefault(); this.drawerHandIndex = (page - 1 + held.length) % held.length; this.update(this.renderState, this.renderCtx); }
+                    if (e.key === 'ArrowRight') { e.preventDefault(); this.drawerHandIndex = (page + 1) % held.length; this.update(this.renderState, this.renderCtx); }
+                });
+                handBox.append(box);
+            }
+            body.append(handBox);
+        }
+
         const list = this.el('div', 'fs-event-list');
         for (const card of cards) {
             const detail = FS_CARDS.detail(card.name, p.faction, 'event');
@@ -836,17 +902,31 @@ const FSUI = {
 
         // The dossier separates faction data, the current battle deck and the
         // full faction event set. Event order and another player's hand stay hidden.
-        const activeTab = ['deck', 'events'].includes(this.drawerTab) ? this.drawerTab : 'faction';
+        const activeTab = ['faction', 'deck', 'events'].includes(this.drawerTab) ? this.drawerTab : 'faction';
         const tabs = this.el('div', 'fs-drawer-tabs');
-        for (const [id, label] of [['faction', 'Фракция'], ['deck', 'Боевая колода'], ['events', 'События']]) {
+        const me = Seat.of(state).me;
+        // A custom tab the game leaves open while an interaction is pending:
+        // the label and the contents are decided by the phase, not by the drawer.
+        for (const [id, label] of (this.extraTab ? [[this.extraTab.id, this.extraTab.label]] : [])
+            .concat([['faction', 'Фракция'], ['deck', 'Боевая колода'], ['events', 'События']])) {
             const b = this.el('button', 'fs-drawer-tab' + (id === activeTab ? ' is-active' : ''));
             b.type = 'button';
             b.textContent = label;
             b.setAttribute('aria-pressed', id === activeTab ? 'true' : 'false');
-            b.addEventListener('click', () => { this.drawerTab = id; this.update(this.renderState, this.renderCtx); });
+            b.addEventListener('click', () => {
+                if (id === 'events' && seat !== me) this.drawerHandIndex = 0;
+                this.drawerTab = id; this.update(this.renderState, this.renderCtx);
+            });
             tabs.append(b);
         }
         drawer.append(tabs);
+
+        if (this.extraTab && activeTab === this.extraTab.id) {
+            const body = this.el('div', 'fs-drawer-body');
+            (this.extraTab.render || (() => {}))(body);
+            drawer.append(body);
+            return drawer;
+        }
 
         const body = this.el('div', 'fs-drawer-body');
         if (activeTab === 'deck') {
@@ -1013,6 +1093,51 @@ const FSUI = {
         ctls.append(hide);
         head.append(ctls);
         card.append(head);
+        // The cards of this battle in full print, above the score: name and
+        // icons are NOT enough to know what a revealed card actually did.
+        const playedAny = (battle.sides || []).filter(s => (s.cards || []).length);
+        if (playedAny.length) {
+            const deck = this.el('div', 'fs-battle-cards');
+            deck.append(this.el('div', 'fs-battle-eyebrow', 'Сыгранные в бою карты'));
+            const orderedCards = [...playedAny].sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0));
+            for (const side of orderedCards) {
+                for (const playedCard of side.cards) {
+                    if (!playedCard) continue;
+                    const name = String(playedCard.name || 'Боевая карта');
+                    const detail = playedCard.detail || {};
+                    const row = this.el('button', 'fs-battle-card-row' + (side.mine ? ' is-mine' : ''));
+                    row.type = 'button';
+                    if (row.style && side.color) row.style.setProperty('--battle-color', side.color);
+                    const top = this.el('span', 'fs-battle-card-top');
+                    top.append(this.el('b', 'fs-battle-card-name', name));
+                    top.append(this.el('span', 'fs-battle-card-who', side.name));
+                    const icons = this.el('span', 'fs-card-icons');
+                    if (this.appendCubeIcons(icons, detail.icons || playedCard.icons || {})) top.append(icons);
+                    if (playedCard.round !== undefined) {
+                        const rnd = this.el('span', 'fs-battle-card-round', 'раунд ' + playedCard.round);
+                        rnd.title = playedCard.valuesOnly ? 'В бою легли только значки этой карты' : 'Карта была вскрыта в этом раунде';
+                        top.append(rnd);
+                    }
+                    row.append(top);
+                    const print = playedCard.valuesOnly
+                        ? ['Применены только значки карты — способности не игрались.']
+                        : [detail.general, detail.unit || detail.text].filter(Boolean);
+                    if (print.length) {
+                        const body = this.el('span', 'fs-battle-card-text');
+                        for (const line of print) body.append(this.el('span', 'fs-battle-card-para', line));
+                        row.append(body);
+                    }
+                    this.bindPeek(row, Object.assign({}, detail, {
+                        kind: playedCard.valuesOnly ? 'БОЕВАЯ КАРТА · ТОЛЬКО ЗНАЧКИ' : 'БОЕВАЯ КАРТА · ОТКРЫТА',
+                        name,
+                        icons: detail.icons || playedCard.icons,
+                        okLabel: playedCard.valuesOnly ? 'Применены только значки карты' : 'Карта открыта в этом бою',
+                    }));
+                    deck.append(row);
+                }
+            }
+            card.append(deck);
+        }
         // Left is me, right is the enemy — not top and bottom.
         const sides = this.el('div', 'fs-battle-sides');
         const ordered = [...(battle.sides || [])].sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0));
