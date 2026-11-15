@@ -1912,8 +1912,32 @@ const FSUI = {
         }
         selU.value = t.unit || '';
         selU.addEventListener('change', () => t.onUnit && t.onUnit(selU.value));
-        pickers.append(selF, selU);
+        pickers.append(selF);
+        if (!t.allFactions) pickers.append(selU);
         box.append(pickers);
+        if (t.allFactions) {
+            // The comparison lineup: no sliders here, only the eyeball ruler —
+            // the rows of every faction face each other across the board.
+            box.append(this.el('div', 'fs-tune-shared',
+                'На сцене выстроены все фракции двумя блоками рядов — банально сравнивайте их рост. ' +
+                'Для настройки поворота и размера выберите конкретную фракцию слева.'));
+            const ctls = this.el('div', 'fs-tune-ctls');
+            const btn = (label, title, onClick, primary) => {
+                const b = this.el('button', primary ? 'fs-tune-btn is-primary' : 'fs-tune-btn');
+                b.type = 'button';
+                b.textContent = label;
+                b.title = title;
+                b.addEventListener('click', () => onClick && onClick());
+                return b;
+            };
+            ctls.append(
+                btn('Скопировать JSON', 'Весь набор настроек в буфер обмена — для вставки в js/fs/FSModelTuning.json', () => t.onExport && t.onExport()),
+                btn('Сохранить в файл', 'Записать js/fs/FSModelTuning.json через локальный сервер игры', () => t.onSaveFile && t.onSaveFile(), true),
+            );
+            box.append(ctls);
+            if (t.note) box.append(this.el('div', 'fs-tune-note', t.note));
+            return this.tunerEntries(box, t);
+        }
         if (t.shared) {
             box.append(this.el('div', 'fs-tune-shared',
                 'У этого отряда нет своей модели — настройка меняет общую модель типа «'
@@ -1984,6 +2008,11 @@ const FSUI = {
         box.append(ctls);
         if (t.note) box.append(this.el('div', 'fs-tune-note', t.note));
         box.append(this.el('div', 'fs-tune-source', 'Источник значений этой модели: ' + (t.source || 'по умолчанию') + '. Ключ: ' + (t.key || '—') + '.'));
+        return this.tunerEntries(box, t);
+    },
+
+    /** The shared tail of the tuner panel: the draft-book of keyed corrections. */
+    tunerEntries(box, t) {
         if ((t.entries || []).length) {
             const list = this.el('div', 'fs-tune-list');
             list.append(this.el('div', 'fs-eyebrow', 'Настроено вручную'));

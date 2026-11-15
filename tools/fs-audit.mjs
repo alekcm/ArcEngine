@@ -4841,10 +4841,10 @@ rule('blitz-draft-1', '«Shuffle all Requisitions belonging to that suit (6) and
     st.players[seat].requisitions = ['supplies'];
     const before = st.players[seat].materiel;
     const resolved = FS_RULES.apply(st, seat, { type: 'selectRequisition', card: 'supplies' });
-    eq(resolved.ok, true, 'Supplies раскрыта и разрешена');
-    eq(st.players[seat].materiel, before + 4, 'Supplies даёт четыре материи');
+    eq(resolved.ok, true, 'Припасы раскрыты и разрешены');
+    eq(st.players[seat].materiel, before + 4, 'Припасы дают четыре материи');
     eq(st.setup.stage, BoardSetup.FORCES, 'после реквизиции размещаются начальные силы');
-    eq(st.log.some(entry => /Supplies/.test(entry.text)), true, 'раскрытая карта записана в журнал');
+    eq(st.log.some(entry => /Припас/.test(entry.text)), true, 'раскрытая карта записана в журнал');
 });
 
 rule('blitz-requisition-1', '«When players place a System Tile during Setup, they must also reveal and resolve a Requisition card. If a Requisition card cannot be resolved when it is revealed, it is discarded without effect.»', () => {

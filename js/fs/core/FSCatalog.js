@@ -53,6 +53,13 @@ class FactionCatalog {
         return this.data.factions || [];
     }
 
+    // The paints of every faction keyed in one shot: { id: paint }.
+    allPrimaries() {
+        const m = {};
+        for (const f of this.factions) if (f && f.color) m[f.id] = f.color;
+        return m;
+    }
+
     /** @param {string} id */
     faction(id) {
         return this.factions.find(f => f.id === id) || null;
@@ -354,8 +361,11 @@ class FactionCatalog {
             const sameHue = wantedHue && taken.some(t => this.saturation01(t) >= 0.12 && this.hueDistance(base, t) < 45);
             if (!taken.length || (baseClosest >= 50 && !sameHue)) { out.set(p.seat, base); continue; }
             const candidates = [];
-            for (const lightness of [0.35, 0.45, 0.55, 0.65]) {
-                for (const saturation of [0.35, 0.5, 0.65, 0.8]) {
+            // The doubles keep the table manners of the original paints: no
+            // acid saturation, no neon lightness — shifted hue over muted
+            // ranges, like the shades the factions themselves live in.
+            for (const lightness of [0.28, 0.36, 0.44, 0.52]) {
+                for (const saturation of [0.2, 0.3, 0.42, 0.5]) {
                     for (let deg = 0; deg < 360; deg += 15) {
                         const candidate = this.hueShift(base, deg, saturation, lightness);
                         if (!candidates.includes(candidate)) candidates.push(candidate);

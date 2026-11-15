@@ -1229,26 +1229,39 @@ const FSView = {
     buildModelStage(app, view, factionId) {
         this.clearModelStage(view);
         if (!view.stageNodes) view.stageNodes = [];
-        const faction = FS_CATALOG.faction(factionId);
-        if (!faction || !app || !app.location) return;
-        const units = faction.units || [];
+        if (!app || !app.location) return;
         const cx = app.location.width / 2, cz = app.location.height / 2;
-        const spreadX = 64, gapZ = 110;
-        const placeRow = (z, tag) => {
+        // One faction: its units stand twice, as attackers and as defenders.
+        // «Все фракции»: two blocks of rows facing each other across the
+        // centre line — built to compare the height of every miniature at
+        // once. The facing of every row is the same battle transform.
+        const rows = factionId === '__all__'
+            ? FS_CATALOG.factions.map((f, i) => ({
+                faction: f.id,
+                z: cz + (i < Math.ceil(FS_CATALOG.factions.length / 2) ? 1 : -1)
+                    * (70 + (i % Math.ceil(FS_CATALOG.factions.length / 2)) * 88),
+                yaw: i < Math.ceil(FS_CATALOG.factions.length / 2) ? Math.PI : 0,
+            }))
+            : [{ faction: factionId, z: cz + 110, yaw: Math.PI }, { faction: factionId, z: cz - 110, yaw: 0 }];
+        const spreadX = 64;
+        rows.forEach((row, ri) => {
+            const faction = FS_CATALOG.faction(row.faction);
+            if (!faction) return;
+            const units = faction.units || [];
             units.forEach((u, i) => {
                 const x = cx + (i - (units.length - 1) / 2) * spreadX;
-                const y = app.location.terrain.heightAt(x, z) + 6;
-                const tune = this.tuneFor(factionId, u.type, u.id);
-                const model = this.factionModel(view, factionId, u.type, u.id,
-                    { primary: this.factionColor(factionId) });
-                const holder = new BABYLON.TransformNode('fs-stage-' + tag + '-' + u.id, view.scene);
+                const y = app.location.terrain.heightAt(x, row.z) + 6;
+                const tune = this.tuneFor(row.faction, u.type, u.id);
+                const model = this.factionModel(view, row.faction, u.type, u.id,
+                    { primary: this.factionColor(row.faction) });
+                const holder = new BABYLON.TransformNode('fs-stage-' + ri + '-' + u.id, view.scene);
                 if (model) {
                     const scl = (u.type === 'ship' ? 1 : this.ON_WORLD) * tune.scale;
-                    this.placeFactionModel(holder, model, { x, y, z }, scl, false);
+                    this.placeFactionModel(holder, model, { x, y, z: row.z }, scl, false);
                     // The cached original stays hidden; the stage gets its own clones.
                     for (let pi = 0; pi < model.parts.length; pi++) {
                         const source = model.parts[pi];
-                        const clone = source.clone('fs-stage-part-' + tag + '-' + u.id + '-' + pi, holder, false);
+                        const clone = source.clone('fs-stage-part-' + ri + '-' + u.id + '-' + pi, holder, false);
                         if (!clone) continue;
                         clone.material = model.materials[model.partMats[pi]] || model.materials[0];
                         clone.isPickable = false;
@@ -1256,25 +1269,25 @@ const FSView = {
                     }
                 } else {
                     // No OBJ yet (loading) or none at all: the board's fallback silhouette.
-                    holder.position.set(x, y + 9, z);
-                    const mesh = BABYLON.MeshBuilder.CreateCylinder('fs-stage-sh-' + tag + '-' + u.id,
+                    holder.position.set(x, y + 9, row.z);
+                    const mesh = BABYLON.MeshBuilder.CreateCylinder('fs-stage-sh-' + ri + '-' + u.id,
                         { diameterTop: 16, diameterBottom: 24, height: 18, tessellation: 8 }, view.scene);
                     mesh.parent = holder;
                     mesh.isPickable = false;
-                    mesh.material = view.material('stage-' + factionId, this.factionColor(factionId), { emissive: true });
+                    mesh.material = view.material('stage-' + row.faction, this.factionColor(row.faction), { emissive: true });
                     holder.scaling.setAll(tune.scale);
                 }
-                // The exact battle transform: the rows face the stage centre,
-                // so this is precisely the yaw a contested area would give.
-                holder.rotation.y = Math.atan2(0, cz - z) + tune.yaw * Math.PI / 180;
+                // The exact battle transform: the rows face the centre line, so
+                // this is precisely the yaw a contested area would give.
+                holder.rotation.y = row.yaw + tune.yaw * Math.PI / 180;
                 view.stageNodes.push(holder);
             });
-        };
-        placeRow(cz + gapZ, 'att');
-        placeRow(cz - gapZ, 'def');
-        // The contested area between the rows: a quiet line on the table.
+        });
+        // The contested area between the rows: a quiet line on the table,
+        // wide enough for the widest row on the stage.
+        const widest = Math.max(1, ...rows.map(r => ((FS_CATALOG.faction(r.faction) || {}).units || []).length));
         const line = BABYLON.MeshBuilder.CreateBox('fs-stage-line',
-            { width: (units.length * spreadX) + 60, depth: 2, height: 1 }, view.scene);
+            { width: (widest * spreadX) + 60, depth: 2, height: 1 }, view.scene);
         line.position.set(cx, app.location.terrain.heightAt(cx, cz) + 5, cz);
         line.material = view.material('stage-line', '#d8b873', { emissive: true });
         view.stageNodes.push(line);

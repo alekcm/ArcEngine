@@ -357,19 +357,21 @@ class FSGame {
     // js/fs/FSModelTuning.json (the dev server saves it locally) < the unsaved
     // draft of this browser.
 
-    /** The faction the tuner corrects right now. */
+    /** The faction the tuner corrects right now; the sentinel lines up all of them. */
     tuneFaction() {
         const factions = FS_CATALOG.factions.map(f => f.id);
-        if (!factions.includes(this.tuneSel.faction)) {
+        if (this.tuneSel.faction !== '__all__' && !factions.includes(this.tuneSel.faction)) {
             this.tuneSel.faction = this.faction && factions.includes(this.faction) ? this.faction : factions[0];
             this.tuneSel.unit = '';
         }
         return this.tuneSel.faction;
     }
 
-    /** The unit under the sliders. */
+    /** The unit under the sliders; the all-factions lineup takes none. */
     tuneUnit() {
-        const faction = FS_CATALOG.faction(this.tuneFaction());
+        const factionId = this.tuneFaction();
+        if (factionId === '__all__') { this.tuneSel.unit = ''; return null; }
+        const faction = FS_CATALOG.faction(factionId);
         const units = faction ? (faction.units || []) : [];
         if (!units.some(u => u.id === this.tuneSel.unit)) this.tuneSel.unit = units[0] ? units[0].id : '';
         return units.find(u => u.id === this.tuneSel.unit) || units[0] || null;
@@ -378,6 +380,7 @@ class FSGame {
     /** The payload of the lobby tuner panel. */
     tuningInfo() {
         const factionId = this.tuneFaction();
+        const allFactions = factionId === '__all__';
         const def = this.tuneUnit();
         const key = def ? FSView.tuningKey(factionId, def.type, def.id) : '';
         const cur = def ? FSView.tuneFor(factionId, def.type, def.id) : { yaw: 0, scale: 1 };
@@ -404,9 +407,12 @@ class FSGame {
             this.applyModelStage();
         };
         return {
-            factions: FS_CATALOG.factions.map(f => ({ id: f.id, name: f.name })),
+            // The sentinel leads the list: the stage of every faction at once,
+            // to weigh the height of the miniatures against each other.
+            factions: [{ id: '__all__', name: 'Все фракции' }, ...FS_CATALOG.factions.map(f => ({ id: f.id, name: f.name }))],
             faction: factionId,
-            units: factionId ? (FS_CATALOG.faction(factionId).units || []).map(u => ({
+            allFactions,
+            units: (!allFactions && factionId) ? (FS_CATALOG.faction(factionId).units || []).map(u => ({
                 id: u.id, name: u.name, type: u.type,
                 shared: !((FSView.FACTION_UNIT_MODELS[factionId] || {})[u.id]),
             })) : [],
@@ -626,7 +632,14 @@ class FSGame {
             }
         }
         if (view.phase === 'setup' && this.mode === 'placeTile') this.highlightSetupCells();
+        else if (view.phase === 'setup' && BoardSetup.of(this.state).is(BoardSetup.REQUISITION_EFFECT)) this.highlightRequisitionTargets();
         else if (view.phase === 'setup' && this.mode.startsWith('setup')) this.highlightSetupTargets();
+        // The card resolved or was dropped: its rings and the half-chosen
+        // first world of a pair leave the table together.
+        if (!(view.phase === 'setup' && BoardSetup.of(this.state).is(BoardSetup.REQUISITION_EFFECT))) {
+            if (this._requisitionRings) { FSView.clearHighlights(this.view); this._requisitionRings = false; }
+            this.pendingReqSpot = null;
+        }
         // The picked pieces may have moved or died — the rings follow the survivors.
         this.selected = this.selected.filter(id => view.units.some(u => u.id === id));
         if (this.mode !== 'move') this.clearSelection();
@@ -805,6 +818,43 @@ class FSGame {
     // board, Q/E/F turn the preview, and the confirmation is the plaque that
     // floats above the chosen cell.
 
+    /** A world click while a requisition is open: the spot resolves the option. */
+    clickRequisitionTarget(s, target) {
+        const setup = BoardSetup.of(s).record;
+        const options = setup.requisitionOptions || [];
+        const matches = options.map((o, i) => ({ option: o, index: i }))
+            .filter(x => this.requisitionOptionCovers(x.option, target));
+        // «Второй мир пары»: сужаем выбор до вариантов, касающихся обоих мест.
+        const pool = this.pendingReqSpot
+            ? matches.filter(x => this.requisitionOptionCovers(x.option, this.pendingReqSpot))
+            : matches;
+        if (pool.length === 1) {
+            this.pendingReqSpot = null;
+            this.net.cmd({ type: 'resolveRequisition', choice: pool[0].index });
+            return;
+        }
+        if (pool.length === 0) {
+            this.pendingReqSpot = null;
+            this.status = matches.length
+                ? 'Сюда не продолжается ни один вариант от первого мира — начните выбор заново.'
+                : 'Для этого места реквизиция не предлагает вариантов — сверьтесь со списком справа-внизу.';
+            this.refresh();
+            return;
+        }
+        // Несколько способов касаются этого места: одиночные различаются только
+        // в списке, а пары можно сузить вторым щелчком.
+        const pair = pool.some(x => (x.option.placements || []).length === 2);
+        if (pair && !this.pendingReqSpot) {
+            this.pendingReqSpot = { system: target.system, pos: target.pos };
+            this.status = 'Первый мир выбран — щёлкните второй мир пары или способ из списка справа-внизу.';
+        } else {
+            this.pendingReqSpot = null;
+            this.status = 'Для этого места несколько способов — выберите нужный в списке справа-внизу.';
+        }
+        this.highlightRequisitionTargets();
+        this.refresh();
+    }
+
     panelSetup(s, ctx) {
         const me = Seat.of(s).me;
         const board = BoardSetup.of(s);
@@ -858,7 +908,7 @@ class FSGame {
                 title: (suit ? suit.name + ' · ' + suit.translation : 'Карты масти') + ' — выберите одну',
                 choices: cards.map(({ card, index }) => ({
                     name: card.name,
-                    detail: { kind: 'Реквизиция · ' + (suit ? suit.translation : ''), name: card.name, text: card.text },
+                    detail: { kind: 'Реквизиция · ' + (suit ? suit.name : ''), name: card.name, text: card.text },
                     onClick: () => this.net.cmd({ type: 'chooseRequisitionCard', index }),
                 })),
             };
@@ -872,7 +922,7 @@ class FSGame {
                 title: 'Ваши закрытые реквизиции',
                 choices: cards.map(card => ({
                     name: card.name,
-                    detail: { kind: 'Реквизиция · ' + (FS_REQUISITIONS.suit(card.suit) || {}).translation, name: card.name, text: card.text },
+                    detail: { kind: 'Реквизиция · ' + (FS_REQUISITIONS.suit(card.suit) || {}).name, name: card.name, text: card.text },
                     onClick: () => this.net.cmd({ type: 'selectRequisition', card: card.id }),
                 })),
             };
@@ -884,7 +934,8 @@ class FSGame {
             const options = setup.requisitionOptions || [];
             ctx.text = card ? 'Выберите способ разрешить открытую реквизицию «' + card.name + '».'
                 : 'Выберите доступный способ разрешить реквизицию.';
-            ctx.status = this.status || 'Если выполнить карту невозможно, она сбрасывается без эффекта.';
+            ctx.status = this.status || 'Если выполнить карту невозможно, она сбрасывается без эффекта. '
+                + 'Подсвеченные кольцами миры можно щёлкнуть прямо на карте — это тот же выбор.';
             if (card) ctx.previewCard = { kind: 'Реквизиция', name: card.name, text: card.text, okLabel: 'Открыта' };
             for (let choice = 0; choice < options.length; choice++) {
                 const option = options[choice];
@@ -1180,6 +1231,45 @@ class FSGame {
         }
         const list = this.mode === 'setupStorm' ? [FSView.tilePos(this.app, sys, this.view.metrics)] : areas.map(a => FSView.areaPos(this.app, sys, a.pos, this.view.metrics));
         FSView.highlight(this.view, list.map(p => ({ x: p.x, y: this.app.location.terrain.heightAt(p.x, p.y) + 14, z: p.y })));
+    }
+
+    /** The worlds a resolved requisition may use: the rings of the board click. */
+    highlightRequisitionTargets() {
+        const s = this.state, board = s && BoardSetup.of(s), setup = board && board.record;
+        if (!setup || !setup.myTurn || !this.app || !this.view) return;
+        const options = (setup.requisitionOptions || [])
+            // When the first world of a pair is chosen, only its continuations shine.
+            .filter(o => !this.pendingReqSpot || this.requisitionOptionCovers(o, this.pendingReqSpot));
+        const spots = [];
+        for (const option of options) for (const mark of this.requisitionOptionSpots(option)) {
+            const sys = Board.of(s).system(mark.system);
+            if (!sys) continue;
+            const p = mark.pos != null ? FSView.areaPos(this.app, sys, mark.pos, this.view.metrics)
+                : FSView.tilePos(this.app, sys, this.view.metrics);
+            if (!p) continue;
+            const spot = { x: p.x, y: this.app.location.terrain.heightAt(p.x, p.y) + 14, z: p.y };
+            if (!spots.some(q => q.x === spot.x && q.z === spot.z)) spots.push(spot);
+        }
+        FSView.highlight(this.view, spots);
+        this._requisitionRings = true;
+    }
+
+    /** The spots of a requisition option: areas, or the whole system of a swap. */
+    requisitionOptionSpots(option) {
+        if (!option) return [];
+        if (option.kind === 'unit-pair' && option.placements)
+            return option.placements.map(pl => ({ system: pl.system, pos: pl.pos }));
+        if (option.system != null && option.pos != null) return [{ system: option.system, pos: option.pos }];
+        if (option.system != null) return [{ system: option.system }];
+        return [];
+    }
+
+    /** Does the clicked spot take part in this option — the world-click match. */
+    requisitionOptionCovers(option, spot) {
+        if (!option || !spot) return false;
+        if (option.kind === 'swap') return spot.system === option.system;
+        return this.requisitionOptionSpots(option).some(mark =>
+            mark.system === spot.system && (spot.pos == null || mark.pos === spot.pos));
     }
 
     highlightSetupCells() {
@@ -3935,6 +4025,12 @@ class FSGame {
         }
         // The island of the board assembly: the forces and the objectives.
         if (s.phase === 'setup' && BoardSetup.of(s).record.myTurn && target && target.pos) {
+            // An open requisition answers the world click the same way the
+            // right-bottom list does — the rings are those options.
+            if (BoardSetup.of(s).is(BoardSetup.REQUISITION_EFFECT)) {
+                this.clickRequisitionTarget(s, target);
+                return;
+            }
             if (this.mode === 'setupUnit') this.net.cmd({ type: 'setupUnit', unit: this.pending.unit, pos: target.pos });
             else if (this.mode === 'setupStructure') this.net.cmd({ type: 'setupStructure', structure: this.pending.structure, pos: target.pos });
             else if (this.mode === 'setupObjective') {
