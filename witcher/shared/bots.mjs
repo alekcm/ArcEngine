@@ -1,11 +1,13 @@
 // Bots see exactly the per-seat view a human gets and act through the same apply().
-// botCommand(view, opts) returns one command or null. Kept deliberately simple and legal;
-// difficulty levels and personalities come with the bots milestone.
+// botCommand(view, opts) returns one command or null: route planning to the best goal on the map,
+// fight readiness by «hand + deck», phase III buying by deck fit (see docs/witcher/02-decisions.md).
 import { CARDS, LOC, ADJ, MONSTER } from './engine/util.mjs';
+import { LOC_ACTIONS, SCHOOLS, ELIXIR_LIMIT } from './data/rules-data.mjs';
 import { autoReroll } from './engine/turn.mjs';
 import { linkIndex, comboTotals, comboError, elixirError } from './engine/fight.mjs';
 import { movePaymentError } from './engine/turn.mjs';
 import { findChain } from './engine/vuln.mjs';
+import { trainCost, hasWitcherTrophy } from './engine/effects.mjs';
 
 export const cardValue = (id) => {
     const c = CARDS[id];
@@ -96,60 +98,203 @@ export function botCommand(view, opts = {}) {
     const qd = (o.quests || []).find(q => !q.err);
     if (qd) return { t: 'quest', i: qd.i };
     if (t.afterExplore) {
-        if (o.loc && !o.loc.err && o.loc.kind !== 'swap' && o.loc.kind !== 'poor') {
-            if (o.loc.kind === 'school') { const c = o.loc.choices.find(x => !x.err); if (c) return { t: 'loc', skill: c.id }; }
-            else if (o.loc.kind === 'hunt') { const c = o.loc.choices.find(x => !x.err); return { t: 'loc', slot: c ? c.id : undefined }; }
-            else return { t: 'loc' };
-        }
+        if (o.loc && !o.loc.err) { const a = locActionCommand(view, p, o.loc); if (a) return a; }
         return { t: 'endExplore' };
     }
-    const here = view.slots.find(s => s.mon && s.token === p.loc);
-    const fightOpt = o.phase2.find(x => x.id === 'fight');
-    const strong = p.hand.length >= 3 || (here && p.trackTokens[here.terrain]);
+    // Location action of the place we stand on (after moving): take it when it is useful.
     if (t.moved && o.loc && !o.loc.err) {
-        if (o.loc.kind === 'school') {
-            const c = o.loc.choices.filter(x => !x.err).sort((a, b) => a.cost - b.cost)[0];
-            if (c && p.gold - c.cost >= 1) return { t: 'loc', skill: c.id };
-        } else if (o.loc.kind === 'hunt') {
-            const c = o.loc.choices.find(x => !x.err);
-            return { t: 'loc', slot: c ? c.id : undefined };
-        } else if (o.loc.kind !== 'swap' && o.loc.kind !== 'poor') return { t: 'loc' };
+        const a = locActionCommand(view, p, o.loc);
+        if (a) return a;
     }
-    if (fightOpt && !fightOpt.err && strong && (t.moved || !o.moves.length)) return { t: 'fight' };
     // Poker with a witcher met here: with spare gold, now and then (pp. 13–14).
     const wp = (o.pokers || []).find(x => !x.err);
     if (wp && p.gold >= 2 && R() < 0.5) return { t: 'wpoker', seat: wp.seat };
-    // A witcher fight: only clearly stronger than the opponent (more cards and shield).
-    const power = (q) => (q.hand ? q.hand.length : q.handCount) + q.deckCount + q.discard.length + q.shield * 2;
-    const duel = o.phase2.filter(x => x.id.startsWith('duel-') && !x.err).map(x => view.players[x.seat])
-        .filter(q => p.hand.length >= 4 && power(p) >= power(q) + 2)[0];
-    if (duel && (t.moved || !o.moves.length) && R() < 0.6) return { t: 'duel', seat: duel.seat };
-    if (!t.moved && o.moves.length) {
-        // Move: prefer a monster we can fight, then an action we can use; pay as cheaply as possible.
-        const targets = o.moves.filter(m => m.via == null).map(m => {
-            let s = R();
-            if (view.slots.some(sl => sl.mon && sl.token === m.to)) s += p.hand.length >= 4 ? 5 : 1;
-            if (p.hunts.some(h => h.loc === m.to)) s += 4;
-            if ((p.quests || []).some(q => q.loc === m.to)) s += 3;
-            return { ...m, s };
-        }).sort((a, b) => b.s - a.s);
-        for (const m of targets) {
-            const pay = cheapestPayment(view, p, m.to);
-            if (pay) return { t: 'move', to: m.to, cards: pay.cards, gold: pay.gold };
-        }
-    }
-    if (fightOpt && !fightOpt.err && p.hand.length >= 2) return { t: 'fight' };
+    // Phase II right here when it is the best thing to do: a fight costs no more cards this way.
+    const fightOpt = o.phase2.find(x => x.id === 'fight');
+    const here = view.slots.find(s => s.mon && s.token === p.loc);
+    if (fightOpt && !fightOpt.err && here && winChance(view, p, here) >= FIGHT_NOW) return { t: 'fight' };
+    const duel = duelTarget(view, p, o);
+    if (duel != null && (t.moved || !o.moves.length)) return { t: 'duel', seat: duel };
+    // Route: the best goal on the map (monsters, quests, hunting tokens, useful actions), one
+    // step along the shortest path; the turn loop calls us again after every step.
+    const step = o.moves.length ? planStep(view, p, o) : null;
+    if (step) return step;
+    return phase2(view, p, o, fightOpt, here);
+}
+
+/** Phase II once the moving is over. */
+function phase2(view, p, o, fightOpt, here) {
+    const canFight = fightOpt && !fightOpt.err;
+    const wc = canFight && here ? winChance(view, p, here) : 0;
     const med = o.phase2.find(x => x.id === 'meditate');
+    if (canFight && wc >= 0.7) return { t: 'fight' };
     if (med && !med.err) return { t: 'meditate', trophy: med.trophies[0] };
+    if (canFight && wc >= 0.3) return { t: 'fight' };
     const ex = o.phase2.filter(x => x.id.startsWith('explore-') && !x.err);
     if (ex.length) return { t: 'explore', deck: ex[Math.floor(R() * ex.length)].id === 'explore-city' ? 'city' : 'wild' };
-    if (fightOpt && !fightOpt.err) return { t: 'fight' };
+    if (canFight) return { t: 'fight' };
     // Phase II is obligatory: when a witcher fight is the only action left, it is fought.
     const anyDuel = o.phase2.find(x => x.id.startsWith('duel-') && !x.err);
     if (anyDuel) return { t: 'duel', seat: anyDuel.seat };
     const skip = o.phase2.find(x => x.id === 'skipPhase2' && !x.err);
     if (skip) return { t: 'skipPhase2' };
     return null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fight readiness. In a monster fight the witcher is knocked out when hand and deck are empty,
+// so «hand + deck» is the life of the witcher: bot games show ~10–25% wins at 8–12 cards, ~50%
+// at 15–16 and 85%+ from 20. A track token (first turn) is worth about 3 cards.
+// ---------------------------------------------------------------------------------------------
+const FIGHT_NOW = 0.6;
+export function winChance(view, p, slot, handLoss = 0) {
+    const mon = MONSTER[slot.mon];
+    let hp = Math.max(0, p.hand.length - handLoss) + (p.deckCount || 0);
+    if (p.trackTokens[slot.terrain]) hp += 3;
+    hp += p.shield + (p.skills.combat - 1) * 0.5 + (p.level - mon.level) * 0.75;
+    return 1 / (1 + Math.exp(-(hp - 15) / 2));
+}
+/** Can this monster be attacked at all (solo lock on the last monster, Архиспора)? */
+function fightable(view, p, slot) {
+    if (slot.mon === 'MON-06' && !p.elixirs.length) return false;
+    if (view.solo && view.slots.filter(s => s.mon).length === 1 && p.monstersDefeated === 2 && !p.trophies.some(x => x.kind === 'skill')) return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Witcher fight (pp. 20–23): only clearly stronger than the opponent in cards and shield.
+// ---------------------------------------------------------------------------------------------
+const power = (q, handLoss = 0) => Math.max(0, (q.hand ? q.hand.length : q.handCount) - handLoss) + q.deckCount + q.shield * 2;
+/** A witcher worth attacking: clearly weaker, and beating them still gives a trophy. */
+const duelWorth = (view, p, q, handLoss = 0) => !view.solo && q.seat !== p.seat && !hasWitcherTrophy(p, q.school)
+    && p.hand.length - handLoss >= 3 && power(p, handLoss) >= 12 && power(p, handLoss) >= power(q) + 2;
+const SCHOOL_HOMES = new Set(Object.values(SCHOOLS).map(s => s.home));
+function duelTarget(view, p, o) {
+    const c = o.phase2.filter(x => x.id.startsWith('duel-') && !x.err).map(x => view.players[x.seat])
+        .filter(q => duelWorth(view, p, q)).sort((a, b) => power(a) - power(b))[0];
+    return c ? c.seat : null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Location actions
+// ---------------------------------------------------------------------------------------------
+/** The skill the bot trains: the solo skill trophy first, then the one that raises the level. */
+function trainOrder(view, p) {
+    const soloSkill = view.solo && view.skillTrophies.length ? SKILL_OF[view.skillTrophies[0].split('#')[0]] : null;
+    return ['combat', 'defense', 'alchemy', 'spec'].slice().sort((a, b) =>
+        (b === soloSkill) - (a === soloSkill) || p.skills[a] - p.skills[b] || (b === 'combat') - (a === 'combat'));
+}
+const SKILL_OF = { 'SKILL-COMBAT': 'combat', 'SKILL-DEFENSE': 'defense', 'SKILL-ALCHEMY': 'alchemy', 'SKILL-SPEC': 'spec' };
+function locActionCommand(view, p, info) {
+    switch (info.kind) {
+        case 'school': {
+            const ok = info.choices.filter(x => !x.err);
+            for (const s of trainOrder(view, p)) {
+                const c = ok.find(x => x.id === s);
+                if (c && p.gold - c.cost >= 0) return { t: 'loc', skill: c.id };
+            }
+            return null;
+        }
+        case 'hunt': {
+            const c = info.choices.find(x => !x.err);
+            return { t: 'loc', slot: c ? c.id : undefined };
+        }
+        case 'swap': case 'poor': return null;
+        default: return { t: 'loc' };
+    }
+}
+/** What doing the action of location `n` is worth to the bot now (0 = useless). */
+function actionValue(view, p, n) {
+    const a = LOC_ACTIONS[n];
+    if (!a) return 0;
+    const t = view.turn;
+    if (t.usedLoc.includes(n)) return 0;
+    switch (a.kind) {
+        case 'raise': return p.skills[a.skill] < 5 && p.skills[a.skill] <= p.level ? 6 + (p.skills[a.skill] === p.level ? 2 : 0) : 0;
+        case 'school': {
+            const home = SCHOOLS[p.school] && SCHOOLS[p.school].home === n;
+            let best = 0;
+            for (const s of trainOrder(view, p)) {
+                if (p.skills[s] >= 5 || (s === 'spec' && !home)) continue;
+                if (trainCost(p, s) <= p.gold) best = Math.max(best, 5 + (p.skills[s] === p.level ? 2 : 0));
+            }
+            return best;
+        }
+        case 'elixir': return p.elixirs.length < ELIXIR_LIMIT ? 2.5 : 0;
+        case 'poker': return p.gold >= 1 ? (view.solo ? 1.5 : 2) : 0;
+        case 'hunt': return view.slots.some(s => s.mon && !p.trackTokens[s.terrain] && !p.hunts.some(h => h.terrain === s.terrain)) ? 3 : 0;
+        default: return 0;
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Route planning
+// ---------------------------------------------------------------------------------------------
+const enterable = (view, n) => !!LOC[n] && (!LOC[n].island || !!view.skellige);
+/** Shortest path lengths from `from` over the land and sea routes (BFS). */
+export function distances(view, from) {
+    const d = { [from]: 0 }, q = [from];
+    while (q.length) {
+        const x = q.shift();
+        for (const y of ADJ[x] || []) if (d[y] == null && enterable(view, y)) { d[y] = d[x] + 1; q.push(y); }
+    }
+    return d;
+}
+/** How many moves the hand can still pay for — one card per move, roughly. */
+const movesLeft = (p) => p.hand.length;
+
+/** Goal value of every location for this turn, given the distance to it. */
+function goalValue(view, p, n, d, reach) {
+    let v = 0;
+    const slot = view.slots.find(s => s.mon && s.token === n);
+    if (slot && fightable(view, p, slot)) {
+        // Cards spent on the way are cards missing in the fight; a far monster is a plan for later turns.
+        const wc = reach ? winChance(view, p, slot, d) : winChance(view, p, slot, 0) * 0.7;
+        v += 16 * wc * (wc >= 0.45 ? 1 : 0.5);
+    }
+    if (p.hunts.some(h => h.loc === n)) v += 6;
+    // A weaker witcher there: a witcher trophy within reach (no fights in school locations, p. 20).
+    if (reach && !SCHOOL_HOMES.has(n) && view.closedTavern !== n && view.players.some(q => q.loc === n && duelWorth(view, p, q, d))) v += 9;
+    if ((p.quests || []).some(q => q.loc === n)) v += 5;
+    v += actionValue(view, p, n);
+    return v;
+}
+function planStep(view, p, o) {
+    const t = view.turn;
+    const dist = distances(view, p.loc);
+    const budget = movesLeft(p);
+    let best = null;
+    for (const key of Object.keys(dist)) {
+        const n = Number(key);
+        let d = dist[n];
+        // The starting location's action needs leaving and coming back.
+        if (n === p.loc) { if (t.moved) continue; d = 2; }
+        const reach = d <= budget;
+        const v = goalValue(view, p, n, d, reach);
+        if (v <= 0) continue;
+        const score = reach ? v - 1.2 * d : v * 0.6 - 1.2 * d;
+        if (!best || score > best.score) best = { n, d, score, reach };
+    }
+    // Staying is worth something too: the value of the current place for phase II.
+    const stay = (() => {
+        const slot = view.slots.find(s => s.mon && s.token === p.loc);
+        return slot && fightable(view, p, slot) ? 16 * winChance(view, p, slot) : 0;
+    })();
+    if (!best || best.score <= Math.max(1, stay)) return null;
+    // A far goal: spend only the cards above 3 (phase III draws back up to 3 anyway).
+    if (!best.reach && p.hand.length <= 1) return null;
+    const goalDist = best.n === p.loc ? null : distances(view, best.n);
+    const steps = o.moves.filter(m => m.via == null).map(m => {
+        const pay = cheapestPayment(view, p, m.to);
+        if (!pay) return null;
+        const left = goalDist ? goalDist[m.to] : 1;
+        if (left == null || left !== best.d - 1 && !(best.n === p.loc)) return null;
+        const terrainPay = pay.cards.length === 1 && !pay.gold ? 0 : 1;
+        return { m, pay, s: terrainPay + R() * 0.1 };
+    }).filter(Boolean).sort((a, b) => a.s - b.s);
+    const st = steps[0];
+    if (!st) return null;
+    return { t: 'move', to: st.m.to, cards: st.pay.cards, gold: st.pay.gold };
 }
 
 export function cheapestPayment(view, p, to) {
@@ -171,7 +316,7 @@ function answerPrompt(view, p, pr) {
     if (pr.kind === 'choice') {
         const okOpts = pr.options.filter(o => !o.disabled);
         if (pr.ui === 'row') {
-            const best = okOpts.map(o => ({ o, v: cardValue(view.row[Number(o.id)]) })).sort((a, b) => b.v - a.v)[0];
+            const best = okOpts.map(o => ({ o, v: buyValue(view, p, view.row[Number(o.id)], o) })).sort((a, b) => b.v - a.v)[0];
             return { t: 'answer', choice: best.o.id };
         }
         return { t: 'answer', choice: okOpts[Math.floor(R() * okOpts.length)].id };
@@ -198,3 +343,34 @@ function answerPrompt(view, p, pr) {
     return { t: 'answer', ids: sorted.slice(0, n) };
 }
 const value = (id) => CARDS[id] ? cardValue(id) : 0;
+
+// ---------------------------------------------------------------------------------------------
+// Phase III: a card is worth its own effect plus how well it chains with the deck — links from
+// the deck's colours into it and from it into the deck's colours — minus the cards paid for it
+// (each paid card is one card less in the next turn).
+// ---------------------------------------------------------------------------------------------
+const linkFx = (fx) => (fx.dmg || 0) * 3 + (fx.shield || 0) * 2 + (fx.draw || 0) + (fx.top ? 2 : 0) + (fx.ret ? 2 : 0) + (fx.dice ? 4 : 0) + 1;
+/** Cards the bot knows it owns: hand, discard and the starting deck of its school. */
+function knownDeck(view, p) {
+    const own = [...p.hand, ...p.discard];
+    if (own.length < 8) for (const c of Object.values(CARDS)) if (c.starter && c.school === p.school) own.push(c.id);
+    return own.filter(id => CARDS[id]);
+}
+export function deckFit(view, p, id) {
+    const c = CARDS[id];
+    if (!c || c.burn) return 0;
+    const own = knownDeck(view, p);
+    if (!own.length) return 0;
+    const share = (col) => own.filter(x => CARDS[x].color === col || CARDS[x].any).length / own.length;
+    let fit = 0;
+    for (const l of c.links) fit += linkFx(l.fx) * (c.any ? 1 : share(l.color));
+    for (const x of own) for (const l of CARDS[x].links) if (c.any || l.color === c.color) fit += linkFx(l.fx) / own.length;
+    return fit;
+}
+export function buyValue(view, p, id, opt) {
+    const c = CARDS[id];
+    if (!c) return -Infinity;
+    // «Убрать карту из игры»: thinning the deck of a weak starter is worth a little.
+    const pay = opt.burn ? 1.5 : Math.max(0, opt.cost || 0) * 2.5;
+    return cardValue(id) + deckFit(view, p, id) * 1.5 - pay;
+}
