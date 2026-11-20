@@ -1,0 +1,88 @@
+// One-off asset tool: cuts the card ILLUSTRATIONS out of the scanned atlases in Witcher/ into
+// client/art/<ID>.webp (the folder the client already reads instead of placeholders).
+//
+//  - action cards (starter + common): the whole 579 × 899 cell. The client draws the card frame
+//    cut from the same scans (tools/frames.mjs) on top in the same pixel space, so the art lines
+//    up with the frame exactly; the printed icons, name and cost under the frame are covered.
+//  - monsters: the illustration above the name box of the small monster card.
+//  - elixirs: the illustration between the name box and the flavour strip.
+//  - equipment and companions (Ивенты 1): the whole card — it is shown as printed, the text
+//    of these cards is never hidden. Other event cards are parchment only and are typeset by
+//    the client (outcomes must stay covered until picked).
+//
+// Needs `sharp`, which is NOT a dependency of the game — run once on a developer machine:
+//   SHARP=/path/to/node_modules/sharp node witcher/tools/art.mjs [actions|monsters|potions]
+// Output (committed): witcher/client/art/*.webp. A hand-made file with the same ID but another
+// extension (jpg/png) wins in the art index only if this one is deleted.
+import fs from 'node:fs';
+import path from 'node:path';
+import url from 'node:url';
+import { createRequire } from 'node:module';
+import { CARDS } from '../shared/engine/util.mjs';
+import { MONSTERS, POTIONS } from '../shared/data/gen-data.mjs';
+import { EVENTS } from '../shared/data/events-data.mjs';
+
+const require = createRequire(import.meta.url);
+const sharp = require(process.env.SHARP || 'sharp');
+const HERE = path.dirname(url.fileURLToPath(import.meta.url));
+const SRC = path.join(HERE, '../../Witcher');
+const OUT = path.join(HERE, '../client/art');
+const W = 579, H = 899;
+const ATLAS = {
+    A: 'Ведьмаки/31CF952873EE4D08B5859BA3EDF6FE2D3BD34A9A_httpcloud3steamusercontentcomugc20339843692024610201309DCB81F4B7AA9B217E29D4656DD593C544458.jpg',
+    B: 'Ведьмаки/1058E3132D875A0D4B5202AC5990B30F6AEDD39F_httpcloud3steamusercontentcomugc2033984369202461196236CD89275EB685C16C282EB1B610F952BCBB4B6.jpg',
+    S: 'Ведьмаки/Стартовые колоды.jpg',
+    MON: 'Монстры/Упрощённые карты монстров.jpg',
+    POT: 'Доп колоды/Зелья.jpg',
+    EV1: 'События/Ивенты 1.jpg',
+    EV2: 'События/Ивенты 2.jpg',
+};
+const cellOf = (c) => { const m = /^r(\d+)c(\d+)$/.exec(c); return [+m[1], +m[2]]; };
+const atlases = new Map();
+async function atlas(k) {
+    // Decode each atlas once (they are 10–20k pixels on a side).
+    if (!atlases.has(k)) atlases.set(k, await sharp(path.join(SRC, ATLAS[k]), { limitInputPixels: false }).removeAlpha().raw().toBuffer({ resolveWithObject: true }));
+    return atlases.get(k);
+}
+/** Cut a rectangle of cell (r, c) and save it as webp of the given width. */
+async function cut(k, cell, box, file, width) {
+    const { data, info } = await atlas(k);
+    const [r, c] = cellOf(cell);
+    await sharp(data, { raw: { width: info.width, height: info.height, channels: 3 }, limitInputPixels: false })
+        .extract({ left: (c - 1) * W + box.x, top: (r - 1) * H + box.y, width: box.w, height: box.h })
+        .resize({ width }).webp({ quality: 78 }).toFile(path.join(OUT, file));
+}
+
+async function actions() {
+    let n = 0;
+    for (const c of Object.values(CARDS)) {
+        const k = c.starter ? 'S' : c.id.startsWith('W-A') ? 'A' : 'B';
+        await cut(k, c.cell, { x: 0, y: 0, w: W, h: H }, `${c.id}.webp`, 420);
+        n++;
+    }
+    console.log('карты действий:', n);
+}
+async function monsters() {
+    for (const m of MONSTERS) await cut('MON', m.cell, { x: 0, y: 0, w: W, h: 600 }, `${m.id}.webp`, 420);
+    console.log('монстры:', MONSTERS.length);
+}
+async function potions() {
+    for (const p of POTIONS) await cut('POT', p.cell, { x: 0, y: 236, w: W, h: 510 }, `${p.id}.webp`, 420);
+    console.log('эликсиры:', POTIONS.length);
+}
+async function gear() {
+    // Printed full-art cards: the cell is in the card's `src` («Ивенты 2 · r6c2»).
+    const ids = Object.keys(EVENTS).filter(id => EVENTS[id].gear);
+    for (const id of ids) {
+        const [book, cell] = EVENTS[id].src.split(' · ');
+        await cut(book === 'Ивенты 2' ? 'EV2' : 'EV1', cell, { x: 0, y: 0, w: W, h: H }, `${id}.webp`, 579);
+    }
+    console.log('снаряжение и спутники:', ids.length);
+}
+
+fs.mkdirSync(OUT, { recursive: true });
+const only = process.argv[2];
+if (!only || only === 'actions') await actions();
+if (!only || only === 'monsters') await monsters();
+if (!only || only === 'potions') await potions();
+if (!only || only === 'gear') await gear();

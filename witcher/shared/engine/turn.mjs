@@ -30,6 +30,7 @@ STEPS.endTurn = (state) => {
     if (hasTrophy(p, 'MON-03') && LOC[p.loc].terrain === 'water') push(state, { op: 'gainElixir', seat: p.seat, n: 1, why: 'трофей «Гнездо гулей»' });
     if (hasTrophy(p, 'MON-20')) { p.gold += 1; log(state, `${p.name}: +1 золото (трофей «Водная баба»)`); }
     state.queue.push({ op: 'nextPlayer' });
+    push(state, { op: 'trapCheck', seat: p.seat, on: 'end' });
 };
 STEPS.nextPlayer = (state) => {
     const n = state.players.length;
@@ -49,7 +50,7 @@ STEPS.raiseSkill = (state, step) => {
     fx(state, { k: 'skill', seat: p.seat, skill: step.skill, v: p.skills[step.skill] });
     const after = [];
     if (step.skill === 'defense') { p.shield = Math.min(maxShield(state, p), p.shield + 1); }
-    if (step.skill === 'alchemy') after.push({ op: 'gainElixir', seat: p.seat, n: 1, why: 'навык алхимии' });
+    if (step.skill === 'alchemy') after.push({ op: 'gainElixir', seat: p.seat, n: 1, why: 'навык алхимии' }, { op: 'trapCheck', seat: p.seat, on: 'skillUp', skill: 'alchemy' });
     after.push({ op: 'levelCheck', seat: p.seat });
     push(state, ...after);
 };
@@ -171,6 +172,16 @@ export const rowCost = (state, slot) => {
     const id = state.row[slot];
     return id ? Math.max(0, CARDS[id].cost + ROW_MODS[slot]) : null;
 };
+/** What `p` pays for row cell `slot` this turn: free / discounted by an event, Гертруда ignores
+ *  the +1 cell modifier (CONT80-39). */
+export function buyCost(state, p, slot) {
+    const id = state.row[slot];
+    if (!id) return null;
+    const t = state.turn;
+    if (t && t.freeBuy) return 0;
+    const mod = ROW_MODS[slot] > 0 && hasGear(p, 'CONT80-39') ? 0 : ROW_MODS[slot];
+    return Math.max(0, CARDS[id].cost + mod - ((t && t.buyDiscount) || 0));
+}
 /** Shift right so that the empty cells are on the left, then reveal into them (База.md p. 19). */
 export function refillRow(state) {
     const cards = state.row.filter(Boolean);
@@ -245,6 +256,8 @@ STEPS.arrive = (state, step) => {
             fx(state, { k: 'track', seat: p.seat, terrain: h.terrain });
         }
     }
+    // Quest tokens of other players / secret cards («Цири и доп. события», explore.mjs).
+    push(state, { op: 'trapCheck', seat: p.seat, on: 'move' });
 };
 
 /** Destinations of a kept-card move (Лошадь / гильдия купцов): adjacent locations of its terrain. */
@@ -409,7 +422,7 @@ STEPS.p3draw = (state) => {
 export function buyOptions(state, p) {
     return state.row.map((id, slot) => {
         if (!id) return null;
-        const cost = state.turn && state.turn.freeBuy ? 0 : rowCost(state, slot);
+        const cost = buyCost(state, p, slot);
         const water = hasTrophy(p, 'MON-31') && p.hand.some(h => CARDS[h].terrain === 'water');
         return { slot, id, cost, ok: p.hand.length >= cost || water };
     }).filter(Boolean);
@@ -428,7 +441,7 @@ STEPS.p3buyAsk = (state) => {
 STEPS.p3buyPick = (state, step) => {
     const p = state.players[state.turn.seat];
     const slot = Number(step.choice);
-    const cost = state.turn.freeBuy ? 0 : rowCost(state, slot);
+    const cost = buyCost(state, p, slot);
     const waterOk = hasTrophy(p, 'MON-31') && p.hand.some(h => CARDS[h].terrain === 'water');
     if (cost === 0) { push(state, { op: 'p3buyPay', slot, ids: [] }); return; }
     if (waterOk) {

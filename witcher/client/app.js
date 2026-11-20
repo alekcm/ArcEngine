@@ -83,7 +83,9 @@ function onState(m) {
     b.syncMonsters(v.slots);
     const markers = [];
     for (const p of v.players) p.hunts.forEach((h, i) => markers.push({ key: `h${p.seat}-${h.loc}`, loc: h.loc, color: SCHOOLS[p.school].color, i }));
-    for (const p of v.players) (p.quests || []).forEach((q, i) => markers.push({ key: `q${p.seat}-${q.id}-${q.loc}`, loc: q.loc, color: SCHOOLS[p.school].color, i: i + p.hunts.length, quest: true }));
+    for (const p of v.players) (p.quests || []).forEach((q, i) => { for (const loc of q.locs || [q.loc]) markers.push({ key: `q${p.seat}-${q.id}-${loc}`, loc, color: SCHOOLS[p.school].color, i: i + p.hunts.length, quest: true }); });
+    // Quest tokens that spring on the other players («Цири и доп. события»).
+    for (const tr of v.traps || []) markers.push({ key: `t${tr.id}`, loc: tr.loc, color: SCHOOLS[v.players[tr.owner].school].color, i: 3 + markers.filter(m => m.loc === tr.loc).length, quest: true });
     b.syncMarkers(markers);
     const myMoves = S.options && S.options.acting && !v.fight && !v.prompt ? S.options.moves.map(x => x.to) : [];
     b.setMoveTargets(myMoves, v.turn ? v.players[v.turn.seat].loc : null);

@@ -211,7 +211,11 @@ export function trophyLabel(t) {
 // Event cards — the printed layout 1:1: parchment (assets/cards/event-bg.webp, cut from the
 // scans), intro, options А/Б in dark discs, the «—∞✿∞—» divider, outcomes with the effect in
 // bold. stage: 'choose' — outcomes are still covered (in the box game the neighbour reads them
-// only after the choice); 'outcome' — the picked one is lit, the other dimmed; 'full' — all.
+// only after the choice); 'open' — house rule «open outcomes»: only the bold effects are shown,
+// the flavour text stays covered; 'outcome' — the picked one in full and lit, the other one
+// only by its bold effect and only under the house rule (its flavour is never revealed);
+// 'full' — everything (cards without options). Roll tables reveal the flavour of the rolled
+// branch only.
 // Equipment cards are art + a parchment box, the art is swappable like any other (art/<ID>.*).
 const STAR = '<svg class="evq" viewBox="0 0 24 24"><path d="M12 1.5l2.3 7.2 7.2 2.3-7.2 2.3L12 20.5l-2.3-7.2L2.5 11l7.2-2.3z" fill="#2a2420"/><path d="M12 6.5l1.2 3.6 3.6 1.2-3.6 1.2L12 16.1l-1.2-3.6-3.6-1.2 3.6-1.2z" fill="#e9dcc3"/></svg>';
 const BOOK = '<svg class="evb" viewBox="0 0 26 20"><path d="M1 3c4-1.6 8-1.4 11.4.8V19C8.6 17 5 16.8 1 18.2zM25 3c-4-1.6-8-1.4-11.4.8V19c3.8-2 7.4-2.2 11.4-.8z" fill="#2a2420"/></svg>';
@@ -235,6 +239,10 @@ export function eventCard(id, opts = {}) {
     const ev = EVENTS[id];
     if (!ev) return '';
     const st = opts.stage || 'full';
+    if (ev.gear && ART[id]) {
+        // Equipment / companion with its printed face available: the card exactly as printed.
+        return `<div class="evcard gear printed ${opts.small ? 'small' : ''} ${opts.cls || ''}" data-id="${esc(id)}" title="${esc(ev.name + ': ' + ev.text)}" style="background-image:${artCss(id)}"></div>`;
+    }
     if (ev.gear) {
         return `<div class="evcard gear ${opts.small ? 'small' : ''} ${opts.cls || ''}" data-id="${esc(id)}" title="${esc(ev.name + ': ' + ev.text)}">
             <div class="evart" style="background-image:${artCss(id, '#6a4a2a', 'combat')}"></div>
@@ -244,7 +252,12 @@ export function eventCard(id, opts = {}) {
     let body = para(ev.intro);
     if (ev.a) {
         const line = (k) => `<div class="evopt ${opts.pick === k ? 'on' : ''}" ${opts.choose ? `data-c="${k}"` : ''}>${disc(k)}<span>${esc(ev[k].label)}</span></div>`;
-        const res = (k) => `<div class="evres ${st === 'outcome' && opts.pick !== k ? 'off' : ''} ${opts.pick === k ? 'on' : ''}">${disc(k)}<span>${esc(ev[k].outcome)}</span>${effectHtml(ev[k])}</div>`;
+        const flavour = (k) => st === 'full' || (st === 'outcome' && opts.pick === k);
+        const res = (k) => {
+            if (st === 'outcome' && opts.pick !== k && !opts.open) return '';
+            const off = st === 'outcome' && opts.pick !== k;
+            return `<div class="evres ${off ? 'off' : ''} ${opts.pick === k && st === 'outcome' ? 'on' : ''} ${flavour(k) ? '' : 'bare'}">${disc(k)}${flavour(k) ? `<span>${esc(ev[k].outcome)}</span>` : ''}${effectHtml(ev[k])}</div>`;
+        };
         body += line('a') + line('b') + `<img class="evdiv" src="${A}event-div.webp" alt="">`;
         body += st === 'choose' ? `<div class="evhide"><span>Последствия откроются после выбора</span></div>` : res('a') + res('b');
     } else if (ev.fx && ev.fx.some(e => e.roll)) {
@@ -252,7 +265,7 @@ export function eventCard(id, opts = {}) {
         const head = !r.by ? 'Бросьте кубик:' : r.by === 'combo' ? esc(ev.effect.split('\n').find(l => /разыграйте комбинацию/.test(l)) || '') : r.x2 ? `Умножьте уровень своего навыка ${SKILL_GEN_C[r.by]} на 2. Затем бросьте кубик и прибавьте выпавшее значение к результату. Выполните эффект согласно получившейся сумме:` : r.by === 'level' ? 'По уровню ведьмака:' : `По навыку ${SKILL_GEN_C[r.by]}:`;
         const preL = (ev.effect || '').split('\n').filter(l => l && !/^(Бросьте кубик:|При любом результате|Умножьте уровень|Если навык|Если уровень|По навыку|\d)/.test(l) && !/разыграйте комбинацию/.test(l));
         if (preL.length) body += `<p class="eff">${br(preL.join('\n'))}</p>`;
-        body += `<p class="eff">${head}</p>` + r.roll.map(b => `<div class="evroll ${opts.dice != null ? (opts.dice >= b.from && opts.dice <= b.to ? 'on' : 'off') : ''}"><b class="rng">${b.to >= 99 ? b.from + '+' : b.from === b.to ? b.from : b.from + '–' + b.to}${r.by === 'combo' ? ' урона' : ''}:</b><div>${b.text ? `<p>${esc(b.text)}</p>` : ''}${b.effect ? `<p class="eff">${br(b.effect)}</p>` : ''}</div></div>`).join('');
+        body += `<p class="eff">${head}</p>` + r.roll.map(b => `<div class="evroll ${opts.dice != null ? (opts.dice >= b.from && opts.dice <= b.to ? 'on' : 'off') : ''}"><b class="rng">${b.to >= 99 ? b.from + '+' : b.from === b.to ? b.from : b.from + '–' + b.to}${r.by === 'combo' ? ' урона' : ''}:</b><div>${b.text && opts.dice != null && opts.dice >= b.from && opts.dice <= b.to ? `<p>${esc(b.text)}</p>` : ''}${b.effect ? `<p class="eff">${br(b.effect)}</p>` : ''}</div></div>`).join('');
         const tail = ev.effect.split('\n').filter(l => l.startsWith('При любом результате'));
         if (tail.length) body += `<p class="eff">${br(tail.join('\n'))}</p>`;
     } else if (ev.effect) {

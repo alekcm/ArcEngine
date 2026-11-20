@@ -147,12 +147,13 @@ export function initZoom() {
 function renderEvent(el, pr) {
     const choose = pr.stage === 'choose';
     // House rule «Открытые последствия»: both outcomes are printed before the choice.
-    const open = choose && S.view.rules && S.view.rules.openEvents;
-    const card = eventCard(pr.card, { stage: choose ? (open ? 'full' : 'choose') : pr.stage === 'outcome' ? 'outcome' : 'full', pick: pr.pick, dice: pr.sum != null ? pr.sum : pr.dice, choose });
+    // Only the bold effects are opened; flavour text stays covered until it is picked.
+    const open = !!(S.view.rules && S.view.rules.openEvents);
+    const card = eventCard(pr.card, { stage: choose ? (open ? 'open' : 'choose') : pr.stage === 'outcome' ? 'outcome' : 'full', pick: pr.pick, dice: pr.sum != null ? pr.sum : pr.dice, choose, open });
     const opts = pr.options.map((o, i) => btn({ label: esc(o.label), why: o.disabled ? (o.hint || 'Недоступно') : null, data: `data-c="${esc(o.id)}"`, key: String(i + 1), primary: !choose && i === 0 })).join('');
     const sub = pr.stage === 'outcome' ? `<p class="eff" style="color:var(--gold2)">${esc(pr.effect || '')}</p>`
         : pr.stage === 'roll' ? `<div style="display:flex;align-items:center;gap:12px"><span class="evdice">${pr.dice}</span><span style="color:var(--dim)">${pr.rollKind === 'combo' ? 'Исход по урону комбинации' : pr.sum != null ? `Выпало ${pr.dice}, сумма ${pr.sum}` : `Выпало ${pr.dice}`} — исход подсвечен на карте</span></div>`
-        : choose ? `<p style="color:var(--dim)">Выберите вариант: щёлкните строку на карте или кнопку.${open ? ' Последствия открыты (правило стола).' : ''}</p>` : '';
+        : choose ? `<p style="color:var(--dim)">Выберите вариант: щёлкните строку на карте или кнопку.${open ? ' Эффекты последствий открыты (правило стола), описание — после выбора.' : ''}</p>` : '';
     el.innerHTML = `<div class="box evbox-wrap">${card}<div class="evside"><h2>${esc(pr.title || 'Событие')}</h2>${sub}<div class="opts">${opts}</div></div></div>`;
     for (const o of pr.options) if (o.disabled) { const line = el.querySelector(`.evopt[data-c="${o.id}"]`); if (line) { line.classList.add('dis'); line.title = o.hint || ''; } }
     for (const b of el.querySelectorAll('[data-c]')) b.onclick = () => {

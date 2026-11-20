@@ -20,7 +20,7 @@ import { spawn } from 'node:child_process';
 import { createGame, apply, options, actingSeat } from './shared/engine/core.mjs';
 import { viewFor } from './shared/view.mjs';
 import { botCommand } from './shared/bots.mjs';
-import { SCHOOLS, SCHOOL_ORDER, BOT_NAMES, normalizeRules } from './shared/data/rules-data.mjs';
+import { SCHOOLS, SCHOOL_ORDER, BOT_NAMES, normalizeRules, normalizeExp } from './shared/data/rules-data.mjs';
 import { MONSTERS } from './shared/data/gen-data.mjs';
 import { objToMesh } from './tools/obj.mjs';
 import { writeScenarios } from './tools/scenarios.mjs';
@@ -172,7 +172,7 @@ class Socket {
 const room = {
     phase: 'lobby',
     seats: [],      // { token, name, school, bot, socket }
-    settings: { randomFirst: false, seed: '', ...normalizeRules('custom') },   // + mode, rules (house rules)
+    settings: { randomFirst: false, seed: '', exp: [], ...normalizeRules('custom') },   // + mode, rules (house rules)
     state: null,
     undo: [],       // { json, seat, label, self }
     chat: [],
@@ -322,6 +322,7 @@ function onMessage(sock, m) {
                 if (m.settings) {
                     if (typeof m.settings.randomFirst === 'boolean') room.settings.randomFirst = m.settings.randomFirst;
                     if (typeof m.settings.seed === 'string') room.settings.seed = m.settings.seed.slice(0, 20);
+                    if (m.settings.exp) room.settings.exp = normalizeExp(m.settings.exp);
                     if (typeof m.settings.mode === 'string' || (m.settings.rules && typeof m.settings.rules === 'object')) {
                         // The custom choice is remembered separately: MMR forces everything on, and switching back restores it.
                         const mode = typeof m.settings.mode === 'string' ? m.settings.mode : room.settings.mode;
@@ -347,7 +348,7 @@ function onMessage(sock, m) {
             const order = room.seats.slice();
             if (room.settings.randomFirst) { for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; } }
             room.seats = order;
-            room.state = createGame({ seed, players: room.seats.map(s => ({ name: s.name, school: s.school, bot: s.bot })), mode: room.settings.mode, rules: room.settings.rules });
+            room.state = createGame({ seed, players: room.seats.map(s => ({ name: s.name, school: s.school, bot: s.bot })), mode: room.settings.mode, rules: room.settings.rules, exp: room.settings.exp });
             room.phase = 'playing'; room.undo = [];
             console.log('Game started:', room.seats.map(s => s.name + '/' + s.school).join(', '));
             broadcastLobby(); broadcastState(); scheduleBots();
@@ -385,7 +386,7 @@ function onMessage(sock, m) {
             if (!isHost(sock)) return;
             if (loadGame(m.name)) {
                 // Sandboxes take the lobby's current mode and house rules (to try them out).
-                if (/^Песочница/.test(m.name) && room.state) Object.assign(room.state, normalizeRules(room.settings.mode, room.settings.rules));
+                if (/^Песочница/.test(m.name) && room.state) Object.assign(room.state, normalizeRules(room.settings.mode, room.settings.rules), { exp: normalizeExp([...(room.state.exp || []), ...(room.settings.exp || [])]) });
                 notice('Загружена партия: ' + m.name); for (const c of clients) { const i = seatOf(c); c.send({ t: 'welcome', token: i >= 0 ? room.seats[i].token : null, seat: i, build: BUILD }); } broadcastLobby(); broadcastState(); scheduleBots();
             }
             break;
@@ -459,5 +460,5 @@ function listen(port, tries = 0) {
     });
 }
 // Sandbox positions (fight test, poker test, mid-game) are always available in the lobby.
-try { if (!listSaves().includes('Песочница — снаряжение')) writeScenarios(); } catch (e) { console.warn('scenarios:', e.message); }
+try { if (!listSaves().includes('Песочница — Цири и доп. события')) writeScenarios(); } catch (e) { console.warn('scenarios:', e.message); }
 listen(PORT_BASE);

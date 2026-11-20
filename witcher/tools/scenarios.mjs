@@ -87,6 +87,30 @@ export function gearScenario(seed = 10) {
     st.eventsUsed = ['CONT79-16', 'CONT79-11', 'CONT79-23', 'CONT79-13', 'CONT79-28', 'CONT79-14', 'CONT79-20', 'CONT79-50', 'CONT79-26', 'CONT79-25', 'CONT79-32'];
     return st;
 }
+/**
+ * «Цири и доп. события»: the expansion on; Йеннифэр (bot) left a quest token next to you and
+ * holds a secret card read to whoever moves; the explore decks start with the poker dice
+ * (город) and the barghests (окрестности, a quest token here + an elixir as an option cost);
+ * Гроббо and Гертруда travel with you.
+ */
+export function ciriScenario(seed = 12) {
+    const st = createGame({ seed, exp: ['ciri'], players: [{ name: 'Игрок', school: 'wolf' }, { name: 'Йеннифэр', school: 'cat', bot: 1 }] });
+    if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
+    const p = st.players[0];
+    p.gold = 5;
+    p.gear.push('CONT80-37', 'CONT80-39');
+    const start = Object.keys(LOC).map(Number).find(n => canEnter(st, n) && LOC[n].terrain === 'forest' && ADJ[n].filter(m => canEnter(st, m)).length >= 2);
+    p.loc = start;
+    const trapLoc = ADJ[start].find(m => canEnter(st, m));
+    st.traps = [{ id: 1, owner: 1, loc: trapLoc, event: 'CONT80-01', on: 'move', terrain: null }];
+    st.trapSeq = 1;
+    st.players[1].secrets = ['CONT80-26'];
+    const decks = ensureExplore(st);
+    decks.city = ['CITY2-57', ...decks.city.filter(id => id !== 'CITY2-57')];
+    decks.wild = ['CONT82-39', ...decks.wild.filter(id => id !== 'CONT82-39')];
+    st.eventsUsed.push('CONT80-37', 'CONT80-39', 'CONT80-01', 'CONT80-26');
+    return st;
+}
 export function pokerScenario(seed = 8) {
     const st = createGame({ seed, players: [{ name: 'Игрок', school: 'griffin' }, { name: 'Эскель', school: 'bear', bot: 1 }] });
     if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
@@ -121,6 +145,6 @@ function save(name, st) {
     return name;
 }
 export function writeScenarios() {
-    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — середина партии', midGameScenario())];
+    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — середина партии', midGameScenario())];
 }
 if (process.argv[1] && process.argv[1].endsWith('scenarios.mjs')) console.log(writeScenarios().join('\n'));

@@ -18,7 +18,14 @@ export function viewFor(state, seat) {
         if (p.seat !== seat) delete p.hand;
         // Track tokens lie face down: their location number is secret, only the terrain is known.
         for (const t of Object.keys(p.trackTokens)) p.trackTokens[t] = p.trackTokens[t] != null;
+        // Secret event cards («не показывайте её другим игрокам»): only their count is public.
+        p.secretCount = (p.secrets || []).length;
+        if (p.seat !== seat) delete p.secrets;
     }
+    // Quest tokens of «Цири и доп. события»: everyone sees where they lie, the event number only
+    // their owner knows.
+    if (s.traps) s.traps = s.traps.map(t => t.owner === seat ? t : { id: t.id, owner: t.owner, loc: t.loc, on: t.on });
+    delete s.trapCtx;
     if (s.fight) {
         s.fight.lifeCount = s.fight.life.length;
         delete s.fight.life;

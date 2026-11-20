@@ -96,6 +96,10 @@ export const HOUSE_RULES = [
     { id: 'openEvents', name: 'Открытые последствия', text: 'Последствия обоих вариантов карты события видны до выбора.' },
 ];
 /** Lobby settings → { mode, rules } with MMR forcing every rule on. */
+/** Expansions that can already be switched on in the lobby. */
+export const EXPANSIONS_READY = ['ciri'];
+export const normalizeExp = (exp) => Array.isArray(exp) ? EXPANSIONS_READY.filter(x => exp.includes(x)) : [];
+
 export function normalizeRules(mode, rules = {}) {
     const m = GAME_MODES[mode] ? mode : 'custom';
     const out = {};

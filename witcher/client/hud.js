@@ -12,6 +12,12 @@ import { isMuted, setMuted, sfx } from './sound.js';
 const WIN = TROPHIES_TO_WIN || 4;
 const skillIc = { combat: 'combat', defense: 'defense', alchemy: 'alchemy', spec: 'spec' };
 
+/** Which option of a quest card gave the quest (the other one was never read). */
+function questPick(id) {
+    const ev = EVENTS[id];
+    if (!ev || !ev.a) return '';
+    return JSON.stringify(ev.a.fx || []).includes('"quest"') ? 'a' : 'b';
+}
 export function renderHud() {
     const v = S.view;
     if (!v) return;
@@ -42,6 +48,7 @@ function renderPlayers(v) {
                 <span title="Колода">${icon('deck')}${p.deckCount}</span>
                 <span class="c-shield" title="Щит">${icon('shield')}${p.shield}</span>
                 <span title="Эликсиры" style="color:#7fd0b4">${icon('elixir')}${p.elixirs.length}</span>
+                ${p.secretCount ? `<span title="Тайные события (зачитает другому игроку)">${icon('card')}${p.secretCount}</span>` : ''}
                 <span class="tracks">${tracks}</span>
             </div>
             <div class="skills">${SKILLS.map(s => `<span title="${SKILL_NAME[s]}">${icon(skillIc[s])}${p.skills[s]}</span>`).join('')}</div>
@@ -232,8 +239,10 @@ function renderMine(v) {
         <div class="r" style="margin-top:4px;color:var(--dim)">Специализация: ${esc(sc.spec)} (${p.skills.spec})</div>
         <div class="elixirs">${p.elixirs.map(e => { const po = POTION[e.split('#')[0]]; return `<span class="el" title="${esc(po.name + ': ' + po.text)}">${icon('elixir', 'c-forest')}${esc(po.name)}</span>`; }).join('') || '<span style="color:var(--dim);font-size:12px">Эликсиров нет</span>'}</div>
         ${p.gear.length ? `<div class="gear">${p.gear.map(id => `<span class="el" data-gear="${esc(id)}" title="${esc(EVENTS[id].kind + ': ' + EVENTS[id].text)}">${icon(EVENTS[id].kind === 'Спутник' ? 'meditate' : 'combat')}${esc(EVENTS[id].name)}</span>`).join('')}</div>` : ''}
-        ${(p.keeps || []).length ? `<div class="gear keeps">${p.keeps.map(k => `<span class="el" data-keep="${esc(k.card)}" title="${esc(k.text)}">${icon('card')}${esc(k.name)}</span>`).join('')}</div>` : ''}
-        ${p.quests.length ? `<div class="gear quests">${p.quests.map(q => `<span class="el" data-qcard="${esc(q.id)}" title="Задание — ${esc(LOC[q.loc].name)}">${icon('explore')}${esc(questLabel(q))} → ${esc(LOC[q.loc].name)}</span>`).join('')}</div>` : ''}
+        ${(p.keeps || []).length ? `<div class="gear keeps">${p.keeps.map(k => `<span class="el" data-keep="${esc(k.card)}" data-pick="${k.id.slice(-1) === 'A' ? 'a' : 'b'}" title="${esc(k.text)}">${icon('card')}${esc(k.name)}</span>`).join('')}</div>` : ''}
+        ${p.quests.length ? `<div class="gear quests">${p.quests.map(q => `<span class="el" data-qcard="${esc(q.id)}" data-pick="${questPick(q.id)}" title="Задание — ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}">${icon('explore')}${esc(questLabel(q))} → ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}</span>`).join('')}</div>` : ''}
+        ${(p.secrets || []).length ? `<div class="gear secrets">${p.secrets.map(id => `<span class="el" data-secret="${esc(id)}" title="${esc(EVENTS[id].trigger ? EVENTS[id].trigger.text : '')}">${icon('card')}Тайное событие ${EVENTS[id].num}</span>`).join('')}</div>` : ''}
+        ${(v.traps || []).filter(t => t.owner === p.seat).length ? `<div class="gear traps">${v.traps.filter(t => t.owner === p.seat).map(t => `<span class="el" data-secret="${esc(t.event)}" title="Событие ${EVENTS[t.event].num} для того, кто ${t.on === 'move' ? 'придёт туда' : 'закончит там ход'}">${icon('explore')}Жетон → ${esc(LOC[t.loc].name)}</span>`).join('')}</div>` : ''}
         ${p.hunts.length ? `<div class="r" style="margin-top:6px;font-size:12px;color:var(--dim)">Задания: ${p.hunts.map(h => `${TERRAIN_NAME[h.terrain]} → ${esc(LOC[h.loc].name)} (${h.gold} зол.)`).join(', ')}</div>` : ''}
         <div class="zones">
             ${btn({ id: 'zDiscard', label: `Сброс ${p.discard.length}`, small: true, icon: icon('card') })}
@@ -243,7 +252,8 @@ function renderMine(v) {
     $('zDiscard').onclick = () => openViewer('Ваш сброс', p.discard.map(id => actionCard(id, { small: true })).join('') || 'Пусто');
     $('zRemoved').onclick = () => openViewer('Убраны из игры', p.removed.map(id => actionCard(id, { small: true })).join('') || 'Пусто');
     $('zTroph').onclick = () => openPlayer(p.seat);
-    for (const g of el.querySelectorAll('[data-gear],[data-qcard],[data-keep]')) g.onclick = () => openViewer(g.dataset.gear ? EVENTS[g.dataset.gear].kind : g.dataset.keep ? 'Карта перед вами' : 'Задание', `<div style="display:flex;gap:14px;justify-content:center">${eventCard(g.dataset.gear || g.dataset.qcard || g.dataset.keep, { stage: 'full' })}</div>`);
+    for (const g of el.querySelectorAll('[data-secret]')) g.onclick = () => openViewer(`Событие ${EVENTS[g.dataset.secret].num} — зачитаете другому игроку`, `<div style="display:flex;gap:14px;justify-content:center">${eventCard(g.dataset.secret, { stage: 'full' })}</div>`);
+    for (const g of el.querySelectorAll('[data-gear],[data-qcard],[data-keep]')) g.onclick = () => openViewer(g.dataset.gear ? EVENTS[g.dataset.gear].kind : g.dataset.keep ? 'Карта перед вами' : 'Задание', `<div style="display:flex;gap:14px;justify-content:center">${eventCard(g.dataset.gear || g.dataset.qcard || g.dataset.keep, g.dataset.pick ? { stage: 'outcome', pick: g.dataset.pick } : { stage: 'full' })}</div>`);
 }
 
 let logLen = 0;
@@ -341,7 +351,7 @@ function openPlayer(seat) {
     const trophies = p.trophies.map(t => `<div style="display:flex;flex-direction:column;gap:4px;align-items:center">${t.kind === 'monster' ? monsterCard(t.id, { trophy: true, cls: 'trophy-card' }) : `<div class="card skilltrophy"><div class="name" style="top:20%">${esc(trophyLabel(t))}</div></div>`}</div>`).join('');
     openViewer(`${p.name} — ${sc.school}`, `<div style="width:100%;color:#d8ccb7;margin-bottom:8px">Уровень ${p.level}. ${SKILLS.map(s => `${SKILL_NAME[s]} ${p.skills[s]}`).join(', ')}. Трофеи ведьмаков в запасе: ${p.witcherTrophies}. Побеждено монстров: ${p.monstersDefeated}.</div>
         <h3 style="width:100%;margin:6px 0;color:var(--gold)">Трофеи (${p.track}/${WIN})</h3>${trophies || '<span style="color:var(--dim)">Пока нет</span>'}
-        ${p.gear.length || p.quests.length || (p.keeps || []).length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Снаряжение, спутники и задания</h3>${p.gear.map(id => eventCard(id, { small: true })).join('')}${(p.keeps || []).map(k => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(k.card, { small: true, stage: 'outcome', pick: k.id.slice(-1) === 'A' ? 'a' : 'b' })}<span style="color:#d8ccb7;font-size:12px">${esc(k.name)}</span></div>`).join('')}${p.quests.map(q => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(q.id, { small: true, stage: 'full' })}<span style="color:#d8ccb7;font-size:12px">→ ${esc(LOC[q.loc].name)}</span></div>`).join('')}` : ''}
+        ${p.gear.length || p.quests.length || (p.keeps || []).length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Снаряжение, спутники и задания</h3>${p.gear.map(id => eventCard(id, { small: true })).join('')}${(p.keeps || []).map(k => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(k.card, { small: true, stage: 'outcome', pick: k.id.slice(-1) === 'A' ? 'a' : 'b' })}<span style="color:#d8ccb7;font-size:12px">${esc(k.name)}</span></div>`).join('')}${p.quests.map(q => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(q.id, { small: true, stage: 'outcome', pick: questPick(q.id) })}<span style="color:#d8ccb7;font-size:12px">→ ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}</span></div>`).join('')}` : ''}
         <h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Сброс (${p.discard.length})</h3>${p.discard.map(id => actionCard(id, { small: true })).join('') || '<span style="color:var(--dim)">Пусто</span>'}`);
 }
 export function openChoice(title, text, options, onPick) {

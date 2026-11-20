@@ -8,7 +8,7 @@ import { ensureExplore } from '../shared/engine/explore.mjs';
 import { comboTotals } from '../shared/engine/fight.mjs';
 import { run } from '../shared/engine/flow.mjs';
 import { ADJ, LOC, CARDS } from '../shared/engine/util.mjs';
-import { EVENTS, EXPLORE_DECKS } from '../shared/data/events-data.mjs';
+import { EVENTS, EXPLORE_DECKS, EXP_DECKS } from '../shared/data/events-data.mjs';
 import { ELIXIR_LIMIT } from '../shared/data/rules-data.mjs';
 
 const ok = (r) => assert.ok(r.ok, r.err);
@@ -40,13 +40,23 @@ const take = (st, id) => { st.queue.unshift({ op: 'takeEvent', seat: 0, id }); r
 // Cards that cannot be reached yet (their chain leads to an unsupported card) — none now.
 const NOT_YET = new Set();
 test('данные: все 14 карт снаряжения и спутников «Ивенты 1» реализованы и достижимы из колод', () => {
-    const gear = Object.entries(EVENTS).filter(([, c]) => c.gear).map(([id]) => id).sort();
+    const gear = Object.entries(EVENTS).filter(([, c]) => c.gear && !c.exp).map(([id]) => id).sort();
     assert.equal(gear.length, 14);
-    const reach = new Set();
-    const walk = (fx) => { for (const e of fx || []) { if (e.event) reach.add(e.event); if (e.quest) reach.add(e.quest.event); if (e.keep && e.keep.event) reach.add(e.keep.event); if (e.roll) e.roll.forEach(b => walk(b.fx)); if (e.if) { walk(e.fx); walk(e.else); } } };
-    for (let i = 0; i < 4; i++) for (const id of [...Object.values(EXPLORE_DECKS).flat(), ...reach]) { const c = EVENTS[id]; if (!c) continue; walk(c.fx); if (c.a) { walk(c.a.fx); walk(c.b.fx); } }
+    const reach = reachable(Object.values(EXPLORE_DECKS).flat());
     for (const g of gear) assert.equal(reach.has(g), !NOT_YET.has(g), `${g} (${EVENTS[g].name}) достижим`);
 });
+test('данные: спутники «Цири и доп. события» (Гроббо, Гертруда) достижимы из колод дополнения', () => {
+    const gear = Object.entries(EVENTS).filter(([, c]) => c.gear && c.exp === 'ciri').map(([id]) => id).sort();
+    assert.deepEqual(gear, ['CONT80-37', 'CONT80-39']);
+    const reach = reachable(Object.values(EXP_DECKS.ciri).flat());
+    for (const g of gear) assert.ok(reach.has(g), `${g} достижим`);
+});
+function reachable(start) {
+    const reach = new Set();
+    const walk = (fx) => { for (const e of fx || []) { if (e.event) reach.add(e.event); if (e.secret) reach.add(e.secret); if (e.trap) reach.add(e.trap.event); if (e.quest) reach.add(e.quest.event); if (e.keep && e.keep.event) reach.add(e.keep.event); if (e.roll) e.roll.forEach(b => walk(b.fx)); if (e.poker) { walk(e.poker.win); walk(e.poker.lose); } if (e.if) { walk(e.fx); walk(e.else); } } };
+    for (let i = 0; i < 5; i++) for (const id of [...start, ...reach]) { const c = EVENTS[id]; if (!c) continue; walk(c.fx); if (c.a) { walk(c.a.fx); walk(c.b.fx); } }
+    return reach;
+}
 
 test('Кая: в битве с монстром ведьмак ходит первым и без жетона следа', () => {
     const { st } = fight(['CONT79-23']);

@@ -46,6 +46,7 @@ STEPS.fightStart = (state, step) => {
     fx(state, { k: 'fightStart', seat: p.seat, mon: mon.id });
     push(state,
         ...(mon.id === 'MON-06' ? [F('archesporeAsk')] : []),
+        { op: 'trapCheck', seat: p.seat, on: 'fightStart' },
         F('preLife'), F('formLife'), F('postLife'), F('firstTurn'));
 };
 
@@ -132,6 +133,8 @@ STEPS.postLife = (state) => {
         case 'MON-31': if (p.hand.length > 3) push(state, F('discardFromHandAsk', { n: p.hand.length - 3, why: 'Сирена: в руке не больше 3 карт' })); break;
     }
     if (f.pendingHarpy) push(state, F('dealDamage', { n: 2, src: 'трофей «Гарпия»' }));
+    // Гроббо (CONT80-37): once per fight, after the life pools are formed — draw 1 card.
+    if (hasGear(p, 'CONT80-37') && !f.once.g37) { f.once.g37 = true; const n = drawCards(state, p, 1); if (n) log(state, `${p.name}: Гроббо — +1 карта`); }
 };
 STEPS.drownerAsk = (state) => {
     const p = fp(state);
@@ -916,8 +919,12 @@ STEPS.fightConsequences = (state) => {
         steps.push({ op: 'takeZeroCard', seat: p.seat });
     }
     f.result = result;
+    if (f.bonusGold && result !== 'lose') { p.gold += f.bonusGold; log(state, `${p.name}: +${f.bonusGold} золото (событие)`); }
     fx(state, { k: 'fightEnd', seat: p.seat, result, mon: mon.id });
     steps.push({ op: 'fightCleanup' });
+    // Secret cards of other players («Цири и доп. события»): after the fight is over.
+    if (result === 'win' && f.kind === 'monster') steps.push({ op: 'trapCheck', seat: p.seat, on: 'defeat' });
+    if (f.elixirsUsed) steps.push({ op: 'trapCheck', seat: p.seat, on: 'fightEnd' });
     // Эдгар де Спота: after a won monster fight (and all its consequences) — event 51.
     if (result === 'win' && hasGear(p, 'CONT79-50') && f.kind === 'monster') steps.push({ op: 'takeEvent', seat: p.seat, id: 'CONT79-51' });
     steps.push({ op: 'phase3' });
@@ -927,8 +934,9 @@ STEPS.fightCleanup = (state) => {
     const f = state.fight;
     if (!f) return;
     const p = fp(state);
+    const shieldEnd = p.shield;
     p.shield = 0;
-    state.lastFight = { mon: f.mon, result: f.result, seat: p.seat, life: f.life.length };
+    state.lastFight = { mon: f.mon, result: f.result, seat: p.seat, life: f.life.length, shield: shieldEnd };
     state.fight = null;
     p.shield = maxShield(state, p);
     state.elixirDiscard.push(...f.usedElixirs);

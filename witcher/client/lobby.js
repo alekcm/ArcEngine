@@ -4,7 +4,7 @@ import { S, $, send, btn } from './ctx.js';
 import { Store } from './store.js';
 import { icon } from './icons.js';
 import { esc } from './cards.js';
-import { SCHOOLS, SCHOOL_ORDER, GAME_MODES, HOUSE_RULES } from '/shared/data/rules-data.mjs';
+import { SCHOOLS, SCHOOL_ORDER, GAME_MODES, HOUSE_RULES, EXPANSIONS_READY } from '/shared/data/rules-data.mjs';
 import { Preview } from './board.js';
 
 let preview = null;
@@ -19,7 +19,7 @@ const EXPANSIONS = [
     ['legendary', 'Легендарная охота', 'легендарные монстры и снаряжение'],
     ['skellige', 'Скеллиге', 'острова 19–21, корабли и новые события'],
     ['mages', 'Чародеи', 'играбельные чародеи'],
-    ['ciri', 'Цири и доп. события', 'Цири и новые колоды событий'],
+    ['ciri', 'Цири и доп. события', 'новые события исследования, тайные карты и жетоны заданий'],
     ['trail', 'По следу монстра', 'выслеживание монстров'],
     ['extra', 'Дополнительный монстр', 'новый монстр'],
 ];
@@ -56,8 +56,12 @@ export function renderLobby() {
             ${isHost ? `<label class="check"><input type="checkbox" id="lRandom" ${L.settings.randomFirst ? 'checked' : ''}> Случайный первый игрок</label>
             <div class="row" style="margin-top:8px"><label>Зерно случайности (необязательно)</label><input id="lSeed" maxlength="20" value="${esc(L.settings.seed || '')}" placeholder="любая строка"></div>` : '<div style="color:var(--dim)">Настройки выбирает хозяин стола.</div>'}
             <h3>Дополнения</h3>
-            <div class="exp">${EXPANSIONS.map(([id, n, d]) => `<label class="check" style="opacity:.5" title="Подключается на следующем этапе"><input type="checkbox" disabled><span><b>${n}</b> — ${d}</span></label>`).join('')}
-            <div style="margin-top:4px">Базовая игра готова; дополнения подключаются по очереди.</div></div>
+            <div class="exp">${EXPANSIONS.map(([id, n, d]) => {
+                const ready = EXPANSIONS_READY.includes(id);
+                const why = !ready ? 'Подключается на следующем этапе' : !isHost ? 'Дополнения выбирает хозяин стола' : '';
+                return `<label class="check" style="${ready ? '' : 'opacity:.5'}" title="${why}"><input type="checkbox" data-exp="${id}" ${(L.settings.exp || []).includes(id) ? 'checked' : ''} ${ready && isHost ? '' : 'disabled'}><span><b>${n}</b> — ${d}</span></label>`;
+            }).join('')}
+            <div style="margin-top:4px">Дополнения подключаются по очереди: «Цири и доп. события» — новые карты исследования, тайные события и жетоны заданий.</div></div>
             ${isHost && L.saves && L.saves.length ? `<h3>Сохранённые партии</h3><div class="saves">${L.saves.slice(0, 8).map(n => btn({ label: esc(n), small: true, data: `data-load="${esc(n)}"`, icon: icon('save') })).join('')}</div>` : ''}
             <div class="lobby-actions">${isHost ? btn({ id: 'lStart', label: 'Начать партию', primary: true, key: 'Enter' }) : '<span style="color:var(--dim)">Ждём, пока хозяин начнёт партию…</span>'}</div>
             <div class="lan">Друзья в той же сети подключаются по адресу: ${(L.addresses || []).map(a => `<code>http://${a}:${L.port}/</code>`).join(' ') || '<code>' + location.host + '</code>'}</div>
@@ -74,6 +78,7 @@ export function renderLobby() {
     on('lSeed', 'onchange', (e) => send({ t: 'lobby', settings: { seed: e.target.value } }));
     on('lStart', 'onclick', () => send({ t: 'start' }));
     for (const b of el.querySelectorAll('[data-mode]')) b.onclick = () => { if (isHost) send({ t: 'lobby', settings: { mode: b.dataset.mode } }); };
+    for (const c of el.querySelectorAll('[data-exp]')) c.onchange = () => send({ t: 'lobby', settings: { exp: [...el.querySelectorAll('[data-exp]:checked')].map(x => x.dataset.exp) } });
     for (const c of el.querySelectorAll('[data-rule]')) c.onchange = () => send({ t: 'lobby', settings: { rules: { [c.dataset.rule]: c.checked } } });
     // One persistent preview canvas (WebGL contexts are limited), moved into the fresh markup.
     if (!previewBox) {

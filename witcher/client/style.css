@@ -405,6 +405,9 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 .evres > span { display: inline; }
 .evres > .evd { display: inline-flex; vertical-align: -3px; }
 .evres .eff { margin-top: 4px; }
+.evres.bare { display: flex; gap: 8px; align-items: flex-start; }
+.evres.bare > .evd { flex: none; margin-top: 1px; }
+.evres.bare .eff { margin-top: 0; }
 .evres.off { opacity: .42; }
 .evres.on { background: rgba(160, 110, 40, .14); border-radius: 6px; box-shadow: 0 0 0 4px rgba(160, 110, 40, .14); }
 .evquest { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
@@ -427,6 +430,7 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 .evroll.off { opacity: .42; }
 .evroll.on { background: rgba(160, 110, 40, .16); border-radius: 6px; box-shadow: 0 0 0 4px rgba(160, 110, 40, .16); }
 .evcard.gear { padding: 0; background: #1c1712; }
+.evcard.gear.printed { background-size: 100% 100%; background-color: #1c1712; }
 .evcard.gear .evart { position: absolute; inset: 0; background-size: cover; background-position: center top; }
 .evcard.gear .evbox { position: absolute; left: 32px; right: 32px; bottom: 22px; min-height: 250px; max-height: 76%; overflow: hidden; box-sizing: border-box; padding: 14px 18px; text-align: center;
     background: url('assets/cards/event-bg.webp') center/240% 240%; border-radius: 4px; box-shadow: 0 0 0 2px #3a2d22, 0 4px 14px rgba(0,0,0,.6); }

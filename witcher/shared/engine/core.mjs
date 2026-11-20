@@ -7,7 +7,7 @@ import { LOC_ACTIONS, LOC_ACTION_TEXT, SKILL_NAME, SCHOOLS, TERRAIN_NAME } from 
 import { movePaymentError, canEnter, meditationOptions, SKILL_GEN, autoReroll, comparePoker, pokerValue, POKER_NAMES, SOLO_POKER, gearMoveError } from './turn.mjs';
 import { monsterFightError, elixirError, specError, activeEffectError, comboError } from './fight.mjs';
 import { ACTIVE_EFFECTS, hasTrophy, hasWitcherTrophy, hasGear, trainCost, GEAR_MOVES } from './effects.mjs';
-import { exploreError, questError, eventComboError } from './explore.mjs';
+import { exploreError, questError, eventComboError, effectSteps } from './explore.mjs';
 import { questLabel } from '../data/events-data.mjs';
 import './setup.mjs';
 
@@ -188,6 +188,7 @@ function turnCmd(state, p, cmd) {
             t.phase = 2;
             log(state, `${p.name}: действий фазы II нет — сразу фаза III`);
             push(state, { op: 'phase3' });
+            push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
             return ok();
         }
         case 'gearMove': {
@@ -242,7 +243,7 @@ function turnCmd(state, p, cmd) {
                     break;
                 }
                 case 'elixir': mark(); push(state, { op: 'gainElixir', seat: p.seat, n: 1, why: LOC[p.loc].name }); break;
-                case 'poker': mark(); push(state, { op: 'pokerStart', seat: p.seat, vs: 'town' }); break;
+                case 'poker': mark(); push(state, { op: 'pokerStart', seat: p.seat, vs: 'town', loc: true }); push(state, { op: 'trapCheck', seat: p.seat, on: 'poker' }); break;
                 case 'poor': {
                     mark();
                     if (p.gold === 0) { p.gold = 1; log(state, `${p.name}: +1 золото (${LOC[p.loc].name})`); }
@@ -263,6 +264,7 @@ function turnCmd(state, p, cmd) {
             const e = monsterFightError(state, p);
             if (e) return err(e);
             push(state, { op: 'fightStart', seat: p.seat });
+            push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
             return ok();
         }
         case 'meditate': {
@@ -271,6 +273,7 @@ function turnCmd(state, p, cmd) {
             if (!tr) return err(med.length ? 'Выберите трофей' : 'Медитация недоступна');
             t.phase = 2;
             push(state, { op: 'meditate', seat: p.seat, trophy: tr.id });
+            push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
             return ok();
         }
         case 'explore': {
@@ -278,6 +281,7 @@ function turnCmd(state, p, cmd) {
             if (e) return err(e);
             t.phase = 2;
             push(state, { op: 'exploreStart', seat: p.seat, deck: cmd.deck });
+            push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
             return ok();
         }
     }
@@ -307,40 +311,101 @@ function fightCmd(state, p, cmd) {
 // Dice poker flow (townsfolk; witchers come with the poker milestone)
 // ---------------------------------------------------------------------------------------------
 const roll5 = (state) => [d6(state), d6(state), d6(state), d6(state), d6(state)];
+// step: { seat, vs: 'town' | 'fixed', stake?: n | 'ifGold', bonus?, townRerolls?, soloNoReroll?,
+//         dice?, opp?, win?, lose?, card? } — the location action, or an event («Цири и доп.
+// события»): poker without the own stake, with an extra townsfolk reroll, against dice printed
+// on the card (win only if strictly better; then the event's win/lose effects).
 STEPS.pokerStart = (state, step) => {
     const p = state.players[step.seat];
-    p.gold -= 1;
-    const poker = { seat: p.seat, vs: step.vs, a: roll5(state), b: state.solo ? null : roll5(state), pot: state.solo ? 0 : 3, done: false, winner: null, rerolledB: [], rerolledA: [] };
-    state.poker = poker;
-    log(state, state.solo ? `${p.name} играет в покер (1 золото)` : `${p.name} играет в покер с горожанами: ставка 1 золото + 2 из запаса`, { kind: 'poker' });
-    fx(state, { k: 'pokerRoll', who: 'both' });
-    if (!state.solo) {
-        const rr = autoReroll(poker.b);
-        for (const i of rr) poker.b[i] = d6(state);
-        poker.rerolledB = rr;
-        log(state, `Горожане перебрасывают ${rr.length} куб.: ${POKER_NAMES[pokerValue(poker.b)[0]]}`);
-        fx(state, { k: 'pokerReroll', who: 'b', idx: rr });
+    const t = state.turn;
+    const fixed = step.vs === 'fixed';
+    let stake = fixed ? 0 : step.stake === 'ifGold' ? (p.gold >= 1 ? 1 : 0) : step.stake ?? ((t && t.pokerStake) || 1);
+    if (t) t.pokerStake = 0;
+    if (p.gold < stake) {
+        log(state, `${p.name}: нужно ${stake} золота на ставку — играть в покер нельзя`, { kind: 'poker' });
+        if (step.loc && t) removeFrom(t.usedLoc, p.loc);
+        return;
     }
-    ask(state, { seat: p.seat, kind: 'dice', ui: 'poker', ids: [0, 1, 2, 3, 4], min: 0, max: 5, title: 'Покер на костях', text: 'Выберите кубики для переброса (один раз) или оставьте как есть.', op: 'pokerReroll', args: {} });
+    p.gold -= stake;
+    const town = !fixed && !state.solo;
+    const magic = !!(p.keeps || []).find(k => k.kind === 'pokerDice') && !(state.solo && step.soloNoReroll);
+    const poker = {
+        seat: p.seat, vs: step.vs, opp: fixed ? (step.opp || 'Соперник') : 'Горожане', a: roll5(state), b: fixed ? step.dice.slice() : town ? roll5(state) : null,
+        pot: town ? stake + 2 : 0, stake, bonus: step.bonus || 0, done: false, winner: null, rerolledB: [], rerolledA: [],
+        rerolls: state.solo && step.soloNoReroll ? 0 : magic ? 2 : 1, magicUsed: false, card: step.card || null, win: step.win || null, lose: step.lose || null, res: '',
+    };
+    state.poker = poker;
+    log(state, fixed ? `${p.name} бросает кубики против ${poker.opp.toLowerCase()}: ${poker.b.join('–')}`
+        : state.solo ? `${p.name} играет в покер${stake ? ` (${stake} золото)` : ' без ставки'}`
+        : `${p.name} играет в покер с горожанами: ставка ${stake ? stake + ' золото + ' : ''}2 из запаса`, { kind: 'poker' });
+    fx(state, { k: 'pokerRoll', who: 'both' });
+    if (town) {
+        for (let k = 0; k < (step.townRerolls || 1); k++) {
+            const rr = autoReroll(poker.b);
+            if (!rr.length) break;
+            for (const i of rr) poker.b[i] = d6(state);
+            poker.rerolledB = rr;
+            log(state, `Горожане перебрасывают ${rr.length} куб.: ${POKER_NAMES[pokerValue(poker.b)[0]]}`);
+            fx(state, { k: 'pokerReroll', who: 'b', idx: rr });
+        }
+    }
+    push(state, { op: 'pokerAsk' });
+};
+STEPS.pokerAsk = (state) => {
+    const poker = state.poker;
+    if (!poker.rerolls) { push(state, { op: 'pokerEnd' }); return; }
+    const second = poker.rerolls === 1 && poker.rerolledA.length && (state.players[poker.seat].keeps || []).some(k => k.kind === 'pokerDice');
+    ask(state, { seat: poker.seat, kind: 'dice', ui: 'poker', ids: [0, 1, 2, 3, 4], min: 0, max: 5, title: 'Покер на костях', text: second ? 'Магические кости: можно перебросить ещё раз.' : 'Выберите кубики для переброса (один раз) или оставьте как есть.', op: 'pokerReroll', args: {} });
 };
 STEPS.pokerReroll = (state, step) => {
     const poker = state.poker;
+    const ids = step.ids || [];
+    if (!ids.length) { poker.rerolls = 0; push(state, { op: 'pokerAsk' }); return; }
+    for (const i of ids) poker.a[i] = d6(state);
+    fx(state, { k: 'pokerReroll', who: 'a', idx: ids });
+    if (poker.rerolledA.length) poker.magicUsed = true; // the second reroll of the magic dice
+    poker.rerolledA = ids;
+    poker.rerolls -= 1;
+    push(state, { op: 'pokerAsk' });
+};
+STEPS.pokerEnd = (state) => {
+    const poker = state.poker;
     const p = state.players[poker.seat];
-    for (const i of step.ids) poker.a[i] = d6(state);
-    poker.rerolledA = step.ids;
-    fx(state, { k: 'pokerReroll', who: 'a', idx: step.ids });
     const va = pokerValue(poker.a)[0];
-    if (state.solo) {
+    const steps = [];
+    if (poker.vs === 'fixed') {
+        poker.winner = comparePoker(poker.a, poker.b) > 0 ? 'a' : 'b';
+        poker.res = poker.winner === 'a' ? `${POKER_NAMES[va]} — лучше!` : `${POKER_NAMES[va]} — не лучше`;
+        log(state, `Покер: ${p.name} — ${POKER_NAMES[va]}, ${poker.opp.toLowerCase()} — ${POKER_NAMES[pokerValue(poker.b)[0]]}. ${poker.winner === 'a' ? 'Победа' : 'Поражение'}`, { kind: 'poker' });
+        const br = poker.winner === 'a' ? poker.win : poker.lose;
+        if (br && br.length) steps.push(...effectSteps(p.seat, br, { card: poker.card }));
+    } else if (state.solo) {
         const g = SOLO_POKER[va];
         p.gold += g;
-        poker.winner = 'a'; poker.reward = g;
-        log(state, `${p.name}: ${POKER_NAMES[va]} — +${g} золота`, { kind: 'poker' });
+        poker.winner = g > 0 ? 'a' : 'b'; poker.reward = g;
+        const bonus = poker.bonus && g > 0 ? poker.bonus : 0;
+        p.gold += bonus;
+        poker.res = `${POKER_NAMES[va]}: +${g + bonus} золота`;
+        log(state, `${p.name}: ${POKER_NAMES[va]} — +${g} золота${bonus ? ` и +${bonus} (событие)` : ''}`, { kind: 'poker' });
     } else {
         const c = comparePoker(poker.a, poker.b);
         poker.winner = c >= 0 ? 'a' : 'b';
-        if (poker.winner === 'a') p.gold += poker.pot;
-        log(state, `Покер: ${p.name} — ${POKER_NAMES[va]}, горожане — ${POKER_NAMES[pokerValue(poker.b)[0]]}. ${poker.winner === 'a' ? p.name + ' выигрывает 3 золота' : 'Горожане выигрывают'}`, { kind: 'poker' });
+        const bonus = poker.winner === 'a' ? poker.bonus : 0;
+        if (poker.winner === 'a') p.gold += poker.pot + bonus;
+        poker.res = poker.winner === 'a' ? `${p.name} выигрывает ${poker.pot + bonus} золота` : 'Горожане забирают ставку';
+        log(state, `Покер: ${p.name} — ${POKER_NAMES[va]}, горожане — ${POKER_NAMES[pokerValue(poker.b)[0]]}. ${poker.winner === 'a' ? `${p.name} выигрывает ${poker.pot + bonus} золота` : 'Горожане выигрывают'}`, { kind: 'poker' });
+    }
+    // Магические кости (CITY2-57): the extra reroll used and won — the card goes, event 133 comes.
+    if (poker.magicUsed && poker.winner === 'a') {
+        const k = (p.keeps || []).find(x => x.kind === 'pokerDice');
+        if (k) {
+            removeFrom(p.keeps, k);
+            log(state, `${p.name}: «${k.name}» сброшены`, { kind: 'explore' });
+            if (k.event) steps.push({ op: 'takeEvent', seat: p.seat, id: k.event });
+        }
     }
     poker.done = true;
+    state.lastPoker = { seat: p.seat, vs: poker.vs === 'fixed' ? 'event' : 'town' };
     fx(state, { k: 'pokerEnd', winner: poker.winner });
+    if (steps.length) push(state, ...steps);
 };

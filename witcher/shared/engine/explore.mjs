@@ -16,21 +16,32 @@ import { STEPS, push, ask, later } from './flow.mjs';
 import { LOC, ADJ, CARDS, MONSTER, log, fx, d6, shuffle, clampShield, drawCards, removeFrom, potionOf } from './util.mjs';
 import { keepOf } from './effects.mjs';
 import { comboTotals, linkIndex } from './fight.mjs';
-import { TERRAIN_NAME, SKILL_NAME, SCHOOLS } from '../data/rules-data.mjs';
-import { EXPLORE_DECKS, EVENTS, questLabel } from '../data/events-data.mjs';
+import { TERRAIN_NAME, SKILL_NAME, SCHOOLS, COLOR_NAME } from '../data/rules-data.mjs';
+import { EXPLORE_DECKS, EXP_DECKS, EVENTS, questLabel } from '../data/events-data.mjs';
 import { canEnter, refillRow, SKILL_GEN } from './turn.mjs';
 
 export const EXPLORE_READY = true;
 const DECK_NAME = { city: 'город', wild: 'окрестности' };
 const SKILLS = ['combat', 'defense', 'alchemy', 'spec'];
+const COLOR_ADJ = { blue: 'синяя', red: 'красная', green: 'зелёная', purple: 'фиолетовая', yellow: 'жёлтая' };
 
 /** Decks live in the state (hidden: the view shows only counts). Old saves get them lazily. */
 export function ensureExplore(state) {
+    if (!state.eventsUsed) state.eventsUsed = [];
     if (!state.explore) {
         state.explore = {};
         for (const d of Object.keys(EXPLORE_DECKS)) state.explore[d] = shuffle(state, EXPLORE_DECKS[d].slice());
     }
-    if (!state.eventsUsed) state.eventsUsed = [];
+    // Expansions shuffle their exploration cards in (also into a running game, e.g. a sandbox
+    // loaded with the expansion switched on in the lobby).
+    for (const x of state.exp || []) {
+        if ((state.expDecks || []).includes(x) || !EXP_DECKS[x]) continue;
+        for (const d of Object.keys(EXP_DECKS[x])) {
+            const add = EXP_DECKS[x][d].filter(id => !state.eventsUsed.includes(id) && !state.explore[d].includes(id));
+            state.explore[d] = shuffle(state, [...state.explore[d], ...add]);
+        }
+        (state.expDecks || (state.expDecks = [])).push(x);
+    }
     return state.explore;
 }
 
@@ -49,7 +60,11 @@ export function exploreError(state, p, deck) {
 
 /** Why an option cannot be picked (its printed cost), or null. */
 export function optionCostError(p, opt) {
-    if (opt.cost && opt.cost.gold && p.gold < opt.cost.gold) return `Нужно ${opt.cost.gold} золота`;
+    const c = opt.cost;
+    if (!c) return null;
+    if (c.gold && p.gold < c.gold) return `Нужно ${c.gold} золота`;
+    if (c.elixir && p.elixirs.length < c.elixir) return `Нужно эликсиров: ${c.elixir}`;
+    if (c.color && !p.hand.some(id => CARDS[id].color === c.color)) return `Нужна ${COLOR_ADJ[c.color]} карта в руке (${COLOR_NAME[c.color].toLowerCase()})`;
     return null;
 }
 
@@ -83,15 +98,53 @@ STEPS.exploreStart = (state, step) => {
     const id = decks[step.deck].shift();
     log(state, `${p.name} исследует ${DECK_NAME[step.deck]} (${LOC[p.loc].name})`, { kind: 'explore' });
     fx(state, { k: 'explore', seat: p.seat, deck: step.deck, id });
+    // A few expansion cards have no choice at all (CITY2-47, CITY2-50): read, then resolve.
+    if (!EVENTS[id].a) {
+        ask(state, { seat: p.seat, kind: 'choice', ui: 'event', stage: 'event', card: id, title: `Исследование: ${DECK_NAME[step.deck]}`, options: [{ id: 'ok', label: 'Продолжить' }], op: 'explorePlain', args: { seat: p.seat, id, deck: step.deck } });
+        return;
+    }
     askChoose(state, p, id, `Исследование: ${DECK_NAME[step.deck]}`, { deck: step.deck, explore: true });
+};
+STEPS.explorePlain = (state, step) => {
+    push(state, ...effectSteps(step.seat, EVENTS[step.id].fx, { card: step.id }), { op: 'exploreDone', seat: step.seat, id: step.id, explore: true });
 };
 
 STEPS.exploreChoice = (state, step) => {
     const p = state.players[step.seat];
     const ev = EVENTS[step.id];
     const opt = ev[step.choice];
-    if (opt.cost && opt.cost.gold) p.gold -= opt.cost.gold;
+    const c = opt.cost || {};
+    if (c.gold) p.gold -= c.gold;
     log(state, `${p.name} выбирает ${step.choice === 'a' ? 'А' : 'Б'}: «${opt.label}»`, { kind: 'explore' });
+    // Costs paid with a chosen elixir / card of the hand (printed in the option line).
+    const args = { seat: p.seat, id: step.id, deck: step.deck, explore: step.explore, choice2: step.choice };
+    if (c.elixir) {
+        if (p.elixirs.length <= c.elixir) { push(state, { op: 'explorePay', ...args, from: 'elixirs', ids: p.elixirs.slice(0, c.elixir) }); return; }
+        ask(state, { seat: p.seat, kind: 'cards', from: 'elixirs', ids: p.elixirs.slice(), min: c.elixir, max: c.elixir, title: 'Оплата', text: `Сбросьте ${c.elixir} эликсир(а).`, op: 'explorePay', args: { ...args, from: 'elixirs' } });
+        return;
+    }
+    if (c.color || c.card) {
+        const ids = p.hand.filter(id => !c.color || CARDS[id].color === c.color);
+        if (!ids.length) { push(state, { op: 'exploreOutcome', ...args }); return; }
+        if (ids.length === 1) { push(state, { op: 'explorePay', ...args, from: 'hand', ids }); return; }
+        ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids, min: 1, max: 1, title: 'Оплата', text: c.color ? `Сбросьте 1 ${COLOR_ADJ[c.color].replace(/ая$/, 'ую')} карту из руки (${COLOR_NAME[c.color].toLowerCase()}).` : 'Сбросьте 1 карту из руки.', op: 'explorePay', args: { ...args, from: 'hand' } });
+        return;
+    }
+    push(state, { op: 'exploreOutcome', ...args });
+};
+STEPS.explorePay = (state, step) => {
+    const p = state.players[step.seat];
+    for (const id of step.ids || []) {
+        if (step.from === 'elixirs') { if (removeFrom(p.elixirs, id)) state.elixirDiscard.push(id); }
+        else if (removeFrom(p.hand, id)) p.discard.push(id);
+    }
+    if ((step.ids || []).length) log(state, step.from === 'elixirs' ? `${p.name} сбрасывает эликсир: ${step.ids.map(id => potionOf(id).name).join(', ')}` : `${p.name} сбрасывает «${step.ids.map(id => CARDS[id].name).join('», «')}»`);
+    push(state, { op: 'exploreOutcome', seat: step.seat, id: step.id, deck: step.deck, explore: step.explore, choice2: step.choice2 });
+};
+STEPS.exploreOutcome = (state, step) => {
+    const p = state.players[step.seat];
+    const opt = EVENTS[step.id][step.choice2];
+    step = { ...step, choice: step.choice2 };
     ask(state, {
         seat: p.seat, kind: 'choice', ui: 'event', stage: 'outcome', pick: step.choice, card: step.id, title: 'Последствия', effect: opt.effect,
         options: [{ id: 'ok', label: 'Продолжить' }], op: 'exploreApply', args: { seat: p.seat, id: step.id, deck: step.deck, explore: step.explore, pick: step.choice },
@@ -187,17 +240,46 @@ STEPS.eventFx = (state, step) => {
     if (e.event) push(state, { op: 'takeEvent', seat: p.seat, id: e.event });
     if (e.quest) push(state, { op: 'questStart', seat: p.seat, id: step.card, q: e.quest });
     if (e.freeMove) {
-        const opts = (ADJ[p.loc] || []).filter(n => canEnter(state, n)).map(n => ({ id: String(n), label: LOC[n].name, hint: TERRAIN_NAME[LOC[n].terrain] }));
-        if (opts.length) ask(state, { seat: p.seat, kind: 'choice', ui: 'move', title: 'Перемещение', text: 'Переместитесь в соседнюю локацию, не сбрасывая карты. Затем можете выполнить её действие.', options: opts, op: 'exploreMove', args: { seat: p.seat } });
+        const range = e.freeMove === true ? 1 : e.freeMove;
+        const opts = within(state, p.loc, range).map(n => ({ id: String(n), label: LOC[n].name, hint: TERRAIN_NAME[LOC[n].terrain] }));
+        const text = range === 1 ? 'Переместитесь в соседнюю локацию, не сбрасывая карты. Затем можете выполнить её действие.' : `Переместитесь на расстояние до ${range} локаций, не сбрасывая карты. Затем можете выполнить действие локации.`;
+        if (opts.length) ask(state, { seat: p.seat, kind: 'choice', ui: 'move', title: 'Перемещение', text, options: opts, op: 'exploreMove', args: { seat: p.seat } });
+    }
+    if (e.buyDiscount && t) { t.buyDiscount = (t.buyDiscount || 0) + e.buyDiscount; log(state, `${p.name}: в фазе III этого хода карта из ряда дешевле на ${e.buyDiscount}`); }
+    if (e.elixirTo) {
+        const n = e.elixirTo - p.elixirs.length;
+        if (n > 0) push(state, { op: 'gainElixir', seat: p.seat, n, why: 'событие', noLimit: !!e.noLimit });
+        else log(state, `${p.name}: эликсиров уже ${p.elixirs.length}`);
+    }
+    if (e.trap) push(state, { op: 'trapPlace', seat: p.seat, trap: e.trap, card: step.card });
+    if (e.trapStay) { const c = (state.trapCtx || []).at(-1); if (c) c.stay = true; }
+    if (e.poker) push(state, { op: 'pokerStart', seat: p.seat, vs: e.poker.dice ? 'fixed' : 'town', card: step.card, ...e.poker });
+    if (e.pokerStake && t) { t.pokerStake = e.pokerStake; log(state, `${p.name}: ставка в этой игре — ${e.pokerStake} золота`); }
+    if (e.noShieldRestore && state.lastFight && state.lastFight.seat === p.seat && state.lastFight.shield != null) {
+        p.shield = Math.min(p.shield, state.lastFight.shield);
+        log(state, `${p.name}: щит не восстанавливается — ${p.shield}`);
+    }
+    if (e.fightGold && state.fight) { state.fight.bonusGold = (state.fight.bonusGold || 0) + e.fightGold; }
+    if (e.secret) {
+        if (state.eventsUsed.includes(e.secret)) log(state, `Событие ${EVENTS[e.secret].num} уже в игре — взять его нельзя`);
+        else {
+            used(state, e.secret);
+            (p.secrets || (p.secrets = [])).push(e.secret);
+            log(state, `${p.name} берёт событие ${EVENTS[e.secret].num} в закрытую`, { kind: 'explore' });
+            fx(state, { k: 'secret', seat: p.seat });
+        }
     }
     if (e.if) {
         const c = e.if;
         const okc = (c.goldMax == null || p.gold <= c.goldMax) && (c.elixirMax == null || p.elixirs.length <= c.elixirMax)
-            && (c.shieldMax == null || p.shield <= c.shieldMax) && (c.trophiesMax == null || p.trophies.length <= c.trophiesMax);
+            && (c.shieldMax == null || p.shield <= c.shieldMax) && (c.trophiesMax == null || p.trophies.length <= c.trophiesMax)
+            && (c.ownSchool == null || (p.loc === SCHOOLS[p.school].home) === c.ownSchool)
+            && (c.pokerVs == null || ((state.lastPoker && state.lastPoker.seat === p.seat ? state.lastPoker.vs : 'town') === c.pokerVs));
         log(state, `${p.name}: условие ${okc ? 'выполнено' : 'не выполнено'}`);
         push(state, ...effectSteps(p.seat, okc ? e.fx : e.else, { card: step.card }));
     }
     if (e.freeBuy && t) { t.freeBuy = true; log(state, `${p.name}: в фазе III этого хода карта из ряда — бесплатно`); }
+    if (e.roll && e.by === 'elixirs') { push(state, { op: 'eventElixirTableAsk', seat: p.seat, card: step.card, e }); return; }
     if (e.roll && e.by === 'combo') {
         // «Возьмите N карт из своей колоды и немедленно разыграйте комбинацию» — then the table by damage.
         const n = drawCards(state, p, e.comboDraw);
@@ -221,6 +303,32 @@ STEPS.eventFx = (state, step) => {
         const br = e.roll.find(b => r >= b.from && r <= b.to) || (r < e.roll[0].from ? e.roll[0] : e.roll[e.roll.length - 1]);
         push(state, show, ...effectSteps(p.seat, br.fx, { card: step.card }));
     }
+};
+/** Locations reachable within `range` steps (not stopping on the way), the start excluded. */
+function within(state, from, range) {
+    const seen = new Set([from]);
+    let front = [from];
+    for (let i = 0; i < range; i++) {
+        const next = [];
+        for (const a of front) for (const n of ADJ[a] || []) if (!seen.has(n) && canEnter(state, n)) { seen.add(n); next.push(n); }
+        front = next;
+    }
+    seen.delete(from);
+    return [...seen].sort((a, b) => a - b);
+}
+// «Сбросьте любое количество эликсиров (но не менее 1, если можете). Затем — по количеству» (CONT80-34).
+STEPS.eventElixirTableAsk = (state, step) => {
+    const p = state.players[step.seat];
+    if (!p.elixirs.length) { push(state, { op: 'eventElixirTableDo', seat: p.seat, card: step.card, e: step.e, ids: [] }); return; }
+    ask(state, { seat: p.seat, kind: 'cards', from: 'elixirs', ids: p.elixirs.slice(), min: 1, max: p.elixirs.length, card: step.card, title: 'Сброс эликсиров', text: 'Сбросьте любое количество эликсиров (не менее 1). Эффект — по числу сброшенных.', op: 'eventElixirTableDo', args: { seat: p.seat, card: step.card, e: step.e } });
+};
+STEPS.eventElixirTableDo = (state, step) => {
+    const p = state.players[step.seat];
+    for (const id of step.ids) if (removeFrom(p.elixirs, id)) state.elixirDiscard.push(id);
+    const r = step.ids.length;
+    log(state, `${p.name} сбрасывает эликсиров: ${r}`, { kind: 'explore' });
+    const br = step.e.roll.find(b => r >= b.from && r <= b.to) || step.e.roll[step.e.roll.length - 1];
+    push(state, { op: 'eventRollShow', seat: p.seat, r, card: step.card, by: 'elixirs' }, ...effectSteps(p.seat, br.fx, { card: step.card }));
 };
 STEPS.eventComboAsk = (state, step) => {
     const p = state.players[step.seat];
@@ -253,8 +361,8 @@ export function eventComboError(ids) {
     return null;
 }
 STEPS.eventRollShow = (state, step) => {
-    const title = step.by === 'combo' ? `Урон комбинации: ${step.r}` : step.x2 != null ? `${SKILL_NAME[step.by]} ${step.x2} × 2 + кубик ${step.die} = ${step.r}` : !step.by ? `Бросок кубика: ${step.r}` : step.by === 'level' ? `Уровень ведьмака: ${step.r}` : `Навык ${SKILL_GEN[step.by]}: ${step.r}`;
-    ask(state, { seat: step.seat, kind: 'choice', ui: 'event', stage: 'roll', card: step.card, title, dice: step.x2 != null ? step.die : step.r, sum: step.x2 != null ? step.r : undefined, rollKind: step.by === 'combo' ? 'combo' : undefined, options: [{ id: 'ok', label: 'Продолжить' }], op: 'noop', args: {} });
+    const title = step.by === 'combo' ? `Урон комбинации: ${step.r}` : step.by === 'elixirs' ? `Сброшено эликсиров: ${step.r}` : step.x2 != null ? `${SKILL_NAME[step.by]} ${step.x2} × 2 + кубик ${step.die} = ${step.r}` : !step.by ? `Бросок кубика: ${step.r}` : step.by === 'level' ? `Уровень ведьмака: ${step.r}` : `Навык ${SKILL_GEN[step.by]}: ${step.r}`;
+    ask(state, { seat: step.seat, kind: 'choice', ui: 'event', stage: 'roll', card: step.card, title, dice: step.x2 != null ? step.die : step.r, sum: step.x2 != null ? step.r : undefined, rollKind: step.by === 'combo' || step.by === 'elixirs' ? step.by : undefined, options: [{ id: 'ok', label: 'Продолжить' }], op: 'noop', args: {} });
 };
 STEPS.noop = () => {};
 
@@ -386,8 +494,10 @@ STEPS.exploreMove = (state, step) => {
     const from = p.loc;
     p.loc = to;
     const t = state.turn;
-    // Back to a phase-I-like window: only the new location's action, then phase III.
-    t.phase = 1; t.moved = true; t.afterExplore = true;
+    // In phase I (a quest, a sprung quest token) the turn just goes on from the new location;
+    // after an exploration — back to a phase-I-like window: only the location action, then phase III.
+    if (t.phase === 1 && !t.afterExplore) t.moved = true;
+    else { t.phase = 1; t.moved = true; t.afterExplore = true; }
     log(state, `${p.name}: ${LOC[from].name} → ${LOC[to].name} (событие, без сброса карт)`, { kind: 'move' });
     fx(state, { k: 'move', seat: p.seat, from, to, cards: [] });
     push(state, { op: 'arrive', seat: p.seat });
@@ -425,7 +535,9 @@ STEPS.questStart = (state, step) => {
         if (!terrain) { log(state, `${p.name}: жетоны локаций закончились — задание не может быть начато`); return; }
         loc = state.locPiles[terrain].pop();
     }
-    p.quests.push({ id: step.id, terrain, loc, event: q.event, gold: q.gold || 0 });
+    // «Локация вашей школы или школы другого игрока»: any school of the table.
+    const locs = q.school === 'any' ? [...new Set(state.players.map(x => SCHOOLS[x.school].home))] : null;
+    p.quests.push({ id: step.id, terrain, loc, event: q.event, gold: q.gold || 0, ...(locs && locs.length > 1 ? { locs } : {}) });
     log(state, `${p.name} получает задание «${questLabel({ id: step.id })}»: ${LOC[loc].name}${terrain ? ' (' + TERRAIN_NAME[terrain].toLowerCase() + ')' : ''}`, { kind: 'explore' });
     fx(state, { k: 'quest', seat: p.seat, loc });
 };
@@ -436,7 +548,7 @@ export function questError(state, p, i) {
     const t = state.turn;
     if (!q) return 'Нет такого задания';
     if (!t || t.seat !== p.seat || t.phase !== 1 || t.afterExplore) return 'Только в фазе I своего хода';
-    if (p.loc !== q.loc) return `Нужно быть в локации ${LOC[q.loc].name}`;
+    if (q.locs ? !q.locs.includes(p.loc) : p.loc !== q.loc) return q.locs ? `Нужно быть в локации школы: ${q.locs.map(n => LOC[n].name).join(', ')}` : `Нужно быть в локации ${LOC[q.loc].name}`;
     if (q.gold && p.gold < q.gold) return `Нужно ${q.gold} золота`;
     return null;
 }
@@ -450,4 +562,115 @@ STEPS.questDone = (state, step) => {
     used(state, q.id);
     log(state, `${p.name} выполняет задание «${questLabel(q)}»`, { kind: 'explore' });
     push(state, { op: 'takeEvent', seat: p.seat, id: q.event });
+};
+
+// ---- quest tokens that spring on others, secret cards («Цири и доп. события») ----------------
+// «Поместите жетон задания в … Когда любой игрок, кроме вас, переместится туда (закончит там ход),
+// возьмите событие N и зачитайте ему»: the token lies on the board (state.traps, public; the
+// event number is known to its owner only). The other player who arrives / ends the turn there
+// resolves event N; the token is discarded unless the event says it stays (then not for that
+// player again this turn). «Возьмите событие N, но не показывайте её другим игрокам»: a secret
+// card (p.secrets, hidden) that is read to the first other player who meets its condition
+// (moving, ending phase I in a forest, raising alchemy, defeating a monster) — automatically:
+// the owner does not have to watch every move of the table.
+const turnKey = (state) => `${state.round}:${state.turn ? state.turn.seat : -1}`;
+
+STEPS.trapPlace = (state, step) => {
+    const p = state.players[step.seat];
+    const tr = step.trap;
+    if (!EVENTS[tr.event] || state.eventsUsed.includes(tr.event)) { log(state, `Событие ${EVENTS[tr.event] ? EVENTS[tr.event].num : '?'} уже в игре — жетон задания не кладётся`); return; }
+    const put = (loc, terrain) => push(state, { op: 'trapPut', seat: p.seat, trap: tr, loc, terrain: terrain || null });
+    if (tr.where === 'here') return put(p.loc);
+    if (tr.where === 'school') return put(SCHOOLS[p.school].home);
+    if (tr.where === 'adj' || tr.where === 'any') {
+        const locs = tr.where === 'adj' ? (ADJ[p.loc] || []).filter(n => canEnter(state, n)) : Object.keys(LOC).map(Number).filter(n => n !== p.loc && canEnter(state, n));
+        ask(state, {
+            seat: p.seat, kind: 'choice', ui: 'move', title: 'Жетон задания',
+            text: `Куда положить жетон задания? Когда другой игрок ${tr.on === 'move' ? 'придёт туда' : 'закончит там ход'}, вы зачитаете ему событие ${EVENTS[tr.event].num}.`,
+            options: locs.map(n => ({ id: String(n), label: LOC[n].name, hint: TERRAIN_NAME[LOC[n].terrain] })), op: 'trapPick', args: { seat: p.seat, trap: tr },
+        });
+        return;
+    }
+    // A random location token: of the terrain, or of any type (all piles together).
+    const pool = [];
+    for (const k of Object.keys(state.locPiles)) if (tr.where === 'random' || tr.where === k) state.locPiles[k].forEach((n, i) => pool.push({ k, n }));
+    if (!pool.length) { log(state, `${p.name}: жетоны локаций закончились — жетон задания не кладётся`); return; }
+    const pick = shuffle(state, pool)[0];
+    removeFrom(state.locPiles[pick.k], pick.n);
+    put(pick.n, pick.k);
+};
+STEPS.trapPick = (state, step) => push(state, { op: 'trapPut', seat: step.seat, trap: step.trap, loc: Number(step.choice), terrain: null });
+STEPS.trapPut = (state, step) => {
+    const p = state.players[step.seat];
+    used(state, step.trap.event);
+    if (!state.traps) state.traps = [];
+    state.trapSeq = (state.trapSeq || 0) + 1;
+    state.traps.push({ id: state.trapSeq, owner: p.seat, loc: step.loc, event: step.trap.event, on: step.trap.on, terrain: step.terrain });
+    log(state, `${p.name} кладёт жетон задания: ${LOC[step.loc].name} — событие для того, кто ${step.trap.on === 'move' ? 'придёт туда' : 'закончит там ход'}`, { kind: 'explore' });
+    fx(state, { k: 'quest', seat: p.seat, loc: step.loc });
+};
+
+/** After a move / at the end of a turn / …: sprung quest tokens and secret cards for `seat`. */
+STEPS.trapCheck = (state, step) => {
+    const p = state.players[step.seat];
+    const steps = [];
+    if (step.on === 'move' || step.on === 'end') {
+        for (const tr of state.traps || []) {
+            if (tr.loc !== p.loc || tr.owner === p.seat || tr.on !== step.on) continue;
+            if (tr.immune && tr.immune.seat === p.seat && tr.immune.key === turnKey(state)) continue;
+            steps.push({ op: 'trapSpring', seat: p.seat, id: tr.id });
+        }
+    }
+    for (const q of state.players) {
+        if (q.seat === p.seat) continue;
+        for (const id of q.secrets || []) {
+            const g = EVENTS[id] && EVENTS[id].trigger;
+            if (!g) continue;
+            const hit = step.on === 'move' ? g.move === 'any' || g.move === p.loc
+                : step.on === 'endPhase1' ? g.endPhase1 && LOC[p.loc].terrain === g.endPhase1
+                : step.on === 'skillUp' ? g.skillUp === step.skill
+                : step.on === 'defeat' ? !!g.defeat
+                : step.on === 'poker' ? !!g.poker
+                : step.on === 'fightEnd' ? g.fightEnd === 'elixir'
+                : step.on === 'fightStart' ? g.fightStart && LOC[p.loc].terrain === g.fightStart : false;
+            if (hit) steps.push({ op: 'secretSpring', seat: p.seat, owner: q.seat, id });
+        }
+    }
+    if (steps.length) push(state, ...steps);
+};
+STEPS.trapSpring = (state, step) => {
+    const tr = (state.traps || []).find(x => x.id === step.id);
+    const p = state.players[step.seat];
+    if (!tr || p.loc !== tr.loc) return;
+    (state.trapCtx || (state.trapCtx = [])).push({ id: tr.id, seat: p.seat, stay: false });
+    log(state, `${p.name} — на жетоне задания игрока ${state.players[tr.owner].name}: событие ${EVENTS[tr.event].num}`, { kind: 'explore' });
+    fx(state, { k: 'trap', seat: p.seat, owner: tr.owner, loc: tr.loc });
+    push(state, { op: 'readEvent', seat: p.seat, id: tr.event, by: tr.owner }, { op: 'trapAfter', id: tr.id });
+};
+STEPS.trapAfter = (state, step) => {
+    const ctx = (state.trapCtx || []).pop();
+    const i = (state.traps || []).findIndex(x => x.id === step.id);
+    if (i < 0) return;
+    const tr = state.traps[i];
+    if (ctx && ctx.stay) { tr.immune = { seat: ctx.seat, key: turnKey(state) }; log(state, `Жетон задания остаётся: ${LOC[tr.loc].name}`); return; }
+    state.traps.splice(i, 1);
+    if (tr.terrain) { state.locPiles[tr.terrain].push(tr.loc); shuffle(state, state.locPiles[tr.terrain]); }
+    log(state, `Жетон задания сброшен: ${LOC[tr.loc].name}`);
+};
+STEPS.secretSpring = (state, step) => {
+    const q = state.players[step.owner];
+    if (!removeFrom(q.secrets || [], step.id)) return;
+    push(state, { op: 'readEvent', seat: step.seat, id: step.id, by: q.seat });
+};
+/** Another player reads event `id` to `seat` (sprung token, secret card): `seat` resolves it. */
+STEPS.readEvent = (state, step) => {
+    const p = state.players[step.seat];
+    const ev = EVENTS[step.id];
+    if (!ev) return;
+    const by = state.players[step.by];
+    log(state, `${by.name} зачитывает игроку ${p.name} событие ${ev.num}`, { kind: 'explore' });
+    fx(state, { k: 'read', seat: p.seat, by: by.seat, id: step.id });
+    const title = `Событие ${ev.num} — зачитывает ${by.name}`;
+    if (ev.a) { askChoose(state, p, step.id, title, {}); return; }
+    ask(state, { seat: p.seat, kind: 'choice', ui: 'event', stage: 'event', card: step.id, title, options: [{ id: 'ok', label: 'Продолжить' }], op: 'eventApply', args: { seat: p.seat, id: step.id } });
 };
