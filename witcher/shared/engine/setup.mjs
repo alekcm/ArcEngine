@@ -1,7 +1,8 @@
 // Game setup (База.md pp. 6–8, solo p. 33).
 import { STARTER, COMMON, POTIONS, SKILLTROPHIES } from '../data/gen-data.mjs';
 import { bombDeckIds } from '../data/bombs-data.mjs';
-import { setupAttackDeck, onMonsterAppears } from './vuln.mjs';
+import { setupAttackDeck, onMonsterAppears, vulnOn } from './vuln.mjs';
+import './vtoken.mjs';
 import { SCHOOLS, START_RES, BASE_MONSTERS, TERRAINS, SKILL_NAME, normalizeRules, normalizeExp, trailOn } from '../data/rules-data.mjs';
 import { MASTERS, MUTAGENS, UNIQUE_OF } from '../data/trail-data.mjs';
 import { MONSTER, LOC, CARDS, shuffle, randInt, log, drawCards } from './util.mjs';
@@ -137,5 +138,6 @@ STEPS.setupSkill = (state, step) => {
 };
 STEPS.beginGame = (state) => {
     state.stage = 'turn';
-    push(state, { op: 'startTurn', seat: 0 });
+    // «Уязвимости и особые атаки»: 1 vulnerability token per monster on the board (after setup).
+    push(state, ...(vulnOn(state) ? TERRAINS.map(terrain => ({ op: 'vtPlace', terrain })) : []), { op: 'startTurn', seat: 0 });
 };

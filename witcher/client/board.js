@@ -308,11 +308,12 @@ export class Board {
             const key = mk.key; keep.add(key);
             if (this.markers[key]) continue;
             // Hunting quests: a round token; event quests: a square token (like the cardboard ones).
-            const c = BABYLON.MeshBuilder.CreateCylinder('mk' + key, { diameter: mk.quest ? 0.3 : 0.26, height: 0.05, tessellation: mk.quest ? 4 : 24 }, this.scene);
+            // Vulnerability tokens: a thicker hexagon on the other side of the location pin.
+            const c = BABYLON.MeshBuilder.CreateCylinder('mk' + key, { diameter: mk.vuln ? 0.34 : mk.quest ? 0.3 : 0.26, height: mk.vuln ? 0.08 : 0.05, tessellation: mk.vuln ? 6 : mk.quest ? 4 : 24 }, this.scene);
             const m = new BABYLON.StandardMaterial('mkm' + key, this.scene);
             m.diffuseColor = BABYLON.Color3.FromHexString(mk.color); m.emissiveColor = BABYLON.Color3.FromHexString(mk.color).scale(0.25);
             c.material = m; c.isPickable = false;
-            c.position = pinWorld(mk.loc).add(new BABYLON.Vector3(-0.42 + (mk.i || 0) * 0.14, 0.03 + (mk.i || 0) * 0.05, -0.05));
+            c.position = pinWorld(mk.loc).add(mk.vuln ? new BABYLON.Vector3(0.42, 0.04, -0.05) : new BABYLON.Vector3(-0.42 + (mk.i || 0) * 0.14, 0.03 + (mk.i || 0) * 0.05, -0.05));
             this.shadows.addShadowCaster(c);
             this.markers[key] = c;
         }

@@ -34,6 +34,8 @@ function fight(st, { setup, hand } = {}) {
         const seat = actingSeat(st);
         ok(apply(st, seat, botCommand(viewFor(st, seat), { options: options(st, seat) })));
     }
+    // Special combat cards («Уязвимости и особые атаки») would trigger discard abilities at random.
+    if (st.fight) st.fight.life = st.fight.life.map(id => id.startsWith('MON-SPECIAL') ? 'MON-ATK-01' : id);
     if (hand) { p.deck.push(...p.hand); p.hand = hand.slice(); for (const id of hand) { const i = p.deck.indexOf(id); if (i >= 0) p.deck.splice(i, 1); } }
     return st.fight;
 }

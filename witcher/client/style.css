@@ -551,3 +551,7 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 #fight .rules-now span.next { background: #2a2216; border-color: #8a7348; color: #eadbb8; }
 #fight.vuln { grid-template-columns: 440px 1fr 300px; }
 .card.bigmon.infight { --cw: 430px; --ch: 372px; }
+.c-vuln { color: #e07a6a; }
+.c-vuln .ic, .gear.vulns .ic { color: #e07a6a; }
+.ordered-pick { position: relative; }
+.ordered-pick .order-n { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 5; width: 36px; height: 36px; border-radius: 50%; background: var(--gold); color: #1a1208; font: 700 20px/36px var(--serif); text-align: center; box-shadow: 0 0 0 3px #0008, 0 0 18px var(--gold); pointer-events: none; }

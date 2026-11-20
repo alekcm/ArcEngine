@@ -4,7 +4,7 @@ import { S, $, cmd, send, me, btn, toast } from './ctx.js';
 import { bombOf } from '/shared/data/bombs-data.mjs';
 import { icon, TERRAIN_COLOR } from './icons.js';
 import { actionCard, monsterCard, elixirCard, bombCard, eventCard, mutagenCard, trophyLabel, artCss, esc, fxText, bigMonsterCard, bigMonsterBack } from './cards.js';
-import { BIG } from '/shared/data/vuln-data.mjs';
+import { BIG, ROMAN as VROMAN, vulnText } from '/shared/data/vuln-data.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { EVENTS, questLabel } from '/shared/data/events-data.mjs';
 import { SCHOOLS, SKILLS, SKILL_NAME, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN, GAME_MODES, HOUSE_RULES, trailOn } from '/shared/data/rules-data.mjs';
@@ -53,6 +53,7 @@ function renderPlayers(v) {
                 <span title="Эликсиры" style="color:#7fd0b4">${icon('elixir')}${p.elixirs.length}</span>
                 ${(p.bombs || []).length ? `<span title="Бомбы: ${esc(p.bombs.map(b => bombOf(b).name).join(', '))}" class="c-bomb">${icon('bomb')}${p.bombs.length}</span>` : ''}
                 ${(p.mutagens || []).length ? `<span title="Мутагены: ${esc(p.mutagens.map(m => MUTAGEN[m].name).join(', '))}" style="color:#9fd6e6">${icon('alchemy')}${p.mutagens.length}</span>` : ''}
+                ${(p.vulns || []).length ? `<span class="c-vuln" title="Жетоны уязвимостей (лицом вверх): ${esc(p.vulns.map(x => TERRAIN_NAME[x.terrain] + ' ' + VROMAN[x.n - 1]).join(', '))}">${icon('skull')}${p.vulns.length}</span>` : ''}
                 ${p.secretCount ? `<span title="Тайные события (зачитает другому игроку)">${icon('card')}${p.secretCount}</span>` : ''}
                 <span class="tracks">${tracks}</span>
             </div>
@@ -100,19 +101,23 @@ function renderTools() {
     on('tHelp', () => openHelp());
 }
 
+/** Numbers of my vulnerability tokens of a terrain. */
+const myVulns = (v, terrain) => ((me() || {}).vulns || []).filter(x => x.terrain === terrain).map(x => x.n);
 function renderMonsters(v) {
     $('monsters').innerHTML = v.slots.map((s, i) => {
         if (!s.mon) return `<div class="mslot panel" style="--tc:${TERRAIN_COLOR[s.terrain]}"><div class="mini" style="background:#0005"></div><div class="inf"><b style="color:var(--dim)">Нет монстра</b><small>${icon(s.terrain, 'c-' + s.terrain)}${TERRAIN_NAME[s.terrain]}</small></div></div>`;
         const m = MONSTER[s.mon];
+        const vb = (v.vulnBoard || []).find(x => x.terrain === s.terrain);
+        const vulnTxt = vb ? ` · <span class="c-vuln" title="Жетон уязвимости этого монстра лежит лицом вниз в локации ${esc(LOC[vb.loc].name)}">${icon('skull')}${esc(LOC[vb.loc].name)}</span>` : '';
         const hunters = v.players.filter(p => p.trackTokens[s.terrain]).map(p => `<i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${SCHOOLS[p.school].color}" title="${esc(p.name)}: жетон следа"></i>`).join('');
         return `<div class="mslot panel" style="--tc:${TERRAIN_COLOR[s.terrain]}" data-slot="${i}" title="${esc(m.name + ': ' + m.ability)}">
             <div class="mini" style="background-image:${artCss(s.mon, '#5a2a2a', 'skull')}"></div>
             <div class="inf"><b>${esc(m.name)} <span class="lvb">${['', 'I', 'II', 'III'][m.level]}</span></b>
-            <small>${icon(s.terrain, 'c-' + s.terrain)}${esc(LOC[s.token] ? LOC[s.token].name : '?')} · жизнь ${m.life} ${hunters}</small></div></div>`;
+            <small>${icon(s.terrain, 'c-' + s.terrain)}${esc(LOC[s.token] ? LOC[s.token].name : '?')} · жизнь ${m.life} ${hunters}${vulnTxt}</small></div></div>`;
     }).join('');
     for (const el of $('monsters').querySelectorAll('.mslot[data-slot]')) {
         const s = v.slots[Number(el.dataset.slot)];
-        el.onclick = () => { S.board && S.board.focus(s.token); openViewer(MONSTER[s.mon].name, trailOn(S.view, 'vuln') && BIG[s.mon] ? `<div class="bigpair">${bigMonsterCard(s.mon)}${bigMonsterBack(s.mon)}</div>` : monsterCard(s.mon, { big: true, trophy: true })); };
+        el.onclick = () => { S.board && S.board.focus(s.token); openViewer(MONSTER[s.mon].name, trailOn(S.view, 'vuln') && BIG[s.mon] ? `<div class="bigpair">${bigMonsterCard(s.mon)}${bigMonsterBack(s.mon, { have: myVulns(v, s.terrain) })}</div>` : monsterCard(s.mon, { big: true, trophy: true })); };
     }
 }
 
@@ -244,6 +249,7 @@ function renderMine(v) {
         <div class="r" style="margin-top:4px;color:var(--dim)">Специализация: ${esc(sc.spec)} (${p.skills.spec})</div>
         <div class="elixirs">${p.elixirs.map(e => { const po = POTION[e.split('#')[0]]; return `<span class="el" title="${esc(po.name + ': ' + po.text)}">${icon('elixir', 'c-forest')}${esc(po.name)}</span>`; }).join('') || '<span style="color:var(--dim);font-size:12px">Эликсиров нет</span>'}${(p.bombs || []).map(b => { const bd = bombOf(b); return `<span class="el bomb" data-bombcard="${esc(b)}" title="${esc(bd.name + ': ' + bd.text)}">${icon('bomb', 'c-bomb')}${esc(bd.name)}</span>`; }).join('')}</div>
         ${(p.mutagens || []).length ? `<div class="gear muts">${p.mutagens.map(id => `<span class="el" data-mutcard="${esc(id)}" title="${esc(MUTAGEN[id].cond + ' ' + fxText(MUTAGEN[id].fx) + (MUTAGEN[id].alt ? ' или ' + fxText(MUTAGEN[id].alt) : ''))}">${icon('alchemy')}${esc(MUTAGEN[id].name)}</span>`).join('')}</div>` : ''}
+        ${(p.vulns || []).length ? `<div class="gear vulns">${p.vulns.map(x => { const sl = v.slots.find(s2 => s2.terrain === x.terrain && s2.mon); return `<span class="el" data-vterrain="${x.terrain}" title="${esc(sl && BIG[sl.mon] ? MONSTER[sl.mon].name + ': ' + vulnText(sl.mon, x.n) : '')}">${icon('skull', 'c-vuln')}${TERRAIN_NAME[x.terrain]} ${VROMAN[x.n - 1]}</span>`; }).join('')}</div>` : ''}
         ${p.gear.length ? `<div class="gear">${p.gear.map(id => `<span class="el" data-gear="${esc(id)}" title="${esc(EVENTS[id].kind + ': ' + EVENTS[id].text)}">${icon(EVENTS[id].kind === 'Спутник' ? 'meditate' : 'combat')}${esc(EVENTS[id].name)}</span>`).join('')}</div>` : ''}
         ${(p.keeps || []).length ? `<div class="gear keeps">${p.keeps.map(k => `<span class="el" data-keep="${esc(k.card)}" data-pick="${k.id.slice(-1) === 'A' ? 'a' : 'b'}" title="${esc(k.text)}">${icon('card')}${esc(k.name)}</span>`).join('')}</div>` : ''}
         ${p.quests.length ? `<div class="gear quests">${p.quests.map(q => `<span class="el" data-qcard="${esc(q.id)}" data-pick="${questPick(q.id)}" title="Задание — ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}">${icon('explore')}${esc(questLabel(q))} → ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}</span>`).join('')}</div>` : ''}
@@ -258,6 +264,7 @@ function renderMine(v) {
     $('zDiscard').onclick = () => openViewer('Ваш сброс', p.discard.map(id => actionCard(id, { small: true })).join('') || 'Пусто');
     $('zRemoved').onclick = () => openViewer('Убраны из игры', p.removed.map(id => actionCard(id, { small: true })).join('') || 'Пусто');
     $('zTroph').onclick = () => openPlayer(p.seat);
+    for (const g of el.querySelectorAll('[data-vterrain]')) g.onclick = () => { const sl = v.slots.find(s2 => s2.terrain === g.dataset.vterrain && s2.mon); if (sl && BIG[sl.mon]) openViewer(`${MONSTER[sl.mon].name} — уязвимости`, `<div class="bigpair">${bigMonsterCard(sl.mon)}${bigMonsterBack(sl.mon, { have: myVulns(v, sl.terrain) })}</div>`); };
     for (const g of el.querySelectorAll('[data-secret]')) g.onclick = () => openViewer(`Событие ${EVENTS[g.dataset.secret].num} — зачитаете другому игроку`, `<div style="display:flex;gap:14px;justify-content:center">${eventCard(g.dataset.secret, { stage: 'full' })}</div>`);
     for (const g of el.querySelectorAll('[data-mutcard]')) g.onclick = () => openViewer('Мутаген', `<div style="display:flex;gap:14px;justify-content:center">${mutagenCard(g.dataset.mutcard, { cls: 'big' })}</div>`);
     for (const g of el.querySelectorAll('[data-bombcard]')) g.onclick = () => openViewer('Бомба', `<div style="display:flex;gap:14px;justify-content:center">${bombCard(g.dataset.bombcard, { cls: 'big' })}</div>`);

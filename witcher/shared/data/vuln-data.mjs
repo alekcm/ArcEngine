@@ -176,3 +176,80 @@ export function nextText(r) {
     if (!r) return [];
     return Object.entries(r).filter(([k, v]) => NEXT_TEXT[k] && v !== false && v != null).map(([k, v]) => NEXT_TEXT[k](v, r));
 }
+
+// ---------------------------------------------------------------------------------------------
+// Vulnerabilities I–VI (the backs of the large cards, Монстры/Уязвимости.md). A token of the
+// monster's terrain with number N gives the N-th vulnerability of the monster fought (p. 7). Each
+// vulnerability is a list of operations; the window is set by the kind (VULN_WINDOW):
+//   fight — in force for the whole fight (checked where it matters), applied at the fight start
+//   pre / post — before / after the life pools are formed (optional costs: the player is asked)
+//   w1 — the witcher's first fight turn, m1 — the monster's first fight turn
+// Kinds:
+//   first · life n · lifeTrophy · noAbility · ignSp name · ignDisc · goldWin n · cheapWin · chaseWin
+//   elixirTop (any time: discard an unused elixir → top card of the discard; counts toward alchemy)
+//   dropSpecial [swap]  after the pool is formed: 1 random special card back to the deck
+//                       (swap — replaced by a random base card from the box; one goes back after)
+//   trackElixir · gold n · elixir n · shield n (over the maximum) · fetch colour (deck or discard)
+//   elixirPick (3 from the elixir deck, keep 1, others to the bottom)
+//   payGold n life · payName names life|dmg|draw [deck] · payColor colour life|dmg
+//   redraw (any number of hand cards → as many from the deck) · tutor [discard] · rowSwap
+//   skill spec|lowest (and the token is discarded) · bbDef · bbLife n («Чёрная кровь»)
+//   draw n [track m] · look3 · look3take · payElixir n dmg|draw [bomb {names, dmg|draw}]
+//   elixirsDraw · cap1 · playOne
+//   drawOrBomb names dmg · w1Elixir dmg · w1Color colour dmg · w1Petri draw · shieldMax
+//   perColor colour · comboSize two more · drawPlus n · drawPerYellow n · addCard [needBlue|blueOnly]
+//   returnOne · redRepeat
+//   dmgLess n · ignFx · payElixirIgnFx · chooseType [ifMonsterFirst] · look2 · elixirShield [over]
+// ---------------------------------------------------------------------------------------------
+const v = (k, o = {}) => ({ k, ...o });
+const first = v('first'), noAbility = v('noAbility'), ignDisc = v('ignDisc'), look2 = v('look2'), look3 = v('look3');
+const life = (n) => v('life', { n }), draw = (n, track = 0) => v('draw', { n, track }), shield = (n) => v('shield', { n });
+const fetchC = (color) => v('fetch', { color }), goldWin = (n) => v('goldWin', { n }), ignSp = (name) => v('ignSp', { name });
+const elixir = (n) => v('elixir', { n }), gold = (n) => v('gold', { n }), dmgLess = v('dmgLess', { n: 2 }), ignFx = v('ignFx');
+const chooseType = v('chooseType'), perColor = (color) => v('perColor', { color });
+export const VULNS = {
+    'MON-01': [[first, v('trackElixir')], [v('elixirTop')], [shield(1)], [fetchC('green')], [life(1)], [draw(1)]],
+    'MON-02': [[v('payGold', { n: 1, life: 2 })], [noAbility], [v('payName', { names: ['Аард'], life: 2 })], [draw(1)], [dmgLess], [look2]],
+    'MON-03': [[first], [life(1)], [v('elixirPick')], [v('redraw')], [v('drawPlus', { n: 2 })], [draw(1)]],
+    'MON-04': [[draw(1, 1)], [v('skill', { which: 'spec' })], [shield(1)], [v('addCard', { needBlue: true })], [v('payColor', { color: 'purple', dmg: 3 })], [ignSp('Мираж')]],
+    'MON-05': [[v('payElixir', { n: 1, dmg: 2, bomb: { dmg: 3 } })], [look2], [ignSp('Одной сворой')], [ignDisc], [goldWin(1)], [v('tutor', { discard: true })]],
+    'MON-06': [[gold(1)], [v('payElixir', { n: 1, dmg: 2 })], [draw(1)], [elixir(1)], [fetchC('blue')], [v('payName', { names: ['Игни'], life: 3 })]],
+    'MON-07': [[draw(1, 1)], [v('payName', { names: ['Ирден', 'Аксий'], life: 2 })], [shield(1)], [life(1)], [first], [v('chooseType', { ifMonsterFirst: true })]],
+    'MON-08': [[look3], [v('drawOrBomb', { names: ['Самум', 'Чёртов гриб'], dmg: 3 })], [perColor('green')], [v('comboSize', { two: 2, more: 2 })], [v('shieldMax')], [v('elixirsDraw')]],
+    'MON-09': [[chooseType], [ignFx], [v('dropSpecial', { swap: true })], [life(2)], [draw(1)], [perColor('red')]],
+    'MON-10': [[goldWin(2)], [shield(2)], [v('cap1')], [draw(1)], [look3], [chooseType]],
+    'MON-11': [[first], [elixir(1)], [v('w1Elixir', { dmg: 2 })], [v('payColor', { color: 'purple', dmg: 3 })], [v('payName', { names: ['Ирден'], draw: 4 })], [v('rowSwap')]],
+    'MON-12': [[draw(1)], [ignFx], [v('payColor', { color: 'blue', life: 2 })], [ignSp('Созыв стаи')], [life(1)], [v('w1Color', { color: 'red', dmg: 3 })]],
+    'MON-13': [[gold(2)], [v('tutor', { discard: false })], [life(1)], [v('chaseWin')], [v('payColor', { color: 'red', dmg: 3 })], [chooseType]],
+    'MON-14': [[first], [v('comboSize', { two: 1, more: 3 })], [draw(1, 1)], [ignSp('Визг')], [elixir(1)], [fetchC('yellow')]],
+    'MON-15': [[draw(2)], [first], [dmgLess], [ignSp('Звери и травы')], [v('playOne')], [v('payColor', { color: 'blue', dmg: 2 })]],
+    'MON-16': [[life(1)], [first], [v('payColor', { color: 'purple', dmg: 2 })], [goldWin(1)], [v('elixirShield', { over: false })], [gold(1)]],
+    'MON-17': [[draw(1, 1)], [v('addCard', { blueOnly: true })], [v('dropSpecial')], [ignFx], [v('bbDef')], [v('payName', { names: ['Игни'], deck: true, dmg: 2 })]],
+    'MON-18': [[first], [elixir(1)], [fetchC('blue')], [v('drawPlus', { n: 2 })], [life(1)], [v('payName', { names: ['Игни'], deck: true, draw: 3 })]],
+    'MON-19': [[v('lifeTrophy')], [shield(2)], [chooseType], [v('redraw')], [fetchC('blue')], [ignSp('Удар за ударом')]],
+    'MON-20': [[dmgLess], [v('skill', { which: 'spec' })], [v('payElixir', { n: 2, dmg: 2, bomb: { names: ['Северный ветер'], dmg: 3 } })], [ignSp('Грязные когти')], [ignSp('Неожиданная быстрота')], [v('elixirShield', { over: true })]],
+    'MON-21': [[fetchC('yellow')], [dmgLess], [ignSp('Ядовитое жало')], [goldWin(2)], [ignDisc], [v('returnOne')]],
+    'MON-22': [[v('addCard')], [draw(1, 1)], [ignSp('Проекции призрака')], [v('drawPerYellow', { n: 3 })], [v('payElixir', { n: 2, draw: 3, bomb: { names: ['Лунная пыль'], draw: 4 } })], [v('skill', { which: 'lowest' })]],
+    'MON-23': [[v('payElixirIgnFx')], [life(1)], [ignSp('Созыв людишек')], [first], [elixir(2)], [v('payName', { names: ['Квен'], deck: true, dmg: 2 })]],
+    'MON-24': [[look2], [v('payGold', { n: 2, life: 2 })], [noAbility], [draw(2)], [ignSp('Манящий шёпот')], [v('tutor', { discard: false })]],
+    'MON-25': [[shield(1)], [goldWin(2)], [first], [v('bbLife', { n: 2 })], [look3], [v('elixirPick')]],
+    'MON-26': [[v('dropSpecial')], [v('cheapWin')], [v('w1Petri', { draw: 3 })], [ignDisc], [chooseType], [first]],
+    'MON-27': [[life(2)], [shield(4)], [perColor('red')], [first], [draw(2)], [goldWin(2)]],
+    'MON-28': [[draw(1, 2)], [v('redRepeat')], [goldWin(2)], [ignSp('Обвить жертву')], [ignSp('Ядовитые челюсти')], [v('payName', { names: ['Ирден'], deck: true, dmg: 3 })]],
+    'MON-30': [[draw(2)], [dmgLess], [fetchC('red')], [v('addCard')], [v('look3take')], [ignSp('Бросок булыжника')]],
+};
+const W = {
+    fight: ['first', 'life', 'lifeTrophy', 'noAbility', 'ignSp', 'ignDisc', 'goldWin', 'cheapWin', 'chaseWin', 'elixirTop', 'perColor', 'comboSize', 'drawPlus', 'drawPerYellow', 'addCard', 'returnOne', 'redRepeat', 'dmgLess', 'ignFx', 'chooseType', 'cap1x'],
+    pre: ['trackElixir', 'gold', 'elixir', 'shield', 'fetch', 'elixirPick', 'payGold', 'redraw', 'tutor', 'rowSwap', 'skill', 'bbDef', 'bbLife'],
+    post: ['dropSpecial', 'draw', 'look3', 'look3take', 'payElixir', 'elixirsDraw', 'cap1', 'playOne'],
+    w1: ['drawOrBomb', 'w1Elixir', 'w1Color', 'w1Petri', 'shieldMax'],
+    m1: ['look2', 'payElixirIgnFx', 'elixirShield'],
+};
+/** The window of an operation (payName / payColor: before the pools if they lower the life). */
+export function vulnWindow(op) {
+    if (op.k === 'payName' || op.k === 'payColor') return op.life ? 'pre' : 'post';
+    for (const [w, ks] of Object.entries(W)) if (ks.includes(op.k)) return w;
+    return null;
+}
+/** The text of vulnerability N of a monster (the printed card). */
+export const vulnText = (monId, n) => (BIG[monId] ? BIG[monId].vulns[n - 1] : '');

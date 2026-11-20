@@ -14,6 +14,7 @@ import { MUTAGEN } from '../data/trail-data.mjs';
 import { BIG } from '../data/vuln-data.mjs';
 import { SKILL_VALUE } from '../data/rules-data.mjs';
 import { isSpecial, freshAttackDeck, onMonsterAppears, restrictError, endOfTurnDiscards, afterCombo25, vulnOn, specialName } from './vuln.mjs';
+import { vtFirstWitcherTurn, vtBeforeMonster, vtAfterMonster, vtM1, vtComboBonus, vtDrawBonus, vtLife, vulnReset } from './vtoken.mjs';
 
 const F = (op, args) => ({ op, fight: 1, ...(args || {}) });
 const fp = (state) => state.players[state.fight.seat];
@@ -59,7 +60,7 @@ STEPS.fightStart = (state, step) => {
     push(state,
         ...(mon.id === 'MON-06' ? [F('archesporeAsk')] : []),
         { op: 'trapCheck', seat: p.seat, on: 'fightStart' },
-        F('mushroomAsk'), F('preLife'), F('formLife'), F('postLife'), F('firstTurn'));
+        F('mushroomAsk'), F('vtStart'), F('preLife'), F('vtPre'), F('formLife'), F('postLife'), F('vtPost'), F('firstTurn'));
 };
 
 STEPS.archesporeAsk = (state) => {
@@ -132,7 +133,7 @@ STEPS.formLife = (state) => {
     shuffle(state, p.deck);
     const mon = MONSTER[f.mon];
     shuffle(state, state.attackDeck);
-    f.life = state.attackDeck.splice(0, mon.life);
+    f.life = state.attackDeck.splice(0, vtLife(state, mon.life));
     log(state, `Запасы жизней: ${p.name} — ${p.deck.length + p.hand.length} карт, ${mon.name} — ${f.life.length}`);
     fx(state, { k: 'lifeFormed', seat: p.seat });
 };
@@ -176,6 +177,7 @@ STEPS.discardFromHandDo = (state, step) => {
 STEPS.firstTurn = (state) => {
     const f = state.fight;
     if (f.track) { log(state, 'Есть жетон следа — ведьмак ходит первым'); push(state, F('witcherTurn')); }
+    else if (f.vt && f.vt.first) { log(state, `Уязвимость ${['I', 'II', 'III', 'IV', 'V', 'VI'][f.vt.first - 1]}: ведьмак ходит первым`); push(state, F('witcherTurn')); }
     else if (hasGear(fp(state), 'CONT79-23')) { log(state, 'Кая: в битве с монстром ведьмак всегда ходит первым'); push(state, F('witcherTurn')); }
     else { log(state, 'Жетона следа нет — первым ходит монстр'); push(state, F('monsterTurn')); }
 };
@@ -300,10 +302,18 @@ STEPS.witcherTurn = (state) => {
             if (n) drawCards(state, p, n);
             log(state, `${p.name}: трофей «Полуночница» — бросок ${r}${n ? `, +${n} карт(ы)` : ', нет эффекта'}`);
         }
-        if (ab(f) === 'MON-22' && p.hand.length) {
-            f.cur.forcedFirst = p.hand[randInt(state, p.hand.length)];
-            log(state, `Полуночница: первой картой комбинации будет случайная карта — «${CARDS[f.cur.forcedFirst].name}»`);
-        }
+        const vt1 = vtFirstWitcherTurn(state);
+        if (vt1.length) { push(state, ...vt1, F('witcherTurnRest')); return; }
+    }
+    witcherTurnRest(state);
+};
+STEPS.witcherTurnRest = (state) => { if (alive(state)) witcherTurnRest(state); };
+function witcherTurnRest(state) {
+    const f = state.fight, p = fp(state);
+    const r = f.cur.r || {};
+    if (f.wTurns === 1 && ab(f) === 'MON-22' && p.hand.length) {
+        f.cur.forcedFirst = p.hand[randInt(state, p.hand.length)];
+        log(state, `Полуночница: первой картой комбинации будет случайная карта — «${CARDS[f.cur.forcedFirst].name}»`);
     }
     if (r.deckFirst && p.deck.length) {
         const id = p.deck.shift(); p.hand.push(id); f.cur.forcedFirst = id;
@@ -314,7 +324,7 @@ STEPS.witcherTurn = (state) => {
     }
     if (hasSkillTrophy(p, 'combat') && !p.deck.length) push(state, F('dealDamage', { n: 1, src: 'трофей сражения: колода пуста' }));
     push(state, F('awaitWitcher'));
-};
+}
 STEPS.awaitWitcher = (state) => {
     if (!alive(state)) return;
     bearCheck(state);
@@ -366,7 +376,7 @@ function gainShield(state, p, n, why) {
         if (n > room) { log(state, `Особая атака: щит растёт не больше чем на ${f.whole.shieldCap} за ход`); n = room; }
     }
     const before = p.shield;
-    p.shield = Math.min(maxShield(state, p), p.shield + n);
+    p.shield = Math.max(before, Math.min(maxShield(state, p), p.shield + n));
     if (f && f.cur) f.cur.shieldGain += p.shield - before;
     if (p.shield !== before) log(state, `${p.name}: щит ${before} → ${p.shield}${why ? ' (' + why + ')' : ''}`);
 }
@@ -764,6 +774,11 @@ export function comboError(state, p, ids, opts = {}) {
     if (f.cur.forcedFirst && p.hand.includes(f.cur.forcedFirst) && ids[0] !== f.cur.forcedFirst) return `Полуночница: первой должна быть «${CARDS[f.cur.forcedFirst].name}»`;
     const chain = opts.free ? ids.slice(0, -1) : ids;
     if (opts.free && !f.cur.blizzard) return 'Дополнительная карта — только с Пургой';
+    if (opts.free && f.cur.freeRule) {
+        const fr = f.cur.freeRule, last = CARDS[ids[ids.length - 1]];
+        if (fr.blueOnly && !isColor(last, 'blue')) return 'Уязвимость: добавить можно только синюю карту';
+        if (fr.needBlue && !chain.some(id => isColor(CARDS[id], 'blue'))) return 'Уязвимость: добавить карту можно, только если в комбинации есть синяя';
+    }
     if (f.cur.onlyOne && chain.length > 1) return 'Чёрная кровь: комбинация только из 1 карты';
     const re = restrictError(f, p, ids);
     if (re) return re;
@@ -877,6 +892,9 @@ export function comboTotals(state, p, ids, opts = {}) {
         // Эдгар де Спота: the first combo of a monster fight deals 3 more damage.
         if (hasGear(p, 'CONT79-50') && !f.once.g50 && f.kind === 'monster') { t.dmg += 3; t.edgar = true; }
     }
+    // Vulnerabilities of the first fight turn (each red / green card +1, combo size).
+    const vb = vtComboBonus(f, ids);
+    if (vb && !R.noDmg) { t.dmg += vb; t.vuln = vb; }
     if (f) {
         if (f.cur && f.cur.dragon && t.colors.has('purple')) { t.dmg += 1; t.dragon = true; }   // Сон дракона
         if (ab(f) === 'MON-26' && (t.colors.has('green') || t.colors.has('yellow')) && t.dmg > 0) t.dmg -= 1;
@@ -916,6 +934,7 @@ STEPS.playCombo = (state, step) => {
     f.lastCombo = { ids: ids.slice(), dmg: t.dmg, shield: t.shield, draw: t.draw, free: !!step.free };
     if (t.bracers) { f.once.g28 = true; log(state, `${p.name}: наручи — щит +1`); }
     if (t.edgar) { f.once.g50 = true; log(state, `${p.name}: Эдгар де Спота — первая комбинация +3 урона`); }
+    if (t.vuln) log(state, `Уязвимость: первый ход битвы — комбинация дополнительно наносит ${t.vuln} урона`);
     if (ids.length) log(state, `${p.name} разыгрывает комбинацию: ${ids.map(id => '«' + CARDS[id].name + '»').join(' → ')}`, { kind: 'combo' });
     else log(state, `${p.name}: в руке нет карт — комбинации нет`);
     fx(state, { k: 'combo', seat: p.seat, ids });
@@ -943,6 +962,7 @@ STEPS.playCombo = (state, step) => {
         // Искры из глаз: before the combo's effects, at shield 0 — any card of the deck to the hand.
         ...(t.sparks && p.shield === 0 && p.deck.length ? [F('sparksAsk')] : []),
         F('comboDamage', { n: dmg }),
+        ...(f.vt && f.vt.redRepeat && f.wTurns === 1 ? [F('vtRedAsk', { ids })] : []),
         F('comboAfterDamage', { wolfDraw, shield: t.shield, top: t.top, ret: t.ret, draw: t.draw, ids, wasSpec: wolfDraw > 0 || (wolf3 && p.school === 'wolf') || !!t.blood, fixedDraw: t.fixedDraw, shieldMax: !!t.shieldMax, breath: !!t.breath }),
     );
 };
@@ -982,6 +1002,7 @@ STEPS.comboAfterDamage = (state, step) => {
     if (ab(f) === 'MON-05' && !colors.has('green')) n -= 1;
     if (ab(f) === 'MON-09' && n > 1) n -= 1;
     if (hasGear(p, 'CONT79-31') && f.wTurns === 1 && !f.once.g31) { f.once.g31 = true; n += 2; log(state, `${p.name}: кожаные сапоги — +2 карты`); }
+    n += vtDrawBonus(state, step.ids);
     // Решающий удар: «возьмите 0 карт», no effect can change it.
     if (step.fixedDraw != null && !f.cur.noDrawFx) { n = step.fixedDraw; log(state, 'Решающий удар: в конце хода — 0 карт'); }
     // Special attacks: «не более N карт» / «берёт 0 карт» — not changeable by other effects.
@@ -1001,7 +1022,8 @@ STEPS.comboAfterDamage = (state, step) => {
     }
     if (step.wasSpec) afterSpec(state, p);
     // Цикл дыхания resolves within this turn, before the monster acts.
-    push(state, ...(mut15 ? [F('dealDamage', { n: 1, src: 'мутаген' })] : []), ...(step.breath && f.usedElixirs.length ? [F('breathAsk')] : []), F('afterWitcherTurn'));
+    const vtRet = f.vt && f.vt.returnOne && f.wTurns === 1 && step.ids.length >= 3 ? [F('vtReturnAsk', { ids: step.ids.filter(id => !returned.includes(id)) })] : [];
+    push(state, ...(mut15 ? [F('dealDamage', { n: 1, src: 'мутаген' })] : []), ...vtRet, ...(step.breath && f.usedElixirs.length ? [F('breathAsk')] : []), F('afterWitcherTurn'));
 };
 STEPS.sparksAsk = (state) => {
     const p = fp(state);
@@ -1048,6 +1070,7 @@ STEPS.afterWitcherTurn = (state) => {
 STEPS.monsterTurn = (state) => {
     if (!alive(state)) return;
     const f = state.fight, p = fp(state);
+    if (f.mTurns === 0) { const vm = vtBeforeMonster(state); if (vm.length) { f.stage = 'busy'; push(state, ...vm, F('monsterTurn')); return; } }
     // Оскар: before the monster's first turn, look at its top 2 cards: one to its discard.
     if (f.mTurns === 0 && hasGear(p, 'CONT79-18') && !f.once.g18 && f.life.length) {
         f.once.g18 = true;
@@ -1132,6 +1155,7 @@ STEPS.monsterAttack = (state, step) => {
         const n = Number(top.slice(-1));
         f.lastAttack = { id: top, type: 'special', n, name: specialName(f.mon, n) };
         fx(state, { k: 'monsterAttack', id: top, type: 'special', left: f.life.length });
+        if (f.vuln && vtM1(f, 'choose')) { f.vt.chooseUsed = true; push(state, F('vtSpChoose', { n })); return; }
         if (f.vuln) { push(state, F('spAttack', { n })); return; }
         log(state, `${MONSTER[f.mon].name}: особая боевая карта без большой карты монстра — атаки нет`);
         push(state, F('afterMonsterTurn'));
@@ -1185,6 +1209,21 @@ function attackTyped(state, top, type) {
         });
         return;
     }
+    if (vtM1(f, 'choose')) {
+        f.vt.chooseUsed = true;
+        const other = type === 'strike' ? 'bite' : 'strike';
+        if (p.bot || p.away) {
+            if (cardLoss(state, p, card[other], f.level) < cardLoss(state, p, card[type], f.level)) { type = other; f.lastAttack.type = type; log(state, 'Уязвимость: тип атаки сменён'); }
+            push(state, F('applyAttack', { type }));
+            return;
+        }
+        ask(state, {
+            seat: p.seat, kind: 'choice', title: 'Уязвимость', text: `Открыта карта: удар — ${card.strikeText}; укус — ${card.biteText}. Можно сменить тип атаки.`,
+            options: [{ id: 'keep', label: `Оставить: ${type === 'strike' ? 'удар' : 'укус'}` }, { id: 'switch', label: `Сменить на ${other === 'strike' ? 'удар' : 'укус'}` }],
+            op: 'leshenSwitch', args: { fight: 1, type, vt: true },
+        });
+        return;
+    }
     if (hasTrophy(p, 'MON-15') && !f.once.t15 && !p.bot) {
         ask(state, {
             seat: p.seat, kind: 'choice', title: 'Трофей «Леший»', text: `Открыта карта: удар — ${card.strikeText}; укус — ${card.biteText}. Один раз за битву можно сменить тип атаки.`,
@@ -1197,7 +1236,7 @@ function attackTyped(state, top, type) {
 }
 STEPS.leshenSwitch = (state, step) => {
     let type = step.type;
-    if (step.choice === 'switch') { if (!step.moon) state.fight.once.t15 = true; type = type === 'strike' ? 'bite' : 'strike'; state.fight.lastAttack.type = type; log(state, step.moon ? 'Лунная пыль: тип атаки сменён' : `Трофей «Леший»: тип атаки сменён`); }
+    if (step.choice === 'switch') { if (!step.moon && !step.vt) state.fight.once.t15 = true; type = type === 'strike' ? 'bite' : 'strike'; state.fight.lastAttack.type = type; log(state, step.vt ? 'Уязвимость: тип атаки сменён' : step.moon ? 'Лунная пыль: тип атаки сменён' : `Трофей «Леший»: тип атаки сменён`); }
     push(state, F('applyAttack', { type }));
 };
 STEPS.applyAttack = (state, step) => {
@@ -1206,7 +1245,9 @@ STEPS.applyAttack = (state, step) => {
     const a = ATTACK[f.lastAttack.id][step.type];
     let dmg = attackDamage(state, p, a, f.level);
     const seq = [];
-    if (a.k === 'skill') seq.push({ op: 'lowerSkill', seat: p.seat, skill: a.skill, fight: 1 });
+    const ignFx = vtM1(f, 'ignFx');
+    if (ignFx && (a.k === 'skill' || a.k === 'remove' || a.k === 'randDiscard')) log(state, 'Уязвимость: эффекты атаки, кроме урона, игнорируются');
+    if (a.k === 'skill' && !ignFx) seq.push({ op: 'lowerSkill', seat: p.seat, skill: a.skill, fight: 1 });
     let manticore = false;
     if (a.k === 'dmg' || a.k === 'dmgSkill' || a.k === 'skill') {
         if (ab(f) === 'MON-14' && f.poolAtStart <= 2) { dmg += 2; log(state, 'Брукса: в запасе 2 карты или меньше — +2 урона'); }
@@ -1216,10 +1257,12 @@ STEPS.applyAttack = (state, step) => {
     }
     // Кухарка (discard ability): «В следующий ход битвы монстра его атака дополнительно наносит 2 урона».
     if (f.mCur && f.mCur.plus) { dmg += f.mCur.plus; log(state, `Кухарка: атака дополнительно наносит ${f.mCur.plus} урона`); }
+    const less = vtM1(f, 'dmgLess');
+    if (less && dmg > 0) { const was = dmg; dmg = Math.max(0, dmg - less); log(state, `Уязвимость: урон первой атаки снижен на ${less} (${was} → ${dmg})`); }
     if (dmg > 0) seq.push(F('hurtWitcher', { n: dmg, handFirst: ab(f) === 'MON-25' && f.mTurns === 1 }));
     if (manticore) seq.push(F('randomDiscard', { n: 1, why: 'Мантикора', noDeck: true }));
-    if (a.k === 'remove') seq.push(F('removeAsk'));
-    if (a.k === 'randDiscard') seq.push(F('randomDiscard', { n: a.lvl[f.level - 1], why: 'атака' }));
+    if (a.k === 'remove' && !ignFx) seq.push(F('removeAsk'));
+    if (a.k === 'randDiscard' && !ignFx) seq.push(F('randomDiscard', { n: a.lvl[f.level - 1], why: 'атака' }));
     if (ab(f) === 'MON-10' && f.mTurns === 1) seq.push(F('randomDiscard', { n: 1, why: 'Виверна', noDeck: true }));
     seq.push(F('afterMonsterTurn'));
     push(state, ...seq);
@@ -1230,6 +1273,12 @@ STEPS.hurtWitcher = (state, step) => {
     const p = fp(state);
     let n = step.n;
     const f = state.fight;
+    if (vtM1(f, 'cap1')) {
+        const room = Math.max(0, 1 - f.vt.capUsed);
+        if (n > room) { log(state, `Уязвимость: в первый ход монстр наносит не больше 1 урона (${n} → ${room})`); n = room; }
+        f.vt.capUsed += n;
+        if (n <= 0) return;
+    }
     log(state, `${p.name} получает ${n} урона`);
     fx(state, { k: 'witcherHit', seat: p.seat, n });
     let handN = 0;
@@ -1316,6 +1365,8 @@ STEPS.removeDo = (state, step) => {
 STEPS.afterMonsterTurn = (state) => {
     if (!alive(state)) return;
     const f = state.fight, p = fp(state);
+    const vEnd = vtAfterMonster(state);
+    if (vEnd.length) { push(state, ...vEnd, F('afterMonsterTurn')); return; }
     // Trophy MON-04: lost deck cards during the monster's turn → draw 1.
     if (hasTrophy(p, 'MON-04') && f.deckLossThisTurn && p.deck.length) { drawCards(state, p, 1); log(state, `${p.name}: трофей «Туманник» — +1 карта`); }
     f.deckLossThisTurn = 0;
@@ -1345,8 +1396,12 @@ STEPS.fightConsequences = (state) => {
     const slot = state.slots[f.slot];
     let result;
     const steps = [];
-    if (f.over === 'win') {
+    const vChase = f.over !== 'win' && f.life.length <= 1 && f.vt && f.vt.chaseWin;
+    if (vChase) log(state, `Уязвимость ${['I', 'II', 'III', 'IV', 'V', 'VI'][f.vt.chaseWin - 1]}: монстр прогнан — последствия как при победе`);
+    if (f.over === 'win' || vChase) {
         result = 'win';
+        if (f.vt && f.vt.gold) { p.gold += f.vt.gold; log(state, `${p.name}: уязвимость — ещё +${f.vt.gold} золото`); }
+        if (f.vt && f.vt.cheap) steps.push({ op: 'vtCheapAsk', seat: p.seat });
         p.gold += 2;
         p.monstersDefeated++;
         log(state, `${p.name} побеждает: ${mon.name}! +2 золота и трофей`, { kind: 'victory' });
@@ -1397,6 +1452,12 @@ STEPS.fightCleanup = (state) => {
     p.shield = maxShield(state, p);
     state.elixirDiscard.push(...f.usedElixirs);
     if (f.usedBombs && f.usedBombs.length) { if (!state.bombDiscard) state.bombDiscard = []; state.bombDiscard.push(...f.usedBombs); }
+    if (f.vt && f.vt.swapBack && Array.isArray(state.atkSet)) {
+        // MON-09 III: after the fight 1 random base card of the combat deck goes back to the box.
+        const base = state.atkSet.filter(id => !isSpecial(id));
+        const back = base[randInt(state, base.length)];
+        removeFrom(state.atkSet, back); state.atkBox.push(back);
+    }
     state.attackDeck = freshAttackDeck(state);
     p.deck = shuffle(state, [...p.deck, ...p.discard.splice(0), ...p.hand.splice(0)]);
     log(state, `${p.name}: щит восстановлен до ${p.shield}, все карты перемешаны в колоду`);
@@ -1436,6 +1497,7 @@ function returnTokens(state, slotIdx) {
     if (slot.token != null) pile.push(slot.token);
     slot.token = null;
     shuffle(state, pile);
+    vulnReset(state, t);
 }
 STEPS.returnSlotTokens = (state, step) => { returnTokens(state, step.slot); };
 STEPS.spawnMonster = (state, step) => {
@@ -1463,6 +1525,7 @@ STEPS.spawnMonster = (state, step) => {
         log(state, `Новый монстр: ${MONSTER[id].name} (уровень ${MONSTER[id].level}) — ${LOC[slot.token].name}`, { kind: 'spawn' });
         fx(state, { k: 'spawn', mon: id, loc: slot.token });
         onMonsterAppears(state, id);
+        push(state, { op: 'vtPlace', terrain: slot.terrain });
     }
 };
 

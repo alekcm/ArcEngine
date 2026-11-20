@@ -4,7 +4,7 @@
 import { S, $, cmd, me, btn, toast } from './ctx.js';
 import { icon } from './icons.js';
 import { actionCard, monsterCard, attackCard, mutagenCard, bigMonsterCard, specialCard, esc } from './cards.js';
-import { nextText } from '/shared/data/vuln-data.mjs';
+import { nextText, ROMAN, vulnText } from '/shared/data/vuln-data.mjs';
 import { restrictError } from '/shared/engine/vuln.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { bombOf } from '/shared/data/bombs-data.mjs';
@@ -57,6 +57,7 @@ export function renderFight() {
         ...(f.nextM && f.nextM.plus ? [`<span class="next">след. атака монстра: +${f.nextM.plus} урона</span>`] : []),
         ...(f.whole && f.whole.shieldCap != null ? [`<span>до конца битвы: щит растёт не больше чем на ${f.whole.shieldCap} за ход</span>`] : []),
         ...(f.whole && f.whole.defLess ? [`<span>до конца битвы: навык защиты −${f.whole.defLess}</span>`] : []),
+        ...(f.vt && f.vt.ns.length ? [`<span class="vt" title="${esc(f.vt.ns.map(n => ROMAN[n - 1] + ': ' + vulnText(f.mon, n)).join('\n'))}">${icon('skull', 'c-vuln')} уязвимости: ${f.vt.ns.map(n => ROMAN[n - 1]).join(', ')}</span>`] : []),
         ...(f.cur && f.cur.ign && f.stage === 'witcher' && (f.cur.ign.all || f.cur.ign.half) ? [`<span>монстр игнорирует ${f.cur.ign.all ? 'весь урон' : 'половину урона'}</span>`] : []),
     ] : [];
     // The previous combo as one compact line (the cards themselves are in the log and discard).
@@ -71,6 +72,7 @@ export function renderFight() {
     const fbtns = [];
     if (myStage && o) {
         for (const e of o.elixirs) { const po = POTION[e.id.split('#')[0]]; fbtns.push(btn({ label: `${esc(po.name)}`, icon: icon('elixir', 'c-forest'), why: e.err, data: `data-el="${esc(e.id)}"`, small: true }).replace('<button', `<button title="${esc(po.text)}"`)); }
+        for (const e of o.vulnElixir || []) { const po = POTION[e.id.split('#')[0]]; fbtns.push(btn({ label: `${esc(po.name)} → верхняя карта сброса`, icon: icon('skull', 'c-vuln'), why: e.err, data: `data-vel="${esc(e.id)}"`, small: true }).replace('<button', `<button title="Уязвимость: сбросьте неиспользованный эликсир, чтобы взять верхнюю карту своего сброса (считается в лимит алхимии)"`)); }
         for (const b of o.bombs || []) { const bd = bombOf(b.id); fbtns.push(btn({ label: `Бомба: ${esc(bd.name)}`, icon: icon('bomb', 'c-bomb'), why: b.err, data: `data-bomb="${esc(b.id)}"`, small: true }).replace('<button', `<button title="${esc(bd.text)}"`)); }
         const sc = SCHOOLS[p.school];
         if (p.school === 'cat' || p.school === 'griffin' || p.school === 'manticore') fbtns.push(btn({ label: `Специализация: ${esc(sc.spec)}`, icon: icon('spec'), why: o.spec, data: 'data-spec="1"', small: true }));
@@ -141,6 +143,7 @@ export function renderFight() {
     for (const c of el.querySelectorAll('#fCombo .card')) c.onclick = () => { const i = S.ui.combo.indexOf(c.dataset.id); S.ui.combo = S.ui.combo.slice(0, i); if (typeof S.ui.blood === 'number' && S.ui.blood >= i) S.ui.blood = null; sfx('card'); renderFight(); };
     for (const b of el.querySelectorAll('[data-blood]')) b.onclick = () => { toggleBlood(); };
     for (const b of el.querySelectorAll('[data-el]')) b.onclick = () => { sfx('elixir'); cmd({ t: 'elixir', id: b.dataset.el }, 'эликсир'); };
+    for (const b of el.querySelectorAll('[data-vel]')) b.onclick = () => { sfx('elixir'); cmd({ t: 'vulnElixir', id: b.dataset.vel }, 'уязвимость'); };
     for (const b of el.querySelectorAll('[data-bomb]')) b.onclick = () => { sfx('hit'); cmd({ t: 'bomb', id: b.dataset.bomb }, 'бомба'); };
     for (const c of el.querySelectorAll('.fmuts [data-mut]')) c.onclick = () => toggleMut(c.dataset.mut, tot);
     for (const b of el.querySelectorAll('[data-spec]')) b.onclick = () => cmd({ t: 'spec' }, 'специализация');

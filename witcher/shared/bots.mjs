@@ -172,6 +172,14 @@ function answerPrompt(view, p, pr) {
     // House rule: buy back drunk elixirs while keeping 2 gold for training/movement.
     if (pr.ui === 'elixirReturn') return { t: 'answer', ids: pr.ids.slice(0, Math.max(0, Math.min(pr.max, p.gold - 2))) };
     if (pr.ui === 'bombReturn') return { t: 'answer', ids: pr.ids.slice(0, Math.max(0, Math.min(pr.max, Math.floor((p.gold - 2) / 2)))) };
+    // Vulnerability tokens: take the best card offered; pay with the weakest card while the hand is
+    // big enough (4+); elixirs and the rest only when the prompt requires them.
+    if (pr.vt) {
+        const best = pr.ids.slice().sort((a, b) => value(b) - value(a)), worst = best.slice().reverse();
+        if (['fetch', 'take', 'tutor2', 'row2', 'elixirPick'].includes(pr.vt)) return { t: 'answer', ids: best.slice(0, Math.max(pr.min, 1)).slice(0, pr.max) };
+        if (pr.vt === 'pay' && pr.from !== 'elixirs' && p.hand.length >= 4 && CARDS[pr.ids[0]]) return { t: 'answer', ids: worst.slice(0, Math.max(pr.min, 1)) };
+        if (pr.ordered) return { t: 'answer', ids: pr.ids.slice() };
+    }
     // cards: discard/remove -> weakest; take -> strongest
     const takeLike = ['deckTop', 'discard', 'row', 'elixirs'].includes(pr.from) && !/Сброс|сбрось|убер/i.test(pr.text || '');
     const sorted = pr.ids.slice().sort((a, b) => takeLike ? value(b) - value(a) : value(a) - value(b));

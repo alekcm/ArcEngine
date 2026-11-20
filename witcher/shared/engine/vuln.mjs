@@ -8,6 +8,7 @@ import { trailOn, SKILLS, SKILL_NAME } from '../data/rules-data.mjs';
 import { ATTACKS, DISCARD, BIG, SPECIALS, SPECIAL, isSpecial, ROMAN } from '../data/vuln-data.mjs';
 import { bombOf } from '../data/bombs-data.mjs';
 import { F, fp, alive, hitMonster, gainShield, loseShield, onAttackDiscard, linkIndex } from './fight.mjs';
+import { vtM1, vtIgnoredSpecial, vtIgnoreDiscard } from './vtoken.mjs';
 
 export { isSpecial };
 export const vulnOn = (state) => trailOn(state, 'vuln');
@@ -81,6 +82,11 @@ STEPS.spAttack = (state, step) => {
     const f = state.fight;
     const ops = (ATTACKS[f.mon] || [])[step.n - 1] || [];
     const b = BIG[f.mon];
+    if (vtIgnoredSpecial(f, step.n)) {
+        log(state, `${MONSTER[f.mon].name}: особая атака ${ROMAN[step.n - 1]} «${b.attacks[step.n - 1].name}» игнорируется (уязвимость)`, { kind: 'attack' });
+        push(state, F('afterMonsterTurn'));
+        return;
+    }
     log(state, `${MONSTER[f.mon].name}: особая атака ${ROMAN[step.n - 1]} «${b ? b.attacks[step.n - 1].name : ''}» — ${b ? b.attacks[step.n - 1].text : ''}`, { kind: 'attack' });
     f.sp = { dmgDone: false };
     push(state, ...ops.map(op => F('spOp', { o: op })), F('spEnd'), F('afterMonsterTurn'));
@@ -106,6 +112,8 @@ STEPS.vHurt = (state, step) => {
         const { extra, why } = attackExtra(state);
         if (extra) { n += extra; log(state, `Атака дополнительно наносит ${extra} урона (${why.join(', ')})`); }
         if (f.mTurns === 1 && p.gear && p.gear.includes('CONT79-05') && !f.once.g05 && n > 0) { f.once.g05 = true; const was = n; n = Math.max(0, n - 2); log(state, `Ярдель: урон первой атаки снижен на 2 (${was} → ${n})`); }
+        const less = vtM1(f, 'dmgLess');
+        if (less && n > 0) { const was = n; n = Math.max(0, n - less); log(state, `Уязвимость: урон первой атаки снижен на ${less} (${was} → ${n})`); }
         if (f.mon === 'MON-21' && !f.noAbility && n > 0) { n -= 1; manticore = true; log(state, 'Мантикора: урон −1, но случайная карта из руки сбрасывается'); }
     }
     const seq = [];
@@ -127,11 +135,38 @@ STEPS.spEnd = (state) => {
 };
 const vulnCount = (state, p) => (p.vulns || []).filter(v => v.terrain === state.fight.terrain).length;
 
+const DMG_OPS = ['dmg', 'dmgHand', 'dmgElixirs', 'dmgShield0', 'dmgDie', 'dmgDice', 'dmgTrack', 'dmgVuln', 'dmgVulnLess'];
+/** Vulnerability: after the special card is revealed the witcher may pick the special attack. */
+STEPS.vtSpChoose = (state, step) => {
+    const f = state.fight, p = fp(state);
+    const b = BIG[f.mon];
+    if (p.bot || p.away) {
+        const n = f.vt.ign.length ? f.vt.ign[0] : step.n;
+        if (n !== step.n) log(state, `Уязвимость: ${p.name} выбирает особую атаку ${ROMAN[n - 1]}`);
+        f.lastAttack.n = n; f.lastAttack.name = b.attacks[n - 1].name;
+        push(state, F('spAttack', { n }));
+        return;
+    }
+    ask(state, {
+        seat: p.seat, kind: 'choice', title: 'Уязвимость', text: `Открыта особая боевая карта ${ROMAN[step.n - 1]}. Вы можете выбрать, какая особая атака будет применена.`,
+        options: b.attacks.map((a, i) => ({ id: String(i + 1), label: `${ROMAN[i]} «${a.name}»${i + 1 === step.n ? ' (открыта)' : ''}${vtIgnoredSpecial(f, i + 1) ? ' — игнорируется' : ''}`, hint: a.text })),
+        op: 'vtSpChosen', args: { fight: 1 },
+    });
+};
+STEPS.vtSpChosen = (state, step) => {
+    const f = state.fight;
+    const n = Math.max(1, Math.min(4, Number(step.choice) || 1));
+    f.lastAttack.n = n; f.lastAttack.name = BIG[f.mon].attacks[n - 1].name;
+    log(state, `Уязвимость: выбрана особая атака ${ROMAN[n - 1]}`);
+    push(state, F('spAttack', { n }));
+};
 STEPS.spOp = (state, step) => {
     if (!alive(state)) return;
     const f = state.fight, p = fp(state);
     const op = step.o;
     const hurt = (n) => push(state, F('vHurt', { n }));
+    // Vulnerability: «в первый ход монстра игнорируйте все эффекты его атаки, кроме урона».
+    if (vtM1(f, 'ignFx') && !DMG_OPS.includes(op.k)) { if (!f.sp.ignLogged) { f.sp.ignLogged = true; log(state, 'Уязвимость: эффекты особой атаки, кроме урона, игнорируются'); } return; }
     switch (op.k) {
         case 'dmg': return hurt(op.n + (op.ifDice && f.dice ? op.ifDice : 0));
         case 'dmgHand': return hurt(p.hand.length + (op.plus || 0));
@@ -431,6 +466,7 @@ STEPS.discAbility = (state, step) => {
     if (!b) return;
     log(state, `Сброшена особая боевая карта: способность сброса «${b.discard.name}» — ${b.discard.text}`, { kind: 'attack' });
     fx(state, { k: 'discAbility', mon: f.mon });
+    if (vtIgnoreDiscard(state)) return;
     const bomb = (p.bombs || []).find(x => x.startsWith('BOMB-07#'));
     if (bomb && f.elixirsUsed < skillVal(p, 'alchemy')) {
         if (p.bot) { push(state, F('dimeritDo', { choice: 'use', id: bomb, mon: f.mon })); return; }

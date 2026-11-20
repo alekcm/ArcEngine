@@ -2,6 +2,7 @@
 // and runs the step machine; options(state, seat) lists what that seat may do right now, with
 // the reason for everything that is not allowed (the UI shows those reasons on disabled buttons).
 import { STEPS, push, run, ask } from './flow.mjs';
+import { vtElixirTopError } from './vtoken.mjs';
 import { CARDS, LOC, ADJ, MONSTER, log, fx, removeFrom, potionOf, d6 } from './util.mjs';
 import { LOC_ACTIONS, LOC_ACTION_TEXT, SKILL_NAME, SCHOOLS, TERRAIN_NAME } from '../data/rules-data.mjs';
 import { movePaymentError, canEnter, meditationOptions, SKILL_GEN, autoReroll, comparePoker, pokerValue, POKER_NAMES, SOLO_POKER, gearMoveError } from './turn.mjs';
@@ -93,6 +94,8 @@ export function options(state, seat) {
             spec: specError(state, p),
             blood: p.school === 'ciri' ? bloodError(state, p) : undefined,
             bombs: (p.bombs || []).map(id => ({ id, err: bombError(state, p, id) })),
+            // Главоглаз II (vulnerability): an elixir for the top card of the discard.
+            vulnElixir: state.fight.vt && state.fight.vt.elixirTop ? p.elixirs.map(id => ({ id, err: vtElixirTopError(state, p, id) })) : undefined,
             active: Object.keys(ACTIVE_EFFECTS).filter(k => k === 'W-griffin' ? hasWitcherTrophy(p, 'griffin') : ACTIVE_EFFECTS[k].src === 'gear' ? p.gear.includes(k) : hasTrophy(p, k)).map(k => ({ key: k, label: ACTIVE_EFFECTS[k].label, err: activeEffectError(state, p, k) })),
             mustPlay: p.hand.length > 0,
         };
@@ -313,6 +316,7 @@ function fightCmd(state, p, cmd) {
         case 'bomb': { const e = bombError(state, p, cmd.id); if (e) return err(e); f.stage = 'busy'; push(state, { op: 'useBomb', fight: 1, id: cmd.id }); return ok(); }
         case 'spec': { const e = specError(state, p); if (e) return err(e); f.stage = 'busy'; push(state, { op: 'useSpec', fight: 1 }); return ok(); }
         case 'active': { const e = activeEffectError(state, p, cmd.key); if (e) return err(e); f.stage = 'busy'; push(state, { op: 'useActive', fight: 1, key: cmd.key }); return ok(); }
+        case 'vulnElixir': { const e = vtElixirTopError(state, p, cmd.id); if (e) return err(e); f.stage = 'busy'; push(state, { op: 'vtElixirTop', fight: 1, id: cmd.id }); return ok(); }
         case 'combo': {
             const ids = Array.isArray(cmd.ids) ? cmd.ids : [];
             const blood = cmd.blood == null ? null : Number(cmd.blood);

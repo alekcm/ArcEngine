@@ -61,7 +61,7 @@ function monsterReveals(st, card) {
     step(st, { op: 'monsterTurn', fight: 1 });
     settle(st);
 }
-const setHand = (p, ids) => { p.deck.push(...p.hand.filter(x => !ids.includes(x))); p.hand = ids.slice(); for (const id of ids) { const i = p.deck.indexOf(id); if (i >= 0) p.deck.splice(i, 1); } };
+const setHand = (p, ids) => { p.deck.push(...p.hand.filter(x => !ids.includes(x))); p.hand = ids.slice(); for (const id of ids) { let i = p.deck.indexOf(id); if (i >= 0) p.deck.splice(i, 1); i = p.discard.indexOf(id); if (i >= 0) p.discard.splice(i, 1); } };
 const answerAll = (st, pick) => { for (let i = 0; i < 10 && st.prompt && st.prompt.seat === 0; i++) { ok(apply(st, 0, pick(st.prompt))); settle(st); } };
 
 test('данные: 29 больших карт (Сирены и Кащея нет), у каждой 4 особые атаки, способность сброса и 6 уязвимостей; операции заданы для всех', () => {
@@ -138,7 +138,7 @@ test('особая атака: ограничения следующего хо�
     let p = st.players[0];
     monsterReveals(st, 'MON-SPECIAL-04');
     assert.equal(st.fight.cur.r.maxCombo, 2);
-    const pool = [...p.hand, ...p.deck];
+    const pool = [...p.hand, ...p.deck, ...p.discard];
     const chain = findChain(pool, 3);
     assert.ok(chain, 'в стартовой колоде есть цепочка из 3 карт');
     setHand(p, chain);

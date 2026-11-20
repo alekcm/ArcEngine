@@ -197,6 +197,13 @@ export function vulnScenario(seed = 21) {
     st.bombDeck.splice(st.bombDeck.indexOf(bomb), 1);
     p.bombs.push(bomb);
     p.elixirs.push(st.elixirDeck.shift(), st.elixirDeck.shift());
+    // Vulnerability tokens of the Волколак (face up): I, III, IV — out of the pile / off the board.
+    for (const n of [1, 3, 4]) {
+        const pile = st.vulnPiles[slot.terrain], i = pile.indexOf(n);
+        if (i >= 0) pile.splice(i, 1);
+        else { const b = st.vulnBoard.find(x => x.terrain === slot.terrain && x.n === n); if (b) b.n = pile.shift(); }
+        p.vulns.push({ terrain: slot.terrain, n });
+    }
     return st;
 }
 const MONSTER_LEVEL = (id) => MONSTER[id].level;

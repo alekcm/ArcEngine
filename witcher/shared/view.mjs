@@ -13,6 +13,9 @@ export function viewFor(state, seat) {
     if (s.atkSet) s.atkSet = s.atkSet.length;
     if (s.atkBox) s.atkBox = s.atkBox.length;
     if (s.atkAside) s.atkAside = s.atkAside.length;
+    // Vulnerability tokens on the board lie face down: the location is known, the number is not.
+    if (s.vulnBoard) s.vulnBoard = s.vulnBoard.map(x => ({ terrain: x.terrain, loc: x.loc }));
+    if (s.vulnPiles) s.vulnPiles = Object.fromEntries(Object.entries(s.vulnPiles).map(([k, a]) => [k, a.length]));
     for (const k of Object.keys(s.locPiles)) s.locPiles[k] = s.locPiles[k].length;
     for (const k of Object.keys(s.monsterStacks)) s.monsterStacks[k] = s.monsterStacks[k].length;
     s.extraStack = s.extraStack.length;

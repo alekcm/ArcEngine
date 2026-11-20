@@ -81,6 +81,8 @@ export function renderPrompt() {
         ${pr.min === 0 && n === 0 ? btn({ id: 'pSkip', label: 'Пропустить', key: 'Esc' }) : ''}
         ${btn({ id: 'pOk', label: combo ? 'Разыграть' : 'Готово', primary: true, why: okCount ? null : need, key: 'Enter' })}</div></div>`;
     if (combo) sel.forEach((id, i) => { const c = el.querySelector(`.cards [data-id="${CSS.escape(id)}"]`); if (c) c.setAttribute('data-ord', i + 1); });
+    // «Положите в любом порядке»: the click order is the order on top of the deck (1 = topmost).
+    if (pr.ordered) sel.forEach((id, i) => { const c = el.querySelector(`.cards [data-id="${CSS.escape(id)}"]`); if (c) { c.classList.add('ordered-pick'); c.insertAdjacentHTML('beforeend', `<span class="order-n">${i + 1}</span>`); } });
     for (const c of el.querySelectorAll('.pick')) c.onclick = () => {
         const id = c.dataset.id;
         if (sel.includes(id)) sel.splice(sel.indexOf(id), 1);

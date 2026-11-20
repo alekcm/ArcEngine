@@ -1,6 +1,7 @@
 // Player turn: phase I (movement, location actions, poker), phase II choice, phase III
 // (discard, draw, mandatory purchase). База.md pp. 12–19, 35–36.
 import { STEPS, push, ask } from './flow.mjs';
+import { vulnPickup } from './vtoken.mjs';
 import {
     CARDS, LOC, ADJ, MONSTER, card, log, fx, drawCards, removeFrom, shuffle, skillVal, maxShield, clampShield, potionOf, pname,
 } from './util.mjs';
@@ -294,6 +295,8 @@ STEPS.arrive = (state, step) => {
     }
     // Quest tokens of other players / secret cards («Цири и доп. события», explore.mjs).
     push(state, { op: 'trapCheck', seat: p.seat, on: 'move' });
+    // «Уязвимости и особые атаки»: a vulnerability token in this location is taken face up.
+    vulnPickup(state, p);
 };
 
 /** Destinations of a kept-card move (Лошадь / гильдия купцов): adjacent locations of its terrain. */
